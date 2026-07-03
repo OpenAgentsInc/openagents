@@ -12,8 +12,10 @@ export type WorkPlannerUnitKind = typeof WorkPlannerUnitKindSchema.Type
 
 export const WorkPlannerSkipReasonSchema = S.Literals([
   "already_claimed",
+  "completed",
   "dependency_failed",
   "dependency_pending",
+  "failed",
   "pr_exists",
   "merged",
   "closed",
@@ -466,6 +468,8 @@ export const planWorkCandidates = (
     if (candidate.state === "closed") return skipped(candidate, "closed")
     const prSkip = skipForPrSibling(candidate, pullRequests)
     if (prSkip !== null) return prSkip
+    if (completedWorkUnitRefs.has(candidate.workUnitRef)) return skipped(candidate, "completed")
+    if (failedWorkUnitRefs.has(candidate.workUnitRef)) return skipped(candidate, "failed")
     const missingDeps = (candidate.dependsOn ?? []).filter((depRef) => !completedWorkUnitRefs.has(depRef))
     const failedDep = missingDeps.find((depRef) => failedWorkUnitRefs.has(depRef))
     if (failedDep !== undefined) return skipped(candidate, "dependency_failed", failedDep)

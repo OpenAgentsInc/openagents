@@ -341,6 +341,9 @@ describe("typed work planner", () => {
     expect(second.claimable.map(unit => unit.workUnitRef)).toEqual([
       "plan_dag:plan.t9_4:node:adapter",
     ])
+    expect(skipReasonsByRef(second.skipped)).toEqual({
+      "plan_dag:plan.t9_4:node:root": "completed",
+    })
   })
 
   test("plan_dag marks dependents blocked when a prerequisite failed", () => {
@@ -359,8 +362,10 @@ describe("typed work planner", () => {
     })
 
     expect(skipReasonsByRef(result.skipped)).toEqual({
+      "plan_dag:plan.t9_4.failed:node:root": "failed",
       "plan_dag:plan.t9_4.failed:node:dependent": "dependency_failed",
     })
+    expect(result.claimable).toEqual([])
   })
 
   test("plan_dag rejects duplicate refs, unknown dependencies, and cycles", () => {

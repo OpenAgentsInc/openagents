@@ -151,7 +151,10 @@ acceptance minimum, operators may arm the same verifier with
 public-safe evidence units and the verifier still requires real supervised
 Pylon assignments, named isolated worker accounts, exact closeout/token-row
 proof, public counter reconciliation, duration/refill evidence, and zero
-duplicate work-unit refs.
+duplicate work-unit refs. Within one FleetRun, a plan-DAG node is a
+single-attempt work unit: completed nodes are skipped as completed, and
+released or expired nodes are skipped as failed so the supervisor cannot
+refill the same node repeatedly.
 
 ## 7. QA-6 — Explorers and the learning loop
 

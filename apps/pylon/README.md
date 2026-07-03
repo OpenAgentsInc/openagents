@@ -542,7 +542,10 @@ array of bounded public-safe plan nodes (`ref`, `title`, `objective`, optional
 plan-DAG path still uses real supervised Pylon assignments, named isolated
 worker accounts, exact closeout/token-row proof, duplicate work-unit detection,
 and public counter reconciliation; it only changes the work source from GitHub
-issue numbers to explicit bounded evidence nodes.
+issue numbers to explicit bounded evidence nodes. Within one sustained run,
+each plan node is single-attempt: completed nodes are skipped as completed,
+and released or expired nodes are treated as failed for planning so a refill
+cannot dispatch the same node again.
 
 ### Local multi-session proof runs
 
