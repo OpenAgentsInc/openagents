@@ -19,3 +19,28 @@ Modeled package bands from the QA Swarm product plan:
 NEEDS-OWNER: Decide whether these bands are directionally acceptable, whether
 any price should be public, and what copy is allowed for operator-assisted
 delivery before QA Swarm has self-serve hosted runs.
+
+## QS7 Rhys Sales Motion Owner Gate
+
+Source issue: OpenAgentsInc/openagents#8067
+
+This is an owner-review staging note for the outward-facing Swarm Audit demo PR
+against `RhysSullivan/executor`. The external PR must not be opened, commented
+on, or otherwise sent publicly until the owner signs off on the exact artifact
+packet.
+
+Current state:
+
+- The QS7 acceptance bar depends on QS2 (run-level share URL) and QS8
+  (chill-evals variant comparison). Those are prerequisite product surfaces, not
+  optional polish.
+- No live audit against `RhysSullivan/executor` has been run in this bounded
+  checkout.
+- No webm, terminal recording, distilled `*.e2e.test.ts`, CONFIRMED/REFUTED
+  verdict, share URL, or chill-evals comparison exists for this target yet.
+- No external repository PR has been opened.
+
+NEEDS-OWNER: Review
+`docs/fable/2026-07-02-qs7-rhys-sales-motion-owner-review.md`, approve or edit
+the public-safe artifact packet, and explicitly authorize the outward-facing
+`RhysSullivan/executor` PR only after the real audit receipts exist.
