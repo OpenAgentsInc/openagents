@@ -8,6 +8,12 @@ import {
   createCodexAppServerHost,
   type CodexAppServerHost,
 } from "./codex-app-server-client.js"
+import {
+  validateKhalaCodeHeadlessJsonl,
+} from "../shared/headless-events.js"
+import {
+  runKhalaCodeDesktopHeadlessJsonl,
+} from "./headless.js"
 import { inspectCodexHarnessStatus } from "./codex-harness-status.js"
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 
@@ -17,6 +23,7 @@ export type KhalaCodeCodexParityLiveSmokeResult = Readonly<{
   codexTurnId?: string
   eventCount?: number
   harness: typeof KHALA_CODE_CODEX_PARITY_LIVE_SMOKE_HARNESS
+  modeH?: KhalaCodeCodexModeHLiveSmokeResult
   ok: boolean
   reason?: string
   required: boolean
@@ -25,6 +32,19 @@ export type KhalaCodeCodexParityLiveSmokeResult = Readonly<{
   status: "failed" | "ok" | "skipped"
   threadId?: string
   turnStatus?: string
+}>
+
+export type KhalaCodeCodexModeHLiveSmokeResult = Readonly<{
+  codexTurnId?: string
+  eventCount: number
+  eventTypes: readonly string[]
+  finalOk: boolean
+  jsonlSchemaOk: boolean
+  ok: boolean
+  reason?: string
+  threadId?: string
+  turnId?: string
+  validationErrors: readonly string[]
 }>
 
 export type RunKhalaCodeCodexParityLiveSmokeInput = Readonly<{
@@ -41,6 +61,9 @@ export type RunKhalaCodeCodexParityLiveSmokeInput = Readonly<{
 const defaultPrompt =
   "Khala Codex parity live smoke: acknowledge with one short sentence, then stop."
 
+const defaultHeadlessPrompt =
+  "Khala Code Mode H live smoke: acknowledge with one short sentence, then stop."
+
 const notRequested = (): KhalaCodeCodexParityLiveSmokeResult => ({
   harness: KHALA_CODE_CODEX_PARITY_LIVE_SMOKE_HARNESS,
   ok: true,
@@ -50,6 +73,106 @@ const notRequested = (): KhalaCodeCodexParityLiveSmokeResult => ({
   skipped: true,
   status: "skipped",
 })
+
+const writableBuffer = (): { readonly sink: { write: (chunk: string) => boolean }; readonly text: () => string } => {
+  let value = ""
+  return {
+    sink: {
+      write: (chunk: string) => {
+        value += chunk
+        return true
+      },
+    },
+    text: () => value,
+  }
+}
+
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+
+const stringField = (value: unknown, field: string): string | undefined => {
+  if (!isRecord(value)) return undefined
+  const candidate = value[field]
+  return typeof candidate === "string" && candidate.length > 0 ? candidate : undefined
+}
+
+const booleanField = (value: unknown, field: string): boolean | undefined => {
+  if (!isRecord(value)) return undefined
+  const candidate = value[field]
+  return typeof candidate === "boolean" ? candidate : undefined
+}
+
+async function runModeHLiveSmoke(input: {
+  readonly createHost?: () => CodexAppServerHost
+  readonly env: NodeJS.ProcessEnv
+  readonly prompt?: string
+  readonly timeoutMs?: number
+  readonly workingDirectory: string
+}): Promise<KhalaCodeCodexModeHLiveSmokeResult> {
+  const stdout = writableBuffer()
+  const stderr = writableBuffer()
+  const host = input.createHost?.() ?? createCodexAppServerHost({ env: input.env })
+
+  try {
+    await runKhalaCodeDesktopHeadlessJsonl({
+      createCodexChatRuntime: ({ onEvent }) =>
+        createCodexAppServerChatRuntime({
+          env: input.env,
+          host,
+          onEvent,
+          statePath: join(input.workingDirectory, "codex-mode-h-sessions.json"),
+          tokenUsageReporter: null,
+          turnTimeoutMs: input.timeoutMs ?? 120_000,
+          workingDirectory: input.workingDirectory,
+        }),
+      env: input.env,
+      prompt: input.prompt ?? defaultHeadlessPrompt,
+      sessionId: "khala-code-mode-h-live-smoke-session",
+      stderr: stderr.sink,
+      stdout: stdout.sink,
+      turnId: "khala-code-mode-h-live-smoke-turn",
+      workingDirectory: input.workingDirectory,
+    })
+
+    const validation = validateKhalaCodeHeadlessJsonl(stderr.text())
+    const final: unknown = JSON.parse(stdout.text())
+    const requiredTypes = ["thread.started", "turn.started", "turn.completed"]
+    const missingTypes = requiredTypes.filter(type => !validation.eventTypes.includes(type as never))
+    const validationErrors = [
+      ...validation.errors,
+      ...missingTypes.map(type => `missing ${type}`),
+    ]
+    const finalOk = booleanField(final, "ok") === true
+    const codexTurnId = stringField(final, "codexTurnId")
+    const threadId = stringField(final, "threadId")
+    const turnId = stringField(final, "turnId")
+
+    return {
+      ...(codexTurnId === undefined ? {} : { codexTurnId }),
+      eventCount: validation.eventCount,
+      eventTypes: validation.eventTypes,
+      finalOk,
+      jsonlSchemaOk: validation.ok && missingTypes.length === 0,
+      ok: finalOk && validation.ok && missingTypes.length === 0,
+      ...(threadId === undefined ? {} : { threadId }),
+      ...(turnId === undefined ? {} : { turnId }),
+      validationErrors,
+    }
+  } catch (error) {
+    const validation = validateKhalaCodeHeadlessJsonl(stderr.text())
+    return {
+      eventCount: validation.eventCount,
+      eventTypes: validation.eventTypes,
+      finalOk: false,
+      jsonlSchemaOk: validation.ok,
+      ok: false,
+      reason: error instanceof Error ? error.message : String(error),
+      validationErrors: validation.errors,
+    }
+  } finally {
+    host.dispose()
+  }
+}
 
 export async function runKhalaCodeCodexParityLiveSmoke(
   input: RunKhalaCodeCodexParityLiveSmokeInput = {},
@@ -111,15 +234,25 @@ export async function runKhalaCodeCodexParityLiveSmoke(
     }
     const response = await turn
     const ok = response.ok || response.backend.turnStatus === "interrupted"
+    const modeH = ok
+      ? await runModeHLiveSmoke({
+        env,
+        ...(input.createHost === undefined ? {} : { createHost: input.createHost }),
+        ...(input.prompt === undefined ? {} : { prompt: `${input.prompt} Mode H JSONL pass.` }),
+        ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
+        workingDirectory: tempRoot,
+      })
+      : undefined
     return {
       ...(response.backend.turnId === undefined ? {} : { codexTurnId: response.backend.turnId }),
       eventCount: events.length,
       harness: KHALA_CODE_CODEX_PARITY_LIVE_SMOKE_HARNESS,
-      ok,
+      ...(modeH === undefined ? {} : { modeH }),
+      ok: ok && (modeH?.ok ?? true),
       required: true,
       resumedThreadId: resumed.threadId,
       skipped: false,
-      status: ok ? "ok" : "failed",
+      status: ok && (modeH?.ok ?? true) ? "ok" : "failed",
       threadId: response.backend.threadId ?? thread.threadId,
       ...(response.backend.turnStatus === undefined ? {} : { turnStatus: response.backend.turnStatus }),
     }

@@ -5,6 +5,7 @@ import {
   khalaCodeHeadlessTurnStarted,
   projectKhalaCodeDesktopEventToThreadEvents,
   stringifyKhalaCodeHeadlessThreadEvent,
+  validateKhalaCodeHeadlessJsonl,
 } from "../src/shared/headless-events"
 import type { KhalaCodeDesktopChatTurnEvent } from "../src/shared/rpc"
 
@@ -115,5 +116,37 @@ describe("Khala Code headless ThreadEvent schema", () => {
         },
       },
     ])
+  })
+
+  test("validates every JSONL event against the checked schema", () => {
+    const valid = [
+      khalaCodeHeadlessThreadStarted({
+        sessionId: "session-1",
+        threadId: "thread-1",
+      }),
+      khalaCodeHeadlessTurnStarted("turn-1", { threadId: "thread-1" }),
+      khalaCodeHeadlessTurnCompleted({
+        finalMessage: "ok",
+        ok: true,
+        threadId: "thread-1",
+        turnId: "turn-1",
+      }),
+    ].map(stringifyKhalaCodeHeadlessThreadEvent).join("\n")
+
+    expect(validateKhalaCodeHeadlessJsonl(valid)).toMatchObject({
+      errors: [],
+      eventCount: 3,
+      eventTypes: [
+        "thread.started",
+        "turn.started",
+        "turn.completed",
+      ],
+      ok: true,
+    })
+
+    const invalid = `${valid}\n{"type":"turn.completed","turn_id":"missing-usage","ok":true}`
+    const result = validateKhalaCodeHeadlessJsonl(invalid)
+    expect(result.ok).toBe(false)
+    expect(result.errors.join("\n")).toContain("line 4: schema mismatch")
   })
 })

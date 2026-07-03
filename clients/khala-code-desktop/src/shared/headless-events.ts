@@ -84,6 +84,14 @@ export const KhalaCodeHeadlessThreadEvent = S.Union([
 export type KhalaCodeHeadlessThreadEvent =
   typeof KhalaCodeHeadlessThreadEvent.Type
 
+export type KhalaCodeHeadlessJsonlValidationResult = Readonly<{
+  errors: readonly string[]
+  eventCount: number
+  eventTypes: readonly KhalaCodeHeadlessThreadEvent["type"][]
+  events: readonly KhalaCodeHeadlessThreadEvent[]
+  ok: boolean
+}>
+
 export function khalaCodeHeadlessThreadStarted(input: {
   readonly sessionId: string
   readonly threadId?: string
@@ -187,6 +195,38 @@ export function stringifyKhalaCodeHeadlessThreadEvent(
   event: KhalaCodeHeadlessThreadEvent,
 ): string {
   return JSON.stringify(event)
+}
+
+export function validateKhalaCodeHeadlessJsonl(
+  text: string,
+): KhalaCodeHeadlessJsonlValidationResult {
+  const events: KhalaCodeHeadlessThreadEvent[] = []
+  const errors: string[] = []
+  const lines = text.split(/\r?\n/u).filter(line => line.trim().length > 0)
+
+  lines.forEach((line, index) => {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(line)
+    } catch (error) {
+      errors.push(`line ${index + 1}: invalid JSON: ${error instanceof Error ? error.message : String(error)}`)
+      return
+    }
+
+    try {
+      events.push(S.decodeUnknownSync(KhalaCodeHeadlessThreadEvent)(parsed))
+    } catch (error) {
+      errors.push(`line ${index + 1}: schema mismatch: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  })
+
+  return {
+    errors,
+    eventCount: events.length,
+    eventTypes: events.map(event => event.type),
+    events,
+    ok: errors.length === 0,
+  }
 }
 
 function messageStarted(
