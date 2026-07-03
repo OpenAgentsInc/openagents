@@ -323,6 +323,7 @@ const handleApplyPost = (
           phone,
           referralCode: null,
           requestSlackChannel: false,
+          sourceAttribution: `vertical:${template.slug}`,
           sourceRoute: template.applyRoute,
           website,
         },

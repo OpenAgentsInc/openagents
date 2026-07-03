@@ -5,6 +5,13 @@ import {
   businessFunnelSourceKindForSignup,
   recordBusinessFunnelEvent,
 } from './business-funnel-dashboard'
+import type { ResendEmailConfig } from './config'
+import type { PrivateWorkspaceInviteEmailInput } from './email'
+import type { EmailLedgerSendResult, EmailServiceError } from './email'
+import {
+  type BusinessSignupFulfillmentOptions,
+  fulfillBusinessSignup,
+} from './business-signup-fulfillment'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import {
   isRecord,
@@ -84,6 +91,9 @@ export type BusinessSignupRecord = BusinessSignupInput &
     // active referral source was resolved (consume-once via the spine); null
     // when there was no captured/resolvable attribution.
     referralAttributionId: string | null
+    fulfillmentStatus: 'pending' | 'invited' | 'operator_parked'
+    fulfillmentRef: string | null
+    fulfillmentReason: string | null
     createdAt: string
     updatedAt: string
   }>
@@ -101,9 +111,24 @@ type BusinessSignupRow = Readonly<{
   referral_code: string | null
   referral_attribution_id: string | null
   source_attribution?: string | null
+  fulfillment_status: 'pending' | 'invited' | 'operator_parked'
+  fulfillment_ref: string | null
+  fulfillment_reason: string | null
   created_at: string
   updated_at: string
 }>
+
+export type BusinessSignupApiOptions = BusinessSignupFulfillmentOptions &
+  Readonly<{
+    appOrigin?: string | undefined
+    getResendEmailConfig?: (() => ResendEmailConfig | undefined) | undefined
+    sendInviteEmailWithLedger?:
+      | ((
+          config: ResendEmailConfig,
+          input: PrivateWorkspaceInviteEmailInput,
+        ) => Effect.Effect<EmailLedgerSendResult, EmailServiceError>)
+      | undefined
+  }>
 
 const wantsJsonResponse = (request: Request): boolean => {
   const accept = request.headers.get('accept') ?? ''
@@ -315,6 +340,9 @@ export const makeBusinessSignupRecord = (
       : 'not_requested',
     sourceRoute: input.sourceRoute ?? '/business',
     referralAttributionId: null,
+    fulfillmentStatus: 'pending',
+    fulfillmentRef: null,
+    fulfillmentReason: null,
     createdAt: now,
     updatedAt: now,
   }
@@ -333,6 +361,9 @@ const rowToRecord = (row: BusinessSignupRow): BusinessSignupRecord => ({
   referralCode: row.referral_code,
   referralAttributionId: row.referral_attribution_id,
   sourceAttribution: row.source_attribution ?? null,
+  fulfillmentStatus: row.fulfillment_status,
+  fulfillmentRef: row.fulfillment_ref,
+  fulfillmentReason: row.fulfillment_reason,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 })
@@ -438,6 +469,9 @@ export const readBusinessSignupRequest = async (
         source_route,
         referral_code,
         referral_attribution_id,
+        fulfillment_status,
+        fulfillment_ref,
+        fulfillment_reason,
         created_at,
         updated_at
       FROM business_signup_requests
@@ -526,18 +560,26 @@ const publicResponseBody = (record: BusinessSignupRecord) => ({
     // Public-safe: a boolean only; never echoes the referral code or the
     // internal attribution id.
     referralAttributed: record.referralAttributionId !== null,
+    fulfillmentStatus: record.fulfillmentStatus,
+    fulfillmentRef: record.fulfillmentRef,
     nextAction: record.requestSlackChannel
       ? 'operator_manual_slack_connect_invite'
-      : 'operator_workspace_intake',
+      : record.fulfillmentStatus === 'invited'
+        ? 'workspace_invite_sent'
+        : 'operator_workspace_intake',
     authorityBoundary:
       'Intake receipt only; grants no Slack, workspace, spend, payout, or agent authority.',
   },
 })
 
 const successHtml = (record: BusinessSignupRecord): string => {
+  const workspaceCopy =
+    record.fulfillmentStatus === 'invited'
+      ? 'We sent the workspace invite and queued the first scope confirmation.'
+      : 'We queued the workspace intake handoff.'
   const slackCopy = record.requestSlackChannel
     ? 'We queued the Slack Connect invite handoff. Slack Connect still requires your workspace to accept the invite.'
-    : 'We queued the workspace intake handoff.'
+    : workspaceCopy
 
   return `<!doctype html><html><head><meta charset="utf-8"><title>Request received</title></head><body><main><h1>Request received</h1><p>${slackCopy}</p><p>Reference: ${record.id}</p><p><a href="/business">Return to the business page</a></p></main></body></html>`
 }
@@ -546,6 +588,7 @@ export const handleBusinessSignupApi = (
   request: Request,
   db: D1Database,
   runtime: BusinessSignupRuntime = systemBusinessSignupRuntime,
+  options: BusinessSignupApiOptions = {},
 ) =>
   Effect.gen(function* () {
     if (request.method !== 'POST') {
@@ -593,7 +636,7 @@ export const handleBusinessSignupApi = (
     yield* Effect.tryPromise({
       try: () => recordBusinessSignupFunnelEvent(db, record),
       catch: cause => new BusinessSignupIntakeFailure({ cause }),
-    }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+    }).pipe(Effect.catch(() => Effect.void))
 
     // Bind the referral after the signup is durably stored. A referral failure
     // must not fail the intake, so it is caught and dropped to null.
@@ -606,10 +649,24 @@ export const handleBusinessSignupApi = (
       catch: cause => new BusinessSignupIntakeFailure({ cause }),
     }).pipe(Effect.catch(() => Effect.succeed(null)))
 
-    const storedRecord: BusinessSignupRecord =
+    const referredRecord: BusinessSignupRecord =
       referralAttributionId === null
         ? record
         : { ...record, referralAttributionId }
+    const fulfillment = yield* fulfillBusinessSignup(
+      db,
+      referredRecord,
+      runtime,
+      options,
+    )
+    const storedRecord: BusinessSignupRecord =
+      {
+        ...referredRecord,
+        fulfillmentRef: fulfillment.id,
+        fulfillmentReason: fulfillment.reason,
+        fulfillmentStatus: fulfillment.status,
+        updatedAt: fulfillment.updatedAt,
+      }
 
     return wantsJsonResponse(request)
       ? noStoreJsonResponse(publicResponseBody(storedRecord), { status: 201 })
