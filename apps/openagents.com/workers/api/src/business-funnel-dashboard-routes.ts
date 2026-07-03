@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Effect, Schema as S } from 'effect'
 
 import {
   handleBusinessFunnelDashboardApi,
@@ -6,6 +6,13 @@ import {
   systemBusinessFunnelRuntime,
 } from './business-funnel-dashboard'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+
+class BusinessFunnelDashboardReadFailure extends S.TaggedErrorClass<BusinessFunnelDashboardReadFailure>()(
+  'BusinessFunnelDashboardReadFailure',
+  {
+    cause: S.Unknown,
+  },
+) {}
 
 // Payload staleness is declared in business-funnel-dashboard.ts via the shared
 // public-projection-staleness contract.
@@ -20,7 +27,7 @@ export const handlePublicBusinessFunnelDashboardApi = (
 
   return Effect.tryPromise({
     try: () => handleBusinessFunnelDashboardApi(db, runtime),
-    catch: () => new Error('business_funnel_dashboard_read_failed'),
+    catch: cause => new BusinessFunnelDashboardReadFailure({ cause }),
   }).pipe(
     Effect.map(payload => noStoreJsonResponse(payload)),
     Effect.catch(() =>

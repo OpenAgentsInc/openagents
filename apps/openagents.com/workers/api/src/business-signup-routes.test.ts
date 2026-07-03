@@ -1,9 +1,10 @@
-import { Effect } from 'effect'
+import { Effect, Redacted } from 'effect'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { beforeEach, describe, expect, test } from 'vitest'
 
+import { ResendEmailSender, WorkerSecret } from './config'
 import {
   type BusinessSignupRuntime,
   handleBusinessSignupApi,
@@ -30,6 +31,13 @@ class SqliteD1Statement {
     return (row ?? null) as T | null
   }
 
+  async all<T = Row>(): Promise<{ results: Array<T> }> {
+    const results = this.db
+      .prepare(this.sql)
+      .all(...(this.bound as never[])) as Array<T>
+    return { results }
+  }
+
   async run(): Promise<{ success: true }> {
     this.db.prepare(this.sql).run(...(this.bound as never[]))
     return { success: true }
@@ -41,6 +49,12 @@ class SqliteD1 {
 
   prepare(sql: string): SqliteD1Statement {
     return new SqliteD1Statement(this.db, sql)
+  }
+
+  async batch(
+    statements: ReadonlyArray<SqliteD1Statement>,
+  ): Promise<ReadonlyArray<{ success: true }>> {
+    return Promise.all(statements.map(statement => statement.run()))
   }
 }
 
@@ -55,10 +69,80 @@ const SCHEMA = [
   '0191_business_signup_requests.sql',
   '0216_business_signup_referral_attribution.sql',
   '0270_business_funnel_events.sql',
+  '0190_prefilled_workspaces.sql',
+  '0192_prefilled_workspace_invite_engagement.sql',
+  '0195_private_prefilled_workspace_access.sql',
+  '0194_team_workspace_invites.sql',
+  '0271_business_signup_fulfillment.sql',
 ].map(migration)
+
+const SUPPORT_SCHEMA = `
+CREATE TABLE users (
+  id TEXT PRIMARY KEY,
+  email TEXT,
+  name TEXT,
+  kind TEXT NOT NULL DEFAULT 'human',
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT,
+  updated_at TEXT,
+  deleted_at TEXT
+);
+
+CREATE TABLE teams (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  slug TEXT UNIQUE,
+  kind TEXT NOT NULL DEFAULT 'organization',
+  plan TEXT,
+  logo_url TEXT,
+  credits INTEGER,
+  owner_user_id TEXT,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE team_projects (
+  id TEXT PRIMARY KEY,
+  team_id TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'active',
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT,
+  UNIQUE (team_id, slug)
+);
+
+CREATE TABLE email_messages (
+  id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL,
+  status TEXT NOT NULL,
+  provider TEXT,
+  provider_message_id TEXT,
+  subject TEXT,
+  to_email TEXT,
+  from_email TEXT,
+  reply_to_email TEXT,
+  template_slug TEXT,
+  template_context_json TEXT,
+  metadata_json TEXT,
+  rendered_html TEXT,
+  rendered_text TEXT,
+  error_name TEXT,
+  error_message TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`
 
 const makeDb = (): D1Database => {
   const db = new DatabaseSync(':memory:')
+  db.exec(SUPPORT_SCHEMA)
   for (const sql of SCHEMA) {
     db.exec(sql)
   }
@@ -81,6 +165,149 @@ beforeEach(() => {
 })
 
 describe('business signup routes', () => {
+  test('creates workspace, invite, fulfillment receipt, and accepted email evidence', async () => {
+    const db = makeDb()
+    const response = await Effect.runPromise(
+      handleBusinessSignupApi(
+        new Request('https://openagents.com/api/public/business-signup', {
+          method: 'POST',
+          headers: {
+            accept: 'application/json',
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            businessName: 'Acme Agency',
+            contactEmail: 'lead@example.com',
+            helpWith: 'Need a landing page and email launch workflow.',
+            phone: '+1 555 000 0000',
+          }),
+        }),
+        db,
+        runtime,
+        {
+          getResendEmailConfig: () => ({
+            apiKey: Redacted.make(WorkerSecret.make('resend_test_key')),
+            fromEmail: ResendEmailSender.make(
+              'OpenAgents <hello@example.com>',
+            ),
+          }),
+          sendInviteEmailWithLedger: (_config, input) =>
+            Effect.tryPromise({
+              try: async () => {
+                const emailMessageId = `email_msg_${input.inviteId}`
+                await db
+                  .prepare(
+                    `INSERT INTO email_messages
+                      (id, idempotency_key, kind, status, created_at,
+                       updated_at)
+                     VALUES (?, ?, 'operator_notification', 'accepted', ?, ?)`,
+                  )
+                  .bind(
+                    emailMessageId,
+                    input.idempotencyKey,
+                    runtime.nowIso(),
+                    runtime.nowIso(),
+                  )
+                  .run()
+
+                return {
+                  emailMessageId,
+                  ok: true as const,
+                  providerMessageId: 'resend_message_1',
+                }
+              },
+              catch: error => error as never,
+            }),
+        },
+      ),
+    )
+    const body = await response.json<{
+      request: Readonly<{
+        fulfillmentRef: string
+        fulfillmentStatus: string
+        nextAction: string
+      }>
+    }>()
+
+    const fulfillment = await db
+      .prepare(
+        `SELECT status, workspace_id, invite_id, email_message_id,
+                email_delivery_status, reason
+           FROM business_signup_fulfillments
+          WHERE business_signup_request_id = ?`,
+      )
+      .bind('business_signup_1')
+      .first<Row>()
+
+    expect(response.status).toBe(201)
+    expect(body.request).toMatchObject({
+      fulfillmentRef: 'business_signup_fulfillment:business_signup_1',
+      fulfillmentStatus: 'invited',
+      nextAction: 'workspace_invite_sent',
+    })
+
+    expect(fulfillment).toMatchObject({
+      email_delivery_status: 'accepted',
+      status: 'invited',
+    })
+    expect(String(fulfillment?.email_message_id)).toContain(
+      'email_msg_team_workspace_invite_',
+    )
+    expect(String(fulfillment?.workspace_id)).toContain('workspace_')
+    expect(String(fulfillment?.invite_id)).toContain('team_workspace_invite_')
+
+    const signup = await readBusinessSignupRequest(db, 'business_signup_1')
+    expect(signup).toMatchObject({
+      fulfillmentRef: 'business_signup_fulfillment:business_signup_1',
+      fulfillmentStatus: 'invited',
+    })
+  })
+
+  test('parks signup explicitly when invite email config is absent', async () => {
+    const db = makeDb()
+    const response = await run(
+      new Request('https://openagents.com/api/public/business-signup', {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          businessName: 'Acme Co.',
+          contactEmail: 'lead@example.com',
+          phone: '+1 555 000 0000',
+        }),
+      }),
+      db,
+    )
+    const body = await response.json<{
+      request: Readonly<{ fulfillmentStatus: string; nextAction: string }>
+    }>()
+
+    expect(response.status).toBe(201)
+    expect(body.request).toMatchObject({
+      fulfillmentStatus: 'operator_parked',
+      nextAction: 'operator_workspace_intake',
+    })
+
+    const fulfillment = await db
+      .prepare(
+        `SELECT status, reason, workspace_id, invite_id, email_delivery_status
+           FROM business_signup_fulfillments
+          WHERE business_signup_request_id = ?`,
+      )
+      .bind('business_signup_1')
+      .first<Row>()
+
+    expect(fulfillment).toMatchObject({
+      email_delivery_status: 'missing_config',
+      reason: 'business_signup_invite_email_config_missing',
+      status: 'operator_parked',
+    })
+    expect(String(fulfillment?.workspace_id)).toContain('workspace_')
+    expect(String(fulfillment?.invite_id)).toContain('team_workspace_invite_')
+  })
+
   test('stores Slack opt-in form posts as manual invite pending', async () => {
     const db = makeDb()
     const body = new URLSearchParams({

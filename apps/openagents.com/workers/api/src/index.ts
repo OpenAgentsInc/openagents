@@ -10607,7 +10607,16 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/api/public/business-signup',
     handler: (request, env) =>
-      handleBusinessSignupApi(request, openAgentsDatabase(env)),
+      handleBusinessSignupApi(request, openAgentsDatabase(env), undefined, {
+        appOrigin: getAppOrigin(env),
+        getResendEmailConfig: () => getResendEmailConfig(env),
+        sendInviteEmailWithLedger: (config, input) =>
+          sendPrivateWorkspaceInviteEmailWithLedger(
+            openAgentsDatabase(env),
+            config,
+            input,
+          ),
+      }),
   },
   {
     path: '/api/public/business/funnel-dashboard',
