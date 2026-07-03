@@ -851,6 +851,7 @@ const emptyThreadTokenSummary = (
   pendingSyncTokens: 0,
   remoteConfigured: false,
   remoteDisabled: false,
+  roleEconomics: [],
   threadId,
   totalTokens: 0,
   updatedAt: null,
@@ -1441,6 +1442,21 @@ const appendThreadTokenRow = (
   root.append(row)
 }
 
+const formatThreadRoleEconomics = (
+  role: KhalaCodeDesktopThreadTokenSummary["roleEconomics"][number],
+): string => {
+  if (role.pricingState === "subscription_covered") return "subscription-covered"
+  if (role.pricingState === "not_measured") return "not_measured"
+  const amount = role.costAmount === null ? 0 : role.costAmount
+  const currency = role.costCurrency ?? "USD"
+  return `${new Intl.NumberFormat("en-US", {
+    currency,
+    maximumFractionDigits: 4,
+    minimumFractionDigits: 2,
+    style: "currency",
+  }).format(amount)} measured`
+}
+
 const renderThreadTokenCounter = (): void => {
   const summary = shellModel().threadTokenSummary
   threadTokenCounterValue.textContent = formatCompactTokens(summary.totalTokens)
@@ -1467,6 +1483,13 @@ const renderThreadTokenCounter = (): void => {
   appendThreadTokenRow(rows, "Pending sync", formatExactTokens(summary.pendingSyncTokens))
   appendThreadTokenRow(rows, "Audit turns", exactTokenFormatter.format(summary.auditRows))
   appendThreadTokenRow(rows, "Usage events", exactTokenFormatter.format(summary.usageEventRows))
+  for (const role of summary.roleEconomics) {
+    appendThreadTokenRow(
+      rows,
+      `${role.roleRef} economics`,
+      `${formatThreadRoleEconomics(role)} · ${formatExactTokens(role.tokens)}`,
+    )
+  }
   if (summary.codexStateTokens > 0) {
     appendThreadTokenRow(
       rows,

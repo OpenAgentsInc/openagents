@@ -900,6 +900,7 @@ async function reportCodexTurn(input: {
     assignmentRef: input.runInput.assignmentRef,
     leaseRef: input.runInput.leaseRef,
     pylonRef: input.runInput.pylonRef,
+    roleRef: "coder",
     ...(input.runInput.runRef === undefined ? {} : { runRef: input.runInput.runRef }),
     ...(input.sessionRef === undefined ? {} : { sessionRef: input.sessionRef }),
     ...(input.runInput.workspaceRef === undefined ? {} : { workspaceRef: input.runInput.workspaceRef }),

@@ -141,6 +141,7 @@ class PylonCodexTurnIngestBody extends S.Class<PylonCodexTurnIngestBody>(
   assignmentRef: NonEmptyString,
   leaseRef: NonEmptyString,
   pylonRef: NonEmptyString,
+  roleRef: S.optionalKey(NonEmptyString),
   runRef: S.optionalKey(NonEmptyString),
   sessionRef: S.optionalKey(NonEmptyString),
   workspaceRef: S.optionalKey(NonEmptyString),
@@ -1823,6 +1824,7 @@ const directLocalTokenUsageEventBody = (
     privacy: { leaderboardEligible: false, privacyOptOut: false },
     producerSystem: PYLON_CODEX_DIRECT_LOCAL_PRODUCER_SYSTEM,
     provider: PYLON_CODEX_DIRECT_LOCAL_PROVIDER,
+    roleRef: 'coder',
     safeMetadata: {
       accountRefHash: input.body.accountRefHash,
       demandChannel: PYLON_CODEX_DIRECT_LOCAL_DEMAND_CHANNEL,
@@ -1830,6 +1832,7 @@ const directLocalTokenUsageEventBody = (
         ? {}
         : { pylonRef: input.body.pylonRef }),
       telemetryOptIn: 'pylon_accounts_usage_explicit',
+      roleRef: 'coder',
       usageBasis:
         input.body.usage.usageTruth === 'exact'
           ? 'codex_sdk_local_session_delta'
@@ -1899,6 +1902,7 @@ const tokenUsageEventBody = (
     privacy: { leaderboardEligible: false, privacyOptOut: false },
     producerSystem: PYLON_CODEX_PRODUCER_SYSTEM,
     provider: PYLON_CODEX_PROVIDER,
+    roleRef: input.body.roleRef ?? 'coder',
     safeMetadata: {
       assignmentRef: input.body.assignmentRef,
       leaseRef: input.body.leaseRef,
@@ -1910,6 +1914,7 @@ const tokenUsageEventBody = (
         reasoningOutputTokens: input.body.usage.reasoningOutputTokens ?? 0,
       },
       costCaveat: 'owner_capacity_provider_cost_unknown',
+      roleRef: input.body.roleRef ?? 'coder',
       usageBasis: 'codex_sdk_turn_completed',
     },
     sourceRefs: {

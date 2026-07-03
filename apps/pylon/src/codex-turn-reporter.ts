@@ -25,6 +25,7 @@ export type CodexTurnReport = {
   assignmentRef: string
   leaseRef: string
   pylonRef: string
+  roleRef?: string
   runRef?: string
   sessionRef?: string
   workspaceRef?: string
@@ -74,6 +75,7 @@ export function createPylonCodexTurnReporter(input: {
         turnIndex,
       }),
       schemaVersion: PYLON_CODEX_TURN_SCHEMA_VERSION,
+      roleRef: report.roleRef?.trim() || "coder",
       usage: {
         inputTokens: nonNegativeInteger(report.usage.inputTokens),
         ...(report.usage.cachedInputTokens === undefined

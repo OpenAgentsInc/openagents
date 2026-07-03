@@ -831,40 +831,41 @@ const makeMemoryD1 = (
           }
 
           store.rows.push({
-            account_ref: values[8] as string | null,
-            actor_team_id: values[7] as string | null,
-            actor_user_id: values[6] as string | null,
-            anonymized_source_ref: values[9] as string | null,
-            backend_profile: values[16] as string | null,
-            cache_read_tokens: values[20] as number,
-            cache_write_1h_tokens: values[22] as number,
-            cache_write_5m_tokens: values[21] as number,
-            cost_amount: values[25] as number | null,
-            currency: values[26] as string | null,
-            demand_channel: values[27] as string,
-            demand_client: values[30] as string | null,
-            demand_kind: values[28] as string,
-            demand_source: values[29] as string | null,
+            account_ref: values[9] as string | null,
+            actor_team_id: values[8] as string | null,
+            actor_user_id: values[7] as string | null,
+            anonymized_source_ref: values[10] as string | null,
+            backend_profile: values[17] as string | null,
+            cache_read_tokens: values[21] as number,
+            cache_write_1h_tokens: values[23] as number,
+            cache_write_5m_tokens: values[22] as number,
+            cost_amount: values[26] as number | null,
+            currency: values[27] as string | null,
+            demand_channel: values[28] as string,
+            demand_client: values[31] as string | null,
+            demand_kind: values[29] as string,
+            demand_source: values[30] as string | null,
             id,
             idempotency_key: idempotencyKey,
             ingested_at: values[3] as string,
-            input_tokens: values[17] as number,
-            leaderboard_eligible: values[31] as number,
-            model: values[15] as string | null,
+            input_tokens: values[18] as number,
+            leaderboard_eligible: values[32] as number,
+            model: values[16] as string | null,
             observed_at: values[2] as string,
-            output_tokens: values[18] as number,
-            privacy_opt_out: values[32] as number,
+            output_tokens: values[19] as number,
+            privacy_opt_out: values[33] as number,
             producer_system: values[4] as string,
-            provider: values[14] as string | null,
-            reasoning_tokens: values[19] as number,
-            repository_ref: values[13] as string | null,
-            run_ref: values[10] as string | null,
-            safe_metadata_json: values[33] as string,
-            session_ref: values[11] as string | null,
+            provider: values[15] as string | null,
+            reasoning_tokens: values[20] as number,
+            repository_ref: values[14] as string | null,
+            role_ref: values[6] as string | null,
+            run_ref: values[11] as string | null,
+            safe_metadata_json: values[34] as string,
+            session_ref: values[12] as string | null,
             source_route: values[5] as string,
-            task_ref: values[12] as string | null,
-            total_tokens: values[23] as number,
-            usage_truth: values[24] as string,
+            task_ref: values[13] as string | null,
+            total_tokens: values[24] as number,
+            usage_truth: values[25] as string,
           })
         }
 
@@ -969,6 +970,7 @@ const validProbeEvent = {
   observedAt: '2026-06-08T11:59:00.000Z',
   producerSystem: 'probe',
   provider: 'google_gemini',
+  roleRef: 'advisor',
   safeMetadata: {
     providerRequestStatus: 'succeeded',
   },
@@ -1000,6 +1002,13 @@ describe('token usage ledger', () => {
     expect(migration).toContain('idempotency_key TEXT NOT NULL UNIQUE')
     expect(migration).toContain('idx_token_usage_events_provider_model')
     expect(migration).toContain('idx_token_usage_events_leaderboard')
+
+    const roleRefMigration = await readFile(
+      new URL('../migrations/0269_token_usage_role_ref.sql', import.meta.url),
+      'utf8',
+    )
+    expect(roleRefMigration).toContain('ADD COLUMN role_ref TEXT')
+    expect(roleRefMigration).toContain('idx_token_usage_events_role_ref')
 
     const preferenceMigration = await readFile(
       new URL(
@@ -1085,6 +1094,7 @@ describe('token usage ledger', () => {
       idempotency_key: 'probe:event:1',
       demand_channel: 'khala_api',
       producer_system: 'probe',
+      role_ref: 'advisor',
       source_route: 'probe_direct_provider',
       total_tokens: 180,
     })

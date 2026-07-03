@@ -195,6 +195,7 @@ type TokenUsageEventRow = Readonly<{
   ingested_at: string
   producer_system: string
   source_route: string
+  role_ref: string | null
   actor_user_id: string | null
   actor_team_id: string | null
   account_ref: string | null
@@ -958,6 +959,7 @@ const rowToRecord = (
     },
     producerSystem: row.producer_system,
     provider: row.provider,
+    roleRef: row.role_ref,
     safeMetadata,
     sourceRefs: {
       ...(row.anonymized_source_ref === null
@@ -1014,6 +1016,7 @@ const storedRowFromInput = (
     provider: body.provider ?? null,
     reasoning_tokens: input.tokenCounts.reasoningTokens,
     repository_ref: body.sourceRefs?.repositoryRef ?? null,
+    role_ref: body.roleRef ?? null,
     run_ref: body.sourceRefs?.runRef ?? null,
     safe_metadata_json: input.safeMetadataJson,
     session_ref: body.sourceRefs?.sessionRef ?? null,
@@ -1033,6 +1036,7 @@ const insertBindings = (
   row.ingested_at,
   row.producer_system,
   row.source_route,
+  row.role_ref,
   row.actor_user_id,
   row.actor_team_id,
   row.account_ref,
@@ -1743,6 +1747,7 @@ const insertEventRow = (
           ingested_at,
           producer_system,
           source_route,
+          role_ref,
           actor_user_id,
           actor_team_id,
           account_ref,
@@ -1771,7 +1776,7 @@ const insertEventRow = (
           leaderboard_eligible,
           privacy_opt_out,
           safe_metadata_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(...insertBindings(row))
     const rollupStatements = publicTokensServedRollupStatements(db, row)
