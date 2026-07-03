@@ -31,6 +31,7 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
         "clients/khala-code-desktop/src/ui/codex-thread-sidebar.ts",
         "clients/khala-code-desktop/src/ui/main.ts",
         "docs/khala-code/khala-code-ux-contract.md",
+        "packages/khala-qa-harness/src/seed-corpus.ts",
       ],
       oracles: [
         {
@@ -48,6 +49,14 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
           kind: "bun-test",
           mode: "unit",
           ref: "clients/khala-code-desktop/tests/ux-contracts.test.ts",
+        },
+        {
+          description:
+            "Runs the seed-corpus fixture RPC-driver scenario that lists threads, selects the fixture thread, and reads it back without using the row streaming spinner as load state.",
+          id: "thread_select_fixture_rpc.scenario",
+          kind: "qa-scenario",
+          mode: "rpc",
+          ref: "scenario.khala_code.seed.rpc_thread_select_fixture_driver.v1",
         },
       ],
       productArea: "chat thread sidebar",
@@ -762,5 +771,5 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-03.5",
+  version: "2026-07-03.6",
 }

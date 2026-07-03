@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./behavior-contract-oracles": "./src/behavior-contract-oracles.ts",
     "./coverage-ledger": "./src/coverage-ledger.ts",
     "./deterministic-env": "./src/deterministic-env.ts",
     "./desktop-smoke-helpers": "./src/desktop-smoke-helpers.ts",
@@ -32,6 +33,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@openagentsinc/behavior-contracts": "workspace:*",
     "@openagentsinc/khala-code-desktop": "workspace:*",
     "effect": "catalog:"
   },

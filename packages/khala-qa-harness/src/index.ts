@@ -1,4 +1,5 @@
 export * from "./desktop-smoke-helpers.js"
+export * from "./behavior-contract-oracles.js"
 export * from "./coverage-ledger.js"
 export * from "./cross-mode.js"
 export * from "./deterministic-env.js"

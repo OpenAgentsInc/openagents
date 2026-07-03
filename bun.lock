@@ -575,6 +575,7 @@
       "name": "@openagentsinc/khala-qa-harness",
       "version": "0.0.1",
       "dependencies": {
+        "@openagentsinc/behavior-contracts": "workspace:*",
         "@openagentsinc/khala-code-desktop": "workspace:*",
         "effect": "catalog:",
       },
