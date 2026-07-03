@@ -881,7 +881,8 @@ button {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 68%, transparent);
 }
 
-.khala-architect-plan-toggle {
+.khala-reasoning-mode-control {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -895,12 +896,24 @@ button {
   font-family: var(--oa-font-code);
   font-size: 0.75rem;
   line-height: 1;
-  padding: 0 9px;
+  padding: 0 22px 0 8px;
 }
 
-.khala-architect-plan-toggle[data-active="true"],
-.khala-architect-plan-toggle:hover,
-.khala-architect-plan-toggle:focus-visible {
+.khala-reasoning-mode-control::after {
+  position: absolute;
+  right: 8px;
+  width: 6px;
+  height: 6px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  content: "";
+  opacity: 0.72;
+  pointer-events: none;
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.khala-reasoning-mode-control:hover,
+.khala-reasoning-mode-control:focus-within {
   border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 74%, transparent);
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-energy-cyan) 12%, transparent), transparent 70%),
@@ -909,7 +922,28 @@ button {
   outline: none;
 }
 
-.khala-architect-plan-toggle:disabled {
+.khala-reasoning-mode-label {
+  color: color-mix(in srgb, var(--oa-color-khala-text-muted) 74%, transparent);
+}
+
+.khala-reasoning-mode-select {
+  max-width: 6.5rem;
+  border: 0;
+  appearance: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+  outline: none;
+  padding: 0;
+}
+
+.khala-reasoning-mode-select:disabled {
+  cursor: not-allowed;
+}
+
+.khala-reasoning-mode-control:has(.khala-reasoning-mode-select:disabled) {
   cursor: not-allowed;
   opacity: 0.52;
 }
@@ -2170,7 +2204,10 @@ button {
   background: color-mix(in srgb, var(--oa-color-khala-surface) 68%, transparent);
 }
 .khala-thread-sidebar-item[data-active="true"] {
-  background: color-mix(in srgb, var(--oa-color-khala-surface) 92%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-energy-blue) 24%, transparent);
+}
+.khala-thread-sidebar-item[data-active="true"]:hover {
+  background: color-mix(in srgb, var(--oa-color-khala-energy-blue) 30%, transparent);
 }
 .khala-thread-sidebar-item[data-selecting="true"] {
   background: color-mix(in srgb, var(--oa-color-khala-surface) 82%, transparent);

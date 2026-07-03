@@ -107,6 +107,39 @@ function rolloutIdFromSessionId(sessionId: string): string | null {
   return match?.[1] ?? null
 }
 
+function titleFromCodexRaw(raw: unknown): string | null {
+  if (raw === null || typeof raw !== "object") return null
+  const o = raw as Record<string, any>
+  const type = typeof o.type === "string" ? o.type : ""
+  const payload = o.payload && typeof o.payload === "object" ? (o.payload as Record<string, any>) : {}
+  const payloadType = typeof payload.type === "string" ? payload.type : ""
+
+  if (
+    type === "event_msg" &&
+    payloadType === "user_message" &&
+    typeof payload.message === "string" &&
+    payload.message.trim().length > 0
+  ) {
+    return clip(payload.message, 80)
+  }
+
+  if (type === "response_item" && payloadType === "message") {
+    const role = typeof payload.role === "string" ? payload.role : ""
+    const text = role === "user"
+      ? textFromContent(payload.content, "input_text")
+      : role === "assistant"
+        ? textFromContent(payload.content, "output_text")
+        : ""
+    return text.trim().length > 0 ? clip(text, 80) : null
+  }
+
+  return null
+}
+
+function fallbackCodexTitle(sessionId: string): string {
+  return `Codex session ${sessionId.replace(/^rollout-/, "").slice(0, 24)}`
+}
+
 // Normalize one Codex rollout JSONL object into a compact timeline event.
 export function normalizeCodexLine(raw: unknown): ExternalEvent | null {
   if (raw === null || typeof raw !== "object") return null
@@ -187,11 +220,13 @@ export function buildCodexSession(input: {
   lines: string[]
   mtimeMs: number
   nowMs: number
+  sourceRef?: string
   parentRef?: string | null
   maxEvents?: number
 }): ExternalSession {
   const events: ExternalEvent[] = []
   let rolloutSessionId: string | null = rolloutIdFromSessionId(input.sessionId)
+  let title: string | null = null
   for (const line of input.lines) {
     let raw: unknown
     let parsed: ExternalEvent | null
@@ -210,6 +245,7 @@ export function buildCodexSession(input: {
             : null
         if (typeof id === "string" && id.trim() !== "") rolloutSessionId = id
       }
+      if (title === null) title = titleFromCodexRaw(raw)
       parsed = normalizeCodexLine(raw)
     } catch {
       parsed = null
@@ -218,19 +254,23 @@ export function buildCodexSession(input: {
   }
   const tail = events.slice(-(input.maxEvents ?? 100))
   const state = input.nowMs - input.mtimeMs < 90_000 ? "running" : "idle"
-  return {
-    sessionRef: `codex:${input.sessionId}`,
+  const sessionRef = stableExternalSessionRef(
+    "session.pylon.codex_external",
+    input.sourceRef ?? input.sessionId,
+  )
+  const aliasSessionRefs = [
+    `codex:${input.sessionId}`,
     ...(rolloutSessionId === null
-      ? {}
-      : {
-          aliasSessionRefs: [
-            stableExternalSessionRef("session.pylon.codex_composer", rolloutSessionId),
-          ],
-        }),
+      ? []
+      : [stableExternalSessionRef("session.pylon.codex_composer", rolloutSessionId)]),
+  ]
+  return {
+    sessionRef,
+    aliasSessionRefs,
     agentKind: "codex",
     parentRef: input.parentRef ?? null,
     state,
-    title: input.sessionId,
+    title: title ?? fallbackCodexTitle(input.sessionId),
     latestActivity: tail.length > 0 ? tail[tail.length - 1].messageText : "(no activity)",
     events: tail,
   }
@@ -295,7 +335,13 @@ export function scanCodexSessions(opts: {
   const out: ExternalSession[] = []
   for (const c of candidates.slice(0, opts.maxSessions)) {
     try {
-      out.push(buildCodexSession({ sessionId: c.sessionId, lines: tailLines(c.path), mtimeMs: c.mtimeMs, nowMs: opts.nowMs }))
+      out.push(buildCodexSession({
+        sessionId: c.sessionId,
+        lines: tailLines(c.path),
+        mtimeMs: c.mtimeMs,
+        nowMs: opts.nowMs,
+        sourceRef: c.path,
+      }))
     } catch {
       // unreadable file -> skip
     }

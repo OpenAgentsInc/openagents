@@ -95,6 +95,7 @@ import {
 } from "./sidebar"
 import { mountUnifiedInboxPanel } from "./inbox"
 import type { KhalaCodeDesktopCodexThreadSummary } from "../shared/codex-threads"
+import type { KhalaCodeDesktopCodexSettingsProjection } from "../shared/codex-settings"
 import { sessionCatalogEntryToThreadSummary } from "../shared/session-catalog"
 import {
   createKeyHoldTracker,
@@ -129,6 +130,18 @@ import "./styles.css"
 
 type DesktopRpc = ReturnType<typeof Electroview.defineRPC<KhalaCodeDesktopRPCSchema>>
 type DesktopRpcRequests = KhalaCodeDesktopRPCSchema["requests"]
+type ComposerReasoningModeOption = {
+  readonly label: string
+  readonly value: string
+}
+
+type ComposerReasoningModeState = {
+  error: string | null
+  loading: boolean
+  saving: boolean
+  settings: KhalaCodeDesktopCodexSettingsProjection | null
+}
+
 const rpcFailureDetail = (payload: unknown): string => {
   if (payload !== null && typeof payload === "object") {
     const record = payload as Record<string, unknown>
@@ -1094,6 +1107,128 @@ const setArchitectPlanMode = (enabled: boolean): void =>
 
 const setArchitectPlanPending = (pending: boolean): void =>
   dispatchMainShell({ _tag: "ArchitectPlanPendingChanged", pending })
+
+const composerReasoningModeState: ComposerReasoningModeState = {
+  error: null,
+  loading: false,
+  saving: false,
+  settings: null,
+}
+
+const formatReasoningModeLabel = (value: string): string =>
+  value.length === 0
+    ? "Default"
+    : value
+      .split(/[-_]/u)
+      .map(part => part.length === 0 ? part : `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`)
+      .join(" ")
+
+const composerReasoningModeValue = (): string => {
+  const settings = composerReasoningModeState.settings
+  if (settings === null) return ""
+  return settings.config.reasoningEffort ??
+    settings.models.selected?.defaultReasoningEffort ??
+    settings.models.selected?.supportedReasoningEfforts[0]?.value ??
+    ""
+}
+
+const composerReasoningModeOptions = (): readonly ComposerReasoningModeOption[] => {
+  const settings = composerReasoningModeState.settings
+  if (settings === null) {
+    return [{
+      label: composerReasoningModeState.loading ? "Loading" : "Unavailable",
+      value: "",
+    }]
+  }
+  const selectedValue = composerReasoningModeValue()
+  const reasoningEfforts = settings.models.selected?.supportedReasoningEfforts ?? []
+  const options = reasoningEfforts.reduce<Array<ComposerReasoningModeOption>>(
+    (accumulator, option) =>
+      option.value.length === 0 || accumulator.some(item => item.value === option.value)
+        ? accumulator
+        : [
+            ...accumulator,
+            { label: formatReasoningModeLabel(option.value), value: option.value },
+          ],
+    [],
+  )
+  return selectedValue.length > 0 && !options.some(option => option.value === selectedValue)
+    ? [...options, { label: formatReasoningModeLabel(selectedValue), value: selectedValue }]
+    : options
+}
+
+const composerReasoningModeDisabled = (): boolean => {
+  const settings = composerReasoningModeState.settings
+  if (composerReasoningModeState.loading || composerReasoningModeState.saving || settings === null) return true
+  return composerReasoningModeOptions().length === 0
+}
+
+const composerReasoningModeTitle = (): string => {
+  if (composerReasoningModeState.loading) return "Loading reasoning modes"
+  if (composerReasoningModeState.saving) return "Saving reasoning mode"
+  if (composerReasoningModeState.error !== null) return composerReasoningModeState.error
+  if (composerReasoningModeDisabled()) return "Reasoning modes unavailable for this model"
+  return "Reasoning mode"
+}
+
+const composerReasoningModeA11yText = (): string => {
+  if (composerReasoningModeState.loading) return "Reasoning loading."
+  if (composerReasoningModeState.error !== null) return "Reasoning unavailable."
+  return `Reasoning ${formatReasoningModeLabel(composerReasoningModeValue())}.`
+}
+
+const loadComposerReasoningModes = async (): Promise<void> => {
+  composerReasoningModeState.loading = true
+  composerReasoningModeState.error = null
+  try {
+    const settings = await controls.codexSettingsRead({ includeHiddenModels: true })
+    composerReasoningModeState.settings = settings
+    composerReasoningModeState.error = settings.ok ? null : settings.errors.join("\n") || "Codex settings unavailable"
+  } catch (error) {
+    composerReasoningModeState.error = error instanceof Error ? error.message : String(error)
+  } finally {
+    composerReasoningModeState.loading = false
+    renderComposer()
+  }
+}
+
+const ensureComposerReasoningModesLoaded = (): void => {
+  if (
+    composerReasoningModeState.settings !== null ||
+    composerReasoningModeState.loading ||
+    composerReasoningModeState.error !== null
+  ) {
+    return
+  }
+  void loadComposerReasoningModes()
+}
+
+const writeComposerReasoningMode = async (value: string): Promise<void> => {
+  composerReasoningModeState.saving = true
+  composerReasoningModeState.error = null
+  renderComposer()
+  try {
+    const result = await controls.codexConfigValueWrite({
+      keyPath: "model_reasoning_effort",
+      value: value.length === 0 ? null : value,
+    })
+    if (result.ok) {
+      if (result.settings !== undefined) {
+        composerReasoningModeState.settings = result.settings
+      } else {
+        composerReasoningModeState.settings = await controls.codexSettingsRead({ includeHiddenModels: true })
+      }
+      return
+    }
+    composerReasoningModeState.error = result.error ?? "Failed to save reasoning mode"
+  } catch (error) {
+    composerReasoningModeState.error = error instanceof Error ? error.message : String(error)
+  } finally {
+    composerReasoningModeState.saving = false
+    renderComposer()
+    requestAnimationFrame(focusComposerInput)
+  }
+}
 
 const bootFailureDetail = (error: unknown): string =>
   error instanceof Error ? error.message : typeof error === "string" ? error : "boot RPC failed"
@@ -2322,27 +2457,40 @@ function renderSlashCommandPalette(): void {
   )
 }
 
-const renderArchitectPlanModeButton = (): HTMLButtonElement => {
-  const button = document.createElement("button")
-  button.type = "button"
-  button.className = "khala-architect-plan-toggle"
-  button.dataset.active = shellModel().architectPlanMode ? "true" : "false"
-  button.title = "Run next prompt through Claude architect plan mode"
-  button.setAttribute("aria-label", "Toggle architect plan mode")
-  button.setAttribute("aria-pressed", String(shellModel().architectPlanMode))
-  button.disabled = shellModel().pendingTurn || shellModel().architectPlanPending
+const renderReasoningModeSelect = (): HTMLElement => {
+  ensureComposerReasoningModesLoaded()
+  const control = document.createElement("label")
+  control.className = "khala-reasoning-mode-control"
+  control.dataset.state = composerReasoningModeState.saving
+    ? "saving"
+    : composerReasoningModeState.loading
+      ? "loading"
+      : composerReasoningModeState.error === null
+        ? "ready"
+        : "error"
+  control.title = composerReasoningModeTitle()
 
   const label = document.createElement("span")
-  label.className = "khala-architect-plan-toggle-label"
-  label.textContent = "Plan"
+  label.className = "khala-reasoning-mode-label"
+  label.textContent = "Reasoning"
 
-  button.replaceChildren(composerIconElement("model"), label)
-  button.addEventListener("click", () => {
-    setArchitectPlanMode(!shellModel().architectPlanMode)
-    renderComposer()
-    requestAnimationFrame(focusComposerInput)
-  })
-  return button
+  const select = document.createElement("select")
+  select.className = "khala-reasoning-mode-select"
+  select.name = "khala-code-reasoning-mode"
+  select.setAttribute("aria-label", "Reasoning mode")
+  select.disabled = composerReasoningModeDisabled()
+  const selectedValue = composerReasoningModeValue()
+  select.append(...composerReasoningModeOptions().map(option => {
+    const item = document.createElement("option")
+    item.value = option.value
+    item.textContent = option.label
+    item.selected = option.value === selectedValue
+    return item
+  }))
+  select.addEventListener("change", () => void writeComposerReasoningMode(select.value))
+
+  control.replaceChildren(label, select)
+  return control
 }
 
 function renderComposer(): void {
@@ -2365,7 +2513,7 @@ function renderComposer(): void {
     sendLabel
   composerControls.replaceChildren(
     attachButton,
-    renderArchitectPlanModeButton(),
+    renderReasoningModeSelect(),
     // renderHarnessPill(),
   )
 
@@ -2378,7 +2526,7 @@ function renderComposer(): void {
   composerA11y.textContent =
     `${statusLabelFor(status)}. ${attachmentCount} attachments. ` +
     `${followUpCount} queued follow-ups. ` +
-    `${shellModel().architectPlanMode ? "Architect plan mode on. " : ""}` +
+    `${composerReasoningModeA11yText()} ` +
     `${shellModel().architectPlanPending ? "Architect plan pending. " : ""}` +
     `${composerInput.value.length} characters.`
 
@@ -2861,7 +3009,7 @@ const handleSlashCommandClientAction = async (
 ): Promise<string> => {
   switch (result.action) {
     case "architect_plan":
-      return "Type /architect followed by a public-safe objective, or use the Plan toggle for the next message."
+      return "Type /architect followed by a public-safe objective."
     case "clear_visible_transcript":
       setShellMessages([])
       setShellFollowUpDrafts([])

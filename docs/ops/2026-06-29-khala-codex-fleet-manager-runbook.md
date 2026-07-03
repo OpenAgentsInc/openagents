@@ -105,6 +105,11 @@ Expected:
   account is ready.
 - `(default)` may be ready, but Khala Code Desktop now prefers named ready
   accounts before `(default)` for automatic `codex_spawn`.
+- If the selected Codex account is exhausted or rate-limited, the local Pylon
+  runner records account health/quota state and retries the next ready connected
+  account. The operator-visible failure class should be `account_exhausted` or
+  `account_rate_limited`, not a generic execution failure or a raw Codex
+  session-id parse error.
 - `codex_spawn` runs through the deterministic `khala.fleet.delegate` bundle:
   ensure Pylon, advertise per-account capacity, select an account, prepare work,
   dispatch, and verify closeout. The Desktop MVP caps requested fanout at five

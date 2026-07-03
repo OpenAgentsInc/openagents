@@ -52,7 +52,7 @@ export function classifyCodexAccountFailure(value: unknown): PylonCodexAccountFa
       ? "credentials_revoked"
       : /5\s*[- ]?\s*hour|five\s+hour|rate limit|too many requests|\b429\b/.test(text)
           ? "rate_limited"
-          : /usage limit|quota|purchase more credits|billing limit|has[_-]?credits["'\s:=]+false|hascredits["'\s:=]+false/.test(text)
+          : /usage limit|quota|exhausted|out of credits|credit balance|purchase more credits|billing limit|has[_-]?credits["'\s:=]+false|hascredits["'\s:=]+false/.test(text)
             ? "usage_limited"
             : /timed? ?out|deadline|abort/.test(text)
               ? "timeout"

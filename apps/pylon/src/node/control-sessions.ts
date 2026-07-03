@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto"
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import {
+  loadPylonAccountRegistry,
   publicPylonAccountSelection,
   pylonAccountEnvironment,
   resolvePylonAccountSelection,
@@ -9,7 +10,19 @@ import {
   type PylonAccountProvider,
   type ResolvedPylonAccountSelection,
 } from "../account-registry.js"
+import { classifyQuotaSignal } from "../account-quota.js"
+import { recordQuotaBlock } from "../account-quota-ledger.js"
 import { loadClaudeAgentConfig, loadClaudeDevConfig } from "../claude-agent.js"
+import {
+  classifyCodexAccountFailure,
+  type PylonCodexAccountFailure,
+  type PylonCodexAccountHealthReason,
+} from "../codex-account-health.js"
+import {
+  codexAccountHealthBlocksReadiness,
+  loadCodexAccountHealthRecord,
+  recordCodexAccountHealthFailure,
+} from "../codex-account-health-ledger.js"
 import {
   permissionModeForClaudeComposerExecutionMode,
   runClaudeComposerStream,
@@ -331,6 +344,7 @@ type SessionRecord = {
   adapter: ControlSessionAdapter
   lane: ControlSessionLane
   account: ResolvedPylonAccountSelection | null
+  accountCandidates: ResolvedPylonAccountSelection[]
   workspace: WorkspaceSelection
   workspaceCleanupReceiptRef: string | null
   workspaceRetentionReasonRef: string | null
@@ -371,6 +385,100 @@ function nowIso() {
 
 function providerForAdapter(adapter: PylonComposerAdapter): PylonAccountProvider {
   return adapter === "codex" ? "codex" : "claude_agent"
+}
+
+type ControlSessionAccountPlan = {
+  account: ResolvedPylonAccountSelection | null
+  accountCandidates: ResolvedPylonAccountSelection[]
+}
+
+function accountSelectionKey(account: ResolvedPylonAccountSelection): string {
+  return account.accountRefHash
+}
+
+function uniqueAccountSelections(
+  accounts: ReadonlyArray<ResolvedPylonAccountSelection>,
+): ResolvedPylonAccountSelection[] {
+  const seen = new Set<string>()
+  const out: ResolvedPylonAccountSelection[] = []
+  for (const account of accounts) {
+    const key = accountSelectionKey(account)
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(account)
+  }
+  return out
+}
+
+async function codexAccountSelectionBlocked(
+  summary: Pick<BootstrapSummary, "paths">,
+  account: ResolvedPylonAccountSelection,
+): Promise<boolean> {
+  if (account.provider !== "codex") return false
+  const health = await loadCodexAccountHealthRecord(summary, account.accountRefHash)
+  return codexAccountHealthBlocksReadiness(health)
+}
+
+async function connectedAccountCandidates(input: {
+  summary: BootstrapSummary
+  provider: PylonAccountProvider
+}): Promise<ResolvedPylonAccountSelection[]> {
+  const registry = await loadPylonAccountRegistry(input.summary)
+  const candidates: ResolvedPylonAccountSelection[] = []
+  for (const entry of registry) {
+    if (entry.provider !== input.provider) continue
+    try {
+      const account = await resolvePylonAccountSelection(input.summary, {
+        provider: input.provider,
+        accountRef: entry.ref,
+      })
+      if (account === null) continue
+      if (await codexAccountSelectionBlocked(input.summary, account)) continue
+      candidates.push(account)
+    } catch {
+      // A stale registry row must not block other connected accounts.
+    }
+  }
+  return uniqueAccountSelections(candidates)
+}
+
+async function controlSessionAccountPlan(input: {
+  command: ControlSessionSpawnCommand
+  summary: BootstrapSummary
+}): Promise<ControlSessionAccountPlan> {
+  const provider = providerForAdapter(input.command.adapter)
+  const accountHome =
+    input.command.accountHome ??
+    (input.command.adapter === "codex" ? input.command.codexHome : input.command.claudeConfigDir) ??
+    undefined
+  const explicitAccount =
+    input.command.accountRef !== undefined || accountHome !== undefined
+      ? await resolvePylonAccountSelection(input.summary, {
+          provider,
+          ...(input.command.accountRef === undefined ? {} : { accountRef: input.command.accountRef }),
+          ...(accountHome === undefined ? {} : { accountHome }),
+        })
+      : null
+
+  if (provider !== "codex") {
+    return {
+      account: explicitAccount,
+      accountCandidates: explicitAccount === null ? [] : [explicitAccount],
+    }
+  }
+
+  const connectedCandidates = await connectedAccountCandidates({
+    summary: input.summary,
+    provider,
+  })
+  const accountCandidates = uniqueAccountSelections([
+    ...(explicitAccount === null ? [] : [explicitAccount]),
+    ...connectedCandidates,
+  ])
+  return {
+    account: accountCandidates[0] ?? explicitAccount,
+    accountCandidates,
+  }
 }
 
 function stringArray(value: unknown): string[] | null {
@@ -1123,6 +1231,111 @@ export function createControlSessionActions(options: {
     })
   }
 
+  const recordCodexAccountFailure = async (
+    record: SessionRecord,
+    failure: PylonCodexAccountFailure,
+  ): Promise<void> => {
+    const account = record.account
+    if (record.adapter !== "codex" || account === null) return
+    await recordCodexAccountHealthFailure(options.summary, {
+      accountRefHash: account.accountRefHash,
+      failure,
+    }).catch(() => undefined)
+    if (failure.reason === "usage_limited" || failure.reason === "rate_limited") {
+      const quota = classifyQuotaSignal(failure.publicMessage, "codex")
+      await recordQuotaBlock(options.summary, {
+        accountRefHash: account.accountRefHash,
+        provider: "codex",
+        retryAtIso: quota.retryAtIso,
+        kind: failure.reason === "rate_limited" ? "cooldown" : "weekly_exhausted",
+        sourceDigestRef: quota.sourceDigestRef,
+      }).catch(() => undefined)
+    }
+  }
+
+  const retryableCodexAccountFailure = (
+    reason: PylonCodexAccountHealthReason,
+  ): boolean =>
+    reason === "credentials_revoked" ||
+    reason === "usage_limited" ||
+    reason === "rate_limited"
+
+  const nextCodexFailoverAccount = (
+    record: SessionRecord,
+    attemptedAccountKeys: ReadonlySet<string>,
+  ): ResolvedPylonAccountSelection | null => {
+    for (const candidate of record.accountCandidates) {
+      if (attemptedAccountKeys.has(accountSelectionKey(candidate))) continue
+      return candidate
+    }
+    return null
+  }
+
+  const runExecutorAttempt = async (
+    record: SessionRecord,
+  ): Promise<ControlSessionExecutorResult> =>
+    selectExecutor(record.lane)({
+      adapter: record.adapter,
+      account: record.account,
+      lane: record.lane,
+      abortSignal: record.abort.signal,
+      cwd: record.workspace.workingDirectory,
+      env: pylonAccountEnvironment(baseEnv, record.account),
+      emit: (event) => {
+        const messageRef =
+          event.message === undefined
+            ? undefined
+            : stableRef("message.pylon.control_session", `${record.sessionRef}:${event.message}`)
+        emit(record, {
+          phase: event.phase,
+          ...(messageRef === undefined ? {} : { messageRef }),
+          ...(event.message === undefined ? {} : { messageText: event.message.slice(0, 2000) }),
+          ...(event.composerEventIndex === undefined ? {} : { composerEventIndex: event.composerEventIndex }),
+        })
+      },
+      objective: record.objective,
+      sessionRef: record.sessionRef,
+      summary: options.summary,
+      timeoutMs: record.timeoutMs,
+      verify: record.verify,
+      workspaceRef: record.workspace.workspaceRef,
+    })
+
+  const runExecutorWithCodexFailover = async (
+    record: SessionRecord,
+  ): Promise<ControlSessionExecutorResult> => {
+    const attemptedAccountKeys = new Set<string>()
+    while (true) {
+      if (record.account !== null) {
+        attemptedAccountKeys.add(accountSelectionKey(record.account))
+      } else {
+        attemptedAccountKeys.add("default")
+      }
+      try {
+        return await runExecutorAttempt(record)
+      } catch (error) {
+        if (currentSessionState(record) === "cancelled" || record.abort.signal.aborted) {
+          throw error
+        }
+        if (record.adapter !== "codex") throw error
+        const failure = classifyCodexAccountFailure(error)
+        await recordCodexAccountFailure(record, failure)
+        if (!retryableCodexAccountFailure(failure.reason)) throw error
+        const next = nextCodexFailoverAccount(record, attemptedAccountKeys)
+        if (next === null) {
+          throw new Error(
+            `Codex account exhausted: ${failure.reason}; no ready connected failover account is available`,
+          )
+        }
+        record.account = next
+        emit(record, {
+          phase: "composer_event",
+          messageText: `Codex account ${failure.reason}; retrying with another connected account`,
+        })
+      }
+    }
+  }
+
   const runSession = async (record: SessionRecord) => {
     if (record.abort.signal.aborted) {
       await finishCancelled(record)
@@ -1132,32 +1345,7 @@ export function createControlSessionActions(options: {
     record.startedAt = nowIso()
     emit(record, { phase: "started" })
     try {
-      const result = await selectExecutor(record.lane)({
-        adapter: record.adapter,
-        account: record.account,
-        lane: record.lane,
-        abortSignal: record.abort.signal,
-        cwd: record.workspace.workingDirectory,
-        env: pylonAccountEnvironment(baseEnv, record.account),
-        emit: (event) => {
-          const messageRef =
-            event.message === undefined
-              ? undefined
-              : stableRef("message.pylon.control_session", `${record.sessionRef}:${event.message}`)
-          emit(record, {
-            phase: event.phase,
-            ...(messageRef === undefined ? {} : { messageRef }),
-            ...(event.message === undefined ? {} : { messageText: event.message.slice(0, 2000) }),
-            ...(event.composerEventIndex === undefined ? {} : { composerEventIndex: event.composerEventIndex }),
-          })
-        },
-        objective: record.objective,
-        sessionRef: record.sessionRef,
-        summary: options.summary,
-        timeoutMs: record.timeoutMs,
-        verify: record.verify,
-        workspaceRef: record.workspace.workspaceRef,
-      })
+      const result = await runExecutorWithCodexFailover(record)
       if (currentSessionState(record) === "cancelled" || record.abort.signal.aborted) return
       if (result.cloudRunner !== undefined) record.cloudRunner = result.cloudRunner
       if (result.resourceUsageReceiptRef !== undefined && result.resourceUsageReceiptRef !== null) {
@@ -1221,15 +1409,9 @@ export function createControlSessionActions(options: {
       const index = spawnIndex
       spawnIndex += 1
       const runRef = randomBytes(12).toString("hex")
-      const provider = providerForAdapter(command.adapter)
-      const accountHome =
-        command.accountHome ??
-        (command.adapter === "codex" ? command.codexHome : command.claudeConfigDir) ??
-        undefined
-      const account = await resolvePylonAccountSelection(options.summary, {
-        provider,
-        ...(command.accountRef === undefined ? {} : { accountRef: command.accountRef }),
-        ...(accountHome === undefined ? {} : { accountHome }),
+      const accountPlan = await controlSessionAccountPlan({
+        command,
+        summary: options.summary,
       })
       const workspace = await workspaceForCommand({
         command,
@@ -1249,7 +1431,8 @@ export function createControlSessionActions(options: {
         parentSessionRef: null,
         adapter: command.adapter,
         lane: command.lane ?? DEFAULT_CONTROL_SESSION_LANE,
-        account,
+        account: accountPlan.account,
+        accountCandidates: accountPlan.accountCandidates,
         workspace,
         workspaceCleanupReceiptRef: null,
         workspaceRetentionReasonRef: null,
@@ -1292,6 +1475,7 @@ export function createControlSessionActions(options: {
         adapter: parent.adapter,
         lane: parent.lane,
         account: parent.account,
+        accountCandidates: parent.accountCandidates,
         workspace: parent.workspace,
         workspaceCleanupReceiptRef: null,
         workspaceRetentionReasonRef: null,
@@ -1355,6 +1539,7 @@ export function createControlSessionActions(options: {
         adapter: "apple_fm",
         lane: "local",
         account: null,
+        accountCandidates: [],
         workspace,
         workspaceCleanupReceiptRef: null,
         workspaceRetentionReasonRef: null,
