@@ -4,6 +4,7 @@ import { Effect, Schema as S } from 'effect'
 import { AcceptedOutcomesPerKwhEndpoint } from './accepted-outcomes-per-kwh'
 import { PublicAgentProposalRecoveryRoute } from './agent-rate-limit-recovery'
 import { BusinessAlreadySoldEngagementReceiptsEndpoint } from './business-already-sold-engagement-receipt-routes'
+import { BusinessCaseStudyEndpoint } from './business-case-study-engine'
 import {
   AGENT_SEARCH_BASIC_RECOVERY_PRODUCT_ID,
   AGENT_SEARCH_BASIC_RECOVERY_SCOPE_REF,
@@ -2054,6 +2055,9 @@ const schemaComponents = (): JsonSchema => ({
   ),
   BusinessAlreadySoldEngagementReceiptResponse: objectSummary(
     'Public-safe already-sold business engagement payment receipt projection. Lists opaque buyer refs, vertical descriptors, paid receipt totals, privacy-review decision refs, generatedAt, and live_at_read staleness. It exposes no customer identity, raw payment processor material, invoices, or private payment refs, and grants no delivery completion, payout, settlement, self-serve, or green-claim authority.',
+  ),
+  BusinessCaseStudyResponse: objectSummary(
+    'Public-safe business case-study projection. Lists opaque engagement refs, vertical descriptors, public proof bundle refs, accepted-outcome refs, receipt refs, cycle-time metrics, generatedAt, live_at_read staleness, and caseStudyRef intake-attribution hooks. It exposes no customer identity, raw payment material, private prompts, raw run logs, or provider payloads, and grants no payout, settlement, self-serve, or green-claim authority.',
   ),
   MarketingAgencyReceiptResponse: objectSummary(
     'Public-safe marketing-agency white-label receipt or paid-delivery-claims projection. Carries assessedAt/generatedAt timestamps plus a live_at_read staleness contract for claim projections where available. Fixture and stored receipts expose bounded delivery refs only and grant no new delivery, attribution, payout, settlement, or green-claim authority.',
@@ -6362,6 +6366,29 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Already-sold business engagement receipt projection.',
           '#/components/schemas/BusinessAlreadySoldEngagementReceiptResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [BusinessCaseStudyEndpoint]: {
+    get: operation({
+      operationId: 'listPublicBusinessCaseStudies',
+      summary: 'List public business case studies',
+      description:
+        'Returns public-safe business case-study projections when called with view=published-case-studies. Point reads are available under the same route prefix. Each row carries opaque engagement refs, public proof/receipt refs, cycle-time metrics, and a caseStudyRef attribution hook for business intake. The surface grants no customer identity, payout, settlement, self-serve, or green-claim authority.',
+      tags: ['Business', 'Public Proof'],
+      security: publicRead,
+      parameters: [
+        queryParam(
+          'view',
+          'Use published-case-studies to list public-safe case studies.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Business case-study projection.',
+          '#/components/schemas/BusinessCaseStudyResponse',
         ),
         ...errorResponses(),
       },

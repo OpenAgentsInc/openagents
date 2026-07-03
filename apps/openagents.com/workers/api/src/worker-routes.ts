@@ -91,6 +91,7 @@ type WorkerRouteDependencies = Readonly<{
   routeEcommerceCampaignSelfServeRequest: OptionalEffectRoute
   routeCodingQuickWinReceiptRequest: OptionalEffectRoute
   routeBusinessAlreadySoldEngagementReceiptRequest: OptionalEffectRoute
+  routeBusinessCaseStudyRequest: OptionalEffectRoute
   routeMarketingAgencyReceiptRequest: OptionalEffectRoute
   routeMarketingAgencySelfServeRequest: OptionalEffectRoute
   routeVerticalFunnelRequest: OptionalEffectRoute
@@ -680,6 +681,13 @@ export const makeWorkerRouteRequest =
 
       if (businessAlreadySoldEngagementReceiptResponse !== undefined) {
         return yield* businessAlreadySoldEngagementReceiptResponse
+      }
+
+      const businessCaseStudyResponse =
+        dependencies.routeBusinessCaseStudyRequest(request, env, ctx)
+
+      if (businessCaseStudyResponse !== undefined) {
+        return yield* businessCaseStudyResponse
       }
 
       const marketingAgencyReceiptResponse =
