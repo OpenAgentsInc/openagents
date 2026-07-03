@@ -31,8 +31,11 @@
 > interview running the published intake spec over the same gateway
 > serving lane as the free tier (fail-closed 503 when unarmed, per-IP
 > rate limited, exact-only internal token accounting with
-> `demand_source=business_intake_chat`); the drafted spec hands off into
-> the existing signup form, which remains the single submit authority. A
+> `demand_source=business_intake_chat`), now returning validated
+> closed-catalog component frames and a typed `business_intake_spec.v1`
+> object only after vertical, goals, pains, and systems of record are
+> present; the drafted spec hands off into the existing signup form,
+> which remains the single submit authority. A
 > review-only landing candidate ships at `/preview/landing` with an
 > explicit not-the-homepage banner; the live homepage is untouched. No
 > availability label changed, no pricing was published, and both blockers

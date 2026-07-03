@@ -2692,9 +2692,13 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     intake turn over one bounded, non-streaming Khala completion (or the
     deterministic opening constant for an empty transcript) — compliant
     (`generatedAt`, `live_at_read` contract). Stateless: the browser holds the
-    transcript; the server owns the system prompt and rejects client-supplied
-    `system` roles, over-bound transcripts (max 24 messages / 2,000 chars each
-    / 24,000 total), and non-user-first transcripts with typed 400s. Gated on
+    transcript; the server owns the system prompt, validates closed-catalog
+    typed component frames before returning them, derives a typed
+    `business_intake_spec.v1` object when the final markdown spec is complete,
+    and keeps `done=false` until required fields (`vertical`, `goals`, `pains`,
+    `systemsOfRecord`) are present. The route rejects client-supplied `system`
+    roles, over-bound transcripts (max 24 messages / 2,000 chars each / 24,000
+    total), and non-user-first transcripts with typed 400s. Gated on
     the same conditions as the free gateway (`INFERENCE_GATEWAY_ENABLED` +
     Fireworks key presence; otherwise 503 `business_intake_chat_unavailable`)
     and per-IP rate limited (8/min, 60/day; 429

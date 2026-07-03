@@ -20,6 +20,21 @@ export type IntakeChatMessage = Readonly<{
   content: string
 }>
 
+export type IntakeChatComponentFrame = Readonly<{
+  v: 1
+  component: string
+  props: Readonly<Record<string, unknown>>
+  id: string
+}>
+
+export type IntakeChatSpecObject = Readonly<{
+  schemaVersion: 'business_intake_spec.v1'
+  vertical: string
+  goals: ReadonlyArray<string>
+  pains: ReadonlyArray<string>
+  systemsOfRecord: ReadonlyArray<string>
+}>
+
 export type IntakeChatPhase =
   | 'ready'
   | 'waiting'
@@ -32,12 +47,16 @@ export type IntakeChatState = Readonly<{
   messages: ReadonlyArray<IntakeChatMessage>
   phase: IntakeChatPhase
   spec: string | null
+  specObject: IntakeChatSpecObject | null
+  components: ReadonlyArray<IntakeChatComponentFrame>
 }>
 
 export const initialIntakeChatState: IntakeChatState = {
+  components: [],
   messages: [],
   phase: 'ready',
   spec: null,
+  specObject: null,
 }
 
 // A user message is sendable when it is non-empty within the char bound, the
@@ -72,7 +91,65 @@ export type IntakeChatReply = Readonly<{
   reply: string
   done: boolean
   spec: string | null
+  specObject: IntakeChatSpecObject | null
+  component: IntakeChatComponentFrame | null
 }>
+
+const decodeComponentFrame = (
+  value: unknown,
+): IntakeChatComponentFrame | null => {
+  if (typeof value !== 'object' || value === null) {
+    return null
+  }
+  const record = value as Record<string, unknown>
+  if (
+    record['v'] !== 1 ||
+    typeof record['component'] !== 'string' ||
+    typeof record['id'] !== 'string' ||
+    typeof record['props'] !== 'object' ||
+    record['props'] === null ||
+    Array.isArray(record['props'])
+  ) {
+    return null
+  }
+  return {
+    component: record['component'],
+    id: record['id'],
+    props: record['props'] as Readonly<Record<string, unknown>>,
+    v: 1,
+  }
+}
+
+const decodeStringArray = (value: unknown): ReadonlyArray<string> | null =>
+  Array.isArray(value) && value.every(item => typeof item === 'string')
+    ? value
+    : null
+
+const decodeSpecObject = (value: unknown): IntakeChatSpecObject | null => {
+  if (typeof value !== 'object' || value === null) {
+    return null
+  }
+  const record = value as Record<string, unknown>
+  const goals = decodeStringArray(record['goals'])
+  const pains = decodeStringArray(record['pains'])
+  const systemsOfRecord = decodeStringArray(record['systemsOfRecord'])
+  if (
+    record['schemaVersion'] !== 'business_intake_spec.v1' ||
+    typeof record['vertical'] !== 'string' ||
+    goals === null ||
+    pains === null ||
+    systemsOfRecord === null
+  ) {
+    return null
+  }
+  return {
+    goals,
+    pains,
+    schemaVersion: 'business_intake_spec.v1',
+    systemsOfRecord,
+    vertical: record['vertical'],
+  }
+}
 
 export const decodeIntakeChatReply = (value: unknown): IntakeChatReply | null => {
   if (typeof value !== 'object' || value === null) {
@@ -84,16 +161,28 @@ export const decodeIntakeChatReply = (value: unknown): IntakeChatReply | null =>
   }
   const done = record['done'] === true
   const spec = typeof record['spec'] === 'string' ? record['spec'] : null
-  return { reply: record['reply'], done: done && spec !== null, spec }
+  const specObject = decodeSpecObject(record['specObject'])
+  return {
+    component: decodeComponentFrame(record['component']),
+    done: done && spec !== null && specObject !== null,
+    reply: record['reply'],
+    spec,
+    specObject,
+  }
 }
 
 export const applyIntakeChatReply = (
   state: IntakeChatState,
   reply: IntakeChatReply,
 ): IntakeChatState => ({
+  components:
+    reply.component === null
+      ? state.components
+      : [...state.components, reply.component],
   messages: [...state.messages, { role: 'assistant', content: reply.reply }],
   phase: reply.done ? 'done' : 'ready',
   spec: reply.done ? reply.spec : state.spec,
+  specObject: reply.done ? reply.specObject : state.specObject,
 })
 
 // Map a failed send to the honest phase. The transcript keeps the user's
