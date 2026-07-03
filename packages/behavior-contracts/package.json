@@ -1,0 +1,24 @@
+{
+  "name": "@openagentsinc/behavior-contracts",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./contract": "./src/contract.ts",
+    "./registry": "./src/registry.ts",
+    "./coverage": "./src/coverage.ts",
+    "./report": "./src/report.ts"
+  },
+  "scripts": {
+    "test": "bun test src/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "bun-types": "^1.0.0",
+    "typescript": "catalog:"
+  }
+}

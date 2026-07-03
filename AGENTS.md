@@ -559,6 +559,18 @@ and local Codex auth out of reports.
   `expo` CLI only apply if an Expo app is ever reintroduced.
 - Route new user-facing and agent-facing product claim systems through
   `docs/promises/` before broadening copy.
+- **Behavior contracts (owner mandate, 2026-07-03):** when the owner (or a
+  customer) states a UX/product behavior expectation in any session, land it
+  in the owning surface's behavior-contract registry in the same change —
+  statement verbatim, source recorded, oracle test written (or an explicit
+  `pending` entry with blocker refs). Never leave a stated expectation only
+  in conversation. For Khala Code desktop the registry is
+  `clients/khala-code-desktop/src/contracts/ux-contracts.ts` with the human
+  doc at `docs/khala-code/khala-code-ux-contract.md`; the shared schema and
+  coverage checker live in `packages/behavior-contracts`
+  (`@openagentsinc/behavior-contracts`). Enforced contracts must run in the
+  normal test sweep; do not weaken an oracle to make a change pass — that is
+  a contract change and needs the owner's sign-off.
 - Keep Claim Your Agent public identity flows tweet-first where possible:
   use the shared owner-claim/X verification routes, the friendly
   `Verifying my agent ... Code: ...` copy, and public tweet-author binding

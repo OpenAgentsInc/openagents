@@ -4,9 +4,46 @@ export const KHALA_CODE_RECENT_THREAD_HOTKEY_LIMIT = 10
 
 export type RecentThreadCycleDirection = "newer" | "older"
 
+export type RecentThreadHotkeyEvent = Pick<
+  KeyboardEvent,
+  "altKey" | "ctrlKey" | "defaultPrevented" | "key" | "metaKey" | "shiftKey"
+>
+
 export const recentThreadIndexForDigitKey = (key: string): number | null => {
   if (/^[1-9]$/u.test(key)) return Number(key) - 1
   if (key === "0") return 9
+  return null
+}
+
+export const recentThreadHotkeyIndexForEvent = (
+  event: RecentThreadHotkeyEvent,
+): number | null => {
+  if (
+    event.defaultPrevented ||
+    event.altKey ||
+    event.ctrlKey ||
+    !event.metaKey ||
+    event.shiftKey
+  ) {
+    return null
+  }
+  return recentThreadIndexForDigitKey(event.key)
+}
+
+export const recentThreadCycleDirectionForEvent = (
+  event: RecentThreadHotkeyEvent,
+): RecentThreadCycleDirection | null => {
+  if (
+    event.defaultPrevented ||
+    event.altKey ||
+    event.ctrlKey ||
+    !event.metaKey ||
+    event.shiftKey
+  ) {
+    return null
+  }
+  if (event.key === "ArrowUp") return "newer"
+  if (event.key === "ArrowDown") return "older"
   return null
 }
 

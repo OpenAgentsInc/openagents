@@ -97,10 +97,11 @@ import { mountUnifiedInboxPanel } from "./inbox"
 import type { KhalaCodeDesktopCodexThreadSummary } from "../shared/codex-threads"
 import { sessionCatalogEntryToThreadSummary } from "../shared/session-catalog"
 import {
-  type RecentThreadCycleDirection,
-  recentThreadIndexForDigitKey,
+  recentThreadCycleDirectionForEvent,
+  recentThreadHotkeyIndexForEvent,
   recentThreadsForHotkeys,
 } from "./thread-hotkeys"
+import { mountRecentThreadOverlay } from "./recent-thread-overlay"
 import {
   KHALA_CODE_DIFF_REVIEW_SUBMIT_EVENT,
   KhalaCodeDiffReviewSubmitDetailSchema,
@@ -1263,6 +1264,33 @@ const renderMicrophoneIndicator = (): HTMLElement => {
 }
 */
 
+let threadSwitchLoadingSelectionId: number | null = null
+
+const renderThreadLoadingIndicator = (): HTMLElement | null => {
+  if (threadSwitchLoadingSelectionId === null) return null
+
+  const article = document.createElement("article")
+  article.className = `${messageClass("assistant")} message-bubble--thinking`
+  article.dataset.messageId = `thread-loading-${threadSwitchLoadingSelectionId}`
+  article.dataset.khalaThreadLoading = "true"
+
+  const body = document.createElement("div")
+  body.className = "message-body"
+
+  const shimmer = document.createElement("span")
+  shimmer.className = shimmerClass
+  shimmer.dataset.uiBase = shimmerBaseTag
+  shimmer.dataset.oaAiShimmer = ""
+  shimmer.setAttribute("role", "status")
+  shimmer.setAttribute("aria-live", "polite")
+  shimmer.setAttribute("aria-label", "Loading messages")
+  shimmer.textContent = "Loading messages"
+
+  body.append(shimmer)
+  article.append(body)
+  return article
+}
+
 const renderThinkingIndicator = (): HTMLElement | null => {
   if (shellModel().thinkingTurnId === null) return null
 
@@ -1350,37 +1378,6 @@ const proxyTranscriptKeyScroll = (event: KeyboardEvent): void => {
     sampleTranscriptScrollDroppedFrames("keyboard")
     event.preventDefault()
   }
-}
-
-const recentThreadHotkeyIndexForEvent = (event: KeyboardEvent): number | null => {
-  if (
-    event.defaultPrevented ||
-    event.altKey ||
-    event.ctrlKey ||
-    event.metaKey ||
-    event.shiftKey ||
-    isComposerScrollTarget(event.target)
-  ) {
-    return null
-  }
-  return recentThreadIndexForDigitKey(event.key)
-}
-
-const recentThreadCycleDirectionForEvent = (
-  event: KeyboardEvent,
-): RecentThreadCycleDirection | null => {
-  if (
-    event.defaultPrevented ||
-    event.altKey ||
-    event.ctrlKey ||
-    !event.metaKey ||
-    event.shiftKey
-  ) {
-    return null
-  }
-  if (event.key === "ArrowUp") return "newer"
-  if (event.key === "ArrowDown") return "older"
-  return null
 }
 
 const statusForComposer = (): CommandComposerStatus => {
@@ -1607,8 +1604,10 @@ const renderMessages = (): void => {
   const stickToEnd = shellModel().transcriptPinnedToEnd && isNearTranscriptEnd()
   const previousScrollTop = messageList.scrollTop
   const thinking = renderThinkingIndicator()
+  const threadLoading = renderThreadLoadingIndicator()
   messageList.replaceChildren(
     ...shellModel().messages.map(renderMessage),
+    ...(threadLoading === null ? [] : [threadLoading]),
     ...(thinking === null ? [] : [thinking]),
   )
   requestAnimationFrame(() => {
@@ -3650,6 +3649,10 @@ const beginCodexThreadSwitch = (input: {
   setActiveCodexThreadId(input.threadId)
   if (optimisticMessages !== null) {
     setShellMessages(optimisticMessages)
+    threadSwitchLoadingSelectionId = null
+  } else {
+    setShellMessages([])
+    threadSwitchLoadingSelectionId = input.selectionId
   }
   activeTurnIds.clear()
   setShellFollowUpDrafts([])
@@ -3673,6 +3676,7 @@ const activateCodexThread = (input: {
   readonly threadId: string
 }): void => {
   setActiveCodexThreadId(input.threadId)
+  threadSwitchLoadingSelectionId = null
   cacheThreadMessages(input.threadId, input.messages)
   const visibleMessages = recentMessagesForInitialThreadRender(input.messages)
   setShellMessages(visibleMessages)
@@ -3698,6 +3702,7 @@ const activateCodexThread = (input: {
 
 const beginNewCodexThread = (): void => {
   setActiveCodexThreadId(null)
+  threadSwitchLoadingSelectionId = null
   setShellMessages([])
   activeTurnIds.clear()
   setShellFollowUpDrafts([])
@@ -3990,9 +3995,30 @@ const threadSidebar =
         onNewThreadRequested: beginNewCodexThread,
         onThreadSelectionStarted: beginCodexThreadSwitch,
         onThreadSelected: activateCodexThread,
+        onThreadSelectionFailed: input => {
+          if (threadSwitchLoadingSelectionId !== input.selectionId) return
+          threadSwitchLoadingSelectionId = null
+          render()
+        },
+      })
+
+const recentThreadOverlay =
+  threadSidebar === null
+    ? null
+    : mountRecentThreadOverlay({
+        activeThreadId: () => shellModel().activeCodexThreadId,
+        recentThreads: () => threadSidebar.recentThreads(),
+        onSelect: index => {
+          void threadSidebar.selectRecentThread(index).then(selected => {
+            if (selected) setActiveView("chat")
+          })
+        },
       })
 
 window.addEventListener("keydown", event => {
+  if (event.key === "Meta" && !event.altKey && !event.ctrlKey && !event.shiftKey) {
+    recentThreadOverlay?.notifyMetaKeyDown()
+  }
   const recentThreadIndex = recentThreadHotkeyIndexForEvent(event)
   const recentThreadCycleDirection = recentThreadCycleDirectionForEvent(event)
   if (recentThreadIndex === null && recentThreadCycleDirection === null) return
@@ -4005,8 +4031,20 @@ window.addEventListener("keydown", event => {
       ? Promise.resolve(false)
       : threadSidebar.selectAdjacentRecentThread(recentThreadCycleDirection)
   void selection.then(selected => {
-    if (selected) setActiveView("chat")
+    if (selected) {
+      setActiveView("chat")
+      recentThreadOverlay?.refresh()
+    }
   })
+})
+
+window.addEventListener("keyup", event => {
+  if (event.key !== "Meta") return
+  recentThreadOverlay?.notifyMetaKeyUp()
+})
+
+window.addEventListener("blur", () => {
+  recentThreadOverlay?.hide()
 })
 
 const setActiveView = (value: string): void => {

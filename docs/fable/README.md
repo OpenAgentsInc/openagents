@@ -49,6 +49,15 @@ each source doc.
   verdicts, the shareable StarCraft-blue evidence board via arbiter-effect +
   three-effect, customer #1 = Khala Code Desktop, the named-first-customer
   demo-PR sales motion). Workstream QS1–QS10, issues #8061–#8070, epic #8071.
+- [`2026-07-03-behavior-contracts-and-customer-invariants.md`](./2026-07-03-behavior-contracts-and-customer-invariants.md)
+  — behavior contracts: owner/customer-stated product expectations recorded
+  verbatim in typed registries (`packages/behavior-contracts`) and enforced
+  by oracles in the normal test sweep, with the customer-facing invariant
+  catalog the QA Swarm sells (indicator truthfulness, stated-flow
+  availability, latency budgets, error honesty, dead controls, consistency,
+  copy safety) and the standing rule that new OpenAgents services ship with
+  contracts from day one. Internal layer landed 2026-07-03 (ROADMAP_QA §9d;
+  Khala Code registry + doc at `docs/khala-code/khala-code-ux-contract.md`).
 - [`2026-07-02-site-speed-lane-spec.md`](./2026-07-02-site-speed-lane-spec.md)
   — spec for the standing site-speed lane on the deployed website (landing
   page first): ground-truth baseline (2.7 KB SPA shell, 4.1 MB/1.07 MB-br

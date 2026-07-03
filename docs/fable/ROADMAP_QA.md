@@ -205,6 +205,52 @@ customer sales motion, and third-party onboarding — lives in
 roadmap's outputs (Q1.1 nightly, Q1.5 status surface, Q2 budgets, Q6
 explorers); it never duplicates them.
 
+## 9d. QA-11 — Behavior contracts: stated expectations as enforced oracles (landed 2026-07-03)
+
+The gap the owner hit on 2026-07-02/03 ("where is correct behavior defined
+and how is it tested against? I shouldn't have to be discovering these
+things"): the machine had drivers, oracles, and budgets, but no durable home
+for owner-stated product expectations, so requirements told to sessions were
+lost (the Cmd+1–9 hotkey ask) or implemented as a guess and pinned by
+source-string tests (the sidebar spinner shown during message fetch).
+
+The fix is the behavior-contract layer, landed with this entry:
+
+- **`packages/behavior-contracts`** (`@openagentsinc/behavior-contracts`,
+  Bun + Effect + Effect Schema): contract records mirroring the
+  product-promise registry discipline — dotted versioned ids, statement
+  verbatim, source, oracles, evidence/blocker refs, one good state
+  (`enforced`) gated on ≥1 oracle + automated tier + zero blockers.
+  Registry validation, oracle-coverage checking behind a swappable
+  `BehaviorContractOracleSource` Effect service (file layer, in-memory
+  layer; qa-scenario layer is the natural extension), and a markdown
+  renderer for the human doc. The contract data is plain JSON, so
+  non-Effect runners can enforce the same registry.
+- **Khala Code UX registry**:
+  `clients/khala-code-desktop/src/contracts/ux-contracts.ts`, rendered at
+  [`docs/khala-code/khala-code-ux-contract.md`](../khala-code/khala-code-ux-contract.md).
+  Bootstrap contracts: `khala_code.chat.sidebar_spinner_streaming_only.v1`
+  and `khala_code.chat.recent_thread_cmd_hotkeys.v1`, both `enforced` with
+  DOM-mounted oracles in
+  `clients/khala-code-desktop/tests/ux-contracts.test.ts` (which also runs
+  registry validation, oracle coverage, and doc-sync in the same sweep).
+- **Sweep wiring**: the oracle/coverage/doc-sync tests run in the desktop
+  package test glob → package `verify` → repo `test:khala-code-desktop`;
+  the package's own suite runs as repo `test:behavior-contracts` /
+  `typecheck:behavior-contracts` in the root chains.
+- **Standing rule** (also in `AGENTS.md`): any session receiving a UX/product
+  behavior expectation from the owner (or a customer) lands it in the
+  relevant contract registry in the same change — statement verbatim, or an
+  explicit `pending` entry with blocker refs. QA scenarios may cite
+  contracts via `qa-scenario` oracles so the harness and the registry share
+  one truth.
+- **Customer-facing extension**: the same registry shape is the QA Swarm
+  deliverable for client companies — see
+  [`2026-07-03-behavior-contracts-and-customer-invariants.md`](./2026-07-03-behavior-contracts-and-customer-invariants.md)
+  for the invariant catalog we offer to enforce and the deviation-alert loop.
+  QS lanes (§9c) consume this; contract enforcement rides QA-1's nightly
+  once it exists.
+
 ## 10. Milestones
 
 - **QM1 — The loop runs.** Nightly matrix green three consecutive nights;

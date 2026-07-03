@@ -22,6 +22,7 @@ import {
 } from "./thread-hotkeys"
 
 export type CodexThreadSidebarHandle = {
+  readonly recentThreads: () => readonly KhalaCodeDesktopCodexThreadSummary[]
   readonly refresh: () => Promise<void>
   readonly selectAdjacentRecentThread: (direction: RecentThreadCycleDirection) => Promise<boolean>
   readonly selectRecentThread: (index: number) => Promise<boolean>
@@ -63,6 +64,13 @@ export type CodexThreadSidebarOptions = {
       readonly requestedThreadId?: string
       readonly selectionId?: number
       readonly source?: CodexThreadSelectionSource
+      readonly threadId: string
+    },
+  ) => void
+  readonly onThreadSelectionFailed?: (
+    input: {
+      readonly message: string
+      readonly selectionId: number
       readonly threadId: string
     },
   ) => void
@@ -316,6 +324,11 @@ export const mountCodexThreadSidebar = (
         threadId,
         message: error instanceof Error ? error.message : String(error),
       }
+      options.onThreadSelectionFailed?.({
+        message: selectionError.message,
+        selectionId,
+        threadId,
+      })
       render()
       return false
     }
@@ -614,7 +627,7 @@ export const mountCodexThreadSidebar = (
     })
     row.append(
       el("span", "khala-thread-sidebar-item-title", thread.title),
-      selecting ? threadStreamingIndicator() : threadTimeContent(thread, options),
+      threadTimeContent(thread, options),
     )
 
     item.append(renamingThreadId === thread.id ? threadRenameForm(thread) : row)
@@ -758,6 +771,7 @@ export const mountCodexThreadSidebar = (
   render()
 
   return {
+    recentThreads: () => recentThreadsForHotkeys(dataForState(state)?.threads ?? []),
     refresh,
     selectAdjacentRecentThread,
     selectRecentThread,

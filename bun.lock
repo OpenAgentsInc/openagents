@@ -377,6 +377,7 @@
         "@anthropic-ai/claude-agent-sdk": "^0.3.172",
         "@openagentsinc/agent-runtime-schema": "workspace:*",
         "@openagentsinc/arbiter-effect": "workspace:*",
+        "@openagentsinc/behavior-contracts": "workspace:*",
         "@openagentsinc/composer-state": "workspace:*",
         "@openagentsinc/khala-tools": "workspace:*",
         "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#fa84064796",
@@ -468,6 +469,17 @@
         "@openagentsinc/ui": "workspace:*",
         "effect": "catalog:",
         "foldkit": "^0.102.1",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/behavior-contracts": {
+      "name": "@openagentsinc/behavior-contracts",
+      "version": "0.0.1",
+      "dependencies": {
+        "effect": "catalog:",
       },
       "devDependencies": {
         "bun-types": "^1.0.0",
@@ -1056,6 +1068,8 @@
     "@openagentsinc/autopilot-ui": ["@openagentsinc/autopilot-ui@workspace:packages/autopilot-ui"],
 
     "@openagentsinc/autopilot-web": ["@openagentsinc/autopilot-web@workspace:apps/openagents.com/apps/web"],
+
+    "@openagentsinc/behavior-contracts": ["@openagentsinc/behavior-contracts@workspace:packages/behavior-contracts"],
 
     "@openagentsinc/blueprint-contracts": ["@openagentsinc/blueprint-contracts@workspace:packages/blueprint-contracts"],
 
