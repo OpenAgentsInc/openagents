@@ -1,6 +1,10 @@
 import { Effect, Schema as S } from 'effect'
 
 import { parseCookies } from './auth-cookies'
+import {
+  businessFunnelSourceKindForSignup,
+  recordBusinessFunnelEvent,
+} from './business-funnel-dashboard'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import {
   isRecord,
@@ -65,6 +69,9 @@ export type BusinessSignupInput = Readonly<{
   // from the /business ?ref= query param or a `referralCode` form field; null
   // when no code was present.
   referralCode: string | null
+  // Coarse acquisition bucket for aggregate funnel counters. It is deliberately
+  // a stage/source label only, not a user identity or per-contact trail.
+  sourceAttribution: string | null
 }>
 
 export type BusinessSignupRecord = BusinessSignupInput &
@@ -92,6 +99,7 @@ type BusinessSignupRow = Readonly<{
   source_route: string
   referral_code: string | null
   referral_attribution_id: string | null
+  source_attribution?: string | null
   created_at: string
   updated_at: string
 }>
@@ -273,6 +281,8 @@ const decodeSignupInput = (
       helpWith: normalizeMultiline(fields.helpWith, 2_000) ?? null,
       requestSlackChannel: booleanFromUnknown(fields.requestSlackChannel),
       referralCode: normalizeReferralCode(fields.referralCode ?? fields.ref),
+      sourceAttribution:
+        normalizeText(fields.sourceAttribution ?? fields.source, 80) ?? null,
     },
   }
 }
@@ -321,6 +331,7 @@ const rowToRecord = (row: BusinessSignupRow): BusinessSignupRecord => ({
   sourceRoute: '/business',
   referralCode: row.referral_code,
   referralAttributionId: row.referral_attribution_id,
+  sourceAttribution: row.source_attribution ?? null,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 })
@@ -390,6 +401,22 @@ const updateBusinessSignupReferralAttribution = async (
     )
     .bind(input.referralAttributionId, input.updatedAt, input.id)
     .run()
+}
+
+const recordBusinessSignupFunnelEvent = async (
+  db: D1Database,
+  record: BusinessSignupRecord,
+): Promise<void> => {
+  await recordBusinessFunnelEvent(db, {
+    eventRef: `business_signup:${record.id}`,
+    stage: 'signup',
+    sourceKind: businessFunnelSourceKindForSignup({
+      sourceAttribution: record.sourceAttribution,
+      referralCode: record.referralCode,
+    }),
+    sourceRef: record.referralCode ?? record.sourceRoute,
+    occurredAt: record.createdAt,
+  })
 }
 
 export const readBusinessSignupRequest = async (
@@ -561,6 +588,11 @@ export const handleBusinessSignupApi = (
       try: () => insertBusinessSignupRequest(db, input, runtime),
       catch: cause => new BusinessSignupIntakeFailure({ cause }),
     })
+
+    yield* Effect.tryPromise({
+      try: () => recordBusinessSignupFunnelEvent(db, record),
+      catch: cause => new BusinessSignupIntakeFailure({ cause }),
+    }).pipe(Effect.catch(() => Effect.succeed(undefined)))
 
     // Bind the referral after the signup is durably stored. A referral failure
     // must not fail the intake, so it is caught and dropped to null.

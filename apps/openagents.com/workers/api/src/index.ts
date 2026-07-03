@@ -238,6 +238,7 @@ import {
   listBlueprintProgramRuns,
   recordBlueprintProgramRun,
 } from './blueprint/repositories/program-runs'
+import { handlePublicBusinessFunnelDashboardApi } from './business-funnel-dashboard-routes'
 import { handleBusinessIntakeChatApi } from './business-intake-chat-routes'
 import { handleBusinessSignupApi } from './business-signup-routes'
 import { makeD1BuyModeDispatcherStore } from './buy-mode-dispatcher'
@@ -10606,6 +10607,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/business-signup',
     handler: (request, env) =>
       handleBusinessSignupApi(request, openAgentsDatabase(env)),
+  },
+  {
+    path: '/api/public/business/funnel-dashboard',
+    handler: (request, env) =>
+      handlePublicBusinessFunnelDashboardApi(request, openAgentsDatabase(env)),
   },
   {
     // OpenAgents Business conversational intake (Khala-run interview from

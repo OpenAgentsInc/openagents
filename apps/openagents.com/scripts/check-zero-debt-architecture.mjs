@@ -1090,6 +1090,11 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    module: 'workers/api/src/business-funnel-dashboard-routes.ts',
+    route: '/api/public/business/funnel-dashboard',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/business-intake-chat-routes.ts',
     route: '/api/public/business-intake-chat',
     status: 'staleness_declared',

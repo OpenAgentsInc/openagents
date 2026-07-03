@@ -2048,6 +2048,9 @@ const schemaComponents = (): JsonSchema => ({
   CodingQuickWinReceiptResponse: objectSummary(
     'Public-safe coding quick-win receipt or paid-delivery-claims projection. Carries assessedAt/generatedAt timestamps plus a live_at_read staleness contract for claim projections where available. Receipt reads expose lifecycle labels without customer-private refs and grant no auto-merge, deploy, payout, settlement, or green-claim authority.',
   ),
+  PublicBusinessFunnelDashboardResponse: objectSummary(
+    'Public-safe business funnel dashboard projection: schemaVersion, generatedAt, live_at_read staleness contract, stage order, total event count, per-stage counts, and coarse source-kind breakdowns for content/outbound/AI-search/referral/direct/unknown. Aggregate counts only; excludes contact details, user ids, payment payloads, raw provider payloads, and client-identifying material. Read-only dashboard; grants no payment, workspace, fulfillment, retention, payout, settlement, or public-claim authority.',
+  ),
   MarketingAgencyReceiptResponse: objectSummary(
     'Public-safe marketing-agency white-label receipt or paid-delivery-claims projection. Carries assessedAt/generatedAt timestamps plus a live_at_read staleness contract for claim projections where available. Fixture and stored receipts expose bounded delivery refs only and grant no new delivery, attribution, payout, settlement, or green-claim authority.',
   ),
@@ -6315,6 +6318,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Coding quick-win receipt projection.',
           '#/components/schemas/CodingQuickWinReceiptResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/business/funnel-dashboard': {
+    get: operation({
+      operationId: 'readPublicBusinessFunnelDashboard',
+      summary: 'Read aggregate business funnel dashboard',
+      description:
+        'Returns public-safe aggregate counts for visit, signup, intake-spec, payment, provisioned, first-outcome, and retained business funnel stages with coarse source attribution. The projection is live-at-read over exact event rows and exposes counts only, never per-user surveillance, contact details, payment payloads, or client-identifying material.',
+      tags: ['Business', 'Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Aggregate business funnel dashboard.',
+          '#/components/schemas/PublicBusinessFunnelDashboardResponse',
         ),
         ...errorResponses(),
       },

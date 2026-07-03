@@ -2677,6 +2677,17 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     `accrueCrossCategoryReferral`, never on signups). The public response echoes
     only a `referralAttributed` boolean — never the code or the internal
     attribution id. A referral resolution failure never fails the intake.
+  - `GET /api/public/business/funnel-dashboard` — live at read over
+    `business_funnel_events`, the exact aggregate business-funnel stage ledger
+    for BF-1.4 — compliant (`generatedAt`, `live_at_read` contract). It reports
+    the fixed visit → signup → intake-spec → payment → provisioned →
+    first-outcome → retained stage order, per-stage counts, total event count,
+    and coarse source-kind breakdowns (`content`, `outbound`, `ai_search`,
+    `referral`, `direct`, `unknown`) only. It excludes contact details, user
+    ids, business names, payment payloads, raw provider payloads, client
+    identifiers, and per-user journey state. The dashboard grants no payment,
+    workspace, fulfillment, retention, payout, settlement, or public-claim
+    authority. `staleness_declared`.
   - `POST /api/public/business-intake-chat` — live-at-read conversational
     intake turn over one bounded, non-streaming Khala completion (or the
     deterministic opening constant for an empty transcript) — compliant

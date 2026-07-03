@@ -12,6 +12,7 @@ const approvedExactRoutePaths = [
   '/api/operator/rlm/traces',
   '/api/operator/khala/unsupported-requests',
   '/api/public/business-signup',
+  '/api/public/business/funnel-dashboard',
   '/api/public/business-intake-chat',
   '/api/public/tassadar-run-summary',
   '/api/public/training/public-distributed-run-scale',
