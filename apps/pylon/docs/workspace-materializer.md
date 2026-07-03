@@ -54,6 +54,18 @@ assignment TTL setting (default 60s, max 1h) and the broker response expiry.
 It never reads an embedded SCM token from the workspace payload, helper
 config, repository config, or remote URL.
 
+BA-D3 adds the runtime enforcement sweep. `scanLongLivedScmCredentials` scans
+bounded worker roots for GitHub PATs, raw Forge git tokens, credentialed Git
+URLs, and Git authorization extraheaders. Codex and Claude `git_checkout`
+runs invoke that scanner on the materialized checkout plus the selected
+isolated account home (`CODEX_HOME` or `CLAUDE_CONFIG_DIR`) before verification
+or PR publication; any finding becomes a typed
+`scm_credential_policy_failed` refusal. Lease cleanup also scans before dirty
+retention: a workspace that contains long-lived SCM credential material is
+removed and receives a cleanup receipt even if it otherwise has dirty files.
+The scanner deliberately allows the bounded short-lived helper cache under Git
+admin state; that cache is not a long-lived SCM credential.
+
 ## Materialization strategies
 
 - **`git_worktree` (default).** A shared bare-repo cache lives under the

@@ -1236,6 +1236,81 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
     })
   })
 
+  test("refuses and cleans up when a run leaves long-lived SCM credentials", async () => {
+    await withState(async (state) => {
+      const accountRefHash = hashPylonAccountRef("codex", "codex-scm-leak")
+      const account: ResolvedPylonAccountSelection = {
+        provider: "codex",
+        selector: "registry_ref",
+        accountRef: "codex-scm-leak",
+        accountRefHash,
+        home: join(state.paths.home, "accounts", "codex", "codex-scm-leak"),
+      }
+      await mkdir(account.home, { recursive: true })
+      const checkoutRunner = async (workspace: string) => {
+        await mkdir(workspace, { recursive: true })
+        await writeFile(
+          join(workspace, "package.json"),
+          `${JSON.stringify({ private: true, type: "module" })}\n`,
+        )
+        await writeFile(
+          join(workspace, "sum.ts"),
+          "export const sum = (left: number, right: number) => left + right\n",
+        )
+        await writeFile(
+          join(workspace, "sum.test.ts"),
+          [
+            'import { describe, expect, test } from "bun:test"',
+            'import { sum } from "./sum"',
+            'describe("sum", () => { test("adds", () => { expect(sum(2, 3)).toBe(5) }) })',
+            "",
+          ].join("\n"),
+        )
+      }
+      let workspaceRef: string | null = null
+      const record = await executeCodexAgentAssignment(
+        state,
+        { ...lease, codingAssignment: checkoutAssignment, leaseRef: "lease.public.codex_agent.scm_leak" },
+        now,
+        {
+          account,
+          checkoutRunner,
+          codexAgentProbe: readyProbe,
+          codexAuthValidityProbe: validCodexAuthProbe,
+          codexAgentRunner: async (input) => {
+            workspaceRef = input.workspaceRef ?? null
+            await writeFile(
+              join(input.cwd, ".git-credentials"),
+              "https://x-access-token:ghp_abcdefghijklmnopqrstuvwxyz123456@github.com/OpenAgentsInc/openagents.git\n",
+            )
+            await writeFile(
+              join(input.env.CODEX_HOME ?? account.home, ".git-credentials"),
+              "https://x-access-token:github_pat_abcdefghijklmnopqrstuvwxyz1234567890@github.com/OpenAgentsInc/openagents.git\n",
+            )
+            return idleRunner(input)
+          },
+          pullRequestPublisher: async () => ({ state: "no_change" }),
+        },
+      )
+
+      expect(record?.status).toBe("rejected")
+      expect(record?.blockerRefs).toContain(
+        "blocker.assignment.codex_agent_long_lived_scm_credentials_detected",
+      )
+      expect(record?.resultRefs).toContain(
+        "result.public.pylon.codex_agent_task.scm_credential_policy_failed",
+      )
+      expect(workspaceRef).not.toBeNull()
+      const leaseRecord = await workspaceLeaseRecordFor({
+        workspaceRef: workspaceRef as string,
+        workspaceStateRoot: join(state.paths.cache, "workspace-leases"),
+      })
+      expect(leaseRecord?.state).toBe("cleaned")
+      expect(existsSync(leaseRecord?.local.workingDirectory ?? "")).toBe(false)
+      assertPublicProjectionSafe(record)
+    })
+  })
+
   test("does not open a PR for the public fixture lane (no workspace)", async () => {
     await withState(async (state) => {
       let publisherCalls = 0

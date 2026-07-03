@@ -1,6 +1,6 @@
 import { existsSync, realpathSync } from "node:fs"
-import { chmod, mkdir, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises"
-import { dirname, join, resolve } from "node:path"
+import { chmod, lstat, mkdir, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises"
+import { dirname, join, relative, resolve } from "node:path"
 import { createHash } from "node:crypto"
 import { Context, Effect, Layer, type Scope } from "effect"
 import { CLAUDE_AGENT_CAPABILITY_REF } from "./claude-agent.js"
@@ -76,6 +76,40 @@ export type MaterializedWorkspace = {
   workingDirectory: string
   sourceRef: string
   cleanupRef: string
+}
+
+export const WORKSPACE_SCM_CREDENTIAL_SCAN_SCHEMA =
+  "openagents.pylon.workspace_scm_credential_scan.v1"
+
+export type WorkspaceScmCredentialScanRoot = {
+  rootRef: string
+  path: string
+}
+
+export type WorkspaceScmCredentialFinding = {
+  findingRef: string
+  rootRef: string
+  relativePath: string
+  reasonRef: string
+}
+
+export type WorkspaceScmCredentialScan = {
+  schema: typeof WORKSPACE_SCM_CREDENTIAL_SCAN_SCHEMA
+  state: "clean" | "leaked"
+  scannedFileCount: number
+  findingRefs: string[]
+  findings: WorkspaceScmCredentialFinding[]
+}
+
+export class WorkspaceScmCredentialPolicyError extends Error {
+  readonly _tag = "WorkspaceScmCredentialPolicyError"
+  readonly scan: WorkspaceScmCredentialScan
+
+  constructor(scan: WorkspaceScmCredentialScan) {
+    super("workspace SCM credential policy failed")
+    this.name = "WorkspaceScmCredentialPolicyError"
+    this.scan = scan
+  }
 }
 
 export const WORKSPACE_CHANGE_CAPTURE_SCHEMA = "openagents.pylon.workspace_change_capture.v1"
@@ -175,6 +209,159 @@ const scmBrokerPathPrefixPattern = /^\/?[A-Za-z0-9_.:/=@+-]{1,240}$/
 const scmBrokerUsernamePattern = /^[A-Za-z0-9_.:@+-]{1,80}$/
 const rawCredentialMaterialPattern =
   /(bearer\s+|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+|oa_forge_git_[A-Za-z0-9_]+|password=|secret|token_value|credential_value|sk-[A-Za-z0-9_-]{16,})/i
+
+const longLivedScmCredentialPatterns: ReadonlyArray<{
+  reasonRef: string
+  pattern: RegExp
+}> = [
+  {
+    reasonRef: "reason.workspace_scm_credentials.github_pat",
+    pattern: /\b(?:gh[opsu]_[A-Za-z0-9_]{16,}|github_pat_[A-Za-z0-9_]{16,})\b/i,
+  },
+  {
+    reasonRef: "reason.workspace_scm_credentials.raw_forge_git_token",
+    pattern: /\boa_forge_git_[A-Za-z0-9_]{8,}\b/i,
+  },
+  {
+    reasonRef: "reason.workspace_scm_credentials.credentialed_git_url",
+    pattern: /https?:\/\/[^/\s:@]+:[^@\s]+@[A-Za-z0-9.-]+[^\s]*/i,
+  },
+  {
+    reasonRef: "reason.workspace_scm_credentials.git_extraheader_authorization",
+    pattern: /\bextraheader\b\s*=\s*(?:authorization|bearer|basic)\b/i,
+  },
+]
+
+const credentialScanIgnoredDirectoryNames = new Set([
+  ".bun",
+  ".cache",
+  ".next",
+  ".turbo",
+  "build",
+  "coverage",
+  "dist",
+  "node_modules",
+  "target",
+])
+
+const credentialScanIgnoredGitAdminDirectoryNames = new Set(["objects", "logs"])
+const defaultCredentialScanMaxFileBytes = 256 * 1024
+
+function longLivedScmCredentialReasonFor(contents: string): string | null {
+  for (const candidate of longLivedScmCredentialPatterns) {
+    if (candidate.pattern.test(contents)) return candidate.reasonRef
+  }
+  return null
+}
+
+function shouldSkipCredentialScanDirectory(relativePath: string, name: string): boolean {
+  if (credentialScanIgnoredDirectoryNames.has(name)) return true
+  const parts = relativePath.split("/").filter(Boolean)
+  return parts.at(-2) === ".git" && credentialScanIgnoredGitAdminDirectoryNames.has(name)
+}
+
+async function scanCredentialPath(input: {
+  absolutePath: string
+  findings: WorkspaceScmCredentialFinding[]
+  maxFileBytes: number
+  rootPath: string
+  rootRef: string
+  seenRealPaths: Set<string>
+}): Promise<number> {
+  let info: Awaited<ReturnType<typeof lstat>>
+  try {
+    info = await lstat(input.absolutePath)
+  } catch {
+    return 0
+  }
+  if (info.isSymbolicLink()) return 0
+
+  let realPath: string
+  try {
+    realPath = realpathSync(input.absolutePath)
+  } catch {
+    realPath = resolve(input.absolutePath)
+  }
+  if (input.seenRealPaths.has(realPath)) return 0
+  input.seenRealPaths.add(realPath)
+
+  const relativePath = relative(input.rootPath, input.absolutePath) || "."
+  if (info.isDirectory()) {
+    const name = relativePath === "." ? "" : relativePath.split("/").at(-1) ?? ""
+    if (name !== "" && shouldSkipCredentialScanDirectory(relativePath, name)) return 0
+    let entries: Awaited<ReturnType<typeof readdir>>
+    try {
+      entries = await readdir(input.absolutePath, { withFileTypes: true })
+    } catch {
+      return 0
+    }
+    let scannedFileCount = 0
+    for (const entry of entries) {
+      scannedFileCount += await scanCredentialPath({
+        ...input,
+        absolutePath: join(input.absolutePath, entry.name),
+      })
+    }
+    return scannedFileCount
+  }
+
+  if (!info.isFile() || info.size > input.maxFileBytes) return 0
+  let contents: string
+  try {
+    contents = await readFile(input.absolutePath, "utf8")
+  } catch {
+    return 0
+  }
+  const reasonRef = longLivedScmCredentialReasonFor(contents)
+  if (reasonRef !== null) {
+    const findingRef = stableRef(
+      "finding.pylon.workspace_scm_credential",
+      `${input.rootRef}:${relativePath}:${reasonRef}`,
+    )
+    input.findings.push({
+      findingRef,
+      rootRef: input.rootRef,
+      relativePath,
+      reasonRef,
+    })
+  }
+  return 1
+}
+
+export async function scanLongLivedScmCredentials(input: {
+  roots: ReadonlyArray<WorkspaceScmCredentialScanRoot>
+  maxFileBytes?: number
+}): Promise<WorkspaceScmCredentialScan> {
+  const findings: WorkspaceScmCredentialFinding[] = []
+  let scannedFileCount = 0
+  const maxFileBytes = input.maxFileBytes ?? defaultCredentialScanMaxFileBytes
+  for (const root of input.roots) {
+    scannedFileCount += await scanCredentialPath({
+      absolutePath: resolve(root.path),
+      findings,
+      maxFileBytes,
+      rootPath: resolve(root.path),
+      rootRef: root.rootRef,
+      seenRealPaths: new Set(),
+    })
+  }
+  return {
+    schema: WORKSPACE_SCM_CREDENTIAL_SCAN_SCHEMA,
+    state: findings.length === 0 ? "clean" : "leaked",
+    scannedFileCount,
+    findingRefs: findings.map((finding) => finding.findingRef),
+    findings,
+  }
+}
+
+export async function assertNoLongLivedScmCredentials(input: {
+  roots: ReadonlyArray<WorkspaceScmCredentialScanRoot>
+  maxFileBytes?: number
+}): Promise<WorkspaceScmCredentialScan> {
+  const scan = await scanLongLivedScmCredentials(input)
+  if (scan.state === "leaked") throw new WorkspaceScmCredentialPolicyError(scan)
+  return scan
+}
 
 function boundedScmAuthBrokerCacheTtlSeconds(value: unknown): number | undefined {
   if (value === undefined) return undefined
@@ -1609,6 +1796,38 @@ type CleanLeaseRecordResult =
   | { state: "cleaned"; cleanupReceiptRef: string }
   | { state: "retained"; retentionReasonRef: string; workspaceRef: string }
 
+async function removeWorkspaceAndWriteCleanupReceipt(input: {
+  workspaceStateRoot: string
+  record: WorkspaceLeaseRecord
+  now: Date
+}): Promise<{ state: "cleaned"; cleanupReceiptRef: string }> {
+  await removeMaterializedWorkspace({
+    cacheRoot: input.record.local.cacheRoot,
+    workingDirectory: input.record.local.workingDirectory,
+  })
+  const repositoryCacheDirectory = input.record.local.repositoryCacheDirectory
+  if (repositoryCacheDirectory !== undefined) {
+    await withRepositoryCacheLock(repositoryCacheDirectory, async () => {
+      await runQuietCommand(["git", "worktree", "prune"], repositoryCacheDirectory)
+    })
+  }
+  const cleanedAt = input.now.toISOString()
+  const cleanupReceiptRef = stableRef(
+    "receipt.pylon.workspace_cleanup",
+    `${input.record.workspaceRef}:${cleanedAt}`,
+  )
+  await writeLeaseRecord(input.workspaceStateRoot, {
+    ...input.record,
+    state: "cleaned",
+    cleanedAt,
+    cleanupReceiptRef,
+    retentionReasonRef: undefined,
+    lastCleanupAttemptAt: undefined,
+    generatedAt: cleanedAt,
+  })
+  return { state: "cleaned", cleanupReceiptRef }
+}
+
 async function cleanLeaseRecord(
   workspaceStateRoot: string,
   record: WorkspaceLeaseRecord,
@@ -1623,6 +1842,13 @@ async function cleanLeaseRecord(
     // a record pointing outside the cache root is never acted on
     return null
   }
+  const credentialScan = await scanLongLivedScmCredentials({
+    roots: [{ rootRef: record.workspaceRef, path: record.local.workingDirectory }],
+  })
+  if (credentialScan.state === "leaked") {
+    return removeWorkspaceAndWriteCleanupReceipt({ now, record, workspaceStateRoot })
+  }
+
   const dirtyState = await workspaceDirtyState(record.local.workingDirectory)
   if (dirtyState !== "clean") {
     const attemptedAt = now.toISOString()
@@ -1636,31 +1862,7 @@ async function cleanLeaseRecord(
     })
     return { state: "retained", retentionReasonRef, workspaceRef: record.workspaceRef }
   }
-  await removeMaterializedWorkspace({
-    cacheRoot: record.local.cacheRoot,
-    workingDirectory: record.local.workingDirectory,
-  })
-  const repositoryCacheDirectory = record.local.repositoryCacheDirectory
-  if (repositoryCacheDirectory !== undefined) {
-    await withRepositoryCacheLock(repositoryCacheDirectory, async () => {
-      await runQuietCommand(["git", "worktree", "prune"], repositoryCacheDirectory)
-    })
-  }
-  const cleanedAt = now.toISOString()
-  const cleanupReceiptRef = stableRef(
-    "receipt.pylon.workspace_cleanup",
-    `${record.workspaceRef}:${cleanedAt}`,
-  )
-  await writeLeaseRecord(workspaceStateRoot, {
-    ...record,
-    state: "cleaned",
-    cleanedAt,
-    cleanupReceiptRef,
-    retentionReasonRef: undefined,
-    lastCleanupAttemptAt: undefined,
-    generatedAt: cleanedAt,
-  })
-  return { state: "cleaned", cleanupReceiptRef }
+  return removeWorkspaceAndWriteCleanupReceipt({ now, record, workspaceStateRoot })
 }
 
 /**

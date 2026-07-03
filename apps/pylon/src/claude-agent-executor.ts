@@ -9,12 +9,15 @@ import {
   type ClaudeAgentProbeOptions,
 } from "./claude-agent.js"
 import {
+  assertNoLongLivedScmCredentials,
   defaultGitCheckoutRunner,
   gitCheckoutWorkspaceFrom,
   materializeGitCheckoutWorkspaceWithLease,
+  releaseWorkspace,
   workspaceCheckoutFailureReasonRef,
   type GitCheckoutWorkspace,
   type WorkspaceCheckoutRunner,
+  type WorkspaceScmCredentialScanRoot,
 } from "./workspace-materializer.js"
 import {
   pylonAccountEnvironment,
@@ -369,6 +372,7 @@ async function materializeClaudeAgentWorkspace(input: {
       verificationArgs: input.task.workspace.verificationCommand.args,
       workspace: materialized.workingDirectory,
       workspaceRef: materialized.workspaceRef,
+      workspaceStateRoot: join(input.state.paths.cache, "workspace-leases"),
     }
   }
 
@@ -387,6 +391,76 @@ async function materializeClaudeAgentWorkspace(input: {
     verificationArgs: fixture.verificationArgs,
     workspace,
     workspaceRef,
+    workspaceStateRoot: undefined,
+  }
+}
+
+async function releaseClaudeAgentWorkspace(input: {
+  materialized: Awaited<ReturnType<typeof materializeClaudeAgentWorkspace>>
+  now: Date
+}): Promise<{ resultRefs: string[] }> {
+  if (input.materialized.workspaceStateRoot === undefined) return { resultRefs: [] }
+  const result = await releaseWorkspace({
+    now: input.now,
+    workspaceRef: input.materialized.workspaceRef,
+    workspaceStateRoot: input.materialized.workspaceStateRoot,
+  }).catch(() => null)
+  if (result?.cleanupReceiptRef !== undefined) {
+    return {
+      resultRefs: [
+        "result.public.pylon.claude_agent_task.workspace_cleaned_on_closeout",
+        result.cleanupReceiptRef,
+      ],
+    }
+  }
+  if (result?.retentionReasonRef !== undefined) {
+    return {
+      resultRefs: [
+        "result.public.pylon.claude_agent_task.workspace_retained_on_closeout",
+        result.retentionReasonRef,
+      ],
+    }
+  }
+  return { resultRefs: [] }
+}
+
+function claudeScmCredentialScanRoots(input: {
+  account: ResolvedPylonAccountSelection | null | undefined
+  materialized: Awaited<ReturnType<typeof materializeClaudeAgentWorkspace>>
+}): WorkspaceScmCredentialScanRoot[] {
+  return [
+    { rootRef: input.materialized.workspaceRef, path: input.materialized.workspace },
+    ...(input.account === null || input.account === undefined
+      ? []
+      : [{ rootRef: input.account.accountRefHash, path: input.account.home }]),
+  ]
+}
+
+async function enforceClaudeScmCredentialPolicy(input: {
+  account: ResolvedPylonAccountSelection | null | undefined
+  lease: ClaudeAgentLease
+  materialized: Awaited<ReturnType<typeof materializeClaudeAgentWorkspace>>
+  now: Date
+  runRef: string
+}) {
+  try {
+    await assertNoLongLivedScmCredentials({
+      roots: claudeScmCredentialScanRoots({
+        account: input.account,
+        materialized: input.materialized,
+      }),
+    })
+    return null
+  } catch {
+    await releaseClaudeAgentWorkspace({ materialized: input.materialized, now: input.now })
+    return refusalRecord({
+      lease: input.lease,
+      runRef: input.runRef,
+      blockerRefs: ["blocker.assignment.claude_agent_long_lived_scm_credentials_detected"],
+      resultRef: "result.public.pylon.claude_agent_task.scm_credential_policy_failed",
+      summaryRef: "summary.public.pylon.claude_agent_task.scm_credential_policy_failed",
+      message: "Local Claude Agent session stopped because long-lived SCM credential material was detected in the bounded workspace or selected worker home.",
+    })
   }
 }
 
@@ -770,6 +844,7 @@ export async function executeClaudeAgentAssignment(
       ...(config.model === undefined ? {} : { model: config.model }),
     })
   } catch {
+    await releaseClaudeAgentWorkspace({ materialized, now })
     return refusalRecord({
       lease,
       runRef,
@@ -779,6 +854,15 @@ export async function executeClaudeAgentAssignment(
       message: "Local Claude Agent session refused with a typed execution error.",
     })
   }
+
+  const scmCredentialPolicyRefusal = await enforceClaudeScmCredentialPolicy({
+    account: options.account,
+    lease,
+    materialized,
+    now,
+    runRef,
+  })
+  if (scmCredentialPolicyRefusal !== null) return scmCredentialPolicyRefusal
 
   const tokenUsageReport = await reportClaudeAgentTurnUsage({
     lease,
@@ -791,6 +875,7 @@ export async function executeClaudeAgentAssignment(
   })
 
   if (run.outcome === "workspace_escape_blocked") {
+    await releaseClaudeAgentWorkspace({ materialized, now })
     return refusalRecord({
       lease,
       runRef,
@@ -807,6 +892,7 @@ export async function executeClaudeAgentAssignment(
     })
   }
   if (run.outcome === "budget_exceeded") {
+    await releaseClaudeAgentWorkspace({ materialized, now })
     return refusalRecord({
       lease,
       runRef,
@@ -823,6 +909,7 @@ export async function executeClaudeAgentAssignment(
     })
   }
   if (run.outcome === "refused") {
+    await releaseClaudeAgentWorkspace({ materialized, now })
     return refusalRecord({
       lease,
       runRef,
@@ -854,6 +941,7 @@ export async function executeClaudeAgentAssignment(
   )
   const passed = verification.exitCode === 0
   const sessionRefs = run.sessionRef === null ? [] : [run.sessionRef]
+  const workspaceCleanup = await releaseClaudeAgentWorkspace({ materialized, now })
 
   return {
     artifactRefs: [artifactRef],
@@ -873,6 +961,7 @@ export async function executeClaudeAgentAssignment(
         : `result.public.pylon.claude_agent_task.${materialized.acceptanceResultRef}_failed`,
       `result.public.pylon.claude_agent_task.edited_files.${run.editedFileCount}`,
       ...tokenUsageReport.resultRefs,
+      ...workspaceCleanup.resultRefs,
     ],
     runRefs: [runRef, ...sessionRefs],
     status: passed ? ("accepted" as const) : ("rejected" as const),

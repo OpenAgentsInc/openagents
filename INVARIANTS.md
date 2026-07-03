@@ -131,7 +131,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   helper config lives under Git's private admin directory, is scoped by
   protocol + host + path, uses a bounded short cache, reads control-plane auth
   only from the Pylon process environment, and fails closed unless the
-  assignment explicitly allows anonymous read-only fallback.
+  assignment explicitly allows anonymous read-only fallback. Runtime
+  materialize/run/closeout paths must enforce
+  `scanLongLivedScmCredentials`: Codex and Claude git-checkout runners scan the
+  bounded workspace plus selected isolated account home before verification or
+  PR publication, credential-policy findings become typed refusals, and lease
+  cleanup removes token-leaked workspaces even when they are dirty.
 - Runtime runs may link back to `agentDefinitionId` as evidence that a run was
   definition-backed, but that link alone grants no tool, spend, dispatch,
   payout, settlement, public-claim, provider-account, or external-send
@@ -207,7 +212,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   history, receipt refs, manual run-now, and ref-only SCM auth broker
   projection, plus
   `apps/pylon/tests/workspace-materializer.test.ts` for broker metadata
-  validation and worker-side Git credential helper installation, plus
+  validation, worker-side Git credential helper installation, and the
+  long-lived SCM credential scanner, plus
+  `apps/pylon/tests/workspace-worktree.test.ts` for closeout cleanup of leaked
+  dirty workspaces,
+  `apps/pylon/tests/codex-agent-executor.test.ts` and
+  `apps/pylon/tests/claude-agent-executor.test.ts` for run-time workspace/home
+  credential-policy refusals, plus
   `packages/agent-runtime-schema/src/index.test.ts` for reusable fixtures that
   cover every supported trigger type.
 

@@ -10,6 +10,7 @@ import {
   type CodexAgentSandboxMode,
 } from "./codex-agent.js"
 import {
+  assertNoLongLivedScmCredentials,
   cleanupOldestMaterializedWorkspaces,
   gitCheckoutWorkspaceFrom,
   materializeGitCheckoutWorkspaceWithLease,
@@ -18,6 +19,7 @@ import {
   workspaceCheckoutFailureReasonRef,
   type GitCheckoutWorkspace,
   type WorkspaceCheckoutRunner,
+  type WorkspaceScmCredentialScanRoot,
 } from "./workspace-materializer.js"
 import {
   pylonAccountEnvironment,
@@ -1277,6 +1279,46 @@ async function releaseCodexAgentWorkspace(input: {
   return { resultRefs: [] }
 }
 
+function codexScmCredentialScanRoots(input: {
+  account: ResolvedPylonAccountSelection | null | undefined
+  materialized: Awaited<ReturnType<typeof materializeCodexAgentWorkspace>>
+}): WorkspaceScmCredentialScanRoot[] {
+  return [
+    { rootRef: input.materialized.workspaceRef, path: input.materialized.workspace },
+    ...(input.account === null || input.account === undefined
+      ? []
+      : [{ rootRef: input.account.accountRefHash, path: input.account.home }]),
+  ]
+}
+
+async function enforceCodexScmCredentialPolicy(input: {
+  account: ResolvedPylonAccountSelection | null | undefined
+  lease: CodexAgentLease
+  materialized: Awaited<ReturnType<typeof materializeCodexAgentWorkspace>>
+  now: Date
+  runRef: string
+}) {
+  try {
+    await assertNoLongLivedScmCredentials({
+      roots: codexScmCredentialScanRoots({
+        account: input.account,
+        materialized: input.materialized,
+      }),
+    })
+    return null
+  } catch {
+    await releaseCodexAgentWorkspace({ materialized: input.materialized, now: input.now })
+    return refusalRecord({
+      lease: input.lease,
+      runRef: input.runRef,
+      blockerRefs: ["blocker.assignment.codex_agent_long_lived_scm_credentials_detected"],
+      resultRef: "result.public.pylon.codex_agent_task.scm_credential_policy_failed",
+      summaryRef: "summary.public.pylon.codex_agent_task.scm_credential_policy_failed",
+      message: "Local Codex thread stopped because long-lived SCM credential material was detected in the bounded workspace or selected worker home.",
+    })
+  }
+}
+
 export type CodexAgentLease = {
   assignmentRef: string
   leaseRef: string
@@ -1598,7 +1640,16 @@ export async function executeCodexAgentAssignment(
         ? "Local Codex thread timed out before completing the task."
         : `Local Codex thread refused with ${failure.reason}: ${failure.publicMessage || "no public error message available"}.`,
     })
-  }
+	  }
+
+  const scmCredentialPolicyRefusal = await enforceCodexScmCredentialPolicy({
+    account: options.account,
+    lease,
+    materialized,
+    now,
+    runRef,
+  })
+  if (scmCredentialPolicyRefusal !== null) return scmCredentialPolicyRefusal
 
   if (run.outcome === "workspace_escape_blocked") {
     await releaseCodexAgentWorkspace({ materialized, now })
@@ -1612,6 +1663,7 @@ export async function executeCodexAgentAssignment(
     })
   }
   if (run.outcome === "budget_exceeded") {
+    await releaseCodexAgentWorkspace({ materialized, now })
     return refusalRecord({
       lease,
       runRef,

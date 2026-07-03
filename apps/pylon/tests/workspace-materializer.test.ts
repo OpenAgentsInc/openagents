@@ -15,6 +15,7 @@ import {
   PylonWorkspaceMaterializer,
   PylonWorkspaceMaterializerLive,
   removeMaterializedWorkspace,
+  scanLongLivedScmCredentials,
   type GitCheckoutWorkspace,
   type WorkspaceCheckoutRunner,
   workspaceLeaseRecordFor,
@@ -378,6 +379,71 @@ describe("materializeGitCheckoutWorkspace", () => {
       expect(serialized).not.toContain("\"password\":\"")
     } finally {
       await rm(cacheRoot, { recursive: true, force: true })
+    }
+  })
+
+  test("detects long-lived SCM tokens in worker roots while allowing the bounded helper cache", async () => {
+    const cacheRoot = await mkdtemp(join(tmpdir(), "pylon-workspace-cache-"))
+    const workerHome = await mkdtemp(join(tmpdir(), "pylon-worker-home-"))
+    const checkout = checkoutWith({ scmAuthBroker: validBroker }) as GitCheckoutWorkspace
+    const checkoutRunner: WorkspaceCheckoutRunner = async (workingDirectory) => {
+      await mkdir(workingDirectory, { recursive: true })
+      const init = await runCommand(["git", "init"], workingDirectory)
+      expect(init.exitCode).toBe(0)
+      await writeFile(join(workingDirectory, "checked-out"), "ok\n")
+    }
+
+    try {
+      const materialized = await materializeGitCheckoutWorkspace({
+        cacheRoot,
+        checkout,
+        checkoutRunner,
+        leaseRef: "lease.public.workspace.scm_scan",
+        refPrefix: "workspace.pylon.codex_agent_task",
+      })
+      const paths = await gitCredentialHelperRuntimePathsFor(materialized.workingDirectory)
+      await writeFile(
+        paths.cachePath,
+        `${JSON.stringify({
+          entries: {
+            safe: {
+              username: "x-access-token",
+              password: "short-lived-broker-session-value",
+              cachedUntilMs: Date.now() + 10_000,
+              expiresAtMs: Date.now() + 10_000,
+            },
+          },
+        })}\n`,
+      )
+
+      const clean = await scanLongLivedScmCredentials({
+        roots: [
+          { rootRef: materialized.workspaceRef, path: materialized.workingDirectory },
+          { rootRef: "worker_home.test", path: workerHome },
+        ],
+      })
+      expect(clean.state).toBe("clean")
+
+      await writeFile(
+        join(workerHome, ".git-credentials"),
+        "https://x-access-token:ghp_abcdefghijklmnopqrstuvwxyz123456@github.com/OpenAgentsInc/openagents.git\n",
+      )
+      const leaked = await scanLongLivedScmCredentials({
+        roots: [
+          { rootRef: materialized.workspaceRef, path: materialized.workingDirectory },
+          { rootRef: "worker_home.test", path: workerHome },
+        ],
+      })
+      expect(leaked.state).toBe("leaked")
+      expect(leaked.findings).toContainEqual({
+        findingRef: leaked.findingRefs[0],
+        rootRef: "worker_home.test",
+        relativePath: ".git-credentials",
+        reasonRef: "reason.workspace_scm_credentials.github_pat",
+      })
+    } finally {
+      await rm(cacheRoot, { recursive: true, force: true })
+      await rm(workerHome, { recursive: true, force: true })
     }
   })
 })

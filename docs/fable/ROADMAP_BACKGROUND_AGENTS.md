@@ -272,6 +272,18 @@ anonymous read-only fallback. Regression coverage lives in
 `apps/pylon/tests/workspace-materializer.test.ts` and
 `apps/openagents.com/workers/api/src/agent-definition-run-routes.test.ts`.
 
+BA-D3 status (2026-07-03): Pylon now enforces a long-lived SCM credential
+sweep across `git_checkout` materialize/run/closeout. The shared
+`scanLongLivedScmCredentials` oracle detects GitHub PATs, raw Forge git
+tokens, credentialed Git URLs, and Git authorization extraheaders in bounded
+worker roots while allowing the short-lived helper cache under Git admin
+state. Codex and Claude runs scan the checkout plus selected isolated account
+home (`CODEX_HOME` / `CLAUDE_CONFIG_DIR`) before verification or PR publishing;
+findings become typed `scm_credential_policy_failed` refusals, and lease
+cleanup removes token-leaked workspaces even when dirty. Regression coverage
+lives in the Pylon materializer, worktree, Codex executor, and Claude executor
+tests named in `docs/fable/background-agent-behavior-contracts.md`.
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-D1 | Per-task short-TTL scoped git tokens: dispatch mints a Forge tenant git token scoped to the task's repository ref with a bounded TTL and (where the scope model allows) ref-level restriction; token refs recorded on the work record; revocation on closeout | — | MED | [#8200](https://github.com/OpenAgentsInc/openagents/issues/8200) |

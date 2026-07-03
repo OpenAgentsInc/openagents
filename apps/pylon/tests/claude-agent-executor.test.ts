@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { realpathSync } from "node:fs"
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { existsSync, realpathSync } from "node:fs"
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import {
@@ -17,6 +17,7 @@ import { CLAUDE_AGENT_SDK_PACKAGE } from "../src/claude-agent"
 import type { ClaudeTurnReport } from "../src/claude-turn-reporter"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { ensurePylonLocalState, assertPublicProjectionSafe } from "../src/state"
+import { workspaceLeaseRecordFor } from "../src/workspace-materializer"
 
 const now = new Date("2026-06-10T22:00:00.000Z")
 
@@ -285,12 +286,15 @@ describe("claude agent task recognition", () => {
   test("executes a public git_checkout task and verifies with caller-supplied argv", async () => {
     await withState(async (state) => {
       let workspaceDir: string | null = null
+      let fixedText: string | null = null
       const observingRunner: ClaudeAgentRunner = async (input) => {
         workspaceDir = input.cwd
         expect(input.instructions).toContain("command.public.autopilot_coder.bun_test_sum")
         expect(input.instructions).toContain("Repair the public sum fixture.")
         expect(input.allowedTools).toEqual(["Edit", "Read", "Bash"])
-        return fixingRunner(input)
+        const result = await fixingRunner(input)
+        fixedText = await readFile(join(input.cwd, "sum.ts"), "utf8")
+        return result
       }
       const record = await executeClaudeAgentAssignment(
         state,
@@ -311,17 +315,74 @@ describe("claude agent task recognition", () => {
       expect(record?.status).toBe("accepted")
       expect(record?.blockerRefs).toEqual([])
       expect(record?.resultRefs).toContain("result.public.pylon.claude_agent_task.git_checkout_verified_passed")
+      expect(record?.resultRefs).toContain("result.public.pylon.claude_agent_task.workspace_cleaned_on_closeout")
       expect(record?.artifactRefs[0]).toStartWith("artifact.pylon.claude_agent_task.patch.")
       expect(record?.testRefs[0]).toStartWith("command.pylon.claude_agent_task.verification.")
       expect(record?.previewRefs[0]).toStartWith("workspace.pylon.claude_agent_task.")
       expect(workspaceDir).not.toBeNull()
-      const fixed = await readFile(join(workspaceDir as unknown as string, "sum.ts"), "utf8")
-      expect(fixed).toContain("left + right")
+      expect(fixedText).toContain("left + right")
+      expect(existsSync(workspaceDir as string)).toBe(false)
       assertPublicProjectionSafe(record)
       const projected = JSON.stringify(record)
       expect(projected).not.toContain(state.paths.cache)
       expect(projected).not.toContain("OpenAgentsInc/public-sum-fixture")
       expect(projected).not.toContain("Repair the public sum fixture.")
+    })
+  })
+
+  test("refuses and cleans up when a run leaves long-lived SCM credentials", async () => {
+    await withState(async (state) => {
+      const account = {
+        provider: "claude_agent" as const,
+        selector: "registry_ref" as const,
+        accountRef: "claude-scm-leak",
+        accountRefHash: "account.pylon.claude_agent.scm_leak",
+        home: join(state.paths.home, "accounts", "claude_agent", "claude-scm-leak"),
+      }
+      await mkdir(account.home, { recursive: true })
+      const record = await executeClaudeAgentAssignment(
+        state,
+        {
+          ...lease,
+          codingAssignment: gitCheckoutCodingAssignment,
+          leaseRef: "lease.public.claude_agent.scm_leak",
+        },
+        now,
+        {
+          account,
+          checkoutRunner,
+          claudeAgentRunner: async (input) => {
+            await writeFile(
+              join(input.cwd, ".git-credentials"),
+              "https://x-access-token:ghp_abcdefghijklmnopqrstuvwxyz123456@github.com/OpenAgentsInc/openagents.git\n",
+            )
+            await writeFile(
+              join(input.env?.CLAUDE_CONFIG_DIR ?? account.home, ".git-credentials"),
+              "https://x-access-token:github_pat_abcdefghijklmnopqrstuvwxyz1234567890@github.com/OpenAgentsInc/openagents.git\n",
+            )
+            return idleRunner(input)
+          },
+          claudeAgentProbe: readyProbe,
+          claudeTurnReporter: successfulClaudeTurnReporter,
+        },
+      )
+
+      const workspaceStateRoot = join(state.paths.cache, "workspace-leases")
+      const workspaceRef = (await readdir(workspaceStateRoot))[0]?.replace(/\.json$/, "")
+      const leaseRecord = await workspaceLeaseRecordFor({
+        workspaceRef: workspaceRef as string,
+        workspaceStateRoot,
+      })
+      expect(record?.status).toBe("rejected")
+      expect(record?.blockerRefs).toContain(
+        "blocker.assignment.claude_agent_long_lived_scm_credentials_detected",
+      )
+      expect(record?.resultRefs).toContain(
+        "result.public.pylon.claude_agent_task.scm_credential_policy_failed",
+      )
+      expect(leaseRecord?.state).toBe("cleaned")
+      expect(existsSync(leaseRecord?.local.workingDirectory ?? "")).toBe(false)
+      assertPublicProjectionSafe(record)
     })
   })
 

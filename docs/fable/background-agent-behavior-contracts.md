@@ -44,17 +44,20 @@ Registry version: `2026-07-03.4` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `background_agents.credentials.dispatch_broker_refs` (vitest, unit): Definition dispatch attaches `scmAuthBroker` metadata with Forge token refs to Pylon `git_checkout` assignments and never includes raw `oa_forge_git_` token material. - `apps/openagents.com/workers/api/src/agent-definition-run-routes.test.ts`
 - **Oracle** `background_agents.credentials.pylon_helper_install` (bun-test, unit): The Pylon workspace materializer validates broker metadata, rejects raw/malformed broker shapes, writes helper config under Git admin state, configures `credential.useHttpPath`, fails closed, and stores no raw SCM token in the generated config/script. - `apps/pylon/tests/workspace-materializer.test.ts`
 - **Verification:** BA-D2 is enforced by the agent-definition run route test plus the Pylon workspace materializer test in their normal sweeps.
-- **Authority boundary:** This contract proves the brokered helper shape and ref-only dispatch boundary. It does not yet prove every materialize/run/closeout path is free of long-lived SCM tokens; that broader sweep remains BA-D3.
+- **Authority boundary:** This contract proves the brokered helper shape and ref-only dispatch boundary. The broader no-long-lived-token runtime sweep is enforced by `background_agents.credentials.no_long_lived_tokens_in_workspaces.v1`.
 
-### `background_agents.credentials.no_long_lived_tokens_in_workspaces.v1` - PENDING
+### `background_agents.credentials.no_long_lived_tokens_in_workspaces.v1` - ENFORCED
 
 - **Surface:** pylon-worker (background agent credentials)
 - **Stated by:** owner via issue_list on 2026-07-03
-- **Statement:** No long-lived SCM tokens exist in worker workspaces/homes across materialize/run/closeout.
-- **Enforcement tier:** unenforced
-- **Verification:** Pending BA-D3: BA-D3's tests are this contract's oracle; flip this contract to enforced only when those tests exist and run in the Pylon sweep.
-- **Blockers:** `blocker.background_agents.ba_d3.oracle_not_landed`
-- **Authority boundary:** This contract binds worker workspace credential hygiene only. It does not claim that owner subscription custody or provider-account refresh flows are complete.
+- **Statement:** No long-lived SCM tokens exist in worker workspaces/homes across materialize/run/closeout. Short-lived helper cache entries may exist only under Git admin state; GitHub PATs, raw Forge git tokens, credentialed Git URLs, and Git extraheader authorization material are rejected in the bounded checkout or selected isolated account home.
+- **Enforcement tier:** test-sweep
+- **Oracle** `background_agents.credentials.long_lived_scm_scanner` (bun-test, unit): `scanLongLivedScmCredentials` detects GitHub PATs / raw Forge git tokens / credentialed Git URLs in worker roots while allowing bounded helper cache entries. - `apps/pylon/tests/workspace-materializer.test.ts`
+- **Oracle** `background_agents.credentials.closeout_cleanup` (bun-test, unit): workspace lease cleanup removes a dirty workspace when the dirty content contains long-lived SCM credential material instead of retaining it. - `apps/pylon/tests/workspace-worktree.test.ts`
+- **Oracle** `background_agents.credentials.codex_runtime_sweep` (bun-test, unit): Codex git-checkout runs scan the bounded workspace plus selected `CODEX_HOME`, refuse with `scm_credential_policy_failed`, and clean the lease on detection. - `apps/pylon/tests/codex-agent-executor.test.ts`
+- **Oracle** `background_agents.credentials.claude_runtime_sweep` (bun-test, unit): Claude git-checkout runs scan the bounded workspace plus selected `CLAUDE_CONFIG_DIR`, refuse with `scm_credential_policy_failed`, and clean the lease on detection. - `apps/pylon/tests/claude-agent-executor.test.ts`
+- **Verification:** BA-D3 is enforced by the Pylon materializer, worktree, Codex executor, and Claude executor tests in the normal Pylon bun test sweep.
+- **Authority boundary:** This contract binds worker workspace/account-home credential hygiene only. It does not claim that owner subscription custody or provider-account refresh flows are complete.
 
 ### `background_agents.definitions.harness_swap.v1` - PENDING
 

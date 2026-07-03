@@ -911,6 +911,41 @@ describe("materializeGitCheckoutWorkspaceWithLease", () => {
     }
   })
 
+  test("cleanup removes dirty workspaces that contain long-lived SCM credentials", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-lease-"))
+    try {
+      const workspaceStateRoot = join(root, "workspace-leases")
+      const materialized = await materializeGitCheckoutWorkspaceWithLease(
+        leaseInput(root, {
+          leaseRef: "lease.public.worktree.scm_cleanup",
+          now: new Date("2026-07-03T12:00:00.000Z"),
+          retentionPolicy: "remove_on_closeout",
+        }) as never,
+      )
+      await writeFile(join(materialized.workingDirectory, "dirty.ts"), "export const dirty = true\n")
+      await writeFile(
+        join(materialized.workingDirectory, ".git-credentials"),
+        "https://x-access-token:github_pat_abcdefghijklmnopqrstuvwxyz1234567890@github.com/OpenAgentsInc/openagents.git\n",
+      )
+
+      const released = await releaseWorkspace({
+        now: new Date("2026-07-03T12:05:00.000Z"),
+        workspaceRef: materialized.workspaceRef,
+        workspaceStateRoot,
+      })
+      const record = await workspaceLeaseRecordFor({
+        workspaceRef: materialized.workspaceRef,
+        workspaceStateRoot,
+      })
+
+      expect(released?.cleanupReceiptRef).toStartWith("receipt.pylon.workspace_cleanup.")
+      expect(record?.state).toBe("cleaned")
+      expect(existsSync(materialized.workingDirectory)).toBe(false)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   test("each materialization sweeps expired workspaces opportunistically", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-worktree-lease-"))
     try {
