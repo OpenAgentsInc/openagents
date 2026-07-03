@@ -2369,6 +2369,7 @@ export const readForumBoardIndex = (
           latestTopicId: forum.latestTopicId,
         }),
       ),
+      { concurrency: 'unbounded' },
     )
     const forumsWithDisplay = forumSummaries.map((forum, index) =>
       forumWithDisplayProjection(
@@ -2681,6 +2682,7 @@ export const readForumTopicList = (
           latestTopicId: topic.topicId,
         }),
       ),
+      { concurrency: 'unbounded' },
     )
 
     return decodeForumTopicListResponse({
