@@ -81,6 +81,31 @@ More specific invariant ledgers apply inside imported apps and packages.
   payloads, and private customer data must not be committed or written into
   docs, tests, fixtures, logs, or public projections.
 
+## Background Agent Definition Tool Authority
+
+- Harness-agnostic background agents are defined by
+  `openagents.agent_definition.v1` in
+  `packages/agent-runtime-schema`. The durable definition owns the standing
+  workflow contract: name, goal, harness hint, lane, triggers, budget,
+  escalation, source refs, and the explicit toolset.
+- The harness field is never authority. Codex, Claude Code, Khala, hosted,
+  custom, or fixture adapters may execute only after their local or cloud
+  tool boundary compiles and enforces the definition's toolset.
+- `decideAgentDefinitionToolAuthority` is the shared deny-by-default contract:
+  explicit deny rules beat ask and allow rules, ask rules create an operator
+  escalation record without authorizing execution, allow rules authorize only
+  the matched tool ref, and unmatched tools are denied.
+- Runtime runs may link back to `agentDefinitionId` as evidence that a run was
+  definition-backed, but that link alone grants no tool, spend, dispatch,
+  payout, settlement, public-claim, provider-account, or external-send
+  authority.
+- Any Worker, Pylon, desktop, or cloud-workroom executor that claims
+  definition-backed tool enforcement must use this contract or a formally
+  equivalent compiled policy at the execution boundary, with regression tests
+  for deny precedence, ask escalation, allow, and default-deny behavior.
+- Regression coverage starts in
+  `packages/agent-runtime-schema/src/index.test.ts`.
+
 ## Cloudflare Verse World Service
 
 - Live Verse world work belongs to `apps/openagents-world/`, a Cloudflare

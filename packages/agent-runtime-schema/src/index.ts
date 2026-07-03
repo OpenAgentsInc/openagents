@@ -3,6 +3,11 @@ import { Schema as S } from "effect"
 export const AgentRuntimeRunId = S.String
 export type AgentRuntimeRunId = typeof AgentRuntimeRunId.Type
 
+export const AgentDefinitionSchemaLiteral = "openagents.agent_definition.v1" as const
+
+export const AgentDefinitionId = S.String
+export type AgentDefinitionId = typeof AgentDefinitionId.Type
+
 export const AgentRuntimeEventId = S.String
 export type AgentRuntimeEventId = typeof AgentRuntimeEventId.Type
 
@@ -26,6 +31,31 @@ export const agentRuntimeAdapterKinds: ReadonlyArray<AgentRuntimeAdapterKind> = 
   "hermes",
   "hosted_container",
   "shc",
+  "test_fixture",
+]
+
+export const AgentDefinitionHarnessKind = S.Literals([
+  "codex",
+  "claude_code",
+  "khala",
+  "opencode",
+  "hermes",
+  "openagents_native",
+  "hosted_container",
+  "custom",
+  "test_fixture",
+])
+export type AgentDefinitionHarnessKind = typeof AgentDefinitionHarnessKind.Type
+
+export const agentDefinitionHarnessKinds: ReadonlyArray<AgentDefinitionHarnessKind> = [
+  "codex",
+  "claude_code",
+  "khala",
+  "opencode",
+  "hermes",
+  "openagents_native",
+  "hosted_container",
+  "custom",
   "test_fixture",
 ]
 
@@ -77,6 +107,145 @@ export const AgentRuntimeRedactionPolicy = S.Struct({
   secretMaterialAllowed: S.Boolean,
 })
 export type AgentRuntimeRedactionPolicy = typeof AgentRuntimeRedactionPolicy.Type
+
+export const AgentDefinitionNetworkPolicy = S.Literals([
+  "none",
+  "owner_scoped",
+  "public_internet",
+])
+export type AgentDefinitionNetworkPolicy = typeof AgentDefinitionNetworkPolicy.Type
+
+export const AgentDefinitionSecretPolicy = S.Literals([
+  "none",
+  "owner_scoped_refs_only",
+])
+export type AgentDefinitionSecretPolicy = typeof AgentDefinitionSecretPolicy.Type
+
+export const AgentDefinitionToolRef = S.String
+export type AgentDefinitionToolRef = typeof AgentDefinitionToolRef.Type
+
+export const AgentDefinitionToolset = S.Struct({
+  allow: S.Array(AgentDefinitionToolRef),
+  deny: S.Array(AgentDefinitionToolRef),
+  ask: S.Array(AgentDefinitionToolRef),
+  networkPolicy: AgentDefinitionNetworkPolicy,
+  secretPolicy: AgentDefinitionSecretPolicy,
+})
+export type AgentDefinitionToolset = typeof AgentDefinitionToolset.Type
+
+export const AgentDefinitionHarness = S.Struct({
+  kind: AgentDefinitionHarnessKind,
+  modelHint: S.optional(S.String),
+  versionPin: S.optional(S.String),
+})
+export type AgentDefinitionHarness = typeof AgentDefinitionHarness.Type
+
+export const AgentDefinitionTrigger = S.Union([
+  S.Struct({
+    kind: S.Literal("cron"),
+    triggerRef: S.String,
+    cron: S.String,
+  }),
+  S.Struct({
+    kind: S.Literal("webhook"),
+    triggerRef: S.String,
+    sourceRef: S.String,
+  }),
+  S.Struct({
+    kind: S.Literal("inbox_match"),
+    triggerRef: S.String,
+    classifierRef: S.String,
+  }),
+  S.Struct({
+    kind: S.Literal("manual"),
+    triggerRef: S.String,
+  }),
+])
+export type AgentDefinitionTrigger = typeof AgentDefinitionTrigger.Type
+
+export const AgentDefinitionLane = S.Literals([
+  "own_pylon",
+  "cloud_workroom",
+  "worker_only",
+  "test_fixture",
+])
+export type AgentDefinitionLane = typeof AgentDefinitionLane.Type
+
+export const AgentDefinitionBudget = S.Struct({
+  maxRunSeconds: S.Number,
+  maxRunsPerDay: S.Number,
+  maxCreditsPerDay: S.optional(S.Number),
+})
+export type AgentDefinitionBudget = typeof AgentDefinitionBudget.Type
+
+export const AgentDefinitionEscalationChannel = S.Literals([
+  "operator",
+  "forum",
+  "push",
+  "email",
+])
+export type AgentDefinitionEscalationChannel =
+  typeof AgentDefinitionEscalationChannel.Type
+
+export const AgentDefinitionAskPolicy = S.Struct({
+  policyRef: S.String,
+  mode: S.Literals(["operator_required", "deny_when_unavailable"]),
+})
+export type AgentDefinitionAskPolicy = typeof AgentDefinitionAskPolicy.Type
+
+export const AgentDefinitionEscalation = S.Struct({
+  channel: AgentDefinitionEscalationChannel,
+  askPolicy: AgentDefinitionAskPolicy,
+})
+export type AgentDefinitionEscalation = typeof AgentDefinitionEscalation.Type
+
+export const AgentDefinition = S.Struct({
+  schema: S.Literal(AgentDefinitionSchemaLiteral),
+  id: AgentDefinitionId,
+  ownerRef: S.String,
+  name: S.String,
+  slug: S.String,
+  goal: S.String,
+  harness: AgentDefinitionHarness,
+  toolset: AgentDefinitionToolset,
+  triggers: S.Array(AgentDefinitionTrigger),
+  lane: AgentDefinitionLane,
+  budget: AgentDefinitionBudget,
+  escalation: AgentDefinitionEscalation,
+  sourceRefs: S.Array(S.String),
+  createdAt: S.String,
+  updatedAt: S.String,
+})
+export type AgentDefinition = typeof AgentDefinition.Type
+
+export const AgentDefinitionToolAuthorityStatus = S.Literals([
+  "allowed",
+  "denied",
+  "operator_escalation_required",
+])
+export type AgentDefinitionToolAuthorityStatus =
+  typeof AgentDefinitionToolAuthorityStatus.Type
+
+export type AgentDefinitionOperatorEscalation = {
+  readonly escalationRef: string
+  readonly definitionId: AgentDefinitionId
+  readonly ownerRef: string
+  readonly toolRef: AgentDefinitionToolRef
+  readonly channel: AgentDefinitionEscalationChannel
+  readonly askPolicyRef: string
+  readonly reasonRef: string
+}
+
+export type AgentDefinitionToolAuthorityDecision = {
+  readonly status: AgentDefinitionToolAuthorityStatus
+  readonly allowed: boolean
+  readonly toolRef: AgentDefinitionToolRef
+  readonly definitionId: AgentDefinitionId
+  readonly reasonRef: string
+  readonly matchedPolicyRef?: string
+  readonly blockerRefs: ReadonlyArray<string>
+  readonly escalation?: AgentDefinitionOperatorEscalation
+}
 
 export const AgentRuntimeRunState = S.Literals([
   "pending",
@@ -245,6 +414,7 @@ export type AgentRuntimeEvent = typeof AgentRuntimeEvent.Type
 
 export const AgentRuntimeRun = S.Struct({
   runId: AgentRuntimeRunId,
+  agentDefinitionId: S.optional(AgentDefinitionId),
   assignmentId: S.optional(S.String),
   workOrderId: S.optional(S.String),
   workspaceRef: S.String,
@@ -307,6 +477,7 @@ export type AgentRuntimeSurfaceStatusRow = {
 export const decodeAgentRuntimeRun = S.decodeUnknownSync(AgentRuntimeRun)
 export const decodeAgentRuntimeEvent = S.decodeUnknownSync(AgentRuntimeEvent)
 export const decodeAgentRuntimeEventLog = S.decodeUnknownSync(AgentRuntimeEventLog)
+export const decodeAgentDefinition = S.decodeUnknownSync(AgentDefinition)
 
 export const PylonAssignmentRunLifecycleEventSchemaLiteral =
   "openagents.pylon.assignment_run_lifecycle_event.v0.1" as const
@@ -492,6 +663,103 @@ export function projectAgentRuntimeSurfaceStatus(
 
 export function agentRuntimeSurfaceStatusHasUnsafeMaterial(row: AgentRuntimeSurfaceStatusRow): boolean {
   return unsafePublicMaterialPattern.test(JSON.stringify(row))
+}
+
+export function decideAgentDefinitionToolAuthority(input: {
+  readonly definition: AgentDefinition
+  readonly toolRef: AgentDefinitionToolRef
+  readonly invocationRef?: string
+}): AgentDefinitionToolAuthorityDecision {
+  const toolRef = input.toolRef
+  const toolset = input.definition.toolset
+
+  const deniedBy = firstMatchingToolPolicy(toolset.deny, toolRef)
+  if (deniedBy !== undefined) {
+    return {
+      status: "denied",
+      allowed: false,
+      toolRef,
+      definitionId: input.definition.id,
+      matchedPolicyRef: deniedBy,
+      reasonRef: "reason.agent_definition.tool_denied",
+      blockerRefs: ["blocker.agent_definition.tool_denied"],
+    }
+  }
+
+  const askBy = firstMatchingToolPolicy(toolset.ask, toolRef)
+  if (askBy !== undefined) {
+    const escalationRef = stableAgentDefinitionRef("escalation.operator.agent_definition", [
+      input.definition.id,
+      input.invocationRef ?? toolRef,
+      askBy,
+    ])
+    return {
+      status: "operator_escalation_required",
+      allowed: false,
+      toolRef,
+      definitionId: input.definition.id,
+      matchedPolicyRef: askBy,
+      reasonRef: "reason.agent_definition.tool_requires_operator",
+      blockerRefs: ["blocker.agent_definition.operator_escalation_required"],
+      escalation: {
+        escalationRef,
+        definitionId: input.definition.id,
+        ownerRef: input.definition.ownerRef,
+        toolRef,
+        channel: input.definition.escalation.channel,
+        askPolicyRef: input.definition.escalation.askPolicy.policyRef,
+        reasonRef: "reason.agent_definition.ask_policy_hit",
+      },
+    }
+  }
+
+  const allowedBy = firstMatchingToolPolicy(toolset.allow, toolRef)
+  if (allowedBy !== undefined) {
+    return {
+      status: "allowed",
+      allowed: true,
+      toolRef,
+      definitionId: input.definition.id,
+      matchedPolicyRef: allowedBy,
+      reasonRef: "reason.agent_definition.tool_allowed",
+      blockerRefs: [],
+    }
+  }
+
+  return {
+    status: "denied",
+    allowed: false,
+    toolRef,
+    definitionId: input.definition.id,
+    reasonRef: "reason.agent_definition.tool_not_in_allowlist",
+    blockerRefs: ["blocker.agent_definition.tool_not_in_allowlist"],
+  }
+}
+
+function firstMatchingToolPolicy(
+  policyRefs: ReadonlyArray<AgentDefinitionToolRef>,
+  toolRef: AgentDefinitionToolRef,
+): AgentDefinitionToolRef | undefined {
+  return policyRefs.find((policyRef) => toolRefMatchesPolicyRef(policyRef, toolRef))
+}
+
+function toolRefMatchesPolicyRef(
+  policyRef: AgentDefinitionToolRef,
+  toolRef: AgentDefinitionToolRef,
+): boolean {
+  if (policyRef === toolRef) return true
+  if (!policyRef.endsWith(".*")) return false
+  const prefix = policyRef.slice(0, -1)
+  return toolRef.startsWith(prefix)
+}
+
+function stableAgentDefinitionRef(prefix: string, parts: ReadonlyArray<string>): string {
+  let hash = 2166136261
+  for (const char of parts.join("\u001f")) {
+    hash ^= char.charCodeAt(0)
+    hash = Math.imul(hash, 16777619)
+  }
+  return `${prefix}.${(hash >>> 0).toString(16).padStart(8, "0")}`
 }
 
 const terminalRunStates: ReadonlySet<AgentRuntimeRunState> = new Set([
