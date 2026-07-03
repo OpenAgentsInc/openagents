@@ -421,4 +421,3 @@ Registry version: `2026-07-03.8` (schema `openagents.behavior_contracts.v1`)
 - **Verification:** Not yet enforced: recorded from community feedback (relayed by TheBenMeadows, formalized by the Lathe operator agent) on 2026-07-03. Tracked in GitHub issue #8255, filed the same day: needs a backend token-minting/device-auth flow and a new local persistence RPC before it can flip to enforced.
 - **Blockers:** `blocker.github_issue.8255`
 - **Authority boundary:** Binds the Khala lane's missing-token UI affordance only; does not itself define the token-minting backend flow, which is separate implementation work tracked by the same issue.
-
