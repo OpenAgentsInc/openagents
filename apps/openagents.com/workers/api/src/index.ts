@@ -240,6 +240,7 @@ import {
 } from './blueprint/repositories/program-runs'
 import { handlePublicBusinessFunnelDashboardApi } from './business-funnel-dashboard-routes'
 import { handleBusinessIntakeChatApi } from './business-intake-chat-routes'
+import { runBusinessFulfillmentLoopScheduled } from './business-fulfillment-loop'
 import { handleBusinessSignupApi } from './business-signup-routes'
 import { makeD1BuyModeDispatcherStore } from './buy-mode-dispatcher'
 import { buyModePaymentBridgeForEnv } from './buy-mode-http-payment-bridge'
@@ -14562,6 +14563,13 @@ export default {
       observedEffect(
         'EmailCampaignDispatcher.dispatchDue',
         dispatchDueEmailCampaignSendsScheduled(env),
+      ),
+      observedEffect(
+        'BusinessFulfillmentLoop.dailyMotion',
+        runBusinessFulfillmentLoopScheduled(
+          openAgentsDatabase(env),
+          event.scheduledTime,
+        ).pipe(Effect.asVoid),
       ),
       observedEffect(
         'AutopilotScheduledLaunches.dispatchDue',
