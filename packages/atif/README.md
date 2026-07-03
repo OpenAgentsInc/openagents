@@ -14,6 +14,7 @@ spec `docs/traces/README.md`.
 | `@openagentsinc/atif/trace` | The strict, pinned ingest/store **schema** (`AtifTrajectory` Effect-Schema class), `decodeAtifTrajectorySync`/`encodeAtifTrajectory`, the structural `validateAtifTrajectory`, and the value-based public-safety `atifTraceTripwire` (+ finding/issue types). The canonical trace contract; the API worker re-exports it. |
 | `@openagentsinc/atif/emit` | Producer-facing dependency-free TypeScript types a trajectory emitter builds (`AtifTrajectory` interface, `AtifStep`, `Json`, `AtifVerdict`, `serializeTrajectory`, …). |
 | `@openagentsinc/atif/validate` | Producer-facing (permissive) Effect-Schema validator: `AtifTrajectorySchema`, `validateAtif`, `assertValidAtif`, `AtifValidationError`. |
+| `@openagentsinc/atif/redaction` | Shared deterministic redaction service for trace capture and regulated corpus ingestion before external inference. Exposes the legacy trace helpers plus `redactForExternalInference` / `redactStringForExternalInference` with surface tags (`trace_capture`, `corpus_ingestion`) and public-safe aggregate reports. |
 
 The barrel (`@openagentsinc/atif`) re-exports the trace surface plus the
 validator names. The emitter TS types collide by name with the trace schema
@@ -34,3 +35,16 @@ raw/split provider payloads. `atifTraceTripwire` is the value-based backstop
 (the redaction service is the primary scrubber). Note: a model id in a trace is
 session **content**, not a leak, so it is allowed — the "openagents/khala only"
 rule is a Khala gateway-projection invariant, not a trace one.
+
+## Redaction Before External Inference
+
+Use `redactForExternalInference` (or `TraceRedactor.redactForExternalInference`)
+whenever user/customer-controlled text can leave the local boundary for model
+inference. The same service covers:
+
+- `surface: "corpus_ingestion"` for regulated vertical ingestion such as legal
+  or health workspace corpora.
+- `surface: "trace_capture"` for consented trace capture before the
+  `atifTraceTripwire` fail-closed backstop.
+
+Reports contain category counts only. They never echo the offending values.

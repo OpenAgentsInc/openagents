@@ -9,9 +9,12 @@ import {
   validateAtifTrajectory,
 } from "./trace-schema.ts"
 import {
+  REDACTION_SERVICE_REF,
   TraceRedactor,
   TraceRedactorLive,
+  redactForExternalInference,
   redactString,
+  redactStringForExternalInference,
   redactTraceString,
   redactTraceValue,
   redactValue,
@@ -121,6 +124,30 @@ const SECRET_FIXTURES: ReadonlyArray<{
     raw: "contact me at jane.doe@example.com please",
     leak: "jane.doe@example.com",
     category: "email",
+  },
+  {
+    label: "phone PII",
+    raw: "call (312) 555-0198 after intake",
+    leak: "312) 555-0198",
+    category: "phone",
+  },
+  {
+    label: "SSN PII",
+    raw: "SSN: 123-45-6789 appears in the attachment",
+    leak: "123-45-6789",
+    category: "ssn",
+  },
+  {
+    label: "date of birth PHI",
+    raw: "DOB: 04/23/1978 on the health form",
+    leak: "04/23/1978",
+    category: "date_of_birth",
+  },
+  {
+    label: "medical record PHI",
+    raw: "MRN: HOSP-928374 belongs to the patient packet",
+    leak: "HOSP-928374",
+    category: "medical_record_id",
   },
   {
     label: "home path",
@@ -281,6 +308,85 @@ describe("redact-before-tripwire safety bar", () => {
   })
 })
 
+describe("redactForExternalInference shared service", () => {
+  const adversarialRegulatedDocument = [
+    "Legal intake for an opaque workspace ref.",
+    "Client email jane.doe@example.com and phone (312) 555-0198.",
+    "SSN: 123-45-6789 appears in legacy paperwork.",
+    "Health packet says DOB: 04/23/1978 and MRN: HOSP-928374.",
+    "Local export path /Users/alice/Clients/private-case.md.",
+    "Payment material lnbc2500u1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypq.",
+  ].join("\n")
+
+  test("regulated corpus ingestion is redacted before external inference", () => {
+    const result = redactStringForExternalInference(adversarialRegulatedDocument, {
+      regulatedVertical: "health",
+      surface: "corpus_ingestion",
+    })
+
+    expect(result.policy).toEqual({
+      appliedBeforeExternalInference: true,
+      regulatedVertical: "health",
+      serviceRef: REDACTION_SERVICE_REF,
+      surface: "corpus_ingestion",
+    })
+    expect(result.safeForExternalInference).toBe(true)
+    expect(result.value).not.toContain("jane.doe@example.com")
+    expect(result.value).not.toContain("312) 555-0198")
+    expect(result.value).not.toContain("123-45-6789")
+    expect(result.value).not.toContain("04/23/1978")
+    expect(result.value).not.toContain("HOSP-928374")
+    expect(result.value).not.toContain("/Users/alice")
+    expect(result.report.counts.email).toBeGreaterThanOrEqual(1)
+    expect(result.report.counts.phone).toBeGreaterThanOrEqual(1)
+    expect(result.report.counts.ssn).toBeGreaterThanOrEqual(1)
+    expect(result.report.counts.date_of_birth).toBeGreaterThanOrEqual(1)
+    expect(result.report.counts.medical_record_id).toBeGreaterThanOrEqual(1)
+  })
+
+  test("trace capture uses the same service before the tripwire", () => {
+    const trajectory = new AtifTrajectory({
+      schema_version: ATIF_PINNED_SCHEMA_VERSION,
+      trajectory_id: "regulated-redaction-trace-1",
+      session_id: "capture-redaction-test-1",
+      visibility: "owner_only",
+      agent: {
+        name: "Khala",
+        version: "gateway-1",
+        model_name: "openagents/khala",
+      },
+      steps: [
+        new AtifStep({
+          step_id: 1,
+          source: "user",
+          message: adversarialRegulatedDocument,
+        }),
+        new AtifStep({
+          step_id: 2,
+          source: "agent",
+          message: "Created a redacted plan for the opaque workspace ref.",
+          model_name: "openagents/khala",
+          metrics: { prompt_tokens: 32, completion_tokens: 12 },
+        }),
+      ],
+    })
+
+    expect(atifTraceTripwire(trajectory).length).toBeGreaterThan(0)
+
+    const result = redactForExternalInference(trajectory, {
+      regulatedVertical: "legal",
+      surface: "trace_capture",
+    })
+
+    expect(result.policy.serviceRef).toBe(REDACTION_SERVICE_REF)
+    expect(result.policy.surface).toBe("trace_capture")
+    expect(validateAtifTrajectory(result.value as AtifTrajectory)).toEqual([])
+    expect(atifTraceTripwire(result.value as AtifTrajectory)).toEqual([])
+    expect(JSON.stringify(result.value)).not.toContain("jane.doe@example.com")
+    expect(JSON.stringify(result.value)).not.toContain("HOSP-928374")
+  })
+})
+
 describe("TraceRedactor Effect service", () => {
   test("redacts through the Default layer", async () => {
     const result = await Effect.runPromise(
@@ -307,5 +413,21 @@ describe("TraceRedactor Effect service", () => {
     )
 
     expect(result.value).toContain("[REDACTED:email]")
+  })
+
+  test("redacts external-inference text through the shared service", async () => {
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const redactor = yield* TraceRedactor
+        return yield* redactor.redactTextForExternalInference(
+          "MRN: HOSP-928374 for jane.doe@example.com",
+          { regulatedVertical: "health", surface: "corpus_ingestion" },
+        )
+      }).pipe(Effect.provide(TraceRedactorLive)),
+    )
+
+    expect(result.policy.serviceRef).toBe(REDACTION_SERVICE_REF)
+    expect(result.value).not.toContain("HOSP-928374")
+    expect(result.value).not.toContain("jane.doe@example.com")
   })
 })
