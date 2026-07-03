@@ -2,6 +2,11 @@ import { describe, expect, test } from "bun:test"
 import { Schema as S } from "effect"
 
 import {
+  KHALA_CODE_MODEL_ROLE_REGISTRY_SCHEMA,
+  KhalaCodeModelRoleRegistrySchema,
+  defaultKhalaCodeModelRoleRegistry,
+} from "../src/shared/model-roles"
+import {
   KhalaCodeDesktopRpcBridgeFailure,
   KhalaCodeDesktopRpcMethodNames,
   KhalaCodeDesktopRpcMethodSchemas,
@@ -213,6 +218,38 @@ describe("Khala Code desktop schema-first RPC contract", () => {
     }])[0]).toMatchObject({
       claimRef: "claim.public.t4_2.rpc_promote",
       objective: "Promote pinned public work.",
+    })
+  })
+
+  test("decodes the schema-first model role registry RPCs", () => {
+    const registry = defaultKhalaCodeModelRoleRegistry()
+    expect(S.decodeUnknownSync(KhalaCodeModelRoleRegistrySchema)(registry)).toEqual(registry)
+    expect(registry.schema).toBe(KHALA_CODE_MODEL_ROLE_REGISTRY_SCHEMA)
+
+    expect(decodeKhalaCodeDesktopRpcResult("modelRoleRegistryRead", {
+      ok: true,
+      path: "/tmp/desktop-settings.json",
+      registry,
+    })).toMatchObject({
+      registry: {
+        roles: {
+          architect: { role: "architect", harness: "codex" },
+          coder: { role: "coder", harness: "codex" },
+          judge: { role: "judge", harness: "codex" },
+          advisor: { role: "advisor", harness: "codex" },
+        },
+      },
+    })
+
+    expect(decodeKhalaCodeDesktopRpcParameters("modelRoleRegistryWrite", [{
+      entry: {
+        role: "coder",
+        harness: "claude",
+        model: "claude-opus-4-1",
+        effort: "high",
+      },
+    }])[0]).toMatchObject({
+      entry: { role: "coder", harness: "claude", effort: "high" },
     })
   })
 

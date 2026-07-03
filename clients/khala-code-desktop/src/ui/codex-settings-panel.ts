@@ -1,5 +1,7 @@
 import type {
   KhalaCodeDesktopCodexConfigValueWriteRequest,
+  KhalaCodeDesktopModelRoleRegistryReadResult,
+  KhalaCodeDesktopModelRoleRegistryWriteRequest,
 } from "../shared/rpc"
 import type {
   KhalaCodeDesktopCodexSettingsProjection,
@@ -8,6 +10,11 @@ import type {
   KhalaCodeDesktopCodexEcosystemProjection,
   KhalaCodeDesktopCodexEcosystemSection,
 } from "../shared/codex-ecosystem"
+import {
+  KHALA_CODE_MODEL_ROLE_ORDER,
+  type KhalaCodeModelRoleEntry,
+  type KhalaCodeModelRoleRegistry,
+} from "../shared/model-roles"
 
 export type CodexSettingsPanelHandle = {
   readonly refresh: () => Promise<void>
@@ -17,7 +24,11 @@ export type CodexSettingsPanelHandle = {
 export type CodexSettingsPanelOptions = {
   readonly fetch: () => Promise<KhalaCodeDesktopCodexSettingsProjection>
   readonly fetchEcosystem?: () => Promise<KhalaCodeDesktopCodexEcosystemProjection>
+  readonly fetchModelRoles?: () => Promise<KhalaCodeDesktopModelRoleRegistryReadResult>
   readonly onRender?: () => void
+  readonly writeModelRole?: (
+    request: KhalaCodeDesktopModelRoleRegistryWriteRequest,
+  ) => Promise<KhalaCodeDesktopModelRoleRegistryReadResult & { readonly saved?: boolean }>
   readonly write: (
     request: KhalaCodeDesktopCodexConfigValueWriteRequest,
   ) => Promise<{
@@ -134,6 +145,7 @@ export const mountCodexSettingsPanel = (
 ): CodexSettingsPanelHandle => {
   let settings: KhalaCodeDesktopCodexSettingsProjection | null = null
   let ecosystem: KhalaCodeDesktopCodexEcosystemProjection | null = null
+  let modelRoles: KhalaCodeModelRoleRegistry | null = null
   let loading = false
   let visible = false
   let status = ""
@@ -200,6 +212,74 @@ export const mountCodexSettingsPanel = (
       metric("Summary", current.config.reasoningSummary),
       metric("Verbosity", current.config.verbosity),
     ])
+  }
+
+  const updateModelRole = async (
+    entry: KhalaCodeModelRoleEntry,
+    patch: Partial<Pick<KhalaCodeModelRoleEntry, "effort" | "harness" | "model">>,
+  ): Promise<void> => {
+    if (options.writeModelRole === undefined) return
+    setStatus(`Saving ${entry.role} role`)
+    const nextEntry = {
+      ...entry,
+      ...patch,
+      ...(patch.model === "" ? { model: undefined } : {}),
+    }
+    const result = await options.writeModelRole({ entry: nextEntry })
+    modelRoles = result.registry
+    setStatus(`Saved ${entry.role} role`)
+  }
+
+  const renderModelRoleRegistrySection = (
+    registry: KhalaCodeModelRoleRegistry | null,
+  ): HTMLElement => {
+    if (registry === null) {
+      return section("Model Roles", [
+        el("p", "khala-settings-empty", "Model role registry has not been loaded yet."),
+      ])
+    }
+    return section("Model Roles", KHALA_CODE_MODEL_ROLE_ORDER.flatMap(role => {
+      const entry = registry.roles[role]
+      return [
+        metric(role, `${entry.harness}${entry.model === undefined ? "" : ` / ${entry.model}`}`),
+        renderSelect({
+          disabled: options.writeModelRole === undefined,
+          label: `${role} harness`,
+          selected: entry.harness,
+          options: [
+            { label: "Codex", value: "codex" },
+            { label: "Claude", value: "claude" },
+            { label: "Khala", value: "khala" },
+          ],
+          onChange: value => void updateModelRole(entry, {
+            harness: value as KhalaCodeModelRoleEntry["harness"],
+          }),
+        }),
+        renderTextInput({
+          disabled: options.writeModelRole === undefined,
+          label: `${role} model`,
+          selected: entry.model ?? "",
+          onCommit: value => void updateModelRole(entry, {
+            model: value.length === 0 ? undefined : value,
+          }),
+        }),
+        renderSelect({
+          disabled: options.writeModelRole === undefined,
+          label: `${role} effort`,
+          selected: entry.effort ?? "medium",
+          options: [
+            { label: "Minimal", value: "minimal" },
+            { label: "Low", value: "low" },
+            { label: "Medium", value: "medium" },
+            { label: "High", value: "high" },
+            { label: "Xhigh", value: "xhigh" },
+          ],
+          onChange: value => void updateModelRole(entry, {
+            effort: value as KhalaCodeModelRoleEntry["effort"],
+          }),
+        }),
+      ]
+    }))
   }
 
   const renderBoundarySection = (): HTMLElement => section("Harness Boundary", [
@@ -440,6 +520,7 @@ export const mountCodexSettingsPanel = (
 
     container.append(
       renderBoundarySection(),
+      renderModelRoleRegistrySection(modelRoles),
       renderModelSection(settings),
       renderPermissionsSection(settings),
       renderAppearanceSection(settings),
@@ -456,15 +537,17 @@ export const mountCodexSettingsPanel = (
     loading = true
     render()
     try {
-      const [nextSettings, nextEcosystem] = await Promise.all([
+      const [nextSettings, nextEcosystem, nextModelRoles] = await Promise.all([
         options.fetch(),
         options.fetchEcosystem?.() ?? Promise.resolve(null),
+        options.fetchModelRoles?.() ?? Promise.resolve(null),
       ])
       settings = nextSettings
       ecosystem = nextEcosystem
+      modelRoles = nextModelRoles?.registry ?? null
       status = [
-        ...(settings.ok ? [] : settings.errors),
-        ...(ecosystem === null || ecosystem.ok ? [] : ecosystem.errors),
+        ...(nextSettings.ok ? [] : nextSettings.errors),
+        ...(nextEcosystem === null || nextEcosystem.ok ? [] : nextEcosystem.errors),
       ].join("\n")
     } catch (error) {
       status = error instanceof Error ? error.message : String(error)

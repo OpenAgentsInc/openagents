@@ -44,6 +44,10 @@ import {
   projectKhalaCodeDesktopClaudeSettings,
   type KhalaCodeDesktopClaudeSettingsProjection,
 } from "../shared/claude-settings.js"
+import type {
+  KhalaCodeModelRoleEffort,
+  KhalaCodeModelRoleEntry,
+} from "../shared/model-roles.js"
 
 type ClaudeQuery = AsyncIterable<unknown> & {
   readonly accountInfo?: () => Promise<unknown>
@@ -111,6 +115,35 @@ type ActiveClaudeTurn = {
 
 const textFromRequest = (request: KhalaCodeDesktopChatTurnRequest): string =>
   request.messages.map(message => message.body).filter(Boolean).join("\n\n").trim()
+
+const claudeThinkingForEffort = (
+  effort: KhalaCodeModelRoleEffort | undefined,
+): Record<string, unknown> => {
+  if (effort === undefined || effort === "minimal") return {}
+  const budgetTokens = effort === "low"
+    ? 1_024
+    : effort === "medium"
+      ? 4_096
+      : effort === "high"
+        ? 8_192
+        : 16_384
+  return {
+    maxThinkingTokens: budgetTokens,
+    thinking: { budgetTokens, type: "enabled" },
+  }
+}
+
+const claudeModelRoleOptions = (
+  modelRole: KhalaCodeModelRoleEntry | undefined,
+): Record<string, unknown> => {
+  if (modelRole === undefined) return {}
+  return {
+    ...(modelRole.model === undefined || modelRole.model.trim().length === 0
+      ? {}
+      : { model: modelRole.model.trim() }),
+    ...claudeThinkingForEffort(modelRole.effort),
+  }
+}
 
 const sdkSessionId = (value: unknown): string | null => {
   if (typeof value !== "object" || value === null) return null
@@ -333,7 +366,10 @@ export function createClaudeAppSdkChatRuntime(
     (await sessionStore.get(desktopSessionId))?.sessionId ?? null
 
   const startTurn = async (
-    request: KhalaCodeDesktopChatTurnRequest & { readonly cwd?: string },
+    request: KhalaCodeDesktopChatTurnRequest & {
+      readonly cwd?: string
+      readonly modelRole?: KhalaCodeModelRoleEntry
+    },
   ): Promise<KhalaCodeDesktopChatTurnResponse> => {
     const desktopTurnId = request.turnId ?? `claude-turn-${Date.now().toString(36)}`
     const prompt = textFromRequest(request)
@@ -358,6 +394,7 @@ export function createClaudeAppSdkChatRuntime(
       canUseTool: approvalService.canUseTool,
       cwd: request.cwd ?? options.workingDirectory,
       includePartialMessages: true,
+      ...claudeModelRoleOptions(request.modelRole),
       permissionMode: options.env?.KHALA_CODE_DESKTOP_CLAUDE_PERMISSION_MODE ?? "acceptEdits",
       ...(shouldResume ? { resume: threadId } : { sessionId: freshSessionId }),
       env: {

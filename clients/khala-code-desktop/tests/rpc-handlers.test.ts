@@ -23,6 +23,9 @@ import type {
   KhalaCodeDesktopFleetRunStartRequest,
   KhalaCodeDesktopQaMetricSample,
 } from "../src/shared/rpc"
+import {
+  defaultKhalaCodeModelRoleRegistry,
+} from "../src/shared/model-roles"
 
 const tempDirs: string[] = []
 
@@ -961,6 +964,129 @@ describe("Khala Code desktop RPC handlers", () => {
     })
     expect(codexTurnStarted).toBe(true)
     expect(legacyTurnStarted).toBe(false)
+  })
+
+  test("persists and reads the typed model role registry", async () => {
+    const root = await mkdtemp(join(tmpdir(), "khala-code-model-roles-"))
+    tempDirs.push(root)
+    const settingPath = join(root, "desktop-settings.json")
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      env: { KHALA_CODE_DESKTOP_HARNESS_SETTING_PATH: settingPath },
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.modelRoleRegistryRead()).resolves.toMatchObject({
+      registry: {
+        schema: "openagents.khala_code.model_roles.v1",
+        roles: {
+          coder: { role: "coder", harness: "codex", effort: "medium" },
+        },
+      },
+    })
+
+    await handlers.modelRoleRegistryWrite({
+      entry: {
+        role: "coder",
+        harness: "claude",
+        model: "claude-opus-4-1",
+        effort: "high",
+      },
+    })
+
+    const persisted = JSON.parse(await readFile(settingPath, "utf8")) as {
+      readonly modelRoleRegistry?: unknown
+    }
+    expect(persisted.modelRoleRegistry).toMatchObject({
+      roles: {
+        coder: {
+          role: "coder",
+          harness: "claude",
+          model: "claude-opus-4-1",
+          effort: "high",
+        },
+      },
+    })
+  })
+
+  test("routes chat through the coder role registry and passes Claude model effort", async () => {
+    const root = await mkdtemp(join(tmpdir(), "khala-code-coder-role-"))
+    tempDirs.push(root)
+    const settingPath = join(root, "desktop-settings.json")
+    await writeFile(settingPath, JSON.stringify({
+      schema: "khala-code-desktop.harness-setting.v1",
+      harnessMode: "codex_harness",
+      modelRoleRegistry: {
+        ...defaultKhalaCodeModelRoleRegistry(),
+        roles: {
+          ...defaultKhalaCodeModelRoleRegistry().roles,
+          coder: {
+            role: "coder",
+            harness: "claude",
+            model: "claude-opus-4-1",
+            effort: "xhigh",
+          },
+        },
+      },
+    }))
+    let claudeModelRole: unknown
+    let codexTurnStarted = false
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      claudeChatRuntime: throwingClaudeChatRuntime({
+        startTurn: async request => {
+          claudeModelRole = request.modelRole
+          return {
+            backend: {
+              kind: "claude_app_sdk",
+              model: "claude-app-sdk",
+              runtimeMode: "claude_runtime",
+              threadId: "claude-thread-role",
+              turnId: request.turnId,
+            },
+            messages: [{ id: "agent-claude-role", role: "assistant", body: "Claude coder role" }],
+            ok: true,
+            toolNames: [],
+            usedTools: [],
+          }
+        },
+      }),
+      codexChatRuntime: throwingCodexChatRuntime({
+        startTurn: async () => {
+          codexTurnStarted = true
+          throw new Error("codex should not handle claude coder role")
+        },
+      }),
+      env: { KHALA_CODE_DESKTOP_HARNESS_SETTING_PATH: settingPath },
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    await expect(handlers.submitChatMessage({
+      messages: [{ id: "user-claude-role", role: "user", body: "Use coder role" }],
+      sessionId: "desktop-session-claude-role",
+      turnId: "desktop-turn-claude-role",
+    })).resolves.toMatchObject({
+      backend: { runtimeMode: "claude_runtime" },
+      messages: [{ body: "Claude coder role" }],
+      ok: true,
+    })
+    expect(codexTurnStarted).toBe(false)
+    expect(claudeModelRole).toMatchObject({
+      role: "coder",
+      harness: "claude",
+      model: "claude-opus-4-1",
+      effort: "xhigh",
+    })
   })
 
   test("routes explicit Codex turn starts through the selected Codex chat runtime", async () => {
