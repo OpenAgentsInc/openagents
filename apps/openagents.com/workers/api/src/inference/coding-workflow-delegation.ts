@@ -138,6 +138,7 @@ export type CodingDelegationRejection = Readonly<{
     | 'coding_delegation_store_unavailable'
     | 'authority_scope_capacity_unavailable'
     | 'invalid_authority_scope'
+    | 'invalid_assignment_timeout'
     | 'invalid_coding_objective_summary'
     | 'invalid_spawn_ref'
     | 'invalid_target_account_ref'
@@ -286,6 +287,43 @@ const objectiveSummaryFromBody = (
     }
   }
   return { kind: 'summary', summary }
+}
+
+const timeoutSecondsFromBody = (
+  body: unknown,
+  profile: CodingAgentProfile,
+):
+  | Readonly<{ kind: 'timeout'; timeoutSeconds: number }>
+  | Readonly<{ kind: 'rejected'; rejection: CodingDelegationRejection }> => {
+  const rawValue = rawCodingFromBody(body)?.timeoutSeconds
+
+  if (rawValue === undefined || rawValue === null || rawValue === '') {
+    return { kind: 'timeout', timeoutSeconds: profile.timeoutSeconds }
+  }
+
+  if (
+    typeof rawValue !== 'number' ||
+    !Number.isInteger(rawValue) ||
+    rawValue <= 0
+  ) {
+    return {
+      kind: 'rejected',
+      rejection: {
+        error: 'invalid_assignment_timeout',
+        evidenceRefs: ['evidence.khala_coding.assignment_timeout.invalid'],
+        kind: 'rejected',
+        reason:
+          'openagents.coding.timeoutSeconds must be a positive integer.',
+        requestedPylonRef: null,
+        statusCode: 400,
+      },
+    }
+  }
+
+  return {
+    kind: 'timeout',
+    timeoutSeconds: Math.min(rawValue, profile.timeoutSeconds),
+  }
 }
 
 const pylonRefPattern = /^[a-z0-9][a-z0-9_.:-]{2,119}$/
@@ -513,6 +551,7 @@ const codingAssignmentFromInput = (
   objectiveSummary: string | null,
   profile: CodingAgentProfile,
   accountRefHash: string | null,
+  timeoutSeconds: number,
 ): Record<string, unknown> => {
   const workspace = rawWorkspaceFromBody(input.rawBody)
 
@@ -526,7 +565,7 @@ const codingAssignmentFromInput = (
       // the Codex and Claude lanes now carry per-account capacity; null when no
       // account was pinned.
       ...(accountRefHash === null ? {} : { accountRefHash }),
-      timeoutSeconds: profile.timeoutSeconds,
+      timeoutSeconds,
     },
     objective: {
       objectiveRef: workflowRef(input.classification),
@@ -548,6 +587,7 @@ const assignmentRequestFromInput = (
   spawnRefs: ReadonlyArray<string>,
   profile: CodingAgentProfile,
   accountRefHash: string | null,
+  timeoutSeconds: number,
   authorityScope: ArtanisAuthorityScope,
 ): PylonApiCreateAssignmentRequest => ({
   acceptanceCriteriaRefs: [
@@ -571,6 +611,7 @@ const assignmentRequestFromInput = (
     objectiveSummary,
     profile,
     accountRefHash,
+    timeoutSeconds,
   ),
   forumAutoPublishAllowed: false,
   idempotencyRefs: ['idempotency.public.khala_coding.request'],
@@ -984,6 +1025,10 @@ const delegateCodingWorkflowUnsafe = async (
   if (objectiveSummary.kind === 'rejected') {
     return objectiveSummary.rejection
   }
+  const timeout = timeoutSecondsFromBody(input.rawBody, profile)
+  if (timeout.kind === 'rejected') {
+    return timeout.rejection
+  }
   const spawnRefs = spawnRefsFromBody(input.rawBody)
   if (spawnRefs.kind === 'rejected') {
     return spawnRefs.rejection
@@ -1151,6 +1196,7 @@ const delegateCodingWorkflowUnsafe = async (
         spawnRefs.refs,
         profile,
         accountRefHash,
+        timeout.timeoutSeconds,
         authorityScope.authorityScope,
       )
       const gate = controlledPylonAssignmentDispatchGate({

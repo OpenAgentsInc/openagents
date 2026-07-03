@@ -183,6 +183,17 @@ owner scope. The response reports matched/dispatched/refused/failed/skipped
 counts, success/failure updates go through the trigger store, and the route is
 inert until `AGENT_DEFINITION_GITHUB_WEBHOOK_SECRET` is configured.
 
+BA-B4 status (2026-07-03): definition dispatch now enforces
+`maxRunsPerDay`, `maxRunSeconds`, and `maxCreditsPerDay` before admitting Pylon
+work. The Worker counts owner+definition run rows in the current UTC day,
+persists reserved credit accounting via
+`0282_agent_definition_run_budget_credits.sql`, refuses exhausted run or credit
+budgets with typed refused run rows, rejects invalid budgets before assignment,
+and writes the definition's `maxRunSeconds` into the Pylon coding task timeout.
+Trigger failures auto-pause owner-scoped trigger rows after 3 consecutive
+failed/refused attempts, and the BA-B4 behavior contract is now enforced by the
+definition-run route and trigger-store tests.
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-B1 | Trigger schema + D1 store: `cron(expr, tz)` and `inbound_webhook(source, typed conditions)` trigger types on definitions; `next_run_at` precomputed via a cron utility; `consecutive_failures`; enable/pause state | BA-A1 | HIGH | [#8193](https://github.com/OpenAgentsInc/openagents/issues/8193) |

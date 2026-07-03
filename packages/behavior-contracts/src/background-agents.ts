@@ -22,28 +22,49 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
   contracts: [
     {
       authorityBoundary:
-        "This contract binds dispatch budget enforcement for background-agent definitions. It does not authorize public budget or reliability claims until the BA-B4 dispatch oracles exist and run in the normal sweep.",
-      blockerRefs: [pendingOracleBlocker("ba_b4")],
+        "This contract binds dispatch budget enforcement for background-agent definitions at the openagents.com Worker dispatch boundary. It does not authorize public budget or reliability claims beyond the tested definition-run and trigger-store oracles.",
+      blockerRefs: [],
       contractId: "background_agents.dispatch.budget_caps_enforced.v1",
-      enforcementTier: "unenforced",
+      enforcementTier: "test-sweep",
       evidenceRefs: [
         "https://github.com/OpenAgentsInc/openagents/issues/8196",
         "https://github.com/OpenAgentsInc/openagents/issues/8218",
+        "INVARIANTS.md",
         "docs/fable/ROADMAP_BACKGROUND_AGENTS.md",
+        "apps/openagents.com/workers/api/src/agent-definition-run-routes.test.ts",
+        "apps/openagents.com/workers/api/src/agent-definition-trigger-store.test.ts",
+        "apps/openagents.com/workers/api/migrations/0282_agent_definition_run_budget_credits.sql",
       ],
-      oracles: [],
+      oracles: [
+        {
+          description:
+            "Definition dispatch refuses exhausted daily run and credit budgets, rejects invalid run-second budgets, reserves zero credits for current own-Pylon no-spend dispatch, and writes the capped timeout into the Pylon assignment.",
+          id: "background_agents.dispatch.definition_budget_caps",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents.com/workers/api/src/agent-definition-run-routes.test.ts",
+        },
+        {
+          description:
+            "Trigger rows auto-pause after three consecutive failures, preserve the pause reason, leave due-trigger scans empty while paused, and reset the failure streak on explicit enable.",
+          id: "background_agents.dispatch.trigger_auto_pause",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents.com/workers/api/src/agent-definition-trigger-store.test.ts",
+        },
+      ],
       productArea: "background agent dispatch",
       source: {
         channel: "issue_list",
         statedBy: "owner",
         statedOn: "2026-07-03",
       },
-      state: "pending",
+      state: "enforced",
       statement:
-        "Auto-pause after N consecutive failures; maxRunsPerDay / maxRunSeconds / maxCreditsPerDay enforced at dispatch with typed refusals - a buggy background watcher must never be a money pump.",
+        "Auto-pause after 3 consecutive failures; maxRunsPerDay / maxRunSeconds / maxCreditsPerDay enforced at dispatch with typed refusals - a buggy background watcher must never be a money pump.",
       surface: "openagents.com-worker",
       verification:
-        "Pending BA-B4: add dispatch budget and auto-pause tests, then flip this contract to enforced with those tests as bun-test oracles in the relevant sweep.",
+        "BA-B4 is enforced by the openagents.com Worker definition-run route tests and trigger-store tests in the normal bun test sweep.",
     },
     {
       authorityBoundary:
@@ -202,5 +223,5 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-03.3",
+  version: "2026-07-03.4",
 }

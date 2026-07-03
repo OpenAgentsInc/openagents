@@ -10,6 +10,10 @@ import {
 import { computeNextCronRunAt } from './agent-definition-cron'
 import { parseJsonWithSchema } from './json-boundary'
 
+export const AGENT_DEFINITION_TRIGGER_AUTO_PAUSE_FAILURES = 3
+export const AGENT_DEFINITION_TRIGGER_AUTO_PAUSE_REASON =
+  `auto-paused after ${AGENT_DEFINITION_TRIGGER_AUTO_PAUSE_FAILURES} consecutive failures`
+
 type AgentDefinitionTriggerRow = Readonly<{
   trigger_id: string
   owner_ref: string
@@ -300,6 +304,7 @@ export const makeD1AgentDefinitionTriggerStore = (
         .prepare(
           `UPDATE agent_definition_triggers
               SET state = 'enabled',
+                  consecutive_failures = 0,
                   paused_at = NULL,
                   pause_reason = NULL,
                   updated_at = ?
@@ -316,11 +321,32 @@ export const makeD1AgentDefinitionTriggerStore = (
         .prepare(
           `UPDATE agent_definition_triggers
               SET consecutive_failures = consecutive_failures + 1,
+                  state = CASE
+                    WHEN consecutive_failures + 1 >= ? THEN 'paused'
+                    ELSE state
+                  END,
+                  paused_at = CASE
+                    WHEN consecutive_failures + 1 >= ? THEN ?
+                    ELSE paused_at
+                  END,
+                  pause_reason = CASE
+                    WHEN consecutive_failures + 1 >= ? THEN ?
+                    ELSE pause_reason
+                  END,
                   updated_at = ?
             WHERE owner_agent_user_id = ?
               AND trigger_ref = ?`,
         )
-        .bind(updatedAt, ownerAgentUserId, triggerRef)
+        .bind(
+          AGENT_DEFINITION_TRIGGER_AUTO_PAUSE_FAILURES,
+          AGENT_DEFINITION_TRIGGER_AUTO_PAUSE_FAILURES,
+          updatedAt,
+          AGENT_DEFINITION_TRIGGER_AUTO_PAUSE_FAILURES,
+          AGENT_DEFINITION_TRIGGER_AUTO_PAUSE_REASON,
+          updatedAt,
+          ownerAgentUserId,
+          triggerRef,
+        )
         .run()
 
       return changed(result)
@@ -355,12 +381,34 @@ export const makeD1AgentDefinitionTriggerStore = (
         .prepare(
           `UPDATE agent_definition_triggers
               SET consecutive_failures = consecutive_failures + 1,
+                  state = CASE
+                    WHEN consecutive_failures + 1 >= ? THEN 'paused'
+                    ELSE state
+                  END,
                   next_run_at = ?,
+                  paused_at = CASE
+                    WHEN consecutive_failures + 1 >= ? THEN ?
+                    ELSE paused_at
+                  END,
+                  pause_reason = CASE
+                    WHEN consecutive_failures + 1 >= ? THEN ?
+                    ELSE pause_reason
+                  END,
                   updated_at = ?
             WHERE owner_agent_user_id = ?
               AND trigger_ref = ?`,
         )
-        .bind(nextRunAt, updatedAt, ownerAgentUserId, triggerRef)
+        .bind(
+          AGENT_DEFINITION_TRIGGER_AUTO_PAUSE_FAILURES,
+          nextRunAt,
+          AGENT_DEFINITION_TRIGGER_AUTO_PAUSE_FAILURES,
+          updatedAt,
+          AGENT_DEFINITION_TRIGGER_AUTO_PAUSE_FAILURES,
+          AGENT_DEFINITION_TRIGGER_AUTO_PAUSE_REASON,
+          updatedAt,
+          ownerAgentUserId,
+          triggerRef,
+        )
         .run()
 
       return changed(result)

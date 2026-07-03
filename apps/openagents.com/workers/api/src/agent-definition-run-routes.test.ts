@@ -2,6 +2,8 @@ import {
   decodeAgentDefinition,
   type AgentDefinition,
 } from '@openagentsinc/agent-runtime-schema'
+
+// Behavior contract oracle: background_agents.dispatch.budget_caps_enforced.v1
 import {
   MemoryStreamStore,
   type StreamStore,
@@ -18,6 +20,7 @@ import {
   type AgentDefinitionStore,
 } from './agent-definition-routes'
 import {
+  type AgentDefinitionRunDailyBudgetUsage,
   type AgentDefinitionRunRecord,
   type AgentDefinitionRunStore,
   handleAgentDefinitionRunRequest,
@@ -115,6 +118,9 @@ class MemoryAgentDefinitionStore
 
 class MemoryAgentDefinitionRunStore implements AgentDefinitionRunStore {
   readonly rows: Array<AgentDefinitionRunRecord> = []
+  private dailyBudgetUsageOverride:
+    | AgentDefinitionRunDailyBudgetUsage
+    | undefined
 
   upsertRun(
     record: AgentDefinitionRunRecord,
@@ -139,6 +145,38 @@ class MemoryAgentDefinitionRunStore implements AgentDefinitionRunStore {
         row.ownerAgentUserId === ownerAgentUserId && row.runId === runId,
       ),
     )
+  }
+
+  readDailyBudgetUsage(
+    ownerAgentUserId: string,
+    definitionId: string,
+    dayStartIso: string,
+    dayEndIso: string,
+  ): Promise<AgentDefinitionRunDailyBudgetUsage> {
+    if (this.dailyBudgetUsageOverride !== undefined) {
+      return Promise.resolve(this.dailyBudgetUsageOverride)
+    }
+
+    const rows = this.rows.filter(row =>
+      row.ownerAgentUserId === ownerAgentUserId &&
+      row.definitionId === definitionId &&
+      row.createdAt >= dayStartIso &&
+      row.createdAt < dayEndIso
+    )
+
+    return Promise.resolve({
+      creditsReserved: rows.reduce(
+        (total, row) => total + row.budgetCreditsReserved,
+        0,
+      ),
+      runCount: rows.length,
+    })
+  }
+
+  setDailyBudgetUsage(
+    usage: AgentDefinitionRunDailyBudgetUsage,
+  ): void {
+    this.dailyBudgetUsageOverride = usage
   }
 }
 
@@ -581,6 +619,12 @@ describe('agent definition run routes', () => {
     expect(pylon.assignments[0]?.taskRefs).toContain(
       'workflow.public.khala_coding.codex_agent_task',
     )
+    expect(pylon.assignments[0]?.codingAssignment).toMatchObject({
+      codex: {
+        timeoutSeconds: 900,
+      },
+    })
+    expect(runStore.rows[0]?.budgetCreditsReserved).toBe(0)
 
     const replay = await routeDurableInferenceReadRequestDO(
       new Request(
@@ -593,6 +637,103 @@ describe('agent definition run routes', () => {
     expect(replay?.status).toBe(200)
     expect(durableBody).toContain('"tag":"run.input_accepted"')
     expect(durableBody).toContain('"tag":"external_agent.started"')
+  })
+
+  test('refuses dispatch after maxRunsPerDay is exhausted', async () => {
+    const { agent, dependencies, forge, pylon, runStore } =
+      await makeDependencies()
+    runStore.setDailyBudgetUsage({ creditsReserved: 0, runCount: 3 })
+
+    const response = await handleAgentDefinitionRunRequest(
+      jsonRequest({
+        body: {
+          triggerRef: 'trigger.public.route_test.manual',
+        },
+        path: '/v1/agent-definitions/agent_definition.route_test.owner/runs',
+        token: agent.ownerToken,
+      }),
+      dependencies,
+    )
+    const body = (await response!.json()) as {
+      readonly error: string
+      readonly evidenceRefs: ReadonlyArray<string>
+      readonly run: RunProjection
+    }
+
+    expect(response?.status).toBe(429)
+    expect(body.error).toBe('agent_definition_budget_runs_exhausted')
+    expect(body.evidenceRefs).toContain(
+      'evidence.agent_definition_run.budget.max_runs_per_day_exhausted',
+    )
+    expect(body.run.status).toBe('refused')
+    expect(runStore.rows[0]?.status).toBe('refused')
+    expect(runStore.rows[0]?.refusalError).toBe(
+      'agent_definition_budget_runs_exhausted',
+    )
+    expect(forge.issues).toHaveLength(1)
+    expect(pylon.assignments).toHaveLength(0)
+  })
+
+  test('refuses dispatch when reserved daily credits exceed maxCreditsPerDay', async () => {
+    const { agent, dependencies, pylon, runStore } = await makeDependencies()
+    runStore.setDailyBudgetUsage({ creditsReserved: 1, runCount: 0 })
+
+    const response = await handleAgentDefinitionRunRequest(
+      jsonRequest({
+        body: {
+          triggerRef: 'trigger.public.route_test.manual',
+        },
+        path: '/v1/agent-definitions/agent_definition.route_test.owner/runs',
+        token: agent.ownerToken,
+      }),
+      dependencies,
+    )
+    const body = (await response!.json()) as {
+      readonly error: string
+      readonly evidenceRefs: ReadonlyArray<string>
+      readonly run: RunProjection
+    }
+
+    expect(response?.status).toBe(429)
+    expect(body.error).toBe('agent_definition_budget_credits_exhausted')
+    expect(body.evidenceRefs).toContain(
+      'evidence.agent_definition_run.budget.max_credits_per_day_exhausted',
+    )
+    expect(body.run.status).toBe('refused')
+    expect(pylon.assignments).toHaveLength(0)
+  })
+
+  test('refuses invalid dispatch budgets before Pylon assignment', async () => {
+    const { agent, dependencies, pylon, runStore } = await makeDependencies({
+      definition: definition({
+        budget: {
+          maxCreditsPerDay: 0,
+          maxRunSeconds: 0,
+          maxRunsPerDay: 3,
+        },
+      }),
+    })
+
+    const response = await handleAgentDefinitionRunRequest(
+      jsonRequest({
+        body: {
+          triggerRef: 'trigger.public.route_test.manual',
+        },
+        path: '/v1/agent-definitions/agent_definition.route_test.owner/runs',
+        token: agent.ownerToken,
+      }),
+      dependencies,
+    )
+    const body = (await response!.json()) as {
+      readonly error: string
+      readonly run: RunProjection
+    }
+
+    expect(response?.status).toBe(400)
+    expect(body.error).toBe('agent_definition_budget_invalid')
+    expect(body.run.status).toBe('refused')
+    expect(runStore.rows[0]?.refusalReason).toContain('maxRunSeconds')
+    expect(pylon.assignments).toHaveLength(0)
   })
 
   test('persists a typed refusal for unsupported lanes', async () => {

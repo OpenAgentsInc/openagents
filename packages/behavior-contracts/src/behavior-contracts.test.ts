@@ -343,7 +343,7 @@ const repoPath = (ref: string): string =>
   new URL(`../../../${ref}`, import.meta.url).pathname
 
 describe("background agent contract registry", () => {
-  test("registers the headline background-agent invariants with BA-A5 enforced", () => {
+  test("registers the headline background-agent invariants with BA-B4 and BA-A5 enforced", () => {
     const validation = validateBehaviorContractRegistry(backgroundAgentsContractRegistry)
     expect(validation.issues).toEqual([])
     expect(validation.ok).toBe(true)
@@ -354,6 +354,19 @@ describe("background agent contract registry", () => {
       "background_agents.definitions.harness_swap.v1",
       "background_agents.agents_panel.run_status_indicators_truthful.v1",
       "background_agents.warm_dispatch.honest_no_op_without_warm_path.v1",
+    ])
+    const dispatchBudgetContract = backgroundAgentsContractRegistry.contracts.find(
+      contract =>
+        contract.contractId === "background_agents.dispatch.budget_caps_enforced.v1",
+    )
+    expect(dispatchBudgetContract).toMatchObject({
+      blockerRefs: [],
+      enforcementTier: "test-sweep",
+      state: "enforced",
+    })
+    expect(dispatchBudgetContract?.oracles.map(oracle => oracle.ref)).toEqual([
+      "apps/openagents.com/workers/api/src/agent-definition-run-routes.test.ts",
+      "apps/openagents.com/workers/api/src/agent-definition-trigger-store.test.ts",
     ])
     const toolsetPolicyContract = backgroundAgentsContractRegistry.contracts.find(
       contract =>
@@ -371,6 +384,7 @@ describe("background agent contract registry", () => {
     ])
     const pendingContracts = backgroundAgentsContractRegistry.contracts.filter(
       contract =>
+        contract.contractId !== "background_agents.dispatch.budget_caps_enforced.v1" &&
         contract.contractId !== "background_agents.toolset.compiled_policy_enforced.v1",
     )
     expect(
@@ -383,17 +397,17 @@ describe("background agent contract registry", () => {
     ).toBe(true)
   })
 
-  test("background-agent oracle coverage covers BA-A5 and skips pending entries", async () => {
-    const toolsetPolicyContract = backgroundAgentsContractRegistry.contracts.find(
-      contract =>
-        contract.contractId === "background_agents.toolset.compiled_policy_enforced.v1",
+  test("background-agent oracle coverage covers BA-B4 and BA-A5 and skips pending entries", async () => {
+    const enforcedContracts = backgroundAgentsContractRegistry.contracts.filter(
+      contract => contract.state === "enforced",
     )
-    expect(toolsetPolicyContract).toBeDefined()
     const sources = Object.fromEntries(
-      (toolsetPolicyContract?.oracles ?? []).map(oracle => [
-        oracle.ref,
-        `// ${toolsetPolicyContract?.contractId}`,
-      ]),
+      enforcedContracts.flatMap(contract =>
+        contract.oracles.map(oracle => [
+          oracle.ref,
+          `// ${contract.contractId}`,
+        ]),
+      ),
     )
     const report = await Effect.runPromise(
       checkBehaviorContractCoverage(backgroundAgentsContractRegistry).pipe(
@@ -402,6 +416,8 @@ describe("background agent contract registry", () => {
     )
     expect(report.ok).toBe(true)
     expect(report.results.map(result => result.status)).toEqual([
+      "covered",
+      "covered",
       "covered",
       "covered",
       "covered",

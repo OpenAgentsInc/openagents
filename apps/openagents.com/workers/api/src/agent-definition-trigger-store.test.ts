@@ -5,11 +5,14 @@ import {
   decodeAgentDefinition,
   type AgentDefinition,
 } from '@openagentsinc/agent-runtime-schema'
+
+// Behavior contract oracle: background_agents.dispatch.budget_caps_enforced.v1
 import { fulfillmentLoopAgentDefinitionFixture } from '@openagentsinc/agent-runtime-schema/fixtures'
 import { describe, expect, test } from 'vitest'
 
 import { computeNextCronRunAt } from './agent-definition-cron'
 import {
+  AGENT_DEFINITION_TRIGGER_AUTO_PAUSE_REASON,
   makeD1AgentDefinitionTriggerStore,
   type AgentDefinitionTriggerStore,
 } from './agent-definition-trigger-store'
@@ -336,5 +339,70 @@ describe('agent definition trigger D1 store', () => {
       consecutiveFailures: 1,
       nextRunAt: '2026-07-03T15:45:00.000Z',
     })
+  })
+
+  test('auto-pauses a trigger after three consecutive failures', async () => {
+    const store = makeStore()
+    const definition = makeDefinition()
+    const triggerRef = 'trigger.public.trigger_store.quarter_hour'
+
+    await store.replaceDefinitionTriggers(
+      ownerAgentUserId,
+      definition,
+      '2026-07-03T15:07:00.000Z',
+    )
+
+    expect(await store.recordTriggerFailure(
+      ownerAgentUserId,
+      triggerRef,
+      '2026-07-03T15:08:00.000Z',
+    )).toBe(true)
+    expect(await store.recordTriggerDispatchFailure(
+      ownerAgentUserId,
+      triggerRef,
+      '2026-07-03T15:30:00.000Z',
+      '2026-07-03T15:09:00.000Z',
+    )).toBe(true)
+    expect(await store.recordTriggerDispatchFailure(
+      ownerAgentUserId,
+      triggerRef,
+      '2026-07-03T15:45:00.000Z',
+      '2026-07-03T15:10:00.000Z',
+    )).toBe(true)
+
+    const records = await store.listDefinitionTriggers(
+      ownerAgentUserId,
+      definition.id,
+    )
+    const paused = records.find(record => record.triggerRef === triggerRef)
+
+    expect(paused).toMatchObject({
+      consecutiveFailures: 3,
+      nextRunAt: '2026-07-03T15:45:00.000Z',
+      pausedAt: '2026-07-03T15:10:00.000Z',
+      pauseReason: AGENT_DEFINITION_TRIGGER_AUTO_PAUSE_REASON,
+      state: 'paused',
+    })
+    expect(await store.listDueCronTriggers(
+      '2026-07-03T15:45:00.000Z',
+      10,
+    )).toEqual([])
+
+    expect(await store.enableTrigger(
+      ownerAgentUserId,
+      triggerRef,
+      '2026-07-03T15:11:00.000Z',
+    )).toBe(true)
+
+    const enabled = (
+      await store.listDefinitionTriggers(ownerAgentUserId, definition.id)
+    ).find(record => record.triggerRef === triggerRef)
+
+    expect(enabled).toMatchObject({
+      consecutiveFailures: 0,
+      state: 'enabled',
+    })
+    expect(enabled?.pausedAt).toBeUndefined()
+    expect(enabled?.pauseReason).toBeUndefined()
   })
 })

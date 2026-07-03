@@ -7,20 +7,21 @@ in `packages/behavior-contracts/src/background-agents.ts` (schema:
 Issue #8218 registers the headline invariants from
 `docs/fable/ROADMAP_BACKGROUND_AGENTS.md` before their sibling implementation
 oracles land. Entries remain `pending` until the owning task adds its oracle
-test and flips that exact contract to `enforced`; BA-A5 is the first enforced
-background-agent contract in this registry.
+test and flips that exact contract to `enforced`; BA-B4 and BA-A5 are the
+first enforced background-agent contracts in this registry.
 
-Registry version: `2026-07-03.3` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-03.4` (schema `openagents.behavior_contracts.v1`)
 
-### `background_agents.dispatch.budget_caps_enforced.v1` - PENDING
+### `background_agents.dispatch.budget_caps_enforced.v1` - ENFORCED
 
 - **Surface:** openagents.com-worker (background agent dispatch)
 - **Stated by:** owner via issue_list on 2026-07-03
-- **Statement:** Auto-pause after N consecutive failures; maxRunsPerDay / maxRunSeconds / maxCreditsPerDay enforced at dispatch with typed refusals - a buggy background watcher must never be a money pump.
-- **Enforcement tier:** unenforced
-- **Verification:** Pending BA-B4: add dispatch budget and auto-pause tests, then flip this contract to enforced with those tests as bun-test oracles in the relevant sweep.
-- **Blockers:** `blocker.background_agents.ba_b4.oracle_not_landed`
-- **Authority boundary:** This contract binds dispatch budget enforcement for background-agent definitions. It does not authorize public budget or reliability claims until the BA-B4 dispatch oracles exist and run in the normal sweep.
+- **Statement:** Auto-pause after 3 consecutive failures; maxRunsPerDay / maxRunSeconds / maxCreditsPerDay enforced at dispatch with typed refusals - a buggy background watcher must never be a money pump.
+- **Enforcement tier:** test-sweep
+- **Oracle** `background_agents.dispatch.definition_budget_caps` (bun-test, unit): Definition dispatch refuses exhausted daily run and credit budgets, rejects invalid run-second budgets, reserves zero credits for current own-Pylon no-spend dispatch, and writes the capped timeout into the Pylon assignment. - `apps/openagents.com/workers/api/src/agent-definition-run-routes.test.ts`
+- **Oracle** `background_agents.dispatch.trigger_auto_pause` (bun-test, unit): Trigger rows auto-pause after three consecutive failures, preserve the pause reason, leave due-trigger scans empty while paused, and reset the failure streak on explicit enable. - `apps/openagents.com/workers/api/src/agent-definition-trigger-store.test.ts`
+- **Verification:** BA-B4 is enforced by the openagents.com Worker definition-run route tests and trigger-store tests in the normal bun test sweep.
+- **Authority boundary:** This contract binds dispatch budget enforcement for background-agent definitions at the openagents.com Worker dispatch boundary. It does not authorize public budget or reliability claims beyond the tested definition-run and trigger-store oracles.
 
 ### `background_agents.toolset.compiled_policy_enforced.v1` - ENFORCED
 

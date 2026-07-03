@@ -45,7 +45,12 @@ import {
   type PylonApiAssignmentRecord,
   type PylonApiStore,
 } from './pylon-api'
-import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
+import {
+  currentIsoTimestamp,
+  isoTimestampAfterIso,
+  randomUuid,
+  utcStartOfDayIsoTimestamp,
+} from './runtime-primitives'
 
 type HttpResponse = globalThis.Response
 
@@ -54,6 +59,7 @@ const AGENT_DEFINITION_RUN_SCHEMA =
   'openagents.agent_definition_run.v0.1' as const
 const AGENT_DEFINITION_RUN_SESSION_EVENT_SCHEMA =
   'openagents.agent_definition_run.session_event.v0.1' as const
+const AGENT_DEFINITION_RUN_DISPATCH_CREDITS_RESERVED = 0
 
 const TrimmedString = S.Trim
 const NonEmptyTrimmedString = TrimmedString.check(S.isNonEmpty())
@@ -80,6 +86,7 @@ export type AgentDefinitionRunStatus = 'dispatched' | 'pending' | 'refused'
 
 export type AgentDefinitionRunRecord = Readonly<{
   assignmentRef: string | null
+  budgetCreditsReserved: number
   createdAt: string
   definitionId: string
   definitionRef: string
@@ -102,16 +109,28 @@ export type AgentDefinitionRunRecord = Readonly<{
   updatedAt: string
 }>
 
+export type AgentDefinitionRunDailyBudgetUsage = Readonly<{
+  creditsReserved: number
+  runCount: number
+}>
+
 export type AgentDefinitionRunStore = Readonly<{
   upsertRun: (record: AgentDefinitionRunRecord) => Promise<AgentDefinitionRunRecord>
   readRun: (
     ownerAgentUserId: string,
     runId: string,
   ) => Promise<AgentDefinitionRunRecord | undefined>
+  readDailyBudgetUsage: (
+    ownerAgentUserId: string,
+    definitionId: string,
+    dayStartIso: string,
+    dayEndIso: string,
+  ) => Promise<AgentDefinitionRunDailyBudgetUsage>
 }>
 
 type AgentDefinitionRunRow = Readonly<{
   assignment_ref: string | null
+  budget_credits_reserved: number
   created_at: string
   definition_id: string
   definition_ref: string
@@ -139,6 +158,7 @@ const AgentRuntimeEvents = S.Array(AgentRuntimeEventSchema)
 
 const rowToRunRecord = (row: AgentDefinitionRunRow): AgentDefinitionRunRecord => ({
   assignmentRef: row.assignment_ref,
+  budgetCreditsReserved: row.budget_credits_reserved,
   createdAt: row.created_at,
   definitionId: row.definition_id,
   definitionRef: row.definition_ref,
@@ -173,8 +193,8 @@ export const makeD1AgentDefinitionRunStore = (
            durable_request_id, durable_stream_url, forge_tenant_ref,
            forge_work_ref, refusal_error, refusal_reason, evidence_refs_json,
            trigger_payload_json, runtime_run_json, initial_events_json,
-           created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           budget_credits_reserved, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(run_id) DO UPDATE SET
            status = excluded.status,
            pylon_ref = excluded.pylon_ref,
@@ -185,6 +205,7 @@ export const makeD1AgentDefinitionRunStore = (
            evidence_refs_json = excluded.evidence_refs_json,
            runtime_run_json = excluded.runtime_run_json,
            initial_events_json = excluded.initial_events_json,
+           budget_credits_reserved = excluded.budget_credits_reserved,
            updated_at = excluded.updated_at`,
       )
       .bind(
@@ -207,6 +228,7 @@ export const makeD1AgentDefinitionRunStore = (
         JSON.stringify(record.triggerPayload),
         JSON.stringify(record.run),
         JSON.stringify(record.initialEvents),
+        record.budgetCreditsReserved,
         record.createdAt,
         record.updatedAt,
       )
@@ -227,6 +249,33 @@ export const makeD1AgentDefinitionRunStore = (
       .first<AgentDefinitionRunRow>()
 
     return row === null ? undefined : rowToRunRecord(row)
+  },
+  readDailyBudgetUsage: async (
+    ownerAgentUserId,
+    definitionId,
+    dayStartIso,
+    dayEndIso,
+  ) => {
+    const row = await db
+      .prepare(
+        `SELECT COUNT(*) AS run_count,
+                COALESCE(SUM(budget_credits_reserved), 0) AS credits_reserved
+           FROM agent_definition_runs
+          WHERE owner_agent_user_id = ?
+            AND definition_id = ?
+            AND created_at >= ?
+            AND created_at < ?`,
+      )
+      .bind(ownerAgentUserId, definitionId, dayStartIso, dayEndIso)
+      .first<{
+        readonly credits_reserved: number | null
+        readonly run_count: number
+      }>()
+
+    return {
+      creditsReserved: row?.credits_reserved ?? 0,
+      runCount: row?.run_count ?? 0,
+    }
   },
 })
 
@@ -555,9 +604,18 @@ const storageErrorResponse = (): HttpResponse =>
     ),
   )
 
+type AgentDefinitionRunRefusal = Readonly<{
+  error: string
+  evidenceRefs: ReadonlyArray<string>
+  kind: 'rejected'
+  reason: string
+  requestedPylonRef: string | null
+  statusCode: number
+}>
+
 const unsupportedLaneRefusal = (
   lane: AgentDefinition['lane'],
-): Extract<CodingDelegationResult, { kind: 'rejected' }> => ({
+): AgentDefinitionRunRefusal => ({
   error: 'target_pylon_unavailable',
   evidenceRefs: [
     'evidence.agent_definition_run.lane.unsupported',
@@ -572,7 +630,7 @@ const unsupportedLaneRefusal = (
 
 const unsupportedHarnessRefusal = (
   definition: AgentDefinition,
-): Extract<CodingDelegationResult, { kind: 'rejected' }> => ({
+): AgentDefinitionRunRefusal => ({
   error: 'target_pylon_unavailable',
   evidenceRefs: [
     'evidence.agent_definition_run.harness_adapter_unavailable',
@@ -598,8 +656,132 @@ const unavailableRefusal = (): Extract<
   statusCode: 503,
 })
 
+const invalidBudgetRefusal = (reason: string): AgentDefinitionRunRefusal => ({
+  error: 'agent_definition_budget_invalid',
+  evidenceRefs: ['evidence.agent_definition_run.budget.invalid'],
+  kind: 'rejected',
+  reason,
+  requestedPylonRef: null,
+  statusCode: 400,
+})
+
+const runsPerDayBudgetRefusal = (
+  input: Readonly<{
+    maxRunsPerDay: number
+    runCount: number
+  }>,
+): AgentDefinitionRunRefusal => ({
+  error: 'agent_definition_budget_runs_exhausted',
+  evidenceRefs: [
+    'evidence.agent_definition_run.budget.max_runs_per_day_exhausted',
+    `budget.agent_definition.max_runs_per_day.${input.maxRunsPerDay}`,
+  ],
+  kind: 'rejected',
+  reason:
+    `This background-agent definition has already used ${input.runCount} ` +
+    `of ${input.maxRunsPerDay} allowed runs for the current UTC day.`,
+  requestedPylonRef: null,
+  statusCode: 429,
+})
+
+const creditsPerDayBudgetRefusal = (
+  input: Readonly<{
+    creditsReserved: number
+    maxCreditsPerDay: number
+  }>,
+): AgentDefinitionRunRefusal => ({
+  error: 'agent_definition_budget_credits_exhausted',
+  evidenceRefs: [
+    'evidence.agent_definition_run.budget.max_credits_per_day_exhausted',
+    `budget.agent_definition.max_credits_per_day.${input.maxCreditsPerDay}`,
+  ],
+  kind: 'rejected',
+  reason:
+    `This background-agent definition has already reserved ${input.creditsReserved} ` +
+    `of ${input.maxCreditsPerDay} allowed credits for the current UTC day.`,
+  requestedPylonRef: null,
+  statusCode: 429,
+})
+
+const isPositiveInteger = (value: number): boolean =>
+  Number.isInteger(value) && value > 0
+
+const isNonNegativeFinite = (value: number): boolean =>
+  Number.isFinite(value) && value >= 0
+
+const utcDayWindowFor = (
+  iso: string,
+): Readonly<{ dayEndIso: string; dayStartIso: string }> => {
+  const dayStartIso = utcStartOfDayIsoTimestamp(iso)
+
+  return {
+    dayEndIso: isoTimestampAfterIso(dayStartIso, 24 * 60 * 60 * 1000),
+    dayStartIso,
+  }
+}
+
+const dispatchBudgetRefusal = async (
+  dependencies: Pick<AgentDefinitionRunDispatchDependencies, 'runStore'>,
+  input: Readonly<{
+    definition: AgentDefinition
+    nowIso: string
+  }>,
+): Promise<AgentDefinitionRunRefusal | undefined> => {
+  const budget = input.definition.budget
+
+  if (!isPositiveInteger(budget.maxRunSeconds)) {
+    return invalidBudgetRefusal(
+      'maxRunSeconds must be a positive integer before dispatch.',
+    )
+  }
+
+  if (!isPositiveInteger(budget.maxRunsPerDay)) {
+    return invalidBudgetRefusal(
+      'maxRunsPerDay must be a positive integer before dispatch.',
+    )
+  }
+
+  if (
+    budget.maxCreditsPerDay !== undefined &&
+    !isNonNegativeFinite(budget.maxCreditsPerDay)
+  ) {
+    return invalidBudgetRefusal(
+      'maxCreditsPerDay must be non-negative when configured.',
+    )
+  }
+
+  const { dayEndIso, dayStartIso } = utcDayWindowFor(input.nowIso)
+  const usage = await dependencies.runStore.readDailyBudgetUsage(
+    input.definition.ownerRef.replace(/^agent:/, ''),
+    input.definition.id,
+    dayStartIso,
+    dayEndIso,
+  )
+
+  if (usage.runCount >= budget.maxRunsPerDay) {
+    return runsPerDayBudgetRefusal({
+      maxRunsPerDay: budget.maxRunsPerDay,
+      runCount: usage.runCount,
+    })
+  }
+
+  if (
+    budget.maxCreditsPerDay !== undefined &&
+    usage.creditsReserved + AGENT_DEFINITION_RUN_DISPATCH_CREDITS_RESERVED >
+      budget.maxCreditsPerDay
+  ) {
+    return creditsPerDayBudgetRefusal({
+      creditsReserved: usage.creditsReserved,
+      maxCreditsPerDay: budget.maxCreditsPerDay,
+    })
+  }
+
+  return undefined
+}
+
 const buildRunRecord = (input: Readonly<{
   assignment: PylonApiAssignmentRecord | null
+  budgetCreditsReserved: number
   definition: AgentDefinition
   durableStreamUrl: string | null
   evidenceRefs: ReadonlyArray<string>
@@ -662,6 +844,7 @@ const buildRunRecord = (input: Readonly<{
 
   return {
     assignmentRef,
+    budgetCreditsReserved: input.budgetCreditsReserved,
     createdAt: input.nowIso,
     definitionId: input.definition.id,
     definitionRef: definitionRef(input.definition),
@@ -755,6 +938,7 @@ const rawDelegationBody = (
       ...(input.request.workspace === undefined
         ? {}
         : { workspace: input.request.workspace }),
+      timeoutSeconds: input.definition.budget.maxRunSeconds,
     },
   },
 })
@@ -782,7 +966,7 @@ const persistRefusedRun = async (
     definition: AgentDefinition
     forgeWorkRef: string
     nowIso: string
-    refusal: Extract<CodingDelegationResult, { kind: 'rejected' }>
+    refusal: AgentDefinitionRunRefusal
     runId: string
     triggerPayload: Record<string, unknown>
     triggerRef: string
@@ -790,6 +974,7 @@ const persistRefusedRun = async (
 ): Promise<Readonly<{ record: AgentDefinitionRunRecord; seeded: boolean }>> => {
   const record = buildRunRecord({
     assignment: null,
+    budgetCreditsReserved: 0,
     definition: input.definition,
     durableStreamUrl: null,
     evidenceRefs: input.refusal.evidenceRefs,
@@ -845,6 +1030,42 @@ export const dispatchAgentDefinitionRun = async (
     })
   } catch {
     return { kind: 'storage_error' }
+  }
+
+  const budgetRefusal = await dispatchBudgetRefusal(dependencies, {
+    definition: input.definition,
+    nowIso,
+  }).catch(() => 'storage_error' as const)
+
+  if (budgetRefusal === 'storage_error') {
+    return { kind: 'storage_error' }
+  }
+
+  if (budgetRefusal !== undefined) {
+    try {
+      const refused = await persistRefusedRun(dependencies, {
+        definition: input.definition,
+        forgeWorkRef,
+        nowIso,
+        refusal: budgetRefusal,
+        runId,
+        triggerPayload,
+        triggerRef: trigger.triggerRef,
+      })
+
+      return {
+        evidenceRefs: budgetRefusal.evidenceRefs,
+        error: budgetRefusal.error,
+        kind: 'refused',
+        reason: budgetRefusal.reason,
+        record: refused.record,
+        requestedPylonRef: budgetRefusal.requestedPylonRef,
+        seeded: refused.seeded,
+        statusCode: budgetRefusal.statusCode,
+      }
+    } catch {
+      return { kind: 'storage_error' }
+    }
   }
 
   if (input.definition.lane !== 'own_pylon') {
@@ -968,6 +1189,7 @@ export const dispatchAgentDefinitionRun = async (
 
   const record = buildRunRecord({
     assignment: delegation.assignment,
+    budgetCreditsReserved: AGENT_DEFINITION_RUN_DISPATCH_CREDITS_RESERVED,
     definition: input.definition,
     durableStreamUrl: delegation.durableStreamUrl,
     evidenceRefs: [

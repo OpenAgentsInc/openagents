@@ -142,8 +142,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   oldest-first under a bounded cap, and every attempted cron dispatch must move
   `next_run_at` to the next cron instant before another tick can consider the
   row again. Refusals and failures increment/preserve the failure streak rather
-  than retrying in a tight duplicate loop; BA-B4 owns the future auto-pause
-  threshold.
+  than retrying in a tight duplicate loop.
+- Auto-pause after 3 consecutive failures; `maxRunsPerDay` /
+  `maxRunSeconds` / `maxCreditsPerDay` are enforced at dispatch with typed
+  refusals - a buggy background watcher must never be a money pump. Dispatch
+  refuses invalid budgets, refuses owner+definition rows that already hit the
+  UTC daily run cap, refuses rows whose reserved daily credits exceed the
+  configured credit cap, and writes the definition's run-second cap into the
+  Pylon assignment timeout. Trigger failure recording atomically pauses the
+  owner-scoped trigger row on the third consecutive failed/refused attempt.
 - Inbound definition webhooks must verify the source signature before parsing
   or normalizing provider payloads. GitHub ingress is owned by
   `/v1/agent-definitions/webhooks/github`, verifies the `x-hub-signature-256`
@@ -171,7 +178,9 @@ More specific invariant ledgers apply inside imported apps and packages.
   and
   `apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts`
   for signature-gated GitHub ingress, typed condition matching, and
-  owner-scoped dispatch.
+  owner-scoped dispatch, and
+  `apps/openagents.com/workers/api/src/agent-definition-run-routes.test.ts` for
+  dispatch budget refusals and capped assignment timeouts.
 
 ## Connector Authority And Redaction
 
