@@ -84,3 +84,58 @@ export const recentThreadCycleIndex = (
   const delta = input.direction === "newer" ? -1 : 1
   return (activeIndex + delta + threads.length) % threads.length
 }
+
+export const KHALA_CODE_RECENT_THREAD_HOTKEY_HINT_HOLD_MS = 250
+export const KHALA_CODE_RECENT_THREAD_HOTKEY_HINT_LIMIT = 9
+
+export type KeyHoldTracker = {
+  readonly isRevealed: () => boolean
+  readonly keyDown: () => void
+  readonly keyUp: () => void
+}
+
+export const createKeyHoldTracker = (input: {
+  readonly holdDelayMs?: number
+  readonly onHide: () => void
+  readonly onReveal: () => void
+}): KeyHoldTracker => {
+  const holdDelayMs = input.holdDelayMs ?? KHALA_CODE_RECENT_THREAD_HOTKEY_HINT_HOLD_MS
+  let holdTimer: ReturnType<typeof setTimeout> | null = null
+  let revealed = false
+
+  const reveal = (): void => {
+    holdTimer = null
+    revealed = true
+    input.onReveal()
+  }
+
+  return {
+    isRevealed: () => revealed,
+    keyDown: () => {
+      if (revealed || holdTimer !== null) return
+      if (holdDelayMs <= 0) {
+        reveal()
+        return
+      }
+      holdTimer = setTimeout(reveal, holdDelayMs)
+    },
+    keyUp: () => {
+      if (holdTimer !== null) {
+        clearTimeout(holdTimer)
+        holdTimer = null
+      }
+      if (!revealed) return
+      revealed = false
+      input.onHide()
+    },
+  }
+}
+
+export const recentThreadHotkeyHintDigits = (
+  threads: readonly KhalaCodeDesktopCodexThreadSummary[],
+): ReadonlyMap<string, number> =>
+  new Map(
+    recentThreadsForHotkeys(threads)
+      .slice(0, KHALA_CODE_RECENT_THREAD_HOTKEY_HINT_LIMIT)
+      .map((thread, index) => [thread.id, index + 1]),
+  )

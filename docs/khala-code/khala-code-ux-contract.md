@@ -52,7 +52,7 @@ sweep if this doc, the registry, or the oracle tests drift apart.
 
 ## Registry
 
-Registry version: `2026-07-03.1` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-03.2` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_code.chat.sidebar_spinner_streaming_only.v1` — ENFORCED
 
@@ -65,13 +65,22 @@ Registry version: `2026-07-03.1` (schema `openagents.behavior_contracts.v1`)
 - **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** This contract binds indicator semantics only. Thread-switch latency budgets stay owned by docs/qa/khala-code-latency-budgets.md, and it makes no claim about streaming correctness itself.
 
-### `khala_code.chat.recent_thread_cmd_hotkeys.v1` — ENFORCED
+### `khala_code.chat.recent_thread_cmd_hotkeys.v1` — RETIRED
 
 - **Surface:** khala-code-desktop (chat thread switching)
 - **Stated by:** owner via khala-code-session on 2026-07-03
 - **Statement:** Holding Cmd shows an overlay listing the nine most recent chats numbered 1 through 9, and pressing Cmd+1 through Cmd+9 jumps to that chat. Releasing Cmd hides the overlay.
 - **Enforcement tier:** test-sweep
+- **Verification:** Superseded by khala_code.chat.recent_thread_cmd_hotkeys.v2.
+- **Authority boundary:** Retired 2026-07-03 (owner correction): the overlay reading of the original ask was wrong — no separate pane should appear. Superseded by khala_code.chat.recent_thread_cmd_hotkeys.v2; kept for history.
+
+### `khala_code.chat.recent_thread_cmd_hotkeys.v2` — ENFORCED
+
+- **Surface:** khala-code-desktop (chat thread switching)
+- **Stated by:** owner via khala-code-session on 2026-07-03
+- **Statement:** Holding Cmd does not open a separate pane; it temporarily replaces the timestamps of the nine most recent chats in the sidebar with their command-digit hotkeys (⌘1 through ⌘9). Pressing Cmd+1 through Cmd+9 jumps to that chat, and releasing Cmd restores the timestamps.
+- **Enforcement tier:** test-sweep
 - **Oracle** `cmd_digit_gating.unit` (bun-test, unit): Cmd+1..Cmd+9 map to the first through ninth most recent threads; unmodified digits and digits with other modifiers map to nothing. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Oracle** `hold_overlay.dom` (bun-test, dom): Mounts the recent-chats overlay in a DOM: holding Meta shows the numbered list of at most nine recent chats with the active chat highlighted, releasing Meta hides it, and clicking an entry selects that chat. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Oracle** `sidebar_hotkey_hints.dom` (bun-test, dom): Mounts the real thread sidebar in a DOM: enabling hotkey hints replaces the time slot of the nine most recent chats with their command-digit hints in place (no separate pane appears anywhere in the document), and disabling hints restores the timestamps. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
 - **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Cmd+0 additionally maps to the tenth most recent chat and Cmd+ArrowUp/ArrowDown cycle through recency; those are compatible extensions, not part of this contract.
+- **Authority boundary:** Cmd+0 additionally maps to the tenth most recent chat and Cmd+ArrowUp/ArrowDown cycle through recency; those are compatible extensions, not part of this contract. The generalized overlay-menu component remains available for future dialog menus but is not mounted for this feature.

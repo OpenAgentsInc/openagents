@@ -2259,6 +2259,11 @@ button {
   font-size: 0.62rem;
   font-family: var(--oa-font-code);
 }
+.khala-thread-sidebar-item-time[data-hotkey-hint] {
+  color: var(--oa-color-khala-energy-cyan);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
 .khala-thread-sidebar-item-time[data-streaming="true"] {
   display: inline-flex;
   align-items: center;
@@ -2287,7 +2292,7 @@ button {
   }
 }
 
-.khala-recent-thread-overlay {
+.khala-overlay-menu {
   position: fixed;
   top: 50%;
   left: 50%;
@@ -2301,10 +2306,10 @@ button {
   background: color-mix(in srgb, var(--oa-color-khala-void) 94%, var(--oa-color-khala-energy-blue));
   box-shadow: 0 0 32px -6px color-mix(in srgb, var(--oa-color-khala-energy-blue) 55%, transparent);
 }
-.khala-recent-thread-overlay[hidden] {
+.khala-overlay-menu[hidden] {
   display: none;
 }
-.khala-recent-thread-overlay-title {
+.khala-overlay-menu-title {
   margin: 0 0 0.55rem;
   font-family: var(--oa-font-code);
   font-size: 0.68rem;
@@ -2312,12 +2317,12 @@ button {
   text-transform: uppercase;
   color: color-mix(in srgb, var(--oa-color-component-text) 62%, transparent);
 }
-.khala-recent-thread-overlay-list {
+.khala-overlay-menu-list {
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
 }
-.khala-recent-thread-overlay-item {
+.khala-overlay-menu-item {
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -2332,14 +2337,14 @@ button {
   text-align: left;
   cursor: pointer;
 }
-.khala-recent-thread-overlay-item:hover,
-.khala-recent-thread-overlay-item:focus-visible {
+.khala-overlay-menu-item:hover,
+.khala-overlay-menu-item:focus-visible {
   background: color-mix(in srgb, var(--oa-color-khala-energy-blue) 26%, transparent);
 }
-.khala-recent-thread-overlay-item[data-active="true"] {
+.khala-overlay-menu-item[data-active="true"] {
   background: color-mix(in srgb, var(--oa-color-khala-energy-blue) 38%, transparent);
 }
-.khala-recent-thread-overlay-digit {
+.khala-overlay-menu-key {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2351,18 +2356,18 @@ button {
   font-size: 0.66rem;
   color: var(--oa-color-khala-energy-cyan);
 }
-.khala-recent-thread-overlay-item-title {
+.khala-overlay-menu-item-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.khala-recent-thread-overlay-empty {
+.khala-overlay-menu-empty {
   margin: 0;
   padding: 0.3rem 0.45rem;
   font-size: 0.78rem;
   color: color-mix(in srgb, var(--oa-color-component-text) 55%, transparent);
 }
-.khala-recent-thread-overlay-hint {
+.khala-overlay-menu-hint {
   margin: 0.6rem 0 0;
   font-family: var(--oa-font-code);
   font-size: 0.62rem;

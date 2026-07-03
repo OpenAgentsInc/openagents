@@ -97,11 +97,11 @@ import { mountUnifiedInboxPanel } from "./inbox"
 import type { KhalaCodeDesktopCodexThreadSummary } from "../shared/codex-threads"
 import { sessionCatalogEntryToThreadSummary } from "../shared/session-catalog"
 import {
+  createKeyHoldTracker,
   recentThreadCycleDirectionForEvent,
   recentThreadHotkeyIndexForEvent,
   recentThreadsForHotkeys,
 } from "./thread-hotkeys"
-import { mountRecentThreadOverlay } from "./recent-thread-overlay"
 import {
   KHALA_CODE_DIFF_REVIEW_SUBMIT_EVENT,
   KhalaCodeDiffReviewSubmitDetailSchema,
@@ -4002,22 +4002,17 @@ const threadSidebar =
         },
       })
 
-const recentThreadOverlay =
+const recentThreadHotkeyHold =
   threadSidebar === null
     ? null
-    : mountRecentThreadOverlay({
-        activeThreadId: () => shellModel().activeCodexThreadId,
-        recentThreads: () => threadSidebar.recentThreads(),
-        onSelect: index => {
-          void threadSidebar.selectRecentThread(index).then(selected => {
-            if (selected) setActiveView("chat")
-          })
-        },
+    : createKeyHoldTracker({
+        onHide: () => threadSidebar.setHotkeyHintsVisible(false),
+        onReveal: () => threadSidebar.setHotkeyHintsVisible(true),
       })
 
 window.addEventListener("keydown", event => {
   if (event.key === "Meta" && !event.altKey && !event.ctrlKey && !event.shiftKey) {
-    recentThreadOverlay?.notifyMetaKeyDown()
+    recentThreadHotkeyHold?.keyDown()
   }
   const recentThreadIndex = recentThreadHotkeyIndexForEvent(event)
   const recentThreadCycleDirection = recentThreadCycleDirectionForEvent(event)
@@ -4031,20 +4026,17 @@ window.addEventListener("keydown", event => {
       ? Promise.resolve(false)
       : threadSidebar.selectAdjacentRecentThread(recentThreadCycleDirection)
   void selection.then(selected => {
-    if (selected) {
-      setActiveView("chat")
-      recentThreadOverlay?.refresh()
-    }
+    if (selected) setActiveView("chat")
   })
 })
 
 window.addEventListener("keyup", event => {
   if (event.key !== "Meta") return
-  recentThreadOverlay?.notifyMetaKeyUp()
+  recentThreadHotkeyHold?.keyUp()
 })
 
 window.addEventListener("blur", () => {
-  recentThreadOverlay?.hide()
+  recentThreadHotkeyHold?.keyUp()
 })
 
 const setActiveView = (value: string): void => {

@@ -18,6 +18,7 @@ import { formatCompactThreadTimestamp } from "./thread-time"
 import {
   type RecentThreadCycleDirection,
   recentThreadCycleIndex,
+  recentThreadHotkeyHintDigits,
   recentThreadsForHotkeys,
 } from "./thread-hotkeys"
 
@@ -27,6 +28,7 @@ export type CodexThreadSidebarHandle = {
   readonly selectAdjacentRecentThread: (direction: RecentThreadCycleDirection) => Promise<boolean>
   readonly selectRecentThread: (index: number) => Promise<boolean>
   readonly setActiveThreadId: (threadId: string | null) => void
+  readonly setHotkeyHintsVisible: (visible: boolean) => void
   readonly setVisible: (visible: boolean) => void
   readonly upsertPendingThread: (input: {
     readonly preview: string
@@ -114,6 +116,14 @@ const threadStreamingIndicator = (): HTMLSpanElement => {
   const indicator = el("span", "khala-thread-sidebar-item-spinner")
   indicator.setAttribute("aria-hidden", "true")
   return indicator
+}
+
+const threadHotkeyHintContent = (digit: number): HTMLSpanElement => {
+  const time = el("span", "khala-thread-sidebar-item-time", `⌘${digit}`)
+  time.dataset.hotkeyHint = String(digit)
+  time.title = `Jump with ⌘${digit}`
+  time.setAttribute("aria-label", `Jump with Command ${digit}`)
+  return time
 }
 
 const threadTimeContent = (
@@ -219,6 +229,8 @@ export const mountCodexThreadSidebar = (
   let searchTerm = ""
   let state: ViewState = { phase: "idle" }
   let visible = false
+  let hotkeyHintsVisible = false
+  let hotkeyHintDigits: ReadonlyMap<string, number> = new Map()
   let activeThreadId = options.activeThreadId()
   let selectingThreadId: string | null = null
   let selectionError: {
@@ -625,9 +637,12 @@ export const mountCodexThreadSidebar = (
       const rect = row.getBoundingClientRect()
       openThreadMenu(thread, { x: rect.right, y: rect.top })
     })
+    const hintDigit = hotkeyHintsVisible ? hotkeyHintDigits.get(thread.id) : undefined
     row.append(
       el("span", "khala-thread-sidebar-item-title", thread.title),
-      threadTimeContent(thread, options),
+      hintDigit === undefined
+        ? threadTimeContent(thread, options)
+        : threadHotkeyHintContent(hintDigit),
     )
 
     item.append(renamingThreadId === thread.id ? threadRenameForm(thread) : row)
@@ -639,6 +654,9 @@ export const mountCodexThreadSidebar = (
 
   function render(): void {
     const currentState = state
+    hotkeyHintDigits = hotkeyHintsVisible
+      ? recentThreadHotkeyHintDigits(dataForState(currentState)?.threads ?? [])
+      : new Map()
     container.replaceChildren()
     const header = el("div", "khala-thread-sidebar-header")
     header.append(el("h2", "khala-thread-sidebar-title", "Chat"))
@@ -778,6 +796,11 @@ export const mountCodexThreadSidebar = (
     setActiveThreadId(threadId) {
       activeThreadId = threadId
       if (threadId !== selectingThreadId) selectingThreadId = null
+      render()
+    },
+    setHotkeyHintsVisible(nextVisible) {
+      if (hotkeyHintsVisible === nextVisible) return
+      hotkeyHintsVisible = nextVisible
       render()
     },
     setVisible(nextVisible) {

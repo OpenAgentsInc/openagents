@@ -1280,7 +1280,7 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("response.backend.threadId")
     expect(main).toContain("recentThreadHotkeyIndexForEvent")
     expect(main).toContain("recentThreadCycleDirectionForEvent")
-    expect(main).toContain("mountRecentThreadOverlay")
+    expect(main).toContain("createKeyHoldTracker")
     expect(main).toContain("threadSidebar.selectRecentThread(recentThreadIndex)")
     expect(main).toContain("threadSidebar.selectAdjacentRecentThread(recentThreadCycleDirection)")
     expect(main).toContain("codexThreadRead({")

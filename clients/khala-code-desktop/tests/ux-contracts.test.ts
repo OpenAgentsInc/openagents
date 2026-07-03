@@ -15,7 +15,6 @@ import {
 import type { KhalaCodeDesktopCodexThreadSummary } from "../src/shared/codex-threads"
 import type { KhalaCodeDesktopCodexThreadListResult } from "../src/shared/rpc"
 import { mountCodexThreadSidebar } from "../src/ui/codex-thread-sidebar"
-import { mountRecentThreadOverlay } from "../src/ui/recent-thread-overlay"
 import {
   recentThreadCycleDirectionForEvent,
   recentThreadHotkeyIndexForEvent,
@@ -238,7 +237,7 @@ describe("contract khala_code.chat.sidebar_spinner_streaming_only.v1", () => {
 })
 
 // Oracle for khala_code.chat.recent_thread_cmd_hotkeys.v1
-describe("contract khala_code.chat.recent_thread_cmd_hotkeys.v1", () => {
+describe("contract khala_code.chat.recent_thread_cmd_hotkeys.v2", () => {
   test("Cmd+1 through Cmd+9 map to the nine most recent chats", () => {
     for (let digit = 1; digit <= 9; digit += 1) {
       expect(
@@ -285,63 +284,87 @@ describe("contract khala_code.chat.recent_thread_cmd_hotkeys.v1", () => {
     ).toBeNull()
   })
 
-  test("holding Meta shows the numbered overlay of at most nine recent chats", async () => {
+  test("hotkey hints replace the timestamps of the nine most recent chats in place", async () => {
     await withDom(async () => {
       const threads = Array.from({ length: 12 }, (_, index) =>
         thread(`thread-${index}`, `Chat ${index}`, 1000 - index),
       )
-      const selected: number[] = []
-      const overlay = mountRecentThreadOverlay({
+      const container = document.createElement("aside")
+      document.body.append(container)
+      const sidebar = mountCodexThreadSidebar(container, {
         activeThreadId: () => "thread-1",
-        holdDelayMs: 0,
-        recentThreads: () => threads,
-        onSelect: index => selected.push(index),
+        archiveThread: async (threadId: string) => ({ action: "archive" as const, ok: true, threadId }),
+        deleteThread: async (threadId: string) => ({ action: "delete" as const, ok: true, threadId }),
+        forkThread: async (threadId: string) => ({ action: "fork" as const, ok: true, threadId }),
+        listThreads: async () => ({
+          ok: true as const,
+          data: [],
+          groups: [
+            { key: "all", label: "All sessions", threadIds: threads.map(entry => entry.id) },
+          ],
+          threads,
+        }),
+        renameThread: async (threadId: string) => ({ action: "rename" as const, ok: true, threadId }),
+        resumeThread: async (threadId: string) => ({
+          ok: true as const,
+          thread: {},
+          threadId,
+          messages: [] as const,
+        }),
+        sessionId: "desktop-session",
+        unarchiveThread: async (threadId: string) => ({ action: "unarchive" as const, ok: true, threadId }),
+        onNewThreadRequested: () => undefined,
+        onThreadSelected: () => undefined,
       })
+      sidebar.setVisible(true)
+      await sidebar.refresh()
 
-      expect(overlay.isVisible()).toBe(false)
-      overlay.notifyMetaKeyDown()
-      expect(overlay.isVisible()).toBe(true)
-
-      const root = document.querySelector<HTMLElement>(".khala-recent-thread-overlay")
-      expect(root).not.toBeNull()
-      expect(root?.hidden).toBe(false)
-
-      const items = [...document.querySelectorAll<HTMLButtonElement>(
-        ".khala-recent-thread-overlay-item",
+      const timesBefore = [...container.querySelectorAll<HTMLElement>(
+        ".khala-thread-sidebar-item-time",
       )]
-      expect(items).toHaveLength(9)
-      expect(items.map(item => item.dataset.digit)).toEqual([
+      expect(timesBefore.length).toBe(12)
+      expect(timesBefore.every(time => time.dataset.hotkeyHint === undefined)).toBe(true)
+
+      sidebar.setHotkeyHintsVisible(true)
+
+      const hints = [...container.querySelectorAll<HTMLElement>(
+        ".khala-thread-sidebar-item-time[data-hotkey-hint]",
+      )]
+      expect(hints.map(hint => hint.dataset.hotkeyHint)).toEqual([
         "1", "2", "3", "4", "5", "6", "7", "8", "9",
       ])
-      expect(items[0]?.dataset.threadId).toBe("thread-0")
-      expect(items[0]?.textContent).toContain("Chat 0")
+      expect(hints.map(hint => hint.textContent)).toEqual([
+        "\u23181", "\u23182", "\u23183", "\u23184", "\u23185", "\u23186", "\u23187", "\u23188", "\u23189",
+      ])
       expect(
-        items.find(item => item.dataset.threadId === "thread-1")?.dataset.active,
-      ).toBe("true")
+        container.querySelector('[data-thread-id="thread-0"] [data-hotkey-hint="1"]'),
+      ).not.toBeNull()
+      expect(
+        container.querySelector('[data-thread-id="thread-9"] [data-hotkey-hint]'),
+      ).toBeNull()
+      expect(container.querySelectorAll(".khala-thread-sidebar-item-time")).toHaveLength(12)
+      expect(document.querySelector(".khala-overlay-menu")).toBeNull()
 
-      overlay.notifyMetaKeyUp()
-      expect(overlay.isVisible()).toBe(false)
-      expect(root?.hidden).toBe(true)
+      sidebar.setHotkeyHintsVisible(false)
 
-      overlay.show()
-      const third = document.querySelectorAll<HTMLButtonElement>(
-        ".khala-recent-thread-overlay-item",
-      )[2]
-      third?.click()
-      expect(selected).toEqual([2])
-      expect(overlay.isVisible()).toBe(false)
-
-      overlay.destroy()
+      const timesAfter = [...container.querySelectorAll<HTMLElement>(
+        ".khala-thread-sidebar-item-time",
+      )]
+      expect(timesAfter.length).toBe(12)
+      expect(timesAfter.every(time => time.dataset.hotkeyHint === undefined)).toBe(true)
     })
   })
 
-  test("the app shell wires Meta hold, release, and window blur to the overlay", async () => {
+  test("the app shell wires Meta hold, release, and window blur to the sidebar hints", async () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    expect(main).toContain("createKeyHoldTracker")
     expect(main).toContain('if (event.key === "Meta"')
-    expect(main).toContain("recentThreadOverlay?.notifyMetaKeyDown()")
+    expect(main).toContain("recentThreadHotkeyHold?.keyDown()")
     expect(main).toContain('window.addEventListener("keyup", event => {')
-    expect(main).toContain("recentThreadOverlay?.notifyMetaKeyUp()")
+    expect(main).toContain("recentThreadHotkeyHold?.keyUp()")
     expect(main).toContain('window.addEventListener("blur", () => {')
-    expect(main).toContain("recentThreadOverlay?.hide()")
+    expect(main).toContain("setHotkeyHintsVisible(true)")
+    expect(main).toContain("setHotkeyHintsVisible(false)")
+    expect(main).not.toContain("mountOverlayMenu")
   })
 })

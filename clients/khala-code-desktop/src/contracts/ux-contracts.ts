@@ -65,13 +65,37 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
-        "Cmd+0 additionally maps to the tenth most recent chat and Cmd+ArrowUp/ArrowDown cycle through recency; those are compatible extensions, not part of this contract.",
+        "Retired 2026-07-03 (owner correction): the overlay reading of the original ask was wrong — no separate pane should appear. Superseded by khala_code.chat.recent_thread_cmd_hotkeys.v2; kept for history.",
       blockerRefs: [],
       contractId: "khala_code.chat.recent_thread_cmd_hotkeys.v1",
       enforcementTier: "test-sweep",
       evidenceRefs: [
+        "contract:khala_code.chat.recent_thread_cmd_hotkeys.v2",
+        "docs/khala-code/khala-code-ux-contract.md",
+      ],
+      oracles: [],
+      productArea: "chat thread switching",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-03",
+      },
+      state: "retired",
+      statement:
+        "Holding Cmd shows an overlay listing the nine most recent chats numbered 1 through 9, and pressing Cmd+1 through Cmd+9 jumps to that chat. Releasing Cmd hides the overlay.",
+      surface: "khala-code-desktop",
+      verification:
+        "Superseded by khala_code.chat.recent_thread_cmd_hotkeys.v2.",
+    },
+    {
+      authorityBoundary:
+        "Cmd+0 additionally maps to the tenth most recent chat and Cmd+ArrowUp/ArrowDown cycle through recency; those are compatible extensions, not part of this contract. The generalized overlay-menu component remains available for future dialog menus but is not mounted for this feature.",
+      blockerRefs: [],
+      contractId: "khala_code.chat.recent_thread_cmd_hotkeys.v2",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
         "clients/khala-code-desktop/src/ui/thread-hotkeys.ts",
-        "clients/khala-code-desktop/src/ui/recent-thread-overlay.ts",
+        "clients/khala-code-desktop/src/ui/codex-thread-sidebar.ts",
         "clients/khala-code-desktop/src/ui/main.ts",
         "docs/khala-code/khala-code-ux-contract.md",
       ],
@@ -86,8 +110,8 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
         },
         {
           description:
-            "Mounts the recent-chats overlay in a DOM: holding Meta shows the numbered list of at most nine recent chats with the active chat highlighted, releasing Meta hides it, and clicking an entry selects that chat.",
-          id: "hold_overlay.dom",
+            "Mounts the real thread sidebar in a DOM: enabling hotkey hints replaces the time slot of the nine most recent chats with their command-digit hints in place (no separate pane appears anywhere in the document), and disabling hints restores the timestamps.",
+          id: "sidebar_hotkey_hints.dom",
           kind: "bun-test",
           mode: "dom",
           ref: "clients/khala-code-desktop/tests/ux-contracts.test.ts",
@@ -101,12 +125,12 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
       },
       state: "enforced",
       statement:
-        "Holding Cmd shows an overlay listing the nine most recent chats numbered 1 through 9, and pressing Cmd+1 through Cmd+9 jumps to that chat. Releasing Cmd hides the overlay.",
+        "Holding Cmd does not open a separate pane; it temporarily replaces the timestamps of the nine most recent chats in the sidebar with their command-digit hotkeys (⌘1 through ⌘9). Pressing Cmd+1 through Cmd+9 jumps to that chat, and releasing Cmd restores the timestamps.",
       surface: "khala-code-desktop",
       verification:
         "bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.",
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-03.1",
+  version: "2026-07-03.2",
 }
