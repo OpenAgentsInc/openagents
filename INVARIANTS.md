@@ -115,6 +115,30 @@ More specific invariant ledgers apply inside imported apps and packages.
 - Regression coverage starts in
   `packages/agent-runtime-schema/src/index.test.ts`.
 
+## Connector Authority And Redaction
+
+- Connector sidecars never own workspace, payment, email, membership,
+  settlement, identity, or broad provider-account authority. The platform
+  remains authoritative for those state changes; connectors may only emit
+  source-verified, bounded events and execute explicitly modeled per-connector
+  tools.
+- Before any connector event reaches model context, session history, logs, or
+  outbound provider mutation, provider credentials, authorization headers, raw
+  webhook bodies, raw payloads, signatures, and webhook secrets must be
+  excluded or redacted. Public or model-visible connector envelopes may carry
+  only typed subjects, source refs, redacted refs, booleans, timestamps, and
+  blocker/caveat refs.
+- Outbound connector mutation must pass an app-owned idempotency gate before
+  dispatch. Provider retry keys alone are not enough; the OpenAgents connector
+  contract owns the dedupe key and the bounded receipt/projection.
+- Generic provider tools are forbidden. Tool authority must name the connector,
+  provider, subject kind, and operation, and it must stay bound to the verified
+  event subject, such as one issue or one pull request.
+- Regression coverage for the BF-6 connector gate lives in
+  `packages/connector-sidecar/src/index.test.ts`, including denial cases for
+  raw provider material in context/history/logs, missing app-owned idempotency,
+  generic provider tools, and platform-authority widening.
+
 ## Cloudflare Verse World Service
 
 - Live Verse world work belongs to `apps/openagents-world/`, a Cloudflare
