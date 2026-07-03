@@ -286,6 +286,11 @@ import {
   handleCodingQuickWinPipelineApi,
 } from './coding-quick-win-pipeline-routes'
 import {
+  firstBusinessCaseStudy,
+  makeInMemoryBusinessCaseStudyStore,
+} from './business-case-study-engine'
+import { makeBusinessCaseStudyRoutes } from './business-case-study-engine-routes'
+import {
   firstAlreadySoldBusinessQuickWinReceipt,
   makeInMemoryBusinessAlreadySoldEngagementReceiptStore,
 } from './business-already-sold-engagement-receipt'
@@ -8566,6 +8571,10 @@ const businessAlreadySoldEngagementReceiptRoutes =
         firstAlreadySoldBusinessQuickWinReceipt,
       ]),
   })
+const businessCaseStudyRoutes = makeBusinessCaseStudyRoutes<Env>({
+  makeCaseStudyStore: _env =>
+    makeInMemoryBusinessCaseStudyStore([firstBusinessCaseStudy]),
+})
 const marketingAgencySelfServePublicRoutes =
   makeMarketingAgencySelfServePublicRoutes<Env>({
     makeClaimStore: _env => makeInMemoryMarketingAgencySelfServeClaimStore([]),
@@ -14007,6 +14016,8 @@ const routeRequest = makeWorkerRouteRequest({
     codingQuickWinReceiptPublicRoutes.routeCodingQuickWinReceiptRequest,
   routeBusinessAlreadySoldEngagementReceiptRequest:
     businessAlreadySoldEngagementReceiptRoutes.routeBusinessAlreadySoldEngagementReceiptRequest,
+  routeBusinessCaseStudyRequest:
+    businessCaseStudyRoutes.routeBusinessCaseStudyRequest,
   routeMarketingAgencyReceiptRequest:
     marketingAgencyReceiptPublicRoutes.routeMarketingAgencyReceiptRequest,
   routeMarketingAgencySelfServeRequest:
