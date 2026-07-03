@@ -27,6 +27,8 @@ import type { KhalaCodeDesktopSlashCommandWithAvailability } from "../shared/cod
 import type { CodexAppServerChatRuntime } from "./codex-app-server-chat-runtime.js"
 import {
   createClaudeSessionStore,
+  ensureClaudeConfigDir,
+  resolveClaudeConfigDir,
   type ClaudeSessionStore,
 } from "./claude-session-store.js"
 import { createClaudeThreadItemProjector } from "./claude-thread-item-projector.js"
@@ -114,7 +116,7 @@ type ActiveClaudeTurn = {
 }
 
 const textFromRequest = (request: KhalaCodeDesktopChatTurnRequest): string =>
-  request.messages.map(message => message.body).filter(Boolean).join("\n\n").trim()
+  [...request.messages].reverse().find(message => message.role === "user")?.body.trim() ?? ""
 
 const claudeThinkingForEffort = (
   effort: KhalaCodeModelRoleEffort | undefined,
@@ -383,6 +385,8 @@ export function createClaudeAppSdkChatRuntime(
     const shouldResume = threadId !== undefined && stored?.lastTurnId !== undefined
     const controller = new AbortController()
     const query = await loadQuery(options)
+    const claudeConfigDir = resolveClaudeConfigDir(options.env)
+    await ensureClaudeConfigDir(claudeConfigDir)
     const projector = createClaudeThreadItemProjector({
       desktopSessionId: request.sessionId,
       turnId: desktopTurnId,
@@ -403,7 +407,7 @@ export function createClaudeAppSdkChatRuntime(
       ...(shouldResume ? { resume: threadId } : { sessionId: freshSessionId }),
       env: {
         ...options.env,
-        ...(options.env?.CLAUDE_CONFIG_DIR === undefined ? {} : { CLAUDE_CONFIG_DIR: options.env.CLAUDE_CONFIG_DIR }),
+        CLAUDE_CONFIG_DIR: claudeConfigDir,
       },
     }
     const queryOptions = withClaudeFleetMcpBridgeOptions({

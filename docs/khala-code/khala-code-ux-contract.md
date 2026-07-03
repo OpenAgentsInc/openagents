@@ -52,7 +52,7 @@ sweep if this doc, the registry, or the oracle tests drift apart.
 
 ## Registry
 
-Registry version: `2026-07-03.5` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-03.6` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_code.chat.sidebar_spinner_streaming_only.v1` — ENFORCED
 
@@ -104,6 +104,17 @@ Registry version: `2026-07-03.5` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `sidebar_hotkey_hints.dom` (bun-test, dom): Mounts the real thread sidebar in a DOM: enabling hotkey hints replaces the time slot of the nine most recent chats with their command-digit hints in place (no separate pane appears anywhere in the document), and disabling hints restores the timestamps. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
 - **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Cmd+0 additionally maps to the tenth most recent chat and Cmd+ArrowUp/ArrowDown cycle through recency; those are compatible extensions, not part of this contract. The generalized overlay-menu component remains available for future dialog menus but is not mounted for this feature.
+
+### `khala_code.claude_lane.isolated_home_and_user_prompt_only.v1` — ENFORCED
+
+- **Surface:** khala-code-desktop (Claude lane)
+- **Stated by:** customer via github-issue on 2026-07-03
+- **Statement:** The Claude lane starts from a clean Khala Code context rather than the user's global Claude Code memory/config. Non-user transcript system/error text must not be fed to the model as conversation.
+- **Enforcement tier:** test-sweep
+- **Oracle** `claude_app_sdk_config_dir_isolated.unit` (bun-test, unit): Starts a real Claude runtime with an ambient CLAUDE_CONFIG_DIR and proves query() receives Khala Code's app-managed config directory instead of the user's default/global Claude home. — `clients/khala-code-desktop/tests/claude-app-sdk-chat-runtime.test.ts`
+- **Oracle** `claude_prompt_user_only.unit` (bun-test, unit): Submits a transcript containing system, tool, assistant, and older user rows and proves the Claude SDK prompt contains only the latest user-authored message. — `clients/khala-code-desktop/tests/claude-app-sdk-chat-runtime.test.ts`
+- **Verification:** bun test tests/claude-app-sdk-chat-runtime.test.ts tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
+- **Authority boundary:** This binds the desktop Claude chat lane only. Fleet worker Claude accounts remain owned by Pylon's isolated-account registry, and an explicit KHALA_CODE_DESKTOP_CLAUDE_CONFIG_DIR override may intentionally point the desktop lane at a caller-selected app config directory.
 
 ### `khala_code.composer.no_dead_controls.v1` — PENDING
 

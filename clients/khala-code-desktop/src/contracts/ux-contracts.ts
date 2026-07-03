@@ -198,6 +198,48 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
+        "This binds the desktop Claude chat lane only. Fleet worker Claude accounts remain owned by Pylon's isolated-account registry, and an explicit KHALA_CODE_DESKTOP_CLAUDE_CONFIG_DIR override may intentionally point the desktop lane at a caller-selected app config directory.",
+      blockerRefs: [],
+      contractId: "khala_code.claude_lane.isolated_home_and_user_prompt_only.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-code-desktop/src/bun/claude-app-sdk-chat-runtime.ts",
+        "clients/khala-code-desktop/src/bun/claude-session-store.ts",
+        "docs/khala-code/khala-code-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Starts a real Claude runtime with an ambient CLAUDE_CONFIG_DIR and proves query() receives Khala Code's app-managed config directory instead of the user's default/global Claude home.",
+          id: "claude_app_sdk_config_dir_isolated.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-code-desktop/tests/claude-app-sdk-chat-runtime.test.ts",
+        },
+        {
+          description:
+            "Submits a transcript containing system, tool, assistant, and older user rows and proves the Claude SDK prompt contains only the latest user-authored message.",
+          id: "claude_prompt_user_only.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-code-desktop/tests/claude-app-sdk-chat-runtime.test.ts",
+        },
+      ],
+      productArea: "Claude lane",
+      source: {
+        channel: "github-issue",
+        statedBy: "customer",
+        statedOn: "2026-07-03",
+      },
+      state: "enforced",
+      statement:
+        "The Claude lane starts from a clean Khala Code context rather than the user's global Claude Code memory/config. Non-user transcript system/error text must not be fed to the model as conversation.",
+      surface: "khala-code-desktop",
+      verification:
+        "bun test tests/claude-app-sdk-chat-runtime.test.ts tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.",
+    },
+    {
+      authorityBoundary:
         "This binds control liveness only, not the exact reasoning-mode UI; that design is free to iterate as long as no control ships inert.",
       blockerRefs: ["blocker.khala_code_ux_mining.oracle_not_implemented_20260703"],
       contractId: "khala_code.composer.no_dead_controls.v1",
@@ -762,5 +804,5 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-03.5",
+  version: "2026-07-03.6",
 }

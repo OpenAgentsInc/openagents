@@ -49,6 +49,19 @@ export function resolveClaudeSessionStorePath(
   return join(home, ".khala-code", "claude-sessions.json")
 }
 
+export function resolveClaudeConfigDir(
+  env: Readonly<Record<string, string | undefined>> = Bun.env,
+): string {
+  const override = env.KHALA_CODE_DESKTOP_CLAUDE_CONFIG_DIR?.trim()
+  if (override !== undefined && override.length > 0) return override
+  const home = env.HOME?.trim() || homedir()
+  return join(home, ".khala-code", "claude-config")
+}
+
+export async function ensureClaudeConfigDir(path: string): Promise<void> {
+  await mkdir(path, { recursive: true })
+}
+
 async function readStore(path: string): Promise<ClaudeSessionStoreFile> {
   try {
     const raw = await readFile(path, "utf8")
