@@ -1561,6 +1561,7 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
           runner: this.runnerFor(runRef, pylonRef),
           capacity: this.capacityFor(runRef),
           tickIntervalMs: DEFAULT_FLEET_RUN_TICK_INTERVAL_MS,
+          startImmediately: false,
           ...(this.options.sleep === undefined ? {} : { clock: { sleep: this.options.sleep } }),
           onLifecycle: event => {
             const existing = this.active.get(runRef)
@@ -1597,7 +1598,14 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
   }
 
   async status(input: KhalaFleetRunStatusInput): Promise<KhalaFleetRunSnapshot | readonly KhalaFleetRunSnapshot[]> {
-    if (input.runRef !== undefined) return this.snapshot(input.runRef)
+    if (input.runRef !== undefined) {
+      const run = this.store.reconcileFleetRun(input.runRef)
+      if (run.state === "completed" || run.state === "stopped") {
+        await this.releaseActive(input.runRef)
+      }
+      return this.snapshotForRun(input.runRef)
+    }
+    await this.reapTerminalActives()
     return this.store.listFleetRuns().map(run => this.snapshotForRun(run.runRef))
   }
 
@@ -1683,8 +1691,12 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
         if (config === undefined) throw new Error(`missing fleet run plan config: ${runRef}`)
         const fixture = run.workSource === "fixture"
         const env = this.advertisedRunEnvs.get(runRef) ?? this.options.env
+        const selectedAccountRef = commandAccountRef(accountRef)
+        if (!fixture && selectedAccountRef === undefined) {
+          throw new Error("real fleet dispatch requires a named isolated account ref; refusing default Codex home")
+        }
         return await Effect.runPromise(this.pylonService.runAssignment({
-          accountRef: commandAccountRef(accountRef),
+          accountRef: selectedAccountRef,
           baseUrl: config.baseUrl,
           branch: workUnit.branch ?? config.branch,
           commit: fixture ? undefined : workUnit.baseCommit ?? config.commit,
@@ -1705,6 +1717,7 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
     return {
       accounts: async () => {
         const run = this.store.getFleetRun(runRef)
+        const realWork = run !== null && run.workSource !== "fixture"
         const env = run === null || run.workSource === "fixture"
           ? this.options.env
           : await this.advertiseFleetRunCapacity(runRef, run)
@@ -1716,6 +1729,7 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
         }, env === undefined ? this.options : { ...this.options, env })
         return status.accounts
           .filter(account => account.readiness === "ready" && !account.paused)
+          .filter(account => !realWork || !isDefaultAccountRef(account.accountRef))
           .map(account => ({
             accountRef: account.accountRef,
             advertisedCapacity: Math.max(0, account.capacity?.available ?? account.capacity?.ready ?? 1),

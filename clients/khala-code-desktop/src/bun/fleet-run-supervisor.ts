@@ -84,6 +84,7 @@ export type FleetRunSupervisorOptions = {
   readonly claimTtlMs?: number
   readonly maxSpawnPerTick?: number
   readonly awaitDispatches?: boolean
+  readonly startImmediately?: boolean
   readonly onLifecycle?: (event: FleetRunSupervisorObservedEvent) => void | Promise<void>
 }
 
@@ -433,6 +434,34 @@ export async function tickFleetRunSupervisor(
   })
 
   if (freeSlots <= 0) {
+    if (targetFreeSlots > 0 && activeAssignments === 0 && run.refillPolicy.stopCondition === "backlog_empty") {
+      const plan = await options.planner.plan({ run, now })
+      const dependencyPending = plan.skipped.some(unit => unit.skipReason === "dependency_pending")
+      const plannedWorkUnitsTotal = Math.max(expectedWorkUnitsTotal, run.counters.workUnitsTotal, plan.units.length)
+      let reconciled = store.reconcileFleetRun(run.runRef, clock.now())
+      if (reconciled.counters.workUnitsTotal < plannedWorkUnitsTotal) {
+        reconciled = store.upsertFleetRun({
+          ...reconciled,
+          counters: {
+            ...reconciled.counters,
+            workUnitsTotal: plannedWorkUnitsTotal,
+          },
+          updatedAt: clock.now().toISOString(),
+        })
+      }
+      if (plan.claimable.length === 0 && !dependencyPending && activeAssignmentsForRun(store, run.runRef) === 0) {
+        const completed = store.updateFleetRunState(run.runRef, "completed", clock.now(), "reconcile")
+        await emit(options.onLifecycle, { kind: "completed", runRef: run.runRef, reason: "backlog_empty" })
+        return {
+          activeAssignments: activeAssignmentsForRun(store, run.runRef),
+          claimed: 0,
+          dispatched: 0,
+          freeSlots,
+          run: completed,
+        }
+      }
+      return { activeAssignments, claimed: 0, dispatched: 0, freeSlots, run: reconciled }
+    }
     return { activeAssignments, claimed: 0, dispatched: 0, freeSlots, run }
   }
 
@@ -646,6 +675,7 @@ export function makeFleetRunSupervisor(
     }
     activeSupervisors.set(options.pylonRef, options.runRef)
     let stopped = false
+    let inFlightTick: Promise<FleetRunSupervisorTickResult> | null = null
     return {
       pylonRef: options.pylonRef,
       runRef: options.runRef,
@@ -656,7 +686,13 @@ export function makeFleetRunSupervisor(
       tick: () => Effect.tryPromise({
         try: async () => {
           if (stopped) throw new FleetRunSupervisorError(`fleet run supervisor stopped: ${options.runRef}`)
-          return await tickFleetRunSupervisor({ ...options, awaitDispatches: false })
+          if (inFlightTick !== null) return await inFlightTick
+          const tick = tickFleetRunSupervisor({ ...options, awaitDispatches: false })
+            .finally(() => {
+              if (inFlightTick === tick) inFlightTick = null
+            })
+          inFlightTick = tick
+          return await tick
         },
         catch: (error: unknown) => error instanceof FleetRunSupervisorError
           ? error
@@ -684,12 +720,16 @@ export function startFleetRunSupervisor(
     const context = yield* Effect.context<never>()
     void (async () => {
       const clock = { ...defaultClock, ...options.clock }
+      let firstLoop = true
       while (!loopStopped) {
-        try {
-          await Effect.runPromiseWith(context)(handle.tick())
-        } catch {
-          // Keep the scoped supervisor alive; individual dispatch failures are recorded by tick.
+        if (!firstLoop || options.startImmediately !== false) {
+          try {
+            await Effect.runPromiseWith(context)(handle.tick())
+          } catch {
+            // Keep the scoped supervisor alive; individual dispatch failures are recorded by tick.
+          }
         }
+        firstLoop = false
         if (!loopStopped) await clock.sleep(options.tickIntervalMs ?? 1000)
       }
     })()

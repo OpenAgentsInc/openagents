@@ -398,7 +398,7 @@ describe("Khala Code fleet tools", () => {
       if (joined === "codex accounts list --json") {
         return ok({
           accounts: [{
-            accountRef: null,
+            accountRef: "codex-2",
             accountRefHash: MATRIX_ACCOUNT_REF_HASH,
             homeState: "present",
             provider: "codex",
@@ -409,7 +409,7 @@ describe("Khala Code fleet tools", () => {
       if (joined === "accounts status --provider codex --json") {
         return ok({
           accounts: [{
-            accountRef: null,
+            accountRef: "codex-2",
             accountRefHash: MATRIX_ACCOUNT_REF_HASH,
             provider: "codex",
             readiness: { state: "ready" },
@@ -465,7 +465,7 @@ describe("Khala Code fleet tools", () => {
     expect(second.active).toBe(false)
   })
 
-  test("DefaultKhalaFleetRunSupervisorManager refreshes live issue-list capacity before dispatch", async () => {
+  test("DefaultKhalaFleetRunSupervisorManager refreshes live issue-list capacity before named-account dispatch", async () => {
     const fixture = await tempPylonFixture()
     const calls: string[] = []
     let requestArgs: readonly string[] = []
@@ -494,7 +494,7 @@ describe("Khala Code fleet tools", () => {
       if (joined === "codex accounts list --json") {
         return ok({
           accounts: [{
-            accountRef: null,
+            accountRef: "codex-2",
             accountRefHash: MATRIX_ACCOUNT_REF_HASH,
             homeState: "present",
             provider: "codex",
@@ -505,7 +505,7 @@ describe("Khala Code fleet tools", () => {
       if (joined === "accounts status --provider codex --json") {
         return ok({
           accounts: [{
-            accountRef: null,
+            accountRef: "codex-2",
             accountRefHash: MATRIX_ACCOUNT_REF_HASH,
             provider: "codex",
             readiness: { state: "ready" },
@@ -559,11 +559,93 @@ describe("Khala Code fleet tools", () => {
 
     expect(started.pylonRef).toBe("pylon.local.test")
     expect(final.run.state).toBe("completed")
-    expect(requestArgs).not.toContain("--account-ref")
+    expect(requestArgs).toContain("--account-ref")
+    expect(requestArgs).toContain("codex-2")
     expect(requestArgs).not.toContain("(default)")
     expect(heartbeatIndex).toBeGreaterThanOrEqual(0)
     expect(requestIndex).toBeGreaterThanOrEqual(0)
     expect(heartbeatIndex).toBeLessThan(requestIndex)
+  })
+
+  test("DefaultKhalaFleetRunSupervisorManager refuses default Codex home for real issue-list dispatch", async () => {
+    const fixture = await tempPylonFixture()
+    const calls: string[] = []
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      calls.push(joined)
+      if (joined === "presence heartbeat --base-url https://openagents.com --json") {
+        return ok({ heartbeatRef: "heartbeat.pylon.local.test.default_refused", pylonRef: "pylon.local.test" })
+      }
+      if (joined === "provider go-online --json") {
+        return ok({
+          ok: true,
+          ownCapacityDispatch: {
+            availableCodexAssignments: 1,
+            codexAccounts: [{ accountKey: MATRIX_ACCOUNT_KEY, available: 1, busy: 0, queued: 0, ready: 1 }],
+            maxCodexAssignments: 1,
+          },
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (joined === "codex accounts list --json") {
+        return ok({
+          accounts: [{
+            accountRef: null,
+            accountRefHash: MATRIX_ACCOUNT_REF_HASH,
+            homeState: "present",
+            provider: "codex",
+          }],
+          schema: "openagents.pylon.accounts_list.v0.3",
+        })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({
+          accounts: [{
+            accountRef: null,
+            accountRefHash: MATRIX_ACCOUNT_REF_HASH,
+            provider: "codex",
+            readiness: { state: "ready" },
+          }],
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      if (joined === "gh pr list --repo OpenAgentsInc/openagents --state all --limit 1000 --json number,title,state,labels,body,url,mergedAt") {
+        return ok([])
+      }
+      if (args[0] === "khala" && args[1] === "request") {
+        return failed("default Codex home dispatch must not be attempted")
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+    const manager = new DefaultKhalaFleetRunSupervisorManager({
+      env: fixture.env,
+      runner,
+      sleep: async () => {
+        await new Promise(resolve => setTimeout(resolve, 0))
+      },
+    })
+
+    const started = await manager.start({
+      branch: "main",
+      commit: "0123456789abcdef0123456789abcdef01234567",
+      issues: [8061],
+      objective: "Refuse real work when only the display default Codex account is available.",
+      pylonRef: "pylon.local.test",
+      repo: "OpenAgentsInc/openagents",
+      runRef: "fleet_run.test.default_home_refused",
+      targetConcurrency: 1,
+      verify: "bun run check:deploy",
+      workSource: "issue_list",
+    })
+
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(started.lastTick?.freeSlots).toBe(0)
+    expect(calls.some(command => command.startsWith("khala request "))).toBe(false)
+    expect(calls).toContain("presence heartbeat --base-url https://openagents.com --json")
+
+    await manager.control({ runRef: "fleet_run.test.default_home_refused", verb: "stop" })
   })
 
   test("DefaultKhalaFleetRunSupervisorManager skips issue-list work with an existing PR sibling", async () => {

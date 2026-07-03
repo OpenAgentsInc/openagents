@@ -77,6 +77,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   Untrusted labor, provider, and public command paths still reject caller-
   supplied danger flags with a typed blocker, and assignment-safe config
   loaders never read a permissive mode from public wire/config.
+- Real Khala fleet-run coding dispatch must use named, isolated account refs
+  from the caller-owned Pylon account registry. Automatic real-work fanout must
+  not route through the display/default Codex account or omit `--account-ref`;
+  that would write rollouts under the operator's default `~/.codex` home.
+  Fleet-run supervisor ticks are serialized per Pylon/run handle so startup
+  status reads and the background loop cannot over-dispatch past the target
+  concurrency. Regression coverage lives in
+  `clients/khala-code-desktop/tests/fleet-run-supervisor.test.ts` and
+  `clients/khala-code-desktop/tests/khala-fleet-tools.test.ts`.
 - Secrets, wallet material, raw prompts, private repo content, provider
   payloads, and private customer data must not be committed or written into
   docs, tests, fixtures, logs, or public projections.

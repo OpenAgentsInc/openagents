@@ -222,6 +222,48 @@ describe("FleetRunSupervisor", () => {
     await Effect.runPromise(handle.stop())
   })
 
+  test("serializes overlapping handle ticks before dispatch planning", async () => {
+    const { store, run } = createStoreWithRun({ runRef: "fleet_run.acceptance.serial_tick", targetConcurrency: 2, workUnits: 4 })
+    const started: string[] = []
+    let capacityCalls = 0
+    let releaseCapacity!: () => void
+    const capacityGate = new Promise<void>(resolve => {
+      releaseCapacity = resolve
+    })
+    const handle = await Effect.runPromise(makeFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner.serial_tick",
+      runRef: run.runRef,
+      planner: fixturePlannerWithClaims(store, 4),
+      runner: acceptingRunner(started),
+      capacity: {
+        accounts: async () => {
+          capacityCalls += 1
+          await capacityGate
+          return [{ accountRef: "codex", advertisedCapacity: 2 }]
+        },
+      },
+      clock: { now: () => fixedNow },
+    }))
+
+    const first = Effect.runPromise(handle.tick())
+    await waitFor(() => capacityCalls === 1)
+    const second = Effect.runPromise(handle.tick())
+    await Bun.sleep(10)
+    expect(capacityCalls).toBe(1)
+
+    releaseCapacity()
+    const [firstResult, secondResult] = await Promise.all([first, second])
+
+    expect(firstResult.dispatched).toBe(2)
+    expect(secondResult.dispatched).toBe(2)
+    expect(started).toHaveLength(2)
+    expect(new Set(started).size).toBe(2)
+    expect(store.listTasks("dispatched")).toHaveLength(2)
+
+    await Effect.runPromise(handle.stop())
+  })
+
   test("target-25 fixture acceptance reaches 25 simulated concurrent assignments and drains", async () => {
     const { store, run } = createStoreWithRun({ runRef: "fleet_run.acceptance.target_25", targetConcurrency: 25, workUnits: 25 })
     const dispatched: string[] = []
