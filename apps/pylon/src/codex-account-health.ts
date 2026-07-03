@@ -22,7 +22,7 @@ const SECRET_PATTERNS: RegExp[] = [
   /Bearer\s+[A-Za-z0-9._~+/=-]{8,}/gi,
 ]
 
-export function publicSafeCodexFailureMessage(value: unknown): string {
+function publicSafeCodexFailureText(value: unknown): string {
   const raw =
     value instanceof Error
       ? value.message
@@ -36,18 +36,23 @@ export function publicSafeCodexFailureMessage(value: unknown): string {
     (text, pattern) => text.replace(pattern, "[redacted]"),
     collapsed,
   )
+  return redacted
+}
+
+export function publicSafeCodexFailureMessage(value: unknown): string {
+  const redacted = publicSafeCodexFailureText(value)
   return redacted.length > 280 ? `${redacted.slice(0, 277)}...` : redacted
 }
 
 export function classifyCodexAccountFailure(value: unknown): PylonCodexAccountFailure {
   const publicMessage = publicSafeCodexFailureMessage(value)
-  const text = publicMessage.toLowerCase()
+  const text = publicSafeCodexFailureText(value).toLowerCase()
   const reason: PylonCodexAccountHealthReason =
     /revok/.test(text)
       ? "credentials_revoked"
       : /5\s*[- ]?\s*hour|five\s+hour|rate limit|too many requests|\b429\b/.test(text)
           ? "rate_limited"
-          : /usage limit|quota|purchase more credits|billing limit/.test(text)
+          : /usage limit|quota|purchase more credits|billing limit|has[_-]?credits["'\s:=]+false|hascredits["'\s:=]+false/.test(text)
             ? "usage_limited"
             : /timed? ?out|deadline|abort/.test(text)
               ? "timeout"

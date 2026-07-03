@@ -624,8 +624,17 @@ budget, not OpenAgents settlement.
   so pass the real, bounded prompt on `khala request --prompt`.
 - **`codex accounts list --json` returns `ok: null`** (not `true`) in this build;
   read readiness from `.accounts[].readiness` (string: `ready` /
-  `credentials_revoked` / `credentials_missing`). Prefer a named `ready` account
-  (e.g. `codex-2`); `codex` (default) was `credentials_revoked` here.
+  `credentials_revoked` / `credentials_missing` / `usage_limited`). Prefer a
+  named `ready` account (e.g. `codex-2`); `codex` (default) was
+  `credentials_revoked` here.
+- **Live child JSONL can be the only honest readiness signal.** If a Codex child
+  admits an assignment and then closes with `codex_agent_execution_refused`,
+  inspect the live session events before relaunching. A `token_count` payload
+  with `rate_limits.credits.has_credits=false` or a zero credit balance is a
+  `usage_limited` account, not free fleet capacity. Current Pylon health
+  classification reads the full redacted failure text before public truncation,
+  records that account as `usage_limited`, and excludes it from advertised
+  per-account capacity.
 - **The `codex exec` child confirms the owner-local executor invariant:**
   `codex exec --experimental-json --sandbox danger-full-access --skip-git-repo-check
   --config sandbox_workspace_write.network_access=true --config approval_policy=never`
@@ -1189,6 +1198,9 @@ The policy is:
   wait for the cooldown.
 - If weekly usage is exhausted and the account supports reset, use the reset
   control for that account.
+- If a live Codex rollout emits `has_credits=false`, `hasCredits=false`, or a
+  zero credits balance, record the account as `usage_limited` and remove it from
+  dispatch until the provider account has credits again.
 - Record reset attempts and outcomes in the Desktop fleet event store.
 
 Do not repeatedly dispatch into an account that is returning execution refusal

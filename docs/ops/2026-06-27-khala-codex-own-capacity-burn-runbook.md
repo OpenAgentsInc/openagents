@@ -228,7 +228,9 @@ PYLON_HOME=$HOME/.pylon-fable pylon auth codex --account codex-N
 
 # Verify ready accounts:
 PYLON_HOME=$HOME/.pylon-fable pylon codex accounts list --json
-# -> expect state: ready and capability.pylon.local_codex per account.
+# -> expect state: ready and capability.pylon.local_codex per dispatch account.
+# usage_limited / credentials_revoked / credentials_missing accounts are not
+# dispatch capacity.
 
 # Inspect a plan / usage (consumes a minimal provider call):
 PYLON_HOME=$HOME/.pylon-fable pylon accounts usage --account codex-N --refresh --json
@@ -241,6 +243,11 @@ PYLON_HOME=$HOME/.pylon-fable pylon accounts usage --account codex-N --refresh -
 - **Distinct ChatGPT accounts = distinct rate budgets** = real added throughput.
   Reusing the same underlying account (and possibly `chris+alias@` aliases) may
   share **one** rate budget — distinct accounts are what actually scale (§8).
+- When a live Codex child admits an assignment but refuses execution, inspect the
+  live JSONL before relaunching. A `token_count` payload with
+  `rate_limits.credits.has_credits=false` (or an equivalent zero-balance credit
+  signal) means that account is `usage_limited`. Pylon excludes such accounts
+  from heartbeat-advertised capacity once the health record is written.
 
 ---
 

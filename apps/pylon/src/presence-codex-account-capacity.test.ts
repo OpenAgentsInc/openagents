@@ -60,10 +60,13 @@ describe("#6354 per-account Codex capacity (Pylon side)", () => {
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
       const goodHome = join(home, "accounts", "codex", "codex-good")
       const revokedHome = join(home, "accounts", "codex", "codex-revoked")
+      const limitedHome = join(home, "accounts", "codex", "codex-limited")
       await mkdir(goodHome, { recursive: true })
       await mkdir(revokedHome, { recursive: true })
+      await mkdir(limitedHome, { recursive: true })
       await writeFile(join(goodHome, "auth.json"), "{}")
       await writeFile(join(revokedHome, "auth.json"), "{}")
+      await writeFile(join(limitedHome, "auth.json"), "{}")
       await writeFile(summary.paths.config, JSON.stringify({
         dev: {
           accounts: [
@@ -79,14 +82,28 @@ describe("#6354 per-account Codex capacity (Pylon side)", () => {
               home: revokedHome,
               openAgentsProviderAccountRef: "provider_account.public.codex.revoked",
             },
+            {
+              provider: "codex",
+              ref: "codex-limited",
+              home: limitedHome,
+              openAgentsProviderAccountRef: "provider_account.public.codex.limited",
+            },
           ],
         },
       }))
       const revokedHash = hashPylonAccountRef("codex", "codex-revoked")
+      const limitedHash = hashPylonAccountRef("codex", "codex-limited")
       await recordCodexAccountHealthFailure(summary, {
         accountRefHash: revokedHash,
         failure: classifyCodexAccountFailure("refresh token was revoked"),
         now: new Date("2026-06-28T22:00:00.000Z"),
+      })
+      await recordCodexAccountHealthFailure(summary, {
+        accountRefHash: limitedHash,
+        failure: classifyCodexAccountFailure(
+          `Codex Exec exited with code 1: ${"plugin warning ".repeat(40)} {"type":"token_count","payload":{"type":"token_count","info":{"rate_limits":{"credits":{"has_credits":false,"unlimited":false,"balance":"0"}}}}}`,
+        ),
+        now: new Date("2026-06-28T22:01:00.000Z"),
       })
 
       const readiness = await localCodexAccountReadiness(summary, {
@@ -102,6 +119,11 @@ describe("#6354 per-account Codex capacity (Pylon side)", () => {
         accountRefHash: revokedHash,
         ready: false,
         reason: "credentials_revoked",
+      })
+      expect(readiness).toContainEqual({
+        accountRefHash: limitedHash,
+        ready: false,
+        reason: "usage_limited",
       })
       expect(codexAccountCapacities({ perAccountConcurrency: 1, readiness }).map(account => account.accountRefHash)).toEqual([
         hashPylonAccountRef("codex", "codex-good"),
