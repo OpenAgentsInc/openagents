@@ -1250,6 +1250,7 @@ const requestBody = () => ({
   assignmentRef: 'assignment-pylon-codex-1',
   leaseRef: 'lease-pylon-codex-1',
   pylonRef: 'pylon-local-codex-1',
+  roleRef: 'coder',
   runRef: 'run-pylon-codex-1',
   sessionRef: 'session-pylon-codex-1',
   workspaceRef: 'workspace.public.pylon-codex-1',
@@ -1349,6 +1350,7 @@ const directLocalUsageBody = () => ({
   idempotencyKey: 'pylon:codex-direct-local:abcdef123456',
   observedAt: nowIso,
   pylonRef: 'pylon-local-codex-1',
+  roleRef: 'coder',
   sessionRef: 'session.pylon.codex_composer.abc123',
   usage: {
     inputTokens: 12,
@@ -1985,6 +1987,7 @@ describe('POST /api/pylon/codex/turns', () => {
       model: 'openagents/codex-direct-local',
       producerSystem: 'pylon',
       provider: 'pylon-codex-direct-local',
+      roleRef: 'coder',
       sourceRefs: {
         anonymizedSourceRef: 'account.pylon.codex.abcdef123456',
         sessionRef: 'session.pylon.codex_composer.abc123',
@@ -2220,6 +2223,7 @@ describe('POST /api/pylon/codex/turns', () => {
       },
       model: 'openagents/pylon-codex',
       provider: 'pylon-codex-own-capacity',
+      roleRef: 'coder',
       usageTruth: 'exact',
     })
     expect(event?.actor).toMatchObject({
@@ -2250,6 +2254,7 @@ describe('POST /api/pylon/codex/turns', () => {
       costCaveat: 'owner_capacity_provider_cost_unknown',
       leaseRef: 'lease-pylon-codex-1',
       pylonRef: 'pylon-local-codex-1',
+      roleRef: 'coder',
       usageBasis: 'codex_sdk_turn_completed',
     })
     expect(JSON.stringify(event)).not.toMatch(/raw|prompt|secret/i)
@@ -2557,6 +2562,7 @@ const claudeTurnBody = () => ({
   assignmentRef: 'assignment-pylon-codex-1',
   leaseRef: 'lease-pylon-claude-1',
   pylonRef: 'pylon-local-codex-1',
+  roleRef: 'coder',
   runRef: 'run-pylon-claude-1',
   sessionRef: 'session-pylon-claude-1',
   workspaceRef: 'workspace.public.pylon-claude-1',
@@ -2605,6 +2611,7 @@ describe('POST /api/pylon/claude/turns', () => {
       },
       model: 'openagents/pylon-claude',
       provider: 'pylon-claude-own-capacity',
+      roleRef: 'coder',
       usageTruth: 'exact',
     })
     expect(event?.tokenCounts).toMatchObject({
@@ -2625,6 +2632,7 @@ describe('POST /api/pylon/claude/turns', () => {
         inputTokens: 200,
         outputTokens: 80,
       },
+      roleRef: 'coder',
       usageBasis: 'claude_agent_sdk_turn_completed',
     })
     expect(deltas).toHaveLength(1)

@@ -20,6 +20,7 @@ export type ClaudeTurnReport = {
   assignmentRef: string
   leaseRef: string
   pylonRef: string
+  roleRef?: "architect" | "coder" | "judge" | "advisor"
   runRef?: string
   sessionRef?: string
   workspaceRef?: string
@@ -61,6 +62,7 @@ export function createPylonClaudeTurnReporter(input: {
       assignmentRef: report.assignmentRef,
       leaseRef: report.leaseRef,
       pylonRef: report.pylonRef,
+      roleRef: report.roleRef ?? "coder",
       ...(report.runRef === undefined ? {} : { runRef: report.runRef }),
       ...(report.sessionRef === undefined ? {} : { sessionRef: report.sessionRef }),
       ...(report.workspaceRef === undefined

@@ -571,6 +571,7 @@ describe("codex agent task recognition", () => {
         assignmentRef: lease.assignmentRef,
         leaseRef: lease.leaseRef,
         pylonRef: state.identity.pylonRef,
+        roleRef: "coder",
         sessionRef: "session.pylon.codex_agent.test",
         turnIndex: 1,
         usage: {
@@ -658,6 +659,7 @@ describe("codex agent task recognition", () => {
       assignmentRef: "assignment.public.codex_agent.reporter",
       leaseRef: "lease.public.codex_agent.reporter",
       pylonRef: "pylon.public.codex_agent.reporter",
+      roleRef: "coder",
       turnIndex: 1,
       usage: {
         cachedInputTokens: 2,

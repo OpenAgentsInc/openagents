@@ -1284,6 +1284,19 @@ const RpcThreadTokenSummary = S.Struct({
   totalTokens: S.Number,
   updatedAt: RpcStringNull,
   usageEventRows: S.Number,
+  roleEconomics: S.Array(S.Struct({
+    costUsd: S.NullOr(S.Number),
+    currency: S.NullOr(S.Literal("USD")),
+    inputTokens: S.Number,
+    label: S.String,
+    outputTokens: S.Number,
+    pricingSource: S.Literals(["model_catalog", "not_measured", "subscription"]),
+    reasoningTokens: S.Number,
+    roleRef: S.Literals(["architect", "coder", "judge", "advisor"]),
+    state: S.Literals(["metered", "not_measured", "subscription_covered"]),
+    totalTokens: S.Number,
+    usageEventRows: S.Number,
+  })),
 })
 
 const RpcToolCatalogResponse = S.Struct({

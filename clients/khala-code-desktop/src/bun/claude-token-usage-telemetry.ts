@@ -7,7 +7,10 @@ import { Effect } from "effect"
 
 import type { KhalaCodeDesktopUsage } from "../shared/rpc.js"
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
-import { KhalaCodeDesktopTokenUsagePersistentFailure } from "./codex-token-usage-telemetry.js"
+import {
+  KhalaCodeDesktopTokenUsagePersistentFailure,
+  type KhalaCodeDesktopTokenUsageRoleRef,
+} from "./codex-token-usage-telemetry.js"
 
 type FetchLike = (url: URL, init: RequestInit) => Promise<Response>
 
@@ -17,6 +20,7 @@ export type KhalaCodeDesktopClaudeTokenUsageReport = {
   readonly desktopTurnId: string
   readonly model: string
   readonly observedAt: string
+  readonly roleRef?: KhalaCodeDesktopTokenUsageRoleRef
   readonly sequence: number
   readonly totalCostUsd?: number
   readonly turnStatus?: string
@@ -94,6 +98,7 @@ const resolveConfig = (
 export const khalaCodeDesktopClaudeTokenUsageEvent = (
   report: KhalaCodeDesktopClaudeTokenUsageReport,
 ): Record<string, unknown> => {
+  const roleRef = report.roleRef ?? "architect"
   const usage = {
     cachedInputTokens: boundedCount(report.usage.cachedInput),
     inputTokens: boundedCount(report.usage.input),
@@ -104,6 +109,7 @@ export const khalaCodeDesktopClaudeTokenUsageEvent = (
   const eventDigest = digest({
     claudeSessionId: report.claudeSessionId,
     desktopTurnId: report.desktopTurnId,
+    roleRef,
     sequence: report.sequence,
     usage,
   }).slice(0, 24)
@@ -131,12 +137,14 @@ export const khalaCodeDesktopClaudeTokenUsageEvent = (
     privacy: { leaderboardEligible: true, privacyOptOut: false },
     producerSystem: "pylon",
     provider: "pylon-claude-direct-local",
+    roleRef,
     safeMetadata: {
       agentSurface: "khala_code_desktop",
       captureMethod: "claude_result_usage",
       claudeSessionId: report.claudeSessionId,
       desktopSessionId: report.desktopSessionId,
       desktopTurnId: report.desktopTurnId,
+      roleRef,
       runtimeMode: "claude_agent_sdk",
       totalCostUsd: report.totalCostUsd ?? null,
       turnStatus: report.turnStatus ?? "completed",

@@ -642,6 +642,7 @@ async function reportClaudeAgentTurnUsage(input: {
       assignmentRef: input.lease.assignmentRef,
       leaseRef: input.lease.leaseRef,
       pylonRef: input.state.identity.pylonRef,
+      roleRef: "coder",
       runRef: input.runRef,
       ...(input.run.sessionRef === null ? {} : { sessionRef: input.run.sessionRef }),
       workspaceRef: input.materialized.workspaceRef,

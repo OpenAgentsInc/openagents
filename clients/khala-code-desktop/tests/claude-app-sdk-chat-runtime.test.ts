@@ -524,6 +524,7 @@ describe("Claude Agent SDK chat runtime", () => {
       desktopSessionId: "desktop-token",
       desktopTurnId: "turn-token",
       model: "claude-sonnet-4",
+      roleRef: "architect",
       totalCostUsd: 0.01,
       usage: {
         cachedInput: 3,
@@ -534,6 +535,10 @@ describe("Claude Agent SDK chat runtime", () => {
     }])
     expect(khalaCodeDesktopClaudeTokenUsageEvent(reports[0] as never)).toMatchObject({
       provider: "pylon-claude-direct-local",
+      roleRef: "architect",
+      safeMetadata: {
+        roleRef: "architect",
+      },
       sourceRoute: "pylon_claude_direct_local",
       tokenCounts: {
         totalTokens: 22,

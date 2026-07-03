@@ -218,7 +218,7 @@ button {
 .khala-thread-token-popover {
   display: grid;
   gap: 8px;
-  width: min(278px, calc(100vw - var(--sidebar-width) - 36px));
+  width: min(340px, calc(100vw - var(--sidebar-width) - 36px));
   margin-top: 8px;
   border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-blue) 38%, transparent);
   border-radius: 6px;

@@ -2449,6 +2449,7 @@ describe('logged-in workroom sidebar', () => {
               },
               producerSystem: 'omega',
               provider: 'google_gemini',
+              roleRef: 'coder',
               safeMetadata: {
                 providerRequestStatus: 'succeeded',
                 rawPrompt: 'should never render',
@@ -2480,6 +2481,7 @@ describe('logged-in workroom sidebar', () => {
               },
               producerSystem: 'probe',
               provider: null,
+              roleRef: null,
               safeMetadata: {
                 providerRequestStatus: 'estimated',
                 sourcePath: '/Users/chris/private/repo',

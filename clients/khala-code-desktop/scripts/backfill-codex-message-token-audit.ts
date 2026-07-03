@@ -345,6 +345,7 @@ const parseHistoricalSession = async (
         desktopTurnId: `codex-history-${currentTurnId}`,
         model: turn.model,
         observedAt: timestamp,
+        roleRef: "coder" as const,
         sequence: turn.tokenUsageSequence,
         turnStatus: "historical",
         usage: lastUsage,
@@ -354,6 +355,7 @@ const parseHistoricalSession = async (
         eventId: refs.eventId,
         idempotencyKey: refs.idempotencyKey,
         observedAt: timestamp,
+        roleRef: "coder",
         sequence: turn.tokenUsageSequence,
         usage: lastUsage,
       })

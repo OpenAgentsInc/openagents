@@ -93,6 +93,7 @@ const BoundedText = S.String.check(S.isMaxLength(64 * 1024))
 const NonNegativeInt = S.Int.check(S.isGreaterThanOrEqualTo(0))
 const PositiveInt = S.Int.check(S.isGreaterThanOrEqualTo(1))
 const RawCodexEventPayload = S.Record(S.String, S.Unknown)
+const PylonTurnRoleRef = S.Literals(['architect', 'coder', 'judge', 'advisor'])
 
 class PylonCodexUsage extends S.Class<PylonCodexUsage>('PylonCodexUsage')({
   inputTokens: NonNegativeInt,
@@ -144,6 +145,7 @@ class PylonCodexTurnIngestBody extends S.Class<PylonCodexTurnIngestBody>(
   runRef: S.optionalKey(NonEmptyString),
   sessionRef: S.optionalKey(NonEmptyString),
   workspaceRef: S.optionalKey(NonEmptyString),
+  roleRef: S.optionalKey(PylonTurnRoleRef),
   turnIndex: PositiveInt,
   observedAt: S.optionalKey(S.String.check(S.isMaxLength(80))),
   usage: PylonCodexUsage,
@@ -159,6 +161,7 @@ class PylonCodexDirectLocalUsageIngestBody extends S.Class<PylonCodexDirectLocal
   idempotencyKey: NonEmptyString,
   observedAt: S.optionalKey(S.String.check(S.isMaxLength(80))),
   pylonRef: S.optionalKey(NonEmptyString),
+  roleRef: S.optionalKey(PylonTurnRoleRef),
   sessionRef: S.optionalKey(NonEmptyString),
   usage: PylonCodexDirectLocalUsage,
 }) {}
@@ -173,6 +176,7 @@ class PylonClaudeTurnIngestBody extends S.Class<PylonClaudeTurnIngestBody>(
   runRef: S.optionalKey(NonEmptyString),
   sessionRef: S.optionalKey(NonEmptyString),
   workspaceRef: S.optionalKey(NonEmptyString),
+  roleRef: S.optionalKey(PylonTurnRoleRef),
   turnIndex: PositiveInt,
   observedAt: S.optionalKey(S.String.check(S.isMaxLength(80))),
   usage: PylonCodexUsage,
@@ -1739,6 +1743,7 @@ const stableTurnDigest = (
         body.assignmentRef,
         body.leaseRef,
         body.pylonRef,
+        body.roleRef ?? 'coder',
         body.sessionRef ?? 'session.pending',
         String(body.turnIndex),
       ].join(':'),
@@ -1752,6 +1757,7 @@ const stableDirectLocalUsageDigest = (
     sha256Hex(
       [
         body.accountRefHash,
+        body.roleRef ?? 'coder',
         body.sessionRef ?? 'session.pending',
         body.observedAt ?? 'observed.pending',
         body.idempotencyKey,
@@ -1803,6 +1809,7 @@ const directLocalTokenUsageEventBody = (
   }>,
 ) => {
   const counts = directLocalUsageTokenCounts(input.body.usage)
+  const roleRef = input.body.roleRef ?? 'coder'
   return {
     schemaVersion: 'openagents.token_usage_event.v1' as const,
     actor: {
@@ -1823,12 +1830,14 @@ const directLocalTokenUsageEventBody = (
     privacy: { leaderboardEligible: false, privacyOptOut: false },
     producerSystem: PYLON_CODEX_DIRECT_LOCAL_PRODUCER_SYSTEM,
     provider: PYLON_CODEX_DIRECT_LOCAL_PROVIDER,
+    roleRef,
     safeMetadata: {
       accountRefHash: input.body.accountRefHash,
       demandChannel: PYLON_CODEX_DIRECT_LOCAL_DEMAND_CHANNEL,
       ...(input.body.pylonRef === undefined
         ? {}
         : { pylonRef: input.body.pylonRef }),
+      roleRef,
       telemetryOptIn: 'pylon_accounts_usage_explicit',
       usageBasis:
         input.body.usage.usageTruth === 'exact'
@@ -1881,6 +1890,7 @@ const tokenUsageEventBody = (
   }>,
 ) => {
   const counts = codexTurnUsageTokenCounts(input.body.usage)
+  const roleRef = input.body.roleRef ?? 'coder'
   return {
     schemaVersion: 'openagents.token_usage_event.v1' as const,
     actor: {
@@ -1899,10 +1909,12 @@ const tokenUsageEventBody = (
     privacy: { leaderboardEligible: false, privacyOptOut: false },
     producerSystem: PYLON_CODEX_PRODUCER_SYSTEM,
     provider: PYLON_CODEX_PROVIDER,
+    roleRef,
     safeMetadata: {
       assignmentRef: input.body.assignmentRef,
       leaseRef: input.body.leaseRef,
       pylonRef: input.body.pylonRef,
+      roleRef,
       codexUsageSplit: {
         cachedInputTokens: input.body.usage.cachedInputTokens ?? 0,
         inputTokens: input.body.usage.inputTokens,
@@ -2930,6 +2942,7 @@ const claudeTokenUsageEventBody = (
   }>,
 ) => {
   const counts = codexTurnUsageTokenCounts(input.body.usage)
+  const roleRef = input.body.roleRef ?? 'coder'
   return {
     schemaVersion: 'openagents.token_usage_event.v1' as const,
     actor: {
@@ -2948,10 +2961,12 @@ const claudeTokenUsageEventBody = (
     privacy: { leaderboardEligible: false, privacyOptOut: false },
     producerSystem: PYLON_CODEX_PRODUCER_SYSTEM,
     provider: PYLON_CLAUDE_PROVIDER,
+    roleRef,
     safeMetadata: {
       assignmentRef: input.body.assignmentRef,
       leaseRef: input.body.leaseRef,
       pylonRef: input.body.pylonRef,
+      roleRef,
       claudeUsageSplit: {
         cachedInputTokens: input.body.usage.cachedInputTokens ?? 0,
         inputTokens: input.body.usage.inputTokens,
@@ -2995,6 +3010,7 @@ const stableClaudeTurnDigest = (
         body.assignmentRef,
         body.leaseRef,
         body.pylonRef,
+        body.roleRef ?? 'coder',
         body.sessionRef ?? 'session.pending',
         String(body.turnIndex),
       ].join(':'),

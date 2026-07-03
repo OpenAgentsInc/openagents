@@ -21,6 +21,33 @@ export type KhalaCodeDesktopCodexTokenUsageCounts = {
   readonly totalTokens: number
 }
 
+export type KhalaCodeDesktopTokenUsageRoleRef = "architect" | "coder" | "judge" | "advisor"
+
+export type KhalaCodeDesktopRoleEconomicsSummary = {
+  readonly costUsd: number | null
+  readonly currency: "USD" | null
+  readonly inputTokens: number
+  readonly label: string
+  readonly outputTokens: number
+  readonly pricingSource: "model_catalog" | "not_measured" | "subscription"
+  readonly reasoningTokens: number
+  readonly roleRef: KhalaCodeDesktopTokenUsageRoleRef
+  readonly state: "metered" | "not_measured" | "subscription_covered"
+  readonly totalTokens: number
+  readonly usageEventRows: number
+}
+
+type RoleEconomicsAccumulator = {
+  readonly costUsd: number
+  readonly inputTokens: number
+  readonly meteredRows: number
+  readonly outputTokens: number
+  readonly reasoningTokens: number
+  readonly subscriptionRows: number
+  readonly totalTokens: number
+  readonly usageEventRows: number
+}
+
 export type KhalaCodeDesktopCodexTokenUsageReport = {
   readonly clientUserMessageId?: string
   readonly codexThreadId: string
@@ -29,6 +56,7 @@ export type KhalaCodeDesktopCodexTokenUsageReport = {
   readonly desktopTurnId: string
   readonly model: string
   readonly observedAt: string
+  readonly roleRef?: KhalaCodeDesktopTokenUsageRoleRef
   readonly sequence: number
   readonly turnStatus?: string
   readonly usage: KhalaCodeDesktopCodexTokenUsageCounts
@@ -99,6 +127,7 @@ export type KhalaCodeDesktopCodexMessageTokenAuditUsageEvent = {
   readonly eventId: string
   readonly idempotencyKey: string
   readonly observedAt: string
+  readonly roleRef: KhalaCodeDesktopTokenUsageRoleRef
   readonly sequence: number
   readonly usage: KhalaCodeDesktopCodexTokenUsageCounts
 }
@@ -412,6 +441,108 @@ const numberField = (
   key: string,
 ): number => typeof value[key] === "number" ? boundedCount(value[key]) : 0
 
+const roleRefs: readonly KhalaCodeDesktopTokenUsageRoleRef[] = [
+  "architect",
+  "coder",
+  "judge",
+  "advisor",
+]
+
+const roleLabel = (roleRef: KhalaCodeDesktopTokenUsageRoleRef): string => {
+  switch (roleRef) {
+    case "architect":
+      return "Architect"
+    case "coder":
+      return "Coder"
+    case "judge":
+      return "Judge"
+    case "advisor":
+      return "Advisor"
+  }
+}
+
+const roleRefFromValue = (
+  value: unknown,
+  fallback: KhalaCodeDesktopTokenUsageRoleRef = "coder",
+): KhalaCodeDesktopTokenUsageRoleRef =>
+  typeof value === "string" && roleRefs.includes(value as KhalaCodeDesktopTokenUsageRoleRef)
+    ? (value as KhalaCodeDesktopTokenUsageRoleRef)
+    : fallback
+
+const roleRefFromEvent = (event: JsonRecord): KhalaCodeDesktopTokenUsageRoleRef => {
+  const direct = roleRefFromValue(event.roleRef, "coder")
+  if (direct !== "coder" || event.roleRef === "coder") return direct
+
+  const metadata = objectField(event, "safeMetadata")
+  if (metadata === null) return "coder"
+
+  return roleRefFromValue(metadata.roleRef, "coder")
+}
+
+const roleEconomicsSummaryFromMap = (
+  roleUsage: ReadonlyMap<KhalaCodeDesktopTokenUsageRoleRef, RoleEconomicsAccumulator>,
+): readonly KhalaCodeDesktopRoleEconomicsSummary[] =>
+  roleRefs.flatMap(roleRef => {
+    const usage = roleUsage.get(roleRef)
+    if (usage === undefined || usage.usageEventRows === 0) return []
+    const metered = usage.meteredRows > 0
+    const subscription = usage.subscriptionRows > 0 && !metered
+    return [{
+      costUsd: metered ? Math.round(usage.costUsd * 1_000_000) / 1_000_000 : null,
+      currency: metered ? "USD" : null,
+      inputTokens: usage.inputTokens,
+      label: roleLabel(roleRef),
+      outputTokens: usage.outputTokens,
+      pricingSource: metered ? "model_catalog" : subscription ? "subscription" : "not_measured",
+      reasoningTokens: usage.reasoningTokens,
+      roleRef,
+      state: metered ? "metered" : subscription ? "subscription_covered" : "not_measured",
+      totalTokens: usage.totalTokens,
+      usageEventRows: usage.usageEventRows,
+    }]
+  })
+
+const addRoleUsage = (
+  roleUsage: Map<KhalaCodeDesktopTokenUsageRoleRef, RoleEconomicsAccumulator>,
+  input: {
+    readonly costUsd?: number | null
+    readonly inputTokens: number
+    readonly outputTokens: number
+    readonly provider?: string | null
+    readonly reasoningTokens: number
+    readonly roleRef: KhalaCodeDesktopTokenUsageRoleRef
+    readonly totalTokens: number
+  },
+): void => {
+  const current = roleUsage.get(input.roleRef) ?? {
+    costUsd: 0,
+    inputTokens: 0,
+    meteredRows: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    subscriptionRows: 0,
+    totalTokens: 0,
+    usageEventRows: 0,
+  }
+  const subscriptionCovered =
+    input.roleRef === "coder" &&
+    (input.provider ?? "").includes("codex")
+  const meteredCost =
+    typeof input.costUsd === "number" && Number.isFinite(input.costUsd) && input.costUsd >= 0
+      ? input.costUsd
+      : null
+  roleUsage.set(input.roleRef, {
+    costUsd: current.costUsd + (meteredCost ?? 0),
+    inputTokens: current.inputTokens + input.inputTokens,
+    meteredRows: current.meteredRows + (meteredCost === null ? 0 : 1),
+    outputTokens: current.outputTokens + input.outputTokens,
+    reasoningTokens: current.reasoningTokens + input.reasoningTokens,
+    subscriptionRows: current.subscriptionRows + (subscriptionCovered ? 1 : 0),
+    totalTokens: current.totalTokens + input.totalTokens,
+    usageEventRows: current.usageEventRows + 1,
+  })
+}
+
 const readJsonLines = async (path: string): Promise<readonly JsonRecord[]> => {
   let text = ""
   try {
@@ -466,6 +597,42 @@ const usageLedgerCountedTokens = (tokenCounts: JsonRecord): number => {
   const countedTokens = inputTokens + outputTokens
   if (countedTokens > 0) return countedTokens
   return numberField(tokenCounts, "totalTokens")
+}
+
+const roleUsageInputFromCounts = (
+  roleRef: KhalaCodeDesktopTokenUsageRoleRef,
+  counts: JsonRecord,
+  input?: {
+    readonly costUsd?: number | null
+    readonly provider?: string | null
+  },
+) => {
+  const inputTokens = numberField(counts, "inputTokens")
+  const outputTokens = numberField(counts, "outputTokens")
+  const reasoningTokens =
+    numberField(counts, "reasoningTokens") +
+    numberField(counts, "reasoningOutputTokens")
+  const explicitTotal = numberField(counts, "totalTokens")
+  return {
+    costUsd: input?.costUsd ?? null,
+    inputTokens,
+    outputTokens,
+    provider: input?.provider ?? null,
+    reasoningTokens,
+    roleRef,
+    totalTokens: explicitTotal > 0
+      ? explicitTotal
+      : inputTokens + outputTokens + reasoningTokens,
+  }
+}
+
+const catalogCostUsdFromEvent = (event: JsonRecord): number | null => {
+  const cost = objectField(event, "cost")
+  if (cost === null || stringField(cost, "currency") !== "USD") return null
+  const amount = cost.amount
+  return typeof amount === "number" && Number.isFinite(amount) && amount >= 0
+    ? amount
+    : null
 }
 
 const isSyncedUsageRef = (
@@ -554,6 +721,7 @@ export async function readKhalaCodeDesktopThreadTokenSummary(options: {
     pendingSyncTokens: 0,
     remoteConfigured,
     remoteDisabled: config.remoteDisabled,
+    roleEconomics: [],
     threadId,
     totalTokens: 0,
     updatedAt: null,
@@ -574,6 +742,7 @@ export async function readKhalaCodeDesktopThreadTokenSummary(options: {
   let totalTokens = 0
   let leaderboardSyncedTokens = 0
   let updatedAt: string | null = null
+  const roleUsage = new Map<KhalaCodeDesktopTokenUsageRoleRef, RoleEconomicsAccumulator>()
   const codexState = readKhalaCodeDesktopCodexStateThreadTokenSnapshot({
     dbPath: config.codexStateDbPath,
     threadId,
@@ -595,10 +764,35 @@ export async function readKhalaCodeDesktopThreadTokenSummary(options: {
       : numberField(reconciliation, "globalCountedTokens")
     totalTokens += countedTokens
 
-    const usageEventRefs = arrayField(record, "usageEvents")
-      .filter(isJsonRecord)
+    const usageEvents = arrayField(record, "usageEvents").filter(isJsonRecord)
+    const usageEventRefs = usageEvents
       .flatMap(refsFromEventLike)
     for (const ref of usageEventRefs) auditedUsageRefs.add(ref)
+    for (const usageEvent of usageEvents) {
+      const usage = objectField(usageEvent, "usage")
+      if (usage === null) continue
+      addRoleUsage(
+        roleUsage,
+        roleUsageInputFromCounts(
+          roleRefFromValue(usageEvent.roleRef, "coder"),
+          usage,
+          { provider: "pylon-codex-direct-local" },
+        ),
+      )
+    }
+    if (usageEvents.length === 0) {
+      const usage = objectField(record, "usage")
+      if (usage !== null) {
+        addRoleUsage(
+          roleUsage,
+          roleUsageInputFromCounts(
+            roleRefFromValue(record.roleRef, "coder"),
+            usage,
+            { provider: "pylon-codex-direct-local" },
+          ),
+        )
+      }
+    }
 
     const status = reconciliation === null
       ? null
@@ -627,6 +821,13 @@ export async function readKhalaCodeDesktopThreadTokenSummary(options: {
     if (countedTokens === 0) continue
 
     totalTokens += countedTokens
+    addRoleUsage(
+      roleUsage,
+      roleUsageInputFromCounts(roleRefFromEvent(event), tokenCounts, {
+        costUsd: catalogCostUsdFromEvent(event),
+        provider: stringField(event, "provider"),
+      }),
+    )
     updatedAt = newerIso(
       updatedAt,
       stringField(event, "observedAt") ?? stringField(row, "recordedAt"),
@@ -656,6 +857,7 @@ export async function readKhalaCodeDesktopThreadTokenSummary(options: {
     pendingSyncTokens: Math.max(0, totalTokens - leaderboardSyncedTokens),
     remoteConfigured,
     remoteDisabled: config.remoteDisabled,
+    roleEconomics: roleEconomicsSummaryFromMap(roleUsage),
     threadId,
     totalTokens,
     updatedAt,
@@ -666,10 +868,12 @@ export async function readKhalaCodeDesktopThreadTokenSummary(options: {
 export const khalaCodeDesktopCodexTokenUsageEventRefs = (
   report: KhalaCodeDesktopCodexTokenUsageReport,
 ): KhalaCodeDesktopCodexTokenUsageEventRefs => {
+  const roleRef = report.roleRef ?? "coder"
   const eventDigest = digest({
     codexThreadId: report.codexThreadId,
     codexTurnId: report.codexTurnId,
     desktopTurnId: report.desktopTurnId,
+    roleRef,
     sequence: report.sequence,
     usage: report.usage,
   }).slice(0, 24)
@@ -691,6 +895,7 @@ export function khalaCodeDesktopCodexTokenUsageEvent(
 ): Record<string, unknown> {
   const usage = normalizeUsage(report.usage)
   const refs = khalaCodeDesktopCodexTokenUsageEventRefs({ ...report, usage })
+  const roleRef = report.roleRef ?? "coder"
   return {
     schemaVersion: "openagents.token_usage_event.v1",
     backendProfile: "codex-app-server",
@@ -709,6 +914,7 @@ export function khalaCodeDesktopCodexTokenUsageEvent(
     privacy: { leaderboardEligible: true, privacyOptOut: false },
     producerSystem: "pylon",
     provider: "pylon-codex-direct-local",
+    roleRef,
     safeMetadata: {
       agentSurface: "khala_code_desktop",
       captureMethod: "thread_token_usage_updated",
@@ -717,7 +923,9 @@ export function khalaCodeDesktopCodexTokenUsageEvent(
         : { clientUserMessageId: report.clientUserMessageId }),
       codexThreadId: report.codexThreadId,
       codexTurnId: report.codexTurnId,
+      desktopSessionId: report.desktopSessionId,
       desktopTurnId: report.desktopTurnId,
+      roleRef,
       runtimeMode: "codex_app_server",
       turnStatus: report.turnStatus ?? "inProgress",
       usageEventIndex: report.sequence,

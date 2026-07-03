@@ -229,6 +229,7 @@ describe("claude agent task recognition", () => {
         leaseRef: lease.leaseRef,
         observedAt: now.toISOString(),
         pylonRef: state.identity.pylonRef,
+        roleRef: "coder",
         turnIndex: 1,
         usage: { cachedInputTokens: 0, inputTokens: 1200, outputTokens: 340 },
       })

@@ -900,6 +900,7 @@ async function reportCodexTurn(input: {
     assignmentRef: input.runInput.assignmentRef,
     leaseRef: input.runInput.leaseRef,
     pylonRef: input.runInput.pylonRef,
+    roleRef: "coder",
     ...(input.runInput.runRef === undefined ? {} : { runRef: input.runInput.runRef }),
     ...(input.sessionRef === undefined ? {} : { sessionRef: input.sessionRef }),
     ...(input.runInput.workspaceRef === undefined ? {} : { workspaceRef: input.runInput.workspaceRef }),
@@ -910,6 +911,13 @@ async function reportCodexTurn(input: {
     rawEvents: input.rawEvents,
   }).catch(() => undefined)
 }
+
+const codexTurnReporterWithDefaultRole = (
+  reporter: CodexTurnReporter | undefined,
+): CodexTurnReporter | undefined =>
+  reporter === undefined
+    ? undefined
+    : report => reporter({ ...report, roleRef: report.roleRef ?? "coder" })
 
 async function reportCodexEventChunk(input: {
   eventChunkReporter: CodexEventChunkReporter | undefined
@@ -1496,12 +1504,14 @@ export async function executeCodexAgentAssignment(
 
   const runner = options.codexAgentRunner ?? runWithCodexSdk
   const eventReporter =
-    options.codexTurnReporter ??
-    createPylonCodexTurnReporter({
-      ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
-      ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
-      ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
-    })
+    codexTurnReporterWithDefaultRole(
+      options.codexTurnReporter ??
+      createPylonCodexTurnReporter({
+        ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
+        ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
+        ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+      }),
+    )
   const eventChunkReporter =
     options.codexEventChunkReporter ??
     createPylonCodexEventChunkReporter({

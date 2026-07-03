@@ -987,6 +987,7 @@ export function createCodexAppServerChatRuntime(
         desktopTurnId,
         model: thread.model ?? "openagents/codex-direct-local",
         observedAt,
+        roleRef: "coder" as const,
         sequence: tokenUsageSequence,
         turnStatus,
         usage: delta,
@@ -996,6 +997,7 @@ export function createCodexAppServerChatRuntime(
         eventId: refs.eventId,
         idempotencyKey: refs.idempotencyKey,
         observedAt,
+        roleRef: "coder",
         sequence: tokenUsageSequence,
         usage: delta,
       })

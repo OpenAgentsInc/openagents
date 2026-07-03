@@ -56,6 +56,7 @@ const eventRecord = S.decodeUnknownSync(TokenUsageEventRecord)({
   },
   producerSystem: 'omega' as const,
   provider: 'google_gemini',
+  roleRef: 'coder' as const,
   safeMetadata: {
     providerRequestStatus: 'succeeded',
   },

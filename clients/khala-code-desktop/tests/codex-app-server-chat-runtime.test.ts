@@ -460,6 +460,7 @@ describe("Codex app-server chat runtime", () => {
       clientUserMessageId: "user-usage",
       desktopTurnId: "desktop-turn-usage",
       model: "gpt-5.5",
+      roleRef: "coder",
       sequence: 1,
       usage: {
         cachedInputTokens: 4,
@@ -470,6 +471,7 @@ describe("Codex app-server chat runtime", () => {
       },
     })
     expect(reports[1]).toMatchObject({
+      roleRef: "coder",
       sequence: 2,
       usage: {
         cachedInputTokens: 1,
@@ -504,12 +506,14 @@ describe("Codex app-server chat runtime", () => {
       },
       usageEvents: [
         {
+          roleRef: "coder",
           sequence: 1,
           usage: {
             totalTokens: 13,
           },
         },
         {
+          roleRef: "coder",
           sequence: 2,
           usage: {
             totalTokens: 12,
@@ -602,6 +606,7 @@ describe("Codex app-server chat runtime", () => {
       codexTurnId: "turn-state-fallback",
       desktopTurnId: "desktop-turn-state-fallback",
       observedAt: "2026-07-01T18:00:05.000Z",
+      roleRef: "coder",
       sequence: 1,
       usage: {
         inputTokens: 0,
@@ -622,6 +627,7 @@ describe("Codex app-server chat runtime", () => {
         totalTokens: 450,
       },
       usageEvents: [{
+        roleRef: "coder",
         sequence: 1,
         usage: { totalTokens: 450 },
       }],

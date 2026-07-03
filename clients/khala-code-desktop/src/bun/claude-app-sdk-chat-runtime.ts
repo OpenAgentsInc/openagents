@@ -447,6 +447,7 @@ export function createClaudeAppSdkChatRuntime(
         desktopTurnId,
         model: resultModel(resultMessage) ?? "openagents/claude-direct-local",
         observedAt: new Date().toISOString(),
+        roleRef: "architect",
         sequence: 1,
         ...(totalCostUsd === undefined ? {} : { totalCostUsd }),
         turnStatus: projector.status(),

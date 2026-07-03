@@ -74,11 +74,14 @@ describe("Codex token usage telemetry", () => {
         leaderboardEligible: true,
         privacyOptOut: false,
       },
+      roleRef: "coder",
       safeMetadata: {
         clientUserMessageId: "user-direct-local",
         codexThreadId: "thread-direct-local",
         codexTurnId: "turn-direct-local",
+        desktopSessionId: "desktop-session-direct-local",
         desktopTurnId: "desktop-turn-direct-local",
+        roleRef: "coder",
       },
       sourceRoute: "pylon_codex_direct_local",
       tokenCounts: {
@@ -119,6 +122,7 @@ describe("Codex token usage telemetry", () => {
     expect(JSON.parse(lines[0] ?? "{}")).toMatchObject({
       schemaVersion: "khala-code-desktop.codex-token-usage.local.v1",
       event: {
+        roleRef: "coder",
         sourceRoute: "pylon_codex_direct_local",
         tokenCounts: {
           totalTokens: 1290,
@@ -130,6 +134,7 @@ describe("Codex token usage telemetry", () => {
       url: "https://openagents.example/api/stats/token-usage/events",
       body: {
         provider: "pylon-codex-direct-local",
+        roleRef: "coder",
         sourceRoute: "pylon_codex_direct_local",
       },
     })
@@ -553,6 +558,7 @@ describe("Codex token usage telemetry", () => {
         eventId: refs.eventId,
         idempotencyKey: refs.idempotencyKey,
         observedAt: report.observedAt,
+        roleRef: "coder",
         sequence: report.sequence,
         usage: report.usage,
       }],
@@ -698,6 +704,19 @@ describe("Codex token usage telemetry", () => {
       missingUsageTurns: 0,
       pendingSyncTokens: 5,
       remoteConfigured: true,
+      roleEconomics: [{
+        costUsd: null,
+        currency: null,
+        inputTokens: 111,
+        label: "Coder",
+        outputTokens: 29,
+        pricingSource: "subscription",
+        reasoningTokens: 0,
+        roleRef: "coder",
+        state: "subscription_covered",
+        totalTokens: 140,
+        usageEventRows: 3,
+      }],
       threadId: report.codexThreadId,
       totalTokens: 140,
       usageEventRows: 2,
