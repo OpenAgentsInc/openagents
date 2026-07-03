@@ -6,9 +6,9 @@
 //
 // Usage:
 //   bun apps/openagents.com/scripts/site-speed-landing.ts \
-//     [--url https://openagents.com/] [--runs 3] [--settle-ms 9000] \
+//     [--origin https://openagents.com] [--route-set landing|funnel|all] [--runs 3] [--settle-ms 9000] \
 //     [--profiles desktop-fast,mobile-mid] [--variants baseline,block-counter,block-thirdparty] \
-//     [--out var/site-speed]
+//     [--out var/site-speed] [--fail-on-budget]
 
 import { mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
@@ -16,30 +16,75 @@ import { chromium, type Browser, type BrowserContext, type Page } from "playwrig
 
 type ProfileName = "desktop-fast" | "mobile-mid"
 type VariantName = "baseline" | "block-counter" | "block-thirdparty"
+type RouteSetName = "landing" | "funnel" | "all"
+type RouteTargetName = "landing-home" | "business" | "business-preview"
 
 type CliOptions = {
-  readonly url: string
+  readonly origin: string
+  readonly routeSet: RouteSetName
+  readonly routeTargets: readonly RouteTarget[]
   readonly runs: number
   readonly settleMs: number
   readonly profiles: readonly ProfileName[]
   readonly variants: readonly VariantName[]
   readonly outDir: string
+  readonly failOnBudget: boolean
 }
 
-const parseArgs = (argv: readonly string[]): CliOptions => {
+export type RouteTarget = {
+  readonly name: RouteTargetName
+  readonly path: string
+  readonly class: "landing" | "funnel"
+  readonly budgetProfile: "landing" | "funnel"
+}
+
+export const SITE_SPEED_ROUTE_TARGETS: Record<RouteTargetName, RouteTarget> = {
+  "landing-home": {
+    name: "landing-home",
+    path: "/",
+    class: "landing",
+    budgetProfile: "landing",
+  },
+  business: {
+    name: "business",
+    path: "/business",
+    class: "funnel",
+    budgetProfile: "funnel",
+  },
+  "business-preview": {
+    name: "business-preview",
+    path: "/business-new",
+    class: "funnel",
+    budgetProfile: "funnel",
+  },
+}
+
+const ROUTE_SETS: Record<RouteSetName, readonly RouteTargetName[]> = {
+  landing: ["landing-home"],
+  funnel: ["business"],
+  all: ["landing-home", "business"],
+}
+
+export const parseArgs = (argv: readonly string[]): CliOptions => {
   const get = (flag: string): string | undefined => {
     const index = argv.indexOf(flag)
     return index === -1 ? undefined : argv[index + 1]
   }
   const list = <T extends string>(raw: string | undefined, fallback: readonly T[]): readonly T[] =>
     raw === undefined ? fallback : raw.split(",").map((entry) => entry.trim()).filter(Boolean) as T[]
+  const origin = get("--origin") ?? get("--url") ?? "https://openagents.com/"
+  const routeSet = (get("--route-set") ?? "landing") as RouteSetName
+  const routeNames = list<RouteTargetName>(get("--routes"), ROUTE_SETS[routeSet] ?? ROUTE_SETS.landing)
   return {
-    url: get("--url") ?? "https://openagents.com/",
+    origin,
+    routeSet,
+    routeTargets: routeNames.map((name) => SITE_SPEED_ROUTE_TARGETS[name]),
     runs: Number(get("--runs") ?? "3"),
     settleMs: Number(get("--settle-ms") ?? "9000"),
     profiles: list<ProfileName>(get("--profiles"), ["desktop-fast", "mobile-mid"]),
     variants: list<VariantName>(get("--variants"), ["baseline", "block-counter", "block-thirdparty"]),
     outDir: get("--out") ?? "var/site-speed",
+    failOnBudget: argv.includes("--fail-on-budget"),
   }
 }
 
@@ -84,6 +129,91 @@ const VARIANT_BLOCKED_URL_PARTS: Record<VariantName, readonly string[]> = {
   ],
   "block-thirdparty": ["fonts.googleapis.com", "fonts.gstatic.com", "usefathom.com"],
 }
+
+type BudgetStatus = "pass" | "fail" | "not_measured"
+
+type BudgetEvaluation = {
+  readonly budgetId: string
+  readonly status: BudgetStatus
+  readonly actual: number | null
+  readonly threshold: number
+  readonly unit: "ms" | "score" | "kb" | "count"
+  readonly comparator: "<" | "<="
+}
+
+type BudgetDefinition = {
+  readonly budgetId: string
+  readonly metric: keyof CellReport["medians"]
+  readonly thresholds: Record<ProfileName, number>
+  readonly unit: BudgetEvaluation["unit"]
+  readonly comparator: BudgetEvaluation["comparator"]
+}
+
+export const SITE_SPEED_BUDGETS: readonly BudgetDefinition[] = [
+  {
+    budgetId: "ttfb.doc",
+    comparator: "<",
+    metric: "ttfbMs",
+    thresholds: { "desktop-fast": 250, "mobile-mid": 400 },
+    unit: "ms",
+  },
+  {
+    budgetId: "fcp",
+    comparator: "<",
+    metric: "fcpMs",
+    thresholds: { "desktop-fast": 1000, "mobile-mid": 2500 },
+    unit: "ms",
+  },
+  {
+    budgetId: "lcp",
+    comparator: "<",
+    metric: "lcpMs",
+    thresholds: { "desktop-fast": 1800, "mobile-mid": 3500 },
+    unit: "ms",
+  },
+  {
+    budgetId: "cls",
+    comparator: "<",
+    metric: "clsMilli",
+    thresholds: { "desktop-fast": 50, "mobile-mid": 50 },
+    unit: "score",
+  },
+  {
+    budgetId: "tbt",
+    comparator: "<",
+    metric: "tbtMs",
+    thresholds: { "desktop-fast": 200, "mobile-mid": 600 },
+    unit: "ms",
+  },
+  {
+    budgetId: "long_task.max",
+    comparator: "<",
+    metric: "longTaskMaxMs",
+    thresholds: { "desktop-fast": 200, "mobile-mid": 350 },
+    unit: "ms",
+  },
+  {
+    budgetId: "js.wire",
+    comparator: "<",
+    metric: "jsTransferKb",
+    thresholds: { "desktop-fast": 350, "mobile-mid": 350 },
+    unit: "kb",
+  },
+  {
+    budgetId: "counter.value_rendered",
+    comparator: "<",
+    metric: "counterValueRenderedMs",
+    thresholds: { "desktop-fast": 1200, "mobile-mid": 3000 },
+    unit: "ms",
+  },
+  {
+    budgetId: "request.count",
+    comparator: "<=",
+    metric: "requestCount",
+    thresholds: { "desktop-fast": 18, "mobile-mid": 18 },
+    unit: "count",
+  },
+]
 
 type ResourceClassSummary = Record<string, { count: number; transferBytes: number; maxDurationMs: number }>
 
@@ -186,6 +316,7 @@ async function runOnce(
   browser: Browser,
   profile: Profile,
   variant: VariantName,
+  url: string,
   options: CliOptions,
 ): Promise<RunSample> {
   const context: BrowserContext = await browser.newContext({
@@ -242,7 +373,7 @@ async function runOnce(
       }
     })
 
-    await page.goto(options.url, { waitUntil: "domcontentloaded", timeout: 60_000 })
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 })
     await page.waitForTimeout(options.settleMs)
 
     const inPage = await page.evaluate(() => {
@@ -334,53 +465,91 @@ const median = (values: readonly number[]): number | null => {
 }
 
 type CellReport = {
+  readonly route: RouteTarget
+  readonly url: string
   readonly profile: ProfileName
   readonly variant: VariantName
   readonly runs: readonly RunSample[]
   readonly medians: Record<string, number | null>
+  readonly budgetEvaluations: readonly BudgetEvaluation[]
 }
 
-async function main(): Promise<void> {
+export const evaluateSiteSpeedBudgets = (
+  profile: ProfileName,
+  medians: CellReport["medians"],
+): readonly BudgetEvaluation[] =>
+  SITE_SPEED_BUDGETS.map((budget) => {
+    const actual = medians[budget.metric]
+    const threshold = budget.thresholds[profile]
+    const passes = actual === null
+      ? false
+      : budget.comparator === "<"
+        ? actual < threshold
+        : actual <= threshold
+    return {
+      budgetId: budget.budgetId,
+      status: actual === null ? "not_measured" : passes ? "pass" : "fail",
+      actual,
+      threshold,
+      unit: budget.unit,
+      comparator: budget.comparator,
+    }
+  })
+
+const routeUrl = (origin: string, route: RouteTarget): string =>
+  new URL(route.path, origin).toString()
+
+export async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2))
   const browser = await chromium.launch()
   const cells: CellReport[] = []
-  for (const profileName of options.profiles) {
-    const profile = PROFILES[profileName]
-    for (const variant of options.variants) {
-      const runs: RunSample[] = []
-      for (let index = 0; index < options.runs; index += 1) {
-        process.stderr.write(`run ${profileName}/${variant} ${index + 1}/${options.runs}\n`)
-        runs.push(await runOnce(browser, profile, variant, options))
-      }
-      const okRuns = runs.filter((run) => run.ok)
-      const num = (pick: (run: RunSample) => number | null | undefined): number | null =>
-        median(okRuns.map((run) => pick(run) ?? Number.NaN))
-      cells.push({
-        profile: profileName,
-        variant,
-        runs,
-        medians: {
+  for (const route of options.routeTargets) {
+    const url = routeUrl(options.origin, route)
+    for (const profileName of options.profiles) {
+      const profile = PROFILES[profileName]
+      for (const variant of options.variants) {
+        const runs: RunSample[] = []
+        for (let index = 0; index < options.runs; index += 1) {
+          process.stderr.write(`run ${route.name} ${profileName}/${variant} ${index + 1}/${options.runs}\n`)
+          runs.push(await runOnce(browser, profile, variant, url, options))
+        }
+        const okRuns = runs.filter((run) => run.ok)
+        const num = (pick: (run: RunSample) => number | null | undefined): number | null =>
+          median(okRuns.map((run) => pick(run) ?? Number.NaN))
+        const medians = {
           ttfbMs: num((run) => run.ttfbMs),
           fcpMs: num((run) => run.fcpMs),
           lcpMs: num((run) => run.lcpMs),
           clsMilli: num((run) => (run.cls === undefined ? undefined : run.cls * 1000)),
           tbtMs: num((run) => run.tbtMs),
           longTaskMaxMs: num((run) => run.longTasks?.maxMs),
+          jsTransferKb: num((run) => ((run.resourceClasses?.js?.transferBytes ?? 0) / 1024)),
           counterValueRenderedMs: num((run) => run.counterValueRenderedMs),
           webSocketConnectMs: num((run) => run.webSocketConnectMs),
           scriptDurationMs: num((run) => run.scriptDurationMs),
           transferTotalKb: num((run) => (run.transferTotalBytes ?? Number.NaN) / 1024),
           requestCount: num((run) => run.requestCount),
           jsHeapUsedMb: num((run) => (run.jsHeapUsedBytes ?? Number.NaN) / (1024 * 1024)),
-        },
-      })
+        }
+        cells.push({
+          route,
+          url,
+          profile: profileName,
+          variant,
+          runs,
+          medians,
+          budgetEvaluations: variant === "baseline" ? evaluateSiteSpeedBudgets(profileName, medians) : [],
+        })
+      }
     }
   }
   await browser.close()
 
   const report = {
     schema: "openagents.site_speed.run_report.v1",
-    url: options.url,
+    origin: options.origin,
+    routeSet: options.routeSet,
+    routes: options.routeTargets,
     generatedAt: new Date().toISOString(),
     runsPerCell: options.runs,
     settleMs: options.settleMs,
@@ -393,10 +562,23 @@ async function main(): Promise<void> {
   await writeFile(outPath, `${JSON.stringify(report, null, 2)}\n`)
 
   for (const cell of cells) {
-    process.stdout.write(`\n== ${cell.profile} / ${cell.variant} (medians of ${options.runs}) ==\n`)
+    process.stdout.write(`\n== ${cell.route.name} ${cell.profile} / ${cell.variant} (medians of ${options.runs}) ==\n`)
     process.stdout.write(`${JSON.stringify(cell.medians)}\n`)
+    if (cell.budgetEvaluations.length > 0) {
+      const failed = cell.budgetEvaluations.filter((budget) => budget.status !== "pass")
+      process.stdout.write(`budgets: ${failed.length === 0 ? "pass" : `fail ${failed.map((budget) => budget.budgetId).join(",")}`}\n`)
+    }
   }
   process.stdout.write(`\nreport: ${outPath}\n`)
+
+  if (
+    options.failOnBudget &&
+    cells.some((cell) => cell.budgetEvaluations.some((budget) => budget.status !== "pass"))
+  ) {
+    process.exitCode = 1
+  }
 }
 
-await main()
+if (import.meta.main) {
+  await main()
+}

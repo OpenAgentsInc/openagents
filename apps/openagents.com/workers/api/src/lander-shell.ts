@@ -1,5 +1,5 @@
 // Shared shell for the server-rendered lander family (/lander4,
-// /business-new): one inline stylesheet, one header/nav, one footer, one
+// /business): one inline stylesheet, one header/nav, one footer, one
 // counter refresher — pure string builders, no HTTP concerns.
 //
 // Design system (impeccable pass, 2026-07-02): the house face carries the
@@ -18,7 +18,7 @@ const NAV_ITEMS: ReadonlyArray<{
   readonly href: string
   readonly label: string
 }> = [
-  { href: '/business-new', key: 'business', label: 'Business' },
+  { href: '/business', key: 'business', label: 'Business' },
   { href: '/stats', key: 'stats', label: 'Network' },
   { href: '/docs', key: 'docs', label: 'Docs' },
 ]

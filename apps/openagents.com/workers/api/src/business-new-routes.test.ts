@@ -26,9 +26,9 @@ describe('business-new restructured page', () => {
     expect(html).toContain('name="phone"')
     expect(html).toContain('name="helpWith"')
     expect(html).toContain('name="requestSlackChannel"')
-    // Shared nav marks Business as the current page; Khala interview stays a path.
-    expect(html).toContain('href="/business-new" aria-current="page"')
-    expect(html).toContain('href="/business"')
+    // Shared nav marks Business as the current page; Khala conversation stays a path.
+    expect(html).toContain('href="/business" aria-current="page"')
+    expect(html).toContain('href="/khala"')
     expect(html).toContain('name="robots" content="noindex"')
     expect(html).not.toContain('/assets/index-')
   })

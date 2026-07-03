@@ -164,6 +164,7 @@ const approvedExactRoutePaths = [
   '/lander3',
   '/lander4',
   '/lander5',
+  '/business',
   '/business-new',
   '/install.md',
   '/surfaces.md',
