@@ -2204,7 +2204,10 @@ button {
   background: color-mix(in srgb, var(--oa-color-khala-surface) 68%, transparent);
 }
 .khala-thread-sidebar-item[data-active="true"] {
-  background: color-mix(in srgb, var(--oa-color-khala-surface) 92%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-energy-blue) 24%, transparent);
+}
+.khala-thread-sidebar-item[data-active="true"]:hover {
+  background: color-mix(in srgb, var(--oa-color-khala-energy-blue) 30%, transparent);
 }
 .khala-thread-sidebar-item[data-selecting="true"] {
   background: color-mix(in srgb, var(--oa-color-khala-surface) 82%, transparent);

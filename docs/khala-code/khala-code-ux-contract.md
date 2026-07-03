@@ -52,7 +52,7 @@ sweep if this doc, the registry, or the oracle tests drift apart.
 
 ## Registry
 
-Registry version: `2026-07-03.3` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-03.4` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_code.chat.sidebar_spinner_streaming_only.v1` — ENFORCED
 
@@ -65,15 +65,25 @@ Registry version: `2026-07-03.3` (schema `openagents.behavior_contracts.v1`)
 - **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** This contract binds indicator semantics only. Thread-switch latency budgets stay owned by docs/qa/khala-code-latency-budgets.md, and it makes no claim about streaming correctness itself.
 
-### `khala_code.chat.sidebar_active_thread_background_only.v1` — ENFORCED
+### `khala_code.chat.sidebar_active_thread_background_only.v1` — RETIRED
 
 - **Surface:** khala-code-desktop (chat thread sidebar)
 - **Stated by:** owner via khala-code-session on 2026-07-03
 - **Statement:** Current chat is just supposed to be highlighted as a background bar.
 - **Enforcement tier:** test-sweep
+- **Verification:** Superseded by khala_code.chat.sidebar_active_thread_background_only.v2.
+- **Authority boundary:** Retired 2026-07-03 (owner restatement): the highlight existed as a hook but the tone had drifted to a near-invisible surface mix. Superseded by khala_code.chat.sidebar_active_thread_background_only.v2, which additionally pins noticeability; kept for history.
+
+### `khala_code.chat.sidebar_active_thread_background_only.v2` — ENFORCED
+
+- **Surface:** khala-code-desktop (chat thread sidebar)
+- **Stated by:** owner via khala-code-session on 2026-07-03
+- **Statement:** The active chat in the sidebar must have a noticeable background color — not very bright, but clearly visible — so it is always obvious which chat is the active one. It renders as a background bar only, with no 'Current chat' heading or copy, and it must not fade into the sidebar background or disappear.
+- **Enforcement tier:** test-sweep
 - **Oracle** `active_thread_background_only.dom` (bun-test, dom): Mounts the real thread sidebar in a DOM: an optimistic current chat renders as the active row with the active background hooks and no visible 'Current chat' heading or copy. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Oracle** `active_row_distinct_tone.source` (bun-test, unit): Pins the active-row background to a distinct energy-blue tone: the [data-active="true"] rule must use the khala-energy-blue accent (not the surface mix shared with hover/selecting rows), so the highlight cannot silently fade back into the sidebar background. Rendered appearance is additionally covered by the visual smoke tier. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
 - **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** This contract binds the thread-sidebar active-row affordance and optimistic pending-thread rendering only. Persisted project, Codex, Claude, and session-catalog group labels remain owned by their source catalogs.
+- **Authority boundary:** The exact tone may be tuned with owner sign-off, but the active row must stay visibly distinct from the hover, selecting, and plain-row tones; reverting it to the sidebar's base surface mix (the drift that made it invisible) is a contract violation, not a style tweak. Persisted project, Codex, Claude, and session-catalog group labels remain owned by their source catalogs.
 
 ### `khala_code.chat.recent_thread_cmd_hotkeys.v1` — RETIRED
 

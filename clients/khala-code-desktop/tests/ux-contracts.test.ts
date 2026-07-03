@@ -236,8 +236,17 @@ describe("contract khala_code.chat.sidebar_spinner_streaming_only.v1", () => {
   })
 })
 
-// Oracle for khala_code.chat.sidebar_active_thread_background_only.v1
-describe("contract khala_code.chat.sidebar_active_thread_background_only.v1", () => {
+// Oracle for khala_code.chat.sidebar_active_thread_background_only.v2
+describe("contract khala_code.chat.sidebar_active_thread_background_only.v2", () => {
+  test("the active-row background is a distinct energy-blue tone, not the surface mix", async () => {
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+    const activeRule = css.split('.khala-thread-sidebar-item[data-active="true"] {')[1]?.split("}")[0] ?? ""
+    expect(activeRule).toContain("--oa-color-khala-energy-blue")
+    expect(activeRule).not.toContain("--oa-color-khala-surface")
+    const hoverRule = css.split(".khala-thread-sidebar-item:hover {")[1]?.split("}")[0] ?? ""
+    expect(hoverRule).toContain("--oa-color-khala-surface")
+  })
+
   test("an optimistic current chat uses the active row background hook without visible current-chat copy", async () => {
     await withDom(async () => {
       const container = document.createElement("aside")
