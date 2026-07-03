@@ -124,7 +124,7 @@ describe("khala code desktop app shell", () => {
     expect(html).not.toContain("Pylons")
   })
 
-  test("wires the architect plan-first composer surface", async () => {
+  test("wires the architect slash command and composer reasoning mode", async () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
     const model = await Bun.file(new URL("../src/ui/main-shell-model.ts", import.meta.url)).text()
     const rpc = await Bun.file(new URL("../src/shared/rpc.ts", import.meta.url)).text()
@@ -139,12 +139,17 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("architectSlashCommand")
     expect(main).toContain('command: "architect"')
     expect(main).toContain('action: "architect_plan"')
-    expect(main).toContain("renderArchitectPlanModeButton")
+    expect(main).toContain("renderReasoningModeSelect")
+    expect(main).toContain('"model_reasoning_effort"')
+    expect(main).toContain('label.textContent = "Reasoning"')
+    expect(main).not.toContain('label.textContent = "Plan"')
     expect(main).toContain("submitArchitectPlan")
     expect(main).toContain('draftText.startsWith("/architect ")')
     expect(main).toContain("renderArchitectPlanCard")
     expect(main).toContain("architectPlanDecision")
-    expect(css).toContain(".khala-architect-plan-toggle")
+    expect(css).toContain(".khala-reasoning-mode-control")
+    expect(css).toContain(".khala-reasoning-mode-select")
+    expect(css).not.toContain(".khala-architect-plan-toggle")
     expect(css).toContain(".khala-architect-plan-card")
     expect(css).toContain(".khala-architect-plan-actions")
   })
