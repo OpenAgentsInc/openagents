@@ -140,16 +140,42 @@ export const AgentDefinitionHarness = S.Struct({
 })
 export type AgentDefinitionHarness = typeof AgentDefinitionHarness.Type
 
+export const AgentDefinitionInboundWebhookCondition = S.Union([
+  S.Struct({
+    kind: S.Literal("event_type"),
+    equals: S.String,
+  }),
+  S.Struct({
+    kind: S.Literal("json_path_equals"),
+    path: S.String,
+    equals: S.String,
+  }),
+  S.Struct({
+    kind: S.Literal("json_path_matches"),
+    path: S.String,
+    pattern: S.String,
+  }),
+  S.Struct({
+    kind: S.Literal("json_path_in"),
+    path: S.String,
+    values: S.Array(S.String),
+  }),
+])
+export type AgentDefinitionInboundWebhookCondition =
+  typeof AgentDefinitionInboundWebhookCondition.Type
+
 export const AgentDefinitionTrigger = S.Union([
   S.Struct({
     kind: S.Literal("cron"),
     triggerRef: S.String,
-    cron: S.String,
+    expr: S.String,
+    tz: S.String,
   }),
   S.Struct({
-    kind: S.Literal("webhook"),
+    kind: S.Literal("inbound_webhook"),
     triggerRef: S.String,
-    sourceRef: S.String,
+    source: S.String,
+    conditions: S.Array(AgentDefinitionInboundWebhookCondition),
   }),
   S.Struct({
     kind: S.Literal("inbox_match"),
@@ -162,6 +188,30 @@ export const AgentDefinitionTrigger = S.Union([
   }),
 ])
 export type AgentDefinitionTrigger = typeof AgentDefinitionTrigger.Type
+
+export const AgentDefinitionTriggerRecordSchemaLiteral =
+  "openagents.agent_definition_trigger.v1" as const
+
+export const AgentDefinitionTriggerState = S.Literals(["enabled", "paused"])
+export type AgentDefinitionTriggerState = typeof AgentDefinitionTriggerState.Type
+
+export const AgentDefinitionTriggerRecord = S.Struct({
+  schema: S.Literal(AgentDefinitionTriggerRecordSchemaLiteral),
+  triggerId: S.String,
+  ownerRef: S.String,
+  definitionId: AgentDefinitionId,
+  triggerRef: S.String,
+  trigger: AgentDefinitionTrigger,
+  state: AgentDefinitionTriggerState,
+  consecutiveFailures: S.Number,
+  nextRunAt: S.optional(S.String),
+  pausedAt: S.optional(S.String),
+  pauseReason: S.optional(S.String),
+  createdAt: S.String,
+  updatedAt: S.String,
+})
+export type AgentDefinitionTriggerRecord =
+  typeof AgentDefinitionTriggerRecord.Type
 
 export const AgentDefinitionLane = S.Literals([
   "own_pylon",
@@ -497,6 +547,8 @@ export const decodeAgentRuntimeRun = S.decodeUnknownSync(AgentRuntimeRun)
 export const decodeAgentRuntimeEvent = S.decodeUnknownSync(AgentRuntimeEvent)
 export const decodeAgentRuntimeEventLog = S.decodeUnknownSync(AgentRuntimeEventLog)
 export const decodeAgentDefinition = S.decodeUnknownSync(AgentDefinition)
+export const decodeAgentDefinitionTriggerRecord =
+  S.decodeUnknownSync(AgentDefinitionTriggerRecord)
 
 export const PylonAssignmentRunLifecycleEventSchemaLiteral =
   "openagents.pylon.assignment_run_lifecycle_event.v0.1" as const

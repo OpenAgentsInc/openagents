@@ -30,6 +30,7 @@ import {
   readJsonObject,
 } from './json-boundary'
 import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
+import type { AgentDefinitionTriggerStore } from './agent-definition-trigger-store'
 
 type HttpResponse = globalThis.Response
 
@@ -203,6 +204,7 @@ export const makeD1AgentDefinitionStore = (
 export type AgentDefinitionRouteDependencies = Readonly<{
   agentStore: AgentRegistrationStore
   definitionStore: AgentDefinitionStore
+  triggerStore?: AgentDefinitionTriggerStore
   makeId?: () => string
   nowIso?: () => string
 }>
@@ -365,6 +367,29 @@ const conflictResponse = (): HttpResponse =>
     noStoreJsonResponse({ error: 'agent_definition_conflict' }, { status: 409 }),
   )
 
+const syncDefinitionTriggers = async (
+  session: ProgrammaticAgentSession,
+  definition: AgentDefinition,
+  dependencies: AgentDefinitionRouteDependencies,
+  nowIso: string,
+): Promise<boolean> => {
+  if (dependencies.triggerStore === undefined) {
+    return true
+  }
+
+  try {
+    await dependencies.triggerStore.replaceDefinitionTriggers(
+      session.user.id,
+      definition,
+      nowIso,
+    )
+
+    return true
+  } catch {
+    return false
+  }
+}
+
 const handleCreate = async (
   request: Request,
   session: ProgrammaticAgentSession,
@@ -387,6 +412,15 @@ const handleCreate = async (
     await dependencies.definitionStore.createDefinition(session.user.id, definition)
   } catch (error) {
     return isConflictError(error) ? conflictResponse() : storageErrorResponse()
+  }
+
+  if (!await syncDefinitionTriggers(
+    session,
+    definition,
+    dependencies,
+    definition.createdAt,
+  )) {
+    return storageErrorResponse()
   }
 
   return withAgentRateLimitHeaders(
@@ -458,9 +492,20 @@ const handlePatch = async (
       definition,
     )
 
-    return updated
-      ? withAgentRateLimitHeaders(noStoreJsonResponse({ definition }))
-      : notFoundResponse()
+    if (!updated) {
+      return notFoundResponse()
+    }
+
+    if (!await syncDefinitionTriggers(
+      session,
+      definition,
+      dependencies,
+      definition.updatedAt,
+    )) {
+      return storageErrorResponse()
+    }
+
+    return withAgentRateLimitHeaders(noStoreJsonResponse({ definition }))
   } catch (error) {
     return isConflictError(error) ? conflictResponse() : storageErrorResponse()
   }

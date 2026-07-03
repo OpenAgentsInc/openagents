@@ -20,6 +20,7 @@ import {
   decideAgentDefinitionCompiledToolAuthority,
   decideAgentDefinitionToolAuthority,
   decodeAgentDefinition,
+  decodeAgentDefinitionTriggerRecord,
   decodeAgentRuntimeEvent,
   decodeAgentRuntimeEventLog,
   decodeAgentRuntimeRun,
@@ -93,6 +94,14 @@ describe("@openagentsinc/agent-runtime-schema", () => {
       schema: "openagents.agent_definition.v1",
       id: "agent_definition.public.fulfillment_loop.daily_motion",
       harness: { kind: "codex" },
+      triggers: [
+        {
+          kind: "cron",
+          triggerRef: "trigger.public.fulfillment_loop.daily",
+          expr: "0 14 * * *",
+          tz: "UTC",
+        },
+      ],
       lane: "own_pylon",
       escalation: {
         channel: "operator",
@@ -107,6 +116,85 @@ describe("@openagentsinc/agent-runtime-schema", () => {
     })).toMatchObject({
       agentDefinitionId: definition.id,
       state: "running",
+    })
+  })
+
+  test("decodes cron and inbound-webhook trigger records", () => {
+    const definition = decodeAgentDefinition({
+      ...fulfillmentLoopAgentDefinitionFixture,
+      triggers: [
+        {
+          kind: "cron",
+          triggerRef: "trigger.public.fulfillment_loop.hourly",
+          expr: "15 * * * *",
+          tz: "America/Chicago",
+        },
+        {
+          kind: "inbound_webhook",
+          triggerRef: "trigger.public.github.issue_opened",
+          source: "github",
+          conditions: [
+            {
+              kind: "event_type",
+              equals: "issues.opened",
+            },
+            {
+              kind: "json_path_equals",
+              path: "$.repository.full_name",
+              equals: "OpenAgentsInc/openagents",
+            },
+            {
+              kind: "json_path_matches",
+              path: "$.issue.title",
+              pattern: "^BA-",
+            },
+            {
+              kind: "json_path_in",
+              path: "$.issue.labels[*].name",
+              values: ["background-agents", "fable"],
+            },
+          ],
+        },
+      ],
+    })
+
+    expect(definition.triggers).toHaveLength(2)
+    expect(definition.triggers[1]).toMatchObject({
+      kind: "inbound_webhook",
+      source: "github",
+      conditions: [
+        { kind: "event_type", equals: "issues.opened" },
+        {
+          kind: "json_path_equals",
+          path: "$.repository.full_name",
+          equals: "OpenAgentsInc/openagents",
+        },
+        { kind: "json_path_matches", path: "$.issue.title", pattern: "^BA-" },
+        {
+          kind: "json_path_in",
+          path: "$.issue.labels[*].name",
+          values: ["background-agents", "fable"],
+        },
+      ],
+    })
+
+    expect(decodeAgentDefinitionTriggerRecord({
+      schema: "openagents.agent_definition_trigger.v1",
+      triggerId: "agent_definition_trigger.public.hourly",
+      ownerRef: definition.ownerRef,
+      definitionId: definition.id,
+      triggerRef: "trigger.public.fulfillment_loop.hourly",
+      trigger: definition.triggers[0],
+      state: "enabled",
+      consecutiveFailures: 0,
+      nextRunAt: "2026-07-03T16:15:00.000Z",
+      createdAt: "2026-07-03T16:00:00.000Z",
+      updatedAt: "2026-07-03T16:00:00.000Z",
+    })).toMatchObject({
+      schema: "openagents.agent_definition_trigger.v1",
+      state: "enabled",
+      consecutiveFailures: 0,
+      nextRunAt: "2026-07-03T16:15:00.000Z",
     })
   })
 

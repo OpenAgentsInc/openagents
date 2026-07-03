@@ -99,6 +99,10 @@ const publicTokensServedTotalFallbackMigration = readFileSync(
   ),
   'utf8',
 )
+const tokenUsageRoleRefMigration = readFileSync(
+  new URL('../migrations/0269_token_usage_role_ref.sql', import.meta.url),
+  'utf8',
+)
 
 const makeDb = (): D1Database => {
   const raw = new DatabaseSync(':memory:')
@@ -108,7 +112,8 @@ ${demandAttributionMigration}
 ${demandChannelMigration}
 ${publicTokensServedDailyRollupsMigration}
 ${publicTokensServedMixRollupsMigration}
-${publicTokensServedTotalFallbackMigration}`,
+${publicTokensServedTotalFallbackMigration}
+${tokenUsageRoleRefMigration}`,
   )
   return new SqliteD1(raw) as unknown as D1Database
 }

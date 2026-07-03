@@ -46,6 +46,7 @@ const COLUMNS = [
   'ingested_at',
   'producer_system',
   'source_route',
+  'role_ref',
   'actor_user_id',
   'actor_team_id',
   'account_ref',

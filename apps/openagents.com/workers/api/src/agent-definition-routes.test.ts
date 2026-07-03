@@ -14,6 +14,7 @@ import {
   type AgentDefinitionStore,
   handleAgentDefinitionsApi,
 } from './agent-definition-routes'
+import type { AgentDefinitionTriggerStore } from './agent-definition-trigger-store'
 
 class MemoryAgentRegistrationStore implements AgentRegistrationStore {
   readonly touchedCredentialIds: Array<string> = []
@@ -121,6 +122,44 @@ class MemoryAgentDefinitionStore implements AgentDefinitionStore {
     this.rows[index] = { ownerAgentUserId, definition }
 
     return Promise.resolve(true)
+  }
+}
+
+class MemoryAgentDefinitionTriggerStore implements AgentDefinitionTriggerStore {
+  readonly replaceCalls: Array<{
+    readonly ownerAgentUserId: string
+    readonly definition: AgentDefinition
+    readonly nowIso: string
+  }> = []
+
+  replaceDefinitionTriggers(
+    ownerAgentUserId: string,
+    definition: AgentDefinition,
+    nowIso: string,
+  ): Promise<[]> {
+    this.replaceCalls.push({ ownerAgentUserId, definition, nowIso })
+
+    return Promise.resolve([])
+  }
+
+  listDefinitionTriggers(): Promise<[]> {
+    return Promise.resolve([])
+  }
+
+  pauseTrigger(): Promise<boolean> {
+    return Promise.resolve(false)
+  }
+
+  enableTrigger(): Promise<boolean> {
+    return Promise.resolve(false)
+  }
+
+  recordTriggerFailure(): Promise<boolean> {
+    return Promise.resolve(false)
+  }
+
+  recordTriggerSuccess(): Promise<boolean> {
+    return Promise.resolve(false)
   }
 }
 
@@ -263,6 +302,81 @@ describe('agent definition routes', () => {
       lane: 'own_pylon',
     })
     expect(definitionStore.rows).toHaveLength(1)
+  })
+
+  test('syncs durable trigger rows when definitions are created and patched', async () => {
+    const { agentStore, definitionStore, ownerToken } = await makeStores()
+    const triggerStore = new MemoryAgentDefinitionTriggerStore()
+    const createResponse = await handleAgentDefinitionsApi(
+      jsonRequest('POST', ownerToken, definitionBody()),
+      {
+        agentStore,
+        definitionStore,
+        makeId: () => 'agent_definition.route_test.owner',
+        nowIso: () => '2026-07-03T00:00:00.000Z',
+        triggerStore,
+      },
+    )
+    const patchResponse = await handleAgentDefinitionsApi(
+      jsonRequest('PATCH', ownerToken, {
+        id: 'agent_definition.route_test.owner',
+        triggers: [
+          {
+            kind: 'cron',
+            triggerRef: 'trigger.public.route_test.hourly',
+            expr: '0 * * * *',
+            tz: 'UTC',
+          },
+          {
+            kind: 'inbound_webhook',
+            triggerRef: 'trigger.public.route_test.github',
+            source: 'github',
+            conditions: [
+              {
+                kind: 'event_type',
+                equals: 'issues.opened',
+              },
+            ],
+          },
+        ],
+      }),
+      {
+        agentStore,
+        definitionStore,
+        nowIso: () => '2026-07-03T00:01:00.000Z',
+        triggerStore,
+      },
+    )
+
+    expect(createResponse.status).toBe(201)
+    expect(patchResponse.status).toBe(200)
+    expect(triggerStore.replaceCalls).toHaveLength(2)
+    expect(triggerStore.replaceCalls[0]).toMatchObject({
+      ownerAgentUserId: 'agent_user_owner',
+      nowIso: '2026-07-03T00:00:00.000Z',
+      definition: {
+        id: 'agent_definition.route_test.owner',
+        triggers: [{ kind: 'manual' }],
+      },
+    })
+    expect(triggerStore.replaceCalls[1]).toMatchObject({
+      ownerAgentUserId: 'agent_user_owner',
+      nowIso: '2026-07-03T00:01:00.000Z',
+      definition: {
+        id: 'agent_definition.route_test.owner',
+        triggers: [
+          {
+            kind: 'cron',
+            expr: '0 * * * *',
+            tz: 'UTC',
+          },
+          {
+            kind: 'inbound_webhook',
+            source: 'github',
+          },
+        ],
+      },
+    })
   })
 
   test('lists only definitions owned by the authenticated agent', async () => {

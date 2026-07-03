@@ -73,6 +73,7 @@ import {
   makeD1AgentDefinitionRunStore,
   matchAgentDefinitionRunRequest,
 } from './agent-definition-run-routes'
+import { makeD1AgentDefinitionTriggerStore } from './agent-definition-trigger-store'
 import {
   makeAgentScopedGrantRoutes,
   makeD1AgentScopedGrantStore,
@@ -12528,6 +12529,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         handleAgentDefinitionsApi(request, {
           agentStore: makeD1AgentRegistrationStore(openAgentsDatabase(env)),
           definitionStore: makeD1AgentDefinitionStore(openAgentsDatabase(env)),
+          triggerStore: makeD1AgentDefinitionTriggerStore(openAgentsDatabase(env)),
         }),
       ),
   },

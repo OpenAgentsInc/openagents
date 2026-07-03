@@ -68,6 +68,7 @@ const SCHEMA = [
   '0069_referral_attribution_consumption.sql',
   '0191_business_signup_requests.sql',
   '0216_business_signup_referral_attribution.sql',
+  '0271_business_signup_fulfillment.sql',
 ].map(migration)
 
 let counter = 0

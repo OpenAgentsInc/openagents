@@ -95,7 +95,8 @@ export const fulfillmentLoopAgentDefinitionFixture: AgentDefinition = {
     {
       kind: "cron",
       triggerRef: "trigger.public.fulfillment_loop.daily",
-      cron: "0 14 * * *",
+      expr: "0 14 * * *",
+      tz: "UTC",
     },
   ],
   lane: "own_pylon",

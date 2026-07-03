@@ -123,14 +123,27 @@ More specific invariant ledgers apply inside imported apps and packages.
   definition-backed, but that link alone grants no tool, spend, dispatch,
   payout, settlement, public-claim, provider-account, or external-send
   authority.
+- Durable definition triggers are persisted as
+  `openagents.agent_definition_trigger.v1` rows in the owner-scoped
+  `agent_definition_triggers` table. The definition still owns the trigger
+  contract; the trigger table owns only operational scheduler state:
+  `next_run_at`, enable/pause state, pause reason, and consecutive failure
+  count.
+- `next_run_at` is a precomputed scheduler hint for cron triggers, not
+  dispatch authority. A due, enabled trigger must still pass the scheduler,
+  definition-run route, lane/toolset policy, accounting, and owner-scope gates
+  before any work starts. Inbound webhook trigger rows likewise store typed
+  source/condition configuration only; verified ingress, normalization, and
+  condition evaluation are separate authority steps.
 - Any Worker, Pylon, desktop, or cloud-workroom executor that claims
   definition-backed tool enforcement must use this contract or a formally
   equivalent compiled policy at the execution boundary, with regression tests
   for deny precedence, ask escalation, allow, and default-deny behavior.
 - Regression coverage starts in
   `packages/agent-runtime-schema/src/index.test.ts`,
-  `packages/khala-tools/src/dispatcher.test.ts`, and
-  `apps/openagents.com/workers/api/src/forge-tenant-git-auth-store.test.ts`.
+  `packages/khala-tools/src/dispatcher.test.ts`,
+  `apps/openagents.com/workers/api/src/forge-tenant-git-auth-store.test.ts`, and
+  `apps/openagents.com/workers/api/src/agent-definition-trigger-store.test.ts`.
 
 ## Connector Authority And Redaction
 

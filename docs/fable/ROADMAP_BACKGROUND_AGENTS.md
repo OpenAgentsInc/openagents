@@ -151,6 +151,15 @@ workloads for the M2 milestone, and the QA Swarm customer deviation loop
 (#8186) is operationally one definition per customer (cron or BA-B3
 on-deploy webhook trigger, BA-B4 budget caps, BA-G1 result callback).
 
+BA-B1 status (2026-07-03): definitions now use the explicit trigger shapes
+`cron(expr, tz)` and `inbound_webhook(source, typed conditions)`. The Worker
+persists owner-scoped trigger rows in `agent_definition_triggers` via
+`0281_agent_definition_triggers.sql`; rows carry enable/pause state,
+`consecutive_failures`, optional pause reason, and precomputed cron
+`next_run_at` from `agent-definition-cron.ts`. Definition create/patch syncs
+that store, while scheduling, webhook verification/normalization, dispatch,
+and auto-pause remain BA-B2/BA-B3/BA-B4 authority.
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-B1 | Trigger schema + D1 store: `cron(expr, tz)` and `inbound_webhook(source, typed conditions)` trigger types on definitions; `next_run_at` precomputed via a cron utility; `consecutive_failures`; enable/pause state | BA-A1 | HIGH | [#8193](https://github.com/OpenAgentsInc/openagents/issues/8193) |
