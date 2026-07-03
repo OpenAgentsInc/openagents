@@ -36,6 +36,20 @@ export const OmniKnowledgeSourceRightsState = S.Literals([
 export type OmniKnowledgeSourceRightsState =
   typeof OmniKnowledgeSourceRightsState.Type
 
+export const OmniCustomerCorpusConnectorKind = S.Literals([
+  'calendar_read',
+  'cloud_drive_docs',
+  'mail_read',
+])
+export type OmniCustomerCorpusConnectorKind =
+  typeof OmniCustomerCorpusConnectorKind.Type
+
+export const OmniCustomerCorpusConnectorGrantKind = S.Literals([
+  'scoped_read_only_refresh_token',
+])
+export type OmniCustomerCorpusConnectorGrantKind =
+  typeof OmniCustomerCorpusConnectorGrantKind.Type
+
 export const OmniKnowledgeDigestAlgorithm = S.Literals([
   'blake3',
   'sha256',
@@ -86,6 +100,23 @@ export class OmniKnowledgeSourceRecord extends S.Class<OmniKnowledgeSourceRecord
   sourceRef: S.String,
   titleRef: S.String,
   trustTier: OmniTrustTier,
+}) {}
+
+export class OmniCustomerCorpusConnectorSourceRecord extends S.Class<OmniCustomerCorpusConnectorSourceRecord>(
+  'OmniCustomerCorpusConnectorSourceRecord',
+)({
+  caveatRefs: S.Array(S.String),
+  connectorKind: OmniCustomerCorpusConnectorKind,
+  credentialGrantRef: S.String,
+  credentialStorageRef: S.String,
+  grantKind: OmniCustomerCorpusConnectorGrantKind,
+  grantedScopeRefs: S.Array(S.String),
+  ingestedSourceRefs: S.Array(S.String),
+  provenanceRefs: S.Array(S.String),
+  readOnly: S.Boolean,
+  rejectedSourceRefs: S.Array(S.String),
+  requestedScopeRefs: S.Array(S.String),
+  sourceReceiptRef: S.String,
 }) {}
 
 export class OmniKnowledgeExtractedSpanRecord extends S.Class<OmniKnowledgeExtractedSpanRecord>(
@@ -201,6 +232,64 @@ export class OmniKnowledgeSourceBundleProjection extends S.Class<OmniKnowledgeSo
   workroomRefs: S.Array(S.String),
 }) {}
 
+export class OmniCustomerCorpusConnectorSourceProjection extends S.Class<OmniCustomerCorpusConnectorSourceProjection>(
+  'OmniCustomerCorpusConnectorSourceProjection',
+)({
+  caveatRefs: S.Array(S.String),
+  connectorKind: OmniCustomerCorpusConnectorKind,
+  credentialGrantRef: S.String,
+  credentialStorageRef: S.String,
+  grantKind: OmniCustomerCorpusConnectorGrantKind,
+  grantedScopeRefs: S.Array(S.String),
+  ingestedSourceRefs: S.Array(S.String),
+  provenanceRefs: S.Array(S.String),
+  readOnly: S.Boolean,
+  rejectedSourceRefs: S.Array(S.String),
+  requestedScopeRefs: S.Array(S.String),
+  sourceReceiptRef: S.String,
+}) {}
+
+export class OmniCustomerCorpusIngestionReceiptRecord extends S.Class<OmniCustomerCorpusIngestionReceiptRecord>(
+  'OmniCustomerCorpusIngestionReceiptRecord',
+)({
+  authority: OmniKnowledgeBundleAuthority,
+  caveatRefs: S.Array(S.String),
+  connectorSources: S.Array(OmniCustomerCorpusConnectorSourceRecord),
+  corpusRef: S.String,
+  createdAtIso: S.String,
+  id: S.String,
+  provenanceRefs: S.Array(S.String),
+  redactionPolicyRefs: S.Array(S.String),
+  receiptRef: S.String,
+  rightsRefs: S.Array(S.String),
+  sourceBundle: OmniKnowledgeSourceBundleRecord,
+  updatedAtIso: S.String,
+  workspaceRef: S.String,
+}) {}
+
+export class OmniCustomerCorpusIngestionReceiptProjection extends S.Class<OmniCustomerCorpusIngestionReceiptProjection>(
+  'OmniCustomerCorpusIngestionReceiptProjection',
+)({
+  audience: OmniKnowledgeProjectionAudience,
+  authority: OmniKnowledgeBundleAuthority,
+  caveatRefs: S.Array(S.String),
+  connectorMutationAllowed: S.Boolean,
+  connectorSources: S.Array(OmniCustomerCorpusConnectorSourceProjection),
+  corpusRef: S.String,
+  id: S.String,
+  provenanceRefs: S.Array(S.String),
+  rawCredentialMaterialStored: S.Boolean,
+  rawSourceArchiveCopyAllowed: S.Boolean,
+  receiptRef: S.String,
+  redactionPolicyRefs: S.Array(S.String),
+  rightsRefs: S.Array(S.String),
+  sourceBundle: OmniKnowledgeSourceBundleProjection,
+  sourceCount: S.Number,
+  sourcesReceiptRefs: S.Array(S.String),
+  updatedAtDisplay: S.String,
+  workspaceRef: S.String,
+}) {}
+
 export class OmniKnowledgeSourceBundleUnsafe extends S.TaggedErrorClass<OmniKnowledgeSourceBundleUnsafe>()(
   'OmniKnowledgeSourceBundleUnsafe',
   {
@@ -222,10 +311,12 @@ const safeRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260}$/
 const unsafeKnowledgeRefPattern =
   /(@|\/Users\/|\/home\/|access[_-]?token|auth[_-]?content[_-]?json|auth\.json|bearer|callback[_-]?token|cookie|customer[_-]?(email|name|value)|email[_-]?(address|body)|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|github\.com\/[^:/]+\/private|hostname|invoice|lnbc|lntb|lnbcrt|lno1|lnurl|macaroon|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|oauth|opencode_auth_content|payment[_-]?(hash|id|preimage|proof|secret)|payout[_-]?(address|destination|private|raw|target)|preimage|private[_-]?(key|source|wallet)|provider[_-]?(grant|payload|secret|token)|raw[_-]?(archive|auth|connector|customer|email|export|file|invoice|payment|payload|payout|prompt|provider|repo|runner|run[_-]?log|source|state|target|telemetry|text|transcript|webhook)|recovery[_-]?phrase|secret|seed[_-]?phrase|sk-[a-z0-9]|source[_-]?archive|summary[_-]?text|token|wallet[._-](key|material|mnemonic|payment|preimage|secret|seed))/i
 const rawTimestampPattern = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/
+const broadConnectorScopePattern =
+  /(admin|all|calendar\.(events\.)?write|drive(\.file)?\.write|drive\.full|full[_-]?(access|drive|mail|scope)|mail\.(modify|send|write)|root|rw|write)/i
 const publicUnsafeRefPattern =
-  /(bundle\.private|caveat\.private|digest\.private|excerpt\.private|fact\.private|locator\.private|policy\.private|provenance\.private|rights\.private|source\.private|span\.private|summary\.private|title\.private|workroom\.)/i
+  /(bundle\.private|caveat\.private|corpus\.private|credential_store\.operator|customer_corpus_ingestion\.private|digest\.private|excerpt\.private|fact\.private|grant\.customer|locator\.private|policy\.private|provenance\.private|rights\.private|source\.private|span\.private|summary\.private|title\.private|workroom\.|workspace\.private)/i
 const teamUnsafeRefPattern =
-  /(digest\.private|excerpt\.private|locator\.private|rights\.private|source\.private|span\.private|summary\.private|workroom\.private)/i
+  /(corpus\.private|credential_store\.operator|customer_corpus_ingestion\.private|digest\.private|excerpt\.private|grant\.customer|locator\.private|rights\.private|source\.private|span\.private|summary\.private|workroom\.private|workspace\.private)/i
 
 const uniqueRefs = (
   refs: ReadonlyArray<string>,
@@ -387,6 +478,81 @@ const assertSourceRecord = (source: OmniKnowledgeSourceRecord): void => {
   }
 }
 
+const assertConnectorSourceRecord = (
+  connector: OmniCustomerCorpusConnectorSourceRecord,
+  sourceRefs: ReadonlySet<string>,
+): void => {
+  assertSafeRefs('Customer corpus connector refs', [
+    connector.sourceReceiptRef,
+    connector.credentialGrantRef,
+    connector.credentialStorageRef,
+  ])
+  assertSafeRefs('Customer corpus connector caveat refs', connector.caveatRefs)
+  assertSafeRefs(
+    'Customer corpus connector granted scope refs',
+    connector.grantedScopeRefs,
+  )
+  assertSafeRefs(
+    'Customer corpus connector ingested source refs',
+    connector.ingestedSourceRefs,
+  )
+  assertSafeRefs(
+    'Customer corpus connector provenance refs',
+    connector.provenanceRefs,
+  )
+  assertSafeRefs(
+    'Customer corpus connector rejected source refs',
+    connector.rejectedSourceRefs,
+  )
+  assertSafeRefs(
+    'Customer corpus connector requested scope refs',
+    connector.requestedScopeRefs,
+  )
+
+  if (connector.readOnly !== true) {
+    throw new OmniKnowledgeSourceBundleUnsafe({
+      reason: 'Customer corpus connectors must be scoped read-only.',
+    })
+  }
+
+  if (connector.grantKind !== 'scoped_read_only_refresh_token') {
+    throw new OmniKnowledgeSourceBundleUnsafe({
+      reason: 'Customer corpus connectors must use scoped read-only refresh tokens.',
+    })
+  }
+
+  if (
+    connector.provenanceRefs.length === 0 ||
+    connector.grantedScopeRefs.length === 0 ||
+    connector.ingestedSourceRefs.length === 0
+  ) {
+    throw new OmniKnowledgeSourceBundleUnsafe({
+      reason:
+        'Customer corpus connector receipts require provenance, granted scopes, and ingested source refs.',
+    })
+  }
+
+  if (
+    [...connector.requestedScopeRefs, ...connector.grantedScopeRefs].some(ref =>
+      broadConnectorScopePattern.test(ref),
+    )
+  ) {
+    throw new OmniKnowledgeSourceBundleUnsafe({
+      reason:
+        'Customer corpus connector scopes must not request root, admin, write, or full-access authority.',
+    })
+  }
+
+  for (const sourceRef of connector.ingestedSourceRefs) {
+    if (!sourceRefs.has(sourceRef)) {
+      throw new OmniKnowledgeSourceBundleUnsafe({
+        reason:
+          'Customer corpus connector receipts must reference sources in the same bundle.',
+      })
+    }
+  }
+}
+
 const assertSpanRecord = (
   span: OmniKnowledgeExtractedSpanRecord,
   sourceRefs: ReadonlySet<string>,
@@ -516,6 +682,69 @@ const assertBundleRecord = (
   const sourceRefs = new Set(bundle.sources.map(source => source.sourceRef))
 
   bundle.spans.forEach(span => assertSpanRecord(span, sourceRefs))
+}
+
+const assertCustomerCorpusIngestionReceipt = (
+  receipt: OmniCustomerCorpusIngestionReceiptRecord,
+): void => {
+  assertBundleRecord(receipt.sourceBundle)
+
+  if (
+    receipt.authority.noConnectorMutation !== true ||
+    receipt.authority.noGeneratedSummaryMutation !== true ||
+    receipt.authority.noPublicClaimUpgrade !== true ||
+    receipt.authority.noRawSourceArchiveCopy !== true ||
+    receipt.authority.noRightsMutation !== true
+  ) {
+    throw new OmniKnowledgeSourceBundleUnsafe({
+      reason:
+        'Customer corpus ingestion receipts cannot mutate connectors, generated summaries, public claims, raw archives, or rights.',
+    })
+  }
+
+  assertSafeRefs('Customer corpus ingestion receipt refs', [
+    receipt.id,
+    receipt.receiptRef,
+    receipt.corpusRef,
+    receipt.workspaceRef,
+  ])
+  assertSafeRefs(
+    'Customer corpus ingestion receipt caveat refs',
+    receipt.caveatRefs,
+  )
+  assertSafeRefs(
+    'Customer corpus ingestion receipt provenance refs',
+    receipt.provenanceRefs,
+  )
+  assertSafeRefs(
+    'Customer corpus ingestion receipt redaction policy refs',
+    receipt.redactionPolicyRefs,
+  )
+  assertSafeRefs(
+    'Customer corpus ingestion receipt rights refs',
+    receipt.rightsRefs,
+  )
+
+  if (receipt.connectorSources.length === 0) {
+    throw new OmniKnowledgeSourceBundleUnsafe({
+      reason: 'Customer corpus ingestion receipts require connector sources.',
+    })
+  }
+
+  if (receipt.provenanceRefs.length === 0 || receipt.rightsRefs.length === 0) {
+    throw new OmniKnowledgeSourceBundleUnsafe({
+      reason:
+        'Customer corpus ingestion receipts require provenance and rights refs.',
+    })
+  }
+
+  const sourceRefs = new Set(
+    receipt.sourceBundle.sources.map(source => source.sourceRef),
+  )
+
+  receipt.connectorSources.forEach(connector =>
+    assertConnectorSourceRecord(connector, sourceRefs),
+  )
 }
 
 const locatorLabel = (span: OmniKnowledgeExtractedSpanRecord): string => {
@@ -688,6 +917,74 @@ const spanProjection = (
   }
 }
 
+const connectorSourceProjection = (
+  connector: OmniCustomerCorpusConnectorSourceRecord,
+  audience: OmniKnowledgeProjectionAudience,
+): OmniCustomerCorpusConnectorSourceProjection | null => {
+  const credentialGrantRef = refsForAudience(
+    'Customer corpus connector grant refs',
+    [connector.credentialGrantRef],
+    audience,
+  )[0]
+  const credentialStorageRef = refsForAudience(
+    'Customer corpus connector credential storage refs',
+    [connector.credentialStorageRef],
+    audience,
+  )[0]
+  const sourceReceiptRef = refsForAudience(
+    'Customer corpus connector receipt refs',
+    [connector.sourceReceiptRef],
+    audience,
+  )[0]
+
+  if (
+    credentialGrantRef === undefined ||
+    credentialStorageRef === undefined ||
+    sourceReceiptRef === undefined
+  ) {
+    return null
+  }
+
+  return {
+    caveatRefs: refsForAudience(
+      'Customer corpus connector caveat refs',
+      connector.caveatRefs,
+      audience,
+    ),
+    connectorKind: connector.connectorKind,
+    credentialGrantRef,
+    credentialStorageRef,
+    grantKind: connector.grantKind,
+    grantedScopeRefs: refsForAudience(
+      'Customer corpus connector granted scope refs',
+      connector.grantedScopeRefs,
+      audience,
+    ),
+    ingestedSourceRefs: refsForAudience(
+      'Customer corpus connector source refs',
+      connector.ingestedSourceRefs,
+      audience,
+    ),
+    provenanceRefs: refsForAudience(
+      'Customer corpus connector provenance refs',
+      connector.provenanceRefs,
+      audience,
+    ),
+    readOnly: connector.readOnly,
+    rejectedSourceRefs: refsForAudience(
+      'Customer corpus connector rejected source refs',
+      connector.rejectedSourceRefs,
+      audience,
+    ),
+    requestedScopeRefs: refsForAudience(
+      'Customer corpus connector requested scope refs',
+      connector.requestedScopeRefs,
+      audience,
+    ),
+    sourceReceiptRef,
+  }
+}
+
 const projectionHasPrivateMaterial = (
   projection: OmniKnowledgeSourceBundleProjection,
 ): boolean => {
@@ -792,6 +1089,91 @@ export const projectOmniKnowledgeSourceBundle = (
       reason:
         'Knowledge source bundle projection contains private customer, provider, wallet, payment, raw source, raw transcript, raw text, private repo, generated summary text, secret, raw timestamp, or audience-inappropriate refs.',
     })
+  }
+
+  return projection
+}
+
+export const projectOmniCustomerCorpusIngestionReceipt = (
+  receipt: OmniCustomerCorpusIngestionReceiptRecord,
+  audience: OmniKnowledgeProjectionAudience,
+  nowIso: string,
+): OmniCustomerCorpusIngestionReceiptProjection => {
+  assertCustomerCorpusIngestionReceipt(receipt)
+
+  const connectorSources = receipt.connectorSources
+    .map(connector => connectorSourceProjection(connector, audience))
+    .filter(
+      (
+        connector,
+      ): connector is OmniCustomerCorpusConnectorSourceProjection =>
+        connector !== null,
+    )
+  const sourceBundle = projectOmniKnowledgeSourceBundle(
+    receipt.sourceBundle,
+    audience,
+    nowIso,
+  )
+  const projection: OmniCustomerCorpusIngestionReceiptProjection = {
+    audience,
+    authority: OMNI_KNOWLEDGE_SOURCE_BUNDLE_READ_ONLY_AUTHORITY,
+    caveatRefs: refsForAudience(
+      'Customer corpus ingestion receipt caveat refs',
+      receipt.caveatRefs,
+      audience,
+    ),
+    connectorMutationAllowed: false,
+    connectorSources,
+    corpusRef: primaryRefForAudience(
+      'Customer corpus refs',
+      receipt.corpusRef,
+      audience,
+      'corpus.redacted',
+    ),
+    id: primaryRefForAudience(
+      'Customer corpus ingestion receipt id refs',
+      receipt.id,
+      audience,
+      'customer_corpus_ingestion.redacted',
+    ),
+    provenanceRefs: refsForAudience(
+      'Customer corpus ingestion receipt provenance refs',
+      receipt.provenanceRefs,
+      audience,
+    ),
+    rawCredentialMaterialStored: false,
+    rawSourceArchiveCopyAllowed: false,
+    receiptRef: primaryRefForAudience(
+      'Customer corpus ingestion receipt refs',
+      receipt.receiptRef,
+      audience,
+      'receipt.redacted',
+    ),
+    redactionPolicyRefs: refsForAudience(
+      'Customer corpus ingestion receipt redaction policy refs',
+      receipt.redactionPolicyRefs,
+      audience,
+    ),
+    rightsRefs: refsForAudience(
+      'Customer corpus ingestion receipt rights refs',
+      receipt.rightsRefs,
+      audience,
+    ),
+    sourceBundle,
+    sourceCount: sourceBundle.sourceCount,
+    sourcesReceiptRefs: connectorSources.map(
+      connector => connector.sourceReceiptRef,
+    ),
+    updatedAtDisplay: friendlyBlueprintMissionBriefingTime(
+      receipt.updatedAtIso,
+      nowIso,
+    ),
+    workspaceRef: primaryRefForAudience(
+      'Customer corpus workspace refs',
+      receipt.workspaceRef,
+      audience,
+      'workspace.redacted',
+    ),
   }
 
   return projection
