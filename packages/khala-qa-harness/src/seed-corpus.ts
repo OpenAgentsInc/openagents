@@ -159,6 +159,11 @@ export const KHALA_CODE_QA_ERROR_STATE_CASES = [
     description: "App-server crash, restart, and thread resume preserve the active thread",
     targetMethod: "codexAppServerStatus",
   },
+  {
+    caseId: "all_boot_rpcs_failing",
+    description: "All boot-time RPCs degrade independently without console errors or data loss",
+    targetMethod: "codexFleetStatus",
+  },
 ] as const satisfies readonly {
   readonly caseId: string
   readonly description: string
@@ -1193,6 +1198,30 @@ const errorStateScenarioPhases = (
       ],
     }]
   }
+  if (entry.caseId === "all_boot_rpcs_failing") {
+    return [{
+      name: "exercise-all-boot-rpc-failures",
+      act: [
+        errorStateArmAction(entry.caseId),
+        { kind: "rpc_call", method: "harnessSettingRead" },
+        { kind: "rpc_call", method: "sessionCatalog", args: [{ limit: 10, searchTerm: "fixture" }] },
+        { kind: "rpc_call", method: "claudeApprovalPending" },
+        { kind: "rpc_call", method: "fleetRunList", args: [{}] },
+        { kind: "rpc_call", method: "codexFleetStatus" },
+      ],
+      expect: [
+        schema("harnessSettingRead"),
+        schema("sessionCatalog"),
+        schema("claudeApprovalPending"),
+        schema("fleetRunList"),
+        schema("codexFleetStatus"),
+        degradedState(entry.caseId),
+        noConsoleErrors(),
+        noDataLoss(entry.caseId),
+        crash(),
+      ],
+    }]
+  }
   if (entry.caseId === "app_server_crash_restart") {
     return [
       {
@@ -1818,7 +1847,9 @@ const fixtureRpcPayload = (
       )
     case "codexFleetStatus":
       return fleetStatus(
-        state.activeErrorStateCase === "pylon_offline" ? state.activeErrorStateCase : null,
+        state.activeErrorStateCase === "pylon_offline" || state.activeErrorStateCase === "all_boot_rpcs_failing"
+          ? state.activeErrorStateCase
+          : null,
       )
     case "codexFleetDelegateRun":
       return fleetDelegateRunResult()
@@ -1830,7 +1861,8 @@ const fixtureRpcPayload = (
     case "fleetRunStatus":
       return { ok: true, run: fleetRun(state.fleetRunState), supervisorActive: state.fleetRunState === "running" }
     case "fleetRunList":
-      return state.activeErrorStateCase === "single_rpc_failure_partial_degradation"
+      return state.activeErrorStateCase === "single_rpc_failure_partial_degradation" ||
+        state.activeErrorStateCase === "all_boot_rpcs_failing"
         ? {
           ok: false,
           runs: [fleetRun(state.fleetRunState, { dataPreservedCase: state.activeErrorStateCase })],
@@ -1876,7 +1908,12 @@ const fixtureRpcPayload = (
       }
     }
     case "claudeApprovalPending":
-      return {
+      return state.activeErrorStateCase === "all_boot_rpcs_failing"
+        ? {
+          ok: false,
+          requests: [],
+        }
+        : {
         ok: true,
         requests: [{
           id: "claude-approval-fixture",
@@ -1900,7 +1937,7 @@ const fixtureRpcPayload = (
       return { ok: true, keyPath: request?.keyPath ?? "model", response: { applied: true }, settings: settingsProjection() }
     }
     case "harnessSettingRead":
-      return harnessSetting("codex_harness")
+      return harnessSetting("codex_harness", undefined, state.activeErrorStateCase === "all_boot_rpcs_failing" ? state.activeErrorStateCase : null)
     case "harnessSettingWrite": {
       const request = args[0] as { readonly mode?: "claude_runtime" | "codex_harness" | "khala_native_runtime" } | undefined
       return harnessSetting(request?.mode ?? "codex_harness", true)
@@ -1957,7 +1994,10 @@ const fixtureRpcPayload = (
       return threadTokenSummary(args[0])
     case "sessionCatalog":
       return sessionCatalog(
-        state.activeErrorStateCase === "corrupt_session_state_recovery" ? state.activeErrorStateCase : null,
+        state.activeErrorStateCase === "corrupt_session_state_recovery" ||
+          state.activeErrorStateCase === "all_boot_rpcs_failing"
+          ? state.activeErrorStateCase
+          : null,
       )
     case "forumRequest":
       return forumResponse(args[0])
@@ -2159,11 +2199,14 @@ const onDeviceDeciderStatus = () => ({
 const harnessSetting = (
   mode: "claude_runtime" | "codex_harness" | "khala_native_runtime",
   saved?: boolean,
+  errorCase: KhalaCodeQaErrorStateCaseId | null = null,
 ) => ({
   envOverride: null,
   mode,
   ok: true,
-  path: "/fixture/khala-code-runtime-mode.json",
+  path: errorCase === null
+    ? "/fixture/khala-code-runtime-mode.json"
+    : `/fixture/khala-code-runtime-mode.json#${errorStateDataPreservedRef(errorCase)}`,
   persistedMode: mode,
   ...(saved === undefined ? {} : { saved }),
 })

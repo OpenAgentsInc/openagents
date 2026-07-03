@@ -185,13 +185,30 @@ describe("Khala Code QA seed scenario corpus", () => {
         { kind: "rpc_call", method: "codexThreadResume", args: [{ cwd: "/workspace", sessionId: "desktop-session-fixture", threadId: "thread-fixture" }] },
       ]),
     )
-
     expect(KHALA_CODE_QA_FIRST_DISTILLED_REGRESSION.verdict).toBe("CONFIRMED")
     expect(idsForGroup("distilled_regressions")).toEqual([
       "scenario.khala_code.distilled.q6_2_first_fleet_panel_distilled_regression.v1",
     ])
+    expect(KHALA_CODE_QA_FIRST_DISTILLED_REGRESSION.distilled).toBeDefined()
+    if (KHALA_CODE_QA_FIRST_DISTILLED_REGRESSION.distilled === undefined) {
+      throw new Error("expected first distilled regression to include a scenario")
+    }
     expect(KHALA_CODE_QA_SEED_SCENARIOS).toContainEqual(
-      KHALA_CODE_QA_FIRST_DISTILLED_REGRESSION.distilled?.scenario,
+      KHALA_CODE_QA_FIRST_DISTILLED_REGRESSION.distilled.scenario,
+    )
+
+    const bootFailureScenario = KHALA_CODE_QA_SEED_SCENARIOS.find((candidate) =>
+      candidate.id === "scenario.khala_code.seed.error_state_all_boot_rpcs_failing.v1"
+    )
+    expect(bootFailureScenario?.phases[0]?.name).toBe("exercise-all-boot-rpc-failures")
+    expect(bootFailureScenario?.phases[0]?.act).toEqual(
+      expect.arrayContaining([
+        { kind: "rpc_call", method: "harnessSettingRead" },
+        { kind: "rpc_call", method: "sessionCatalog", args: [{ limit: 10, searchTerm: "fixture" }] },
+        { kind: "rpc_call", method: "claudeApprovalPending" },
+        { kind: "rpc_call", method: "fleetRunList", args: [{}] },
+        { kind: "rpc_call", method: "codexFleetStatus" },
+      ]),
     )
   })
 

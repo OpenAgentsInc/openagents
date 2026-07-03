@@ -157,6 +157,35 @@ describe("khala code desktop app shell", () => {
     expect(handlers).toContain("Legacy Khala native runtime handled this turn.")
   })
 
+  test("projects typed degraded states for every boot-time RPC failure", async () => {
+    const html = await Bun.file(new URL("../src/ui/index.html", import.meta.url)).text()
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const model = await Bun.file(new URL("../src/ui/main-shell-model.ts", import.meta.url)).text()
+
+    expect(html).toContain('id="boot-degraded-states"')
+    expect(model).toContain('kind: "khala_code_boot_rpc_degraded"')
+    expect(main).toContain("recordBootRpcDegradedState")
+    expect(main).toContain("bootDegradedStates: () => shellModel().bootDegradedStates")
+
+    for (const method of [
+      "harnessSettingRead",
+      "sessionCatalog",
+      "events",
+      "claudeApprovalPending",
+      "fleetRunList",
+      "codexFleetStatus",
+    ]) {
+      expect(model).toContain(`| "${method}"`)
+      expect(main).toContain(`recordBootRpcDegradedState("${method}"`)
+      expect(main).toContain(`clearBootRpcDegradedState("${method}"`)
+    }
+
+    expect(main).toContain("degradedSessionCatalog(")
+    expect(main).toContain("degradedFleetStatus(")
+    expect(main).toContain("degradedFleetRunList()")
+    expect(main).not.toContain("console.error")
+  })
+
   test("uses the shared blue sci-fi UI tokens and licensed-safe chat fonts", async () => {
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 

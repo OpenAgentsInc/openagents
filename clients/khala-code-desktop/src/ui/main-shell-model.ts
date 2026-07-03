@@ -20,8 +20,27 @@ export type KhalaCodeFollowUpDraft = {
   text: string
 }
 
+export type KhalaCodeBootRpcName =
+  | "claudeApprovalPending"
+  | "codexFleetStatus"
+  | "events"
+  | "fleetRunList"
+  | "harnessSettingRead"
+  | "sessionCatalog"
+
+export type KhalaCodeBootDegradedState = {
+  readonly dataLoss: false
+  readonly detail: string
+  readonly kind: "khala_code_boot_rpc_degraded"
+  readonly method: KhalaCodeBootRpcName
+  readonly observedAt: string
+  readonly recoverable: true
+  readonly state: "degraded"
+}
+
 export type KhalaCodeMainShellModel = {
   activeCodexThreadId: string | null
+  bootDegradedStates: KhalaCodeBootDegradedState[]
   claudeApprovalDialogOpen: boolean
   composerAttachmentReceipts: ComposerAttachmentUploadReceipt[]
   composerState: ComposerState
@@ -47,6 +66,14 @@ export type KhalaCodeMainShellModel = {
 
 export type KhalaCodeMainShellMessage =
   | { readonly _tag: "ActiveCodexThreadChanged"; readonly threadId: string | null }
+  | {
+      readonly _tag: "BootRpcDegraded"
+      readonly state: KhalaCodeBootDegradedState
+    }
+  | {
+      readonly _tag: "BootRpcRecovered"
+      readonly method: KhalaCodeBootRpcName
+    }
   | { readonly _tag: "ClaudeApprovalDialogToggled"; readonly open: boolean }
   | {
       readonly _tag: "ComposerAttachmentReceiptPushed"
@@ -102,6 +129,7 @@ export const initialKhalaCodeMainShellModel = (
   }>,
 ): KhalaCodeMainShellModel => ({
   activeCodexThreadId: null,
+  bootDegradedStates: [],
   claudeApprovalDialogOpen: false,
   composerAttachmentReceipts: [],
   composerState: emptyComposerState(),
@@ -132,6 +160,18 @@ export const updateKhalaCodeMainShellModel = (
   switch (message._tag) {
     case "ActiveCodexThreadChanged":
       return { ...model, activeCodexThreadId: message.threadId }
+    case "BootRpcDegraded": {
+      const next = [
+        ...model.bootDegradedStates.filter(item => item.method !== message.state.method),
+        message.state,
+      ].sort((left, right) => left.method.localeCompare(right.method))
+      return { ...model, bootDegradedStates: next }
+    }
+    case "BootRpcRecovered":
+      return {
+        ...model,
+        bootDegradedStates: model.bootDegradedStates.filter(item => item.method !== message.method),
+      }
     case "ClaudeApprovalDialogToggled":
       return { ...model, claudeApprovalDialogOpen: message.open }
     case "ComposerAttachmentReceiptPushed":

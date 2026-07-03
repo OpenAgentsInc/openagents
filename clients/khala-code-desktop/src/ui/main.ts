@@ -51,9 +51,12 @@ import {
   type KhalaCodeDesktopChatTurnEvent,
   type KhalaCodeDesktopFleetLifecycleEvent,
   type KhalaCodeDesktopChatTurnRequest,
+  type KhalaCodeDesktopFleetRunListResult,
+  type KhalaCodeDesktopFleetStatus,
   type KhalaCodeDesktopMessage,
   type KhalaCodeDesktopMessageRole,
   type KhalaCodeDesktopRPCSchema,
+  type KhalaCodeDesktopSessionCatalogResult,
   type KhalaCodeDesktopThreadTokenSummary,
 } from "../shared/rpc"
 import {
@@ -114,6 +117,8 @@ import {
 import {
   initialKhalaCodeMainShellModel,
   updateKhalaCodeMainShellModel,
+  type KhalaCodeBootDegradedState,
+  type KhalaCodeBootRpcName,
   type KhalaCodeFollowUpDraft,
   type KhalaCodeMainShellMessage,
   type KhalaCodeMainShellSlashCommand,
@@ -537,7 +542,17 @@ const decodeChatTurnEvent = (input: unknown): KhalaCodeDesktopChatTurnEvent =>
 
 const startPreviewBridgeEvents = (): void => {
   if (!isKhalaPreviewWindow) return
-  const eventSource = new EventSource("/rpc/events")
+  let eventSource: EventSource
+  try {
+    eventSource = new EventSource("/rpc/events")
+  } catch (error) {
+    recordBootRpcDegradedState("events", error)
+    return
+  }
+  eventSource.addEventListener("open", () => clearBootRpcDegradedState("events"))
+  eventSource.addEventListener("error", () => {
+    recordBootRpcDegradedState("events", new Error("preview event stream unavailable"))
+  })
   eventSource.addEventListener("chatTurnEvent", event => {
     try {
       const payload = JSON.parse((event as MessageEvent<string>).data) as {
@@ -821,6 +836,47 @@ const emptyThreadTokenSummary = (
   usageEventRows: 0,
 })
 
+const degradedSessionCatalog = (
+  state: KhalaCodeBootDegradedState,
+): KhalaCodeDesktopSessionCatalogResult => ({
+  diagnostics: [`qa.boot_rpc.${state.method}.degraded: ${state.detail}`],
+  entries: [],
+  ok: true,
+  schemaVersion: "khala-code-desktop.session-catalog.v1",
+})
+
+const degradedFleetStatus = (
+  state: KhalaCodeBootDegradedState,
+): KhalaCodeDesktopFleetStatus => ({
+  accounts: [],
+  activeAssignments: [],
+  availableCodexAssignments: 0,
+  maxCodexAssignments: 0,
+  observedAt: state.observedAt,
+  ok: false,
+  processes: [],
+  pylon: {
+    message: `qa.boot_rpc.${state.method}.degraded: ${state.detail}`,
+    pylonRef: null,
+    status: "unavailable",
+  },
+  tokenRate: {
+    activeAdjustedTokensPerMinute: null,
+    completedStatus: "not_measured",
+    completedTokenRows: null,
+    completedTokensPerMinute: null,
+    inFlightTokens: null,
+    inFlightTokensPerMinute: null,
+    source: "unavailable",
+    unavailableReason: `qa.boot_rpc.${state.method}.degraded`,
+  },
+})
+
+const degradedFleetRunList = (): KhalaCodeDesktopFleetRunListResult => ({
+  ok: false,
+  runs: [],
+})
+
 const cloneMessages = (
   value: readonly KhalaCodeDesktopMessage[],
 ): KhalaCodeDesktopMessage[] =>
@@ -1006,6 +1062,32 @@ const setShellFollowUpDrafts = (
   drafts: readonly KhalaCodeFollowUpDraft[],
 ): void => dispatchMainShell({ _tag: "FollowUpDraftsChanged", drafts })
 
+const bootFailureDetail = (error: unknown): string =>
+  error instanceof Error ? error.message : typeof error === "string" ? error : "boot RPC failed"
+
+const recordBootRpcDegradedState = (
+  method: KhalaCodeBootRpcName,
+  error: unknown,
+): KhalaCodeBootDegradedState => {
+  const state: KhalaCodeBootDegradedState = {
+    dataLoss: false,
+    detail: bootFailureDetail(error),
+    kind: "khala_code_boot_rpc_degraded",
+    method,
+    observedAt: new Date().toISOString(),
+    recoverable: true,
+    state: "degraded",
+  }
+  dispatchMainShell({ _tag: "BootRpcDegraded", state })
+  renderBootDegradedStates()
+  return state
+}
+
+const clearBootRpcDegradedState = (method: KhalaCodeBootRpcName): void => {
+  dispatchMainShell({ _tag: "BootRpcRecovered", method })
+  renderBootDegradedStates()
+}
+
 const compactTokenFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 1,
   notation: "compact",
@@ -1060,7 +1142,9 @@ const refreshHarnessSetting = async (): Promise<void> => {
     shellModel().selectedHarnessMode = setting.mode
     shellModel().harnessEnvOverride = setting.envOverride
     shellModel().lastResponseRuntimeMode = setting.mode
+    clearBootRpcDegradedState("harnessSettingRead")
   } catch {
+    recordBootRpcDegradedState("harnessSettingRead", "harness setting unavailable; using Codex harness defaults")
     shellModel().selectedHarnessMode = "codex_harness"
     shellModel().harnessEnvOverride = null
     shellModel().lastResponseRuntimeMode = "codex_harness"
@@ -2093,8 +2177,31 @@ function renderComposer(): void {
 }
 
 const render = (): void => {
+  renderBootDegradedStates()
   renderMessages()
   renderComposer()
+}
+
+function renderBootDegradedStates(): void {
+  const root = document.getElementById("boot-degraded-states")
+  if (root === null) return
+  const degradedStates = shellModel().bootDegradedStates
+  root.hidden = degradedStates.length === 0
+  root.replaceChildren()
+  root.dataset.state = degradedStates.length === 0 ? "ready" : "degraded"
+  root.dataset.degradedMethods = degradedStates.map(state => state.method).join(" ")
+  root.dataset.degradedCount = String(degradedStates.length)
+  if (degradedStates.length === 0) return
+  for (const state of degradedStates) {
+    const chip = document.createElement("span")
+    chip.className = "khala-code-boot-degraded-chip"
+    chip.dataset.bootRpc = state.method
+    chip.dataset.state = state.state
+    chip.dataset.kind = state.kind
+    chip.title = state.detail
+    chip.textContent = `${state.method}: degraded`
+    root.append(chip)
+  }
 }
 
 const focusComposerInput = (): void => {
@@ -2438,7 +2545,13 @@ const respondToClaudeApprovalRequest = async (
 
 const pollClaudeApprovals = async (): Promise<void> => {
   if (shellModel().claudeApprovalDialogOpen) return
-  const pending = await controls.claudeApprovalPending().catch(() => null)
+  const pending = await controls.claudeApprovalPending().then(result => {
+    clearBootRpcDegradedState("claudeApprovalPending")
+    return result
+  }).catch(error => {
+    recordBootRpcDegradedState("claudeApprovalPending", error)
+    return { ok: false, requests: [] } satisfies Awaited<ReturnType<DesktopRpcRequests["claudeApprovalPending"]>>
+  })
   const request = pending?.requests.find(item => !handledClaudeApprovals.has(item.id))
   if (request === undefined) return
   handledClaudeApprovals.add(request.id)
@@ -2999,6 +3112,7 @@ const controls = {
   appInfo: () => rpc.request.appInfo(),
   attachments: () => shellModel().composerState.doc.attachments.map(attachment => ({ ...attachment })),
   attachmentReceipts: () => shellModel().composerAttachmentReceipts.map(receipt => ({ ...receipt })),
+  bootDegradedStates: () => shellModel().bootDegradedStates.map(state => ({ ...state })),
   clearGymProof: (): GymPaneState => {
     const state = gymPaneStateFromBridgeProof(null)
     gymPanel?.setState(state)
@@ -3327,14 +3441,29 @@ const fleetPanel =
     : mountFleetPanel(fleetPanelEl, {
         delegateRun: request => controls.codexFleetDelegateRun(request),
         fleetRunControl: request => controls.fleetRunControl(request),
-        fleetRunList: request => controls.fleetRunList(request),
+        fleetRunList: async request => {
+          try {
+            const list = await controls.fleetRunList(request)
+            clearBootRpcDegradedState("fleetRunList")
+            return list
+          } catch (error) {
+            recordBootRpcDegradedState("fleetRunList", error)
+            return degradedFleetRunList()
+          }
+        },
         fleetRunStart: request => controls.fleetRunStart(request),
         fleetWorkerControl: request => controls.fleetWorkerControl(request),
         lifecycleNdjson: fleetLifecycleLines.iterable,
         loadGymDemoProof: () => loadGymDemoOptimization(),
         startDelegationOptimization: async () => loadGymDemoOptimization(),
         fetch: async () => {
-          const status = await controls.codexFleetStatus()
+          let status: KhalaCodeDesktopFleetStatus
+          try {
+            status = await controls.codexFleetStatus()
+            clearBootRpcDegradedState("codexFleetStatus")
+          } catch (error) {
+            status = degradedFleetStatus(recordBootRpcDegradedState("codexFleetStatus", error))
+          }
           sidebar?.setFleetCounts(projectKhalaCodeSidebarFleetCounts(status))
           return status
         },
@@ -3528,10 +3657,16 @@ const threadSidebar =
         },
         isThreadStreaming: threadId => shellModel().activeCodexThreadId === threadId && shellModel().pendingTurn,
         listThreads: async request => {
-          const catalog = await cachedSessionCatalog({
-            limit: 50,
-            searchTerm: request.searchTerm,
-          })
+          let catalog: Awaited<ReturnType<DesktopRpcRequests["sessionCatalog"]>>
+          try {
+            catalog = await cachedSessionCatalog({
+              limit: 50,
+              searchTerm: request.searchTerm,
+            })
+            clearBootRpcDegradedState("sessionCatalog")
+          } catch (error) {
+            catalog = degradedSessionCatalog(recordBootRpcDegradedState("sessionCatalog", error))
+          }
           const threads = catalog.entries.map(sessionCatalogEntryToThreadSummary)
           const result = {
             ok: true as const,
@@ -3642,7 +3777,9 @@ const refreshFleetSidebarCounts = async (): Promise<void> => {
   if (sidebar === null) return
   try {
     sidebar.setFleetCounts(projectKhalaCodeSidebarFleetCounts(await controls.codexFleetStatus()))
+    clearBootRpcDegradedState("codexFleetStatus")
   } catch {
+    recordBootRpcDegradedState("codexFleetStatus", "fleet status unavailable")
     sidebar.setFleetCounts(null)
   }
 }

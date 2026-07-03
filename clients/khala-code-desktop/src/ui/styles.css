@@ -2928,6 +2928,27 @@ button {
   text-transform: uppercase;
   color: var(--oa-color-khala-energy-cyan);
 }
+.khala-code-boot-degraded-states {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.45rem 0.55rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--oa-color-khala-warning) 32%, transparent);
+  background: color-mix(in srgb, var(--oa-color-component-surface) 92%, transparent);
+}
+.khala-code-boot-degraded-chip {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.18rem 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-warning) 34%, transparent);
+  border-radius: 0.35rem;
+  color: var(--oa-color-khala-warning);
+  font-size: 0.7rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
 .khala-fleet-pylon-message {
   font-size: 0.72rem;
   color: color-mix(in srgb, var(--oa-color-component-text) 55%, transparent);
