@@ -25,6 +25,7 @@
   "scripts": {
     "test": "bun test src/*.test.ts",
     "lag:sweep": "bun src/lag-profiling-sweep.ts",
+    "smoke:real-bridge": "bun src/real-bridge-smoke.ts",
     "monkey:night": "bun src/monkey-night.ts --runs 100 --steps 64",
     "monkey:smoke": "bun test src/monkey-explorer.test.ts --test-name-pattern 'bounded fixture smoke'",
     "typecheck": "tsc -p tsconfig.json --noEmit"
