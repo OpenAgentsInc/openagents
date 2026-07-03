@@ -3,212 +3,651 @@ import { Schema as S } from 'effect'
 import {
   BlueprintContextPack,
   type BlueprintContextPack as BlueprintContextPackType,
+  type BlueprintSourceAuthority,
 } from './schemas/source-context'
 
 // Vertical Packs are reusable, customer-agnostic Context Pack templates for a
-// given line of business. They scope the source authorities, data
-// classification, consent posture, and public/customer-safe projection a
-// Blueprint Program should assume for that vertical, plus an explicit
-// ethical-marketing policy block that constrains any outbound marketing or
-// communication work the Program performs on that vertical's behalf.
+// given line of business. They are config, not forks: the workroom and
+// fulfillment UI reads stage templates, rubrics, starter workflows, and
+// compliance profiles from these packs instead of introducing per-vertical
+// screens.
 //
-// A Vertical Pack must NOT name a specific customer, brand, or campaign. It is
-// a generic template; concrete customer Context Packs are derived from it at
-// runtime by binding real source authorities.
+// A Vertical Pack must NOT name a specific customer, brand, matter, patient, or
+// campaign. Concrete customer Context Packs are derived from it at runtime by
+// binding real source authorities.
+
+export const VerticalPackStageKey = S.Literals([
+  'signal',
+  'triage',
+  'codegen',
+  'validate',
+  'release',
+  'document',
+  'monitor',
+  'deploy',
+])
+export type VerticalPackStageKey = typeof VerticalPackStageKey.Type
+
+export const VerticalPackStageTemplate = S.Struct({
+  stageKey: VerticalPackStageKey,
+  displayName: S.String,
+  inputContractRef: S.String,
+  outputContractRef: S.String,
+  requiredEvidenceRefs: S.Array(S.String),
+})
+export type VerticalPackStageTemplate = typeof VerticalPackStageTemplate.Type
+
+export const VerticalPackRubricCriterion = S.Struct({
+  criterionRef: S.String,
+  description: S.String,
+  requiredEvidenceRefs: S.Array(S.String),
+})
+export type VerticalPackRubricCriterion =
+  typeof VerticalPackRubricCriterion.Type
+
+export const VerticalPackVerificationRubric = S.Struct({
+  rubricRef: S.String,
+  reviewGateRef: S.String,
+  criteria: S.Array(VerticalPackRubricCriterion),
+})
+export type VerticalPackVerificationRubric =
+  typeof VerticalPackVerificationRubric.Type
+
+export const VerticalPackStarterWorkflow = S.Struct({
+  workflowRef: S.String,
+  name: S.String,
+  deliverableKind: S.String,
+  startingStage: VerticalPackStageKey,
+  requiredStageKeys: S.Array(VerticalPackStageKey),
+})
+export type VerticalPackStarterWorkflow =
+  typeof VerticalPackStarterWorkflow.Type
+
+export const VerticalPackComplianceProfile = S.Struct({
+  profileRef: S.String,
+  regulatedDataHandlingRef: S.String,
+  requiresHumanReview: S.Boolean,
+  professionalReviewRequired: S.Boolean,
+  consentChannelRefs: S.Array(S.String),
+  outboundActionGateRefs: S.Array(S.String),
+  prohibitedActionRefs: S.Array(S.String),
+})
+export type VerticalPackComplianceProfile =
+  typeof VerticalPackComplianceProfile.Type
+
+export const VerticalPackScreenPolicy = S.Struct({
+  policyRef: S.String,
+  sharedSurfaceRefs: S.Array(S.String),
+  bespokeScreenRefs: S.Array(S.String),
+  reviewFailureRef: S.String,
+})
+export type VerticalPackScreenPolicy = typeof VerticalPackScreenPolicy.Type
 
 export const VerticalPackEthicalMarketingPolicy = S.Struct({
-  // Stable id for this policy block so receipts/evidence can reference it.
   policyRef: S.String,
-  // No fabricated testimonials, reviews, case studies, or social proof.
   noFabricatedTestimonials: S.Boolean,
-  // No invented credentials, certifications, awards, or affiliations.
   noFabricatedCredentials: S.Boolean,
-  // No fake scarcity, countdowns, or manufactured urgency.
   noFakeUrgency: S.Boolean,
-  // Prefer clear, accurate description over hype or superlatives.
   clarityOverHype: S.Boolean,
-  // Sensitive sends (claims, pricing, legal, outreach at scale) require a
-  // human-in-the-loop approval before dispatch.
   humanInLoopOnSensitiveSends: S.Boolean,
-  // Free-form, human-readable rules retained for review surfaces. These are
-  // descriptive guidance, not authority; enforcement remains with the booleans
-  // above and the Action Submission boundary.
   ruleRefs: S.Array(S.String),
 })
 export type VerticalPackEthicalMarketingPolicy =
   typeof VerticalPackEthicalMarketingPolicy.Type
 
 export const VerticalPack = S.Struct({
-  // Stable lookup id, e.g. "vertical_pack.services_business".
   id: S.String,
-  // Generic vertical label, e.g. "services_business". Never a customer name.
   vertical: S.String,
-  // Human-readable, customer-agnostic description of the vertical's posture.
   description: S.String,
-  // The underlying Context Pack template (source authorities, classification,
-  // consent, public/customer-safe projection flags).
   contextPack: BlueprintContextPack,
-  // The ethical-marketing policy this vertical must operate under.
+  stageTemplates: S.Array(VerticalPackStageTemplate),
+  verificationRubric: VerticalPackVerificationRubric,
+  starterWorkflows: S.Array(VerticalPackStarterWorkflow),
+  complianceProfile: VerticalPackComplianceProfile,
   ethicalMarketingPolicy: VerticalPackEthicalMarketingPolicy,
+  screenPolicy: VerticalPackScreenPolicy,
 })
 export type VerticalPack = typeof VerticalPack.Type
 
-// Generic services-business / agency vertical pack. Source authorities below
-// are template placeholders (sourceRef values describe the KIND of source a
-// concrete pack would bind, not any real customer record).
-export const servicesBusinessVerticalPack: VerticalPack = {
-  id: 'vertical_pack.services_business',
-  vertical: 'services_business',
+const stageOrder: ReadonlyArray<VerticalPackStageKey> = [
+  'signal',
+  'triage',
+  'codegen',
+  'validate',
+  'release',
+  'document',
+  'monitor',
+  'deploy',
+]
+
+export const verticalPackStageOrder = stageOrder
+
+const stageTemplates = (
+  vertical: string,
+  names: Readonly<Record<VerticalPackStageKey, string>>,
+): ReadonlyArray<VerticalPackStageTemplate> =>
+  stageOrder.map(stageKey => ({
+    displayName: names[stageKey],
+    inputContractRef: `vertical.${vertical}.stage.${stageKey}.input`,
+    outputContractRef: `vertical.${vertical}.stage.${stageKey}.output`,
+    requiredEvidenceRefs: [
+      `evidence.${stageKey}.source_refs`,
+      `evidence.${stageKey}.decision_or_receipt`,
+    ],
+    stageKey,
+  }))
+
+const baseSource = (
+  sourceRef: string,
+  sourceKind: BlueprintSourceAuthority['sourceKind'],
+  dataClassification: BlueprintSourceAuthority['dataClassification'],
+  consentState: BlueprintSourceAuthority['consentState'],
+  includedInContext: boolean,
+  publicSafe: boolean,
+): BlueprintSourceAuthority => ({
+  classificationCaveatRef: `classification.${sourceRef}`,
+  confidence: includedInContext ? 'high' : 'medium',
+  consentState,
+  customerSafe: consentState !== 'internal_only',
+  dataClassification,
+  excludedReasonRef: includedInContext ? null : `excluded.${sourceRef}`,
+  freshness: includedInContext ? 'current' : 'recent',
+  includedInContext,
+  publicSafe,
+  publicSummaryRef: publicSafe ? `summary.${sourceRef}` : null,
+  sourceKind,
+  sourceRef,
+  trustTier: includedInContext ? 'verified' : 'reviewed',
+})
+
+const contextPack = (
+  vertical: string,
+  dataClassification: BlueprintSourceAuthority['dataClassification'],
+  sources: ReadonlyArray<BlueprintSourceAuthority>,
+): BlueprintContextPackType => ({
+  createdAt: '2026-07-02T00:00:00.000Z',
+  customerSafeProjection: true,
+  dataClassification,
+  excludedContextRefs: sources
+    .filter(source => !source.includedInContext)
+    .map(source => source.sourceRef),
+  id: `context_pack.${vertical}_template`,
+  includedContextRefs: sources
+    .filter(source => source.includedInContext)
+    .map(source => source.sourceRef),
+  publicSafeProjection: sources.some(
+    source => source.includedInContext && source.publicSafe,
+  ),
+  sourceAuthorities: [...sources],
+  trustTier: 'reviewed',
+  updatedAt: '2026-07-02T00:00:00.000Z',
+})
+
+const ethicalMarketingPolicy = (
+  vertical: string,
+): VerticalPackEthicalMarketingPolicy => ({
+  clarityOverHype: true,
+  humanInLoopOnSensitiveSends: true,
+  noFabricatedCredentials: true,
+  noFabricatedTestimonials: true,
+  noFakeUrgency: true,
+  policyRef: `policy.ethical_marketing.${vertical}`,
+  ruleRefs: [
+    'rule.no_fabricated_testimonials_or_reviews',
+    'rule.no_invented_credentials_or_affiliations',
+    'rule.no_fake_scarcity_or_countdowns',
+    'rule.describe_accurately_avoid_superlatives',
+    'rule.human_approval_before_sensitive_send',
+  ],
+})
+
+const screenPolicy = (vertical: string): VerticalPackScreenPolicy => ({
+  bespokeScreenRefs: [],
+  policyRef: `policy.vertical_screens.${vertical}`,
+  reviewFailureRef: 'review.failure.vertical_requires_bespoke_screen',
+  sharedSurfaceRefs: [
+    'surface.omni_workroom',
+    'surface.approval_ladder',
+    'surface.evidence_bundle',
+    'surface.customer_handoff',
+  ],
+})
+
+const complianceProfile = (
+  vertical: string,
+  regulatedDataHandlingRef: string,
+  professionalReviewRequired: boolean,
+  prohibitedActionRefs: ReadonlyArray<string>,
+): VerticalPackComplianceProfile => ({
+  consentChannelRefs: [
+    'consent.customer_provided_sources',
+    'consent.outbound_action_approval',
+  ],
+  outboundActionGateRefs: [
+    'gate.human_approval_before_send_publish_file_or_spend',
+    'gate.provenance_before_customer_delivery',
+  ],
+  professionalReviewRequired,
+  prohibitedActionRefs: [...prohibitedActionRefs],
+  profileRef: `compliance_profile.${vertical}`,
+  regulatedDataHandlingRef,
+  requiresHumanReview: true,
+})
+
+const verificationRubric = (
+  vertical: string,
+  extraCriterion: VerticalPackRubricCriterion,
+): VerticalPackVerificationRubric => ({
+  reviewGateRef: `review_gate.${vertical}.fulfillment`,
+  rubricRef: `rubric.vertical_pack.${vertical}.v1`,
+  criteria: [
+    {
+      criterionRef: `criterion.${vertical}.grounded_sources`,
+      description: 'Every deliverable claim is grounded in bound source refs.',
+      requiredEvidenceRefs: [
+        'evidence.source_map',
+        'evidence.provenance_receipt',
+      ],
+    },
+    {
+      criterionRef: `criterion.${vertical}.approval_recorded`,
+      description:
+        'External send, publish, filing, or spend waits for approval.',
+      requiredEvidenceRefs: [
+        'evidence.approval_decision',
+        'evidence.action_receipt',
+      ],
+    },
+    extraCriterion,
+  ],
+})
+
+const starterWorkflow = (
+  vertical: string,
+  workflow: string,
+  name: string,
+  deliverableKind: string,
+): VerticalPackStarterWorkflow => ({
+  deliverableKind,
+  name,
+  requiredStageKeys: [...stageOrder],
+  startingStage: 'signal',
+  workflowRef: `workflow.${vertical}.${workflow}`,
+})
+
+export const legalVerticalPack: VerticalPack = {
+  id: 'vertical_pack.legal',
+  vertical: 'legal',
   description:
-    'Generic services / agency business vertical. Scopes the source ' +
-    'authorities, data classification, consent posture, and public/customer-' +
-    'safe projection a Blueprint Program should assume when operating for a ' +
-    'professional-services or agency-style customer, with an ethical-' +
-    'marketing policy applied to any outbound communication work.',
-  contextPack: {
-    createdAt: '2026-06-14T00:00:00.000Z',
-    customerSafeProjection: true,
-    dataClassification: 'customer',
-    excludedContextRefs: [
-      // Raw private customer correspondence is excluded from context by
-      // default; only consented summaries flow through.
-      'email.raw_customer_inbox',
+    'Legal workflow-assistance vertical for intake, document preparation, ' +
+    'source-cited packets, and secure delivery under qualified human review.',
+  contextPack: contextPack('legal', 'private', [
+    baseSource(
+      'intake.legal_matter',
+      'order',
+      'customer',
+      'customer_provided',
+      true,
+      false,
+    ),
+    baseSource(
+      'customer_asset.legal_templates',
+      'customer_asset',
+      'private',
+      'customer_provided',
+      true,
+      false,
+    ),
+    baseSource(
+      'generated_summary.matter_public_safe',
+      'generated_summary',
+      'public',
+      'public',
+      true,
+      true,
+    ),
+    baseSource(
+      'email.raw_legal_correspondence',
+      'email',
+      'private',
+      'internal_only',
+      false,
+      false,
+    ),
+  ]),
+  stageTemplates: stageTemplates('legal', {
+    signal: 'Matter Signal',
+    triage: 'Intake Triage',
+    codegen: 'Draft Assembly',
+    validate: 'Legal Review Gate',
+    release: 'Client-Ready Packet',
+    document: 'Matter Handoff',
+    monitor: 'Matter Follow-Up',
+    deploy: 'Secure Delivery',
+  }),
+  verificationRubric: verificationRubric('legal', {
+    criterionRef: 'criterion.legal.qualified_review',
+    description:
+      'Jurisdiction-sensitive, rights-impacting, or filing-adjacent outputs are reviewed by a qualified human.',
+    requiredEvidenceRefs: [
+      'evidence.professional_review_decision',
+      'evidence.jurisdiction_caveat',
     ],
-    id: 'context_pack.services_business_template',
-    includedContextRefs: [
+  }),
+  starterWorkflows: [
+    starterWorkflow(
+      'legal',
+      'document_packet',
+      'Reviewed document packet',
+      'document_packet',
+    ),
+    starterWorkflow(
+      'legal',
+      'intake_summary',
+      'Matter intake summary',
+      'intake_summary',
+    ),
+  ],
+  complianceProfile: complianceProfile(
+    'legal',
+    'regulated_data.legal_confidential',
+    true,
+    [
+      'prohibited.legal_advice_without_reviewer',
+      'prohibited.unapproved_filing_or_client_send',
+    ],
+  ),
+  ethicalMarketingPolicy: ethicalMarketingPolicy('legal'),
+  screenPolicy: screenPolicy('legal'),
+}
+
+export const healthVerticalPack: VerticalPack = {
+  id: 'vertical_pack.health',
+  vertical: 'health',
+  description:
+    'Health intake and coordination vertical for sensitive-help workflows, ' +
+    'PHI-redacted summaries, coach matching, and human-reviewed outbound action.',
+  contextPack: contextPack('health', 'private', [
+    baseSource(
+      'intake.health_request',
+      'order',
+      'private',
+      'customer_provided',
+      true,
+      false,
+    ),
+    baseSource(
+      'generated_summary.health_redacted',
+      'generated_summary',
+      'customer',
+      'customer_provided',
+      true,
+      false,
+    ),
+    baseSource(
+      'artifact.care_resource_directory',
+      'artifact',
+      'public',
+      'public',
+      true,
+      true,
+    ),
+    baseSource(
+      'email.raw_health_correspondence',
+      'email',
+      'private',
+      'internal_only',
+      false,
+      false,
+    ),
+  ]),
+  stageTemplates: stageTemplates('health', {
+    signal: 'Help Signal',
+    triage: 'Care Triage',
+    codegen: 'Support Plan Draft',
+    validate: 'Clinical Safety Review',
+    release: 'Reviewer-Ready Plan',
+    document: 'Care Handoff',
+    monitor: 'Support Follow-Up',
+    deploy: 'Approved Outreach',
+  }),
+  verificationRubric: verificationRubric('health', {
+    criterionRef: 'criterion.health.redaction_before_inference',
+    description:
+      'PHI or sensitive health context is redacted before external inference and checked before outreach.',
+    requiredEvidenceRefs: [
+      'evidence.redaction_receipt',
+      'evidence.human_review_decision',
+    ],
+  }),
+  starterWorkflows: [
+    starterWorkflow(
+      'health',
+      'triage_summary',
+      'Redacted triage summary',
+      'triage_summary',
+    ),
+    starterWorkflow(
+      'health',
+      'coach_match',
+      'Human-reviewed coach match',
+      'coach_match',
+    ),
+  ],
+  complianceProfile: complianceProfile(
+    'health',
+    'regulated_data.phi_redaction_required',
+    true,
+    [
+      'prohibited.external_inference_before_redaction',
+      'prohibited.medical_advice_without_reviewer',
+    ],
+  ),
+  ethicalMarketingPolicy: ethicalMarketingPolicy('health'),
+  screenPolicy: screenPolicy('health'),
+}
+
+export const agencyVerticalPack: VerticalPack = {
+  id: 'vertical_pack.agency',
+  vertical: 'agency',
+  description:
+    'Marketing-agency and services-operator vertical for client briefs, brand ' +
+    'deliverables, campaign plans, approval receipts, and channel launches.',
+  contextPack: contextPack('agency', 'customer', [
+    baseSource(
       'order.services_engagement',
+      'order',
+      'customer',
+      'customer_provided',
+      true,
+      false,
+    ),
+    baseSource(
       'customer_asset.brand_kit',
+      'customer_asset',
+      'customer',
+      'customer_provided',
+      true,
+      false,
+    ),
+    baseSource(
       'exa_brief.market_positioning',
+      'exa_brief',
+      'public',
+      'public',
+      true,
+      true,
+    ),
+    baseSource(
       'repo.public_marketing_site',
+      'repo',
+      'public',
+      'public',
+      true,
+      true,
+    ),
+    baseSource(
+      'email.raw_customer_inbox',
+      'email',
+      'private',
+      'internal_only',
+      false,
+      false,
+    ),
+  ]),
+  stageTemplates: stageTemplates('agency', {
+    signal: 'Client Signal',
+    triage: 'Creative Triage',
+    codegen: 'Creative Production',
+    validate: 'Brand QA',
+    release: 'Client Approval',
+    document: 'Account Handoff',
+    monitor: 'Campaign Watch',
+    deploy: 'Channel Launch',
+  }),
+  verificationRubric: verificationRubric('agency', {
+    criterionRef: 'criterion.agency.brand_and_claim_fit',
+    description:
+      'Creative output matches approved brand sources, avoids fabricated claims, and passes channel checks.',
+    requiredEvidenceRefs: [
+      'evidence.brand_source_map',
+      'evidence.link_or_channel_check',
     ],
-    publicSafeProjection: true,
-    sourceAuthorities: [
-      {
-        // Public market research about the vertical (no customer specifics).
-        classificationCaveatRef: 'classification.public_market_research',
-        confidence: 'medium',
-        consentState: 'public',
-        customerSafe: true,
-        dataClassification: 'public',
-        excludedReasonRef: null,
-        freshness: 'recent',
-        includedInContext: true,
-        publicSafe: true,
-        publicSummaryRef: 'summary.market_positioning_public',
-        sourceKind: 'exa_brief',
-        sourceRef: 'exa_brief.market_positioning',
-        trustTier: 'reviewed',
-      },
-      {
-        // The signed services engagement / order, customer-consented.
-        classificationCaveatRef: 'classification.services_engagement',
-        confidence: 'high',
-        consentState: 'customer_provided',
-        customerSafe: true,
-        dataClassification: 'customer',
-        excludedReasonRef: null,
-        freshness: 'current',
-        includedInContext: true,
-        publicSafe: false,
-        publicSummaryRef: 'summary.services_engagement_public_safe',
-        sourceKind: 'order',
-        sourceRef: 'order.services_engagement',
-        trustTier: 'verified',
-      },
-      {
-        // Customer-provided brand assets (logos, voice, palette). Customer-safe
-        // but not public until the customer publishes.
-        classificationCaveatRef: 'classification.customer_brand_kit',
-        confidence: 'high',
-        consentState: 'customer_provided',
-        customerSafe: true,
-        dataClassification: 'customer',
-        excludedReasonRef: null,
-        freshness: 'current',
-        includedInContext: true,
-        publicSafe: false,
-        publicSummaryRef: 'summary.brand_kit_customer_safe',
-        sourceKind: 'customer_asset',
-        sourceRef: 'customer_asset.brand_kit',
-        trustTier: 'verified',
-      },
-      {
-        // The customer's already-public marketing site is public-safe.
-        classificationCaveatRef: 'classification.public_marketing_site',
-        confidence: 'high',
-        consentState: 'public',
-        customerSafe: true,
-        dataClassification: 'public',
-        excludedReasonRef: null,
-        freshness: 'current',
-        includedInContext: true,
-        publicSafe: true,
-        publicSummaryRef: 'summary.public_marketing_site',
-        sourceKind: 'repo',
-        sourceRef: 'repo.public_marketing_site',
-        trustTier: 'verified',
-      },
-      {
-        // Raw private inbox correspondence is internal-only and excluded.
-        classificationCaveatRef: 'classification.private_customer_inbox',
-        confidence: 'medium',
-        consentState: 'internal_only',
-        customerSafe: false,
-        dataClassification: 'private',
-        excludedReasonRef: 'excluded.raw_customer_inbox',
-        freshness: 'recent',
-        includedInContext: false,
-        publicSafe: false,
-        publicSummaryRef: null,
-        sourceKind: 'email',
-        sourceRef: 'email.raw_customer_inbox',
-        trustTier: 'reviewed',
-      },
+  }),
+  starterWorkflows: [
+    starterWorkflow(
+      'agency',
+      'landing_page',
+      'Client landing page',
+      'landing_page',
+    ),
+    starterWorkflow(
+      'agency',
+      'email_sequence',
+      'Approved email sequence',
+      'email_sequence',
+    ),
+  ],
+  complianceProfile: complianceProfile(
+    'agency',
+    'regulated_data.customer_marketing',
+    false,
+    [
+      'prohibited.fabricated_case_study_or_testimonial',
+      'prohibited.unapproved_customer_channel_send',
     ],
-    trustTier: 'reviewed',
-    updatedAt: '2026-06-14T00:00:00.000Z',
-  },
-  ethicalMarketingPolicy: {
-    policyRef: 'policy.ethical_marketing.services_business',
-    noFabricatedTestimonials: true,
-    noFabricatedCredentials: true,
-    noFakeUrgency: true,
-    clarityOverHype: true,
-    humanInLoopOnSensitiveSends: true,
-    ruleRefs: [
-      'rule.no_fabricated_testimonials_or_reviews',
-      'rule.no_invented_credentials_or_affiliations',
-      'rule.no_fake_scarcity_or_countdowns',
-      'rule.describe_accurately_avoid_superlatives',
-      'rule.human_approval_before_sensitive_send',
-    ],
-  },
+  ),
+  ethicalMarketingPolicy: ethicalMarketingPolicy('agency'),
+  screenPolicy: screenPolicy('agency'),
 }
 
-// Registry of named vertical packs. Keyed by pack id for direct lookup.
+export const ecommerceVerticalPack: VerticalPack = {
+  id: 'vertical_pack.ecommerce',
+  vertical: 'ecommerce',
+  description:
+    'E-commerce vertical for inventory-aware offers, campaign artifacts, stock ' +
+    'checks, merchandising approval, channel publishing, and conversion watch.',
+  contextPack: contextPack('ecommerce', 'customer', [
+    baseSource(
+      'customer_asset.product_catalog',
+      'customer_asset',
+      'customer',
+      'customer_provided',
+      true,
+      false,
+    ),
+    baseSource(
+      'artifact.inventory_snapshot',
+      'artifact',
+      'customer',
+      'customer_provided',
+      true,
+      false,
+    ),
+    baseSource(
+      'repo.public_storefront',
+      'repo',
+      'public',
+      'public',
+      true,
+      true,
+    ),
+    baseSource(
+      'generated_summary.commerce_public_safe',
+      'generated_summary',
+      'public',
+      'public',
+      true,
+      true,
+    ),
+    baseSource(
+      'email.raw_buyer_messages',
+      'email',
+      'private',
+      'internal_only',
+      false,
+      false,
+    ),
+  ]),
+  stageTemplates: stageTemplates('ecommerce', {
+    signal: 'Demand Signal',
+    triage: 'Offer Triage',
+    codegen: 'Campaign Build',
+    validate: 'Commerce QA',
+    release: 'Merchandising Release',
+    document: 'Merchant Handoff',
+    monitor: 'Conversion Watch',
+    deploy: 'Channel Publish',
+  }),
+  verificationRubric: verificationRubric('ecommerce', {
+    criterionRef: 'criterion.ecommerce.inventory_and_offer_math',
+    description:
+      'Campaigns cite live-enough inventory, price, margin, link, and spend-cap evidence before publishing.',
+    requiredEvidenceRefs: [
+      'evidence.inventory_snapshot',
+      'evidence.offer_math_check',
+    ],
+  }),
+  starterWorkflows: [
+    starterWorkflow(
+      'ecommerce',
+      'inventory_campaign',
+      'Inventory-aware campaign',
+      'campaign',
+    ),
+    starterWorkflow(
+      'ecommerce',
+      'storefront_offer',
+      'Storefront offer update',
+      'storefront_update',
+    ),
+  ],
+  complianceProfile: complianceProfile(
+    'ecommerce',
+    'regulated_data.commerce_customer_sources',
+    false,
+    [
+      'prohibited.out_of_stock_or_unavailable_offer',
+      'prohibited.unapproved_ad_spend_or_channel_publish',
+    ],
+  ),
+  ethicalMarketingPolicy: ethicalMarketingPolicy('ecommerce'),
+  screenPolicy: screenPolicy('ecommerce'),
+}
+
+// Backward-compatible name for earlier services-business callers. The actual
+// pack is the agency/services config pack; callers should prefer agencyVerticalPack.
+export const servicesBusinessVerticalPack = agencyVerticalPack
+
 export const verticalPackRegistry: Readonly<Record<string, VerticalPack>> = {
-  [servicesBusinessVerticalPack.id]: servicesBusinessVerticalPack,
+  [agencyVerticalPack.id]: agencyVerticalPack,
+  [ecommerceVerticalPack.id]: ecommerceVerticalPack,
+  [healthVerticalPack.id]: healthVerticalPack,
+  [legalVerticalPack.id]: legalVerticalPack,
+  'vertical_pack.services_business': servicesBusinessVerticalPack,
 }
 
-// Look up a vertical pack by its id. Returns undefined when unknown so callers
-// can decide their own missing-pack policy.
 export const getVerticalPack = (id: string): VerticalPack | undefined =>
   verticalPackRegistry[id]
 
-// Re-export the underlying Context Pack type for convenience.
 export type { BlueprintContextPackType }
-
-/*
-COORDINATOR WIRING: add the following export block to
-workers/api/src/blueprint/index.ts (do NOT add it here):
-
-export {
-  getVerticalPack,
-  servicesBusinessVerticalPack,
-  VerticalPack,
-  type VerticalPack as VerticalPackType,
-  VerticalPackEthicalMarketingPolicy,
-  type VerticalPackEthicalMarketingPolicy as VerticalPackEthicalMarketingPolicyType,
-  verticalPackRegistry,
-} from './vertical-pack'
-*/

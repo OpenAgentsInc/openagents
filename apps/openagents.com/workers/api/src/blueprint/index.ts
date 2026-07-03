@@ -572,12 +572,31 @@ export {
 } from './exports/contract-export'
 
 export {
+  agencyVerticalPack,
+  ecommerceVerticalPack,
   getVerticalPack,
+  healthVerticalPack,
+  legalVerticalPack,
   servicesBusinessVerticalPack,
   VerticalPack,
   type VerticalPack as VerticalPackType,
+  VerticalPackComplianceProfile,
+  type VerticalPackComplianceProfile as VerticalPackComplianceProfileType,
   VerticalPackEthicalMarketingPolicy,
   type VerticalPackEthicalMarketingPolicy as VerticalPackEthicalMarketingPolicyType,
+  VerticalPackRubricCriterion,
+  type VerticalPackRubricCriterion as VerticalPackRubricCriterionType,
+  VerticalPackScreenPolicy,
+  type VerticalPackScreenPolicy as VerticalPackScreenPolicyType,
+  VerticalPackStageKey,
+  type VerticalPackStageKey as VerticalPackStageKeyType,
+  verticalPackStageOrder,
+  VerticalPackStageTemplate,
+  type VerticalPackStageTemplate as VerticalPackStageTemplateType,
+  VerticalPackStarterWorkflow,
+  type VerticalPackStarterWorkflow as VerticalPackStarterWorkflowType,
+  VerticalPackVerificationRubric,
+  type VerticalPackVerificationRubric as VerticalPackVerificationRubricType,
   verticalPackRegistry,
 } from './vertical-pack'
 
