@@ -13,8 +13,55 @@ export const KHALA_CODE_QA_GEPA_GYM_ADMISSION_SCHEMA =
   "khala_code_qa_gepa_gym_admission.v1" as const
 export const KHALA_CODE_QA_SCENARIO_PORTFOLIO_SCHEMA =
   "khala_code_qa_scenario_portfolio.v1" as const
+export const KHALA_CODE_QA_GEPA_METRIC_DEFINITION_SCHEMA =
+  "khala_code_qa_gepa_metric_definition.v1" as const
 export const KHALA_CODE_QA_GEPA_RELEASE_GATE_REF =
   "khala_code_qa.release_gate.gepa_explore_policy.v1" as const
+
+export const KhalaCodeQaGepaMetricDefinitionSchema = S.Struct({
+  denominator: S.String,
+  formula: S.String,
+  metricRef: S.Literals(["new_coverage_per_action", "confirmed_bugs_per_1000_actions"]),
+  numerator: S.String,
+  objective: S.Literal("maximize"),
+  schema: S.Literal(KHALA_CODE_QA_GEPA_METRIC_DEFINITION_SCHEMA),
+  source: S.Literal("offline_explore_telemetry"),
+  unit: S.String,
+})
+
+export type KhalaCodeQaGepaMetricDefinition = {
+  readonly schema: typeof KHALA_CODE_QA_GEPA_METRIC_DEFINITION_SCHEMA
+  readonly denominator: string
+  readonly formula: string
+  readonly metricRef: "new_coverage_per_action" | "confirmed_bugs_per_1000_actions"
+  readonly numerator: string
+  readonly objective: "maximize"
+  readonly source: "offline_explore_telemetry"
+  readonly unit: string
+}
+
+export const KHALA_CODE_QA_GEPA_EXPLORE_POLICY_METRIC_DEFINITIONS = [
+  {
+    denominator: "total offline explorer actions across admitted source runs",
+    formula: "deduped_new_coverage_refs / total_action_count",
+    metricRef: "new_coverage_per_action",
+    numerator: "deduped coverage refs first reached by the candidate source runs",
+    objective: "maximize",
+    schema: KHALA_CODE_QA_GEPA_METRIC_DEFINITION_SCHEMA,
+    source: "offline_explore_telemetry",
+    unit: "coverage refs per action",
+  },
+  {
+    denominator: "total offline explorer actions across admitted source runs / 1000",
+    formula: "(deduped_confirmed_bug_refs * 1000) / total_action_count",
+    metricRef: "confirmed_bugs_per_1000_actions",
+    numerator: "deduped public-safe confirmed bug refs from the candidate source runs",
+    objective: "maximize",
+    schema: KHALA_CODE_QA_GEPA_METRIC_DEFINITION_SCHEMA,
+    source: "offline_explore_telemetry",
+    unit: "confirmed bugs per 1000 actions",
+  },
+] as const satisfies readonly KhalaCodeQaGepaMetricDefinition[]
 
 export const KhalaCodeQaGepaExplorePolicyParametersSchema = S.Struct({
   actionSelectionHeuristic: S.String,
@@ -110,6 +157,7 @@ export const KhalaCodeQaGepaExplorePolicyCandidateSchema = S.Struct({
     newCoveragePerAction: S.Number,
     score: S.Number,
   }),
+  metricDefinitions: S.Array(KhalaCodeQaGepaMetricDefinitionSchema),
   parameters: KhalaCodeQaGepaExplorePolicyParametersSchema,
   schema: S.Literal(KHALA_CODE_QA_GEPA_EXPLORE_POLICY_SCHEMA),
   sourceRunIds: S.Array(S.String),
@@ -126,6 +174,7 @@ export type KhalaCodeQaGepaExplorePolicyCandidate = {
     readonly newCoveragePerAction: number
     readonly score: number
   }
+  readonly metricDefinitions: readonly KhalaCodeQaGepaMetricDefinition[]
   readonly parameters: KhalaCodeQaGepaExplorePolicyParameters
   readonly sourceRunIds: readonly string[]
 }
@@ -208,6 +257,11 @@ export const decodeKhalaCodeQaGepaExplorePolicyCandidate = (
   input: unknown,
 ): KhalaCodeQaGepaExplorePolicyCandidate =>
   S.decodeUnknownSync(KhalaCodeQaGepaExplorePolicyCandidateSchema)(input) as KhalaCodeQaGepaExplorePolicyCandidate
+
+export const decodeKhalaCodeQaGepaMetricDefinitions = (
+  input: unknown,
+): readonly KhalaCodeQaGepaMetricDefinition[] =>
+  S.decodeUnknownSync(S.Array(KhalaCodeQaGepaMetricDefinitionSchema))(input) as readonly KhalaCodeQaGepaMetricDefinition[]
 
 export const decodeKhalaCodeQaScenarioPortfolioPlan = (
   input: unknown,
@@ -345,6 +399,7 @@ export const proposeKhalaCodeQaGepaExplorePolicyCandidate = (input: {
       newCoveragePerAction: roundMetric(newCoveragePerAction),
       score: roundedScore,
     },
+    metricDefinitions: KHALA_CODE_QA_GEPA_EXPLORE_POLICY_METRIC_DEFINITIONS,
     parameters,
     schema: KHALA_CODE_QA_GEPA_EXPLORE_POLICY_SCHEMA,
     sourceRunIds: dedupe(input.evidence.map((entry) => entry.sourceRunId)),
