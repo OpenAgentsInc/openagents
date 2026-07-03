@@ -14,6 +14,9 @@
 //                               present), and the /pro/runs/:id link
 //   POST /evals              -> submit a variant comparison (>= 2 variants)
 //   GET  /evals/:id          -> the comparison + /pro/evals/:id link
+//   POST /swarm-runs         -> compose qa-runner fanout into a QA Swarm
+//                               projection + /qa/{runRef} share URL
+//   GET  /swarm-runs/:id     -> swarm run projection/status
 //   GET  /healthz            -> liveness (no auth)
 //
 // OpenAI-compatible shapes where they fit: a 401 returns an OpenAI-style
@@ -33,6 +36,7 @@ import {
   type ControlOptions,
   type SubmitEvalInput,
   type SubmitRunInput,
+  type SubmitSwarmRunInput,
 } from "./control";
 import {
   allowlistFromEnv,
@@ -110,6 +114,20 @@ export function makeFetchHandler(options: ApiServerOptions): (req: Request) => P
         const input = (await readJson(req)) as SubmitEvalInput;
         const job = control.submitEval(input ?? {});
         return json(202, { object: "qa_control.eval", ...job });
+      }
+
+      // POST /swarm-runs
+      if (path === "/swarm-runs" && method === "POST") {
+        const input = (await readJson(req)) as SubmitSwarmRunInput;
+        const job = control.submitSwarmRun(input ?? {});
+        return json(202, { object: "qa_control.swarm_run", ...job });
+      }
+
+      // GET /swarm-runs/:id
+      const swarmMatch = /^\/swarm-runs\/([^/]+)$/.exec(path);
+      if (swarmMatch && method === "GET") {
+        const res = control.swarmRunArtifacts(decodeURIComponent(swarmMatch[1]!));
+        return json(200, { object: "qa_control.swarm_run_artifacts", ...res });
       }
 
       // GET /evals/:id

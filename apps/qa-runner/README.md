@@ -143,6 +143,15 @@ bun run --cwd apps/qa-runner serve
 # (no Chrome/network/spend) by default; real runs gated by QA_CONTROL_ARM_REAL=1.
 QA_CONTROL_TOKENS="raynor:tok_demo_secret" bun run --cwd apps/qa-runner api
 #   curl quick-start a third party can follow: docs/control-api-quickstart.md
+
+# QA Swarm hosted-run composition (#8065): one command emits the QS2
+# openagents.qa_swarm.run_projection.v1 artifact plus /qa/{runRef} share URL.
+# Fixture tier is no-spend by default; live tiers are skip-safe unless armed.
+bun run --cwd apps/qa-runner qa -- swarm run \
+  --target https://openagents.com \
+  --out ./runs/qa-swarm \
+  --max-workers 2 \
+  --max-runs 1
 ```
 
 ## QA Control API (#6196): everything over HTTP
@@ -155,6 +164,14 @@ Worker), running the existing engine **in-process** with an in-memory job store.
 Auth is a **Khala agent bearer token**; a deterministic **mock path** runs with
 no Chrome/network/spend; real runs are owner-gated. Full curl walkthrough:
 [`docs/control-api-quickstart.md`](docs/control-api-quickstart.md).
+
+`POST /swarm-runs` composes the same control-plane runner into a QA Swarm run:
+fixture-tier fanout, FleetRun-style worker/run caps, skip-safe live tier rows
+for GCE Tier-2 and CF Browser Rendering, and an
+`openagents.qa_swarm.run_projection.v1` artifact with a `/qa/{runRef}` share
+URL. `GET /swarm-runs/:id` returns the projection and tier statuses. Real runs
+still require `QA_CONTROL_ARM_REAL=1`; unarmed live requests fail closed with
+`not_armed`.
 
 ## Artifacts (`result.json` + receipt)
 

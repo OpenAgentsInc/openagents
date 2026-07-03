@@ -155,6 +155,70 @@ describe("full eval flow over HTTP", () => {
   });
 });
 
+describe("full QA Swarm flow over HTTP", () => {
+  test("POST /swarm-runs -> GET /swarm-runs/:id projection", async () => {
+    const handler = mkHandler();
+    const submit = await handler(
+      req("POST", "/swarm-runs", {
+        token: TOKEN,
+        body: {
+          maxRuns: 1,
+          maxWorkers: 1,
+          target: "https://example.test",
+          targetName: "Example Target",
+        },
+      }),
+    );
+    expect(submit.status).toBe(202);
+    const job = (await submit.json()) as { id: string; object: string; qaShareUrl: string };
+    expect(job.object).toBe("qa_control.swarm_run");
+    expect(job.qaShareUrl).toContain("/qa/");
+
+    let status = "queued";
+    let body: {
+      object: string;
+      status: string;
+      qaShareUrl: string | null;
+      swarm: {
+        projection: { schemaVersion: string; verdict: string };
+        tiers: Array<{ backend: string; status: string }>;
+      } | null;
+    } = {
+      object: "",
+      status,
+      qaShareUrl: null,
+      swarm: null,
+    };
+    for (let i = 0; i < 50; i++) {
+      const s = await handler(req("GET", `/swarm-runs/${job.id}`, { token: TOKEN }));
+      body = (await s.json()) as typeof body;
+      status = body.status;
+      if (status === "succeeded" || status === "failed") break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+
+    expect(body.object).toBe("qa_control.swarm_run_artifacts");
+    expect(status).toBe("succeeded");
+    expect(body.qaShareUrl).toContain("/qa/");
+    expect(body.swarm).not.toBeNull();
+    expect(body.swarm!.projection.schemaVersion).toBe("openagents.qa_swarm.run_projection.v1");
+    expect(body.swarm!.tiers.some(tier => tier.backend === "cf-browser-rendering" && tier.status === "skipped")).toBe(true);
+  });
+
+  test("real swarm run is refused with 403 not_armed when unarmed", async () => {
+    const handler = mkHandler();
+    const res = await handler(
+      req("POST", "/swarm-runs", {
+        token: TOKEN,
+        body: { real: true, target: "https://openagents.com" },
+      }),
+    );
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("not_armed");
+  });
+});
+
 describe("routing", () => {
   test("unknown route => 404", async () => {
     const res = await mkHandler()(req("GET", "/nope", { token: TOKEN }));

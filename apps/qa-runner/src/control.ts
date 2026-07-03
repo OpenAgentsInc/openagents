@@ -49,6 +49,13 @@ import {
 } from "./publish-trace";
 import { makeTarget, type Target } from "./target";
 import { TARGET_REGISTRY, isTargetName } from "./target-registry";
+import {
+  readQaSwarmRunSummary,
+  swarmRunRefFor,
+  writeQaSwarmRunSummary,
+  type QaSwarmRunArtifactsResponse,
+  type SubmitSwarmRunInput,
+} from "./swarm";
 
 // Resolve a control-API `target` field to a base URL: a registry NAME
 // (dev/staging/prod/selfhost) -> its baseUrl; a full http(s) URL -> as-is;
@@ -68,7 +75,7 @@ const resolveControlBaseUrl = (target?: string): string => {
 // Public-safe job model (what GET /runs/:id and GET /evals/:id project)
 // ---------------------------------------------------------------------------
 
-export type JobKind = "run" | "eval";
+export type JobKind = "run" | "eval" | "swarm";
 export type JobStatus = "queued" | "running" | "succeeded" | "failed";
 
 /** How a job executed: deterministic mock vs a real (spend-capable-class) run. */
@@ -122,6 +129,8 @@ export interface Job {
    * when publishing is not armed.
    */
   readonly variantTraceUrls?: Readonly<Record<string, string>>;
+  readonly childRunIds?: readonly string[];
+  readonly qaShareUrl?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -177,6 +186,8 @@ export interface SubmitEvalVariant {
   readonly scenario?: ControlScenario;
 }
 
+export type { SubmitSwarmRunInput } from "./swarm";
+
 // ---------------------------------------------------------------------------
 // Errors (mapped to HTTP status by the server)
 // ---------------------------------------------------------------------------
@@ -190,6 +201,12 @@ export class NotArmedError extends Error {
 export class NotFoundError extends Error {
   readonly _tag = "NotFoundError";
 }
+
+const positiveInt = (value: number | undefined, fallback: number, field: string): number => {
+  if (value === undefined) return fallback;
+  if (Number.isInteger(value) && value > 0) return value;
+  throw new BadRequestError(`${field} must be a positive integer`);
+};
 
 // ---------------------------------------------------------------------------
 // The control plane
@@ -408,6 +425,92 @@ export class QaControl {
     return this.get(id);
   }
 
+  // ── submit a hosted QA Swarm composition ─────────────────────────────────
+
+  submitSwarmRun(input: SubmitSwarmRunInput): Job {
+    if (!input.target || !/^https?:\/\//i.test(input.target)) {
+      throw new BadRequestError("qa swarm run requires --target <http(s) URL>");
+    }
+    const scenario = input.scenario ?? "login-regression";
+    if (!isControlScenario(scenario)) {
+      throw new BadRequestError(`unknown scenario "${scenario}"`);
+    }
+    const real = input.real === true;
+    if (real && !this.allowReal) {
+      throw new NotArmedError(
+        "real QA Swarm runs are not armed on this daemon: set QA_CONTROL_ARM_REAL=1. " +
+          "The fixture tier runs without arming.",
+      );
+    }
+
+    const mode: JobMode = real ? "real" : "mock";
+    const id = this.genId("swarm");
+    const createdAt = this.now().toISOString();
+    const tokenBudget = real ? (input.tokenBudget ?? this.defaultTokenBudget) : 0;
+    const maxWorkers = positiveInt(input.maxWorkers, 2, "maxWorkers");
+    const maxRuns = positiveInt(input.maxRuns, 1, "maxRuns");
+    const runRef = swarmRunRefFor({ id, target: input.target, runRef: input.runRef });
+    const targetName = input.targetName ?? input.target;
+    const artifactDir = join(this.options.storeDir, id);
+    mkdirSync(artifactDir, { recursive: true });
+
+    const job: Job = {
+      id,
+      kind: "swarm",
+      status: "queued",
+      mode,
+      scenario,
+      targetName,
+      createdAt,
+      qaShareUrl: `${this.proBaseUrl}/qa/${runRef}`,
+      receipt: { mode, spendCapable: real, tokenBudget, tokensSpent: 0 },
+    };
+    this.jobs.set(id, job);
+    this.set(id, { artifactDir: id });
+
+    this.inflight.set(
+      id,
+      this.execute(id, async () => {
+        const childJobs: Job[] = [];
+        for (let i = 0; i < maxRuns; i++) {
+          const child = this.submitRun({
+            real,
+            scenario,
+            target: input.target,
+            targetName,
+            tokenBudget,
+          });
+          childJobs.push(child);
+          this.set(id, { childRunIds: childJobs.map(childJob => childJob.id) });
+          if (childJobs.length >= maxWorkers || i === maxRuns - 1) {
+            await Promise.all(childJobs.map(childJob => this.wait(childJob.id)));
+          }
+        }
+
+        const completedChildJobs = childJobs.map(childJob => this.get(childJob.id));
+        const summary = writeQaSwarmRunSummary({
+          artifactDir,
+          childJobs: completedChildJobs,
+          generatedAt: this.now().toISOString(),
+          includeLiveTiers: input.includeLiveTiers === true,
+          maxRuns,
+          maxWorkers,
+          proBaseUrl: this.proBaseUrl,
+          runRef,
+          storeDir: this.options.storeDir,
+          target: input.target,
+          targetName,
+          tokenBudget,
+        });
+        this.set(id, {
+          childRunIds: summary.childRunIds,
+          qaShareUrl: summary.shareUrl,
+        });
+      }),
+    );
+    return this.get(id);
+  }
+
   // ── status + artifacts ────────────────────────────────────────────────────
 
   /** Snapshot a job's status (throws NotFoundError if unknown). */
@@ -463,6 +566,21 @@ export class QaControl {
       proUrl: `${this.proBaseUrl}/pro/evals/${id}`,
       jobReceipt: job.receipt,
       comparison,
+    };
+  }
+
+  swarmRunArtifacts(id: string): QaSwarmRunArtifactsResponse {
+    const job = this.get(id);
+    if (job.kind !== "swarm") throw new BadRequestError(`job ${id} is not a swarm run`);
+    const dir = join(this.options.storeDir, id);
+    const swarm = readQaSwarmRunSummary(dir);
+    return {
+      jobId: id,
+      status: job.status,
+      qaShareUrl: swarm?.shareUrl ?? job.qaShareUrl ?? null,
+      proUrl: `${this.proBaseUrl}/pro/swarm-runs/${id}`,
+      jobReceipt: job.receipt,
+      swarm,
     };
   }
 

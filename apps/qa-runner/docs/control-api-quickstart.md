@@ -129,6 +129,37 @@ curl -s $B/evals/$EID -H "Authorization: Bearer $T"
 #                   "deltas": [...], "decisionGrade": false } }
 ```
 
+## Submit a QA Swarm run → fetch the projection
+
+One API call starts the hosted-run composition: qa-runner control fanout,
+FleetRun-style caps, the nightly-matrix projection vocabulary, and a
+`/qa/{runRef}` share URL. The fixture tier is no-spend by default; GCE Tier-2
+and CF Browser Rendering live tiers are represented as skip-safe tier rows
+unless the daemon is armed and a live runner receipt is attached.
+
+```bash
+SID=$(curl -s -X POST $B/swarm-runs \
+  -H "Authorization: Bearer $T" -H "content-type: application/json" \
+  -d '{
+    "target": "https://openagents.com",
+    "targetName": "openagents.com",
+    "maxWorkers": 2,
+    "maxRuns": 1
+  }' | grep -o '"id": "[^"]*"' | head -1 | sed 's/.*"id": "//;s/"//')
+
+curl -s $B/swarm-runs/$SID -H "Authorization: Bearer $T"
+# { "object": "qa_control.swarm_run_artifacts",
+#   "qaShareUrl": "https://openagents.com/qa/qa-run.swarm.openagents.com.<id>",
+#   "swarm": {
+#     "projection": { "schemaVersion": "openagents.qa_swarm.run_projection.v1", ... },
+#     "tiers": [
+#       { "backend": "fixture", "status": "passed", ... },
+#       { "backend": "gce-tier-2", "status": "skipped", ... },
+#       { "backend": "cf-browser-rendering", "status": "skipped", ... }
+#     ]
+#   } }
+```
+
 ## Real (gated) runs
 
 A `real` run drives **real Chrome against the live Target** and is **owner-gated**:
@@ -154,6 +185,8 @@ QA_CONTROL_TOKENS="raynor:tok_demo_secret" bun run api
 | `GET` | `/runs/:id/artifacts` | bearer | video + committed test + `result.json` (+ `verify`/`receipt`) + `/pro` link |
 | `POST` | `/evals` | bearer | submit a ≥2-variant comparison → `202` |
 | `GET` | `/evals/:id` | bearer | comparison + `/pro/evals/:id` link |
+| `POST` | `/swarm-runs` | bearer | submit a QA Swarm hosted-run composition → `202` |
+| `GET` | `/swarm-runs/:id` | bearer | QA Swarm projection + `/qa/{runRef}` share URL + tier statuses |
 
 OpenAI-compatible shapes where they fit: errors use the
 `{ error: { message, type, code } }` envelope; submit/status responses carry a
