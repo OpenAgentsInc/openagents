@@ -31,6 +31,8 @@ const approvalDecision = (
   decideOmniWorkroomOutboundDeliverableReview(
     new OmniWorkroomOutboundDeliverableReviewInput({
       approvalDecisionReceiptRefs: ['receipt.review.social_post_approved.001'],
+      complianceCheck: null,
+      complianceProfile: null,
       deliverableRef: 'deliverable.social_post.campaign_001',
       evidenceRefs: ['evidence.social_post.preview.001'],
       outboundActionKind: 'publish',
