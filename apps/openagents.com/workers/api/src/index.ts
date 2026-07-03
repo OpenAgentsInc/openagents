@@ -857,6 +857,14 @@ import { makeProviderAccountPoolRoutes } from './provider-account-pool-routes'
 import { makeProviderAccountPylonHandlers } from './provider-account-pylon-routes'
 import { makeProviderAccountRoutes } from './provider-account-routes'
 import { makeProviderAccountServiceHandlers } from './provider-account-service-routes'
+import {
+  codexAccessToAuthMaterial,
+  issueShortLivedCodexAccessFromCustody,
+  makeD1ProviderAccountTokenCustodyStore,
+  providerAccountTokenCustodyCipherFromEnv,
+  storeConnectedCodexAuthInCustody,
+  type ProviderTokenCustodyKeyEnv,
+} from './provider-account-token-custody'
 import { makeProviderAccountUsageRoutes } from './provider-account-usage-routes'
 import {
   type CodexOAuthAuth,
@@ -6614,9 +6622,6 @@ const providerDeviceLoginSecretKey = (attemptId: string): string =>
 const providerAuthSecretKey = (providerAccountRef: string): string =>
   `provider-auth:${providerAccountRef}`
 
-const providerSecretRef = (providerAccountRef: string): string =>
-  `codex-auth://${providerAccountRef}`
-
 const startedDeviceLoginTtlSeconds = (expiresAt: string): number => {
   const milliseconds = Date.parse(expiresAt) - workerRuntime.now().getTime()
 
@@ -6699,28 +6704,37 @@ const storeConnectedProviderApiKey =
     )
   }
 
+type ProviderAccountTokenCustodyEnv = ProviderTokenCustodyKeyEnv &
+  Readonly<{
+    OPENAGENTS_DB: D1Database
+  }>
+
 const storeConnectedCodexAuth =
-  (kv: KVNamespace) =>
+  (env: ProviderAccountTokenCustodyEnv) =>
   async (
     input: Readonly<{
+      ownerUserId: string
       providerAccountRef: string
       auth: CodexOAuthAuth
     }>,
   ): Promise<string> => {
-    const secretRef = providerSecretRef(input.providerAccountRef)
+    const cipher = await providerAccountTokenCustodyCipherFromEnv(env)
 
-    await kv.put(
-      providerAuthSecretKey(input.providerAccountRef),
-      JSON.stringify({
-        openai: input.auth,
-      }),
+    return storeConnectedCodexAuthInCustody(
+      makeD1ProviderAccountTokenCustodyStore(openAgentsDatabase(env)),
+      cipher,
+      {
+        auth: input.auth,
+        ownerUserId: input.ownerUserId,
+        providerAccountRef: input.providerAccountRef,
+        nowIso: currentIsoTimestamp(),
+      },
     )
-
-    return secretRef
   }
 
 const readConnectedCodexAuthMaterial = async (
-  kv: KVNamespace,
+  env: ProviderAccountTokenCustodyEnv,
+  ownerUserId: string,
   providerAccountRef: string,
 ): Promise<
   | Readonly<{
@@ -6729,31 +6743,29 @@ const readConnectedCodexAuthMaterial = async (
     }>
   | undefined
 > => {
-  const raw = await kv.get(providerAuthSecretKey(providerAccountRef), 'text')
+  const cipher = await providerAccountTokenCustodyCipherFromEnv(env)
+  const store = makeD1ProviderAccountTokenCustodyStore(openAgentsDatabase(env))
 
-  if (raw === null) {
-    return undefined
-  }
+  try {
+    return codexAccessToAuthMaterial(
+      await issueShortLivedCodexAccessFromCustody(store, cipher, {
+        actorRef: `owner:${ownerUserId}`,
+        ownerUserId,
+        providerAccountRef,
+        now: workerRuntime.now(),
+      }),
+    )
+  } catch (error) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      '_tag' in error &&
+      error._tag === 'ProviderAccountNotFound'
+    ) {
+      return undefined
+    }
 
-  const parsed = safeJsonRecord(raw)
-
-  if (!isRecord(parsed) || !isRecord(parsed.openai)) {
-    return undefined
-  }
-
-  const openai = parsed.openai
-
-  if (
-    optionalString(openai.type) !== 'oauth' ||
-    optionalString(openai.access) === undefined ||
-    optionalString(openai.refresh) === undefined
-  ) {
-    return undefined
-  }
-
-  return {
-    authContentEnv: 'OPENCODE_AUTH_CONTENT',
-    authContentJson: JSON.stringify(parsed),
+    throw error
   }
 }
 

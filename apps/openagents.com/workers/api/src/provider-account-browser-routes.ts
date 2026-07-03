@@ -40,6 +40,8 @@ import type { RouteEffect } from './http/route-effects'
 type ProviderAccountBrowserEnv = Readonly<{
   AUTH_STORAGE: KVNamespace
   OPENAGENTS_DB: D1Database
+  PROVIDER_TOKEN_CUSTODY_AES_KEY_B64?: string | undefined
+  PROVIDER_TOKEN_CUSTODY_AES_KEY_ID?: string | undefined
 }>
 
 type ProviderAccountBrowserSession = Readonly<{
@@ -67,7 +69,7 @@ type ProviderAccountBrowserDependencies<
     env: Env,
     ctx: ExecutionContext,
   ) => Promise<Session | undefined>
-  storeConnectedCodexAuth: (kv: KVNamespace) => StoreConnectedCodexAuth
+  storeConnectedCodexAuth: (env: Env) => StoreConnectedCodexAuth
   storeConnectedProviderApiKey: (
     kv: KVNamespace,
   ) => StoreConnectedProviderApiKey
@@ -97,7 +99,7 @@ const providerAccountLifecycleLayerForEnv = <
     ),
     repository: makeD1ProviderAccountRepository(openAgentsDatabase(env)),
     startDeviceLogin: () => startOpenAiCodexDeviceLogin(),
-    storeConnectedAuth: dependencies.storeConnectedCodexAuth(env.AUTH_STORAGE),
+    storeConnectedAuth: dependencies.storeConnectedCodexAuth(env),
     storeStartedDeviceLogin: dependencies.storeStartedCodexDeviceLogin(
       env.AUTH_STORAGE,
     ),
@@ -439,7 +441,7 @@ export const makeProviderAccountBrowserHandlers = <
         userId: session.user.userId,
       },
       dependencies.readStartedCodexDeviceLogin(env.AUTH_STORAGE),
-      dependencies.storeConnectedCodexAuth(env.AUTH_STORAGE),
+      dependencies.storeConnectedCodexAuth(env),
       secret => pollOpenAiCodexDeviceLogin(secret),
       dependencies.deleteStartedCodexDeviceLogin(env.AUTH_STORAGE),
     )

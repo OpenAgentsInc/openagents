@@ -1336,6 +1336,14 @@ This is the invariant ledger for `openagents`.
   accounts and never pools credentials across customers. Raw key material
   lives only in the auth KV under `provider-auth:<providerAccountRef>`;
   durable rows, events, grants, and projections carry secret refs only.
+- ChatGPT/Codex subscription OAuth refresh tokens are user-scoped custody
+  material, not runner material. The Worker stores refresh tokens only in the
+  owner-scoped `provider_account_token_custody` D1 table encrypted with
+  AES-GCM (`PROVIDER_TOKEN_CUSTODY_AES_KEY_B64`); custody audit rows record
+  store/access/refresh outcomes without raw token values. Runner grant
+  materialization may receive only short-lived access-token
+  `OPENCODE_AUTH_CONTENT` without a refresh field. Regression coverage lives in
+  `workers/api/src/provider-account-token-custody.test.ts`.
 - Pack B credential-boundary projections may join provider accounts, auth
   grants, active lease refs, artifact refs, and receipt refs only as refs.
   Revoked grants, expired grants, disconnected accounts, reauth-required

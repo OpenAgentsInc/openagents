@@ -34,6 +34,8 @@ type ProviderAccountServiceEnv = Readonly<{
   AUTH_STORAGE: KVNamespace
   GEMINI_API_KEY?: string
   OPENAGENTS_DB: D1Database
+  PROVIDER_TOKEN_CUSTODY_AES_KEY_B64?: string | undefined
+  PROVIDER_TOKEN_CUSTODY_AES_KEY_ID?: string | undefined
 }>
 
 type ProviderServiceActor = Readonly<{
@@ -50,7 +52,8 @@ type ConnectedCodexAuthMaterial = Readonly<{
 type ProviderAccountServiceDependencies<Env extends ProviderAccountServiceEnv> =
   Readonly<{
     readConnectedCodexAuthMaterial: (
-      kv: KVNamespace,
+      bindings: Env,
+      ownerUserId: string,
       providerAccountRef: string,
     ) => Promise<ConnectedCodexAuthMaterial | undefined>
     requireProviderServiceActor: (
@@ -87,9 +90,19 @@ const runnerResolvedGrantJson = (
   }
 
   return {
-    ...grant,
+    grantRef: grant.grantRef,
+    provider: grant.provider,
+    providerAccountRef: grant.providerAccountRef,
+    providerSecretRef: grant.providerSecretRef,
+    ...(grant.requestedAction === undefined
+      ? {}
+      : { requestedAction: grant.requestedAction }),
+    ...(grant.runnerSessionId === undefined
+      ? {}
+      : { runnerSessionId: grant.runnerSessionId }),
     expiresAt,
     status: 'issued',
+    materialization: grant.materialization,
   }
 }
 
@@ -595,7 +608,8 @@ export const makeProviderAccountServiceHandlers = <
             'ProviderAccountService.readConnectedCodexAuthMaterial',
             () =>
               dependencies.readConnectedCodexAuthMaterial(
-                env.AUTH_STORAGE,
+                env,
+                grant.ownerUserId,
                 grant.providerAccountRef,
               ),
           )

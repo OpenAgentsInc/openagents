@@ -126,6 +126,12 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // pure no-op (everything resolves exactly as before). The ops account ref is
   // NOT hardcoded in source; it lives in the worker `vars`.
   INFERENCE_INTERNAL_ACCOUNT_REFS?: string | undefined
+  // AES-GCM key for owner-scoped ChatGPT/Codex refresh-token custody (#8198).
+  // Set as a Worker secret/var containing exactly 32 bytes encoded as base64 or
+  // base64url. Missing/malformed values fail provider-account materialization
+  // closed with a typed error; raw refresh tokens must never fall back to KV.
+  PROVIDER_TOKEN_CUSTODY_AES_KEY_B64?: string | undefined
+  PROVIDER_TOKEN_CUSTODY_AES_KEY_ID?: string | undefined
   // Khala FREE API MODE feature flag (issue #6228, EPIC #5474). Default OFF: the
   // self-serve free-key mint endpoint (`POST /api/keys/free`) is inert and the
   // `/v1/chat/completions` balance gate is unchanged (a zero-balance key 402s),

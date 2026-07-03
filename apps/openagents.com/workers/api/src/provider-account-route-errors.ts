@@ -23,6 +23,7 @@ export const providerAccountHttpStatusByTag = {
   ProviderGrantRunnerSessionMismatch: 409,
   ProviderAccountReloadFailed: 500,
   ProviderAccountStorageFailed: 500,
+  ProviderTokenCustodyRefreshFailed: 409,
 } satisfies Record<ProviderAccountError['_tag'], number>
 
 const providerAccountClientRequestHttpStatus = (

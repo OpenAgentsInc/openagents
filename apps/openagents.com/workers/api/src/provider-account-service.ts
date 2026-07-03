@@ -369,6 +369,7 @@ export const refreshChatGptCodexDeviceLoginForUser = async (
   }
 
   const secretRef = await storeConnectedAuth({
+    ownerUserId: record.account.userId,
     providerAccountRef: record.account.providerAccountRef,
     auth: pollResult.auth,
   })
@@ -739,6 +740,7 @@ export const connectChatGptCodexLocalAuthForUser = async (
     previous?.providerAccountRef ?? `provider-account_${makeId('ref')}`
   const normalizedAuth = normalizeImportedCodexOAuthAuth(input.auth, nowDate)
   const secretRef = await storeConnectedAuth({
+    ownerUserId: input.userId,
     providerAccountRef,
     auth: normalizedAuth,
   })
@@ -1103,6 +1105,7 @@ export const resolveProviderAccountGrant = async (
 
   return {
     grantRef: saved.grantRef,
+    ownerUserId: saved.userId,
     provider: saved.provider,
     providerAccountRef: saved.providerAccountRef,
     providerSecretRef: saved.providerSecretRef,

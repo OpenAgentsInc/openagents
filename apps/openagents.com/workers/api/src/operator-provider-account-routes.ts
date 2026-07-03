@@ -10,11 +10,9 @@ import { logWorkerRouteError, observedPromise } from './observability'
 import type { OperatorTargetUser } from './operator-targets'
 import {
   pollOpenAiCodexDeviceLogin,
-  refreshOpenAiCodexOAuthAuth,
   startOpenAiCodexDeviceLogin,
 } from './provider-account-client'
 import {
-  type CodexOAuthAuth,
   type DeleteStartedCodexDeviceLogin,
   type PollCodexDeviceLogin,
   type ProviderAccountProvider,
@@ -57,6 +55,8 @@ import {
 type OperatorProviderAccountEnv = Readonly<{
   AUTH_STORAGE: KVNamespace
   OPENAGENTS_DB: D1Database
+  PROVIDER_TOKEN_CUSTODY_AES_KEY_B64?: string | undefined
+  PROVIDER_TOKEN_CUSTODY_AES_KEY_ID?: string | undefined
 }>
 type HttpResponse = globalThis.Response
 
@@ -113,7 +113,8 @@ type OperatorProviderAccountDependencies<
     }>,
   ) => Promise<ProviderAccountSanityProbeResult>
   readConnectedCodexAuthMaterial: (
-    kv: KVNamespace,
+    env: Bindings,
+    ownerUserId: string,
     providerAccountRef: string,
   ) => Promise<unknown | undefined>
   readSelectedOperatorTargetUser: (
@@ -123,7 +124,7 @@ type OperatorProviderAccountDependencies<
   readStartedCodexDeviceLogin: (kv: KVNamespace) => ReadStartedCodexDeviceLogin
   requireAdminApiToken: (request: Request, env: Bindings) => Promise<boolean>
   startDeviceLogin?: StartCodexDeviceLogin
-  storeConnectedCodexAuth: (kv: KVNamespace) => StoreConnectedCodexAuth
+  storeConnectedCodexAuth: (env: Bindings) => StoreConnectedCodexAuth
   storeStartedCodexDeviceLogin: (
     kv: KVNamespace,
   ) => StoreStartedCodexDeviceLogin
@@ -562,42 +563,17 @@ const normalizeProbeResult = (
 const authMaterialContentJson = (value: unknown): string | undefined =>
   isRecord(value) ? optionalString(value.authContentJson) : undefined
 
-const codexOAuthAuthFromAuthMaterial = (
-  value: unknown,
-): CodexOAuthAuth | undefined => {
+const hasShortLivedCodexAccessMaterial = (value: unknown): boolean => {
   const parsed = safeJsonRecord(authMaterialContentJson(value))
   const openai = isRecord(parsed?.openai) ? parsed.openai : undefined
 
   if (openai === undefined) {
-    return undefined
+    return false
   }
 
   const access = optionalString(openai?.access)
-  const refresh = optionalString(openai?.refresh)
 
-  if (
-    optionalString(openai?.type) !== 'oauth' ||
-    access === undefined ||
-    refresh === undefined
-  ) {
-    return undefined
-  }
-
-  return {
-    type: 'oauth',
-    access,
-    refresh,
-    expires:
-      typeof openai.expires === 'number' && Number.isFinite(openai.expires)
-        ? openai.expires
-        : 0,
-    ...(optionalString(openai.accountId) === undefined
-      ? {}
-      : { accountId: optionalString(openai.accountId) }),
-    ...(optionalString(openai.idToken) === undefined
-      ? {}
-      : { idToken: optionalString(openai.idToken) }),
-  }
+  return optionalString(openai?.type) === 'oauth' && access !== undefined
 }
 
 const defaultResolvedGrantProbe = async <
@@ -610,38 +586,14 @@ const defaultResolvedGrantProbe = async <
     authMaterial: unknown
   }>,
 ): Promise<ProviderAccountSanityProbeResult> => {
-  const auth = codexOAuthAuthFromAuthMaterial(input.authMaterial)
-
-  if (auth === undefined) {
+  if (!hasShortLivedCodexAccessMaterial(input.authMaterial)) {
     return {
       classification: 'requires_reauth',
       providerFailureClass: 'token_invalidated',
     }
   }
 
-  const refreshed = await refreshOpenAiCodexOAuthAuth(auth)
-
-  if (refreshed.status === 'refreshed') {
-    await dependencies.storeConnectedCodexAuth(env.AUTH_STORAGE)({
-      providerAccountRef: input.account.providerAccountRef,
-      auth: refreshed.auth,
-    })
-
-    return 'healthy'
-  }
-
-  return {
-    classification:
-      refreshed.failureClass === 'token_invalidated'
-        ? 'requires_reauth'
-        : refreshed.failureClass === 'rate_limited'
-          ? 'rate_limited'
-          : refreshed.failureClass === 'provider_outage'
-            ? 'provider_outage'
-            : 'unknown_failure',
-    providerFailureClass: refreshed.failureClass,
-    providerStatus: refreshed.providerStatus,
-  }
+  return 'healthy'
 }
 
 const recordSanityCheck = async (
@@ -1965,7 +1917,7 @@ export const makeOperatorProviderAccountRoutes = <
               userId: record.attempt.userId,
             },
             dependencies.readStartedCodexDeviceLogin(env.AUTH_STORAGE),
-            dependencies.storeConnectedCodexAuth(env.AUTH_STORAGE),
+            dependencies.storeConnectedCodexAuth(env),
             dependencies.pollDeviceLogin ?? pollOpenAiCodexDeviceLogin,
             dependencies.deleteStartedCodexDeviceLogin(env.AUTH_STORAGE),
           ),
@@ -2084,7 +2036,8 @@ export const makeOperatorProviderAccountRoutes = <
       }
 
       const authMaterial = await dependencies.readConnectedCodexAuthMaterial(
-        env.AUTH_STORAGE,
+        env,
+        account.userId,
         account.providerAccountRef,
       )
 

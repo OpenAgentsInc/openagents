@@ -340,6 +340,7 @@ export type RedactedAnthropicApiKeyMaterializationPlan = Readonly<{
 
 export type ResolvedProviderAccountGrant = Readonly<{
   grantRef: string
+  ownerUserId: string
   provider: ProviderAccountProvider
   providerAccountRef: string
   providerSecretRef: string
@@ -402,6 +403,7 @@ export type ReadStartedCodexDeviceLogin = (
 
 export type StoreConnectedCodexAuth = (
   input: Readonly<{
+    ownerUserId: string
     providerAccountRef: string
     auth: CodexOAuthAuth
   }>,

@@ -41,6 +41,8 @@ type HttpResponse = globalThis.Response
 type ProviderAccountPylonBindings = Readonly<{
   AUTH_STORAGE: KVNamespace
   OPENAGENTS_DB: D1Database
+  PROVIDER_TOKEN_CUSTODY_AES_KEY_B64?: string | undefined
+  PROVIDER_TOKEN_CUSTODY_AES_KEY_ID?: string | undefined
 }>
 
 type ProviderAccountPylonDependencies<
@@ -55,7 +57,7 @@ type ProviderAccountPylonDependencies<
   pollDeviceLogin?: PollCodexDeviceLogin
   readStartedCodexDeviceLogin: (kv: KVNamespace) => ReadStartedCodexDeviceLogin
   startDeviceLogin?: StartCodexDeviceLogin
-  storeConnectedCodexAuth: (kv: KVNamespace) => StoreConnectedCodexAuth
+  storeConnectedCodexAuth: (env: Bindings) => StoreConnectedCodexAuth
   storeStartedCodexDeviceLogin: (
     kv: KVNamespace,
   ) => StoreStartedCodexDeviceLogin
@@ -269,7 +271,7 @@ export const makeProviderAccountPylonHandlers = <
         userId,
       },
       dependencies.readStartedCodexDeviceLogin(env.AUTH_STORAGE),
-      dependencies.storeConnectedCodexAuth(env.AUTH_STORAGE),
+      dependencies.storeConnectedCodexAuth(env),
       dependencies.pollDeviceLogin ?? (secret => pollOpenAiCodexDeviceLogin(secret)),
       dependencies.deleteStartedCodexDeviceLogin(env.AUTH_STORAGE),
     )
@@ -322,7 +324,7 @@ export const makeProviderAccountPylonHandlers = <
                 ? {}
                 : { providerAccountRef }),
             },
-            dependencies.storeConnectedCodexAuth(env.AUTH_STORAGE),
+            dependencies.storeConnectedCodexAuth(env),
           ),
       )
 

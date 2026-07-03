@@ -124,6 +124,16 @@ export class ProviderAccountStorageFailed extends S.TaggedErrorClass<ProviderAcc
   },
 ) {}
 
+export class ProviderTokenCustodyRefreshFailed extends S.TaggedErrorClass<ProviderTokenCustodyRefreshFailed>()(
+  'ProviderTokenCustodyRefreshFailed',
+  {
+    providerAccountRef: S.String,
+    failureClass: S.String,
+    providerStatus: S.Number,
+    message: S.String,
+  },
+) {}
+
 export const ProviderAccountError = S.Union([
   ProviderAccountCredentialMaterial,
   ProviderAccountInvalidVerificationUrl,
@@ -142,6 +152,7 @@ export const ProviderAccountError = S.Union([
   ProviderGrantNotIssued,
   ProviderAccountReloadFailed,
   ProviderAccountStorageFailed,
+  ProviderTokenCustodyRefreshFailed,
 ])
 export type ProviderAccountError = typeof ProviderAccountError.Type
 
@@ -163,6 +174,7 @@ const providerAccountErrorTags = new Set([
   'ProviderGrantNotIssued',
   'ProviderAccountReloadFailed',
   'ProviderAccountStorageFailed',
+  'ProviderTokenCustodyRefreshFailed',
 ])
 
 export const isProviderAccountError = (

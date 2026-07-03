@@ -219,6 +219,15 @@ so subscription auth survives ephemeral/isolated execution; kills the
 documented identity/token footgun class and hardens the subscription-rail
 economics the oh-my-pi audit banked on.
 
+BA-C1 status (2026-07-03): the Worker now stores ChatGPT/Codex OAuth refresh
+tokens in owner-scoped D1 custody rows encrypted with AES-GCM
+(`provider_account_token_custody`, migration
+`0283_provider_account_token_custody.sql`). Codex connect/import paths persist
+rotated refresh tokens through custody, grant materialization issues only
+short-lived access-token `OPENCODE_AUTH_CONTENT` without refresh material, and
+`provider_account_token_custody_audit` records store/access/refresh success or
+failure events with typed provider-account errors.
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-C1 | Owner-scoped token custody service on the Worker: encrypted refresh-token storage (AES-GCM, D1), refresh flow persisting rotated refresh tokens atomically, audit log rows, typed errors; refresh tokens never exposed outward — only short-lived access tokens are served | — | MED | [#8198](https://github.com/OpenAgentsInc/openagents/issues/8198) |
