@@ -851,6 +851,7 @@ import { handleLander3Page } from './lander3-routes'
 import { handleLander4Page } from './lander4-routes'
 import { handleLander5Page } from './lander5-routes'
 import { handleBusinessNewPage } from './business-new-routes'
+import { handleVerticalFunnelRequest } from './vertical-funnel-routes'
 import { handlePublicKhalaTokensServedApi } from './public-khala-tokens-served-routes'
 import { recordPublicKhalaChatServedTokens } from './public-khala-chat-served-tokens'
 import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes'
@@ -13951,6 +13952,11 @@ const routeRequest = makeWorkerRouteRequest({
     marketingAgencyReceiptPublicRoutes.routeMarketingAgencyReceiptRequest,
   routeMarketingAgencySelfServeRequest:
     marketingAgencySelfServePublicRoutes.routeMarketingAgencySelfServeRequest,
+  routeVerticalFunnelRequest: (request, env) =>
+    handleVerticalFunnelRequest(request, {
+      db: openAgentsDatabase(env),
+      resend: getResendEmailConfig(env),
+    }),
   routePylonApiRequest: pylonApiRoutes.routePylonApiRequest,
   routeForgeGitIntakeRequest: (request, env) =>
     makeForgeGitIntakeRoutes<Env>({
