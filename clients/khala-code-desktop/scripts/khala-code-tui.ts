@@ -10,6 +10,7 @@
 // Slash commands: /new (fresh thread), /status (harness readiness), /exit
 
 import { createInterface } from "node:readline/promises"
+import { Buffer } from "node:buffer"
 
 import { createCodexAppServerChatRuntime } from "../src/bun/codex-app-server-chat-runtime.js"
 import { createCodexAppServerHost } from "../src/bun/codex-app-server-client.js"
@@ -147,6 +148,14 @@ const handleLine = async (line: string): Promise<"continue" | "exit"> => {
   return "continue"
 }
 
+const readPipedStdin = async (): Promise<string> => {
+  const chunks: Array<Buffer> = []
+  for await (const chunk of process.stdin) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk)
+  }
+  return Buffer.concat(chunks).toString("utf8")
+}
+
 if (interactive) {
   // Interactive REPL: readline owns the prompt.
   const rl = createInterface({ input: process.stdin, output: process.stdout })
@@ -163,7 +172,7 @@ if (interactive) {
 } else {
   // Piped mode: drain stdin first, then run each line as a sequential turn —
   // readline would drop lines that arrive while a turn is still streaming.
-  const text = await new Response(process.stdin).text()
+  const text = await readPipedStdin()
   for (const line of text.split("\n")) {
     if ((await handleLine(line)) === "exit") break
   }
