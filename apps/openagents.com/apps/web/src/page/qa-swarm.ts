@@ -6,6 +6,7 @@ import type { PublicHeaderAuthState } from './publicHeader'
 import * as PublicHeader from './publicHeader'
 import {
   type QaSwarmCoverageFrontierItem,
+  type QaSwarmFindingsLedgerProjection,
   type QaSwarmPerfBudgetItem,
   type QaSwarmRunProjection,
   type QaSwarmVerdict,
@@ -296,6 +297,86 @@ const perfRow = <Message>(item: QaSwarmPerfBudgetItem): Html => {
   )
 }
 
+const ledgerStatusClass = (
+  status: QaSwarmFindingsLedgerProjection['rows'][number]['status'],
+): string => {
+  switch (status) {
+    case 'caught':
+      return 'text-[var(--oa-color-khala-warning-strong)]'
+    case 'filed':
+      return 'text-[var(--oa-color-khala-energy-cyan)]'
+    case 'fixed':
+      return 'text-[var(--oa-color-khala-success-strong)]'
+    case 'distilled':
+      return 'text-[var(--oa-color-khala-text-bright)]'
+  }
+}
+
+const findingsLedger = <Message>(
+  ledger: QaSwarmFindingsLedgerProjection,
+): Html => {
+  const h = html<Message>()
+  return h.section([Ui.className<Message>(panel)], [
+    h.div([Ui.className<Message>('grid gap-4')], [
+      label<Message>('Findings ledger'),
+      h.div(
+        [Ui.className<Message>('grid gap-3 sm:grid-cols-4')],
+        [
+          metric<Message>('Caught', String(ledger.caughtCount), 'Observed findings'),
+          metric<Message>('Filed', String(ledger.filedIssueCount), 'Strict issues'),
+          metric<Message>('Fixed', String(ledger.fixedCount), 'Closed regressions'),
+          metric<Message>(
+            'Distilled',
+            String(ledger.distilledRegressionCount),
+            'Regression tests',
+          ),
+        ],
+      ),
+      h.ul(
+        [Ui.className<Message>('grid gap-3 p-0')],
+        ledger.rows.map(item =>
+          h.li(
+            [
+              Ui.className<Message>(
+                'grid gap-3 border border-[var(--oa-color-khala-border)] bg-[var(--oa-color-khala-surface)] p-3 sm:grid-cols-[1fr_auto]',
+              ),
+            ],
+            [
+              h.div([Ui.className<Message>('grid gap-1')], [
+                h.span(
+                  [
+                    Ui.className<Message>(
+                      'text-sm font-semibold text-[var(--oa-color-khala-text-bright)]',
+                    ),
+                  ],
+                  [item.label],
+                ),
+                h.span(
+                  [
+                    Ui.className<Message>(
+                      `break-all text-xs text-[var(--oa-color-khala-text-dim)] ${mono}`,
+                    ),
+                  ],
+                  [item.findingRef, ' -> ', item.issueRef, ' -> ', item.testRef],
+                ),
+              ]),
+              h.span(
+                [
+                  Ui.className<Message>(
+                    `text-xs font-semibold uppercase leading-none tracking-wide ${ledgerStatusClass(item.status)} ${mono}`,
+                  ),
+                ],
+                [item.status],
+              ),
+            ],
+          ),
+        ),
+      ),
+      code<Message>(ledger.ledgerRef),
+    ]),
+  ])
+}
+
 const runArticle = <Message>(projection: QaSwarmRunProjection): Html => {
   const h = html<Message>()
 
@@ -365,6 +446,23 @@ const runArticle = <Message>(projection: QaSwarmRunProjection): Html => {
                 ),
                 code<Message>(projection.target.ref),
               ]),
+              h.div([Ui.className<Message>('grid gap-1')], [
+                label<Message>('Weekly report'),
+                h.a(
+                  [
+                    h.Href(projection.engagement.reportHref),
+                    Ui.className<Message>(
+                      `khala-focus text-[var(--oa-color-khala-text-bright)] underline decoration-[var(--oa-color-khala-border-strong)] underline-offset-4 hover:text-[var(--oa-color-khala-energy-cyan)] hover:decoration-[var(--oa-color-khala-energy-cyan)] ${mono}`,
+                    ),
+                  ],
+                  [projection.engagement.reportHref],
+                ),
+                code<Message>(projection.engagement.reportRef),
+              ]),
+              h.div([Ui.className<Message>('grid gap-1')], [
+                label<Message>('Source artifact'),
+                code<Message>(projection.engagement.sourceArtifactRef),
+              ]),
             ],
           ),
         ],
@@ -405,6 +503,8 @@ const runArticle = <Message>(projection: QaSwarmRunProjection): Html => {
           ),
         ]),
       ]),
+
+      findingsLedger<Message>(projection.findingsLedger),
 
       h.section([Ui.className<Message>('grid gap-4 lg:grid-cols-2')], [
         h.div([Ui.className<Message>(panel)], [
@@ -477,6 +577,23 @@ const runArticle = <Message>(projection: QaSwarmRunProjection): Html => {
               ),
             ),
           ),
+        ]),
+      ]),
+
+      h.section([Ui.className<Message>(panel)], [
+        h.div([Ui.className<Message>('grid gap-3')], [
+          label<Message>('Case study seed'),
+          h.a(
+            [
+              h.Href(projection.caseStudy.href),
+              Ui.className<Message>(
+                'khala-focus text-lg font-semibold text-[var(--oa-color-khala-text-bright)] underline decoration-[var(--oa-color-khala-border-strong)] underline-offset-4 hover:text-[var(--oa-color-khala-energy-cyan)] hover:decoration-[var(--oa-color-khala-energy-cyan)]',
+              ),
+            ],
+            [projection.caseStudy.title],
+          ),
+          h.p([Ui.className<Message>(body)], [projection.caseStudy.summary]),
+          code<Message>(projection.caseStudy.receiptRef),
         ]),
       ]),
 

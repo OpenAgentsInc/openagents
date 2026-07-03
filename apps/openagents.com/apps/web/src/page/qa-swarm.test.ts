@@ -111,9 +111,20 @@ describe('QA Swarm route', () => {
     expect(rendered).toContain('Verdict wall')
     expect(rendered).toContain('Coverage + frontier')
     expect(rendered).toContain('Perf budgets')
+    expect(rendered).toContain('Findings ledger')
+    expect(rendered).toContain('Caught')
+    expect(rendered).toContain('Filed')
+    expect(rendered).toContain('Fixed')
+    expect(rendered).toContain('Distilled')
+    expect(rendered).toContain('Case-study seed')
+    expect(rendered).toContain('/qa/qa-run.khala-code-nightly.latest')
+    expect(rendered).toContain('artifact.qa_swarm.weekly_report.khala_code.latest')
+    expect(rendered).toContain('artifact.khala_code.qa_status_surface.latest')
+    expect(rendered).toContain('Cockpit blanks when one startup RPC fails')
     expect(rendered).toContain('Videos and traces')
     expect(rendered).toContain('/trace/24c6fea6-b271-46c6-a9a9-bc614440e9ef')
     expect(rendered).toContain('/docs/qa/khala-code-mechanical-corpus')
+    expect(rendered).toContain('/docs/qa/qa-swarm-khala-code-standing-engagement')
     expect(rendered).toContain('artifact.qa_swarm.target.opaque.customer_one')
     expect(rendered).not.toMatch(/\/Users\/|bearer|token|secret/i)
   })
@@ -153,6 +164,20 @@ describe('QA Swarm projection schema and redaction', () => {
       maxAgeHours: 24,
       mode: 'artifact_snapshot',
     })
+    expect(sampleQaSwarmRunProjection.engagement).toMatchObject({
+      cadence: 'weekly',
+      reportHref: '/qa/qa-run.khala-code-nightly.latest',
+      status: 'standing_customer_one',
+    })
+    expect(sampleQaSwarmRunProjection.findingsLedger).toMatchObject({
+      caughtCount: 3,
+      filedIssueCount: 3,
+      fixedCount: 2,
+      distilledRegressionCount: 1,
+    })
+    expect(sampleQaSwarmRunProjection.caseStudy.href).toBe(
+      '/docs/qa/qa-swarm-khala-code-standing-engagement',
+    )
     expect(lookupQaSwarmRunProjection(QA_SWARM_SAMPLE_RUN_REF)).toEqual(
       sampleQaSwarmRunProjection,
     )

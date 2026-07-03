@@ -746,7 +746,7 @@ export const routeTable = {
   QaSwarm: {
     surface: 'spaDocument',
     serverDocument: QA_SWARM,
-    examplePaths: ['/qa/qa-run.khala-code-nightly.2026-07-02'],
+    examplePaths: ['/qa/qa-run.khala-code-nightly.latest'],
     requiresAuthBootstrap: false,
     loggedInGate: 'open',
     inLoggedOutUnion: true,
