@@ -16,6 +16,7 @@ import {
   SelectedCustomerSiteElementContext,
   SubmittedCustomerOrder,
   SubmittedCustomerSiteFeedback,
+  UpdatedCustomerSiteBuilderPromptDraft,
   UpdatedCustomerOrderDraft,
   UpdatedCustomerSiteFeedbackDraft,
 } from '../message'
@@ -163,6 +164,15 @@ const builderPromptSummary = (order: CustomerOrder): string =>
   order.site === null
     ? order.request
     : `Continue building ${order.request}`.slice(0, 320)
+
+const siteAuthoringPromptSummary = (
+  model: Model,
+  order: CustomerOrder,
+): string => {
+  const draft = model.customerSiteBuilderPromptDraft.trim()
+
+  return draft === '' ? builderPromptSummary(order) : draft
+}
 
 const SITE_EDITOR_SIDEBAR_WIDTH_PX = 336
 
@@ -602,6 +612,199 @@ const currentRevisionFrom = (
   revisions: ReadonlyArray<CustomerSiteRevision>,
 ): CustomerSiteRevision | null =>
   revisions.find(revision => revision.active) ?? revisions[0] ?? null
+
+const currentRevisionForModel = (model: Model): CustomerSiteRevision | null =>
+  model.customerSiteRevisions._tag === 'CustomerSiteRevisionsLoaded'
+    ? currentRevisionFrom(model.customerSiteRevisions.revisions)
+    : null
+
+const siteAuthoringStageRow = (
+  label: string,
+  value: string,
+  tone: 'accent' | 'positive' | 'warning' | 'negative' | 'info',
+): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'grid gap-2 border-b border-[#222] py-3 last:border-b-0 sm:grid-cols-[7rem_minmax(0,1fr)] sm:gap-4',
+      ),
+    ],
+    [
+      h.div([Ui.className<Message>(Ui.eyebrowClass)], [label]),
+      h.div(
+        [Ui.className<Message>('flex min-w-0 items-start gap-2 text-sm/6')],
+        [
+          h.span([Ui.className<Message>(`${Ui.statusDotClass(tone)} mt-2`)], []),
+          h.span(
+            [
+              Ui.className<Message>(
+                'min-w-0 overflow-hidden text-ellipsis text-white/70',
+              ),
+            ],
+            [value],
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
+const siteAuthoringGenerationStage = (
+  state: Model['customerSiteBuilderSession'],
+): Readonly<{
+  tone: 'accent' | 'positive' | 'warning' | 'negative' | 'info'
+  value: string
+}> =>
+  M.value(state).pipe(
+    M.tagsExhaustive({
+      CustomerSiteBuilderSessionIdle: () => ({
+        tone: 'accent' as const,
+        value: 'Ready',
+      }),
+      CustomerSiteBuilderSessionLoading: () => ({
+        tone: 'info' as const,
+        value: 'Generating',
+      }),
+      CustomerSiteBuilderSessionFailed: () => ({
+        tone: 'negative' as const,
+        value: 'Blocked',
+      }),
+      CustomerSiteBuilderSessionLoaded: ({ session }) =>
+        M.value(session.status).pipe(
+          M.when('draft', () => ({
+            tone: 'accent' as const,
+            value: 'Draft',
+          })),
+          M.when('planning', () => ({
+            tone: 'info' as const,
+            value: 'Planning',
+          })),
+          M.when('building', () => ({
+            tone: 'info' as const,
+            value: 'Building',
+          })),
+          M.when('preview_ready', () => ({
+            tone: 'positive' as const,
+            value: 'Preview ready',
+          })),
+          M.when('review_ready', () => ({
+            tone: 'positive' as const,
+            value: 'Review ready',
+          })),
+          M.when('saved', () => ({
+            tone: 'positive' as const,
+            value: 'Saved',
+          })),
+          M.when('deploying', () => ({
+            tone: 'info' as const,
+            value: 'Publishing',
+          })),
+          M.when('deployed', () => ({
+            tone: 'positive' as const,
+            value: 'Published',
+          })),
+          M.when('failed', () => ({
+            tone: 'negative' as const,
+            value: 'Failed',
+          })),
+          M.when('archived', () => ({
+            tone: 'warning' as const,
+            value: 'Archived',
+          })),
+          M.exhaustive,
+        ),
+    }),
+  )
+
+const siteAuthoringApprovalStage = (
+  model: Model,
+  order: CustomerOrder,
+): Readonly<{
+  tone: 'accent' | 'positive' | 'warning' | 'negative' | 'info'
+  value: string
+}> => {
+  const revision = currentRevisionForModel(model)
+
+  if (order.site === null) {
+    return { tone: 'accent', value: 'Waiting for Site' }
+  }
+
+  if (order.site.activeUrl !== null) {
+    return { tone: 'positive', value: 'Approved' }
+  }
+
+  if (revision === null) {
+    return order.site.latestSavedVersionId === null
+      ? { tone: 'accent', value: 'Waiting for saved revision' }
+      : { tone: 'warning', value: 'Review required' }
+  }
+
+  return M.value(revision.reviewState).pipe(
+    M.when('runtime_verified', () => ({
+      tone: 'positive' as const,
+      value: 'Runtime verified',
+    })),
+    M.when('customer_accepted', () => ({
+      tone: 'positive' as const,
+      value: 'Customer accepted',
+    })),
+    M.when('customer_review_ready', () => ({
+      tone: 'warning' as const,
+      value: 'Customer review ready',
+    })),
+    M.when('internal_draft', () => ({
+      tone: 'accent' as const,
+      value: 'Internal draft',
+    })),
+    M.exhaustive,
+  )
+}
+
+const siteAuthoringPublishStage = (
+  order: CustomerOrder,
+): Readonly<{
+  tone: 'accent' | 'positive' | 'warning' | 'negative' | 'info'
+  value: string
+}> => {
+  if (order.site === null) {
+    return { tone: 'accent', value: 'Waiting for Site' }
+  }
+
+  if (order.site.activeUrl !== null) {
+    return { tone: 'positive', value: 'Live on native runtime' }
+  }
+
+  if (order.site.activeDeploymentId !== null) {
+    return { tone: 'info', value: 'Deployment recorded' }
+  }
+
+  if (order.site.latestSavedVersionId !== null) {
+    return { tone: 'warning', value: 'Operator review required' }
+  }
+
+  return { tone: 'accent', value: 'Waiting for reviewable version' }
+}
+
+const siteAuthoringApprovalGate = (model: Model, order: CustomerOrder): string => {
+  const approval = siteAuthoringApprovalStage(model, order)
+
+  return approval.tone === 'positive' ? 'Recorded' : 'Required'
+}
+
+const siteAuthoringOutputBadge = (label: string): Html => {
+  const h = html<Message>()
+
+  return h.span(
+    [
+      Ui.className<Message>(
+        'inline-flex border border-[#333] px-2 py-1 text-[0.6875rem] uppercase text-white/55',
+      ),
+    ],
+    [label],
+  )
+}
 
 const revisionLiveSummary = (
   current: CustomerSiteRevision,
@@ -1212,6 +1415,160 @@ const latestBuilderEventCursor = (model: Model): number | undefined =>
     M.orElse(() => undefined),
   )
 
+const siteAuthoringPanel = (model: Model, order: CustomerOrder): Html | null => {
+  const h = html<Message>()
+
+  if (order.site === null) {
+    return null
+  }
+
+  const opening =
+    model.customerSiteBuilderSession._tag ===
+    'CustomerSiteBuilderSessionLoading'
+  const promptSummary = siteAuthoringPromptSummary(model, order)
+  const generation = siteAuthoringGenerationStage(
+    model.customerSiteBuilderSession,
+  )
+  const approval = siteAuthoringApprovalStage(model, order)
+  const publish = siteAuthoringPublishStage(order)
+
+  return h.section(
+    [
+      h.DataAttribute('component', 'customer-site-authoring-panel'),
+      Ui.className<Message>('grid gap-4 border border-[#333] bg-[#080808] p-4'),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex flex-wrap items-start justify-between gap-3',
+          ),
+        ],
+        [
+          h.div([Ui.className<Message>('grid gap-2')], [
+            h.div([Ui.className<Message>(Ui.eyebrowClass)], [
+              'Site authoring',
+            ]),
+            h.div(
+              [Ui.className<Message>('flex flex-wrap gap-2')],
+              [
+                siteAuthoringOutputBadge('Landing'),
+                siteAuthoringOutputBadge('Funnel'),
+                siteAuthoringOutputBadge('Thank-you'),
+              ],
+            ),
+          ]),
+          Ui.badge<Message>({
+            label: publish.value,
+            tone: publish.tone,
+          }),
+        ],
+      ),
+      h.form(
+        [
+          h.OnSubmit(
+            RequestedOpenCustomerSiteBuilderSession({
+              orderId: order.id,
+              promptSummary,
+              siteId: order.site.id,
+            }),
+          ),
+          Ui.className<Message>('grid gap-3'),
+        ],
+        [
+          h.label(
+            [Ui.className<Message>('grid gap-2')],
+            [
+              h.span([Ui.className<Message>(Ui.eyebrowClass)], ['Site brief']),
+              h.textarea(
+                [
+                  h.AriaLabel('Site brief'),
+                  h.Name('siteBrief'),
+                  h.Rows(4),
+                  h.Placeholder(builderPromptSummary(order)),
+                  h.Value(model.customerSiteBuilderPromptDraft),
+                  h.OnInput(value =>
+                    UpdatedCustomerSiteBuilderPromptDraft({ value }),
+                  ),
+                  ...(opening ? [h.Disabled(true)] : []),
+                  Ui.className<Message>(
+                    `${Ui.inputClass} min-h-28 resize-y leading-6 max-sm:text-base`,
+                  ),
+                ],
+                [],
+              ),
+            ],
+          ),
+          h.div(
+            [Ui.className<Message>('flex flex-wrap items-center gap-2')],
+            [
+              Ui.button<Message>({
+                label: opening ? 'Generating' : 'Generate Site pass',
+                size: 'sm',
+                variant: 'primary',
+                attrs: [
+                  h.Type('submit'),
+                  ...(opening ? [h.Disabled(true)] : []),
+                ],
+              }),
+              Ui.button<Message>({
+                label: 'Refresh Site',
+                size: 'sm',
+                variant: 'secondary',
+                attrs: [
+                  h.Type('button'),
+                  h.OnClick(RequestedLoadCustomerOrder()),
+                ],
+              }),
+            ],
+          ),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('border-y border-[#222]')],
+        [
+          siteAuthoringStageRow('Prompt', promptSummary, 'accent'),
+          siteAuthoringStageRow('Generate', generation.value, generation.tone),
+          siteAuthoringStageRow('Approve', approval.value, approval.tone),
+          siteAuthoringStageRow('Publish', publish.value, publish.tone),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('border-y border-[#222]')],
+        [
+          progressDetailRow('Approval gate', [
+            siteAuthoringApprovalGate(model, order),
+          ]),
+          progressDetailRow('Saved version', [
+            order.site.latestSavedVersionId ?? 'No saved revision yet',
+          ]),
+          progressDetailRow('Deployment', [
+            order.site.activeDeploymentId ?? 'No deployment yet',
+          ]),
+          progressDetailRow(
+            'Live URL',
+            order.site.activeUrl === null
+              ? ['No live URL yet']
+              : [
+                  h.a(
+                    [
+                      h.Href(order.site.activeUrl),
+                      h.Target('_blank'),
+                      h.Rel('noreferrer'),
+                      Ui.className<Message>(
+                        'min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-white/80 underline underline-offset-[3px] hover:text-[#ffb400]',
+                      ),
+                    ],
+                    [order.site.activeUrl],
+                  ),
+                ],
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
 const builderSessionBody = (
   model: Model,
   order: CustomerOrder,
@@ -1795,6 +2152,7 @@ const statusPanel = (model: Model, order: CustomerOrder): Html => {
   const tone = statusTone(order.status)
   const email = model.session.email
   const site = sitePanel(order)
+  const authoring = siteAuthoringPanel(model, order)
   const builder = siteBuilderPanel(model, order)
   const triage = triagePanel(order)
   const usage = usagePanel(order)
@@ -1870,6 +2228,7 @@ const statusPanel = (model: Model, order: CustomerOrder): Html => {
       ),
       ...(triage === null ? [] : [triage]),
       progressPanel(order),
+      ...(authoring === null ? [] : [authoring]),
       ...(builder === null ? [] : [builder]),
       siteEditorShell(model, order),
       ...(usage === null ? [] : [usage]),
