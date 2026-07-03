@@ -3017,6 +3017,9 @@ describe('logged-in workroom sidebar', () => {
       Scene.expect(
         Scene.selector('a[href="/t/22222222-2222-4222-8222-222222222222"]'),
       ).toHaveClass('border-[#ffb400]/70'),
+      Scene.expect(
+        Scene.selector('a[href="/t/22222222-2222-4222-8222-222222222222"]'),
+      ).toHaveClass('bg-[#141414]'),
     )
   })
 

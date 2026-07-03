@@ -260,13 +260,12 @@ const workroomSidebarSessionRow = <Message>(
           h.Href(item.href ?? '#'),
           h.Class(
             clsx(
-              'grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 border border-transparent text-inherit no-underline hover:border-[#333] hover:bg-[#080808]',
+              'grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 border border-transparent text-inherit no-underline',
               motionRowHoverClass,
               density === 'compact' ? 'min-h-6 px-2 py-0' : 'min-h-8 px-2 py-1',
-              {
-                'border-[#ffb400]/70 bg-[#080808] text-[#f1efe8]':
-                  item.active === true,
-              },
+              item.active === true
+                ? 'border-[#ffb400]/70 bg-[#141414] text-[#f1efe8] hover:border-[#ffb400]/80 hover:bg-[#141414]'
+                : 'hover:border-[#333] hover:bg-[#080808]',
             ),
           ),
         ],
