@@ -3,6 +3,9 @@ import { existsSync, realpathSync } from "node:fs"
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
+
+// Behavior contract oracle: background_agents.credentials.no_long_lived_tokens_in_workspaces.v1
+
 import {
   CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF,
   CLAUDE_AGENT_TASK_SCHEMA,

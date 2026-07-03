@@ -298,6 +298,17 @@ three warming layers become worktree caching, prebuilt baselines, and
 warm-on-intent. The UX delta between "fire and forget in seconds" and
 "fire and wait".
 
+BA-E1 status (2026-07-03): the Pylon workspace materializer now has a
+prepared-worktree cache keyed by repository full name plus pinned baseline
+commit. Clean closeout snapshots record the typed
+`post_completion_snapshot` reason; matching future materializations restore by
+local clone plus `git reset --hard` / `git clean -ffdx` and report
+`restore_quick_sync_reset`. Entries carry integrity metadata, dirty/stale cache
+entries are evicted before reuse, and a byte budget removes the oldest prepared
+entries. Regression coverage lives in `apps/pylon/tests/workspace-worktree.test.ts`
+and the enforced contract
+`background_agents.warm_dispatch.prepared_worktree_cache.v1`.
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-E1 | Prepared-worktree cache in the Pylon workspace materializer: typed reuse reasons (post-completion snapshot, restore = quick sync + reset), cache keyed by repo+baseline, integrity checks, bounded disk budget with eviction | — | MED | [#8203](https://github.com/OpenAgentsInc/openagents/issues/8203) |

@@ -90,6 +90,29 @@ admin state; that cache is not a long-lived SCM credential.
   (`defaultGitCheckoutRunner`), available by explicit injection.
 - **`injected`.** Test seams.
 
+## Prepared-worktree cache
+
+BA-E1 adds an optional prepared-worktree cache above the shared bare object
+cache. When a lease configured with `preparedWorktreeCacheRoot` closes out
+cleanly, cleanup snapshots the source checkout into a local prepared entry keyed
+by repository full name plus pinned baseline commit. The snapshot record uses
+`openagents.pylon.prepared_worktree_cache.v1` and the typed reuse reason
+`post_completion_snapshot`.
+
+On a later matching materialization, Pylon validates the prepared entry before
+reuse: metadata must match the repo+baseline key, the prepared checkout must be
+a Git root at the expected baseline, and `git status --porcelain` must be
+clean. Invalid, dirty, or stale prepared entries are removed and the materializer
+falls back to the normal `git_worktree` path. A cache hit restores by local
+clone, `git reset --hard <baseline>`, and `git clean -ffdx`, then records the
+typed reason `restore_quick_sync_reset`.
+
+The cache is local-only. Prepared directories and metadata stay out of public
+lease projections and closeouts. A byte budget
+(`preparedWorktreeDiskBudgetBytes`, default 5 GiB) is enforced by evicting the
+oldest prepared entries until the cache is back under budget; if a single entry
+is larger than the configured budget, it is evicted too.
+
 ## Leases, TTL, and cleanup receipts
 
 `materializeGitCheckoutWorkspaceWithLease` writes a workspace lease record

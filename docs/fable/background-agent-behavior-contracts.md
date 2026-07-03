@@ -10,7 +10,7 @@ oracles land. Entries remain `pending` until the owning task adds its oracle
 test and flips that exact contract to `enforced`; BA-B4 and BA-A5 are the
 first enforced background-agent contracts in this registry.
 
-Registry version: `2026-07-03.4` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-03.5` (schema `openagents.behavior_contracts.v1`)
 
 ### `background_agents.dispatch.budget_caps_enforced.v1` - ENFORCED
 
@@ -41,7 +41,7 @@ Registry version: `2026-07-03.4` (schema `openagents.behavior_contracts.v1`)
 - **Stated by:** owner via issue_list on 2026-07-03
 - **Statement:** Worker-side background-agent Git credentials are brokered: dispatch sends only ref metadata, and the Pylon materializer installs a per-task Git credential helper that scopes requests by protocol, host, and path, uses a bounded cache, and never reads embedded SCM credentials from the workspace.
 - **Enforcement tier:** test-sweep
-- **Oracle** `background_agents.credentials.dispatch_broker_refs` (vitest, unit): Definition dispatch attaches `scmAuthBroker` metadata with Forge token refs to Pylon `git_checkout` assignments and never includes raw `oa_forge_git_` token material. - `apps/openagents.com/workers/api/src/agent-definition-run-routes.test.ts`
+- **Oracle** `background_agents.credentials.dispatch_broker_refs` (bun-test, unit): Definition dispatch attaches `scmAuthBroker` metadata with Forge token refs to Pylon `git_checkout` assignments and never includes raw `oa_forge_git_` token material. - `apps/openagents.com/workers/api/src/agent-definition-run-routes.test.ts`
 - **Oracle** `background_agents.credentials.pylon_helper_install` (bun-test, unit): The Pylon workspace materializer validates broker metadata, rejects raw/malformed broker shapes, writes helper config under Git admin state, configures `credential.useHttpPath`, fails closed, and stores no raw SCM token in the generated config/script. - `apps/pylon/tests/workspace-materializer.test.ts`
 - **Verification:** BA-D2 is enforced by the agent-definition run route test plus the Pylon workspace materializer test in their normal sweeps.
 - **Authority boundary:** This contract proves the brokered helper shape and ref-only dispatch boundary. The broader no-long-lived-token runtime sweep is enforced by `background_agents.credentials.no_long_lived_tokens_in_workspaces.v1`.
@@ -58,6 +58,18 @@ Registry version: `2026-07-03.4` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `background_agents.credentials.claude_runtime_sweep` (bun-test, unit): Claude git-checkout runs scan the bounded workspace plus selected `CLAUDE_CONFIG_DIR`, refuse with `scm_credential_policy_failed`, and clean the lease on detection. - `apps/pylon/tests/claude-agent-executor.test.ts`
 - **Verification:** BA-D3 is enforced by the Pylon materializer, worktree, Codex executor, and Claude executor tests in the normal Pylon bun test sweep.
 - **Authority boundary:** This contract binds worker workspace/account-home credential hygiene only. It does not claim that owner subscription custody or provider-account refresh flows are complete.
+
+### `background_agents.warm_dispatch.prepared_worktree_cache.v1` - ENFORCED
+
+- **Surface:** pylon-worker (warm dispatch)
+- **Stated by:** owner via issue_list on 2026-07-03
+- **Statement:** Prepared-worktree cache in the Pylon workspace materializer: typed reuse reasons (post-completion snapshot, restore = quick sync + reset), cache keyed by repo+baseline, integrity checks, bounded disk budget with eviction.
+- **Enforcement tier:** test-sweep
+- **Oracle** `background_agents.warm_dispatch.prepared_cache_key` (bun-test, unit): `preparedWorktreeCacheKeyFor` is stable for one repository+baseline pair and changes across repository names or baseline commits. - `apps/pylon/tests/workspace-worktree.test.ts`
+- **Oracle** `background_agents.warm_dispatch.prepared_cache_snapshot_restore` (bun-test, unit): A clean closeout records a `post_completion_snapshot` prepared entry, and the next matching repo+baseline materialization restores with `restore_quick_sync_reset` without contacting the remote. - `apps/pylon/tests/workspace-worktree.test.ts`
+- **Oracle** `background_agents.warm_dispatch.prepared_cache_integrity_budget` (bun-test, unit): Prepared cache integrity rejects dirty/stale entries and the byte budget evicts oldest prepared entries while retaining the newest fitting entry. - `apps/pylon/tests/workspace-worktree.test.ts`
+- **Verification:** BA-E1 is enforced by the Pylon workspace-worktree test suite in the normal Pylon bun test sweep.
+- **Authority boundary:** This contract binds the Pylon materializer prepared-worktree source cache only. It does not claim prebuilt dependency baselines, staleness refresh cadence, or Khala Code warm-on-intent dispatch, which remain BA-E2/BA-E3 scope.
 
 ### `background_agents.definitions.harness_swap.v1` - PENDING
 

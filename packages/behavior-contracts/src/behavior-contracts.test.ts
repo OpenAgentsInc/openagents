@@ -343,49 +343,43 @@ const repoPath = (ref: string): string =>
   new URL(`../../../${ref}`, import.meta.url).pathname
 
 describe("background agent contract registry", () => {
-  test("registers the headline background-agent invariants with BA-B4 and BA-A5 enforced", () => {
+  test("registers the headline background-agent invariants with enforced oracles", () => {
     const validation = validateBehaviorContractRegistry(backgroundAgentsContractRegistry)
     expect(validation.issues).toEqual([])
     expect(validation.ok).toBe(true)
     expect(backgroundAgentsContractRegistry.contracts.map(contract => contract.contractId)).toEqual([
       "background_agents.dispatch.budget_caps_enforced.v1",
       "background_agents.toolset.compiled_policy_enforced.v1",
+      "background_agents.credentials.brokered_scm_helper.v1",
       "background_agents.credentials.no_long_lived_tokens_in_workspaces.v1",
+      "background_agents.warm_dispatch.prepared_worktree_cache.v1",
       "background_agents.definitions.harness_swap.v1",
       "background_agents.agents_panel.run_status_indicators_truthful.v1",
       "background_agents.warm_dispatch.honest_no_op_without_warm_path.v1",
     ])
-    const dispatchBudgetContract = backgroundAgentsContractRegistry.contracts.find(
-      contract =>
-        contract.contractId === "background_agents.dispatch.budget_caps_enforced.v1",
-    )
-    expect(dispatchBudgetContract).toMatchObject({
-      blockerRefs: [],
-      enforcementTier: "test-sweep",
-      state: "enforced",
-    })
-    expect(dispatchBudgetContract?.oracles.map(oracle => oracle.ref)).toEqual([
-      "apps/openagents.com/workers/api/src/agent-definition-run-routes.test.ts",
-      "apps/openagents.com/workers/api/src/agent-definition-trigger-store.test.ts",
+    const enforcedContractIds = backgroundAgentsContractRegistry.contracts
+      .filter(contract => contract.state === "enforced")
+      .map(contract => contract.contractId)
+    expect(enforcedContractIds).toEqual([
+      "background_agents.dispatch.budget_caps_enforced.v1",
+      "background_agents.toolset.compiled_policy_enforced.v1",
+      "background_agents.credentials.brokered_scm_helper.v1",
+      "background_agents.credentials.no_long_lived_tokens_in_workspaces.v1",
+      "background_agents.warm_dispatch.prepared_worktree_cache.v1",
     ])
-    const toolsetPolicyContract = backgroundAgentsContractRegistry.contracts.find(
-      contract =>
-        contract.contractId === "background_agents.toolset.compiled_policy_enforced.v1",
-    )
-    expect(toolsetPolicyContract).toMatchObject({
-      blockerRefs: [],
-      enforcementTier: "test-sweep",
-      state: "enforced",
-    })
-    expect(toolsetPolicyContract?.oracles.map(oracle => oracle.ref)).toEqual([
-      "packages/agent-runtime-schema/src/index.test.ts",
-      "packages/khala-tools/src/dispatcher.test.ts",
-      "apps/openagents.com/workers/api/src/forge-tenant-git-auth-store.test.ts",
-    ])
+    for (const contract of backgroundAgentsContractRegistry.contracts.filter(
+      contract => enforcedContractIds.includes(contract.contractId),
+    )) {
+      expect(contract).toMatchObject({
+        blockerRefs: [],
+        enforcementTier: "test-sweep",
+        state: "enforced",
+      })
+      expect(contract.oracles.length).toBeGreaterThan(0)
+    }
     const pendingContracts = backgroundAgentsContractRegistry.contracts.filter(
       contract =>
-        contract.contractId !== "background_agents.dispatch.budget_caps_enforced.v1" &&
-        contract.contractId !== "background_agents.toolset.compiled_policy_enforced.v1",
+        !enforcedContractIds.includes(contract.contractId),
     )
     expect(
       pendingContracts.every(
@@ -397,17 +391,21 @@ describe("background agent contract registry", () => {
     ).toBe(true)
   })
 
-  test("background-agent oracle coverage covers BA-B4 and BA-A5 and skips pending entries", async () => {
+  test("background-agent oracle coverage covers enforced entries and skips pending entries", async () => {
     const enforcedContracts = backgroundAgentsContractRegistry.contracts.filter(
       contract => contract.state === "enforced",
     )
-    const sources = Object.fromEntries(
-      enforcedContracts.flatMap(contract =>
-        contract.oracles.map(oracle => [
-          oracle.ref,
+    const sourceByRef = new Map<string, string[]>()
+    for (const contract of enforcedContracts) {
+      for (const oracle of contract.oracles) {
+        sourceByRef.set(oracle.ref, [
+          ...(sourceByRef.get(oracle.ref) ?? []),
           `// ${contract.contractId}`,
-        ]),
-      ),
+        ])
+      }
+    }
+    const sources = Object.fromEntries(
+      [...sourceByRef.entries()].map(([ref, contractRefs]) => [ref, contractRefs.join("\n")]),
     )
     const report = await Effect.runPromise(
       checkBehaviorContractCoverage(backgroundAgentsContractRegistry).pipe(
@@ -415,13 +413,9 @@ describe("background agent contract registry", () => {
       ),
     )
     expect(report.ok).toBe(true)
-    expect(report.results.map(result => result.status)).toEqual([
-      "covered",
-      "covered",
-      "covered",
-      "covered",
-      "covered",
-    ])
+    expect(report.results.map(result => result.status)).toEqual(
+      Array.from({ length: report.results.length }, () => "covered"),
+    )
   })
 
   test("the background-agent human contract doc stays in sync with the registry", async () => {

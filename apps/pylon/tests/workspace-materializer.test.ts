@@ -4,6 +4,10 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { Effect } from "effect"
+
+// Behavior contract oracle: background_agents.credentials.brokered_scm_helper.v1
+// Behavior contract oracle: background_agents.credentials.no_long_lived_tokens_in_workspaces.v1
+
 import {
   checkoutBaseCommitSha,
   checkoutSourceRef,

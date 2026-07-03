@@ -137,6 +137,18 @@ More specific invariant ledgers apply inside imported apps and packages.
   bounded workspace plus selected isolated account home before verification or
   PR publication, credential-policy findings become typed refusals, and lease
   cleanup removes token-leaked workspaces even when they are dirty.
+- Pylon prepared-worktree reuse is local-only and keyed by repository full name
+  plus pinned baseline commit. Cleanup may snapshot only clean, credential-free
+  workspaces with the typed `post_completion_snapshot` reason. Restore must
+  validate the prepared entry's metadata, Git root, HEAD, and clean status, then
+  perform local clone + `git reset --hard` + `git clean -ffdx` with the typed
+  `restore_quick_sync_reset` reason before handing the workspace to an executor.
+  Dirty, stale, or malformed prepared entries are removed rather than reused,
+  and prepared-cache disk usage is bounded by byte-budget eviction of oldest
+  entries. Regression coverage lives in
+  `apps/pylon/tests/workspace-worktree.test.ts` and the enforced
+  `background_agents.warm_dispatch.prepared_worktree_cache.v1` behavior
+  contract.
 - Runtime runs may link back to `agentDefinitionId` as evidence that a run was
   definition-backed, but that link alone grants no tool, spend, dispatch,
   payout, settlement, public-claim, provider-account, or external-send

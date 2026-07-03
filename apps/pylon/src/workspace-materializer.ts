@@ -1,5 +1,5 @@
 import { existsSync, realpathSync } from "node:fs"
-import { chmod, lstat, mkdir, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises"
+import { chmod, lstat, mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises"
 import { dirname, join, relative, resolve } from "node:path"
 import { createHash } from "node:crypto"
 import { Context, Effect, Layer, type Scope } from "effect"
@@ -76,6 +76,42 @@ export type MaterializedWorkspace = {
   workingDirectory: string
   sourceRef: string
   cleanupRef: string
+  preparedWorktreeCache?: WorkspacePreparedWorktreeCacheUse
+}
+
+export const WORKSPACE_PREPARED_WORKTREE_CACHE_SCHEMA =
+  "openagents.pylon.prepared_worktree_cache.v1"
+export const DEFAULT_PREPARED_WORKTREE_CACHE_DISK_BUDGET_BYTES = 5 * 1024 * 1024 * 1024
+
+export type WorkspacePreparedWorktreeCacheReuseReason =
+  | "post_completion_snapshot"
+  | "restore_quick_sync_reset"
+
+export type WorkspacePreparedWorktreeCacheUse = {
+  schema: typeof WORKSPACE_PREPARED_WORKTREE_CACHE_SCHEMA
+  cacheKey: string
+  state: "hit"
+  reuseReason: Extract<WorkspacePreparedWorktreeCacheReuseReason, "restore_quick_sync_reset">
+  integrityRef: string
+}
+
+export type WorkspacePreparedWorktreeCacheRecord = {
+  schema: typeof WORKSPACE_PREPARED_WORKTREE_CACHE_SCHEMA
+  cacheKey: string
+  repositoryFullName: string
+  baselineCommitSha: string
+  sourceRef: string
+  state: "ready"
+  reuseReason: WorkspacePreparedWorktreeCacheReuseReason
+  integrityRef: string
+  createdAt: string
+  updatedAt: string
+  lastUsedAt: string
+  useCount: number
+  sizeBytes: number
+  local: {
+    preparedDirectory: string
+  }
 }
 
 export const WORKSPACE_SCM_CREDENTIAL_SCAN_SCHEMA =
@@ -289,7 +325,7 @@ async function scanCredentialPath(input: {
   if (info.isDirectory()) {
     const name = relativePath === "." ? "" : relativePath.split("/").at(-1) ?? ""
     if (name !== "" && shouldSkipCredentialScanDirectory(relativePath, name)) return 0
-    let entries: Awaited<ReturnType<typeof readdir>>
+    let entries: Array<{ name: string }>
     try {
       entries = await readdir(input.absolutePath, { withFileTypes: true })
     } catch {
@@ -1311,6 +1347,12 @@ export type WorkspaceLeaseRecord = {
     cacheRoot: string
     workingDirectory: string
     repositoryCacheDirectory?: string
+    preparedWorktreeCache?: {
+      root: string
+      cacheKey: string
+      diskBudgetBytes: number
+      restore?: WorkspacePreparedWorktreeCacheUse
+    }
   }
 }
 
@@ -1397,6 +1439,43 @@ export class PylonWorkspaceMaterializer extends Context.Service<
 /** Stable cache key for one public repository's shared bare clone. */
 export function repositoryCacheKeyFor(fullName: string): string {
   return createHash("sha256").update(fullName).digest("hex").slice(0, 24)
+}
+
+export function preparedWorktreeCacheKeyFor(input: {
+  repositoryFullName: string
+  baselineCommitSha: string
+}): string {
+  return createHash("sha256")
+    .update(`${input.repositoryFullName}\0${input.baselineCommitSha.toLowerCase()}`)
+    .digest("hex")
+    .slice(0, 32)
+}
+
+function preparedWorktreeCacheKeyForCheckout(checkout: GitCheckoutWorkspace): string {
+  return preparedWorktreeCacheKeyFor({
+    baselineCommitSha: checkoutBaseCommitSha(checkout),
+    repositoryFullName: checkout.repository.fullName,
+  })
+}
+
+function preparedWorktreeCacheDirectory(root: string, cacheKey: string): string {
+  return join(root, `prepared.${cacheKey}`)
+}
+
+function preparedWorktreeCacheRecordPath(preparedDirectory: string): string {
+  return `${preparedDirectory}.json`
+}
+
+function preparedWorktreeIntegrityRef(input: {
+  cacheKey: string
+  repositoryFullName: string
+  baselineCommitSha: string
+  state: "ready"
+}): string {
+  return stableRef(
+    "integrity.pylon.prepared_worktree",
+    `${input.cacheKey}:${input.repositoryFullName}:${input.baselineCommitSha}:${input.state}`,
+  )
 }
 
 export type GitWorktreeCheckoutRunnerOptions = {
@@ -1627,6 +1706,373 @@ export function createGitWorktreeCheckoutRunner(
   }
 }
 
+function boundedPreparedWorktreeDiskBudgetBytes(value: number | undefined): number {
+  if (value === undefined) return DEFAULT_PREPARED_WORKTREE_CACHE_DISK_BUDGET_BYTES
+  if (!Number.isFinite(value) || value < 0) return DEFAULT_PREPARED_WORKTREE_CACHE_DISK_BUDGET_BYTES
+  return Math.floor(value)
+}
+
+async function directorySizeBytes(path: string, seenRealPaths = new Set<string>()): Promise<number> {
+  let info: Awaited<ReturnType<typeof lstat>>
+  try {
+    info = await lstat(path)
+  } catch {
+    return 0
+  }
+  if (info.isSymbolicLink()) return 0
+
+  let realPath: string
+  try {
+    realPath = realpathSync(path)
+  } catch {
+    realPath = resolve(path)
+  }
+  if (seenRealPaths.has(realPath)) return 0
+  seenRealPaths.add(realPath)
+
+  const blocks = (info as { blocks?: number }).blocks
+  const ownBytes = typeof blocks === "number" && Number.isFinite(blocks) ? blocks * 512 : info.size
+  if (!info.isDirectory()) return ownBytes
+
+  let entries: string[]
+  try {
+    entries = await readdir(path)
+  } catch {
+    return ownBytes
+  }
+  let total = ownBytes
+  for (const entry of entries) {
+    total += await directorySizeBytes(join(path, entry), seenRealPaths)
+  }
+  return total
+}
+
+function preparedWorktreeCacheRecordFrom(value: unknown): WorkspacePreparedWorktreeCacheRecord | null {
+  if (value === null || typeof value !== "object") return null
+  const record = value as WorkspacePreparedWorktreeCacheRecord
+  if (record.schema !== WORKSPACE_PREPARED_WORKTREE_CACHE_SCHEMA) return null
+  if (record.state !== "ready") return null
+  if (typeof record.cacheKey !== "string" || !/^[a-f0-9]{32}$/.test(record.cacheKey)) return null
+  if (typeof record.repositoryFullName !== "string" || !githubFullNamePattern.test(record.repositoryFullName)) return null
+  if (typeof record.baselineCommitSha !== "string" || !gitCommitShaPattern.test(record.baselineCommitSha)) return null
+  if (record.sourceRef !== `${record.repositoryFullName}:${record.baselineCommitSha}`) return null
+  if (record.reuseReason !== "post_completion_snapshot" && record.reuseReason !== "restore_quick_sync_reset") return null
+  if (typeof record.integrityRef !== "string" || !publicRefPattern.test(record.integrityRef)) return null
+  if (typeof record.createdAt !== "string" || typeof record.updatedAt !== "string" || typeof record.lastUsedAt !== "string") {
+    return null
+  }
+  if (typeof record.useCount !== "number" || !Number.isInteger(record.useCount) || record.useCount < 0) return null
+  if (typeof record.sizeBytes !== "number" || !Number.isFinite(record.sizeBytes) || record.sizeBytes < 0) return null
+  if (record.local === null || typeof record.local !== "object") return null
+  if (typeof record.local.preparedDirectory !== "string" || record.local.preparedDirectory.length === 0) return null
+  const expectedIntegrityRef = preparedWorktreeIntegrityRef({
+    baselineCommitSha: record.baselineCommitSha,
+    cacheKey: record.cacheKey,
+    repositoryFullName: record.repositoryFullName,
+    state: "ready",
+  })
+  return record.integrityRef === expectedIntegrityRef ? record : null
+}
+
+async function readPreparedWorktreeCacheRecord(
+  preparedDirectory: string,
+): Promise<WorkspacePreparedWorktreeCacheRecord | null> {
+  try {
+    return preparedWorktreeCacheRecordFrom(
+      JSON.parse(await readFile(preparedWorktreeCacheRecordPath(preparedDirectory), "utf8")),
+    )
+  } catch {
+    return null
+  }
+}
+
+async function writePreparedWorktreeCacheRecord(
+  preparedDirectory: string,
+  record: WorkspacePreparedWorktreeCacheRecord,
+): Promise<void> {
+  await mkdir(dirname(preparedDirectory), { recursive: true })
+  await writeFile(
+    preparedWorktreeCacheRecordPath(preparedDirectory),
+    `${JSON.stringify(record, null, 2)}\n`,
+    { mode: 0o600 },
+  )
+  await chmod(preparedWorktreeCacheRecordPath(preparedDirectory), 0o600).catch(() => undefined)
+}
+
+async function removePreparedWorktreeCacheEntry(preparedDirectory: string): Promise<void> {
+  await rm(preparedDirectory, { recursive: true, force: true })
+  await rm(preparedWorktreeCacheRecordPath(preparedDirectory), { force: true })
+}
+
+async function validatePreparedWorktreeCacheEntry(input: {
+  cacheKey: string
+  checkout: GitCheckoutWorkspace
+  preparedDirectory: string
+}): Promise<WorkspacePreparedWorktreeCacheRecord | null> {
+  const baselineCommitSha = checkoutBaseCommitSha(input.checkout)
+  const record = await readPreparedWorktreeCacheRecord(input.preparedDirectory)
+  if (record === null) return null
+  if (record.cacheKey !== input.cacheKey) return null
+  if (record.repositoryFullName !== input.checkout.repository.fullName) return null
+  if (record.baselineCommitSha.toLowerCase() !== baselineCommitSha.toLowerCase()) return null
+  if (canonicalPath(record.local.preparedDirectory) !== canonicalPath(input.preparedDirectory)) return null
+  if (!existsSync(join(input.preparedDirectory, ".git"))) return null
+
+  const root = await runTextCommand(["git", "rev-parse", "--show-toplevel"], input.preparedDirectory)
+  if (root.exitCode !== 0 || canonicalPath(root.stdout.trim()) !== canonicalPath(input.preparedDirectory)) return null
+  const head = await runTextCommand(["git", "rev-parse", "HEAD"], input.preparedDirectory)
+  if (head.exitCode !== 0 || head.stdout.trim().toLowerCase() !== baselineCommitSha.toLowerCase()) return null
+  const commitExists = await runQuietCommand(["git", "cat-file", "-e", `${baselineCommitSha}^{commit}`], input.preparedDirectory)
+  if (commitExists !== 0) return null
+  const status = await runTextCommand(["git", "status", "--porcelain"], input.preparedDirectory)
+  if (status.exitCode !== 0 || status.stdout.trim() !== "") return null
+  return record
+}
+
+async function setWorkspaceOriginRemote(input: {
+  checkout: GitCheckoutWorkspace
+  remoteUrlFor?: (checkout: GitCheckoutWorkspace) => string
+  workingDirectory: string
+}): Promise<void> {
+  await runQuietCommand(["git", "remote", "remove", "origin"], input.workingDirectory)
+  await runCheckedCommand(
+    [
+      "git",
+      "remote",
+      "add",
+      "origin",
+      input.remoteUrlFor?.(input.checkout) ?? `https://github.com/${input.checkout.repository.fullName}.git`,
+    ],
+    input.workingDirectory,
+    "reason.workspace_prepared_cache.remote_add_failed",
+  )
+}
+
+async function restorePreparedWorktreeCacheEntry(input: {
+  cacheRoot: string
+  checkout: GitCheckoutWorkspace
+  now: Date
+  preparedWorktreeCacheRoot: string
+  remoteUrlFor?: (checkout: GitCheckoutWorkspace) => string
+  workingDirectory: string
+}): Promise<WorkspacePreparedWorktreeCacheUse | null> {
+  const cacheKey = preparedWorktreeCacheKeyForCheckout(input.checkout)
+  const preparedDirectory = preparedWorktreeCacheDirectory(input.preparedWorktreeCacheRoot, cacheKey)
+  const validated = await validatePreparedWorktreeCacheEntry({
+    cacheKey,
+    checkout: input.checkout,
+    preparedDirectory,
+  })
+  if (validated === null) {
+    await removePreparedWorktreeCacheEntry(preparedDirectory)
+    return null
+  }
+
+  assertPylonOwnedWorkspaceTarget({
+    cacheRoot: input.cacheRoot,
+    workingDirectory: input.workingDirectory,
+  })
+  try {
+    await mkdir(input.cacheRoot, { recursive: true })
+    await rm(input.workingDirectory, { recursive: true, force: true })
+    await runCheckedCommand(
+      ["git", "clone", "--local", preparedDirectory, input.workingDirectory],
+      input.cacheRoot,
+      "reason.workspace_prepared_cache.restore_clone_failed",
+    )
+    await disableGitAutoMaintenance(input.workingDirectory)
+    await runCheckedCommand(
+      ["git", "reset", "--hard", checkoutBaseCommitSha(input.checkout)],
+      input.workingDirectory,
+      "reason.workspace_prepared_cache.restore_reset_failed",
+    )
+    await runCheckedCommand(
+      ["git", "clean", "-ffdx"],
+      input.workingDirectory,
+      "reason.workspace_prepared_cache.restore_clean_failed",
+    )
+    const head = await runTextCommand(["git", "rev-parse", "HEAD"], input.workingDirectory)
+    if (head.exitCode !== 0 || head.stdout.trim().toLowerCase() !== checkoutBaseCommitSha(input.checkout).toLowerCase()) {
+      await rm(input.workingDirectory, { recursive: true, force: true })
+      await removePreparedWorktreeCacheEntry(preparedDirectory)
+      return null
+    }
+    const dirty = await workspaceDirtyState(input.workingDirectory)
+    if (dirty !== "clean") {
+      await rm(input.workingDirectory, { recursive: true, force: true })
+      await removePreparedWorktreeCacheEntry(preparedDirectory)
+      return null
+    }
+    await setWorkspaceOriginRemote({
+      checkout: input.checkout,
+      remoteUrlFor: input.remoteUrlFor,
+      workingDirectory: input.workingDirectory,
+    })
+    await installScmAuthBrokerGitCredentialHelper({ checkout: input.checkout, cwd: input.workingDirectory })
+  } catch {
+    await rm(input.workingDirectory, { recursive: true, force: true })
+    await removePreparedWorktreeCacheEntry(preparedDirectory)
+    return null
+  }
+
+  const updatedAt = input.now.toISOString()
+  const sizeBytes = await directorySizeBytes(preparedDirectory)
+  const nextRecord: WorkspacePreparedWorktreeCacheRecord = {
+    ...validated,
+    reuseReason: "restore_quick_sync_reset",
+    updatedAt,
+    lastUsedAt: updatedAt,
+    useCount: validated.useCount + 1,
+    sizeBytes,
+  }
+  await writePreparedWorktreeCacheRecord(preparedDirectory, nextRecord)
+  return {
+    schema: WORKSPACE_PREPARED_WORKTREE_CACHE_SCHEMA,
+    cacheKey,
+    state: "hit",
+    reuseReason: "restore_quick_sync_reset",
+    integrityRef: nextRecord.integrityRef,
+  }
+}
+
+function sourceRefParts(sourceRef: string): { repositoryFullName: string; baselineCommitSha: string } | null {
+  const separator = sourceRef.lastIndexOf(":")
+  if (separator <= 0) return null
+  const repositoryFullName = sourceRef.slice(0, separator)
+  const baselineCommitSha = sourceRef.slice(separator + 1)
+  if (!githubFullNamePattern.test(repositoryFullName) || !gitCommitShaPattern.test(baselineCommitSha)) return null
+  return { repositoryFullName, baselineCommitSha }
+}
+
+export async function enforcePreparedWorktreeCacheBudget(input: {
+  preparedWorktreeCacheRoot: string
+  diskBudgetBytes?: number
+}): Promise<{ removedCacheKeys: string[]; totalBytes: number }> {
+  const diskBudgetBytes = boundedPreparedWorktreeDiskBudgetBytes(input.diskBudgetBytes)
+  let entries: string[]
+  try {
+    entries = await readdir(input.preparedWorktreeCacheRoot)
+  } catch {
+    return { removedCacheKeys: [], totalBytes: 0 }
+  }
+
+  const candidates: Array<{
+    cacheKey: string
+    directory: string
+    lastUsedAtMs: number
+    sizeBytes: number
+  }> = []
+  let totalBytes = 0
+  for (const entry of entries) {
+    if (!entry.startsWith("prepared.")) continue
+    const cacheKey = entry.slice("prepared.".length)
+    if (!/^[a-f0-9]{32}$/.test(cacheKey)) continue
+    const directory = join(input.preparedWorktreeCacheRoot, entry)
+    const info = await stat(directory).catch(() => null)
+    if (info === null || !info.isDirectory()) continue
+    const record = await readPreparedWorktreeCacheRecord(directory)
+    const sizeBytes = record?.sizeBytes ?? await directorySizeBytes(directory)
+    totalBytes += sizeBytes
+    const lastUsedAtMs = Date.parse(record?.lastUsedAt ?? "")
+    candidates.push({
+      cacheKey,
+      directory,
+      lastUsedAtMs: Number.isFinite(lastUsedAtMs) ? lastUsedAtMs : 0,
+      sizeBytes,
+    })
+  }
+
+  if (totalBytes <= diskBudgetBytes) return { removedCacheKeys: [], totalBytes }
+
+  const removedCacheKeys: string[] = []
+  for (const candidate of candidates.sort((left, right) => left.lastUsedAtMs - right.lastUsedAtMs)) {
+    await removePreparedWorktreeCacheEntry(candidate.directory)
+    removedCacheKeys.push(candidate.cacheKey)
+    totalBytes -= candidate.sizeBytes
+    if (totalBytes <= diskBudgetBytes) break
+  }
+  return { removedCacheKeys, totalBytes: Math.max(0, totalBytes) }
+}
+
+async function snapshotPreparedWorktreeCacheEntry(input: {
+  diskBudgetBytes: number
+  now: Date
+  preparedWorktreeCacheRoot: string
+  record: WorkspaceLeaseRecord
+}): Promise<WorkspacePreparedWorktreeCacheRecord | null> {
+  const source = sourceRefParts(input.record.sourceRef)
+  if (source === null) return null
+  const cacheKey = input.record.local.preparedWorktreeCache?.cacheKey ??
+    preparedWorktreeCacheKeyFor({
+      baselineCommitSha: source.baselineCommitSha,
+      repositoryFullName: source.repositoryFullName,
+    })
+  const preparedDirectory = preparedWorktreeCacheDirectory(input.preparedWorktreeCacheRoot, cacheKey)
+  const tempDirectory = `${preparedDirectory}.tmp-${process.pid}-${Date.now()}`
+  const timestamp = input.now.toISOString()
+
+  await withRepositoryCacheLock(preparedDirectory, async () => {
+    await mkdir(input.preparedWorktreeCacheRoot, { recursive: true })
+    await rm(tempDirectory, { recursive: true, force: true })
+    await rm(preparedWorktreeCacheRecordPath(tempDirectory), { force: true })
+    await runCheckedCommand(
+      ["git", "clone", "--local", input.record.local.workingDirectory, tempDirectory],
+      input.preparedWorktreeCacheRoot,
+      "reason.workspace_prepared_cache.snapshot_clone_failed",
+    )
+    await disableGitAutoMaintenance(tempDirectory)
+    await runCheckedCommand(
+      ["git", "reset", "--hard", source.baselineCommitSha],
+      tempDirectory,
+      "reason.workspace_prepared_cache.snapshot_reset_failed",
+    )
+    await runCheckedCommand(
+      ["git", "clean", "-ffdx"],
+      tempDirectory,
+      "reason.workspace_prepared_cache.snapshot_clean_failed",
+    )
+    const status = await runTextCommand(["git", "status", "--porcelain"], tempDirectory)
+    if (status.exitCode !== 0 || status.stdout.trim() !== "") {
+      throw new WorkspaceCheckoutError("reason.workspace_prepared_cache.snapshot_dirty")
+    }
+    const previous = await readPreparedWorktreeCacheRecord(preparedDirectory)
+    const integrityRef = preparedWorktreeIntegrityRef({
+      baselineCommitSha: source.baselineCommitSha,
+      cacheKey,
+      repositoryFullName: source.repositoryFullName,
+      state: "ready",
+    })
+    const preliminary: WorkspacePreparedWorktreeCacheRecord = {
+      schema: WORKSPACE_PREPARED_WORKTREE_CACHE_SCHEMA,
+      cacheKey,
+      repositoryFullName: source.repositoryFullName,
+      baselineCommitSha: source.baselineCommitSha,
+      sourceRef: input.record.sourceRef,
+      state: "ready",
+      reuseReason: "post_completion_snapshot",
+      integrityRef,
+      createdAt: previous?.createdAt ?? timestamp,
+      updatedAt: timestamp,
+      lastUsedAt: previous?.lastUsedAt ?? timestamp,
+      useCount: previous?.useCount ?? 0,
+      sizeBytes: 0,
+      local: { preparedDirectory },
+    }
+    await writePreparedWorktreeCacheRecord(tempDirectory, preliminary)
+    const sizeBytes = await directorySizeBytes(tempDirectory) + await directorySizeBytes(preparedWorktreeCacheRecordPath(tempDirectory))
+    await writePreparedWorktreeCacheRecord(tempDirectory, { ...preliminary, sizeBytes })
+    await removePreparedWorktreeCacheEntry(preparedDirectory)
+    await rename(tempDirectory, preparedDirectory)
+    await rename(preparedWorktreeCacheRecordPath(tempDirectory), preparedWorktreeCacheRecordPath(preparedDirectory))
+  })
+
+  await enforcePreparedWorktreeCacheBudget({
+    diskBudgetBytes: input.diskBudgetBytes,
+    preparedWorktreeCacheRoot: input.preparedWorktreeCacheRoot,
+  })
+  return readPreparedWorktreeCacheRecord(preparedDirectory)
+}
+
 function leaseRecordPath(workspaceStateRoot: string, workspaceRef: string) {
   return join(workspaceStateRoot, `${workspaceRef}.json`)
 }
@@ -1698,6 +2144,8 @@ export type MaterializeWithLeaseInput = {
   checkout: GitCheckoutWorkspace
   checkoutRunner?: WorkspaceCheckoutRunner
   leaseRef: string
+  preparedWorktreeCacheRoot?: string
+  preparedWorktreeDiskBudgetBytes?: number
   refPrefix: string
   repositoryCacheRoot: string
   workspaceStateRoot: string
@@ -1733,13 +2181,40 @@ export async function materializeGitCheckoutWorkspaceWithLease(
       repositoryCacheRoot: input.repositoryCacheRoot,
       ...(input.remoteUrlFor === undefined ? {} : { remoteUrlFor: input.remoteUrlFor }),
     })
-  const materialized = await materializeGitCheckoutWorkspace({
-    cacheRoot: input.cacheRoot,
-    checkout: input.checkout,
-    checkoutRunner,
-    leaseRef: input.leaseRef,
-    refPrefix: input.refPrefix,
-  })
+  const preparedDiskBudgetBytes = boundedPreparedWorktreeDiskBudgetBytes(input.preparedWorktreeDiskBudgetBytes)
+  const preparedCacheKey =
+    input.preparedWorktreeCacheRoot === undefined || strategy !== "git_worktree"
+      ? undefined
+      : preparedWorktreeCacheKeyForCheckout(input.checkout)
+  const workspaceRef = stableRef(input.refPrefix, input.leaseRef)
+  const workingDirectory = join(input.cacheRoot, workspaceRef)
+  const preparedRestore =
+    input.preparedWorktreeCacheRoot === undefined || strategy !== "git_worktree"
+      ? null
+      : await restorePreparedWorktreeCacheEntry({
+          cacheRoot: input.cacheRoot,
+          checkout: input.checkout,
+          now,
+          preparedWorktreeCacheRoot: input.preparedWorktreeCacheRoot,
+          ...(input.remoteUrlFor === undefined ? {} : { remoteUrlFor: input.remoteUrlFor }),
+          workingDirectory,
+        })
+  const materialized =
+    preparedRestore === null
+      ? await materializeGitCheckoutWorkspace({
+          cacheRoot: input.cacheRoot,
+          checkout: input.checkout,
+          checkoutRunner,
+          leaseRef: input.leaseRef,
+          refPrefix: input.refPrefix,
+        })
+      : {
+          cleanupRef: stableRef("cleanup.pylon.workspace", workspaceRef),
+          preparedWorktreeCache: preparedRestore,
+          sourceRef: checkoutSourceRef(input.checkout),
+          workingDirectory,
+          workspaceRef,
+        }
 
   const record: WorkspaceLeaseRecord = {
     schema: WORKSPACE_LEASE_SCHEMA,
@@ -1755,7 +2230,7 @@ export async function materializeGitCheckoutWorkspaceWithLease(
     local: {
       cacheRoot: input.cacheRoot,
       workingDirectory: materialized.workingDirectory,
-      ...(strategy === "git_worktree"
+      ...(strategy === "git_worktree" && preparedRestore === null
         ? {
             repositoryCacheDirectory: join(
               input.repositoryCacheRoot,
@@ -1763,6 +2238,16 @@ export async function materializeGitCheckoutWorkspaceWithLease(
             ),
           }
         : {}),
+      ...(input.preparedWorktreeCacheRoot === undefined || preparedCacheKey === undefined
+        ? {}
+        : {
+            preparedWorktreeCache: {
+              root: input.preparedWorktreeCacheRoot,
+              cacheKey: preparedCacheKey,
+              diskBudgetBytes: preparedDiskBudgetBytes,
+              ...(preparedRestore === null ? {} : { restore: preparedRestore }),
+            },
+          }),
     },
   }
   await writeLeaseRecord(input.workspaceStateRoot, record)
@@ -1861,6 +2346,15 @@ async function cleanLeaseRecord(
       generatedAt: attemptedAt,
     })
     return { state: "retained", retentionReasonRef, workspaceRef: record.workspaceRef }
+  }
+  const preparedCache = record.local.preparedWorktreeCache
+  if (preparedCache !== undefined) {
+    await snapshotPreparedWorktreeCacheEntry({
+      diskBudgetBytes: preparedCache.diskBudgetBytes,
+      now,
+      preparedWorktreeCacheRoot: preparedCache.root,
+      record,
+    }).catch(() => null)
   }
   return removeWorkspaceAndWriteCleanupReceipt({ now, record, workspaceStateRoot })
 }

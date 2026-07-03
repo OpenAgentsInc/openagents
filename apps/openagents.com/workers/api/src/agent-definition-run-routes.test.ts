@@ -4,6 +4,7 @@ import {
 } from '@openagentsinc/agent-runtime-schema'
 
 // Behavior contract oracle: background_agents.dispatch.budget_caps_enforced.v1
+// Behavior contract oracle: background_agents.credentials.brokered_scm_helper.v1
 import {
   MemoryStreamStore,
   type StreamStore,

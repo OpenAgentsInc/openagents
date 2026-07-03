@@ -11,8 +11,10 @@ import {
   createGitWorktreeCheckoutRunner,
   detectInFlightVirtualBranchConflicts,
   detectWorkspaceChangeConflicts,
+  enforcePreparedWorktreeCacheBudget,
   gitCredentialHelperRuntimePathsFor,
   materializeGitCheckoutWorkspaceWithLease,
+  preparedWorktreeCacheKeyFor,
   pruneWorkspaceCacheDirectories,
   publicWorkspaceChangeCaptureProjection,
   publicWorkspaceLeaseProjection,
@@ -25,6 +27,7 @@ import {
   virtualBranchChangeFileRef,
   workspaceChangeFileRef,
   workspaceLeaseRecordFor,
+  WORKSPACE_PREPARED_WORKTREE_CACHE_SCHEMA,
   WORKSPACE_CLEANUP_RECEIPTS_CAPABILITY_REF,
   WORKSPACE_LEASE_SCHEMA,
   WORKSPACE_MATERIALIZER_CAPABILITY_REF,
@@ -35,6 +38,9 @@ import {
 import { CLAUDE_AGENT_CAPABILITY_REF } from "../src/claude-agent"
 import { CODEX_AGENT_CAPABILITY_REF } from "../src/codex-agent"
 import { assertPublicProjectionSafe } from "../src/state"
+
+// Behavior contract oracle: background_agents.credentials.no_long_lived_tokens_in_workspaces.v1
+// Behavior contract oracle: background_agents.warm_dispatch.prepared_worktree_cache.v1
 
 async function run(args: string[], cwd: string): Promise<string> {
   const proc = Bun.spawn(args, { cwd, stderr: "pipe", stdout: "pipe" })
@@ -126,6 +132,29 @@ describe("repositoryCacheKeyFor", () => {
     expect(repositoryCacheKeyFor("owner/repo")).toBe(repositoryCacheKeyFor("owner/repo"))
     expect(repositoryCacheKeyFor("owner/repo")).not.toBe(repositoryCacheKeyFor("owner/other"))
     expect(repositoryCacheKeyFor("owner/repo")).toMatch(/^[a-f0-9]{24}$/)
+  })
+})
+
+describe("preparedWorktreeCacheKeyFor", () => {
+  test("is stable for one repo+baseline and changes across repos or baselines", () => {
+    const base = {
+      baselineCommitSha: "1111111111111111111111111111111111111111",
+      repositoryFullName: "OpenAgentsInc/openagents",
+    }
+    expect(preparedWorktreeCacheKeyFor(base)).toBe(preparedWorktreeCacheKeyFor(base))
+    expect(preparedWorktreeCacheKeyFor(base)).not.toBe(
+      preparedWorktreeCacheKeyFor({
+        ...base,
+        baselineCommitSha: "2222222222222222222222222222222222222222",
+      }),
+    )
+    expect(preparedWorktreeCacheKeyFor(base)).not.toBe(
+      preparedWorktreeCacheKeyFor({
+        ...base,
+        repositoryFullName: "OpenAgentsInc/other",
+      }),
+    )
+    expect(preparedWorktreeCacheKeyFor(base)).toMatch(/^[a-f0-9]{32}$/)
   })
 })
 
@@ -699,6 +728,202 @@ describe("materializeGitCheckoutWorkspaceWithLease", () => {
       expect(record?.local.repositoryCacheDirectory).toBe(
         join(root, "git-cache", `${repositoryCacheKeyFor("OpenAgentsInc/worktree-fixture")}.git`),
       )
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("snapshots clean closeouts and restores matching repo+baseline from the prepared cache", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-prepared-"))
+    try {
+      const origin = await createOriginRepo(join(root, "origin"))
+      const checkout = checkoutFor(origin.commitSha)
+      const preparedWorktreeCacheRoot = join(root, "prepared-cache")
+      const workspaceStateRoot = join(root, "workspace-leases")
+      const first = await materializeGitCheckoutWorkspaceWithLease(
+        leaseInput(root, {
+          checkout,
+          checkoutRunner: undefined,
+          leaseRef: "lease.public.worktree.prepared.first",
+          now: new Date("2026-07-03T13:00:00.000Z"),
+          preparedWorktreeCacheRoot,
+          remoteUrlFor: () => origin.url,
+          retentionPolicy: "remove_on_closeout",
+        }) as never,
+      )
+
+      await releaseWorkspace({
+        now: new Date("2026-07-03T13:01:00.000Z"),
+        workspaceRef: first.workspaceRef,
+        workspaceStateRoot,
+      })
+
+      const cacheKey = preparedWorktreeCacheKeyFor({
+        baselineCommitSha: origin.commitSha,
+        repositoryFullName: checkout.repository.fullName,
+      })
+      const preparedDirectory = join(preparedWorktreeCacheRoot, `prepared.${cacheKey}`)
+      const snapshotRecord = JSON.parse(await readFile(`${preparedDirectory}.json`, "utf8"))
+      expect(snapshotRecord.schema).toBe(WORKSPACE_PREPARED_WORKTREE_CACHE_SCHEMA)
+      expect(snapshotRecord.cacheKey).toBe(cacheKey)
+      expect(snapshotRecord.reuseReason).toBe("post_completion_snapshot")
+      expect(snapshotRecord.sourceRef).toBe(`${checkout.repository.fullName}:${origin.commitSha}`)
+      expect(existsSync(first.workingDirectory)).toBe(false)
+
+      await rm(join(root, "origin"), { recursive: true, force: true })
+      const restored = await materializeGitCheckoutWorkspaceWithLease(
+        leaseInput(root, {
+          checkout,
+          checkoutRunner: undefined,
+          leaseRef: "lease.public.worktree.prepared.second",
+          now: new Date("2026-07-03T13:02:00.000Z"),
+          preparedWorktreeCacheRoot,
+          remoteUrlFor: () => origin.url,
+          retentionPolicy: "remove_on_closeout",
+        }) as never,
+      )
+      const restoredHead = (await run(["git", "rev-parse", "HEAD"], restored.workingDirectory)).trim()
+      const restoredStatus = await run(["git", "status", "--porcelain"], restored.workingDirectory)
+      const restoredRecord = await workspaceLeaseRecordFor({
+        workspaceRef: restored.workspaceRef,
+        workspaceStateRoot,
+      })
+      const updatedCacheRecord = JSON.parse(await readFile(`${preparedDirectory}.json`, "utf8"))
+
+      expect(restored.preparedWorktreeCache).toMatchObject({
+        cacheKey,
+        reuseReason: "restore_quick_sync_reset",
+        state: "hit",
+      })
+      expect(restoredHead).toBe(origin.commitSha)
+      expect(restoredStatus).toBe("")
+      expect(restoredRecord?.local.repositoryCacheDirectory).toBeUndefined()
+      expect(restoredRecord?.local.preparedWorktreeCache?.restore?.reuseReason).toBe("restore_quick_sync_reset")
+      expect(updatedCacheRecord.reuseReason).toBe("restore_quick_sync_reset")
+      expect(updatedCacheRecord.useCount).toBe(1)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("evicts an invalid prepared cache entry and falls back to normal materialization", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-prepared-invalid-"))
+    try {
+      const origin = await createOriginRepo(join(root, "origin"))
+      const checkout = checkoutFor(origin.commitSha)
+      const preparedWorktreeCacheRoot = join(root, "prepared-cache")
+      const workspaceStateRoot = join(root, "workspace-leases")
+      const first = await materializeGitCheckoutWorkspaceWithLease(
+        leaseInput(root, {
+          checkout,
+          checkoutRunner: undefined,
+          leaseRef: "lease.public.worktree.prepared.invalid.first",
+          now: new Date("2026-07-03T13:10:00.000Z"),
+          preparedWorktreeCacheRoot,
+          remoteUrlFor: () => origin.url,
+          retentionPolicy: "remove_on_closeout",
+        }) as never,
+      )
+      await releaseWorkspace({
+        now: new Date("2026-07-03T13:11:00.000Z"),
+        workspaceRef: first.workspaceRef,
+        workspaceStateRoot,
+      })
+
+      const cacheKey = preparedWorktreeCacheKeyFor({
+        baselineCommitSha: origin.commitSha,
+        repositoryFullName: checkout.repository.fullName,
+      })
+      const preparedDirectory = join(preparedWorktreeCacheRoot, `prepared.${cacheKey}`)
+      await writeFile(join(preparedDirectory, "dirty.ts"), "export const dirty = true\n")
+
+      const materialized = await materializeGitCheckoutWorkspaceWithLease(
+        leaseInput(root, {
+          checkout,
+          checkoutRunner: undefined,
+          leaseRef: "lease.public.worktree.prepared.invalid.second",
+          now: new Date("2026-07-03T13:12:00.000Z"),
+          preparedWorktreeCacheRoot,
+          remoteUrlFor: () => origin.url,
+        }) as never,
+      )
+
+      expect(materialized.preparedWorktreeCache).toBeUndefined()
+      expect(existsSync(join(materialized.workingDirectory, "sum.ts"))).toBe(true)
+      expect(existsSync(preparedDirectory)).toBe(false)
+      expect(existsSync(`${preparedDirectory}.json`)).toBe(false)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("enforces a byte budget by evicting the oldest prepared worktree entry", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-prepared-budget-"))
+    try {
+      const originRoot = join(root, "origin")
+      const origin = await createOriginRepo(originRoot)
+      const preparedWorktreeCacheRoot = join(root, "prepared-cache")
+      const workspaceStateRoot = join(root, "workspace-leases")
+      const firstCheckout = checkoutFor(origin.commitSha)
+      const first = await materializeGitCheckoutWorkspaceWithLease(
+        leaseInput(root, {
+          checkout: firstCheckout,
+          checkoutRunner: undefined,
+          leaseRef: "lease.public.worktree.prepared.budget.first",
+          now: new Date("2026-07-03T13:20:00.000Z"),
+          preparedWorktreeCacheRoot,
+          remoteUrlFor: () => origin.url,
+          retentionPolicy: "remove_on_closeout",
+        }) as never,
+      )
+      await releaseWorkspace({
+        now: new Date("2026-07-03T13:21:00.000Z"),
+        workspaceRef: first.workspaceRef,
+        workspaceStateRoot,
+      })
+
+      const secondCommitSha = await commitOriginChange(
+        originRoot,
+        "sum.ts",
+        "export const sum = (left: number, right: number) => left + right\n",
+      )
+      const secondCheckout = checkoutFor(secondCommitSha)
+      const second = await materializeGitCheckoutWorkspaceWithLease(
+        leaseInput(root, {
+          checkout: secondCheckout,
+          checkoutRunner: undefined,
+          leaseRef: "lease.public.worktree.prepared.budget.second",
+          now: new Date("2026-07-03T13:22:00.000Z"),
+          preparedWorktreeCacheRoot,
+          remoteUrlFor: () => origin.url,
+          retentionPolicy: "remove_on_closeout",
+        }) as never,
+      )
+      await releaseWorkspace({
+        now: new Date("2026-07-03T13:23:00.000Z"),
+        workspaceRef: second.workspaceRef,
+        workspaceStateRoot,
+      })
+
+      const firstCacheKey = preparedWorktreeCacheKeyFor({
+        baselineCommitSha: origin.commitSha,
+        repositoryFullName: firstCheckout.repository.fullName,
+      })
+      const secondCacheKey = preparedWorktreeCacheKeyFor({
+        baselineCommitSha: secondCommitSha,
+        repositoryFullName: secondCheckout.repository.fullName,
+      })
+      const firstPreparedDirectory = join(preparedWorktreeCacheRoot, `prepared.${firstCacheKey}`)
+      const secondPreparedDirectory = join(preparedWorktreeCacheRoot, `prepared.${secondCacheKey}`)
+      const secondRecord = JSON.parse(await readFile(`${secondPreparedDirectory}.json`, "utf8"))
+      const evicted = await enforcePreparedWorktreeCacheBudget({
+        diskBudgetBytes: secondRecord.sizeBytes,
+        preparedWorktreeCacheRoot,
+      })
+
+      expect(evicted.removedCacheKeys).toEqual([firstCacheKey])
+      expect(existsSync(firstPreparedDirectory)).toBe(false)
+      expect(existsSync(secondPreparedDirectory)).toBe(true)
     } finally {
       await rm(root, { recursive: true, force: true })
     }

@@ -122,28 +122,164 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
     {
       authorityBoundary:
-        "This contract binds worker workspace credential hygiene only. It does not claim that owner subscription custody or provider-account refresh flows are complete.",
-      blockerRefs: [pendingOracleBlocker("ba_d3")],
+        "This contract proves the brokered helper shape and ref-only dispatch boundary. The broader no-long-lived-token runtime sweep is enforced by background_agents.credentials.no_long_lived_tokens_in_workspaces.v1.",
+      blockerRefs: [],
+      contractId: "background_agents.credentials.brokered_scm_helper.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8201",
+        "https://github.com/OpenAgentsInc/openagents/issues/8218",
+        "INVARIANTS.md",
+        "docs/fable/ROADMAP_BACKGROUND_AGENTS.md",
+        "apps/openagents.com/workers/api/src/agent-definition-run-routes.test.ts",
+        "apps/pylon/tests/workspace-materializer.test.ts",
+      ],
+      oracles: [
+        {
+          description:
+            "Definition dispatch attaches scmAuthBroker metadata with Forge token refs to Pylon git_checkout assignments and never includes raw oa_forge_git_ token material.",
+          id: "background_agents.credentials.dispatch_broker_refs",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents.com/workers/api/src/agent-definition-run-routes.test.ts",
+        },
+        {
+          description:
+            "The Pylon workspace materializer validates broker metadata, rejects raw/malformed broker shapes, writes helper config under Git admin state, configures credential.useHttpPath, fails closed, and stores no raw SCM token in the generated config/script.",
+          id: "background_agents.credentials.pylon_helper_install",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/pylon/tests/workspace-materializer.test.ts",
+        },
+      ],
+      productArea: "background agent SCM credentials",
+      source: {
+        channel: "issue_list",
+        statedBy: "owner",
+        statedOn: "2026-07-03",
+      },
+      state: "enforced",
+      statement:
+        "Worker-side background-agent Git credentials are brokered: dispatch sends only ref metadata, and the Pylon materializer installs a per-task Git credential helper that scopes requests by protocol, host, and path, uses a bounded cache, and never reads embedded SCM credentials from the workspace.",
+      surface: "pylon-worker + openagents.com-worker",
+      verification:
+        "BA-D2 is enforced by the agent-definition run route test plus the Pylon workspace materializer test in their normal sweeps.",
+    },
+    {
+      authorityBoundary:
+        "This contract binds worker workspace/account-home credential hygiene only. It does not claim that owner subscription custody or provider-account refresh flows are complete.",
+      blockerRefs: [],
       contractId: "background_agents.credentials.no_long_lived_tokens_in_workspaces.v1",
-      enforcementTier: "unenforced",
+      enforcementTier: "test-sweep",
       evidenceRefs: [
         "https://github.com/OpenAgentsInc/openagents/issues/8202",
         "https://github.com/OpenAgentsInc/openagents/issues/8218",
+        "INVARIANTS.md",
         "docs/fable/ROADMAP_BACKGROUND_AGENTS.md",
+        "apps/pylon/tests/workspace-materializer.test.ts",
+        "apps/pylon/tests/workspace-worktree.test.ts",
+        "apps/pylon/tests/codex-agent-executor.test.ts",
+        "apps/pylon/tests/claude-agent-executor.test.ts",
       ],
-      oracles: [],
+      oracles: [
+        {
+          description:
+            "scanLongLivedScmCredentials detects GitHub PATs / raw Forge git tokens / credentialed Git URLs in worker roots while allowing bounded helper cache entries.",
+          id: "background_agents.credentials.long_lived_scm_scanner",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/pylon/tests/workspace-materializer.test.ts",
+        },
+        {
+          description:
+            "Workspace lease cleanup removes a dirty workspace when the dirty content contains long-lived SCM credential material instead of retaining it.",
+          id: "background_agents.credentials.closeout_cleanup",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/pylon/tests/workspace-worktree.test.ts",
+        },
+        {
+          description:
+            "Codex git-checkout runs scan the bounded workspace plus selected CODEX_HOME, refuse with scm_credential_policy_failed, and clean the lease on detection.",
+          id: "background_agents.credentials.codex_runtime_sweep",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/pylon/tests/codex-agent-executor.test.ts",
+        },
+        {
+          description:
+            "Claude git-checkout runs scan the bounded workspace plus selected CLAUDE_CONFIG_DIR, refuse with scm_credential_policy_failed, and clean the lease on detection.",
+          id: "background_agents.credentials.claude_runtime_sweep",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/pylon/tests/claude-agent-executor.test.ts",
+        },
+      ],
       productArea: "background agent credentials",
       source: {
         channel: "issue_list",
         statedBy: "owner",
         statedOn: "2026-07-03",
       },
-      state: "pending",
+      state: "enforced",
       statement:
-        "No long-lived SCM tokens exist in worker workspaces/homes across materialize/run/closeout.",
+        "No long-lived SCM tokens exist in worker workspaces/homes across materialize/run/closeout. Short-lived helper cache entries may exist only under Git admin state; GitHub PATs, raw Forge git tokens, credentialed Git URLs, and Git extraheader authorization material are rejected in the bounded checkout or selected isolated account home.",
       surface: "pylon-worker",
       verification:
-        "Pending BA-D3: BA-D3's tests are this contract's oracle; flip this contract to enforced only when those tests exist and run in the Pylon sweep.",
+        "BA-D3 is enforced by the Pylon materializer, worktree, Codex executor, and Claude executor tests in the normal Pylon bun test sweep.",
+    },
+    {
+      authorityBoundary:
+        "This contract binds the Pylon materializer prepared-worktree source cache only. It does not claim prebuilt dependency baselines, staleness refresh cadence, or Khala Code warm-on-intent dispatch, which remain BA-E2/BA-E3 scope.",
+      blockerRefs: [],
+      contractId: "background_agents.warm_dispatch.prepared_worktree_cache.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8203",
+        "https://github.com/OpenAgentsInc/openagents/issues/8218",
+        "INVARIANTS.md",
+        "docs/fable/ROADMAP_BACKGROUND_AGENTS.md",
+        "apps/pylon/docs/workspace-materializer.md",
+        "apps/pylon/tests/workspace-worktree.test.ts",
+      ],
+      oracles: [
+        {
+          description:
+            "preparedWorktreeCacheKeyFor is stable for one repository+baseline pair and changes across repository names or baseline commits.",
+          id: "background_agents.warm_dispatch.prepared_cache_key",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/pylon/tests/workspace-worktree.test.ts",
+        },
+        {
+          description:
+            "A clean closeout records a post_completion_snapshot prepared entry, and the next matching repo+baseline materialization restores with restore_quick_sync_reset without contacting the remote.",
+          id: "background_agents.warm_dispatch.prepared_cache_snapshot_restore",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/pylon/tests/workspace-worktree.test.ts",
+        },
+        {
+          description:
+            "Prepared cache integrity rejects dirty/stale entries and the byte budget evicts oldest prepared entries while retaining the newest fitting entry.",
+          id: "background_agents.warm_dispatch.prepared_cache_integrity_budget",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/pylon/tests/workspace-worktree.test.ts",
+        },
+      ],
+      productArea: "warm dispatch",
+      source: {
+        channel: "issue_list",
+        statedBy: "owner",
+        statedOn: "2026-07-03",
+      },
+      state: "enforced",
+      statement:
+        "Prepared-worktree cache in the Pylon workspace materializer: typed reuse reasons (post-completion snapshot, restore = quick sync + reset), cache keyed by repo+baseline, integrity checks, bounded disk budget with eviction.",
+      surface: "pylon-worker",
+      verification:
+        "BA-E1 is enforced by the Pylon workspace-worktree test suite in the normal Pylon bun test sweep.",
     },
     {
       authorityBoundary:
@@ -223,5 +359,5 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-03.4",
+  version: "2026-07-03.5",
 }
