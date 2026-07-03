@@ -135,7 +135,7 @@ worker homes only, no-spend own-capacity closeouts, exact-row evidence.
 | Task | Description | Deps | Delegable |
 | --- | --- | --- | --- |
 | Q6.1 | **LLM explorer live brain**: wire qa-runner's live ReAct brain to the Mode P/D drivers (hosted Khala default, BYO model, `--fake-model` CI path); goals seeded from the coverage frontier ("exercise what the ledger says is untouched"). | Q1.3 | MED |
-| Q6.2 | **Explore → distill → regress**: passing explore sessions distill into committed deterministic scenarios via the existing distiller; a discovery that cannot be distilled is INCONCLUSIVE, not shipped. First distilled regression committed = done. | Q6.1 | MED |
+| Q6.2 | **Explore → distill → regress**: passing explore sessions distill into committed deterministic scenarios via the existing distiller; a discovery that cannot be distilled is INCONCLUSIVE, not shipped. First distilled regression committed = done. Implementation note: [`docs/qa/khala-code-explore-distill-regress.md`](../qa/khala-code-explore-distill-regress.md). | Q6.1 | MED |
 | Q6.3 | **Monkey night at scale**: nightly ≥5000 actions across fixture backends including the 18-worker cockpit state; claim-invariant oracle on every cockpit night; any crash's seed + action log auto-committed as a replay fixture. | Q1.1 | HIGH |
 | Q6.4 | **Explore-policy GEPA reopened** (was T6.15, postponed; reopened by owner directive 2026-07-02): offline optimization of explorer goal prompts/frontier weighting on new-coverage-per-action and confirmed-bugs-per-1000-actions; Gym-admitted; candidates never auto-promote. | Q6.1, Q6.3 | MED |
 
