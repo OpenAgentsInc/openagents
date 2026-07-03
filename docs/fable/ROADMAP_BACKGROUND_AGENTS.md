@@ -85,6 +85,13 @@ the *definition*, not the harness. Runs that produce code changes flow
 through the Forge intake path so background work inherits verification
 receipts and gated promotion for free.
 
+BA-A1 status (2026-07-03): the schema authority remains
+`packages/agent-runtime-schema`; the Worker now exposes owner-scoped
+registered-agent CRUD at `POST/GET/PATCH /v1/agent-definitions`, backed by
+the `agent_definitions` D1 table and migration `0279_agent_definitions.sql`.
+Downstream BA-A2 work should consume this endpoint/schema instead of adding
+another definition store.
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-A1 | `openagents.agent_definition.v1`: Effect Schema (name/goal/harness/toolset allow-deny-ask/triggers/lane/budget/escalation), D1 table + migration, owner-scoped CRUD `POST/GET/PATCH /v1/agent-definitions` on the Worker (same auth as agent registration). Harness is a field, never load-bearing | — (shared seam; lands first and alone) | MED | [#8188](https://github.com/OpenAgentsInc/openagents/issues/8188) |

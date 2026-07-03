@@ -65,6 +65,10 @@ import {
   timingSafeEqual,
 } from './agent-registration'
 import {
+  handleAgentDefinitionsApi,
+  makeD1AgentDefinitionStore,
+} from './agent-definition-routes'
+import {
   makeAgentScopedGrantRoutes,
   makeD1AgentScopedGrantStore,
 } from './agent-scoped-grant-routes'
@@ -12511,6 +12515,16 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/agents/me',
     handler: (request, env) =>
       Effect.promise(() => handleProgrammaticAgentMe(request, env)),
+  },
+  {
+    path: '/v1/agent-definitions',
+    handler: (request, env) =>
+      Effect.promise(() =>
+        handleAgentDefinitionsApi(request, {
+          agentStore: makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+          definitionStore: makeD1AgentDefinitionStore(openAgentsDatabase(env)),
+        }),
+      ),
   },
   {
     path: '/api/agents/me/balance',

@@ -193,6 +193,7 @@ const approvedExactRoutePaths = [
   '/api/admin/agents/reissue-token',
   '/api/keys/free',
   '/api/agents/me',
+  '/v1/agent-definitions',
   '/api/agents/me/balance',
   '/api/agents/me/balance/preferences',
   '/api/agents/home',
