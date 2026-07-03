@@ -92,6 +92,7 @@ const PROOF_BUNDLES_PATH = '/api/omni/public-proof-bundles'
 
 const evidenceDetailPattern = /^\/api\/omni\/evidence-bundles\/([^/]+)$/
 const proofDetailPattern = /^\/api\/omni\/public-proof-bundles\/([^/]+)$/
+const proofHandoffPagePattern = /^\/handoff\/([^/]+)$/
 
 // REQUEST SCHEMAS
 
@@ -227,6 +228,104 @@ const requestErrorResponse = (error: OmniBundleRequestError): HttpResponse =>
   noStoreJsonResponse({ error: 'omni_bundle_request_error', reason: error.reason }, {
     status: error.status,
   })
+
+const escapeHtml = (value: string): string =>
+  value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;')
+
+const htmlResponse = (html: string, init: ResponseInit = {}): HttpResponse => {
+  const headers = new Headers(init.headers)
+  headers.set('cache-control', 'no-store')
+  headers.set('content-type', 'text/html; charset=utf-8')
+
+  return new Response(html, { ...init, headers })
+}
+
+const humanize = (value: string): string => value.replaceAll('_', ' ')
+
+const refListHtml = (
+  title: string,
+  refs: ReadonlyArray<string>,
+  emptyText: string,
+): string => {
+  const items =
+    refs.length === 0
+      ? `<p class="empty">${escapeHtml(emptyText)}</p>`
+      : `<ul>${refs.map(ref => `<li><code>${escapeHtml(ref)}</code></li>`).join('')}</ul>`
+
+  return `<section class="pane"><h2>${escapeHtml(title)}</h2>${items}</section>`
+}
+
+const renderPublicProofBundleHandoffHtml = (
+  bundle: ReturnType<typeof publicOmniProofBundleProjection>,
+  id: string,
+  request: Request,
+): string => {
+  const apiPath = `/api/omni/public-proof-bundles/${encodeURIComponent(id)}`
+  const canonicalUrl = new URL(request.url)
+  canonicalUrl.search = ''
+  const updatedLabel = bundle.status === 'ready' ? 'Ready' : humanize(bundle.status)
+  const hasLegalCaveat = bundle.legalCaveatRef !== null && bundle.legalCaveatRef !== ''
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OpenAgents handoff ${escapeHtml(bundle.workroomId)}</title>
+<style>
+:root{color-scheme:dark;--bg:#000;--panel:#080808;--line:#222;--line-strong:#333;--text:#f1efe8;--muted:rgba(255,255,255,.62);--faint:rgba(255,255,255,.42);--accent:#ffb400;--good:#00c853;--warn:#ff6f00}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:"Berkeley Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:14px;line-height:1.55}a{color:var(--text);text-decoration-color:var(--accent);text-underline-offset:3px}main{width:min(1120px,calc(100vw - 32px));margin:0 auto;padding:32px 0 44px}.top{display:grid;gap:18px;border-bottom:1px solid var(--line);padding-bottom:20px}.kicker{margin:0;color:var(--faint);font-size:11px;text-transform:uppercase;letter-spacing:.08em}.headline{display:grid;gap:10px}.headline h1{max-width:760px;margin:0;color:var(--text);font-size:28px;font-weight:650;line-height:1.16;letter-spacing:0;text-wrap:balance}.headline p{max-width:74ch;margin:0;color:var(--muted)}.status{display:flex;flex-wrap:wrap;gap:8px}.pill{display:inline-flex;min-height:28px;align-items:center;border:1px solid var(--line-strong);padding:4px 8px;color:var(--muted);font-size:12px}.pill.ready{border-color:rgba(0,200,83,.45);color:#bbf7ce}.pill.warn{border-color:rgba(255,111,0,.5);color:#ffd6a8}.grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(300px,.9fr);gap:16px;margin-top:18px}.pane{border:1px solid var(--line);background:var(--panel);padding:16px}.pane h2{margin:0 0 10px;color:rgba(255,255,255,.86);font-size:14px;font-weight:650}.pane p{margin:0;color:var(--muted)}.facts{display:grid;border-top:1px solid var(--line)}.fact{display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;border-bottom:1px solid var(--line);padding:10px 0}.fact dt{color:var(--faint);font-size:11px;text-transform:uppercase;letter-spacing:.08em}.fact dd{min-width:0;margin:0;color:var(--muted);overflow-wrap:anywhere}.stack{display:grid;gap:12px}ul{display:grid;gap:8px;margin:0;padding:0;list-style:none}li{min-width:0;border-top:1px solid var(--line);padding-top:8px;color:var(--muted);overflow-wrap:anywhere}code{font:inherit;color:rgba(255,255,255,.78);overflow-wrap:anywhere}.empty{color:var(--faint)}.notice{border-color:rgba(255,180,0,.4)}.notice p{color:#ead49a}.footer{margin-top:18px;border-top:1px solid var(--line);padding-top:16px;color:var(--faint);font-size:12px}@media (max-width:820px){main{width:min(100% - 24px,1120px);padding-top:22px}.grid{grid-template-columns:1fr}.fact{grid-template-columns:1fr;gap:2px}.headline h1{font-size:23px}}@media (prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <p class="kicker">OpenAgents public handoff</p>
+    <div class="headline">
+      <h1>Redacted deliverables and receipts for ${escapeHtml(humanize(bundle.workKind))}</h1>
+      <p>This page contains only customer-shareable proof refs from the public proof bundle. Private prompts, provider payloads, raw logs, wallet material, settlement details, and client-identifying data are not exposed here.</p>
+    </div>
+    <div class="status">
+      <span class="pill ${bundle.status === 'ready' ? 'ready' : 'warn'}">${escapeHtml(updatedLabel)}</span>
+      <span class="pill">${escapeHtml(humanize(bundle.workKind))}</span>
+      <span class="pill">No settlement implication</span>
+      ${hasLegalCaveat ? '<span class="pill warn">Legal caveat present</span>' : ''}
+    </div>
+  </header>
+  <div class="grid">
+    <div class="stack">
+      ${refListHtml('Redacted deliverables', bundle.artifactRefs, 'No public deliverable refs are attached yet.')}
+      ${refListHtml('Receipts', bundle.receiptRefs, 'No public receipt refs are attached yet.')}
+      ${refListHtml('Evidence sources', bundle.sourceRefs, 'No public source refs are attached yet.')}
+    </div>
+    <aside class="stack">
+      <section class="pane">
+        <h2>Bundle facts</h2>
+        <dl class="facts">
+          <div class="fact"><dt>Workroom</dt><dd><code>${escapeHtml(bundle.workroomId)}</code></dd></div>
+          <div class="fact"><dt>Public receipt</dt><dd><code>${escapeHtml(bundle.publicReceiptRef)}</code></dd></div>
+          <div class="fact"><dt>Review state</dt><dd><code>${escapeHtml(bundle.reviewStateRef)}</code></dd></div>
+          <div class="fact"><dt>Acceptance</dt><dd><code>${escapeHtml(bundle.acceptanceStateRef)}</code></dd></div>
+          <div class="fact"><dt>Privacy</dt><dd><code>${escapeHtml(bundle.privacyCaveatRef)}</code></dd></div>
+          <div class="fact"><dt>Economics</dt><dd><code>${escapeHtml(bundle.economicsCaveatRef)}</code></dd></div>
+          <div class="fact"><dt>Legal</dt><dd><code>${escapeHtml(bundle.legalCaveatRef ?? 'not_applicable')}</code></dd></div>
+        </dl>
+      </section>
+      <section class="pane notice">
+        <h2>Share boundary</h2>
+        <p>Use this link for client-facing handoff. It is evidence-only and does not authorize work, payout, settlement, provider access, or registry state changes.</p>
+      </section>
+      <section class="pane">
+        <h2>Machine-readable source</h2>
+        <p><a href="${escapeHtml(apiPath)}">${escapeHtml(apiPath)}</a></p>
+      </section>
+    </aside>
+  </div>
+  <p class="footer">Canonical handoff URL: <a href="${escapeHtml(canonicalUrl.toString())}">${escapeHtml(canonicalUrl.toString())}</a></p>
+</main>
+</body>
+</html>`
+}
 
 // The bundle services run `assertValidInput` synchronously inside their
 // `Effect.gen` body, so a public-safety/redaction violation surfaces as a defect
@@ -452,6 +551,42 @@ const readProofBundle = <Bindings extends OmniBundleRouteEnv>(
     ),
   )
 
+const readProofBundleHandoffPage = <Bindings extends OmniBundleRouteEnv>(
+  dependencies: OmniBundleRoutesDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  id: string,
+): Effect.Effect<HttpResponse> =>
+  Effect.gen(function* () {
+    const record = yield* Effect.tryPromise(() =>
+      dependencies.readProofBundle(dependencies.db(env), id),
+    )
+
+    if (record === null) {
+      return htmlResponse(
+        `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Handoff unavailable | OpenAgents</title></head><body style="margin:0;background:#000;color:#f1efe8;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;display:grid;min-height:100vh;place-items:center"><main style="width:min(460px,calc(100vw - 32px));border:1px solid #222;background:#080808;padding:24px"><p style="margin:0 0 10px;color:rgba(255,255,255,.42);font-size:11px;text-transform:uppercase;letter-spacing:.08em">OpenAgents public handoff</p><h1 style="margin:0 0 12px;font-size:22px;line-height:1.2">Handoff unavailable</h1><p style="margin:0;color:rgba(255,255,255,.62);line-height:1.55">The requested public proof bundle was not found.</p></main></body></html>`,
+        { status: 404 },
+      )
+    }
+
+    return htmlResponse(
+      renderPublicProofBundleHandoffHtml(
+        publicOmniProofBundleProjection(record),
+        id,
+        request,
+      ),
+    )
+  }).pipe(
+    Effect.catch(() =>
+      Effect.succeed(
+        htmlResponse(
+          `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Handoff unavailable | OpenAgents</title></head><body style="margin:0;background:#000;color:#f1efe8;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;display:grid;min-height:100vh;place-items:center"><main style="width:min(460px,calc(100vw - 32px));border:1px solid #222;background:#080808;padding:24px"><p style="margin:0 0 10px;color:rgba(255,255,255,.42);font-size:11px;text-transform:uppercase;letter-spacing:.08em">OpenAgents public handoff</p><h1 style="margin:0 0 12px;font-size:22px;line-height:1.2">Handoff unavailable</h1><p style="margin:0;color:rgba(255,255,255,.62);line-height:1.55">The handoff page could not read the public proof bundle.</p></main></body></html>`,
+          { status: 500 },
+        ),
+      ),
+    ),
+  )
+
 export const makeOmniBundleRoutes = <Bindings extends OmniBundleRouteEnv>(
   dependencies: OmniBundleRoutesDependencies<Bindings>,
 ) => ({
@@ -461,6 +596,19 @@ export const makeOmniBundleRoutes = <Bindings extends OmniBundleRouteEnv>(
     _ctx: ExecutionContext,
   ): Effect.Effect<HttpResponse> | undefined => {
     const url = new URL(request.url)
+
+    const proofHandoffPage = proofHandoffPagePattern.exec(url.pathname)
+
+    if (proofHandoffPage?.[1] !== undefined) {
+      const id = decodeURIComponent(proofHandoffPage[1])
+
+      return M.value(request.method).pipe(
+        M.when('GET', () =>
+          readProofBundleHandoffPage(dependencies, request, env, id),
+        ),
+        M.orElse(() => Effect.succeed(methodNotAllowed(['GET']))),
+      )
+    }
 
     if (url.pathname === EVIDENCE_BUNDLES_PATH) {
       return M.value(request.method).pipe(
