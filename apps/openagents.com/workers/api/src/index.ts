@@ -953,6 +953,7 @@ import {
   isSiteFormCaptureEnabled,
   makeSitePageFormCaptureRoutes,
 } from './site-page-form-capture-routes'
+import { enrollListSubscriberInSequence } from './list-sequence-enrollment'
 import {
   type ReferralConsumptionResult,
   consumePendingReferralForUser,
@@ -8028,8 +8029,42 @@ const sitePageFormCaptureRoutes = makeSitePageFormCaptureRoutes<WorkerBindings>(
           .SITE_FORM_CAPTURE_ENABLED,
       ),
     makeSink: env => ({
-      addSubscriber: makeNativeListsService(openAgentsDatabase(env))
-        .addSubscriber,
+      addSubscriber: async input => {
+        const db = openAgentsDatabase(env)
+        const lists = makeNativeListsService(db)
+        const result = await lists.addSubscriber(input)
+
+        if (
+          input.sequenceSlug === undefined ||
+          input.sequenceSlug.trim() === ''
+        ) {
+          return result
+        }
+
+        const sequenceEnrollment = await enrollListSubscriberInSequence(
+          db,
+          {
+            email: result.subscriber.email,
+            listId: input.listId,
+            sequenceSlug: input.sequenceSlug,
+          },
+          'system:site-form-capture',
+        )
+
+        return {
+          ...result,
+          sequenceEnrollment:
+            sequenceEnrollment.status === 'enrolled'
+              ? {
+                  scheduledSendCount: sequenceEnrollment.scheduledSendCount,
+                  status: sequenceEnrollment.status,
+                }
+              : {
+                  reason: sequenceEnrollment.reason,
+                  status: sequenceEnrollment.status,
+                },
+        }
+      },
     }),
     readSiteFormMetadata: async (env, formId) => {
       const row = await openAgentsDatabase(env)

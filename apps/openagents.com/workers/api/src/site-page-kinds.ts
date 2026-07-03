@@ -172,6 +172,7 @@ export type FormCaptureField = typeof FormCaptureField.Type
 export const FormCaptureSpec = S.Struct({
   id: S.String,
   listId: S.String,
+  sequenceSlug: S.optionalKey(S.String),
   fields: S.Array(FormCaptureField),
 })
 export type FormCaptureSpec = typeof FormCaptureSpec.Type
@@ -189,14 +190,46 @@ export type FormCaptureSink = Readonly<{
       email: string
       listId: string
       metadata?: Record<string, string | number | boolean | null> | undefined
+      sequenceSlug?: string | undefined
       sourceRef: string
     }>,
-  ) => Promise<Readonly<{ idempotent: boolean; subscriber: { email: string } }>>
+  ) => Promise<
+    Readonly<{
+      idempotent: boolean
+      sequenceEnrollment?: FormCaptureSequenceEnrollment | undefined
+      subscriber: { email: string }
+    }>
+  >
 }>
 
+export type FormCaptureSequenceEnrollment =
+  | Readonly<{
+      scheduledSendCount: number
+      status: 'enrolled'
+    }>
+  | Readonly<{
+      reason:
+        | 'drip_preference_disabled'
+        | 'drip_suppressed'
+        | 'sequence_not_found'
+        | 'subscriber_not_active'
+        | 'subscriber_not_on_list'
+      status: 'skipped'
+    }>
+
 export type FormCaptureOutcome =
-  | Readonly<{ _tag: 'captured'; email: string; listId: string }>
-  | Readonly<{ _tag: 'idempotent'; email: string; listId: string }>
+  | Readonly<{
+      _tag: 'captured'
+      email: string
+      listId: string
+      sequenceEnrollment?: FormCaptureSequenceEnrollment | undefined
+    }>
+  | Readonly<{
+      _tag: 'idempotent'
+      email: string
+      listId: string
+      sequenceEnrollment?: FormCaptureSequenceEnrollment | undefined
+    }>
   | Readonly<{ _tag: 'validation_error'; reason: string }>
 
 // Extract metadata from a submission constrained to the spec's declared
@@ -281,6 +314,7 @@ export const captureFormSubmission = async (
     email,
     listId: formSpec.listId,
     metadata: Object.keys(metadata).length === 0 ? undefined : metadata,
+    sequenceSlug: formSpec.sequenceSlug,
     sourceRef:
       input.sourceRef === undefined || input.sourceRef.trim() === ''
         ? `site_form.${formSpec.id}`
@@ -292,11 +326,17 @@ export const captureFormSubmission = async (
         _tag: 'idempotent',
         email: result.subscriber.email,
         listId: formSpec.listId,
+        ...(result.sequenceEnrollment === undefined
+          ? {}
+          : { sequenceEnrollment: result.sequenceEnrollment }),
       }
     : {
         _tag: 'captured',
         email: result.subscriber.email,
         listId: formSpec.listId,
+        ...(result.sequenceEnrollment === undefined
+          ? {}
+          : { sequenceEnrollment: result.sequenceEnrollment }),
       }
 }
 

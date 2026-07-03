@@ -180,6 +180,50 @@ describe('site page form-capture route', () => {
     expect(subscribers).toHaveLength(1)
   })
 
+  test('returns sequence enrollment when the form feeds a sequence', async () => {
+    const service = makeNativeListsService(makeDb(), runtime)
+    const list = await service.createList({
+      name: 'Opt-in Waitlist',
+      sourceAuthorityRef: 'site.form.v1',
+    })
+    const routes = makeSitePageFormRoutes<TestBindings>({
+      makeSink: () => ({
+        addSubscriber: async input => {
+          const result = await service.addSubscriber(input)
+
+          return {
+            ...result,
+            sequenceEnrollment:
+              input.sequenceSlug === 'welcome-nurture'
+                ? { scheduledSendCount: 2, status: 'enrolled' }
+                : undefined,
+          }
+        },
+      }),
+      lookupFormSpec: async (_env, formId) =>
+        formId === FORM_ID
+          ? { ...formSpecFor(list.id), sequenceSlug: 'welcome-nurture' }
+          : undefined,
+      nowIso: () => '2026-06-14T12:00:00.000Z',
+    })
+
+    const response = await run(
+      routes,
+      post('opt_in_hero', { email: 'lead@example.com', name: 'Ada' }),
+    )
+
+    expect(response.status).toBe(201)
+    await expect(response.json()).resolves.toMatchObject({
+      email: 'lead@example.com',
+      idempotent: false,
+      listId: list.id,
+      sequenceEnrollment: {
+        scheduledSendCount: 2,
+        status: 'enrolled',
+      },
+    })
+  })
+
   test('missing email fails validation → 400', async () => {
     const { routes, service, listId } = await makeHarness()
 

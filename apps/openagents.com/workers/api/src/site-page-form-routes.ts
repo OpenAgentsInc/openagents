@@ -48,6 +48,7 @@ import { Effect, Match as M } from 'effect'
 
 import {
   type FormCaptureSink,
+  type FormCaptureSequenceEnrollment,
   type FormCaptureSpec,
   captureFormSubmission,
 } from './site-page-kinds'
@@ -102,6 +103,13 @@ const notFound = (): HttpResponse =>
     },
     { status: 404 },
   )
+
+const sequenceEnrollmentPayload = (
+  sequenceEnrollment: FormCaptureSequenceEnrollment | undefined,
+):
+  | Readonly<{ sequenceEnrollment: FormCaptureSequenceEnrollment }>
+  | Record<string, never> =>
+  sequenceEnrollment === undefined ? {} : { sequenceEnrollment }
 
 // Read the request body as a plain JSON object. A malformed/non-object body
 // degrades to an empty object so the spec-driven validator (not a parser
@@ -158,6 +166,7 @@ const submitForm = <Bindings extends SitePageFormRouteEnv>(
             generatedAt: nowIso,
             idempotent: false,
             listId: captured.listId,
+            ...sequenceEnrollmentPayload(captured.sequenceEnrollment),
           },
           { status: 201 },
         ),
@@ -169,6 +178,7 @@ const submitForm = <Bindings extends SitePageFormRouteEnv>(
             generatedAt: nowIso,
             idempotent: true,
             listId: idempotent.listId,
+            ...sequenceEnrollmentPayload(idempotent.sequenceEnrollment),
           },
           { status: 200 },
         ),

@@ -8,6 +8,7 @@ import {
 const leadFormSpec = {
   id: 'lead.newsletter',
   listId: 'list.newsletter',
+  sequenceSlug: 'welcome-nurture',
   fields: [
     { name: 'email', kind: 'email' as const, required: true },
     { name: 'name', kind: 'text' as const },
@@ -30,6 +31,7 @@ describe('site form-spec registry', () => {
   test('resolves a typed form spec by id from a metadata object', () => {
     const spec = resolveSiteFormSpec(metadataObject, 'lead.newsletter')
     expect(spec).toEqual(leadFormSpec)
+    expect(spec?.sequenceSlug).toBe('welcome-nurture')
   })
 
   test('resolves a form spec when metadata is a JSON string', () => {
