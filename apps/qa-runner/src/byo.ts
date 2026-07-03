@@ -40,6 +40,7 @@ import { dirname, join, resolve } from "node:path";
 import { Effect } from "effect";
 import { localBackend } from "./backend";
 import { makeByoChatClient, resolveByoModelConfig, ByoModelConfigError } from "./byo-model";
+import { QaControl } from "./control";
 import { assessCandidate, distill } from "./distiller";
 import { makeFakeChromium } from "./fake-chromium";
 import type { ChatClient } from "./khala-driver";
@@ -73,6 +74,7 @@ const HELP = `qa — OSS, local-first, BYO-model autonomous QA runner
 
 USAGE
   qa run [options]
+  qa swarm run --target <url> [--out <dir>] [--max-workers <n>] [--max-runs <n>]
 
 OPTIONS
   --url <url>          Target dev/prod server to drive (required for a real run).
@@ -89,6 +91,11 @@ OPTIONS
   --fake-model         Deterministic, no-network, no-key, no-OpenAgents proof of
                        the loop. Drives a canned /login scenario against a fake
                        page; still emits a real video + a committed e2e test.
+
+SWARM
+  qa swarm run --target <url> composes the control API runner fanout into an
+  openagents.qa_swarm.run_projection.v1 artifact and a /qa/{runRef} share URL.
+  Fixture tier is default and no-spend; real tiers require QA_CONTROL_ARM_REAL=1.
 
 NO OPENAGENTS LOGIN IS REQUIRED. Khala is the default dogfood backend; overrides remain BYO.
 `;
@@ -212,6 +219,67 @@ async function runCommand(argv: ReadonlyArray<string>): Promise<number> {
   return ok ? 0 : 1;
 }
 
+async function runSwarmCommand(argv: ReadonlyArray<string>): Promise<number> {
+  const args = parseArgs(argv);
+  const target = typeof args.target === "string" ? args.target : undefined;
+  if (!target) {
+    console.error("error: qa swarm run requires --target <url>.\n");
+    console.error(HELP);
+    return 2;
+  }
+  const storeDir = typeof args.out === "string" ? args.out : "./runs/qa-swarm";
+  const maxWorkers = typeof args["max-workers"] === "string" ? Number(args["max-workers"]) : 2;
+  const maxRuns = typeof args["max-runs"] === "string" ? Number(args["max-runs"]) : 1;
+  const real = args.real === true;
+  const includeLiveTiers = args["include-live-tiers"] === true;
+  const targetName = typeof args["target-name"] === "string" ? args["target-name"] : target;
+  const proBaseUrl = typeof args["share-base-url"] === "string"
+    ? args["share-base-url"]
+    : "https://openagents.com";
+
+  const control = new QaControl({
+    allowReal: process.env.QA_CONTROL_ARM_REAL === "1",
+    defaultTokenBudget: Number(process.env.QA_CONTROL_TOKEN_BUDGET ?? 0),
+    proBaseUrl,
+    storeDir,
+  });
+
+  let job;
+  try {
+    job = control.submitSwarmRun({
+      includeLiveTiers,
+      maxRuns,
+      maxWorkers,
+      real,
+      target,
+      targetName,
+    });
+  } catch (error) {
+    console.error(error instanceof Error ? `error: ${error.message}` : String(error));
+    return 2;
+  }
+
+  console.log("=== qa swarm run ===");
+  console.log(`target:      ${target}`);
+  console.log(`mode:        ${real ? "real" : "fixture"}`);
+  console.log(`job:         ${job.id}`);
+  console.log(`worker cap:  ${maxWorkers}`);
+  console.log(`run cap:     ${maxRuns}`);
+
+  const done = await control.wait(job.id);
+  const artifacts = control.swarmRunArtifacts(job.id);
+  console.log(`status:      ${done.status}`);
+  console.log(`share URL:   ${artifacts.qaShareUrl ?? "(not ready)"}`);
+  if (artifacts.swarm) {
+    console.log(`projection:  ${artifacts.swarm.projectionPath}`);
+    console.log(`verdict:     ${artifacts.swarm.projection.verdict}`);
+    for (const tier of artifacts.swarm.tiers) {
+      console.log(`  [${tier.status}] ${tier.backend}${tier.reason ? ` — ${tier.reason}` : ""}`);
+    }
+  }
+  return done.status === "succeeded" ? 0 : 1;
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const [command, ...rest] = argv;
@@ -222,6 +290,9 @@ async function main(): Promise<void> {
   if (command === "run") {
     process.exit(await runCommand(rest));
   }
+  if (command === "swarm" && rest[0] === "run") {
+    process.exit(await runSwarmCommand(rest.slice(1)));
+  }
   console.error(`error: unknown command "${command}"\n`);
   console.error(HELP);
   process.exit(2);
@@ -231,4 +302,4 @@ if (import.meta.main) {
   await main();
 }
 
-export { runCommand };
+export { runCommand, runSwarmCommand };

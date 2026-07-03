@@ -7,17 +7,46 @@
 //   - it distills the session into a COMMITTED, runnable e2e test file,
 //   - the run requires no OpenAgents secret / login / token.
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { runCommand } from "./byo";
+import { runCommand, runSwarmCommand } from "./byo";
 
 let dir: string;
 let emit: string;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "qa-byo-test-"));
   emit = join(dir, "generated", "byo.e2e.test.ts");
+});
+
+describe("qa swarm run (fixture hosted-run composition)", () => {
+  test("emits a QA Swarm projection and share URL without model credentials", async () => {
+    const code = await runSwarmCommand([
+      "--target",
+      "https://example.test",
+      "--target-name",
+      "Example Target",
+      "--out",
+      dir,
+      "--max-workers",
+      "1",
+      "--max-runs",
+      "1",
+    ]);
+    expect(code).toBe(0);
+
+    // The command's generated id is time-based, so assert by walking the one
+    // created swarm artifact directory rather than pinning the id.
+    const child = readdirSync(dir).find(name => name.startsWith("swarm_"));
+    expect(child).toBeDefined();
+    expect(existsSync(join(dir, child!, "qa-swarm-projection.json"))).toBe(true);
+    const projection = JSON.parse(
+      readFileSync(join(dir, child!, "qa-swarm-projection.json"), "utf8"),
+    ) as { schemaVersion: string; verdict: string };
+    expect(projection.schemaVersion).toBe("openagents.qa_swarm.run_projection.v1");
+    expect(projection.verdict).toBe("warning");
+  });
 });
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true });

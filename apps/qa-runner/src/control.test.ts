@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { NotArmedError, BadRequestError, NotFoundError, QaControl } from "./control";
 import type { FetchLike } from "./publish-trace";
+import { QA_SWARM_RUN_PROJECTION_SCHEMA } from "./swarm";
 
 let dir: string;
 beforeEach(() => {
@@ -104,6 +105,50 @@ describe("submitEval (mock path)", () => {
   test("rejects < 2 variants", () => {
     const control = mkControl();
     expect(() => control.submitEval({ variants: [{ id: "only" }] })).toThrow(BadRequestError);
+  });
+});
+
+describe("submitSwarmRun (fixture path)", () => {
+  test("composes qa-runner fanout into a QA Swarm projection and share URL", async () => {
+    const control = mkControl();
+    const job = control.submitSwarmRun({
+      maxRuns: 2,
+      maxWorkers: 2,
+      target: "https://example.test",
+      targetName: "Example Target",
+    });
+    expect(job.kind).toBe("swarm");
+    expect(job.mode).toBe("mock");
+    expect(job.qaShareUrl).toContain("https://openagents.com/qa/qa-run.swarm.example.test");
+
+    const done = await control.wait(job.id);
+    expect(done.status).toBe("succeeded");
+
+    const artifacts = control.swarmRunArtifacts(job.id);
+    expect(artifacts.qaShareUrl).toContain("/qa/");
+    expect(artifacts.swarm).not.toBeNull();
+    expect(artifacts.swarm!.projection.schemaVersion).toBe(QA_SWARM_RUN_PROJECTION_SCHEMA);
+    expect(artifacts.swarm!.projection.verdict).toBe("warning");
+    expect(artifacts.swarm!.childRunIds.length).toBe(2);
+    expect(artifacts.swarm!.tiers.some(tier => tier.backend === "gce-tier-2" && tier.status === "skipped")).toBe(true);
+    expect(artifacts.swarm!.tiers.some(tier => tier.backend === "cf-browser-rendering" && tier.status === "skipped")).toBe(true);
+    expect(existsSync(artifacts.swarm!.projectionPath)).toBe(true);
+  });
+
+  test("rejects missing target and invalid caps", () => {
+    const control = mkControl();
+    // @ts-expect-error intentionally missing target
+    expect(() => control.submitSwarmRun({})).toThrow(BadRequestError);
+    expect(() =>
+      control.submitSwarmRun({ target: "https://example.test", maxWorkers: 0 }),
+    ).toThrow(BadRequestError);
+  });
+
+  test("real swarm runs are refused unless armed", () => {
+    const control = mkControl({ allowReal: false });
+    expect(() =>
+      control.submitSwarmRun({ real: true, target: "https://openagents.com" }),
+    ).toThrow(NotArmedError);
   });
 });
 
