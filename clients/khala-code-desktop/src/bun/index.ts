@@ -25,9 +25,14 @@ import {
 import { buildKhalaAppleFmDisabledReadiness } from "../shared/apple-fm-readiness.js"
 import { khalaCodeDesktopApplicationMenu } from "./application-menu.js"
 import {
+  parseKhalaCodeHeadlessArgs,
   readKhalaCodeHeadlessPrompt,
   runKhalaCodeDesktopHeadlessJsonl,
 } from "./headless.js"
+import {
+  KHALA_CODE_MODEL_ROLE_REGISTRY_KEY_PATH,
+  makeKhalaCodeArchitectCoderJudgeRegistry,
+} from "../shared/model-role-preset.js"
 import { createCodexAppServerChatRuntime } from "./codex-app-server-chat-runtime.js"
 import { createClaudeAppSdkChatRuntime } from "./claude-app-sdk-chat-runtime.js"
 import { createClaudeHeadlessAutoDenyApprovalService } from "./claude-approvals.js"
@@ -470,6 +475,7 @@ const headlessInterruptAfterMs = (
 const argv = Bun.argv.slice(2)
 if (argv.includes("--json")) {
   const promptArgv = argv[0] === "code" ? argv.slice(1) : argv
+  const headlessArgs = parseKhalaCodeHeadlessArgs(promptArgv)
   const prompt = await readKhalaCodeHeadlessPrompt(promptArgv)
   if (prompt.length === 0) {
     process.stderr.write("khala code --json requires a prompt argument or stdin.\n")
@@ -480,6 +486,14 @@ if (argv.includes("--json")) {
   const interruptAfterMs = headlessInterruptAfterMs(khalaCodeEnv)
   let exitCode = 0
   try {
+    if (headlessArgs.preset === "architect-coder-judge") {
+      await headlessCodexAppServerHost.request("config/value/write", {
+        keyPath: KHALA_CODE_MODEL_ROLE_REGISTRY_KEY_PATH,
+        mergeStrategy: "replace",
+        value: makeKhalaCodeArchitectCoderJudgeRegistry(),
+      })
+      process.stderr.write("[khala-code] applied preset architect-coder-judge\n")
+    }
     await runKhalaCodeDesktopHeadlessJsonl({
       createChatRuntime: ({ onEvent }) =>
         khalaCodeEnv.KHALA_CODE_DESKTOP_RUNTIME === "claude_runtime"

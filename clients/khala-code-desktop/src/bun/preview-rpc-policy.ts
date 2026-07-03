@@ -21,6 +21,7 @@ export const mutatingPreviewRpcMethods = new Set<KhalaCodeDesktopRpcMethodName>(
   "codexMcpOauthLogin",
   "codexMcpServerReload",
   "codexMcpToolCall",
+  "codexModelRolePresetApply",
   "codexPluginInstall",
   "codexPluginUninstall",
   "codexSkillsConfigWrite",

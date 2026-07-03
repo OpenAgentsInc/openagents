@@ -1,3 +1,10 @@
+import {
+  KHALA_CODE_MODEL_ROLE_REGISTRY_KEY_PATH,
+  isKhalaCodeArchitectCoderJudgeRegistry,
+  khalaCodeArchitectCoderJudgePreset,
+  type KhalaCodeDesktopModelRolePreset,
+} from "./model-role-preset.js"
+
 export type KhalaCodeDesktopCodexJsonValue =
   | null
   | boolean
@@ -117,6 +124,11 @@ export type KhalaCodeDesktopCodexSettingsProjection = {
     readonly modes: readonly KhalaCodeDesktopCodexSettingsCollaborationMode[]
     readonly currentMode: string | null
     readonly personality: string | null
+  }
+  readonly modelRolePresets: {
+    readonly keyPath: typeof KHALA_CODE_MODEL_ROLE_REGISTRY_KEY_PATH
+    readonly activePreset: string | null
+    readonly presets: readonly KhalaCodeDesktopModelRolePreset[]
   }
 }
 
@@ -310,6 +322,8 @@ export const projectKhalaCodeDesktopCodexSettings = (
     theme: "tui.theme",
     vimModeDefault: "tui.vim_mode_default",
   } as const
+  const configuredRoleRegistry = configAt(config, KHALA_CODE_MODEL_ROLE_REGISTRY_KEY_PATH)
+  const architectCoderJudgeSelected = isKhalaCodeArchitectCoderJudgeRegistry(configuredRoleRegistry)
 
   return {
     ok: errors.length === 0,
@@ -388,6 +402,11 @@ export const projectKhalaCodeDesktopCodexSettings = (
       currentMode: optionalString(asRecord(config.collaboration_mode).mode) ??
         optionalString(config.mode),
       personality: optionalString(config.personality),
+    },
+    modelRolePresets: {
+      keyPath: KHALA_CODE_MODEL_ROLE_REGISTRY_KEY_PATH,
+      activePreset: architectCoderJudgeSelected ? "architect-coder-judge" : null,
+      presets: [khalaCodeArchitectCoderJudgePreset(architectCoderJudgeSelected)],
     },
   }
 }

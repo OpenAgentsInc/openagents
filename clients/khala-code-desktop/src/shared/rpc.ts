@@ -978,6 +978,34 @@ const RpcCodexSettingsProjection = S.Struct({
     currentMode: RpcStringNull,
     personality: RpcStringNull,
   }),
+  modelRolePresets: S.Struct({
+    keyPath: S.Literal("openagents.model_roles"),
+    activePreset: RpcStringNull,
+    presets: S.Array(S.Struct({
+      id: S.Literal("architect-coder-judge"),
+      title: S.String,
+      description: S.String,
+      configKeyPath: S.Literal("openagents.model_roles"),
+      promiseRef: S.Literal("khala_code.architect_coder_judge.v1"),
+      noProxyRails: S.Literal(true),
+      noResale: S.Literal(true),
+      copyGate: S.Literal("copy_gated_until_end_to_end_verifiable"),
+      selected: S.Boolean,
+      roleSummary: RpcStringArray,
+      registry: RpcJson,
+    })),
+  }),
+})
+const RpcCodexModelRolePresetApplyRequest = S.Struct({
+  cwd: S.optional(S.String),
+  preset: S.Literal("architect-coder-judge"),
+})
+const RpcCodexModelRolePresetApplyResult = S.Struct({
+  ok: S.Boolean,
+  preset: S.Literal("architect-coder-judge"),
+  keyPath: S.Literal("openagents.model_roles"),
+  settings: S.optional(RpcCodexSettingsProjection),
+  error: S.optional(S.String),
 })
 const RpcCodexConfigValueWriteRequest = S.Struct({
   cwd: S.optional(S.String),
@@ -1831,6 +1859,7 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   codexMcpToolCall: { parameters: [param(RpcMcpToolCallRequest)], result: RpcCodexAppServerActionResult },
   codexPluginInstall: { parameters: [param(RpcPluginInstallRequest)], result: RpcCodexAppServerActionResult },
   codexPluginUninstall: { parameters: [param(RpcPluginUninstallRequest)], result: RpcCodexAppServerActionResult },
+  codexModelRolePresetApply: { parameters: [param(RpcCodexModelRolePresetApplyRequest)], result: RpcCodexModelRolePresetApplyResult },
   codexSettingsRead: { parameters: [optionalParam(RpcCodexSettingsReadRequest)], result: RpcCodexSettingsProjection },
   codexSkillsConfigWrite: { parameters: [param(RpcSkillsConfigWriteRequest)], result: RpcCodexAppServerActionResult },
   codexSkillsExtraRootsSet: { parameters: [param(RpcSkillsExtraRootsSetRequest)], result: RpcCodexAppServerActionResult },
@@ -1986,6 +2015,7 @@ export type KhalaCodeDesktopRPCSchema = {
     codexMcpToolCall(request: KhalaCodeDesktopCodexMcpToolCallRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
     codexPluginInstall(request: KhalaCodeDesktopCodexPluginInstallRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
     codexPluginUninstall(request: KhalaCodeDesktopCodexPluginUninstallRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
+    codexModelRolePresetApply(request: typeof RpcCodexModelRolePresetApplyRequest.Type): Promise<typeof RpcCodexModelRolePresetApplyResult.Type>
     codexSettingsRead(request?: KhalaCodeDesktopCodexSettingsReadRequest): Promise<KhalaCodeDesktopCodexSettingsReadResult>
     codexSkillsConfigWrite(request: KhalaCodeDesktopCodexSkillsConfigWriteRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>
     codexSkillsExtraRootsSet(request: KhalaCodeDesktopCodexSkillsExtraRootsSetRequest): Promise<KhalaCodeDesktopCodexAppServerActionResult>

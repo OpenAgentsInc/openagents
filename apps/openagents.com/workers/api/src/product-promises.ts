@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-07-02.2'
+export const PublicProductPromisesVersion = '2026-07-02.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -4661,6 +4661,40 @@ export const publicProductPromisesDocument = () => {
       },
       {
         ...basePromiseFields,
+        promiseId: 'khala_code.architect_coder_judge.v1',
+        productArea: 'Khala Code',
+        audience: ['user', 'agent', 'operator'],
+        state: 'planned',
+        claim:
+          'Khala Code offers a one-command architect/coder/judge preset: architect and judge run through the user’s own Anthropic auth, coder runs through the user’s existing local Codex login, and an advisor can be enabled separately.',
+        safeCopy:
+          'This is a planned, copy-gated Khala Code workflow. Source-level preset wiring exists for `architect-coder-judge`: the Settings role-registry card and `khala code --preset architect-coder-judge` write a schema-tagged role registry where architect and judge use the user’s own Anthropic auth, coder uses the existing local Codex login, and advisor is optional/off by default. It is not an end-to-end availability claim yet.',
+        unsafeCopy:
+          'Do not claim the architect/coder/judge workflow is publicly available, proven end-to-end, cheaper in practice, or that OpenAgents proxies, resells, brokers, or supplies Anthropic/Claude or Codex subscription capacity for it.',
+        evidenceRefs: [
+          'docs/fable/ROADMAP_QA.md#9b-qa-9--plannercoderjudge-workflow-build-it-wire-it-prove-it',
+          'docs/fable/2026-07-02-oh-my-pi-planner-coder-judge-audit.md',
+          'clients/khala-code-desktop/src/shared/model-role-preset.ts',
+          'clients/khala-code-desktop/src/ui/codex-settings-panel.ts',
+          'clients/khala-code-desktop/src/bun/index.ts',
+          'clients/khala-code-desktop/tests/codex-settings.test.ts',
+          'clients/khala-code-desktop/tests/rpc-handlers.test.ts',
+          'clients/khala-code-desktop/tests/headless.test.ts',
+          'https://github.com/OpenAgentsInc/openagents/issues/8058',
+          'promise:khala_code.desktop_codex_wrapper.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.khala_code_architect_coder_judge_e2e_missing',
+          'blocker.product_promises.khala_code_role_accounting_missing',
+          'blocker.product_promises.khala_code_architect_coder_judge_public_copy_gate',
+        ],
+        verification:
+          'Planned state is source-level only: the preset must write the schema-tagged role registry in one action, preserve no-proxy/no-resale rails, and stay copy-gated. Yellow/green movement requires the QA Q9.7 plan -> code -> judge scenario and armed live smoke, exact per-role token/economics rows, and owner-approved public copy per proof.claim_upgrade_receipts.v1.',
+        authorityBoundary:
+          'The preset grants no provider proxy, resale, brokered capacity, spend, payout, settlement, or merge authority. Architect, judge, and advisor outputs are advisory data under the deterministic verify-command authority; coder execution remains the user’s own Codex login and existing local authority boundary.',
+      },
+      {
+        ...basePromiseFields,
         promiseId: 'mobile.fleet_companion.v1',
         productArea: 'mobile and Khala Code',
         audience: ['operator', 'user'],
@@ -4918,6 +4952,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-02.3 adds khala_code.architect_coder_judge.v1 as a planned, copy-gated Khala Code promise candidate for the architect/coder/judge preset. It flips NO promise state. Source-level evidence covers the architect-coder-judge role-registry preset in Khala Code settings and headless launch wiring: coder on the user’s existing Codex login, architect/judge on the user’s own Anthropic auth, advisor optional-off, and no proxy/no-resale rails restated. The record remains planned until the plan -> code -> judge workflow is verifiable end-to-end with exact per-role accounting and owner-approved public copy.',
       'Registry 2026-07-02.2 is the QA Swarm QS1 pass (#8061) and flips NO promise green — green stays exactly 34. qa.agentic_qa_runner.v1 remains yellow but now explicitly scopes the broader QA Swarm product as not self-serve. New qa_swarm.* records land conservatively: qa_swarm.product_surface.v1 is yellow for the named operator-assisted product definition and customer-one dogfood scope; qa_swarm.hosted_runs.v1, qa_swarm.share_surface.v1, and qa_swarm.service_packages.v1 are planned. The modeled rate card is staged in NEEDS_OWNER.md for owner review; public copy must not publish prices, imply self-serve delivery, or claim paid customer/hosted-run receipts until the named blockers clear.',
       'Registry 2026-07-02.1 is the owner-directed /business redesign pass and flips NO promise state — green stays exactly 34. business.intake_quick_win_offering.v1 (yellow, unchanged) gains evidence for the rebranded dark-only page (hero: Agents that work.) and the new bounded conversational intake at POST /api/public/business-intake-chat: a stateless server-side interview running the published intake spec (offerings menu with honest availability labels, interview areas A-G, Output Spec Template) over the same gateway serving lane as the free tier, fail-closed 503 when unarmed, per-IP rate limited, exact-only internal token accounting (demand_source business_intake_chat), and the drafted spec hands off into the existing signup form, which remains the single submit authority and the only stored intake artifact. A review-only landing candidate ships at /preview/landing (builders -> /khala, businesses -> /business) with an explicit not-the-homepage banner; the live homepage is untouched. No availability label changed, no offering was added, no pricing was published, and both blockers stand.',
       'Registry 2026-07-01.3 is the #7966 PROMISSORY pass on khala_code.free_paid_plans.v1 and flips NO promise state — green stays exactly 34 and the record stays planned. Cleared with source+test evidence: khala_code_plan_selection_surface_missing — GET /api/public/khala-code/plans projects the honest Episode 245 two-plan structure (Free pay-with-data / Paid private-data) with real purchasability state from the fail-closed KHALA_CODE_PAID_PLANS_ENABLED read (default OFF); GET /v1/khala-code/plan resolves the caller’s current plan server-side from the privacy-entitlement seam (paid only on a real entitlement row, confidential-compute mode reports capture-excluded free, entitlement read errors return 503 instead of fabricating a plan); and the Khala Code desktop settings surface renders the plan cards and current plan through host RPCs with the same honest not-purchasable state (purchase control disabled and fail-closed while unarmed). Remaining blocker: khala_code_paid_plan_not_purchasable — POST /v1/khala-code/plans/purchases exists but is flag-gated default OFF, fail-closed, and collects no payment; when armed it grants the EXISTING paid-privacy entitlement idempotently with a dereferenceable receipt at /api/public/inference/privacy-receipts/{receiptRef} rather than forking entitlement truth. Arming, the payment-collection leg, pricing, and owner-approved public copy are owner decisions (NEEDS_OWNER). No plan is selectable-as-live or purchasable today, no capture behavior changed, and no payout/settlement implication is created.',

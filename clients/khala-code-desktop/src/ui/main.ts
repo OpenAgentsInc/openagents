@@ -353,6 +353,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexPluginUninstall"]>>
       >("codexPluginUninstall", request),
+    codexModelRolePresetApply: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["codexModelRolePresetApply"]>>
+      >("codexModelRolePresetApply", request),
     codexSettingsRead: (request?: Parameters<DesktopRpcRequests["codexSettingsRead"]>[0]) =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["codexSettingsRead"]>>
@@ -3185,6 +3189,8 @@ const controls = {
     rpc.request.codexPluginInstall(request),
   codexPluginUninstall: (request: Parameters<DesktopRpcRequests["codexPluginUninstall"]>[0]) =>
     rpc.request.codexPluginUninstall(request),
+  codexModelRolePresetApply: (request: Parameters<DesktopRpcRequests["codexModelRolePresetApply"]>[0]) =>
+    rpc.request.codexModelRolePresetApply(request),
   codexSettingsRead: (request?: Parameters<DesktopRpcRequests["codexSettingsRead"]>[0]) =>
     rpc.request.codexSettingsRead(request),
   codexSkillsConfigWrite: (request: Parameters<DesktopRpcRequests["codexSkillsConfigWrite"]>[0]) =>
@@ -3543,6 +3549,14 @@ const settingsPanel =
   settingsPanelEl === null
     ? null
     : mountCodexSettingsPanel(settingsPanelEl, {
+        applyModelRolePreset: async request => {
+          const result = await controls.codexModelRolePresetApply(request)
+          return {
+            ok: result.ok,
+            ...(result.settings === undefined ? {} : { settings: result.settings }),
+            ...(result.error === undefined ? {} : { error: result.error }),
+          }
+        },
         fetch: () => controls.codexSettingsRead({ includeHiddenModels: true }),
         onRender: () => {
           void claudeSettingsSection?.refresh()

@@ -104,6 +104,11 @@ import {
 import { projectKhalaCodeDesktopCodexSettings } from "../shared/codex-settings.js"
 import { projectKhalaCodeDesktopCodexEcosystem } from "../shared/codex-ecosystem.js"
 import {
+  KHALA_CODE_ARCHITECT_CODER_JUDGE_PRESET_ID,
+  KHALA_CODE_MODEL_ROLE_REGISTRY_KEY_PATH,
+  makeKhalaCodeArchitectCoderJudgeRegistry,
+} from "../shared/model-role-preset.js"
+import {
   evaluateKhalaCodeDesktopSlashCommandAvailability,
   khalaCodeDesktopSlashCommandsWithAvailability,
   parseKhalaCodeDesktopSlashCommand,
@@ -900,6 +905,14 @@ const unavailableRateLimits = (
   status: "unavailable",
 })
 
+type KhalaCodeDesktopCodexModelRolePresetApplyResult = {
+  readonly ok: boolean
+  readonly preset: typeof KHALA_CODE_ARCHITECT_CODER_JUDGE_PRESET_ID
+  readonly keyPath: typeof KHALA_CODE_MODEL_ROLE_REGISTRY_KEY_PATH
+  readonly settings?: KhalaCodeDesktopCodexSettingsReadResult
+  readonly error?: string
+}
+
 export function createKhalaCodeDesktopRpcRequestHandlers(
   input: KhalaCodeDesktopRpcHandlersInput,
 ): KhalaCodeDesktopRPCSchema["requests"] {
@@ -1396,6 +1409,43 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       return {
         ok: false,
         keyPath: request.keyPath,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  }
+
+  const applyCodexModelRolePreset = async (request: {
+    readonly cwd?: string | undefined
+    readonly preset: typeof KHALA_CODE_ARCHITECT_CODER_JUDGE_PRESET_ID
+  }): Promise<KhalaCodeDesktopCodexModelRolePresetApplyResult> => {
+    if (input.codexAppServerHost === undefined) {
+      return {
+        ok: false,
+        preset: request.preset,
+        keyPath: KHALA_CODE_MODEL_ROLE_REGISTRY_KEY_PATH as typeof KHALA_CODE_MODEL_ROLE_REGISTRY_KEY_PATH,
+        error: "Codex app-server host is not configured.",
+      }
+    }
+    try {
+      await input.codexAppServerHost.request("config/value/write", {
+        keyPath: KHALA_CODE_MODEL_ROLE_REGISTRY_KEY_PATH as typeof KHALA_CODE_MODEL_ROLE_REGISTRY_KEY_PATH,
+        value: makeKhalaCodeArchitectCoderJudgeRegistry(),
+        mergeStrategy: "replace",
+      })
+      return {
+        ok: true,
+        preset: request.preset,
+        keyPath: KHALA_CODE_MODEL_ROLE_REGISTRY_KEY_PATH as typeof KHALA_CODE_MODEL_ROLE_REGISTRY_KEY_PATH,
+        settings: await readCodexSettings({
+          includeHiddenModels: true,
+          ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
+        }),
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        preset: request.preset,
+        keyPath: KHALA_CODE_MODEL_ROLE_REGISTRY_KEY_PATH,
         error: error instanceof Error ? error.message : String(error),
       }
     }
@@ -2359,6 +2409,9 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     },
     async codexPluginUninstall(request) {
       return codexAppServerAction("plugin/uninstall", request)
+    },
+    async codexModelRolePresetApply(request) {
+      return applyCodexModelRolePreset(request)
     },
     async codexSettingsRead(request = {}) {
       return readCodexSettings(request)
