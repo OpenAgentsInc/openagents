@@ -39,6 +39,15 @@ export type KhalaCodeQaCoverageLedger = {
   readonly errorStateCasesExercised: readonly string[]
   readonly threadItemVariantRenderCounts: Readonly<Record<string, number>>
   readonly threadItemVariantsRendered: readonly string[]
+  readonly plannerCoderJudge: {
+    readonly advisorAdvisorySeverities: readonly string[]
+    readonly advisorGuardRefs: readonly string[]
+    readonly architectPlanDecisions: readonly string[]
+    readonly judgeVerdictKinds: readonly string[]
+    readonly liveSmokeModes: readonly string[]
+    readonly modelRoleRegistryRoles: readonly string[]
+    readonly roleEconomicsRoleRefs: readonly string[]
+  }
   readonly selectorsClicked: readonly string[]
   readonly screensScreenshotted: readonly string[]
 }
@@ -57,6 +66,13 @@ export type KhalaCodeQaCoverageFrontierReport = {
     readonly fleetRunControlVerbs: readonly string[]
     readonly inboxRoutingFlagKinds: readonly string[]
     readonly errorStateCases: readonly string[]
+    readonly plannerCoderJudgeAdvisorAdvisorySeverities: readonly string[]
+    readonly plannerCoderJudgeAdvisorGuardRefs: readonly string[]
+    readonly plannerCoderJudgeArchitectPlanDecisions: readonly string[]
+    readonly plannerCoderJudgeJudgeVerdictKinds: readonly string[]
+    readonly plannerCoderJudgeLiveSmokeModes: readonly string[]
+    readonly plannerCoderJudgeModelRoleRegistryRoles: readonly string[]
+    readonly plannerCoderJudgeRoleEconomicsRoleRefs: readonly string[]
     readonly threadItemVariants: readonly string[]
     readonly selectors: readonly string[]
     readonly slashCommandAvailabilityStates: readonly string[]
@@ -68,6 +84,15 @@ type MutableRpcCoverage = Map<string, { calls: number; argumentShapes: Set<strin
 type MutableRpcGroupCoverage = Map<string, { calls: number; methods: Set<string> }>
 type MutableSlashCoverage = Map<string, { dispatches: number; availabilityStates: Set<KhalaCodeQaCoverageAvailability> }>
 type MutableCountCoverage = Map<string, number>
+type MutablePlannerCoderJudgeCoverage = {
+  advisorAdvisorySeverities: string[]
+  advisorGuardRefs: string[]
+  architectPlanDecisions: string[]
+  judgeVerdictKinds: string[]
+  liveSmokeModes: string[]
+  modelRoleRegistryRoles: string[]
+  roleEconomicsRoleRefs: string[]
+}
 
 const emptyGeneratedAt = "1970-01-01T00:00:00.000Z"
 
@@ -311,6 +336,97 @@ const collectErrorStateCaseIds = (value: unknown): readonly string[] => {
   return [...direct, ...refs]
 }
 
+const collectPlannerCoderJudgeCoverage = (value: unknown): {
+  readonly advisorAdvisorySeverities: readonly string[]
+  readonly advisorGuardRefs: readonly string[]
+  readonly architectPlanDecisions: readonly string[]
+  readonly judgeVerdictKinds: readonly string[]
+  readonly liveSmokeModes: readonly string[]
+  readonly modelRoleRegistryRoles: readonly string[]
+  readonly roleEconomicsRoleRefs: readonly string[]
+} => {
+  if (Array.isArray(value)) {
+    return mergePlannerCoderJudgeCoverage(value.map(collectPlannerCoderJudgeCoverage))
+  }
+  if (!isRecord(value)) return emptyPlannerCoderJudgeCoverage()
+  const body = typeof value.body === "string" ? value.body : ""
+  const bodyHas = (needle: string): boolean => body.includes(needle)
+  const direct = {
+    advisorAdvisorySeverities: [
+      value.schema === "openagents.khala_code.advisor_advisory.v1" && typeof value.severity === "string"
+        ? value.severity
+        : undefined,
+      ...["blocker", "concern", "nit"].filter((severity) =>
+        bodyHas(`advisor_advisory:${severity}`)
+      ),
+    ].filter((entry): entry is string => entry !== undefined),
+    advisorGuardRefs: [
+      Array.isArray(value.droppedAdvisories) ? "dedupe_guard" : undefined,
+      typeof value.immuneTurnsRemaining === "number" ? "interrupt_budget" : undefined,
+      ...["dedupe_guard", "interrupt_budget"].filter((guardRef) =>
+        bodyHas(`advisor_guard:${guardRef}`)
+      ),
+    ].filter((entry): entry is string => entry !== undefined),
+    architectPlanDecisions: [
+      typeof value.decision === "string" && (value.decision === "approve" || value.decision === "reject")
+        ? value.decision
+        : undefined,
+    ].filter((entry): entry is string => entry !== undefined),
+    judgeVerdictKinds: [
+      value.schema === "openagents.khala_code.judge_diff_verdict.v1" && typeof value.verdict === "string"
+        ? value.verdict
+        : undefined,
+      ...["accept", "request_changes", "replan"].filter((verdict) =>
+        bodyHas(`judge_verdict:${verdict}`)
+      ),
+    ].filter((entry): entry is string => entry !== undefined),
+    liveSmokeModes: [
+      value.schema === "openagents.khala_code.architect_coder_judge_live_smoke.v1" && typeof value.mode === "string"
+        ? value.mode
+        : undefined,
+      ...["skip_safe_default", "env_armed"].filter((mode) =>
+        bodyHas(`architect_coder_judge_live_smoke:${mode}`)
+      ),
+    ].filter((entry): entry is string => entry !== undefined),
+    modelRoleRegistryRoles: isRecord(value.registry) && isRecord(value.registry.roles)
+      ? Object.keys(value.registry.roles)
+      : isRecord(value.roles)
+        ? Object.keys(value.roles)
+        : [],
+    roleEconomicsRoleRefs: Array.isArray(value.roleEconomics)
+      ? value.roleEconomics.flatMap((entry) =>
+        isRecord(entry) && typeof entry.roleRef === "string" ? [entry.roleRef] : []
+      )
+      : [],
+  }
+  return mergePlannerCoderJudgeCoverage([
+    direct,
+    ...Object.values(value).map(collectPlannerCoderJudgeCoverage),
+  ])
+}
+
+const emptyPlannerCoderJudgeCoverage = (): MutablePlannerCoderJudgeCoverage => ({
+  advisorAdvisorySeverities: [],
+  advisorGuardRefs: [],
+  architectPlanDecisions: [],
+  judgeVerdictKinds: [],
+  liveSmokeModes: [],
+  modelRoleRegistryRoles: [],
+  roleEconomicsRoleRefs: [],
+})
+
+const mergePlannerCoderJudgeCoverage = (
+  entries: readonly (MutablePlannerCoderJudgeCoverage | KhalaCodeQaCoverageLedger["plannerCoderJudge"])[],
+): MutablePlannerCoderJudgeCoverage => ({
+  advisorAdvisorySeverities: [...sorted(entries.flatMap((entry) => entry.advisorAdvisorySeverities))],
+  advisorGuardRefs: [...sorted(entries.flatMap((entry) => entry.advisorGuardRefs))],
+  architectPlanDecisions: [...sorted(entries.flatMap((entry) => entry.architectPlanDecisions))],
+  judgeVerdictKinds: [...sorted(entries.flatMap((entry) => entry.judgeVerdictKinds))],
+  liveSmokeModes: [...sorted(entries.flatMap((entry) => entry.liveSmokeModes))],
+  modelRoleRegistryRoles: [...sorted(entries.flatMap((entry) => entry.modelRoleRegistryRoles))],
+  roleEconomicsRoleRefs: [...sorted(entries.flatMap((entry) => entry.roleEconomicsRoleRefs))],
+})
+
 const collectArmedErrorStateCases = (args: readonly unknown[] | undefined): readonly string[] => {
   const sample = args?.[0]
   if (!isRecord(sample) || !isRecord(sample.context)) return []
@@ -332,6 +448,7 @@ export const createEmptyKhalaCodeQaCoverageLedger = (
   hotbarPanelsOpened: [],
   inboxRoutingFlagKinds: [],
   errorStateCasesExercised: [],
+  plannerCoderJudge: emptyPlannerCoderJudgeCoverage(),
   rpcGroups: {},
   rpcMethods: {},
   runIds: options.runId === undefined ? [] : [options.runId],
@@ -361,6 +478,7 @@ export const collectKhalaCodeQaCoverageLedger = (input: {
   const errorStateCasesExercised = new Set<string>()
   const threadItemVariantRenderCounts: MutableCountCoverage = new Map()
   const threadItemVariantsRendered = new Set<string>()
+  const plannerCoderJudge = emptyPlannerCoderJudgeCoverage()
   const selectorsClicked = new Set<string>()
   const screensScreenshotted = new Set<string>()
 
@@ -410,6 +528,18 @@ export const collectKhalaCodeQaCoverageLedger = (input: {
       if (action.method === "fleetWorkerControl" && isRecord(firstArg) && typeof firstArg.verb === "string") {
         inboxRoutingFlagKinds.add(firstArg.verb)
       }
+      if (action.method === "architectPlanDecision" && isRecord(firstArg) && typeof firstArg.decision === "string") {
+        plannerCoderJudge.architectPlanDecisions.push(firstArg.decision)
+      }
+      if (
+        action.method === "qaMetricSample" &&
+        isRecord(firstArg) &&
+        isRecord(firstArg.context) &&
+        firstArg.context.schema === "openagents.khala_code.architect_coder_judge_live_smoke.v1" &&
+        typeof firstArg.context.mode === "string"
+      ) {
+        plannerCoderJudge.liveSmokeModes.push(firstArg.context.mode)
+      }
       for (const caseId of collectArmedErrorStateCases(action.args)) {
         errorStateCasesExercised.add(caseId)
       }
@@ -420,6 +550,14 @@ export const collectKhalaCodeQaCoverageLedger = (input: {
         recordCount(threadItemVariantRenderCounts, variant)
         threadItemVariantsRendered.add(variant)
       }
+      const pcj = collectPlannerCoderJudgeCoverage(observation.data)
+      plannerCoderJudge.advisorAdvisorySeverities.push(...pcj.advisorAdvisorySeverities)
+      plannerCoderJudge.advisorGuardRefs.push(...pcj.advisorGuardRefs)
+      plannerCoderJudge.architectPlanDecisions.push(...pcj.architectPlanDecisions)
+      plannerCoderJudge.judgeVerdictKinds.push(...pcj.judgeVerdictKinds)
+      plannerCoderJudge.liveSmokeModes.push(...pcj.liveSmokeModes)
+      plannerCoderJudge.modelRoleRegistryRoles.push(...pcj.modelRoleRegistryRoles)
+      plannerCoderJudge.roleEconomicsRoleRefs.push(...pcj.roleEconomicsRoleRefs)
       continue
     }
 
@@ -447,6 +585,7 @@ export const collectKhalaCodeQaCoverageLedger = (input: {
     hotbarPanelsOpened: sorted(hotbarPanelsOpened),
     inboxRoutingFlagKinds: sorted(inboxRoutingFlagKinds),
     errorStateCasesExercised: sorted(errorStateCasesExercised),
+    plannerCoderJudge: mergePlannerCoderJudgeCoverage([plannerCoderJudge]),
     rpcGroups: rpcGroupCoverageToObject(rpcGroups),
     rpcMethods: rpcCoverageToObject(rpcMethods),
     runIds: [input.runId],
@@ -467,6 +606,9 @@ export const mergeKhalaCodeQaCoverageLedgers = (
   const rpcMethods: MutableRpcCoverage = new Map()
   const slashCommands: MutableSlashCoverage = new Map()
   const threadItemVariantRenderCounts: MutableCountCoverage = new Map()
+  const plannerCoderJudge = mergePlannerCoderJudgeCoverage(ledgers.map((ledger) =>
+    ledger.plannerCoderJudge ?? emptyPlannerCoderJudgeCoverage()
+  ))
   const runIds = new Set<string>()
   const generatedAt = ledgers.map((ledger) => ledger.generatedAt).sort().at(-1) ?? emptyGeneratedAt
   const addSet = <K extends keyof KhalaCodeQaCoverageLedger>(key: K): Set<string> =>
@@ -505,6 +647,7 @@ export const mergeKhalaCodeQaCoverageLedgers = (
     hotbarPanelsOpened: sorted(addSet("hotbarPanelsOpened")),
     inboxRoutingFlagKinds: sorted(addSet("inboxRoutingFlagKinds")),
     errorStateCasesExercised: sorted(addSet("errorStateCasesExercised")),
+    plannerCoderJudge,
     rpcGroups: rpcGroupCoverageToObject(rpcGroups),
     rpcMethods: rpcCoverageToObject(rpcMethods),
     runIds: sorted(runIds),
@@ -542,6 +685,27 @@ export const khalaCodeQaCoverageFrontierReport = (input: {
     )),
     errorStateCases: sorted(input.manifest.coverage.errorStateCases.filter((item) =>
       !input.ledger.errorStateCasesExercised.includes(item)
+    )),
+    plannerCoderJudgeAdvisorAdvisorySeverities: sorted(input.manifest.coverage.plannerCoderJudge.advisorAdvisorySeverities.filter((item) =>
+      !input.ledger.plannerCoderJudge.advisorAdvisorySeverities.includes(item)
+    )),
+    plannerCoderJudgeAdvisorGuardRefs: sorted(input.manifest.coverage.plannerCoderJudge.advisorGuardRefs.filter((item) =>
+      !input.ledger.plannerCoderJudge.advisorGuardRefs.includes(item)
+    )),
+    plannerCoderJudgeArchitectPlanDecisions: sorted(input.manifest.coverage.plannerCoderJudge.architectPlanDecisions.filter((item) =>
+      !input.ledger.plannerCoderJudge.architectPlanDecisions.includes(item)
+    )),
+    plannerCoderJudgeJudgeVerdictKinds: sorted(input.manifest.coverage.plannerCoderJudge.judgeVerdictKinds.filter((item) =>
+      !input.ledger.plannerCoderJudge.judgeVerdictKinds.includes(item)
+    )),
+    plannerCoderJudgeLiveSmokeModes: sorted(input.manifest.coverage.plannerCoderJudge.liveSmokeModes.filter((item) =>
+      !input.ledger.plannerCoderJudge.liveSmokeModes.includes(item)
+    )),
+    plannerCoderJudgeModelRoleRegistryRoles: sorted(input.manifest.coverage.plannerCoderJudge.modelRoleRegistryRoles.filter((item) =>
+      !input.ledger.plannerCoderJudge.modelRoleRegistryRoles.includes(item)
+    )),
+    plannerCoderJudgeRoleEconomicsRoleRefs: sorted(input.manifest.coverage.plannerCoderJudge.roleEconomicsRoleRefs.filter((item) =>
+      !input.ledger.plannerCoderJudge.roleEconomicsRoleRefs.includes(item)
     )),
     rpcGroups: sorted(input.manifest.coverage.rpcGroups.filter((item) =>
       input.ledger.rpcGroups[item] === undefined

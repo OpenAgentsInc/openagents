@@ -77,6 +77,15 @@ describe("Khala Code QA coverage ledger", () => {
     expect(ledger.fleetRunControlVerbs).toEqual([...KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.fleetRunControlVerbs].sort())
     expect(ledger.inboxRoutingFlagKinds).toEqual([...KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.inboxRoutingFlagKinds].sort())
     expect(ledger.errorStateCasesExercised).toEqual([...KHALA_CODE_QA_ERROR_STATE_CASE_IDS].sort())
+    expect(ledger.plannerCoderJudge).toEqual({
+      advisorAdvisorySeverities: ["blocker", "concern", "nit"],
+      advisorGuardRefs: ["dedupe_guard", "interrupt_budget"],
+      architectPlanDecisions: ["approve", "reject"],
+      judgeVerdictKinds: ["accept", "replan", "request_changes"],
+      liveSmokeModes: ["skip_safe_default"],
+      modelRoleRegistryRoles: ["advisor", "architect", "coder", "judge"],
+      roleEconomicsRoleRefs: ["advisor", "architect", "coder", "judge"],
+    })
     expect(ledger.crossModeSurfacesExercised).toEqual(
       [...KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.crossModeSurfaces].sort(),
     )
@@ -204,6 +213,13 @@ describe("Khala Code QA coverage ledger", () => {
     expect(frontier.missing.fleetRunControlVerbs).toEqual(["drain", "pause", "resume", "stop"])
     expect(frontier.missing.inboxRoutingFlagKinds).toEqual(["flag", "interrupt", "retry"])
     expect(frontier.missing.errorStateCases).toEqual([...KHALA_CODE_QA_ERROR_STATE_CASE_IDS].sort())
+    expect(frontier.missing.plannerCoderJudgeAdvisorAdvisorySeverities).toEqual(["blocker", "concern", "nit"])
+    expect(frontier.missing.plannerCoderJudgeAdvisorGuardRefs).toEqual(["dedupe_guard", "interrupt_budget"])
+    expect(frontier.missing.plannerCoderJudgeArchitectPlanDecisions).toEqual(["approve", "reject"])
+    expect(frontier.missing.plannerCoderJudgeJudgeVerdictKinds).toEqual(["accept", "replan", "request_changes"])
+    expect(frontier.missing.plannerCoderJudgeLiveSmokeModes).toEqual(["skip_safe_default"])
+    expect(frontier.missing.plannerCoderJudgeModelRoleRegistryRoles).toEqual(["advisor", "architect", "coder", "judge"])
+    expect(frontier.missing.plannerCoderJudgeRoleEconomicsRoleRefs).toEqual(["advisor", "architect", "coder", "judge"])
     expect(frontier.missing.crossModeSurfaces).toEqual(
       [...KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.crossModeSurfaces].sort(),
     )

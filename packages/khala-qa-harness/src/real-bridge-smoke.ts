@@ -248,6 +248,8 @@ const realBridgeInProcessOnlyScenarioIds = new Set([
   "scenario.khala_code.seed.rpc_fleet_run_lifecycle.v1",
   "scenario.khala_code.seed.rpc_forum_panel_lifecycle.v1",
   "scenario.khala_code.seed.rpc_inbox_routing_lifecycle.v1",
+  "scenario.khala_code.seed.planner_coder_judge_judge_verdict_cards.v1",
+  "scenario.khala_code.seed.planner_coder_judge_advisor_guards.v1",
 ])
 
 const isRealBridgeTransportValidSeedScenario = (scenario: KhalaCodeQaScenario): boolean =>

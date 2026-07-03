@@ -11,6 +11,7 @@ import {
   khalaCodeDesktopSlashCommandsWithAvailability,
   type KhalaCodeDesktopSlashCommand,
 } from "../../../clients/khala-code-desktop/src/shared/codex-slash-commands.js"
+import { defaultKhalaCodeModelRoleRegistry } from "../../../clients/khala-code-desktop/src/shared/model-roles.js"
 import {
   evaluateKhalaCodeQaMetricBudgets,
   khalaCodeQaMetricBudgets,
@@ -53,6 +54,7 @@ export type SeedCorpusGroup =
   | "rpc.plans_billing"
   | "rpc.headless_events"
   | "rpc.qa_metrics"
+  | "planner_coder_judge"
   | "hotbar"
   | "cross_mode"
   | "error_states"
@@ -79,6 +81,15 @@ export type KhalaCodeQaSeedCorpusManifest = Readonly<{
     fleetRunControlVerbs: readonly string[]
     hotbarPanels: readonly string[]
     inboxRoutingFlagKinds: readonly string[]
+    plannerCoderJudge: Readonly<{
+      advisorAdvisorySeverities: readonly string[]
+      advisorGuardRefs: readonly string[]
+      architectPlanDecisions: readonly string[]
+      judgeVerdictKinds: readonly string[]
+      liveSmokeModes: readonly string[]
+      modelRoleRegistryRoles: readonly string[]
+      roleEconomicsRoleRefs: readonly string[]
+    }>
     rpcGroups: readonly string[]
     rpcMethodsByGroup: Readonly<Record<string, readonly string[]>>
     selectors: readonly string[]
@@ -103,6 +114,7 @@ const threadId = "thread-fixture"
 const forkThreadId = "thread-fork-fixture"
 const turnId = "turn-fixture"
 const runRef = "fleet-run-fixture"
+const architectPlanRef = "architect-plan-fixture"
 
 type FixtureFleetRunState = "draft" | "running" | "paused" | "draining" | "completed" | "stopped"
 type FixtureAppServerState = "errored" | "running" | "starting" | "stopped"
@@ -1084,6 +1096,13 @@ export const KHALA_CODE_QA_SEED_APPROVAL_DECISION_KINDS = KHALA_CODE_CODEX_APPRO
 export const KHALA_CODE_QA_SEED_SELECTORS = [] as const
 export const KHALA_CODE_QA_SEED_SLASH_COMMANDS = KHALA_CODE_DESKTOP_SLASH_COMMANDS.map((command) => command.command)
 export const KHALA_CODE_QA_SEED_CROSS_MODE_SURFACES = KHALA_CODE_QA_CROSS_MODE_SURFACES
+export const KHALA_CODE_QA_PLANNER_CODER_JUDGE_MODEL_ROLE_REGISTRY_ROLES = ["advisor", "architect", "coder", "judge"] as const
+export const KHALA_CODE_QA_PLANNER_CODER_JUDGE_ARCHITECT_PLAN_DECISIONS = ["approve", "reject"] as const
+export const KHALA_CODE_QA_PLANNER_CODER_JUDGE_VERDICT_KINDS = ["accept", "request_changes", "replan"] as const
+export const KHALA_CODE_QA_PLANNER_CODER_JUDGE_ADVISORY_SEVERITIES = ["blocker", "concern", "nit"] as const
+export const KHALA_CODE_QA_PLANNER_CODER_JUDGE_ADVISOR_GUARD_REFS = ["dedupe_guard", "interrupt_budget"] as const
+export const KHALA_CODE_QA_PLANNER_CODER_JUDGE_ROLE_ECONOMICS_REFS = ["advisor", "architect", "coder", "judge"] as const
+export const KHALA_CODE_QA_PLANNER_CODER_JUDGE_LIVE_SMOKE_MODES = ["skip_safe_default"] as const
 
 export const KHALA_CODE_QA_SEED_SLASH_COMMAND_AVAILABILITY_STATES =
   Object.fromEntries(KHALA_CODE_DESKTOP_SLASH_COMMANDS.map((command) => [
@@ -1389,6 +1408,164 @@ const groupedCrossModeScenarios: readonly GroupedScenario[] = [
   ),
 ]
 
+const groupedPlannerCoderJudgeScenarios: readonly GroupedScenario[] = [
+  groupedFixtureScenario(
+    "planner_coder_judge",
+    "scenario.khala_code.seed.planner_coder_judge_role_registry.v1",
+    [{
+      name: "read-and-write-role-registry",
+      act: [
+        { kind: "rpc_call", method: "modelRoleRegistryRead" },
+        {
+          kind: "rpc_call",
+          method: "modelRoleRegistryWrite",
+          args: [{
+            registry: {
+              schema: "openagents.khala_code.model_roles.v1",
+              roles: {
+                advisor: { role: "advisor", harness: "claude", effort: "high", model: "claude-fixture-advisor" },
+                architect: { role: "architect", harness: "claude", effort: "xhigh", model: "claude-fixture-architect" },
+                coder: { role: "coder", harness: "codex", effort: "xhigh", model: "gpt-5.1-codex-fixture" },
+                judge: { role: "judge", harness: "claude", effort: "xhigh", model: "claude-fixture-judge" },
+              },
+            },
+          }],
+        },
+        {
+          kind: "rpc_call",
+          method: "codexModelRolePresetApply",
+          args: [{ cwd: "/workspace", preset: "architect-coder-judge" }],
+        },
+      ],
+      expect: [
+        schema("modelRoleRegistryRead"),
+        schema("modelRoleRegistryWrite"),
+        schema("codexModelRolePresetApply"),
+        crash(),
+      ],
+    }],
+    [
+      commitment("seed.pcj.role_registry.schema", "model-role registry RPC group decodes", "schema"),
+      runPass("seed.pcj.role_registry.pass", "Planner/Coder/Judge role registry scenario passes"),
+    ],
+  ),
+  groupedFixtureScenario(
+    "planner_coder_judge",
+    "scenario.khala_code.seed.planner_coder_judge_plan_card_decisions.v1",
+    [
+      {
+        name: "run-architect-plan",
+        act: [{
+          kind: "rpc_call",
+          method: "architectPlanRun",
+          args: [{
+            baseCommit: "1422b4a8440fd16bf1505cd052583f9bc4bed28e",
+            branch: "main",
+            objective: "fixture plan then code then judge",
+            repo: "OpenAgentsInc/openagents",
+            sessionId: desktopSessionId,
+            threadId,
+            verify: "bun run check:deploy",
+          }],
+        }],
+        expect: [schema("architectPlanRun"), crash()],
+      },
+      {
+        name: "approve-plan-card",
+        act: [{
+          kind: "rpc_call",
+          method: "architectPlanDecision",
+          args: [{ decision: "approve", planRef: architectPlanRef, sessionId: desktopSessionId, threadId }],
+        }],
+        expect: [schema("architectPlanDecision"), crash()],
+      },
+      {
+        name: "reject-plan-card",
+        act: [{
+          kind: "rpc_call",
+          method: "architectPlanDecision",
+          args: [{ decision: "reject", planRef: architectPlanRef, sessionId: desktopSessionId, threadId }],
+        }],
+        expect: [schema("architectPlanDecision"), crash()],
+      },
+    ],
+    [
+      commitment("seed.pcj.plan_card.schema", "plan card run and decisions decode", "schema"),
+      runPass("seed.pcj.plan_card.pass", "Planner/Coder/Judge plan-card scenario passes"),
+    ],
+  ),
+  groupedFixtureScenario(
+    "planner_coder_judge",
+    "scenario.khala_code.seed.planner_coder_judge_judge_verdict_cards.v1",
+    KHALA_CODE_QA_PLANNER_CODER_JUDGE_VERDICT_KINDS.map((verdict) => ({
+      name: `judge-verdict-${verdict}`,
+      act: [{ kind: "rpc_call" as const, method: "codexThreadRead", args: [{ threadId: `pcj-judge-${verdict}`, includeTurns: true }] }],
+      expect: [
+        schema("codexThreadRead"),
+        { id: "judge-verdict-card", match: verdict, oracle: "invariant" as const },
+        crash(),
+      ],
+    })),
+    [
+      commitment("seed.pcj.judge_verdict_cards.schema", "judge verdict cards decode through the thread fixture", "schema"),
+      runPass("seed.pcj.judge_verdict_cards.pass", "Planner/Coder/Judge verdict-card scenario passes"),
+    ],
+  ),
+  groupedFixtureScenario(
+    "planner_coder_judge",
+    "scenario.khala_code.seed.planner_coder_judge_advisor_guards.v1",
+    [{
+      name: "advisor-advisory-severities-and-guards",
+      act: [{ kind: "rpc_call", method: "codexThreadRead", args: [{ threadId: "pcj-advisor-guards", includeTurns: true }] }],
+      expect: [
+        schema("codexThreadRead"),
+        { id: "advisor-advisory-severity", match: "blocker", oracle: "invariant" as const },
+        { id: "advisor-advisory-severity", match: "concern", oracle: "invariant" as const },
+        { id: "advisor-advisory-severity", match: "nit", oracle: "invariant" as const },
+        { id: "advisor-dedupe-guard", match: "dedupe_guard", oracle: "invariant" as const },
+        { id: "advisor-interrupt-budget", match: "interrupt_budget", oracle: "invariant" as const },
+        crash(),
+      ],
+    }],
+    [
+      commitment("seed.pcj.advisor.schema", "advisor advisory fixture decodes through the thread fixture", "schema"),
+      runPass("seed.pcj.advisor.pass", "Planner/Coder/Judge advisor guard scenario passes"),
+    ],
+  ),
+  groupedFixtureScenario(
+    "planner_coder_judge",
+    "scenario.khala_code.seed.planner_coder_judge_role_economics_and_live_smoke.v1",
+    [{
+      name: "role-economics-and-live-smoke-skip",
+      act: [
+        { kind: "rpc_call", method: "threadTokenSummary", args: [{ threadId }] },
+        {
+          kind: "rpc_call",
+          method: "qaMetricSample",
+          args: [{
+            ...qaMetricSample("startup.interactive_ms", 0),
+            context: {
+              mode: "skip_safe_default",
+              schema: "openagents.khala_code.architect_coder_judge_live_smoke.v1",
+              surface: "architect-coder-judge-live-smoke",
+            },
+          }],
+        },
+      ],
+      expect: [
+        schema("threadTokenSummary"),
+        schema("qaMetricSample"),
+        { id: "role-economics-exact-rows", match: "roleEconomics", oracle: "invariant" as const },
+        crash(),
+      ],
+    }],
+    [
+      commitment("seed.pcj.role_economics.schema", "per-role token summary rows decode from exact-row projections", "schema"),
+      runPass("seed.pcj.role_economics.pass", "Planner/Coder/Judge role-economics and skip-safe live-smoke scenario passes"),
+    ],
+  ),
+]
+
 const firstDistilledExploreSession: KhalaCodeQaExploreSession = {
   actionLog: [
     {
@@ -1443,6 +1620,7 @@ const groupedSeedScenarios: readonly GroupedScenario[] = [
   ...groupedQ41RpcScenarios,
   ...groupedHotbarScenarios,
   ...groupedCrossModeScenarios,
+  ...groupedPlannerCoderJudgeScenarios,
   ...groupedThreadItemScenarios,
   ...groupedErrorStateScenarios,
   ...groupedSlashCommandScenarios,
@@ -1462,6 +1640,15 @@ export const KHALA_CODE_QA_SEED_CORPUS_MANIFEST: KhalaCodeQaSeedCorpusManifest =
     fleetRunControlVerbs: KHALA_CODE_QA_SEED_FLEET_RUN_CONTROL_VERBS,
     hotbarPanels: KHALA_CODE_QA_SEED_HOTBAR_PANELS,
     inboxRoutingFlagKinds: KHALA_CODE_QA_SEED_INBOX_ROUTING_FLAG_KINDS,
+    plannerCoderJudge: {
+      advisorAdvisorySeverities: KHALA_CODE_QA_PLANNER_CODER_JUDGE_ADVISORY_SEVERITIES,
+      advisorGuardRefs: KHALA_CODE_QA_PLANNER_CODER_JUDGE_ADVISOR_GUARD_REFS,
+      architectPlanDecisions: KHALA_CODE_QA_PLANNER_CODER_JUDGE_ARCHITECT_PLAN_DECISIONS,
+      judgeVerdictKinds: KHALA_CODE_QA_PLANNER_CODER_JUDGE_VERDICT_KINDS,
+      liveSmokeModes: KHALA_CODE_QA_PLANNER_CODER_JUDGE_LIVE_SMOKE_MODES,
+      modelRoleRegistryRoles: KHALA_CODE_QA_PLANNER_CODER_JUDGE_MODEL_ROLE_REGISTRY_ROLES,
+      roleEconomicsRoleRefs: KHALA_CODE_QA_PLANNER_CODER_JUDGE_ROLE_ECONOMICS_REFS,
+    },
     rpcGroups: Object.keys(KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS),
     rpcMethodsByGroup: KHALA_CODE_QA_ROADMAP_RPC_METHOD_GROUPS,
     selectors: KHALA_CODE_QA_SEED_SELECTORS,
@@ -1936,6 +2123,28 @@ const fixtureRpcPayload = (
       const request = args[0] as { readonly keyPath?: string } | undefined
       return { ok: true, keyPath: request?.keyPath ?? "model", response: { applied: true }, settings: settingsProjection() }
     }
+    case "modelRoleRegistryRead":
+      return modelRoleRegistryResult(defaultKhalaCodeModelRoleRegistry())
+    case "modelRoleRegistryWrite": {
+      const request = args[0] as { readonly registry?: unknown; readonly entry?: { readonly role?: string } } | undefined
+      const registry = request?.registry ?? {
+        ...defaultKhalaCodeModelRoleRegistry(),
+        ...(request?.entry?.role === undefined ? {} : {
+          roles: {
+            ...defaultKhalaCodeModelRoleRegistry().roles,
+            [request.entry.role]: request.entry,
+          },
+        }),
+      }
+      return { ...modelRoleRegistryResult(registry), saved: true }
+    }
+    case "codexModelRolePresetApply":
+      return {
+        keyPath: "openagents.model_roles",
+        ok: true,
+        preset: "architect-coder-judge",
+        settings: settingsProjection({ architectCoderJudgeSelected: true }),
+      }
     case "harnessSettingRead":
       return harnessSetting("codex_harness", undefined, state.activeErrorStateCase === "all_boot_rpcs_failing" ? state.activeErrorStateCase : null)
     case "harnessSettingWrite": {
@@ -1992,6 +2201,19 @@ const fixtureRpcPayload = (
       return actionResult("skills/extraRoots/set", { extraRoots: ["/workspace/.khala/skills"] })
     case "threadTokenSummary":
       return threadTokenSummary(args[0])
+    case "architectPlanRun":
+      return { ok: true, artifact: architectPlanArtifact("pending_approval") }
+    case "architectPlanDecision": {
+      const request = args[0] as { readonly decision?: "approve" | "reject" } | undefined
+      const status = request?.decision === "reject" ? "rejected" : "dispatched"
+      return {
+        artifact: architectPlanArtifact(status),
+        message: request?.decision === "reject"
+          ? `Rejected plan ${architectPlanRef}.`
+          : `Approved plan ${architectPlanRef}; dispatched an in-thread Codex turn.`,
+        ok: true,
+      }
+    }
     case "sessionCatalog":
       return sessionCatalog(
         state.activeErrorStateCase === "corrupt_session_state_recovery" ||
@@ -2259,6 +2481,76 @@ const threadMessage = (
     }),
 })
 
+const judgeVerdict = (verdict: typeof KHALA_CODE_QA_PLANNER_CODER_JUDGE_VERDICT_KINDS[number]) => ({
+  confidence: verdict === "accept" ? 0.91 : verdict === "request_changes" ? 0.84 : 0.72,
+  diffRef: `diff.fixture.${verdict}`,
+  findings: verdict === "accept"
+    ? []
+    : [{
+      body: verdict === "replan"
+        ? "The approved plan no longer matches the implemented direction."
+        : "The retry guard was removed from the changed path.",
+      confidence: verdict === "replan" ? 0.76 : 0.82,
+      filePath: "packages/khala-qa-harness/src/seed-corpus.ts",
+      findingRef: `judge.finding.${verdict}.1`,
+      lineStart: 1,
+      priority: verdict === "replan" ? "P1" : "P2",
+      title: verdict === "replan" ? "Plan drift requires replanning" : "Retry guard removed",
+    }],
+  schema: "openagents.khala_code.judge_diff_verdict.v1",
+  summary: `${verdict} fixture verdict`,
+  verdict,
+  verifyAuthority: "verify_command_required",
+})
+
+const advisorAdvisory = (
+  severity: typeof KHALA_CODE_QA_PLANNER_CODER_JUDGE_ADVISORY_SEVERITIES[number],
+) => ({
+  advisoryRef: `advisor.${severity}.fixture`,
+  generatedAt: observedAt,
+  guidance: severity === "nit"
+    ? "Mention the verifier in the closeout."
+    : severity === "concern"
+      ? "Check that the migration preserves existing rows."
+      : "Do not weaken the verify command authority.",
+  role: "advisor",
+  schema: "openagents.khala_code.advisor_advisory.v1",
+  severity,
+  summary: `${severity} fixture advisory`,
+})
+
+const plannerCoderJudgeThreadBody = (
+  id: string,
+): string | null => {
+  const judgePrefix = "pcj-judge-"
+  if (id.startsWith(judgePrefix)) {
+    const verdict = id.slice(judgePrefix.length)
+    if ((KHALA_CODE_QA_PLANNER_CODER_JUDGE_VERDICT_KINDS as readonly string[]).includes(verdict)) {
+      const fixture = judgeVerdict(verdict as typeof KHALA_CODE_QA_PLANNER_CODER_JUDGE_VERDICT_KINDS[number])
+      return [
+        `judge_verdict:${fixture.verdict}`,
+        `judge_schema:${fixture.schema}`,
+        `verify_authority:${fixture.verifyAuthority}`,
+        `judge_summary:${fixture.summary}`,
+      ].join("\n")
+    }
+  }
+  if (id === "pcj-advisor-guards") {
+    return [
+      ...KHALA_CODE_QA_PLANNER_CODER_JUDGE_ADVISORY_SEVERITIES.map((severity) => {
+        const advisory = advisorAdvisory(severity)
+        return `advisor_advisory:${advisory.severity}:${advisory.advisoryRef}`
+      }),
+      "advisor_guard:dedupe_guard",
+      "advisor_guard:interrupt_budget",
+      "advisor_dropped:duplicate",
+      "advisor_dropped:content_free",
+      "advisor_steered:advisor.blocker.fixture",
+    ].join("\n")
+  }
+  return null
+}
+
 const threadResult = (id: string, state: FixtureThreadState = {
   archived: false,
   deleted: false,
@@ -2266,14 +2558,15 @@ const threadResult = (id: string, state: FixtureThreadState = {
   title: "Fixture thread",
 }, errorCase: KhalaCodeQaErrorStateCaseId | null = null) => {
   const fixture = threadItemFixtureForThreadId(id)
+  const plannerCoderJudgeBody = plannerCoderJudgeThreadBody(id)
   return {
     cwd: "/workspace",
     desktopSessionId,
     messages: [threadMessage(
       `message-${id}`,
-      fixture === undefined
+      plannerCoderJudgeBody ?? (fixture === undefined
         ? "fixture message"
-        : `Pinned ThreadItem fixture replay: ${fixture.variant}`,
+        : `Pinned ThreadItem fixture replay: ${fixture.variant}`),
       fixture,
     )],
     model: "gpt-5.1-codex",
@@ -2593,7 +2886,95 @@ const fleetRun = (
   },
 })
 
-const settingsProjection = () => {
+const modelRoleRegistryResult = (registry: unknown) => ({
+  ok: true,
+  path: "/fixture/khala-code-model-roles.json",
+  registry,
+})
+
+const architectPlanDag = () => ({
+  baseCommit: "1422b4a8440fd16bf1505cd052583f9bc4bed28e",
+  branch: "main",
+  evidenceRefs: ["fixture.architect.plan.public_safe"],
+  generatedAt: observedAt,
+  nodes: [{
+    baseCommit: "1422b4a8440fd16bf1505cd052583f9bc4bed28e",
+    branch: "main",
+    evidenceRefs: ["fixture.architect.node.public_safe"],
+    nodeRef: "architect-node-fixture",
+    objective: "Run the fixture coder turn and preserve verify authority.",
+    repo: "OpenAgentsInc/openagents",
+    title: "Fixture coder turn",
+    verify: "bun run check:deploy",
+  }],
+  objective: "fixture plan then code then judge",
+  planRef: architectPlanRef,
+  repo: "OpenAgentsInc/openagents",
+  schema: "openagents.khala_code.claude_plan_fanout_dag.v1",
+  source: "claude_plan_mode",
+  verify: "bun run check:deploy",
+})
+
+const architectPlanArtifact = (
+  status: "approved" | "dispatched" | "pending_approval" | "rejected",
+) => ({
+  architectRole: {
+    harness: "claude",
+    mode: "plan",
+    readOnly: true,
+    role: "architect",
+  },
+  coderTurnId: status === "dispatched" ? "architect-coder-fixture" : null,
+  createdAt: observedAt,
+  dag: architectPlanDag(),
+  dispatchMode: "in_thread",
+  fleetRunRef: null,
+  planRef: architectPlanRef,
+  schema: "openagents.khala_code.architect_plan_artifact.v1",
+  sessionId: desktopSessionId,
+  status,
+  updatedAt: observedAt,
+})
+
+const modelRolePresetProjection = (selected: boolean) => ({
+  activePreset: selected ? "architect-coder-judge" : null,
+  keyPath: "openagents.model_roles",
+  presets: [{
+    configKeyPath: "openagents.model_roles",
+    copyGate: "copy_gated_until_end_to_end_verifiable",
+    description: "Claude plans and judges through user auth; Codex codes through the existing login.",
+    id: "architect-coder-judge",
+    noProxyRails: true,
+    noResale: true,
+    promiseRef: "khala_code.architect_coder_judge.v1",
+    registry: {
+      activePreset: "architect-coder-judge",
+      copyGate: "copy_gated_until_end_to_end_verifiable",
+      noProxyRails: true,
+      noResale: true,
+      promiseRef: "khala_code.architect_coder_judge.v1",
+      roles: [
+        { role: "architect", harness: "claude", authRail: "user_anthropic_auth", authority: "advisory", enabled: true, effort: "xhigh", optional: false },
+        { role: "coder", harness: "codex", authRail: "user_codex_login", authority: "executor", enabled: true, effort: "xhigh", optional: false },
+        { role: "judge", harness: "claude", authRail: "user_anthropic_auth", authority: "advisory", enabled: true, effort: "xhigh", optional: false },
+        { role: "advisor", harness: "claude", authRail: "user_anthropic_auth", authority: "advisory", enabled: false, effort: "high", optional: true },
+      ],
+      schema: "openagents.khala_code.model_roles.v1",
+    },
+    roleSummary: [
+      "Architect: Claude, user Anthropic auth, advisory",
+      "Coder: Codex, existing local login, executor",
+      "Judge: Claude, user Anthropic auth, advisory",
+      "Advisor: Claude, optional and off by default",
+    ],
+    selected,
+    title: "Architect / Coder / Judge",
+  }],
+})
+
+const settingsProjection = (
+  options: { readonly architectCoderJudgeSelected?: boolean } = {},
+) => {
   const model = {
     defaultReasoningEffort: "medium",
     defaultServiceTier: "auto",
@@ -2658,6 +3039,7 @@ const settingsProjection = () => {
     },
     observedAt,
     ok: true,
+    modelRolePresets: modelRolePresetProjection(options.architectCoderJudgeSelected === true),
     permissions: {
       blockedProfileIds: [],
       profiles: [{ allowed: true, description: "Fixture", id: "workspace-write", selected: true }],
@@ -2763,10 +3145,16 @@ const threadTokenSummary = (request: unknown) => ({
   pendingSyncTokens: 0,
   remoteConfigured: false,
   remoteDisabled: true,
+  roleEconomics: [
+    { costAmount: 0.02, costCurrency: "USD", pricingState: "measured", roleRef: "architect", tokenRows: 1, tokens: 10 },
+    { costAmount: null, costCurrency: null, pricingState: "subscription_covered", roleRef: "coder", tokenRows: 1, tokens: 100 },
+    { costAmount: 0.01, costCurrency: "USD", pricingState: "measured", roleRef: "judge", tokenRows: 1, tokens: 8 },
+    { costAmount: 0.01, costCurrency: "USD", pricingState: "measured", roleRef: "advisor", tokenRows: 1, tokens: 6 },
+  ],
   threadId: (request as { readonly threadId?: string | null } | undefined)?.threadId ?? threadId,
-  totalTokens: 2,
+  totalTokens: 124,
   updatedAt: observedAt,
-  usageEventRows: 1,
+  usageEventRows: 4,
 })
 
 const sessionCatalog = (

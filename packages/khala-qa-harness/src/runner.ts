@@ -422,6 +422,34 @@ const evaluateNoDataLossInvariant = (
   }
 }
 
+const stringifyPublicFixtureValue = (value: unknown): string => {
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+const evaluateFixtureEvidenceInvariant = (
+  phaseName: string,
+  expectation: KhalaCodeQaOracleExpectation,
+  observations: ReadonlyArray<KhalaCodeQaObservation>,
+): KhalaCodeQaOracleOutcome => {
+  const match = expectation.match
+  const haystack = stringifyPublicFixtureValue(observedValues(observations))
+  const ok = match === undefined ? observations.every((observation) => observation.ok) : haystack.includes(match)
+  return {
+    data: { id: expectation.id, match, observed: ok },
+    ok,
+    oracle: "invariant",
+    phaseName,
+    summary: ok
+      ? `${expectation.id ?? "fixture evidence"} was observed`
+      : `${expectation.id ?? "fixture evidence"} was not observed`,
+    verdict: ok ? "CONFIRMED" : "REFUTED",
+  }
+}
+
 const verifyCommitments = (input: {
   readonly commitments: ReadonlyArray<KhalaCodeQaCommitment>
   readonly phaseOutcomes: ReadonlyArray<KhalaCodeQaPhaseOutcome>
@@ -567,6 +595,17 @@ const evaluateOracle = (
 
   if (expectation.oracle === "invariant" && expectation.id === "no-data-loss") {
     return evaluateNoDataLossInvariant(phaseName, expectation, observations)
+  }
+
+  if (
+    expectation.oracle === "invariant" &&
+    (expectation.id === "advisor-advisory-severity" ||
+      expectation.id === "advisor-dedupe-guard" ||
+      expectation.id === "advisor-interrupt-budget" ||
+      expectation.id === "judge-verdict-card" ||
+      expectation.id === "role-economics-exact-rows")
+  ) {
+    return evaluateFixtureEvidenceInvariant(phaseName, expectation, observations)
   }
 
   if (expectation.oracle === "consistency") {
