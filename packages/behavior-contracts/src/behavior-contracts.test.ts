@@ -21,6 +21,7 @@ import {
   validateCustomerBehaviorContractEngagement,
   type CustomerBehaviorContractEngagementDocument,
 } from "./customer-engagement"
+import { buildBehaviorContractReceipts } from "./receipt"
 import { validateBehaviorContractRegistry } from "./registry"
 import { renderBehaviorContractMarkdown } from "./report"
 
@@ -488,5 +489,46 @@ describe("customer behavior contract engagements", () => {
     expect(markdown).toContain("Visibility: `public-demo`")
     expect(markdown).toContain("/qa/qa-run.public-demo.behavior-contracts.latest")
     expect(markdown).not.toContain("raw")
+  })
+})
+
+describe("behavior contract receipts", () => {
+  test("records per-contract pass and fail checks without changing registry state", async () => {
+    const registry = document([contract()])
+    const registryValidation = validateBehaviorContractRegistry(registry)
+    const coverage = await Effect.runPromise(
+      checkBehaviorContractCoverage(registry).pipe(
+        Effect.provide(
+          inMemoryOracleSourceLayer({
+            "clients/khala-code-desktop/tests/ux-contracts.test.ts":
+              "// khala_code.chat.example_behavior.v1 oracle body",
+          }),
+        ),
+      ),
+    )
+
+    const [receipt] = buildBehaviorContractReceipts(registry, {
+      checkedAt: "2026-07-03T12:00:00.000Z",
+      coverage,
+      registryValidation,
+      runId: "nightly-1",
+      sweepChecks: [
+        {
+          evidenceRefs: ["var/qa-nightly/nightly-1/logs/desktop-verify.log"],
+          id: "nightly_step.desktop_verify",
+          status: "fail",
+          summary: "desktop verify failed",
+        },
+      ],
+    })
+
+    expect(receipt?.schema).toBe("openagents.behavior_contract_receipt.v1")
+    expect(receipt?.contractId).toBe("khala_code.chat.example_behavior.v1")
+    expect(receipt?.statement).toBe("Example stated behavior.")
+    expect(receipt?.status).toBe("fail")
+    expect(receipt?.checks.map(check => check.id)).toContain("registry_entry_valid")
+    expect(receipt?.checks.map(check => check.id)).toContain("oracle_coverage_linked")
+    expect(receipt?.checks.map(check => check.id)).toContain("nightly_step.desktop_verify")
+    expect(registry.contracts[0]?.state).toBe("enforced")
   })
 })

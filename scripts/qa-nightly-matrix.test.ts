@@ -91,11 +91,19 @@ describe("qa nightly matrix report", () => {
       expect(await readFile(join(root, report.quarantineLedgerPath), "utf8")).toContain(
         "qa_flake_quarantine_ledger",
       )
+      expect(await readFile(join(root, report.behaviorContractReceiptPath), "utf8")).toContain(
+        "openagents.behavior_contract_receipt.v1",
+      )
       const statusSurface = JSON.parse(await readFile(join(root, report.statusSurfaceJsonPath), "utf8"))
       const statusMarkdown = await readFile(join(root, report.statusSurfaceMarkdownPath), "utf8")
       expect(statusSurface.schema).toBe("openagents.khala_code.qa_status_surface.v1")
       expect(statusSurface.statusSummary).toBe("healthy")
       expect(statusSurface.liveTier.status).toBe("not_in_matrix")
+      expect(statusSurface.behaviorContracts).toMatchObject({
+        basis: "behavior_contract_receipts",
+        status: "pass",
+      })
+      expect(statusSurface.behaviorContracts.receiptCount).toBeGreaterThan(0)
       expect(statusSurface.coverage.counts.rpcMethods.total).toBeGreaterThan(0)
       expect(statusSurface.perfTrends.steps[0]).toMatchObject({
         latestDurationMs: 7,
@@ -116,6 +124,7 @@ describe("qa nightly matrix report", () => {
         trend: "no_samples",
       })
       expect(statusMarkdown).toContain("Khala Code QA Status")
+      expect(statusMarkdown).toContain("Behavior Contracts")
       expect(statusMarkdown).toContain("| rpcMethods |")
       expect(statusMarkdown).toContain("Latency Budgets")
       expect(statusMarkdown).toContain("Budget Trends")
@@ -208,6 +217,58 @@ describe("qa nightly matrix report", () => {
       expect(filed).toEqual([
         "[Bug]: Khala Code QA nightly failed khala-code-qa-nightly-2026-07-02t123000.000z",
       ])
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
+  test("files a behavior-contract deviation issue when nightly receipts fail and opt-in is armed", async () => {
+    const root = await mkdtemp(join(tmpdir(), "qa-nightly-contract-deviation-"))
+    const filed: string[] = []
+    const commandRunner: QaNightlyCommandRunner = async step => ({
+      durationMs: 3,
+      exitCode: step.id === "desktop-verify" ? 1 : 0,
+      stderr: step.id === "desktop-verify" ? "contract oracle failure" : "",
+      stdout: "",
+    })
+    const issueFiler: QaNightlyIssueFiler = async input => {
+      filed.push(input.title)
+      const body = await readFile(input.bodyPath, "utf8")
+      if (input.title.includes("behavior contract deviated")) {
+        expect(body).toContain("### Failing checks")
+        expect(body).toContain("khala_code.chat.sidebar_spinner_streaming_only.v1")
+        expect(body).toContain("Behavior-contract receipts")
+      }
+      return {
+        issueUrl: "https://github.com/OpenAgentsInc/openagents/issues/10003",
+        status: "filed",
+      }
+    }
+
+    try {
+      const report = await runQaNightlyMatrix({
+        artifactRoot: join(root, "artifacts"),
+        commandRunner,
+        env: {
+          OA_QA_NIGHTLY_FILE_CONTRACT_DEVIATION_ISSUE: "1",
+        },
+        issueFiler,
+        now: () => "2026-07-02T14:00:00.000Z",
+        root,
+      })
+      const statusSurface = JSON.parse(await readFile(join(root, report.statusSurfaceJsonPath), "utf8"))
+
+      expect(report.behaviorContractRun.status).toBe("fail")
+      expect(report.behaviorContractDeviationIssueStatus).toEqual({
+        issueUrl: "https://github.com/OpenAgentsInc/openagents/issues/10003",
+        status: "filed",
+      })
+      expect(statusSurface.behaviorContracts.failedContractIds).toContain(
+        "khala_code.chat.sidebar_spinner_streaming_only.v1",
+      )
+      expect(filed).toContain(
+        "[Bug]: Khala Code behavior contract deviated khala_code.chat.sidebar_spinner_streaming_only.v1",
+      )
     } finally {
       await rm(root, { force: true, recursive: true })
     }
@@ -545,6 +606,18 @@ describe("qa nightly matrix report", () => {
   test("failure issue body contains strict-form sections and public-safe refs", () => {
     const body = buildQaNightlyFailureIssueBody({
       artifactDir: "var/qa-nightly/run",
+      behaviorContractReceiptPath: "var/qa-nightly/run/behavior-contracts/behavior-contract-receipts.json",
+      behaviorContractRun: {
+        checkedAt: "2026-07-02T12:00:00.000Z",
+        failedContractIds: [],
+        passCount: 1,
+        receiptCount: 1,
+        receiptRefs: ["var/qa-nightly/run/behavior-contracts/behavior-contract-receipts.json"],
+        registryVersion: "2026-07-03.1",
+        schema: "openagents.khala_code.behavior_contract_nightly_run.v1",
+        skippedCount: 0,
+        status: "pass",
+      },
       coverageFrontierReportPath: "var/qa-nightly/run/coverage/coverage-frontier-report.json",
       coverageLedgerPath: "var/qa-nightly/run/coverage/coverage-union-ledger.json",
       coverageLedgerSourcePaths: ["var/qa-nightly/run/monkey-night/monkey-night-coverage-ledger.json"],

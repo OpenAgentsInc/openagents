@@ -133,3 +133,14 @@ export const checkBehaviorContractCoverage = (
     )
     return { ok, results }
   })
+
+export const checkBehaviorContractCoverageFromFiles = (
+  document: BehaviorContractRegistryDocument,
+  readFile: (path: string) => Promise<string>,
+  resolvePath: (ref: string) => string = ref => ref,
+): Promise<BehaviorContractCoverageReport> =>
+  Effect.runPromise(
+    checkBehaviorContractCoverage(document).pipe(
+      Effect.provide(fileOracleSourceLayer(readFile, resolvePath)),
+    ),
+  )
