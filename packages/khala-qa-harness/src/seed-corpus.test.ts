@@ -94,6 +94,22 @@ describe("Khala Code QA seed scenario corpus", () => {
     expect(idsForGroup("cross_mode")).toEqual([
       "scenario.khala_code.seed.cross_mode_consistency.v1",
     ])
+    expect(idsForGroup("planner_coder_judge")).toEqual([
+      "scenario.khala_code.seed.planner_coder_judge_role_registry.v1",
+      "scenario.khala_code.seed.planner_coder_judge_plan_card_decisions.v1",
+      "scenario.khala_code.seed.planner_coder_judge_judge_verdict_cards.v1",
+      "scenario.khala_code.seed.planner_coder_judge_advisor_guards.v1",
+      "scenario.khala_code.seed.planner_coder_judge_role_economics_and_live_smoke.v1",
+    ])
+    expect(KHALA_CODE_QA_SEED_CORPUS_MANIFEST.coverage.plannerCoderJudge).toEqual({
+      advisorAdvisorySeverities: ["blocker", "concern", "nit"],
+      advisorGuardRefs: ["dedupe_guard", "interrupt_budget"],
+      architectPlanDecisions: ["approve", "reject"],
+      judgeVerdictKinds: ["accept", "request_changes", "replan"],
+      liveSmokeModes: ["skip_safe_default"],
+      modelRoleRegistryRoles: ["advisor", "architect", "coder", "judge"],
+      roleEconomicsRoleRefs: ["advisor", "architect", "coder", "judge"],
+    })
     const crossModeScenario = KHALA_CODE_QA_SEED_SCENARIOS.find((candidate) =>
       candidate.id === "scenario.khala_code.seed.cross_mode_consistency.v1"
     )
