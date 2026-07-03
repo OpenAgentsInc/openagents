@@ -546,6 +546,10 @@ issue numbers to explicit bounded evidence nodes. Within one sustained run,
 each plan node is single-attempt: completed nodes are skipped as completed,
 and released or expired nodes are treated as failed for planning so a refill
 cannot dispatch the same node again.
+For real FleetRuns, the desktop supervisor publishes the run capacity heartbeat
+during capacity planning and refreshes that hosted heartbeat again immediately
+before each `khala request`, including refills after long-running workers, so a
+manual preflight heartbeat is not treated as enough proof by itself.
 
 ### Local multi-session proof runs
 

@@ -465,20 +465,22 @@ describe("Khala Code fleet tools", () => {
     expect(second.active).toBe(false)
   })
 
-  test("DefaultKhalaFleetRunSupervisorManager refreshes live issue-list capacity before named-account dispatch", async () => {
+  test("DefaultKhalaFleetRunSupervisorManager refreshes live issue-list capacity immediately before named-account dispatch", async () => {
     const fixture = await tempPylonFixture()
     const calls: string[] = []
     let requestArgs: readonly string[] = []
     let heartbeatSeen = false
+    let heartbeatCount = 0
     const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
       const args = pylonArgs(input)
       const joined = args.join(" ")
       calls.push(joined)
       if (joined === "presence heartbeat --base-url https://openagents.com --json") {
         heartbeatSeen = true
+        heartbeatCount += 1
         expect(input.env?.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY).toBe("10")
         expect(input.env?.OPENAGENTS_PYLON_CODEX_CONCURRENCY).toBe("10")
-        return ok({ heartbeatRef: "heartbeat.pylon.local.test.live_issue", pylonRef: "pylon.local.test" })
+        return ok({ heartbeatRef: `heartbeat.pylon.local.test.live_issue.${heartbeatCount}`, pylonRef: "pylon.local.test" })
       }
       if (joined === "provider go-online --json") {
         return ok({
@@ -565,6 +567,8 @@ describe("Khala Code fleet tools", () => {
     expect(heartbeatIndex).toBeGreaterThanOrEqual(0)
     expect(requestIndex).toBeGreaterThanOrEqual(0)
     expect(heartbeatIndex).toBeLessThan(requestIndex)
+    expect(heartbeatCount).toBeGreaterThanOrEqual(2)
+    expect(calls[requestIndex - 1]).toBe("presence heartbeat --base-url https://openagents.com --json")
   })
 
   test("DefaultKhalaFleetRunSupervisorManager refuses default Codex home for real issue-list dispatch", async () => {

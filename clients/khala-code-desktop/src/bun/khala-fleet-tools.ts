@@ -1690,11 +1690,13 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
         const config = this.planConfigs.get(runRef)
         if (config === undefined) throw new Error(`missing fleet run plan config: ${runRef}`)
         const fixture = run.workSource === "fixture"
-        const env = this.advertisedRunEnvs.get(runRef) ?? this.options.env
         const selectedAccountRef = commandAccountRef(accountRef)
         if (!fixture && selectedAccountRef === undefined) {
           throw new Error("real fleet dispatch requires a named isolated account ref; refusing default Codex home")
         }
+        const env = fixture
+          ? this.advertisedRunEnvs.get(runRef) ?? this.options.env
+          : await this.advertiseFleetRunCapacity(runRef, run)
         return await Effect.runPromise(this.pylonService.runAssignment({
           accountRef: selectedAccountRef,
           baseUrl: config.baseUrl,

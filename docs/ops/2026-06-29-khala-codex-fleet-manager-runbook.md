@@ -118,12 +118,13 @@ Expected:
   explicitly for manual shell smokes.
 - Supervised real FleetRuns (`issue_list`, `github_backlog`, and plan DAGs)
   also publish a fresh `presence heartbeat --base-url ... --json` from the
-  supervisor capacity probe before dispatch and pass that same advertised
-  capacity env into the `khala request` child process. This is required for
-  `smoke:fleet-run-live`: a manual heartbeat several minutes earlier, or an
-  assignment request spawned from an unadvertised env, is not sufficient
-  evidence, and stale-heartbeat admission failures must appear in the smoke JSON
-  under `dispatchFailures`.
+  supervisor capacity probe before planning, then re-publish the same advertised
+  capacity env immediately before each real `khala request` child process. This
+  is required for `smoke:fleet-run-live` and `smoke:fleet-run-sustained`: a
+  manual heartbeat several minutes earlier, a capacity probe without a
+  dispatch-time heartbeat, or an assignment request spawned from an unadvertised
+  env is not sufficient evidence, and stale-heartbeat admission failures must
+  appear in the smoke JSON under `dispatchFailures`.
 - Long-running local Codex assignments must refresh their live work claim and
   dispatch-context heartbeat on every supervisor tick before stale-claim
   reconciliation. Otherwise the synthetic dispatch context can look dead after
