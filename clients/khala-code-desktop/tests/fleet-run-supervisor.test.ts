@@ -361,6 +361,44 @@ describe("FleetRunSupervisor", () => {
     expect(store.getFleetRun(run.runRef)?.counters.activeAssignments).toBe(25)
   })
 
+  test("refreshes active assignment claims before stale heartbeat reconciliation", async () => {
+    const { store, run } = createStoreWithRun({
+      runRef: "fleet_run.acceptance.long_running_claim",
+      targetConcurrency: 2,
+      workUnits: 1,
+    })
+    const dispatched: string[] = []
+    const options = {
+      store,
+      pylonRef: "pylon.owner.long_running_claim",
+      runRef: run.runRef,
+      planner: fixturePlannerWithClaims(store, 1),
+      runner: acceptingRunner(dispatched),
+      capacity: capacity([{ accountRef: "codex", advertisedCapacity: 2 }]),
+    }
+
+    const first = await tickFleetRunSupervisor({
+      ...options,
+      clock: { now: () => fixedNow },
+    })
+    const staleHeartbeatNow = new Date(fixedNow.getTime() + 6 * 60 * 1000)
+    const second = await tickFleetRunSupervisor({
+      ...options,
+      clock: { now: () => staleHeartbeatNow },
+    })
+
+    expect(first.dispatched).toBe(1)
+    expect(second.dispatched).toBe(0)
+    expect(dispatched).toHaveLength(1)
+    expect(store.listWorkClaims({ runRef: run.runRef }).map(claim => claim.state)).toEqual(["in_progress"])
+    expect(store.listWorkClaims({ runRef: run.runRef })[0]?.expiresAt).toBe(
+      new Date(staleHeartbeatNow.getTime() + 30 * 60 * 1000).toISOString(),
+    )
+    expect(store.getDispatchContext(store.listDispatchContexts()[0]?.id ?? "")?.lastHeartbeatAt).toBe(
+      staleHeartbeatNow.toISOString(),
+    )
+  })
+
   test("respects advertised account capacity and cooldowns", async () => {
     const { store, run } = createStoreWithRun({ targetConcurrency: 6, workUnits: 6 })
 

@@ -219,6 +219,19 @@ const collectActiveAssignments = (
   })
 }
 
+const refreshActiveAssignmentClaims = (
+  store: PylonOrchestrationStore,
+  runRef: string,
+  now: Date,
+): void => {
+  for (const assignment of collectActiveAssignments(store, runRef)) {
+    store.refreshLiveWorkClaim(assignment.claim.workUnitRef, now)
+    if (store.getDispatchContext(assignment.contextId) !== null) {
+      store.recordHeartbeat(assignment.contextId, { at: now, status: "dispatched" })
+    }
+  }
+}
+
 const pickAccount = (
   accounts: readonly FleetRunSupervisorAccount[],
   activeCounts: Map<string, number>,
@@ -330,6 +343,7 @@ export async function tickFleetRunSupervisor(
   )
   const claimTtlMs = options.claimTtlMs ?? 30 * 60 * 1000
 
+  refreshActiveAssignmentClaims(store, options.runRef, now)
   store.reconcileWorkClaims({ now })
   const expectedWorkUnitsTotal = store.getFleetRun(options.runRef)?.counters.workUnitsTotal ?? 0
   let run = store.reconcileFleetRun(options.runRef, now)

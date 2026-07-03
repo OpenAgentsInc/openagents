@@ -119,6 +119,11 @@ Expected:
   assignment request spawned from an unadvertised env, is not sufficient
   evidence, and stale-heartbeat admission failures must appear in the smoke JSON
   under `dispatchFailures`.
+- Long-running local Codex assignments must refresh their live work claim and
+  dispatch-context heartbeat on every supervisor tick before stale-claim
+  reconciliation. Otherwise the synthetic dispatch context can look dead after
+  five minutes while the Codex child is still running, which reopens the same
+  issue for refill and creates duplicate PRs for one work unit.
 - The regression gate for this bundle is the adverse-condition matrix in
   `packages/khala-tools/src/fleet-delegate-program.test.ts` plus the Desktop
   runner seam in
