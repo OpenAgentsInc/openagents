@@ -228,6 +228,18 @@ short-lived access-token `OPENCODE_AUTH_CONTENT` without refresh material, and
 `provider_account_token_custody_audit` records store/access/refresh success or
 failure events with typed provider-account errors.
 
+BA-C2 status (2026-07-03): linked Pylon Codex accounts now re-prime through
+Worker custody before Codex assignment execution and account-usage refresh.
+The Pylon-only
+`/api/pylon/provider-accounts/chatgpt-codex/auth-material` route requires an
+owner-linked agent bearer, resolves auth material under that OpenAuth owner,
+and returns only short-lived `OPENCODE_AUTH_CONTENT` without refresh material.
+Pylon preserves isolated `CODEX_HOME` state, treats custody linkage as the
+fleet-capacity readiness source for linked accounts, enforces a 5-minute
+pre-expiry buffer on returned material, and reports typed custody blockers
+instead of falling back to stale embedded home tokens when custody is
+unavailable.
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-C1 | Owner-scoped token custody service on the Worker: encrypted refresh-token storage (AES-GCM, D1), refresh flow persisting rotated refresh tokens atomically, audit log rows, typed errors; refresh tokens never exposed outward — only short-lived access tokens are served | — | MED | [#8198](https://github.com/OpenAgentsInc/openagents/issues/8198) |

@@ -23,6 +23,10 @@ import {
   pylonAccountEnvironment,
   type ResolvedPylonAccountSelection,
 } from "./account-registry.js"
+import {
+  PYLON_CODEX_CUSTODY_ASSIGNMENT_BLOCKER_REF,
+  reprimePylonCodexAccountAuthFromCustody,
+} from "./codex-custody-reprime.js"
 import type { PylonCodexAuthValidityProbe } from "./account-connect.js"
 import { probeAndRecordCodexAccountAuthHealth } from "./codex-account-auth-health.js"
 import {
@@ -1413,7 +1417,29 @@ export async function executeCodexAgentAssignment(
   )
 
   const config = await loadCodexAgentConfig({ paths: { config: state.paths.config } })
-  const env = pylonAccountEnvironment(options.codexAgentProbe?.env ?? Bun.env, options.account)
+  const baseEnv = pylonAccountEnvironment(options.codexAgentProbe?.env ?? Bun.env, options.account)
+  const custodyReprime = await reprimePylonCodexAccountAuthFromCustody({
+    account: options.account,
+    ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
+    ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
+    env: baseEnv,
+    ...(options.fetch === undefined ? {} : { fetcher: options.fetch }),
+    now,
+  })
+  if (custodyReprime.status === "blocked") {
+    return refusalRecord({
+      lease,
+      runRef,
+      blockerRefs: [
+        PYLON_CODEX_CUSTODY_ASSIGNMENT_BLOCKER_REF,
+        ...custodyReprime.blockerRefs,
+      ],
+      resultRef: "result.public.pylon.codex_agent_task.custody_unavailable",
+      summaryRef: "summary.public.pylon.codex_agent_task.custody_unavailable",
+      message: `Local Codex lane cannot re-prime linked account auth from custody (${custodyReprime.reason}).`,
+    })
+  }
+  const env = custodyReprime.env
   const probed = await probeCodexAgentReadiness({ ...options.codexAgentProbe, config, env })
   if (probed.state !== "ready") {
     return refusalRecord({

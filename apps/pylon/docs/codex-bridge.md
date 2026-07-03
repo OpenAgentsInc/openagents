@@ -26,14 +26,22 @@ plumbing, not Codex SDK execution. This lane is `codex_agent_task`,
 ## Credential policy (the CX1 ToS review)
 
 Reviewed 2026-06-11 against OpenAI's published Codex terms posture and
-the OpenAgents no-resale law. The lane honors exactly three credential
-sources, all owner-held, checked by presence only and in this order:
+the OpenAgents no-resale law. The lane honors exactly four owner-held
+credential sources in this order; probes expose only public source refs, never
+credential values:
 
 1. **`CODEX_API_KEY`** — the owner's own Codex API key
    (`credential.source.codex_agent.codex_api_key`).
 2. **`OPENAI_API_KEY`** — the owner's own OpenAI API key
    (`credential.source.codex_agent.openai_api_key`).
-3. **The owner's own Codex CLI login** — a non-empty `auth.json` under
+3. **OpenAgents custody re-prime for a linked owner account** — Pylon
+   requests short-lived `OPENCODE_AUTH_CONTENT` from
+   `/api/pylon/provider-accounts/chatgpt-codex/auth-material` using the
+   registered agent bearer linked to the owner's OpenAuth account
+   (`credential.source.codex_agent.opencode_auth_content`). The Worker
+   stores and refreshes the long-lived OAuth refresh token in owner-scoped
+   custody; the returned auth content never includes a `refresh` field.
+4. **The owner's own Codex CLI login** — a non-empty `auth.json` under
    `$CODEX_HOME` (default `~/.codex/`), created by the owner running
    `codex login` themselves on this device
    (`credential.source.codex_agent.codex_cli_login`). The Codex
@@ -86,6 +94,10 @@ probe reports.
   `ready`, and strips a stale declaration when it does not. The
   capability ref is the only public signal that a local Codex exists;
   no machine details, paths, or account identifiers leave the device.
+- Linked per-account Codex capacity is custody-backed: if a registry
+  account carries `openAgentsProviderAccountRef`, Pylon can advertise the
+  account from that link plus the local health/quota ledgers without requiring
+  a refresh token embedded in the isolated `CODEX_HOME`.
 
 ## Configuration
 
@@ -116,6 +128,10 @@ Optional `codex` section in the Pylon config file
 - Never put credential values in the config file; the bridge reads
   credentials from the environment and the owner's own CLI login state
   only.
+- `dev.accounts[].openAgentsProviderAccountRef` is an internal linkage ref
+  written by `pylon auth codex` / `pylon accounts connect codex
+  --openagents-link`. Keep it in the local config; never place raw provider
+  auth values, bearer tokens, or `OPENCODE_AUTH_CONTENT` in the config file.
 
 Optional local-only dev composer override:
 
@@ -153,6 +169,14 @@ safe no-op until Pylon has a controlled restart/reattach process.
 - **Your identity, your credentials, your machine.** The lane acts only
   with the local owner's credentials; no platform keys on devices,
   ever.
+- **Custody re-prime law.** Linked Codex registry accounts re-prime through
+  OpenAgents custody before assignment execution and account-usage refresh.
+  Pylon preserves the isolated `CODEX_HOME`, injects short-lived
+  `OPENCODE_AUTH_CONTENT` into only the child process env, enforces a
+  5-minute pre-expiry buffer, and rejects with
+  `blocker.assignment.codex_agent_custody_unavailable` plus a
+  `blocker.pylon.codex_custody.*` ref when custody cannot issue usable
+  material.
 - **Sandbox law (the design delta from the Claude bridge).** The Codex
   SDK has no PreToolUse hook, so the workspace boundary is enforced by
   the SDK sandbox (`workspace-write` pinned to the bounded working

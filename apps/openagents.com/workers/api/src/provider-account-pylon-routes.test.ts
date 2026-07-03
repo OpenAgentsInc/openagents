@@ -285,9 +285,10 @@ describe('provider account Pylon device-login routes', () => {
             refresh: 'refresh-secret',
             expires: 1_800_000_000,
           },
-        }),
+      }),
       readStartedCodexDeviceLogin: () => attemptId =>
         Promise.resolve(started.get(attemptId)),
+      readConnectedCodexAuthMaterial: () => Promise.resolve(undefined),
       startDeviceLogin: () =>
         Promise.resolve({
           deviceAuthId: 'device-auth-id',
@@ -371,6 +372,7 @@ describe('provider account Pylon device-login routes', () => {
       agentStore: () => agentStoreFor(token, null),
       deleteStartedCodexDeviceLogin: () => () => Promise.resolve(),
       makeProviderAccountRepository: () => new MemoryProviderAccountRepository(),
+      readConnectedCodexAuthMaterial: () => Promise.resolve(undefined),
       readStartedCodexDeviceLogin: () => () => Promise.resolve(undefined),
       storeConnectedCodexAuth: () => () => Promise.resolve('codex-auth://unused'),
       storeStartedCodexDeviceLogin: () => () => Promise.resolve(),
@@ -382,6 +384,108 @@ describe('provider account Pylon device-login routes', () => {
         {
           method: 'POST',
           headers: { authorization: `Bearer ${token}` },
+        },
+      ),
+      env(),
+    )
+    const body = (await response.json()) as { error: string }
+
+    expect(response.status).toBe(409)
+    expect(body.error).toBe('pylon_agent_not_linked')
+  })
+
+  test('issues access-only Codex auth material from custody for linked Pylons', async () => {
+    const token = 'oa_agent_auth_material_token'
+    const calls: Array<{ ownerUserId: string; providerAccountRef: string }> = []
+    const handlers = makeProviderAccountPylonHandlers({
+      agentStore: () => agentStoreFor(token, 'openauth-user-owner'),
+      deleteStartedCodexDeviceLogin: () => () => Promise.resolve(),
+      makeProviderAccountRepository: () => new MemoryProviderAccountRepository(),
+      readConnectedCodexAuthMaterial: (_env, ownerUserId, providerAccountRef) => {
+        calls.push({ ownerUserId, providerAccountRef })
+        return Promise.resolve({
+          authContentEnv: 'OPENCODE_AUTH_CONTENT',
+          authContentJson: JSON.stringify({
+            openai: {
+              type: 'oauth',
+              access: 'access-secret',
+              expires: 1_800_000_000,
+            },
+          }),
+        })
+      },
+      readStartedCodexDeviceLogin: () => () => Promise.resolve(undefined),
+      storeConnectedCodexAuth: () => () => Promise.resolve('codex-auth://unused'),
+      storeStartedCodexDeviceLogin: () => () => Promise.resolve(),
+    })
+
+    const response = await handlers.handlePylonProviderCodexAuthMaterialApi(
+      new Request(
+        'https://openagents.com/api/pylon/provider-accounts/chatgpt-codex/auth-material',
+        {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${token}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            providerAccountRef: 'provider_account_codex_owner',
+          }),
+        },
+      ),
+      env(),
+    )
+    const body = (await response.json()) as {
+      authMaterial: {
+        authContentEnv: string
+        authContentJson: string
+      }
+      pylonLink: { owner: string; status: string }
+      status: string
+    }
+    const authContent = JSON.parse(body.authMaterial.authContentJson) as {
+      openai: Record<string, unknown>
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.status).toBe('issued')
+    expect(body.pylonLink).toEqual({ owner: 'openauth', status: 'linked' })
+    expect(calls).toEqual([
+      {
+        ownerUserId: 'openauth-user-owner',
+        providerAccountRef: 'provider_account_codex_owner',
+      },
+    ])
+    expect(body.authMaterial.authContentEnv).toBe('OPENCODE_AUTH_CONTENT')
+    expect(authContent.openai.access).toBe('access-secret')
+    expect(authContent.openai.refresh).toBeUndefined()
+    expect(JSON.stringify(body)).not.toContain('refresh-secret')
+  })
+
+  test('refuses custody auth material requests from unlinked Pylon agents', async () => {
+    const token = 'oa_agent_unlinked_auth_material_token'
+    const handlers = makeProviderAccountPylonHandlers({
+      agentStore: () => agentStoreFor(token, null),
+      deleteStartedCodexDeviceLogin: () => () => Promise.resolve(),
+      makeProviderAccountRepository: () => new MemoryProviderAccountRepository(),
+      readConnectedCodexAuthMaterial: () => Promise.resolve(undefined),
+      readStartedCodexDeviceLogin: () => () => Promise.resolve(undefined),
+      storeConnectedCodexAuth: () => () => Promise.resolve('codex-auth://unused'),
+      storeStartedCodexDeviceLogin: () => () => Promise.resolve(),
+    })
+
+    const response = await handlers.handlePylonProviderCodexAuthMaterialApi(
+      new Request(
+        'https://openagents.com/api/pylon/provider-accounts/chatgpt-codex/auth-material',
+        {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${token}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            providerAccountRef: 'provider_account_codex_owner',
+          }),
         },
       ),
       env(),
@@ -404,6 +508,7 @@ describe('provider account Pylon device-login routes', () => {
       deleteStartedCodexDeviceLogin: () => () => Promise.resolve(),
       makeProviderAccountRepository: () => repository,
       nowIso: () => '2026-06-25T12:00:00.000Z',
+      readConnectedCodexAuthMaterial: () => Promise.resolve(undefined),
       readStartedCodexDeviceLogin: () => () => Promise.resolve(undefined),
       storeConnectedCodexAuth: () => input => {
         connectedAuth.push(input)

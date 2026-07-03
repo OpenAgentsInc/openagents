@@ -385,6 +385,113 @@ describe("codex agent task recognition", () => {
     })
   })
 
+  test("re-primes linked Codex accounts from custody before readiness and runner startup", async () => {
+    await withState(async (state) => {
+      const accountRefHash = hashPylonAccountRef("codex", "codex-linked")
+      const account: ResolvedPylonAccountSelection = {
+        provider: "codex",
+        selector: "registry_ref",
+        accountRef: "codex-linked",
+        accountRefHash,
+        home: join(state.paths.home, "accounts", "codex", "codex-linked"),
+        openAgentsProviderAccountRef: "provider_account.public.codex.linked",
+      }
+      const requests: Array<{ authorization: string | null; body: unknown }> = []
+      let authProbeSawCustody = false
+      let runnerSawCustody = false
+      const fetcher: typeof fetch = async (_url, init) => {
+        requests.push({
+          authorization: new Headers(init?.headers).get("authorization"),
+          body: JSON.parse(String(init?.body)),
+        })
+        return new Response(
+          JSON.stringify({
+            authMaterial: {
+              authContentEnv: "OPENCODE_AUTH_CONTENT",
+              authContentJson: JSON.stringify({
+                openai: {
+                  type: "oauth",
+                  access: "access-secret",
+                  expires: now.getTime() + 600_000,
+                },
+              }),
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        )
+      }
+      const record = await executeCodexAgentAssignment(state, lease, now, {
+        account,
+        agentToken: "oa_agent_test_token",
+        baseUrl: "https://unit.openagents.test",
+        codexAgentRunner: async (input) => {
+          runnerSawCustody = input.env?.OPENCODE_AUTH_CONTENT?.includes("access-secret") === true
+          return fixingRunner(input)
+        },
+        codexAgentProbe: {
+          env: {},
+          platform: "darwin",
+          importer: readyProbe.importer,
+          codexCliLoginPresent: false,
+        },
+        codexAuthValidityProbe: async ({ env }) => {
+          authProbeSawCustody = env.OPENCODE_AUTH_CONTENT?.includes("access-secret") === true
+          return { valid: true }
+        },
+        fetch: fetcher,
+      })
+
+      expect(record?.status).toBe("accepted")
+      expect(authProbeSawCustody).toBe(true)
+      expect(runnerSawCustody).toBe(true)
+      expect(requests).toEqual([
+        {
+          authorization: "Bearer oa_agent_test_token",
+          body: {
+            accountRef: "codex-linked",
+            providerAccountRef: "provider_account.public.codex.linked",
+          },
+        },
+      ])
+      assertPublicProjectionSafe(record)
+    })
+  })
+
+  test("blocks linked Codex accounts when custody auth material is unavailable", async () => {
+    await withState(async (state) => {
+      const accountRefHash = hashPylonAccountRef("codex", "codex-custody-down")
+      const account: ResolvedPylonAccountSelection = {
+        provider: "codex",
+        selector: "registry_ref",
+        accountRef: "codex-custody-down",
+        accountRefHash,
+        home: join(state.paths.home, "accounts", "codex", "codex-custody-down"),
+        openAgentsProviderAccountRef: "provider_account.public.codex.down",
+      }
+      let runnerStarted = false
+      const record = await executeCodexAgentAssignment(state, lease, now, {
+        account,
+        agentToken: "oa_agent_test_token",
+        codexAgentRunner: async () => {
+          runnerStarted = true
+          return { outcome: "completed", turnCount: 1, editedFileCount: 0, commandCount: 0, sessionRef: null }
+        },
+        codexAgentProbe: readyProbe,
+        fetch: async () =>
+          new Response(
+            JSON.stringify({ error: "provider_account_auth_material_unavailable" }),
+            { status: 409, headers: { "content-type": "application/json" } },
+          ),
+      })
+
+      expect(runnerStarted).toBe(false)
+      expect(record?.status).toBe("rejected")
+      expect(record?.blockerRefs).toContain("blocker.assignment.codex_agent_custody_unavailable")
+      expect(record?.blockerRefs).toContain("blocker.pylon.codex_custody.auth_material_unavailable")
+      assertPublicProjectionSafe(record)
+    })
+  })
+
   test("bounds a hung Codex runner with a typed budget-exceeded closeout", async () => {
     await withState(async (state) => {
       const hungLease = {

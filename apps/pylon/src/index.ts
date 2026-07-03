@@ -139,6 +139,7 @@ import {
   rejectCodexLocalDangerForPublicPath,
   runCodexComposerStream,
 } from "./codex-composer.js"
+import { reprimePylonCodexAccountAuthFromCustody } from "./codex-custody-reprime.js"
 import {
   rejectClaudeLocalDangerForPublicPath,
   runClaudeComposerStream,
@@ -983,6 +984,13 @@ async function runAccountsUsageRefresh(
     try {
       if (target.provider === "codex") {
         const config = await loadCodexAgentConfig(summary)
+        const custodyReprime = await reprimePylonCodexAccountAuthFromCustody({
+          account: target.account,
+          env: Bun.env,
+        })
+        if (custodyReprime.status === "blocked") {
+          continue
+        }
         await runCodexComposerStream(
           prompt,
           {
@@ -990,7 +998,7 @@ async function runAccountsUsageRefresh(
             approvalPolicy: "never",
             config,
             cwd: codexComposerWorkingDirectory(),
-            env: Bun.env,
+            env: custodyReprime.env,
             executionMode: "local_bounded",
             ...(config.model === undefined ? {} : { model: config.model }),
             networkAccessEnabled: false,

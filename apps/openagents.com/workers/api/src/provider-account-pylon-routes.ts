@@ -45,6 +45,11 @@ type ProviderAccountPylonBindings = Readonly<{
   PROVIDER_TOKEN_CUSTODY_AES_KEY_ID?: string | undefined
 }>
 
+type ConnectedCodexAuthMaterial = Readonly<{
+  authContentEnv: 'OPENCODE_AUTH_CONTENT'
+  authContentJson: string
+}>
+
 type ProviderAccountPylonDependencies<
   Bindings extends ProviderAccountPylonBindings,
 > = Readonly<{
@@ -55,6 +60,11 @@ type ProviderAccountPylonDependencies<
   makeProviderAccountRepository?: (db: D1Database) => ProviderAccountRepository
   nowIso?: () => string
   pollDeviceLogin?: PollCodexDeviceLogin
+  readConnectedCodexAuthMaterial: (
+    bindings: Bindings,
+    ownerUserId: string,
+    providerAccountRef: string,
+  ) => Promise<ConnectedCodexAuthMaterial | undefined>
   readStartedCodexDeviceLogin: (kv: KVNamespace) => ReadStartedCodexDeviceLogin
   startDeviceLogin?: StartCodexDeviceLogin
   storeConnectedCodexAuth: (env: Bindings) => StoreConnectedCodexAuth
@@ -281,6 +291,85 @@ export const makeProviderAccountPylonHandlers = <
     }
 
     return noStoreJsonResponse(withPylonLinkMetadata(result))
+  },
+
+  handlePylonProviderCodexAuthMaterialApi: async (
+    request: Request,
+    env: Bindings,
+  ) => {
+    if (request.method !== 'POST') {
+      return methodNotAllowed(['POST'])
+    }
+
+    const session = await requireAgent(dependencies, request, env)
+    if (session === undefined) {
+      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    }
+
+    const userId = linkedOpenAuthOwnerUserId(session)
+    if (userId === undefined) {
+      return pylonAgentNotLinkedResponse()
+    }
+
+    const body = await readJsonObject(request).catch(
+      (): Record<string, unknown> => ({}),
+    )
+    const providerAccountRef = optionalString(body.providerAccountRef)
+    if (providerAccountRef === undefined) {
+      return noStoreJsonResponse(
+        {
+          error: 'provider_account_ref_required',
+          message:
+            'A providerAccountRef is required before Pylon can request Codex auth material from custody.',
+        },
+        { status: 400 },
+      )
+    }
+
+    try {
+      const authMaterial = await observedPromise(
+        'ProviderAccountPylon.readConnectedCodexAuthMaterial',
+        () =>
+          dependencies.readConnectedCodexAuthMaterial(
+            env,
+            userId,
+            providerAccountRef,
+          ),
+      )
+
+      if (authMaterial === undefined) {
+        return noStoreJsonResponse(
+          {
+            error: 'provider_account_auth_material_unavailable',
+            message:
+              'Codex provider account auth material is unavailable in custody for this owner.',
+          },
+          { status: 409 },
+        )
+      }
+
+      return noStoreJsonResponse(
+        withPylonLinkMetadata({
+          schema: 'openagents.pylon.provider_account.codex_auth_material.v1',
+          status: 'issued',
+          providerAccountRef,
+          authMaterial,
+        }),
+      )
+    } catch (error) {
+      logWorkerRouteError('pylon_provider_codex_auth_material_failed', error, {
+        errorName: providerAccountRouteErrorName(error),
+        providerAccountRef,
+      })
+
+      return noStoreJsonResponse(
+        {
+          error: 'provider_account_auth_material_unavailable',
+          message: providerAccountRouteErrorMessage(error),
+        },
+        { status: providerAccountRouteErrorStatus(error, 409) },
+      )
+    }
   },
 
   handlePylonProviderLocalCodexAuthImportApi: async (

@@ -472,6 +472,10 @@ describe('provider api key connect route dispatch', () => {
       handleProviderDeviceLoginStatusApi: stub('deviceStatus', calls),
       handlePylonProviderDeviceLoginStartApi: stub('pylonDeviceStart', calls),
       handlePylonProviderDeviceLoginStatusApi: stub('pylonDeviceStatus', calls),
+      handlePylonProviderCodexAuthMaterialApi: stub(
+        'pylonCodexAuthMaterial',
+        calls,
+      ),
       handlePylonProviderLocalCodexAuthImportApi: stub(
         'pylonLocalCodexAuthImport',
         calls,

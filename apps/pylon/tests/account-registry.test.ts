@@ -58,7 +58,12 @@ describe("pylon account registry", () => {
           {
             dev: {
               accounts: [
-                { ref: "codex-a", provider: "codex", home: codexHome },
+                {
+                  ref: "codex-a",
+                  provider: "codex",
+                  home: codexHome,
+                  openAgentsProviderAccountRef: "provider_account.public.codex.a",
+                },
                 { ref: "claude-a", provider: "claude_agent", home: claudeHome },
                 { ref: "bad provider", provider: "codex", home: "/ignored" },
               ],
@@ -82,6 +87,7 @@ describe("pylon account registry", () => {
       expect(resolved?.selector).toBe("registry_ref")
       expect(resolved?.home).toBe(codexHome)
       expect(resolved?.accountRefHash).toBe(hashPylonAccountRef("codex", "codex-a"))
+      expect(resolved?.openAgentsProviderAccountRef).toBe("provider_account.public.codex.a")
 
       const publicSelection = publicPylonAccountSelection(resolved)
       expect(publicSelection).toEqual({
@@ -90,6 +96,7 @@ describe("pylon account registry", () => {
         accountRefHash: hashPylonAccountRef("codex", "codex-a"),
       })
       expect(JSON.stringify(publicSelection)).not.toContain(codexHome)
+      expect(JSON.stringify(publicSelection)).not.toContain("provider_account.public.codex.a")
       assertPublicProjectionSafe(publicSelection)
       const retainedProofFragment = JSON.stringify({ account: publicSelection })
       expect(retainedProofFragment).toContain("account.pylon.codex.")

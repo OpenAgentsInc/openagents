@@ -14,9 +14,11 @@ import { join } from "node:path"
  *
  * Credential policy (the CX1 ToS review, recorded in
  * docs/codex-bridge.md): the lane honors exactly the owner's own
- * CODEX_API_KEY or OPENAI_API_KEY, or the owner's own existing Codex CLI
- * login (`codex login`) on this device. Platform-supplied, shared, leased,
- * or brokered credentials are never honored — the no-resale law binds.
+ * CODEX_API_KEY or OPENAI_API_KEY, the owner's own existing Codex CLI login
+ * (`codex login`) on this device, or owner-scoped Codex auth material
+ * re-issued from OpenAgents custody for a linked Pylon account.
+ * Platform-supplied, shared, leased, or brokered credentials are never
+ * honored — the no-resale law binds.
  */
 
 export const CODEX_AGENT_CAPABILITY_REF = "capability.pylon.local_codex"
@@ -146,6 +148,9 @@ export function codexAgentCredentialSource(
   }
   if ((env.OPENAI_API_KEY ?? "").trim().length > 0) {
     return "credential.source.codex_agent.openai_api_key"
+  }
+  if ((env.OPENCODE_AUTH_CONTENT ?? "").trim().length > 0) {
+    return "credential.source.codex_agent.opencode_auth_content"
   }
   if (codexCliLoginPresent) {
     return "credential.source.codex_agent.codex_cli_login"

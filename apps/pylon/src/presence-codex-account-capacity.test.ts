@@ -64,7 +64,6 @@ describe("#6354 per-account Codex capacity (Pylon side)", () => {
       await mkdir(goodHome, { recursive: true })
       await mkdir(revokedHome, { recursive: true })
       await mkdir(limitedHome, { recursive: true })
-      await writeFile(join(goodHome, "auth.json"), "{}")
       await writeFile(join(revokedHome, "auth.json"), "{}")
       await writeFile(join(limitedHome, "auth.json"), "{}")
       await writeFile(summary.paths.config, JSON.stringify({

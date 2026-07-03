@@ -822,6 +822,7 @@ async function discoverAccountTargets(
         accountRef: entry.ref,
         accountRefHash: hashPylonAccountRef(entry.provider, entry.ref),
         home: entry.home,
+        openAgentsProviderAccountRef: entry.openAgentsProviderAccountRef,
       },
     })
   }

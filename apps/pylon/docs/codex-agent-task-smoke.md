@@ -105,6 +105,11 @@ promise; nobody flips their own.
 - `blocker.assignment.codex_agent_unavailable` + `…sdk_missing` or
   `…credentials_missing`: the device is not probe-ready; fix per
   `codex-bridge.md` and re-run `pylon provider go-online`.
+- `blocker.assignment.codex_agent_custody_unavailable` plus
+  `blocker.pylon.codex_custody.*`: a linked Codex account could not be
+  re-primed from OpenAgents custody. Check the Pylon's linked OpenAgents agent
+  token, `openAgentsProviderAccountRef`, and the Worker custody route before
+  retrying; do not paste refresh tokens into the isolated home as a shortcut.
 - `blocker.assignment.wrong_capability` at admission: the Pylon's
   runtime state does not declare the capability — go-online was not run
   after the SDK/credentials became available.

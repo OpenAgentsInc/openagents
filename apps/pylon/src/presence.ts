@@ -330,9 +330,9 @@ export const codexAccountCapacityKey = (
 
 async function codexReadinessForAccountHome(
   summary: Pick<BootstrapSummary, "paths">,
-  input: { accountRefHash: string; home: string },
+  input: { accountRefHash: string; custodyLinked?: boolean; home: string },
 ): Promise<PylonCodexAccountReadiness> {
-  let ready = await codexHomeHasAuth(input.home)
+  let ready = input.custodyLinked === true || (await codexHomeHasAuth(input.home))
   let reason: PylonCodexAccountReadiness["reason"] | undefined
   const health = await loadCodexAccountHealthRecord(summary, input.accountRefHash)
   if (codexAccountHealthBlocksReadiness(health)) {
@@ -365,13 +365,18 @@ export async function localCodexAccountReadiness(
 ): Promise<PylonCodexAccountReadiness[]> {
   const readiness = new Map<string, PylonCodexAccountReadiness>()
   const seenHomes = new Set<string>()
-  const addAccount = async (accountRefHash: string, home: string) => {
+  const addAccount = async (
+    accountRefHash: string,
+    home: string,
+    options: { custodyLinked?: boolean } = {},
+  ) => {
     const normalizedHome = normalizeAccountHome(home)
     seenHomes.add(normalizedHome)
     readiness.set(
       accountRefHash,
       await codexReadinessForAccountHome(summary, {
         accountRefHash,
+        ...(options.custodyLinked === undefined ? {} : { custodyLinked: options.custodyLinked }),
         home: normalizedHome,
       }),
     )
@@ -379,7 +384,9 @@ export async function localCodexAccountReadiness(
   const registry = await loadPylonAccountRegistry(summary)
   const codexEntries = registry.filter(entry => entry.provider === "codex")
   for (const entry of codexEntries) {
-    await addAccount(hashPylonAccountRef("codex", entry.ref), entry.home)
+    await addAccount(hashPylonAccountRef("codex", entry.ref), entry.home, {
+      custodyLinked: entry.openAgentsProviderAccountRef !== null,
+    })
   }
 
   const configuredCodexHome = env.CODEX_HOME?.trim()

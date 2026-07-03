@@ -7600,6 +7600,7 @@ const providerAccountBrowserHandlers = makeProviderAccountBrowserHandlers({
 const providerAccountPylonHandlers = makeProviderAccountPylonHandlers({
   agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
   deleteStartedCodexDeviceLogin,
+  readConnectedCodexAuthMaterial,
   readStartedCodexDeviceLogin,
   storeConnectedCodexAuth,
   storeStartedCodexDeviceLogin,
@@ -7793,6 +7794,13 @@ const providerAccountRoutes = makeProviderAccountRoutes({
         request,
         env,
         attemptId,
+      ),
+    ),
+  handlePylonProviderCodexAuthMaterialApi: (request, env) =>
+    routeEffect('handle_pylon_provider_codex_auth_material_api', () =>
+      providerAccountPylonHandlers.handlePylonProviderCodexAuthMaterialApi(
+        request,
+        env,
       ),
     ),
   handlePylonProviderLocalCodexAuthImportApi: (request, env) =>

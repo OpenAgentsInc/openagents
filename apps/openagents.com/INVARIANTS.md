@@ -1344,6 +1344,18 @@ This is the invariant ledger for `openagents`.
   materialization may receive only short-lived access-token
   `OPENCODE_AUTH_CONTENT` without a refresh field. Regression coverage lives in
   `workers/api/src/provider-account-token-custody.test.ts`.
+- Owner-linked Pylon Codex accounts re-prime from the same custody authority
+  before Codex assignment execution or account-usage refresh. The Pylon route
+  `/api/pylon/provider-accounts/chatgpt-codex/auth-material` accepts only a
+  registered-agent bearer linked to an OpenAuth owner, resolves the requested
+  provider account under that owner, and returns only short-lived
+  `OPENCODE_AUTH_CONTENT` without refresh material. Pylon keeps `CODEX_HOME`
+  isolated per account, enforces a 5-minute pre-expiry buffer on custody
+  material, and emits typed custody blockers instead of falling back to stale
+  embedded home tokens when custody is unreachable. Regression coverage lives
+  in `workers/api/src/provider-account-pylon-routes.test.ts`,
+  `apps/pylon/tests/codex-custody-reprime.test.ts`, and
+  `apps/pylon/tests/codex-agent-executor.test.ts`.
 - Pack B credential-boundary projections may join provider accounts, auth
   grants, active lease refs, artifact refs, and receipt refs only as refs.
   Revoked grants, expired grants, disconnected accounts, reauth-required

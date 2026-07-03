@@ -30,6 +30,7 @@ export type ResolvedPylonAccountSelection = {
   accountRef: string | null
   accountRefHash: string
   home: string
+  openAgentsProviderAccountRef?: string | null
 }
 
 export type PylonAccountRegistryErrorKind = "not_found" | "malformed" | "storage_failed"
@@ -252,6 +253,7 @@ export async function resolvePylonAccountSelection(
       accountRef,
       accountRefHash: hashPylonAccountRef(input.provider, accountRef),
       home: entry.home,
+      openAgentsProviderAccountRef: entry.openAgentsProviderAccountRef,
     }
   }
   if (accountHome) {
