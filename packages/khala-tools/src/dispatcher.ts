@@ -1,5 +1,10 @@
 import { Buffer } from "node:buffer"
 import { Effect } from "effect"
+import {
+  decideAgentDefinitionCompiledToolAuthority,
+  type AgentDefinitionCompiledToolRuntimePolicy,
+  type AgentDefinitionToolAuthorityDecision,
+} from "@openagentsinc/agent-runtime-schema"
 import { redactKhalaPublicText } from "./redaction.js"
 import { makeKhalaToolRuntimeService, type KhalaToolRuntimeServiceShape } from "./runtime.js"
 import type {
@@ -72,6 +77,7 @@ export type KhalaToolTurnAccountingSnapshot = Readonly<{
 }>
 
 export type KhalaToolDispatcherOptions = Readonly<{
+  agentDefinitionToolPolicy?: AgentDefinitionCompiledToolRuntimePolicy
   hooks?: KhalaToolDispatchHooks
   maxModelOutputBytes?: number
   maxPublicSummaryBytes?: number
@@ -96,6 +102,28 @@ export type KhalaToolDispatchResult = Readonly<{
 export interface KhalaToolDispatcher {
   readonly dispatch: (input: KhalaToolDispatchInput) => Effect.Effect<KhalaToolDispatchResult, never>
 }
+
+export type KhalaAgentDefinitionToolPolicyDecision =
+  | Readonly<{
+      status: "allowed"
+      toolRefs: ReadonlyArray<string>
+      decisions: ReadonlyArray<AgentDefinitionToolAuthorityDecision>
+    }>
+  | Readonly<{
+      status: "denied"
+      toolRefs: ReadonlyArray<string>
+      decisions: ReadonlyArray<AgentDefinitionToolAuthorityDecision>
+      blockerRefs: ReadonlyArray<string>
+      reasonRef: string
+    }>
+  | Readonly<{
+      status: "operator_escalation_required"
+      toolRefs: ReadonlyArray<string>
+      decisions: ReadonlyArray<AgentDefinitionToolAuthorityDecision>
+      blockerRefs: ReadonlyArray<string>
+      escalation: NonNullable<AgentDefinitionToolAuthorityDecision["escalation"]>
+      reasonRef: string
+    }>
 
 const DEFAULT_MAX_MODEL_OUTPUT_BYTES = 64 * 1024
 const DEFAULT_MAX_PUBLIC_SUMMARY_BYTES = 8 * 1024
@@ -242,6 +270,84 @@ function dispatchKhalaTool(
       })
       return yield* fail("invalid_arguments", "Invalid tool input: expected an object", "validate", definition)
     }
+    const agentPolicyDecision = decideKhalaToolAgainstAgentDefinitionPolicy(
+      definition,
+      options.agentDefinitionToolPolicy,
+      input.invocation.id,
+    )
+    if (agentPolicyDecision.status === "denied") {
+      const result = dispatcherToolDenied(
+        "agent_definition_tool_policy_denied",
+        `${definition.name} is outside the compiled agent-definition tool policy`,
+      )
+      yield* emitToolEvent({
+        events: localEvents,
+        input,
+        kind: "tool_failed",
+        options,
+        payload: {
+          blockerRefs: agentPolicyDecision.blockerRefs,
+          phase: "permission",
+          reasonRef: agentPolicyDecision.reasonRef,
+          status: result.status,
+          toolName: definition.name,
+          toolRefs: agentPolicyDecision.toolRefs,
+        },
+        telemetryTags: taggedTelemetry,
+      })
+      return yield* finalize({
+        definition,
+        durationMs: (yield* runtime.currentTimeMillis) - startedAt,
+        events: localEvents,
+        input,
+        options,
+        phase: "permission",
+        result,
+        telemetryTags: taggedTelemetry,
+        tool,
+      })
+    }
+    if (agentPolicyDecision.status === "operator_escalation_required") {
+      const result = dispatcherToolNeedsInput({
+        modelText: "Operator approval is required before this tool can run.",
+        publicSummary: "Agent-definition tool policy requires operator escalation.",
+        ui: {
+          kind: "agent_definition_tool_policy_escalation",
+          blockerRefs: agentPolicyDecision.blockerRefs,
+          escalation: agentPolicyDecision.escalation,
+          reasonRef: agentPolicyDecision.reasonRef,
+          toolName: definition.name,
+          toolRefs: agentPolicyDecision.toolRefs,
+        },
+      })
+      yield* emitToolEvent({
+        events: localEvents,
+        input,
+        kind: "approval_requested",
+        options,
+        payload: {
+          blockerRefs: agentPolicyDecision.blockerRefs,
+          escalation: agentPolicyDecision.escalation,
+          phase: "permission",
+          reasonRef: agentPolicyDecision.reasonRef,
+          status: result.status,
+          toolName: definition.name,
+          toolRefs: agentPolicyDecision.toolRefs,
+        },
+        telemetryTags: taggedTelemetry,
+      })
+      return yield* finalize({
+        definition,
+        durationMs: (yield* runtime.currentTimeMillis) - startedAt,
+        events: localEvents,
+        input,
+        options,
+        phase: "permission",
+        result,
+        telemetryTags: taggedTelemetry,
+        tool,
+      })
+    }
     if (definition.permissionMode === "deny") {
       const result = dispatcherToolDenied("permission_policy_denied", `${definition.name} is denied by policy`)
       yield* emitToolEvent({
@@ -355,6 +461,75 @@ function dispatchKhalaTool(
       tool,
     })
   })
+}
+
+export function khalaToolRefsForAgentDefinitionPolicy(
+  definition: KhalaToolDefinition,
+): ReadonlyArray<string> {
+  return [
+    `tool.openagents.khala.${definition.name}`,
+    `tool.openagents.khala.authority.${definition.authority}`,
+  ]
+}
+
+export function decideKhalaToolAgainstAgentDefinitionPolicy(
+  definition: KhalaToolDefinition,
+  policy: AgentDefinitionCompiledToolRuntimePolicy | undefined,
+  invocationRef?: string,
+): KhalaAgentDefinitionToolPolicyDecision {
+  const toolRefs = khalaToolRefsForAgentDefinitionPolicy(definition)
+  if (policy === undefined) {
+    return { status: "allowed", toolRefs, decisions: [] }
+  }
+  const decisions = toolRefs.map((toolRef) =>
+    decideAgentDefinitionCompiledToolAuthority({
+      policy,
+      toolRef,
+      ...(invocationRef === undefined ? {} : { invocationRef: `${invocationRef}:${toolRef}` }),
+    }),
+  )
+  const explicitDeny = decisions.find(
+    decision =>
+      decision.status === "denied" &&
+      decision.reasonRef === "reason.agent_definition.tool_denied",
+  )
+  if (explicitDeny !== undefined) {
+    return {
+      status: "denied",
+      toolRefs,
+      decisions,
+      blockerRefs: explicitDeny.blockerRefs,
+      reasonRef: explicitDeny.reasonRef,
+    }
+  }
+  const escalation = decisions.find(
+    (decision): decision is AgentDefinitionToolAuthorityDecision & {
+      escalation: NonNullable<AgentDefinitionToolAuthorityDecision["escalation"]>
+    } =>
+      decision.status === "operator_escalation_required" &&
+      decision.escalation !== undefined,
+  )
+  if (escalation !== undefined) {
+    return {
+      status: "operator_escalation_required",
+      toolRefs,
+      decisions,
+      blockerRefs: escalation.blockerRefs,
+      escalation: escalation.escalation,
+      reasonRef: escalation.reasonRef,
+    }
+  }
+  if (decisions.some(decision => decision.status === "allowed")) {
+    return { status: "allowed", toolRefs, decisions }
+  }
+  const denied = decisions[0]
+  return {
+    status: "denied",
+    toolRefs,
+    decisions,
+    blockerRefs: denied?.blockerRefs ?? ["blocker.agent_definition.tool_not_in_allowlist"],
+    reasonRef: denied?.reasonRef ?? "reason.agent_definition.tool_not_in_allowlist",
+  }
 }
 
 function requestPermission(
@@ -562,6 +737,26 @@ function dispatcherToolError(code: string, reason: string): KhalaToolResult {
 function dispatcherToolDenied(code: string, reason: string): KhalaToolResult {
   const error = dispatcherToolError(code, reason)
   return { ...error, status: "denied" }
+}
+
+function dispatcherToolNeedsInput(input: {
+  readonly modelText: string
+  readonly publicSummary: string
+  readonly ui: unknown
+}): KhalaToolResult {
+  const modelText = redactKhalaPublicText(input.modelText)
+  const publicSummary = redactKhalaPublicText(input.publicSummary)
+  const redacted = modelText !== input.modelText || publicSummary !== input.publicSummary
+  return {
+    artifacts: [],
+    modelOutput: { text: modelText },
+    privateDataRefs: [],
+    publicSafety: redacted ? "redacted" : "public_safe",
+    publicSummary,
+    redactionRefs: redacted ? ["redaction.khala_tool.needs_input"] : [],
+    status: "needs_input",
+    ui: input.ui,
+  }
 }
 
 function sanitizeDispatcherToolResult(result: KhalaToolResult): KhalaToolResult {

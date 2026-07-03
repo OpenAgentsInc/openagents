@@ -110,6 +110,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   explicit deny rules beat ask and allow rules, ask rules create an operator
   escalation record without authorizing execution, allow rules authorize only
   the matched tool ref, and unmatched tools are denied.
+- `compileAgentDefinitionToolRuntimePolicy` materializes that contract as
+  `openagents.agent_definition_tool_runtime_policy.v1` before a lane starts
+  executing tools. Local Khala tool execution must enforce the compiled policy
+  against both the tool name ref and authority ref before any tool body runs.
+- Forge tenant git tokens for definition-backed work compile requested git
+  scopes through the same policy boundary. `git:receive-pack`,
+  `git:upload-pack`, and `git:admin` map to Forge git tool refs; denied scopes
+  are rejected before token mint, and ask scopes create operator escalation
+  instead of minting a token.
 - Runtime runs may link back to `agentDefinitionId` as evidence that a run was
   definition-backed, but that link alone grants no tool, spend, dispatch,
   payout, settlement, public-claim, provider-account, or external-send
@@ -119,7 +128,9 @@ More specific invariant ledgers apply inside imported apps and packages.
   equivalent compiled policy at the execution boundary, with regression tests
   for deny precedence, ask escalation, allow, and default-deny behavior.
 - Regression coverage starts in
-  `packages/agent-runtime-schema/src/index.test.ts`.
+  `packages/agent-runtime-schema/src/index.test.ts`,
+  `packages/khala-tools/src/dispatcher.test.ts`, and
+  `apps/openagents.com/workers/api/src/forge-tenant-git-auth-store.test.ts`.
 
 ## Connector Authority And Redaction
 

@@ -2,13 +2,21 @@ import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 
 import { describe, expect, test } from 'vitest'
+import {
+  compileAgentDefinitionToolRuntimePolicy,
+  decodeAgentDefinition,
+  type AgentDefinitionToolset,
+} from '@openagentsinc/agent-runtime-schema'
 
 import {
   FORGE_GIT_TOKEN_PREFIX,
+  compileAgentDefinitionForgeGitAccessScopes,
   forgeGitAccessTokenHash,
   makeD1ForgeTenantGitAuthStore,
   type ForgeTenantGitAuthStore,
 } from './forge-tenant-git-auth-store'
+
+// Behavior contract oracle: background_agents.toolset.compiled_policy_enforced.v1
 
 class SqliteD1Statement {
   private bound: ReadonlyArray<unknown> = []
@@ -77,6 +85,33 @@ const nowIso = '2026-06-28T18:00:00.000Z'
 const laterIso = '2026-06-28T18:05:00.000Z'
 const expiresAt = '2026-06-28T19:00:00.000Z'
 const token = `${FORGE_GIT_TOKEN_PREFIX}test_secret_00000000000000000000`
+
+const compiledAgentPolicy = (toolset: AgentDefinitionToolset) =>
+  compileAgentDefinitionToolRuntimePolicy(
+    decodeAgentDefinition({
+      schema: 'openagents.agent_definition.v1',
+      id: 'agent_definition.forge.git_policy_test',
+      ownerRef: 'agent:forge_policy_owner',
+      name: 'Forge Git Policy Test',
+      slug: 'forge-git-policy-test',
+      goal: 'Compile definition toolsets to Forge git token scopes.',
+      harness: { kind: 'khala' },
+      toolset,
+      triggers: [{ kind: 'manual', triggerRef: 'trigger.public.forge_policy.manual' }],
+      lane: 'own_pylon',
+      budget: { maxRunSeconds: 120, maxRunsPerDay: 3, maxCreditsPerDay: 0 },
+      escalation: {
+        channel: 'operator',
+        askPolicy: {
+          mode: 'operator_required',
+          policyRef: 'policy.public.agent_definition.operator_required.v1',
+        },
+      },
+      sourceRefs: ['issue.public.github.OpenAgentsInc.openagents.8192'],
+      createdAt: '2026-07-03T00:00:00.000Z',
+      updatedAt: '2026-07-03T00:00:00.000Z',
+    }),
+  )
 
 describe('forge tenant git auth store', () => {
   test('mints hashed tenant git tokens and authenticates exact repo/scope', async () => {
@@ -211,6 +246,94 @@ describe('forge tenant git auth store', () => {
         nowIso: laterIso,
       }),
     ).toMatchObject({ subjectRef: 'agent.public.admin' })
+  })
+
+  test('compiles agent-definition tool policy into Forge git token scopes', async () => {
+    const { store } = makeStore()
+    await store.upsertTenant({
+      tenantRef: 'tenant.openagents',
+      displayName: 'OpenAgents',
+      nowIso,
+    })
+    const policy = compiledAgentPolicy({
+      allow: ['tool.openagents.forge.git.receive_pack'],
+      ask: ['tool.openagents.forge.git.upload_pack'],
+      deny: ['tool.openagents.forge.git.admin'],
+      networkPolicy: 'owner_scoped',
+      secretPolicy: 'owner_scoped_refs_only',
+    })
+
+    const receivePackScopes = compileAgentDefinitionForgeGitAccessScopes({
+      policy,
+      requestedScopes: ['git:receive-pack'],
+      invocationRef: 'invocation.public.forge.receive_pack',
+    })
+    expect(receivePackScopes).toMatchObject({
+      status: 'allowed',
+      scopes: ['git:receive-pack'],
+    })
+
+    const scopedToken = `${FORGE_GIT_TOKEN_PREFIX}compiled_0000000000000000`
+    const minted = await store.mintGitAccessToken(
+      {
+        tenantRef: 'tenant.openagents',
+        tokenRef: 'forge_git_token.compiled_receive',
+        subjectRef: 'agent.public.background_agent',
+        repositoryRef: 'repo.openagents.openagents',
+        scopes: receivePackScopes.scopes,
+        agentDefinitionToolPolicy: policy,
+        expiresAt,
+        sourceRefs: ['issue.public.github.OpenAgentsInc.openagents.8192'],
+        nowIso,
+      },
+      { makeToken: () => scopedToken },
+    )
+    expect(minted.scopes.map(scope => scope.scope)).toEqual(['git:receive-pack'])
+
+    const uploadPackScopes = compileAgentDefinitionForgeGitAccessScopes({
+      policy,
+      requestedScopes: ['git:upload-pack'],
+      invocationRef: 'invocation.public.forge.upload_pack',
+    })
+    expect(uploadPackScopes).toMatchObject({
+      status: 'operator_escalation_required',
+      scopes: [],
+      reasonRef: 'reason.agent_definition.forge_git_scope_requires_operator',
+    })
+    expect(uploadPackScopes.escalationRefs[0]).toMatch(
+      /^escalation\.operator\.agent_definition\.[a-f0-9]{8}$/,
+    )
+
+    const adminScopes = compileAgentDefinitionForgeGitAccessScopes({
+      policy,
+      requestedScopes: ['git:admin'],
+    })
+    expect(adminScopes).toMatchObject({
+      status: 'denied',
+      scopes: [],
+      reasonRef: 'reason.agent_definition.tool_denied',
+      blockerRefs: ['blocker.agent_definition.tool_denied'],
+    })
+
+    await expect(
+      store.mintGitAccessToken(
+        {
+          tenantRef: 'tenant.openagents',
+          tokenRef: 'forge_git_token.rejected_admin',
+          subjectRef: 'agent.public.background_agent',
+          repositoryRef: 'repo.openagents.openagents',
+          scopes: ['git:admin'],
+          agentDefinitionToolPolicy: policy,
+          expiresAt,
+          sourceRefs: [],
+          nowIso,
+        },
+        {
+          makeToken: () =>
+            `${FORGE_GIT_TOKEN_PREFIX}rejected_000000000000000`,
+        },
+      ),
+    ).rejects.toThrow('compiled agent definition policy')
   })
 
   test('expired, revoked, and suspended tenant tokens fail closed', async () => {

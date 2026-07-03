@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import {
+  compileAgentDefinitionToolRuntimePolicy,
+  decodeAgentDefinition,
+  type AgentDefinitionToolset,
+} from "@openagentsinc/agent-runtime-schema"
+import {
   createKhalaToolTurnAccounting,
   executeKhalaTool,
   khalaToolOk,
@@ -11,6 +16,8 @@ import {
   type KhalaToolDefinition,
   type KhalaToolEvent,
 } from "./index.js"
+
+// Behavior contract oracle: background_agents.toolset.compiled_policy_enforced.v1
 
 const echoDefinition: KhalaToolDefinition = {
   authority: "read",
@@ -29,6 +36,44 @@ const echoDefinition: KhalaToolDefinition = {
   permissionMode: "allow",
   prompt: "Echo text.",
   promptGuidelines: ["Use for dispatcher tests only."],
+}
+
+const shellDefinition: KhalaToolDefinition = {
+  ...echoDefinition,
+  authority: "shell",
+  description: "Run a command.",
+  internalId: "khala.test.dispatcher.shell",
+  label: "Shell",
+  name: "exec_command",
+  prompt: "Run a command.",
+}
+
+function compiledPolicy(toolset: AgentDefinitionToolset) {
+  return compileAgentDefinitionToolRuntimePolicy(
+    decodeAgentDefinition({
+      schema: "openagents.agent_definition.v1",
+      id: "agent_definition.khala_tools.dispatcher_policy",
+      ownerRef: "agent:dispatcher_policy_owner",
+      name: "Dispatcher Policy",
+      slug: "dispatcher-policy",
+      goal: "Exercise the compiled tool runtime policy.",
+      harness: { kind: "khala" },
+      toolset,
+      triggers: [{ kind: "manual", triggerRef: "trigger.public.dispatcher_policy.manual" }],
+      lane: "own_pylon",
+      budget: { maxRunSeconds: 120, maxRunsPerDay: 3, maxCreditsPerDay: 0 },
+      escalation: {
+        channel: "operator",
+        askPolicy: {
+          mode: "operator_required",
+          policyRef: "policy.public.agent_definition.operator_required.v1",
+        },
+      },
+      sourceRefs: ["issue.public.github.OpenAgentsInc.openagents.8192"],
+      createdAt: "2026-07-03T00:00:00.000Z",
+      updatedAt: "2026-07-03T00:00:00.000Z",
+    }),
+  )
 }
 
 describe("KhalaToolDispatcher", () => {
@@ -140,6 +185,123 @@ describe("KhalaToolDispatcher", () => {
       kind: "khala_tool_error",
     })
     expect(dispatched.events.map(event => event.kind)).toContain("tool_failed")
+  })
+
+  test("enforces compiled agent-definition allow policy before tool execution", async () => {
+    let executed = false
+    const dispatched = await Effect.runPromise(
+      makeKhalaToolDispatcher({
+        agentDefinitionToolPolicy: compiledPolicy({
+          allow: ["tool.openagents.khala.echo"],
+          ask: [],
+          deny: [],
+          networkPolicy: "owner_scoped",
+          secretPolicy: "owner_scoped_refs_only",
+        }),
+      }).dispatch({
+        invocation: { arguments: { text: "hello" }, id: "call_policy_allow", name: "echo", sessionId: "session_1" },
+        registry: makeKhalaToolRegistry([
+          {
+            definition: echoDefinition,
+            execute: input => Effect.sync(() => {
+              executed = true
+              return khalaToolOk({ modelText: String(input.text) })
+            }),
+          },
+        ]),
+        services: makeKhalaToolServices(),
+      }),
+    )
+
+    expect(executed).toBe(true)
+    expect(dispatched.result.status).toBe("ok")
+    expect(dispatched.events.map(event => event.kind)).toContain("tool_completed")
+  })
+
+  test("denies tools outside the compiled agent-definition policy without executing them", async () => {
+    let executed = false
+    const dispatched = await Effect.runPromise(
+      makeKhalaToolDispatcher({
+        agentDefinitionToolPolicy: compiledPolicy({
+          allow: ["tool.openagents.khala.exec_command"],
+          ask: [],
+          deny: ["tool.openagents.khala.authority.shell"],
+          networkPolicy: "owner_scoped",
+          secretPolicy: "owner_scoped_refs_only",
+        }),
+      }).dispatch({
+        invocation: { arguments: { command: "pwd" }, id: "call_policy_deny", name: "exec_command", sessionId: "session_1" },
+        registry: makeKhalaToolRegistry([
+          {
+            definition: shellDefinition,
+            execute: () => Effect.sync(() => {
+              executed = true
+              return khalaToolOk({ modelText: "should not run" })
+            }),
+          },
+        ]),
+        services: makeKhalaToolServices(),
+      }),
+    )
+
+    expect(executed).toBe(false)
+    expect(dispatched.result.status).toBe("denied")
+    expect(dispatched.result.ui).toMatchObject({
+      code: "agent_definition_tool_policy_denied",
+      kind: "khala_tool_error",
+    })
+    expect(dispatched.events.at(-1)?.kind).toBe("tool_failed")
+    expect(dispatched.events.at(-1)?.payload).toMatchObject({
+      reasonRef: "reason.agent_definition.tool_denied",
+      toolRefs: [
+        "tool.openagents.khala.exec_command",
+        "tool.openagents.khala.authority.shell",
+      ],
+    })
+  })
+
+  test("routes compiled agent-definition ask entries to operator escalation instead of failing", async () => {
+    let executed = false
+    const dispatched = await Effect.runPromise(
+      makeKhalaToolDispatcher({
+        agentDefinitionToolPolicy: compiledPolicy({
+          allow: [],
+          ask: ["tool.openagents.khala.echo"],
+          deny: [],
+          networkPolicy: "owner_scoped",
+          secretPolicy: "owner_scoped_refs_only",
+        }),
+      }).dispatch({
+        invocation: { arguments: { text: "needs review" }, id: "call_policy_ask", name: "echo", sessionId: "session_1" },
+        registry: makeKhalaToolRegistry([
+          {
+            definition: echoDefinition,
+            execute: () => Effect.sync(() => {
+              executed = true
+              return khalaToolOk({ modelText: "should not run" })
+            }),
+          },
+        ]),
+        services: makeKhalaToolServices(),
+      }),
+    )
+
+    expect(executed).toBe(false)
+    expect(dispatched.result.status).toBe("needs_input")
+    expect(dispatched.result.ui).toMatchObject({
+      kind: "agent_definition_tool_policy_escalation",
+      reasonRef: "reason.agent_definition.tool_requires_operator",
+      escalation: {
+        askPolicyRef: "policy.public.agent_definition.operator_required.v1",
+        channel: "operator",
+        toolRef: "tool.openagents.khala.echo",
+      },
+    })
+    expect(dispatched.events.map(event => event.kind)).toContain("approval_requested")
+    expect(dispatched.events.at(-1)?.payload).toMatchObject({
+      reasonRef: "reason.agent_definition.tool_requires_operator",
+      status: "needs_input",
+    })
   })
 
   test("lets tools emit per-invocation progress through dispatcher hooks", async () => {

@@ -9,6 +9,11 @@ import {
   type ForgeTenantRow,
   type ForgeTenantState,
 } from '@openagentsinc/forge-protocol'
+import {
+  decideAgentDefinitionCompiledToolAuthority,
+  type AgentDefinitionCompiledToolRuntimePolicy,
+  type AgentDefinitionToolAuthorityDecision,
+} from '@openagentsinc/agent-runtime-schema'
 
 import { randomUuid } from './runtime-primitives'
 
@@ -32,6 +37,7 @@ export type ForgeGitAccessTokenMintInput = Readonly<{
   subjectRef: string
   repositoryRef: string
   scopes: ReadonlyArray<ForgeGitAccessScope>
+  agentDefinitionToolPolicy?: AgentDefinitionCompiledToolRuntimePolicy
   expiresAt: string
   sourceRefs: ReadonlyArray<string>
   nowIso: string
@@ -52,6 +58,37 @@ export type ForgeGitAccessTokenSession = Readonly<{
   scopes: ReadonlyArray<ForgeGitAccessScope>
   authenticatedAt: string
 }>
+
+export type ForgeGitScopePolicyDecision = Readonly<{
+  scope: ForgeGitAccessScope
+  toolRef: string
+  decision: AgentDefinitionToolAuthorityDecision
+}>
+
+export type ForgeGitAccessScopeCompilationResult =
+  | Readonly<{
+      status: 'allowed'
+      scopes: ReadonlyArray<ForgeGitAccessScope>
+      decisions: ReadonlyArray<ForgeGitScopePolicyDecision>
+      blockerRefs: []
+      escalationRefs: []
+    }>
+  | Readonly<{
+      status: 'denied'
+      scopes: []
+      decisions: ReadonlyArray<ForgeGitScopePolicyDecision>
+      blockerRefs: ReadonlyArray<string>
+      escalationRefs: ReadonlyArray<string>
+      reasonRef: string
+    }>
+  | Readonly<{
+      status: 'operator_escalation_required'
+      scopes: []
+      decisions: ReadonlyArray<ForgeGitScopePolicyDecision>
+      blockerRefs: ReadonlyArray<string>
+      escalationRefs: ReadonlyArray<string>
+      reasonRef: string
+    }>
 
 export type ForgeTenantGitAuthStore = Readonly<{
   upsertTenant: (input: ForgeTenantInput) => Promise<ForgeTenantRow>
@@ -129,6 +166,71 @@ const normalizeScopes = (
     )
   }
   return unique
+}
+
+export const FORGE_GIT_SCOPE_TOOL_REFS: Record<ForgeGitAccessScope, string> = {
+  'git:admin': 'tool.openagents.forge.git.admin',
+  'git:receive-pack': 'tool.openagents.forge.git.receive_pack',
+  'git:upload-pack': 'tool.openagents.forge.git.upload_pack',
+}
+
+const uniqueRefs = (refs: ReadonlyArray<string>): ReadonlyArray<string> =>
+  [...new Set(refs)].sort()
+
+export const compileAgentDefinitionForgeGitAccessScopes = (input: Readonly<{
+  policy: AgentDefinitionCompiledToolRuntimePolicy
+  requestedScopes: ReadonlyArray<ForgeGitAccessScope>
+  invocationRef?: string
+}>): ForgeGitAccessScopeCompilationResult => {
+  const requestedScopes = normalizeScopes(input.requestedScopes)
+  const decisions = requestedScopes.map((scope): ForgeGitScopePolicyDecision => {
+    const toolRef = FORGE_GIT_SCOPE_TOOL_REFS[scope]
+    return {
+      scope,
+      toolRef,
+      decision: decideAgentDefinitionCompiledToolAuthority({
+        policy: input.policy,
+        toolRef,
+        invocationRef: input.invocationRef === undefined
+          ? `forge_git_scope:${scope}`
+          : `${input.invocationRef}:${scope}`,
+      }),
+    }
+  })
+
+  const denied = decisions.find(item => item.decision.status === 'denied')
+  if (denied !== undefined) {
+    return {
+      status: 'denied',
+      scopes: [],
+      decisions,
+      blockerRefs: uniqueRefs(decisions.flatMap(item => item.decision.blockerRefs)),
+      escalationRefs: [],
+      reasonRef: denied.decision.reasonRef,
+    }
+  }
+
+  const escalations = decisions
+    .map(item => item.decision.escalation?.escalationRef)
+    .filter((ref): ref is string => ref !== undefined)
+  if (escalations.length > 0) {
+    return {
+      status: 'operator_escalation_required',
+      scopes: [],
+      decisions,
+      blockerRefs: uniqueRefs(decisions.flatMap(item => item.decision.blockerRefs)),
+      escalationRefs: uniqueRefs(escalations),
+      reasonRef: 'reason.agent_definition.forge_git_scope_requires_operator',
+    }
+  }
+
+  return {
+    status: 'allowed',
+    scopes: requestedScopes,
+    decisions,
+    blockerRefs: [],
+    escalationRefs: [],
+  }
 }
 
 export const createForgeGitAccessToken = (
@@ -298,7 +400,26 @@ export const makeD1ForgeTenantGitAuthStore = (
     const token = assertToken(options?.makeToken?.() ?? createForgeGitAccessToken())
     const tokenHash = assertTokenHash(await forgeGitAccessTokenHash(token))
     const tokenPrefix = forgeGitAccessTokenPrefix(token)
-    const scopes = normalizeScopes(input.scopes)
+    const requestedScopes = normalizeScopes(input.scopes)
+    const compiledScopes = input.agentDefinitionToolPolicy === undefined
+      ? {
+          status: 'allowed' as const,
+          scopes: requestedScopes,
+          decisions: [],
+          blockerRefs: [] as const,
+          escalationRefs: [] as const,
+        }
+      : compileAgentDefinitionForgeGitAccessScopes({
+          policy: input.agentDefinitionToolPolicy,
+          requestedScopes,
+          invocationRef: input.tokenRef,
+        })
+    if (compiledScopes.status !== 'allowed') {
+      throw new ForgeTenantGitAuthStoreError(
+        `forge git access token scope rejected by compiled agent definition policy: ${compiledScopes.reasonRef}`,
+      )
+    }
+    const scopes = compiledScopes.scopes
 
     await db
       .prepare(

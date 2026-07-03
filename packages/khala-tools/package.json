@@ -20,6 +20,7 @@
   "dependencies": {
     "@huggingface/transformers": "3.7.5",
     "@nationaldesignstudio/rampart": "0.1.2",
+    "@openagentsinc/agent-runtime-schema": "workspace:*",
     "@openagentsinc/mcp-contract": "workspace:*",
     "effect": "catalog:",
     "onnxruntime-node": "1.21.0"

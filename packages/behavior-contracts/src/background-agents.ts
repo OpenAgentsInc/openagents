@@ -48,27 +48,56 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     {
       authorityBoundary:
         "This contract binds compiled background-agent tool policy at the local-lane and Forge git-token boundaries. It does not widen any runtime tool authority beyond the compiled policy.",
-      blockerRefs: [pendingOracleBlocker("ba_a5")],
+      blockerRefs: [],
       contractId: "background_agents.toolset.compiled_policy_enforced.v1",
-      enforcementTier: "unenforced",
+      enforcementTier: "test-sweep",
       evidenceRefs: [
         "https://github.com/OpenAgentsInc/openagents/issues/8192",
         "https://github.com/OpenAgentsInc/openagents/issues/8218",
+        "INVARIANTS.md",
         "docs/fable/ROADMAP_BACKGROUND_AGENTS.md",
+        "packages/agent-runtime-schema/src/index.test.ts",
+        "packages/khala-tools/src/dispatcher.test.ts",
+        "apps/openagents.com/workers/api/src/forge-tenant-git-auth-store.test.ts",
       ],
-      oracles: [],
+      oracles: [
+        {
+          description:
+            "Shared agent-definition policy compiler preserves deny precedence, ask escalation, allow, and default-deny semantics.",
+          id: "background_agents.toolset.schema_policy",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "packages/agent-runtime-schema/src/index.test.ts",
+        },
+        {
+          description:
+            "Khala local-lane dispatcher enforces compiled name/authority policy before tool execution and routes ask decisions to approval.",
+          id: "background_agents.toolset.khala_local_lane",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "packages/khala-tools/src/dispatcher.test.ts",
+        },
+        {
+          description:
+            "Forge git token scope compilation permits allowed scopes, escalates ask scopes, and rejects denied token mints.",
+          id: "background_agents.toolset.forge_git_scopes",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents.com/workers/api/src/forge-tenant-git-auth-store.test.ts",
+        },
+      ],
       productArea: "background agent tool policy",
       source: {
         channel: "issue_list",
         statedBy: "owner",
         statedOn: "2026-07-03",
       },
-      state: "pending",
+      state: "enforced",
       statement:
         "Definition toolset compiles to the ADR-0012 tool-runtime policy object (local lane) and to Forge tenant-token scopes for git access; ask entries route to escalation instead of failing; no lane may reach tools outside compiled policy.",
       surface: "openagents.com-worker",
       verification:
-        "Pending BA-A5: add enforcement tests at both the local lane and Forge tenant-token boundary, then flip this contract to enforced with those tests as bun-test oracles.",
+        "BA-A5 is enforced by the agent-runtime-schema compiler test, the packages/khala-tools dispatcher test, and the openagents.com Worker Forge git-token scope test in their normal bun test sweeps.",
     },
     {
       authorityBoundary:
@@ -173,5 +202,5 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-03.2",
+  version: "2026-07-03.3",
 }

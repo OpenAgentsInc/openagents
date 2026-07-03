@@ -247,6 +247,25 @@ export type AgentDefinitionToolAuthorityDecision = {
   readonly escalation?: AgentDefinitionOperatorEscalation
 }
 
+export const AgentDefinitionToolRuntimePolicySchemaLiteral =
+  "openagents.agent_definition_tool_runtime_policy.v1" as const
+
+export type AgentDefinitionCompiledToolRuntimePolicy = {
+  readonly schema: typeof AgentDefinitionToolRuntimePolicySchemaLiteral
+  readonly definitionId: AgentDefinitionId
+  readonly ownerRef: string
+  readonly allow: ReadonlyArray<AgentDefinitionToolRef>
+  readonly ask: ReadonlyArray<AgentDefinitionToolRef>
+  readonly deny: ReadonlyArray<AgentDefinitionToolRef>
+  readonly networkPolicy: AgentDefinitionNetworkPolicy
+  readonly secretPolicy: AgentDefinitionSecretPolicy
+  readonly escalation: {
+    readonly channel: AgentDefinitionEscalationChannel
+    readonly askPolicyRef: string
+  }
+  readonly defaultDecision: "deny"
+}
+
 export const AgentRuntimeRunState = S.Literals([
   "pending",
   "running",
@@ -670,26 +689,58 @@ export function decideAgentDefinitionToolAuthority(input: {
   readonly toolRef: AgentDefinitionToolRef
   readonly invocationRef?: string
 }): AgentDefinitionToolAuthorityDecision {
-  const toolRef = input.toolRef
-  const toolset = input.definition.toolset
+  return decideAgentDefinitionCompiledToolAuthority({
+    policy: compileAgentDefinitionToolRuntimePolicy(input.definition),
+    toolRef: input.toolRef,
+    ...(input.invocationRef === undefined ? {} : { invocationRef: input.invocationRef }),
+  })
+}
 
-  const deniedBy = firstMatchingToolPolicy(toolset.deny, toolRef)
+export function compileAgentDefinitionToolRuntimePolicy(
+  definition: AgentDefinition,
+): AgentDefinitionCompiledToolRuntimePolicy {
+  return {
+    schema: AgentDefinitionToolRuntimePolicySchemaLiteral,
+    definitionId: definition.id,
+    ownerRef: definition.ownerRef,
+    allow: [...definition.toolset.allow],
+    ask: [...definition.toolset.ask],
+    deny: [...definition.toolset.deny],
+    networkPolicy: definition.toolset.networkPolicy,
+    secretPolicy: definition.toolset.secretPolicy,
+    escalation: {
+      channel: definition.escalation.channel,
+      askPolicyRef: definition.escalation.askPolicy.policyRef,
+    },
+    defaultDecision: "deny",
+  }
+}
+
+export function decideAgentDefinitionCompiledToolAuthority(input: {
+  readonly policy: AgentDefinitionCompiledToolRuntimePolicy
+  readonly toolRef: AgentDefinitionToolRef
+  readonly invocationRef?: string
+}): AgentDefinitionToolAuthorityDecision {
+  const toolRef = input.toolRef
+  const policy = input.policy
+
+  const deniedBy = firstMatchingToolPolicy(policy.deny, toolRef)
   if (deniedBy !== undefined) {
     return {
       status: "denied",
       allowed: false,
       toolRef,
-      definitionId: input.definition.id,
+      definitionId: policy.definitionId,
       matchedPolicyRef: deniedBy,
       reasonRef: "reason.agent_definition.tool_denied",
       blockerRefs: ["blocker.agent_definition.tool_denied"],
     }
   }
 
-  const askBy = firstMatchingToolPolicy(toolset.ask, toolRef)
+  const askBy = firstMatchingToolPolicy(policy.ask, toolRef)
   if (askBy !== undefined) {
     const escalationRef = stableAgentDefinitionRef("escalation.operator.agent_definition", [
-      input.definition.id,
+      policy.definitionId,
       input.invocationRef ?? toolRef,
       askBy,
     ])
@@ -697,29 +748,29 @@ export function decideAgentDefinitionToolAuthority(input: {
       status: "operator_escalation_required",
       allowed: false,
       toolRef,
-      definitionId: input.definition.id,
+      definitionId: policy.definitionId,
       matchedPolicyRef: askBy,
       reasonRef: "reason.agent_definition.tool_requires_operator",
       blockerRefs: ["blocker.agent_definition.operator_escalation_required"],
       escalation: {
         escalationRef,
-        definitionId: input.definition.id,
-        ownerRef: input.definition.ownerRef,
+        definitionId: policy.definitionId,
+        ownerRef: policy.ownerRef,
         toolRef,
-        channel: input.definition.escalation.channel,
-        askPolicyRef: input.definition.escalation.askPolicy.policyRef,
+        channel: policy.escalation.channel,
+        askPolicyRef: policy.escalation.askPolicyRef,
         reasonRef: "reason.agent_definition.ask_policy_hit",
       },
     }
   }
 
-  const allowedBy = firstMatchingToolPolicy(toolset.allow, toolRef)
+  const allowedBy = firstMatchingToolPolicy(policy.allow, toolRef)
   if (allowedBy !== undefined) {
     return {
       status: "allowed",
       allowed: true,
       toolRef,
-      definitionId: input.definition.id,
+      definitionId: policy.definitionId,
       matchedPolicyRef: allowedBy,
       reasonRef: "reason.agent_definition.tool_allowed",
       blockerRefs: [],
@@ -730,7 +781,7 @@ export function decideAgentDefinitionToolAuthority(input: {
     status: "denied",
     allowed: false,
     toolRef,
-    definitionId: input.definition.id,
+    definitionId: policy.definitionId,
     reasonRef: "reason.agent_definition.tool_not_in_allowlist",
     blockerRefs: ["blocker.agent_definition.tool_not_in_allowlist"],
   }

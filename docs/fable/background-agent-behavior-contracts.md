@@ -6,10 +6,11 @@ in `packages/behavior-contracts/src/background-agents.ts` (schema:
 
 Issue #8218 registers the headline invariants from
 `docs/fable/ROADMAP_BACKGROUND_AGENTS.md` before their sibling implementation
-oracles land. Every entry below is intentionally `pending` until the owning
-task PR adds the oracle test and flips that exact contract to `enforced`.
+oracles land. Entries remain `pending` until the owning task adds its oracle
+test and flips that exact contract to `enforced`; BA-A5 is the first enforced
+background-agent contract in this registry.
 
-Registry version: `2026-07-03.2` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-03.3` (schema `openagents.behavior_contracts.v1`)
 
 ### `background_agents.dispatch.budget_caps_enforced.v1` - PENDING
 
@@ -21,14 +22,16 @@ Registry version: `2026-07-03.2` (schema `openagents.behavior_contracts.v1`)
 - **Blockers:** `blocker.background_agents.ba_b4.oracle_not_landed`
 - **Authority boundary:** This contract binds dispatch budget enforcement for background-agent definitions. It does not authorize public budget or reliability claims until the BA-B4 dispatch oracles exist and run in the normal sweep.
 
-### `background_agents.toolset.compiled_policy_enforced.v1` - PENDING
+### `background_agents.toolset.compiled_policy_enforced.v1` - ENFORCED
 
 - **Surface:** openagents.com-worker (background agent tool policy)
 - **Stated by:** owner via issue_list on 2026-07-03
 - **Statement:** Definition toolset compiles to the ADR-0012 tool-runtime policy object (local lane) and to Forge tenant-token scopes for git access; ask entries route to escalation instead of failing; no lane may reach tools outside compiled policy.
-- **Enforcement tier:** unenforced
-- **Verification:** Pending BA-A5: add enforcement tests at both the local lane and Forge tenant-token boundary, then flip this contract to enforced with those tests as bun-test oracles.
-- **Blockers:** `blocker.background_agents.ba_a5.oracle_not_landed`
+- **Enforcement tier:** test-sweep
+- **Oracle** `background_agents.toolset.schema_policy` (bun-test, unit): Shared agent-definition policy compiler preserves deny precedence, ask escalation, allow, and default-deny semantics. - `packages/agent-runtime-schema/src/index.test.ts`
+- **Oracle** `background_agents.toolset.khala_local_lane` (bun-test, unit): Khala local-lane dispatcher enforces compiled name/authority policy before tool execution and routes ask decisions to approval. - `packages/khala-tools/src/dispatcher.test.ts`
+- **Oracle** `background_agents.toolset.forge_git_scopes` (bun-test, unit): Forge git token scope compilation permits allowed scopes, escalates ask scopes, and rejects denied token mints. - `apps/openagents.com/workers/api/src/forge-tenant-git-auth-store.test.ts`
+- **Verification:** BA-A5 is enforced by the agent-runtime-schema compiler test, the packages/khala-tools dispatcher test, and the openagents.com Worker Forge git-token scope test in their normal bun test sweeps.
 - **Authority boundary:** This contract binds compiled background-agent tool policy at the local-lane and Forge git-token boundaries. It does not widen any runtime tool authority beyond the compiled policy.
 
 ### `background_agents.credentials.no_long_lived_tokens_in_workspaces.v1` - PENDING

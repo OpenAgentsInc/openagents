@@ -16,17 +16,21 @@ import {
   assertAgentRuntimePublicEventSafe,
   assertAgentRuntimeRunStateTransition,
   agentRuntimeSurfaceStatusHasUnsafeMaterial,
+  compileAgentDefinitionToolRuntimePolicy,
+  decideAgentDefinitionCompiledToolAuthority,
+  decideAgentDefinitionToolAuthority,
   decodeAgentDefinition,
   decodeAgentRuntimeEvent,
   decodeAgentRuntimeEventLog,
   decodeAgentRuntimeRun,
-  decideAgentDefinitionToolAuthority,
   projectAgentRuntimeSurfaceStatus,
 } from "./index.js"
 import {
   agentRuntimeFixtureEventLogs,
   fulfillmentLoopAgentDefinitionFixture,
 } from "./fixtures.js"
+
+// Behavior contract oracle: background_agents.toolset.compiled_policy_enforced.v1
 
 const baseRun = {
   runId: "run.public.schema_test",
@@ -108,6 +112,20 @@ describe("@openagentsinc/agent-runtime-schema", () => {
 
   test("enforces definition toolsets with deny, ask escalation, allow, and deny-by-default", () => {
     const definition = decodeAgentDefinition(fulfillmentLoopAgentDefinitionFixture)
+    const compiledPolicy = compileAgentDefinitionToolRuntimePolicy(definition)
+
+    expect(compiledPolicy).toMatchObject({
+      schema: "openagents.agent_definition_tool_runtime_policy.v1",
+      definitionId: definition.id,
+      ownerRef: definition.ownerRef,
+      defaultDecision: "deny",
+      networkPolicy: "owner_scoped",
+      secretPolicy: "owner_scoped_refs_only",
+      escalation: {
+        askPolicyRef: "policy.public.agent_definition.operator_required.v1",
+        channel: "operator",
+      },
+    })
 
     expect(decideAgentDefinitionToolAuthority({
       definition,
@@ -118,6 +136,14 @@ describe("@openagentsinc/agent-runtime-schema", () => {
       reasonRef: "reason.agent_definition.tool_allowed",
       blockerRefs: [],
     })
+    expect(decideAgentDefinitionCompiledToolAuthority({
+      policy: compiledPolicy,
+      toolRef: "tool.openagents.crm.read",
+    })).toMatchObject({
+      allowed: true,
+      status: "allowed",
+      matchedPolicyRef: "tool.openagents.crm.read",
+    })
 
     expect(decideAgentDefinitionToolAuthority({
       definition,
@@ -127,6 +153,15 @@ describe("@openagentsinc/agent-runtime-schema", () => {
       status: "denied",
       matchedPolicyRef: "tool.openagents.payment.*",
       blockerRefs: ["blocker.agent_definition.tool_denied"],
+    })
+    expect(decideAgentDefinitionCompiledToolAuthority({
+      policy: compiledPolicy,
+      toolRef: "tool.openagents.payment.refund",
+    })).toMatchObject({
+      allowed: false,
+      status: "denied",
+      matchedPolicyRef: "tool.openagents.payment.*",
+      reasonRef: "reason.agent_definition.tool_denied",
     })
 
     const askDecision = decideAgentDefinitionToolAuthority({
@@ -150,6 +185,24 @@ describe("@openagentsinc/agent-runtime-schema", () => {
     expect(askDecision.escalation?.escalationRef).toMatch(
       /^escalation\.operator\.agent_definition\.[a-f0-9]{8}$/,
     )
+    const compiledAskDecision = decideAgentDefinitionCompiledToolAuthority({
+      policy: compiledPolicy,
+      toolRef: "tool.openagents.email.draft",
+      invocationRef: "invocation.public.fixture.email_draft",
+    })
+    expect(compiledAskDecision).toMatchObject({
+      allowed: false,
+      status: "operator_escalation_required",
+      escalation: {
+        definitionId: definition.id,
+        ownerRef: definition.ownerRef,
+        askPolicyRef: "policy.public.agent_definition.operator_required.v1",
+        channel: "operator",
+      },
+    })
+    expect(compiledAskDecision.escalation?.escalationRef).toMatch(
+      /^escalation\.operator\.agent_definition\.[a-f0-9]{8}$/,
+    )
 
     expect(decideAgentDefinitionToolAuthority({
       definition,
@@ -159,6 +212,14 @@ describe("@openagentsinc/agent-runtime-schema", () => {
       status: "denied",
       reasonRef: "reason.agent_definition.tool_not_in_allowlist",
       blockerRefs: ["blocker.agent_definition.tool_not_in_allowlist"],
+    })
+    expect(decideAgentDefinitionCompiledToolAuthority({
+      policy: compiledPolicy,
+      toolRef: "tool.openagents.github.write",
+    })).toMatchObject({
+      allowed: false,
+      status: "denied",
+      reasonRef: "reason.agent_definition.tool_not_in_allowlist",
     })
   })
 

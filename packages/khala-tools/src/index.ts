@@ -1691,7 +1691,10 @@ export { createWebFetchTool, webFetchToolDefinition } from "./web-fetch.js"
 export { createWebSearchTool, webSearchToolDefinition } from "./web-search.js"
 export {
   createKhalaToolTurnAccounting,
+  decideKhalaToolAgainstAgentDefinitionPolicy,
+  khalaToolRefsForAgentDefinitionPolicy,
   makeKhalaToolDispatcher,
+  type KhalaAgentDefinitionToolPolicyDecision,
   type KhalaToolDispatcher,
   type KhalaToolDispatcherOptions,
   type KhalaToolDispatchAfterHookContext,
