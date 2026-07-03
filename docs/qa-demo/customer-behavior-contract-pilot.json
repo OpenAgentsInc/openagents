@@ -1,0 +1,201 @@
+{
+  "schemaVersion": "openagents.customer_behavior_contract_engagement.v1",
+  "version": "2026-07-03.1",
+  "engagementId": "qa_swarm.public_demo_login.v1",
+  "target": {
+    "clientRef": "public-demo.openagents",
+    "surface": "openagents.com/login",
+    "environment": "production-public-demo",
+    "baseUrl": "https://openagents.com/login",
+    "visibility": "public-demo",
+    "evidenceUrl": "/qa/qa-run.public-demo.behavior-contracts.latest"
+  },
+  "selectedCatalogCategories": [
+    "stated-flow-availability",
+    "error-state-honesty",
+    "copy-claim-safety",
+    "stated-expectation-pinning",
+    "accessibility-floor"
+  ],
+  "cadence": {
+    "tiers": ["nightly", "weekly"],
+    "alertChannel": "private-forum-thread",
+    "alertDestinationRef": "forum.private.qa-swarm.public-demo.behavior-contracts"
+  },
+  "registry": {
+    "schemaVersion": "openagents.behavior_contracts.v1",
+    "version": "2026-07-03.1",
+    "contracts": [
+      {
+        "contractId": "qa_swarm_demo.login.page_loads_named_form.v1",
+        "surface": "openagents.com/login",
+        "productArea": "login flow",
+        "state": "pending",
+        "statement": "When I open the public OpenAgents login page, the page loads and clearly says 'Log in to OpenAgents' before I try to authenticate.",
+        "source": {
+          "channel": "qa-swarm-public-demo-intake",
+          "statedBy": "pilot-demo-operator",
+          "statedOn": "2026-07-03"
+        },
+        "enforcementTier": "unenforced",
+        "oracles": [
+          {
+            "id": "login_page_loads.planned",
+            "kind": "planned",
+            "mode": "headless",
+            "ref": "docs/qa-demo/distilled-login-verify.e2e.test.ts",
+            "description": "Promote the existing distilled login verify test into the customer cadence runner and bind its receipt to this contract id."
+          }
+        ],
+        "evidenceRefs": [
+          "docs/qa-demo/session-trace.json",
+          "docs/qa-demo/result.json",
+          "docs/qa-demo/distilled-login-verify.e2e.test.ts",
+          "docs/qa-demo/khala-autonomous-qa.mp4"
+        ],
+        "verification": "Pending until the distilled login test is wired into the QA Swarm customer cadence runner and emits per-contract receipts.",
+        "blockerRefs": [
+          "blocker.qa_swarm.public_demo_login.customer_cadence_binding_pending"
+        ],
+        "authorityBoundary": "This contract checks the public login page copy and load behavior only. It does not prove authentication, account creation, hosted QA Swarm availability, pricing, SLA, or customer-data handling."
+      },
+      {
+        "contractId": "qa_swarm_demo.login.failure_copy_honest.v1",
+        "surface": "openagents.com/login",
+        "productArea": "login error state",
+        "state": "pending",
+        "statement": "If login cannot continue, the page should show an honest visible error instead of acting like login succeeded or spinning forever.",
+        "source": {
+          "channel": "qa-swarm-public-demo-intake",
+          "statedBy": "pilot-demo-operator",
+          "statedOn": "2026-07-03"
+        },
+        "enforcementTier": "unenforced",
+        "oracles": [
+          {
+            "id": "login_failure_copy.planned",
+            "kind": "planned",
+            "mode": "headless",
+            "ref": "scenario.qa_swarm_demo.login_failure_copy.v1",
+            "description": "Inject a failed auth continuation and assert the visible error copy never claims success."
+          }
+        ],
+        "evidenceRefs": [
+          "docs/fable/2026-07-03-behavior-contracts-and-customer-invariants.md#2-the-invariant-catalog"
+        ],
+        "verification": "Pending until the fault-injection scenario is implemented in the QA harness and scheduled in the customer cadence.",
+        "blockerRefs": [
+          "blocker.qa_swarm.public_demo_login.failure_injection_oracle_pending"
+        ],
+        "authorityBoundary": "This contract binds error-state honesty on the demo login surface only. It grants no auth-provider mutation, production credential access, or payment authority."
+      },
+      {
+        "contractId": "qa_swarm_demo.login.copy_claims_only_verified_access.v1",
+        "surface": "openagents.com/login",
+        "productArea": "login copy",
+        "state": "pending",
+        "statement": "The login page should not promise access, onboarding, or account state that the page itself has not verified yet.",
+        "source": {
+          "channel": "qa-swarm-public-demo-intake",
+          "statedBy": "pilot-demo-operator",
+          "statedOn": "2026-07-03"
+        },
+        "enforcementTier": "unenforced",
+        "oracles": [
+          {
+            "id": "login_copy_claims.planned",
+            "kind": "planned",
+            "mode": "dom",
+            "ref": "scenario.qa_swarm_demo.login_copy_claims.v1",
+            "description": "Scan the rendered login copy for claims beyond verified state and compare it with the allowed-copy ledger."
+          }
+        ],
+        "evidenceRefs": [
+          "docs/promises/registry.md",
+          "docs/qa/qa-swarm-khala-code-standing-engagement.md"
+        ],
+        "verification": "Pending until an allowed-copy ledger and DOM oracle are attached to the demo target.",
+        "blockerRefs": [
+          "blocker.qa_swarm.public_demo_login.copy_claim_ledger_pending"
+        ],
+        "authorityBoundary": "This contract is a copy-safety gate only; it does not approve broader product-promise copy or public QA Swarm launch claims."
+      },
+      {
+        "contractId": "qa_swarm_demo.login.keyboard_focus_floor.v1",
+        "surface": "openagents.com/login",
+        "productArea": "login accessibility",
+        "state": "pending",
+        "statement": "A keyboard user should be able to reach the login controls in a sensible order and know which control is focused.",
+        "source": {
+          "channel": "qa-swarm-public-demo-intake",
+          "statedBy": "pilot-demo-operator",
+          "statedOn": "2026-07-03"
+        },
+        "enforcementTier": "unenforced",
+        "oracles": [
+          {
+            "id": "login_keyboard_focus.planned",
+            "kind": "planned",
+            "mode": "headless",
+            "ref": "scenario.qa_swarm_demo.login_keyboard_focus.v1",
+            "description": "Drive keyboard navigation through the login controls and assert labels, focus visibility, and order."
+          }
+        ],
+        "evidenceRefs": [
+          "docs/fable/2026-07-03-behavior-contracts-and-customer-invariants.md#2-the-invariant-catalog"
+        ],
+        "verification": "Pending until the headless accessibility scenario is implemented and produces a receipt in the customer cadence.",
+        "blockerRefs": [
+          "blocker.qa_swarm.public_demo_login.keyboard_oracle_pending"
+        ],
+        "authorityBoundary": "This contract is limited to the public demo login accessibility floor and does not certify the whole application."
+      }
+    ]
+  },
+  "receiptPack": {
+    "latestSweepRef": "receipt.qa_swarm.public_demo_login.seed.20260703",
+    "receipts": [
+      {
+        "receiptRef": "receipt.qa_swarm.public_demo_login.page_loads_named_form.seed.20260703",
+        "contractId": "qa_swarm_demo.login.page_loads_named_form.v1",
+        "status": "pending",
+        "checkedAt": "2026-07-03T00:00:00.000Z",
+        "summary": "Existing QA demo artifacts prove the candidate oracle shape, but the customer cadence binding has not landed, so this contract remains pending.",
+        "evidenceRefs": [
+          "docs/qa-demo/result.json",
+          "docs/qa-demo/distilled-login-verify.e2e.test.ts"
+        ]
+      },
+      {
+        "receiptRef": "receipt.qa_swarm.public_demo_login.failure_copy_honest.seed.20260703",
+        "contractId": "qa_swarm_demo.login.failure_copy_honest.v1",
+        "status": "pending",
+        "checkedAt": "2026-07-03T00:00:00.000Z",
+        "summary": "Fault-injection oracle is specified but not yet implemented.",
+        "evidenceRefs": [
+          "docs/fable/2026-07-03-behavior-contracts-and-customer-invariants.md"
+        ]
+      },
+      {
+        "receiptRef": "receipt.qa_swarm.public_demo_login.copy_claims.seed.20260703",
+        "contractId": "qa_swarm_demo.login.copy_claims_only_verified_access.v1",
+        "status": "pending",
+        "checkedAt": "2026-07-03T00:00:00.000Z",
+        "summary": "Allowed-copy ledger and DOM scan are specified but not yet implemented.",
+        "evidenceRefs": [
+          "docs/promises/registry.md"
+        ]
+      },
+      {
+        "receiptRef": "receipt.qa_swarm.public_demo_login.keyboard_focus.seed.20260703",
+        "contractId": "qa_swarm_demo.login.keyboard_focus_floor.v1",
+        "status": "pending",
+        "checkedAt": "2026-07-03T00:00:00.000Z",
+        "summary": "Keyboard-focus oracle is specified but not yet implemented.",
+        "evidenceRefs": [
+          "docs/fable/2026-07-03-behavior-contracts-and-customer-invariants.md"
+        ]
+      }
+    ]
+  }
+}
