@@ -54,6 +54,7 @@ const migration = (name: string): string =>
 const SCHEMA = [
   '0191_business_signup_requests.sql',
   '0216_business_signup_referral_attribution.sql',
+  '0270_business_funnel_events.sql',
 ].map(migration)
 
 const makeDb = (): D1Database => {
@@ -154,6 +155,50 @@ describe('business signup routes', () => {
         slackConnectStatus: 'manual_invite_pending',
         nextAction: 'operator_manual_slack_connect_invite',
       },
+    })
+  })
+
+  test('records a signup-stage funnel event with coarse source attribution', async () => {
+    const db = makeDb()
+    const response = await run(
+      new Request('https://openagents.com/api/public/business-signup', {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          businessName: 'Acme Co.',
+          contactEmail: 'lead@example.com',
+          phone: '+1 555 000 0000',
+          requestSlackChannel: false,
+          sourceAttribution: 'AI-search',
+        }),
+      }),
+      db,
+    )
+
+    expect(response.status).toBe(201)
+
+    const row = await db
+      .prepare(
+        `SELECT event_ref, stage, source_kind, source_ref
+           FROM business_funnel_events
+          WHERE event_ref = ?`,
+      )
+      .bind('business_signup:business_signup_1')
+      .first<{
+        event_ref: string
+        stage: string
+        source_kind: string
+        source_ref: string
+      }>()
+
+    expect(row).toEqual({
+      event_ref: 'business_signup:business_signup_1',
+      stage: 'signup',
+      source_kind: 'ai_search',
+      source_ref: '/business',
     })
   })
 
