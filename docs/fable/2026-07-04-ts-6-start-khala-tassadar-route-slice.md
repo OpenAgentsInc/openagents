@@ -1,0 +1,48 @@
+# TS-6 Route Slice: Khala And Tassadar On Start
+
+Date: 2026-07-04
+Issue: [#8348](https://github.com/OpenAgentsInc/openagents/issues/8348)
+Epic: [#8339](https://github.com/OpenAgentsInc/openagents/issues/8339)
+
+## Landed Slice
+
+The Start staging app now owns the public `/khala` and `/tassadar` routes that
+the Start landing page already linked to.
+
+- `/khala` preserves the visible behavior contract from the Foldkit route:
+  `data-route="khala"`, the Khala API basics (`openagents/khala`,
+  `https://openagents.com/api/v1`, `POST /api/keys/free`), the
+  `data-counter="khala-tokens-served"` DOM anchor, and the back-home affordance.
+- `/tassadar` preserves the public training-run route contract:
+  `data-route="tassadar"`, `data-pose="tassadar"`, the Copy Agent Instructions
+  control, the agent instruction block, and the back-home affordance.
+- `src/routeTree.gen.ts` was regenerated so `/khala/chat-sync` is now a child
+  route under `/khala` instead of an unrelated root route.
+
+## Boundary
+
+This is not the final TS-6 closure. The live `openagents.com` Worker still
+serves `apps/web/dist`, and the Foldkit counterparts remain in `apps/web`
+because these Start routes are not production-cut-over on the real domain yet.
+Delete-as-you-go starts only when a route is actually cut over from the live
+Worker to Start.
+
+Remaining TS-6 work:
+
+- migrate logged-in app-shell panels route-by-route;
+- migrate or explicitly retire the Forum web shell from `apps/web`;
+- cut production routes over from the Start Worker;
+- delete each Foldkit counterpart after its production route cutover;
+- repoint the `ASSETS` binding and remove `apps/web` from the build.
+
+## Verification
+
+```sh
+bun run --cwd apps/openagents.com/apps/start test -- src/routes/-app-shell.test.tsx src/routes/-index.test.tsx
+bun run --cwd apps/openagents.com/apps/start typecheck
+bun run --cwd apps/openagents.com/apps/start build
+```
+
+The route tests are the parity guard for this slice; the full final TS-6
+closure still needs the per-route visual smokes and delete evidence named in
+#8348.

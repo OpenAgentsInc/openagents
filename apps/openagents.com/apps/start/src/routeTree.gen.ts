@@ -9,6 +9,8 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TassadarRouteImport } from './routes/tassadar'
+import { Route as KhalaRouteImport } from './routes/khala'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as BusinessRouteImport } from './routes/business'
 import { Route as BlogRouteImport } from './routes/blog'
@@ -20,6 +22,16 @@ import { Route as CodeDownloadRouteImport } from './routes/code/download'
 import { Route as BlogSlugRouteImport } from './routes/blog/$slug'
 import { Route as AutopilotLegalRouteImport } from './routes/autopilot/legal'
 
+const TassadarRoute = TassadarRouteImport.update({
+  id: '/tassadar',
+  path: '/tassadar',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const KhalaRoute = KhalaRouteImport.update({
+  id: '/khala',
+  path: '/khala',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DocsRoute = DocsRouteImport.update({
   id: '/docs',
   path: '/docs',
@@ -46,9 +58,9 @@ const AutopilotIndexRoute = AutopilotIndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const KhalaChatSyncRoute = KhalaChatSyncRouteImport.update({
-  id: '/khala/chat-sync',
-  path: '/khala/chat-sync',
-  getParentRoute: () => rootRouteImport,
+  id: '/chat-sync',
+  path: '/chat-sync',
+  getParentRoute: () => KhalaRoute,
 } as any)
 const DocsSlugRoute = DocsSlugRouteImport.update({
   id: '/$slug',
@@ -76,6 +88,8 @@ export interface FileRoutesByFullPath {
   '/blog': typeof BlogRouteWithChildren
   '/business': typeof BusinessRoute
   '/docs': typeof DocsRouteWithChildren
+  '/khala': typeof KhalaRouteWithChildren
+  '/tassadar': typeof TassadarRoute
   '/autopilot/legal': typeof AutopilotLegalRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/code/download': typeof CodeDownloadRoute
@@ -88,6 +102,8 @@ export interface FileRoutesByTo {
   '/blog': typeof BlogRouteWithChildren
   '/business': typeof BusinessRoute
   '/docs': typeof DocsRouteWithChildren
+  '/khala': typeof KhalaRouteWithChildren
+  '/tassadar': typeof TassadarRoute
   '/autopilot/legal': typeof AutopilotLegalRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/code/download': typeof CodeDownloadRoute
@@ -101,6 +117,8 @@ export interface FileRoutesById {
   '/blog': typeof BlogRouteWithChildren
   '/business': typeof BusinessRoute
   '/docs': typeof DocsRouteWithChildren
+  '/khala': typeof KhalaRouteWithChildren
+  '/tassadar': typeof TassadarRoute
   '/autopilot/legal': typeof AutopilotLegalRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/code/download': typeof CodeDownloadRoute
@@ -115,6 +133,8 @@ export interface FileRouteTypes {
     | '/blog'
     | '/business'
     | '/docs'
+    | '/khala'
+    | '/tassadar'
     | '/autopilot/legal'
     | '/blog/$slug'
     | '/code/download'
@@ -127,6 +147,8 @@ export interface FileRouteTypes {
     | '/blog'
     | '/business'
     | '/docs'
+    | '/khala'
+    | '/tassadar'
     | '/autopilot/legal'
     | '/blog/$slug'
     | '/code/download'
@@ -139,6 +161,8 @@ export interface FileRouteTypes {
     | '/blog'
     | '/business'
     | '/docs'
+    | '/khala'
+    | '/tassadar'
     | '/autopilot/legal'
     | '/blog/$slug'
     | '/code/download'
@@ -152,14 +176,29 @@ export interface RootRouteChildren {
   BlogRoute: typeof BlogRouteWithChildren
   BusinessRoute: typeof BusinessRoute
   DocsRoute: typeof DocsRouteWithChildren
+  KhalaRoute: typeof KhalaRouteWithChildren
+  TassadarRoute: typeof TassadarRoute
   AutopilotLegalRoute: typeof AutopilotLegalRoute
   CodeDownloadRoute: typeof CodeDownloadRoute
-  KhalaChatSyncRoute: typeof KhalaChatSyncRoute
   AutopilotIndexRoute: typeof AutopilotIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/tassadar': {
+      id: '/tassadar'
+      path: '/tassadar'
+      fullPath: '/tassadar'
+      preLoaderRoute: typeof TassadarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/khala': {
+      id: '/khala'
+      path: '/khala'
+      fullPath: '/khala'
+      preLoaderRoute: typeof KhalaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/docs': {
       id: '/docs'
       path: '/docs'
@@ -197,10 +236,10 @@ declare module '@tanstack/react-router' {
     }
     '/khala/chat-sync': {
       id: '/khala/chat-sync'
-      path: '/khala/chat-sync'
+      path: '/chat-sync'
       fullPath: '/khala/chat-sync'
       preLoaderRoute: typeof KhalaChatSyncRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof KhalaRoute
     }
     '/docs/$slug': {
       id: '/docs/$slug'
@@ -253,14 +292,25 @@ const DocsRouteChildren: DocsRouteChildren = {
 
 const DocsRouteWithChildren = DocsRoute._addFileChildren(DocsRouteChildren)
 
+interface KhalaRouteChildren {
+  KhalaChatSyncRoute: typeof KhalaChatSyncRoute
+}
+
+const KhalaRouteChildren: KhalaRouteChildren = {
+  KhalaChatSyncRoute: KhalaChatSyncRoute,
+}
+
+const KhalaRouteWithChildren = KhalaRoute._addFileChildren(KhalaRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BlogRoute: BlogRouteWithChildren,
   BusinessRoute: BusinessRoute,
   DocsRoute: DocsRouteWithChildren,
+  KhalaRoute: KhalaRouteWithChildren,
+  TassadarRoute: TassadarRoute,
   AutopilotLegalRoute: AutopilotLegalRoute,
   CodeDownloadRoute: CodeDownloadRoute,
-  KhalaChatSyncRoute: KhalaChatSyncRoute,
   AutopilotIndexRoute: AutopilotIndexRoute,
 }
 export const routeTree = rootRouteImport
