@@ -180,6 +180,21 @@ describe('OpenAgents OpenAPI route', () => {
     expect(qaSwarmFirstEngagement.description).toContain(
       'excludes customer identity',
     )
+    const firstDollarEvidence = operationAt(
+      body,
+      '/api/public/revenue-loop/first-dollar-evidence/{bundleRef}',
+      'get',
+    )
+    expect(firstDollarEvidence.operationId).toBe(
+      'getPublicFirstDollarEvidenceBundle',
+    )
+    expect(firstDollarEvidence.description).toContain(
+      'revenue_event_provenance',
+    )
+    expect(firstDollarEvidence.description).toContain(
+      'internal/external demand-provenance label',
+    )
+    expect(firstDollarEvidence.description).toContain('live_at_read')
     const deprecatedFleetStatus = operationAt(
       body,
       '/api/operator/fleet/status',

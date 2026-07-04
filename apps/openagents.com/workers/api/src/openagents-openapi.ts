@@ -4842,6 +4842,12 @@ const requestSchemas = (): JsonSchema => ({
   PublicQaSwarmFirstEngagementReceipt: objectSummary(
     'Public-safe QA Swarm first-engagement receipt: proves an operator-assisted Swarm Audit was committed through the BF-2 spine, with intake/payment evidence refs, provisioned workspace and active service-promise refs, and a business commitment-ledger ref for the first report. It carries generatedAt and live_at_read staleness and explicitly keeps selfServe=false, firstPaidDeliveryReceipt=false, and settlementMovedMoney=false.',
   ),
+  PublicFirstDollarEvidenceBundle: objectSummary(
+    'Public-safe first-dollar evidence bundle over revenue_event_provenance. It carries a receipt ref, exact ledger row ref, internal/external demand-provenance label, payment state, amount fields, registry-shaped evidenceRefs, generatedAt, and live_at_read staleness without exposing buyer identity, checkout URLs, raw invoices, payment hashes, preimages, provider payloads, or wallet material.',
+  ),
+  PublicFirstDollarEvidenceEnvelope: objectSummary(
+    'Public-safe first-dollar evidence envelope with generatedAt, staleness, and bundle. Read-only evidence only; grants no checkout, spend, refund, payout, settlement, provider, public-claim, or registry authority.',
+  ),
   PublicQaSwarmFirstEngagementEnvelope: {
     type: 'object',
     additionalProperties: false,
@@ -6637,6 +6643,29 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'QA Swarm first-engagement receipt.',
           '#/components/schemas/PublicQaSwarmFirstEngagementEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/revenue-loop/first-dollar-evidence/{bundleRef}': {
+    get: operation({
+      operationId: 'getPublicFirstDollarEvidenceBundle',
+      summary: 'Read first-dollar revenue-loop evidence',
+      description:
+        'Dereferences one public-safe first-dollar evidence bundle by evidence bundle ref. The bundle is shaped for product-registry evidenceRefs: it returns the public receipt ref, the exact revenue_event_provenance ledger row, the source ledger row, internal/external demand-provenance label, payment state, amount fields, generatedAt, and live_at_read staleness. It excludes buyer identity, checkout URLs, raw invoices, payment hashes, preimages, provider payloads, wallet material, and private payment material; it grants no checkout creation, spend, refund, payout, settlement, public-claim upgrade, or registry authority.',
+      tags: ['Public Proof', 'Billing', 'Agents'],
+      security: publicRead,
+      parameters: [
+        pathParam(
+          'bundleRef',
+          'Public first-dollar evidence bundle ref, such as evidence.revenue.first_dollar.qa_swarm.<suffix>.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'First-dollar evidence bundle.',
+          '#/components/schemas/PublicFirstDollarEvidenceEnvelope',
         ),
         ...errorResponses(),
       },

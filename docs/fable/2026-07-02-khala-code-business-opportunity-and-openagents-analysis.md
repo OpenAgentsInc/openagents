@@ -591,6 +591,15 @@ and they should be read as the operating posture for the proof ladder:
      from server status and leaves credit package/balance truth on the billing
      authority rather than fabricating it locally
      (`khala_code.plans.checkout_handoff_server_truth.v1`).
+   - **Code-landed note (2026-07-04, #8253):**
+     `revenue_event_provenance` now labels Khala Code paid-plan fulfillment and
+     QA Swarm first-engagement revenue events as internal or external and
+     exposes a public-safe first-dollar evidence bundle at
+     `/api/public/revenue-loop/first-dollar-evidence/{bundleRef}`. This is the
+     right proof shape for rung 3, but it does not authorize green copy by
+     itself: external-demand or paid-plan claims still require a concrete
+     owner-reviewed production receipt and the registry state movement to remain
+     receipt-first.
 4. **The portfolio is now officially two products.** "OpenAgents has two
    products: Khala Code, our equivalent of Claude Code, and Autopilot, our
    business system for running stuff on Autopilot" — with the promise/

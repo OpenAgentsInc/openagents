@@ -226,3 +226,24 @@ NEEDS-OWNER: For the first real QA Swarm sales outcome, review the production
 intake/payment evidence, approve the target-adapter/redaction boundary, decide
 which public-safe delivery receipt may count as the first paid delivery, and
 record that receipt before any copy claims paid QA Swarm delivery exists.
+
+## First-Dollar Revenue Claim Sign-Off
+
+Source issue: OpenAgentsInc/openagents#8253
+
+The RL-9 revenue-event provenance ledger now records Khala Code paid-plan and
+QA Swarm first-engagement revenue events with an internal/external label and a
+public-safe first-dollar evidence bundle:
+
+- `GET /api/public/revenue-loop/first-dollar-evidence/{bundleRef}`
+
+The bundle joins the receipt ref, source ledger row, and provenance label for
+registry evidence. It does not itself prove settlement, paid delivery,
+self-serve availability, market demand, or permission to publish external
+revenue copy.
+
+NEEDS-OWNER: Before any product-promise state movement, public external-demand
+claim, paid-plan availability claim, or "first paid delivery" copy cites this
+route, review a concrete production bundle and the backing payment/delivery
+evidence, confirm the label is truly external, and explicitly approve the
+public copy boundary.

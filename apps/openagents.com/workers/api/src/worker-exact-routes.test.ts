@@ -33,6 +33,7 @@ const approvedExactRoutePaths = [
   '/api/public/khala-code/trace-plugin-revenue-share-precedents/:receiptRef',
   '/api/operator/qa-swarm/first-engagements',
   '/api/public/qa-swarm/first-engagements/:receiptRef',
+  '/api/public/revenue-loop/first-dollar-evidence/:bundleRef',
   '/api/public/product-promises/transitions',
   '/api/public/product-promises/api.hosted_gemini.v1/readiness',
   '/api/public/product-promises/audit',

@@ -108,6 +108,7 @@ const makeDb = (): D1Database => {
     '0273_accepted_outcome_service_promises.sql',
     '0278_business_commitment_ledger.sql',
     '0292_qa_swarm_first_engagements.sql',
+    '0293_revenue_event_provenance.sql',
   ]) {
     db.exec(migration(name))
   }
@@ -282,11 +283,15 @@ describe('QA Swarm first engagement routes', () => {
       engagements: await db
         .prepare('SELECT COUNT(*) AS count FROM qa_swarm_first_engagements')
         .first<{ count: number }>(),
+      revenueEvents: await db
+        .prepare('SELECT COUNT(*) AS count FROM revenue_event_provenance')
+        .first<{ count: number }>(),
     }
     expect(counts.workspaces?.count).toBe(1)
     expect(counts.contracts?.count).toBe(1)
     expect(counts.commitments?.count).toBe(1)
     expect(counts.engagements?.count).toBe(1)
+    expect(counts.revenueEvents?.count).toBe(1)
 
     const workspace = await db
       .prepare(
@@ -325,6 +330,42 @@ describe('QA Swarm first engagement routes', () => {
       'deliverable.qa_swarm.swarm_audit.report.v1',
     )
     expect(contract?.metadata_json).toContain(body.receipt.receiptRef)
+
+    const revenueEvent = await db
+      .prepare(
+        `SELECT product_ref,
+                demand_provenance,
+                payment_state,
+                amount_cents,
+                receipt_ref,
+                ledger_table,
+                ledger_row_ref,
+                evidence_bundle_ref
+           FROM revenue_event_provenance
+          LIMIT 1`,
+      )
+      .first<{
+        amount_cents: number
+        demand_provenance: string
+        evidence_bundle_ref: string
+        ledger_row_ref: string
+        ledger_table: string
+        payment_state: string
+        product_ref: string
+        receipt_ref: string
+      }>()
+    expect(revenueEvent).toMatchObject({
+      product_ref: 'qa_swarm',
+      demand_provenance: 'external',
+      payment_state: 'payment_evidence_recorded',
+      amount_cents: 300_000,
+      receipt_ref: body.receipt.receiptRef,
+      ledger_table: 'qa_swarm_first_engagements',
+      ledger_row_ref: body.receipt.receiptRef,
+    })
+    expect(revenueEvent?.evidence_bundle_ref).toMatch(
+      /^evidence\.revenue\.first_dollar\.qa_swarm\./,
+    )
   })
 
   test('idempotently replays and publicly dereferences without leaking private buyer or payment material', async () => {

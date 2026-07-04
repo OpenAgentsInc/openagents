@@ -82,6 +82,7 @@ type WorkerRouteDependencies = Readonly<{
   routeNexusPylonVisibilityRequest: OptionalEffectRoute
   routePublicCardCreditSpendReceiptRequest: OptionalEffectRoute
   routePublicCloudPrimitiveReceiptRequest: OptionalEffectRoute
+  routePublicFirstDollarEvidenceRequest: OptionalEffectRoute
   routePublicInferenceReceiptRequest: OptionalEffectRoute
   routePublicKhalaCodeOutsideUserRunReceiptRequest: OptionalEffectRoute
   routePublicKhalaCodeTracePluginRevenueShareRequest: OptionalEffectRoute
@@ -636,6 +637,13 @@ export const makeWorkerRouteRequest =
 
       if (publicQaSwarmFirstEngagementResponse !== undefined) {
         return yield* publicQaSwarmFirstEngagementResponse
+      }
+
+      const publicFirstDollarEvidenceResponse =
+        dependencies.routePublicFirstDollarEvidenceRequest(request, env, ctx)
+
+      if (publicFirstDollarEvidenceResponse !== undefined) {
+        return yield* publicFirstDollarEvidenceResponse
       }
 
       const publicCloudPrimitiveReceiptResponse =

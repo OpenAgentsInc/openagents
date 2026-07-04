@@ -46,6 +46,7 @@ const makeDb = (): D1Database => {
   db.exec('PRAGMA foreign_keys = OFF')
   db.exec(migration('0091_omni_accepted_outcome_contracts.sql'))
   db.exec(migration('0095_omni_accepted_outcome_economics.sql'))
+  db.exec(migration('0293_revenue_event_provenance.sql'))
   return new SqliteD1(db) as unknown as D1Database
 }
 
@@ -64,6 +65,18 @@ describe('business factory metrics', () => {
       'business_factory.review_minutes.v1',
     )
     expect(BUSINESS_FACTORY_METRICS_SQL).toContain(
+      'business_factory.revenue_events.external_count.v1',
+    )
+    expect(BUSINESS_FACTORY_METRICS_SQL).toContain(
+      'business_factory.revenue_events.internal_count.v1',
+    )
+    expect(BUSINESS_FACTORY_METRICS_SQL).toContain(
+      'business_factory.revenue_usd_cents.external.v1',
+    )
+    expect(BUSINESS_FACTORY_METRICS_SQL).toContain(
+      'business_factory.revenue_usd_cents.internal.v1',
+    )
+    expect(BUSINESS_FACTORY_METRICS_SQL).toContain(
       'business_engagement.operator_minutes.review_ledger_floor.v1',
     )
     expect(BUSINESS_FACTORY_METRICS_SQL).toContain(
@@ -76,6 +89,7 @@ describe('business factory metrics', () => {
     raw.exec('PRAGMA foreign_keys = OFF')
     raw.exec(migration('0091_omni_accepted_outcome_contracts.sql'))
     raw.exec(migration('0095_omni_accepted_outcome_economics.sql'))
+    raw.exec(migration('0293_revenue_event_provenance.sql'))
     raw.prepare(
       `INSERT INTO omni_accepted_outcome_contracts (
         id, idempotency_key, work_kind, subject_ref, customer_ref,
@@ -135,6 +149,88 @@ describe('business factory metrics', () => {
       '2026-07-03T11:40:00.000Z',
       '2026-07-03T11:45:00.000Z',
     )
+    raw.prepare(
+      `INSERT INTO revenue_event_provenance (
+        event_ref,
+        evidence_bundle_ref,
+        idempotency_key,
+        product_ref,
+        revenue_surface_ref,
+        receipt_ref,
+        ledger_table,
+        ledger_row_ref,
+        demand_provenance,
+        payment_state,
+        amount_cents,
+        amount_sats,
+        public_evidence_refs_json,
+        caveat_refs_json,
+        source_refs_json,
+        recorded_at,
+        created_at,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'revenue_event.qa_swarm.first_engagement.qa_001',
+      'evidence.revenue.first_dollar.qa_swarm.qa_001',
+      'revenue_event_test_external_qa',
+      'qa_swarm',
+      'qa_swarm.swarm_audit_first_engagement',
+      'receipt.qa_swarm.first_engagement.qa_001',
+      'qa_swarm_first_engagements',
+      'receipt.qa_swarm.first_engagement.qa_001',
+      'external',
+      'payment_evidence_recorded',
+      300000,
+      null,
+      '["receipt.qa_swarm.first_engagement.qa_001"]',
+      '[]',
+      '["table:qa_swarm_first_engagements"]',
+      '2026-07-03T12:30:00.000Z',
+      '2026-07-03T12:30:00.000Z',
+      '2026-07-03T12:30:00.000Z',
+    )
+    raw.prepare(
+      `INSERT INTO revenue_event_provenance (
+        event_ref,
+        evidence_bundle_ref,
+        idempotency_key,
+        product_ref,
+        revenue_surface_ref,
+        receipt_ref,
+        ledger_table,
+        ledger_row_ref,
+        demand_provenance,
+        payment_state,
+        amount_cents,
+        amount_sats,
+        public_evidence_refs_json,
+        caveat_refs_json,
+        source_refs_json,
+        recorded_at,
+        created_at,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'revenue_event.khala_code.paid_plan.purchase_001',
+      'evidence.revenue.first_dollar.khala_code.purchase_001',
+      'revenue_event_test_internal_khala_sats',
+      'khala_code',
+      'khala_code.paid_plan',
+      'receipt.inference.privacy_entitlement.purchase_001',
+      'khala_code_paid_plan_payment_intents',
+      'purchase_001',
+      'internal',
+      'fulfilled',
+      null,
+      1999,
+      '["receipt.inference.privacy_entitlement.purchase_001"]',
+      '[]',
+      '["table:khala_code_paid_plan_payment_intents"]',
+      '2026-07-03T13:00:00.000Z',
+      '2026-07-03T13:00:00.000Z',
+      '2026-07-03T13:00:00.000Z',
+    )
 
     const rows = await selectBusinessFactoryMetrics(
       new SqliteD1(raw) as unknown as D1Database,
@@ -176,6 +272,28 @@ describe('business factory metrics', () => {
           'business_engagement.operator_minutes_per_engagement.monthly_review_ledger_floor.v1'
         && row.window_start === '2026-07-01T00:00:00.000Z',
     )
+    const qaExternalRevenueCount = rows.find(
+      row =>
+        row.metric_ref ===
+          'business_factory.revenue_events.external_count.v1'
+        && row.work_kind === 'qa_swarm',
+    )
+    const qaExternalRevenueCents = rows.find(
+      row =>
+        row.metric_ref === 'business_factory.revenue_usd_cents.external.v1'
+        && row.work_kind === 'qa_swarm',
+    )
+    const khalaInternalRevenueCount = rows.find(
+      row =>
+        row.metric_ref ===
+          'business_factory.revenue_events.internal_count.v1'
+        && row.work_kind === 'khala_code',
+    )
+    const khalaInternalRevenueCents = rows.find(
+      row =>
+        row.metric_ref === 'business_factory.revenue_usd_cents.internal.v1'
+        && row.work_kind === 'khala_code',
+    )
 
     expect(businessThroughput).toMatchObject({
       value: 1,
@@ -212,6 +330,29 @@ describe('business factory metrics', () => {
       measurement_state: 'measured',
       caveat_refs_json:
         '["caveat.business_metrics.operator_minutes_review_only_until_labor_ledger"]',
+    })
+    expect(qaExternalRevenueCount).toMatchObject({
+      value: 1,
+      unit: 'outcomes',
+      measurement_state: 'measured',
+      evidence_refs_json: '["table.revenue_event_provenance"]',
+    })
+    expect(qaExternalRevenueCents).toMatchObject({
+      denominator: 1,
+      value: 300000,
+      unit: 'usd_cents',
+      caveat_refs_json: '[]',
+    })
+    expect(khalaInternalRevenueCount).toMatchObject({
+      value: 1,
+      unit: 'outcomes',
+    })
+    expect(khalaInternalRevenueCents).toMatchObject({
+      denominator: 1,
+      value: 0,
+      unit: 'usd_cents',
+      caveat_refs_json:
+        '["caveat.business_metrics.sat_revenue_excluded_from_usd_cent_metric"]',
     })
     expect(JSON.stringify(rows)).not.toContain('lead@example.com')
   })

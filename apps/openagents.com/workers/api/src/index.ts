@@ -943,6 +943,7 @@ import { handlePublicProofReplayBundleRequest } from './public-proof-replay-rout
 import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
 import { makePublicSiteReferralPayoutReceiptRoutes } from './public-site-referral-payout-receipt-routes'
 import { makePublicStripeCheckoutReceiptRoutes } from './public-stripe-checkout-receipt-routes'
+import { makePublicFirstDollarEvidenceRoutes } from './revenue-event-provenance-routes'
 import { buildPublicTassadarRunSummaryEnvelopeForRequest } from './public-tassadar-run-summary-routes'
 import {
   makeD1PylonApiStore,
@@ -8699,6 +8700,12 @@ const publicStripeCheckoutReceiptRoutes =
     nowIso: currentIsoTimestamp,
   })
 
+const publicFirstDollarEvidenceRoutes =
+  makePublicFirstDollarEvidenceRoutes<Env>({
+    makeDb: env => openAgentsDatabase(env),
+    nowIso: currentIsoTimestamp,
+  })
+
 const publicSiteReferralPayoutReceiptRoutes =
   makePublicSiteReferralPayoutReceiptRoutes<Env>({
     makeStore: env =>
@@ -10999,6 +11006,13 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // optional route cascade below handles matching because the exact registry
     // is literal.
     path: '/api/public/qa-swarm/first-engagements/:receiptRef',
+    handler: () => Effect.succeed(notFound()),
+  },
+  {
+    // Manifest-only path-param readback for RL-9 first-dollar evidence bundles.
+    // The optional route cascade below handles matching because the exact
+    // registry is literal.
+    path: '/api/public/revenue-loop/first-dollar-evidence/:bundleRef',
     handler: () => Effect.succeed(notFound()),
   },
   {
@@ -14432,6 +14446,8 @@ const routeRequest = makeWorkerRouteRequest({
     khalaCodeTracePluginRevenueShareRoutes.routePublicKhalaCodeTracePluginRevenueShareRequest,
   routePublicQaSwarmFirstEngagementRequest:
     qaSwarmFirstEngagementRoutes.routePublicQaSwarmFirstEngagementRequest,
+  routePublicFirstDollarEvidenceRequest:
+    publicFirstDollarEvidenceRoutes.routePublicFirstDollarEvidenceRequest,
   routePublicCloudPrimitiveReceiptRequest:
     publicCloudPrimitiveReceiptRoutes.routePublicCloudPrimitiveReceiptRequest,
   routePublicNip90MarketReceiptRequest:

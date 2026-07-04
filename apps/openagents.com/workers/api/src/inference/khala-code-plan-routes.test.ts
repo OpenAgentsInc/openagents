@@ -14,6 +14,7 @@ import {
 import { readPublicPrivacyReceipt } from './inference-privacy-receipt-routes'
 import { type LightningInvoice } from './mpp/mpp-lightning-invoice'
 import { sha256Hex } from './mpp/mpp-lightning-verify'
+import { readFirstDollarEvidenceBundle } from '../revenue-event-provenance'
 
 type Row = Record<string, string | number | null>
 
@@ -21,6 +22,7 @@ class PlanFakeDb {
   readonly entitlements = new Map<string, Row>()
   readonly entitlementReceipts = new Map<string, Row>()
   readonly paidPlanPaymentIntents = new Map<string, Row>()
+  readonly revenueEvents = new Map<string, Row>()
   failReads = false
 
   prepare(sql: string) {
@@ -73,6 +75,20 @@ class PlanFakeDb {
                 rows.find(
                   row => row.stripe_checkout_session_id === values[0],
                 ) ?? null
+              ) as T | null
+            }
+          }
+          if (sql.includes('FROM revenue_event_provenance')) {
+            if (sql.includes('WHERE idempotency_key = ?')) {
+              return (
+                Array.from(this.revenueEvents.values()).find(
+                  row => row.idempotency_key === values[0],
+                ) ?? null
+              ) as T | null
+            }
+            if (sql.includes('WHERE evidence_bundle_ref = ?')) {
+              return (
+                this.revenueEvents.get(values[0] as string) ?? null
               ) as T | null
             }
           }
@@ -166,6 +182,33 @@ class PlanFakeDb {
               created_at: values[2] as string,
               updated_at: values[3] as string,
             })
+            return {}
+          }
+          if (
+            sql.includes('INSERT OR IGNORE INTO revenue_event_provenance')
+          ) {
+            if (!this.revenueEvents.has(values[1] as string)) {
+              this.revenueEvents.set(values[1] as string, {
+                event_ref: values[0] as string,
+                evidence_bundle_ref: values[1] as string,
+                idempotency_key: values[2] as string,
+                product_ref: values[3] as string,
+                revenue_surface_ref: values[4] as string,
+                receipt_ref: values[5] as string,
+                ledger_table: values[6] as string,
+                ledger_row_ref: values[7] as string,
+                demand_provenance: values[8] as string,
+                payment_state: values[9] as string,
+                amount_cents: values[10] ?? null,
+                amount_sats: values[11] ?? null,
+                public_evidence_refs_json: values[12] as string,
+                caveat_refs_json: values[13] as string,
+                source_refs_json: values[14] as string,
+                recorded_at: values[15] as string,
+                created_at: values[16] as string,
+                updated_at: values[17] as string,
+              })
+            }
             return {}
           }
           return {}
@@ -500,6 +543,28 @@ describe('handleKhalaCodePlanPurchase', () => {
     expect(secondBody.receiptRef).toBe(firstBody.receiptRef)
     expect(db.entitlementReceipts.size).toBe(1)
     expect(db.entitlements.has('agent:user-1')).toBe(true)
+    expect(db.revenueEvents.size).toBe(1)
+    const revenueEvent = Array.from(db.revenueEvents.values())[0]
+    expect(revenueEvent).toMatchObject({
+      product_ref: 'khala_code',
+      demand_provenance: 'external',
+      payment_state: 'fulfilled',
+      amount_sats: 1999,
+      receipt_ref: firstBody.receiptRef,
+      ledger_table: 'khala_code_paid_plan_payment_intents',
+    })
+
+    const evidenceBundle = await readFirstDollarEvidenceBundle(
+      asDb(db),
+      revenueEvent?.evidence_bundle_ref as string,
+      '2026-07-01T00:00:00.000Z',
+    )
+    expect(evidenceBundle?.registryEvidenceRefs).toEqual(
+      expect.arrayContaining([
+        `receipt:${firstBody.receiptRef}`,
+        `ledger:revenue_event_provenance:${revenueEvent?.event_ref}`,
+      ]),
+    )
   })
 
   it('rejects a supplied-but-invalid idempotency key instead of silently replacing it', async () => {

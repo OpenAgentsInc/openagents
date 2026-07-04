@@ -1,5 +1,18 @@
 # Promise Registry
 
+> Registry `2026-07-04.6` is the RL-9 external-demand provenance and
+> first-dollar evidence automation pass (#8253) and flips NO promise green
+> (green stays exactly 34). `proof.demand_provenance.v1` stays green as a
+> labeling-discipline promise: source now has `revenue_event_provenance`, which
+> labels Khala Code paid-plan and QA Swarm first-engagement revenue events as
+> internal or external and exposes a public-safe first-dollar evidence bundle at
+> `/api/public/revenue-loop/first-dollar-evidence/{bundleRef}`. Locked business
+> factory metrics now join exact revenue-event rows and keep internal/external
+> USD-cent counts split. The bundle is evidence-shaped for registry
+> `evidenceRefs`; it does not create external-revenue copy, paid-plan
+> availability, first paid delivery, payout, settlement, or promise-green
+> authority without owner review.
+
 > Registry `2026-07-04.5` is the RL-8 QA Swarm first-engagement
 > checkout/intake spine pass (#8252) and flips NO promise green (green stays
 > exactly 34). `qa_swarm.service_packages.v1` remains yellow: source now has an

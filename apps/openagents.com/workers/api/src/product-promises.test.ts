@@ -2296,7 +2296,22 @@ describe('public product promises document', () => {
       'GET /api/public/demand-provenance',
     )
     expect(demandProvenancePromise?.safeCopy).toContain(
+      'revenue_event_provenance',
+    )
+    expect(demandProvenancePromise?.safeCopy).toContain(
+      'GET /api/public/revenue-loop/first-dollar-evidence/{bundleRef}',
+    )
+    expect(demandProvenancePromise?.safeCopy).toContain(
       'externalDemandClaimAllowed:false',
+    )
+    expect(demandProvenancePromise?.evidenceRefs).toContain(
+      'route:/api/public/revenue-loop/first-dollar-evidence/{bundleRef}',
+    )
+    expect(demandProvenancePromise?.evidenceRefs).toContain(
+      'apps/openagents.com/workers/api/src/revenue-event-provenance.ts',
+    )
+    expect(demandProvenancePromise?.evidenceRefs).toContain(
+      'apps/openagents.com/workers/api/src/revenue-event-provenance-routes.ts',
     )
     // The green is a coverage/labeling completeness flip, NOT an external claim.
     expect(demandProvenancePromise?.unsafeCopy).toContain(
@@ -2304,6 +2319,9 @@ describe('public product promises document', () => {
     )
     expect(demandProvenancePromise?.verification).toContain(
       'ALL revenue-bearing public surfaces',
+    )
+    expect(demandProvenancePromise?.verification).toContain(
+      'first-dollar receipts can cite one bundle',
     )
     expect(demandProvenancePromise?.authorityBoundary).toContain(
       'grants no settlement or reporting authority',

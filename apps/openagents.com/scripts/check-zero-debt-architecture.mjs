@@ -916,6 +916,14 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    // RL-9 first-dollar evidence bundle readback (#8253): one public-safe
+    // revenue event by bundleRef from the revenue_event_provenance ledger.
+    // It is live_at_read with generatedAt + the shared staleness contract.
+    module: 'workers/api/src/revenue-event-provenance.ts',
+    route: '/api/public/revenue-loop/first-dollar-evidence/{bundleRef}',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/marketing-agency-receipt-public-routes.ts',
     route: '/api/public/marketing-agency/receipts',
     status: 'staleness_declared',

@@ -37,7 +37,7 @@ Every query row uses the same shape:
 | `engagement_ref` | Opaque engagement ref when grouped; otherwise `NULL`. |
 | `window_start`, `window_end` | Inclusive lower bound and exclusive upper bound used by the query. |
 | `numerator`, `denominator`, `value` | Raw count/minute/rate components. Rates are basis points unless the unit says otherwise. |
-| `unit` | `outcomes`, `minutes`, or `basis_points`. |
+| `unit` | `outcomes`, `minutes`, `basis_points`, or `usd_cents`. |
 | `measurement_state` | `measured` or `not_measured`. No unaudited metric may report as measured. |
 | `evidence_refs_json` | JSON array of source-table/query refs. |
 | `caveat_refs_json` | JSON array of public-safe caveats. Empty for fully audited rows. |
@@ -136,6 +136,33 @@ grouped by coalesce(customer_ref, subject_ref)
 Unit: `minutes`. This is dashboard-eligible only with the caveat shown next to
 it. Any future broader operator-minute metric must add a first-class labor
 ledger and update this document and the query pack in the same PR.
+
+### Revenue Event Provenance
+
+`business_factory.revenue_events.external_count.v1`
+`business_factory.revenue_events.internal_count.v1`
+`business_factory.revenue_usd_cents.external.v1`
+`business_factory.revenue_usd_cents.internal.v1`
+
+Count and USD-cent sums for revenue events in the RL-9
+`revenue_event_provenance` ledger, split by `demand_provenance`.
+
+Formula:
+
+```text
+count(*) / sum(amount_cents)
+where payment_state in (
+  'payment_evidence_recorded',
+  'fulfilled',
+  'settled'
+)
+and recorded_at in [window_start, window_end)
+grouped by demand_provenance
+```
+
+Units: `outcomes` for event counts and `usd_cents` for USD-cent sums. The USD
+metric sums only `amount_cents`; sats-only rows are not converted and must carry
+`caveat.business_metrics.sat_revenue_excluded_from_usd_cent_metric`.
 
 ### Monthly Operator Minutes Ratio
 

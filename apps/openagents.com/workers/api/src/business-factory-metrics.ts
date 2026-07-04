@@ -13,7 +13,7 @@ export type BusinessFactoryMetricRow = Readonly<{
   numerator: number | null
   denominator: number | null
   value: number | null
-  unit: 'outcomes' | 'minutes' | 'basis_points'
+  unit: 'outcomes' | 'minutes' | 'basis_points' | 'usd_cents'
   measurement_state: BusinessFactoryMetricMeasurementState
   evidence_refs_json: string
   caveat_refs_json: string
@@ -72,6 +72,29 @@ WITH RECURSIVE
     WHERE e.archived_at IS NULL
       AND e.updated_at >= p.window_start
       AND e.updated_at < p.window_end
+  ),
+  revenue_products(product_ref) AS (
+    VALUES
+      ('khala_code'),
+      ('qa_swarm')
+  ),
+  revenue_events AS (
+    SELECT
+      r.event_ref,
+      r.product_ref,
+      r.demand_provenance,
+      r.payment_state,
+      r.amount_cents,
+      r.amount_sats,
+      r.recorded_at
+    FROM revenue_event_provenance r, params p
+    WHERE r.recorded_at >= p.window_start
+      AND r.recorded_at < p.window_end
+      AND r.payment_state IN (
+        'payment_evidence_recorded',
+        'fulfilled',
+        'settled'
+      )
   ),
   engagement_review_rows AS (
     SELECT
@@ -211,6 +234,110 @@ CROSS JOIN params p
 LEFT JOIN economics_rows er
   ON er.work_kind = wk.work_kind
 GROUP BY wk.work_kind
+
+UNION ALL
+
+SELECT
+  'business_factory.revenue_events.external_count.v1' AS metric_ref,
+  'external revenue event count' AS metric_name,
+  'work_kind' AS grain,
+  rp.product_ref AS work_kind,
+  NULL AS engagement_ref,
+  p.window_start AS window_start,
+  p.window_end AS window_end,
+  COUNT(re.event_ref) AS numerator,
+  NULL AS denominator,
+  COUNT(re.event_ref) AS value,
+  'outcomes' AS unit,
+  'measured' AS measurement_state,
+  '["table.revenue_event_provenance"]' AS evidence_refs_json,
+  '[]' AS caveat_refs_json
+FROM revenue_products rp
+CROSS JOIN params p
+LEFT JOIN revenue_events re
+  ON re.product_ref = rp.product_ref
+  AND re.demand_provenance = 'external'
+GROUP BY rp.product_ref
+
+UNION ALL
+
+SELECT
+  'business_factory.revenue_events.internal_count.v1' AS metric_ref,
+  'internal revenue event count' AS metric_name,
+  'work_kind' AS grain,
+  rp.product_ref AS work_kind,
+  NULL AS engagement_ref,
+  p.window_start AS window_start,
+  p.window_end AS window_end,
+  COUNT(re.event_ref) AS numerator,
+  NULL AS denominator,
+  COUNT(re.event_ref) AS value,
+  'outcomes' AS unit,
+  'measured' AS measurement_state,
+  '["table.revenue_event_provenance"]' AS evidence_refs_json,
+  '[]' AS caveat_refs_json
+FROM revenue_products rp
+CROSS JOIN params p
+LEFT JOIN revenue_events re
+  ON re.product_ref = rp.product_ref
+  AND re.demand_provenance = 'internal'
+GROUP BY rp.product_ref
+
+UNION ALL
+
+SELECT
+  'business_factory.revenue_usd_cents.external.v1' AS metric_ref,
+  'external revenue USD cents' AS metric_name,
+  'work_kind' AS grain,
+  rp.product_ref AS work_kind,
+  NULL AS engagement_ref,
+  p.window_start AS window_start,
+  p.window_end AS window_end,
+  COALESCE(SUM(CASE WHEN re.amount_cents IS NULL THEN 0 ELSE re.amount_cents END), 0) AS numerator,
+  COUNT(re.event_ref) AS denominator,
+  COALESCE(SUM(CASE WHEN re.amount_cents IS NULL THEN 0 ELSE re.amount_cents END), 0) AS value,
+  'usd_cents' AS unit,
+  'measured' AS measurement_state,
+  '["table.revenue_event_provenance"]' AS evidence_refs_json,
+  CASE
+    WHEN COALESCE(SUM(CASE WHEN re.amount_cents IS NULL AND re.amount_sats IS NOT NULL THEN 1 ELSE 0 END), 0) > 0
+      THEN '["caveat.business_metrics.sat_revenue_excluded_from_usd_cent_metric"]'
+    ELSE '[]'
+  END AS caveat_refs_json
+FROM revenue_products rp
+CROSS JOIN params p
+LEFT JOIN revenue_events re
+  ON re.product_ref = rp.product_ref
+  AND re.demand_provenance = 'external'
+GROUP BY rp.product_ref
+
+UNION ALL
+
+SELECT
+  'business_factory.revenue_usd_cents.internal.v1' AS metric_ref,
+  'internal revenue USD cents' AS metric_name,
+  'work_kind' AS grain,
+  rp.product_ref AS work_kind,
+  NULL AS engagement_ref,
+  p.window_start AS window_start,
+  p.window_end AS window_end,
+  COALESCE(SUM(CASE WHEN re.amount_cents IS NULL THEN 0 ELSE re.amount_cents END), 0) AS numerator,
+  COUNT(re.event_ref) AS denominator,
+  COALESCE(SUM(CASE WHEN re.amount_cents IS NULL THEN 0 ELSE re.amount_cents END), 0) AS value,
+  'usd_cents' AS unit,
+  'measured' AS measurement_state,
+  '["table.revenue_event_provenance"]' AS evidence_refs_json,
+  CASE
+    WHEN COALESCE(SUM(CASE WHEN re.amount_cents IS NULL AND re.amount_sats IS NOT NULL THEN 1 ELSE 0 END), 0) > 0
+      THEN '["caveat.business_metrics.sat_revenue_excluded_from_usd_cent_metric"]'
+    ELSE '[]'
+  END AS caveat_refs_json
+FROM revenue_products rp
+CROSS JOIN params p
+LEFT JOIN revenue_events re
+  ON re.product_ref = rp.product_ref
+  AND re.demand_provenance = 'internal'
+GROUP BY rp.product_ref
 
 UNION ALL
 

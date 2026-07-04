@@ -602,6 +602,38 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/openagents-openapi-routes.test.ts`,
   `workers/api/src/openagents-capability-manifest-routes.test.ts`.
 
+## Revenue Event Provenance And First-Dollar Evidence
+
+- The RL-9 ledger (`workers/api/src/revenue-event-provenance.ts`,
+  `revenue_event_provenance`, #8253) is the authority for internal/external
+  revenue-event labels on Khala Code paid-plan fulfillments and QA Swarm
+  first-engagement intake. It has the same policy role for first-dollar revenue
+  events that modeled/measured/settled labels have for public metrics.
+- Producers must record exact ledger rows only: Khala Code paid-plan fulfillment
+  joins to `khala_code_paid_plan_payment_intents`; QA Swarm first engagement
+  joins to `qa_swarm_first_engagements`. Public factory metrics may count and
+  sum exact rows from `revenue_event_provenance`, but must not synthesize
+  counters or convert sats-only rows into USD cents.
+- Each row has one dereferenceable evidence bundle at
+  `/api/public/revenue-loop/first-dollar-evidence/{bundleRef}`. The bundle is
+  registry-citable evidence containing the receipt ref, ledger row ref, and
+  internal/external provenance label. It excludes customer identity, raw payment
+  material, raw invoices, checkout URLs, hashes/preimages, provider payloads,
+  wallet material, private source refs, and raw timestamps.
+- The first-dollar evidence route is read-only, public-safe, and live at read.
+  It grants no settlement, payout, paid-plan availability, first paid delivery,
+  external-demand copy, or promise-green authority. Any future state movement or
+  external-revenue claim remains receipt-first and owner-signed.
+- Regression coverage:
+  `workers/api/src/revenue-event-provenance-routes.ts`,
+  `workers/api/src/revenue-event-provenance.test.ts`,
+  `workers/api/src/business-factory-metrics.test.ts`,
+  `workers/api/src/qa-swarm-first-engagement-routes.test.ts`,
+  `workers/api/src/inference/khala-code-plan-routes.test.ts`,
+  `workers/api/src/product-promises.test.ts`,
+  `workers/api/src/openagents-openapi-routes.test.ts`,
+  `workers/api/src/openagents-capability-manifest-routes.test.ts`.
+
 ## Captured Trace Demand-Origin Segmentation
 
 - A captured trace is auto-tagged with its DEMAND ORIGIN (#6298, migration
@@ -2618,6 +2650,16 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     provider payloads, wallet material, checkout creation, hosted-run dispatch,
     first paid delivery, payout, settlement, self-serve, or promise-green
     authority. `staleness_declared`.
+  - `GET /api/public/revenue-loop/first-dollar-evidence/{bundleRef}` — live at
+    read over `revenue_event_provenance` (proof.demand_provenance.v1, #8253)
+    — compliant (`generatedAt`, top-level `projection_staleness.v1`
+    `live_at_read` contract). Public bundles project only the receipt ref,
+    ledger table/row ref, product ref, internal/external demand-provenance
+    label, amount envelope, and public-safe evidence refs; no customer identity,
+    raw payment material, raw invoices, checkout URLs, hashes/preimages,
+    provider payloads, wallet material, private source refs, payout, settlement,
+    paid-plan availability, first paid delivery, external-demand copy, or
+    promise-green authority. `staleness_declared`.
   - `GET /api/public/artanis/report` — live at read over tick rows rebuilt on
     closeout — compliant (`generatedAtUnixMs`, report + loop contracts, stale
     and example-fallback flags with caveat refs).

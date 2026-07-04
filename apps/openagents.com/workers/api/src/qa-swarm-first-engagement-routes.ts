@@ -13,6 +13,10 @@ import {
   PublicProjectionStalenessContract,
   liveAtReadStaleness,
 } from './public-projection-staleness'
+import {
+  firstDollarEvidenceBundleRef,
+  recordRevenueEventProvenance,
+} from './revenue-event-provenance'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 
 type HttpResponse = globalThis.Response
@@ -593,6 +597,46 @@ const createCommitmentLedgerRow = async (
     .run()
 }
 
+const recordQaSwarmRevenueEventProvenance = async (
+  db: D1Database,
+  record: QaSwarmFirstEngagementRecord,
+): Promise<void> => {
+  const eventRef = `revenue_event.qa_swarm.first_engagement.${receiptSuffix(
+    record.receiptRef,
+  )}`
+  await recordRevenueEventProvenance(db, {
+    amountCents: record.committedAmountCents,
+    amountSats: null,
+    caveatRefs: [
+      'caveat.revenue.qa_swarm.operator_assisted_payment_evidence_only',
+      'caveat.revenue.qa_swarm.first_paid_delivery_not_claimed',
+      'caveat.revenue.first_dollar.owner_signoff_required_for_public_claim',
+    ],
+    demandProvenance: 'external',
+    eventRef,
+    evidenceBundleRef: firstDollarEvidenceBundleRef('qa_swarm', eventRef),
+    idempotencyKey: `revenue-event:qa-swarm-first-engagement:${record.receiptRef}`,
+    ledgerRowRef: record.receiptRef,
+    ledgerTable: 'qa_swarm_first_engagements',
+    paymentState: 'payment_evidence_recorded',
+    productRef: 'qa_swarm',
+    publicEvidenceRefs: [
+      record.receiptRef,
+      `route:${QA_SWARM_FIRST_ENGAGEMENT_PUBLIC_ENDPOINT}/${record.receiptRef}`,
+      'promise:qa_swarm.service_packages.v1',
+    ],
+    receiptRef: record.receiptRef,
+    recordedAt: record.recordedAt,
+    revenueSurfaceRef: 'qa_swarm.swarm_audit_first_engagement',
+    sourceRefs: [
+      `route:${QA_SWARM_FIRST_ENGAGEMENT_OPERATOR_ENDPOINT}`,
+      `route:${QA_SWARM_FIRST_ENGAGEMENT_PUBLIC_RECEIPT_PATH}`,
+      `table:${QA_SWARM_FIRST_ENGAGEMENT_TABLE}`,
+      'table:business_commitment_ledger',
+    ],
+  })
+}
+
 export const makeD1QaSwarmFirstEngagementStore = (
   db: D1Database | undefined,
   runtime: QaSwarmFirstEngagementRuntime = runtimeDefaults,
@@ -608,6 +652,7 @@ export const makeD1QaSwarmFirstEngagementStore = (
 
         const existing = await readByIdempotencyKey(db, draft.idempotencyKey)
         if (existing !== null) {
+          await recordQaSwarmRevenueEventProvenance(db, existing)
           return { record: existing, idempotent: true }
         }
 
@@ -671,6 +716,8 @@ export const makeD1QaSwarmFirstEngagementStore = (
             reason: 'first_engagement_not_persisted',
           })
         }
+
+        await recordQaSwarmRevenueEventProvenance(db, inserted)
 
         return { record: inserted, idempotent: false }
       },

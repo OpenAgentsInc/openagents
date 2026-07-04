@@ -447,6 +447,14 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Dereferences one public-safe QA Swarm first-engagement receipt with generatedAt and a live_at_read staleness contract over qa_swarm_first_engagements, prefilled_workspaces, omni_accepted_outcome_contracts, and business_commitment_ledger. The receipt carries operator-assisted intake/payment evidence, workspace, service promise, and commitment refs only; no customer identity, raw invoice/payment material, payment hashes, preimages, target credentials, raw runner logs, provider payloads, or wallet material.',
       },
       {
+        id: 'public_revenue_loop_first_dollar_evidence',
+        href: 'https://openagents.com/api/public/revenue-loop/first-dollar-evidence/{bundleRef}',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'Dereferences one public-safe RL-9 first-dollar evidence bundle with generatedAt and a live_at_read staleness contract over revenue_event_provenance. The bundle is shaped for product-registry evidenceRefs: it carries the public receipt ref, exact revenue ledger row ref, source ledger row ref, internal/external demand-provenance label, payment state, and bounded amount fields only; no buyer identity, checkout URLs, raw invoices, payment hashes, preimages, provider payloads, private payment material, or wallet material.',
+      },
+      {
         id: 'public_khala_tokens_served_history',
         href: 'https://openagents.com/api/public/khala-tokens-served/history',
         method: 'GET',

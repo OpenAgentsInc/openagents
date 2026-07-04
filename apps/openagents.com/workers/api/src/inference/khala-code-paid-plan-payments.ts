@@ -7,6 +7,10 @@
 // /api/public/inference/privacy-receipts/{receiptRef}.
 
 import { compactRandomId } from '../runtime-primitives'
+import {
+  firstDollarEvidenceBundleRef,
+  recordRevenueEventProvenance,
+} from '../revenue-event-provenance'
 import { KHALA_CODE_PAID_PLAN_ID } from './khala-code-plan-catalog'
 import { grantPaidPrivacyEntitlement } from './inference-privacy-receipt-routes'
 import type { LightningInvoice } from './mpp/mpp-lightning-invoice'
@@ -391,6 +395,37 @@ export const fulfillKhalaCodePaidPlanPaymentIntent = async (
       input.intent.purchaseRef,
     )
     .run()
+
+  const eventRef = `revenue_event.khala_code.paid_plan.${input.intent.purchaseRef}`
+  await recordRevenueEventProvenance(db, {
+    amountCents: input.intent.amountCents,
+    amountSats: input.intent.amountSats,
+    caveatRefs: [
+      'caveat.revenue.first_dollar.owner_signoff_required_for_public_claim',
+      'caveat.revenue.khala_code_paid_plan_no_green_claim_from_receipt_alone',
+    ],
+    demandProvenance: 'external',
+    eventRef,
+    evidenceBundleRef: firstDollarEvidenceBundleRef('khala_code', eventRef),
+    idempotencyKey: `revenue-event:khala-code-paid-plan:${input.intent.purchaseRef}`,
+    ledgerRowRef: input.intent.purchaseRef,
+    ledgerTable: 'khala_code_paid_plan_payment_intents',
+    paymentState: 'fulfilled',
+    productRef: 'khala_code',
+    publicEvidenceRefs: [
+      row.receipt_ref,
+      `route:/api/public/inference/privacy-receipts/${row.receipt_ref}`,
+      'promise:khala_code.free_paid_plans.v1',
+    ],
+    receiptRef: row.receipt_ref,
+    recordedAt: input.nowIso,
+    revenueSurfaceRef: 'khala_code.paid_plan',
+    sourceRefs: [
+      'route:/v1/khala-code/plans/purchases',
+      'table:khala_code_paid_plan_payment_intents',
+      'table:inference_privacy_entitlement_receipts',
+    ],
+  })
 
   return {
     ok: true,

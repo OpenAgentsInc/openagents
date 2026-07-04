@@ -224,6 +224,13 @@ describe('OpenAgents capability manifest route', () => {
         }),
         expect.objectContaining({
           auth: 'public',
+          href: 'https://openagents.com/api/public/revenue-loop/first-dollar-evidence/{bundleRef}',
+          id: 'public_revenue_loop_first_dollar_evidence',
+          method: 'GET',
+          description: expect.stringContaining('revenue_event_provenance'),
+        }),
+        expect.objectContaining({
+          auth: 'public',
           href: 'https://openagents.com/api/public/tassadar-run-summary',
           id: 'public_tassadar_run_summary',
           description: expect.stringContaining('real-vs-simulation'),
