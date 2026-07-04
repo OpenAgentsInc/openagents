@@ -112,6 +112,11 @@ const approvedExactRoutePaths = [
   // admin bearer only; proves projection == SUM(exact token_usage_events
   // rows) (invariant 8) and hosts the explicit audited repair/backfill.
   '/api/internal/khala-sync/public-counters/tokens-served/reconcile',
+  // Khala Sync fleet-intent consumption (KS-3.2, #8292): admin bearer only;
+  // bounded oldest-first pages of durable operator fleet intents for the
+  // Pylon supervisor enforcement loop. (Approved here as a rebase-hygiene
+  // fix: the route landed in the manifest without its approved-list entry.)
+  '/api/internal/khala-sync/fleet-intents',
   // Khala Sync hub internal surface (KS-4.2, #8295): admin bearer only;
   // per-scope KhalaSyncHubDO append / log / connect. Public /api/sync/*
   // catch-up/connect arrives with KS-4.3/4.4.
@@ -132,6 +137,11 @@ const approvedExactRoutePaths = [
   // Khala Sync bootstrap (KS-4.4, #8297): authenticated consistent snapshot
   // pages + final stitch cursor.
   '/api/sync/bootstrap',
+  // Khala Sync CVR diff pull (KS-7.2, #8306): authenticated recovery-path
+  // read-set diff, flag-gated behind KHALA_SYNC_CVR=1 (404 when unset).
+  // (Approved here as a rebase-hygiene fix: the route landed in the
+  // manifest without its approved-list entry.)
+  '/api/sync/cvr-pull',
   // Khala Sync live tail (KS-4.4, #8297): authenticated WebSocket upgrade
   // proxied to the per-scope KhalaSyncHubDO.
   '/api/sync/connect',

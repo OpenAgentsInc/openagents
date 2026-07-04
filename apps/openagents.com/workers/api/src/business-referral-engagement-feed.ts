@@ -6,6 +6,7 @@ import {
   recordBusinessFunnelEvent,
   type BusinessFunnelEventRecord,
 } from './business-funnel-dashboard'
+import { businessSourceRefForReferralCode } from './business-source-attribution'
 import {
   createReferralPayoutEligibility,
   type CreateReferralPayoutEligibilityInput,
@@ -51,6 +52,7 @@ type BusinessSignupAttributionRow = Readonly<{
   referral_attribution_id: string
   referral_invite_id: string | null
   referral_source_id: string
+  public_source_ref: string
   referrer_user_id: string
 }>
 
@@ -69,6 +71,7 @@ const readBusinessSignupAttribution = async (
       `SELECT bsra.referral_attribution_id AS referral_attribution_id,
               bsra.referral_invite_id AS referral_invite_id,
               bsra.referral_source_id AS referral_source_id,
+              src.public_source_ref AS public_source_ref,
               src.referrer_user_id AS referrer_user_id
          FROM business_signup_referral_attributions AS bsra
          JOIN site_referral_sources AS src
@@ -137,7 +140,11 @@ export const recordBusinessReferralEngagement = async (
     eventRef: `business_referral_engagement:${input.qualifyingEventRef}`,
     occurredAt: input.nowIso,
     sourceKind: 'referral',
-    sourceRef: attribution.referral_source_id,
+    // Funnel events carry the bounded public-safe attribution token
+    // (affiliate_<public_source_ref>), matching the signup-path mapping in
+    // business-signup-routes.ts — never the internal site_referral_sources.id,
+    // which the source-attribution validator rejects.
+    sourceRef: businessSourceRefForReferralCode(attribution.public_source_ref),
     stage: 'referred_engagement',
   })
 

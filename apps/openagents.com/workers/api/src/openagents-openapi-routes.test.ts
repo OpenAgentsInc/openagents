@@ -1455,6 +1455,13 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   // the protocol for outside consumers.
   '/api/sync/bootstrap',
   '/api/sync/connect',
+  // Khala Sync CVR diff pull (KS-7.2, #8306): same wire-contract posture —
+  // CvrPullRequest/CvrPullResponse are typed in @openagentsinc/khala-sync
+  // and flag-gated behind KHALA_SYNC_CVR=1; not published in the public
+  // OpenAPI document until the protocol stabilizes for outside consumers.
+  // (Allowlisted here as a rebase-hygiene fix: the route landed without a
+  // coverage entry.)
+  '/api/sync/cvr-pull',
   // Operator business-pipeline console (operator/admin only): internal queue
   // surface, not part of the public OpenAPI contract. (Allowlisted here as
   // clean-up: the routes landed without a coverage decision.)

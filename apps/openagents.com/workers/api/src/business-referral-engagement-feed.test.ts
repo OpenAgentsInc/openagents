@@ -33,6 +33,7 @@ type BusinessAttributionJoinRow = Readonly<{
   referral_attribution_id: string
   referral_invite_id: string | null
   referral_source_id: string
+  public_source_ref: string
   referrer_user_id: string
   bsra_active: boolean
   src_active: boolean
@@ -85,6 +86,7 @@ class BusinessReferralStatement {
               referral_attribution_id: row.referral_attribution_id,
               referral_invite_id: row.referral_invite_id,
               referral_source_id: row.referral_source_id,
+              public_source_ref: row.public_source_ref,
               referrer_user_id: row.referrer_user_id,
             } as T),
       )
@@ -234,6 +236,7 @@ const seedAttribution = (
     referral_attribution_id: 'referral_attr_001',
     referral_invite_id: null,
     referral_source_id: 'referral_source_001',
+    public_source_ref: 'ref-code-001',
     referrer_user_id: 'github:referrer',
     src_active: true,
     ...overrides,
@@ -284,7 +287,10 @@ describe('business referral engagement feed', () => {
       eventRef:
         'business_referral_engagement:evidence.business_referred_engagement.business_signup_001',
       sourceKind: 'referral',
-      sourceRef: 'referral_source_001',
+      // Bounded public-safe token derived from the referral source's
+      // public_source_ref (signup-path mapping), never the internal
+      // site_referral_sources.id.
+      sourceRef: 'affiliate_ref-code-001',
       stage: 'referred_engagement',
     })
     expect(store.rows).toHaveLength(1)

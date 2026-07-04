@@ -86,8 +86,12 @@ describe('world-first LLM-computer evidence pack dereferenceability', () => {
   test('clearing the evidence-pack blocker did not flip state or re-open siblings', () => {
     const { promise } = claim2Promise()
 
-    // State is untouched by the evidence work.
-    expect(promise.state).toBe('red')
+    // State is untouched by the evidence work. (The record sat red until
+    // registry 2026-07-04.8 — commit 71c80fe9c4 — demoted out-of-focus
+    // non-green records to planned as an owner-directed refocus; this guard
+    // tracks the registry's owner-directed state and keeps asserting the
+    // evidence work itself never flips the record green.)
+    expect(promise.state).toBe('planned')
 
     // The two buildable blockers are genuinely cleared (docs exist + wired in).
     expect(promise.blockerRefs).not.toContain(
