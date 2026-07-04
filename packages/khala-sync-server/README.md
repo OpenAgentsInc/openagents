@@ -441,6 +441,111 @@ healing from the hub's expectation, per-scope failure isolation,
 version-group integrity at `batchVersions: 1`, NOTIFY-wake promptness with
 the poll fallback idle, and clean daemon shutdown.
 
+## Compaction (KS-2.3)
+
+`src/compaction.ts` implements the scheduled retention job from SPEC §4:
+advance each scope's retained-window watermark
+(`khala_sync_scopes.retained_from_version`) and prune
+`khala_sync_changelog` behind it. Tombstone GC falls out of the same pass
+(SPEC §2.3: "compaction prunes both log and tombstones behind the retained
+window").
+
+### Semantics
+
+- **One transaction per scope.** `compactScope(sql, { scope,
+  maxRetainedEntries, maxRetainedAgeMs?, now?, dryRun? })` takes the
+  scope-counter row lock (`FOR UPDATE` — the same lock version allocation
+  takes), computes the new watermark, updates `retained_from_version`, and
+  deletes the compactable rows — atomically. A failure rolls back the
+  watermark AND the deletions together.
+- **The watermark is the MINIMUM of three candidates** (each one a
+  retention guarantee; an entry is compactable only once it clears ALL of
+  them):
+  1. *Entry count* — `max(1, last_version - maxRetainedEntries + 1)`:
+     always keep the newest N version groups.
+  2. *Age* — the smallest version whose `committed_at` is younger than
+     `now - maxRetainedAgeMs`: entries under the age floor are never
+     compacted (skipped when `maxRetainedAgeMs` is not configured).
+  3. *Capture checkpoint* — `pushed_through_version + 1` from
+     `khala_sync_capture_checkpoints`: never delete rows the KS-4 capture
+     worker has not pushed to the per-scope hub. The bound is guarded by a
+     table-existence check (`to_regclass`) because the capture lane lands
+     concurrently: no table → no capture worker to protect → bound skipped;
+     table present but no row for the scope → **fail closed** (treat
+     `pushed_through_version` as 0, watermark held at 1).
+
+  The result is clamped to never regress and never exceed
+  `last_version + 1`, so the `khala_sync_scopes_retention` CHECK constraint
+  holds by construction.
+- **The watermark never splits a version group.** It is a version-boundary
+  number: every group at `version >= retained_from_version` stays complete,
+  which is what keeps `logPage`'s never-split-a-version contract intact.
+- **Live entities' latest upsert rows are preserved** even behind the
+  watermark. Bootstrap derives current entity states from the changelog
+  (latest row per entity — see the read-service section), so compaction
+  only deletes rows that are *superseded* (a newer row exists for the same
+  entity) or *tombstones* (tombstone GC — a tombstone behind the watermark
+  is either superseded or marks an entity that bootstrap omits anyway).
+  Preserved rows are snapshot residue: they feed bootstrap but are never
+  served as log pages (`logPage` refuses cursors behind the window).
+- **`compactAll(sql, config)`** discovers compactable scopes with ONE cheap
+  query (`GREATEST(1, last_version - N + 1) > retained_from_version` — the
+  age/checkpoint bounds only ever hold the watermark back further, so the
+  predicate is exact) and compacts each in its own transaction with
+  per-scope error isolation; the summary reports results and failures.
+
+### MustRefetch follows from the watermark (SPEC §7 invariant 6)
+
+Compaction never talks to clients — advancing the watermark is the whole
+mechanism. The read service already fails closed for any log cursor,
+bootstrap stitch point, or bootstrap page token behind
+`retained_from_version` (typed
+`KhalaSyncCursorBehindRetainedWindowError`), the HTTP layer maps that to
+`MustRefetch(cursor_behind_retained_window)`, and the hub DO's catch-up
+endpoint returns `410 Gone` with the same code for cursors behind its
+window. The client clears scope-local state and re-bootstraps; the seam
+stays exact because the fresh bootstrap + stitch converges to head state.
+
+### Compaction runbook
+
+`scripts/compact.ts` is the cron/Cloud Scheduler entrypoint. Like
+migrations, it runs over a **direct** Postgres connection (never
+Hyperdrive):
+
+```sh
+# Plan only — prints the per-scope watermark move, binding bound, and
+# would-delete counts; writes nothing:
+KHALA_SYNC_DATABASE_URL="postgres://user@host:5432/db" \
+  bun run --cwd packages/khala-sync-server compact -- --dry-run \
+  --max-retained-entries 10000 --max-retained-age-ms 86400000
+
+# Apply (same flags; exit code 1 if any scope failed):
+KHALA_SYNC_DATABASE_URL="postgres://user@host:5432/db" \
+  bun run --cwd packages/khala-sync-server compact -- \
+  --max-retained-entries 10000 --max-retained-age-ms 86400000
+```
+
+Schedule guidance: run it periodically (daily is plenty at current write
+volumes; hourly once fleets push sustained load) as the `khala_migrate`
+role or a dedicated `khala_compact` role with DELETE on
+`khala_sync_changelog` and UPDATE on `khala_sync_scopes`. Keep
+`--max-retained-entries` comfortably larger than the hub DO's in-memory
+window and the longest expected client offline gap; `--max-retained-age-ms`
+(e.g. 24h) is the safety floor that guarantees a client offline for less
+than that never gets force-refetched. Runs are idempotent — a rerun after a
+partial failure just re-plans from the current watermark.
+
+`src/compaction.test.ts` proves the semantics against real local Postgres:
+entry-count windows keep exactly the newest N version groups; the age and
+capture-checkpoint bounds hold the watermark back (including the fail-closed
+missing-checkpoint-row case); version groups never split; tombstone GC;
+preserved latest-upsert rows keep bootstrap whole; the post-compaction
+MustRefetch chain (stale log cursors AND stale bootstrap page tokens fail
+typed, fresh bootstrap + stitch converges); per-scope failure isolation with
+atomic rollback; dry-run parity; and a seeded random write/compact
+interleaving loop asserting the retention constraint and window invariants
+never break.
+
 ## Migrations runbook (KS-0.3)
 
 The migration runner applies the ordered `.sql` files in `migrations/` over a

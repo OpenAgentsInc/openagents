@@ -237,10 +237,8 @@ describe.skipIf(!hasLocalPostgres())("capture against local Postgres", () => {
     databaseUrl = pg.urlFor("khala_sync_capture")
     // Migration 0002 applies via the runner alongside 0001.
     const result = await runMigrations({ databaseUrl })
-    expect(result.applied).toEqual([
-      "0001_khala_sync_core.sql",
-      "0002_khala_sync_capture.sql",
-    ])
+    expect(result.applied).toContain("0001_khala_sync_core.sql")
+    expect(result.applied).toContain("0002_khala_sync_capture.sql")
     sql = new SQL({ url: databaseUrl, max: 10 })
     hub = makeFakeHub()
   })

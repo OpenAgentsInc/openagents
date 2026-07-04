@@ -18,6 +18,7 @@ import type {
 } from "./errors.js"
 
 export * from "./capture.js"
+export * from "./compaction.js"
 export * from "./errors.js"
 export * from "./mutation-ledger.js"
 export * from "./outbox-writer.js"
