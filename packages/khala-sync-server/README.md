@@ -35,3 +35,42 @@ Connectivity invariants:
 
 Status: contracts and schema landed; engine/capture/hub implementations land
 per the KS-2/KS-3/KS-4 issues.
+
+## Migrations runbook (KS-0.3)
+
+The migration runner applies the ordered `.sql` files in `migrations/` over a
+**direct** Postgres connection (never Hyperdrive — see the connectivity
+invariants above). It is idempotent: applied files are recorded in a
+`khala_sync_migrations` ledger table (`filename`, `sha256`, `applied_at`),
+each file runs in one transaction together with its ledger insert, and the
+runner takes a session advisory lock so concurrent runners cannot interleave.
+It **refuses to run** (dry or real) if an already-applied file's content hash
+changed on disk or if an applied file disappeared — never edit a landed
+migration; add the next `NNNN_*.sql` instead.
+
+```sh
+# Plan only (CI-safe; no writes, not even the ledger table):
+bun run --cwd packages/khala-sync-server migrate -- --dry-run \
+  --database-url "postgres://user@host:5432/db"
+
+# Apply (URL via flag or KHALA_SYNC_DATABASE_URL):
+KHALA_SYNC_DATABASE_URL="postgres://user@host:5432/db" \
+  bun run --cwd packages/khala-sync-server migrate
+```
+
+Environments:
+
+- **Local** — the integration tests spin up a throwaway Postgres
+  (`initdb` + `pg_ctl` on a random port, deleted afterwards) via
+  `src/test/local-postgres.ts` (`startLocalPostgres()`, reusable by the
+  KS-2.x lanes; requires `brew install postgresql@16`, tests skip cleanly
+  without it). To poke at a persistent local database, start one yourself
+  and point `--database-url` at it.
+- **Staging / production** — NOT YET APPLIED. The Cloud SQL instance is
+  KS-0.1, which has not landed as of 2026-07-04; once it exists, run the
+  same command against the instance's direct connection URL (Cloud SQL Auth
+  Proxy or private IP — never the Hyperdrive connection string) and record
+  the run on the KS-0.1/KS-0.3 issues.
+
+Verification: `bun test packages/khala-sync-server` and
+`bun run --cwd packages/khala-sync-server typecheck`.

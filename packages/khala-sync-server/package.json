@@ -9,10 +9,12 @@
   },
   "files": [
     "src",
+    "scripts",
     "migrations",
     "README.md"
   ],
   "scripts": {
+    "migrate": "bun scripts/migrate.ts",
     "test": "bun test",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
