@@ -214,10 +214,16 @@ export class BootstrapRequest extends S.Class<BootstrapRequest>(
   scope: SyncScope,
   clientGroupId: ClientGroupId,
   /**
+   * Requested entities-scanned-per-page bound. Advisory: the server clamps
+   * to its own maximum. Absent ⇒ the server default.
+   */
+  pageSize: S.optionalKey(S.Number.check(S.isInt(), S.isGreaterThan(0))),
+  /**
    * Opaque continuation token echoed from the previous page's
-   * `nextPageToken`; absent on the first page request. Pure widening
-   * (KS-5.3): pre-existing single-page requests remain valid, and a server
-   * that never pages ignores it.
+   * `nextPageToken`; absent on the first page request (the server pins the
+   * snapshot cursor on that request). Pure widening (KS-5.3):
+   * pre-existing single-page requests remain valid, and a server that
+   * never pages ignores it.
    */
   pageToken: S.optionalKey(S.String),
 }) {}

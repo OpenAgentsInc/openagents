@@ -78,7 +78,9 @@ type HttpResponse = globalThis.Response
 
 // ---------------------------------------------------------------------------
 // Internal worker route paths (registered in index.ts; admin bearer only —
-// the public /api/sync/* surfaces land with KS-4.3/4.4)
+// for the capture daemon and operators. The public client surfaces are
+// GET /api/sync/log (KS-4.3) and GET /api/sync/connect (KS-4.4), which
+// authenticate + scope-gate before reaching this DO.)
 // ---------------------------------------------------------------------------
 
 export const KHALA_SYNC_HUB_APPEND_PATH = '/api/internal/khala-sync/hub/append'
@@ -872,9 +874,9 @@ export class KhalaSyncHubDO {
 }
 
 // ---------------------------------------------------------------------------
-// Worker-side internal route proxy (admin bearer, KS-0.2 guard style). The
-// public /api/sync/* surfaces are KS-4.3/4.4; until then the hub is reachable
-// only through these operator-gated internal paths.
+// Worker-side internal route proxy (admin bearer, KS-0.2 guard style) for
+// the capture daemon and operators. Public clients use the authenticated
+// /api/sync/log (KS-4.3) and /api/sync/connect (KS-4.4) routes instead.
 // ---------------------------------------------------------------------------
 
 export type KhalaSyncHubStubLike = Readonly<{

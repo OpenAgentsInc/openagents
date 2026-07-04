@@ -1444,6 +1444,13 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   // @openagentsinc/khala-sync and are not published in the public OpenAPI
   // document until the client engine (KS-5/KS-6) stabilizes the protocol.
   '/api/sync/log',
+  // Khala Sync bootstrap + live-tail connect (KS-4.4, #8297): same
+  // wire-contract posture — BootstrapRequest/BootstrapResponse and the
+  // LiveFrame WebSocket protocol are typed in @openagentsinc/khala-sync and
+  // not published in the public OpenAPI document until KS-5/KS-6 stabilize
+  // the protocol for outside consumers.
+  '/api/sync/bootstrap',
+  '/api/sync/connect',
   // Operator business-pipeline console (operator/admin only): internal queue
   // surface, not part of the public OpenAPI contract. (Allowlisted here as
   // clean-up: the routes landed without a coverage decision.)

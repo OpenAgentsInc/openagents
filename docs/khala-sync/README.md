@@ -31,6 +31,29 @@ clients with server-authoritative mutators and rebase.
 - `packages/khala-sync-client` — local store + overlay/rebase + session.
   Contracts landed.
 
+## Worker routes (SPEC §3 — complete)
+
+All four wire-protocol surfaces are live in the `openagents.com` Worker
+(`apps/openagents.com/workers/api/src/khala-sync-*-routes.ts`), each
+authenticated via the standard actor auth (session or agent bearer) and
+scope-gated by the v1 `canReadScopeV1` predicate (own personal scope +
+`scope.public.*`; membership scopes arrive with KS-7):
+
+| Route | Lane | Serving |
+|---|---|---|
+| `POST /api/sync/push` | KS-3.1 #8291 | transactional mutator batches over the `KHALA_SYNC_DB` Hyperdrive binding |
+| `GET /api/sync/log` | KS-4.3 #8296 | offset-resumable `LogPage` catch-up, hub-window-first with authoritative Postgres fallthrough; ETag on non-`upToDate` pages |
+| `POST /api/sync/bootstrap` | KS-4.4 #8297 | consistent snapshot pages (self-contained page tokens), final page carries the stitch `cursor`; always no-store |
+| `GET /api/sync/connect` | KS-4.4 #8297 | WebSocket upgrade proxied to the per-scope `KhalaSyncHubDO` `/connect` (auth + scope gate BEFORE the upgrade) |
+
+The admin-bearer internal hub surface
+(`/api/internal/khala-sync/hub/{append,log,connect}`) remains for the
+capture daemon and operators only. The end-to-end stitch seam — bootstrap
+under concurrent writes, catch-up from the snapshot cursor, live
+DeltaFrames, byte-equal convergence with apply idempotence — is verified by
+`apps/openagents.com/workers/api/src/khala-sync-stitch-seam.e2e.test.ts`
+against local Postgres + the real hub DO + the real client SQLite store.
+
 ## Issue map (epic [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282))
 
 | Workstream | Issues |

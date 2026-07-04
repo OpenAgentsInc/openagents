@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./capture": "./src/capture.ts",
-    "./hub": "./src/hub.ts"
+    "./hub": "./src/hub.ts",
+    "./test/local-postgres": "./src/test/local-postgres.ts"
   },
   "files": [
     "src",

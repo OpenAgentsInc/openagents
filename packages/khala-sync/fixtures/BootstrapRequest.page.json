@@ -1,0 +1,8 @@
+{
+  "protocolVersion": 1,
+  "schemaVersion": 1,
+  "scope": "scope.team.team_42",
+  "clientGroupId": "cg_browser_profile_1",
+  "pageSize": 500,
+  "pageToken": "eyJ2IjoxLCJzY29wZSI6InNjb3BlLnRlYW0udGVhbV80MiIsInNuYXBzaG90Q3Vyc29yIjo3LCJsYXN0RW50aXR5VHlwZSI6InRocmVhZCIsImxhc3RFbnRpdHlJZCI6InQtMTIifQ"
+}

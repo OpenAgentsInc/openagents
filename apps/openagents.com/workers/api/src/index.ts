@@ -780,6 +780,8 @@ import {
   khalaMcpAgentPrincipal,
   makeKhalaMcpCatalog,
 } from './khala-mcp'
+import { handleKhalaSyncBootstrap } from './khala-sync-bootstrap-routes'
+import { handleKhalaSyncConnect } from './khala-sync-connect-routes'
 import { handleKhalaSyncDbSmoke } from './khala-sync-db-smoke-routes'
 import {
   KHALA_SYNC_HUB_APPEND_PATH,
@@ -12079,6 +12081,54 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           }
         },
         binding: env.KHALA_SYNC_DB,
+        hubNamespace: env.KHALA_SYNC_HUB as
+          | KhalaSyncHubNamespaceLike
+          | undefined,
+      }),
+  },
+  {
+    // Khala Sync bootstrap (KS-4.4, #8297): authenticated consistent
+    // snapshot pages of one scope's current entity states through the
+    // KHALA_SYNC_DB Hyperdrive binding (KS-2.2 read substrate:
+    // REPEATABLE READ pages, self-contained page tokens, final page carries
+    // the stitch cursor). Typed 400s incl. protocol/schema version gates;
+    // same v1 scope gate as /api/sync/log. Snapshot pages are
+    // paging-position-specific, so every response is no-store.
+    path: '/api/sync/bootstrap',
+    handler: (request, env, ctx) =>
+      handleKhalaSyncBootstrap(request, {
+        authenticate: async () => {
+          const actor = await authenticateRequestActor(request, env, ctx)
+          if (actor === undefined) {
+            return undefined
+          }
+          return {
+            userId:
+              actor.kind === 'agent' ? actor.agent.user.id : actor.user.userId,
+          }
+        },
+        binding: env.KHALA_SYNC_DB,
+      }),
+  },
+  {
+    // Khala Sync live tail (KS-4.4, #8297): authenticated WebSocket upgrade
+    // proxied to the per-scope KhalaSyncHubDO /connect (Hibernation API,
+    // catch-up from the socket cursor out of the DO window). Auth + the v1
+    // scope gate run BEFORE the upgrade is forwarded; the admin-guarded
+    // internal hub route stays capture/operator-only.
+    path: '/api/sync/connect',
+    handler: (request, env, ctx) =>
+      handleKhalaSyncConnect(request, {
+        authenticate: async () => {
+          const actor = await authenticateRequestActor(request, env, ctx)
+          if (actor === undefined) {
+            return undefined
+          }
+          return {
+            userId:
+              actor.kind === 'agent' ? actor.agent.user.id : actor.user.userId,
+          }
+        },
         hubNamespace: env.KHALA_SYNC_HUB as
           | KhalaSyncHubNamespaceLike
           | undefined,

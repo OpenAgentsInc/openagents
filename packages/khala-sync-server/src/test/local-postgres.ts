@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process"
 import { accessSync, constants } from "node:fs"
 import { mkdtemp, rm } from "node:fs/promises"
 import * as net from "node:net"
@@ -51,6 +52,20 @@ const isExecutable = (file: string): boolean => {
   }
 }
 
+/**
+ * Resolve `binary` from PATH (runtime-agnostic `which`: this helper runs
+ * under BOTH `bun test` in this package and vitest/Node in the
+ * `openagents.com` Worker's stitch-seam suite, so no `Bun.*` APIs here).
+ */
+const whichOnPath = (binary: string): string | null => {
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (dir === "") continue
+    const candidate = path.join(dir, binary)
+    if (isExecutable(candidate)) return candidate
+  }
+  return null
+}
+
 /** Directory containing initdb + pg_ctl, or null if none is available. */
 export const findPgBinDir = (): string | null => {
   for (const dir of PG_BIN_DIR_CANDIDATES) {
@@ -59,8 +74,8 @@ export const findPgBinDir = (): string | null => {
     }
   }
   // Fall back to PATH.
-  if (REQUIRED_BINARIES.every((bin) => Bun.which(bin) !== null)) {
-    const resolved = Bun.which("initdb")
+  if (REQUIRED_BINARIES.every((bin) => whichOnPath(bin) !== null)) {
+    const resolved = whichOnPath("initdb")
     return resolved === null ? null : path.dirname(resolved)
   }
   return null
@@ -79,11 +94,14 @@ const freePort = (): Promise<number> =>
   })
 
 const run = (cmd: ReadonlyArray<string>): void => {
-  const result = Bun.spawnSync([...cmd], { stdout: "pipe", stderr: "pipe" })
-  if (result.exitCode !== 0) {
+  const [binary, ...args] = cmd
+  if (binary === undefined) throw new Error("empty command")
+  const result = spawnSync(binary, args, { encoding: "utf8" })
+  if (result.error !== undefined) throw result.error
+  if (result.status !== 0) {
     throw new Error(
-      `${cmd[0]} failed (exit ${result.exitCode}):\n` +
-        `${result.stdout.toString()}\n${result.stderr.toString()}`,
+      `${binary} failed (exit ${String(result.status)}):\n` +
+        `${result.stdout}\n${result.stderr}`,
     )
   }
 }

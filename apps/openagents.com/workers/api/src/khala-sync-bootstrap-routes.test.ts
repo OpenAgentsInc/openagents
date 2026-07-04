@@ -1,0 +1,372 @@
+// Route tests for POST /api/sync/bootstrap (KS-4.4, #8297): auth guard,
+// version gates, body decode, v1 scope gate, page flow (pageSize bounding,
+// pageToken passthrough, nextPageToken/cursor page shapes), typed SyncError
+// mapping (invalid page token → 400, behind-window → 410, storage → 503,
+// unexpected → 500), no-store cache posture, and client teardown. All seams
+// are injected — no network, no database.
+
+import { Effect, Schema as S } from 'effect'
+import { describe, expect, test } from 'vitest'
+
+import {
+  BootstrapEntity,
+  BootstrapResponse,
+  decodeBootstrapResponse,
+  KHALA_SYNC_PROTOCOL_VERSION,
+  personalScope,
+  publicScope,
+  SyncVersionWatermark,
+} from '@openagentsinc/khala-sync'
+import {
+  KhalaSyncCursorBehindRetainedWindowError,
+  KhalaSyncInvalidPageTokenError,
+  KhalaSyncStorageError,
+  MAX_BOOTSTRAP_PAGE_SIZE,
+  type SyncSql,
+} from '@openagentsinc/khala-sync-server'
+
+import {
+  type BootstrapFromPostgresFn,
+  handleKhalaSyncBootstrap,
+  KHALA_SYNC_BOOTSTRAP_PATH,
+  type KhalaSyncBootstrapDependencies,
+} from './khala-sync-bootstrap-routes'
+import type { KhalaSyncPushSqlClient } from './khala-sync-push-routes'
+
+const decodeBootstrapEntity = S.decodeUnknownSync(BootstrapEntity)
+
+const FAKE_CONNECTION_STRING =
+  'postgresql://user:secret@hyperdrive.local:5432/khala_sync_test'
+
+const USER_ID = 'user-1'
+const OWN_SCOPE = personalScope(USER_ID)
+const PUBLIC_SCOPE = publicScope('artanis.global')
+
+const requestBody = (overrides: Record<string, unknown> = {}): unknown => ({
+  clientGroupId: 'cg-1',
+  protocolVersion: KHALA_SYNC_PROTOCOL_VERSION,
+  schemaVersion: 1,
+  scope: OWN_SCOPE,
+  ...overrides,
+})
+
+const post = (body: unknown): Request =>
+  new Request(`https://openagents.com${KHALA_SYNC_BOOTSTRAP_PATH}`, {
+    body: typeof body === 'string' ? body : JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
+  })
+
+const entity = (id: string) =>
+  decodeBootstrapEntity({
+    entityId: id,
+    entityType: 'note',
+    postImageJson: JSON.stringify({ id }),
+  })
+
+const page = (
+  input: Readonly<{
+    entityIds?: ReadonlyArray<string>
+    cursor?: number
+    nextPageToken?: string
+  }>,
+) =>
+  new BootstrapResponse({
+    entities: (input.entityIds ?? []).map(entity),
+    protocolVersion: KHALA_SYNC_PROTOCOL_VERSION,
+    scope: OWN_SCOPE,
+    ...(input.nextPageToken !== undefined
+      ? { nextPageToken: input.nextPageToken }
+      : { cursor: SyncVersionWatermark.make(input.cursor ?? 0) }),
+  })
+
+const fakeSqlHandle = (() => {
+  throw new Error('fake sql handle must never be queried in route tests')
+}) as unknown as SyncSql
+
+const makeFakeClient = () => {
+  let ended = 0
+  const client: KhalaSyncPushSqlClient = {
+    end: () => {
+      ended += 1
+      return Promise.resolve()
+    },
+    sql: fakeSqlHandle,
+  }
+  return { client, endedCount: () => ended }
+}
+
+const run = (
+  input: Readonly<{
+    request?: Request
+    userId?: string | undefined
+    binding?: { connectionString: string } | undefined
+    client?: KhalaSyncPushSqlClient
+    bootstrap?: BootstrapFromPostgresFn
+  }> = {},
+) => {
+  const deps: KhalaSyncBootstrapDependencies = {
+    authenticate: async () =>
+      'userId' in input
+        ? input.userId === undefined
+          ? undefined
+          : { userId: input.userId }
+        : { userId: USER_ID },
+    binding:
+      'binding' in input
+        ? input.binding
+        : { connectionString: FAKE_CONNECTION_STRING },
+    bootstrapFromPostgres:
+      input.bootstrap ??
+      (async () => {
+        throw new Error('bootstrapFromPostgres must be injected for this test')
+      }),
+    makeSqlClient: async () => input.client ?? makeFakeClient().client,
+  }
+  return Effect.runPromise(
+    handleKhalaSyncBootstrap(input.request ?? post(requestBody()), deps),
+  )
+}
+
+const syncErrorBody = async (response: Response) =>
+  (await response.json()) as {
+    code: string
+    messageSafe: string
+    retryable: boolean
+  }
+
+describe('handleKhalaSyncBootstrap', () => {
+  test('non-POST methods are 405', async () => {
+    const response = await run({
+      request: new Request(
+        `https://openagents.com${KHALA_SYNC_BOOTSTRAP_PATH}`,
+        { method: 'GET' },
+      ),
+    })
+    expect(response.status).toBe(405)
+    expect(response.headers.get('allow')).toBe('POST')
+  })
+
+  test('unauthenticated requests are 401 typed SyncError', async () => {
+    const response = await run({ userId: undefined })
+    expect(response.status).toBe(401)
+    const body = await syncErrorBody(response)
+    expect(body.code).toBe('unauthenticated')
+    expect(body.retryable).toBe(false)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+  })
+
+  test('a non-JSON body is 400 invalid_request', async () => {
+    const response = await run({ request: post('{nope') })
+    expect(response.status).toBe(400)
+    expect((await syncErrorBody(response)).code).toBe('invalid_request')
+  })
+
+  test('a wrong protocol version is 400 protocol_version_unsupported', async () => {
+    const response = await run({
+      request: post(requestBody({ protocolVersion: 2 })),
+    })
+    expect(response.status).toBe(400)
+    const body = await syncErrorBody(response)
+    expect(body.code).toBe('protocol_version_unsupported')
+    expect(body.retryable).toBe(false)
+  })
+
+  test.each<Record<string, unknown>>([
+    { scope: 'not-a-scope' },
+    { clientGroupId: '' },
+    { pageSize: 0 },
+    { pageSize: 1.5 },
+    { pageToken: 42 },
+    { schemaVersion: 'x' },
+  ])('undecodable body override %j is 400 invalid_request', async override => {
+    const response = await run({ request: post(requestBody(override)) })
+    expect(response.status).toBe(400)
+    expect((await syncErrorBody(response)).code).toBe('invalid_request')
+  })
+
+  test('an unsupported schema version is 400 schema_version_unsupported', async () => {
+    const response = await run({
+      request: post(requestBody({ schemaVersion: 99 })),
+    })
+    expect(response.status).toBe(400)
+    const body = await syncErrorBody(response)
+    expect(body.code).toBe('schema_version_unsupported')
+    expect(body.retryable).toBe(false)
+  })
+
+  test("another user's personal scope is 403 unauthorized_scope", async () => {
+    const response = await run({
+      request: post(requestBody({ scope: personalScope('user-2') })),
+    })
+    expect(response.status).toBe(403)
+    const body = await syncErrorBody(response)
+    expect(body.code).toBe('unauthorized_scope')
+    expect(body.retryable).toBe(false)
+  })
+
+  test('membership scopes (scope.team.*) are denied by the v1 gate', async () => {
+    const response = await run({
+      request: post(requestBody({ scope: 'scope.team.t-1' })),
+    })
+    expect(response.status).toBe(403)
+  })
+
+  test('missing KHALA_SYNC_DB binding is 503 storage_unavailable', async () => {
+    const response = await run({ binding: undefined })
+    expect(response.status).toBe(503)
+    const body = await syncErrorBody(response)
+    expect(body.code).toBe('storage_unavailable')
+    expect(body.retryable).toBe(true)
+  })
+
+  // -------------------------------------------------------------------------
+  // Page flow
+  // -------------------------------------------------------------------------
+
+  test('a first page passes scope + bounded pageSize and no token to the read', async () => {
+    const captured: Array<unknown> = []
+    const fake = makeFakeClient()
+    const response = await run({
+      bootstrap: async (sql, input) => {
+        captured.push(input)
+        expect(sql).toBe(fakeSqlHandle)
+        return page({ entityIds: ['a'], nextPageToken: 'token-1' })
+      },
+      client: fake.client,
+      request: post(requestBody({ pageSize: 25 })),
+    })
+    expect(response.status).toBe(200)
+    expect(captured).toEqual([
+      { pageSize: 25, pageToken: undefined, scope: OWN_SCOPE },
+    ])
+    const body = decodeBootstrapResponse(await response.json())
+    expect(body.entities.map(e => String(e.entityId))).toEqual(['a'])
+    expect(body.nextPageToken).toBe('token-1')
+    expect(body.cursor).toBeUndefined()
+    expect(fake.endedCount()).toBe(1)
+  })
+
+  test('a follow-up page forwards the pageToken; the final page carries cursor', async () => {
+    const captured: Array<unknown> = []
+    const response = await run({
+      bootstrap: async (_sql, input) => {
+        captured.push(input)
+        return page({ cursor: 7, entityIds: ['z'] })
+      },
+      request: post(requestBody({ pageToken: 'token-1' })),
+    })
+    expect(response.status).toBe(200)
+    expect(captured).toEqual([
+      {
+        pageSize: MAX_BOOTSTRAP_PAGE_SIZE,
+        pageToken: 'token-1',
+        scope: OWN_SCOPE,
+      },
+    ])
+    const body = decodeBootstrapResponse(await response.json())
+    expect(Number(body.cursor)).toBe(7)
+    expect(body.nextPageToken).toBeUndefined()
+  })
+
+  test('a requested pageSize above the package max is clamped', async () => {
+    const captured: Array<{ pageSize?: number | undefined }> = []
+    await run({
+      bootstrap: async (_sql, input) => {
+        captured.push(input)
+        return page({ cursor: 0 })
+      },
+      request: post(requestBody({ pageSize: 999_999 })),
+    })
+    expect(captured[0]?.pageSize).toBe(MAX_BOOTSTRAP_PAGE_SIZE)
+  })
+
+  test('every bootstrap page is no-store (paging-position-specific)', async () => {
+    const response = await run({
+      bootstrap: async () => page({ cursor: 3, entityIds: ['a'] }),
+    })
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(response.headers.get('etag')).toBeNull()
+  })
+
+  test('the public scope family is bootstrappable by any authenticated user', async () => {
+    const response = await run({
+      bootstrap: async () =>
+        new BootstrapResponse({
+          cursor: SyncVersionWatermark.make(0),
+          entities: [],
+          protocolVersion: KHALA_SYNC_PROTOCOL_VERSION,
+          scope: PUBLIC_SCOPE,
+        }),
+      request: post(requestBody({ scope: PUBLIC_SCOPE })),
+    })
+    expect(response.status).toBe(200)
+  })
+
+  // -------------------------------------------------------------------------
+  // Error mapping
+  // -------------------------------------------------------------------------
+
+  test('an invalid page token is 400 invalid_request (restart tokenless)', async () => {
+    const fake = makeFakeClient()
+    const response = await run({
+      bootstrap: async () => {
+        throw new KhalaSyncInvalidPageTokenError('token belongs to another scope')
+      },
+      client: fake.client,
+      request: post(requestBody({ pageToken: 'stale' })),
+    })
+    expect(response.status).toBe(400)
+    const body = await syncErrorBody(response)
+    expect(body.code).toBe('invalid_request')
+    expect(body.retryable).toBe(false)
+    expect(fake.endedCount()).toBe(1)
+  })
+
+  test('a snapshot behind the retained window is a 410 MustRefetch SyncError', async () => {
+    const response = await run({
+      bootstrap: async () => {
+        throw new KhalaSyncCursorBehindRetainedWindowError(OWN_SCOPE, 3, 50)
+      },
+    })
+    expect(response.status).toBe(410)
+    const body = await syncErrorBody(response)
+    expect(body.code).toBe('cursor_behind_retained_window')
+    expect(body.retryable).toBe(false)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+  })
+
+  test('a storage failure is 503 retryable', async () => {
+    const response = await run({
+      bootstrap: async () => {
+        throw new KhalaSyncStorageError('connection_failed', 'no route to db')
+      },
+    })
+    expect(response.status).toBe(503)
+    const body = await syncErrorBody(response)
+    expect(body.code).toBe('storage_unavailable')
+    expect(body.retryable).toBe(true)
+  })
+
+  test('an unexpected failure is 500 internal', async () => {
+    const response = await run({
+      bootstrap: async () => {
+        throw new Error('boom')
+      },
+    })
+    expect(response.status).toBe(500)
+    expect((await syncErrorBody(response)).code).toBe('internal')
+  })
+
+  test('the sql client is torn down even when the read throws', async () => {
+    const fake = makeFakeClient()
+    await run({
+      bootstrap: async () => {
+        throw new Error('boom')
+      },
+      client: fake.client,
+    })
+    expect(fake.endedCount()).toBe(1)
+  })
+})

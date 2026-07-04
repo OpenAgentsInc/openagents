@@ -120,6 +120,12 @@ const approvedExactRoutePaths = [
   // Khala Sync catch-up log (KS-4.3, #8296): authenticated offset-resumable
   // LogPage reads, hub-first with authoritative Postgres fallthrough.
   '/api/sync/log',
+  // Khala Sync bootstrap (KS-4.4, #8297): authenticated consistent snapshot
+  // pages + final stitch cursor.
+  '/api/sync/bootstrap',
+  // Khala Sync live tail (KS-4.4, #8297): authenticated WebSocket upgrade
+  // proxied to the per-scope KhalaSyncHubDO.
+  '/api/sync/connect',
   '/api/stats/token-usage/events',
   '/api/stats/token-usage/aggregate',
   '/api/admin/inference-analytics',
