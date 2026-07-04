@@ -43,7 +43,7 @@ import {
 } from './agent-home-routes'
 import {
   makeAgentOwnerClaimRoutes,
-  makeD1AgentOwnerClaimStore,
+  makeAgentOwnerClaimStoreForEnv,
 } from './agent-owner-claim-routes'
 import {
   makeAgentProposalRoutes,
@@ -8245,7 +8245,7 @@ const agentOwnerClaimRoutes = makeAgentOwnerClaimRoutes({
   agentStore: env => makeAgentRegistrationStoreForEnv(env),
   appOrigin: getAppOrigin,
   appendRefreshedSessionCookies,
-  makeStore: env => makeD1AgentOwnerClaimStore(openAgentsDatabase(env)),
+  makeStore: env => makeAgentOwnerClaimStoreForEnv(env),
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   requireBrowserSession,
 })
@@ -13812,9 +13812,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       // #5486 light-KYC gate reads), so the Sybil-resistant free pool and the
       // premium allowlist both key on one owner across all of that owner's
       // accounts. INERT regardless — only reached when the gateway is enabled.
-      const ownerClaimStore = makeD1AgentOwnerClaimStore(
-        openAgentsDatabase(env),
-      )
+      const ownerClaimStore = makeAgentOwnerClaimStoreForEnv(env)
       const resolveOwnerIdentity = makeVerifiedOwnerIdentityResolver(
         ownerClaimStore.readVerifiedPublicIdentityForAgentUserId,
       )
@@ -14379,9 +14377,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       registerOpenRouterAdapter(inferenceProviderRegistry, env)
       registerFabricServeAdapter(inferenceProviderRegistry, env)
       setInferenceAdapterEnv(env)
-      const ownerClaimStore = makeD1AgentOwnerClaimStore(
-        openAgentsDatabase(env),
-      )
+      const ownerClaimStore = makeAgentOwnerClaimStoreForEnv(env)
       const resolveOwnerIdentity = makeVerifiedOwnerIdentityResolver(
         ownerClaimStore.readVerifiedPublicIdentityForAgentUserId,
       )
@@ -14876,9 +14872,7 @@ const routeRequest = makeWorkerRouteRequest({
           updatedAt: now,
         })
       },
-      publicIdentityClaimStore: makeD1AgentOwnerClaimStore(
-        openAgentsDatabase(env),
-      ),
+      publicIdentityClaimStore: makeAgentOwnerClaimStoreForEnv(env),
       pylonApiStore: makePylonApiStoreForEnv(env),
       pylonSparkPayoutTargetStore: makePylonSparkPayoutTargetStoreForEnv(env),
       resolveModeratorActor: async request => {

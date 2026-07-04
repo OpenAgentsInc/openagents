@@ -16,6 +16,8 @@ import { openAgentsDatabase } from './runtime'
 export type AgentRuntimeRemainderTable =
   | 'agent_profiles'
   | 'agent_credentials'
+  | 'agent_owner_claims'
+  | 'agent_owner_x_claim_challenges'
   | 'event_ledger_entries'
 
 export type AgentRuntimeRemainderRow = Readonly<Record<string, unknown>>
@@ -49,6 +51,53 @@ const CREDENTIAL_COLUMNS = [
   'expires_at',
 ] as const
 
+const OWNER_CLAIM_COLUMNS = [
+  'id',
+  'claim_token_hash',
+  'claim_token_prefix',
+  'status',
+  'display_name',
+  'slug',
+  'external_id',
+  'primary_email',
+  'metadata_json',
+  'owner_user_id',
+  'agent_user_id',
+  'credential_id',
+  'token_prefix',
+  'receipt_ref',
+  'requested_at',
+  'expires_at',
+  'decided_at',
+  'token_issued_at',
+  'rejected_reason',
+  'created_at',
+  'updated_at',
+] as const
+
+const X_CLAIM_COLUMNS = [
+  'id',
+  'agent_claim_id',
+  'owner_user_id',
+  'agent_user_id',
+  'x_account_ref',
+  'x_handle',
+  'nonce',
+  'required_text',
+  'required_url',
+  'state',
+  'receipt_ref',
+  'tweet_ref',
+  'tweet_url',
+  'policy_refs_json',
+  'caveat_refs_json',
+  'rejected_reason',
+  'created_at',
+  'expires_at',
+  'verified_at',
+  'updated_at',
+] as const
+
 const EVENT_LEDGER_COLUMNS = [
   'entry_id',
   'owner_agent_user_id',
@@ -79,12 +128,16 @@ const TABLE_COLUMNS: Readonly<
   Record<AgentRuntimeRemainderTable, ReadonlyArray<string>>
 > = {
   agent_credentials: CREDENTIAL_COLUMNS,
+  agent_owner_claims: OWNER_CLAIM_COLUMNS,
+  agent_owner_x_claim_challenges: X_CLAIM_COLUMNS,
   agent_profiles: PROFILE_COLUMNS,
   event_ledger_entries: EVENT_LEDGER_COLUMNS,
 }
 
 const TABLE_PK: Readonly<Record<AgentRuntimeRemainderTable, string>> = {
   agent_credentials: 'id',
+  agent_owner_claims: 'id',
+  agent_owner_x_claim_challenges: 'id',
   agent_profiles: 'user_id',
   event_ledger_entries: 'entry_id',
 }
@@ -93,6 +146,8 @@ const TABLE_CONFLICT: Readonly<
   Record<AgentRuntimeRemainderTable, ReadonlyArray<string>>
 > = {
   agent_credentials: ['id'],
+  agent_owner_claims: ['id'],
+  agent_owner_x_claim_challenges: ['id'],
   agent_profiles: ['user_id'],
   event_ledger_entries: ['entry_id'],
 }

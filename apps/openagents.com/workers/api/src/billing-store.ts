@@ -139,6 +139,10 @@ const defaultLog: BillingSyncLog = (event, fields) => {
   })
 }
 
+export class BillingUnsafeSqlUnavailableError extends Error {}
+
+export class BillingInvalidMirrorKeyError extends Error {}
+
 // ---------------------------------------------------------------------------
 // Postgres billing store
 // ---------------------------------------------------------------------------
@@ -174,7 +178,7 @@ type UnsafeQuery = (
 const requireUnsafe = (client: KhalaSyncPushSqlClient): UnsafeQuery => {
   const unsafe = (client.sql as unknown as { unsafe?: UnsafeQuery }).unsafe
   if (typeof unsafe !== 'function') {
-    throw new Error(
+    throw new BillingUnsafeSqlUnavailableError(
       'billing mirror requires a driver exposing unsafe(text, params)',
     )
   }
@@ -283,7 +287,9 @@ export const makeBillingDomainMirror = (
           keyEntries.length === 0 ||
           keyEntries.some(([column]) => !spec.columns.includes(column))
         ) {
-          throw new Error(`invalid mirror key for ${ref.table}`)
+          throw new BillingInvalidMirrorKeyError(
+            `invalid mirror key for ${ref.table}`,
+          )
         }
         const where = keyEntries
           .map(([column]) => `${column} = ?`)

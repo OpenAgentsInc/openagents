@@ -7,12 +7,14 @@ import {
   type XOwnerClaimChallengeRecord,
   type XVerificationTweetLookup,
   makeAgentOwnerClaimRoutes,
+  makeMirroredAgentOwnerClaimStore,
   type XClaimRewardRecord,
   type XClaimRewardState,
 } from './agent-owner-claim-routes'
 import {
   type AgentRegistrationRecord,
   type AgentRegistrationStore,
+  buildProgrammaticAgentRegistrationRecord,
   sha256Hex,
 } from './agent-registration'
 
@@ -447,6 +449,114 @@ const createClaim = (
   )
 
 describe('agent owner claim routes', () => {
+  test('mirrored store mirrors owner claim and X challenge rows by key only', async () => {
+    const d1 = new MemoryAgentOwnerClaimStore()
+    const mirrored: Array<{
+      ids: ReadonlyArray<string>
+      table: string
+    }> = []
+    const store = makeMirroredAgentOwnerClaimStore(d1, {
+      mirrorRowsByPk: async (table, ids) => {
+        mirrored.push({ ids, table })
+      },
+    })
+    const now = '2026-07-04T19:40:00.000Z'
+    const claim: AgentOwnerClaimRecord = {
+      agentUserId: null,
+      claimTokenHash: await sha256Hex('oa_agent_claim_secret'),
+      claimTokenPrefix: 'oa_agent_claim_secr',
+      createdAt: now,
+      credentialId: null,
+      decidedAt: null,
+      displayName: 'Mirrored Claim Agent',
+      expiresAt: '2026-07-06T19:40:00.000Z',
+      externalId: 'mirrored-claim-agent',
+      id: 'agent_claim_mirror',
+      metadataJson: '{}',
+      ownerUserId: null,
+      primaryEmail: null,
+      receiptRef: 'agent_claim_receipt_mirror',
+      rejectedReason: null,
+      requestedAt: now,
+      slug: 'mirrored-claim-agent',
+      status: 'pending',
+      tokenIssuedAt: null,
+      tokenPrefix: null,
+      updatedAt: now,
+    }
+    await store.createClaim(claim)
+
+    const registration = buildProgrammaticAgentRegistrationRecord(
+      {
+        displayName: claim.displayName,
+        metadata: {},
+        ...(claim.externalId === null ? {} : { externalId: claim.externalId }),
+        ...(claim.slug === null ? {} : { slug: claim.slug }),
+      },
+      {
+        expiresAt: '2026-10-02T19:40:00.000Z',
+        tokenHash: claim.claimTokenHash,
+        tokenPrefix: claim.claimTokenPrefix,
+      },
+      {
+        makeUuid: makeUuidFactory([
+          'claim-user',
+          'claim-credential',
+          'claim-identity',
+        ]),
+        now: () => '2026-07-04T19:41:00.000Z',
+      },
+    )
+    await store.approveClaim({
+      claimId: claim.id,
+      credentialExpiresAt: '2026-10-02T19:40:00.000Z',
+      decidedAt: '2026-07-04T19:41:00.000Z',
+      ownerUserId: 'github:owner-1',
+      registration,
+    })
+
+    const challenge: XOwnerClaimChallengeRecord = {
+      agentClaimId: claim.id,
+      agentUserId: registration.user.id,
+      caveatRefsJson: '[]',
+      createdAt: '2026-07-04T19:42:00.000Z',
+      expiresAt: '2026-07-06T19:42:00.000Z',
+      id: 'agent_x_claim_mirror',
+      nonce: 'oa-x-mirror',
+      ownerUserId: 'github:owner-1',
+      policyRefsJson: '[]',
+      receiptRef: 'agent_x_claim_receipt_mirror',
+      rejectedReason: null,
+      requiredText: 'Verifying mirrored claim',
+      requiredUrl: 'https://openagents.com/agents/claims/agent_claim_mirror',
+      state: 'pending_tweet',
+      tweetRef: null,
+      tweetUrl: null,
+      updatedAt: '2026-07-04T19:42:00.000Z',
+      verifiedAt: null,
+      xAccountRef: 'x:pending:agent_x_claim_mirror',
+      xHandle: '',
+    }
+    await store.createXChallenge(challenge)
+    await store.verifyXChallenge({
+      challengeId: challenge.id,
+      now: '2026-07-04T19:43:00.000Z',
+      tweetRef: 'x_tweet:123',
+      tweetUrl: 'https://x.com/owner/status/123',
+      xAccountRef: 'x:owner',
+      xHandle: 'owner',
+    })
+
+    expect(mirrored).toEqual([
+      { ids: [claim.id], table: 'agent_owner_claims' },
+      { ids: [claim.id], table: 'agent_owner_claims' },
+      { ids: [registration.profile.userId], table: 'agent_profiles' },
+      { ids: [registration.credential.id], table: 'agent_credentials' },
+      { ids: [challenge.id], table: 'agent_owner_x_claim_challenges' },
+      { ids: [challenge.id], table: 'agent_owner_x_claim_challenges' },
+    ])
+  })
+
   test('creates a pending claim with a one-time inactive token', async () => {
     const store = new MemoryAgentOwnerClaimStore()
     const response = await createClaim(store)

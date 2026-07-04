@@ -12,6 +12,11 @@ import {
   sha256Hex,
 } from './agent-registration'
 import {
+  makeAgentRuntimeRemainderMirrorForEnv,
+  type AgentRuntimeRemainderMirror,
+  type AgentRuntimeRemainderStoreEnv,
+} from './agent-runtime-remainder-store'
+import {
   methodNotAllowed,
   noStoreJsonResponse,
   serverError,
@@ -28,6 +33,7 @@ import {
   isoTimestampAfterIso,
   randomUuid,
 } from './runtime-primitives'
+import { openAgentsDatabase } from './runtime'
 import {
   xClaimRewardEligibilityListResponse,
   xClaimRewardEligibilityStatusResponse,
@@ -1125,6 +1131,128 @@ export const makeD1AgentOwnerClaimStore = (
     },
   }
 }
+
+const mirrorOwnerClaim = (
+  mirror: AgentRuntimeRemainderMirror,
+  claimId: string,
+): Promise<void> => mirror.mirrorRowsByPk('agent_owner_claims', [claimId])
+
+const mirrorXChallenge = (
+  mirror: AgentRuntimeRemainderMirror,
+  challengeId: string,
+): Promise<void> =>
+  mirror.mirrorRowsByPk('agent_owner_x_claim_challenges', [challengeId])
+
+const mirrorApprovedClaim = async (
+  mirror: AgentRuntimeRemainderMirror,
+  input: {
+    claim: AgentOwnerClaimRecord
+    registration: AgentRegistrationRecord
+  },
+): Promise<void> => {
+  await mirrorOwnerClaim(mirror, input.claim.id)
+  if (
+    input.claim.agentUserId !== input.registration.user.id ||
+    input.claim.credentialId !== input.registration.credential.id
+  ) {
+    return
+  }
+  await mirror.mirrorRowsByPk('agent_profiles', [
+    input.registration.profile.userId,
+  ])
+  await mirror.mirrorRowsByPk('agent_credentials', [
+    input.registration.credential.id,
+  ])
+}
+
+export const makeMirroredAgentOwnerClaimStore = (
+  d1: AgentOwnerClaimStore,
+  mirror: AgentRuntimeRemainderMirror | undefined,
+): AgentOwnerClaimStore => {
+  if (mirror === undefined) {
+    return d1
+  }
+
+  return {
+    countXClaimRewards: () => d1.countXClaimRewards(),
+    createXClaimReward: record => d1.createXClaimReward(record),
+    listXClaimRewards: limit => d1.listXClaimRewards(limit),
+    readXClaimRewardByChallengeId: challengeId =>
+      d1.readXClaimRewardByChallengeId(challengeId),
+    readXClaimRewardById: rewardId => d1.readXClaimRewardById(rewardId),
+    readXClaimRewardByReceiptRef: receiptRef =>
+      d1.readXClaimRewardByReceiptRef(receiptRef),
+    updateXClaimRewardState: input => d1.updateXClaimRewardState(input),
+    approveClaim: async input => {
+      const claim = await d1.approveClaim(input)
+      if (claim !== undefined) {
+        await mirrorApprovedClaim(mirror, {
+          claim,
+          registration: input.registration,
+        })
+      }
+      return claim
+    },
+    attachClaimApproval: async input => {
+      const claim = await d1.attachClaimApproval(input)
+      if (claim !== undefined) {
+        await mirrorOwnerClaim(mirror, claim.id)
+      }
+      return claim
+    },
+    createClaim: async record => {
+      await d1.createClaim(record)
+      await mirrorOwnerClaim(mirror, record.id)
+    },
+    expireClaim: async (claimId, now) => {
+      const claim = await d1.expireClaim(claimId, now)
+      if (claim !== undefined) {
+        await mirrorOwnerClaim(mirror, claim.id)
+      }
+      return claim
+    },
+    readClaimById: claimId => d1.readClaimById(claimId),
+    rejectClaim: async input => {
+      const claim = await d1.rejectClaim(input)
+      if (claim !== undefined) {
+        await mirrorOwnerClaim(mirror, claim.id)
+      }
+      return claim
+    },
+    createXChallenge: async record => {
+      const challenge = await d1.createXChallenge(record)
+      await mirrorXChallenge(mirror, challenge.id)
+      return challenge
+    },
+    readActiveXChallengeByClaimId: claimId =>
+      d1.readActiveXChallengeByClaimId(claimId),
+    readXChallengeById: challengeId => d1.readXChallengeById(challengeId),
+    readVerifiedPublicIdentityForAgentUserId: agentUserId =>
+      d1.readVerifiedPublicIdentityForAgentUserId(agentUserId),
+    rejectXChallenge: async input => {
+      const challenge = await d1.rejectXChallenge(input)
+      if (challenge !== undefined) {
+        await mirrorXChallenge(mirror, challenge.id)
+      }
+      return challenge
+    },
+    verifyXChallenge: async input => {
+      const challenge = await d1.verifyXChallenge(input)
+      if (challenge !== undefined) {
+        await mirrorXChallenge(mirror, challenge.id)
+      }
+      return challenge
+    },
+  }
+}
+
+export const makeAgentOwnerClaimStoreForEnv = (
+  env: AgentRuntimeRemainderStoreEnv,
+): AgentOwnerClaimStore =>
+  makeMirroredAgentOwnerClaimStore(
+    makeD1AgentOwnerClaimStore(openAgentsDatabase(env)),
+    makeAgentRuntimeRemainderMirrorForEnv(env),
+  )
 
 const bearerTokenFromRequest = (request: Request): string | undefined => {
   const header = request.headers.get('authorization') ?? ''
