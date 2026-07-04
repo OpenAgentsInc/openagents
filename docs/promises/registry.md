@@ -13,6 +13,30 @@
 > reports. This caveat changes no promise state, blocker, evidence ref, receipt,
 > or public availability claim.
 
+> Registry `2026-07-04.19` is the KS-6.3 public tokens-served projection
+> pass (#8304) and flips NO promise state (green count unchanged).
+> `GET /api/public/khala-tokens-served` no longer executes the unbounded
+> full-table `SUM(...) FROM token_usage_events` on the hot path: the primary
+> path serves the Khala Sync `scope.public.tokens-served` counter projection
+> (`khala_sync_public_counters` through the `KHALA_SYNC_DB` Hyperdrive
+> binding, small in-isolate cache) with an honestly declared
+> `rebuilt_on_transition` `maxStalenessSeconds: 2` contract — the 2-second
+> public-stats cache precedent from the 2026-06-29 after-action — and fails
+> OPEN to the previous `live_at_read` D1 SUM (`maxStalenessSeconds: 0`)
+> whenever the binding, Postgres, or the first-deploy backfill is
+> unavailable, so counter availability never regresses. Every ledger ingest
+> path bumps the projection exact-once per `token_usage_events` row (an
+> idempotency-key guard insert in the same Postgres transaction) and appends
+> the `public_counter` post-image to `scope.public.tokens-served`; the admin
+> reconcile route
+> (`/api/internal/khala-sync/public-counters/tokens-served/reconcile`) plus
+> a scheduled detect-only sweep prove projection == SUM(exact rows) (Khala
+> Sync SPEC invariant 8), and repairs are explicit audited actions, never
+> silent overwrites. The SYNC_ROOM live homepage push is unchanged.
+> `metrics.khala_tokens_served_public.v1` stays green with its verification
+> copy updated to the declared staleness; no revenue, demand, payout, or
+> settlement claim changes.
+
 > Registry `2026-07-04.18` is the RX-8 model-custody Lead Gen segment
 > pass (#8281) and flips NO promise state (green stays exactly 34).
 > `@openagentsinc/agent-readiness` now exports

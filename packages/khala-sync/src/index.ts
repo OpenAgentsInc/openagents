@@ -18,6 +18,11 @@ export const KHALA_SYNC_PROTOCOL_VERSION = 1
 // scope.fleet_run.<id> changelog entries. Self-contained module (no cycle).
 export * from "./fleet.js"
 
+// Public-counter entity contract (KS-6.3): post-image shape for
+// scope.public.<channel> counter projections (tokens-served).
+// Self-contained module (no cycle).
+export * from "./public-counter.js"
+
 // ---------------------------------------------------------------------------
 // Branded primitives
 // ---------------------------------------------------------------------------

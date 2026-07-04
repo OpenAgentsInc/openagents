@@ -15,6 +15,8 @@ import {
   type ServedTokensRecorderInput,
   buildServedTokensIngestBody,
 } from './inference/served-tokens-recorder'
+import type { KhalaSyncHyperdriveBinding } from './khala-sync-push-routes'
+import { recordTokensServedProjectionBestEffort } from './khala-sync-public-tokens-served'
 import { openAgentsDatabase } from './runtime'
 import { currentIsoTimestamp } from './runtime-primitives'
 
@@ -22,7 +24,8 @@ const PUBLIC_KHALA_CHAT_ACCOUNT_REF = 'public:khala-chat'
 const PUBLIC_KHALA_CHAT_DEMAND_SOURCE = 'khala-cli-public-chat'
 
 type PublicKhalaChatServedTokenEnv = OpenAgentsWorkerConfigEnv &
-  Pick<WorkerBindings, 'OPENAGENTS_DB' | 'SYNC_ROOM'>
+  Pick<WorkerBindings, 'OPENAGENTS_DB' | 'SYNC_ROOM'> &
+  Readonly<{ KHALA_SYNC_DB?: KhalaSyncHyperdriveBinding }>
 
 const publicKhalaChatServedTokenMetrics = (
   adapterId: string,
@@ -206,6 +209,18 @@ export const recordPublicKhalaChatServedTokens = ({
       .run()
 
     if (Number(result.meta.changes ?? 0) > 0) {
+      // KS-6.3 (#8304): bump the scope.public.tokens-served projection for
+      // this fresh row, exact-once by the row's idempotency key. Fail-soft
+      // by contract; never affects the served completion.
+      await recordTokensServedProjectionBestEffort(
+        { binding: env.KHALA_SYNC_DB },
+        {
+          idempotencyKey: body.idempotencyKey,
+          observedAt,
+          tokensServedDelta: inputTokens + outputTokens,
+        },
+      ).catch(() => undefined)
+
       await publishKhalaTokensServedDelta(
         env,
         buildKhalaTokensServedDelta({

@@ -6,6 +6,7 @@ import {
   epochMillisToIsoTimestamp,
 } from '../runtime-primitives'
 import {
+  type TokenUsageLedgerIngestObserver,
   type TokenUsageLedgerShape,
   makeD1TokenUsageLedger,
 } from '../token-usage-ledger'
@@ -952,11 +953,23 @@ export const runScheduledGlmPoolHeartbeatForD1 = (
     env: HydraliskGlmPoolHeartbeatEnv
     fetchImpl?: GlmPoolHeartbeatFetch | undefined
     scheduledTimeMs: number
+    /**
+     * KS-6.3 (#8304): fail-soft public tokens-served projection producer —
+     * heartbeat completions are REAL served-token ledger rows and count in
+     * the public headline, so they must move the projection too.
+     */
+    onIngestedEvent?: TokenUsageLedgerIngestObserver | undefined
   }>,
 ): Effect.Effect<GlmPoolHeartbeatRunReport> =>
   runScheduledGlmPoolHeartbeat({
     env: input.env,
     ...(input.fetchImpl === undefined ? {} : { fetchImpl: input.fetchImpl }),
-    ledger: makeD1TokenUsageLedger(input.db),
+    ledger: makeD1TokenUsageLedger(
+      input.db,
+      undefined,
+      input.onIngestedEvent === undefined
+        ? {}
+        : { onIngestedEvent: input.onIngestedEvent },
+    ),
     scheduledTimeMs: input.scheduledTimeMs,
   })

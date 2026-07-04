@@ -108,12 +108,21 @@ const approvedExactRoutePaths = [
   '/api/admin/overview',
   '/api/admin/cf-browser-smoke',
   '/api/internal/khala-sync/db-smoke',
+  // Khala Sync public tokens-served reconcile/repair (KS-6.3, #8304):
+  // admin bearer only; proves projection == SUM(exact token_usage_events
+  // rows) (invariant 8) and hosts the explicit audited repair/backfill.
+  '/api/internal/khala-sync/public-counters/tokens-served/reconcile',
   // Khala Sync hub internal surface (KS-4.2, #8295): admin bearer only;
   // per-scope KhalaSyncHubDO append / log / connect. Public /api/sync/*
   // catch-up/connect arrives with KS-4.3/4.4.
   '/api/internal/khala-sync/hub/append',
   '/api/internal/khala-sync/hub/log',
   '/api/internal/khala-sync/hub/connect',
+  // Khala Sync access-changed revocation trigger (KS-7.1, #8305): admin
+  // bearer only; broadcasts MustRefetch(access_changed) to a scope's hub.
+  // (Approved here as a rebase-hygiene fix: the route landed in the
+  // manifest without its approved-list entry.)
+  '/api/internal/khala-sync/hub/access-changed',
   // Khala Sync push (KS-3.1, #8291): authenticated transactional mutator
   // execution.
   '/api/sync/push',

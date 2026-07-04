@@ -40,6 +40,7 @@ import { Cause, Effect } from 'effect'
 import { workerLogEntry } from '../observability'
 import { currentIsoTimestamp } from '../runtime-primitives'
 import {
+  type TokenUsageLedgerIngestObserver,
   type TokenUsageLedgerShape,
   makeD1TokenUsageLedger,
 } from '../token-usage-ledger'
@@ -535,10 +536,22 @@ export const makeD1ServedTokensRecorder = (
     ledgerRetryDelaysMs?: ReadonlyArray<number> | undefined
     nowIso?: () => string
     publishDelta?: ServedTokensDeltaPublisher
+    /**
+     * KS-6.3 (#8304): fail-soft public tokens-served projection producer,
+     * fired once per FRESH ledger row with its idempotency key. Wired in
+     * production; omitted in tests that only assert ledger behavior.
+     */
+    onIngestedEvent?: TokenUsageLedgerIngestObserver | undefined
   }> = {},
 ): ServedTokensRecorder =>
   makeServedTokensRecorder({
-    ledger: makeD1TokenUsageLedger(db),
+    ledger: makeD1TokenUsageLedger(
+      db,
+      undefined,
+      options.onIngestedEvent === undefined
+        ? {}
+        : { onIngestedEvent: options.onIngestedEvent },
+    ),
     ...(options.ledgerRetryDelaysMs === undefined
       ? {}
       : { ledgerRetryDelaysMs: options.ledgerRetryDelaysMs }),

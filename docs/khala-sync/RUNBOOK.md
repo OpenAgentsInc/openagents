@@ -328,6 +328,56 @@ Flag-flip order — never skip a step, each step soaks before the next:
 Rollback at ANY step: set `KHALA_SYNC_PYLON_READS=d1` (reads) and/or
 `KHALA_SYNC_PYLON_DUAL_WRITE=off` (writes). D1 authority is never behind.
 
+## Public tokens-served projection (KS-6.3, #8304)
+
+The public "Khala Tokens Served" counter
+(`GET /api/public/khala-tokens-served`) serves the
+`scope.public.tokens-served` projection (`khala_sync_public_counters`
+through `KHALA_SYNC_DB`) instead of the old full-table D1 SUM. The ingest
+write paths bump the counter exact-once per `token_usage_events` row (an
+idempotency-key guard insert in the same Postgres transaction, invariant 8)
+and the route fails OPEN to the live D1 SUM whenever the projection is
+unavailable.
+
+**Bring-up order (first deploy of this lane):**
+
+1. **Migrate:** apply `0006_khala_sync_public_counters.sql` (staging →
+   prod, normal migration procedure above).
+2. **Deploy the Worker.** Safe in any order relative to the backfill: the
+   increment path REFUSES (quietly, guard rolled back) while the counter
+   row does not exist, and the public route keeps serving the live D1 SUM
+   fallback — no behavior change until the backfill runs.
+3. **Backfill (admin, once per environment):**
+   `POST /api/internal/khala-sync/public-counters/tokens-served/reconcile`
+   with body `{ "repair": true, "auditNote": "first bring-up backfill" }`
+   (admin bearer). This sets projection = exact D1 SUM (audited,
+   `source: backfill`), creates the counter row, and appends the first
+   `public_counter` post-image to the scope. From this point increments
+   apply.
+4. **Verify:** `GET` the same route (read-only reconcile) — expect
+   `inSync: true` (tiny transient drift can appear for events in flight
+   during the backfill; re-check, then repair once if it persists), and
+   `GET /api/public/khala-tokens-served` — expect the payload's staleness
+   contract to read `rebuilt_on_transition` / `maxStalenessSeconds: 2`
+   (fallback responses read `live_at_read` / `0`).
+
+**Ongoing reconciliation (invariant 8):** the Worker cron runs a
+detect-only reconcile every 15 minutes; drift logs the typed
+`khala_sync_tokens_served_projection_drift` diagnostic and shows on the GET
+reconcile route. The sweep NEVER overwrites the projection — repair is
+always the explicit audited `POST { repair: true, auditNote }`, recorded in
+`khala_sync_public_counter_repairs` with previous/new totals.
+
+**Expected drift sources** (all self-heal at the next repair; the exact D1
+SUM is always the truth): fail-soft producer misses while Postgres is
+unreachable, and the two remaining low-volume direct-insert paths that do
+not yet carry the producer hook
+(`workers/api/src/builtin-compute-agent-grant.ts`,
+`workers/api/src/provider-account-service-routes.ts`) — hook them when they
+gain real volume. Persistent RE-GROWING drift after a repair means a hot
+ingest path lost its producer wiring; check the
+`khala_sync_tokens_served_projection_failed` diagnostics first.
+
 ## What this runbook does NOT cover
 
 - Deploying the Worker/hub DO: `docs/DEPLOYMENT.md` (deploy:safe gate).

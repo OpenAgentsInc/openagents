@@ -2352,9 +2352,55 @@ const aggregateSourceRefRows = (
       .slice(0, 100)
   })
 
+/**
+ * Plain-Promise exact-source read of the public tokens-served total — the
+ * SAME canonical SUM (`input+output`, `total_tokens` fallback, all real
+ * rows) `readPublicTokensServed` serves. KS-6.3 (#8304) reconciliation
+ * uses this as the source of truth the projection must equal (SPEC §7
+ * invariant 8); a D1 failure rejects so the reconcile reports an honest
+ * `exact_read_failed` instead of comparing against a guess.
+ */
+export const readPublicTokensServedExactTotal = async (
+  db: D1Database,
+): Promise<number> => {
+  const row = await db
+    .prepare(
+      `SELECT
+          COALESCE(SUM(${publicTokensServedSqlExpression}), 0)
+            AS tokens_served
+         FROM token_usage_events
+        WHERE ${publicTokensServedDemandWhere}`,
+    )
+    .first<{ tokens_served: number | null }>()
+
+  return Math.max(0, Math.trunc(row?.tokens_served ?? 0))
+}
+
+/**
+ * Fire-and-forget observer for FRESHLY INSERTED ledger rows (KS-6.3,
+ * #8304): the public tokens-served projection producer. Called with the
+ * row's idempotency key (the exact-once guard key), the row's public
+ * tokens-served contribution (`input+output`, `total_tokens` fallback —
+ * the same policy the public SUM uses), and its observed-at. The observer
+ * MUST be fail-soft; the ledger additionally swallows any rejection so a
+ * projection failure can never fail or fault an ingest.
+ */
+export type TokenUsageLedgerIngestObserver = (
+  event: Readonly<{
+    idempotencyKey: string
+    observedAt: string
+    tokensServed: number
+  }>,
+) => Promise<unknown>
+
+export type TokenUsageLedgerOptions = Readonly<{
+  onIngestedEvent?: TokenUsageLedgerIngestObserver | undefined
+}>
+
 export const makeD1TokenUsageLedger = (
   db: D1Database,
   runtime: TokenUsageLedgerRuntime = systemTokenUsageLedgerRuntime,
+  options: TokenUsageLedgerOptions = {},
 ): TokenUsageLedgerShape => ({
   ingestEvent: body =>
     Effect.gen(function* () {
@@ -2419,6 +2465,25 @@ export const makeD1TokenUsageLedger = (
       }
 
       const event = yield* rowToRecord(row)
+
+      // KS-6.3 (#8304): notify the public tokens-served projection producer
+      // for this FRESH row only (duplicates returned above never re-fire).
+      // Awaited but swallowed: the observer is fail-soft by contract, and
+      // even a rejecting observer can never fail the ingest.
+      if (options.onIngestedEvent !== undefined) {
+        const observer = options.onIngestedEvent
+        yield* Effect.promise(() =>
+          Promise.resolve()
+            .then(() =>
+              observer({
+                idempotencyKey: row.idempotency_key,
+                observedAt: row.observed_at,
+                tokensServed: publicTokensServedFromRow(row),
+              }),
+            )
+            .catch(() => undefined),
+        )
+      }
 
       return {
         event,
@@ -3549,12 +3614,15 @@ export class TokenUsageLedger extends Context.Service<
   static live = (
     db: D1Database,
     runtime: TokenUsageLedgerRuntime = systemTokenUsageLedgerRuntime,
-  ) => Layer.succeed(TokenUsageLedger, makeD1TokenUsageLedger(db, runtime))
+    options: TokenUsageLedgerOptions = {},
+  ) =>
+    Layer.succeed(TokenUsageLedger, makeD1TokenUsageLedger(db, runtime, options))
 
   static layer = (
     env: Readonly<{ OPENAGENTS_DB: D1Database }>,
     runtime: TokenUsageLedgerRuntime = systemTokenUsageLedgerRuntime,
-  ) => TokenUsageLedger.live(openAgentsDatabase(env), runtime)
+    options: TokenUsageLedgerOptions = {},
+  ) => TokenUsageLedger.live(openAgentsDatabase(env), runtime, options)
 
   static effectCfLayer = (
     runtime: TokenUsageLedgerRuntime = systemTokenUsageLedgerRuntime,

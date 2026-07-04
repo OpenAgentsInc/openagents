@@ -2211,3 +2211,119 @@ describe('public tokens-served channel mix', () => {
     })
   })
 })
+
+// ---------------------------------------------------------------------------
+// KS-6.3 (#8304): public tokens-served projection ingest observer
+// ---------------------------------------------------------------------------
+
+describe('token usage ledger ingest observer (KS-6.3 #8304)', () => {
+  const observedEvents: Array<{
+    idempotencyKey: string
+    observedAt: string
+    tokensServed: number
+  }> = []
+
+  const runWithObserver = <A>(
+    db: D1Database,
+    effect: Effect.Effect<A, unknown, TokenUsageLedger>,
+    onIngestedEvent: (event: {
+      idempotencyKey: string
+      observedAt: string
+      tokensServed: number
+    }) => Promise<unknown>,
+  ): Promise<A> =>
+    Effect.runPromise(
+      effect.pipe(
+        Effect.provide(TokenUsageLedger.live(db, runtime, { onIngestedEvent })),
+      ),
+    )
+
+  test('fires once per FRESH row with the idempotency key and public delta', async () => {
+    observedEvents.length = 0
+    const db = makeMemoryD1()
+
+    const first = await runWithObserver(
+      db,
+      ingest(validProbeEvent),
+      async event => {
+        observedEvents.push(event)
+      },
+    )
+    // Replay of the SAME event: duplicate — the observer must NOT re-fire.
+    const second = await runWithObserver(
+      db,
+      ingest(validProbeEvent),
+      async event => {
+        observedEvents.push(event)
+      },
+    )
+
+    expect(first.inserted).toBe(true)
+    expect(second.inserted).toBe(false)
+    expect(observedEvents).toEqual([
+      {
+        idempotencyKey: 'probe:event:1',
+        observedAt: '2026-06-08T11:59:00.000Z',
+        // input 100 + output 40 — the same public tokens-served policy the
+        // headline SUM uses (total_tokens fallback only when split is 0).
+        tokensServed: 140,
+      },
+    ])
+  })
+
+  test('uses total_tokens when the provider reports no split counts', async () => {
+    observedEvents.length = 0
+    const db = makeMemoryD1()
+
+    await runWithObserver(
+      db,
+      ingest({
+        ...validProbeEvent,
+        eventId: 'token_event_total_only',
+        idempotencyKey: 'probe:event:total-only',
+        tokenCounts: {
+          cacheReadTokens: 0,
+          cacheWrite1hTokens: 0,
+          cacheWrite5mTokens: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          reasoningTokens: 0,
+          totalTokens: 777,
+        },
+      }),
+      async event => {
+        observedEvents.push(event)
+      },
+    )
+
+    expect(observedEvents).toEqual([
+      {
+        idempotencyKey: 'probe:event:total-only',
+        observedAt: '2026-06-08T11:59:00.000Z',
+        tokensServed: 777,
+      },
+    ])
+  })
+
+  test('a rejecting observer NEVER fails the ingest (fail-soft producer)', async () => {
+    const db = makeMemoryD1()
+
+    const result = await runWithObserver(db, ingest(validProbeEvent), () =>
+      Promise.reject(new Error('projection storage down')),
+    )
+
+    expect(result.inserted).toBe(true)
+    expect(db.rows).toHaveLength(1)
+  })
+
+  test('a THROWING observer NEVER fails the ingest either', async () => {
+    const db = makeMemoryD1()
+
+    const result = await runWithObserver(db, ingest(validProbeEvent), () => {
+      throw new Error('synchronous observer defect')
+    })
+
+    expect(result.inserted).toBe(true)
+    expect(db.rows).toHaveLength(1)
+  })
+})

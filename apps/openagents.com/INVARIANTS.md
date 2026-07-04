@@ -2587,7 +2587,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
 - Projection inventory (staleness mode → compliance as of epic #4751):
   - `GET /api/public/forum-activity` — live at read over public forum topics/posts, rebuilt on forum topic/post writes — compliant (`generatedAt`, `live_at_read` contract). Public-safe forum→Verse reflection source (epic #5897, BF-1). `staleness_declared`.
   - `GET /api/public/labor-earnings` — live at read over labor escrow receipts — compliant (`generatedAt`, `live_at_read` contract). `staleness_declared`.
-  - `GET /api/public/khala-tokens-served` — live at read over the canonical token usage ledger; the running product-wide SUM of input + output tokens served across Khala API rows and explicitly opted-in direct local Codex rows ("Tokens Served" homepage/stats counter, #6227/#7797) — compliant (`generatedAt`, `live_at_read` contract over `token_usage_events`). Aggregate only; no per-user/team/account/provider material. A short in-isolate cache is a perf detail under the live-at-read contract. `staleness_declared`.
+  - `GET /api/public/khala-tokens-served` — projection-first (KS-6.3 #8304): the primary path serves the Khala Sync `scope.public.tokens-served` counter projection (`khala_sync_public_counters` via the `KHALA_SYNC_DB` Hyperdrive binding, small in-isolate cache) with a declared `rebuilt_on_transition` contract (`maxStalenessSeconds: 2` over `token_usage_events`; the write path bumps the counter exact-once per ledger row and reconciliation proves projection == SUM(exact rows) — Khala Sync invariant 8 below); the fail-open fallback (binding absent, Postgres unreachable, or pre-backfill) serves the previous live-at-read D1 SUM with a `live_at_read` contract ("Tokens Served" homepage/stats counter, #6227/#7797). Aggregate only; no per-user/team/account/provider material. `staleness_declared`.
   - `GET /api/public/khala-tokens-served/model-mix` — live at read over the canonical token usage ledger; the public `/stats` model/provider mix collapsed into `openagents.public_khala_model_mix.v1` groups (`family`, `label`, `tokens`, `reqs`, `pct`) across the canonical `glm`, `fireworks_deepseek`, `pylon_codex`, `codex_direct`, `pylon_claude`, `gpt_oss`, `gemini`, and `other` families — compliant (`generatedAt`, `live_at_read` contract over `token_usage_events`). Aggregate only; all demand rows are included, including `internal`, `own_capacity`, and direct-local rows, while no per-user/team/account/raw-provider/raw-model material is exposed. `staleness_declared`.
   - `GET /api/public/khala-tokens-served/channel-mix` — live at read over the canonical token usage ledger; the public `/stats` channel mix collapsed into `openagents.public_khala_channel_mix.v1` groups (`channel`, `label`, `tokens`, `reqs`, `pct`) across `khala_api` and `direct_local`, with legacy rows defaulted to `khala_api` — compliant (`generatedAt`, `live_at_read` contract over `token_usage_events`). Aggregate only; no per-user/team/account/raw-provider/raw-model/local-path material is exposed. `staleness_declared`.
   - `GET /api/public/marketing-agency/receipts/{receiptRef}` — live at read
@@ -3525,12 +3525,36 @@ name the blocking issue instead of claiming enforcement.
    write path that revokes scope access MUST call
    `notifyKhalaSyncHubAccessChangedBestEffort` after its commit and cite it
    here. CVR v2 remains #8306.
-8. **Public-projection reconciliation (pending KS-6.3 #8304).** Public-scope
+8. **Public-projection reconciliation (enforced for the landed
+   tokens-served projection — a per-projection obligation).** Public-scope
    projections (e.g. tokens-served) must reconcile to exact source rows;
-   the sync path never invents counter deltas. NOT YET ENFORCED: no
-   public-scope projection producer has landed. The KS-6.3 tokens-served
-   lane (#8304) must land its reconciliation tests together with the
-   producer and upgrade this entry in the same change.
+   the sync path never invents counter deltas. Enforced for the KS-6.3
+   tokens-served projection (#8304): every increment is keyed to exactly
+   one `token_usage_events` row's idempotency key through a
+   `khala_sync_counter_applied` guard insert in the SAME Postgres
+   transaction as the counter bump and changelog append (replay ⇒ no-op),
+   an uninitialized counter REFUSES increments (rolling the guard back)
+   until the audited backfill sets it to the exact D1 SUM, and the
+   reconcile surface (admin route
+   `/api/internal/khala-sync/public-counters/tokens-served/reconcile` +
+   scheduled detect-only sweep) compares projection to `SUM(exact rows)` —
+   drift is a typed diagnostic and repairs are explicit audited
+   `khala_sync_public_counter_repairs` rows, never silent overwrites.
+   Tests: `packages/khala-sync-server/src/public-counter-projection.test.ts`
+   ("exact-once under replay: the same idempotency key increments once",
+   "increments refuse before the backfill (counter_not_initialized) and
+   roll the guard back", "reconcile-repair on seeded drift realigns and
+   audits (never silent)", "changelog entries land in
+   scope.public.tokens-served with dense versions"),
+   `workers/api/src/khala-sync-public-tokens-served.test.ts` ("detects
+   seeded drift without writing, and logs the typed diagnostic", "repair
+   realigns projection to the exact SUM with the audit row"),
+   `workers/api/src/khala-sync-public-counter-reconcile-routes.test.ts`
+   ("POST without repair:true is a 400 — drift is never overwritten
+   implicitly"), and `workers/api/src/token-usage-ledger.test.ts` ("a
+   rejecting observer NEVER fails the ingest (fail-soft producer)"). Every
+   future public-scope projection must land equivalent exact-once +
+   reconcile tests in the same change.
 9. **Post-image redaction for broader-than-owner scopes (partial — enforced
    for the landed fleet projection; a per-projection obligation).** Raw
    private material (prompts, tokens, wallet material, local paths, emails)
@@ -3542,8 +3566,14 @@ name the blocking issue instead of claiming enforcement.
    raw row whose ALLOWLISTED field carries a path fails to decode") and the
    Worker call site `workers/api/src/khala-sync-fleet-projection.test.ts`
    ("projects a redacted fleet_assignment post-image and closes the
-   client"). Every future projection into a shared or public scope
-   (starting with KS-6.3 #8304) must land equivalent
+   client"). The KS-6.3 tokens-served projection (#8304) meets the same
+   obligation structurally: its post-image decodes through the
+   `PublicCounterEntity` contract (bounded kebab-case counter id,
+   non-negative safe-integer total, ISO timestamp), so paths, emails,
+   bearer strings, and free text cannot decode into it —
+   `packages/khala-sync/src/public-counter.test.ts` ("structurally refuses
+   non-counter material (SPEC §7 invariant 9)"). Every future projection
+   into a shared or public scope must land equivalent
    allowlist-plus-forbidden-material tests in the same change.
 
 Operational procedures (Cloud SQL monitoring, migrations, compaction

@@ -798,6 +798,14 @@ import { handleKhalaSyncLog } from './khala-sync-log-routes'
 import { makeKhalaSyncScopeReadResolver } from './khala-sync-scope-auth'
 import { makeKhalaSyncWorkerMutatorRegistry } from './khala-sync-mutators'
 import {
+  handleKhalaSyncTokensServedReconcile,
+  KHALA_SYNC_TOKENS_SERVED_RECONCILE_PATH,
+} from './khala-sync-public-counter-reconcile-routes'
+import {
+  reconcileTokensServedProjection,
+  recordTokensServedProjectionBestEffort,
+} from './khala-sync-public-tokens-served'
+import {
   defaultMakeKhalaSyncSqlClient,
   handleKhalaSyncPush,
 } from './khala-sync-push-routes'
@@ -1176,7 +1184,11 @@ import {
   type AutopilotTokenLeaderboards,
   TokenUsageLeaderboards,
 } from './token-usage'
-import { makeD1TokenUsageLedger } from './token-usage-ledger'
+import {
+  makeD1TokenUsageLedger,
+  readPublicTokensServedExactTotal,
+  TokenUsageLedger,
+} from './token-usage-ledger'
 import { makeTokenUsageLedgerRoutes } from './token-usage-ledger-routes'
 import {
   makeD1TraceStore,
@@ -7415,9 +7427,61 @@ const traceStoreRoutes = makeTraceStoreRoutes({
   requireBrowserSession,
 })
 
+// KS-6.3 (#8304): shared fail-soft producer for the public tokens-served
+// projection (scope.public.tokens-served). Fired once per FRESH
+// token_usage_events row by the ledger ingest observers wired below;
+// exact-once per row via the event's idempotency key (a Postgres guard
+// insert in the projection transaction). Fail-soft by contract: it can
+// never fail or slow the D1 business write, and a pre-backfill
+// counter_not_initialized refusal is expected and quiet.
+const makeTokensServedProjectionObserver =
+  (env: Readonly<{ KHALA_SYNC_DB?: Readonly<{ connectionString: string }> }>) =>
+  (
+    event: Readonly<{
+      idempotencyKey: string
+      observedAt: string
+      tokensServed: number
+    }>,
+  ) =>
+    recordTokensServedProjectionBestEffort(
+      {
+        binding: env.KHALA_SYNC_DB,
+        log: (logEvent, fields) => logWorkerRouteWarning(logEvent, fields),
+      },
+      {
+        idempotencyKey: event.idempotencyKey,
+        observedAt: event.observedAt,
+        tokensServedDelta: event.tokensServed,
+      },
+    )
+
+// KS-6.3 (#8304): shared reconcile deps (invariant 8) for the admin
+// reconcile/repair route and the scheduled detect-only sweep. The exact
+// source of truth is the canonical D1 tokens-served SUM; the projection is
+// the khala_sync_public_counters row read through KHALA_SYNC_DB.
+const makeTokensServedReconcileDeps = (
+  env: Readonly<{ KHALA_SYNC_DB?: Readonly<{ connectionString: string }> }> &
+    Parameters<typeof openAgentsDatabase>[0],
+) => ({
+  binding: env.KHALA_SYNC_DB,
+  log: (
+    logEvent:
+      | 'khala_sync_tokens_served_projection_failed'
+      | 'khala_sync_tokens_served_projection_drift',
+    fields: Readonly<Record<string, string | number>>,
+  ) => logWorkerRouteWarning(logEvent, fields),
+  readExactTokensServed: () =>
+    readPublicTokensServedExactTotal(openAgentsDatabase(env)),
+})
+
 const pylonCodexTurnIngestRoutes = makePylonCodexTurnIngestRoutes<Env>({
   agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
-  ledger: env => makeD1TokenUsageLedger(openAgentsDatabase(env)),
+  // KS-6.3 (#8304): the Codex turn-ingest ledger writes move the public
+  // tokens-served projection too (fail-soft, exact-once per row).
+  ledger: env =>
+    makeD1TokenUsageLedger(openAgentsDatabase(env), undefined, {
+      onIngestedEvent: makeTokensServedProjectionObserver(env),
+    }),
   pylonStore: env => makePylonApiStoreForEnv(env),
   proofStore: env => makeD1PylonCodexAssignmentProofStore(openAgentsDatabase(env)),
   traceStatusStore: env =>
@@ -7753,6 +7817,12 @@ const handleCfBrowserSmokeApi = makeCfBrowserSmokeHandler({
 const tokenUsageLedgerRoutes = makeTokenUsageLedgerRoutes({
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
+  // KS-6.3 (#8304): trusted-producer ledger ingests move the public
+  // tokens-served projection too (fail-soft, exact-once per row).
+  ledgerLayer: (env, runtime) =>
+    TokenUsageLedger.live(openAgentsDatabase(env), runtime, {
+      onIngestedEvent: makeTokensServedProjectionObserver(env),
+    }),
   requireAdminApiToken,
   requireBrowserSession,
 })
@@ -8440,6 +8510,17 @@ const makeKhalaMcpServedTokensRecorder = (
   options: Readonly<{
     nowIso?: () => string
     publishDelta?: (input: KhalaMcpTokensServedDelta) => Promise<void>
+    /**
+     * KS-6.3 (#8304): fail-soft public tokens-served projection producer,
+     * fired once per FRESH ledger row with its idempotency key.
+     */
+    onIngestedEvent?: (
+      event: Readonly<{
+        idempotencyKey: string
+        observedAt: string
+        tokensServed: number
+      }>,
+    ) => Promise<unknown>
   }> = {},
 ): ((input: ServedTokensRecorderInput) => Promise<void>) => {
   const nowIso = options.nowIso ?? currentIsoTimestamp
@@ -8543,6 +8624,17 @@ const makeKhalaMcpServedTokensRecorder = (
 
       const inserted =
         Number((result.meta as D1Meta & { changes?: number }).changes ?? 0) > 0
+      if (inserted && options.onIngestedEvent !== undefined) {
+        // KS-6.3 (#8304): move the scope.public.tokens-served projection
+        // (fail-soft, exact-once per row via the idempotency key).
+        await options
+          .onIngestedEvent({
+            idempotencyKey: body.idempotencyKey,
+            observedAt,
+            tokensServed: tokensServedDelta,
+          })
+          .catch(() => undefined)
+      }
       if (
         inserted &&
         options.publishDelta !== undefined &&
@@ -8604,6 +8696,8 @@ const crmMcpRoutes = makeCrmMcpRoutes<WorkerBindings>({
       pylonStore: env => makePylonApiStoreForEnv(env),
       recordTokensServed: env =>
         makeKhalaMcpServedTokensRecorder(openAgentsDatabase(env), {
+          // KS-6.3 (#8304): projection producer (fail-soft, exact-once).
+          onIngestedEvent: makeTokensServedProjectionObserver(env),
           publishDelta: delta =>
             publishKhalaTokensServedDelta(
               env,
@@ -10584,7 +10678,7 @@ const makeKhalaChatStreamClient = (
 
 const makeArtanisResponderKhalaClient = (
   env: OnboardingInferenceEnv &
-    Pick<WorkerBindings, 'OPENAGENTS_DB' | 'SYNC_ROOM'>,
+    Pick<WorkerBindings, 'OPENAGENTS_DB' | 'SYNC_ROOM' | 'KHALA_SYNC_DB'>,
 ): ArtanisResponderKhalaClient => {
   registerPassthroughAdapters(inferenceProviderRegistry, env)
   registerHydraliskAdapter(inferenceProviderRegistry, env)
@@ -10595,6 +10689,9 @@ const makeArtanisResponderKhalaClient = (
   const recordTokensServed = makeD1ServedTokensRecorder(
     openAgentsDatabase(env),
     {
+      // KS-6.3 (#8304): move the scope.public.tokens-served projection on
+      // every fresh served-tokens row (fail-soft, exact-once per row).
+      onIngestedEvent: makeTokensServedProjectionObserver(env),
       publishDelta: delta =>
         Effect.promise(() =>
           publishKhalaTokensServedDelta(
@@ -10987,6 +11084,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         recordTokensServed: makeD1ServedTokensRecorder(
           openAgentsDatabase(env),
           {
+            // KS-6.3 (#8304): projection producer (fail-soft, exact-once).
+            onIngestedEvent: makeTokensServedProjectionObserver(env),
             publishDelta: delta =>
               Effect.promise(() =>
                 publishKhalaTokensServedDelta(
@@ -11987,6 +12086,19 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       handleKhalaSyncDbSmoke(request, {
         binding: env.KHALA_SYNC_DB,
+        requireOperator: () => requireAdminApiToken(request, env),
+      }),
+  },
+  {
+    // Khala Sync public tokens-served reconcile/repair (KS-6.3, #8304;
+    // SPEC §7 invariant 8). Admin bearer only. GET = read-only reconcile
+    // (exact D1 SUM vs the scope.public.tokens-served projection); POST
+    // { repair: true, auditNote? } = explicit audited repair — also the
+    // first-deploy backfill against an uninitialized counter.
+    path: KHALA_SYNC_TOKENS_SERVED_RECONCILE_PATH,
+    handler: (request, env) =>
+      handleKhalaSyncTokensServedReconcile(request, {
+        reconcileDeps: makeTokensServedReconcileDeps(env),
         requireOperator: () => requireAdminApiToken(request, env),
       }),
   },
@@ -13619,6 +13731,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         recordTokensServed: makeD1ServedTokensRecorder(
           openAgentsDatabase(env),
           {
+            // KS-6.3 (#8304): projection producer (fail-soft, exact-once).
+            onIngestedEvent: makeTokensServedProjectionObserver(env),
             // Live-counter push (#6231): on a REAL new served-tokens row, push the
             // public-safe delta onto the tokens-served sync scope so the homepage
             // odometer rolls up instantly. Fail-soft: never breaks the completion.
@@ -14065,6 +14179,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           recordTokensServed: makeD1ServedTokensRecorder(
             openAgentsDatabase(env),
             {
+              // KS-6.3 (#8304): projection producer (fail-soft, exact-once).
+              onIngestedEvent: makeTokensServedProjectionObserver(env),
               // Live-counter push (#6231): MPP traffic rolls the homepage
               // odometer up instantly too. Fail-soft.
               publishDelta: delta =>
@@ -15393,6 +15509,9 @@ export default {
       runScheduledGlmPoolHeartbeatForD1({
         db: openAgentsDatabase(env),
         env,
+        // KS-6.3 (#8304): heartbeat rows move the public tokens-served
+        // projection too (fail-soft, exact-once per row).
+        onIngestedEvent: makeTokensServedProjectionObserver(env),
         scheduledTimeMs: event.scheduledTime,
       }),
     )
@@ -15415,6 +15534,20 @@ export default {
       sweepActiveAgentRunBilling(env, ctx),
       sendPendingReviewReadyArtifactNotifications(env),
       sendPendingReviewReadySiteNotifications(env),
+      // KS-6.3 (#8304): scheduled tokens-served projection reconcile
+      // (SPEC §7 invariant 8), detect-only, every 15 minutes. Drift logs
+      // the typed khala_sync_tokens_served_projection_drift diagnostic and
+      // shows on the admin reconcile route; repair stays an explicit,
+      // audited admin action — the sweep NEVER overwrites the projection.
+      Math.floor(event.scheduledTime / 60_000) % 15 === 0
+        ? reconcileTokensServedProjection(
+            makeTokensServedReconcileDeps(env),
+            { repair: false },
+          ).then(
+            () => undefined,
+            () => undefined,
+          )
+        : Promise.resolve(undefined),
       // #6408: "fleet never silently stalls" watchdog. Every minute, measure the
       // own-capacity Codex burn rate vs active coding leases; on a stall (burn
       // below threshold WHILE work is leased) write a loud fleet_alerts row and
