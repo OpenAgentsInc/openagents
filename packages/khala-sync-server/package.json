@@ -6,6 +6,7 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
+    "./capture": "./src/capture.ts",
     "./hub": "./src/hub.ts"
   },
   "files": [

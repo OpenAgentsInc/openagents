@@ -17,7 +17,6 @@ import type {
   KhalaSyncStorageError,
 } from "./errors.js"
 
-export * from "./capture.js"
 export * from "./compaction.js"
 export * from "./errors.js"
 export * from "./mutation-ledger.js"
@@ -99,9 +98,13 @@ export interface KhalaSyncScopeAuth {
 // ---------------------------------------------------------------------------
 // Capture (KS-4.1): tails khala_sync_changelog over a DIRECT Postgres
 // connection (LISTEN wake + poll fallback) and pushes ordered batches to
-// the per-scope hub — implemented in ./capture (re-exported above:
-// KHALA_SYNC_NOTIFY_CHANNEL, KhalaSyncCaptureCheckpoint, runCapturePass,
-// startCaptureDaemon, …). CLI: scripts/capture.ts.
+// the per-scope hub — implemented in ./capture and exposed ONLY through
+// the Bun-side `@openagentsinc/khala-sync-server/capture` subpath
+// (KHALA_SYNC_NOTIFY_CHANNEL, KhalaSyncCaptureCheckpoint, runCapturePass,
+// startCaptureDaemon, …). It is a long-lived Bun daemon (`import { SQL }
+// from "bun"` as a VALUE), so it must never ride the root export the
+// workers-typechecked openagents.com Worker consumes — same isolation rule
+// as ./hub. CLI: scripts/capture.ts.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
