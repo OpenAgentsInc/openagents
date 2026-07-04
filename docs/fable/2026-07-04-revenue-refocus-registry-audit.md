@@ -196,6 +196,16 @@ training, customer datasets, customer-owned weights, route swaps, public
 capability copy, pricing, external pilot, compliance, payout, and settlement
 remain blocked.
 
+RX-8 note (2026-07-04): the model-custody Lead Gen segment landed as
+configuration and tests only. `@openagentsinc/agent-readiness` now has a
+public-only model-custody analyzer config/report shape; the Worker accepts
+`sourceRef=apollo_model_custody`, registers a Campaign B LG-7 customer config,
+ships a claim-lint-clean regulated Reactor Assessment template variant, and
+tests quoted Reactor Assessment rows in the LG-2 pipeline. This clears only
+the config/template/pipeline blocker; live customer runs, Apollo sends,
+customer-result receipts, public pricing, compliance/custody claims, payout,
+settlement, and green promotion remain blocked.
+
 ## 3. The focus: closing the revenue loop, independence-first
 
 The company objective (Episode 246: "close the gap between what I've been

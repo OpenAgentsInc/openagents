@@ -82,7 +82,8 @@ const SOURCE_CAPTURE_SCRIPT = `
     if(source==="ai-search"||source==="aisearch")source="ai_search";
     if(source==="partner-expansion")source="partner_expansion";
     if(source==="own-your-ai")source="own_your_ai";
-    if(!/^(direct|ai_search|own_your_ai|apollo_agent_readiness_[a-z0-9][a-z0-9_-]{0,63}|affiliate_[a-z0-9][a-z0-9_-]{0,63}|partner_[a-z0-9][a-z0-9_-]{0,63}|content_[a-z0-9][a-z0-9_-]{0,63}|vertical_[a-z0-9][a-z0-9_-]{0,63})$/.test(source))return;
+    if(source==="apollo-model-custody"||source==="model-custody")source="apollo_model_custody";
+    if(!/^(direct|ai_search|own_your_ai|apollo_model_custody|apollo_agent_readiness_[a-z0-9][a-z0-9_-]{0,63}|affiliate_[a-z0-9][a-z0-9_-]{0,63}|partner_[a-z0-9][a-z0-9_-]{0,63}|content_[a-z0-9][a-z0-9_-]{0,63}|vertical_[a-z0-9][a-z0-9_-]{0,63})$/.test(source))return;
     var el=document.getElementById("business-source-ref");
     if(el)el.value=source;
   }catch(e){}

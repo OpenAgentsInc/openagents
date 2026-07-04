@@ -225,7 +225,7 @@ describe('public product promises document', () => {
     expect(qaSwarmCopy).not.toContain('paid delivery receipts exist')
   })
 
-  test('registers Autopilot Lead Gen as planned and drafting-only for issue 8268', () => {
+  test('registers Autopilot Lead Gen as planned and drafting-only for issues 8268 and 8281', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
     )
@@ -246,19 +246,33 @@ describe('public product promises document', () => {
         'docs/fable/2026-07-04-autopilot-lead-gen-agent-definition-receipt.md',
         'apps/openagents.com/workers/api/src/autopilot-lead-gen-agent-definition.ts',
         'apps/openagents.com/workers/api/src/autopilot-lead-gen-agent-definition.test.ts',
+        'apps/openagents.com/workers/api/src/model-custody-lead-gen.test.ts',
+        'apps/openagents.com/workers/api/src/business-outreach-routes.test.ts',
+        'apps/openagents.com/workers/api/src/business-pipeline-routes.test.ts',
+        'packages/agent-readiness/src/index.test.ts',
         'contract:lead_gen_agent.drafting_only_toolset.v1',
         'contract:lead_gen_agent.no_send_without_approval_receipt.v1',
         'https://github.com/OpenAgentsInc/openagents/issues/8268',
+        'https://github.com/OpenAgentsInc/openagents/issues/8281',
       ]),
     })
     expect(leadGen?.safeCopy).toContain('drafting-only')
     expect(leadGen?.safeCopy).toContain('sendAuthority.allowed=false')
     expect(leadGen?.safeCopy).toContain('Ora-style public-URL')
+    expect(leadGen?.safeCopy).toContain('model-custody segment')
+    expect(leadGen?.safeCopy).toContain('public-only model-custody analyzer')
     expect(leadGen?.unsafeCopy).toContain('without a separate LG-4 approval receipt')
     expect(leadGen?.authorityBoundary).toContain('grant no Apollo credential')
     expect(
       decoded.notes.find(note => note.includes('Registry 2026-07-04.9')),
     ).toContain('green stays exactly 34')
+    const rx8Note = decoded.notes.find(note =>
+      note.includes('Registry 2026-07-04.18'),
+    )
+    expect(rx8Note).toContain('RX-8 model-custody Lead Gen segment pass')
+    expect(rx8Note).toContain('sourceRef=apollo_model_custody')
+    expect(rx8Note).toContain('flips NO promise state')
+    expect(rx8Note).toContain('Live customer runs')
   })
 
   test('keeps Khala Code install truth public but desktop release gated', () => {

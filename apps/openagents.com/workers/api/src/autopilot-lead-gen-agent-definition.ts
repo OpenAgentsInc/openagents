@@ -29,7 +29,7 @@ const BusinessSourceRef = S.String.check(
   S.isNonEmpty(),
   S.isMaxLength(80),
   S.isPattern(
-    /^(direct|unknown|ai_search|own_your_ai|apollo_agent_readiness_[a-z0-9][a-z0-9_-]{0,63}|affiliate_[a-z0-9][a-z0-9_-]{0,63}|partner_[a-z0-9][a-z0-9_-]{0,63}|content_[a-z0-9][a-z0-9_-]{0,63}|vertical_[a-z0-9][a-z0-9_-]{0,63})$/,
+    /^(direct|unknown|ai_search|own_your_ai|apollo_model_custody|apollo_agent_readiness_[a-z0-9][a-z0-9_-]{0,63}|affiliate_[a-z0-9][a-z0-9_-]{0,63}|partner_[a-z0-9][a-z0-9_-]{0,63}|content_[a-z0-9][a-z0-9_-]{0,63}|vertical_[a-z0-9][a-z0-9_-]{0,63})$/,
   ),
 )
 const PositiveInt = S.Int.check(S.isGreaterThan(0))
@@ -169,6 +169,41 @@ export const OPENAGENTS_LEAD_GEN_DOGFOOD_CONFIG =
     targetDiscoveryConfigRef:
       'target_discovery.openagents.agent_ready_businesses.v1',
     templateFamilyRef: 'template_family.lead_gen.report_led_sequence.v1',
+  })
+
+export const OPENAGENTS_MODEL_CUSTODY_LEAD_GEN_CONFIG =
+  decodeLeadGenCustomerConfig({
+    schema: LEAD_GEN_CUSTOMER_CONFIG_SCHEMA,
+    analyzerConfigRef:
+      'analyzer.agent_readiness.model_custody.own_your_ai.v1',
+    approvalGateRef:
+      'approval_gate.lead_gen.openagents.model_custody.owner_send.v1',
+    caps: {
+      maxContactsPerRun: 25,
+      maxCreditsPerDay: 0,
+      maxDomainsPerRun: 25,
+      maxDraftedReportsPerRun: 25,
+      maxDraftedSequenceEntriesPerRun: 25,
+      maxRunSeconds: 1800,
+      maxRunsPerDay: 1,
+    },
+    configRef: 'lead_gen_config.openagents.model_custody.campaign_b.v1',
+    customerRef: 'customer.openagents.dogfood',
+    displayName: 'OpenAgents Own Your AI model-custody segment',
+    icpSpecRef: 'icp.openagents.own_your_ai.data_rich_mid_market.v1',
+    operatorInboxRef:
+      'operator_inbox.autopilot.lead_gen.openagents.model_custody.v1',
+    sourceRef: 'apollo_model_custody',
+    sourceRefs: [
+      'docs/fable/2026-07-03-apollo-outbound-sales-plan.md#11-campaign-b-own-your-ai',
+      'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md',
+      'packages/agent-readiness/src/index.ts',
+      'https://github.com/OpenAgentsInc/openagents/issues/8281',
+    ],
+    targetDiscoveryConfigRef:
+      'target_discovery.openagents.model_custody.hand_approved.v1',
+    templateFamilyRef:
+      'template_family.lead_gen.model_custody_regulated.reactor_assessment.v1',
   })
 
 export const leadGenAgentDefinition = (

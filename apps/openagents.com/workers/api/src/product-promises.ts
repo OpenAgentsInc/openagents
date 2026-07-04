@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-07-04.17'
+export const PublicProductPromisesVersion = '2026-07-04.18'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -4511,7 +4511,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Autopilot Lead Gen is the standing, approval-gated lead-generation engine: per-customer ICP config drives target discovery, agent-readiness analysis, drafted reports, drafted sequences, and operator-inbox approval before any send.',
         safeCopy:
-          'Autopilot Lead Gen is planned, not live. Source now has a v0 standing background-agent definition and OpenAgents dogfood customer #1 config: it can read a per-customer ICP/config ref, run the LG-1 agent-readiness analyzer shape, draft LG-5 report refs, draft LG-4 sequence-entry refs, and escalate those drafts to the operator inbox. The toolset is drafting-only and explicitly denies email/Apollo send and activation tools; the dogfood receipt records sendAuthority.allowed=false. The analyzer config borrows the useful Ora-style public-URL/readiness-rubric idea without claiming an ora.ai integration.',
+          'Autopilot Lead Gen is planned, not live. Source now has a v0 standing background-agent definition, OpenAgents dogfood customer #1 config, and an RX-8 Own Your AI model-custody segment config: it can read a per-customer ICP/config ref, run the LG-1 agent-readiness analyzer shape or the public-only model-custody analyzer, draft LG-5 report/dossier refs, draft LG-4 sequence-entry refs, and escalate those drafts to the operator inbox. The toolset is drafting-only and explicitly denies email/Apollo send and activation tools; the dogfood receipt records sendAuthority.allowed=false. The analyzer config borrows the useful Ora-style public-URL/readiness-rubric idea without claiming an ora.ai integration.',
         unsafeCopy:
           'Do not say Autopilot Lead Gen is live, self-serve, sending email, spending Apollo credits, revealing contacts, running for customers, or producing customer results. Do not imply any outreach can send without a separate LG-4 approval receipt.',
         evidenceRefs: [
@@ -4519,13 +4519,19 @@ export const publicProductPromisesDocument = () => {
           'docs/fable/2026-07-04-autopilot-lead-gen-agent-definition-receipt.md',
           'apps/openagents.com/workers/api/src/autopilot-lead-gen-agent-definition.ts',
           'apps/openagents.com/workers/api/src/autopilot-lead-gen-agent-definition.test.ts',
+          'apps/openagents.com/workers/api/src/model-custody-lead-gen.test.ts',
+          'apps/openagents.com/workers/api/src/business-outreach.ts',
+          'apps/openagents.com/workers/api/src/business-outreach-routes.test.ts',
+          'apps/openagents.com/workers/api/src/business-pipeline-routes.test.ts',
           'packages/agent-readiness/src/index.ts',
+          'packages/agent-readiness/src/index.test.ts',
           'packages/behavior-contracts/src/background-agents.ts',
           'contract:lead_gen_agent.drafting_only_toolset.v1',
           'contract:lead_gen_agent.no_send_without_approval_receipt.v1',
           'promise:business.intake_quick_win_offering.v1',
           'promise:autopilot_sites.native_email_sequences.v1',
           'https://github.com/OpenAgentsInc/openagents/issues/8268',
+          'https://github.com/OpenAgentsInc/openagents/issues/8281',
         ],
         blockerRefs: [
           'blocker.product_promises.lead_gen_live_customer_run_missing',
@@ -4534,7 +4540,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.lead_gen_owner_green_signoff_missing',
         ],
         verification:
-          'Planned: the v0 source definition decodes as openagents.agent_definition.v1 with a weekday cron trigger, manual trigger, own-Pylon lane, maxRunSeconds/maxRunsPerDay/maxCreditsPerDay caps inherited by the BA-B4 dispatch machinery, and BA-B5-compatible run history at /v1/agent-definitions/:id/runs. Tests prove the toolset denies send/activation refs, allows only draft/analyzer/operator-inbox/receipt work plus the Forge receive-pack dispatch scope, keeps per-customer ICP/analyzer/template/cap refs in run payloads rather than forking definitions, and records one OpenAgents dogfood run receipt as drafts awaiting operator approval. Green requires a real live customer run, a separate LG-4 approval receipt for any send, customer-result receipts, and owner-signed receipt-first upgrade.',
+          'Planned: the v0 source definition decodes as openagents.agent_definition.v1 with a weekday cron trigger, manual trigger, own-Pylon lane, maxRunSeconds/maxRunsPerDay/maxCreditsPerDay caps inherited by the BA-B4 dispatch machinery, and BA-B5-compatible run history at /v1/agent-definitions/:id/runs. Tests prove the toolset denies send/activation refs, allows only draft/analyzer/operator-inbox/receipt work plus the Forge receive-pack dispatch scope, keeps per-customer ICP/analyzer/template/cap refs in run payloads rather than forking definitions, registers the RX-8 apollo_model_custody segment, keeps the regulated Reactor Assessment template claim-lint clean, and records one OpenAgents dogfood run receipt as drafts awaiting operator approval. Green requires a real live customer run, a separate LG-4 approval receipt for any send, customer-result receipts, and owner-signed receipt-first upgrade.',
         authorityBoundary:
           'The v0 definition and dogfood receipt grant draft and review authority only. They grant no Apollo credential, contact reveal, email send, sequence activation, spend, payout, settlement, customer-delivery, or public availability authority; send authority exists only after a separate approval receipt under the LG-4 gate.',
       },
@@ -5252,6 +5258,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-04.18 is the RX-8 model-custody Lead Gen segment pass (#8281) and flips NO promise state - green stays exactly 34. @openagentsinc/agent-readiness now exports openagents.model_custody_analyzer_config.v1 and openagents.model_custody_report.v1 for the Own Your AI analyzer: public URLs only, no raw page bodies stored, no speculation, and findings limited to reproducible subprocessors/DPA, AI-feature/privacy, and careers/tech-stack signals. openagents.com now accepts sourceRef=apollo_model_custody, registers the model-custody customer config in the LG-7 run payload shape, ships a claim-lint-clean regulated Reactor Assessment template variant, and tests quoted Reactor Assessment rows in the LG-2 pipeline. This clears only the RX-8 config/template/pipeline blocker. Live customer runs, Apollo sends, customer-result receipts, public pricing, compliance/custody claims, payout, settlement, and promise-green authority remain blocked.',
       'Registry 2026-07-04.17 is the RX-11 Reactor improvement-ladder pass (#8279) and flips NO promise state - green stays exactly 34. The @openagentsinc/reactor-contracts package now exports openagents.reactor.improvement_ladder_plan_receipt.v1, openagents.reactor.harness_evolution_dogfood_receipt.v1, openagents.reactor.distill_to_fit_dogfood_receipt.v1, and openagents.reactor.improvement_ladder_dogfood_receipt.v1. The design doc orders the ladder as harness evolution -> distill-to-fit -> customer flywheel, with consent, customer boundary, dataset snapshot, run, eval delta, and customer-owned weights required before customer data can be used. The internal dogfood receipts record a Psionic/Mutalisk deliverable-landing harness delta (+16.70 points, no weight changes) and a distill-to-fit shrink delta (quality -1.20 points, cost -58.10%, policy revalidated, RX-3 router gate passed, route swap still unauthorized). The normal deploy sweep now runs apps/openagents.com/workers/api/src/reactor-improvement-ladder.test.ts. This clears only the design/internal-dogfood receipt blocker. Customer flywheel training, customer datasets, customer-owned weights, public capability copy, route swaps, pricing, external pilots, compliance, payout, and settlement claims remain blocked.',
       'Registry 2026-07-04.16 is the RX-10 Reactor Data Liberation pipeline pass (#8278) and flips NO promise state - green stays exactly 34. The @openagentsinc/reactor-contracts package now exports openagents.reactor.data_liberation_adapter_config.v1, openagents.reactor.data_liberation_record_class_verification_receipt.v1, and openagents.reactor.data_liberation_pipeline_report.v1, plus a config-driven pipeline runner. Two synthetic seed adapters prove the shape: a generic CSV/API SaaS contact export passes, and a Salesforce-contact-shaped export reports a partial migration when one row is missing required Email. Verification receipts include counts, checksums, failed row refs, partial row refs, and spot-diff hashes, while setting customerDataLogged:false, customerEngagementAuthorized:false, and packageCopyAuthorized:false. The normal deploy sweep now runs apps/openagents.com/workers/api/src/reactor-data-liberation.test.ts. This clears only the fixture-level adapter/verification blocker. Customer migrations, customer data custody, package copy, pricing, external pilots, compliance, payout, and settlement claims remain blocked.',
       'Registry 2026-07-04.15 is the RX-9 Reactor need-to-know access pass (#8277) and flips NO promise state - green stays exactly 34. The @openagentsinc/reactor-contracts package now exports openagents.reactor.need_to_know_ruleset.v1, openagents.reactor.corpus_document.v1, openagents.reactor.corpus_access_decision_receipt.v1, a deny-by-default evaluator, and adversarial Bob/Alice fixtures. Hard workspace/matter/role-or-user rules run before the model-oracle plausibility pass; an oracle can further deny but cannot rescue a hard-rule denial. The normal deploy sweep now runs apps/openagents.com/workers/api/src/reactor-need-to-know-access.test.ts, including citation and summary leakage fixtures, missing-oracle fail-closed behavior, and a deliberately broken allow-all rule fixture. This clears only the fixture-level need-to-know access blocker. Customer premises deployment, customer data custody, external customer pilots, full eval coverage, owner-approved public copy, pricing, compliance, payout, and settlement claims remain blocked.',

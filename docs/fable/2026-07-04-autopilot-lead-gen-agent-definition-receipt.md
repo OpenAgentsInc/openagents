@@ -82,6 +82,26 @@ scoring, cached/structured scan inputs, and an agent-readable rubric. This repo
 does not claim an ora.ai integration or an Ora score; the analyzer config ref is
 an OpenAgents-owned, public-safe readiness-rubric pointer.
 
+## RX-8 model-custody segment extension
+
+Issue [#8281](https://github.com/OpenAgentsInc/openagents/issues/8281) adds a
+second customer config to the same standing definition:
+
+- `configRef`: `lead_gen_config.openagents.model_custody.campaign_b.v1`
+- `analyzerConfigRef`:
+  `analyzer.agent_readiness.model_custody.own_your_ai.v1`
+- `sourceRef`: `apollo_model_custody`
+- `targetDiscoveryConfigRef`:
+  `target_discovery.openagents.model_custody.hand_approved.v1`
+- `templateFamilyRef`:
+  `template_family.lead_gen.model_custody_regulated.reactor_assessment.v1`
+
+The analyzer scans public URLs only for reproducible subprocessors/DPA,
+AI-feature/privacy, and careers/tech-stack signals. The regulated Reactor
+Assessment template is claim-lint clean and drafts into the operator path only.
+The run payload still records `sendAuthority.allowed=false`; owner personal
+sends and customer results remain outside this source receipt.
+
 ## Remaining gates
 
 `autopilot.lead_gen.v1` stays planned until these exist:

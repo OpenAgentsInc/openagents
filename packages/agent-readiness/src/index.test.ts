@@ -3,7 +3,10 @@ import { describe, expect, test } from "bun:test"
 import {
   AGENT_READINESS_REPORT_RENDER_SCHEMA_VERSION,
   AGENT_READINESS_REPORT_SCHEMA_VERSION,
+  MODEL_CUSTODY_ANALYZER_CONFIG,
+  MODEL_CUSTODY_REPORT_SCHEMA_VERSION,
   agentReadinessTaskForDomain,
+  analyzeModelCustodyPublicSurfaces,
   decodeAgentReadinessReport,
   decodeAgentReadinessReportRender,
   defaultAgentReadinessProbeSet,
@@ -49,6 +52,29 @@ const openAgentsHomepage = `<!doctype html>
 </html>`
 
 const spaShell = `<!doctype html><html><head><title>SPA</title></head><body><div id="root"></div><script src="/assets/app.js"></script></body></html>`
+
+const modelCustodyFetch = (async (input) => {
+  const url = new URL(String(input))
+  switch (url.pathname) {
+    case "/subprocessors":
+      return text(
+        "Subprocessors include OpenAI API, Anthropic Claude, and Google Vertex AI for optional AI features.",
+        "text/html",
+      )
+    case "/privacy":
+      return text(
+        "Privacy notice: customer content may be processed by AI assistants. Prompt data is retained for abuse monitoring; vendor foundation models are not trained unless a customer opts in.",
+        "text/html",
+      )
+    case "/careers":
+      return text(
+        "Hiring AI Platform Engineer with Azure OpenAI, AWS Bedrock, and LLM evaluation experience.",
+        "text/html",
+      )
+    default:
+      return text("not found", "text/plain", 404)
+  }
+}) as typeof fetch
 
 const openAgentsReportFixtureUrl = new URL(
   "../fixtures/openagents-com-report.json",
@@ -290,5 +316,85 @@ describe("@openagentsinc/agent-readiness", () => {
       },
       generatedAt: "2026-07-04T07:00:00.000Z",
     })).toThrow(/Missing commercial context/)
+  })
+
+  test("declares the RX-8 model-custody analyzer as public-only and no-speculation", () => {
+    expect(MODEL_CUSTODY_ANALYZER_CONFIG).toMatchObject({
+      analyzerRef: "@openagentsinc/agent-readiness/model-custody.v1",
+      campaignRef: "campaign.own_your_ai",
+      dossierFormatRef: "dossier.model_custody.public_facts.v1",
+      evidenceBoundary: {
+        publicUrlsOnly: true,
+        rawPageBodiesStored: false,
+        speculationAllowed: false,
+      },
+      sourceRef: "apollo_model_custody",
+    })
+    expect(MODEL_CUSTODY_ANALYZER_CONFIG.disallowedClaimRefs).toEqual(
+      expect.arrayContaining([
+        "claim_lint.hipaa_sovereign",
+        "claim_lint.published_prices",
+        "claim_lint.customer_data_transfer_inferred",
+        "claim_lint.provider_training_inferred",
+      ]),
+    )
+    expect(MODEL_CUSTODY_ANALYZER_CONFIG.probes.map((probe) => probe.kind))
+      .toEqual(expect.arrayContaining([
+        "subprocessors_dpa",
+        "privacy_training_terms",
+        "ai_feature_disclosure",
+        "careers_tech_stack",
+      ]))
+  })
+
+  test("records model-custody findings only as reproducible public facts", async () => {
+    const report = await analyzeModelCustodyPublicSurfaces(
+      "regulated-saas.example",
+      {
+        fetch: modelCustodyFetch,
+        generatedAt: "2026-07-04T17:30:00.000Z",
+        minRequestIntervalMs: 0,
+      },
+    )
+
+    expect(report.schemaVersion).toBe(MODEL_CUSTODY_REPORT_SCHEMA_VERSION)
+    expect(report.sourceRef).toBe("apollo_model_custody")
+    expect(report.status).toBe("signals_observed")
+    expect(report.findings.map((finding) => finding.code)).toEqual(
+      expect.arrayContaining([
+        "frontier_lab_subprocessor_named",
+        "frontier_lab_stack_hiring_signal",
+        "privacy_training_terms_published",
+      ]),
+    )
+    for (const finding of report.findings) {
+      expect(finding.factuality).toBe("public_surface_only")
+      expect(finding.speculationAllowed).toBe(false)
+      expect(finding.inferenceBoundary).toMatch(/does not|not proof|not infer/i)
+      expect(finding.publicStatement).not.toMatch(
+        /\b(probably|likely|must|definitely)\b/i,
+      )
+      expect(
+        finding.evidence.every((item) =>
+          item.url.startsWith("https://regulated-saas.example/"),
+        ),
+      ).toBe(true)
+    }
+    expect(JSON.stringify(report)).not.toContain("Prompt data is retained")
+  })
+
+  test("model-custody analyzer refuses local and credentialed targets", async () => {
+    const local = await analyzeModelCustodyPublicSurfaces("localhost:8787", {
+      generatedAt: "2026-07-04T17:30:00.000Z",
+    })
+    const credentialed = await analyzeModelCustodyPublicSurfaces(
+      "https://user:pass@example.com",
+      { generatedAt: "2026-07-04T17:30:00.000Z" },
+    )
+
+    expect(local.status).toBe("blocked")
+    expect(credentialed.status).toBe("blocked")
+    expect(local.findings[0]?.code).toBe("target_disallowed")
+    expect(credentialed.findings[0]?.speculationAllowed).toBe(false)
   })
 })

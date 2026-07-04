@@ -1,5 +1,21 @@
 # Promise Registry
 
+> Registry `2026-07-04.18` is the RX-8 model-custody Lead Gen segment
+> pass (#8281) and flips NO promise state (green stays exactly 34).
+> `@openagentsinc/agent-readiness` now exports
+> `openagents.model_custody_analyzer_config.v1` and
+> `openagents.model_custody_report.v1` for the Own Your AI analyzer:
+> public URLs only, no raw page bodies stored, no speculation, and findings
+> limited to reproducible subprocessors/DPA, AI-feature/privacy, and
+> careers/tech-stack signals. `openagents.com` now accepts
+> `sourceRef=apollo_model_custody`, registers the model-custody customer
+> config in the LG-7 run payload shape, ships a claim-lint-clean regulated
+> Reactor Assessment template variant, and tests quoted Reactor Assessment
+> rows in the LG-2 pipeline. This clears only the RX-8
+> config/template/pipeline blocker. Live customer runs, Apollo sends,
+> customer-result receipts, public pricing, compliance/custody claims,
+> payout, settlement, and promise-green authority remain blocked.
+
 > Registry `2026-07-04.17` is the RX-11 Reactor improvement-ladder
 > pass (#8279) and flips NO promise state (green stays exactly 34). The
 > `@openagentsinc/reactor-contracts` package now exports

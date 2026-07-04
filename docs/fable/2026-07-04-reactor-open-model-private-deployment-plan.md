@@ -380,6 +380,14 @@ bands above upward — Assessment $7.5–15k, Pilot + internal code forge
 $25–75k, sovereignty retainer $5–20k/mo, replatform quoted — with the
 custom-software quick wins folded in as sweeteners rather than headliners.
 
+RX-8 status (2026-07-04): Campaign B now has source-backed wiring: a
+public-only model-custody analyzer config in `@openagentsinc/agent-readiness`,
+a regulated Reactor Assessment template variant under LG-4, an LG-7 customer
+config with `sourceRef=apollo_model_custody`, and LG-2 pipeline tests for
+quoted Reactor Assessment rows. This is draft/config evidence only. Live sends,
+target approval, customer results, public pricing, and public-copy promotion
+remain owner-gated.
+
 ## 6. Fit with the two-product frame
 
 Episode 246 named the frame: Khala Code plus **Autopilot, the business
@@ -470,7 +478,7 @@ RX-11 [#8279](https://github.com/OpenAgentsInc/openagents/issues/8279).
 | RX-5 | Install/ops runbook + air-gap update path (signed bundles), fleet-executable | Landed runbook, signed-bundle manifest, install/upgrade/rollback receipts, and clean-temp smoke; no deployed node |
 | RX-6 | Dogfood deployment: Reactor node on our own hardware running a real internal workload under a strict policy (e.g. `us`-only) — customer number one, again | Landed public-safe dogfood-run receipt seed with exact metering, policy receipts, and refused Qwen refresh; external claims still blocked |
 | RX-7 | First customer pilot (likely the legal design partner's stated ask), BF-3.1/3.2 gated, opaque refs only | First paid Reactor receipt |
-| RX-8 | Lead Gen segment: model-custody analyzer angle + Reactor sequence for regulated verticals | Quoted Reactor pipeline via Autopilot Lead Gen |
+| RX-8 | Lead Gen segment: model-custody analyzer angle + Reactor sequence for regulated verticals | Landed public-only analyzer config, regulated template variant, LG-7 customer config, and LG-2 quoted-pipeline coverage; no live sends |
 | RX-9 | **Need-to-know access layer**: per-user scoped retrieval over the corpus store — typed hard access rules enforced in the system + model-oracle checks for soft rules, with an adversarial "Bob must not see Alice" fixture suite | Landed deny-by-default contracts, access-decision receipts, and Worker deploy-sweep fixture; no live customer corpus |
 | RX-10 | **Data Liberation offering**: walled-garden export/transform/verify pipeline as a packaged quick win (per-vendor adapters as config), verification receipts per migrated record class | Landed synthetic generic CSV/API + Salesforce-shaped adapter fixtures and verification reports; no customer engagement |
 | RX-11 | **Improvement ladder: harness evolution → distill-to-fit → flywheel.** Rung zero is the Mutalisk loop evolving harness-code mechanisms against the customer's tasks (evidence-gated candidates, one mechanism per iteration, cost term in the objective, transfer labels per model family — see the 2026-07-04 harness-optimization audit); then input-distribution-driven model shrinking; then the continuous-improvement training loop on customer interaction data (their boundary, their weights, consent recorded) — design + psionic/mutalisk hooks; no capability claims until receipts | Landed design doc, internal dogfood harness-evolution receipt, internal dogfood distill receipt, and aggregate claim blockers |

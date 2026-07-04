@@ -35,6 +35,9 @@ runs probes sequentially per domain. Batch mode is bounded by `--concurrency`.
 - `openagents.agent_readiness_report_render.v1` for operator/email render
   output.
 - `openagents.agent_readiness_domain_task.v1` for fleet-dispatchable work.
+- `openagents.model_custody_analyzer_config.v1` and
+  `openagents.model_custody_report.v1` for the RX-8 Own-your-AI public-signal
+  analyzer.
 
 Reports contain bounded public evidence refs, status codes, content types, and
 one-line impacts. They do not store page bodies, prospect names, lead lists, or
@@ -68,3 +71,17 @@ HTML output is escaped. Prospect renders are marked `private_runtime_only`;
 only the `openagents.com` own-domain fixture may be rendered through
 `renderAgentReadinessCaseStudyArtifact` into a repo-persisted case-study
 artifact. PDF/attachment export is intentionally deferred.
+
+## Model-Custody Analyzer
+
+RX-8 adds a second LG-1 config for the Own-your-AI Reactor segment. It scans
+only public URLs for reproducible signals a buyer can verify themselves:
+published subprocessors/DPA pages, privacy or AI-feature disclosures, and
+careers/tech-stack pages that name frontier-lab or model-provider tooling.
+
+The analyzer emits `apollo_model_custody` reports as public facts only. It
+stores evidence refs, status codes, content types, matched public terms, and an
+explicit inference boundary. It never stores raw page bodies, never scans
+private/login-gated surfaces, and never presents model-provider mentions as
+proof that customer data moved, model training happened, or a compliance
+posture exists.
