@@ -127,6 +127,7 @@ const rawTurnAggregate = (
   assignment_ref: "assignment.ks84.1",
   byte_length: 2049,
   event_count: 9,
+  latest_observed_at: "2026-07-04T04:00:00.000Z",
   lease_ref: "lease.ks84.1",
   owner_user_id: "owner-1",
   pylon_ref: "pylon.ks84.1",
@@ -142,6 +143,7 @@ const rawChunkAggregate = (
   byte_length: 1542,
   distinct_chunk_indexes: 3,
   event_count: 9,
+  latest_observed_at: "2026-07-04T04:00:00.000Z",
   lease_ref: "lease.ks84.1",
   max_chunk_index: 3,
   min_chunk_index: 1,
@@ -205,6 +207,12 @@ describe("pylon control-plane backfill metadata", () => {
     expect(report.turnEvents.mismatches).toEqual([])
     expect(report.chunks.mismatches).toEqual([])
     expect(report.chunks.chainGaps).toEqual([])
+    expect(report.chunks.chainGapCounts).toEqual({
+      d1: 0,
+      postgres: 0,
+      shared: 0,
+      unique: 0,
+    })
   })
 
   test("raw-event metadata reconciliation catches drift and per-turn chunk gaps", () => {
@@ -231,11 +239,74 @@ describe("pylon control-plane backfill metadata", () => {
         distinctChunkIndexes: 2,
         expectedChunkCount: 3,
         key: "owner-1:assignment.ks84.1:lease.ks84.1:pylon.ks84.1:1",
+        latestObservedAt: "2026-07-04T04:00:00.000Z",
         maxChunkIndex: 3,
         minChunkIndex: 1,
         source: "d1",
       },
     ])
+    expect(report.chunks.chainGapCounts).toEqual({
+      d1: 1,
+      postgres: 0,
+      shared: 0,
+      unique: 1,
+    })
+  })
+
+  test("raw-event metadata reconciliation can focus chunk gaps on a post-fix observed window", () => {
+    const oldGap = rawChunkAggregate({
+      distinct_chunk_indexes: 2,
+      latest_observed_at: "2026-07-03T13:51:45.620Z",
+      max_chunk_index: 3,
+      min_chunk_index: 1,
+      row_count: 2,
+    })
+    const newContiguous = rawChunkAggregate({
+      assignment_ref: "assignment.ks84.2",
+      byte_length: 1024,
+      distinct_chunk_indexes: 2,
+      event_count: 6,
+      latest_observed_at: "2026-07-04T18:00:00.000Z",
+      lease_ref: "lease.ks84.2",
+      max_chunk_index: 2,
+      min_chunk_index: 1,
+      owner_user_id: "owner-2",
+      pylon_ref: "pylon.ks84.2",
+      row_count: 2,
+      turn_index: 1,
+    })
+
+    const allHistory = reconcilePylonCodexRawEventMetadata({
+      d1Chunks: [oldGap, newContiguous],
+      d1TurnEvents: [],
+      postgresChunks: [oldGap, newContiguous],
+      postgresTurnEvents: [],
+    })
+
+    const postFixWindow = reconcilePylonCodexRawEventMetadata(
+      {
+        d1Chunks: [oldGap, newContiguous],
+        d1TurnEvents: [],
+        postgresChunks: [oldGap, newContiguous],
+        postgresTurnEvents: [],
+      },
+      {
+        chunkGapLatestObservedAtOrAfter: "2026-07-04T00:00:00.000Z",
+      },
+    )
+
+    expect(allHistory.ok).toBe(false)
+    expect(allHistory.chunks.chainGapCounts).toEqual({
+      d1: 1,
+      postgres: 1,
+      shared: 1,
+      unique: 1,
+    })
+    expect(postFixWindow.ok).toBe(true)
+    expect(postFixWindow.chunks.chainGaps).toEqual([])
+    expect(postFixWindow.chunks.chainGapLatestObservedAtOrAfter).toBe(
+      "2026-07-04T00:00:00.000Z",
+    )
   })
 })
 

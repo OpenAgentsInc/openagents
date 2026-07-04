@@ -19,6 +19,7 @@
  *     [--local]                         # wrangler --local (dev smoke)
  *     [--verify] [--verify-newest <n>]  # verify mode (default N=50)
  *     [--raw-event-reconcile]           # raw Codex metadata aggregate + chunk-chain proof
+ *     [--raw-event-gap-latest-observed-since <iso>] # focus chunk-gap gate on newer chains
  */
 import { spawnSync } from "node:child_process"
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
@@ -58,6 +59,7 @@ type Options = {
   d1Database: string
   databaseUrl: string | undefined
   local: boolean
+  rawEventGapLatestObservedAtOrAfter: string | undefined
   rawEventReconcile: boolean
   restart: boolean
   stateFile: string
@@ -73,6 +75,7 @@ const parseArgs = (argv: ReadonlyArray<string>): Options | undefined => {
     d1Database: "openagents-autopilot",
     databaseUrl: process.env["KHALA_SYNC_DATABASE_URL"],
     local: false,
+    rawEventGapLatestObservedAtOrAfter: undefined,
     rawEventReconcile: false,
     restart: false,
     stateFile: ".pylon-control-plane-backfill-state.json",
@@ -108,6 +111,9 @@ const parseArgs = (argv: ReadonlyArray<string>): Options | undefined => {
     else if (arg === "--verify") options.verify = true
     else if (arg === "--verify-newest") options.verifyNewest = Number(next())
     else if (arg === "--raw-event-reconcile") options.rawEventReconcile = true
+    else if (arg === "--raw-event-gap-latest-observed-since") {
+      options.rawEventGapLatestObservedAtOrAfter = next()
+    }
     else if (arg === "--help" || arg === "-h") {
       console.log(USAGE)
       return undefined
@@ -297,7 +303,8 @@ const d1RawEventTurnAggregateRows = (
        turn_index,
        COUNT(*) AS row_count,
        COALESCE(SUM(event_count), 0) AS event_count,
-       COALESCE(SUM(byte_length), 0) AS byte_length
+       COALESCE(SUM(byte_length), 0) AS byte_length,
+       MAX(observed_at) AS latest_observed_at
      FROM ${D1_SOURCE_TABLES.pylon_codex_raw_events}
      GROUP BY assignment_ref, lease_ref, pylon_ref, owner_user_id, turn_index
      ORDER BY owner_user_id, assignment_ref, lease_ref, pylon_ref, turn_index`,
@@ -319,7 +326,8 @@ const d1RawEventChunkAggregateRows = (
        MIN(chunk_index) AS min_chunk_index,
        MAX(chunk_index) AS max_chunk_index,
        COALESCE(SUM(event_count), 0) AS event_count,
-       COALESCE(SUM(byte_length), 0) AS byte_length
+       COALESCE(SUM(byte_length), 0) AS byte_length,
+       MAX(observed_at) AS latest_observed_at
      FROM ${D1_SOURCE_TABLES.pylon_codex_raw_event_chunks}
      GROUP BY assignment_ref, lease_ref, pylon_ref, owner_user_id, turn_index
      ORDER BY owner_user_id, assignment_ref, lease_ref, pylon_ref, turn_index`,
@@ -338,7 +346,7 @@ const printRawEventChunkGap = (
   gap: PylonCodexRawEventChunkChainGap,
 ): void => {
   console.log(
-    `  CHUNK GAP ${gap.source} ${gap.key}: min=${gap.minChunkIndex} max=${gap.maxChunkIndex} rows=${gap.chunkCount} distinct=${gap.distinctChunkIndexes} expected=${gap.expectedChunkCount}`,
+    `  CHUNK GAP ${gap.source} ${gap.key}: min=${gap.minChunkIndex} max=${gap.maxChunkIndex} rows=${gap.chunkCount} distinct=${gap.distinctChunkIndexes} expected=${gap.expectedChunkCount} latest=${gap.latestObservedAt ?? "<unknown>"}`,
   )
 }
 
@@ -372,13 +380,20 @@ const printRawEventReconcileReport = (
   for (const mismatch of report.chunks.mismatches.slice(0, 25)) {
     printRawEventMismatch("CHUNK MISMATCH", mismatch)
   }
-  console.log(
-    `  chunk chains: ${
-      report.chunks.chainGaps.length === 0
-        ? "contiguous per turn"
-        : `${report.chunks.chainGaps.length} GAP(S)`
-    }`,
-  )
+  const gapWindow =
+    report.chunks.chainGapLatestObservedAtOrAfter === null
+      ? ""
+      : ` for latest_observed_at >= ${report.chunks.chainGapLatestObservedAtOrAfter}`
+  const chainSummary =
+    report.chunks.chainGaps.length === 0
+      ? `contiguous per turn${gapWindow}`
+      : [
+          `d1=${report.chunks.chainGapCounts.d1}`,
+          `postgres=${report.chunks.chainGapCounts.postgres}`,
+          `unique=${report.chunks.chainGapCounts.unique}`,
+          `shared=${report.chunks.chainGapCounts.shared}`,
+        ].join(" ") + ` GAP(S)${gapWindow}`
+  console.log(`  chunk chains: ${chainSummary}`)
   for (const gap of report.chunks.chainGaps.slice(0, 25)) {
     printRawEventChunkGap(gap)
   }
@@ -389,12 +404,18 @@ const reconcileRawEventMetadata = async (
   sql: SyncSql,
   options: Options,
 ): Promise<boolean> => {
-  const report = reconcilePylonCodexRawEventMetadata({
-    d1Chunks: d1RawEventChunkAggregateRows(options),
-    d1TurnEvents: d1RawEventTurnAggregateRows(options),
-    postgresChunks: await postgresPylonCodexRawEventChunkAggregates(sql),
-    postgresTurnEvents: await postgresPylonCodexRawEventTurnAggregates(sql),
-  })
+  const report = reconcilePylonCodexRawEventMetadata(
+    {
+      d1Chunks: d1RawEventChunkAggregateRows(options),
+      d1TurnEvents: d1RawEventTurnAggregateRows(options),
+      postgresChunks: await postgresPylonCodexRawEventChunkAggregates(sql),
+      postgresTurnEvents: await postgresPylonCodexRawEventTurnAggregates(sql),
+    },
+    {
+      chunkGapLatestObservedAtOrAfter:
+        options.rawEventGapLatestObservedAtOrAfter,
+    },
+  )
   return printRawEventReconcileReport(report)
 }
 

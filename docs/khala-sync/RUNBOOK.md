@@ -358,6 +358,12 @@ KHALA_SYNC_DATABASE_URL="<direct-url>" \
 # exact aggregate parity plus per-turn chunk-chain contiguity
 KHALA_SYNC_DATABASE_URL="<direct-url>" \
   bun scripts/backfill-pylon-control-plane.ts --verify --raw-event-reconcile
+
+# after deploying a source fix, prove only newer chunk chains while keeping
+# the default all-history gate available for final historical classification
+KHALA_SYNC_DATABASE_URL="<direct-url>" \
+  bun scripts/backfill-pylon-control-plane.ts --verify --raw-event-reconcile \
+    --raw-event-gap-latest-observed-since "2026-07-04T18:00:00.000Z"
 ```
 
 Use `--table <target-table>` for a single table and `--local` for a local D1
@@ -401,7 +407,10 @@ non-contiguous, with no duplicate chunk indexes, mirrored identically into both
 stores. This is not Postgres mirror drift. A Pylon runner fix now keeps a chunk
 index unconsumed until its event-chunk reporter succeeds, so transient chunk
 send failures retry under the same next index instead of leaving future holes.
-Before final read cutover, classify the historical gapped chains as repairable,
+The reconcile output separates D1, Postgres, shared, and unique gap counts so a
+mirrored source gap is not mistaken for two independent failures. Use
+`--raw-event-gap-latest-observed-since` only to prove post-fix traffic; before
+final read cutover, classify the historical gapped chains as repairable,
 quarantined, or explicitly acceptable for the raw live-stream metadata lane.
 
 ## Public tokens-served projection (KS-6.3, #8304)
