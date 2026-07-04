@@ -93,6 +93,21 @@ each source doc.
 
 ## Analysis Docs
 
+- `2026-07-04-database-alternatives-and-postgres-sync-engine.md` — why the
+  single `openagents-autopilot` D1 database overloads under internal-only
+  fleet load (single-threaded SQLite-in-a-DO, per-item raw-event-chunk
+  writes, 4-statement ledger batches across 13+ indexes, an uncached
+  full-table `SUM()` counter, a 25-task/minute cron, zero retry/backoff),
+  the immediate Cloudflare-side mitigation ladder, a costed comparison of
+  GCP database targets against the $70k credit (Cloud SQL Postgres HA
+  recommended; Spanner ruled out — no logical decoding; AlloyDB as upgrade
+  path), and the full design for the owned **Khala sync engine** on
+  Postgres: transactional-outbox changelog with per-scope server-assigned
+  versions (promoting the existing `@openagentsinc/sync-worker` embryo),
+  named server-authoritative mutators with client rebase, per-scope
+  hibernating Durable Object hubs with offset-resumable catch-up, SQLite
+  client stores, and a four-phase migration plan.
+
 - `2026-07-01-khala-code-summary-and-analysis.md` — everything in this repo
   (code, docs, issues) about Khala Code: identity and naming disambiguation,
   the June 29 → July 1 timeline through the Codex-wrapper pivot (epic #7780),
