@@ -560,6 +560,14 @@ export type PylonCodexRawEventChunkChainGapClassCounts = Readonly<{
   withoutTurnEvent: number
 }>
 
+export type PylonCodexRawEventChunkChainGapAcceptance = Readonly<{
+  acceptedHistorical: number
+  acceptedHistoricalBefore: string | null
+  rejected: number
+  rejectedDuplicateIndexes: number
+  rejectedNewerOrUnknown: number
+}>
+
 export type PylonCodexRawEventAggregateCompare = Readonly<{
   d1Total: number
   mismatches: ReadonlyArray<PylonCodexRawEventAggregateMismatch>
@@ -569,6 +577,7 @@ export type PylonCodexRawEventAggregateCompare = Readonly<{
 export type PylonCodexRawEventChunkCompare =
   PylonCodexRawEventAggregateCompare &
     Readonly<{
+      chainGapAcceptance: PylonCodexRawEventChunkChainGapAcceptance
       chainGapClasses: PylonCodexRawEventChunkChainGapClassCounts
       chainGapCounts: PylonCodexRawEventChunkChainGapCounts
       chainGapLatestObservedAtOrAfter: string | null
@@ -582,6 +591,7 @@ export type PylonCodexRawEventMetadataReconcileReport = Readonly<{
 }>
 
 export type PylonCodexRawEventMetadataReconcileOptions = Readonly<{
+  acceptHistoricalChunkGapsBefore?: string | undefined
   chunkGapLatestObservedAtOrAfter?: string | undefined
 }>
 
@@ -783,6 +793,52 @@ export const classifyPylonCodexRawEventChunkChainGaps = (
   return counts
 }
 
+export const acceptHistoricalPylonCodexRawEventChunkChainGaps = (
+  gaps: ReadonlyArray<PylonCodexRawEventChunkChainGap>,
+  options: PylonCodexRawEventMetadataReconcileOptions = {},
+): PylonCodexRawEventChunkChainGapAcceptance => {
+  const acceptedHistoricalBefore =
+    options.acceptHistoricalChunkGapsBefore ?? null
+  const gapsByKey = new Map<string, Array<PylonCodexRawEventChunkChainGap>>()
+  for (const gap of gaps) {
+    const existing = gapsByKey.get(gap.key)
+    if (existing === undefined) gapsByKey.set(gap.key, [gap])
+    else existing.push(gap)
+  }
+
+  const counts = {
+    acceptedHistorical: 0,
+    acceptedHistoricalBefore,
+    rejected: 0,
+    rejectedDuplicateIndexes: 0,
+    rejectedNewerOrUnknown: 0,
+  }
+
+  for (const keyGaps of gapsByKey.values()) {
+    const hasDuplicateIndexes = keyGaps.some(
+      (gap) => gap.chunkCount !== gap.distinctChunkIndexes,
+    )
+    const isBeforeHistoricalCutoff =
+      acceptedHistoricalBefore !== null &&
+      keyGaps.every(
+        (gap) =>
+          gap.latestObservedAt !== null &&
+          gap.latestObservedAt < acceptedHistoricalBefore,
+      )
+
+    if (!hasDuplicateIndexes && isBeforeHistoricalCutoff) {
+      counts.acceptedHistorical += 1
+      continue
+    }
+
+    counts.rejected += 1
+    if (hasDuplicateIndexes) counts.rejectedDuplicateIndexes += 1
+    if (!isBeforeHistoricalCutoff) counts.rejectedNewerOrUnknown += 1
+  }
+
+  return counts
+}
+
 export const reconcilePylonCodexRawEventMetadata = (
   input: {
     d1Chunks: ReadonlyArray<PylonCodexRawEventChunkAggregateRow>
@@ -810,6 +866,10 @@ export const reconcilePylonCodexRawEventMetadata = (
   ]
   const chunks = {
     ...chunkAggregateCompare,
+    chainGapAcceptance: acceptHistoricalPylonCodexRawEventChunkChainGaps(
+      chainGaps,
+      options,
+    ),
     chainGapClasses: classifyPylonCodexRawEventChunkChainGaps(chainGaps, [
       ...input.d1TurnEvents,
       ...input.postgresTurnEvents,
@@ -824,7 +884,7 @@ export const reconcilePylonCodexRawEventMetadata = (
     ok:
       turnEvents.mismatches.length === 0 &&
       chunks.mismatches.length === 0 &&
-      chunks.chainGaps.length === 0,
+      chunks.chainGapAcceptance.rejected === 0,
     turnEvents,
   }
 }

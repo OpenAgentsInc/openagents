@@ -364,6 +364,12 @@ KHALA_SYNC_DATABASE_URL="<direct-url>" \
 KHALA_SYNC_DATABASE_URL="<direct-url>" \
   bun scripts/backfill-pylon-control-plane.ts --verify --raw-event-reconcile \
     --raw-event-gap-latest-observed-since "2026-07-04T18:00:00.000Z"
+
+# after classifying old source gaps, accept only duplicate-free historical
+# chains observed before the cutoff; newer/unknown or duplicate gaps stay red
+KHALA_SYNC_DATABASE_URL="<direct-url>" \
+  bun scripts/backfill-pylon-control-plane.ts --verify --raw-event-reconcile \
+    --raw-event-accept-historical-gaps-before "2026-07-04T00:00:00.000Z"
 ```
 
 Use `--table <target-table>` for a single table and `--local` for a local D1
@@ -402,8 +408,8 @@ drop D1 tables.
 Live raw Codex metadata note (2026-07-04): production row parity is established
 for `pylon_codex_raw_events` and `pylon_codex_raw_event_chunks`, and aggregate
 parity matches between D1 and Postgres. The raw-event reconcile command still
-reports historical source chunk-chain gaps: 669 unique per-turn chains are
-non-contiguous, with no duplicate chunk indexes, mirrored identically into both
+reports historical source chunk-chain gaps: 678 unique per-turn chains are
+non-contiguous under start-at-1 semantics, mirrored identically into both
 stores. This is not Postgres mirror drift. A Pylon runner fix now keeps a chunk
 index unconsumed until its event-chunk reporter succeeds, so transient chunk
 send failures retry under the same next index instead of leaving future holes.
@@ -411,10 +417,13 @@ The reconcile output separates D1, Postgres, shared, and unique gap counts so a
 mirrored source gap is not mistaken for two independent failures. It also
 classifies the unique gapped chains by whether a final turn-event row exists
 and by shape: missing first chunk, internal missing chunk, or duplicate chunk
-index. Use
-`--raw-event-gap-latest-observed-since` only to prove post-fix traffic; before
-final read cutover, classify the historical gapped chains as repairable,
-quarantined, or explicitly acceptable for the raw live-stream metadata lane.
+index. With start-at-1 semantics, the classified production set is 678 unique
+chains: 511 have a turn-event row, 167 are live-stream-only/no-turn-row, 19 miss
+the first chunk, 659 have an internal missing chunk, and 0 have duplicate
+indexes. Use `--raw-event-gap-latest-observed-since` only to prove post-fix
+traffic; use `--raw-event-accept-historical-gaps-before` only after posting the
+classification evidence. That acceptance path still fails closed on
+newer/unknown-observed gaps and duplicate chunk indexes.
 
 ## Public tokens-served projection (KS-6.3, #8304)
 

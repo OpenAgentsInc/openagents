@@ -20,6 +20,7 @@
  *     [--verify] [--verify-newest <n>]  # verify mode (default N=50)
  *     [--raw-event-reconcile]           # raw Codex metadata aggregate + chunk-chain proof
  *     [--raw-event-gap-latest-observed-since <iso>] # focus chunk-gap gate on newer chains
+ *     [--raw-event-accept-historical-gaps-before <iso>] # accept classified old source gaps
  */
 import { spawnSync } from "node:child_process"
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
@@ -59,6 +60,7 @@ type Options = {
   d1Database: string
   databaseUrl: string | undefined
   local: boolean
+  rawEventAcceptHistoricalGapsBefore: string | undefined
   rawEventGapLatestObservedAtOrAfter: string | undefined
   rawEventReconcile: boolean
   restart: boolean
@@ -75,6 +77,7 @@ const parseArgs = (argv: ReadonlyArray<string>): Options | undefined => {
     d1Database: "openagents-autopilot",
     databaseUrl: process.env["KHALA_SYNC_DATABASE_URL"],
     local: false,
+    rawEventAcceptHistoricalGapsBefore: undefined,
     rawEventGapLatestObservedAtOrAfter: undefined,
     rawEventReconcile: false,
     restart: false,
@@ -113,8 +116,9 @@ const parseArgs = (argv: ReadonlyArray<string>): Options | undefined => {
     else if (arg === "--raw-event-reconcile") options.rawEventReconcile = true
     else if (arg === "--raw-event-gap-latest-observed-since") {
       options.rawEventGapLatestObservedAtOrAfter = next()
-    }
-    else if (arg === "--help" || arg === "-h") {
+    } else if (arg === "--raw-event-accept-historical-gaps-before") {
+      options.rawEventAcceptHistoricalGapsBefore = next()
+    } else if (arg === "--help" || arg === "-h") {
       console.log(USAGE)
       return undefined
     } else {
@@ -404,6 +408,18 @@ const printRawEventReconcileReport = (
       `duplicate_indexes=${report.chunks.chainGapClasses.duplicateIndexes}`,
     ].join(" "),
   )
+  if (report.chunks.chainGapAcceptance.acceptedHistoricalBefore !== null) {
+    console.log(
+      [
+        "  chunk gap policy:",
+        `accepted_historical=${report.chunks.chainGapAcceptance.acceptedHistorical}`,
+        `rejected=${report.chunks.chainGapAcceptance.rejected}`,
+        `duplicate_rejected=${report.chunks.chainGapAcceptance.rejectedDuplicateIndexes}`,
+        `newer_or_unknown_rejected=${report.chunks.chainGapAcceptance.rejectedNewerOrUnknown}`,
+        `before=${report.chunks.chainGapAcceptance.acceptedHistoricalBefore}`,
+      ].join(" "),
+    )
+  }
   for (const gap of report.chunks.chainGaps.slice(0, 25)) {
     printRawEventChunkGap(gap)
   }
@@ -422,6 +438,8 @@ const reconcileRawEventMetadata = async (
       postgresTurnEvents: await postgresPylonCodexRawEventTurnAggregates(sql),
     },
     {
+      acceptHistoricalChunkGapsBefore:
+        options.rawEventAcceptHistoricalGapsBefore,
       chunkGapLatestObservedAtOrAfter:
         options.rawEventGapLatestObservedAtOrAfter,
     },

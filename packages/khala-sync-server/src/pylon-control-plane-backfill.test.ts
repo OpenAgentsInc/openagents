@@ -220,6 +220,13 @@ describe("pylon control-plane backfill metadata", () => {
       withTurnEvent: 0,
       withoutTurnEvent: 0,
     })
+    expect(report.chunks.chainGapAcceptance).toEqual({
+      acceptedHistorical: 0,
+      acceptedHistoricalBefore: null,
+      rejected: 0,
+      rejectedDuplicateIndexes: 0,
+      rejectedNewerOrUnknown: 0,
+    })
   })
 
   test("raw-event metadata reconciliation catches drift and per-turn chunk gaps", () => {
@@ -264,6 +271,13 @@ describe("pylon control-plane backfill metadata", () => {
       missingFirstChunk: 0,
       withTurnEvent: 1,
       withoutTurnEvent: 0,
+    })
+    expect(report.chunks.chainGapAcceptance).toEqual({
+      acceptedHistorical: 0,
+      acceptedHistoricalBefore: null,
+      rejected: 1,
+      rejectedDuplicateIndexes: 0,
+      rejectedNewerOrUnknown: 1,
     })
   })
 
@@ -320,6 +334,25 @@ describe("pylon control-plane backfill metadata", () => {
       withTurnEvent: 1,
       withoutTurnEvent: 1,
     })
+    expect(
+      reconcilePylonCodexRawEventMetadata(
+        {
+          d1Chunks: [duplicateIndexes],
+          d1TurnEvents: [],
+          postgresChunks: [duplicateIndexes],
+          postgresTurnEvents: [],
+        },
+        {
+          acceptHistoricalChunkGapsBefore: "2026-07-05T00:00:00.000Z",
+        },
+      ).chunks.chainGapAcceptance,
+    ).toEqual({
+      acceptedHistorical: 0,
+      acceptedHistoricalBefore: "2026-07-05T00:00:00.000Z",
+      rejected: 1,
+      rejectedDuplicateIndexes: 1,
+      rejectedNewerOrUnknown: 0,
+    })
   })
 
   test("raw-event metadata reconciliation can focus chunk gaps on a post-fix observed window", () => {
@@ -363,6 +396,17 @@ describe("pylon control-plane backfill metadata", () => {
         chunkGapLatestObservedAtOrAfter: "2026-07-04T00:00:00.000Z",
       },
     )
+    const acceptedHistoricalGap = reconcilePylonCodexRawEventMetadata(
+      {
+        d1Chunks: [oldGap, newContiguous],
+        d1TurnEvents: [],
+        postgresChunks: [oldGap, newContiguous],
+        postgresTurnEvents: [],
+      },
+      {
+        acceptHistoricalChunkGapsBefore: "2026-07-04T00:00:00.000Z",
+      },
+    )
 
     expect(allHistory.ok).toBe(false)
     expect(allHistory.chunks.chainGapCounts).toEqual({
@@ -378,11 +422,27 @@ describe("pylon control-plane backfill metadata", () => {
       withTurnEvent: 0,
       withoutTurnEvent: 1,
     })
+    expect(allHistory.chunks.chainGapAcceptance).toEqual({
+      acceptedHistorical: 0,
+      acceptedHistoricalBefore: null,
+      rejected: 1,
+      rejectedDuplicateIndexes: 0,
+      rejectedNewerOrUnknown: 1,
+    })
     expect(postFixWindow.ok).toBe(true)
     expect(postFixWindow.chunks.chainGaps).toEqual([])
     expect(postFixWindow.chunks.chainGapLatestObservedAtOrAfter).toBe(
       "2026-07-04T00:00:00.000Z",
     )
+    expect(acceptedHistoricalGap.ok).toBe(true)
+    expect(acceptedHistoricalGap.chunks.chainGaps).toHaveLength(2)
+    expect(acceptedHistoricalGap.chunks.chainGapAcceptance).toEqual({
+      acceptedHistorical: 1,
+      acceptedHistoricalBefore: "2026-07-04T00:00:00.000Z",
+      rejected: 0,
+      rejectedDuplicateIndexes: 0,
+      rejectedNewerOrUnknown: 0,
+    })
   })
 })
 

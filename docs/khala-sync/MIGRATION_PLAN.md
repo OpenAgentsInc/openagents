@@ -210,17 +210,20 @@ logging raw-metadata drift. The backfill CLI now has `--raw-event-reconcile`
 for live raw Codex metadata aggregate parity and per-turn chunk-chain
 contiguity evidence. Production backfill/reconciliation has established exact
 D1/Postgres parity for raw Codex metadata rows, but the historical source data
-contains 669 unique per-turn chunk-chain gaps mirrored identically into both
-stores. The Pylon Codex runner now retries failed chunk reports under the same
-next chunk index instead of burning an index on a transient send failure, so new
-chunk streams should not create the same hole pattern. The reconcile tool now
-reports D1/Postgres/shared/unique gap counts and can focus the chunk-gap gate on
-chains whose latest observed row is after an explicit post-fix cutoff. It also
-classifies unique gapped chains by final turn-event presence and by shape
-(missing first chunk, internal missing chunk, duplicate chunk indexes), so the
-historical set can be routed to repair, bounded exception, or source-data
-quarantine. Final read cutover still requires that follow-up decision plus
-final cutover evidence and D1 decommission on
+contains 678 unique per-turn chunk-chain gaps under start-at-1 semantics,
+mirrored identically into both stores. The Pylon Codex runner now retries
+failed chunk reports under the same next chunk index instead of burning an
+index on a transient send failure, so new chunk streams should not create the
+same hole pattern. The reconcile tool now reports D1/Postgres/shared/unique gap
+counts and can focus the chunk-gap gate on chains whose latest observed row is
+after an explicit post-fix cutoff. It also classifies unique gapped chains by
+final turn-event presence and by shape (missing first chunk, internal missing
+chunk, duplicate chunk indexes); production classification is currently
+`turn_event=511`, `live_stream_only=167`, `missing_first=19`, `internal=659`,
+and `duplicate_indexes=0`. The bounded historical exception is explicit:
+`--raw-event-accept-historical-gaps-before` accepts only duplicate-free chains
+observed before the cutoff and fails newer/unknown-observed or duplicate gaps.
+Final read cutover still requires final cutover evidence and D1 decommission on
 [#8315](https://github.com/OpenAgentsInc/openagents/issues/8315).
 
 - **What:** the rest of the Pylon control plane after KS-8.1:
