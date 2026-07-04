@@ -25,8 +25,12 @@ import {
 import { Effect } from "effect"
 import {
   createKhalaCodeDesktopKhalaSyncService,
+  FLEET_ACKNOWLEDGE_INBOX_FLAG_MUTATOR_NAME,
   FLEET_PAUSE_RUN_MUTATOR_NAME,
+  FLEET_PAUSE_WORKER_MUTATOR_NAME,
+  FLEET_RESUME_WORKER_MUTATOR_NAME,
   FLEET_SET_DESIRED_SLOTS_MUTATOR_NAME,
+  FLEET_STOP_RUN_MUTATOR_NAME,
   khalaCodeDesktopKhalaSyncFleetEnabled,
   khalaSyncFleetDisabledState,
 } from "../src/bun/khala-sync-service"
@@ -239,26 +243,71 @@ const fakeTransport = (
         const args = JSON.parse(mutation.argsJson) as {
           runId: string
           desiredSlots?: number
+          workerId?: string
+          flagRef?: string
+          confirm?: boolean
         }
-        const current = server
-          .currentEntities()
-          .find(entity => entity.entityType === "fleet_run" && entity.entityId === args.runId)
-        const base = current === undefined
-          ? (JSON.parse(fleetRunImage()) as Record<string, unknown>)
-          : (JSON.parse(current.postImageJson) as Record<string, unknown>)
-        const patch: Record<string, unknown> =
-          mutation.name === FLEET_SET_DESIRED_SLOTS_MUTATOR_NAME
-            ? { desiredSlots: args.desiredSlots }
-            : mutation.name === FLEET_PAUSE_RUN_MUTATOR_NAME
-              ? { status: "paused" }
-              : { status: "running" }
-        server.commit([
-          {
-            entityType: "fleet_run",
-            entityId: args.runId,
-            postImageJson: canonicalJson({ ...base, ...patch }),
-          },
-        ])
+        const currentOf = (entityType: string, entityId: string) =>
+          server
+            .currentEntities()
+            .find(entity => entity.entityType === entityType && entity.entityId === entityId)
+        if (
+          mutation.name === FLEET_PAUSE_WORKER_MUTATOR_NAME ||
+          mutation.name === FLEET_RESUME_WORKER_MUTATOR_NAME
+        ) {
+          const workerId = args.workerId!
+          const current = currentOf("fleet_worker", workerId)
+          const base = current === undefined
+            ? { updatedAt: FIXED_TIME, workerId }
+            : (JSON.parse(current.postImageJson) as Record<string, unknown>)
+          server.commit([
+            {
+              entityType: "fleet_worker",
+              entityId: workerId,
+              postImageJson: canonicalJson({
+                ...base,
+                phase: mutation.name === FLEET_PAUSE_WORKER_MUTATOR_NAME ? "paused" : "idle",
+              }),
+            },
+          ])
+        } else if (mutation.name === FLEET_ACKNOWLEDGE_INBOX_FLAG_MUTATOR_NAME) {
+          const flagRef = args.flagRef!
+          const current = currentOf("fleet_inbox_flag", flagRef)
+          const base = current === undefined
+            ? { flagRef, kind: "unclassified", updatedAt: FIXED_TIME }
+            : (JSON.parse(current.postImageJson) as Record<string, unknown>)
+          server.commit([
+            {
+              entityType: "fleet_inbox_flag",
+              entityId: flagRef,
+              postImageJson: canonicalJson({
+                ...base,
+                acknowledgedAt: FIXED_TIME,
+                status: "acknowledged",
+              }),
+            },
+          ])
+        } else {
+          const current = currentOf("fleet_run", args.runId)
+          const base = current === undefined
+            ? (JSON.parse(fleetRunImage()) as Record<string, unknown>)
+            : (JSON.parse(current.postImageJson) as Record<string, unknown>)
+          const patch: Record<string, unknown> =
+            mutation.name === FLEET_SET_DESIRED_SLOTS_MUTATOR_NAME
+              ? { desiredSlots: args.desiredSlots }
+              : mutation.name === FLEET_STOP_RUN_MUTATOR_NAME
+                ? { desiredSlots: 0, status: "stopped" }
+                : mutation.name === FLEET_PAUSE_RUN_MUTATOR_NAME
+                  ? { status: "paused" }
+                  : { status: "running" }
+          server.commit([
+            {
+              entityType: "fleet_run",
+              entityId: args.runId,
+              postImageJson: canonicalJson({ ...base, ...patch }),
+            },
+          ])
+        }
         results.push(
           new MutationResult({ mutationId: mutation.mutationId, status: "applied" }),
         )
@@ -440,6 +489,121 @@ describe("khala-sync-service fleet scope consumption", () => {
       const state = await service.fleetState({ runId: RUN_ID })
       return state.pendingMutations === 0 && state.run?.desiredSlots === 7
     }, "desired slots confirmed")
+    await service.close()
+  })
+
+  test("mutate pause_worker/resume_worker: requires workerId, patches the synced worker", async () => {
+    const { server, service } = makeHarness()
+    server.commit([
+      { entityType: "fleet_run", entityId: RUN_ID, postImageJson: fleetRunImage() },
+      { entityType: "fleet_worker", entityId: "worker.slot.1", postImageJson: workerImage },
+    ])
+    await waitFor(async () => (await service.fleetState({ runId: RUN_ID })).phase === "live", "live")
+
+    expect(
+      await service.fleetMutate({ action: "pause_worker", runId: RUN_ID }),
+    ).toEqual({ ok: false, error: "worker_id_required" })
+
+    // Optimistic while the push is held, then server-confirmed.
+    server.holdPushes = true
+    const pause = await service.fleetMutate({
+      action: "pause_worker",
+      runId: RUN_ID,
+      workerId: "worker.slot.1",
+    })
+    expect(pause.ok).toBe(true)
+    const optimistic = await service.fleetState({ runId: RUN_ID })
+    expect(optimistic.workers[0]).toMatchObject({ workerId: "worker.slot.1", phase: "paused" })
+    // Allowlisted fields the mutator does not own survive the patch.
+    expect(optimistic.workers[0]?.accountRefHash).toBe(
+      "account.pylon.codex.0123456789abcdef01234567",
+    )
+    server.holdPushes = false
+    await waitFor(async () => {
+      const state = await service.fleetState({ runId: RUN_ID })
+      return state.pendingMutations === 0 && state.workers[0]?.phase === "paused"
+    }, "pause_worker confirmed")
+
+    const resume = await service.fleetMutate({
+      action: "resume_worker",
+      runId: RUN_ID,
+      workerId: "worker.slot.1",
+    })
+    expect(resume.ok).toBe(true)
+    await waitFor(async () => {
+      const state = await service.fleetState({ runId: RUN_ID })
+      return state.pendingMutations === 0 && state.workers[0]?.phase === "idle"
+    }, "resume_worker confirmed")
+    expect(
+      server.pushedMutations.some(m => m.name === FLEET_PAUSE_WORKER_MUTATOR_NAME),
+    ).toBe(true)
+    expect(
+      server.pushedMutations.some(m => m.name === FLEET_RESUME_WORKER_MUTATOR_NAME),
+    ).toBe(true)
+    await service.close()
+  })
+
+  test("mutate acknowledge_inbox_flag: requires flagRef and queues the named mutator", async () => {
+    const { server, service } = makeHarness()
+    server.commit([
+      { entityType: "fleet_run", entityId: RUN_ID, postImageJson: fleetRunImage() },
+    ])
+    await waitFor(async () => (await service.fleetState({ runId: RUN_ID })).phase === "live", "live")
+
+    expect(
+      await service.fleetMutate({ action: "acknowledge_inbox_flag", runId: RUN_ID }),
+    ).toEqual({ ok: false, error: "flag_ref_required" })
+
+    const ack = await service.fleetMutate({
+      action: "acknowledge_inbox_flag",
+      flagRef: "inbox-flag.run_blocked.1",
+      runId: RUN_ID,
+    })
+    expect(ack.ok).toBe(true)
+    await waitFor(async () => {
+      const state = await service.fleetState({ runId: RUN_ID })
+      return state.pendingMutations === 0
+    }, "ack confirmed")
+    const pushed = server.pushedMutations.find(
+      m => m.name === FLEET_ACKNOWLEDGE_INBOX_FLAG_MUTATOR_NAME,
+    )
+    expect(pushed).toBeDefined()
+    expect(JSON.parse(pushed!.argsJson)).toEqual({
+      flagRef: "inbox-flag.run_blocked.1",
+      runId: RUN_ID,
+    })
+    await service.close()
+  })
+
+  test("mutate stop: refuses locally without confirm, terminal when confirmed", async () => {
+    const { server, service } = makeHarness()
+    server.commit([
+      { entityType: "fleet_run", entityId: RUN_ID, postImageJson: fleetRunImage() },
+    ])
+    await waitFor(async () => (await service.fleetState({ runId: RUN_ID })).phase === "live", "live")
+
+    // Unconfirmed stops are refused before anything is queued (they are a
+    // guaranteed server-side confirmation_required rejection).
+    expect(
+      await service.fleetMutate({ action: "stop", runId: RUN_ID }),
+    ).toEqual({ ok: false, error: "confirm_required" })
+    expect(
+      await service.fleetMutate({ action: "stop", confirm: false, runId: RUN_ID }),
+    ).toEqual({ ok: false, error: "confirm_required" })
+    expect(
+      server.pushedMutations.some(m => m.name === FLEET_STOP_RUN_MUTATOR_NAME),
+    ).toBe(false)
+
+    const stop = await service.fleetMutate({ action: "stop", confirm: true, runId: RUN_ID })
+    expect(stop.ok).toBe(true)
+    await waitFor(async () => {
+      const state = await service.fleetState({ runId: RUN_ID })
+      return (
+        state.pendingMutations === 0 &&
+        state.run?.status === "stopped" &&
+        state.run.desiredSlots === 0
+      )
+    }, "stop confirmed")
     await service.close()
   })
 

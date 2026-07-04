@@ -32,12 +32,14 @@ export const FLEET_RUN_ENTITY_TYPE = "fleet_run"
 export const FLEET_WORKER_ENTITY_TYPE = "fleet_worker"
 export const FLEET_ASSIGNMENT_ENTITY_TYPE = "fleet_assignment"
 export const FLEET_ACCOUNT_ENTITY_TYPE = "fleet_account"
+export const FLEET_INBOX_FLAG_ENTITY_TYPE = "fleet_inbox_flag"
 
 export const FLEET_ENTITY_TYPES = [
   FLEET_RUN_ENTITY_TYPE,
   FLEET_WORKER_ENTITY_TYPE,
   FLEET_ASSIGNMENT_ENTITY_TYPE,
   FLEET_ACCOUNT_ENTITY_TYPE,
+  FLEET_INBOX_FLAG_ENTITY_TYPE,
 ] as const
 
 // ---------------------------------------------------------------------------
@@ -148,7 +150,11 @@ export class FleetRunEntity extends S.Class<FleetRunEntity>("FleetRunEntity")({
 // fleet_worker
 // ---------------------------------------------------------------------------
 
-/** Worker slot lifecycle (mirrors the Pylon dispatch-context status set). */
+/**
+ * Worker slot lifecycle (mirrors the Pylon dispatch-context status set,
+ * plus the operator-desired `paused` state written by `fleet.pauseWorker` —
+ * KS-3.2 #8292; additive, so pre-#8292 post-images still decode).
+ */
 export const FleetWorkerPhase = S.Literals([
   "idle",
   "dispatched",
@@ -156,6 +162,7 @@ export const FleetWorkerPhase = S.Literals([
   "failed",
   "blocked",
   "circuit_broken",
+  "paused",
 ])
 export type FleetWorkerPhase = typeof FleetWorkerPhase.Type
 
@@ -228,6 +235,78 @@ export class FleetAccountEntity extends S.Class<FleetAccountEntity>(
 }) {}
 
 // ---------------------------------------------------------------------------
+// fleet_inbox_flag
+// ---------------------------------------------------------------------------
+
+export const FleetInboxFlagStatus = S.Literals(["open", "acknowledged"])
+export type FleetInboxFlagStatus = typeof FleetInboxFlagStatus.Type
+
+/**
+ * One inbox/attention flag on a fleet run (KS-3.2 #8292) — the synced
+ * counterpart of the cockpit's attention items (run blocked, cooldown,
+ * claim expired, …). `entityId` is `flagRef`. `kind` is a bounded
+ * lower_snake_case classification token (e.g. `run_blocked`,
+ * `cooldown_all_accounts`); flag PRODUCERS are a follow-up projection lane,
+ * but `fleet.acknowledgeInboxFlag` acks ride this entity today so operator
+ * acknowledgments are durable and converge across cockpit clients.
+ */
+export class FleetInboxFlagEntity extends S.Class<FleetInboxFlagEntity>(
+  "FleetInboxFlagEntity",
+)({
+  flagRef: FleetPublicRef,
+  kind: FleetClassToken,
+  status: FleetInboxFlagStatus,
+  openedAt: S.optionalKey(FleetIsoTimestamp),
+  acknowledgedAt: S.optionalKey(FleetIsoTimestamp),
+  updatedAt: FleetIsoTimestamp,
+}) {}
+
+// ---------------------------------------------------------------------------
+// Fleet operator intents (KS-3.2 #8292)
+// ---------------------------------------------------------------------------
+
+/**
+ * Durable operator intent vocabulary — kept in lockstep with the
+ * `khala_sync_fleet_intents` CHECK constraint (khala-sync-server
+ * migrations 0004/0005) and the fleet mutator set.
+ */
+export const FleetIntentKind = S.Literals([
+  "set_desired_slots",
+  "pause",
+  "resume",
+  "pause_worker",
+  "resume_worker",
+  "acknowledge_inbox_flag",
+  "stop",
+])
+export type FleetIntentKind = typeof FleetIntentKind.Type
+
+/**
+ * One durable operator intent row as served by the intent-consumption
+ * seam (`readPendingFleetIntents` in `@openagentsinc/khala-sync-server`
+ * and the Worker's admin-guarded
+ * `GET /api/internal/khala-sync/fleet-intents` route). NOT a sync-protocol
+ * message — it is the polling contract for enforcement loops (the Pylon
+ * supervisor), shared here so producer and consumer decode one schema.
+ * `id` is the monotonic identity column and the poller's resume watermark.
+ */
+export class FleetIntentRow extends S.Class<FleetIntentRow>("FleetIntentRow")({
+  id: S.Number,
+  scope: S.String,
+  runId: S.String,
+  intent: FleetIntentKind,
+  desiredSlots: S.NullOr(S.Number),
+  workerId: S.NullOr(S.String),
+  flagRef: S.NullOr(S.String),
+  requestedByUserId: S.String,
+  mutationRef: S.String,
+  createdAt: S.String,
+}) {}
+
+export const decodeFleetIntentRow = S.decodeUnknownSync(FleetIntentRow)
+export const encodeFleetIntentRow = S.encodeSync(FleetIntentRow)
+
+// ---------------------------------------------------------------------------
 // Boundary codecs
 // ---------------------------------------------------------------------------
 
@@ -241,3 +320,7 @@ export const decodeFleetAssignmentEntity = S.decodeUnknownSync(
 export const encodeFleetAssignmentEntity = S.encodeSync(FleetAssignmentEntity)
 export const decodeFleetAccountEntity = S.decodeUnknownSync(FleetAccountEntity)
 export const encodeFleetAccountEntity = S.encodeSync(FleetAccountEntity)
+export const decodeFleetInboxFlagEntity = S.decodeUnknownSync(
+  FleetInboxFlagEntity,
+)
+export const encodeFleetInboxFlagEntity = S.encodeSync(FleetInboxFlagEntity)

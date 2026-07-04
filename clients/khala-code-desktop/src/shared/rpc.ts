@@ -1766,6 +1766,7 @@ const RpcKhalaSyncFleetPhase = S.Literals([
   "catching_up",
   "live",
   "must_refetch",
+  "denied",
 ])
 const RpcKhalaSyncFleetRun = S.Struct({
   counters: RpcFleetRunCounters,
@@ -1780,7 +1781,7 @@ const RpcKhalaSyncFleetWorker = S.Struct({
   accountRefHash: RpcStringNull,
   assignmentRef: RpcStringNull,
   lastProgressAt: RpcStringNull,
-  phase: S.Literals(["idle", "dispatched", "completed", "failed", "blocked", "circuit_broken"]),
+  phase: S.Literals(["idle", "dispatched", "completed", "failed", "blocked", "circuit_broken", "paused"]),
   updatedAt: S.String,
   workerId: S.String,
 })
@@ -1824,9 +1825,23 @@ const RpcKhalaSyncFleetStateResult = S.Struct({
   workers: S.Array(RpcKhalaSyncFleetWorker),
 })
 const RpcKhalaSyncFleetMutateRequest = S.Struct({
-  action: S.Literals(["pause", "resume", "set_desired_slots"]),
+  action: S.Literals([
+    "pause",
+    "resume",
+    "set_desired_slots",
+    "pause_worker",
+    "resume_worker",
+    "acknowledge_inbox_flag",
+    "stop",
+  ]),
   desiredSlots: S.optional(S.Number),
   runId: S.String,
+  /** Required for pause_worker / resume_worker. */
+  workerId: S.optional(S.String),
+  /** Required for acknowledge_inbox_flag. */
+  flagRef: S.optional(S.String),
+  /** Required (true) for the terminal stop action. */
+  confirm: S.optional(S.Boolean),
 })
 const RpcKhalaSyncFleetMutateResult = S.Struct({
   error: S.optional(S.String),

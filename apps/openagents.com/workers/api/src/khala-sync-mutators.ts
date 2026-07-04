@@ -93,15 +93,20 @@ export const debugEchoMutator: MutatorDefinition =
 
 /**
  * The Worker's Khala Sync mutator registry: the `sync.debugEcho` system
- * test mutator plus the KS-6.1 fleet cockpit operator mutators
- * (`fleet.setDesiredSlots` / `fleet.pauseRun` / `fleet.resumeRun`, defined
- * in `@openagentsinc/khala-sync-server` and integration-tested there
- * through `executePush` against real Postgres). The fleet mutators are
- * owner-gated via `khala_sync_scope_owners`; a foreign user gets an
- * in-band `unauthorized_scope` rejection. HONEST V1: an applied fleet
- * mutation records a durable intent row and projects the updated
- * `fleet_run` post-image — supervisor-side enforcement of intents is a
- * follow-up lane (see docs/khala-sync/README.md).
+ * test mutator plus the fleet cockpit operator mutators (KS-6.1 #8302 +
+ * KS-3.2 #8292: `fleet.setDesiredSlots` / `fleet.pauseRun` /
+ * `fleet.resumeRun` / `fleet.pauseWorker` / `fleet.resumeWorker` /
+ * `fleet.acknowledgeInboxFlag` / `fleet.stopRun`, defined in
+ * `@openagentsinc/khala-sync-server` and integration-tested there through
+ * `executePush` against real Postgres — catalog in
+ * docs/khala-sync/MUTATORS.md). The fleet mutators are owner-gated via
+ * `khala_sync_scope_owners`; a foreign user gets an in-band
+ * `unauthorized_scope` rejection, and `fleet.stopRun` additionally rejects
+ * `confirmation_required` without `confirm: true`. HONEST V1: an applied
+ * fleet mutation records a durable intent row and projects the updated
+ * post-image — supervisor-side enforcement of intents (polling
+ * GET /api/internal/khala-sync/fleet-intents) is a follow-up lane (see
+ * docs/khala-sync/README.md).
  */
 export const makeKhalaSyncWorkerMutatorRegistry = (): MutatorRegistry =>
   makeMutatorRegistry([debugEchoMutator, ...fleetOperatorMutators])

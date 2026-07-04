@@ -88,7 +88,7 @@ against local Postgres + the real hub DO + the real client SQLite store.
 | KS-0 Infrastructure (Cloud SQL, Hyperdrive, migration runner) | #8283 #8284 #8285 |
 | KS-1 Contracts hardening | #8286 |
 | KS-2 Postgres substrate (outbox writer, reads, compaction, idempotency) | #8287 #8288 #8289 #8290 |
-| KS-3 Mutator engine (push route, registry, guide+contract) | #8291 #8292 #8293 (guide+contract landed: [`MUTATORS.md`](./MUTATORS.md), `packages/behavior-contracts/src/khala-sync.ts`) |
+| KS-3 Mutator engine (push route, registry, guide+contract) | #8291 #8292 (full fleet mutator catalog + intent-consumption seam landed — see the catalog in [`MUTATORS.md`](./MUTATORS.md); supervisor enforcement wiring is the follow-up) #8293 (guide+contract landed: [`MUTATORS.md`](./MUTATORS.md), `packages/behavior-contracts/src/khala-sync.ts`) |
 | KS-4 Capture + Hub DO (capture, hub, catch-up, bootstrap/seam) | #8294 #8295 #8296 #8297 |
 | KS-5 Client engine (store, rebase, session, web lane) | #8298 #8299 #8300 #8301 |
 | KS-6 First consumers (fleet projection, desktop, tokens-served) | #8302 (server-side projection + operator mutators landed; supervisor intent enforcement is follow-up) #8303 (desktop fleet cockpit wired behind `KHALA_SYNC_FLEET=1`; live verification deferred to the deploy pass) #8304 |

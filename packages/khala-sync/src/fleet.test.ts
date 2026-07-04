@@ -3,8 +3,10 @@ import {
   canonicalJson,
   decodeFleetAccountEntity,
   decodeFleetAssignmentEntity,
+  decodeFleetInboxFlagEntity,
   decodeFleetRunEntity,
   decodeFleetWorkerEntity,
+  encodeFleetInboxFlagEntity,
   encodeFleetRunEntity,
   FLEET_ENTITY_TYPES,
 } from "./index.js"
@@ -41,6 +43,7 @@ describe("fleet entity contracts", () => {
       "fleet_worker",
       "fleet_assignment",
       "fleet_account",
+      "fleet_inbox_flag",
     ])
   })
 
@@ -139,6 +142,54 @@ describe("fleet entity contracts", () => {
         ...base,
         issueRef: "https://github.com/OpenAgentsInc/openagents/issues/8302",
       }),
+    ).toThrow()
+  })
+
+  test("fleet_worker accepts the operator-desired paused phase", () => {
+    expect(
+      decodeFleetWorkerEntity({
+        phase: "paused",
+        updatedAt: "2026-07-04T15:20:11.412Z",
+        workerId: "dispatch-context.pylon.supervisor.9ab31c44",
+      }).phase,
+    ).toBe("paused")
+  })
+
+  test("fleet_inbox_flag decodes, and refs/kinds refuse private material", () => {
+    const validFlag = {
+      acknowledgedAt: "2026-07-04T15:21:00.000Z",
+      flagRef: "inbox-flag.run_blocked.4f2a9c1d",
+      kind: "run_blocked",
+      openedAt: "2026-07-04T15:18:02.000Z",
+      status: "acknowledged",
+      updatedAt: "2026-07-04T15:21:00.000Z",
+    }
+    const entity = decodeFleetInboxFlagEntity(validFlag)
+    expect(entity.status).toBe("acknowledged")
+    expect(canonicalJson(encodeFleetInboxFlagEntity(entity))).not.toMatch(
+      FORBIDDEN,
+    )
+    // flagRef with a filesystem path — refused
+    expect(() =>
+      decodeFleetInboxFlagEntity({
+        ...validFlag,
+        flagRef: "/Users/alice/inbox",
+      }),
+    ).toThrow()
+    // flagRef with an email — refused
+    expect(() =>
+      decodeFleetInboxFlagEntity({
+        ...validFlag,
+        flagRef: "alice@example.com",
+      }),
+    ).toThrow()
+    // kind must be a bounded lower_snake_case token
+    expect(() =>
+      decodeFleetInboxFlagEntity({ ...validFlag, kind: "Run Blocked!" }),
+    ).toThrow()
+    // status is a closed set
+    expect(() =>
+      decodeFleetInboxFlagEntity({ ...validFlag, status: "dismissed" }),
     ).toThrow()
   })
 

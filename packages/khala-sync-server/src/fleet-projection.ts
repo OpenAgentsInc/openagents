@@ -7,16 +7,19 @@ import {
   decodeFleetWorkerEntity,
   encodeFleetAccountEntity,
   encodeFleetAssignmentEntity,
+  encodeFleetInboxFlagEntity,
   encodeFleetRunEntity,
   encodeFleetWorkerEntity,
   EntityId,
   EntityType,
   FLEET_ACCOUNT_ENTITY_TYPE,
   FLEET_ASSIGNMENT_ENTITY_TYPE,
+  FLEET_INBOX_FLAG_ENTITY_TYPE,
   FLEET_RUN_ENTITY_TYPE,
   FLEET_WORKER_ENTITY_TYPE,
   type FleetAccountEntity,
   type FleetAssignmentEntity,
+  type FleetInboxFlagEntity,
   type FleetRunEntity,
   fleetRunScope,
   type FleetWorkerEntity,
@@ -318,12 +321,14 @@ export type FleetEntityChange =
   | { readonly kind: "fleet_worker"; readonly op: "upsert"; readonly entity: FleetWorkerEntity }
   | { readonly kind: "fleet_assignment"; readonly op: "upsert"; readonly entity: FleetAssignmentEntity }
   | { readonly kind: "fleet_account"; readonly op: "upsert"; readonly entity: FleetAccountEntity }
+  | { readonly kind: "fleet_inbox_flag"; readonly op: "upsert"; readonly entity: FleetInboxFlagEntity }
   | {
       readonly kind:
         | "fleet_run"
         | "fleet_worker"
         | "fleet_assignment"
         | "fleet_account"
+        | "fleet_inbox_flag"
       readonly op: "delete"
       readonly entityId: string
     }
@@ -333,6 +338,8 @@ const encodeByKind = {
     encodeFleetAccountEntity(entity),
   [FLEET_ASSIGNMENT_ENTITY_TYPE]: (entity: FleetAssignmentEntity) =>
     encodeFleetAssignmentEntity(entity),
+  [FLEET_INBOX_FLAG_ENTITY_TYPE]: (entity: FleetInboxFlagEntity) =>
+    encodeFleetInboxFlagEntity(entity),
   [FLEET_RUN_ENTITY_TYPE]: (entity: FleetRunEntity) =>
     encodeFleetRunEntity(entity),
   [FLEET_WORKER_ENTITY_TYPE]: (entity: FleetWorkerEntity) =>
@@ -350,6 +357,8 @@ const entityIdOf = (change: FleetEntityChange): string => {
       return change.entity.assignmentRef
     case "fleet_account":
       return change.entity.accountRefHash
+    case "fleet_inbox_flag":
+      return change.entity.flagRef
   }
 }
 

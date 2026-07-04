@@ -49,13 +49,17 @@ const makeCtx = (userId: string, writer: SyncTransactionWriter): MutatorContext 
 })
 
 describe('khala sync worker mutator registry', () => {
-  test('the registry carries sync.debugEcho and the KS-6.1 fleet operator mutators', () => {
+  test('the registry carries sync.debugEcho and the KS-6.1 + KS-3.2 fleet operator mutators', () => {
     const registry = makeKhalaSyncWorkerMutatorRegistry()
     expect(registry.names().map(String)).toEqual([
       SYNC_DEBUG_ECHO_MUTATOR_NAME,
       'fleet.setDesiredSlots',
       'fleet.pauseRun',
       'fleet.resumeRun',
+      'fleet.pauseWorker',
+      'fleet.resumeWorker',
+      'fleet.acknowledgeInboxFlag',
+      'fleet.stopRun',
     ])
     expect(
       registry.get(MutatorName.make(SYNC_DEBUG_ECHO_MUTATOR_NAME)),
@@ -64,6 +68,10 @@ describe('khala sync worker mutator registry', () => {
       'fleet.setDesiredSlots',
       'fleet.pauseRun',
       'fleet.resumeRun',
+      'fleet.pauseWorker',
+      'fleet.resumeWorker',
+      'fleet.acknowledgeInboxFlag',
+      'fleet.stopRun',
     ]) {
       expect(registry.get(MutatorName.make(name))).toBeDefined()
     }

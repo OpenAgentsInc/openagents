@@ -4,10 +4,12 @@ import {
   canonicalJson,
   decodeFleetAccountEntity,
   decodeFleetAssignmentEntity,
+  decodeFleetInboxFlagEntity,
   decodeFleetRunEntity,
   decodeFleetWorkerEntity,
   FLEET_ACCOUNT_ENTITY_TYPE,
   FLEET_ASSIGNMENT_ENTITY_TYPE,
+  FLEET_INBOX_FLAG_ENTITY_TYPE,
   FLEET_RUN_ENTITY_TYPE,
   FLEET_WORKER_ENTITY_TYPE,
   fleetRunScope,
@@ -111,20 +113,28 @@ const KHALA_SYNC_DESKTOP_SCHEMA_VERSION = SyncSchemaVersion.make(1)
 export const FLEET_SET_DESIRED_SLOTS_MUTATOR_NAME = "fleet.setDesiredSlots"
 export const FLEET_PAUSE_RUN_MUTATOR_NAME = "fleet.pauseRun"
 export const FLEET_RESUME_RUN_MUTATOR_NAME = "fleet.resumeRun"
+export const FLEET_PAUSE_WORKER_MUTATOR_NAME = "fleet.pauseWorker"
+export const FLEET_RESUME_WORKER_MUTATOR_NAME = "fleet.resumeWorker"
+export const FLEET_ACKNOWLEDGE_INBOX_FLAG_MUTATOR_NAME =
+  "fleet.acknowledgeInboxFlag"
+export const FLEET_STOP_RUN_MUTATOR_NAME = "fleet.stopRun"
 
-type FleetRunPatch = Readonly<Record<string, unknown>>
+type FleetEntityPatch = Readonly<Record<string, unknown>>
 
-const patchedFleetRunEffects = (
+const patchedEntityEffects = (
   view: OverlayReadView,
   runId: string,
-  patch: FleetRunPatch,
+  entityType: string,
+  entityId: string,
+  decode: (value: unknown) => unknown,
+  patch: FleetEntityPatch,
 ) => {
   const scope = fleetRunScope(runId)
-  const currentJson = view.get(scope, FLEET_RUN_ENTITY_TYPE, runId)
+  const currentJson = view.get(scope, entityType, entityId)
   if (currentJson === undefined) return []
   let current: unknown
   try {
-    current = decodeFleetRunEntity(JSON.parse(currentJson))
+    current = decode(JSON.parse(currentJson))
   } catch {
     return []
   }
@@ -132,12 +142,26 @@ const patchedFleetRunEffects = (
     {
       kind: "upsert" as const,
       scope,
-      entityType: FLEET_RUN_ENTITY_TYPE,
-      entityId: runId,
+      entityType,
+      entityId,
       postImageJson: canonicalJson({ ...(current as object), ...patch }),
     },
   ]
 }
+
+const patchedFleetRunEffects = (
+  view: OverlayReadView,
+  runId: string,
+  patch: FleetEntityPatch,
+) =>
+  patchedEntityEffects(
+    view,
+    runId,
+    FLEET_RUN_ENTITY_TYPE,
+    runId,
+    decodeFleetRunEntity,
+    patch,
+  )
 
 export const fleetSetDesiredSlotsClientMutator: ClientMutator<{
   readonly runId: string
@@ -158,10 +182,88 @@ export const fleetResumeRunClientMutator: ClientMutator<{ readonly runId: string
   apply: (args, view) => patchedFleetRunEffects(view, args.runId, { status: "running" }),
 }
 
+export const fleetPauseWorkerClientMutator: ClientMutator<{
+  readonly runId: string
+  readonly workerId: string
+}> = {
+  name: MutatorName.make(FLEET_PAUSE_WORKER_MUTATOR_NAME),
+  apply: (args, view) =>
+    patchedEntityEffects(
+      view,
+      args.runId,
+      FLEET_WORKER_ENTITY_TYPE,
+      args.workerId,
+      decodeFleetWorkerEntity,
+      { phase: "paused" },
+    ),
+}
+
+export const fleetResumeWorkerClientMutator: ClientMutator<{
+  readonly runId: string
+  readonly workerId: string
+}> = {
+  name: MutatorName.make(FLEET_RESUME_WORKER_MUTATOR_NAME),
+  apply: (args, view) =>
+    patchedEntityEffects(
+      view,
+      args.runId,
+      FLEET_WORKER_ENTITY_TYPE,
+      args.workerId,
+      decodeFleetWorkerEntity,
+      { phase: "idle" },
+    ),
+}
+
+/**
+ * Optimistically flips a SYNCED flag to acknowledged. The server also
+ * records acks for flags it has never projected (kind `unclassified`), but
+ * with no local post-image there is nothing truthful to patch — the
+ * confirmed entity lands on rebase. Timestamps are server truth only
+ * (replay-safe: no clocks in optimistic appliers).
+ */
+export const fleetAcknowledgeInboxFlagClientMutator: ClientMutator<{
+  readonly runId: string
+  readonly flagRef: string
+}> = {
+  name: MutatorName.make(FLEET_ACKNOWLEDGE_INBOX_FLAG_MUTATOR_NAME),
+  apply: (args, view) =>
+    patchedEntityEffects(
+      view,
+      args.runId,
+      FLEET_INBOX_FLAG_ENTITY_TYPE,
+      args.flagRef,
+      decodeFleetInboxFlagEntity,
+      { status: "acknowledged" },
+    ),
+}
+
+/**
+ * Terminal stop. Optimistic only when `confirm` is true — an unconfirmed
+ * envelope is a guaranteed server rejection, so patching ahead of it would
+ * show a lie.
+ */
+export const fleetStopRunClientMutator: ClientMutator<{
+  readonly runId: string
+  readonly confirm: boolean
+}> = {
+  name: MutatorName.make(FLEET_STOP_RUN_MUTATOR_NAME),
+  apply: (args, view) =>
+    args.confirm
+      ? patchedFleetRunEffects(view, args.runId, {
+          desiredSlots: 0,
+          status: "stopped",
+        })
+      : [],
+}
+
 export const fleetClientMutators = [
   fleetSetDesiredSlotsClientMutator,
   fleetPauseRunClientMutator,
   fleetResumeRunClientMutator,
+  fleetPauseWorkerClientMutator,
+  fleetResumeWorkerClientMutator,
+  fleetAcknowledgeInboxFlagClientMutator,
+  fleetStopRunClientMutator,
 ] as const
 
 // ---------------------------------------------------------------------------
@@ -386,6 +488,10 @@ export const createKhalaCodeDesktopKhalaSyncService = (
         return { phase: "live", cursor: state.cursor, reason: null }
       case "must_refetch":
         return { phase: "must_refetch", cursor: null, reason: state.reason }
+      case "denied":
+        // KS-7.1 (#8305): the server denied scope access (fail-closed scope
+        // auth). Surfaced honestly — never rendered as any syncing state.
+        return { phase: "denied", cursor: null, reason: state.reason }
     }
   }
 
@@ -497,31 +603,82 @@ export const createKhalaCodeDesktopKhalaSyncService = (
     }
     try {
       await ensureSubscribed(active, fleetRunScope(request.runId))
-      if (request.action === "set_desired_slots") {
-        const desiredSlots = request.desiredSlots
-        if (
-          desiredSlots === undefined ||
-          !Number.isInteger(desiredSlots) ||
-          desiredSlots < 0 ||
-          desiredSlots > 1024
-        ) {
-          return { ok: false, error: "desired_slots_out_of_range" }
+      switch (request.action) {
+        case "set_desired_slots": {
+          const desiredSlots = request.desiredSlots
+          if (
+            desiredSlots === undefined ||
+            !Number.isInteger(desiredSlots) ||
+            desiredSlots < 0 ||
+            desiredSlots > 1024
+          ) {
+            return { ok: false, error: "desired_slots_out_of_range" }
+          }
+          await runEffect(
+            active.session.mutate(fleetSetDesiredSlotsClientMutator, {
+              desiredSlots,
+              runId: request.runId,
+            }),
+          )
+          return { ok: true }
         }
-        await runEffect(
-          active.session.mutate(fleetSetDesiredSlotsClientMutator, {
-            desiredSlots,
-            runId: request.runId,
-          }),
-        )
-        return { ok: true }
+        case "pause_worker":
+        case "resume_worker": {
+          const workerId = request.workerId?.trim()
+          if (workerId === undefined || workerId.length === 0) {
+            return { ok: false, error: "worker_id_required" }
+          }
+          await runEffect(
+            active.session.mutate(
+              request.action === "pause_worker"
+                ? fleetPauseWorkerClientMutator
+                : fleetResumeWorkerClientMutator,
+              { runId: request.runId, workerId },
+            ),
+          )
+          return { ok: true }
+        }
+        case "acknowledge_inbox_flag": {
+          const flagRef = request.flagRef?.trim()
+          if (flagRef === undefined || flagRef.length === 0) {
+            return { ok: false, error: "flag_ref_required" }
+          }
+          await runEffect(
+            active.session.mutate(fleetAcknowledgeInboxFlagClientMutator, {
+              flagRef,
+              runId: request.runId,
+            }),
+          )
+          return { ok: true }
+        }
+        case "stop": {
+          // Terminal guard mirrors the server: an unconfirmed stop is a
+          // guaranteed `confirmation_required` rejection, so refuse it
+          // locally instead of queueing known poison.
+          if (request.confirm !== true) {
+            return { ok: false, error: "confirm_required" }
+          }
+          await runEffect(
+            active.session.mutate(fleetStopRunClientMutator, {
+              confirm: true,
+              runId: request.runId,
+            }),
+          )
+          return { ok: true }
+        }
+        case "pause":
+        case "resume": {
+          await runEffect(
+            active.session.mutate(
+              request.action === "pause"
+                ? fleetPauseRunClientMutator
+                : fleetResumeRunClientMutator,
+              { runId: request.runId },
+            ),
+          )
+          return { ok: true }
+        }
       }
-      await runEffect(
-        active.session.mutate(
-          request.action === "pause" ? fleetPauseRunClientMutator : fleetResumeRunClientMutator,
-          { runId: request.runId },
-        ),
-      )
-      return { ok: true }
     } catch (error) {
       return { ok: false, error: errorText(error) }
     }

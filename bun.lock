@@ -303,6 +303,7 @@
         "@openagentsinc/blueprint-contracts": "workspace:*",
         "@openagentsinc/effect-boundary": "workspace:*",
         "@openagentsinc/forge-protocol": "workspace:*",
+        "@openagentsinc/khala-sync": "workspace:*",
         "@openagentsinc/mcp-contract": "workspace:*",
         "@openagentsinc/nip90": "workspace:*",
         "@openagentsinc/provider-account-schema": "workspace:*",
@@ -398,6 +399,7 @@
       },
       "devDependencies": {
         "@openagentsinc/khala-qa-harness": "workspace:*",
+        "@openagentsinc/khala-sync-server": "workspace:*",
         "@tailwindcss/vite": "^4.2.4",
         "@types/three": "0.184.0",
         "bun-types": "^1.0.0",

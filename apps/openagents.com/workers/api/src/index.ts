@@ -784,6 +784,10 @@ import { handleKhalaSyncBootstrap } from './khala-sync-bootstrap-routes'
 import { handleKhalaSyncConnect } from './khala-sync-connect-routes'
 import { handleKhalaSyncDbSmoke } from './khala-sync-db-smoke-routes'
 import {
+  KHALA_SYNC_FLEET_INTENTS_PATH,
+  handleKhalaSyncFleetIntents,
+} from './khala-sync-fleet-intents-routes'
+import {
   KHALA_SYNC_HUB_ACCESS_CHANGED_PATH,
   KHALA_SYNC_HUB_APPEND_PATH,
   KHALA_SYNC_HUB_CONNECT_PATH,
@@ -12099,6 +12103,20 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       handleKhalaSyncTokensServedReconcile(request, {
         reconcileDeps: makeTokensServedReconcileDeps(env),
+        requireOperator: () => requireAdminApiToken(request, env),
+      }),
+  },
+  {
+    // Khala Sync fleet-intent consumption seam (KS-3.2, #8292). Admin bearer
+    // only — the Pylon supervisor polls this with its admin token to observe
+    // the durable operator intents recorded by the fleet mutators
+    // (?scope=&after=&limit=, oldest-first, nextAfter watermark). Honest v1:
+    // observation only; supervisor-side enforcement wiring is the follow-up
+    // lane on epic #8282.
+    path: KHALA_SYNC_FLEET_INTENTS_PATH,
+    handler: (request, env) =>
+      handleKhalaSyncFleetIntents(request, {
+        binding: env.KHALA_SYNC_DB,
         requireOperator: () => requireAdminApiToken(request, env),
       }),
   },

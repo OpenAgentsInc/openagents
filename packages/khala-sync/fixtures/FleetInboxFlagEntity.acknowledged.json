@@ -1,0 +1,8 @@
+{
+  "flagRef": "inbox-flag.cooldown_all_accounts.9ab31c44f0e2d5a6",
+  "kind": "cooldown_all_accounts",
+  "status": "acknowledged",
+  "openedAt": "2026-07-04T15:18:02.000Z",
+  "acknowledgedAt": "2026-07-04T15:21:00.000Z",
+  "updatedAt": "2026-07-04T15:21:00.000Z"
+}

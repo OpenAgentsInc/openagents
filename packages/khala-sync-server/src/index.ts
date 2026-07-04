@@ -19,6 +19,7 @@ import type {
 
 export * from "./compaction.js"
 export * from "./errors.js"
+export * from "./fleet-intents.js"
 export * from "./fleet-mutators.js"
 export * from "./fleet-projection.js"
 export * from "./mutation-ledger.js"

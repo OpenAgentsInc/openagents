@@ -59,6 +59,44 @@ The engine wraps `execute` so that client-state binding → idempotency gate
 → your code → mutation-ledger recording all commit atomically. The rules
 below are what your code must uphold inside that wrapper.
 
+## 0. Mutator catalog (production Worker registry)
+
+The registry in `apps/openagents.com/workers/api/src/khala-sync-mutators.ts`
+currently carries (server implementations for the fleet domain live in
+`packages/khala-sync-server/src/fleet-mutators.ts`; paired desktop client
+mutators in `clients/khala-code-desktop/src/bun/khala-sync-service.ts`, with
+a cross-package completeness test in
+`clients/khala-code-desktop/tests/khala-sync-mutator-registry.test.ts`):
+
+| Name | Args | Writes | In-band rejections |
+| --- | --- | --- | --- |
+| `sync.debugEcho` | `scope`, `entityId`, `echo` | `sync_debug_echo` post-image in the caller's own personal scope | `unauthorized_scope` |
+| `fleet.setDesiredSlots` | `runId`, `desiredSlots` (0–1024) | intent row + `fleet_run` post-image | `unauthorized_scope` |
+| `fleet.pauseRun` | `runId` | intent row + `fleet_run` post-image (`status: paused`) | `unauthorized_scope` |
+| `fleet.resumeRun` | `runId` | intent row + `fleet_run` post-image (`status: running`) | `unauthorized_scope` |
+| `fleet.pauseWorker` | `runId`, `workerId` | intent row (`worker_id`) + `fleet_worker` post-image (`phase: paused`) | `unauthorized_scope` |
+| `fleet.resumeWorker` | `runId`, `workerId` | intent row (`worker_id`) + `fleet_worker` post-image (`phase: idle`) | `unauthorized_scope` |
+| `fleet.acknowledgeInboxFlag` | `runId`, `flagRef` | intent row (`flag_ref`) + `fleet_inbox_flag` post-image (`status: acknowledged`; preserves `kind`/`openedAt` when the flag was projected, else records the ack with kind `unclassified`) | `unauthorized_scope` |
+| `fleet.stopRun` | `runId`, `confirm` | intent row (`stop`) + `fleet_run` post-image (`status: stopped`, `desiredSlots: 0`) — TERMINAL | `confirmation_required` (when `confirm !== true`, checked before any write incl. the scope claim), `unauthorized_scope` |
+
+Every fleet mutator is owner-gated via `khala_sync_scope_owners`
+(first-writer-wins claim; foreign user ⇒ `unauthorized_scope` with zero
+writes) and executes intent row + post-image append in ONE transaction,
+attributable to `ctx.mutationRef`.
+
+**Honest v1 enforcement status:** an applied fleet mutation is a DURABLE
+OPERATOR REQUEST (`khala_sync_fleet_intents`, migrations 0004/0005) plus a
+projected post-image that cockpit clients converge on — it does not change
+Pylon dispatch behavior by itself yet. The consumption seam is
+`readPendingFleetIntents` (`packages/khala-sync-server/src/fleet-intents.ts`)
+exposed through the admin-bearer-gated
+`GET /api/internal/khala-sync/fleet-intents?scope=&after=&limit=` route,
+with the typed Pylon-side poller in
+`apps/pylon/src/orchestration/fleet-intents.ts` (polls with
+`OPENAGENTS_ADMIN_API_TOKEN`, resumes from the `nextAfter` watermark).
+Wiring the Pylon supervisor loop to poll + enforce those intents is the
+follow-up lane tracked on epic #8282.
+
 ## 1. The single-transaction rule (SPEC §7 invariant 5)
 
 Everything a mutator does happens inside ONE Postgres transaction that the
