@@ -72,7 +72,7 @@ import {
 } from '@openagentsinc/khala-sync-server/hub'
 import { Schema as S } from 'effect'
 
-import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { parseJsonUnknown } from './json-boundary'
 
 type HttpResponse = globalThis.Response
 
@@ -151,7 +151,28 @@ const utf8ByteLength = (text: string): number =>
   new TextEncoder().encode(text).byteLength
 
 const json = (value: unknown, init: ResponseInit = {}): HttpResponse =>
-  noStoreJsonResponse(value, init)
+  hubJsonResponse(value, init)
+
+const hubJsonResponse = (
+  value: unknown,
+  init: ResponseInit = {},
+): HttpResponse => {
+  const headers = new Headers(init.headers)
+  headers.set('cache-control', 'no-store')
+
+  return Response.json(value, { ...init, headers })
+}
+
+const hubMethodNotAllowed = (
+  allowedMethods: ReadonlyArray<string>,
+): HttpResponse => {
+  const headers = new Headers({
+    allow: allowedMethods.join(', '),
+    'cache-control': 'no-store',
+  })
+
+  return hubJsonResponse({ error: 'method_not_allowed' }, { status: 405, headers })
+}
 
 const syncErrorResponse = (
   status: number,
@@ -292,15 +313,15 @@ export class KhalaSyncHubDO {
   async fetch(request: Request): Promise<HttpResponse> {
     const url = new URL(request.url)
     if (url.pathname === '/append') {
-      if (request.method !== 'POST') return methodNotAllowed(['POST'])
+      if (request.method !== 'POST') return hubMethodNotAllowed(['POST'])
       return this.handleAppend(request)
     }
     if (url.pathname === '/log') {
-      if (request.method !== 'GET') return methodNotAllowed(['GET'])
+      if (request.method !== 'GET') return hubMethodNotAllowed(['GET'])
       return this.handleLog(url)
     }
     if (url.pathname === '/connect') {
-      if (request.method !== 'GET') return methodNotAllowed(['GET'])
+      if (request.method !== 'GET') return hubMethodNotAllowed(['GET'])
       return this.handleConnect(request, url)
     }
     return json({ error: 'not_found' }, { status: 404 })
@@ -320,7 +341,7 @@ export class KhalaSyncHubDO {
   webSocketMessage(ws: HubWebSocketLike, message: string | ArrayBuffer): void {
     if (typeof message !== 'string') return
     try {
-      const frame = decodeLiveFrame(JSON.parse(message))
+      const frame = decodeLiveFrame(parseJsonUnknown(message))
       if (frame._tag === 'PingFrame') {
         ws.send(KHALA_SYNC_HUB_PING_TEXT)
       }
@@ -787,7 +808,9 @@ export class KhalaSyncHubDO {
               .toArray()
     }
 
-    const entries = page.map(row => decodeChangelogEntry(JSON.parse(row.payload)))
+    const entries = page.map(row =>
+      decodeChangelogEntry(parseJsonUnknown(row.payload)),
+    )
     const nextCursor =
       page.length > 0 ? page[page.length - 1]!.version : cursor
 
@@ -844,7 +867,7 @@ export class KhalaSyncHubDO {
         cursor,
       )
       .toArray()
-      .map(row => decodeChangelogEntry(JSON.parse(row.payload)))
+      .map(row => decodeChangelogEntry(parseJsonUnknown(row.payload)))
   }
 }
 
@@ -877,11 +900,11 @@ export const handleKhalaSyncHubInternalRoute = async (
 ): Promise<HttpResponse> => {
   const expectedMethod = deps.doPath === '/append' ? 'POST' : 'GET'
   if (request.method !== expectedMethod) {
-    return methodNotAllowed([expectedMethod])
+    return hubMethodNotAllowed([expectedMethod])
   }
 
   if (!(await deps.requireOperator())) {
-    return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    return json({ error: 'unauthorized' }, { status: 401 })
   }
 
   const url = new URL(request.url)
@@ -889,7 +912,7 @@ export const handleKhalaSyncHubInternalRoute = async (
   try {
     decodeScope(scopeRaw)
   } catch {
-    return noStoreJsonResponse(
+    return json(
       {
         error: 'khala_sync_hub_invalid_scope',
         reason: 'scope query parameter must be a valid Khala Sync scope id',
@@ -900,7 +923,7 @@ export const handleKhalaSyncHubInternalRoute = async (
   }
 
   if (deps.namespace === undefined) {
-    return noStoreJsonResponse(
+    return json(
       {
         error: 'khala_sync_hub_binding_missing',
         reason:

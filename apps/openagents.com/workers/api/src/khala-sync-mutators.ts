@@ -33,6 +33,8 @@ import {
   type MutatorRegistry,
 } from '@openagentsinc/khala-sync-server'
 
+import { parseJsonUnknown } from './json-boundary'
+
 export const SYNC_DEBUG_ECHO_MUTATOR_NAME = 'sync.debugEcho'
 export const SYNC_DEBUG_ECHO_ENTITY_TYPE = 'sync_debug_echo'
 
@@ -48,7 +50,7 @@ const DebugEchoArgs = S.Struct({
 type DebugEchoArgs = typeof DebugEchoArgs.Type
 
 export const decodeDebugEchoArgs = (argsJson: string): DebugEchoArgs =>
-  S.decodeUnknownSync(DebugEchoArgs)(JSON.parse(argsJson))
+  S.decodeUnknownSync(DebugEchoArgs)(parseJsonUnknown(argsJson))
 
 export const debugEchoMutator: MutatorDefinition =
   defineMutator<DebugEchoArgs>({
