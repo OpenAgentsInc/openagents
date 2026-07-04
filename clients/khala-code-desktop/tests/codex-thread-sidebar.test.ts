@@ -34,8 +34,14 @@ const thread = (
 describe("Khala Code thread sidebar", () => {
   test("marks the currently active chat row as active", async () => {
     const window = new Window()
+    const previousWindow = globalThis.window
     const previousDocument = globalThis.document
     const previousNavigator = globalThis.navigator
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: window,
+      writable: true,
+    })
     Object.defineProperty(globalThis, "document", {
       configurable: true,
       value: window.document,
@@ -107,6 +113,12 @@ describe("Khala Code thread sidebar", () => {
       expect(nextActiveRow?.dataset.active).toBe("true")
       expect(nextActiveRow?.getAttribute("aria-current")).toBe("true")
     } finally {
+      await new Promise(resolve => setTimeout(resolve, 0))
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: previousWindow,
+        writable: true,
+      })
       Object.defineProperty(globalThis, "document", {
         configurable: true,
         value: previousDocument,
@@ -181,8 +193,14 @@ describe("Khala Code thread sidebar", () => {
 
   test("renders mixed catalog entries without provider badges", async () => {
     const window = new Window()
+    const previousWindow = globalThis.window
     const previousDocument = globalThis.document
     const previousNavigator = globalThis.navigator
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: window,
+      writable: true,
+    })
     Object.defineProperty(globalThis, "document", {
       configurable: true,
       value: window.document,
@@ -237,6 +255,12 @@ describe("Khala Code thread sidebar", () => {
       expect(container.textContent).not.toContain("Codex")
       expect(container.textContent).not.toContain("Claude")
     } finally {
+      await new Promise(resolve => setTimeout(resolve, 0))
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: previousWindow,
+        writable: true,
+      })
       Object.defineProperty(globalThis, "document", {
         configurable: true,
         value: previousDocument,
@@ -251,8 +275,14 @@ describe("Khala Code thread sidebar", () => {
 
   test("keeps the thread list mounted while a selected thread hydrates or fails", async () => {
     const window = new Window()
+    const previousWindow = globalThis.window
     const previousDocument = globalThis.document
     const previousNavigator = globalThis.navigator
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: window,
+      writable: true,
+    })
     Object.defineProperty(globalThis, "document", {
       configurable: true,
       value: window.document,
@@ -322,6 +352,12 @@ describe("Khala Code thread sidebar", () => {
       expect(container.textContent).toContain("Claude transcript unavailable")
       expect(container.textContent).not.toBe("Loading threads")
     } finally {
+      await new Promise(resolve => setTimeout(resolve, 0))
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: previousWindow,
+        writable: true,
+      })
       Object.defineProperty(globalThis, "document", {
         configurable: true,
         value: previousDocument,
@@ -336,8 +372,14 @@ describe("Khala Code thread sidebar", () => {
 
   test("renders stored-only Codex records as disabled rows and skips them for recent selection", async () => {
     const window = new Window()
+    const previousWindow = globalThis.window
     const previousDocument = globalThis.document
     const previousNavigator = globalThis.navigator
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: window,
+      writable: true,
+    })
     Object.defineProperty(globalThis, "document", {
       configurable: true,
       value: window.document,
@@ -404,6 +446,12 @@ describe("Khala Code thread sidebar", () => {
       await expect(sidebar.selectRecentThread(0)).resolves.toBe(true)
       expect(resumedThreadIds).toEqual(["thread-live"])
     } finally {
+      await new Promise(resolve => setTimeout(resolve, 0))
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: previousWindow,
+        writable: true,
+      })
       Object.defineProperty(globalThis, "document", {
         configurable: true,
         value: previousDocument,
@@ -418,8 +466,14 @@ describe("Khala Code thread sidebar", () => {
 
   test("selects recent visible threads without refetching the catalog", async () => {
     const window = new Window()
+    const previousWindow = globalThis.window
     const previousDocument = globalThis.document
     const previousNavigator = globalThis.navigator
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: window,
+      writable: true,
+    })
     Object.defineProperty(globalThis, "document", {
       configurable: true,
       value: window.document,
@@ -474,6 +528,12 @@ describe("Khala Code thread sidebar", () => {
       expect(listCalls).toBe(1)
       expect(selectedThreadIds).toEqual(["thread-a"])
     } finally {
+      await new Promise(resolve => setTimeout(resolve, 0))
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: previousWindow,
+        writable: true,
+      })
       Object.defineProperty(globalThis, "document", {
         configurable: true,
         value: previousDocument,
@@ -489,8 +549,14 @@ describe("Khala Code thread sidebar", () => {
   test("defaults history to app sessions and opts into all home sessions from the header toggle", async () => {
     // Oracle for khala_code.history.app_sessions_default.v1
     const window = new Window()
+    const previousWindow = globalThis.window
     const previousDocument = globalThis.document
     const previousNavigator = globalThis.navigator
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: window,
+      writable: true,
+    })
     Object.defineProperty(globalThis, "document", {
       configurable: true,
       value: window.document,
@@ -551,6 +617,12 @@ describe("Khala Code thread sidebar", () => {
           ?.getAttribute("aria-pressed"),
       ).toBe("true")
     } finally {
+      await new Promise(resolve => setTimeout(resolve, 0))
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: previousWindow,
+        writable: true,
+      })
       Object.defineProperty(globalThis, "document", {
         configurable: true,
         value: previousDocument,
@@ -566,8 +638,14 @@ describe("Khala Code thread sidebar", () => {
   test("a dead-thread error row and the global error banner both clear on dismiss, without a refetch", async () => {
     // Oracle for khala_code.history.app_sessions_default.v1
     const window = new Window()
+    const previousWindow = globalThis.window
     const previousDocument = globalThis.document
     const previousNavigator = globalThis.navigator
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: window,
+      writable: true,
+    })
     Object.defineProperty(globalThis, "document", {
       configurable: true,
       value: window.document,
@@ -622,6 +700,12 @@ describe("Khala Code thread sidebar", () => {
       expect(container.querySelector(".khala-thread-sidebar-row-error")).toBeNull()
       expect(listThreadsCalls).toBe(callsAfterInitialLoad)
     } finally {
+      await new Promise(resolve => setTimeout(resolve, 0))
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: previousWindow,
+        writable: true,
+      })
       Object.defineProperty(globalThis, "document", {
         configurable: true,
         value: previousDocument,

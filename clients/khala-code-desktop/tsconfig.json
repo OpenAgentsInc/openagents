@@ -1,10 +1,11 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "jsx": "react-jsx",
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "types": ["bun-types"],
     "noEmit": true
   },
-  "include": ["electrobun.config.ts", "scripts/**/*.ts", "src/**/*.ts", "tests/**/*.ts"]
+  "include": ["electrobun.config.ts", "scripts/**/*.ts", "src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx"]
 }

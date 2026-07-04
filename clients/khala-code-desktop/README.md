@@ -88,13 +88,23 @@ desktop app adds:
 - Fleet and Pylon swarm controls around isolated worker Codex accounts;
 - Gym/proof panes and smoke-test harnesses for desktop advantages.
 
+## React Shell Migration
+
+TS-7 phase 1 starts the React + Tailwind shell rewrite with the chat/thread
+sidebar only. `src/ui/codex-thread-sidebar.ts` remains the stable mount API for
+the Electrobun shell, and it re-exports the React implementation from
+`src/ui/codex-thread-sidebar-react.tsx`. Keep the UX behavior contracts as the
+regression net for this migration: future shell surfaces should move
+route-by-route and delete their vanilla renderer as they cross over.
+
 ## Iconography
 
 Khala Code uses only the OpenAI Apps SDK icon catalog from
 `@openagentsinc/ui/icon`. Foldkit surfaces should use `iconView`; direct DOM
-surfaces should use `iconElement` from `@openagentsinc/ui/icon-dom`. Do not use
-ASCII glyph placeholders, emoji, hand-authored SVGs, icon fonts, Lucide, or
-visible words as stand-ins for icon controls.
+surfaces should use `iconElement` from `@openagentsinc/ui/icon-dom`; React
+surfaces should render the same catalog via `iconSvg` or shared React
+primitives. Do not use ASCII glyph placeholders, emoji, hand-authored SVGs,
+icon fonts, Lucide, or visible words as stand-ins for icon controls.
 
 Tracking context:
 

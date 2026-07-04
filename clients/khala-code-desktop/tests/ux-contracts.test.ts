@@ -70,8 +70,14 @@ const withDom = async (
   run: (window: Window) => Promise<void> | void,
 ): Promise<void> => {
   const window = new Window()
+  const previousWindow = globalThis.window
   const previousDocument = globalThis.document
   const previousNavigator = globalThis.navigator
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: window,
+    writable: true,
+  })
   Object.defineProperty(globalThis, "document", {
     configurable: true,
     value: window.document,
@@ -83,6 +89,11 @@ const withDom = async (
   try {
     await run(window)
   } finally {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: previousWindow,
+      writable: true,
+    })
     Object.defineProperty(globalThis, "document", {
       configurable: true,
       value: previousDocument,
@@ -630,7 +641,7 @@ describe("contract khala_code.composer.attach_control_icon_only.v1", () => {
 // Oracle for khala_code.chat.no_current_chat_text_flash.v1
 describe("contract khala_code.chat.no_current_chat_text_flash.v1", () => {
   test("no 'Current chat' text renders anywhere in the sidebar source, even as a conditional string", async () => {
-    const sidebar = await Bun.file(new URL("../src/ui/codex-thread-sidebar.ts", import.meta.url)).text()
+    const sidebar = await Bun.file(new URL("../src/ui/codex-thread-sidebar-react.tsx", import.meta.url)).text()
     expect(sidebar.toLowerCase()).not.toContain("current chat")
   })
 })
@@ -941,7 +952,7 @@ describe(
       const previousWindow = globalThis.window
       const previousDocument = globalThis.document
       const previousNavigator = globalThis.navigator
-      Object.defineProperty(globalThis, "window", { configurable: true, value: window })
+      Object.defineProperty(globalThis, "window", { configurable: true, value: window, writable: true })
       Object.defineProperty(globalThis, "document", { configurable: true, value: window.document })
       Object.defineProperty(globalThis, "navigator", { configurable: true, value: window.navigator })
       try {
@@ -963,7 +974,7 @@ describe(
         }
         handle.destroy()
       } finally {
-        Object.defineProperty(globalThis, "window", { configurable: true, value: previousWindow })
+        Object.defineProperty(globalThis, "window", { configurable: true, value: previousWindow, writable: true })
         Object.defineProperty(globalThis, "document", { configurable: true, value: previousDocument })
         Object.defineProperty(globalThis, "navigator", { configurable: true, value: previousNavigator })
         window.close()
@@ -1174,7 +1185,7 @@ const withFleetDom = async (
   const previousWindow = globalThis.window
   const previousMatchMedia = globalThis.matchMedia
   Object.defineProperty(globalThis, "document", { configurable: true, value: window.document })
-  Object.defineProperty(globalThis, "window", { configurable: true, value: window })
+  Object.defineProperty(globalThis, "window", { configurable: true, value: window, writable: true })
   Object.defineProperty(globalThis, "matchMedia", {
     configurable: true,
     value: () => ({ matches: false }),
@@ -1183,7 +1194,7 @@ const withFleetDom = async (
     await run(window)
   } finally {
     Object.defineProperty(globalThis, "document", { configurable: true, value: previousDocument })
-    Object.defineProperty(globalThis, "window", { configurable: true, value: previousWindow })
+    Object.defineProperty(globalThis, "window", { configurable: true, value: previousWindow, writable: true })
     Object.defineProperty(globalThis, "matchMedia", { configurable: true, value: previousMatchMedia })
     window.close()
   }
