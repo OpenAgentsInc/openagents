@@ -16,6 +16,7 @@ const routeBudgets = [
   { path: '/docs/api', marker: 'Developer API' },
   { path: '/blog', marker: 'OpenAgents Blog' },
   { path: '/blog/introducing-khala-code', marker: 'Introducing Khala Code' },
+  { path: '/clients-preview', marker: 'Autopilot control surface' },
   { path: '/components', marker: 'Component library' },
   { path: '/code/download', marker: 'Install paths, with the Codex requirement kept visible' },
   { path: '/autopilot/legal', marker: 'For legal teams' },

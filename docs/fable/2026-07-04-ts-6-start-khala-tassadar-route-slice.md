@@ -56,6 +56,25 @@ static design-system workbench slice.
 - This slice does not claim the old Foldkit live registry has been deleted; it
   gives Start the route and route-test contract ahead of production cutover.
 
+## Landed Slice 4: Clients Preview
+
+The Start staging app now owns `/clients-preview` as a static Autopilot client
+protocol fixture page.
+
+- `/clients-preview` preserves the old route's public contract markers:
+  `data-route="clients-preview"`, `data-autopilot-session-list`,
+  `data-autopilot-session-ref`, `data-autopilot-decision-id`, and
+  `data-autopilot-decision-action`.
+- The two shared protocol session refs remain visible:
+  `session.pylon.codex_composer.fixture0001` and
+  `session.pylon.claude_composer.fixture0002`.
+- The pending decision fixture remains visible as
+  `decision.fixture.req01` / `action.fixture.approve_pr`.
+- This slice intentionally does not import the old Foldkit Autopilot UI package
+  into the Start scaffold. It keeps the server-rendered public-safe fixture
+  contract in React while the real client workflow remains on the existing app
+  until production route cutover.
+
 ## Boundary
 
 This is not the final TS-6 closure. The live `openagents.com` Worker still

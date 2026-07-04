@@ -14,6 +14,7 @@ import { Route as KhalaRouteImport } from './routes/khala'
 import { Route as GymRouteImport } from './routes/gym'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as ComponentsRouteImport } from './routes/components'
+import { Route as ClientsPreviewRouteImport } from './routes/clients-preview'
 import { Route as BusinessRouteImport } from './routes/business'
 import { Route as BlogRouteImport } from './routes/blog'
 import { Route as IndexRouteImport } from './routes/index'
@@ -48,6 +49,11 @@ const DocsRoute = DocsRouteImport.update({
 const ComponentsRoute = ComponentsRouteImport.update({
   id: '/components',
   path: '/components',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClientsPreviewRoute = ClientsPreviewRouteImport.update({
+  id: '/clients-preview',
+  path: '/clients-preview',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BusinessRoute = BusinessRouteImport.update({
@@ -105,6 +111,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/blog': typeof BlogRouteWithChildren
   '/business': typeof BusinessRoute
+  '/clients-preview': typeof ClientsPreviewRoute
   '/components': typeof ComponentsRouteWithChildren
   '/docs': typeof DocsRouteWithChildren
   '/gym': typeof GymRoute
@@ -122,6 +129,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/blog': typeof BlogRouteWithChildren
   '/business': typeof BusinessRoute
+  '/clients-preview': typeof ClientsPreviewRoute
   '/components': typeof ComponentsRouteWithChildren
   '/docs': typeof DocsRouteWithChildren
   '/gym': typeof GymRoute
@@ -140,6 +148,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/blog': typeof BlogRouteWithChildren
   '/business': typeof BusinessRoute
+  '/clients-preview': typeof ClientsPreviewRoute
   '/components': typeof ComponentsRouteWithChildren
   '/docs': typeof DocsRouteWithChildren
   '/gym': typeof GymRoute
@@ -159,6 +168,7 @@ export interface FileRouteTypes {
     | '/'
     | '/blog'
     | '/business'
+    | '/clients-preview'
     | '/components'
     | '/docs'
     | '/gym'
@@ -176,6 +186,7 @@ export interface FileRouteTypes {
     | '/'
     | '/blog'
     | '/business'
+    | '/clients-preview'
     | '/components'
     | '/docs'
     | '/gym'
@@ -193,6 +204,7 @@ export interface FileRouteTypes {
     | '/'
     | '/blog'
     | '/business'
+    | '/clients-preview'
     | '/components'
     | '/docs'
     | '/gym'
@@ -211,6 +223,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BlogRoute: typeof BlogRouteWithChildren
   BusinessRoute: typeof BusinessRoute
+  ClientsPreviewRoute: typeof ClientsPreviewRoute
   ComponentsRoute: typeof ComponentsRouteWithChildren
   DocsRoute: typeof DocsRouteWithChildren
   GymRoute: typeof GymRoute
@@ -256,6 +269,13 @@ declare module '@tanstack/react-router' {
       path: '/components'
       fullPath: '/components'
       preLoaderRoute: typeof ComponentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/clients-preview': {
+      id: '/clients-preview'
+      path: '/clients-preview'
+      fullPath: '/clients-preview'
+      preLoaderRoute: typeof ClientsPreviewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/business': {
@@ -377,6 +397,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BlogRoute: BlogRouteWithChildren,
   BusinessRoute: BusinessRoute,
+  ClientsPreviewRoute: ClientsPreviewRoute,
   ComponentsRoute: ComponentsRouteWithChildren,
   DocsRoute: DocsRouteWithChildren,
   GymRoute: GymRoute,
