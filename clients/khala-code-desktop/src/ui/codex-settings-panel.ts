@@ -97,6 +97,9 @@ const metric = (label: string, value: unknown): HTMLElement => {
 const stringOrNull = (value: unknown): string | null =>
   typeof value === "string" ? value : null
 
+const controlNameFromLabel = (label: string): string =>
+  label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+
 const section = (title: string, children: readonly Node[]): HTMLElement => {
   const node = el("section", "khala-settings-section")
   node.append(el("h3", "khala-settings-section-title", title), ...children)
@@ -107,6 +110,7 @@ const renderSelect = (
   input: {
     readonly disabled?: boolean
     readonly label: string
+    readonly name?: string
     readonly options: readonly SelectOption[]
     readonly selected: string | null
     readonly title?: string
@@ -116,6 +120,7 @@ const renderSelect = (
   const row = el("label", "khala-settings-control")
   const label = el("span", "khala-settings-control-label", input.label)
   const select = el("select", "khala-settings-select")
+  select.name = input.name ?? controlNameFromLabel(input.label)
   select.disabled = input.disabled === true || input.options.length === 0
   if (input.title !== undefined) select.title = input.title
   for (const option of input.options) {
@@ -135,6 +140,7 @@ const renderTextInput = (
   input: {
     readonly disabled?: boolean
     readonly label: string
+    readonly name?: string
     readonly selected: string | null
     readonly title?: string
     readonly onCommit: (value: string) => void
@@ -143,6 +149,7 @@ const renderTextInput = (
   const row = el("label", "khala-settings-control")
   const label = el("span", "khala-settings-control-label", input.label)
   const text = el("input", "khala-settings-select")
+  text.name = input.name ?? controlNameFromLabel(input.label)
   text.type = "text"
   text.disabled = input.disabled === true
   text.value = input.selected ?? ""
@@ -215,9 +222,35 @@ export const mountCodexSettingsPanel = (
         value: tier.id,
       })) ?? []),
     ]
+    const providerOptions = current.providers.options.map(provider => ({
+      label: provider.modelCount > 1
+        ? `${provider.displayName} (${provider.modelCount} models)`
+        : provider.displayName,
+      value: provider.id,
+    }))
+    const configuredProviderMissing = current.config.modelProvider !== null &&
+      providerOptions.every(option => option.value !== current.config.modelProvider)
+    const providerSelectOptions = providerOptions.length === 0
+      ? [{
+          disabled: true,
+          label: compactValue(current.config.modelProvider),
+          value: current.config.modelProvider ?? "",
+        }]
+      : [
+          { label: "Default", value: "" },
+          ...providerOptions,
+          ...(configuredProviderMissing
+            ? [{
+                disabled: true,
+                label: `${current.config.modelProvider} (not in model list)`,
+                value: current.config.modelProvider ?? "",
+              }]
+            : []),
+        ]
     return section("Model", [
       renderSelect({
         label: "Model",
+        name: "model",
         selected: selectedModel?.id ?? current.config.model,
         options: current.models.options.filter(model => !model.hidden).map(model => ({
           label: model.displayName,
@@ -228,6 +261,7 @@ export const mountCodexSettingsPanel = (
       renderSelect({
         disabled: reasoningOptions.length === 0,
         label: "Reasoning",
+        name: "model_reasoning_effort",
         selected: current.config.reasoningEffort ?? selectedModel?.defaultReasoningEffort ?? null,
         options: reasoningOptions,
         onChange: value => void write("model_reasoning_effort", value),
@@ -235,13 +269,25 @@ export const mountCodexSettingsPanel = (
       renderSelect({
         disabled: serviceTierOptions.length <= 1,
         label: "Service tier",
+        name: "service_tier",
         selected: current.config.serviceTier ?? "",
         options: serviceTierOptions,
         onChange: value => void write("service_tier", value === "" ? null : value),
       }),
-      metric("Provider", current.config.modelProvider),
+      renderSelect({
+        disabled: current.providers.options.length === 0,
+        label: "Provider",
+        name: "model_provider",
+        selected: current.config.modelProvider ?? "",
+        options: providerSelectOptions,
+        ...(current.providers.options.length === 0
+          ? { title: "Provider options are unavailable from the Codex model list." }
+          : {}),
+        onChange: value => void write("model_provider", value === "" ? null : value),
+      }),
       renderSelect({
         label: "Summary",
+        name: "model_reasoning_summary",
         selected: current.config.reasoningSummary ?? "",
         options: [
           { label: "Default", value: "" },
@@ -253,6 +299,7 @@ export const mountCodexSettingsPanel = (
       }),
       renderSelect({
         label: "Verbosity",
+        name: "model_verbosity",
         selected: current.config.verbosity ?? "",
         options: [
           { label: "Default", value: "" },

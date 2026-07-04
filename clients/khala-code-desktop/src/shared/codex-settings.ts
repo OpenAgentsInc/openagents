@@ -34,6 +34,12 @@ export type KhalaCodeDesktopCodexSettingsModelOption = {
   readonly defaultServiceTier: string | null
 }
 
+export type KhalaCodeDesktopCodexSettingsProviderOption = {
+  readonly id: string
+  readonly displayName: string
+  readonly modelCount: number
+}
+
 export type KhalaCodeDesktopCodexSettingsPermissionProfile = {
   readonly id: string
   readonly description: string | null
@@ -93,6 +99,10 @@ export type KhalaCodeDesktopCodexSettingsProjection = {
     readonly selected: KhalaCodeDesktopCodexSettingsModelOption | null
     readonly options: readonly KhalaCodeDesktopCodexSettingsModelOption[]
     readonly serviceTierCommands: readonly string[]
+  }
+  readonly providers: {
+    readonly selected: KhalaCodeDesktopCodexSettingsProviderOption | null
+    readonly options: readonly KhalaCodeDesktopCodexSettingsProviderOption[]
   }
   readonly providerCapabilities: {
     readonly namespaceTools: boolean | null
@@ -190,10 +200,18 @@ const configAt = (
 const originsFrom = (configRead: unknown): Record<string, unknown> =>
   asRecord(asRecord(configRead).origins)
 
+const modelRecordsFrom = (
+  modelList: unknown,
+): readonly Record<string, unknown>[] => {
+  const list = asRecord(modelList)
+  const data = arrayOfRecords(list.data)
+  return data.length > 0 ? data : arrayOfRecords(list.models)
+}
+
 const modelOptionsFrom = (
   modelList: unknown,
 ): readonly KhalaCodeDesktopCodexSettingsModelOption[] =>
-  arrayOfRecords(asRecord(modelList).data).map(model => {
+  modelRecordsFrom(modelList).map(model => {
     const supportedReasoningEfforts = arrayOfRecords(model.supportedReasoningEfforts)
       .map(option => ({
         value: optionalString(option.reasoningEffort) ?? "",
@@ -211,7 +229,7 @@ const modelOptionsFrom = (
     return {
       id,
       model: optionalString(model.model) ?? id,
-      displayName: optionalString(model.displayName) ?? id,
+      displayName: optionalString(model.displayName) ?? optionalString(model.name) ?? id,
       description: optionalString(model.description),
       hidden: optionalBoolean(model.hidden) ?? false,
       isDefault: optionalBoolean(model.isDefault) ?? false,
@@ -223,6 +241,60 @@ const modelOptionsFrom = (
     }
   }).filter(model => model.id.length > 0)
 
+const providerIdFromModel = (
+  model: Record<string, unknown>,
+): string | null => {
+  const provider = model.provider
+  const providerRecord = asRecord(provider)
+  return optionalString(provider) ??
+    optionalString(model.providerId) ??
+    optionalString(model.provider_id) ??
+    optionalString(model.modelProvider) ??
+    optionalString(model.model_provider) ??
+    optionalString(providerRecord.id) ??
+    optionalString(providerRecord.providerId) ??
+    optionalString(providerRecord.name)
+}
+
+const providerDisplayNameFromModel = (
+  model: Record<string, unknown>,
+  providerId: string,
+): string => {
+  const providerRecord = asRecord(model.provider)
+  return optionalString(model.providerDisplayName) ??
+    optionalString(model.providerName) ??
+    optionalString(model.provider_display_name) ??
+    optionalString(model.provider_name) ??
+    optionalString(providerRecord.displayName) ??
+    optionalString(providerRecord.display_name) ??
+    optionalString(providerRecord.name) ??
+    providerId
+}
+
+const providerOptionsFrom = (
+  modelList: unknown,
+): readonly KhalaCodeDesktopCodexSettingsProviderOption[] => {
+  const byId = new Map<string, KhalaCodeDesktopCodexSettingsProviderOption>()
+  for (const model of modelRecordsFrom(modelList)) {
+    const id = providerIdFromModel(model)
+    if (id === null) continue
+    const existing = byId.get(id)
+    if (existing !== undefined) {
+      byId.set(id, {
+        ...existing,
+        modelCount: existing.modelCount + 1,
+      })
+      continue
+    }
+    byId.set(id, {
+      id,
+      displayName: providerDisplayNameFromModel(model, id),
+      modelCount: 1,
+    })
+  }
+  return [...byId.values()]
+}
+
 const selectedModelFrom = (
   selected: string | null,
   options: readonly KhalaCodeDesktopCodexSettingsModelOption[],
@@ -232,6 +304,14 @@ const selectedModelFrom = (
   }
   return options.find(model => model.id === selected || model.model === selected) ?? null
 }
+
+const selectedProviderFrom = (
+  selected: string | null,
+  options: readonly KhalaCodeDesktopCodexSettingsProviderOption[],
+): KhalaCodeDesktopCodexSettingsProviderOption | null =>
+  selected === null
+    ? null
+    : options.find(provider => provider.id === selected) ?? null
 
 const permissionProfilesFrom = (
   permissionProfileList: unknown,
@@ -304,6 +384,8 @@ export const projectKhalaCodeDesktopCodexSettings = (
   const requirements = asRecord(asRecord(input.requirementsRead).requirements)
   const models = modelOptionsFrom(input.modelList)
   const selectedModel = selectedModelFrom(optionalString(config.model), models)
+  const providers = providerOptionsFrom(input.modelList)
+  const selectedProvider = selectedProviderFrom(optionalString(config.model_provider), providers)
   const selectedProfile = optionalString(config.default_permissions) ??
     optionalString(requirements.defaultPermissions)
   const profiles = permissionProfilesFrom(input.permissionProfileList, selectedProfile)
@@ -363,6 +445,10 @@ export const projectKhalaCodeDesktopCodexSettings = (
       serviceTierCommands: selectedModel === null
         ? []
         : selectedModel.serviceTiers.map(tier => tier.id),
+    },
+    providers: {
+      selected: selectedProvider,
+      options: providers,
     },
     providerCapabilities: {
       namespaceTools: optionalBoolean(providerCapabilities.namespaceTools),

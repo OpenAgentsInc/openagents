@@ -47,6 +47,8 @@ describe("Codex settings projection", () => {
             model: "gpt-5.1-codex",
             displayName: "GPT-5.1 Codex",
             description: "Codex default",
+            provider: "openai",
+            providerDisplayName: "OpenAI",
             hidden: false,
             isDefault: true,
             supportsPersonality: true,
@@ -59,6 +61,25 @@ describe("Codex settings projection", () => {
               { id: "priority", name: "Priority", description: "faster" },
             ],
             defaultServiceTier: "priority",
+          },
+          {
+            id: "claude-4-opus",
+            model: "claude-4-opus",
+            displayName: "Claude 4 Opus",
+            description: "Anthropic provider option",
+            provider: {
+              id: "anthropic",
+              displayName: "Anthropic",
+            },
+            hidden: false,
+          },
+          {
+            id: "gpt-5.1-codex-mini",
+            model: "gpt-5.1-codex-mini",
+            displayName: "GPT-5.1 Codex Mini",
+            provider: "openai",
+            providerDisplayName: "OpenAI",
+            hidden: true,
           },
         ],
       },
@@ -126,6 +147,17 @@ describe("Codex settings projection", () => {
         },
         serviceTierCommands: ["priority"],
       },
+      providers: {
+        selected: {
+          id: "openai",
+          displayName: "OpenAI",
+          modelCount: 2,
+        },
+        options: [
+          { id: "openai", displayName: "OpenAI", modelCount: 2 },
+          { id: "anthropic", displayName: "Anthropic", modelCount: 1 },
+        ],
+      },
       providerCapabilities: {
         namespaceTools: true,
         imageGeneration: false,
@@ -170,6 +202,52 @@ describe("Codex settings projection", () => {
       global: {
         "ctrl-j": "move-down",
       },
+    })
+  })
+
+  test("projects fixture-style model lists into model and provider options", () => {
+    const projection = projectKhalaCodeDesktopCodexSettings({
+      configRead: {
+        config: {
+          model: "fixture-codex",
+          model_provider: "fixture-openai",
+        },
+      },
+      modelList: {
+        models: [
+          {
+            id: "fixture-codex",
+            name: "Fixture Codex",
+            provider: "fixture-openai",
+          },
+        ],
+      },
+    })
+
+    expect(projection.models.options).toEqual([{
+      id: "fixture-codex",
+      model: "fixture-codex",
+      displayName: "Fixture Codex",
+      description: null,
+      hidden: false,
+      isDefault: false,
+      supportsPersonality: false,
+      defaultReasoningEffort: null,
+      supportedReasoningEfforts: [],
+      serviceTiers: [],
+      defaultServiceTier: null,
+    }])
+    expect(projection.providers).toEqual({
+      selected: {
+        id: "fixture-openai",
+        displayName: "fixture-openai",
+        modelCount: 1,
+      },
+      options: [{
+        id: "fixture-openai",
+        displayName: "fixture-openai",
+        modelCount: 1,
+      }],
     })
   })
 

@@ -224,4 +224,70 @@ describe("Codex settings panel", () => {
       cleanup()
     }
   })
+
+  // Oracle for khala_code.settings.editable_not_env_var_only.v1: provider
+  // editability uses provider options sourced from model/list, never free text.
+  test("writes the model provider select through the Codex config-value RPC", async () => {
+    const { cleanup, container, window } = installDom()
+    const writes: unknown[] = []
+    const settings = projectKhalaCodeDesktopCodexSettings({
+      configRead: {
+        config: {
+          model: "gpt-5.5-codex",
+          model_provider: "openai",
+        },
+      },
+      modelList: {
+        data: [
+          {
+            id: "gpt-5.5-codex",
+            model: "gpt-5.5-codex",
+            displayName: "GPT-5.5",
+            provider: "openai",
+            providerDisplayName: "OpenAI",
+            hidden: false,
+          },
+          {
+            id: "openrouter/sonoma-sky",
+            model: "openrouter/sonoma-sky",
+            displayName: "Sonoma Sky",
+            provider: "openrouter",
+            providerDisplayName: "OpenRouter",
+            hidden: false,
+          },
+        ],
+      },
+    })
+
+    try {
+      const panel = mountCodexSettingsPanel(container, {
+        fetch: async () => settings,
+        write: async request => {
+          writes.push(request)
+          return { ok: true, settings }
+        },
+      })
+
+      await panel.refresh()
+
+      const providerSelect = selectForLabel(container, "Provider")
+      expect(providerSelect.disabled).toBe(false)
+      expect(providerSelect.name).toBe("model_provider")
+      expect(Array.from(providerSelect.options).map(option => option.textContent)).toEqual([
+        "Default",
+        "OpenAI",
+        "OpenRouter",
+      ])
+
+      await changeSelect(providerSelect, "openrouter", window)
+      await changeSelect(providerSelect, "", window)
+
+      expect(writes).toEqual([
+        { keyPath: "model_provider", value: "openrouter" },
+        { keyPath: "model_provider", value: null },
+      ])
+    } finally {
+      cleanup()
+    }
+  })
 })

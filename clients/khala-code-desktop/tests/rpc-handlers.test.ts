@@ -2942,6 +2942,8 @@ describe("Khala Code desktop RPC handlers", () => {
                   model: "gpt-5.1-codex",
                   displayName: "GPT-5.1 Codex",
                   description: "Codex",
+                  provider: "openai",
+                  providerDisplayName: "OpenAI",
                   hidden: false,
                   isDefault: true,
                   supportsPersonality: true,
@@ -3023,6 +3025,17 @@ describe("Khala Code desktop RPC handlers", () => {
           id: "gpt-5.1-codex",
         },
         serviceTierCommands: ["priority"],
+      },
+      providers: {
+        selected: {
+          id: "openai",
+          displayName: "OpenAI",
+        },
+        options: [{
+          id: "openai",
+          displayName: "OpenAI",
+          modelCount: 1,
+        }],
       },
       providerCapabilities: {
         namespaceTools: true,

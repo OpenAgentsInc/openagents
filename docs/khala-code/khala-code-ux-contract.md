@@ -53,7 +53,7 @@ sweep if this doc, the registry, or the oracle tests drift apart.
 
 ## Registry
 
-Registry version: `2026-07-04.2` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-04.3` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_code.chat.sidebar_spinner_streaming_only.v1` — ENFORCED
 
@@ -413,17 +413,6 @@ Registry version: `2026-07-04.2` (schema `openagents.behavior_contracts.v1`)
 - **Verification:** Enforced 2026-07-03: fixed as part of the response to community feedback that also produced #8230-#8233 and PR #8221. Both the Codex and Claude settings panels now render 'Default' instead of 'Unset' for null/undefined read-only metric values. Runs on every test-sweep invocation.
 - **Authority boundary:** Binds display labeling only — whether a read-only settings value reads as an unexplained 'Unset' or an honest 'Default'. Does not itself make any field editable; that is tracked separately by khala_code.settings.editable_not_env_var_only.v1.
 
-### `khala_code.plans.checkout_handoff_server_truth.v1` — ENFORCED
-
-- **Surface:** khala-code-desktop (plans and billing settings)
-- **Stated by:** owner via github-issue on 2026-07-04
-- **Statement:** Khala Code desktop plans panel hands off to real checkout (RL-4) with honest not-purchasable state while unarmed; credit packages (BF-2.4 tiers) purchasable from same surface via existing web checkout handoff. Post-purchase state (plan/entitlement/credits) renders from server truth via existing RPCs — never fabricated client-side.
-- **Enforcement tier:** test-sweep
-- **Oracle** `plans_checkout_handoff.dom` (bun-test, dom): Mounts the real plans panel in a DOM: while the paid-plan seam is unarmed the purchase control is disabled, an armed Stripe payment_required response opens exactly the server-returned checkout URL and re-reads status, and the same surface opens the existing /billing checkout for credits without rendering local fake package or balance state. — `clients/khala-code-desktop/tests/plans-panel.test.ts`
-- **Oracle** `plan_purchase_payment_required_rpc.unit` (bun-test, unit): Decodes the plan-purchase RPC's Stripe payment_required response as a checkout handoff and asserts it does not contain a receiptRef or entitlementRef until the server returns a fulfilled receipt. — `clients/khala-code-desktop/tests/rpc-handlers.test.ts`
-- **Verification:** bun test clients/khala-code-desktop/tests/plans-panel.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/ux-contracts.test.ts; these files run in the package test glob and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Binds the desktop settings payment surface only. Plan catalog, entitlement, and purchase settlement remain owned by openagents.com plan APIs; credit package catalog, balance, and checkout fulfillment remain owned by the existing web billing surface. The desktop may open those checkout URLs, but it must not synthesize paid entitlement or credit balance state.
-
 ### `khala_code.plans.free_trace_capture_explicit_consent.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (plans and billing settings)
@@ -436,14 +425,26 @@ Registry version: `2026-07-04.2` (schema `openagents.behavior_contracts.v1`)
 - **Verification:** bun test clients/khala-code-desktop/tests/trace-capture.test.ts clients/khala-code-desktop/tests/plans-panel.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/ux-contracts.test.ts; these files run in the package test glob and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Binds only the desktop consent gate and local capture planner. Production capture remains owner-gated by KHALA_CODE_DESKTOP_TRACE_CAPTURE_ENABLED plus an owner-only ingest sink; this contract does not authorize public traces, payout eligibility, settlement eligibility, promise-green movement, or capture on paid plans.
 
-### `khala_code.settings.editable_not_env_var_only.v1` — PENDING
+### `khala_code.plans.checkout_handoff_server_truth.v1` — ENFORCED
+
+- **Surface:** khala-code-desktop (plans and billing settings)
+- **Stated by:** owner via github-issue on 2026-07-04
+- **Statement:** Khala Code desktop plans panel hands off to real checkout (RL-4) with honest not-purchasable state while unarmed; credit packages (BF-2.4 tiers) purchasable from same surface via existing web checkout handoff. Post-purchase state (plan/entitlement/credits) renders from server truth via existing RPCs — never fabricated client-side.
+- **Enforcement tier:** test-sweep
+- **Oracle** `plans_checkout_handoff.dom` (bun-test, dom): Mounts the real plans panel in a DOM: while the paid-plan seam is unarmed the purchase control is disabled, an armed Stripe payment_required response opens exactly the server-returned checkout URL and re-reads status, and the same surface opens the existing /billing checkout for credits without rendering local fake package or balance state. — `clients/khala-code-desktop/tests/plans-panel.test.ts`
+- **Oracle** `plan_purchase_payment_required_rpc.unit` (bun-test, unit): Decodes the plan-purchase RPC's Stripe payment_required response as a checkout handoff and asserts it does not contain a receiptRef or entitlementRef until the server returns a fulfilled receipt. — `clients/khala-code-desktop/tests/rpc-handlers.test.ts`
+- **Verification:** bun test clients/khala-code-desktop/tests/plans-panel.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/ux-contracts.test.ts; these files run in the package test glob and the repo test:khala-code-desktop sweep before pushes to main.
+- **Authority boundary:** Binds the desktop settings payment surface only. Plan catalog, entitlement, and purchase settlement remain owned by openagents.com plan APIs; credit package catalog, balance, and checkout fulfillment remain owned by the existing web billing surface. The desktop may open those checkout URLs, but it must not synthesize paid entitlement or credit balance state.
+
+### `khala_code.settings.editable_not_env_var_only.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (settings)
 - **Stated by:** TheBenMeadows (community; relayed via Lathe operator agent issues/PR) via community-feedback-discord on 2026-07-03
 - **Statement:** Read-only Codex config metrics that reflect a genuinely configurable value (model provider, approval policy, sandbox mode, reasoning summary, verbosity) are editable from the settings UI itself, reusing the existing config-value write RPC, rather than requiring the user to edit an external environment variable or config file.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: recorded from community feedback (relayed by TheBenMeadows, formalized by the Lathe operator agent) on 2026-07-03. Tracked in GitHub issue #8254, filed the same day: needs per-field enum/option sourcing for approval policy, sandbox mode, verbosity, and reasoning summary before it can flip to enforced.
-- **Blockers:** `blocker.github_issue.8254`
+- **Enforcement tier:** test-sweep
+- **Oracle** `config_enum_selects.dom` (bun-test, dom): Mounts the real Codex settings panel and proves the enum-backed Summary, Verbosity, Approval, and Sandbox controls write through the existing codexConfigValueWrite RPC path. — `clients/khala-code-desktop/tests/codex-settings-panel.test.ts`
+- **Oracle** `provider_select_from_model_list.dom` (bun-test, dom): Mounts the real Codex settings panel with provider options sourced from model/list and proves the Provider select writes model_provider through codexConfigValueWrite, including clearing back to Default. — `clients/khala-code-desktop/tests/codex-settings-panel.test.ts`
+- **Verification:** Enforced 2026-07-04: fixed for GitHub issue #8254. bun test tests/codex-settings-panel.test.ts tests/codex-settings.test.ts tests/rpc-handlers.test.ts tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Binds settings-panel editability for values that are structurally configurable (Codex/Claude config keys); does not apply to values that are genuinely environment-only by design (e.g. secrets that must never be typed into the UI), which should instead say so honestly per khala_code.settings.no_bare_unset_labels.v1.
 
 ### `khala_code.chat.khala_lane_connect_button.v1` — PENDING

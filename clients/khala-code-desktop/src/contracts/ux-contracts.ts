@@ -1368,26 +1368,44 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     {
       authorityBoundary:
         "Binds settings-panel editability for values that are structurally configurable (Codex/Claude config keys); does not apply to values that are genuinely environment-only by design (e.g. secrets that must never be typed into the UI), which should instead say so honestly per khala_code.settings.no_bare_unset_labels.v1.",
-      blockerRefs: ["blocker.github_issue.8254"],
+      blockerRefs: [],
       contractId: "khala_code.settings.editable_not_env_var_only.v1",
-      enforcementTier: "unenforced",
+      enforcementTier: "test-sweep",
       evidenceRefs: [
+        "clients/khala-code-desktop/src/shared/codex-settings.ts",
         "clients/khala-code-desktop/src/ui/codex-settings-panel.ts",
         "docs/khala-code/khala-code-ux-contract.md",
       ],
-      oracles: [],
+      oracles: [
+        {
+          description:
+            "Mounts the real Codex settings panel and proves the enum-backed Summary, Verbosity, Approval, and Sandbox controls write through the existing codexConfigValueWrite RPC path.",
+          id: "config_enum_selects.dom",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "clients/khala-code-desktop/tests/codex-settings-panel.test.ts",
+        },
+        {
+          description:
+            "Mounts the real Codex settings panel with provider options sourced from model/list and proves the Provider select writes model_provider through codexConfigValueWrite, including clearing back to Default.",
+          id: "provider_select_from_model_list.dom",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "clients/khala-code-desktop/tests/codex-settings-panel.test.ts",
+        },
+      ],
       productArea: "settings",
       source: {
         channel: "community-feedback-discord",
         statedBy: "TheBenMeadows (community; relayed via Lathe operator agent issues/PR)",
         statedOn: "2026-07-03",
       },
-      state: "pending",
+      state: "enforced",
       statement:
         "Read-only Codex config metrics that reflect a genuinely configurable value (model provider, approval policy, sandbox mode, reasoning summary, verbosity) are editable from the settings UI itself, reusing the existing config-value write RPC, rather than requiring the user to edit an external environment variable or config file.",
       surface: "khala-code-desktop",
       verification:
-        "Not yet enforced: recorded from community feedback (relayed by TheBenMeadows, formalized by the Lathe operator agent) on 2026-07-03. Tracked in GitHub issue #8254, filed the same day: needs per-field enum/option sourcing for approval policy, sandbox mode, verbosity, and reasoning summary before it can flip to enforced.",
+        "Enforced 2026-07-04: fixed for GitHub issue #8254. bun test tests/codex-settings-panel.test.ts tests/codex-settings.test.ts tests/rpc-handlers.test.ts tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -1415,5 +1433,5 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-04.2",
+  version: "2026-07-04.3",
 }

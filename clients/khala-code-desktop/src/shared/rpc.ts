@@ -925,6 +925,11 @@ const RpcCodexSettingsModelOption = S.Struct({
   })),
   defaultServiceTier: RpcStringNull,
 })
+const RpcCodexSettingsProviderOption = S.Struct({
+  id: S.String,
+  displayName: S.String,
+  modelCount: S.Number,
+})
 const RpcCodexSettingsProjection = S.Struct({
   ok: S.Boolean,
   observedAt: S.String,
@@ -970,6 +975,10 @@ const RpcCodexSettingsProjection = S.Struct({
     selected: S.NullOr(RpcCodexSettingsModelOption),
     options: S.Array(RpcCodexSettingsModelOption),
     serviceTierCommands: RpcStringArray,
+  }),
+  providers: S.Struct({
+    selected: S.NullOr(RpcCodexSettingsProviderOption),
+    options: S.Array(RpcCodexSettingsProviderOption),
   }),
   providerCapabilities: S.Struct({
     namespaceTools: S.NullOr(S.Boolean),
