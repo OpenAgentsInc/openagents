@@ -7,6 +7,7 @@
     "moduleResolution": "Bundler",
     "noEmit": true,
     "paths": {
+      "@/*": ["./src/*"],
       "~/*": ["./src/*"]
     },
     "types": ["@cloudflare/workers-types", "bun-types", "vite/client"]

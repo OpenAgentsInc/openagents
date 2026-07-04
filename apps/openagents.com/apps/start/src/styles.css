@@ -20,6 +20,29 @@
   --color-khala-text: #f1efe8;
   --color-khala-text-muted: rgba(241, 239, 232, 0.68);
   --color-khala-text-faint: rgba(241, 239, 232, 0.42);
+  --color-khala-success: #00c853;
+  --color-khala-warning: #ffb400;
+  --color-khala-danger: #d32f2f;
+
+  --radius: 0.25rem;
+  --color-background: var(--color-khala-void);
+  --color-foreground: var(--color-khala-text);
+  --color-card: var(--color-khala-surface);
+  --color-card-foreground: var(--color-khala-text);
+  --color-popover: var(--color-khala-surface);
+  --color-popover-foreground: var(--color-khala-text);
+  --color-primary: var(--color-khala-text);
+  --color-primary-foreground: #000000;
+  --color-secondary: var(--color-khala-surface-raised);
+  --color-secondary-foreground: var(--color-khala-text);
+  --color-muted: var(--color-khala-surface-muted);
+  --color-muted-foreground: var(--color-khala-text-muted);
+  --color-accent: var(--color-khala-energy);
+  --color-accent-foreground: var(--color-khala-text);
+  --color-destructive: var(--color-khala-danger);
+  --color-border: var(--color-khala-border);
+  --color-input: var(--color-khala-border);
+  --color-ring: var(--color-khala-energy);
 }
 
 @layer base {

@@ -1,3 +1,6 @@
+import { Badge } from '@/components/ui/badge'
+import { Card } from '@/components/ui/card'
+
 type TreeNode = Readonly<{
   children: ReadonlyArray<TreeNode>
   detail: string
@@ -79,19 +82,18 @@ const authorityRows = [
   ['Training', 'No checkpoint or training-promotion authority'],
 ] as const
 
-const panelClass = 'border border-khala-border bg-khala-surface p-4 sm:p-5'
 const eyebrowClass =
   'm-0 font-mono text-xs font-semibold uppercase leading-none tracking-wide text-khala-warning'
 const bodyClass = 'm-0 max-w-4xl text-sm/6 text-khala-text-muted'
 const codeClass =
   'break-all bg-white/[0.06] px-1.5 py-0.5 font-mono text-[0.85em] text-khala-text'
 
-const stateClass = (state: TreeNode['state']): string =>
+const stateVariant = (state: TreeNode['state']): 'ready' | 'running' | 'warning' =>
   state === 'ready'
-    ? 'border-khala-success/30 bg-khala-success/10 text-khala-success'
+    ? 'ready'
     : state === 'running'
-      ? 'border-khala-energy/30 bg-khala-energy/10 text-khala-energy-soft'
-      : 'border-khala-warning/30 bg-khala-warning/10 text-khala-warning'
+      ? 'running'
+      : 'warning'
 
 function CodeInline({ children }: Readonly<{ children: string }>) {
   return <code className={codeClass}>{children}</code>
@@ -111,13 +113,7 @@ function TreeItem({ node, depth = 0 }: Readonly<{ depth?: number; node: TreeNode
           <span className="text-sm font-semibold leading-5 text-white">
             {node.label}
           </span>
-          <span
-            className={`border px-2 py-0.5 text-xs font-semibold uppercase leading-none tracking-wide ${stateClass(
-              node.state,
-            )}`}
-          >
-            {node.state}
-          </span>
+          <Badge variant={stateVariant(node.state)}>{node.state}</Badge>
         </div>
         <CodeInline>{node.ref}</CodeInline>
         <p className="m-0 text-sm/5 text-khala-text-muted">{node.detail}</p>
@@ -143,7 +139,7 @@ export function ArtanisTracesPage() {
       data-route="artanis-traces"
     >
       <div className="mx-auto grid min-h-dvh w-full max-w-7xl gap-6 px-4 py-6 font-mono sm:px-6 lg:px-8">
-        <section className="grid gap-5 border border-khala-border bg-khala-surface p-5 sm:p-6">
+        <Card className="grid gap-5 p-5 sm:p-6">
           <p className={eyebrowClass}>RLM trace visualizer</p>
           <h1 className="m-0 max-w-4xl text-3xl font-semibold leading-tight tracking-normal text-white sm:text-4xl">
             Artanis execution tree
@@ -167,18 +163,18 @@ export function ArtanisTracesPage() {
               <CodeInline>operator_refs_only</CodeInline>
             </div>
           </div>
-        </section>
+        </Card>
         <section className="grid gap-6 lg:grid-cols-[1.45fr_0.9fr]">
-          <div className={panelClass}>
+          <Card className="p-4 sm:p-5">
             <div className="grid gap-4">
               <p className={eyebrowClass}>Execution tree</p>
               <ol className="m-0 grid gap-3 p-0">
                 <TreeItem node={tree} />
               </ol>
             </div>
-          </div>
+          </Card>
           <aside className="grid content-start gap-6">
-            <section className={panelClass}>
+            <Card className="p-4 sm:p-5">
               <div className="grid gap-4">
                 <p className={eyebrowClass}>Blueprint signatures</p>
                 <ul className="m-0 grid gap-2 p-0">
@@ -192,8 +188,8 @@ export function ArtanisTracesPage() {
                   ))}
                 </ul>
               </div>
-            </section>
-            <section className={panelClass}>
+            </Card>
+            <Card className="p-4 sm:p-5">
               <div className="grid gap-4">
                 <p className={eyebrowClass}>Authority boundary</p>
                 <div className="grid overflow-hidden border border-khala-border text-sm/5">
@@ -210,7 +206,7 @@ export function ArtanisTracesPage() {
                   ))}
                 </div>
               </div>
-            </section>
+            </Card>
           </aside>
         </section>
       </div>

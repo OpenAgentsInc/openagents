@@ -1,3 +1,6 @@
+import { Badge } from '@/components/ui/badge'
+import { Card } from '@/components/ui/card'
+
 const statusStages = [
   ['request', 'Khala request emitted assignment ref'],
   ['run', 'Pylon run-no-spend claimed local Codex work'],
@@ -5,8 +8,6 @@ const statusStages = [
   ['proof', 'Proof checklist validates exact owner-capacity evidence'],
 ] as const
 
-const panelClass =
-  'grid gap-4 border border-khala-border bg-khala-surface p-4 shadow-xl shadow-black/20 sm:p-5'
 const eyebrowClass =
   'm-0 font-mono text-xs font-semibold uppercase leading-none tracking-wide text-khala-energy-soft'
 const bodyClass = 'm-0 max-w-3xl text-sm/6 text-khala-text-muted'
@@ -26,9 +27,7 @@ function Stage({
 }: Readonly<{ label: string; copy: string }>) {
   return (
     <li className="grid gap-2 border border-khala-border bg-white/[0.035] p-3">
-      <span className="font-mono text-xs font-semibold uppercase leading-none tracking-wide text-khala-energy-soft">
-        {label}
-      </span>
+      <Badge>{label}</Badge>
       <span className="text-sm/5 text-khala-text-muted">{copy}</span>
     </li>
   )
@@ -54,7 +53,7 @@ export function PylonCodexAssignmentStatusPage({
       data-route="pylon-codex-assignment-status"
     >
       <div className="mx-auto grid min-h-dvh w-full max-w-6xl gap-8 px-4 py-6 font-mono sm:px-6 lg:px-8">
-        <section className="grid gap-5 border border-khala-border bg-khala-surface p-5 sm:p-6">
+        <Card className="grid gap-5 p-5 sm:p-6">
           <p className={eyebrowClass}>Owner capacity status</p>
           <h1 className="m-0 max-w-3xl text-3xl font-semibold leading-tight tracking-normal text-white sm:text-4xl">
             Pylon Codex assignment
@@ -71,18 +70,18 @@ export function PylonCodexAssignmentStatusPage({
             </span>
             <code className={codeClass}>{assignmentRef}</code>
           </div>
-        </section>
+        </Card>
 
-        <section className={panelClass}>
+        <Card className="grid gap-4 p-4 shadow-xl shadow-black/20 sm:p-5">
           <p className={eyebrowClass}>Closeout path</p>
           <ol className="m-0 grid gap-3 p-0 sm:grid-cols-4">
             {statusStages.map(([label, copy]) => (
               <Stage copy={copy} key={label} label={label} />
             ))}
           </ol>
-        </section>
+        </Card>
 
-        <section className={panelClass}>
+        <Card className="grid gap-4 p-4 shadow-xl shadow-black/20 sm:p-5">
           <p className={eyebrowClass}>Owner-scoped commands</p>
           <p className={bodyClass}>
             The browser page does not ask for or store an agent token. Run these
@@ -90,9 +89,9 @@ export function PylonCodexAssignmentStatusPage({
           </p>
           <CommandBlock command={statusCommand} />
           <CommandBlock command={proofCommand} />
-        </section>
+        </Card>
 
-        <section className={panelClass}>
+        <Card className="grid gap-4 p-4 shadow-xl shadow-black/20 sm:p-5">
           <p className={eyebrowClass}>Green evidence</p>
           <p className={bodyClass}>
             The promise can go green for this assignment only when status shows
@@ -102,7 +101,7 @@ export function PylonCodexAssignmentStatusPage({
             <code className={codeClass}>pylon-codex-own-capacity</code> token
             rows.
           </p>
-        </section>
+        </Card>
       </div>
     </main>
   )

@@ -1,3 +1,6 @@
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+
 type SiteCheckoutDemoAction = 'cancel' | 'start' | 'status' | 'success'
 
 const panelClass = 'border border-khala-border bg-khala-surface'
@@ -252,7 +255,7 @@ export function SiteCheckoutDemoPage({
       data-site-checkout-demo=""
     >
       <div className="mx-auto grid w-full max-w-5xl gap-5 px-4 py-6 font-mono">
-        <section className={`${panelClass} p-4 sm:p-5`}>
+        <Card className="p-4 sm:p-5">
           <p className={eyebrowClass}>Autopilot Sites</p>
           <h1 className="m-0 mt-2 text-3xl font-medium tracking-normal text-white sm:text-4xl">
             Demo checkout
@@ -261,21 +264,17 @@ export function SiteCheckoutDemoPage({
             Start a demo checkout for an Omega Site product and inspect the
             clean return status.
           </p>
-        </section>
+        </Card>
         <div data-site-checkout-main="">
-          <section className={`${panelClass} p-4 sm:p-5`}>
+          <Card className="p-4 sm:p-5">
             <p className={eyebrowClass}>Loading</p>
             <p className={`mt-3 ${mutedClass}`}>
               Reading the Site commerce contract.
             </p>
-            <button
-              className={`${primaryButtonClass} mt-5`}
-              disabled
-              type="button"
-            >
+            <Button className="mt-5" disabled type="button">
               Start checkout
-            </button>
-          </section>
+            </Button>
+          </Card>
         </div>
       </div>
       <script

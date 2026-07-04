@@ -1,3 +1,13 @@
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+
 export const DOWNLOAD_ONE_CLICK_READY = false
 
 export const AUTOPILOT_DESKTOP_DMG_URL =
@@ -8,14 +18,8 @@ const AUTOPILOT_DESKTOP_RELEASE_URL =
 
 const PYLON_INSTALL_COMMAND = 'npx @openagentsinc/pylon'
 
-const panelClass =
-  'grid gap-3 border border-khala-border/80 bg-khala-surface p-5 text-khala-text-muted sm:p-6'
-
 const eyebrowClass =
   'm-0 font-mono text-sm uppercase tracking-wide text-khala-text-faint'
-
-const primaryLinkClass =
-  'khala-focus inline-flex min-h-11 items-center justify-center border border-khala-text bg-khala-text px-5 font-mono text-sm font-semibold text-black hover:bg-white'
 
 function PlatformRow({
   platform,
@@ -47,13 +51,13 @@ export function DownloadPage() {
               see the status note below before you install.
             </p>
           </section>
-          <section
-            className="grid gap-2 border border-khala-warning/40 bg-khala-warning/10 px-4 py-3 text-base/7 text-khala-text"
+          <Card
+            className="grid gap-2 border-khala-warning/40 bg-khala-warning/10 px-4 py-3 text-base/7 text-khala-text"
             data-download-status={DOWNLOAD_ONE_CLICK_READY ? 'live' : 'gated'}
           >
-            <p className="m-0 font-mono text-xs uppercase text-khala-warning">
+            <Badge className="border-0 bg-transparent p-0" variant="warning">
               Status: auto-onboarding not in this build yet
-            </p>
+            </Badge>
             <p className="m-0 text-sm/6">
               The currently published .dmg is the latest signed release, but it
               predates the new auto-onboarding flow. If you install it today it
@@ -61,66 +65,79 @@ export function DownloadPage() {
               run for you on its own. The next signed build will. If you want to
               start contributing right now, run a Pylon node instead.
             </p>
-          </section>
-          <section className={panelClass} data-download-platform="macos">
-            <p className={eyebrowClass}>macOS · Apple Silicon</p>
-            <h2 className="m-0 text-lg font-medium text-white">
-              Signed + notarized .dmg
-            </h2>
-            <p className="m-0 text-base/7 text-khala-text-muted">
-              Built with an Apple Developer ID and notarized, so macOS
-              Gatekeeper opens it without warnings. Apple Silicon (M-series)
-              Macs.
-            </p>
-            <a
-              className={primaryLinkClass}
-              data-cta="download-autopilot"
-              href={AUTOPILOT_DESKTOP_DMG_URL}
-            >
-              Download for Mac (Apple Silicon)
-            </a>
-            <a
-              className="khala-focus font-mono text-xs text-khala-text-faint underline underline-offset-2 hover:text-khala-text"
-              href={AUTOPILOT_DESKTOP_RELEASE_URL}
-            >
-              View the release on GitHub
-            </a>
-          </section>
-          <section className={panelClass}>
-            <p className={eyebrowClass}>For agents + operators</p>
-            <h2 className="m-0 text-lg font-medium text-white">
-              Run a Pylon node from the terminal
-            </h2>
-            <p className="m-0 text-base/7 text-khala-text-muted">
-              The contributor path that works today. Paste this to your coding
-              agent or run it yourself.
-            </p>
-            <pre
-              className="m-0 w-full select-all overflow-x-auto border border-khala-border bg-black px-3 py-2 text-left font-mono text-sm leading-none text-khala-energy-soft"
-              data-cta="install-pylon-command"
-            >
-              <code>{PYLON_INSTALL_COMMAND}</code>
-            </pre>
-          </section>
+          </Card>
+          <Card
+            className="grid gap-3 border-khala-border/80 text-khala-text-muted"
+            data-download-platform="macos"
+          >
+            <CardHeader>
+              <p className={eyebrowClass}>macOS · Apple Silicon</p>
+              <CardTitle>Signed + notarized .dmg</CardTitle>
+              <CardDescription className="text-base/7">
+                Built with an Apple Developer ID and notarized, so macOS
+                Gatekeeper opens it without warnings. Apple Silicon (M-series)
+                Macs.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3">
+              <Button asChild data-cta="download-autopilot" size="lg">
+                <a href={AUTOPILOT_DESKTOP_DMG_URL}>
+                  Download for Mac (Apple Silicon)
+                </a>
+              </Button>
+              <Button asChild size="sm" variant="link">
+                <a href={AUTOPILOT_DESKTOP_RELEASE_URL}>
+                  View the release on GitHub
+                </a>
+              </Button>
+            </CardContent>
+          </Card>
+          <Card className="grid gap-3 border-khala-border/80 text-khala-text-muted">
+            <CardHeader>
+              <p className={eyebrowClass}>For agents + operators</p>
+              <CardTitle>Run a Pylon node from the terminal</CardTitle>
+              <CardDescription className="text-base/7">
+                The contributor path that works today. Paste this to your
+                coding agent or run it yourself.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <pre
+                className="m-0 w-full select-all overflow-x-auto border border-khala-border bg-black px-3 py-2 text-left font-mono text-sm leading-none text-khala-energy-soft"
+                data-cta="install-pylon-command"
+              >
+                <code>{PYLON_INSTALL_COMMAND}</code>
+              </pre>
+            </CardContent>
+          </Card>
         </div>
         <aside className="grid content-start gap-6">
-          <section className={panelClass}>
-            <p className={eyebrowClass}>Platform availability</p>
-            <div className="grid">
-              <PlatformRow
-                platform="macOS · Apple Silicon"
-                status="Available now (signed + notarized)"
-              />
-              <PlatformRow platform="macOS · Intel" status="Not published yet" />
-              <PlatformRow
-                platform="Windows"
-                status="Pending the Authenticode signing certificate"
-              />
-              <PlatformRow platform="Linux" status="Not published yet" />
-            </div>
-          </section>
-          <section className="grid gap-1.5 border border-khala-border bg-khala-surface px-4 py-3 font-mono text-xs text-khala-text-faint">
-            <p className="m-0 uppercase tracking-wide">For the owner - to make one-click live</p>
+          <Card className="grid gap-3 border-khala-border/80 text-khala-text-muted">
+            <CardHeader>
+              <p className={eyebrowClass}>Platform availability</p>
+            </CardHeader>
+            <CardContent>
+              <div className="grid">
+                <PlatformRow
+                  platform="macOS · Apple Silicon"
+                  status="Available now (signed + notarized)"
+                />
+                <PlatformRow
+                  platform="macOS · Intel"
+                  status="Not published yet"
+                />
+                <PlatformRow
+                  platform="Windows"
+                  status="Pending the Authenticode signing certificate"
+                />
+                <PlatformRow platform="Linux" status="Not published yet" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="grid gap-1.5 px-4 py-3 font-mono text-xs text-khala-text-faint">
+            <p className="m-0 uppercase tracking-wide">
+              For the owner - to make one-click live
+            </p>
             <p className="m-0">
               Build + sign + notarize a fresh DMG from current main (with
               AO-1..AO-4), publish it, update AUTOPILOT_DESKTOP_DMG_URL in
@@ -128,7 +145,7 @@ export function DownloadPage() {
               docs/launch/2026-06-18-autopilot-desktop-availability-audit.md
               section 4.
             </p>
-          </section>
+          </Card>
         </aside>
       </div>
     </main>

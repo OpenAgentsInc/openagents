@@ -9,6 +9,17 @@ Server loaders/functions should use `@openagentsinc/effect-start` for the
 Effect boundary and Worker request context instead of creating app-local
 bridges.
 
+## UI Components
+
+This package is configured for shadcn/ui on Tailwind 4:
+
+- `components.json` uses the `new-york` style, `@/*` imports, and
+  `src/styles.css`.
+- Shared primitives live under `src/components/ui`.
+- New TanStack Start route UI should prefer these primitives for buttons,
+  badges, cards, and repeated panel surfaces while preserving the dark-only
+  OpenAgents tokens from `src/styles.css`.
+
 ## Verify
 
 ```sh
