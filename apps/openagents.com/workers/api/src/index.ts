@@ -277,6 +277,8 @@ import {
   listBlueprintProgramRuns,
   recordBlueprintProgramRun,
 } from './blueprint/repositories/program-runs'
+import { makeD1BusinessOutreachStore } from './business-outreach'
+import { makeOperatorBusinessOutreachRoutes } from './business-outreach-routes'
 import { makeD1BusinessPipelineStore } from './business-pipeline-queue'
 import { makeOperatorBusinessPipelineRoutes } from './business-pipeline-routes'
 import { makeD1BusinessStarterCreditStore } from './business-starter-credit'
@@ -9293,6 +9295,14 @@ const operatorBusinessPipelineRoutes = makeOperatorBusinessPipelineRoutes({
   requireAdminApiToken,
 })
 
+const operatorBusinessOutreachRoutes = makeOperatorBusinessOutreachRoutes({
+  makeStore: env => {
+    const db = openAgentsDatabase(env)
+    return makeD1BusinessOutreachStore(db, makeD1BusinessPipelineStore(db))
+  },
+  requireAdminApiToken,
+})
+
 const operatorBusinessStarterCreditRoutes = makeOperatorBusinessStarterCreditRoutes({
   makeStore: env => {
     const db = openAgentsDatabase(env)
@@ -14600,6 +14610,8 @@ const routeRequest = makeWorkerRouteRequest({
     operatorEmailInspectionRoutes.routeOperatorEmailInspectionRequest,
   routeOperatorOrderTriageRequest:
     operatorOrderTriageRoutes.routeOperatorOrderTriageRequest,
+  routeOperatorBusinessOutreachRequest:
+    operatorBusinessOutreachRoutes.routeOperatorBusinessOutreachRequest,
   routeOperatorBusinessPipelineRequest:
     operatorBusinessPipelineRoutes.routeOperatorBusinessPipelineRequest,
   routeOperatorBusinessStarterCreditRequest:

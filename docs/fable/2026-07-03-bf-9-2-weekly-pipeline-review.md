@@ -179,3 +179,45 @@ credit is non-transferable, engagement-scoped, and USD-origin
 (`usd_credit_msat`), so it is spendable against the engagement but has no
 crypto/cash-out path. Both the grant receipt and later redemption receipt refs
 are appended to the pipeline row's `receiptRefs`.
+
+## Outreach Sequence Tooling: #8265
+
+Report-led outreach is now a reusable sequence substrate tied to BF-9.2 rows.
+Operators render drafts first, from a pipeline row plus LG-1 audit/finding refs:
+
+```sh
+bun apps/openagents.com/scripts/operator-business-pipeline.ts render-outreach \
+  --pipeline-ref biz-pipe-YYYYwNN-001 \
+  --subject-ref prospect.agent_ready.example \
+  --audit-report-ref audit.agent_readiness.example \
+  --finding-refs finding.agent_readiness.blank_shell,finding.agent_readiness.missing_llms
+```
+
+Before a draft is stored, the route checks the suppression boundary:
+partner-routed rows, existing partners/customers, and active intake rows cannot
+enter a cold sequence. Built-in template variants follow the LG-4 skeleton:
+observed fact -> offer sentence -> registry-true proof point -> single CTA ->
+identification/opt-out. Gated claims for self-serve delivery, pays-you loops,
+HIPAA/sovereign posture, public prices, and referral payouts fail claims lint.
+
+Send recording stays owner-gated. Store the owner approval receipt for a
+template version, then record the send event against the pipeline row:
+
+```sh
+bun apps/openagents.com/scripts/operator-business-pipeline.ts approve-outreach-template \
+  --template-version-ref business.outreach.agent_readiness_ecommerce.report_led.v1 \
+  --approval-receipt-ref receipt.owner.template_approval.example \
+  --approved-by-ref owner.openagents
+bun apps/openagents.com/scripts/operator-business-pipeline.ts record-outreach-send \
+  --pipeline-ref biz-pipe-YYYYwNN-001 \
+  --draft-ref business.outreach.draft.example \
+  --mailbox-ref mailbox.operator.apollo \
+  --source-ref apollo.sequence.agent_readiness_ecommerce \
+  --approval-receipt-ref receipt.owner.template_approval.example
+```
+
+The send row carries `sourceRef`, `mailboxRef`, approval receipt, template
+version, and `receipt.business.outreach_send.*`; that receipt is appended to the
+pipeline row's `receiptRefs`. The default and maximum configured mailbox cap is
+95 sends/day, so a route-level refusal stops over-volume recording before it can
+be reported as delivered.

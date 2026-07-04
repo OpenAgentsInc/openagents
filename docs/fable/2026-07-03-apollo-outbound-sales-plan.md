@@ -262,6 +262,23 @@ Boundaries so it stays a sales instrument and not a leak:
 - Warm-partner expansion is **out of scope here** — already in motion on
   its own track; suppress all existing partners, customers, and active
   intake rows from this sequence.
+- Implementation status (#8265): sequence copy is now rendered through
+  approval-gated template tooling, not one-off paste work. Operators render a
+  draft from a BF-9.2 pipeline row plus LG-1 audit/finding refs through
+  `POST /api/operator/business/pipeline/{pipelineRef}/outreach-drafts` or
+  `bun apps/openagents.com/scripts/operator-business-pipeline.ts render-outreach`.
+  Rendering enforces suppression before text exists: partner-routed rows,
+  existing customer/partner suppressions, and active intake rows are refused.
+  A send event can only be recorded through `/outreach-sends` after an owner
+  approval receipt has been stored for the template version through
+  `/api/operator/business/outreach/template-approvals`. Recorded sends append
+  `receipt.business.outreach_send.*` to the same pipeline row, carry
+  `sourceRef`, and enforce the configured per-mailbox daily send cap (default
+  and hard maximum: 95).
+- Template claims lint is part of the route/test boundary. The denylist blocks
+  gated copy for self-serve delivery, pays-you/revenue-share loops, HIPAA or
+  sovereignty posture, published prices, and referral payouts. Copy approval
+  remains owner-gated even when a draft renders cleanly.
 - Audit probes are read-only, rate-limited, against public URLs — never
   auth-gated surfaces, never load-generating. The report states facts a
   prospect can reproduce with curl; nothing speculative.
