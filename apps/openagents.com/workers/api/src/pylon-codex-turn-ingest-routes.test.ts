@@ -32,6 +32,13 @@ import {
   type PylonCodexRawEventStoreInput,
   type PylonCodexRawEventStoreResult,
 } from './pylon-codex-turn-ingest-routes'
+import {
+  PYLON_CODEX_RAW_EVENT_METADATA_QUEUE_SCHEMA_VERSION,
+  type PylonCodexRawEventMetadataQueueMessage,
+  makeD1PylonCodexRawEventMetadataWriter,
+  makeQueuedR2PylonCodexRawEventChunkStore,
+  makeQueuedR2PylonCodexRawEventStore,
+} from './pylon-codex-raw-event-metadata-queue-store'
 import type { TraceVisibility } from './atif-trace-schema'
 import {
   type PylonApiAssignmentRecord,
@@ -2491,6 +2498,81 @@ describe('POST /api/pylon/codex/turns', () => {
     })
   })
 
+  test('queued raw event store writes R2 immediately and indexes metadata from queue', async () => {
+    const db = makeFakeRawEventD1()
+    const bucket = new MemoryRawEventsR2Bucket()
+    const messages: Array<PylonCodexRawEventMetadataQueueMessage> = []
+    const store = makeQueuedR2PylonCodexRawEventStore(
+      bucket as unknown as R2Bucket,
+      {
+        send: async message => {
+          messages.push(message)
+        },
+      },
+    )
+    const input: PylonCodexRawEventStoreInput = {
+      assignmentRef: 'assignment-pylon-codex-1',
+      digest: 'abc123def4567890abc123def4567890abc123def4567890',
+      eventCount: 1,
+      eventsJson: JSON.stringify({
+        events: [{ type: 'turn.completed', usage: { input_tokens: 1 } }],
+      }),
+      leaseRef: 'lease-pylon-codex-1',
+      observedAt: nowIso,
+      ownerUserId: linkedOpenAuthUserId,
+      pylonRef: 'pylon-local-codex-1',
+      runRef: 'run-pylon-codex-1',
+      sessionRef: 'session-pylon-codex-1',
+      turnIndex: 1,
+      workspaceRef: 'workspace.public.pylon-codex-1',
+    }
+
+    const first = await store.putTurnEvents(input)
+    const second = await store.putTurnEvents(input)
+
+    expect(first).toMatchObject({
+      created: true,
+      ref: pylonCodexRawEventRef(input.digest),
+    })
+    expect(second).toMatchObject({
+      created: false,
+      ref: first.ref,
+      r2Key: first.r2Key,
+    })
+    expect(bucket.objects.size).toBe(1)
+    expect(db.rows).toHaveLength(0)
+    expect(messages).toHaveLength(2)
+    expect(messages[0]).toMatchObject({
+      assignmentRef: input.assignmentRef,
+      chunkIndex: null,
+      contentDigest: input.digest,
+      demandKind: 'own_capacity',
+      demandSource: 'khala_coding_delegation',
+      eventCount: 1,
+      kind: 'turn_events',
+      ownerUserId: linkedOpenAuthUserId,
+      ref: first.ref,
+      schemaVersion: PYLON_CODEX_RAW_EVENT_METADATA_QUEUE_SCHEMA_VERSION,
+      turnIndex: 1,
+    })
+
+    const writer = makeD1PylonCodexRawEventMetadataWriter(
+      db as unknown as D1Database,
+    )
+    await writer.writeMetadata(messages[0]!)
+    await writer.writeMetadata(messages[1]!)
+
+    expect(db.rows).toHaveLength(1)
+    expect(db.rows[0]).toMatchObject({
+      assignment_ref: input.assignmentRef,
+      content_digest: input.digest,
+      demand_kind: 'own_capacity',
+      demand_source: 'khala_coding_delegation',
+      raw_event_ref: first.ref,
+      r2_key: first.r2Key,
+    })
+  })
+
   test('D1+R2 raw event chunk store writes live chunk metadata idempotently', async () => {
     const db = makeFakeRawEventChunkD1()
     const bucket = new MemoryRawEventsR2Bucket()
@@ -2551,6 +2633,83 @@ describe('POST /api/pylon/codex/turns', () => {
       chunkIndex: '3',
       ownerUserId: linkedOpenAuthUserId,
       rawEventChunkRef: first.ref,
+    })
+  })
+
+  test('queued raw event chunk store writes R2 immediately and indexes metadata from queue', async () => {
+    const db = makeFakeRawEventChunkD1()
+    const bucket = new MemoryRawEventsR2Bucket()
+    const messages: Array<PylonCodexRawEventMetadataQueueMessage> = []
+    const store = makeQueuedR2PylonCodexRawEventChunkStore(
+      bucket as unknown as R2Bucket,
+      {
+        send: async message => {
+          messages.push(message)
+        },
+      },
+    )
+    const input: PylonCodexRawEventChunkStoreInput = {
+      assignmentRef: 'assignment-pylon-codex-1',
+      chunkIndex: 3,
+      digest: 'def456abc1237890def456abc1237890def456abc1237890',
+      eventCount: 2,
+      eventsJson: JSON.stringify({
+        events: [{ type: 'item.completed' }, { type: 'turn.completed' }],
+      }),
+      leaseRef: 'lease-pylon-codex-1',
+      observedAt: nowIso,
+      ownerUserId: linkedOpenAuthUserId,
+      pylonRef: 'pylon-local-codex-1',
+      runRef: 'run-pylon-codex-1',
+      sessionRef: 'session-pylon-codex-1',
+      turnIndex: 1,
+      workspaceRef: 'workspace.public.pylon-codex-1',
+    }
+
+    const first = await store.putEventChunk(input)
+    const second = await store.putEventChunk(input)
+
+    expect(first).toMatchObject({
+      created: true,
+      ref: pylonCodexRawEventChunkRef(input.digest),
+    })
+    expect(second).toMatchObject({
+      created: false,
+      ref: first.ref,
+      r2Key: first.r2Key,
+    })
+    expect(bucket.objects.size).toBe(1)
+    expect(db.rows).toHaveLength(0)
+    expect(messages).toHaveLength(2)
+    expect(messages[0]).toMatchObject({
+      assignmentRef: input.assignmentRef,
+      chunkIndex: 3,
+      contentDigest: input.digest,
+      demandKind: 'own_capacity',
+      demandSource: 'khala_coding_delegation',
+      eventCount: 2,
+      kind: 'event_chunk',
+      ownerUserId: linkedOpenAuthUserId,
+      ref: first.ref,
+      schemaVersion: PYLON_CODEX_RAW_EVENT_METADATA_QUEUE_SCHEMA_VERSION,
+      turnIndex: 1,
+    })
+
+    const writer = makeD1PylonCodexRawEventMetadataWriter(
+      db as unknown as D1Database,
+    )
+    await writer.writeMetadata(messages[0]!)
+    await writer.writeMetadata(messages[1]!)
+
+    expect(db.rows).toHaveLength(1)
+    expect(db.rows[0]).toMatchObject({
+      assignment_ref: input.assignmentRef,
+      chunk_index: 3,
+      chunk_ref: first.ref,
+      content_digest: input.digest,
+      demand_kind: 'own_capacity',
+      demand_source: 'khala_coding_delegation',
+      r2_key: first.r2Key,
     })
   })
 })

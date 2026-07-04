@@ -1023,6 +1023,13 @@ import {
   makePylonCodexTurnIngestRoutes,
 } from './pylon-codex-turn-ingest-routes'
 import {
+  PYLON_CODEX_RAW_EVENT_METADATA_QUEUE_SCHEMA_VERSION,
+  PylonCodexRawEventMetadataQueueMessage,
+  makePylonCodexRawEventMetadataQueueConsumerForEnv,
+  makeQueuedR2PylonCodexRawEventChunkStore,
+  makeQueuedR2PylonCodexRawEventStore,
+} from './pylon-codex-raw-event-metadata-queue-store'
+import {
   PylonLargestDecentralizedTrainingClaimEndpoint,
   handlePylonLargestDecentralizedTrainingClaimStatusApi,
 } from './pylon-largest-decentralized-training-claim-status-routes'
@@ -7506,6 +7513,37 @@ const makeTokensServedReconcileDeps = (
     readPublicTokensServedExactTotal(openAgentsDatabase(env)),
 })
 
+type PylonCodexRawEventQueueProducerEnv = Readonly<{
+  PYLON_CODEX_RAW_EVENT_METADATA_QUEUE?: Queue | undefined
+}>
+
+type PylonCodexRawEventProducerEnv = Parameters<
+  typeof openAgentsDatabase
+>[0] &
+  PylonCodexRawEventQueueProducerEnv &
+  Readonly<{ ARTIFACTS: R2Bucket }>
+
+const makePylonCodexRawEventStoreForEnv = (
+  env: PylonCodexRawEventProducerEnv,
+) => {
+  const queue = env.PYLON_CODEX_RAW_EVENT_METADATA_QUEUE
+  return queue === undefined
+    ? makeD1R2PylonCodexRawEventStore(openAgentsDatabase(env), env.ARTIFACTS)
+    : makeQueuedR2PylonCodexRawEventStore(env.ARTIFACTS, queue)
+}
+
+const makePylonCodexRawEventChunkStoreForEnv = (
+  env: PylonCodexRawEventProducerEnv,
+) => {
+  const queue = env.PYLON_CODEX_RAW_EVENT_METADATA_QUEUE
+  return queue === undefined
+    ? makeD1R2PylonCodexRawEventChunkStore(
+        openAgentsDatabase(env),
+        env.ARTIFACTS,
+      )
+    : makeQueuedR2PylonCodexRawEventChunkStore(env.ARTIFACTS, queue)
+}
+
 const pylonCodexTurnIngestRoutes = makePylonCodexTurnIngestRoutes<Env>({
   agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
   // KS-6.3 (#8304): the Codex turn-ingest ledger writes move the public
@@ -7520,13 +7558,8 @@ const pylonCodexTurnIngestRoutes = makePylonCodexTurnIngestRoutes<Env>({
   proofStore: env => makeD1PylonCodexAssignmentProofStore(openAgentsDatabase(env)),
   traceStatusStore: env =>
     makeD1PylonCodexAssignmentProofStore(openAgentsDatabase(env)),
-  rawEventChunkStore: env =>
-    makeD1R2PylonCodexRawEventChunkStore(
-      openAgentsDatabase(env),
-      env.ARTIFACTS,
-    ),
-  rawEventStore: env =>
-    makeD1R2PylonCodexRawEventStore(openAgentsDatabase(env), env.ARTIFACTS),
+  rawEventChunkStore: makePylonCodexRawEventChunkStoreForEnv,
+  rawEventStore: makePylonCodexRawEventStoreForEnv,
   publishDelta: (env, delta) =>
     Effect.promise(() =>
       publishKhalaTokensServedDelta(env, buildKhalaTokensServedDelta(delta)),
@@ -15560,6 +15593,18 @@ export default {
         typeof body === 'object' && body !== null && 'schemaVersion' in body
           ? (body as { schemaVersion?: unknown }).schemaVersion
           : undefined
+
+      if (schemaVersion === PYLON_CODEX_RAW_EVENT_METADATA_QUEUE_SCHEMA_VERSION) {
+        const decoded = S.decodeUnknownSync(
+          PylonCodexRawEventMetadataQueueMessage,
+        )(body)
+        await makePylonCodexRawEventMetadataQueueConsumerForEnv(
+          env,
+          openAgentsDatabase(env),
+        ).writeMetadata(decoded)
+        message.ack()
+        continue
+      }
 
       if (schemaVersion === EVENT_LEDGER_INGEST_QUEUE_SCHEMA_VERSION) {
         const namespace = (

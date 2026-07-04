@@ -368,11 +368,15 @@ Spark payout target registrations, scheduled
 writes, registered-agent `pylon_agent_runner_status_events` ingest, and
 Artanis Fleet tick `pylon_agent_runner_status_events` writes, plus
 `fleet_alerts` cron alert rows from FleetBurnStallDetector and
-ServingRateMonitor behind `KHALA_SYNC_PYLON_DUAL_WRITE`; reads remain
-D1-authoritative. The live #8315 cutover still requires the Queue-based
-raw-event ingest split, runner-status and closeout-verifier Postgres shadow
-reads, compare/postgres read flags, and D1 decommission evidence. Do not treat
-a green backfill alone as permission to drop D1 tables.
+ServingRateMonitor behind `KHALA_SYNC_PYLON_DUAL_WRITE`. Raw Codex event
+payloads now stay on the request path only long enough to land in R2; metadata
+rows are enqueued through `PYLON_CODEX_RAW_EVENT_METADATA_QUEUE`, then the
+consumer writes the D1 index and fail-soft mirrors Postgres when the same
+dual-write flag is armed. Reads remain D1-authoritative. The live #8315 cutover
+still requires runner-status and closeout-verifier Postgres shadow reads,
+compare/postgres read flags, live raw-event queue reconciliation, and D1
+decommission evidence. Do not treat a green backfill alone as permission to drop
+D1 tables.
 
 ## Public tokens-served projection (KS-6.3, #8304)
 

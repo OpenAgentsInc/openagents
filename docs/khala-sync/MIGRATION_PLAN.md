@@ -195,11 +195,14 @@ Spark payout target registrations, scheduled
 writes, registered-agent `pylon_agent_runner_status_events` ingest, and
 Artanis Fleet tick `pylon_agent_runner_status_events` writes, plus
 `fleet_alerts` cron alert rows from FleetBurnStallDetector and
-ServingRateMonitor; those remain D1-first and read-authoritative until
-verification/cutover. Queue-based raw-event ingestion split,
-runner-status and closeout-verifier Postgres shadow reads, compare/postgres
-read flags, and final D1 decommission remain on
-[#8315](https://github.com/OpenAgentsInc/openagents/issues/8315).
+ServingRateMonitor. The raw Codex event metadata path now writes payloads to
+R2 on the request path and enqueues metadata rows through
+`PYLON_CODEX_RAW_EVENT_METADATA_QUEUE`; its consumer preserves D1 indexing and
+fail-soft mirrors Postgres when `KHALA_SYNC_PYLON_DUAL_WRITE` is armed. These
+paths remain D1-first and read-authoritative until verification/cutover.
+Runner-status and closeout-verifier Postgres shadow reads, compare/postgres
+read flags, live raw-event queue reconciliation, and final D1 decommission
+remain on [#8315](https://github.com/OpenAgentsInc/openagents/issues/8315).
 
 - **What:** the rest of the Pylon control plane after KS-8.1:
   registrations, quarantines, marketplace intake/assignments/triage,

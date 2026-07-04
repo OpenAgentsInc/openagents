@@ -356,6 +356,12 @@
         "binding": "EVENT_LEDGER_INGEST_QUEUE",
         "queue": "openagents-event-ledger-ingest",
       },
+      // KS-8.4 (#8315): raw Codex payloads stay in R2; metadata row writes move
+      // off the request path and through this queue before D1/Postgres indexing.
+      {
+        "binding": "PYLON_CODEX_RAW_EVENT_METADATA_QUEUE",
+        "queue": "openagents-pylon-codex-raw-event-metadata",
+      },
     ],
     "consumers": [
       {
@@ -371,6 +377,11 @@
       {
         "queue": "openagents-event-ledger-ingest",
         "max_batch_size": 1,
+        "max_retries": 3,
+      },
+      {
+        "queue": "openagents-pylon-codex-raw-event-metadata",
+        "max_batch_size": 25,
         "max_retries": 3,
       },
     ],
@@ -586,6 +597,11 @@
             "binding": "EVENT_LEDGER_INGEST_QUEUE",
             "queue": "openagents-event-ledger-ingest-staging",
           },
+          // KS-8.4 (#8315): staging raw Codex metadata queue.
+          {
+            "binding": "PYLON_CODEX_RAW_EVENT_METADATA_QUEUE",
+            "queue": "openagents-pylon-codex-raw-event-metadata-staging",
+          },
         ],
         "consumers": [
           {
@@ -601,6 +617,11 @@
           {
             "queue": "openagents-event-ledger-ingest-staging",
             "max_batch_size": 1,
+            "max_retries": 3,
+          },
+          {
+            "queue": "openagents-pylon-codex-raw-event-metadata-staging",
+            "max_batch_size": 25,
             "max_retries": 3,
           },
         ],

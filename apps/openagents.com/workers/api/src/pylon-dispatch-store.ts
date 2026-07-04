@@ -45,6 +45,7 @@ import {
   type KhalaSyncPushSqlClient,
   type MakeKhalaSyncPushSqlClient,
 } from './khala-sync-push-routes'
+import { parseJsonStringArray } from './json-boundary'
 import { logWorkerRouteWarning } from './observability'
 import {
   ACTIVE_LEASE_ASSIGNMENT_STATES,
@@ -761,19 +762,21 @@ export const makePostgresPylonDispatchStore = (
                ORDER BY updated_at DESC
                LIMIT ${limit}`
             return rows.map(row => ({
-              acceptedWorkRefs: JSON.parse(row.accepted_work_refs_json),
-              artifactRefs: JSON.parse(row.artifact_refs_json),
+              acceptedWorkRefs: parseJsonStringArray(
+                row.accepted_work_refs_json,
+              ),
+              artifactRefs: parseJsonStringArray(row.artifact_refs_json),
               assignmentRef: row.assignment_ref,
-              closeoutRefs: JSON.parse(row.closeout_refs_json),
+              closeoutRefs: parseJsonStringArray(row.closeout_refs_json),
               createdAt: row.created_at,
               id: row.id,
               jobKind: row.job_kind,
               ownerAgentUserId: row.owner_agent_user_id,
-              proofRefs: JSON.parse(row.proof_refs_json),
+              proofRefs: parseJsonStringArray(row.proof_refs_json),
               publicProjectionJson: row.public_projection_json,
               pylonRef: row.pylon_ref,
               stage: row.stage,
-              taskRefs: JSON.parse(row.task_refs_json),
+              taskRefs: parseJsonStringArray(row.task_refs_json),
               updatedAt: row.updated_at,
             }))
           }),
