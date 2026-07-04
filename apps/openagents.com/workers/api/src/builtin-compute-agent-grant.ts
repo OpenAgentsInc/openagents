@@ -12,6 +12,7 @@
 // key. It is inert by default — if the hosted key env is not set, it grants
 // nothing.
 
+import type { InferenceEntitlementsMirror } from './inference-entitlements-store'
 import {
   compactRandomId,
   currentDate,
@@ -262,8 +263,13 @@ export const executeBuiltinComputeAgentGrant = async (
 
 type BuiltinComputeAgentCountRow = Readonly<{ count: number | null }>
 
+// KS-8.9 (#8320): optional fire-safe Postgres dual-write mirror for the
+// quota-event table. NOTE: the companion `token_usage_events` row written in
+// the same batch belongs to the KS-8.2 token-ledger domain and is NOT
+// mirrored here (documented in the KS-8.9 decommission follow-up).
 export const makeD1BuiltinComputeAgentStore = (
   db: D1Database,
+  mirror?: InferenceEntitlementsMirror | undefined,
 ): BuiltinComputeAgentStore => ({
   countSessionsSince: async input => {
     const row = await db
@@ -384,6 +390,23 @@ export const makeD1BuiltinComputeAgentStore = (
           0,
           safeMetadataJson,
         ),
+    ])
+    mirror?.([
+      {
+        kind: 'write',
+        row: {
+          actor_user_id: input.quotaEvent.actorUserId,
+          budget_class: input.quotaEvent.budgetClass,
+          created_at: input.quotaEvent.createdAt,
+          grant_ref: input.quotaEvent.grantRef,
+          id: input.quotaEvent.id,
+          provider: input.quotaEvent.provider,
+          session_budget_seconds: input.quotaEvent.sessionBudgetSeconds,
+          session_units: input.quotaEvent.sessionUnits,
+          token_ceiling: input.quotaEvent.tokenCeiling,
+        },
+        table: 'builtin_compute_agent_quota_events',
+      },
     ])
   },
 })

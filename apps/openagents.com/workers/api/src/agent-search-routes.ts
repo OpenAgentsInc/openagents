@@ -45,6 +45,7 @@ import {
   serverError,
   unauthorized,
 } from './http/responses'
+import { inferenceEntitlementsMirrorForEnv } from './inference-entitlements-store'
 import { readJsonObject } from './json-boundary'
 import { openAgentsDatabase } from './runtime'
 import {
@@ -288,7 +289,11 @@ const handleAgentSearch = <Bindings extends AgentSearchRouteEnv>(
     const config = getOpenAgentsWorkerConfig(env)
     const store =
       dependencies.makeStore?.(env) ??
-      makeD1AgentSearchStore(openAgentsDatabase(env))
+      makeD1AgentSearchStore(
+        openAgentsDatabase(env),
+        // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
+        inferenceEntitlementsMirrorForEnv(env),
+      )
     const exaClient =
       dependencies.exaClient?.(env, config) ?? makeExaClient(config.exa)
     return yield* executeAgentSearch({
@@ -357,7 +362,11 @@ const handleAgentSearchPaymentPreview = <Bindings extends AgentSearchRouteEnv>(
     const config = getOpenAgentsWorkerConfig(env)
     const store =
       dependencies.makePaymentStore?.(env) ??
-      makeD1AgentSearchPaymentStore(openAgentsDatabase(env))
+      makeD1AgentSearchPaymentStore(
+        openAgentsDatabase(env),
+        // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
+        inferenceEntitlementsMirrorForEnv(env),
+      )
 
     return yield* Effect.tryPromise({
       catch: error =>
@@ -420,7 +429,11 @@ const handleAgentSearchPaymentRedeem = <Bindings extends AgentSearchRouteEnv>(
 
     const store =
       dependencies.makePaymentStore?.(env) ??
-      makeD1AgentSearchPaymentStore(openAgentsDatabase(env))
+      makeD1AgentSearchPaymentStore(
+        openAgentsDatabase(env),
+        // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
+        inferenceEntitlementsMirrorForEnv(env),
+      )
 
     return yield* Effect.tryPromise({
       catch: error =>

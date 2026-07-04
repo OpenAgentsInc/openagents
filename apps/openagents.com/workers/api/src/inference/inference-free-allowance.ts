@@ -47,6 +47,10 @@
 
 import { Effect } from 'effect'
 
+import type {
+  InferenceEntitlementsGateReads,
+  InferenceEntitlementsMirror,
+} from '../inference-entitlements-store'
 import { workerLogEntry } from '../observability'
 import { currentIsoTimestamp } from '../runtime-primitives'
 import {
@@ -214,7 +218,18 @@ const readFreeAllowanceState = async (
   db: D1Database,
   ownerKey: string,
   identityKind: FreeIdentityKind,
+  // KS-8.9 (#8320): routed enforcement read (compare/postgres modes).
+  // Absent => the untouched inline D1 reads below.
+  gateReads?: Pick<InferenceEntitlementsGateReads, 'freeUsageState'>,
 ): Promise<FreeAllowanceState> => {
+  if (gateReads !== undefined) {
+    const state = await gateReads.freeUsageState(ownerKey)
+    return {
+      cumulativeFreeUsdMicros: state.cumulativeFreeUsdMicros,
+      earnedFreeUsdMicros: state.earnedFreeUsdMicros,
+      identityKind,
+    }
+  }
   const tally = await db
     .prepare(
       `SELECT owner_key, identity_kind, cumulative_free_usd_micros, free_request_count
@@ -267,6 +282,8 @@ export type FreePreflightDecision = Readonly<{
 export type FreePreflightDeps = Readonly<{
   db: D1Database
   resolveOwnerIdentity: VerifiedOwnerIdentityResolver
+  // KS-8.9 (#8320): routed enforcement read (compare/postgres modes).
+  gateReads?: Pick<InferenceEntitlementsGateReads, 'freeUsageState'> | undefined
 }>
 
 // A reader that answers "can this (account, model) ride the free pool right
@@ -299,7 +316,12 @@ export const checkFreeAllowancePreflight =
       const ownerKey = resolveOwnerKey(accountRef, identity)
       const identityKind: FreeIdentityKind =
         identity === undefined ? 'unclaimed' : 'verified'
-      const state = await readFreeAllowanceState(deps.db, ownerKey, identityKind)
+      const state = await readFreeAllowanceState(
+        deps.db,
+        ownerKey,
+        identityKind,
+        deps.gateReads,
+      )
       // A zero-charge probe (chargeUsdMicros = 0) yields the remaining headroom
       // without committing to a price; `remainingUsdMicros > 0` means the pool
       // can cover at least a minimal request.
@@ -337,6 +359,9 @@ const accrueFreeUsage = async (
     chargeUsdMicros: number
     nowIso: string
   }>,
+  // KS-8.9 (#8320): fire-safe Postgres dual-write mirror. EVENT-KEYED
+  // (request_id) so the Postgres tally can never double-count.
+  mirror?: InferenceEntitlementsMirror | undefined,
 ): Promise<boolean> => {
   try {
     await db.batch([
@@ -372,6 +397,20 @@ const accrueFreeUsage = async (
           input.nowIso,
           input.nowIso,
         ),
+    ])
+    mirror?.([
+      {
+        event: {
+          accountRef: input.accountRef,
+          createdAt: input.nowIso,
+          freeUsdMicros: input.chargeUsdMicros,
+          ownerKey: input.ownerKey,
+          requestId: input.requestId,
+          servedModel: input.servedModel,
+        },
+        identityKind: input.identityKind,
+        kind: 'accrue_free_usage',
+      },
     ])
     return true
   } catch {
@@ -418,6 +457,9 @@ export const accrueEarnedAllowance = (
     sourceRef: string
     nowIso?: (() => string) | undefined
   }>,
+  // KS-8.9 (#8320): fire-safe Postgres dual-write mirror. EVENT-KEYED
+  // (accrual_event_ref) so the Postgres tally can never double-count.
+  mirror?: InferenceEntitlementsMirror | undefined,
 ): Effect.Effect<boolean> =>
   Effect.gen(function* () {
     const nowIso = (input.nowIso ?? currentIsoTimestamp)()
@@ -463,6 +505,18 @@ export const accrueEarnedAllowance = (
             )
             .bind(input.ownerKey, grant, nowIso, nowIso),
         ])
+        mirror?.([
+          {
+            event: {
+              accrualEventRef: eventRef,
+              accrualKind: input.kind,
+              createdAt: nowIso,
+              earnedUsdMicros: grant,
+              ownerKey: input.ownerKey,
+            },
+            kind: 'accrue_earned_allowance',
+          },
+        ])
         return true
       },
     }).pipe(Effect.catch(() => Effect.succeed(false)))
@@ -479,6 +533,10 @@ export type FreeAllowanceDeps = Readonly<{
   // owner-claim surface). The decorator maps the result to an owner key.
   resolveOwnerIdentity: VerifiedOwnerIdentityResolver
   nowIso?: (() => string) | undefined
+  // KS-8.9 (#8320): routed enforcement reads + fire-safe dual-write
+  // mirror. Absent => untouched D1-only behavior.
+  gateReads?: Pick<InferenceEntitlementsGateReads, 'freeUsageState'> | undefined
+  mirror?: InferenceEntitlementsMirror | undefined
 }>
 
 // The free outcome the decorator returns when it eats the cost. `metered:
@@ -540,20 +598,25 @@ export const withFreeAllowance = (
             deps.db,
             ownerKey,
             identityKind,
+            deps.gateReads,
           )
           const decision = decideFreeAllowance({ chargeUsdMicros, state })
           if (!decision.free) {
             return { accrued: false, free: false as const, ownerKey }
           }
-          const accrued = await accrueFreeUsage(deps.db, {
-            accountRef: context.accountRef,
-            chargeUsdMicros,
-            identityKind,
-            nowIso: nowIso(),
-            ownerKey,
-            requestId: context.requestId,
-            servedModel: context.servedModel,
-          })
+          const accrued = await accrueFreeUsage(
+            deps.db,
+            {
+              accountRef: context.accountRef,
+              chargeUsdMicros,
+              identityKind,
+              nowIso: nowIso(),
+              ownerKey,
+              requestId: context.requestId,
+              servedModel: context.servedModel,
+            },
+            deps.mirror,
+          )
           return { accrued, free: true as const, ownerKey }
         },
       }).pipe(

@@ -58,6 +58,14 @@ export type WorkerBindings = Readonly<{
   // ledger domain cutover".
   KHALA_SYNC_LEDGER_DUAL_WRITE?: string
   KHALA_SYNC_LEDGER_READS?: string
+  // KS-8.9 (#8320) inference entitlements/quotas migration flags. Same
+  // semantics as the pylon/ledger pairs: dual-write defaults ON wherever
+  // KHALA_SYNC_DB exists ('off'|'0'|'false'|'disabled' to disable); reads
+  // default 'd1' ('d1'|'postgres'|'compare') and cover only the six
+  // serving-path enforcement gate reads. See docs/khala-sync/RUNBOOK.md
+  // "Inference entitlements domain cutover".
+  KHALA_SYNC_ENTITLEMENTS_DUAL_WRITE?: string
+  KHALA_SYNC_ENTITLEMENTS_READS?: string
   // Khala Sync hub (KS-4.2, #8295). Optional SQLite-class DO namespace; one
   // KhalaSyncHubDO per scope (`idFromName(scope)`) holds the recent changelog
   // window + hibernating WebSockets (docs/khala-sync/SPEC.md §5). Absent

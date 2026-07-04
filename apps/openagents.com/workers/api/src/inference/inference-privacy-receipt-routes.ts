@@ -1,6 +1,7 @@
 import { Effect, Schema as S } from 'effect'
 
 import { noStoreJsonResponse } from '../http/responses'
+import type { InferenceEntitlementsMirror } from '../inference-entitlements-store'
 import { parseJsonUnknown } from '../json-boundary'
 import {
   type PublicProjectionStalenessContract,
@@ -26,6 +27,8 @@ export type PrivacyReceiptRoutesDeps = Readonly<{
   confidentialComputeEnabled: boolean
   db: D1Database
   nowIso?: (() => string) | undefined
+  // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
+  mirror?: InferenceEntitlementsMirror | undefined
 }>
 
 type PrivacyEntitlementReceiptRow = Readonly<{
@@ -245,6 +248,8 @@ export const grantPaidPrivacyEntitlement = async (
     nowIso: string
     purchaseRef: string
   }>,
+  // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
+  mirror?: InferenceEntitlementsMirror | undefined,
 ): Promise<PrivacyEntitlementReceiptRow | null> => {
   const accountDigest = await accountHash(input.accountRef)
   const entitlementRef = `entitlement.inference.paid_privacy.${accountDigest}`
@@ -289,6 +294,36 @@ export const grantPaidPrivacyEntitlement = async (
     )
     .run()
 
+  mirror?.([
+    {
+      kind: 'write',
+      row: {
+        account_ref: input.accountRef,
+        capture_excluded: 1,
+        created_at: input.nowIso,
+        entitlement_ref: entitlementRef,
+        idempotency_key: input.idempotencyKey,
+        privacy_tier: 'paid_privacy',
+        purchase_ref: input.purchaseRef,
+        reason_ref: PAID_PRIVACY_REASON_ACCOUNT_ENTITLEMENT,
+        receipt_ref: receiptRef,
+        updated_at: input.nowIso,
+      },
+      table: 'inference_privacy_entitlement_receipts',
+    },
+    {
+      kind: 'write',
+      row: {
+        account_ref: input.accountRef,
+        created_at: input.nowIso,
+        note: `receipt:${receiptRef}`,
+        privacy_tier: 'paid_privacy',
+        updated_at: input.nowIso,
+      },
+      table: 'inference_privacy_entitlements',
+    },
+  ])
+
   // Read back by key AND account: the idempotency_key column is globally
   // unique across purchase surfaces, so without the account guard a key
   // collision would return (and publicly attribute) another account's receipt.
@@ -312,6 +347,8 @@ export const recordConfidentialComputeExecutionReceipt = async (
     nowIso: string
     requestRef: string
   }>,
+  // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
+  mirror?: InferenceEntitlementsMirror | undefined,
 ): Promise<ConfidentialComputeReceiptRow | null> => {
   const executionRef = `execution.inference.confidential_compute.${input.requestRef}`
   const receiptRef = `receipt.inference.confidential_compute.${input.requestRef}`
@@ -335,6 +372,24 @@ export const recordConfidentialComputeExecutionReceipt = async (
       input.nowIso,
     )
     .run()
+
+  mirror?.([
+    {
+      kind: 'write',
+      row: {
+        account_ref: input.accountRef,
+        capture_excluded: 1,
+        created_at: input.nowIso,
+        execution_ref: executionRef,
+        idempotency_key: input.idempotencyKey,
+        reason_ref: PAID_PRIVACY_REASON_CONFIDENTIAL_COMPUTE,
+        receipt_ref: receiptRef,
+        request_ref: input.requestRef,
+        updated_at: input.nowIso,
+      },
+      table: 'inference_confidential_compute_execution_receipts',
+    },
+  ])
 
   // Same key-collision guard as the entitlement read-back: never return
   // another account's receipt row on an idempotency-key collision.
@@ -392,12 +447,16 @@ export const handlePaidPrivacyPurchase = (
       boundedIdempotencyKey(body.idempotencyKey) ??
       `privacy-purchase:${session.accountRef}:${purchaseRef}`
     const row = yield* Effect.tryPromise(() =>
-      grantPaidPrivacyEntitlement(deps.db, {
-        accountRef: session.accountRef,
-        idempotencyKey,
-        nowIso,
-        purchaseRef,
-      }),
+      grantPaidPrivacyEntitlement(
+        deps.db,
+        {
+          accountRef: session.accountRef,
+          idempotencyKey,
+          nowIso,
+          purchaseRef,
+        },
+        deps.mirror,
+      ),
     ).pipe(Effect.orDie)
 
     if (row === null) {
@@ -460,12 +519,16 @@ export const handleConfidentialComputeExecutionReceipt = (
       boundedIdempotencyKey(body.idempotencyKey) ??
       `confidential-compute:${session.accountRef}:${requestRef}`
     const row = yield* Effect.tryPromise(() =>
-      recordConfidentialComputeExecutionReceipt(deps.db, {
-        accountRef: session.accountRef,
-        idempotencyKey,
-        nowIso,
-        requestRef,
-      }),
+      recordConfidentialComputeExecutionReceipt(
+        deps.db,
+        {
+          accountRef: session.accountRef,
+          idempotencyKey,
+          nowIso,
+          requestRef,
+        },
+        deps.mirror,
+      ),
     ).pipe(Effect.orDie)
 
     if (row === null) {

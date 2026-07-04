@@ -33,6 +33,7 @@
 
 import { Effect } from 'effect'
 
+import type { InferenceEntitlementsMirror } from '../inference-entitlements-store'
 import { workerLogEntry } from '../observability'
 import {
   type CreateReferralPayoutEligibilityInput,
@@ -234,6 +235,8 @@ const recordInferenceReferralMarginSplit = async (
     party: Exclude<ReferredParty, null>
     split: InferenceSplit
   }>,
+  // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
+  mirror?: InferenceEntitlementsMirror | undefined,
 ): Promise<string> => {
   const requestId = input.context.requestId
   const splitRef = inferenceReferralMarginSplitRef(requestId)
@@ -283,6 +286,44 @@ const recordInferenceReferralMarginSplit = async (
     )
     .run()
 
+  mirror?.([
+    {
+      kind: 'write',
+      row: {
+        account_ref: input.context.accountRef,
+        adapter_id: input.context.adapterId,
+        archived_at: null,
+        charge_receipt_ref: inferenceReferralChargeReceiptRef(requestId),
+        charge_usd: input.split.chargeUsd,
+        cost_usd: input.split.costUsd,
+        created_at: input.nowIso,
+        funding_kind: input.context.fundingKind,
+        id: splitRef,
+        margin_sats: input.split.marginSats,
+        margin_usd: input.split.marginUsd,
+        openagents_sats: input.split.openagents.sats,
+        openagents_usd: input.split.openagents.usd,
+        payout_ref: inferenceReferralPayoutRef(requestId),
+        qualifying_event_ref: inferenceReferralQualifyingEventRef(requestId),
+        referral_attribution_id: input.attribution.referral_attribution_id,
+        referral_invite_id: input.attribution.referral_invite_id,
+        referral_source_id: input.attribution.referral_source_id,
+        referred_user_id: input.party.userId,
+        referrer_sats: input.split.referrer.sats,
+        referrer_usd: input.split.referrer.usd,
+        referrer_user_id: input.attribution.referrer_user_id,
+        request_id: requestId,
+        requested_model: input.context.requestedModel,
+        served_by_contributor: input.context.servingReceipt === undefined ? 0 : 1,
+        served_model: input.context.servedModel,
+        serving_node_count: servingNodeCount,
+        serving_node_sats: input.split.servingNode.sats,
+        serving_node_usd: input.split.servingNode.usd,
+      },
+      table: 'inference_referral_margin_splits',
+    },
+  ])
+
   return splitRef
 }
 
@@ -306,6 +347,8 @@ const recordInferenceReferralMarginSplit = async (
 export const accrueInferenceReferral = async (
   db: D1Database,
   input: AccrueInferenceReferralInput,
+  // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
+  mirror?: InferenceEntitlementsMirror | undefined,
 ): Promise<AccrueInferenceReferralResult> => {
   const context = input.context
   const party = parseReferredParty(context.accountRef)
@@ -397,13 +440,17 @@ export const accrueInferenceReferral = async (
   }
 
   const entry = await createReferralPayoutEligibility(db, createInput)
-  const marginSplitRef = await recordInferenceReferralMarginSplit(db, {
-    attribution,
-    context,
-    nowIso,
-    party,
-    split,
-  })
+  const marginSplitRef = await recordInferenceReferralMarginSplit(
+    db,
+    {
+      attribution,
+      context,
+      nowIso,
+      party,
+      split,
+    },
+    mirror,
+  )
   return { _tag: 'recorded', entry, marginSplitRef }
 }
 
@@ -411,6 +458,8 @@ export type ReferralAccrualDeps = Readonly<{
   db: D1Database
   weights?: InferenceSplitWeights | undefined
   nowIso?: (() => string) | undefined
+  // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
+  mirror?: InferenceEntitlementsMirror | undefined
 }>
 
 /**
@@ -439,11 +488,17 @@ export const withReferralAccrual = (
       const result = yield* Effect.tryPromise({
         catch: inferenceReferralAccrualPersistenceError,
         try: () =>
-          accrueInferenceReferral(deps.db, {
-            context,
-            ...(deps.nowIso === undefined ? {} : { nowIso: deps.nowIso }),
-            ...(deps.weights === undefined ? {} : { weights: deps.weights }),
-          }),
+          accrueInferenceReferral(
+            deps.db,
+            {
+              context,
+              ...(deps.nowIso === undefined ? {} : { nowIso: deps.nowIso }),
+              ...(deps.weights === undefined
+                ? {}
+                : { weights: deps.weights }),
+            },
+            deps.mirror,
+          ),
       }).pipe(
         Effect.catch(error =>
           Effect.gen(function* () {

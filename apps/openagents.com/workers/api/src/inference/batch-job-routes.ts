@@ -1,3 +1,4 @@
+import type { InferenceEntitlementsMirror } from '../inference-entitlements-store'
 import { Effect, Schema as S } from 'effect'
 
 import { noStoreJsonResponse } from '../http/responses'
@@ -45,6 +46,9 @@ export type BatchJobRoutesDeps = Readonly<{
   // behaviour for the flag-off path.
   enqueueBatchJob?: EnqueueBatchJob | undefined
   resultsStore?: BatchJobResultsStore | undefined
+  // KS-8.9 (#8320): fire-safe Postgres dual-write mirror for the batch-job
+  // store; absent => byte-identical D1-only behavior.
+  mirror?: InferenceEntitlementsMirror | undefined
 }>
 
 // One submitted dataset row. Carries BOTH the token counts the route prices the
@@ -195,7 +199,7 @@ export const handleBatchJobsSubmit = (
       deps.enqueueBatchJob !== undefined && executableItems.length > 0
     const enqueuedAtIso = willEnqueue ? deps.nowIso() : null
 
-    const store = makeD1BatchJobStore(deps.db, deps.nowIso)
+    const store = makeD1BatchJobStore(deps.db, deps.nowIso, deps.mirror)
     yield* store.insertBatchJob({
       jobId,
       accountRef: session.accountRef,
@@ -272,7 +276,7 @@ export const handleBatchJobReceiptRead = (
     }
 
     const jobId = receiptRef.slice(prefix.length)
-    const store = makeD1BatchJobStore(deps.db, deps.nowIso)
+    const store = makeD1BatchJobStore(deps.db, deps.nowIso, deps.mirror)
     const job = yield* store.getBatchJob(jobId)
 
     if (!job || job.status !== 'completed') {
@@ -348,7 +352,7 @@ export const handleBatchJobStatusRead = (
     }
 
     const jobId = match[1] ?? ''
-    const store = makeD1BatchJobStore(deps.db, deps.nowIso)
+    const store = makeD1BatchJobStore(deps.db, deps.nowIso, deps.mirror)
     const job = yield* store.getBatchJob(jobId)
 
     if (!job || job.accountRef !== session.accountRef) {
@@ -403,7 +407,7 @@ export const handleBatchJobResultsRead = (
     }
 
     const jobId = match[1] ?? ''
-    const store = makeD1BatchJobStore(deps.db, deps.nowIso)
+    const store = makeD1BatchJobStore(deps.db, deps.nowIso, deps.mirror)
     const job = yield* store.getBatchJob(jobId)
 
     if (

@@ -1,5 +1,7 @@
 import { Effect } from 'effect'
 
+import type { InferenceEntitlementsMirror } from '../inference-entitlements-store'
+
 export type BatchJobStatus = 'pending' | 'processing' | 'completed' | 'failed'
 
 export type BatchJobRecord = Readonly<{
@@ -40,10 +42,17 @@ export type BatchJobStore = Readonly<{
   getBatchJob: (jobId: string) => Effect.Effect<BatchJobRecord | null>
 }>
 
-export const makeD1BatchJobStore = (db: D1Database, nowIso: () => string): BatchJobStore => ({
+// KS-8.9 (#8320): optional fire-safe Postgres dual-write mirror; absent =>
+// byte-identical D1-only behavior.
+export const makeD1BatchJobStore = (
+  db: D1Database,
+  nowIso: () => string,
+  mirror?: InferenceEntitlementsMirror | undefined,
+): BatchJobStore => ({
   insertBatchJob: job =>
-    Effect.tryPromise(() =>
-      db
+    Effect.tryPromise(async () => {
+      const updatedAt = nowIso()
+      await db
         .prepare(
           `INSERT INTO inference_batch_jobs (
              job_id, account_ref, status, charge_receipt_ref, dataset_size,
@@ -61,17 +70,38 @@ export const makeD1BatchJobStore = (db: D1Database, nowIso: () => string): Batch
           job.failedItems,
           job.resultsR2Key,
           job.createdAt,
-          nowIso(),
+          updatedAt,
           job.enqueuedAt,
           job.startedAt
         )
         .run()
-    ).pipe(Effect.asVoid, Effect.orDie),
+      mirror?.([
+        {
+          kind: 'write',
+          row: {
+            account_ref: job.accountRef,
+            charge_receipt_ref: job.chargeReceiptRef,
+            created_at: job.createdAt,
+            dataset_size: job.datasetSize,
+            enqueued_at: job.enqueuedAt,
+            failed_items: job.failedItems,
+            job_id: job.jobId,
+            processed_items: job.processedItems,
+            results_r2_key: job.resultsR2Key,
+            started_at: job.startedAt,
+            status: job.status,
+            updated_at: updatedAt,
+          },
+          table: 'inference_batch_jobs',
+        },
+      ])
+    }).pipe(Effect.asVoid, Effect.orDie),
 
   updateBatchJobStatus: (jobId, status, updates) =>
     Effect.tryPromise(() => {
+      const updatedAt = nowIso()
       let query = 'UPDATE inference_batch_jobs SET status = ?, updated_at = ?'
-      const bindings: any[] = [status, nowIso()]
+      const bindings: any[] = [status, updatedAt]
 
       if (updates.processedItems !== undefined) {
         query += ', processed_items = ?'
@@ -95,7 +125,34 @@ export const makeD1BatchJobStore = (db: D1Database, nowIso: () => string): Batch
       query += ' WHERE job_id = ?'
       bindings.push(jobId)
 
-      return db.prepare(query).bind(...bindings).run()
+      return db
+        .prepare(query)
+        .bind(...bindings)
+        .run()
+        .then(result => {
+          mirror?.([
+            {
+              kind: 'update_batch_job',
+              jobId,
+              status,
+              updatedAt,
+              ...(updates.processedItems === undefined
+                ? {}
+                : { processedItems: updates.processedItems }),
+              ...(updates.failedItems === undefined
+                ? {}
+                : { failedItems: updates.failedItems }),
+              ...(updates.resultsR2Key === undefined ||
+              updates.resultsR2Key === null
+                ? {}
+                : { resultsR2Key: updates.resultsR2Key }),
+              ...(updates.startedAt === undefined
+                ? {}
+                : { startedAt: updates.startedAt }),
+            },
+          ])
+          return result
+        })
     }).pipe(Effect.asVoid, Effect.orDie),
 
   getBatchJob: jobId =>

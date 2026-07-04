@@ -5,6 +5,7 @@ import {
   makeD1BuiltinComputeAgentStore,
 } from './builtin-compute-agent-grant'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { inferenceEntitlementsMirrorForEnv } from './inference-entitlements-store'
 import {
   optionalBoolean,
   optionalString,
@@ -733,7 +734,11 @@ export const makeProviderAccountServiceHandlers = <
     const result = await executeBuiltinComputeAgentGrant({
       hostedKeyConfigured,
       session: { user: { id: actor.user.id } },
-      store: makeD1BuiltinComputeAgentStore(openAgentsDatabase(env)),
+      store: makeD1BuiltinComputeAgentStore(
+        openAgentsDatabase(env),
+        // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
+        inferenceEntitlementsMirrorForEnv(env),
+      ),
       ...(providerAccountRef === undefined ? {} : { providerAccountRef }),
       ...(runnerSessionId === undefined ? {} : { runnerSessionId }),
     })

@@ -40,6 +40,10 @@
 
 import { Effect } from 'effect'
 
+import type {
+  InferenceEntitlementsGateReads,
+  InferenceEntitlementsMirror,
+} from '../inference-entitlements-store'
 import { workerLogEntry } from '../observability'
 import { currentIsoTimestamp } from '../runtime-primitives'
 import { isPremiumModel } from './inference-premium-allowlist'
@@ -342,6 +346,9 @@ export const markAccountFreeTierAsync = async (
     scope?: string | undefined
     nowIso?: string | undefined
   }>,
+  // KS-8.9 (#8320): fire-safe Postgres dual-write mirror (optional; absent
+  // => byte-identical D1-only behavior).
+  mirror?: InferenceEntitlementsMirror | undefined,
 ): Promise<boolean> => {
   const nowIso = input.nowIso ?? currentIsoTimestamp()
   try {
@@ -365,6 +372,20 @@ export const markAccountFreeTierAsync = async (
         nowIso,
       )
       .run()
+    mirror?.([
+      {
+        kind: 'write',
+        row: {
+          account_ref: input.accountRef,
+          created_at: nowIso,
+          mint_source: input.mintSource ?? 'self_serve_anonymous',
+          note: input.note ?? null,
+          scope: input.scope ?? DEFAULT_FREE_TIER_SCOPE,
+          updated_at: nowIso,
+        },
+        table: 'inference_free_tier_keys',
+      },
+    ])
     return true
   } catch {
     return false
@@ -381,6 +402,8 @@ export const recordFreeKeyMintAsync = async (
     mintDay: string
     nowIso?: string | undefined
   }>,
+  // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
+  mirror?: InferenceEntitlementsMirror | undefined,
 ): Promise<boolean> => {
   const nowIso = input.nowIso ?? currentIsoTimestamp()
   try {
@@ -395,6 +418,14 @@ export const recordFreeKeyMintAsync = async (
       )
       .bind(input.ipHash, input.mintDay, nowIso, nowIso)
       .run()
+    mirror?.([
+      {
+        ipHash: input.ipHash,
+        kind: 'increment_free_key_mint',
+        mintDay: input.mintDay,
+        nowIso,
+      },
+    ])
     return true
   } catch {
     return false
@@ -491,6 +522,9 @@ const accrueFreeTierUsage = async (
     totalTokens: number
     nowIso: string
   }>,
+  // KS-8.9 (#8320): fire-safe Postgres dual-write mirror. The mirror op is
+  // EVENT-KEYED (request_id) so the Postgres tally can never double-count.
+  mirror?: InferenceEntitlementsMirror | undefined,
 ): Promise<boolean> => {
   try {
     await db.batch([
@@ -525,6 +559,19 @@ const accrueFreeTierUsage = async (
           input.nowIso,
           input.nowIso,
         ),
+    ])
+    mirror?.([
+      {
+        event: {
+          accountRef: input.accountRef,
+          createdAt: input.nowIso,
+          requestId: input.requestId,
+          servedModel: input.servedModel,
+          totalTokens: input.totalTokens,
+          usageDay: input.usageDay,
+        },
+        kind: 'accrue_free_tier_usage',
+      },
     ])
     return true
   } catch {
@@ -661,6 +708,14 @@ export type FreeTierGateDeps = Readonly<{
   // 2,000-request daily limit. Default empty/undefined => pure no-op (external
   // behavior is byte-for-byte unchanged).
   internalAccountRefs?: ReadonlySet<string> | undefined
+  // KS-8.9 (#8320): routed enforcement reads (compare/postgres modes).
+  // Absent => the untouched inline D1 reads (zero added hot-path latency).
+  gateReads?:
+    | Pick<
+        InferenceEntitlementsGateReads,
+        'freeTierKeyExists' | 'freeTierUsage'
+      >
+    | undefined
 }>
 
 export const FREE_TIER_QUOTA_REASON_INTERNAL_EXEMPT =
@@ -680,13 +735,21 @@ export const makeFreeTierGate = (deps: FreeTierGateDeps): FreeTierGate => {
   const nowIso = deps.nowIso ?? currentIsoTimestamp
   const internalAccountRefs =
     deps.internalAccountRefs ?? new Set<string>()
+  // KS-8.9 (#8320): route through the migration seam when wired; the
+  // default stays the inline D1 reads.
+  const readKeyMembership =
+    deps.gateReads?.freeTierKeyExists ??
+    ((ref: string) => readAccountFreeTier(deps.db, ref))
+  const readUsage =
+    deps.gateReads?.freeTierUsage ??
+    ((ref: string, day: string) => readFreeTierUsage(deps.db, ref, day))
   return async (accountRef: string, model: string) => {
     const lane = decideFreeTierLane(model)
     if (!lane.freeLane) {
       return { free: false, reasonRef: lane.reasonRef }
     }
     try {
-      const isFree = await readAccountFreeTier(deps.db, accountRef)
+      const isFree = await readKeyMembership(accountRef)
       if (!isFree) {
         return {
           free: false,
@@ -705,7 +768,7 @@ export const makeFreeTierGate = (deps: FreeTierGateDeps): FreeTierGate => {
         }
       }
       const usageDay = freeTierUsageDay(nowIso())
-      const usage = await readFreeTierUsage(deps.db, accountRef, usageDay)
+      const usage = await readUsage(accountRef, usageDay)
       const quota = decideFreeTierQuota({ quota: deps.quota, usage })
       return {
         free: quota.withinQuota,
@@ -747,6 +810,15 @@ export type FreeTierMeteringDeps = Readonly<{
   // accrues usage for visibility, it just never goes over-quota -> charge). An
   // external (non-allowlist) free key is unaffected. Default empty => no-op.
   internalAccountRefs?: ReadonlySet<string> | undefined
+  // KS-8.9 (#8320): routed enforcement reads + fire-safe dual-write
+  // mirror. Absent => untouched D1-only behavior.
+  gateReads?:
+    | Pick<
+        InferenceEntitlementsGateReads,
+        'freeTierKeyExists' | 'freeTierUsage'
+      >
+    | undefined
+  mirror?: InferenceEntitlementsMirror | undefined
 }>
 
 /**
@@ -788,14 +860,18 @@ export const withFreeTierKhala = (
       const gated = yield* Effect.tryPromise({
         catch: freeTierPersistenceError,
         try: async () => {
-          const isFree = await readAccountFreeTier(deps.db, context.accountRef)
+          const isFree = await (deps.gateReads?.freeTierKeyExists ??
+            ((ref: string) => readAccountFreeTier(deps.db, ref)))(
+            context.accountRef,
+          )
           if (!isFree) {
             return { accrued: false, free: false as const }
           }
           const now = nowIso()
           const usageDay = freeTierUsageDay(now)
-          const usage = await readFreeTierUsage(
-            deps.db,
+          const usage = await (deps.gateReads?.freeTierUsage ??
+            ((ref: string, day: string) =>
+              readFreeTierUsage(deps.db, ref, day)))(
             context.accountRef,
             usageDay,
           )
@@ -807,14 +883,18 @@ export const withFreeTierKhala = (
           if (!internalExempt && !quota.withinQuota) {
             return { accrued: false, free: false as const }
           }
-          const accrued = await accrueFreeTierUsage(deps.db, {
-            accountRef: context.accountRef,
-            nowIso: now,
-            requestId: context.requestId,
-            servedModel: context.servedModel,
-            totalTokens: Math.max(0, Math.trunc(context.usage.totalTokens)),
-            usageDay,
-          })
+          const accrued = await accrueFreeTierUsage(
+            deps.db,
+            {
+              accountRef: context.accountRef,
+              nowIso: now,
+              requestId: context.requestId,
+              servedModel: context.servedModel,
+              totalTokens: Math.max(0, Math.trunc(context.usage.totalTokens)),
+              usageDay,
+            },
+            deps.mirror,
+          )
           return { accrued, free: true as const }
         },
       }).pipe(

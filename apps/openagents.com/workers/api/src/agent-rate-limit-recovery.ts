@@ -5,6 +5,7 @@ import {
   type ProgrammaticAgentSession,
   sha256Hex,
 } from './agent-registration'
+import type { InferenceEntitlementsMirror } from './inference-entitlements-store'
 import { parseJsonRecord } from './json-boundary'
 import {
   currentEpochMillis,
@@ -388,8 +389,11 @@ const storageError = (
         : `${operation}: ${String(error)}`,
   })
 
+// KS-8.9 (#8320): optional fire-safe Postgres dual-write mirror; absent =>
+// byte-identical D1-only behavior.
 export const makeD1AgentRateLimitRecoveryStore = (
   db: D1Database,
+  mirror?: InferenceEntitlementsMirror | undefined,
 ): AgentRateLimitRecoveryStore => ({
   consumeEntitlement: async input => {
     try {
@@ -427,6 +431,15 @@ export const makeD1AgentRateLimitRecoveryStore = (
       if (Number(result.meta?.changes ?? 0) < 1) {
         return undefined
       }
+
+      mirror?.([
+        {
+          consumedAt: input.nowIso,
+          entitlementRef: input.entitlementRef,
+          kind: 'consume_entitlement',
+          table: 'agent_rate_limit_entitlements',
+        },
+      ])
 
       const row = await db
         .prepare(
@@ -481,6 +494,36 @@ export const makeD1AgentRateLimitRecoveryStore = (
           record.archivedAt,
         )
         .run()
+      mirror?.([
+        {
+          kind: 'write',
+          row: {
+            actor_ref: record.actorRef,
+            archived_at: record.archivedAt,
+            client_fingerprint_hash: record.clientFingerprintHash,
+            created_at: record.createdAt,
+            entitlement_kind: record.entitlementKind,
+            expires_at: record.expiresAt,
+            id: record.id,
+            idempotency_key_hash: record.idempotencyKeyHash,
+            method: record.method,
+            owner_user_id: record.ownerUserId,
+            path: record.path,
+            price_asset: record.price.asset,
+            price_denomination: record.price.denomination,
+            price_value: record.price.amount,
+            public_projection_json: record.publicProjectionJson,
+            request_body_digest: record.requestBodyDigest,
+            route_key: record.routeKey,
+            spend_cap_asset: record.spendCap.asset,
+            spend_cap_denomination: record.spendCap.denomination,
+            spend_cap_value: record.spendCap.amount,
+            submission_idempotency_key_hash:
+              record.submissionIdempotencyKeyHash,
+          },
+          table: 'agent_rate_limit_challenges',
+        },
+      ])
     } catch (error) {
       throw storageError('agentRateLimitRecovery.createChallenge', error)
     }
@@ -564,6 +607,70 @@ export const makeD1AgentRateLimitRecoveryStore = (
             input.redemption.createdAt,
             input.redemption.archivedAt,
           ),
+      ])
+      mirror?.([
+        {
+          kind: 'write',
+          row: {
+            actor_ref: input.receipt.actorRef,
+            amount_asset: input.receipt.amount.asset,
+            amount_denomination: input.receipt.amount.denomination,
+            amount_value: input.receipt.amount.amount,
+            archived_at: input.receipt.archivedAt,
+            challenge_id: input.receipt.challengeId,
+            created_at: input.receipt.createdAt,
+            entitlement_ref: input.receipt.entitlementRef,
+            id: input.receipt.id,
+            owner_user_id: input.receipt.ownerUserId,
+            public_projection_json: input.receipt.publicProjectionJson,
+            receipt_ref: input.receipt.receiptRef,
+            redacted_payment_ref: input.receipt.redactedPaymentRef,
+            route_key: input.receipt.routeKey,
+          },
+          table: 'agent_rate_limit_receipts',
+        },
+        {
+          kind: 'write',
+          row: {
+            actor_ref: input.entitlement.actorRef,
+            archived_at: input.entitlement.archivedAt,
+            challenge_id: input.entitlement.challengeId,
+            client_fingerprint_hash: input.entitlement.clientFingerprintHash,
+            consumed_at: input.entitlement.consumedAt,
+            created_at: input.entitlement.createdAt,
+            entitlement_kind: input.entitlement.entitlementKind,
+            entitlement_ref: input.entitlement.entitlementRef,
+            expires_at: input.entitlement.expiresAt,
+            id: input.entitlement.id,
+            method: input.entitlement.method,
+            owner_user_id: input.entitlement.ownerUserId,
+            path: input.entitlement.path,
+            receipt_ref: input.entitlement.receiptRef,
+            request_body_digest: input.entitlement.requestBodyDigest,
+            route_key: input.entitlement.routeKey,
+            status: input.entitlement.status,
+            submission_idempotency_key_hash:
+              input.entitlement.submissionIdempotencyKeyHash,
+          },
+          table: 'agent_rate_limit_entitlements',
+        },
+        {
+          kind: 'write',
+          row: {
+            actor_ref: input.redemption.actorRef,
+            archived_at: input.redemption.archivedAt,
+            challenge_id: input.redemption.challengeId,
+            created_at: input.redemption.createdAt,
+            entitlement_ref: input.redemption.entitlementRef,
+            id: input.redemption.id,
+            idempotency_key_hash: input.redemption.idempotencyKeyHash,
+            proof_ref: input.redemption.proofRef,
+            public_projection_json: input.receipt.publicProjectionJson,
+            receipt_ref: input.redemption.receiptRef,
+            replayed: input.redemption.replayed,
+          },
+          table: 'agent_rate_limit_redemptions',
+        },
       ])
     } catch (error) {
       throw storageError('agentRateLimitRecovery.createRedemptionBundle', error)

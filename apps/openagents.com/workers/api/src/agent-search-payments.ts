@@ -13,6 +13,7 @@ import {
   validateAgentSearchRequest,
 } from './agent-search'
 import { type OpenAgentsWorkerConfigShape } from './config'
+import type { InferenceEntitlementsMirror } from './inference-entitlements-store'
 import { recordFromUnknown } from './json-boundary'
 import {
   compactRandomId,
@@ -563,8 +564,11 @@ const rowToRedemption = (
   receiptRef: row.receipt_ref,
 })
 
+// KS-8.9 (#8320): optional fire-safe Postgres dual-write mirror; absent =>
+// byte-identical D1-only behavior.
 export const makeD1AgentSearchPaymentStore = (
   db: D1Database,
+  mirror?: InferenceEntitlementsMirror | undefined,
 ): AgentSearchPaymentStore => ({
   createChallenge: async challenge => {
     await db
@@ -617,6 +621,35 @@ export const makeD1AgentSearchPaymentStore = (
         challenge.archivedAt,
       )
       .run()
+    mirror?.([
+      {
+        kind: 'write',
+        row: {
+          actor_ref: challenge.actorRef,
+          agent_user_id: challenge.agentUserId,
+          archived_at: challenge.archivedAt,
+          created_at: challenge.createdAt,
+          credential_id: challenge.credentialId,
+          expires_at: challenge.expiresAt,
+          id: challenge.id,
+          idempotency_key_hash: challenge.idempotencyKeyHash,
+          method: challenge.method,
+          mode: challenge.mode,
+          path: challenge.path,
+          price_asset: challenge.price.asset,
+          price_denomination: challenge.price.denomination,
+          price_value: challenge.price.amountMinorUnits,
+          product_id: challenge.productId,
+          public_projection_json: challenge.publicProjectionJson,
+          request_body_digest: challenge.requestBodyDigest,
+          spend_cap_asset: challenge.spendCap.asset,
+          spend_cap_denomination: challenge.spendCap.denomination,
+          spend_cap_value: challenge.spendCap.amountMinorUnits,
+          token_prefix: challenge.tokenPrefix,
+        },
+        table: 'agent_search_payment_challenges',
+      },
+    ])
   },
   createRedemptionBundle: async input => {
     await db.batch([
@@ -729,6 +762,70 @@ export const makeD1AgentSearchPaymentStore = (
           input.redemption.createdAt,
           input.redemption.archivedAt,
         ),
+    ])
+    mirror?.([
+      {
+        kind: 'write',
+        row: {
+          actor_ref: input.receipt.actorRef,
+          agent_user_id: input.receipt.agentUserId,
+          amount_asset: input.receipt.amount.asset,
+          amount_denomination: input.receipt.amount.denomination,
+          amount_value: input.receipt.amount.amountMinorUnits,
+          archived_at: input.receipt.archivedAt,
+          challenge_id: input.receipt.challengeId,
+          created_at: input.receipt.createdAt,
+          credential_id: input.receipt.credentialId,
+          entitlement_ref: input.receipt.entitlementRef,
+          id: input.receipt.id,
+          product_id: input.receipt.productId,
+          public_projection_json: input.receipt.publicProjectionJson,
+          receipt_ref: input.receipt.receiptRef,
+          redacted_payment_ref: input.receipt.redactedPaymentRef,
+        },
+        table: 'agent_search_payment_receipts',
+      },
+      {
+        kind: 'write',
+        row: {
+          actor_ref: input.entitlement.actorRef,
+          agent_user_id: input.entitlement.agentUserId,
+          archived_at: input.entitlement.archivedAt,
+          challenge_id: input.entitlement.challengeId,
+          consumed_at: input.entitlement.consumedAt,
+          created_at: input.entitlement.createdAt,
+          credential_id: input.entitlement.credentialId,
+          entitlement_ref: input.entitlement.entitlementRef,
+          expires_at: input.entitlement.expiresAt,
+          id: input.entitlement.id,
+          method: input.entitlement.method,
+          mode: input.entitlement.mode,
+          path: input.entitlement.path,
+          product_id: input.entitlement.productId,
+          receipt_ref: input.entitlement.receiptRef,
+          request_body_digest: input.entitlement.requestBodyDigest,
+          scope_ref: input.entitlement.scopeRef,
+          status: input.entitlement.status,
+        },
+        table: 'agent_search_entitlements',
+      },
+      {
+        kind: 'write',
+        row: {
+          actor_ref: input.redemption.actorRef,
+          archived_at: input.redemption.archivedAt,
+          challenge_id: input.redemption.challengeId,
+          created_at: input.redemption.createdAt,
+          credential_id: input.redemption.credentialId,
+          entitlement_ref: input.redemption.entitlementRef,
+          id: input.redemption.id,
+          idempotency_key_hash: input.redemption.idempotencyKeyHash,
+          proof_ref: input.redemption.proofRef,
+          public_projection_json: input.redemption.publicProjectionJson,
+          receipt_ref: input.redemption.receiptRef,
+        },
+        table: 'agent_search_payment_redemptions',
+      },
     ])
   },
   readChallengeById: async challengeId => {

@@ -25,6 +25,11 @@
 
 import { Effect } from 'effect'
 
+import type {
+  InferenceEntitlementsGateReads,
+  InferenceEntitlementsMirror,
+} from '../inference-entitlements-store'
+
 import { currentIsoTimestamp } from '../runtime-primitives'
 import { classifyModel, type ModelClass } from './model-router'
 import {
@@ -183,6 +188,8 @@ export const grantPremiumAccess = (
     scope?: string | undefined
     nowIso?: (() => string) | undefined
   }>,
+  // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
+  mirror?: InferenceEntitlementsMirror | undefined,
 ): Effect.Effect<boolean> =>
   Effect.gen(function* () {
     // Premium grants apply to VERIFIED owner identities only; a synthetic
@@ -214,6 +221,20 @@ export const grantPremiumAccess = (
             nowIso,
           )
           .run()
+        mirror?.([
+          {
+            kind: 'write',
+            row: {
+              created_at: nowIso,
+              granted_by: input.grantedBy ?? null,
+              note: input.note ?? null,
+              owner_key: input.ownerKey,
+              scope: input.scope ?? DEFAULT_PREMIUM_SCOPE,
+              updated_at: nowIso,
+            },
+            table: 'inference_premium_allowlist',
+          },
+        ])
         return true
       },
     }).pipe(Effect.catch(() => Effect.succeed(false)))
@@ -224,6 +245,8 @@ export const grantPremiumAccess = (
 export const revokePremiumAccess = (
   db: D1Database,
   ownerKey: string,
+  // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
+  mirror?: InferenceEntitlementsMirror | undefined,
 ): Effect.Effect<boolean> =>
   Effect.tryPromise({
     catch: premiumAllowlistPersistenceError,
@@ -232,6 +255,13 @@ export const revokePremiumAccess = (
         .prepare(`DELETE FROM inference_premium_allowlist WHERE owner_key = ?`)
         .bind(ownerKey)
         .run()
+      mirror?.([
+        {
+          kind: 'delete_owner_grant',
+          ownerKey,
+          table: 'inference_premium_allowlist',
+        },
+      ])
       return true
     },
   }).pipe(Effect.catch(() => Effect.succeed(false)))
@@ -243,6 +273,11 @@ export const revokePremiumAccess = (
 export type PremiumAccessGateDeps = Readonly<{
   db: D1Database
   resolveOwnerIdentity: VerifiedOwnerIdentityResolver
+  // KS-8.9 (#8320): routed enforcement read (compare/postgres modes).
+  // Absent => the untouched inline D1 read (zero added hot-path latency).
+  gateReads?:
+    | Pick<InferenceEntitlementsGateReads, 'premiumAllowlisted'>
+    | undefined
 }>
 
 // A route-level premium gate: given an account ref + requested model, returns
@@ -265,7 +300,12 @@ export const makePremiumAccessGate = (
     }
     const identity = await deps.resolveOwnerIdentity(accountRef)
     const ownerKey = resolveOwnerKey(accountRef, identity)
-    const ownerAllowlisted = await readOwnerAllowlisted(deps.db, ownerKey)
+    // Routed read stays FAIL-CLOSED like readOwnerAllowlisted: any error
+    // resolves to not-allowlisted (deny premium).
+    const ownerAllowlisted =
+      deps.gateReads === undefined
+        ? await readOwnerAllowlisted(deps.db, ownerKey)
+        : await deps.gateReads.premiumAllowlisted(ownerKey).catch(() => false)
     return decidePremiumModelAccess({ model, ownerAllowlisted })
   }
 }

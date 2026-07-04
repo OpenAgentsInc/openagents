@@ -19,6 +19,7 @@ import {
   type ExaSearchCategory,
   type ExaSearchResult,
 } from './exa'
+import type { InferenceEntitlementsMirror } from './inference-entitlements-store'
 import { parseJsonRecord, parseJsonWithSchema } from './json-boundary'
 import {
   compactRandomId,
@@ -1317,7 +1318,14 @@ const rowToCache = (row: AgentSearchCacheRow): AgentSearchCacheEntry => ({
 const safePublicProjectionJson = (value: string): string =>
   containsProviderSecretMaterial(value) ? '{}' : value
 
-export const makeD1AgentSearchStore = (db: D1Database): AgentSearchStore => ({
+// KS-8.9 (#8320): optional fire-safe Postgres dual-write mirror; absent =>
+// byte-identical D1-only behavior. `recordMetric` is deliberately NOT
+// mirrored: the *_metric_events stream is an Analytics Engine candidate,
+// not Postgres rows (MIGRATION_PLAN §3.6).
+export const makeD1AgentSearchStore = (
+  db: D1Database,
+  mirror?: InferenceEntitlementsMirror | undefined,
+): AgentSearchStore => ({
   consumeEntitlement: async input => {
     const row = await db
       .prepare(
@@ -1374,6 +1382,15 @@ export const makeD1AgentSearchStore = (db: D1Database): AgentSearchStore => ({
     if (!result.success || result.meta.changes < 1) {
       return undefined
     }
+
+    mirror?.([
+      {
+        consumedAt: input.nowIso,
+        entitlementRef: input.entitlementRef,
+        kind: 'consume_entitlement',
+        table: 'agent_search_entitlements',
+      },
+    ])
 
     return {
       entitlementRef: row.entitlement_ref,
@@ -1619,6 +1636,78 @@ export const makeD1AgentSearchStore = (db: D1Database): AgentSearchStore => ({
     ]
 
     await db.batch(statements)
+    mirror?.([
+      {
+        kind: 'write',
+        row: {
+          actor_ref: input.request.actorRef,
+          agent_user_id: input.request.agentUserId,
+          archived_at: input.request.archivedAt,
+          cache_status: input.request.cacheStatus,
+          charge_state: input.request.chargeState,
+          completed_at: input.request.completedAt,
+          created_at: input.request.createdAt,
+          credential_id: input.request.credentialId,
+          entitlement_ref: input.request.entitlementRef,
+          id: input.request.id,
+          idempotency_key_hash: input.request.idempotencyKeyHash,
+          mode: input.request.mode,
+          product_id: input.request.productId,
+          provider: input.request.provider,
+          provider_cost_dollars: input.request.providerCostDollars,
+          provider_request_id: input.request.providerRequestId,
+          public_projection_json: safePublicProjectionJson(
+            input.request.publicProjectionJson,
+          ),
+          query_hash: input.request.queryHash,
+          query_text: input.request.queryText,
+          receipt_ref: input.request.receiptRef,
+          request_body_digest: input.request.requestBodyDigest,
+          status: input.request.status,
+          token_prefix: input.request.tokenPrefix,
+        },
+        table: 'agent_search_requests',
+      },
+      ...input.sources.map(
+        source =>
+          ({
+            kind: 'write',
+            row: {
+              created_at: source.createdAt,
+              domain: source.domain,
+              highlight_text: source.highlightText,
+              id: source.id,
+              public_safe: source.publicSafe ? 1 : 0,
+              published_date: source.publishedDate,
+              score: source.score,
+              search_request_id: source.searchRequestId,
+              selected_text_hash: source.selectedTextHash,
+              source_ref: source.sourceRef,
+              title: source.title,
+              url: source.url,
+            },
+            table: 'agent_search_sources',
+          }) as const,
+      ),
+      ...input.quotaEvents.map(
+        event =>
+          ({
+            kind: 'write',
+            row: {
+              actor_ref: event.actorRef,
+              created_at: event.createdAt,
+              credential_id: event.credentialId,
+              entitlement_ref: event.entitlementRef,
+              event_kind: event.eventKind,
+              id: event.id,
+              mode: event.mode,
+              product_id: event.productId,
+              units: event.units,
+            },
+            table: 'agent_search_quota_events',
+          }) as const,
+      ),
+    ])
   },
   storeCache: async entry => {
     const resultsJson = JSON.stringify(entry.results)
@@ -1666,6 +1755,25 @@ export const makeD1AgentSearchStore = (db: D1Database): AgentSearchStore => ({
           entry.expiresAt,
           null,
         ),
+    ])
+    mirror?.([
+      {
+        archivedAt: entry.createdAt,
+        cacheKey: entry.cacheKey,
+        kind: 'store_agent_search_cache',
+        row: {
+          archived_at: null,
+          cache_key: entry.cacheKey,
+          cost_dollars: entry.costDollars,
+          created_at: entry.createdAt,
+          expires_at: entry.expiresAt,
+          id: entry.id,
+          mode: entry.mode,
+          provider: entry.provider,
+          result_count: entry.results.length,
+          results_json: resultsJson,
+        },
+      },
     ])
   },
 })

@@ -33,6 +33,8 @@
 // tokens, or secrets. The decision is a single boolean; no account/payment
 // material is surfaced in any ref.
 
+import type { InferenceEntitlementsGateReads } from '../inference-entitlements-store'
+
 const ON_TOKENS = new Set(['1', 'on', 'true', 'yes'])
 
 // Fail-closed flag read. Absent / non-string / any non-on value => disabled.
@@ -92,6 +94,12 @@ export type PaidPrivacyResolverDeps = Readonly<{
   // is treated as paid-privacy and nothing is captured, regardless of the
   // per-account row. This is the deployment-wide explicit exclusion signal.
   confidentialComputeEnabled: boolean
+  // KS-8.9 (#8320): routed enforcement read (compare/postgres modes).
+  // Absent => the untouched inline D1 read. Errors stay FAIL-CLOSED-TO-
+  // PRIVATE, exactly like readAccountPaidPrivacy.
+  gateReads?:
+    | Pick<InferenceEntitlementsGateReads, 'privacyEntitlementExists'>
+    | undefined
 }>
 
 // Build the seam the chat route calls alongside `checkFreeTier`. Returns the
@@ -106,6 +114,21 @@ export const makePaidPrivacyResolver = (
       return {
         enabled: true,
         reasonRef: PAID_PRIVACY_REASON_CONFIDENTIAL_COMPUTE,
+      }
+    }
+    if (deps.gateReads !== undefined) {
+      try {
+        const exists =
+          await deps.gateReads.privacyEntitlementExists(accountRef)
+        return exists
+          ? {
+              enabled: true,
+              reasonRef: PAID_PRIVACY_REASON_ACCOUNT_ENTITLEMENT,
+            }
+          : { enabled: false, reasonRef: PAID_PRIVACY_REASON_NONE }
+      } catch {
+        // Fail-closed-to-private (same as readAccountPaidPrivacy).
+        return { enabled: true, reasonRef: PAID_PRIVACY_REASON_READ_ERROR }
       }
     }
     return readAccountPaidPrivacy(deps.db, accountRef)

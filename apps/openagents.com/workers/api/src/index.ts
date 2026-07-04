@@ -600,6 +600,10 @@ import {
   handlePaidPrivacyPurchase,
   handlePublicPrivacyReceiptRead,
 } from './inference/inference-privacy-receipt-routes'
+import {
+  inferenceEntitlementsMirrorForEnv,
+  makeInferenceEntitlementsRoutingForEnv,
+} from './inference-entitlements-store'
 import { withReferralAccrual } from './inference/inference-referral-accrual'
 import { makeInferenceReferralRoutes } from './inference/inference-referral-routes'
 import {
@@ -7220,11 +7224,18 @@ export const handleFreeKeyMint = async (
       displayName: label,
     })
     const accountRef = `agent:${registration.user.id}`
-    await markAccountFreeTierAsync(db, {
-      accountRef,
-      mintSource: 'self_serve_anonymous',
-    })
-    await recordFreeKeyMintAsync(db, { ipHash, mintDay })
+    // KS-8.9 (#8320): fire-safe Postgres dual-write mirror for the mint
+    // writes (no-op when the seam is unbound/off).
+    const entitlementsMirror = inferenceEntitlementsMirrorForEnv(env)
+    await markAccountFreeTierAsync(
+      db,
+      {
+        accountRef,
+        mintSource: 'self_serve_anonymous',
+      },
+      entitlementsMirror,
+    )
+    await recordFreeKeyMintAsync(db, { ipHash, mintDay }, entitlementsMirror)
 
     return withAgentRateLimitHeaders(
       jsonResponse(
@@ -8223,7 +8234,11 @@ const agentProposalRoutes = makeAgentProposalRoutes({
   isOpenAgentsAdminEmail,
   makeStore: env => makeD1AgentProposalStore(openAgentsDatabase(env)),
   recoveryStore: env =>
-    makeD1AgentRateLimitRecoveryStore(openAgentsDatabase(env)),
+    makeD1AgentRateLimitRecoveryStore(
+      openAgentsDatabase(env),
+      // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
+      inferenceEntitlementsMirrorForEnv(env),
+    ),
   requireAdminApiToken,
   requireBrowserSession,
 })
@@ -10625,7 +10640,12 @@ const makeBatchJobConsumerDeps = (env: BatchJobConsumerEnv) => {
     // an honest `batchWaitMs`.
     nowIso: currentIsoTimestamp,
     resultsStore: makeR2BatchJobResultsStore(env.ARTIFACTS),
-    store: makeD1BatchJobStore(openAgentsDatabase(env), currentIsoTimestamp),
+    store: makeD1BatchJobStore(
+      openAgentsDatabase(env),
+      currentIsoTimestamp,
+      // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
+      inferenceEntitlementsMirrorForEnv(env),
+    ),
   }
 }
 
@@ -13542,6 +13562,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           env.INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED,
         ),
         db: openAgentsDatabase(env),
+        // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
+        mirror: inferenceEntitlementsMirrorForEnv(env),
         nowIso: currentIsoTimestamp,
       }),
   },
@@ -13649,6 +13671,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           env.INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED,
         ),
         db: openAgentsDatabase(env),
+        // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
+        mirror: inferenceEntitlementsMirrorForEnv(env),
         nowIso: currentIsoTimestamp,
       }),
   },
@@ -13674,6 +13698,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // Inert producer by default: undefined unless the batch-jobs flag is on
         // AND the queue binding is provisioned (see makeBatchJobEnqueue).
         enqueueBatchJob: makeBatchJobEnqueue(env),
+        // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
+        mirror: inferenceEntitlementsMirrorForEnv(env),
         nowIso: currentIsoTimestamp,
       }),
   },
@@ -13786,6 +13812,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       )
       const laneArming = resolveSupplyLaneArming(env)
       const routeAdmission = hydraliskGlm52RouteAdmissionForEnv(env)
+      // KS-8.9 (#8320): entitlements migration seam. Default flags (dual-write
+      // ON, reads 'd1') give a fire-safe Postgres mirror and NO routed reads
+      // (gates keep their untouched inline D1 reads — zero added hot-path
+      // latency). Undefined when the KHALA_SYNC_DB binding is absent.
+      const entitlementsRouting = makeInferenceEntitlementsRoutingForEnv(env)
       const internalStressCoordinator =
         env.GLM_STRESS_SCHEDULER === undefined
           ? undefined
@@ -13848,6 +13879,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           operatorExemptionEnabled
             ? withOperatorCredit(baseHook, {
                 db: openAgentsDatabase(env),
+                gateReads: entitlementsRouting?.gateReads,
                 resolveOwnerIdentity,
               })
             : baseHook)(
@@ -13856,16 +13888,26 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               freeTierEnabled
                 ? withFreeTierKhala(innerHook, {
                     db: openAgentsDatabase(env),
+                    gateReads: entitlementsRouting?.gateReads,
+                    mirror: entitlementsRouting?.mirror,
                     quota: freeTierQuota,
                     internalAccountRefs,
                   })
                 : innerHook)(
               withReferralAccrual(
                 makeLedgerMeteringHook({ db: openAgentsDatabase(env) }),
-                { db: openAgentsDatabase(env) },
+                {
+                  db: openAgentsDatabase(env),
+                  mirror: entitlementsRouting?.mirror,
+                },
               ),
             ),
-            { db: openAgentsDatabase(env), resolveOwnerIdentity },
+            {
+              db: openAgentsDatabase(env),
+              gateReads: entitlementsRouting?.gateReads,
+              mirror: entitlementsRouting?.mirror,
+              resolveOwnerIdentity,
+            },
           ),
         ),
         // SERVED-TOKENS COUNTER (issue #6227/#6358). Records one canonical
@@ -14025,6 +14067,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // the accrual agree on the owner/pool.
         checkFreeAllowance: checkFreeAllowancePreflight({
           db: openAgentsDatabase(env),
+          gateReads: entitlementsRouting?.gateReads,
           resolveOwnerIdentity,
         }),
         // Routing & supply selection (#5482): cheapest-viable lane plan per
@@ -14072,6 +14115,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // the flag-off path.
         checkPremiumAccess: makePremiumAccessGate({
           db: openAgentsDatabase(env),
+          gateReads: entitlementsRouting?.gateReads,
           resolveOwnerIdentity,
         }),
         // OWNER BALANCE-GATE EXEMPTION SEAM (issue #6180). Wired ONLY when armed
@@ -14085,6 +14129,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           ? {
               checkOperatorExemption: makeOperatorExemptionGate({
                 db: openAgentsDatabase(env),
+                gateReads: entitlementsRouting?.gateReads,
                 resolveOwnerIdentity,
               }),
             }
@@ -14103,6 +14148,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           ? {
               checkFreeTier: makeFreeTierGate({
                 db: openAgentsDatabase(env),
+                gateReads: entitlementsRouting?.gateReads,
                 quota: freeTierQuota,
                 internalAccountRefs,
               }),
@@ -14190,7 +14236,15 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           // itself is wrapped fail-soft at the call site (errors => not captured).
           resolveCaptureDefault: async (accountRef, _model) => {
             const db = openAgentsDatabase(env)
-            const free = await readAccountFreeTier(db, accountRef)
+            // KS-8.9 (#8320): routed enforcement reads when the migration
+            // seam is in compare/postgres mode; a routed-read error stays
+            // fail-closed (not free => not captured).
+            const free =
+              entitlementsRouting?.gateReads === undefined
+                ? await readAccountFreeTier(db, accountRef)
+                : await entitlementsRouting.gateReads
+                    .freeTierKeyExists(accountRef)
+                    .catch(() => false)
             if (!free) {
               return false
             }
@@ -14199,6 +14253,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               confidentialComputeEnabled: isConfidentialComputeEnabled(
                 env.INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED,
               ),
+              gateReads: entitlementsRouting?.gateReads,
             })(accountRef)
             return !paidPrivacy.enabled
           },
@@ -14301,6 +14356,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         ? lightningInvoiceIssuerForEnv(env)
         : undefined
       const laneArming = resolveSupplyLaneArming(env)
+      // KS-8.9 (#8320): entitlements migration seam for the MPP completion
+      // path (same flags/binding as the keyed route).
+      const entitlementsRouting = makeInferenceEntitlementsRoutingForEnv(env)
       return handleMppChatCompletions(request, {
         db: openAgentsDatabase(env),
         enabled: isKhalaMppEnabled(env.KHALA_MPP_ENABLED),
@@ -14319,9 +14377,17 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           meteringHook: withFreeAllowance(
             withReferralAccrual(
               makeLedgerMeteringHook({ db: openAgentsDatabase(env) }),
-              { db: openAgentsDatabase(env) },
+              {
+                db: openAgentsDatabase(env),
+                mirror: entitlementsRouting?.mirror,
+              },
             ),
-            { db: openAgentsDatabase(env), resolveOwnerIdentity },
+            {
+              db: openAgentsDatabase(env),
+              gateReads: entitlementsRouting?.gateReads,
+              mirror: entitlementsRouting?.mirror,
+              resolveOwnerIdentity,
+            },
           ),
           // SERVED-TOKENS COUNTER (issue #6227): the MPP (machine-payable) Khala
           // completion path lands its served tokens in the SAME canonical ledger
@@ -14353,6 +14419,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           laneArming,
           checkPremiumAccess: makePremiumAccessGate({
             db: openAgentsDatabase(env),
+            gateReads: entitlementsRouting?.gateReads,
             resolveOwnerIdentity,
           }),
           acceptanceDispatch: {
@@ -14724,6 +14791,8 @@ const routeRequest = makeWorkerRouteRequest({
     forumRoutes.routeForumRequest(request, openAgentsDatabase(env), {
       tipsBufferPay: tipsBufferPayFnForEnv(env),
       agentStore: makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+      // KS-8.9 (#8320): fire-safe Postgres dual-write mirror (orange check).
+      entitlementsMirror: inferenceEntitlementsMirrorForEnv(env),
       ...(() => {
         const forumWorkRequestRelayPublisher =
           forumWorkRequestRelayPublisherForEnv(env)

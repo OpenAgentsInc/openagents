@@ -1,5 +1,7 @@
 import { Effect } from 'effect'
 
+import type { InferenceEntitlementsMirror } from './inference-entitlements-store'
+
 export type OrangeCheckEntitlement = Readonly<{
   actionRef: string | null
   actorRef: string
@@ -88,6 +90,8 @@ export const grantOrangeCheckEntitlement = (
     paidAmountCents: number
     receiptRef: string
   }>,
+  // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
+  mirror?: InferenceEntitlementsMirror | undefined,
 ): Effect.Effect<OrangeCheckEntitlement | null> =>
   Effect.promise(async () => {
     try {
@@ -109,6 +113,24 @@ export const grantOrangeCheckEntitlement = (
           input.nowIso,
         )
         .run()
+
+      mirror?.([
+        {
+          kind: 'write',
+          row: {
+            action_ref: input.actionRef,
+            actor_ref: input.actorRef,
+            agent_user_id: input.agentUserId,
+            created_at: input.nowIso,
+            id: `orange_check_${input.agentUserId}`,
+            paid_amount_cents: input.paidAmountCents,
+            receipt_ref: input.receiptRef,
+            state: 'active',
+            updated_at: input.nowIso,
+          },
+          table: 'orange_check_entitlements',
+        },
+      ])
 
       const row = await db
         .prepare(

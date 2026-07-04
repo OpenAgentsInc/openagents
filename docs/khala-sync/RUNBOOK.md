@@ -619,6 +619,78 @@ Rollback at ANY step: set `KHALA_SYNC_ARTANIS_READS=d1` (reads) and/or
 `KHALA_SYNC_ARTANIS_DUAL_WRITE=off` (writes). D1 authority is never
 behind.
 
+## Inference entitlements domain cutover (KS-8.9, #8320)
+
+The free-tier/entitlement accounting on the inference serving path — the
+15 `inference_*` tables, `builtin_compute_agent_quota_events`,
+`orange_check_entitlements`, `agent_rate_limit_*` (4), and
+`agent_search_*` (8; `agent_search_metric_events` is an Analytics Engine
+candidate and is NOT migrated) — D1 → Postgres (khala-sync migration
+`0013_inference_entitlements.sql`). Machinery:
+`apps/openagents.com/workers/api/src/inference-entitlements-store.ts`
+(fire-safe mirror + routed enforcement gate reads) and
+`packages/khala-sync-server/scripts/backfill-inference-entitlements.ts`
+(backfill + verify).
+
+THIS CUTOVER CHANGES WHICH STORE **ENFORCES** allow/deny on every free /
+public completion: a lost quota increment is a free-tier leak, a doubled
+one is a false denial. Do the read flip in a LOW-TRAFFIC window and only
+on zero-divergence compare evidence.
+
+Flags (Worker vars):
+
+- `KHALA_SYNC_ENTITLEMENTS_DUAL_WRITE` — default **on** wherever
+  `KHALA_SYNC_DB` exists; `off|0|false|disabled` disables the mirror. The
+  mirror is fire-safe: it never delays or fails a completion; failures log
+  `khala_sync_entitlements_dual_write_failed` (the drift metric).
+- `KHALA_SYNC_ENTITLEMENTS_READS` — default `d1` (gates run their inline
+  D1 reads, zero added latency); `compare` serves D1 and schedules a
+  shadow Postgres decision comparison OFF the response path, logging
+  `khala_sync_entitlements_read_compare_mismatch`; `postgres` serves the
+  six enforcement gate reads from Postgres with single-attempt D1
+  fallback (`khala_sync_entitlements_postgres_read_fallback`).
+
+Flag-flip order — never skip a step, each step soaks before the next:
+
+1. **Dual-write on** (default after KS-8.9 lands + `0013` applied via the
+   migration runner). Watch `khala_sync_entitlements_dual_write_failed`;
+   a nonzero steady rate blocks progression.
+2. **Backfill**: from `packages/khala-sync-server/`,
+   `KHALA_SYNC_DATABASE_URL=<direct-url> bun
+   scripts/backfill-inference-entitlements.ts` (wrangler-auth'd;
+   rowid-cursor resumable via
+   `.inference-entitlements-backfill-state.json`). Run it a SECOND time
+   (`--restart`) as the catch-up sweep once dual-write has covered the
+   whole window — the second sweep also converges the two
+   non-event-keyed counters (`inference_free_key_mints`,
+   `agent_search_cache_entries`).
+3. **Verify**: `bun scripts/backfill-inference-entitlements.ts --verify`
+   — exact row counts per table, per-group ("per-plan") tallies,
+   newest-50 row hashes, AND the enforcement invariant
+   tally = SUM(events) per key for free-tier usage / free-usage pool /
+   earned allowance. Post the output on the migration issue. Exact or
+   explain; no cutover on a red verify.
+4. **Compare reads**: set `KHALA_SYNC_ENTITLEMENTS_READS=compare`; soak
+   until the mismatch log is silent over a representative window that
+   includes a free-tier burst (the §3.6 denial-decision shadow
+   comparison: same request → same allow/deny). Zero divergence is the
+   acceptance bar — these reads deny requests.
+5. **Postgres reads** (LOW-TRAFFIC WINDOW): set
+   `KHALA_SYNC_ENTITLEMENTS_READS=postgres`. The six enforcement gate
+   reads now serve from Postgres; every gate stays fail-closed on error
+   (premium/exemption/free deny; privacy fails closed TO PRIVATE) and
+   falls back to the still-authoritative D1 on a Postgres fault.
+6. **Decommission LATER**: dropping the D1 tables, moving write
+   authority, routing the non-gate reads (admin lists, agent-search
+   request/cache/quota reads, batch-job reads, receipts routes), and the
+   `agent_search_metric_events` → Analytics Engine move are a separate
+   follow-up issue on epic #8282 — never in the same change as a read
+   cutover. Until then rollback is one flag flip back to `d1`.
+
+Rollback at ANY step: set `KHALA_SYNC_ENTITLEMENTS_READS=d1` (reads)
+and/or `KHALA_SYNC_ENTITLEMENTS_DUAL_WRITE=off` (writes). D1 authority is
+never behind.
+
 ## Public tokens-served projection (KS-6.3, #8304)
 
 The public "Khala Tokens Served" counter

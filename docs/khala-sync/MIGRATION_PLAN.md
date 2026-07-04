@@ -92,6 +92,46 @@ cutover procedure: [`RUNBOOK.md`](./RUNBOOK.md) "Artanis supervision
 domain cutover"; cutover evidence + D1 drop tracked in the decommission
 follow-up filed off [#8317](https://github.com/OpenAgentsInc/openagents/issues/8317).
 
+**KS-8.9 status (2026-07-04):** machinery LANDED — Postgres schema
+(`khala-sync-server` migration `0013_inference_entitlements.sql`: 29
+tables — the 15 `inference_*` entitlement/quota tables,
+`builtin_compute_agent_quota_events`, `orange_check_entitlements`, the 4
+`agent_rate_limit_*` and 8 `agent_search_*` tables; indexes ported from
+actual reads only, each justified in the migration header;
+`agent_search_metric_events` deliberately EXCLUDED — the `*_metric_events`
+observability stream is an Analytics Engine candidate, not Postgres rows),
+the typed mirror-op + enforcement-gate-read seam
+(`apps/openagents.com/workers/api/src/inference-entitlements-store.ts`),
+flags `KHALA_SYNC_ENTITLEMENTS_DUAL_WRITE` (default on) /
+`KHALA_SYNC_ENTITLEMENTS_READS` (d1|compare|postgres, default d1; routes
+the six serving-path enforcement reads — free-tier key membership +
+daily usage, free-usage pool state, premium allowlist, operator
+exemption, privacy entitlement — with compare-mode shadow decisions
+scheduled OFF the response path and postgres mode falling back to D1 on
+error). The dual-write mirror is FIRE-SAFE on the inference hot path:
+synchronous enqueue, never awaited by the caller, never fails or delays a
+completion (regression-tested); tally counters mirror EVENT-KEYED
+(event insert `ON CONFLICT DO NOTHING` gates the tally increment in one
+transaction) so a re-delivered mirror op can never double-count — a lost
+increment is a free-tier leak, a doubled one a false denial. Wired at all
+12 write modules (free tier, free allowance, earned allowance, premium
+allowlist, operator exemption, privacy entitlements + receipts, referral
+margin splits, batch jobs, builtin compute quota, orange check, agent
+rate-limit recovery, agent search + payments). Resumable backfill +
+exact-verify CLI
+(`packages/khala-sync-server/scripts/backfill-inference-entitlements.ts`:
+exact counts, per-group "per-plan" tallies, newest-N row hashes, and
+tally = SUM(events) per key for the three enforcement tally families),
+plus a contract suite that drives the PRODUCTION D1 write paths and
+proves D1-vs-Postgres decision parity on the six gate reads under mirror
+re-delivery. NOT mirrored in this lane: the `token_usage_events` row the
+builtin-compute grant writes (KS-8.2 domain) and the metric-events stream
+(Analytics Engine). Prod cutover procedure: [`RUNBOOK.md`](./RUNBOOK.md)
+"Inference entitlements domain cutover"; the read cutover changes which
+store ENFORCES allow/deny, so it requires the low-traffic window +
+zero-divergence compare evidence; cutover evidence + D1 drop tracked on
+epic [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
+
 Everything except the Verse world runs through one D1 database
 (`openagents-autopilot`, binding `OPENAGENTS_DB`). As of `main` today the
 migrations directory (`apps/openagents.com/workers/api/migrations/`) holds

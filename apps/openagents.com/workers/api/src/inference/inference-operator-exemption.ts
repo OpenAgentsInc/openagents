@@ -37,6 +37,11 @@
 
 import { Effect } from 'effect'
 
+import type {
+  InferenceEntitlementsGateReads,
+  InferenceEntitlementsMirror,
+} from '../inference-entitlements-store'
+
 import { workerLogEntry } from '../observability'
 import { currentIsoTimestamp } from '../runtime-primitives'
 import {
@@ -187,6 +192,8 @@ export const grantOperatorExemption = (
     scope?: string | undefined
     nowIso?: (() => string) | undefined
   }>,
+  // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
+  mirror?: InferenceEntitlementsMirror | undefined,
 ): Effect.Effect<boolean> =>
   Effect.gen(function* () {
     // Exemption applies to VERIFIED owner identities only; an unclaimed account
@@ -218,6 +225,20 @@ export const grantOperatorExemption = (
             nowIso,
           )
           .run()
+        mirror?.([
+          {
+            kind: 'write',
+            row: {
+              created_at: nowIso,
+              granted_by: input.grantedBy ?? null,
+              note: input.note ?? null,
+              owner_key: input.ownerKey,
+              scope: input.scope ?? DEFAULT_OPERATOR_EXEMPTION_SCOPE,
+              updated_at: nowIso,
+            },
+            table: 'inference_operator_exemption',
+          },
+        ])
         return true
       },
     }).pipe(Effect.catch(() => Effect.succeed(false)))
@@ -228,6 +249,8 @@ export const grantOperatorExemption = (
 export const revokeOperatorExemption = (
   db: D1Database,
   ownerKey: string,
+  // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
+  mirror?: InferenceEntitlementsMirror | undefined,
 ): Effect.Effect<boolean> =>
   Effect.tryPromise({
     catch: operatorExemptionPersistenceError,
@@ -238,6 +261,13 @@ export const revokeOperatorExemption = (
         )
         .bind(ownerKey)
         .run()
+      mirror?.([
+        {
+          kind: 'delete_owner_grant',
+          ownerKey,
+          table: 'inference_operator_exemption',
+        },
+      ])
       return true
     },
   }).pipe(Effect.catch(() => Effect.succeed(false)))
@@ -249,6 +279,8 @@ export const revokeOperatorExemption = (
 export type OperatorExemptionGateDeps = Readonly<{
   db: D1Database
   resolveOwnerIdentity: VerifiedOwnerIdentityResolver
+  // KS-8.9 (#8320): routed enforcement read (compare/postgres modes).
+  gateReads?: Pick<InferenceEntitlementsGateReads, 'operatorExempt'> | undefined
 }>
 
 // A route-level balance-gate exemption check: given an account ref + requested
@@ -276,8 +308,12 @@ export const makeOperatorExemptionGate = (
     // An unclaimed account resolves to a synthetic `account:` key which the
     // grant surface refuses, so this read is always false for it (defense in
     // depth on top of the grant-time refusal).
+    // Routed read stays FAIL-CLOSED like readOwnerExempt: any error
+    // resolves to not-exempt (the 402 stands).
     const ownerExempt = isVerifiedOwnerKey(ownerKey)
-      ? await readOwnerExempt(deps.db, ownerKey)
+      ? deps.gateReads === undefined
+        ? await readOwnerExempt(deps.db, ownerKey)
+        : await deps.gateReads.operatorExempt(ownerKey).catch(() => false)
       : false
     return decideOperatorExemption({ model, ownerExempt })
   }
@@ -304,6 +340,8 @@ const operatorCreditOutcome = (requestId: string): MeteringOutcome => ({
 export type OperatorCreditDeps = Readonly<{
   db: D1Database
   resolveOwnerIdentity: VerifiedOwnerIdentityResolver
+  // KS-8.9 (#8320): routed enforcement read (compare/postgres modes).
+  gateReads?: Pick<InferenceEntitlementsGateReads, 'operatorExempt'> | undefined
 }>
 
 /**
@@ -345,7 +383,12 @@ export const withOperatorCredit = (
           if (!isVerifiedOwnerKey(ownerKey)) {
             return { ownerExempt: false, ownerKey }
           }
-          const ownerExempt = await readOwnerExempt(deps.db, ownerKey)
+          const ownerExempt =
+            deps.gateReads === undefined
+              ? await readOwnerExempt(deps.db, ownerKey)
+              : await deps.gateReads
+                  .operatorExempt(ownerKey)
+                  .catch(() => false)
           return { ownerExempt, ownerKey }
         },
       }).pipe(

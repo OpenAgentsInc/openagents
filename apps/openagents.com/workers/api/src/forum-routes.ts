@@ -221,6 +221,12 @@ type ForumWorkRequestEscrowReserveResult =
 
 type ForumRouteDependencies = Readonly<{
   tipsBufferPay?: import('./tips-sweep').BufferPayFn | null
+  // KS-8.9 (#8320): fire-safe Postgres dual-write mirror for the orange
+  // check entitlement grant; absent => byte-identical D1-only behavior.
+  entitlementsMirror?:
+    | import('./inference-entitlements-store').InferenceEntitlementsMirror
+    | undefined
+
   agentStore?: AgentRegistrationStore
   hostedMdkClient?: OpenAgentsHostedMdkClient
   productPromisesUnsupportedRequestIngest?: (
@@ -4572,14 +4578,18 @@ const redeemPaidActionResponse = (
         requestBodyDigest: body.requestBodyDigest,
         routeParams: body.routeParams ?? {},
       })
-      const entitlement = yield* grantOrangeCheckEntitlement(db, {
-        actionRef: `forum_paid_action.orange_check.${challenge.challengeId}`,
-        actorRef: actorRefForForumActor(actor),
-        agentUserId: actor.session.user.id,
-        nowIso: dependencies.nowIso?.() ?? currentIsoTimestamp(),
-        paidAmountCents: 500,
-        receiptRef: `orange_check_receipt.${challenge.challengeId}`,
-      })
+      const entitlement = yield* grantOrangeCheckEntitlement(
+        db,
+        {
+          actionRef: `forum_paid_action.orange_check.${challenge.challengeId}`,
+          actorRef: actorRefForForumActor(actor),
+          agentUserId: actor.session.user.id,
+          nowIso: dependencies.nowIso?.() ?? currentIsoTimestamp(),
+          paidAmountCents: 500,
+          receiptRef: `orange_check_receipt.${challenge.challengeId}`,
+        },
+        dependencies.entitlementsMirror,
+      )
 
       return noStoreJsonResponse(
         {
