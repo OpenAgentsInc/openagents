@@ -29,11 +29,15 @@ The Wrangler name is `openagents-com-start-staging`. Do not deploy it through
 the live `apps/openagents.com/workers/api` deploy path, and do not attach it to
 the production `openagents.com` route in this slice.
 
+Current staging URL:
+
+- https://openagents-com-start-staging.openagents.workers.dev
+
 After deploy, record the `*.workers.dev` URL in the issue or PR and smoke it:
 
 ```sh
-curl -fsS https://openagents-com-start-staging.<account>.workers.dev/ \
-  | rg 'OpenAgents|What is Khala\\?|Join the Tassadar training run'
+curl --retry 5 --retry-delay 2 --retry-all-errors -fsS https://openagents-com-start-staging.<account>.workers.dev/ \
+  | rg -a 'OpenAgents|What is Khala\\?|Join the Tassadar training run'
 ```
 
 ## Template Deviations
@@ -60,3 +64,12 @@ Landing route budget for the first deployed staging URL:
   TanStack Start chunks.
 - Initial landing document should keep LCP under 2.5s on a local Lighthouse
   mobile run before promotion to a custom domain.
+
+2026-07-04 deploy receipt:
+
+- Worker: `openagents-com-start-staging`
+- URL: https://openagents-com-start-staging.openagents.workers.dev
+- Version ID: `dce2450d-c23c-42ed-9eb0-8ffada0b05cb`
+- Startup time reported by Wrangler: 19 ms
+- SSR smoke:
+  `curl --retry 5 --retry-delay 2 --retry-all-errors -fsS https://openagents-com-start-staging.openagents.workers.dev/ | rg -a 'OpenAgents|What is Khala\\?|Join the Tassadar training run'`
