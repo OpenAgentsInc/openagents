@@ -1,5 +1,5 @@
 import { Schema as S } from 'effect'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -88,6 +88,18 @@ const repoFile = (relPath: string): URL =>
   new URL(`../../../../../${relPath}`, import.meta.url)
 
 describe('public product promises document', () => {
+  test('marks source-only registry constants that were not live-served', () => {
+    const registry = readFileSync(repoFile('docs/promises/registry.md'), 'utf8')
+
+    expect(registry).toContain('Served-observation caveat')
+    expect(registry).toContain('2026-07-04.4')
+    expect(registry).toContain('2026-07-04.5')
+    expect(registry).toContain('source-only / not observed served')
+    expect(registry).toContain('not accepted served')
+    expect(registry).toContain('registry versions for mismatch reports')
+    expect(registry).toContain('changes no promise state')
+  })
+
   test('keeps business quick-win paid receipt blockers exact for issue 7025', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
