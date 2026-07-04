@@ -1423,6 +1423,18 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   // Owner/admin and operator consoles (admin session or admin bearer only):
   '/api/admin/overview',
   '/api/admin/cf-browser-smoke',
+  // Khala Sync Hyperdrive connectivity smoke (KS-0.2, #8284): admin bearer
+  // only, internal deploy-time smoke; not part of the public OpenAPI surface.
+  '/api/internal/khala-sync/db-smoke',
+  // Operator business-pipeline console (operator/admin only): internal queue
+  // surface, not part of the public OpenAPI contract. (Allowlisted here as
+  // clean-up: the routes landed without a coverage decision.)
+  '/api/operator/business/pipeline',
+  '/api/operator/business/pipeline/metrics',
+  '/api/operator/business/pipeline/{param}/advance',
+  '/api/operator/business/pipeline/{param}/commitments',
+  '/api/operator/business/pipeline/{param}/starter-credit-grants',
+  '/api/operator/business/pipeline/{param}/starter-credit-redemptions',
   // Owner/admin agent token reissue console (admin bearer only): operator
   // credential surface, not part of the public OpenAPI contract.
   '/api/admin/agents/reissue-token',

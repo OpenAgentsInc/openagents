@@ -33,6 +33,41 @@ Connectivity invariants:
   single-transaction and session state is forbidden.
 - Capture and migrations use a direct connection path.
 
+## Connection reference (KS-0.1 #8283 / KS-0.2 #8284 — redacted)
+
+Cloud SQL instance (created 2026-07-04, PostgreSQL 17):
+
+- **Instance:** `khala-sync-pg`, GCP project `openagentsgemini`, region
+  `us-central1`.
+- **Databases:** `khala_sync_prod` (production), `khala_sync_staging`
+  (staging). Same instance, separate databases.
+- **Roles:** `khala_app` (Worker request paths via Hyperdrive),
+  `khala_migrate` (schema migrations, direct connection), `khala_capture`
+  (changelog capture / LISTEN, direct connection).
+- **Secrets:** passwords and the instance IP are NEVER committed. They live
+  in the gitignored workspace file `~/work/.secrets/khala-sync-cloudsql.env`
+  (owner machine) and inside the Cloudflare Hyperdrive configs. Do not copy
+  them into tracked files, commits, or issue comments.
+
+Cloudflare Hyperdrive (Worker request path only; config ids are public
+references, not secrets):
+
+- **Worker binding:** `KHALA_SYNC_DB` in
+  `apps/openagents.com/workers/api/wrangler.jsonc` (`env.KHALA_SYNC_DB`,
+  exposing `connectionString`).
+- **Prod config:** `khala-sync-prod`, id
+  `6cd885288e5b4b2f8fd2d76200c980bf` → `khala_sync_prod` as `khala_app`.
+- **Staging config:** `khala-sync-staging`, id
+  `63a375a24d6f475db60d9490f55c9102` → `khala_sync_staging` as `khala_app`.
+- **Pooling mode:** transaction — no LISTEN/NOTIFY, no session `PREPARE`, no
+  advisory locks on this path (SPEC §4). The postgres.js driver needs the
+  Worker's `nodejs_compat` compatibility flag (already set).
+
+Connectivity smoke: `GET /api/internal/khala-sync/db-smoke` (admin bearer
+only) proves a round-trip parameterized query through the binding from the
+deployed Worker and returns `{ ok, khalaSyncTables, latencyMs }` — see
+`apps/openagents.com/workers/api/src/khala-sync-db-smoke-routes.ts`.
+
 Status: contracts, schema, migration runner (KS-0.3), and the transactional
 outbox writer + per-scope version allocator (KS-2.1) landed; the mutator
 engine, reads, capture, and hub land per the remaining KS-2/KS-3/KS-4 issues.
@@ -122,11 +157,11 @@ Environments:
   KS-2.x lanes; requires `brew install postgresql@16`, tests skip cleanly
   without it). To poke at a persistent local database, start one yourself
   and point `--database-url` at it.
-- **Staging / production** — NOT YET APPLIED. The Cloud SQL instance is
-  KS-0.1, which has not landed as of 2026-07-04; once it exists, run the
-  same command against the instance's direct connection URL (Cloud SQL Auth
-  Proxy or private IP — never the Hyperdrive connection string) and record
-  the run on the KS-0.1/KS-0.3 issues.
+- **Staging / production** — the Cloud SQL instance exists (KS-0.1 #8283;
+  see the connection reference above). Run the same command as
+  `khala_migrate` against the instance's direct connection URL (Cloud SQL
+  Auth Proxy or authorized-network IP — never the Hyperdrive connection
+  string) and record the run on the KS-0.3 issue.
 
 Verification: `bun test packages/khala-sync-server` and
 `bun run --cwd packages/khala-sync-server typecheck`.

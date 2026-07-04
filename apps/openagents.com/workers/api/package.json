@@ -63,6 +63,7 @@
     "effect-cf": "0.13.1",
     "hono": "^4.12.23",
     "nostr-effect": "github:OpenAgentsInc/nostr-effect#4c52847",
+    "postgres": "3.4.9",
     "stripe": "^22.2.0",
     "@openagentsinc/agent-runtime-schema": "workspace:*",
     "@openagentsinc/tassadar-executor": "workspace:*"

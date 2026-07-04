@@ -105,6 +105,7 @@ const approvedExactRoutePaths = [
   '/api/mdk',
   '/api/admin/overview',
   '/api/admin/cf-browser-smoke',
+  '/api/internal/khala-sync/db-smoke',
   '/api/stats/token-usage/events',
   '/api/stats/token-usage/aggregate',
   '/api/admin/inference-analytics',

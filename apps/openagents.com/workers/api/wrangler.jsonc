@@ -310,6 +310,24 @@
       "migrations_dir": "migrations",
     },
   ],
+  // Khala Sync Cloud SQL Postgres via Hyperdrive (KS-0.2, #8284; SPEC §4 in
+  // docs/khala-sync/SPEC.md). TRANSACTION-MODE pooling: Worker request paths
+  // must use single-transaction statements only — no LISTEN/NOTIFY, no session
+  // PREPARE, no advisory locks. Config ids are public references, not secrets;
+  // origin credentials live only inside the Hyperdrive config (redacted
+  // connection docs: packages/khala-sync-server/README.md).
+  "hyperdrive": [
+    {
+      "binding": "KHALA_SYNC_DB",
+      "id": "6cd885288e5b4b2f8fd2d76200c980bf",
+    },
+  ],
+  // Smart Placement (#8284 acceptance) is deliberately NOT enabled: this
+  // Worker serves the whole site's static assets with `run_worker_first:
+  // true`, and Wrangler warns that Smart Placement would move ALL requests
+  // (including asset serving) with the Worker — a site-wide latency risk.
+  // Revisit when the Khala Sync request paths justify a placement decision
+  // scoped to a dedicated Worker.
   "r2_buckets": [
     {
       "binding": "ARTIFACTS",
@@ -519,6 +537,15 @@
           "database_name": "openagents-autopilot-staging",
           "database_id": "b30c43fa-fa39-4e56-8b95-f90d5b58292d",
           "migrations_dir": "migrations",
+        },
+      ],
+      // Khala Sync staging Hyperdrive config (KS-0.2, #8284) — same Cloud SQL
+      // instance, `khala_sync_staging` database. Same transaction-mode
+      // constraints as the top-level (prod) binding comment.
+      "hyperdrive": [
+        {
+          "binding": "KHALA_SYNC_DB",
+          "id": "63a375a24d6f475db60d9490f55c9102",
         },
       ],
       "r2_buckets": [

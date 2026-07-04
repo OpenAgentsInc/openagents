@@ -773,6 +773,7 @@ import {
   khalaMcpAgentPrincipal,
   makeKhalaMcpCatalog,
 } from './khala-mcp'
+import { handleKhalaSyncDbSmoke } from './khala-sync-db-smoke-routes'
 import { makeOpenAgentsL402HmacSigningBoundary } from './l402-credential-service'
 import { handlePublicLaborEarningsApi } from './labor-earnings-routes'
 import { handleSelfServeLaborPayoutApi } from './labor-self-serve-earning-payout-routes'
@@ -11893,6 +11894,18 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // if the binding is absent or Browser Rendering errors.
     path: '/api/admin/cf-browser-smoke',
     handler: (request, env, ctx) => handleCfBrowserSmokeApi(request, env, ctx),
+  },
+  {
+    // Khala Sync Hyperdrive connectivity smoke (KS-0.2, #8284). Admin bearer
+    // only; proves a round-trip parameterized query through the KHALA_SYNC_DB
+    // Hyperdrive binding (transaction-mode-safe single statements) and reports
+    // { ok, khalaSyncTables, latencyMs } without leaking connection details.
+    path: '/api/internal/khala-sync/db-smoke',
+    handler: (request, env) =>
+      handleKhalaSyncDbSmoke(request, {
+        binding: env.KHALA_SYNC_DB,
+        requireOperator: () => requireAdminApiToken(request, env),
+      }),
   },
   {
     path: '/api/stats/token-usage/events',

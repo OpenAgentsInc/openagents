@@ -33,6 +33,12 @@ export type WorkerBindings = Readonly<{
   // demand can preempt stress across Worker isolates. Absent => same-isolate
   // in-memory preemption only.
   GLM_STRESS_SCHEDULER?: DurableObjectNamespace
+  // Khala Sync Hyperdrive binding (KS-0.2, #8284). Optional: absent until the
+  // wrangler `hyperdrive` binding is deployed. Worker request paths reach the
+  // Khala Sync Cloud SQL Postgres ONLY through this transaction-mode pool
+  // (docs/khala-sync/SPEC.md §4); typed structurally so packages do not need
+  // the workers-types `Hyperdrive` ambient.
+  KHALA_SYNC_DB?: Readonly<{ connectionString: string }>
   MARKET_RELAY_SERVICE?: Fetcher
   ARTIFACTS: R2Bucket
   RUNNER_EVENTS: Queue
