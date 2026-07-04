@@ -362,11 +362,12 @@ smoke. The target table names are the Postgres names, e.g.
 Verification output covers row counts, per-domain tallies, and newest-N row
 hashes. The first #8315 live mirror slices cover D1-first Worker writes for
 assignment-derived provider lifecycle, explicit provider lifecycle updates,
-Pylon quarantines, raw Spark payout target registrations, and scheduled
+Pylon quarantines, raw Spark payout target registrations, scheduled
 `PylonCapacityFunnel.recordSnapshots` capacity-funnel snapshot upsert/prune
-writes behind `KHALA_SYNC_PYLON_DUAL_WRITE`; reads remain D1-authoritative.
-The live #8315 cutover still requires the Queue-based raw-event ingest split,
-closeout-verifier shadow read, remaining cron/read re-home work,
+writes, and `fleet_alerts` cron alert rows from FleetBurnStallDetector and
+ServingRateMonitor behind `KHALA_SYNC_PYLON_DUAL_WRITE`; reads remain
+D1-authoritative. The live #8315 cutover still requires the Queue-based
+raw-event ingest split, closeout-verifier shadow read, remaining read re-home work,
 compare/postgres read flags, and D1 decommission evidence. Do not treat a green
 backfill alone as permission to drop D1 tables.
 

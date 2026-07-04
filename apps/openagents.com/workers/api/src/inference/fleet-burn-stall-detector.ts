@@ -34,6 +34,11 @@ import {
   isoTimestampAfterIso,
   randomUuid,
 } from '../runtime-primitives'
+import {
+  makeD1FleetAlertWriteStore,
+  makeFleetAlertWriteStoreForEnv,
+  type MakeFleetAlertWriteStoreForEnvOptions,
+} from './fleet-alert-store'
 
 /** Rolling window (minutes) used to measure the burn rate. */
 export const FLEET_BURN_STALL_WINDOW_MINUTES = 5
@@ -480,33 +485,7 @@ export const makeD1FleetWatchdogStore = (db: D1Database): FleetWatchdogStore => 
     return refs
   },
 
-  insertAlert: async record => {
-    await db
-      .prepare(
-        `INSERT INTO fleet_alerts
-          (id, alert_ref, detected_at, classification, reason_ref,
-           burn_tokens_window, window_minutes, stall_threshold_tokens,
-           active_assignments, queued_assignments, recovery_actions_json,
-           recovered_lease_count, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        record.id,
-        record.alertRef,
-        record.detectedAt,
-        record.classification,
-        record.reasonRef,
-        record.burnTokensWindow,
-        record.windowMinutes,
-        record.stallThresholdTokens,
-        record.activeAssignments,
-        record.queuedAssignments,
-        JSON.stringify(record.recoveryActions),
-        record.recoveredLeaseCount,
-        record.createdAt,
-      )
-      .run()
-  },
+  insertAlert: makeD1FleetAlertWriteStore(db).insertAlert,
 
   sumOwnCapacityBurnSince: async sinceIso => {
     const result = await db
@@ -522,6 +501,20 @@ export const makeD1FleetWatchdogStore = (db: D1Database): FleetWatchdogStore => 
     return Math.max(0, Math.trunc(result?.burn ?? 0))
   },
 })
+
+export const makeFleetWatchdogStoreForEnv = (
+  db: D1Database,
+  env: unknown,
+  options: MakeFleetAlertWriteStoreForEnvOptions = {},
+): FleetWatchdogStore => {
+  const d1 = makeD1FleetWatchdogStore(db)
+  const fleetAlerts = makeFleetAlertWriteStoreForEnv(db, env, options)
+
+  return {
+    ...d1,
+    insertAlert: fleetAlerts.insertAlert,
+  }
+}
 
 /**
  * Scheduled (1-minute cron) entrypoint. Resolves config from env, builds the
@@ -544,7 +537,7 @@ export const runFleetBurnStallDetectorScheduled = async (
       log,
       makeId: () => randomUuid(),
       nowIso,
-      store: makeD1FleetWatchdogStore(db),
+      store: makeFleetWatchdogStoreForEnv(db, env),
     })
   } catch (error) {
     log('FleetBurnStallDetector tick failed', {

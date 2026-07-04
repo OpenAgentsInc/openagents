@@ -189,11 +189,12 @@ copies bounded rowid pages from D1, preserves natural-key `ON CONFLICT DO
 NOTHING` semantics, and verifies exact row counts, per-domain tallies, and
 newest-N hashes. Partial Worker mirrors are live in source for
 assignment-derived provider lifecycle, explicit provider lifecycle updates,
-Pylon quarantines, raw Spark payout target registrations, and scheduled
+Pylon quarantines, raw Spark payout target registrations, scheduled
 `PylonCapacityFunnel.recordSnapshots` capacity-funnel snapshot upsert/prune
-writes; those remain D1-first and read-authoritative until
+writes, and `fleet_alerts` cron alert rows from FleetBurnStallDetector and
+ServingRateMonitor; those remain D1-first and read-authoritative until
 verification/cutover. Queue-based raw-event ingestion split,
-closeout-verifier shadow read, remaining cron/read re-home work,
+closeout-verifier shadow read, remaining read re-home work,
 compare/postgres read flags, and final D1 decommission remain on
 [#8315](https://github.com/OpenAgentsInc/openagents/issues/8315).
 
@@ -616,7 +617,7 @@ floor from fable §1.2 item 4. Each task re-homes **with its domain**
 |---|---|
 | `HydraliskGlmPoolHeartbeat.run` | KS-8.2 / Phase 0 → Analytics Engine |
 | `FleetBurnStallDetector.tick` | KS-8.1 + KS-8.2 reads; residuals KS-8.4 |
-| `ServingRateMonitor.tick` | KS-8.2 |
+| `ServingRateMonitor.tick` | KS-8.2 reads; `fleet_alerts` rows KS-8.4 |
 | `PylonCapacityFunnel.recordSnapshots` | KS-8.4 |
 | `AgentDefinitionScheduler.tick` | KS-8.5 |
 | `ArtanisScheduledRunner.runTick`, `ArtanisResponder.scan`, `ArtanisResponder.compose`, `ArtanisAdmin.tick`, `ArtanisAdmin.closeoutVerifier`, `ArtanisFleet.tick` | KS-8.6 |

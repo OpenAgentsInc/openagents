@@ -3,6 +3,11 @@ import {
   isoTimestampAfterIso,
   randomUuid,
 } from '../runtime-primitives'
+import {
+  makeD1FleetAlertWriteStore,
+  makeFleetAlertWriteStoreForEnv,
+  type MakeFleetAlertWriteStoreForEnvOptions,
+} from './fleet-alert-store'
 import { HYDRALISK_GLM_52_REAP_504B_MODEL_ID } from './pricing'
 
 export const SERVING_RATE_MONITOR_CADENCE_MINUTES = 5
@@ -290,30 +295,7 @@ export const makeD1ServingRateMonitorStore = (
       .first<{ alert_ref: string | null }>()
     return typeof row?.alert_ref === 'string'
   },
-  insertAlert: async record => {
-    await db
-      .prepare(
-        `INSERT INTO fleet_alerts
-          (id, alert_ref, detected_at, classification, reason_ref,
-           burn_tokens_window, window_minutes, stall_threshold_tokens,
-           active_assignments, queued_assignments, recovery_actions_json,
-           recovered_lease_count, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, 0, ?)`,
-      )
-      .bind(
-        record.id,
-        record.alertRef,
-        record.detectedAt,
-        record.classification,
-        record.reasonRef,
-        record.burnTokensWindow,
-        record.windowMinutes,
-        record.stallThresholdTokens,
-        JSON.stringify(record.recoveryActions),
-        record.createdAt,
-      )
-      .run()
-  },
+  insertAlert: makeD1FleetAlertWriteStore(db).insertAlert,
   latestHealthyGlmHeartbeatAt: async () => {
     const row = await db
       .prepare(
@@ -356,6 +338,20 @@ export const makeD1ServingRateMonitorStore = (
   },
 })
 
+export const makeServingRateMonitorStoreForEnv = (
+  db: D1Database,
+  env: unknown,
+  options: MakeFleetAlertWriteStoreForEnvOptions = {},
+): ServingRateMonitorStore => {
+  const d1 = makeD1ServingRateMonitorStore(db)
+  const fleetAlerts = makeFleetAlertWriteStoreForEnv(db, env, options)
+
+  return {
+    ...d1,
+    insertAlert: fleetAlerts.insertAlert,
+  }
+}
+
 export const runServingRateMonitorScheduled = async (
   db: D1Database,
   env: unknown,
@@ -373,7 +369,7 @@ export const runServingRateMonitorScheduled = async (
       log,
       makeId: () => randomUuid(),
       nowIso,
-      store: makeD1ServingRateMonitorStore(db),
+      store: makeServingRateMonitorStoreForEnv(db, env),
     })
   } catch (error) {
     log('ServingRateMonitor tick failed', {
