@@ -421,6 +421,7 @@ describe('Worker route dual-serve resolution (#6148)', () => {
       routeOperatorArtanisDashboardRequest: noRoute,
       routeOperatorEmailInspectionRequest: noRoute,
       routeOperatorOrderTriageRequest: noRoute,
+      routeOperatorBusinessPipelineRequest: noRoute,
       routeOperatorPylonMarketplaceRequest: noRoute,
       routeOperatorProviderAccountRequest: noRoute,
       routeOperatorSitesRequest: noRoute,

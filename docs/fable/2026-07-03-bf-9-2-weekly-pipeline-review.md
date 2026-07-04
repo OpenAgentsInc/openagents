@@ -119,3 +119,39 @@ BF-9.2 is satisfied for this issue by the existence of this review artifact and
 the instrument definitions above. Future implementation work can replace the
 manual review values with generated rows, but the public-safety and receipt
 rules stay the contract.
+
+## Implementation Update: #8263
+
+The paper queue now has a typed D1 implementation in
+`business_pipeline_rows`, linked to BF-9.1 rows by the nullable
+`business_commitment_ledger.pipeline_ref` column. The operator API is:
+
+- `GET /api/operator/business/pipeline`
+- `POST /api/operator/business/pipeline`
+- `POST /api/operator/business/pipeline/{pipelineRef}/advance`
+- `POST /api/operator/business/pipeline/{pipelineRef}/commitments`
+- `GET /api/operator/business/pipeline/metrics`
+
+All writes are admin-token gated, stage advancement requires a receipt ref, and
+the metrics response uses `measured` / `not_measured` instead of fabricated
+rates. The `$25k` target is readable as `qualifiedPipeline.targetUsdCents` with
+the current quoted min/max cents range. Operators can call the same API through:
+
+```sh
+bun apps/openagents.com/scripts/operator-business-pipeline.ts metrics
+bun apps/openagents.com/scripts/operator-business-pipeline.ts create \
+  --pipeline-ref biz-pipe-YYYYwNN-001 \
+  --vertical e-commerce \
+  --source-ref apollo_agent_readiness_ecommerce \
+  --owner-role operator \
+  --receipt-ref receipt.business.intake.example
+bun apps/openagents.com/scripts/operator-business-pipeline.ts advance \
+  --pipeline-ref biz-pipe-YYYYwNN-001 \
+  --stage scope_scheduled \
+  --receipt-ref receipt.business.scope_scheduled.example
+```
+
+The implementation preserves this artifact's privacy boundary: rows accept only
+opaque refs and vertical descriptors, never prospect names, emails, domains, raw
+CRM payloads, or call notes. Pipeline rows without linked commitment-ledger rows
+surface as `commitment.untracked` defects in the metrics response.
