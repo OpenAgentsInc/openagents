@@ -460,3 +460,133 @@ billable somewhere in the current revenue plan.
 
 Start-now set: TS-1, TS-3, TS-4 scaffolding, TS-9; TS-7 before any
 further Foldkit-shell effort is spent in the desktop app.
+
+## 11. The transition plan (added 2026-07-04, post-decision — ordered and specific)
+
+This section turns the decision into a sequenced execution plan, factoring
+in the **live Khala Sync epic ([#8282](https://github.com/OpenAgentsInc/openagents/issues/8282))**,
+whose state materially changed the TS map's assumptions since §5 was
+written:
+
+**Khala Sync ground truth (verified against the issue tracker 2026-07-04):**
+
+- **The engine is DONE.** KS-0 (Cloud SQL + Hyperdrive + migration runner),
+  KS-1 (contracts + conformance fixtures), KS-2 (outbox writer, version
+  allocator, bootstrap/log reads, compaction/MustRefetch), KS-3 (mutator
+  engine + `/api/sync/push` + registry), KS-4 (capture worker +
+  `KhalaSyncHubDO` + offset-resumable catch-up), **KS-5 (client engine:
+  bun:sqlite local store #8298, optimistic overlay + rebase #8299, session
+  state machine + transport #8300, web SQLite-WASM opfs lane #8301)**,
+  KS-7 (scope auth + access-change refetch #8305, CVR v2 #8306), and KS-9
+  (load test, behavior contracts, INVARIANTS + runbook) are all closed.
+- **First consumers are live**: fleet-cockpit scope projection (#8302),
+  Khala Code desktop consuming the `fleet_run` scope instead of polling
+  (#8303 — the desktop already consumes Khala Sync), and the public
+  tokens-served projection (#8304).
+- **What's open is the KS-8 domain-migration queue** (D1 → Cloud SQL,
+  dual-write + backfill per domain): 8.7 billing/credits #8318, 8.8
+  treasury/payouts #8319, 8.9 inference entitlements #8320, 8.10 forum
+  #8321, 8.11 CRM/email #8322, 8.12 sites #8323, **8.13 Khala Code
+  product state (threads/teams/workspaces → Cloud SQL + Khala Sync
+  scopes) #8324**, 8.14 business funnel #8325, 8.15 training/gym #8326,
+  8.16 forge #8327, 8.17 supervision tail #8328, 8.18 identity/auth
+  #8329, 8.19 cron sweep + D1 retirement #8330, plus decommission
+  follow-ups (#8331, #8333, #8334, #8335).
+
+**Consequences for the TS map:** §5's "khala-sync-db-collection is the
+client half" is now stated more precisely — the client half *exists*
+(khala-sync-client engine, KS-5); **TS-3 is a TanStack DB `SyncConfig`
+adapter wrapped around the shipped client engine**, not a from-scratch
+store. And the mobile report's KS-1..KS-5 labels collide with the epic's
+KS-* namespace — the chat-milestone items are hereby relabeled **MC-\***
+(MC-1 chat collection + mutators, MC-3 desktop/web sidebar consumers,
+MC-5 cross-device dogfood; MC-2/MC-4 were superseded/canceled in §6.4).
+
+### 11.1 The ordering principles
+
+1. **Don't couple a domain's Postgres migration to its UI rewrite** —
+   except where the UI rewrite *is* the consumer proof (chat, by design).
+2. **Revenue surfaces first** (funnel pages need zero sync work — ship
+   them immediately); flagship demo second (cross-device chat); Sites
+   third (it needs the build lane anyway); long-tail panels last.
+3. **Baseline before the first React PR** — the §6.1 velocity claim needs
+   the Foldkit-era measurement captured first, or the receipt is lost.
+4. **One reordering request into the KS-8 queue**: pull **KS-8.13
+   (#8324) ahead of 8.10–8.12** — it is the only KS-8 item that gates the
+   one-UI plan (chat scopes = the cross-device dogfood, the desktop
+   shell's first React surface, and the sync engine's flagship demo);
+   forum/CRM/sites migrations gate nothing in this plan.
+5. **Every React PR deletes the Foldkit/vanilla-DOM code it replaces** —
+   no parallel implementations left standing.
+
+### 11.2 The waves
+
+**Wave 0 — foundations (start now; all parallel; no KS-8 dependency):**
+
+| # | Work | Notes |
+| --- | --- | --- |
+| 0.1 | File the ONE-UI epic + TS-1..TS-10 issues (per EXECUTION.md conventions) | The filing pass this doc has been deferring |
+| 0.2 | **TS-10a: capture the Foldkit-era velocity baseline** (cycle time, review-minutes per merged UI PR, from existing ledgers) | Must precede the first React merge |
+| 0.3 | **TS-1: `effect-start` bridge** + pinned Start/Router/DB versions + parity-contract file | Unblocks all web work |
+| 0.4 | **TS-9: `@openagentsinc/ui` React edition** on the shared tokens (StarCraft theme; NativeWind-compatible token export) | Unblocks TS-2/6/7/8 |
+| 0.5 | **TS-3: `khala-sync-db-collection`** — TanStack DB `SyncConfig` adapter over the shipped khala-sync-client session engine; mutation-id matching via the KS-3 push route; **first consumer = the already-live `fleet_run` scope** (testable today, no chat dependency) | Proves the adapter against production sync before chat exists |
+| 0.6 | KS-8 queue continues as scheduled: 8.7 billing → 8.8 treasury → 8.9 entitlements (the money-truth migrations stay first — they gate nothing here and matter most) | No change requested |
+
+**Wave 1 — the web funnel on Start (revenue-visible; ~immediately after 0.3/0.4):**
+
+| # | Work | Notes |
+| --- | --- | --- |
+| 1.1 | **TS-2: `apps/start` Worker** — landing, `/business`, `/blog`, `/docs`, `/code/download`, vertical pages; tanstack.com server-entry pattern; well-known agent surfaces served from the shell; site-speed budgets as merge gates | Closes the site-speed P5 prescription and the agent-readability gap; zero sync coupling |
+| 1.2 | Funnel cutover route-by-route behind the existing domain (service-bind to the API Worker); Foldkit funnel code deleted per route | The dual-framework window starts and stays bounded |
+| 1.3 | KS-8.14 (business funnel D1→Postgres) lands independently underneath — do not couple to 1.1/1.2 | Principle 1 |
+
+**Wave 2 — chat scopes + the flagship demo (gated on the KS-8.13 pull-forward):**
+
+| # | Work | Notes |
+| --- | --- | --- |
+| 2.1 | **KS-8.13 (#8324), reordered next in the KS-8 queue**: threads/teams/workspaces to Cloud SQL with Khala Sync scopes | The single blocking migration for everything below |
+| 2.2 | **MC-1: chat collection + named mutators** (`chat.createThread` / `appendMessage` / `renameThread`) on the KS-3 mutator registry, owner-scoped | Small — the mutator engine and authoring guide (#8293) exist |
+| 2.3 | **TS-7 begins with the chat sidebar**: Khala Code desktop's first React + Tailwind surface consumes thread scopes via TS-3; UX behavior contracts as the regression net; vanilla-DOM sidebar deleted | The shell rewrite and the sync consumer are the same PR series |
+| 2.4 | **MC-3/MC-5: cross-device chat dogfood** — web (Start CSR or panel) + desktop sidebars live; interim SwiftUI app does mutation-HTTP + WS refetch; owner runs the phone↔desktop↔web round-trip; public-safe evidence bundle | The Khala Sync flagship receipt and the mobile milestone, unchanged in substance |
+
+**Wave 3 — Sites on Start (after TS-4 scaffolding matures; overlaps Wave 2):**
+
+| # | Work | Notes |
+| --- | --- | --- |
+| 3.1 | KS-8.12 (#8323) sites domain → Cloud SQL lands **before** template GA (don't build the new product on tables mid-migration) | Sequencing only; scaffolding can start earlier |
+| 3.2 | **TS-4: Start site template v1 + containerized build lane** (version → build → WfP module → existing deploy gates); agent-ready surfaces baked in | The genuinely new machine |
+| 3.3 | **TS-5: Sites rules pack + per-site behavior contracts**; first dogfood site generated end-to-end (a vertical landing page for our own funnel = the eat-our-own-output proof) | Lovable's curated-rules lesson |
+
+**Wave 4 — the long tail (paced by capacity, after Waves 1–2 prove the stack):**
+
+| # | Work | Notes |
+| --- | --- | --- |
+| 4.1 | **TS-6**: remaining web app-shell panels (Foldkit-in-CSR bridge, route-by-route, delete-as-you-go) | Paced; funnel + chat already migrated |
+| 4.2 | **TS-7 remainder**: rest of the desktop shell to React (settings, history, fleet panels — fleet already syncs via #8303, so consumers move onto TS-3 as they're rewritten) | |
+| 4.3 | **TS-8: Expo RN companion v0** — Expo Router shell, NativeWind tokens, TS-3 + expo-sqlite persistence, expo-modules ports of the Swift voice/Apple-FM pieces; local prebuild + Xcode/Gradle; own-OTA feed; replaces the interim SwiftUI app at parity | Needs TS-3 + chat scopes (Wave 2), nothing else |
+| 4.4 | KS-8 remainder (8.10 forum, 8.11 CRM, 8.15–8.18) + **KS-8.19 cron sweep/D1 retirement + decommission follow-ups (#8331/#8333/#8334/#8335) close the era** | The D1-overload class dies here |
+| 4.5 | **TS-10b: velocity receipt** — React-era metrics vs the 0.2 baseline, published internally | The §6.1 claim, measured |
+
+### 11.3 Explicit dependency spine
+
+```
+0.2 baseline ─── (before any React merge)
+0.3 TS-1 ──► 1.1 TS-2 ──► 1.2 cutover ──► 4.1 TS-6
+0.4 TS-9 ──► (TS-2/TS-6/TS-7/TS-8 consume)
+0.5 TS-3 (proves on fleet_run scope, live today)
+        └──► 2.3 desktop chat sidebar ──► 4.2 TS-7 remainder
+2.1 KS-8.13 ──► 2.2 MC-1 ──► 2.3/2.4 flagship demo ──► 4.3 TS-8 Expo app
+3.1 KS-8.12 ──► 3.2 TS-4 GA ──► 3.3 TS-5
+KS-8.7/8.8/8.9 (money) — independent, keep first in the KS-8 queue
+KS-8.19 + decommissions — strictly last
+```
+
+### 11.4 The two actions that unlock everything
+
+1. **File the ONE-UI epic** with TS-1..TS-10 (+MC-1/3/5) per this plan.
+2. **Comment the KS-8.13 pull-forward on #8282/#8324** so the migration
+   queue reorders 8.13 ahead of 8.10–8.12 — one sentence of sequencing
+   that converts the chat demo from "mid-queue eventually" to "next."
+
+Everything in Wave 0 is dependency-free and fleet-shaped; nothing waits
+on anything the company hasn't already built.
