@@ -643,6 +643,99 @@ Rollback at ANY step: set `KHALA_SYNC_ARTANIS_READS=d1` (reads) and/or
 `KHALA_SYNC_ARTANIS_DUAL_WRITE=off` (writes). D1 authority is never
 behind.
 
+## Treasury settlement domain cutover (KS-8.8, #8319)
+
+All 27 live money tables (treasury_transactions, the six `nexus_*`
+payout-authority ledgers, the forum money half — money actions, payment
+events, receipts, L402 challenges/redemptions, direct tips + webhook
+events, recipient wallets, settlement claims — `x_claim_reward_ledger`,
+`agent_claim_reward_ledger`, `agent_balances`, `labor_escrows` +
+`labor_escrow_receipts`, partner/site-referral payout ledgers +
+`partner_agreements`, `revenue_event_provenance`, and the two
+`mpp_*_replay` guards) → same-named Postgres twins (khala-sync migration
+`0016_treasury_domain.sql`). Machinery:
+`apps/openagents.com/workers/api/src/treasury-domain-store.ts` (the
+`TreasuryDatabase` seam: registry-driven converge store,
+`mirrorTreasuryRows` fail-soft dual-write, `treasuryRead` flag routing,
+plus the `LedgerStatement.mirror` annotations in `payments-ledger.ts`)
+and `packages/khala-sync-server/scripts/backfill-treasury.ts` (backfill +
+money-exact verify). Six money crons mirror on every tick today and keep
+D1 authority until step 5: `TipsSweep.runTick`,
+`TipsBuffer.reconcileForwarding`, `TipsBuffer.backingInvariant`,
+`TreasuryTransactions.reconcilePending`,
+`XClaimRewardTreasuryDispatcher.runTick`,
+`ForumDirectTips.archiveStaleRecoveries`.
+
+**THIS IS THE HIGHEST-STAKES DOMAIN.** Non-negotiables that hold at every
+step: D1 is the SOLE payout/settlement authority during dual-write; the
+Postgres twin is a best-effort mirror that copies resolved D1 rows and can
+never invent an amount, settlement state, idempotency key, or receipt;
+every side-effect-bearing scan (payout dispatch, sweep candidates,
+pending-transaction reconcile) reads exactly ONE store — they carry no
+Postgres twin, so no flag value can double-dispatch a payout; and public
+receipt endpoints (`/direct-tips` evidence, partner/site payout receipts,
+nexus payment-authority receipts) must stay continuously servable through
+every flip.
+
+Flags (Worker vars) — **every flip below is an EPIC-GATED ops decision on
+[#8282](https://github.com/OpenAgentsInc/openagents/issues/8282), never a
+code default**:
+
+- `KHALA_SYNC_TREASURY_DUAL_WRITE` — default **on** wherever
+  `KHALA_SYNC_DB` exists; `off|0|false|disabled` disables the mirror.
+- `KHALA_SYNC_TREASURY_READS` — default `d1`; `compare` reads both, serves
+  D1, logs `khala_sync_treasury_read_compare_mismatch` (and turns the
+  every-tick TipsBuffer backing-invariant SUM into a continuously-running
+  msat reconciliation probe); `postgres` serves the seam-routed reads from
+  Postgres with bounded retry (50/150ms) and D1 fallback on exhaustion.
+
+Fail-soft invariant: `mirrorTreasuryRows` NEVER throws — a Postgres outage
+degrades to D1-only with `khala_sync_treasury_dual_write_failed`
+diagnostics (row KEYS only; replay-guard payment identifiers are
+redacted). A payout, a tip, or a settlement cron must never fail because
+the mirror did.
+
+Flag-flip order — never skip a step, each step soaks before the next:
+
+1. **Dual-write on** (default after KS-8.8 lands + `0016` applied via the
+   migration runner). Watch `khala_sync_treasury_dual_write_failed` in
+   Worker logs — that event IS the drift metric; a nonzero steady rate
+   blocks progression.
+2. **Backfill**: from `packages/khala-sync-server/`,
+   `KHALA_SYNC_DATABASE_URL=<direct-url> bun scripts/backfill-treasury.ts`
+   (wrangler-auth'd; rowid-cursor resumable via
+   `.treasury-backfill-state.json`). Run it a SECOND time (`--restart`) as
+   the catch-up sweep once dual-write has covered the whole window.
+3. **Verify — money reconciliation is the acceptance**:
+   `bun scripts/backfill-treasury.ts --verify` — exact row counts,
+   per-(state, rail) tallies WITH exact money-column SUMs
+   (millisat/sat/cent/minor-unit, compared as bigint), and newest-50
+   row-hash comparison across all 27 tables. This is the payout-intent set
+   equality + settled-totals-to-the-millisat + replay-guard key-set
+   equality evidence the issue requires. Post the output on the migration
+   issue. Exact or explain; NO cutover on a red verify.
+4. **Compare reads**: set `KHALA_SYNC_TREASURY_READS=compare`; soak until
+   the mismatch log is silent over a window that includes all six money
+   crons firing, at least one live tip settling end-to-end (submit →
+   webhook reconcile → settlement claim → public receipt), and one payout
+   intent reaching `settled`.
+5. **Postgres reads + cron re-homing**: set
+   `KHALA_SYNC_TREASURY_READS=postgres`. Landing requirement before this
+   flip: shadow-compared public receipts byte-identical (modulo
+   timestamps) under compare mode, AND the dispatcher/sweep/reconcile
+   scans gain their Postgres twins in a dedicated change (they are
+   deliberately D1-only in the KS-8.8 lane) — those scans re-home
+   atomically with this flip, never before it.
+6. **Decommission LATER**: dropping the 27 D1 tables (and moving write
+   authority) is consolidated into KS-8.19
+   [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330) —
+   never in the same change as a read cutover. Until then rollback is one
+   flag flip back to `d1`.
+
+Rollback at ANY step: set `KHALA_SYNC_TREASURY_READS=d1` (reads) and/or
+`KHALA_SYNC_TREASURY_DUAL_WRITE=off` (writes). D1 authority is never
+behind.
+
 ## Inference entitlements domain cutover (KS-8.9, #8320)
 
 The free-tier/entitlement accounting on the inference serving path — the
@@ -884,7 +977,6 @@ batch-job-metering, inference-abuse-controls, serving-node-payout,
 cloud-metering, product-promises, business-starter-credit). A final
 `--restart` sweep + `--verify` immediately before any read cutover is
 therefore MANDATORY, not optional.
-
 ## Public tokens-served projection (KS-6.3, #8304)
 
 The public "Khala Tokens Served" counter

@@ -148,6 +148,7 @@ import {
   makeArtanisDatabaseForEnv,
   type ArtanisDatabase,
 } from './artanis-domain-store'
+import { makeTreasuryDatabaseForEnv } from './treasury-domain-store'
 import { ArtanisMindSmokeSystem, artanisMindComplete } from './artanis-mind'
 import {
   ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
@@ -1629,7 +1630,9 @@ const makeAcceptedOutcomeSettlementSink = (
   }
 
   const db = openAgentsDatabase(env)
-  const ledger = makeD1NexusTreasuryPayoutLedgerStore(db)
+  const ledger = makeD1NexusTreasuryPayoutLedgerStore(
+    makeTreasuryDatabaseForEnv(env),
+  )
   const sparkTargetStore = makePylonSparkPayoutTargetStoreForEnv(env)
   const contributionStore = makeD1TrainingTraceContributionStore(db)
 
@@ -7821,7 +7824,7 @@ const siteCommerceRoutesForEnv = (
     nowEpochMillis: () => currentDate().getTime(),
     nowIso: () => currentDate().toISOString(),
     payoutLedgerStore: makeD1NexusTreasuryPayoutLedgerStore(
-      openAgentsDatabase(env),
+      makeTreasuryDatabaseForEnv(env),
     ),
     reviewStore: makeD1SiteCommerceReviewStore(openAgentsDatabase(env)),
   })
@@ -9625,11 +9628,11 @@ const nexusPylonVisibilityRoutes = makeNexusPylonVisibilityRoutes({
   makeArtanisAdminCloseoutReceiptStore: env =>
     makeD1ArtanisAdminCloseoutReceiptStore(openAgentsDatabase(env)),
   makeLedgerStore: env =>
-    makeD1NexusTreasuryPayoutLedgerStore(openAgentsDatabase(env)),
+    makeD1NexusTreasuryPayoutLedgerStore(makeTreasuryDatabaseForEnv(env)),
   makePaymentAuthority: (env, context) => {
     const config = getOpenAgentsWorkerConfig(env)
     const ledgerStore = makeD1NexusTreasuryPayoutLedgerStore(
-      openAgentsDatabase(env),
+      makeTreasuryDatabaseForEnv(env),
     )
 
     return makeTreasuryPaymentAuthority({
@@ -9728,7 +9731,7 @@ const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({
     ).createChallenge(built.challenge, built.event)
   },
   makePayoutLedgerStore: env =>
-    makeD1NexusTreasuryPayoutLedgerStore(openAgentsDatabase(env)),
+    makeD1NexusTreasuryPayoutLedgerStore(makeTreasuryDatabaseForEnv(env)),
   // REAL Bitcoin settlement wiring (openagents #5232, Gate 2). INERT by default:
   // these are only consulted on the real branch, which is unreachable unless the
   // owner sets OPENAGENTS_REAL_SETTLEMENT_GATE (enabled + allowlisted + capped).
@@ -9813,7 +9816,7 @@ const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({
 const hygieneLaneSettlementRoutes =
   makeHygieneLaneSettlementRoutes<WorkerBindings>({
     makePayoutLedgerStore: env =>
-      makeD1NexusTreasuryPayoutLedgerStore(openAgentsDatabase(env)),
+      makeD1NexusTreasuryPayoutLedgerStore(makeTreasuryDatabaseForEnv(env)),
     // REAL Bitcoin settlement wiring (openagents #5232): the SAME proven Spark
     // treasury rail the Tassadar run settlement uses. INERT unless the gate is
     // armed.
@@ -9890,7 +9893,7 @@ const hygieneLaneSettlementRoutes =
 const firmupBitcoinSettlementRoutes =
   makeFirmupBitcoinSettlementRoutes<WorkerBindings>({
     makePayoutLedgerStore: env =>
-      makeD1NexusTreasuryPayoutLedgerStore(openAgentsDatabase(env)),
+      makeD1NexusTreasuryPayoutLedgerStore(makeTreasuryDatabaseForEnv(env)),
     resolveSettleableEscrow: (env, escrowRef) =>
       readFirmupSettleableEscrow(openAgentsDatabase(env), escrowRef),
     // REAL Bitcoin settlement wiring (openagents #5232): the SAME proven Spark
@@ -9988,7 +9991,9 @@ const tassadarTraceContributionRoutes =
     onVerifiedExactTraceReplayPair: (env, input) =>
       Effect.gen(function* () {
         const db = openAgentsDatabase(env)
-        const ledger = makeD1NexusTreasuryPayoutLedgerStore(db)
+        const ledger = makeD1NexusTreasuryPayoutLedgerStore(
+          makeTreasuryDatabaseForEnv(env),
+        )
         const sparkTargetStore = makePylonSparkPayoutTargetStoreForEnv(env)
         const contributionStore = makeD1TrainingTraceContributionStore(db)
         const run = yield* Effect.promise(() =>
@@ -12729,7 +12734,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
         transactionStore: makeD1TreasuryTransactionStore(
-          openAgentsDatabase(env),
+          makeTreasuryDatabaseForEnv(env),
         ),
       }),
   },
@@ -12740,7 +12745,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
         transactionStore: makeD1TreasuryTransactionStore(
-          openAgentsDatabase(env),
+          makeTreasuryDatabaseForEnv(env),
         ),
       }),
   },
@@ -12751,7 +12756,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
         transactionStore: makeD1TreasuryTransactionStore(
-          openAgentsDatabase(env),
+          makeTreasuryDatabaseForEnv(env),
         ),
       }),
   },
@@ -12850,7 +12855,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               fetchTreasury: fetchMdkTreasuryPath(env),
               recordPayoutTransaction: async input => {
                 await makeD1TreasuryTransactionStore(
-                  openAgentsDatabase(env),
+                  makeTreasuryDatabaseForEnv(env),
                 ).insert({
                   amountSat: input.amountSat,
                   bolt11: null,
@@ -12891,7 +12896,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         fetchSparkTreasury: fetchMdkTreasuryPath(env),
         fetchTreasury: fetchMdkTreasuryPath(env),
         recordPayoutTransaction: async input => {
-          await makeD1TreasuryTransactionStore(openAgentsDatabase(env)).insert({
+          await makeD1TreasuryTransactionStore(makeTreasuryDatabaseForEnv(env)).insert({
             amountSat: input.amountSat,
             bolt11: null,
             createdAt: currentIsoTimestamp(),
@@ -12931,7 +12936,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleOperatorTreasuryPayoutApi(request, {
         fetchTreasury: fetchMdkTipsBufferPath(env),
         recordPayoutTransaction: async input => {
-          await makeD1TreasuryTransactionStore(openAgentsDatabase(env)).insert({
+          await makeD1TreasuryTransactionStore(makeTreasuryDatabaseForEnv(env)).insert({
             amountSat: input.amountSat,
             bolt11: null,
             createdAt: currentIsoTimestamp(),
@@ -14397,7 +14402,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       // path (same flags/binding as the keyed route).
       const entitlementsRouting = makeInferenceEntitlementsRoutingForEnv(env)
       return handleMppChatCompletions(request, {
-        db: openAgentsDatabase(env),
+        db: makeTreasuryDatabaseForEnv(env),
         enabled: isKhalaMppEnabled(env.KHALA_MPP_ENABLED),
         lightningEnabled,
         mirror: billingDomainMirrorFromEnv(env),
@@ -14812,7 +14817,7 @@ const routeRequest = makeWorkerRouteRequest({
       fetchTreasury: fetchMdkTreasuryPath(env),
       makeUuid: randomUuid,
       nowIso: currentIsoTimestamp,
-      store: makeD1TreasuryTransactionStore(openAgentsDatabase(env)),
+      store: makeD1TreasuryTransactionStore(makeTreasuryDatabaseForEnv(env)),
     }).routeTreasuryPageRequest(request),
   routeAgentProposalRequest: agentProposalRoutes.routeAgentProposalRequest,
   routeAgentSearchRequest: agentSearchRoutes.routeAgentSearchRequest,
@@ -14825,6 +14830,9 @@ const routeRequest = makeWorkerRouteRequest({
     forumRoutes.routeForumRequest(request, forumContentDatabaseForEnv(env), {
       // KS-8.7 (#8318): fail-soft billing/pay-in mirror for forum tips.
       billingMirror: billingDomainMirrorFromEnv(env),
+      // KS-8.8 (#8319): activates the fail-soft Postgres mirror on the forum
+      // MONEY half; content paths stay on the forum content dual-write seam.
+      treasuryDb: makeTreasuryDatabaseForEnv(env),
       tipsBufferPay: tipsBufferPayFnForEnv(env),
       agentStore: makeAgentRegistrationStoreForEnv(env),
       // KS-8.9 (#8320): fire-safe Postgres dual-write mirror (orange check).
@@ -15972,7 +15980,7 @@ export default {
       ),
       observedEffect(
         'TipsSweep.runTick',
-        runTipsSweepScheduled(openAgentsDatabase(env), {
+        runTipsSweepScheduled(makeTreasuryDatabaseForEnv(env), {
           makeId: randomUuid,
           mirror: billingDomainMirrorFromEnv(env),
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
@@ -15981,7 +15989,9 @@ export default {
       ),
       observedEffect(
         'XClaimRewardTreasuryDispatcher.runTick',
-        runXClaimRewardTreasuryDispatchScheduled(openAgentsDatabase(env), {
+        runXClaimRewardTreasuryDispatchScheduled(
+          makeTreasuryDatabaseForEnv(env),
+          {
           config: readXClaimRewardTreasuryDispatchConfig(
             env,
             epochMillisToIsoTimestamp(event.scheduledTime),
@@ -16169,7 +16179,7 @@ export default {
       observedEffect(
         'TipsBuffer.reconcileForwarding',
         Effect.promise(() =>
-          reconcileForwardingBufferPayments(openAgentsDatabase(env), {
+          reconcileForwardingBufferPayments(makeTreasuryDatabaseForEnv(env), {
             mirror: billingDomainMirrorFromEnv(env),
             fetchBufferPaymentStatus: async paymentId => {
               const fetchBuffer = fetchMdkTipsBufferPath(env)
@@ -16203,7 +16213,7 @@ export default {
             fetchTreasury: fetchMdkTreasuryPath(env),
             limit: 25,
             transactionStore: makeD1TreasuryTransactionStore(
-              openAgentsDatabase(env),
+              makeTreasuryDatabaseForEnv(env),
             ),
           }),
         ),
@@ -16212,7 +16222,7 @@ export default {
         'ForumDirectTips.archiveStaleRecoveries',
         Effect.promise(() =>
           archiveStaleDirectTipRecoveries(
-            openAgentsDatabase(env),
+            makeTreasuryDatabaseForEnv(env),
             epochMillisToIsoTimestamp(event.scheduledTime),
           ),
         ),
@@ -16220,7 +16230,9 @@ export default {
       observedEffect(
         'TipsBuffer.backingInvariant',
         Effect.promise(() =>
-          checkTipsBufferBackingInvariant(openAgentsDatabase(env), async () => {
+          checkTipsBufferBackingInvariant(
+            makeTreasuryDatabaseForEnv(env),
+            async () => {
             const fetchBuffer = fetchMdkTipsBufferPath(env)
             if (fetchBuffer === undefined) {
               return null

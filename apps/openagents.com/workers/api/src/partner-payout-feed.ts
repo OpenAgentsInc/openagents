@@ -43,6 +43,11 @@ import {
   type PartnerPayoutRole,
   createPartnerPayoutEligibility,
 } from './partner-payout-ledger'
+import {
+  mirrorTreasuryRows,
+  treasuryAuthorityDb,
+  type TreasuryDatabase,
+} from './treasury-domain-store'
 
 /**
  * Same public-safe user-id shape the referral feed guards against
@@ -200,9 +205,10 @@ const SAFE_AGREEMENT_FIELDS = [
  * `agreementRef`. Never moves money; it only records who MAY be attributed.
  */
 export const recordPartnerAgreement = async (
-  db: D1Database,
+  database: TreasuryDatabase,
   input: CreatePartnerAgreementInput,
 ): Promise<PartnerAgreement> => {
+  const db = treasuryAuthorityDb(database)
   const values: Record<(typeof SAFE_AGREEMENT_FIELDS)[number], string> = {
     agreementRef: input.agreementRef,
     customerUserId: input.customerUserId,
@@ -271,6 +277,11 @@ export const recordPartnerAgreement = async (
       reason: 'partner agreement was not persisted.',
     })
   }
+
+  // KS-8.8 (#8319): fail-soft Postgres mirror of the persisted agreement.
+  await mirrorTreasuryRows(database, 'partner_agreements', 'agreement_ref', [
+    input.agreementRef,
+  ])
 
   return stored
 }

@@ -6,6 +6,10 @@ import {
   transitionPartnerPayout,
 } from './partner-payout-ledger'
 import type { MdkPayoutModeGateProjection } from './mdk-payout-mode-gate'
+import {
+  treasuryAuthorityDb,
+  type TreasuryDatabase,
+} from './treasury-domain-store'
 import { isoTimestampAfterIso } from './runtime-primitives'
 
 export type PartnerPayoutAdapter = Readonly<{
@@ -72,11 +76,14 @@ const adapterIdempotencyKey = (payoutRef: string): string =>
   `partner_payout.adapter.${payoutRef}`
 
 export const dispatchPartnerPayoutSettlement = async (
-  db: D1Database,
+  db: TreasuryDatabase,
   dependencies: PartnerPayoutDispatchDependencies,
   input: PartnerPayoutDispatchInput,
 ): Promise<PartnerPayoutDispatchOutcome> => {
-  const current = await readCurrentPartnerPayout(db, input.payoutRef)
+  const current = await readCurrentPartnerPayout(
+    treasuryAuthorityDb(db),
+    input.payoutRef,
+  )
 
   if (current === null) {
     return {

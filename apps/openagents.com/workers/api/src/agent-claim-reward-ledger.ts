@@ -5,6 +5,11 @@ import {
   AGENT_CLAIM_REWARD_REQUIRED_POLICY_REFS,
 } from './agent-claim-reward-policy'
 import { parseJsonStringArray } from './json-boundary'
+import {
+  mirrorTreasuryRows,
+  treasuryAuthorityDb,
+  type TreasuryDatabase,
+} from './treasury-domain-store'
 
 export const AGENT_CLAIM_X_REWARD_CAMPAIGN_REF =
   'campaign.agent_claim.x_tweet_1000_sats.v1'
@@ -211,9 +216,12 @@ export const agentClaimRewardReceiptHasPrivateMaterial = (
   return forbiddenFragments.some(fragment => serialized.includes(fragment))
 }
 
+// KS-8.8 (#8319): D1 stays authority; on a TreasuryDatabase seam handle the
+// append below read-back-mirrors fail-soft to Postgres.
 export const makeD1AgentClaimRewardLedgerStore = (
-  db: D1Database,
+  database: TreasuryDatabase,
 ): AgentClaimRewardLedgerStore => {
+  const db = treasuryAuthorityDb(database)
   const readRewardByIdempotencyKey = async (
     idempotencyKey: string,
   ): Promise<AgentClaimRewardLedgerRecord | undefined> => {
@@ -286,6 +294,10 @@ export const makeD1AgentClaimRewardLedgerStore = (
           record.updatedAt,
         )
         .run()
+
+      await mirrorTreasuryRows(database, 'agent_claim_reward_ledger', 'id', [
+        record.id,
+      ])
 
       return (await readRewardByReceiptRef(record.id)) ?? record
     },

@@ -3,6 +3,11 @@ import { Effect, Schema as S } from 'effect'
 import { noStoreJsonResponse } from './http/responses'
 import { readAgentBalance } from './payments-ledger'
 import { currentIsoTimestamp } from './runtime-primitives'
+import {
+  mirrorTreasuryRows,
+  treasuryAuthorityDb,
+  type TreasuryDatabase,
+} from './treasury-domain-store'
 
 // Agent-scoped balance surface (issue #4712): a registered agent reads
 // its own sweepable balance, thresholds, and recent ledger activity, and
@@ -104,7 +109,7 @@ export const handleAgentBalanceApi = (
 
 export const handleAgentBalancePreferencesApi = (
   request: Request,
-  deps: Readonly<{ db: D1Database; authenticate: AgentBalanceAuth }>,
+  deps: Readonly<{ db: TreasuryDatabase; authenticate: AgentBalanceAuth }>,
 ) =>
   Effect.gen(function* () {
     if (request.method !== 'POST') {
@@ -160,25 +165,30 @@ export const handleAgentBalancePreferencesApi = (
     }
 
     yield* Effect.promise(async () => {
-      await deps.db.batch([
-        deps.db
+      const authority = treasuryAuthorityDb(deps.db)
+      await authority.batch([
+        authority
           .prepare(
             `INSERT INTO agent_balances (actor_ref, balance_msat, created_at, updated_at)
              VALUES (?, 0, ?, ?)
              ON CONFLICT (actor_ref) DO NOTHING`,
           )
           .bind(session.actorRef, nowIso, nowIso),
-        deps.db
+        authority
           .prepare(
             `UPDATE agent_balances SET ${updates.join(', ')}, updated_at = ?
              WHERE actor_ref = ?`,
           )
           .bind(...params, nowIso, session.actorRef),
       ])
+      // KS-8.8 (#8319): fail-soft Postgres mirror of the preference row.
+      await mirrorTreasuryRows(deps.db, 'agent_balances', 'actor_ref', [
+        session.actorRef,
+      ])
     })
 
     const balance = yield* Effect.promise(() =>
-      readAgentBalance(deps.db, session.actorRef),
+      readAgentBalance(treasuryAuthorityDb(deps.db), session.actorRef),
     )
 
     return noStoreJsonResponse({ preferences: balance })

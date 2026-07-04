@@ -1,8 +1,8 @@
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { makeTreasuryDatabaseForEnv } from './treasury-domain-store'
 import { decodeUnknownWithSchema } from './json-boundary'
-import { openAgentsDatabase } from './runtime'
 import {
   type SiteReferralPayoutDispatchDependencies,
   SiteReferralPayoutDispatchError,
@@ -169,7 +169,7 @@ export const makeSiteReferralPayoutLedgerRoutes = <
                     }),
             try: () =>
               dispatchReferralPayoutSettlement(
-                openAgentsDatabase(env),
+                makeTreasuryDatabaseForEnv(env),
                 dependencies.dispatchDependencies,
                 { payoutRef, revenueAsset: parsed.revenueAsset },
               ),
@@ -230,7 +230,7 @@ export const makeSiteReferralPayoutLedgerRoutes = <
                   operation: 'siteReferralPayoutLedger.transitionRoute',
                 }),
           try: () =>
-            transitionReferralPayout(openAgentsDatabase(env), {
+            transitionReferralPayout(makeTreasuryDatabaseForEnv(env), {
               action: parsed.action,
               idempotencyKey: parsed.idempotencyKey,
               nowIso: dependencies.nowIso(),

@@ -6,6 +6,11 @@ import {
   liveAtReadStaleness,
 } from './public-projection-staleness'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import {
+  mirrorTreasuryRows,
+  treasuryAuthorityDb,
+  type TreasuryDatabase,
+} from './treasury-domain-store'
 
 export const REVENUE_EVENT_PROVENANCE_TABLE =
   'revenue_event_provenance' as const
@@ -205,7 +210,7 @@ const rowToRecord = (
 }
 
 export const recordRevenueEventProvenance = async (
-  db: D1Database,
+  database: TreasuryDatabase,
   draft: RevenueEventProvenanceDraft,
 ): Promise<RevenueEventProvenanceRecord> => {
   assertSafeRefs([
@@ -225,6 +230,7 @@ export const recordRevenueEventProvenance = async (
   }
 
   const nowIso = currentIsoTimestamp()
+  const db = treasuryAuthorityDb(database)
   await db
     .prepare(
       `INSERT OR IGNORE INTO revenue_event_provenance (
@@ -298,6 +304,11 @@ export const recordRevenueEventProvenance = async (
   if (record === null) {
     throw Error('revenue_event_provenance_not_persisted')
   }
+
+  // KS-8.8 (#8319): fail-soft Postgres mirror of the persisted evidence row.
+  await mirrorTreasuryRows(database, 'revenue_event_provenance', 'event_ref', [
+    record.eventRef,
+  ])
 
   return record
 }

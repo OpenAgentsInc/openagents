@@ -4,6 +4,12 @@ import { Effect } from 'effect'
 import type { ContainerPathFetch } from './http/container-fetch'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { isoTimestampAfterIso } from './runtime-primitives'
+import {
+  mirrorTreasuryRows,
+  treasuryAuthorityDb,
+  treasuryRead,
+  type TreasuryDatabase,
+} from './treasury-domain-store'
 
 type HttpResponse = globalThis.Response
 
@@ -95,9 +101,24 @@ const rowToRecord = (
   state: row.state,
 })
 
+/**
+ * KS-8.8 (#8319): D1 stays the sole authority for every method below; on a
+ * `TreasuryDatabase` seam handle each WRITE additionally read-back-mirrors
+ * the touched row into Postgres fail-soft, and `listRecent` (the public
+ * treasury page projection) becomes flag-routable
+ * (KHALA_SYNC_TREASURY_READS: d1 | compare | postgres). The
+ * `listPendingOutbound` scan DRIVES the TreasuryTransactions.reconcilePending
+ * cron's settlement side effects, so it reads exactly one store (D1) with
+ * no Postgres twin until the epic-gated cutover. A bare D1Database behaves
+ * exactly as before.
+ */
 export const makeD1TreasuryTransactionStore = (
-  db: D1Database,
-): TreasuryTransactionStore => ({
+  database: TreasuryDatabase,
+): TreasuryTransactionStore => {
+  const db = treasuryAuthorityDb(database)
+  const mirror = (id: string) =>
+    mirrorTreasuryRows(database, 'treasury_transactions', 'id', [id])
+  return {
   expire: async input => {
     await db
       .prepare(
@@ -107,6 +128,7 @@ export const makeD1TreasuryTransactionStore = (
       )
       .bind(input.id)
       .run()
+    await mirror(input.id)
   },
   fail: async input => {
     await db
@@ -117,6 +139,7 @@ export const makeD1TreasuryTransactionStore = (
       )
       .bind(input.id)
       .run()
+    await mirror(input.id)
   },
   insert: async record => {
     await db
@@ -149,19 +172,44 @@ export const makeD1TreasuryTransactionStore = (
         record.expiresAt,
       )
       .run()
+    await mirror(record.id)
   },
-  listRecent: async limit => {
-    const result = await db
-      .prepare(
-        `SELECT * FROM treasury_transactions
-         ORDER BY created_at DESC
-         LIMIT ?`,
-      )
-      .bind(limit)
-      .all<TreasuryTransactionRow>()
+  listRecent: async limit =>
+    treasuryRead(
+      database,
+      'treasury_transactions:list_recent',
+      [],
+      async () => {
+        const result = await db
+          .prepare(
+            `SELECT * FROM treasury_transactions
+             ORDER BY created_at DESC
+             LIMIT ?`,
+          )
+          .bind(limit)
+          .all<TreasuryTransactionRow>()
 
-    return (result.results ?? []).map(rowToRecord)
-  },
+        return (result.results ?? []).map(rowToRecord)
+      },
+      async postgres => {
+        const rows = await postgres.selectLatestRows(
+          'treasury_transactions',
+          limit,
+        )
+        // bigint columns come back driver-typed; normalize to D1 numbers
+        // so compare mode diffs semantics, not driver representations.
+        return rows.map(row =>
+          rowToRecord({
+            ...(row as unknown as TreasuryTransactionRow),
+            amount_sat: Number(row['amount_sat']),
+            owed_sat:
+              row['owed_sat'] === null || row['owed_sat'] === undefined
+                ? null
+                : Number(row['owed_sat']),
+          }),
+        )
+      },
+    ),
   listByRecipient: async input => {
     const result = await db
       .prepare(
@@ -207,6 +255,7 @@ export const makeD1TreasuryTransactionStore = (
       )
       .bind(input.amountSat, input.settledAt, input.id)
       .run()
+    await mirror(input.id)
   },
   confirmReceived: async input => {
     await db
@@ -221,8 +270,10 @@ export const makeD1TreasuryTransactionStore = (
       )
       .bind(input.confirmationRef, input.recipientConfirmedAt, input.id)
       .run()
+    await mirror(input.id)
   },
-})
+  }
+}
 
 export type TreasuryPageRouteDependencies = Readonly<{
   fetchTreasury?: ContainerPathFetch | undefined

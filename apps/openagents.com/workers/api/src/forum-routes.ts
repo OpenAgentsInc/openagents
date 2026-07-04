@@ -222,6 +222,13 @@ type ForumWorkRequestEscrowReserveResult =
 type ForumRouteDependencies = Readonly<{
   /** KS-8.7 (#8318) fail-soft Postgres pay-in mirror (billing-store.ts). */
   billingMirror?: import('./billing').BillingDomainMirror | undefined
+  /**
+   * KS-8.8 (#8319): the treasury dual-write seam handle for the forum MONEY
+   * half (L402 challenges/redemptions, money actions, payment events,
+   * receipts, direct tips, settlement claims, recipient wallets). When
+   * absent the money paths run on the plain D1Database exactly as before.
+   */
+  treasuryDb?: import('./treasury-domain-store').TreasuryDatabase
   tipsBufferPay?: import('./tips-sweep').BufferPayFn | null
   // KS-8.9 (#8320): fire-safe Postgres dual-write mirror for the orange
   // check entitlement grant; absent => byte-identical D1-only behavior.
@@ -2952,7 +2959,10 @@ const reserveForumWorkRequestAcceptanceEscrow = (
       }
 
       try {
-        const result = await reserveLaborEscrow(db, input)
+        const result = await reserveLaborEscrow(
+          dependencies.treasuryDb ?? db,
+          input,
+        )
 
         if (result.kind === 'ok') {
           return {
@@ -3278,7 +3288,10 @@ const releaseForumWorkRequestEscrow = (
         reason: error instanceof Error ? error.message : String(error),
       }),
     try: async () => {
-      const result = await releaseLaborEscrow(db, input)
+      const result = await releaseLaborEscrow(
+        dependencies.treasuryDb ?? db,
+        input,
+      )
 
       if (result.kind === 'ok') {
         return {
@@ -4169,7 +4182,7 @@ const tipRecipientAdmissionResponse = (
     const disabledAt =
       body.state === 'ready' ? null : (body.disabledAt ?? nowIso())
     const tipRecipientReadiness = yield* upsertForumTipRecipientWallet(
-      db,
+      dependencies.treasuryDb ?? db,
       {
         actorRef: body.actorRef,
         sparkAddress: body.sparkAddress ?? null,
@@ -4235,7 +4248,7 @@ const tipRecipientWalletClaimResponse = (
         ? 'policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet'
         : 'policy.public.forum_tip_recipient.spark_self_custody'
     const tipRecipientReadiness = yield* upsertForumTipRecipientWallet(
-      db,
+      dependencies.treasuryDb ?? db,
       {
         actorRef,
         sparkAddress: body.sparkAddress ?? null,
@@ -4312,7 +4325,9 @@ const previewPaidActionResponse = (
       return notFound()
     }
 
-    const preview = yield* previewForumPaidAction(db, {
+    const preview = yield* previewForumPaidAction(
+      dependencies.treasuryDb ?? db,
+      {
       actionKind: body.actionKind,
       actorRef: actorRefForForumActor(actor),
       hostedMdkClient: dependencies.hostedMdkClient,
@@ -4386,7 +4401,9 @@ const previewAliasPaidActionResponse = (
       return notFound()
     }
 
-    const preview = yield* previewForumPaidAction(db, {
+    const preview = yield* previewForumPaidAction(
+      dependencies.treasuryDb ?? db,
+      {
       actionKind: input.actionKind,
       actorRef: actorRefForForumActor(actor),
       hostedMdkClient: dependencies.hostedMdkClient,
@@ -4567,7 +4584,9 @@ const redeemPaidActionResponse = (
         )
       }
 
-      const orangeRedemption = yield* redeemForumPaidAction(db, {
+      const orangeRedemption = yield* redeemForumPaidAction(
+        dependencies.treasuryDb ?? db,
+        {
         actorRef: actorRefForForumActor(actor),
         challengeId: body.challengeId,
         idempotencyKey,
@@ -4602,7 +4621,9 @@ const redeemPaidActionResponse = (
       )
     }
 
-    const redemption = yield* redeemForumPaidAction(db, {
+    const redemption = yield* redeemForumPaidAction(
+      dependencies.treasuryDb ?? db,
+      {
       actorRef: actorRefForForumActor(actor),
       challengeId: body.challengeId,
       idempotencyKey,
@@ -4647,7 +4668,9 @@ const submitDirectTipResponse = (
       return notFound()
     }
 
-    const response = yield* submitForumDirectTip(db, {
+    const response = yield* submitForumDirectTip(
+      dependencies.treasuryDb ?? db,
+      {
       amount: body.amount,
       idempotencyKey,
       payerActorRef: actorRefForForumActor(actor),
@@ -5018,7 +5041,9 @@ const directTipMdkWebhookResponse = (
       )
     }
 
-    const result = yield* reconcileForumDirectTipWebhook(db, {
+    const result = yield* reconcileForumDirectTipWebhook(
+      dependencies.treasuryDb ?? db,
+      {
       amount: verification.event.amount,
       attemptId: verification.event.attemptId,
       eventBodyDigestRef: verification.event.eventBodyDigestRef,
@@ -5066,7 +5091,9 @@ const claimTipSettlementResponse = (
       request,
       S.decodeUnknownSync(ForumTipSettlementClaimBody),
     )
-    const result = yield* claimForumTipSettlement(db, {
+    const result = yield* claimForumTipSettlement(
+      dependencies.treasuryDb ?? db,
+      {
       actorRef: actorRefForForumActor(actor),
       idempotencyKey,
       receiptRef,

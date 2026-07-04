@@ -8,6 +8,11 @@ import {
 } from './paid-endpoint-product-catalog'
 import { OpenAgentsPaymentPolicyAudience } from './payment-limit-policy'
 import { openAgentsRunnerGatewayPayloadHasPrivateMaterial } from './runner-gateway'
+import {
+  mirrorTreasuryRows,
+  treasuryAuthorityDb,
+  type TreasuryDatabase,
+} from './treasury-domain-store'
 
 export const NexusTreasuryPayoutAdapterKind = S.Literals([
   'hosted_mdk',
@@ -873,9 +878,18 @@ export type NexusTreasuryPayoutLedgerStore = Readonly<{
   ) => Promise<NexusTreasuryPayoutReconciliationEventRecord | undefined>
 }>
 
+/**
+ * KS-8.8 (#8319): D1 stays the SOLE payout authority — every read and
+ * every write below runs against D1 exactly as before this lane. On a
+ * `TreasuryDatabase` seam handle, each append-only create additionally
+ * read-back-mirrors the resolved row into Postgres fail-soft (keys only in
+ * diagnostics). The dispatcher's decision reads have NO Postgres twin, so
+ * no flag can ever make the mirror drive (or double-drive) a dispatch.
+ */
 export const makeD1NexusTreasuryPayoutLedgerStore = (
-  db: D1Database,
+  database: TreasuryDatabase,
 ): NexusTreasuryPayoutLedgerStore => {
+  const db = treasuryAuthorityDb(database)
   const readPayoutIntentByRef = async (
     payoutIntentRef: string,
   ): Promise<NexusTreasuryPayoutIntentRecord | undefined> => {
@@ -972,6 +986,12 @@ export const makeD1NexusTreasuryPayoutLedgerStore = (
           error,
         )
       }
+      await mirrorTreasuryRows(
+        database,
+        'nexus_treasury_payout_attempts',
+        'payout_attempt_ref',
+        [record.payoutAttemptRef],
+      )
     },
     createPayoutIntent: async record => {
       assertNexusTreasuryPayoutIntentSafe(record)
@@ -1046,6 +1066,13 @@ export const makeD1NexusTreasuryPayoutLedgerStore = (
             'payout intent insert was silently ignored (constraint conflict); the intent is not durably persisted.',
         })
       }
+
+      await mirrorTreasuryRows(
+        database,
+        'nexus_treasury_payout_intents',
+        'payout_intent_ref',
+        [record.payoutIntentRef],
+      )
     },
     createPayoutTargetApproval: async record => {
       assertNexusTreasuryPayoutLedgerRecordSafe(
@@ -1100,6 +1127,12 @@ export const makeD1NexusTreasuryPayoutLedgerStore = (
           error,
         )
       }
+      await mirrorTreasuryRows(
+        database,
+        'nexus_payout_target_approvals',
+        'approval_ref',
+        [record.approvalRef],
+      )
     },
     createPaymentAuthorityReceipt: async record => {
       assertNexusTreasuryPayoutLedgerRecordSafe(
@@ -1136,6 +1169,12 @@ export const makeD1NexusTreasuryPayoutLedgerStore = (
           error,
         )
       }
+      await mirrorTreasuryRows(
+        database,
+        'nexus_payment_authority_receipts',
+        'receipt_ref',
+        [record.receiptRef],
+      )
     },
     createReconciliationEvent: async record => {
       assertNexusTreasuryPayoutLedgerRecordSafe(
@@ -1180,6 +1219,12 @@ export const makeD1NexusTreasuryPayoutLedgerStore = (
           error,
         )
       }
+      await mirrorTreasuryRows(
+        database,
+        'nexus_treasury_payout_reconciliation_events',
+        'event_ref',
+        [record.eventRef],
+      )
     },
     createReleaseGate: async record => {
       assertNexusTreasuryPayoutLedgerRecordSafe('Nexus release gate', record)
@@ -1214,6 +1259,9 @@ export const makeD1NexusTreasuryPayoutLedgerStore = (
       } catch (error) {
         throw storageError('nexusTreasuryPayoutLedger.createReleaseGate', error)
       }
+      await mirrorTreasuryRows(database, 'nexus_release_gates', 'gate_ref', [
+        record.gateRef,
+      ])
     },
     readPayoutAttemptByRef: async payoutAttemptRef => {
       try {

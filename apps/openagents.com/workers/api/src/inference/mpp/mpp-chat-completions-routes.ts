@@ -32,6 +32,7 @@ import { Cause, Duration, Effect } from 'effect'
 
 import type { BillingDomainMirror } from '../../billing'
 import { noStoreJsonResponse } from '../../http/responses'
+import type { TreasuryDatabase } from '../../treasury-domain-store'
 import {
   currentEpochMillis,
   currentIsoTimestamp,
@@ -179,8 +180,10 @@ export type MppChatCompletionsDeps = Readonly<{
     'authenticate' | 'readAvailableMsat'
   > &
     Readonly<{ enabled: boolean }>
-  // Phase 3 credit mint.
-  db: D1Database
+  // Phase 3 credit mint. KS-8.8 (#8319): a TreasuryDatabase seam handle
+  // activates the fail-soft Postgres mirror on the replay guards + balance
+  // grants; a bare D1Database behaves exactly as before.
+  db: TreasuryDatabase
   /** KS-8.7 (#8318) fail-soft Postgres mirror (billing-store.ts). */
   mirror?: BillingDomainMirror | undefined
   // Injectable seams for tests.

@@ -7,6 +7,11 @@ import type {
 import { X_CLAIM_REWARD_AMOUNT_SATS } from './agent-owner-claim-routes'
 import type { ContainerPathFetch } from './http/container-fetch'
 import { parseJsonStringArray } from './json-boundary'
+import {
+  mirrorTreasuryRows,
+  treasuryAuthorityDb,
+  type TreasuryDatabase,
+} from './treasury-domain-store'
 
 const DEFAULT_PER_RUN_REWARD_CAP = 1
 const DEFAULT_DAILY_SATS_CAP = 5000
@@ -234,9 +239,20 @@ export const readXClaimRewardTreasuryDispatchConfig = (
   ),
 })
 
+/**
+ * KS-8.8 (#8319): D1 stays the sole dispatch authority. On a
+ * `TreasuryDatabase` seam handle each reward state transition additionally
+ * read-back-mirrors the resolved ledger row into Postgres fail-soft. The
+ * dispatch-decision scans (dispatch_requested / pending-payment) have NO
+ * Postgres twin — the dispatcher reads exactly one store until the
+ * epic-gated cutover, so the mirror can never double-dispatch a reward.
+ */
 export const makeD1XClaimRewardTreasuryDispatchStore = (
-  db: D1Database,
+  database: TreasuryDatabase,
 ): XClaimRewardTreasuryDispatchStore => {
+  const db = treasuryAuthorityDb(database)
+  const mirrorReward = (rewardId: string) =>
+    mirrorTreasuryRows(database, 'x_claim_reward_ledger', 'id', [rewardId])
   const readRewardById = async (
     rewardId: string,
   ): Promise<XClaimRewardRecord | undefined> => {
@@ -288,6 +304,7 @@ export const makeD1XClaimRewardTreasuryDispatchStore = (
       )
       .run()
 
+    await mirrorReward(input.rewardId)
     return readRewardById(input.rewardId)
   }
 
@@ -313,9 +330,11 @@ export const makeD1XClaimRewardTreasuryDispatchStore = (
         )
         .run()
 
-      return result.success && result.meta.changes >= 1
-        ? readRewardById(input.rewardId)
-        : undefined
+      if (result.success && result.meta.changes >= 1) {
+        await mirrorReward(input.rewardId)
+        return readRewardById(input.rewardId)
+      }
+      return undefined
     },
     claimDispatchRequestedReward: async input => {
       const result = await db
@@ -337,9 +356,11 @@ export const makeD1XClaimRewardTreasuryDispatchStore = (
         )
         .run()
 
-      return result.success && result.meta.changes >= 1
-        ? readRewardById(input.rewardId)
-        : undefined
+      if (result.success && result.meta.changes >= 1) {
+        await mirrorReward(input.rewardId)
+        return readRewardById(input.rewardId)
+      }
+      return undefined
     },
     countTodayReservedSats,
     failReward: input =>
@@ -532,7 +553,7 @@ export const makeXClaimRewardTreasuryClient = (
       }
 
 export const makeD1XClaimRewardRecipientResolver =
-  (db: D1Database) =>
+  (database: TreasuryDatabase) =>
   async (
     reward: XClaimRewardRecord,
   ): Promise<{ destination: string; destinationSourceRef: string } | null> => {
@@ -540,7 +561,7 @@ export const makeD1XClaimRewardRecipientResolver =
       return null
     }
 
-    const row = await db
+    const row = await treasuryAuthorityDb(database)
       .prepare(
         `SELECT wallet_ref, bolt12_offer
            FROM forum_tip_recipient_wallets
@@ -982,7 +1003,7 @@ export const evaluateXClaimRewardSmokePreflight = (
 }
 
 export const runXClaimRewardTreasuryDispatchScheduled = (
-  db: D1Database,
+  db: TreasuryDatabase,
   input: Readonly<{
     config: XClaimRewardTreasuryDispatchConfig
     fetchTreasury: ContainerPathFetch | undefined

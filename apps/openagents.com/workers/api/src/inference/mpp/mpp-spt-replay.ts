@@ -13,6 +13,11 @@
 import { Effect } from 'effect'
 
 import { currentIsoTimestamp } from '../../runtime-primitives'
+import {
+  mirrorTreasuryRows,
+  treasuryAuthorityDb,
+  type TreasuryDatabase,
+} from '../../treasury-domain-store'
 
 export class MppSptReplayError extends Error {
   override readonly name = 'MppSptReplayError'
@@ -28,14 +33,14 @@ export class MppSptReplayError extends Error {
 // rejected). Uses `INSERT ... ON CONFLICT DO NOTHING` + a changes check so the
 // claim is a single atomic D1 statement.
 export const claimSpt = (
-  db: D1Database,
+  database: TreasuryDatabase,
   input: Readonly<{ spt: string; challengeId: string }>,
   nowIso: () => string = currentIsoTimestamp,
 ): Effect.Effect<boolean, MppSptReplayError> =>
   Effect.tryPromise({
     catch: (cause: unknown) => new MppSptReplayError(cause),
     try: async () => {
-      const result = await db
+      const result = await treasuryAuthorityDb(database)
         .prepare(
           `INSERT INTO mpp_spt_replay (spt, challenge_id, payment_intent_id, consumed_at)
            VALUES (?, ?, NULL, ?)
@@ -47,24 +52,33 @@ export const claimSpt = (
       // already present (replay).
       const changes =
         (result as unknown as { meta?: { changes?: number } }).meta?.changes
-      return changes === undefined ? true : changes > 0
+      const claimed = changes === undefined ? true : changes > 0
+      if (claimed) {
+        // KS-8.8 (#8319): replay guards port KEY-EXACTLY — mirror the claim
+        // fail-soft (D1 stays the enforcing store; diagnostics are redacted).
+        await mirrorTreasuryRows(database, 'mpp_spt_replay', 'spt', [
+          input.spt,
+        ])
+      }
+      return claimed
     },
   })
 
 // Record the resulting PaymentIntent id against a consumed SPT (best-effort
 // dereference; not load-bearing for the replay guard itself).
 export const recordSptPaymentIntent = (
-  db: D1Database,
+  database: TreasuryDatabase,
   input: Readonly<{ spt: string; paymentIntentId: string }>,
 ): Effect.Effect<void, MppSptReplayError> =>
   Effect.tryPromise({
     catch: (cause: unknown) => new MppSptReplayError(cause),
     try: async () => {
-      await db
+      await treasuryAuthorityDb(database)
         .prepare(
           `UPDATE mpp_spt_replay SET payment_intent_id = ? WHERE spt = ?`,
         )
         .bind(input.paymentIntentId, input.spt)
         .run()
+      await mirrorTreasuryRows(database, 'mpp_spt_replay', 'spt', [input.spt])
     },
   })

@@ -6,6 +6,10 @@ import {
   readAgentBalance,
   runLedgerStatements,
 } from './payments-ledger'
+import {
+  treasuryAuthorityDb,
+  type TreasuryDatabase,
+} from './treasury-domain-store'
 
 // Labor escrow rides the existing agent credit ledger. It never creates
 // external money, never stores payment material, and never calls held value
@@ -254,10 +258,31 @@ export const buildLaborEscrowPublicProjection = (
   return projection
 }
 
+// KS-8.8 (#8319): `mirror` annotations mark the treasury-domain rows each
+// statement touches; `runLedgerStatements` mirrors them to Postgres
+// fail-soft AFTER the atomic D1 batch commits (keys only, read-back copy).
+const balanceMirror = (actorRef: string) =>
+  ({
+    keyColumn: 'actor_ref',
+    keys: [actorRef],
+    table: 'agent_balances',
+  }) as const
+
+const escrowMirror = (escrowId: string) =>
+  ({ keyColumn: 'id', keys: [escrowId], table: 'labor_escrows' }) as const
+
+const escrowReceiptMirror = (receiptId: string) =>
+  ({
+    keyColumn: 'id',
+    keys: [receiptId],
+    table: 'labor_escrow_receipts',
+  }) as const
+
 const ensureBalanceRowStatement = (
   actorRef: string,
   nowIso: string,
 ): LedgerStatement => ({
+  mirror: balanceMirror(actorRef),
   params: [actorRef, nowIso, nowIso],
   sql: `INSERT INTO agent_balances (actor_ref, balance_msat, created_at, updated_at)
         VALUES (?, 0, ?, ?)
@@ -289,6 +314,7 @@ export const reserveLaborEscrowStatements = (
   return [
     ensureBalanceRowStatement(input.requesterActorRef, input.nowIso),
     {
+      mirror: escrowMirror(input.escrowId),
       params: [
         input.escrowId,
         input.idempotencyKey,
@@ -311,12 +337,14 @@ export const reserveLaborEscrowStatements = (
             VALUES (?, ?, ?, ?, NULL, ?, 'reserved', ?, ?, NULL, ?, ?, ?, ?)`,
     },
     {
+      mirror: balanceMirror(input.requesterActorRef),
       params: [input.amountMsat, input.nowIso, input.requesterActorRef],
       sql: `UPDATE agent_balances
             SET held_msat = held_msat + ?, updated_at = ?
             WHERE actor_ref = ?`,
     },
     {
+      mirror: escrowReceiptMirror(input.reserveReceiptId),
       params: [
         input.reserveReceiptId,
         input.escrowId,
@@ -375,6 +403,7 @@ const transitionReceiptInsertStatement = (
   })
 
   return {
+    mirror: escrowReceiptMirror(input.receiptId),
     params: [
       input.receiptId,
       input.idempotencyKey,
@@ -444,6 +473,7 @@ export const releaseLaborEscrowStatements = (
       workRequestId: escrow.workRequestId,
     }),
     {
+      mirror: escrowMirror(escrow.escrowId),
       params: [
         input.providerActorRef,
         evidenceRef,
@@ -469,6 +499,7 @@ export const releaseLaborEscrowStatements = (
               )`,
     },
     {
+      mirror: balanceMirror(escrow.requesterActorRef),
       params: [
         escrow.amountMsat,
         escrow.amountMsat,
@@ -487,6 +518,7 @@ export const releaseLaborEscrowStatements = (
     },
     ensureBalanceRowStatement(input.providerActorRef, input.nowIso),
     {
+      mirror: balanceMirror(input.providerActorRef),
       params: [
         escrow.amountMsat,
         input.nowIso,
@@ -539,6 +571,7 @@ export const refundLaborEscrowStatements = (
       workRequestId: escrow.workRequestId,
     }),
     {
+      mirror: escrowMirror(escrow.escrowId),
       params: [
         input.refundReceiptRef,
         JSON.stringify(refundProjection),
@@ -560,6 +593,7 @@ export const refundLaborEscrowStatements = (
               )`,
     },
     {
+      mirror: balanceMirror(escrow.requesterActorRef),
       params: [
         escrow.amountMsat,
         input.nowIso,
@@ -626,6 +660,7 @@ export const forfeitLaborEscrowStatements = (
   })
 
   const debitRequesterStatement: LedgerStatement = {
+    mirror: balanceMirror(escrow.requesterActorRef),
     params: [
       escrow.amountMsat,
       escrow.amountMsat,
@@ -649,6 +684,7 @@ export const forfeitLaborEscrowStatements = (
       ? [
           ensureBalanceRowStatement(forfeitDestinationActorRef, input.nowIso),
           {
+            mirror: balanceMirror(forfeitDestinationActorRef),
             params: [
               escrow.amountMsat,
               input.nowIso,
@@ -684,6 +720,7 @@ export const forfeitLaborEscrowStatements = (
       workRequestId: escrow.workRequestId,
     }),
     {
+      mirror: escrowMirror(escrow.escrowId),
       params: [
         input.forfeitReceiptRef,
         input.forfeitDestination,
@@ -802,9 +839,12 @@ export const readLaborEscrowByIdempotencyKey = async (
 }
 
 export const reserveLaborEscrow = async (
-  db: D1Database,
+  database: TreasuryDatabase,
   input: ReserveLaborEscrowInput,
 ): Promise<LaborEscrowResult> => {
+  // KS-8.8 (#8319): D1 authority; escrow/receipt/balance rows mirror
+  // fail-soft via the annotated ledger statements below.
+  const db = treasuryAuthorityDb(database)
   if (!Number.isInteger(input.amountMsat) || input.amountMsat <= 0) {
     return { kind: 'refused', reason: 'invalid_amount' }
   }
@@ -841,7 +881,7 @@ export const reserveLaborEscrow = async (
     }
   }
 
-  await runLedgerStatements(db, reserveLaborEscrowStatements(input))
+  await runLedgerStatements(database, reserveLaborEscrowStatements(input))
   const escrow = await readLaborEscrowById(db, input.escrowId)
   if (escrow === null) {
     return { kind: 'refused', reason: 'escrow_not_found' }
@@ -850,9 +890,12 @@ export const reserveLaborEscrow = async (
 }
 
 export const releaseLaborEscrow = async (
-  db: D1Database,
+  database: TreasuryDatabase,
   input: ReleaseLaborEscrowInput,
 ): Promise<LaborEscrowResult> => {
+  // KS-8.8 (#8319): D1 authority; escrow/receipt/balance rows mirror
+  // fail-soft via the annotated ledger statements below.
+  const db = treasuryAuthorityDb(database)
   if (
     input.authority.kind === 'provider' ||
     input.authority.kind === 'worker'
@@ -887,7 +930,7 @@ export const releaseLaborEscrow = async (
     }
   }
 
-  await runLedgerStatements(db, releaseLaborEscrowStatements(escrow, input))
+  await runLedgerStatements(database, releaseLaborEscrowStatements(escrow, input))
   const released = await readLaborEscrowById(db, input.escrowId)
   if (released === null) {
     return { kind: 'refused', reason: 'escrow_not_found' }
@@ -896,9 +939,12 @@ export const releaseLaborEscrow = async (
 }
 
 export const refundLaborEscrow = async (
-  db: D1Database,
+  database: TreasuryDatabase,
   input: RefundLaborEscrowInput,
 ): Promise<LaborEscrowResult> => {
+  // KS-8.8 (#8319): D1 authority; escrow/receipt/balance rows mirror
+  // fail-soft via the annotated ledger statements below.
+  const db = treasuryAuthorityDb(database)
   const escrow = await readLaborEscrowById(db, input.escrowId)
   if (escrow === null) {
     return { kind: 'refused', reason: 'escrow_not_found' }
@@ -912,7 +958,7 @@ export const refundLaborEscrow = async (
     }
   }
 
-  await runLedgerStatements(db, refundLaborEscrowStatements(escrow, input))
+  await runLedgerStatements(database, refundLaborEscrowStatements(escrow, input))
   const refunded = await readLaborEscrowById(db, input.escrowId)
   if (refunded === null) {
     return { kind: 'refused', reason: 'escrow_not_found' }
@@ -921,9 +967,12 @@ export const refundLaborEscrow = async (
 }
 
 export const forfeitLaborEscrow = async (
-  db: D1Database,
+  database: TreasuryDatabase,
   input: ForfeitLaborEscrowInput,
 ): Promise<LaborEscrowResult> => {
+  // KS-8.8 (#8319): D1 authority; escrow/receipt/balance rows mirror
+  // fail-soft via the annotated ledger statements below.
+  const db = treasuryAuthorityDb(database)
   if (input.authority.kind !== 'validator_non_acceptance') {
     return { kind: 'refused', reason: 'forfeit_authority_forbidden' }
   }
@@ -956,7 +1005,7 @@ export const forfeitLaborEscrow = async (
     }
   }
 
-  await runLedgerStatements(db, forfeitLaborEscrowStatements(escrow, input))
+  await runLedgerStatements(database, forfeitLaborEscrowStatements(escrow, input))
   const forfeited = await readLaborEscrowById(db, input.escrowId)
   if (forfeited === null) {
     return { kind: 'refused', reason: 'escrow_not_found' }

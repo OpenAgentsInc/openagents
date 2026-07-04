@@ -70,6 +70,7 @@ import {
   PartnerPayoutRole,
 } from './partner-payout-ledger'
 import { openAgentsDatabase } from './runtime'
+import { makeTreasuryDatabaseForEnv } from './treasury-domain-store'
 
 type HttpResponse = globalThis.Response
 
@@ -207,7 +208,7 @@ const createRoute = <Bindings extends PartnerAgreementEnv>(
                 operation: 'partnerAgreement.createRoute',
               }),
         try: () =>
-          recordPartnerAgreement(openAgentsDatabase(env), {
+          recordPartnerAgreement(makeTreasuryDatabaseForEnv(env), {
             agreementRef: parsed.agreementRef,
             customerUserId: parsed.customerUserId,
             effectiveFromIso: parsed.effectiveFromIso,

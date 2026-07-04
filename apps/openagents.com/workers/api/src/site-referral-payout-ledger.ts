@@ -3,6 +3,11 @@ import { Schema as S } from 'effect'
 
 import { parseJsonStringArray } from './json-boundary'
 import { compactRandomId } from './runtime-primitives'
+import {
+  mirrorTreasuryRows,
+  treasuryAuthorityDb,
+  type TreasuryDatabase,
+} from './treasury-domain-store'
 
 export const SITE_REFERRAL_PAYOUT_POLICY_REF =
   'policy.site_referral_payout.v1'
@@ -311,10 +316,11 @@ const readReferrerPeriodTotals = async (
 }
 
 const insertEntry = async (
-  db: D1Database,
+  database: TreasuryDatabase,
   entry: SiteReferralPayoutLedgerEntry,
 ): Promise<SiteReferralPayoutLedgerEntry> =>
   storage('siteReferralPayoutLedger.entry.insert', async () => {
+    const db = treasuryAuthorityDb(database)
     await db
       .prepare(
         `INSERT INTO site_referral_payout_ledger_entries (
@@ -352,13 +358,22 @@ const insertEntry = async (
       )
       .run()
 
+    // KS-8.8 (#8319): fail-soft Postgres mirror of the appended entry.
+    await mirrorTreasuryRows(
+      database,
+      'site_referral_payout_ledger_entries',
+      'id',
+      [entry.id],
+    )
+
     return (await readByIdempotencyKey(db, entry.idempotencyKey)) ?? entry
   })
 
 export const createReferralPayoutEligibility = async (
-  db: D1Database,
+  database: TreasuryDatabase,
   input: CreateReferralPayoutEligibilityInput,
 ): Promise<SiteReferralPayoutLedgerEntry> => {
+  const db = treasuryAuthorityDb(database)
   assertSafeRef('idempotencyKey', input.idempotencyKey)
   assertSafeRef('payoutRef', input.payoutRef)
   assertSafeRef('qualifyingEventRef', input.qualifyingEventRef)
@@ -404,7 +419,7 @@ export const createReferralPayoutEligibility = async (
         ? 'reason.public.site_referral_payout.no_qualifying_paid_amount'
         : null
 
-  return insertEntry(db, {
+  return insertEntry(database, {
     amountSats: state === 'eligible' ? calculatedAmount : 0,
     archivedAt: null,
     caveatRefs: requiredCaveatRefs,
@@ -447,9 +462,10 @@ const transitionForAction: Record<
 }
 
 export const transitionReferralPayout = async (
-  db: D1Database,
+  database: TreasuryDatabase,
   input: TransitionReferralPayoutInput,
 ): Promise<SiteReferralPayoutLedgerEntry> => {
+  const db = treasuryAuthorityDb(database)
   assertSafeRef('idempotencyKey', input.idempotencyKey)
   assertSafeRef('payoutRef', input.payoutRef)
   assertSafeRef('stateReasonRef', input.stateReasonRef)
@@ -492,7 +508,7 @@ export const transitionReferralPayout = async (
     ? -Math.abs(current.amountSats)
     : current.amountSats
 
-  return insertEntry(db, {
+  return insertEntry(database, {
     ...current,
     amountSats,
     createdAt: input.nowIso,

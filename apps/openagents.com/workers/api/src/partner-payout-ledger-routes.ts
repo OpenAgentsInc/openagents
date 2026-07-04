@@ -29,6 +29,7 @@
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { makeTreasuryDatabaseForEnv } from './treasury-domain-store'
 import { decodeUnknownWithSchema } from './json-boundary'
 import {
   type PartnerPayoutDispatchDependencies,
@@ -181,7 +182,7 @@ const transitionRoute = <Bindings extends PartnerPayoutLedgerEnv>(
                 operation: 'partnerPayoutLedger.transitionRoute',
               }),
         try: () =>
-          transitionPartnerPayout(openAgentsDatabase(env), {
+          transitionPartnerPayout(makeTreasuryDatabaseForEnv(env), {
             action: parsed.action,
             idempotencyKey: parsed.idempotencyKey,
             nowIso: dependencies.nowIso(),
@@ -229,7 +230,7 @@ const dispatchRoute = <Bindings extends PartnerPayoutLedgerEnv>(
                 }),
         try: () =>
           dispatchPartnerPayoutSettlement(
-            openAgentsDatabase(env),
+            makeTreasuryDatabaseForEnv(env),
             dependencies.dispatchDependencies,
             { payoutRef },
           ),

@@ -1,6 +1,13 @@
 import { Schema as S } from 'effect'
 import type { BillingDomainMirror } from './billing'
 
+import {
+  mirrorTreasuryRows,
+  treasuryAuthorityDb,
+  type TreasuryDatabase,
+  type TreasuryDomainTable,
+} from './treasury-domain-store'
+
 // Agent credit ledger (issue #4705).
 // Design contract: docs/payments/reliable-tips.md. Every paid attempt is
 // one pay_ins row created atomically (one D1 batch = one transaction)
@@ -65,10 +72,22 @@ export type LedgerStatement = Readonly<{
    * KS-8.7 (#8318): the pay-in this statement touches, when it touches one.
    * `runLedgerStatements` uses these annotations to drive the fail-soft
    * Postgres mirror (pay_ins row + its legs, read back from D1 after the
-   * batch). Statements on non-migrating tables (agent_balances) leave it
-   * unset.
+   * batch).
    */
   payInId?: string | undefined
+  /**
+   * KS-8.8 (#8319): rows this statement touches in a treasury-domain
+   * table, for the fail-soft Postgres dual-write mirror. Populated by the
+   * statement BUILDERS (which know the row keys); consumed by
+   * `runLedgerStatements` AFTER the authoritative D1 batch commits. Keys
+   * only — the mirror reads the resolved rows back from D1, so it can
+   * never invent an amount or a state.
+   */
+  mirror?: Readonly<{
+    table: TreasuryDomainTable
+    keyColumn: string
+    keys: ReadonlyArray<string>
+  }>
 }>
 
 export type PayInLegPlan = Readonly<{
@@ -125,10 +144,18 @@ const assertPlanInvariants = (plan: PayInPlan): void => {
   }
 }
 
+const balanceMirror = (partyRef: string) =>
+  ({
+    keyColumn: 'actor_ref',
+    keys: [partyRef],
+    table: 'agent_balances',
+  }) as const
+
 const ensureBalanceRowStatement = (
   partyRef: string,
   nowIso: string,
 ): LedgerStatement => ({
+  mirror: balanceMirror(partyRef),
   params: [partyRef, nowIso, nowIso],
   sql: `INSERT INTO agent_balances (actor_ref, balance_msat, created_at, updated_at)
         VALUES (?, 0, ?, ?)
@@ -142,6 +169,7 @@ const balanceDebitStatement = (
 ): LedgerStatement => ({
   // The CHECK (balance_msat >= 0) constraint aborts the whole batch on
   // insufficient funds - atomic insufficient-balance failure by design.
+  mirror: balanceMirror(partyRef),
   params: [amountMsat, nowIso, partyRef],
   sql: `UPDATE agent_balances
         SET balance_msat = balance_msat - ?, updated_at = ?
@@ -153,6 +181,7 @@ const balanceCreditStatement = (
   amountMsat: number,
   nowIso: string,
 ): LedgerStatement => ({
+  mirror: balanceMirror(partyRef),
   params: [amountMsat, nowIso, partyRef],
   sql: `UPDATE agent_balances
         SET balance_msat = balance_msat + ?, updated_at = ?
@@ -439,6 +468,7 @@ export const retryPayInStatements = (
     if (leg.kind === 'balance' && leg.direction === 'in') {
       statements.push(ensureBalanceRowStatement(leg.partyRef, nowIso))
       statements.push({
+        mirror: balanceMirror(leg.partyRef),
         params: [leg.amountMsat, nowIso, leg.partyRef, input.newPlan.payInId],
         sql: `UPDATE agent_balances
               SET balance_msat = balance_msat - ?, updated_at = ?
@@ -559,8 +589,16 @@ export const readAgentBalance = async (
   return row === null ? null : decodeAgentBalanceRow(row as never)
 }
 
+/**
+ * Execute ledger statements as ONE atomic D1 batch (the authority), then
+ * mirror every builder-annotated treasury-domain row to Postgres
+ * fail-soft (KS-8.8 #8319). The mirror runs only AFTER the batch commits
+ * and reads the resolved rows back from D1 — a Postgres outage never
+ * fails the ledger write, and the mirror can never invent an amount.
+ * Call sites passing a bare D1Database behave exactly as before.
+ */
 export const runLedgerStatements = async (
-  db: D1Database,
+  db: TreasuryDatabase,
   statements: ReadonlyArray<LedgerStatement>,
   /**
    * KS-8.7 (#8318): optional fail-soft Postgres mirror
@@ -572,9 +610,10 @@ export const runLedgerStatements = async (
    */
   mirror?: BillingDomainMirror | undefined,
 ): Promise<void> => {
-  await db.batch(
+  const authority = treasuryAuthorityDb(db)
+  await authority.batch(
     statements.map(statement =>
-      db.prepare(statement.sql).bind(...statement.params),
+      authority.prepare(statement.sql).bind(...statement.params),
     ),
   )
 
@@ -588,13 +627,38 @@ export const runLedgerStatements = async (
     ]
     if (payInIds.length > 0) {
       await mirror(
-        db,
+        authority,
         payInIds.flatMap(payInId => [
           { key: { id: payInId }, table: 'pay_ins' as const },
           { key: { pay_in_id: payInId }, table: 'pay_in_legs' as const },
         ]),
       )
     }
+  }
+
+  // Group annotated mirrors by (table, keyColumn); dedupe keys so one
+  // batch touching the same balance row many times mirrors it once.
+  const groups = new Map<
+    string,
+    {
+      table: TreasuryDomainTable
+      keyColumn: string
+      keys: Set<string>
+    }
+  >()
+  for (const statement of statements) {
+    if (statement.mirror === undefined) continue
+    const groupKey = `${statement.mirror.table}:${statement.mirror.keyColumn}`
+    const group = groups.get(groupKey) ?? {
+      keyColumn: statement.mirror.keyColumn,
+      keys: new Set<string>(),
+      table: statement.mirror.table,
+    }
+    for (const key of statement.mirror.keys) group.keys.add(key)
+    groups.set(groupKey, group)
+  }
+  for (const group of groups.values()) {
+    await mirrorTreasuryRows(db, group.table, group.keyColumn, [...group.keys])
   }
 }
 

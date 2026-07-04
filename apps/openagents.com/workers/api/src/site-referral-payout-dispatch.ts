@@ -6,6 +6,10 @@ import {
   transitionReferralPayout,
 } from './site-referral-payout-ledger'
 import type { SiteReferralRevenueAsset } from './site-referral-payout-feed'
+import {
+  treasuryAuthorityDb,
+  type TreasuryDatabase,
+} from './treasury-domain-store'
 import { referralRevenueAssetToBoundaryAsset } from './site-referral-payout-feed'
 import { validateAssetBoundary } from './asset-bitcoin-boundary'
 import type { MdkPayoutModeGateProjection } from './mdk-payout-mode-gate'
@@ -131,11 +135,11 @@ const adapterIdempotencyKey = (payoutRef: string): string =>
  *   `settled` state with the adapter's receipt ref as evidence.
  */
 export const dispatchReferralPayoutSettlement = async (
-  db: D1Database,
+  db: TreasuryDatabase,
   dependencies: SiteReferralPayoutDispatchDependencies,
   input: SiteReferralPayoutDispatchInput,
 ): Promise<SiteReferralPayoutDispatchOutcome> => {
-  const current = await readCurrentReferralPayout(db, input.payoutRef)
+  const current = await readCurrentReferralPayout(treasuryAuthorityDb(db), input.payoutRef)
 
   if (current === null) {
     return {

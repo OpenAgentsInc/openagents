@@ -123,6 +123,11 @@ export const usdCreditGrantStatements = (
             VALUES (?, 'usd_credit_grant', ?, ?, 'paid', NULL, ?, ?, ?, NULL, ?, ?)`,
     },
     {
+      mirror: {
+        keyColumn: 'actor_ref',
+        keys: [input.accountRef],
+        table: 'agent_balances',
+      },
       params: [input.accountRef, nowIso, nowIso],
       sql: `INSERT INTO agent_balances (actor_ref, balance_msat, created_at, updated_at)
             VALUES (?, 0, ?, ?)
@@ -134,6 +139,11 @@ export const usdCreditGrantStatements = (
       // GUARDED on the leg not already existing: on an idempotent replay the
       // pay_in INSERT OR IGNOREd, so the leg row already exists and this credit
       // is a no-op — never double-credits.
+      mirror: {
+        keyColumn: 'actor_ref',
+        keys: [input.accountRef],
+        table: 'agent_balances',
+      },
       params: [grantMsat, grantMsat, nowIso, input.accountRef, legId],
       sql: `UPDATE agent_balances
             SET balance_msat = balance_msat + ?,

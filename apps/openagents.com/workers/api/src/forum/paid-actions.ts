@@ -27,6 +27,11 @@ import {
 } from '../runtime-primitives'
 import { isTipLadderReceiptRef } from '../tip-ladder'
 import {
+  mirrorTreasuryRows,
+  treasuryAuthorityDb,
+  type TreasuryDatabase,
+} from '../treasury-domain-store'
+import {
   type ForumDirectTipAttemptStatus,
   type ForumDirectTipPaymentEvidence,
   type ForumDirectTipResponse,
@@ -2388,7 +2393,7 @@ const redemptionStatement = (
     )
 
 export const previewForumPaidAction = (
-  db: D1Database,
+  database: TreasuryDatabase,
   input: ForumPaidActionPreviewInput,
   runtime: ForumPaidActionRuntime = systemForumPaidActionRuntime,
 ): Effect.Effect<
@@ -2396,6 +2401,8 @@ export const previewForumPaidAction = (
   ForumPaidActionError | ForumPublicProjectionUnsafe
 > =>
   Effect.gen(function* () {
+    // KS-8.8 (#8319): D1 authority; challenge writes mirror fail-soft below.
+    const db = treasuryAuthorityDb(database)
     const publicProjection = yield* validateProjection(input.publicProjection)
 
     if (input.nonPayableDenial !== null) {
@@ -2459,6 +2466,11 @@ export const previewForumPaidAction = (
         challengeExpiresAt,
         runtime,
       )
+      yield* Effect.promise(() =>
+        mirrorTreasuryRows(database, 'forum_l402_challenges', 'id', [
+          challengeId,
+        ]),
+      )
     }
 
     const storedChallenge = yield* readChallengeById(db, challengeId)
@@ -2496,11 +2508,12 @@ const privatePaymentBindingMatches = (
   challenge.spend_cap_value === input.spendCap.amount
 
 export const readForumPaidActionPrivatePayment = (
-  db: D1Database,
+  database: TreasuryDatabase,
   input: ForumPaidActionPrivatePaymentInput,
   runtime: ForumPaidActionRuntime = systemForumPaidActionRuntime,
 ): Effect.Effect<ForumPaidActionPrivatePaymentResponse, ForumPaidActionError> =>
   Effect.gen(function* () {
+    const db = treasuryAuthorityDb(database)
     if (input.hostedMdkClient === undefined) {
       return yield* new ForumPaidActionError({
         kind: 'payment_provider_unconfigured',
@@ -2615,11 +2628,13 @@ export const readForumPaidActionPrivatePayment = (
   })
 
 export const redeemForumPaidAction = (
-  db: D1Database,
+  database: TreasuryDatabase,
   input: ForumPaidActionRedeemInput,
   runtime: ForumPaidActionRuntime = systemForumPaidActionRuntime,
 ): Effect.Effect<ForumPaidActionRedeemResponse, ForumPaidActionError> =>
   Effect.gen(function* () {
+    // KS-8.8 (#8319): D1 authority; the redeem batch mirrors fail-soft below.
+    const db = treasuryAuthorityDb(database)
     yield* validatePaymentProofRef(input.l402ProofRef)
     yield* validateVerifiedPaymentEvent(input.paymentEvent)
 
@@ -2750,6 +2765,26 @@ export const redeemForumPaidAction = (
       ]),
     )
 
+    // KS-8.8 (#8319): mirror the money rows the batch committed —
+    // read-back copies of D1, so amounts/receipt semantics port exactly.
+    yield* Effect.promise(async () => {
+      await mirrorTreasuryRows(database, 'forum_receipts', 'id', [receiptId])
+      await mirrorTreasuryRows(database, 'forum_money_actions', 'id', [
+        moneyActionId,
+      ])
+      if (paymentEventId !== null) {
+        await mirrorTreasuryRows(database, 'forum_payment_events', 'id', [
+          paymentEventId,
+        ])
+      }
+      await mirrorTreasuryRows(
+        database,
+        'forum_l402_redemptions',
+        'challenge_id',
+        [challenge.id],
+      )
+    })
+
     return decodeRedeemResponse({
       entitlementRef,
       originalReceiptRef: null,
@@ -2803,12 +2838,31 @@ const directTipAttemptMatchesInput = (
 export const DIRECT_TIP_RECOVERY_WINDOW_HOURS = 24
 
 export const archiveStaleDirectTipRecoveries = async (
-  db: D1Database,
+  database: TreasuryDatabase,
   nowIso: string,
 ): Promise<number> => {
+  const db = treasuryAuthorityDb(database)
   const cutoffIso = epochMillisToIsoTimestamp(
     Date.parse(nowIso) - DIRECT_TIP_RECOVERY_WINDOW_HOURS * 3_600_000,
   )
+
+  // KS-8.8 (#8319): capture the affected attempt ids BEFORE the archive
+  // update so the fail-soft Postgres mirror can read back exactly the rows
+  // this cron touched (bounded page; the stale set is small by design).
+  const staleIds = (
+    (
+      await db
+        .prepare(
+          `SELECT id FROM forum_direct_tip_attempts
+           WHERE status = 'recovery_pending'
+             AND archived_at IS NULL
+             AND updated_at < ?
+           LIMIT 200`,
+        )
+        .bind(cutoffIso)
+        .all<{ id: string }>()
+    ).results ?? []
+  ).map(row => row.id)
 
   const result = await db
     .prepare(
@@ -2821,11 +2875,18 @@ export const archiveStaleDirectTipRecoveries = async (
     .bind(nowIso, nowIso, cutoffIso)
     .run()
 
+  await mirrorTreasuryRows(
+    database,
+    'forum_direct_tip_attempts',
+    'id',
+    staleIds,
+  )
+
   return result.meta?.changes ?? 0
 }
 
 export const submitForumDirectTip = (
-  db: D1Database,
+  database: TreasuryDatabase,
   input: ForumDirectTipSubmitInput,
   runtime: ForumPaidActionRuntime = systemForumPaidActionRuntime,
 ): Effect.Effect<
@@ -2833,6 +2894,8 @@ export const submitForumDirectTip = (
   ForumPaidActionError | ForumPublicProjectionUnsafe
 > =>
   Effect.gen(function* () {
+    // KS-8.8 (#8319): D1 authority; settled tip rows mirror fail-soft below.
+    const db = treasuryAuthorityDb(database)
     yield* validateDirectTipSubmitInput(input)
 
     const existingByIdempotency = yield* readDirectTipAttemptByIdempotencyKey(
@@ -2938,16 +3001,33 @@ export const submitForumDirectTip = (
       })
     }
 
+    // KS-8.8 (#8319): mirror the tip rows just written (read-back copies).
+    yield* Effect.promise(async () => {
+      if (receiptId !== null) {
+        await mirrorTreasuryRows(database, 'forum_receipts', 'id', [receiptId])
+      }
+      await mirrorTreasuryRows(database, 'forum_money_actions', 'id', [
+        moneyActionId,
+      ])
+      await mirrorTreasuryRows(database, 'forum_payment_events', 'id', [
+        paymentEventId,
+      ])
+      await mirrorTreasuryRows(database, 'forum_direct_tip_attempts', 'id', [
+        attemptId,
+      ])
+    })
+
     const receipt = yield* directTipReceiptForAttempt(db, storedAttempt)
 
     return directTipResponse(storedAttempt, receipt, false)
   })
 
 export const lookupForumDirectTip = (
-  db: D1Database,
+  database: TreasuryDatabase,
   attemptId: string,
 ): Effect.Effect<ForumDirectTipResponse | null, ForumPaidActionError> =>
   Effect.gen(function* () {
+    const db = treasuryAuthorityDb(database)
     const attempt = yield* readDirectTipAttemptById(db, attemptId)
 
     if (attempt === null) {
@@ -2960,11 +3040,13 @@ export const lookupForumDirectTip = (
   })
 
 export const reconcileForumDirectTipWebhook = (
-  db: D1Database,
+  database: TreasuryDatabase,
   input: ForumDirectTipWebhookReconciliationInput,
   runtime: ForumPaidActionRuntime = systemForumPaidActionRuntime,
 ): Effect.Effect<ForumDirectTipWebhookReconciliation, ForumPaidActionError> =>
   Effect.gen(function* () {
+    // KS-8.8 (#8319): D1 authority; reconciled rows mirror fail-soft below.
+    const db = treasuryAuthorityDb(database)
     yield* validatePaymentEventRefs(input.paymentEvidence)
     yield* validatePaymentEventRef('providerEventRef', input.providerEventRef)
     yield* validatePaymentEventRef(
@@ -3023,6 +3105,14 @@ export const reconcileForumDirectTipWebhook = (
         db,
         input.providerEventRef,
         runtime,
+      )
+      yield* Effect.promise(() =>
+        mirrorTreasuryRows(
+          database,
+          'forum_direct_tip_webhook_events',
+          'provider_event_ref',
+          [input.providerEventRef],
+        ),
       )
 
       const refreshedAttempt =
@@ -3127,6 +3217,35 @@ export const reconcileForumDirectTipWebhook = (
       runtime,
     )
 
+    // KS-8.8 (#8319): mirror every row this reconciliation touched.
+    yield* Effect.promise(async () => {
+      if (receiptRef !== null) {
+        await mirrorTreasuryRows(database, 'forum_receipts', 'receipt_ref', [
+          receiptRef,
+        ])
+      }
+      if (attempt.payment_event_id !== null) {
+        await mirrorTreasuryRows(database, 'forum_payment_events', 'id', [
+          attempt.payment_event_id,
+        ])
+        await mirrorTreasuryRows(
+          database,
+          'forum_money_actions',
+          'payment_event_id',
+          [attempt.payment_event_id],
+        )
+      }
+      await mirrorTreasuryRows(database, 'forum_direct_tip_attempts', 'id', [
+        attempt.id,
+      ])
+      await mirrorTreasuryRows(
+        database,
+        'forum_direct_tip_webhook_events',
+        'provider_event_ref',
+        [input.providerEventRef],
+      )
+    })
+
     const storedAttempt =
       (yield* readDirectTipAttemptById(db, attempt.id)) ?? attempt
     const receipt = yield* directTipReceiptForAttempt(db, storedAttempt)
@@ -3168,11 +3287,13 @@ const settlementClaimResponse = (
   })
 
 export const claimForumTipSettlement = (
-  db: D1Database,
+  database: TreasuryDatabase,
   input: ForumTipSettlementClaimInput,
   runtime: ForumPaidActionRuntime = systemForumPaidActionRuntime,
 ): Effect.Effect<ForumTipSettlementClaimResponse, ForumPaidActionError> =>
   Effect.gen(function* () {
+    // KS-8.8 (#8319): D1 authority; the claim row mirrors fail-soft below.
+    const db = treasuryAuthorityDb(database)
     yield* validateSettlementRefs(input)
 
     const existingByIdempotency = yield* readSettlementClaimByIdempotencyKey(
@@ -3247,6 +3368,14 @@ export const claimForumTipSettlement = (
     })
 
     yield* insertSettlementClaim(db, input, receiptRow, projection)
+    yield* Effect.promise(() =>
+      mirrorTreasuryRows(
+        database,
+        'forum_tip_settlement_claims',
+        'idempotency_key',
+        [input.idempotencyKey],
+      ),
+    )
 
     const updatedReceipt = yield* lookupForumPaidActionReceipt(
       db,
@@ -3268,18 +3397,19 @@ export const claimForumTipSettlement = (
   })
 
 export const lookupForumPaidActionChallenge = (
-  db: D1Database,
+  database: TreasuryDatabase,
   challengeId: string,
 ): Effect.Effect<ForumL402Challenge | null, ForumPaidActionError> =>
-  readChallengeById(db, challengeId).pipe(
+  readChallengeById(treasuryAuthorityDb(database), challengeId).pipe(
     Effect.map(row => (row === null ? null : challengeFromRow(row))),
   )
 
 export const lookupForumPaidActionReceipt = (
-  db: D1Database,
+  database: TreasuryDatabase,
   receiptRef: string,
 ): Effect.Effect<ForumReceiptLookupResponse | null, ForumPaidActionError> =>
   Effect.gen(function* () {
+    const db = treasuryAuthorityDb(database)
     const receiptRow = yield* readReceiptLookupRowByRef(db, receiptRef)
 
     if (receiptRow !== null) {

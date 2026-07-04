@@ -7,6 +7,11 @@ import {
 } from '../public-projection-staleness'
 import { currentIsoTimestamp, randomUuid } from '../runtime-primitives'
 import {
+  mirrorTreasuryRows,
+  treasuryAuthorityDb,
+  type TreasuryDatabase,
+} from '../treasury-domain-store'
+import {
   type ForumTipRecipientWalletRecord,
   type ForumTipRecipientWalletState,
   ForumTipRecipientWalletUnsafe,
@@ -2220,7 +2225,7 @@ export const readForumTipRecipientReadinessForActor = (
   })
 
 export const upsertForumTipRecipientWallet = (
-  db: D1Database,
+  database: TreasuryDatabase,
   input: ForumTipRecipientWalletInput,
   runtime: ForumRepositoryRuntime = systemForumRepositoryRuntime,
 ): Effect.Effect<
@@ -2228,6 +2233,10 @@ export const upsertForumTipRecipientWallet = (
   ForumStorageError | ForumValidationError
 > =>
   Effect.gen(function* () {
+    // KS-8.8 (#8319): D1 authority; the wallet row mirrors fail-soft below
+    // (column-for-column read-back — no new wallet material reaches Postgres
+    // beyond what D1 already stores).
+    const db = treasuryAuthorityDb(database)
     const record = yield* validateTipRecipientWalletRecord(
       tipRecipientWalletInputToRecord(input),
     )
@@ -2300,6 +2309,12 @@ export const upsertForumTipRecipientWallet = (
           record.disabledAt,
         )
         .run(),
+    )
+
+    yield* Effect.promise(() =>
+      mirrorTreasuryRows(database, 'forum_tip_recipient_wallets', 'actor_ref', [
+        record.actorRef,
+      ]),
     )
 
     return yield* readForumTipRecipientReadinessForActor(db, record.actorRef)
@@ -4622,11 +4637,13 @@ export const listForumPrivateMessagesForActor = (
   ).pipe(Effect.map(result => result.results ?? []))
 
 export const recordForumReceipt = (
-  db: D1Database,
+  database: TreasuryDatabase,
   input: ForumReceiptRecordInput,
   runtime: ForumRepositoryRuntime = systemForumRepositoryRuntime,
 ): Effect.Effect<string, ForumRepositoryError | ForumPublicProjectionUnsafe> =>
   Effect.gen(function* () {
+    // KS-8.8 (#8319): D1 authority; the receipt mirrors fail-soft below.
+    const db = treasuryAuthorityDb(database)
     yield* validateProjection(input.publicProjection)
     yield* validateSafePaymentRef(input.redactedPaymentRef)
 
@@ -4664,6 +4681,10 @@ export const recordForumReceipt = (
           runtime.nowIso(),
         )
         .run(),
+    )
+
+    yield* Effect.promise(() =>
+      mirrorTreasuryRows(database, 'forum_receipts', 'id', [input.id]),
     )
 
     return input.receiptRef

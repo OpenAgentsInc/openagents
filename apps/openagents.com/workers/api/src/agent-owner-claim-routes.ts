@@ -35,6 +35,11 @@ import {
 } from './runtime-primitives'
 import { openAgentsDatabase } from './runtime'
 import {
+  mirrorTreasuryRows,
+  treasuryAuthorityDb,
+  type TreasuryDatabase,
+} from './treasury-domain-store'
+import {
   xClaimRewardEligibilityListResponse,
   xClaimRewardEligibilityStatusResponse,
 } from './x-claim-reward-eligibility-routes'
@@ -635,9 +640,14 @@ const decodeRegistrationBody = async (
   }
 }
 
+// KS-8.8 (#8319): D1 stays authority; on a TreasuryDatabase seam handle the
+// x_claim_reward_ledger writes below read-back-mirror fail-soft to Postgres.
 export const makeD1AgentOwnerClaimStore = (
-  db: D1Database,
+  database: TreasuryDatabase,
 ): AgentOwnerClaimStore => {
+  const db = treasuryAuthorityDb(database)
+  const mirrorReward = (rewardId: string) =>
+    mirrorTreasuryRows(database, 'x_claim_reward_ledger', 'id', [rewardId])
   const readClaimById = async (
     claimId: string,
   ): Promise<AgentOwnerClaimRecord | undefined> => {
@@ -737,7 +747,9 @@ export const makeD1AgentOwnerClaimStore = (
         )
         .run()
 
-      return (await readRewardByChallengeId(record.challengeId)) ?? record
+      const persisted = await readRewardByChallengeId(record.challengeId)
+      await mirrorReward(persisted?.id ?? record.id)
+      return persisted ?? record
     },
     listXClaimRewards: async limit => {
       const result = await db
@@ -788,6 +800,8 @@ export const makeD1AgentOwnerClaimStore = (
           input.rewardId,
         )
         .run()
+
+      await mirrorReward(input.rewardId)
 
       const row = await db
         .prepare(`SELECT * FROM x_claim_reward_ledger WHERE id = ? LIMIT 1`)

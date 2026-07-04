@@ -19,6 +19,11 @@
 import { Effect } from 'effect'
 
 import { currentIsoTimestamp } from '../../runtime-primitives'
+import {
+  mirrorTreasuryRows,
+  treasuryAuthorityDb,
+  type TreasuryDatabase,
+} from '../../treasury-domain-store'
 
 export class MppLightningReplayError extends Error {
   override readonly name = 'MppLightningReplayError'
@@ -34,14 +39,14 @@ export class MppLightningReplayError extends Error {
 // already consumed (replay rejected). `INSERT ... ON CONFLICT DO NOTHING` + a
 // changes check makes the claim a single atomic D1 statement.
 export const claimLightningPaymentHash = (
-  db: D1Database,
+  database: TreasuryDatabase,
   input: Readonly<{ paymentHash: string; challengeId: string }>,
   nowIso: () => string = currentIsoTimestamp,
 ): Effect.Effect<boolean, MppLightningReplayError> =>
   Effect.tryPromise({
     catch: (cause: unknown) => new MppLightningReplayError(cause),
     try: async () => {
-      const result = await db
+      const result = await treasuryAuthorityDb(database)
         .prepare(
           `INSERT INTO mpp_lightning_replay (payment_hash, challenge_id, consumed_at)
            VALUES (?, ?, ?)
@@ -53,6 +58,17 @@ export const claimLightningPaymentHash = (
       // was already present (replay).
       const changes =
         (result as unknown as { meta?: { changes?: number } }).meta?.changes
-      return changes === undefined ? true : changes > 0
+      const claimed = changes === undefined ? true : changes > 0
+      if (claimed) {
+        // KS-8.8 (#8319): replay guards port KEY-EXACTLY — mirror the claim
+        // fail-soft (D1 stays the enforcing store; diagnostics are redacted).
+        await mirrorTreasuryRows(
+          database,
+          'mpp_lightning_replay',
+          'payment_hash',
+          [input.paymentHash],
+        )
+      }
+      return claimed
     },
   })

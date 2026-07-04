@@ -10,6 +10,11 @@ import {
 } from './payments-ledger'
 import type { BillingDomainMirror } from './billing'
 import { epochMillisToIsoTimestamp } from './runtime-primitives'
+import {
+  treasuryAuthorityDb,
+  treasuryRead,
+  type TreasuryDatabase,
+} from './treasury-domain-store'
 
 // The automated sweep worker (issue #4707; design:
 // docs/payments/reliable-tips.md §3). On the worker cron: for each
@@ -113,10 +118,15 @@ export type SweepTickOutcome = Readonly<{
 }>
 
 export const selectSweepCandidates = async (
-  db: D1Database,
+  database: TreasuryDatabase,
   nowIso: string,
   limit: number = TIPS_SWEEP_MAX_PER_TICK,
 ): Promise<ReadonlyArray<SweepCandidate>> => {
+  // KS-8.8 (#8319): this scan DRIVES live Bitcoin payouts, so it reads
+  // exactly ONE store — the D1 authority — regardless of any read flag
+  // (MIGRATION_PLAN §3.5: the dispatcher reads exactly one store during
+  // dual-write). It carries no Postgres twin in this lane on purpose.
+  const db = treasuryAuthorityDb(database)
   const backoffCutoff = epochMillisToIsoTimestamp(
     Date.parse(nowIso) - TIPS_SWEEP_FAILURE_BACKOFF_MINUTES * 60_000,
   )
@@ -176,7 +186,7 @@ export const selectSweepCandidates = async (
 }
 
 export const runTipsSweepTick = async (
-  db: D1Database,
+  db: TreasuryDatabase,
   deps: Readonly<{
     /** KS-8.7 (#8318) fail-soft Postgres mirror (billing-store.ts). */
     mirror?: BillingDomainMirror | undefined
@@ -310,7 +320,7 @@ export const runTipsSweepTick = async (
 // raises (captured by the scheduled observer) instead of passing
 // silently.
 export const checkTipsBufferBackingInvariant = async (
-  db: D1Database,
+  db: TreasuryDatabase,
   fetchBufferBalance: () => Promise<number | null>,
 ): Promise<
   Readonly<{
@@ -319,14 +329,25 @@ export const checkTipsBufferBackingInvariant = async (
     bufferBalanceSat: number | null
   }>
 > => {
-  const row = await db
-    .prepare(
-      'SELECT COALESCE(SUM(balance_msat), 0) AS total FROM agent_balances',
-    )
-    .first()
-  const agentBalancesSat = Math.ceil(
-    Number((row as { total?: unknown } | null)?.total ?? 0) / 1000,
+  // KS-8.8 (#8319): flag-routed read. Default d1; compare mode turns this
+  // every-tick SUM into a continuously-running msat reconciliation probe
+  // (serving D1, logging any drift); postgres mode is the epic-gated
+  // cutover with bounded retry + D1 fallback.
+  const totalMsat = await treasuryRead(
+    db,
+    'agent_balances:sum_msat',
+    [],
+    async () => {
+      const row = await treasuryAuthorityDb(db)
+        .prepare(
+          'SELECT COALESCE(SUM(balance_msat), 0) AS total FROM agent_balances',
+        )
+        .first()
+      return Number((row as { total?: unknown } | null)?.total ?? 0)
+    },
+    postgres => postgres.sumAgentBalancesMsat().then(Number),
   )
+  const agentBalancesSat = Math.ceil(totalMsat / 1000)
   const bufferBalanceSat = await fetchBufferBalance()
 
   const ok =
@@ -348,7 +369,7 @@ export const checkTipsBufferBackingInvariant = async (
 // refund, and for ladder tips also pay the credited fallback so the tip
 // still never fails; still-pending -> wait for the next tick.
 export const reconcileForwardingBufferPayments = async (
-  db: D1Database,
+  db: TreasuryDatabase,
   deps: Readonly<{
     /** KS-8.7 (#8318) fail-soft Postgres mirror (billing-store.ts). */
     mirror?: BillingDomainMirror | undefined
@@ -361,8 +382,9 @@ export const reconcileForwardingBufferPayments = async (
 ): Promise<
   Readonly<{ settled: number; refunded: number; waiting: number }>
 > => {
+  const authority = treasuryAuthorityDb(db)
   const rows = ((
-    await db
+    await authority
       .prepare(
         `SELECT p.id AS pay_in_id, p.pay_in_type, p.payer_ref, p.cost_msat,
                   p.context_ref, p.idempotency_key, p.public_receipt_ref,
@@ -454,7 +476,7 @@ export const reconcileForwardingBufferPayments = async (
         String(row.pay_in_type) === 'tip' &&
         String(row.context_ref ?? '').startsWith('forum.post.')
       ) {
-        const recipientRow = (await db
+        const recipientRow = (await authority
           .prepare(
             `SELECT party_ref FROM pay_in_legs
               WHERE pay_in_id = ? AND kind = 'lightning' AND direction = 'out'`,
@@ -499,7 +521,7 @@ export const reconcileForwardingBufferPayments = async (
 }
 
 export const runTipsSweepScheduled = (
-  db: D1Database,
+  db: TreasuryDatabase,
   deps: Readonly<{
     payFromBuffer: BufferPayFn | null
     makeId: () => string

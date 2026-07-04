@@ -24,6 +24,7 @@ import { Effect } from 'effect'
 
 import { currentIsoTimestamp } from '../../runtime-primitives'
 import type { BillingDomainMirror } from '../../billing'
+import type { TreasuryDatabase } from '../../treasury-domain-store'
 import { type LedgerStatement, runLedgerStatements } from '../../payments-ledger'
 import { usdCentsToMsatFloor } from '../usd-msat-conversion'
 import {
@@ -68,7 +69,9 @@ export type MppCreditGrantOutcome = Readonly<{
 // the metering hook charges at (`usdCentsToMsatFloor`).
 export const mintMppCredits = (
   deps: Readonly<{
-    db: D1Database
+    // KS-8.8 (#8319): a TreasuryDatabase seam handle activates the fail-soft
+    // agent_balances Postgres mirror inside runLedgerStatements.
+    db: TreasuryDatabase
     /** KS-8.7 (#8318) fail-soft Postgres mirror (billing-store.ts). */
     mirror?: BillingDomainMirror | undefined
     nowIso?: () => string
@@ -207,6 +210,11 @@ export const lightningCreditGrantStatements = (
             VALUES (?, 'lightning_charge', ?, ?, 'paid', NULL, ?, ?, ?, NULL, ?, ?)`,
     },
     {
+      mirror: {
+        keyColumn: 'actor_ref',
+        keys: [input.accountRef],
+        table: 'agent_balances',
+      },
       params: [input.accountRef, nowIso, nowIso],
       sql: `INSERT INTO agent_balances (actor_ref, balance_msat, created_at, updated_at)
             VALUES (?, 0, ?, ?)
@@ -215,6 +223,11 @@ export const lightningCreditGrantStatements = (
     {
       // Bitcoin-origin: credit balance_msat ONLY (NO usd_credit_msat bump).
       // GUARDED on the leg not already existing so a replay is a no-op.
+      mirror: {
+        keyColumn: 'actor_ref',
+        keys: [input.accountRef],
+        table: 'agent_balances',
+      },
       params: [grantMsat, nowIso, input.accountRef, legId],
       sql: `UPDATE agent_balances
             SET balance_msat = balance_msat + ?,
@@ -247,7 +260,7 @@ export const lightningCreditGrantStatements = (
 // amount is the settled sats converted to msat (1 sat = 1000 msat).
 export const mintLightningCredits = (
   deps: Readonly<{
-    db: D1Database
+    db: TreasuryDatabase
     /** KS-8.7 (#8318) fail-soft Postgres mirror (billing-store.ts). */
     mirror?: BillingDomainMirror | undefined
     nowIso?: () => string

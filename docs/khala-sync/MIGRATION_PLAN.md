@@ -92,6 +92,52 @@ cutover procedure: [`RUNBOOK.md`](./RUNBOOK.md) "Artanis supervision
 domain cutover"; cutover evidence + D1 drop tracked in the decommission
 follow-up filed off [#8317](https://github.com/OpenAgentsInc/openagents/issues/8317).
 
+**KS-8.8 status (2026-07-04):** machinery LANDED — Postgres schema
+(`khala-sync-server` migration `0016_treasury_domain.sql`: all 27 live
+money tables — treasury transactions, the six nexus payout-authority
+ledgers, the forum money half, both reward ledgers, agent balances, labor
+escrows + receipts, partner/site-referral payout ledgers + agreements,
+revenue-event provenance, and the two MPP replay guards; idempotency/
+replay keys ported EXACTLY, money amounts as bigint, indexes re-derived
+from the owning modules' actual reads, `agent_claim_reward_ledger`'s
+partial uniques deliberately NOT ported mid-migration — rationale in the
+migration header), the `TreasuryDatabase` seam
+(`apps/openagents.com/workers/api/src/treasury-domain-store.ts`: a
+database-shaped handle, registry-driven Postgres converge store,
+read-back full-row `mirrorTreasuryRows` fail-soft dual-write with
+redacted diagnostics for the replay-guard payment identifiers, and
+`treasuryRead` flag routing), plus a `LedgerStatement.mirror` annotation
+seam in `payments-ledger.ts` so every `runLedgerStatements` batch
+(balances, escrows, credit grants) mirrors its touched rows after the
+atomic D1 commit. Flags `KHALA_SYNC_TREASURY_DUAL_WRITE` (default on) /
+`KHALA_SYNC_TREASURY_READS` (d1|compare|postgres, default d1; read flips
+are EPIC-GATED ops decisions on #8282, never a code default). Wired at
+the money write call sites INCLUDING all six money crons
+(`TipsSweep.runTick`, `TipsBuffer.reconcileForwarding`,
+`TipsBuffer.backingInvariant`, `TreasuryTransactions.reconcilePending`,
+`XClaimRewardTreasuryDispatcher.runTick`,
+`ForumDirectTips.archiveStaleRecoveries`) — D1 stays SOLE payout
+authority; every side-effect-bearing scan (payout dispatch, sweep
+candidates, pending reconcile) reads exactly ONE store with no Postgres
+twin, so no flag can double-dispatch. Resumable backfill + money-exact
+verify CLI (`packages/khala-sync-server/scripts/backfill-treasury.ts`:
+exact counts, per-(state, rail) tallies WITH exact money-column SUMs to
+the millisat/cent, newest-N row hashes), and a contract suite run against
+BOTH engines (`treasury-domain-repository.contract.test.ts`). Known
+D1-only residuals until their callers pass the seam handle (all
+low-volume; tracked for the KS-8.19 sweep): the referral/engagement
+accrual feeds (`site-referral-payout-feed.ts`,
+`business-referral-engagement-feed.ts`,
+`referral-cross-category-accrual.ts`, `inference-referral-accrual.ts`),
+`khala-code-paid-plan-payments.ts` / `qa-swarm-first-engagement-routes.ts`
+provenance writers, the metering/cloud-metering statement paths that only
+read balances, and Artanis' internal forum-route invocations. Prod
+cutover procedure: [`RUNBOOK.md`](./RUNBOOK.md) "Treasury settlement
+domain cutover" (flag flips are epic-gated on
+[#8282](https://github.com/OpenAgentsInc/openagents/issues/8282)); final
+D1 retirement is consolidated into KS-8.19
+[#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
+
 **KS-8.9 status (2026-07-04):** machinery LANDED — Postgres schema
 (`khala-sync-server` migration `0013_inference_entitlements.sql`: 29
 tables — the 15 `inference_*` entitlement/quota tables,
