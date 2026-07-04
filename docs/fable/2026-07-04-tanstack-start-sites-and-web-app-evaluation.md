@@ -181,22 +181,50 @@ our agent-readiness surfaces (`/.well-known/*`, robots, sitemap) had to be
 hand-built on the API Worker precisely because the SPA shell serves agents
 nothing; SSR closes that class structurally.
 
-**Recommended architecture** (tanstack.com's shape, adapted):
+**Recommended architecture — sharpened by owner directive (2026-07-04):
+clone tanstack.com's setup as exactly as practical.** The local clone at
+`projects/tanstack/repos/tanstack.com` is the template, not just an
+inspiration. "Stick very close to tanstack.com generally":
 
-- A new **`apps/openagents.com/apps/start`** package: TanStack Start +
-  `@cloudflare/vite-plugin`, custom `src/server.ts` Worker entry (security
-  headers, agent content-negotiation, the well-known surfaces moving in
-  from the API Worker over time). Deployed as **its own Worker** bound to
-  the web routes, with the existing `workers/api` Worker unchanged as the
-  authority (service binding + same-origin routing). Two Workers, one
-  domain: web shell vs API authority — a seam we already respect
-  internally. (Merging into one Worker à la tanstack.com is possible
-  later; separate-first keeps the API Worker's blast radius zero.)
-- **Route migration order = funnel first**: landing, `/business`,
-  `/blog`, `/docs`, `/code/download`, vertical pages — the pages where
-  SSR/SEO/agent-readability pay immediately and where the StarCraft theme
-  reset already zero-based the content. The heavy logged-in panels (Khala
-  chat, fleet views, forum) migrate last or stay client-rendered.
+- A new **`apps/openagents.com/apps/start`** package whose skeleton is
+  copied structurally from the tanstack.com repo: the same
+  `vite.config.ts` plugin order (`cloudflare({viteEnvironment:{name:
+  'ssr'}})` → `tanstackStart()` with `importProtection` + router
+  code-splitting defaults + manual vendor chunks → `viteReact()` →
+  `@tailwindcss/vite`), the same `tsr.config.json` shape
+  (`src/routes` → `routeTree.gen.ts`), the same custom `src/server.ts`
+  Worker entry wrapping the Start `server-entry` handler (security
+  headers, content negotiation, `scheduled` crons, per-request
+  AsyncLocalStorage env/context), the same `src/router.tsx` pattern
+  (QueryClient in context, `defaultPreload: 'intent'`,
+  ssr-query integration), the same `src/start.ts` global-middleware
+  shape, and the same `wrangler.jsonc` structure (custom `main`, Workers
+  Assets binding, `nodejs_compat`). Their `.agents/tanstack-patterns.md`
+  seeds our rules pack. Deviations from the template are the exception
+  and get a one-line justification in the PR.
+- **Same component/design/Tailwind setup as tanstack.com** — adopt their
+  Tailwind 4 configuration and component conventions as the baseline,
+  then swap the palette to our StarCraft-blue token system (tokens are
+  the theme; the setup is theirs). `@openagentsinc/ui` React edition
+  (TS-9) grows out of this baseline rather than being invented parallel
+  to it. Drop what we don't need (their Sentry/content-collections/
+  drizzle wiring) rather than porting it unexamined.
+- **Deployed to a NEW Worker with a visible staging URL ASAP — never
+  replacing the live openagents.com Worker during bring-up.** First
+  deploy goes out the day the scaffold builds: the Worker's
+  `*.workers.dev` URL immediately, plus a `start.openagents.com` (or
+  `staging.openagents.com`) custom domain when convenient. The existing
+  `workers/api` Worker stays untouched as the authority (service
+  binding/API calls cross to it); production route cutover happens only
+  later, per-route, after the staging surface proves out.
+- **The current `apps/web` Foldkit app is hereby deprecated**: no new
+  pages land there; its pages move into the new system **funnel first
+  and ASAP** — landing, `/business`, `/blog`, `/docs`, `/code/download`,
+  vertical pages (where SSR/SEO/agent-readability pay immediately and
+  the StarCraft theme reset already zero-based the content) — then the
+  rest; heavy logged-in panels migrate last or stay client-rendered.
+  Each ported page deletes its Foldkit counterpart at production
+  cutover.
 
 **Preserving Effect** — no compromise needed. Effect is
 framework-agnostic: it is the substance of the API Worker, the services,
@@ -538,13 +566,14 @@ MC-5 cross-device dogfood; MC-2/MC-4 were superseded/canceled in §6.4).
 | 0.4 | **TS-9: `@openagentsinc/ui` React edition** on the shared tokens (StarCraft theme; NativeWind-compatible token export) | Unblocks TS-2/6/7/8 |
 | 0.5 | **TS-3: `khala-sync-db-collection`** — TanStack DB `SyncConfig` adapter over the shipped khala-sync-client session engine; mutation-id matching via the KS-3 push route; **first consumer = the already-live `fleet_run` scope** (testable today, no chat dependency) | Proves the adapter against production sync before chat exists |
 | 0.6 | KS-8 queue continues as scheduled: 8.7 billing → 8.8 treasury → 8.9 entitlements (the money-truth migrations stay first — they gate nothing here and matter most) | No change requested |
+| 0.7 | **TS-2a: staging scaffold, day one** — clone the tanstack.com shape into `apps/openagents.com/apps/start` (vite config, server entry, router, wrangler per §4), StarCraft tokens over their Tailwind setup, one real page ported (the landing), **deployed to a NEW Worker with a visible staging URL immediately** (`*.workers.dev` first; `start.openagents.com` custom domain when convenient). Does not touch the live openagents.com Worker | Owner directive: a staging URL ASAP; only needs TS-1 stubs, not the full bridge |
 
 **Wave 1 — the web funnel on Start (revenue-visible; ~immediately after 0.3/0.4):**
 
 | # | Work | Notes |
 | --- | --- | --- |
-| 1.1 | **TS-2: `apps/start` Worker** — landing, `/business`, `/blog`, `/docs`, `/code/download`, vertical pages; tanstack.com server-entry pattern; well-known agent surfaces served from the shell; site-speed budgets as merge gates | Closes the site-speed P5 prescription and the agent-readability gap; zero sync coupling |
-| 1.2 | Funnel cutover route-by-route behind the existing domain (service-bind to the API Worker); Foldkit funnel code deleted per route | The dual-framework window starts and stays bounded |
+| 1.1 | **TS-2: port the funnel into the staging Worker** — `/business`, `/blog`, `/docs`, `/code/download`, vertical pages onto the 0.7 scaffold; well-known agent surfaces served from the shell; site-speed budgets as merge gates; owner reviews everything on the staging URL | Closes the site-speed P5 prescription and the agent-readability gap; zero sync coupling |
+| 1.2 | Production cutover route-by-route onto the real domain only after staging sign-off (new Worker takes the route; API Worker untouched); the deprecated `apps/web` Foldkit page is deleted per cut-over route | The dual-framework window starts and stays bounded; openagents.com is never replaced wholesale |
 | 1.3 | KS-8.14 (business funnel D1→Postgres) lands independently underneath — do not couple to 1.1/1.2 | Principle 1 |
 
 **Wave 2 — chat scopes + the flagship demo (gated on the KS-8.13 pull-forward):**
