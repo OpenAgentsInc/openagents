@@ -95,6 +95,22 @@ shell.
   anchors; moving the live timeline controller is still part of the remaining
   TS-6 route-by-route work.
 
+## Landed Slice 6: Landing Preview
+
+The Start staging app now owns `/preview/landing` as the review-only candidate
+landing page.
+
+- `/preview/landing` preserves the review-only marker and copy contract:
+  `data-route="landing-preview"`, `data-landing-preview`, and
+  `preview - proposed landing page, not the live homepage`.
+- The two-door product fork remains visible: `Build it myself` links to
+  `/khala`, and `Build it for me` links to `/business`.
+- The public-claim guardrails remain visible through the footer links:
+  `source: github.com/OpenAgentsInc/openagents`,
+  `every claim: /docs/product-promises`, and `live usage: /stats`.
+- This slice does not replace the live homepage; it only ports the review
+  candidate route to the Start scaffold ahead of any cutover decision.
+
 ## Boundary
 
 This is not the final TS-6 closure. The live `openagents.com` Worker still
