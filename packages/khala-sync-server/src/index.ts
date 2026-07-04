@@ -15,6 +15,7 @@ import type { KhalaSyncStorageError } from "./errors.js"
 import type { SyncTransactionWriter } from "./outbox-writer.js"
 
 export * from "./errors.js"
+export * from "./mutation-ledger.js"
 export * from "./outbox-writer.js"
 
 /**

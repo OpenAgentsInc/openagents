@@ -68,9 +68,10 @@ only) proves a round-trip parameterized query through the binding from the
 deployed Worker and returns `{ ok, khalaSyncTables, latencyMs }` — see
 `apps/openagents.com/workers/api/src/khala-sync-db-smoke-routes.ts`.
 
-Status: contracts, schema, migration runner (KS-0.3), and the transactional
-outbox writer + per-scope version allocator (KS-2.1) landed; the mutator
-engine, reads, capture, and hub land per the remaining KS-2/KS-3/KS-4 issues.
+Status: contracts, schema, migration runner (KS-0.3), the transactional
+outbox writer + per-scope version allocator (KS-2.1), and the mutation
+ledger + client-group state (KS-2.4) landed; the mutator engine, reads,
+capture, and hub land per the remaining KS-2/KS-3/KS-4 issues.
 
 ## Outbox writer (KS-2.1)
 
@@ -126,6 +127,67 @@ Failures are typed: SQL-layer errors map to `KhalaSyncStorageError`
 (`connection_failed | transaction_conflict | constraint_violation |
 unavailable`, `src/errors.ts`); the caller's own domain errors pass through
 `withSyncTransaction` unchanged (still rolling back the transaction).
+
+## Mutation ledger (KS-2.4)
+
+`src/mutation-ledger.ts` implements the per-client idempotency ledger
+(`khala_sync_mutations`) and the user-bound client-group state
+(`khala_sync_client_state`) from SPEC §2.4/§3. Everything is
+single-transaction-safe — no session state, no LISTEN/NOTIFY, no advisory
+locks; serialization uses ordinary row locks, the same discipline as the
+scope counter — so it runs through Hyperdrive's transaction-mode pooling.
+
+Semantics:
+
+- **Recording is the commit.** The push engine calls
+  `recordMutation(writer.sql, { clientGroupId, clientId, mutationId, name,
+  status, errorCode?, resultJson?, scope? })` INSIDE the mutator
+  transaction, so the ledger row commits atomically with the business
+  writes and changelog appends. Insert-once (`ON CONFLICT … DO NOTHING`):
+  the first recording wins, and the returned `inserted` flag says whether
+  this call created the row.
+- **Duplicates never re-execute.** `checkAndReserve(writer.sql,
+  { clientGroupId, clientId, envelope })` gates every envelope before
+  execution. If the `(clientGroup, client, mutationId)` row exists, it
+  returns `{ kind: "duplicate", recorded, result }` where `result` is
+  `status: "duplicate"` carrying the RECORDED outcome (errorCode /
+  errorMessageSafe from the recorded `resultJson`) — this is exactly the
+  crash-between-execute-and-respond replay path: the commit already
+  happened, so the replayed envelope is answered from the recording and no
+  mutator runs (SPEC §7 invariant 3).
+- **Per-client sequential ordering.** `lastMutationId` is
+  `MAX(mutation_id)` for the `(clientGroup, client)` pair (0 when the
+  client never pushed; also exposed as `lastMutationId(sql, key)`). Only
+  `lastMutationId + 1` reaches execution; ids ≤ `lastMutationId` are
+  duplicates; ids > `lastMutationId + 1` come back as
+  `{ kind: "out_of_order", result }` — a TYPED, IN-BAND rejection
+  (`status: "rejected"`, `errorCode: "out_of_order"`). Rejections ACK
+  in-band and never 4xx/block the queue (SPEC §2.4 acceptance rules;
+  §7 invariant 2) — but `out_of_order` specifically acks NOTHING: no
+  ledger row is written and `lastMutationId` does not advance, so the
+  client re-pushes the missing prefix and the gap heals. The ledger stays
+  dense by construction.
+- **Client groups are user-bound, and the state row is the serialization
+  point.** `upsertClientState(sql, { clientGroupId, userId,
+  schemaVersion })` inserts-or-updates `khala_sync_client_state` on every
+  push (schema version refresh + `last_seen_at` bump) and throws a typed
+  `KhalaSyncClientStateMismatchError` — leaving the row untouched — when
+  the stored `user_id` differs. A client group never migrates between
+  users. The push engine MUST call it inside the mutator transaction
+  BEFORE gating envelopes: the upsert takes the group's row lock, so
+  concurrent pushes for one client group serialize instead of racing
+  `MAX(mutation_id)`. `checkAndReserve` enforces the order by re-taking
+  that row lock (`SELECT … FOR UPDATE`) and failing typed if the state row
+  is missing.
+
+`getMutation(sql, { clientGroupId, clientId, mutationId })` reads one
+recorded row back (`resultJson` re-canonicalized after jsonb
+normalization). `src/mutation-ledger.test.ts` proves the semantics against
+real local Postgres: duplicate replay with zero changelog side-effects,
+interleaved duplicates within a batch, crash-between-execute-and-respond
+replay returning the same recorded result, out-of-order gap rejection +
+healing, sequential progression across batches, insert-once recording, and
+client-state binding/rollback.
 
 ## Migrations runbook (KS-0.3)
 
