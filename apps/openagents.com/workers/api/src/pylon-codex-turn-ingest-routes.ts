@@ -1,3 +1,4 @@
+import type { SyncSql } from '@openagentsinc/khala-sync-server'
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import {
@@ -21,11 +22,23 @@ import {
 } from './http/responses'
 import { decodeUnknownWithSchema, parseJsonUnknown } from './json-boundary'
 import {
+  defaultMakeKhalaSyncSqlClient,
+  type KhalaSyncHyperdriveBinding,
+  type KhalaSyncPushSqlClient,
+  type MakeKhalaSyncPushSqlClient,
+} from './khala-sync-push-routes'
+import { logWorkerRouteWarning } from './observability'
+import {
   type PylonApiAssignmentRecord,
   type PylonApiEventRecord,
   type PylonApiStore,
   pylonApiStoreErrorFromUnknown,
 } from './pylon-api'
+import {
+  pylonDispatchFlagsFromEnv,
+  type PylonDispatchFlagEnv,
+  type PylonDispatchLog,
+} from './pylon-dispatch-store'
 import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
 import {
   type TokenUsageLedgerShape,
@@ -269,6 +282,7 @@ export type PylonCodexAssignmentProof = Readonly<{
     byteLength: number
     visibility: 'owner_only'
     refs: ReadonlyArray<string>
+    sourceRefs: ReadonlyArray<string>
   }>
   closeoutPolicy: PylonCodexAssignmentCloseoutPolicy
   generatedAt: string
@@ -325,6 +339,7 @@ export type PylonCodexAssignmentTraceStatus = Readonly<{
     latestChunkRef: string | null
     latestObservedAt: string | null
     visibility: 'owner_only'
+    sourceRefs: ReadonlyArray<string>
   }>
   rawEvents: Readonly<{
     count: number
@@ -334,6 +349,7 @@ export type PylonCodexAssignmentTraceStatus = Readonly<{
     latestObservedAt: string | null
     visibility: 'owner_only'
     refs: ReadonlyArray<string>
+    sourceRefs: ReadonlyArray<string>
   }>
   closeoutPolicy: PylonCodexAssignmentCloseoutPolicy
   progress: Readonly<{
@@ -586,9 +602,385 @@ const closeoutPolicyFromEvents = (
   }
 }
 
+export type PylonCodexRawEventMetadataReadInput = Readonly<{
+  assignmentRef: string
+  ownerUserId: string
+  pylonRef: string
+}>
+
+type PylonCodexRawEventMetadataSection<
+  Row extends Readonly<Record<string, unknown>>,
+> = Readonly<{
+  aggregate: PylonCodexRawEventAggregateProofRow
+  rows: ReadonlyArray<Row>
+  sourceRefs: ReadonlyArray<string>
+}>
+
+export type PylonCodexRawEventMetadataReadResult = Readonly<{
+  chunks: PylonCodexRawEventMetadataSection<PylonCodexRawEventChunkProofRow>
+  turnEvents: PylonCodexRawEventMetadataSection<PylonCodexRawEventProofRow>
+}>
+
+export type PylonCodexRawEventMetadataReadStore = Readonly<{
+  readRawEventMetadata: (
+    input: PylonCodexRawEventMetadataReadInput,
+  ) => Promise<PylonCodexRawEventMetadataReadResult>
+}>
+
+export type MakeD1PylonCodexAssignmentProofStoreOptions = Readonly<{
+  rawEventMetadataStore?: PylonCodexRawEventMetadataReadStore | undefined
+}>
+
+const RAW_EVENT_D1_SOURCE_REFS = {
+  chunks: ['d1:pylon_codex_raw_event_chunks'],
+  turnEvents: ['d1:pylon_codex_raw_events'],
+} as const
+const RAW_EVENT_POSTGRES_SOURCE_REFS = {
+  chunks: ['postgres:pylon_codex_raw_event_chunks'],
+  turnEvents: ['postgres:pylon_codex_raw_events'],
+} as const
+const RAW_EVENT_POSTGRES_SHADOW_SOURCE_REFS = {
+  chunks: ['postgres-shadow:pylon_codex_raw_event_chunks'],
+  turnEvents: ['postgres-shadow:pylon_codex_raw_events'],
+} as const
+const RAW_EVENT_READ_RETRY_DELAYS_MS: ReadonlyArray<number> = [50, 150]
+
+const emptyRawEventAggregate = (): PylonCodexRawEventAggregateProofRow => ({
+  byte_length: 0,
+  event_count: 0,
+  row_count: 0,
+})
+
+const stableRawEventMetadataStringify = (value: unknown): string =>
+  JSON.stringify(value, (_key, val: unknown) =>
+    val !== null && typeof val === 'object' && !Array.isArray(val)
+      ? Object.fromEntries(
+          Object.entries(val as Record<string, unknown>).sort(([a], [b]) =>
+            a < b ? -1 : a > b ? 1 : 0,
+          ),
+        )
+      : val,
+  )
+
+const safeRawEventMetadataMessage = (error: unknown): string => {
+  const raw = error instanceof Error ? error.message : String(error)
+  return raw.replaceAll(/\s+/g, ' ').slice(0, 200)
+}
+
+const rawEventMetadataReadRefs = (
+  input: PylonCodexRawEventMetadataReadInput,
+): ReadonlyArray<string> => [input.assignmentRef, input.pylonRef]
+
+const comparableRawEventMetadata = (
+  result: PylonCodexRawEventMetadataReadResult,
+) => ({
+  chunks: {
+    aggregate: result.chunks.aggregate,
+    rows: result.chunks.rows,
+  },
+  turnEvents: {
+    aggregate: result.turnEvents.aggregate,
+    rows: result.turnEvents.rows,
+  },
+})
+
+export const makeD1PylonCodexRawEventMetadataReadStore = (
+  db: D1Database,
+): PylonCodexRawEventMetadataReadStore => ({
+  readRawEventMetadata: async input => {
+    const rawEventFilter = `
+      owner_user_id = ?
+      AND assignment_ref = ?
+      AND pylon_ref = ?
+      AND demand_kind = ?
+      AND demand_source = ?
+    `
+    const rawEventBindings = [
+      input.ownerUserId,
+      input.assignmentRef,
+      input.pylonRef,
+      PYLON_CODEX_DEMAND_KIND,
+      PYLON_CODEX_DEMAND_SOURCE,
+    ] as const
+
+    const chunkAggregateRow = await db
+      .prepare(
+        `
+          SELECT
+            COUNT(*) AS row_count,
+            COALESCE(SUM(event_count), 0) AS event_count,
+            COALESCE(SUM(byte_length), 0) AS byte_length
+          FROM pylon_codex_raw_event_chunks
+          WHERE ${rawEventFilter}
+        `,
+      )
+      .bind(...rawEventBindings)
+      .first<PylonCodexRawEventAggregateProofRow>()
+
+    const latestChunkRows = await db
+      .prepare(
+        `
+          SELECT chunk_ref, observed_at
+          FROM pylon_codex_raw_event_chunks
+          WHERE ${rawEventFilter}
+          ORDER BY turn_index DESC, chunk_index DESC
+          LIMIT 1
+        `,
+      )
+      .bind(...rawEventBindings)
+      .all<PylonCodexRawEventChunkProofRow>()
+
+    const turnAggregateRow = await db
+      .prepare(
+        `
+          SELECT
+            COUNT(*) AS row_count,
+            COALESCE(SUM(event_count), 0) AS event_count,
+            COALESCE(SUM(byte_length), 0) AS byte_length
+          FROM pylon_codex_raw_events
+          WHERE ${rawEventFilter}
+        `,
+      )
+      .bind(...rawEventBindings)
+      .first<PylonCodexRawEventAggregateProofRow>()
+
+    const turnRows = await db
+      .prepare(
+        `
+          SELECT raw_event_ref, observed_at
+          FROM pylon_codex_raw_events
+          WHERE ${rawEventFilter}
+          ORDER BY turn_index ASC
+          LIMIT 100
+        `,
+      )
+      .bind(...rawEventBindings)
+      .all<PylonCodexRawEventProofRow>()
+
+    return {
+      chunks: {
+        aggregate: chunkAggregateRow ?? emptyRawEventAggregate(),
+        rows: latestChunkRows.results ?? [],
+        sourceRefs: RAW_EVENT_D1_SOURCE_REFS.chunks,
+      },
+      turnEvents: {
+        aggregate: turnAggregateRow ?? emptyRawEventAggregate(),
+        rows: turnRows.results ?? [],
+        sourceRefs: RAW_EVENT_D1_SOURCE_REFS.turnEvents,
+      },
+    }
+  },
+})
+
+export type MakePostgresPylonCodexRawEventMetadataReadStoreDependencies =
+  Readonly<{
+    acquireSql: () => Promise<KhalaSyncPushSqlClient>
+  }>
+
+export const makePostgresPylonCodexRawEventMetadataReadStore = (
+  deps: MakePostgresPylonCodexRawEventMetadataReadStoreDependencies,
+): PylonCodexRawEventMetadataReadStore => {
+  const withSql = async <A>(fn: (sql: SyncSql) => Promise<A>): Promise<A> => {
+    const client = await deps.acquireSql()
+    try {
+      return await fn(client.sql)
+    } finally {
+      try {
+        await client.end()
+      } catch {
+        // best-effort teardown, same discipline as the sync push route.
+      }
+    }
+  }
+
+  return {
+    readRawEventMetadata: input =>
+      withSql(async sql => {
+        const chunkAggregateRows: Array<PylonCodexRawEventAggregateProofRow> =
+          await sql`
+            SELECT
+              COUNT(*)::int AS row_count,
+              COALESCE(SUM(event_count), 0)::int AS event_count,
+              COALESCE(SUM(byte_length), 0)::int AS byte_length
+            FROM pylon_codex_raw_event_chunks
+            WHERE owner_user_id = ${input.ownerUserId}
+              AND assignment_ref = ${input.assignmentRef}
+              AND pylon_ref = ${input.pylonRef}
+              AND demand_kind = ${PYLON_CODEX_DEMAND_KIND}
+              AND demand_source = ${PYLON_CODEX_DEMAND_SOURCE}`
+
+        const latestChunkRows: Array<PylonCodexRawEventChunkProofRow> =
+          await sql`
+            SELECT chunk_ref, observed_at
+            FROM pylon_codex_raw_event_chunks
+            WHERE owner_user_id = ${input.ownerUserId}
+              AND assignment_ref = ${input.assignmentRef}
+              AND pylon_ref = ${input.pylonRef}
+              AND demand_kind = ${PYLON_CODEX_DEMAND_KIND}
+              AND demand_source = ${PYLON_CODEX_DEMAND_SOURCE}
+            ORDER BY turn_index DESC, chunk_index DESC
+            LIMIT 1`
+
+        const turnAggregateRows: Array<PylonCodexRawEventAggregateProofRow> =
+          await sql`
+            SELECT
+              COUNT(*)::int AS row_count,
+              COALESCE(SUM(event_count), 0)::int AS event_count,
+              COALESCE(SUM(byte_length), 0)::int AS byte_length
+            FROM pylon_codex_raw_events
+            WHERE owner_user_id = ${input.ownerUserId}
+              AND assignment_ref = ${input.assignmentRef}
+              AND pylon_ref = ${input.pylonRef}
+              AND demand_kind = ${PYLON_CODEX_DEMAND_KIND}
+              AND demand_source = ${PYLON_CODEX_DEMAND_SOURCE}`
+
+        const turnRows: Array<PylonCodexRawEventProofRow> = await sql`
+          SELECT raw_event_ref, observed_at
+          FROM pylon_codex_raw_events
+          WHERE owner_user_id = ${input.ownerUserId}
+            AND assignment_ref = ${input.assignmentRef}
+            AND pylon_ref = ${input.pylonRef}
+            AND demand_kind = ${PYLON_CODEX_DEMAND_KIND}
+            AND demand_source = ${PYLON_CODEX_DEMAND_SOURCE}
+          ORDER BY turn_index ASC
+          LIMIT 100`
+
+        return {
+          chunks: {
+            aggregate: chunkAggregateRows[0] ?? emptyRawEventAggregate(),
+            rows: latestChunkRows,
+            sourceRefs: RAW_EVENT_POSTGRES_SOURCE_REFS.chunks,
+          },
+          turnEvents: {
+            aggregate: turnAggregateRows[0] ?? emptyRawEventAggregate(),
+            rows: turnRows,
+            sourceRefs: RAW_EVENT_POSTGRES_SOURCE_REFS.turnEvents,
+          },
+        }
+      }),
+  }
+}
+
+export type MakeReadRoutedPylonCodexRawEventMetadataReadStoreDependencies =
+  Readonly<{
+    d1: PylonCodexRawEventMetadataReadStore
+    flags: Readonly<{ reads: 'd1' | 'postgres' | 'compare' }>
+    log?: PylonDispatchLog | undefined
+    postgres: PylonCodexRawEventMetadataReadStore | undefined
+    wait?: ((ms: number) => Promise<void>) | undefined
+  }>
+
+export const makeReadRoutedPylonCodexRawEventMetadataReadStore = (
+  deps: MakeReadRoutedPylonCodexRawEventMetadataReadStoreDependencies,
+): PylonCodexRawEventMetadataReadStore => {
+  const { d1, flags, postgres } = deps
+  const log = deps.log ?? (() => {})
+  const wait =
+    deps.wait ?? ((ms: number) => new Promise(resolve => setTimeout(resolve, ms)))
+
+  if (postgres === undefined || flags.reads === 'd1') {
+    return d1
+  }
+
+  return {
+    readRawEventMetadata: async input => {
+      if (flags.reads === 'postgres') {
+        for (let attempt = 0; ; attempt++) {
+          try {
+            return await postgres.readRawEventMetadata(input)
+          } catch (error) {
+            const delay = RAW_EVENT_READ_RETRY_DELAYS_MS[attempt]
+            if (delay === undefined) {
+              log('khala_sync_pylon_postgres_read_fallback', {
+                messageSafe: safeRawEventMetadataMessage(error),
+                op: 'readPylonCodexRawEventMetadata',
+                refs: rawEventMetadataReadRefs(input),
+              })
+              return d1.readRawEventMetadata(input)
+            }
+            log('khala_sync_pylon_postgres_read_failed', {
+              messageSafe: safeRawEventMetadataMessage(error),
+              op: 'readPylonCodexRawEventMetadata',
+              refs: rawEventMetadataReadRefs(input),
+            })
+            await wait(delay)
+          }
+        }
+      }
+
+      const d1Result = await d1.readRawEventMetadata(input)
+      try {
+        const postgresResult = await postgres.readRawEventMetadata(input)
+        if (
+          stableRawEventMetadataStringify(
+            comparableRawEventMetadata(d1Result),
+          ) !==
+          stableRawEventMetadataStringify(
+            comparableRawEventMetadata(postgresResult),
+          )
+        ) {
+          log('khala_sync_pylon_read_compare_mismatch', {
+            messageSafe: 'postgres raw-event metadata differs from d1 authority',
+            op: 'readPylonCodexRawEventMetadata',
+            refs: rawEventMetadataReadRefs(input),
+          })
+        }
+        return {
+          chunks: {
+            ...d1Result.chunks,
+            sourceRefs: [
+              ...d1Result.chunks.sourceRefs,
+              ...RAW_EVENT_POSTGRES_SHADOW_SOURCE_REFS.chunks,
+            ],
+          },
+          turnEvents: {
+            ...d1Result.turnEvents,
+            sourceRefs: [
+              ...d1Result.turnEvents.sourceRefs,
+              ...RAW_EVENT_POSTGRES_SHADOW_SOURCE_REFS.turnEvents,
+            ],
+          },
+        }
+      } catch (error) {
+        log('khala_sync_pylon_postgres_read_failed', {
+          messageSafe: safeRawEventMetadataMessage(error),
+          op: 'readPylonCodexRawEventMetadata',
+          refs: rawEventMetadataReadRefs(input),
+        })
+        return d1Result
+      }
+    },
+  }
+}
+
+export type PylonCodexAssignmentProofStoreEnv = PylonDispatchFlagEnv &
+  Readonly<{
+    KHALA_SYNC_DB?: KhalaSyncHyperdriveBinding | undefined
+  }>
+
+export type MakePylonCodexAssignmentProofStoreForEnvOptions = Readonly<{
+  log?: PylonDispatchLog | undefined
+  makeSqlClient?: MakeKhalaSyncPushSqlClient | undefined
+  wait?: ((ms: number) => Promise<void>) | undefined
+}>
+
+const defaultPylonCodexRawEventReadLog: PylonDispatchLog = (event, fields) => {
+  logWorkerRouteWarning(event, {
+    messageSafe: fields.messageSafe,
+    op: fields.op,
+    refs: fields.refs.slice(0, 10).join(','),
+  })
+}
+
 export const makeD1PylonCodexAssignmentProofStore = (
   db: D1Database,
-): PylonCodexAssignmentProofStore & PylonCodexAssignmentTraceStatusStore => ({
+  options: MakeD1PylonCodexAssignmentProofStoreOptions = {},
+): PylonCodexAssignmentProofStore & PylonCodexAssignmentTraceStatusStore => {
+  const rawEventMetadataStore =
+    options.rawEventMetadataStore ??
+    makeD1PylonCodexRawEventMetadataReadStore(db)
+
+  return {
   readAssignmentProof: async input => {
     const tokenRow = await db
       .prepare(
@@ -688,50 +1080,14 @@ export const makeD1PylonCodexAssignmentProofStore = (
       .bind(...traceBindings)
       .all<PylonCodexTraceProofRow>()
 
-    const rawEventFilter = `
-      owner_user_id = ?
-      AND assignment_ref = ?
-      AND pylon_ref = ?
-      AND demand_kind = ?
-      AND demand_source = ?
-    `
-    const rawEventBindings = [
-      input.ownerUserId,
-      input.assignmentRef,
-      input.pylonRef,
-      PYLON_CODEX_DEMAND_KIND,
-      PYLON_CODEX_DEMAND_SOURCE,
-    ] as const
-
-    const rawAggregateRow = await db
-      .prepare(
-        `
-          SELECT
-            COUNT(*) AS row_count,
-            COALESCE(SUM(event_count), 0) AS event_count,
-            COALESCE(SUM(byte_length), 0) AS byte_length
-          FROM pylon_codex_raw_events
-          WHERE ${rawEventFilter}
-        `,
-      )
-      .bind(...rawEventBindings)
-      .first<PylonCodexRawEventAggregateProofRow>()
-
-    const rawRows = await db
-      .prepare(
-        `
-          SELECT raw_event_ref
-          FROM pylon_codex_raw_events
-          WHERE ${rawEventFilter}
-          ORDER BY turn_index ASC
-          LIMIT 100
-        `,
-      )
-      .bind(...rawEventBindings)
-      .all<PylonCodexRawEventProofRow>()
-
+    const rawEventMetadata = await rawEventMetadataStore.readRawEventMetadata({
+      assignmentRef: input.assignmentRef,
+      ownerUserId: input.ownerUserId,
+      pylonRef: input.pylonRef,
+    })
+    const rawAggregateRow = rawEventMetadata.turnEvents.aggregate
     const traces = traceRows.results ?? []
-    const rawEvents = rawRows.results ?? []
+    const rawEvents = rawEventMetadata.turnEvents.rows
     const tokenRefs = tokenRows.results ?? []
 
     return {
@@ -763,11 +1119,12 @@ export const makeD1PylonCodexAssignmentProofStore = (
         refs: boundedProofRefs(traces, 'trace_uuid'),
       },
       rawEvents: {
-        count: Number(rawAggregateRow?.row_count ?? 0),
-        eventCount: Number(rawAggregateRow?.event_count ?? 0),
-        byteLength: Number(rawAggregateRow?.byte_length ?? 0),
+        count: Number(rawAggregateRow.row_count),
+        eventCount: Number(rawAggregateRow.event_count ?? 0),
+        byteLength: Number(rawAggregateRow.byte_length ?? 0),
         visibility: 'owner_only',
         refs: boundedProofRefs(rawEvents, 'raw_event_ref'),
+        sourceRefs: rawEventMetadata.turnEvents.sourceRefs,
       },
       closeoutPolicy: input.closeoutPolicy,
       generatedAt: input.nowIso,
@@ -940,85 +1297,24 @@ export const makeD1PylonCodexAssignmentProofStore = (
       .bind(...traceBindings)
       .all<PylonCodexTraceProofRow>()
 
-    const rawEventFilter = `
-      owner_user_id = ?
-      AND assignment_ref = ?
-      AND pylon_ref = ?
-      AND demand_kind = ?
-      AND demand_source = ?
-    `
-    const rawEventBindings = [
-      input.ownerUserId,
-      input.assignment.assignmentRef,
-      input.assignment.pylonRef,
-      PYLON_CODEX_DEMAND_KIND,
-      PYLON_CODEX_DEMAND_SOURCE,
-    ] as const
-
-    const rawChunkAggregateRow = await db
-      .prepare(
-        `
-          SELECT
-            COUNT(*) AS row_count,
-            COALESCE(SUM(event_count), 0) AS event_count,
-            COALESCE(SUM(byte_length), 0) AS byte_length
-          FROM pylon_codex_raw_event_chunks
-          WHERE ${rawEventFilter}
-        `,
-      )
-      .bind(...rawEventBindings)
-      .first<PylonCodexRawEventAggregateProofRow>()
-
-    const latestChunkRow = await db
-      .prepare(
-        `
-          SELECT chunk_ref, observed_at
-          FROM pylon_codex_raw_event_chunks
-          WHERE ${rawEventFilter}
-          ORDER BY turn_index DESC, chunk_index DESC
-          LIMIT 1
-        `,
-      )
-      .bind(...rawEventBindings)
-      .first<PylonCodexRawEventChunkProofRow>()
-
-    const rawAggregateRow = await db
-      .prepare(
-        `
-          SELECT
-            COUNT(*) AS row_count,
-            COALESCE(SUM(event_count), 0) AS event_count,
-            COALESCE(SUM(byte_length), 0) AS byte_length
-          FROM pylon_codex_raw_events
-          WHERE ${rawEventFilter}
-        `,
-      )
-      .bind(...rawEventBindings)
-      .first<PylonCodexRawEventAggregateProofRow>()
-
-    const rawRows = await db
-      .prepare(
-        `
-          SELECT raw_event_ref, observed_at
-          FROM pylon_codex_raw_events
-          WHERE ${rawEventFilter}
-          ORDER BY turn_index ASC
-          LIMIT 100
-        `,
-      )
-      .bind(...rawEventBindings)
-      .all<PylonCodexRawEventProofRow>()
-
+    const rawEventMetadata = await rawEventMetadataStore.readRawEventMetadata({
+      assignmentRef: input.assignment.assignmentRef,
+      ownerUserId: input.ownerUserId,
+      pylonRef: input.assignment.pylonRef,
+    })
+    const rawChunkAggregateRow = rawEventMetadata.chunks.aggregate
+    const latestChunkRow = rawEventMetadata.chunks.rows[0]
+    const rawAggregateRow = rawEventMetadata.turnEvents.aggregate
     const traces = traceRows.results ?? []
-    const rawEvents = rawRows.results ?? []
+    const rawEvents = rawEventMetadata.turnEvents.rows
     const tokenRefs = tokenRows.results ?? []
     const finalTraceUuid =
       traces.find(row => !String(row.trajectory_id ?? '').includes(':chunk:'))
         ?.trace_uuid ?? null
     const latestTraceUuid = traces[0]?.trace_uuid ?? null
     const tokenRowCount = Number(tokenRow?.row_count ?? 0)
-    const chunkCount = Number(rawChunkAggregateRow?.row_count ?? 0)
-    const rawEventCount = Number(rawAggregateRow?.row_count ?? 0)
+    const chunkCount = Number(rawChunkAggregateRow.row_count)
+    const rawEventCount = Number(rawAggregateRow.row_count)
     const hasTokenUsage = tokenRowCount > 0
     const hasLiveChunks = chunkCount > 0
     const hasFinalTrace = finalTraceUuid !== null
@@ -1097,21 +1393,23 @@ export const makeD1PylonCodexAssignmentProofStore = (
         visibility: 'owner_only',
       },
       rawEventChunks: {
-        byteLength: Number(rawChunkAggregateRow?.byte_length ?? 0),
+        byteLength: Number(rawChunkAggregateRow.byte_length ?? 0),
         count: chunkCount,
-        eventCount: Number(rawChunkAggregateRow?.event_count ?? 0),
+        eventCount: Number(rawChunkAggregateRow.event_count ?? 0),
         latestChunkRef: latestChunkRow?.chunk_ref ?? null,
         latestObservedAt: latestChunkRow?.observed_at ?? null,
+        sourceRefs: rawEventMetadata.chunks.sourceRefs,
         visibility: 'owner_only',
       },
       rawEvents: {
-        byteLength: Number(rawAggregateRow?.byte_length ?? 0),
+        byteLength: Number(rawAggregateRow.byte_length ?? 0),
         count: rawEventCount,
-        eventCount: Number(rawAggregateRow?.event_count ?? 0),
+        eventCount: Number(rawAggregateRow.event_count ?? 0),
         latestObservedAt: rawEvents[rawEvents.length - 1]?.observed_at ?? null,
         latestRawEventRef:
           rawEvents[rawEvents.length - 1]?.raw_event_ref ?? null,
         refs: boundedProofRefs(rawEvents, 'raw_event_ref'),
+        sourceRefs: rawEventMetadata.turnEvents.sourceRefs,
         visibility: 'owner_only',
       },
       closeoutPolicy: input.closeoutPolicy,
@@ -1126,7 +1424,45 @@ export const makeD1PylonCodexAssignmentProofStore = (
       generatedAt: input.nowIso,
     }
   },
-})
+  }
+}
+
+export const makePylonCodexAssignmentProofStoreForEnv = (
+  env: PylonCodexAssignmentProofStoreEnv,
+  db: D1Database,
+  options: MakePylonCodexAssignmentProofStoreForEnvOptions = {},
+): PylonCodexAssignmentProofStore & PylonCodexAssignmentTraceStatusStore => {
+  const d1 = makeD1PylonCodexRawEventMetadataReadStore(db)
+  const connectionString = env.KHALA_SYNC_DB?.connectionString
+  const flags = pylonDispatchFlagsFromEnv(env)
+
+  if (
+    connectionString === undefined ||
+    connectionString.length === 0 ||
+    flags.reads === 'd1'
+  ) {
+    return makeD1PylonCodexAssignmentProofStore(db, {
+      rawEventMetadataStore: d1,
+    })
+  }
+
+  const makeSqlClient = options.makeSqlClient ?? defaultMakeKhalaSyncSqlClient
+  const postgres = makePostgresPylonCodexRawEventMetadataReadStore({
+    acquireSql: () => makeSqlClient(connectionString),
+  })
+  const rawEventMetadataStore =
+    makeReadRoutedPylonCodexRawEventMetadataReadStore({
+      d1,
+      flags,
+      log: options.log ?? defaultPylonCodexRawEventReadLog,
+      postgres,
+      wait: options.wait,
+    })
+
+  return makeD1PylonCodexAssignmentProofStore(db, {
+    rawEventMetadataStore,
+  })
+}
 
 export const makeD1R2PylonCodexRawEventStore = (
   db: D1Database,

@@ -375,10 +375,13 @@ consumer writes the D1 index and fail-soft mirrors Postgres when the same
 dual-write flag is armed. Runner-status spine reads now participate in
 `KHALA_SYNC_PYLON_READS`: `compare` serves D1 and adds a Postgres shadow read
 with drift diagnostics, while `postgres` serves the fleet-status spine from
-Cloud SQL with bounded retry and D1 fallback. The live #8315 cutover still
-requires closeout-verifier Postgres shadow reads, live raw-event queue
-reconciliation, and D1 decommission evidence. Do not treat a green backfill
-alone as permission to drop D1 tables.
+Cloud SQL with bounded retry and D1 fallback. Pylon Codex proof and
+trace-status closeout reads now use the same flag for their raw-event metadata
+sections: `compare` serves D1 with Postgres-shadow source refs and drift logs,
+and `postgres` serves those metadata sections from Cloud SQL with bounded D1
+fallback. The live #8315 cutover still requires live raw-event queue
+reconciliation, final cutover evidence, and D1 decommission evidence. Do not
+treat a green backfill alone as permission to drop D1 tables.
 
 ## Public tokens-served projection (KS-6.3, #8304)
 

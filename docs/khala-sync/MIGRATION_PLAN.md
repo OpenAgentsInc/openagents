@@ -203,8 +203,11 @@ paths remain D1-first and read-authoritative until verification/cutover.
 Runner-status spine reads now honor `KHALA_SYNC_PYLON_READS` for D1,
 compare, and Postgres modes across the operator fleet-status route and the
 in-worker Artanis status-spine loader; compare serves D1 while adding the
-Postgres shadow source ref and logging drift. Closeout-verifier Postgres shadow
-reads, raw-event queue reconciliation, and final D1 decommission remain on
+Postgres shadow source ref and logging drift. Pylon Codex proof and
+trace-status closeout reads now route their raw-event metadata sections through
+the same D1/compare/Postgres seam, exposing D1/Postgres-shadow source refs and
+logging raw-metadata drift. Live raw-event queue reconciliation, final cutover
+evidence, and D1 decommission remain on
 [#8315](https://github.com/OpenAgentsInc/openagents/issues/8315).
 
 - **What:** the rest of the Pylon control plane after KS-8.1:

@@ -18,6 +18,7 @@ import {
   makeD1PylonCodexAssignmentProofStore,
   makeD1R2PylonCodexRawEventChunkStore,
   makeD1R2PylonCodexRawEventStore,
+  makeReadRoutedPylonCodexRawEventMetadataReadStore,
   makePylonCodexTurnIngestRoutes,
   pylonCodexRawEventChunkRef,
   pylonCodexRawEventRef,
@@ -25,6 +26,9 @@ import {
   type PylonCodexAssignmentProofStore,
   type PylonCodexAssignmentTraceStatus,
   type PylonCodexAssignmentTraceStatusStore,
+  type PylonCodexRawEventMetadataReadInput,
+  type PylonCodexRawEventMetadataReadResult,
+  type PylonCodexRawEventMetadataReadStore,
   type PylonCodexRawEventChunkStore,
   type PylonCodexRawEventChunkStoreInput,
   type PylonCodexRawEventChunkStoreResult,
@@ -66,6 +70,82 @@ const noSpendCloseoutPolicy = {
   payoutClaimAllowed: false,
   settlementState: 'not_applicable' as const,
   source: 'worker_closeout_event' as const,
+}
+
+const rawMetadataResult = (
+  overrides: Partial<PylonCodexRawEventMetadataReadResult> = {},
+): PylonCodexRawEventMetadataReadResult => ({
+  chunks: {
+    aggregate: {
+      byte_length: 120,
+      event_count: 5,
+      row_count: 2,
+    },
+    rows: [
+      {
+        chunk_ref: 'raw_chunk.pylon_codex.latest',
+        observed_at: '2026-06-26T12:00:02.000Z',
+      },
+    ],
+    sourceRefs: ['d1:pylon_codex_raw_event_chunks'],
+  },
+  turnEvents: {
+    aggregate: {
+      byte_length: 500,
+      event_count: 5,
+      row_count: 1,
+    },
+    rows: [
+      {
+        observed_at: '2026-06-26T12:00:05.000Z',
+        raw_event_ref: 'raw.pylon_codex.final',
+      },
+    ],
+    sourceRefs: ['d1:pylon_codex_raw_events'],
+  },
+  ...overrides,
+})
+
+const makeRawMetadataReadStore = (
+  result: PylonCodexRawEventMetadataReadResult,
+  readRawEventMetadata: (
+    input: PylonCodexRawEventMetadataReadInput,
+  ) => Promise<PylonCodexRawEventMetadataReadResult> = async () => result,
+): PylonCodexRawEventMetadataReadStore & {
+  calls: Array<PylonCodexRawEventMetadataReadInput>
+} => {
+  const calls: Array<PylonCodexRawEventMetadataReadInput> = []
+  return {
+    calls,
+    readRawEventMetadata: async input => {
+      calls.push(input)
+      return readRawEventMetadata(input)
+    },
+  }
+}
+
+const makePylonReadLogSink = () => {
+  const events: Array<{
+    event: string
+    fields: Readonly<{
+      messageSafe: string
+      op: string
+      refs: ReadonlyArray<string>
+    }>
+  }> = []
+  return {
+    events,
+    log: (
+      event: string,
+      fields: Readonly<{
+        messageSafe: string
+        op: string
+        refs: ReadonlyArray<string>
+      }>,
+    ) => {
+      events.push({ event, fields })
+    },
+  }
 }
 
 class MemoryAgentStore implements AgentRegistrationStore {
@@ -225,6 +305,7 @@ class MemoryProofStore
         byteLength: 2048,
         visibility: 'owner_only',
         refs: ['raw.pylon_codex.abc123', 'raw.pylon_codex.def456'],
+        sourceRefs: ['d1:pylon_codex_raw_events'],
       },
       closeoutPolicy: input.closeoutPolicy,
       generatedAt: input.nowIso,
@@ -292,6 +373,7 @@ class MemoryProofStore
         byteLength: 1234,
         latestChunkRef: 'raw_chunk.pylon_codex.latest',
         latestObservedAt: nowIso,
+        sourceRefs: ['d1:pylon_codex_raw_event_chunks'],
         visibility: 'owner_only',
       },
       rawEvents: {
@@ -302,6 +384,7 @@ class MemoryProofStore
         latestObservedAt: null,
         visibility: 'owner_only',
         refs: [],
+        sourceRefs: ['d1:pylon_codex_raw_events'],
       },
       closeoutPolicy: input.closeoutPolicy,
       progress: {
@@ -1218,6 +1301,155 @@ const makeFakeProofD1 = (): D1Database & {
     traceRows: Array<ProofTraceRow>
   }
 }
+
+describe('Pylon Codex raw-event metadata read routing', () => {
+  test('compare mode serves D1 raw metadata and logs Postgres drift', async () => {
+    const sink = makePylonReadLogSink()
+    const d1 = makeRawMetadataReadStore(rawMetadataResult())
+    const postgres = makeRawMetadataReadStore(
+      rawMetadataResult({
+        turnEvents: {
+          aggregate: {
+            byte_length: 999,
+            event_count: 9,
+            row_count: 1,
+          },
+          rows: [
+            {
+              observed_at: '2026-06-26T12:00:05.000Z',
+              raw_event_ref: 'raw.pylon_codex.diverged',
+            },
+          ],
+          sourceRefs: ['postgres:pylon_codex_raw_events'],
+        },
+      }),
+    )
+    const store = makeReadRoutedPylonCodexRawEventMetadataReadStore({
+      d1,
+      flags: { reads: 'compare' },
+      log: sink.log,
+      postgres,
+      wait: async () => undefined,
+    })
+
+    const result = await store.readRawEventMetadata({
+      assignmentRef: 'assignment-pylon-codex-1',
+      ownerUserId: linkedOpenAuthUserId,
+      pylonRef: 'pylon-local-codex-1',
+    })
+
+    expect(result.turnEvents.rows).toEqual([
+      {
+        observed_at: '2026-06-26T12:00:05.000Z',
+        raw_event_ref: 'raw.pylon_codex.final',
+      },
+    ])
+    expect(result.turnEvents.sourceRefs).toEqual([
+      'd1:pylon_codex_raw_events',
+      'postgres-shadow:pylon_codex_raw_events',
+    ])
+    expect(result.chunks.sourceRefs).toEqual([
+      'd1:pylon_codex_raw_event_chunks',
+      'postgres-shadow:pylon_codex_raw_event_chunks',
+    ])
+    expect(sink.events).toHaveLength(1)
+    expect(sink.events[0]).toMatchObject({
+      event: 'khala_sync_pylon_read_compare_mismatch',
+      fields: {
+        op: 'readPylonCodexRawEventMetadata',
+        refs: ['assignment-pylon-codex-1', 'pylon-local-codex-1'],
+      },
+    })
+  })
+
+  test('postgres mode falls back to D1 after bounded retry diagnostics', async () => {
+    let attempts = 0
+    const sink = makePylonReadLogSink()
+    const d1 = makeRawMetadataReadStore(rawMetadataResult())
+    const postgres = makeRawMetadataReadStore(rawMetadataResult(), async () => {
+      attempts += 1
+      throw new Error(`pg unavailable ${attempts}`)
+    })
+    const store = makeReadRoutedPylonCodexRawEventMetadataReadStore({
+      d1,
+      flags: { reads: 'postgres' },
+      log: sink.log,
+      postgres,
+      wait: async () => undefined,
+    })
+
+    const result = await store.readRawEventMetadata({
+      assignmentRef: 'assignment-pylon-codex-1',
+      ownerUserId: linkedOpenAuthUserId,
+      pylonRef: 'pylon-local-codex-1',
+    })
+
+    expect(result.turnEvents.sourceRefs).toEqual([
+      'd1:pylon_codex_raw_events',
+    ])
+    expect(attempts).toBe(3)
+    expect(sink.events.map(event => event.event)).toEqual([
+      'khala_sync_pylon_postgres_read_failed',
+      'khala_sync_pylon_postgres_read_failed',
+      'khala_sync_pylon_postgres_read_fallback',
+    ])
+    expect(d1.calls).toHaveLength(1)
+  })
+
+  test('assignment proof exposes raw metadata source refs from the injected read store', async () => {
+    const db = makeFakeProofD1()
+    const rawMetadataStore = makeRawMetadataReadStore(
+      rawMetadataResult({
+        turnEvents: {
+          aggregate: {
+            byte_length: 500,
+            event_count: 5,
+            row_count: 1,
+          },
+          rows: [
+            {
+              observed_at: '2026-06-26T12:00:05.000Z',
+              raw_event_ref: 'raw.pylon_codex.final',
+            },
+          ],
+          sourceRefs: [
+            'd1:pylon_codex_raw_events',
+            'postgres-shadow:pylon_codex_raw_events',
+          ],
+        },
+      }),
+    )
+    const store = makeD1PylonCodexAssignmentProofStore(
+      db as unknown as D1Database,
+      { rawEventMetadataStore: rawMetadataStore },
+    )
+
+    const proof = await store.readAssignmentProof({
+      assignmentRef: 'assignment-pylon-codex-1',
+      closeoutPolicy: noSpendCloseoutPolicy,
+      nowIso,
+      ownerAgentUserId: agentUserId,
+      ownerUserId: linkedOpenAuthUserId,
+      pylonRef: 'pylon-local-codex-1',
+    })
+
+    expect(proof.rawEvents).toMatchObject({
+      count: 1,
+      refs: ['raw.pylon_codex.final'],
+      sourceRefs: [
+        'd1:pylon_codex_raw_events',
+        'postgres-shadow:pylon_codex_raw_events',
+      ],
+    })
+    expect(rawMetadataStore.calls).toEqual([
+      {
+        assignmentRef: 'assignment-pylon-codex-1',
+        ownerUserId: linkedOpenAuthUserId,
+        pylonRef: 'pylon-local-codex-1',
+      },
+    ])
+  })
+})
 
 class MemoryRawEventsR2Bucket {
   readonly objects = new Map<

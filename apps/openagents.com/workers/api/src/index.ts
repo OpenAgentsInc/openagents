@@ -1020,9 +1020,9 @@ import {
   PYLON_CODEX_EVENT_CHUNK_INGEST_PATH,
   PYLON_CODEX_LOCAL_USAGE_INGEST_PATH,
   PYLON_CODEX_TURN_INGEST_PATH,
-  makeD1PylonCodexAssignmentProofStore,
   makeD1R2PylonCodexRawEventChunkStore,
   makeD1R2PylonCodexRawEventStore,
+  makePylonCodexAssignmentProofStoreForEnv,
   makePylonCodexTurnIngestRoutes,
 } from './pylon-codex-turn-ingest-routes'
 import {
@@ -7558,9 +7558,10 @@ const pylonCodexTurnIngestRoutes = makePylonCodexTurnIngestRoutes<Env>({
       ...tokenLedgerWriteStoreOptionForEnv(env),
     }),
   pylonStore: env => makePylonApiStoreForEnv(env),
-  proofStore: env => makeD1PylonCodexAssignmentProofStore(openAgentsDatabase(env)),
+  proofStore: env =>
+    makePylonCodexAssignmentProofStoreForEnv(env, openAgentsDatabase(env)),
   traceStatusStore: env =>
-    makeD1PylonCodexAssignmentProofStore(openAgentsDatabase(env)),
+    makePylonCodexAssignmentProofStoreForEnv(env, openAgentsDatabase(env)),
   rawEventChunkStore: makePylonCodexRawEventChunkStoreForEnv,
   rawEventStore: makePylonCodexRawEventStoreForEnv,
   publishDelta: (env, delta) =>
