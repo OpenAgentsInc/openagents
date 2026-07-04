@@ -1,6 +1,10 @@
 import { Effect } from 'effect'
 
 import { applyManualBillingCredit } from './billing'
+import {
+  billingRuntimeForEnv,
+  type BillingSyncEnv,
+} from './billing-store'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { fundInferenceFromCredit } from './inference/usd-credit-bridge'
 import {
@@ -14,7 +18,8 @@ import { openAgentsDatabase } from './runtime'
 
 type OperatorBillingEnv = Readonly<{
   OPENAGENTS_DB: D1Database
-}>
+}> &
+  BillingSyncEnv
 
 type OperatorBillingDependencies<Env extends OperatorBillingEnv> = Readonly<{
   readSelectedOperatorTargetUser: (
@@ -79,12 +84,16 @@ export const makeOperatorBillingHandlers = <Env extends OperatorBillingEnv>(
     const idempotencyKey =
       optionalString(selector.idempotencyKey) ??
       `billing:operator-credit:${targetUser.userId}:${amountCents}:${reason}`
-    const billing = await applyManualBillingCredit(openAgentsDatabase(env), {
-      amountCents,
-      idempotencyKey,
-      reason,
-      userId: targetUser.userId,
-    })
+    const billing = await applyManualBillingCredit(
+      openAgentsDatabase(env),
+      {
+        amountCents,
+        idempotencyKey,
+        reason,
+        userId: targetUser.userId,
+      },
+      billingRuntimeForEnv(env),
+    )
 
     return noStoreJsonResponse({
       billing,
@@ -156,18 +165,22 @@ export const makeOperatorBillingHandlers = <Env extends OperatorBillingEnv>(
       'Operator inference credit (staging test grant)'
 
     // (1) USD credit (idempotent on the same grantRef).
-    await applyManualBillingCredit(db, {
-      amountCents,
-      idempotencyKey: `billing:operator-inference-credit:${grantRef}`,
-      reason,
-      userId: targetUser.userId,
-    })
+    await applyManualBillingCredit(
+      db,
+      {
+        amountCents,
+        idempotencyKey: `billing:operator-inference-credit:${grantRef}`,
+        reason,
+        userId: targetUser.userId,
+      },
+      billingRuntimeForEnv(env),
+    )
 
     // (2) Bridge USD -> spendable usd_credit_msat (idempotent on the grantRef).
     const outcome = await Effect.runPromise(
       fundInferenceFromCredit(
         { amountCents, grantRef, userId: targetUser.userId },
-        { db },
+        { billingRuntime: billingRuntimeForEnv(env), db },
       ),
     )
 

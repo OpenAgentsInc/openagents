@@ -23,6 +23,7 @@ import {
   KHALA_CODE_PAID_PLAN_ID,
   khalaCodePlanCatalog,
 } from './khala-code-plan-catalog'
+import type { BillingDomainMirror } from '../billing'
 import {
   fulfillKhalaCodePaidPlanPaymentIntent,
   lightningPaymentRequestFromIntent,
@@ -57,6 +58,8 @@ export type KhalaCodePlanRoutesDeps = Readonly<{
   }) => Promise<KhalaCodePaidPlanStripeCheckout>
   db: D1Database
   mintLightningInvoice?: MintLightningInvoice | undefined
+  /** KS-8.7 (#8318) fail-soft Postgres mirror (billing-store.ts). */
+  mirror?: BillingDomainMirror | undefined
   nowIso?: (() => string) | undefined
   paidPlanPurchaseArmed: boolean
   paidPlanPriceSats?: number | undefined
@@ -337,7 +340,11 @@ export const handleKhalaCodePlanPurchase = (
       }
 
       const fulfilled = yield* Effect.tryPromise(() =>
-        fulfillKhalaCodePaidPlanPaymentIntent(deps.db, { intent, nowIso }),
+        fulfillKhalaCodePaidPlanPaymentIntent(
+          deps.db,
+          { intent, nowIso },
+          deps.mirror,
+        ),
       ).pipe(Effect.catch(() => Effect.succeed(null)))
 
       return fulfilled === null
@@ -369,10 +376,14 @@ export const handleKhalaCodePlanPurchase = (
     if (existing !== null) {
       if (existing.status === 'fulfilled') {
         const fulfilled = yield* Effect.tryPromise(() =>
-          fulfillKhalaCodePaidPlanPaymentIntent(deps.db, {
-            intent: existing,
-            nowIso,
-          }),
+          fulfillKhalaCodePaidPlanPaymentIntent(
+            deps.db,
+            {
+              intent: existing,
+              nowIso,
+            },
+            deps.mirror,
+          ),
         ).pipe(Effect.catch(() => Effect.succeed(null)))
 
         return fulfilled === null
@@ -404,14 +415,18 @@ export const handleKhalaCodePlanPurchase = (
     }
 
     const intent = yield* Effect.tryPromise(() =>
-      recordKhalaCodePaidPlanLightningIntent(deps.db, {
-        accountRef: session.accountRef,
-        amountSats: deps.paidPlanPriceSats!,
-        idempotencyKey,
-        invoice,
-        nowIso,
-        purchaseRef,
-      }),
+      recordKhalaCodePaidPlanLightningIntent(
+        deps.db,
+        {
+          accountRef: session.accountRef,
+          amountSats: deps.paidPlanPriceSats!,
+          idempotencyKey,
+          invoice,
+          nowIso,
+          purchaseRef,
+        },
+        deps.mirror,
+      ),
     ).pipe(Effect.catch(() => Effect.succeed(null)))
 
     return intent === null

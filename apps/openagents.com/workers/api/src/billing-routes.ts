@@ -7,6 +7,10 @@ import {
   upsertBillingAutoTopUpPolicy,
   withBillingCreditPackages,
 } from './billing'
+import {
+  billingRuntimeForEnv,
+  type BillingSyncEnv,
+} from './billing-store'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { fundInferenceFromCredit } from './inference/usd-credit-bridge'
 import { readJsonObject } from './json-boundary'
@@ -26,7 +30,8 @@ import {
 type BillingEnv = Readonly<{
   OPENAGENTS_DB: D1Database
 }> &
-  StripeBillingEnv
+  StripeBillingEnv &
+  BillingSyncEnv
 
 // Read the billing summary AND attach the purchasable credit catalog projected
 // from the server Stripe config. Every browser-facing billing response goes
@@ -36,9 +41,13 @@ const readBillingSummaryWithPackages = async (
   environment: BillingEnv,
   userId: string,
 ): Promise<BillingSummary> => {
+  // KS-8.7 (#8318): the DISPLAY summary is the one billing read that opts
+  // into KHALA_SYNC_BILLING_READS routing (compare/postgres). Gates and
+  // evaluators keep reading D1 directly.
   const summary = await readBillingSummary(
     openAgentsDatabase(environment),
     userId,
+    billingRuntimeForEnv(environment, { routeReads: true }),
   )
 
   return withBillingCreditPackages(
@@ -275,10 +284,14 @@ export const makeBillingApiHandlers = <
       )
     }
 
-    const result = await redeemBillingCoupon(openAgentsDatabase(environment), {
-      couponCode,
-      userId: session.user.userId,
-    })
+    const result = await redeemBillingCoupon(
+      openAgentsDatabase(environment),
+      {
+        couponCode,
+        userId: session.user.userId,
+      },
+      billingRuntimeForEnv(environment),
+    )
 
     return dependencies.appendRefreshedSessionCookies(
       noStoreJsonResponse(
@@ -476,7 +489,10 @@ export const makeBillingApiHandlers = <
             : { sourceCheckoutSessionId }),
           userId: session.user.userId,
         },
-        { db: openAgentsDatabase(environment) },
+        {
+          billingRuntime: billingRuntimeForEnv(environment),
+          db: openAgentsDatabase(environment),
+        },
       ),
     )
 
@@ -676,6 +692,7 @@ export const makeBillingApiHandlers = <
         thresholdCents,
         userId: session.user.userId,
       },
+      billingRuntimeForEnv(environment),
     )
 
     return dependencies.appendRefreshedSessionCookies(

@@ -220,6 +220,8 @@ type ForumWorkRequestEscrowReserveResult =
   | Readonly<{ ok: false; availableMsat?: number; reason: string }>
 
 type ForumRouteDependencies = Readonly<{
+  /** KS-8.7 (#8318) fail-soft Postgres pay-in mirror (billing-store.ts). */
+  billingMirror?: import('./billing').BillingDomainMirror | undefined
   tipsBufferPay?: import('./tips-sweep').BufferPayFn | null
   // KS-8.9 (#8320): fire-safe Postgres dual-write mirror for the orange
   // check entitlement grant; absent => byte-identical D1-only behavior.
@@ -4731,6 +4733,7 @@ const tipLadderResponse = (
       amountSat: body.amountSat,
       idempotencyKey,
       makeId,
+      mirror: dependencies.billingMirror,
       nowIso,
       payFromBuffer: tipsBufferPay,
       postId: postDetail.post.postId,
@@ -4866,6 +4869,7 @@ const pylonTipLadderResponse = (
       directPayoutExternalRef: 'pylon.tip_recipient_claim',
       idempotencyKey,
       makeId,
+      mirror: dependencies.billingMirror,
       nowIso,
       payFromBuffer: tipsBufferPay,
       postId: registration.pylonRef,

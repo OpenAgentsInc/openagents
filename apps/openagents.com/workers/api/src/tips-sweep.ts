@@ -8,6 +8,7 @@ import {
   markPayInPaidStatements,
   runLedgerStatements,
 } from './payments-ledger'
+import type { BillingDomainMirror } from './billing'
 import { epochMillisToIsoTimestamp } from './runtime-primitives'
 
 // The automated sweep worker (issue #4707; design:
@@ -177,6 +178,8 @@ export const selectSweepCandidates = async (
 export const runTipsSweepTick = async (
   db: D1Database,
   deps: Readonly<{
+    /** KS-8.7 (#8318) fail-soft Postgres mirror (billing-store.ts). */
+    mirror?: BillingDomainMirror | undefined
     payFromBuffer: BufferPayFn | null
     makeId: () => string
     nowIso: string
@@ -217,10 +220,14 @@ export const runTipsSweepTick = async (
       walletClaimRef: candidate.walletClaimRef,
     }
 
-    await runLedgerStatements(db, [
-      ...sweepCreateStatements(plan, deps.nowIso),
-      ...markPayInForwardingStatements(plan.payInId, deps.nowIso),
-    ])
+    await runLedgerStatements(
+      db,
+      [
+        ...sweepCreateStatements(plan, deps.nowIso),
+        ...markPayInForwardingStatements(plan.payInId, deps.nowIso),
+      ],
+      deps.mirror,
+    )
 
     const payResult = await deps.payFromBuffer({
       amountSat,
@@ -228,31 +235,41 @@ export const runTipsSweepTick = async (
     })
 
     if (payResult.ok) {
-      await runLedgerStatements(db, [
-        ...markPayInPaidStatements(
-          { balancePayoutLegs: [], payInId: plan.payInId },
-          deps.nowIso,
-        ),
-        {
-          params: [payResult.paymentRef, plan.payoutLegId],
-          sql: `UPDATE pay_in_legs
+      await runLedgerStatements(
+        db,
+        [
+          ...markPayInPaidStatements(
+            { balancePayoutLegs: [], payInId: plan.payInId },
+            deps.nowIso,
+          ),
+          {
+            params: [payResult.paymentRef, plan.payoutLegId],
+            payInId: plan.payInId,
+            sql: `UPDATE pay_in_legs
                 SET external_ref = external_ref || '|' || ?
                 WHERE id = ?`,
-        },
-      ])
+          },
+        ],
+        deps.mirror,
+      )
       settled += 1
     } else if (payResult.pending === true) {
       // #4710: a pending buffer payment HOLDS the debit in forwarding.
       // The reconciliation pass polls the buffer until the outcome is
       // known; refunding now risks paying the recipient twice.
-      await runLedgerStatements(db, [
-        {
-          params: [`pending:${payResult.paymentId}`, plan.payoutLegId],
-          sql: `UPDATE pay_in_legs
+      await runLedgerStatements(
+        db,
+        [
+          {
+            params: [`pending:${payResult.paymentId}`, plan.payoutLegId],
+            payInId: plan.payInId,
+            sql: `UPDATE pay_in_legs
                 SET external_ref = external_ref || '|' || ?
                 WHERE id = ?`,
-        },
-      ])
+          },
+        ],
+        deps.mirror,
+      )
     } else {
       await runLedgerStatements(
         db,
@@ -274,6 +291,7 @@ export const runTipsSweepTick = async (
           },
           deps.nowIso,
         ),
+        deps.mirror,
       )
       failed += 1
     }
@@ -332,6 +350,8 @@ export const checkTipsBufferBackingInvariant = async (
 export const reconcileForwardingBufferPayments = async (
   db: D1Database,
   deps: Readonly<{
+    /** KS-8.7 (#8318) fail-soft Postgres mirror (billing-store.ts). */
+    mirror?: BillingDomainMirror | undefined
     fetchBufferPaymentStatus: (
       paymentId: string,
     ) => Promise<'succeeded' | 'failed' | 'pending'>
@@ -379,21 +399,26 @@ export const reconcileForwardingBufferPayments = async (
 
     const payInId = String(row.pay_in_id)
     if (status === 'succeeded') {
-      await runLedgerStatements(db, [
-        ...markPayInPaidStatements(
-          { balancePayoutLegs: [], payInId },
-          deps.nowIso,
-        ),
-        {
-          params: [
-            `payment.tips_buffer.${paymentId.slice(0, 12)}`,
-            String(row.leg_id),
-          ],
-          sql: `UPDATE pay_in_legs
+      await runLedgerStatements(
+        db,
+        [
+          ...markPayInPaidStatements(
+            { balancePayoutLegs: [], payInId },
+            deps.nowIso,
+          ),
+          {
+            params: [
+              `payment.tips_buffer.${paymentId.slice(0, 12)}`,
+              String(row.leg_id),
+            ],
+            payInId,
+            sql: `UPDATE pay_in_legs
                 SET external_ref = external_ref || '|' || ?
                 WHERE id = ?`,
-        },
-      ])
+          },
+        ],
+        deps.mirror,
+      )
       settled += 1
       continue
     }
@@ -419,6 +444,7 @@ export const reconcileForwardingBufferPayments = async (
           },
           deps.nowIso,
         ),
+        deps.mirror,
       )
       refunded += 1
 
@@ -462,6 +488,7 @@ export const reconcileForwardingBufferPayments = async (
               },
               deps.nowIso,
             ),
+            deps.mirror,
           )
         }
       }
@@ -476,6 +503,8 @@ export const runTipsSweepScheduled = (
   deps: Readonly<{
     payFromBuffer: BufferPayFn | null
     makeId: () => string
+    /** KS-8.7 (#8318) fail-soft Postgres mirror (billing-store.ts). */
+    mirror?: BillingDomainMirror | undefined
     nowIso: string
   }>,
 ): Effect.Effect<SweepTickOutcome, never> =>

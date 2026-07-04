@@ -30,6 +30,7 @@
 // id only disables the CARD rail; the crypto rail still works.
 import { Cause, Duration, Effect } from 'effect'
 
+import type { BillingDomainMirror } from '../../billing'
 import { noStoreJsonResponse } from '../../http/responses'
 import {
   currentEpochMillis,
@@ -180,6 +181,8 @@ export type MppChatCompletionsDeps = Readonly<{
     Readonly<{ enabled: boolean }>
   // Phase 3 credit mint.
   db: D1Database
+  /** KS-8.7 (#8318) fail-soft Postgres mirror (billing-store.ts). */
+  mirror?: BillingDomainMirror | undefined
   // Injectable seams for tests.
   fetch?: StripeFetch
   nowIso?: () => string
@@ -782,6 +785,7 @@ const settleAndServeLightning = (
     const grant = yield* mintLightningCredits(
       {
         db: deps.db,
+        ...(deps.mirror === undefined ? {} : { mirror: deps.mirror }),
         ...(deps.nowIso === undefined ? {} : { nowIso: deps.nowIso }),
       },
       { accountRef, amountSats, paymentHash },
@@ -945,6 +949,7 @@ const settleAndServe = (
     const grant = yield* mintMppCredits(
       {
         db: deps.db,
+        ...(deps.mirror === undefined ? {} : { mirror: deps.mirror }),
         ...(deps.nowIso === undefined ? {} : { nowIso: deps.nowIso }),
         ...(deps.usdCentsToMsat === undefined
           ? {}

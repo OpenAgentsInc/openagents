@@ -17,6 +17,7 @@ import type {
   KhalaSyncStorageError,
 } from "./errors.js"
 
+export * from "./billing-domain-tables.js"
 export * from "./compaction.js"
 export * from "./cvr-service.js"
 export * from "./errors.js"

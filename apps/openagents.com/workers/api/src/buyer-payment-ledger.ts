@@ -14,6 +14,7 @@ import {
   OpenAgentsPaymentPolicyAudience,
   OpenAgentsPaymentPolicySurface,
 } from './payment-limit-policy'
+import type { BillingDomainMirror } from './billing'
 import { openAgentsRunnerGatewayPayloadHasPrivateMaterial } from './runner-gateway'
 
 export const BuyerPaymentLedgerRecordKind = S.Literals([
@@ -748,6 +749,74 @@ export type BuyerPaymentLedgerStore = Readonly<{
     challengeRef: string,
   ) => Promise<BuyerPaymentRedemptionRecord | undefined>
 }>
+
+/**
+ * KS-8.7 (#8318): decorate a buyer-payment ledger store with the fail-soft
+ * Postgres dual-write mirror. Every create* re-reads nothing and recomputes
+ * nothing — the mirror copies the FRESH authoritative D1 rows (by id) into
+ * the Cloud SQL twins after the D1 write succeeds. A mirror failure never
+ * fails the operation (the mirror contract, billing-store.ts).
+ */
+export const withBuyerPaymentLedgerMirror = (
+  db: D1Database,
+  store: BuyerPaymentLedgerStore,
+  mirror: BillingDomainMirror | undefined,
+): BuyerPaymentLedgerStore => {
+  if (mirror === undefined) {
+    return store
+  }
+  return {
+    ...store,
+    createChallenge: async record => {
+      await store.createChallenge(record)
+      await mirror(db, [
+        { key: { id: record.id }, table: 'buyer_payment_challenges' },
+      ])
+    },
+    createCreditDebit: async record => {
+      await store.createCreditDebit(record)
+      await mirror(db, [
+        { key: { id: record.id }, table: 'buyer_payment_credit_debits' },
+      ])
+    },
+    createReceiptEntitlementBundle: async input => {
+      await store.createReceiptEntitlementBundle(input)
+      await mirror(db, [
+        { key: { id: input.receipt.id }, table: 'buyer_payment_receipts' },
+        {
+          key: { id: input.entitlement.id },
+          table: 'buyer_payment_entitlements',
+        },
+      ])
+    },
+    createReconciliationEvent: async record => {
+      await store.createReconciliationEvent(record)
+      await mirror(db, [
+        {
+          key: { id: record.id },
+          table: 'buyer_payment_reconciliation_events',
+        },
+      ])
+    },
+    createRedemptionBundle: async input => {
+      await store.createRedemptionBundle(input)
+      await mirror(db, [
+        { key: { id: input.receipt.id }, table: 'buyer_payment_receipts' },
+        {
+          key: { id: input.entitlement.id },
+          table: 'buyer_payment_entitlements',
+        },
+        { key: { id: input.redemption.id }, table: 'buyer_payment_redemptions' },
+      ])
+    },
+    createSpendLimit: async record => {
+      await store.createSpendLimit(record)
+      await mirror(db, [
+        { key: { id: record.id }, table: 'buyer_payment_spend_limits' },
+      ])
+    },
+  }
+}
 
 export const makeD1BuyerPaymentLedgerStore = (
   db: D1Database,

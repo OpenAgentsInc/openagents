@@ -132,6 +132,48 @@ store ENFORCES allow/deny, so it requires the low-traffic window +
 zero-divergence compare evidence; cutover evidence + D1 drop tracked on
 epic [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
 
+**KS-8.7 status (2026-07-04):** machinery LANDED — Postgres schema
+(`khala-sync-server` migration `0015_billing_pay_ins.sql`: the 22 live
+billing/Stripe/pay-ins/buyer-payment tables; the
+`billing_ledger_entries_next` rewrite artifact was renamed away by worker
+0031/0170 and does not exist live, so nothing was created for it; indexes
+re-derived — PKs + every idempotency UNIQUE port exactly, plus only the
+one secondary index the routed balance read uses, rationale in the
+migration header), the fail-soft READ-BACK mirror seam
+(`apps/openagents.com/workers/api/src/billing-store.ts`: after a D1
+write, the mirror re-reads the fresh authoritative row(s) by key and
+converge-upserts byte-identical copies — amounts and idempotency keys are
+copied, never recomputed, and no idempotency decision is ever re-made
+against Postgres), flags `KHALA_SYNC_BILLING_DUAL_WRITE` (default on) /
+`KHALA_SYNC_BILLING_READS` (d1|compare|postgres, default d1; routes ONLY
+the display balance read behind an explicit `routeReads` opt-in — gates,
+evaluators, and receipt inputs always read D1), mirror wiring across
+billing.ts (all credit/debit/policy/notification ops), the FULL Stripe
+webhook ingest path (`stripe_webhook_events` dedupe gate + checkout
+fulfillment + customers/sessions/saved-payment-methods), Khala Code
+paid-plan intents (Stripe + Lightning rails), the buyer-payment ledger
+store (decorator on all six create paths + the site-checkout challenge),
+and the pay-in statement plans (`runLedgerStatements` mirrors annotated
+pay_ins + legs on the tip-ladder, tips-sweep, forwarding-reconcile,
+USD-credit-bridge, and MPP/Lightning mint paths), resumable backfill +
+exact-verify CLI (`packages/khala-sync-server/scripts/backfill-billing.ts`:
+exact counts, the FULL per-user balance map to the cent, per-(currency,
+source) cents, per-(type, state)/(direction, kind) msat, webhook event-id
+SET equality, newest-N row hashes), and a contract suite run against BOTH
+stores including the webhook-replay idempotency regression and fail-soft
+proofs. MONEY DISCIPLINE: D1 stays the SOLE authority; the production
+read-flag flip is an EPIC-GATED ops decision (#8282) taken only on a
+green money `--verify`. Writers still D1-only pending the decommission
+follow-up (backfill-converged until then): `first_batch_payment_policies`
+(operator triage), codex-usage debits from callers that build their own
+`OmniRunStore` without `billingRuntime`, and the remaining low-volume
+`runLedgerStatements` consumers (labor-escrow, metering-hook,
+batch-job-metering, inference-abuse-controls, serving-node-payout,
+cloud-metering, product-promises, business-starter-credit). Prod cutover
+procedure: [`RUNBOOK.md`](./RUNBOOK.md) "Billing/Stripe/pay-ins domain
+cutover"; cutover evidence + D1 drop tracked on epic
+[#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
+
 Everything except the Verse world runs through one D1 database
 (`openagents-autopilot`, binding `OPENAGENTS_DB`). As of `main` today the
 migrations directory (`apps/openagents.com/workers/api/migrations/`) holds

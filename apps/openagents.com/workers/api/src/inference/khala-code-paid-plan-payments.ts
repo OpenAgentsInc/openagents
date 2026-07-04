@@ -6,6 +6,7 @@
 // truth: the public receipt remains
 // /api/public/inference/privacy-receipts/{receiptRef}.
 
+import type { BillingDomainMirror } from '../billing'
 import { compactRandomId } from '../runtime-primitives'
 import {
   firstDollarEvidenceBundleRef,
@@ -232,6 +233,8 @@ export const recordKhalaCodePaidPlanStripeIntent = async (
     purchaseRef: string
     stripeCheckoutSessionId: string
   }>,
+  /** KS-8.7 (#8318) fail-soft Postgres mirror (billing-store.ts). */
+  mirror?: BillingDomainMirror | undefined,
 ): Promise<KhalaCodePaidPlanPaymentIntent> => {
   await db
     .prepare(
@@ -258,6 +261,13 @@ export const recordKhalaCodePaidPlanStripeIntent = async (
     )
     .run()
 
+  await mirror?.(db, [
+    {
+      key: { purchase_ref: input.purchaseRef },
+      table: 'khala_code_paid_plan_payment_intents',
+    },
+  ])
+
   const row = await readKhalaCodePaidPlanIntentByIdempotencyKey(db, input)
 
   if (row === null) {
@@ -276,6 +286,8 @@ export const recordKhalaCodePaidPlanLightningIntent = async (
     nowIso: string
     purchaseRef: string
   }>,
+  /** KS-8.7 (#8318) fail-soft Postgres mirror (billing-store.ts). */
+  mirror?: BillingDomainMirror | undefined,
 ): Promise<KhalaCodePaidPlanPaymentIntent> => {
   await db
     .prepare(
@@ -303,6 +315,13 @@ export const recordKhalaCodePaidPlanLightningIntent = async (
       input.nowIso,
     )
     .run()
+
+  await mirror?.(db, [
+    {
+      key: { purchase_ref: input.purchaseRef },
+      table: 'khala_code_paid_plan_payment_intents',
+    },
+  ])
 
   const row = await readKhalaCodePaidPlanIntentByIdempotencyKey(db, input)
 
@@ -365,6 +384,8 @@ export const fulfillKhalaCodePaidPlanPaymentIntent = async (
     intent: KhalaCodePaidPlanPaymentIntent
     nowIso: string
   }>,
+  /** KS-8.7 (#8318) fail-soft Postgres mirror (billing-store.ts). */
+  mirror?: BillingDomainMirror | undefined,
 ): Promise<KhalaCodePaidPlanFulfillment> => {
   if (input.intent.status === 'failed' || input.intent.status === 'expired') {
     throw new KhalaCodePaidPlanPaymentError('intent_not_payable')
@@ -395,6 +416,13 @@ export const fulfillKhalaCodePaidPlanPaymentIntent = async (
       input.intent.purchaseRef,
     )
     .run()
+
+  await mirror?.(db, [
+    {
+      key: { purchase_ref: input.intent.purchaseRef },
+      table: 'khala_code_paid_plan_payment_intents',
+    },
+  ])
 
   const eventRef = `revenue_event.khala_code.paid_plan.${input.intent.purchaseRef}`
   await recordRevenueEventProvenance(db, {
@@ -447,6 +475,8 @@ export const markKhalaCodePaidPlanStripeIntentUnpaid = async (
     sessionId: string
     status: 'expired' | 'failed' | 'requires_payment'
   }>,
+  /** KS-8.7 (#8318) fail-soft Postgres mirror (billing-store.ts). */
+  mirror?: BillingDomainMirror | undefined,
 ): Promise<void> => {
   await db
     .prepare(
@@ -456,4 +486,11 @@ export const markKhalaCodePaidPlanStripeIntentUnpaid = async (
     )
     .bind(input.status, input.status, input.nowIso, input.sessionId)
     .run()
+
+  await mirror?.(db, [
+    {
+      key: { stripe_checkout_session_id: input.sessionId },
+      table: 'khala_code_paid_plan_payment_intents',
+    },
+  ])
 }

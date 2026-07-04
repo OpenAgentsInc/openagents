@@ -12,6 +12,7 @@ import {
   OpenAgentsHostedMdkEnvironment,
   openAgentsHostedMdkPayloadHasPrivateMaterial,
 } from './hosted-mdk-client'
+import type { BillingDomainMirror } from './billing'
 import { parseJsonStringArray } from './json-boundary'
 
 export const OpenAgentsSiteMdkCheckoutIntentRecord = S.Struct({
@@ -257,6 +258,8 @@ const bindCheckoutIntentInsert = (
 
 export const makeD1SiteMdkCheckoutIntentStore = (
   db: D1Database,
+  /** KS-8.7 (#8318): mirrors the buyer_payment_challenges row (fail-soft). */
+  mirror?: BillingDomainMirror | undefined,
 ): OpenAgentsSiteMdkCheckoutIntentStore => ({
   createCheckoutIntentBundle: async bundle => {
     assertBuyerPaymentLedgerRecordSafe(
@@ -273,6 +276,13 @@ export const makeD1SiteMdkCheckoutIntentStore = (
     } catch (error) {
       throw storageError('siteMdkCheckoutIntent.createBundle', error)
     }
+
+    await mirror?.(db, [
+      {
+        key: { id: bundle.buyerPaymentChallenge.id },
+        table: 'buyer_payment_challenges',
+      },
+    ])
   },
   readCheckoutIntentByCheckoutRef: async checkoutRef => {
     try {

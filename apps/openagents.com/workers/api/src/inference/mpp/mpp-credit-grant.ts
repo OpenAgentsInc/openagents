@@ -23,6 +23,7 @@
 import { Effect } from 'effect'
 
 import { currentIsoTimestamp } from '../../runtime-primitives'
+import type { BillingDomainMirror } from '../../billing'
 import { type LedgerStatement, runLedgerStatements } from '../../payments-ledger'
 import { usdCentsToMsatFloor } from '../usd-msat-conversion'
 import {
@@ -68,6 +69,8 @@ export type MppCreditGrantOutcome = Readonly<{
 export const mintMppCredits = (
   deps: Readonly<{
     db: D1Database
+    /** KS-8.7 (#8318) fail-soft Postgres mirror (billing-store.ts). */
+    mirror?: BillingDomainMirror | undefined
     nowIso?: () => string
     // Conversion override for tests. Defaults to the shared USD-cents->msat rate.
     usdCentsToMsat?: (amountCents: number) => number
@@ -102,6 +105,7 @@ export const mintMppCredits = (
             },
             nowIso(),
           ),
+          deps.mirror,
         ),
     })
 
@@ -195,6 +199,7 @@ export const lightningCreditGrantStatements = (
         nowIso,
         nowIso,
       ],
+      payInId,
       sql: `INSERT OR IGNORE INTO pay_ins
             (id, pay_in_type, payer_ref, cost_msat, state, rung, context_ref,
              idempotency_key, public_receipt_ref, genesis_id, created_at,
@@ -226,6 +231,7 @@ export const lightningCreditGrantStatements = (
         input.accountRef,
         nowIso,
       ],
+      payInId,
       sql: `INSERT OR IGNORE INTO pay_in_legs
             (id, pay_in_id, direction, kind, party_ref, amount_msat,
              resulting_balance_msat, external_ref, refund_of_leg_id, created_at)
@@ -242,6 +248,8 @@ export const lightningCreditGrantStatements = (
 export const mintLightningCredits = (
   deps: Readonly<{
     db: D1Database
+    /** KS-8.7 (#8318) fail-soft Postgres mirror (billing-store.ts). */
+    mirror?: BillingDomainMirror | undefined
     nowIso?: () => string
   }>,
   input: Readonly<{
@@ -269,6 +277,7 @@ export const mintLightningCredits = (
             },
             nowIso(),
           ),
+          deps.mirror,
         ),
     })
 

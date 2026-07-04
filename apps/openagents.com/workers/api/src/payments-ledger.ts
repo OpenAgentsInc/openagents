@@ -1,4 +1,5 @@
 import { Schema as S } from 'effect'
+import type { BillingDomainMirror } from './billing'
 
 // Agent credit ledger (issue #4705).
 // Design contract: docs/payments/reliable-tips.md. Every paid attempt is
@@ -60,6 +61,14 @@ export const payInTransitionAllowed = (
 export type LedgerStatement = Readonly<{
   sql: string
   params: ReadonlyArray<string | number | null>
+  /**
+   * KS-8.7 (#8318): the pay-in this statement touches, when it touches one.
+   * `runLedgerStatements` uses these annotations to drive the fail-soft
+   * Postgres mirror (pay_ins row + its legs, read back from D1 after the
+   * batch). Statements on non-migrating tables (agent_balances) leave it
+   * unset.
+   */
+  payInId?: string | undefined
 }>
 
 export type PayInLegPlan = Readonly<{
@@ -174,6 +183,7 @@ const insertLegStatement = (
           options?.refundOfLegId ?? null,
           nowIso,
         ],
+        payInId,
         sql: `INSERT INTO pay_in_legs
               (id, pay_in_id, direction, kind, party_ref, amount_msat,
                resulting_balance_msat, external_ref, refund_of_leg_id, created_at)
@@ -193,6 +203,7 @@ const insertLegStatement = (
           options?.refundOfLegId ?? null,
           nowIso,
         ],
+        payInId,
         sql: `INSERT INTO pay_in_legs
               (id, pay_in_id, direction, kind, party_ref, amount_msat,
                resulting_balance_msat, external_ref, refund_of_leg_id, created_at)
@@ -224,6 +235,7 @@ export const createPayInStatements = (
         nowIso,
         nowIso,
       ],
+      payInId: plan.payInId,
       sql: `INSERT INTO pay_ins
             (id, pay_in_type, payer_ref, cost_msat, state, rung, context_ref,
              idempotency_key, public_receipt_ref, genesis_id, created_at,
@@ -253,6 +265,7 @@ export const createPayInStatements = (
           leg.externalRef,
           nowIso,
         ],
+        payInId: plan.payInId,
         sql: `INSERT INTO pay_in_legs
               (id, pay_in_id, direction, kind, party_ref, amount_msat,
                resulting_balance_msat, external_ref, refund_of_leg_id, created_at)
@@ -282,6 +295,7 @@ export const markPayInPaidStatements = (
   const statements: LedgerStatement[] = [
     {
       params: [nowIso, input.rung ?? null, input.payInId],
+      payInId: input.payInId,
       sql: `UPDATE pay_ins
             SET state = 'paid', state_changed_at = ?, rung = COALESCE(?, rung)
             WHERE id = ? AND state IN ('pending', 'forwarding')`,
@@ -295,6 +309,7 @@ export const markPayInPaidStatements = (
     )
     statements.push({
       params: [leg.partyRef, leg.legId],
+      payInId: input.payInId,
       sql: `UPDATE pay_in_legs
             SET resulting_balance_msat =
               (SELECT balance_msat FROM agent_balances WHERE actor_ref = ?)
@@ -326,6 +341,7 @@ export const markPayInFailedStatements = (
   const statements: LedgerStatement[] = [
     {
       params: [input.failureReason, nowIso, input.payInId],
+      payInId: input.payInId,
       sql: `UPDATE pay_ins
             SET state = 'failed', failure_reason = ?, state_changed_at = ?
             WHERE id = ? AND state IN ('pending', 'forwarding')`,
@@ -362,6 +378,7 @@ export const markPayInForwardingStatements = (
 ): ReadonlyArray<LedgerStatement> => [
   {
     params: [nowIso, payInId],
+    payInId,
     sql: `UPDATE pay_ins
           SET state = 'forwarding', state_changed_at = ?
           WHERE id = ? AND state = 'pending'`,
@@ -383,6 +400,7 @@ export const retryPayInStatements = (
 
   const lock: LedgerStatement = {
     params: [input.newPlan.payInId, input.previousPayInId],
+    payInId: input.previousPayInId,
     sql: `UPDATE pay_ins
           SET successor_id = ?
           WHERE id = ? AND successor_id IS NULL AND state = 'failed'`,
@@ -404,6 +422,7 @@ export const retryPayInStatements = (
       input.previousPayInId,
       input.newPlan.payInId,
     ],
+    payInId: input.newPlan.payInId,
     sql: `INSERT INTO pay_ins
           (id, pay_in_type, payer_ref, cost_msat, state, rung, context_ref,
            idempotency_key, public_receipt_ref, genesis_id, created_at,
@@ -439,6 +458,7 @@ export const retryPayInStatements = (
           nowIso,
           input.newPlan.payInId,
         ],
+        payInId: input.newPlan.payInId,
         sql: `INSERT INTO pay_in_legs
               (id, pay_in_id, direction, kind, party_ref, amount_msat,
                resulting_balance_msat, external_ref, refund_of_leg_id, created_at)
@@ -460,6 +480,7 @@ export const retryPayInStatements = (
           nowIso,
           input.newPlan.payInId,
         ],
+        payInId: input.newPlan.payInId,
         sql: `INSERT INTO pay_in_legs
               (id, pay_in_id, direction, kind, party_ref, amount_msat,
                resulting_balance_msat, external_ref, refund_of_leg_id, created_at)
@@ -541,12 +562,40 @@ export const readAgentBalance = async (
 export const runLedgerStatements = async (
   db: D1Database,
   statements: ReadonlyArray<LedgerStatement>,
+  /**
+   * KS-8.7 (#8318): optional fail-soft Postgres mirror
+   * (`billingDomainMirrorFromEnv`). After the D1 batch commits, every
+   * annotated pay-in (row + its legs) is read back and converge-copied to
+   * Cloud SQL. Callers without the env in reach omit it — those writes are
+   * converged by the backfill sweeps (documented in the RUNBOOK coverage
+   * list) until the decommission lane rehomes them.
+   */
+  mirror?: BillingDomainMirror | undefined,
 ): Promise<void> => {
   await db.batch(
     statements.map(statement =>
       db.prepare(statement.sql).bind(...statement.params),
     ),
   )
+
+  if (mirror !== undefined) {
+    const payInIds = [
+      ...new Set(
+        statements
+          .map(statement => statement.payInId)
+          .filter((id): id is string => id !== undefined),
+      ),
+    ]
+    if (payInIds.length > 0) {
+      await mirror(
+        db,
+        payInIds.flatMap(payInId => [
+          { key: { id: payInId }, table: 'pay_ins' as const },
+          { key: { pay_in_id: payInId }, table: 'pay_in_legs' as const },
+        ]),
+      )
+    }
+  }
 }
 
 export const sumAgentBalancesMsat = async (db: D1Database): Promise<number> => {

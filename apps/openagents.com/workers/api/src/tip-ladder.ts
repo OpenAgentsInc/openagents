@@ -1,5 +1,6 @@
 import { Effect } from 'effect'
 
+import type { BillingDomainMirror } from './billing'
 import { sha256Hex } from './agent-registration'
 import {
   type LedgerStatement,
@@ -241,6 +242,8 @@ export const executeTipLadder = (
     idempotencyKey: string
     publicReceiptRef: string
     makeId: () => string
+    /** KS-8.7 (#8318) fail-soft Postgres mirror (billing-store.ts). */
+    mirror?: BillingDomainMirror | undefined
     nowIso: string
     contextRef?: string
     directPayoutExternalRef?: string
@@ -344,7 +347,7 @@ export const executeTipLadder = (
               input.nowIso,
             ),
             ...markPayInForwardingStatements(directPayInId, input.nowIso),
-          ]),
+          ], input.mirror),
       })
 
       const payResult = yield* Effect.promise(() =>
@@ -364,14 +367,19 @@ export const executeTipLadder = (
               error instanceof Error ? error.message : String(error),
             ),
           try: () =>
-            runLedgerStatements(db, [
-              {
-                params: [`pending:${payResult.paymentId}`, directPayoutLegId],
-                sql: `UPDATE pay_in_legs
+            runLedgerStatements(
+              db,
+              [
+                {
+                  params: [`pending:${payResult.paymentId}`, directPayoutLegId],
+                  payInId: directPayInId,
+                  sql: `UPDATE pay_in_legs
                       SET external_ref = external_ref || '|' || ?
                       WHERE id = ?`,
-              },
-            ]),
+                },
+              ],
+              input.mirror,
+            ),
         })
 
         return {
@@ -393,18 +401,23 @@ export const executeTipLadder = (
               error instanceof Error ? error.message : String(error),
             ),
           try: () =>
-            runLedgerStatements(db, [
-              ...markPayInPaidStatements(
-                { balancePayoutLegs: [], payInId: directPayInId },
-                input.nowIso,
-              ),
-              {
-                params: [payResult.paymentRef, directPayoutLegId],
-                sql: `UPDATE pay_in_legs
+            runLedgerStatements(
+              db,
+              [
+                ...markPayInPaidStatements(
+                  { balancePayoutLegs: [], payInId: directPayInId },
+                  input.nowIso,
+                ),
+                {
+                  params: [payResult.paymentRef, directPayoutLegId],
+                  payInId: directPayInId,
+                  sql: `UPDATE pay_in_legs
                       SET external_ref = external_ref || '|' || ?
                       WHERE id = ?`,
-              },
-            ]),
+                },
+              ],
+              input.mirror,
+            ),
         })
 
         return {
@@ -445,6 +458,7 @@ export const executeTipLadder = (
               },
               input.nowIso,
             ),
+            input.mirror,
           ),
       })
     }
@@ -481,7 +495,7 @@ export const executeTipLadder = (
           'ledger_batch_failed',
           error instanceof Error ? error.message : String(error),
         ),
-      try: () => runLedgerStatements(db, statements),
+      try: () => runLedgerStatements(db, statements, input.mirror),
     })
 
     return {

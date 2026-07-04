@@ -115,6 +115,7 @@ export const usdCreditGrantStatements = (
         nowIso,
         nowIso,
       ],
+      payInId,
       sql: `INSERT OR IGNORE INTO pay_ins
             (id, pay_in_type, payer_ref, cost_msat, state, rung, context_ref,
              idempotency_key, public_receipt_ref, genesis_id, created_at,
@@ -152,6 +153,7 @@ export const usdCreditGrantStatements = (
         input.accountRef,
         nowIso,
       ],
+      payInId,
       sql: `INSERT OR IGNORE INTO pay_in_legs
             (id, pay_in_id, direction, kind, party_ref, amount_msat,
              resulting_balance_msat, external_ref, refund_of_leg_id, created_at)
@@ -349,6 +351,7 @@ export const fundInferenceFromCredit = (
     // INSERT OR IGNORE on a UNIQUE idempotency key and the msat grant uses the
     // UNIQUE pay_ins idempotency key, so a replayed fund (same grantRef) is a
     // no-op on both sides — the grant is exactly-once.
+    const mirror = runtime.mirror
     yield* Effect.tryPromise({
       catch: (cause: unknown) => new UsdCreditBridgeError({ cause }),
       try: () =>
@@ -372,8 +375,23 @@ export const fundInferenceFromCredit = (
             },
             now,
           ),
-        ]),
+        ], mirror),
     })
+
+    // KS-8.7: mirror the USD-debit ledger row too (the pay-in + legs were
+    // mirrored by runLedgerStatements via their annotations).
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror(deps.db, [
+          {
+            key: {
+              idempotency_key: usdCreditDebitIdempotencyKey(input.grantRef),
+            },
+            table: 'billing_ledger_entries',
+          },
+        ]),
+      )
+    }
 
     const remainingCreditCents = yield* Effect.tryPromise({
       catch: (cause: unknown) => new UsdCreditBridgeError({ cause }),

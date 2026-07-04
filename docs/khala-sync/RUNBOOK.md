@@ -769,6 +769,101 @@ Rollback at ANY step: set `KHALA_SYNC_FORUM_READS=d1` (reads) and/or
 `KHALA_SYNC_FORUM_DUAL_WRITE=off` (writes). D1 authority is never
 behind.
 
+## Billing/Stripe/pay-ins domain cutover (KS-8.7, #8318)
+
+The FIRST money domain in the KS-8 sequence: the 22 live
+billing/credits/Stripe/pay-ins/buyer-payment tables (khala-sync migration
+`0015_billing_pay_ins.sql`). Machinery:
+`apps/openagents.com/workers/api/src/billing-store.ts` (fail-soft
+READ-BACK mirror + routed balance read) and
+`packages/khala-sync-server/scripts/backfill-billing.ts` (backfill +
+money verify).
+
+**MONEY DISCIPLINE (overrides the generic recipe where they differ):**
+
+- D1 is the SOLE authority for this domain for the entire life of this
+  lane. The Postgres side is a best-effort mirror; amounts and
+  idempotency keys are COPIED from accepted D1 rows, never recomputed.
+- Side-effectful evaluators (auto-top-up charging, sweeps, Stripe API
+  calls) and gate/receipt balance reads ALWAYS read D1 — only the
+  display billing summary opts into read routing
+  (`billingRuntimeForEnv(env, { routeReads: true })`).
+- **The production flip of `KHALA_SYNC_BILLING_READS` (compare →
+  postgres) is an EPIC-GATED ops decision recorded on
+  [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282)** —
+  it requires a green money `--verify` (below) posted as evidence and an
+  explicit owner-visible decision entry. Never flip it as part of a
+  routine deploy.
+
+Flags (Worker vars; structural — absent means default):
+
+- `KHALA_SYNC_BILLING_DUAL_WRITE` — default **on** wherever
+  `KHALA_SYNC_DB` exists; `off|0|false|disabled` disables the mirror.
+- `KHALA_SYNC_BILLING_READS` — default `d1`; `compare` reads both,
+  serves D1, logs `khala_sync_billing_read_compare_mismatch` with the
+  cent delta; `postgres` serves the routed balance read from Postgres
+  with bounded retry (50/150ms) and D1 fallback. Only the display
+  summary read routes in this lane.
+
+Cutover order — never skip a step, each step soaks before the next:
+
+1. **Dual-write on** (default after this lane lands + `0010` applied via
+   the migration runner). Watch `khala_sync_billing_dual_write_failed` —
+   that event IS the drift metric; a nonzero steady rate blocks
+   progression.
+2. **Backfill**: from `packages/khala-sync-server/`,
+   `KHALA_SYNC_DATABASE_URL=<direct-url> bun scripts/backfill-billing.ts`
+   (wrangler-auth'd; rowid-cursor resumable via
+   `.billing-backfill-state.json`). Run a SECOND sweep with `--restart`
+   once dual-write has covered the whole window — the second sweep also
+   re-converges rows UPDATEd on D1 after the first sweep copied them
+   (webhook statuses, checkout fulfillment, pay-in states, policies).
+3. **Verify (the money acceptance)**:
+   `bun scripts/backfill-billing.ts --verify` — exact row counts per
+   table, the FULL per-user balance map (balance = SUM(amount_cents) to
+   the cent, every account), per-(currency, source) cents, pay-in msat
+   sums per (type, state) and legs per (direction, kind), the
+   `stripe_webhook_events` event-id SET digest (identical dedupe key
+   sets), buyer receipt/debit minor-unit sums, paid-plan intent
+   cents/sats sums, and newest-50 row hashes. Post the output on #8318 /
+   the epic. Exact or explain; money reads NEVER cut on a red verify.
+4. **Compare reads**: set `KHALA_SYNC_BILLING_READS=compare`; soak until
+   the mismatch log is silent over a representative window that includes
+   a live Stripe checkout and an auto-top-up evaluation.
+5. **Postgres reads — EPIC-GATED**: set
+   `KHALA_SYNC_BILLING_READS=postgres` only per the #8282 decision entry
+   (green verify + silent compare soak attached). This routes ONLY the
+   display balance read; D1 remains the write authority, every evaluator
+   input, and the fallback.
+6. **Decommission LATER**: a separate follow-up issue tracks moving the
+   remaining D1-only writers/readers, verifying the
+   `billing_ledger_entries_next` artifact stays absent, stopping
+   dual-write, snapshotting to R2, and dropping the D1 tables — never in
+   the same change as a read cutover.
+
+Rollback at ANY step: `KHALA_SYNC_BILLING_READS=d1` (reads) and/or
+`KHALA_SYNC_BILLING_DUAL_WRITE=off` (writes). D1 authority is never
+behind.
+
+**Mirror coverage (what dual-writes today):** billing.ts credit/debit/
+policy/notification ops (wired at billing-routes, operator routes,
+index.ts cron/policy sites, omni-runs metering), the FULL Stripe webhook
+ingest (`stripe_webhook_events` insert + status updates, checkout
+fulfillment, customers, sessions, saved payment methods, auto-top-up),
+Khala Code paid-plan intents (both rails), the buyer-payment ledger store
+(all six create paths + site-checkout challenges), and annotated pay-in
+plans through `runLedgerStatements` on the tip-ladder (forum + pylon
+tips), tips-sweep + forwarding reconcile, USD-credit bridge, and MPP/
+Lightning mints. **Still D1-only pending the decommission follow-up**
+(converged by every backfill sweep until then):
+`first_batch_payment_policies` (operator triage), codex-usage debits from
+`OmniRunStore` constructors that do not pass `billingRuntime`, and the
+low-volume `runLedgerStatements` consumers (labor-escrow, metering-hook,
+batch-job-metering, inference-abuse-controls, serving-node-payout,
+cloud-metering, product-promises, business-starter-credit). A final
+`--restart` sweep + `--verify` immediately before any read cutover is
+therefore MANDATORY, not optional.
+
 ## Public tokens-served projection (KS-6.3, #8304)
 
 The public "Khala Tokens Served" counter

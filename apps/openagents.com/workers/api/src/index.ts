@@ -267,6 +267,10 @@ import {
 } from './billing'
 import { makeBillingApiHandlers } from './billing-routes'
 import {
+  billingDomainMirrorFromEnv,
+  billingRuntimeForEnv,
+} from './billing-store'
+import {
   recordBackendIncidentEvent,
   routePatternFromRequest,
 } from './backend-incident-events'
@@ -304,7 +308,10 @@ import { makeD1BuyModeDispatcherStore } from './buy-mode-dispatcher'
 import { buyModePaymentBridgeForEnv } from './buy-mode-http-payment-bridge'
 import { buyModeEvalBridgeForEnv } from './buy-mode-live-eval-bridge'
 import { buyModeRelayPublisherForEnv } from './buy-mode-live-publisher'
-import { makeD1BuyerPaymentLedgerStore } from './buyer-payment-ledger'
+import {
+  makeD1BuyerPaymentLedgerStore,
+  withBuyerPaymentLedgerMirror,
+} from './buyer-payment-ledger'
 import { makeCfBrowserSmokeHandler } from './cf-browser-smoke-routes'
 import { makeCheckoutPageRoutes } from './checkout-page-routes'
 // Cloud coding-session surface (autopilot.cloud_coding_sessions.v1, red) — the
@@ -1915,6 +1922,7 @@ const artanisComposerTipForEnv =
           forumContentDatabaseForEnv(environment),
           {
             agentStore: makeAgentRegistrationStoreForEnv(environment),
+            billingMirror: billingDomainMirrorFromEnv(environment),
             tipsBufferPay: tipsBufferPayFnForEnv(environment),
           },
         ),
@@ -5376,6 +5384,7 @@ const sendOutOfCreditsNotificationOnce = async (
   const reservation = await reserveOutOfCreditsNotification(
     openAgentsDatabase(env),
     input,
+    billingRuntimeForEnv(env),
   )
 
   if (!reservation.ok) {
@@ -5414,18 +5423,26 @@ const sendOutOfCreditsNotificationOnce = async (
         )
 
   if (delivery.ok) {
-    await markOutOfCreditsNotificationSent(openAgentsDatabase(env), {
-      resendEmailId: delivery.id,
-      userId: input.userId,
-    })
+    await markOutOfCreditsNotificationSent(
+      openAgentsDatabase(env),
+      {
+        resendEmailId: delivery.id,
+        userId: input.userId,
+      },
+      billingRuntimeForEnv(env),
+    )
 
     return
   }
 
-  await markOutOfCreditsNotificationFailed(openAgentsDatabase(env), {
-    errorMessage: delivery.errorMessage,
-    userId: input.userId,
-  })
+  await markOutOfCreditsNotificationFailed(
+    openAgentsDatabase(env),
+    {
+      errorMessage: delivery.errorMessage,
+      userId: input.userId,
+    },
+    billingRuntimeForEnv(env),
+  )
   logWorkerRouteWarning('out_of_credits_email_failed', {
     error: delivery.errorMessage,
     userId: input.userId,
@@ -6435,6 +6452,7 @@ const enforceOutOfCreditsPolicy = async (
   const billing = await suspendBillingAccountIfOutOfCredits(
     openAgentsDatabase(env),
     userId,
+    billingRuntimeForEnv(env),
   )
 
   if (!billing.exhausted) {
@@ -6477,6 +6495,7 @@ const makeBillingAwareOmniRunStore = (env: Env, ctx?: ExecutionContext) =>
   makeOmniRunStoreForEnv(env, {
     afterAgentRunMetered: run =>
       enforceOutOfCreditsPolicy(env, ctx, run.userId),
+    billingRuntime: billingRuntimeForEnv(env),
   })
 
 const tokenUsageLeaderboardsLayer = (env: Env) =>
@@ -6707,9 +6726,14 @@ const sweepActiveAgentRunBilling = async (
   )
 
   for (const run of activeRuns) {
-    await recordContainerUsageDebitForRun(openAgentsDatabase(env), run, {
-      billUntil,
-    })
+    await recordContainerUsageDebitForRun(
+      openAgentsDatabase(env),
+      run,
+      {
+        billUntil,
+      },
+      billingRuntimeForEnv(env),
+    )
     await enforceOutOfCreditsPolicy(env, ctx, run.userId)
   }
 }
@@ -7778,13 +7802,16 @@ const siteCommerceRoutesForEnv = (
     },
     authorizeMdkAccountBinding: request => requireAdminApiToken(request, env),
     authorizePayoutBridge: request => requireAdminApiToken(request, env),
-    buyerPaymentLedgerStore: makeD1BuyerPaymentLedgerStore(
+    buyerPaymentLedgerStore: withBuyerPaymentLedgerMirror(
       openAgentsDatabase(env),
+      makeD1BuyerPaymentLedgerStore(openAgentsDatabase(env)),
+      billingDomainMirrorFromEnv(env),
     ),
     challengeExpiresAt: () => isoTimestampAfter(currentDate(), 10 * 60_000),
     checkoutCatalog: omegaMdkDemoSitePaymentCatalog,
     checkoutIntentStore: makeD1SiteMdkCheckoutIntentStore(
       openAgentsDatabase(env),
+      billingDomainMirrorFromEnv(env),
     ),
     hostedMdkClient: hostedMdkClientForEnv(env),
     mdkWebhookConfig: hostedMdkWebhookConfigForEnv(env),
@@ -8256,7 +8283,11 @@ const autopilotWorkRouteDependencies = {
   l402SigningBoundary: (env: WorkerBindings) =>
     forumL402SigningBoundaryForEnv(env),
   makeBuyerPaymentLedgerStore: (env: WorkerBindings) =>
-    makeD1BuyerPaymentLedgerStore(openAgentsDatabase(env)),
+    withBuyerPaymentLedgerMirror(
+      openAgentsDatabase(env),
+      makeD1BuyerPaymentLedgerStore(openAgentsDatabase(env)),
+      billingDomainMirrorFromEnv(env),
+    ),
   makePylonApiStore: (env: WorkerBindings) =>
     makePylonApiStoreForEnv(env),
   makeStore: (env: WorkerBindings) =>
@@ -8276,7 +8307,11 @@ const autopilotWorkRouteDependencies = {
     input: Parameters<typeof verifyAutopilotL402PaymentProofFromBuyerLedger>[1],
   ) =>
     verifyAutopilotL402PaymentProofFromBuyerLedger(
-      makeD1BuyerPaymentLedgerStore(openAgentsDatabase(env)),
+      withBuyerPaymentLedgerMirror(
+        openAgentsDatabase(env),
+        makeD1BuyerPaymentLedgerStore(openAgentsDatabase(env)),
+        billingDomainMirrorFromEnv(env),
+      ),
       input,
     ),
 }
@@ -13645,6 +13680,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         ...(mintLightningInvoice === undefined
           ? {}
           : { mintLightningInvoice }),
+        mirror: billingDomainMirrorFromEnv(env),
         nowIso: currentIsoTimestamp,
         paidPlanPriceSats: readKhalaCodePaidPlanPriceSats(
           env.KHALA_CODE_PAID_PLAN_PRICE_SATS,
@@ -14368,6 +14404,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         db: openAgentsDatabase(env),
         enabled: isKhalaMppEnabled(env.KHALA_MPP_ENABLED),
         lightningEnabled,
+        mirror: billingDomainMirrorFromEnv(env),
         ...(mintLightningInvoice === undefined ? {} : { mintLightningInvoice }),
         signingSecret: env.KHALA_MPP_SIGNING_SECRET,
         stripeNetworkProfileId: env.STRIPE_MPP_NETWORK_PROFILE_ID,
@@ -14796,6 +14833,8 @@ const routeRequest = makeWorkerRouteRequest({
     // KS-8.10 (#8321): the forum content dual-write seam — scoped forum
     // table writes read-back-mirror into Postgres (fail-soft).
     forumRoutes.routeForumRequest(request, forumContentDatabaseForEnv(env), {
+      // KS-8.7 (#8318): fail-soft billing/pay-in mirror for forum tips.
+      billingMirror: billingDomainMirrorFromEnv(env),
       tipsBufferPay: tipsBufferPayFnForEnv(env),
       agentStore: makeAgentRegistrationStoreForEnv(env),
       // KS-8.9 (#8320): fire-safe Postgres dual-write mirror (orange check).
@@ -15947,6 +15986,7 @@ export default {
         'TipsSweep.runTick',
         runTipsSweepScheduled(openAgentsDatabase(env), {
           makeId: randomUuid,
+          mirror: billingDomainMirrorFromEnv(env),
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
           payFromBuffer: tipsBufferPayFnForEnv(env),
         }),
@@ -16142,6 +16182,7 @@ export default {
         'TipsBuffer.reconcileForwarding',
         Effect.promise(() =>
           reconcileForwardingBufferPayments(openAgentsDatabase(env), {
+            mirror: billingDomainMirrorFromEnv(env),
             fetchBufferPaymentStatus: async paymentId => {
               const fetchBuffer = fetchMdkTipsBufferPath(env)
               if (fetchBuffer === undefined) {

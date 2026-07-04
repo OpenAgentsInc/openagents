@@ -5,6 +5,7 @@ import Stripe from 'stripe'
 import {
   BILLING_CURRENCY,
   type BillingCreditPackageDisplay,
+  type BillingRuntime,
   type BillingSummary,
   applyStripeAutoTopUpCredit,
   applyStripeCheckoutCredit,
@@ -15,6 +16,7 @@ import {
   recordBillingAutoTopUpEvent,
   systemBillingRuntime,
 } from './billing'
+import { billingRuntimeForEnv, type BillingSyncEnv } from './billing-store'
 import { WorkerSecret, redactedValue } from './config'
 import { parseJsonWithSchema } from './json-boundary'
 import { type PartnerQualifyingPaidEvent } from './partner-attribution-eligibility'
@@ -645,6 +647,8 @@ const ensureStripeCustomer = async (
   input: Readonly<{
     db: D1Database
     email?: string | undefined
+    /** KS-8.7: carries the fail-soft Postgres mirror (billing-store.ts). */
+    runtime?: BillingRuntime | undefined
     userId: string
   }>,
 ): Promise<StripeCustomerId> => {
@@ -687,6 +691,13 @@ const ensureStripeCustomer = async (
     )
     .run()
 
+  await input.runtime?.mirror?.(input.db, [
+    {
+      key: { currency: BILLING_CURRENCY, livemode: 0, user_id: input.userId },
+      table: 'stripe_customers',
+    },
+  ])
+
   return StripeCustomerId.make(customer.id)
 }
 
@@ -710,6 +721,7 @@ const createCreditCheckout = async (
     businessKickoff?: StripeBusinessCheckoutKickoffInput | undefined
     db: D1Database
     email?: string | undefined
+    runtime?: BillingRuntime | undefined
     packageId: string
     userId: string
   }>,
@@ -718,6 +730,7 @@ const createCreditCheckout = async (
   const customerId = await ensureStripeCustomer(stripeClient, {
     db: input.db,
     email: input.email,
+    runtime: input.runtime,
     userId: input.userId,
   })
   const stripe = stripeClient.unsafeClient()
@@ -773,6 +786,10 @@ const createCreditCheckout = async (
     )
     .run()
 
+  await input.runtime?.mirror?.(input.db, [
+    { key: { session_id: session.id }, table: 'stripe_checkout_sessions' },
+  ])
+
   if (session.url === null) {
     throw new StripeCheckoutError({
       reason: 'Stripe did not return a Checkout URL.',
@@ -800,6 +817,7 @@ const createKhalaCodePaidPlanCheckout = async (
     idempotencyKey: string
     nowIso: string
     purchaseRef: string
+    runtime?: BillingRuntime | undefined
   }>,
 ): Promise<KhalaCodePaidPlanStripeCheckout> => {
   const priceId = config.khalaCodePaidPlanPriceId
@@ -822,6 +840,7 @@ const createKhalaCodePaidPlanCheckout = async (
 
   const customerId = await ensureStripeCustomer(stripeClient, {
     db: input.db,
+    runtime: input.runtime,
     userId: input.accountRef,
   })
   const stripe = stripeClient.unsafeClient()
@@ -853,15 +872,19 @@ const createKhalaCodePaidPlanCheckout = async (
     })
   }
 
-  const intent = await recordKhalaCodePaidPlanStripeIntent(input.db, {
-    accountRef: input.accountRef,
-    amountCents: null,
-    checkoutUrl: session.url,
-    idempotencyKey: input.idempotencyKey,
-    nowIso: input.nowIso,
-    purchaseRef: input.purchaseRef,
-    stripeCheckoutSessionId: session.id,
-  })
+  const intent = await recordKhalaCodePaidPlanStripeIntent(
+    input.db,
+    {
+      accountRef: input.accountRef,
+      amountCents: null,
+      checkoutUrl: session.url,
+      idempotencyKey: input.idempotencyKey,
+      nowIso: input.nowIso,
+      purchaseRef: input.purchaseRef,
+      stripeCheckoutSessionId: session.id,
+    },
+    input.runtime?.mirror,
+  )
 
   return stripeCheckoutResponseFromIntent(intent)
 }
@@ -948,7 +971,11 @@ const businessSignupIdFromSession = (
 const fulfillCheckoutSession = async (
   config: StripeConfigShape,
   stripeClient: StripeClientShape,
-  input: Readonly<{ db: D1Database; sessionId: string }>,
+  input: Readonly<{
+    db: D1Database
+    runtime?: BillingRuntime | undefined
+    sessionId: string
+  }>,
 ): Promise<BillingSummary> => {
   const stripe = stripeClient.unsafeClient()
   const session = await stripe.checkout.sessions.retrieve(input.sessionId)
@@ -957,7 +984,8 @@ const fulfillCheckoutSession = async (
     session.metadata?.omega_user_id ?? session.client_reference_id ?? '',
   )
   const pack = packageForId(config, packageId)
-  const now = systemBillingRuntime.nowIso()
+  const runtime = input.runtime ?? systemBillingRuntime
+  const now = runtime.nowIso()
 
   if (userId === '') {
     throw new StripeCheckoutError({
@@ -980,7 +1008,14 @@ const fulfillCheckoutSession = async (
       )
       .run()
 
-    return readBillingSummary(input.db, userId)
+    await runtime.mirror?.(input.db, [
+      {
+        key: { session_id: input.sessionId },
+        table: 'stripe_checkout_sessions',
+      },
+    ])
+
+    return readBillingSummary(input.db, userId, runtime)
   }
 
   const creditGrantCents = checkoutCreditGrantCents(session, pack.amountCents)
@@ -997,13 +1032,17 @@ const fulfillCheckoutSession = async (
     })
   }
 
-  const summary = await applyStripeCheckoutCredit(input.db, {
-    amountCents: creditGrantCents,
-    bonusCents: pack.bonusCents,
-    packageId: pack.id,
-    sessionId: input.sessionId,
-    userId,
-  })
+  const summary = await applyStripeCheckoutCredit(
+    input.db,
+    {
+      amountCents: creditGrantCents,
+      bonusCents: pack.bonusCents,
+      packageId: pack.id,
+      sessionId: input.sessionId,
+      userId,
+    },
+    runtime,
+  )
 
   const businessSignupId = businessSignupIdFromSession(session)
 
@@ -1095,6 +1134,10 @@ const fulfillCheckoutSession = async (
     .bind(`billing:stripe-checkout:${input.sessionId}`, now, input.sessionId)
     .run()
 
+  await runtime.mirror?.(input.db, [
+    { key: { session_id: input.sessionId }, table: 'stripe_checkout_sessions' },
+  ])
+
   return summary
 }
 
@@ -1104,6 +1147,7 @@ const fulfillKhalaCodePaidPlanCheckoutSession = async (
   input: Readonly<{
     db: D1Database
     eventType?: string | undefined
+    runtime?: BillingRuntime | undefined
     sessionId: string
   }>,
 ): Promise<
@@ -1120,7 +1164,8 @@ const fulfillKhalaCodePaidPlanCheckoutSession = async (
     })
   }
 
-  const now = systemBillingRuntime.nowIso()
+  const runtime = input.runtime ?? systemBillingRuntime
+  const now = runtime.nowIso()
 
   if (session.payment_status !== 'paid') {
     const status =
@@ -1129,11 +1174,15 @@ const fulfillKhalaCodePaidPlanCheckoutSession = async (
         : session.status === 'expired'
           ? 'expired'
           : 'requires_payment'
-    await markKhalaCodePaidPlanStripeIntentUnpaid(input.db, {
-      nowIso: now,
-      sessionId: input.sessionId,
-      status,
-    })
+    await markKhalaCodePaidPlanStripeIntentUnpaid(
+      input.db,
+      {
+        nowIso: now,
+        sessionId: input.sessionId,
+        status,
+      },
+      runtime.mirror,
+    )
 
     return {
       status:
@@ -1156,10 +1205,14 @@ const fulfillKhalaCodePaidPlanCheckoutSession = async (
     })
   }
 
-  return fulfillKhalaCodePaidPlanPaymentIntent(input.db, {
-    intent,
-    nowIso: now,
-  })
+  return fulfillKhalaCodePaidPlanPaymentIntent(
+    input.db,
+    {
+      intent,
+      nowIso: now,
+    },
+    runtime.mirror,
+  )
 }
 
 const createSetupIntent = async (
@@ -1167,12 +1220,14 @@ const createSetupIntent = async (
   input: Readonly<{
     db: D1Database
     email?: string | undefined
+    runtime?: BillingRuntime | undefined
     userId: string
   }>,
 ): Promise<StripeSetupIntentSnapshot> => {
   const customerId = await ensureStripeCustomer(stripeClient, {
     db: input.db,
     email: input.email,
+    runtime: input.runtime,
     userId: input.userId,
   })
   const stripe = stripeClient.unsafeClient()
@@ -1230,6 +1285,7 @@ const saveSetupIntentPaymentMethod = async (
   stripeClient: StripeClientShape,
   input: Readonly<{
     db: D1Database
+    runtime?: BillingRuntime | undefined
     setupIntentId: string
     userId: string
   }>,
@@ -1301,6 +1357,13 @@ const saveSetupIntentPaymentMethod = async (
     )
     .run()
 
+  await input.runtime?.mirror?.(input.db, [
+    {
+      key: { currency: BILLING_CURRENCY, livemode: 0, user_id: input.userId },
+      table: 'stripe_saved_payment_methods',
+    },
+  ])
+
   return {
     ...card,
     paymentMethodId,
@@ -1325,9 +1388,14 @@ const chargeAutoTopUp = async (
   input: Readonly<{
     db: D1Database
     idempotencyKey?: string | undefined
+    runtime?: BillingRuntime | undefined
     userId: string
   }>,
 ): Promise<StripeAutoTopUpChargeResult> => {
+  const runtime = input.runtime ?? systemBillingRuntime
+  // Evaluator input: the auto-top-up decision reads the AUTHORITATIVE D1
+  // balance (readBillingBalanceCents without a routed runtime) — the KS-8.7
+  // side-effectful-evaluator rule: exactly one store decides.
   const balanceBeforeCents = await readBillingBalanceCents(
     input.db,
     input.userId,
@@ -1355,7 +1423,7 @@ const chargeAutoTopUp = async (
     balanceBeforeCents > policy.threshold_cents
   ) {
     return {
-      billing: await readBillingSummary(input.db, input.userId),
+      billing: await readBillingSummary(input.db, input.userId, runtime),
       message: 'Auto top-up was not needed.',
       status: 'skipped',
     }
@@ -1369,17 +1437,21 @@ const chargeAutoTopUp = async (
     policy.spent_this_month_cents + policy.amount_cents >
     policy.monthly_cap_cents
   ) {
-    await recordBillingAutoTopUpEvent(input.db, {
-      amountCents: policy.amount_cents,
-      balanceBeforeCents,
-      idempotencyKey: `${idempotencyKey}:cap`,
-      reason: 'Monthly auto top-up cap reached.',
-      status: 'cap_reached',
-      userId: input.userId,
-    })
+    await recordBillingAutoTopUpEvent(
+      input.db,
+      {
+        amountCents: policy.amount_cents,
+        balanceBeforeCents,
+        idempotencyKey: `${idempotencyKey}:cap`,
+        reason: 'Monthly auto top-up cap reached.',
+        status: 'cap_reached',
+        userId: input.userId,
+      },
+      runtime,
+    )
 
     return {
-      billing: await readBillingSummary(input.db, input.userId),
+      billing: await readBillingSummary(input.db, input.userId, runtime),
       message: 'Monthly auto top-up cap reached.',
       status: 'cap_reached',
     }
@@ -1389,21 +1461,29 @@ const chargeAutoTopUp = async (
     policy.stripe_customer_id === null ||
     policy.stripe_payment_method_id === null
   ) {
-    await pauseBillingAutoTopUpPolicy(input.db, {
-      reason: 'No saved payment method.',
-      userId: input.userId,
-    })
-    await recordBillingAutoTopUpEvent(input.db, {
-      amountCents: policy.amount_cents,
-      balanceBeforeCents,
-      idempotencyKey: `${idempotencyKey}:missing-payment-method`,
-      reason: 'No saved payment method.',
-      status: 'requires_payment_method',
-      userId: input.userId,
-    })
+    await pauseBillingAutoTopUpPolicy(
+      input.db,
+      {
+        reason: 'No saved payment method.',
+        userId: input.userId,
+      },
+      runtime,
+    )
+    await recordBillingAutoTopUpEvent(
+      input.db,
+      {
+        amountCents: policy.amount_cents,
+        balanceBeforeCents,
+        idempotencyKey: `${idempotencyKey}:missing-payment-method`,
+        reason: 'No saved payment method.',
+        status: 'requires_payment_method',
+        userId: input.userId,
+      },
+      runtime,
+    )
 
     return {
-      billing: await readBillingSummary(input.db, input.userId),
+      billing: await readBillingSummary(input.db, input.userId, runtime),
       message: 'Add a card before enabling auto top-up.',
       status: 'requires_payment_method',
     }
@@ -1428,53 +1508,73 @@ const chargeAutoTopUp = async (
     )
 
     if (paymentIntent.status !== 'succeeded') {
-      await pauseBillingAutoTopUpPolicy(input.db, {
-        reason: `Payment requires ${paymentIntent.status}.`,
-        userId: input.userId,
-      })
-      await recordBillingAutoTopUpEvent(input.db, {
-        amountCents: policy.amount_cents,
-        balanceBeforeCents,
-        idempotencyKey: `${idempotencyKey}:requires-action`,
-        paymentIntentId: paymentIntent.id,
-        reason: `Payment requires ${paymentIntent.status}.`,
-        status: 'declined',
-        userId: input.userId,
-      })
+      await pauseBillingAutoTopUpPolicy(
+        input.db,
+        {
+          reason: `Payment requires ${paymentIntent.status}.`,
+          userId: input.userId,
+        },
+        runtime,
+      )
+      await recordBillingAutoTopUpEvent(
+        input.db,
+        {
+          amountCents: policy.amount_cents,
+          balanceBeforeCents,
+          idempotencyKey: `${idempotencyKey}:requires-action`,
+          paymentIntentId: paymentIntent.id,
+          reason: `Payment requires ${paymentIntent.status}.`,
+          status: 'declined',
+          userId: input.userId,
+        },
+        runtime,
+      )
 
       return {
-        billing: await readBillingSummary(input.db, input.userId),
+        billing: await readBillingSummary(input.db, input.userId, runtime),
         message: 'Auto top-up payment requires attention.',
         status: 'declined',
       }
     }
 
     return {
-      billing: await applyStripeAutoTopUpCredit(input.db, {
-        amountCents: policy.amount_cents,
-        balanceBeforeCents,
-        idempotencyKey,
-        paymentIntentId: paymentIntent.id,
-        userId: input.userId,
-      }),
+      billing: await applyStripeAutoTopUpCredit(
+        input.db,
+        {
+          amountCents: policy.amount_cents,
+          balanceBeforeCents,
+          idempotencyKey,
+          paymentIntentId: paymentIntent.id,
+          userId: input.userId,
+        },
+        runtime,
+      ),
       status: 'succeeded',
     }
   } catch (error) {
-    await pauseBillingAutoTopUpPolicy(input.db, {
-      reason: safeReason(error),
-      userId: input.userId,
-    })
-    await recordBillingAutoTopUpEvent(input.db, {
-      amountCents: policy.amount_cents,
-      balanceBeforeCents,
-      idempotencyKey: `${idempotencyKey}:declined`,
-      reason: safeReason(error),
-      status: 'declined',
-      userId: input.userId,
-    })
+    await pauseBillingAutoTopUpPolicy(
+      input.db,
+      {
+        reason: safeReason(error),
+        userId: input.userId,
+      },
+      runtime,
+    )
+    await recordBillingAutoTopUpEvent(
+      input.db,
+      {
+        amountCents: policy.amount_cents,
+        balanceBeforeCents,
+        idempotencyKey: `${idempotencyKey}:declined`,
+        reason: safeReason(error),
+        status: 'declined',
+        userId: input.userId,
+      },
+      runtime,
+    )
 
     return {
-      billing: await readBillingSummary(input.db, input.userId),
+      billing: await readBillingSummary(input.db, input.userId, runtime),
       message: 'Auto top-up was declined.',
       status: 'declined',
     }
@@ -1488,6 +1588,7 @@ const processStripeWebhook = async (
   input: Readonly<{
     db: D1Database
     payload: string
+    runtime?: BillingRuntime | undefined
     signature: string | null
   }>,
 ): Promise<StripeWebhookResult> => {
@@ -1503,10 +1604,15 @@ const processStripeWebhook = async (
     undefined,
     Stripe.createSubtleCryptoProvider(),
   )
-  const now = systemBillingRuntime.nowIso()
+  const runtime = input.runtime ?? systemBillingRuntime
+  const now = runtime.nowIso()
   const session = event.data.object as Stripe.Checkout.Session
   const maybeSessionId = 'id' in session ? session.id : undefined
 
+  // The replay dedupe gate for everything downstream: INSERT OR IGNORE on
+  // the event_id PRIMARY KEY. The decision is made HERE, on D1, exactly
+  // once; the mirror below only copies the accepted row (same key,
+  // byte-exact) — it never re-decides.
   await input.db
     .prepare(
       `INSERT OR IGNORE INTO stripe_webhook_events
@@ -1515,6 +1621,10 @@ const processStripeWebhook = async (
     )
     .bind(event.id, event.type, maybeSessionId ?? null, now)
     .run()
+
+  await runtime.mirror?.(input.db, [
+    { key: { event_id: event.id }, table: 'stripe_webhook_events' },
+  ])
 
   if (
     event.type !== 'checkout.session.completed' &&
@@ -1529,6 +1639,10 @@ const processStripeWebhook = async (
       )
       .bind(now, event.id)
       .run()
+
+    await runtime.mirror?.(input.db, [
+      { key: { event_id: event.id }, table: 'stripe_webhook_events' },
+    ])
 
     return {
       eventId: StripeEventId.make(event.id),
@@ -1547,11 +1661,13 @@ const processStripeWebhook = async (
     await fulfillKhalaCodePaidPlanCheckoutSession(config, stripeClient, {
       db: input.db,
       eventType: event.type,
+      runtime: input.runtime,
       sessionId: maybeSessionId,
     })
   } else {
     await fulfillCheckoutSession(config, stripeClient, {
       db: input.db,
+      runtime: input.runtime,
       sessionId: maybeSessionId,
     })
   }
@@ -1564,6 +1680,10 @@ const processStripeWebhook = async (
     .bind(now, event.id)
     .run()
 
+  await runtime.mirror?.(input.db, [
+    { key: { event_id: event.id }, table: 'stripe_webhook_events' },
+  ])
+
   return {
     eventId: StripeEventId.make(event.id),
     status: 'processed',
@@ -1571,7 +1691,12 @@ const processStripeWebhook = async (
   }
 }
 
-export const makeStripeCheckoutServiceForRoutes = (env: StripeBillingEnv) => {
+export const makeStripeCheckoutServiceForRoutes = (
+  env: StripeBillingEnv & BillingSyncEnv,
+) => {
+  // KS-8.7 (#8318): one runtime per service instance carries the fail-soft
+  // Postgres mirror into every Stripe write path (webhook ingest included).
+  const billingRuntime = billingRuntimeForEnv(env)
   const config = Effect.runSync(
     decodeStripeConfig(env).pipe(
       Effect.match({
@@ -1607,36 +1732,55 @@ export const makeStripeCheckoutServiceForRoutes = (env: StripeBillingEnv) => {
       idempotencyKey: string
       nowIso: string
       purchaseRef: string
-    }) => createKhalaCodePaidPlanCheckout(config, stripeClient, input),
+    }) =>
+      createKhalaCodePaidPlanCheckout(config, stripeClient, {
+        ...input,
+        runtime: billingRuntime,
+      }),
     createCreditCheckout: (input: {
       businessKickoff?: StripeBusinessCheckoutKickoffInput | undefined
       db: D1Database
       email?: string | undefined
       packageId: string
       userId: string
-    }) => createCreditCheckout(config, stripeClient, input),
+    }) =>
+      createCreditCheckout(config, stripeClient, {
+        ...input,
+        runtime: billingRuntime,
+      }),
     fulfillCheckoutSession: (input: { db: D1Database; sessionId: string }) =>
-      fulfillCheckoutSession(config, stripeClient, input),
+      fulfillCheckoutSession(config, stripeClient, {
+        ...input,
+        runtime: billingRuntime,
+      }),
     fulfillKhalaCodePaidPlanCheckoutSession: (input: {
       db: D1Database
       eventType?: string | undefined
       sessionId: string
-    }) => fulfillKhalaCodePaidPlanCheckoutSession(config, stripeClient, input),
+    }) =>
+      fulfillKhalaCodePaidPlanCheckoutSession(config, stripeClient, {
+        ...input,
+        runtime: billingRuntime,
+      }),
     createSetupIntent: (input: {
       db: D1Database
       email?: string | undefined
       userId: string
-    }) => createSetupIntent(stripeClient, input),
+    }) => createSetupIntent(stripeClient, { ...input, runtime: billingRuntime }),
     saveSetupIntentPaymentMethod: (input: {
       db: D1Database
       setupIntentId: string
       userId: string
-    }) => saveSetupIntentPaymentMethod(stripeClient, input),
+    }) =>
+      saveSetupIntentPaymentMethod(stripeClient, {
+        ...input,
+        runtime: billingRuntime,
+      }),
     chargeAutoTopUp: (input: {
       db: D1Database
       idempotencyKey?: string | undefined
       userId: string
-    }) => chargeAutoTopUp(stripeClient, input),
+    }) => chargeAutoTopUp(stripeClient, { ...input, runtime: billingRuntime }),
     processWebhook: (input: {
       db: D1Database
       payload: string
@@ -1692,7 +1836,10 @@ export const makeStripeCheckoutServiceForRoutes = (env: StripeBillingEnv) => {
           }),
       }
 
-      return processStripeWebhook(config, checkout, stripeClient, input)
+      return processStripeWebhook(config, checkout, stripeClient, {
+        ...input,
+        runtime: billingRuntime,
+      })
     },
   }
 }

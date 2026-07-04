@@ -699,3 +699,262 @@ CREATE UNIQUE INDEX idx_agent_goal_events_goal_external_event
   ON agent_goal_events(goal_id, external_event_id)
   WHERE external_event_id IS NOT NULL;
 `
+
+/**
+ * The D1 DDL for the KS-8.7 billing/Stripe/pay-ins domain (worker
+ * migrations 0016/0018/0019/0031/0052/0114/0160/0169/0170/0211/0226/0290,
+ * condensed to the live column sets). FK clauses to out-of-domain tables
+ * (users/teams/agent_runs/software_orders) are dropped — the contract
+ * suite exercises the billing rows, not the user graph. `agent_balances`
+ * is included because the pay-in statement plans move balances in the
+ * same batch (it is NOT a migrating table).
+ */
+export const BILLING_DOMAIN_D1_SCHEMA = `
+CREATE TABLE billing_accounts (
+  user_id TEXT PRIMARY KEY NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE billing_ledger_entries (
+  id TEXT PRIMARY KEY NOT NULL,
+  user_id TEXT NOT NULL,
+  team_id TEXT,
+  run_id TEXT,
+  source TEXT NOT NULL CHECK (
+    source IN (
+      'trial_grant', 'coupon', 'credit_card_placeholder', 'stripe_checkout',
+      'stripe_auto_top_up', 'container_usage', 'codex_usage',
+      'manual_adjustment'
+    )
+  ),
+  description TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  quantity INTEGER,
+  unit TEXT,
+  unit_rate_cents INTEGER,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  idempotency_key TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE billing_usage_cursors (
+  run_id TEXT NOT NULL,
+  meter TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  team_id TEXT,
+  last_billed_at TEXT NOT NULL,
+  total_billed_quantity INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (run_id, meter)
+);
+
+CREATE TABLE billing_coupon_redemptions (
+  user_id TEXT NOT NULL,
+  coupon_code TEXT NOT NULL,
+  ledger_entry_id TEXT NOT NULL,
+  redeemed_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, coupon_code)
+);
+
+CREATE TABLE billing_credit_notifications (
+  user_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('out_of_credits')),
+  email TEXT,
+  display_name TEXT NOT NULL,
+  balance_cents INTEGER NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'sent', 'failed')),
+  resend_email_id TEXT,
+  error_message TEXT,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, kind)
+);
+
+CREATE TABLE billing_auto_top_up_policies (
+  user_id TEXT NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+  threshold_cents INTEGER NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  monthly_cap_cents INTEGER NOT NULL,
+  spent_this_month_cents INTEGER NOT NULL DEFAULT 0,
+  cap_period_yyyymm TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('active', 'disabled', 'paused')),
+  pause_reason TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, currency)
+);
+
+CREATE TABLE billing_auto_top_up_events (
+  id TEXT PRIMARY KEY NOT NULL,
+  user_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (
+    status IN (
+      'succeeded', 'declined', 'cap_reached', 'skipped',
+      'requires_payment_method'
+    )
+  ),
+  amount_cents INTEGER NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  balance_before_cents INTEGER,
+  balance_after_cents INTEGER,
+  stripe_payment_intent_id TEXT,
+  ledger_entry_id TEXT,
+  reason TEXT,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE stripe_customers (
+  user_id TEXT NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  stripe_customer_id TEXT NOT NULL,
+  livemode INTEGER NOT NULL DEFAULT 0 CHECK (livemode IN (0, 1)),
+  email_snapshot TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, currency, livemode),
+  UNIQUE (stripe_customer_id, livemode)
+);
+
+CREATE TABLE stripe_checkout_sessions (
+  session_id TEXT PRIMARY KEY NOT NULL,
+  user_id TEXT NOT NULL,
+  package_id TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  payment_status TEXT NOT NULL,
+  fulfillment_status TEXT NOT NULL CHECK (
+    fulfillment_status IN ('pending', 'fulfilled', 'unpaid', 'expired', 'mismatched')
+  ),
+  ledger_entry_id TEXT,
+  stripe_customer_id TEXT NOT NULL,
+  checkout_url TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE stripe_webhook_events (
+  event_id TEXT PRIMARY KEY NOT NULL,
+  type TEXT NOT NULL,
+  processing_status TEXT NOT NULL CHECK (
+    processing_status IN ('received', 'processed', 'ignored', 'failed')
+  ),
+  checkout_session_id TEXT,
+  received_at TEXT NOT NULL,
+  processed_at TEXT
+);
+
+CREATE TABLE stripe_saved_payment_methods (
+  user_id TEXT NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  livemode INTEGER NOT NULL DEFAULT 0 CHECK (livemode IN (0, 1)),
+  stripe_customer_id TEXT NOT NULL,
+  stripe_payment_method_id TEXT NOT NULL,
+  setup_intent_id TEXT,
+  brand TEXT,
+  last4 TEXT,
+  exp_month INTEGER,
+  exp_year INTEGER,
+  status TEXT NOT NULL CHECK (
+    status IN ('active', 'detached', 'failed', 'requires_action')
+  ),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, currency, livemode),
+  UNIQUE (stripe_payment_method_id, livemode)
+);
+
+CREATE TABLE agent_balances (
+  actor_ref TEXT PRIMARY KEY,
+  balance_msat INTEGER NOT NULL DEFAULT 0 CHECK (balance_msat >= 0),
+  sweep_enabled INTEGER NOT NULL DEFAULT 1,
+  sweep_threshold_sat INTEGER NOT NULL DEFAULT 210,
+  send_credits_below_sat INTEGER NOT NULL DEFAULT 10,
+  receive_credits_below_sat INTEGER NOT NULL DEFAULT 10,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  held_msat INTEGER NOT NULL DEFAULT 0 CHECK (held_msat >= 0),
+  usd_credit_msat INTEGER NOT NULL DEFAULT 0 CHECK (usd_credit_msat >= 0)
+);
+
+CREATE TABLE pay_ins (
+  id TEXT PRIMARY KEY,
+  pay_in_type TEXT NOT NULL CHECK (
+    pay_in_type IN (
+      'tip', 'sweep', 'buffer_funding', 'reward', 'adjustment',
+      'usd_credit_grant', 'lightning_charge'
+    )
+  ),
+  payer_ref TEXT NOT NULL,
+  cost_msat INTEGER NOT NULL CHECK (cost_msat > 0),
+  state TEXT NOT NULL CHECK (
+    state IN ('pending', 'forwarding', 'paid', 'failed')
+  ),
+  failure_reason TEXT,
+  rung TEXT CHECK (rung IN ('credited', 'direct_bolt12') OR rung IS NULL),
+  context_ref TEXT,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  genesis_id TEXT,
+  successor_id TEXT,
+  created_at TEXT NOT NULL,
+  state_changed_at TEXT NOT NULL,
+  public_receipt_ref TEXT
+);
+
+CREATE TABLE pay_in_legs (
+  id TEXT PRIMARY KEY,
+  pay_in_id TEXT NOT NULL REFERENCES pay_ins (id),
+  direction TEXT NOT NULL CHECK (direction IN ('in', 'out')),
+  kind TEXT NOT NULL CHECK (kind IN ('balance', 'lightning')),
+  party_ref TEXT NOT NULL,
+  amount_msat INTEGER NOT NULL CHECK (amount_msat > 0),
+  resulting_balance_msat INTEGER,
+  external_ref TEXT,
+  refund_of_leg_id TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE agent_runs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  goal TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'queued',
+  started_at TEXT,
+  updated_at TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE users (
+  id TEXT PRIMARY KEY,
+  display_name TEXT NOT NULL DEFAULT '',
+  primary_email TEXT
+);
+
+CREATE TABLE khala_code_paid_plan_payment_intents (
+  purchase_ref TEXT PRIMARY KEY,
+  account_ref TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  rail TEXT NOT NULL CHECK (rail IN ('stripe_checkout', 'lightning_mpp')),
+  status TEXT NOT NULL CHECK (status IN ('requires_payment', 'fulfilled', 'failed', 'expired')),
+  plan_id TEXT NOT NULL,
+  amount_cents INTEGER,
+  amount_sats INTEGER,
+  stripe_checkout_session_id TEXT UNIQUE,
+  stripe_checkout_url TEXT,
+  lightning_payment_hash TEXT UNIQUE,
+  lightning_invoice TEXT,
+  lightning_network TEXT CHECK (lightning_network IS NULL OR lightning_network IN ('mainnet', 'regtest', 'signet')),
+  lightning_invoice_expires_at TEXT,
+  entitlement_receipt_ref TEXT,
+  failure_reason TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  fulfilled_at TEXT
+);
+`

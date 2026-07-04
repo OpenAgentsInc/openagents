@@ -1,3 +1,5 @@
+import type { BillingDomainTable } from '@openagentsinc/khala-sync-server'
+
 import type { AgentRunRecord, OmniEventRecord } from './omni-runs'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 import { sourceRefForTokenUsageEvent, tokenUsageFromEvent } from './token-usage'
@@ -205,9 +207,51 @@ type AutoTopUpEventRow = Readonly<{
   status: BillingAutoTopUpEvent['status']
 }>
 
+/**
+ * KS-8.7 (#8318): one row-copy request for the fail-soft Postgres mirror —
+ * a domain table plus the lookup key of the row(s) a D1 write just touched.
+ * The mirror READS BACK the fresh authoritative D1 row(s) and
+ * converge-upserts the byte-identical copy into Cloud SQL, so amounts and
+ * idempotency keys are copied, never recomputed, and the write-side
+ * idempotency decision is only ever made once — on D1.
+ */
+export type BillingMirrorRef = Readonly<{
+  table: BillingDomainTable
+  /** Column → value equality filter (a PK or UNIQUE surface at call sites). */
+  key: Readonly<Record<string, string | number | null>>
+}>
+
+/**
+ * The dual-write mirror hook (KHALA_SYNC_BILLING_DUAL_WRITE). MUST be
+ * fail-soft: implementations never throw — a mirror failure logs the
+ * `khala_sync_billing_dual_write_failed` drift diagnostic and the D1 write
+ * (the authority) stands. Production wiring: `billingRuntimeForEnv`
+ * (billing-store.ts).
+ */
+export type BillingDomainMirror = (
+  db: D1Database,
+  refs: ReadonlyArray<BillingMirrorRef>,
+) => Promise<void>
+
+/**
+ * The KHALA_SYNC_BILLING_READS-routed balance read. `readD1` is the
+ * authoritative D1 SUM; implementations may compare it against Postgres
+ * (serving D1) or serve Postgres with D1 fallback — but the DEFAULT and
+ * this lane's production posture is plain D1 (money read cutover is an
+ * epic-gated ops decision, #8282).
+ */
+export type BillingBalanceRead = (
+  userId: string,
+  readD1: () => Promise<number>,
+) => Promise<number>
+
 export type BillingRuntime = Readonly<{
   nowIso: () => string
   randomId: (prefix: string) => string
+  /** KS-8.7 fail-soft Postgres dual-write mirror (absent = D1-only). */
+  mirror?: BillingDomainMirror | undefined
+  /** KS-8.7 flag-routed balance read (absent = plain D1). */
+  balanceRead?: BillingBalanceRead | undefined
 }>
 
 export const systemBillingRuntime: BillingRuntime = {
@@ -300,7 +344,7 @@ export const ensureBillingAccount = async (
 ): Promise<void> => {
   const now = runtime.nowIso()
 
-  await db.batch([
+  const results = await db.batch([
     db
       .prepare(
         `INSERT OR IGNORE INTO billing_accounts
@@ -329,9 +373,28 @@ export const ensureBillingAccount = async (
         now,
       ),
   ])
+
+  // Mirror only when the INSERT OR IGNORE pair actually created rows — a
+  // no-op ensure on an existing account must not generate mirror traffic
+  // (this runs on every billing summary read).
+  const changed = results.some(
+    result =>
+      Number(
+        (result?.meta as { changes?: number } | undefined)?.changes ?? 0,
+      ) > 0,
+  )
+  if (changed) {
+    await runtime.mirror?.(db, [
+      { key: { user_id: userId }, table: 'billing_accounts' },
+      {
+        key: { idempotency_key: `billing:trial:${userId}` },
+        table: 'billing_ledger_entries',
+      },
+    ])
+  }
 }
 
-const readBalanceCents = async (
+const readD1BalanceCents = async (
   db: D1Database,
   userId: string,
 ): Promise<number> => {
@@ -345,6 +408,23 @@ const readBalanceCents = async (
     .first<BalanceRow>()
 
   return Math.trunc(Number(row?.balance_cents ?? 0))
+}
+
+/**
+ * Balance = SUM(ledger), always. The optional KS-8.7 `balanceRead` hook
+ * routes this read per KHALA_SYNC_BILLING_READS (compare serves D1 and
+ * diffs Postgres; postgres serves Postgres with D1 fallback); without the
+ * hook this is the plain authoritative D1 SUM.
+ */
+const readBalanceCents = async (
+  db: D1Database,
+  userId: string,
+  runtime: BillingRuntime = systemBillingRuntime,
+): Promise<number> => {
+  const readD1 = () => readD1BalanceCents(db, userId)
+  return runtime.balanceRead === undefined
+    ? readD1()
+    : runtime.balanceRead(userId, readD1)
 }
 
 export const readBillingBalanceCents = readBalanceCents
@@ -577,6 +657,13 @@ export const upsertBillingAutoTopUpPolicy = async (
     )
     .run()
 
+  await runtime.mirror?.(db, [
+    {
+      key: { currency: BILLING_CURRENCY, user_id: input.userId },
+      table: 'billing_auto_top_up_policies',
+    },
+  ])
+
   return readBillingSummary(db, input.userId, runtime)
 }
 
@@ -598,6 +685,13 @@ export const pauseBillingAutoTopUpPolicy = async (
     )
     .bind(compactText(input.reason, 240), now, input.userId, BILLING_CURRENCY)
     .run()
+
+  await runtime.mirror?.(db, [
+    {
+      key: { currency: BILLING_CURRENCY, user_id: input.userId },
+      table: 'billing_auto_top_up_policies',
+    },
+  ])
 }
 
 export const recordBillingAutoTopUpEvent = async (
@@ -642,6 +736,13 @@ export const recordBillingAutoTopUpEvent = async (
       now,
     )
     .run()
+
+  await runtime.mirror?.(db, [
+    {
+      key: { idempotency_key: input.idempotencyKey },
+      table: 'billing_auto_top_up_events',
+    },
+  ])
 }
 
 export const readBillingSummary = async (
@@ -654,7 +755,7 @@ export const readBillingSummary = async (
   const [status, balanceCents, recentEntries, activeRuns, autoTopUp] =
     await Promise.all([
       readAccountStatus(db, userId),
-      readBalanceCents(db, userId),
+      readBalanceCents(db, userId, runtime),
       readRecentLedgerEntries(db, userId),
       readActiveRuns(db, userId, runtime),
       readBillingAutoTopUpState(db, userId, runtime),
@@ -760,6 +861,14 @@ export const applyManualBillingCredit = async (
       .bind(now, input.userId),
   ])
 
+  await runtime.mirror?.(db, [
+    {
+      key: { idempotency_key: input.idempotencyKey },
+      table: 'billing_ledger_entries',
+    },
+    { key: { user_id: input.userId }, table: 'billing_accounts' },
+  ])
+
   return readBillingSummary(db, input.userId, runtime)
 }
 
@@ -817,6 +926,14 @@ export const applyStripeCheckoutCredit = async (
          WHERE user_id = ?`,
       )
       .bind(now, input.userId),
+  ])
+
+  await runtime.mirror?.(db, [
+    {
+      key: { idempotency_key: `billing:stripe-checkout:${input.sessionId}` },
+      table: 'billing_ledger_entries',
+    },
+    { key: { user_id: input.userId }, table: 'billing_accounts' },
   ])
 
   return readBillingSummary(db, input.userId, runtime)
@@ -891,11 +1008,25 @@ export const applyStripeAutoTopUpCredit = async (
       ),
   ])
 
+  await runtime.mirror?.(db, [
+    {
+      key: { idempotency_key: input.idempotencyKey },
+      table: 'billing_ledger_entries',
+    },
+    { key: { user_id: input.userId }, table: 'billing_accounts' },
+    {
+      key: { currency: BILLING_CURRENCY, user_id: input.userId },
+      table: 'billing_auto_top_up_policies',
+    },
+  ])
+
   const ledger = await db
     .prepare(`SELECT id FROM billing_ledger_entries WHERE idempotency_key = ?`)
     .bind(input.idempotencyKey)
     .first<Readonly<{ id: string }>>()
-  const balanceAfterCents = await readBalanceCents(db, input.userId)
+  // Evaluator/receipt input: ALWAYS the authoritative D1 sum, never the
+  // routed read — the recorded balance_after_cents is money truth.
+  const balanceAfterCents = await readD1BalanceCents(db, input.userId)
 
   await recordBillingAutoTopUpEvent(
     db,
@@ -950,6 +1081,10 @@ export const suspendBillingAccountIfOutOfCredits = async (
       )
       .bind(now, userId)
       .run()
+
+    await runtime.mirror?.(db, [
+      { key: { user_id: userId }, table: 'billing_accounts' },
+    ])
   }
 
   return {
@@ -1041,6 +1176,13 @@ export const reserveOutOfCreditsNotification = async (
       .run()
   }
 
+  await runtime.mirror?.(db, [
+    {
+      key: { kind: 'out_of_credits', user_id: input.userId },
+      table: 'billing_credit_notifications',
+    },
+  ])
+
   return {
     displayName,
     email,
@@ -1070,6 +1212,13 @@ export const markOutOfCreditsNotificationSent = async (
     )
     .bind(input.resendEmailId, now, input.userId)
     .run()
+
+  await runtime.mirror?.(db, [
+    {
+      key: { kind: 'out_of_credits', user_id: input.userId },
+      table: 'billing_credit_notifications',
+    },
+  ])
 }
 
 export const markOutOfCreditsNotificationFailed = async (
@@ -1092,6 +1241,13 @@ export const markOutOfCreditsNotificationFailed = async (
     )
     .bind(compactText(input.errorMessage, 500), now, input.userId)
     .run()
+
+  await runtime.mirror?.(db, [
+    {
+      key: { kind: 'out_of_credits', user_id: input.userId },
+      table: 'billing_credit_notifications',
+    },
+  ])
 }
 
 export const redeemBillingCoupon = async (
@@ -1179,10 +1335,40 @@ export const redeemBillingCoupon = async (
       .bind(now, input.userId),
   ])
 
+  await runtime.mirror?.(db, [
+    { key: { id: ledgerEntryId }, table: 'billing_ledger_entries' },
+    {
+      key: { coupon_code: couponCode, user_id: input.userId },
+      table: 'billing_coupon_redemptions',
+    },
+    { key: { user_id: input.userId }, table: 'billing_accounts' },
+  ])
+
   return {
     ok: true,
     billing: await readBillingSummary(db, input.userId, runtime),
     message: `${formatUsdCents(amountCents)} credit applied.`,
+  }
+}
+
+/**
+ * KS-8.7 mirror ref for a codex-usage debit the CALLER batches via
+ * `codexUsageDebitInsert` (omni-runs): the same deterministic idempotency
+ * key the statement binds. Returns undefined exactly when
+ * `codexUsageDebitInsert` returns undefined (no debit row).
+ */
+export const codexUsageDebitMirrorRef = (
+  event: OmniEventRecord,
+): BillingMirrorRef | undefined => {
+  const usage = tokenUsageFromEvent(event)
+  if (usage === undefined || calculateCodexUsageDebitCents(usage.totalTokens) === 0) {
+    return undefined
+  }
+  return {
+    key: {
+      idempotency_key: `billing:codex:${event.parentId}:${sourceRefForTokenUsageEvent(event)}`,
+    },
+    table: 'billing_ledger_entries',
   }
 }
 
@@ -1338,5 +1524,18 @@ export const recordContainerUsageDebitForRun = async (
          WHERE run_id = ? AND meter = 'container_seconds'`,
       )
       .bind(billUntil, seconds, now, run.id),
+  ])
+
+  await runtime.mirror?.(db, [
+    {
+      key: {
+        idempotency_key: `billing:container:${run.id}:${lastBilledAt}:${billUntil}`,
+      },
+      table: 'billing_ledger_entries',
+    },
+    {
+      key: { meter: 'container_seconds', run_id: run.id },
+      table: 'billing_usage_cursors',
+    },
   ])
 }
