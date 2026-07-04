@@ -140,6 +140,12 @@ hosted-equivalent labels where applicable, a catalog-cited evalRef set, and
 `not_measured` coverage cells for unrun task/model combinations. This is not
 Psionic execution machinery and not deployed Reactor capability evidence.
 
+RX-5 note (2026-07-04): the Reactor install/air-gap path landed as a runbook,
+typed signed-bundle manifest, install/upgrade/rollback receipt helpers, and a
+clean-temp smoke that uses the existing `apps/oa-updates` ed25519 verifier
+pattern. It clears the air-gap path blocker only; no customer or dogfood node
+has been deployed.
+
 ## 3. The focus: closing the revenue loop, independence-first
 
 The company objective (Episode 246: "close the gap between what I've been

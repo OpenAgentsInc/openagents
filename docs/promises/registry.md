@@ -1,5 +1,19 @@
 # Promise Registry
 
+> Registry `2026-07-04.13` is the RX-5 Reactor install/air-gap pass
+> (#8275) and flips NO promise state (green stays exactly 34). The
+> `@openagentsinc/reactor-contracts` package now exports signed air-gap
+> update-bundle manifests, install/upgrade/rollback receipts, guidance-only
+> hardware tier specs, and a clean-temp install smoke. The smoke reuses the
+> existing `apps/oa-updates` ed25519 verifier pattern with a generated test
+> key, verifies a signed fixture bundle, confirms tampering fails closed,
+> writes fresh-install/upgrade/rollback receipts, and revalidates
+> `reactor.model_policy.v1` on model refresh. This clears only the
+> air-gap-update-path blocker and replaces it with the remaining
+> dogfood/customer-deployment blocker. Customer or dogfood deployment,
+> customer data-custody proof, full eval coverage, owner-approved public
+> copy, pricing, compliance, payout, and settlement claims remain blocked.
+
 > Registry `2026-07-04.12` is the RX-4 Reactor eval-receipts pass
 > (#8274) and flips NO promise state (green stays exactly 34). The
 > `@openagentsinc/reactor-contracts` package now exports the Psionic-owned

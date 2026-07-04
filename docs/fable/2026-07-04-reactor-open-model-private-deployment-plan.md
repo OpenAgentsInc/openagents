@@ -188,6 +188,17 @@ return only measured eval refs and block unmeasured task claims. This is still
 Reactor-side harness/receipt integration; Psionic runtime execution machinery
 is not reimplemented here.
 
+RX-5 status (2026-07-04): the install/ops path now has a fleet-executable
+runbook and smoke in `packages/reactor-contracts`. The new
+`openagents.reactor.airgap_update_bundle_manifest.v1` reuses the existing
+`apps/oa-updates` ed25519 release verifier/public-key pattern, requires
+`callbackRequired: false`, and feeds `openagents.reactor.install_ops_receipt.v1`
+fresh-install, upgrade, and rollback receipts. The smoke creates a clean temp
+node directory, verifies a signed fixture bundle, confirms tampering fails
+closed, writes install/upgrade/rollback receipts, and revalidates
+`reactor.model_policy.v1` on every model refresh. Hardware tier specs are
+guidance only, not purchase commitments.
+
 ## 4. Architecture (owned seams, honest state)
 
 ```
@@ -402,7 +413,7 @@ RX-11 [#8279](https://github.com/OpenAgentsInc/openagents/issues/8279).
 | RX-2 | Model catalog + `model_provenance.v1` / `reactor.model_policy.v1` schemas in `packages/reactor-contracts`, with the initial curated seed and honest disclosure fields | Landed in source with resolver + tests; no runtime authority |
 | RX-3 | Policy-enforced serving skeleton: one node profile (server-class) on the **Hydralisk lane** (§4.1 default; contracts lane-neutral with `servingLane` declared per profile), gateway + router refusing non-conforming models, exact local metering | Landed in source with fixture-weight smoke; no deployed node |
 | RX-4 | Eval receipts: psionic-run task-class evals across the catalog seed (drafting, extraction, RAG, agent-tool-use). A score is a (model, harness) pair — every eval receipt carries a `harnessRef` naming the harness it was measured under (same-model harness variance ran 3.5%→80.1% in the 2026-07-04 harness-optimization audit) | Landed Reactor-side with measured 2 models × 2 task-class fixture receipts, hosted-equivalent labels, and `not_measured` coverage cells; Psionic runtime remains separate |
-| RX-5 | Install/ops runbook + air-gap update path (signed bundles), fleet-executable | Clean install on a fresh box from the runbook alone |
+| RX-5 | Install/ops runbook + air-gap update path (signed bundles), fleet-executable | Landed runbook, signed-bundle manifest, install/upgrade/rollback receipts, and clean-temp smoke; no deployed node |
 | RX-6 | Dogfood deployment: Reactor node on our own hardware running a real internal workload under a strict policy (e.g. `us`-only) — customer number one, again | Metering + policy receipts from our own node |
 | RX-7 | First customer pilot (likely the legal design partner's stated ask), BF-3.1/3.2 gated, opaque refs only | First paid Reactor receipt |
 | RX-8 | Lead Gen segment: model-custody analyzer angle + Reactor sequence for regulated verticals | Quoted Reactor pipeline via Autopilot Lead Gen |

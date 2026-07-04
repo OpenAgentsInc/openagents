@@ -25,3 +25,19 @@ Exports:
 - Per-model eval receipts, a seed 2-model × 2-task measured fixture set, a
   coverage matrix that marks unrun combinations as `not_measured`, and a
   capability-copy decision helper that returns only measured eval refs.
+- Air-gapped update-bundle manifests that reuse the `apps/oa-updates`
+  ed25519 verifier/public-key pattern.
+- Install, upgrade, and rollback receipt helpers that revalidate model policy on
+  every model refresh.
+- Guidance-only hardware tier specs for workstation, server, and rack planning.
+
+Smoke:
+
+```sh
+bun run --cwd packages/reactor-contracts smoke:install
+```
+
+The smoke creates a clean temporary Reactor node directory, signs a fixture
+bundle with a generated test ed25519 key, verifies it with the existing
+`apps/oa-updates/scripts/verify-release.ts` fail-closed verifier, rejects a
+tampered bundle, and writes fresh-install, upgrade, and rollback receipts.

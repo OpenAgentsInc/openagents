@@ -2,16 +2,21 @@ import { describe, expect, test } from 'bun:test'
 import { Schema as S } from 'effect'
 
 import {
+  REACTOR_AIRGAP_BUNDLE_PUBLIC_KEY_REF,
+  REACTOR_AIRGAP_BUNDLE_VERIFIER_REF,
   REACTOR_EVAL_COVERAGE_MATRIX_SEED,
   REACTOR_EVAL_TASK_CLASS_REFS,
   REACTOR_EXAMPLE_POLICIES,
+  REACTOR_HARDWARE_TIER_SPECS,
   REACTOR_MODEL_EVAL_RECEIPT_SEED,
   REACTOR_MODEL_CATALOG_SEED,
   REACTOR_PSIONIC_EVAL_HARNESS_PROFILE,
   REACTOR_SERVER_CLASS_HYDRALISK_PROFILE,
   ReactorCapabilityCopyEvalDecision,
+  ReactorAirgapUpdateBundleManifest,
   ReactorEvalCoverageMatrix,
   ReactorEvalHarnessProfile,
+  ReactorInstallOpsReceipt,
   ReactorLocalTokenMeteringReceipt,
   ReactorModelInstallReceipt,
   ReactorModelCatalog,
@@ -20,7 +25,9 @@ import {
   type ReactorModelProvenance,
   ReactorModelPolicyDecisionReceipt,
   ReactorNodeModelProfile,
+  buildReactorAirgapUpdateBundleManifest,
   buildReactorEvalCoverageMatrix,
+  buildReactorInstallOpsReceipt,
   buildReactorLocalTokenMeteringReceipt,
   buildReactorModelEvalReceipt,
   provisionReactorModel,
@@ -658,5 +665,135 @@ describe('Reactor serving skeleton', () => {
         usageTruth: 'estimated',
       }),
     ).toThrow()
+  })
+})
+
+describe('Reactor install and air-gap update receipts', () => {
+  const bundle = () =>
+    buildReactorAirgapUpdateBundleManifest({
+      artifactSha256:
+        '8f6d8d6c7c2f0f4f0e2a111111111111111111111111111111111111111111111',
+      bundleRef: 'reactor.airgap_bundle.fixture.gpt_oss.20260704',
+      bundleVersion: '2026-07-04.rx5.fixture',
+      createdAt: DECIDED_AT,
+      modelRef: REACTOR_SERVER_CLASS_HYDRALISK_PROFILE.modelRef,
+      nodeProfile: REACTOR_SERVER_CLASS_HYDRALISK_PROFILE,
+      policyRef: REACTOR_EXAMPLE_POLICIES.usOnly.policyRef,
+      policyVersion: REACTOR_EXAMPLE_POLICIES.usOnly.version,
+      signatureKid: '2dbe811d19f67528',
+      signatureRef: 'reactor.airgap_bundle.fixture.gpt_oss.20260704.sig',
+      sourceRefs: ['test:reactor-install-airgap'],
+    })
+
+  test('air-gap bundle manifests reuse the OpenAgents release verifier and require no callbacks', () => {
+    const manifest = S.decodeUnknownSync(ReactorAirgapUpdateBundleManifest)(
+      bundle(),
+    )
+
+    expect(manifest.callbackRequired).toBe(false)
+    expect(manifest.signatureAlg).toBe('ed25519')
+    expect(manifest.verifierRef).toBe(REACTOR_AIRGAP_BUNDLE_VERIFIER_REF)
+    expect(manifest.publicKeyRef).toBe(REACTOR_AIRGAP_BUNDLE_PUBLIC_KEY_REF)
+    expect(manifest.policyRef).toBe(REACTOR_EXAMPLE_POLICIES.usOnly.policyRef)
+    expect(manifest.policyVersion).toBe(REACTOR_EXAMPLE_POLICIES.usOnly.version)
+  })
+
+  test('fresh install, upgrade, and rollback receipts revalidate model policy', () => {
+    const updateBundle = bundle()
+    const freshInstall = buildReactorInstallOpsReceipt({
+      action: 'fresh_install',
+      bundle: updateBundle,
+      catalog: REACTOR_MODEL_CATALOG_SEED,
+      decidedAt: DECIDED_AT,
+      nodeProfile: REACTOR_SERVER_CLASS_HYDRALISK_PROFILE,
+      policy: REACTOR_EXAMPLE_POLICIES.usOnly,
+      receiptRef: 'reactor.install_ops.fresh.fixture.001',
+    })
+    const upgrade = buildReactorInstallOpsReceipt({
+      action: 'upgrade',
+      bundle: updateBundle,
+      catalog: REACTOR_MODEL_CATALOG_SEED,
+      decidedAt: DECIDED_AT,
+      nodeProfile: REACTOR_SERVER_CLASS_HYDRALISK_PROFILE,
+      policy: REACTOR_EXAMPLE_POLICIES.usOnly,
+      receiptRef: 'reactor.install_ops.upgrade.fixture.001',
+    })
+    const rollback = buildReactorInstallOpsReceipt({
+      action: 'rollback',
+      bundle: updateBundle,
+      catalog: REACTOR_MODEL_CATALOG_SEED,
+      decidedAt: DECIDED_AT,
+      nodeProfile: REACTOR_SERVER_CLASS_HYDRALISK_PROFILE,
+      policy: REACTOR_EXAMPLE_POLICIES.usOnly,
+      receiptRef: 'reactor.install_ops.rollback.fixture.001',
+      rollbackFromBundleRef: 'reactor.airgap_bundle.fixture.gpt_oss.20260704.bad',
+    })
+
+    for (const receipt of [freshInstall, upgrade, rollback]) {
+      const decoded = S.decodeUnknownSync(ReactorInstallOpsReceipt)(receipt)
+      expect(decoded.status).toBe('succeeded')
+      expect(decoded.blockerRefs).toEqual([])
+      expect(decoded.policyRef).toBe(REACTOR_EXAMPLE_POLICIES.usOnly.policyRef)
+      expect(decoded.policyVersion).toBe(REACTOR_EXAMPLE_POLICIES.usOnly.version)
+      expect(decoded.verificationRefs).toContain(REACTOR_AIRGAP_BUNDLE_VERIFIER_REF)
+      expect(decoded.verificationRefs).toContain(
+        REACTOR_AIRGAP_BUNDLE_PUBLIC_KEY_REF,
+      )
+    }
+    expect(rollback.rollbackFromBundleRef).toBe(
+      'reactor.airgap_bundle.fixture.gpt_oss.20260704.bad',
+    )
+    expect(rollback.rollbackToBundleRef).toBe(updateBundle.bundleRef)
+  })
+
+  test('model refresh refuses when policy revalidation fails', () => {
+    const qwenProfile = S.decodeUnknownSync(ReactorNodeModelProfile)({
+      ...REACTOR_SERVER_CLASS_HYDRALISK_PROFILE,
+      modelRef: 'model.alibaba.qwen.open_family',
+      nodeProfileRef: 'reactor.node_profile.fixture.hydralisk.qwen.rx5.v1',
+    })
+    const qwenBundle = buildReactorAirgapUpdateBundleManifest({
+      artifactSha256:
+        '1f6d8d6c7c2f0f4f0e2a111111111111111111111111111111111111111111111',
+      bundleRef: 'reactor.airgap_bundle.fixture.qwen.20260704',
+      bundleVersion: '2026-07-04.rx5.qwen',
+      createdAt: DECIDED_AT,
+      modelRef: qwenProfile.modelRef,
+      nodeProfile: qwenProfile,
+      policyRef: REACTOR_EXAMPLE_POLICIES.usOnly.policyRef,
+      policyVersion: REACTOR_EXAMPLE_POLICIES.usOnly.version,
+      signatureKid: '2dbe811d19f67528',
+      signatureRef: 'reactor.airgap_bundle.fixture.qwen.20260704.sig',
+    })
+    const receipt = buildReactorInstallOpsReceipt({
+      action: 'upgrade',
+      bundle: qwenBundle,
+      catalog: REACTOR_MODEL_CATALOG_SEED,
+      decidedAt: DECIDED_AT,
+      nodeProfile: qwenProfile,
+      policy: REACTOR_EXAMPLE_POLICIES.usOnly,
+      receiptRef: 'reactor.install_ops.upgrade.qwen.refused.001',
+    })
+
+    expect(receipt.status).toBe('refused')
+    expect(receipt.blockerRefs).toContain(
+      'blocker.reactor.install_ops.policy_revalidation_failed',
+    )
+    expect(receipt.blockerRefs).toContain(
+      'blocker.reactor.provision.policy_nonconforming_model',
+    )
+    expect(receipt.blockerRefs).toContain('reactor.policy.origin_not_allowed')
+  })
+
+  test('hardware tier specs are guidance only and not purchase commitments', () => {
+    expect(REACTOR_HARDWARE_TIER_SPECS.map(spec => spec.tierRef)).toEqual([
+      'workstation',
+      'server',
+      'rack',
+    ])
+    expect(REACTOR_HARDWARE_TIER_SPECS.every(spec => spec.guidanceOnly)).toBe(true)
+    expect(
+      REACTOR_HARDWARE_TIER_SPECS.flatMap(spec => spec.notes).join('\n'),
+    ).toContain('no purchase commitment')
   })
 })

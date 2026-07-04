@@ -103,6 +103,13 @@ export const ReactorEvalScoreUnit = S.Literals([
 ])
 export type ReactorEvalScoreUnit = typeof ReactorEvalScoreUnit.Type
 
+export const ReactorHardwareTierRef = S.Literals([
+  'workstation',
+  'server',
+  'rack',
+])
+export type ReactorHardwareTierRef = typeof ReactorHardwareTierRef.Type
+
 export const ReactorEvalHarnessProfile = S.Struct({
   schemaVersion: S.Literal('openagents.reactor.eval_harness_profile.v1'),
   harnessRef: S.String,
@@ -383,6 +390,62 @@ export const ReactorCapabilityCopyEvalDecision = S.Struct({
 export type ReactorCapabilityCopyEvalDecision =
   typeof ReactorCapabilityCopyEvalDecision.Type
 
+export const ReactorHardwareTierSpec = S.Struct({
+  schemaVersion: S.Literal('openagents.reactor.hardware_tier_spec.v1'),
+  cpu: S.String,
+  guidanceOnly: S.Literal(true),
+  memory: S.String,
+  network: S.String,
+  notes: S.Array(S.String),
+  storage: S.String,
+  tierRef: ReactorHardwareTierRef,
+})
+export type ReactorHardwareTierSpec = typeof ReactorHardwareTierSpec.Type
+
+export const ReactorAirgapUpdateBundleManifest = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.reactor.airgap_update_bundle_manifest.v1',
+  ),
+  artifactSha256: S.String,
+  bundleRef: S.String,
+  bundleVersion: S.String,
+  callbackRequired: S.Literal(false),
+  createdAt: S.String,
+  modelRef: S.String,
+  nodeProfileRef: S.String,
+  policyRef: S.String,
+  policyVersion: S.String,
+  publicKeyRef: S.String,
+  signatureAlg: S.Literal('ed25519'),
+  signatureKid: S.String,
+  signatureRef: S.String,
+  sourceRefs: S.Array(S.String),
+  verifierRef: S.String,
+})
+export type ReactorAirgapUpdateBundleManifest =
+  typeof ReactorAirgapUpdateBundleManifest.Type
+
+export const ReactorInstallOpsReceipt = S.Struct({
+  schemaVersion: S.Literal('openagents.reactor.install_ops_receipt.v1'),
+  action: S.Literals(['fresh_install', 'upgrade', 'rollback']),
+  blockerRefs: S.Array(S.String),
+  bundleRef: S.String,
+  decidedAt: S.String,
+  modelInstallReceiptRef: S.String,
+  modelRef: S.String,
+  nodeProfileRef: S.String,
+  policyDecisionRef: S.String,
+  policyRef: S.String,
+  policyVersion: S.String,
+  receiptRef: S.String,
+  rollbackFromBundleRef: S.NullOr(S.String),
+  rollbackToBundleRef: S.NullOr(S.String),
+  sourceRefs: S.Array(S.String),
+  status: S.Literals(['succeeded', 'refused']),
+  verificationRefs: S.Array(S.String),
+})
+export type ReactorInstallOpsReceipt = typeof ReactorInstallOpsReceipt.Type
+
 export type ResolveReactorModelPolicyInput = Readonly<{
   catalog: ReactorModelCatalog
   decidedAt: string
@@ -481,6 +544,35 @@ export type SelectReactorCapabilityCopyEvalRefsInput = Readonly<{
   modelRef: string
   sourceRefs?: ReadonlyArray<string>
   taskClassRefs: ReadonlyArray<ReactorEvalTaskClassRef>
+}>
+
+export type BuildReactorAirgapUpdateBundleManifestInput = Readonly<{
+  artifactSha256: string
+  bundleRef: string
+  bundleVersion: string
+  createdAt: string
+  modelRef: string
+  nodeProfile: ReactorNodeModelProfile
+  policyRef: string
+  policyVersion: string
+  publicKeyRef?: string
+  signatureKid: string
+  signatureRef: string
+  sourceRefs?: ReadonlyArray<string>
+  verifierRef?: string
+}>
+
+export type BuildReactorInstallOpsReceiptInput = Readonly<{
+  action: ReactorInstallOpsReceipt['action']
+  bundle: ReactorAirgapUpdateBundleManifest
+  catalog: ReactorModelCatalog
+  decidedAt: string
+  nodeProfile: ReactorNodeModelProfile
+  policy: ReactorModelPolicy
+  receiptRef: string
+  rollbackFromBundleRef?: string
+  rollbackToBundleRef?: string
+  sourceRefs?: ReadonlyArray<string>
 }>
 
 const unique = <T extends string>(values: ReadonlyArray<T>): ReadonlyArray<T> =>
@@ -1081,6 +1173,127 @@ export const selectReactorCapabilityCopyEvalRefs = (
   })
 }
 
+export const REACTOR_AIRGAP_BUNDLE_VERIFIER_REF =
+  'apps/oa-updates/scripts/verify-release.ts'
+
+export const REACTOR_AIRGAP_BUNDLE_PUBLIC_KEY_REF =
+  'apps/oa-updates/keys/release-pubkey.json'
+
+export const buildReactorAirgapUpdateBundleManifest = (
+  input: BuildReactorAirgapUpdateBundleManifestInput,
+): ReactorAirgapUpdateBundleManifest => {
+  const nodeProfile = S.decodeUnknownSync(ReactorNodeModelProfile)(
+    input.nodeProfile,
+  )
+
+  return S.decodeUnknownSync(ReactorAirgapUpdateBundleManifest)({
+    schemaVersion: 'openagents.reactor.airgap_update_bundle_manifest.v1',
+    artifactSha256: input.artifactSha256,
+    bundleRef: input.bundleRef,
+    bundleVersion: input.bundleVersion,
+    callbackRequired: false,
+    createdAt: input.createdAt,
+    modelRef: input.modelRef,
+    nodeProfileRef: nodeProfile.nodeProfileRef,
+    policyRef: input.policyRef,
+    policyVersion: input.policyVersion,
+    publicKeyRef: input.publicKeyRef ?? REACTOR_AIRGAP_BUNDLE_PUBLIC_KEY_REF,
+    signatureAlg: 'ed25519',
+    signatureKid: input.signatureKid,
+    signatureRef: input.signatureRef,
+    sourceRefs: unique([
+      nodeProfile.nodeProfileRef,
+      input.signatureRef,
+      input.publicKeyRef ?? REACTOR_AIRGAP_BUNDLE_PUBLIC_KEY_REF,
+      input.verifierRef ?? REACTOR_AIRGAP_BUNDLE_VERIFIER_REF,
+      ...(input.sourceRefs ?? []),
+    ]),
+    verifierRef: input.verifierRef ?? REACTOR_AIRGAP_BUNDLE_VERIFIER_REF,
+  })
+}
+
+const installOpsProvisionAction = (
+  action: ReactorInstallOpsReceipt['action'],
+): ReactorModelInstallReceipt['action'] =>
+  action === 'fresh_install' ? 'install' : 'upgrade'
+
+export const buildReactorInstallOpsReceipt = (
+  input: BuildReactorInstallOpsReceiptInput,
+): ReactorInstallOpsReceipt => {
+  const bundle = S.decodeUnknownSync(ReactorAirgapUpdateBundleManifest)(
+    input.bundle,
+  )
+  const nodeProfile = S.decodeUnknownSync(ReactorNodeModelProfile)(
+    input.nodeProfile,
+  )
+  const policy = S.decodeUnknownSync(ReactorModelPolicy)(input.policy)
+  const installReceipt = provisionReactorModel({
+    action: installOpsProvisionAction(input.action),
+    artifactRefs: [bundle.bundleRef, `sha256:${bundle.artifactSha256}`],
+    catalog: input.catalog,
+    decidedAt: input.decidedAt,
+    decisionRef: `${input.receiptRef}.policy_decision`,
+    nodeProfile,
+    policy,
+    receiptRef: `${input.receiptRef}.model_install`,
+    sourceRefs: [bundle.bundleRef, ...(input.sourceRefs ?? [])],
+  })
+  const blockerRefs = unique([
+    ...(bundle.callbackRequired === false
+      ? []
+      : ['blocker.reactor.airgap_update.callback_required']),
+    ...(bundle.nodeProfileRef === nodeProfile.nodeProfileRef &&
+    bundle.modelRef === nodeProfile.modelRef
+      ? []
+      : ['blocker.reactor.airgap_update.profile_binding_mismatch']),
+    ...(bundle.policyRef === policy.policyRef &&
+    bundle.policyVersion === policy.version
+      ? []
+      : ['blocker.reactor.airgap_update.policy_binding_mismatch']),
+    ...(installReceipt.status === 'installed'
+      ? []
+      : [
+          'blocker.reactor.install_ops.policy_revalidation_failed',
+          ...(installReceipt.refusal?.blockerRefs ?? []),
+        ]),
+  ])
+
+  return S.decodeUnknownSync(ReactorInstallOpsReceipt)({
+    schemaVersion: 'openagents.reactor.install_ops_receipt.v1',
+    action: input.action,
+    blockerRefs,
+    bundleRef: bundle.bundleRef,
+    decidedAt: input.decidedAt,
+    modelInstallReceiptRef: installReceipt.receiptRef,
+    modelRef: nodeProfile.modelRef,
+    nodeProfileRef: nodeProfile.nodeProfileRef,
+    policyDecisionRef: installReceipt.policyDecisionRef,
+    policyRef: policy.policyRef,
+    policyVersion: policy.version,
+    receiptRef: input.receiptRef,
+    rollbackFromBundleRef:
+      input.action === 'rollback' ? (input.rollbackFromBundleRef ?? null) : null,
+    rollbackToBundleRef:
+      input.action === 'rollback'
+        ? (input.rollbackToBundleRef ?? bundle.bundleRef)
+        : null,
+    sourceRefs: unique([
+      bundle.bundleRef,
+      bundle.signatureRef,
+      installReceipt.receiptRef,
+      installReceipt.policyDecisionRef,
+      ...(input.sourceRefs ?? []),
+    ]),
+    status: blockerRefs.length === 0 ? 'succeeded' : 'refused',
+    verificationRefs: unique([
+      bundle.verifierRef,
+      bundle.publicKeyRef,
+      bundle.signatureRef,
+      installReceipt.policyDecisionRef,
+    ]),
+  })
+}
+
 const model = (
   record: Omit<ReactorModelProvenance, 'schemaVersion'>,
 ): ReactorModelProvenance =>
@@ -1358,6 +1571,53 @@ export const REACTOR_EVAL_COVERAGE_MATRIX_SEED =
     matrixRef: 'reactor.eval_coverage_matrix.seed.20260704.v1',
     sourceRefs: ['github:OpenAgentsInc/openagents#8274'],
   })
+
+const hardwareTierSpec = (
+  record: Omit<ReactorHardwareTierSpec, 'schemaVersion'>,
+): ReactorHardwareTierSpec =>
+  S.decodeUnknownSync(ReactorHardwareTierSpec)({
+    schemaVersion: 'openagents.reactor.hardware_tier_spec.v1',
+    ...record,
+  })
+
+export const REACTOR_HARDWARE_TIER_SPECS = [
+  hardwareTierSpec({
+    cpu: '16+ modern x86_64 or arm64 cores',
+    guidanceOnly: true,
+    memory: '128 GB system memory minimum for workstation-class pilots',
+    network: '1 GbE management; 10 GbE preferred for corpus ingest',
+    notes: [
+      'Guidance only: no purchase commitment and no availability claim.',
+      'Use for one-operator dogfood or small customer pilot planning.',
+    ],
+    storage: '2 TB NVMe for weights, bundle cache, receipts, and rollback slot',
+    tierRef: 'workstation',
+  }),
+  hardwareTierSpec({
+    cpu: '32+ server cores with ECC memory',
+    guidanceOnly: true,
+    memory: '256-512 GB ECC system memory depending on served model family',
+    network: '10 GbE minimum for controlled corpus ingest and local clients',
+    notes: [
+      'Guidance only: final sizing depends on model, quantization, context, and concurrency.',
+      'Prefer redundant OS and receipt storage before customer pilots.',
+    ],
+    storage: '4-8 TB NVMe with separate rollback bundle retention',
+    tierRef: 'server',
+  }),
+  hardwareTierSpec({
+    cpu: 'rack server platform sized by GPU count and thermal envelope',
+    guidanceOnly: true,
+    memory: '512 GB+ ECC system memory for multi-GPU serving and larger corpora',
+    network: '25 GbE+ east/west or customer-controlled fabric',
+    notes: [
+      'Guidance only: requires site power, cooling, remote hands, and customer change-control review.',
+      'Do not treat this as a quoted bill of materials without owner approval.',
+    ],
+    storage: '8 TB+ NVMe plus offline signed-bundle archive and rollback retention',
+    tierRef: 'rack',
+  }),
+] as const satisfies ReadonlyArray<ReactorHardwareTierSpec>
 
 const policy = (
   record: Omit<ReactorModelPolicy, 'schemaVersion'>,
