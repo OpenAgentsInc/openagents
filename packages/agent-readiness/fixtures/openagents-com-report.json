@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "openagents.agent_readiness_report.v1",
+  "domain": "openagents.com",
+  "baseUrl": "https://openagents.com/",
+  "generatedAt": "2026-07-04T06:30:00.000Z",
+  "status": "passed",
+  "score": 100,
+  "grade": "A",
+  "layerScores": [
+    {
+      "layer": "discovery",
+      "score": 100,
+      "earned": 48,
+      "possible": 48,
+      "status": "passed"
+    },
+    {
+      "layer": "identity",
+      "score": 100,
+      "earned": 24,
+      "possible": 24,
+      "status": "passed"
+    },
+    {
+      "layer": "access",
+      "score": 100,
+      "earned": 10,
+      "possible": 10,
+      "status": "passed"
+    },
+    {
+      "layer": "payments",
+      "score": 0,
+      "earned": 0,
+      "possible": 0,
+      "status": "not_applicable"
+    },
+    {
+      "layer": "experience",
+      "score": 100,
+      "earned": 18,
+      "possible": 18,
+      "status": "passed"
+    }
+  ],
+  "summary": "Agent-readable discovery, crawl, LLM guidance, structured data, rendering, and API links passed the public-safe probe set.",
+  "topFindings": [],
+  "findingCounts": {
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0,
+    "info": 0
+  },
+  "findings": [],
+  "sourceRefs": [
+    "github:OpenAgentsInc/openagents#8262",
+    "fixture:openagents.com.public_agent_readiness"
+  ]
+}

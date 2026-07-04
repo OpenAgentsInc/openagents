@@ -414,6 +414,20 @@
         "typescript": "catalog:",
       },
     },
+    "packages/agent-readiness": {
+      "name": "@openagentsinc/agent-readiness",
+      "version": "0.1.0",
+      "bin": {
+        "agent-readiness": "./src/cli.ts",
+      },
+      "dependencies": {
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
     "packages/agent-runtime-schema": {
       "name": "@openagentsinc/agent-runtime-schema",
       "version": "0.1.0",
@@ -1054,6 +1068,8 @@
     "@noble/hashes": ["@noble/hashes@1.7.1", "", {}, "sha512-B8XBPsn4vT/KJAGqDzbwztd+6Yte3P4V7iafm24bxgDe/mlRuK6xmWPuCNrKt2vDafZ8MfJLlchDG/vYafQEjQ=="],
 
     "@openagentsinc/acceptance-runner": ["@openagentsinc/acceptance-runner@workspace:apps/acceptance-runner"],
+
+    "@openagentsinc/agent-readiness": ["@openagentsinc/agent-readiness@workspace:packages/agent-readiness"],
 
     "@openagentsinc/agent-runtime-schema": ["@openagentsinc/agent-runtime-schema@workspace:packages/agent-runtime-schema"],
 
