@@ -7,6 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./icon": "./src/icon.ts",
+    "./react": "./src/react/index.ts",
+    "./react.css": "./src/react.css",
     "./styles.css": "./src/styles.css",
     "./*": "./src/*.ts"
   },
@@ -19,7 +21,8 @@
   },
   "scripts": {
     "test": "bun test",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "visual-smoke": "bun test test/react-edition.test.tsx"
   },
   "dependencies": {
     "@openagentsinc/composer-state": "workspace:*",
@@ -28,10 +31,19 @@
     "basecoat-css": "^1.0.1",
     "clsx": "^2.1.1",
     "effect": "catalog:",
-    "foldkit": "^0.102.1"
+    "foldkit": "^0.102.1",
+    "tailwind-merge": "^3.6.0"
+  },
+  "peerDependencies": {
+    "react": "^18.3.1 || ^19.0.0",
+    "react-dom": "^18.3.1 || ^19.0.0"
   },
   "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "19.2.3",
     "bun-types": "^1.0.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
     "typescript": "catalog:"
   }
 }

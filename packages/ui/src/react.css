@@ -1,0 +1,53 @@
+/* TS-9: React/Tailwind 4 edition over the shared OpenAgents StarCraft tokens. */
+@import 'tailwindcss';
+@import '@openagentsinc/design-tokens/theme.css';
+
+@theme inline {
+  --color-oa-bg: var(--oa-color-bg);
+  --color-oa-surface: var(--oa-color-khala-surface);
+  --color-oa-surface-raised: var(--oa-color-khala-surface-raised);
+  --color-oa-surface-active: var(--oa-color-khala-surface-active);
+  --color-oa-surface-muted: var(--oa-color-khala-surface-muted);
+  --color-oa-border: var(--oa-color-khala-border);
+  --color-oa-border-muted: var(--oa-color-khala-border-muted);
+  --color-oa-border-strong: var(--oa-color-khala-border-strong);
+  --color-oa-text: var(--oa-color-khala-text-primary);
+  --color-oa-text-body: var(--oa-color-khala-text-body);
+  --color-oa-text-soft: var(--oa-color-khala-text-soft);
+  --color-oa-text-muted: var(--oa-color-khala-text-muted);
+  --color-oa-text-faint: var(--oa-color-khala-text-faint);
+  --color-oa-accent: var(--oa-color-khala-energy-cyan);
+  --color-oa-accent-soft: var(--oa-color-khala-energy-cyan-soft);
+  --color-oa-accent-text: var(--oa-color-khala-energy-text-strong);
+  --color-oa-link-hover: var(--oa-color-khala-link-hover);
+  --color-oa-success: var(--oa-color-khala-success-strong);
+  --color-oa-warning: var(--oa-color-khala-warning-strong);
+  --color-oa-danger: var(--oa-color-khala-danger-strong);
+  --color-oa-danger-hover: var(--oa-color-danger-hover);
+  --color-oa-code: var(--oa-color-khala-code-plain);
+  --color-oa-code-muted: var(--oa-color-khala-code-comment);
+  --font-oa-sans: var(--oa-font-sans);
+  --font-oa-mono: var(--oa-font-mono);
+  --radius-oa-sm: var(--oa-radius-sm);
+  --radius-oa-md: var(--oa-radius-md);
+  --radius-oa-lg: var(--oa-radius-lg);
+  --radius-oa-xl: var(--oa-radius-xl);
+  --shadow-oa-pane: var(--oa-shadow-pane);
+}
+
+@layer base {
+  :root,
+  .scheme-only-dark,
+  .oa-react-ui-root {
+    color-scheme: dark;
+  }
+}
+
+@layer components {
+  .oa-react-ui-root {
+    background-color: var(--oa-color-bg);
+    color: var(--oa-color-khala-text-body);
+    font-family: var(--oa-font-sans);
+    letter-spacing: 0;
+  }
+}

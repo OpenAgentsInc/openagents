@@ -1,7 +1,23 @@
 # OpenAgents Foldkit UI
 
-`@openagentsinc/ui` is the shared Foldkit component library. It is consumed as
-source (no build step), mirroring `@openagentsinc/autopilot-ui` conventions.
+`@openagentsinc/ui` is the shared component library. The original Foldkit
+surface remains consumed as source (no build step), mirroring
+`@openagentsinc/autopilot-ui` conventions. TS-9 adds the React edition at
+`@openagentsinc/ui/react` for TanStack Start, Khala Code desktop React work,
+and future Expo/NativeWind consumers.
+
+React edition:
+
+- import `@openagentsinc/ui/react.css` once in a React/Tailwind app to load the
+  Tailwind 4 `@theme inline` projection over the canonical `--oa-*` tokens.
+- import components from `@openagentsinc/ui/react`; the first surface includes
+  buttons, panels, nav, cards, form fields, and code blocks for funnel pages.
+- `openAgentsNativeWindTokens` exports literal StarCraft-blue token values for
+  NativeWind so TS-8 can consume the same palette without CSS variables.
+- `ReactEditionSmokeFixture` is covered by `bun run --cwd packages/ui
+  visual-smoke` as the Storybook-less fixture lane.
+- The package intentionally stays dark-only. Do not add theme toggles or
+  `dark:`/`light:` variants here; use the existing `scheme-only-dark` root.
 
 Notes for future consolidation work:
 
