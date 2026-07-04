@@ -272,6 +272,46 @@ blocking Wave A.
 
 ### 3.2 KS-8.5 — Agent runtime metadata (definitions / runs / traces)
 
+**KS-8.5 machinery status (2026-07-04, #8316):** LANDED for the eight
+core metadata tables — Postgres schema (`khala-sync-server` migration
+`0010_agent_runtime.sql`: `agent_definitions`, `agent_definition_runs`,
+`agent_definition_triggers`, `agent_runs`, `agent_run_events`,
+`agent_traces`, `agent_goals`, `agent_goal_events`; dedupe keys ported
+exactly — run-event `INSERT OR IGNORE` collapses to bare
+`ON CONFLICT DO NOTHING` over the same three uniques, the trace
+owner+idempotency and owner+content-digest partial uniques (the
+training-consent / trace-plugin revenue-share keys) port verbatim, and
+the one-active-goal-per-scope partial expression unique is preserved;
+indexes re-derived from actual reads). Typed row-level repository seam
+with D1 + Postgres implementations, a fail-soft dual-write wrapper, and
+a read-back mirror wired at ALL worker write call sites for those tables
+(`apps/openagents.com/workers/api/src/agent-runtime-store.ts`; wired
+via `make*ForEnv` factories in `index.ts`, `omni-handlers.ts`,
+`agent-goal-routes.ts`, `adjutant-assignments.ts`,
+`operator-adjutant-routes.ts`, and the `AgentDefinitionScheduler`
+dependencies — the cron this domain re-homes). Flags
+`KHALA_SYNC_AGENT_RUNTIME_DUAL_WRITE` (default on) /
+`KHALA_SYNC_AGENT_RUNTIME_READS` (d1|compare|postgres, default d1;
+covers the scheduler due-trigger scans in this lane — all other reads
+stay on D1 until cutover). Resumable backfill + exact-verify CLI
+(`packages/khala-sync-server/scripts/backfill-agent-runtime.ts`: exact
+counts, per-run/per-goal event-chain comparison, trace content-hash
+sampling + visibility/consent tallies, goal usage sums, newest-N row
+hashes), and a contract suite run against BOTH stores plus dual-write
+fail-soft / flag-routing / diagnostics-privacy tests. `agent_traces`
+stay owner-private: the Postgres twin carries visibility/owner/consent
+columns verbatim, no new read path is exposed, and migration
+diagnostics reference row keys only — never trajectory content. The
+issue's REMAINING tables (`agent_profiles`, `agent_proposals`,
+`agent_owner_claims` + x-claim challenges, `agent_credentials` —
+secret-bearing, SPEC invariant 9; `event_ledger_entries` — per-owner
+dense `ordering_sequence` allocated inside the Postgres transaction;
+`khala_acceptance_jobs/verdicts`) move in the follow-up remainder lane
+tracked with the D1 decommission follow-up. Prod cutover procedure:
+[`RUNBOOK.md`](./RUNBOOK.md) "Agent runtime metadata domain cutover";
+cutover evidence + D1 drop tracked on epic
+[#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
+
 - **What:** the agent execution record: definitions, scheduled triggers,
   runs, run events, traces, artifacts, goals, profiles, proposals, owner
   claims, credentials, plus the external event ledger (GitHub intake).

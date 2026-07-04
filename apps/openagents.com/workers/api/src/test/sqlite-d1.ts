@@ -287,3 +287,206 @@ CREATE TABLE pylon_provider_job_lifecycle (
   FOREIGN KEY (assignment_ref) REFERENCES pylon_api_assignments(assignment_ref)
 );
 `
+
+/**
+ * The D1 DDL for the KS-8.5 agent runtime metadata domain (worker
+ * migrations 0019/0022/0023/0027/0028/0029/0228/0229/0230/0236/0279/0280/
+ * 0281/0282/0284, condensed to the live column set — FKs to users/teams
+ * dropped so the contract suite seeds rows directly).
+ */
+export const AGENT_RUNTIME_D1_SCHEMA = `
+CREATE TABLE agent_definitions (
+  id TEXT PRIMARY KEY,
+  owner_agent_user_id TEXT NOT NULL,
+  owner_ref TEXT NOT NULL,
+  schema_literal TEXT NOT NULL,
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  goal TEXT NOT NULL,
+  harness_json TEXT NOT NULL,
+  toolset_json TEXT NOT NULL,
+  triggers_json TEXT NOT NULL,
+  lane TEXT NOT NULL,
+  budget_json TEXT NOT NULL,
+  escalation_json TEXT NOT NULL,
+  source_refs_json TEXT NOT NULL,
+  definition_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT,
+  UNIQUE(owner_agent_user_id, slug)
+);
+
+CREATE TABLE agent_definition_runs (
+  run_id TEXT PRIMARY KEY,
+  owner_agent_user_id TEXT NOT NULL,
+  definition_id TEXT NOT NULL,
+  definition_ref TEXT NOT NULL,
+  trigger_ref TEXT NOT NULL,
+  lane TEXT NOT NULL,
+  status TEXT NOT NULL,
+  pylon_ref TEXT,
+  assignment_ref TEXT,
+  durable_request_id TEXT NOT NULL,
+  durable_stream_url TEXT,
+  forge_tenant_ref TEXT NOT NULL,
+  forge_work_ref TEXT NOT NULL,
+  forge_repository_ref TEXT,
+  forge_git_token_refs_json TEXT NOT NULL DEFAULT '[]',
+  refusal_error TEXT,
+  refusal_reason TEXT,
+  evidence_refs_json TEXT NOT NULL,
+  trigger_payload_json TEXT NOT NULL,
+  runtime_run_json TEXT NOT NULL,
+  initial_events_json TEXT NOT NULL,
+  budget_credits_reserved REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE agent_definition_triggers (
+  trigger_id TEXT PRIMARY KEY,
+  owner_agent_user_id TEXT NOT NULL,
+  owner_ref TEXT NOT NULL,
+  definition_id TEXT NOT NULL,
+  trigger_ref TEXT NOT NULL,
+  trigger_kind TEXT NOT NULL,
+  trigger_json TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('enabled', 'paused')),
+  consecutive_failures INTEGER NOT NULL DEFAULT 0,
+  next_run_at TEXT,
+  paused_at TEXT,
+  pause_reason TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(owner_agent_user_id, trigger_ref)
+);
+
+CREATE TABLE agent_runs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  team_id TEXT,
+  project_id TEXT,
+  runtime TEXT NOT NULL,
+  backend TEXT NOT NULL,
+  runner_id TEXT NOT NULL,
+  assignment_kind TEXT NOT NULL,
+  repository_provider TEXT NOT NULL,
+  repository_owner TEXT NOT NULL,
+  repository_repo TEXT NOT NULL,
+  repository_ref TEXT NOT NULL,
+  goal TEXT NOT NULL,
+  goal_id TEXT,
+  provider_account_ref TEXT,
+  auth_grant_ref TEXT,
+  external_run_id TEXT,
+  status TEXT NOT NULL,
+  event_cursor INTEGER NOT NULL DEFAULT 0,
+  assignment_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  started_at TEXT,
+  completed_at TEXT,
+  failed_at TEXT,
+  canceled_at TEXT,
+  archived_at TEXT
+);
+
+CREATE TABLE agent_run_events (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  sequence INTEGER NOT NULL,
+  type TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  status TEXT,
+  source TEXT NOT NULL,
+  payload_json TEXT,
+  artifact_refs_json TEXT NOT NULL DEFAULT '[]',
+  external_event_id TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE (run_id, sequence),
+  UNIQUE (run_id, external_event_id)
+);
+
+CREATE TABLE agent_traces (
+  trace_uuid TEXT PRIMARY KEY,
+  owner_user_id TEXT NOT NULL,
+  agent_ref TEXT NOT NULL,
+  schema_version TEXT NOT NULL,
+  trajectory_id TEXT NOT NULL,
+  session_id TEXT,
+  visibility TEXT NOT NULL DEFAULT 'unlisted',
+  step_count INTEGER NOT NULL DEFAULT 0,
+  trajectory_json TEXT NOT NULL DEFAULT '{}',
+  trajectory_r2_key TEXT,
+  blob_refs_json TEXT NOT NULL DEFAULT '[]',
+  idempotency_key TEXT,
+  training_consent INTEGER NOT NULL DEFAULT 0,
+  license TEXT,
+  content_digest TEXT,
+  reward_eligible INTEGER NOT NULL DEFAULT 0,
+  reward_amount_sats INTEGER,
+  upload_source TEXT NOT NULL DEFAULT 'agent',
+  demand_kind TEXT,
+  demand_source TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX idx_agent_traces_idempotency
+  ON agent_traces (owner_user_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
+
+CREATE UNIQUE INDEX idx_agent_traces_owner_digest
+  ON agent_traces (owner_user_id, content_digest)
+  WHERE content_digest IS NOT NULL;
+
+CREATE TABLE agent_goals (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL,
+  user_id TEXT,
+  team_id TEXT,
+  project_id TEXT,
+  objective TEXT NOT NULL,
+  status TEXT NOT NULL,
+  visibility TEXT NOT NULL,
+  current_run_id TEXT,
+  token_budget INTEGER,
+  tokens_used INTEGER NOT NULL DEFAULT 0,
+  time_used_seconds INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  completed_at TEXT,
+  paused_at TEXT,
+  blocked_at TEXT,
+  archived_at TEXT
+);
+
+CREATE UNIQUE INDEX agent_goals_current_scope_idx
+  ON agent_goals(
+    agent_id,
+    COALESCE(user_id, ''),
+    COALESCE(team_id, ''),
+    COALESCE(project_id, '')
+  )
+  WHERE archived_at IS NULL;
+
+CREATE TABLE agent_goal_events (
+  id TEXT PRIMARY KEY,
+  goal_id TEXT NOT NULL,
+  run_id TEXT,
+  expected_goal_id TEXT,
+  caller_type TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  status TEXT,
+  token_delta INTEGER NOT NULL DEFAULT 0,
+  time_delta_seconds INTEGER NOT NULL DEFAULT 0,
+  payload_json TEXT,
+  external_event_id TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX idx_agent_goal_events_goal_external_event
+  ON agent_goal_events(goal_id, external_event_id)
+  WHERE external_event_id IS NOT NULL;
+`

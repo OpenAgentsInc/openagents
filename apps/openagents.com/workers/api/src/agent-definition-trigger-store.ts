@@ -29,7 +29,12 @@ type AgentDefinitionTriggerRow = Readonly<{
   updated_at: string
 }>
 
-type DueAgentDefinitionTriggerRow = AgentDefinitionTriggerRow &
+/**
+ * Exported for the KS-8.5 (#8316) migration seam: the Postgres trigger
+ * reads in `agent-runtime-store.ts` return this exact row shape so the
+ * routed scans decode through the same record mapper as D1.
+ */
+export type DueAgentDefinitionTriggerRow = AgentDefinitionTriggerRow &
   Readonly<{
     owner_agent_user_id: string
   }>
@@ -135,6 +140,13 @@ const rowToDueTriggerRecord = (
   ...rowToTriggerRecord(row),
   ownerAgentUserId: row.owner_agent_user_id,
 })
+
+/**
+ * Exported for the KS-8.5 (#8316) migration seam: routed Postgres reads
+ * decode rows through the SAME mapper as D1 so compare-mode diffs are
+ * honest.
+ */
+export const dueTriggerRecordFromRow = rowToDueTriggerRecord
 
 const changed = (result: D1ChangeResult): boolean =>
   (result.meta?.changes ?? 0) > 0

@@ -8,7 +8,6 @@ import {
   AgentGoalTerminalStatus,
   AgentGoalToolMutationForbidden,
   type AgentGoalToolResult,
-  makeAgentGoalEventRepositoryLayer,
 } from './agent-goal-runtime'
 import {
   AgentPublicProjectionService,
@@ -30,8 +29,11 @@ import {
   AgentGoalValidationError,
   AgentGoalVisibility,
   type PublicAgentGoalRecord,
-  makeAgentGoalRepositoryLayer,
 } from './agent-goals'
+import {
+  makeAgentGoalEventRepositoryLayerForEnv,
+  makeAgentGoalRepositoryLayerForEnv,
+} from './agent-runtime-store'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { openAgentsDatabase } from './runtime'
 import { publishAgentGoalSyncIfBound } from './sync-notifier'
@@ -381,10 +383,10 @@ const routeLayer = <Env extends GoalRouteEnv>(
 ) => {
   const repositoryLayer =
     dependencies.makeRepositoryLayer?.(env) ??
-    makeAgentGoalRepositoryLayer(openAgentsDatabase(env))
+    makeAgentGoalRepositoryLayerForEnv(env)
   const eventRepositoryLayer =
     dependencies.makeEventRepositoryLayer?.(env) ??
-    makeAgentGoalEventRepositoryLayer(openAgentsDatabase(env))
+    makeAgentGoalEventRepositoryLayerForEnv(env)
   const runtimeDependencies = Layer.merge(repositoryLayer, eventRepositoryLayer)
 
   return Layer.mergeAll(

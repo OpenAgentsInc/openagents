@@ -246,17 +246,28 @@ export const makeAgentDefinitionSchedulerDependencies = (
      * assignments ride the dual-write dispatch store. Default: plain D1.
      */
     pylonStore?: PylonApiStore | undefined
+    /**
+     * KS-8.5 (#8316): injectable agent-runtime stores so scheduler ticks
+     * ride the agent-runtime dual-write seam (definition/run mirrors and
+     * KHALA_SYNC_AGENT_RUNTIME_READS-routed due-trigger scans).
+     * Default: plain D1.
+     */
+    definitionStore?: AgentDefinitionStore | undefined
+    runStore?: AgentDefinitionRunDispatchDependencies['runStore'] | undefined
+    triggerStore?: AgentDefinitionTriggerStore | undefined
   }>,
 ): AgentDefinitionSchedulerDependencies => {
   return {
-    definitionStore: makeD1AgentDefinitionStore(input.db),
+    definitionStore:
+      input.definitionStore ?? makeD1AgentDefinitionStore(input.db),
     dispatchDependencies: {
       durableStreamNamespace: input.durableStreamNamespace,
       forgeGitAuthStore: makeD1ForgeTenantGitAuthStore(input.db),
       forgeStore: makeD1ForgeCoordinationStore(input.db),
       pylonStore: input.pylonStore ?? makeD1PylonApiStore(input.db),
-      runStore: makeD1AgentDefinitionRunStore(input.db),
+      runStore: input.runStore ?? makeD1AgentDefinitionRunStore(input.db),
     },
-    triggerStore: makeD1AgentDefinitionTriggerStore(input.db),
+    triggerStore:
+      input.triggerStore ?? makeD1AgentDefinitionTriggerStore(input.db),
   }
 }

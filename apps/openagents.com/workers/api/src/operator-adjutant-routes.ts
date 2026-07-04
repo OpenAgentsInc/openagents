@@ -17,7 +17,9 @@ import {
   type AdjutantAssignmentVisibility,
   type CreateAdjutantAssignmentInput,
   makeAdjutantAssignmentService,
+  systemAdjutantAssignmentRuntime,
 } from './adjutant-assignments'
+import { makeAgentGoalRepositoryForEnv } from './agent-runtime-store'
 import {
   type AdjutantEnrichmentJob,
   type AdjutantEnrichmentJobError,
@@ -2437,7 +2439,13 @@ export const executeQueuedAdjutantEnrichmentJob = (
 ): Effect.Effect<void, OperatorAdjutantRouteError> =>
   Effect.gen(function* () {
     const db = openAgentsDatabase(env)
-    const assignments = makeAdjutantAssignmentService(db)
+    const assignments = makeAdjutantAssignmentService(
+      db,
+      systemAdjutantAssignmentRuntime,
+      // KS-8.5 (#8316): goal mutations ride the agent-runtime dual-write
+      // seam.
+      makeAgentGoalRepositoryForEnv(env),
+    )
     const jobs = makeAdjutantEnrichmentJobService(db)
     const ledger = makeAdjutantEnrichmentLedger(db)
     const briefService = makeAdjutantResearchBriefService(db)

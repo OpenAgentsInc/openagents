@@ -7,12 +7,17 @@ import {
   type AgentGoalRepositoryShape,
   makeD1AgentGoalRepository,
 } from './agent-goals'
+import {
+  makeAgentGoalRepositoryForEnv,
+  type AgentRuntimeStoreEnv,
+} from './agent-runtime-store'
 import { openAgentsDatabase } from './runtime'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 
 type AdjutantAssignmentEnv = Readonly<{
   OPENAGENTS_DB: D1Database
-}>
+}> &
+  AgentRuntimeStoreEnv
 
 export type AdjutantAssignmentRuntime = Readonly<{
   makeAssignmentId: () => string
@@ -948,6 +953,12 @@ export class AdjutantAssignmentService extends Context.Service<
   ) =>
     Layer.succeed(
       AdjutantAssignmentService,
-      makeAdjutantAssignmentService(openAgentsDatabase(env), runtime),
+      makeAdjutantAssignmentService(
+        openAgentsDatabase(env),
+        runtime,
+        // KS-8.5 (#8316): goal mutations ride the agent-runtime
+        // dual-write seam.
+        makeAgentGoalRepositoryForEnv(env),
+      ),
     )
 }

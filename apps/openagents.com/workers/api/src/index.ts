@@ -64,10 +64,7 @@ import {
   sha256Hex,
   timingSafeEqual,
 } from './agent-registration'
-import {
-  handleAgentDefinitionsApi,
-  makeD1AgentDefinitionStore,
-} from './agent-definition-routes'
+import { handleAgentDefinitionsApi } from './agent-definition-routes'
 import {
   handleAgentDefinitionEventLedgerGatewayRequest,
   matchAgentDefinitionEventLedgerGatewayRequest,
@@ -86,7 +83,6 @@ import {
 } from './agent-definition-webhook-routes'
 import {
   handleAgentDefinitionRunRequest,
-  makeD1AgentDefinitionRunStore,
   matchAgentDefinitionRunRequest,
   revokeAgentDefinitionRunForgeGitTokensForAssignment,
 } from './agent-definition-run-routes'
@@ -95,7 +91,14 @@ import {
   makeAgentDefinitionSchedulerDependencies,
   runAgentDefinitionSchedulerTick,
 } from './agent-definition-scheduler'
-import { makeD1AgentDefinitionTriggerStore } from './agent-definition-trigger-store'
+import {
+  cancelActiveAgentRunsForBillingExhaustionForEnv,
+  makeAgentDefinitionRunStoreForEnv,
+  makeAgentDefinitionStoreForEnv,
+  makeAgentDefinitionTriggerStoreForEnv,
+  makeOmniRunStoreForEnv,
+  makeTraceStoreForEnv,
+} from './agent-runtime-store'
 import {
   EVENT_LEDGER_INGEST_QUEUE_SCHEMA_VERSION,
   EventLedgerIngestQueueMessage,
@@ -877,10 +880,8 @@ import {
   type AgentRunBundle,
   type AgentRunRecord,
   type OmniEventRecord,
-  cancelActiveAgentRunsForBillingExhaustion,
   cancelAgentRunOnShc,
   listActiveAgentRunsForBilling,
-  makeD1OmniRunStore,
 } from './omni-runs'
 import { makeOmniWorkroomLifecycleRoutes } from './omni-workroom-lifecycle-routes'
 import { makeOmniWorkroomRoutes } from './omni-workroom-routes'
@@ -1220,7 +1221,6 @@ import {
 } from './token-usage-ledger'
 import { makeTokenUsageLedgerRoutes } from './token-usage-ledger-routes'
 import {
-  makeD1TraceStore,
   makeR2TraceMediaBlobStore,
   makeR2TraceTrajectoryBlobStore,
 } from './trace-store-d1'
@@ -3400,9 +3400,7 @@ const appendTeamAutopilotAnswerBack = async (
     return
   }
 
-  const bundle = await makeD1OmniRunStore(
-    openAgentsDatabase(env),
-  ).findAgentRunForUser(parent.message.author.userId, runId)
+  const bundle = await makeOmniRunStoreForEnv(env).findAgentRunForUser(parent.message.author.userId, runId)
 
   if (bundle === undefined || bundle.run.status !== 'completed') {
     return
@@ -6437,8 +6435,8 @@ const enforceOutOfCreditsPolicy = async (
     return
   }
 
-  const canceledRuns = await cancelActiveAgentRunsForBillingExhaustion(
-    openAgentsDatabase(env),
+  const canceledRuns = await cancelActiveAgentRunsForBillingExhaustionForEnv(
+    env,
     userId,
     {
       balanceCents: billing.balanceCents,
@@ -6470,7 +6468,7 @@ const enforceOutOfCreditsPolicy = async (
 }
 
 const makeBillingAwareOmniRunStore = (env: Env, ctx?: ExecutionContext) =>
-  makeD1OmniRunStore(openAgentsDatabase(env), {
+  makeOmniRunStoreForEnv(env, {
     afterAgentRunMetered: run =>
       enforceOutOfCreditsPolicy(env, ctx, run.userId),
   })
@@ -7445,7 +7443,7 @@ const traceStoreRoutes = makeTraceStoreRoutes({
         .TRACE_DATA_MARKET_REWARD_ENABLED,
     ),
   isAdminEmail: isOpenAgentsAdminEmail,
-  makeStore: env => makeD1TraceStore(openAgentsDatabase(env)),
+  makeStore: env => makeTraceStoreForEnv(env),
   // Large-trajectory R2 offload (#6221): a multi-MB real agent session exceeds
   // D1's ~1MB value cap, so the public-safe trajectory JSON is stored in the
   // shared ARTIFACTS bucket with only a pointer kept in D1.
@@ -7568,7 +7566,7 @@ const pylonCodexTurnIngestRoutes = makePylonCodexTurnIngestRoutes<Env>({
     Effect.promise(() =>
       publishKhalaTokensServedDelta(env, buildKhalaTokensServedDelta(delta)),
     ),
-  traceStore: env => makeD1TraceStore(openAgentsDatabase(env)),
+  traceStore: env => makeTraceStoreForEnv(env),
 })
 
 const hostedMdkClientForEnv = (
@@ -9422,7 +9420,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
         enabled: isKhalaChatTraceEmitEnabled(env.KHALA_CHAT_TRACE_EMIT_ENABLED),
         optedIn: false,
         captureDefault: true,
-        store: makeD1TraceStore(openAgentsDatabase(env)),
+        store: makeTraceStoreForEnv(env),
         owner: {
           ownerUserId: input.ownerUserId,
           agentRef: 'operator.artanis.chat',
@@ -9658,7 +9656,7 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
   revokeAssignmentForgeGitAccess: async (env, input) =>
     revokeAgentDefinitionRunForgeGitTokensForAssignment({
       forgeGitAuthStore: makeD1ForgeTenantGitAuthStore(openAgentsDatabase(env)),
-      runStore: makeD1AgentDefinitionRunStore(openAgentsDatabase(env)),
+      runStore: makeAgentDefinitionRunStoreForEnv(env),
     }, {
       assignmentRef: input.assignment.assignmentRef,
       nowIso: input.nowIso,
@@ -13323,8 +13321,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       Effect.promise(() =>
         handleAgentDefinitionsApi(request, {
           agentStore: makeD1AgentRegistrationStore(openAgentsDatabase(env)),
-          definitionStore: makeD1AgentDefinitionStore(openAgentsDatabase(env)),
-          triggerStore: makeD1AgentDefinitionTriggerStore(openAgentsDatabase(env)),
+          definitionStore: makeAgentDefinitionStoreForEnv(env),
+          triggerStore: makeAgentDefinitionTriggerStoreForEnv(env),
         }),
       ),
   },
@@ -13333,7 +13331,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       Effect.promise(() =>
         handleAgentDefinitionWebhookRequest(request, {
-          definitionStore: makeD1AgentDefinitionStore(openAgentsDatabase(env)),
+          definitionStore: makeAgentDefinitionStoreForEnv(env),
           dispatchDependencies: {
             durableStreamNamespace:
               isInferenceDurableStreamEnabled(
@@ -13346,7 +13344,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             ),
             forgeStore: makeD1ForgeCoordinationStore(openAgentsDatabase(env)),
             pylonStore: makePylonApiStoreForEnv(env),
-            runStore: makeD1AgentDefinitionRunStore(openAgentsDatabase(env)),
+            runStore: makeAgentDefinitionRunStoreForEnv(env),
           },
           githubSecret: (
             env as Env & {
@@ -13363,14 +13361,13 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               }
             ).AGENT_DEFINITION_GITHUB_MENTION_LOGINS,
           ),
-          triggerStore: makeD1AgentDefinitionTriggerStore(openAgentsDatabase(env)),
+          triggerStore: makeAgentDefinitionTriggerStoreForEnv(env),
         }),
       ),
   },
   {
     path: '/v1/agent-definitions/webhooks/github/completions',
     handler: (request, env) => {
-      const db = openAgentsDatabase(env)
       const githubSecret = (
         env as Env & {
           AGENT_DEFINITION_GITHUB_WEBHOOK_SECRET?: string
@@ -13388,7 +13385,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             ? undefined
             : makeGitHubRestAgentDefinitionCompletionGitHubStore(commentToken),
         githubSecret,
-        runStore: makeD1AgentDefinitionRunStore(db),
+        runStore: makeAgentDefinitionRunStoreForEnv(env),
       })
     },
   },
@@ -13397,7 +13394,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       Effect.promise(() =>
         handleAgentDefinitionSlackWebhookRequest(request, {
-          definitionStore: makeD1AgentDefinitionStore(openAgentsDatabase(env)),
+          definitionStore: makeAgentDefinitionStoreForEnv(env),
           dispatchDependencies: {
             durableStreamNamespace:
               isInferenceDurableStreamEnabled(
@@ -13410,7 +13407,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             ),
             forgeStore: makeD1ForgeCoordinationStore(openAgentsDatabase(env)),
             pylonStore: makePylonApiStoreForEnv(env),
-            runStore: makeD1AgentDefinitionRunStore(openAgentsDatabase(env)),
+            runStore: makeAgentDefinitionRunStoreForEnv(env),
           },
           eventLedgerEnqueue: makeEventLedgerIngestEnqueue(
             env as Env & EventLedgerProducerEnv,
@@ -13420,7 +13417,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               AGENT_DEFINITION_SLACK_WEBHOOK_SIGNING_SECRET?: string
             }
           ).AGENT_DEFINITION_SLACK_WEBHOOK_SIGNING_SECRET,
-          triggerStore: makeD1AgentDefinitionTriggerStore(openAgentsDatabase(env)),
+          triggerStore: makeAgentDefinitionTriggerStoreForEnv(env),
         }),
       ),
   },
@@ -13431,7 +13428,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       const forum = makeD1AgentDefinitionForumCompletionForumStore(db)
 
       return handleAgentDefinitionForumWebhookRequest(request, {
-        definitionStore: makeD1AgentDefinitionStore(db),
+        definitionStore: makeAgentDefinitionStoreForEnv(env),
         dispatchDependencies: {
           durableStreamNamespace:
             isInferenceDurableStreamEnabled(
@@ -13442,7 +13439,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           forgeGitAuthStore: makeD1ForgeTenantGitAuthStore(db),
           forgeStore: makeD1ForgeCoordinationStore(db),
           pylonStore: makePylonApiStoreForEnv(env),
-          runStore: makeD1AgentDefinitionRunStore(db),
+          runStore: makeAgentDefinitionRunStoreForEnv(env),
         },
         forumEventSourceVerifier: event =>
           verifyAgentDefinitionForumEventSource(forum, event),
@@ -13451,7 +13448,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             AGENT_DEFINITION_FORUM_WEBHOOK_SECRET?: string
           }
         ).AGENT_DEFINITION_FORUM_WEBHOOK_SECRET,
-        triggerStore: makeD1AgentDefinitionTriggerStore(db),
+        triggerStore: makeAgentDefinitionTriggerStoreForEnv(env),
       })
     },
   },
@@ -13467,7 +13464,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             AGENT_DEFINITION_FORUM_WEBHOOK_SECRET?: string
           }
         ).AGENT_DEFINITION_FORUM_WEBHOOK_SECRET,
-        runStore: makeD1AgentDefinitionRunStore(db),
+        runStore: makeAgentDefinitionRunStoreForEnv(env),
       })
     },
   },
@@ -14223,7 +14220,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
                 // stores an auto-capture (captureDefault && !optedIn) as
                 // owner_only (private-by-default).
                 captureDefault: input.captureDefault,
-                store: makeD1TraceStore(openAgentsDatabase(env)),
+                store: makeTraceStoreForEnv(env),
                 owner: {
                   ownerUserId,
                   agentRef: input.accountRef,
@@ -14676,7 +14673,7 @@ const routeRequest = makeWorkerRouteRequest({
           matchedEventLedger === undefined
             ? await handleAgentDefinitionRunRequest(request, {
                 agentStore: makeD1AgentRegistrationStore(db),
-                definitionStore: makeD1AgentDefinitionStore(db),
+                definitionStore: makeAgentDefinitionStoreForEnv(env),
                 durableStreamNamespace:
                   isInferenceDurableStreamEnabled(
                     env.INFERENCE_DURABLE_STREAM_ENABLED,
@@ -14686,13 +14683,13 @@ const routeRequest = makeWorkerRouteRequest({
                 forgeGitAuthStore: makeD1ForgeTenantGitAuthStore(db),
                 forgeStore: makeD1ForgeCoordinationStore(db),
                 pylonStore: makePylonApiStoreForEnv(env),
-                runStore: makeD1AgentDefinitionRunStore(db),
+                runStore: makeAgentDefinitionRunStoreForEnv(env),
               })
             : await handleAgentDefinitionEventLedgerGatewayRequest(request, {
                 agentStore: makeD1AgentRegistrationStore(db),
-                definitionStore: makeD1AgentDefinitionStore(db),
+                definitionStore: makeAgentDefinitionStoreForEnv(env),
                 eventLedgerStore: makeD1EventLedgerStore(db),
-                runStore: makeD1AgentDefinitionRunStore(db),
+                runStore: makeAgentDefinitionRunStoreForEnv(env),
               })
 
         return response ?? notFound()
@@ -15470,10 +15467,16 @@ export class AgentDefinitionSchedulerDurableObject {
     const result = await runAgentDefinitionSchedulerTick(
       makeAgentDefinitionSchedulerDependencies({
         db: openAgentsDatabase(this.env),
+        // KS-8.5 (#8316): scheduler ticks ride the agent-runtime
+        // dual-write seam (definition/run mirrors + flag-routed
+        // due-trigger scans).
+        definitionStore: makeAgentDefinitionStoreForEnv(this.env),
         durableStreamNamespace,
         // KS-8.1 (#8307): scheduler-dispatched assignments ride the same
         // dual-write store as the request-path writers.
         pylonStore: makePylonApiStoreForEnv(this.env),
+        runStore: makeAgentDefinitionRunStoreForEnv(this.env),
+        triggerStore: makeAgentDefinitionTriggerStoreForEnv(this.env),
       }),
       { nowIso: scheduledAt },
     )

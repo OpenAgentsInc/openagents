@@ -429,6 +429,73 @@ traffic; use `--raw-event-accept-historical-gaps-before` only after posting the
 classification evidence. That acceptance path still fails closed on
 newer/unknown-observed gaps and duplicate chunk indexes.
 
+## Agent runtime metadata domain cutover (KS-8.5, #8316)
+
+The third KS-8 domain migration: the eight core agent-execution metadata
+tables `agent_definitions` / `agent_definition_runs` /
+`agent_definition_triggers` / `agent_runs` / `agent_run_events` /
+`agent_traces` / `agent_goals` / `agent_goal_events` (D1) → same-named
+Postgres twins (khala-sync migration `0010_agent_runtime.sql`).
+Machinery: `apps/openagents.com/workers/api/src/agent-runtime-store.ts`
+(row-level repository seam, fail-soft read-back mirror, `make*ForEnv`
+call-site factories) and
+`packages/khala-sync-server/scripts/backfill-agent-runtime.ts`
+(backfill + verify). The issue's remaining tables (profiles, proposals,
+owner claims, credentials, event ledger, acceptance jobs/verdicts) move
+in the follow-up remainder lane — see MIGRATION_PLAN §3.2.
+
+PRIVACY: `agent_traces` are owner-private. The Postgres twin carries
+`visibility` / `owner_user_id` / consent columns verbatim; verify output
+and Worker diagnostics reference trace_uuid keys and sha256 hashes ONLY
+— never trajectory content. Do not paste raw rows into issues.
+
+Flags (Worker vars):
+
+- `KHALA_SYNC_AGENT_RUNTIME_DUAL_WRITE` — default **on** wherever
+  `KHALA_SYNC_DB` exists; `off|0|false|disabled` disables the mirror.
+- `KHALA_SYNC_AGENT_RUNTIME_READS` — default `d1`; routes the
+  AgentDefinitionScheduler due-trigger scans (`listDueCronTriggers` /
+  `listInboundWebhookTriggers`). `compare` reads both, serves D1, logs
+  `khala_sync_agent_runtime_read_compare_mismatch`; `postgres` serves
+  Postgres with bounded retry (50/150ms) and D1 fallback on exhaustion.
+  All other domain reads stay on D1 until the decommission follow-up
+  moves them with their own re-derived read paths.
+
+Flag-flip order — never skip a step, each step soaks before the next:
+
+1. **Dual-write on** (default after KS-8.5 lands + `0010` applied via the
+   migration runner). Watch `khala_sync_agent_runtime_dual_write_failed`
+   in Worker logs — that event IS the drift metric; a nonzero steady
+   rate blocks progression.
+2. **Backfill**: from `packages/khala-sync-server/`,
+   `KHALA_SYNC_DATABASE_URL=<direct-url> bun
+   scripts/backfill-agent-runtime.ts` (wrangler-auth'd; rowid-cursor
+   resumable via `.agent-runtime-backfill-state.json`). Run it a SECOND
+   time (`--restart`) as the catch-up sweep once dual-write has covered
+   the whole window.
+3. **Verify**: `bun scripts/backfill-agent-runtime.ts --verify` — exact
+   row counts, per-run/per-goal EVENT-CHAIN comparison (count / distinct
+   / min / max per parent — the KS-8.5 contiguity acceptance), trace
+   content-hash sample + visibility/consent tallies, goal usage sums,
+   newest-50 row hashes. Post the output on the migration issue. Exact
+   or explain; no cutover on a red verify.
+4. **Compare reads**: set `KHALA_SYNC_AGENT_RUNTIME_READS=compare`; soak
+   until the mismatch log is silent over a window that includes real
+   scheduler ticks (cron due-scans fire every minute).
+5. **Postgres reads**: set `KHALA_SYNC_AGENT_RUNTIME_READS=postgres`.
+   The scheduler due-trigger scan now reads Postgres with retry
+   headroom; D1 remains the write authority and the fallback.
+6. **Decommission LATER**: dropping the D1 tables, moving the remaining
+   read paths, migrating the issue's remainder tables (profiles /
+   proposals / owner claims / credentials / event ledger / acceptance),
+   and moving write authority is the follow-up issue on epic #8282 —
+   never in the same change as a read cutover. Until then rollback is
+   one flag flip back to `d1`.
+
+Rollback at ANY step: set `KHALA_SYNC_AGENT_RUNTIME_READS=d1` (reads)
+and/or `KHALA_SYNC_AGENT_RUNTIME_DUAL_WRITE=off` (writes). D1 authority
+is never behind.
+
 ## Public tokens-served projection (KS-6.3, #8304)
 
 The public "Khala Tokens Served" counter

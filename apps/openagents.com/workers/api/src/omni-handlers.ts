@@ -9,15 +9,18 @@ import {
   AgentGoalContinuationService,
   AgentGoalContinuationServiceLive,
   AgentGoalRuntimeEvent,
-  makeAgentGoalEventRepositoryLayer,
 } from './agent-goal-runtime'
 import {
   type AgentGoalRecord,
   AgentGoalRepository,
   AgentGoalStorageError,
   type AgentGoalVisibility,
-  makeAgentGoalRepositoryLayer,
 } from './agent-goals'
+import {
+  makeAgentGoalEventRepositoryLayerForEnv,
+  makeAgentGoalRepositoryLayerForEnv,
+  makeOmniRunStoreForEnv,
+} from './agent-runtime-store'
 import { appendSessionCookies } from './auth-cookies'
 import { requireMinimumRunCredits } from './billing'
 import type {
@@ -508,12 +511,9 @@ const projectAgentId = (project: UserTeamProject | undefined): string =>
   project?.agent?.id ?? DEFAULT_AGENT_GOAL_AGENT_ID
 
 const agentGoalRuntimeLayer = (workerEnv: OmniHandlerEnv) => {
-  const repositoryLayer = makeAgentGoalRepositoryLayer(
-    openAgentsDatabase(workerEnv),
-  )
-  const eventRepositoryLayer = makeAgentGoalEventRepositoryLayer(
-    openAgentsDatabase(workerEnv),
-  )
+  const repositoryLayer = makeAgentGoalRepositoryLayerForEnv(workerEnv)
+  const eventRepositoryLayer =
+    makeAgentGoalEventRepositoryLayerForEnv(workerEnv)
   const runtimeDependencies = Layer.merge(repositoryLayer, eventRepositoryLayer)
 
   return Layer.mergeAll(
@@ -574,7 +574,7 @@ const resolveAgentRunGoal = (
       })
     }).pipe(
       Effect.provide(
-        makeAgentGoalRepositoryLayer(openAgentsDatabase(workerEnv)),
+        makeAgentGoalRepositoryLayerForEnv(workerEnv),
       ),
     ),
   )
@@ -1163,7 +1163,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
     targetUser: OperatorTargetUser,
   ) => {
     const db = openAgentsDatabase(env)
-    const store = makeD1OmniRunStore(db)
+    const store = makeOmniRunStoreForEnv(env)
     const selectedRunId =
       optionalString(selector.runId) ?? optionalString(selector.currentRunId)
     const selectedRun =
@@ -1543,7 +1543,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
       )
     }
 
-    const store = makeD1OmniRunStore(openAgentsDatabase(env))
+    const store = makeOmniRunStoreForEnv(env)
 
     if (request.method === 'GET') {
       const runs = await store.listAgentRunsForUser(targetUser.userId, 30)
@@ -1836,7 +1836,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
       )
     }
 
-    const store = makeD1OmniRunStore(openAgentsDatabase(env))
+    const store = makeOmniRunStoreForEnv(env)
     const bundle = await findOperatorRunBundle(store, targetUser, runId)
 
     if (bundle === undefined) {
@@ -2155,12 +2155,9 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
 
     const completedGoalId = completedRun.goalId
     const completedProviderAccountRef = completedRun.providerAccountRef
-    const repositoryLayer = makeAgentGoalRepositoryLayer(
-      openAgentsDatabase(workerEnv),
-    )
-    const eventRepositoryLayer = makeAgentGoalEventRepositoryLayer(
-      openAgentsDatabase(workerEnv),
-    )
+    const repositoryLayer = makeAgentGoalRepositoryLayerForEnv(workerEnv)
+    const eventRepositoryLayer =
+      makeAgentGoalEventRepositoryLayerForEnv(workerEnv)
     const queueLayer = Layer.succeed(AgentGoalContinuationQueue, {
       enqueue: Effect.fn('AgentGoalContinuationQueue.enqueue')(
         function* (input) {
@@ -2976,7 +2973,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
       return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
     }
 
-    const store = makeD1OmniRunStore(openAgentsDatabase(env))
+    const store = makeOmniRunStoreForEnv(env)
 
     if (request.method === 'GET') {
       const deployments = await store.listDeploymentsForUser(
@@ -3052,7 +3049,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
       )
     }
 
-    const store = makeD1OmniRunStore(openAgentsDatabase(env))
+    const store = makeOmniRunStoreForEnv(env)
 
     if (request.method === 'GET') {
       const deployments = await store.listDeploymentsForUser(
@@ -3109,7 +3106,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
       return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
     }
 
-    const store = makeD1OmniRunStore(openAgentsDatabase(env))
+    const store = makeOmniRunStoreForEnv(env)
     const bundle = await store.findDeploymentForUser(
       session.user.userId,
       deployId,
@@ -3142,7 +3139,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
       const events = Array.isArray(body.events)
         ? body.events.filter(isRecord)
         : [body].filter(isRecord)
-      const store = makeD1OmniRunStore(openAgentsDatabase(env))
+      const store = makeOmniRunStoreForEnv(env)
       const fallbackStart =
         (await readDeploymentEventCursor(openAgentsDatabase(env), deployId)) + 1
       const runnerEvents = makeOmniRunnerEventService()
