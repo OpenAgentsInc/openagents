@@ -371,7 +371,7 @@ describe('public product promises document', () => {
     expect(decoded.notes.join('\n')).toContain('flips NO promise state')
   })
 
-  test('lands and advances Reactor records as planned-only boundaries for issues 8271 through 8275', () => {
+  test('lands and advances Reactor records as planned-only boundaries for issues 8271 through 8276', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
     )
@@ -391,12 +391,15 @@ describe('public product promises document', () => {
         'https://github.com/OpenAgentsInc/openagents/issues/8273',
         'https://github.com/OpenAgentsInc/openagents/issues/8274',
         'https://github.com/OpenAgentsInc/openagents/issues/8275',
+        'https://github.com/OpenAgentsInc/openagents/issues/8276',
         'packages/reactor-contracts/src/index.ts',
         'packages/reactor-contracts/src/index.test.ts',
         'packages/reactor-contracts/scripts/install-smoke.ts',
+        'packages/reactor-contracts/scripts/dogfood-smoke.ts',
         'docs/fable/2026-07-04-rx-3-reactor-serving-skeleton-receipt.md',
         'docs/fable/2026-07-04-rx-4-reactor-eval-receipts.md',
         'docs/fable/2026-07-04-rx-5-reactor-install-airgap-runbook.md',
+        'docs/fable/2026-07-04-rx-6-reactor-dogfood-run.md',
         'https://openagents.com/forum/t/2efaeed7-1f4f-4f2f-9b26-dc8445885bca',
         'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md',
         'NEEDS_OWNER.md',
@@ -421,10 +424,13 @@ describe('public product promises document', () => {
     expect(privateDeployment?.safeCopy).toContain(
       'signed air-gap install/update runbook',
     )
+    expect(privateDeployment?.safeCopy).toContain(
+      'internal OpenAgents dogfood run receipt',
+    )
     expect(privateDeployment?.safeCopy).toContain('NEEDS_OWNER.md')
     expect(privateDeployment?.unsafeCopy).toContain('Do not claim Reactor is available')
     expect(privateDeployment?.unsafeCopy).toContain('priced publicly')
-    expect(privateDeployment?.authorityBoundary).toContain('grants no serving')
+    expect(privateDeployment?.authorityBoundary).toContain('grants no external serving')
 
     expect(provenance).toMatchObject({
       state: 'planned',
@@ -465,24 +471,31 @@ describe('public product promises document', () => {
     expect(policy).toMatchObject({
       state: 'planned',
       blockerRefs: expect.arrayContaining([
-        'blocker.product_promises.reactor_dogfood_or_customer_deployment_missing',
+        'blocker.product_promises.reactor_external_customer_pilot_missing',
+        'blocker.owner.reactor_case_study_public_copy_approval_missing',
       ]),
       evidenceRefs: expect.arrayContaining([
         'https://github.com/OpenAgentsInc/openagents/issues/8272',
         'https://github.com/OpenAgentsInc/openagents/issues/8273',
         'https://github.com/OpenAgentsInc/openagents/issues/8274',
         'https://github.com/OpenAgentsInc/openagents/issues/8275',
+        'https://github.com/OpenAgentsInc/openagents/issues/8276',
         'packages/reactor-contracts/src/index.ts',
         'packages/reactor-contracts/src/index.test.ts',
         'packages/reactor-contracts/scripts/install-smoke.ts',
+        'packages/reactor-contracts/scripts/dogfood-smoke.ts',
         'docs/fable/2026-07-04-rx-2-reactor-model-policy-contracts-receipt.md',
         'docs/fable/2026-07-04-rx-3-reactor-serving-skeleton-receipt.md',
         'docs/fable/2026-07-04-rx-4-reactor-eval-receipts.md',
         'docs/fable/2026-07-04-rx-5-reactor-install-airgap-runbook.md',
+        'docs/fable/2026-07-04-rx-6-reactor-dogfood-run.md',
         'promise:reactor.model_provenance.v1',
         'promise:reactor.private_deployment.v1',
       ]),
     })
+    expect(policy?.blockerRefs).not.toContain(
+      'blocker.product_promises.reactor_dogfood_or_customer_deployment_missing',
+    )
     expect(policy?.blockerRefs).not.toContain(
       'blocker.product_promises.reactor_airgap_update_path_missing',
     )
@@ -502,8 +515,12 @@ describe('public product promises document', () => {
     expect(policy?.safeCopy).toContain('receipt-shaped decisions')
     expect(policy?.safeCopy).toContain('refuses nonconforming models')
     expect(policy?.safeCopy).toContain('before OpenAI-compatible routing')
+    expect(policy?.safeCopy).toContain('internal OpenAgents dogfood run receipt')
+    expect(policy?.safeCopy).toContain('Qwen refresh refused')
     expect(policy?.verification).toContain('signed air-gap bundle manifests')
     expect(policy?.verification).toContain('clean-temp install smoke')
+    expect(policy?.verification).toContain('RX-6 dogfood smoke')
+    expect(policy?.verification).toContain('dogfood-run receipt set')
     expect(policy?.unsafeCopy).toContain('live Reactor customer deployments')
     expect(policy?.authorityBoundary).toContain('planned policy record')
 
@@ -519,11 +536,15 @@ describe('public product promises document', () => {
     const rx5Note = decoded.notes.find(note =>
       note.includes('Registry 2026-07-04.13'),
     )
+    const rx6Note = decoded.notes.find(note =>
+      note.includes('Registry 2026-07-04.14'),
+    )
     const publicReactorBoundary = [
       privateDeployment?.claim,
       privateDeployment?.safeCopy,
       provenance?.safeCopy,
       policy?.safeCopy,
+      rx6Note,
       rx5Note,
       rx4Note,
       rx3Note,
@@ -535,8 +556,10 @@ describe('public product promises document', () => {
     expect(publicReactorBoundary).toContain('RX-3 Reactor serving-skeleton pass')
     expect(publicReactorBoundary).toContain('RX-4 Reactor eval-receipts pass')
     expect(publicReactorBoundary).toContain('RX-5 Reactor install/air-gap pass')
+    expect(publicReactorBoundary).toContain('RX-6 Reactor dogfood pass')
     expect(publicReactorBoundary).toContain('full-eval-coverage blocker')
-    expect(publicReactorBoundary).toContain('dogfood/customer-deployment blocker')
+    expect(publicReactorBoundary).toContain('internal dogfood-proof blocker')
+    expect(publicReactorBoundary).toContain('external-customer-pilot')
     expect(publicReactorBoundary).toContain('planned only')
     expect(publicReactorBoundary).not.toMatch(/\$2,500|\$7,500|\$10,000|\$25,000/)
     expect(publicReactorBoundary).not.toContain('Reactor is available')

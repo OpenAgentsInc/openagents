@@ -146,6 +146,17 @@ clean-temp smoke that uses the existing `apps/oa-updates` ed25519 verifier
 pattern. It clears the air-gap path blocker only; no customer or dogfood node
 has been deployed.
 
+RX-6 note (2026-07-04): the internal Reactor dogfood gate landed as a
+public-safe `openagents.reactor.dogfood_run_receipt.v1` seed in
+`packages/reactor-contracts` plus
+`docs/fable/2026-07-04-rx-6-reactor-dogfood-run.md`. It records the OpenAgents
+dogfood Hydralisk node, strict US-only policy, RX-5 fresh-install receipt, two
+routed internal lead-gen workload requests, exact local metering totaling 743
+tokens, and a deliberate Qwen refresh refused by policy revalidation. This
+clears dogfood proof only; customer premises deployment, customer data custody,
+need-to-know access, full eval coverage, owner-approved pricing/copy,
+compliance, payout, and settlement remain blocked.
+
 ## 3. The focus: closing the revenue loop, independence-first
 
 The company objective (Episode 246: "close the gap between what I've been

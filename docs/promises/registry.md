@@ -1,5 +1,20 @@
 # Promise Registry
 
+> Registry `2026-07-04.14` is the RX-6 Reactor dogfood pass
+> (#8276) and flips NO promise state (green stays exactly 34). The
+> `@openagentsinc/reactor-contracts` package now exports
+> `openagents.reactor.dogfood_run_receipt.v1` plus an OpenAgents dogfood
+> Hydralisk profile, RX-5 fresh-install receipt, two routed internal
+> lead-gen workload requests, exact local metering receipts totaling 743
+> tokens, and a deliberate Qwen refresh refused by
+> `reactor.model_policy.v1` revalidation before model refresh. This clears
+> only the internal dogfood-proof blocker and replaces the
+> dogfood/customer-deployment blocker with external-customer-pilot and
+> owner-case-study-copy blockers. Customer premises deployment, customer
+> data custody, need-to-know access, full eval coverage, owner-approved
+> public copy, pricing, compliance, payout, and settlement claims remain
+> blocked.
+
 > Registry `2026-07-04.13` is the RX-5 Reactor install/air-gap pass
 > (#8275) and flips NO promise state (green stays exactly 34). The
 > `@openagentsinc/reactor-contracts` package now exports signed air-gap

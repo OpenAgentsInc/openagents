@@ -199,6 +199,18 @@ closed, writes install/upgrade/rollback receipts, and revalidates
 `reactor.model_policy.v1` on every model refresh. Hardware tier specs are
 guidance only, not purchase commitments.
 
+RX-6 status (2026-07-04): OpenAgents now has a customer-number-one dogfood
+receipt seed in `packages/reactor-contracts` and the public-safe writeup
+`docs/fable/2026-07-04-rx-6-reactor-dogfood-run.md`. The new
+`openagents.reactor.dogfood_run_receipt.v1` binds the dogfood Hydralisk node
+profile, RX-5 fresh-install receipt, strict US-only policy refs, two routed
+internal lead-gen workload requests, exact local metering receipts totaling 743
+tokens, and a deliberate Qwen refresh that is refused before model refresh by
+policy revalidation. This is internal dogfood evidence only: external pilots,
+customer premises deployment, customer data custody, need-to-know access, full
+eval coverage, pricing/copy approval, compliance, payout, and settlement remain
+blocked.
+
 ## 4. Architecture (owned seams, honest state)
 
 ```
@@ -414,7 +426,7 @@ RX-11 [#8279](https://github.com/OpenAgentsInc/openagents/issues/8279).
 | RX-3 | Policy-enforced serving skeleton: one node profile (server-class) on the **Hydralisk lane** (§4.1 default; contracts lane-neutral with `servingLane` declared per profile), gateway + router refusing non-conforming models, exact local metering | Landed in source with fixture-weight smoke; no deployed node |
 | RX-4 | Eval receipts: psionic-run task-class evals across the catalog seed (drafting, extraction, RAG, agent-tool-use). A score is a (model, harness) pair — every eval receipt carries a `harnessRef` naming the harness it was measured under (same-model harness variance ran 3.5%→80.1% in the 2026-07-04 harness-optimization audit) | Landed Reactor-side with measured 2 models × 2 task-class fixture receipts, hosted-equivalent labels, and `not_measured` coverage cells; Psionic runtime remains separate |
 | RX-5 | Install/ops runbook + air-gap update path (signed bundles), fleet-executable | Landed runbook, signed-bundle manifest, install/upgrade/rollback receipts, and clean-temp smoke; no deployed node |
-| RX-6 | Dogfood deployment: Reactor node on our own hardware running a real internal workload under a strict policy (e.g. `us`-only) — customer number one, again | Metering + policy receipts from our own node |
+| RX-6 | Dogfood deployment: Reactor node on our own hardware running a real internal workload under a strict policy (e.g. `us`-only) — customer number one, again | Landed public-safe dogfood-run receipt seed with exact metering, policy receipts, and refused Qwen refresh; external claims still blocked |
 | RX-7 | First customer pilot (likely the legal design partner's stated ask), BF-3.1/3.2 gated, opaque refs only | First paid Reactor receipt |
 | RX-8 | Lead Gen segment: model-custody analyzer angle + Reactor sequence for regulated verticals | Quoted Reactor pipeline via Autopilot Lead Gen |
 | RX-9 | **Need-to-know access layer**: per-user scoped retrieval over the corpus store — typed hard access rules enforced in the system + model-oracle checks for soft rules, with an adversarial "Bob must not see Alice" fixture suite | Access-violation smoke structurally fails closed |
