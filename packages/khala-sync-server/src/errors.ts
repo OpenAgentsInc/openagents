@@ -26,6 +26,50 @@ export class KhalaSyncStorageError extends Error {
 }
 
 // ---------------------------------------------------------------------------
+// Read-path protocol errors (KS-2.2)
+// ---------------------------------------------------------------------------
+
+/**
+ * The requested log range (or bootstrap snapshot stitch point) predates the
+ * scope's retained window (`khala_sync_scopes.retained_from_version`), so
+ * serving it would silently drop compacted entries. Maps to the wire-level
+ * `MustRefetch(reason: "cursor_behind_retained_window")` — the client must
+ * clear scope-local state and re-bootstrap (SPEC §3, invariant 6: a cursor
+ * behind the retained window MUST receive MustRefetch, never a partial log).
+ */
+export class KhalaSyncCursorBehindRetainedWindowError extends Error {
+  readonly _tag = "KhalaSyncCursorBehindRetainedWindowError"
+  override readonly name = "KhalaSyncCursorBehindRetainedWindowError"
+  /** Wire `SyncErrorCode` / `MustRefetchReason` this maps to. */
+  readonly code = "cursor_behind_retained_window" as const
+  constructor(
+    readonly scope: string,
+    /** The watermark the client asked to resume after (0 = scope start). */
+    readonly afterVersion: number,
+    readonly retainedFromVersion: number,
+  ) {
+    super(
+      `cursor ${afterVersion} is behind the retained window of ${scope} ` +
+        `(retained_from_version ${retainedFromVersion}) — must re-bootstrap`,
+    )
+  }
+}
+
+/**
+ * A bootstrap `pageToken` failed to decode, belongs to a different scope, or
+ * carries out-of-range fields. Tokens are server-minted and opaque, so this
+ * is a client (or cross-scope replay) error, never a storage failure; the
+ * client recovers by restarting the bootstrap without a token.
+ */
+export class KhalaSyncInvalidPageTokenError extends Error {
+  readonly _tag = "KhalaSyncInvalidPageTokenError"
+  override readonly name = "KhalaSyncInvalidPageTokenError"
+  constructor(readonly messageSafe: string) {
+    super(messageSafe)
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Bun SQL / Postgres error mapping
 // ---------------------------------------------------------------------------
 

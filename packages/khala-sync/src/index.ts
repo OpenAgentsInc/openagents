@@ -30,6 +30,20 @@ export const SyncVersion = S.Number.check(S.isInt(), S.isGreaterThan(0)).pipe(
 )
 export type SyncVersion = typeof SyncVersion.Type
 
+/**
+ * A log position expressed as a version watermark. Unlike {@link SyncVersion}
+ * (entry versions, which start at 1), a watermark of 0 is valid and means
+ * "scope start — before the first entry". Used where the protocol must be
+ * able to express a position at the very beginning of a scope's log:
+ * `LogPage.nextCursor` and the bootstrap snapshot `cursor` of a scope that
+ * has no committed versions yet.
+ */
+export const SyncVersionWatermark = S.Number.check(
+  S.isInt(),
+  S.isGreaterThanOrEqualTo(0),
+).pipe(S.brand("SyncVersionWatermark"))
+export type SyncVersionWatermark = typeof SyncVersionWatermark.Type
+
 /** Per-client sequential mutation id (starts at 1). */
 export const MutationId = S.Number.check(S.isInt(), S.isGreaterThan(0)).pipe(
   S.brand("MutationId"),
@@ -195,7 +209,8 @@ export class BootstrapEntity extends S.Class<BootstrapEntity>(
 
 /**
  * A consistent snapshot page. `cursor` is the scope version at which the
- * snapshot transaction ran; the client catches up from exactly there.
+ * snapshot was taken; the client catches up from exactly there. A cursor of
+ * 0 (watermark) means the scope had no committed versions at snapshot time.
  */
 export class BootstrapResponse extends S.Class<BootstrapResponse>(
   "BootstrapResponse",
@@ -204,7 +219,7 @@ export class BootstrapResponse extends S.Class<BootstrapResponse>(
   scope: SyncScope,
   entities: S.Array(BootstrapEntity),
   /** Absent while paging; present with the snapshot cursor on the last page. */
-  cursor: S.optionalKey(SyncVersion),
+  cursor: S.optionalKey(SyncVersionWatermark),
   nextPageToken: S.optionalKey(S.String),
 }) {}
 
@@ -216,7 +231,12 @@ export class LogPage extends S.Class<LogPage>("LogPage")({
   protocolVersion: S.Literal(KHALA_SYNC_PROTOCOL_VERSION),
   scope: SyncScope,
   entries: S.Array(ChangelogEntry),
-  nextCursor: SyncVersion,
+  /**
+   * The client's position after applying this page: the highest version in
+   * `entries`, or the request's `afterVersion` when the page is empty. A
+   * watermark — 0 means "still at scope start" (empty scope, no cursor yet).
+   */
+  nextCursor: SyncVersionWatermark,
   upToDate: S.Boolean,
 }) {}
 

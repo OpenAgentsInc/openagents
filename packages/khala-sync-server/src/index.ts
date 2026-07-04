@@ -9,14 +9,20 @@ import type {
   SyncSchemaVersion,
   SyncScope,
   SyncVersion,
+  SyncVersionWatermark,
 } from "@openagentsinc/khala-sync"
 import type { Effect } from "effect"
-import type { KhalaSyncStorageError } from "./errors.js"
+import type {
+  KhalaSyncCursorBehindRetainedWindowError,
+  KhalaSyncInvalidPageTokenError,
+  KhalaSyncStorageError,
+} from "./errors.js"
 import type { SyncTransactionWriter } from "./outbox-writer.js"
 
 export * from "./errors.js"
 export * from "./mutation-ledger.js"
 export * from "./outbox-writer.js"
+export * from "./read-service.js"
 
 /**
  * @openagentsinc/khala-sync-server — server substrate for Khala Sync:
@@ -99,19 +105,37 @@ export interface KhalaSyncPushService {
   >
 }
 
-/** Snapshot + catch-up reads (Hyperdrive path). */
+/**
+ * Errors the read paths can fail with: storage failures, a cursor (or
+ * bootstrap stitch point) behind the retained window (maps to the wire
+ * `MustRefetch(cursor_behind_retained_window)`), or an invalid bootstrap
+ * page token.
+ */
+export type KhalaSyncReadError =
+  | KhalaSyncStorageError
+  | KhalaSyncCursorBehindRetainedWindowError
+  | KhalaSyncInvalidPageTokenError
+
+/**
+ * Snapshot + catch-up reads (Hyperdrive path). The substrate functions are
+ * `bootstrap`/`logPage` in ./read-service (Promise-based at the transaction
+ * seam, like the outbox writer); this Effect-facing service wraps them above
+ * the scope-auth check (KS-7).
+ */
 export interface KhalaSyncReadService {
   readonly bootstrap: (input: {
     readonly userId: string
     readonly scope: SyncScope
-    readonly pageToken?: string
-  }) => Effect.Effect<BootstrapResponse, KhalaSyncStorageError>
+    readonly pageSize?: number | undefined
+    readonly pageToken?: string | undefined
+  }) => Effect.Effect<BootstrapResponse, KhalaSyncReadError>
   readonly logPage: (input: {
     readonly userId: string
     readonly scope: SyncScope
-    readonly afterVersion: SyncVersion | null
+    /** Resume-after watermark; `null` = scope start (version 0). */
+    readonly afterVersion: SyncVersion | SyncVersionWatermark | null
     readonly limit: number
-  }) => Effect.Effect<LogPage, KhalaSyncStorageError>
+  }) => Effect.Effect<LogPage, KhalaSyncReadError>
 }
 
 /** Scope authorization seam (KS-7). */

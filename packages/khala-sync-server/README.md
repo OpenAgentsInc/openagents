@@ -69,8 +69,9 @@ deployed Worker and returns `{ ok, khalaSyncTables, latencyMs }` — see
 `apps/openagents.com/workers/api/src/khala-sync-db-smoke-routes.ts`.
 
 Status: contracts, schema, migration runner (KS-0.3), the transactional
-outbox writer + per-scope version allocator (KS-2.1), and the mutation
-ledger + client-group state (KS-2.4) landed; the mutator engine, reads,
+outbox writer + per-scope version allocator (KS-2.1), the read service
+(bootstrap snapshot + log pages, KS-2.2), and the mutation ledger +
+client-group state (KS-2.4) landed; the mutator engine,
 capture, and hub land per the remaining KS-2/KS-3/KS-4 issues.
 
 ## Outbox writer (KS-2.1)
@@ -188,6 +189,84 @@ interleaved duplicates within a batch, crash-between-execute-and-respond
 replay returning the same recorded result, out-of-order gap rejection +
 healing, sequential progression across batches, insert-once recording, and
 client-state binding/rollback.
+
+## Read service (KS-2.2)
+
+`src/read-service.ts` implements the two Hyperdrive-path reads from SPEC §3.
+Both are one self-contained Postgres transaction per call (REPEATABLE READ);
+nothing is held between requests, because Hyperdrive's transaction-mode
+pooling cannot pin a session across them.
+
+### `logPage(sql, { scope, afterVersion, limit })`
+
+Ordered catch-up: `khala_sync_changelog` rows for `scope` strictly after the
+`afterVersion` watermark (`null`/0 = scope start), ordered by
+`(version, entity_type, entity_id)`.
+
+- **`nextCursor`** — the highest version returned, or `afterVersion` when
+  the page is empty (a `SyncVersionWatermark`: 0 means "still at scope
+  start").
+- **`upToDate`** — `nextCursor === khala_sync_scopes.last_version`, with the
+  counter read in the SAME transaction/snapshot as the page rows.
+- **Pages never split a version.** The `limit` bounds *distinct versions*,
+  not raw rows: since resumption reads `version > nextCursor`, a page that
+  ended mid-version would silently skip that version's remaining rows. A
+  page therefore holds at most `limit` versions, each bounded by the
+  entities one transaction touched.
+- **Retention refusal** — when `afterVersion <
+  khala_sync_scopes.retained_from_version - 1`, the requested range has been
+  compacted away; the call fails with the typed
+  `KhalaSyncCursorBehindRetainedWindowError` (wire mapping:
+  `MustRefetch(cursor_behind_retained_window)` — SPEC invariant 6: never a
+  silently partial log).
+
+### `bootstrap(sql, { scope, pageSize, pageToken? })`
+
+Consistent snapshot pages of the scope's CURRENT entity states, stitched to
+the scope version (the stitch cursor):
+
+- **v1 state source** — current states are derived from the changelog:
+  `DISTINCT ON (entity_type, entity_id) … ORDER BY … version DESC` picks
+  each entity's latest row at `version <= snapshotCursor`; entities whose
+  latest row is a tombstone are omitted. (Compaction must therefore always
+  preserve each live entity's latest upsert row.)
+- **The stitch cursor** — the first page reads
+  `khala_sync_scopes.last_version` in the same REPEATABLE READ transaction
+  as its rows. This is gap-free by construction: version allocation holds
+  the scope-counter row lock until the writing transaction commits (KS-2.1),
+  so versions are commit-ordered — observing `last_version = v` guarantees
+  every version `<= v` is committed and visible.
+- **Multi-page without a held transaction (the Hyperdrive seam design)** —
+  page tokens are self-contained: base64url of
+  `{ v, scope, snapshotCursor, lastEntityKey }`. Every later page re-derives
+  latest-per-entity under `version <= snapshotCursor AND (entity_type,
+  entity_id) > lastEntityKey`. Committed rows at versions `<=
+  snapshotCursor` are immutable (writers only append at higher versions), so
+  each page equals what a held snapshot at `snapshotCursor` would have
+  returned, no matter how many writes commit between pages. Only compaction
+  can invalidate a token: once `retained_from_version` passes the snapshot
+  cursor, the post-bootstrap stitch (`logPage(afterVersion =
+  snapshotCursor)`) could no longer be served, so every page fails closed
+  with `KhalaSyncCursorBehindRetainedWindowError` and the client
+  re-bootstraps.
+- **Final page** — carries `cursor = snapshotCursor` (watermark; 0 for an
+  empty scope) and no `nextPageToken`. The client stitches: apply all
+  snapshot pages, then `logPage` from exactly `cursor` until `upToDate`.
+  Entities that changed after the snapshot are re-delivered by the log with
+  newer post-images; apply is idempotent per (scope, version, entity), so
+  the seam is exact.
+- Malformed, cross-scope, or ahead-of-scope tokens fail with the typed
+  `KhalaSyncInvalidPageTokenError` (client restarts the bootstrap).
+
+`src/read-service.test.ts` proves the seam against real local Postgres: the
+acceptance test snapshots at version `v`, commits `v+1..v+k` interleaved
+with the snapshot pages (updates to already-paged and not-yet-paged
+entities, deletes, creates, create-then-delete), then verifies that
+client-side apply of snapshot pages + `logPage((v, v+k])` converges to
+exactly the final entity states — byte-equal canonical post-images, and
+byte-equal to a fresh single-page bootstrap taken afterwards. Paging
+correctness (version-boundary integrity, tombstone slots, empty-scope
+watermarks) and both retention refusals are covered alongside.
 
 ## Migrations runbook (KS-0.3)
 

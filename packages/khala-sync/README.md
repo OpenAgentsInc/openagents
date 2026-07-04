@@ -11,9 +11,11 @@ Durable Object hubs) → SQLite clients (desktop/web/mobile).
 This package is the single source of truth both sides depend on:
 
 - **Branded primitives** — `SyncScope`, `SyncVersion` (per-scope dense
-  monotonic server-assigned versions), `MutationId`, `ClientId` /
-  `ClientGroupId`, `EntityType` / `EntityId`, `SyncSchemaVersion`,
-  `MutatorName`.
+  monotonic server-assigned versions, starting at 1), `SyncVersionWatermark`
+  (a log position where 0 = scope start; used by `LogPage.nextCursor` and
+  the bootstrap snapshot `cursor` so an empty scope is representable),
+  `MutationId`, `ClientId` / `ClientGroupId`, `EntityType` / `EntityId`,
+  `SyncSchemaVersion`, `MutatorName`.
 - **Scope constructors** — `personalScope`, `teamScope`, `agentRunScope`,
   `threadScope`, `fleetRunScope`, `publicScope` (aligned with the
   `@openagentsinc/sync-worker` taxonomy).
