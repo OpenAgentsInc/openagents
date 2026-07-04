@@ -6,8 +6,11 @@ in `docs/khala-sync/SPEC.md` §6, server in `packages/khala-sync-server`).
 Components (KS-5 workstream):
 
 - **Local store** — ✅ shipped on `bun:sqlite` (KS-5.1, Khala Code
-  desktop; SQLite-WASM/`opfs-sahpool` + SharedWorker single-writer on web,
-  later lane). Holds confirmed entities per scope, durable cursors, the
+  desktop) and ✅ on web (KS-5.4): SQLite-WASM on the `opfs-sahpool` VFS
+  behind a SharedWorker with Web Locks single-writer election — see
+  "Web store" below. Both adapters share ONE driver-agnostic SQL core
+  (`store-core.ts`), so the semantics are identical by construction.
+  Holds confirmed entities per scope, durable cursors, the
   FIFO pending-mutation queue, and client identity — **server-confirmed
   state only** (SPEC §7 invariant 2); optimistic effects never touch disk.
 - **Optimistic mutators + rebase** — ✅ shipped (KS-5.2, `createOverlay`).
@@ -73,6 +76,141 @@ Tables: `entities(scope, entity_type, entity_id, post_image_json, version)`
 `pending_mutations(mutation_id, name, args_json, created_at)`, and
 `meta(key, value)` for `client_id` / `client_group_id` / `schema_version` /
 `last_mutation_id`. WAL journaling is enabled on file databases.
+
+## Web store (SQLite-WASM on `opfs-sahpool`, KS-5.4)
+
+The web adapter implements the exact same `KhalaSyncLocalStore` contract
+on the official `@sqlite.org/sqlite-wasm` build, using the
+**`opfs-sahpool`** VFS — a pool of synchronous OPFS access handles that
+needs **no COOP/COEP headers** (unlike the `opfs` VFS, which requires
+SharedArrayBuffer). The pool tolerates exactly one open connection per
+pool directory, which is the single-writer shape this architecture wants.
+
+### Architecture (Notion WASM-SQLite pattern)
+
+```
+   Tab A (main thread)            Tab B (main thread)
+   ┌───────────────────┐          ┌───────────────────┐
+   │ openKhalaSync-    │          │ openKhalaSync-    │
+   │ WasmStore(proxy)  │          │ WasmStore(proxy)  │
+   │  · Effect surface │          │  · Effect surface │
+   │  · promise map    │          │  · promise map    │
+   │    by request id  │          │    by request id  │
+   └───┬───────────▲───┘          └───┬───────────▲───┘
+       │ typed RPC │                  │ typed RPC │
+       │ (postMessage, StoreRequest/StoreResponse)│
+   ┌───▼───────────┴──────────────────▼───────────┴───┐
+   │            SharedWorker (one per origin)         │
+   │  startKhalaSyncStorageWorker (./web/worker)      │
+   │   · worker-runtime: queue-until-ready ports      │
+   │   · worker-server: wire ⇄ domain, typed errors   │
+   │   · store core (same SQL as bun:sqlite desktop)  │
+   │   · sqliteWasmDriver → oo1.DB on opfs-sahpool    │
+   │            ONE database connection               │
+   └───────────────────────┬──────────────────────────┘
+                           ▼
+                 OPFS (SAH pool directory)
+
+   Web Locks: every tab holds `khala-sync:writer` (exclusive, for the
+   tab's lifetime). The browser queues contenders FIFO; when the writer
+   tab dies its lock auto-releases and the next tab is elected — no
+   heartbeats. v1 routes ALL ops through the single worker regardless.
+```
+
+- **Single writer**: the SharedWorker owns the only `opfs-sahpool`
+  connection; every multi-row semantic runs in one SQLite transaction
+  inside the worker, exactly like desktop.
+- **Web Locks election** (`electWriter`): held-for-tab-lifetime exclusive
+  lock per the Notion pattern. With a SharedWorker the election is
+  bookkeeping plus the seam for the dedicated-worker fallback (browsers
+  without SharedWorker, e.g. Chrome for Android: give each tab a
+  dedicated worker and let only the elected tab's worker open the pool).
+- **`navigator.storage.persist()`** is requested exactly once, on the
+  first write-class operation, so the origin's OPFS bucket is exempted
+  from best-effort eviction; a denial never fails the write.
+- **Typed errors end-to-end**: `KhalaSyncClientStoreError` reason +
+  public-safe message cross the RPC boundary intact, so callers cannot
+  tell the web store from the desktop store.
+
+### Usage
+
+Worker script (bundle as a module worker; this is the ONLY module that
+loads the WASM bundle):
+
+```ts
+// khala-sync-worker.ts
+import { startKhalaSyncStorageWorker } from "@openagentsinc/khala-sync-client/web/worker"
+
+startKhalaSyncStorageWorker(globalThis as never)
+// options: { dbFilename?: string; poolDirectory?: string }
+```
+
+Main thread:
+
+```ts
+import { Effect } from "effect"
+import { openKhalaSyncWasmStore } from "@openagentsinc/khala-sync-client/web"
+
+const worker = new SharedWorker(
+  new URL("./khala-sync-worker.js", import.meta.url),
+  { type: "module", name: "khala-sync" },
+)
+const store = openKhalaSyncWasmStore({ port: worker.port })
+// locks/storage default to navigator.locks / navigator.storage;
+// inject fakes (or null) in tests.
+
+await Effect.runPromise(store.applyConfirmed(scope, entries, cursor))
+const pending = await Effect.runPromise(store.pendingMutations())
+
+await store.writerElected // true when this tab holds the writer lock
+await Effect.runPromise(store.close()) // detaches THIS tab only
+```
+
+`store.close()` detaches the tab (rejects in-flight calls, releases the
+election); it does **not** close the worker's database — other tabs share
+it, and the connection lives for the SharedWorker's lifetime.
+
+### Package entry points
+
+| Entry | Contents | Loads WASM? |
+| --- | --- | --- |
+| `.` | desktop store (`bun:sqlite`), overlay, session, store core | no |
+| `./web` | main-thread proxy, election, RPC protocol, wasm driver | no |
+| `./web/worker` | `startKhalaSyncStorageWorker` (storage worker entry) | **yes** |
+
+Desktop consumers import `.` only and never see `@sqlite.org/sqlite-wasm`.
+
+### Limits & follow-ups
+
+- **v1 routes reads through the elected worker too.** Simplest correct
+  thing under multi-tab concurrency. Read scaling follow-up: per-tab
+  read-only connections against the same pool (or snapshot reads served
+  from the overlay) once a surface actually needs it.
+- `opfs-sahpool` allows one connection per pool directory — do not open
+  a second store against the same `poolDirectory` from another worker.
+- OPFS requires a secure context (HTTPS or localhost); private-browsing
+  modes may cap or deny persistence (`persist()` is advisory).
+- No SharedWorker (Chrome for Android): run the worker entry in a
+  dedicated `Worker` per tab and gate the pool open on `electWriter` so
+  only the elected tab's worker opens the database.
+
+### Verification
+
+The full store semantics suite runs in bun against the complete web
+pipeline — proxy → typed RPC over a faked structured-clone port pair →
+worker runtime → RPC server → the shared SQL core — plus focused unit
+tests for the Web Locks election, the `oo1.DB` driver mapping, and the
+worker RPC server (`src/web/*.test.ts`, `src/store-core.test.ts`).
+
+Manual browser verification (no browser CI harness in this lane): serve a
+page that runs the two snippets above from an HTTPS/localhost origin,
+then (1) write via `applyConfirmed`/`enqueueMutation` and reload — state
+must survive (OPFS); (2) open a second tab — `writerElected` resolves
+true in exactly one tab, and closing it hands the lock to the other
+(inspect `chrome://inspect/#workers` for the SharedWorker, and
+`navigator.locks.query()` for the `khala-sync:writer` holder); (3) check
+DevTools → Application → Storage shows the origin as persisted after the
+first write.
 
 ## Optimistic overlay + rebase (`createOverlay`)
 

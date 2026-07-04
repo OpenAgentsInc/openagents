@@ -5,7 +5,9 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./web": "./src/web/index.ts",
+    "./web/worker": "./src/web/sqlite-wasm-worker.ts"
   },
   "files": [
     "src",
@@ -17,6 +19,7 @@
   },
   "dependencies": {
     "@openagentsinc/khala-sync": "workspace:*",
+    "@sqlite.org/sqlite-wasm": "3.53.0-build1",
     "effect": "catalog:"
   },
   "devDependencies": {

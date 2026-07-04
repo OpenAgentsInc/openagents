@@ -14,9 +14,13 @@
  */
 
 // ---------------------------------------------------------------------------
-// Local store (KS-5.1): contracts in store.ts; bun:sqlite implementation in
-// sqlite-store.ts (desktop). SQLite-WASM / opfs-sahpool with a SharedWorker
-// single-writer on web (later lane).
+// Local store (KS-5.1 + KS-5.4): contracts in store.ts; ALL SQL semantics
+// in the driver-agnostic store-core.ts; bun:sqlite driver in
+// sqlite-store.ts (desktop). The web adapter (SQLite-WASM / opfs-sahpool
+// behind a storage worker with SharedWorker single-writer election) lives
+// under the `./web` subpath — and its worker entry, the only module that
+// imports @sqlite.org/sqlite-wasm, under `./web/worker` — so this desktop
+// entry never loads WASM.
 // ---------------------------------------------------------------------------
 
 export {
@@ -26,6 +30,15 @@ export {
   type KhalaSyncClientStoreErrorReason,
   type KhalaSyncLocalStore,
 } from "./store.js"
+export {
+  createKhalaSyncStoreCore,
+  KHALA_SYNC_STORE_SCHEMA,
+  type KhalaSyncStoreCore,
+  localStoreFromCore,
+  type SqlDriver,
+  type SqlValue,
+  toKhalaSyncStoreError,
+} from "./store-core.js"
 export {
   type KhalaSyncSqliteStore,
   openKhalaSyncStore,
