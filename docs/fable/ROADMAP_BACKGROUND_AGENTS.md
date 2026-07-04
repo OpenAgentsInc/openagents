@@ -394,6 +394,18 @@ route.
 The triage substrate ("not an agent") that follow-up/triage definitions
 query. Last because triggers deliver value without it.
 
+BA-H1 status (2026-07-04): GitHub source events that match an owner-scoped
+definition trigger now enqueue `openagents.event_ledger_ingest.v1` messages
+onto the Worker Queue. The queue consumer routes those messages through the
+per-owner `EVENT_LEDGER_OWNER` Durable Object, which assigns stable ordering
+sequences and dedupes by `source:externalRef` before persisting private
+`event_ledger_entries` D1 rows via migration `0285_event_ledger.sql`. Rows
+store bounded refs and summaries only (source, externalRef, actorRef,
+contentRef, subjectRef, sourceRefs, timestamps) with `training_consent = 0`;
+there is no public projection or model-visible raw source payload. The BA-H1
+behavior contract is
+`background_agents.inbox.event_ledger_owner_scoped_private.v1`.
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-H1 | `event_ledger.v1`: Queues ingest → D1 rows (source, externalRef, actor, content ref, timestamps) + per-owner DO for ordering/dedup; GitHub source first; owner-scoped, never training data, never leaves the account boundary | BA-B3 | MED | [#8212](https://github.com/OpenAgentsInc/openagents/issues/8212) |
@@ -416,6 +428,7 @@ the oracle rather than leaving the rule as INVARIANTS prose:
   fixture is the oracle)
 - BA-G1 → `background_agents.integrations.forum_trigger_callback.v1`
 - BA-G2 → `background_agents.integrations.github_mention_callback.v1`
+- BA-H1 → `background_agents.inbox.event_ledger_owner_scoped_private.v1`
 - BA-G4 → an indicator-truthfulness UX contract for the Agents panel's
   run-status indicators, written **before** the panel ships (the
   `khala_code.chat.sidebar_spinner_streaming_only.v1` bug class)

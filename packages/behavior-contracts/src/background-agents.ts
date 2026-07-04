@@ -489,6 +489,53 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
     {
       authorityBoundary:
+        "This contract binds private event-ledger ingest for matched owner-scoped background-agent GitHub triggers. It does not authorize public projection, training use, cross-owner reads, handled-state mutation, Slack ingest, or model-visible raw source payloads.",
+      blockerRefs: [],
+      contractId: "background_agents.inbox.event_ledger_owner_scoped_private.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8212",
+        "https://github.com/OpenAgentsInc/openagents/issues/8218",
+        "INVARIANTS.md",
+        "apps/openagents.com/INVARIANTS.md",
+        "docs/fable/ROADMAP_BACKGROUND_AGENTS.md",
+        "apps/openagents.com/workers/api/src/event-ledger.test.ts",
+        "apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts",
+        "apps/openagents.com/workers/api/migrations/0285_event_ledger.sql",
+      ],
+      oracles: [
+        {
+          description:
+            "The event ledger projects signed GitHub webhook events into owner-scoped queue messages and D1 rows with source, externalRef, actor, contentRef, subjectRef, timestamps, false training consent, no raw comment/title content, and per-owner deduped ordering.",
+          id: "background_agents.inbox.event_ledger_private_rows",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents.com/workers/api/src/event-ledger.test.ts",
+        },
+        {
+          description:
+            "The GitHub webhook route enqueues exactly one event-ledger message per matched owner trigger while preserving the existing signed normalization and owner-scoped dispatch path.",
+          id: "background_agents.inbox.github_webhook_enqueue",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts",
+        },
+      ],
+      productArea: "background agent inbox",
+      source: {
+        channel: "issue_list",
+        statedBy: "owner",
+        statedOn: "2026-07-03",
+      },
+      state: "enforced",
+      statement:
+        "event_ledger.v1 ingests matched GitHub source events through Queues into owner-scoped private D1 rows, orders and dedupes through a per-owner Durable Object, stores refs and bounded summaries rather than raw content, and is never training data or cross-account projection material.",
+      surface: "openagents.com-worker",
+      verification:
+        "BA-H1 is enforced by the openagents.com Worker event-ledger and GitHub webhook route tests in the normal bun test sweep.",
+    },
+    {
+      authorityBoundary:
         "This contract binds harness portability for unchanged background-agent definitions. It does not claim semantic parity between all provider outputs beyond the parity fixture's asserted behavior.",
       blockerRefs: [pendingOracleBlocker("ba_a4")],
       contractId: "background_agents.definitions.harness_swap.v1",
@@ -565,5 +612,5 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-04.1",
+  version: "2026-07-04.2",
 }

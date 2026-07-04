@@ -258,6 +258,20 @@ More specific invariant ledgers apply inside imported apps and packages.
   all scheduled work through one durable alarm task table. Regression coverage
   for the design gate lives in
   `apps/openagents.com/workers/api/src/agent-definition-live-surface-spike.test.ts`.
+- `event_ledger.v1` rows for the background-agent unified inbox are private,
+  owner-scoped account-boundary data. GitHub source events may enter only after
+  signature verification and typed normalization, and only matched owner
+  triggers provide the owner boundary for ledger ingest. Queue messages and D1
+  rows store source refs, external refs, actor refs, content refs, subject refs,
+  bounded summaries, and timestamps; they must not store raw webhook bodies,
+  raw comment/message text, provider payloads, secrets, signatures, tokens, or
+  training/eval consent. The per-owner `EVENT_LEDGER_OWNER` Durable Object owns
+  ordering and dedupe before D1 persistence. There is no public projection,
+  model-visible read path, handled-state mutation, or training-data use in
+  BA-H1; those require explicit later gateway/redaction work. Regression
+  coverage lives in
+  `apps/openagents.com/workers/api/src/event-ledger.test.ts` and
+  `apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts`.
 - Any Worker, Pylon, desktop, or cloud-workroom executor that claims
   definition-backed tool enforcement must use this contract or a formally
   equivalent compiled policy at the execution boundary, with regression tests

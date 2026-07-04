@@ -92,6 +92,12 @@ import {
 } from './agent-definition-scheduler'
 import { makeD1AgentDefinitionTriggerStore } from './agent-definition-trigger-store'
 import {
+  EVENT_LEDGER_INGEST_QUEUE_SCHEMA_VERSION,
+  EventLedgerIngestQueueMessage,
+  recordEventLedgerMessageWithOwnerObject,
+} from './event-ledger'
+export { EventLedgerOwnerDurableObject } from './event-ledger'
+import {
   makeAgentScopedGrantRoutes,
   makeD1AgentScopedGrantStore,
 } from './agent-scoped-grant-routes'
@@ -10560,6 +10566,23 @@ const khalaChatRoutes = makeKhalaChatRoutes({
 // message), so a duplicate enqueue is always safe.
 type BatchJobProducerEnv = OpenAgentsWorkerConfigEnv &
   Readonly<{ INFERENCE_BATCH_JOBS_QUEUE?: Queue | undefined }>
+
+type EventLedgerProducerEnv = Readonly<{
+  EVENT_LEDGER_INGEST_QUEUE?: Queue | undefined
+}>
+
+const makeEventLedgerIngestEnqueue = (
+  env: EventLedgerProducerEnv,
+): ((message: EventLedgerIngestQueueMessage) => Promise<void>) | undefined => {
+  const queue = env.EVENT_LEDGER_INGEST_QUEUE
+
+  return queue === undefined
+    ? undefined
+    : async message => {
+        await queue.send(message)
+      }
+}
+
 const makeBatchJobEnqueue = (
   env: BatchJobProducerEnv,
 ): ((message: BatchJobQueueMessage) => Effect.Effect<void>) | undefined => {
@@ -12614,6 +12637,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               AGENT_DEFINITION_GITHUB_WEBHOOK_SECRET?: string
             }
           ).AGENT_DEFINITION_GITHUB_WEBHOOK_SECRET,
+          eventLedgerEnqueue: makeEventLedgerIngestEnqueue(
+            env as Env & EventLedgerProducerEnv,
+          ),
           githubMentionLogins: optionalCommaSeparatedValues(
             (
               env as Env & {
@@ -14772,6 +14798,23 @@ export default {
         typeof body === 'object' && body !== null && 'schemaVersion' in body
           ? (body as { schemaVersion?: unknown }).schemaVersion
           : undefined
+
+      if (schemaVersion === EVENT_LEDGER_INGEST_QUEUE_SCHEMA_VERSION) {
+        const namespace = (
+          env as Env & {
+            EVENT_LEDGER_OWNER?: DurableObjectNamespace
+          }
+        ).EVENT_LEDGER_OWNER
+
+        if (namespace === undefined) {
+          throw { error: 'event_ledger_owner_binding_missing' }
+        }
+
+        const decoded = S.decodeUnknownSync(EventLedgerIngestQueueMessage)(body)
+        await recordEventLedgerMessageWithOwnerObject(namespace, decoded)
+        message.ack()
+        continue
+      }
 
       if (schemaVersion === 'openagents.inference.batch_job.v1') {
         // Inert unless armed: a batch-job message that arrives while the flag is

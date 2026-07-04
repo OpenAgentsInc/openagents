@@ -24,6 +24,7 @@ import type {
   AgentDefinitionRunRecord,
 } from './agent-definition-run-routes'
 import type { DueAgentDefinitionTriggerRecord } from './agent-definition-trigger-store'
+import type { EventLedgerIngestQueueMessage } from './event-ledger'
 import { Effect } from 'effect'
 
 const encoder = new TextEncoder()
@@ -311,6 +312,7 @@ const dependenciesFor = (
   input: Readonly<{
     definition: AgentDefinition
     dispatchRun: AgentDefinitionWebhookRouteDependencies['dispatchRun']
+    eventLedgerMessages?: Array<EventLedgerIngestQueueMessage> | undefined
     triggerStore: MemoryTriggerStore
   }>,
 ): AgentDefinitionWebhookRouteDependencies => ({
@@ -329,6 +331,14 @@ const dependenciesFor = (
     runStore: {} as never,
   },
   dispatchRun: input.dispatchRun,
+  eventLedgerEnqueue:
+    input.eventLedgerMessages === undefined
+      ? undefined
+      : message => {
+          input.eventLedgerMessages?.push(message)
+
+          return Promise.resolve()
+        },
   githubSecret: secret,
   nowIso: () => nowIso,
   triggerStore: input.triggerStore,
@@ -570,6 +580,7 @@ describe('agent definition webhook routes', () => {
   test('verifies GitHub signatures, matches trigger conditions, and dispatches owner-scoped runs', async () => {
     const definition = makeDefinition()
     const triggerStore = new MemoryTriggerStore([triggerRecord(definition)])
+    const eventLedgerMessages: Array<EventLedgerIngestQueueMessage> = []
     const dispatches: Array<{
       readonly dependencies: AgentDefinitionRunDispatchDependencies
       readonly triggerPayload: Record<string, unknown> | undefined
@@ -588,6 +599,7 @@ describe('agent definition webhook routes', () => {
 
           return Promise.resolve(dispatchedOutcome())
         },
+        eventLedgerMessages,
         triggerStore,
       }),
     )
@@ -599,6 +611,8 @@ describe('agent definition webhook routes', () => {
       deliveryId: 'delivery-8195',
       dispatched: 1,
       eventType: 'issues.opened',
+      ledgerEnqueued: 1,
+      ledgerFailed: 0,
       matched: 1,
       source: 'github',
     })
@@ -618,6 +632,18 @@ describe('agent definition webhook routes', () => {
           full_name: 'OpenAgentsInc/openagents',
         },
       },
+    })
+    expect(eventLedgerMessages).toHaveLength(1)
+    expect(eventLedgerMessages[0]).toMatchObject({
+      schemaVersion: 'openagents.event_ledger_ingest.v1',
+      actorRef: 'github.user.AtlantisPleb',
+      contentRef: 'github.issue.OpenAgentsInc/openagents.8195',
+      externalRef: 'github.delivery.delivery-8195',
+      ownerAgentUserId,
+      ownerRef: `agent:${ownerAgentUserId}`,
+      source: 'github',
+      subjectRef: 'github.repository.OpenAgentsInc/openagents.issue.8195',
+      trainingConsent: false,
     })
     expect(triggerStore.successes).toEqual([
       {

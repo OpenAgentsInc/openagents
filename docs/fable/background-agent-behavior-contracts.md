@@ -9,7 +9,7 @@ Issue #8218 registers the headline invariants from
 oracles land. Entries remain `pending` until the owning task adds its oracle
 test and flips that exact contract to `enforced`.
 
-Registry version: `2026-07-04.1` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-04.2` (schema `openagents.behavior_contracts.v1`)
 
 ### `background_agents.dispatch.budget_caps_enforced.v1` - ENFORCED
 
@@ -116,6 +116,17 @@ Registry version: `2026-07-04.1` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `background_agents.integrations.github_mention_dispatch_callback` (bun-test, unit): The GitHub webhook route verifies signatures before dispatch, stores a subject-bound GitHub completion callback on mention-triggered runs, skips ordinary comments, and the completion route posts through the stored callback with app-owned idempotency. - `apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts`
 - **Verification:** BA-G2 is enforced by agent-runtime-schema GitHub mention normalization tests and openagents.com Worker GitHub webhook/completion route tests in the normal bun test sweep.
 - **Authority boundary:** This contract binds GitHub issue-comment @mention integration for background-agent definitions only. It does not authorize arbitrary GitHub writes, issue creation, raw GitHub body payloads in model-visible trigger context, or completion targets supplied by callback callers.
+
+### `background_agents.inbox.event_ledger_owner_scoped_private.v1` - ENFORCED
+
+- **Surface:** openagents.com-worker (background agent inbox)
+- **Stated by:** owner via issue_list on 2026-07-03
+- **Statement:** event_ledger.v1 ingests matched GitHub source events through Queues into owner-scoped private D1 rows, orders and dedupes through a per-owner Durable Object, stores refs and bounded summaries rather than raw content, and is never training data or cross-account projection material.
+- **Enforcement tier:** test-sweep
+- **Oracle** `background_agents.inbox.event_ledger_private_rows` (bun-test, unit): The event ledger projects signed GitHub webhook events into owner-scoped queue messages and D1 rows with source, externalRef, actor, contentRef, subjectRef, timestamps, false training consent, no raw comment/title content, and per-owner deduped ordering. - `apps/openagents.com/workers/api/src/event-ledger.test.ts`
+- **Oracle** `background_agents.inbox.github_webhook_enqueue` (bun-test, unit): The GitHub webhook route enqueues exactly one event-ledger message per matched owner trigger while preserving the existing signed normalization and owner-scoped dispatch path. - `apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts`
+- **Verification:** BA-H1 is enforced by the openagents.com Worker event-ledger and GitHub webhook route tests in the normal bun test sweep.
+- **Authority boundary:** This contract binds private event-ledger ingest for matched owner-scoped background-agent GitHub triggers. It does not authorize public projection, training use, cross-owner reads, handled-state mutation, Slack ingest, or model-visible raw source payloads.
 
 ### `background_agents.definitions.harness_swap.v1` - PENDING
 

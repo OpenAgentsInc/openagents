@@ -334,6 +334,10 @@
         "binding": "INFERENCE_BATCH_JOBS_QUEUE",
         "queue": "openagents-inference-batch-jobs",
       },
+      {
+        "binding": "EVENT_LEDGER_INGEST_QUEUE",
+        "queue": "openagents-event-ledger-ingest",
+      },
     ],
     "consumers": [
       {
@@ -343,6 +347,11 @@
       },
       {
         "queue": "openagents-inference-batch-jobs",
+        "max_batch_size": 1,
+        "max_retries": 3,
+      },
+      {
+        "queue": "openagents-event-ledger-ingest",
         "max_batch_size": 1,
         "max_retries": 3,
       },
@@ -389,6 +398,10 @@
         "name": "AGENT_DEFINITION_SCHEDULER",
         "class_name": "AgentDefinitionSchedulerDurableObject",
       },
+      {
+        "name": "EVENT_LEDGER_OWNER",
+        "class_name": "EventLedgerOwnerDurableObject",
+      },
     ],
   },
   "migrations": [
@@ -419,6 +432,10 @@
     {
       "tag": "v7",
       "new_sqlite_classes": ["AgentDefinitionSchedulerDurableObject"],
+    },
+    {
+      "tag": "v8",
+      "new_sqlite_classes": ["EventLedgerOwnerDurableObject"],
     },
   ],
   "env": {
@@ -526,6 +543,10 @@
             "binding": "INFERENCE_BATCH_JOBS_QUEUE",
             "queue": "openagents-inference-batch-jobs-staging",
           },
+          {
+            "binding": "EVENT_LEDGER_INGEST_QUEUE",
+            "queue": "openagents-event-ledger-ingest-staging",
+          },
         ],
         "consumers": [
           {
@@ -535,6 +556,11 @@
           },
           {
             "queue": "openagents-inference-batch-jobs-staging",
+            "max_batch_size": 1,
+            "max_retries": 3,
+          },
+          {
+            "queue": "openagents-event-ledger-ingest-staging",
             "max_batch_size": 1,
             "max_retries": 3,
           },
@@ -564,6 +590,10 @@
             "name": "AGENT_DEFINITION_SCHEDULER",
             "class_name": "AgentDefinitionSchedulerDurableObject",
           },
+          {
+            "name": "EVENT_LEDGER_OWNER",
+            "class_name": "EventLedgerOwnerDurableObject",
+          },
         ],
       },
       "migrations": [
@@ -582,6 +612,10 @@
         {
           "tag": "v4",
           "new_sqlite_classes": ["AgentDefinitionSchedulerDurableObject"],
+        },
+        {
+          "tag": "v5",
+          "new_sqlite_classes": ["EventLedgerOwnerDurableObject"],
         },
       ],
     },

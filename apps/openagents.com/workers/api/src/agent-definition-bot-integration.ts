@@ -17,6 +17,10 @@ import type {
   DueAgentDefinitionTriggerRecord,
 } from './agent-definition-trigger-store'
 import {
+  type EventLedgerIngestQueueMessage,
+  eventLedgerMessageForMatchedTrigger,
+} from './event-ledger'
+import {
   buildForumWriterContext,
   canonicalForumTopicHref,
   createForumReplyPost,
@@ -137,6 +141,9 @@ export type AgentDefinitionBotIntegrationDependencies = Readonly<{
   definitionStore: Pick<AgentDefinitionStore, 'readDefinition'>
   dispatchDependencies: WebhookDispatchDependencies
   dispatchRun?: WebhookDispatch | undefined
+  eventLedgerEnqueue?:
+    | ((message: EventLedgerIngestQueueMessage) => Promise<void>)
+    | undefined
   triggerStore: Pick<
     AgentDefinitionTriggerStore,
     | 'listInboundWebhookTriggers'
@@ -150,6 +157,8 @@ export type AgentDefinitionBotIntegrationResult = Readonly<{
   dispatched: number
   eventType: string
   failed: number
+  ledgerEnqueued: number
+  ledgerFailed: number
   matched: number
   refused: number
   skipped: number
@@ -423,6 +432,37 @@ const dispatchMatchedTrigger = async (
     },
   })
 
+const enqueueMatchedLedgerEvent = async (
+  dependencies: AgentDefinitionBotIntegrationDependencies,
+  input: Readonly<{
+    event: AgentDefinitionWebhookNormalizedEvent
+    seenOwners: Set<string>
+    trigger: DueAgentDefinitionTriggerRecord
+  }>,
+): Promise<'enqueued' | 'failed' | 'skipped'> => {
+  const enqueue = dependencies.eventLedgerEnqueue
+
+  if (enqueue === undefined || input.seenOwners.has(input.trigger.ownerAgentUserId)) {
+    return 'skipped'
+  }
+
+  const message = eventLedgerMessageForMatchedTrigger(input.event, input.trigger)
+
+  if (message === undefined) {
+    return 'skipped'
+  }
+
+  input.seenOwners.add(input.trigger.ownerAgentUserId)
+
+  try {
+    await enqueue(message)
+
+    return 'enqueued'
+  } catch {
+    return 'failed'
+  }
+}
+
 export const runAgentDefinitionBotIntegration = async (
   dependencies: AgentDefinitionBotIntegrationDependencies,
   input: Readonly<{
@@ -437,9 +477,12 @@ export const runAgentDefinitionBotIntegration = async (
   )
   let dispatched = 0
   let failed = 0
+  let ledgerEnqueued = 0
+  let ledgerFailed = 0
   let matched = 0
   let refused = 0
   let skipped = 0
+  const ledgerOwners = new Set<string>()
 
   for (const trigger of triggers) {
     if (!triggerMatches(trigger, input.event)) {
@@ -448,6 +491,18 @@ export const runAgentDefinitionBotIntegration = async (
     }
 
     matched += 1
+    const ledgerStatus = await enqueueMatchedLedgerEvent(dependencies, {
+      event: input.event,
+      seenOwners: ledgerOwners,
+      trigger,
+    })
+
+    if (ledgerStatus === 'enqueued') {
+      ledgerEnqueued += 1
+    } else if (ledgerStatus === 'failed') {
+      ledgerFailed += 1
+    }
+
     const definition = await dependencies.definitionStore
       .readDefinition(trigger.ownerAgentUserId, trigger.definitionId)
       .catch(() => undefined)
@@ -504,6 +559,8 @@ export const runAgentDefinitionBotIntegration = async (
     dispatched,
     eventType: input.event.eventType,
     failed,
+    ledgerEnqueued,
+    ledgerFailed,
     matched,
     refused,
     skipped,
