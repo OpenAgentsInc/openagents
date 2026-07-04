@@ -480,6 +480,156 @@ export const ReactorDogfoodRunReceipt = S.Struct({
 })
 export type ReactorDogfoodRunReceipt = typeof ReactorDogfoodRunReceipt.Type
 
+export const ReactorNeedToKnowRoleRef = S.Literals([
+  'client_admin',
+  'client_member',
+  'external_reviewer',
+  'matter_attorney',
+  'matter_analyst',
+  'operator',
+])
+export type ReactorNeedToKnowRoleRef = typeof ReactorNeedToKnowRoleRef.Type
+
+export const ReactorNeedToKnowOutputMode = S.Literals([
+  'citation',
+  'source',
+  'summary',
+])
+export type ReactorNeedToKnowOutputMode =
+  typeof ReactorNeedToKnowOutputMode.Type
+
+export const ReactorNeedToKnowOracleVerdictKind = S.Literals([
+  'need_to_know_plausible',
+  'not_need_to_know',
+  'not_evaluated',
+])
+export type ReactorNeedToKnowOracleVerdictKind =
+  typeof ReactorNeedToKnowOracleVerdictKind.Type
+
+export const ReactorNeedToKnowDecisionStatus = S.Literals([
+  'allowed',
+  'denied_hard_rule',
+  'denied_soft_oracle',
+])
+export type ReactorNeedToKnowDecisionStatus =
+  typeof ReactorNeedToKnowDecisionStatus.Type
+
+export const ReactorNeedToKnowHardDecisionStatus = S.Literals([
+  'failed',
+  'passed',
+])
+export type ReactorNeedToKnowHardDecisionStatus =
+  typeof ReactorNeedToKnowHardDecisionStatus.Type
+
+export const ReactorNeedToKnowOracleDecisionStatus = S.Literals([
+  'failed',
+  'passed',
+  'skipped_hard_denied',
+])
+export type ReactorNeedToKnowOracleDecisionStatus =
+  typeof ReactorNeedToKnowOracleDecisionStatus.Type
+
+export const ReactorNeedToKnowRuleSet = S.Struct({
+  schemaVersion: S.Literal('openagents.reactor.need_to_know_ruleset.v1'),
+  defaultAction: S.Literal('deny'),
+  hardRuleRefs: S.Array(S.String),
+  oraclePolicyRef: S.String,
+  ruleSetRef: S.String,
+  sourceRefs: S.Array(S.String),
+  version: S.String,
+})
+export type ReactorNeedToKnowRuleSet = typeof ReactorNeedToKnowRuleSet.Type
+
+export const ReactorCorpusDocumentRecord = S.Struct({
+  schemaVersion: S.Literal('openagents.reactor.corpus_document.v1'),
+  allowedRoleRefs: S.Array(ReactorNeedToKnowRoleRef),
+  allowedUserRefs: S.Array(S.String),
+  citationRefs: S.Array(S.String),
+  documentRef: S.String,
+  matterRef: S.String,
+  sourceRefs: S.Array(S.String),
+  summaryRef: S.String,
+  workspaceRef: S.String,
+})
+export type ReactorCorpusDocumentRecord =
+  typeof ReactorCorpusDocumentRecord.Type
+
+export const ReactorCorpusAccessSubject = S.Struct({
+  matterRefs: S.Array(S.String),
+  roleRefs: S.Array(ReactorNeedToKnowRoleRef),
+  subjectUserRef: S.String,
+  workspaceRefs: S.Array(S.String),
+})
+export type ReactorCorpusAccessSubject =
+  typeof ReactorCorpusAccessSubject.Type
+
+export const ReactorCorpusRetrievalRequest = S.Struct({
+  matterRef: S.String,
+  outputMode: ReactorNeedToKnowOutputMode,
+  queryIntentRef: S.String,
+  requestRef: S.String,
+  requestedDocumentRefs: S.Array(S.String),
+  subject: ReactorCorpusAccessSubject,
+  workspaceRef: S.String,
+})
+export type ReactorCorpusRetrievalRequest =
+  typeof ReactorCorpusRetrievalRequest.Type
+
+export const ReactorNeedToKnowOracleVerdict = S.Struct({
+  documentRef: S.String,
+  loggedAt: S.String,
+  modelRef: S.String,
+  reasonRefs: S.Array(S.String),
+  requestRef: S.String,
+  verdict: ReactorNeedToKnowOracleVerdictKind,
+  verdictRef: S.String,
+})
+export type ReactorNeedToKnowOracleVerdict =
+  typeof ReactorNeedToKnowOracleVerdict.Type
+
+export const ReactorNeedToKnowDocumentDecision = S.Struct({
+  blockerRefs: S.Array(S.String),
+  citationRefs: S.Array(S.String),
+  decisionRef: S.String,
+  documentRef: S.String,
+  hardDecisionStatus: ReactorNeedToKnowHardDecisionStatus,
+  hardRuleRefs: S.Array(S.String),
+  oracleDecisionStatus: ReactorNeedToKnowOracleDecisionStatus,
+  oracleVerdictRef: S.NullOr(S.String),
+  reasonRefs: S.Array(S.String),
+  status: ReactorNeedToKnowDecisionStatus,
+})
+export type ReactorNeedToKnowDocumentDecision =
+  typeof ReactorNeedToKnowDocumentDecision.Type
+
+export const ReactorCorpusAccessDecisionReceipt = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.reactor.corpus_access_decision_receipt.v1',
+  ),
+  decidedAt: S.String,
+  deniedCitationRefs: S.Array(S.String),
+  deniedDocumentRefs: S.Array(S.String),
+  documentDecisions: S.Array(ReactorNeedToKnowDocumentDecision),
+  generatedSummaryContentLogged: S.Literal(false),
+  matterRef: S.String,
+  oracleAppliedAfterHardRules: S.Literal(true),
+  oracleVerdictRefs: S.Array(S.String),
+  outputMode: ReactorNeedToKnowOutputMode,
+  queryIntentRef: S.String,
+  rawDocumentContentLogged: S.Literal(false),
+  receiptRef: S.String,
+  requestedDocumentRefs: S.Array(S.String),
+  ruleSetRef: S.String,
+  ruleSetVersion: S.String,
+  selectedCitationRefs: S.Array(S.String),
+  selectedDocumentRefs: S.Array(S.String),
+  sourceRefs: S.Array(S.String),
+  subjectUserRef: S.String,
+  workspaceRef: S.String,
+})
+export type ReactorCorpusAccessDecisionReceipt =
+  typeof ReactorCorpusAccessDecisionReceipt.Type
+
 export type ResolveReactorModelPolicyInput = Readonly<{
   catalog: ReactorModelCatalog
   decidedAt: string
@@ -623,6 +773,16 @@ export type BuildReactorDogfoodRunReceiptInput = Readonly<{
   routeReceipts: ReadonlyArray<ReactorRouteDecisionReceipt>
   sourceRefs?: ReadonlyArray<string>
   workloadRef: string
+}>
+
+export type EvaluateReactorNeedToKnowAccessInput = Readonly<{
+  decidedAt: string
+  documents: ReadonlyArray<ReactorCorpusDocumentRecord>
+  oracleVerdicts?: ReadonlyArray<ReactorNeedToKnowOracleVerdict>
+  receiptRef: string
+  request: ReactorCorpusRetrievalRequest
+  ruleSet: ReactorNeedToKnowRuleSet
+  sourceRefs?: ReadonlyArray<string>
 }>
 
 const unique = <T extends string>(values: ReadonlyArray<T>): ReadonlyArray<T> =>
@@ -1500,6 +1660,167 @@ export const buildReactorDogfoodRunReceipt = (
   })
 }
 
+const intersects = <T extends string>(
+  left: ReadonlyArray<T>,
+  right: ReadonlyArray<T>,
+): boolean => left.some(value => right.includes(value))
+
+const hardAccessBlockerRefs = (
+  request: ReactorCorpusRetrievalRequest,
+  document: ReactorCorpusDocumentRecord,
+): ReadonlyArray<string> =>
+  unique([
+    ...(request.subject.workspaceRefs.includes(document.workspaceRef) &&
+    request.workspaceRef === document.workspaceRef
+      ? []
+      : ['blocker.reactor.need_to_know.workspace_scope_mismatch']),
+    ...(request.subject.matterRefs.includes(document.matterRef) &&
+    request.matterRef === document.matterRef
+      ? []
+      : ['blocker.reactor.need_to_know.matter_scope_mismatch']),
+    ...(intersects(request.subject.roleRefs, document.allowedRoleRefs) ||
+    document.allowedUserRefs.includes(request.subject.subjectUserRef)
+      ? []
+      : ['blocker.reactor.need_to_know.role_or_user_scope_missing']),
+  ])
+
+const oracleBlockerRefs = (
+  verdict: ReactorNeedToKnowOracleVerdict | undefined,
+): ReadonlyArray<string> => {
+  if (verdict === undefined) {
+    return ['blocker.reactor.need_to_know.oracle_verdict_missing']
+  }
+
+  return verdict.verdict === 'need_to_know_plausible'
+    ? []
+    : [
+        'blocker.reactor.need_to_know.oracle_not_plausible',
+        ...verdict.reasonRefs,
+      ]
+}
+
+export const evaluateReactorNeedToKnowAccess = (
+  input: EvaluateReactorNeedToKnowAccessInput,
+): ReactorCorpusAccessDecisionReceipt => {
+  const ruleSet = S.decodeUnknownSync(ReactorNeedToKnowRuleSet)(input.ruleSet)
+  const request = S.decodeUnknownSync(ReactorCorpusRetrievalRequest)(
+    input.request,
+  )
+  const documents = input.documents.map(document =>
+    S.decodeUnknownSync(ReactorCorpusDocumentRecord)(document),
+  )
+  const oracleVerdicts = new Map(
+    (input.oracleVerdicts ?? []).map(verdictLike => {
+      const verdict = S.decodeUnknownSync(ReactorNeedToKnowOracleVerdict)(
+        verdictLike,
+      )
+      return [verdict.documentRef, verdict] as const
+    }),
+  )
+  const documentsByRef = new Map(
+    documents.map(document => [document.documentRef, document] as const),
+  )
+  const documentDecisions = request.requestedDocumentRefs.map(documentRef => {
+    const document = documentsByRef.get(documentRef)
+
+    if (document === undefined) {
+      return {
+        blockerRefs: ['blocker.reactor.need_to_know.document_not_found'],
+        citationRefs: [],
+        decisionRef: `${input.receiptRef}.decision.${documentRef}`,
+        documentRef,
+        hardDecisionStatus: 'failed' as const,
+        hardRuleRefs: ruleSet.hardRuleRefs,
+        oracleDecisionStatus: 'skipped_hard_denied' as const,
+        oracleVerdictRef: null,
+        reasonRefs: ['reason.reactor.need_to_know.document_not_found'],
+        status: 'denied_hard_rule' as const,
+      } satisfies ReactorNeedToKnowDocumentDecision
+    }
+
+    const hardBlockers = hardAccessBlockerRefs(request, document)
+    const hardPassed = hardBlockers.length === 0
+    const oracleVerdict = oracleVerdicts.get(document.documentRef)
+
+    if (!hardPassed) {
+      return {
+        blockerRefs: hardBlockers,
+        citationRefs: [],
+        decisionRef: `${input.receiptRef}.decision.${document.documentRef}`,
+        documentRef: document.documentRef,
+        hardDecisionStatus: 'failed' as const,
+        hardRuleRefs: ruleSet.hardRuleRefs,
+        oracleDecisionStatus: 'skipped_hard_denied' as const,
+        oracleVerdictRef: oracleVerdict?.verdictRef ?? null,
+        reasonRefs: hardBlockers,
+        status: 'denied_hard_rule' as const,
+      } satisfies ReactorNeedToKnowDocumentDecision
+    }
+
+    const softBlockers = oracleBlockerRefs(oracleVerdict)
+    const softPassed = softBlockers.length === 0
+
+    return {
+      blockerRefs: softBlockers,
+      citationRefs: softPassed ? document.citationRefs : [],
+      decisionRef: `${input.receiptRef}.decision.${document.documentRef}`,
+      documentRef: document.documentRef,
+      hardDecisionStatus: 'passed' as const,
+      hardRuleRefs: ruleSet.hardRuleRefs,
+      oracleDecisionStatus: softPassed ? ('passed' as const) : ('failed' as const),
+      oracleVerdictRef: oracleVerdict?.verdictRef ?? null,
+      reasonRefs: softPassed ? ['reason.reactor.need_to_know.allowed'] : softBlockers,
+      status: softPassed ? ('allowed' as const) : ('denied_soft_oracle' as const),
+    } satisfies ReactorNeedToKnowDocumentDecision
+  })
+  const selectedDocumentRefs = documentDecisions
+    .filter(decision => decision.status === 'allowed')
+    .map(decision => decision.documentRef)
+  const deniedDocumentRefs = documentDecisions
+    .filter(decision => decision.status !== 'allowed')
+    .map(decision => decision.documentRef)
+  const selectedCitationRefs = unique(
+    documentDecisions.flatMap(decision => decision.citationRefs),
+  )
+  const deniedCitationRefs = unique(
+    deniedDocumentRefs.flatMap(documentRef => {
+      const document = documentsByRef.get(documentRef)
+      return document === undefined ? [] : document.citationRefs
+    }),
+  )
+
+  return S.decodeUnknownSync(ReactorCorpusAccessDecisionReceipt)({
+    schemaVersion: 'openagents.reactor.corpus_access_decision_receipt.v1',
+    decidedAt: input.decidedAt,
+    deniedCitationRefs,
+    deniedDocumentRefs,
+    documentDecisions,
+    generatedSummaryContentLogged: false,
+    matterRef: request.matterRef,
+    oracleAppliedAfterHardRules: true,
+    oracleVerdictRefs: unique(
+      [...oracleVerdicts.values()].map(verdict => verdict.verdictRef),
+    ),
+    outputMode: request.outputMode,
+    queryIntentRef: request.queryIntentRef,
+    rawDocumentContentLogged: false,
+    receiptRef: input.receiptRef,
+    requestedDocumentRefs: request.requestedDocumentRefs,
+    ruleSetRef: ruleSet.ruleSetRef,
+    ruleSetVersion: ruleSet.version,
+    selectedCitationRefs,
+    selectedDocumentRefs,
+    sourceRefs: unique([
+      ruleSet.ruleSetRef,
+      request.requestRef,
+      ...documentDecisions.map(decision => decision.decisionRef),
+      ...(input.sourceRefs ?? []),
+    ]),
+    subjectUserRef: request.subject.subjectUserRef,
+    workspaceRef: request.workspaceRef,
+  })
+}
+
 const model = (
   record: Omit<ReactorModelProvenance, 'schemaVersion'>,
 ): ReactorModelProvenance =>
@@ -2132,3 +2453,219 @@ export const REACTOR_OPENAGENTS_DOGFOOD_RUN_RECEIPT =
     ],
     workloadRef: 'workload.openagents.lead_gen_reactor.case_study_seed.20260704',
   })
+
+const corpusDocument = (
+  record: Omit<ReactorCorpusDocumentRecord, 'schemaVersion'>,
+): ReactorCorpusDocumentRecord =>
+  S.decodeUnknownSync(ReactorCorpusDocumentRecord)({
+    schemaVersion: 'openagents.reactor.corpus_document.v1',
+    ...record,
+  })
+
+const corpusSubject = (
+  record: ReactorCorpusAccessSubject,
+): ReactorCorpusAccessSubject =>
+  S.decodeUnknownSync(ReactorCorpusAccessSubject)(record)
+
+const corpusRequest = (
+  record: ReactorCorpusRetrievalRequest,
+): ReactorCorpusRetrievalRequest =>
+  S.decodeUnknownSync(ReactorCorpusRetrievalRequest)(record)
+
+const oracleVerdict = (
+  record: ReactorNeedToKnowOracleVerdict,
+): ReactorNeedToKnowOracleVerdict =>
+  S.decodeUnknownSync(ReactorNeedToKnowOracleVerdict)(record)
+
+export const REACTOR_NEED_TO_KNOW_RULESET_V1 =
+  S.decodeUnknownSync(ReactorNeedToKnowRuleSet)({
+    schemaVersion: 'openagents.reactor.need_to_know_ruleset.v1',
+    defaultAction: 'deny',
+    hardRuleRefs: [
+      'hard_rule.reactor.need_to_know.workspace_scope.v1',
+      'hard_rule.reactor.need_to_know.matter_scope.v1',
+      'hard_rule.reactor.need_to_know.role_or_user_scope.v1',
+    ],
+    oraclePolicyRef: 'soft_oracle.reactor.need_to_know.plausibility.v1',
+    ruleSetRef: 'reactor.need_to_know.ruleset.v1',
+    sourceRefs: [
+      'github:OpenAgentsInc/openagents#8277',
+      'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md#9-workstream-map-rx--filed-2026-07-04-under-epic-8261',
+    ],
+    version: '2026-07-04.rx9',
+  })
+
+export const REACTOR_NEED_TO_KNOW_BROKEN_ALLOW_ALL_RULESET_FIXTURE = {
+  schemaVersion: 'openagents.reactor.need_to_know_ruleset.v1',
+  defaultAction: 'allow',
+  hardRuleRefs: [],
+  oraclePolicyRef: 'soft_oracle.reactor.need_to_know.disabled',
+  ruleSetRef: 'reactor.need_to_know.ruleset.broken_allow_all',
+  sourceRefs: ['github:OpenAgentsInc/openagents#8277'],
+  version: '2026-07-04.broken',
+} as const
+
+export const REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS = {
+  aliceStrategyMemo: corpusDocument({
+    allowedRoleRefs: ['matter_attorney'],
+    allowedUserRefs: ['user.alice'],
+    citationRefs: ['citation.reactor.fixture.alice.strategy_memo'],
+    documentRef: 'document.reactor.fixture.alice.strategy_memo',
+    matterRef: 'matter.reactor.fixture.alice',
+    sourceRefs: ['source.reactor.fixture.alice.strategy_memo'],
+    summaryRef: 'summary.reactor.fixture.alice.strategy_memo',
+    workspaceRef: 'workspace.reactor.fixture.customer_one',
+  }),
+  bobIntakeNote: corpusDocument({
+    allowedRoleRefs: ['matter_analyst'],
+    allowedUserRefs: ['user.bob'],
+    citationRefs: ['citation.reactor.fixture.bob.intake_note'],
+    documentRef: 'document.reactor.fixture.bob.intake_note',
+    matterRef: 'matter.reactor.fixture.bob',
+    sourceRefs: ['source.reactor.fixture.bob.intake_note'],
+    summaryRef: 'summary.reactor.fixture.bob.intake_note',
+    workspaceRef: 'workspace.reactor.fixture.customer_one',
+  }),
+} as const
+
+export const REACTOR_NEED_TO_KNOW_ADVERSARIAL_SUBJECTS = {
+  alice: corpusSubject({
+    matterRefs: ['matter.reactor.fixture.alice'],
+    roleRefs: ['matter_attorney'],
+    subjectUserRef: 'user.alice',
+    workspaceRefs: ['workspace.reactor.fixture.customer_one'],
+  }),
+  bob: corpusSubject({
+    matterRefs: ['matter.reactor.fixture.bob'],
+    roleRefs: ['matter_analyst'],
+    subjectUserRef: 'user.bob',
+    workspaceRefs: ['workspace.reactor.fixture.customer_one'],
+  }),
+} as const
+
+export const REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS = {
+  aliceDirect: corpusRequest({
+    matterRef: 'matter.reactor.fixture.alice',
+    outputMode: 'source',
+    queryIntentRef: 'query_intent.reactor.fixture.alice.direct',
+    requestRef: 'request.reactor.fixture.alice.direct',
+    requestedDocumentRefs: [
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo.documentRef,
+    ],
+    subject: REACTOR_NEED_TO_KNOW_ADVERSARIAL_SUBJECTS.alice,
+    workspaceRef: 'workspace.reactor.fixture.customer_one',
+  }),
+  aliceSoftDenied: corpusRequest({
+    matterRef: 'matter.reactor.fixture.alice',
+    outputMode: 'summary',
+    queryIntentRef: 'query_intent.reactor.fixture.alice.soft_denied',
+    requestRef: 'request.reactor.fixture.alice.soft_denied',
+    requestedDocumentRefs: [
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo.documentRef,
+    ],
+    subject: REACTOR_NEED_TO_KNOW_ADVERSARIAL_SUBJECTS.alice,
+    workspaceRef: 'workspace.reactor.fixture.customer_one',
+  }),
+  bobAliceCitation: corpusRequest({
+    matterRef: 'matter.reactor.fixture.bob',
+    outputMode: 'citation',
+    queryIntentRef: 'query_intent.reactor.fixture.bob.alice_citation',
+    requestRef: 'request.reactor.fixture.bob.alice_citation',
+    requestedDocumentRefs: [
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo.documentRef,
+    ],
+    subject: REACTOR_NEED_TO_KNOW_ADVERSARIAL_SUBJECTS.bob,
+    workspaceRef: 'workspace.reactor.fixture.customer_one',
+  }),
+  bobAliceSummary: corpusRequest({
+    matterRef: 'matter.reactor.fixture.bob',
+    outputMode: 'summary',
+    queryIntentRef: 'query_intent.reactor.fixture.bob.alice_summary',
+    requestRef: 'request.reactor.fixture.bob.alice_summary',
+    requestedDocumentRefs: [
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo.documentRef,
+    ],
+    subject: REACTOR_NEED_TO_KNOW_ADVERSARIAL_SUBJECTS.bob,
+    workspaceRef: 'workspace.reactor.fixture.customer_one',
+  }),
+} as const
+
+export const REACTOR_NEED_TO_KNOW_ADVERSARIAL_ORACLES = {
+  alicePlausible: oracleVerdict({
+    documentRef: REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo
+      .documentRef,
+    loggedAt: '2026-07-04T15:05:00.000Z',
+    modelRef: 'model.openagents.need_to_know.oracle.fixture',
+    reasonRefs: ['reason.reactor.need_to_know.alice_direct_plausible'],
+    requestRef: REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS.aliceDirect.requestRef,
+    verdict: 'need_to_know_plausible',
+    verdictRef: 'oracle.reactor.fixture.alice.direct.plausible',
+  }),
+  aliceNotNeeded: oracleVerdict({
+    documentRef: REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo
+      .documentRef,
+    loggedAt: '2026-07-04T15:06:00.000Z',
+    modelRef: 'model.openagents.need_to_know.oracle.fixture',
+    reasonRefs: ['reason.reactor.need_to_know.alice_summary_not_needed'],
+    requestRef:
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS.aliceSoftDenied.requestRef,
+    verdict: 'not_need_to_know',
+    verdictRef: 'oracle.reactor.fixture.alice.soft_denied.not_needed',
+  }),
+  bobAlicePlausibleButHardDenied: oracleVerdict({
+    documentRef: REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo
+      .documentRef,
+    loggedAt: '2026-07-04T15:07:00.000Z',
+    modelRef: 'model.openagents.need_to_know.oracle.fixture',
+    reasonRefs: ['reason.reactor.need_to_know.bob_prompt_claimed_relevance'],
+    requestRef:
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS.bobAliceSummary.requestRef,
+    verdict: 'need_to_know_plausible',
+    verdictRef: 'oracle.reactor.fixture.bob.alice.plausible_but_hard_denied',
+  }),
+} as const
+
+export const REACTOR_NEED_TO_KNOW_ADVERSARIAL_RECEIPTS = {
+  aliceAllowed: evaluateReactorNeedToKnowAccess({
+    decidedAt: '2026-07-04T15:05:30.000Z',
+    documents: [REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo],
+    oracleVerdicts: [
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_ORACLES.alicePlausible,
+    ],
+    receiptRef: 'reactor.corpus_access.alice.direct.allowed.20260704',
+    request: REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS.aliceDirect,
+    ruleSet: REACTOR_NEED_TO_KNOW_RULESET_V1,
+    sourceRefs: ['github:OpenAgentsInc/openagents#8277'],
+  }),
+  aliceSoftDenied: evaluateReactorNeedToKnowAccess({
+    decidedAt: '2026-07-04T15:06:30.000Z',
+    documents: [REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo],
+    oracleVerdicts: [
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_ORACLES.aliceNotNeeded,
+    ],
+    receiptRef: 'reactor.corpus_access.alice.summary.soft_denied.20260704',
+    request: REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS.aliceSoftDenied,
+    ruleSet: REACTOR_NEED_TO_KNOW_RULESET_V1,
+    sourceRefs: ['github:OpenAgentsInc/openagents#8277'],
+  }),
+  bobAliceCitationDenied: evaluateReactorNeedToKnowAccess({
+    decidedAt: '2026-07-04T15:08:30.000Z',
+    documents: [REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo],
+    receiptRef: 'reactor.corpus_access.bob.alice_citation.denied.20260704',
+    request: REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS.bobAliceCitation,
+    ruleSet: REACTOR_NEED_TO_KNOW_RULESET_V1,
+    sourceRefs: ['github:OpenAgentsInc/openagents#8277'],
+  }),
+  bobAliceSummaryDenied: evaluateReactorNeedToKnowAccess({
+    decidedAt: '2026-07-04T15:07:30.000Z',
+    documents: [REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo],
+    oracleVerdicts: [
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_ORACLES
+        .bobAlicePlausibleButHardDenied,
+    ],
+    receiptRef: 'reactor.corpus_access.bob.alice_summary.denied.20260704',
+    request: REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS.bobAliceSummary,
+    ruleSet: REACTOR_NEED_TO_KNOW_RULESET_V1,
+    sourceRefs: ['github:OpenAgentsInc/openagents#8277'],
+  }),
+} as const

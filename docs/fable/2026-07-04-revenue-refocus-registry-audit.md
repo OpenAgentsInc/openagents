@@ -157,6 +157,17 @@ clears dogfood proof only; customer premises deployment, customer data custody,
 need-to-know access, full eval coverage, owner-approved pricing/copy,
 compliance, payout, and settlement remain blocked.
 
+RX-9 note (2026-07-04): the Reactor need-to-know access layer landed as
+source-level contracts and adversarial fixtures in `packages/reactor-contracts`
+plus `apps/openagents.com/workers/api/src/reactor-need-to-know-access.test.ts`
+in the deploy sweep. The guard is deny-by-default, applies hard
+workspace/matter/role-or-user scope before the model-oracle plausibility pass,
+receipts decisions without raw document or generated summary logs, and proves
+Bob cannot see Alice through citations or summaries. This clears only the
+fixture-level access blocker; customer premises deployment, customer data
+custody, external pilot, full eval coverage, owner-approved copy, compliance,
+payout, and settlement remain blocked.
+
 ## 3. The focus: closing the revenue loop, independence-first
 
 The company objective (Episode 246: "close the gap between what I've been

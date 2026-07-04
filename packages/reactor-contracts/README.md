@@ -33,6 +33,11 @@ Exports:
 - OpenAgents dogfood-run receipts for the customer-number-one Reactor gate:
   dogfood placement, strict US-only policy, routed internal workload refs,
   exact local token-metering receipts, and a refused nonconforming refresh.
+- Need-to-know corpus access receipts: deny-by-default hard rules for
+  workspace, matter, and role-or-user scope, a downstream model-oracle
+  plausibility verdict, no raw document or generated summary logs, and
+  adversarial Bob/Alice fixtures that fail closed across citation and summary
+  modes.
 
 Smoke:
 

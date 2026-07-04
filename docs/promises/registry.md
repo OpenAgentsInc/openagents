@@ -1,5 +1,23 @@
 # Promise Registry
 
+> Registry `2026-07-04.15` is the RX-9 Reactor need-to-know access
+> pass (#8277) and flips NO promise state (green stays exactly 34). The
+> `@openagentsinc/reactor-contracts` package now exports
+> `openagents.reactor.need_to_know_ruleset.v1`,
+> `openagents.reactor.corpus_document.v1`, and
+> `openagents.reactor.corpus_access_decision_receipt.v1`, plus a
+> deny-by-default evaluator and adversarial Bob/Alice fixtures. Hard
+> workspace/matter/role-or-user rules run before the model-oracle
+> plausibility pass; an oracle can further deny but cannot rescue a
+> hard-rule denial. The normal deploy sweep now runs
+> `apps/openagents.com/workers/api/src/reactor-need-to-know-access.test.ts`,
+> including citation and summary leakage fixtures, missing-oracle
+> fail-closed behavior, and a deliberately broken allow-all rule fixture.
+> This clears only the fixture-level need-to-know access blocker. Customer
+> premises deployment, customer data custody, external customer pilots,
+> full eval coverage, owner-approved public copy, pricing, compliance,
+> payout, and settlement claims remain blocked.
+
 > Registry `2026-07-04.14` is the RX-6 Reactor dogfood pass
 > (#8276) and flips NO promise state (green stays exactly 34). The
 > `@openagentsinc/reactor-contracts` package now exports

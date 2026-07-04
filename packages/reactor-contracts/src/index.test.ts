@@ -8,6 +8,12 @@ import {
   REACTOR_EVAL_TASK_CLASS_REFS,
   REACTOR_EXAMPLE_POLICIES,
   REACTOR_HARDWARE_TIER_SPECS,
+  REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS,
+  REACTOR_NEED_TO_KNOW_ADVERSARIAL_ORACLES,
+  REACTOR_NEED_TO_KNOW_ADVERSARIAL_RECEIPTS,
+  REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS,
+  REACTOR_NEED_TO_KNOW_BROKEN_ALLOW_ALL_RULESET_FIXTURE,
+  REACTOR_NEED_TO_KNOW_RULESET_V1,
   REACTOR_MODEL_EVAL_RECEIPT_SEED,
   REACTOR_MODEL_CATALOG_SEED,
   REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE,
@@ -20,6 +26,7 @@ import {
   REACTOR_SERVER_CLASS_HYDRALISK_PROFILE,
   ReactorCapabilityCopyEvalDecision,
   ReactorAirgapUpdateBundleManifest,
+  ReactorCorpusAccessDecisionReceipt,
   ReactorDogfoodRunReceipt,
   ReactorEvalCoverageMatrix,
   ReactorEvalHarnessProfile,
@@ -31,6 +38,7 @@ import {
   type ReactorModelCatalog as ReactorModelCatalogType,
   type ReactorModelProvenance,
   ReactorModelPolicyDecisionReceipt,
+  ReactorNeedToKnowRuleSet,
   ReactorNodeModelProfile,
   buildReactorAirgapUpdateBundleManifest,
   buildReactorDogfoodRunReceipt,
@@ -38,6 +46,7 @@ import {
   buildReactorInstallOpsReceipt,
   buildReactorLocalTokenMeteringReceipt,
   buildReactorModelEvalReceipt,
+  evaluateReactorNeedToKnowAccess,
   provisionReactorModel,
   routeReactorOpenAiCompatibleRequest,
   selectReactorCapabilityCopyEvalRefs,
@@ -902,5 +911,141 @@ describe('Reactor dogfood run receipts', () => {
     expect(receipt.blockerRefs).toContain(
       'blocker.reactor.dogfood.local_metering_not_exact',
     )
+  })
+})
+
+describe('Reactor need-to-know corpus access', () => {
+  test('allows Alice direct source retrieval only after hard rules and oracle pass', () => {
+    const receipt = S.decodeUnknownSync(ReactorCorpusAccessDecisionReceipt)(
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_RECEIPTS.aliceAllowed,
+    )
+
+    expect(receipt).toMatchObject({
+      schemaVersion: 'openagents.reactor.corpus_access_decision_receipt.v1',
+      matterRef: 'matter.reactor.fixture.alice',
+      oracleAppliedAfterHardRules: true,
+      outputMode: 'source',
+      rawDocumentContentLogged: false,
+      generatedSummaryContentLogged: false,
+      ruleSetRef: REACTOR_NEED_TO_KNOW_RULESET_V1.ruleSetRef,
+      ruleSetVersion: REACTOR_NEED_TO_KNOW_RULESET_V1.version,
+      subjectUserRef: 'user.alice',
+      workspaceRef: 'workspace.reactor.fixture.customer_one',
+    })
+    expect(receipt.selectedDocumentRefs).toEqual([
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo.documentRef,
+    ])
+    expect(receipt.selectedCitationRefs).toEqual([
+      'citation.reactor.fixture.alice.strategy_memo',
+    ])
+    expect(receipt.deniedDocumentRefs).toEqual([])
+    expect(receipt.documentDecisions[0]).toMatchObject({
+      blockerRefs: [],
+      hardDecisionStatus: 'passed',
+      oracleDecisionStatus: 'passed',
+      oracleVerdictRef:
+        REACTOR_NEED_TO_KNOW_ADVERSARIAL_ORACLES.alicePlausible.verdictRef,
+      status: 'allowed',
+    })
+  })
+
+  test('denies Bob access to Alice citations and summaries at the hard layer', () => {
+    const citationDenied =
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_RECEIPTS.bobAliceCitationDenied
+    const summaryDenied =
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_RECEIPTS.bobAliceSummaryDenied
+
+    for (const receipt of [citationDenied, summaryDenied]) {
+      expect(receipt.selectedDocumentRefs).toEqual([])
+      expect(receipt.selectedCitationRefs).toEqual([])
+      expect(receipt.deniedDocumentRefs).toEqual([
+        REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo.documentRef,
+      ])
+      expect(receipt.deniedCitationRefs).toEqual([
+        'citation.reactor.fixture.alice.strategy_memo',
+      ])
+      expect(receipt.rawDocumentContentLogged).toBe(false)
+      expect(receipt.generatedSummaryContentLogged).toBe(false)
+      expect(receipt.documentDecisions[0]).toMatchObject({
+        hardDecisionStatus: 'failed',
+        oracleDecisionStatus: 'skipped_hard_denied',
+        status: 'denied_hard_rule',
+      })
+      expect(receipt.documentDecisions[0]?.blockerRefs).toEqual(
+        expect.arrayContaining([
+          'blocker.reactor.need_to_know.matter_scope_mismatch',
+          'blocker.reactor.need_to_know.role_or_user_scope_missing',
+        ]),
+      )
+      expect(JSON.stringify(receipt)).not.toContain('Alice private strategy text')
+    }
+
+    expect(summaryDenied.documentDecisions[0]?.oracleVerdictRef).toBe(
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_ORACLES.bobAlicePlausibleButHardDenied
+        .verdictRef,
+    )
+  })
+
+  test('soft oracle can deny after hard rules pass', () => {
+    const receipt = REACTOR_NEED_TO_KNOW_ADVERSARIAL_RECEIPTS.aliceSoftDenied
+
+    expect(receipt.selectedDocumentRefs).toEqual([])
+    expect(receipt.selectedCitationRefs).toEqual([])
+    expect(receipt.deniedDocumentRefs).toEqual([
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo.documentRef,
+    ])
+    expect(receipt.documentDecisions[0]).toMatchObject({
+      hardDecisionStatus: 'passed',
+      oracleDecisionStatus: 'failed',
+      oracleVerdictRef:
+        REACTOR_NEED_TO_KNOW_ADVERSARIAL_ORACLES.aliceNotNeeded.verdictRef,
+      status: 'denied_soft_oracle',
+    })
+    expect(receipt.documentDecisions[0]?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.reactor.need_to_know.oracle_not_plausible',
+        'reason.reactor.need_to_know.alice_summary_not_needed',
+      ]),
+    )
+  })
+
+  test('fails closed when a hard-allowed request lacks an oracle verdict', () => {
+    const receipt = evaluateReactorNeedToKnowAccess({
+      decidedAt: DECIDED_AT,
+      documents: [REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo],
+      receiptRef: 'reactor.corpus_access.alice.missing_oracle.denied.001',
+      request: REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS.aliceDirect,
+      ruleSet: REACTOR_NEED_TO_KNOW_RULESET_V1,
+    })
+
+    expect(receipt.selectedDocumentRefs).toEqual([])
+    expect(receipt.documentDecisions[0]).toMatchObject({
+      blockerRefs: ['blocker.reactor.need_to_know.oracle_verdict_missing'],
+      hardDecisionStatus: 'passed',
+      oracleDecisionStatus: 'failed',
+      status: 'denied_soft_oracle',
+    })
+  })
+
+  test('rejects broken allow-all rule fixtures before evaluation', () => {
+    expect(() =>
+      S.decodeUnknownSync(ReactorNeedToKnowRuleSet)(
+        REACTOR_NEED_TO_KNOW_BROKEN_ALLOW_ALL_RULESET_FIXTURE,
+      ),
+    ).toThrow()
+    expect(() =>
+      evaluateReactorNeedToKnowAccess({
+        decidedAt: DECIDED_AT,
+        documents: [
+          REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo,
+        ],
+        oracleVerdicts: [
+          REACTOR_NEED_TO_KNOW_ADVERSARIAL_ORACLES.bobAlicePlausibleButHardDenied,
+        ],
+        receiptRef: 'reactor.corpus_access.broken_allow_all.denied.001',
+        request: REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS.bobAliceSummary,
+        ruleSet: REACTOR_NEED_TO_KNOW_BROKEN_ALLOW_ALL_RULESET_FIXTURE as unknown as typeof REACTOR_NEED_TO_KNOW_RULESET_V1,
+      }),
+    ).toThrow()
   })
 })
