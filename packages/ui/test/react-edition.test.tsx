@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { renderToStaticMarkup } from 'react-dom/server'
 
@@ -12,6 +13,10 @@ import {
 } from '../src/react'
 
 const reactCssPath = fileURLToPath(new URL('../src/react.css', import.meta.url))
+const require = createRequire(import.meta.url)
+const { openAgentsNativeWindTokens: cjsNativeWindTokens } = require(
+  '../src/react/nativewind-tokens.cjs',
+) as { openAgentsNativeWindTokens: typeof openAgentsNativeWindTokens }
 
 describe('@openagentsinc/ui React edition', () => {
   test('renders the Storybook-less fixture with the required component families', () => {
@@ -44,6 +49,7 @@ describe('@openagentsinc/ui React edition', () => {
     expect(openAgentsNativeWindTokens.colors.text).toBe('#f1efe8')
     expect(openAgentsNativeWindTokens.borderRadius.xl).toBe('8px')
     expect(JSON.stringify(openAgentsNativeWindTokens)).not.toContain('var(')
+    expect(cjsNativeWindTokens).toEqual(openAgentsNativeWindTokens)
   })
 
   test('documents the Tailwind 4 token names consumed by React components', () => {

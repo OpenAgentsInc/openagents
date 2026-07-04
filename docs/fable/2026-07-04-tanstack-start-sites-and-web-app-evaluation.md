@@ -620,6 +620,15 @@ with route parity tests, keeping the existing Foldkit counterparts until a real
 production route cutover allows delete-as-you-go. See
 `docs/fable/2026-07-04-ts-6-start-khala-tassadar-route-slice.md`.
 
+2026-07-04 TS-8 scaffold note: `clients/khala-mobile` now holds the Expo SDK 57
+destination app with Expo Router, NativeWind over the shared token export, TS-3
+Khala Sync read-model setup, an Expo SQLite persistence adapter, secure-store
+key storage, delegation prompt validation, native module shells for STT and
+Apple FM, and the OpenAgents Updates publish script repointed away from the
+retired `AutopilotRemoteControl` path. The issue remains open for owner-gated
+prebuild/Xcode/Gradle/TestFlight and signed OTA round-trip proof. See
+`docs/fable/2026-07-04-ts-8-expo-mobile-scaffold.md`.
+
 ### 11.3 Explicit dependency spine
 
 ```

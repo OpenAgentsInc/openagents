@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "Khala",
+    "slug": "khala-mobile",
+    "scheme": "khala",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0,
+      "url": "https://updates.openagents.com/khala-mobile/manifest"
+    },
+    "ios": {
+      "bundleIdentifier": "com.openagents.khala.mobile",
+      "buildNumber": "1",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Khala uses the microphone for push-to-talk transcription.",
+        "NSSpeechRecognitionUsageDescription": "Khala uses on-device speech recognition to transcribe push-to-talk input."
+      }
+    },
+    "android": {
+      "package": "com.openagents.khala.mobile",
+      "versionCode": 1,
+      "permissions": [
+        "RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-sqlite",
+      "expo-updates",
+      "./modules/khala-push-to-talk-stt/app.plugin.js",
+      "./modules/khala-apple-foundation-models/app.plugin.js"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "khala": {
+        "apiBaseUrl": "https://openagents.com",
+        "syncBaseUrl": "https://openagents.com",
+        "updatesOwner": "khala-mobile"
+      }
+    }
+  }
+}

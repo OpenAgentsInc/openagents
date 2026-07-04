@@ -1,0 +1,16 @@
+{
+  "platforms": [
+    "ios",
+    "android"
+  ],
+  "ios": {
+    "modules": [
+      "KhalaAppleFoundationModelsModule"
+    ]
+  },
+  "android": {
+    "modules": [
+      "com.openagents.khalaapplefm.KhalaAppleFoundationModelsModule"
+    ]
+  }
+}

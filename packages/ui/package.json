@@ -9,6 +9,7 @@
     "./icon": "./src/icon.ts",
     "./react": "./src/react/index.ts",
     "./react.css": "./src/react.css",
+    "./nativewind-tokens.cjs": "./src/react/nativewind-tokens.cjs",
     "./styles.css": "./src/styles.css",
     "./*": "./src/*.ts"
   },

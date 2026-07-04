@@ -1,0 +1,16 @@
+{
+  "platforms": [
+    "ios",
+    "android"
+  ],
+  "ios": {
+    "modules": [
+      "KhalaPushToTalkSttModule"
+    ]
+  },
+  "android": {
+    "modules": [
+      "com.openagents.khalaptt.KhalaPushToTalkSttModule"
+    ]
+  }
+}

@@ -5,27 +5,31 @@
 # runtime + the `production` branch, and deploys. The installed off-Expo build
 # (which embeds updates.url -> our server) then pulls this on next launch.
 #
-# Usage: bash apps/oa-updates/scripts/publish-ota.sh
+# Usage:
+#   bash apps/oa-updates/scripts/publish-ota.sh
+#   OA_MOBILE_PLATFORM=android bash apps/oa-updates/scripts/publish-ota.sh
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$REPO"
-MOBILE="clients/khala-ios/AutopilotRemoteControl"
+MOBILE="${OA_MOBILE_APP_DIR:-clients/khala-mobile}"
+PLATFORM="${OA_MOBILE_PLATFORM:-ios}"
+UPDATES_OWNER="${OA_UPDATES_OWNER:-khala-mobile}"
 
 echo "==> computing build runtime fingerprint"
-RUNTIME="$(cd "$MOBILE" && bunx expo-updates fingerprint:generate --platform ios 2>/dev/null \
+RUNTIME="$(cd "$MOBILE" && bunx expo-updates fingerprint:generate --platform "$PLATFORM" 2>/dev/null \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["hash"])')"
 echo "    runtime = $RUNTIME"
 
 echo "==> exporting JS bundle + assets"
 rm -rf "$REPO/apps/oa-updates/dist"
-( cd "$MOBILE" && bunx expo export --platform ios --output-dir "$REPO/apps/oa-updates/dist" )
+( cd "$MOBILE" && bunx expo export --platform "$PLATFORM" --output-dir "$REPO/apps/oa-updates/dist" )
 
 echo "==> deploying to Cloud Run (seed = this export, runtime $RUNTIME, branch production)"
 export OA_PUBLIC_URL="${OA_PUBLIC_URL:-https://oa-updates-ezxz4mgdsq-uc.a.run.app}"
 export OA_SEED_DIST="/app/dist"
 export OA_SEED_RUNTIME="$RUNTIME"
-export OA_SEED_PLATFORM="ios"
+export OA_SEED_PLATFORM="$PLATFORM"
 # #4949 code signing: sign every manifest with our private key (keyid "main",
 # rsa-v1_5-sha256) so the client's embedded codeSigningCertificate verifies it.
 SIGN_KEY="$REPO/.secrets/oa-updates-codesign-private.pem"
@@ -36,4 +40,4 @@ fi
 bash "$REPO/apps/oa-updates/scripts/deploy-cloudrun.sh"
 
 echo "==> published. Verify:"
-echo "    curl -H 'expo-protocol-version: 1' -H 'expo-platform: ios' -H \"expo-runtime-version: $RUNTIME\" -H 'expo-channel-name: production' https://updates.openagents.com/autopilot/manifest"
+echo "    curl -H 'expo-protocol-version: 1' -H 'expo-platform: $PLATFORM' -H \"expo-runtime-version: $RUNTIME\" -H 'expo-channel-name: production' https://updates.openagents.com/$UPDATES_OWNER/manifest"
