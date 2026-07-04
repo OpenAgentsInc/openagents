@@ -49,6 +49,10 @@ xcrun altool --upload-app --type ios --file path/to/Khala.ipa \
 
 Team: `HQWSG26L43`.
 
+2026-07-04 receipt: iOS prebuild and local simulator build pass from a clean
+generated `ios/` directory. Android prebuild also passes; local Gradle build on
+this Mac is blocked before Gradle starts because Java is not installed.
+
 ## OTA Updates
 
 `app.json` embeds:
@@ -90,9 +94,9 @@ deploys the OpenAgents server. It does not call Expo hosted update commands.
 ## Owner-Gated Proof Still Needed
 
 Source-level scaffold, policy tests, and local typecheck are agent-verifiable.
-The full TS-8 acceptance still needs owner/device work:
+The full TS-8 acceptance still needs owner/device or Android toolchain work:
 
-- Run `expo prebuild` and local Xcode/Gradle builds on a signing-capable machine.
+- Run the local Gradle build on a machine with Java and the Android SDK.
 - Upload the first TestFlight artifact through `xcrun altool`.
 - Produce one signed OTA round-trip receipt against a dev build.
 - Replace the native-module shells with the device-proven STT stream and Apple
