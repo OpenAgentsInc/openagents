@@ -107,6 +107,7 @@ export const LandingRoute = r('Landing')
 export const TermsRoute = r('Terms')
 export const PrivacyRoute = r('Privacy')
 export const CodeRoute = r('Code')
+export const KhalaCodeDownloadRoute = r('KhalaCodeDownload')
 export const KhalaRoute = r('Khala')
 export const KhalaChatRoute = r('KhalaChat')
 export const PylonRoute = r('Pylon')
@@ -221,6 +222,7 @@ export type LandingRoute = typeof LandingRoute.Type
 export type TermsRoute = typeof TermsRoute.Type
 export type PrivacyRoute = typeof PrivacyRoute.Type
 export type CodeRoute = typeof CodeRoute.Type
+export type KhalaCodeDownloadRoute = typeof KhalaCodeDownloadRoute.Type
 export type KhalaRoute = typeof KhalaRoute.Type
 export type KhalaChatRoute = typeof KhalaChatRoute.Type
 export type PylonRoute = typeof PylonRoute.Type
@@ -301,6 +303,7 @@ export const LoggedOutRoute = S.Union([
   TermsRoute,
   PrivacyRoute,
   CodeRoute,
+  KhalaCodeDownloadRoute,
   KhalaRoute,
   KhalaChatRoute,
   PylonRoute,
@@ -440,6 +443,7 @@ export const AppRoute = S.Union([
   TermsRoute,
   PrivacyRoute,
   CodeRoute,
+  KhalaCodeDownloadRoute,
   KhalaRoute,
   KhalaChatRoute,
   PylonRoute,
@@ -764,6 +768,11 @@ export const landingAliasRouter = pipe(
 export const termsRouter = pipe(literal('terms'), Route.mapTo(TermsRoute))
 export const privacyRouter = pipe(literal('privacy'), Route.mapTo(PrivacyRoute))
 export const codeRouter = pipe(literal('code'), Route.mapTo(CodeRoute))
+export const khalaCodeDownloadRouter = pipe(
+  literal('code'),
+  slash(literal('download')),
+  Route.mapTo(KhalaCodeDownloadRoute),
+)
 export const khalaRouter = pipe(literal('khala'), Route.mapTo(KhalaRoute))
 export const khalaChatRouter = pipe(
   literal('chat'),
@@ -1037,6 +1046,7 @@ const orderedParserRouters = [
   landingAliasRouter,
   termsRouter,
   privacyRouter,
+  khalaCodeDownloadRouter,
   codeRouter,
   khalaChatRouter,
   khalaRouter,

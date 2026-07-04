@@ -24,6 +24,7 @@ import * as Download from '../download'
 import * as Forum from '../forum'
 import * as KhalaChatPage from '../khala-chat/page'
 import * as Code from '../code'
+import * as KhalaCodeDownload from '../khalaCodeDownload'
 import * as Login from '../login'
 import * as Privacy from '../privacy'
 import * as QaSwarm from '../qa-swarm'
@@ -336,6 +337,8 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               Terms: () => Terms.view({ _tag: 'LoggedOut' }),
               Privacy: () => Privacy.view({ _tag: 'LoggedOut' }),
               Code: () => Code.view({ _tag: 'LoggedOut' }),
+              KhalaCodeDownload: () =>
+                KhalaCodeDownload.view({ _tag: 'LoggedOut' }),
               Trace: route =>
                 Trace.view(route, { _tag: 'LoggedOut' }, model.trace),
               TraceCompare: route =>

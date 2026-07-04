@@ -880,6 +880,14 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    // Khala Code public install-truth counter (#8246): exact grouped rows from
+    // khala_code_download_events only, or an empty response with blocker refs.
+    // It is live_at_read with generatedAt + the shared staleness contract.
+    module: 'workers/api/src/khala-code-download-counts-routes.ts',
+    route: '/api/public/khala-code/download-counts',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/marketing-agency-receipt-public-routes.ts',
     route: '/api/public/marketing-agency/receipts',
     status: 'staleness_declared',

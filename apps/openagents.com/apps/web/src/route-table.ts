@@ -841,6 +841,16 @@ export const routeTable = {
     inLoggedInUnion: false,
     render: 'statelessShell',
   },
+  KhalaCodeDownload: {
+    surface: 'spaDocument',
+    serverDocument: /^\/code\/download$/,
+    examplePaths: ['/code/download'],
+    requiresAuthBootstrap: false,
+    loggedInGate: 'open',
+    inLoggedOutUnion: true,
+    inLoggedInUnion: false,
+    render: 'statelessShell',
+  },
   Khala: {
     surface: 'spaDocument',
     serverDocument: /^\/khala$/,

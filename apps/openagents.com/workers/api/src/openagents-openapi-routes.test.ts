@@ -115,6 +115,10 @@ describe('OpenAgents OpenAPI route', () => {
     expect(operationAt(body, '/skill.json', 'get').operationId).toBe(
       'getOpenAgentsCompanionMetadata',
     )
+    expect(
+      operationAt(body, '/api/public/khala-code/download-counts', 'get')
+        .operationId,
+    ).toBe('getPublicKhalaCodeDownloadCounts')
     const deprecatedFleetStatus = operationAt(
       body,
       '/api/operator/fleet/status',

@@ -2490,6 +2490,15 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     #7966) — compliant (`generatedAt`, `live_at_read` contract rebuilt on
     the catalog module / flag change; catalog text only, grants no capture,
     billing, payout, or settlement authority). `staleness_declared`.
+  - `GET /api/public/khala-code/download-counts` — live at read over
+    `khala_code_download_events` (khala_code.desktop_codex_wrapper.v1, #8246)
+    — compliant (`generatedAt`, `live_at_read` contract rebuilt on the
+    download-event ledger). Public rows are grouped exact counts by artifact
+    kind/channel only; no per-user, account, private path, raw artifact, or
+    secret material is exposed. Empty or missing tables return `counts: []`
+    with blocker refs instead of synthetic totals, and the route grants no
+    public installer, outside-user, payout, settlement, or promise-green
+    authority. `staleness_declared`.
   - `GET /api/public/artanis/report` — live at read over tick rows rebuilt on
     closeout — compliant (`generatedAtUnixMs`, report + loop contracts, stale
     and example-fallback flags with caveat refs).

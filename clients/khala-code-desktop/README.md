@@ -7,6 +7,11 @@ swarm controls around that Codex harness.
 
 ## Install And First Run
 
+Public install truth is served at <https://openagents.com/code/download>. That
+page may point to the npm `khala` CLI and source-build paths, but it must not
+present a public Khala Code DMG until the owner receipts in `NEEDS_OWNER.md`
+exist.
+
 Khala Code does not bundle or reimplement Codex Core. The default harness is the
 user's local Codex install and the `codex app-server --stdio` protocol exposed
 by that install:
@@ -56,7 +61,9 @@ an owner-controlled machine after the signing/notary/update-feed credentials
 are confirmed. The release is not complete until the owner records the signed
 app, notarized app, stapled app, recreated/signed/notarized/stapled DMG,
 updates-feed upload, GitHub release, and clean-Mac first-run smoke receipt refs
-listed in `NEEDS_OWNER.md`.
+listed in `NEEDS_OWNER.md`. Public counters for this product must be exact
+`khala_code_download_events` rows or an empty response with blocker refs; do not
+infer installs from release-feed presence or page views.
 
 ## Product Boundary
 

@@ -116,6 +116,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   route remains the default Autopilot Desktop lane. RC/prerelease Khala builds
   must use the `rc` channel and GitHub `--prerelease --latest=false`; stable
   latest eligibility is reserved for non-prerelease versions.
+- Public Khala Code install or download surfaces may route users to Codex
+  prerequisites, the npm `khala` CLI, and source-build instructions, but must
+  keep desktop DMG availability marked pending until the receipt set above
+  exists. Public download counters must be exact grouped
+  `khala_code_download_events` rows or an explicit empty response with blocker
+  refs; page views, feed presence, or planned artifacts are not install counts.
 
 ## Background Agent Definition Tool Authority
 

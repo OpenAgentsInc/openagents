@@ -1,5 +1,15 @@
 # Promise Registry
 
+> Registry `2026-07-04.1` is the RL-2 Khala Code public install-truth pass
+> (#8246) and flips NO promise green (green stays exactly 34).
+> `khala_code.desktop_codex_wrapper.v1` remains yellow: `/code/download`
+> now exposes the Codex-required install page, public npm `khala` CLI path,
+> source-build path, and pending desktop DMG state under the existing copy
+> gate. `GET /api/public/khala-code/download-counts` serves exact
+> `khala_code_download_events` rows or `counts: []` with blocker refs. This
+> creates no public signed DMG claim, outside-user evidence, live free/paid
+> economics, capture, payout, settlement, or installer availability claim.
+
 > Registry `2026-07-02.4` is the BF-2.1 `/business` rate-card pass
 > (#8079) and flips NO promise green (green stays exactly 34).
 > `business.intake_quick_win_offering.v1` remains yellow and now

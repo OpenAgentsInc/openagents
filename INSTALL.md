@@ -6,12 +6,16 @@ owner's behalf, aim at this file and follow it exactly — including the
 [notes for agents](#notes-for-ai-agents) at the bottom. A fetchable copy of
 the current install truth is also served at
 <https://openagents.com/INSTALL.md>.
+The public Khala Code install-truth page is
+<https://openagents.com/code/download>; it mirrors the Codex requirement,
+the npm `khala` CLI path, the source-build path, and the fact that the macOS
+DMG is still receipt-gated.
 
 Quick map — what do you want to install?
 
 | Product | What it is | Fastest path |
 | --- | --- | --- |
-| **Khala Code** | The desktop coding app (the main product) | Build from source — [section 1](#1-khala-code-the-desktop-coding-app) |
+| **Khala Code** | The desktop coding app (the main product) | Build from source — [section 1](#1-khala-code-the-desktop-coding-app); public install truth at `/code/download` |
 | **Pylon** | Headless contributor node (the agent path) | `npx @openagentsinc/pylon` — [section 2](#2-pylon-headless-contributor-node) |
 
 ## 1. Khala Code (the desktop coding app)
@@ -20,6 +24,10 @@ Khala Code wraps your own local Codex install and adds fleet/swarm
 coordination on top. **There is no public installer yet — building from
 source is the supported path** (tracked honestly in the `khala_code.*`
 product promises). macOS is the primary target (Electrobun desktop shell).
+The public download counter at
+`/api/public/khala-code/download-counts` serves exact ledger rows only; if no
+public-countable rows exist, it returns an empty `counts` array rather than a
+synthetic install total.
 
 **Prerequisites**
 

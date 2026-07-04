@@ -11,6 +11,15 @@ README link, a Khala-Code-first rewrite of the served install guide, and an
 AGENTS.md slim-down that moves two heavy reference blocks into new companion
 files.
 
+**2026-07-04 RL-2 update:** the public browser route
+`https://openagents.com/code/download` now exposes Khala Code install truth
+under the `khala_code.desktop_codex_wrapper.v1` copy gate: Codex CLI + login
+required, public `npm install -g @openagentsinc/khala` CLI path available,
+source build supported, and macOS DMG still marked as a pending public
+artifact. `GET /api/public/khala-code/download-counts` is the only public
+download counter for this page; it reads exact `khala_code_download_events`
+rows or returns `counts: []` with blocker refs instead of synthesizing totals.
+
 ---
 
 ## 1. The triggering failure
@@ -137,6 +146,9 @@ that says "here is the quickest supported way to install each thing we ship."
   public installer yet (source build; `khala_code.*` promises), that
   installing/running a node is a capability, not earning, and repeats the
   never-clobber-`~/.codex` rule.
+- **Counter discipline:** `/code/download` may link the public counter, but the
+  counter may only report exact grouped download-event rows. Empty rows,
+  missing table, page views, or release-feed existence are not install totals.
 - **No authority drift:** all moved AGENTS.md content moves verbatim in
   meaning; the pointer sections keep the owner-approval and
   no-payout-claim boundaries in the main file.
@@ -149,5 +161,7 @@ that says "here is the quickest supported way to install each thing we ship."
 - Publish khala CLI 0.1.21 or document the 0.1.19–0.1.21 changelog gap.
 - Consider a worker route for `/INSTALL.md` (explicit `text/markdown` +
   funnel logging like `/AGENTS.md`) so install fetches are observable.
+- Once a public DMG exists, instrument `khala_code_download_events` at the
+  artifact edge and keep `/api/public/khala-code/download-counts` exact-only.
 - Consider further AGENTS.md splits (Forum Rules → FORUM.md) if the file
   keeps growing.

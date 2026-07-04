@@ -391,6 +391,14 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Public-safe "Tokens Served" counter: the running product-wide SUM of input + output tokens across all real served-token ledger events, including Khala API rows and explicitly opted-in direct local Codex rows, plus generatedAt and the live_at_read staleness contract. Aggregate scalar only, no per-user, per-team, demand label, provider, account, or secret material. Read-only counter; grants no payout, settlement, or public-claim authority.',
       },
       {
+        id: 'public_khala_code_download_counts',
+        href: 'https://openagents.com/api/public/khala-code/download-counts',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'Public-safe Khala Code download counter for /code/download: exact grouped rows from khala_code_download_events only, returning counts: [] with blocker refs when no public-countable rows or table exists. No per-user, per-account, private path, raw installer, or secret material. Read-only counter; grants no public installer, outside-user, payout, settlement, or promise-green authority.',
+      },
+      {
         id: 'public_khala_tokens_served_history',
         href: 'https://openagents.com/api/public/khala-tokens-served/history',
         method: 'GET',

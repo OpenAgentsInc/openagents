@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-07-03.1'
+export const PublicProductPromisesVersion = '2026-07-04.1'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -195,7 +195,7 @@ export const publicProductPromisesDocument = () => {
     generatedAt: currentIsoTimestamp(),
     maxStalenessSeconds: staleness.maxStalenessSeconds,
     staleness,
-    lastUpdated: '2026-07-02',
+    lastUpdated: '2026-07-04',
     canonicalDocsUrl:
       'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
     sourceRefs,
@@ -4495,7 +4495,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Khala Code is the OpenAgents desktop coding app: a wrapper around the user’s own local Codex install, with Khala swarm/fleet coordination, a Unified Inbox, and exact token accounting layered around it.',
         safeCopy:
-          'The Khala Code desktop app exists on main (clients/khala-code-desktop, Electrobun + web preview) and is Codex-required by positioning: the default chat, thread, slash-command, approval, MCP, settings, and headless paths run through the user’s own codex app-server install (docs/khala-code/2026-07-01-codex-required-product-positioning.md). Parity with Codex is enforced mechanically against a pinned reference commit (parity contract + gap matrix + fixture suites + skip-safe live smokes), and the Khala layer adds fleet delegation through the deterministic khala.fleet.delegate program with isolated worker homes and exact token_usage_events accounting. Episode 246 adds owner full-time dogfood evidence: the owner runs Khala Code full-screen as his only coding harness and fixes Khala Code with Khala Code, with stated UX expectations landing in the enforced behavior-contract registry (khala_code.ux_behavior_contracts.v1). Yellow because there is no public release artifact/installer and no outside-user run evidence yet; this is the Episode 245 product-identity record.',
+          'The Khala Code desktop app exists on main (clients/khala-code-desktop, Electrobun + web preview) and is Codex-required by positioning: the default chat, thread, slash-command, approval, MCP, settings, and headless paths run through the user’s own codex app-server install (docs/khala-code/2026-07-01-codex-required-product-positioning.md). Parity with Codex is enforced mechanically against a pinned reference commit (parity contract + gap matrix + fixture suites + skip-safe live smokes), and the Khala layer adds fleet delegation through the deterministic khala.fleet.delegate program with isolated worker homes and exact token_usage_events accounting. Episode 246 adds owner full-time dogfood evidence: the owner runs Khala Code full-screen as his only coding harness and fixes Khala Code with Khala Code, with stated UX expectations landing in the enforced behavior-contract registry (khala_code.ux_behavior_contracts.v1). The public /code/download install-truth page routes users to the Codex prerequisite, the public npm khala CLI, and the source-build path while marking the desktop DMG as a pending public artifact; its counter reads exact khala_code_download_events rows or empty counts only. Yellow because there is no public release artifact/installer and no outside-user run evidence yet; this is the Episode 245 product-identity record.',
         unsafeCopy:
           'Do not claim Khala Code is downloadable, installed by outside users, or usable without a working Codex install and login. Do not describe the free/paid plan economics as live — those are the separate planned khala_code.* records.',
         evidenceRefs: [
@@ -4507,6 +4507,13 @@ export const publicProductPromisesDocument = () => {
           'docs/transcripts/245.md',
           'docs/transcripts/246.md',
           'docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md',
+          'apps/openagents.com/apps/web/src/page/khalaCodeDownload.ts',
+          'apps/openagents.com/apps/web/src/khala-code-download-route.test.ts',
+          'apps/openagents.com/workers/api/src/khala-code-download-counts-routes.ts',
+          'apps/openagents.com/workers/api/src/khala-code-download-counts-routes.test.ts',
+          'apps/openagents.com/workers/api/migrations/0288_khala_code_download_events.sql',
+          'route:/code/download',
+          'route:/api/public/khala-code/download-counts',
           'promise:khala.own_capacity_codex_delegation.v1',
         ],
         blockerRefs: [
@@ -4514,9 +4521,9 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.khala_code_outside_user_evidence_missing',
         ],
         verification:
-          'Fixture parity suites and the skip-safe live smokes (smoke:codex-parity-live, smoke:part2-ui) pass from a clean checkout; the delegation path proves exact token rows per the repo runbook. Green requires a public release artifact plus outside-user run evidence and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Fixture parity suites and the skip-safe live smokes (smoke:codex-parity-live, smoke:part2-ui) pass from a clean checkout; the delegation path proves exact token rows per the repo runbook. The /code/download route and download-counts API tests prove copy-gated install truth and exact-row-or-empty public counters. Green requires a public release artifact plus outside-user run evidence and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
-          'The wrapper grants no provider account, capacity resale, or settlement authority. Connect flows never touch the default ~/.codex home; fleet delegation stays owner-scoped under the dispatch gate and advertised-capacity invariants.',
+          'The wrapper grants no provider account, capacity resale, public installer, or settlement authority. Connect flows never touch the default ~/.codex home; fleet delegation stays owner-scoped under the dispatch gate and advertised-capacity invariants. Public download counters must be exact rows from khala_code_download_events or empty with blocker refs.',
       },
       {
         ...basePromiseFields,
@@ -5024,6 +5031,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-04.1 is the RL-2 Khala Code public install-truth pass (#8246) and flips NO promise state — green stays exactly 34. khala_code.desktop_codex_wrapper.v1 stays yellow: /code/download now exposes the Codex-required install page, public npm khala CLI path, source-build path, and pending desktop DMG state under the existing copy gate; GET /api/public/khala-code/download-counts serves exact khala_code_download_events rows or counts: [] with blocker refs. No public signed DMG, outside-user evidence, free/paid economics, capture, payout, settlement, or installer availability claim is created.',
       'Registry 2026-07-03.1 is the Episode 246 (Dogfooding Khala Code) incorporation pass and flips NO promise state — green stays exactly 34. Two records land, both yellow and evidence-bounded: khala_code.ux_behavior_contracts.v1 — the UX Behavior Contract system (the micro-scale counterpart of this registry) is live in source with a typed registry (clients/khala-code-desktop/src/contracts/ux-contracts.ts on the shared @openagentsinc/behavior-contracts schema), a coverage test that fails the sweep if an enforced contract loses its oracle, and a synced human doc; yellow because most entries mined from ~36 hours of Codex/Claude session history are pending (no oracles yet), customer intake has not run, and deviation-to-strict-bug intake is not wired. khala_code.bundled_fleet_skill.v1 — the desktop installs a bundled khala-fleet SKILL.md into ~/.agents/skills by default (managed-marker overwrite policy, env toggle, byte-pin test); yellow pending outside-user discovery evidence and a Settings toggle. Episode 246 evidence (docs/transcripts/246.md) is added to khala_code.desktop_codex_wrapper.v1 (owner full-time dogfood: fixing Khala Code with Khala Code), khala_code.architect_coder_judge.v1 (the owner names the architect/coder/judge pattern for Khala Code on camera), qa.agentic_qa_runner.v1, and qa_swarm.product_surface.v1, whose copy now records the on-camera sequencing that QA Swarm is built first for Khala Code and then added to the Autopilot product suite for businesses — design intent, not a shipped surface. No pricing, availability, capture, payout, or settlement claim changes; any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
       'Registry 2026-07-02.4 is the BF-2.1 /business rate-card pass (#8079) and flips NO promise green — green stays exactly 34. business.intake_quick_win_offering.v1 remains yellow and now includes the published operator-assisted rate card: Quick Win ($1,000-$5,000 fixed), Fleet Sprint ($5,000-$15,000/week), On Autopilot Retainer ($2,000-$10,000/month), and QA Swarm bands. qa_swarm.service_packages.v1 advances from planned to yellow only for public package pricing and copy; checkout, first paid delivery receipts, self-serve hosted runs, broad hosted availability, payout, and settlement remain blocked.',
       'Registry 2026-07-02.3 adds khala_code.architect_coder_judge.v1 as a planned, copy-gated Khala Code promise candidate for the architect/coder/judge preset. It flips NO promise state. Source-level evidence covers the architect-coder-judge role-registry preset in Khala Code settings and headless launch wiring: coder on the user’s existing Codex login, architect/judge on the user’s own Anthropic auth, advisor optional-off, and no proxy/no-resale rails restated. The record remains planned until the plan -> code -> judge workflow is verifiable end-to-end with exact per-role accounting and owner-approved public copy.',

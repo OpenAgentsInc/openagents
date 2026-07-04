@@ -734,6 +734,7 @@ import {
   handleOperatorKhalaFeedback,
   makeD1KhalaFeedbackStore,
 } from './khala-feedback-routes'
+import { handlePublicKhalaCodeDownloadCountsApi } from './khala-code-download-counts-routes'
 import {
   handleOperatorKhalaTraceReview,
   makeD1KhalaTraceReviewStore,
@@ -10889,6 +10890,17 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         paidPlanPurchaseArmed: isKhalaCodePaidPlansEnabled(
           env.KHALA_CODE_PAID_PLANS_ENABLED,
         ),
+      }),
+  },
+  {
+    // Khala Code download counter (RL-2, #8246). Public-safe and exact-only:
+    // reads counted rows from the download ledger, or returns counts: [] with a
+    // blocker when the ledger/table has no rows. It never fabricates a public
+    // installed-user/download number.
+    path: '/api/public/khala-code/download-counts',
+    handler: (request, env) =>
+      handlePublicKhalaCodeDownloadCountsApi(request, {
+        OPENAGENTS_DB: openAgentsDatabase(env),
       }),
   },
   {

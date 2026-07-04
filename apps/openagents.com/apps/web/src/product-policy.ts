@@ -176,6 +176,7 @@ export const browserRouteProductIntents = {
   Terms: 'public.terms',
   Privacy: 'public.privacy',
   Code: 'public.code.landing',
+  KhalaCodeDownload: 'public.khala-code.download',
   Khala: 'public.khala',
   KhalaChat: 'public.khala.chat',
   Pylon: 'public.pylon',

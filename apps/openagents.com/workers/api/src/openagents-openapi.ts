@@ -4393,6 +4393,82 @@ const requestSchemas = (): JsonSchema => ({
       },
     },
   },
+  PublicKhalaCodeDownloadCounts: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'schemaVersion',
+      'product',
+      'promiseId',
+      'generatedAt',
+      'counts',
+      'blockerRefs',
+      'sourceRefs',
+      'staleness',
+    ],
+    description:
+      'Public-safe Khala Code download counter for /code/download. Counts are exact grouped rows from khala_code_download_events only; when no public-countable rows or table exists, the response returns an empty counts array plus blocker refs instead of synthesizing totals. Grants no public-release-artifact, installer-availability, user-count, billing, payout, or settlement authority.',
+    properties: {
+      schemaVersion: {
+        type: 'string',
+        enum: ['openagents.khala_code.public_download_counts.v1'],
+      },
+      product: { type: 'string', enum: ['khala-code'] },
+      promiseId: {
+        type: 'string',
+        enum: ['khala_code.desktop_codex_wrapper.v1'],
+      },
+      generatedAt: { type: 'string', format: 'date-time' },
+      counts: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['artifactKind', 'channel', 'exactRows', 'lastCountedAt'],
+          properties: {
+            artifactKind: {
+              type: 'string',
+              enum: ['desktop_dmg', 'npm_cli', 'source_build'],
+            },
+            channel: { type: 'string' },
+            exactRows: { type: 'integer', minimum: 0 },
+            lastCountedAt: {
+              anyOf: [
+                { type: 'string', format: 'date-time' },
+                { type: 'null' },
+              ],
+            },
+          },
+        },
+      },
+      blockerRefs: { type: 'array', items: { type: 'string' } },
+      sourceRefs: { type: 'array', items: { type: 'string' } },
+      staleness: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'composition',
+          'contractVersion',
+          'maxStalenessSeconds',
+          'rebuildsOn',
+        ],
+        description:
+          'Shared public-projection staleness contract (live_at_read over khala_code_download_events).',
+        properties: {
+          composition: { type: 'string', enum: ['live_at_read'] },
+          contractVersion: {
+            type: 'string',
+            enum: ['projection_staleness.v1'],
+          },
+          maxStalenessSeconds: { type: 'integer', enum: [0] },
+          rebuildsOn: {
+            type: 'array',
+            items: { type: 'string', enum: ['khala_code_download_events'] },
+          },
+        },
+      },
+    },
+  },
   FreeApiKeyMintResponse: {
     type: 'object',
     additionalProperties: false,
@@ -5986,6 +6062,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Khala Code plan catalog.',
           '#/components/schemas/KhalaCodePlanCatalog',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/khala-code/download-counts': {
+    get: operation({
+      operationId: 'getPublicKhalaCodeDownloadCounts',
+      summary: 'Read public Khala Code download counts',
+      description:
+        'Returns the public-safe Khala Code download counter used by /code/download. Counts are grouped exact rows from khala_code_download_events for public-countable desktop_dmg, npm_cli, and source_build events only. If no rows exist, or if the count table has not been created yet, the response serves counts: [] with blockerRefs instead of fabricating totals. Read-only, no auth, no secrets; grants no public installer availability, outside-user, billing, payout, settlement, or promise-green authority.',
+      tags: ['Public Proof', 'Agents'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Khala Code download counts.',
+          '#/components/schemas/PublicKhalaCodeDownloadCounts',
         ),
         ...errorResponses(),
       },

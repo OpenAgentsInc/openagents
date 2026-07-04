@@ -30,6 +30,7 @@ import {
   GymOssRoute,
   GymRoute,
   ImagesRoute,
+  KhalaCodeDownloadRoute,
   KhalaChatRoute,
   KhalaRoute,
   LandingRoute,
@@ -188,6 +189,12 @@ describe('app route parser', () => {
 
   test('accepts the public Khala chat page route', () => {
     expect(urlToAppRoute(appUrl('/chat'))).toEqual(KhalaChatRoute())
+  })
+
+  test('accepts the public Khala Code install-truth route', () => {
+    expect(urlToAppRoute(appUrl('/code/download'))).toEqual(
+      KhalaCodeDownloadRoute(),
+    )
   })
 
   test('accepts the public Gym Terminal-Bench route', () => {
@@ -399,6 +406,7 @@ const CANONICAL_URL_TO_TAG: ReadonlyArray<readonly [string, string]> = [
   ['/moksha2', 'Moksha2'],
   ['/terms', 'Terms'],
   ['/privacy', 'Privacy'],
+  ['/code/download', 'KhalaCodeDownload'],
   ['/khala', 'Khala'],
   ['/pylons', 'Pylon'],
   ['/download', 'Download'],

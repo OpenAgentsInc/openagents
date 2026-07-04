@@ -176,6 +176,12 @@ describe('OpenAgents capability manifest route', () => {
         }),
         expect.objectContaining({
           auth: 'public',
+          href: 'https://openagents.com/api/public/khala-code/download-counts',
+          id: 'public_khala_code_download_counts',
+          description: expect.stringContaining('exact grouped rows'),
+        }),
+        expect.objectContaining({
+          auth: 'public',
           href: 'https://openagents.com/api/public/tassadar-run-summary',
           id: 'public_tassadar_run_summary',
           description: expect.stringContaining('real-vs-simulation'),

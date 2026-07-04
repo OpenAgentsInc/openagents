@@ -213,6 +213,46 @@ describe('public product promises document', () => {
     expect(qaSwarmCopy).not.toContain('paid delivery receipts exist')
   })
 
+  test('keeps Khala Code install truth public but desktop release gated', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const promiseById = new Map(
+      decoded.promises.map(promise => [promise.promiseId, promise]),
+    )
+    const khalaCode = promiseById.get('khala_code.desktop_codex_wrapper.v1')
+
+    expect(khalaCode).toMatchObject({
+      state: 'yellow',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.khala_code_public_release_artifact_missing',
+        'blocker.product_promises.khala_code_outside_user_evidence_missing',
+      ]),
+      evidenceRefs: expect.arrayContaining([
+        'apps/openagents.com/apps/web/src/page/khalaCodeDownload.ts',
+        'apps/openagents.com/apps/web/src/khala-code-download-route.test.ts',
+        'apps/openagents.com/workers/api/src/khala-code-download-counts-routes.ts',
+        'apps/openagents.com/workers/api/src/khala-code-download-counts-routes.test.ts',
+        'apps/openagents.com/workers/api/migrations/0288_khala_code_download_events.sql',
+        'route:/code/download',
+        'route:/api/public/khala-code/download-counts',
+      ]),
+    })
+    expect(khalaCode?.safeCopy).toContain('/code/download')
+    expect(khalaCode?.safeCopy).toContain('pending public artifact')
+    expect(khalaCode?.verification).toContain(
+      'exact-row-or-empty public counters',
+    )
+    expect(khalaCode?.authorityBoundary).toContain(
+      'exact rows from khala_code_download_events',
+    )
+    expect(khalaCode?.unsafeCopy).toContain(
+      'Do not claim Khala Code is downloadable',
+    )
+    expect(decoded.notes.join('\n')).toContain('Registry 2026-07-04.1')
+    expect(decoded.notes.join('\n')).toContain('flips NO promise state')
+  })
+
   test('keeps issue 7023 desktop and builtin compute proof yellow-only', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),

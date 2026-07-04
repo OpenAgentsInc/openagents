@@ -28,6 +28,7 @@ import type {
   PublicPylonStatsModel,
 } from './page/loggedOut/model'
 import * as Code from './page/code'
+import * as KhalaCodeDownload from './page/khalaCodeDownload'
 import * as Privacy from './page/privacy'
 import type {
   PublicHeaderAuthState,
@@ -643,6 +644,7 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
       model.route._tag !== 'Terms' &&
       model.route._tag !== 'Privacy' &&
       model.route._tag !== 'Code' &&
+      model.route._tag !== 'KhalaCodeDownload' &&
       model.route._tag !== 'Animations' &&
       model.route._tag !== 'Activity' &&
       model.route._tag !== 'ArtanisAccounts' &&
@@ -712,6 +714,10 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
   }
   if (model.route._tag === 'Code') {
     return Code.view<Message>(authState)
+  }
+
+  if (model.route._tag === 'KhalaCodeDownload') {
+    return KhalaCodeDownload.view<Message>(authState)
   }
 
   if (model.route._tag === 'Trace') {

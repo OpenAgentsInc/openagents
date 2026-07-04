@@ -442,6 +442,15 @@ rung a receipt:
    set required before this rung can be represented as complete. The physical
    signed/notarized/stapled DMG, feed upload, GitHub release, and clean-Mac
    first-run proof remain owner-gated receipts, not repo claims.
+
+   2026-07-04 RL-2 install-truth update: `/code/download` is now the public
+   copy-gated install page for this rung. It shows Codex install/login as a
+   prerequisite, exposes the public npm `khala` CLI and source-build paths,
+   and labels the desktop DMG as a pending public artifact. The paired
+   `GET /api/public/khala-code/download-counts` endpoint reports only exact
+   `khala_code_download_events` rows, or `counts: []` with blocker refs. This
+   improves funnel clarity but still does not supply the missing signed DMG or
+   outside-user evidence.
 2. **Rehearse the flagship live.** One real message-triggered fleet run
    (the WS-17 "clean 2B day" is the maximal version: ≥2.0B exact
    tokens/day, ≥15 workers, zero duplicate PRs, 100% closeout coverage).

@@ -24,6 +24,7 @@ treated as live delivery evidence.
 ## Khala Code Desktop Signed Release Gate
 
 Source issue: OpenAgentsInc/openagents#8245
+Public install-truth surface: OpenAgentsInc/openagents#8246
 
 Khala Code Desktop has a buildable Electrobun app, but RL-1 is not complete
 until the release owner signs, notarizes, staples, uploads, and smoke-tests a
@@ -50,6 +51,11 @@ Current state:
   create a GitHub release unless the owner sets the explicit release env flags.
 - No signed/notarized/stapled Khala Code DMG, owner-approved updates-feed path,
   GitHub release, or clean-Mac first-run smoke receipt is recorded here yet.
+- `/code/download` and `GET /api/public/khala-code/download-counts` exist for
+  public install truth, but they are not release receipts. The page must keep
+  the desktop DMG marked as a pending public artifact until the receipt set
+  below exists, and the counter may report only exact
+  `khala_code_download_events` rows or an empty response with blocker refs.
 
 NEEDS-OWNER: Provide or confirm the Developer ID/notary environment on an
 owner-controlled machine, approve the Khala Code version and release channel,
