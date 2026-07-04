@@ -125,6 +125,16 @@ repo. The rubric, prober code, and our own domain's report are public-safe
 and should land as normal repo work (this is also BF-8.2 infrastructure —
 the same prober keeps *us* honest weekly).
 
+Implementation status (#8266): the LG-1 report renderer now lives in
+`@openagentsinc/agent-readiness`. It renders a report into a private
+operator-review markdown view, first-email plain-text/HTML fragments with the
+top three findings, and separate bump-step fragments with the held-back fourth
+finding. Every rendered finding requires a one-line commercial context from
+enrichment, HTML is escaped, and rendered prospect output is marked
+`private_runtime_only`; only the `openagents.com` own-domain fixture can be
+materialized as a repo-persisted case-study artifact. PDF/attachment export
+remains deferred.
+
 Personalization compounding: Apollo AI credits + org enrichment supply the
 one-line business context ("you sell X; an agent trying to buy X from you
 today sees a blank page") that turns a technical finding into a commercial

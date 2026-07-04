@@ -8,6 +8,8 @@ export const AGENT_READINESS_DOMAIN_TASK_SCHEMA_VERSION =
   "openagents.agent_readiness_domain_task.v1" as const
 export const AGENT_READINESS_BATCH_SCHEMA_VERSION =
   "openagents.agent_readiness_batch.v1" as const
+export const AGENT_READINESS_REPORT_RENDER_SCHEMA_VERSION =
+  "openagents.agent_readiness_report_render.v1" as const
 
 export const AgentReadinessSeverity = S.Literals([
   "critical",
@@ -146,6 +148,43 @@ export const AgentReadinessBatchResult = S.Struct({
   reports: S.Array(AgentReadinessReport),
 })
 export type AgentReadinessBatchResult = typeof AgentReadinessBatchResult.Type
+
+export const AgentReadinessRenderedFinding = S.Struct({
+  findingRef: S.String,
+  code: AgentReadinessFindingCode,
+  severity: AgentReadinessSeverity,
+  title: S.String,
+  impact: S.String,
+  commercialContext: S.String,
+  evidenceRefs: S.Array(S.String),
+})
+export type AgentReadinessRenderedFinding =
+  typeof AgentReadinessRenderedFinding.Type
+
+export const AgentReadinessReportRender = S.Struct({
+  schemaVersion: S.Literal(AGENT_READINESS_REPORT_RENDER_SCHEMA_VERSION),
+  domain: S.String,
+  generatedAt: S.String,
+  reportGeneratedAt: S.String,
+  reportStatus: S.Literals(["passed", "attention", "blocked"]),
+  score: S.Number,
+  grade: AgentReadinessGrade,
+  persistenceMode: S.Literals([
+    "private_runtime_only",
+    "repo_case_study_allowed",
+  ]),
+  operatorFindings: S.Array(AgentReadinessRenderedFinding),
+  topFindings: S.Array(AgentReadinessRenderedFinding),
+  heldBackFinding: S.NullOr(AgentReadinessRenderedFinding),
+  internalOperatorView: S.String,
+  emailBodyPlainText: S.String,
+  emailBodyHtml: S.String,
+  bumpBodyPlainText: S.String,
+  bumpBodyHtml: S.String,
+  sourceRefs: S.Array(S.String),
+})
+export type AgentReadinessReportRender =
+  typeof AgentReadinessReportRender.Type
 
 export const AgentReadinessExpectedContent = S.Literals([
   "json",
@@ -385,6 +424,14 @@ const severityRank: Record<AgentReadinessSeverity, number> = {
   low: 2,
   info: 1,
 }
+
+const compareFindingsByPriority = (
+  a: AgentReadinessFinding,
+  b: AgentReadinessFinding,
+): number =>
+  severityRank[b.severity] - severityRank[a.severity] ||
+  a.title.localeCompare(b.title) ||
+  a.findingRef.localeCompare(b.findingRef)
 
 const orderedLayers: ReadonlyArray<AgentReadinessLayer> = [
   "discovery",
@@ -866,7 +913,7 @@ const topFindings = (
   findings: ReadonlyArray<AgentReadinessFinding>,
 ): ReadonlyArray<AgentReadinessTopFinding> =>
   [...findings]
-    .sort((a, b) => severityRank[b.severity] - severityRank[a.severity])
+    .sort(compareFindingsByPriority)
     .slice(0, 3)
     .map((finding) => ({
       code: finding.code,
@@ -1116,6 +1163,310 @@ export const runAgentReadinessBatch = async (
   })
 }
 
+export type AgentReadinessReportRenderOptions = Readonly<{
+  generatedAt?: string
+  commercialContextByFindingRef?: Readonly<Record<string, string>>
+  commercialContextByCode?: Partial<Record<AgentReadinessFindingCode, string>>
+  sourceRefs?: ReadonlyArray<string>
+}>
+
+const OPENAGENTS_CASE_STUDY_DOMAINS = new Set(["openagents.com"])
+const MAX_COMMERCIAL_CONTEXT_CHARS = 240
+
+const normalizeOneLineField = (
+  label: string,
+  value: string,
+  maxChars = MAX_COMMERCIAL_CONTEXT_CHARS,
+): string => {
+  const normalized = value.replace(/\s+/gu, " ").trim()
+  if (normalized.length === 0) {
+    throw new Error(`Agent-readiness ${label} is required.`)
+  }
+  if (normalized.length > maxChars) {
+    throw new Error(
+      `Agent-readiness ${label} must be ${maxChars} characters or fewer.`,
+    )
+  }
+  return normalized
+}
+
+const commercialContextForFinding = (
+  finding: AgentReadinessFinding,
+  options: AgentReadinessReportRenderOptions,
+): string => {
+  const context =
+    options.commercialContextByFindingRef?.[finding.findingRef] ??
+    options.commercialContextByCode?.[finding.code]
+  if (context === undefined) {
+    throw new Error(
+      `Missing commercial context for finding ${finding.findingRef}.`,
+    )
+  }
+  return normalizeOneLineField("commercial context", context)
+}
+
+const escapeHtml = (value: string): string =>
+  value
+    .replace(/&/gu, "&amp;")
+    .replace(/</gu, "&lt;")
+    .replace(/>/gu, "&gt;")
+    .replace(/"/gu, "&quot;")
+    .replace(/'/gu, "&#39;")
+
+const renderFinding = (
+  finding: AgentReadinessFinding,
+  options: AgentReadinessReportRenderOptions,
+): AgentReadinessRenderedFinding => ({
+  findingRef: finding.findingRef,
+  code: finding.code,
+  severity: finding.severity,
+  title: normalizeOneLineField("finding title", finding.title, 180),
+  impact: normalizeOneLineField("finding impact", finding.impact, 260),
+  commercialContext: commercialContextForFinding(finding, options),
+  evidenceRefs: [...finding.evidenceRefs],
+})
+
+const plainFindingBlock = (
+  finding: AgentReadinessRenderedFinding,
+  index: number,
+): string =>
+  [
+    `${index}. [${finding.severity}] ${finding.title}`,
+    `   Impact: ${finding.impact}`,
+    `   Commercial context: ${finding.commercialContext}`,
+    `   Evidence refs: ${finding.evidenceRefs.join(", ") || "none"}`,
+  ].join("\n")
+
+const htmlFindingItem = (finding: AgentReadinessRenderedFinding): string =>
+  [
+    "<li>",
+    `<strong>[${escapeHtml(finding.severity)}] ${escapeHtml(finding.title)}</strong>`,
+    `<p>Impact: ${escapeHtml(finding.impact)}</p>`,
+    `<p>Commercial context: ${escapeHtml(finding.commercialContext)}</p>`,
+    `<p>Evidence refs: ${escapeHtml(finding.evidenceRefs.join(", ") || "none")}</p>`,
+    "</li>",
+  ].join("")
+
+const renderEmailPlainText = (
+  report: AgentReadinessReport,
+  findings: ReadonlyArray<AgentReadinessRenderedFinding>,
+): string => {
+  const heading = `Agent-readiness snapshot for ${report.domain}: ${report.score}/100 (${report.grade}), status ${report.status}.`
+  if (findings.length === 0) {
+    return [
+      heading,
+      "The current public probe set did not find blocking agent-readiness issues.",
+    ].join("\n")
+  }
+  return [
+    heading,
+    "Top findings:",
+    findings.map((finding, index) => plainFindingBlock(finding, index + 1)).join("\n"),
+  ].join("\n")
+}
+
+const renderEmailHtml = (
+  report: AgentReadinessReport,
+  findings: ReadonlyArray<AgentReadinessRenderedFinding>,
+): string => {
+  const heading = `Agent-readiness snapshot for ${report.domain}: ${report.score}/100 (${report.grade}), status ${report.status}.`
+  if (findings.length === 0) {
+    return [
+      `<section data-agent-readiness-report="${escapeHtml(report.domain)}">`,
+      `<p>${escapeHtml(heading)}</p>`,
+      "<p>The current public probe set did not find blocking agent-readiness issues.</p>",
+      "</section>",
+    ].join("")
+  }
+  return [
+    `<section data-agent-readiness-report="${escapeHtml(report.domain)}">`,
+    `<p>${escapeHtml(heading)}</p>`,
+    "<ol>",
+    findings.map(htmlFindingItem).join(""),
+    "</ol>",
+    "</section>",
+  ].join("")
+}
+
+const renderBumpPlainText = (
+  report: AgentReadinessReport,
+  finding: AgentReadinessRenderedFinding | null,
+): string => {
+  if (finding === null) {
+    return `No held-back bump finding for ${report.domain}.`
+  }
+  return [
+    `One more agent-readiness finding for ${report.domain}:`,
+    plainFindingBlock(finding, 1),
+  ].join("\n")
+}
+
+const renderBumpHtml = (
+  report: AgentReadinessReport,
+  finding: AgentReadinessRenderedFinding | null,
+): string => {
+  if (finding === null) {
+    return `<p>No held-back bump finding for ${escapeHtml(report.domain)}.</p>`
+  }
+  return [
+    `<section data-agent-readiness-bump="${escapeHtml(report.domain)}">`,
+    `<p>One more agent-readiness finding for ${escapeHtml(report.domain)}:</p>`,
+    "<ol>",
+    htmlFindingItem(finding),
+    "</ol>",
+    "</section>",
+  ].join("")
+}
+
+const renderInternalOperatorView = (
+  report: AgentReadinessReport,
+  input: {
+    readonly generatedAt: string
+    readonly operatorFindings: ReadonlyArray<AgentReadinessRenderedFinding>
+    readonly topFindings: ReadonlyArray<AgentReadinessRenderedFinding>
+    readonly heldBackFinding: AgentReadinessRenderedFinding | null
+  },
+): string => {
+  const originalByRef = new Map(
+    report.findings.map((finding) => [finding.findingRef, finding]),
+  )
+  const fullLedger =
+    input.operatorFindings.length === 0
+      ? "- No findings in the current public-safe report."
+      : input.operatorFindings
+          .map((finding, index) => {
+            const original = originalByRef.get(finding.findingRef)
+            const evidence = original?.evidence ?? []
+            const evidenceLines =
+              evidence.length === 0
+                ? "  - Evidence: none"
+                : evidence
+                    .map((item) =>
+                      `  - Evidence: ${item.ref} | ${item.status ?? "network"} | ${item.contentType ?? "unknown"} | ${item.url}`,
+                    )
+                    .join("\n")
+            return [
+              `${index + 1}. [${finding.severity}] ${finding.title}`,
+              `   Impact: ${finding.impact}`,
+              `   Commercial context: ${finding.commercialContext}`,
+              evidenceLines,
+            ].join("\n")
+          })
+          .join("\n")
+  return [
+    `# Agent-readiness operator review: ${report.domain}`,
+    "",
+    `Report generated: ${report.generatedAt}`,
+    `Rendered: ${input.generatedAt}`,
+    `Status: ${report.status}`,
+    `Score: ${report.score}/100`,
+    `Grade: ${report.grade}`,
+    "",
+    "## Email Step 1 Findings",
+    input.topFindings.length === 0
+      ? "- No findings selected for the first email."
+      : input.topFindings
+          .map((finding, index) => plainFindingBlock(finding, index + 1))
+          .join("\n"),
+    "",
+    "## Held-Back Bump Finding",
+    input.heldBackFinding === null
+      ? "- No held-back finding available."
+      : plainFindingBlock(input.heldBackFinding, 1),
+    "",
+    "## Full Internal Finding Ledger",
+    fullLedger,
+  ].join("\n")
+}
+
+export const renderAgentReadinessReport = (
+  report: AgentReadinessReport,
+  options: AgentReadinessReportRenderOptions = {},
+): AgentReadinessReportRender => {
+  const generatedAt = options.generatedAt ?? new Date().toISOString()
+  const sortedFindings = [...report.findings].sort(compareFindingsByPriority)
+  const operatorFindings = sortedFindings.map((finding) =>
+    renderFinding(finding, options),
+  )
+  const renderedByRef = new Map(
+    operatorFindings.map((finding) => [finding.findingRef, finding]),
+  )
+  const top = sortedFindings
+    .slice(0, 3)
+    .map((finding) => renderedByRef.get(finding.findingRef))
+    .filter((finding): finding is AgentReadinessRenderedFinding => finding !== undefined)
+  const heldBackFindingRef = sortedFindings[3]?.findingRef
+  const heldBackFinding =
+    heldBackFindingRef === undefined
+      ? null
+      : renderedByRef.get(heldBackFindingRef) ?? null
+  const persistenceMode = OPENAGENTS_CASE_STUDY_DOMAINS.has(report.domain)
+    ? "repo_case_study_allowed"
+    : "private_runtime_only"
+  const rendered = {
+    schemaVersion: AGENT_READINESS_REPORT_RENDER_SCHEMA_VERSION,
+    domain: report.domain,
+    generatedAt,
+    reportGeneratedAt: report.generatedAt,
+    reportStatus: report.status,
+    score: report.score,
+    grade: report.grade,
+    persistenceMode,
+    operatorFindings,
+    topFindings: top,
+    heldBackFinding,
+    internalOperatorView: renderInternalOperatorView(report, {
+      generatedAt,
+      operatorFindings,
+      topFindings: top,
+      heldBackFinding,
+    }),
+    emailBodyPlainText: renderEmailPlainText(report, top),
+    emailBodyHtml: renderEmailHtml(report, top),
+    bumpBodyPlainText: renderBumpPlainText(report, heldBackFinding),
+    bumpBodyHtml: renderBumpHtml(report, heldBackFinding),
+    sourceRefs: options.sourceRefs ?? [
+      ...report.sourceRefs,
+      "github:OpenAgentsInc/openagents#8266",
+    ],
+  }
+  return S.decodeUnknownSync(AgentReadinessReportRender)(rendered)
+}
+
+export const renderAgentReadinessCaseStudyArtifact = (
+  report: AgentReadinessReport,
+  options: AgentReadinessReportRenderOptions = {},
+): string => {
+  if (!OPENAGENTS_CASE_STUDY_DOMAINS.has(report.domain)) {
+    throw new Error(
+      "Only the OpenAgents own-domain report may be rendered as a repo-persisted case-study artifact.",
+    )
+  }
+  const rendered = renderAgentReadinessReport(report, options)
+  return [
+    "<!-- public-safe: generated only from the openagents.com agent-readiness fixture -->",
+    rendered.internalOperatorView,
+    "",
+    "## Sendable Plain Text Fragment",
+    "",
+    "```text",
+    rendered.emailBodyPlainText,
+    "```",
+    "",
+    "## Sendable HTML Fragment",
+    "",
+    "```html",
+    rendered.emailBodyHtml,
+    "```",
+    "",
+    "## Held-Back Bump Plain Text Fragment",
+    "",
+    "```text",
+    rendered.bumpBodyPlainText,
+    "```",
+  ].join("\n")
+}
+
 export type AgentReadinessCliArgs = Readonly<{
   command: "scan"
   domain: string | null
@@ -1231,6 +1582,9 @@ export const decodeAgentReadinessFinding = S.decodeUnknownSync(
   AgentReadinessFinding,
 )
 export const decodeAgentReadinessReport = S.decodeUnknownSync(AgentReadinessReport)
+export const decodeAgentReadinessReportRender = S.decodeUnknownSync(
+  AgentReadinessReportRender,
+)
 export const decodeAgentReadinessDomainTask = S.decodeUnknownSync(
   AgentReadinessDomainTask,
 )

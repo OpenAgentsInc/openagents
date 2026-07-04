@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  AGENT_READINESS_REPORT_RENDER_SCHEMA_VERSION,
   AGENT_READINESS_REPORT_SCHEMA_VERSION,
   agentReadinessTaskForDomain,
   decodeAgentReadinessReport,
+  decodeAgentReadinessReportRender,
   defaultAgentReadinessProbeSet,
   normalizeAgentReadinessTarget,
   parseAgentReadinessCliArgs,
+  renderAgentReadinessCaseStudyArtifact,
+  renderAgentReadinessReport,
   runAgentReadinessBatch,
   scanAgentReadinessDomain,
 } from "./index.js"
@@ -45,6 +49,20 @@ const openAgentsHomepage = `<!doctype html>
 </html>`
 
 const spaShell = `<!doctype html><html><head><title>SPA</title></head><body><div id="root"></div><script src="/assets/app.js"></script></body></html>`
+
+const openAgentsReportFixtureUrl = new URL(
+  "../fixtures/openagents-com-report.json",
+  import.meta.url,
+)
+const openAgentsRenderFixtureUrl = new URL(
+  "../fixtures/openagents-com-render-case-study.md",
+  import.meta.url,
+)
+
+const openAgentsReportFixture = async () =>
+  decodeAgentReadinessReport(
+    JSON.parse(await Bun.file(openAgentsReportFixtureUrl).text()) as unknown,
+  )
 
 const fixtureFetch = (kind: "openagents" | "spa"): typeof fetch =>
   (async (input, init) => {
@@ -199,5 +217,78 @@ describe("@openagentsinc/agent-readiness", () => {
       .toBe("openagents.com")
     expect(parseAgentReadinessCliArgs(["scan", "--batch", "domains.txt", "--concurrency", "2"]).batchFile)
       .toBe("domains.txt")
+  })
+
+  test("renders our own public-safe report as the case-study snapshot artifact", async () => {
+    const report = await openAgentsReportFixture()
+    const rendered = renderAgentReadinessCaseStudyArtifact(report, {
+      generatedAt: "2026-07-04T07:00:00.000Z",
+    })
+
+    expect(rendered).toBe(
+      (await Bun.file(openAgentsRenderFixtureUrl).text()).trimEnd(),
+    )
+    expect(renderAgentReadinessReport(report, {
+      generatedAt: "2026-07-04T07:00:00.000Z",
+    }).persistenceMode).toBe("repo_case_study_allowed")
+  })
+
+  test("renders prospect-style reports in memory with a separate held-back bump finding", async () => {
+    const report = await scanAgentReadinessDomain("broken-spa.example", {
+      fetch: fixtureFetch("spa"),
+      generatedAt: "2026-07-04T06:30:00.000Z",
+      minRequestIntervalMs: 0,
+    })
+    const contexts = Object.fromEntries(
+      report.findings.map((finding, index) => [
+        finding.findingRef,
+        index === 0
+          ? "Your <catalog> buyers lose the machine-readable path before evaluation."
+          : `Commercial context for ${finding.code} in a browser-based buying flow.`,
+      ]),
+    )
+    const rendered = renderAgentReadinessReport(report, {
+      commercialContextByFindingRef: contexts,
+      generatedAt: "2026-07-04T07:00:00.000Z",
+    })
+
+    expect(rendered.schemaVersion).toBe(AGENT_READINESS_REPORT_RENDER_SCHEMA_VERSION)
+    expect(decodeAgentReadinessReportRender(rendered)).toEqual(rendered)
+    expect(rendered.persistenceMode).toBe("private_runtime_only")
+    expect(rendered.topFindings).toHaveLength(3)
+    expect(rendered.heldBackFinding).not.toBeNull()
+    expect(rendered.emailBodyPlainText).toContain("Top findings:")
+    expect(rendered.emailBodyPlainText).toContain(rendered.topFindings[0]?.title)
+    expect(rendered.emailBodyPlainText).not.toContain(
+      rendered.heldBackFinding?.evidenceRefs[0] ?? "",
+    )
+    expect(rendered.bumpBodyPlainText).toContain(rendered.heldBackFinding?.title ?? "")
+    expect(rendered.bumpBodyPlainText).toContain(
+      rendered.heldBackFinding?.evidenceRefs[0] ?? "",
+    )
+    expect(rendered.emailBodyHtml).toContain("Your &lt;catalog&gt; buyers")
+    expect(rendered.emailBodyHtml).not.toContain("Your <catalog> buyers")
+    expect(() => renderAgentReadinessCaseStudyArtifact(report, {
+      commercialContextByFindingRef: contexts,
+      generatedAt: "2026-07-04T07:00:00.000Z",
+    })).toThrow(/own-domain report/)
+  })
+
+  test("requires one-line commercial context for every rendered finding", async () => {
+    const report = await scanAgentReadinessDomain("broken-spa.example", {
+      fetch: fixtureFetch("spa"),
+      generatedAt: "2026-07-04T06:30:00.000Z",
+      minRequestIntervalMs: 0,
+    })
+
+    expect(() => renderAgentReadinessReport(report, {
+      generatedAt: "2026-07-04T07:00:00.000Z",
+    })).toThrow(/Missing commercial context/)
+    expect(() => renderAgentReadinessReport(report, {
+      commercialContextByCode: {
+        agent_empty_shell: "This context is present only for one code.",
+      },
+      generatedAt: "2026-07-04T07:00:00.000Z",
+    })).toThrow(/Missing commercial context/)
   })
 })
