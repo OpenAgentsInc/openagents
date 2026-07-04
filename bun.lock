@@ -600,6 +600,41 @@
         "vitest": "^4.1.8",
       },
     },
+    "packages/khala-sync": {
+      "name": "@openagentsinc/khala-sync",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/khala-sync-client": {
+      "name": "@openagentsinc/khala-sync-client",
+      "version": "0.1.0",
+      "dependencies": {
+        "@openagentsinc/khala-sync": "workspace:*",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/khala-sync-server": {
+      "name": "@openagentsinc/khala-sync-server",
+      "version": "0.1.0",
+      "dependencies": {
+        "@openagentsinc/khala-sync": "workspace:*",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
     "packages/khala-tools": {
       "name": "@openagentsinc/khala-tools",
       "version": "0.1.0",
@@ -1118,6 +1153,12 @@
     "@openagentsinc/khala-code-desktop": ["@openagentsinc/khala-code-desktop@workspace:clients/khala-code-desktop"],
 
     "@openagentsinc/khala-qa-harness": ["@openagentsinc/khala-qa-harness@workspace:packages/khala-qa-harness"],
+
+    "@openagentsinc/khala-sync": ["@openagentsinc/khala-sync@workspace:packages/khala-sync"],
+
+    "@openagentsinc/khala-sync-client": ["@openagentsinc/khala-sync-client@workspace:packages/khala-sync-client"],
+
+    "@openagentsinc/khala-sync-server": ["@openagentsinc/khala-sync-server@workspace:packages/khala-sync-server"],
 
     "@openagentsinc/khala-tools": ["@openagentsinc/khala-tools@workspace:packages/khala-tools"],
 
