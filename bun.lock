@@ -730,6 +730,17 @@
         "typescript": "catalog:",
       },
     },
+    "packages/reactor-contracts": {
+      "name": "@openagentsinc/reactor-contracts",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
     "packages/replay-clips": {
       "name": "@openagentsinc/replay-clips",
       "version": "0.1.0",
@@ -1201,6 +1212,8 @@
     "@openagentsinc/pylon-runtime": ["@openagentsinc/pylon-runtime@workspace:apps/pylon/packages/runtime"],
 
     "@openagentsinc/qa-runner": ["@openagentsinc/qa-runner@workspace:apps/qa-runner"],
+
+    "@openagentsinc/reactor-contracts": ["@openagentsinc/reactor-contracts@workspace:packages/reactor-contracts"],
 
     "@openagentsinc/replay-clips": ["@openagentsinc/replay-clips@workspace:packages/replay-clips"],
 

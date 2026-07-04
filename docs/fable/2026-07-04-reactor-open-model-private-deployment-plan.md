@@ -153,7 +153,51 @@ Initial catalog seed (curation, not endorsement; every entry needs our own
 eval receipts before it carries capability copy): NVIDIA Nemotron family,
 Meta Llama family, OpenAI GPT-OSS, Google Gemma, Mistral/Magistral,
 Qwen family, DeepSeek family, Kimi/GLM — spanning the policy space so every
-constraint set above still resolves to a strong stack.
+constraint set above still resolves to a strong stack. RX-4 adds the first
+fixture eval refs for Meta Llama and OpenAI GPT-OSS only; every unrun
+model/task combination remains explicitly `not_measured`.
+
+RX-2 status (2026-07-04): `packages/reactor-contracts` now carries the
+typed `openagents.model_provenance.v1`, `openagents.reactor_model_catalog.v1`,
+`openagents.reactor.model_policy.v1`, and
+`openagents.reactor.model_policy_decision.v1` contracts, plus the curated seed
+and example policy resolver tests. This is contract-level evidence only:
+provisioner/router enforcement, eval receipts, model install receipts,
+air-gap update handling, dogfood/customer deployment, and public availability
+copy remain future RX items.
+
+RX-3 status (2026-07-04): `packages/reactor-contracts` now also carries the
+lane-neutral serving skeleton: `openagents.reactor.node_model_profile.v1`,
+model install/upgrade receipts, OpenAI-compatible route-decision receipts, and
+local token-metering receipts. The fixture server-class profile declares
+`servingLane: hydralisk`, vLLM, an offline-once-provisioned gateway, and exact
+local metering. Provisioning refuses nonconforming weights before pull; routing
+recomputes policy and refuses nonconforming models before serving, even if a
+caller presents a forged installed receipt. This is still a skeleton smoke, not
+a deployed Reactor node.
+
+RX-4 status (2026-07-04): `packages/reactor-contracts` now carries the
+Psionic-owned task-class harness profile, `openagents.reactor.model_eval_receipt.v1`,
+`openagents.reactor.eval_coverage_matrix.v1`, and
+`openagents.reactor.capability_copy_eval_decision.v1`. The seed has measured
+fixture receipts for OpenAI GPT-OSS and Meta Llama on drafting and extraction:
+GPT-OSS is labeled `rx3_served_model`; Llama is labeled
+`hosted_equivalent_large_model`. RAG-over-corpus, agent tool-use, and all other
+model/task cells are `not_measured`, never zero. Capability-copy decisions
+return only measured eval refs and block unmeasured task claims. This is still
+Reactor-side harness/receipt integration; Psionic runtime execution machinery
+is not reimplemented here.
+
+RX-5 status (2026-07-04): the install/ops path now has a fleet-executable
+runbook and smoke in `packages/reactor-contracts`. The new
+`openagents.reactor.airgap_update_bundle_manifest.v1` reuses the existing
+`apps/oa-updates` ed25519 release verifier/public-key pattern, requires
+`callbackRequired: false`, and feeds `openagents.reactor.install_ops_receipt.v1`
+fresh-install, upgrade, and rollback receipts. The smoke creates a clean temp
+node directory, verifies a signed fixture bundle, confirms tampering fails
+closed, writes install/upgrade/rollback receipts, and revalidates
+`reactor.model_policy.v1` on every model refresh. Hardware tier specs are
+guidance only, not purchase commitments.
 
 ## 4. Architecture (owned seams, honest state)
 
@@ -366,10 +410,10 @@ RX-11 [#8279](https://github.com/OpenAgentsInc/openagents/issues/8279).
 | Task | Description | Gate/receipt |
 | --- | --- | --- |
 | RX-1 | Registry records: `reactor.private_deployment.v1` (planned) + model-policy and provenance record family; modeled rate card staged for the owner sitting | Records live at planned; no copy |
-| RX-2 | Model catalog + `model_provenance.v1` / `reactor.model_policy.v1` schemas in a contracts package, with the initial curated seed and honest disclosure fields | Typed catalog with tests |
-| RX-3 | Policy-enforced serving skeleton: one node profile (server-class) on the **Hydralisk lane** (§4.1 default; contracts lane-neutral with `servingLane` declared per profile), gateway + router refusing non-conforming models, exact local metering | A policy violation is structurally impossible in the smoke |
-| RX-4 | Eval receipts: psionic-run task-class evals across the catalog seed (drafting, extraction, RAG, agent-tool-use). A score is a (model, harness) pair — every eval receipt carries a `harnessRef` naming the harness it was measured under (same-model harness variance ran 3.5%→80.1% in the 2026-07-04 harness-optimization audit) | Per-model, harness-attributed eval receipt refs the catalog can cite |
-| RX-5 | Install/ops runbook + air-gap update path (signed bundles), fleet-executable | Clean install on a fresh box from the runbook alone |
+| RX-2 | Model catalog + `model_provenance.v1` / `reactor.model_policy.v1` schemas in `packages/reactor-contracts`, with the initial curated seed and honest disclosure fields | Landed in source with resolver + tests; no runtime authority |
+| RX-3 | Policy-enforced serving skeleton: one node profile (server-class) on the **Hydralisk lane** (§4.1 default; contracts lane-neutral with `servingLane` declared per profile), gateway + router refusing non-conforming models, exact local metering | Landed in source with fixture-weight smoke; no deployed node |
+| RX-4 | Eval receipts: psionic-run task-class evals across the catalog seed (drafting, extraction, RAG, agent-tool-use). A score is a (model, harness) pair — every eval receipt carries a `harnessRef` naming the harness it was measured under (same-model harness variance ran 3.5%→80.1% in the 2026-07-04 harness-optimization audit) | Landed Reactor-side with measured 2 models × 2 task-class fixture receipts, hosted-equivalent labels, and `not_measured` coverage cells; Psionic runtime remains separate |
+| RX-5 | Install/ops runbook + air-gap update path (signed bundles), fleet-executable | Landed runbook, signed-bundle manifest, install/upgrade/rollback receipts, and clean-temp smoke; no deployed node |
 | RX-6 | Dogfood deployment: Reactor node on our own hardware running a real internal workload under a strict policy (e.g. `us`-only) — customer number one, again | Metering + policy receipts from our own node |
 | RX-7 | First customer pilot (likely the legal design partner's stated ask), BF-3.1/3.2 gated, opaque refs only | First paid Reactor receipt |
 | RX-8 | Lead Gen segment: model-custody analyzer angle + Reactor sequence for regulated verticals | Quoted Reactor pipeline via Autopilot Lead Gen |

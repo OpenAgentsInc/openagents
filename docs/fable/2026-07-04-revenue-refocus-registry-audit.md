@@ -74,8 +74,14 @@ purpose** as the standing overclaim marker the Lead Gen plans depend on.
 `marketplace.*` record was already planned; the Reactor records
 (`reactor.private_deployment.v1`, `reactor.model_provenance.v1`,
 `reactor.model_policy.v1`) landed planned in `2026-07-04.7` (RX-1 #8271).
-The one current-plan record still missing is `autopilot.lead_gen.v1` —
-deliberately left to LG-7 (#8268), whose scope already includes it.
+RX-2 (#8272) later added `packages/reactor-contracts` as source evidence for
+the provenance catalog and policy resolver while keeping those records planned.
+RX-3 (#8273) then added the lane-neutral serving skeleton, Hydralisk fixture
+profile, policy-refusing provision/router smoke, and exact local metering
+receipt shape while still leaving live Reactor deployment planned.
+The one current-plan record still missing at the time of this audit was
+`autopilot.lead_gen.v1` - deliberately left to LG-7 (#8268), whose scope
+already included it.
 
 **Demotion semantics (important):** planned here is a *focus statement*,
 not an evidence judgment. Every demoted record keeps its evidence refs,
@@ -126,6 +132,19 @@ routing) and RX-1..11 (Reactor: records ✅, provenance/policy schemas,
 policy-enforced Hydralisk-lane serving, harness-attributed eval receipts,
 air-gap install, dogfood node, need-to-know layer, data liberation,
 improvement ladder, gated pilot, model-custody segment).
+
+RX-4 note (2026-07-04): the Reactor-side eval receipt integration landed in
+`packages/reactor-contracts`: Psionic-owned task-class harness profile,
+measured fixture receipts for GPT-OSS and Llama across drafting/extraction,
+hosted-equivalent labels where applicable, a catalog-cited evalRef set, and
+`not_measured` coverage cells for unrun task/model combinations. This is not
+Psionic execution machinery and not deployed Reactor capability evidence.
+
+RX-5 note (2026-07-04): the Reactor install/air-gap path landed as a runbook,
+typed signed-bundle manifest, install/upgrade/rollback receipt helpers, and a
+clean-temp smoke that uses the existing `apps/oa-updates` ed25519 verifier
+pattern. It clears the air-gap path blocker only; no customer or dogfood node
+has been deployed.
 
 ## 3. The focus: closing the revenue loop, independence-first
 

@@ -158,6 +158,14 @@ missing pipeline/payment legs report `not_measured`. Payout mechanics, public
 affiliate signup, and earning copy remain gated by the red
 `referral.refer_once_earn_forever.v1` record.
 
+BF-8.5 status note (2026-07-04): LG-9 adds manual partner-route bookkeeping to
+BF-9.2 pipeline rows only. Rows can be `candidate`, `offered`, `accepted`, or
+`declined` with opaque peer/offer refs, and `offered` requires an operator
+approval receipt. Quoted routed rows count as pipeline with
+`provenanceLabel="partner"`. The BF-8.5 section 8 gate still blocks
+automation, settlement, payout copy, public peer signup, and marketplace launch
+claims.
+
 ### BF-9 — Ops discipline (cross-cutting)
 
 | Task | Description | Receipt/gate |
