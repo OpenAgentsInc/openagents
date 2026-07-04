@@ -5,7 +5,11 @@ import type { AgentDefinitionInboundWebhookCondition } from "./index.js"
 export const AgentDefinitionWebhookNormalizedEventSchemaLiteral =
   "openagents.agent_definition_webhook_event.v1" as const
 
-export const AgentDefinitionWebhookSource = S.Literals(["github", "forum"])
+export const AgentDefinitionWebhookSource = S.Literals([
+  "github",
+  "forum",
+  "slack",
+])
 export type AgentDefinitionWebhookSource =
   typeof AgentDefinitionWebhookSource.Type
 
@@ -339,6 +343,121 @@ const forumSourceRefs = (
   return refs
 }
 
+const slackEventRecord = (
+  payload: Record<string, unknown>,
+): Record<string, unknown> | undefined => asRecord(payload.event)
+
+const slackTeamId = (
+  payload: Record<string, unknown>,
+  event: Record<string, unknown> | undefined,
+): string | undefined => stringValue(payload.team_id) ?? stringValue(event?.team)
+
+const slackEventPayload = (
+  payload: Record<string, unknown>,
+  eventType: string,
+): Record<string, unknown> => {
+  const event = slackEventRecord(payload)
+  const teamId = slackTeamId(payload, event)
+  const channelId = stringValue(event?.channel)
+  const channelType = stringValue(event?.channel_type)
+  const userId = stringValue(event?.user)
+  const botId = stringValue(event?.bot_id)
+  const messageTs = stringValue(event?.ts)
+  const threadTs = stringValue(event?.thread_ts)
+  const eventTs = stringValue(event?.event_ts) ?? messageTs
+  const subtype = stringValue(event?.subtype)
+  const team = optionalObject([["id", teamId]])
+  const channel = optionalObject([
+    ["id", channelId],
+    ["type", channelType],
+  ])
+  const actor = optionalObject([
+    ["user_id", userId],
+    ["bot_id", botId],
+  ])
+  const message = optionalObject([
+    ["ts", messageTs],
+    ["thread_ts", threadTs],
+    ["event_ts", eventTs],
+  ])
+
+  return optionalObject([
+    ["event", eventType],
+    ["type", stringValue(event?.type)],
+    ["subtype", subtype],
+    ["event_time", numberValue(payload.event_time)],
+    ["team", Object.keys(team).length === 0 ? undefined : team],
+    ["channel", Object.keys(channel).length === 0 ? undefined : channel],
+    ["actor", Object.keys(actor).length === 0 ? undefined : actor],
+    ["message", Object.keys(message).length === 0 ? undefined : message],
+  ])
+}
+
+const slackSubjectRef = (
+  payload: Record<string, unknown>,
+  deliveryId: string,
+): string => {
+  const event = slackEventRecord(payload)
+  const teamId = slackTeamId(payload, event)
+  const channelId = stringValue(event?.channel)
+  const messageTs = stringValue(event?.ts) ?? stringValue(event?.event_ts)
+  const threadTs = stringValue(event?.thread_ts)
+
+  if (teamId !== undefined && channelId !== undefined && threadTs !== undefined) {
+    return `slack.team.${compactRefSegment(teamId)}.channel.${compactRefSegment(channelId)}.thread.${compactRefSegment(threadTs)}`
+  }
+
+  if (teamId !== undefined && channelId !== undefined && messageTs !== undefined) {
+    return `slack.team.${compactRefSegment(teamId)}.channel.${compactRefSegment(channelId)}.message.${compactRefSegment(messageTs)}`
+  }
+
+  if (teamId !== undefined && channelId !== undefined) {
+    return `slack.team.${compactRefSegment(teamId)}.channel.${compactRefSegment(channelId)}.event.${compactRefSegment(deliveryId)}`
+  }
+
+  if (teamId !== undefined) {
+    return `slack.team.${compactRefSegment(teamId)}.event.${compactRefSegment(deliveryId)}`
+  }
+
+  return `slack.event.${compactRefSegment(deliveryId)}`
+}
+
+const slackSourceRefs = (
+  payload: Record<string, unknown>,
+  deliveryId: string,
+): ReadonlyArray<string> => {
+  const event = slackEventRecord(payload)
+  const teamId = slackTeamId(payload, event)
+  const channelId = stringValue(event?.channel)
+  const messageTs = stringValue(event?.ts) ?? stringValue(event?.event_ts)
+  const threadTs = stringValue(event?.thread_ts)
+  const refs = [`slack.event.${compactRefSegment(deliveryId)}`]
+
+  if (teamId !== undefined) {
+    refs.push(`slack.team.${compactRefSegment(teamId)}`)
+  }
+
+  if (teamId !== undefined && channelId !== undefined) {
+    refs.push(
+      `slack.channel.${compactRefSegment(teamId)}.${compactRefSegment(channelId)}`,
+    )
+  }
+
+  if (teamId !== undefined && channelId !== undefined && messageTs !== undefined) {
+    refs.push(
+      `slack.message.${compactRefSegment(teamId)}.${compactRefSegment(channelId)}.${compactRefSegment(messageTs)}`,
+    )
+  }
+
+  if (teamId !== undefined && channelId !== undefined && threadTs !== undefined) {
+    refs.push(
+      `slack.thread.${compactRefSegment(teamId)}.${compactRefSegment(channelId)}.${compactRefSegment(threadTs)}`,
+    )
+  }
+
+  return refs
+}
+
 export const normalizeGitHubWebhookEvent = (
   input: Readonly<{
     deliveryId: string
@@ -429,6 +548,37 @@ export const normalizeForumWebhookEvent = (
     receivedAt: input.receivedAt,
     payload: forumPayload({ ...input.payload, eventType }),
     sourceRefs: forumSourceRefs(input.payload, deliveryId),
+  }
+}
+
+export const normalizeSlackWebhookEvent = (
+  input: Readonly<{
+    deliveryId: string
+    payload: Record<string, unknown>
+    receivedAt: string
+  }>,
+): AgentDefinitionWebhookNormalizedEvent | undefined => {
+  const deliveryId = input.deliveryId.trim()
+  const event = slackEventRecord(input.payload)
+  const type = stringValue(event?.type)
+  const subtype = stringValue(event?.subtype)
+  const teamId = slackTeamId(input.payload, event)
+
+  if (deliveryId === "" || event === undefined || type === undefined || teamId === undefined) {
+    return undefined
+  }
+
+  const eventType = subtype === undefined ? type : `${type}.${subtype}`
+
+  return {
+    schema: AgentDefinitionWebhookNormalizedEventSchemaLiteral,
+    source: "slack",
+    eventType,
+    deliveryId,
+    subjectRef: slackSubjectRef(input.payload, deliveryId),
+    receivedAt: input.receivedAt,
+    payload: slackEventPayload(input.payload, eventType),
+    sourceRefs: slackSourceRefs(input.payload, deliveryId),
   }
 }
 

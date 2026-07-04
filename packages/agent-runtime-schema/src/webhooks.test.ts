@@ -4,6 +4,7 @@ import {
   agentDefinitionWebhookConditionsMatch,
   normalizeForumWebhookEvent,
   normalizeGitHubWebhookEvent,
+  normalizeSlackWebhookEvent,
 } from "./webhooks.js"
 
 const githubIssuePayload = {
@@ -80,6 +81,25 @@ const forumPostPayload = {
   topicSlug: "ship-background-agents",
   topicState: "open",
   topicTitle: "Ship background agents",
+}
+
+const slackMessagePayload = {
+  api_app_id: "A_BACKGROUND_AGENT",
+  event: {
+    channel: "C_BACKGROUND",
+    channel_type: "channel",
+    event_ts: "1783152000.000200",
+    text:
+      "Secret-ish Slack message body must never become trigger payload or ledger material.",
+    ts: "1783152000.000100",
+    type: "message",
+    user: "U_OWNER",
+  },
+  event_id: "Ev_BACKGROUND_8214",
+  event_time: 1783152000,
+  team_id: "T_OPENAGENTS",
+  token: "legacy-verification-token-is-not-authority",
+  type: "event_callback",
 }
 
 describe("agent definition webhook normalization", () => {
@@ -291,5 +311,61 @@ describe("agent definition webhook normalization", () => {
         pattern: "background agents",
       },
     ])).toBe(true)
+  })
+
+  test("normalizes Slack message events into bounded refs without raw text", () => {
+    // background_agents.inbox.slack_event_ledger_ingest.v1
+    const event = normalizeSlackWebhookEvent({
+      deliveryId: "Ev_BACKGROUND_8214",
+      payload: slackMessagePayload,
+      receivedAt: "2026-07-04T02:00:00.000Z",
+    })
+
+    expect(event).toMatchObject({
+      schema: "openagents.agent_definition_webhook_event.v1",
+      source: "slack",
+      eventType: "message",
+      deliveryId: "Ev_BACKGROUND_8214",
+      subjectRef:
+        "slack.team.T_OPENAGENTS.channel.C_BACKGROUND.message.1783152000.000100",
+      payload: {
+        actor: {
+          user_id: "U_OWNER",
+        },
+        channel: {
+          id: "C_BACKGROUND",
+          type: "channel",
+        },
+        event: "message",
+        message: {
+          event_ts: "1783152000.000200",
+          ts: "1783152000.000100",
+        },
+        team: {
+          id: "T_OPENAGENTS",
+        },
+      },
+      sourceRefs: [
+        "slack.event.Ev_BACKGROUND_8214",
+        "slack.team.T_OPENAGENTS",
+        "slack.channel.T_OPENAGENTS.C_BACKGROUND",
+        "slack.message.T_OPENAGENTS.C_BACKGROUND.1783152000.000100",
+      ],
+    })
+    expect(agentDefinitionWebhookConditionsMatch(event!, [
+      {
+        kind: "event_type",
+        equals: "message",
+      },
+      {
+        kind: "json_path_equals",
+        path: "$.channel.id",
+        equals: "C_BACKGROUND",
+      },
+    ])).toBe(true)
+    expect(JSON.stringify(event?.payload)).not.toContain("Secret-ish")
+    expect(JSON.stringify(event?.payload)).not.toContain(
+      "legacy-verification-token",
+    )
   })
 })

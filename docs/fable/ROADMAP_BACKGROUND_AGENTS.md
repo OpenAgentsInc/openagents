@@ -417,6 +417,18 @@ redacts by `secretPolicy`; handled-state updates require
 definition before the ledger row is touched. The BA-H2 behavior contract is
 `background_agents.inbox.event_ledger_handled_gateway_redacted.v1`.
 
+BA-H3 status (2026-07-04): Slack Events API callbacks now enter the same
+private event ledger path through `/v1/agent-definitions/webhooks/slack`.
+The route verifies Slack `v0` HMAC signatures plus the replay timestamp before
+normalizing, matches only owner-scoped `source: "slack"` trigger rows, and
+enqueues one ledger message per matched owner. Migration
+`0287_event_ledger_slack_source.sql` widens the D1 source contract to
+`github|slack` while preserving BA-H2 handled-state columns. Slack rows store
+bounded team/channel/actor/message timestamp refs and summaries only; raw
+Slack message text, Slack signatures, tokens, and webhook bodies stay out of
+trigger payloads and ledger rows. The BA-H3 behavior contract is
+`background_agents.inbox.slack_event_ledger_ingest.v1`.
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-H1 | `event_ledger.v1`: Queues ingest → D1 rows (source, externalRef, actor, content ref, timestamps) + per-owner DO for ordering/dedup; GitHub source first; owner-scoped, never training data, never leaves the account boundary | BA-B3 | MED | [#8212](https://github.com/OpenAgentsInc/openagents/issues/8212) |
@@ -441,6 +453,7 @@ the oracle rather than leaving the rule as INVARIANTS prose:
 - BA-G2 → `background_agents.integrations.github_mention_callback.v1`
 - BA-H1 → `background_agents.inbox.event_ledger_owner_scoped_private.v1`
 - BA-H2 → `background_agents.inbox.event_ledger_handled_gateway_redacted.v1`
+- BA-H3 → `background_agents.inbox.slack_event_ledger_ingest.v1`
 - BA-G4 → an indicator-truthfulness UX contract for the Agents panel's
   run-status indicators, written **before** the panel ships (the
   `khala_code.chat.sidebar_spinner_streaming_only.v1` bug class)

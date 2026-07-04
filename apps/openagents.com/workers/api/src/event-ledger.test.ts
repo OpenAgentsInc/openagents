@@ -2,7 +2,10 @@ import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 
 import { decodeAgentDefinition } from '@openagentsinc/agent-runtime-schema'
-import { normalizeGitHubWebhookEvent } from '@openagentsinc/agent-runtime-schema/webhooks'
+import {
+  normalizeGitHubWebhookEvent,
+  normalizeSlackWebhookEvent,
+} from '@openagentsinc/agent-runtime-schema/webhooks'
 import { Schema as S } from 'effect'
 import { describe, expect, test } from 'vitest'
 
@@ -119,11 +122,16 @@ const eventLedgerHandledStateMigration = readFileSync(
   new URL('../migrations/0286_event_ledger_handled_state.sql', import.meta.url),
   'utf8',
 )
+const eventLedgerSlackSourceMigration = readFileSync(
+  new URL('../migrations/0287_event_ledger_slack_source.sql', import.meta.url),
+  'utf8',
+)
 
 const makeDb = (): D1Database => {
   const raw = new DatabaseSync(':memory:')
   raw.exec(eventLedgerMigration)
   raw.exec(eventLedgerHandledStateMigration)
+  raw.exec(eventLedgerSlackSourceMigration)
 
   return new SqliteD1(raw) as unknown as D1Database
 }
@@ -162,6 +170,25 @@ const githubMentionCommentPayload = {
   },
 }
 
+const slackMessagePayload = {
+  api_app_id: 'A_BACKGROUND_AGENT',
+  event: {
+    channel: 'C_BACKGROUND',
+    channel_type: 'channel',
+    event_ts: '1783152000.000200',
+    text:
+      'Secret-ish Slack body must not be stored in the event ledger.',
+    ts: '1783152000.000100',
+    type: 'message',
+    user: 'U_OWNER',
+  },
+  event_id: 'Ev_BACKGROUND_8214',
+  event_time: 1783152000,
+  team_id: 'T_OPENAGENTS',
+  token: 'legacy-verification-token-is-not-authority',
+  type: 'event_callback',
+}
+
 const triggerRecord = (
   ownerAgentUserId: string,
 ): DueAgentDefinitionTriggerRecord => ({
@@ -184,12 +211,46 @@ const triggerRecord = (
   updatedAt: '2026-07-04T00:00:00.000Z',
 })
 
+const slackTriggerRecord = (
+  ownerAgentUserId: string,
+): DueAgentDefinitionTriggerRecord => ({
+  schema: 'openagents.agent_definition_trigger.v1',
+  consecutiveFailures: 0,
+  createdAt: '2026-07-04T00:00:00.000Z',
+  definitionId: 'agent_definition.public.event_ledger',
+  ownerAgentUserId,
+  ownerRef: `agent:${ownerAgentUserId}`,
+  state: 'enabled',
+  trigger: {
+    conditions: [{ equals: 'message', kind: 'event_type' }],
+    kind: 'inbound_webhook',
+    source: 'slack',
+    triggerRef: 'trigger.public.event_ledger.slack_messages',
+  },
+  triggerId:
+    'agent_definition.public.event_ledger:trigger.public.event_ledger.slack_messages',
+  triggerRef: 'trigger.public.event_ledger.slack_messages',
+  updatedAt: '2026-07-04T00:00:00.000Z',
+})
+
 const normalizedGitHubMentionEvent = () => {
   const event = normalizeGitHubWebhookEvent({
     deliveryId: 'delivery-8212',
     eventName: 'issue_comment',
     payload: githubMentionCommentPayload,
     receivedAt: '2026-07-04T00:05:00.000Z',
+  })
+
+  expect(event).toBeDefined()
+
+  return event!
+}
+
+const normalizedSlackMessageEvent = () => {
+  const event = normalizeSlackWebhookEvent({
+    deliveryId: 'Ev_BACKGROUND_8214',
+    payload: slackMessagePayload,
+    receivedAt: '2026-07-04T02:00:00.000Z',
   })
 
   expect(event).toBeDefined()
@@ -257,6 +318,49 @@ describe('event ledger ingest', () => {
       ),
     ).toMatchObject(message!)
     expect(JSON.stringify(message)).not.toContain('Secret-ish')
+  })
+
+  test('builds a Slack queue message with owner scope and without raw message text', () => {
+    // background_agents.inbox.slack_event_ledger_ingest.v1
+    const message = eventLedgerMessageForMatchedTrigger(
+      normalizedSlackMessageEvent(),
+      slackTriggerRecord('agent_user_owner_a'),
+    )
+
+    expect(message).toBeDefined()
+    expect(message).toMatchObject({
+      schemaVersion: EVENT_LEDGER_INGEST_QUEUE_SCHEMA_VERSION,
+      actorRef: 'slack.user.U_OWNER',
+      contentRef:
+        'slack.message.T_OPENAGENTS.C_BACKGROUND.1783152000.000100',
+      eventType: 'message',
+      externalRef: 'slack.event.Ev_BACKGROUND_8214',
+      ownerAgentUserId: 'agent_user_owner_a',
+      source: 'slack',
+      subjectRef:
+        'slack.team.T_OPENAGENTS.channel.C_BACKGROUND.message.1783152000.000100',
+      trainingConsent: false,
+    })
+    expect(
+      S.decodeUnknownSync(EventLedgerIngestQueueMessage)(
+        JSON.parse(JSON.stringify(message)),
+      ),
+    ).toMatchObject({
+      actorRef: 'slack.user.U_OWNER',
+      contentRef:
+        'slack.message.T_OPENAGENTS.C_BACKGROUND.1783152000.000100',
+      externalRef: 'slack.event.Ev_BACKGROUND_8214',
+      payloadSummary: {
+        actorUserId: 'U_OWNER',
+        channelId: 'C_BACKGROUND',
+        event: 'message',
+        messageTs: '1783152000.000100',
+        teamId: 'T_OPENAGENTS',
+      },
+      source: 'slack',
+    })
+    expect(JSON.stringify(message)).not.toContain('Secret-ish')
+    expect(JSON.stringify(message)).not.toContain('legacy-verification-token')
   })
 
   test('persists D1 rows with per-owner ordering and idempotent dedup', async () => {
@@ -347,6 +451,57 @@ describe('event ledger ingest', () => {
         ownerAgentUserId: 'agent_user_owner_b',
       }),
     ).toHaveLength(1)
+  })
+
+  test('persists Slack D1 rows under the same owner-scoped privacy contract', async () => {
+    // background_agents.inbox.slack_event_ledger_ingest.v1
+    const db = makeDb()
+    const store = makeD1EventLedgerStore(db)
+    const sequenceStore = new MemoryOwnerSequenceStore()
+    const message = eventLedgerMessageForMatchedTrigger(
+      normalizedSlackMessageEvent(),
+      slackTriggerRecord('agent_user_owner_a'),
+    )
+    expect(message).toBeDefined()
+
+    const outcome = await recordEventLedgerIngestMessage(
+      {
+        nowIso: () => '2026-07-04T02:01:00.000Z',
+        sequenceStore,
+        store,
+      },
+      message!,
+    )
+
+    expect(outcome).toMatchObject({
+      duplicate: false,
+      orderingSequence: 1,
+      ownerAgentUserId: 'agent_user_owner_a',
+      persisted: true,
+      source: 'slack',
+    })
+
+    const ownerRows = await store.listOwnerEntries({
+      limit: 10,
+      ownerAgentUserId: 'agent_user_owner_a',
+    })
+
+    expect(ownerRows).toHaveLength(1)
+    expect(ownerRows[0]).toMatchObject({
+      actorRef: 'slack.user.U_OWNER',
+      contentRef:
+        'slack.message.T_OPENAGENTS.C_BACKGROUND.1783152000.000100',
+      handledState: 'open',
+      orderingSequence: 1,
+      source: 'slack',
+      subjectRef:
+        'slack.team.T_OPENAGENTS.channel.C_BACKGROUND.message.1783152000.000100',
+      trainingConsent: false,
+    })
+    expect(JSON.stringify(ownerRows[0])).not.toContain('Secret-ish')
+    expect(JSON.stringify(ownerRows[0])).not.toContain(
+      'legacy-verification-token',
+    )
   })
 
   test('records handled-state with the touching run and definition', async () => {

@@ -26,6 +26,8 @@ export const EventLedgerHandledState = S.Literals([
 export type EventLedgerHandledState = typeof EventLedgerHandledState.Type
 
 const EventLedgerPayloadSummary = S.Record(S.String, S.Unknown)
+export const EventLedgerSource = S.Literals(['github', 'slack'])
+export type EventLedgerSource = typeof EventLedgerSource.Type
 
 export class EventLedgerIngestQueueMessage extends S.Class<EventLedgerIngestQueueMessage>(
   'EventLedgerIngestQueueMessage',
@@ -40,7 +42,7 @@ export class EventLedgerIngestQueueMessage extends S.Class<EventLedgerIngestQueu
   ownerRef: S.String,
   payloadSummary: EventLedgerPayloadSummary,
   receivedAt: S.String,
-  source: S.Literal('github'),
+  source: EventLedgerSource,
   sourceRefs: S.Array(S.String),
   subjectRef: S.String,
   trainingConsent: S.Literal(false),
@@ -75,7 +77,7 @@ type EventLedgerEntryRow = Readonly<{
   owner_ref: string
   payload_summary_json: string
   received_at: string
-  source: 'github'
+  source: EventLedgerSource
   source_refs_json: string
   subject_ref: string
   training_consent: number
@@ -101,7 +103,7 @@ export type EventLedgerEntry = Readonly<{
   ownerRef: string
   payloadSummary: Record<string, unknown>
   receivedAt: string
-  source: 'github'
+  source: EventLedgerSource
   sourceRefs: ReadonlyArray<string>
   subjectRef: string
   trainingConsent: false
@@ -222,28 +224,113 @@ const githubPayloadSummary = (
   }
 }
 
+const slackDeliveryRef = (
+  event: AgentDefinitionWebhookNormalizedEvent,
+): string =>
+  event.sourceRefs.find(ref => ref.startsWith('slack.event.')) ??
+  `slack.event.${compactRefSegment(event.deliveryId)}`
+
+const slackContentRef = (
+  event: AgentDefinitionWebhookNormalizedEvent,
+): string =>
+  event.sourceRefs.find(ref => ref.startsWith('slack.message.')) ??
+  event.sourceRefs.find(ref => ref.startsWith('slack.thread.')) ??
+  event.sourceRefs.find(ref => ref.startsWith('slack.channel.')) ??
+  event.subjectRef
+
+const slackActorRef = (
+  event: AgentDefinitionWebhookNormalizedEvent,
+): string => {
+  const actor = recordValue(event.payload.actor)
+  const userId = stringValue(actor?.user_id)
+  const botId = stringValue(actor?.bot_id)
+
+  if (userId !== undefined) {
+    return `slack.user.${compactRefSegment(userId)}`
+  }
+
+  if (botId !== undefined) {
+    return `slack.bot.${compactRefSegment(botId)}`
+  }
+
+  return 'slack.actor.unknown'
+}
+
+const slackPayloadSummary = (
+  event: AgentDefinitionWebhookNormalizedEvent,
+): Record<string, unknown> => {
+  const team = recordValue(event.payload.team)
+  const channel = recordValue(event.payload.channel)
+  const actor = recordValue(event.payload.actor)
+  const message = recordValue(event.payload.message)
+
+  return {
+    actorBotId: stringValue(actor?.bot_id),
+    actorUserId: stringValue(actor?.user_id),
+    channelId: stringValue(channel?.id),
+    channelType: stringValue(channel?.type),
+    event: stringValue(event.payload.event),
+    eventTime: numberValue(event.payload.event_time),
+    eventTs: stringValue(message?.event_ts),
+    messageTs: stringValue(message?.ts),
+    subtype: stringValue(event.payload.subtype),
+    teamId: stringValue(team?.id),
+    threadTs: stringValue(message?.thread_ts),
+    type: stringValue(event.payload.type),
+  }
+}
+
+const eventLedgerGithubMessageForMatchedTrigger = (
+  event: AgentDefinitionWebhookNormalizedEvent,
+  trigger: DueAgentDefinitionTriggerRecord,
+): EventLedgerIngestQueueMessage =>
+  new EventLedgerIngestQueueMessage({
+    schemaVersion: EVENT_LEDGER_INGEST_QUEUE_SCHEMA_VERSION,
+    actorRef: githubActorRef(event),
+    contentRef: githubContentRef(event),
+    eventType: event.eventType,
+    externalRef: githubDeliveryRef(event),
+    occurredAt: event.receivedAt,
+    ownerAgentUserId: trigger.ownerAgentUserId,
+    ownerRef: trigger.ownerRef,
+    payloadSummary: githubPayloadSummary(event),
+    receivedAt: event.receivedAt,
+    source: 'github',
+    sourceRefs: event.sourceRefs,
+    subjectRef: event.subjectRef,
+    trainingConsent: false,
+  })
+
+const eventLedgerSlackMessageForMatchedTrigger = (
+  event: AgentDefinitionWebhookNormalizedEvent,
+  trigger: DueAgentDefinitionTriggerRecord,
+): EventLedgerIngestQueueMessage =>
+  new EventLedgerIngestQueueMessage({
+    schemaVersion: EVENT_LEDGER_INGEST_QUEUE_SCHEMA_VERSION,
+    actorRef: slackActorRef(event),
+    contentRef: slackContentRef(event),
+    eventType: event.eventType,
+    externalRef: slackDeliveryRef(event),
+    occurredAt: event.receivedAt,
+    ownerAgentUserId: trigger.ownerAgentUserId,
+    ownerRef: trigger.ownerRef,
+    payloadSummary: slackPayloadSummary(event),
+    receivedAt: event.receivedAt,
+    source: 'slack',
+    sourceRefs: event.sourceRefs,
+    subjectRef: event.subjectRef,
+    trainingConsent: false,
+  })
+
 export const eventLedgerMessageForMatchedTrigger = (
   event: AgentDefinitionWebhookNormalizedEvent,
   trigger: DueAgentDefinitionTriggerRecord,
 ): EventLedgerIngestQueueMessage | undefined =>
-  event.source !== 'github'
-    ? undefined
-    : new EventLedgerIngestQueueMessage({
-        schemaVersion: EVENT_LEDGER_INGEST_QUEUE_SCHEMA_VERSION,
-        actorRef: githubActorRef(event),
-        contentRef: githubContentRef(event),
-        eventType: event.eventType,
-        externalRef: githubDeliveryRef(event),
-        occurredAt: event.receivedAt,
-        ownerAgentUserId: trigger.ownerAgentUserId,
-        ownerRef: trigger.ownerRef,
-        payloadSummary: githubPayloadSummary(event),
-        receivedAt: event.receivedAt,
-        source: 'github',
-        sourceRefs: event.sourceRefs,
-        subjectRef: event.subjectRef,
-        trainingConsent: false,
-      })
+  event.source === 'github'
+    ? eventLedgerGithubMessageForMatchedTrigger(event, trigger)
+    : event.source === 'slack'
+      ? eventLedgerSlackMessageForMatchedTrigger(event, trigger)
+      : undefined
 
 const entryIdFor = (
   message: EventLedgerIngestQueueMessage,
@@ -434,7 +521,7 @@ export type EventLedgerGatewayEntry = Readonly<{
   orderingSequence: number
   receivedAt: string
   redactionClass: 'owner_scoped_refs' | 'state_only'
-  source: 'github'
+  source: EventLedgerSource
   sourceRefs?: ReadonlyArray<string>
   subjectRef?: string
 }>

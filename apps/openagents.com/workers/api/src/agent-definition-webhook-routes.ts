@@ -1,6 +1,7 @@
 import {
   normalizeForumWebhookEvent,
   normalizeGitHubWebhookEvent,
+  normalizeSlackWebhookEvent,
   type AgentDefinitionWebhookNormalizedEvent,
 } from '@openagentsinc/agent-runtime-schema/webhooks'
 import { Effect, Schema as S } from 'effect'
@@ -24,7 +25,7 @@ import {
 } from './agent-definition-bot-integration'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { parseJsonRecord } from './json-boundary'
-import { currentIsoTimestamp } from './runtime-primitives'
+import { currentEpochMillis, currentIsoTimestamp } from './runtime-primitives'
 
 const encoder = new TextEncoder()
 const GITHUB_WEBHOOK_PATH = '/v1/agent-definitions/webhooks/github'
@@ -33,12 +34,22 @@ const GITHUB_COMPLETION_PATH =
 const FORUM_WEBHOOK_PATH = '/v1/agent-definitions/webhooks/forum'
 const FORUM_COMPLETION_PATH =
   '/v1/agent-definitions/webhooks/forum/completions'
+const SLACK_WEBHOOK_PATH = '/v1/agent-definitions/webhooks/slack'
+const SLACK_SIGNATURE_VERSION = 'v0'
+const SLACK_SIGNATURE_MAX_SKEW_SECONDS = 5 * 60
 
 export type AgentDefinitionWebhookRouteDependencies =
   AgentDefinitionBotIntegrationDependencies & Readonly<{
     githubMentionLogins?: ReadonlyArray<string> | undefined
     githubSecret?: string | undefined
     nowIso?: (() => string) | undefined
+  }>
+
+export type AgentDefinitionSlackWebhookRouteDependencies =
+  AgentDefinitionBotIntegrationDependencies & Readonly<{
+    nowEpochSeconds?: (() => number) | undefined
+    nowIso?: (() => string) | undefined
+    slackSecret?: string | undefined
   }>
 
 export type AgentDefinitionForumWebhookRouteDependencies =
@@ -141,6 +152,44 @@ export const verifyOpenAgentsWebhookSignature = async (
   const expected = await hmacSha256Hex(input.secret, input.body)
 
   return timingSafeEqual(supplied, expected)
+}
+
+export const verifySlackWebhookSignature = async (
+  input: Readonly<{
+    body: string
+    headers: Headers
+    nowEpochSeconds: number
+    secret: string
+  }>,
+): Promise<boolean> => {
+  const signature = input.headers.get('x-slack-signature')?.trim()
+  const timestampText = input.headers
+    .get('x-slack-request-timestamp')
+    ?.trim()
+  const timestamp =
+    timestampText === undefined || timestampText === ''
+      ? Number.NaN
+      : Number(timestampText)
+
+  if (
+    signature === undefined ||
+    signature === '' ||
+    timestampText === undefined ||
+    timestampText === '' ||
+    !Number.isFinite(timestamp) ||
+    Math.abs(input.nowEpochSeconds - timestamp) >
+      SLACK_SIGNATURE_MAX_SKEW_SECONDS
+  ) {
+    return false
+  }
+
+  const base = `${SLACK_SIGNATURE_VERSION}:${timestampText}:${input.body}`
+  const expected = `${SLACK_SIGNATURE_VERSION}=${await hmacSha256Hex(
+    input.secret,
+    base,
+  )}`
+
+  return timingSafeEqual(signature, expected)
 }
 
 const webhookResponse = (body: unknown, init: ResponseInit = {}) =>
@@ -315,6 +364,79 @@ export const handleAgentDefinitionWebhookRequest = async (
               subjectKind: completionCallback.subjectKind,
             },
           }),
+    },
+    { status: 202 },
+  )
+}
+
+export const handleAgentDefinitionSlackWebhookRequest = async (
+  request: Request,
+  dependencies: AgentDefinitionSlackWebhookRouteDependencies,
+) => {
+  const url = new URL(request.url)
+
+  if (url.pathname !== SLACK_WEBHOOK_PATH) {
+    return webhookResponse({ error: 'not_found' }, { status: 404 })
+  }
+
+  if (request.method !== 'POST') {
+    return methodNotAllowed(['POST'])
+  }
+
+  const secret = dependencies.slackSecret?.trim()
+
+  if (secret === undefined || secret === '') {
+    return webhookSecretMissing()
+  }
+
+  const body = await request.text()
+  const nowEpochSeconds =
+    dependencies.nowEpochSeconds?.() ?? Math.floor(currentEpochMillis() / 1000)
+  const authorized = await verifySlackWebhookSignature({
+    body,
+    headers: request.headers,
+    nowEpochSeconds,
+    secret,
+  })
+
+  if (!authorized) {
+    return unauthorizedWebhook()
+  }
+
+  const payload = parseJsonRecord(body)
+
+  if (payload?.type === 'url_verification') {
+    const challenge = sourceString(payload.challenge)
+
+    return challenge === undefined
+      ? invalidWebhook('Slack URL verification challenge is missing.')
+      : webhookResponse({ challenge })
+  }
+
+  const deliveryId = sourceString(payload?.event_id) ?? ''
+  const nowIso = dependencies.nowIso?.() ?? currentIsoTimestamp()
+  const event =
+    payload === undefined
+      ? undefined
+      : normalizeSlackWebhookEvent({
+          deliveryId,
+          payload,
+          receivedAt: nowIso,
+        })
+
+  if (event === undefined) {
+    return invalidWebhook('Slack event payload could not be normalized.')
+  }
+
+  const result = await runAgentDefinitionBotIntegration(dependencies, {
+    event,
+    nowIso,
+  })
+
+  return webhookResponse(
+    {
+      schema: AGENT_DEFINITION_BOT_INTEGRATION_RESULT_SCHEMA,
+      ...result,
     },
     { status: 202 },
   )

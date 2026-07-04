@@ -80,6 +80,7 @@ import {
   handleAgentDefinitionForumCompletionRequest,
   handleAgentDefinitionForumWebhookRequest,
   handleAgentDefinitionGitHubCompletionRequest,
+  handleAgentDefinitionSlackWebhookRequest,
   handleAgentDefinitionWebhookRequest,
   verifyAgentDefinitionForumEventSource,
 } from './agent-definition-webhook-routes'
@@ -12680,6 +12681,38 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         runStore: makeD1AgentDefinitionRunStore(db),
       })
     },
+  },
+  {
+    path: '/v1/agent-definitions/webhooks/slack',
+    handler: (request, env) =>
+      Effect.promise(() =>
+        handleAgentDefinitionSlackWebhookRequest(request, {
+          definitionStore: makeD1AgentDefinitionStore(openAgentsDatabase(env)),
+          dispatchDependencies: {
+            durableStreamNamespace:
+              isInferenceDurableStreamEnabled(
+                env.INFERENCE_DURABLE_STREAM_ENABLED,
+              ) && env.INFERENCE_DURABLE_STREAM !== undefined
+                ? (env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
+                : undefined,
+            forgeGitAuthStore: makeD1ForgeTenantGitAuthStore(
+              openAgentsDatabase(env),
+            ),
+            forgeStore: makeD1ForgeCoordinationStore(openAgentsDatabase(env)),
+            pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
+            runStore: makeD1AgentDefinitionRunStore(openAgentsDatabase(env)),
+          },
+          eventLedgerEnqueue: makeEventLedgerIngestEnqueue(
+            env as Env & EventLedgerProducerEnv,
+          ),
+          slackSecret: (
+            env as Env & {
+              AGENT_DEFINITION_SLACK_WEBHOOK_SIGNING_SECRET?: string
+            }
+          ).AGENT_DEFINITION_SLACK_WEBHOOK_SIGNING_SECRET,
+          triggerStore: makeD1AgentDefinitionTriggerStore(openAgentsDatabase(env)),
+        }),
+      ),
   },
   {
     path: '/v1/agent-definitions/webhooks/forum',

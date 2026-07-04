@@ -588,16 +588,17 @@ This is the invariant ledger for `openagents`.
 ## Background Agent Event Ledger Privacy
 
 - `event_ledger.v1` is private owner-scoped inbox substrate, not a public
-  projection and not model-training material. GitHub source ingest starts only
-  from the signed background-agent webhook boundary after typed normalization;
-  a matched trigger row supplies the owner boundary before any ledger queue
-  message is emitted.
+  projection and not model-training material. GitHub and Slack source ingest
+  starts only from signed, source-specific background-agent webhook boundaries
+  after typed normalization; a matched trigger row supplies the owner boundary
+  before any ledger queue message is emitted.
 - Queue messages and D1 rows may carry only bounded refs and summaries:
   source, externalRef, actorRef, contentRef, subjectRef, sourceRefs, event type,
   timestamps, and non-sensitive summary fields. They must not store raw webhook
-  bodies, raw GitHub comment/title text, provider payloads, signatures,
-  webhook secrets, bearer tokens, private repo material, or payment/wallet
-  material. `training_consent` is fixed false/0 in the BA-H1 table.
+  bodies, raw GitHub comment/title text, raw Slack message text, provider
+  payloads, signatures, webhook secrets, bearer tokens, private repo material,
+  or payment/wallet material. `training_consent` is fixed false/0 in the
+  BA-H1 table.
 - The per-owner `EVENT_LEDGER_OWNER` Durable Object is the ordering/dedup
   authority for ledger ingest. D1 uniqueness is defense-in-depth; routes,
   request isolates, and generic queue consumers must not assign cross-owner
@@ -610,7 +611,8 @@ This is the invariant ledger for `openagents`.
   verify handled-state touches against a same-definition run, and redact by
   `secretPolicy` before a definition receives ledger entries. Regression
   coverage lives in `workers/api/src/event-ledger.test.ts`,
-  `workers/api/src/agent-definition-webhook-routes.test.ts`, and
+  `workers/api/src/agent-definition-webhook-routes.test.ts`,
+  `packages/agent-runtime-schema/src/webhooks.test.ts`, and
   `workers/api/src/agent-definition-event-ledger-routes.test.ts`.
 
 ## Harbor Full Trace Archive (operator-only)

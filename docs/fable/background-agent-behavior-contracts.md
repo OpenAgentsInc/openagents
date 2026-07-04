@@ -9,7 +9,7 @@ Issue #8218 registers the headline invariants from
 oracles land. Entries remain `pending` until the owning task adds its oracle
 test and flips that exact contract to `enforced`.
 
-Registry version: `2026-07-04.3` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-04.4` (schema `openagents.behavior_contracts.v1`)
 
 ### `background_agents.dispatch.budget_caps_enforced.v1` - ENFORCED
 
@@ -138,6 +138,18 @@ Registry version: `2026-07-04.3` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `background_agents.inbox.event_ledger_gateway_redaction` (bun-test, unit): The definition event-ledger gateway authenticates the owner, enforces the definition toolset, verifies same-definition touching runs, and redacts reads according to secretPolicy. - `apps/openagents.com/workers/api/src/agent-definition-event-ledger-routes.test.ts`
 - **Verification:** BA-H2 is enforced by the openagents.com Worker event-ledger store and definition event-ledger gateway route tests in the normal bun test sweep.
 - **Authority boundary:** This contract binds the private event-ledger handled-state and definition gateway read path. It does not authorize public projection, raw provider payload disclosure, cross-owner reads, unredacted model context, Slack ingest, or handled-state updates from unrelated runs.
+
+### `background_agents.inbox.slack_event_ledger_ingest.v1` - ENFORCED
+
+- **Surface:** openagents.com-worker (background agent inbox)
+- **Stated by:** owner via issue_list on 2026-07-03
+- **Statement:** Slack webhook events enter event_ledger.v1 only after Slack signature verification and typed normalization, then become owner-scoped private rows with refs and bounded summaries rather than raw message text.
+- **Enforcement tier:** test-sweep
+- **Oracle** `background_agents.inbox.slack_event_normalization` (bun-test, unit): Slack webhook normalization emits only bounded team, channel, actor, message timestamp, event, and source-ref fields that trigger conditions can match without exposing raw Slack message text or legacy verification tokens. - `packages/agent-runtime-schema/src/webhooks.test.ts`
+- **Oracle** `background_agents.inbox.slack_webhook_enqueue` (bun-test, unit): The Slack webhook route verifies Slack HMAC signatures and replay windows before dispatch, matches owner-scoped Slack triggers, and enqueues exactly one event-ledger message for the matched owner. - `apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts`
+- **Oracle** `background_agents.inbox.slack_event_ledger_private_rows` (bun-test, unit): The event ledger accepts Slack source rows through the widened D1 source contract, preserves owner-scoped ordering, fixes training consent false, and stores refs plus bounded summaries rather than raw message text. - `apps/openagents.com/workers/api/src/event-ledger.test.ts`
+- **Verification:** BA-H3 is enforced by agent-runtime-schema Slack normalization tests plus openagents.com Worker Slack webhook route and event-ledger store tests in the normal bun test sweep.
+- **Authority boundary:** This contract binds private Slack event-ledger ingest for matched owner-scoped background-agent Slack triggers. It does not authorize outbound Slack writes, public projection, training use, cross-owner reads, raw message disclosure, or unredacted model context.
 
 ### `background_agents.definitions.harness_swap.v1` - PENDING
 

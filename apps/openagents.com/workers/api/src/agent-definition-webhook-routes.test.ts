@@ -10,6 +10,7 @@ import {
   handleAgentDefinitionForumCompletionRequest,
   handleAgentDefinitionForumWebhookRequest,
   handleAgentDefinitionGitHubCompletionRequest,
+  handleAgentDefinitionSlackWebhookRequest,
   handleAgentDefinitionWebhookRequest,
 } from './agent-definition-webhook-routes'
 import type {
@@ -30,8 +31,10 @@ import { Effect } from 'effect'
 const encoder = new TextEncoder()
 const ownerAgentUserId = 'agent_user_webhook_owner'
 const nowIso = '2026-07-03T16:15:00.000Z'
+const nowEpochSeconds = 1783152000
 const secret = 'github-webhook-secret'
 const forumSecret = 'forum-webhook-secret'
+const slackSecret = 'slack-webhook-signing-secret'
 
 const hex = (bytes: ArrayBuffer): string =>
   [...new Uint8Array(bytes)]
@@ -61,6 +64,24 @@ const signOpenAgentsBody = async (
   body: string,
   signingSecret = forumSecret,
 ) => signGitHubBody(body, signingSecret)
+
+const signSlackBody = async (
+  body: string,
+  timestamp = nowEpochSeconds,
+  signingSecret = slackSecret,
+) => {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    arrayBufferFromBytes(encoder.encode(signingSecret)),
+    { hash: 'SHA-256', name: 'HMAC' },
+    false,
+    ['sign'],
+  )
+  const base = `v0:${timestamp}:${body}`
+  const digest = await crypto.subtle.sign('HMAC', key, encoder.encode(base))
+
+  return `v0=${hex(digest)}`
+}
 
 const githubIssuePayload = {
   action: 'opened',
@@ -138,6 +159,25 @@ const forumPostPayload = {
   topicSlug: 'ship-background-agents',
   topicState: 'open',
   topicTitle: 'Ship background agents',
+}
+
+const slackMessagePayload = {
+  api_app_id: 'A_BACKGROUND_AGENT',
+  event: {
+    channel: 'C_BACKGROUND',
+    channel_type: 'channel',
+    event_ts: '1783152000.000200',
+    text:
+      'Secret-ish Slack message body must never leak into trigger payloads.',
+    ts: '1783152000.000100',
+    type: 'message',
+    user: 'U_OWNER',
+  },
+  event_id: 'Ev_BACKGROUND_8214',
+  event_time: 1783152000,
+  team_id: 'T_OPENAGENTS',
+  token: 'legacy-verification-token-is-not-authority',
+  type: 'event_callback',
 }
 
 const makeDefinition = (
@@ -219,6 +259,32 @@ const makeForumDefinition = (): AgentDefinition =>
             kind: 'json_path_equals',
             path: '$.forum.slug',
             equals: 'product-promises',
+          },
+        ],
+      },
+    ],
+  })
+
+const makeSlackDefinition = (): AgentDefinition =>
+  decodeAgentDefinition({
+    ...fulfillmentLoopAgentDefinitionFixture,
+    id: 'agent_definition.public.slack_webhook_test',
+    ownerRef: `agent:${ownerAgentUserId}`,
+    lane: 'own_pylon',
+    triggers: [
+      {
+        kind: 'inbound_webhook',
+        triggerRef: 'trigger.public.webhook.slack_message',
+        source: 'slack',
+        conditions: [
+          {
+            kind: 'event_type',
+            equals: 'message',
+          },
+          {
+            kind: 'json_path_equals',
+            path: '$.channel.id',
+            equals: 'C_BACKGROUND',
           },
         ],
       },
@@ -405,6 +471,31 @@ const forumRequest = async (
         'X-OpenAgents-Event': 'forum.post.created',
         'X-OpenAgents-Signature-256': await signOpenAgentsBody(
           body,
+          signingSecret,
+        ),
+      },
+      method: 'POST',
+    },
+  )
+}
+
+const slackRequest = async (
+  payload: Record<string, unknown>,
+  signingSecret = slackSecret,
+  timestamp = nowEpochSeconds,
+) => {
+  const body = JSON.stringify(payload)
+
+  return new Request(
+    'https://openagents.com/v1/agent-definitions/webhooks/slack',
+    {
+      body,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Slack-Request-Timestamp': String(timestamp),
+        'X-Slack-Signature': await signSlackBody(
+          body,
+          timestamp,
           signingSecret,
         ),
       },
@@ -826,6 +917,152 @@ describe('agent definition webhook routes', () => {
       skipped: 1,
     })
     expect(dispatches).toEqual([])
+    expect(triggerStore.successes).toEqual([])
+    expect(triggerStore.failures).toEqual([])
+  })
+
+  test('verifies Slack signatures, matches trigger conditions, and enqueues owner-scoped ledger rows', async () => {
+    // background_agents.inbox.slack_event_ledger_ingest.v1
+    const definition = makeSlackDefinition()
+    const triggerStore = new MemoryTriggerStore([triggerRecord(definition)])
+    const eventLedgerMessages: Array<EventLedgerIngestQueueMessage> = []
+    const dispatches: Array<{
+      readonly triggerPayload: Record<string, unknown> | undefined
+      readonly triggerRef: string | undefined
+    }> = []
+    const response = await handleAgentDefinitionSlackWebhookRequest(
+      await slackRequest(slackMessagePayload),
+      {
+        ...dependenciesFor({
+          definition,
+          dispatchRun: (_dependencies, input) => {
+            dispatches.push({
+              triggerPayload: input.request.triggerPayload,
+              triggerRef: input.request.triggerRef,
+            })
+
+            return Promise.resolve(dispatchedOutcome())
+          },
+          eventLedgerMessages,
+          triggerStore,
+        }),
+        nowEpochSeconds: () => nowEpochSeconds,
+        slackSecret,
+      },
+    )
+    const body = await response?.json()
+
+    expect(response?.status).toBe(202)
+    expect(body).toMatchObject({
+      schema: 'openagents.agent_definition_webhook_ingress.v1',
+      deliveryId: 'Ev_BACKGROUND_8214',
+      dispatched: 1,
+      eventType: 'message',
+      ledgerEnqueued: 1,
+      ledgerFailed: 0,
+      matched: 1,
+      source: 'slack',
+      subjectRef:
+        'slack.team.T_OPENAGENTS.channel.C_BACKGROUND.message.1783152000.000100',
+    })
+    expect(dispatches).toHaveLength(1)
+    expect(dispatches[0]?.triggerRef).toBe(
+      'trigger.public.webhook.slack_message',
+    )
+    expect(dispatches[0]?.triggerPayload).toMatchObject({
+      schema: 'openagents.agent_definition_webhook_event.v1',
+      eventType: 'message',
+      source: 'slack',
+      triggerRef: 'trigger.public.webhook.slack_message',
+      payload: {
+        actor: {
+          user_id: 'U_OWNER',
+        },
+        channel: {
+          id: 'C_BACKGROUND',
+        },
+        message: {
+          ts: '1783152000.000100',
+        },
+        team: {
+          id: 'T_OPENAGENTS',
+        },
+      },
+    })
+    expect(eventLedgerMessages).toHaveLength(1)
+    expect(eventLedgerMessages[0]).toMatchObject({
+      schemaVersion: 'openagents.event_ledger_ingest.v1',
+      actorRef: 'slack.user.U_OWNER',
+      contentRef:
+        'slack.message.T_OPENAGENTS.C_BACKGROUND.1783152000.000100',
+      externalRef: 'slack.event.Ev_BACKGROUND_8214',
+      ownerAgentUserId,
+      ownerRef: `agent:${ownerAgentUserId}`,
+      source: 'slack',
+      subjectRef:
+        'slack.team.T_OPENAGENTS.channel.C_BACKGROUND.message.1783152000.000100',
+      trainingConsent: false,
+    })
+    expect(JSON.stringify(dispatches[0]?.triggerPayload)).not.toContain(
+      'Secret-ish Slack message body',
+    )
+    expect(JSON.stringify(eventLedgerMessages[0])).not.toContain('Secret-ish')
+    expect(JSON.stringify(eventLedgerMessages[0])).not.toContain(
+      'legacy-verification-token',
+    )
+    expect(triggerStore.successes).toEqual([
+      {
+        nextRunAt: undefined,
+        ownerAgentUserId,
+        triggerRef: 'trigger.public.webhook.slack_message',
+        updatedAt: nowIso,
+      },
+    ])
+  })
+
+  test('rejects stale Slack signatures before reading triggers', async () => {
+    const definition = makeSlackDefinition()
+    const triggerStore = new MemoryTriggerStore([triggerRecord(definition)])
+    const response = await handleAgentDefinitionSlackWebhookRequest(
+      await slackRequest(slackMessagePayload, slackSecret, nowEpochSeconds - 600),
+      {
+        ...dependenciesFor({
+          definition,
+          dispatchRun: () => Promise.resolve(dispatchedOutcome()),
+          triggerStore,
+        }),
+        nowEpochSeconds: () => nowEpochSeconds,
+        slackSecret,
+      },
+    )
+
+    expect(response?.status).toBe(401)
+    expect(triggerStore.successes).toEqual([])
+    expect(triggerStore.failures).toEqual([])
+  })
+
+  test('answers signed Slack URL verification challenges without dispatch', async () => {
+    const definition = makeSlackDefinition()
+    const triggerStore = new MemoryTriggerStore([triggerRecord(definition)])
+    const response = await handleAgentDefinitionSlackWebhookRequest(
+      await slackRequest({
+        challenge: 'challenge-response-token',
+        type: 'url_verification',
+      }),
+      {
+        ...dependenciesFor({
+          definition,
+          dispatchRun: () => Promise.resolve(dispatchedOutcome()),
+          triggerStore,
+        }),
+        nowEpochSeconds: () => nowEpochSeconds,
+        slackSecret,
+      },
+    )
+    const body = await response?.json()
+
+    expect(response?.status).toBe(200)
+    expect(body).toEqual({ challenge: 'challenge-response-token' })
     expect(triggerStore.successes).toEqual([])
     expect(triggerStore.failures).toEqual([])
   })

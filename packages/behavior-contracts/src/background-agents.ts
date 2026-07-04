@@ -583,6 +583,62 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
     {
       authorityBoundary:
+        "This contract binds private Slack event-ledger ingest for matched owner-scoped background-agent Slack triggers. It does not authorize outbound Slack writes, public projection, training use, cross-owner reads, raw message disclosure, or unredacted model context.",
+      blockerRefs: [],
+      contractId: "background_agents.inbox.slack_event_ledger_ingest.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8214",
+        "https://github.com/OpenAgentsInc/openagents/issues/8218",
+        "INVARIANTS.md",
+        "apps/openagents.com/INVARIANTS.md",
+        "docs/fable/ROADMAP_BACKGROUND_AGENTS.md",
+        "packages/agent-runtime-schema/src/webhooks.test.ts",
+        "apps/openagents.com/workers/api/src/event-ledger.test.ts",
+        "apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts",
+        "apps/openagents.com/workers/api/migrations/0287_event_ledger_slack_source.sql",
+      ],
+      oracles: [
+        {
+          description:
+            "Slack webhook normalization emits only bounded team, channel, actor, message timestamp, event, and source-ref fields that trigger conditions can match without exposing raw Slack message text or legacy verification tokens.",
+          id: "background_agents.inbox.slack_event_normalization",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "packages/agent-runtime-schema/src/webhooks.test.ts",
+        },
+        {
+          description:
+            "The Slack webhook route verifies Slack HMAC signatures and replay windows before dispatch, matches owner-scoped Slack triggers, and enqueues exactly one event-ledger message for the matched owner.",
+          id: "background_agents.inbox.slack_webhook_enqueue",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts",
+        },
+        {
+          description:
+            "The event ledger accepts Slack source rows through the widened D1 source contract, preserves owner-scoped ordering, fixes training consent false, and stores refs plus bounded summaries rather than raw message text.",
+          id: "background_agents.inbox.slack_event_ledger_private_rows",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents.com/workers/api/src/event-ledger.test.ts",
+        },
+      ],
+      productArea: "background agent inbox",
+      source: {
+        channel: "issue_list",
+        statedBy: "owner",
+        statedOn: "2026-07-03",
+      },
+      state: "enforced",
+      statement:
+        "Slack webhook events enter event_ledger.v1 only after Slack signature verification and typed normalization, then become owner-scoped private rows with refs and bounded summaries rather than raw message text.",
+      surface: "openagents.com-worker",
+      verification:
+        "BA-H3 is enforced by agent-runtime-schema Slack normalization tests plus openagents.com Worker Slack webhook route and event-ledger store tests in the normal bun test sweep.",
+    },
+    {
+      authorityBoundary:
         "This contract binds harness portability for unchanged background-agent definitions. It does not claim semantic parity between all provider outputs beyond the parity fixture's asserted behavior.",
       blockerRefs: [pendingOracleBlocker("ba_a4")],
       contractId: "background_agents.definitions.harness_swap.v1",
@@ -659,5 +715,5 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-04.3",
+  version: "2026-07-04.4",
 }
