@@ -195,6 +195,20 @@ describe('OpenAgents capability manifest route', () => {
           description: expect.stringContaining('live_at_read'),
         }),
         expect.objectContaining({
+          auth: 'admin_api_token',
+          href: 'https://openagents.com/api/operator/khala-code/trace-plugin-revenue-share-precedents',
+          id: 'operator_khala_code_trace_plugin_revenue_share_precedent_intake',
+          method: 'POST',
+          description: expect.stringContaining('does not move sats'),
+        }),
+        expect.objectContaining({
+          auth: 'public',
+          href: 'https://openagents.com/api/public/khala-code/trace-plugin-revenue-share-precedents/{receiptRef}',
+          id: 'public_khala_code_trace_plugin_revenue_share_precedent_receipt',
+          method: 'GET',
+          description: expect.stringContaining('live_at_read'),
+        }),
+        expect.objectContaining({
           auth: 'public',
           href: 'https://openagents.com/api/public/tassadar-run-summary',
           id: 'public_tassadar_run_summary',

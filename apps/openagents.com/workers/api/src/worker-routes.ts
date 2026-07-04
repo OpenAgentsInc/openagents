@@ -84,6 +84,7 @@ type WorkerRouteDependencies = Readonly<{
   routePublicCloudPrimitiveReceiptRequest: OptionalEffectRoute
   routePublicInferenceReceiptRequest: OptionalEffectRoute
   routePublicKhalaCodeOutsideUserRunReceiptRequest: OptionalEffectRoute
+  routePublicKhalaCodeTracePluginRevenueShareRequest: OptionalEffectRoute
   routePublicNip90MarketReceiptRequest: OptionalEffectRoute
   routePublicPartnerPayoutReceiptRequest: OptionalEffectRoute
   routePublicSiteReferralPayoutReceiptRequest: OptionalEffectRoute
@@ -612,6 +613,17 @@ export const makeWorkerRouteRequest =
 
       if (publicKhalaCodeOutsideUserRunReceiptResponse !== undefined) {
         return yield* publicKhalaCodeOutsideUserRunReceiptResponse
+      }
+
+      const publicKhalaCodeTracePluginRevenueShareResponse =
+        dependencies.routePublicKhalaCodeTracePluginRevenueShareRequest(
+          request,
+          env,
+          ctx,
+        )
+
+      if (publicKhalaCodeTracePluginRevenueShareResponse !== undefined) {
+        return yield* publicKhalaCodeTracePluginRevenueShareResponse
       }
 
       const publicCloudPrimitiveReceiptResponse =

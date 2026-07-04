@@ -538,6 +538,39 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/khala-code-outside-user-run-routes.test.ts`,
   `clients/khala-code-desktop/tests/app-shell.test.ts`.
 
+## Khala Code Trace Plugin Revenue-Share Precedent Receipts
+
+- The RL-7 precedent intake
+  (`workers/api/src/khala-code-trace-plugin-revenue-share-routes.ts`,
+  `khala_code_trace_plugin_revenue_share_precedents`, #8251) records
+  already-settled public-safe evidence only. It is admin-token gated and
+  idempotent; it does not move sats, dispatch payout, approve payout
+  destinations, publish traces, or mutate product-promise state.
+- A valid precedent row must keep the refs distinct: consented trace receipt,
+  trace digest, plugin admission receipt, plugin registry receipt, plugin ref,
+  plugin digest, plugin route, routed request, exact usage event, usage
+  idempotency, contributor attribution, amount envelope, payout receipt, and
+  settlement receipt. These refs must remain public-safe; raw traces, prompts,
+  usage payloads, invoices, payment hashes, preimages, payout destinations,
+  wallet material, provider payloads, private source refs, and raw timestamps
+  must be rejected before persistence or projection.
+- Accounting is exact and bounded: `gross_revenue_msats` and
+  `contributor_share_msats` are positive integers, contributor share must not
+  exceed gross revenue, contributor share must be whole sats, and the payout
+  rail is Spark. A route/receipt may demonstrate n=1 plumbing only; it is not a
+  rate, pool policy, market-demand proof, or broad availability claim.
+- The public readback
+  `/api/public/khala-code/trace-plugin-revenue-share-precedents/{receiptRef}`
+  is registry-citable evidence with `generatedAt` and live-at-read staleness. It
+  grants no spend, payout, settlement, plugin publication, trace publication,
+  paid-to-free pool, or promise-green authority. Any state movement remains
+  receipt-first and owner-signed.
+- Regression coverage:
+  `workers/api/src/khala-code-trace-plugin-revenue-share-routes.test.ts`,
+  `workers/api/src/product-promises.test.ts`,
+  `workers/api/src/openagents-openapi-routes.test.ts`,
+  `workers/api/src/openagents-capability-manifest-routes.test.ts`.
+
 ## Captured Trace Demand-Origin Segmentation
 
 - A captured trace is auto-tagged with its DEMAND ORIGIN (#6298, migration
@@ -2532,6 +2565,17 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     distribution channel, and bounded harness readiness; no paths, prompts,
     tokens, logs, account ids, machine ids, request body blob, billing,
     payout, settlement, or promise-green authority. `staleness_declared`.
+  - `GET /api/public/khala-code/trace-plugin-revenue-share-precedents/{receiptRef}`
+    — live at read over `khala_code_trace_plugin_revenue_share_precedents`
+    (khala_code.trace_derived_plugins.v1 /
+    khala_code.plugin_backend_revenue_share.v1, #8251) — compliant
+    (`generatedAt`, `live_at_read` contract rebuilt on the precedent receipt
+    ledger). Public receipts project only public-safe trace/plugin/routing,
+    exact usage, attribution, amount envelope, payout receipt, and settlement
+    receipt refs; no raw traces, prompts, usage payloads, invoices, payment
+    hashes, preimages, payout destinations, wallet material, provider payloads,
+    private source refs, spend, settlement authority, or promise-green
+    authority. `staleness_declared`.
   - `GET /api/public/artanis/report` — live at read over tick rows rebuilt on
     closeout — compliant (`generatedAtUnixMs`, report + loop contracts, stale
     and example-fallback flags with caveat refs).

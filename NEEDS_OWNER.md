@@ -133,6 +133,35 @@ local fail-closed planner exist; production capture is not armed, no owner_only
 ingest sink is live, no user trace is captured by this desktop path, and capture
 grants no payout or settlement eligibility.
 
+## Khala Code Trace Plugin Revenue-Share Precedent
+
+Source issue: OpenAgentsInc/openagents#8251
+
+The RL-7 precedent receipt spine now exists in source. The admin-token route
+`POST /api/operator/khala-code/trace-plugin-revenue-share-precedents` records
+only public-safe refs for one consented trace digest, admitted+registered
+routable plugin, exact routed usage/idempotency, contributor attribution, msat
+accounting, Spark payout receipt, and settlement receipt. The public readback
+`GET /api/public/khala-code/trace-plugin-revenue-share-precedents/{receiptRef}`
+is dereferenceable evidence. The route does not move sats, dispatch payout,
+accept payout destinations, publish traces, define a rate, or flip promise
+state.
+
+NEEDS-OWNER: Produce and approve the actual n=1 live precedent before any public
+copy claims someone was paid by plugin routing: choose the consented trace and
+redacted digest, approve the admitted plugin and registry refs, route one real
+request through it with exact usage/idempotency evidence, approve the
+contributor attribution and amount envelope, run or authorize the Spark payout
+through the existing money-moving authority, verify the public-safe payout and
+settlement refs, and then post the precedent intake body using the template in
+`docs/khala-code/2026-07-04-trace-plugin-revenue-share-precedent-template.md`.
+
+Until those owner steps are complete, the shipped state remains: the ledger,
+route, public receipt shape, and docs exist; there is no production receipt row,
+no live paid contributor, no rate/pool policy, no market-demand proof, and
+`khala_code.trace_derived_plugins.v1` /
+`khala_code.plugin_backend_revenue_share.v1` remain planned.
+
 ## QS7 Rhys Sales Motion Owner Gate
 
 Source issue: OpenAgentsInc/openagents#8067

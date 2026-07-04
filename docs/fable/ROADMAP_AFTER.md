@@ -219,6 +219,16 @@ that doesn't.
 | A4.4 | First revenue-share settlement: one contributor paid one small amount (sats-scale is fine — the 1-sat MPP payment is the precedent for how much a first receipt matters) over the live rails, receipt public-safe (`khala_code.plugin_backend_revenue_share.v1`) | **The category-converting receipt** |
 | A4.5 | Paid→free pool mechanics deferred until real paid volume exists; the record (`khala_code.paid_to_free_revenue_share.v1`) stays planned with the pool policy written before any pool copy | Policy doc, no state change |
 
+Code-landed note (2026-07-04, #8251): the RL-7 precedent receipt spine now
+exists in source. `POST
+/api/operator/khala-code/trace-plugin-revenue-share-precedents` is admin-token
+gated and records only public-safe refs for the A4.1-A4.4 chain after settlement
+has happened elsewhere; `GET
+/api/public/khala-code/trace-plugin-revenue-share-precedents/{receiptRef}`
+dereferences the receipt with live-at-read staleness. This is the place the
+category-converting n=1 receipt lands, but the code itself moves no sats and
+does not turn an empty ledger into market proof.
+
 The honest sequencing note: AW-4 can produce its first receipt with n=1
 contributor and an internally-routed paid call — *labeled as such*. That
 is plumbing proof, not market proof, and the registry note must say so.

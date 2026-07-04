@@ -29,6 +29,8 @@ const approvedExactRoutePaths = [
   '/api/public/khala-code/download-counts',
   '/api/public/khala-code/outside-user-runs',
   '/api/public/khala-code/outside-user-runs/:receiptRef',
+  '/api/operator/khala-code/trace-plugin-revenue-share-precedents',
+  '/api/public/khala-code/trace-plugin-revenue-share-precedents/:receiptRef',
   '/api/public/product-promises/transitions',
   '/api/public/product-promises/api.hosted_gemini.v1/readiness',
   '/api/public/product-promises/audit',

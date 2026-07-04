@@ -483,6 +483,19 @@ rung a receipt:
    small.** A single 5-cent (or 50-sat) revenue-share payout with a
    receipt would do for the data loop what the 1-sat MPP payment did for
    machine payments: convert a category from narrative to precedent.
+
+   2026-07-04 RL-7 precedent-spine update: source now has the receipt slot for
+   this rung. `POST
+   /api/operator/khala-code/trace-plugin-revenue-share-precedents` records only
+   public-safe owner/operator-provided evidence refs for a consented trace
+   digest, admitted+registered routable plugin, exact routed usage row,
+   contributor attribution, msat accounting, and already-settled Spark payout;
+   `GET
+   /api/public/khala-code/trace-plugin-revenue-share-precedents/{receiptRef}`
+   dereferences the public receipt. This is not the money-moving adapter and it
+   is not market proof by itself. It makes the category-converting receipt
+   place explicit so the first real settled n=1 payout cannot disappear into
+   private notes or vibes.
 6. **External demand provenance.** The first N external users and the
    first external dollars, labeled as strictly as modeled-vs-settled
    already is. The KPI set is already named in the docs: external-dollar

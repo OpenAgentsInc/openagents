@@ -415,6 +415,22 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Dereferences one public-safe Khala Code outside-user run receipt with generatedAt and a live_at_read staleness contract over khala_code_outside_user_run_receipts. Receipt fields are app version, platform, architecture, distribution channel, and harness readiness only; no paths, prompts, logs, tokens, account identifiers, machine identifiers, or raw telemetry. Evidence-only; grants no installer, outside-user-count, billing, capture, payout, settlement, or promise-green authority.',
       },
       {
+        id: 'operator_khala_code_trace_plugin_revenue_share_precedent_intake',
+        href: 'https://openagents.com/api/operator/khala-code/trace-plugin-revenue-share-precedents',
+        method: 'POST',
+        auth: 'admin_api_token',
+        description:
+          'Admin-token intake for the RL-7 Khala Code trace→plugin→revenue-share precedent. It idempotently records only public-safe refs for one consented trace digest, one admitted and registered routable plugin, one exact routed usage event, one contributor attribution, and one already-settled Spark payout/settlement receipt. It does not move sats, dispatch payout, accept raw trace/payment material, or flip promise state.',
+      },
+      {
+        id: 'public_khala_code_trace_plugin_revenue_share_precedent_receipt',
+        href: 'https://openagents.com/api/public/khala-code/trace-plugin-revenue-share-precedents/{receiptRef}',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'Dereferences one public-safe RL-7 Khala Code trace plugin revenue-share precedent receipt with generatedAt and a live_at_read staleness contract over khala_code_trace_plugin_revenue_share_precedents. The receipt carries provenance, plugin registry/routing, exact usage, attribution, and settlement refs only; no raw traces, prompts, usage payloads, invoices, payment hashes, payout destinations, wallet material, provider payloads, or private source refs.',
+      },
+      {
         id: 'public_khala_tokens_served_history',
         href: 'https://openagents.com/api/public/khala-tokens-served/history',
         method: 'GET',

@@ -4612,25 +4612,34 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Scrubbed contributor traces are condensed into agent plugins that future agents can route through.',
         safeCopy:
-          'Episode 245 describes free-plan traces being “condensed into these agent plugins that future agents” use. The trace→plugin distillation pipeline does not exist. The nearest real machinery is direction, not evidence: the offline GEPA/Mutalisk candidate loop with evidence-gated Gym admission (gated_proposal_ready, decisionGrade:false, never auto-promote) and the planned marketplace records (marketplace.wasm_plugins.v1, marketplace.signature_monetization.v1).',
+          'Episode 245 describes free-plan traces being “condensed into these agent plugins that future agents” use. The automatic trace→plugin distillation pipeline is still not live. Source now contains the RL-7 precedent ledger/readback spine: an admin-token route may record only public-safe refs for one consented trace digest, one admitted and registered routable plugin, one exact routed usage event, one contributor attribution, and one already-settled Spark payout/settlement receipt; the public readback dereferences that n=1 precedent with live_at_read staleness. The record stays planned until an owner-supplied production receipt row actually exists and is reviewed.',
         unsafeCopy:
-          'Do not claim trace-derived plugins exist, are being generated, or are routable today, and do not present GEPA/Gym admission fixtures as a live plugin pipeline.',
+          'Do not claim trace-derived plugins are automatically generated, broadly routable, or market-proven today; do not present GEPA/Gym admission fixtures or an empty precedent ledger as a live plugin pipeline.',
         evidenceRefs: [
           'docs/transcripts/245.md',
           'docs/gepa/2026-06-30-gepa-usage-and-fleet-delegation-optimization-loop.md',
           'docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md',
+          'docs/fable/ROADMAP_AFTER.md',
+          'docs/khala-code/2026-07-04-trace-plugin-revenue-share-precedent-template.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/8251',
+          'apps/openagents.com/workers/api/src/khala-code-trace-plugin-revenue-share-routes.ts',
+          'apps/openagents.com/workers/api/src/khala-code-trace-plugin-revenue-share-routes.test.ts',
+          'apps/openagents.com/workers/api/migrations/0291_khala_code_trace_plugin_revenue_share_precedents.sql',
+          'route:/api/operator/khala-code/trace-plugin-revenue-share-precedents',
+          'route:/api/public/khala-code/trace-plugin-revenue-share-precedents/:receiptRef',
           'promise:marketplace.wasm_plugins.v1',
           'promise:marketplace.signature_monetization.v1',
           'promise:khala_code.free_plan_trace_capture.v1',
         ],
         blockerRefs: [
           'blocker.product_promises.trace_to_plugin_distillation_pipeline_missing',
-          'blocker.product_promises.plugin_registry_missing',
+          'blocker.product_promises.trace_plugin_precedent_receipt_missing',
+          'blocker.owner.khala_code_trace_plugin_revenue_share_live_receipt_missing',
         ],
         verification:
-          'Requires a working distillation pipeline from consented scrubbed traces to a registered plugin artifact, a plugin registry with provenance/attribution, and admission evidence before any routing claim.',
+          'Source verifies the shape of a public-safe n=1 precedent receipt, including consented trace digest, plugin admission, plugin registry, route, exact usage, attribution, Spark payout, and settlement refs. Planned state remains: a reviewed production receipt row plus the working distillation/admission path are required before any trace-derived plugin claim moves.',
         authorityBoundary:
-          'Plugin distillation grants no publication of private trace content and no payout; optimizer candidates never auto-promote and admission stays evidence-gated with owner approval.',
+          'Plugin distillation grants no publication of private trace content and no payout by itself; optimizer candidates never auto-promote, admission stays evidence-gated with owner approval, and the precedent intake route records settled evidence only after the money-moving authority has acted elsewhere.',
       },
       {
         ...basePromiseFields,
@@ -4641,9 +4650,9 @@ export const publicProductPromisesDocument = () => {
         claim:
           'When paid usage routes through a plugin derived from your contributions, you earn a share, paid in Bitcoin.',
         safeCopy:
-          'This is the Episode 245 headline — “What if your coding agent pays you?” — recorded with its on-camera hedge intact: the free plan “has the possibility of paying you.” The claim lineage is one thread: Episode 228 (Get Paid to Code: backend revenue share on the free Autopilot cloud coding agent) → Episode 230 (sell redacted Claude Code/Codex traces) → Episode 237 (plugins earn their authors a revenue share) → Episodes 243/244 (Khala aspiration → “we should be paying you”) → Episode 245 (Khala Code launch whiteboard). Nothing is metered, attributed, or paid: there is no plugin invocation metering, no attribution ledger, and revenue-share settlement seams stay INERT until deliberately flipped.',
+          'This is the Episode 245 headline — “What if your coding agent pays you?” — recorded with its on-camera hedge intact: the free plan “has the possibility of paying you.” The claim lineage is one thread: Episode 228 (Get Paid to Code) → Episode 230 (sell redacted Claude Code/Codex traces) → Episode 237 (plugins earn their authors a revenue share) → Episodes 243/244 (Khala aspiration → “we should be paying you”) → Episode 245 (Khala Code launch whiteboard). Source now has an exact, receipt-backed n=1 precedent ledger/readback for the first trace→plugin→routed usage→Spark payout proof, but it is evidence intake only and moves no sats itself. The record remains planned until the owner supplies and reviews an actual production settlement receipt row.',
         unsafeCopy:
-          'Do not claim anyone has been paid via plugin routing, quote the five-cents example as a rate, or imply the withdrawn/red refer-once-earn-forever claim. A payment the recipient cannot dereference is not a payment.',
+          'Do not claim anyone has been paid via plugin routing until a public-safe settlement receipt row exists, quote the five-cents example as a rate, imply a payout pool, or imply the withdrawn/red refer-once-earn-forever claim. A payment the recipient cannot dereference is not a payment.',
         evidenceRefs: [
           'docs/transcripts/245.md',
           'docs/transcripts/244.md',
@@ -4652,17 +4661,25 @@ export const publicProductPromisesDocument = () => {
           'docs/transcripts/230.md',
           'docs/transcripts/228.md',
           'docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md',
+          'docs/fable/ROADMAP_AFTER.md',
+          'docs/khala-code/2026-07-04-trace-plugin-revenue-share-precedent-template.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/8251',
+          'apps/openagents.com/workers/api/src/khala-code-trace-plugin-revenue-share-routes.ts',
+          'apps/openagents.com/workers/api/src/khala-code-trace-plugin-revenue-share-routes.test.ts',
+          'apps/openagents.com/workers/api/migrations/0291_khala_code_trace_plugin_revenue_share_precedents.sql',
+          'route:/api/operator/khala-code/trace-plugin-revenue-share-precedents',
+          'route:/api/public/khala-code/trace-plugin-revenue-share-precedents/:receiptRef',
           'promise:khala_code.trace_derived_plugins.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.plugin_invocation_metering_missing',
-          'blocker.product_promises.plugin_attribution_ledger_missing',
+          'blocker.product_promises.plugin_revenue_share_precedent_receipt_missing',
           'blocker.product_promises.plugin_revenue_settlement_not_armed',
+          'blocker.owner.khala_code_trace_plugin_revenue_share_live_receipt_missing',
         ],
         verification:
-          'Requires exact plugin-invocation metering with contributor attribution, a payout ledger with dereferenceable receipts, armed settlement under bounded owner-approved authority, and a first real settled contributor payout before any yellow/green movement.',
+          'Source verifies public-safe exact accounting and settlement receipt shape for a one-sat-scale precedent: consented trace digest, plugin registry/routing refs, exact usage/idempotency, attribution, gross/contributor msats, Spark rail, payout receipt, and settlement receipt. Planned state remains: owner-gated live settlement and a reviewed dereferenceable production receipt row are required before any paid-via-plugin claim moves.',
         authorityBoundary:
-          'Revenue-share design intent grants no spend, payout, or settlement authority; exact-only accounting and dereferenceable receipts are preconditions, not aspirations.',
+          'Revenue-share design intent grants no spend, payout, or settlement authority. The RL-7 intake route records public-safe evidence after settlement; it is not the money-moving adapter, does not accept payout destinations or raw invoices, and does not define a rate or paid-to-free pool.',
       },
       {
         ...basePromiseFields,
@@ -5048,6 +5065,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-04.4 is the RL-7 Khala Code trace→plugin→revenue-share precedent spine pass (#8251) and flips NO promise state — green stays exactly 34. khala_code.trace_derived_plugins.v1 and khala_code.plugin_backend_revenue_share.v1 remain planned: source now has an admin-token intake route and public readback for one n=1 precedent receipt linking a consented trace digest, admitted/registered/routable plugin, exact routed usage/idempotency, contributor attribution, msat accounting, Spark payout receipt, and settlement receipt. The route records already-settled public-safe evidence only; it does not move sats, accept raw trace/payment material, define a rate/pool, create market-demand proof, or claim anyone has been paid until the owner supplies and reviews a production receipt row.',
       'Registry 2026-07-04.3 is the RL-4 Khala Code paid-plan payment-collection pass (#8248) and flips NO promise state — green stays exactly 34. khala_code.free_paid_plans.v1 remains planned: POST /v1/khala-code/plans/purchases is still KHALA_CODE_PAID_PLANS_ENABLED default-OFF and fail-closed, but when armed it now creates a real payment-required leg on Stripe Checkout (card) or the Spark/MPP Lightning invoice rail and grants the existing paid-privacy entitlement receipt only after settled payment. The payment intent ledger is not a second entitlement truth; /api/public/inference/privacy-receipts/{receiptRef} remains the dereferenceable receipt surface. Owner-gated arming, Stripe price id, Lightning sats price, live credentials, public copy, and one production collected purchase remain in NEEDS_OWNER. No paid-plan availability, capture-default, payout, settlement, or promise-green claim is created.',
       'Registry 2026-07-04.2 is the RL-3 Khala Code outside-user run evidence-intake pass (#8247) and flips NO promise state — green stays exactly 34. khala_code.desktop_codex_wrapper.v1 stays yellow: desktop Settings now offers an explicit opt-in Run evidence action; POST /api/public/khala-code/outside-user-runs records only app version, platform, architecture, distribution channel, and bounded Codex/Pylon readiness; GET /api/public/khala-code/outside-user-runs/{receiptRef} dereferences the public-safe receipt with generatedAt + live_at_read staleness. No phone-home, paths, prompts, tokens, logs, account ids, machine ids, signed DMG, real outside-user row, free/paid economics, capture, payout, settlement, installer availability, or promise-green claim is created.',
       'Registry 2026-07-04.1 is the RL-2 Khala Code public install-truth pass (#8246) and flips NO promise state — green stays exactly 34. khala_code.desktop_codex_wrapper.v1 stays yellow: /code/download now exposes the Codex-required install page, public npm khala CLI path, source-build path, and pending desktop DMG state under the existing copy gate; GET /api/public/khala-code/download-counts serves exact khala_code_download_events rows or counts: [] with blocker refs. No public signed DMG, outside-user evidence, free/paid economics, capture, payout, settlement, or installer availability claim is created.',

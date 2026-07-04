@@ -393,6 +393,7 @@ describe('Worker route dual-serve resolution (#6148)', () => {
       routePublicCloudPrimitiveReceiptRequest: noRoute,
       routePublicInferenceReceiptRequest: noRoute,
       routePublicKhalaCodeOutsideUserRunReceiptRequest: noRoute,
+      routePublicKhalaCodeTracePluginRevenueShareRequest: noRoute,
       routePublicNip90MarketReceiptRequest: noRoute,
       routePublicPartnerPayoutReceiptRequest: noRoute,
       routePublicSiteReferralPayoutReceiptRequest: noRoute,

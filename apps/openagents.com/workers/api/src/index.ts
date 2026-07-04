@@ -742,6 +742,11 @@ import {
   makePublicKhalaCodeOutsideUserRunReceiptRoutes,
 } from './khala-code-outside-user-run-routes'
 import {
+  handleOperatorKhalaCodeTracePluginRevenueSharePrecedentsApi,
+  makeD1KhalaCodeTracePluginRevenueShareStore,
+  makeKhalaCodeTracePluginRevenueShareRoutes,
+} from './khala-code-trace-plugin-revenue-share-routes'
+import {
   handleOperatorKhalaTraceReview,
   makeD1KhalaTraceReviewStore,
 } from './khala-trace-review-routes'
@@ -8617,6 +8622,13 @@ const publicKhalaCodeOutsideUserRunReceiptRoutes =
     nowIso: currentIsoTimestamp,
   })
 
+const khalaCodeTracePluginRevenueShareRoutes =
+  makeKhalaCodeTracePluginRevenueShareRoutes<Env>({
+    makeStore: env =>
+      makeD1KhalaCodeTracePluginRevenueShareStore(openAgentsDatabase(env)),
+    nowIso: currentIsoTimestamp,
+  })
+
 const hostedGeminiPromiseReadinessRoutes =
   makeHostedGeminiPromiseReadinessRoutes<Env>({
     makeInferenceReceiptStore: env =>
@@ -10934,6 +10946,26 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // Manifest-only path-param readback for RL-3 receipts. The optional route
     // cascade below handles matching because the exact registry is literal.
     path: '/api/public/khala-code/outside-user-runs/:receiptRef',
+    handler: () => Effect.succeed(notFound()),
+  },
+  {
+    // Khala Code trace->plugin->revenue-share precedent intake (RL-7, #8251).
+    // Admin-token gated and idempotent: records public-safe evidence refs for
+    // one already-settled Spark payout after owner/operator settlement. This
+    // route does not move sats and does not accept raw trace/payment material.
+    path: '/api/operator/khala-code/trace-plugin-revenue-share-precedents',
+    handler: (request, env) =>
+      handleOperatorKhalaCodeTracePluginRevenueSharePrecedentsApi(request, {
+        OPENAGENTS_DB: openAgentsDatabase(env),
+        requireAdminApiToken: authRequest =>
+          requireAdminApiToken(authRequest, env),
+      }),
+  },
+  {
+    // Manifest-only path-param readback for RL-7 precedent receipts. The
+    // optional route cascade below handles matching because the exact registry
+    // is literal.
+    path: '/api/public/khala-code/trace-plugin-revenue-share-precedents/:receiptRef',
     handler: () => Effect.succeed(notFound()),
   },
   {
@@ -14363,6 +14395,8 @@ const routeRequest = makeWorkerRouteRequest({
     publicInferenceReceiptRoutes.routePublicInferenceReceiptRequest,
   routePublicKhalaCodeOutsideUserRunReceiptRequest:
     publicKhalaCodeOutsideUserRunReceiptRoutes.routePublicKhalaCodeOutsideUserRunReceiptRequest,
+  routePublicKhalaCodeTracePluginRevenueShareRequest:
+    khalaCodeTracePluginRevenueShareRoutes.routePublicKhalaCodeTracePluginRevenueShareRequest,
   routePublicCloudPrimitiveReceiptRequest:
     publicCloudPrimitiveReceiptRoutes.routePublicCloudPrimitiveReceiptRequest,
   routePublicNip90MarketReceiptRequest:

@@ -134,6 +134,30 @@ describe('OpenAgents OpenAPI route', () => {
     expect(outsideUserRunReceipt.description).toContain('explicit user-posted')
     expect(outsideUserRunReceipt.description).toContain('live_at_read')
     expect(outsideUserRunReceipt.description).toContain('no raw paths')
+    expect(
+      operationAt(
+        body,
+        '/api/operator/khala-code/trace-plugin-revenue-share-precedents',
+        'post',
+      ).operationId,
+    ).toBe('createOperatorKhalaCodeTracePluginRevenueSharePrecedent')
+    const tracePluginRevenueSharePrecedent = operationAt(
+      body,
+      '/api/public/khala-code/trace-plugin-revenue-share-precedents/{receiptRef}',
+      'get',
+    )
+    expect(tracePluginRevenueSharePrecedent.operationId).toBe(
+      'getPublicKhalaCodeTracePluginRevenueSharePrecedentReceipt',
+    )
+    expect(tracePluginRevenueSharePrecedent.description).toContain(
+      'trace-derived-plugin',
+    )
+    expect(tracePluginRevenueSharePrecedent.description).toContain(
+      'live_at_read',
+    )
+    expect(tracePluginRevenueSharePrecedent.description).toContain(
+      'no raw traces',
+    )
     const deprecatedFleetStatus = operationAt(
       body,
       '/api/operator/fleet/status',

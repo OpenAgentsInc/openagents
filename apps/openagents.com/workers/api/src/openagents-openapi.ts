@@ -4718,6 +4718,124 @@ const requestSchemas = (): JsonSchema => ({
       },
     },
   },
+  KhalaCodeTracePluginRevenueSharePrecedentIntakeRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'schemaVersion',
+      'consent',
+      'consentedTraceReceiptRef',
+      'traceDigestRef',
+      'pluginAdmissionReceiptRef',
+      'pluginRegistryReceiptRef',
+      'pluginRef',
+      'pluginDigestRef',
+      'pluginRouteRef',
+      'routedRequestRef',
+      'usageEventRef',
+      'usageIdempotencyRef',
+      'contributorAttributionRef',
+      'grossRevenueMsats',
+      'contributorShareMsats',
+      'amountEnvelopeRef',
+      'payoutRail',
+      'payoutReceiptRef',
+      'settlementReceiptRef',
+    ],
+    description:
+      'Admin/operator intake for the RL-7 Khala Code trace->plugin->revenue-share precedent. It accepts public-safe refs only: one consented trace receipt/digest, plugin admission + registry + route refs, exact routed usage refs, contributor attribution, positive msat accounting, and already-settled Spark payout/settlement receipt refs. It never accepts raw traces, prompts, invoices, payment hashes, payout destinations, wallet material, provider payloads, or private source refs.',
+    properties: {
+      schemaVersion: {
+        type: 'string',
+        enum: [
+          'openagents.khala_code.trace_plugin_revenue_share_precedent_intake.v1',
+        ],
+      },
+      consent: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'publicReceipt',
+          'noPrivateDataIncluded',
+          'realSettlementReceiptSupplied',
+        ],
+        properties: {
+          publicReceipt: { type: 'boolean', enum: [true] },
+          noPrivateDataIncluded: { type: 'boolean', enum: [true] },
+          realSettlementReceiptSupplied: { type: 'boolean', enum: [true] },
+        },
+      },
+      consentedTraceReceiptRef: { type: 'string', maxLength: 300 },
+      traceDigestRef: { type: 'string', maxLength: 300 },
+      pluginAdmissionReceiptRef: { type: 'string', maxLength: 300 },
+      pluginRegistryReceiptRef: { type: 'string', maxLength: 300 },
+      pluginRef: { type: 'string', maxLength: 300 },
+      pluginDigestRef: { type: 'string', maxLength: 300 },
+      pluginRouteRef: { type: 'string', maxLength: 300 },
+      routedRequestRef: { type: 'string', maxLength: 300 },
+      usageEventRef: { type: 'string', maxLength: 300 },
+      usageIdempotencyRef: { type: 'string', maxLength: 300 },
+      contributorAttributionRef: { type: 'string', maxLength: 300 },
+      grossRevenueMsats: { type: 'integer', minimum: 1 },
+      contributorShareMsats: {
+        type: 'integer',
+        minimum: 1000,
+        description:
+          'Positive whole-sat contributor share in millisatoshis; must not exceed grossRevenueMsats.',
+      },
+      amountEnvelopeRef: { type: 'string', maxLength: 300 },
+      payoutRail: { type: 'string', enum: ['spark'] },
+      payoutReceiptRef: { type: 'string', maxLength: 300 },
+      settlementReceiptRef: { type: 'string', maxLength: 300 },
+      idempotencyKey: {
+        type: 'string',
+        pattern: '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$',
+      },
+    },
+  },
+  PublicKhalaCodeTracePluginRevenueSharePrecedentReceipt: objectSummary(
+    'Dereferenceable public-safe RL-7 precedent receipt. It links the two planned promises to one consented trace provenance ref, one admitted and registered routable plugin ref, one exact routed usage event/idempotency ref, one contributor attribution ref, and one already-settled Spark payout/settlement receipt ref. It includes generatedAt + live_at_read staleness and excludes raw traces, prompts, usage payloads, invoices, payment hashes, payout destinations, wallet material, provider payloads, private source refs, and promise-state movement.',
+  ),
+  PublicKhalaCodeTracePluginRevenueSharePrecedentEnvelope: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['generatedAt', 'staleness', 'receipt'],
+    description:
+      'Public read envelope for one Khala Code trace plugin revenue-share precedent receipt with generatedAt and a live_at_read staleness contract.',
+    properties: {
+      generatedAt: { type: 'string', format: 'date-time' },
+      staleness: {
+        type: 'object',
+        additionalProperties: true,
+        description:
+          'Shared public-projection staleness contract over khala_code_trace_plugin_revenue_share_precedents.',
+      },
+      receipt: {
+        $ref: '#/components/schemas/PublicKhalaCodeTracePluginRevenueSharePrecedentReceipt',
+      },
+    },
+  },
+  OperatorKhalaCodeTracePluginRevenueSharePrecedentIntakeEnvelope: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['ok', 'idempotent', 'generatedAt', 'staleness', 'receipt'],
+    description:
+      'Admin-token intake result for an idempotently recorded RL-7 trace plugin revenue-share precedent receipt.',
+    properties: {
+      ok: { type: 'boolean', enum: [true] },
+      idempotent: { type: 'boolean' },
+      generatedAt: { type: 'string', format: 'date-time' },
+      staleness: {
+        type: 'object',
+        additionalProperties: true,
+        description:
+          'Shared public-projection staleness contract over khala_code_trace_plugin_revenue_share_precedents.',
+      },
+      receipt: {
+        $ref: '#/components/schemas/PublicKhalaCodeTracePluginRevenueSharePrecedentReceipt',
+      },
+    },
+  },
   FreeApiKeyMintResponse: {
     type: 'object',
     additionalProperties: false,
@@ -6375,6 +6493,57 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Khala Code outside-user run receipt.',
           '#/components/schemas/PublicKhalaCodeOutsideUserRunReceiptEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/khala-code/trace-plugin-revenue-share-precedents': {
+    post: operation({
+      operationId:
+        'createOperatorKhalaCodeTracePluginRevenueSharePrecedent',
+      summary:
+        'Record a Khala Code trace plugin revenue-share precedent receipt',
+      description:
+        'Admin-token intake for the RL-7 trace->plugin->revenue-share precedent. It records only public-safe evidence refs for one consented trace digest, one admitted and registered routable plugin, one exact routed usage row, one contributor attribution, and one already-settled Spark payout/settlement receipt. The route is idempotent and does not move sats, dispatch payout, accept raw trace/payment material, or flip product-promise state.',
+      tags: ['Operator', 'Public Proof'],
+      security: adminBearer,
+      responses: {
+        '201': okJson(
+          'Khala Code trace plugin revenue-share precedent recorded.',
+          '#/components/schemas/OperatorKhalaCodeTracePluginRevenueSharePrecedentIntakeEnvelope',
+        ),
+        '200': okJson(
+          'Khala Code trace plugin revenue-share precedent idempotently replayed.',
+          '#/components/schemas/OperatorKhalaCodeTracePluginRevenueSharePrecedentIntakeEnvelope',
+        ),
+        ...errorResponses(),
+      },
+      requestBody: jsonContent(
+        '#/components/schemas/KhalaCodeTracePluginRevenueSharePrecedentIntakeRequest',
+      ),
+    }),
+  },
+  '/api/public/khala-code/trace-plugin-revenue-share-precedents/{receiptRef}': {
+    get: operation({
+      operationId:
+        'getPublicKhalaCodeTracePluginRevenueSharePrecedentReceipt',
+      summary:
+        'Read a Khala Code trace plugin revenue-share precedent receipt',
+      description:
+        'Dereferences one public-safe RL-7 precedent receipt by receiptRef. The receipt can cite the trace-derived-plugin and plugin-backend-revenue-share planned records because it links public-safe provenance, plugin registry/routing, exact usage, attribution, and settlement refs with generatedAt plus live_at_read staleness. It contains no raw traces, prompts, usage payloads, invoices, payment hashes, payout destinations, wallet material, provider payloads, or private source refs.',
+      tags: ['Public Proof', 'Agents'],
+      security: publicRead,
+      parameters: [
+        pathParam(
+          'receiptRef',
+          'Public Khala Code trace plugin revenue-share precedent receipt ref.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Khala Code trace plugin revenue-share precedent receipt.',
+          '#/components/schemas/PublicKhalaCodeTracePluginRevenueSharePrecedentEnvelope',
         ),
         ...errorResponses(),
       },

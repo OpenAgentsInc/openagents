@@ -897,6 +897,16 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    // Khala Code trace->plugin->revenue-share precedent readback (#8251): one
+    // public-safe receipt by receiptRef from the settled-precedent ledger.
+    // It is live_at_read with generatedAt + the shared staleness contract.
+    module:
+      'workers/api/src/khala-code-trace-plugin-revenue-share-routes.ts',
+    route:
+      '/api/public/khala-code/trace-plugin-revenue-share-precedents/{receiptRef}',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/marketing-agency-receipt-public-routes.ts',
     route: '/api/public/marketing-agency/receipts',
     status: 'staleness_declared',

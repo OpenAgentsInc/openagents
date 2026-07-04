@@ -269,6 +269,60 @@ describe('public product promises document', () => {
     expect(decoded.notes.join('\n')).toContain('flips NO promise state')
   })
 
+  test('keeps Khala Code trace plugin revenue-share precedent planned until a live receipt exists', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const promiseById = new Map(
+      decoded.promises.map(promise => [promise.promiseId, promise]),
+    )
+    const tracePlugins = promiseById.get('khala_code.trace_derived_plugins.v1')
+    const revenueShare = promiseById.get(
+      'khala_code.plugin_backend_revenue_share.v1',
+    )
+
+    expect(tracePlugins).toMatchObject({
+      state: 'planned',
+      evidenceRefs: expect.arrayContaining([
+        'apps/openagents.com/workers/api/src/khala-code-trace-plugin-revenue-share-routes.ts',
+        'apps/openagents.com/workers/api/src/khala-code-trace-plugin-revenue-share-routes.test.ts',
+        'apps/openagents.com/workers/api/migrations/0291_khala_code_trace_plugin_revenue_share_precedents.sql',
+        'route:/api/operator/khala-code/trace-plugin-revenue-share-precedents',
+        'route:/api/public/khala-code/trace-plugin-revenue-share-precedents/:receiptRef',
+      ]),
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.trace_plugin_precedent_receipt_missing',
+        'blocker.owner.khala_code_trace_plugin_revenue_share_live_receipt_missing',
+      ]),
+    })
+    expect(tracePlugins?.safeCopy).toContain('admin-token route')
+    expect(tracePlugins?.safeCopy).toContain('already-settled Spark')
+    expect(tracePlugins?.unsafeCopy).toContain('empty precedent ledger')
+
+    expect(revenueShare).toMatchObject({
+      state: 'planned',
+      evidenceRefs: expect.arrayContaining([
+        'apps/openagents.com/workers/api/src/khala-code-trace-plugin-revenue-share-routes.ts',
+        'apps/openagents.com/workers/api/src/khala-code-trace-plugin-revenue-share-routes.test.ts',
+        'route:/api/public/khala-code/trace-plugin-revenue-share-precedents/:receiptRef',
+      ]),
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.plugin_revenue_share_precedent_receipt_missing',
+        'blocker.product_promises.plugin_revenue_settlement_not_armed',
+      ]),
+    })
+    expect(revenueShare?.safeCopy).toContain('moves no sats itself')
+    expect(revenueShare?.unsafeCopy).toContain(
+      'Do not claim anyone has been paid',
+    )
+    expect(revenueShare?.authorityBoundary).toContain(
+      'does not accept payout destinations',
+    )
+    expect(decoded.notes.join('\n')).toContain('Registry 2026-07-04.4')
+    expect(decoded.notes.join('\n')).toContain('does not move sats')
+    expect(decoded.notes.join('\n')).toContain('flips NO promise state')
+  })
+
   test('keeps issue 7023 desktop and builtin compute proof yellow-only', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),

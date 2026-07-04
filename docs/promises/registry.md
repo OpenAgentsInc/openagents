@@ -1,5 +1,17 @@
 # Promise Registry
 
+> Registry `2026-07-04.4` is the RL-7 Khala Code trace→plugin→revenue-share
+> precedent spine pass (#8251) and flips NO promise green (green stays exactly
+> 34). `khala_code.trace_derived_plugins.v1` and
+> `khala_code.plugin_backend_revenue_share.v1` remain planned: source now has an
+> admin-token intake route and public readback for one n=1 precedent receipt
+> linking a consented trace digest, admitted/registered/routable plugin, exact
+> routed usage/idempotency, contributor attribution, msat accounting, Spark
+> payout receipt, and settlement receipt. The route records already-settled
+> public-safe evidence only; it does not move sats, accept raw trace/payment
+> material, define a rate/pool, create market-demand proof, or claim anyone has
+> been paid until the owner supplies and reviews a production receipt row.
+
 > Registry `2026-07-04.2` is the RL-3 Khala Code outside-user run
 > evidence-intake pass (#8247) and flips NO promise green (green stays exactly
 > 34). `khala_code.desktop_codex_wrapper.v1` remains yellow: desktop Settings
