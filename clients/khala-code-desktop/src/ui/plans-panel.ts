@@ -4,9 +4,10 @@
 // - The current plan is resolved SERVER-SIDE via khalaCodePlanStatus. Without a
 //   configured agent token the panel shows "Free (default)" and never fabricates
 //   a plan.
-// - Plans are NOT purchasable today. The paid plan purchase seam is flag-gated
-//   default-OFF on the server; while `purchase.armed` is false the panel renders
-//   only a disabled control and never invokes the purchase transport.
+// - Plans are not purchasable while the paid plan purchase seam is flag-gated
+//   OFF on the server; while `purchase.armed` is false the panel renders only a
+//   disabled control and never invokes the purchase transport. When armed, a
+//   purchase may return payment_required before any receipt exists.
 // - If the catalog cannot be loaded, the panel says so instead of rendering
 //   fabricated plan cards.
 import type {
@@ -60,6 +61,17 @@ const purchaseFailureCopy = (
     return "Purchase not completed: no signed-in agent token."
   }
   return "Purchase not completed: the purchase service is unavailable."
+}
+
+const purchaseSuccessCopy = (
+  result: Extract<KhalaCodeDesktopPlanPurchaseResult, { ok: true }>,
+): string => {
+  if (result.status === "payment_required") {
+    return result.rail === "stripe_checkout"
+      ? "Paid plan checkout created. The paid plan activates only after Stripe confirms payment."
+      : "Paid plan Lightning invoice created. The paid plan activates only after payment proof is submitted."
+  }
+  return `Paid plan purchase recorded: ${result.receiptRef}`
 }
 
 export const mountKhalaCodePlansPanel = (
@@ -161,7 +173,7 @@ export const mountKhalaCodePlansPanel = (
       el(
         "p",
         "khala-plans-subtitle",
-        "Khala Code has two plans: Free (pay with data) and Paid (private data: capture opt-out). Plans are not purchasable or switchable from this app today.",
+        "Khala Code has two plans: Free (pay with data) and Paid (private data: capture opt-out). The paid plan activates only after the server records a settled payment receipt.",
       ),
     )
     const current = el("div", "khala-plans-current", currentPlanText())
@@ -197,10 +209,8 @@ export const mountKhalaCodePlansPanel = (
     pendingPurchaseKey ??= purchaseIdempotencyKey()
     try {
       const result = await options.purchase({ idempotencyKey: pendingPurchaseKey })
-      purchaseNote = result.ok
-        ? `Paid plan purchase recorded: ${result.receiptRef}`
-        : purchaseFailureCopy(result.error)
-      if (result.ok) {
+      purchaseNote = result.ok ? purchaseSuccessCopy(result) : purchaseFailureCopy(result.error)
+      if (result.ok && result.status !== "payment_required") {
         pendingPurchaseKey = null
       }
       // Refresh the server-side plan status after EVERY attempt: a response

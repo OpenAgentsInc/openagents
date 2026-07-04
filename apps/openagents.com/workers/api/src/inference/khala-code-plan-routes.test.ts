@@ -9,13 +9,18 @@ import {
   handleKhalaCodePlanCatalogApi,
   handleKhalaCodePlanPurchase,
   handleKhalaCodePlanStatus,
+  type KhalaCodePlanRoutesDeps,
 } from './khala-code-plan-routes'
+import { readPublicPrivacyReceipt } from './inference-privacy-receipt-routes'
+import { type LightningInvoice } from './mpp/mpp-lightning-invoice'
+import { sha256Hex } from './mpp/mpp-lightning-verify'
 
 type Row = Record<string, string | number | null>
 
 class PlanFakeDb {
   readonly entitlements = new Map<string, Row>()
   readonly entitlementReceipts = new Map<string, Row>()
+  readonly paidPlanPaymentIntents = new Map<string, Row>()
   failReads = false
 
   prepare(sql: string) {
@@ -33,6 +38,10 @@ class PlanFakeDb {
               null) as T | null
           }
           if (sql.includes('FROM inference_privacy_entitlement_receipts')) {
+            if (sql.includes('WHERE receipt_ref = ?')) {
+              return (this.entitlementReceipts.get(values[0] as string) ??
+                null) as T | null
+            }
             return (
               Array.from(this.entitlementReceipts.values()).find(
                 row =>
@@ -42,9 +51,90 @@ class PlanFakeDb {
               ) ?? null
             ) as T | null
           }
+          if (sql.includes('FROM khala_code_paid_plan_payment_intents')) {
+            const rows = Array.from(this.paidPlanPaymentIntents.values())
+            if (sql.includes('WHERE idempotency_key = ? AND account_ref = ?')) {
+              return (
+                rows.find(
+                  row =>
+                    row.idempotency_key === values[0] &&
+                    row.account_ref === values[1],
+                ) ?? null
+              ) as T | null
+            }
+            if (sql.includes('WHERE lightning_payment_hash = ?')) {
+              return (
+                rows.find(row => row.lightning_payment_hash === values[0]) ??
+                null
+              ) as T | null
+            }
+            if (sql.includes('WHERE stripe_checkout_session_id = ?')) {
+              return (
+                rows.find(
+                  row => row.stripe_checkout_session_id === values[0],
+                ) ?? null
+              ) as T | null
+            }
+          }
           return null
         },
         run: async () => {
+          if (
+            sql.includes('INSERT OR IGNORE INTO khala_code_paid_plan_payment_intents')
+          ) {
+            if (
+              !Array.from(this.paidPlanPaymentIntents.values()).some(
+                row => row.idempotency_key === values[2],
+              )
+            ) {
+              const isLightning = sql.includes("'lightning_mpp'")
+              this.paidPlanPaymentIntents.set(values[0] as string, {
+                purchase_ref: values[0] as string,
+                account_ref: values[1] as string,
+                idempotency_key: values[2] as string,
+                rail: isLightning ? 'lightning_mpp' : 'stripe_checkout',
+                status: 'requires_payment',
+                plan_id: KHALA_CODE_PAID_PLAN_ID,
+                amount_cents: isLightning ? null : (values[4] ?? null),
+                amount_sats: isLightning ? (values[4] ?? null) : null,
+                stripe_checkout_session_id: isLightning
+                  ? null
+                  : (values[5] ?? null),
+                stripe_checkout_url: isLightning ? null : (values[6] ?? null),
+                lightning_payment_hash: isLightning
+                  ? (values[5] ?? null)
+                  : null,
+                lightning_invoice: isLightning ? (values[6] ?? null) : null,
+                lightning_network: isLightning ? (values[7] ?? null) : null,
+                lightning_invoice_expires_at: isLightning
+                  ? (values[8] ?? null)
+                  : null,
+                entitlement_receipt_ref: null,
+                failure_reason: null,
+                created_at: isLightning
+                  ? (values[9] ?? null)
+                  : (values[7] ?? null),
+                updated_at: isLightning
+                  ? (values[10] ?? null)
+                  : (values[8] ?? null),
+                fulfilled_at: null,
+              })
+            }
+            return {}
+          }
+          if (
+            sql.includes('UPDATE khala_code_paid_plan_payment_intents') &&
+            sql.includes("status = 'fulfilled'")
+          ) {
+            const row = this.paidPlanPaymentIntents.get(values[3] as string)
+            if (row !== undefined) {
+              row.status = 'fulfilled'
+              row.entitlement_receipt_ref = values[0] as string
+              row.updated_at = values[1] as string
+              row.fulfilled_at = row.fulfilled_at ?? (values[2] as string)
+            }
+            return {}
+          }
           if (
             sql.includes('INSERT INTO inference_privacy_entitlement_receipts')
           ) {
@@ -87,13 +177,20 @@ class PlanFakeDb {
 
 const asDb = (db: PlanFakeDb): D1Database => db as unknown as D1Database
 
-const authedDeps = (
-  db: PlanFakeDb,
-  overrides?: Partial<{
+type AuthedDepsOverrides = Partial<
+  Omit<
+    KhalaCodePlanRoutesDeps,
+    'authenticate' | 'confidentialComputeEnabled' | 'db' | 'nowIso'
+  >
+> &
+  Partial<{
     accountRef: string | undefined
     confidentialComputeEnabled: boolean
-    paidPlanPurchaseArmed: boolean
-  }>,
+  }>
+
+const authedDeps = (
+  db: PlanFakeDb,
+  overrides?: AuthedDepsOverrides,
 ) => ({
   authenticate: async () =>
     overrides !== undefined && 'accountRef' in overrides
@@ -102,9 +199,26 @@ const authedDeps = (
         : { accountRef: overrides.accountRef }
       : { accountRef: 'agent:user-1' },
   confidentialComputeEnabled: overrides?.confidentialComputeEnabled ?? false,
+  ...(overrides?.createStripePaidPlanCheckout === undefined
+    ? {}
+    : { createStripePaidPlanCheckout: overrides.createStripePaidPlanCheckout }),
   db: asDb(db),
+  ...(overrides?.mintLightningInvoice === undefined
+    ? {}
+    : { mintLightningInvoice: overrides.mintLightningInvoice }),
   nowIso: () => '2026-07-01T00:00:00.000Z',
+  ...(overrides?.paidPlanPriceSats === undefined
+    ? {}
+    : { paidPlanPriceSats: overrides.paidPlanPriceSats }),
   paidPlanPurchaseArmed: overrides?.paidPlanPurchaseArmed ?? false,
+})
+
+const lightningInvoice = (
+  paymentHash: string,
+): LightningInvoice => ({
+  bolt11: 'lnbcrt1khala20260704paidplan',
+  network: 'regtest',
+  paymentHash,
 })
 
 describe('handleKhalaCodePlanCatalogApi', () => {
@@ -264,53 +378,128 @@ describe('handleKhalaCodePlanPurchase', () => {
     expect(response.status).toBe(401)
   })
 
-  it('grants the paid-privacy entitlement and returns the dereferenceable receipt when armed', async () => {
+  it('creates a Stripe Checkout payment requirement without granting entitlement', async () => {
     const db = new PlanFakeDb()
+    const stripeCalls: Array<
+      Parameters<
+        NonNullable<KhalaCodePlanRoutesDeps['createStripePaidPlanCheckout']>
+      >[0]
+    > = []
     const response = await Effect.runPromise(
       handleKhalaCodePlanPurchase(
         request({ idempotencyKey: 'plan-purchase-1' }),
-        authedDeps(db, { paidPlanPurchaseArmed: true }),
+        authedDeps(db, {
+          createStripePaidPlanCheckout: async input => {
+            stripeCalls.push(input)
+            return {
+              ok: true,
+              checkoutUrl: 'https://checkout.stripe.test/cs_test_1',
+              planId: KHALA_CODE_PAID_PLAN_ID,
+              purchaseRef: input.purchaseRef,
+              rail: 'stripe_checkout',
+              status: 'payment_required',
+              stripeCheckoutSessionId: 'cs_test_1',
+            }
+          },
+          paidPlanPurchaseArmed: true,
+        }),
       ),
     )
-    expect(response.status).toBe(201)
+    expect(response.status).toBe(202)
     const body = (await response.json()) as {
       ok: boolean
+      checkoutUrl: string
       planId: string
-      captureExcluded: boolean
-      entitlementRef: string
-      receiptRef: string
-      receiptUrl: string
+      rail: string
+      status: string
+      stripeCheckoutSessionId: string
     }
     expect(body.ok).toBe(true)
+    expect(body.status).toBe('payment_required')
+    expect(body.rail).toBe('stripe_checkout')
     expect(body.planId).toBe(KHALA_CODE_PAID_PLAN_ID)
-    expect(body.captureExcluded).toBe(true)
-    expect(body.receiptRef).toContain('khala_code_paid_plan')
-    expect(body.receiptUrl).toBe(
-      `/api/public/inference/privacy-receipts/${encodeURIComponent(body.receiptRef)}`,
+    expect(body.checkoutUrl).toBe('https://checkout.stripe.test/cs_test_1')
+    expect(body.stripeCheckoutSessionId).toBe('cs_test_1')
+    expect(stripeCalls[0]?.idempotencyKey).toContain(
+      'khala-code-plan-purchase:agent:user-1:stripe_checkout:plan-purchase-1',
     )
-    expect(db.entitlements.has('agent:user-1')).toBe(true)
-    expect(db.entitlementReceipts.size).toBe(1)
+    expect(db.entitlements.size).toBe(0)
+    expect(db.entitlementReceipts.size).toBe(0)
   })
 
-  it('is idempotent per idempotency key', async () => {
+  it('settles the Lightning rail into an idempotent receipt projection', async () => {
     const db = new PlanFakeDb()
-    const deps = authedDeps(db, { paidPlanPurchaseArmed: true })
-    const first = await Effect.runPromise(
+    const preimage = '00'.repeat(32)
+    const paymentHash = await sha256Hex(new Uint8Array(32))
+    const deps = authedDeps(db, {
+      mintLightningInvoice: () => Effect.succeed(lightningInvoice(paymentHash)),
+      paidPlanPriceSats: 1999,
+      paidPlanPurchaseArmed: true,
+    })
+    const payment = await Effect.runPromise(
       handleKhalaCodePlanPurchase(
-        request({ idempotencyKey: 'plan-purchase-same' }),
+        request({ idempotencyKey: 'plan-lightning-1', rail: 'lightning_mpp' }),
         deps,
       ),
     )
-    const second = await Effect.runPromise(
+    expect(payment.status).toBe(202)
+    const paymentBody = (await payment.json()) as {
+      bolt11: string
+      paymentHash: string
+      rail: string
+      status: string
+    }
+    expect(paymentBody.status).toBe('payment_required')
+    expect(paymentBody.rail).toBe('lightning_mpp')
+    expect(paymentBody.paymentHash).toBe(paymentHash)
+    expect(paymentBody.bolt11).toBe('lnbcrt1khala20260704paidplan')
+    expect(db.entitlementReceipts.size).toBe(0)
+
+    const firstSettlement = await Effect.runPromise(
       handleKhalaCodePlanPurchase(
-        request({ idempotencyKey: 'plan-purchase-same' }),
+        request({
+          lightningPaymentHash: paymentHash,
+          preimage,
+          rail: 'lightning_mpp',
+        }),
         deps,
       ),
     )
-    const firstBody = (await first.json()) as { receiptRef: string }
-    const secondBody = (await second.json()) as { receiptRef: string }
+    expect(firstSettlement.status).toBe(201)
+    const firstBody = (await firstSettlement.json()) as {
+      captureExcluded: boolean
+      receiptRef: string
+      receiptUrl: string
+      status: string
+    }
+    expect(firstBody.status).toBe('fulfilled')
+    expect(firstBody.captureExcluded).toBe(true)
+    expect(firstBody.receiptUrl).toBe(
+      `/api/public/inference/privacy-receipts/${encodeURIComponent(firstBody.receiptRef)}`,
+    )
+
+    const projection = await readPublicPrivacyReceipt(
+      asDb(db),
+      firstBody.receiptRef,
+      '2026-07-01T00:00:00.000Z',
+    )
+    expect(projection?.receipt.receiptRef).toBe(firstBody.receiptRef)
+    expect(projection?.receipt.captureExcluded).toBe(true)
+
+    const secondSettlement = await Effect.runPromise(
+      handleKhalaCodePlanPurchase(
+        request({
+          lightningPaymentHash: paymentHash,
+          preimage,
+          rail: 'lightning_mpp',
+        }),
+        deps,
+      ),
+    )
+    const secondBody = (await secondSettlement.json()) as { receiptRef: string }
     expect(secondBody.receiptRef).toBe(firstBody.receiptRef)
     expect(db.entitlementReceipts.size).toBe(1)
+    expect(db.entitlements.has('agent:user-1')).toBe(true)
   })
 
   it('rejects a supplied-but-invalid idempotency key instead of silently replacing it', async () => {
@@ -330,28 +519,50 @@ describe('handleKhalaCodePlanPurchase', () => {
 
   it('confines a reused client idempotency key to its own account', async () => {
     const db = new PlanFakeDb()
+    const idempotencyKeys: Array<string> = []
+    const createStripePaidPlanCheckout: NonNullable<
+      KhalaCodePlanRoutesDeps['createStripePaidPlanCheckout']
+    > = async input => {
+      idempotencyKeys.push(input.idempotencyKey)
+      return {
+        ok: true,
+        checkoutUrl: `https://checkout.stripe.test/${input.accountRef}`,
+        planId: KHALA_CODE_PAID_PLAN_ID,
+        purchaseRef: input.purchaseRef,
+        rail: 'stripe_checkout',
+        status: 'payment_required',
+        stripeCheckoutSessionId: `cs_${input.accountRef.replaceAll(':', '_')}`,
+      }
+    }
     const first = await Effect.runPromise(
       handleKhalaCodePlanPurchase(
         request({ idempotencyKey: 'shared-key' }),
-        authedDeps(db, { accountRef: 'agent:user-1', paidPlanPurchaseArmed: true }),
+        authedDeps(db, {
+          accountRef: 'agent:user-1',
+          createStripePaidPlanCheckout,
+          paidPlanPurchaseArmed: true,
+        }),
       ),
     )
     const second = await Effect.runPromise(
       handleKhalaCodePlanPurchase(
         request({ idempotencyKey: 'shared-key' }),
-        authedDeps(db, { accountRef: 'agent:user-2', paidPlanPurchaseArmed: true }),
+        authedDeps(db, {
+          accountRef: 'agent:user-2',
+          createStripePaidPlanCheckout,
+          paidPlanPurchaseArmed: true,
+        }),
       ),
     )
-    expect(first.status).toBe(201)
-    expect(second.status).toBe(201)
-    const firstBody = (await first.json()) as { receiptRef: string }
-    const secondBody = (await second.json()) as { receiptRef: string }
-    // Each account gets ITS OWN receipt — a key collision must never return
-    // (or publicly attribute) another account's purchase.
-    expect(secondBody.receiptRef).not.toBe(firstBody.receiptRef)
-    expect(db.entitlementReceipts.size).toBe(2)
-    expect(db.entitlements.has('agent:user-1')).toBe(true)
-    expect(db.entitlements.has('agent:user-2')).toBe(true)
+    expect(first.status).toBe(202)
+    expect(second.status).toBe(202)
+    // Each account gets ITS OWN Stripe idempotency namespace — a key collision
+    // must never return (or publicly attribute) another account's purchase.
+    expect(idempotencyKeys[0]).toContain('agent:user-1:stripe_checkout:shared-key')
+    expect(idempotencyKeys[1]).toContain('agent:user-2:stripe_checkout:shared-key')
+    expect(idempotencyKeys[0]).not.toBe(idempotencyKeys[1])
+    expect(db.entitlementReceipts.size).toBe(0)
+    expect(db.entitlements.size).toBe(0)
   })
 
   it('rejects malformed bodies', async () => {

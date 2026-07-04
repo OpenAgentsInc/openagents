@@ -598,6 +598,7 @@ import {
   handleKhalaCodePlanCatalogApi,
   handleKhalaCodePlanPurchase,
   handleKhalaCodePlanStatus,
+  readKhalaCodePaidPlanPriceSats,
 } from './inference/khala-code-plan-routes'
 import { isComponentChannelEnabled } from './inference/khala-component-channel'
 import {
@@ -1033,7 +1034,10 @@ import { makeSiteReferralRoutes } from './site-referral-routes'
 import { PENDING_REFERRAL_COOKIE } from './site-referrals'
 import { makeSiteRuntimeRoutes } from './site-runtime-routes'
 import { makeSitesOrchestrationRoutes } from './sites-orchestration-routes'
-import { readBillingCreditPackages } from './stripe-billing'
+import {
+  makeStripeCheckoutServiceForRoutes,
+  readBillingCreditPackages,
+} from './stripe-billing'
 import { makeD1StripeCheckoutReceiptStore } from './stripe-checkout-receipts'
 import {
   decideHighFrequencyBroadcast,
@@ -12909,13 +12913,21 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     // Khala Code paid-plan purchase seam (khala_code.free_paid_plans.v1,
     // #7966). FLAG-GATED, DEFAULT OFF, FAIL-CLOSED: 503 while
-    // KHALA_CODE_PAID_PLANS_ENABLED is unarmed; when armed it grants the
-    // idempotent paid-privacy entitlement (the plan's substance) and returns
-    // the publicly dereferenceable privacy receipt. Collects NO payment in
-    // either state — the payment leg is the owner-gated promise remainder.
+    // KHALA_CODE_PAID_PLANS_ENABLED is unarmed. When armed, it creates a real
+    // payment requirement on the Stripe Checkout card rail or Spark/MPP
+    // Lightning rail, then grants the idempotent paid-privacy entitlement only
+    // after payment settlement produces the existing dereferenceable privacy
+    // receipt. Pricing/arming remain owner decisions.
     path: '/v1/khala-code/plans/purchases',
-    handler: (request, env) =>
-      handleKhalaCodePlanPurchase(request, {
+    handler: (request, env) => {
+      const lightningEnabled = isKhalaMppLightningEnabled(
+        env.KHALA_MPP_LIGHTNING_ENABLED,
+      )
+      const mintLightningInvoice = lightningEnabled
+        ? lightningInvoiceIssuerForEnv(env)
+        : undefined
+
+      return handleKhalaCodePlanPurchase(request, {
         authenticate: async authRequest => {
           const token = readBearerToken(authRequest)
           if (token === undefined) {
@@ -12932,12 +12944,23 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         confidentialComputeEnabled: isConfidentialComputeEnabled(
           env.INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED,
         ),
+        createStripePaidPlanCheckout: input =>
+          makeStripeCheckoutServiceForRoutes(env).createKhalaCodePaidPlanCheckout(
+            input,
+          ),
         db: openAgentsDatabase(env),
+        ...(mintLightningInvoice === undefined
+          ? {}
+          : { mintLightningInvoice }),
         nowIso: currentIsoTimestamp,
+        paidPlanPriceSats: readKhalaCodePaidPlanPriceSats(
+          env.KHALA_CODE_PAID_PLAN_PRICE_SATS,
+        ),
         paidPlanPurchaseArmed: isKhalaCodePaidPlansEnabled(
           env.KHALA_CODE_PAID_PLANS_ENABLED,
         ),
-      }),
+      })
+    },
   },
   {
     path: '/v1/inference/privacy/confidential-compute/executions',

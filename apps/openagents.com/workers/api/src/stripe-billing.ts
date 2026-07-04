@@ -21,6 +21,18 @@ import { type PartnerQualifyingPaidEvent } from './partner-attribution-eligibili
 import { recordPartnerPayoutForPaidEvent } from './partner-payout-feed'
 import { provisionBusinessCheckoutKickoff } from './business-checkout-kickoff'
 import { recordBusinessReferralEngagement } from './business-referral-engagement-feed'
+import {
+  KHALA_CODE_PAID_PLAN_STRIPE_PRODUCT,
+  fulfillKhalaCodePaidPlanPaymentIntent,
+  markKhalaCodePaidPlanStripeIntentUnpaid,
+  readKhalaCodePaidPlanIntentByIdempotencyKey,
+  readKhalaCodePaidPlanIntentByStripeSession,
+  recordKhalaCodePaidPlanStripeIntent,
+  stripeCheckoutResponseFromIntent,
+  type KhalaCodePaidPlanFulfillment,
+  type KhalaCodePaidPlanStripeCheckout,
+} from './inference/khala-code-paid-plan-payments'
+import { KHALA_CODE_PAID_PLAN_ID } from './inference/khala-code-plan-catalog'
 import { recordReferralPayoutForPaidEvent } from './site-referral-payout-feed'
 
 export const STRIPE_API_VERSION = '2026-05-27.dahlia'
@@ -135,6 +147,9 @@ export class StripeWebhookError extends S.TaggedErrorClass<StripeWebhookError>()
 ) {}
 
 export type StripeBillingEnv = Readonly<{
+  KHALA_CODE_PAID_PLAN_STRIPE_CANCEL_URL?: string | undefined
+  KHALA_CODE_PAID_PLAN_STRIPE_PRICE_ID?: string | undefined
+  KHALA_CODE_PAID_PLAN_STRIPE_SUCCESS_URL?: string | undefined
   OPENAGENTS_APP_URL?: string | undefined
   STRIPE_API_KEY?: string | undefined
   STRIPE_CHECKOUT_CANCEL_URL?: string | undefined
@@ -147,6 +162,9 @@ export type StripeConfigShape = Readonly<{
   apiKey: Redacted.Redacted<WorkerSecret>
   apiVersion: typeof STRIPE_API_VERSION
   cancelUrl: string
+  khalaCodePaidPlanCancelUrl: string
+  khalaCodePaidPlanPriceId?: StripePriceId | undefined
+  khalaCodePaidPlanSuccessUrl: string
   packages: ReadonlyMap<BillingCreditPackageId, StripeCreditPackage>
   successUrl: string
   webhookSigningSecret: Redacted.Redacted<WorkerSecret>
@@ -237,6 +255,16 @@ export const StripeCustomerServiceLive = Layer.effect(
 )
 
 export type StripeCheckoutServiceShape = Readonly<{
+  createKhalaCodePaidPlanCheckout: (input: {
+    accountRef: string
+    db: D1Database
+    idempotencyKey: string
+    nowIso: string
+    purchaseRef: string
+  }) => Effect.Effect<
+    KhalaCodePaidPlanStripeCheckout,
+    StripeCheckoutError | StripeProviderError
+  >
   createCreditCheckout: (input: {
     businessKickoff?: StripeBusinessCheckoutKickoffInput | undefined
     db: D1Database
@@ -251,6 +279,15 @@ export type StripeCheckoutServiceShape = Readonly<{
     db: D1Database
     sessionId: string
   }) => Effect.Effect<BillingSummary, StripeCheckoutError | StripeProviderError>
+  fulfillKhalaCodePaidPlanCheckoutSession: (input: {
+    db: D1Database
+    eventType?: string | undefined
+    sessionId: string
+  }) => Effect.Effect<
+    | KhalaCodePaidPlanFulfillment
+    | Readonly<{ status: 'unpaid' | 'expired' | 'failed' }>,
+    StripeCheckoutError | StripeProviderError
+  >
   createSetupIntent: (input: {
     db: D1Database
     email?: string | undefined
@@ -289,6 +326,12 @@ export const StripeCheckoutServiceLive = Layer.effect(
     const stripeClient = yield* StripeClient
 
     return {
+      createKhalaCodePaidPlanCheckout: input =>
+        Effect.tryPromise({
+          catch: error => checkoutError(error),
+          try: () =>
+            createKhalaCodePaidPlanCheckout(config, stripeClient, input),
+        }),
       createCreditCheckout: input =>
         Effect.tryPromise({
           catch: error => checkoutError(error),
@@ -298,6 +341,16 @@ export const StripeCheckoutServiceLive = Layer.effect(
         Effect.tryPromise({
           catch: error => checkoutError(error),
           try: () => fulfillCheckoutSession(config, stripeClient, input),
+        }),
+      fulfillKhalaCodePaidPlanCheckoutSession: input =>
+        Effect.tryPromise({
+          catch: error => checkoutError(error),
+          try: () =>
+            fulfillKhalaCodePaidPlanCheckoutSession(
+              config,
+              stripeClient,
+              input,
+            ),
         }),
       createSetupIntent: input =>
         Effect.tryPromise({
@@ -551,6 +604,15 @@ export const decodeStripeConfig = (
       `${app.origin}/api/billing/stripe/checkout-return?session_id={CHECKOUT_SESSION_ID}`
     const cancelUrl =
       trimmed(env.STRIPE_CHECKOUT_CANCEL_URL) ?? `${app.origin}/billing`
+    const khalaCodePaidPlanSuccessUrl =
+      trimmed(env.KHALA_CODE_PAID_PLAN_STRIPE_SUCCESS_URL) ??
+      `${app.origin}/code?khala_paid_plan=success&session_id={CHECKOUT_SESSION_ID}`
+    const khalaCodePaidPlanCancelUrl =
+      trimmed(env.KHALA_CODE_PAID_PLAN_STRIPE_CANCEL_URL) ??
+      `${app.origin}/code?khala_paid_plan=cancel`
+    const khalaCodePaidPlanPriceId = trimmed(
+      env.KHALA_CODE_PAID_PLAN_STRIPE_PRICE_ID,
+    )
     const packagesJson = yield* requireConfig(
       env,
       'STRIPE_CREDIT_PACKAGES_JSON',
@@ -563,6 +625,12 @@ export const decodeStripeConfig = (
       ),
       apiVersion: STRIPE_API_VERSION,
       cancelUrl,
+      khalaCodePaidPlanCancelUrl,
+      khalaCodePaidPlanPriceId:
+        khalaCodePaidPlanPriceId === undefined
+          ? undefined
+          : StripePriceId.make(khalaCodePaidPlanPriceId),
+      khalaCodePaidPlanSuccessUrl,
       packages: yield* readPackages(packagesJson),
       successUrl,
       webhookSigningSecret: redactedStripeSecret(
@@ -721,6 +789,81 @@ const createCreditCheckout = async (
     sessionId: StripeCheckoutSessionId.make(session.id),
     userId: input.userId,
   }
+}
+
+const createKhalaCodePaidPlanCheckout = async (
+  config: StripeConfigShape,
+  stripeClient: StripeClientShape,
+  input: Readonly<{
+    accountRef: string
+    db: D1Database
+    idempotencyKey: string
+    nowIso: string
+    purchaseRef: string
+  }>,
+): Promise<KhalaCodePaidPlanStripeCheckout> => {
+  const priceId = config.khalaCodePaidPlanPriceId
+  if (priceId === undefined) {
+    throw new StripeCheckoutError({
+      reason: 'Khala Code paid-plan Stripe price is not configured.',
+    })
+  }
+
+  const existing = await readKhalaCodePaidPlanIntentByIdempotencyKey(
+    input.db,
+    {
+      accountRef: input.accountRef,
+      idempotencyKey: input.idempotencyKey,
+    },
+  )
+  if (existing !== null) {
+    return stripeCheckoutResponseFromIntent(existing)
+  }
+
+  const customerId = await ensureStripeCustomer(stripeClient, {
+    db: input.db,
+    userId: input.accountRef,
+  })
+  const stripe = stripeClient.unsafeClient()
+  const session = await stripe.checkout.sessions.create(
+    {
+      cancel_url: config.khalaCodePaidPlanCancelUrl,
+      client_reference_id: input.accountRef,
+      customer: customerId,
+      line_items: [{ price: priceId, quantity: 1 }],
+      metadata: {
+        account_ref: input.accountRef,
+        idempotency_key: input.idempotencyKey,
+        omega_user_id: input.accountRef,
+        plan_id: KHALA_CODE_PAID_PLAN_ID,
+        product: KHALA_CODE_PAID_PLAN_STRIPE_PRODUCT,
+        purchase_ref: input.purchaseRef,
+      },
+      mode: 'payment',
+      success_url: config.khalaCodePaidPlanSuccessUrl,
+    },
+    {
+      idempotencyKey: input.idempotencyKey,
+    },
+  )
+
+  if (session.url === null) {
+    throw new StripeCheckoutError({
+      reason: 'Stripe did not return a Checkout URL.',
+    })
+  }
+
+  const intent = await recordKhalaCodePaidPlanStripeIntent(input.db, {
+    accountRef: input.accountRef,
+    amountCents: null,
+    checkoutUrl: session.url,
+    idempotencyKey: input.idempotencyKey,
+    nowIso: input.nowIso,
+    purchaseRef: input.purchaseRef,
+    stripeCheckoutSessionId: session.id,
+  })
+
+  return stripeCheckoutResponseFromIntent(intent)
 }
 
 /**
@@ -953,6 +1096,70 @@ const fulfillCheckoutSession = async (
     .run()
 
   return summary
+}
+
+const fulfillKhalaCodePaidPlanCheckoutSession = async (
+  _config: StripeConfigShape,
+  stripeClient: StripeClientShape,
+  input: Readonly<{
+    db: D1Database
+    eventType?: string | undefined
+    sessionId: string
+  }>,
+): Promise<
+  | KhalaCodePaidPlanFulfillment
+  | Readonly<{ status: 'unpaid' | 'expired' | 'failed' }>
+> => {
+  const stripe = stripeClient.unsafeClient()
+  const session = await stripe.checkout.sessions.retrieve(input.sessionId)
+  const product = String(session.metadata?.product ?? '')
+
+  if (product !== KHALA_CODE_PAID_PLAN_STRIPE_PRODUCT) {
+    throw new StripeCheckoutError({
+      reason: 'Checkout Session is not a Khala Code paid-plan purchase.',
+    })
+  }
+
+  const now = systemBillingRuntime.nowIso()
+
+  if (session.payment_status !== 'paid') {
+    const status =
+      input.eventType === 'checkout.session.async_payment_failed'
+        ? 'failed'
+        : session.status === 'expired'
+          ? 'expired'
+          : 'requires_payment'
+    await markKhalaCodePaidPlanStripeIntentUnpaid(input.db, {
+      nowIso: now,
+      sessionId: input.sessionId,
+      status,
+    })
+
+    return {
+      status:
+        status === 'expired'
+          ? 'expired'
+          : status === 'failed'
+            ? 'failed'
+            : 'unpaid',
+    }
+  }
+
+  const intent = await readKhalaCodePaidPlanIntentByStripeSession(
+    input.db,
+    input.sessionId,
+  )
+
+  if (intent === null) {
+    throw new StripeCheckoutError({
+      reason: 'Khala Code paid-plan payment intent was not recorded.',
+    })
+  }
+
+  return fulfillKhalaCodePaidPlanPaymentIntent(input.db, {
+    intent,
+    nowIso: now,
+  })
 }
 
 const createSetupIntent = async (
@@ -1336,10 +1543,18 @@ const processStripeWebhook = async (
     })
   }
 
-  await fulfillCheckoutSession(config, stripeClient, {
-    db: input.db,
-    sessionId: maybeSessionId,
-  })
+  if (session.metadata?.product === KHALA_CODE_PAID_PLAN_STRIPE_PRODUCT) {
+    await fulfillKhalaCodePaidPlanCheckoutSession(config, stripeClient, {
+      db: input.db,
+      eventType: event.type,
+      sessionId: maybeSessionId,
+    })
+  } else {
+    await fulfillCheckoutSession(config, stripeClient, {
+      db: input.db,
+      sessionId: maybeSessionId,
+    })
+  }
   await input.db
     .prepare(
       `UPDATE stripe_webhook_events
@@ -1386,6 +1601,13 @@ export const makeStripeCheckoutServiceForRoutes = (env: StripeBillingEnv) => {
       }),
   }
   return {
+    createKhalaCodePaidPlanCheckout: (input: {
+      accountRef: string
+      db: D1Database
+      idempotencyKey: string
+      nowIso: string
+      purchaseRef: string
+    }) => createKhalaCodePaidPlanCheckout(config, stripeClient, input),
     createCreditCheckout: (input: {
       businessKickoff?: StripeBusinessCheckoutKickoffInput | undefined
       db: D1Database
@@ -1395,6 +1617,11 @@ export const makeStripeCheckoutServiceForRoutes = (env: StripeBillingEnv) => {
     }) => createCreditCheckout(config, stripeClient, input),
     fulfillCheckoutSession: (input: { db: D1Database; sessionId: string }) =>
       fulfillCheckoutSession(config, stripeClient, input),
+    fulfillKhalaCodePaidPlanCheckoutSession: (input: {
+      db: D1Database
+      eventType?: string | undefined
+      sessionId: string
+    }) => fulfillKhalaCodePaidPlanCheckoutSession(config, stripeClient, input),
     createSetupIntent: (input: {
       db: D1Database
       email?: string | undefined
@@ -1416,6 +1643,16 @@ export const makeStripeCheckoutServiceForRoutes = (env: StripeBillingEnv) => {
       signature: string | null
     }) => {
       const checkout: StripeCheckoutServiceShape = {
+        createKhalaCodePaidPlanCheckout: checkoutInput =>
+          Effect.tryPromise({
+            catch: error => checkoutError(error),
+            try: () =>
+              createKhalaCodePaidPlanCheckout(
+                config,
+                stripeClient,
+                checkoutInput,
+              ),
+          }),
         createCreditCheckout: checkoutInput =>
           Effect.tryPromise({
             catch: error => checkoutError(error),
@@ -1427,6 +1664,16 @@ export const makeStripeCheckoutServiceForRoutes = (env: StripeBillingEnv) => {
             catch: error => checkoutError(error),
             try: () =>
               fulfillCheckoutSession(config, stripeClient, checkoutInput),
+          }),
+        fulfillKhalaCodePaidPlanCheckoutSession: checkoutInput =>
+          Effect.tryPromise({
+            catch: error => checkoutError(error),
+            try: () =>
+              fulfillKhalaCodePaidPlanCheckoutSession(
+                config,
+                stripeClient,
+                checkoutInput,
+              ),
           }),
         createSetupIntent: setupInput =>
           Effect.tryPromise({

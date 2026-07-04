@@ -1818,8 +1818,11 @@ const RpcForumResponse = S.Struct({
 
 // Khala Code plans (promise khala_code.free_paid_plans.v1). The desktop app is a
 // read-and-render surface: the current plan is resolved server-side and the paid
-// plan purchase seam stays honest about being flag-gated default-OFF.
+// plan purchase seam stays honest about being flag-gated default-OFF. When the
+// server arms it, purchase success is two-phase: payment_required first, then a
+// fulfilled receipt only after Stripe/Lightning settlement.
 const RpcKhalaCodePlanKind = S.Literals(["free", "paid"])
+const RpcKhalaCodePlanPaymentRail = S.Literals(["stripe_checkout", "lightning_mpp"])
 const RpcKhalaCodePlanPurchaseSeam = S.Struct({
   armed: S.Boolean,
   envFlag: S.String,
@@ -1863,17 +1866,45 @@ const RpcKhalaCodePlanStatusResult = S.Union([
 ])
 const RpcKhalaCodePlanPurchaseRequest = S.Struct({
   idempotencyKey: S.optional(S.String),
+  lightningPaymentHash: S.optional(S.String),
+  preimage: S.optional(S.String),
+  rail: S.optional(RpcKhalaCodePlanPaymentRail),
 })
 const RpcKhalaCodePlanPurchaseSuccess = S.Struct({
   ok: S.Literal(true),
   captureExcluded: S.Boolean,
   entitlementRef: S.String,
   planId: S.String,
+  purchaseRef: S.optional(S.String),
+  rail: S.optional(RpcKhalaCodePlanPaymentRail),
   receiptRef: S.String,
   receiptUrl: S.optional(S.String),
+  status: S.optional(S.Literal("fulfilled")),
+})
+const RpcKhalaCodePlanPurchaseStripePaymentRequired = S.Struct({
+  ok: S.Literal(true),
+  checkoutUrl: S.String,
+  planId: S.String,
+  purchaseRef: S.String,
+  rail: S.Literal("stripe_checkout"),
+  status: S.Literal("payment_required"),
+  stripeCheckoutSessionId: S.String,
+})
+const RpcKhalaCodePlanPurchaseLightningPaymentRequired = S.Struct({
+  ok: S.Literal(true),
+  bolt11: S.String,
+  invoiceExpiresAt: S.optional(S.String),
+  network: S.Literals(["mainnet", "regtest", "signet"]),
+  paymentHash: S.String,
+  planId: S.String,
+  purchaseRef: S.String,
+  rail: S.Literal("lightning_mpp"),
+  status: S.Literal("payment_required"),
 })
 const RpcKhalaCodePlanPurchaseResult = S.Union([
   RpcKhalaCodePlanPurchaseSuccess,
+  RpcKhalaCodePlanPurchaseStripePaymentRequired,
+  RpcKhalaCodePlanPurchaseLightningPaymentRequired,
   S.Struct({
     ok: S.Literal(false),
     error: S.Literals([
@@ -1942,6 +1973,7 @@ const RpcKhalaCodeOutsideUserRunReportResult = S.Union([
 export const KhalaCodeDesktopPlanCatalogSchema = RpcKhalaCodePlanCatalog
 export const KhalaCodeDesktopPlanStatusPlanSchema = RpcKhalaCodePlanStatusPlan
 export const KhalaCodeDesktopPlanPurchaseSuccessSchema = RpcKhalaCodePlanPurchaseSuccess
+export const KhalaCodeDesktopPlanPurchaseResultSchema = RpcKhalaCodePlanPurchaseResult
 export const KhalaCodeDesktopOutsideUserRunReportResultSchema =
   RpcKhalaCodeOutsideUserRunReportResult
 

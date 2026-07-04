@@ -92,7 +92,7 @@ import {
   type KhalaCodeDesktopPlanStatusResult,
   KhalaCodeDesktopOutsideUserRunReportResultSchema,
   KhalaCodeDesktopPlanCatalogSchema,
-  KhalaCodeDesktopPlanPurchaseSuccessSchema,
+  KhalaCodeDesktopPlanPurchaseResultSchema,
   KhalaCodeDesktopPlanStatusPlanSchema,
   type KhalaCodeDesktopQaMetricSample,
   type KhalaCodeDesktopQaMetricSampleResult,
@@ -2479,11 +2479,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
               authorization: `Bearer ${token}`,
               "content-type": "application/json",
             },
-            body: JSON.stringify(
-              request?.idempotencyKey === undefined
-                ? {}
-                : { idempotencyKey: request.idempotencyKey },
-            ),
+            body: JSON.stringify(request ?? {}),
           },
         )
         const payload = await response.json().catch(() => null) as unknown
@@ -2499,7 +2495,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
               : "purchase_unavailable",
           }
         }
-        return S.decodeUnknownSync(KhalaCodeDesktopPlanPurchaseSuccessSchema)(payload)
+        return S.decodeUnknownSync(KhalaCodeDesktopPlanPurchaseResultSchema)(payload)
       } catch {
         return { ok: false, error: "purchase_unavailable" }
       }

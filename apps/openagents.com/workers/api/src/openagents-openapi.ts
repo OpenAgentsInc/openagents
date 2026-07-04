@@ -4294,7 +4294,7 @@ const requestSchemas = (): JsonSchema => ({
     additionalProperties: false,
     required: ['catalog'],
     description:
-      'Khala Code plan catalog (khala_code.free_paid_plans.v1, #7966). Public-safe catalog text and bounded policy facts only: the honest two-plan structure with real purchasability state from the fail-closed KHALA_CODE_PAID_PLANS_ENABLED read, carrying generatedAt plus the shared live_at_read staleness contract. Grants no capture, billing, payout, or settlement authority.',
+      'Khala Code plan catalog (khala_code.free_paid_plans.v1, #7966). Public-safe catalog text and bounded policy facts only: the honest two-plan structure with real purchasability state from the fail-closed KHALA_CODE_PAID_PLANS_ENABLED read. When armed, paid-plan purchase still requires settled Stripe Checkout or Spark/MPP Lightning payment before the existing paid-privacy entitlement receipt is granted. Carries generatedAt plus the shared live_at_read staleness contract. Grants no capture, billing, payout, or settlement authority.',
     properties: {
       catalog: {
         type: 'object',
@@ -6304,7 +6304,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getKhalaCodePlanCatalog',
       summary: 'Read the Khala Code plan catalog',
       description:
-        'Returns the honest Khala Code plan catalog (khala_code.free_paid_plans.v1): the Episode 245 two-plan structure — Free (pay with data) and Paid (private data: capture opt-out) — with code-accurate terms and the REAL purchasability state. The shipped default: the free plan is the default for everyone, free-plan desktop trace capture is NOT live, and the paid plan is NOT yet purchasable (the purchase seam is flag-gated off and collects no payment). Read-only, no auth, no secrets; grants no capture, billing, payout, or settlement authority.',
+        'Returns the honest Khala Code plan catalog (khala_code.free_paid_plans.v1): the Episode 245 two-plan structure — Free (pay with data) and Paid (private data: capture opt-out) — with code-accurate terms and the REAL purchasability state. The shipped default: the free plan is the default for everyone, free-plan desktop trace capture is NOT live, and the paid plan is NOT yet purchasable (the purchase seam is flag-gated off by default; when armed it requires settled Stripe Checkout or Spark/MPP Lightning payment before granting the existing paid-privacy entitlement receipt). Read-only, no auth, no secrets; grants no capture, billing, payout, or settlement authority.',
       tags: ['Public Proof', 'Agents'],
       security: publicRead,
       responses: {

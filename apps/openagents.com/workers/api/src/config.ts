@@ -214,9 +214,19 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // #7966). DEFAULT OFF, fail-closed: while unarmed the purchase route returns
   // 503 khala_code_paid_plans_not_enabled and grants nothing, and the public
   // plan catalog reports the paid plan as not purchasable. Arming is an owner
-  // decision; the seam collects no payment even when armed (the payment leg is
-  // the remaining owner-gated promise blocker).
+  // decision; when armed, payment still fails closed unless the owner has
+  // provided Stripe price / Lightning sats config for the selected rail.
   KHALA_CODE_PAID_PLANS_ENABLED?: string | undefined
+  // Owner-approved Stripe Price id for the Khala Code paid-private-data plan.
+  // Absent => the Stripe/card purchase rail returns a typed 503 and grants no
+  // entitlement even if KHALA_CODE_PAID_PLANS_ENABLED is armed.
+  KHALA_CODE_PAID_PLAN_STRIPE_PRICE_ID?: string | undefined
+  KHALA_CODE_PAID_PLAN_STRIPE_SUCCESS_URL?: string | undefined
+  KHALA_CODE_PAID_PLAN_STRIPE_CANCEL_URL?: string | undefined
+  // Owner-approved Lightning price for the Khala Code paid-private-data plan,
+  // in integer sats. Absent/invalid => the Spark/MPP Lightning purchase rail
+  // returns a typed 503 and grants no entitlement.
+  KHALA_CODE_PAID_PLAN_PRICE_SATS?: string | undefined
   // Async batch-job consumer feature flag (Khala, EPIC #6017 / #6028). Default
   // OFF: the queue handler does NOT route batch-job messages to the consumer
   // (`batch-job-consumer.ts executeBatchJob`) on the live Worker until the

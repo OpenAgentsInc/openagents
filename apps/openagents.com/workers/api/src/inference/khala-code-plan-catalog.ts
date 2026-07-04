@@ -17,8 +17,9 @@
 //     inference-privacy-receipt-routes.ts.
 //   - "paid plan is NOT purchasable today" -> the purchase seam
 //     (khala-code-plan-routes.ts) is flag-gated by
-//     KHALA_CODE_PAID_PLANS_ENABLED, DEFAULT OFF, fail-closed, and carries no
-//     payment collection leg; blocker
+//     KHALA_CODE_PAID_PLANS_ENABLED, DEFAULT OFF, fail-closed. When armed it
+//     requires a Stripe Checkout or Spark/MPP Lightning payment before granting
+//     the existing paid-privacy entitlement; blocker
 //     blocker.product_promises.khala_code_paid_plan_not_purchasable stays.
 //   - "free-plan desktop capture is NOT live" -> the Khala Code desktop
 //     default path is Codex wrapper mode whose raw events / ATIF traces are
@@ -40,7 +41,7 @@ export const KHALA_CODE_PLAN_CATALOG_SCHEMA_VERSION =
   'openagents.khala_code.plan_catalog.v1' as const
 
 // Catalog version. Bump when plan terms change (not on unrelated copy edits).
-export const KHALA_CODE_PLAN_CATALOG_VERSION = '2026-07-01.1' as const
+export const KHALA_CODE_PLAN_CATALOG_VERSION = '2026-07-04.1' as const
 
 export const KHALA_CODE_FREE_PLAN_ID = 'khala_code.plan.free.v1' as const
 export const KHALA_CODE_PAID_PLAN_ID = 'khala_code.plan.paid.v1' as const
@@ -68,7 +69,9 @@ export const KHALA_CODE_PLAN_CATALOG_SUMMARY: string =
   'and Paid (private data: capture opt-out). This catalog is the honest ' +
   'current state: the free plan is the default for everyone, free-plan ' +
   'desktop trace capture is NOT live, and the paid plan is NOT yet ' +
-  'purchasable — its purchase seam is flag-gated off and collects no payment.'
+  'purchasable — its purchase seam is flag-gated off by default, and when ' +
+  'armed it requires a real payment before any paid-privacy entitlement is ' +
+  'granted.'
 
 export type KhalaCodePlanKind = 'free' | 'paid'
 
@@ -116,9 +119,9 @@ const FREE_PLAN_TERMS: ReadonlyArray<string> = [
 const PAID_PLAN_TERMS: ReadonlyArray<string> = [
   'Private data: the paid plan’s substance is the capture opt-out — a paid-privacy entitlement excludes the account from capture, fail-closed (when in doubt, not captured).',
   'The entitlement machinery is live on the hosted API (inference_privacy_entitlements, privacy.khala_paid_capture_optout.v1); the Khala Code plan purchase seam reuses it rather than duplicating truth.',
-  'NOT yet purchasable: the purchase seam is flag-gated by KHALA_CODE_PAID_PLANS_ENABLED, default OFF, fail-closed, and collects no payment while unarmed.',
-  'When armed, a purchase records an idempotent paid-privacy entitlement receipt that is publicly dereferenceable at /api/public/inference/privacy-receipts/{receiptRef}.',
-  'Arming the seam, the payment-collection leg, pricing, and public plan copy are owner decisions (blocker.product_promises.khala_code_paid_plan_not_purchasable).',
+  'NOT yet purchasable: the purchase seam is flag-gated by KHALA_CODE_PAID_PLANS_ENABLED, default OFF, fail-closed, and grants no entitlement while unarmed.',
+  'When armed, card purchases use Stripe Checkout and crypto purchases use the Spark/MPP Lightning invoice rail; only successful payment grants an idempotent paid-privacy entitlement receipt at /api/public/inference/privacy-receipts/{receiptRef}.',
+  'Arming the seam, Stripe price id, Lightning sats price, live credentials, and public plan copy are owner decisions (blocker.product_promises.khala_code_paid_plan_not_purchasable).',
 ]
 
 // Build the catalog. `paidPlanPurchaseArmed` is the fail-closed read of

@@ -86,6 +86,28 @@ Receipt refs required before RL-1 may be called complete:
 - GitHub release
 - clean-Mac first-run smoke showing the missing-Codex install/login hint
 
+## Khala Code Paid Plan Payment Arming
+
+Source issue: OpenAgentsInc/openagents#8248
+
+The paid-plan payment-collection leg now exists in source but remains
+owner-armed and fail-closed by default. `POST /v1/khala-code/plans/purchases`
+does not grant the paid-privacy entitlement until payment is settled: card
+purchases create a Stripe Checkout Session, and crypto purchases create a
+Spark/MPP Lightning invoice whose preimage is verified locally before the
+existing paid-privacy entitlement receipt is granted.
+
+NEEDS-OWNER: Decide when to set `KHALA_CODE_PAID_PLANS_ENABLED`, choose and
+configure `KHALA_CODE_PAID_PLAN_STRIPE_PRICE_ID`, choose
+`KHALA_CODE_PAID_PLAN_PRICE_SATS`, confirm the production Stripe webhook secret
+and Spark/MPP Lightning invoice issuer are live, approve the card/LN public
+copy, and record one public-safe production collected-purchase receipt before
+any promise-green or “paid plan is live” claim.
+
+Until those owner steps are complete, the shipped state remains: flag off by
+default, paid plan not purchasable, no entitlement granted without a settled
+payment receipt.
+
 ## QS7 Rhys Sales Motion Owner Gate
 
 Source issue: OpenAgentsInc/openagents#8067
