@@ -1,6 +1,5 @@
 import type {
   BootstrapResponse,
-  ChangelogEntry,
   ClientGroupId,
   ClientId,
   LogPage,
@@ -12,6 +11,11 @@ import type {
   SyncVersion,
 } from "@openagentsinc/khala-sync"
 import type { Effect } from "effect"
+import type { KhalaSyncStorageError } from "./errors.js"
+import type { SyncTransactionWriter } from "./outbox-writer.js"
+
+export * from "./errors.js"
+export * from "./outbox-writer.js"
 
 /**
  * @openagentsinc/khala-sync-server — server substrate for Khala Sync:
@@ -24,26 +28,6 @@ import type { Effect } from "effect"
  */
 
 // ---------------------------------------------------------------------------
-// Errors
-// ---------------------------------------------------------------------------
-
-export type KhalaSyncStorageErrorReason =
-  | "connection_failed"
-  | "transaction_conflict"
-  | "constraint_violation"
-  | "unavailable"
-
-export class KhalaSyncStorageError extends Error {
-  readonly _tag = "KhalaSyncStorageError"
-  constructor(
-    readonly reason: KhalaSyncStorageErrorReason,
-    readonly messageSafe: string,
-  ) {
-    super(messageSafe)
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Mutator registry (KS-3)
 // ---------------------------------------------------------------------------
 
@@ -53,29 +37,27 @@ export class KhalaSyncStorageError extends Error {
  * writes, changelog appends (via the transaction-scoped writer), and return
  * the per-mutation result. Rejections are values (never thrown queue
  * poison); throwing is reserved for storage failures that abort the batch.
+ *
+ * KS-2.1 refinement: mutators run inside `withSyncTransaction` (see
+ * ./outbox-writer), so the context carries the {@link SyncTransactionWriter}
+ * directly — `writer.appendChange` for changelog appends and `writer.sql`
+ * for the mutator's own business writes, both bound to the ONE transaction.
+ * Execution is Promise-based at this substrate seam (Bun SQL transactions
+ * are Promise-scoped); Effect wrapping happens above the transaction
+ * boundary in the push service.
  */
 export interface MutatorContext {
   readonly userId: string
   readonly clientGroupId: ClientGroupId
   readonly clientId: ClientId
-  /** Append one changed entity to the changelog inside this transaction. */
-  readonly appendChange: (
-    change: Omit<ChangelogEntry, "version" | "committedAt" | "mutationRef">,
-  ) => Effect.Effect<void, KhalaSyncStorageError>
-  /** Run a parameterized SQL statement inside this transaction. */
-  readonly sql: (
-    statement: string,
-    params: ReadonlyArray<unknown>,
-  ) => Effect.Effect<ReadonlyArray<Record<string, unknown>>, KhalaSyncStorageError>
+  /** Transaction-scoped changelog writer + business-write SQL handle. */
+  readonly writer: SyncTransactionWriter
 }
 
 export interface MutatorDefinition<Args = unknown> {
   readonly name: MutatorName
   readonly decodeArgs: (argsJson: string) => Args
-  readonly execute: (
-    args: Args,
-    ctx: MutatorContext,
-  ) => Effect.Effect<MutationResult, KhalaSyncStorageError>
+  readonly execute: (args: Args, ctx: MutatorContext) => Promise<MutationResult>
 }
 
 export interface MutatorRegistry {
