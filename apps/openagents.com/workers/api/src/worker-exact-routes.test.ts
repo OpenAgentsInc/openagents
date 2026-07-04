@@ -108,10 +108,13 @@ const approvedExactRoutePaths = [
   '/api/internal/khala-sync/db-smoke',
   // Khala Sync hub internal surface (KS-4.2, #8295): admin bearer only;
   // per-scope KhalaSyncHubDO append / log / connect. Public /api/sync/*
-  // arrives with KS-4.3/4.4.
+  // catch-up/connect arrives with KS-4.3/4.4.
   '/api/internal/khala-sync/hub/append',
   '/api/internal/khala-sync/hub/log',
   '/api/internal/khala-sync/hub/connect',
+  // Khala Sync push (KS-3.1, #8291): authenticated transactional mutator
+  // execution.
+  '/api/sync/push',
   '/api/stats/token-usage/events',
   '/api/stats/token-usage/aggregate',
   '/api/admin/inference-analytics',

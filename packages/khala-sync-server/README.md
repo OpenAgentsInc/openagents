@@ -70,9 +70,11 @@ deployed Worker and returns `{ ok, khalaSyncTables, latencyMs }` — see
 
 Status: contracts, schema, migration runner (KS-0.3), the transactional
 outbox writer + per-scope version allocator (KS-2.1), the read service
-(bootstrap snapshot + log pages, KS-2.2), and the mutation ledger +
-client-group state (KS-2.4) landed; the mutator engine,
-capture, and hub land per the remaining KS-2/KS-3/KS-4 issues.
+(bootstrap snapshot + log pages, KS-2.2), the mutation ledger +
+client-group state (KS-2.4), and the transactional push engine + mutator
+registry (KS-3.1, wired to `POST /api/sync/push` in the `openagents.com`
+Worker) landed; compaction, capture, and the remaining hub seams land per
+the KS-2/KS-4 issues, fleet mutators per KS-3.2.
 
 ## Outbox writer (KS-2.1)
 
@@ -267,6 +269,62 @@ exactly the final entity states — byte-equal canonical post-images, and
 byte-equal to a fresh single-page bootstrap taken afterwards. Paging
 correctness (version-boundary integrity, tombstone slots, empty-scope
 watermarks) and both retention refusals are covered alongside.
+
+## Push engine (KS-3.1)
+
+`src/push-engine.ts` is the transactional mutator engine behind
+`POST /api/sync/push` (SPEC §2.4/§3, invariants 3 and 5):
+
+- **`makeMutatorRegistry([defineMutator({ name, decodeArgs, execute })])`**
+  — named, server-authoritative mutators. `execute(args, ctx)` runs inside
+  ONE Postgres transaction with a `MutatorContext`: `userId` (the
+  AUTHENTICATED caller), `clientGroupId`/`clientId`/`mutationId`,
+  `mutationRef` (pass it on every `appendChange` so changelog entries stay
+  attributable — invariant 3), and `writer` (the transaction-scoped
+  `SyncTransactionWriter`: `writer.sql` for business writes,
+  `writer.appendChange` for changelog appends). Rejections are VALUES
+  (`status: "rejected"`); the engine commits the transaction even for
+  rejected results (the ledger ack must commit), so mutators MUST
+  permission-check and validate BEFORE writing. Throwing is reserved for
+  storage failures that abort the batch.
+- **`executePush({ sql, registry, userId, request })`** — runs one decoded
+  `PushRequest` batch. Per envelope, in ONE transaction each:
+  `upsertClientState` (client-group row lock + user binding — a group bound
+  to a different user throws the typed
+  `KhalaSyncClientStateMismatchError`, a whole-request 403-class failure)
+  → `checkAndReserve` (duplicate ⇒ recorded result, no re-execution;
+  out-of-order ⇒ in-band rejection that acks NOTHING) → decode args
+  (unknown mutator / bad args ⇒ in-band `rejected` recorded in the ledger;
+  the decode error is never echoed — it can embed raw values) → mutator
+  execution → `recordMutation` — all atomic. Storage failures abort the
+  batch (`KhalaSyncStorageError`, retryable): the committed prefix stays
+  committed and replays as duplicates. The response carries `results` in
+  request order plus the `lastMutationId` watermark (`0` when nothing is
+  acked yet).
+- **Driver seam** — `src/sql.ts` types the SQL handle STRUCTURALLY
+  (tagged-template query + `begin`), so the same engine runs on Bun's
+  `SQL` (tests, capture) and on postgres.js through Hyperdrive inside the
+  Worker (SPEC §4: single transactions, ordinary row locks, no session
+  state).
+
+The Worker surface is `POST /api/sync/push`
+(`apps/openagents.com/workers/api/src/khala-sync-push-routes.ts`):
+authenticated via the standard actor auth (browser session or agent
+bearer), typed `SyncError` bodies for whole-request failures
+(401 `unauthenticated`, 400 `invalid_request` /
+`protocol_version_unsupported` / `schema_version_unsupported`,
+403 `unauthorized_scope`, 503 `storage_unavailable`, 500 `internal`), and
+per-mutation rejections IN-BAND in a 200 `PushResponse` — never a
+queue-blocking 4xx. The Worker's v1 registry
+(`src/khala-sync-mutators.ts` there) carries one system-test mutator,
+`sync.debugEcho`, which writes a `sync_debug_echo` entity into the
+caller's OWN personal scope only; fleet mutators land per KS-3.2.
+
+`src/push-engine.test.ts` proves the engine against real local Postgres:
+applied/rejected/duplicate/out-of-order flows, request-order results,
+atomicity (a mid-mutator failure rolls back business write, changelog,
+ledger row, AND the scope counter — versions stay dense on retry),
+client-group user binding, and empty-push watermark reporting.
 
 ## Migrations runbook (KS-0.3)
 

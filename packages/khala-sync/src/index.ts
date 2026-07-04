@@ -180,10 +180,22 @@ export class PushRequest extends S.Class<PushRequest>("PushRequest")({
   mutations: S.Array(MutationEnvelope),
 }) {}
 
+/**
+ * Highest mutation id acked for the pushing `(clientGroup, client)` pair —
+ * the ledger watermark, not an id of any one mutation. `0` means nothing has
+ * been acked yet (fresh client, empty push, or an all-`out_of_order` batch),
+ * which is why this is a plain non-negative int rather than a `MutationId`.
+ */
+export const LastMutationId = S.Number.check(
+  S.isInt(),
+  S.isGreaterThanOrEqualTo(0),
+)
+export type LastMutationId = typeof LastMutationId.Type
+
 export class PushResponse extends S.Class<PushResponse>("PushResponse")({
   protocolVersion: S.Literal(KHALA_SYNC_PROTOCOL_VERSION),
   results: S.Array(MutationResult),
-  lastMutationId: MutationId,
+  lastMutationId: LastMutationId,
 }) {}
 
 // ---------------------------------------------------------------------------
@@ -290,10 +302,12 @@ export type LiveFrame = typeof LiveFrame.Type
 // ---------------------------------------------------------------------------
 
 export const SyncErrorCode = S.Literals([
+  "unauthenticated",
   "unauthorized_scope",
   "unknown_scope",
   "unknown_mutator",
   "mutation_rejected",
+  "invalid_request",
   "protocol_version_unsupported",
   "schema_version_unsupported",
   "cursor_behind_retained_window",
@@ -396,7 +410,12 @@ export const canonicalJson = (value: unknown): string => {
 // ---------------------------------------------------------------------------
 
 export const decodePushRequest = S.decodeUnknownSync(PushRequest)
+export const encodePushRequest = S.encodeSync(PushRequest)
 export const decodePushResponse = S.decodeUnknownSync(PushResponse)
+export const encodePushResponse = S.encodeSync(PushResponse)
+export const encodeMutationResult = S.encodeSync(MutationResult)
+export const decodeSyncError = S.decodeUnknownSync(SyncError)
+export const encodeSyncError = S.encodeSync(SyncError)
 export const decodeBootstrapRequest = S.decodeUnknownSync(BootstrapRequest)
 export const decodeBootstrapResponse = S.decodeUnknownSync(BootstrapResponse)
 export const decodeLogPage = S.decodeUnknownSync(LogPage)

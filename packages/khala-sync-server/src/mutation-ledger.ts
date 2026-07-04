@@ -10,8 +10,8 @@ import {
   type SyncSchemaVersion,
   type SyncScope,
 } from "@openagentsinc/khala-sync"
-import type { SQL, TransactionSQL } from "bun"
 import { KhalaSyncStorageError } from "./errors.js"
+import type { SqlTag } from "./sql.js"
 
 /**
  * Mutation ledger idempotency + client-group state (KS-2.4; SPEC §2.4/§3,
@@ -63,12 +63,13 @@ import { KhalaSyncStorageError } from "./errors.js"
 // ---------------------------------------------------------------------------
 
 /**
- * Any Bun SQL tagged-template handle. Ledger writes (`recordMutation`,
- * `checkAndReserve`) must receive the MUTATOR TRANSACTION's handle
- * (`writer.sql` from `withSyncTransaction`) so they commit atomically with
- * the mutator's effects; reads accept either.
+ * Any tagged-template SQL handle (Bun `SQL`/`TransactionSQL` or postgres.js
+ * — see ./sql.ts). Ledger writes (`recordMutation`, `checkAndReserve`) must
+ * receive the MUTATOR TRANSACTION's handle (`writer.sql` from
+ * `withSyncTransaction`) so they commit atomically with the mutator's
+ * effects; reads accept either.
  */
-export type SqlHandle = SQL | TransactionSQL
+export type SqlHandle = SqlTag
 
 // ---------------------------------------------------------------------------
 // Row mapping

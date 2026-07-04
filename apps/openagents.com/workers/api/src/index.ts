@@ -784,6 +784,8 @@ import {
   handleKhalaSyncHubInternalRoute,
 } from './khala-sync-hub-do'
 export { KhalaSyncHubDO } from './khala-sync-hub-do'
+import { makeKhalaSyncWorkerMutatorRegistry } from './khala-sync-mutators'
+import { handleKhalaSyncPush } from './khala-sync-push-routes'
 import { makeOpenAgentsL402HmacSigningBoundary } from './l402-credential-service'
 import { handlePublicLaborEarningsApi } from './labor-earnings-routes'
 import { handleSelfServeLaborPayoutApi } from './labor-self-serve-earning-payout-routes'
@@ -8000,6 +8002,11 @@ const inferenceReferralRoutes = makeInferenceReferralRoutes({
   requireBrowserSession,
 })
 
+// Khala Sync mutator registry (KS-3.1, #8291): named server-authoritative
+// mutators executed by POST /api/sync/push. v1 carries the single
+// system-test mutator sync.debugEcho; KS-3.2 adds the fleet mutators.
+const khalaSyncMutatorRegistry = makeKhalaSyncWorkerMutatorRegistry()
+
 const agentGoalRoutes = makeAgentGoalRoutes({
   appendRefreshedSessionCookies,
   authenticateRequestActor,
@@ -11927,7 +11934,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   },
   {
     // Khala Sync hub internal surface (KS-4.2, #8295). Admin bearer only —
-    // the public /api/sync/* routes land with KS-4.3/4.4. Proxies to the
+    // the public /api/sync/* catch-up/connect routes land with KS-4.3/4.4.
+    // Proxies to the
     // per-scope KhalaSyncHubDO (`idFromName(scope)`): capture/post-commit
     // appends, offset-resumable log pages served from the DO window, and the
     // hibernating-WebSocket live tail. Honest 503 while the KHALA_SYNC_HUB
@@ -11969,6 +11977,32 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           requireOperator: () => requireAdminApiToken(request, env),
         }),
       ),
+  },
+  {
+    // Khala Sync push (KS-3.1, #8291): authenticated transactional mutator
+    // execution. Decodes a typed PushRequest, resolves the caller via the
+    // standard actor auth (session or agent bearer), and runs each mutation
+    // in ONE Postgres transaction through the KHALA_SYNC_DB Hyperdrive
+    // binding (client-state binding → idempotency gate → mutator →
+    // changelog → ledger, all atomic). Per-mutation rejections are in-band
+    // MutationResult values in a 200 PushResponse — never a queue-blocking
+    // 4xx (SPEC §2.4).
+    path: '/api/sync/push',
+    handler: (request, env, ctx) =>
+      handleKhalaSyncPush(request, {
+        authenticate: async () => {
+          const actor = await authenticateRequestActor(request, env, ctx)
+          if (actor === undefined) {
+            return undefined
+          }
+          return {
+            userId:
+              actor.kind === 'agent' ? actor.agent.user.id : actor.user.userId,
+          }
+        },
+        binding: env.KHALA_SYNC_DB,
+        registry: khalaSyncMutatorRegistry,
+      }),
   },
   {
     path: '/api/stats/token-usage/events',

@@ -8,8 +8,8 @@ import {
   type SyncScope,
   SyncVersion,
 } from "@openagentsinc/khala-sync"
-import type { SQL, TransactionSQL } from "bun"
 import { KhalaSyncStorageError, storageErrorFromUnknown } from "./errors.js"
+import type { SyncSql, SyncTransactionSql } from "./sql.js"
 
 /**
  * Transaction-scoped changelog writer + per-scope version allocator
@@ -71,7 +71,7 @@ export interface SyncTransactionWriter {
    * The transaction's SQL handle. Business writes issued through it commit
    * or roll back atomically with the changelog appends (invariant 5).
    */
-  readonly sql: TransactionSQL
+  readonly sql: SyncTransactionSql
   /**
    * Allocate this transaction's version for `scope` (or return the one
    * already allocated by an earlier call in the same transaction). Takes
@@ -176,11 +176,11 @@ const serializePostImage = (postImage: unknown): string => {
  * through unchanged.
  */
 export const withSyncTransaction = async <A>(
-  sql: SQL,
+  sql: SyncSql,
   fn: (writer: SyncTransactionWriter) => Promise<A>,
 ): Promise<A> => {
   try {
-    return await sql.begin(async (tx) => {
+    return await sql.begin(async (tx: SyncTransactionSql) => {
       /** scope → version allocated by THIS transaction. */
       const allocated = new Map<string, SyncVersion>()
 

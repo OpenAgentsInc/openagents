@@ -1428,10 +1428,17 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/internal/khala-sync/db-smoke',
   // Khala Sync hub internal surface (KS-4.2, #8295): admin bearer only,
   // per-scope KhalaSyncHubDO append/log/connect; not part of the public
-  // OpenAPI surface (the public /api/sync/* routes land with KS-4.3/4.4).
+  // OpenAPI surface (the public /api/sync/* catch-up/connect routes land
+  // with KS-4.3/4.4).
   '/api/internal/khala-sync/hub/append',
   '/api/internal/khala-sync/hub/log',
   '/api/internal/khala-sync/hub/connect',
+  // Khala Sync push (KS-3.1, #8291): authenticated sync-protocol surface for
+  // the owned khala-sync client engine. The wire contract is typed in
+  // @openagentsinc/khala-sync (protocolVersion-gated PushRequest/PushResponse),
+  // not published in the public OpenAPI document until the client engine
+  // (KS-5/KS-6) stabilizes the protocol for outside consumers.
+  '/api/sync/push',
   // Operator business-pipeline console (operator/admin only): internal queue
   // surface, not part of the public OpenAPI contract. (Allowlisted here as
   // clean-up: the routes landed without a coverage decision.)

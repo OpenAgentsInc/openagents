@@ -10,7 +10,6 @@ import {
   type SyncScope,
   SyncVersionWatermark,
 } from "@openagentsinc/khala-sync"
-import type { SQL, TransactionSQL } from "bun"
 import {
   KhalaSyncCursorBehindRetainedWindowError,
   KhalaSyncInvalidPageTokenError,
@@ -18,6 +17,7 @@ import {
   storageErrorFromUnknown,
 } from "./errors.js"
 import { changelogEntryFromRow, type ChangelogRow } from "./outbox-writer.js"
+import type { SyncSql, SyncTransactionSql } from "./sql.js"
 
 /**
  * Khala Sync read substrate (KS-2.2; SPEC §3 bootstrap/log, §4 substrate):
@@ -122,7 +122,7 @@ const toWatermark = (raw: string | number | bigint): number => {
 
 /** A scope with no counter row behaves as (last_version 0, retained_from 1). */
 const readScopeCounters = async (
-  tx: TransactionSQL,
+  tx: SyncTransactionSql,
   scope: SyncScope,
 ): Promise<{ lastVersion: number; retainedFromVersion: number }> => {
   const rows: Array<ScopeRow> = await tx`
@@ -181,7 +181,7 @@ export interface LogPageInput {
  *   resuming from `nextCursor` can never skip rows of a half-delivered
  *   version.
  */
-export const logPage = async (sql: SQL, input: LogPageInput): Promise<LogPage> => {
+export const logPage = async (sql: SyncSql, input: LogPageInput): Promise<LogPage> => {
   const after = input.afterVersion ?? 0
   if (!Number.isSafeInteger(after) || after < 0) {
     throw new KhalaSyncStorageError(
@@ -318,7 +318,7 @@ interface SnapshotRow {
  * but are (correctly) omitted from `entities`.
  */
 export const bootstrap = async (
-  sql: SQL,
+  sql: SyncSql,
   input: BootstrapInput,
 ): Promise<BootstrapResponse> => {
   const pageSize = clampPositive(

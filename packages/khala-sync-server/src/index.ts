@@ -5,7 +5,6 @@ import type {
   LogPage,
   MutationEnvelope,
   MutationResult,
-  MutatorName,
   SyncSchemaVersion,
   SyncScope,
   SyncVersion,
@@ -17,75 +16,24 @@ import type {
   KhalaSyncInvalidPageTokenError,
   KhalaSyncStorageError,
 } from "./errors.js"
-import type { SyncTransactionWriter } from "./outbox-writer.js"
 
 export * from "./errors.js"
 export * from "./mutation-ledger.js"
 export * from "./outbox-writer.js"
+export * from "./push-engine.js"
 export * from "./read-service.js"
+export * from "./sql.js"
 
 /**
  * @openagentsinc/khala-sync-server — server substrate for Khala Sync:
- * Postgres schema (see ./migrations), the mutator engine, bootstrap and
- * catch-up reads, capture, and the per-scope KhalaSyncHubDO.
+ * Postgres schema (see ./migrations), the mutator engine (./push-engine),
+ * bootstrap and catch-up reads, capture, and the per-scope KhalaSyncHubDO.
  *
  * Spec: docs/khala-sync/SPEC.md §§4-5. Implementation lands per the KS-2,
  * KS-3, and KS-4 workstream issues; this module currently defines the
- * service contracts those lanes fill in.
+ * service contracts the remaining lanes fill in. The mutator registry and
+ * transactional push engine (KS-3.1) live in ./push-engine.
  */
-
-// ---------------------------------------------------------------------------
-// Mutator registry (KS-3)
-// ---------------------------------------------------------------------------
-
-/**
- * A named, server-authoritative mutator. `execute` runs inside ONE Postgres
- * transaction and must perform: permission check, validation, business
- * writes, changelog appends (via the transaction-scoped writer), and return
- * the per-mutation result. Rejections are values (never thrown queue
- * poison); throwing is reserved for storage failures that abort the batch.
- *
- * KS-2.1 refinement: mutators run inside `withSyncTransaction` (see
- * ./outbox-writer), so the context carries the {@link SyncTransactionWriter}
- * directly — `writer.appendChange` for changelog appends and `writer.sql`
- * for the mutator's own business writes, both bound to the ONE transaction.
- * Execution is Promise-based at this substrate seam (Bun SQL transactions
- * are Promise-scoped); Effect wrapping happens above the transaction
- * boundary in the push service.
- */
-export interface MutatorContext {
-  readonly userId: string
-  readonly clientGroupId: ClientGroupId
-  readonly clientId: ClientId
-  /** Transaction-scoped changelog writer + business-write SQL handle. */
-  readonly writer: SyncTransactionWriter
-}
-
-export interface MutatorDefinition<Args = unknown> {
-  readonly name: MutatorName
-  readonly decodeArgs: (argsJson: string) => Args
-  readonly execute: (args: Args, ctx: MutatorContext) => Promise<MutationResult>
-}
-
-export interface MutatorRegistry {
-  readonly get: (name: MutatorName) => MutatorDefinition | undefined
-  readonly names: () => ReadonlyArray<MutatorName>
-}
-
-export const makeMutatorRegistry = (
-  mutators: ReadonlyArray<MutatorDefinition>,
-): MutatorRegistry => {
-  const byName = new Map<string, MutatorDefinition>(
-    mutators.map((m) => [String(m.name), m]),
-  )
-  if (byName.size !== mutators.length) {
-    throw new Error("duplicate mutator name in registry")
-  }
-  return {
-    get: (name) => byName.get(String(name)),
-    names: () => mutators.map((m) => m.name),
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Substrate service contracts (KS-2)
