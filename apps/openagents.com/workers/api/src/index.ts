@@ -277,6 +277,10 @@ import {
   listBlueprintProgramRuns,
   recordBlueprintProgramRun,
 } from './blueprint/repositories/program-runs'
+import {
+  handleOperatorBusinessAffiliateAttributionApi,
+  handleOperatorBusinessAffiliateCodeApi,
+} from './business-affiliate-attribution-routes'
 import { makeD1BusinessOutreachStore } from './business-outreach'
 import { makeOperatorBusinessOutreachRoutes } from './business-outreach-routes'
 import { makeD1BusinessPipelineStore } from './business-pipeline-queue'
@@ -10907,6 +10911,30 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/business/funnel-dashboard',
     handler: (request, env) =>
       handlePublicBusinessFunnelDashboardApi(request, openAgentsDatabase(env)),
+  },
+  {
+    path: '/api/operator/business/affiliate-codes',
+    handler: (request, env) =>
+      handleOperatorBusinessAffiliateCodeApi(
+        request,
+        openAgentsDatabase(env),
+        {
+          requireAdminApiToken: adminRequest =>
+            requireAdminApiToken(adminRequest, env),
+        },
+      ),
+  },
+  {
+    path: '/api/operator/business/affiliate-attribution',
+    handler: (request, env) =>
+      handleOperatorBusinessAffiliateAttributionApi(
+        request,
+        openAgentsDatabase(env),
+        {
+          requireAdminApiToken: adminRequest =>
+            requireAdminApiToken(adminRequest, env),
+        },
+      ),
   },
   {
     // OpenAgents Business conversational intake (Khala-run interview from

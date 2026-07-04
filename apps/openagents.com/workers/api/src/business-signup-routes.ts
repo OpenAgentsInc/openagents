@@ -1,6 +1,7 @@
 import { Effect, Schema as S } from 'effect'
 
 import { parseCookies } from './auth-cookies'
+import { recordBusinessAffiliateSignupAttribution } from './business-affiliate-attribution'
 import { recordBusinessFunnelEvent } from './business-funnel-dashboard'
 import {
   BUSINESS_SOURCE_REF_DIRECT,
@@ -652,6 +653,19 @@ export const handleBusinessSignupApi = (
 
     yield* Effect.tryPromise({
       try: () => recordBusinessSignupFunnelEvent(db, record),
+      catch: cause => new BusinessSignupIntakeFailure({ cause }),
+    }).pipe(Effect.catch(() => Effect.void))
+
+    yield* Effect.tryPromise({
+      try: () =>
+        recordBusinessAffiliateSignupAttribution(
+          db,
+          {
+            businessSignupRequestId: record.id,
+            sourceRef: record.sourceRef,
+          },
+          runtime,
+        ),
       catch: cause => new BusinessSignupIntakeFailure({ cause }),
     }).pipe(Effect.catch(() => Effect.void))
 

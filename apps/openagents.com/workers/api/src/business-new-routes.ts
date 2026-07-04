@@ -19,6 +19,7 @@ import {
   BUSINESS_SOURCE_REF_DIRECT,
   decodeBusinessSourceRef,
 } from './business-source-attribution'
+import { isSafeReferralSourceRef } from './referral-source-capture'
 
 // `/business` — the page restructured in the lander-family
 // system (site-speed lane): same server-rendered shell, shared navigation
@@ -72,6 +73,11 @@ const SOURCE_CAPTURE_SCRIPT = `
 (function(){
   try{
     var params=new URLSearchParams(window.location.search);
+    var ref=(params.get("ref")||"").trim();
+    if(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,190}$/.test(ref)){
+      var refEl=document.getElementById("business-referral-code");
+      if(refEl)refEl.value=ref;
+    }
     var source=(params.get("sourceRef")||params.get("source_ref")||params.get("source")||"").trim().toLowerCase();
     if(source==="ai-search"||source==="aisearch")source="ai_search";
     if(source==="partner-expansion")source="partner_expansion";
@@ -93,6 +99,11 @@ const normalizeSourceRef = (request: Request): string => {
   )
 
   return 'sourceRef' in decoded ? decoded.sourceRef : BUSINESS_SOURCE_REF_DIRECT
+}
+
+const normalizeReferralCode = (request: Request): string => {
+  const value = new URL(request.url).searchParams.get('ref')?.trim() ?? ''
+  return value !== '' && isSafeReferralSourceRef(value) ? value : ''
 }
 
 export const renderBusinessAgentGuide = (): string => `# OpenAgents Business
@@ -153,6 +164,7 @@ export const handleBusinessAgentGuide = (request: Request) => {
 export const renderBusinessNewHtml = (
   tokensServed: number | null,
   sourceRef: string = BUSINESS_SOURCE_REF_DIRECT,
+  referralCode: string = '',
 ): string => {
   const display = formatLanderTokens(tokensServed)
   return `<!doctype html>
@@ -231,6 +243,7 @@ ${renderLanderHeader('business', display)}
 <h2>Talk to Sales</h2>
 <form class="intake" id="intake-form" method="post" action="/api/public/business-signup">
 <input type="hidden" id="business-source-ref" name="sourceRef" value="${sourceRef}">
+<input type="hidden" id="business-referral-code" name="referralCode" value="${referralCode}">
 <label class="check wide optin"><input type="checkbox" name="requestSlackChannel" value="true">Set up a shared Slack channel</label>
 <label><span class="lab">Business name *</span>
 <input type="text" name="businessName" required maxlength="200" autocomplete="organization"></label>
@@ -268,12 +281,13 @@ export const handleBusinessNewPage = (
   const ledger =
     input.ledger ?? makeD1TokenUsageLedger(input.OPENAGENTS_DB as D1Database)
   const sourceRef = normalizeSourceRef(request)
+  const referralCode = normalizeReferralCode(request)
   const render = ledger.readPublicTokensServed().pipe(
     Effect.map(aggregate =>
-      renderBusinessNewHtml(aggregate.tokensServed, sourceRef),
+      renderBusinessNewHtml(aggregate.tokensServed, sourceRef, referralCode),
     ),
     Effect.catch(() =>
-      Effect.succeed(renderBusinessNewHtml(null, sourceRef)),
+      Effect.succeed(renderBusinessNewHtml(null, sourceRef, referralCode)),
     ),
   )
   return edgeCachedLanderHtml(request, ctx, render)

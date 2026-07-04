@@ -39,6 +39,8 @@ describe('business-new restructured page', () => {
     expect(html).toContain('Questions buyers and agents ask')
     expect(html).toContain('sourceRef=ai_search')
     expect(html).toContain('name="sourceRef"')
+    expect(html).toContain('name="referralCode"')
+    expect(html).toContain('id="business-referral-code"')
     expect(html).not.toContain('name="robots" content="noindex"')
     expect(html).not.toContain('/assets/index-')
   })
@@ -46,7 +48,7 @@ describe('business-new restructured page', () => {
   test('GET renders the ledger total and preserves AI-search source attribution; non-GET rejected', async () => {
     const response = await Effect.runPromise(
       handleBusinessNewPage(
-        new Request('https://openagents.com/business?source=ai-search'),
+        new Request('https://openagents.com/business?source=ai-search&ref=launch-aug'),
         {
           ledger: makeD1TokenUsageLedger(fakeTokensServedDb(5_500_000)),
         },
@@ -58,6 +60,9 @@ describe('business-new restructured page', () => {
     expect(body).toContain('5,500,000')
     expect(body).toContain(
       'id="business-source-ref" name="sourceRef" value="ai_search"',
+    )
+    expect(body).toContain(
+      'id="business-referral-code" name="referralCode" value="launch-aug"',
     )
 
     const rejected = await Effect.runPromise(

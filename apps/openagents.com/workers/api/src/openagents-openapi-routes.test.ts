@@ -1442,6 +1442,8 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   // Operator business-pipeline console (operator/admin only): internal queue
   // surface, not part of the public OpenAPI contract. (Allowlisted here as
   // clean-up: the routes landed without a coverage decision.)
+  '/api/operator/business/affiliate-codes',
+  '/api/operator/business/affiliate-attribution',
   '/api/operator/business/pipeline',
   '/api/operator/business/pipeline/metrics',
   '/api/operator/business/pipeline/{param}/advance',

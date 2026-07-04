@@ -412,6 +412,19 @@ receipt exists. The useful Ora-style public URL/readiness rubric idea is folded
 into the analyzer config ref only; no ora.ai integration or score claim is
 created.
 
+Implementation status (#8269, 2026-07-04): LG-8 now has attribution-only
+affiliate/referral machinery at
+`apps/openagents.com/workers/api/src/business-affiliate-attribution.ts`,
+backed by `0298_business_affiliate_attribution.sql`. Operators can issue
+opaque-owner codes, `/business` preserves `?ref=` into the signup form, signup
+stores the existing LG-6 `affiliate_<code>` sourceRef shape, pipeline creation
+links the attribution row to `pipelineRef`, and the operator report composes
+exact intake/pipeline/payment legs with `not_measured` for missing legs. The
+receipt is
+`docs/fable/2026-07-04-lg-8-referral-affiliate-attribution-receipt.md`. This
+does not add payout mechanics, public affiliate signup, or earning copy; the
+red `referral.refer_once_earn_forever.v1` marker stays untouched.
+
 ### 10.1 Episode 247 reconciliation (2026-07-04)
 
 Episode 247 ("Sell in Public", `docs/transcripts/247.md`) landed after this
@@ -425,7 +438,10 @@ plan's v2 and confirms/extends it; the deltas to carry:
   landing pages, Autopilot sites). Build posture: referral *attribution* is
   BF-8.4 (honest, end-to-end) and can start now; referral *payout copy*
   stays gated by the red `referral.refer_once_earn_forever.v1` record —
-  attribution first, payout claims only when the ledger settles them.
+  attribution first, payout claims only when the ledger settles them. LG-8
+  implements the attribution-only layer: operator-issued codes, hidden-form
+  capture, `affiliate_<code>` source refs, and an exact-only operator
+  conversion report.
 - **Partner-org fulfillment joins the funnel.** ~Five design-partner orgs
   (agentic ad running, performance marketing, brand design) share
   fulfillment; OpenAgents is the front door. For this plan: a prospect whose

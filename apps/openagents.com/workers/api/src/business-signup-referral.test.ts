@@ -59,6 +59,70 @@ class SqliteD1 {
 const migration = (name: string): string =>
   readFileSync(join(__dirname, '..', 'migrations', name), 'utf8')
 
+const SUPPORT_SCHEMA = `
+CREATE TABLE users (
+  id TEXT PRIMARY KEY,
+  email TEXT,
+  name TEXT,
+  kind TEXT NOT NULL DEFAULT 'human',
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT,
+  updated_at TEXT,
+  deleted_at TEXT
+);
+
+CREATE TABLE teams (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  slug TEXT UNIQUE,
+  kind TEXT NOT NULL DEFAULT 'organization',
+  plan TEXT,
+  logo_url TEXT,
+  credits INTEGER,
+  owner_user_id TEXT,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE team_projects (
+  id TEXT PRIMARY KEY,
+  team_id TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'active',
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT,
+  UNIQUE (team_id, slug)
+);
+
+CREATE TABLE email_messages (
+  id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL,
+  status TEXT NOT NULL,
+  provider TEXT,
+  provider_message_id TEXT,
+  subject TEXT,
+  to_email TEXT,
+  from_email TEXT,
+  reply_to_email TEXT,
+  template_slug TEXT,
+  template_context_json TEXT,
+  metadata_json TEXT,
+  rendered_html TEXT,
+  rendered_text TEXT,
+  error_name TEXT,
+  error_message TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`
+
 // Apply the referral spine + business-signup schema. node:sqlite keeps
 // foreign_keys OFF by default, so the referenced users/site_projects/
 // software_orders tables are not required to create these schemas.
@@ -68,7 +132,16 @@ const SCHEMA = [
   '0069_referral_attribution_consumption.sql',
   '0191_business_signup_requests.sql',
   '0216_business_signup_referral_attribution.sql',
+  '0270_business_funnel_events.sql',
+  '0190_prefilled_workspaces.sql',
+  '0192_prefilled_workspace_invite_engagement.sql',
+  '0195_private_prefilled_workspace_access.sql',
+  '0194_team_workspace_invites.sql',
   '0271_business_signup_fulfillment.sql',
+  '0278_business_commitment_ledger.sql',
+  '0294_business_pipeline_queue.sql',
+  '0297_business_source_attribution.sql',
+  '0298_business_affiliate_attribution.sql',
 ].map(migration)
 
 let counter = 0
@@ -86,6 +159,7 @@ const makeDb = (): Db => {
   // The referral spine tables carry FKs to users / site_projects / etc. that we
   // do not need here; keep enforcement off so the spine schema runs standalone.
   raw.exec('PRAGMA foreign_keys = OFF;')
+  raw.exec(SUPPORT_SCHEMA)
   for (const sql of SCHEMA) {
     raw.exec(sql)
   }
@@ -384,10 +458,12 @@ describe('business signup referral integration', () => {
     const response = await run(request, db.d1)
     expect(response.status).toBe(201)
     const text = await response.text()
-    expect(text).not.toContain('launch-aug')
     expect(text).not.toContain('referral_attribution')
     expect(JSON.parse(text)).toMatchObject({
-      request: { referralAttributed: true },
+      request: {
+        referralAttributed: true,
+        sourceRef: 'affiliate_launch-aug',
+      },
     })
   })
 })

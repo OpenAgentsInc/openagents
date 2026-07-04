@@ -151,6 +151,13 @@ outbound-assist, and full-funnel packages. Intake routing for new GEO/outbound
 phrases still needs the typed/semantic selector path; do not expand the legacy
 quick-win keyword list to claim those intents.
 
+BF-8.4 status note (2026-07-04): LG-8 implements referral/affiliate
+attribution only. Operator-issued codes map to `affiliate_<code>` source refs,
+business signup and pipeline rows link those refs to exact conversion legs, and
+missing pipeline/payment legs report `not_measured`. Payout mechanics, public
+affiliate signup, and earning copy remain gated by the red
+`referral.refer_once_earn_forever.v1` record.
+
 ### BF-9 — Ops discipline (cross-cutting)
 
 | Task | Description | Receipt/gate |

@@ -1,5 +1,6 @@
 import { Schema as S } from 'effect'
 
+import { linkBusinessAffiliateAttributionToPipeline } from './business-affiliate-attribution'
 import { BUSINESS_COMMITMENT_WEEKLY_REVIEW_REF } from './business-commitment-ledger'
 import { decodeBusinessSourceRef } from './business-source-attribution'
 import { parseJsonStringArray } from './json-boundary'
@@ -805,6 +806,13 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
         pipelineRef,
         nowIso,
       )
+      if (businessSignupRequestId !== null) {
+        await linkBusinessAffiliateAttributionToPipeline(db, {
+          businessSignupRequestId,
+          pipelineRef,
+          updatedAt: nowIso,
+        }).catch(() => undefined)
+      }
 
       const created = await readPipelineRow(pipelineRef)
       if (created === null) {

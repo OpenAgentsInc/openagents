@@ -13,6 +13,8 @@ const approvedExactRoutePaths = [
   '/api/operator/khala/unsupported-requests',
   '/api/public/business-signup',
   '/api/public/business/funnel-dashboard',
+  '/api/operator/business/affiliate-codes',
+  '/api/operator/business/affiliate-attribution',
   '/api/public/business-intake-chat',
   '/api/public/tassadar-run-summary',
   '/api/public/training/public-distributed-run-scale',
