@@ -898,6 +898,75 @@ Rollback at ANY step: set `KHALA_SYNC_FORUM_READS=d1` (reads) and/or
 `KHALA_SYNC_FORUM_DUAL_WRITE=off` (writes). D1 authority is never
 behind.
 
+## Khala Code product-state domain cutover (KS-8.13, #8324)
+
+The KS-8.13 domain migration is the product-state lane where migration
+also means Khala Sync adoption. Same-named Postgres twins are introduced
+by khala-sync migration `0017_khala_code_product_state.sql` for
+`thread_messages`, `thread_files`, `thread_file_message_refs`, `teams`,
+`team_memberships`, `team_chat_messages`, `team_projects`,
+`team_workspace_invites`, `prefilled_*`, `workroom_*`, `cloud_*`,
+`khala_feedback`, `khala_head_to_head_snapshots`,
+`khala_unsupported_requests`, Khala Code download/outside-run/
+trace-plugin receipt tables, and `share_projections` /
+`share_projection_recipients`.
+
+Machinery:
+
+- Worker seam:
+  `apps/openagents.com/workers/api/src/khala-code-product-state-store.ts`.
+  It wraps the existing D1 handle, lets the authoritative D1 write commit
+  first, reads back the accepted row, converge-upserts the Cloud SQL twin,
+  and appends Khala Sync changelog entries for `scope.team.<id>` and
+  `scope.thread.<id>`.
+- Shared registry:
+  `packages/khala-sync-server/src/khala-code-product-state-tables.ts`
+  owns column order, natural keys, and scope routing.
+- Backfill/verifier:
+  `packages/khala-sync-server/scripts/backfill-khala-code-product-state.ts`.
+  The verifier also covers product-state tables that are currently
+  backfill-only because no Worker writer is registered in source yet, such
+  as workroom template rows and Khala Code download events.
+
+Diagnostics are row-key only: `khala_sync_khala_code_state_dual_write_failed`
+is the drift metric; `khala_sync_khala_code_state_write_unclassified`
+means a D1 write touched a product-state table but the classifier could
+not prove the row key. A nonzero steady rate blocks read/sync cutover.
+
+Flags:
+
+- `KHALA_SYNC_KHALA_CODE_STATE_DUAL_WRITE` — default **on** wherever
+  `KHALA_SYNC_DB` exists; `off|0|false|disabled|no` disables the mirror.
+
+Cutover order:
+
+1. **Apply migration `0017`** through the khala-sync migration runner,
+   staging first, then production. Do not use Hyperdrive for migrations.
+2. **Dual-write on** (default after the Worker with the seam is deployed
+   and `KHALA_SYNC_DB` is present). Watch both diagnostics above.
+3. **Backfill** from `packages/khala-sync-server/`:
+   `KHALA_SYNC_DATABASE_URL=<direct-url> bun
+   scripts/backfill-khala-code-product-state.ts`. The sweep is resumable
+   via `.khala-code-product-state-backfill-state.json`.
+4. **Catch-up sweep**: rerun with `--restart` after dual-write has been
+   active across the window.
+5. **Verify**: `bun scripts/backfill-khala-code-product-state.ts --verify`
+   — exact row counts, newest-50 row hashes, active membership set
+   equality, and ordered message-chain fingerprints for `team_chat_messages`
+   and `thread_messages`. Post the JSON report on #8324. Exact or explain.
+6. **Synced-scope shadow**: run a desktop/web client on the relevant
+   `scope.team.<id>` and `scope.thread.<id>` scopes and compare its
+   confirmed local store to the still-authoritative D1 reads for the same
+   messages/files/memberships. A mismatch blocks read/poll retirement.
+7. **Read/poll retirement later**: once the shadow evidence is green,
+   the chat/sidebar clients may consume Khala Sync scopes as their primary
+   source. D1 rollback/fallback remains explicit until final destructive
+   retirement in KS-8.19 (#8330).
+
+Rollback at ANY step: set `KHALA_SYNC_KHALA_CODE_STATE_DUAL_WRITE=off`.
+Read authority is still D1, and the sync changelog can be repaired by
+rerunning the backfill plus catch-up sweep after the bug is fixed.
+
 ## Billing/Stripe/pay-ins domain cutover (KS-8.7, #8318)
 
 The FIRST money domain in the KS-8 sequence: the 22 live

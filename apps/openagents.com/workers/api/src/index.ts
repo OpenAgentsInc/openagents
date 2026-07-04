@@ -806,6 +806,7 @@ import {
   handleKhalaSyncCvrPull,
   isKhalaSyncCvrEnabled,
 } from './khala-sync-cvr-routes'
+import { khalaCodeProductStateDatabaseForEnv } from './khala-code-product-state-store'
 import { handleKhalaSyncConnect } from './khala-sync-connect-routes'
 import { handleKhalaSyncDbSmoke } from './khala-sync-db-smoke-routes'
 import {
@@ -3424,7 +3425,7 @@ const appendTeamAutopilotAnswerBack = async (
   }
 
   const updatedParent = await updateTeamChatMessageRunSummary(
-    openAgentsDatabase(env),
+    khalaCodeProductStateDatabaseForEnv(env),
     {
       messageId: parent.message.id,
       metadataJson: parent.metadataJson,
@@ -3453,7 +3454,7 @@ const appendTeamAutopilotAnswerBack = async (
   const selectedTeamFileIds = selectedFileIdsFromTeamMessageMetadata(
     parent.metadataJson,
   )
-  const message = await insertTeamChatMessage(openAgentsDatabase(env), {
+  const message = await insertTeamChatMessage(khalaCodeProductStateDatabaseForEnv(env), {
     agentRunId: runId,
     authorUserId: parent.message.author.userId,
     body: draft.body,
@@ -3490,7 +3491,7 @@ const appendTeamAutopilotAnswerBack = async (
     return
   }
 
-  await insertThreadFileMessageReferences(openAgentsDatabase(env), {
+  await insertThreadFileMessageReferences(khalaCodeProductStateDatabaseForEnv(env), {
     fileIds: selectedTeamFileIds,
     messageId: message.id,
     referenceKind: 'autopilot_answer',
@@ -5050,7 +5051,7 @@ const postTeamChatMessageForUser = async (
       ? await teamChatLaunchErrorFromResponse(missionLaunch.response)
       : undefined
 
-  const message = await insertTeamChatMessage(openAgentsDatabase(env), {
+  const message = await insertTeamChatMessage(khalaCodeProductStateDatabaseForEnv(env), {
     ...(missionLaunch === undefined || missionLaunch.ok === false
       ? {}
       : {
@@ -5106,7 +5107,7 @@ const postTeamChatMessageForUser = async (
       ? (teamAutopilotContext?.selectedTeamFileIds ?? [])
       : requestedFileIds
 
-  await insertThreadFileMessageReferences(openAgentsDatabase(env), {
+  await insertThreadFileMessageReferences(khalaCodeProductStateDatabaseForEnv(env), {
     fileIds: selectedTeamFileIds,
     messageId: message.id,
     referenceKind:
@@ -8465,7 +8466,8 @@ const sitePageFormCaptureRoutes = makeSitePageFormCaptureRoutes<WorkerBindings>(
 )
 
 const prefilledWorkspaceRoutes = makePrefilledWorkspaceRoutes<WorkerBindings>({
-  makeStore: env => makePrefilledWorkspaceService(openAgentsDatabase(env)),
+  makeStore: env =>
+    makePrefilledWorkspaceService(khalaCodeProductStateDatabaseForEnv(env)),
   requireHolderUserId: async (request, env, ctx) => {
     const session = await requireBrowserSession(request, env, ctx)
 
@@ -8481,7 +8483,8 @@ const teamWorkspaceInviteRoutes = makeTeamWorkspaceInviteRoutes<
   appendRefreshedSessionCookies,
   appOrigin: getAppOrigin,
   getResendEmailConfig,
-  makeStore: env => makeD1TeamWorkspaceInviteStore(openAgentsDatabase(env)),
+  makeStore: env =>
+    makeD1TeamWorkspaceInviteStore(khalaCodeProductStateDatabaseForEnv(env)),
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   requireBrowserSession,
   sendInviteEmailWithLedger: (env, config, input) =>
@@ -8497,11 +8500,11 @@ const privateProjectWorkspaceRoutes =
     appOrigin: getAppOrigin,
     getResendEmailConfig,
     makeInviteStore: env =>
-      makeD1TeamWorkspaceInviteStore(openAgentsDatabase(env)),
+      makeD1TeamWorkspaceInviteStore(khalaCodeProductStateDatabaseForEnv(env)),
     makePrivateProjectStore: env =>
-      makeD1PrivateProjectWorkspaceStore(openAgentsDatabase(env)),
+      makeD1PrivateProjectWorkspaceStore(khalaCodeProductStateDatabaseForEnv(env)),
     makeWorkspaceStore: env =>
-      makePrefilledWorkspaceService(openAgentsDatabase(env)),
+      makePrefilledWorkspaceService(khalaCodeProductStateDatabaseForEnv(env)),
     requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
     sendInviteEmailWithLedger: (env, config, input) =>
       sendPrivateWorkspaceInviteEmailWithLedger(
@@ -8895,7 +8898,8 @@ const operatorBuyModeRoutes = makeOperatorBuyModeRoutes<Env>({
 
 const ecommerceCampaignSelfServeRoutes =
   makeEcommerceCampaignSelfServeRoutes<Env>({
-    makeStore: env => makePrefilledWorkspaceService(openAgentsDatabase(env)),
+  makeStore: env =>
+    makePrefilledWorkspaceService(khalaCodeProductStateDatabaseForEnv(env)),
     enabled: true, // INERT self-serve enabled
   })
 
@@ -8938,14 +8942,18 @@ const publicInferenceReceiptRoutes = makePublicInferenceReceiptRoutes<Env>({
 const publicKhalaCodeOutsideUserRunReceiptRoutes =
   makePublicKhalaCodeOutsideUserRunReceiptRoutes<Env>({
     makeStore: env =>
-      makeD1KhalaCodeOutsideUserRunStore(openAgentsDatabase(env)),
+      makeD1KhalaCodeOutsideUserRunStore(
+        khalaCodeProductStateDatabaseForEnv(env),
+      ),
     nowIso: currentIsoTimestamp,
   })
 
 const khalaCodeTracePluginRevenueShareRoutes =
   makeKhalaCodeTracePluginRevenueShareRoutes<Env>({
     makeStore: env =>
-      makeD1KhalaCodeTracePluginRevenueShareStore(openAgentsDatabase(env)),
+      makeD1KhalaCodeTracePluginRevenueShareStore(
+        khalaCodeProductStateDatabaseForEnv(env),
+      ),
     nowIso: currentIsoTimestamp,
   })
 
@@ -9331,7 +9339,9 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       // Read-only, side-effect-free, no spend/authority.
       khalaFeedback: {
         reader: makeArtanisKhalaFeedbackReader({
-          store: makeD1KhalaFeedbackStore(openAgentsDatabase(env)),
+          store: makeD1KhalaFeedbackStore(
+            khalaCodeProductStateDatabaseForEnv(env),
+          ),
         }),
       },
       // iteration-11: the owner-scoped Khala trace-review READ tool. Reads the
@@ -9370,7 +9380,9 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       // Read-only, side-effect-free, no spend/authority.
       unsupportedRequests: {
         reader: makeArtanisUnsupportedRequestsReader({
-          store: makeD1KhalaUnsupportedRequestStore(openAgentsDatabase(env)),
+          store: makeD1KhalaUnsupportedRequestStore(
+            khalaCodeProductStateDatabaseForEnv(env),
+          ),
         }),
       },
       // iteration-9: the owner-scoped unsupported-request ledger WRITE/TRIAGE
@@ -9381,7 +9393,9 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       // deploy, delete, or outward action.
       unsupportedRequestWriter: makeArtanisUnsupportedRequestWriter({
         nowIso: currentIsoTimestamp,
-        store: makeD1KhalaUnsupportedRequestStore(openAgentsDatabase(env)),
+        store: makeD1KhalaUnsupportedRequestStore(
+          khalaCodeProductStateDatabaseForEnv(env),
+        ),
       }),
       unsupportedRequestIssueOpen: {
         isOwnerApproved: () =>
@@ -11127,7 +11141,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/khala/feedback',
     handler: (request, env) =>
       handleKhalaFeedbackSubmit(request, {
-        store: makeD1KhalaFeedbackStore(openAgentsDatabase(env)),
+        store: makeD1KhalaFeedbackStore(
+          khalaCodeProductStateDatabaseForEnv(env),
+        ),
       }),
   },
   {
@@ -11140,7 +11156,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleOperatorKhalaFeedback(request, {
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
-        store: makeD1KhalaFeedbackStore(openAgentsDatabase(env)),
+        store: makeD1KhalaFeedbackStore(
+          khalaCodeProductStateDatabaseForEnv(env),
+        ),
       }),
   },
   {
@@ -11167,7 +11185,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleOperatorKhalaUnsupportedRequests(request, {
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
-        store: makeD1KhalaUnsupportedRequestStore(openAgentsDatabase(env)),
+        store: makeD1KhalaUnsupportedRequestStore(
+          khalaCodeProductStateDatabaseForEnv(env),
+        ),
       }),
   },
   {
@@ -11505,7 +11525,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/khala/head-to-head',
     handler: (request, env) =>
       handlePublicKhalaHeadToHeadApi(request, {
-        store: makeD1KhalaHeadToHeadStore(openAgentsDatabase(env)),
+        store: makeD1KhalaHeadToHeadStore(
+          khalaCodeProductStateDatabaseForEnv(env),
+        ),
       }),
   },
   {
@@ -11915,7 +11937,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleOperatorKhalaHeadToHeadApi(request, {
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
-        store: makeD1KhalaHeadToHeadStore(openAgentsDatabase(env)),
+        store: makeD1KhalaHeadToHeadStore(
+          khalaCodeProductStateDatabaseForEnv(env),
+        ),
       }),
   },
   {
@@ -14662,7 +14686,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             ? undefined
             : { accountRef: `agent:${session.user.id}` }
         },
-        adapter: makeD1FineTuningRuntimeAdapter(openAgentsDatabase(env)),
+        adapter: makeD1FineTuningRuntimeAdapter(
+          khalaCodeProductStateDatabaseForEnv(env),
+        ),
         enabled: isFineTuningServiceEnabled(env.CLOUD_FINE_TUNING_ENABLED),
         meteringHook: makeLedgerFineTuningMeteringHook({
           db: openAgentsDatabase(env),
@@ -14698,7 +14724,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         enabled: isSandboxComputeServiceEnabled(
           env.CLOUD_SANDBOX_COMPUTE_ENABLED,
         ),
-        adapter: makeD1SandboxRuntimeAdapter(openAgentsDatabase(env)),
+        adapter: makeD1SandboxRuntimeAdapter(
+          khalaCodeProductStateDatabaseForEnv(env),
+        ),
         meteringHook: makeLedgerSandboxMeteringHook({
           db: openAgentsDatabase(env),
           priceUsd: () => 0,
@@ -14918,7 +14946,9 @@ const routeRequest = makeWorkerRouteRequest({
           ? undefined
           : { accountRef: `agent:${session.user.id}` }
       },
-      adapter: makeD1FineTuningRuntimeAdapter(openAgentsDatabase(env)),
+      adapter: makeD1FineTuningRuntimeAdapter(
+        khalaCodeProductStateDatabaseForEnv(env),
+      ),
       enabled: isFineTuningServiceEnabled(env.CLOUD_FINE_TUNING_ENABLED),
     }),
   routeSandboxRequest: (request, env) =>
@@ -14936,7 +14966,9 @@ const routeRequest = makeWorkerRouteRequest({
           ? undefined
           : { accountRef: `agent:${session.user.id}` }
       },
-      adapter: makeD1SandboxRuntimeAdapter(openAgentsDatabase(env)),
+      adapter: makeD1SandboxRuntimeAdapter(
+        khalaCodeProductStateDatabaseForEnv(env),
+      ),
       enabled: isSandboxComputeServiceEnabled(env.CLOUD_SANDBOX_COMPUTE_ENABLED),
     }),
   // OpenAI-compatible GET /v1/models/{model} retrieve. Gated by the SAME

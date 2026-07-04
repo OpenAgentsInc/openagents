@@ -806,6 +806,29 @@ evidence + D1 drop tracked on epic
 
 ### 3.10 KS-8.13 — Khala Code product state (threads, teams, workspaces)
 
+**KS-8.13 source status (2026-07-04):** source machinery LANDED —
+Postgres schema (`khala-sync-server` migration
+`0017_khala_code_product_state.sql`) covers the product-state tables
+listed below; the shared registry
+`packages/khala-sync-server/src/khala-code-product-state-tables.ts`
+owns column/key order for both the Worker mirror and the backfill
+verifier; the Worker seam
+`apps/openagents.com/workers/api/src/khala-code-product-state-store.ts`
+wraps the existing D1 write handle, read-backs accepted D1 rows, mirrors
+them to Cloud SQL, and appends Khala Sync changelog entries for
+`scope.team.<id>` / `scope.thread.<id>` from day one. The seam is wired
+through chat/message/file/workspace/invite/share/cloud/Khala Code
+receipt write factories. Backfill + exact verify lives at
+`packages/khala-sync-server/scripts/backfill-khala-code-product-state.ts`
+(counts, newest-N row hashes, active membership set equality, and
+message-chain fingerprints). Read authority remains D1 until the runbook
+shadow window posts evidence; final destructive D1 retirement stays in
+KS-8.19 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
+Tables with no current Worker writer registration, such as workroom
+template rows and Khala Code download events, are still covered by the
+schema/backfill verifier and move when their owning route/factory starts
+using the wrapped D1 handle.
+
 - **What:** the product-surface state that Khala Sync exists to serve:
   threads/messages/files, teams + memberships + chat + invites, prefilled
   workspaces, workroom templates, cloud sandbox/fine-tuning sessions,

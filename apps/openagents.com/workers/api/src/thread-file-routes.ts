@@ -2,7 +2,7 @@ import { notFound } from '@openagentsinc/sync-worker'
 import { Effect, Layer, Option } from 'effect'
 import { WorkerEnvironment } from 'effect-cf'
 
-import { OpenAgentsDatabase, ThreadFileArtifacts } from './bindings'
+import { ThreadFileArtifacts } from './bindings'
 import {
   forbidden,
   methodNotAllowed,
@@ -15,6 +15,7 @@ import {
   optionalString,
   readJsonObject,
 } from './json-boundary'
+import { khalaCodeProductStateDatabaseForEnv } from './khala-code-product-state-store'
 import { openAgentsDatabase } from './runtime'
 import { randomUuid } from './runtime-primitives'
 import {
@@ -67,8 +68,8 @@ export const makeThreadFileRoutes = <Session extends BrowserSessionShape>(
 
   const threadFileStorageLayer = (env: Env) => {
     const workerEnvironmentLayer = Layer.succeed(WorkerEnvironment, env)
-    const repositoryLayer = ThreadFileRepository.effectCfLayer().pipe(
-      Layer.provide(OpenAgentsDatabase.layer),
+    const repositoryLayer = ThreadFileRepository.layer(
+      khalaCodeProductStateDatabaseForEnv(env),
     )
 
     return Layer.mergeAll(

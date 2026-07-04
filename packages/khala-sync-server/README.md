@@ -82,6 +82,28 @@ root entrypoint stays workerd/node-importable), changelog compaction
 (KS-6.1, see below) landed; the remaining hub seams land per the KS-4
 issues.
 
+## Khala Code product-state migration (KS-8.13, #8324)
+
+`src/khala-code-product-state-tables.ts` is the shared registry for the
+Khala Code product-state D1 -> Cloud SQL lane: column order, converge keys,
+and `scope.team.<id>` / `scope.thread.<id>` routing for thread/team rows
+that produce Khala Sync changelog entries during the shadow phase. The
+matching schema is `migrations/0017_khala_code_product_state.sql`.
+
+`scripts/backfill-khala-code-product-state.ts` copies the authoritative D1
+rows into the Postgres twins and verifies exact parity with counts,
+newest-N row hashes, active team-membership set equality, and ordered
+message-chain fingerprints for `team_chat_messages` and `thread_messages`.
+Run it with a direct Postgres URL (`KHALA_SYNC_DATABASE_URL` or
+`--database-url`); do not run migrations or backfills through Hyperdrive.
+
+Worker request paths use
+`apps/openagents.com/workers/api/src/khala-code-product-state-store.ts` to
+wrap the D1 handle. D1 stays authoritative; successful writes are read back
+from D1, mirrored fail-soft into Postgres, and projected into Khala Sync
+scope changelog rows where applicable. Final read/poll retirement and D1
+drop remain blocked on #8324/#8330 evidence.
+
 ## Fleet cockpit scope (KS-6.1, #8302)
 
 `src/fleet-projection.ts` + `src/fleet-mutators.ts` +

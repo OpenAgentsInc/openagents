@@ -3,6 +3,7 @@ import { Effect, Layer, Match as M } from 'effect'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import type { Env as OpenAgentsEnv } from './index'
 import { isRecord, optionalString, readJsonObject } from './json-boundary'
+import { khalaCodeProductStateDatabaseForEnv } from './khala-code-product-state-store'
 import { type AgentRunBundle } from './omni-runs'
 import type { OperatorTargetUser } from './operator-targets'
 import { openAgentsDatabase } from './runtime'
@@ -425,7 +426,7 @@ const resolveCreateActor = <Session extends ShareSession>(
 
 const shareLayer = (env: ShareRouteEnv, origin: string) =>
   Layer.mergeAll(
-    ShareProjectionRepository.layer(openAgentsDatabase(env)),
+    ShareProjectionRepository.layer(khalaCodeProductStateDatabaseForEnv(env)),
     ShareUrlService.layer(origin),
     ShareReceiptService.layer,
     ShareAccessService.layer,
