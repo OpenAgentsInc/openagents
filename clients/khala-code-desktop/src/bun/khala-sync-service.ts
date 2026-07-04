@@ -490,7 +490,9 @@ export const createKhalaCodeDesktopKhalaSyncService = (
         return { phase: "must_refetch", cursor: null, reason: state.reason }
       case "denied":
         // KS-7.1 (#8305): the server denied scope access (fail-closed scope
-        // auth). Surfaced honestly — never rendered as any syncing state.
+        // auth) and the scope's synced state was CLEARED
+        // (khala_sync.access.revocation_clears_synced_state.v1). Surfaced
+        // honestly — never rendered as any syncing state.
         return { phase: "denied", cursor: null, reason: state.reason }
     }
   }

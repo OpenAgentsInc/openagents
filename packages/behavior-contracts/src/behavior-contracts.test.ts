@@ -457,25 +457,45 @@ describe("background agent contract registry", () => {
 })
 
 describe("khala sync contract registry", () => {
-  test("registers the queue-never-blocks acceptance rule as an enforced test-sweep contract", () => {
+  test("registers the sync-engine + synced-surface contracts as enforced test-sweep entries", () => {
     const validation = validateBehaviorContractRegistry(khalaSyncContractRegistry)
     expect(validation.issues).toEqual([])
     expect(validation.ok).toBe(true)
 
     expect(khalaSyncContractRegistry.contracts.map(contract => contract.contractId)).toEqual([
       "khala_sync.push.validation_never_blocks_queue.v1",
+      "khala_sync.client.offline_pushes_queue_honestly.v1",
+      "khala_sync.client.staleness_never_fabricated.v1",
+      "khala_sync.access.revocation_clears_synced_state.v1",
     ])
-    const contract = khalaSyncContractRegistry.contracts[0]!
-    expect(contract).toMatchObject({
-      blockerRefs: [],
-      enforcementTier: "test-sweep",
-      state: "enforced",
-    })
-    // The statement is the SPEC §2.4 acceptance rule, kept verbatim.
-    expect(contract.statement).toBe(
+    for (const contract of khalaSyncContractRegistry.contracts) {
+      expect(contract).toMatchObject({
+        blockerRefs: [],
+        enforcementTier: "test-sweep",
+        state: "enforced",
+      })
+      expect(contract.oracles.length).toBeGreaterThan(0)
+    }
+    // The push statement is the SPEC §2.4 acceptance rule, kept verbatim.
+    expect(khalaSyncContractRegistry.contracts[0]!.statement).toBe(
       "Acceptance is synchronous with the transaction; validation failures ack the mutation and report the error in-band — they never 4xx/block the queue.",
     )
-    expect(contract.oracles.length).toBeGreaterThan(0)
+    // The KS-9.2 synced-surface contracts (#8311) keep the owner's stated
+    // expectations verbatim at their heads.
+    expect(khalaSyncContractRegistry.contracts[1]!.statement).toStartWith(
+      "Offline pushes queue honestly:",
+    )
+    expect(khalaSyncContractRegistry.contracts[2]!.statement).toStartWith(
+      "Synced staleness is never fabricated:",
+    )
+    expect(khalaSyncContractRegistry.contracts[3]!.statement).toStartWith(
+      "Access revocation clears synced state:",
+    )
+    // The staleness contract references the desktop indicator contract
+    // (KS-6.2, #8303) instead of duplicating its DOM oracle.
+    expect(khalaSyncContractRegistry.contracts[2]!.evidenceRefs).toContain(
+      "contract:khala_code.fleet.khala_sync_indicator_truthful.v1",
+    )
   })
 
   test("khala sync oracle coverage links against the REAL push-engine test source on disk", async () => {
@@ -500,10 +520,13 @@ describe("khala sync contract registry", () => {
         ),
       ),
     )
-    // Coverage must be proven against the actual committed test file: it
+    // Coverage must be proven against the actual committed test files: each
     // exists AND references the owning contractId, so the contract cannot
     // silently drift away from the sweep that claims to enforce it.
-    expect(report.results.map(result => result.status)).toEqual(["covered"])
+    expect(report.results.map(result => result.status)).toEqual(
+      Array.from({ length: report.results.length }, () => "covered"),
+    )
+    expect(report.results.length).toBeGreaterThanOrEqual(5)
     expect(report.ok).toBe(true)
   })
 })

@@ -33,6 +33,12 @@
 //
 // Gated on local Postgres binaries (initdb/pg_ctl); machines without them
 // skip instead of fail.
+//
+// Behavior contract: this suite is the full-stack oracle for
+// khala_sync.access.revocation_clears_synced_state.v1 (KS-9.2, #8311;
+// registered in packages/behavior-contracts/src/khala-sync.ts). The
+// client-side clearing oracles live in
+// packages/khala-sync-client/src/session.test.ts.
 
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'

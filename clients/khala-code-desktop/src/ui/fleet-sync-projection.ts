@@ -67,8 +67,10 @@ export const khalaSyncFleetIndicator = (
         phase: state.phase,
       }
     case "denied":
-      // Fail-closed scope auth (KS-7.1): the server refused this scope.
-      // Honest terminal state — never shown as syncing or live.
+      // Fail-closed scope auth (KS-7.1): the server refused this scope and
+      // the synced state was cleared
+      // (khala_sync.access.revocation_clears_synced_state.v1). Honest
+      // terminal state — never shown as syncing or live.
       return {
         live: false,
         label: "Khala Sync: Access denied",

@@ -46,7 +46,17 @@ import {
  *   queue stays intact until connectivity returns.
  *
  * No wall-clock reads in logic paths: timing is injected (`sleep`,
- * `random`), so tests run instantly and deterministically.
+ * `random`, `now`), so tests run instantly and deterministically.
+ *
+ * Freshness primitives (KS-9.2, behavior contract
+ * `khala_sync.client.staleness_never_fabricated.v1`): consuming surfaces
+ * must derive freshness from {@link KhalaSyncSession.state} (the real
+ * phase) plus {@link KhalaSyncSession.lastDeltaAt} (the injected-clock
+ * time of the last server-confirmed apply) — never from a fabricated
+ * "live" default. Pending-vs-confirmed visibility (KS-9.2, behavior
+ * contract `khala_sync.client.offline_pushes_queue_honestly.v1`) comes
+ * from {@link KhalaSyncSession.pending}: everything it returns is queued
+ * optimistic intent, NOT server-confirmed truth.
  */
 
 // ---------------------------------------------------------------------------
@@ -81,6 +91,11 @@ export interface KhalaSyncSessionOptions {
   readonly sleep?: (ms: number) => Promise<void>
   /** Injected jitter source in [0, 1); defaults to `Math.random`. */
   readonly random?: () => number
+  /**
+   * Injected clock for {@link KhalaSyncSession.lastDeltaAt} stamps;
+   * defaults to `Date.now`. Tests inject a deterministic counter.
+   */
+  readonly now?: () => number
   /** Backoff base delay (default 500ms). */
   readonly backoffBaseMs?: number
   /** Backoff ceiling (default 30s). */
@@ -116,6 +131,24 @@ export interface KhalaSyncSession {
   /** Stop the scope's loop and close its socket. State returns to `idle`. */
   readonly unsubscribe: (scope: SyncScope) => Effect.Effect<void>
   readonly state: (scope: SyncScope) => ScopeSyncState
+  /**
+   * Freshness primitive (KS-9.2,
+   * `khala_sync.client.staleness_never_fabricated.v1`): the injected-clock
+   * timestamp of the scope's most recent SERVER-CONFIRMED apply (bootstrap
+   * snapshot, catch-up page, or live delta). `null` when nothing confirmed
+   * has ever landed — and again after a denial clears the scope (revoked
+   * data must not keep claiming freshness). Surfaces derive staleness from
+   * this plus {@link state}; they must never default to "live".
+   */
+  readonly lastDeltaAt: (scope: SyncScope) => number | null
+  /**
+   * Pending-vs-confirmed exposure (KS-9.2,
+   * `khala_sync.client.offline_pushes_queue_honestly.v1`): the still
+   * unconfirmed queued mutations, ascending mutationId. UI surfaces use
+   * this to mark optimistic content as pending instead of presenting it
+   * as server-confirmed.
+   */
+  readonly pending: () => ReadonlyArray<MutationEnvelope>
   /**
    * State-transition notifications, shaped like the overlay's `subscribe`:
    * `listener(scope, state)` per transition; returns unsubscribe.
@@ -172,6 +205,8 @@ interface ScopeRuntime {
   socket: LiveSocket | null
   /** Set by MustRefetch (or refetch-signal errors): next pass re-bootstraps. */
   forceBootstrap: boolean
+  /** Injected-clock time of the last server-confirmed apply; null = never. */
+  lastDeltaAt: number | null
 }
 
 /** Run a typed Effect from promise-land, rethrowing the TYPED error. */
@@ -198,6 +233,7 @@ export const createKhalaSyncSession = (
     options.sleep ??
     ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
   const random = options.random ?? Math.random
+  const now = options.now ?? Date.now
   const backoffBaseMs = options.backoffBaseMs ?? 500
   const backoffMaxMs = options.backoffMaxMs ?? 30_000
   const maxBootstrapAttempts = options.maxBootstrapAttempts ?? 8
@@ -244,6 +280,8 @@ export const createKhalaSyncSession = (
       onTransportError?.("session", error)
     }
     runtime.forceBootstrap = false
+    // The synced data is gone; its freshness stamp must not survive it.
+    runtime.lastDeltaAt = null
     setState(scope, runtime, { phase: "denied", reason: "access_denied" })
   }
 
@@ -326,6 +364,7 @@ export const createKhalaSyncSession = (
           store.resetScope(scope, snapshot.entities, snapshot.cursor),
         )
         await runEffect(overlay.refetched(scope))
+        runtime.lastDeltaAt = now() // full snapshot = server-confirmed apply
         return snapshot.cursor
       } catch (error) {
         if (stale()) return undefined
@@ -383,6 +422,7 @@ export const createKhalaSyncSession = (
       }
       if (page.nextCursor > cursor) {
         cursor = page.nextCursor
+        runtime.lastDeltaAt = now()
         setState(scope, runtime, { phase: "catching_up", cursor })
       }
       if (page.upToDate) return cursor
@@ -460,6 +500,7 @@ export const createKhalaSyncSession = (
                     overlay.onConfirmed(scope, [...frame.entries], frame.cursor),
                   )
                   current = watermark(frame.cursor)
+                  runtime.lastDeltaAt = now()
                   if (!settled && !stale()) {
                     setState(scope, runtime, { phase: "live", cursor: current })
                   }
@@ -673,6 +714,7 @@ export const createKhalaSyncSession = (
           state: { phase: "idle" },
           socket: null,
           forceBootstrap: false,
+          lastDeltaAt: null,
         }
         scopes.set(scope, runtime)
       }
@@ -705,6 +747,9 @@ export const createKhalaSyncSession = (
 
   const state = (scope: SyncScope): ScopeSyncState =>
     scopes.get(scope)?.state ?? { phase: "idle" }
+
+  const lastDeltaAt = (scope: SyncScope): number | null =>
+    scopes.get(scope)?.lastDeltaAt ?? null
 
   const changes: Stream.Stream<SyncScope> = Stream.callback<SyncScope>(
     (queue) =>
@@ -746,6 +791,8 @@ export const createKhalaSyncSession = (
     subscribe,
     unsubscribe,
     state,
+    lastDeltaAt,
+    pending: () => overlay.pending(),
     subscribeState: (listener) => {
       stateListeners.add(listener)
       return () => {
