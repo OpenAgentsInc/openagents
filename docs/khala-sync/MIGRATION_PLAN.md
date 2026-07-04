@@ -25,8 +25,9 @@ suite run against BOTH stores. The prod cutover (flag flips + backfill +
 verification evidence) is tracked on epic
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282); the
 cutover procedure is [`RUNBOOK.md`](./RUNBOOK.md) "Pylon dispatch domain
-cutover". D1 tables are NOT dropped in that lane — decommission is a
-separate follow-up issue.
+cutover". Per owner direction on 2026-07-04, the per-domain soak/drop ticket
+is not an active gate; final D1 retirement is consolidated into KS-8.19
+[#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
 
 **KS-8.2 status (2026-07-04):** machinery LANDED — Postgres schema
 (`khala-sync-server` migration `0008_token_usage_ledger.sql`:
@@ -50,11 +51,12 @@ Postgres mirror never re-fires the counter producer). Internal admin
 aggregates (readAggregates / readInferenceAnalytics / readLeaderboards)
 and the two low-volume unhooked direct-insert paths
 (`builtin-compute-agent-grant.ts`, `provider-account-service-routes.ts` —
-the same pair the #8304 runbook already tracks) stay D1-only and move with
-the decommission follow-up. Prod cutover procedure:
+the same pair the #8304 runbook already tracks) stay D1-only until the final
+KS-8.19 D1 retirement sweep. Prod cutover procedure:
 [`RUNBOOK.md`](./RUNBOOK.md) "Token ledger domain cutover"; cutover
-evidence + D1 drop tracked on epic
-[#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
+evidence is tracked on epic
+[#8282](https://github.com/OpenAgentsInc/openagents/issues/8282), while the
+per-domain soak/drop ticket is intentionally closed as not planned.
 
 Everything except the Verse world runs through one D1 database
 (`openagents-autopilot`, binding `OPENAGENTS_DB`). As of `main` today the
@@ -90,10 +92,13 @@ generalized). Deviations are called out per domain.
    (receipt pages, counters) must never 404 or regress mid-cutover —
    dual-read fallback until soak completes. Cron tasks that read/write the
    domain re-home in the same cutover (§4).
-5. **Soak, then drop.** ≥7-day soak with the D1 dual-write still on
-   (instant rollback = flip the read flag back). Then: stop dual-write,
-   snapshot the D1 tables to R2 (archaeology), drop the D1 tables, delete
-   the flag.
+5. **Retire D1 only in KS-8.19.** The original recipe used a per-domain
+   ≥7-day soak followed by stopping dual-write, snapshotting D1 tables to
+   R2, dropping those tables, and deleting the flag. Owner direction on
+   2026-07-04 skips those per-domain soak/drop tickets so the migration
+   fanout keeps moving. Until KS-8.19, keep D1 rollback/fallback paths
+   explicit and documented; destructive drops happen only in the final D1
+   retirement sweep.
 
 **Universal porting rules** (apply to every domain):
 
@@ -226,8 +231,10 @@ observed before the cutoff and fails newer/unknown-observed or duplicate gaps.
 The Worker config now commits `KHALA_SYNC_PYLON_READS=postgres` for production
 and staging, so Pylon dispatch, runner-status, and raw Codex proof metadata
 reads use Cloud SQL with bounded retry and D1 fallback. Remaining #8315 closure
-work is final deployed cutover evidence plus D1 decommission on
-[#8315](https://github.com/OpenAgentsInc/openagents/issues/8315).
+work is recorded on
+[#8315](https://github.com/OpenAgentsInc/openagents/issues/8315); destructive
+D1 decommission is deferred to the final KS-8.19 retirement sweep rather than
+blocking Wave A.
 
 - **What:** the rest of the Pylon control plane after KS-8.1:
   registrations, quarantines, marketplace intake/assignments/triage,
@@ -693,13 +700,15 @@ straddle stores.
 | **E — core + retirement** | KS-8.18, KS-8.19 | Identity/auth, then cron consolidation sweep + D1 retirement | Auth goes last by blast-radius policy, after ~14 proven cutovers. KS-8.19 closes the epic: final cron sweep, retirement checklist, invariant registration. |
 
 Waves are sequential; issues **within** a wave may run as parallel lanes
-where their "Depends" lines allow. Every issue lands via reviewed PR per
-`docs/fable/EXECUTION.md`, with reconciliation evidence in the issue
-before read cutover.
+where their "Depends" lines allow. Reconciliation evidence must land in the
+issue before read cutover. The old per-domain soak/drop follow-ups are not
+active gates; KS-8.19 owns final D1 retirement after the domain migration
+fanout is complete.
 
 ## 6. D1 retirement checklist (KS-8.19)
 
-Run after wave E cutovers soak:
+Run after the domain migration fanout reaches wave E and the owner opens the
+final D1 retirement gate:
 
 1. **Inventory zero:** every table in §2 is either migrated (Postgres),
    re-homed (Analytics Engine/R2), decommissioned (legacy sync), or
@@ -756,3 +765,12 @@ KS-8.3 (this plan) = [#8309](https://github.com/OpenAgentsInc/openagents/issues/
 | KS-8.17 [#8328](https://github.com/OpenAgentsInc/openagents/issues/8328) | Supervision long tail (Adjutant/Omni/Autopilot/ops) | D |
 | KS-8.18 [#8329](https://github.com/OpenAgentsInc/openagents/issues/8329) | Identity and auth core | E |
 | KS-8.19 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330) | Cron consolidation sweep + D1 retirement | E |
+
+Closed/not-planned tracker cleanup (owner direction, 2026-07-04):
+
+- [#8331](https://github.com/OpenAgentsInc/openagents/issues/8331) — the
+  KS-8.1 per-domain D1 dispatch-table decommission/soak ticket is not an
+  active gate. Its destructive work is covered by KS-8.19.
+- [#8333](https://github.com/OpenAgentsInc/openagents/issues/8333) — the
+  KS-8.2 per-domain token-ledger decommission/soak ticket is not an active
+  gate. Its destructive work is covered by KS-8.19.

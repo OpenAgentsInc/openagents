@@ -300,7 +300,7 @@ Flags (Worker vars; see `WorkerBindings`):
   `postgres` serves reads from Postgres with bounded retry (50/150ms) and D1
   fallback on exhaustion.
 
-Flag-flip order — never skip a step, each step soaks before the next:
+Flag-flip order — never skip verification evidence before a read cutover:
 
 1. **Dual-write on** (default after KS-8.1 lands + `0005` applied via the
    migration runner). Watch `khala_sync_pylon_dual_write_failed` in Worker
@@ -323,10 +323,11 @@ Flag-flip order — never skip a step, each step soaks before the next:
    dispatch gate, runner-status spine, and raw Codex proof metadata reads now
    read Postgres with retry headroom; D1 remains the write authority and
    fallback.
-6. **Decommission LATER**: dropping the D1 tables (and moving write
-   authority) is a separate follow-up issue on epic #8282 — never in the
-   same change as a read cutover. Until then rollback is one flag flip
-   back to `d1`.
+6. **Decommission in KS-8.19 only**: owner direction on 2026-07-04 skips
+   the per-domain soak/drop tickets (#8331/#8333-style follow-ups) so the
+   migration fanout keeps moving. Until the final D1 retirement sweep,
+   rollback is one flag flip back to `d1`; do not destructively drop D1
+   tables while fallback/compatibility paths still exist.
 
 Rollback at ANY step: set `KHALA_SYNC_PYLON_READS=d1` (reads) and/or
 `KHALA_SYNC_PYLON_DUAL_WRITE=off` (writes). D1 authority is never behind.
@@ -404,9 +405,9 @@ trace-status closeout reads now use the same flag for their raw-event metadata
 sections: `compare` serves D1 with Postgres-shadow source refs and drift logs,
 and `postgres` serves those metadata sections from Cloud SQL with bounded D1
 fallback. The live #8315 read cutover is the committed
-`KHALA_SYNC_PYLON_READS=postgres` Worker var; D1 decommission still requires
-separate evidence. Do not treat a green backfill or read cutover alone as
-permission to drop D1 tables.
+`KHALA_SYNC_PYLON_READS=postgres` Worker var. Do not treat a green backfill or
+read cutover alone as permission to drop D1 tables; destructive retirement is
+deferred to KS-8.19, not a per-domain blocker.
 
 Live raw Codex metadata note (2026-07-04): production row parity is established
 for `pylon_codex_raw_events` and `pylon_codex_raw_event_chunks`, and aggregate
