@@ -223,7 +223,10 @@ chunk, duplicate chunk indexes); production classification is currently
 and `duplicate_indexes=0`. The bounded historical exception is explicit:
 `--raw-event-accept-historical-gaps-before` accepts only duplicate-free chains
 observed before the cutoff and fails newer/unknown-observed or duplicate gaps.
-Final read cutover still requires final cutover evidence and D1 decommission on
+The Worker config now commits `KHALA_SYNC_PYLON_READS=postgres` for production
+and staging, so Pylon dispatch, runner-status, and raw Codex proof metadata
+reads use Cloud SQL with bounded retry and D1 fallback. Remaining #8315 closure
+work is final deployed cutover evidence plus D1 decommission on
 [#8315](https://github.com/OpenAgentsInc/openagents/issues/8315).
 
 - **What:** the rest of the Pylon control plane after KS-8.1:

@@ -294,9 +294,11 @@ Flags (Worker vars; see `WorkerBindings`):
 
 - `KHALA_SYNC_PYLON_DUAL_WRITE` — default **on** wherever `KHALA_SYNC_DB`
   exists; `off|0|false|disabled` disables the mirror.
-- `KHALA_SYNC_PYLON_READS` — default `d1`; `compare` reads both, serves D1,
-  logs `khala_sync_pylon_read_compare_mismatch`; `postgres` serves reads
-  from Postgres with bounded retry (50/150ms) and D1 fallback on exhaustion.
+- `KHALA_SYNC_PYLON_READS` — committed deployment value `postgres` after the
+  #8315 cutover; unset/unknown still fails closed to `d1` in code. `compare`
+  reads both, serves D1, logs `khala_sync_pylon_read_compare_mismatch`;
+  `postgres` serves reads from Postgres with bounded retry (50/150ms) and D1
+  fallback on exhaustion.
 
 Flag-flip order — never skip a step, each step soaks before the next:
 
@@ -316,10 +318,11 @@ Flag-flip order — never skip a step, each step soaks before the next:
 4. **Compare reads**: set `KHALA_SYNC_PYLON_READS=compare`; soak until the
    mismatch log is silent over a representative window (include a fleet
    dispatch burst).
-5. **Postgres reads**: set `KHALA_SYNC_PYLON_READS=postgres`. The dispatch
-   gate (owner-registration + capacity reads — the June-29 503 victims) now
-   reads Postgres with retry headroom; D1 remains the write authority and
-   the fallback.
+5. **Postgres reads**: set `KHALA_SYNC_PYLON_READS=postgres`. As of the
+   #8315 cutover config this is committed for production and staging. The
+   dispatch gate, runner-status spine, and raw Codex proof metadata reads now
+   read Postgres with retry headroom; D1 remains the write authority and
+   fallback.
 6. **Decommission LATER**: dropping the D1 tables (and moving write
    authority) is a separate follow-up issue on epic #8282 — never in the
    same change as a read cutover. Until then rollback is one flag flip
@@ -400,10 +403,10 @@ Cloud SQL with bounded retry and D1 fallback. Pylon Codex proof and
 trace-status closeout reads now use the same flag for their raw-event metadata
 sections: `compare` serves D1 with Postgres-shadow source refs and drift logs,
 and `postgres` serves those metadata sections from Cloud SQL with bounded D1
-fallback. The live #8315 cutover still requires running the raw-event
-reconciliation command against production data, final cutover evidence, and D1
-decommission evidence. Do not treat a green backfill alone as permission to
-drop D1 tables.
+fallback. The live #8315 read cutover is the committed
+`KHALA_SYNC_PYLON_READS=postgres` Worker var; D1 decommission still requires
+separate evidence. Do not treat a green backfill or read cutover alone as
+permission to drop D1 tables.
 
 Live raw Codex metadata note (2026-07-04): production row parity is established
 for `pylon_codex_raw_events` and `pylon_codex_raw_event_chunks`, and aggregate

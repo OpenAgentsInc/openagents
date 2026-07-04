@@ -44,6 +44,10 @@
     "GITHUB_CLIENT_ID": "Ov23lirHI1DWTzZ1zT1u",
     "INFERENCE_GATEWAY_ENABLED": "true",
     "INFERENCE_FREE_TIER_ENABLED": "true",
+    // KS-8 Pylon read cutover (#8315): Pylon dispatch, runner-status, and raw
+    // Codex proof metadata reads serve from Cloud SQL with bounded retry and D1
+    // fallback. Roll back by setting this to `d1`.
+    "KHALA_SYNC_PYLON_READS": "postgres",
     // #6408 "fleet never silently stalls" watchdog (1-min cron). Detection is
     // default-ON so a live stall is flagged immediately. Recovery is also ON but
     // is a no-op unless FLEET_WATCHDOG_OWNER_PYLON_REFS lists the owner pylon(s)
@@ -504,6 +508,9 @@
         "ARTANIS_SCHEDULED_RUNNER_ENABLED": "false",
         "INFERENCE_GATEWAY_ENABLED": "true",
         "INFERENCE_FREE_TIER_ENABLED": "true",
+        // KS-8 Pylon read cutover (#8315), staging parity for the production
+        // Cloud SQL read path. Roll back by setting this to `d1`.
+        "KHALA_SYNC_PYLON_READS": "postgres",
         // Internal/ops account allowlist (#6298 demand + #6232 quota exemption) —
         // staging too, so dogfood classifies `demand_kind=internal` consistently
         // and internal testing accounts (ops/heartbeat/canary, Artanis, Raynor)
