@@ -60,6 +60,7 @@ import {
   SyncError,
   SyncScope,
   SyncVersion,
+  SyncVersionWatermark,
   decodeChangelogEntry,
   decodeLiveFrame,
   encodeChangelogEntry,
@@ -794,7 +795,10 @@ export class KhalaSyncHubDO {
       encodeLogPage(
         new LogPage({
           entries,
-          nextCursor: SyncVersion.make(nextCursor),
+          // Watermark semantics (KS-2.2): the client's position AFTER this
+          // page — highest version in `entries`, or the request cursor when
+          // the page is empty.
+          nextCursor: SyncVersionWatermark.make(nextCursor),
           protocolVersion: KHALA_SYNC_PROTOCOL_VERSION,
           scope,
           upToDate: nextCursor >= meta.last_version,
