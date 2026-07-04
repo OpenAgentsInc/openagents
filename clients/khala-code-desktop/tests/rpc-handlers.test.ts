@@ -4020,6 +4020,40 @@ describe("khala code plan RPC handlers", () => {
     }).khalaCodePlanPurchase()).toEqual({ ok: false, error: "purchase_unavailable" })
   })
 
+  // Oracle for khala_code.plans.checkout_handoff_server_truth.v1
+  test("khalaCodePlanPurchase decodes a Stripe checkout handoff without fabricating a receipt", async () => {
+    const { fetch: fetchStub } = planFetchStub(() =>
+      json(202, {
+        ok: true,
+        checkoutUrl: "https://checkout.stripe.test/session/cs_test_khala",
+        planId: "khala_code.plan.paid.v1",
+        purchaseRef: "purchase.khala_code_paid_plan.test",
+        rail: "stripe_checkout",
+        status: "payment_required",
+        stripeCheckoutSessionId: "cs_test_khala",
+      }))
+    const handlers = planHandlers({
+      env: { OPENAGENTS_AGENT_TOKEN: "token" },
+      fetch: fetchStub,
+    })
+
+    const result = await handlers.khalaCodePlanPurchase({
+      idempotencyKey: "purchase-checkout-1",
+    })
+
+    expect(result).toEqual({
+      ok: true,
+      checkoutUrl: "https://checkout.stripe.test/session/cs_test_khala",
+      planId: "khala_code.plan.paid.v1",
+      purchaseRef: "purchase.khala_code_paid_plan.test",
+      rail: "stripe_checkout",
+      status: "payment_required",
+      stripeCheckoutSessionId: "cs_test_khala",
+    })
+    expect(JSON.stringify(result)).not.toContain("receiptRef")
+    expect(JSON.stringify(result)).not.toContain("entitlementRef")
+  })
+
   test("khalaCodePlanPurchase decodes an armed-server success receipt", async () => {
     const { fetch: fetchStub } = planFetchStub(() =>
       json(201, {

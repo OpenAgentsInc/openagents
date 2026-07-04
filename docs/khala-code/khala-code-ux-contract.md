@@ -53,7 +53,7 @@ sweep if this doc, the registry, or the oracle tests drift apart.
 
 ## Registry
 
-Registry version: `2026-07-03.9` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-04.1` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_code.chat.sidebar_spinner_streaming_only.v1` — ENFORCED
 
@@ -412,6 +412,17 @@ Registry version: `2026-07-03.9` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `no_bare_unset_labels.claude_panel.unit` (bun-test, unit): Mounts the real Claude settings section with a projection whose account fields are null, and asserts every rendered metric value is 'Default' and none is the bare word 'Unset'. — `clients/khala-code-desktop/tests/claude-settings-panel.test.ts`
 - **Verification:** Enforced 2026-07-03: fixed as part of the response to community feedback that also produced #8230-#8233 and PR #8221. Both the Codex and Claude settings panels now render 'Default' instead of 'Unset' for null/undefined read-only metric values. Runs on every test-sweep invocation.
 - **Authority boundary:** Binds display labeling only — whether a read-only settings value reads as an unexplained 'Unset' or an honest 'Default'. Does not itself make any field editable; that is tracked separately by khala_code.settings.editable_not_env_var_only.v1.
+
+### `khala_code.plans.checkout_handoff_server_truth.v1` — ENFORCED
+
+- **Surface:** khala-code-desktop (plans and billing settings)
+- **Stated by:** owner via github-issue on 2026-07-04
+- **Statement:** Khala Code desktop plans panel hands off to real checkout (RL-4) with honest not-purchasable state while unarmed; credit packages (BF-2.4 tiers) purchasable from same surface via existing web checkout handoff. Post-purchase state (plan/entitlement/credits) renders from server truth via existing RPCs — never fabricated client-side.
+- **Enforcement tier:** test-sweep
+- **Oracle** `plans_checkout_handoff.dom` (bun-test, dom): Mounts the real plans panel in a DOM: while the paid-plan seam is unarmed the purchase control is disabled, an armed Stripe payment_required response opens exactly the server-returned checkout URL and re-reads status, and the same surface opens the existing /billing checkout for credits without rendering local fake package or balance state. — `clients/khala-code-desktop/tests/plans-panel.test.ts`
+- **Oracle** `plan_purchase_payment_required_rpc.unit` (bun-test, unit): Decodes the plan-purchase RPC's Stripe payment_required response as a checkout handoff and asserts it does not contain a receiptRef or entitlementRef until the server returns a fulfilled receipt. — `clients/khala-code-desktop/tests/rpc-handlers.test.ts`
+- **Verification:** bun test clients/khala-code-desktop/tests/plans-panel.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/ux-contracts.test.ts; these files run in the package test glob and the repo test:khala-code-desktop sweep before pushes to main.
+- **Authority boundary:** Binds the desktop settings payment surface only. Plan catalog, entitlement, and purchase settlement remain owned by openagents.com plan APIs; credit package catalog, balance, and checkout fulfillment remain owned by the existing web billing surface. The desktop may open those checkout URLs, but it must not synthesize paid entitlement or credit balance state.
 
 ### `khala_code.settings.editable_not_env_var_only.v1` — PENDING
 

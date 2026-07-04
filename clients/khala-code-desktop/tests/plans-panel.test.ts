@@ -75,7 +75,9 @@ const fixtureCatalog = (input: { readonly paidArmed: boolean }): KhalaCodeDeskto
 })
 
 type Transports = {
+  readonly baseUrl?: string
   readonly catalog?: () => Promise<KhalaCodeDesktopPlanCatalogResult>
+  readonly openExternal?: (url: string) => Promise<boolean>
   readonly status?: () => Promise<KhalaCodeDesktopPlanStatusResult>
   readonly purchase?: (
     request?: KhalaCodeDesktopPlanPurchaseRequest,
@@ -84,11 +86,14 @@ type Transports = {
 
 const mountWith = (container: HTMLElement, transports: Transports) =>
   mountKhalaCodePlansPanel(container, {
+    ...(transports.baseUrl === undefined ? {} : { baseUrl: transports.baseUrl }),
     catalog: transports.catalog ?? (async () => ({ ok: true, catalog: fixtureCatalog({ paidArmed: false }) })),
+    openExternal: transports.openExternal ?? (async () => true),
     purchase: transports.purchase ?? (async () => ({ ok: false, error: "purchase_unavailable" })),
     status: transports.status ?? (async () => ({ state: "unauthenticated" })),
   })
 
+// Oracle for khala_code.plans.checkout_handoff_server_truth.v1
 describe("khala code plans panel", () => {
   test("renders both plan cards from the injected catalog with honest paid availability", async () => {
     const container = installDom()
@@ -110,6 +115,10 @@ describe("khala code plans panel", () => {
     expect(paidCard?.textContent).toContain("Private data")
     expect(paidCard?.textContent).toContain("Not yet purchasable")
     expect(paidCard?.textContent).toContain("the paid plan purchase seam is not armed")
+    expect(container.querySelector("[data-khala-plans-credits]")?.textContent).toContain("Credits")
+    expect(container.querySelector("[data-khala-plans-credits]")?.textContent).toContain(
+      "Balance and packages are server-rendered in billing.",
+    )
 
     // No enabled purchase control while the seam is unarmed.
     const purchaseButton = container.querySelector<HTMLButtonElement>("[data-khala-plans-action='purchase']")
@@ -176,6 +185,7 @@ describe("khala code plans panel", () => {
     expect(container.querySelector("[data-khala-plans-card='khala_code.plan.free.v1']")).toBeNull()
     expect(container.querySelector("[data-khala-plans-card='khala_code.plan.paid.v1']")).toBeNull()
     expect(container.querySelector("[data-khala-plans-action='purchase']")).toBeNull()
+    expect(container.querySelector("[data-khala-plans-action='credits']")).not.toBeNull()
   })
 
   test("never invokes the purchase transport while the seam is unarmed", async () => {
@@ -222,6 +232,74 @@ describe("khala code plans panel", () => {
     const note = container.querySelector("[data-khala-plans-purchase-note]")
     expect(note?.textContent).toContain("paid plan purchases are not enabled on the server yet")
     expect(note?.textContent).toContain("khala_code_paid_plans_not_enabled")
+  })
+
+  test("opens the Stripe checkout URL returned by the server and keeps plan state server-resolved", async () => {
+    const container = installDom()
+    const openedUrls: string[] = []
+    let statusCalls = 0
+    const panel = mountWith(container, {
+      catalog: async () => ({ ok: true, catalog: fixtureCatalog({ paidArmed: true }) }),
+      openExternal: async url => {
+        openedUrls.push(url)
+        return true
+      },
+      purchase: async () => ({
+        ok: true,
+        checkoutUrl: "https://checkout.stripe.test/session/cs_test_khala",
+        planId: "khala_code.plan.paid.v1",
+        purchaseRef: "purchase.khala_code_paid_plan.test",
+        rail: "stripe_checkout",
+        status: "payment_required",
+        stripeCheckoutSessionId: "cs_test_khala",
+      }),
+      status: async () => {
+        statusCalls += 1
+        return { state: "unauthenticated" }
+      },
+    })
+    await panel.refresh()
+    await flushPanel()
+    const statusCallsAfterRefresh = statusCalls
+
+    container
+      .querySelector<HTMLButtonElement>("[data-khala-plans-action='purchase']")
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+    await flushPanel()
+
+    expect(openedUrls).toEqual(["https://checkout.stripe.test/session/cs_test_khala"])
+    expect(statusCalls).toBe(statusCallsAfterRefresh + 1)
+    expect(container.querySelector("[data-khala-plans-current]")?.textContent).toBe(
+      "Current plan: Free (default) — not signed in",
+    )
+    expect(container.querySelector("[data-khala-plans-purchase-note]")?.textContent).toContain(
+      "Paid plan checkout opened",
+    )
+  })
+
+  test("opens the existing web billing checkout for credits from the same surface", async () => {
+    const container = installDom()
+    const openedUrls: string[] = []
+    const panel = mountWith(container, {
+      baseUrl: "https://openagents.test",
+      openExternal: async url => {
+        openedUrls.push(url)
+        return true
+      },
+    })
+    await panel.refresh()
+    await flushPanel()
+
+    const creditsButton = container.querySelector<HTMLButtonElement>("[data-khala-plans-action='credits']")
+    expect(creditsButton).not.toBeNull()
+    expect(creditsButton?.disabled).toBe(false)
+    creditsButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+    await flushPanel()
+
+    expect(openedUrls).toEqual(["https://openagents.test/billing"])
+    expect(container.querySelector("[data-khala-plans-purchase-note]")?.textContent).toContain(
+      "Credit checkout opened in openagents.com billing",
+    )
   })
 
   test("reuses one idempotency key across purchase retries until a confirmed success", async () => {

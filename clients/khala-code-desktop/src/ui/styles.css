@@ -4728,7 +4728,8 @@ button {
   grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
   gap: 0.65rem;
 }
-.khala-plans-card {
+.khala-plans-card,
+.khala-plans-credit-card {
   display: grid;
   gap: 0.35rem;
   padding: 0.65rem 0.75rem;
@@ -4758,6 +4759,7 @@ button {
   font-size: 0.76rem;
 }
 .khala-plans-card-availability,
+.khala-plans-credit-authority,
 .khala-plans-purchase-note,
 .khala-plans-empty,
 .khala-plans-error {

@@ -7,7 +7,11 @@
 // - Plans are not purchasable while the paid plan purchase seam is flag-gated
 //   OFF on the server; while `purchase.armed` is false the panel renders only a
 //   disabled control and never invokes the purchase transport. When armed, a
-//   purchase may return payment_required before any receipt exists.
+//   purchase may return payment_required before any receipt exists, and the
+//   panel opens only the checkout URL returned by the server.
+// - Credit packages remain owned by the existing openagents.com billing
+//   surface. The desktop panel provides the handoff to web billing but does not
+//   fabricate package tiers, balances, or post-purchase state locally.
 // - If the catalog cannot be loaded, the panel says so instead of rendering
 //   fabricated plan cards.
 import type {
@@ -29,6 +33,8 @@ export type KhalaCodePlansPanelOptions = Readonly<{
   purchase: (
     request?: KhalaCodeDesktopPlanPurchaseRequest,
   ) => Promise<KhalaCodeDesktopPlanPurchaseResult>
+  openExternal: (url: string) => Promise<boolean>
+  baseUrl?: string
 }>
 
 const el = <Tag extends keyof HTMLElementTagNameMap>(
@@ -48,8 +54,13 @@ const errorMessage = (error: unknown): string =>
 const purchaseIdempotencyKey = (): string =>
   `khala-code:plan-purchase:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}`
 
+const OpenAgentsBaseUrl = "https://openagents.com"
+const BillingPath = "/billing"
 const NOT_ARMED_COPY =
   "Not yet purchasable — the paid plan purchase seam is not armed."
+
+const externalPath = (baseUrl: string, path: string): string =>
+  new URL(path, baseUrl).toString()
 
 const purchaseFailureCopy = (
   error: "khala_code_paid_plans_not_enabled" | "unauthenticated" | "purchase_unavailable",
@@ -74,14 +85,31 @@ const purchaseSuccessCopy = (
   return `Paid plan purchase recorded: ${result.receiptRef}`
 }
 
+const checkoutHandoffCopy = (
+  kind: "paid-plan" | "credits",
+  opened: boolean,
+  url: string,
+): string => {
+  if (kind === "paid-plan") {
+    return opened
+      ? "Paid plan checkout opened. The paid plan activates only after the server records settled payment."
+      : `Paid plan checkout was created, but Khala Code could not open it automatically: ${url}`
+  }
+  return opened
+    ? "Credit checkout opened in openagents.com billing. Credit balance and package state update there from the server."
+    : `Credit checkout did not open automatically: ${url}`
+}
+
 export const mountKhalaCodePlansPanel = (
   container: HTMLElement,
   options: KhalaCodePlansPanelOptions,
 ): KhalaCodePlansPanelHandle => {
+  const baseUrl = options.baseUrl ?? OpenAgentsBaseUrl
   let catalogResult: KhalaCodeDesktopPlanCatalogResult | null = null
   let statusResult: KhalaCodeDesktopPlanStatusResult | null = null
   let purchaseNote: string | null = null
   let purchasing = false
+  let openingCredits = false
 
   const loadedCatalog = (): KhalaCodeDesktopPlanCatalog | null =>
     catalogResult !== null && catalogResult.ok ? catalogResult.catalog : null
@@ -144,6 +172,22 @@ export const mountKhalaCodePlansPanel = (
     return card
   }
 
+  const renderCreditCheckout = (): HTMLElement => {
+    const card = el("article", "khala-plans-credit-card")
+    card.dataset.khalaPlansCredits = ""
+    card.append(
+      el("h4", "khala-plans-card-title", "Credits"),
+      el("div", "khala-plans-card-tagline", "Add usage credits through openagents.com billing."),
+      el("div", "khala-plans-credit-authority", "Balance and packages are server-rendered in billing."),
+    )
+    const button = el("button", "khala-plans-purchase khala-plans-credit-checkout", "Open credit checkout")
+    button.type = "button"
+    button.dataset.khalaPlansAction = "credits"
+    if (openingCredits) button.disabled = true
+    card.append(button)
+    return card
+  }
+
   const renderBody = (): readonly HTMLElement[] => {
     if (catalogResult === null) {
       return [el("div", "khala-plans-empty", "Loading plan catalog...")]
@@ -155,12 +199,13 @@ export const mountKhalaCodePlansPanel = (
         "Plan catalog unavailable — Khala Code could not load the plan catalog from the server.",
       )
       error.dataset.khalaPlansError = ""
-      return [error]
+      return [error, renderCreditCheckout()]
     }
     const catalog = catalogResult.catalog
     const summary = el("p", "khala-plans-summary", catalog.summary)
     const cards = el("div", "khala-plans-cards")
     for (const plan of catalog.plans) cards.append(renderPlanCard(plan))
+    cards.append(renderCreditCheckout())
     return [summary, cards]
   }
 
@@ -210,6 +255,10 @@ export const mountKhalaCodePlansPanel = (
     try {
       const result = await options.purchase({ idempotencyKey: pendingPurchaseKey })
       purchaseNote = result.ok ? purchaseSuccessCopy(result) : purchaseFailureCopy(result.error)
+      if (result.ok && result.status === "payment_required" && result.rail === "stripe_checkout") {
+        const opened = await options.openExternal(result.checkoutUrl).catch(() => false)
+        purchaseNote = checkoutHandoffCopy("paid-plan", opened, result.checkoutUrl)
+      }
       if (result.ok && result.status !== "payment_required") {
         pendingPurchaseKey = null
       }
@@ -226,13 +275,26 @@ export const mountKhalaCodePlansPanel = (
     render()
   }
 
+  const openCreditCheckout = async (): Promise<void> => {
+    if (openingCredits) return
+    openingCredits = true
+    purchaseNote = "Opening credit checkout..."
+    render()
+    const url = externalPath(baseUrl, BillingPath)
+    const opened = await options.openExternal(url).catch(() => false)
+    purchaseNote = checkoutHandoffCopy("credits", opened, url)
+    openingCredits = false
+    render()
+  }
+
   container.addEventListener("click", event => {
     const target = event.target instanceof Element
-      ? event.target.closest<HTMLButtonElement>("[data-khala-plans-action=\"purchase\"]")
+      ? event.target.closest<HTMLButtonElement>("[data-khala-plans-action]")
       : null
     if (target === null || target.disabled) return
     event.preventDefault()
-    void purchase()
+    if (target.dataset.khalaPlansAction === "purchase") void purchase()
+    if (target.dataset.khalaPlansAction === "credits") void openCreditCheckout()
   })
 
   render()

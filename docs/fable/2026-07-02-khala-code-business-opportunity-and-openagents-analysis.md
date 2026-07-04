@@ -564,6 +564,13 @@ and they should be read as the operating posture for the proof ladder:
    flowing into the network and the network strengthening the product —
    is §3's flywheel said plainly, with Episode 239 cited as the design and
    this product as the vehicle.
+   - **Code-landed note (2026-07-04, #8249):** Khala Code desktop now hands
+     paid-plan payment-required responses to the real server-returned checkout
+     URL and exposes the existing openagents.com billing checkout from the same
+     plans surface for credit packages. The desktop still renders plan state
+     from server status and leaves credit package/balance truth on the billing
+     authority rather than fabricating it locally
+     (`khala_code.plans.checkout_handoff_server_truth.v1`).
 4. **The portfolio is now officially two products.** "OpenAgents has two
    products: Khala Code, our equivalent of Claude Code, and Autopilot, our
    business system for running stuff on Autopilot" — with the promise/

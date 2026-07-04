@@ -1267,6 +1267,51 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
+        "Binds the desktop settings payment surface only. Plan catalog, entitlement, and purchase settlement remain owned by openagents.com plan APIs; credit package catalog, balance, and checkout fulfillment remain owned by the existing web billing surface. The desktop may open those checkout URLs, but it must not synthesize paid entitlement or credit balance state.",
+      blockerRefs: [],
+      contractId: "khala_code.plans.checkout_handoff_server_truth.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8249",
+        "clients/khala-code-desktop/src/ui/plans-panel.ts",
+        "clients/khala-code-desktop/src/bun/rpc-handlers.ts",
+        "clients/khala-code-desktop/tests/plans-panel.test.ts",
+        "clients/khala-code-desktop/tests/rpc-handlers.test.ts",
+        "docs/khala-code/khala-code-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Mounts the real plans panel in a DOM: while the paid-plan seam is unarmed the purchase control is disabled, an armed Stripe payment_required response opens exactly the server-returned checkout URL and re-reads status, and the same surface opens the existing /billing checkout for credits without rendering local fake package or balance state.",
+          id: "plans_checkout_handoff.dom",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "clients/khala-code-desktop/tests/plans-panel.test.ts",
+        },
+        {
+          description:
+            "Decodes the plan-purchase RPC's Stripe payment_required response as a checkout handoff and asserts it does not contain a receiptRef or entitlementRef until the server returns a fulfilled receipt.",
+          id: "plan_purchase_payment_required_rpc.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-code-desktop/tests/rpc-handlers.test.ts",
+        },
+      ],
+      productArea: "plans and billing settings",
+      source: {
+        channel: "github-issue",
+        statedBy: "owner",
+        statedOn: "2026-07-04",
+      },
+      state: "enforced",
+      statement:
+        "Khala Code desktop plans panel hands off to real checkout (RL-4) with honest not-purchasable state while unarmed; credit packages (BF-2.4 tiers) purchasable from same surface via existing web checkout handoff. Post-purchase state (plan/entitlement/credits) renders from server truth via existing RPCs — never fabricated client-side.",
+      surface: "khala-code-desktop",
+      verification:
+        "bun test clients/khala-code-desktop/tests/plans-panel.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/ux-contracts.test.ts; these files run in the package test glob and the repo test:khala-code-desktop sweep before pushes to main.",
+    },
+    {
+      authorityBoundary:
         "Binds settings-panel editability for values that are structurally configurable (Codex/Claude config keys); does not apply to values that are genuinely environment-only by design (e.g. secrets that must never be typed into the UI), which should instead say so honestly per khala_code.settings.no_bare_unset_labels.v1.",
       blockerRefs: ["blocker.github_issue.8254"],
       contractId: "khala_code.settings.editable_not_env_var_only.v1",
@@ -1315,5 +1360,5 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-03.9",
+  version: "2026-07-04.1",
 }

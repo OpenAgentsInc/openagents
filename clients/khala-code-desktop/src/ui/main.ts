@@ -4088,6 +4088,7 @@ plansSection = settingsPanelEl === null
   ? null
   : mountKhalaCodePlansPanel(settingsPanelEl, {
       catalog: () => controls.khalaCodePlanCatalog(),
+      openExternal: url => controls.openExternalUrl(url),
       purchase: request => controls.khalaCodePlanPurchase(request),
       status: () => controls.khalaCodePlanStatus(),
     })
