@@ -225,6 +225,42 @@ describe('public product promises document', () => {
     expect(qaSwarmCopy).not.toContain('paid delivery receipts exist')
   })
 
+  test('registers Autopilot Lead Gen as planned and drafting-only for issue 8268', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const promiseById = new Map(
+      decoded.promises.map(promise => [promise.promiseId, promise]),
+    )
+    const leadGen = promiseById.get('autopilot.lead_gen.v1')
+
+    expect(leadGen).toMatchObject({
+      state: 'planned',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.lead_gen_live_customer_run_missing',
+        'blocker.product_promises.lead_gen_send_approval_receipt_missing',
+        'blocker.product_promises.lead_gen_customer_result_receipts_missing',
+        'blocker.product_promises.lead_gen_owner_green_signoff_missing',
+      ]),
+      evidenceRefs: expect.arrayContaining([
+        'docs/fable/2026-07-04-autopilot-lead-gen-agent-definition-receipt.md',
+        'apps/openagents.com/workers/api/src/autopilot-lead-gen-agent-definition.ts',
+        'apps/openagents.com/workers/api/src/autopilot-lead-gen-agent-definition.test.ts',
+        'contract:lead_gen_agent.drafting_only_toolset.v1',
+        'contract:lead_gen_agent.no_send_without_approval_receipt.v1',
+        'https://github.com/OpenAgentsInc/openagents/issues/8268',
+      ]),
+    })
+    expect(leadGen?.safeCopy).toContain('drafting-only')
+    expect(leadGen?.safeCopy).toContain('sendAuthority.allowed=false')
+    expect(leadGen?.safeCopy).toContain('Ora-style public-URL')
+    expect(leadGen?.unsafeCopy).toContain('without a separate LG-4 approval receipt')
+    expect(leadGen?.authorityBoundary).toContain('grant no Apollo credential')
+    expect(
+      decoded.notes.find(note => note.includes('Registry 2026-07-04.9')),
+    ).toContain('green stays exactly 34')
+  })
+
   test('keeps Khala Code install truth public but desktop release gated', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),

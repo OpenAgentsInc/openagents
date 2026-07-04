@@ -185,6 +185,77 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
     {
       authorityBoundary:
+        "This contract binds only the v0 Autopilot Lead Gen background-agent definition and its compiled toolset. It allows the Forge receive-pack scope needed for owner-Pylon dispatch but grants no Apollo send, email send, contact campaign activation, spend, payout, settlement, or customer-result claim authority.",
+      blockerRefs: [],
+      contractId: "lead_gen_agent.drafting_only_toolset.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8268",
+        "docs/fable/2026-07-03-apollo-outbound-sales-plan.md#10",
+        "apps/openagents.com/workers/api/src/autopilot-lead-gen-agent-definition.ts",
+        "apps/openagents.com/workers/api/src/autopilot-lead-gen-agent-definition.test.ts",
+      ],
+      oracles: [
+        {
+          description:
+            "The Autopilot Lead Gen definition has no send tools in allow/ask, explicitly denies email/Apollo send and activation refs, allows only drafting/analyzer/operator-inbox work plus the Forge receive-pack dispatch scope, and compiles as dispatchable.",
+          id: "lead_gen_agent.drafting_only_toolset",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents.com/workers/api/src/autopilot-lead-gen-agent-definition.test.ts",
+        },
+      ],
+      productArea: "Autopilot Lead Gen",
+      source: {
+        channel: "issue",
+        statedBy: "owner",
+        statedOn: "2026-07-04",
+      },
+      state: "enforced",
+      statement:
+        "Autopilot Lead Gen v0 is a drafting-only standing background agent: target discovery, agent-readiness analysis, report drafts, sequence-entry drafts, receipt writing, and operator-inbox escalation are permitted; outreach send/activation tools are denied and absent from allow/ask.",
+      surface: "openagents.com-worker",
+      verification:
+        "LG-7 is enforced by the openagents.com Worker lead-gen agent-definition test in the normal bun test sweep.",
+    },
+    {
+      authorityBoundary:
+        "This contract binds only the public-safe v0 dogfood run receipt and run payload shape for Autopilot Lead Gen. It does not authorize live sends, Apollo credential use, contact reveal, customer delivery claims, or marketing copy that the product is available.",
+      blockerRefs: [],
+      contractId: "lead_gen_agent.no_send_without_approval_receipt.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8268",
+        "docs/fable/2026-07-03-apollo-outbound-sales-plan.md#10",
+        "docs/fable/2026-07-04-autopilot-lead-gen-agent-definition-receipt.md",
+        "apps/openagents.com/workers/api/src/autopilot-lead-gen-agent-definition.ts",
+        "apps/openagents.com/workers/api/src/autopilot-lead-gen-agent-definition.test.ts",
+      ],
+      oracles: [
+        {
+          description:
+            "The run payload and OpenAgents dogfood receipt record sendAuthority.allowed=false, keep drafted reports/sequences in review state, name the operator inbox, and require a separate LG-4 approval receipt before any send.",
+          id: "lead_gen_agent.no_send_without_approval_receipt",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents.com/workers/api/src/autopilot-lead-gen-agent-definition.test.ts",
+        },
+      ],
+      productArea: "Autopilot Lead Gen",
+      source: {
+        channel: "issue",
+        statedBy: "owner",
+        statedOn: "2026-07-04",
+      },
+      state: "enforced",
+      statement:
+        "Autopilot Lead Gen may produce reports and sequence drafts, but no outreach leaves the system unless a separate LG-4 approval receipt exists; the v0 dogfood receipt records sendAuthority.allowed=false.",
+      surface: "openagents.com-worker",
+      verification:
+        "LG-7 is enforced by the openagents.com Worker lead-gen agent-definition test in the normal bun test sweep.",
+    },
+    {
+      authorityBoundary:
         "This contract proves the brokered helper shape and ref-only dispatch boundary. The broader no-long-lived-token runtime sweep is enforced by background_agents.credentials.no_long_lived_tokens_in_workspaces.v1.",
       blockerRefs: [],
       contractId: "background_agents.credentials.brokered_scm_helper.v1",
@@ -715,5 +786,5 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-04.4",
+  version: "2026-07-04.5",
 }

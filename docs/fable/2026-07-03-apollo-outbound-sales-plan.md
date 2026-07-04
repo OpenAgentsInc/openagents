@@ -395,6 +395,23 @@ LG-7 Lead Gen agent definition [#8268](https://github.com/OpenAgentsInc/openagen
 LG-8 affiliate attribution [#8269](https://github.com/OpenAgentsInc/openagents/issues/8269),
 LG-9 partner routing [#8270](https://github.com/OpenAgentsInc/openagents/issues/8270).
 
+Implementation status (#8268, 2026-07-04): LG-7 now has a v0 standing
+background-agent definition at
+`apps/openagents.com/workers/api/src/autopilot-lead-gen-agent-definition.ts`.
+It is `agent_definition.autopilot.lead_gen.v1`, uses the existing
+`own_pylon` run/history substrate, carries weekday + manual triggers and
+BA-B4 caps, and keeps per-customer ICP/analyzer/template/cap state in the run
+payload rather than forking definitions. OpenAgents is dogfood customer #1 via
+`lead_gen_config.openagents.customer_001.v1`; the public-safe receipt is
+`docs/fable/2026-07-04-autopilot-lead-gen-agent-definition-receipt.md`.
+The toolset is deliberately draft-only: report drafts, sequence-entry drafts,
+operator-inbox escalation, receipt writing, and the Forge receive-pack scope
+needed for dispatch. Email/Apollo send and activation refs are denied, and the
+receipt records `sendAuthority.allowed=false` until a separate LG-4 approval
+receipt exists. The useful Ora-style public URL/readiness rubric idea is folded
+into the analyzer config ref only; no ora.ai integration or score claim is
+created.
+
 ### 10.1 Episode 247 reconciliation (2026-07-04)
 
 Episode 247 ("Sell in Public", `docs/transcripts/247.md`) landed after this

@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-07-04.8'
+export const PublicProductPromisesVersion = '2026-07-04.9'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -140,6 +140,10 @@ const sourceRefs = [
   'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md',
   'docs/fable/2026-07-02-bf-3-4-private-sovereign-compute-tier.md',
   'docs/fable/2026-07-03-apollo-outbound-sales-plan.md',
+  'docs/fable/2026-07-04-autopilot-lead-gen-agent-definition-receipt.md',
+  'apps/openagents.com/workers/api/src/autopilot-lead-gen-agent-definition.ts',
+  'apps/openagents.com/workers/api/src/autopilot-lead-gen-agent-definition.test.ts',
+  'packages/behavior-contracts/src/background-agents.ts',
   'docs/transcripts/external/2026-07-03-friedberg.md',
   'docs/transcripts/external/2026-07-04-mistral-ceo-enterprise-ai.md',
   'https://openagents.com/forum/t/2efaeed7-1f4f-4f2f-9b26-dc8445885bca',
@@ -4500,6 +4504,42 @@ export const publicProductPromisesDocument = () => {
       },
       {
         ...basePromiseFields,
+        promiseId: 'autopilot.lead_gen.v1',
+        productArea: 'Autopilot Lead Gen',
+        audience: ['agent', 'customer', 'operator', 'public'],
+        state: 'planned',
+        claim:
+          'Autopilot Lead Gen is the standing, approval-gated lead-generation engine: per-customer ICP config drives target discovery, agent-readiness analysis, drafted reports, drafted sequences, and operator-inbox approval before any send.',
+        safeCopy:
+          'Autopilot Lead Gen is planned, not live. Source now has a v0 standing background-agent definition and OpenAgents dogfood customer #1 config: it can read a per-customer ICP/config ref, run the LG-1 agent-readiness analyzer shape, draft LG-5 report refs, draft LG-4 sequence-entry refs, and escalate those drafts to the operator inbox. The toolset is drafting-only and explicitly denies email/Apollo send and activation tools; the dogfood receipt records sendAuthority.allowed=false. The analyzer config borrows the useful Ora-style public-URL/readiness-rubric idea without claiming an ora.ai integration.',
+        unsafeCopy:
+          'Do not say Autopilot Lead Gen is live, self-serve, sending email, spending Apollo credits, revealing contacts, running for customers, or producing customer results. Do not imply any outreach can send without a separate LG-4 approval receipt.',
+        evidenceRefs: [
+          'docs/fable/2026-07-03-apollo-outbound-sales-plan.md#10',
+          'docs/fable/2026-07-04-autopilot-lead-gen-agent-definition-receipt.md',
+          'apps/openagents.com/workers/api/src/autopilot-lead-gen-agent-definition.ts',
+          'apps/openagents.com/workers/api/src/autopilot-lead-gen-agent-definition.test.ts',
+          'packages/agent-readiness/src/index.ts',
+          'packages/behavior-contracts/src/background-agents.ts',
+          'contract:lead_gen_agent.drafting_only_toolset.v1',
+          'contract:lead_gen_agent.no_send_without_approval_receipt.v1',
+          'promise:business.intake_quick_win_offering.v1',
+          'promise:autopilot_sites.native_email_sequences.v1',
+          'https://github.com/OpenAgentsInc/openagents/issues/8268',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.lead_gen_live_customer_run_missing',
+          'blocker.product_promises.lead_gen_send_approval_receipt_missing',
+          'blocker.product_promises.lead_gen_customer_result_receipts_missing',
+          'blocker.product_promises.lead_gen_owner_green_signoff_missing',
+        ],
+        verification:
+          'Planned: the v0 source definition decodes as openagents.agent_definition.v1 with a weekday cron trigger, manual trigger, own-Pylon lane, maxRunSeconds/maxRunsPerDay/maxCreditsPerDay caps inherited by the BA-B4 dispatch machinery, and BA-B5-compatible run history at /v1/agent-definitions/:id/runs. Tests prove the toolset denies send/activation refs, allows only draft/analyzer/operator-inbox/receipt work plus the Forge receive-pack dispatch scope, keeps per-customer ICP/analyzer/template/cap refs in run payloads rather than forking definitions, and records one OpenAgents dogfood run receipt as drafts awaiting operator approval. Green requires a real live customer run, a separate LG-4 approval receipt for any send, customer-result receipts, and owner-signed receipt-first upgrade.',
+        authorityBoundary:
+          'The v0 definition and dogfood receipt grant draft and review authority only. They grant no Apollo credential, contact reveal, email send, sequence activation, spend, payout, settlement, customer-delivery, or public availability authority; send authority exists only after a separate approval receipt under the LG-4 gate.',
+      },
+      {
+        ...basePromiseFields,
         promiseId: 'khala_code.desktop_codex_wrapper.v1',
         productArea: 'Khala Code',
         audience: ['user', 'agent', 'operator', 'public'],
@@ -5179,6 +5219,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-04.9 is the LG-7 Autopilot Lead Gen agent-definition boundary pass (#8268) and flips NO promise green - green stays exactly 34. New planned record autopilot.lead_gen.v1 makes the lead-generation engine visible without claiming availability: source now has a v0 standing background-agent definition, per-customer ICP/analyzer/template/cap config payload, drafting-only toolset, weekday/manual triggers, BA-B4 budget caps, BA-B5-compatible run-history route, two enforced behavior contracts, and one OpenAgents dogfood run receipt that records reports/sequences as drafts awaiting operator approval. The useful Ora-style public-URL readiness rubric idea is folded into the analyzer config ref only; no ora.ai integration or score claim is made. No live customer run, send approval receipt, customer result, Apollo credential, contact reveal, email send, spend, payout, settlement, or green product claim is created.',
       'Registry 2026-07-04.8 is the owner-directed revenue-refocus demotion pass (2026-07-04) and flips NO promise green — green stays exactly 34. On owner direction, 29 non-green records outside the current focus (Khala Code, the services/QA Swarm revenue engine, payments/credits, Reactor, and Autopilot Lead Gen) are demoted to planned: 19 yellow and 10 red records across the legacy Autopilot desktop feature family (desktop_gui_client, mission_briefing, builtin_compute_agent, cloud_credits_ui, control_center_fanout_marketplace, repo_study_packets, external_repo_studying_pilot, agent_character_creation, agentic_labor_products, bitcoin_payment_visualization, pylon_growth_visualization, local_apple_fm_tool_chat), Artanis labor lanes (labor_requester, pylon_support_responder), Pylon compute-mining (consumer_compute_earns_bitcoin_self_serve, v0_3_multi_earning_node), training-run claims (world_first_ai_training_paid_bitcoin, world_first_public_llm_computer_training_run), cloud service suite (fine_tuning_service, sandbox_compute_service), decentralized serving fabric, bounties surface, mobile companions (voice_approval_companion, voice_session_evidence_transcript_ingest), referral bitcoin streams (sites.referral_bitcoin_stream, autopilot_sites.partner_payout_ledger), provider compliant-usage labor, accepted-outcomes-per-kWh metrics, and agents.x_claim_reward. Demotion is a focus statement, not an evidence claim: prior yellow/red evidence and public-claim history remain in each record and in prior registry notes; demoted red records still carry their original on-camera claim lineage and must not be re-marketed without receipt-first re-promotion. Kept non-green in place (in-focus): khala_code.*, qa.*/qa_swarm.*, business.*, workrooms.*, data.* capture, privacy.khala_paid_capture_optout, inference free-tier/providers/gateway-credits, payments.* (credits purchase + accepted-outcome economics), autopilot_sites site/email/hostname fulfillment surfaces, identity.orange_check_forum_signal, autopilot.cloud_coding_sessions (Reactor-adjacent), and referral.refer_once_earn_forever (stays red as the standing overclaim marker). All training.* and marketplace.* records were already planned. Source plans: docs/fable/2026-07-03-apollo-outbound-sales-plan.md (Campaign B Own your AI), docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md, epic #8261.',
       'Registry 2026-07-04.7 is the RX-1 Reactor planned-registry boundary pass (#8271) and flips NO promise state — green stays exactly 34. New Reactor records land planned only: reactor.private_deployment.v1, reactor.model_provenance.v1, and reactor.model_policy.v1. The records make the private/customer-controlled open-model deployment lane, typed provenance catalog, and customer model-policy gate visible without claiming availability, pricing, compliance, data-custody proof, US-origin enforcement, model install, or serving. Modeled assessment/pilot/managed package bands are staged in NEEDS_OWNER.md for owner review only; public copy remains blocked until policy/refusal/eval/metering/dogfood or customer deployment receipts exist.',
       'Registry 2026-07-04.6 is the RL-9 external-demand provenance and first-dollar evidence automation pass (#8253) and flips NO promise green — green stays exactly 34. proof.demand_provenance.v1 remains green as a labeling-discipline promise: source now has revenue_event_provenance, which labels Khala Code paid-plan and QA Swarm first-engagement revenue events as internal or external and exposes a public-safe first-dollar evidence bundle at /api/public/revenue-loop/first-dollar-evidence/{bundleRef}. Locked business factory metrics join exact revenue-event rows and keep internal/external USD-cent counts split. This is evidence-shaped for registry evidenceRefs; it does not create external-revenue copy, paid-plan availability, first paid delivery, payout, settlement, or promise-green authority without owner review.',

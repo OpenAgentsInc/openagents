@@ -1,5 +1,20 @@
 # Promise Registry
 
+> Registry `2026-07-04.9` is the LG-7 Autopilot Lead Gen
+> agent-definition boundary pass (#8268) and flips NO promise green (green
+> stays exactly 34). New planned record `autopilot.lead_gen.v1` makes the
+> lead-generation engine visible without claiming availability: source now has
+> a v0 standing background-agent definition, per-customer
+> ICP/analyzer/template/cap config payload, drafting-only toolset,
+> weekday/manual triggers, BA-B4 budget caps, BA-B5-compatible run-history
+> route, two enforced behavior contracts, and one OpenAgents dogfood run
+> receipt that records reports/sequences as drafts awaiting operator approval.
+> The useful Ora-style public-URL readiness-rubric idea is folded into the
+> analyzer config ref only; no ora.ai integration or score claim is made. No
+> live customer run, send approval receipt, customer result, Apollo credential,
+> contact reveal, email send, spend, payout, settlement, or green product
+> claim is created.
+
 > Registry `2026-07-04.8` is the owner-directed revenue-refocus demotion
 > pass (2026-07-04) and flips NO promise green (green stays exactly 34).
 > On owner direction, 29 non-green records outside the current focus —
