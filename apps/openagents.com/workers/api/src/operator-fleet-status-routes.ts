@@ -2,6 +2,13 @@ import { jsonResponse } from '@openagentsinc/sync-worker'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { parseJsonRecord, parseJsonStringArray } from './json-boundary'
+import {
+  makeD1PylonAgentRunnerStatusReadStore,
+  makePylonAgentRunnerStatusReadStoreForEnv,
+  type PylonAgentRunnerStatusReadScope,
+  type PylonAgentRunnerStatusReadStore,
+  type PylonAgentRunnerStatusRow,
+} from './pylon-agent-runner-status-store'
 import { openAgentsDatabase } from './runtime'
 import { currentIsoTimestamp, todayAndYesterdayBoundsInTimezone } from './runtime-primitives'
 import { PUBLIC_KHALA_TOKENS_SERVED_TIMEZONE } from './token-usage-ledger'
@@ -13,6 +20,9 @@ const SPINE_SCHEMA_VERSION = 'openagents.pylon.agent_runner_status_event.v1'
 
 type OperatorFleetStatusEnv = Readonly<{
   OPENAGENTS_DB: D1Database
+  KHALA_SYNC_DB?: { connectionString: string } | undefined
+  KHALA_SYNC_PYLON_DUAL_WRITE?: string | undefined
+  KHALA_SYNC_PYLON_READS?: string | undefined
 }>
 
 type OperatorFleetStatusDependencies<Bindings extends OperatorFleetStatusEnv> =
@@ -22,24 +32,12 @@ type OperatorFleetStatusDependencies<Bindings extends OperatorFleetStatusEnv> =
       env: Bindings,
     ) => Promise<{ userId: string } | undefined>
     currentIsoTimestamp?: () => string
+    makeRunnerStatusReadStore?: (
+      env: Bindings,
+      db: D1Database,
+    ) => PylonAgentRunnerStatusReadStore
     requireAdminApiToken: (request: Request, env: Bindings) => Promise<boolean>
   }>
-
-type D1Rows<T> = Readonly<{ results?: ReadonlyArray<T> }>
-
-type StatusRow = Readonly<{
-  event_ref: string
-  owner_agent_user_id: string
-  runner_ref: string
-  runner_kind: string
-  pylon_ref: string | null
-  assignment_ref: string | null
-  state: string
-  state_started_at: string
-  updated_at: string
-  retention_state: 'live' | 'retained'
-  event_json: string
-}>
 
 type CacheEntry = Readonly<{
   expiresAt: number
@@ -47,9 +45,7 @@ type CacheEntry = Readonly<{
   response: unknown
 }>
 
-export type OperatorFleetReadScope =
-  | Readonly<{ kind: 'admin' }>
-  | Readonly<{ kind: 'agent'; userId: string }>
+export type OperatorFleetReadScope = PylonAgentRunnerStatusReadScope
 
 const snapshotCache = new Map<string, CacheEntry>()
 
@@ -80,22 +76,6 @@ const boundedString = (value: unknown, maxLength: number): string | null =>
     ? value.slice(0, maxLength)
     : null
 
-const safeAll = async <T>(
-  db: D1Database,
-  sql: string,
-  ...bindings: ReadonlyArray<unknown>
-): Promise<ReadonlyArray<T>> => {
-  try {
-    const statement = db.prepare(sql)
-    const query =
-      bindings.length === 0 ? statement : statement.bind(...bindings)
-    const result = await query.all<T>() as D1Rows<T>
-    return result.results ?? []
-  } catch {
-    return []
-  }
-}
-
 const normalizeState = (state: string): string =>
   state === 'working'
     ? 'running'
@@ -111,7 +91,9 @@ const activeRunnerState = (state: string): boolean =>
   state === 'waiting' ||
   state === 'blocked'
 
-const parseEvent = (row: StatusRow): Record<string, unknown> =>
+const parseEvent = (
+  row: PylonAgentRunnerStatusRow,
+): Record<string, unknown> =>
   parseJsonRecord(row.event_json) ?? {}
 
 const eventRefs = (event: Record<string, unknown>): ReadonlyArray<string> => [
@@ -119,30 +101,18 @@ const eventRefs = (event: Record<string, unknown>): ReadonlyArray<string> => [
   ...parseJsonStringArray(JSON.stringify(event.capabilityRefs ?? [])),
 ]
 
-export const readOperatorFleetStatusSnapshotFromSpine = async (
-  db: D1Database,
+export const readOperatorFleetStatusSnapshotFromRunnerStatusReadStore = async (
+  readStore: PylonAgentRunnerStatusReadStore,
   nowIso: string,
   scope: OperatorFleetReadScope,
   legacyStatusPath: boolean,
 ): Promise<unknown> => {
-  const ownerClause = scope.kind === 'admin' ? '' : 'AND owner_agent_user_id = ?'
-  const ownerBindings = scope.kind === 'admin' ? [] : [scope.userId]
-  const rows = await safeAll<StatusRow>(
-    db,
-    `SELECT event_ref, owner_agent_user_id, runner_ref, runner_kind, pylon_ref,
-            assignment_ref, state, state_started_at, updated_at,
-            retention_state, event_json
-       FROM pylon_agent_runner_status_events
-      WHERE archived_at IS NULL
-        ${ownerClause}
-      ORDER BY updated_at DESC
-      LIMIT 200`,
-    ...ownerBindings,
-  )
+  const readResult = await readStore.listStatusRows({ limit: 200, scope })
+  const rows = readResult.rows
 
   const liveRows = rows.filter(row => row.retention_state === 'live')
   const activeRows = liveRows.filter(row => activeRunnerState(row.state))
-  const byPylon = new Map<string, ReadonlyArray<StatusRow>>()
+  const byPylon = new Map<string, ReadonlyArray<PylonAgentRunnerStatusRow>>()
   for (const row of liveRows) {
     const pylonRef = row.pylon_ref ?? `pylon.unknown.${row.owner_agent_user_id}`
     byPylon.set(pylonRef, [...(byPylon.get(pylonRef) ?? []), row])
@@ -222,7 +192,7 @@ export const readOperatorFleetStatusSnapshotFromSpine = async (
     nowIso,
     PUBLIC_KHALA_TOKENS_SERVED_TIMEZONE,
   )
-  const sourceRefs = ['d1:pylon_agent_runner_status_events']
+  const sourceRefs = readResult.sourceRefs
   const targetFloor = 0
 
   return {
@@ -364,6 +334,19 @@ export const readOperatorFleetStatusSnapshotFromSpine = async (
   }
 }
 
+export const readOperatorFleetStatusSnapshotFromSpine = async (
+  db: D1Database,
+  nowIso: string,
+  scope: OperatorFleetReadScope,
+  legacyStatusPath: boolean,
+): Promise<unknown> =>
+  readOperatorFleetStatusSnapshotFromRunnerStatusReadStore(
+    makeD1PylonAgentRunnerStatusReadStore(db),
+    nowIso,
+    scope,
+    legacyStatusPath,
+  )
+
 const authorizeFleetRead = async <Bindings extends OperatorFleetStatusEnv>(
   dependencies: OperatorFleetStatusDependencies<Bindings>,
   request: Request,
@@ -417,6 +400,7 @@ export const makeOperatorFleetStatusRoutes = <
       'operator:fleet:status:spine:v1',
       legacyStatusPath ? 'legacy' : 'state',
       scope.kind === 'admin' ? 'admin' : `agent:${scope.userId}`,
+      env.KHALA_SYNC_PYLON_READS?.trim().toLowerCase() ?? 'd1',
     ].join(':')
     const cached = snapshotCache.get(cacheKey)
     const nowMs = Date.parse(nowIso)
@@ -443,8 +427,12 @@ export const makeOperatorFleetStatusRoutes = <
       })
     }
 
-    const response = await readOperatorFleetStatusSnapshotFromSpine(
-      openAgentsDatabase(env),
+    const db = openAgentsDatabase(env)
+    const readStore =
+      dependencies.makeRunnerStatusReadStore?.(env, db) ??
+      makePylonAgentRunnerStatusReadStoreForEnv(env, db)
+    const response = await readOperatorFleetStatusSnapshotFromRunnerStatusReadStore(
+      readStore,
       nowIso,
       scope,
       legacyStatusPath,

@@ -131,7 +131,7 @@ class FakeD1 {
         ? String(bindings[0])
         : null
       const owners = sql.includes('owner_agent_user_id = ?')
-        ? [String(bindings.at(-1))]
+        ? [String(bindings[0])]
         : sql.includes('owner_agent_user_id IN')
           ? bindings.slice(1).map(value => String(value))
           : []
@@ -304,7 +304,7 @@ describe('operator fleet status route', () => {
 
     expect(response.status).toBe(200)
     expect(db.log[0]?.sql).toContain('owner_agent_user_id = ?')
-    expect(db.log[0]?.bindings).toEqual(['agent_user.owner'])
+    expect(db.log[0]?.bindings).toEqual(['agent_user.owner', 200])
     expect(body.fleet.activeAssignments.map((row: { assignmentRef: string }) => row.assignmentRef))
       .toEqual([
         'assignment.public.issue_7880',
@@ -385,7 +385,8 @@ describe('operator fleet status route', () => {
       'utf8',
     )
 
-    expect(source).toContain('FROM pylon_agent_runner_status_events')
+    expect(source).toContain('makePylonAgentRunnerStatusReadStoreForEnv')
+    expect(source).toContain('PylonAgentRunnerStatusReadStore')
     expect(source).not.toContain('FROM pylon_api_registrations')
     expect(source).not.toContain('FROM pylon_api_assignments')
     expect(source).not.toContain('FROM pylon_api_events')

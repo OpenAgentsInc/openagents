@@ -200,9 +200,12 @@ R2 on the request path and enqueues metadata rows through
 `PYLON_CODEX_RAW_EVENT_METADATA_QUEUE`; its consumer preserves D1 indexing and
 fail-soft mirrors Postgres when `KHALA_SYNC_PYLON_DUAL_WRITE` is armed. These
 paths remain D1-first and read-authoritative until verification/cutover.
-Runner-status and closeout-verifier Postgres shadow reads, compare/postgres
-read flags, live raw-event queue reconciliation, and final D1 decommission
-remain on [#8315](https://github.com/OpenAgentsInc/openagents/issues/8315).
+Runner-status spine reads now honor `KHALA_SYNC_PYLON_READS` for D1,
+compare, and Postgres modes across the operator fleet-status route and the
+in-worker Artanis status-spine loader; compare serves D1 while adding the
+Postgres shadow source ref and logging drift. Closeout-verifier Postgres shadow
+reads, raw-event queue reconciliation, and final D1 decommission remain on
+[#8315](https://github.com/OpenAgentsInc/openagents/issues/8315).
 
 - **What:** the rest of the Pylon control plane after KS-8.1:
   registrations, quarantines, marketplace intake/assignments/triage,

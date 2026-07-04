@@ -372,11 +372,13 @@ ServingRateMonitor behind `KHALA_SYNC_PYLON_DUAL_WRITE`. Raw Codex event
 payloads now stay on the request path only long enough to land in R2; metadata
 rows are enqueued through `PYLON_CODEX_RAW_EVENT_METADATA_QUEUE`, then the
 consumer writes the D1 index and fail-soft mirrors Postgres when the same
-dual-write flag is armed. Reads remain D1-authoritative. The live #8315 cutover
-still requires runner-status and closeout-verifier Postgres shadow reads,
-compare/postgres read flags, live raw-event queue reconciliation, and D1
-decommission evidence. Do not treat a green backfill alone as permission to drop
-D1 tables.
+dual-write flag is armed. Runner-status spine reads now participate in
+`KHALA_SYNC_PYLON_READS`: `compare` serves D1 and adds a Postgres shadow read
+with drift diagnostics, while `postgres` serves the fleet-status spine from
+Cloud SQL with bounded retry and D1 fallback. The live #8315 cutover still
+requires closeout-verifier Postgres shadow reads, live raw-event queue
+reconciliation, and D1 decommission evidence. Do not treat a green backfill
+alone as permission to drop D1 tables.
 
 ## Public tokens-served projection (KS-6.3, #8304)
 

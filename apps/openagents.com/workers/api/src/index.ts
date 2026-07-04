@@ -907,10 +907,13 @@ import { makeOperatorBuyModeRoutes } from './operator-buy-mode-routes'
 import { makeOperatorEmailInspectionRoutes } from './operator-email-inspection-routes'
 import {
   makeOperatorFleetStatusRoutes,
-  readOperatorFleetStatusSnapshotFromSpine,
+  readOperatorFleetStatusSnapshotFromRunnerStatusReadStore,
 } from './operator-fleet-status-routes'
 import { makeOperatorProStatusRoutes } from './operator-pro-status-routes'
-import { makePylonAgentRunnerStatusMirrorForEnv } from './pylon-agent-runner-status-store'
+import {
+  makePylonAgentRunnerStatusMirrorForEnv,
+  makePylonAgentRunnerStatusReadStoreForEnv,
+} from './pylon-agent-runner-status-store'
 import { makeOperatorOrderTriageRoutes } from './operator-order-triage-routes'
 import { makeOperatorProviderAccountRoutes } from './operator-provider-account-routes'
 import { makeOperatorPylonMarketplaceRoutes } from './operator-pylon-marketplace-routes'
@@ -9295,13 +9298,15 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       },
       fleetStatus: {
         statusSpine: {
-          loadSnapshot: () =>
-            readOperatorFleetStatusSnapshotFromSpine(
-              openAgentsDatabase(env),
+          loadSnapshot: () => {
+            const db = openAgentsDatabase(env)
+            return readOperatorFleetStatusSnapshotFromRunnerStatusReadStore(
+              makePylonAgentRunnerStatusReadStoreForEnv(env, db),
               currentIsoTimestamp(),
               { kind: 'admin' },
               false,
-            ),
+            )
+          },
         },
       },
       // iteration-8: the owner-scoped unsupported-request ledger READ tool. Reads
