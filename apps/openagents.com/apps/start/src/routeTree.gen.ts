@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TassadarRouteImport } from './routes/tassadar'
 import { Route as RunRouteImport } from './routes/run'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as KhalaRouteImport } from './routes/khala'
 import { Route as GymRouteImport } from './routes/gym'
 import { Route as DocsRouteImport } from './routes/docs'
@@ -37,6 +38,11 @@ const TassadarRoute = TassadarRouteImport.update({
 const RunRoute = RunRouteImport.update({
   id: '/run',
   path: '/run',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const KhalaRoute = KhalaRouteImport.update({
@@ -135,6 +141,7 @@ export interface FileRoutesByFullPath {
   '/docs': typeof DocsRouteWithChildren
   '/gym': typeof GymRoute
   '/khala': typeof KhalaRouteWithChildren
+  '/login': typeof LoginRoute
   '/run': typeof RunRoute
   '/tassadar': typeof TassadarRoute
   '/autopilot/legal': typeof AutopilotLegalRoute
@@ -156,6 +163,7 @@ export interface FileRoutesByTo {
   '/docs': typeof DocsRouteWithChildren
   '/gym': typeof GymRoute
   '/khala': typeof KhalaRouteWithChildren
+  '/login': typeof LoginRoute
   '/run': typeof RunRoute
   '/tassadar': typeof TassadarRoute
   '/autopilot/legal': typeof AutopilotLegalRoute
@@ -178,6 +186,7 @@ export interface FileRoutesById {
   '/docs': typeof DocsRouteWithChildren
   '/gym': typeof GymRoute
   '/khala': typeof KhalaRouteWithChildren
+  '/login': typeof LoginRoute
   '/run': typeof RunRoute
   '/tassadar': typeof TassadarRoute
   '/autopilot/legal': typeof AutopilotLegalRoute
@@ -201,6 +210,7 @@ export interface FileRouteTypes {
     | '/docs'
     | '/gym'
     | '/khala'
+    | '/login'
     | '/run'
     | '/tassadar'
     | '/autopilot/legal'
@@ -222,6 +232,7 @@ export interface FileRouteTypes {
     | '/docs'
     | '/gym'
     | '/khala'
+    | '/login'
     | '/run'
     | '/tassadar'
     | '/autopilot/legal'
@@ -243,6 +254,7 @@ export interface FileRouteTypes {
     | '/docs'
     | '/gym'
     | '/khala'
+    | '/login'
     | '/run'
     | '/tassadar'
     | '/autopilot/legal'
@@ -265,6 +277,7 @@ export interface RootRouteChildren {
   DocsRoute: typeof DocsRouteWithChildren
   GymRoute: typeof GymRoute
   KhalaRoute: typeof KhalaRouteWithChildren
+  LoginRoute: typeof LoginRoute
   RunRoute: typeof RunRoute
   TassadarRoute: typeof TassadarRoute
   AutopilotLegalRoute: typeof AutopilotLegalRoute
@@ -287,6 +300,13 @@ declare module '@tanstack/react-router' {
       path: '/run'
       fullPath: '/run'
       preLoaderRoute: typeof RunRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/khala': {
@@ -463,6 +483,7 @@ const rootRouteChildren: RootRouteChildren = {
   DocsRoute: DocsRouteWithChildren,
   GymRoute: GymRoute,
   KhalaRoute: KhalaRouteWithChildren,
+  LoginRoute: LoginRoute,
   RunRoute: RunRoute,
   TassadarRoute: TassadarRoute,
   AutopilotLegalRoute: AutopilotLegalRoute,

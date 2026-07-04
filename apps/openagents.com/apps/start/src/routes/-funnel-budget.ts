@@ -22,6 +22,7 @@ const routeBudgets = [
   { path: '/code/download', marker: 'Install paths, with the Codex requirement kept visible' },
   { path: '/autopilot/legal', marker: 'For legal teams' },
   { path: '/gym', marker: 'OpenAgents Gym' },
+  { path: '/login', marker: 'Log in to OpenAgents' },
   { path: '/preview/landing', marker: 'Software, built by agents.' },
   { path: '/run', marker: 'Tassadar lives in the Verse' },
 ] as const

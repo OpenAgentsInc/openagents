@@ -123,6 +123,20 @@ The Start staging app now owns `/run` as the retired Tassadar web-scene pointer.
 - The route test keeps the retired scene separate from the old persistent
   scene overlay and landing-squares element.
 
+## Landed Slice 8: Login
+
+The Start staging app now owns `/login` as the public sign-in entry route.
+
+- `/login` preserves the old overlay/route markers:
+  `data-persistent-scene-overlay="login"` and `data-route="login"`.
+- The sign-in assertion target remains `Log in to OpenAgents`.
+- The email one-time-code form keeps `action="/login/email"` and
+  `method="get"` with the `you@example.com` placeholder.
+- The GitHub OAuth entry remains a plain link to `/login/github`.
+- This slice ports only the login page shell. Auth callback, OAuth/email
+  handlers, downstream entitlement checks, and account gating remain owned by
+  the existing Worker/API surfaces.
+
 ## Boundary
 
 This is not the final TS-6 closure. The live `openagents.com` Worker still

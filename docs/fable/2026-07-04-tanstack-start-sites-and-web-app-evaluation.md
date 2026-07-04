@@ -617,8 +617,8 @@ LG-4 claim safety, and bundle budget before deploy review. See
 
 2026-07-04 TS-6 slice note: the Start app now serves `/khala`, `/tassadar`,
 `/gym`, `/activity`, `/clients-preview`, `/components`, `/components/$family`,
-`/preview/landing`, and `/run` with route parity tests, keeping the existing
-Foldkit counterparts until a real production route cutover allows
+`/login`, `/preview/landing`, and `/run` with route parity tests, keeping the
+existing Foldkit counterparts until a real production route cutover allows
 delete-as-you-go. See
 `docs/fable/2026-07-04-ts-6-start-khala-tassadar-route-slice.md`.
 
