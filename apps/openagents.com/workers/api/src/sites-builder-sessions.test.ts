@@ -15,6 +15,10 @@ import {
   recordSiteBuilderPreview,
   upsertSiteBuilderFileSnapshot,
 } from './sites-builder-sessions'
+import {
+  SITES_TANSTACK_RULES_METADATA_KEY,
+  SITES_TANSTACK_RULES_REF,
+} from './sites-tanstack-rules'
 
 type Row = Record<string, unknown>
 
@@ -138,12 +142,12 @@ class BuilderStatement implements D1PreparedStatement {
         active_artifact_id: null,
         active_preview_id: null,
         archived_at: null,
-        created_at: String(this.values[14]),
+        created_at: String(this.values[13]),
         created_by_actor_ref: String(this.values[7]),
         customer_user_id: this.values[6] as string | null,
         id: String(this.values[0]),
         idempotency_key: idempotencyKey,
-        metadata_json: String(this.values[13]),
+        metadata_json: String(this.values[12]),
         order_id: this.values[3] as string | null,
         owner_user_id: String(this.values[5]),
         prompt_summary: String(this.values[9]),
@@ -151,7 +155,7 @@ class BuilderStatement implements D1PreparedStatement {
         source_revision_id: this.values[11] as string | null,
         source_site_version_id: this.values[10] as string | null,
         status: String(this.values[8]),
-        updated_at: String(this.values[15]),
+        updated_at: String(this.values[14]),
         workroom_id: this.values[4] as string | null,
       })
 
@@ -384,6 +388,11 @@ describe('Sites builder sessions', () => {
 
     expect(first.id).toBe('site_builder_session_1')
     expect(second.id).toBe(first.id)
+    expect(first.metadata.source).toBe('self_serve_builder')
+    expect(first.metadata[SITES_TANSTACK_RULES_METADATA_KEY]).toMatchObject({
+      ref: SITES_TANSTACK_RULES_REF,
+      version: '2026-07-04.1',
+    })
     expect(store.site_builder_sessions).toHaveLength(1)
   })
 

@@ -3,6 +3,7 @@ import { Effect, Schema as S } from 'effect'
 
 import { parseJsonRecord } from './json-boundary'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import { sitesTanstackRulesSessionMetadata } from './sites-tanstack-rules'
 
 export const SiteBuilderSessionStatus = S.Literals([
   'draft',
@@ -941,7 +942,9 @@ const validateCreateSession = (
   assertSafeRef('sourceRevisionId', input.sourceRevisionId)
 
   return {
-    metadata: assertSafeMetadata(input.metadata),
+    metadata: assertSafeMetadata(
+      sitesTanstackRulesSessionMetadata(input.metadata),
+    ),
     promptSummary: assertSafeText('promptSummary', input.promptSummary, 360),
     status: input.status ?? 'draft',
   }

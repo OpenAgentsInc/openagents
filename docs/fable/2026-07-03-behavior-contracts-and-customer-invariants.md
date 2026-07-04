@@ -86,6 +86,23 @@ this menu and writing the client's own statements into their registry.
     verified in test mode each sweep; live-mode smoke only with the
     client's explicit arming, mirroring our own live-tier invariants.
 
+### 2.1 TS-5 starter set for generated Sites
+
+The first customer-product starter set now ships with Autopilot Sites'
+TanStack Start generator. `sites_tanstack_rules.tanstack_start.v1.2026_07_04`
+injects the rule pack into each builder session, then registers these enforced
+contracts per generated site before deploy review:
+
+- `autopilot_sites.generated.dead_controls.v1`
+- `autopilot_sites.generated.navigation_integrity.v1`
+- `autopilot_sites.generated.claim_safety.v1`
+- `autopilot_sites.generated.bundle_budget.v1`
+
+The receipt is intentionally deploy-review authority only: a green sweep means
+the preview is eligible for human review, not that it is deployed or that any
+public claim advanced. Details live in
+[`2026-07-04-ts-5-sites-tanstack-rules-and-contracts.md`](./2026-07-04-ts-5-sites-tanstack-rules-and-contracts.md).
+
 ## 3. The deviation loop
 
 - **Cadence:** oracles run in the client's chosen tiers — on-deploy,

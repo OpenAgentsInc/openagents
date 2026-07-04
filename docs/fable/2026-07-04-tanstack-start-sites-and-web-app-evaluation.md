@@ -599,6 +599,12 @@ WfP Worker modules, and produces a dogfood OpenAgents funnel build-lane receipt
 without live deployment or promise-state changes. See
 `docs/fable/2026-07-04-ts-4-start-sites-template-build-lane.md`.
 
+2026-07-04 TS-5 landing note: `sites_tanstack_rules.tanstack_start.v1.2026_07_04`
+is injected into every Sites builder session, and generated Start sites now get
+the starter behavior-contract set for dead controls, broken first-party nav,
+LG-4 claim safety, and bundle budget before deploy review. See
+`docs/fable/2026-07-04-ts-5-sites-tanstack-rules-and-contracts.md`.
+
 **Wave 4 — the long tail (paced by capacity, after Waves 1–2 prove the stack):**
 
 | # | Work | Notes |

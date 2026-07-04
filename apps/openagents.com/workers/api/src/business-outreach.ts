@@ -396,7 +396,7 @@ export const BUSINESS_OUTREACH_GATED_CLAIM_DENYLIST: ReadonlyArray<{
   {
     claimRef: 'claim_lint.published_prices',
     description: 'published prices are owner-gated',
-    pattern: /\b(published price|fixed price|price sheet|\$\s?\d)\b/i,
+    pattern: /(?:\b(?:published price|fixed price|price sheet)\b|\$\s?\d)/i,
   },
   {
     claimRef: 'claim_lint.referral_payouts',
