@@ -111,6 +111,18 @@ landing page.
 - This slice does not replace the live homepage; it only ports the review
   candidate route to the Start scaffold ahead of any cutover decision.
 
+## Landed Slice 7: Run
+
+The Start staging app now owns `/run` as the retired Tassadar web-scene pointer.
+
+- `/run` preserves the old route contract: `data-route="tassadar"` and
+  `data-tassadar-scene="retired"`.
+- The page keeps the same public copy and links: `Tassadar lives in the Verse`,
+  `Autopilot Desktop Verse`, `/api/public/tassadar-run-summary`, and
+  `/tassadar/replay/first-real-settlement`.
+- The route test keeps the retired scene separate from the old persistent
+  scene overlay and landing-squares element.
+
 ## Boundary
 
 This is not the final TS-6 closure. The live `openagents.com` Worker still

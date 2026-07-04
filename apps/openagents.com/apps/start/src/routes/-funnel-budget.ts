@@ -23,6 +23,7 @@ const routeBudgets = [
   { path: '/autopilot/legal', marker: 'For legal teams' },
   { path: '/gym', marker: 'OpenAgents Gym' },
   { path: '/preview/landing', marker: 'Software, built by agents.' },
+  { path: '/run', marker: 'Tassadar lives in the Verse' },
 ] as const
 
 const assetDir = join(import.meta.dir, '../../dist/client/assets')
