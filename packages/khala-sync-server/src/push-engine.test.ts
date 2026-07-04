@@ -413,6 +413,65 @@ describe.skipIf(!hasLocalPostgres())("push engine against local Postgres", () =>
     expect(healed.lastMutationId).toBe(3)
   })
 
+  // Behavior-contract oracle: khala_sync.push.validation_never_blocks_queue.v1
+  // (packages/behavior-contracts/src/khala-sync.ts; SPEC §2.4 acceptance
+  // rules; issue #8293). Statement under test: "validation failures ack the
+  // mutation and report the error in-band — they never 4xx/block the queue."
+  test("contract khala_sync.push.validation_never_blocks_queue.v1: a [valid, invalid, valid] batch applies around the in-band rejection and later pushes stay unblocked", async () => {
+    const client = freshClient()
+    const scope = personalScope(client.userId)
+
+    const response = await executePush({
+      registry,
+      request: pushRequest(client, [
+        envelope(1, thingSet, { id: "q1", value: "before" }),
+        envelope(2, thingRejectEarly, { id: "q2", value: "invalid" }),
+        envelope(3, thingSet, { id: "q3", value: "after" }),
+      ]),
+      sql,
+      userId: client.userId,
+    })
+
+    // [valid, invalid, valid] ⇒ [applied, rejected, applied]: the rejection
+    // is an IN-BAND MutationResult value (never a thrown/HTTP failure) …
+    expect(response.results.map((r) => r.status)).toEqual([
+      "applied",
+      "rejected",
+      "applied",
+    ])
+    expect(response.results[1]!.errorCode).toBe("validation_failed")
+    expect(response.results[1]!.errorMessageSafe).toBe("value not allowed")
+    // … it ACKS the mutation: the watermark advances past ALL THREE.
+    expect(response.lastMutationId).toBe(3)
+    expect((await ledgerRows(client)).map((r) => [r.mutation_id, r.status])).toEqual([
+      [1, "applied"],
+      [2, "rejected"],
+      [3, "applied"],
+    ])
+    // The rejected mutation left no business/changelog residue; the valid
+    // mutations around it committed normally.
+    expect(await businessRows(scope)).toEqual([
+      { id: "q1", value: "before" },
+      { id: "q3", value: "after" },
+    ])
+    expect((await changelogRows(scope)).map((r) => r.entity_id)).toEqual([
+      "q1",
+      "q3",
+    ])
+
+    // Subsequent pushes are UNBLOCKED: the next sequential mutation applies.
+    const next = await executePush({
+      registry,
+      request: pushRequest(client, [
+        envelope(4, thingSet, { id: "q4", value: "unblocked" }),
+      ]),
+      sql,
+      userId: client.userId,
+    })
+    expect(next.results.map((r) => r.status)).toEqual(["applied"])
+    expect(next.lastMutationId).toBe(4)
+  })
+
   test("results come back in request order", async () => {
     const client = freshClient()
     await executePush({

@@ -10,6 +10,7 @@ import {
   BACKGROUND_AGENTS_CONTRACT_DOC_PATH,
   backgroundAgentsContractRegistry,
 } from "./background-agents"
+import { khalaSyncContractRegistry } from "./khala-sync"
 import {
   checkBehaviorContractCoverage,
   inMemoryOracleSourceLayer,
@@ -448,6 +449,58 @@ describe("background agent contract registry", () => {
         expect(doc).toContain(blockerRef)
       }
     }
+  })
+})
+
+describe("khala sync contract registry", () => {
+  test("registers the queue-never-blocks acceptance rule as an enforced test-sweep contract", () => {
+    const validation = validateBehaviorContractRegistry(khalaSyncContractRegistry)
+    expect(validation.issues).toEqual([])
+    expect(validation.ok).toBe(true)
+
+    expect(khalaSyncContractRegistry.contracts.map(contract => contract.contractId)).toEqual([
+      "khala_sync.push.validation_never_blocks_queue.v1",
+    ])
+    const contract = khalaSyncContractRegistry.contracts[0]!
+    expect(contract).toMatchObject({
+      blockerRefs: [],
+      enforcementTier: "test-sweep",
+      state: "enforced",
+    })
+    // The statement is the SPEC §2.4 acceptance rule, kept verbatim.
+    expect(contract.statement).toBe(
+      "Acceptance is synchronous with the transaction; validation failures ack the mutation and report the error in-band — they never 4xx/block the queue.",
+    )
+    expect(contract.oracles.length).toBeGreaterThan(0)
+  })
+
+  test("khala sync oracle coverage links against the REAL push-engine test source on disk", async () => {
+    const report = await Effect.runPromise(
+      checkBehaviorContractCoverage(khalaSyncContractRegistry).pipe(
+        Effect.provide(
+          inMemoryOracleSourceLayer(
+            Object.fromEntries(
+              await Promise.all(
+                khalaSyncContractRegistry.contracts
+                  .flatMap(contract => contract.oracles)
+                  .map(async oracle => {
+                    const file = Bun.file(repoPath(oracle.ref))
+                    return [
+                      oracle.ref,
+                      (await file.exists()) ? await file.text() : "",
+                    ] as const
+                  }),
+              ),
+            ),
+          ),
+        ),
+      ),
+    )
+    // Coverage must be proven against the actual committed test file: it
+    // exists AND references the owning contractId, so the contract cannot
+    // silently drift away from the sweep that claims to enforce it.
+    expect(report.results.map(result => result.status)).toEqual(["covered"])
+    expect(report.ok).toBe(true)
   })
 })
 

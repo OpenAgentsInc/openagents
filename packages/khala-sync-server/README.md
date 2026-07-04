@@ -71,10 +71,23 @@ deployed Worker and returns `{ ok, khalaSyncTables, latencyMs }` — see
 Status: contracts, schema, migration runner (KS-0.3), the transactional
 outbox writer + per-scope version allocator (KS-2.1), the read service
 (bootstrap snapshot + log pages, KS-2.2), the mutation ledger +
-client-group state (KS-2.4), and the transactional push engine + mutator
+client-group state (KS-2.4), the transactional push engine + mutator
 registry (KS-3.1, wired to `POST /api/sync/push` in the `openagents.com`
-Worker) landed; compaction, capture, and the remaining hub seams land per
-the KS-2/KS-4 issues, fleet mutators per KS-3.2.
+Worker), and the mutator authoring guide + queue-never-blocks behavior
+contract (KS-3.3) landed; compaction, capture, and the remaining hub seams
+land per the KS-2/KS-4 issues, fleet mutators per KS-3.2.
+
+**Writing a mutator? Read the authoring guide first:**
+[`docs/khala-sync/MUTATORS.md`](../../docs/khala-sync/MUTATORS.md) —
+single-transaction rule, replay-safety, in-band rejection discipline (never
+4xx business validation), Hyperdrive session-state rules, ledger
+idempotency, scope authorization inside the mutator, `canonicalJson`
+post-images, Worker registry registration, and the testing checklist. The
+acceptance rule "validation failures ack the mutation and report the error
+in-band — they never 4xx/block the queue" is an enforced behavior contract
+(`khala_sync.push.validation_never_blocks_queue.v1` in
+`packages/behavior-contracts/src/khala-sync.ts`) whose oracle lives in
+`src/push-engine.test.ts`.
 
 ## Outbox writer (KS-2.1)
 

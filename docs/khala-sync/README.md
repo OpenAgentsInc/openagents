@@ -10,6 +10,12 @@ clients with server-authoritative mutators and rebase.
 - [`SPEC.md`](./SPEC.md) — the normative v0.1 specification: system shape,
   scopes/versions/cursors, changelog + mutation model, wire protocol,
   Postgres substrate, hub DO, client engine, invariants, verification plan.
+- [`MUTATORS.md`](./MUTATORS.md) — the mutator authoring guide (KS-3.3):
+  single-transaction rule, replay-safety, in-band rejection discipline,
+  Hyperdrive session-state rules, ledger idempotency, scope authorization,
+  canonical post-images, Worker registry registration, testing checklist,
+  and the enforced `khala_sync.push.validation_never_blocks_queue.v1`
+  behavior contract.
 - Design rationale + database-alternatives analysis:
   [`../fable/2026-07-04-database-alternatives-and-postgres-sync-engine.md`](../fable/2026-07-04-database-alternatives-and-postgres-sync-engine.md)
 
@@ -28,7 +34,7 @@ clients with server-authoritative mutators and rebase.
 | KS-0 Infrastructure (Cloud SQL, Hyperdrive, migration runner) | #8283 #8284 #8285 |
 | KS-1 Contracts hardening | #8286 |
 | KS-2 Postgres substrate (outbox writer, reads, compaction, idempotency) | #8287 #8288 #8289 #8290 |
-| KS-3 Mutator engine (push route, registry, guide+contract) | #8291 #8292 #8293 |
+| KS-3 Mutator engine (push route, registry, guide+contract) | #8291 #8292 #8293 (guide+contract landed: [`MUTATORS.md`](./MUTATORS.md), `packages/behavior-contracts/src/khala-sync.ts`) |
 | KS-4 Capture + Hub DO (capture, hub, catch-up, bootstrap/seam) | #8294 #8295 #8296 #8297 |
 | KS-5 Client engine (store, rebase, session, web lane) | #8298 #8299 #8300 #8301 |
 | KS-6 First consumers (fleet projection, desktop, tokens-served) | #8302 #8303 #8304 |
