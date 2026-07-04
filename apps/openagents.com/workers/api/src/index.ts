@@ -1005,7 +1005,7 @@ import { makePylonApiRoutes } from './pylon-api-routes'
 import {
   handlePylonCapacityFunnelApi,
   handlePylonCapacityFunnelHistoryApi,
-  makeD1PylonCapacityFunnelSnapshotStore,
+  makePylonCapacityFunnelSnapshotStoreForEnv,
   type PylonCapacityFunnelSnapshotStore,
   recordPylonCapacityFunnelSnapshots,
 } from './pylon-capacity-funnel-live-routes'
@@ -15706,9 +15706,7 @@ export default {
         'PylonCapacityFunnel.recordSnapshots',
         recordPylonCapacityFunnelSnapshotsScheduled(
           {
-            snapshotStore: makeD1PylonCapacityFunnelSnapshotStore(
-              openAgentsDatabase(env),
-            ),
+            snapshotStore: makePylonCapacityFunnelSnapshotStoreForEnv(env),
             store: makePylonApiStoreForEnv(env),
           },
           event.scheduledTime,

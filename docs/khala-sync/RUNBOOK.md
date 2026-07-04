@@ -360,14 +360,15 @@ smoke. The target table names are the Postgres names, e.g.
 `pylon_quarantines`, `pylon_codex_raw_event_chunks`, or `fleet_alerts`.
 
 Verification output covers row counts, per-domain tallies, and newest-N row
-hashes. The first #8315 live mirror slice covers D1-first Worker writes for
+hashes. The first #8315 live mirror slices cover D1-first Worker writes for
 assignment-derived provider lifecycle, explicit provider lifecycle updates,
-Pylon quarantines, and raw Spark payout target registrations behind
-`KHALA_SYNC_PYLON_DUAL_WRITE`; reads remain D1-authoritative. The live #8315
-cutover still requires the Queue-based raw-event ingest split,
-closeout-verifier shadow read, cron re-home, compare/postgres read flags, and
-D1 decommission evidence. Do not treat a green backfill alone as permission to
-drop D1 tables.
+Pylon quarantines, raw Spark payout target registrations, and scheduled
+`PylonCapacityFunnel.recordSnapshots` capacity-funnel snapshot upsert/prune
+writes behind `KHALA_SYNC_PYLON_DUAL_WRITE`; reads remain D1-authoritative.
+The live #8315 cutover still requires the Queue-based raw-event ingest split,
+closeout-verifier shadow read, remaining cron/read re-home work,
+compare/postgres read flags, and D1 decommission evidence. Do not treat a green
+backfill alone as permission to drop D1 tables.
 
 ## Public tokens-served projection (KS-6.3, #8304)
 

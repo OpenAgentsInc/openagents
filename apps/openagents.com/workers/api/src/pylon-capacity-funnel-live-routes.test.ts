@@ -16,11 +16,16 @@ import {
   darkCapacityReasonRefForPylon,
   handlePylonCapacityFunnelApi,
   handlePylonCapacityFunnelHistoryApi,
+  makeDualWritePylonCapacityFunnelSnapshotStore,
   pylonCapacityFunnelRecordsFromStore,
   readPylonCapacityFunnelAggregate,
   recordPylonCapacityFunnelSnapshots,
 } from './pylon-capacity-funnel-live-routes'
 import { aggregatePylonCapacityFunnel } from './pylon-capacity-funnel'
+import type {
+  PylonDispatchDiagnostic,
+  PylonDispatchDiagnosticEvent,
+} from './pylon-dispatch-store'
 
 const nowIso = '2026-06-09T20:00:00.000Z'
 
@@ -122,6 +127,93 @@ class MemorySnapshotStore implements PylonCapacityFunnelSnapshotStore {
     return record
   }
 }
+
+const makeSnapshotLogSink = () => {
+  const events: Array<{
+    event: PylonDispatchDiagnosticEvent
+    fields: PylonDispatchDiagnostic
+  }> = []
+  return {
+    events,
+    log: (
+      event: PylonDispatchDiagnosticEvent,
+      fields: PylonDispatchDiagnostic,
+    ) => {
+      events.push({ event, fields })
+    },
+  }
+}
+
+describe('pylon capacity funnel snapshot dual-write', () => {
+  test('snapshot writes mirror to Postgres while reads stay D1-authoritative', async () => {
+    const d1 = new MemorySnapshotStore()
+    const pg = new MemorySnapshotStore()
+    const snapshot = buildPylonCapacityFunnelSnapshotRecord({
+      aggregate: aggregatePylonCapacityFunnel([], 'public', nowIso),
+      bucketKind: 'hourly',
+      nowIso,
+    })
+    const store = makeDualWritePylonCapacityFunnelSnapshotStore({
+      d1,
+      flags: { dualWrite: true },
+      postgres: pg,
+    })
+
+    await store.upsertSnapshot(snapshot)
+    await store.pruneSnapshotsBefore({
+      beforeIso: '2026-05-26T20:00:00.000Z',
+      bucketKind: 'hourly',
+    })
+    const read = await store.listSnapshots({ bucketKind: 'hourly', limit: 10 })
+
+    expect(read).toEqual([snapshot])
+    expect(pg.records.get('hourly:2026-06-09T20:00:00.000Z')).toEqual(
+      snapshot,
+    )
+    expect(pg.pruned).toEqual([
+      {
+        beforeIso: '2026-05-26T20:00:00.000Z',
+        bucketKind: 'hourly',
+      },
+    ])
+  })
+
+  test('snapshot mirror failures are fail-soft diagnostics', async () => {
+    const d1 = new MemorySnapshotStore()
+    const snapshot = buildPylonCapacityFunnelSnapshotRecord({
+      aggregate: aggregatePylonCapacityFunnel([], 'public', nowIso),
+      bucketKind: 'daily',
+      nowIso,
+    })
+    const sink = makeSnapshotLogSink()
+    const store = makeDualWritePylonCapacityFunnelSnapshotStore({
+      d1,
+      flags: { dualWrite: true },
+      log: sink.log,
+      postgres: {
+        listSnapshots: () => Promise.resolve([]),
+        pruneSnapshotsBefore: () => Promise.reject(new Error('pg down')),
+        upsertSnapshot: () => Promise.reject(new Error('pg down')),
+      },
+    })
+
+    await expect(store.upsertSnapshot(snapshot)).resolves.toEqual(snapshot)
+    await expect(
+      store.pruneSnapshotsBefore({
+        beforeIso: '2025-12-11T20:00:00.000Z',
+        bucketKind: 'daily',
+      }),
+    ).resolves.toBeUndefined()
+    expect(sink.events.map(event => event.fields.op)).toEqual([
+      'upsertPylonCapacityFunnelSnapshot',
+      'prunePylonCapacityFunnelSnapshots',
+    ])
+    expect(sink.events[0]?.fields.refs).toEqual([
+      'daily',
+      '2026-06-09T00:00:00.000Z',
+    ])
+  })
+})
 
 describe('pylon capacity funnel live bridge', () => {
   test('classifies every dark-capacity reason in the taxonomy', () => {

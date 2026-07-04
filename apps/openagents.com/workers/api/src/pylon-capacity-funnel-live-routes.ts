@@ -1,4 +1,5 @@
 import { Effect } from 'effect'
+import type { SyncSql } from '@openagentsinc/khala-sync-server'
 
 import {
   assignmentReadyCapabilityRef,
@@ -13,6 +14,7 @@ import {
   utcStartOfDayIsoTimestamp,
   utcStartOfHourIsoTimestamp,
 } from './runtime-primitives'
+import { openAgentsDatabase } from './runtime'
 import {
   type PylonApiAssignmentRecord,
   type PylonApiProviderJobLifecycleRecord,
@@ -21,6 +23,18 @@ import {
   makeD1PylonApiStore,
   pylonClientVersionMeetsMinimum,
 } from './pylon-api'
+import {
+  defaultMakeKhalaSyncSqlClient,
+  type KhalaSyncHyperdriveBinding,
+  type KhalaSyncPushSqlClient,
+  type MakeKhalaSyncPushSqlClient,
+} from './khala-sync-push-routes'
+import { logWorkerRouteWarning } from './observability'
+import {
+  pylonDispatchFlagsFromEnv,
+  type PylonDispatchFlagEnv,
+  type PylonDispatchLog,
+} from './pylon-dispatch-store'
 import {
   PYLON_CAPACITY_FUNNEL_ACCOUNTING_READ_ONLY_AUTHORITY,
   type PylonCapacityFunnelAggregate,
@@ -344,7 +358,7 @@ type PylonCapacityFunnelSnapshotRow = Readonly<{
   id: string
   public_projection_json: string
   snapshot_at: string
-  total_count: number
+  total_count: number | string
   updated_at: string
 }>
 
@@ -448,7 +462,7 @@ const rowToSnapshot = (
   id: row.id,
   publicProjectionJson: row.public_projection_json,
   snapshotAt: row.snapshot_at,
-  totalCount: row.total_count,
+  totalCount: Number(row.total_count),
   updatedAt: row.updated_at,
 })
 
@@ -516,6 +530,186 @@ export const makeD1PylonCapacityFunnelSnapshotStore = (
     return record
   },
 })
+
+export type MakePostgresPylonCapacityFunnelSnapshotStoreDependencies =
+  Readonly<{
+    acquireSql: () => Promise<KhalaSyncPushSqlClient>
+  }>
+
+export const makePostgresPylonCapacityFunnelSnapshotStore = (
+  deps: MakePostgresPylonCapacityFunnelSnapshotStoreDependencies,
+): PylonCapacityFunnelSnapshotStore => {
+  const withSql = async <A>(fn: (sql: SyncSql) => Promise<A>): Promise<A> => {
+    const client = await deps.acquireSql()
+    try {
+      return await fn(client.sql)
+    } finally {
+      try {
+        await client.end()
+      } catch {
+        // best-effort teardown, same discipline as the sync push route.
+      }
+    }
+  }
+
+  return {
+    listSnapshots: input =>
+      withSql(async sql => {
+        const rows: Array<PylonCapacityFunnelSnapshotRow> = await sql`
+          SELECT *
+            FROM pylon_capacity_funnel_snapshots
+           WHERE bucket_kind = ${input.bucketKind}
+             AND archived_at IS NULL
+           ORDER BY bucket_start_at DESC
+           LIMIT ${input.limit}`
+
+        return rows.map(rowToSnapshot)
+      }),
+
+    pruneSnapshotsBefore: input =>
+      withSql(async sql => {
+        await sql`
+          UPDATE pylon_capacity_funnel_snapshots
+             SET archived_at = ${currentIsoTimestamp()}
+           WHERE bucket_kind = ${input.bucketKind}
+             AND bucket_start_at < ${input.beforeIso}
+             AND archived_at IS NULL`
+      }),
+
+    upsertSnapshot: record =>
+      withSql(async sql => {
+        await sql`
+          INSERT INTO pylon_capacity_funnel_snapshots
+            (id, bucket_kind, bucket_start_at, snapshot_at, total_count,
+             aggregate_json, public_projection_json, created_at, updated_at,
+             archived_at)
+          VALUES
+            (${record.id}, ${record.bucketKind}, ${record.bucketStartAt},
+             ${record.snapshotAt}, ${record.totalCount},
+             ${JSON.stringify(record.aggregate)}, ${record.publicProjectionJson},
+             ${record.createdAt}, ${record.updatedAt}, NULL)
+          ON CONFLICT (bucket_kind, bucket_start_at) DO UPDATE SET
+            snapshot_at = EXCLUDED.snapshot_at,
+            total_count = EXCLUDED.total_count,
+            aggregate_json = EXCLUDED.aggregate_json,
+            public_projection_json = EXCLUDED.public_projection_json,
+            updated_at = EXCLUDED.updated_at,
+            archived_at = NULL`
+
+        return record
+      }),
+  }
+}
+
+export type MakeDualWritePylonCapacityFunnelSnapshotStoreDependencies =
+  Readonly<{
+    d1: PylonCapacityFunnelSnapshotStore
+    flags: Readonly<{ dualWrite: boolean }>
+    log?: PylonDispatchLog | undefined
+    postgres: PylonCapacityFunnelSnapshotStore | undefined
+  }>
+
+const safeCapacityMirrorMessage = (error: unknown): string => {
+  const raw = error instanceof Error ? error.message : String(error)
+  return raw.replaceAll(/\s+/g, ' ').slice(0, 200)
+}
+
+export const makeDualWritePylonCapacityFunnelSnapshotStore = (
+  deps: MakeDualWritePylonCapacityFunnelSnapshotStoreDependencies,
+): PylonCapacityFunnelSnapshotStore => {
+  const { d1, flags, postgres } = deps
+  const log = deps.log ?? (() => {})
+
+  if (postgres === undefined) {
+    return d1
+  }
+
+  const mirror = (
+    op: string,
+    refs: ReadonlyArray<string>,
+    run: () => Promise<void>,
+  ): Promise<void> =>
+    !flags.dualWrite
+      ? Promise.resolve()
+      : run().catch((error: unknown) => {
+          log('khala_sync_pylon_dual_write_failed', {
+            messageSafe: safeCapacityMirrorMessage(error),
+            op,
+            refs,
+          })
+        })
+
+  return {
+    listSnapshots: d1.listSnapshots,
+    pruneSnapshotsBefore: async input => {
+      await d1.pruneSnapshotsBefore(input)
+      await mirror(
+        'prunePylonCapacityFunnelSnapshots',
+        [input.bucketKind, input.beforeIso],
+        () => postgres.pruneSnapshotsBefore(input),
+      )
+    },
+    upsertSnapshot: async record => {
+      const next = await d1.upsertSnapshot(record)
+      await mirror(
+        'upsertPylonCapacityFunnelSnapshot',
+        [next.bucketKind, next.bucketStartAt],
+        async () => {
+          await postgres.upsertSnapshot(next)
+        },
+      )
+      return next
+    },
+  }
+}
+
+export type PylonCapacityFunnelSnapshotStoreEnv = PylonDispatchFlagEnv &
+  Readonly<{
+    OPENAGENTS_DB: D1Database
+    KHALA_SYNC_DB?: KhalaSyncHyperdriveBinding | undefined
+  }>
+
+export type MakePylonCapacityFunnelSnapshotStoreForEnvOptions = Readonly<{
+  log?: PylonDispatchLog | undefined
+  makeSqlClient?: MakeKhalaSyncPushSqlClient | undefined
+}>
+
+const defaultCapacityMirrorLog: PylonDispatchLog = (event, fields) => {
+  logWorkerRouteWarning(event, {
+    messageSafe: fields.messageSafe,
+    op: fields.op,
+    refs: fields.refs.slice(0, 10).join(','),
+  })
+}
+
+export const makePylonCapacityFunnelSnapshotStoreForEnv = (
+  env: PylonCapacityFunnelSnapshotStoreEnv,
+  options: MakePylonCapacityFunnelSnapshotStoreForEnvOptions = {},
+): PylonCapacityFunnelSnapshotStore => {
+  const d1 = makeD1PylonCapacityFunnelSnapshotStore(openAgentsDatabase(env))
+  const connectionString = env.KHALA_SYNC_DB?.connectionString
+  const flags = pylonDispatchFlagsFromEnv(env)
+
+  if (
+    connectionString === undefined ||
+    connectionString.length === 0 ||
+    !flags.dualWrite
+  ) {
+    return d1
+  }
+
+  const makeSqlClient = options.makeSqlClient ?? defaultMakeKhalaSyncSqlClient
+  const postgres = makePostgresPylonCapacityFunnelSnapshotStore({
+    acquireSql: () => makeSqlClient(connectionString),
+  })
+
+  return makeDualWritePylonCapacityFunnelSnapshotStore({
+    d1,
+    flags,
+    log: options.log ?? defaultCapacityMirrorLog,
+    postgres,
+  })
+}
 
 export const readPylonCapacityFunnelRecords = async (
   input: Readonly<{
