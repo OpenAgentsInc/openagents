@@ -178,6 +178,20 @@ is / tables / heat / risks / verification / cron / dependencies.
 
 ### 3.1 KS-8.4 — Pylon control-plane remainder + telemetry split
 
+**KS-8.4 substrate status (2026-07-04):** schema/backfill spine landed in
+progress — `khala-sync-server` migration
+`0009_pylon_control_plane_remainder.sql` creates Postgres twins for the
+remaining Pylon control-plane metadata tables, including the raw Codex event
+metadata indexes (R2 payload bodies stay out of Postgres). The direct
+backfill/verify tool is
+`packages/khala-sync-server/scripts/backfill-pylon-control-plane.ts`; it
+copies bounded rowid pages from D1, preserves natural-key `ON CONFLICT DO
+NOTHING` semantics, and verifies exact row counts, per-domain tallies, and
+newest-N hashes. This is not a read or write cutover yet: the dual-write
+Worker seams, Queue-based raw-event ingestion split, closeout-verifier shadow
+read, cron re-home, and final D1 decommission remain on
+[#8315](https://github.com/OpenAgentsInc/openagents/issues/8315).
+
 - **What:** the rest of the Pylon control plane after KS-8.1:
   registrations, quarantines, marketplace intake/assignments/triage,
   provider job lifecycle, runner status, capacity funnel, Spark payout

@@ -328,6 +328,43 @@ Flag-flip order — never skip a step, each step soaks before the next:
 Rollback at ANY step: set `KHALA_SYNC_PYLON_READS=d1` (reads) and/or
 `KHALA_SYNC_PYLON_DUAL_WRITE=off` (writes). D1 authority is never behind.
 
+## Pylon control-plane remainder backfill (KS-8.4, #8315)
+
+The KS-8.4 substrate migration is
+`0009_pylon_control_plane_remainder.sql`. It creates Postgres twins for the
+Pylon control-plane tables not owned by KS-8.1: quarantines, marketplace
+intake/assignment/triage rows, provider job lifecycle, runner status,
+capacity-funnel snapshots, Spark payout targets, raw Codex event metadata
+indexes, runner sessions, and fleet alerts. Raw Codex event payload bodies
+remain in R2; only metadata refs, ordering keys, sizes, and digests are copied
+to Postgres.
+
+Backfill/verify mechanics:
+
+```sh
+cd packages/khala-sync-server
+KHALA_SYNC_DATABASE_URL="<direct-url>" \
+  bun scripts/backfill-pylon-control-plane.ts
+
+# catch-up sweep after the relevant dual-write mirrors have been on
+KHALA_SYNC_DATABASE_URL="<direct-url>" \
+  bun scripts/backfill-pylon-control-plane.ts --restart
+
+# exact verification before any read cutover
+KHALA_SYNC_DATABASE_URL="<direct-url>" \
+  bun scripts/backfill-pylon-control-plane.ts --verify
+```
+
+Use `--table <target-table>` for a single table and `--local` for a local D1
+smoke. The target table names are the Postgres names, e.g.
+`pylon_quarantines`, `pylon_codex_raw_event_chunks`, or `fleet_alerts`.
+
+Verification output covers row counts, per-domain tallies, and newest-N row
+hashes. The live #8315 cutover still requires the Worker dual-write seams,
+Queue-based raw-event ingest split, closeout-verifier shadow read, cron
+re-home, compare/postgres read flags, and D1 decommission evidence. Do not
+treat a green backfill alone as permission to drop D1 tables.
+
 ## Public tokens-served projection (KS-6.3, #8304)
 
 The public "Khala Tokens Served" counter
