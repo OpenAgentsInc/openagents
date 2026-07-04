@@ -1,0 +1,82 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans:
+    Inter, ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+    'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-mono:
+    'SFMono-Regular', 'Cascadia Code', 'Roboto Mono', Menlo, Monaco,
+    Consolas, 'Liberation Mono', monospace;
+
+  --color-khala-void: #000000;
+  --color-khala-surface: #010102;
+  --color-khala-surface-muted: #030711;
+  --color-khala-surface-raised: #0b1322;
+  --color-khala-border: #17315f;
+  --color-khala-border-strong: #3a7bff;
+  --color-khala-energy: #3a7bff;
+  --color-khala-energy-cyan: #4fd0ff;
+  --color-khala-energy-soft: #8fb6ff;
+  --color-khala-text: #f1efe8;
+  --color-khala-text-muted: rgba(241, 239, 232, 0.68);
+  --color-khala-text-faint: rgba(241, 239, 232, 0.42);
+}
+
+@layer base {
+  html {
+    background: var(--color-khala-void);
+  }
+
+  body {
+    min-width: 320px;
+    margin: 0;
+    background: var(--color-khala-void);
+    color: var(--color-khala-text);
+    font-family: var(--font-sans);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+}
+
+@utility khala-glow {
+  box-shadow: 0 0 24px -6px rgba(58, 123, 255, 0.45);
+}
+
+@utility khala-glow-strong {
+  box-shadow:
+    0 0 0 1px rgba(58, 123, 255, 0.35),
+    0 0 36px -8px rgba(58, 123, 255, 0.6);
+}
+
+@utility khala-focus {
+  &:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 2px rgba(58, 123, 255, 0.75),
+      0 0 22px -4px rgba(58, 123, 255, 0.7);
+  }
+}
+
+@keyframes khala-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 16px -6px rgba(58, 123, 255, 0.35);
+  }
+
+  50% {
+    box-shadow: 0 0 28px -4px rgba(58, 123, 255, 0.6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
