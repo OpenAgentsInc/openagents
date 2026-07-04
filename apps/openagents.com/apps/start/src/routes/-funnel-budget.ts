@@ -18,6 +18,7 @@ const routeBudgets = [
   { path: '/blog/introducing-khala-code', marker: 'Introducing Khala Code' },
   { path: '/code/download', marker: 'Install paths, with the Codex requirement kept visible' },
   { path: '/autopilot/legal', marker: 'For legal teams' },
+  { path: '/gym', marker: 'OpenAgents Gym' },
 ] as const
 
 const assetDir = join(import.meta.dir, '../../dist/client/assets')

@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TassadarRouteImport } from './routes/tassadar'
 import { Route as KhalaRouteImport } from './routes/khala'
+import { Route as GymRouteImport } from './routes/gym'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as BusinessRouteImport } from './routes/business'
 import { Route as BlogRouteImport } from './routes/blog'
@@ -30,6 +31,11 @@ const TassadarRoute = TassadarRouteImport.update({
 const KhalaRoute = KhalaRouteImport.update({
   id: '/khala',
   path: '/khala',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GymRoute = GymRouteImport.update({
+  id: '/gym',
+  path: '/gym',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DocsRoute = DocsRouteImport.update({
@@ -88,6 +94,7 @@ export interface FileRoutesByFullPath {
   '/blog': typeof BlogRouteWithChildren
   '/business': typeof BusinessRoute
   '/docs': typeof DocsRouteWithChildren
+  '/gym': typeof GymRoute
   '/khala': typeof KhalaRouteWithChildren
   '/tassadar': typeof TassadarRoute
   '/autopilot/legal': typeof AutopilotLegalRoute
@@ -102,6 +109,7 @@ export interface FileRoutesByTo {
   '/blog': typeof BlogRouteWithChildren
   '/business': typeof BusinessRoute
   '/docs': typeof DocsRouteWithChildren
+  '/gym': typeof GymRoute
   '/khala': typeof KhalaRouteWithChildren
   '/tassadar': typeof TassadarRoute
   '/autopilot/legal': typeof AutopilotLegalRoute
@@ -117,6 +125,7 @@ export interface FileRoutesById {
   '/blog': typeof BlogRouteWithChildren
   '/business': typeof BusinessRoute
   '/docs': typeof DocsRouteWithChildren
+  '/gym': typeof GymRoute
   '/khala': typeof KhalaRouteWithChildren
   '/tassadar': typeof TassadarRoute
   '/autopilot/legal': typeof AutopilotLegalRoute
@@ -133,6 +142,7 @@ export interface FileRouteTypes {
     | '/blog'
     | '/business'
     | '/docs'
+    | '/gym'
     | '/khala'
     | '/tassadar'
     | '/autopilot/legal'
@@ -147,6 +157,7 @@ export interface FileRouteTypes {
     | '/blog'
     | '/business'
     | '/docs'
+    | '/gym'
     | '/khala'
     | '/tassadar'
     | '/autopilot/legal'
@@ -161,6 +172,7 @@ export interface FileRouteTypes {
     | '/blog'
     | '/business'
     | '/docs'
+    | '/gym'
     | '/khala'
     | '/tassadar'
     | '/autopilot/legal'
@@ -176,6 +188,7 @@ export interface RootRouteChildren {
   BlogRoute: typeof BlogRouteWithChildren
   BusinessRoute: typeof BusinessRoute
   DocsRoute: typeof DocsRouteWithChildren
+  GymRoute: typeof GymRoute
   KhalaRoute: typeof KhalaRouteWithChildren
   TassadarRoute: typeof TassadarRoute
   AutopilotLegalRoute: typeof AutopilotLegalRoute
@@ -197,6 +210,13 @@ declare module '@tanstack/react-router' {
       path: '/khala'
       fullPath: '/khala'
       preLoaderRoute: typeof KhalaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/gym': {
+      id: '/gym'
+      path: '/gym'
+      fullPath: '/gym'
+      preLoaderRoute: typeof GymRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/docs': {
@@ -307,6 +327,7 @@ const rootRouteChildren: RootRouteChildren = {
   BlogRoute: BlogRouteWithChildren,
   BusinessRoute: BusinessRoute,
   DocsRoute: DocsRouteWithChildren,
+  GymRoute: GymRoute,
   KhalaRoute: KhalaRouteWithChildren,
   TassadarRoute: TassadarRoute,
   AutopilotLegalRoute: AutopilotLegalRoute,

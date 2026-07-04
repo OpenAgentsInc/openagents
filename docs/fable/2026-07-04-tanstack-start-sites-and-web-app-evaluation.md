@@ -615,9 +615,9 @@ LG-4 claim safety, and bundle budget before deploy review. See
 | 4.4 | KS-8 remainder (8.10 forum, 8.11 CRM, 8.15–8.18) + **KS-8.19 cron sweep/D1 retirement + decommission follow-ups (#8331/#8333/#8334/#8335) close the era** | The D1-overload class dies here |
 | 4.5 | **TS-10b: velocity receipt** — React-era metrics vs the 0.2 baseline, published internally | The §6.1 claim, measured |
 
-2026-07-04 TS-6 slice note: the Start app now serves `/khala` and `/tassadar`
-with route parity tests, keeping the existing Foldkit counterparts until a real
-production route cutover allows delete-as-you-go. See
+2026-07-04 TS-6 slice note: the Start app now serves `/khala`, `/tassadar`,
+and `/gym` with route parity tests, keeping the existing Foldkit counterparts
+until a real production route cutover allows delete-as-you-go. See
 `docs/fable/2026-07-04-ts-6-start-khala-tassadar-route-slice.md`.
 
 2026-07-04 TS-8 scaffold note: `clients/khala-mobile` now holds the Expo SDK 57
