@@ -329,18 +329,19 @@ export const upsertPylonControlPlaneRows = async (
   const unsafe = requireUnsafe(sql)
   const columns = TABLE_COLUMNS[table]
   const conflictKey = TABLE_CONFLICT_KEY[table]
-  let inserted = 0
-  for (const row of rows) {
-    const values = columns.map((column) => normalizeValue(row[column]))
-    const columnsSql = columns.join(", ")
-    const placeholders = values.map((_, index) => `$${index + 1}`).join(", ")
-    const result = await unsafe(
-      `INSERT INTO ${table} (${columnsSql}) VALUES (${placeholders}) ON CONFLICT (${conflictKey}) DO NOTHING RETURNING ${columns[0]}`,
-      values as Array<unknown>,
-    )
-    inserted += result.length
-  }
-  return inserted
+  const params: Array<unknown> = []
+  const tuples = rows.map((row) => {
+    const placeholders = columns.map((column) => {
+      params.push(normalizeValue(row[column]))
+      return `$${params.length}`
+    })
+    return `(${placeholders.join(", ")})`
+  })
+  const result = await unsafe(
+    `INSERT INTO ${table} (${columns.join(", ")}) VALUES ${tuples.join(", ")} ON CONFLICT (${conflictKey}) DO NOTHING RETURNING ${columns[0]}`,
+    params,
+  )
+  return result.length
 }
 
 export const pylonControlPlaneRowHash = (
