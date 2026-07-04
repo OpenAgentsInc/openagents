@@ -3363,8 +3363,10 @@ Khala Sync is the owned replication substrate (Cloud SQL Postgres →
 per-scope `KhalaSyncHubDO` hubs in this Worker → SQLite clients). The
 normative spec is `docs/khala-sync/SPEC.md`; §7 defines nine invariants and
 this section registers them (KS-9.3, #8312). This Worker owns the sync
-routes (`POST /api/sync/push`, `GET /api/sync/log`, the internal hub
-append/log/connect routes) and the hub DO; the substrate and client engines
+routes (`POST /api/sync/push`, `GET /api/sync/log`,
+`POST /api/sync/bootstrap`, `GET /api/sync/connect`, and the admin-bearer
+internal hub append/log/connect routes) and the hub DO; the substrate and
+client engines
 live in `packages/khala-sync-server` / `packages/khala-sync-client` and are
 cited here because the invariants span the seam. Statuses are honest:
 `enforced` means named passing tests exist today; `partial` and `pending`
@@ -3419,7 +3421,11 @@ name the blocking issue instead of claiming enforcement.
    `workers/api/src/khala-sync-hub-do.test.ts` ("appends a batch, then
    ignores a full replay (idempotent, at-least-once safe)"); capture
    producer: `packages/khala-sync-server/src/capture.test.ts` ("restart
-   resumes from the durable checkpoint with no hub duplicates"). Server-side
+   resumes from the durable checkpoint with no hub duplicates"); end-to-end
+   seam (real Postgres + hub DO + client store):
+   `workers/api/src/khala-sync-stitch-seam.e2e.test.ts` ("client converges
+   byte-equal under writes committed while paging, catching up, and
+   live-tailing"). Server-side
    mutation idempotency by `(clientGroupId, clientId, mutationId)` is
    `packages/khala-sync-server/src/mutation-ledger.test.ts` ("duplicate
    replay returns the recorded result and executes NOTHING", "CONCURRENT
