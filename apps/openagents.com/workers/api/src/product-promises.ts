@@ -5132,24 +5132,25 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Reactor will track open-model provenance as typed catalog metadata before customer policy can choose or exclude models.',
         safeCopy:
-          'Reactor model provenance is planned as a typed catalog shape covering origin jurisdiction, developer, license, weights openness, training-data disclosure, known distillation lineage, and eval refs. The schema and catalog are not implemented yet, and catalog entries need our own eval receipts before any model-capability copy.',
+          'Reactor model provenance now has a typed catalog shape and curated seed covering origin jurisdiction, developer, license, weights openness, training-data disclosure, known distillation lineage, and eval refs. Seed entries keep honest unknown/partial labels where facts are incomplete; catalog entries still need our own eval receipts before any model-capability copy.',
         unsafeCopy:
           'Do not claim OpenAgents currently enforces US-origin-only models, complete model lineage, license compliance, training-data disclosure, or model capability quality for Reactor. Do not launder unknown or partial provenance into cleaner labels.',
         evidenceRefs: [
           'https://github.com/OpenAgentsInc/openagents/issues/8271',
+          'https://github.com/OpenAgentsInc/openagents/issues/8272',
+          'packages/reactor-contracts/src/index.ts',
+          'packages/reactor-contracts/src/index.test.ts',
+          'docs/fable/2026-07-04-rx-2-reactor-model-policy-contracts-receipt.md',
           'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md#3-the-model-catalog-and-the-provenance-policy-the-differentiator',
           'docs/transcripts/external/2026-07-04-mistral-ceo-enterprise-ai.md',
           'NEEDS_OWNER.md',
           'promise:reactor.private_deployment.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.reactor_model_provenance_schema_missing',
-          'blocker.product_promises.reactor_model_catalog_seed_missing',
           'blocker.product_promises.reactor_model_eval_receipts_missing',
-          'blocker.product_promises.reactor_distillation_lineage_policy_missing',
         ],
         verification:
-          'Requires a typed model_provenance.v1 schema, deterministic catalog fixtures, provenance validation tests, explicit unknown/partial handling, and eval refs before a catalog entry can support model-capability copy.',
+          'The contract package provides the typed model_provenance.v1 schema, deterministic catalog seed, provenance validation tests, explicit unknown/partial handling, and distillation-lineage policy participation. Eval refs remain required before any catalog entry can support model-capability copy.',
         authorityBoundary:
           'A provenance catalog is metadata only. It does not authorize model installation, routing, customer deployment, compliance claims, license advice, or model-capability claims without separate policy enforcement and eval receipts.',
       },
@@ -5162,11 +5163,15 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Reactor will enforce a customer-owned model policy over the provenance catalog at provisioning and routing time.',
         safeCopy:
-          'Reactor model policy is planned as a versioned customer decision object over provenance metadata, including allow/block constraints by jurisdiction, developer, license, disclosure level, distillation lineage, and routing preference. It is not implemented yet; the next real gate is a structural refusal smoke where a nonconforming model is rejected before serving.',
+          'Reactor model policy now has a versioned schema, pure resolver, and receipt-shaped decisions over provenance metadata, including allow/block constraints by jurisdiction, developer, license, disclosure level, distillation lineage, and routing preference. The next real gate is still a structural serving refusal smoke where a nonconforming model is rejected before serving.',
         unsafeCopy:
-          'Do not claim Reactor currently refuses nonconforming models, enforces customer policy, supports air-gapped updates, or substitutes models safely under incident pressure. Do not describe policy options as available product controls until schema, router, receipts, and owner-approved copy exist.',
+          'Do not claim Reactor currently refuses nonconforming models, enforces customer policy, supports air-gapped updates, or substitutes models safely under incident pressure. Do not describe policy options as available product controls until router enforcement, runtime receipts, and owner-approved copy exist.',
         evidenceRefs: [
           'https://github.com/OpenAgentsInc/openagents/issues/8271',
+          'https://github.com/OpenAgentsInc/openagents/issues/8272',
+          'packages/reactor-contracts/src/index.ts',
+          'packages/reactor-contracts/src/index.test.ts',
+          'docs/fable/2026-07-04-rx-2-reactor-model-policy-contracts-receipt.md',
           'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md#3-the-model-catalog-and-the-provenance-policy-the-differentiator',
           'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md#7-invariants-inherited--reactor-specific',
           'https://openagents.com/forum/t/2efaeed7-1f4f-4f2f-9b26-dc8445885bca',
@@ -5174,14 +5179,12 @@ export const publicProductPromisesDocument = () => {
           'promise:reactor.private_deployment.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.reactor_model_policy_schema_missing',
           'blocker.product_promises.reactor_policy_router_missing',
           'blocker.product_promises.reactor_policy_refusal_smoke_missing',
-          'blocker.product_promises.reactor_policy_decision_receipts_missing',
           'blocker.product_promises.reactor_airgap_update_path_missing',
         ],
         verification:
-          'Requires a typed reactor.model_policy.v1 schema, policy fixtures, a provisioner/router enforcement path, refusal tests for nonconforming models, policy-version receipt refs on install/upgrade/routing decisions, and owner-approved public copy before any yellow movement.',
+          'The contract package provides the typed reactor.model_policy.v1 schema, example policy fixtures, resolver refusal tests for nonconforming models, and policy-version receipt-shaped decisions. Provisioner/router enforcement, structural serving refusal smoke, install/upgrade receipt refs, and owner-approved public copy remain required before any yellow movement.',
         authorityBoundary:
           'A planned policy record grants no routing, model substitution, model install, data access, compliance, incident-response, or customer-control authority. Customer policy becomes authority only when the typed decision path and receipts exist.',
       },
@@ -5219,6 +5222,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-04.10 is the RX-2 Reactor contracts pass (#8272) and flips NO promise state - green stays exactly 34. The @openagentsinc/reactor-contracts package now exports Effect Schema contracts for openagents.model_provenance.v1, openagents.reactor_model_catalog.v1, openagents.reactor.model_policy.v1, and openagents.reactor.model_policy_decision.v1; ships the curated Nemotron, Llama, GPT-OSS, Gemma, Mistral, Qwen, DeepSeek, Kimi, and GLM seed with honest unknown/partial labels; and resolves US-only, no-cn, permissive-license-only, and unconstrained example policies into receipt-shaped decisions that name the policy version. This clears only the contract-level schema/catalog/lineage-policy/decision-receipt blockers. Eval receipts, provisioner/router enforcement, structural serving refusal smoke, air-gap update path, customer or dogfood deployment, public pricing/copy, compliance, data-custody, serving, payout, and settlement claims remain blocked.',
       'Registry 2026-07-04.9 is the LG-7 Autopilot Lead Gen agent-definition boundary pass (#8268) and flips NO promise green - green stays exactly 34. New planned record autopilot.lead_gen.v1 makes the lead-generation engine visible without claiming availability: source now has a v0 standing background-agent definition, per-customer ICP/analyzer/template/cap config payload, drafting-only toolset, weekday/manual triggers, BA-B4 budget caps, BA-B5-compatible run-history route, two enforced behavior contracts, and one OpenAgents dogfood run receipt that records reports/sequences as drafts awaiting operator approval. The useful Ora-style public-URL readiness rubric idea is folded into the analyzer config ref only; no ora.ai integration or score claim is made. No live customer run, send approval receipt, customer result, Apollo credential, contact reveal, email send, spend, payout, settlement, or green product claim is created.',
       'Registry 2026-07-04.8 is the owner-directed revenue-refocus demotion pass (2026-07-04) and flips NO promise green — green stays exactly 34. On owner direction, 29 non-green records outside the current focus (Khala Code, the services/QA Swarm revenue engine, payments/credits, Reactor, and Autopilot Lead Gen) are demoted to planned: 19 yellow and 10 red records across the legacy Autopilot desktop feature family (desktop_gui_client, mission_briefing, builtin_compute_agent, cloud_credits_ui, control_center_fanout_marketplace, repo_study_packets, external_repo_studying_pilot, agent_character_creation, agentic_labor_products, bitcoin_payment_visualization, pylon_growth_visualization, local_apple_fm_tool_chat), Artanis labor lanes (labor_requester, pylon_support_responder), Pylon compute-mining (consumer_compute_earns_bitcoin_self_serve, v0_3_multi_earning_node), training-run claims (world_first_ai_training_paid_bitcoin, world_first_public_llm_computer_training_run), cloud service suite (fine_tuning_service, sandbox_compute_service), decentralized serving fabric, bounties surface, mobile companions (voice_approval_companion, voice_session_evidence_transcript_ingest), referral bitcoin streams (sites.referral_bitcoin_stream, autopilot_sites.partner_payout_ledger), provider compliant-usage labor, accepted-outcomes-per-kWh metrics, and agents.x_claim_reward. Demotion is a focus statement, not an evidence claim: prior yellow/red evidence and public-claim history remain in each record and in prior registry notes; demoted red records still carry their original on-camera claim lineage and must not be re-marketed without receipt-first re-promotion. Kept non-green in place (in-focus): khala_code.*, qa.*/qa_swarm.*, business.*, workrooms.*, data.* capture, privacy.khala_paid_capture_optout, inference free-tier/providers/gateway-credits, payments.* (credits purchase + accepted-outcome economics), autopilot_sites site/email/hostname fulfillment surfaces, identity.orange_check_forum_signal, autopilot.cloud_coding_sessions (Reactor-adjacent), and referral.refer_once_earn_forever (stays red as the standing overclaim marker). All training.* and marketplace.* records were already planned. Source plans: docs/fable/2026-07-03-apollo-outbound-sales-plan.md (Campaign B Own your AI), docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md, epic #8261.',
       'Registry 2026-07-04.7 is the RX-1 Reactor planned-registry boundary pass (#8271) and flips NO promise state — green stays exactly 34. New Reactor records land planned only: reactor.private_deployment.v1, reactor.model_provenance.v1, and reactor.model_policy.v1. The records make the private/customer-controlled open-model deployment lane, typed provenance catalog, and customer model-policy gate visible without claiming availability, pricing, compliance, data-custody proof, US-origin enforcement, model install, or serving. Modeled assessment/pilot/managed package bands are staged in NEEDS_OWNER.md for owner review only; public copy remains blocked until policy/refusal/eval/metering/dogfood or customer deployment receipts exist.',

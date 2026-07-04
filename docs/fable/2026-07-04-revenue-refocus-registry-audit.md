@@ -74,8 +74,11 @@ purpose** as the standing overclaim marker the Lead Gen plans depend on.
 `marketplace.*` record was already planned; the Reactor records
 (`reactor.private_deployment.v1`, `reactor.model_provenance.v1`,
 `reactor.model_policy.v1`) landed planned in `2026-07-04.7` (RX-1 #8271).
-The one current-plan record still missing is `autopilot.lead_gen.v1` —
-deliberately left to LG-7 (#8268), whose scope already includes it.
+RX-2 (#8272) later added `packages/reactor-contracts` as source evidence for
+the provenance catalog and policy resolver while keeping those records planned.
+The one current-plan record still missing at the time of this audit was
+`autopilot.lead_gen.v1` - deliberately left to LG-7 (#8268), whose scope
+already included it.
 
 **Demotion semantics (important):** planned here is a *focus statement*,
 not an evidence judgment. Every demoted record keeps its evidence refs,

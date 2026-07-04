@@ -1,5 +1,22 @@
 # Promise Registry
 
+> Registry `2026-07-04.10` is the RX-2 Reactor contracts pass (#8272)
+> and flips NO promise state (green stays exactly 34). The
+> `@openagentsinc/reactor-contracts` package now exports Effect Schema
+> contracts for `openagents.model_provenance.v1`,
+> `openagents.reactor_model_catalog.v1`,
+> `openagents.reactor.model_policy.v1`, and
+> `openagents.reactor.model_policy_decision.v1`; ships the curated
+> Nemotron, Llama, GPT-OSS, Gemma, Mistral, Qwen, DeepSeek, Kimi, and
+> GLM seed with honest `unknown` / `partial` labels; and resolves
+> US-only, no-cn, permissive-license-only, and unconstrained example
+> policies into receipt-shaped decisions that name the policy version.
+> This clears only the contract-level schema/catalog/lineage-policy/
+> decision-receipt blockers. Eval receipts, provisioner/router
+> enforcement, structural serving refusal smoke, air-gap update path,
+> customer or dogfood deployment, public pricing/copy, compliance,
+> data-custody, serving, payout, and settlement claims remain blocked.
+
 > Registry `2026-07-04.9` is the LG-7 Autopilot Lead Gen
 > agent-definition boundary pass (#8268) and flips NO promise green (green
 > stays exactly 34). New planned record `autopilot.lead_gen.v1` makes the

@@ -371,7 +371,7 @@ describe('public product promises document', () => {
     expect(decoded.notes.join('\n')).toContain('flips NO promise state')
   })
 
-  test('lands Reactor records as planned-only boundaries for issue 8271', () => {
+  test('lands and advances Reactor records as planned-only boundaries for issues 8271 and 8272', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
     )
@@ -407,42 +407,72 @@ describe('public product promises document', () => {
     expect(provenance).toMatchObject({
       state: 'planned',
       blockerRefs: expect.arrayContaining([
-        'blocker.product_promises.reactor_model_provenance_schema_missing',
-        'blocker.product_promises.reactor_model_catalog_seed_missing',
         'blocker.product_promises.reactor_model_eval_receipts_missing',
       ]),
       evidenceRefs: expect.arrayContaining([
+        'https://github.com/OpenAgentsInc/openagents/issues/8272',
+        'packages/reactor-contracts/src/index.ts',
+        'packages/reactor-contracts/src/index.test.ts',
+        'docs/fable/2026-07-04-rx-2-reactor-model-policy-contracts-receipt.md',
         'promise:reactor.private_deployment.v1',
       ]),
     })
+    expect(provenance?.blockerRefs).not.toContain(
+      'blocker.product_promises.reactor_model_provenance_schema_missing',
+    )
+    expect(provenance?.blockerRefs).not.toContain(
+      'blocker.product_promises.reactor_model_catalog_seed_missing',
+    )
+    expect(provenance?.blockerRefs).not.toContain(
+      'blocker.product_promises.reactor_distillation_lineage_policy_missing',
+    )
     expect(provenance?.safeCopy).toContain('typed catalog shape')
+    expect(provenance?.safeCopy).toContain('curated seed')
+    expect(provenance?.safeCopy).toContain('unknown/partial')
     expect(provenance?.unsafeCopy).toContain('US-origin-only models')
     expect(provenance?.authorityBoundary).toContain('metadata only')
 
     expect(policy).toMatchObject({
       state: 'planned',
       blockerRefs: expect.arrayContaining([
-        'blocker.product_promises.reactor_model_policy_schema_missing',
         'blocker.product_promises.reactor_policy_router_missing',
         'blocker.product_promises.reactor_policy_refusal_smoke_missing',
+        'blocker.product_promises.reactor_airgap_update_path_missing',
       ]),
       evidenceRefs: expect.arrayContaining([
+        'https://github.com/OpenAgentsInc/openagents/issues/8272',
+        'packages/reactor-contracts/src/index.ts',
+        'packages/reactor-contracts/src/index.test.ts',
+        'docs/fable/2026-07-04-rx-2-reactor-model-policy-contracts-receipt.md',
         'promise:reactor.model_provenance.v1',
         'promise:reactor.private_deployment.v1',
       ]),
     })
-    expect(policy?.safeCopy).toContain('structural refusal smoke')
+    expect(policy?.blockerRefs).not.toContain(
+      'blocker.product_promises.reactor_model_policy_schema_missing',
+    )
+    expect(policy?.blockerRefs).not.toContain(
+      'blocker.product_promises.reactor_policy_decision_receipts_missing',
+    )
+    expect(policy?.safeCopy).toContain('versioned schema')
+    expect(policy?.safeCopy).toContain('receipt-shaped decisions')
+    expect(policy?.safeCopy).toContain('structural serving refusal smoke')
     expect(policy?.unsafeCopy).toContain('refuses nonconforming models')
     expect(policy?.authorityBoundary).toContain('planned policy record')
 
+    const rx2Note = decoded.notes.find(note =>
+      note.includes('Registry 2026-07-04.10'),
+    )
     const publicReactorBoundary = [
       privateDeployment?.claim,
       privateDeployment?.safeCopy,
       provenance?.safeCopy,
       policy?.safeCopy,
+      rx2Note,
       decoded.notes.find(note => note.includes('Registry 2026-07-04.7')),
     ].join('\n')
     expect(publicReactorBoundary).toContain('green stays exactly 34')
+    expect(publicReactorBoundary).toContain('RX-2 Reactor contracts pass')
     expect(publicReactorBoundary).toContain('planned only')
     expect(publicReactorBoundary).not.toMatch(/\$2,500|\$7,500|\$10,000|\$25,000/)
     expect(publicReactorBoundary).not.toContain('Reactor is available')
