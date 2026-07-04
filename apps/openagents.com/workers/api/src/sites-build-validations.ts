@@ -307,8 +307,17 @@ const wranglerMain = (files: Map<string, string>): string | null => {
   }
 
   const json = parseJsonRecord(files.get('wrangler.json'))
+  const jsonMain = optionalString(json?.main)
 
-  return optionalString(json?.main) ?? null
+  if (jsonMain !== undefined) {
+    return jsonMain
+  }
+
+  const jsonc = files.get('wrangler.jsonc')
+
+  return jsonc === undefined
+    ? null
+    : /["']main["']\s*:\s*["']([^"']+)["']/.exec(jsonc)?.[1] ?? null
 }
 
 const inferOutput = (

@@ -2842,6 +2842,13 @@ Open issue mapping:
 | #204         | done   | OPENAGENTS-SITES-VIBE-013 | `site_source_exports`, `site-source-exports.ts`, and `/api/operator/sites/:siteId/versions/:versionId/source-exports` record reviewed source export receipts with passed secret scans and expiring token refs/hashes.             |
 | #205         | done   | OPENAGENTS-SITES-VIBE-014 | `site-library.ts` and `/api/sites` routes list mine/public/recent Sites, enforce owner/admin management, update visibility, soft-archive/delete Sites, disable active deployments, and hide stale builder sessions.               |
 
+2026-07-04 TS-4 follow-on: #8346 adds
+`autopilot_sites.tanstack_start.v1`, the first canonical TanStack Start Site
+template and build-lane receipt over the existing VIBE primitives. It keeps the
+same review/deploy authority: metered container build planning feeds saved
+versions, Worker module output feeds WfP deployment metadata, and activation
+still requires the existing operator health/upload/launch gates.
+
 ### Epic F3: Targeted Site Remake And Outreach
 
 These issues turn the sales prompt into a governed Sites workflow. The

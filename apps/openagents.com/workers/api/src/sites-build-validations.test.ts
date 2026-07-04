@@ -6,6 +6,7 @@ import {
   type SiteBuildValidationReceipt,
 } from './sites-build-validations'
 import type { AutopilotSiteProject } from './sites'
+import { createAutopilotStartSiteTemplate } from './sites-start-template'
 
 const site: AutopilotSiteProject = {
   accessMode: 'public',
@@ -235,6 +236,30 @@ describe('Site build validation service', () => {
     })
     expect(receipt.boundedLogs).toContain('Build validation status: passed.')
     expect(store.events).toHaveLength(1)
+  })
+
+  test('passes TanStack Start WfP candidates declared through wrangler.jsonc', async () => {
+    const template = createAutopilotStartSiteTemplate({
+      siteId: site.id,
+      slug: site.slug,
+      title: 'Build Start Site',
+    })
+    const { receipt } = await validate(template.files)
+
+    expect(receipt).toMatchObject({
+      buildCommand: 'bun run build',
+      manifest: {
+        entrypoints: ['src/server.ts'],
+      },
+      outputKind: 'worker_module',
+      packageManager: 'bun',
+      status: 'passed',
+      workerModulePath: 'src/server.ts',
+    })
+    expect(receipt.blockers).toEqual([])
+    expect(receipt.findings.map(item => item.code)).toContain(
+      'worker_manifest_ready',
+    )
   })
 
   test('blocks image-required candidates that only provide CSS diagrams', async () => {

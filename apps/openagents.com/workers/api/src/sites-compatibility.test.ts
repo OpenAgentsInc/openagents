@@ -6,6 +6,7 @@ import {
   type SiteCompatibilityReceipt,
 } from './sites-compatibility'
 import type { AutopilotSiteProject } from './sites'
+import { createAutopilotStartSiteTemplate } from './sites-start-template'
 
 const site: AutopilotSiteProject = {
   accessMode: 'public',
@@ -224,6 +225,28 @@ describe('Site compatibility checker', () => {
       status: 'ready',
       workerModulePath: 'src/index.ts',
     })
+  })
+
+  test('recognizes TanStack Start wrangler.jsonc projects as WfP Worker modules', async () => {
+    const template = createAutopilotStartSiteTemplate({
+      siteId: site.id,
+      slug: site.slug,
+      title: 'Compat Start Site',
+    })
+    const receipt = await check(template.files)
+
+    expect(receipt).toMatchObject({
+      buildCommand: 'bun run build',
+      confidence: 'high',
+      outputKind: 'worker_module',
+      packageManager: 'bun',
+      status: 'ready',
+      workerModulePath: 'src/server.ts',
+    })
+    expect(receipt.blockers).toEqual([])
+    expect(receipt.findings.map(item => item.code)).toContain(
+      'worker_module_candidate',
+    )
   })
 
   test('blocks unsupported SSR and Node runtime API projects', async () => {

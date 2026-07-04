@@ -593,6 +593,12 @@ MC-5 cross-device dogfood; MC-2/MC-4 were superseded/canceled in §6.4).
 | 3.2 | **TS-4: Start site template v1 + containerized build lane** (version → build → WfP module → existing deploy gates); agent-ready surfaces baked in | The genuinely new machine |
 | 3.3 | **TS-5: Sites rules pack + per-site behavior contracts**; first dogfood site generated end-to-end (a vertical landing page for our own funnel = the eat-our-own-output proof) | Lovable's curated-rules lesson |
 
+2026-07-04 TS-4 landing note: `autopilot_sites.tanstack_start.v1` now
+materializes a Start template, classifies `wrangler.jsonc` Start projects as
+WfP Worker modules, and produces a dogfood OpenAgents funnel build-lane receipt
+without live deployment or promise-state changes. See
+`docs/fable/2026-07-04-ts-4-start-sites-template-build-lane.md`.
+
 **Wave 4 — the long tail (paced by capacity, after Waves 1–2 prove the stack):**
 
 | # | Work | Notes |
