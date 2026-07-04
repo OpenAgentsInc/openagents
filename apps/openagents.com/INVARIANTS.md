@@ -3356,3 +3356,152 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   integration coverage in
   `workers/api/src/inference/chat-completions-routes.test.ts` (the "typed
   component channel (#6127)" suite).
+
+## Khala Sync (SPEC §7 invariant set)
+
+Khala Sync is the owned replication substrate (Cloud SQL Postgres →
+per-scope `KhalaSyncHubDO` hubs in this Worker → SQLite clients). The
+normative spec is `docs/khala-sync/SPEC.md`; §7 defines nine invariants and
+this section registers them (KS-9.3, #8312). This Worker owns the sync
+routes (`POST /api/sync/push`, `GET /api/sync/log`, the internal hub
+append/log/connect routes) and the hub DO; the substrate and client engines
+live in `packages/khala-sync-server` / `packages/khala-sync-client` and are
+cited here because the invariants span the seam. Statuses are honest:
+`enforced` means named passing tests exist today; `partial` and `pending`
+name the blocking issue instead of claiming enforcement.
+
+1. **Dense, monotonic, server-assigned versions (enforced).** Per-scope
+   versions are allocated inside the writing Postgres transaction under the
+   scope-counter row lock; they are dense (no gaps) and monotonic. Enforced
+   by `packages/khala-sync-server/src/outbox-writer.test.ts` ("sequential
+   transactions get dense monotonic versions per scope", "CONCURRENT
+   writers on one scope serialize into dense versions with no gaps or
+   duplicates", "rollback discards the allocated version — the next commit
+   stays dense", "multiple scopes in ONE transaction get independent
+   versions"). The hub's window edge backstops it at delivery:
+   `workers/api/src/khala-sync-hub-do.test.ts` ("rejects a gapped append
+   against a non-empty window (dense-version invariant)").
+2. **No optimistic effects in the durable client store (enforced).** A
+   client never persists optimistic mutation effects; the durable SQLite
+   store holds server-confirmed state only and optimism lives in the
+   in-memory overlay. Enforced by
+   `packages/khala-sync-client/src/overlay.test.ts` ("optimistic effects
+   are visible in the view but never in the durable store (invariant 2)")
+   and the model-based property suite
+   `packages/khala-sync-client/src/overlay.property.test.ts` ("random
+   interleavings converge with zero optimistic residue and a confirmed-only
+   durable store (50 seeds)", "rebase determinism: the same sequence yields
+   the same view after every step").
+3. **Changelog attribution (partial — per-writer tests, no schema
+   backstop).** Every changelog entry is attributable to a mutation ref or
+   a named system writer. The push path stamps
+   `mutationRefFor(clientGroupId, clientId, mutationId)` — asserted in
+   `packages/khala-sync-server/src/push-engine.test.ts` ("applied flow:
+   business write + changelog + ledger commit together, dense versions");
+   the fleet projection stamps `FLEET_PROJECTION_SYSTEM_REF` — asserted in
+   `packages/khala-sync-server/src/fleet-projection.test.ts` ("projection
+   appends entities + claims the scope owner in one transaction"). HONEST
+   LIMIT: `khala_sync_changelog.mutation_ref` is nullable and the outbox
+   writer accepts appends without a ref, so attribution is a per-writer
+   convention proven by each writer's tests, not a schema constraint. Every
+   new changelog producer must stamp a mutation ref or a named system ref
+   and assert it in its tests.
+4. **At-least-once delivery, idempotent apply (enforced).** Delivery may
+   duplicate; apply is idempotent by `(scope, version, entity)` at every
+   layer. Client store:
+   `packages/khala-sync-client/src/sqlite-store.test.ts` ("re-applying the
+   same entries + cursor is a no-op end state", "skips entries with version
+   <= the stored entity version"); session:
+   `packages/khala-sync-client/src/session.test.ts` ("out-of-order and
+   duplicate delta delivery is safe (idempotent apply)"); overlay:
+   `packages/khala-sync-client/src/overlay.test.ts` ("redelivered confirm
+   batch changes nothing and notifies nothing"); hub:
+   `workers/api/src/khala-sync-hub-do.test.ts` ("appends a batch, then
+   ignores a full replay (idempotent, at-least-once safe)"); capture
+   producer: `packages/khala-sync-server/src/capture.test.ts` ("restart
+   resumes from the durable checkpoint with no hub duplicates"). Server-side
+   mutation idempotency by `(clientGroupId, clientId, mutationId)` is
+   `packages/khala-sync-server/src/mutation-ledger.test.ts` ("duplicate
+   replay returns the recorded result and executes NOTHING", "CONCURRENT
+   pushes of the same envelope serialize on the state row: one executes,
+   one answers duplicate").
+5. **Single-transaction mutators (enforced).** Mutator execution — permission
+   check, business write, changelog append, ledger upsert — is one Postgres
+   transaction; a mid-mutator failure rolls everything back together.
+   Enforced by `packages/khala-sync-server/src/push-engine.test.ts`
+   ("applied flow: business write + changelog + ledger commit together,
+   dense versions", "atomicity: a mid-mutator storage failure rolls back
+   business write, changelog, ledger, and version — batch aborts, prefix
+   stays"). The companion acceptance rule (validation failures ack in-band
+   and never 4xx/block the queue) is the enforced behavior contract
+   `khala_sync.push.validation_never_blocks_queue.v1`
+   (`packages/behavior-contracts/src/khala-sync.ts`) with its oracle in the
+   same file ("contract khala_sync.push.validation_never_blocks_queue.v1: a
+   [valid, invalid, valid] batch applies around the in-band rejection and
+   later pushes stay unblocked"). Authoring rules:
+   `docs/khala-sync/MUTATORS.md`.
+6. **MustRefetch behind the retained window, never a partial log
+   (enforced).** A cursor behind the retained window must receive
+   `MustRefetch`; no layer may serve a partial log. Compaction watermark:
+   `packages/khala-sync-server/src/compaction.test.ts` ("after compaction a
+   stale cursor raises cursor_behind_retained_window while a fresh
+   bootstrap converges", "capture-checkpoint bound never advances the
+   watermark past pushed_through_version + 1", "a scope with NO checkpoint
+   row fails closed (no compaction at all)"); read service:
+   `packages/khala-sync-server/src/read-service.test.ts` ("logPage fails
+   with cursor_behind_retained_window when afterVersion predates
+   retention", "bootstrap page token behind the retained window fails
+   closed (re-bootstrap)"); hub: `workers/api/src/khala-sync-hub-do.test.ts`
+   ("a behind-window socket gets MustRefetch(cursor_behind_retained_window)
+   and is closed"); HTTP mapping:
+   `workers/api/src/khala-sync-log-routes.test.ts` ("Postgres
+   behind-retained-window is a 410 MustRefetch SyncError"); client
+   recovery: `packages/khala-sync-client/src/session.test.ts` ("MustRefetch
+   mid-live → must_refetch → re-bootstrap → live with replaced state");
+   capture never fabricates a partial log on a hub gap:
+   `packages/khala-sync-server/src/capture.test.ts` ("hub 409 version gap
+   heals by re-pushing from the hub's expectation").
+7. **Scope access control (partial — v1 gate enforced; membership re-check
+   pending KS-7.1 #8305).** What exists and is enforced today is the v1
+   read gate `canReadScopeV1` — own personal scope, the public scope
+   family, and owned `fleet_run` scopes only; membership scopes
+   (`scope.team.*` etc.) are DENIED outright:
+   `workers/api/src/khala-sync-log-routes.test.ts` ("grants own personal
+   scope and public scopes only", "another user's personal scope is 403
+   unauthorized_scope", "membership scopes (scope.team.*) are denied by the
+   v1 gate", "the scope OWNER reads an owned fleet scope (hub-served)") and
+   `packages/khala-sync-server/src/fleet-projection.test.ts`
+   ("canReadScopeV1: own personal scope + owned fleet scopes only"). Write
+   side: `packages/khala-sync-server/src/push-engine.test.ts` ("client
+   group bound to another user: whole request fails typed, nothing
+   executes") and `packages/khala-sync-server/src/fleet-projection.test.ts`
+   ("a FOREIGN user is rejected in-band with zero writes; queue never
+   blocks"). PENDING: re-check on membership change, revocation ⇒
+   `MustRefetch(access_changed)` retraction, and real membership scopes are
+   the KS-7.1 scope-auth seam (#8305; CVR v2 is #8306). Until that lands,
+   membership scopes must stay denied — do not widen `canReadScopeV1`
+   without the KS-7 seam and its tests.
+8. **Public-projection reconciliation (pending KS-6.3 #8304).** Public-scope
+   projections (e.g. tokens-served) must reconcile to exact source rows;
+   the sync path never invents counter deltas. NOT YET ENFORCED: no
+   public-scope projection producer has landed. The KS-6.3 tokens-served
+   lane (#8304) must land its reconciliation tests together with the
+   producer and upgrade this entry in the same change.
+9. **Post-image redaction for broader-than-owner scopes (partial — enforced
+   for the landed fleet projection; a per-projection obligation).** Raw
+   private material (prompts, tokens, wallet material, local paths, emails)
+   never enters changelog post-images for scopes broader than the owner.
+   Enforced for the only landed projection (fleet cockpit, #8302) by
+   allowlist mappings whose contracts structurally refuse forbidden
+   material: `packages/khala-sync-server/src/fleet-projection.test.ts`
+   ("post-images never carry forbidden material even when raw rows do", "a
+   raw row whose ALLOWLISTED field carries a path fails to decode") and the
+   Worker call site `workers/api/src/khala-sync-fleet-projection.test.ts`
+   ("projects a redacted fleet_assignment post-image and closes the
+   client"). Every future projection into a shared or public scope
+   (starting with KS-6.3 #8304) must land equivalent
+   allowlist-plus-forbidden-material tests in the same change.
+
+Operational procedures (Cloud SQL monitoring, migrations, compaction
+scheduling, capture daemon, hub reset, Hyperdrive saturation) live in
+`docs/khala-sync/RUNBOOK.md`.

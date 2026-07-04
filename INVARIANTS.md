@@ -453,3 +453,23 @@ More specific invariant ledgers apply inside imported apps and packages.
   legally or historically required attribution.
 - Prefer neutral product, team, source, operator, reporter, maintainer, or role
   wording in commits and committed process records.
+
+## Khala Sync Replication Substrate
+
+- Khala Sync (Cloud SQL Postgres → per-scope Durable Object hubs → SQLite
+  clients) carries scoped state under the nine invariants of
+  `docs/khala-sync/SPEC.md` §7: dense server-assigned versions, no
+  optimistic effects in durable client stores, attributable changelog
+  entries, idempotent at-least-once apply, single-transaction mutators,
+  MustRefetch behind the retained window, scope access control,
+  exact-source public projections, and redacted post-images.
+- The full registration — per-invariant statements, the exact enforcing
+  test files and test names, and honest `partial`/`pending` statuses with
+  blocking issue refs — lives in `apps/openagents.com/INVARIANTS.md`
+  ("Khala Sync (SPEC §7 invariant set)"), because that Worker owns the sync
+  routes and the hub DO. Substrate and client enforcement lives in
+  `packages/khala-sync-server` and `packages/khala-sync-client` test
+  suites named there.
+- Operations (Cloud SQL monitoring, migration runner, compaction, capture
+  daemon, hub reset, Hyperdrive saturation, secrets locations) are in
+  `docs/khala-sync/RUNBOOK.md`.

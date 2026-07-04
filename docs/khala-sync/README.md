@@ -16,6 +16,14 @@ clients with server-authoritative mutators and rebase.
   canonical post-images, Worker registry registration, testing checklist,
   and the enforced `khala_sync.push.validation_never_blocks_queue.v1`
   behavior contract.
+- [`RUNBOOK.md`](./RUNBOOK.md) — the ops runbook (KS-9.3): Cloud SQL
+  monitoring, migration runner staging→prod + hash-mismatch recovery,
+  compaction scheduling (dry-run first, checkpoint guard), capture daemon
+  operation + liveness/recovery, hub DO reset semantics, Hyperdrive pool
+  saturation, and secrets locations (names only). The SPEC §7 invariant
+  set is registered in `apps/openagents.com/INVARIANTS.md` ("Khala Sync
+  (SPEC §7 invariant set)") with per-invariant test pointers and honest
+  statuses.
 - Design rationale + database-alternatives analysis:
   [`../fable/2026-07-04-database-alternatives-and-postgres-sync-engine.md`](../fable/2026-07-04-database-alternatives-and-postgres-sync-engine.md)
 
@@ -67,7 +75,7 @@ against local Postgres + the real hub DO + the real client SQLite store.
 | KS-6 First consumers (fleet projection, desktop, tokens-served) | #8302 (server-side projection + operator mutators landed; supervisor intent enforcement is follow-up) #8303 #8304 |
 | KS-7 Permissions (scope auth, CVR v2) | #8305 #8306 |
 | KS-8 Domain migration (assignments, ledger, rolling plan) | #8307 #8308 #8309 |
-| KS-9 QA/ops (load test, behavior contracts, invariants+runbook) | #8310 #8311 #8312 |
+| KS-9 QA/ops (load test, behavior contracts, invariants+runbook) | #8310 #8311 #8312 (invariants+runbook landed: [`RUNBOOK.md`](./RUNBOOK.md) + the "Khala Sync (SPEC §7 invariant set)" section in `apps/openagents.com/INVARIANTS.md`) |
 
 Critical path to the first live surface: KS-0.1 → KS-0.2/0.3 → KS-2.1 →
 KS-3.1 + KS-4.2 → KS-2.2/KS-4.4 → KS-5.1→5.3 → KS-6.1→6.2 (Khala Code
