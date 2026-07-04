@@ -101,8 +101,10 @@ each source doc.
   the immediate Cloudflare-side mitigation ladder, a costed comparison of
   GCP database targets against the $70k credit (Cloud SQL Postgres HA
   recommended; Spanner ruled out — no logical decoding; AlloyDB as upgrade
-  path), and the full design for the owned **Khala sync engine** on
-  Postgres: transactional-outbox changelog with per-scope server-assigned
+  path), and the full design for the owned **Khala Sync** engine on
+  Postgres (always the two-word compound — bare "Khala" stays the
+  collective-intelligence product from Episode 242):
+  transactional-outbox changelog with per-scope server-assigned
   versions (promoting the existing `@openagentsinc/sync-worker` embryo),
   named server-authoritative mutators with client rebase, per-scope
   hibernating Durable Object hubs with offset-resumable catch-up, SQLite

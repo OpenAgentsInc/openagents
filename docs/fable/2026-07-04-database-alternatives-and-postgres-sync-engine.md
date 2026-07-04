@@ -59,7 +59,7 @@ engine landscape plus concrete build guidance. Repo citations are to current
    years.
 5. **Recommended end state** (§5): Postgres (Cloud SQL HA) as the
    authoritative relational core reached via Hyperdrive; the owned sync
-   engine ("the Khala," fittingly) projecting scoped state to desktop/web/
+   engine — **Khala Sync** — projecting scoped state to desktop/web/
    mobile clients through per-scope Durable Objects; high-volume telemetry
    (raw event chunks, heartbeats, stress burns) **off** the relational
    database entirely (R2 + Analytics Engine + DO buffers); hot public
@@ -362,9 +362,19 @@ where columnar analytics over the ledger becomes a product surface.
 ## 4. The owned sync engine
 
 The owner's call: a full sync engine, on Postgres, built by us, fully in our
-control. This section is the design. The name proposes itself: **the Khala
-is the psychic link that connects all Protoss** — the sync engine is the
-Khala, and `@openagentsinc/sync-worker` is its embryo.
+control. This section is the design.
+
+**Naming (owner-confirmed 2026-07-04): the engine is “Khala Sync.”** One
+careful distinction: **Khala** unqualified is already the flagship product —
+the collective-intelligence model/network behind the free API (Episode 242,
+`docs/transcripts/242.md`: “the link, the telepathic connection that all
+Protoss share… one collective mind”). Do not overload the bare term. The
+sync engine is always the two-word compound **Khala Sync**: the replication
+substrate that carries scoped state between the authoritative store and
+every client surface. The thematic rhyme is intentional — the connective
+tissue under the collective mind — but in code, docs, and copy the engine
+is `Khala Sync` / `khala-sync`, never bare `Khala`.
+`@openagentsinc/sync-worker` is its embryo.
 
 ### 4.1 What we already have
 
@@ -451,19 +461,19 @@ appendix refs. The distilled takeaways:
   Sync" (nine axes) is the best requirements checklist to run our scopes
   through.
 
-### 4.3 The Khala design
+### 4.3 The Khala Sync design
 
 **Architecture (the convergent shape, adapted to our stack):**
 
 ```
 Postgres (Cloud SQL HA)                      Cloudflare edge                Clients
 ┌────────────────────────┐    ┌──────────────────────────────┐   ┌──────────────────────┐
-│ business tables         │    │ Khala Hub DOs (per scope)     │   │ Khala Code desktop   │
-│ + khala_changelog       │───▶│  - recent log window in       │──▶│  (native SQLite)     │
-│   (outbox, in-txn,      │    │    DO SQLite                  │   │ web (SQLite-WASM/    │
-│    per-scope versions)  │    │  - hibernating WebSockets     │   │  opfs-sahpool)       │
-│ + khala_mutations       │    │  - offset-resumable HTTP      │   │ mobile (SwiftUI +    │
-│   (per-client mutation  │    │    catch-up (cacheable)       │   │  SQLite)             │
+│ business tables         │    │ Khala Sync Hub DOs (per      │   │ Khala Code desktop   │
+│ + khala_sync_changelog  │───▶│   scope)                      │──▶│  (native SQLite)     │
+│   (outbox, in-txn,      │    │  - recent log window in       │   │ web (SQLite-WASM/    │
+│    per-scope versions)  │    │    DO SQLite                  │   │  opfs-sahpool)       │
+│ + khala_sync_mutations  │    │  - hibernating WebSockets     │   │ mobile (SwiftUI +    │
+│   (per-client mutation  │    │  - resumable HTTP catch-up    │   │  SQLite)             │
 │    ids, results)        │    │ capture worker tails changelog│   │ optimistic mutators  │
 └────────────────────────┘    │ (direct conn, not Hyperdrive) │   │ + rebase             │
       ▲ Worker writes via      └──────────────────────────────┘   └──────────────────────┘
@@ -472,7 +482,7 @@ Postgres (Cloud SQL HA)                      Cloudflare edge                Clie
 
 1. **Changelog: transactional outbox first, WAL decoding later.** Every
    mutator writes its change rows **in the same Postgres transaction** as
-   the business write, into `khala_changelog(scope, version, entity,
+   the business write, into `khala_sync_changelog(scope, version, entity,
    entity_id, op, patch, tombstone, committed_at)`. The per-scope `version`
    is assigned under a row lock on the scope's counter row — ordering is
    correct **by construction**, which sidesteps the notorious outbox
@@ -506,11 +516,12 @@ Postgres (Cloud SQL HA)                      Cloudflare edge                Clie
    behavior-contract invariants by construction. **v1 offline contract:**
    online-optimistic (Zero's position) — reads work offline, writes reject;
    full offline queue-and-replay is a later, deliberate upgrade.
-3. **Delivery: one hibernating Durable Object per scope.** The Khala Hub DO
+3. **Delivery: one hibernating Durable Object per scope.** The Khala Sync
+   Hub DO
    holds the recent changelog window in DO SQLite, accepts WebSockets via
    the Hibernation API (10k mostly-idle connections ≈ $10/mo hibernated),
    and serves **offset-resumable HTTP catch-up** (`GET
-   /khala/log?scope=…&cursor=…`) that Cloudflare's cache can absorb
+   /khala-sync/log?scope=…&cursor=…`) that Cloudflare's cache can absorb
    Electric-style. The cursor, not the connection, is the source of truth —
    sockets flap, tabs suspend, and resume is always `(scope, cursor)`.
    Bootstrap = snapshot query + the cursor at which the snapshot was taken,
@@ -573,7 +584,7 @@ verified, owned replication layer instead of N bespoke polling loops.
 ## 5. Recommended target architecture and phased plan
 
 **End state:** Cloud SQL Postgres HA (authoritative relational core) ⟶
-Hyperdrive (Worker write/read path) ⟶ Khala sync engine (outbox → capture →
+Hyperdrive (Worker write/read path) ⟶ Khala Sync (outbox → capture →
 per-scope DOs → SQLite clients) ⟶ all interactive reads served at the edge
 from sync projections. Telemetry firehose (raw event chunks, heartbeats,
 burns) on R2 + Analytics Engine + DO buffers, never on the relational core.
@@ -591,7 +602,7 @@ D1 retired from the hot path (kept, if at all, as bounded staging).
   **pylon assignment/dispatch tables** (the June 29 victim), dual-written
   behind a flag, then cut over. This proves latency, pooling, and migration
   tooling on a surface with exact-verification culture already in place.
-- **Phase 2 — Khala sync v1 (weeks, parallel lanes).** Promote `sync-worker`
+- **Phase 2 — Khala Sync v1 (weeks, parallel lanes).** Promote `sync-worker`
   to the outbox+mutator contract on Postgres; capture worker + per-scope Hub
   DOs (read LiveStore `sync-cf` first); desktop client store in Khala Code
   (its fleet cockpit is the ideal first consumer — it currently polls);
@@ -625,8 +636,10 @@ the contracts/capture/hub/client lanes.
    queue — changes client scope materially.
 4. **Pilot domain for Phase 1:** assignments/dispatch (recommended — highest
    pain, best verification culture) vs ledger-first.
-5. **Name:** this doc says **Khala sync engine**; the package would grow
-   from `@openagentsinc/sync-worker`.
+5. **Name: settled — Khala Sync** (owner-confirmed 2026-07-04), always the
+   two-word compound, never bare "Khala" (that is the collective-intelligence
+   product, Episode 242). The package would grow from
+   `@openagentsinc/sync-worker` (e.g. toward `@openagentsinc/khala-sync`).
 
 ---
 
