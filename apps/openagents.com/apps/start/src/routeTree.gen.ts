@@ -29,6 +29,7 @@ import { Route as ComponentsFamilyRouteImport } from './routes/components/$famil
 import { Route as CodeDownloadRouteImport } from './routes/code/download'
 import { Route as BlogSlugRouteImport } from './routes/blog/$slug'
 import { Route as AutopilotLegalRouteImport } from './routes/autopilot/legal'
+import { Route as BusinessKpiEngagementRefRouteImport } from './routes/business/kpi/$engagementRef'
 
 const TassadarRoute = TassadarRouteImport.update({
   id: '/tassadar',
@@ -130,12 +131,18 @@ const AutopilotLegalRoute = AutopilotLegalRouteImport.update({
   path: '/autopilot/legal',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BusinessKpiEngagementRefRoute =
+  BusinessKpiEngagementRefRouteImport.update({
+    id: '/kpi/$engagementRef',
+    path: '/kpi/$engagementRef',
+    getParentRoute: () => BusinessRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
   '/blog': typeof BlogRouteWithChildren
-  '/business': typeof BusinessRoute
+  '/business': typeof BusinessRouteWithChildren
   '/clients-preview': typeof ClientsPreviewRoute
   '/components': typeof ComponentsRouteWithChildren
   '/docs': typeof DocsRouteWithChildren
@@ -152,12 +159,13 @@ export interface FileRoutesByFullPath {
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
   '/autopilot/': typeof AutopilotIndexRoute
+  '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
   '/blog': typeof BlogRouteWithChildren
-  '/business': typeof BusinessRoute
+  '/business': typeof BusinessRouteWithChildren
   '/clients-preview': typeof ClientsPreviewRoute
   '/components': typeof ComponentsRouteWithChildren
   '/docs': typeof DocsRouteWithChildren
@@ -174,13 +182,14 @@ export interface FileRoutesByTo {
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
   '/autopilot': typeof AutopilotIndexRoute
+  '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
   '/blog': typeof BlogRouteWithChildren
-  '/business': typeof BusinessRoute
+  '/business': typeof BusinessRouteWithChildren
   '/clients-preview': typeof ClientsPreviewRoute
   '/components': typeof ComponentsRouteWithChildren
   '/docs': typeof DocsRouteWithChildren
@@ -197,6 +206,7 @@ export interface FileRoutesById {
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
   '/autopilot/': typeof AutopilotIndexRoute
+  '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -221,6 +231,7 @@ export interface FileRouteTypes {
     | '/khala/chat-sync'
     | '/preview/landing'
     | '/autopilot/'
+    | '/business/kpi/$engagementRef'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -243,6 +254,7 @@ export interface FileRouteTypes {
     | '/khala/chat-sync'
     | '/preview/landing'
     | '/autopilot'
+    | '/business/kpi/$engagementRef'
   id:
     | '__root__'
     | '/'
@@ -265,13 +277,14 @@ export interface FileRouteTypes {
     | '/khala/chat-sync'
     | '/preview/landing'
     | '/autopilot/'
+    | '/business/kpi/$engagementRef'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ActivityRoute: typeof ActivityRoute
   BlogRoute: typeof BlogRouteWithChildren
-  BusinessRoute: typeof BusinessRoute
+  BusinessRoute: typeof BusinessRouteWithChildren
   ClientsPreviewRoute: typeof ClientsPreviewRoute
   ComponentsRoute: typeof ComponentsRouteWithChildren
   DocsRoute: typeof DocsRouteWithChildren
@@ -428,6 +441,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AutopilotLegalRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/business/kpi/$engagementRef': {
+      id: '/business/kpi/$engagementRef'
+      path: '/kpi/$engagementRef'
+      fullPath: '/business/kpi/$engagementRef'
+      preLoaderRoute: typeof BusinessKpiEngagementRefRouteImport
+      parentRoute: typeof BusinessRoute
+    }
   }
 }
 
@@ -440,6 +460,18 @@ const BlogRouteChildren: BlogRouteChildren = {
 }
 
 const BlogRouteWithChildren = BlogRoute._addFileChildren(BlogRouteChildren)
+
+interface BusinessRouteChildren {
+  BusinessKpiEngagementRefRoute: typeof BusinessKpiEngagementRefRoute
+}
+
+const BusinessRouteChildren: BusinessRouteChildren = {
+  BusinessKpiEngagementRefRoute: BusinessKpiEngagementRefRoute,
+}
+
+const BusinessRouteWithChildren = BusinessRoute._addFileChildren(
+  BusinessRouteChildren,
+)
 
 interface ComponentsRouteChildren {
   ComponentsFamilyRoute: typeof ComponentsFamilyRoute
@@ -477,7 +509,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ActivityRoute: ActivityRoute,
   BlogRoute: BlogRouteWithChildren,
-  BusinessRoute: BusinessRoute,
+  BusinessRoute: BusinessRouteWithChildren,
   ClientsPreviewRoute: ClientsPreviewRoute,
   ComponentsRoute: ComponentsRouteWithChildren,
   DocsRoute: DocsRouteWithChildren,

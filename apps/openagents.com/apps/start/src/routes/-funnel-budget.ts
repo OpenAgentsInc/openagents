@@ -13,6 +13,7 @@ const routeBudgets = [
   { path: '/', marker: 'OpenAgents' },
   { path: '/activity', marker: 'Live public activity' },
   { path: '/business', marker: 'Agents that work.' },
+  { path: '/business/kpi/engagement.public.vertical_pipeline_1', marker: 'Scorekeeper' },
   { path: '/docs', marker: 'OpenAgents docs' },
   { path: '/docs/api', marker: 'Developer API' },
   { path: '/blog', marker: 'OpenAgents Blog' },

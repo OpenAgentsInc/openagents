@@ -137,6 +137,21 @@ The Start staging app now owns `/login` as the public sign-in entry route.
   handlers, downstream entitlement checks, and account gating remain owned by
   the existing Worker/API surfaces.
 
+## Landed Slice 9: Business KPI
+
+The Start staging app now owns `/business/kpi/$engagementRef` as the public
+business scorekeeper route.
+
+- `/business/kpi/engagement.public.vertical_pipeline_1` preserves
+  `data-business-kpi-dashboard="engagement.public.vertical_pipeline_1"` and
+  `data-route="business-kpi"`.
+- The live metric anchors remain visible: `lead_volume`, `conversion`, `aov`,
+  `revenue`, and `consult_attach`.
+- Evidence and privacy-boundary copy remains visible, including
+  `/api/public/business/funnel-dashboard`, `table:business_funnel_events`,
+  `issue:8105`, `roadmap:BF-7.1`, and the excluded private fields.
+- The route test keeps customer emails and phone-like private values absent.
+
 ## Boundary
 
 This is not the final TS-6 closure. The live `openagents.com` Worker still

@@ -616,10 +616,10 @@ LG-4 claim safety, and bundle budget before deploy review. See
 | 4.5 | **TS-10b: velocity receipt** — React-era metrics vs the 0.2 baseline, published internally | The §6.1 claim, measured |
 
 2026-07-04 TS-6 slice note: the Start app now serves `/khala`, `/tassadar`,
-`/gym`, `/activity`, `/clients-preview`, `/components`, `/components/$family`,
-`/login`, `/preview/landing`, and `/run` with route parity tests, keeping the
-existing Foldkit counterparts until a real production route cutover allows
-delete-as-you-go. See
+`/gym`, `/activity`, `/business/kpi/$engagementRef`, `/clients-preview`,
+`/components`, `/components/$family`, `/login`, `/preview/landing`, and `/run`
+with route parity tests, keeping the existing Foldkit counterparts until a real
+production route cutover allows delete-as-you-go. See
 `docs/fable/2026-07-04-ts-6-start-khala-tassadar-route-slice.md`.
 
 2026-07-04 TS-8 scaffold note: `clients/khala-mobile` now holds the Expo SDK 57
