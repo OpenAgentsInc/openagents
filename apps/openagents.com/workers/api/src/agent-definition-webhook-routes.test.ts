@@ -9,11 +9,14 @@ import {
   type AgentDefinitionWebhookRouteDependencies,
   handleAgentDefinitionForumCompletionRequest,
   handleAgentDefinitionForumWebhookRequest,
+  handleAgentDefinitionGitHubCompletionRequest,
   handleAgentDefinitionWebhookRequest,
 } from './agent-definition-webhook-routes'
 import type {
   AgentDefinitionForumCompletionCallback,
   AgentDefinitionForumCompletionForumStore,
+  AgentDefinitionGitHubCompletionCallback,
+  AgentDefinitionGitHubCompletionGitHubStore,
 } from './agent-definition-bot-integration'
 import type {
   AgentDefinitionRunDispatchDependencies,
@@ -81,6 +84,41 @@ const githubIssuePayload = {
   },
 }
 
+const githubMentionCommentPayload = {
+  action: 'created',
+  comment: {
+    author_association: 'MEMBER',
+    body:
+      '@OpenAgents please run the bounded definition. Secret-ish prose must not leak.',
+    html_url:
+      'https://github.com/OpenAgentsInc/openagents/issues/8209#issuecomment-1001',
+    id: 1001,
+    user: {
+      id: 790,
+      login: 'AtlantisPleb',
+    },
+  },
+  issue: {
+    html_url: 'https://github.com/OpenAgentsInc/openagents/issues/8209',
+    number: 8209,
+    state: 'open',
+    title: 'BA-G2 GitHub @mention runs',
+  },
+  repository: {
+    full_name: 'OpenAgentsInc/openagents',
+    id: 123,
+    name: 'openagents',
+    owner: {
+      id: 456,
+      login: 'OpenAgentsInc',
+    },
+  },
+  sender: {
+    id: 789,
+    login: 'AtlantisPleb',
+  },
+}
+
 const forumPostPayload = {
   actorDisplayName: 'OpenAgents Operator',
   actorRef: 'user:owner_123',
@@ -123,6 +161,37 @@ const makeDefinition = (
             kind: 'json_path_equals',
             path: '$.repository.full_name',
             equals: repository,
+          },
+        ],
+      },
+    ],
+  })
+
+const makeGitHubMentionDefinition = (): AgentDefinition =>
+  decodeAgentDefinition({
+    ...fulfillmentLoopAgentDefinitionFixture,
+    id: 'agent_definition.public.github_mention_webhook_test',
+    ownerRef: `agent:${ownerAgentUserId}`,
+    lane: 'own_pylon',
+    triggers: [
+      {
+        kind: 'inbound_webhook',
+        triggerRef: 'trigger.public.webhook.github_mention',
+        source: 'github',
+        conditions: [
+          {
+            kind: 'event_type',
+            equals: 'issue_comment.created.mention',
+          },
+          {
+            kind: 'json_path_equals',
+            path: '$.repository.full_name',
+            equals: 'OpenAgentsInc/openagents',
+          },
+          {
+            kind: 'json_path_equals',
+            path: '$.mention.target_login',
+            equals: 'openagents',
           },
         ],
       },
@@ -268,6 +337,8 @@ const dependenciesFor = (
 const githubRequest = async (
   payload: Record<string, unknown>,
   signingSecret = secret,
+  eventName = 'issues',
+  deliveryId = 'delivery-8195',
 ) => {
   const body = JSON.stringify(payload)
 
@@ -277,9 +348,31 @@ const githubRequest = async (
       body,
       headers: {
         'Content-Type': 'application/json',
-        'X-GitHub-Delivery': 'delivery-8195',
-        'X-GitHub-Event': 'issues',
+        'X-GitHub-Delivery': deliveryId,
+        'X-GitHub-Event': eventName,
         'X-Hub-Signature-256': await signGitHubBody(body, signingSecret),
+      },
+      method: 'POST',
+    },
+  )
+}
+
+const githubCompletionRequest = async (
+  payload: Record<string, unknown>,
+  signingSecret = secret,
+) => {
+  const body = JSON.stringify(payload)
+
+  return new Request(
+    'https://openagents.com/v1/agent-definitions/webhooks/github/completions',
+    {
+      body,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-OpenAgents-Signature-256': await signOpenAgentsBody(
+          body,
+          signingSecret,
+        ),
       },
       method: 'POST',
     },
@@ -417,6 +510,62 @@ const forumRunRecord = (): AgentDefinitionRunRecord =>
     },
   }) as unknown as AgentDefinitionRunRecord
 
+class MemoryGitHubCompletionStore
+  implements AgentDefinitionGitHubCompletionGitHubStore
+{
+  readonly createdComments: Array<Parameters<
+    AgentDefinitionGitHubCompletionGitHubStore['createIssueComment']
+  >[0]> = []
+  readonly existingByKey = new Map<
+    string,
+    { readonly commentId: number; readonly htmlUrl: string }
+  >()
+
+  createIssueComment: AgentDefinitionGitHubCompletionGitHubStore['createIssueComment'] =
+    input => {
+      this.createdComments.push(input)
+      const comment = {
+        commentId: 10010,
+        htmlUrl:
+          'https://github.com/OpenAgentsInc/openagents/issues/8209#issuecomment-10010',
+      }
+      this.existingByKey.set(input.idempotencyKey, comment)
+
+      return Effect.succeed(comment)
+    }
+
+  readCompletionComment: AgentDefinitionGitHubCompletionGitHubStore['readCompletionComment'] =
+    input => Effect.succeed(this.existingByKey.get(input.idempotencyKey) ?? null)
+}
+
+const githubCallback = (): AgentDefinitionGitHubCompletionCallback => ({
+  schema: 'openagents.agent_definition_github_completion_callback.v1',
+  kind: 'github_issue_comment',
+  mentionLogin: 'openagents',
+  number: 8209,
+  owner: 'OpenAgentsInc',
+  repo: 'openagents',
+  repositoryFullName: 'OpenAgentsInc/openagents',
+  source: 'github',
+  sourceCommentId: 1001,
+  sourceUrl:
+    'https://github.com/OpenAgentsInc/openagents/issues/8209#issuecomment-1001',
+  subjectKind: 'issue',
+  subjectRef: 'github.repository.OpenAgentsInc/openagents.issue.8209',
+})
+
+const githubRunRecord = (): AgentDefinitionRunRecord =>
+  ({
+    assignmentRef: 'assignment.background.webhook.github',
+    definitionId: 'agent_definition.public.github_mention_webhook_test',
+    definitionRef:
+      'agent_definition.agent_definition.public.github_mention_webhook_test',
+    runId: 'agent_definition_run.github_001',
+    triggerPayload: {
+      completionCallback: githubCallback(),
+    },
+  }) as unknown as AgentDefinitionRunRecord
+
 describe('agent definition webhook routes', () => {
   test('verifies GitHub signatures, matches trigger conditions, and dispatches owner-scoped runs', async () => {
     const definition = makeDefinition()
@@ -516,6 +665,141 @@ describe('agent definition webhook routes', () => {
       matched: 0,
       skipped: 1,
     })
+    expect(triggerStore.successes).toEqual([])
+    expect(triggerStore.failures).toEqual([])
+  })
+
+  test('dispatches GitHub @mention comments with a stored completion callback', async () => {
+    // background_agents.integrations.github_mention_callback.v1
+    const definition = makeGitHubMentionDefinition()
+    const triggerStore = new MemoryTriggerStore([triggerRecord(definition)])
+    const dispatches: Array<{
+      readonly triggerPayload: Record<string, unknown> | undefined
+      readonly triggerRef: string | undefined
+    }> = []
+    const response = await handleAgentDefinitionWebhookRequest(
+      await githubRequest(
+        githubMentionCommentPayload,
+        secret,
+        'issue_comment',
+        'delivery-8209',
+      ),
+      dependenciesFor({
+        definition,
+        dispatchRun: (_dependencies, input) => {
+          dispatches.push({
+            triggerPayload: input.request.triggerPayload,
+            triggerRef: input.request.triggerRef,
+          })
+
+          return Promise.resolve(dispatchedOutcome())
+        },
+        triggerStore,
+      }),
+    )
+    const body = await response?.json()
+
+    expect(response?.status).toBe(202)
+    expect(body).toMatchObject({
+      schema: 'openagents.agent_definition_webhook_ingress.v1',
+      deliveryId: 'delivery-8209',
+      dispatched: 1,
+      eventType: 'issue_comment.created.mention',
+      matched: 1,
+      source: 'github',
+      completionCallback: {
+        kind: 'github_issue_comment',
+        number: 8209,
+        source: 'github',
+        subjectKind: 'issue',
+      },
+    })
+    expect(dispatches).toHaveLength(1)
+    expect(dispatches[0]?.triggerRef).toBe(
+      'trigger.public.webhook.github_mention',
+    )
+    expect(dispatches[0]?.triggerPayload).toMatchObject({
+      schema: 'openagents.agent_definition_webhook_event.v1',
+      eventType: 'issue_comment.created.mention',
+      source: 'github',
+      triggerRef: 'trigger.public.webhook.github_mention',
+      payload: {
+        comment: {
+          id: 1001,
+        },
+        mention: {
+          target_login: 'openagents',
+        },
+        repository: {
+          full_name: 'OpenAgentsInc/openagents',
+        },
+        subject: {
+          kind: 'issue',
+          number: 8209,
+        },
+      },
+      completionCallback: {
+        schema: 'openagents.agent_definition_github_completion_callback.v1',
+        kind: 'github_issue_comment',
+        number: 8209,
+        owner: 'OpenAgentsInc',
+        repo: 'openagents',
+        source: 'github',
+        sourceCommentId: 1001,
+        subjectKind: 'issue',
+      },
+    })
+    expect(JSON.stringify(dispatches[0]?.triggerPayload)).not.toContain(
+      'Secret-ish prose must not leak',
+    )
+    expect(triggerStore.successes).toEqual([
+      {
+        nextRunAt: undefined,
+        ownerAgentUserId,
+        triggerRef: 'trigger.public.webhook.github_mention',
+        updatedAt: nowIso,
+      },
+    ])
+  })
+
+  test('does not dispatch ordinary GitHub issue comments as mentions', async () => {
+    const definition = makeGitHubMentionDefinition()
+    const triggerStore = new MemoryTriggerStore([triggerRecord(definition)])
+    const dispatches: Array<Record<string, unknown> | undefined> = []
+    const response = await handleAgentDefinitionWebhookRequest(
+      await githubRequest(
+        {
+          ...githubMentionCommentPayload,
+          comment: {
+            ...githubMentionCommentPayload.comment,
+            body: 'ordinary discussion comment',
+            id: 1002,
+          },
+        },
+        secret,
+        'issue_comment',
+        'delivery-8210',
+      ),
+      dependenciesFor({
+        definition,
+        dispatchRun: (_dependencies, input) => {
+          dispatches.push(input.request.triggerPayload)
+
+          return Promise.resolve(dispatchedOutcome())
+        },
+        triggerStore,
+      }),
+    )
+    const body = await response?.json()
+
+    expect(response?.status).toBe(202)
+    expect(body).toMatchObject({
+      dispatched: 0,
+      eventType: 'issue_comment.created',
+      matched: 0,
+      skipped: 1,
+    })
+    expect(dispatches).toEqual([])
     expect(triggerStore.successes).toEqual([])
     expect(triggerStore.failures).toEqual([])
   })
@@ -651,6 +935,72 @@ describe('agent definition webhook routes', () => {
         'agent-definition-completion:agent_definition_run.forum_001',
       parentPostId: 'post_forum_trigger_001',
       topicId: 'topic_forum_trigger_001',
+    })
+  })
+
+  test('posts GitHub completions through the stored callback without duplicates', async () => {
+    // background_agents.integrations.github_mention_callback.v1
+    const github = new MemoryGitHubCompletionStore()
+    const dependencies = {
+      github,
+      githubSecret: secret,
+      runStore: {
+        readRunByAssignmentRef: (assignmentRef: string) =>
+          Promise.resolve(
+            assignmentRef === 'assignment.background.webhook.github'
+              ? githubRunRecord()
+              : undefined,
+          ),
+      },
+    }
+    const payload = {
+      assignmentRef: 'assignment.background.webhook.github',
+      bodyText: 'Background agent run completed. Evidence: receipt.public.2',
+      evidenceRefs: ['receipt.public.2'],
+    }
+    const first = await Effect.runPromise(
+      handleAgentDefinitionGitHubCompletionRequest(
+        await githubCompletionRequest(payload),
+        dependencies,
+      ),
+    )
+    const firstBody = await first.json()
+    const second = await Effect.runPromise(
+      handleAgentDefinitionGitHubCompletionRequest(
+        await githubCompletionRequest(payload),
+        dependencies,
+      ),
+    )
+    const secondBody = await second.json()
+
+    expect(first.status).toBe(201)
+    expect(firstBody).toMatchObject({
+      schema: 'openagents.agent_definition_github_completion.v1',
+      assignmentRef: 'assignment.background.webhook.github',
+      commentId: 10010,
+      idempotent: false,
+      number: 8209,
+      runId: 'agent_definition_run.github_001',
+      subjectKind: 'issue',
+    })
+    expect(second.status).toBe(200)
+    expect(secondBody).toMatchObject({
+      assignmentRef: 'assignment.background.webhook.github',
+      commentId: 10010,
+      idempotent: true,
+      runId: 'agent_definition_run.github_001',
+    })
+    expect(github.createdComments).toHaveLength(1)
+    expect(github.createdComments[0]).toMatchObject({
+      bodyText: 'Background agent run completed. Evidence: receipt.public.2',
+      callback: {
+        number: 8209,
+        owner: 'OpenAgentsInc',
+        repo: 'openagents',
+        subjectKind: 'issue',
+      },
+      idempotencyKey:
+        'agent-definition-github-completion:agent_definition_run.github_001',
     })
   })
 })

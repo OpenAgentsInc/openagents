@@ -444,6 +444,51 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
     {
       authorityBoundary:
+        "This contract binds GitHub issue-comment @mention integration for background-agent definitions only. It does not authorize arbitrary GitHub writes, issue creation, raw GitHub body payloads in model-visible trigger context, or completion targets supplied by callback callers.",
+      blockerRefs: [],
+      contractId: "background_agents.integrations.github_mention_callback.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8209",
+        "https://github.com/OpenAgentsInc/openagents/issues/8218",
+        "INVARIANTS.md",
+        "docs/fable/ROADMAP_BACKGROUND_AGENTS.md",
+        "packages/agent-runtime-schema/src/webhooks.test.ts",
+        "apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts",
+      ],
+      oracles: [
+        {
+          description:
+            "GitHub issue-comment webhook normalization upgrades only configured @mentions to issue_comment.created.mention, emits bounded repository/subject/comment/mention refs, and excludes raw comment body text from trigger payloads.",
+          id: "background_agents.integrations.github_mention_normalization",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "packages/agent-runtime-schema/src/webhooks.test.ts",
+        },
+        {
+          description:
+            "The GitHub webhook route verifies signatures before dispatch, stores a subject-bound GitHub completion callback on mention-triggered runs, skips ordinary comments, and the completion route posts through the stored callback with app-owned idempotency.",
+          id: "background_agents.integrations.github_mention_dispatch_callback",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts",
+        },
+      ],
+      productArea: "background agent integrations",
+      source: {
+        channel: "issue_list",
+        statedBy: "owner",
+        statedOn: "2026-07-03",
+      },
+      state: "enforced",
+      statement:
+        "GitHub @mention background-agent runs follow the shared integration template: signed issue_comment.created event, configured mention extraction, bounded normalization, owner-scoped definition dispatch, and a result comment posted only back to the stored source issue or PR thread without loose issue spam.",
+      surface: "openagents.com-worker",
+      verification:
+        "BA-G2 is enforced by agent-runtime-schema GitHub mention normalization tests and openagents.com Worker GitHub webhook/completion route tests in the normal bun test sweep.",
+    },
+    {
+      authorityBoundary:
         "This contract binds harness portability for unchanged background-agent definitions. It does not claim semantic parity between all provider outputs beyond the parity fixture's asserted behavior.",
       blockerRefs: [pendingOracleBlocker("ba_a4")],
       contractId: "background_agents.definitions.harness_swap.v1",
@@ -520,5 +565,5 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-03.8",
+  version: "2026-07-04.1",
 }

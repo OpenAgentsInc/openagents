@@ -359,6 +359,17 @@ source Forum thread through Forum writer context and write policy. The BA-G1
 behavior contract is
 `background_agents.integrations.forum_trigger_callback.v1`.
 
+BA-G2 status (2026-07-04): GitHub @mention runs now reuse the same
+bot-integration dispatch template without creating loose GitHub issues.
+Signed `issue_comment.created` webhooks normalize configured @mentions into
+the bounded `issue_comment.created.mention` event, exclude raw comment text
+from trigger payloads, dispatch owner-scoped definition runs, and store a
+GitHub completion callback descriptor on the run trigger payload. The signed
+completion route reads that stored callback and posts one idempotent result
+comment back to the source issue or PR conversation. The BA-G2 behavior
+contract is
+`background_agents.integrations.github_mention_callback.v1`.
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-G1 | Integration template + Forum-triggered runs: external event → verify → normalize → definition run → completion callback posts the result back to the source thread; Forum first (Forum stays posting/moderation authority) | BA-A2, BA-B3 | MED | [#8208](https://github.com/OpenAgentsInc/openagents/issues/8208) |
@@ -392,6 +403,7 @@ the oracle rather than leaving the rule as INVARIANTS prose:
 - BA-A4 → `background_agents.definitions.harness_swap.v1` (the parity
   fixture is the oracle)
 - BA-G1 → `background_agents.integrations.forum_trigger_callback.v1`
+- BA-G2 → `background_agents.integrations.github_mention_callback.v1`
 - BA-G4 → an indicator-truthfulness UX contract for the Agents panel's
   run-status indicators, written **before** the panel ships (the
   `khala_code.chat.sidebar_spinner_streaming_only.v1` bug class)

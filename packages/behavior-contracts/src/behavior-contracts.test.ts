@@ -356,6 +356,7 @@ describe("background agent contract registry", () => {
       "background_agents.warm_dispatch.prepared_worktree_cache.v1",
       "background_agents.warm_dispatch.prebuilt_baseline_cache.v1",
       "background_agents.integrations.forum_trigger_callback.v1",
+      "background_agents.integrations.github_mention_callback.v1",
       "background_agents.definitions.harness_swap.v1",
       "background_agents.agents_panel.run_status_indicators_truthful.v1",
       "background_agents.warm_dispatch.honest_no_op_without_warm_path.v1",
@@ -372,6 +373,7 @@ describe("background agent contract registry", () => {
       "background_agents.warm_dispatch.prepared_worktree_cache.v1",
       "background_agents.warm_dispatch.prebuilt_baseline_cache.v1",
       "background_agents.integrations.forum_trigger_callback.v1",
+      "background_agents.integrations.github_mention_callback.v1",
     ])
     for (const contract of backgroundAgentsContractRegistry.contracts.filter(
       contract => enforcedContractIds.includes(contract.contractId),

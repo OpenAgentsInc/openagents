@@ -9,7 +9,7 @@ Issue #8218 registers the headline invariants from
 oracles land. Entries remain `pending` until the owning task adds its oracle
 test and flips that exact contract to `enforced`.
 
-Registry version: `2026-07-03.8` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-04.1` (schema `openagents.behavior_contracts.v1`)
 
 ### `background_agents.dispatch.budget_caps_enforced.v1` - ENFORCED
 
@@ -105,6 +105,17 @@ Registry version: `2026-07-03.8` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `background_agents.integrations.forum_dispatch_callback` (bun-test, unit): The Forum webhook route verifies the signed source event before dispatch, uses the shared bot-integration trigger template, stores a Forum completion callback descriptor on the run trigger payload, and the completion route posts only through the stored run callback plus Forum writer policy. - `apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts`
 - **Verification:** BA-G1 is enforced by agent-runtime-schema Forum webhook normalization tests and openagents.com Worker Forum webhook/completion route tests in the normal bun test sweep.
 - **Authority boundary:** This contract binds the background-agent bot integration template for Forum-triggered runs only. It does not authorize arbitrary Forum writes, raw Forum body payloads in model-visible trigger context, or non-Forum provider callbacks beyond their own future source-specific verification.
+
+### `background_agents.integrations.github_mention_callback.v1` - ENFORCED
+
+- **Surface:** openagents.com-worker (background agent integrations)
+- **Stated by:** owner via issue_list on 2026-07-03
+- **Statement:** GitHub @mention background-agent runs follow the shared integration template: signed issue_comment.created event, configured mention extraction, bounded normalization, owner-scoped definition dispatch, and a result comment posted only back to the stored source issue or PR thread without loose issue spam.
+- **Enforcement tier:** test-sweep
+- **Oracle** `background_agents.integrations.github_mention_normalization` (bun-test, unit): GitHub issue-comment webhook normalization upgrades only configured @mentions to issue_comment.created.mention, emits bounded repository/subject/comment/mention refs, and excludes raw comment body text from trigger payloads. - `packages/agent-runtime-schema/src/webhooks.test.ts`
+- **Oracle** `background_agents.integrations.github_mention_dispatch_callback` (bun-test, unit): The GitHub webhook route verifies signatures before dispatch, stores a subject-bound GitHub completion callback on mention-triggered runs, skips ordinary comments, and the completion route posts through the stored callback with app-owned idempotency. - `apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts`
+- **Verification:** BA-G2 is enforced by agent-runtime-schema GitHub mention normalization tests and openagents.com Worker GitHub webhook/completion route tests in the normal bun test sweep.
+- **Authority boundary:** This contract binds GitHub issue-comment @mention integration for background-agent definitions only. It does not authorize arbitrary GitHub writes, issue creation, raw GitHub body payloads in model-visible trigger context, or completion targets supplied by callback callers.
 
 ### `background_agents.definitions.harness_swap.v1` - PENDING
 

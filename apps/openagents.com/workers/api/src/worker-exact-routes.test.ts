@@ -195,6 +195,7 @@ const approvedExactRoutePaths = [
   '/api/agents/me',
   '/v1/agent-definitions',
   '/v1/agent-definitions/webhooks/github',
+  '/v1/agent-definitions/webhooks/github/completions',
   '/v1/agent-definitions/webhooks/forum',
   '/v1/agent-definitions/webhooks/forum/completions',
   '/api/agents/me/balance',

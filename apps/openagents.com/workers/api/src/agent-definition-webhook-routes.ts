@@ -8,12 +8,18 @@ import { Effect, Schema as S } from 'effect'
 import {
   AGENT_DEFINITION_BOT_INTEGRATION_RESULT_SCHEMA,
   AGENT_DEFINITION_FORUM_COMPLETION_RESULT_SCHEMA,
+  AGENT_DEFINITION_GITHUB_COMPLETION_RESULT_SCHEMA,
   AgentDefinitionForumCompletionRequest,
+  AgentDefinitionGitHubCompletionRequest,
   type AgentDefinitionBotIntegrationDependencies,
   type AgentDefinitionForumCompletionDependencies,
   type AgentDefinitionForumCompletionForumStore,
+  type AgentDefinitionGitHubCompletionDependencies,
+  type AgentDefinitionGitHubCompletionGitHubStore,
   forumCompletionCallbackForEvent,
+  githubCompletionCallbackForEvent,
   postAgentDefinitionForumCompletion,
+  postAgentDefinitionGitHubCompletion,
   runAgentDefinitionBotIntegration,
 } from './agent-definition-bot-integration'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
@@ -22,12 +28,15 @@ import { currentIsoTimestamp } from './runtime-primitives'
 
 const encoder = new TextEncoder()
 const GITHUB_WEBHOOK_PATH = '/v1/agent-definitions/webhooks/github'
+const GITHUB_COMPLETION_PATH =
+  '/v1/agent-definitions/webhooks/github/completions'
 const FORUM_WEBHOOK_PATH = '/v1/agent-definitions/webhooks/forum'
 const FORUM_COMPLETION_PATH =
   '/v1/agent-definitions/webhooks/forum/completions'
 
 export type AgentDefinitionWebhookRouteDependencies =
   AgentDefinitionBotIntegrationDependencies & Readonly<{
+    githubMentionLogins?: ReadonlyArray<string> | undefined
     githubSecret?: string | undefined
     nowIso?: (() => string) | undefined
   }>
@@ -45,6 +54,13 @@ export type AgentDefinitionForumCompletionRouteDependencies =
   AgentDefinitionForumCompletionDependencies & Readonly<{
     forumSecret?: string | undefined
   }>
+
+export type AgentDefinitionGitHubCompletionRouteDependencies =
+  Omit<AgentDefinitionGitHubCompletionDependencies, 'github'> &
+    Readonly<{
+      github?: AgentDefinitionGitHubCompletionGitHubStore | undefined
+      githubSecret?: string | undefined
+    }>
 
 const arrayBufferFromBytes = (bytes: Uint8Array): ArrayBuffer =>
   bytes.buffer.slice(
@@ -148,6 +164,12 @@ const webhookSecretMissing = () =>
     { status: 503 },
   )
 
+const githubCompletionNotConfigured = () =>
+  webhookResponse(
+    { error: 'agent_definition_github_completion_not_configured' },
+    { status: 503 },
+  )
+
 const sourceString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
 
@@ -156,6 +178,16 @@ const decodeForumCompletionRequest = (
 ): AgentDefinitionForumCompletionRequest | undefined => {
   try {
     return S.decodeUnknownSync(AgentDefinitionForumCompletionRequest)(value)
+  } catch {
+    return undefined
+  }
+}
+
+const decodeGitHubCompletionRequest = (
+  value: unknown,
+): AgentDefinitionGitHubCompletionRequest | undefined => {
+  try {
+    return S.decodeUnknownSync(AgentDefinitionGitHubCompletionRequest)(value)
   } catch {
     return undefined
   }
@@ -243,6 +275,7 @@ export const handleAgentDefinitionWebhookRequest = async (
       : normalizeGitHubWebhookEvent({
           deliveryId,
           eventName,
+          mentionLogins: dependencies.githubMentionLogins,
           payload,
           receivedAt: nowIso,
         })
@@ -251,7 +284,19 @@ export const handleAgentDefinitionWebhookRequest = async (
     return invalidWebhook('GitHub webhook payload could not be normalized.')
   }
 
+  const completionCallback = githubCompletionCallbackForEvent(event)
+
+  if (
+    event.eventType === 'issue_comment.created.mention' &&
+    completionCallback === undefined
+  ) {
+    return invalidWebhook(
+      'GitHub mention event does not carry a callback source.',
+    )
+  }
+
   const result = await runAgentDefinitionBotIntegration(dependencies, {
+    ...(completionCallback === undefined ? {} : { completionCallback }),
     event,
     nowIso,
   })
@@ -260,6 +305,16 @@ export const handleAgentDefinitionWebhookRequest = async (
     {
       schema: AGENT_DEFINITION_BOT_INTEGRATION_RESULT_SCHEMA,
       ...result,
+      ...(completionCallback === undefined
+        ? {}
+        : {
+            completionCallback: {
+              kind: completionCallback.kind,
+              number: completionCallback.number,
+              source: completionCallback.source,
+              subjectKind: completionCallback.subjectKind,
+            },
+          }),
     },
     { status: 202 },
   )
@@ -360,6 +415,92 @@ export const handleAgentDefinitionForumWebhookRequest = (
       Effect.succeed(
         webhookResponse(
           { error: 'agent_definition_forum_webhook_failed' },
+          { status: 500 },
+        ),
+      ),
+    ),
+  )
+
+export const handleAgentDefinitionGitHubCompletionRequest = (
+  request: Request,
+  dependencies: AgentDefinitionGitHubCompletionRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const url = new URL(request.url)
+
+    if (url.pathname !== GITHUB_COMPLETION_PATH) {
+      return webhookResponse({ error: 'not_found' }, { status: 404 })
+    }
+
+    if (request.method !== 'POST') {
+      return methodNotAllowed(['POST'])
+    }
+
+    const secret = dependencies.githubSecret?.trim()
+
+    if (secret === undefined || secret === '') {
+      return webhookSecretMissing()
+    }
+
+    if (dependencies.github === undefined) {
+      return githubCompletionNotConfigured()
+    }
+
+    const body = yield* Effect.promise(() => request.text())
+    const authorized = yield* Effect.promise(() =>
+      verifyOpenAgentsWebhookSignature({
+        body,
+        headers: request.headers,
+        secret,
+      }),
+    )
+
+    if (!authorized) {
+      return unauthorizedWebhook()
+    }
+
+    const requestBody = decodeGitHubCompletionRequest(parseJsonRecord(body))
+
+    if (requestBody === undefined) {
+      return invalidWebhook('GitHub completion payload could not be decoded.')
+    }
+
+    const outcome = yield* postAgentDefinitionGitHubCompletion(
+      {
+        github: dependencies.github,
+        runStore: dependencies.runStore,
+      },
+      requestBody,
+    )
+
+    if (outcome.kind === 'invalid') {
+      return webhookResponse(
+        {
+          error: 'invalid_agent_definition_github_completion',
+          reason: outcome.reason,
+        },
+        { status: outcome.statusCode },
+      )
+    }
+
+    return webhookResponse(
+      {
+        schema: AGENT_DEFINITION_GITHUB_COMPLETION_RESULT_SCHEMA,
+        assignmentRef: requestBody.assignmentRef,
+        commentId: outcome.comment.commentId,
+        htmlUrl: outcome.comment.htmlUrl,
+        idempotent: outcome.idempotent,
+        number: outcome.target.number,
+        runId: outcome.run.runId,
+        subjectKind: outcome.target.subjectKind,
+      },
+      { status: outcome.idempotent ? 200 : 201 },
+    )
+  }).pipe(
+    Effect.catch(() =>
+      Effect.succeed(
+        webhookResponse(
+          { error: 'agent_definition_github_completion_failed' },
           { status: 500 },
         ),
       ),

@@ -70,10 +70,12 @@ import {
 } from './agent-definition-routes'
 import {
   makeD1AgentDefinitionForumCompletionForumStore,
+  makeGitHubRestAgentDefinitionCompletionGitHubStore,
 } from './agent-definition-bot-integration'
 import {
   handleAgentDefinitionForumCompletionRequest,
   handleAgentDefinitionForumWebhookRequest,
+  handleAgentDefinitionGitHubCompletionRequest,
   handleAgentDefinitionWebhookRequest,
   verifyAgentDefinitionForumEventSource,
 } from './agent-definition-webhook-routes'
@@ -10663,6 +10665,17 @@ const glmOwnCapacityFailover = makeGlmOwnCapacityFailover({
 
 const internalStressPreemption = makeInternalStressPreemptionRegistry()
 
+const optionalCommaSeparatedValues = (
+  value: string | undefined,
+): ReadonlyArray<string> | undefined => {
+  const values = value
+    ?.split(',')
+    .map(part => part.trim())
+    .filter(part => part !== '')
+
+  return values === undefined || values.length === 0 ? undefined : values
+}
+
 const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/',
@@ -12601,9 +12614,41 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               AGENT_DEFINITION_GITHUB_WEBHOOK_SECRET?: string
             }
           ).AGENT_DEFINITION_GITHUB_WEBHOOK_SECRET,
+          githubMentionLogins: optionalCommaSeparatedValues(
+            (
+              env as Env & {
+                AGENT_DEFINITION_GITHUB_MENTION_LOGINS?: string
+              }
+            ).AGENT_DEFINITION_GITHUB_MENTION_LOGINS,
+          ),
           triggerStore: makeD1AgentDefinitionTriggerStore(openAgentsDatabase(env)),
         }),
       ),
+  },
+  {
+    path: '/v1/agent-definitions/webhooks/github/completions',
+    handler: (request, env) => {
+      const db = openAgentsDatabase(env)
+      const githubSecret = (
+        env as Env & {
+          AGENT_DEFINITION_GITHUB_WEBHOOK_SECRET?: string
+        }
+      ).AGENT_DEFINITION_GITHUB_WEBHOOK_SECRET
+      const commentToken = (
+        env as Env & {
+          AGENT_DEFINITION_GITHUB_COMMENT_TOKEN?: string
+        }
+      ).AGENT_DEFINITION_GITHUB_COMMENT_TOKEN?.trim()
+
+      return handleAgentDefinitionGitHubCompletionRequest(request, {
+        github:
+          commentToken === undefined || commentToken === ''
+            ? undefined
+            : makeGitHubRestAgentDefinitionCompletionGitHubStore(commentToken),
+        githubSecret,
+        runStore: makeD1AgentDefinitionRunStore(db),
+      })
+    },
   },
   {
     path: '/v1/agent-definitions/webhooks/forum',

@@ -3,7 +3,7 @@ import {
   type AgentDefinitionWebhookNormalizedEvent,
 } from '@openagentsinc/agent-runtime-schema/webhooks'
 import type { AgentDefinition } from '@openagentsinc/agent-runtime-schema'
-import { Effect, Schema as S } from 'effect'
+import { Data, Effect, Schema as S } from 'effect'
 
 import type { AgentDefinitionStore } from './agent-definition-routes'
 import {
@@ -45,10 +45,30 @@ export const AGENT_DEFINITION_BOT_INTEGRATION_RESULT_SCHEMA =
   'openagents.agent_definition_webhook_ingress.v1' as const
 export const AGENT_DEFINITION_FORUM_COMPLETION_RESULT_SCHEMA =
   'openagents.agent_definition_forum_completion.v1' as const
+export const AGENT_DEFINITION_GITHUB_COMPLETION_RESULT_SCHEMA =
+  'openagents.agent_definition_github_completion.v1' as const
 const AGENT_DEFINITION_FORUM_COMPLETION_CALLBACK_SCHEMA =
   'openagents.agent_definition_forum_completion_callback.v1' as const
+const AGENT_DEFINITION_GITHUB_COMPLETION_CALLBACK_SCHEMA =
+  'openagents.agent_definition_github_completion_callback.v1' as const
 
 const PublicSafeText = S.Trim.check(S.isNonEmpty(), S.isMaxLength(4000))
+
+class AgentDefinitionGitHubCompletionRestError extends Data.TaggedError(
+  'AgentDefinitionGitHubCompletionRestError',
+)<{
+  readonly cause?: unknown
+  readonly reason: string
+}> {}
+
+const githubCompletionRestError = (
+  reason: string,
+  cause?: unknown,
+): AgentDefinitionGitHubCompletionRestError =>
+  new AgentDefinitionGitHubCompletionRestError({
+    ...(cause === undefined ? {} : { cause }),
+    reason,
+  })
 
 export const AgentDefinitionForumCompletionCallback = S.Struct({
   schema: S.Literal(AGENT_DEFINITION_FORUM_COMPLETION_CALLBACK_SCHEMA),
@@ -63,6 +83,27 @@ export const AgentDefinitionForumCompletionCallback = S.Struct({
 export type AgentDefinitionForumCompletionCallback =
   typeof AgentDefinitionForumCompletionCallback.Type
 
+export const AgentDefinitionGitHubCompletionCallback = S.Struct({
+  schema: S.Literal(AGENT_DEFINITION_GITHUB_COMPLETION_CALLBACK_SCHEMA),
+  kind: S.Literal('github_issue_comment'),
+  mentionLogin: S.String,
+  number: S.Number,
+  owner: S.String,
+  repo: S.String,
+  repositoryFullName: S.String,
+  source: S.Literal('github'),
+  sourceCommentId: S.Number,
+  sourceUrl: S.optionalKey(S.String),
+  subjectKind: S.Literals(['issue', 'pull_request']),
+  subjectRef: S.String,
+})
+export type AgentDefinitionGitHubCompletionCallback =
+  typeof AgentDefinitionGitHubCompletionCallback.Type
+
+type AgentDefinitionBotIntegrationCompletionCallback =
+  | AgentDefinitionForumCompletionCallback
+  | AgentDefinitionGitHubCompletionCallback
+
 export const AgentDefinitionForumCompletionRequest = S.Struct({
   assignmentRef: S.String,
   bodyText: PublicSafeText,
@@ -70,6 +111,14 @@ export const AgentDefinitionForumCompletionRequest = S.Struct({
 })
 export type AgentDefinitionForumCompletionRequest =
   typeof AgentDefinitionForumCompletionRequest.Type
+
+export const AgentDefinitionGitHubCompletionRequest = S.Struct({
+  assignmentRef: S.String,
+  bodyText: PublicSafeText,
+  evidenceRefs: S.optionalKey(S.Array(S.String)),
+})
+export type AgentDefinitionGitHubCompletionRequest =
+  typeof AgentDefinitionGitHubCompletionRequest.Type
 
 type WebhookDispatchDependencies = Omit<
   AgentDefinitionRunDispatchDependencies,
@@ -149,6 +198,35 @@ export type AgentDefinitionForumCompletionDependencies = Readonly<{
   >
 }>
 
+export type AgentDefinitionGitHubCompletionComment = Readonly<{
+  commentId: number
+  htmlUrl: string
+}>
+
+export type AgentDefinitionGitHubCompletionGitHubStore = Readonly<{
+  createIssueComment: (
+    input: Readonly<{
+      bodyText: string
+      callback: AgentDefinitionGitHubCompletionCallback
+      idempotencyKey: string
+    }>,
+  ) => Effect.Effect<AgentDefinitionGitHubCompletionComment, unknown>
+  readCompletionComment: (
+    input: Readonly<{
+      callback: AgentDefinitionGitHubCompletionCallback
+      idempotencyKey: string
+    }>,
+  ) => Effect.Effect<AgentDefinitionGitHubCompletionComment | null, unknown>
+}>
+
+export type AgentDefinitionGitHubCompletionDependencies = Readonly<{
+  github: AgentDefinitionGitHubCompletionGitHubStore
+  runStore: Pick<
+    AgentDefinitionRunDispatchDependencies['runStore'],
+    'readRunByAssignmentRef'
+  >
+}>
+
 export type AgentDefinitionForumCompletionOutcome =
   | Readonly<{
       kind: 'posted'
@@ -156,6 +234,20 @@ export type AgentDefinitionForumCompletionOutcome =
       post: ForumPostSummaryType
       run: AgentDefinitionRunRecord
       topic: ForumTopicSummaryType
+    }>
+  | Readonly<{
+      kind: 'invalid'
+      reason: string
+      statusCode: number
+    }>
+
+export type AgentDefinitionGitHubCompletionOutcome =
+  | Readonly<{
+      comment: AgentDefinitionGitHubCompletionComment
+      idempotent: boolean
+      kind: 'posted'
+      run: AgentDefinitionRunRecord
+      target: AgentDefinitionGitHubCompletionCallback
     }>
   | Readonly<{
       kind: 'invalid'
@@ -202,6 +294,76 @@ const recordValue = (value: unknown): Record<string, unknown> | undefined =>
 const stringValue = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
 
+const numberValue = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined
+
+const subjectKindValue = (
+  value: unknown,
+): AgentDefinitionGitHubCompletionCallback['subjectKind'] | undefined =>
+  value === 'issue' || value === 'pull_request' ? value : undefined
+
+const splitRepositoryFullName = (
+  fullName: string,
+): Readonly<{ owner: string; repo: string }> | undefined => {
+  const [owner, repo, ...extra] = fullName.split('/')
+
+  return owner === undefined ||
+    owner.trim() === '' ||
+    repo === undefined ||
+    repo.trim() === '' ||
+    extra.length > 0
+    ? undefined
+    : { owner, repo }
+}
+
+export const githubCompletionCallbackForEvent = (
+  event: AgentDefinitionWebhookNormalizedEvent,
+): AgentDefinitionGitHubCompletionCallback | undefined => {
+  if (
+    event.source !== 'github' ||
+    event.eventType !== 'issue_comment.created.mention'
+  ) {
+    return undefined
+  }
+
+  const repository = recordValue(event.payload.repository)
+  const subject = recordValue(event.payload.subject)
+  const comment = recordValue(event.payload.comment)
+  const mention = recordValue(event.payload.mention)
+  const repositoryFullName = stringValue(repository?.full_name)
+  const repositoryParts =
+    repositoryFullName === undefined
+      ? undefined
+      : splitRepositoryFullName(repositoryFullName)
+  const subjectKind = subjectKindValue(subject?.kind)
+  const subjectNumber = numberValue(subject?.number)
+  const sourceCommentId = numberValue(comment?.id)
+  const sourceUrl = stringValue(comment?.html_url)
+  const mentionLogin = stringValue(mention?.target_login)
+
+  return repositoryFullName === undefined ||
+    repositoryParts === undefined ||
+    subjectKind === undefined ||
+    subjectNumber === undefined ||
+    sourceCommentId === undefined ||
+    mentionLogin === undefined
+    ? undefined
+    : {
+        schema: AGENT_DEFINITION_GITHUB_COMPLETION_CALLBACK_SCHEMA,
+        kind: 'github_issue_comment',
+        mentionLogin,
+        number: subjectNumber,
+        owner: repositoryParts.owner,
+        repo: repositoryParts.repo,
+        repositoryFullName,
+        source: 'github',
+        sourceCommentId,
+        ...(sourceUrl === undefined ? {} : { sourceUrl }),
+        subjectKind,
+        subjectRef: event.subjectRef,
+      }
+}
+
 const triggerMatches = (
   trigger: DueAgentDefinitionTriggerRecord,
   event: AgentDefinitionWebhookNormalizedEvent,
@@ -236,7 +398,7 @@ const markTriggerSuccess = (
 const dispatchMatchedTrigger = async (
   dependencies: AgentDefinitionBotIntegrationDependencies,
   input: Readonly<{
-    completionCallback?: AgentDefinitionForumCompletionCallback | undefined
+    completionCallback?: AgentDefinitionBotIntegrationCompletionCallback | undefined
     definition: AgentDefinition
     event: AgentDefinitionWebhookNormalizedEvent
     nowIso: string
@@ -264,7 +426,7 @@ const dispatchMatchedTrigger = async (
 export const runAgentDefinitionBotIntegration = async (
   dependencies: AgentDefinitionBotIntegrationDependencies,
   input: Readonly<{
-    completionCallback?: AgentDefinitionForumCompletionCallback | undefined
+    completionCallback?: AgentDefinitionBotIntegrationCompletionCallback | undefined
     event: AgentDefinitionWebhookNormalizedEvent
     nowIso: string
   }>,
@@ -350,11 +512,21 @@ export const runAgentDefinitionBotIntegration = async (
   }
 }
 
-const decodeCompletionCallback = (
+const decodeForumCompletionCallback = (
   value: unknown,
 ): AgentDefinitionForumCompletionCallback | undefined => {
   try {
     return S.decodeUnknownSync(AgentDefinitionForumCompletionCallback)(value)
+  } catch {
+    return undefined
+  }
+}
+
+const decodeGitHubCompletionCallback = (
+  value: unknown,
+): AgentDefinitionGitHubCompletionCallback | undefined => {
+  try {
+    return S.decodeUnknownSync(AgentDefinitionGitHubCompletionCallback)(value)
   } catch {
     return undefined
   }
@@ -403,7 +575,7 @@ export const postAgentDefinitionForumCompletion = (
       }
     }
 
-    const callback = decodeCompletionCallback(
+    const callback = decodeForumCompletionCallback(
       run.triggerPayload.completionCallback,
     )
 
@@ -562,6 +734,201 @@ export const postAgentDefinitionForumCompletion = (
       topic,
     }
   })
+
+export const postAgentDefinitionGitHubCompletion = (
+  dependencies: AgentDefinitionGitHubCompletionDependencies,
+  input: AgentDefinitionGitHubCompletionRequest,
+): Effect.Effect<AgentDefinitionGitHubCompletionOutcome, unknown> =>
+  Effect.gen(function* () {
+    const run = yield* Effect.promise(() =>
+      dependencies.runStore.readRunByAssignmentRef(input.assignmentRef),
+    )
+
+    if (run === undefined) {
+      return {
+        kind: 'invalid' as const,
+        reason: 'agent definition run was not found for assignmentRef',
+        statusCode: 404,
+      }
+    }
+
+    const callback = decodeGitHubCompletionCallback(
+      run.triggerPayload.completionCallback,
+    )
+
+    if (callback === undefined) {
+      return {
+        kind: 'invalid' as const,
+        reason:
+          'agent definition run does not carry a GitHub completion callback',
+        statusCode: 409,
+      }
+    }
+
+    const idempotencyKey = `agent-definition-github-completion:${run.runId}`
+    const existingComment = yield* dependencies.github.readCompletionComment({
+      callback,
+      idempotencyKey,
+    })
+
+    if (existingComment !== null) {
+      return {
+        comment: existingComment,
+        idempotent: true,
+        kind: 'posted' as const,
+        run,
+        target: callback,
+      }
+    }
+
+    const comment = yield* dependencies.github.createIssueComment({
+      bodyText: input.bodyText,
+      callback,
+      idempotencyKey,
+    })
+
+    return {
+      comment,
+      idempotent: false,
+      kind: 'posted' as const,
+      run,
+      target: callback,
+    }
+  })
+
+const GitHubIssueCommentApiItem = S.Struct({
+  body: S.optionalKey(S.String),
+  html_url: S.String,
+  id: S.Number,
+})
+const GitHubIssueCommentApiItems = S.Array(GitHubIssueCommentApiItem)
+
+const githubCompletionMarker = (idempotencyKey: string): string =>
+  `<!-- openagents:${idempotencyKey} -->`
+
+const githubCompletionCommentBody = (
+  bodyText: string,
+  idempotencyKey: string,
+): string => `${bodyText}\n\n${githubCompletionMarker(idempotencyKey)}`
+
+const githubIssueCommentsUrl = (
+  callback: AgentDefinitionGitHubCompletionCallback,
+  page: number,
+): string => {
+  const url = new URL(
+    `https://api.github.com/repos/${encodeURIComponent(callback.owner)}/${encodeURIComponent(callback.repo)}/issues/${callback.number}/comments`,
+  )
+  url.searchParams.set('page', String(page))
+  url.searchParams.set('per_page', '100')
+
+  return url.toString()
+}
+
+const decodeGitHubIssueComment = (
+  value: unknown,
+): AgentDefinitionGitHubCompletionComment => {
+  const decoded = S.decodeUnknownSync(GitHubIssueCommentApiItem)(value)
+
+  return {
+    commentId: decoded.id,
+    htmlUrl: decoded.html_url,
+  }
+}
+
+const decodeGitHubIssueComments = (
+  value: unknown,
+): ReadonlyArray<typeof GitHubIssueCommentApiItem.Type> =>
+  S.decodeUnknownSync(GitHubIssueCommentApiItems)(value)
+
+const githubCompletionHeaders = (
+  accessToken: string,
+): HeadersInit => ({
+  Accept: 'application/vnd.github+json',
+  Authorization: `Bearer ${accessToken}`,
+  'Content-Type': 'application/json',
+  'User-Agent': 'OpenAgents',
+  'X-GitHub-Api-Version': '2022-11-28',
+})
+
+export const makeGitHubRestAgentDefinitionCompletionGitHubStore = (
+  accessToken: string,
+  fetcher: typeof fetch = fetch,
+): AgentDefinitionGitHubCompletionGitHubStore => ({
+  createIssueComment: input =>
+    Effect.tryPromise({
+      catch: error =>
+        error instanceof AgentDefinitionGitHubCompletionRestError
+          ? error
+          : githubCompletionRestError(
+              'GitHub issue comment create failed',
+              error,
+            ),
+      try: async () => {
+        const response = await fetcher(
+          githubIssueCommentsUrl(input.callback, 1),
+          {
+            body: JSON.stringify({
+              body: githubCompletionCommentBody(
+                input.bodyText,
+                input.idempotencyKey,
+              ),
+            }),
+            headers: githubCompletionHeaders(accessToken),
+            method: 'POST',
+          },
+        )
+
+        if (!response.ok) {
+          throw githubCompletionRestError('GitHub issue comment create failed')
+        }
+
+        return decodeGitHubIssueComment(await response.json())
+      },
+    }),
+  readCompletionComment: input =>
+    Effect.tryPromise({
+      catch: error =>
+        error instanceof AgentDefinitionGitHubCompletionRestError
+          ? error
+          : githubCompletionRestError(
+              'GitHub issue comment lookup failed',
+              error,
+            ),
+      try: async () => {
+        const marker = githubCompletionMarker(input.idempotencyKey)
+
+        for (let page = 1; page <= 5; page += 1) {
+          const response = await fetcher(
+            githubIssueCommentsUrl(input.callback, page),
+            {
+              headers: githubCompletionHeaders(accessToken),
+              method: 'GET',
+            },
+          )
+
+          if (!response.ok) {
+            throw githubCompletionRestError('GitHub issue comment lookup failed')
+          }
+
+          const comments = decodeGitHubIssueComments(await response.json())
+          const found = comments.find(comment => comment.body?.includes(marker))
+
+          if (found !== undefined) {
+            return {
+              commentId: found.id,
+              htmlUrl: found.html_url,
+            }
+          }
+
+          if (comments.length < 100) {
+            return null
+          }
+        }
+
+        return null
+      },
+    }),
+})
 
 export const makeD1AgentDefinitionForumCompletionForumStore = (
   db: D1Database,

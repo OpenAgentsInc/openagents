@@ -224,6 +224,19 @@ More specific invariant ledgers apply inside imported apps and packages.
   decodes the Forum callback descriptor written at dispatch time, and posts
   only back to that source thread through Forum writer context, topic/forum
   lock checks, idempotency, and write-policy enforcement.
+- GitHub @mention definition runs are limited to signed
+  `issue_comment.created` source events with a configured bot mention. The
+  GitHub webhook route may use the raw comment body only to extract that
+  bounded mention fact; raw comment text, webhook body, signatures, and
+  provider payloads must not become model-visible trigger payloads. Matching
+  triggers dispatch through the same owner-scoped bot-integration template and
+  store a GitHub completion callback descriptor on the run trigger payload.
+  The GitHub completion callback route may not accept an arbitrary repository,
+  issue, pull request, or comment target from the caller: it reads the stored
+  definition-run trigger payload, decodes the GitHub callback descriptor
+  written at dispatch time, and posts at most one idempotent result comment
+  back to that source issue or PR conversation through the GitHub issue
+  comments API. It must not create new GitHub issues or loose bug reports.
 - Per-definition run history and manual run-now endpoints remain
   registered-agent, owner-scoped views over stored definition-run rows.
   `GET /v1/agent-definitions/:id/runs` must first read the definition for the
@@ -250,7 +263,8 @@ More specific invariant ledgers apply inside imported apps and packages.
   and
   `apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts`
   for signature-gated GitHub ingress, typed condition matching,
-  owner-scoped dispatch, Forum-triggered runs, and Forum completion callbacks,
+  owner-scoped dispatch, GitHub @mention runs, GitHub completion idempotency,
+  Forum-triggered runs, and Forum completion callbacks,
   and
   `apps/openagents.com/workers/api/src/agent-definition-run-routes.test.ts` for
   dispatch budget refusals, capped assignment timeouts, owner-scoped run

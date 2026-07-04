@@ -33,6 +33,9 @@ const stringValue = (value: unknown): string | undefined =>
 const numberValue = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isFinite(value) ? value : undefined
 
+const booleanValue = (value: unknown): boolean | undefined =>
+  typeof value === "boolean" ? value : undefined
+
 const compactRefSegment = (value: string): string =>
   value.trim().replaceAll(/[^A-Za-z0-9_.:/=-]+/g, "_").slice(0, 180)
 
@@ -87,6 +90,37 @@ const githubIssueLikePayload = (
         ["title", stringValue(value.title)],
       ])
 
+const githubIssueSubjectPayload = (
+  payload: Record<string, unknown>,
+): Record<string, unknown> | undefined => {
+  const issue = asRecord(payload.issue)
+  const pullRequest = asRecord(payload.pull_request)
+
+  if (issue !== undefined) {
+    const pullRequestMarker = asRecord(issue.pull_request)
+
+    return optionalObject([
+      ["html_url", stringValue(issue.html_url)],
+      ["kind", pullRequestMarker === undefined ? "issue" : "pull_request"],
+      ["number", numberValue(issue.number)],
+      ["state", stringValue(issue.state)],
+      ["title", stringValue(issue.title)],
+    ])
+  }
+
+  if (pullRequest !== undefined) {
+    return optionalObject([
+      ["html_url", stringValue(pullRequest.html_url)],
+      ["kind", "pull_request"],
+      ["number", numberValue(pullRequest.number)],
+      ["state", stringValue(pullRequest.state)],
+      ["title", stringValue(pullRequest.title)],
+    ])
+  }
+
+  return undefined
+}
+
 const githubSenderPayload = (
   sender: Record<string, unknown> | undefined,
 ): Record<string, unknown> | undefined =>
@@ -96,6 +130,71 @@ const githubSenderPayload = (
         ["id", numberValue(sender.id)],
         ["login", stringValue(sender.login)],
       ])
+
+const githubIssueCommentPayload = (
+  value: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined => {
+  if (value === undefined) {
+    return undefined
+  }
+
+  return optionalObject([
+    ["author_association", stringValue(value.author_association)],
+    ["html_url", stringValue(value.html_url)],
+    ["id", numberValue(value.id)],
+    ["user", githubSenderPayload(asRecord(value.user))],
+  ])
+}
+
+const defaultGitHubMentionLogins = ["openagents", "openagentsinc"] as const
+
+const normalizedMentionTargets = (
+  mentionLogins: ReadonlyArray<string> | undefined,
+): ReadonlySet<string> => {
+  const targets = (mentionLogins ?? defaultGitHubMentionLogins)
+    .map(login => login.trim().toLowerCase())
+    .filter(login => login !== "")
+
+  return new Set(targets)
+}
+
+const githubMentionFromComment = (
+  input: Readonly<{
+    action: string | undefined
+    body: string | undefined
+    eventName: string
+    mentionLogins: ReadonlyArray<string> | undefined
+  }>,
+): Record<string, unknown> | undefined => {
+  if (
+    input.eventName !== "issue_comment" ||
+    input.action !== "created" ||
+    input.body === undefined
+  ) {
+    return undefined
+  }
+
+  const targets = normalizedMentionTargets(input.mentionLogins)
+
+  if (targets.size === 0) {
+    return undefined
+  }
+
+  const mentionPattern = /@([A-Za-z0-9-]{1,39})\b/g
+
+  for (const match of input.body.matchAll(mentionPattern)) {
+    const login = match[1]?.toLowerCase()
+    if (login !== undefined && targets.has(login)) {
+      return {
+        present: true,
+        source: "comment",
+        target_login: login,
+      }
+    }
+  }
+
+  return undefined
+}
 
 const githubSubjectRef = (
   payload: Record<string, unknown>,
@@ -129,6 +228,7 @@ const githubSourceRefs = (
   const fullName = stringValue(repository?.full_name)
   const issueNumber = numberValue(asRecord(payload.issue)?.number)
   const pullNumber = numberValue(asRecord(payload.pull_request)?.number)
+  const commentId = numberValue(asRecord(payload.comment)?.id)
   const refs = [`github.delivery.${compactRefSegment(deliveryId)}`]
 
   if (fullName !== undefined) {
@@ -143,6 +243,10 @@ const githubSourceRefs = (
     refs.push(
       `github.pull_request.${compactRefSegment(fullName)}.${pullNumber}`,
     )
+  }
+
+  if (fullName !== undefined && commentId !== undefined) {
+    refs.push(`github.comment.${compactRefSegment(fullName)}.${commentId}`)
   }
 
   return refs
@@ -239,6 +343,7 @@ export const normalizeGitHubWebhookEvent = (
   input: Readonly<{
     deliveryId: string
     eventName: string
+    mentionLogins?: ReadonlyArray<string> | undefined
     payload: Record<string, unknown>
     receivedAt: string
   }>,
@@ -252,22 +357,37 @@ export const normalizeGitHubWebhookEvent = (
 
   const action = stringValue(input.payload.action)
   const repository = githubRepositoryPayload(asRecord(input.payload.repository))
+  const comment = asRecord(input.payload.comment)
+  const mention = githubMentionFromComment({
+    action,
+    body: stringValue(comment?.body),
+    eventName,
+    mentionLogins: input.mentionLogins,
+  })
   const normalizedPayload = optionalObject([
     ["action", action],
+    ["comment", githubIssueCommentPayload(comment)],
     ["event", eventName],
     ["issue", githubIssueLikePayload(asRecord(input.payload.issue))],
     [
       "pull_request",
       githubIssueLikePayload(asRecord(input.payload.pull_request)),
     ],
+    ["mention", mention],
     ["repository", repository],
     ["sender", githubSenderPayload(asRecord(input.payload.sender))],
+    ["subject", githubIssueSubjectPayload(input.payload)],
   ])
+  const baseEventType =
+    action === undefined ? eventName : `${eventName}.${action}`
 
   return {
     schema: AgentDefinitionWebhookNormalizedEventSchemaLiteral,
     source: "github",
-    eventType: action === undefined ? eventName : `${eventName}.${action}`,
+    eventType:
+      booleanValue(mention?.present) === true
+        ? `${baseEventType}.mention`
+        : baseEventType,
     deliveryId,
     subjectRef: githubSubjectRef(input.payload, deliveryId),
     receivedAt: input.receivedAt,
