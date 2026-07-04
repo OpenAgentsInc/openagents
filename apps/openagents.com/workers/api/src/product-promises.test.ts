@@ -333,6 +333,86 @@ describe('public product promises document', () => {
     expect(decoded.notes.join('\n')).toContain('flips NO promise state')
   })
 
+  test('lands Reactor records as planned-only boundaries for issue 8271', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const promiseById = new Map(
+      decoded.promises.map(promise => [promise.promiseId, promise]),
+    )
+
+    const privateDeployment = promiseById.get('reactor.private_deployment.v1')
+    const provenance = promiseById.get('reactor.model_provenance.v1')
+    const policy = promiseById.get('reactor.model_policy.v1')
+
+    expect(privateDeployment).toMatchObject({
+      state: 'planned',
+      productArea: 'Reactor',
+      evidenceRefs: expect.arrayContaining([
+        'https://github.com/OpenAgentsInc/openagents/issues/8271',
+        'https://openagents.com/forum/t/2efaeed7-1f4f-4f2f-9b26-dc8445885bca',
+        'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md',
+        'NEEDS_OWNER.md',
+      ]),
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.reactor_customer_premises_deployment_missing',
+        'blocker.product_promises.reactor_policy_enforced_serving_smoke_missing',
+        'blocker.owner.reactor_rate_card_publication_approval_missing',
+      ]),
+    })
+    expect(privateDeployment?.safeCopy).toContain('not an available product')
+    expect(privateDeployment?.safeCopy).toContain('NEEDS_OWNER.md')
+    expect(privateDeployment?.unsafeCopy).toContain('Do not claim Reactor is available')
+    expect(privateDeployment?.unsafeCopy).toContain('priced publicly')
+    expect(privateDeployment?.authorityBoundary).toContain('grants no serving')
+
+    expect(provenance).toMatchObject({
+      state: 'planned',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.reactor_model_provenance_schema_missing',
+        'blocker.product_promises.reactor_model_catalog_seed_missing',
+        'blocker.product_promises.reactor_model_eval_receipts_missing',
+      ]),
+      evidenceRefs: expect.arrayContaining([
+        'promise:reactor.private_deployment.v1',
+      ]),
+    })
+    expect(provenance?.safeCopy).toContain('typed catalog shape')
+    expect(provenance?.unsafeCopy).toContain('US-origin-only models')
+    expect(provenance?.authorityBoundary).toContain('metadata only')
+
+    expect(policy).toMatchObject({
+      state: 'planned',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.reactor_model_policy_schema_missing',
+        'blocker.product_promises.reactor_policy_router_missing',
+        'blocker.product_promises.reactor_policy_refusal_smoke_missing',
+      ]),
+      evidenceRefs: expect.arrayContaining([
+        'promise:reactor.model_provenance.v1',
+        'promise:reactor.private_deployment.v1',
+      ]),
+    })
+    expect(policy?.safeCopy).toContain('structural refusal smoke')
+    expect(policy?.unsafeCopy).toContain('refuses nonconforming models')
+    expect(policy?.authorityBoundary).toContain('planned policy record')
+
+    const publicReactorBoundary = [
+      privateDeployment?.claim,
+      privateDeployment?.safeCopy,
+      provenance?.safeCopy,
+      policy?.safeCopy,
+      decoded.notes.find(note => note.includes('Registry 2026-07-04.7')),
+    ].join('\n')
+    expect(publicReactorBoundary).toContain('green stays exactly 34')
+    expect(publicReactorBoundary).toContain('planned only')
+    expect(publicReactorBoundary).not.toMatch(/\$2,500|\$7,500|\$10,000|\$25,000/)
+    expect(publicReactorBoundary).not.toContain('Reactor is available')
+    expect(publicReactorBoundary).not.toContain('HIPAA-ready')
+    expect(publicReactorBoundary).not.toContain('US-origin-only enforced')
+    expect(existsSync(repoFile('NEEDS_OWNER.md'))).toBe(true)
+  })
+
   test('keeps issue 7023 desktop and builtin compute proof yellow-only', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),

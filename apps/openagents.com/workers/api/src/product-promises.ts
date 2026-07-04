@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-07-04.6'
+export const PublicProductPromisesVersion = '2026-07-04.7'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -137,6 +137,12 @@ const sourceRefs = [
   'docs/business/2026-06-20-openagents-business-intake-spec.md',
   'docs/business/2026-06-20-business-offering-promise-coverage.md',
   'docs/fable/2026-07-02-qa-swarm-product-plan.md',
+  'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md',
+  'docs/fable/2026-07-02-bf-3-4-private-sovereign-compute-tier.md',
+  'docs/fable/2026-07-03-apollo-outbound-sales-plan.md',
+  'docs/transcripts/external/2026-07-03-friedberg.md',
+  'docs/transcripts/external/2026-07-04-mistral-ceo-enterprise-ai.md',
+  'https://openagents.com/forum/t/2efaeed7-1f4f-4f2f-9b26-dc8445885bca',
   'docs/feature-requests/2026-06-24-autonomous-qa-e2e-from-computer-use.md',
   'docs/unit/2026-06-30-arbiter-effect-2d-dataflow-graph-audit.md',
   'NEEDS_OWNER.md',
@@ -5043,6 +5049,104 @@ export const publicProductPromisesDocument = () => {
       },
       {
         ...basePromiseFields,
+        promiseId: 'reactor.private_deployment.v1',
+        productArea: 'Reactor',
+        audience: ['customer', 'operator', 'agent', 'public'],
+        state: 'planned',
+        claim:
+          'Reactor is a planned private/customer-controlled open-model deployment lane for businesses that need model serving inside their own trust boundary.',
+        safeCopy:
+          'Reactor is a drafted private-deployment lane, not an available product: the plan is customer-controlled open-weight serving behind an OpenAI-compatible gateway, with receipts for model policy, customer data custody, exact metering, and on-prem enforcement before any public availability claim. Modeled assessment/pilot/managed package bands are staged in NEEDS_OWNER.md for owner review only.',
+        unsafeCopy:
+          'Do not claim Reactor is available, installed on-prem today, HIPAA/sovereign/compliance-ready, priced publicly, US-origin-only enforced, or proof that customer data never leaves until deployed receipts and owner-approved copy exist.',
+        evidenceRefs: [
+          'https://github.com/OpenAgentsInc/openagents/issues/8271',
+          'https://openagents.com/forum/t/2efaeed7-1f4f-4f2f-9b26-dc8445885bca',
+          'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md',
+          'docs/fable/2026-07-02-bf-3-4-private-sovereign-compute-tier.md',
+          'docs/fable/2026-07-03-apollo-outbound-sales-plan.md',
+          'docs/transcripts/external/2026-07-03-friedberg.md',
+          'docs/transcripts/external/2026-07-04-mistral-ceo-enterprise-ai.md',
+          'NEEDS_OWNER.md',
+          'promise:business.intake_quick_win_offering.v1',
+          'promise:qa_swarm.service_packages.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.reactor_customer_premises_deployment_missing',
+          'blocker.product_promises.reactor_policy_enforced_serving_smoke_missing',
+          'blocker.product_promises.reactor_exact_metering_receipt_missing',
+          'blocker.owner.reactor_rate_card_publication_approval_missing',
+          'blocker.owner.reactor_customer_pilot_approval_missing',
+        ],
+        verification:
+          'Planned only. Yellow requires a bounded Reactor node plan or smoke that proves policy-enforced model serving, customer-boundary data handling, exact metering receipts, and owner-approved copy. Green requires at least one deployed customer-controlled or dogfood node with dereferenceable public-safe receipts, signed owner review, and no compliance or availability overclaim.',
+        authorityBoundary:
+          'This registry entry grants no serving, customer-data custody, install, pricing, compliance, sales-contract, spend, payout, settlement, model-pull, or deployment authority. It is a public boundary record for the planned lane only.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'reactor.model_provenance.v1',
+        productArea: 'Reactor',
+        audience: ['customer', 'operator', 'agent', 'public'],
+        state: 'planned',
+        claim:
+          'Reactor will track open-model provenance as typed catalog metadata before customer policy can choose or exclude models.',
+        safeCopy:
+          'Reactor model provenance is planned as a typed catalog shape covering origin jurisdiction, developer, license, weights openness, training-data disclosure, known distillation lineage, and eval refs. The schema and catalog are not implemented yet, and catalog entries need our own eval receipts before any model-capability copy.',
+        unsafeCopy:
+          'Do not claim OpenAgents currently enforces US-origin-only models, complete model lineage, license compliance, training-data disclosure, or model capability quality for Reactor. Do not launder unknown or partial provenance into cleaner labels.',
+        evidenceRefs: [
+          'https://github.com/OpenAgentsInc/openagents/issues/8271',
+          'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md#3-the-model-catalog-and-the-provenance-policy-the-differentiator',
+          'docs/transcripts/external/2026-07-04-mistral-ceo-enterprise-ai.md',
+          'NEEDS_OWNER.md',
+          'promise:reactor.private_deployment.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.reactor_model_provenance_schema_missing',
+          'blocker.product_promises.reactor_model_catalog_seed_missing',
+          'blocker.product_promises.reactor_model_eval_receipts_missing',
+          'blocker.product_promises.reactor_distillation_lineage_policy_missing',
+        ],
+        verification:
+          'Requires a typed model_provenance.v1 schema, deterministic catalog fixtures, provenance validation tests, explicit unknown/partial handling, and eval refs before a catalog entry can support model-capability copy.',
+        authorityBoundary:
+          'A provenance catalog is metadata only. It does not authorize model installation, routing, customer deployment, compliance claims, license advice, or model-capability claims without separate policy enforcement and eval receipts.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'reactor.model_policy.v1',
+        productArea: 'Reactor',
+        audience: ['customer', 'operator', 'agent', 'public'],
+        state: 'planned',
+        claim:
+          'Reactor will enforce a customer-owned model policy over the provenance catalog at provisioning and routing time.',
+        safeCopy:
+          'Reactor model policy is planned as a versioned customer decision object over provenance metadata, including allow/block constraints by jurisdiction, developer, license, disclosure level, distillation lineage, and routing preference. It is not implemented yet; the next real gate is a structural refusal smoke where a nonconforming model is rejected before serving.',
+        unsafeCopy:
+          'Do not claim Reactor currently refuses nonconforming models, enforces customer policy, supports air-gapped updates, or substitutes models safely under incident pressure. Do not describe policy options as available product controls until schema, router, receipts, and owner-approved copy exist.',
+        evidenceRefs: [
+          'https://github.com/OpenAgentsInc/openagents/issues/8271',
+          'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md#3-the-model-catalog-and-the-provenance-policy-the-differentiator',
+          'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md#7-invariants-inherited--reactor-specific',
+          'https://openagents.com/forum/t/2efaeed7-1f4f-4f2f-9b26-dc8445885bca',
+          'promise:reactor.model_provenance.v1',
+          'promise:reactor.private_deployment.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.reactor_model_policy_schema_missing',
+          'blocker.product_promises.reactor_policy_router_missing',
+          'blocker.product_promises.reactor_policy_refusal_smoke_missing',
+          'blocker.product_promises.reactor_policy_decision_receipts_missing',
+          'blocker.product_promises.reactor_airgap_update_path_missing',
+        ],
+        verification:
+          'Requires a typed reactor.model_policy.v1 schema, policy fixtures, a provisioner/router enforcement path, refusal tests for nonconforming models, policy-version receipt refs on install/upgrade/routing decisions, and owner-approved public copy before any yellow movement.',
+        authorityBoundary:
+          'A planned policy record grants no routing, model substitution, model install, data access, compliance, incident-response, or customer-control authority. Customer policy becomes authority only when the typed decision path and receipts exist.',
+      },
+      {
+        ...basePromiseFields,
         promiseId: 'khala_code.forum_hotbar.v1',
         productArea: 'Khala Code',
         audience: ['user', 'agent', 'operator', 'public'],
@@ -5075,6 +5179,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-04.7 is the RX-1 Reactor planned-registry boundary pass (#8271) and flips NO promise state — green stays exactly 34. New Reactor records land planned only: reactor.private_deployment.v1, reactor.model_provenance.v1, and reactor.model_policy.v1. The records make the private/customer-controlled open-model deployment lane, typed provenance catalog, and customer model-policy gate visible without claiming availability, pricing, compliance, data-custody proof, US-origin enforcement, model install, or serving. Modeled assessment/pilot/managed package bands are staged in NEEDS_OWNER.md for owner review only; public copy remains blocked until policy/refusal/eval/metering/dogfood or customer deployment receipts exist.',
       'Registry 2026-07-04.6 is the RL-9 external-demand provenance and first-dollar evidence automation pass (#8253) and flips NO promise green — green stays exactly 34. proof.demand_provenance.v1 remains green as a labeling-discipline promise: source now has revenue_event_provenance, which labels Khala Code paid-plan and QA Swarm first-engagement revenue events as internal or external and exposes a public-safe first-dollar evidence bundle at /api/public/revenue-loop/first-dollar-evidence/{bundleRef}. Locked business factory metrics join exact revenue-event rows and keep internal/external USD-cent counts split. This is evidence-shaped for registry evidenceRefs; it does not create external-revenue copy, paid-plan availability, first paid delivery, payout, settlement, or promise-green authority without owner review.',
       'Registry 2026-07-04.5 is the RL-8 QA Swarm first-engagement checkout/intake spine pass (#8252) and flips NO promise green — green stays exactly 34. qa_swarm.service_packages.v1 remains yellow: source now has an admin-token first-engagement intake route and public readback that records public-safe business intake plus checkout/deposit evidence refs, provisions a QA Swarm Audit workspace, creates an active accepted-outcome service-promise contract, and writes the Swarm Audit first-report row into business_commitment_ledger. This clears only blocker.product_promises.qa_swarm_checkout_or_intake_receipts_missing. First paid delivery receipts, self-serve hosted delivery, broad hosted availability, payout, settlement, target access, and promise-green authority remain blocked.',
       'Registry 2026-07-04.4 is the RL-7 Khala Code trace→plugin→revenue-share precedent spine pass (#8251) and flips NO promise state — green stays exactly 34. khala_code.trace_derived_plugins.v1 and khala_code.plugin_backend_revenue_share.v1 remain planned: source now has an admin-token intake route and public readback for one n=1 precedent receipt linking a consented trace digest, admitted/registered/routable plugin, exact routed usage/idempotency, contributor attribution, msat accounting, Spark payout receipt, and settlement receipt. The route records already-settled public-safe evidence only; it does not move sats, accept raw trace/payment material, define a rate/pool, create market-demand proof, or claim anyone has been paid until the owner supplies and reviews a production receipt row.',

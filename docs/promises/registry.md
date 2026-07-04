@@ -1,5 +1,19 @@
 # Promise Registry
 
+> Registry `2026-07-04.7` is the RX-1 Reactor planned-registry boundary
+> pass (#8271) and flips NO promise state (green stays exactly 34). New
+> planned-only records now make the private/customer-controlled open-model
+> deployment lane visible without implying availability: `reactor.private_deployment.v1`
+> (private deployment lane), `reactor.model_provenance.v1` (typed model
+> provenance catalog), and `reactor.model_policy.v1` (customer policy
+> enforcement gate). The records preserve the public boundary from the Reactor
+> plan: no served capability, on-prem install, compliance/sovereignty/HIPAA
+> claim, public price, US-origin enforcement, customer-data-custody proof,
+> model install, routing authority, payout, or settlement exists yet. Modeled
+> assessment/pilot/managed package bands are staged in `NEEDS_OWNER.md` for
+> owner review only; public copy remains blocked until policy/refusal/eval,
+> metering, dogfood, or customer deployment receipts exist.
+
 > Registry `2026-07-04.6` is the RL-9 external-demand provenance and
 > first-dollar evidence automation pass (#8253) and flips NO promise green
 > (green stays exactly 34). `proof.demand_provenance.v1` stays green as a
