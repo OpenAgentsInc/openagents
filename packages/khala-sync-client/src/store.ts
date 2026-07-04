@@ -136,6 +136,16 @@ export interface KhalaSyncLocalStore {
     KhalaSyncClientStoreError
   >
   /**
+   * The durable `last_mutation_id` counter — the highest mutationId ever
+   * enqueued or acked (acked ids stay burned); `null` before the first
+   * enqueue/ack. The next enqueue must use exactly this + 1. Lets the
+   * overlay (KS-5.2) assign ids without replaying the queue.
+   */
+  readonly lastMutationId: () => Effect.Effect<
+    MutationId | null,
+    KhalaSyncClientStoreError
+  >
+  /**
    * Drop pending mutations with `mutationId <= throughMutationId` (the
    * server ACKed them — including rejections, which also advance
    * `lastMutationId`). Acking past the local counter advances it, so the

@@ -1,13 +1,12 @@
 import type {
   ClientGroupId,
   ClientId,
-  MutatorName,
   SyncSchemaVersion,
   SyncScope,
   SyncVersion,
 } from "@openagentsinc/khala-sync"
 import type { Effect, Stream } from "effect"
-import type { KhalaSyncClientStoreError } from "./store.js"
+import type { ClientMutator, OverlayError } from "./overlay.js"
 
 /**
  * @openagentsinc/khala-sync-client — client engine for Khala Sync: local
@@ -43,38 +42,23 @@ export {
 } from "./sqlite-store.js"
 
 // ---------------------------------------------------------------------------
-// Optimistic mutators + rebase (KS-5.2)
+// Optimistic mutators + rebase (KS-5.2): contracts + engine in overlay.ts.
+// Optimistic effects live ONLY in the in-memory overlay (SPEC §7
+// invariant 2); the durable store holds server-confirmed state exclusively.
 // ---------------------------------------------------------------------------
 
-/**
- * The client-side implementation of a named mutator: a pure function from
- * (confirmed view, args) to overlay effects. Re-executed on every rebase,
- * so it must be replay-safe and side-effect free.
- */
-export interface ClientMutator<Args = unknown> {
-  readonly name: MutatorName
-  readonly apply: (
-    args: Args,
-    view: OverlayView,
-  ) => ReadonlyArray<OverlayEffect>
-}
-
-export interface OverlayView {
-  readonly get: (entityType: string, entityId: string) => string | undefined
-}
-
-export type OverlayEffect =
-  | {
-      readonly kind: "upsert"
-      readonly entityType: string
-      readonly entityId: string
-      readonly postImageJson: string
-    }
-  | {
-      readonly kind: "delete"
-      readonly entityType: string
-      readonly entityId: string
-    }
+export {
+  type ClientMutator,
+  createOverlay,
+  type KhalaSyncOverlay,
+  KhalaSyncOverlayError,
+  type KhalaSyncOverlayErrorReason,
+  type OverlayEffect,
+  type OverlayEntity,
+  type OverlayError,
+  type OverlayReadView,
+  type OverlayView,
+} from "./overlay.js"
 
 // ---------------------------------------------------------------------------
 // Sync session (KS-5.3): per-scope state machine
@@ -104,5 +88,5 @@ export interface KhalaSyncSession {
   readonly mutate: <Args>(
     mutator: ClientMutator<Args>,
     args: Args,
-  ) => Effect.Effect<void, KhalaSyncClientStoreError>
+  ) => Effect.Effect<void, OverlayError>
 }

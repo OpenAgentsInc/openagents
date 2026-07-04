@@ -360,6 +360,11 @@ export const openKhalaSyncStore = (path: string): KhalaSyncSqliteStore => {
             }),
         ),
       ),
+    lastMutationId: () =>
+      tryStore(() => {
+        const last = lastMutationId()
+        return last === 0 ? null : MutationId.make(last)
+      }),
     ackMutations: (throughMutationId) =>
       tryStore(() => ackMutationsTx(throughMutationId)),
     identity: () => tryStore(readIdentity),
