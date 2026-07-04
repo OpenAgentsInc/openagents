@@ -192,10 +192,11 @@ assignment-derived provider lifecycle, explicit provider lifecycle updates,
 Pylon quarantines, Pylon marketplace intake/assignment/triage writes, raw
 Spark payout target registrations, scheduled
 `PylonCapacityFunnel.recordSnapshots` capacity-funnel snapshot upsert/prune
-writes, and `fleet_alerts` cron alert rows from FleetBurnStallDetector and
+writes, registered-agent `pylon_agent_runner_status_events` ingest, and
+`fleet_alerts` cron alert rows from FleetBurnStallDetector and
 ServingRateMonitor; those remain D1-first and read-authoritative until
 verification/cutover. Queue-based raw-event ingestion split,
-closeout-verifier shadow read, remaining read re-home work,
+closeout-verifier shadow read, Artanis/status read re-home work,
 compare/postgres read flags, and final D1 decommission remain on
 [#8315](https://github.com/OpenAgentsInc/openagents/issues/8315).
 

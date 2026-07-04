@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import { makeOperatorProStatusRoutes } from './operator-pro-status-routes'
+import type { PylonAgentRunnerStatusMirrorInput } from './pylon-agent-runner-status-store'
 
 type StoredStatus = {
   event_ref: string
@@ -207,6 +208,48 @@ describe('operator pro status route', () => {
     expect(body.retainedEntries).toHaveLength(0)
     expect(body.liveEntries[0]?.stateStartedAt).toBe('2026-07-01T12:00:00.000Z')
     expect(body.liveEntries[0]?.stateHistory).toHaveLength(2)
+  })
+
+  test('mirrors ingested runner status events after the D1 write', async () => {
+    const db = new FakeD1()
+    const mirrored: Array<PylonAgentRunnerStatusMirrorInput> = []
+    const routes = makeOperatorProStatusRoutes({
+      authenticateAgentToken: async () => ({ userId: 'agent_user.owner' }),
+      currentIsoTimestamp: () => '2026-07-01T12:03:00.000Z',
+      makeRunnerStatusMirror: () => ({
+        recordStatusEvent: async input => {
+          mirrored.push(input)
+        },
+      }),
+    })
+
+    const response = await routes.handleOperatorProStatusApi(
+      request('POST', statusEvent()),
+      { OPENAGENTS_DB: db as unknown as D1Database },
+      {} as ExecutionContext,
+    )
+    const mirroredEvent = JSON.parse(mirrored[0]?.record.eventJson ?? '{}') as {
+      refs?: ReadonlyArray<string>
+      stateHistory?: ReadonlyArray<unknown>
+    }
+
+    expect(response.status).toBe(200)
+    expect(db.statuses).toHaveLength(1)
+    expect(mirrored).toHaveLength(1)
+    expect(mirrored[0]?.retain).toMatchObject({
+      eventRef: 'event.public.runner_status.1',
+      ownerAgentUserId: 'agent_user.owner',
+      retainedAt: '2026-07-01T12:00:00.000Z',
+      runnerRef: 'runner.public.codex.1',
+    })
+    expect(mirrored[0]?.record).toMatchObject({
+      createdAt: '2026-07-01T12:03:00.000Z',
+      eventRef: 'event.public.runner_status.1',
+      ownerAgentUserId: 'agent_user.owner',
+      retentionState: 'live',
+    })
+    expect(mirroredEvent.refs).toEqual(['status.public.runner.working'])
+    expect(mirroredEvent.stateHistory).toHaveLength(2)
   })
 
   test('accepts public refs emitted by the Pylon status-control producer', async () => {

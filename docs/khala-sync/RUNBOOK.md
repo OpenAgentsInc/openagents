@@ -365,12 +365,13 @@ assignment-derived provider lifecycle, explicit provider lifecycle updates,
 Pylon quarantines, Pylon marketplace intake/assignment/triage writes, raw
 Spark payout target registrations, scheduled
 `PylonCapacityFunnel.recordSnapshots` capacity-funnel snapshot upsert/prune
-writes, and `fleet_alerts` cron alert rows from FleetBurnStallDetector and
+writes, registered-agent `pylon_agent_runner_status_events` ingest, and
+`fleet_alerts` cron alert rows from FleetBurnStallDetector and
 ServingRateMonitor behind `KHALA_SYNC_PYLON_DUAL_WRITE`; reads remain
 D1-authoritative. The live #8315 cutover still requires the Queue-based
-raw-event ingest split, closeout-verifier shadow read, remaining read re-home
-work, compare/postgres read flags, and D1 decommission evidence. Do not treat a
-green backfill alone as permission to drop D1 tables.
+raw-event ingest split, closeout-verifier shadow read, Artanis/status read
+re-home work, compare/postgres read flags, and D1 decommission evidence. Do not
+treat a green backfill alone as permission to drop D1 tables.
 
 ## Public tokens-served projection (KS-6.3, #8304)
 

@@ -15,6 +15,11 @@ import {
 } from './json-boundary'
 import { openAgentsDatabase } from './runtime'
 import { currentIsoTimestamp, isoTimestampToDate, normalizeIsoTimestamp } from './runtime-primitives'
+import {
+  makePylonAgentRunnerStatusMirrorForEnv,
+  type PylonAgentRunnerStatusMirror,
+  type PylonAgentRunnerStatusEventRecord,
+} from './pylon-agent-runner-status-store'
 
 export const OPERATOR_PRO_STATUS_PATH = '/api/operator/pro/status'
 export const PYLON_AGENT_RUNNER_STATUS_EVENT_SCHEMA_VERSION =
@@ -52,6 +57,7 @@ type OperatorProStatusDependencies<
     limit: number,
     env: Bindings,
   ) => Promise<ReadonlyArray<{ agentUserId: string; openauthUserId?: string | null }>>
+  makeRunnerStatusMirror?: (env: Bindings) => PylonAgentRunnerStatusMirror
   requireAdminApiToken?: (request: Request, env: Bindings) => Promise<boolean>
   requireBrowserSession?: (
     request: Request,
@@ -513,6 +519,36 @@ const ingestEvent = async (
   )
 }
 
+const runnerStatusRecordFromEvent = (
+  event: AgentRunnerStatusEvent,
+  ownerUserId: string,
+  nowIso: string,
+): PylonAgentRunnerStatusEventRecord => {
+  const retentionState = terminalState(event.state) ? 'retained' : 'live'
+
+  return {
+    assignmentRef: event.assignmentRef ?? null,
+    createdAt: nowIso,
+    eventJson: JSON.stringify({
+      ...event,
+      capabilityRefs: safeRefArray(event.capabilityRefs),
+      refs: safeRefArray(event.refs),
+      blockerRefs: safeRefArray(event.blockerRefs),
+      stateHistory: (event.stateHistory ?? []).slice(-20),
+    }),
+    eventRef: event.eventRef,
+    ownerAgentUserId: ownerUserId,
+    pylonRef: event.pylonRef ?? null,
+    retainedAt: retentionState === 'retained' ? event.updatedAt : null,
+    retentionState,
+    runnerKind: bounded(event.runnerKind, 'runner', 80),
+    runnerRef: event.runnerRef,
+    state: event.state,
+    stateStartedAt: event.stateStartedAt,
+    updatedAt: event.updatedAt,
+  }
+}
+
 export const makeOperatorProStatusRoutes = <
   Session extends OperatorProSession,
   Bindings extends OperatorProStatusEnv,
@@ -587,12 +623,23 @@ export const makeOperatorProStatusRoutes = <
       return forbidden()
     }
 
-    await ingestEvent(
-      db,
-      event,
-      pylonOwner ?? agent.userId,
-      dependencies.currentIsoTimestamp?.() ?? currentIsoTimestamp(),
-    )
+    const ownerUserId = pylonOwner ?? agent.userId
+    const nowIso = dependencies.currentIsoTimestamp?.() ?? currentIsoTimestamp()
+
+    await ingestEvent(db, event, ownerUserId, nowIso)
+    const runnerStatusMirror =
+      dependencies.makeRunnerStatusMirror?.(env) ??
+      makePylonAgentRunnerStatusMirrorForEnv(env)
+
+    await runnerStatusMirror.recordStatusEvent({
+      record: runnerStatusRecordFromEvent(event, ownerUserId, nowIso),
+      retain: {
+        eventRef: event.eventRef,
+        ownerAgentUserId: ownerUserId,
+        retainedAt: event.stateStartedAt,
+        runnerRef: event.runnerRef,
+      },
+    })
 
     return noStoreJsonResponse({
       ok: true,
