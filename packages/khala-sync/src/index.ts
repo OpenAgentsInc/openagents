@@ -14,6 +14,10 @@ import { Schema as S } from "effect"
 
 export const KHALA_SYNC_PROTOCOL_VERSION = 1
 
+// Fleet cockpit entity contracts (KS-6.1): post-image shapes for
+// scope.fleet_run.<id> changelog entries. Self-contained module (no cycle).
+export * from "./fleet.js"
+
 // ---------------------------------------------------------------------------
 // Branded primitives
 // ---------------------------------------------------------------------------

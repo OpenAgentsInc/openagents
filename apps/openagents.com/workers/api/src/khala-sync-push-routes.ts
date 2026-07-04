@@ -115,7 +115,13 @@ const syncErrorResponse = (
     { status },
   )
 
-const defaultMakeSqlClient: MakeKhalaSyncPushSqlClient = async (
+/**
+ * Default transaction-mode-safe postgres.js client factory for the
+ * KHALA_SYNC_DB Hyperdrive binding. Exported so other Worker seams that
+ * reach Khala Sync Postgres (e.g. the KS-6.1 fleet projection dual-write)
+ * reuse the exact same driver discipline instead of re-deriving it.
+ */
+export const defaultMakeKhalaSyncSqlClient: MakeKhalaSyncPushSqlClient = async (
   connectionString,
 ) => {
   const mod = (await import('postgres')) as unknown as {
@@ -238,7 +244,7 @@ export const handleKhalaSyncPush = (
       )
     }
 
-    const makeSqlClient = deps.makeSqlClient ?? defaultMakeSqlClient
+    const makeSqlClient = deps.makeSqlClient ?? defaultMakeKhalaSyncSqlClient
     const executePush = deps.executePush ?? executePushEngine
 
     let client: KhalaSyncPushSqlClient | undefined

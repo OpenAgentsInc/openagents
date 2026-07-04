@@ -58,13 +58,40 @@ Rules (a strict subset of RFC 8785 / JCS):
   `CanonicalJsonError`.
 - **Whitespace**: none.
 
+## Fleet cockpit entity contracts (KS-6.1)
+
+`src/fleet.ts` defines the entity post-image shapes for
+`scope.fleet_run.<id>` changelog entries — the fleet cockpit projection
+consumed by Khala Code:
+
+- **`FleetRunEntity`** (`fleet_run`) — run status
+  (`draft|running|paused|draining|stopped|completed`), `desiredSlots`,
+  worker kind, `startedAt`, counters.
+- **`FleetWorkerEntity`** (`fleet_worker`) — worker slot phase,
+  `assignmentRef`, hashed `accountRefHash`, `lastProgressAt`.
+- **`FleetAssignmentEntity`** (`fleet_assignment`) — public-safe
+  assignment slice: `assignmentRef`, `issueRef`, lifecycle `status`,
+  `closeoutClass`.
+- **`FleetAccountEntity`** (`fleet_account`) — hashed account ref +
+  dispatch readiness + rate-limit class.
+
+These are **public-safe by construction** (SPEC §7 invariant 9): every
+field is a closed literal set, a bounded ref whose pattern structurally
+excludes `@`/`/`/whitespace (so emails, filesystem paths, and URLs cannot
+even decode), or an ISO timestamp. Account identity rides ONLY as the
+existing public hash refs (`account.<lane>.<hex>`). The server-side
+allowlist redaction mapping lives in `@openagentsinc/khala-sync-server`
+(`fleet-projection.ts`).
+
 ## Conformance fixtures
 
 `fixtures/` contains golden wire-format JSON for every protocol message
 type — `PushRequest`, `PushResponse`, `BootstrapRequest`,
 `BootstrapResponse` (paging + final), `LogPage`, every `LiveFrame` variant
 (`DeltaFrame`, `MutationAckFrame`, `MustRefetchFrame`, `PingFrame`),
-`SyncError`, and `ChangelogEntry` (upsert + tombstone). File naming is
+`SyncError`, `ChangelogEntry` (upsert + tombstone), and the fleet entity
+post-image shapes (`FleetRunEntity`, `FleetWorkerEntity`,
+`FleetAssignmentEntity`, `FleetAccountEntity`). File naming is
 `<MessageType>[.<variant>].json`.
 
 These fixtures are the **cross-implementation conformance contract**: any

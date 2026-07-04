@@ -1,0 +1,15 @@
+{
+  "runId": "fleet-run.pylon.supervisor.4f2a9c1d0b7e6a5348d1c2e0",
+  "status": "running",
+  "desiredSlots": 5,
+  "workerKind": "codex",
+  "startedAt": "2026-07-04T15:00:00.000Z",
+  "counters": {
+    "workUnitsTotal": 40,
+    "activeAssignments": 5,
+    "completedAssignments": 12,
+    "failedAssignments": 1,
+    "blockedAssignments": 0
+  },
+  "updatedAt": "2026-07-04T15:20:11.412Z"
+}

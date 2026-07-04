@@ -790,6 +790,11 @@ const route = async (
     nowIso?: string
     linkedAgentUserIds?: ReadonlyArray<string>
     openauthUserId?: string | null
+    // KS-6.1 (#8302): optional fail-soft fleet cockpit projection spy.
+    projectFleetAssignment?: (
+      env: Readonly<Record<string, unknown>>,
+      input: Readonly<{ assignment: { assignmentRef: string; state: string }; nowIso: string }>,
+    ) => Promise<unknown>
     tokenUserId?: string
   }> = {},
 ) => {
@@ -830,6 +835,9 @@ const route = async (
     makeId: () => `test-${++counter}`,
     makeStore: () => store,
     nowIso: () => options.nowIso ?? '2026-06-07T00:10:00.000Z',
+    ...(options.projectFleetAssignment === undefined
+      ? {}
+      : { projectFleetAssignment: options.projectFleetAssignment }),
     requireAdminApiToken: request =>
       Promise.resolve(
         options.adminToken === true &&
@@ -954,6 +962,13 @@ const createAssignment = async (
     noDuplicateAssignmentRefs?: ReadonlyArray<string>
     nowIso?: string
     paymentMode?: string
+    projectFleetAssignment?: (
+      env: Readonly<Record<string, unknown>>,
+      input: Readonly<{
+        assignment: { assignmentRef: string; state: string }
+        nowIso: string
+      }>,
+    ) => Promise<unknown>
     pylonRef?: string
     requiredCapabilityRefs?: ReadonlyArray<string>
     spendCapRefs?: ReadonlyArray<string>
@@ -993,6 +1008,9 @@ const createAssignment = async (
     idempotencyKey: input.idempotencyKey ?? 'assignment-create-echo',
     method: 'POST',
     ...(input.nowIso === undefined ? {} : { nowIso: input.nowIso }),
+    ...(input.projectFleetAssignment === undefined
+      ? {}
+      : { projectFleetAssignment: input.projectFleetAssignment }),
     ...(input.tokenUserId === undefined
       ? { adminToken: true }
       : { tokenUserId: input.tokenUserId }),
@@ -4084,5 +4102,183 @@ describe('Pylon API routes', () => {
 
     expect(response.status).toBe(400)
     expect(body.error).toBe('pylon_api_validation_error')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// KS-6.1 (#8302): fail-soft fleet cockpit projection dual-write call sites
+// ---------------------------------------------------------------------------
+
+describe('KS-6.1 fleet cockpit projection dual-write', () => {
+  const setupPylon = async (store: MemoryPylonApiStore) => {
+    await registerPylon(store)
+    await markOnline(store)
+    await markWalletReady(store)
+  }
+
+  test('assignment create invokes the projection AFTER the D1 write with the stored record', async () => {
+    const store = new MemoryPylonApiStore()
+    await setupPylon(store)
+
+    const calls: Array<{ assignmentRef: string; state: string }> = []
+    const create = await createAssignment(store, {
+      assignmentRef: 'assignment.public.fleet_proj.create',
+      idempotencyKey: 'assignment-fleet-proj-create',
+      projectFleetAssignment: async (_env, input) => {
+        calls.push({
+          assignmentRef: input.assignment.assignmentRef,
+          state: input.assignment.state,
+        })
+      },
+    })
+
+    expect(create.status).toBe(201)
+    expect(calls).toEqual([
+      { assignmentRef: 'assignment.public.fleet_proj.create', state: 'offered' },
+    ])
+  })
+
+  test('a THROWING projection never fails the route (create, event, operator closeout)', async () => {
+    const store = new MemoryPylonApiStore()
+    await setupPylon(store)
+
+    const explode = async () => {
+      throw new Error('khala sync postgres is down')
+    }
+    const assignmentRef = 'assignment.public.fleet_proj.failsoft'
+    const create = await createAssignment(store, {
+      assignmentRef,
+      idempotencyKey: 'assignment-fleet-proj-failsoft',
+      projectFleetAssignment: explode,
+    })
+    expect(create.status).toBe(201)
+
+    const accept = await route(
+      store,
+      `/api/pylons/pylon.test.one/assignments/${assignmentRef}/accept`,
+      {
+        body: {
+          acceptanceRefs: ['acceptance.public.fleet_proj.claimed'],
+          accepted: true,
+        },
+        idempotencyKey: 'accept-fleet-proj-failsoft',
+        method: 'POST',
+        projectFleetAssignment: explode,
+        tokenUserId: 'agent-one',
+      },
+    )
+    expect(accept.status).toBe(201)
+
+    const workerCloseout = await route(
+      store,
+      `/api/pylons/pylon.test.one/assignments/${assignmentRef}/closeout`,
+      {
+        body: {
+          artifactRefs: ['artifact.public.fleet_proj.bundle'],
+          closeoutRefs: ['closeout.public.fleet_proj.done'],
+          proofRefs: ['proof.public.fleet_proj.verified'],
+          resultRefs: ['result.public.fleet_proj.completed'],
+          status: 'closeout_submitted',
+          testRefs: ['test.public.fleet_proj.green'],
+        },
+        idempotencyKey: 'worker-closeout-fleet-proj-failsoft',
+        method: 'POST',
+        projectFleetAssignment: explode,
+        tokenUserId: 'agent-one',
+      },
+    )
+    expect(workerCloseout.status).toBe(201)
+
+    const operatorCloseout = await route(
+      store,
+      `/api/operator/pylons/assignments/${assignmentRef}/closeout`,
+      {
+        adminToken: true,
+        body: {
+          accepted: true,
+          acceptedWorkRefs: ['accepted_work.public.fleet_proj'],
+          closeoutRefs: ['closeout.public.operator.fleet_proj.accepted'],
+        },
+        method: 'POST',
+        projectFleetAssignment: explode,
+      },
+    )
+    expect(operatorCloseout.status).toBe(200)
+  })
+
+  test('status transitions (accept + operator closeout) project the updated state', async () => {
+    const store = new MemoryPylonApiStore()
+    await setupPylon(store)
+
+    const states: Array<string> = []
+    const spy = async (
+      _env: Readonly<Record<string, unknown>>,
+      input: Readonly<{
+        assignment: { assignmentRef: string; state: string }
+        nowIso: string
+      }>,
+    ) => {
+      states.push(input.assignment.state)
+    }
+    const assignmentRef = 'assignment.public.fleet_proj.transitions'
+    await createAssignment(store, {
+      assignmentRef,
+      idempotencyKey: 'assignment-fleet-proj-transitions',
+      projectFleetAssignment: spy,
+    })
+    await route(
+      store,
+      `/api/pylons/pylon.test.one/assignments/${assignmentRef}/accept`,
+      {
+        body: {
+          acceptanceRefs: ['acceptance.public.fleet_proj.claimed'],
+          accepted: true,
+        },
+        idempotencyKey: 'accept-fleet-proj-transitions',
+        method: 'POST',
+        projectFleetAssignment: spy,
+        tokenUserId: 'agent-one',
+      },
+    )
+    await route(
+      store,
+      `/api/pylons/pylon.test.one/assignments/${assignmentRef}/closeout`,
+      {
+        body: {
+          artifactRefs: ['artifact.public.fleet_proj.bundle'],
+          closeoutRefs: ['closeout.public.fleet_proj.done'],
+          proofRefs: ['proof.public.fleet_proj.verified'],
+          resultRefs: ['result.public.fleet_proj.completed'],
+          status: 'closeout_submitted',
+          testRefs: ['test.public.fleet_proj.green'],
+        },
+        idempotencyKey: 'worker-closeout-fleet-proj-transitions',
+        method: 'POST',
+        projectFleetAssignment: spy,
+        tokenUserId: 'agent-one',
+      },
+    )
+    const operatorCloseout = await route(
+      store,
+      `/api/operator/pylons/assignments/${assignmentRef}/closeout`,
+      {
+        adminToken: true,
+        body: {
+          accepted: true,
+          acceptedWorkRefs: ['accepted_work.public.fleet_proj'],
+          closeoutRefs: ['closeout.public.operator.fleet_proj.accepted'],
+        },
+        method: 'POST',
+        projectFleetAssignment: spy,
+      },
+    )
+
+    expect(operatorCloseout.status).toBe(200)
+    expect(states).toEqual([
+      'offered',
+      'accepted',
+      'closeout_submitted',
+      'accepted_work',
+    ])
   })
 })

@@ -28,6 +28,7 @@ import {
 } from '@openagentsinc/khala-sync'
 import {
   defineMutator,
+  fleetOperatorMutators,
   makeMutatorRegistry,
   type MutatorDefinition,
   type MutatorRegistry,
@@ -90,6 +91,17 @@ export const debugEchoMutator: MutatorDefinition =
     name: MutatorName.make(SYNC_DEBUG_ECHO_MUTATOR_NAME),
   })
 
-/** The Worker's Khala Sync mutator registry (KS-3.2 adds fleet mutators). */
+/**
+ * The Worker's Khala Sync mutator registry: the `sync.debugEcho` system
+ * test mutator plus the KS-6.1 fleet cockpit operator mutators
+ * (`fleet.setDesiredSlots` / `fleet.pauseRun` / `fleet.resumeRun`, defined
+ * in `@openagentsinc/khala-sync-server` and integration-tested there
+ * through `executePush` against real Postgres). The fleet mutators are
+ * owner-gated via `khala_sync_scope_owners`; a foreign user gets an
+ * in-band `unauthorized_scope` rejection. HONEST V1: an applied fleet
+ * mutation records a durable intent row and projects the updated
+ * `fleet_run` post-image — supervisor-side enforcement of intents is a
+ * follow-up lane (see docs/khala-sync/README.md).
+ */
 export const makeKhalaSyncWorkerMutatorRegistry = (): MutatorRegistry =>
-  makeMutatorRegistry([debugEchoMutator])
+  makeMutatorRegistry([debugEchoMutator, ...fleetOperatorMutators])

@@ -789,9 +789,13 @@ import {
   handleKhalaSyncHubInternalRoute,
 } from './khala-sync-hub-do'
 export { KhalaSyncHubDO } from './khala-sync-hub-do'
+import { projectFleetAssignmentTransition } from './khala-sync-fleet-projection'
 import { handleKhalaSyncLog } from './khala-sync-log-routes'
 import { makeKhalaSyncWorkerMutatorRegistry } from './khala-sync-mutators'
-import { handleKhalaSyncPush } from './khala-sync-push-routes'
+import {
+  defaultMakeKhalaSyncSqlClient,
+  handleKhalaSyncPush,
+} from './khala-sync-push-routes'
 import { makeOpenAgentsL402HmacSigningBoundary } from './l402-credential-service'
 import { handlePublicLaborEarningsApi } from './labor-earnings-routes'
 import { handleSelfServeLaborPayoutApi } from './labor-self-serve-earning-payout-routes'
@@ -9420,6 +9424,19 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
   // #5252: private operator-only store for raw Spark payout targets.
   makeSparkPayoutTargetStore: env =>
     makeD1PylonSparkPayoutTargetStore(openAgentsDatabase(env)),
+  // KS-6.1 (#8302): fail-soft fleet cockpit projection of assignment
+  // status transitions into Khala Sync (scope.fleet_run.<runId>) via the
+  // KHALA_SYNC_DB Hyperdrive binding. Never fails the D1 business write;
+  // assignments without a fleet run ref are skipped.
+  projectFleetAssignment: (env, input) =>
+    projectFleetAssignmentTransition(
+      {
+        binding: env.KHALA_SYNC_DB,
+        log: (event, fields) => logWorkerRouteWarning(event, fields),
+        makeSqlClient: defaultMakeKhalaSyncSqlClient,
+      },
+      input,
+    ),
   recordAutopilotWorkerCloseout: async (env, input) => {
     const delivered = await recordAutopilotWorkerCloseoutFromPylon(
       makeD1AutopilotWorkStore(openAgentsDatabase(env)),

@@ -75,9 +75,44 @@ client-group state (KS-2.4), the transactional push engine + mutator
 registry (KS-3.1, wired to `POST /api/sync/push` in the `openagents.com`
 Worker), the mutator authoring guide + queue-never-blocks behavior
 contract (KS-3.3), the hub DO (KS-4.2, in the `openagents.com` Worker),
-and the capture worker (KS-4.1, `src/capture.ts` + `scripts/capture.ts`)
-landed; compaction and the remaining hub seams land per the KS-2/KS-4
-issues, fleet mutators per KS-3.2.
+the capture worker (KS-4.1, `src/capture.ts` + `scripts/capture.ts` —
+imported via the `@openagentsinc/khala-sync-server/capture` subpath so the
+root entrypoint stays workerd/node-importable), changelog compaction
+(KS-2.3), and the fleet cockpit scope projection + operator mutators
+(KS-6.1, see below) landed; the remaining hub seams land per the KS-4
+issues.
+
+## Fleet cockpit scope (KS-6.1, #8302)
+
+`src/fleet-projection.ts` + `src/fleet-mutators.ts` +
+`migrations/0004_khala_sync_fleet.sql`:
+
+- **Scope ownership** — `khala_sync_scope_owners` (scope PK,
+  owner_user_id, created_at), written first-writer-wins on a fleet scope's
+  first projection append (`ensureScopeOwner`). `canReadScopeV1` is the v1
+  read gate: own personal scope + owned `fleet_run` scopes (KS-7 replaces
+  it with the full scope-auth seam).
+- **Projection** — allowlist redaction mappings from raw row shapes into
+  the fleet entity contracts (`fleetRunPostImage`,
+  `fleetWorkerPostImage`, `fleetAssignmentPostImage`,
+  `fleetAccountPostImage`; SPEC §7 invariant 9 — the contract ref patterns
+  structurally refuse emails/paths, plus a serialized forbidden-material
+  guard), `appendFleetEntityChange` for writer-scoped appends, and
+  `projectFleetEntitiesBestEffort` — the FAIL-SOFT wrapper for the v1
+  dual-write call site in the `openagents.com` Worker (assignment
+  create/closeout project after the D1 business write; a projection
+  failure NEVER fails the business write and returns a typed diagnostic).
+  KS-8.1 (#8307) retires the dual-write by moving the business write into
+  the same Postgres transaction.
+- **Operator mutators** — `fleet.setDesiredSlots`, `fleet.pauseRun`,
+  `fleet.resumeRun` (`fleetOperatorMutators`), registered in the Worker
+  registry. Owner-gated via `khala_sync_scope_owners` (foreign user ⇒
+  in-band `unauthorized_scope` rejection with zero writes); each applied
+  mutation writes a durable intent row (`khala_sync_fleet_intents`) and
+  appends the updated `fleet_run` post-image in one transaction. HONEST
+  V1: intents are recorded and projected; Pylon-supervisor ENFORCEMENT of
+  intents is a follow-up lane — an applied mutation is a durable request,
+  not yet proof the fleet changed behavior.
 
 **Writing a mutator? Read the authoring guide first:**
 [`docs/khala-sync/MUTATORS.md`](../../docs/khala-sync/MUTATORS.md) —

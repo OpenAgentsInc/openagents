@@ -534,3 +534,98 @@ describe('handleKhalaSyncLog', () => {
     expect(response.status).toBe(200)
   })
 })
+
+// ---------------------------------------------------------------------------
+// KS-6.1 (#8302): owned fleet_run scopes via khala_sync_scope_owners
+// ---------------------------------------------------------------------------
+
+describe('fleet_run scope read gate (KS-6.1)', () => {
+  const FLEET_SCOPE = scopeOf('scope.fleet_run.fleet-run.pylon.abc123')
+
+  /** A client whose sql answers ONLY the scope-owner SELECT. */
+  const ownerLookupClient = (owner: string | null) => {
+    let ended = 0
+    const sql = ((
+      strings: TemplateStringsArray,
+      ..._values: ReadonlyArray<unknown>
+    ) => {
+      const text = strings.join('$')
+      if (text.includes('khala_sync_scope_owners')) {
+        return Promise.resolve(
+          owner === null ? [] : [{ owner_user_id: owner }],
+        )
+      }
+      return Promise.reject(
+        new Error('only the scope-owner lookup may hit sql in these tests'),
+      )
+    }) as unknown as SyncSql
+    const client: KhalaSyncPushSqlClient = {
+      end: () => {
+        ended += 1
+        return Promise.resolve()
+      },
+      sql,
+    }
+    return { client, endedCount: () => ended }
+  }
+
+  test('the sync predicate still denies fleet scopes (storage decides)', () => {
+    expect(canReadScopeV1(USER_ID, FLEET_SCOPE)).toBe(false)
+  })
+
+  test('the scope OWNER reads an owned fleet scope (hub-served)', async () => {
+    const served = page({ nextCursor: 2, scope: FLEET_SCOPE, upToDate: true })
+    const fake = ownerLookupClient(USER_ID)
+    const response = await run({
+      client: fake.client,
+      hubNamespace: hubServing(served).namespace,
+      request: get({ scope: FLEET_SCOPE }),
+    })
+    expect(response.status).toBe(200)
+    // The owner-lookup client is always released.
+    expect(fake.endedCount()).toBe(1)
+  })
+
+  test('a FOREIGN user gets 403 unauthorized_scope', async () => {
+    const fake = ownerLookupClient('someone-else')
+    const response = await run({
+      client: fake.client,
+      request: get({ scope: FLEET_SCOPE }),
+    })
+    expect(response.status).toBe(403)
+    expect((await syncErrorBody(response)).code).toBe('unauthorized_scope')
+    expect(fake.endedCount()).toBe(1)
+  })
+
+  test('an UNOWNED fleet scope is denied (fail-closed)', async () => {
+    const fake = ownerLookupClient(null)
+    const response = await run({
+      client: fake.client,
+      request: get({ scope: FLEET_SCOPE }),
+    })
+    expect(response.status).toBe(403)
+    expect((await syncErrorBody(response)).code).toBe('unauthorized_scope')
+  })
+
+  test('binding absent ⇒ 503, never a grant', async () => {
+    const response = await run({
+      binding: undefined,
+      request: get({ scope: FLEET_SCOPE }),
+    })
+    expect(response.status).toBe(503)
+    expect((await syncErrorBody(response)).code).toBe('storage_unavailable')
+  })
+
+  test('a failed owner lookup ⇒ 503 retryable, never a grant', async () => {
+    const sql = (() =>
+      Promise.reject(new Error('boom'))) as unknown as SyncSql
+    const response = await run({
+      client: { end: () => Promise.resolve(), sql },
+      request: get({ scope: FLEET_SCOPE }),
+    })
+    expect(response.status).toBe(503)
+    const body = await syncErrorBody(response)
+    expect(body.code).toBe('storage_unavailable')
+    expect(body.retryable).toBe(true)
+  })
+})

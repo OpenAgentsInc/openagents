@@ -21,9 +21,13 @@ clients with server-authoritative mutators and rebase.
 
 ## Packages
 
-- `packages/khala-sync` — wire/domain contracts (Effect Schema). Landed.
+- `packages/khala-sync` — wire/domain contracts (Effect Schema), including
+  the KS-6.1 fleet cockpit entity contracts (`src/fleet.ts`). Landed.
 - `packages/khala-sync-server` — Postgres substrate + mutator engine +
-  capture + `KhalaSyncHubDO`. Contracts + `migrations/0001` landed.
+  capture + compaction + `KhalaSyncHubDO` + the KS-6.1 fleet scope
+  projection/mutators (`fleet-projection.ts`, `fleet-mutators.ts`,
+  `khala_sync_scope_owners` / `khala_sync_fleet_intents` in
+  `migrations/0004`). Landed through KS-6.1 server-side.
 - `packages/khala-sync-client` — local store + overlay/rebase + session.
   Contracts landed.
 
@@ -37,7 +41,7 @@ clients with server-authoritative mutators and rebase.
 | KS-3 Mutator engine (push route, registry, guide+contract) | #8291 #8292 #8293 (guide+contract landed: [`MUTATORS.md`](./MUTATORS.md), `packages/behavior-contracts/src/khala-sync.ts`) |
 | KS-4 Capture + Hub DO (capture, hub, catch-up, bootstrap/seam) | #8294 #8295 #8296 #8297 |
 | KS-5 Client engine (store, rebase, session, web lane) | #8298 #8299 #8300 #8301 |
-| KS-6 First consumers (fleet projection, desktop, tokens-served) | #8302 #8303 #8304 |
+| KS-6 First consumers (fleet projection, desktop, tokens-served) | #8302 (server-side projection + operator mutators landed; supervisor intent enforcement is follow-up) #8303 #8304 |
 | KS-7 Permissions (scope auth, CVR v2) | #8305 #8306 |
 | KS-8 Domain migration (assignments, ledger, rolling plan) | #8307 #8308 #8309 |
 | KS-9 QA/ops (load test, behavior contracts, invariants+runbook) | #8310 #8311 #8312 |

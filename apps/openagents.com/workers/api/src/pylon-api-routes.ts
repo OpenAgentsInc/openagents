@@ -84,6 +84,19 @@ type PylonApiRouteDependencies<Bindings> = Readonly<{
   // closed (501) when it is not wired.
   makeSparkPayoutTargetStore?: (env: Bindings) => PylonSparkPayoutTargetStore
   nowIso?: () => string
+  // KS-6.1 (#8302): best-effort projection of assignment status transitions
+  // into the Khala Sync fleet cockpit scope (scope.fleet_run.<runId>) via
+  // the KHALA_SYNC_DB Hyperdrive binding. STRICTLY fail-soft: it runs AFTER
+  // the D1 business write commits and its failure never fails the route
+  // (see maybeProjectFleetAssignment). Optional so existing wiring/tests
+  // stay valid; absent ⇒ no projection.
+  projectFleetAssignment?: (
+    env: Bindings,
+    input: Readonly<{
+      assignment: PylonApiAssignmentRecord
+      nowIso: string
+    }>,
+  ) => Promise<unknown>
   recordAutopilotWorkerCloseout?: (
     env: Bindings,
     input: AutopilotWorkerCloseoutIngestionInput,
@@ -1445,6 +1458,14 @@ const routeCreateAssignment = <Bindings extends PylonApiRouteEnv>(
       try: () => store.createAssignment(assignment),
     })
 
+    // KS-6.1: fail-soft fleet cockpit projection AFTER the D1 write.
+    if (!result.idempotent) {
+      yield* maybeProjectFleetAssignment(dependencies, env, {
+        assignment: result.record,
+        nowIso,
+      })
+    }
+
     return noStoreJsonResponse(
       {
         assignment: publicPylonApiAssignmentProjection(result.record, nowIso),
@@ -1590,6 +1611,11 @@ const routeCloseoutAssignment = <Bindings extends PylonApiRouteEnv>(
       assignment: storedAssignment,
       nowIso,
     })
+    // KS-6.1: fail-soft fleet cockpit projection of the closeout transition.
+    yield* maybeProjectFleetAssignment(dependencies, env, {
+      assignment: storedAssignment,
+      nowIso,
+    })
 
     return noStoreJsonResponse({
       assignment: publicPylonApiAssignmentProjection(storedAssignment, nowIso),
@@ -1612,6 +1638,31 @@ const assignmentAcceptanceCanClaim = (
   eventKind: PylonApiEventKind,
   assignmentState: PylonApiAssignmentState,
 ): boolean => eventKind !== 'assignment_acceptance' || assignmentState === 'offered'
+
+// KS-6.1 (#8302): dual-write an assignment status transition into the
+// Khala Sync fleet cockpit scope. Never Effect.tryPromise — a projection
+// failure is swallowed here so it cannot fail the already-committed D1
+// business write (the projection implementation is itself fail-soft and
+// logs its own typed diagnostics; this catch is defense in depth).
+const maybeProjectFleetAssignment = <Bindings extends PylonApiRouteEnv>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  env: Bindings,
+  input: Readonly<{
+    assignment: PylonApiAssignmentRecord
+    nowIso: string
+  }>,
+): Effect.Effect<void> => {
+  const projectFleetAssignment = dependencies.projectFleetAssignment
+  return projectFleetAssignment === undefined
+    ? Effect.void
+    : Effect.promise(async () => {
+        try {
+          await projectFleetAssignment(env, input)
+        } catch {
+          // fail-soft by contract: the D1 write already committed.
+        }
+      })
+}
 
 const maybeRecordAutopilotWorkerCloseout = <Bindings extends PylonApiRouteEnv>(
   dependencies: PylonApiRouteDependencies<Bindings>,
@@ -1910,6 +1961,11 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
       yield* maybeRevokeAssignmentForgeGitAccess(dependencies, env, {
         assignment: storedAssignment,
         eventKind: input.eventKind,
+        nowIso,
+      })
+      // KS-6.1: fail-soft fleet cockpit projection of the status transition.
+      yield* maybeProjectFleetAssignment(dependencies, env, {
+        assignment: storedAssignment,
         nowIso,
       })
     }
