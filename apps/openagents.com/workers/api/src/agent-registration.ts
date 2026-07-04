@@ -1,5 +1,11 @@
 import { Schema as S } from 'effect'
 
+import {
+  makeAgentRuntimeRemainderMirrorForEnv,
+  type AgentRuntimeRemainderMirror,
+  type AgentRuntimeRemainderStoreEnv,
+} from './agent-runtime-remainder-store'
+import { openAgentsDatabase } from './runtime'
 import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
 
 export const AGENT_TOKEN_PREFIX = 'oa_agent_'
@@ -796,6 +802,106 @@ export const makeD1AgentRegistrationStore = (
     }
   },
 })
+
+type MirrorableAgentRegistrationStore = AgentRegistrationStore &
+  Partial<AgentReissueStore> &
+  Partial<AgentForumIdentityStore>
+
+const mirrorProfileAndCredential = (
+  mirror: AgentRuntimeRemainderMirror,
+  record: AgentRegistrationRecord,
+): Promise<ReadonlyArray<void>> =>
+  Promise.all([
+    mirror.mirrorRowsByPk('agent_profiles', [record.profile.userId]),
+    mirror.mirrorRowsByPk('agent_credentials', [record.credential.id]),
+  ])
+
+const mirrorCredential = (
+  mirror: AgentRuntimeRemainderMirror,
+  credentialId: string | null,
+): Promise<void> =>
+  credentialId === null
+    ? Promise.resolve()
+    : mirror.mirrorRowsByPk('agent_credentials', [credentialId])
+
+export const makeMirroredAgentRegistrationStore = <
+  Store extends MirrorableAgentRegistrationStore,
+>(
+  d1: Store,
+  mirror: AgentRuntimeRemainderMirror | undefined,
+): Store => {
+  if (mirror === undefined) {
+    return d1
+  }
+
+  const linkOpenAuthAgent = d1.linkOpenAuthAgent
+  const listLinkedAgentsForOpenAuthUser = d1.listLinkedAgentsForOpenAuthUser
+  const findAgentForReissue = d1.findAgentForReissue
+  const addAgentCredential = d1.addAgentCredential
+  const findAgentForumIdentity = d1.findAgentForumIdentity
+
+  return {
+    createAgentRegistration: async record => {
+      await d1.createAgentRegistration(record)
+      await mirrorProfileAndCredential(mirror, record)
+    },
+    findAgentByTokenHash: (tokenHash, now) =>
+      d1.findAgentByTokenHash(tokenHash, now),
+    touchAgentCredential: async (credentialId, lastUsedAt) => {
+      await d1.touchAgentCredential(credentialId, lastUsedAt)
+      await mirrorCredential(mirror, credentialId)
+    },
+    updateAgentDisplayName: (userId, displayName, updatedAt) =>
+      d1.updateAgentDisplayName(userId, displayName, updatedAt),
+    ...(linkOpenAuthAgent === undefined
+      ? {}
+      : {
+          linkOpenAuthAgent: async (record: OpenAuthAgentLinkRecord) => {
+            await linkOpenAuthAgent.call(d1, record)
+            await mirrorCredential(mirror, record.agentCredentialId)
+          },
+        }),
+    ...(listLinkedAgentsForOpenAuthUser === undefined
+      ? {}
+      : {
+          listLinkedAgentsForOpenAuthUser: (
+            openauthUserId: string,
+            limit: number,
+          ) => listLinkedAgentsForOpenAuthUser.call(d1, openauthUserId, limit),
+        }),
+    ...(findAgentForReissue === undefined
+      ? {}
+      : {
+          findAgentForReissue: (selector: AgentReissueSelector) =>
+            findAgentForReissue.call(d1, selector),
+        }),
+    ...(addAgentCredential === undefined
+      ? {}
+      : {
+          addAgentCredential: async (record: AgentCredentialRecord) => {
+            await addAgentCredential.call(d1, record)
+            await mirrorCredential(mirror, record.id)
+          },
+        }),
+    ...(findAgentForumIdentity === undefined
+      ? {}
+      : {
+          findAgentForumIdentity: (
+            selector: AgentReissueSelector,
+            now: string,
+          ) =>
+            findAgentForumIdentity.call(d1, selector, now),
+        }),
+  } as Store
+}
+
+export const makeAgentRegistrationStoreForEnv = (
+  env: AgentRuntimeRemainderStoreEnv,
+): AgentRegistrationStore & AgentReissueStore & AgentForumIdentityStore =>
+  makeMirroredAgentRegistrationStore(
+    makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+    makeAgentRuntimeRemainderMirrorForEnv(env),
+  )
 
 export const buildProgrammaticAgentRegistrationRecord = (
   input: ProgrammaticAgentRegistrationRequest,

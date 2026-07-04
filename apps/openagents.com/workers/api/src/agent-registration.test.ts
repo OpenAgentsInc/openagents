@@ -10,6 +10,7 @@ import {
   type OpenAuthAgentLinkRecord,
   authenticateProgrammaticAgent,
   createProgrammaticAgentRegistration,
+  makeMirroredAgentRegistrationStore,
   reissueProgrammaticAgentToken,
   sha256Hex,
 } from './agent-registration'
@@ -207,6 +208,83 @@ describe('programmatic agent registration', () => {
     expect(record?.credential.tokenHash).not.toContain('test_secret')
     expect(registration.credential.token).toBe(token)
     expect(registration.credential.expiresAt).toBeNull()
+  })
+
+  test('mirrored store mirrors profile and credential rows by key only', async () => {
+    const d1 = new MemoryAgentRegistrationStore()
+    const mirrored: Array<{
+      table: string
+      ids: ReadonlyArray<string>
+    }> = []
+    const store = makeMirroredAgentRegistrationStore(d1, {
+      mirrorRowsByPk: async (table, ids) => {
+        mirrored.push({ ids, table })
+      },
+    })
+    const createdAt = '2026-07-04T19:20:00.000Z'
+    const registration = await createProgrammaticAgentRegistration(
+      store,
+      { displayName: 'Mirrored Agent', slug: 'mirrored-agent' },
+      {
+        makeToken: () => 'oa_agent_mirrored_secret',
+        makeUuid: makeUuidFactory([
+          'user-mirror',
+          'credential-mirror',
+          'identity-mirror',
+        ]),
+        now: () => createdAt,
+      },
+    )
+
+    expect(mirrored).toEqual([
+      { ids: [registration.user.id], table: 'agent_profiles' },
+      { ids: [registration.credential.id], table: 'agent_credentials' },
+    ])
+
+    await authenticateProgrammaticAgent(
+      store,
+      registration.credential.token,
+      () => '2026-07-04T19:21:00.000Z',
+    )
+
+    expect(mirrored).toContainEqual({
+      ids: [registration.credential.id],
+      table: 'agent_credentials',
+    })
+
+    await store.linkOpenAuthAgent({
+      agentCredentialId: registration.credential.id,
+      agentUserId: registration.user.id,
+      createdAt: '2026-07-04T19:22:00.000Z',
+      id: 'openauth_agent_link_mirror',
+      linkKind: 'credential_anchor',
+      openauthUserId: 'user_human_mirror',
+      revokedAt: null,
+      status: 'active',
+      updatedAt: '2026-07-04T19:22:00.000Z',
+    })
+
+    const reissue = await reissueProgrammaticAgentToken(
+      store,
+      { slug: 'mirrored-agent' },
+      {
+        makeToken: () => 'oa_agent_reissue_mirrored_secret',
+        makeUuid: makeUuidFactory(['credential-mirror-2']),
+        now: () => '2026-07-04T19:23:00.000Z',
+      },
+    )
+
+    expect(reissue?.credentialId).toBe('agent_credential_credential-mirror-2')
+    expect(mirrored).toEqual([
+      { ids: [registration.user.id], table: 'agent_profiles' },
+      { ids: [registration.credential.id], table: 'agent_credentials' },
+      { ids: [registration.credential.id], table: 'agent_credentials' },
+      { ids: [registration.credential.id], table: 'agent_credentials' },
+      {
+        ids: ['agent_credential_credential-mirror-2'],
+        table: 'agent_credentials',
+      },
+    ])
   })
 
   test('authenticates the returned credential against the stored hash', async () => {

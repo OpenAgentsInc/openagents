@@ -392,14 +392,17 @@ it checks counts, scalar status/attempt/verdict tallies, newest-N row
 hashes, and per-owner `event_ledger_entries.ordering_sequence` density.
 Credential diagnostics remain key/hash-only: row hashes may include the
 private `token_hash` byte value, but output prints credential ids and
-sha256 row hashes only, never token hashes or payloads. A first runtime
-mirror seam is wired for `event_ledger_entries`
+sha256 row hashes only, never token hashes or payloads. Runtime mirror
+seams are wired for `event_ledger_entries`, `agent_profiles`, and
+`agent_credentials`
 (`apps/openagents.com/workers/api/src/agent-runtime-remainder-store.ts`,
-`event-ledger.ts`): D1 remains authority, and Postgres mirror failures log
+`event-ledger.ts`, `agent-registration.ts`): D1 remains authority, and
+Postgres mirror failures log
 `khala_sync_agent_runtime_remainder_dual_write_failed` without blocking
-ingest or handled-state updates. Runtime mirrors for profiles,
-credentials, owner-claim/proposal rows, and acceptance job/verdict rows
-are still open on
+event-ledger ingest, handled-state updates, registration, credential touch,
+OpenAuth credential linking, or credential reissue. Runtime mirrors for
+owner-claim/X challenge/proposal rows and acceptance job/verdict rows are
+still open on
 [#8334](https://github.com/OpenAgentsInc/openagents/issues/8334);
 destructive D1 retirement is deferred to KS-8.19
 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330), not a

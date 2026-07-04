@@ -1,6 +1,6 @@
 // KS-8.5 follow-up (#8334): runtime mirror seam for the agent-runtime
-// remainder tables. This slice wires the event ledger first because its
-// per-owner ordering_sequence density is the load-bearing invariant.
+// remainder tables. D1 stays authoritative while these write paths converge
+// resolved rows into the Postgres twins.
 
 import type { SyncSql } from '@openagentsinc/khala-sync-server'
 
@@ -13,7 +13,10 @@ import {
 import { logWorkerRouteWarning } from './observability'
 import { openAgentsDatabase } from './runtime'
 
-export type AgentRuntimeRemainderTable = 'event_ledger_entries'
+export type AgentRuntimeRemainderTable =
+  | 'agent_profiles'
+  | 'agent_credentials'
+  | 'event_ledger_entries'
 
 export type AgentRuntimeRemainderRow = Readonly<Record<string, unknown>>
 
@@ -23,6 +26,28 @@ export type AgentRuntimeRemainderWriteStore = Readonly<{
     rows: ReadonlyArray<AgentRuntimeRemainderRow>,
   ) => Promise<number>
 }>
+
+const PROFILE_COLUMNS = [
+  'user_id',
+  'slug',
+  'metadata_json',
+  'created_at',
+  'updated_at',
+] as const
+
+const CREDENTIAL_COLUMNS = [
+  'id',
+  'user_id',
+  'openauth_user_id',
+  'token_hash',
+  'token_prefix',
+  'name',
+  'status',
+  'created_at',
+  'last_used_at',
+  'revoked_at',
+  'expires_at',
+] as const
 
 const EVENT_LEDGER_COLUMNS = [
   'entry_id',
@@ -53,16 +78,22 @@ const EVENT_LEDGER_COLUMNS = [
 const TABLE_COLUMNS: Readonly<
   Record<AgentRuntimeRemainderTable, ReadonlyArray<string>>
 > = {
+  agent_credentials: CREDENTIAL_COLUMNS,
+  agent_profiles: PROFILE_COLUMNS,
   event_ledger_entries: EVENT_LEDGER_COLUMNS,
 }
 
 const TABLE_PK: Readonly<Record<AgentRuntimeRemainderTable, string>> = {
+  agent_credentials: 'id',
+  agent_profiles: 'user_id',
   event_ledger_entries: 'entry_id',
 }
 
 const TABLE_CONFLICT: Readonly<
   Record<AgentRuntimeRemainderTable, ReadonlyArray<string>>
 > = {
+  agent_credentials: ['id'],
+  agent_profiles: ['user_id'],
   event_ledger_entries: ['entry_id'],
 }
 

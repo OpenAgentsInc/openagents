@@ -164,6 +164,10 @@ const defaultLog: InferenceEntitlementsLog = (event, fields) => {
   })
 }
 
+export class InferenceEntitlementsUnsafeSqlUnavailableError extends Error {}
+
+export class InferenceEntitlementsUnknownMirrorColumnError extends Error {}
+
 // ---------------------------------------------------------------------------
 // Mirror ops (the typed write seam)
 // ---------------------------------------------------------------------------
@@ -666,7 +670,7 @@ type UnsafeQuery = (
 const requireUnsafe = (sql: SyncSql): UnsafeQuery => {
   const unsafe = (sql as SyncSql & { unsafe?: UnsafeQuery }).unsafe
   if (typeof unsafe !== 'function') {
-    throw new Error(
+    throw new InferenceEntitlementsUnsafeSqlUnavailableError(
       'inference entitlements mirror requires a driver exposing unsafe(text, params)',
     )
   }
@@ -682,7 +686,7 @@ const genericWriteStatement = (
     column => !spec.columns.includes(column),
   )
   if (unknownColumns.length > 0) {
-    throw new Error(
+    throw new InferenceEntitlementsUnknownMirrorColumnError(
       `mirror row for ${table} carries unknown column(s): ${unknownColumns.join(', ')}`,
     )
   }
@@ -980,7 +984,7 @@ const genericWriteStatement_cache = (
     column => !columns.includes(column),
   )
   if (unknownColumns.length > 0) {
-    throw new Error(
+    throw new InferenceEntitlementsUnknownMirrorColumnError(
       `mirror row for agent_search_cache_entries carries unknown column(s): ${unknownColumns.join(', ')}`,
     )
   }

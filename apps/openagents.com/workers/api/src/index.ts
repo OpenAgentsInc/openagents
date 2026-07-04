@@ -59,6 +59,7 @@ import {
   ReissueAgentTokenRequest,
   authenticateProgrammaticAgent,
   createProgrammaticAgentRegistration,
+  makeAgentRegistrationStoreForEnv,
   makeD1AgentRegistrationStore,
   reissueProgrammaticAgentToken,
   sha256Hex,
@@ -1849,9 +1850,7 @@ const artanisComposerForumPostForEnv =
           ),
           openAgentsDatabase(environment),
           {
-            agentStore: makeD1AgentRegistrationStore(
-              openAgentsDatabase(environment),
-            ),
+            agentStore: makeAgentRegistrationStoreForEnv(environment),
           },
         ),
       )
@@ -1914,9 +1913,7 @@ const artanisComposerTipForEnv =
           ),
           openAgentsDatabase(environment),
           {
-            agentStore: makeD1AgentRegistrationStore(
-              openAgentsDatabase(environment),
-            ),
+            agentStore: makeAgentRegistrationStoreForEnv(environment),
             tipsBufferPay: tipsBufferPayFnForEnv(environment),
           },
         ),
@@ -3830,7 +3827,7 @@ const authenticateRequestActor = async (
 
   if (bearerToken !== undefined) {
     const agent = await authenticateProgrammaticAgent(
-      makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+      makeAgentRegistrationStoreForEnv(env),
       bearerToken,
     )
 
@@ -5232,7 +5229,7 @@ const requireProviderServiceActor = async (
   }
 
   return authenticateProgrammaticAgent(
-    makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+    makeAgentRegistrationStoreForEnv(env),
     bearerToken,
   )
 }
@@ -6952,8 +6949,7 @@ export const handleProgrammaticAgentRegistration = async (
   }
 
   const store =
-    agentRegistrationStore ??
-    makeD1AgentRegistrationStore(openAgentsDatabase(env))
+    agentRegistrationStore ?? makeAgentRegistrationStoreForEnv(env)
 
   try {
     const registration = await createProgrammaticAgentRegistration(
@@ -7130,8 +7126,7 @@ export const handleAdminReissueAgentToken = async (
   }
 
   const store =
-    options?.agentRegistrationStore ??
-    makeD1AgentRegistrationStore(openAgentsDatabase(env))
+    options?.agentRegistrationStore ?? makeAgentRegistrationStoreForEnv(env)
 
   try {
     const reissue = await reissueProgrammaticAgentToken(store, selector)
@@ -7217,7 +7212,7 @@ export const handleFreeKeyMint = async (
     )
   }
 
-  const store = agentRegistrationStore ?? makeD1AgentRegistrationStore(db)
+  const store = agentRegistrationStore ?? makeAgentRegistrationStoreForEnv(env)
 
   try {
     const registration = await createProgrammaticAgentRegistration(store, {
@@ -7310,7 +7305,7 @@ const handleProgrammaticAgentMe = async (
   }
 
   const session = await authenticateProgrammaticAgent(
-    makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+    makeAgentRegistrationStoreForEnv(env),
     bearerToken,
   )
 
@@ -7436,7 +7431,7 @@ const threadFileRoutes = makeThreadFileRoutes({
 
 const agentSiteRoutes = makeAgentSiteRoutes({
   agentStoreForEnv: env =>
-    makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+    makeAgentRegistrationStoreForEnv(env),
   appendRefreshedSessionCookies,
   artifactsForEnv: env => env.ARTIFACTS,
   dbForEnv: openAgentsDatabase,
@@ -7447,7 +7442,7 @@ const agentSiteRoutes = makeAgentSiteRoutes({
 // Trace store + ingest/read API (openagents #6208/#6212, epic #6206): the
 // shareable `/trace/{uuid}` surface. Agent-bearer ingest, visibility-gated read.
 const traceStoreRoutes = makeTraceStoreRoutes({
-  agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  agentStore: env => makeAgentRegistrationStoreForEnv(env),
   appendRefreshedSessionCookies,
   // Data-market revshare stub (#6221): INERT and owner-gated. Default OFF —
   // even when armed, the recorded marker is eligible-only with a TBD amount and
@@ -7561,7 +7556,7 @@ const makePylonCodexRawEventChunkStoreForEnv = (
 }
 
 const pylonCodexTurnIngestRoutes = makePylonCodexTurnIngestRoutes<Env>({
-  agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  agentStore: env => makeAgentRegistrationStoreForEnv(env),
   // KS-6.3 (#8304): the Codex turn-ingest ledger writes move the public
   // tokens-served projection too (fail-soft, exact-once per row).
   ledger: env =>
@@ -7774,7 +7769,7 @@ const siteCommerceRoutesForEnv = (
       }
 
       const session = await authenticateProgrammaticAgent(
-        makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+        makeAgentRegistrationStoreForEnv(env),
         bearerToken,
       )
 
@@ -7835,7 +7830,7 @@ const providerAccountBrowserHandlers = makeProviderAccountBrowserHandlers({
 })
 
 const providerAccountPylonHandlers = makeProviderAccountPylonHandlers({
-  agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  agentStore: env => makeAgentRegistrationStoreForEnv(env),
   deleteStartedCodexDeviceLogin,
   readConnectedCodexAuthMaterial,
   readStartedCodexDeviceLogin,
@@ -7844,13 +7839,13 @@ const providerAccountPylonHandlers = makeProviderAccountPylonHandlers({
 })
 
 const pylonOpenAgentsAuthHandlers = makePylonOpenAgentsAuthHandlers({
-  agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  agentStore: env => makeAgentRegistrationStoreForEnv(env),
   appendRefreshedSessionCookies,
   requireBrowserSession,
 })
 
 const khalaCodeOpenAgentsAuthHandlers = makeKhalaCodeOpenAgentsAuthHandlers({
-  agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  agentStore: env => makeAgentRegistrationStoreForEnv(env),
   appendRefreshedSessionCookies,
   requireBrowserSession,
 })
@@ -7861,7 +7856,7 @@ const providerAccountServiceHandlers = makeProviderAccountServiceHandlers({
 })
 
 const providerAccountPoolRoutes = makeProviderAccountPoolRoutes({
-  agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  agentStore: env => makeAgentRegistrationStoreForEnv(env),
   appendRefreshedSessionCookies,
   requireBrowserSession,
 })
@@ -8219,7 +8214,7 @@ const checkoutPageRoutes = makeCheckoutPageRoutes<WorkerBindings>({
 })
 
 const agentOwnerClaimRoutes = makeAgentOwnerClaimRoutes({
-  agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  agentStore: env => makeAgentRegistrationStoreForEnv(env),
   appOrigin: getAppOrigin,
   appendRefreshedSessionCookies,
   makeStore: env => makeD1AgentOwnerClaimStore(openAgentsDatabase(env)),
@@ -8228,7 +8223,7 @@ const agentOwnerClaimRoutes = makeAgentOwnerClaimRoutes({
 })
 
 const agentProposalRoutes = makeAgentProposalRoutes({
-  agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  agentStore: env => makeAgentRegistrationStoreForEnv(env),
   appOrigin: getAppOrigin,
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
@@ -8244,12 +8239,12 @@ const agentProposalRoutes = makeAgentProposalRoutes({
 })
 
 const agentSearchRoutes = makeAgentSearchRoutes({
-  agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  agentStore: env => makeAgentRegistrationStoreForEnv(env),
 })
 
 const autopilotWorkRouteDependencies = {
   agentStore: (env: WorkerBindings) =>
-    makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+    makeAgentRegistrationStoreForEnv(env),
   // Hosted Gemini executor binding (api.hosted_gemini.v1, yellow). DOUBLE-gated
   // and INERT by default: resolves an executor ONLY when
   // HOSTED_GEMINI_EXECUTOR_ENABLED is armed AND VERTEX_SA_KEY is present;
@@ -8291,14 +8286,14 @@ const autopilotWorkRoutes = makeAutopilotWorkRoutes<Env>(
 
 const autopilotContinuationPolicyRoutes =
   makeAutopilotContinuationPolicyRoutes<WorkerBindings>({
-    agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+    agentStore: env => makeAgentRegistrationStoreForEnv(env),
     makeStore: env => makeD1AutopilotContinuationStore(openAgentsDatabase(env)),
     requireBrowserSession,
   })
 
 const autopilotMorningReportRoutes =
   makeAutopilotMorningReportRoutes<WorkerBindings>({
-    agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+    agentStore: env => makeAgentRegistrationStoreForEnv(env),
     makeContinuationStore: env =>
       makeD1AutopilotContinuationStore(openAgentsDatabase(env)),
     makeWorkStore: env => makeD1AutopilotWorkStore(openAgentsDatabase(env)),
@@ -8306,7 +8301,7 @@ const autopilotMorningReportRoutes =
   })
 
 const autopilotDecisionRoutes = makeAutopilotDecisionRoutes<WorkerBindings>({
-  agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  agentStore: env => makeAgentRegistrationStoreForEnv(env),
   makeStore: env => makeD1AutopilotWorkStore(openAgentsDatabase(env)),
   requireBrowserSession,
 })
@@ -8791,7 +8786,7 @@ const crmMcpRoutes = makeCrmMcpRoutes<WorkerBindings>({
       return crmPrincipal
     }
     const session = await authenticateProgrammaticAgent(
-      makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+      makeAgentRegistrationStoreForEnv(env),
       token,
     )
     return session === undefined
@@ -8803,7 +8798,7 @@ const crmMcpRoutes = makeCrmMcpRoutes<WorkerBindings>({
       resolveResendDeps: resolveCrmResendDeps,
     }),
     makeKhalaMcpCatalog<WorkerBindings>({
-      agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+      agentStore: env => makeAgentRegistrationStoreForEnv(env),
       pylonStore: env => makePylonApiStoreForEnv(env),
       recordTokensServed: env =>
         makeKhalaMcpServedTokensRecorder(openAgentsDatabase(env), {
@@ -9211,7 +9206,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
     // user ids (their Pylon-owning credentials) so both stay strictly
     // own-capacity / owner-scoped.
     const listLinkedAgentUserIds = async (ownerOpenAuthUserId: string) => {
-      const agentStore = makeD1AgentRegistrationStore(openAgentsDatabase(env))
+      const agentStore = makeAgentRegistrationStoreForEnv(env)
       if (agentStore.listLinkedAgentsForOpenAuthUser === undefined) {
         return []
       }
@@ -9461,7 +9456,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       return undefined
     }
     const agent = await authenticateProgrammaticAgent(
-      makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+      makeAgentRegistrationStoreForEnv(env),
       bearer,
     )
     // The owner-promoted operator agent (Artanis, owner-directed 2026-06-27) is
@@ -9557,7 +9552,7 @@ const operatorFleetStatusRoutes = makeOperatorFleetStatusRoutes({
     const token = readBearerToken(request)
     if (token === undefined) return undefined
     const session = await authenticateProgrammaticAgent(
-      makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+      makeAgentRegistrationStoreForEnv(env),
       token,
     )
     return session === undefined ? undefined : { userId: session.user.id }
@@ -9571,14 +9566,14 @@ const operatorProStatusRoutes = makeOperatorProStatusRoutes({
     const token = readBearerToken(request)
     if (token === undefined) return undefined
     const session = await authenticateProgrammaticAgent(
-      makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+      makeAgentRegistrationStoreForEnv(env),
       token,
     )
     return session === undefined ? undefined : { userId: session.user.id }
   },
   isOpenAgentsAdminEmail,
   listLinkedAgentsForOpenAuthUser: (openauthUserId, limit, env) => {
-    const agentStore = makeD1AgentRegistrationStore(openAgentsDatabase(env))
+    const agentStore = makeAgentRegistrationStoreForEnv(env)
     return agentStore.listLinkedAgentsForOpenAuthUser === undefined
       ? Promise.resolve([])
       : agentStore.listLinkedAgentsForOpenAuthUser(openauthUserId, limit)
@@ -9635,7 +9630,7 @@ const nexusPylonVisibilityRoutes = makeNexusPylonVisibilityRoutes({
 })
 
 const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
-  agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  agentStore: env => makeAgentRegistrationStoreForEnv(env),
   makeStore: env => makePylonApiStoreForEnv(env),
   // #5252: private operator-only store for raw Spark payout targets.
   makeSparkPayoutTargetStore: env =>
@@ -9909,7 +9904,7 @@ const firmupBitcoinSettlementRoutes =
 // orchestration (#5053) and Pylon client (#5054) wire them.
 const tassadarTraceContributionRoutes =
   makeTassadarTraceContributionRoutes<WorkerBindings>({
-    agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+    agentStore: env => makeAgentRegistrationStoreForEnv(env),
     createVerificationChallenge: async (env, input) => {
       const store = makeD1TrainingVerificationStore(openAgentsDatabase(env))
       const built = buildTrainingVerificationChallengeRecord({
@@ -10886,7 +10881,6 @@ const khalaChatRoutes = makeKhalaChatRoutes({
   loadPylonContext: ({ ctx, env, request }) =>
     Effect.gen(function* () {
       const workerEnv = env as Env & WorkerBindings
-      const db = openAgentsDatabase(workerEnv)
       const pylonStore = makePylonApiStoreForEnv(workerEnv)
       const publicContext = yield* loadKhalaChatPylonContext(pylonStore)
 
@@ -10914,7 +10908,7 @@ const khalaChatRoutes = makeKhalaChatRoutes({
 
       const accountContext = yield* loadKhalaChatAccountPylonContext(
         {
-          agentStore: makeD1AgentRegistrationStore(db),
+          agentStore: makeAgentRegistrationStoreForEnv(workerEnv),
           pylonStore,
         },
         session.user.userId,
@@ -12949,7 +12943,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleSelfServeLaborPayoutApi(request, {
         db: openAgentsDatabase(env),
         authenticate: agentBalanceAuthForStore(
-          makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+          makeAgentRegistrationStoreForEnv(env),
         ),
         // INERT flag: defaults to false so it plans but lists nothing.
         enabled: env.LABOR_SELF_SERVE_PAYOUT_ENABLED === 'true',
@@ -13344,7 +13338,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       Effect.promise(() =>
         handleAgentDefinitionsApi(request, {
-          agentStore: makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+          agentStore: makeAgentRegistrationStoreForEnv(env),
           definitionStore: makeAgentDefinitionStoreForEnv(env),
           triggerStore: makeAgentDefinitionTriggerStoreForEnv(env),
         }),
@@ -13497,7 +13491,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       handleAgentBalanceApi(request, {
         authenticate: agentBalanceAuthForStore(
-          makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+          makeAgentRegistrationStoreForEnv(env),
         ),
         db: openAgentsDatabase(env),
       }),
@@ -13507,7 +13501,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       handleAgentBalancePreferencesApi(request, {
         authenticate: agentBalanceAuthForStore(
-          makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+          makeAgentRegistrationStoreForEnv(env),
         ),
         db: openAgentsDatabase(env),
       }),
@@ -13551,7 +13545,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             return undefined
           }
           const session = await authenticateProgrammaticAgent(
-            makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+            makeAgentRegistrationStoreForEnv(env),
             token,
           )
           return session === undefined
@@ -13581,7 +13575,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             return undefined
           }
           const session = await authenticateProgrammaticAgent(
-            makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+            makeAgentRegistrationStoreForEnv(env),
             token,
           )
           return session === undefined
@@ -13622,7 +13616,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             return undefined
           }
           const session = await authenticateProgrammaticAgent(
-            makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+            makeAgentRegistrationStoreForEnv(env),
             token,
           )
           return session === undefined
@@ -13660,7 +13654,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             return undefined
           }
           const session = await authenticateProgrammaticAgent(
-            makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+            makeAgentRegistrationStoreForEnv(env),
             token,
           )
           return session === undefined
@@ -13686,7 +13680,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             return undefined
           }
           const session = await authenticateProgrammaticAgent(
-            makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+            makeAgentRegistrationStoreForEnv(env),
             token,
           )
           return session === undefined
@@ -13713,7 +13707,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             return undefined
           }
           const session = await authenticateProgrammaticAgent(
-            makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+            makeAgentRegistrationStoreForEnv(env),
             token,
           )
           return session === undefined
@@ -13736,7 +13730,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             return undefined
           }
           const session = await authenticateProgrammaticAgent(
-            makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+            makeAgentRegistrationStoreForEnv(env),
             token,
           )
           return session === undefined
@@ -13830,7 +13824,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             return undefined
           }
           const session = await authenticateProgrammaticAgent(
-            makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+            makeAgentRegistrationStoreForEnv(env),
             token,
           )
           return session === undefined
@@ -14005,7 +13999,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             : { apiKey, provider: 'openrouter' as const }
         },
         codingDelegation: {
-          agentStore: makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+          agentStore: makeAgentRegistrationStoreForEnv(env),
           pylonStore: makePylonApiStoreForEnv(env),
           resolveOpenAuthUserId: async accountRef => {
             const agentUserId = accountRef.startsWith('agent:')
@@ -14618,7 +14612,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             return undefined
           }
           const session = await authenticateProgrammaticAgent(
-            makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+            makeAgentRegistrationStoreForEnv(env),
             token,
           )
           return session === undefined
@@ -14651,7 +14645,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             return undefined
           }
           const session = await authenticateProgrammaticAgent(
-            makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+            makeAgentRegistrationStoreForEnv(env),
             token,
           )
           return session === undefined
@@ -14711,7 +14705,7 @@ const routeRequest = makeWorkerRouteRequest({
           return undefined
         }
         const session = await authenticateProgrammaticAgent(
-          makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+          makeAgentRegistrationStoreForEnv(env),
           token,
         )
         return session === undefined
@@ -14743,7 +14737,7 @@ const routeRequest = makeWorkerRouteRequest({
         const response =
           matchedEventLedger === undefined
             ? await handleAgentDefinitionRunRequest(request, {
-                agentStore: makeD1AgentRegistrationStore(db),
+                agentStore: makeAgentRegistrationStoreForEnv(env),
                 definitionStore: makeAgentDefinitionStoreForEnv(env),
                 durableStreamNamespace:
                   isInferenceDurableStreamEnabled(
@@ -14757,7 +14751,7 @@ const routeRequest = makeWorkerRouteRequest({
                 runStore: makeAgentDefinitionRunStoreForEnv(env),
               })
             : await handleAgentDefinitionEventLedgerGatewayRequest(request, {
-                agentStore: makeD1AgentRegistrationStore(db),
+                agentStore: makeAgentRegistrationStoreForEnv(env),
                 definitionStore: makeAgentDefinitionStoreForEnv(env),
                 eventLedgerStore: makeEventLedgerStoreForEnv(env),
                 runStore: makeAgentDefinitionRunStoreForEnv(env),
@@ -14790,7 +14784,7 @@ const routeRequest = makeWorkerRouteRequest({
   routeForumRequest: (request, env, ctx) =>
     forumRoutes.routeForumRequest(request, openAgentsDatabase(env), {
       tipsBufferPay: tipsBufferPayFnForEnv(env),
-      agentStore: makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+      agentStore: makeAgentRegistrationStoreForEnv(env),
       // KS-8.9 (#8320): fire-safe Postgres dual-write mirror (orange check).
       entitlementsMirror: inferenceEntitlementsMirrorForEnv(env),
       ...(() => {
@@ -14869,7 +14863,7 @@ const routeRequest = makeWorkerRouteRequest({
           return undefined
         }
         const session = await authenticateProgrammaticAgent(
-          makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+          makeAgentRegistrationStoreForEnv(env),
           token,
         )
         return session === undefined
@@ -14887,7 +14881,7 @@ const routeRequest = makeWorkerRouteRequest({
           return undefined
         }
         const session = await authenticateProgrammaticAgent(
-          makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+          makeAgentRegistrationStoreForEnv(env),
           token,
         )
         return session === undefined
@@ -14945,7 +14939,6 @@ const routeRequest = makeWorkerRouteRequest({
     const authorizeKhalaAssignmentRead = async (): Promise<
       Response | undefined
     > => {
-      const db = openAgentsDatabase(env)
       const pylonStore = makePylonApiStoreForEnv(env)
       let khalaAssignmentExists = false
       try {
@@ -14968,7 +14961,7 @@ const routeRequest = makeWorkerRouteRequest({
         return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
       }
 
-      const agentStore = makeD1AgentRegistrationStore(db)
+      const agentStore = makeAgentRegistrationStoreForEnv(env)
       const session = await authenticateProgrammaticAgent(agentStore, token)
       if (session === undefined) {
         return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
