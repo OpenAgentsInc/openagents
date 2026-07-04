@@ -13,8 +13,11 @@ import {
 import { methodNotAllowed } from './http/responses'
 import {
   type TokenUsageLedgerShape,
-  makeD1TokenUsageLedger,
 } from './token-usage-ledger'
+import {
+  tokenUsageLedgerFromRouteInput,
+  type TokenLedgerRouteEnvSlice,
+} from './token-ledger-store'
 import {
   BUSINESS_SOURCE_REF_DIRECT,
   decodeBusinessSourceRef,
@@ -33,7 +36,8 @@ import { isSafeReferralSourceRef } from './referral-source-capture'
 // refs reuse the LIVE /business page copy verbatim; field labels match the
 // signup route's actual contract. Unlisted, noindex experiment surface.
 
-type BusinessNewRouteInput = Readonly<{
+type BusinessNewRouteInput = TokenLedgerRouteEnvSlice &
+  Readonly<{
   OPENAGENTS_DB?: D1Database
   ledger?: TokenUsageLedgerShape
 }>
@@ -280,7 +284,7 @@ export const handleBusinessNewPage = (
     return Effect.succeed(methodNotAllowed(['GET']))
   }
   const ledger =
-    input.ledger ?? makeD1TokenUsageLedger(input.OPENAGENTS_DB as D1Database)
+    input.ledger ?? tokenUsageLedgerFromRouteInput(input)
   const sourceRef = normalizeSourceRef(request)
   const referralCode = normalizeReferralCode(request)
   const render = ledger.readPublicTokensServed().pipe(

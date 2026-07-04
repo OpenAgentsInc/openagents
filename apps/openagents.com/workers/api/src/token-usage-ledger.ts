@@ -188,7 +188,7 @@ export type TokenUsageLedgerShape = Readonly<{
   >
 }>
 
-type TokenUsageEventRow = Readonly<{
+export type TokenUsageEventRow = Readonly<{
   id: string
   idempotency_key: string
   observed_at: string
@@ -243,15 +243,23 @@ type TokenUsageGroupRow = TokenUsageCountRow &
     label: string | null
   }>
 
-type PublicTokensServedModelMixRow = Readonly<{
+export type PublicTokensServedModelMixRow = Readonly<{
   model: string | null
   provider: string | null
   tokens: number | null
   usage_events: number | null
 }>
 
-type PublicTokensServedChannelMixRow = Readonly<{
+export type PublicTokensServedChannelMixRow = Readonly<{
   demand_channel: string | null
+  tokens: number | null
+  usage_events: number | null
+}>
+
+export type PublicTokensServedDemandMixRow = Readonly<{
+  demand_client: string | null
+  demand_kind: string | null
+  demand_source: string | null
   tokens: number | null
   usage_events: number | null
 }>
@@ -284,7 +292,7 @@ const optionalText = (value: string | undefined): string | undefined => {
   return trimmed === undefined || trimmed === '' ? undefined : trimmed
 }
 
-const demandKindFromText = (
+export const demandKindFromText = (
   value: string | null | undefined,
 ): TokenUsageDemandKind => {
   const normalized = value?.trim().toLowerCase()
@@ -297,7 +305,7 @@ const demandKindFromText = (
     : 'unlabeled'
 }
 
-const demandChannelFromText = (
+export const demandChannelFromText = (
   value: string | null | undefined,
 ): TokenUsageDemandChannel => {
   const normalized = value?.trim().toLowerCase()
@@ -316,7 +324,7 @@ const publicTokensServedSqlExpression = `CASE
   ELSE COALESCE(total_tokens, 0)
 END`
 
-const publicTokensServedFromRow = (
+export const publicTokensServedFromRow = (
   row: Pick<TokenUsageEventRow, 'input_tokens' | 'output_tokens' | 'total_tokens'>,
 ): number => {
   const splitTokens =
@@ -800,7 +808,7 @@ const decodeInferenceAnalyticsResponse = (
       }),
   })
 
-const decodePublicTokensServedAggregate = (
+export const decodePublicTokensServedAggregate = (
   value: unknown,
 ): Effect.Effect<
   typeof PublicKhalaTokensServedAggregate.Type,
@@ -815,7 +823,7 @@ const decodePublicTokensServedAggregate = (
       }),
   })
 
-const decodePublicTokensServedHistory = (
+export const decodePublicTokensServedHistory = (
   value: unknown,
 ): Effect.Effect<
   typeof PublicKhalaTokensServedHistory.Type,
@@ -830,7 +838,7 @@ const decodePublicTokensServedHistory = (
       }),
   })
 
-const decodePublicTokensServedModelMix = (
+export const decodePublicTokensServedModelMix = (
   value: unknown,
 ): Effect.Effect<
   typeof PublicKhalaTokensServedModelMix.Type,
@@ -845,7 +853,7 @@ const decodePublicTokensServedModelMix = (
       }),
   })
 
-const decodePublicTokensServedDemandMix = (
+export const decodePublicTokensServedDemandMix = (
   value: unknown,
 ): Effect.Effect<
   typeof PublicKhalaTokensServedDemandMix.Type,
@@ -860,7 +868,7 @@ const decodePublicTokensServedDemandMix = (
       }),
   })
 
-const decodePublicTokensServedChannelMix = (
+export const decodePublicTokensServedChannelMix = (
   value: unknown,
 ): Effect.Effect<
   typeof PublicKhalaTokensServedChannelMix.Type,
@@ -1149,7 +1157,7 @@ const chunkReadonlyArray = <A>(
   return chunks
 }
 
-const publicTokensServedHistoryDayWindows = (
+export const publicTokensServedHistoryDayWindows = (
   input: Readonly<{
     nowIso: string
     since: string | undefined
@@ -1388,7 +1396,7 @@ const utcCalendarDayAfter = (
   return calendarDayKeyAfter(day, days)
 }
 
-const publicMixRollupWindow = (
+export const publicMixRollupWindow = (
   input: Readonly<{ nowIso: string; since: string | undefined }>,
 ): Readonly<
   | {
@@ -1705,39 +1713,94 @@ const readPublicTokensServedHistoryForTimezone = (
   })
 }
 
-const findExistingEvent = (
+// ---------------------------------------------------------------------------
+// Token ledger write-store seam (KS-8.2, #8308)
+// ---------------------------------------------------------------------------
+
+/**
+ * The extracted WRITE-path repository seam for `token_usage_events`: the
+ * dedupe read (`findExistingRow`, keyed `idempotency_key OR id` exactly as
+ * the D1 ledger always deduped) plus the rollup-consistent insert
+ * (`insertEventRow`: the event row AND the three public tokens-served
+ * rollup upserts land in ONE atomic unit — D1 `batch`, Postgres
+ * transaction). `insertEventRow` resolves `'duplicate'` when the row
+ * already exists under either key (unique-constraint replay), and rejects
+ * on any other storage failure.
+ *
+ * `makeD1TokenUsageLedger` uses the D1 implementation by default —
+ * behavior-identical to the pre-seam inline SQL. The KS-8.2 dual-write
+ * wrapper (`token-ledger-store.ts`) substitutes a store that mirrors fresh
+ * D1 inserts to Postgres fail-soft. The #8304 public-counter observer
+ * stays OUTSIDE this seam, keyed to the authoritative D1 insert result, so
+ * a Postgres mirror can never re-fire a counter increment.
+ */
+export type TokenLedgerWriteStore = Readonly<{
+  findExistingRow: (
+    input: Readonly<{ eventId: string; idempotencyKey: string }>,
+  ) => Promise<TokenUsageEventRow | undefined>
+  insertEventRow: (
+    row: TokenUsageEventRow,
+  ) => Promise<'inserted' | 'duplicate'>
+}>
+
+export const makeD1TokenLedgerWriteStore = (
   db: D1Database,
+): TokenLedgerWriteStore => ({
+  findExistingRow: async input => {
+    const row = await db
+      .prepare(
+        `SELECT *
+           FROM token_usage_events
+          WHERE idempotency_key = ? OR id = ?
+          ORDER BY ingested_at ASC
+          LIMIT 1`,
+      )
+      .bind(input.idempotencyKey, input.eventId)
+      .first<TokenUsageEventRow>()
+
+    return row === null ? undefined : row
+  },
+  insertEventRow: async row => {
+    try {
+      await insertD1EventRowWithRollups(db, row)
+      return 'inserted'
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        return 'duplicate'
+      }
+      throw error
+    }
+  },
+})
+
+const findExistingEvent = (
+  store: TokenLedgerWriteStore,
   input: Readonly<{ eventId: string; idempotencyKey: string }>,
 ): Effect.Effect<
   TokenUsageEventRecordType | undefined,
   TokenUsageLedgerStorageError | TokenUsageLedgerValidationError
 > =>
   Effect.gen(function* () {
-    const row = yield* d1Effect('tokenUsageEvents.findExisting', () =>
-      db
-        .prepare(
-          `SELECT *
-             FROM token_usage_events
-            WHERE idempotency_key = ? OR id = ?
-            ORDER BY ingested_at ASC
-            LIMIT 1`,
-        )
-        .bind(input.idempotencyKey, input.eventId)
-        .first<TokenUsageEventRow>(),
-    )
+    const row = yield* Effect.tryPromise({
+      try: () => store.findExistingRow(input),
+      catch: error =>
+        new TokenUsageLedgerStorageError({
+          operation: 'tokenUsageEvents.findExisting',
+          error,
+        }),
+    })
 
-    if (row === null) {
+    if (row === undefined) {
       return undefined
     }
 
     return yield* rowToRecord(row)
   })
 
-const insertEventRow = (
+const insertD1EventRowWithRollups = async (
   db: D1Database,
   row: TokenUsageEventRow,
-): Effect.Effect<void, TokenUsageLedgerStorageError> =>
-  d1Effect('tokenUsageEvents.insert', async () => {
+): Promise<void> => {
     const insertStatement = db
       .prepare(
         `INSERT INTO token_usage_events (
@@ -1787,7 +1850,7 @@ const insertEventRow = (
         reason: 'd1_token_usage_events_insert_success_false',
       })
     }
-  }).pipe(Effect.asVoid)
+  }
 
 const publicTokensServedDailyRollupStatements = (
   db: D1Database,
@@ -2021,7 +2084,7 @@ const preferenceResponseFromRow = (row: TokenUsageLeaderboardPreferenceRow) =>
     },
   })
 
-const normalizeLeaderboardWindow = (
+export const normalizeLeaderboardWindow = (
   value: string | undefined,
 ): Effect.Effect<
   '7d' | '30d' | 'all' | 'today',
@@ -2042,7 +2105,7 @@ const normalizeLeaderboardWindow = (
       )
 }
 
-const leaderboardWindowSince = (
+export const leaderboardWindowSince = (
   window: '7d' | '30d' | 'all' | 'today',
   nowIso: string,
   runtime: TokenUsageLedgerRuntime,
@@ -2061,7 +2124,7 @@ const leaderboardWindowSince = (
   return runtime.isoTimestampAfterIso(nowIso, -days * dayMilliseconds)
 }
 
-const normalizeHistoryBucket = (
+export const normalizeHistoryBucket = (
   value: string | undefined,
 ): Effect.Effect<
   PublicKhalaTokensServedHistoryBucket,
@@ -2079,7 +2142,7 @@ const normalizeHistoryBucket = (
       )
 }
 
-const normalizeHistoryTimezone = (
+export const normalizeHistoryTimezone = (
   value: string | undefined,
 ): Effect.Effect<string, TokenUsageLedgerValidationError> => {
   const timezone = optionalText(value) ?? PUBLIC_KHALA_TOKENS_SERVED_TIMEZONE
@@ -2215,6 +2278,137 @@ const publicDemandLabel = (value: string | null | undefined): string => {
 export const publicDemandChannelLabel = (
   channel: TokenUsageDemandChannel,
 ): string => (channel === 'direct_local' ? 'Direct local' : 'Khala API')
+
+// ---------------------------------------------------------------------------
+// Public mix shaping (pure; shared by the D1 ledger and the KS-8.2 Postgres
+// read implementations in token-ledger-store.ts so both stores collapse raw
+// aggregate rows into the SAME public taxonomy)
+// ---------------------------------------------------------------------------
+
+export type PublicTokensServedWindow = '7d' | '30d' | 'all' | 'today'
+
+export const publicTokensServedModelMixFromRows = (
+  rows: ReadonlyArray<PublicTokensServedModelMixRow>,
+  window: PublicTokensServedWindow,
+) => {
+  const grouped = rows.reduce(
+    (families, row) => {
+      const family = publicModelFamilyFromProviderAndModel(
+        row.provider,
+        row.model,
+      )
+      const previous = families.get(family) ?? {
+        reqs: 0,
+        tokens: 0,
+      }
+      families.set(family, {
+        reqs: previous.reqs + Math.max(0, Math.trunc(row.usage_events ?? 0)),
+        tokens: previous.tokens + Math.max(0, Math.trunc(row.tokens ?? 0)),
+      })
+      return families
+    },
+    new Map<
+      PublicKhalaTokensServedModelFamily,
+      { reqs: number; tokens: number }
+    >(),
+  )
+
+  const totalTokens = [...grouped.values()].reduce(
+    (sum, row) => sum + row.tokens,
+    0,
+  )
+  const groups = [...grouped.entries()]
+    .map(([family, row]) => ({
+      family,
+      label: publicModelFamilyLabel(family),
+      pct: roundedPercent(row.tokens, totalTokens),
+      reqs: row.reqs,
+      tokens: row.tokens,
+    }))
+    .sort(
+      (left, right) =>
+        right.tokens - left.tokens || left.family.localeCompare(right.family),
+    )
+
+  return { groups, totalTokens, window }
+}
+
+export const publicTokensServedDemandMixFromRows = (
+  rows: ReadonlyArray<PublicTokensServedDemandMixRow>,
+  window: PublicTokensServedWindow,
+) => {
+  const groupsWithoutPct = rows.map(row => ({
+    client: publicDemandLabel(row.demand_client),
+    kind: demandKindFromText(row.demand_kind),
+    reqs: Math.max(0, Math.trunc(row.usage_events ?? 0)),
+    source: publicDemandLabel(row.demand_source),
+    tokens: Math.max(0, Math.trunc(row.tokens ?? 0)),
+  }))
+  const totalTokens = groupsWithoutPct.reduce(
+    (sum, row) => sum + row.tokens,
+    0,
+  )
+  const groups = groupsWithoutPct
+    .map(row => ({
+      ...row,
+      pct: roundedPercent(row.tokens, totalTokens),
+    }))
+    .sort(
+      (left, right) =>
+        right.tokens - left.tokens ||
+        left.kind.localeCompare(right.kind) ||
+        left.source.localeCompare(right.source) ||
+        left.client.localeCompare(right.client),
+    )
+
+  return { groups, totalTokens, window }
+}
+
+export const publicTokensServedChannelMixFromRows = (
+  rows: ReadonlyArray<PublicTokensServedChannelMixRow>,
+  window: PublicTokensServedWindow,
+) => {
+  const groupsByChannel = rows.reduce(
+    (channels, row) => {
+      const channel = demandChannelFromText(row.demand_channel)
+      const previous = channels.get(channel) ?? {
+        reqs: 0,
+        tokens: 0,
+      }
+      channels.set(channel, {
+        reqs: previous.reqs + Math.max(0, Math.trunc(row.usage_events ?? 0)),
+        tokens: previous.tokens + Math.max(0, Math.trunc(row.tokens ?? 0)),
+      })
+
+      return channels
+    },
+    new Map<TokenUsageDemandChannel, { reqs: number; tokens: number }>(),
+  )
+  const groupsWithoutPct = [...groupsByChannel.entries()].map(
+    ([channel, row]) => ({
+      channel,
+      label: publicDemandChannelLabel(channel),
+      reqs: row.reqs,
+      tokens: row.tokens,
+    }),
+  )
+  const totalTokens = groupsWithoutPct.reduce(
+    (sum, row) => sum + row.tokens,
+    0,
+  )
+  const groups = groupsWithoutPct
+    .map(row => ({
+      ...row,
+      pct: roundedPercent(row.tokens, totalTokens),
+    }))
+    .sort(
+      (left, right) =>
+        right.tokens - left.tokens ||
+        left.channel.localeCompare(right.channel),
+    )
+
+  return { groups, totalTokens, window }
+}
 
 type AggregateWhere = Readonly<{
   filters: TokenUsageLeaderboardFilters | TokenUsageLedgerFilters
@@ -2395,13 +2589,24 @@ export type TokenUsageLedgerIngestObserver = (
 
 export type TokenUsageLedgerOptions = Readonly<{
   onIngestedEvent?: TokenUsageLedgerIngestObserver | undefined
+  /**
+   * KS-8.2 (#8308): injectable WRITE-path repository. Default is the
+   * behavior-identical D1 store over `db`; production passes the
+   * dual-write store from `token-ledger-store.ts` so fresh D1 inserts
+   * mirror to Postgres fail-soft. Reads and the #8304 observer are
+   * unaffected by the substitution.
+   */
+  writeStore?: TokenLedgerWriteStore | undefined
 }>
 
 export const makeD1TokenUsageLedger = (
   db: D1Database,
   runtime: TokenUsageLedgerRuntime = systemTokenUsageLedgerRuntime,
   options: TokenUsageLedgerOptions = {},
-): TokenUsageLedgerShape => ({
+): TokenUsageLedgerShape => {
+  const writeStore = options.writeStore ?? makeD1TokenLedgerWriteStore(db)
+
+  return {
   ingestEvent: body =>
     Effect.gen(function* () {
       yield* validateSafePayload(body)
@@ -2422,7 +2627,7 @@ export const makeD1TokenUsageLedger = (
         safeMetadata,
         tokenCounts,
       }
-      const existing = yield* findExistingEvent(db, {
+      const existing = yield* findExistingEvent(writeStore, {
         eventId: normalized.eventId,
         idempotencyKey: normalized.idempotencyKey,
       })
@@ -2440,18 +2645,17 @@ export const makeD1TokenUsageLedger = (
         tokenCounts,
       })
 
-      const inserted = yield* insertEventRow(db, row).pipe(
-        Effect.matchEffect({
-          onFailure: error =>
-            isUniqueConstraintError(error.error)
-              ? Effect.succeed(false)
-              : Effect.fail(error),
-          onSuccess: () => Effect.succeed(true),
-        }),
-      )
+      const inserted = yield* Effect.tryPromise({
+        try: () => writeStore.insertEventRow(row),
+        catch: error =>
+          new TokenUsageLedgerStorageError({
+            operation: 'tokenUsageEvents.insert',
+            error,
+          }),
+      }).pipe(Effect.map(outcome => outcome === 'inserted'))
 
       if (!inserted) {
-        const racedExisting = yield* findExistingEvent(db, {
+        const racedExisting = yield* findExistingEvent(writeStore, {
           eventId: normalized.eventId,
           idempotencyKey: normalized.idempotencyKey,
         })
@@ -3159,52 +3363,9 @@ export const makeD1TokenUsageLedger = (
         ),
       )
 
-      const grouped = rows.reduce(
-        (families, row) => {
-          const family = publicModelFamilyFromProviderAndModel(
-            row.provider,
-            row.model,
-          )
-          const previous = families.get(family) ?? {
-            reqs: 0,
-            tokens: 0,
-          }
-          families.set(family, {
-            reqs:
-              previous.reqs + Math.max(0, Math.trunc(row.usage_events ?? 0)),
-            tokens: previous.tokens + Math.max(0, Math.trunc(row.tokens ?? 0)),
-          })
-          return families
-        },
-        new Map<
-          PublicKhalaTokensServedModelFamily,
-          { reqs: number; tokens: number }
-        >(),
+      return yield* decodePublicTokensServedModelMix(
+        publicTokensServedModelMixFromRows(rows, window),
       )
-
-      const totalTokens = [...grouped.values()].reduce(
-        (sum, row) => sum + row.tokens,
-        0,
-      )
-      const groups = [...grouped.entries()]
-        .map(([family, row]) => ({
-          family,
-          label: publicModelFamilyLabel(family),
-          pct: roundedPercent(row.tokens, totalTokens),
-          reqs: row.reqs,
-          tokens: row.tokens,
-        }))
-        .sort(
-          (left, right) =>
-            right.tokens - left.tokens ||
-            left.family.localeCompare(right.family),
-        )
-
-      return yield* decodePublicTokensServedModelMix({
-        groups,
-        totalTokens,
-        window,
-      })
     }),
 
   // Public-safe demand/adoption mix for /stats and the Khala GTM scoreboard:
@@ -3257,35 +3418,9 @@ export const makeD1TokenUsageLedger = (
             }>(),
       )
 
-      const groupsWithoutPct = rows.results.map(row => ({
-        client: publicDemandLabel(row.demand_client),
-        kind: demandKindFromText(row.demand_kind),
-        reqs: Math.max(0, Math.trunc(row.usage_events ?? 0)),
-        source: publicDemandLabel(row.demand_source),
-        tokens: Math.max(0, Math.trunc(row.tokens ?? 0)),
-      }))
-      const totalTokens = groupsWithoutPct.reduce(
-        (sum, row) => sum + row.tokens,
-        0,
+      return yield* decodePublicTokensServedDemandMix(
+        publicTokensServedDemandMixFromRows(rows.results, window),
       )
-      const groups = groupsWithoutPct
-        .map(row => ({
-          ...row,
-          pct: roundedPercent(row.tokens, totalTokens),
-        }))
-        .sort(
-          (left, right) =>
-            right.tokens - left.tokens ||
-            left.kind.localeCompare(right.kind) ||
-            left.source.localeCompare(right.source) ||
-            left.client.localeCompare(right.client),
-        )
-
-      return yield* decodePublicTokensServedDemandMix({
-        groups,
-        totalTokens,
-        window,
-      })
     }),
 
   // Public-safe channel mix for /stats: aggregate by the bounded channel
@@ -3313,51 +3448,9 @@ export const makeD1TokenUsageLedger = (
         ),
       )
 
-      const groupsByChannel = rows.reduce(
-        (channels, row) => {
-          const channel = demandChannelFromText(row.demand_channel)
-          const previous = channels.get(channel) ?? {
-            reqs: 0,
-            tokens: 0,
-          }
-          channels.set(channel, {
-            reqs:
-              previous.reqs + Math.max(0, Math.trunc(row.usage_events ?? 0)),
-            tokens: previous.tokens + Math.max(0, Math.trunc(row.tokens ?? 0)),
-          })
-
-          return channels
-        },
-        new Map<TokenUsageDemandChannel, { reqs: number; tokens: number }>(),
+      return yield* decodePublicTokensServedChannelMix(
+        publicTokensServedChannelMixFromRows(rows, window),
       )
-      const groupsWithoutPct = [...groupsByChannel.entries()].map(
-        ([channel, row]) => ({
-          channel,
-          label: publicDemandChannelLabel(channel),
-          reqs: row.reqs,
-          tokens: row.tokens,
-        }),
-      )
-      const totalTokens = groupsWithoutPct.reduce(
-        (sum, row) => sum + row.tokens,
-        0,
-      )
-      const groups = groupsWithoutPct
-        .map(row => ({
-          ...row,
-          pct: roundedPercent(row.tokens, totalTokens),
-        }))
-        .sort(
-          (left, right) =>
-            right.tokens - left.tokens ||
-            left.channel.localeCompare(right.channel),
-        )
-
-      return yield* decodePublicTokensServedChannelMix({
-        groups,
-        totalTokens,
-        window,
-      })
     }),
 
   readLeaderboardPreference: input =>
@@ -3605,7 +3698,8 @@ export const makeD1TokenUsageLedger = (
         topUsers: topUsers.results.map(aggregateActorRow),
       })
     }),
-})
+  }
+}
 
 export class TokenUsageLedger extends Context.Service<
   TokenUsageLedger,

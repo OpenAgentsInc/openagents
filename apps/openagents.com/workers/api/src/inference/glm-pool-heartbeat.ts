@@ -6,6 +6,7 @@ import {
   epochMillisToIsoTimestamp,
 } from '../runtime-primitives'
 import {
+  type TokenLedgerWriteStore,
   type TokenUsageLedgerIngestObserver,
   type TokenUsageLedgerShape,
   makeD1TokenUsageLedger,
@@ -959,17 +960,23 @@ export const runScheduledGlmPoolHeartbeatForD1 = (
      * the public headline, so they must move the projection too.
      */
     onIngestedEvent?: TokenUsageLedgerIngestObserver | undefined
+    /**
+     * KS-8.2 (#8308): injectable ledger write store — production passes
+     * the dual-write (D1 authority + fail-soft Postgres mirror) store.
+     */
+    writeStore?: TokenLedgerWriteStore | undefined
   }>,
 ): Effect.Effect<GlmPoolHeartbeatRunReport> =>
   runScheduledGlmPoolHeartbeat({
     env: input.env,
     ...(input.fetchImpl === undefined ? {} : { fetchImpl: input.fetchImpl }),
-    ledger: makeD1TokenUsageLedger(
-      input.db,
-      undefined,
-      input.onIngestedEvent === undefined
+    ledger: makeD1TokenUsageLedger(input.db, undefined, {
+      ...(input.onIngestedEvent === undefined
         ? {}
-        : { onIngestedEvent: input.onIngestedEvent },
-    ),
+        : { onIngestedEvent: input.onIngestedEvent }),
+      ...(input.writeStore === undefined
+        ? {}
+        : { writeStore: input.writeStore }),
+    }),
     scheduledTimeMs: input.scheduledTimeMs,
   })

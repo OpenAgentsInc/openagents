@@ -19,6 +19,10 @@ import type { KhalaSyncHyperdriveBinding } from './khala-sync-push-routes'
 import { recordTokensServedProjectionBestEffort } from './khala-sync-public-tokens-served'
 import { openAgentsDatabase } from './runtime'
 import { currentIsoTimestamp } from './runtime-primitives'
+import {
+  directTokenLedgerRowFromIngestBody,
+  mirrorTokenLedgerDirectInsertBestEffort,
+} from './token-ledger-store'
 
 const PUBLIC_KHALA_CHAT_ACCOUNT_REF = 'public:khala-chat'
 const PUBLIC_KHALA_CHAT_DEMAND_SOURCE = 'khala-cli-public-chat'
@@ -133,6 +137,9 @@ export const recordPublicKhalaChatServedTokens = ({
     usage,
   })
   return Effect.promise(async () => {
+    // KS-8.2 (#8308): captured so the Postgres mirror stores the SAME
+    // ingested_at byte the D1 row stores (row-hash reconciliation).
+    const ingestedAt = currentIsoTimestamp()
     const result = await openAgentsDatabase(env)
       .prepare(
         `INSERT OR IGNORE INTO token_usage_events (
@@ -175,7 +182,7 @@ export const recordPublicKhalaChatServedTokens = ({
         body.eventId,
         body.idempotencyKey,
         body.observedAt,
-        currentIsoTimestamp(),
+        ingestedAt,
         body.producerSystem,
         body.sourceRoute,
         null,
@@ -209,6 +216,15 @@ export const recordPublicKhalaChatServedTokens = ({
       .run()
 
     if (Number(result.meta.changes ?? 0) > 0) {
+      // KS-8.2 (#8308): mirror the fresh direct row to Postgres (event
+      // row only, no rollups — matching this D1 path). Fail-soft; never
+      // affects the served completion and never fires the #8304 counter
+      // (that producer is the separate hook below).
+      await mirrorTokenLedgerDirectInsertBestEffort(
+        env,
+        directTokenLedgerRowFromIngestBody(body, ingestedAt),
+      ).catch(() => undefined)
+
       // KS-6.3 (#8304): bump the scope.public.tokens-served projection for
       // this fresh row, exact-once by the row's idempotency key. Fail-soft
       // by contract; never affects the served completion.

@@ -28,6 +28,34 @@ cutover procedure is [`RUNBOOK.md`](./RUNBOOK.md) "Pylon dispatch domain
 cutover". D1 tables are NOT dropped in that lane — decommission is a
 separate follow-up issue.
 
+**KS-8.2 status (2026-07-04):** machinery LANDED — Postgres schema
+(`khala-sync-server` migration `0008_token_usage_ledger.sql`:
+`token_usage_events` + the three `public_khala_tokens_served_*` rollup
+twins + `token_usage_leaderboard_preferences`; indexes re-derived from the
+actual post-#8304 read patterns — the 14 D1 indexes are deliberately NOT
+ported, rationale in the migration header), the `TokenLedgerWriteStore`
+repository seam with D1 + Postgres implementations, a fail-soft dual-write
+wrapper and flag-routed public reads
+(`apps/openagents.com/workers/api/src/token-ledger-store.ts`), flags
+`KHALA_SYNC_LEDGER_DUAL_WRITE` (default on) / `KHALA_SYNC_LEDGER_READS`
+(d1|compare|postgres, default d1; covers the five public tokens-served
+read paths), direct-insert mirrors on the khala-chat and khala-MCP paths,
+resumable backfill + exact-verify CLI
+(`packages/khala-sync-server/scripts/backfill-token-ledger.ts`: exact
+counts, SUM(total_tokens), the public tokens-served SUM, per-provider
+tallies, newest-N row hashes), and a contract suite run against BOTH
+stores including D1-vs-Postgres read equivalence. The #8304 public-counter
+projection stays exactly-once per ledger row (regression-tested: the
+Postgres mirror never re-fires the counter producer). Internal admin
+aggregates (readAggregates / readInferenceAnalytics / readLeaderboards)
+and the two low-volume unhooked direct-insert paths
+(`builtin-compute-agent-grant.ts`, `provider-account-service-routes.ts` —
+the same pair the #8304 runbook already tracks) stay D1-only and move with
+the decommission follow-up. Prod cutover procedure:
+[`RUNBOOK.md`](./RUNBOOK.md) "Token ledger domain cutover"; cutover
+evidence + D1 drop tracked on epic
+[#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
+
 Everything except the Verse world runs through one D1 database
 (`openagents-autopilot`, binding `OPENAGENTS_DB`). As of `main` today the
 migrations directory (`apps/openagents.com/workers/api/migrations/`) holds

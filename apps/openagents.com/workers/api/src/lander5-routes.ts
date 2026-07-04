@@ -13,8 +13,11 @@ import {
 import { methodNotAllowed } from './http/responses'
 import {
   type TokenUsageLedgerShape,
-  makeD1TokenUsageLedger,
 } from './token-usage-ledger'
+import {
+  tokenUsageLedgerFromRouteInput,
+  type TokenLedgerRouteEnvSlice,
+} from './token-ledger-store'
 
 // `/lander5` — lander4's business page with lander3's lazy Three.js hero,
 // dimmed: the real landing-squares scene loads after `load`+idle and fades in
@@ -24,7 +27,8 @@ import {
 // scene never touches the paint path; reduced-motion / Save-Data users keep
 // the static grid.
 
-type Lander5RouteInput = Readonly<{
+type Lander5RouteInput = TokenLedgerRouteEnvSlice &
+  Readonly<{
   OPENAGENTS_DB?: D1Database
   ledger?: TokenUsageLedgerShape
 }>
@@ -133,7 +137,7 @@ export const handleLander5Page = (
     return Effect.succeed(methodNotAllowed(['GET']))
   }
   const ledger =
-    input.ledger ?? makeD1TokenUsageLedger(input.OPENAGENTS_DB as D1Database)
+    input.ledger ?? tokenUsageLedgerFromRouteInput(input)
   const render = ledger.readPublicTokensServed().pipe(
     Effect.map(aggregate => renderLander5Html(aggregate.tokensServed)),
     Effect.catch(() => Effect.succeed(renderLander5Html(null))),

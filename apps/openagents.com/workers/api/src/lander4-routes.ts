@@ -13,8 +13,11 @@ import {
 import { methodNotAllowed } from './http/responses'
 import {
   type TokenUsageLedgerShape,
-  makeD1TokenUsageLedger,
 } from './token-usage-ledger'
+import {
+  tokenUsageLedgerFromRouteInput,
+  type TokenLedgerRouteEnvSlice,
+} from './token-ledger-store'
 
 // `/lander4` — the business-facing landing experiment from the site-speed
 // lane ("Agents that work.", ROADMAP_AFTER AW-0), v2 after the impeccable
@@ -29,7 +32,8 @@ import {
 // Sales" is the owner-directed (2026-07-02) label for the business intake.
 // Unlisted, noindex measurement surface.
 
-type Lander4RouteInput = Readonly<{
+type Lander4RouteInput = TokenLedgerRouteEnvSlice &
+  Readonly<{
   OPENAGENTS_DB?: D1Database
   ledger?: TokenUsageLedgerShape
 }>
@@ -98,7 +102,7 @@ export const handleLander4Page = (
     return Effect.succeed(methodNotAllowed(['GET']))
   }
   const ledger =
-    input.ledger ?? makeD1TokenUsageLedger(input.OPENAGENTS_DB as D1Database)
+    input.ledger ?? tokenUsageLedgerFromRouteInput(input)
   const render = ledger.readPublicTokensServed().pipe(
     Effect.map(aggregate => renderLander4Html(aggregate.tokensServed)),
     // Ledger failure renders the placeholder page rather than a 500; the

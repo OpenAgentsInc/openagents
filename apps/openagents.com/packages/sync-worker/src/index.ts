@@ -50,6 +50,14 @@ export type WorkerBindings = Readonly<{
   // anything else (or absent) keeps the route answering 404 — zero
   // behavior change.
   KHALA_SYNC_CVR?: string
+  // KS-8.2 (#8308) token ledger migration flags. Same semantics as the
+  // pylon pair: dual-write defaults ON wherever KHALA_SYNC_DB exists
+  // ('off'|'0'|'false'|'disabled' to disable); reads default 'd1'
+  // ('d1'|'postgres'|'compare') and cover only the five public
+  // tokens-served read paths. See docs/khala-sync/RUNBOOK.md "Token
+  // ledger domain cutover".
+  KHALA_SYNC_LEDGER_DUAL_WRITE?: string
+  KHALA_SYNC_LEDGER_READS?: string
   // Khala Sync hub (KS-4.2, #8295). Optional SQLite-class DO namespace; one
   // KhalaSyncHubDO per scope (`idFromName(scope)`) holds the recent changelog
   // window + hibernating WebSockets (docs/khala-sync/SPEC.md §5). Absent

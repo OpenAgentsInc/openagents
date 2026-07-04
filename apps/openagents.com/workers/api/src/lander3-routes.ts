@@ -4,8 +4,11 @@ import { methodNotAllowed } from './http/responses'
 import { currentEpochMillis } from './runtime-primitives'
 import {
   type TokenUsageLedgerShape,
-  makeD1TokenUsageLedger,
 } from './token-usage-ledger'
+import {
+  tokenUsageLedgerFromRouteInput,
+  type TokenLedgerRouteEnvSlice,
+} from './token-ledger-store'
 
 // `/lander3` — lander2's server-rendered architecture (instant paint: inline
 // CSS grid backdrop, SSR token total, no main bundle) PLUS the real Three.js
@@ -19,7 +22,8 @@ import {
 // Copy discipline: identical strings to /lander2 (existing landing/home copy
 // verbatim). Unlisted, noindex — a site-speed-lane measurement surface.
 
-type Lander3RouteInput = Readonly<{
+type Lander3RouteInput = TokenLedgerRouteEnvSlice &
+  Readonly<{
   OPENAGENTS_DB?: D1Database
   ledger?: TokenUsageLedgerShape
   nowMs?: () => number
@@ -154,7 +158,7 @@ export const handleLander3Page = (
     return Effect.succeed(methodNotAllowed(['GET']))
   }
   const ledger =
-    input.ledger ?? makeD1TokenUsageLedger(input.OPENAGENTS_DB as D1Database)
+    input.ledger ?? tokenUsageLedgerFromRouteInput(input)
   const nowMs = input.nowMs ?? currentEpochMillis
   const startedAt = nowMs()
   const respond = (tokensServed: number | null): Response => {

@@ -12,8 +12,11 @@ import {
 import { currentIsoTimestamp } from './runtime-primitives'
 import {
   type TokenUsageLedgerShape,
-  makeD1TokenUsageLedger,
 } from './token-usage-ledger'
+import {
+  tokenUsageLedgerFromRouteInput,
+  type TokenLedgerRouteEnvSlice,
+} from './token-ledger-store'
 
 export const PublicKhalaTokensServedChannelMixGroup = S.Struct({
   channel: TokenUsageDemandChannel,
@@ -34,7 +37,8 @@ export const PublicKhalaTokensServedChannelMixResponse = S.Struct({
 export type PublicKhalaTokensServedChannelMixResponse =
   typeof PublicKhalaTokensServedChannelMixResponse.Type
 
-type PublicKhalaTokensServedChannelMixRouteInput = Readonly<{
+type PublicKhalaTokensServedChannelMixRouteInput = TokenLedgerRouteEnvSlice &
+  Readonly<{
   OPENAGENTS_DB?: D1Database
   ledger?: TokenUsageLedgerShape
   nowIso?: () => string
@@ -52,7 +56,7 @@ export const handlePublicKhalaTokensServedChannelMixApi = (
   const window = url.searchParams.get('window') ?? undefined
   const nowIso = input.nowIso ?? currentIsoTimestamp
   const ledger =
-    input.ledger ?? makeD1TokenUsageLedger(input.OPENAGENTS_DB as D1Database)
+    input.ledger ?? tokenUsageLedgerFromRouteInput(input)
 
   return ledger.readPublicTokensServedChannelMix({ window }).pipe(
     Effect.map(mix => {

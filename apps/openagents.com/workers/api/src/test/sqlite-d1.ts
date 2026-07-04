@@ -111,6 +111,88 @@ export const makeSqliteD1 = (): SqliteD1 => {
   }
 }
 
+/**
+ * The D1 DDL for the KS-8.2 token ledger domain (worker migrations
+ * 0137/0138/0232/0262/0264/0265/0269, condensed to the live column set).
+ */
+export const TOKEN_LEDGER_D1_SCHEMA = `
+CREATE TABLE token_usage_events (
+  id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  observed_at TEXT NOT NULL,
+  ingested_at TEXT NOT NULL,
+  producer_system TEXT NOT NULL,
+  source_route TEXT NOT NULL,
+  actor_user_id TEXT,
+  actor_team_id TEXT,
+  account_ref TEXT,
+  anonymized_source_ref TEXT,
+  run_ref TEXT,
+  session_ref TEXT,
+  task_ref TEXT,
+  repository_ref TEXT,
+  provider TEXT,
+  model TEXT,
+  backend_profile TEXT,
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_write_5m_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_write_1h_tokens INTEGER NOT NULL DEFAULT 0,
+  total_tokens INTEGER NOT NULL DEFAULT 0,
+  usage_truth TEXT NOT NULL,
+  cost_amount REAL,
+  currency TEXT,
+  leaderboard_eligible INTEGER NOT NULL DEFAULT 1,
+  privacy_opt_out INTEGER NOT NULL DEFAULT 0,
+  safe_metadata_json TEXT NOT NULL DEFAULT '{}',
+  demand_kind TEXT NOT NULL DEFAULT 'unlabeled',
+  demand_source TEXT,
+  demand_client TEXT,
+  demand_channel TEXT NOT NULL DEFAULT 'khala_api',
+  role_ref TEXT
+);
+
+CREATE TABLE public_khala_tokens_served_daily_rollups (
+  timezone TEXT NOT NULL,
+  day TEXT NOT NULL,
+  tokens_served INTEGER NOT NULL DEFAULT 0,
+  usage_events INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (timezone, day)
+);
+
+CREATE TABLE public_khala_tokens_served_model_daily_rollups (
+  day TEXT NOT NULL,
+  provider TEXT NOT NULL DEFAULT '',
+  model TEXT NOT NULL DEFAULT '',
+  tokens_served INTEGER NOT NULL DEFAULT 0,
+  usage_events INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (day, provider, model)
+);
+
+CREATE TABLE public_khala_tokens_served_channel_daily_rollups (
+  day TEXT NOT NULL,
+  demand_channel TEXT NOT NULL DEFAULT 'khala_api',
+  tokens_served INTEGER NOT NULL DEFAULT 0,
+  usage_events INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (day, demand_channel)
+);
+
+CREATE TABLE token_usage_leaderboard_preferences (
+  subject_kind TEXT NOT NULL,
+  subject_ref TEXT NOT NULL,
+  leaderboard_participation TEXT NOT NULL DEFAULT 'eligible',
+  leaderboard_visibility TEXT NOT NULL DEFAULT 'internal',
+  updated_at TEXT NOT NULL,
+  updated_by_user_id TEXT,
+  PRIMARY KEY (subject_kind, subject_ref)
+);
+`
+
 /** The D1 DDL for the KS-8.1 domain tables (worker migrations, condensed). */
 export const PYLON_DISPATCH_D1_SCHEMA = `
 CREATE TABLE pylon_api_registrations (

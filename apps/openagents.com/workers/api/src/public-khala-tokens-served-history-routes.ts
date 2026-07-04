@@ -12,8 +12,11 @@ import {
 import { currentIsoTimestamp } from './runtime-primitives'
 import {
   type TokenUsageLedgerShape,
-  makeD1TokenUsageLedger,
 } from './token-usage-ledger'
+import {
+  tokenUsageLedgerFromRouteInput,
+  type TokenLedgerRouteEnvSlice,
+} from './token-ledger-store'
 
 // The served history projection: the requested window + bucket, the per-day
 // series, plus the shared public-projection staleness contract
@@ -39,7 +42,8 @@ export const PublicKhalaTokensServedHistoryResponse = S.Struct({
 export type PublicKhalaTokensServedHistoryResponse =
   typeof PublicKhalaTokensServedHistoryResponse.Type
 
-type PublicKhalaTokensServedHistoryRouteInput = Readonly<{
+type PublicKhalaTokensServedHistoryRouteInput = TokenLedgerRouteEnvSlice &
+  Readonly<{
   OPENAGENTS_DB?: D1Database
   // Tests inject an in-memory ledger; production builds the D1-backed one.
   ledger?: TokenUsageLedgerShape
@@ -63,7 +67,7 @@ export const handlePublicKhalaTokensServedHistoryApi = (
     url.searchParams.get('timezone') ?? url.searchParams.get('tz') ?? undefined
 
   const ledger =
-    input.ledger ?? makeD1TokenUsageLedger(input.OPENAGENTS_DB as D1Database)
+    input.ledger ?? tokenUsageLedgerFromRouteInput(input)
 
   return ledger.readPublicTokensServedHistory({ bucket, timezone, window }).pipe(
     Effect.map(history => {

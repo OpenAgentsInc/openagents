@@ -40,6 +40,7 @@ import { Cause, Effect } from 'effect'
 import { workerLogEntry } from '../observability'
 import { currentIsoTimestamp } from '../runtime-primitives'
 import {
+  type TokenLedgerWriteStore,
   type TokenUsageLedgerIngestObserver,
   type TokenUsageLedgerShape,
   makeD1TokenUsageLedger,
@@ -542,16 +543,23 @@ export const makeD1ServedTokensRecorder = (
      * production; omitted in tests that only assert ledger behavior.
      */
     onIngestedEvent?: TokenUsageLedgerIngestObserver | undefined
+    /**
+     * KS-8.2 (#8308): injectable ledger write store — production passes
+     * the dual-write (D1 authority + fail-soft Postgres mirror) store;
+     * omitted in tests and when the KHALA_SYNC_DB binding is absent.
+     */
+    writeStore?: TokenLedgerWriteStore | undefined
   }> = {},
 ): ServedTokensRecorder =>
   makeServedTokensRecorder({
-    ledger: makeD1TokenUsageLedger(
-      db,
-      undefined,
-      options.onIngestedEvent === undefined
+    ledger: makeD1TokenUsageLedger(db, undefined, {
+      ...(options.onIngestedEvent === undefined
         ? {}
-        : { onIngestedEvent: options.onIngestedEvent },
-    ),
+        : { onIngestedEvent: options.onIngestedEvent }),
+      ...(options.writeStore === undefined
+        ? {}
+        : { writeStore: options.writeStore }),
+    }),
     ...(options.ledgerRetryDelaysMs === undefined
       ? {}
       : { ledgerRetryDelaysMs: options.ledgerRetryDelaysMs }),

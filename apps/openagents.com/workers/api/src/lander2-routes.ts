@@ -4,8 +4,11 @@ import { methodNotAllowed } from './http/responses'
 import { currentEpochMillis } from './runtime-primitives'
 import {
   type TokenUsageLedgerShape,
-  makeD1TokenUsageLedger,
 } from './token-usage-ledger'
+import {
+  tokenUsageLedgerFromRouteInput,
+  type TokenLedgerRouteEnvSlice,
+} from './token-ledger-store'
 
 // `/lander2` — the server-rendered landing-page experiment from the site-speed
 // lane (docs/fable/2026-07-02-site-speed-lane-spec.md, phase P5 candidate
@@ -22,7 +25,8 @@ import {
 // TASSADAR TRAINING RUN"). This is an unlisted measurement surface, not a new
 // claim surface.
 
-type Lander2RouteInput = Readonly<{
+type Lander2RouteInput = TokenLedgerRouteEnvSlice &
+  Readonly<{
   OPENAGENTS_DB?: D1Database
   ledger?: TokenUsageLedgerShape
   nowMs?: () => number
@@ -130,7 +134,7 @@ export const handleLander2Page = (
     return Effect.succeed(methodNotAllowed(['GET']))
   }
   const ledger =
-    input.ledger ?? makeD1TokenUsageLedger(input.OPENAGENTS_DB as D1Database)
+    input.ledger ?? tokenUsageLedgerFromRouteInput(input)
   const nowMs = input.nowMs ?? currentEpochMillis
   const startedAt = nowMs()
   const respond = (tokensServed: number | null): Response => {

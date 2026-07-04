@@ -16,8 +16,11 @@ import {
 import { currentIsoTimestamp } from './runtime-primitives'
 import {
   type TokenUsageLedgerShape,
-  makeD1TokenUsageLedger,
 } from './token-usage-ledger'
+import {
+  tokenUsageLedgerFromRouteInput,
+  type TokenLedgerRouteEnvSlice,
+} from './token-ledger-store'
 
 // The served public projection: the aggregate scalar plus the shared
 // public-projection staleness contract (generatedAt + staleness). Public-safe:
@@ -33,7 +36,8 @@ export const PublicKhalaTokensServedResponse = S.Struct({
 export type PublicKhalaTokensServedResponse =
   typeof PublicKhalaTokensServedResponse.Type
 
-type PublicKhalaTokensServedRouteInput = Readonly<{
+type PublicKhalaTokensServedRouteInput = TokenLedgerRouteEnvSlice &
+  Readonly<{
   OPENAGENTS_DB?: D1Database
   /** `env.KHALA_SYNC_DB` — absent until the binding is deployed. */
   KHALA_SYNC_DB?: KhalaSyncHyperdriveBinding
@@ -58,7 +62,8 @@ type PublicKhalaTokensServedRouteInput = Readonly<{
 //      (`rebuilt_on_transition`, the 2s public-stats precedent).
 //   2. FAIL-OPEN FALLBACK: when the binding is absent, Postgres is
 //      unreachable, or the counter is not backfilled yet, the route falls
-//      back to the previous live-at-read D1 SUM — availability of the
+//      back to the ledger read router (D1 by default; Postgres reads only
+//      after the KS-8.2 flag flip, with D1 fallback). Availability of the
 //      public counter never regresses, and the fallback declares
 //      `live_at_read` staleness exactly as before.
 //
@@ -92,7 +97,7 @@ export const handlePublicKhalaTokensServedApi = (
 
   const ledgerFallback = () => {
     const ledger =
-      input.ledger ?? makeD1TokenUsageLedger(input.OPENAGENTS_DB as D1Database)
+      input.ledger ?? tokenUsageLedgerFromRouteInput(input)
     return ledger.readPublicTokensServed().pipe(
       Effect.map(aggregate =>
         respond(

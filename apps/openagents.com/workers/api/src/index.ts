@@ -1195,6 +1195,12 @@ import {
   TokenUsageLeaderboards,
 } from './token-usage'
 import {
+  directTokenLedgerRowFromIngestBody,
+  makeTokenLedgerWriteStoreForEnv,
+  makeTokenUsageLedgerForEnv,
+  mirrorTokenLedgerDirectInsertBestEffort,
+} from './token-ledger-store'
+import {
   makeD1TokenUsageLedger,
   readPublicTokensServedExactTotal,
   TokenUsageLedger,
@@ -7466,6 +7472,18 @@ const makeTokensServedProjectionObserver =
       },
     )
 
+// KS-8.2 (#8308): the token ledger dual-write store for one env — D1
+// authority + flag-gated fail-soft Postgres mirror. Spread into
+// TokenUsageLedgerOptions; empty when the KHALA_SYNC_DB binding is absent
+// or KHALA_SYNC_LEDGER_DUAL_WRITE is off (the ledger then keeps its
+// built-in D1-only store).
+const tokenLedgerWriteStoreOptionForEnv = (
+  env: Parameters<typeof makeTokenLedgerWriteStoreForEnv>[0],
+) => {
+  const writeStore = makeTokenLedgerWriteStoreForEnv(env)
+  return writeStore === undefined ? {} : { writeStore }
+}
+
 // KS-6.3 (#8304): shared reconcile deps (invariant 8) for the admin
 // reconcile/repair route and the scheduled detect-only sweep. The exact
 // source of truth is the canonical D1 tokens-served SUM; the projection is
@@ -7492,6 +7510,8 @@ const pylonCodexTurnIngestRoutes = makePylonCodexTurnIngestRoutes<Env>({
   ledger: env =>
     makeD1TokenUsageLedger(openAgentsDatabase(env), undefined, {
       onIngestedEvent: makeTokensServedProjectionObserver(env),
+      // KS-8.2 (#8308): mirror fresh ledger rows to Postgres fail-soft.
+      ...tokenLedgerWriteStoreOptionForEnv(env),
     }),
   pylonStore: env => makePylonApiStoreForEnv(env),
   proofStore: env => makeD1PylonCodexAssignmentProofStore(openAgentsDatabase(env)),
@@ -7830,10 +7850,15 @@ const tokenUsageLedgerRoutes = makeTokenUsageLedgerRoutes({
   isOpenAgentsAdminEmail,
   // KS-6.3 (#8304): trusted-producer ledger ingests move the public
   // tokens-served projection too (fail-soft, exact-once per row).
+  // KS-8.2 (#8308): the env-routed ledger — dual-write mirror on ingest,
+  // read routing on the public tokens-served paths, preference mirror.
   ledgerLayer: (env, runtime) =>
-    TokenUsageLedger.live(openAgentsDatabase(env), runtime, {
-      onIngestedEvent: makeTokensServedProjectionObserver(env),
-    }),
+    Layer.succeed(
+      TokenUsageLedger,
+      makeTokenUsageLedgerForEnv(env, runtime, {
+        onIngestedEvent: makeTokensServedProjectionObserver(env),
+      }),
+    ),
   requireAdminApiToken,
   requireBrowserSession,
 })
@@ -8532,6 +8557,13 @@ const makeKhalaMcpServedTokensRecorder = (
         tokensServed: number
       }>,
     ) => Promise<unknown>
+    /**
+     * KS-8.2 (#8308): fail-soft Postgres mirror for the FRESH direct
+     * ledger row (event row only, no rollups — matching this D1 path).
+     */
+    mirrorRow?: (
+      row: ReturnType<typeof directTokenLedgerRowFromIngestBody>,
+    ) => Promise<void>
   }> = {},
 ): ((input: ServedTokensRecorderInput) => Promise<void>) => {
   const nowIso = options.nowIso ?? currentIsoTimestamp
@@ -8555,6 +8587,9 @@ const makeKhalaMcpServedTokensRecorder = (
       servedModel: input.servedModel,
       usage: input.usage,
     })
+    // KS-8.2 (#8308): captured so the Postgres mirror stores the SAME
+    // ingested_at byte the D1 row stores (row-hash reconciliation).
+    const ingestedAt = nowIso()
     const safeMetadataJson = JSON.stringify(body.safeMetadata ?? {})
 
     try {
@@ -8600,7 +8635,7 @@ const makeKhalaMcpServedTokensRecorder = (
           body.eventId,
           body.idempotencyKey,
           body.observedAt,
-          nowIso(),
+          ingestedAt,
           body.producerSystem,
           body.sourceRoute,
           null,
@@ -8635,6 +8670,14 @@ const makeKhalaMcpServedTokensRecorder = (
 
       const inserted =
         Number((result.meta as D1Meta & { changes?: number }).changes ?? 0) > 0
+      if (inserted && options.mirrorRow !== undefined) {
+        // KS-8.2 (#8308): mirror the fresh direct row to Postgres
+        // (fail-soft; never affects the request, never fires the #8304
+        // counter — that hook is onIngestedEvent below, D1-keyed).
+        await options
+          .mirrorRow(directTokenLedgerRowFromIngestBody(body, ingestedAt))
+          .catch(() => undefined)
+      }
       if (inserted && options.onIngestedEvent !== undefined) {
         // KS-6.3 (#8304): move the scope.public.tokens-served projection
         // (fail-soft, exact-once per row via the idempotency key).
@@ -8707,6 +8750,8 @@ const crmMcpRoutes = makeCrmMcpRoutes<WorkerBindings>({
       pylonStore: env => makePylonApiStoreForEnv(env),
       recordTokensServed: env =>
         makeKhalaMcpServedTokensRecorder(openAgentsDatabase(env), {
+          // KS-8.2 (#8308): fail-soft Postgres mirror for direct rows.
+          mirrorRow: row => mirrorTokenLedgerDirectInsertBestEffort(env, row),
           // KS-6.3 (#8304): projection producer (fail-soft, exact-once).
           onIngestedEvent: makeTokensServedProjectionObserver(env),
           publishDelta: delta =>
@@ -10703,6 +10748,8 @@ const makeArtanisResponderKhalaClient = (
       // KS-6.3 (#8304): move the scope.public.tokens-served projection on
       // every fresh served-tokens row (fail-soft, exact-once per row).
       onIngestedEvent: makeTokensServedProjectionObserver(env),
+      // KS-8.2 (#8308): Postgres dual-write mirror (fail-soft).
+      ...tokenLedgerWriteStoreOptionForEnv(env),
       publishDelta: delta =>
         Effect.promise(() =>
           publishKhalaTokensServedDelta(
@@ -11097,6 +11144,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           {
             // KS-6.3 (#8304): projection producer (fail-soft, exact-once).
             onIngestedEvent: makeTokensServedProjectionObserver(env),
+            // KS-8.2 (#8308): Postgres dual-write mirror (fail-soft).
+            ...tokenLedgerWriteStoreOptionForEnv(env),
             publishDelta: delta =>
               Effect.promise(() =>
                 publishKhalaTokensServedDelta(
@@ -13789,6 +13838,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           {
             // KS-6.3 (#8304): projection producer (fail-soft, exact-once).
             onIngestedEvent: makeTokensServedProjectionObserver(env),
+            // KS-8.2 (#8308): Postgres dual-write mirror (fail-soft).
+            ...tokenLedgerWriteStoreOptionForEnv(env),
             // Live-counter push (#6231): on a REAL new served-tokens row, push the
             // public-safe delta onto the tokens-served sync scope so the homepage
             // odometer rolls up instantly. Fail-soft: never breaks the completion.
@@ -14237,6 +14288,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             {
               // KS-6.3 (#8304): projection producer (fail-soft, exact-once).
               onIngestedEvent: makeTokensServedProjectionObserver(env),
+              // KS-8.2 (#8308): Postgres dual-write mirror (fail-soft).
+              ...tokenLedgerWriteStoreOptionForEnv(env),
               // Live-counter push (#6231): MPP traffic rolls the homepage
               // odometer up instantly too. Fail-soft.
               publishDelta: delta =>
@@ -15568,6 +15621,8 @@ export default {
         // KS-6.3 (#8304): heartbeat rows move the public tokens-served
         // projection too (fail-soft, exact-once per row).
         onIngestedEvent: makeTokensServedProjectionObserver(env),
+        // KS-8.2 (#8308): Postgres dual-write mirror (fail-soft).
+        ...tokenLedgerWriteStoreOptionForEnv(env),
         scheduledTimeMs: event.scheduledTime,
       }),
     )
