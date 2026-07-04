@@ -237,6 +237,19 @@ required `Email`. This is still fixture evidence only: no customer migration,
 customer data custody, public package copy, pricing, or external pilot is
 created.
 
+RX-11 status (2026-07-04): the improvement ladder now has a design doc and
+internal dogfood receipts in `packages/reactor-contracts`. The ladder is ordered
+as harness evolution -> distill-to-fit -> flywheel training: consent, customer
+boundary, dataset snapshot, run ref, eval delta, and customer-owned weights are
+required before customer data can be used. The dogfood harness receipt records a
+Psionic/Mutalisk `deliverable_landing` mechanism on internal OpenAgents traffic
+with +16.70 points and no weight changes. The dogfood distill-to-fit receipt
+records a smaller distilled artifact with quality -1.20 points, cost -58.10%,
+policy revalidated, and the RX-3 router gate passed while route swap remains
+unauthorized. This is internal dogfood evidence only: no customer flywheel,
+customer dataset, customer-owned weights, public capability copy, or external
+pilot is created.
+
 ## 4. Architecture (owned seams, honest state)
 
 ```
@@ -423,11 +436,14 @@ objects, no client-identifying info in-repo). Added:
    live customer corpus.
 3. No customer Data Liberation engagement or real vendor export has been run;
    RX-10 covers synthetic adapter/verification machinery only.
-4. No owned eval receipts across the full catalog on all customer-shaped tasks;
+4. No customer improvement-ladder run, customer interaction dataset, or
+   customer-owned distilled/fine-tuned weight artifact exists; RX-11 covers the
+   design and internal OpenAgents dogfood receipts only.
+5. No owned eval receipts across the full catalog on all customer-shaped tasks;
    RX-4 covers only the initial measured fixture cells.
-5. BF-3.1/3.2 corpus ingestion + redaction remain the shared prerequisite
+6. BF-3.1/3.2 corpus ingestion + redaction remain the shared prerequisite
    (already the BF-3 spine; Reactor raises their priority).
-6. No pricing sign-off, customer contract, compliance certification, public
+7. No pricing sign-off, customer contract, compliance certification, public
    case-study copy, payout, or settlement authority. Everything above remains
    registry-planned until receipt-backed gates land.
 
@@ -457,14 +473,15 @@ RX-11 [#8279](https://github.com/OpenAgentsInc/openagents/issues/8279).
 | RX-8 | Lead Gen segment: model-custody analyzer angle + Reactor sequence for regulated verticals | Quoted Reactor pipeline via Autopilot Lead Gen |
 | RX-9 | **Need-to-know access layer**: per-user scoped retrieval over the corpus store — typed hard access rules enforced in the system + model-oracle checks for soft rules, with an adversarial "Bob must not see Alice" fixture suite | Landed deny-by-default contracts, access-decision receipts, and Worker deploy-sweep fixture; no live customer corpus |
 | RX-10 | **Data Liberation offering**: walled-garden export/transform/verify pipeline as a packaged quick win (per-vendor adapters as config), verification receipts per migrated record class | Landed synthetic generic CSV/API + Salesforce-shaped adapter fixtures and verification reports; no customer engagement |
-| RX-11 | **Improvement ladder: harness evolution → distill-to-fit → flywheel.** Rung zero is the Mutalisk loop evolving harness-code mechanisms against the customer's tasks (evidence-gated candidates, one mechanism per iteration, cost term in the objective, transfer labels per model family — see the 2026-07-04 harness-optimization audit); then input-distribution-driven model shrinking; then the continuous-improvement training loop on customer interaction data (their boundary, their weights, consent recorded) — design + psionic/mutalisk hooks; no capability claims until receipts | Design doc + first dogfood harness-evolution receipt + first dogfood distill receipt |
+| RX-11 | **Improvement ladder: harness evolution → distill-to-fit → flywheel.** Rung zero is the Mutalisk loop evolving harness-code mechanisms against the customer's tasks (evidence-gated candidates, one mechanism per iteration, cost term in the objective, transfer labels per model family — see the 2026-07-04 harness-optimization audit); then input-distribution-driven model shrinking; then the continuous-improvement training loop on customer interaction data (their boundary, their weights, consent recorded) — design + psionic/mutalisk hooks; no capability claims until receipts | Landed design doc, internal dogfood harness-evolution receipt, internal dogfood distill receipt, and aggregate claim blockers |
 
 Sequencing: RX-1/RX-2 are paper + schemas (start now); RX-3 gates RX-5/6/7;
 RX-4 runs parallel in psionic; RX-6 (dogfood), RX-9 (need-to-know fixtures),
-and RX-10 (synthetic Data Liberation verification) precede any external pilot,
-per the standing pattern — we are always customer number one. BF-3.1/3.2
-(ingestion + redaction) remain the shared critical path for any regulated
-corpus touching any model, ours or theirs.
+RX-10 (synthetic Data Liberation verification), and RX-11 (improvement-ladder
+dogfood receipts) precede any external pilot, per the standing pattern — we are
+always customer number one. BF-3.1/3.2 (ingestion + redaction) remain the
+shared critical path for any regulated corpus touching any model, ours or
+theirs.
 
 ## 10. Competitive read: the Mistral playbook (harvested 2026-07-04)
 

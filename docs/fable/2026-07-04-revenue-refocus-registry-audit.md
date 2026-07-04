@@ -181,6 +181,21 @@ adapter/verification blocker; customer migrations, customer data custody,
 package copy, pricing, external pilot, compliance, payout, and settlement
 remain blocked.
 
+RX-11 note (2026-07-04): the Reactor improvement ladder landed as a design doc
+and internal dogfood receipts in `packages/reactor-contracts`, plus
+`apps/openagents.com/workers/api/src/reactor-improvement-ladder.test.ts` in the
+deploy sweep. The ladder is ordered harness evolution -> distill-to-fit ->
+flywheel training, with customer consent, customer boundary, dataset snapshot,
+run ref, eval delta, and customer-owned weights required before customer data
+can be used. The internal harness-evolution receipt records a Psionic/Mutalisk
+deliverable-landing mechanism with +16.70 points and no weight changes; the
+distill-to-fit receipt records quality -1.20 points, cost -58.10%, policy
+revalidation, and an RX-3 router gate pass with route swap still unauthorized.
+This clears only the design/internal-dogfood receipt blocker; customer flywheel
+training, customer datasets, customer-owned weights, route swaps, public
+capability copy, pricing, external pilot, compliance, payout, and settlement
+remain blocked.
+
 ## 3. The focus: closing the revenue loop, independence-first
 
 The company objective (Episode 246: "close the gap between what I've been

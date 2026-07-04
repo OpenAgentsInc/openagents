@@ -42,6 +42,10 @@ Exports:
   schema-mapped transforms, customer-controlled open-store refs, verification
   receipts per record class, checksums, spot-diff hashes, and honest partial
   migration blockers without raw customer row values.
+- Improvement-ladder dogfood receipts: harness evolution as rung zero,
+  distill-to-fit cost/quality deltas, customer-consent/boundary/weight-owner
+  design requirements, and aggregate claim blockers for anything beyond
+  internal OpenAgents dogfood evidence.
 
 Smoke:
 

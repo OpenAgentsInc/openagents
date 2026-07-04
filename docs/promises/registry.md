@@ -1,5 +1,26 @@
 # Promise Registry
 
+> Registry `2026-07-04.17` is the RX-11 Reactor improvement-ladder
+> pass (#8279) and flips NO promise state (green stays exactly 34). The
+> `@openagentsinc/reactor-contracts` package now exports
+> `openagents.reactor.improvement_ladder_plan_receipt.v1`,
+> `openagents.reactor.harness_evolution_dogfood_receipt.v1`,
+> `openagents.reactor.distill_to_fit_dogfood_receipt.v1`, and
+> `openagents.reactor.improvement_ladder_dogfood_receipt.v1`. The design
+> doc orders the ladder as harness evolution -> distill-to-fit -> customer
+> flywheel, with consent, customer boundary, dataset snapshot, run, eval
+> delta, and customer-owned weights required before customer data can be
+> used. The internal dogfood receipts record a Psionic/Mutalisk
+> deliverable-landing harness delta (+16.70 points, no weight changes) and
+> a distill-to-fit shrink delta (quality -1.20 points, cost -58.10%, policy
+> revalidated, RX-3 router gate passed, route swap still unauthorized).
+> The normal deploy sweep now runs
+> `apps/openagents.com/workers/api/src/reactor-improvement-ladder.test.ts`.
+> This clears only the design/internal-dogfood receipt blocker. Customer
+> flywheel training, customer datasets, customer-owned weights, public
+> capability copy, route swaps, pricing, external pilots, compliance,
+> payout, and settlement claims remain blocked.
+
 > Registry `2026-07-04.16` is the RX-10 Reactor Data Liberation
 > pipeline pass (#8278) and flips NO promise state (green stays exactly
 > 34). The `@openagentsinc/reactor-contracts` package now exports

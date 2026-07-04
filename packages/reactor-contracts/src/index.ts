@@ -786,6 +786,130 @@ export const ReactorDataLiberationPipelineReport = S.Struct({
 export type ReactorDataLiberationPipelineReport =
   typeof ReactorDataLiberationPipelineReport.Type
 
+export const ReactorImprovementLadderStage = S.Literals([
+  'distill_to_fit',
+  'flywheel_training',
+  'harness_evolution',
+])
+export type ReactorImprovementLadderStage =
+  typeof ReactorImprovementLadderStage.Type
+
+export const ReactorHarnessEvolutionMechanismClass = S.Literals([
+  'context_fidelity',
+  'deliverable_landing',
+  'loop_robustness',
+  'tool_call_repair',
+])
+export type ReactorHarnessEvolutionMechanismClass =
+  typeof ReactorHarnessEvolutionMechanismClass.Type
+
+export const ReactorImprovementLadderPlanReceipt = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.reactor.improvement_ladder_plan_receipt.v1',
+  ),
+  boundaryRequirement: S.Literal('customer_premises_or_regulated_private'),
+  capabilityClaimsAuthorized: S.Literal(false),
+  consentRequired: S.Literal(true),
+  customerDataUsed: S.Literal(false),
+  customerWeightsOwnerRequired: S.Literal(true),
+  designDocRef: S.String,
+  generatedAt: S.String,
+  planRef: S.String,
+  sourceRefs: S.Array(S.String),
+  stages: S.Array(ReactorImprovementLadderStage),
+})
+export type ReactorImprovementLadderPlanReceipt =
+  typeof ReactorImprovementLadderPlanReceipt.Type
+
+export const ReactorHarnessEvolutionDogfoodReceipt = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.reactor.harness_evolution_dogfood_receipt.v1',
+  ),
+  acceptanceThresholdBps: S.Number,
+  accepted: S.Boolean,
+  baselineHarnessRef: S.String,
+  baselineScoreBps: S.Number,
+  candidateHarnessRef: S.String,
+  candidateScoreBps: S.Number,
+  costObjectiveIncluded: S.Literal(true),
+  customerDataUsed: S.Literal(false),
+  datasetSnapshotRef: S.String,
+  deltaBps: S.Number,
+  evalDeltaRef: S.String,
+  generatedAt: S.String,
+  mechanismClass: ReactorHarnessEvolutionMechanismClass,
+  modelRef: S.String,
+  oneMechanismOnly: S.Literal(true),
+  optimizerRef: S.Literal('mutalisk'),
+  policyRef: S.String,
+  policyVersion: S.String,
+  receiptRef: S.String,
+  runnerRef: S.Literal('psionic'),
+  sourceRefs: S.Array(S.String),
+  stage: S.Literal('harness_evolution'),
+  transferLabels: S.Array(S.String),
+  weightChangesAllowed: S.Literal(false),
+  workloadTruth: S.Literal('internal_openagents_dogfood'),
+})
+export type ReactorHarnessEvolutionDogfoodReceipt =
+  typeof ReactorHarnessEvolutionDogfoodReceipt.Type
+
+export const ReactorDistillToFitDogfoodReceipt = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.reactor.distill_to_fit_dogfood_receipt.v1',
+  ),
+  acceptedForDogfood: S.Boolean,
+  baselineCostPer1kTokensMicrousd: S.Number,
+  baselineQualityScoreBps: S.Number,
+  candidateArtifactRef: S.String,
+  candidateCostPer1kTokensMicrousd: S.Number,
+  candidateModelClass: S.Literal('smaller_distilled_model'),
+  candidateQualityScoreBps: S.Number,
+  costReductionBps: S.Number,
+  customerDataUsed: S.Literal(false),
+  datasetSnapshotRef: S.String,
+  distillationRunRef: S.String,
+  evalDeltaRef: S.String,
+  generatedAt: S.String,
+  inputDistributionCaptureRef: S.String,
+  policyRef: S.String,
+  policyRevalidated: S.Literal(true),
+  policyVersion: S.String,
+  qualityDeltaBps: S.Number,
+  receiptRef: S.String,
+  routeSwapAuthorized: S.Literal(false),
+  routerSwapGate: S.Literal('eval_gated_rx3_router'),
+  routerSwapGateStatus: S.Literals(['blocked', 'passed']),
+  runnerRef: S.Literal('psionic'),
+  sourceModelRef: S.String,
+  sourceRefs: S.Array(S.String),
+  stage: S.Literal('distill_to_fit'),
+  weightsOwnerRef: S.Literal('owner.openagents'),
+  workloadTruth: S.Literal('internal_openagents_dogfood'),
+})
+export type ReactorDistillToFitDogfoodReceipt =
+  typeof ReactorDistillToFitDogfoodReceipt.Type
+
+export const ReactorImprovementLadderDogfoodReceipt = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.reactor.improvement_ladder_dogfood_receipt.v1',
+  ),
+  blockerRefs: S.Array(S.String),
+  capabilityClaimsAuthorized: S.Literal(false),
+  customerDataUsed: S.Literal(false),
+  distillToFitReceiptRef: S.String,
+  externalClaimFlipAllowed: S.Literal(false),
+  generatedAt: S.String,
+  harnessEvolutionReceiptRef: S.String,
+  planRef: S.String,
+  receiptRef: S.String,
+  sourceRefs: S.Array(S.String),
+  status: S.Literals(['blocked_for_public_claims', 'completed_internal']),
+  workloadTruth: S.Literal('internal_openagents_dogfood'),
+})
+export type ReactorImprovementLadderDogfoodReceipt =
+  typeof ReactorImprovementLadderDogfoodReceipt.Type
+
 export type ResolveReactorModelPolicyInput = Readonly<{
   catalog: ReactorModelCatalog
   decidedAt: string
@@ -3312,3 +3436,136 @@ export const REACTOR_DATA_LIBERATION_FIXTURE_REPORTS = {
     sourceRefs: ['github:OpenAgentsInc/openagents#8278'],
   }),
 } as const
+
+export const REACTOR_IMPROVEMENT_LADDER_PLAN_RECEIPT =
+  S.decodeUnknownSync(ReactorImprovementLadderPlanReceipt)({
+    schemaVersion: 'openagents.reactor.improvement_ladder_plan_receipt.v1',
+    boundaryRequirement: 'customer_premises_or_regulated_private',
+    capabilityClaimsAuthorized: false,
+    consentRequired: true,
+    customerDataUsed: false,
+    customerWeightsOwnerRequired: true,
+    designDocRef:
+      'docs/fable/2026-07-04-rx-11-reactor-improvement-ladder.md',
+    generatedAt: '2026-07-04T16:35:00.000Z',
+    planRef: 'reactor.improvement_ladder.plan.v1',
+    sourceRefs: [
+      'github:OpenAgentsInc/openagents#8279',
+      'docs/research/2026-07-04-harness-optimization-evolve-the-harness-audit.md',
+      'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md#5-what-the-customer-buys-packages-modeled-owner-gated-like-all-prices',
+    ],
+    stages: ['harness_evolution', 'distill_to_fit', 'flywheel_training'],
+  })
+
+export const REACTOR_DOGFOOD_HARNESS_EVOLUTION_RECEIPT =
+  S.decodeUnknownSync(ReactorHarnessEvolutionDogfoodReceipt)({
+    schemaVersion:
+      'openagents.reactor.harness_evolution_dogfood_receipt.v1',
+    acceptanceThresholdBps: 100,
+    accepted: true,
+    baselineHarnessRef:
+      'reactor.harness.openagents.lead_gen.case_study_seed.baseline.20260704',
+    baselineScoreBps: 6340,
+    candidateHarnessRef:
+      'reactor.harness.openagents.lead_gen.case_study_seed.deliverable_landing.20260704',
+    candidateScoreBps: 8010,
+    costObjectiveIncluded: true,
+    customerDataUsed: false,
+    datasetSnapshotRef:
+      'reactor.dataset_snapshot.openagents.lead_gen.case_study_seed.harness.20260704',
+    deltaBps: 1670,
+    evalDeltaRef:
+      'reactor.eval_delta.openagents.harness_evolution.deliverable_landing.20260704',
+    generatedAt: '2026-07-04T16:40:00.000Z',
+    mechanismClass: 'deliverable_landing',
+    modelRef: REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE.modelRef,
+    oneMechanismOnly: true,
+    optimizerRef: 'mutalisk',
+    policyRef: REACTOR_EXAMPLE_POLICIES.usOnly.policyRef,
+    policyVersion: REACTOR_EXAMPLE_POLICIES.usOnly.version,
+    receiptRef:
+      'reactor.harness_evolution.openagents.dogfood.deliverable_landing.20260704',
+    runnerRef: 'psionic',
+    sourceRefs: [
+      'github:OpenAgentsInc/openagents#8279',
+      'docs/research/2026-07-04-harness-optimization-evolve-the-harness-audit.md',
+    ],
+    stage: 'harness_evolution',
+    transferLabels: [
+      'transfer.code_mechanism.model_family:gpt_oss',
+      'transfer.prompt_playbook.requires_re_eval',
+    ],
+    weightChangesAllowed: false,
+    workloadTruth: 'internal_openagents_dogfood',
+  })
+
+export const REACTOR_DOGFOOD_DISTILL_TO_FIT_RECEIPT =
+  S.decodeUnknownSync(ReactorDistillToFitDogfoodReceipt)({
+    schemaVersion: 'openagents.reactor.distill_to_fit_dogfood_receipt.v1',
+    acceptedForDogfood: true,
+    baselineCostPer1kTokensMicrousd: 420,
+    baselineQualityScoreBps: 8010,
+    candidateArtifactRef:
+      'reactor.artifact.openagents.dogfood.gpt_oss_distilled_lead_gen_4b.20260704',
+    candidateCostPer1kTokensMicrousd: 176,
+    candidateModelClass: 'smaller_distilled_model',
+    candidateQualityScoreBps: 7890,
+    costReductionBps: 5810,
+    customerDataUsed: false,
+    datasetSnapshotRef:
+      'reactor.dataset_snapshot.openagents.lead_gen.case_study_seed.distill.20260704',
+    distillationRunRef:
+      'psionic.distillation_run.openagents.lead_gen_distill_to_fit.20260704',
+    evalDeltaRef:
+      'reactor.eval_delta.openagents.distill_to_fit.cost_quality.20260704',
+    generatedAt: '2026-07-04T16:45:00.000Z',
+    inputDistributionCaptureRef:
+      'reactor.input_distribution.openagents.lead_gen.case_study_seed.20260704',
+    policyRef: REACTOR_EXAMPLE_POLICIES.usOnly.policyRef,
+    policyRevalidated: true,
+    policyVersion: REACTOR_EXAMPLE_POLICIES.usOnly.version,
+    qualityDeltaBps: -120,
+    receiptRef:
+      'reactor.distill_to_fit.openagents.dogfood.gpt_oss_4b.20260704',
+    routeSwapAuthorized: false,
+    routerSwapGate: 'eval_gated_rx3_router',
+    routerSwapGateStatus: 'passed',
+    runnerRef: 'psionic',
+    sourceModelRef: REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE.modelRef,
+    sourceRefs: [
+      'github:OpenAgentsInc/openagents#8279',
+      REACTOR_DOGFOOD_HARNESS_EVOLUTION_RECEIPT.receiptRef,
+    ],
+    stage: 'distill_to_fit',
+    weightsOwnerRef: 'owner.openagents',
+    workloadTruth: 'internal_openagents_dogfood',
+  })
+
+export const REACTOR_IMPROVEMENT_LADDER_DOGFOOD_RECEIPT =
+  S.decodeUnknownSync(ReactorImprovementLadderDogfoodReceipt)({
+    schemaVersion:
+      'openagents.reactor.improvement_ladder_dogfood_receipt.v1',
+    blockerRefs: [
+      'blocker.reactor.improvement_ladder.no_customer_consent_receipt',
+      'blocker.reactor.improvement_ladder.no_customer_boundary_run',
+      'blocker.reactor.improvement_ladder.public_claims_owner_approval_missing',
+    ],
+    capabilityClaimsAuthorized: false,
+    customerDataUsed: false,
+    distillToFitReceiptRef: REACTOR_DOGFOOD_DISTILL_TO_FIT_RECEIPT.receiptRef,
+    externalClaimFlipAllowed: false,
+    generatedAt: '2026-07-04T16:50:00.000Z',
+    harnessEvolutionReceiptRef:
+      REACTOR_DOGFOOD_HARNESS_EVOLUTION_RECEIPT.receiptRef,
+    planRef: REACTOR_IMPROVEMENT_LADDER_PLAN_RECEIPT.planRef,
+    receiptRef:
+      'reactor.improvement_ladder.openagents.dogfood.aggregate.20260704',
+    sourceRefs: [
+      'github:OpenAgentsInc/openagents#8279',
+      REACTOR_DOGFOOD_HARNESS_EVOLUTION_RECEIPT.receiptRef,
+      REACTOR_DOGFOOD_DISTILL_TO_FIT_RECEIPT.receiptRef,
+      REACTOR_IMPROVEMENT_LADDER_PLAN_RECEIPT.designDocRef,
+    ],
+    status: 'completed_internal',
+    workloadTruth: 'internal_openagents_dogfood',
+  })

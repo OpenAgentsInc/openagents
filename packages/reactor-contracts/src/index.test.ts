@@ -7,6 +7,8 @@ import {
   REACTOR_DATA_LIBERATION_ADAPTERS,
   REACTOR_DATA_LIBERATION_FIXTURE_REPORTS,
   REACTOR_DATA_LIBERATION_SYNTHETIC_EXPORTS,
+  REACTOR_DOGFOOD_DISTILL_TO_FIT_RECEIPT,
+  REACTOR_DOGFOOD_HARNESS_EVOLUTION_RECEIPT,
   REACTOR_EVAL_COVERAGE_MATRIX_SEED,
   REACTOR_EVAL_TASK_CLASS_REFS,
   REACTOR_EXAMPLE_POLICIES,
@@ -17,6 +19,8 @@ import {
   REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS,
   REACTOR_NEED_TO_KNOW_BROKEN_ALLOW_ALL_RULESET_FIXTURE,
   REACTOR_NEED_TO_KNOW_RULESET_V1,
+  REACTOR_IMPROVEMENT_LADDER_DOGFOOD_RECEIPT,
+  REACTOR_IMPROVEMENT_LADDER_PLAN_RECEIPT,
   REACTOR_MODEL_EVAL_RECEIPT_SEED,
   REACTOR_MODEL_CATALOG_SEED,
   REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE,
@@ -33,10 +37,14 @@ import {
   ReactorDataLiberationAdapterConfig,
   ReactorDataLiberationPipelineReport,
   ReactorDataLiberationRecordClassVerificationReceipt,
+  ReactorDistillToFitDogfoodReceipt,
   ReactorDogfoodRunReceipt,
   ReactorEvalCoverageMatrix,
   ReactorEvalHarnessProfile,
   ReactorInstallOpsReceipt,
+  ReactorHarnessEvolutionDogfoodReceipt,
+  ReactorImprovementLadderDogfoodReceipt,
+  ReactorImprovementLadderPlanReceipt,
   ReactorLocalTokenMeteringReceipt,
   ReactorModelInstallReceipt,
   ReactorModelCatalog,
@@ -1236,5 +1244,110 @@ describe('Reactor data liberation pipeline receipts', () => {
         'example.test',
       ),
     ).toBe(false)
+  })
+})
+
+describe('Reactor improvement ladder dogfood receipts', () => {
+  test('records the continuous-improvement design boundary before claims', () => {
+    const plan = S.decodeUnknownSync(ReactorImprovementLadderPlanReceipt)(
+      REACTOR_IMPROVEMENT_LADDER_PLAN_RECEIPT,
+    )
+
+    expect(plan.stages).toEqual([
+      'harness_evolution',
+      'distill_to_fit',
+      'flywheel_training',
+    ])
+    expect(plan.consentRequired).toBe(true)
+    expect(plan.boundaryRequirement).toBe('customer_premises_or_regulated_private')
+    expect(plan.customerWeightsOwnerRequired).toBe(true)
+    expect(plan.customerDataUsed).toBe(false)
+    expect(plan.capabilityClaimsAuthorized).toBe(false)
+    expect(plan.designDocRef).toBe(
+      'docs/fable/2026-07-04-rx-11-reactor-improvement-ladder.md',
+    )
+  })
+
+  test('records a dogfood harness-evolution receipt with one mechanism and no weight changes', () => {
+    const receipt = S.decodeUnknownSync(ReactorHarnessEvolutionDogfoodReceipt)(
+      REACTOR_DOGFOOD_HARNESS_EVOLUTION_RECEIPT,
+    )
+
+    expect(receipt).toMatchObject({
+      stage: 'harness_evolution',
+      runnerRef: 'psionic',
+      optimizerRef: 'mutalisk',
+      mechanismClass: 'deliverable_landing',
+      oneMechanismOnly: true,
+      weightChangesAllowed: false,
+      customerDataUsed: false,
+      workloadTruth: 'internal_openagents_dogfood',
+      accepted: true,
+    })
+    expect(receipt.deltaBps).toBe(
+      receipt.candidateScoreBps - receipt.baselineScoreBps,
+    )
+    expect(receipt.deltaBps).toBeGreaterThan(receipt.acceptanceThresholdBps)
+    expect(receipt.costObjectiveIncluded).toBe(true)
+    expect(receipt.transferLabels).toEqual(
+      expect.arrayContaining([
+        'transfer.code_mechanism.model_family:gpt_oss',
+        'transfer.prompt_playbook.requires_re_eval',
+      ]),
+    )
+  })
+
+  test('records a dogfood distill-to-fit receipt with measured cost and quality deltas', () => {
+    const receipt = S.decodeUnknownSync(ReactorDistillToFitDogfoodReceipt)(
+      REACTOR_DOGFOOD_DISTILL_TO_FIT_RECEIPT,
+    )
+
+    expect(receipt).toMatchObject({
+      stage: 'distill_to_fit',
+      runnerRef: 'psionic',
+      candidateModelClass: 'smaller_distilled_model',
+      policyRevalidated: true,
+      routerSwapGate: 'eval_gated_rx3_router',
+      routerSwapGateStatus: 'passed',
+      routeSwapAuthorized: false,
+      customerDataUsed: false,
+      weightsOwnerRef: 'owner.openagents',
+      acceptedForDogfood: true,
+    })
+    expect(receipt.qualityDeltaBps).toBe(
+      receipt.candidateQualityScoreBps - receipt.baselineQualityScoreBps,
+    )
+    expect(receipt.qualityDeltaBps).toBe(-120)
+    expect(receipt.costReductionBps).toBeGreaterThan(5000)
+    expect(receipt.candidateCostPer1kTokensMicrousd).toBeLessThan(
+      receipt.baselineCostPer1kTokensMicrousd,
+    )
+    expect(receipt.datasetSnapshotRef).toContain('openagents')
+    expect(receipt.inputDistributionCaptureRef).toContain('openagents')
+  })
+
+  test('keeps the aggregate dogfood receipt internal and blocked for public claims', () => {
+    const receipt = S.decodeUnknownSync(ReactorImprovementLadderDogfoodReceipt)(
+      REACTOR_IMPROVEMENT_LADDER_DOGFOOD_RECEIPT,
+    )
+
+    expect(receipt).toMatchObject({
+      status: 'completed_internal',
+      capabilityClaimsAuthorized: false,
+      externalClaimFlipAllowed: false,
+      customerDataUsed: false,
+      workloadTruth: 'internal_openagents_dogfood',
+      harnessEvolutionReceiptRef:
+        REACTOR_DOGFOOD_HARNESS_EVOLUTION_RECEIPT.receiptRef,
+      distillToFitReceiptRef: REACTOR_DOGFOOD_DISTILL_TO_FIT_RECEIPT.receiptRef,
+      planRef: REACTOR_IMPROVEMENT_LADDER_PLAN_RECEIPT.planRef,
+    })
+    expect(receipt.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.reactor.improvement_ladder.no_customer_consent_receipt',
+        'blocker.reactor.improvement_ladder.no_customer_boundary_run',
+        'blocker.reactor.improvement_ladder.public_claims_owner_approval_missing',
+      ]),
+    )
   })
 })
