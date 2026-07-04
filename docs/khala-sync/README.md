@@ -24,6 +24,10 @@ clients with server-authoritative mutators and rebase.
   set is registered in `apps/openagents.com/INVARIANTS.md` ("Khala Sync
   (SPEC §7 invariant set)") with per-invariant test pointers and honest
   statuses.
+- [`MIGRATION_PLAN.md`](./MIGRATION_PLAN.md) — the rolling D1 → Cloud SQL
+  migration plan (KS-8.3): table census, per-domain risk/verification
+  notes, wave sequencing after KS-8.1/8.2, cron consolidation, and the D1
+  retirement checklist.
 - Design rationale + database-alternatives analysis:
   [`../fable/2026-07-04-database-alternatives-and-postgres-sync-engine.md`](../fable/2026-07-04-database-alternatives-and-postgres-sync-engine.md)
 
@@ -74,7 +78,7 @@ against local Postgres + the real hub DO + the real client SQLite store.
 | KS-5 Client engine (store, rebase, session, web lane) | #8298 #8299 #8300 #8301 |
 | KS-6 First consumers (fleet projection, desktop, tokens-served) | #8302 (server-side projection + operator mutators landed; supervisor intent enforcement is follow-up) #8303 #8304 |
 | KS-7 Permissions (scope auth, CVR v2) | #8305 #8306 |
-| KS-8 Domain migration (assignments, ledger, rolling plan) | #8307 #8308 #8309 |
+| KS-8 Domain migration (assignments, ledger, rolling plan) | #8307 #8308 #8309 (plan: [`MIGRATION_PLAN.md`](./MIGRATION_PLAN.md)); per-domain waves #8315–#8330 |
 | KS-9 QA/ops (load test, behavior contracts, invariants+runbook) | #8310 #8311 #8312 (invariants+runbook landed: [`RUNBOOK.md`](./RUNBOOK.md) + the "Khala Sync (SPEC §7 invariant set)" section in `apps/openagents.com/INVARIANTS.md`) |
 
 Critical path to the first live surface: KS-0.1 → KS-0.2/0.3 → KS-2.1 →
