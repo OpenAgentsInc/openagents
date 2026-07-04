@@ -1,15 +1,13 @@
 import type {
-  ChangelogEntry,
   ClientGroupId,
   ClientId,
-  MutationEnvelope,
-  MutationId,
   MutatorName,
   SyncSchemaVersion,
   SyncScope,
   SyncVersion,
 } from "@openagentsinc/khala-sync"
 import type { Effect, Stream } from "effect"
+import type { KhalaSyncClientStoreError } from "./store.js"
 
 /**
  * @openagentsinc/khala-sync-client — client engine for Khala Sync: local
@@ -17,7 +15,7 @@ import type { Effect, Stream } from "effect"
  * mutators, and rebase.
  *
  * Spec: docs/khala-sync/SPEC.md §6. Implementation lands per the KS-5
- * workstream issues; this module currently defines the contracts.
+ * workstream issues.
  *
  * Two hard client invariants (SPEC §7):
  * - Optimistic effects live ONLY in the in-memory overlay; the durable
@@ -27,53 +25,22 @@ import type { Effect, Stream } from "effect"
  */
 
 // ---------------------------------------------------------------------------
-// Local store (KS-5.1): SQLite via bun:sqlite on desktop; SQLite-WASM /
-// opfs-sahpool with a SharedWorker single-writer on web (later lane).
+// Local store (KS-5.1): contracts in store.ts; bun:sqlite implementation in
+// sqlite-store.ts (desktop). SQLite-WASM / opfs-sahpool with a SharedWorker
+// single-writer on web (later lane).
 // ---------------------------------------------------------------------------
 
-export class KhalaSyncClientStoreError extends Error {
-  readonly _tag = "KhalaSyncClientStoreError"
-}
-
-export interface ConfirmedEntity {
-  readonly entityType: string
-  readonly entityId: string
-  readonly postImageJson: string
-  readonly version: SyncVersion
-}
-
-export interface KhalaSyncLocalStore {
-  readonly cursor: (
-    scope: SyncScope,
-  ) => Effect.Effect<SyncVersion | null, KhalaSyncClientStoreError>
-  /** Apply confirmed entries + advance the cursor in ONE local transaction. */
-  readonly applyConfirmed: (
-    scope: SyncScope,
-    entries: ReadonlyArray<ChangelogEntry>,
-    cursor: SyncVersion,
-  ) => Effect.Effect<void, KhalaSyncClientStoreError>
-  /** Replace scope-local state from a bootstrap snapshot (MustRefetch path). */
-  readonly resetScope: (
-    scope: SyncScope,
-    entities: ReadonlyArray<ConfirmedEntity>,
-    cursor: SyncVersion,
-  ) => Effect.Effect<void, KhalaSyncClientStoreError>
-  readonly readEntities: (
-    scope: SyncScope,
-    entityType?: string,
-  ) => Effect.Effect<ReadonlyArray<ConfirmedEntity>, KhalaSyncClientStoreError>
-  /** FIFO pending-mutation queue (durable so pushes survive restart). */
-  readonly enqueueMutation: (
-    mutation: MutationEnvelope,
-  ) => Effect.Effect<void, KhalaSyncClientStoreError>
-  readonly pendingMutations: () => Effect.Effect<
-    ReadonlyArray<MutationEnvelope>,
-    KhalaSyncClientStoreError
-  >
-  readonly ackMutations: (
-    throughMutationId: MutationId,
-  ) => Effect.Effect<void, KhalaSyncClientStoreError>
-}
+export {
+  type ClientIdentity,
+  type ConfirmedEntity,
+  KhalaSyncClientStoreError,
+  type KhalaSyncClientStoreErrorReason,
+  type KhalaSyncLocalStore,
+} from "./store.js"
+export {
+  type KhalaSyncSqliteStore,
+  openKhalaSyncStore,
+} from "./sqlite-store.js"
 
 // ---------------------------------------------------------------------------
 // Optimistic mutators + rebase (KS-5.2)
