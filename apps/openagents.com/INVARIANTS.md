@@ -568,6 +568,23 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/inference/chat-completions-routes.test.ts` and
   `workers/api/src/inference/hydralisk-adapter.test.ts`.
 
+## Background Agent Per-Run Live Surface Gate
+
+- Definition-backed runs continue to use Durable Streams as the default
+  run-live/resume surface. A per-run live Durable Object may be adopted only
+  after WS-10 has a client-facing live channel and an operator enablement gate
+  opts into the thin-DO candidate.
+- Any future live object must be keyed by owner+run, must be only a transport
+  shell around injected services, must track in-object SQLite migrations with
+  `_sql_schema_migrations` rather than `PRAGMA user_version`, must persist
+  hibernatable WebSocket attachment metadata without raw prompts, provider
+  payloads, tokens, signatures, or secrets, and must multiplex all scheduled
+  work through a single durable alarm task table.
+- The current BA-G3 artifact is deliberately inert: it declares no Worker
+  binding, exports no live Durable Object class, and registers no route.
+  Regression coverage lives in
+  `workers/api/src/agent-definition-live-surface-spike.test.ts`.
+
 ## Harbor Full Trace Archive (operator-only)
 
 - Harbor / Terminal-Bench full trace archives are RAW PRIVATE EVIDENCE, not

@@ -370,6 +370,18 @@ comment back to the source issue or PR conversation. The BA-G2 behavior
 contract is
 `background_agents.integrations.github_mention_callback.v1`.
 
+BA-G3 status (2026-07-04): the per-run live surface is documented and pinned
+as an inert thin-DO spike in
+[`2026-07-04-background-agent-per-run-live-surface-thin-do.md`](./2026-07-04-background-agent-per-run-live-surface-thin-do.md).
+Durable Streams remain the default; the future DO candidate stays behind the
+WS-10 client-facing live-channel gate plus operator enablement. The executable
+spike in
+`apps/openagents.com/workers/api/src/agent-definition-live-surface-spike.ts`
+asserts deterministic owner+run object naming, injected service seams,
+numbered in-DO SQLite migrations, hibernation-safe socket attachments, and a
+single multiplexed alarm task table without declaring a Worker binding or
+route.
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-G1 | Integration template + Forum-triggered runs: external event → verify → normalize → definition run → completion callback posts the result back to the source thread; Forum first (Forum stays posting/moderation authority) | BA-A2, BA-B3 | MED | [#8208](https://github.com/OpenAgentsInc/openagents/issues/8208) |

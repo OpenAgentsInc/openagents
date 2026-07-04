@@ -247,6 +247,17 @@ More specific invariant ledgers apply inside imported apps and packages.
   toolset, Pylon, Forge, and exact-accounting gates as any other trigger.
   Manual run-now must not become an owner-scope bypass or a second dispatch
   path.
+- A per-run live Durable Object is not a default background-agent transport.
+  Durable Streams remain the default run-live/resume surface until WS-10 grows
+  an explicit client-facing live channel and an operator enablement gate opens
+  the thin-DO candidate. Any future live object must be keyed by
+  owner+definition-run, act only as a thin transport shell around injected
+  services, track in-object SQLite migrations through `_sql_schema_migrations`
+  rather than `PRAGMA user_version`, persist hibernatable WebSocket attachment
+  metadata without raw prompts/provider payloads/tokens/secrets, and multiplex
+  all scheduled work through one durable alarm task table. Regression coverage
+  for the design gate lives in
+  `apps/openagents.com/workers/api/src/agent-definition-live-surface-spike.test.ts`.
 - Any Worker, Pylon, desktop, or cloud-workroom executor that claims
   definition-backed tool enforcement must use this contract or a formally
   equivalent compiled policy at the execution boundary, with regression tests
