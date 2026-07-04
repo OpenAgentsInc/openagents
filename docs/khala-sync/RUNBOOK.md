@@ -485,16 +485,60 @@ Flag-flip order — never skip a step, each step soaks before the next:
 5. **Postgres reads**: set `KHALA_SYNC_AGENT_RUNTIME_READS=postgres`.
    The scheduler due-trigger scan now reads Postgres with retry
    headroom; D1 remains the write authority and the fallback.
-6. **Decommission LATER**: dropping the D1 tables, moving the remaining
-   read paths, migrating the issue's remainder tables (profiles /
-   proposals / owner claims / credentials / event ledger / acceptance),
-   and moving write authority is the follow-up issue on epic #8282 —
-   never in the same change as a read cutover. Until then rollback is
-   one flag flip back to `d1`.
+6. **Remainder/backfill separately, retire later**: the remaining
+   profile/proposal/owner-claim/credential/event-ledger/acceptance tables
+   have their own backfill lane (#8334, below). Dropping D1 tables and
+   deleting flags is deferred to KS-8.19 (#8330), not a per-domain
+   soak/drop gate. Until then rollback is one flag flip back to `d1`.
 
 Rollback at ANY step: set `KHALA_SYNC_AGENT_RUNTIME_READS=d1` (reads)
 and/or `KHALA_SYNC_AGENT_RUNTIME_DUAL_WRITE=off` (writes). D1 authority
 is never behind.
+
+## Agent runtime remainder backfill (KS-8.5 follow-up, #8334)
+
+The first #8334 machinery slice is khala-sync migration
+`0012_agent_runtime_remainder.sql` plus
+`packages/khala-sync-server/scripts/backfill-agent-runtime-remainder.ts`.
+It covers the tables deliberately left out of the first core metadata
+slice: `agent_profiles`, `agent_credentials`, `agent_owner_claims`,
+`agent_owner_x_claim_challenges`, `agent_proposals`,
+`event_ledger_entries`, `khala_acceptance_jobs`, and
+`khala_acceptance_verdicts`.
+
+Privacy: `agent_credentials` is secret-bearing. The verifier hashes row
+bytes for equality, but output must remain row-key/sha256 only. Do not
+paste `token_hash`, job payloads, proposal bodies, event payload summaries,
+or credential material into issues or logs.
+
+Backfill from `packages/khala-sync-server/` over a direct Postgres URL:
+
+```sh
+KHALA_SYNC_DATABASE_URL="<direct-url>" \
+  bun scripts/backfill-agent-runtime-remainder.ts
+
+# Catch-up sweep after the mirror/cutover window, or when intentionally
+# restarting from D1 rowid 0:
+KHALA_SYNC_DATABASE_URL="<direct-url>" \
+  bun scripts/backfill-agent-runtime-remainder.ts --restart
+```
+
+Verify:
+
+```sh
+KHALA_SYNC_DATABASE_URL="<direct-url>" \
+  bun scripts/backfill-agent-runtime-remainder.ts --verify --verify-newest 50
+```
+
+The verify command checks exact row counts, scalar tallies per table,
+newest-N row hashes, and per-owner `event_ledger_entries.ordering_sequence`
+density (`count == distinct == max - min + 1`). It also checks the old
+D1 rewrite artifact `event_ledger_entries_next`: absent or empty is clean;
+any remaining rows are drift and must be explained before cutover.
+
+This lane does **not** drop D1 tables. Runtime write-authority movement,
+read cutover, flag deletion, and destructive retirement remain explicit
+follow-up work; D1 retirement is consolidated into KS-8.19 (#8330).
 
 ## Artanis supervision domain cutover (KS-8.6, #8317)
 

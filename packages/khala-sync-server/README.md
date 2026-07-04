@@ -621,3 +621,17 @@ Environments:
 
 Verification: `bun test packages/khala-sync-server` and
 `bun run --cwd packages/khala-sync-server typecheck`.
+
+## Domain backfill CLIs
+
+Domain migrations that mirror D1 tables into Postgres keep their direct-copy
+tools in `scripts/`. They use existing Wrangler D1 auth for the source and a
+direct Postgres URL for the destination; never run them through Hyperdrive.
+
+- `scripts/backfill-agent-runtime-remainder.ts` (#8334) copies/verifies
+  `agent_profiles`, `agent_credentials`, owner-claim/proposal rows,
+  `event_ledger_entries`, and Khala acceptance job/verdict rows. Verify mode
+  checks exact counts, scalar tallies, newest row hashes, and per-owner
+  event-ledger ordering density, and treats `event_ledger_entries_next` as an
+  absent-or-empty D1 rewrite artifact. Output is public-safe: credential
+  equality is row-key/sha256 only, never raw `token_hash`.

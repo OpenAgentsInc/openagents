@@ -335,15 +335,31 @@ hashes), and a contract suite run against BOTH stores plus dual-write
 fail-soft / flag-routing / diagnostics-privacy tests. `agent_traces`
 stay owner-private: the Postgres twin carries visibility/owner/consent
 columns verbatim, no new read path is exposed, and migration
-diagnostics reference row keys only — never trajectory content. The
-issue's REMAINING tables (`agent_profiles`, `agent_proposals`,
-`agent_owner_claims` + x-claim challenges, `agent_credentials` —
-secret-bearing, SPEC invariant 9; `event_ledger_entries` — per-owner
-dense `ordering_sequence` allocated inside the Postgres transaction;
-`khala_acceptance_jobs/verdicts`) move in the follow-up remainder lane
-tracked with the D1 decommission follow-up. Prod cutover procedure:
-[`RUNBOOK.md`](./RUNBOOK.md) "Agent runtime metadata domain cutover";
-cutover evidence + D1 drop tracked on epic
+diagnostics reference row keys only — never trajectory content.
+
+**KS-8.5 remainder status (2026-07-04, #8334):** first machinery slice
+LANDED — Postgres schema (`khala-sync-server` migration
+`0012_agent_runtime_remainder.sql`) creates twins for
+`agent_profiles`, `agent_credentials`, `agent_owner_claims`,
+`agent_owner_x_claim_challenges`, `agent_proposals`,
+`event_ledger_entries`, `khala_acceptance_jobs`, and
+`khala_acceptance_verdicts`. `event_ledger_entries_next` is treated as
+the D1 rewrite artifact from migration 0287: the live canonical table is
+`event_ledger_entries`, and the verifier fails if the artifact still
+exists with rows. The exact backfill/verify CLI is
+`packages/khala-sync-server/scripts/backfill-agent-runtime-remainder.ts`;
+it checks counts, scalar status/attempt/verdict tallies, newest-N row
+hashes, and per-owner `event_ledger_entries.ordering_sequence` density.
+Credential diagnostics remain key/hash-only: row hashes may include the
+private `token_hash` byte value, but output prints credential ids and
+sha256 row hashes only, never token hashes or payloads. Runtime
+dual-write/read-cutover for these remainder tables is still open on
+[#8334](https://github.com/OpenAgentsInc/openagents/issues/8334);
+destructive D1 retirement is deferred to KS-8.19
+[#8330](https://github.com/OpenAgentsInc/openagents/issues/8330), not a
+per-domain soak/drop follow-up. Prod cutover procedure:
+[`RUNBOOK.md`](./RUNBOOK.md) "Agent runtime metadata domain cutover" and
+"Agent runtime remainder backfill"; cutover evidence is tracked on epic
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
 
 - **What:** the agent execution record: definitions, scheduled triggers,
