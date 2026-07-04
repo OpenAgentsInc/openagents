@@ -13,12 +13,14 @@ import { Route as TassadarRouteImport } from './routes/tassadar'
 import { Route as KhalaRouteImport } from './routes/khala'
 import { Route as GymRouteImport } from './routes/gym'
 import { Route as DocsRouteImport } from './routes/docs'
+import { Route as ComponentsRouteImport } from './routes/components'
 import { Route as BusinessRouteImport } from './routes/business'
 import { Route as BlogRouteImport } from './routes/blog'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AutopilotIndexRouteImport } from './routes/autopilot/index'
 import { Route as KhalaChatSyncRouteImport } from './routes/khala/chat-sync'
 import { Route as DocsSlugRouteImport } from './routes/docs/$slug'
+import { Route as ComponentsFamilyRouteImport } from './routes/components/$family'
 import { Route as CodeDownloadRouteImport } from './routes/code/download'
 import { Route as BlogSlugRouteImport } from './routes/blog/$slug'
 import { Route as AutopilotLegalRouteImport } from './routes/autopilot/legal'
@@ -41,6 +43,11 @@ const GymRoute = GymRouteImport.update({
 const DocsRoute = DocsRouteImport.update({
   id: '/docs',
   path: '/docs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ComponentsRoute = ComponentsRouteImport.update({
+  id: '/components',
+  path: '/components',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BusinessRoute = BusinessRouteImport.update({
@@ -73,6 +80,11 @@ const DocsSlugRoute = DocsSlugRouteImport.update({
   path: '/$slug',
   getParentRoute: () => DocsRoute,
 } as any)
+const ComponentsFamilyRoute = ComponentsFamilyRouteImport.update({
+  id: '/$family',
+  path: '/$family',
+  getParentRoute: () => ComponentsRoute,
+} as any)
 const CodeDownloadRoute = CodeDownloadRouteImport.update({
   id: '/code/download',
   path: '/code/download',
@@ -93,6 +105,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/blog': typeof BlogRouteWithChildren
   '/business': typeof BusinessRoute
+  '/components': typeof ComponentsRouteWithChildren
   '/docs': typeof DocsRouteWithChildren
   '/gym': typeof GymRoute
   '/khala': typeof KhalaRouteWithChildren
@@ -100,6 +113,7 @@ export interface FileRoutesByFullPath {
   '/autopilot/legal': typeof AutopilotLegalRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/code/download': typeof CodeDownloadRoute
+  '/components/$family': typeof ComponentsFamilyRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/autopilot/': typeof AutopilotIndexRoute
@@ -108,6 +122,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/blog': typeof BlogRouteWithChildren
   '/business': typeof BusinessRoute
+  '/components': typeof ComponentsRouteWithChildren
   '/docs': typeof DocsRouteWithChildren
   '/gym': typeof GymRoute
   '/khala': typeof KhalaRouteWithChildren
@@ -115,6 +130,7 @@ export interface FileRoutesByTo {
   '/autopilot/legal': typeof AutopilotLegalRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/code/download': typeof CodeDownloadRoute
+  '/components/$family': typeof ComponentsFamilyRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/autopilot': typeof AutopilotIndexRoute
@@ -124,6 +140,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/blog': typeof BlogRouteWithChildren
   '/business': typeof BusinessRoute
+  '/components': typeof ComponentsRouteWithChildren
   '/docs': typeof DocsRouteWithChildren
   '/gym': typeof GymRoute
   '/khala': typeof KhalaRouteWithChildren
@@ -131,6 +148,7 @@ export interface FileRoutesById {
   '/autopilot/legal': typeof AutopilotLegalRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/code/download': typeof CodeDownloadRoute
+  '/components/$family': typeof ComponentsFamilyRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/autopilot/': typeof AutopilotIndexRoute
@@ -141,6 +159,7 @@ export interface FileRouteTypes {
     | '/'
     | '/blog'
     | '/business'
+    | '/components'
     | '/docs'
     | '/gym'
     | '/khala'
@@ -148,6 +167,7 @@ export interface FileRouteTypes {
     | '/autopilot/legal'
     | '/blog/$slug'
     | '/code/download'
+    | '/components/$family'
     | '/docs/$slug'
     | '/khala/chat-sync'
     | '/autopilot/'
@@ -156,6 +176,7 @@ export interface FileRouteTypes {
     | '/'
     | '/blog'
     | '/business'
+    | '/components'
     | '/docs'
     | '/gym'
     | '/khala'
@@ -163,6 +184,7 @@ export interface FileRouteTypes {
     | '/autopilot/legal'
     | '/blog/$slug'
     | '/code/download'
+    | '/components/$family'
     | '/docs/$slug'
     | '/khala/chat-sync'
     | '/autopilot'
@@ -171,6 +193,7 @@ export interface FileRouteTypes {
     | '/'
     | '/blog'
     | '/business'
+    | '/components'
     | '/docs'
     | '/gym'
     | '/khala'
@@ -178,6 +201,7 @@ export interface FileRouteTypes {
     | '/autopilot/legal'
     | '/blog/$slug'
     | '/code/download'
+    | '/components/$family'
     | '/docs/$slug'
     | '/khala/chat-sync'
     | '/autopilot/'
@@ -187,6 +211,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BlogRoute: typeof BlogRouteWithChildren
   BusinessRoute: typeof BusinessRoute
+  ComponentsRoute: typeof ComponentsRouteWithChildren
   DocsRoute: typeof DocsRouteWithChildren
   GymRoute: typeof GymRoute
   KhalaRoute: typeof KhalaRouteWithChildren
@@ -224,6 +249,13 @@ declare module '@tanstack/react-router' {
       path: '/docs'
       fullPath: '/docs'
       preLoaderRoute: typeof DocsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/components': {
+      id: '/components'
+      path: '/components'
+      fullPath: '/components'
+      preLoaderRoute: typeof ComponentsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/business': {
@@ -268,6 +300,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsSlugRouteImport
       parentRoute: typeof DocsRoute
     }
+    '/components/$family': {
+      id: '/components/$family'
+      path: '/$family'
+      fullPath: '/components/$family'
+      preLoaderRoute: typeof ComponentsFamilyRouteImport
+      parentRoute: typeof ComponentsRoute
+    }
     '/code/download': {
       id: '/code/download'
       path: '/code/download'
@@ -302,6 +341,18 @@ const BlogRouteChildren: BlogRouteChildren = {
 
 const BlogRouteWithChildren = BlogRoute._addFileChildren(BlogRouteChildren)
 
+interface ComponentsRouteChildren {
+  ComponentsFamilyRoute: typeof ComponentsFamilyRoute
+}
+
+const ComponentsRouteChildren: ComponentsRouteChildren = {
+  ComponentsFamilyRoute: ComponentsFamilyRoute,
+}
+
+const ComponentsRouteWithChildren = ComponentsRoute._addFileChildren(
+  ComponentsRouteChildren,
+)
+
 interface DocsRouteChildren {
   DocsSlugRoute: typeof DocsSlugRoute
 }
@@ -326,6 +377,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BlogRoute: BlogRouteWithChildren,
   BusinessRoute: BusinessRoute,
+  ComponentsRoute: ComponentsRouteWithChildren,
   DocsRoute: DocsRouteWithChildren,
   GymRoute: GymRoute,
   KhalaRoute: KhalaRouteWithChildren,

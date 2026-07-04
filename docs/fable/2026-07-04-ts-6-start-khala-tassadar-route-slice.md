@@ -37,6 +37,25 @@ Foldkit route's no-spend, live-data-only contract.
   dispatch remains backend/owner-gated, not a public page action.
 - `src/routeTree.gen.ts` and the Start route-budget list include `/gym`.
 
+## Landed Slice 3: Components
+
+The Start staging app now owns `/components` and `/components/$family` as a
+static design-system workbench slice.
+
+- `/components` preserves the public route markers and workbench orientation:
+  `data-route="components"`, `Component library`, and
+  `Internal - design-system workbench`.
+- The family inventory keeps the old gallery's representative headings:
+  Primitives, Shared, Forms, Layout, Navigation, Data display, Feedback,
+  Workroom, Public, Public theme, Business landing, Page examples, V4, AI
+  Elements, and Live samples.
+- Selected family routes preserve the behavior-test anchors for
+  `data-display`, `training`, `business`, and `public-theme`, including
+  `tableList`, `Contract`, `oa-training-grammar-replay-pair`,
+  `businessIntakeForm`, and `data-public-landing-shell`.
+- This slice does not claim the old Foldkit live registry has been deleted; it
+  gives Start the route and route-test contract ahead of production cutover.
+
 ## Boundary
 
 This is not the final TS-6 closure. The live `openagents.com` Worker still
@@ -56,7 +75,7 @@ Remaining TS-6 work:
 ## Verification
 
 ```sh
-bun run --cwd apps/openagents.com/apps/start test -- src/routes/-app-shell.test.tsx src/routes/-index.test.tsx
+bun run --cwd apps/openagents.com/apps/start test -- src/routes/-app-shell.test.tsx src/routes/-components.test.tsx src/routes/-gym.test.tsx src/routes/-index.test.tsx
 bun run --cwd apps/openagents.com/apps/start typecheck
 bun run --cwd apps/openagents.com/apps/start build
 ```
