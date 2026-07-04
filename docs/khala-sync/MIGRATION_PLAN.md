@@ -193,11 +193,12 @@ Pylon quarantines, Pylon marketplace intake/assignment/triage writes, raw
 Spark payout target registrations, scheduled
 `PylonCapacityFunnel.recordSnapshots` capacity-funnel snapshot upsert/prune
 writes, registered-agent `pylon_agent_runner_status_events` ingest, and
+Artanis Fleet tick `pylon_agent_runner_status_events` writes, plus
 `fleet_alerts` cron alert rows from FleetBurnStallDetector and
 ServingRateMonitor; those remain D1-first and read-authoritative until
 verification/cutover. Queue-based raw-event ingestion split,
-closeout-verifier shadow read, Artanis/status read re-home work,
-compare/postgres read flags, and final D1 decommission remain on
+runner-status and closeout-verifier Postgres shadow reads, compare/postgres
+read flags, and final D1 decommission remain on
 [#8315](https://github.com/OpenAgentsInc/openagents/issues/8315).
 
 - **What:** the rest of the Pylon control plane after KS-8.1:

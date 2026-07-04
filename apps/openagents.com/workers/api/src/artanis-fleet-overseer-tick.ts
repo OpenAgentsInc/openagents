@@ -18,6 +18,10 @@ import {
 import { artanisMindComplete } from './artanis-mind'
 import { parseJsonWithSchema } from './json-boundary'
 import { PYLON_AGENT_RUNNER_STATUS_EVENT_SCHEMA_VERSION } from './operator-pro-status-routes'
+import type {
+  PylonAgentRunnerStatusEventRecord,
+  PylonAgentRunnerStatusMirror,
+} from './pylon-agent-runner-status-store'
 import { epochMillisToIsoTimestamp, randomUuid } from './runtime-primitives'
 
 type FleetHeartbeatRow = Readonly<{
@@ -379,6 +383,7 @@ const recordFleetOverseerRunnerStatus = async (
     healthSnapshotRef: string | null
     nowIso: string
     reason: string | null
+    runnerStatusMirror?: PylonAgentRunnerStatusMirror | undefined
     state: ArtanisFleetOverseerDecisionState
   }>,
 ): Promise<void> => {
@@ -433,6 +438,21 @@ const recordFleetOverseerRunnerStatus = async (
           assigneeHandle: `artanis_fleet_overseer:${publicDispatchReason(input.reason)}`,
         }),
   }
+  const record: PylonAgentRunnerStatusEventRecord = {
+    assignmentRef: null,
+    createdAt: input.nowIso,
+    eventJson: JSON.stringify(event),
+    eventRef,
+    ownerAgentUserId: 'agent_artanis',
+    pylonRef: null,
+    retainedAt: null,
+    retentionState: 'live',
+    runnerKind: event.runnerKind,
+    runnerRef,
+    state: runnerState,
+    stateStartedAt: input.nowIso,
+    updatedAt: input.nowIso,
+  }
 
   await db
     .prepare(
@@ -484,6 +504,16 @@ const recordFleetOverseerRunnerStatus = async (
       'agent_artanis',
     )
     .run()
+
+  await input.runnerStatusMirror?.recordStatusEvent({
+    record,
+    retain: {
+      eventRef,
+      ownerAgentUserId: 'agent_artanis',
+      retainedAt: input.nowIso,
+      runnerRef,
+    },
+  })
 }
 
 const publicDispatchReason = (reason: string): string =>
@@ -761,6 +791,7 @@ export const runArtanisFleetOverseerTick = async (
     geminiApiKey: string | null
     mindComplete?: MindComplete | undefined
     nowIso: string
+    runnerStatusMirror?: PylonAgentRunnerStatusMirror | undefined
   }>,
 ): Promise<ArtanisFleetOverseerOutcome> => {
   const context = await (deps.assembleContext ??
@@ -782,6 +813,7 @@ export const runArtanisFleetOverseerTick = async (
       healthSnapshotRef: null,
       nowIso: deps.nowIso,
       reason,
+      runnerStatusMirror: deps.runnerStatusMirror,
       state: 'skipped',
     }).catch(() => undefined)
     return {
@@ -854,6 +886,7 @@ export const runArtanisFleetOverseerTick = async (
       healthSnapshotRef: snapshot.snapshotRef,
       nowIso: deps.nowIso,
       reason: 'schema_invalid_mind_output',
+      runnerStatusMirror: deps.runnerStatusMirror,
       state: 'blocked',
     }).catch(() => undefined)
     return {
@@ -893,6 +926,7 @@ export const runArtanisFleetOverseerTick = async (
     healthSnapshotRef: snapshot.snapshotRef,
     nowIso: deps.nowIso,
     reason: action.rationale.slice(0, 200),
+    runnerStatusMirror: deps.runnerStatusMirror,
     state,
   }).catch(() => undefined)
 
@@ -912,6 +946,7 @@ export const runArtanisFleetOverseerTickScheduled = (
     gatewayToken?: string | undefined
     geminiApiKey: string | null
     nowIso: string
+    runnerStatusMirror?: PylonAgentRunnerStatusMirror | undefined
   }>,
 ): Effect.Effect<ArtanisFleetOverseerOutcome, never> =>
   deps.enabled

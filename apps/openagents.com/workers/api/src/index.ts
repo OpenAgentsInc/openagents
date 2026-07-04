@@ -910,6 +910,7 @@ import {
   readOperatorFleetStatusSnapshotFromSpine,
 } from './operator-fleet-status-routes'
 import { makeOperatorProStatusRoutes } from './operator-pro-status-routes'
+import { makePylonAgentRunnerStatusMirrorForEnv } from './pylon-agent-runner-status-store'
 import { makeOperatorOrderTriageRoutes } from './operator-order-triage-routes'
 import { makeOperatorProviderAccountRoutes } from './operator-provider-account-routes'
 import { makeOperatorPylonMarketplaceRoutes } from './operator-pylon-marketplace-routes'
@@ -15894,6 +15895,7 @@ export default {
           geminiApiKey:
             (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
+          runnerStatusMirror: makePylonAgentRunnerStatusMirrorForEnv(env),
         }),
       ),
       observedEffect(

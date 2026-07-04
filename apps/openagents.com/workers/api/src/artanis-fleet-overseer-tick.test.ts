@@ -6,6 +6,7 @@ import {
   runArtanisFleetOverseerTick,
   runArtanisFleetOverseerTickScheduled,
 } from './artanis-fleet-overseer-tick'
+import type { PylonAgentRunnerStatusMirrorInput } from './pylon-agent-runner-status-store'
 import {
   ArtanisPersistenceTestStore,
   artanisPersistenceTestDb,
@@ -152,6 +153,70 @@ describe('Artanis fleet overseer tick', () => {
       expect.arrayContaining([
         'status.public.artanis.fleet_overseer.decision_state.approval_requested',
         'capacity.coding.codex.ready=2',
+      ]),
+    )
+  })
+
+  test('mirrors fleet-overseer runner status events to Postgres seam', async () => {
+    const store = new ArtanisPersistenceTestStore()
+    const db = artanisPersistenceTestDb(store)
+    const mirrored: Array<PylonAgentRunnerStatusMirrorInput> = []
+
+    const result = await runArtanisFleetOverseerTick(db, {
+      assembleContext: async () => context,
+      geminiApiKey: 'test-key',
+      mindComplete: async () => ({
+        text: JSON.stringify({
+          kind: 'no_action',
+          rationale: 'Fleet is steady.',
+        }),
+      }),
+      nowIso,
+      runnerStatusMirror: {
+        recordStatusEvent: async input => {
+          mirrored.push(input)
+        },
+      },
+    })
+
+    expect(result).toMatchObject({
+      reason: 'Fleet is steady.',
+      state: 'no_action',
+    })
+    expect(store.rows('pylon_agent_runner_status_events')).toHaveLength(1)
+    expect(mirrored).toHaveLength(1)
+    expect(mirrored[0]!.retain).toEqual({
+      eventRef: 'event.public.artanis.fleet_overseer.20260627t120000000z',
+      ownerAgentUserId: 'agent_artanis',
+      retainedAt: nowIso,
+      runnerRef: 'runner.public.artanis.fleet_overseer',
+    })
+    expect(mirrored[0]!.record).toMatchObject({
+      assignmentRef: null,
+      createdAt: nowIso,
+      eventRef: 'event.public.artanis.fleet_overseer.20260627t120000000z',
+      ownerAgentUserId: 'agent_artanis',
+      pylonRef: null,
+      retainedAt: null,
+      retentionState: 'live',
+      runnerKind: 'artanis_fleet_overseer',
+      runnerRef: 'runner.public.artanis.fleet_overseer',
+      state: 'waiting',
+      stateStartedAt: nowIso,
+      updatedAt: nowIso,
+    })
+    const mirroredEvent = JSON.parse(mirrored[0]!.record.eventJson)
+    expect(mirroredEvent).toMatchObject({
+      eventRef: 'event.public.artanis.fleet_overseer.20260627t120000000z',
+      runnerRef: 'runner.public.artanis.fleet_overseer',
+      schemaVersion: 'openagents.pylon.agent_runner_status_event.v1',
+      state: 'waiting',
+    })
+    expect(mirroredEvent.refs).toEqual(
+      expect.arrayContaining([
+        'status.public.artanis.fleet_overseer.on_status_spine',
+        'status.public.artanis.fleet_overseer.decision_state.no_action',
+        'load.coding.codex.busy=1',
       ]),
     )
   })
