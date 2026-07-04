@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
-import { PUBLIC_MCP_PATH } from './public-agent-mcp-routes'
+import { PUBLIC_MCP_PATH } from './public-agent-mcp-discovery'
 import {
   AI_CATALOG_PATH,
   MCP_MANIFEST_PATHS,

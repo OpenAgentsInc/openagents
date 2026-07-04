@@ -9,38 +9,165 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as DocsRouteImport } from './routes/docs'
+import { Route as BusinessRouteImport } from './routes/business'
+import { Route as BlogRouteImport } from './routes/blog'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AutopilotIndexRouteImport } from './routes/autopilot/index'
+import { Route as DocsSlugRouteImport } from './routes/docs/$slug'
+import { Route as CodeDownloadRouteImport } from './routes/code/download'
+import { Route as BlogSlugRouteImport } from './routes/blog/$slug'
+import { Route as AutopilotLegalRouteImport } from './routes/autopilot/legal'
 
+const DocsRoute = DocsRouteImport.update({
+  id: '/docs',
+  path: '/docs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BusinessRoute = BusinessRouteImport.update({
+  id: '/business',
+  path: '/business',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BlogRoute = BlogRouteImport.update({
+  id: '/blog',
+  path: '/blog',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AutopilotIndexRoute = AutopilotIndexRouteImport.update({
+  id: '/autopilot/',
+  path: '/autopilot/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DocsSlugRoute = DocsSlugRouteImport.update({
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => DocsRoute,
+} as any)
+const CodeDownloadRoute = CodeDownloadRouteImport.update({
+  id: '/code/download',
+  path: '/code/download',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BlogSlugRoute = BlogSlugRouteImport.update({
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => BlogRoute,
+} as any)
+const AutopilotLegalRoute = AutopilotLegalRouteImport.update({
+  id: '/autopilot/legal',
+  path: '/autopilot/legal',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/blog': typeof BlogRouteWithChildren
+  '/business': typeof BusinessRoute
+  '/docs': typeof DocsRouteWithChildren
+  '/autopilot/legal': typeof AutopilotLegalRoute
+  '/blog/$slug': typeof BlogSlugRoute
+  '/code/download': typeof CodeDownloadRoute
+  '/docs/$slug': typeof DocsSlugRoute
+  '/autopilot/': typeof AutopilotIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/blog': typeof BlogRouteWithChildren
+  '/business': typeof BusinessRoute
+  '/docs': typeof DocsRouteWithChildren
+  '/autopilot/legal': typeof AutopilotLegalRoute
+  '/blog/$slug': typeof BlogSlugRoute
+  '/code/download': typeof CodeDownloadRoute
+  '/docs/$slug': typeof DocsSlugRoute
+  '/autopilot': typeof AutopilotIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/blog': typeof BlogRouteWithChildren
+  '/business': typeof BusinessRoute
+  '/docs': typeof DocsRouteWithChildren
+  '/autopilot/legal': typeof AutopilotLegalRoute
+  '/blog/$slug': typeof BlogSlugRoute
+  '/code/download': typeof CodeDownloadRoute
+  '/docs/$slug': typeof DocsSlugRoute
+  '/autopilot/': typeof AutopilotIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/blog'
+    | '/business'
+    | '/docs'
+    | '/autopilot/legal'
+    | '/blog/$slug'
+    | '/code/download'
+    | '/docs/$slug'
+    | '/autopilot/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/blog'
+    | '/business'
+    | '/docs'
+    | '/autopilot/legal'
+    | '/blog/$slug'
+    | '/code/download'
+    | '/docs/$slug'
+    | '/autopilot'
+  id:
+    | '__root__'
+    | '/'
+    | '/blog'
+    | '/business'
+    | '/docs'
+    | '/autopilot/legal'
+    | '/blog/$slug'
+    | '/code/download'
+    | '/docs/$slug'
+    | '/autopilot/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  BlogRoute: typeof BlogRouteWithChildren
+  BusinessRoute: typeof BusinessRoute
+  DocsRoute: typeof DocsRouteWithChildren
+  AutopilotLegalRoute: typeof AutopilotLegalRoute
+  CodeDownloadRoute: typeof CodeDownloadRoute
+  AutopilotIndexRoute: typeof AutopilotIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/docs': {
+      id: '/docs'
+      path: '/docs'
+      fullPath: '/docs'
+      preLoaderRoute: typeof DocsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/business': {
+      id: '/business'
+      path: '/business'
+      fullPath: '/business'
+      preLoaderRoute: typeof BusinessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/blog': {
+      id: '/blog'
+      path: '/blog'
+      fullPath: '/blog'
+      preLoaderRoute: typeof BlogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,11 +175,72 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/autopilot/': {
+      id: '/autopilot/'
+      path: '/autopilot'
+      fullPath: '/autopilot/'
+      preLoaderRoute: typeof AutopilotIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/docs/$slug': {
+      id: '/docs/$slug'
+      path: '/$slug'
+      fullPath: '/docs/$slug'
+      preLoaderRoute: typeof DocsSlugRouteImport
+      parentRoute: typeof DocsRoute
+    }
+    '/code/download': {
+      id: '/code/download'
+      path: '/code/download'
+      fullPath: '/code/download'
+      preLoaderRoute: typeof CodeDownloadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/blog/$slug': {
+      id: '/blog/$slug'
+      path: '/$slug'
+      fullPath: '/blog/$slug'
+      preLoaderRoute: typeof BlogSlugRouteImport
+      parentRoute: typeof BlogRoute
+    }
+    '/autopilot/legal': {
+      id: '/autopilot/legal'
+      path: '/autopilot/legal'
+      fullPath: '/autopilot/legal'
+      preLoaderRoute: typeof AutopilotLegalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
+interface BlogRouteChildren {
+  BlogSlugRoute: typeof BlogSlugRoute
+}
+
+const BlogRouteChildren: BlogRouteChildren = {
+  BlogSlugRoute: BlogSlugRoute,
+}
+
+const BlogRouteWithChildren = BlogRoute._addFileChildren(BlogRouteChildren)
+
+interface DocsRouteChildren {
+  DocsSlugRoute: typeof DocsSlugRoute
+}
+
+const DocsRouteChildren: DocsRouteChildren = {
+  DocsSlugRoute: DocsSlugRoute,
+}
+
+const DocsRouteWithChildren = DocsRoute._addFileChildren(DocsRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  BlogRoute: BlogRouteWithChildren,
+  BusinessRoute: BusinessRoute,
+  DocsRoute: DocsRouteWithChildren,
+  AutopilotLegalRoute: AutopilotLegalRoute,
+  CodeDownloadRoute: CodeDownloadRoute,
+  AutopilotIndexRoute: AutopilotIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

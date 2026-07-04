@@ -18,7 +18,7 @@
 import { Effect } from 'effect'
 
 import { methodNotAllowed } from './http/responses'
-import { PUBLIC_MCP_PATH, PUBLIC_MCP_TOOLS } from './public-agent-mcp-routes'
+import { PUBLIC_MCP_PATH, PUBLIC_MCP_TOOLS } from './public-agent-mcp-discovery'
 
 type HttpResponse = globalThis.Response
 

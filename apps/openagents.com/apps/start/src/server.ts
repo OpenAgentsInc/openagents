@@ -1,5 +1,14 @@
 import { withStartRequestContext } from '@openagentsinc/effect-start'
 import handler, { createServerEntry } from '@tanstack/react-start/server-entry'
+import { Effect } from 'effect'
+
+import {
+  DISCOVERY_SURFACE_PATHS,
+  type DiscoverySurfacePath,
+  renderDiscoverySurface,
+} from '../../../workers/api/src/inference/discovery-surfaces'
+import { routeSiteCrawlSurfaceRequest } from '../../../workers/api/src/site-crawl-surfaces-routes'
+import { routeWellKnownAgentSurfaceRequest } from '../../../workers/api/src/well-known-agent-surfaces-routes'
 
 type StartWorkerEnv = Record<string, unknown>
 
@@ -30,8 +39,36 @@ export function applySecurityHeaders(response: Response): Response {
   })
 }
 
+export async function routeSharedAgentSurface(
+  request: Request,
+): Promise<Response | undefined> {
+  const path = new URL(request.url).pathname
+  const crawlSurface = routeSiteCrawlSurfaceRequest(request)
+  if (crawlSurface !== undefined) {
+    return Effect.runPromise(crawlSurface)
+  }
+
+  const wellKnownSurface = routeWellKnownAgentSurfaceRequest(request)
+  if (wellKnownSurface !== undefined) {
+    return Effect.runPromise(wellKnownSurface)
+  }
+
+  if ((DISCOVERY_SURFACE_PATHS as ReadonlyArray<string>).includes(path)) {
+    return Effect.runPromise(
+      renderDiscoverySurface(request, path as DiscoverySurfacePath),
+    )
+  }
+
+  return undefined
+}
+
 const server = createServerEntry({
   async fetch(request) {
+    const sharedSurfaceResponse = await routeSharedAgentSurface(request)
+    if (sharedSurfaceResponse !== undefined) {
+      return applySecurityHeaders(sharedSurfaceResponse)
+    }
+
     const response = await handler.fetch(request, {
       responseLinkHeader: {
         filter: ({ phase }: { phase: 'static' | 'dynamic' }) =>

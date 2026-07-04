@@ -15,6 +15,8 @@ bridges.
 bun run --cwd packages/effect-start test
 bun run --cwd apps/openagents.com/apps/start build
 bun run --cwd apps/openagents.com/apps/start test
+bun run --cwd apps/openagents.com/apps/start typecheck
+bun run --cwd apps/openagents.com/apps/start budget
 ```
 
 ## Deploy
@@ -69,7 +71,18 @@ Landing route budget for the first deployed staging URL:
 
 - Worker: `openagents-com-start-staging`
 - URL: https://openagents-com-start-staging.openagents.workers.dev
-- Version ID: `dce2450d-c23c-42ed-9eb0-8ffada0b05cb`
-- Startup time reported by Wrangler: 19 ms
-- SSR smoke:
+- TS-2a version ID: `dce2450d-c23c-42ed-9eb0-8ffada0b05cb`
+- TS-2 version ID: `01014344-715c-46f2-a71d-6b6ff5db7587`
+- TS-2 startup time reported by Wrangler: 34 ms
+- Landing SSR smoke:
   `curl --retry 5 --retry-delay 2 --retry-all-errors -fsS https://openagents-com-start-staging.openagents.workers.dev/ | rg -a 'OpenAgents|What is Khala\\?|Join the Tassadar training run'`
+- TS-2 staged routes smoked with SSR markers:
+  `/business`, `/docs`, `/docs/api`, `/blog`,
+  `/blog/introducing-khala-code`, `/code/download`, `/autopilot`,
+  `/autopilot/legal`.
+- Shared agent surfaces are served before the Start fallback from the API
+  Worker helpers: `/llms.txt`, `/agents.md`, `/ai.md`, `/skill.md`,
+  `/robots.txt`, `/sitemap.xml`, `/.well-known/mcp.json`,
+  `/.well-known/mcp/manifest.json`, and `/.well-known/ai-catalog.json`.
+- Route budget gate: `openagents.start_funnel_route_budget.v1`, 409.2 KiB
+  total client JS, 9 split route chunks, largest route-owned chunk 22.5 KiB.
