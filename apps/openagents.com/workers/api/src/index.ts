@@ -789,6 +789,7 @@ import {
   handleKhalaSyncHubInternalRoute,
 } from './khala-sync-hub-do'
 export { KhalaSyncHubDO } from './khala-sync-hub-do'
+import { handleKhalaSyncLog } from './khala-sync-log-routes'
 import { makeKhalaSyncWorkerMutatorRegistry } from './khala-sync-mutators'
 import { handleKhalaSyncPush } from './khala-sync-push-routes'
 import { makeOpenAgentsL402HmacSigningBoundary } from './l402-credential-service'
@@ -12037,6 +12038,33 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         },
         binding: env.KHALA_SYNC_DB,
         registry: khalaSyncMutatorRegistry,
+      }),
+  },
+  {
+    // Khala Sync catch-up log (KS-4.3, #8296): authenticated offset-
+    // resumable LogPage reads. Served hub-first from the per-scope
+    // KhalaSyncHubDO window (KHALA_SYNC_HUB), falling through to the
+    // authoritative Postgres read substrate (KHALA_SYNC_DB Hyperdrive)
+    // when the hub cannot prove the range; a cursor behind the retained
+    // window gets a 410 typed SyncError (MustRefetch, invariant 6). v1
+    // scope gate: own personal scope + scope.public.* (KS-7 seam).
+    path: '/api/sync/log',
+    handler: (request, env, ctx) =>
+      handleKhalaSyncLog(request, {
+        authenticate: async () => {
+          const actor = await authenticateRequestActor(request, env, ctx)
+          if (actor === undefined) {
+            return undefined
+          }
+          return {
+            userId:
+              actor.kind === 'agent' ? actor.agent.user.id : actor.user.userId,
+          }
+        },
+        binding: env.KHALA_SYNC_DB,
+        hubNamespace: env.KHALA_SYNC_HUB as
+          | KhalaSyncHubNamespaceLike
+          | undefined,
       }),
   },
   {

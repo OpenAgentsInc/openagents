@@ -117,6 +117,9 @@ const approvedExactRoutePaths = [
   // Khala Sync push (KS-3.1, #8291): authenticated transactional mutator
   // execution.
   '/api/sync/push',
+  // Khala Sync catch-up log (KS-4.3, #8296): authenticated offset-resumable
+  // LogPage reads, hub-first with authoritative Postgres fallthrough.
+  '/api/sync/log',
   '/api/stats/token-usage/events',
   '/api/stats/token-usage/aggregate',
   '/api/admin/inference-analytics',
