@@ -507,9 +507,7 @@ describe.skipIf(!hasLocalPostgres())(
   () => {
     let pg: Awaited<ReturnType<typeof startLocalPostgres>>
     let rawSql:
-      | (ReturnType<typeof import('postgres').default> & {
-          end: (options?: { timeout?: number }) => Promise<void>
-        })
+      | { end: (options?: { timeout?: number }) => Promise<void> }
       | undefined
     let store: ContractStore
 
