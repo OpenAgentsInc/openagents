@@ -394,6 +394,16 @@ const printRawEventReconcileReport = (
           `shared=${report.chunks.chainGapCounts.shared}`,
         ].join(" ") + ` GAP(S)${gapWindow}`
   console.log(`  chunk chains: ${chainSummary}`)
+  console.log(
+    [
+      "  chunk gap classes:",
+      `turn_event=${report.chunks.chainGapClasses.withTurnEvent}`,
+      `live_stream_only=${report.chunks.chainGapClasses.withoutTurnEvent}`,
+      `missing_first=${report.chunks.chainGapClasses.missingFirstChunk}`,
+      `internal=${report.chunks.chainGapClasses.internalGap}`,
+      `duplicate_indexes=${report.chunks.chainGapClasses.duplicateIndexes}`,
+    ].join(" "),
+  )
   for (const gap of report.chunks.chainGaps.slice(0, 25)) {
     printRawEventChunkGap(gap)
   }

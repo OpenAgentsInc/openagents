@@ -213,6 +213,13 @@ describe("pylon control-plane backfill metadata", () => {
       shared: 0,
       unique: 0,
     })
+    expect(report.chunks.chainGapClasses).toEqual({
+      duplicateIndexes: 0,
+      internalGap: 0,
+      missingFirstChunk: 0,
+      withTurnEvent: 0,
+      withoutTurnEvent: 0,
+    })
   })
 
   test("raw-event metadata reconciliation catches drift and per-turn chunk gaps", () => {
@@ -250,6 +257,68 @@ describe("pylon control-plane backfill metadata", () => {
       postgres: 0,
       shared: 0,
       unique: 1,
+    })
+    expect(report.chunks.chainGapClasses).toEqual({
+      duplicateIndexes: 0,
+      internalGap: 1,
+      missingFirstChunk: 0,
+      withTurnEvent: 1,
+      withoutTurnEvent: 0,
+    })
+  })
+
+  test("raw-event metadata reconciliation classifies missing-first and duplicate chunk shapes once per chain", () => {
+    const missingFirst = rawChunkAggregate({
+      assignment_ref: "assignment.ks84.missing-first",
+      distinct_chunk_indexes: 2,
+      lease_ref: "lease.ks84.missing-first",
+      max_chunk_index: 3,
+      min_chunk_index: 2,
+      owner_user_id: "owner-missing-first",
+      pylon_ref: "pylon.ks84.missing-first",
+      row_count: 2,
+      turn_index: 1,
+    })
+    const duplicateIndexes = rawChunkAggregate({
+      assignment_ref: "assignment.ks84.duplicate",
+      distinct_chunk_indexes: 2,
+      lease_ref: "lease.ks84.duplicate",
+      max_chunk_index: 2,
+      min_chunk_index: 1,
+      owner_user_id: "owner-duplicate",
+      pylon_ref: "pylon.ks84.duplicate",
+      row_count: 3,
+      turn_index: 1,
+    })
+
+    const report = reconcilePylonCodexRawEventMetadata({
+      d1Chunks: [missingFirst, duplicateIndexes],
+      d1TurnEvents: [
+        rawTurnAggregate({
+          assignment_ref: "assignment.ks84.duplicate",
+          lease_ref: "lease.ks84.duplicate",
+          owner_user_id: "owner-duplicate",
+          pylon_ref: "pylon.ks84.duplicate",
+          turn_index: 1,
+        }),
+      ],
+      postgresChunks: [missingFirst],
+      postgresTurnEvents: [],
+    })
+
+    expect(report.ok).toBe(false)
+    expect(report.chunks.chainGapCounts).toEqual({
+      d1: 2,
+      postgres: 1,
+      shared: 1,
+      unique: 2,
+    })
+    expect(report.chunks.chainGapClasses).toEqual({
+      duplicateIndexes: 1,
+      internalGap: 0,
+      missingFirstChunk: 1,
+      withTurnEvent: 1,
+      withoutTurnEvent: 1,
     })
   })
 
@@ -301,6 +370,13 @@ describe("pylon control-plane backfill metadata", () => {
       postgres: 1,
       shared: 1,
       unique: 1,
+    })
+    expect(allHistory.chunks.chainGapClasses).toEqual({
+      duplicateIndexes: 0,
+      internalGap: 1,
+      missingFirstChunk: 0,
+      withTurnEvent: 0,
+      withoutTurnEvent: 1,
     })
     expect(postFixWindow.ok).toBe(true)
     expect(postFixWindow.chunks.chainGaps).toEqual([])

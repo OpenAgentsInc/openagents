@@ -552,6 +552,14 @@ export type PylonCodexRawEventChunkChainGapCounts = Readonly<{
   unique: number
 }>
 
+export type PylonCodexRawEventChunkChainGapClassCounts = Readonly<{
+  duplicateIndexes: number
+  internalGap: number
+  missingFirstChunk: number
+  withTurnEvent: number
+  withoutTurnEvent: number
+}>
+
 export type PylonCodexRawEventAggregateCompare = Readonly<{
   d1Total: number
   mismatches: ReadonlyArray<PylonCodexRawEventAggregateMismatch>
@@ -561,6 +569,7 @@ export type PylonCodexRawEventAggregateCompare = Readonly<{
 export type PylonCodexRawEventChunkCompare =
   PylonCodexRawEventAggregateCompare &
     Readonly<{
+      chainGapClasses: PylonCodexRawEventChunkChainGapClassCounts
       chainGapCounts: PylonCodexRawEventChunkChainGapCounts
       chainGapLatestObservedAtOrAfter: string | null
       chainGaps: ReadonlyArray<PylonCodexRawEventChunkChainGap>
@@ -680,9 +689,9 @@ export const findPylonCodexRawEventChunkChainGaps = (
 ): ReadonlyArray<PylonCodexRawEventChunkChainGap> =>
   rows.flatMap((row): ReadonlyArray<PylonCodexRawEventChunkChainGap> => {
     const aggregate = comparableRawEventChunkAggregate(row)
-    const expectedChunkCount =
-      aggregate.maxChunkIndex - aggregate.minChunkIndex + 1
+    const expectedChunkCount = aggregate.maxChunkIndex
     const contiguous =
+      aggregate.minChunkIndex === 1 &&
       aggregate.rowCount === aggregate.distinctChunkIndexes &&
       aggregate.rowCount === expectedChunkCount
     const observedAt = latestObservedAt(row)
@@ -728,6 +737,52 @@ export const summarizePylonCodexRawEventChunkChainGaps = (
   }
 }
 
+export const classifyPylonCodexRawEventChunkChainGaps = (
+  gaps: ReadonlyArray<PylonCodexRawEventChunkChainGap>,
+  turnEvents: ReadonlyArray<PylonCodexRawEventAggregateRow>,
+): PylonCodexRawEventChunkChainGapClassCounts => {
+  const turnEventKeys = new Set(
+    turnEvents.map((row) => rawEventAggregateKey(row)),
+  )
+  const gapsByKey = new Map<string, Array<PylonCodexRawEventChunkChainGap>>()
+  for (const gap of gaps) {
+    const existing = gapsByKey.get(gap.key)
+    if (existing === undefined) gapsByKey.set(gap.key, [gap])
+    else existing.push(gap)
+  }
+
+  const counts = {
+    duplicateIndexes: 0,
+    internalGap: 0,
+    missingFirstChunk: 0,
+    withTurnEvent: 0,
+    withoutTurnEvent: 0,
+  }
+
+  for (const [key, keyGaps] of gapsByKey) {
+    if (turnEventKeys.has(key)) counts.withTurnEvent += 1
+    else counts.withoutTurnEvent += 1
+
+    if (keyGaps.some((gap) => gap.minChunkIndex > 1)) {
+      counts.missingFirstChunk += 1
+    }
+    if (
+      keyGaps.some(
+        (gap) =>
+          gap.minChunkIndex <= 1 &&
+          gap.distinctChunkIndexes < gap.expectedChunkCount,
+      )
+    ) {
+      counts.internalGap += 1
+    }
+    if (keyGaps.some((gap) => gap.chunkCount !== gap.distinctChunkIndexes)) {
+      counts.duplicateIndexes += 1
+    }
+  }
+
+  return counts
+}
+
 export const reconcilePylonCodexRawEventMetadata = (
   input: {
     d1Chunks: ReadonlyArray<PylonCodexRawEventChunkAggregateRow>
@@ -755,6 +810,10 @@ export const reconcilePylonCodexRawEventMetadata = (
   ]
   const chunks = {
     ...chunkAggregateCompare,
+    chainGapClasses: classifyPylonCodexRawEventChunkChainGaps(chainGaps, [
+      ...input.d1TurnEvents,
+      ...input.postgresTurnEvents,
+    ]),
     chainGapCounts: summarizePylonCodexRawEventChunkChainGaps(chainGaps),
     chainGapLatestObservedAtOrAfter:
       options.chunkGapLatestObservedAtOrAfter ?? null,

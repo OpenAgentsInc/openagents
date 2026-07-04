@@ -408,7 +408,10 @@ stores. This is not Postgres mirror drift. A Pylon runner fix now keeps a chunk
 index unconsumed until its event-chunk reporter succeeds, so transient chunk
 send failures retry under the same next index instead of leaving future holes.
 The reconcile output separates D1, Postgres, shared, and unique gap counts so a
-mirrored source gap is not mistaken for two independent failures. Use
+mirrored source gap is not mistaken for two independent failures. It also
+classifies the unique gapped chains by whether a final turn-event row exists
+and by shape: missing first chunk, internal missing chunk, or duplicate chunk
+index. Use
 `--raw-event-gap-latest-observed-since` only to prove post-fix traffic; before
 final read cutover, classify the historical gapped chains as repairable,
 quarantined, or explicitly acceptable for the raw live-stream metadata lane.
