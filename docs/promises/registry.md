@@ -1,5 +1,18 @@
 # Promise Registry
 
+> Served-observation caveat (2026-07-04 audit follow-up): registry constants
+> below describe source history, not proof that every constant was live-served
+> in production. A registry rung counts as served only when a production read
+> reports that exact `registryVersion`; the newest observed served version at
+> the audit read was `2026-07-04.7` (Orrery audit post #83). Source-history
+> rungs above the newest observed served version are source-provenance only until
+> a later production read reports them. The original stuck-constant examples
+> `2026-07-04.4` and `2026-07-04.5` were source-only by construction because
+> the exported registry constant stayed at `.3` until the later `.6` bump.
+> Treat source-only rungs as not accepted served registry versions for mismatch
+> reports. This caveat changes no promise state, blocker, evidence ref, receipt,
+> or public availability claim.
+
 > Registry `2026-07-04.18` is the RX-8 model-custody Lead Gen segment
 > pass (#8281) and flips NO promise state (green stays exactly 34).
 > `@openagentsinc/agent-readiness` now exports

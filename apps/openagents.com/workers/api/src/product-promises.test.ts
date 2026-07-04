@@ -1,5 +1,5 @@
 import { Schema as S } from 'effect'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -88,6 +88,41 @@ const repoFile = (relPath: string): URL =>
   new URL(`../../../../../${relPath}`, import.meta.url)
 
 describe('public product promises document', () => {
+  test('marks source-only registry constants that were not live-served', () => {
+    const registry = readFileSync(repoFile('docs/promises/registry.md'), 'utf8')
+
+    expect(registry).toContain('Served-observation caveat')
+    expect(registry).toContain(
+      'A registry rung counts as served only when a production read',
+    )
+    expect(registry).toContain('reports that exact `registryVersion`')
+    expect(registry).toContain('newest observed served version')
+    expect(registry).toContain('2026-07-04.7')
+    expect(registry).toContain('2026-07-04.4')
+    expect(registry).toContain('2026-07-04.5')
+    expect(registry).toContain('source-only by construction')
+    expect(registry).toContain('source-provenance only')
+    expect(registry).toContain('not accepted served')
+    expect(registry).toContain('registry versions for mismatch')
+    expect(registry).toContain('changes no promise state')
+  })
+
+  test('keeps the exported registry version aligned with the newest registry note', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const newestRegistryNote = decoded.notes.find(note =>
+      note.startsWith('Registry '),
+    )
+    const newestRegistryVersion = /^Registry (?<version>\d{4}-\d{2}-\d{2}\.\d+)/.exec(
+      newestRegistryNote ?? '',
+    )?.groups?.version
+
+    expect(decoded.registryVersion).toBe(PublicProductPromisesVersion)
+    expect(decoded.version).toBe(PublicProductPromisesVersion)
+    expect(newestRegistryVersion).toBe(PublicProductPromisesVersion)
+  })
+
   test('keeps business quick-win paid receipt blockers exact for issue 7025', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
