@@ -75,6 +75,26 @@ protocol fixture page.
   contract in React while the real client workflow remains on the existing app
   until production route cutover.
 
+## Landed Slice 5: Activity
+
+The Start staging app now owns `/activity` as the public activity timeline
+shell.
+
+- `/activity` preserves the top-level route and custom-element anchors:
+  `data-route="activity"`, `oa-public-activity-timeline`, and
+  `data-start-activity-timeline`.
+- The server-rendered light DOM keeps the old public activity surface's stable
+  pane markers visible before the live client controller hydrates:
+  `data-activity-pane="fleet-map"`, `active-tasks`, `fleet`, `money`, `forum`,
+  `timeline`, and the `data-proof-drawer` proof panel.
+- The source-lag and filter anchors remain visible:
+  `data-activity-source-lag`, `data-activity-filter="settle"`, and
+  `data-activity-filter="forum"`.
+- This slice keeps the old Foldkit custom-element implementation in place
+  until production cutover. The Start route provides the SSR shell and parity
+  anchors; moving the live timeline controller is still part of the remaining
+  TS-6 route-by-route work.
+
 ## Boundary
 
 This is not the final TS-6 closure. The live `openagents.com` Worker still

@@ -17,6 +17,7 @@ import { Route as ComponentsRouteImport } from './routes/components'
 import { Route as ClientsPreviewRouteImport } from './routes/clients-preview'
 import { Route as BusinessRouteImport } from './routes/business'
 import { Route as BlogRouteImport } from './routes/blog'
+import { Route as ActivityRouteImport } from './routes/activity'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AutopilotIndexRouteImport } from './routes/autopilot/index'
 import { Route as KhalaChatSyncRouteImport } from './routes/khala/chat-sync'
@@ -66,6 +67,11 @@ const BlogRoute = BlogRouteImport.update({
   path: '/blog',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ActivityRoute = ActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -109,6 +115,7 @@ const AutopilotLegalRoute = AutopilotLegalRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/activity': typeof ActivityRoute
   '/blog': typeof BlogRouteWithChildren
   '/business': typeof BusinessRoute
   '/clients-preview': typeof ClientsPreviewRoute
@@ -127,6 +134,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/activity': typeof ActivityRoute
   '/blog': typeof BlogRouteWithChildren
   '/business': typeof BusinessRoute
   '/clients-preview': typeof ClientsPreviewRoute
@@ -146,6 +154,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/activity': typeof ActivityRoute
   '/blog': typeof BlogRouteWithChildren
   '/business': typeof BusinessRoute
   '/clients-preview': typeof ClientsPreviewRoute
@@ -166,6 +175,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/activity'
     | '/blog'
     | '/business'
     | '/clients-preview'
@@ -184,6 +194,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/activity'
     | '/blog'
     | '/business'
     | '/clients-preview'
@@ -202,6 +213,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/activity'
     | '/blog'
     | '/business'
     | '/clients-preview'
@@ -221,6 +233,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ActivityRoute: typeof ActivityRoute
   BlogRoute: typeof BlogRouteWithChildren
   BusinessRoute: typeof BusinessRoute
   ClientsPreviewRoute: typeof ClientsPreviewRoute
@@ -290,6 +303,13 @@ declare module '@tanstack/react-router' {
       path: '/blog'
       fullPath: '/blog'
       preLoaderRoute: typeof BlogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/activity': {
+      id: '/activity'
+      path: '/activity'
+      fullPath: '/activity'
+      preLoaderRoute: typeof ActivityRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -395,6 +415,7 @@ const KhalaRouteWithChildren = KhalaRoute._addFileChildren(KhalaRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ActivityRoute: ActivityRoute,
   BlogRoute: BlogRouteWithChildren,
   BusinessRoute: BusinessRoute,
   ClientsPreviewRoute: ClientsPreviewRoute,

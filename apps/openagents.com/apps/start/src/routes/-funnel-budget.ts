@@ -11,6 +11,7 @@ const KiB = 1024
 
 const routeBudgets = [
   { path: '/', marker: 'OpenAgents' },
+  { path: '/activity', marker: 'Live public activity' },
   { path: '/business', marker: 'Agents that work.' },
   { path: '/docs', marker: 'OpenAgents docs' },
   { path: '/docs/api', marker: 'Developer API' },
