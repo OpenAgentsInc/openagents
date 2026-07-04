@@ -106,6 +106,21 @@ Every clause maps to a real seam so the disclosure can never overclaim:
    in [`registry.md`](registry.md) and the served
    `/api/public/product-promises`.
 
+## Khala Code Desktop Scope Note
+
+`data.free_tier_capture_disclosure.v1` remains the hosted Khala API disclosure.
+Khala Code Desktop free-plan trace capture is tracked separately by
+`khala_code.free_plan_trace_capture.v1`. As of #8250, the desktop has a
+default-off consent control and a fail-closed local planner for the smallest
+honest path: session events require explicit consent, Rampart redaction,
+free-plan eligibility, owner arming, and an owner_only ingest sink. Paid-plan
+capture opt-out, redaction failure, missing owner arming, or missing ingest
+returns `not_captured`, and the marker remains payout/settlement inert.
+
+This does not flip desktop capture live. Production arming of
+`KHALA_CODE_DESKTOP_TRACE_CAPTURE_ENABLED`, the owner_only ingest destination,
+and a public-safe captured-trace receipt remain owner-gated.
+
 ## Why YELLOW (not green)
 
 The disclosure text is implemented and discoverable, but these gates remain:

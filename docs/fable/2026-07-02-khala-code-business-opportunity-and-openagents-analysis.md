@@ -470,8 +470,15 @@ rung a receipt:
    real customer buy something: paid plan, credits, or the $5 orange
    check. One receipt flips the entire "no production revenue" sentence.
 4. **Arm consented capture at the smallest honest scope.** Land redaction,
-   flip capture for opt-in free users only, publish the disclosure. The
-   loop cannot even begin accumulating raw material until this exists.
+   flip capture for opt-in free users only, publish the disclosure. As of
+   #8250, the desktop has the default-off consent UI, persisted consent RPCs,
+   and a fail-closed local planner: session events must pass Rampart redaction
+   before owner_only ingest, paid-plan opt-out blocks capture, redaction failure
+   returns `not_captured`, and payout/settlement markers stay inert. The rung is
+   still not complete until the owner arms `KHALA_CODE_DESKTOP_TRACE_CAPTURE_ENABLED`,
+   connects the owner_only ingest sink, and records a public-safe live receipt.
+   The loop cannot even begin accumulating raw material until that evidence
+   exists.
 5. **One plugin, one routed request, one paid contributor — however
    small.** A single 5-cent (or 50-sat) revenue-share payout with a
    receipt would do for the data loop what the 1-sat MPP payment did for

@@ -53,7 +53,7 @@ sweep if this doc, the registry, or the oracle tests drift apart.
 
 ## Registry
 
-Registry version: `2026-07-04.1` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-04.2` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_code.chat.sidebar_spinner_streaming_only.v1` — ENFORCED
 
@@ -423,6 +423,18 @@ Registry version: `2026-07-04.1` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `plan_purchase_payment_required_rpc.unit` (bun-test, unit): Decodes the plan-purchase RPC's Stripe payment_required response as a checkout handoff and asserts it does not contain a receiptRef or entitlementRef until the server returns a fulfilled receipt. — `clients/khala-code-desktop/tests/rpc-handlers.test.ts`
 - **Verification:** bun test clients/khala-code-desktop/tests/plans-panel.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/ux-contracts.test.ts; these files run in the package test glob and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Binds the desktop settings payment surface only. Plan catalog, entitlement, and purchase settlement remain owned by openagents.com plan APIs; credit package catalog, balance, and checkout fulfillment remain owned by the existing web billing surface. The desktop may open those checkout URLs, but it must not synthesize paid entitlement or credit balance state.
+
+### `khala_code.plans.free_trace_capture_explicit_consent.v1` — ENFORCED
+
+- **Surface:** khala-code-desktop (plans and billing settings)
+- **Stated by:** owner via github-issue on 2026-07-04
+- **Statement:** Explicit consent UI in the desktop is default OFF and never dark-patterned. It gates a capture pipeline of session events to Rampart redaction to owner_only trace ingest, aligned with data.free_tier_capture_disclosure.v1 and the paid-plan opt-out. Any redaction failure fails closed to not-captured, and capture grants no payout or settlement.
+- **Enforcement tier:** test-sweep
+- **Oracle** `trace_capture_planner.unit` (bun-test, unit): Runs the pure desktop trace-capture planner and proves default-off consent, paid-plan exclusion, redaction failure, and owner-only ingest gates all return not-captured unless every gate passes; successful owner-only capture keeps payout and settlement markers inert. — `clients/khala-code-desktop/tests/trace-capture.test.ts`
+- **Oracle** `trace_capture_consent_panel.dom` (bun-test, dom): Mounts the real plans panel in a DOM and proves the trace-capture consent control is off by default, performs no write before a user toggle, writes only after explicit checkbox activation, and shows paid-plan opt-out as not captured. — `clients/khala-code-desktop/tests/plans-panel.test.ts`
+- **Oracle** `trace_capture_consent_rpc.unit` (bun-test, unit): Exercises the desktop RPC consent setting and proves it persists only the explicit boolean consent, calls no network, stays owner-gated, exposes the served disclosure ref, and reports not_captured with inert payout/settlement markers. — `clients/khala-code-desktop/tests/rpc-handlers.test.ts`
+- **Verification:** bun test clients/khala-code-desktop/tests/trace-capture.test.ts clients/khala-code-desktop/tests/plans-panel.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/ux-contracts.test.ts; these files run in the package test glob and the repo test:khala-code-desktop sweep before pushes to main.
+- **Authority boundary:** Binds only the desktop consent gate and local capture planner. Production capture remains owner-gated by KHALA_CODE_DESKTOP_TRACE_CAPTURE_ENABLED plus an owner-only ingest sink; this contract does not authorize public traces, payout eligibility, settlement eligibility, promise-green movement, or capture on paid plans.
 
 ### `khala_code.settings.editable_not_env_var_only.v1` — PENDING
 

@@ -1267,6 +1267,61 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
+        "Binds only the desktop consent gate and local capture planner. Production capture remains owner-gated by KHALA_CODE_DESKTOP_TRACE_CAPTURE_ENABLED plus an owner-only ingest sink; this contract does not authorize public traces, payout eligibility, settlement eligibility, promise-green movement, or capture on paid plans.",
+      blockerRefs: [],
+      contractId: "khala_code.plans.free_trace_capture_explicit_consent.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8250",
+        "clients/khala-code-desktop/src/shared/trace-capture.ts",
+        "clients/khala-code-desktop/src/ui/plans-panel.ts",
+        "clients/khala-code-desktop/src/bun/rpc-handlers.ts",
+        "clients/khala-code-desktop/tests/trace-capture.test.ts",
+        "clients/khala-code-desktop/tests/plans-panel.test.ts",
+        "clients/khala-code-desktop/tests/rpc-handlers.test.ts",
+        "docs/khala-code/khala-code-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Runs the pure desktop trace-capture planner and proves default-off consent, paid-plan exclusion, redaction failure, and owner-only ingest gates all return not-captured unless every gate passes; successful owner-only capture keeps payout and settlement markers inert.",
+          id: "trace_capture_planner.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-code-desktop/tests/trace-capture.test.ts",
+        },
+        {
+          description:
+            "Mounts the real plans panel in a DOM and proves the trace-capture consent control is off by default, performs no write before a user toggle, writes only after explicit checkbox activation, and shows paid-plan opt-out as not captured.",
+          id: "trace_capture_consent_panel.dom",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "clients/khala-code-desktop/tests/plans-panel.test.ts",
+        },
+        {
+          description:
+            "Exercises the desktop RPC consent setting and proves it persists only the explicit boolean consent, calls no network, stays owner-gated, exposes the served disclosure ref, and reports not_captured with inert payout/settlement markers.",
+          id: "trace_capture_consent_rpc.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-code-desktop/tests/rpc-handlers.test.ts",
+        },
+      ],
+      productArea: "plans and billing settings",
+      source: {
+        channel: "github-issue",
+        statedBy: "owner",
+        statedOn: "2026-07-04",
+      },
+      state: "enforced",
+      statement:
+        "Explicit consent UI in the desktop is default OFF and never dark-patterned. It gates a capture pipeline of session events to Rampart redaction to owner_only trace ingest, aligned with data.free_tier_capture_disclosure.v1 and the paid-plan opt-out. Any redaction failure fails closed to not-captured, and capture grants no payout or settlement.",
+      surface: "khala-code-desktop",
+      verification:
+        "bun test clients/khala-code-desktop/tests/trace-capture.test.ts clients/khala-code-desktop/tests/plans-panel.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/ux-contracts.test.ts; these files run in the package test glob and the repo test:khala-code-desktop sweep before pushes to main.",
+    },
+    {
+      authorityBoundary:
         "Binds the desktop settings payment surface only. Plan catalog, entitlement, and purchase settlement remain owned by openagents.com plan APIs; credit package catalog, balance, and checkout fulfillment remain owned by the existing web billing surface. The desktop may open those checkout URLs, but it must not synthesize paid entitlement or credit balance state.",
       blockerRefs: [],
       contractId: "khala_code.plans.checkout_handoff_server_truth.v1",
@@ -1360,5 +1415,5 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-04.1",
+  version: "2026-07-04.2",
 }

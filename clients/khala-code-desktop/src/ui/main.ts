@@ -273,6 +273,14 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["khalaCodePlanPurchase"]>>
       >("khalaCodePlanPurchase", request),
+    khalaCodeTraceCaptureStatus: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["khalaCodeTraceCaptureStatus"]>>
+      >("khalaCodeTraceCaptureStatus"),
+    khalaCodeTraceCaptureConsentWrite: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["khalaCodeTraceCaptureConsentWrite"]>>
+      >("khalaCodeTraceCaptureConsentWrite", request),
     khalaCodeOutsideUserRunReport: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["khalaCodeOutsideUserRunReport"]>>
@@ -3639,6 +3647,9 @@ const controls = {
   khalaCodePlanStatus: () => rpc.request.khalaCodePlanStatus(),
   khalaCodePlanPurchase: (request?: Parameters<DesktopRpcRequests["khalaCodePlanPurchase"]>[0]) =>
     rpc.request.khalaCodePlanPurchase(request),
+  khalaCodeTraceCaptureStatus: () => rpc.request.khalaCodeTraceCaptureStatus(),
+  khalaCodeTraceCaptureConsentWrite: (request: Parameters<DesktopRpcRequests["khalaCodeTraceCaptureConsentWrite"]>[0]) =>
+    rpc.request.khalaCodeTraceCaptureConsentWrite(request),
   khalaCodeOutsideUserRunReport: (request?: Parameters<DesktopRpcRequests["khalaCodeOutsideUserRunReport"]>[0]) =>
     rpc.request.khalaCodeOutsideUserRunReport(request),
   claudeApprovalPending: () => rpc.request.claudeApprovalPending(),
@@ -4091,6 +4102,8 @@ plansSection = settingsPanelEl === null
       openExternal: url => controls.openExternalUrl(url),
       purchase: request => controls.khalaCodePlanPurchase(request),
       status: () => controls.khalaCodePlanStatus(),
+      traceCaptureConsentWrite: request => controls.khalaCodeTraceCaptureConsentWrite(request),
+      traceCaptureStatus: () => controls.khalaCodeTraceCaptureStatus(),
     })
 runEvidenceSection = settingsPanelEl === null
   ? null

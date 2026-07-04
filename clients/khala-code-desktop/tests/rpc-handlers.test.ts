@@ -3981,6 +3981,95 @@ describe("khala code plan RPC handlers", () => {
     }).khalaCodePlanStatus()).toEqual({ state: "unavailable" })
   })
 
+  // Oracle for khala_code.plans.free_trace_capture_explicit_consent.v1
+  test("khalaCodeTraceCaptureStatus defaults off and never calls the network", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "khala-trace-capture-status-"))
+    tempDirs.push(dir)
+    const settingsPath = join(dir, "desktop-settings.json")
+    const { fetch: fetchStub, requests } = planFetchStub(() => json(200, {}))
+    const handlers = planHandlers({
+      env: { KHALA_CODE_DESKTOP_HARNESS_SETTING_PATH: settingsPath },
+      fetch: fetchStub,
+    })
+
+    const result = await handlers.khalaCodeTraceCaptureStatus()
+
+    expect(requests).toHaveLength(0)
+    expect(result).toMatchObject({
+      disclosureRef: "data.free_tier_capture_disclosure.v1",
+      enabled: false,
+      ok: true,
+      ownerArmed: false,
+      ownerGateEnv: "KHALA_CODE_DESKTOP_TRACE_CAPTURE_ENABLED",
+      promiseId: "khala_code.free_plan_trace_capture.v1",
+      reason: "consent_disabled",
+      state: "not_captured",
+    })
+    expect(result.marker).toEqual({
+      payoutEligible: false,
+      revenueShareEligible: false,
+      settlementEligible: false,
+    })
+  })
+
+  test("khalaCodeTraceCaptureConsentWrite persists explicit consent but stays owner-gated", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "khala-trace-capture-write-"))
+    tempDirs.push(dir)
+    const settingsPath = join(dir, "desktop-settings.json")
+    const { fetch: fetchStub, requests } = planFetchStub(() => json(200, {}))
+    const handlers = planHandlers({
+      env: { KHALA_CODE_DESKTOP_HARNESS_SETTING_PATH: settingsPath },
+      fetch: fetchStub,
+    })
+
+    const result = await handlers.khalaCodeTraceCaptureConsentWrite({ enabled: true })
+    const persisted = JSON.parse(await readFile(settingsPath, "utf8")) as {
+      readonly traceCaptureConsentEnabled?: unknown
+    }
+
+    expect(requests).toHaveLength(0)
+    expect(persisted.traceCaptureConsentEnabled).toBe(true)
+    expect(result).toMatchObject({
+      enabled: true,
+      ownerArmed: false,
+      reason: "owner_not_armed",
+      saved: true,
+      state: "not_captured",
+    })
+    expect(result.blockerRefs).toContain(
+      "blocker.owner.khala_code_desktop_trace_capture_arming_missing",
+    )
+    expect(await handlers.khalaCodeTraceCaptureStatus()).toMatchObject({
+      enabled: true,
+      ownerArmed: false,
+      reason: "owner_not_armed",
+    })
+  })
+
+  test("khalaCodeTraceCaptureConsentWrite reports ready only when the owner arm is set", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "khala-trace-capture-armed-"))
+    tempDirs.push(dir)
+    const settingsPath = join(dir, "desktop-settings.json")
+    const { fetch: fetchStub } = planFetchStub(() => json(200, {}))
+    const handlers = planHandlers({
+      env: {
+        KHALA_CODE_DESKTOP_HARNESS_SETTING_PATH: settingsPath,
+        KHALA_CODE_DESKTOP_TRACE_CAPTURE_ENABLED: "1",
+      },
+      fetch: fetchStub,
+    })
+
+    expect(await handlers.khalaCodeTraceCaptureConsentWrite({ enabled: true }))
+      .toMatchObject({
+        blockerRefs: [],
+        enabled: true,
+        ownerArmed: true,
+        reason: "ready_for_redacted_owner_only_ingest",
+        saved: true,
+        state: "not_captured",
+      })
+  })
+
   test("khalaCodePlanPurchase maps the flag-gated 503 to the typed not-enabled error", async () => {
     const { fetch: fetchStub, requests } = planFetchStub(() =>
       json(503, { error: "khala_code_paid_plans_not_enabled" }))

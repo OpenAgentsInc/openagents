@@ -4714,7 +4714,10 @@ button {
 /* Khala Code plan section (settings): honest Free/Paid plan cards. */
 .khala-plans-subtitle,
 .khala-plans-current,
-.khala-plans-summary {
+.khala-plans-summary,
+.khala-plans-trace-capture-copy,
+.khala-plans-trace-capture-status,
+.khala-plans-trace-capture-boundary {
   margin: 0;
   color: color-mix(in srgb, var(--oa-color-component-text) 62%, transparent);
   font-size: 0.78rem;
@@ -4729,7 +4732,8 @@ button {
   gap: 0.65rem;
 }
 .khala-plans-card,
-.khala-plans-credit-card {
+.khala-plans-credit-card,
+.khala-plans-trace-capture {
   display: grid;
   gap: 0.35rem;
   padding: 0.65rem 0.75rem;
@@ -4737,7 +4741,8 @@ button {
   border: 1px solid var(--oa-color-component-border);
   border-radius: 0.5rem;
 }
-.khala-plans-card-title {
+.khala-plans-card-title,
+.khala-plans-trace-capture-title {
   margin: 0;
   font-size: 0.86rem;
 }
@@ -4762,9 +4767,29 @@ button {
 .khala-plans-credit-authority,
 .khala-plans-purchase-note,
 .khala-plans-empty,
-.khala-plans-error {
+.khala-plans-error,
+.khala-plans-trace-capture-boundary {
   color: color-mix(in srgb, var(--oa-color-component-text) 62%, transparent);
   font-size: 0.76rem;
+}
+.khala-plans-trace-capture-control {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 1.75rem;
+}
+.khala-plans-trace-capture-control input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--oa-color-khala-energy-blue);
+}
+.khala-plans-trace-capture-label {
+  color: color-mix(in srgb, var(--oa-color-component-text) 84%, transparent);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.khala-plans-trace-capture-status {
+  color: color-mix(in srgb, var(--oa-color-component-text) 78%, transparent);
 }
 .khala-plans-error {
   color: var(--oa-color-khala-danger-text);

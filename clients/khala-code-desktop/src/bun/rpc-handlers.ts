@@ -90,6 +90,9 @@ import {
   type KhalaCodeDesktopPlanPurchaseRequest,
   type KhalaCodeDesktopPlanPurchaseResult,
   type KhalaCodeDesktopPlanStatusResult,
+  type KhalaCodeDesktopTraceCaptureConsentWriteRequest,
+  type KhalaCodeDesktopTraceCaptureConsentWriteResult,
+  type KhalaCodeDesktopTraceCaptureStatusResult,
   KhalaCodeDesktopOutsideUserRunReportResultSchema,
   KhalaCodeDesktopPlanCatalogSchema,
   KhalaCodeDesktopPlanPurchaseResultSchema,
@@ -150,10 +153,12 @@ import {
   readKhalaCodeDesktopHarnessSetting,
   readKhalaCodeDesktopModelRoleRegistry,
   readKhalaCodeDesktopPersistedHarnessMode,
+  readKhalaCodeDesktopTraceCaptureConsent,
   resolveKhalaCodeDesktopModelRole,
   writeKhalaCodeDesktopHarnessSetting,
   writeKhalaCodeDesktopModelRoleEntry,
   writeKhalaCodeDesktopModelRoleRegistry,
+  writeKhalaCodeDesktopTraceCaptureConsent,
 } from "./harness-setting.js"
 import type {
   KhalaCodeModelRole,
@@ -167,6 +172,14 @@ import {
   khalaCodeDesktopToolCatalog,
   runKhalaCodeDesktopChatTurn,
 } from "./khala-chat-runtime.js"
+import {
+  KHALA_CODE_DESKTOP_TRACE_CAPTURE_DISCLOSURE_REF,
+  KHALA_CODE_DESKTOP_TRACE_CAPTURE_INGEST_AUDIENCE,
+  KHALA_CODE_DESKTOP_TRACE_CAPTURE_OWNER_GATE_ENV,
+  KHALA_CODE_DESKTOP_TRACE_CAPTURE_PROMISE_ID,
+  khalaCodeDesktopTraceCaptureMarker,
+  khalaCodeDesktopTraceCaptureOwnerArmed,
+} from "../shared/trace-capture.js"
 import {
   beginCodexConnect,
   collectCodexAccountEmails,
@@ -384,6 +397,40 @@ const khalaCodePlanRequestUrl = (baseUrl: string, path: string): URL => {
 const khalaCodeAgentToken = (env: ChatEnv): string | null => {
   const token = env.OPENAGENTS_AGENT_TOKEN?.trim() || env.OPENAGENTS_API_KEY?.trim()
   return token !== undefined && token.length > 0 ? token : null
+}
+
+const khalaCodeTraceCaptureStatusFromConsent = (input: {
+  readonly enabled: boolean
+  readonly ownerArmed: boolean
+  readonly path: string
+}): KhalaCodeDesktopTraceCaptureStatusResult => {
+  const reason: KhalaCodeDesktopTraceCaptureStatusResult["reason"] =
+    !input.enabled
+      ? "consent_disabled"
+      : input.ownerArmed
+        ? "ready_for_redacted_owner_only_ingest"
+        : "owner_not_armed"
+  return {
+    blockerRefs: reason === "owner_not_armed"
+      ? ["blocker.owner.khala_code_desktop_trace_capture_arming_missing"]
+      : [],
+    disclosureRef: KHALA_CODE_DESKTOP_TRACE_CAPTURE_DISCLOSURE_REF,
+    enabled: input.enabled,
+    marker: khalaCodeDesktopTraceCaptureMarker(),
+    ok: true,
+    ownerArmed: input.ownerArmed,
+    ownerGateEnv: KHALA_CODE_DESKTOP_TRACE_CAPTURE_OWNER_GATE_ENV,
+    path: input.path,
+    pipeline: {
+      ingestAudience: KHALA_CODE_DESKTOP_TRACE_CAPTURE_INGEST_AUDIENCE,
+      redaction: "rampart_required",
+      sessionEvents: "explicit_consent_only",
+    },
+    promiseId: KHALA_CODE_DESKTOP_TRACE_CAPTURE_PROMISE_ID,
+    reason,
+    schemaVersion: "openagents.khala_code.desktop_trace_capture_status.v1",
+    state: "not_captured",
+  }
 }
 
 const KHALA_CODE_DESKTOP_APP_VERSION = "0.0.1"
@@ -2498,6 +2545,27 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         return S.decodeUnknownSync(KhalaCodeDesktopPlanPurchaseResultSchema)(payload)
       } catch {
         return { ok: false, error: "purchase_unavailable" }
+      }
+    },
+    async khalaCodeTraceCaptureStatus(): Promise<KhalaCodeDesktopTraceCaptureStatusResult> {
+      const consent = await readKhalaCodeDesktopTraceCaptureConsent(input.env)
+      return khalaCodeTraceCaptureStatusFromConsent({
+        enabled: consent.enabled,
+        ownerArmed: khalaCodeDesktopTraceCaptureOwnerArmed(input.env),
+        path: consent.path,
+      })
+    },
+    async khalaCodeTraceCaptureConsentWrite(
+      request: KhalaCodeDesktopTraceCaptureConsentWriteRequest,
+    ): Promise<KhalaCodeDesktopTraceCaptureConsentWriteResult> {
+      const consent = await writeKhalaCodeDesktopTraceCaptureConsent(request.enabled, input.env)
+      return {
+        ...khalaCodeTraceCaptureStatusFromConsent({
+          enabled: consent.enabled,
+          ownerArmed: khalaCodeDesktopTraceCaptureOwnerArmed(input.env),
+          path: consent.path,
+        }),
+        saved: true,
       }
     },
     async khalaCodeOutsideUserRunReport(

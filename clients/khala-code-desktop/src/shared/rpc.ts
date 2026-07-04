@@ -13,6 +13,12 @@ import {
   KhalaCodeModelRoleEntrySchema,
   KhalaCodeModelRoleRegistrySchema,
 } from "./model-roles.js"
+import {
+  KHALA_CODE_DESKTOP_TRACE_CAPTURE_DISCLOSURE_REF,
+  KHALA_CODE_DESKTOP_TRACE_CAPTURE_INGEST_AUDIENCE,
+  KHALA_CODE_DESKTOP_TRACE_CAPTURE_OWNER_GATE_ENV,
+  KHALA_CODE_DESKTOP_TRACE_CAPTURE_PROMISE_ID,
+} from "./trace-capture.js"
 
 // Electrobun treats Infinity as no local request timeout; chat turns stream progress
 // over events while hosted model calls and local tools can legitimately exceed 30s.
@@ -230,6 +236,12 @@ export type KhalaCodeDesktopPlanStatusPlan = typeof RpcKhalaCodePlanStatusPlan.T
 export type KhalaCodeDesktopPlanStatusResult = typeof RpcKhalaCodePlanStatusResult.Type
 export type KhalaCodeDesktopPlanPurchaseRequest = typeof RpcKhalaCodePlanPurchaseRequest.Type
 export type KhalaCodeDesktopPlanPurchaseResult = typeof RpcKhalaCodePlanPurchaseResult.Type
+export type KhalaCodeDesktopTraceCaptureStatusResult =
+  typeof RpcKhalaCodeTraceCaptureStatusResult.Type
+export type KhalaCodeDesktopTraceCaptureConsentWriteRequest =
+  typeof RpcKhalaCodeTraceCaptureConsentWriteRequest.Type
+export type KhalaCodeDesktopTraceCaptureConsentWriteResult =
+  typeof RpcKhalaCodeTraceCaptureConsentWriteResult.Type
 export type KhalaCodeDesktopOutsideUserRunReportRequest = typeof RpcKhalaCodeOutsideUserRunReportRequest.Type
 export type KhalaCodeDesktopOutsideUserRunReportResult = typeof RpcKhalaCodeOutsideUserRunReportResult.Type
 export type KhalaCodeDesktopOutsideUserRunReceipt = typeof RpcKhalaCodeOutsideUserRunReceipt.Type
@@ -1914,6 +1926,45 @@ const RpcKhalaCodePlanPurchaseResult = S.Union([
     ]),
   }),
 ])
+const RpcKhalaCodeTraceCaptureReason = S.Literals([
+  "consent_disabled",
+  "owner_not_armed",
+  "paid_plan_capture_excluded",
+  "ready_for_redacted_owner_only_ingest",
+])
+const RpcKhalaCodeTraceCaptureMarker = S.Struct({
+  payoutEligible: S.Literal(false),
+  revenueShareEligible: S.Literal(false),
+  settlementEligible: S.Literal(false),
+})
+const RpcKhalaCodeTraceCapturePipeline = S.Struct({
+  ingestAudience: S.Literal(KHALA_CODE_DESKTOP_TRACE_CAPTURE_INGEST_AUDIENCE),
+  redaction: S.Literal("rampart_required"),
+  sessionEvents: S.Literal("explicit_consent_only"),
+})
+const RpcKhalaCodeTraceCaptureStatusFields = {
+  blockerRefs: RpcStringArray,
+  disclosureRef: S.Literal(KHALA_CODE_DESKTOP_TRACE_CAPTURE_DISCLOSURE_REF),
+  enabled: S.Boolean,
+  marker: RpcKhalaCodeTraceCaptureMarker,
+  ok: S.Literal(true),
+  ownerArmed: S.Boolean,
+  ownerGateEnv: S.Literal(KHALA_CODE_DESKTOP_TRACE_CAPTURE_OWNER_GATE_ENV),
+  path: S.String,
+  pipeline: RpcKhalaCodeTraceCapturePipeline,
+  promiseId: S.Literal(KHALA_CODE_DESKTOP_TRACE_CAPTURE_PROMISE_ID),
+  reason: RpcKhalaCodeTraceCaptureReason,
+  schemaVersion: S.Literal("openagents.khala_code.desktop_trace_capture_status.v1"),
+  state: S.Literal("not_captured"),
+} as const
+const RpcKhalaCodeTraceCaptureStatusResult = S.Struct(RpcKhalaCodeTraceCaptureStatusFields)
+const RpcKhalaCodeTraceCaptureConsentWriteRequest = S.Struct({
+  enabled: S.Boolean,
+})
+const RpcKhalaCodeTraceCaptureConsentWriteResult = S.Struct({
+  ...RpcKhalaCodeTraceCaptureStatusFields,
+  saved: S.Literal(true),
+})
 const RpcKhalaCodeOutsideUserRunHarnessReadiness = S.Struct({
   codexCli: S.Literals(["ready", "missing", "unknown"]),
   codexAuth: S.Literals(["ready", "credentials_missing", "invalid", "error", "unknown"]),
@@ -1974,6 +2025,10 @@ export const KhalaCodeDesktopPlanCatalogSchema = RpcKhalaCodePlanCatalog
 export const KhalaCodeDesktopPlanStatusPlanSchema = RpcKhalaCodePlanStatusPlan
 export const KhalaCodeDesktopPlanPurchaseSuccessSchema = RpcKhalaCodePlanPurchaseSuccess
 export const KhalaCodeDesktopPlanPurchaseResultSchema = RpcKhalaCodePlanPurchaseResult
+export const KhalaCodeDesktopTraceCaptureStatusResultSchema =
+  RpcKhalaCodeTraceCaptureStatusResult
+export const KhalaCodeDesktopTraceCaptureConsentWriteResultSchema =
+  RpcKhalaCodeTraceCaptureConsentWriteResult
 export const KhalaCodeDesktopOutsideUserRunReportResultSchema =
   RpcKhalaCodeOutsideUserRunReportResult
 
@@ -2045,6 +2100,8 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   khalaCodePlanCatalog: { parameters: noParams(), result: RpcKhalaCodePlanCatalogResult },
   khalaCodePlanStatus: { parameters: noParams(), result: RpcKhalaCodePlanStatusResult },
   khalaCodePlanPurchase: { parameters: [optionalParam(RpcKhalaCodePlanPurchaseRequest)], result: RpcKhalaCodePlanPurchaseResult },
+  khalaCodeTraceCaptureStatus: { parameters: noParams(), result: RpcKhalaCodeTraceCaptureStatusResult },
+  khalaCodeTraceCaptureConsentWrite: { parameters: [param(RpcKhalaCodeTraceCaptureConsentWriteRequest)], result: RpcKhalaCodeTraceCaptureConsentWriteResult },
   khalaCodeOutsideUserRunReport: { parameters: [optionalParam(RpcKhalaCodeOutsideUserRunReportRequest)], result: RpcKhalaCodeOutsideUserRunReportResult },
   claudeApprovalPending: { parameters: noParams(), result: RpcClaudeApprovalPendingResult },
   claudeApprovalRespond: { parameters: [param(RpcClaudeApprovalRespondRequest)], result: RpcClaudeApprovalRespondResult },
@@ -2206,6 +2263,8 @@ export type KhalaCodeDesktopRPCSchema = {
     khalaCodePlanCatalog(): Promise<KhalaCodeDesktopPlanCatalogResult>
     khalaCodePlanStatus(): Promise<KhalaCodeDesktopPlanStatusResult>
     khalaCodePlanPurchase(request?: KhalaCodeDesktopPlanPurchaseRequest): Promise<KhalaCodeDesktopPlanPurchaseResult>
+    khalaCodeTraceCaptureStatus(): Promise<KhalaCodeDesktopTraceCaptureStatusResult>
+    khalaCodeTraceCaptureConsentWrite(request: KhalaCodeDesktopTraceCaptureConsentWriteRequest): Promise<KhalaCodeDesktopTraceCaptureConsentWriteResult>
     khalaCodeOutsideUserRunReport(request?: KhalaCodeDesktopOutsideUserRunReportRequest): Promise<KhalaCodeDesktopOutsideUserRunReportResult>
     claudeApprovalPending(): Promise<KhalaCodeDesktopClaudeApprovalPendingResult>
     claudeApprovalRespond(request: KhalaCodeDesktopClaudeApprovalRespondRequest): Promise<KhalaCodeDesktopClaudeApprovalRespondResult>

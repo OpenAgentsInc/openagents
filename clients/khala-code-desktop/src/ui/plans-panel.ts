@@ -21,7 +21,17 @@ import type {
   KhalaCodeDesktopPlanPurchaseRequest,
   KhalaCodeDesktopPlanPurchaseResult,
   KhalaCodeDesktopPlanStatusResult,
+  KhalaCodeDesktopTraceCaptureConsentWriteRequest,
+  KhalaCodeDesktopTraceCaptureConsentWriteResult,
+  KhalaCodeDesktopTraceCaptureStatusResult,
 } from "../shared/rpc"
+import {
+  KHALA_CODE_DESKTOP_TRACE_CAPTURE_DISCLOSURE_REF,
+  KHALA_CODE_DESKTOP_TRACE_CAPTURE_INGEST_AUDIENCE,
+  KHALA_CODE_DESKTOP_TRACE_CAPTURE_OWNER_GATE_ENV,
+  KHALA_CODE_DESKTOP_TRACE_CAPTURE_PROMISE_ID,
+  khalaCodeDesktopTraceCaptureMarker,
+} from "../shared/trace-capture"
 
 export type KhalaCodePlansPanelHandle = Readonly<{
   refresh: () => Promise<void>
@@ -33,6 +43,10 @@ export type KhalaCodePlansPanelOptions = Readonly<{
   purchase: (
     request?: KhalaCodeDesktopPlanPurchaseRequest,
   ) => Promise<KhalaCodeDesktopPlanPurchaseResult>
+  traceCaptureStatus: () => Promise<KhalaCodeDesktopTraceCaptureStatusResult>
+  traceCaptureConsentWrite: (
+    request: KhalaCodeDesktopTraceCaptureConsentWriteRequest,
+  ) => Promise<KhalaCodeDesktopTraceCaptureConsentWriteResult>
   openExternal: (url: string) => Promise<boolean>
   baseUrl?: string
 }>
@@ -58,6 +72,26 @@ const OpenAgentsBaseUrl = "https://openagents.com"
 const BillingPath = "/billing"
 const NOT_ARMED_COPY =
   "Not yet purchasable — the paid plan purchase seam is not armed."
+
+const traceCaptureUnavailableStatus = (): KhalaCodeDesktopTraceCaptureStatusResult => ({
+  blockerRefs: ["blocker.khala_code_desktop_trace_capture_status_unavailable"],
+  disclosureRef: KHALA_CODE_DESKTOP_TRACE_CAPTURE_DISCLOSURE_REF,
+  enabled: false,
+  marker: khalaCodeDesktopTraceCaptureMarker(),
+  ok: true,
+  ownerArmed: false,
+  ownerGateEnv: KHALA_CODE_DESKTOP_TRACE_CAPTURE_OWNER_GATE_ENV,
+  path: "unavailable",
+  pipeline: {
+    ingestAudience: KHALA_CODE_DESKTOP_TRACE_CAPTURE_INGEST_AUDIENCE,
+    redaction: "rampart_required",
+    sessionEvents: "explicit_consent_only",
+  },
+  promiseId: KHALA_CODE_DESKTOP_TRACE_CAPTURE_PROMISE_ID,
+  reason: "consent_disabled",
+  schemaVersion: "openagents.khala_code.desktop_trace_capture_status.v1",
+  state: "not_captured",
+})
 
 const externalPath = (baseUrl: string, path: string): string =>
   new URL(path, baseUrl).toString()
@@ -107,9 +141,11 @@ export const mountKhalaCodePlansPanel = (
   const baseUrl = options.baseUrl ?? OpenAgentsBaseUrl
   let catalogResult: KhalaCodeDesktopPlanCatalogResult | null = null
   let statusResult: KhalaCodeDesktopPlanStatusResult | null = null
+  let traceCaptureStatusResult: KhalaCodeDesktopTraceCaptureStatusResult | null = null
   let purchaseNote: string | null = null
   let purchasing = false
   let openingCredits = false
+  let savingTraceCaptureConsent = false
 
   const loadedCatalog = (): KhalaCodeDesktopPlanCatalog | null =>
     catalogResult !== null && catalogResult.ok ? catalogResult.catalog : null
@@ -134,6 +170,60 @@ export const mountKhalaCodePlansPanel = (
     return plan.captureExcluded
       ? `Current plan: ${label} — capture opt-out active`
       : `Current plan: ${label}`
+  }
+
+  const currentPlanCaptureExcluded = (): boolean =>
+    statusResult?.state === "ok" && statusResult.plan.captureExcluded
+
+  const traceCaptureText = (): string => {
+    if (traceCaptureStatusResult === null) {
+      return "Trace capture: checking consent setting..."
+    }
+    if (currentPlanCaptureExcluded()) {
+      return "Trace capture: not captured — paid plan capture opt-out active."
+    }
+    if (!traceCaptureStatusResult.enabled) {
+      return "Trace capture: off — no session events are captured."
+    }
+    if (!traceCaptureStatusResult.ownerArmed) {
+      return "Trace capture: consent saved, not captured — owner arming is pending."
+    }
+    return "Trace capture: consent on — redacted free-plan events can enter owner-only ingest; no payout or settlement marker is granted."
+  }
+
+  const renderTraceCaptureConsent = (): HTMLElement => {
+    const panel = el("div", "khala-plans-trace-capture")
+    panel.dataset.khalaTraceCapture = ""
+    const title = el("h4", "khala-plans-trace-capture-title", "Free trace capture")
+    const description = el(
+      "p",
+      "khala-plans-trace-capture-copy",
+      "Off by default. When enabled, free-plan session events are eligible only for Rampart redaction followed by owner-only trace ingest.",
+    )
+    const control = el("div", "khala-plans-trace-capture-control")
+    const input = document.createElement("input")
+    input.type = "checkbox"
+    input.id = "khala-trace-capture-consent"
+    input.name = "khala-trace-capture-consent"
+    input.dataset.khalaTraceCaptureAction = "consent"
+    input.checked = traceCaptureStatusResult?.enabled === true
+    input.disabled = traceCaptureStatusResult === null || savingTraceCaptureConsent
+    const label = el(
+      "label",
+      "khala-plans-trace-capture-label",
+      "Allow redacted free-plan trace capture",
+    )
+    label.htmlFor = input.id
+    control.append(input, label)
+    const status = el("p", "khala-plans-trace-capture-status", traceCaptureText())
+    status.dataset.khalaTraceCaptureStatus = ""
+    const boundary = el(
+      "p",
+      "khala-plans-trace-capture-boundary",
+      "Paid plan capture opt-out overrides this consent. Redaction failure fails closed to not captured. Capture does not create payout or settlement eligibility.",
+    )
+    panel.append(title, description, control, status, boundary)
+    return panel
   }
 
   const renderPlanCard = (plan: KhalaCodeDesktopPlan): HTMLElement => {
@@ -223,7 +313,7 @@ export const mountKhalaCodePlansPanel = (
     )
     const current = el("div", "khala-plans-current", currentPlanText())
     current.dataset.khalaPlansCurrent = ""
-    section.append(current, ...renderBody())
+    section.append(current, renderTraceCaptureConsent(), ...renderBody())
     if (purchaseNote !== null) {
       const note = el("div", "khala-plans-purchase-note", purchaseNote)
       note.dataset.khalaPlansPurchaseNote = ""
@@ -287,6 +377,19 @@ export const mountKhalaCodePlansPanel = (
     render()
   }
 
+  const setTraceCaptureConsent = async (enabled: boolean): Promise<void> => {
+    if (savingTraceCaptureConsent) return
+    savingTraceCaptureConsent = true
+    render()
+    try {
+      traceCaptureStatusResult = await options.traceCaptureConsentWrite({ enabled })
+    } catch {
+      traceCaptureStatusResult = await options.traceCaptureStatus().catch(traceCaptureUnavailableStatus)
+    }
+    savingTraceCaptureConsent = false
+    render()
+  }
+
   container.addEventListener("click", event => {
     const target = event.target instanceof Element
       ? event.target.closest<HTMLButtonElement>("[data-khala-plans-action]")
@@ -297,6 +400,14 @@ export const mountKhalaCodePlansPanel = (
     if (target.dataset.khalaPlansAction === "credits") void openCreditCheckout()
   })
 
+  container.addEventListener("change", event => {
+    const target = event.target instanceof Element
+      ? event.target.closest<HTMLInputElement>("[data-khala-trace-capture-action='consent']")
+      : null
+    if (target === null || target.disabled) return
+    void setTraceCaptureConsent(target.checked)
+  })
+
   render()
 
   return {
@@ -305,7 +416,7 @@ export const mountKhalaCodePlansPanel = (
       // then keep the loaded copy so settings-panel re-renders only refetch
       // the (account-scoped) plan status.
       const loaded = catalogResult
-      const [catalog, status] = await Promise.all([
+      const [catalog, status, traceCapture] = await Promise.all([
         loaded !== null && loaded.ok
           ? Promise.resolve(loaded)
           : options.catalog().catch((): KhalaCodeDesktopPlanCatalogResult => ({
@@ -315,9 +426,11 @@ export const mountKhalaCodePlansPanel = (
         options.status().catch((): KhalaCodeDesktopPlanStatusResult => ({
           state: "unavailable",
         })),
+        options.traceCaptureStatus().catch(traceCaptureUnavailableStatus),
       ])
       catalogResult = catalog
       statusResult = status
+      traceCaptureStatusResult = traceCapture
       render()
     },
   }

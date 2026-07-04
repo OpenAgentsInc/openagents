@@ -108,6 +108,31 @@ Until those owner steps are complete, the shipped state remains: flag off by
 default, paid plan not purchasable, no entitlement granted without a settled
 payment receipt.
 
+## Khala Code Desktop Trace Capture Arming
+
+Source issue: OpenAgentsInc/openagents#8250
+
+Khala Code Desktop now has an explicit default-off free-plan trace-capture
+consent control, local persisted consent RPCs, and a fail-closed capture
+planner. The planner admits only free-plan session events with explicit consent,
+owner arming, Rampart redaction success, and an owner_only ingest sink. Paid-plan
+capture opt-out, missing owner arming, missing ingest, or redaction failure all
+return `not_captured`, and the marker remains payout/settlement inert.
+
+NEEDS-OWNER: Decide when to set `KHALA_CODE_DESKTOP_TRACE_CAPTURE_ENABLED=1`,
+approve the owner_only trace-ingest destination and retention/deletion policy,
+approve the final desktop disclosure/copy beside
+`data.free_tier_capture_disclosure.v1`, confirm the paid-plan exclusion policy
+for desktop sessions, and record one public-safe production receipt proving a
+consented free-plan event was redacted before owner_only ingest. Do not move
+`khala_code.free_plan_trace_capture.v1` out of planned/yellow or claim desktop
+capture is live until that receipt exists.
+
+Until those owner steps are complete, the shipped state remains: consent UI and
+local fail-closed planner exist; production capture is not armed, no owner_only
+ingest sink is live, no user trace is captured by this desktop path, and capture
+grants no payout or settlement eligibility.
+
 ## QS7 Rhys Sales Motion Owner Gate
 
 Source issue: OpenAgentsInc/openagents#8067

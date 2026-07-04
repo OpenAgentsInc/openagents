@@ -38,6 +38,17 @@ export type KhalaCodeDesktopModelRoleRegistryWriteResult =
     readonly saved: boolean
   }
 
+export type KhalaCodeDesktopTraceCaptureConsentSetting = {
+  readonly enabled: boolean
+  readonly ok: true
+  readonly path: string
+}
+
+export type KhalaCodeDesktopTraceCaptureConsentWriteResult =
+  KhalaCodeDesktopTraceCaptureConsentSetting & {
+    readonly saved: boolean
+  }
+
 const DEFAULT_HARNESS_MODE: KhalaCodeDesktopRuntimeMode = "codex_harness"
 const VALID_HARNESS_MODES = new Set<KhalaCodeDesktopRuntimeMode>([
   "claude_runtime",
@@ -52,6 +63,9 @@ const settingsObject = (value: unknown): Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
     ? { ...(value as Record<string, unknown>) }
     : {}
+
+const booleanValue = (value: unknown): boolean =>
+  typeof value === "boolean" ? value : false
 
 export const khalaCodeDesktopHarnessSettingPath = (env: ChatEnv): string =>
   env.KHALA_CODE_DESKTOP_HARNESS_SETTING_PATH?.trim() ||
@@ -142,6 +156,37 @@ export async function readKhalaCodeDesktopModelRoleRegistry(
     ok: true,
     path: khalaCodeDesktopHarnessSettingPath(env),
     registry,
+  }
+}
+
+export async function readKhalaCodeDesktopTraceCaptureConsent(
+  env: ChatEnv,
+): Promise<KhalaCodeDesktopTraceCaptureConsentSetting> {
+  const settings = await readKhalaCodeDesktopSettingsDocument(env)
+  return {
+    enabled: booleanValue(settings.traceCaptureConsentEnabled),
+    ok: true,
+    path: khalaCodeDesktopHarnessSettingPath(env),
+  }
+}
+
+export async function writeKhalaCodeDesktopTraceCaptureConsent(
+  enabled: boolean,
+  env: ChatEnv,
+): Promise<KhalaCodeDesktopTraceCaptureConsentWriteResult> {
+  const path = khalaCodeDesktopHarnessSettingPath(env)
+  const current = await readKhalaCodeDesktopSettingsDocument(env)
+  await mkdir(dirname(path), { recursive: true })
+  await writeFile(path, `${JSON.stringify({
+    ...current,
+    schema: "khala-code-desktop.harness-setting.v1",
+    harnessMode: isRuntimeMode(current.harnessMode) ? current.harnessMode : DEFAULT_HARNESS_MODE,
+    traceCaptureConsentEnabled: enabled,
+  }, null, 2)}\n`)
+  const setting = await readKhalaCodeDesktopTraceCaptureConsent(env)
+  return {
+    ...setting,
+    saved: true,
   }
 }
 

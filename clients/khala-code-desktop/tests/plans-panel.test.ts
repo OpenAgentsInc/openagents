@@ -8,6 +8,9 @@ import type {
   KhalaCodeDesktopPlanPurchaseRequest,
   KhalaCodeDesktopPlanPurchaseResult,
   KhalaCodeDesktopPlanStatusResult,
+  KhalaCodeDesktopTraceCaptureConsentWriteRequest,
+  KhalaCodeDesktopTraceCaptureConsentWriteResult,
+  KhalaCodeDesktopTraceCaptureStatusResult,
 } from "../src/shared/rpc"
 
 const setGlobal = (key: string, value: unknown): void => {
@@ -24,6 +27,7 @@ const installDom = (): HTMLElement => {
   setGlobal("HTMLElement", window.HTMLElement)
   setGlobal("HTMLButtonElement", window.HTMLButtonElement)
   setGlobal("Element", window.Element)
+  setGlobal("Event", window.Event)
   setGlobal("MouseEvent", window.MouseEvent)
   setGlobal("customElements", window.customElements)
   const container = window.document.createElement("section")
@@ -74,6 +78,41 @@ const fixtureCatalog = (input: { readonly paidArmed: boolean }): KhalaCodeDeskto
   summary: "Khala Code Episode 245 plan structure: Free pays with data; Paid keeps data private.",
 })
 
+const fixtureTraceCaptureStatus = (
+  input: {
+    readonly enabled?: boolean
+    readonly ownerArmed?: boolean
+  } = {},
+): KhalaCodeDesktopTraceCaptureStatusResult => ({
+  blockerRefs: input.enabled === true && input.ownerArmed !== true
+    ? ["blocker.owner.khala_code_desktop_trace_capture_arming_missing"]
+    : [],
+  disclosureRef: "data.free_tier_capture_disclosure.v1",
+  enabled: input.enabled === true,
+  marker: {
+    payoutEligible: false,
+    revenueShareEligible: false,
+    settlementEligible: false,
+  },
+  ok: true,
+  ownerArmed: input.ownerArmed === true,
+  ownerGateEnv: "KHALA_CODE_DESKTOP_TRACE_CAPTURE_ENABLED",
+  path: "/tmp/khala-code-settings.json",
+  pipeline: {
+    ingestAudience: "owner_only",
+    redaction: "rampart_required",
+    sessionEvents: "explicit_consent_only",
+  },
+  promiseId: "khala_code.free_plan_trace_capture.v1",
+  reason: input.enabled === true
+    ? input.ownerArmed === true
+      ? "ready_for_redacted_owner_only_ingest"
+      : "owner_not_armed"
+    : "consent_disabled",
+  schemaVersion: "openagents.khala_code.desktop_trace_capture_status.v1",
+  state: "not_captured",
+})
+
 type Transports = {
   readonly baseUrl?: string
   readonly catalog?: () => Promise<KhalaCodeDesktopPlanCatalogResult>
@@ -82,6 +121,10 @@ type Transports = {
   readonly purchase?: (
     request?: KhalaCodeDesktopPlanPurchaseRequest,
   ) => Promise<KhalaCodeDesktopPlanPurchaseResult>
+  readonly traceCaptureStatus?: () => Promise<KhalaCodeDesktopTraceCaptureStatusResult>
+  readonly traceCaptureConsentWrite?: (
+    request: KhalaCodeDesktopTraceCaptureConsentWriteRequest,
+  ) => Promise<KhalaCodeDesktopTraceCaptureConsentWriteResult>
 }
 
 const mountWith = (container: HTMLElement, transports: Transports) =>
@@ -91,6 +134,9 @@ const mountWith = (container: HTMLElement, transports: Transports) =>
     openExternal: transports.openExternal ?? (async () => true),
     purchase: transports.purchase ?? (async () => ({ ok: false, error: "purchase_unavailable" })),
     status: transports.status ?? (async () => ({ state: "unauthenticated" })),
+    traceCaptureStatus: transports.traceCaptureStatus ?? (async () => fixtureTraceCaptureStatus()),
+    traceCaptureConsentWrite: transports.traceCaptureConsentWrite ??
+      (async request => ({ ...fixtureTraceCaptureStatus({ enabled: request.enabled }), saved: true })),
   })
 
 // Oracle for khala_code.plans.checkout_handoff_server_truth.v1
@@ -144,6 +190,9 @@ describe("khala code plans panel", () => {
 
     const current = container.querySelector("[data-khala-plans-current]")
     expect(current?.textContent).toBe("Current plan: Paid — capture opt-out active")
+    expect(container.querySelector("[data-khala-trace-capture-status]")?.textContent).toBe(
+      "Trace capture: not captured — paid plan capture opt-out active.",
+    )
   })
 
   test("treats a missing agent token as Free (default) without fabricating a plan", async () => {
@@ -156,6 +205,63 @@ describe("khala code plans panel", () => {
 
     const current = container.querySelector("[data-khala-plans-current]")
     expect(current?.textContent).toBe("Current plan: Free (default) — not signed in")
+  })
+
+  // Oracle for khala_code.plans.free_trace_capture_explicit_consent.v1
+  test("renders trace capture off by default and never writes before explicit consent", async () => {
+    const container = installDom()
+    let writes = 0
+    const panel = mountWith(container, {
+      traceCaptureConsentWrite: async request => {
+        writes += 1
+        return { ...fixtureTraceCaptureStatus({ enabled: request.enabled }), saved: true }
+      },
+      traceCaptureStatus: async () => fixtureTraceCaptureStatus(),
+    })
+    await panel.refresh()
+    await flushPanel()
+
+    const checkbox = container.querySelector<HTMLInputElement>(
+      "[data-khala-trace-capture-action='consent']",
+    )
+    expect(checkbox).not.toBeNull()
+    expect(checkbox?.checked).toBe(false)
+    expect(container.querySelector("[data-khala-trace-capture-status]")?.textContent).toBe(
+      "Trace capture: off — no session events are captured.",
+    )
+    expect(container.textContent).toContain("Redaction failure fails closed to not captured")
+    expect(container.textContent).toContain("does not create payout or settlement eligibility")
+    expect(writes).toBe(0)
+  })
+
+  test("persists trace capture consent only after the user toggles the checkbox", async () => {
+    const container = installDom()
+    const writes: KhalaCodeDesktopTraceCaptureConsentWriteRequest[] = []
+    const panel = mountWith(container, {
+      traceCaptureConsentWrite: async request => {
+        writes.push(request)
+        return { ...fixtureTraceCaptureStatus({ enabled: request.enabled }), saved: true }
+      },
+      traceCaptureStatus: async () => fixtureTraceCaptureStatus(),
+    })
+    await panel.refresh()
+    await flushPanel()
+
+    const checkbox = container.querySelector<HTMLInputElement>(
+      "[data-khala-trace-capture-action='consent']",
+    )
+    expect(checkbox).not.toBeNull()
+    if (checkbox !== null) checkbox.checked = true
+    checkbox?.dispatchEvent(new Event("change", { bubbles: true }))
+    await flushPanel()
+
+    expect(writes).toEqual([{ enabled: true }])
+    expect(container.querySelector<HTMLInputElement>(
+      "[data-khala-trace-capture-action='consent']",
+    )?.checked).toBe(true)
+    expect(container.querySelector("[data-khala-trace-capture-status]")?.textContent).toBe(
+      "Trace capture: consent saved, not captured — owner arming is pending.",
+    )
   })
 
   test("renders an honest unavailable state when plan status cannot be resolved", async () => {

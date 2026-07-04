@@ -4574,7 +4574,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Free-plan Khala Code coding sessions produce disclosed, consented, redacted usage traces that may feed model and plugin improvement.',
         safeCopy:
-          'This is the Episode 245 consented desktop capture pipeline, and it is planned, not live. Today the Khala Code default path is Codex wrapper mode whose raw events and ATIF traces are owner-private delegation observability (never free-plan capture), and the shipped default-on Rampart redaction on the desktop chat boundary is a privacy prefilter, not a security boundary. The hosted-API capture records (data.free_tier_capture_disclosure.v1, data.khala_free_tier_trace_capture.v1, both yellow) are the adjacent spine; the desktop free-plan pipeline needs its own disclosure, consent, scrubbing, and scope machinery before any capture claim.',
+          'This is the Episode 245 consented desktop capture pipeline, and it is planned, not live. Today the Khala Code default path is Codex wrapper mode whose raw events and ATIF traces are owner-private delegation observability (never free-plan capture), and the shipped default-on Rampart redaction on the desktop chat boundary is a privacy prefilter, not a security boundary. The desktop now has an explicit default-off consent control plus a fail-closed local capture planner: free-plan session events may proceed only through Rampart redaction and owner_only ingest when the owner gate and ingest sink are armed; paid-plan capture opt-out, redaction failure, missing owner arm, or missing ingest sink returns not_captured. Capture remains payout/settlement inert.',
         unsafeCopy:
           'Do not claim Khala Code coding sessions are currently captured for training, that wrapper-mode raw events are shared or sold, or that “scrubbed of any of your sensitive data” is a guaranteed security property rather than a redaction-pipeline design goal.',
         evidenceRefs: [
@@ -4583,13 +4583,23 @@ export const publicProductPromisesDocument = () => {
           'docs/fable/2026-07-01-product-promises-khala-code-launch-alignment.md',
           'promise:data.free_tier_capture_disclosure.v1',
           'promise:data.khala_free_tier_trace_capture.v1',
+          'https://github.com/OpenAgentsInc/openagents/issues/8250',
+          'clients/khala-code-desktop/src/shared/trace-capture.ts',
+          'clients/khala-code-desktop/src/ui/plans-panel.ts',
+          'clients/khala-code-desktop/src/bun/rpc-handlers.ts',
+          'clients/khala-code-desktop/tests/trace-capture.test.ts',
+          'clients/khala-code-desktop/tests/plans-panel.test.ts',
+          'clients/khala-code-desktop/tests/rpc-handlers.test.ts',
+          'docs/khala-code/khala-code-ux-contract.md',
         ],
         blockerRefs: [
-          'blocker.product_promises.khala_code_consented_capture_pipeline_missing',
+          'blocker.owner.khala_code_desktop_trace_capture_arming_missing',
+          'blocker.owner.khala_code_desktop_owner_only_ingest_sink_missing',
+          'blocker.product_promises.khala_code_trace_capture_live_receipt_missing',
           'blocker.product_promises.trace_capture_reward_marker_inert',
         ],
         verification:
-          'Requires a desktop-scoped disclosure and consent surface, plan-scoped capture wiring with paid-plan exclusion fail-closed, redaction/scrubbing evidence with honest boundary language, and owner sign-off before any capture flip.',
+          'Desktop source now verifies explicit default-off consent, paid-plan exclusion, redaction-failure fail-closed behavior, owner_only ingest audience, and inert payout/settlement markers via the trace-capture, plans-panel, and RPC-handler tests. The record stays planned: green/yellow movement still requires owner arming of KHALA_CODE_DESKTOP_TRACE_CAPTURE_ENABLED, an owner_only production ingest sink, a public-safe captured-trace receipt, and owner-approved copy per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'Capture design intent grants no data sale, publication, payout, or settlement authority; owner-private delegation observability must never be reclassified as free-plan capture.',
       },

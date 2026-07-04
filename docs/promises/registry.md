@@ -63,6 +63,18 @@
 > availability label changed, no pricing was published, and both blockers
 > stood before the later BF-2.1 rate-card pass.
 >
+> Registry `2026-07-04.2` is the #8250 RL-6 consented Khala Code desktop
+> capture pass and flips NO promise state. `khala_code.free_plan_trace_capture.v1`
+> stays planned: the desktop now has a default-off consent control, local
+> persisted consent RPCs, and a fail-closed planner that gates session events
+> through Rampart redaction before owner_only ingest, blocks paid-plan capture
+> opt-out, returns `not_captured` on redaction failure, and keeps payout and
+> settlement markers inert. Production arming remains owner-gated by
+> `KHALA_CODE_DESKTOP_TRACE_CAPTURE_ENABLED`, the owner_only ingest sink and
+> live captured-trace receipt are still missing, and `NEEDS_OWNER.md` carries
+> those blockers. The hosted free-API disclosure remains separate from desktop
+> capture and keeps its own yellow owner-gated state.
+>
 > Registry `2026-07-01.3` is the #7966 PROMISSORY pass on
 > `khala_code.free_paid_plans.v1` and flips NO promise state (green stays
 > exactly 34; the record stays planned). Cleared with source+test evidence:
