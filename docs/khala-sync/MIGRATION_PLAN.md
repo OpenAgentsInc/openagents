@@ -92,7 +92,7 @@ cutover procedure: [`RUNBOOK.md`](./RUNBOOK.md) "Artanis supervision
 domain cutover"; cutover evidence + D1 drop tracked in the decommission
 follow-up filed off [#8317](https://github.com/OpenAgentsInc/openagents/issues/8317).
 
-**KS-8.8 status (2026-07-04):** machinery LANDED — Postgres schema
+**KS-8.8 status (2026-07-04):** machinery LIVE — Postgres schema
 (`khala-sync-server` migration `0016_treasury_domain.sql`: all 27 live
 money tables — treasury transactions, the six nexus payout-authority
 ledgers, the forum money half, both reward ledgers, agent balances, labor
@@ -123,7 +123,30 @@ twin, so no flag can double-dispatch. Resumable backfill + money-exact
 verify CLI (`packages/khala-sync-server/scripts/backfill-treasury.ts`:
 exact counts, per-(state, rail) tallies WITH exact money-column SUMs to
 the millisat/cent, newest-N row hashes), and a contract suite run against
-BOTH engines (`treasury-domain-repository.contract.test.ts`). Known
+BOTH engines (`treasury-domain-repository.contract.test.ts`).
+
+Live closeout evidence: commit `87d16a6ee7` deployed through
+`deploy:safe` on 2026-07-04 (staging Worker version
+`a423fc15-16a6-492b-9559-bb78e26160ed`, production Worker version
+`1bcd048d-de0d-4a1e-a108-f79b4ba5e33f`). Migration
+`0016_treasury_domain.sql` was dry-run then applied in staging and prod
+(`1 pending, 16 already applied` in each dry-run; `applied 1, already
+applied 16` in each apply). Production smokes passed: `https://openagents.com/`
+HTTP 200, `/assets/index-DWcdsn2N.js` HTTP 200, and
+`/api/internal/khala-sync/db-smoke` returned `{ ok: true,
+khalaSyncTables: 12 }`. Production backfill copied the nonzero treasury
+corpus (126 treasury transactions; 40 payout approvals; 67 payout intents;
+64 payout attempts; 64 reconciliation events; 72 payment-authority
+receipts; 1 release gate; 100 forum money actions; 100 forum payment
+events; 58 forum receipts; 37 L402 challenges; 26 L402 redemptions; 74
+direct-tip attempts; 2 direct-tip webhook events; 30 recipient wallets; 10
+settlement claims; 3 X-claim rewards; 7 agent balances; 3 labor escrows;
+1 MPP lightning replay guard), then the required restart sweep scanned the
+same rows with zero inserts. Production `--verify --verify-newest 50`
+ended `VERIFY OK: exact counts, per-state money sums, and newest-N hashes
+match.`
+
+Known
 D1-only residuals until their callers pass the seam handle (all
 low-volume; tracked for the KS-8.19 sweep): the referral/engagement
 accrual feeds (`site-referral-payout-feed.ts`,

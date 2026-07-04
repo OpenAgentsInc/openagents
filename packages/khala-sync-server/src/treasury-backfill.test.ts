@@ -11,7 +11,7 @@
 //      (state, rail) group — a single millisat of drift trips the report.
 //   4. Replay-guard tables (mpp_*_replay) port key-exactly.
 // Every one of the 27 domain tables takes at least one row here, so the
-// registry's column lists are proven against the 0012 DDL — not just
+// registry's column lists are proven against the 0016 DDL — not just
 // eyeballed.
 
 import { SQL } from "bun"
@@ -46,7 +46,7 @@ setDefaultTimeout(120_000)
 const ISO = "2026-07-04T00:00:00.000Z"
 
 /** One representative D1 row per table (registry-order columns must all
- * exist in the 0012 DDL or the INSERT fails loudly; CHECK constraints must
+ * exist in the 0016 DDL or the INSERT fails loudly; CHECK constraints must
  * all pass or the INSERT fails loudly). */
 const sampleRow = (table: TreasuryBackfillTable, n: number): D1SourceRow => {
   switch (table) {

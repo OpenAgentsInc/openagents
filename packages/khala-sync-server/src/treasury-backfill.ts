@@ -31,7 +31,7 @@ import { createHash } from "node:crypto"
 import type { SyncSql } from "./sql.js"
 
 // ---------------------------------------------------------------------------
-// Table registry (column lists mirror migration 0012 exactly, which mirrors
+// Table registry (column lists mirror migration 0016 exactly, which mirrors
 // the live D1 schema: worker migrations 0101/0122/0128/0131/0143/0146/0147/
 // 0149/0151/0153/0159..0167/0184/0196..0199/0203/0204/0206/0211/0214/0224/
 // 0225/0261/0293)

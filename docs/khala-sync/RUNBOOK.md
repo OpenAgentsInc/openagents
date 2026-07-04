@@ -736,6 +736,21 @@ Rollback at ANY step: set `KHALA_SYNC_TREASURY_READS=d1` (reads) and/or
 `KHALA_SYNC_TREASURY_DUAL_WRITE=off` (writes). D1 authority is never
 behind.
 
+Live closeout (2026-07-04, #8319): source commit `87d16a6ee7` was deployed
+through `deploy:safe` after full `check:deploy`; staging Worker version
+`a423fc15-16a6-492b-9559-bb78e26160ed`, production Worker version
+`1bcd048d-de0d-4a1e-a108-f79b4ba5e33f`. The direct migration runner
+dry-ran then applied `0016_treasury_domain.sql` in staging and production
+(`1 pending, 16 already applied` before apply; `applied 1, already
+applied 16` after apply). Production smokes: homepage HTTP 200, concrete
+asset `/assets/index-DWcdsn2N.js` HTTP 200, and internal Khala Sync
+Hyperdrive smoke `{ ok: true, khalaSyncTables: 12, latencyMs: 127 }`.
+Backfill copied the production corpus, then the required restart sweep
+scanned the same rows with zero inserts. Production verify with
+`--verify --verify-newest 50` ended `VERIFY OK: exact counts, per-state
+money sums, and newest-N hashes match.` Read cutover remains epic-gated by
+#8282, and destructive D1 retirement remains consolidated into #8330.
+
 ## Inference entitlements domain cutover (KS-8.9, #8320)
 
 The free-tier/entitlement accounting on the inference serving path — the
