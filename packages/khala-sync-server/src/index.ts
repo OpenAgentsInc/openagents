@@ -17,6 +17,7 @@ import type {
   KhalaSyncStorageError,
 } from "./errors.js"
 
+export * from "./capture.js"
 export * from "./errors.js"
 export * from "./mutation-ledger.js"
 export * from "./outbox-writer.js"
@@ -95,17 +96,12 @@ export interface KhalaSyncScopeAuth {
 }
 
 // ---------------------------------------------------------------------------
-// Capture (KS-4): tails khala_sync_changelog over a DIRECT Postgres
-// connection (LISTEN wake + poll fallback) and pushes DeltaFrames to the
-// per-scope hub. Not implemented here yet — see issue KS-4.1.
+// Capture (KS-4.1): tails khala_sync_changelog over a DIRECT Postgres
+// connection (LISTEN wake + poll fallback) and pushes ordered batches to
+// the per-scope hub — implemented in ./capture (re-exported above:
+// KHALA_SYNC_NOTIFY_CHANNEL, KhalaSyncCaptureCheckpoint, runCapturePass,
+// startCaptureDaemon, …). CLI: scripts/capture.ts.
 // ---------------------------------------------------------------------------
-
-export interface KhalaSyncCaptureCheckpoint {
-  readonly scope: SyncScope
-  readonly pushedThroughVersion: SyncVersion
-}
-
-export const KHALA_SYNC_NOTIFY_CHANNEL = "khala_sync_changelog_append"
 
 // ---------------------------------------------------------------------------
 // Hub DO surface (KS-4): implemented as a Durable Object class inside the

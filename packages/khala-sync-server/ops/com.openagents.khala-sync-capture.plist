@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Khala Sync capture worker — launchd supervision TEMPLATE (KS-4.1, #8294).
+
+  DO NOT install this file as-is: replace every __PLACEHOLDER__ first, then
+  copy it to ~/Library/LaunchAgents/com.openagents.khala-sync-capture.plist
+  and `launchctl bootstrap gui/$(id -u)` it. Installation is a KS-6 deploy
+  step — see the "Capture runbook" section in the package README for the
+  full procedure, secret sourcing, and liveness checks.
+
+  Secrets: KHALA_SYNC_DATABASE_URL and OPENAGENTS_ADMIN_API_TOKEN come from
+  the gitignored workspace secret files (~/work/.secrets/…). Never commit a
+  filled-in copy of this plist.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.openagents.khala-sync-capture</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__BUN_PATH__</string><!-- e.g. /opt/homebrew/bin/bun -->
+    <string>scripts/capture.ts</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__REPO_PATH__/packages/khala-sync-server</string>
+  <!-- e.g. /Users/christopherdavid/work/openagents/packages/khala-sync-server -->
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>KHALA_SYNC_DATABASE_URL</key>
+    <string>__DIRECT_POSTGRES_URL__</string>
+    <!-- direct Cloud SQL URL as khala_capture — NEVER the Hyperdrive string -->
+    <key>KHALA_SYNC_HUB_APPEND_URL</key>
+    <string>__HUB_APPEND_URL__</string>
+    <!-- prod:    https://openagents.com/api/internal/khala-sync/hub/append -->
+    <!-- staging: https://staging.openagents.com/api/internal/khala-sync/hub/append -->
+    <key>OPENAGENTS_ADMIN_API_TOKEN</key>
+    <string>__ADMIN_API_TOKEN__</string>
+    <key>KHALA_SYNC_CAPTURE_POLL_INTERVAL_MS</key>
+    <string>5000</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <key>StandardOutPath</key>
+  <string>__LOG_DIR__/khala-sync-capture.out</string>
+  <key>StandardErrorPath</key>
+  <string>__LOG_DIR__/khala-sync-capture.err</string>
+</dict>
+</plist>

@@ -73,9 +73,11 @@ outbox writer + per-scope version allocator (KS-2.1), the read service
 (bootstrap snapshot + log pages, KS-2.2), the mutation ledger +
 client-group state (KS-2.4), the transactional push engine + mutator
 registry (KS-3.1, wired to `POST /api/sync/push` in the `openagents.com`
-Worker), and the mutator authoring guide + queue-never-blocks behavior
-contract (KS-3.3) landed; compaction, capture, and the remaining hub seams
-land per the KS-2/KS-4 issues, fleet mutators per KS-3.2.
+Worker), the mutator authoring guide + queue-never-blocks behavior
+contract (KS-3.3), the hub DO (KS-4.2, in the `openagents.com` Worker),
+and the capture worker (KS-4.1, `src/capture.ts` + `scripts/capture.ts`)
+landed; compaction and the remaining hub seams land per the KS-2/KS-4
+issues, fleet mutators per KS-3.2.
 
 **Writing a mutator? Read the authoring guide first:**
 [`docs/khala-sync/MUTATORS.md`](../../docs/khala-sync/MUTATORS.md) —
@@ -338,6 +340,106 @@ applied/rejected/duplicate/out-of-order flows, request-order results,
 atomicity (a mid-mutator failure rolls back business write, changelog,
 ledger row, AND the scope counter — versions stay dense on retry),
 client-group user binding, and empty-push watermark reporting.
+
+## Capture worker (KS-4.1)
+
+`src/capture.ts` + the `scripts/capture.ts` CLI implement capture from
+SPEC §4: a supervised Bun process with a **direct** Postgres connection
+(never Hyperdrive — transaction-mode pooling drops LISTEN/NOTIFY) that
+tails `khala_sync_changelog` and pushes ordered batches to each scope's
+`KhalaSyncHubDO` through the deployed Worker's internal append route
+(`POST /api/internal/khala-sync/hub/append?scope=…`, admin bearer — the
+KS-4.2 surface that exists exactly for this producer).
+
+**Runtime home (v1 decision, #8294):** a supervised Bun process on our own
+infrastructure (launchd on the operator Mac first; the oa GCE box later),
+NOT inside the Worker — Workers cannot hold a LISTEN session through
+Hyperdrive. The WAL/pgoutput upgrade (SPEC §4) swaps only this component.
+
+Semantics:
+
+- **Wake, then read.** `LISTEN khala_sync_changelog_append` (fired by the
+  0001 trigger) is a wake signal only; every pass reads authoritative rows
+  from Postgres with the KS-2.2 `logPage` query — whole version groups per
+  batch, never splitting one transaction's entries across pushes. A
+  configurable short-poll interval (default 5 s) is the fallback for
+  dropped notifications and listener downtime; the postgres.js listener
+  re-subscribes automatically after reconnects.
+- **Checkpoints.** `khala_sync_capture_checkpoints` (migration 0002; scope
+  PK, `pushed_through_version`, `updated_at`) records the highest version
+  each hub acknowledged. The checkpoint advances ONLY on hub 2xx (including
+  the idempotent-replay acknowledgment `appended: 0`) and is monotonic
+  (GREATEST on write). Delivery is at-least-once; the hub dedupes by
+  version. Startup discovers every scope with activity beyond its
+  checkpoint in one query (absent rows behave as watermark 0).
+- **Hub 409 version gap** (`khala_sync_hub_version_gap`): the hub's gap
+  check protects ITS window edge; its 409 body carries
+  `expectedFirstVersion`, so capture re-reads from
+  `expectedFirstVersion - 1` and re-pushes forward (once per pass). If that
+  expectation is already behind the Postgres retained window, capture logs
+  the scope error and leaves the checkpoint — it never fabricates a
+  partial log (SPEC invariant 6); the hub heals via client re-bootstrap.
+- **Failure posture.** Hub 5xx/network → bounded in-pass retry with
+  backoff, checkpoint unmoved, retried again next wake/poll. One scope's
+  failure never blocks other scopes or crashes the daemon (per-scope
+  isolation). Postgres connection loss → the daemon backs off (bounded
+  exponential) and reconnects.
+
+### Capture runbook
+
+Config comes from env (CLI flags override; the token is env-only so it
+never appears in process listings):
+
+| Variable | Meaning |
+|---|---|
+| `KHALA_SYNC_DATABASE_URL` | direct Postgres URL as `khala_capture` (Cloud SQL Auth Proxy or authorized-network IP — never the Hyperdrive string) |
+| `KHALA_SYNC_HUB_APPEND_URL` | Worker internal append route: prod `https://openagents.com/api/internal/khala-sync/hub/append`, staging the staging host's same path |
+| `OPENAGENTS_ADMIN_API_TOKEN` | admin bearer for the internal route |
+| `KHALA_SYNC_CAPTURE_POLL_INTERVAL_MS` | poll fallback interval (default 5000) |
+| `KHALA_SYNC_CAPTURE_BATCH_VERSIONS` | distinct versions per append batch (default 200) |
+
+Secrets live in the gitignored workspace files
+(`~/work/.secrets/khala-sync-cloudsql.env` for the database role,
+`OPENAGENTS_ADMIN_API_TOKEN` from the workspace admin-token secret); never
+copy them into tracked files or logs.
+
+```sh
+# One pass (cron/test mode; exit 1 if any scope failed):
+bun run --cwd packages/khala-sync-server capture -- --once
+
+# Daemon (LISTEN wake + poll fallback; SIGINT/SIGTERM stop cleanly):
+bun run --cwd packages/khala-sync-server capture
+```
+
+launchd supervision (owner Mac): fill in the placeholders in
+`ops/com.openagents.khala-sync-capture.plist` (bun path, repo path, the
+env vars above, log dir), copy it to
+`~/Library/LaunchAgents/com.openagents.khala-sync-capture.plist`, then
+`launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.openagents.khala-sync-capture.plist`.
+`KeepAlive` restarts it on crash with a 10 s throttle. Installing/starting
+this is a **KS-6 deploy step** — do not run it against production until the
+KS-6 wiring lands.
+
+Liveness checks:
+
+- `SELECT scope, pushed_through_version, updated_at FROM
+  khala_sync_capture_checkpoints ORDER BY updated_at DESC` — `updated_at`
+  advancing while writes commit means capture is pushing.
+- Lag: compare against `khala_sync_scopes.last_version` — `SELECT s.scope,
+  s.last_version - COALESCE(c.pushed_through_version, 0) AS lag FROM
+  khala_sync_scopes s LEFT JOIN khala_sync_capture_checkpoints c USING
+  (scope) WHERE s.last_version > COALESCE(c.pushed_through_version, 0)`.
+- Hub side: `GET /api/internal/khala-sync/hub/log?scope=…&cursor=…` (admin
+  bearer) should serve the freshly pushed versions from the DO window.
+- Process side: launchd stdout/err logs (`__LOG_DIR__` in the plist);
+  `launchctl print gui/$(id -u)/com.openagents.khala-sync-capture`.
+
+`src/capture.test.ts` proves the loop against real local Postgres + a fake
+hub (Bun.serve replica of the DO /append contract): single-pass push +
+checkpoint advance, restart resume with zero hub duplicates, 409-gap
+healing from the hub's expectation, per-scope failure isolation,
+version-group integrity at `batchVersions: 1`, NOTIFY-wake promptness with
+the poll fallback idle, and clean daemon shutdown.
 
 ## Migrations runbook (KS-0.3)
 

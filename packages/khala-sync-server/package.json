@@ -17,11 +17,13 @@
   "scripts": {
     "migrate": "bun scripts/migrate.ts",
     "test": "bun test",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "capture": "bun scripts/capture.ts"
   },
   "dependencies": {
     "@openagentsinc/khala-sync": "workspace:*",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "postgres": "3.4.9"
   },
   "devDependencies": {
     "bun-types": "^1.0.0",

@@ -633,6 +633,7 @@
       "dependencies": {
         "@openagentsinc/khala-sync": "workspace:*",
         "effect": "catalog:",
+        "postgres": "3.4.9",
       },
       "devDependencies": {
         "bun-types": "^1.0.0",
