@@ -48,65 +48,86 @@ export const RouteAccessError = S.Union([
 ])
 export type RouteAccessError = typeof RouteAccessError.Type
 
+// Promise-shaped read implementations, exported for callback seams whose
+// contracts are Promise-based (the Khala Sync scope-read capability
+// callbacks in ./khala-sync-scope-auth consume these directly, so no
+// Effect.runPromise bridge is needed there). The Effect-shaped exports
+// below stay the primary surface for Effect-composed callers.
+
+export const readAgentRunAccessRowAsync = async (
+  db: D1Database,
+  runId: string,
+): Promise<AgentRunAccessRow | undefined> => {
+  const row = await db
+    .prepare(
+      `SELECT id, team_id, user_id
+       FROM agent_runs
+       WHERE id = ?
+         AND archived_at IS NULL
+       LIMIT 1`,
+    )
+    .bind(runId)
+    .first<AgentRunAccessRow>()
+
+  return row ?? undefined
+}
+
+export const resolveAgentRunIdAsync = async (
+  db: D1Database,
+  runId: string,
+): Promise<string | undefined> => {
+  const row = await readAgentRunAccessRowAsync(db, runId)
+
+  if (row !== undefined) {
+    return row.id
+  }
+
+  const legacyRunId = legacyAgentRunIdFromUuid(runId)
+
+  if (legacyRunId === undefined) {
+    return undefined
+  }
+
+  return (await readAgentRunAccessRowAsync(db, legacyRunId))?.id
+}
+
+export const resolveAgentRunIdForAutopilotThreadAsync = async (
+  db: D1Database,
+  threadId: string,
+): Promise<string | undefined> => {
+  const row = await db
+    .prepare(
+      `SELECT agent_run_id
+       FROM team_chat_messages
+       WHERE autopilot_thread_id = ?
+         AND agent_run_id IS NOT NULL
+         AND deleted_at IS NULL
+       ORDER BY created_at DESC
+       LIMIT 1`,
+    )
+    .bind(threadId)
+    .first<TeamAutopilotThreadRunRow>()
+
+  return row?.agent_run_id
+}
+
 export const readAgentRunAccessRow = (
   db: D1Database,
   runId: string,
 ): Effect.Effect<AgentRunAccessRow | undefined> =>
-  Effect.promise(async () => {
-    const row = await db
-      .prepare(
-        `SELECT id, team_id, user_id
-         FROM agent_runs
-         WHERE id = ?
-           AND archived_at IS NULL
-         LIMIT 1`,
-      )
-      .bind(runId)
-      .first<AgentRunAccessRow>()
-
-    return row ?? undefined
-  })
+  Effect.promise(() => readAgentRunAccessRowAsync(db, runId))
 
 export const resolveAgentRunId = (
   db: D1Database,
   runId: string,
 ): Effect.Effect<string | undefined> =>
-  Effect.gen(function* () {
-    const row = yield* readAgentRunAccessRow(db, runId)
-
-    if (row !== undefined) {
-      return row.id
-    }
-
-    const legacyRunId = legacyAgentRunIdFromUuid(runId)
-
-    if (legacyRunId === undefined) {
-      return undefined
-    }
-
-    return (yield* readAgentRunAccessRow(db, legacyRunId))?.id
-  })
+  Effect.promise(() => resolveAgentRunIdAsync(db, runId))
 
 export const resolveAgentRunIdForAutopilotThread = (
   db: D1Database,
   threadId: string,
 ): Effect.Effect<string | undefined> =>
-  Effect.promise(async () => {
-    const row = await db
-      .prepare(
-        `SELECT agent_run_id
-         FROM team_chat_messages
-         WHERE autopilot_thread_id = ?
-           AND agent_run_id IS NOT NULL
-           AND deleted_at IS NULL
-         ORDER BY created_at DESC
-         LIMIT 1`,
-      )
-      .bind(threadId)
-      .first<TeamAutopilotThreadRunRow>()
-
-    return row?.agent_run_id
-  })
+  Effect.promise(() => resolveAgentRunIdForAutopilotThreadAsync(db, threadId))
 
 const resolveRouteRunId = (
   db: D1Database,

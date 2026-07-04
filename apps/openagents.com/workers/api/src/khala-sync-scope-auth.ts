@@ -26,10 +26,12 @@
 // invariant 7 (broadcasting `MustRefetch(access_changed)` to already-open
 // sockets) is `notifyKhalaSyncHubAccessChangedBestEffort` /
 // `POST /api/internal/khala-sync/hub/access-changed` in khala-sync-hub-do.
+//
+// This module returns typed {@link ScopeReadDecision} values only; the
+// shared decision → HTTP response mapper the read routes consume is
+// `scopeReadDecisionResponse` in ./http/khala-sync-scope-read-response.
 
-import { Effect, Schema as S } from 'effect'
-
-import { SyncError, type SyncScope } from '@openagentsinc/khala-sync'
+import type { SyncScope } from '@openagentsinc/khala-sync'
 import {
   readScopeOwner,
   resolveScopeRead,
@@ -37,21 +39,16 @@ import {
   type SyncSql,
 } from '@openagentsinc/khala-sync-server'
 
-import { noStoreJsonResponse } from './http/responses'
 import type {
   KhalaSyncHyperdriveBinding,
   MakeKhalaSyncPushSqlClient,
 } from './khala-sync-push-routes'
 import { readActiveTeamMembershipRole } from './team-repository'
 import {
-  readAgentRunAccessRow,
-  resolveAgentRunId,
-  resolveAgentRunIdForAutopilotThread,
+  readAgentRunAccessRowAsync,
+  resolveAgentRunIdAsync,
+  resolveAgentRunIdForAutopilotThreadAsync,
 } from './thread-access'
-
-type HttpResponse = globalThis.Response
-
-const encodeSyncError = S.encodeSync(SyncError)
 
 /** The injected route seam: one decision per (userId, scope) read attempt. */
 export type KhalaSyncScopeReadResolver = (
@@ -60,9 +57,13 @@ export type KhalaSyncScopeReadResolver = (
 ) => Promise<ScopeReadDecision>
 
 export type KhalaSyncScopeAuthDeps = Readonly<{
-  /** `env.OPENAGENTS_DB` — the D1 database holding memberships/ownership. */
+  /**
+   * The OPENAGENTS_DB D1 database holding memberships/ownership, obtained
+   * at the route boundary through the runtime capability accessor
+   * (`openAgentsDatabase` in ./runtime).
+   */
   db: D1Database
-  /** `env.KHALA_SYNC_DB` — absent until the Hyperdrive binding is deployed. */
+  /** `KHALA_SYNC_DB` — absent until the Hyperdrive binding is deployed. */
   binding: KhalaSyncHyperdriveBinding | undefined
   /**
    * Injectable Postgres client factory for the fleet scope-owner lookup.
@@ -99,6 +100,19 @@ const defaultMakeSqlClient: MakeKhalaSyncPushSqlClient = async (
 }
 
 /**
+ * Typed capability failure for an absent KHALA_SYNC_DB binding. Thrown ⇒
+ * the resolver's guard maps it to `unavailable` (503), matching the KS-6.1
+ * fail-closed contract: no binding never grants.
+ */
+class KhalaSyncBindingAbsentError extends Error {
+  override readonly name = 'KhalaSyncBindingAbsentError'
+
+  constructor() {
+    super('KHALA_SYNC_DB binding is absent')
+  }
+}
+
+/**
  * `agent_runs` ownership rule shared by agent_run and thread scopes: the
  * run's owning user, or (team runs) an active member of the run's team —
  * exactly `thread-access.ts` `readAuthorizedBundle` minus the bundle fetch.
@@ -109,7 +123,7 @@ const canReadResolvedRun = async (
   runId: string | undefined,
 ): Promise<boolean> => {
   if (runId === undefined) return false
-  const row = await Effect.runPromise(readAgentRunAccessRow(db, runId))
+  const row = await readAgentRunAccessRowAsync(db, runId)
   if (row === undefined) return false
   if (row.team_id === null) return row.user_id === userId
   if (row.user_id === userId) return true
@@ -133,9 +147,7 @@ export const makeKhalaSyncScopeReadResolver = (
       typeof deps.binding.connectionString !== 'string' ||
       deps.binding.connectionString.length === 0
     ) {
-      // Thrown ⇒ the resolver's guard maps it to `unavailable` (503),
-      // matching the KS-6.1 fail-closed contract: no binding never grants.
-      throw new Error('KHALA_SYNC_DB binding is absent')
+      throw new KhalaSyncBindingAbsentError()
     }
     const client = await (deps.makeSqlClient ?? defaultMakeSqlClient)(
       deps.binding.connectionString,
@@ -158,15 +170,16 @@ export const makeKhalaSyncScopeReadResolver = (
           canReadResolvedRun(
             deps.db,
             uid,
-            await Effect.runPromise(resolveAgentRunId(deps.db, runId)),
+            await resolveAgentRunIdAsync(deps.db, runId),
           ),
         canReadThread: async (uid, threadId) =>
           canReadResolvedRun(
             deps.db,
             uid,
-            (await Effect.runPromise(resolveAgentRunId(deps.db, threadId))) ??
-              (await Effect.runPromise(
-                resolveAgentRunIdForAutopilotThread(deps.db, threadId),
+            (await resolveAgentRunIdAsync(deps.db, threadId)) ??
+              (await resolveAgentRunIdForAutopilotThreadAsync(
+                deps.db,
+                threadId,
               )),
           ),
         isTeamMember: async (uid, teamId) =>
@@ -177,46 +190,4 @@ export const makeKhalaSyncScopeReadResolver = (
       userId,
       scope,
     )
-}
-
-// ---------------------------------------------------------------------------
-// Shared decision → HTTP mapping for the three read routes
-// ---------------------------------------------------------------------------
-
-/**
- * Map a non-allowed {@link ScopeReadDecision} to its typed `SyncError`
- * response; `undefined` when the read may proceed. Status map:
- * 403 `unauthorized_scope` (denied), 403 `unknown_scope` (taxonomy member
- * with no read policy — gated closed), 503 `storage_unavailable`
- * (capability failure — fail-closed, retryable).
- */
-export const scopeReadDecisionResponse = (
-  decision: ScopeReadDecision,
-): HttpResponse | undefined => {
-  if (decision.kind === 'allowed') return undefined
-  if (decision.kind === 'unavailable') {
-    return noStoreJsonResponse(
-      encodeSyncError(
-        new SyncError({
-          code: 'storage_unavailable',
-          messageSafe: decision.messageSafe,
-          retryable: true,
-        }),
-      ),
-      { status: 503 },
-    )
-  }
-  return noStoreJsonResponse(
-    encodeSyncError(
-      new SyncError({
-        code: decision.reason,
-        messageSafe:
-          decision.reason === 'unknown_scope'
-            ? 'This scope kind has no read policy and is denied (fail-closed).'
-            : 'This user cannot read the requested scope.',
-        retryable: false,
-      }),
-    ),
-    { status: 403 },
-  )
 }

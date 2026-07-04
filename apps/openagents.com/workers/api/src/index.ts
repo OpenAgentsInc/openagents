@@ -991,6 +991,7 @@ import { makePublicFirstDollarEvidenceRoutes } from './revenue-event-provenance-
 import { buildPublicTassadarRunSummaryEnvelopeForRequest } from './public-tassadar-run-summary-routes'
 import {
   makeD1PylonSparkPayoutTargetStore,
+  type PylonApiStore,
   resolveSparkPayoutDestination,
 } from './pylon-api'
 import { makePylonApiStoreForEnv } from './pylon-dispatch-store'
@@ -999,6 +1000,7 @@ import {
   handlePylonCapacityFunnelApi,
   handlePylonCapacityFunnelHistoryApi,
   makeD1PylonCapacityFunnelSnapshotStore,
+  type PylonCapacityFunnelSnapshotStore,
   recordPylonCapacityFunnelSnapshots,
 } from './pylon-capacity-funnel-live-routes'
 import {
@@ -6519,7 +6521,10 @@ const runArtanisScheduledTickScheduled = (
   )
 
 const recordPylonCapacityFunnelSnapshotsScheduled = (
-  env: Env,
+  deps: Readonly<{
+    snapshotStore: PylonCapacityFunnelSnapshotStore
+    store: PylonApiStore
+  }>,
   scheduledTime: number,
 ): Effect.Effect<void, never> =>
   Effect.tryPromise({
@@ -6527,10 +6532,8 @@ const recordPylonCapacityFunnelSnapshotsScheduled = (
     try: () =>
       recordPylonCapacityFunnelSnapshots({
         nowIso: epochMillisToIsoTimestamp(scheduledTime),
-        snapshotStore: makeD1PylonCapacityFunnelSnapshotStore(
-          openAgentsDatabase(env),
-        ),
-        store: makePylonApiStoreForEnv(env),
+        snapshotStore: deps.snapshotStore,
+        store: deps.store,
       }),
   }).pipe(
     Effect.asVoid,
@@ -15611,7 +15614,15 @@ export default {
       ),
       observedEffect(
         'PylonCapacityFunnel.recordSnapshots',
-        recordPylonCapacityFunnelSnapshotsScheduled(env, event.scheduledTime),
+        recordPylonCapacityFunnelSnapshotsScheduled(
+          {
+            snapshotStore: makeD1PylonCapacityFunnelSnapshotStore(
+              openAgentsDatabase(env),
+            ),
+            store: makePylonApiStoreForEnv(env),
+          },
+          event.scheduledTime,
+        ),
       ),
       observedEffect(
         'RelayHealth.probeTick',

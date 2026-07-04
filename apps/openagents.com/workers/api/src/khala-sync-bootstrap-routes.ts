@@ -66,16 +66,14 @@ import {
   type SyncSql,
 } from '@openagentsinc/khala-sync-server'
 
+import { scopeReadDecisionResponse } from './http/khala-sync-scope-read-response'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import type {
   KhalaSyncHyperdriveBinding,
   KhalaSyncPushSqlClient,
   MakeKhalaSyncPushSqlClient,
 } from './khala-sync-push-routes'
-import {
-  type KhalaSyncScopeReadResolver,
-  scopeReadDecisionResponse,
-} from './khala-sync-scope-auth'
+import type { KhalaSyncScopeReadResolver } from './khala-sync-scope-auth'
 
 type HttpResponse = globalThis.Response
 
