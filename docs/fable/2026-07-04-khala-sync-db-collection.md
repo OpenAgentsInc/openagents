@@ -36,10 +36,18 @@ The package includes `fleetRunKhalaSyncCollectionOptions`, binding the existing
 `fleet_run` entity type. Its first supported optimistic intent is
 `fleet.setDesiredSlots`, matching the server-side fleet mutator vocabulary.
 
+MC-3 adds the second typed consumer helper:
+`chatThreadKhalaSyncCollectionOptions` binds an owner personal scope to
+`chat_thread`, maps inserts to `chat.createThread`, maps title updates to
+`chat.renameThread`, and shares `chatThreadsForSidebar` for desktop and Start
+web thread-list projections.
+
 The package test runs a real Khala Sync session and overlay against a
 production-shaped fake fleet transport seeded from the `FleetRunEntity`
-fixture. It proves initial catch-up, live updates, an optimistic
-`desiredSlots` mutation round trip, and typed rejection handling.
+fixture and a chat fake transport seeded from `ChatThreadEntity` rows. It proves
+initial catch-up, live updates, an optimistic `desiredSlots` mutation round
+trip, a two-client chat create/rename propagation path, newest-first sidebar
+ordering, and typed rejection handling.
 
 ## Verification
 

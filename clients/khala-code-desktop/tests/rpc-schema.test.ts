@@ -377,6 +377,45 @@ describe("Khala Code desktop schema-first RPC contract", () => {
       runId: "fleet.run.public.test",
     }])[0]).toMatchObject({ action: "set_desired_slots", desiredSlots: 4 })
 
+    expect(decodeKhalaCodeDesktopRpcParameters("khalaSyncChatThreads", [{
+      limit: 20,
+      searchTerm: "remote",
+    }])[0]).toMatchObject({ limit: 20, searchTerm: "remote" })
+
+    expect(decodeKhalaCodeDesktopRpcResult("khalaSyncChatThreads", {
+      authState: "connected",
+      cursor: 33,
+      enabled: true,
+      ok: true,
+      ownerUserId: "user-chat-owner",
+      pendingMutations: 0,
+      phase: "live",
+      reason: null,
+      rejections: [],
+      threads: [
+        {
+          createdAt: "2026-07-04T00:00:00.000Z",
+          lastMessageAt: null,
+          messageCount: 0,
+          ownerUserId: "user-chat-owner",
+          status: "active",
+          threadId: "thread.remote.test",
+          title: "Remote thread",
+          updatedAt: "2026-07-04T00:00:00.000Z",
+        },
+      ],
+    })).toMatchObject({ enabled: true, phase: "live" })
+
+    expect(decodeKhalaCodeDesktopRpcParameters("khalaSyncChatCreateThread", [{
+      threadId: "thread.remote.test",
+      title: "Remote thread",
+    }])[0]).toMatchObject({ threadId: "thread.remote.test" })
+
+    expect(decodeKhalaCodeDesktopRpcParameters("khalaSyncChatRenameThread", [{
+      threadId: "thread.remote.test",
+      title: "Renamed remote thread",
+    }])[0]).toMatchObject({ title: "Renamed remote thread" })
+
     // Without a wired Khala Sync service (flag off), the handlers answer
     // honestly disabled instead of pretending a sync path exists.
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({
@@ -396,6 +435,18 @@ describe("Khala Code desktop schema-first RPC contract", () => {
     await expect(handlers.khalaSyncFleetMutate({ action: "pause", runId: "fleet.run.public.test" })).resolves.toEqual({
       ok: false,
       error: "khala_sync_fleet_disabled",
+    })
+    await expect(handlers.khalaSyncChatThreads({})).resolves.toMatchObject({
+      enabled: false,
+      phase: "disabled",
+    })
+    await expect(handlers.khalaSyncChatCreateThread({
+      threadId: "thread.remote.test",
+      title: "Remote thread",
+    })).resolves.toEqual({
+      ok: false,
+      error: "khala_sync_chat_disabled",
+      threadId: "thread.remote.test",
     })
   })
 

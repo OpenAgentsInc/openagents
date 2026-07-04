@@ -238,6 +238,23 @@ intent consumer lands (#8302 honest v1 contract). Behavior contracts:
 `khala_code.fleet.khala_sync_must_refetch_recovers.v1` in
 `src/contracts/ux-contracts.ts`.
 
+## Khala Sync Chat Source (flag-gated)
+
+The chat sidebar can consume the owner `chat_thread` scope through the same
+Khala Sync session and TanStack DB adapter used by Fleet. Enable it with both
+the feature flag and the owner user id for the personal chat scope:
+
+```sh
+KHALA_SYNC_CHAT=1 KHALA_SYNC_CHAT_OWNER_USER_ID=user_... bun run dev
+```
+
+When connected, the sidebar lists `chat_thread` rows from
+`@openagentsinc/khala-sync-db-collection`, creates new threads through
+`chat.createThread`, renames through `chat.renameThread`, and falls back to the
+legacy session catalog only when the chat sync source is disabled or
+unavailable. The behavior contract is
+`khala_code.chat.sync_remote_thread_appears_without_restart.v1`.
+
 ## Local Checks
 
 ```sh

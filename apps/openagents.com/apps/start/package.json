@@ -16,6 +16,9 @@
   },
   "dependencies": {
     "@openagentsinc/effect-start": "workspace:*",
+    "@openagentsinc/khala-sync": "workspace:*",
+    "@openagentsinc/khala-sync-client": "workspace:*",
+    "@openagentsinc/khala-sync-db-collection": "workspace:*",
     "@openagentsinc/sync-worker": "workspace:*",
     "@tanstack/db": "0.6.14",
     "@tanstack/query-core": "5.101.0",

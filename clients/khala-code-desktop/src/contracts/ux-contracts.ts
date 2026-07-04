@@ -692,6 +692,51 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
+        "Binds the desktop sidebar's source selection and freshness semantics for chat_thread sync rows. It does not promise offline recovery, message-body sync, or cross-device identity beyond the owner chat scope.",
+      blockerRefs: [],
+      contractId:
+        "khala_code.chat.sync_remote_thread_appears_without_restart.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-code-desktop/src/ui/main.ts",
+        "clients/khala-code-desktop/tests/ux-contracts.test.ts",
+        "packages/khala-sync-db-collection/src/index.test.ts",
+        "apps/openagents.com/apps/start/src/routes/-chat-sync.test.tsx",
+        "docs/khala-code/khala-code-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Pins the renderer source path: the sidebar calls khalaSyncChatThreads before the legacy sessionCatalog cache, projects chat_thread rows through chatThreadToSidebarSummary, and enqueues chat.createThread when the app receives a new thread id.",
+          id: "chat_sync_sidebar_source.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-code-desktop/tests/ux-contracts.test.ts",
+        },
+        {
+          description:
+            "Runs the two-client TanStack DB collection integration test: client A creates a chat_thread, client B observes it through the live collection without restart, and recency ordering stays newest-first.",
+          id: "chat_sync_two_client_collection.integration",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "packages/khala-sync-db-collection/src/index.test.ts",
+        },
+      ],
+      productArea: "chat thread sidebar",
+      source: {
+        channel: "github-issue",
+        statedBy: "owner",
+        statedOn: "2026-07-04",
+      },
+      state: "enforced",
+      statement:
+        "A thread created on another device appears in the Khala Code thread sidebar without restarting the app. Chat sync ordering is newest-first, spinners stay truthful, and the sidebar must not poll the legacy session catalog while a connected chat_thread sync source is available.",
+      surface: "khala-code-desktop",
+      verification:
+        "bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop plus bun test packages/khala-sync-db-collection/src/index.test.ts from the repo root.",
+    },
+    {
+      authorityBoundary:
         "Binds the rename affordance's visible result only, not its persistence/sync mechanics.",
       blockerRefs: [],
       contractId: "khala_code.chat.rename_applies_immediately.v1",
@@ -1553,5 +1598,5 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-04.5",
+  version: "2026-07-04.6",
 }

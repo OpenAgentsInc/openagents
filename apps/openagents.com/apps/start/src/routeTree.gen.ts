@@ -14,6 +14,7 @@ import { Route as BusinessRouteImport } from './routes/business'
 import { Route as BlogRouteImport } from './routes/blog'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AutopilotIndexRouteImport } from './routes/autopilot/index'
+import { Route as KhalaChatSyncRouteImport } from './routes/khala/chat-sync'
 import { Route as DocsSlugRouteImport } from './routes/docs/$slug'
 import { Route as CodeDownloadRouteImport } from './routes/code/download'
 import { Route as BlogSlugRouteImport } from './routes/blog/$slug'
@@ -42,6 +43,11 @@ const IndexRoute = IndexRouteImport.update({
 const AutopilotIndexRoute = AutopilotIndexRouteImport.update({
   id: '/autopilot/',
   path: '/autopilot/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const KhalaChatSyncRoute = KhalaChatSyncRouteImport.update({
+  id: '/khala/chat-sync',
+  path: '/khala/chat-sync',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DocsSlugRoute = DocsSlugRouteImport.update({
@@ -74,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/blog/$slug': typeof BlogSlugRoute
   '/code/download': typeof CodeDownloadRoute
   '/docs/$slug': typeof DocsSlugRoute
+  '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/autopilot/': typeof AutopilotIndexRoute
 }
 export interface FileRoutesByTo {
@@ -85,6 +92,7 @@ export interface FileRoutesByTo {
   '/blog/$slug': typeof BlogSlugRoute
   '/code/download': typeof CodeDownloadRoute
   '/docs/$slug': typeof DocsSlugRoute
+  '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/autopilot': typeof AutopilotIndexRoute
 }
 export interface FileRoutesById {
@@ -97,6 +105,7 @@ export interface FileRoutesById {
   '/blog/$slug': typeof BlogSlugRoute
   '/code/download': typeof CodeDownloadRoute
   '/docs/$slug': typeof DocsSlugRoute
+  '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/autopilot/': typeof AutopilotIndexRoute
 }
 export interface FileRouteTypes {
@@ -110,6 +119,7 @@ export interface FileRouteTypes {
     | '/blog/$slug'
     | '/code/download'
     | '/docs/$slug'
+    | '/khala/chat-sync'
     | '/autopilot/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -121,6 +131,7 @@ export interface FileRouteTypes {
     | '/blog/$slug'
     | '/code/download'
     | '/docs/$slug'
+    | '/khala/chat-sync'
     | '/autopilot'
   id:
     | '__root__'
@@ -132,6 +143,7 @@ export interface FileRouteTypes {
     | '/blog/$slug'
     | '/code/download'
     | '/docs/$slug'
+    | '/khala/chat-sync'
     | '/autopilot/'
   fileRoutesById: FileRoutesById
 }
@@ -142,6 +154,7 @@ export interface RootRouteChildren {
   DocsRoute: typeof DocsRouteWithChildren
   AutopilotLegalRoute: typeof AutopilotLegalRoute
   CodeDownloadRoute: typeof CodeDownloadRoute
+  KhalaChatSyncRoute: typeof KhalaChatSyncRoute
   AutopilotIndexRoute: typeof AutopilotIndexRoute
 }
 
@@ -180,6 +193,13 @@ declare module '@tanstack/react-router' {
       path: '/autopilot'
       fullPath: '/autopilot/'
       preLoaderRoute: typeof AutopilotIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/khala/chat-sync': {
+      id: '/khala/chat-sync'
+      path: '/khala/chat-sync'
+      fullPath: '/khala/chat-sync'
+      preLoaderRoute: typeof KhalaChatSyncRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/docs/$slug': {
@@ -240,6 +260,7 @@ const rootRouteChildren: RootRouteChildren = {
   DocsRoute: DocsRouteWithChildren,
   AutopilotLegalRoute: AutopilotLegalRoute,
   CodeDownloadRoute: CodeDownloadRoute,
+  KhalaChatSyncRoute: KhalaChatSyncRoute,
   AutopilotIndexRoute: AutopilotIndexRoute,
 }
 export const routeTree = rootRouteImport

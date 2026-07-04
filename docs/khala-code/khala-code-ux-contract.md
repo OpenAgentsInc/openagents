@@ -53,7 +53,7 @@ sweep if this doc, the registry, or the oracle tests drift apart.
 
 ## Registry
 
-Registry version: `2026-07-04.5` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-04.6` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_code.chat.sidebar_spinner_streaming_only.v1` — ENFORCED
 
@@ -241,6 +241,17 @@ Registry version: `2026-07-04.5` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `new_thread_appears_promptly.dom` (bun-test, dom): Mounts the real thread sidebar and asserts an optimistically-inserted pending thread appears in the list immediately with its preview visible, with no RPC round trip required. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
 - **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Binds sidebar/list promptness and initial message rendering only.
+
+### `khala_code.chat.sync_remote_thread_appears_without_restart.v1` — ENFORCED
+
+- **Surface:** khala-code-desktop (chat thread sidebar)
+- **Stated by:** owner via github-issue on 2026-07-04
+- **Statement:** A thread created on another device appears in the Khala Code thread sidebar without restarting the app. Chat sync ordering is newest-first, spinners stay truthful, and the sidebar must not poll the legacy session catalog while a connected chat_thread sync source is available.
+- **Enforcement tier:** test-sweep
+- **Oracle** `chat_sync_sidebar_source.unit` (bun-test, unit): Pins the renderer source path: the sidebar calls khalaSyncChatThreads before the legacy sessionCatalog cache, projects chat_thread rows through chatThreadToSidebarSummary, and enqueues chat.createThread when the app receives a new thread id. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
+- **Oracle** `chat_sync_two_client_collection.integration` (bun-test, unit): Runs the two-client TanStack DB collection integration test: client A creates a chat_thread, client B observes it through the live collection without restart, and recency ordering stays newest-first. — `packages/khala-sync-db-collection/src/index.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop plus bun test packages/khala-sync-db-collection/src/index.test.ts from the repo root.
+- **Authority boundary:** Binds the desktop sidebar's source selection and freshness semantics for chat_thread sync rows. It does not promise offline recovery, message-body sync, or cross-device identity beyond the owner chat scope.
 
 ### `khala_code.chat.rename_applies_immediately.v1` — ENFORCED
 

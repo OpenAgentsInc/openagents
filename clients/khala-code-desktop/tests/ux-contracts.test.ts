@@ -836,6 +836,30 @@ describe("contract khala_code.chat.new_thread_appears_promptly.v1", () => {
   })
 })
 
+// Oracle for khala_code.chat.sync_remote_thread_appears_without_restart.v1
+describe("contract khala_code.chat.sync_remote_thread_appears_without_restart.v1", () => {
+  test("the renderer prefers connected chat sync rows and queues optimistic creates", async () => {
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const listThreadsBody =
+      main.split("listThreads: async request => {")[1]?.split("renameThread: async")[0] ?? ""
+
+    expect(listThreadsBody).toContain("controls.khalaSyncChatThreads")
+    expect(listThreadsBody).toContain("khalaSyncChatCanDriveSidebar")
+    expect(listThreadsBody).toContain("chat.threads.map(chatThreadToSidebarSummary)")
+    expect(listThreadsBody).toContain("khala-sync-chat")
+    expect(listThreadsBody).toContain("cachedSessionCatalog")
+    expect(listThreadsBody.indexOf("controls.khalaSyncChatThreads")).toBeLessThan(
+      listThreadsBody.indexOf("cachedSessionCatalog"),
+    )
+
+    expect(main).toContain("const khalaSyncThreadCreateRequests = new Set<string>()")
+    expect(main).toContain("controls.khalaSyncChatCreateThread")
+    expect(main).toContain("enqueueKhalaSyncChatThreadCreate({")
+    expect(main).toContain("khalaSyncChatRenameThread")
+    expect(main).toContain("source: \"khala_sync_chat_thread\"")
+  })
+})
+
 // Oracle for khala_code.chat.rename_applies_immediately.v1
 describe("contract khala_code.chat.rename_applies_immediately.v1", () => {
   test("confirming a rename updates the visible title before the network call resolves", async () => {

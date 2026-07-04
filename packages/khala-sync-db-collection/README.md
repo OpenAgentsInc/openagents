@@ -57,6 +57,18 @@ cursor and resumable log catch-up, not by an adapter-owned row store.
 already-live `scope.fleet_run.<runId>` scope to the `fleet_run` entity type and
 maps `desiredSlots` updates to the named `fleet.setDesiredSlots` mutator.
 
+## Chat thread helper
+
+`chatThreadKhalaSyncCollectionOptions` binds an owner personal scope to the
+`chat_thread` entity type. Inserts map to `chat.createThread`; title updates
+map to `chat.renameThread`. The helper keeps optimistic rows visible while the
+server supplies authoritative timestamps, so it defaults `awaitServerSync` to
+`false` for chat rows.
+
+`chatThreadsForSidebar` is the shared sidebar projection for desktop and Start
+web consumers. It filters by title/thread id and sorts newest-first by
+`updatedAt`, with a stable `threadId` tie-breaker.
+
 ## Verification
 
 ```sh

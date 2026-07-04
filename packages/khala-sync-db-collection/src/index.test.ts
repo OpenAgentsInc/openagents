@@ -3,6 +3,7 @@ import {
   BootstrapEntity,
   type BootstrapRequest,
   BootstrapResponse,
+  CHAT_THREAD_ENTITY_TYPE,
   canonicalJson,
   ChangelogEntry,
   ClientGroupId,
@@ -21,10 +22,14 @@ import {
   type SyncScope,
   SyncVersion,
   SyncVersionWatermark,
+  decodeChatThreadEntity,
   decodeFleetRunEntity,
+  encodeChatThreadEntity,
   encodeFleetRunEntity,
   FLEET_RUN_ENTITY_TYPE,
   fleetRunScope,
+  personalScope,
+  type ChatThreadEntity,
   type FleetRunEntity,
 } from "@openagentsinc/khala-sync"
 import {
@@ -39,6 +44,14 @@ import {
 import { afterEach, describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import {
+  CHAT_CREATE_THREAD_MUTATOR_NAME,
+  CHAT_RENAME_THREAD_MUTATOR_NAME,
+  chatCreateThreadClientMutator,
+  chatRenameThreadClientMutator,
+  chatThreadKhalaSyncCollectionOptions,
+  type ChatCreateThreadArgs,
+  type ChatRenameThreadArgs,
+  chatThreadsForSidebar,
   createKhalaSyncMutationTracker,
   FLEET_SET_DESIRED_SLOTS_MUTATOR_NAME,
   fleetRunKhalaSyncCollectionOptions,
@@ -182,6 +195,45 @@ class FleetFakeServer {
     return version
   }
 
+  currentChatThread(ownerUserId: string, threadId: string): ChatThreadEntity | null {
+    const scope = personalScope(ownerUserId)
+    const row = this
+      .fold(scope, this.lastVersion(scope))
+      .find(
+        entity =>
+          entity.entityType === CHAT_THREAD_ENTITY_TYPE &&
+          entity.entityId === threadId,
+      )
+    return row === undefined
+      ? null
+      : decodeChatThreadEntity(JSON.parse(row.postImageJson) as unknown)
+  }
+
+  commitChatThread(row: ChatThreadEntity, mutationRef?: string): number {
+    const scope = personalScope(row.ownerUserId)
+    const version = this.lastVersion(scope) + 1
+    const entry = new ChangelogEntry({
+      committedAt: FIXED_TIME,
+      entityId: EntityId.make(row.threadId),
+      entityType: EntityType.make(CHAT_THREAD_ENTITY_TYPE),
+      ...(mutationRef !== undefined ? { mutationRef } : {}),
+      op: "upsert",
+      postImageJson: canonicalJson(encodeChatThreadEntity(row)),
+      scope,
+      version: SyncVersion.make(version),
+    })
+    this.logOf(scope).push(entry)
+    this.emitFrame(
+      scope,
+      new DeltaFrame({
+        cursor: SyncVersion.make(version),
+        entries: [entry],
+        scope,
+      }),
+    )
+    return version
+  }
+
   emitFrame(scope: SyncScope, frame: LiveFrame): void {
     const socket = this.sockets.get(scope)
     if (socket !== undefined && socket.open.value) {
@@ -294,6 +346,79 @@ class FleetFakeServer {
         continue
       }
 
+      if (mutation.name === CHAT_CREATE_THREAD_MUTATOR_NAME) {
+        const args = JSON.parse(mutation.argsJson) as ChatCreateThreadArgs
+        const ownerUserId = "user-chat-owner"
+        const existing = this.currentChatThread(ownerUserId, args.threadId)
+        if (existing !== null) {
+          last = mutation.mutationId
+          results.push(
+            new MutationResult({
+              errorCode: "thread_exists",
+              errorMessageSafe: "this chat thread already exists",
+              mutationId: mutation.mutationId,
+              status: "rejected",
+            }),
+          )
+          continue
+        }
+        this.commitChatThread(
+          decodeChatThreadEntity({
+            createdAt: FIXED_TIME,
+            lastMessageAt: null,
+            messageCount: 0,
+            ownerUserId,
+            status: "active",
+            threadId: args.threadId,
+            title: args.title.trim(),
+            updatedAt: FIXED_TIME,
+          }),
+          `mut.${clientKey}.${mutation.mutationId}`,
+        )
+        last = mutation.mutationId
+        results.push(
+          new MutationResult({
+            mutationId: mutation.mutationId,
+            status: "applied",
+          }),
+        )
+        continue
+      }
+
+      if (mutation.name === CHAT_RENAME_THREAD_MUTATOR_NAME) {
+        const args = JSON.parse(mutation.argsJson) as ChatRenameThreadArgs
+        const ownerUserId = "user-chat-owner"
+        const current = this.currentChatThread(ownerUserId, args.threadId)
+        if (current === null) {
+          last = mutation.mutationId
+          results.push(
+            new MutationResult({
+              errorCode: "thread_not_found",
+              errorMessageSafe: "this chat thread does not exist",
+              mutationId: mutation.mutationId,
+              status: "rejected",
+            }),
+          )
+          continue
+        }
+        this.commitChatThread(
+          decodeChatThreadEntity({
+            ...current,
+            title: args.title.trim(),
+            updatedAt: UPDATED_TIME,
+          }),
+          `mut.${clientKey}.${mutation.mutationId}`,
+        )
+        last = mutation.mutationId
+        results.push(
+          new MutationResult({
+            mutationId: mutation.mutationId,
+            status: "applied",
+          }),
+        )
+        continue
+      }
+
       throw new Error(`unknown mutator ${mutation.name}`)
     }
 
@@ -354,22 +479,34 @@ const rejectingDesiredSlotsMutator: ClientMutator<FleetSetDesiredSlotsArgs> = {
   name: MutatorName.make("fleet.rejectDesiredSlots"),
 }
 
-const makeHarness = async (server: FleetFakeServer) => {
+const makeHarness = async (
+  server: FleetFakeServer,
+  options: {
+    readonly clientGroupId?: string
+    readonly clientId?: string
+    // Heterogeneous test overlay registry, matching createOverlay's runtime API.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    readonly mutators?: readonly ClientMutator<any>[]
+  } = {},
+) => {
   const tracker = createKhalaSyncMutationTracker()
   const store = openKhalaSyncStore(":memory:")
   cleanups.push(() => Effect.runSync(Effect.ignore(store.close())))
   const overlay = Effect.runSync(
-    createOverlay(store, [
-      fleetSetDesiredSlotsClientMutator,
-      rejectingDesiredSlotsMutator,
-    ]),
+    createOverlay(
+      store,
+      options.mutators ?? [
+        fleetSetDesiredSlotsClientMutator,
+        rejectingDesiredSlotsMutator,
+      ],
+    ),
   )
   const session = createKhalaSyncSession(
     {
       authToken: () => "test-token",
       baseUrl: "http://fake.test",
-      clientGroupId: ClientGroupId.make("cg_fleet"),
-      clientId: ClientId.make("c_fleet"),
+      clientGroupId: ClientGroupId.make(options.clientGroupId ?? "cg_fleet"),
+      clientId: ClientId.make(options.clientId ?? "c_fleet"),
       schemaVersion: SyncSchemaVersion.make(1),
     },
     store,
@@ -410,6 +547,35 @@ const createFleetRunCollection = (
       ...(options.mutator !== undefined
         ? { setDesiredSlotsMutator: options.mutator }
         : {}),
+    }),
+  )
+
+const createChatThreadCollection = (
+  harness: Awaited<ReturnType<typeof makeHarness>>,
+  ownerUserId: string,
+  mutators?: {
+    readonly createThread: ClientMutator<ChatCreateThreadArgs>
+    readonly renameThread: ClientMutator<ChatRenameThreadArgs>
+  },
+) =>
+  createCollection(
+    chatThreadKhalaSyncCollectionOptions({
+      awaitMutationPollIntervalMs: 0,
+      awaitMutationTimeoutMs: 1_000,
+      ...(mutators === undefined
+        ? {}
+        : {
+            createThreadMutator: mutators.createThread,
+            renameThreadMutator: mutators.renameThread,
+          }),
+      mutationTracker: harness.tracker,
+      optimisticNow: () => FIXED_TIME,
+      overlay: harness.overlay,
+      ownerUserId,
+      scope: personalScope(ownerUserId),
+      session: harness.session,
+      sleep: () => tick(),
+      startSync: true,
     }),
   )
 
@@ -505,5 +671,106 @@ describe("khalaSyncCollectionOptions / fleet_run", () => {
       _tag: "KhalaSyncDbCollectionError",
       reasonRef: "khala_sync_db_collection.scope_denied",
     })
+  })
+})
+
+describe("chatThreadKhalaSyncCollectionOptions / chat_thread", () => {
+  test("khala_code.chat.sync_remote_thread_appears_without_restart.v1: client A creates a thread and client B sees it without restart", async () => {
+    const ownerUserId = "user-chat-owner"
+    const server = new FleetFakeServer()
+    const createThread = chatCreateThreadClientMutator({
+      now: () => FIXED_TIME,
+      ownerUserId,
+    })
+    const renameThread = chatRenameThreadClientMutator({
+      now: () => UPDATED_TIME,
+      ownerUserId,
+    })
+    const mutators = [createThread, renameThread]
+    const clientA = await makeHarness(server, {
+      clientGroupId: "cg_chat_a",
+      clientId: "c_chat_a",
+      mutators,
+    })
+    const clientB = await makeHarness(server, {
+      clientGroupId: "cg_chat_b",
+      clientId: "c_chat_b",
+      mutators,
+    })
+    const collectionA = createChatThreadCollection(clientA, ownerUserId, {
+      createThread,
+      renameThread,
+    })
+    const collectionB = createChatThreadCollection(clientB, ownerUserId, {
+      createThread,
+      renameThread,
+    })
+
+    await waitFor(
+      () => collectionA.isReady() && collectionB.isReady(),
+      "both chat collections ready",
+    )
+
+    const createTx = collectionA.insert(
+      decodeChatThreadEntity({
+        createdAt: FIXED_TIME,
+        lastMessageAt: null,
+        messageCount: 0,
+        ownerUserId,
+        status: "active",
+        threadId: "thread.remote.a",
+        title: "Remote desktop-visible thread",
+        updatedAt: FIXED_TIME,
+      }),
+    )
+
+    expect(collectionA.get("thread.remote.a")?.title).toBe(
+      "Remote desktop-visible thread",
+    )
+    await createTx.isPersisted.promise
+
+    await waitFor(
+      () =>
+        collectionB.get("thread.remote.a")?.title ===
+        "Remote desktop-visible thread",
+      "client B observed client A thread through live delta",
+    )
+    expect(clientA.session.pending()).toEqual([])
+    expect(clientB.session.pending()).toEqual([])
+
+    const renameTx = collectionA.update("thread.remote.a", draft => {
+      draft.title = "Renamed from client A"
+    })
+    await renameTx.isPersisted.promise
+
+    await waitFor(
+      () => collectionB.get("thread.remote.a")?.title === "Renamed from client A",
+      "client B observed rename through live delta",
+    )
+
+    server.commitChatThread(
+      decodeChatThreadEntity({
+        createdAt: FIXED_TIME,
+        lastMessageAt: null,
+        messageCount: 0,
+        ownerUserId,
+        status: "active",
+        threadId: "thread.older",
+        title: "Older thread",
+        updatedAt: "2026-07-04T19:59:00.000Z",
+      }),
+    )
+    await waitFor(
+      () => collectionB.get("thread.older")?.title === "Older thread",
+      "older live delta visible",
+    )
+
+    expect(
+      chatThreadsForSidebar(collectionB.values()).map(thread => thread.threadId),
+    ).toEqual(["thread.remote.a", "thread.older"])
+    expect(server.pushCalls.flat().map(call => call.name)).toEqual([
+      CHAT_CREATE_THREAD_MUTATOR_NAME,
+      CHAT_RENAME_THREAD_MUTATOR_NAME,
+    ])
   })
 })

@@ -29,6 +29,7 @@ import {
 } from "./codex-fleet-mcp-bridge.js"
 import {
   khalaSyncFleetDisabledState,
+  khalaSyncChatDisabledState,
   type KhalaCodeDesktopKhalaSyncRpc,
 } from "./khala-sync-service.js"
 import type { KhalaAppleFmReadiness } from "../shared/apple-fm-readiness.js"
@@ -89,6 +90,11 @@ import {
   type KhalaCodeDesktopKhalaSyncFleetMutateResult,
   type KhalaCodeDesktopKhalaSyncFleetStateRequest,
   type KhalaCodeDesktopKhalaSyncFleetStateResult,
+  type KhalaCodeDesktopKhalaSyncChatCreateThreadRequest,
+  type KhalaCodeDesktopKhalaSyncChatMutationResult,
+  type KhalaCodeDesktopKhalaSyncChatRenameThreadRequest,
+  type KhalaCodeDesktopKhalaSyncChatThreadsRequest,
+  type KhalaCodeDesktopKhalaSyncChatThreadsResult,
   type KhalaCodeDesktopModelRoleRegistryReadResult,
   type KhalaCodeDesktopModelRoleRegistryWriteRequest,
   type KhalaCodeDesktopModelRoleRegistryWriteResult,
@@ -2543,6 +2549,32 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         return { ok: false, error: "khala_sync_fleet_disabled" }
       }
       return input.khalaSync.fleetMutate(request)
+    },
+    async khalaSyncChatThreads(
+      request: KhalaCodeDesktopKhalaSyncChatThreadsRequest = {},
+    ): Promise<KhalaCodeDesktopKhalaSyncChatThreadsResult> {
+      if (input.khalaSync === undefined) return khalaSyncChatDisabledState()
+      return input.khalaSync.chatThreads(request)
+    },
+    async khalaSyncChatCreateThread(
+      request: KhalaCodeDesktopKhalaSyncChatCreateThreadRequest,
+    ): Promise<KhalaCodeDesktopKhalaSyncChatMutationResult> {
+      requireNonEmpty("khalaSyncChatCreateThread", "threadId", request.threadId)
+      requireNonEmpty("khalaSyncChatCreateThread", "title", request.title)
+      if (input.khalaSync === undefined) {
+        return { ok: false, error: "khala_sync_chat_disabled", threadId: request.threadId }
+      }
+      return input.khalaSync.chatCreateThread(request)
+    },
+    async khalaSyncChatRenameThread(
+      request: KhalaCodeDesktopKhalaSyncChatRenameThreadRequest,
+    ): Promise<KhalaCodeDesktopKhalaSyncChatMutationResult> {
+      requireNonEmpty("khalaSyncChatRenameThread", "threadId", request.threadId)
+      requireNonEmpty("khalaSyncChatRenameThread", "title", request.title)
+      if (input.khalaSync === undefined) {
+        return { ok: false, error: "khala_sync_chat_disabled", threadId: request.threadId }
+      }
+      return input.khalaSync.chatRenameThread(request)
     },
     async forumRequest(request): Promise<KhalaCodeDesktopForumResponse> {
       return fetchOpenAgentsForum(request)

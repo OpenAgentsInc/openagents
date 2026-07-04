@@ -236,6 +236,16 @@ export type KhalaCodeDesktopKhalaSyncFleetStateRequest = typeof RpcKhalaSyncFlee
 export type KhalaCodeDesktopKhalaSyncFleetStateResult = typeof RpcKhalaSyncFleetStateResult.Type
 export type KhalaCodeDesktopKhalaSyncFleetMutateRequest = typeof RpcKhalaSyncFleetMutateRequest.Type
 export type KhalaCodeDesktopKhalaSyncFleetMutateResult = typeof RpcKhalaSyncFleetMutateResult.Type
+export type KhalaCodeDesktopKhalaSyncChatThread = typeof RpcKhalaSyncChatThread.Type
+export type KhalaCodeDesktopKhalaSyncChatRejection = typeof RpcKhalaSyncChatRejection.Type
+export type KhalaCodeDesktopKhalaSyncChatThreadsRequest = typeof RpcKhalaSyncChatThreadsRequest.Type
+export type KhalaCodeDesktopKhalaSyncChatThreadsResult = typeof RpcKhalaSyncChatThreadsResult.Type
+export type KhalaCodeDesktopKhalaSyncChatCreateThreadRequest =
+  typeof RpcKhalaSyncChatCreateThreadRequest.Type
+export type KhalaCodeDesktopKhalaSyncChatRenameThreadRequest =
+  typeof RpcKhalaSyncChatRenameThreadRequest.Type
+export type KhalaCodeDesktopKhalaSyncChatMutationResult =
+  typeof RpcKhalaSyncChatMutationResult.Type
 export type KhalaCodeDesktopForumRequest = typeof RpcForumRequest.Type
 export type KhalaCodeDesktopForumResponse = typeof RpcForumResponse.Type
 export type KhalaCodeDesktopPlanKind = typeof RpcKhalaCodePlanKind.Type
@@ -1848,6 +1858,54 @@ const RpcKhalaSyncFleetMutateResult = S.Struct({
   ok: S.Boolean,
   queuedMutationId: S.optional(S.Number),
 })
+const RpcKhalaSyncChatThread = S.Struct({
+  createdAt: S.String,
+  lastMessageAt: RpcStringNull,
+  messageCount: S.Number,
+  ownerUserId: S.String,
+  status: S.Literal("active"),
+  threadId: S.String,
+  title: S.String,
+  updatedAt: S.String,
+})
+const RpcKhalaSyncChatRejection = S.Struct({
+  errorCode: S.String,
+  messageSafe: S.String,
+  mutationId: S.Number,
+  mutatorName: S.String,
+  observedAt: S.String,
+  threadId: RpcStringNull,
+})
+const RpcKhalaSyncChatThreadsRequest = S.Struct({
+  limit: S.optional(S.Number),
+  searchTerm: S.optional(S.String),
+})
+const RpcKhalaSyncChatThreadsResult = S.Struct({
+  authState: S.Literals(["connected", "missing"]),
+  cursor: S.NullOr(S.Number),
+  enabled: S.Boolean,
+  error: S.optional(S.String),
+  ok: S.Boolean,
+  ownerUserId: RpcStringNull,
+  pendingMutations: S.Number,
+  phase: RpcKhalaSyncFleetPhase,
+  reason: RpcStringNull,
+  rejections: S.Array(RpcKhalaSyncChatRejection),
+  threads: S.Array(RpcKhalaSyncChatThread),
+})
+const RpcKhalaSyncChatCreateThreadRequest = S.Struct({
+  threadId: S.String,
+  title: S.String,
+})
+const RpcKhalaSyncChatRenameThreadRequest = S.Struct({
+  threadId: S.String,
+  title: S.String,
+})
+const RpcKhalaSyncChatMutationResult = S.Struct({
+  error: S.optional(S.String),
+  ok: S.Boolean,
+  threadId: S.String,
+})
 const RpcArchitectPlanDispatchMode = S.Literals(["in_thread", "fleet_run"])
 const RpcArchitectPlanDagNode = S.Struct({
   nodeRef: S.String,
@@ -2271,6 +2329,9 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   fleetWorkerControl: { parameters: [param(RpcFleetWorkerControlRequest)], result: RpcFleetWorkerControlResult },
   khalaSyncFleetState: { parameters: [param(RpcKhalaSyncFleetStateRequest)], result: RpcKhalaSyncFleetStateResult },
   khalaSyncFleetMutate: { parameters: [param(RpcKhalaSyncFleetMutateRequest)], result: RpcKhalaSyncFleetMutateResult },
+  khalaSyncChatThreads: { parameters: [optionalParam(RpcKhalaSyncChatThreadsRequest)], result: RpcKhalaSyncChatThreadsResult },
+  khalaSyncChatCreateThread: { parameters: [param(RpcKhalaSyncChatCreateThreadRequest)], result: RpcKhalaSyncChatMutationResult },
+  khalaSyncChatRenameThread: { parameters: [param(RpcKhalaSyncChatRenameThreadRequest)], result: RpcKhalaSyncChatMutationResult },
   forumRequest: { parameters: [param(RpcForumRequest)], result: RpcForumResponse },
   khalaCodePlanCatalog: { parameters: noParams(), result: RpcKhalaCodePlanCatalogResult },
   khalaCodePlanStatus: { parameters: noParams(), result: RpcKhalaCodePlanStatusResult },
@@ -2439,6 +2500,9 @@ export type KhalaCodeDesktopRPCSchema = {
     fleetWorkerControl(request: KhalaCodeDesktopFleetWorkerControlRequest): Promise<KhalaCodeDesktopFleetWorkerControlResult>
     khalaSyncFleetState(request: KhalaCodeDesktopKhalaSyncFleetStateRequest): Promise<KhalaCodeDesktopKhalaSyncFleetStateResult>
     khalaSyncFleetMutate(request: KhalaCodeDesktopKhalaSyncFleetMutateRequest): Promise<KhalaCodeDesktopKhalaSyncFleetMutateResult>
+    khalaSyncChatThreads(request?: KhalaCodeDesktopKhalaSyncChatThreadsRequest): Promise<KhalaCodeDesktopKhalaSyncChatThreadsResult>
+    khalaSyncChatCreateThread(request: KhalaCodeDesktopKhalaSyncChatCreateThreadRequest): Promise<KhalaCodeDesktopKhalaSyncChatMutationResult>
+    khalaSyncChatRenameThread(request: KhalaCodeDesktopKhalaSyncChatRenameThreadRequest): Promise<KhalaCodeDesktopKhalaSyncChatMutationResult>
     forumRequest(request: KhalaCodeDesktopForumRequest): Promise<KhalaCodeDesktopForumResponse>
     khalaCodePlanCatalog(): Promise<KhalaCodeDesktopPlanCatalogResult>
     khalaCodePlanStatus(): Promise<KhalaCodeDesktopPlanStatusResult>

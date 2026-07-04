@@ -9,10 +9,16 @@ import type {
 } from "@tanstack/db"
 import {
   canonicalJson,
+  CHAT_THREAD_ENTITY_TYPE,
+  decodeChatThreadEntity,
   decodeFleetRunEntity,
+  encodeChatThreadEntity,
   encodeFleetRunEntity,
   FLEET_RUN_ENTITY_TYPE,
   fleetRunScope,
+  personalScope,
+  threadScope,
+  type ChatThreadEntity,
   type FleetRunEntity,
   MutationId,
   type MutationEnvelope,
@@ -635,11 +641,160 @@ export const khalaSyncCollectionOptions = <
 }
 
 export const FLEET_SET_DESIRED_SLOTS_MUTATOR_NAME = "fleet.setDesiredSlots"
+export const CHAT_CREATE_THREAD_MUTATOR_NAME = "chat.createThread"
+export const CHAT_APPEND_MESSAGE_MUTATOR_NAME = "chat.appendMessage"
+export const CHAT_RENAME_THREAD_MUTATOR_NAME = "chat.renameThread"
 
 export type FleetSetDesiredSlotsArgs = Readonly<{
   runId: string
   desiredSlots: number
 }>
+
+export type ChatCreateThreadArgs = Readonly<{
+  threadId: string
+  title: string
+}>
+
+export type ChatAppendMessageArgs = Readonly<{
+  threadId: string
+  messageId: string
+  body: string
+}>
+
+export type ChatRenameThreadArgs = Readonly<{
+  threadId: string
+  title: string
+}>
+
+export type ChatClientMutatorOptions = Readonly<{
+  ownerUserId: string
+  now?: () => string
+}>
+
+const defaultNowIso = (): string => new Date().toISOString()
+
+const normalizeChatTitle = (title: string): string => title.trim()
+
+const chatTimestampMs = (value: string | null): number => {
+  if (value === null) return 0
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+export const compareChatThreadsForSidebar = (
+  left: ChatThreadEntity,
+  right: ChatThreadEntity,
+): number => {
+  const recency =
+    chatTimestampMs(right.updatedAt) - chatTimestampMs(left.updatedAt)
+  if (recency !== 0) return recency
+  return right.threadId.localeCompare(left.threadId)
+}
+
+export const chatThreadsForSidebar = (
+  threads: Iterable<ChatThreadEntity>,
+  options: { readonly searchTerm?: string | null } = {},
+): Array<ChatThreadEntity> => {
+  const searchTerm = options.searchTerm?.trim().toLowerCase() ?? ""
+  return [...threads]
+    .filter(thread => {
+      if (searchTerm.length === 0) return true
+      return (
+        thread.title.toLowerCase().includes(searchTerm) ||
+        thread.threadId.toLowerCase().includes(searchTerm)
+      )
+    })
+    .sort(compareChatThreadsForSidebar)
+}
+
+const baselineChatThread = (
+  args: ChatCreateThreadArgs,
+  options: ChatClientMutatorOptions,
+): ChatThreadEntity => {
+  const now = (options.now ?? defaultNowIso)()
+  return decodeChatThreadEntity({
+    createdAt: now,
+    lastMessageAt: null,
+    messageCount: 0,
+    ownerUserId: options.ownerUserId,
+    status: "active",
+    threadId: args.threadId,
+    title: normalizeChatTitle(args.title),
+    updatedAt: now,
+  })
+}
+
+const chatThreadOverlayEffects = (
+  entity: ChatThreadEntity,
+): ReturnType<ClientMutator<ChatCreateThreadArgs>["apply"]> => [
+  {
+    entityId: entity.threadId,
+    entityType: CHAT_THREAD_ENTITY_TYPE,
+    kind: "upsert",
+    postImageJson: canonicalJson(encodeChatThreadEntity(entity)),
+    scope: personalScope(entity.ownerUserId),
+  },
+  {
+    entityId: entity.threadId,
+    entityType: CHAT_THREAD_ENTITY_TYPE,
+    kind: "upsert",
+    postImageJson: canonicalJson(encodeChatThreadEntity(entity)),
+    scope: threadScope(entity.threadId),
+  },
+]
+
+export const chatCreateThreadClientMutator = (
+  options: ChatClientMutatorOptions,
+): ClientMutator<ChatCreateThreadArgs> => ({
+  apply: args => chatThreadOverlayEffects(baselineChatThread(args, options)),
+  name: MutatorName.make(CHAT_CREATE_THREAD_MUTATOR_NAME),
+})
+
+export const chatRenameThreadClientMutator = (
+  options: ChatClientMutatorOptions,
+): ClientMutator<ChatRenameThreadArgs> => ({
+  apply: (args, view) => {
+    const scope = personalScope(options.ownerUserId)
+    const currentJson = view.get(scope, CHAT_THREAD_ENTITY_TYPE, args.threadId)
+    const current =
+      currentJson === undefined
+        ? baselineChatThread(
+            { threadId: args.threadId, title: args.title },
+            options,
+          )
+        : decodeChatThreadEntity(JSON.parse(currentJson) as unknown)
+    const now = (options.now ?? defaultNowIso)()
+    return chatThreadOverlayEffects(
+      decodeChatThreadEntity({
+        ...current,
+        title: normalizeChatTitle(args.title),
+        updatedAt: now,
+      }),
+    )
+  },
+  name: MutatorName.make(CHAT_RENAME_THREAD_MUTATOR_NAME),
+})
+
+export const chatAppendMessageClientMutator = (
+  options: ChatClientMutatorOptions,
+): ClientMutator<ChatAppendMessageArgs> => ({
+  apply: (args, view) => {
+    const scope = personalScope(options.ownerUserId)
+    const currentJson = view.get(scope, CHAT_THREAD_ENTITY_TYPE, args.threadId)
+    if (currentJson === undefined) return []
+    const current = decodeChatThreadEntity(JSON.parse(currentJson) as unknown)
+    const now = (options.now ?? defaultNowIso)()
+    return chatThreadOverlayEffects(
+      decodeChatThreadEntity({
+        ...current,
+        lastMessageAt: now,
+        messageCount: current.messageCount + 1,
+        updatedAt: now,
+      }),
+    )
+  },
+  name: MutatorName.make(CHAT_APPEND_MESSAGE_MUTATOR_NAME),
+})
 
 const baselineFleetRun = (
   runId: string,
@@ -731,6 +886,70 @@ export const fleetRunKhalaSyncCollectionOptions = (
             runId: mutation.key,
           },
           mutator: setDesiredSlotsMutator,
+        }
+      },
+    },
+  })
+}
+
+export type ChatThreadCollectionOptions = Omit<
+  KhalaSyncCollectionOptions<ChatThreadEntity, string>,
+  "collection" | "decode" | "entityIdFromKey" | "getKey" | "mutators"
+> &
+  Readonly<{
+    ownerUserId: string
+    createThreadMutator?: ClientMutator<ChatCreateThreadArgs>
+    optimisticNow?: () => string
+    renameThreadMutator?: ClientMutator<ChatRenameThreadArgs>
+  }>
+
+export const chatThreadKhalaSyncCollectionOptions = (
+  options: ChatThreadCollectionOptions,
+): CollectionConfig<ChatThreadEntity, string, never, KhalaSyncCollectionUtils> => {
+  const mutatorOptions: ChatClientMutatorOptions = {
+    ownerUserId: options.ownerUserId,
+    ...(options.optimisticNow === undefined ? {} : { now: options.optimisticNow }),
+  }
+  const createThreadMutator =
+    options.createThreadMutator ?? chatCreateThreadClientMutator(mutatorOptions)
+  const renameThreadMutator =
+    options.renameThreadMutator ?? chatRenameThreadClientMutator(mutatorOptions)
+
+  return khalaSyncCollectionOptions<ChatThreadEntity, string>({
+    ...options,
+    awaitServerSync: options.awaitServerSync ?? false,
+    collection: CHAT_THREAD_ENTITY_TYPE,
+    decode: entity =>
+      decodeChatThreadEntity(JSON.parse(entity.postImageJson) as unknown),
+    entityIdFromKey: key => key,
+    getKey: row => row.threadId,
+    mutators: {
+      insert: mutation => ({
+        args: {
+          threadId: mutation.modified.threadId,
+          title: mutation.modified.title,
+        },
+        mutator: createThreadMutator,
+      }),
+      update: mutation => {
+        const title = (mutation.changes as Partial<ChatThreadEntity>).title
+        if (typeof title !== "string") {
+          throw new KhalaSyncDbCollectionError(
+            "khala_sync_db_collection.missing_mutator",
+            {
+              collection: CHAT_THREAD_ENTITY_TYPE,
+              messageSafe:
+                "chat_thread updates currently require a title change",
+              scope: options.scope,
+            },
+          )
+        }
+        return {
+          args: {
+            threadId: mutation.key,
+            title,
+          },
+          mutator: renameThreadMutator,
         }
       },
     },
