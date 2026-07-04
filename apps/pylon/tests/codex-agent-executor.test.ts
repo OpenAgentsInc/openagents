@@ -939,6 +939,84 @@ describe("codex agent task recognition", () => {
     })
     expect(turns[0]?.rawEvents).toHaveLength(5)
   })
+
+  test("retries a failed raw event chunk without skipping the chunk index", async () => {
+    const attempts: Array<CodexEventChunkReport> = []
+    const storedChunks: Array<CodexEventChunkReport> = []
+    mock.module(CODEX_AGENT_SDK_PACKAGE, () => ({
+      Codex: class {
+        startThread() {
+          return {
+            runStreamed: async () => ({
+              events: (async function* () {
+                yield { type: "thread.started", thread_id: "thread-codex-chunk-retry" }
+                yield { type: "turn.started" }
+                yield {
+                  type: "item.completed",
+                  item: {
+                    status: "completed",
+                    text: "Streaming item one.",
+                    type: "agent_message",
+                  },
+                }
+                yield {
+                  type: "item.completed",
+                  item: {
+                    aggregated_output: "raw command output stored privately",
+                    exit_code: 0,
+                    status: "completed",
+                    type: "command_execution",
+                  },
+                }
+                yield {
+                  type: "turn.completed",
+                  usage: {
+                    cached_input_tokens: 4,
+                    input_tokens: 70,
+                    output_tokens: 11,
+                    reasoning_output_tokens: 5,
+                  },
+                }
+              })(),
+            }),
+          }
+        }
+      },
+    }))
+
+    const result = await runWithCodexSdk({
+      assignmentRef: "assignment.public.codex_agent.chunk_retry",
+      cwd: "/tmp",
+      eventChunkReporter: async chunk => {
+        attempts.push(chunk)
+        if (attempts.length === 1) {
+          throw new Error("chunk ingest temporarily unavailable")
+        }
+        storedChunks.push(chunk)
+      },
+      instructions: "Run a mocked Codex turn.",
+      leaseRef: "lease.public.codex_agent.chunk_retry",
+      networkAccessEnabled: true,
+      pylonRef: "pylon.public.codex_agent.chunk_retry",
+      runRef: "run.public.codex_agent.chunk_retry",
+      sandboxMode: "danger-full-access",
+      timeoutMs: 1_000,
+      workspaceRef: "workspace.public.codex_agent.chunk_retry",
+    })
+
+    expect(result.outcome).toBe("completed")
+    expect(attempts.map(chunk => chunk.chunkIndex)).toEqual([1, 1, 2, 3])
+    expect(storedChunks.map(chunk => chunk.chunkIndex)).toEqual([1, 2, 3])
+    expect(storedChunks[0]?.rawEvents.map(event => event.type)).toEqual([
+      "thread.started",
+      "turn.started",
+      "item.completed",
+    ])
+    expect(storedChunks[0]).toMatchObject({
+      items: [{ itemType: "agent_message", message: "Streaming item one." }],
+      turnIndex: 1,
+    })
+  })
 })
 
 describe("sandbox mode resolution", () => {

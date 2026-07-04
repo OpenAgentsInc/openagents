@@ -934,21 +934,26 @@ async function reportCodexEventChunk(input: {
     input.runInput.pylonRef === undefined ||
     input.rawEvents.length === 0
   ) {
-    return
+    return true
   }
-  await input.eventChunkReporter({
-    assignmentRef: input.runInput.assignmentRef,
-    leaseRef: input.runInput.leaseRef,
-    pylonRef: input.runInput.pylonRef,
-    ...(input.runInput.runRef === undefined ? {} : { runRef: input.runInput.runRef }),
-    ...(input.sessionRef === undefined ? {} : { sessionRef: input.sessionRef }),
-    ...(input.runInput.workspaceRef === undefined ? {} : { workspaceRef: input.runInput.workspaceRef }),
-    turnIndex: input.turnIndex,
-    chunkIndex: input.chunkIndex,
-    observedAt: new Date().toISOString(),
-    rawEvents: input.rawEvents,
-    ...(input.items === undefined || input.items.length === 0 ? {} : { items: input.items }),
-  }).catch(() => undefined)
+  try {
+    await input.eventChunkReporter({
+      assignmentRef: input.runInput.assignmentRef,
+      leaseRef: input.runInput.leaseRef,
+      pylonRef: input.runInput.pylonRef,
+      ...(input.runInput.runRef === undefined ? {} : { runRef: input.runInput.runRef }),
+      ...(input.sessionRef === undefined ? {} : { sessionRef: input.sessionRef }),
+      ...(input.runInput.workspaceRef === undefined ? {} : { workspaceRef: input.runInput.workspaceRef }),
+      turnIndex: input.turnIndex,
+      chunkIndex: input.chunkIndex,
+      observedAt: new Date().toISOString(),
+      rawEvents: input.rawEvents,
+      ...(input.items === undefined || input.items.length === 0 ? {} : { items: input.items }),
+    })
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -1001,11 +1006,11 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
 
   const flushEventChunk = async (turnIndex: number) => {
     if (pendingChunkRawEvents.length === 0) return
-    currentTurnChunkIndex += 1
+    const nextChunkIndex = currentTurnChunkIndex + 1
     const sessionRef =
       threadId === null ? undefined : stableRef("session.pylon.codex_agent", threadId)
-    await reportCodexEventChunk({
-      chunkIndex: currentTurnChunkIndex,
+    const reported = await reportCodexEventChunk({
+      chunkIndex: nextChunkIndex,
       eventChunkReporter: input.eventChunkReporter,
       items: pendingChunkItems,
       rawEvents: pendingChunkRawEvents,
@@ -1013,6 +1018,8 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
       sessionRef,
       turnIndex,
     })
+    if (!reported) return
+    currentTurnChunkIndex = nextChunkIndex
     pendingChunkItems = []
     pendingChunkRawEvents = []
   }

@@ -393,6 +393,17 @@ reconciliation command against production data, final cutover evidence, and D1
 decommission evidence. Do not treat a green backfill alone as permission to
 drop D1 tables.
 
+Live raw Codex metadata note (2026-07-04): production row parity is established
+for `pylon_codex_raw_events` and `pylon_codex_raw_event_chunks`, and aggregate
+parity matches between D1 and Postgres. The raw-event reconcile command still
+reports historical source chunk-chain gaps: 669 unique per-turn chains are
+non-contiguous, with no duplicate chunk indexes, mirrored identically into both
+stores. This is not Postgres mirror drift. A Pylon runner fix now keeps a chunk
+index unconsumed until its event-chunk reporter succeeds, so transient chunk
+send failures retry under the same next index instead of leaving future holes.
+Before final read cutover, classify the historical gapped chains as repairable,
+quarantined, or explicitly acceptable for the raw live-stream metadata lane.
+
 ## Public tokens-served projection (KS-6.3, #8304)
 
 The public "Khala Tokens Served" counter

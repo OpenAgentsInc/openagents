@@ -208,8 +208,15 @@ trace-status closeout reads now route their raw-event metadata sections through
 the same D1/compare/Postgres seam, exposing D1/Postgres-shadow source refs and
 logging raw-metadata drift. The backfill CLI now has `--raw-event-reconcile`
 for live raw Codex metadata aggregate parity and per-turn chunk-chain
-contiguity evidence. Running that reconciliation against production data, final
-cutover evidence, and D1 decommission remain on
+contiguity evidence. Production backfill/reconciliation has established exact
+D1/Postgres parity for raw Codex metadata rows, but the historical source data
+contains 669 unique per-turn chunk-chain gaps mirrored identically into both
+stores. The Pylon Codex runner now retries failed chunk reports under the same
+next chunk index instead of burning an index on a transient send failure, so new
+chunk streams should not create the same hole pattern. Final read cutover still
+requires a follow-up decision for the historical gapped chains (repair,
+bounded exception, or source-data quarantine) plus final cutover evidence and
+D1 decommission on
 [#8315](https://github.com/OpenAgentsInc/openagents/issues/8315).
 
 - **What:** the rest of the Pylon control plane after KS-8.1:
