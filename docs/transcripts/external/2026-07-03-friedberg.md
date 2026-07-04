@@ -1,3 +1,11 @@
+# External: Friedberg on proprietary data and on-prem inference (All-In, July 4th weekend 2026)
+
+This segment is part of the July 4th weekend All-In episode on who owns
+the intelligence layer; the full episode summary is archived at
+`2026-07-04-all-in-own-the-intelligence-layer.md`.
+
+---
+
 **Jason Calacanis:** Dave Friedberg, you are also a CEO of the surging Ohalo and you have a lot of proprietary data. Let me ask you point-blank: do you trust your data to the frontier model companies? Or are you doing what there seems to be consensus here, protecting your data, protecting the crown jewels, so to speak, and using open source? Are you experimenting with it? And just, yes or no, do you trust the frontier models with Ohalo's data?
 
 **David Friedberg:** So I'll tell you, there's been an effort by Anthropic to go around and sign up life sciences companies to contributing to a new life sciences-focused model. That effort has been—they're approaching these large companies with large proprietary datasets and saying, "Hey, if you share your data, we will give you early access, some sort of proprietary value, sign this NDA, and you can participate with us." And I think nearly everyone I've spoken with has woken up to the fact that they are basically trying to commoditize everyone's business because, fundamentally, if all of the tens of billions of dollars you as a life science company have invested in experiments and product development, and you've generated all of this proprietary data along the way, that data is a true asset of your organization. It's an asset that you've spent billions of dollars developing. And by handing it over to a model company to then combine with other people's data, you are effectively commoditizing the asset that you have, the one kind of core differentiation that you have. And so everyone is largely saying no. 

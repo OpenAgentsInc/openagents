@@ -27,6 +27,9 @@ packs), [`ROADMAP_AFTER.md`](./ROADMAP_AFTER.md) AW-0 (services engine),
 (Autopilot Lead Gen — Reactor becomes a target segment and upsell),
 `docs/transcripts/external/2026-07-03-friedberg.md` (the market thesis,
 verbatim from the buyer side),
+`docs/transcripts/external/2026-07-04-all-in-own-the-intelligence-layer.md`
+(the full episode that segment came from — the sovereignty-thesis numbers
+this doc's §1 items 5–9 quote),
 `docs/transcripts/external/2026-07-04-mistral-ceo-enterprise-ai.md` (the
 competitor playbook this doc's §10 reads and harvests), and Episode 247
 (`docs/transcripts/247.md`, the sell-in-public revenue loop this product
@@ -53,8 +56,13 @@ inference "over the next couple of months" whether we show up or not.
 
 ## 1. Why now (the market thesis, from the buyer's own mouth)
 
-The Friedberg transcript (All-In, 2026-07-03) is the cleanest statement of
-the demand we keep hearing edge-on:
+The Friedberg segment turned out to be one thread of an entire All-In
+episode arguing this thesis — "who owns the intelligence layer," July 4th
+weekend 2026, full summary archived at
+`docs/transcripts/external/2026-07-04-all-in-own-the-intelligence-layer.md`.
+Its framing line is the campaign in one sentence: **"You can't rent
+intelligence from the same place that rents it to your competitor."** The
+cleanest statements of the demand we keep hearing edge-on:
 
 1. **Data custody is now a board-level "no."** Frontier labs are actively
    soliciting proprietary enterprise datasets (his example: Anthropic's
@@ -75,6 +83,51 @@ the demand we keep hearing edge-on:
    and packages the answer as a control plane + training platform deployed
    on customer infrastructure. The category is being named for us; our job
    is to sell it with receipts.
+
+The full episode adds the numbers and precedents that make each Reactor
+design choice quotable (all attributed to the show, never our claims):
+
+5. **The category flagship deal exists: Palantir–Nvidia.** Palantir will
+   use Nvidia's **Nemotron open models** to build a frontier-quality
+   custom model for US government agencies — and **the agencies own the
+   hardware, the data, and the weights**. That is the Reactor shape at
+   government scale, built on the exact model family headlining our §3
+   catalog seed; Sacks framed it as a structural bet against the
+   model-layer duopoly (~$60B + ~$40B ARR, nobody else meaningful).
+6. **"Safety" got redefined in our favor.** Karp's thesis, per Sacks:
+   enterprise AI safety now means *the model provider cannot hoover up
+   your proprietary knowledge and turn it into its next product*. And the
+   ex-Meta-PM point: the China/safety objection to open models is
+   backwards when you host the weights on your own US hardware with
+   nothing flowing back — **the leak is the data you hand the frontier
+   labs.** That is our provenance policy (§3) plus custody boundary (§4)
+   stated as consensus. Chamath's endgame version — take GLM, control it
+   soup-to-nuts on US hardware "with only US citizens touching it" —
+   even names a **personnel dimension** the policy schema should
+   eventually carry alongside model origin.
+7. **The vertical-capture cautionary tale is named: Figma.** Anthropic
+   launched Claude Design into its own customer's category (CPO on
+   Figma's board until 3 days before launch; Figma −50% YTD), with
+   Claude Science/Security/Legal/Financial/Code listed as the same move.
+   "Dominate the model layer, then take the lucrative verticals" is the
+   walk-up-the-stack risk every Reactor prospect is now primed to fear.
+8. **The economics are quotable: 16.4×.** Chamath's 8090 harness test:
+   wrapping the best open model was **16.4× cheaper** than Claude Opus
+   alone (~3× slower — irrelevant for background work). That is the
+   harness-evolution audit's conclusion measured independently: open
+   weights + a good harness is the cost curve, and per Calacanis's
+   90%/year token-deflation call, owning the hardware makes wasting
+   tokens rational. The BCG stake-raiser: half of large US companies
+   can't earn above their 8–11% cost of capital — handing alpha to a
+   provider that may compete with you "is not a luxury risk, it is
+   fatal."
+9. **The lock-in wave is the counter-pitch.** Microsoft ~$2.5B and Amazon
+   ~$1B on forward-deployed engineers: "letting a provider's engineers
+   study your business is how it ends up in their model." Reactor's
+   exit-friendly invariant (§7) is the structural answer — and Calacanis's
+   server-per-employee prediction ($10–20k of local compute per person
+   "so nothing leaks") is our workstation-class hardware tier (§4)
+   arriving as conventional wisdom.
 
 Our own corpus already carries the same signal from real buyers: the legal
 design partner's first ask was a private pre-drafting workspace **on compute
@@ -150,7 +203,11 @@ other approval in the system. This is the semantic-selector discipline
 applied to model choice — no ad hoc "we'll only use good ones, trust us."
 
 Initial catalog seed (curation, not endorsement; every entry needs our own
-eval receipts before it carries capability copy): NVIDIA Nemotron family,
+eval receipts before it carries capability copy — and note the category
+validation: the Palantir–Nvidia deal builds government custom models on
+Nemotron with agency-owned weights, and Calacanis's on-air claim was that
+Nemotron is indistinguishable from Claude on 95% of searches — attributed
+hype, but hype pointing at our headliner): NVIDIA Nemotron family,
 Meta Llama family, OpenAI GPT-OSS, Google Gemma, Mistral/Magistral,
 Qwen family, DeepSeek family, Kimi/GLM — spanning the policy space so every
 constraint set above still resolves to a strong stack. RX-4 adds the first

@@ -512,6 +512,42 @@ describes the *engagement*, not certifications:
   each step receipted, each step exit-friendly ("the switch button in your
   hand"), no rip-and-replace demanded up front.
 
+The July 4th All-In episode (archived:
+`docs/transcripts/external/2026-07-04-all-in-own-the-intelligence-layer.md`)
+handed this campaign its quote bank — third-party, attributed, exactly the
+sentences a founder email can carry:
+
+- **The one-liner:** *"You can't rent intelligence from the same place
+  that rents it to your competitor."* This is the campaign's framing
+  sentence; use it verbatim, attributed to the episode.
+- **The fear that's already priced in: Figma.** Anthropic launched Claude
+  Design into its own customer's category (its CPO left Figma's board 3
+  days before launch; Figma −50% YTD) — with Claude Science, Security,
+  Legal, Financial, and Code named as the same walk-up-the-stack move.
+  Every vertical prospect on the target list can be asked one question:
+  *which Claude vertical is yours?*
+- **The safety reframe:** enterprise AI safety now means "the model
+  provider cannot hoover up your proprietary knowledge and turn it into
+  its next product" (Karp via Sacks) — and the China objection to open
+  models is backwards when the weights run on your own US hardware with
+  nothing flowing back; *the leak is the data you hand the labs.*
+- **The math:** 16.4× cheaper wrapping the best open model vs Claude Opus
+  alone on a real code-migration task (Chamath/8090 harness), token costs
+  falling ~90%/year (Calacanis), and the BCG stake: half of large US
+  companies can't earn above their cost of capital — renting alpha to a
+  potential competitor "is not a luxury risk, it is fatal."
+- **The lock-in warning as urgency:** Microsoft ~$2.5B and Amazon ~$1B in
+  forward-deployed engineers landing now — "letting a provider's
+  engineers study your business is how it ends up in their model." The
+  door-slam is coming either way; the question is what they build inside
+  instead.
+- **The validation:** Palantir–Nvidia building government models on open
+  Nemotron with *agency-owned* hardware, data, and weights — the exact
+  shape we deploy at mid-market scale.
+
+Usage discipline: all of it quoted and attributed, none of it restated as
+OpenAgents claims; our own numbers stay receipt-backed per §11.4.
+
 ### 11.2 The motion: personal email from Chris, not a sequence
 
 This buyer (owner/CEO/GC/CTO of a data-rich mid-market company) does not
