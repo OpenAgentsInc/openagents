@@ -59,6 +59,7 @@ const makeDb = (): D1Database => {
   db.exec(migration('0270_business_funnel_events.sql'))
   db.exec(migration('0278_business_commitment_ledger.sql'))
   db.exec(migration('0294_business_pipeline_queue.sql'))
+  db.exec(migration('0299_business_pipeline_partner_routing.sql'))
   db.exec(migration('0297_business_source_attribution.sql'))
   return new SqliteD1(db) as unknown as D1Database
 }
@@ -154,8 +155,13 @@ describe('business pipeline queue routes', () => {
     expect(await create.json()).toMatchObject({
       row: {
         businessSignupRequestId: 'business_signup_001',
+        partnerRoute: {
+          approvalReceiptRef: null,
+          state: 'candidate',
+        },
         partnerRouteFlag: true,
         pipelineRef: 'biz-pipe-2026w27-001',
+        provenanceLabel: 'partner',
         stage: 'intake_received',
       },
     })
@@ -194,6 +200,95 @@ describe('business pipeline queue routes', () => {
           'receipt.business.scope_scheduled.20260704.001',
         ],
         stage: 'scope_scheduled',
+      },
+    })
+
+    const missingApproval = await runRoute(
+      db,
+      operatorRequest(
+        '/api/operator/business/pipeline/biz-pipe-2026w27-001/partner-route',
+        {
+          body: JSON.stringify({
+            budgetRangeRef: 'budget_range.partner.offer_001',
+            dueWindowRef: 'due_window.partner.offer_001',
+            offerRef: 'overflow_offer.partner_001',
+            peerRef: 'peer.partner_agency_001',
+            privacyTierRef: 'privacy_tier.standard',
+            scopeSummaryRef: 'scope_summary.partner.offer_001',
+            state: 'offered',
+          }),
+          method: 'POST',
+        },
+      ),
+    )
+    expect(missingApproval.status).toBe(400)
+    expect(await missingApproval.json()).toMatchObject({
+      error: 'business_pipeline_validation_error',
+      reason: expect.stringContaining('approvalReceiptRef'),
+    })
+
+    const offer = await runRoute(
+      db,
+      operatorRequest(
+        '/api/operator/business/pipeline/biz-pipe-2026w27-001/partner-route',
+        {
+          body: JSON.stringify({
+            approvalReceiptRef: 'receipt.operator.partner_route_approval.001',
+            budgetRangeRef: 'budget_range.partner.offer_001',
+            dueWindowRef: 'due_window.partner.offer_001',
+            offerRef: 'overflow_offer.partner_001',
+            peerRef: 'peer.partner_agency_001',
+            privacyTierRef: 'privacy_tier.standard',
+            scopeSummaryRef: 'scope_summary.partner.offer_001',
+            state: 'offered',
+          }),
+          method: 'POST',
+        },
+      ),
+    )
+    expect(offer.status).toBe(200)
+    expect(await offer.json()).toMatchObject({
+      row: {
+        partnerRoute: {
+          approvalReceiptRef: 'receipt.operator.partner_route_approval.001',
+          budgetRangeRef: 'budget_range.partner.offer_001',
+          dueWindowRef: 'due_window.partner.offer_001',
+          offerRef: 'overflow_offer.partner_001',
+          peerRef: 'peer.partner_agency_001',
+          privacyTierRef: 'privacy_tier.standard',
+          scopeSummaryRef: 'scope_summary.partner.offer_001',
+          state: 'offered',
+        },
+        partnerRouteFlag: true,
+        provenanceLabel: 'partner',
+        receiptRefs: [
+          'receipt.business.intake.20260704.001',
+          'receipt.business.scope_scheduled.20260704.001',
+          'receipt.operator.partner_route_approval.001',
+        ],
+      },
+    })
+
+    const accepted = await runRoute(
+      db,
+      operatorRequest(
+        '/api/operator/business/pipeline/biz-pipe-2026w27-001/partner-route',
+        {
+          body: JSON.stringify({
+            state: 'accepted',
+          }),
+          method: 'POST',
+        },
+      ),
+    )
+    expect(accepted.status).toBe(200)
+    expect(await accepted.json()).toMatchObject({
+      row: {
+        partnerRoute: {
+          approvalReceiptRef: 'receipt.operator.partner_route_approval.001',
+          peerRef: 'peer.partner_agency_001',
+          state: 'accepted',
+        },
       },
     })
 
@@ -238,6 +333,15 @@ describe('business pipeline queue routes', () => {
         status: string
         targetUsdCents: number
       }
+      provenanceBreakdown: ReadonlyArray<{
+        provenanceLabel: string
+        qualifiedPipeline: {
+          maxUsdCents: number
+          minUsdCents: number
+          status: string
+        }
+        rowCount: number
+      }>
       rates: { intakeToScopeRate: { status: string } }
       sourceRefBreakdown: ReadonlyArray<{
         qualifiedPipeline: { maxUsdCents: number; minUsdCents: number }
@@ -252,6 +356,15 @@ describe('business pipeline queue routes', () => {
       minUsdCents: 150_000,
       status: 'measured',
       targetUsdCents: 2_500_000,
+    })
+    expect(body.provenanceBreakdown).toContainEqual({
+      provenanceLabel: 'partner',
+      qualifiedPipeline: expect.objectContaining({
+        maxUsdCents: 500_000,
+        minUsdCents: 150_000,
+        status: 'measured',
+      }),
+      rowCount: 1,
     })
     expect(body.rates.intakeToScopeRate.status).toBe('measured')
     expect(body.commitmentCoverage).toMatchObject({

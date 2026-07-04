@@ -109,6 +109,7 @@ const makeDb = (): D1Database => {
     '0273_accepted_outcome_service_promises.sql',
     '0278_business_commitment_ledger.sql',
     '0294_business_pipeline_queue.sql',
+    '0299_business_pipeline_partner_routing.sql',
     '0297_business_source_attribution.sql',
     '0292_qa_swarm_first_engagements.sql',
     '0293_revenue_event_provenance.sql',

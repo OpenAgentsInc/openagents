@@ -1448,6 +1448,7 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/operator/business/pipeline/metrics',
   '/api/operator/business/pipeline/{param}/advance',
   '/api/operator/business/pipeline/{param}/commitments',
+  '/api/operator/business/pipeline/{param}/partner-route',
   '/api/operator/business/pipeline/{param}/starter-credit-grants',
   '/api/operator/business/pipeline/{param}/starter-credit-redemptions',
   // Operator outreach console (operator/admin only): approval-gated outreach

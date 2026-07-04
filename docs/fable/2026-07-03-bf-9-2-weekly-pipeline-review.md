@@ -228,6 +228,36 @@ bun apps/openagents.com/scripts/operator-business-pipeline.ts record-outreach-se
   --approval-receipt-ref receipt.owner.template_approval.example
 ```
 
+## Partner-Route Bookkeeping: #8270
+
+Partner-org opportunities remain the same BF-9.2 pipeline rows, not a separate
+marketplace surface. Operators can mark a row through the manual route states:
+
+```sh
+bun apps/openagents.com/scripts/operator-business-pipeline.ts partner-route \
+  --pipeline-ref biz-pipe-YYYYwNN-001 \
+  --state candidate
+
+bun apps/openagents.com/scripts/operator-business-pipeline.ts partner-route \
+  --pipeline-ref biz-pipe-YYYYwNN-001 \
+  --state offered \
+  --peer-ref peer.partner_agency_001 \
+  --approval-receipt-ref receipt.operator.partner_route_approval.001 \
+  --offer-ref overflow_offer.partner_001 \
+  --scope-summary-ref scope_summary.partner.offer_001 \
+  --due-window-ref due_window.partner.offer_001 \
+  --budget-range-ref budget_range.partner.offer_001 \
+  --privacy-tier-ref privacy_tier.standard
+```
+
+The state machine is `none -> candidate -> offered -> accepted|declined`.
+`offered`, `accepted`, and `declined` require the operator approval receipt and
+all BF-8.5 offer refs. Quoted partner-routed rows count in the normal qualified
+pipeline total and appear in the metrics `provenanceBreakdown` under
+`partner`. This remains inside the BF-8.5 section 8 boundary: bookkeeping only,
+no automation, settlement, payout copy, public peer signup, or marketplace
+launch claim.
+
 The send row carries `sourceRef`, `mailboxRef`, approval receipt, template
 version, and `receipt.business.outreach_send.*`; that receipt is appended to the
 pipeline row's `receiptRefs`. The default and maximum configured mailbox cap is

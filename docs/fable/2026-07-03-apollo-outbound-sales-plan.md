@@ -425,6 +425,17 @@ receipt is
 does not add payout mechanics, public affiliate signup, or earning copy; the
 red `referral.refer_once_earn_forever.v1` marker stays untouched.
 
+Implementation status (#8270, 2026-07-04): LG-9 now records manual
+partner-org routing on BF-9.2 pipeline rows. Rows carry
+`partnerRoute.state` (`none`, `candidate`, `offered`, `accepted`,
+`declined`), opaque BF-8.5 offer refs, a required operator approval receipt
+before `offered`, and `provenanceLabel="partner"` for routed opportunities.
+Quoted partner-routed rows still count toward the $25k qualified-pipeline
+total, and metrics expose a `provenanceBreakdown` split. The receipt is
+`docs/fable/2026-07-04-lg-9-partner-routing-bookkeeping-receipt.md`. This is
+bookkeeping only: no automation, settlement, marketplace copy, payout copy, or
+public peer signup is shipped.
+
 ### 10.1 Episode 247 reconciliation (2026-07-04)
 
 Episode 247 ("Sell in Public", `docs/transcripts/247.md`) landed after this

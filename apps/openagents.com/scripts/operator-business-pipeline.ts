@@ -9,6 +9,7 @@ type CliArgs = Readonly<{
     | 'grant-credit'
     | 'link-credit-redemption'
     | 'metrics'
+    | 'partner-route'
     | 'record-outreach-send'
     | 'render-outreach'
     | 'suppress-outreach'
@@ -20,6 +21,7 @@ const usage = `Usage:
   bun apps/openagents.com/scripts/operator-business-pipeline.ts metrics
   bun apps/openagents.com/scripts/operator-business-pipeline.ts create --pipeline-ref REF --vertical VERTICAL --source-ref REF --owner-role operator [--receipt-ref REF] [--quoted-min-usd-cents N] [--quoted-max-usd-cents N] [--quoted-band LABEL] [--partner-route true]
   bun apps/openagents.com/scripts/operator-business-pipeline.ts advance --pipeline-ref REF --stage STAGE --receipt-ref REF [--next-action-due-at YYYY-MM-DD]
+  bun apps/openagents.com/scripts/operator-business-pipeline.ts partner-route --pipeline-ref REF --state candidate|offered|accepted|declined|none [--peer-ref REF] [--approval-receipt-ref REF] [--offer-ref REF] [--scope-summary-ref REF] [--due-window-ref REF] [--budget-range-ref REF] [--privacy-tier-ref REF]
   bun apps/openagents.com/scripts/operator-business-pipeline.ts render-outreach --pipeline-ref REF --subject-ref REF --audit-report-ref REF [--finding-refs ref1,ref2] [--observed-fact TEXT] [--template-version-ref REF] [--draft-ref REF] [--source-ref REF]
   bun apps/openagents.com/scripts/operator-business-pipeline.ts approve-outreach-template --template-version-ref REF --approval-receipt-ref REF --approved-by-ref REF [--source-ref REF]
   bun apps/openagents.com/scripts/operator-business-pipeline.ts suppress-outreach --subject-ref REF --reason existing_customer --source-ref REF [--suppression-ref REF]
@@ -40,6 +42,7 @@ const parseArgs = (argv: ReadonlyArray<string>): CliArgs => {
     command !== 'grant-credit' &&
     command !== 'link-credit-redemption' &&
     command !== 'metrics' &&
+    command !== 'partner-route' &&
     command !== 'record-outreach-send' &&
     command !== 'render-outreach' &&
     command !== 'suppress-outreach'
@@ -152,6 +155,35 @@ const main = async (): Promise<void> => {
           }),
           method: 'POST',
         }),
+        null,
+        2,
+      ),
+    )
+    return
+  }
+
+  if (args.command === 'partner-route') {
+    console.log(
+      JSON.stringify(
+        await requestJson(
+          args,
+          `/api/operator/business/pipeline/${encodeURIComponent(
+            required(args.flags, 'pipeline-ref'),
+          )}/partner-route`,
+          {
+            body: JSON.stringify({
+              approvalReceiptRef: args.flags.get('approval-receipt-ref'),
+              budgetRangeRef: args.flags.get('budget-range-ref'),
+              dueWindowRef: args.flags.get('due-window-ref'),
+              offerRef: args.flags.get('offer-ref'),
+              peerRef: args.flags.get('peer-ref'),
+              privacyTierRef: args.flags.get('privacy-tier-ref'),
+              scopeSummaryRef: args.flags.get('scope-summary-ref'),
+              state: required(args.flags, 'state'),
+            }),
+            method: 'POST',
+          },
+        ),
         null,
         2,
       ),

@@ -4,6 +4,7 @@ import {
   type BusinessPipelineAdvanceInput,
   type BusinessPipelineCommitmentInput,
   type BusinessPipelineCreateInput,
+  type BusinessPipelinePartnerRouteInput,
   BusinessPipelineStoreError,
   type BusinessPipelineStore,
   systemBusinessPipelineRuntime,
@@ -66,6 +67,66 @@ const numberOrUndefined = (value: unknown): number | undefined => {
   return undefined
 }
 
+const objectOrEmpty = (value: unknown): Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+
+const optionalPartnerRouteValue = (
+  body: Record<string, unknown>,
+  nested: Record<string, unknown>,
+  key: string,
+): string | undefined => optionalString(body[key]) ?? optionalString(nested[key])
+
+const partnerRouteInputFromBody = (
+  body: Record<string, unknown>,
+  requireState: boolean,
+): BusinessPipelinePartnerRouteInput | null => {
+  const nested = objectOrEmpty(body.partnerRoute)
+  const state =
+    optionalString(body.partnerRouteState) ??
+    optionalString(nested.state) ??
+    (requireState ? optionalString(body.state) : undefined)
+  const hasRouteFields = [
+    'approvalReceiptRef',
+    'budgetRangeRef',
+    'dueWindowRef',
+    'offerRef',
+    'peerRef',
+    'privacyTierRef',
+    'scopeSummaryRef',
+  ].some(key => body[key] !== undefined || nested[key] !== undefined)
+
+  if (state === undefined && !hasRouteFields && !requireState) {
+    return null
+  }
+
+  const input: BusinessPipelinePartnerRouteInput = {
+    state: (state ?? '') as BusinessPipelinePartnerRouteInput['state'],
+  }
+  const optionalFields = [
+    'approvalReceiptRef',
+    'budgetRangeRef',
+    'dueWindowRef',
+    'offerRef',
+    'peerRef',
+    'privacyTierRef',
+    'scopeSummaryRef',
+  ] as const
+  const writableInput = input as Partial<
+    Record<(typeof optionalFields)[number], string | null>
+  >
+
+  for (const field of optionalFields) {
+    const value = optionalPartnerRouteValue(body, nested, field)
+    if (value !== undefined) {
+      writableInput[field] = value
+    }
+  }
+
+  return input
+}
+
 const createInputFromBody = (
   body: Record<string, unknown>,
 ): BusinessPipelineCreateInput => {
@@ -78,6 +139,7 @@ const createInputFromBody = (
     businessSignupRequestId: optionalString(body.businessSignupRequestId) ?? null,
     nextActionDueAt: optionalString(body.nextActionDueAt) ?? null,
     ownerRole: (optionalString(body.ownerRole) ?? 'operator') as BusinessPipelineCreateInput['ownerRole'],
+    partnerRoute: partnerRouteInputFromBody(body, false),
     partnerRouteFlag: optionalBoolean(body.partnerRouteFlag) ?? false,
     pipelineRef: optionalString(body.pipelineRef) ?? '',
     quotedBand: {
@@ -245,6 +307,43 @@ const routeAdvance = <Bindings>(
     },
   }).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
 
+const routePartnerRoute = <Bindings>(
+  dependencies: OperatorBusinessPipelineDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  pipelineRef: string,
+) =>
+  Effect.tryPromise({
+    catch: error =>
+      error instanceof BusinessPipelineStoreError
+        ? error
+        : new BusinessPipelineStoreError({
+            kind: 'storage_error',
+            reason: error instanceof Error ? error.message : String(error),
+          }),
+    try: async () => {
+      const denial = await requireOperator(dependencies, request, env)
+      if (denial !== undefined) return denial
+      const body = await readJsonObject(request)
+      const partnerRouteInput = partnerRouteInputFromBody(body, true)
+      if (partnerRouteInput === null) {
+        throw new BusinessPipelineStoreError({
+          kind: 'validation_error',
+          reason: 'partnerRouteState is required',
+        })
+      }
+      const row = await dependencies.makeStore(env).setPartnerRoute(
+        pipelineRef,
+        partnerRouteInput,
+        {
+          ...systemBusinessPipelineRuntime,
+          nowIso: dependencies.nowIso ?? systemBusinessPipelineRuntime.nowIso,
+        },
+      )
+      return noStoreJsonResponse({ row })
+    },
+  }).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+
 const routeCreateCommitment = <Bindings>(
   dependencies: OperatorBusinessPipelineDependencies<Bindings>,
   request: Request,
@@ -296,7 +395,7 @@ export const makeOperatorBusinessPipelineRoutes = <Bindings>(
     }
 
     const match =
-      /^\/api\/operator\/business\/pipeline\/([^/]+)\/(advance|commitments)$/.exec(
+      /^\/api\/operator\/business\/pipeline\/([^/]+)\/(advance|commitments|partner-route)$/.exec(
         url.pathname,
       )
 
@@ -308,6 +407,11 @@ export const makeOperatorBusinessPipelineRoutes = <Bindings>(
     if (action === 'advance') {
       if (request.method !== 'POST') return Effect.succeed(methodNotAllowed(['POST']))
       return routeAdvance(dependencies, request, env, pipelineRef)
+    }
+
+    if (action === 'partner-route') {
+      if (request.method !== 'POST') return Effect.succeed(methodNotAllowed(['POST']))
+      return routePartnerRoute(dependencies, request, env, pipelineRef)
     }
 
     if (request.method !== 'POST') return Effect.succeed(methodNotAllowed(['POST']))

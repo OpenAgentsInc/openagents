@@ -59,14 +59,47 @@ export const BusinessPipelineQuotedBand = S.Struct({
 })
 export type BusinessPipelineQuotedBand = typeof BusinessPipelineQuotedBand.Type
 
+export const BusinessPipelinePartnerRouteState = S.Literals([
+  'none',
+  'candidate',
+  'offered',
+  'accepted',
+  'declined',
+])
+export type BusinessPipelinePartnerRouteState =
+  typeof BusinessPipelinePartnerRouteState.Type
+
+export const BusinessPipelineProvenanceLabel = S.Literals([
+  'direct',
+  'partner',
+])
+export type BusinessPipelineProvenanceLabel =
+  typeof BusinessPipelineProvenanceLabel.Type
+
+export const BusinessPipelinePartnerRoute = S.Struct({
+  approvalReceiptRef: S.NullOr(S.String),
+  budgetRangeRef: S.NullOr(S.String),
+  dueWindowRef: S.NullOr(S.String),
+  offerRef: S.NullOr(S.String),
+  peerRef: S.NullOr(S.String),
+  privacyTierRef: S.NullOr(S.String),
+  scopeSummaryRef: S.NullOr(S.String),
+  state: BusinessPipelinePartnerRouteState,
+  updatedAt: S.NullOr(S.String),
+})
+export type BusinessPipelinePartnerRoute =
+  typeof BusinessPipelinePartnerRoute.Type
+
 export const BusinessPipelineRow = S.Struct({
   blockerRef: S.NullOr(S.String),
   businessSignupRequestId: S.NullOr(S.String),
   createdAt: S.String,
   nextActionDueAt: S.NullOr(S.String),
   ownerRole: BusinessPipelineOwnerRole,
+  partnerRoute: BusinessPipelinePartnerRoute,
   partnerRouteFlag: S.Boolean,
   pipelineRef: S.String,
+  provenanceLabel: BusinessPipelineProvenanceLabel,
   quotedBand: BusinessPipelineQuotedBand,
   receiptRefs: S.Array(S.String),
   sourceRef: S.String,
@@ -131,6 +164,12 @@ const BusinessPipelineSourceRefMetric = S.Struct({
   })),
 })
 
+const BusinessPipelineProvenanceMetric = S.Struct({
+  provenanceLabel: BusinessPipelineProvenanceLabel,
+  qualifiedPipeline: BusinessPipelineQualifiedPipelineMetric,
+  rowCount: S.Number,
+})
+
 export const BusinessPipelineMetrics = S.Struct({
   schemaVersion: S.Literal('openagents.business_pipeline_metrics.v1'),
   commitmentCoverage: S.Struct({
@@ -144,6 +183,7 @@ export const BusinessPipelineMetrics = S.Struct({
     excludes: S.Array(S.String),
     opaqueRefsOnly: S.Literal(true),
   }),
+  provenanceBreakdown: S.Array(BusinessPipelineProvenanceMetric),
   qualifiedPipeline: BusinessPipelineQualifiedPipelineMetric,
   rates: S.Struct({
     closeRate: BusinessPipelineRateMetric,
@@ -180,6 +220,7 @@ export type BusinessPipelineCreateInput = Readonly<{
   businessSignupRequestId?: string | null
   nextActionDueAt?: string | null
   ownerRole: BusinessPipelineOwnerRole
+  partnerRoute?: BusinessPipelinePartnerRouteInput | null
   partnerRouteFlag?: boolean
   pipelineRef: string
   quotedBand?: Partial<BusinessPipelineQuotedBand> | null
@@ -196,6 +237,17 @@ export type BusinessPipelineAdvanceInput = Readonly<{
   quotedBand?: Partial<BusinessPipelineQuotedBand> | null
   receiptRef: string
   stage: BusinessPipelineStage
+}>
+
+export type BusinessPipelinePartnerRouteInput = Readonly<{
+  approvalReceiptRef?: string | null
+  budgetRangeRef?: string | null
+  dueWindowRef?: string | null
+  offerRef?: string | null
+  peerRef?: string | null
+  privacyTierRef?: string | null
+  scopeSummaryRef?: string | null
+  state: BusinessPipelinePartnerRouteState
 }>
 
 export type BusinessPipelineCommitmentInput = Readonly<{
@@ -229,7 +281,16 @@ type BusinessPipelineD1Row = Readonly<{
   created_at: string
   next_action_due_at: string | null
   owner_role: BusinessPipelineOwnerRole
+  partner_approval_receipt_ref: string | null
+  partner_budget_range_ref: string | null
+  partner_due_window_ref: string | null
+  partner_offer_ref: string | null
+  partner_peer_ref: string | null
+  partner_privacy_tier_ref: string | null
   partner_route_flag: number
+  partner_route_state: BusinessPipelinePartnerRouteState
+  partner_route_updated_at: string | null
+  partner_scope_summary_ref: string | null
   pipeline_ref: string
   quoted_band_label: string
   quoted_max_usd_cents: number
@@ -363,18 +424,162 @@ const normalizeQuotedBand = (
   return { label, maxUsdCents, minUsdCents }
 }
 
+const emptyPartnerRoute = (
+  state: BusinessPipelinePartnerRouteState = 'none',
+  updatedAt: string | null = null,
+): BusinessPipelinePartnerRoute => ({
+  approvalReceiptRef: null,
+  budgetRangeRef: null,
+  dueWindowRef: null,
+  offerRef: null,
+  peerRef: null,
+  privacyTierRef: null,
+  scopeSummaryRef: null,
+  state,
+  updatedAt,
+})
+
+const normalizePartnerRouteRef = (
+  field: string,
+  value: string | null | undefined,
+): string | null => normalizeNullableRef(`partnerRoute.${field}`, value)
+
+const routeRequiresOfferFields = (
+  state: BusinessPipelinePartnerRouteState,
+): boolean => state === 'offered' || state === 'accepted' || state === 'declined'
+
+const assertCompletePartnerOffer = (
+  route: BusinessPipelinePartnerRoute,
+): void => {
+  if (!routeRequiresOfferFields(route.state)) return
+
+  const missing = [
+    ['peerRef', route.peerRef],
+    ['approvalReceiptRef', route.approvalReceiptRef],
+    ['offerRef', route.offerRef],
+    ['scopeSummaryRef', route.scopeSummaryRef],
+    ['dueWindowRef', route.dueWindowRef],
+    ['budgetRangeRef', route.budgetRangeRef],
+    ['privacyTierRef', route.privacyTierRef],
+  ].find(([, value]) => value === null)
+
+  if (missing !== undefined) {
+    throw validationError(
+      `partnerRoute.${missing[0]} is required before partner route can be ${route.state}`,
+    )
+  }
+}
+
+const normalizePartnerRoute = (
+  input: BusinessPipelinePartnerRouteInput | null | undefined,
+  current: BusinessPipelinePartnerRoute,
+  nowIso: string,
+): BusinessPipelinePartnerRoute => {
+  if (input === undefined || input === null) {
+    assertCompletePartnerOffer(current)
+    return current
+  }
+
+  if (input.state === 'none') {
+    return emptyPartnerRoute('none', nowIso)
+  }
+
+  const route: BusinessPipelinePartnerRoute = {
+    approvalReceiptRef: normalizePartnerRouteRef(
+      'approvalReceiptRef',
+      input.approvalReceiptRef === undefined
+        ? current.approvalReceiptRef
+        : input.approvalReceiptRef,
+    ),
+    budgetRangeRef: normalizePartnerRouteRef(
+      'budgetRangeRef',
+      input.budgetRangeRef === undefined
+        ? current.budgetRangeRef
+        : input.budgetRangeRef,
+    ),
+    dueWindowRef: normalizePartnerRouteRef(
+      'dueWindowRef',
+      input.dueWindowRef === undefined
+        ? current.dueWindowRef
+        : input.dueWindowRef,
+    ),
+    offerRef: normalizePartnerRouteRef(
+      'offerRef',
+      input.offerRef === undefined ? current.offerRef : input.offerRef,
+    ),
+    peerRef: normalizePartnerRouteRef(
+      'peerRef',
+      input.peerRef === undefined ? current.peerRef : input.peerRef,
+    ),
+    privacyTierRef: normalizePartnerRouteRef(
+      'privacyTierRef',
+      input.privacyTierRef === undefined
+        ? current.privacyTierRef
+        : input.privacyTierRef,
+    ),
+    scopeSummaryRef: normalizePartnerRouteRef(
+      'scopeSummaryRef',
+      input.scopeSummaryRef === undefined
+        ? current.scopeSummaryRef
+        : input.scopeSummaryRef,
+    ),
+    state: input.state,
+    updatedAt: nowIso,
+  }
+
+  assertCompletePartnerOffer(route)
+  return S.decodeUnknownSync(BusinessPipelinePartnerRoute)(route)
+}
+
+const allowedPartnerRouteTransitions: Record<
+  BusinessPipelinePartnerRouteState,
+  ReadonlyArray<BusinessPipelinePartnerRouteState>
+> = {
+  accepted: ['accepted'],
+  candidate: ['candidate', 'none', 'offered'],
+  declined: ['declined'],
+  none: ['none', 'candidate', 'offered'],
+  offered: ['offered', 'accepted', 'declined'],
+}
+
+const assertPartnerRouteTransition = (
+  current: BusinessPipelinePartnerRouteState,
+  next: BusinessPipelinePartnerRouteState,
+): void => {
+  if (!allowedPartnerRouteTransitions[current].includes(next)) {
+    throw validationError(`invalid partner route transition ${current} -> ${next}`)
+  }
+}
+
 const hasQuotedBand = (row: Pick<BusinessPipelineRow, 'quotedBand'>): boolean =>
   row.quotedBand.maxUsdCents > 0
 
 const businessPipelineRowFromD1 = (row: BusinessPipelineD1Row): BusinessPipelineRow => {
+  const partnerRoute = S.decodeUnknownSync(BusinessPipelinePartnerRoute)({
+    approvalReceiptRef: row.partner_approval_receipt_ref,
+    budgetRangeRef: row.partner_budget_range_ref,
+    dueWindowRef: row.partner_due_window_ref,
+    offerRef: row.partner_offer_ref,
+    peerRef: row.partner_peer_ref,
+    privacyTierRef: row.partner_privacy_tier_ref,
+    scopeSummaryRef: row.partner_scope_summary_ref,
+    state: S.decodeUnknownSync(BusinessPipelinePartnerRouteState)(
+      row.partner_route_state,
+    ),
+    updatedAt: row.partner_route_updated_at,
+  })
+  const partnerRouteFlag =
+    row.partner_route_flag === 1 || partnerRoute.state !== 'none'
   const record: BusinessPipelineRow = {
     blockerRef: row.blocker_ref,
     businessSignupRequestId: row.business_signup_request_id,
     createdAt: row.created_at,
     nextActionDueAt: row.next_action_due_at,
     ownerRole: S.decodeUnknownSync(BusinessPipelineOwnerRole)(row.owner_role),
-    partnerRouteFlag: row.partner_route_flag === 1,
+    partnerRoute,
+    partnerRouteFlag,
     pipelineRef: row.pipeline_ref,
+    provenanceLabel: partnerRouteFlag ? 'partner' : 'direct',
     quotedBand: {
       label: row.quoted_band_label,
       maxUsdCents: Number(row.quoted_max_usd_cents),
@@ -404,6 +609,43 @@ const businessPipelineRowFromD1 = (row: BusinessPipelineD1Row): BusinessPipeline
       record.businessSignupRequestId,
     )
   }
+  if (record.partnerRoute.peerRef !== null) {
+    assertPublicSafeRef('partnerRoute.peerRef', record.partnerRoute.peerRef)
+  }
+  if (record.partnerRoute.approvalReceiptRef !== null) {
+    assertPublicSafeRef(
+      'partnerRoute.approvalReceiptRef',
+      record.partnerRoute.approvalReceiptRef,
+    )
+  }
+  if (record.partnerRoute.offerRef !== null) {
+    assertPublicSafeRef('partnerRoute.offerRef', record.partnerRoute.offerRef)
+  }
+  if (record.partnerRoute.scopeSummaryRef !== null) {
+    assertPublicSafeRef(
+      'partnerRoute.scopeSummaryRef',
+      record.partnerRoute.scopeSummaryRef,
+    )
+  }
+  if (record.partnerRoute.dueWindowRef !== null) {
+    assertPublicSafeRef(
+      'partnerRoute.dueWindowRef',
+      record.partnerRoute.dueWindowRef,
+    )
+  }
+  if (record.partnerRoute.budgetRangeRef !== null) {
+    assertPublicSafeRef(
+      'partnerRoute.budgetRangeRef',
+      record.partnerRoute.budgetRangeRef,
+    )
+  }
+  if (record.partnerRoute.privacyTierRef !== null) {
+    assertPublicSafeRef(
+      'partnerRoute.privacyTierRef',
+      record.partnerRoute.privacyTierRef,
+    )
+  }
+  assertCompletePartnerOffer(record.partnerRoute)
   assertPublicSafeRefs('receiptRefs', record.receiptRefs)
   normalizeQuotedBand(record.quotedBand)
 
@@ -482,7 +724,16 @@ const pipelineRowSelect = `SELECT
   created_at,
   next_action_due_at,
   owner_role,
+  partner_approval_receipt_ref,
+  partner_budget_range_ref,
+  partner_due_window_ref,
+  partner_offer_ref,
+  partner_peer_ref,
+  partner_privacy_tier_ref,
   partner_route_flag,
+  partner_route_state,
+  partner_route_updated_at,
+  partner_scope_summary_ref,
   pipeline_ref,
   quoted_band_label,
   quoted_max_usd_cents,
@@ -576,6 +827,18 @@ const sourceRefBreakdown = (
     )
 }
 
+const provenanceBreakdown = (
+  rows: ReadonlyArray<BusinessPipelineRow>,
+): BusinessPipelineMetrics['provenanceBreakdown'] =>
+  (['direct', 'partner'] as const).map(provenanceLabel => {
+    const labelRows = rows.filter(row => row.provenanceLabel === provenanceLabel)
+    return {
+      provenanceLabel,
+      qualifiedPipeline: qualifiedPipelineMetric(labelRows),
+      rowCount: labelRows.length,
+    }
+  })
+
 export type BusinessPipelineStore = Readonly<{
   appendPipelineReceiptRefs: (
     pipelineRef: string,
@@ -593,6 +856,11 @@ export type BusinessPipelineStore = Readonly<{
   ) => Promise<BusinessPipelineCommitmentRecord>
   createPipelineRow: (
     input: BusinessPipelineCreateInput,
+    runtime?: BusinessPipelineRuntime,
+  ) => Promise<BusinessPipelineRow>
+  setPartnerRoute: (
+    pipelineRef: string,
+    input: BusinessPipelinePartnerRouteInput,
     runtime?: BusinessPipelineRuntime,
   ) => Promise<BusinessPipelineRow>
   listCommitmentsForPipeline: (
@@ -730,7 +998,6 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
       }
       const sourceRef = decodedSourceRef.sourceRef
       const stage = input.stage ?? 'intake_received'
-      const receiptRefs = normalizeReceiptRefs(input.receiptRefs)
       const quotedBand = normalizeQuotedBand(input.quotedBand)
       const nextActionDueAt = input.nextActionDueAt?.trim() || null
       const blockerRef = normalizeNullableRef('blockerRef', input.blockerRef)
@@ -739,6 +1006,21 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
         input.businessSignupRequestId,
       )
       const nowIso = runtime.nowIso()
+      const defaultPartnerRoute =
+        input.partnerRouteFlag === true
+          ? emptyPartnerRoute('candidate', nowIso)
+          : emptyPartnerRoute()
+      const partnerRoute = normalizePartnerRoute(
+        input.partnerRoute,
+        defaultPartnerRoute,
+        nowIso,
+      )
+      const receiptRefs = normalizeReceiptRefs([
+        ...(input.receiptRefs ?? []),
+        ...(partnerRoute.approvalReceiptRef === null
+          ? []
+          : [partnerRoute.approvalReceiptRef]),
+      ])
 
       assertPublicSafeRef('pipelineRef', pipelineRef)
       assertPublicSafeDescriptor('vertical', vertical)
@@ -770,10 +1052,19 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
             blocker_ref,
             receipt_refs_json,
             partner_route_flag,
+            partner_route_state,
+            partner_peer_ref,
+            partner_approval_receipt_ref,
+            partner_offer_ref,
+            partner_scope_summary_ref,
+            partner_due_window_ref,
+            partner_budget_range_ref,
+            partner_privacy_tier_ref,
+            partner_route_updated_at,
             created_at,
             updated_at,
             stage_updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           pipelineRef,
@@ -788,7 +1079,16 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
           nextActionDueAt,
           blockerRef,
           JSON.stringify(receiptRefs),
-          input.partnerRouteFlag === true ? 1 : 0,
+          partnerRoute.state === 'none' ? 0 : 1,
+          partnerRoute.state,
+          partnerRoute.peerRef,
+          partnerRoute.approvalReceiptRef,
+          partnerRoute.offerRef,
+          partnerRoute.scopeSummaryRef,
+          partnerRoute.dueWindowRef,
+          partnerRoute.budgetRangeRef,
+          partnerRoute.privacyTierRef,
+          partnerRoute.updatedAt,
           nowIso,
           nowIso,
           nowIso,
@@ -903,6 +1203,86 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
         throw new BusinessPipelineStoreError({
           kind: 'storage_error',
           reason: `pipeline row was not readable after advance: ${pipelineRef}`,
+        })
+      }
+      return updated
+    } catch (error) {
+      if (error instanceof BusinessPipelineValidationError) {
+        throw storeValidationError(error.reason)
+      }
+      throw storageError(error)
+    }
+  }
+
+  const setPartnerRoute = async (
+    pipelineRef: string,
+    input: BusinessPipelinePartnerRouteInput,
+    runtime: BusinessPipelineRuntime = systemBusinessPipelineRuntime,
+  ): Promise<BusinessPipelineRow> => {
+    try {
+      const current = await readPipelineRow(pipelineRef)
+      if (current === null) {
+        throw new BusinessPipelineStoreError({
+          kind: 'not_found',
+          reason: `pipeline row not found: ${pipelineRef}`,
+        })
+      }
+
+      assertPartnerRouteTransition(current.partnerRoute.state, input.state)
+      const nowIso = runtime.nowIso()
+      const partnerRoute = normalizePartnerRoute(
+        input,
+        current.partnerRoute,
+        nowIso,
+      )
+      const receiptRefs = [
+        ...new Set([
+          ...current.receiptRefs,
+          ...(partnerRoute.approvalReceiptRef === null
+            ? []
+            : [partnerRoute.approvalReceiptRef]),
+        ]),
+      ]
+
+      await db
+        .prepare(
+          `UPDATE business_pipeline_rows
+              SET partner_route_flag = ?,
+                  partner_route_state = ?,
+                  partner_peer_ref = ?,
+                  partner_approval_receipt_ref = ?,
+                  partner_offer_ref = ?,
+                  partner_scope_summary_ref = ?,
+                  partner_due_window_ref = ?,
+                  partner_budget_range_ref = ?,
+                  partner_privacy_tier_ref = ?,
+                  partner_route_updated_at = ?,
+                  receipt_refs_json = ?,
+                  updated_at = ?
+            WHERE pipeline_ref = ?`,
+        )
+        .bind(
+          partnerRoute.state === 'none' ? 0 : 1,
+          partnerRoute.state,
+          partnerRoute.peerRef,
+          partnerRoute.approvalReceiptRef,
+          partnerRoute.offerRef,
+          partnerRoute.scopeSummaryRef,
+          partnerRoute.dueWindowRef,
+          partnerRoute.budgetRangeRef,
+          partnerRoute.privacyTierRef,
+          partnerRoute.updatedAt,
+          JSON.stringify(receiptRefs),
+          nowIso,
+          current.pipelineRef,
+        )
+        .run()
+
+      const updated = await readPipelineRow(current.pipelineRef)
+      if (updated === null) {
+        throw new BusinessPipelineStoreError({
+          kind: 'storage_error',
+          reason: `pipeline row was not readable after partner route update: ${pipelineRef}`,
         })
       }
       return updated
@@ -1111,17 +1491,23 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
           'raw_call_notes',
           'raw_crm_payload',
           'payment_payload',
+          'peer_contract_terms',
+          'peer_wallet_data',
+          'settlement_payload',
         ],
         opaqueRefsOnly: true,
       },
+      provenanceBreakdown: provenanceBreakdown(rows),
       qualifiedPipeline: qualifiedPipelineMetric(rows),
       rates: pipelineRates(rows),
       sourceRefBreakdown: sourceRefBreakdown(rows),
       sourceRefs: [
         'github:OpenAgentsInc/openagents#8263',
         'github:OpenAgentsInc/openagents#8267',
+        'github:OpenAgentsInc/openagents#8270',
         'docs/fable/2026-07-03-bf-9-2-weekly-pipeline-review.md',
         'docs/fable/2026-07-03-apollo-outbound-sales-plan.md#7-pipeline-definition-and-the-25k-math-honest',
+        'docs/fable/2026-07-02-bf-8-5-overflow-peer-marketplace-design.md#8-green-gate-for-8113-follow-on-implementation',
       ],
       stageCounts: BUSINESS_PIPELINE_STAGE_ORDER.map(stage => ({
         count: stageCountMap.get(stage) ?? 0,
@@ -1133,6 +1519,7 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
         'business_signup_requests.update',
         'business_commitment_ledger.insert',
         'business_commitment_ledger.update',
+        'business_pipeline_rows.partner_route_update',
       ]),
     })
   }
@@ -1146,5 +1533,6 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
     listPipelineRows,
     readMetrics,
     readPipelineRow,
+    setPartnerRoute,
   }
 }
