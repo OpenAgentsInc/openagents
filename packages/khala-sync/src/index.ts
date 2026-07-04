@@ -209,6 +209,13 @@ export class BootstrapRequest extends S.Class<BootstrapRequest>(
   schemaVersion: SyncSchemaVersion,
   scope: SyncScope,
   clientGroupId: ClientGroupId,
+  /**
+   * Opaque continuation token echoed from the previous page's
+   * `nextPageToken`; absent on the first page request. Pure widening
+   * (KS-5.3): pre-existing single-page requests remain valid, and a server
+   * that never pages ignores it.
+   */
+  pageToken: S.optionalKey(S.String),
 }) {}
 
 export class BootstrapEntity extends S.Class<BootstrapEntity>(
@@ -417,6 +424,7 @@ export const encodeMutationResult = S.encodeSync(MutationResult)
 export const decodeSyncError = S.decodeUnknownSync(SyncError)
 export const encodeSyncError = S.encodeSync(SyncError)
 export const decodeBootstrapRequest = S.decodeUnknownSync(BootstrapRequest)
+export const encodeBootstrapRequest = S.encodeSync(BootstrapRequest)
 export const decodeBootstrapResponse = S.decodeUnknownSync(BootstrapResponse)
 export const decodeLogPage = S.decodeUnknownSync(LogPage)
 export const decodeLiveFrame = S.decodeUnknownSync(LiveFrame)

@@ -8,6 +8,7 @@ import {
   SyncSchemaVersion,
   type SyncScope,
   SyncVersion,
+  type SyncVersionWatermark,
 } from "@openagentsinc/khala-sync"
 import { Database } from "bun:sqlite"
 import { Effect } from "effect"
@@ -155,6 +156,7 @@ export const openKhalaSyncStore = (path: string): KhalaSyncSqliteStore => {
      WHERE scope = ? AND entity_type = ? AND entity_id = ? AND version < ?`,
   )
   const deleteScopeEntities = db.query("DELETE FROM entities WHERE scope = ?")
+  const deleteCursor = db.query("DELETE FROM cursors WHERE scope = ?")
   const selectEntities = db.query<EntityRow, [string]>(
     `SELECT entity_type, entity_id, post_image_json, version
      FROM entities WHERE scope = ? ORDER BY entity_type, entity_id`,
@@ -239,7 +241,7 @@ export const openKhalaSyncStore = (path: string): KhalaSyncSqliteStore => {
     (
       scope: SyncScope,
       entities: ReadonlyArray<ConfirmedEntity>,
-      cursor: SyncVersion,
+      cursor: SyncVersion | SyncVersionWatermark,
     ): void => {
       deleteScopeEntities.run(scope)
       for (const entity of entities) {
@@ -251,7 +253,13 @@ export const openKhalaSyncStore = (path: string): KhalaSyncSqliteStore => {
           entity.version,
         )
       }
-      upsertCursor.run(scope, cursor)
+      if (cursor === 0) {
+        // Watermark 0 = scope start: clear the cursor (never store 0 — the
+        // cursors table holds SyncVersions, which start at 1).
+        deleteCursor.run(scope)
+      } else {
+        upsertCursor.run(scope, cursor)
+      }
     },
   )
 

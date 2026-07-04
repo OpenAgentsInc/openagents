@@ -184,6 +184,14 @@ export interface KhalaSyncOverlay {
   readonly onAck: (
     throughMutationId: MutationId,
   ) => Effect.Effect<void, OverlayError>
+  /**
+   * The scope's confirmed base was replaced out-of-band through
+   * `store.resetScope` (bootstrap / MustRefetch, KS-5.3): reload it from
+   * the store, re-apply pending mutations, reveal atomically, notify.
+   */
+  readonly refetched: (
+    scope: SyncScope,
+  ) => Effect.Effect<void, OverlayError>
   /** Still-unconfirmed queued mutations, ascending mutationId. */
   readonly pending: () => ReadonlyArray<MutationEnvelope>
   /**
@@ -550,6 +558,12 @@ export const createOverlay = (
         if (dropped) notify(yield* rebuild())
       })
 
+    const refetched = (scope: SyncScope): Effect.Effect<void, OverlayError> =>
+      Effect.gen(function* () {
+        tracked.add(scope)
+        notify(yield* rebuild())
+      })
+
     // Restart path: rebuild optimistic effects of any queued survivors.
     if (pendingList.length > 0) {
       yield* rebuild()
@@ -560,6 +574,7 @@ export const createOverlay = (
       mutate,
       onConfirmed,
       onAck,
+      refetched,
       pending: () => [...pendingList],
       subscribe: (listener) => {
         listeners.add(listener)

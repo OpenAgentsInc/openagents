@@ -1,13 +1,3 @@
-import type {
-  ClientGroupId,
-  ClientId,
-  SyncSchemaVersion,
-  SyncScope,
-  SyncVersion,
-} from "@openagentsinc/khala-sync"
-import type { Effect, Stream } from "effect"
-import type { ClientMutator, OverlayError } from "./overlay.js"
-
 /**
  * @openagentsinc/khala-sync-client — client engine for Khala Sync: local
  * store, transport, bootstrap/catch-up/live state machine, optimistic
@@ -61,32 +51,41 @@ export {
 } from "./overlay.js"
 
 // ---------------------------------------------------------------------------
-// Sync session (KS-5.3): per-scope state machine
-// idle → bootstrapping → catching_up → live (+ must_refetch from any state)
+// Transport (KS-5.3): injectable seam in transport.ts; HTTP+WebSocket
+// implementation against the SPEC §3 routes, khala-sync codecs at every
+// boundary, bearer auth from the session config's authToken().
 // ---------------------------------------------------------------------------
 
-export type ScopeSyncState =
-  | { readonly phase: "idle" }
-  | { readonly phase: "bootstrapping" }
-  | { readonly phase: "catching_up"; readonly cursor: SyncVersion }
-  | { readonly phase: "live"; readonly cursor: SyncVersion }
-  | { readonly phase: "must_refetch"; readonly reason: string }
+export {
+  createHttpKhalaSyncTransport,
+  type HttpTransportConfig,
+  type HttpTransportDeps,
+  isRefetchSignal,
+  isRetryableTransportError,
+  KHALA_SYNC_BOOTSTRAP_PATH,
+  KHALA_SYNC_CONNECT_PATH,
+  KHALA_SYNC_LOG_PATH,
+  KHALA_SYNC_PUSH_PATH,
+  type KhalaSyncTransport,
+  KhalaSyncTransportError,
+  type KhalaSyncTransportErrorReason,
+  type LiveSocket,
+  type LiveSocketHandlers,
+  type WebSocketLike,
+} from "./transport.js"
 
-export interface KhalaSyncSessionConfig {
-  readonly baseUrl: string
-  readonly clientGroupId: ClientGroupId
-  readonly clientId: ClientId
-  readonly schemaVersion: SyncSchemaVersion
-  readonly authToken: () => string
-}
+// ---------------------------------------------------------------------------
+// Sync session (KS-5.3): per-scope state machine in session.ts
+// idle → bootstrapping → catching_up → live (+ must_refetch from any state);
+// reconnect resumes from the DURABLE cursor; push loop drains the pending
+// queue with in-band rejection handling.
+// ---------------------------------------------------------------------------
 
-export interface KhalaSyncSession {
-  readonly subscribe: (scope: SyncScope) => Effect.Effect<void>
-  readonly state: (scope: SyncScope) => ScopeSyncState
-  /** Confirmed+overlay change notifications for UI subscription. */
-  readonly changes: Stream.Stream<SyncScope>
-  readonly mutate: <Args>(
-    mutator: ClientMutator<Args>,
-    args: Args,
-  ) => Effect.Effect<void, OverlayError>
-}
+export {
+  computeBackoffMs,
+  createKhalaSyncSession,
+  type KhalaSyncSession,
+  type KhalaSyncSessionConfig,
+  type KhalaSyncSessionOptions,
+  type ScopeSyncState,
+} from "./session.js"

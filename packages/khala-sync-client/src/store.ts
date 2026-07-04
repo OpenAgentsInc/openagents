@@ -7,6 +7,7 @@ import type {
   SyncSchemaVersion,
   SyncScope,
   SyncVersion,
+  SyncVersionWatermark,
 } from "@openagentsinc/khala-sync"
 import type { Effect } from "effect"
 
@@ -107,11 +108,16 @@ export interface KhalaSyncLocalStore {
    * in ONE local transaction: delete the scope's rows, insert the snapshot,
    * set the cursor. The cursor may move backwards here — the snapshot is a
    * full replacement, not an incremental apply. Other scopes are untouched.
+   *
+   * A `SyncVersionWatermark` of 0 means "scope start" (the snapshot found a
+   * scope with no committed versions, e.g. a `scope_reset` refetch): the
+   * scope's rows are deleted and the durable cursor is CLEARED (back to
+   * `null`/never-synced), never stored as 0.
    */
   readonly resetScope: (
     scope: SyncScope,
     entities: ReadonlyArray<ConfirmedEntity>,
-    cursor: SyncVersion,
+    cursor: SyncVersion | SyncVersionWatermark,
   ) => Effect.Effect<void, KhalaSyncClientStoreError>
   /** Confirmed entities for a scope (optionally one entity type), ordered. */
   readonly readEntities: (

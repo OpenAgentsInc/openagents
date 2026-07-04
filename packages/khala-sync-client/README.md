@@ -20,11 +20,24 @@ Components (KS-5 workstream):
   converge to server state with zero optimistic residue, the durable
   SQLite tables are inspected directly at every step, and rebase is
   deterministic.
-- **Sync session** — per-scope state machine
-  `idle → bootstrapping → catching_up → live`, with `must_refetch` from any
-  state. Transport = hibernated WebSocket live tail + HTTP bootstrap and
-  offset-resumable catch-up. The durable cursor, not the connection, is the
-  source of truth; reconnect resumes from `(scope, cursor)`.
+- **Sync session + transport** — ✅ shipped (KS-5.3,
+  `createKhalaSyncSession` + `createHttpKhalaSyncTransport`). Per-scope
+  state machine `idle → bootstrapping → catching_up → live`, with
+  `must_refetch` from any state (server `MustRefetchFrame` or a
+  `cursor_behind_retained_window` error → reset + automatic re-bootstrap,
+  bounded jittered retries). Transport is an injectable seam
+  (`KhalaSyncTransport`); the production implementation speaks the SPEC §3
+  routes (`POST /api/sync/push`, `POST /api/sync/bootstrap`,
+  `GET /api/sync/log`, `WS /api/sync/connect`) over fetch + WebSocket with
+  bearer auth, every payload round-tripped through the khala-sync codecs.
+  The durable cursor, not the connection, is the source of truth:
+  reconnect resumes catch-up from `(scope, cursor)` with jittered
+  exponential backoff, forever, until `unsubscribe`/`close`. The push loop
+  drains the durable FIFO queue in batches; rejections ACK in-band
+  (surfaced through `onRejection`) and never block the queue; a terminal
+  fault parks the queue until the next mutate/subscribe re-kick. All
+  timing is injected (`sleep`/`random`) — no wall-clock reads in tested
+  logic; the suite runs against a deterministic fake transport.
 - **v1 offline contract** — online-optimistic: reads work offline, pushes
   wait for connectivity (bounded queue, honest expiry).
 
