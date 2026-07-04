@@ -31,7 +31,8 @@ describe('promise transition receipts', () => {
       toState: 'green',
     })
 
-    expect(evaluation.fromState).toBe('yellow')
+    // 2026-07-04.8 owner-directed revenue-refocus demotion
+    expect(evaluation.fromState).toBe('planned')
     expect(evaluation.registryVersion).toMatch(/^\d{4}-\d{2}-\d{2}/)
     expect(
       evaluation.checks.find(check => check.kind === 'promise_exists')?.result,
@@ -56,7 +57,8 @@ describe('promise transition receipts', () => {
       evaluatePromiseTransition({
         evidenceRefs: [],
         promiseId: 'autopilot.mission_briefing.v1',
-        toState: 'yellow',
+        // 2026-07-04.8: record is planned; planned->planned is the no-op
+        toState: 'planned',
       }).checks.find(check => check.kind === 'from_state_differs')?.result,
     ).toBe('failed')
   })
@@ -160,7 +162,8 @@ describe('promise transition receipts', () => {
     expect(denied.status).toBe(401)
     expect(recorded.status).toBe(201)
     expect(recordedBody.receipt).toMatchObject({
-      fromState: 'yellow',
+      // 2026-07-04.8 owner-directed revenue-refocus demotion
+      fromState: 'planned',
       promiseId: 'autopilot.mission_briefing.v1',
       receiptId: 'promise_transition_test-receipt-1',
       result: 'failed',

@@ -1,5 +1,31 @@
 # Promise Registry
 
+> Registry `2026-07-04.8` is the owner-directed revenue-refocus demotion
+> pass (2026-07-04) and flips NO promise green (green stays exactly 34).
+> On owner direction, 29 non-green records outside the current focus —
+> Khala Code, the services/QA Swarm revenue engine, payments/credits,
+> Reactor, and Autopilot Lead Gen — are demoted to `planned`: 19 yellow and
+> 10 red records spanning the legacy Autopilot desktop feature family,
+> Artanis labor lanes, Pylon compute-mining, the training-run world-first
+> claims, the cloud fine-tuning/sandbox suite, the decentralized serving
+> fabric, the bounties surface, the mobile companions, referral bitcoin
+> streams, provider compliant-usage labor, accepted-outcomes-per-kWh, and
+> agents.x_claim_reward. Demotion is a focus statement, not an evidence
+> claim: each record keeps its evidence, blockers, and public-claim
+> lineage, and demoted former-red records must not be re-marketed without
+> receipt-first re-promotion. In-focus non-green records are untouched
+> (khala_code.*, qa.*/qa_swarm.*, business.*, workrooms.*, capture/privacy,
+> free-tier/provider/credits inference, payments.*, sites fulfillment
+> surfaces, orange check, cloud coding sessions, and the standing red
+> referral.refer_once_earn_forever.v1 overclaim marker). All training.* and
+> marketplace.* records were already planned. New current-plan records from
+> this arc are already present: reactor.private_deployment.v1,
+> reactor.model_provenance.v1, reactor.model_policy.v1 (2026-07-04.7).
+> Source plans: `docs/fable/2026-07-03-apollo-outbound-sales-plan.md`
+> (Campaign B "Own your AI"), `docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md`,
+> epic #8261; audit:
+> `docs/fable/2026-07-04-revenue-refocus-registry-audit.md`.
+
 > Registry `2026-07-04.7` is the RX-1 Reactor planned-registry boundary
 > pass (#8271) and flips NO promise state (green stays exactly 34). New
 > planned-only records now make the private/customer-controlled open-model

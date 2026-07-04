@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-07-04.7'
+export const PublicProductPromisesVersion = '2026-07-04.8'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -339,7 +339,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'autopilot.repo_study_packets.v1',
         productArea: 'Autopilot repo studying',
         audience: ['agent', 'operator', 'developer', 'public'],
-        state: 'yellow',
+        state: 'planned',
         claim:
           'OpenAgents is dogfooding public, refs-only StudyBench study packets on its own public repository to improve OpenAgents-codebase work under Probe, Forge, Blueprint, and product-promise gates.',
         safeCopy:
@@ -375,7 +375,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'autopilot.external_repo_studying_pilot.v1',
         productArea: 'Autopilot repo studying',
         audience: ['agent', 'operator', 'developer'],
-        state: 'yellow',
+        state: 'planned',
         claim:
           'OpenAgents exposes a refs-only external-repo studying pilot surface that runs the study-packet, graph, verification, eval, and coder-context pipeline on a non-OpenAgents fixture repository.',
         safeCopy:
@@ -728,7 +728,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'claims.world_first_ai_training_paid_bitcoin.v1',
         productArea: 'public claims',
         audience: ['operator', 'public'],
-        state: 'red',
+        state: 'planned',
         claim:
           'OpenAgents ran the first AI model training run paid in Bitcoin to consumer compute (Episode 238 world-first claim).',
         safeCopy:
@@ -758,7 +758,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'claims.world_first_public_llm_computer_training_run.v1',
         productArea: 'public claims',
         audience: ['operator', 'public'],
-        state: 'red',
+        state: 'planned',
         claim:
           'OpenAgents ran the first public LLM-computer training run (Episode 238 world-first claim).',
         safeCopy:
@@ -791,7 +791,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'pylon.consumer_compute_earns_bitcoin_self_serve.v1',
         productArea: 'Pylon',
         audience: ['contributor', 'agent', 'operator', 'public'],
-        state: 'red',
+        state: 'planned',
         claim:
           'Anybody can plug in consumer compute, join the Tassadar run, and get automatically paid Bitcoin for verified work — the Episode 238 core promise.',
         safeCopy:
@@ -1008,7 +1008,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'pylon.v0_3_multi_earning_node.v1',
         productArea: 'Pylon',
         audience: ['contributor', 'agent', 'public'],
-        state: 'red',
+        state: 'planned',
         claim:
           'Pylon v1.0 becomes one piece of node software that can earn Bitcoin in multiple ways, including training, Forum or coding-agent-adjacent work, and payment-integrated tasks.',
         safeCopy:
@@ -1263,7 +1263,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'sites.referral_bitcoin_stream.v1',
         productArea: 'Sites',
         audience: ['customer', 'contributor', 'public'],
-        state: 'yellow',
+        state: 'planned',
         claim:
           'Autopilot Sites can carry built-in referral links and later pay referrers a Bitcoin stream when referred users become paying customers.',
         safeCopy:
@@ -1534,7 +1534,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'autopilot.agentic_labor_products.v1',
         productArea: 'Autopilot',
         audience: ['customer', 'user', 'public'],
-        state: 'yellow',
+        state: 'planned',
         claim:
           'OpenAgents sells agentic labor/products instead of dumb base-inference resale.',
         safeCopy:
@@ -1621,7 +1621,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'autopilot.control_center_fanout_marketplace.v1',
         productArea: 'Autopilot',
         audience: ['operator', 'agent'],
-        state: 'yellow',
+        state: 'planned',
         claim:
           'Control center / Autopilot can fan out work to many agents and pull from a plugin marketplace.',
         safeCopy:
@@ -1717,7 +1717,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'provider.compliant_usage_labor.v1',
         productArea: 'labor',
         audience: ['contributor', 'agent', 'operator', 'public'],
-        state: 'yellow',
+        state: 'planned',
         claim:
           'Contributors can connect their own provider accounts or prepaid API budgets and earn Bitcoin by doing useful work with that compliant usage through the agent labor market; OpenAgents never resells provider access.',
         safeCopy:
@@ -1773,7 +1773,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'autopilot.mission_briefing.v1',
         productArea: 'Autopilot',
         audience: ['agent', 'user', 'operator'],
-        state: 'yellow',
+        state: 'planned',
         claim:
           'Long-running Autopilot missions should return a mission briefing that shows what happened, what changed, what is blocked, what decision is needed, costs, risks, artifacts, receipts, and proof refs.',
         safeCopy:
@@ -1877,7 +1877,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'mobile.voice_approval_companion.v1',
         productArea: 'mobile and voice',
         audience: ['user', 'agent'],
-        state: 'yellow',
+        state: 'planned',
         claim:
           'Voice and mobile should let users inspect workrooms, review pending approvals, issue bounded commands, and see the same approval receipts without bypassing server-side policy.',
         safeCopy:
@@ -2047,7 +2047,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'agents.x_claim_reward.v1',
         productArea: 'agent-readable surfaces',
         audience: ['agent', 'user', 'operator', 'public'],
-        state: 'yellow',
+        state: 'planned',
         claim:
           'An owner who verifies agent ownership with an X verification tweet can become eligible for a promotional 1000-sat reward.',
         safeCopy:
@@ -2710,7 +2710,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'artanis.pylon_support_responder.v1',
         productArea: 'Pylon',
         audience: ['contributor', 'operator'],
-        state: 'yellow',
+        state: 'planned',
         claim:
           'A Pylon user who posts a device or training question on the Forum gets a substantive reply from the cloud-resident Artanis mind within minutes - Artanis watches new Forum activity on its tick, answers device-capability and training-run questions with live platform data, and tips good contributor posts from its gated ledger budget.',
         safeCopy:
@@ -2846,7 +2846,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'artanis.labor_requester.v1',
         productArea: 'Pylon',
         audience: ['contributor', 'operator'],
-        state: 'yellow',
+        state: 'planned',
         claim:
           'Artanis can request labor: on its scheduled tick the cloud mind proposes a bounded, budgeted work request (schema-validated, escrowed from its seeded ledger balance under a per-tick labor budget), publishes it through the same Forum-and-relay path any requester uses, and accepts delivered work only when validator re-execution of the stated verification command passes.',
         safeCopy:
@@ -2883,7 +2883,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'autopilot.desktop_gui_client.v1',
         productArea: 'Autopilot',
         audience: ['operator', 'agent', 'user'],
-        state: 'yellow',
+        state: 'planned',
         claim:
           'Autopilot Desktop is a GUI client for observing and steering local Autopilot coding sessions.',
         safeCopy:
@@ -3105,7 +3105,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'autopilot_sites.partner_payout_ledger.v1',
         productArea: 'payments',
         audience: ['partner', 'operator'],
-        state: 'red',
+        state: 'planned',
         claim:
           'Autopilot Sites/Agency partners can earn Bitcoin payouts when their referred customers become paying OpenAgents customers.',
         safeCopy:
@@ -3164,7 +3164,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'autopilot.cloud_credits_ui.v1',
         productArea: 'payments',
         audience: ['customer', 'user'],
-        state: 'yellow',
+        state: 'planned',
         claim:
           'Autopilot users can see their cloud credit balance and a cost preview before and during a session.',
         safeCopy:
@@ -3197,7 +3197,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'mobile.voice_session_evidence_transcript_ingest.v1',
         productArea: 'mobile and voice',
         audience: ['user', 'operator'],
-        state: 'red',
+        state: 'planned',
         claim:
           'Spoken commands and intent can be ingested into Autopilot workrooms as transcribed, approval-gated action proposals.',
         safeCopy:
@@ -3255,7 +3255,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'metrics.accepted_outcomes_per_kwh.v1',
         productArea: 'metrics',
         audience: ['operator', 'public', 'contributor'],
-        state: 'yellow',
+        state: 'planned',
         claim:
           'OpenAgents defines and will measure Accepted Outcomes Per Kilowatt-Hour (AO/kWh) — verified, accepted outcomes produced per kilowatt-hour of energy — as the primary efficiency metric for converting electricity into accepted agent work.',
         safeCopy:
@@ -3287,7 +3287,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'autopilot.builtin_compute_agent.v1',
         productArea: 'autopilot',
         audience: ['user', 'public'],
-        state: 'yellow',
+        state: 'planned',
         claim:
           'Autopilot Desktop ships a built-in, out-of-the-box agent so a user with no agent and no API key can install one desktop installer, go online, and have a working agent. It runs on OpenAgents-provided compute — the device’s own compute and/or OpenAgents’ managed cloud model set (e.g. a hosted Gemini set offered free to some users) — so no user-supplied key is required.',
         safeCopy:
@@ -3325,7 +3325,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'autopilot.local_apple_fm_tool_chat.v1',
         productArea: 'autopilot',
         audience: ['user', 'agent', 'operator'],
-        state: 'yellow',
+        state: 'planned',
         claim:
           'An Apple Silicon user can run a basic Autopilot chat and tool loop entirely locally through Apple Foundation Models, without OpenAgents hosted compute or user-supplied cloud model keys.',
         safeCopy:
@@ -3594,7 +3594,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'inference.decentralized_serving_fabric.v1',
         productArea: 'inference gateway',
         audience: ['contributor', 'operator', 'developer', 'public'],
-        state: 'red',
+        state: 'planned',
         claim:
           'The Pylon network is a decentralized model-serving fabric — every Pylon can load weights and serve inference (small models whole, large models sharded across N Pylons via the shard-WAN pipeline) — supplying the inference gateway and paying serving nodes Bitcoin revshare against exact-parity receipts.',
         safeCopy:
@@ -3748,7 +3748,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'cloud.fine_tuning_service.v1',
         productArea: 'OpenAgents Cloud',
         audience: ['agent', 'developer', 'customer', 'public'],
-        state: 'red',
+        state: 'planned',
         claim:
           'OpenAgents Cloud offers fine-tuning as a buyable primitive: submit a base model + dataset, run a fine-tune on the network, and use the resulting model through the inference gateway, billed from a credit balance.',
         safeCopy:
@@ -3786,7 +3786,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'cloud.sandbox_compute_service.v1',
         productArea: 'OpenAgents Cloud',
         audience: ['agent', 'developer', 'customer', 'public'],
-        state: 'red',
+        state: 'planned',
         claim:
           'OpenAgents Cloud offers sandbox compute as a buyable primitive: agents and humans rent isolated, metered execution sandboxes to run code and agentic tasks, billed from a credit balance.',
         safeCopy:
@@ -4098,7 +4098,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'autopilot.bitcoin_payment_visualization.v1',
         productArea: 'Autopilot desktop',
         audience: ['agent', 'user', 'operator'],
-        state: 'yellow',
+        state: 'planned',
         claim:
           'Real Bitcoin settlements are visualized in the agent world as gold particles flying agent-to-agent, each particle bound to a real settlement receipt and clickable to its evidence.',
         safeCopy:
@@ -4138,7 +4138,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'autopilot.pylon_growth_visualization.v1',
         productArea: 'Autopilot desktop',
         audience: ['agent', 'user', 'operator'],
-        state: 'yellow',
+        state: 'planned',
         claim:
           'A Pylon visibly grows in the agent world — crystal scale, facets, and brightness step up by tier — as it earns cumulative settled sats.',
         safeCopy:
@@ -4175,7 +4175,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'autopilot.agent_character_creation.v1',
         productArea: 'Autopilot desktop',
         audience: ['agent', 'user', 'operator'],
-        state: 'yellow',
+        state: 'planned',
         claim:
           'Autopilot Desktop has source-level character-creation onboarding: a new Pylon warps into the scene, spawns an agent identity, projects customization progress, posts one bounded Forum introduction when agent posting credentials exist, and runs read-only work search after onboarding.',
         safeCopy:
@@ -4848,7 +4848,7 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'contributors.bounties_surface.v1',
         productArea: 'contributors',
         audience: ['contributor', 'agent', 'public'],
-        state: 'red',
+        state: 'planned',
         claim:
           'openagents.com/bounties lists current contributor bounties and how to claim them.',
         safeCopy:
@@ -5179,6 +5179,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-04.8 is the owner-directed revenue-refocus demotion pass (2026-07-04) and flips NO promise green — green stays exactly 34. On owner direction, 29 non-green records outside the current focus (Khala Code, the services/QA Swarm revenue engine, payments/credits, Reactor, and Autopilot Lead Gen) are demoted to planned: 19 yellow and 10 red records across the legacy Autopilot desktop feature family (desktop_gui_client, mission_briefing, builtin_compute_agent, cloud_credits_ui, control_center_fanout_marketplace, repo_study_packets, external_repo_studying_pilot, agent_character_creation, agentic_labor_products, bitcoin_payment_visualization, pylon_growth_visualization, local_apple_fm_tool_chat), Artanis labor lanes (labor_requester, pylon_support_responder), Pylon compute-mining (consumer_compute_earns_bitcoin_self_serve, v0_3_multi_earning_node), training-run claims (world_first_ai_training_paid_bitcoin, world_first_public_llm_computer_training_run), cloud service suite (fine_tuning_service, sandbox_compute_service), decentralized serving fabric, bounties surface, mobile companions (voice_approval_companion, voice_session_evidence_transcript_ingest), referral bitcoin streams (sites.referral_bitcoin_stream, autopilot_sites.partner_payout_ledger), provider compliant-usage labor, accepted-outcomes-per-kWh metrics, and agents.x_claim_reward. Demotion is a focus statement, not an evidence claim: prior yellow/red evidence and public-claim history remain in each record and in prior registry notes; demoted red records still carry their original on-camera claim lineage and must not be re-marketed without receipt-first re-promotion. Kept non-green in place (in-focus): khala_code.*, qa.*/qa_swarm.*, business.*, workrooms.*, data.* capture, privacy.khala_paid_capture_optout, inference free-tier/providers/gateway-credits, payments.* (credits purchase + accepted-outcome economics), autopilot_sites site/email/hostname fulfillment surfaces, identity.orange_check_forum_signal, autopilot.cloud_coding_sessions (Reactor-adjacent), and referral.refer_once_earn_forever (stays red as the standing overclaim marker). All training.* and marketplace.* records were already planned. Source plans: docs/fable/2026-07-03-apollo-outbound-sales-plan.md (Campaign B Own your AI), docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md, epic #8261.',
       'Registry 2026-07-04.7 is the RX-1 Reactor planned-registry boundary pass (#8271) and flips NO promise state — green stays exactly 34. New Reactor records land planned only: reactor.private_deployment.v1, reactor.model_provenance.v1, and reactor.model_policy.v1. The records make the private/customer-controlled open-model deployment lane, typed provenance catalog, and customer model-policy gate visible without claiming availability, pricing, compliance, data-custody proof, US-origin enforcement, model install, or serving. Modeled assessment/pilot/managed package bands are staged in NEEDS_OWNER.md for owner review only; public copy remains blocked until policy/refusal/eval/metering/dogfood or customer deployment receipts exist.',
       'Registry 2026-07-04.6 is the RL-9 external-demand provenance and first-dollar evidence automation pass (#8253) and flips NO promise green — green stays exactly 34. proof.demand_provenance.v1 remains green as a labeling-discipline promise: source now has revenue_event_provenance, which labels Khala Code paid-plan and QA Swarm first-engagement revenue events as internal or external and exposes a public-safe first-dollar evidence bundle at /api/public/revenue-loop/first-dollar-evidence/{bundleRef}. Locked business factory metrics join exact revenue-event rows and keep internal/external USD-cent counts split. This is evidence-shaped for registry evidenceRefs; it does not create external-revenue copy, paid-plan availability, first paid delivery, payout, settlement, or promise-green authority without owner review.',
       'Registry 2026-07-04.5 is the RL-8 QA Swarm first-engagement checkout/intake spine pass (#8252) and flips NO promise green — green stays exactly 34. qa_swarm.service_packages.v1 remains yellow: source now has an admin-token first-engagement intake route and public readback that records public-safe business intake plus checkout/deposit evidence refs, provisions a QA Swarm Audit workspace, creates an active accepted-outcome service-promise contract, and writes the Swarm Audit first-report row into business_commitment_ledger. This clears only blocker.product_promises.qa_swarm_checkout_or_intake_receipts_missing. First paid delivery receipts, self-serve hosted delivery, broad hosted availability, payout, settlement, target access, and promise-green authority remain blocked.',

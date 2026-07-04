@@ -197,10 +197,12 @@ describe('public product promises document', () => {
       ]),
     })
     expect(
-      promiseById.get('qa_swarm.service_packages.v1')?.blockerRefs,
-    ).not.toContain(
-      'blocker.product_promises.qa_swarm_checkout_or_intake_receipts_missing',
-    )
+      Array.from(
+        promiseById.get('qa_swarm.service_packages.v1')?.blockerRefs ?? [],
+      ).includes(
+        'blocker.product_promises.qa_swarm_checkout_or_intake_receipts_missing',
+      ),
+    ).toBe(false)
 
     const qaSwarmCopy = [
       promiseById.get('qa_swarm.product_surface.v1')?.safeCopy,
@@ -424,7 +426,8 @@ describe('public product promises document', () => {
     const builtinCompute = promiseById.get('autopilot.builtin_compute_agent.v1')
 
     expect(desktop).toMatchObject({
-      state: 'yellow',
+      // 2026-07-04.8 owner-directed revenue-refocus demotion
+      state: 'planned',
       blockerRefs: [
         'blocker.product_promises.autopilot_desktop_owner_review_green_pending',
         'blocker.product_promises.autopilot_desktop_live_runtimes_not_wired',
@@ -459,7 +462,8 @@ describe('public product promises document', () => {
     )
 
     expect(builtinCompute).toMatchObject({
-      state: 'yellow',
+      // 2026-07-04.8 owner-directed revenue-refocus demotion
+      state: 'planned',
       blockerRefs: [
         'blocker.product_promises.builtin_compute_agent_signed_recut_missing',
         'blocker.product_promises.builtin_compute_agent_live_from_install_smoke_missing',
@@ -827,7 +831,8 @@ describe('public product promises document', () => {
       promise => promise.promiseId === 'autopilot.agent_character_creation.v1',
     )
     expect(agentCharacterCreationPromise).toBeDefined()
-    expect(agentCharacterCreationPromise?.state).toBe('yellow')
+    // 2026-07-04.8 owner-directed revenue-refocus demotion
+    expect(agentCharacterCreationPromise?.state).toBe('planned')
     expect(agentCharacterCreationPromise?.evidenceRefs).toEqual(
       expect.arrayContaining([
         'https://github.com/OpenAgentsInc/openagents/issues/6861',
@@ -953,7 +958,8 @@ describe('public product promises document', () => {
     const repeatedAgentCharacterCreationPromise = decoded.promises.find(
       promise => promise.promiseId === 'autopilot.agent_character_creation.v1',
     )
-    expect(repeatedAgentCharacterCreationPromise?.state).toBe('yellow')
+    // 2026-07-04.8 owner-directed revenue-refocus demotion
+    expect(repeatedAgentCharacterCreationPromise?.state).toBe('planned')
     expect(repeatedAgentCharacterCreationPromise?.evidenceRefs).toEqual(
       expect.arrayContaining([
         'https://github.com/OpenAgentsInc/openagents/issues/6861',
@@ -1076,7 +1082,8 @@ describe('public product promises document', () => {
       expect.arrayContaining([
         expect.objectContaining({
           promiseId: 'autopilot.mission_briefing.v1',
-          state: 'yellow',
+          // 2026-07-04.8 owner-directed revenue-refocus demotion
+          state: 'planned',
         }),
         expect.objectContaining({
           promiseId: 'autopilot.decision_queue.v1',
@@ -1103,7 +1110,8 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'mobile.voice_approval_companion.v1',
-          state: 'yellow',
+          // 2026-07-04.8 owner-directed revenue-refocus demotion
+          state: 'planned',
           evidenceRefs: expect.arrayContaining([
             'apps/openagents.com/workers/api/src/mobile-workroom-approval-projection-routes.ts',
             'route:/api/mobile/workroom-approval-projection',
@@ -1402,7 +1410,7 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'claims.world_first_ai_training_paid_bitcoin.v1',
-          state: 'red',
+          state: 'planned',
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.world_first_evidence_pack_missing',
             'blocker.product_promises.world_first_owner_signed_upgrade_missing',
@@ -1414,7 +1422,7 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'claims.world_first_public_llm_computer_training_run.v1',
-          state: 'red',
+          state: 'planned',
           // The definition-missing blocker is cleared by
           // docs/launch/2026-06-20-llm-computer-training-run-definition.md, and
           // the evidence-pack-missing blocker is cleared by the focused
@@ -1432,7 +1440,7 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'pylon.consumer_compute_earns_bitcoin_self_serve.v1',
-          state: 'red',
+          state: 'planned',
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.consumer_compute_self_serve_scale_methodology_missing',
             'blocker.product_promises.windows_wsl_consumer_install_coverage_missing',
@@ -1484,7 +1492,7 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'cloud.fine_tuning_service.v1',
-          state: 'red',
+          state: 'planned',
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.cloud_fine_tuning_live_intake_disabled',
             'blocker.product_promises.cloud_fine_tuning_live_pricing_missing',
@@ -1494,7 +1502,7 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'cloud.sandbox_compute_service.v1',
-          state: 'red',
+          state: 'planned',
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.cloud_sandbox_live_rent_surface_disabled',
             'blocker.product_promises.cloud_sandbox_live_pricing_missing',
@@ -1593,7 +1601,7 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'pylon.v0_3_multi_earning_node.v1',
-          state: 'red',
+          state: 'planned',
         }),
         expect.objectContaining({
           promiseId: 'training.verification_classes.v1',
@@ -1651,7 +1659,7 @@ describe('public product promises document', () => {
           ]),
           promiseId: 'autopilot.repo_study_packets.v1',
           safeCopy: expect.stringContaining('dogfooding'),
-          state: 'yellow',
+          state: 'planned',
         }),
         expect.objectContaining({
           blockerRefs: [],
@@ -1717,7 +1725,7 @@ describe('public product promises document', () => {
             'apps/openagents.com/docs/2026-06-10-compliant-usage-labor-policy.md',
           ]),
           promiseId: 'provider.compliant_usage_labor.v1',
-          state: 'yellow',
+          state: 'planned',
         }),
         expect.objectContaining({
           blockerRefs: [],
@@ -1811,7 +1819,7 @@ describe('public product promises document', () => {
             'clients/khala-code-desktop/tests/apple-fm-sidecar.test.ts',
           ]),
           promiseId: 'autopilot.local_apple_fm_tool_chat.v1',
-          state: 'yellow',
+          state: 'planned',
         }),
       ]),
     )
@@ -1891,7 +1899,8 @@ describe('public product promises document', () => {
       promise => promise.promiseId === 'autopilot.repo_study_packets.v1',
     )
     expect(repoStudyPacketPromise).toMatchObject({
-      state: 'yellow',
+      // 2026-07-04.8 owner-directed revenue-refocus demotion
+      state: 'planned',
     })
     expect(
       `${repoStudyPacketPromise?.claim} ${repoStudyPacketPromise?.safeCopy}`,
@@ -1910,7 +1919,8 @@ describe('public product promises document', () => {
         promise.promiseId === 'autopilot.external_repo_studying_pilot.v1',
     )
     expect(externalRepoStudyPromise).toMatchObject({
-      state: 'yellow',
+      // 2026-07-04.8 owner-directed revenue-refocus demotion
+      state: 'planned',
     })
     expect(
       `${externalRepoStudyPromise?.claim} ${externalRepoStudyPromise?.safeCopy}`,
@@ -1944,7 +1954,8 @@ describe('public product promises document', () => {
       'claims.world_first_ai_training_paid_bitcoin.v1',
     )
     expect(paidBitcoin).toMatchObject({
-      state: 'red',
+      // 2026-07-04.8 owner-directed revenue-refocus demotion (training claims)
+      state: 'planned',
       blockerRefs: expect.arrayContaining([
         'blocker.product_promises.world_first_evidence_pack_missing',
         'blocker.product_promises.world_first_owner_signed_upgrade_missing',
@@ -1959,7 +1970,8 @@ describe('public product promises document', () => {
       'claims.world_first_public_llm_computer_training_run.v1',
     )
     expect(llmComputer).toMatchObject({
-      state: 'red',
+      // 2026-07-04.8 owner-directed revenue-refocus demotion (training claims)
+      state: 'planned',
       blockerRefs: [
         'blocker.product_promises.world_first_owner_signed_upgrade_missing',
       ],
@@ -2047,7 +2059,8 @@ describe('public product promises document', () => {
 
     const payments = byId.get('autopilot.bitcoin_payment_visualization.v1')
     expect(payments).toMatchObject({
-      state: 'yellow',
+      // 2026-07-04.8 owner-directed revenue-refocus demotion
+      state: 'planned',
       blockerRefs: [
         'blocker.product_promises.payment_visualization_owner_review_green_pending',
       ],
@@ -2077,7 +2090,8 @@ describe('public product promises document', () => {
 
     const growth = byId.get('autopilot.pylon_growth_visualization.v1')
     expect(growth).toMatchObject({
-      state: 'yellow',
+      // 2026-07-04.8 owner-directed revenue-refocus demotion
+      state: 'planned',
       blockerRefs: [
         'blocker.product_promises.pylon_growth_owner_review_green_pending',
       ],
@@ -2115,8 +2129,9 @@ describe('public product promises document', () => {
       'pylon.release_tomorrow.v1': 'green',
       'pylon.first_real_model_training_run.v1': 'planned',
       'pylon.largest_decentralized_training_claim.v1': 'planned',
-      'pylon.consumer_compute_earns_bitcoin_self_serve.v1': 'red',
-      'pylon.v0_3_multi_earning_node.v1': 'red',
+      // 2026-07-04.8 owner-directed revenue-refocus demotion
+      'pylon.consumer_compute_earns_bitcoin_self_serve.v1': 'planned',
+      'pylon.v0_3_multi_earning_node.v1': 'planned',
       'pylon.five_bitcoin_revenue_streams.v1': 'planned',
       'pylon.compute_revenue_modes.v1': 'planned',
       'pylon.data_trace_revenue.v1': 'planned',
@@ -2211,7 +2226,8 @@ describe('public product promises document', () => {
     )
 
     expect(partnerPromise).toMatchObject({
-      state: 'red',
+      // 2026-07-04.8 owner-directed revenue-refocus demotion
+      state: 'planned',
       blockerRefs: [
         'blocker.product_promises.partner_first_real_payout_pending',
       ],
@@ -2492,7 +2508,8 @@ describe('public product promises document', () => {
     )
 
     expect(xClaimRewardPromise).toMatchObject({
-      state: 'yellow',
+      // 2026-07-04.8 owner-directed revenue-refocus demotion
+      state: 'planned',
       blockerRefs: [
         'blocker.product_promises.x_claim_reward_live_dispatch_smoke_missing',
       ],
