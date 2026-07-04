@@ -33,6 +33,7 @@ import { Route as BlogSlugRouteImport } from './routes/blog/$slug'
 import { Route as AutopilotLegalRouteImport } from './routes/autopilot/legal'
 import { Route as SitesDemoCheckoutReturnActionRouteImport } from './routes/sites/demo-checkout/$returnAction'
 import { Route as BusinessKpiEngagementRefRouteImport } from './routes/business/kpi/$engagementRef'
+import { Route as PylonCodexAssignmentsAssignmentRefRouteImport } from './routes/pylon/codex/assignments/$assignmentRef'
 
 const TassadarRoute = TassadarRouteImport.update({
   id: '/tassadar',
@@ -156,6 +157,12 @@ const BusinessKpiEngagementRefRoute =
     path: '/kpi/$engagementRef',
     getParentRoute: () => BusinessRoute,
   } as any)
+const PylonCodexAssignmentsAssignmentRefRoute =
+  PylonCodexAssignmentsAssignmentRefRouteImport.update({
+    id: '/pylon/codex/assignments/$assignmentRef',
+    path: '/pylon/codex/assignments/$assignmentRef',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -182,6 +189,7 @@ export interface FileRoutesByFullPath {
   '/autopilot/': typeof AutopilotIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
   '/sites/demo-checkout/$returnAction': typeof SitesDemoCheckoutReturnActionRoute
+  '/pylon/codex/assignments/$assignmentRef': typeof PylonCodexAssignmentsAssignmentRefRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -208,6 +216,7 @@ export interface FileRoutesByTo {
   '/autopilot': typeof AutopilotIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
   '/sites/demo-checkout/$returnAction': typeof SitesDemoCheckoutReturnActionRoute
+  '/pylon/codex/assignments/$assignmentRef': typeof PylonCodexAssignmentsAssignmentRefRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -235,6 +244,7 @@ export interface FileRoutesById {
   '/autopilot/': typeof AutopilotIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
   '/sites/demo-checkout/$returnAction': typeof SitesDemoCheckoutReturnActionRoute
+  '/pylon/codex/assignments/$assignmentRef': typeof PylonCodexAssignmentsAssignmentRefRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -263,6 +273,7 @@ export interface FileRouteTypes {
     | '/autopilot/'
     | '/business/kpi/$engagementRef'
     | '/sites/demo-checkout/$returnAction'
+    | '/pylon/codex/assignments/$assignmentRef'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -289,6 +300,7 @@ export interface FileRouteTypes {
     | '/autopilot'
     | '/business/kpi/$engagementRef'
     | '/sites/demo-checkout/$returnAction'
+    | '/pylon/codex/assignments/$assignmentRef'
   id:
     | '__root__'
     | '/'
@@ -315,6 +327,7 @@ export interface FileRouteTypes {
     | '/autopilot/'
     | '/business/kpi/$engagementRef'
     | '/sites/demo-checkout/$returnAction'
+    | '/pylon/codex/assignments/$assignmentRef'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -336,6 +349,7 @@ export interface RootRouteChildren {
   PreviewLandingRoute: typeof PreviewLandingRoute
   SitesDemoCheckoutRoute: typeof SitesDemoCheckoutRouteWithChildren
   AutopilotIndexRoute: typeof AutopilotIndexRoute
+  PylonCodexAssignmentsAssignmentRefRoute: typeof PylonCodexAssignmentsAssignmentRefRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -508,6 +522,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BusinessKpiEngagementRefRouteImport
       parentRoute: typeof BusinessRoute
     }
+    '/pylon/codex/assignments/$assignmentRef': {
+      id: '/pylon/codex/assignments/$assignmentRef'
+      path: '/pylon/codex/assignments/$assignmentRef'
+      fullPath: '/pylon/codex/assignments/$assignmentRef'
+      preLoaderRoute: typeof PylonCodexAssignmentsAssignmentRefRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -595,6 +616,8 @@ const rootRouteChildren: RootRouteChildren = {
   PreviewLandingRoute: PreviewLandingRoute,
   SitesDemoCheckoutRoute: SitesDemoCheckoutRouteWithChildren,
   AutopilotIndexRoute: AutopilotIndexRoute,
+  PylonCodexAssignmentsAssignmentRefRoute:
+    PylonCodexAssignmentsAssignmentRefRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -186,6 +186,23 @@ The Start staging app now owns `/sites/demo-checkout` and
 - The route test keeps unsafe checkout query/material words absent from the
   rendered shell and script contract.
 
+## Landed Slice 12: Pylon Codex Assignment Status
+
+The Start staging app now owns
+`/pylon/codex/assignments/$assignmentRef` as the public, owner-scoped status
+surface for one Khala coding delegation.
+
+- The route preserves `data-route="pylon-codex-assignment-status"`.
+- The assignment ref remains visible in the page shell.
+- The closeout commands remain owner-scoped CLI instructions:
+  `pylon khala status --assignment-ref ... --json` and
+  `pylon khala proof ... --json`.
+- The green-evidence guard remains explicit:
+  `proofChecklist.blockerRefs` must be empty and
+  `pylon-codex-own-capacity` token rows must be exact.
+- The route test keeps raw trace chunks, safe-metadata JSON, and bearer-token
+  language out of the rendered shell.
+
 ## Boundary
 
 This is not the final TS-6 closure. The live `openagents.com` Worker still
