@@ -203,6 +203,25 @@ surface for one Khala coding delegation.
 - The route test keeps raw trace chunks, safe-metadata JSON, and bearer-token
   language out of the rendered shell.
 
+## Landed Slice 13: Artanis Trace Tree
+
+The Start staging app now owns `/artanis/traces` as the public ref-only RLM
+trace tree for Artanis.
+
+- The route preserves `data-route="artanis-traces"` and the
+  `Artanis execution tree` heading.
+- The FRLM conductor structure remains visible:
+  `FrlmConductor`, `SubQuery.Submit`, `SubQuery.Return`, and `Run.Done`.
+- Blueprint governance refs remain visible:
+  `program_signature.frlm_conductor.v1` and
+  `program_signature.rlm_leaf_executor.v1`.
+- The source/projection/privacy anchors remain public-safe:
+  `/api/operator/rlm/traces`, `openagents.operator.rlm_traces.v1`, and
+  `operator_refs_only`.
+- The authority boundary keeps `No direct execution authority`, and the route
+  test keeps raw prompts/traces, trajectory JSON, bearer tokens, and API keys
+  absent.
+
 ## Boundary
 
 This is not the final TS-6 closure. The live `openagents.com` Worker still

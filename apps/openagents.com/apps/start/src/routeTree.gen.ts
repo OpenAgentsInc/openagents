@@ -31,6 +31,7 @@ import { Route as ComponentsFamilyRouteImport } from './routes/components/$famil
 import { Route as CodeDownloadRouteImport } from './routes/code/download'
 import { Route as BlogSlugRouteImport } from './routes/blog/$slug'
 import { Route as AutopilotLegalRouteImport } from './routes/autopilot/legal'
+import { Route as ArtanisTracesRouteImport } from './routes/artanis/traces'
 import { Route as SitesDemoCheckoutReturnActionRouteImport } from './routes/sites/demo-checkout/$returnAction'
 import { Route as BusinessKpiEngagementRefRouteImport } from './routes/business/kpi/$engagementRef'
 import { Route as PylonCodexAssignmentsAssignmentRefRouteImport } from './routes/pylon/codex/assignments/$assignmentRef'
@@ -145,6 +146,11 @@ const AutopilotLegalRoute = AutopilotLegalRouteImport.update({
   path: '/autopilot/legal',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ArtanisTracesRoute = ArtanisTracesRouteImport.update({
+  id: '/artanis/traces',
+  path: '/artanis/traces',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SitesDemoCheckoutReturnActionRoute =
   SitesDemoCheckoutReturnActionRouteImport.update({
     id: '/$returnAction',
@@ -178,6 +184,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/run': typeof RunRoute
   '/tassadar': typeof TassadarRoute
+  '/artanis/traces': typeof ArtanisTracesRoute
   '/autopilot/legal': typeof AutopilotLegalRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/code/download': typeof CodeDownloadRoute
@@ -205,6 +212,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/run': typeof RunRoute
   '/tassadar': typeof TassadarRoute
+  '/artanis/traces': typeof ArtanisTracesRoute
   '/autopilot/legal': typeof AutopilotLegalRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/code/download': typeof CodeDownloadRoute
@@ -233,6 +241,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/run': typeof RunRoute
   '/tassadar': typeof TassadarRoute
+  '/artanis/traces': typeof ArtanisTracesRoute
   '/autopilot/legal': typeof AutopilotLegalRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/code/download': typeof CodeDownloadRoute
@@ -262,6 +271,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/run'
     | '/tassadar'
+    | '/artanis/traces'
     | '/autopilot/legal'
     | '/blog/$slug'
     | '/code/download'
@@ -289,6 +299,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/run'
     | '/tassadar'
+    | '/artanis/traces'
     | '/autopilot/legal'
     | '/blog/$slug'
     | '/code/download'
@@ -316,6 +327,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/run'
     | '/tassadar'
+    | '/artanis/traces'
     | '/autopilot/legal'
     | '/blog/$slug'
     | '/code/download'
@@ -344,6 +356,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   RunRoute: typeof RunRoute
   TassadarRoute: typeof TassadarRoute
+  ArtanisTracesRoute: typeof ArtanisTracesRoute
   AutopilotLegalRoute: typeof AutopilotLegalRoute
   CodeDownloadRoute: typeof CodeDownloadRoute
   PreviewLandingRoute: typeof PreviewLandingRoute
@@ -508,6 +521,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AutopilotLegalRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/artanis/traces': {
+      id: '/artanis/traces'
+      path: '/artanis/traces'
+      fullPath: '/artanis/traces'
+      preLoaderRoute: typeof ArtanisTracesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sites/demo-checkout/$returnAction': {
       id: '/sites/demo-checkout/$returnAction'
       path: '/$returnAction'
@@ -611,6 +631,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   RunRoute: RunRoute,
   TassadarRoute: TassadarRoute,
+  ArtanisTracesRoute: ArtanisTracesRoute,
   AutopilotLegalRoute: AutopilotLegalRoute,
   CodeDownloadRoute: CodeDownloadRoute,
   PreviewLandingRoute: PreviewLandingRoute,

@@ -619,8 +619,8 @@ LG-4 claim safety, and bundle budget before deploy review. See
 `/gym`, `/activity`, `/business/kpi/$engagementRef`, `/clients-preview`,
 `/components`, `/components/$family`, `/download`, `/login`, `/preview/landing`,
 `/run`, `/sites/demo-checkout`, and `/pylon/codex/assignments/$assignmentRef`
-with route parity tests, keeping the existing Foldkit counterparts until a real
-production route cutover allows delete-as-you-go. See
+and `/artanis/traces` with route parity tests, keeping the existing Foldkit
+counterparts until a real production route cutover allows delete-as-you-go. See
 `docs/fable/2026-07-04-ts-6-start-khala-tassadar-route-slice.md`.
 
 2026-07-04 TS-8 scaffold note: `clients/khala-mobile` now holds the Expo SDK 57

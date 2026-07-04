@@ -27,6 +27,7 @@ const routeBudgets = [
     path: '/pylon/codex/assignments/assignment.public.khala_coding.chatcmpl_example',
     marker: 'Pylon Codex assignment',
   },
+  { path: '/artanis/traces', marker: 'Artanis execution tree' },
   { path: '/autopilot/legal', marker: 'For legal teams' },
   { path: '/gym', marker: 'OpenAgents Gym' },
   { path: '/login', marker: 'Log in to OpenAgents' },
