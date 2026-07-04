@@ -116,8 +116,11 @@ const FLEET_RUN_SCOPE_PREFIX = "scope.fleet_run."
 /**
  * v1 scope-read gate (SPEC §7 invariant 7, v1 slice): a user may read
  * their OWN personal scope, and any `fleet_run` scope they own per
- * `khala_sync_scope_owners`. Everything else is denied — team/thread/
- * public scope auth arrives with KS-7.
+ * `khala_sync_scope_owners`. SUPERSEDED for route authorization by the
+ * KS-7.1 taxonomy-complete resolver (`resolveScopeRead` in
+ * ./scope-auth.ts, #8305), which covers team/thread/agent_run/public and
+ * fail-closes unknown kinds; this predicate remains only as the
+ * projection-local helper.
  */
 export const canReadScopeV1 = async (
   sql: SqlTag,

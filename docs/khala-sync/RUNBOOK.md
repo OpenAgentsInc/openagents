@@ -217,6 +217,42 @@ deliberate admin change — after which the fall-through + capture-rehydrate
 semantics above take over automatically. Verify recovery with the internal
 hub log route and the capture checkpoint lag query.
 
+## Access revocation (KS-7.1, #8305)
+
+Scope-read authorization is LIVE-AT-READ: every `/api/sync/log`,
+`/api/sync/bootstrap`, and `/api/sync/connect` request re-runs the KS-7.1
+resolver (D1 team membership, agent_runs ownership, `khala_sync_scope_owners`
+for fleet scopes), so a revoked user is denied on their very next request
+with no operator action. What live-at-read does NOT cover is a socket that
+is ALREADY connected to a scope's hub — that is the access-changed trigger's
+job.
+
+After ANY change that revokes scope access — removing/deactivating a
+`team_memberships` row (there is no in-Worker removal route today;
+memberships are operator-managed), or deleting a `khala_sync_scope_owners`
+row — fire the trigger for each affected scope:
+
+```
+curl -sS -X POST https://openagents.com/api/internal/khala-sync/hub/access-changed \
+  -H "Authorization: Bearer $ADMIN_API_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{"scope":"scope.team.<teamId>"}'
+```
+
+Expected response: `{ "ok": true, "notified": <n>, "scope": ... }`. The
+scope's hub broadcasts `MustRefetch(access_changed)` to EVERY connected
+socket and closes them all (the hub holds no identity, so revocation is
+scope-wide); sockets re-authenticate through the KS-7.1 resolver on
+reconnect — still-authorized clients re-bootstrap and resume, revoked
+clients get a 403, clear their scope-local durable state, and park in the
+terminal `denied` phase (SPEC §7 invariant 7).
+
+Worker write paths that revoke access in the future MUST call
+`notifyKhalaSyncHubAccessChangedBestEffort` (fail-soft; a hub failure never
+fails the revocation write) after their commit instead of relying on this
+manual step. Trigger failure is degraded, not unsafe: live sockets keep the
+old tail until their next reconnect/bootstrap, but no NEW read succeeds.
+
 ## Hyperdrive pool saturation
 
 Symptoms: `/api/sync/push` and `/api/sync/log` returning 503

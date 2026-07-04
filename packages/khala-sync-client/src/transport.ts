@@ -80,6 +80,23 @@ export const isRefetchSignal = (error: unknown): boolean =>
   error.reason === "sync_error" &&
   error.details?.syncError?.code === "cursor_behind_retained_window"
 
+/**
+ * The session treats a scope-authorization denial as TERMINAL for the
+ * scope (KS-7.1, SPEC §7 invariant 7): a typed `unauthorized_scope` /
+ * `unknown_scope` SyncError, or a bare HTTP 403. Retrying cannot succeed —
+ * access was revoked (or the scope kind has no read policy) — so the
+ * session clears the scope's durable local state and parks it in the
+ * terminal `denied` phase instead of backing off forever. Deliberately
+ * NOT triggered by 401/`unauthenticated`: token rotation can heal those,
+ * so they stay on the retry path.
+ */
+export const isAccessDeniedSignal = (error: unknown): boolean =>
+  error instanceof KhalaSyncTransportError &&
+  ((error.reason === "sync_error" &&
+    (error.details?.syncError?.code === "unauthorized_scope" ||
+      error.details?.syncError?.code === "unknown_scope")) ||
+    (error.reason === "http_status" && error.details?.status === 403))
+
 export const isRetryableTransportError = (error: unknown): boolean =>
   error instanceof KhalaSyncTransportError && error.retryable
 

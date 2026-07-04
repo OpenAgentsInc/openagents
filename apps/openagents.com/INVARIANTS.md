@@ -3467,26 +3467,64 @@ name the blocking issue instead of claiming enforcement.
    capture never fabricates a partial log on a hub gap:
    `packages/khala-sync-server/src/capture.test.ts` ("hub 409 version gap
    heals by re-pushing from the hub's expectation").
-7. **Scope access control (partial — v1 gate enforced; membership re-check
-   pending KS-7.1 #8305).** What exists and is enforced today is the v1
-   read gate `canReadScopeV1` — own personal scope, the public scope
-   family, and owned `fleet_run` scopes only; membership scopes
-   (`scope.team.*` etc.) are DENIED outright:
-   `workers/api/src/khala-sync-log-routes.test.ts` ("grants own personal
-   scope and public scopes only", "another user's personal scope is 403
-   unauthorized_scope", "membership scopes (scope.team.*) are denied by the
-   v1 gate", "the scope OWNER reads an owned fleet scope (hub-served)") and
-   `packages/khala-sync-server/src/fleet-projection.test.ts`
-   ("canReadScopeV1: own personal scope + owned fleet scopes only"). Write
-   side: `packages/khala-sync-server/src/push-engine.test.ts` ("client
-   group bound to another user: whole request fails typed, nothing
+7. **Scope access control (enforced — KS-7.1 #8305).** Scope access is
+   checked at bootstrap/connect/log and re-checked on membership change;
+   revocation retracts synced state via re-bootstrap. The read gate is the
+   taxonomy-complete resolver `resolveScopeRead`
+   (`packages/khala-sync-server/src/scope-auth.ts`) over live capability
+   callbacks (`workers/api/src/khala-sync-scope-auth.ts`): personal
+   self-only, public, live D1 team membership, agent_run/thread ownership
+   (the `agent_runs` rule incl. the autopilot-thread mapping), fleet_run
+   `khala_sync_scope_owners` owners; UNKNOWN taxonomy members are gated
+   CLOSED (403 typed `unknown_scope`) and a failed lookup fails CLOSED as a
+   retryable 503 — never a grant. Resolver matrix:
+   `packages/khala-sync-server/src/scope-auth.test.ts` ("scope.user: self
+   is allowed, a foreign user is denied", "scope.team: membership is
+   re-read on every call (revocation bites immediately)", "unknown taxonomy
+   members are gated CLOSED with the typed unknown_scope reason", "a
+   throwing … capability fails CLOSED as typed unavailable (never a grant,
+   never a silent 403)"). Worker wiring:
+   `workers/api/src/khala-sync-scope-auth.test.ts` ("team: LIVE D1
+   membership grants; non-member and removed-member deny", "agent_run:
+   owner allowed; team run readable by an active member; foreign denied",
+   "thread: resolves through agent_runs directly and via the
+   autopilot-thread mapping", "fleet_run: khala_sync_scope_owners owner
+   allowed, foreign/unowned denied; client always released"). Routes:
+   `workers/api/src/khala-sync-log-routes.test.ts` ("a LIVE team member
+   reads the team scope (hub-served)", "a NON-MEMBER is denied a team scope
+   (403 unauthorized_scope)", "an unknown scope taxonomy member is gated
+   CLOSED (403 unknown_scope)", "a failed authorization lookup fails CLOSED
+   as 503 retryable (never a grant)") with the same matrix on bootstrap
+   (`khala-sync-bootstrap-routes.test.ts`) and pre-upgrade on connect
+   (`khala-sync-connect-routes.test.ts`, "a NON-MEMBER is denied a team
+   scope BEFORE any hub contact"). Access-change refetch (the push half):
+   `workers/api/src/khala-sync-hub-do.test.ts` ("broadcasts
+   MustRefetch(access_changed) to EVERY socket and closes them all",
+   "drives the REAL hub DO: sockets get MustRefetch(access_changed) and
+   close"); revocation e2e (real Postgres + real hub DO + real client
+   store/session):
+   `workers/api/src/khala-sync-access-revocation.e2e.test.ts` ("membership
+   removal + access-changed retracts the team scope end to end"); client
+   retraction:
+   `packages/khala-sync-client/src/session.test.ts` ("revocation (KS-7.1
+   invariant 7): MustRefetch(access_changed) → denied re-bootstrap CLEARS
+   scope-local state and parks TERMINAL denied — no retry", "revocation mid
+   catch-up: a 403 log page clears scope-local state and parks denied").
+   Write side: `packages/khala-sync-server/src/push-engine.test.ts`
+   ("client group bound to another user: whole request fails typed, nothing
    executes") and `packages/khala-sync-server/src/fleet-projection.test.ts`
    ("a FOREIGN user is rejected in-band with zero writes; queue never
-   blocks"). PENDING: re-check on membership change, revocation ⇒
-   `MustRefetch(access_changed)` retraction, and real membership scopes are
-   the KS-7.1 scope-auth seam (#8305; CVR v2 is #8306). Until that lands,
-   membership scopes must stay denied — do not widen `canReadScopeV1`
-   without the KS-7 seam and its tests.
+   blocks"). HONEST LIMIT (call-site obligation, not a gap in denial):
+   live-at-read means a revoked user fails their NEXT request with no
+   operator action, but retracting an ALREADY-OPEN socket requires the
+   access-changed trigger. No in-Worker membership-removal or scope-owner
+   deletion write path exists today (memberships are operator-managed), so
+   the trigger is the admin route
+   `POST /api/internal/khala-sync/hub/access-changed { scope }`
+   (docs/khala-sync/RUNBOOK.md "Access revocation"); every FUTURE Worker
+   write path that revokes scope access MUST call
+   `notifyKhalaSyncHubAccessChangedBestEffort` after its commit and cite it
+   here. CVR v2 remains #8306.
 8. **Public-projection reconciliation (pending KS-6.3 #8304).** Public-scope
    projections (e.g. tokens-served) must reconcile to exact source rows;
    the sync path never invents counter deltas. NOT YET ENFORCED: no

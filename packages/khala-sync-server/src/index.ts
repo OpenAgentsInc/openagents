@@ -25,6 +25,7 @@ export * from "./mutation-ledger.js"
 export * from "./outbox-writer.js"
 export * from "./push-engine.js"
 export * from "./read-service.js"
+export * from "./scope-auth.js"
 export * from "./sql.js"
 
 /**
@@ -89,7 +90,12 @@ export interface KhalaSyncReadService {
   }) => Effect.Effect<LogPage, KhalaSyncReadError>
 }
 
-/** Scope authorization seam (KS-7). */
+/**
+ * Scope authorization seam (KS-7). The concrete resolver is
+ * `resolveScopeRead` in ./scope-auth (KS-7.1, #8305): the full-taxonomy
+ * read gate over injected capability callbacks, fail-closed on capability
+ * failure. This Effect-facing interface remains for services that wrap it.
+ */
 export interface KhalaSyncScopeAuth {
   readonly canRead: (
     userId: string,

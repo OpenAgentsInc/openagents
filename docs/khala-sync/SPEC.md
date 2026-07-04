@@ -128,6 +128,26 @@ access on every bootstrap/connect and re-checks on membership change
 re-bootstrap returns nothing). Gatekeeper-style scope tokens (JWT embedding
 the authorized scope) are the v2 fast path.
 
+Scope-read resolution (KS-7.1, #8305) is one taxonomy-complete resolver
+(`resolveScopeRead` in `packages/khala-sync-server/src/scope-auth.ts`,
+wired Worker-side in `khala-sync-scope-auth.ts`) consulted by log,
+bootstrap, AND connect: `scope.user.*` self-only; `scope.public.*` any
+authenticated caller; `scope.team.*` live D1 team membership;
+`scope.agent_run.*` / `scope.thread.*` run owner or active member of the
+run's team (the existing `agent_runs` ownership rule, including the
+autopilot-thread mapping); `scope.fleet_run.*` the `khala_sync_scope_owners`
+owner. A taxonomy member with no read policy is gated CLOSED (403 typed
+`unknown_scope`), and a failed membership/ownership lookup fails CLOSED as
+a retryable 503 `storage_unavailable` — never a grant. Membership is
+re-read live per request, so a revoked user fails their very next
+bootstrap/log/connect; the push half is the internal access-changed trigger
+(`POST /api/internal/khala-sync/hub/access-changed { scope }`, admin
+bearer): the scope's hub broadcasts `MustRefetch(access_changed)` to every
+socket and closes them, and sockets re-run the resolver on reconnect. On
+the client, a denied re-bootstrap after `access_changed` CLEARS the scope's
+durable local state and parks the scope in the terminal `denied` phase
+(invariant 7: revocation retracts synced state) — it never retries a 403.
+
 ## 4. Postgres substrate
 
 Schema (`packages/khala-sync-server/migrations/`):

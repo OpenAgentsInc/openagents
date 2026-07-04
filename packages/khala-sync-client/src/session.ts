@@ -18,6 +18,7 @@ import { Cause, Effect, Exit, Queue, Stream } from "effect"
 import type { ClientMutator, KhalaSyncOverlay, OverlayError } from "./overlay.js"
 import type { ConfirmedEntity, KhalaSyncLocalStore } from "./store.js"
 import {
+  isAccessDeniedSignal,
   isRefetchSignal,
   KhalaSyncTransportError,
   type KhalaSyncTransport,
@@ -58,6 +59,14 @@ export type ScopeSyncState =
   | { readonly phase: "catching_up"; readonly cursor: SyncVersionWatermark }
   | { readonly phase: "live"; readonly cursor: SyncVersionWatermark }
   | { readonly phase: "must_refetch"; readonly reason: string }
+  /**
+   * TERMINAL: scope access was denied (KS-7.1 revocation — e.g.
+   * `MustRefetch(access_changed)` followed by a 403 re-bootstrap). The
+   * scope's durable local state has been CLEARED (invariant 7: revocation
+   * retracts synced state) and the loop has stopped — no automatic retry.
+   * A fresh `subscribe(scope)` is the only way to try again.
+   */
+  | { readonly phase: "denied"; readonly reason: string }
 
 export interface KhalaSyncSessionConfig {
   readonly baseUrl: string
@@ -214,6 +223,30 @@ export const createKhalaSyncSession = (
     for (const listener of [...stateListeners]) listener(scope, state)
   }
 
+  // -- access denial (terminal per scope) --------------------------------------
+
+  /**
+   * Park a scope in the TERMINAL `denied` phase after an authorization
+   * denial (KS-7.1; SPEC §7 invariant 7): CLEAR the scope's durable local
+   * rows + cursor (revocation retracts synced state — the data must not
+   * survive locally after access is gone) and rebuild the overlay, then
+   * stop. Clearing failures are surfaced through `onTransportError` but
+   * never keep revoked data live-retryable: the scope parks regardless.
+   */
+  const parkDenied = async (
+    scope: SyncScope,
+    runtime: ScopeRuntime,
+  ): Promise<void> => {
+    try {
+      await runEffect(store.resetScope(scope, [], watermark(0)))
+      await runEffect(overlay.refetched(scope))
+    } catch (error) {
+      onTransportError?.("session", error)
+    }
+    runtime.forceBootstrap = false
+    setState(scope, runtime, { phase: "denied", reason: "access_denied" })
+  }
+
   // -- bootstrap --------------------------------------------------------------
 
   /** Fetch the full snapshot (all pages, one token chain) atomically. */
@@ -297,6 +330,12 @@ export const createKhalaSyncSession = (
       } catch (error) {
         if (stale()) return undefined
         onTransportError?.("bootstrap", error)
+        if (isAccessDeniedSignal(error)) {
+          // 403 on (re-)bootstrap: access is gone; retrying can never
+          // succeed. Clear scope-local state and park (terminal).
+          await parkDenied(scope, runtime)
+          return undefined
+        }
         if (attempt >= maxBootstrapAttempts) {
           setState(scope, runtime, {
             phase: "must_refetch",
@@ -487,6 +526,11 @@ export const createKhalaSyncSession = (
         if (outcome.kind !== "closed" || outcome.error !== undefined) {
           onTransportError?.("live", outcome.error)
         }
+        if (isAccessDeniedSignal(outcome.error)) {
+          // Live tail (or its reconnect) was refused with a 403: terminal.
+          await parkDenied(scope, runtime)
+          return
+        }
         if (isRefetchSignal(outcome.error)) {
           setState(scope, runtime, {
             phase: "must_refetch",
@@ -500,6 +544,12 @@ export const createKhalaSyncSession = (
         await backoff(reconnectAttempt)
       } catch (error) {
         if (stale()) return
+        if (isAccessDeniedSignal(error)) {
+          // A 403 mid catch-up is the same revocation: terminal.
+          onTransportError?.("catch_up", error)
+          await parkDenied(scope, runtime)
+          return
+        }
         if (isRefetchSignal(error)) {
           setState(scope, runtime, {
             phase: "must_refetch",

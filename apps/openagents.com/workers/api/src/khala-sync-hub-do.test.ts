@@ -14,7 +14,9 @@ import { describe, expect, test } from 'vitest'
 import {
   KHALA_SYNC_HUB_PING_TEXT,
   KhalaSyncHubDO,
+  handleKhalaSyncHubAccessChangedRoute,
   handleKhalaSyncHubInternalRoute,
+  notifyKhalaSyncHubAccessChangedBestEffort,
 } from './khala-sync-hub-do'
 // Real-SQLite DO state + fake hibernation sockets: shared with the KS-4.4
 // stitch-seam suite (src/test/khala-sync-hub-do-harness.ts).
@@ -796,5 +798,234 @@ describe('internal route proxy driving the real DO', () => {
       deps('/log'),
     )
     expect(otherLog.status).toBe(410)
+  })
+})
+
+// --------------------------------------------------------------------------
+// KS-7.1 (#8305): access-change refetch (SPEC §7 invariant 7 push half)
+// --------------------------------------------------------------------------
+
+describe('KhalaSyncHubDO /access-changed', () => {
+  const accessChangedRequest = (scope = SCOPE) =>
+    new Request(`https://hub.internal/access-changed?scope=${scope}`, {
+      method: 'POST',
+    })
+
+  test('broadcasts MustRefetch(access_changed) to EVERY socket and closes them all', async () => {
+    const { hub } = makeHub()
+    await append(hub, [entryInput(1), entryInput(2)])
+
+    const one = new FakeWebSocket()
+    const two = new FakeWebSocket()
+    hub.attachSocket(one, scopeOf(SCOPE), 2)
+    hub.attachSocket(two, scopeOf(SCOPE), 2)
+    one.sent.length = 0
+    two.sent.length = 0
+
+    const response = await hub.fetch(accessChangedRequest())
+    expect(response.status).toBe(200)
+    expect((await response.json()) as Record<string, unknown>).toMatchObject({
+      notified: 2,
+      ok: true,
+      scope: SCOPE,
+    })
+
+    for (const ws of [one, two]) {
+      expect(ws.frames().map(f => f._tag)).toEqual(['MustRefetchFrame'])
+      expect(ws.frames()[0]).toMatchObject({
+        reason: 'access_changed',
+        scope: SCOPE,
+      })
+      expect(ws.closed).toBeDefined()
+    }
+
+    // Closed sockets leave getWebSockets(): a second broadcast notifies 0.
+    const again = await hub.fetch(accessChangedRequest())
+    expect((await again.json()) as Record<string, unknown>).toMatchObject({
+      notified: 0,
+      ok: true,
+    })
+  })
+
+  test('accepts the scope from a JSON body when the query param is absent', async () => {
+    const { hub } = makeHub()
+    await append(hub, [entryInput(1)])
+    const ws = new FakeWebSocket()
+    hub.attachSocket(ws, scopeOf(SCOPE), 1)
+    ws.sent.length = 0
+
+    const response = await hub.fetch(
+      new Request('https://hub.internal/access-changed', {
+        body: JSON.stringify({ scope: SCOPE }),
+        method: 'POST',
+      }),
+    )
+    expect(response.status).toBe(200)
+    expect(ws.frames()[0]).toMatchObject({ reason: 'access_changed' })
+  })
+
+  test('rejects an invalid scope (400) and a foreign scope (409 pin mismatch)', async () => {
+    const { hub } = makeHub()
+    await append(hub, [entryInput(1)])
+
+    const invalid = await hub.fetch(
+      new Request('https://hub.internal/access-changed?scope=not-a-scope', {
+        method: 'POST',
+      }),
+    )
+    expect(invalid.status).toBe(400)
+
+    const foreign = await hub.fetch(accessChangedRequest(OTHER_SCOPE))
+    expect(foreign.status).toBe(409)
+  })
+
+  test('is POST-only', async () => {
+    const { hub } = makeHub()
+    const response = await hub.fetch(
+      new Request(`https://hub.internal/access-changed?scope=${SCOPE}`),
+    )
+    expect(response.status).toBe(405)
+  })
+})
+
+describe('handleKhalaSyncHubAccessChangedRoute', () => {
+  const post = (body: unknown) =>
+    new Request(
+      'https://openagents.com/api/internal/khala-sync/hub/access-changed',
+      { body: JSON.stringify(body), method: 'POST' },
+    )
+
+  test('requires the operator bearer', async () => {
+    const response = await handleKhalaSyncHubAccessChangedRoute(
+      post({ scope: SCOPE }),
+      {
+        namespace: {
+          get: () => ({
+            fetch: () => Promise.resolve(Response.json({ ok: true })),
+          }),
+          idFromName: (name: string) => ({ name }),
+        },
+        requireOperator: () => Promise.resolve(false),
+      },
+    )
+    expect(response.status).toBe(401)
+  })
+
+  test('is POST-only and rejects a body without a valid scope', async () => {
+    const deps = {
+      namespace: undefined,
+      requireOperator: () => Promise.resolve(true),
+    }
+    const wrongMethod = await handleKhalaSyncHubAccessChangedRoute(
+      new Request(
+        'https://openagents.com/api/internal/khala-sync/hub/access-changed',
+      ),
+      deps,
+    )
+    expect(wrongMethod.status).toBe(405)
+
+    const badScope = await handleKhalaSyncHubAccessChangedRoute(
+      post({ scope: 'not-a-scope' }),
+      deps,
+    )
+    expect(badScope.status).toBe(400)
+
+    const noBody = await handleKhalaSyncHubAccessChangedRoute(
+      new Request(
+        'https://openagents.com/api/internal/khala-sync/hub/access-changed',
+        { method: 'POST' },
+      ),
+      deps,
+    )
+    expect(noBody.status).toBe(400)
+  })
+
+  test('503 while the hub binding is absent', async () => {
+    const response = await handleKhalaSyncHubAccessChangedRoute(
+      post({ scope: SCOPE }),
+      {
+        namespace: undefined,
+        requireOperator: () => Promise.resolve(true),
+      },
+    )
+    expect(response.status).toBe(503)
+  })
+
+  test('drives the REAL hub DO: sockets get MustRefetch(access_changed) and close', async () => {
+    const { hub } = makeHub()
+    await append(hub, [entryInput(1)])
+    const ws = new FakeWebSocket()
+    hub.attachSocket(ws, scopeOf(SCOPE), 1)
+    ws.sent.length = 0
+
+    const response = await handleKhalaSyncHubAccessChangedRoute(
+      post({ scope: SCOPE }),
+      {
+        namespace: {
+          get: () => ({ fetch: (request: Request) => hub.fetch(request) }),
+          idFromName: (name: string) => ({ name }),
+        },
+        requireOperator: () => Promise.resolve(true),
+      },
+    )
+    expect(response.status).toBe(200)
+    expect((await response.json()) as Record<string, unknown>).toMatchObject({
+      notified: 1,
+      ok: true,
+    })
+    expect(ws.frames()[0]).toMatchObject({
+      _tag: 'MustRefetchFrame',
+      reason: 'access_changed',
+    })
+    expect(ws.closed).toBeDefined()
+  })
+})
+
+describe('notifyKhalaSyncHubAccessChangedBestEffort', () => {
+  test('never throws: missing binding, invalid scope, and a throwing hub come back as typed failures', async () => {
+    expect(
+      await notifyKhalaSyncHubAccessChangedBestEffort(undefined, SCOPE),
+    ).toEqual({ ok: false, reason: 'hub_binding_missing' })
+
+    expect(
+      await notifyKhalaSyncHubAccessChangedBestEffort(
+        {
+          get: () => ({
+            fetch: () => Promise.resolve(Response.json({ ok: true })),
+          }),
+          idFromName: (name: string) => ({ name }),
+        },
+        'not-a-scope',
+      ),
+    ).toEqual({ ok: false, reason: 'invalid_scope' })
+
+    expect(
+      await notifyKhalaSyncHubAccessChangedBestEffort(
+        {
+          get: () => ({
+            fetch: () => Promise.reject(new Error('hub exploded')),
+          }),
+          idFromName: (name: string) => ({ name }),
+        },
+        SCOPE,
+      ),
+    ).toEqual({ ok: false, reason: 'hub_unreachable' })
+  })
+
+  test('reports the notified socket count on success (real DO)', async () => {
+    const { hub } = makeHub()
+    await append(hub, [entryInput(1)])
+    const ws = new FakeWebSocket()
+    hub.attachSocket(ws, scopeOf(SCOPE), 1)
+
+    const outcome = await notifyKhalaSyncHubAccessChangedBestEffort(
+      {
+        get: () => ({ fetch: (request: Request) => hub.fetch(request) }),
+        idFromName: (name: string) => ({ name }),
+      },
+      SCOPE,
+    )
+    expect(outcome).toEqual({ notified: 1, ok: true })
+    expect(ws.closed).toBeDefined()
   })
 })

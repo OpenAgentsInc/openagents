@@ -19,14 +19,14 @@
 //      `SyncError { code: cursor_behind_retained_window, retryable: false }`
 //      — MustRefetch, never a silently partial log (invariant 6).
 //
-// SCOPE AUTHORIZATION (v1 — deliberate seam): `canReadScopeV1` grants a user
-// their own personal scope (`scope.user.<userId>`) and every public scope
-// (`scope.public.*`). Fleet cockpit scopes (`scope.fleet_run.*`, KS-6.1
-// #8302) are additionally granted to the scope OWNER via a storage-backed
-// `khala_sync_scope_owners` lookup (fail-closed: binding absent or lookup
-// failure denies with 503/403, never grants). Team/thread/agent-run scope
-// membership is the KS-7 scope-auth workstream; it replaces these
-// predicates, not the route.
+// SCOPE AUTHORIZATION (KS-7.1, #8305): the injected `resolveScopeRead`
+// seam — the taxonomy-complete resolver from
+// `@openagentsinc/khala-sync-server` wired over live D1 membership/
+// ownership and the Postgres `khala_sync_scope_owners` lookup
+// (`makeKhalaSyncScopeReadResolver` in ./khala-sync-scope-auth). One
+// decision per request: allowed, denied (403 `unauthorized_scope`, or 403
+// `unknown_scope` for taxonomy members with no read policy), or
+// unavailable (503 — a failed lookup fails CLOSED, never grants).
 //
 // CACHING (issue contract: ETag on (scope, nextCursor)):
 //   - Pages that are NOT `upToDate` are immutable for their URL: the
@@ -52,7 +52,6 @@ import { Effect, Schema as S } from 'effect'
 import {
   decodeLogPage,
   LogPage,
-  personalScope,
   SyncError,
   type SyncErrorCode,
   SyncScope,
@@ -64,7 +63,6 @@ import {
   logPage as logPageFromPostgres,
   type LogPageInput,
   MAX_LOG_PAGE_LIMIT,
-  readScopeOwner,
   type SyncSql,
 } from '@openagentsinc/khala-sync-server'
 
@@ -75,6 +73,10 @@ import type {
   KhalaSyncPushSqlClient,
   MakeKhalaSyncPushSqlClient,
 } from './khala-sync-push-routes'
+import {
+  type KhalaSyncScopeReadResolver,
+  scopeReadDecisionResponse,
+} from './khala-sync-scope-auth'
 
 type HttpResponse = globalThis.Response
 
@@ -84,24 +86,6 @@ export const KHALA_SYNC_LOG_ROUTE_REF = 'route.khala_sync.log.v0_1'
 const decodeScope = S.decodeUnknownSync(SyncScope)
 const encodeLogPage = S.encodeSync(LogPage)
 const encodeSyncError = S.encodeSync(SyncError)
-
-// ---------------------------------------------------------------------------
-// v1 scope-read authorization (KS-7 SEAM — see module doc)
-// ---------------------------------------------------------------------------
-
-/**
- * v1 scope-read gate (synchronous part): a user may read their OWN
- * personal scope and any public scope. Fleet cockpit scopes
- * (`scope.fleet_run.*`) return false HERE and are instead resolved by the
- * storage-backed owner check in the handler (KS-6.1 #8302 —
- * `khala_sync_scope_owners` via `readScopeOwner`). DELIBERATE SEAM: the
- * remaining membership-backed scopes (team, thread, agent_run) are denied
- * until the KS-7 scope-auth workstream replaces these predicates.
- */
-export const canReadScopeV1 = (userId: string, scope: SyncScope): boolean =>
-  scope === personalScope(userId) || scope.startsWith('scope.public.')
-
-export const FLEET_RUN_SCOPE_PREFIX = 'scope.fleet_run.'
 
 // ---------------------------------------------------------------------------
 // Dependencies (injectable seams mirror khala-sync-push-routes)
@@ -120,6 +104,13 @@ export type KhalaSyncLogDependencies = Readonly<{
    * `undefined` ⇒ 401.
    */
   authenticate: () => Promise<{ readonly userId: string } | undefined>
+  /**
+   * Scope-read authorization (KS-7.1): the taxonomy-complete resolver
+   * (`makeKhalaSyncScopeReadResolver`). Runs after authentication, before
+   * any storage read; non-allowed decisions map through
+   * `scopeReadDecisionResponse` (403/503, fail-closed).
+   */
+  resolveScopeRead: KhalaSyncScopeReadResolver
   /** `env.KHALA_SYNC_HUB` — absent until the DO binding is deployed. */
   hubNamespace: KhalaSyncHubNamespaceLike | undefined
   /** `env.KHALA_SYNC_DB` — absent until the binding is deployed. */
@@ -313,61 +304,11 @@ export const handleKhalaSyncLog = (
       return query
     }
 
-    if (query.scope.startsWith(FLEET_RUN_SCOPE_PREFIX)) {
-      // KS-6.1 (#8302): fleet cockpit scopes are readable by their OWNER
-      // per khala_sync_scope_owners. Fail-closed: no binding or a failed
-      // lookup can never grant access.
-      if (
-        deps.binding === undefined ||
-        typeof deps.binding.connectionString !== 'string' ||
-        deps.binding.connectionString.length === 0
-      ) {
-        return syncErrorResponse(
-          503,
-          'storage_unavailable',
-          'Khala Sync storage is not configured on this deployment ' +
-            '(env.KHALA_SYNC_DB Hyperdrive binding is absent).',
-          true,
-        )
-      }
-      let ownerClient: KhalaSyncPushSqlClient | undefined
-      let owner: string | null
-      try {
-        ownerClient = await (deps.makeSqlClient ?? defaultMakeSqlClient)(
-          deps.binding.connectionString,
-        )
-        owner = await readScopeOwner(ownerClient.sql, query.scope)
-      } catch {
-        return syncErrorResponse(
-          503,
-          'storage_unavailable',
-          'Khala Sync scope-owner lookup failed; retry the read.',
-          true,
-        )
-      } finally {
-        if (ownerClient !== undefined) {
-          try {
-            await ownerClient.end()
-          } catch {
-            // best-effort teardown (same discipline as the read path).
-          }
-        }
-      }
-      if (owner === null || owner !== actor.userId) {
-        return syncErrorResponse(
-          403,
-          'unauthorized_scope',
-          'This user cannot read the requested scope.',
-          false,
-        )
-      }
-    } else if (!canReadScopeV1(actor.userId, query.scope)) {
-      return syncErrorResponse(
-        403,
-        'unauthorized_scope',
-        'This user cannot read the requested scope.',
-        false,
-      )
+    const authDenied = scopeReadDecisionResponse(
+      await deps.resolveScopeRead(actor.userId, query.scope),
+    )
+    if (authDenied !== undefined) {
+      return authDenied
     }
 
     // 1. Hub window (cache) first.

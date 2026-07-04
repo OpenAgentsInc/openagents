@@ -73,6 +73,7 @@ export {
   createHttpKhalaSyncTransport,
   type HttpTransportConfig,
   type HttpTransportDeps,
+  isAccessDeniedSignal,
   isRefetchSignal,
   isRetryableTransportError,
   KHALA_SYNC_BOOTSTRAP_PATH,

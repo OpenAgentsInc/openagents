@@ -4,7 +4,10 @@
 // authenticated live-tail channel. The route authenticates and scope-gates
 // BEFORE the upgrade — via the Worker's standard actor auth (browser session
 // or programmatic agent bearer; same closure as push/log/bootstrap) and the
-// same v1 `canReadScopeV1` predicate as GET /api/sync/log — then PROXIES the
+// same KS-7.1 `resolveScopeRead` seam as GET /api/sync/log (full taxonomy,
+// fail-closed; sockets re-run this gate on every reconnect, so a revoked
+// user whose socket was closed by the hub's access_changed broadcast can
+// never re-attach) — then PROXIES the
 // WebSocket upgrade to the per-scope `KhalaSyncHubDO`
 // (`env.KHALA_SYNC_HUB.idFromName(scope)`), the standard DO WebSocket-proxy
 // pattern: forwarding `new Request(target, request)` preserves the method,
@@ -34,7 +37,10 @@ import {
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import type { KhalaSyncHubNamespaceLike } from './khala-sync-hub-do'
-import { canReadScopeV1 } from './khala-sync-log-routes'
+import {
+  type KhalaSyncScopeReadResolver,
+  scopeReadDecisionResponse,
+} from './khala-sync-scope-auth'
 
 type HttpResponse = globalThis.Response
 
@@ -51,6 +57,12 @@ export type KhalaSyncConnectDependencies = Readonly<{
    * `undefined` ⇒ 401. Runs BEFORE the upgrade is forwarded.
    */
   authenticate: () => Promise<{ readonly userId: string } | undefined>
+  /**
+   * Scope-read authorization (KS-7.1): the taxonomy-complete resolver
+   * (`makeKhalaSyncScopeReadResolver`) — same seam as GET /api/sync/log.
+   * Runs BEFORE the upgrade is forwarded, and again on every reconnect.
+   */
+  resolveScopeRead: KhalaSyncScopeReadResolver
   /** `env.KHALA_SYNC_HUB` — absent until the DO binding is deployed. */
   hubNamespace: KhalaSyncHubNamespaceLike | undefined
 }>
@@ -122,13 +134,11 @@ export const handleKhalaSyncConnect = (
       )
     }
 
-    if (!canReadScopeV1(actor.userId, scope)) {
-      return syncErrorResponse(
-        403,
-        'unauthorized_scope',
-        'This user cannot read the requested scope.',
-        false,
-      )
+    const authDenied = scopeReadDecisionResponse(
+      await deps.resolveScopeRead(actor.userId, scope),
+    )
+    if (authDenied !== undefined) {
+      return authDenied
     }
 
     if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {

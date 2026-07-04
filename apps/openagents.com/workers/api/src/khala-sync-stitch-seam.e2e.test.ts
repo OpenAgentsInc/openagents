@@ -242,6 +242,7 @@ describe.skipIf(!hasLocalPostgres())(
             authenticate: async () => ({ userId: USER_ID }),
             binding: { connectionString: dbUrl },
             makeSqlClient: makeRealSqlClient,
+            resolveScopeRead: async () => ({ kind: 'allowed' }),
           },
         ),
       )
@@ -261,6 +262,7 @@ describe.skipIf(!hasLocalPostgres())(
           binding: { connectionString: dbUrl },
           hubNamespace,
           makeSqlClient: makeRealSqlClient,
+          resolveScopeRead: async () => ({ kind: 'allowed' }),
         }),
       )
       expect(response.status).toBe(200)

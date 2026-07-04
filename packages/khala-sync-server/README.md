@@ -89,9 +89,11 @@ issues.
 
 - **Scope ownership** — `khala_sync_scope_owners` (scope PK,
   owner_user_id, created_at), written first-writer-wins on a fleet scope's
-  first projection append (`ensureScopeOwner`). `canReadScopeV1` is the v1
-  read gate: own personal scope + owned `fleet_run` scopes (KS-7 replaces
-  it with the full scope-auth seam).
+  first projection append (`ensureScopeOwner`). The read gate is the KS-7.1
+  taxonomy-complete resolver (`src/scope-auth.ts` `resolveScopeRead` over
+  injected capability callbacks; fleet scopes resolve through
+  `readScopeOwner` here). The older `canReadScopeV1` helper remains only as
+  the projection-local predicate superseded by that resolver.
 - **Projection** — allowlist redaction mappings from raw row shapes into
   the fleet entity contracts (`fleetRunPostImage`,
   `fleetWorkerPostImage`, `fleetAssignmentPostImage`,

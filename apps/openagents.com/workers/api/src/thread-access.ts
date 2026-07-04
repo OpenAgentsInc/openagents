@@ -18,7 +18,7 @@ type ThreadAccessInput = Readonly<{
   userId: string
 }>
 
-type AgentRunAccessRow = Readonly<{
+export type AgentRunAccessRow = Readonly<{
   id: string
   team_id: string | null
   user_id: string
@@ -48,7 +48,7 @@ export const RouteAccessError = S.Union([
 ])
 export type RouteAccessError = typeof RouteAccessError.Type
 
-const readAgentRunAccessRow = (
+export const readAgentRunAccessRow = (
   db: D1Database,
   runId: string,
 ): Effect.Effect<AgentRunAccessRow | undefined> =>

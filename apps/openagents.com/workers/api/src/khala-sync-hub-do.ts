@@ -87,6 +87,8 @@ export const KHALA_SYNC_HUB_APPEND_PATH = '/api/internal/khala-sync/hub/append'
 export const KHALA_SYNC_HUB_LOG_PATH = '/api/internal/khala-sync/hub/log'
 export const KHALA_SYNC_HUB_CONNECT_PATH =
   '/api/internal/khala-sync/hub/connect'
+export const KHALA_SYNC_HUB_ACCESS_CHANGED_PATH =
+  '/api/internal/khala-sync/hub/access-changed'
 
 export const KHALA_SYNC_HUB_ROUTE_REF = 'route.internal.khala_sync.hub.v0_1'
 
@@ -325,6 +327,10 @@ export class KhalaSyncHubDO {
     if (url.pathname === '/connect') {
       if (request.method !== 'GET') return hubMethodNotAllowed(['GET'])
       return this.handleConnect(request, url)
+    }
+    if (url.pathname === '/access-changed') {
+      if (request.method !== 'POST') return hubMethodNotAllowed(['POST'])
+      return this.handleAccessChanged(request, url)
     }
     return json({ error: 'not_found' }, { status: 404 })
   }
@@ -722,6 +728,57 @@ export class KhalaSyncHubDO {
   }
 
   // -------------------------------------------------------------------------
+  // /access-changed (KS-7.1, #8305 — SPEC §7 invariant 7 push half)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Scope access changed (membership/role revocation): broadcast
+   * `MustRefetch(access_changed)` to EVERY connected socket and close them
+   * all. The hub holds no identity — it cannot know WHICH socket belongs
+   * to the revoked user — so revocation is scope-wide and correctness is
+   * restored at reconnect: every socket re-authenticates through the
+   * public `GET /api/sync/connect` route, whose KS-7.1 resolver re-reads
+   * live membership. Still-authorized clients re-bootstrap and resume;
+   * revoked clients get a 403, clear scope-local state, and park denied.
+   * Scope comes from the `scope` query param (the Worker proxy sets it) or
+   * a JSON body `{ scope }`.
+   */
+  private async handleAccessChanged(
+    request: Request,
+    url: URL,
+  ): Promise<HttpResponse> {
+    let scopeRaw: string | null = url.searchParams.get('scope')
+    if (scopeRaw === null) {
+      const body = (await request.json().catch(() => undefined)) as
+        | Record<string, unknown>
+        | undefined
+      scopeRaw = typeof body?.scope === 'string' ? body.scope : null
+    }
+    let scope: SyncScope
+    try {
+      scope = decodeScope(scopeRaw)
+    } catch {
+      return json(
+        {
+          error: 'khala_sync_hub_access_changed_invalid',
+          reason: 'invalid scope',
+        },
+        { status: 400 },
+      )
+    }
+    if (!this.pinScope(scope)) {
+      return json({ error: 'khala_sync_hub_scope_mismatch' }, { status: 409 })
+    }
+
+    let notified = 0
+    for (const ws of this.state.getWebSockets()) {
+      this.mustRefetch(ws, scope, 'access_changed')
+      notified += 1
+    }
+    return json({ notified, ok: true, scope })
+  }
+
+  // -------------------------------------------------------------------------
   // /log
   // -------------------------------------------------------------------------
 
@@ -949,4 +1006,133 @@ export const handleKhalaSyncHubInternalRoute = async (
   // `new Request(url, request)` preserves method, headers (including the
   // WebSocket Upgrade header for /connect), and body.
   return stub.fetch(new Request(target.toString(), request))
+}
+
+// ---------------------------------------------------------------------------
+// Access-change refetch trigger (KS-7.1, #8305 — SPEC §7 invariant 7)
+// ---------------------------------------------------------------------------
+
+/**
+ * FAIL-SOFT hub notification for scope-access revocation: tell the scope's
+ * hub DO to broadcast `MustRefetch(access_changed)` and close every
+ * connected socket. Never throws — a hub/network failure must not fail the
+ * revocation write it accompanies (correctness does not depend on this
+ * push: the KS-7.1 resolver re-reads live membership on every
+ * log/bootstrap/connect, so a revoked user is denied at their next request
+ * regardless; this broadcast just retracts ALREADY-OPEN live tails
+ * promptly).
+ *
+ * CALL-SITE CONTRACT: every future Worker write path that revokes scope
+ * access — team-membership removal/deactivation, scope-owner deletion —
+ * MUST call this after its commit. TODAY no such write path exists in this
+ * Worker (memberships are only created/reactivated by invite acceptance;
+ * they are removed by operator D1 edits, and nothing deletes
+ * khala_sync_scope_owners rows), so the operator-facing trigger is the
+ * admin-bearer `POST /api/internal/khala-sync/hub/access-changed` route
+ * (`handleKhalaSyncHubAccessChangedRoute`) — run it after any manual
+ * membership revocation (see docs/khala-sync/RUNBOOK.md).
+ */
+export const notifyKhalaSyncHubAccessChangedBestEffort = async (
+  namespace: KhalaSyncHubNamespaceLike | undefined,
+  scope: string,
+): Promise<
+  | { readonly ok: true; readonly notified: number }
+  | { readonly ok: false; readonly reason: string }
+> => {
+  try {
+    decodeScope(scope)
+  } catch {
+    return { ok: false, reason: 'invalid_scope' }
+  }
+  if (namespace === undefined) {
+    return { ok: false, reason: 'hub_binding_missing' }
+  }
+  try {
+    const stub = namespace.get(namespace.idFromName(scope))
+    const target = new URL(
+      'https://khala-sync-hub.openagents.internal/access-changed',
+    )
+    target.searchParams.set('scope', scope)
+    const response = await stub.fetch(
+      new Request(target.toString(), { method: 'POST' }),
+    )
+    if (response.status !== 200) {
+      return { ok: false, reason: `hub_status_${response.status}` }
+    }
+    const body = (await response.json().catch(() => undefined)) as
+      | { notified?: unknown }
+      | undefined
+    return {
+      notified: typeof body?.notified === 'number' ? body.notified : 0,
+      ok: true,
+    }
+  } catch {
+    return { ok: false, reason: 'hub_unreachable' }
+  }
+}
+
+export type KhalaSyncHubAccessChangedRouteDependencies = Readonly<{
+  /** Same admin bearer predicate as the other internal hub routes. */
+  requireOperator: () => Promise<boolean>
+  /** `env.KHALA_SYNC_HUB` — absent until the DO binding is deployed. */
+  namespace: KhalaSyncHubNamespaceLike | undefined
+}>
+
+/**
+ * `POST /api/internal/khala-sync/hub/access-changed` `{ scope }` —
+ * admin-bearer internal route (same guard as the hub append/log/connect
+ * proxies): instructs the scope's hub DO to broadcast
+ * `MustRefetch(access_changed)` and close all sockets. This is the KS-7.1
+ * revocation trigger for operator-driven membership changes; Worker write
+ * paths call `notifyKhalaSyncHubAccessChangedBestEffort` directly.
+ */
+export const handleKhalaSyncHubAccessChangedRoute = async (
+  request: Request,
+  deps: KhalaSyncHubAccessChangedRouteDependencies,
+): Promise<HttpResponse> => {
+  if (request.method !== 'POST') {
+    return hubMethodNotAllowed(['POST'])
+  }
+  if (!(await deps.requireOperator())) {
+    return json({ error: 'unauthorized' }, { status: 401 })
+  }
+
+  const body = (await request.json().catch(() => undefined)) as
+    | Record<string, unknown>
+    | undefined
+  const scopeRaw = typeof body?.scope === 'string' ? body.scope : null
+  try {
+    decodeScope(scopeRaw)
+  } catch {
+    return json(
+      {
+        error: 'khala_sync_hub_invalid_scope',
+        reason: 'request body must carry a valid Khala Sync scope id in `scope`',
+        routeRef: KHALA_SYNC_HUB_ROUTE_REF,
+      },
+      { status: 400 },
+    )
+  }
+
+  if (deps.namespace === undefined) {
+    return json(
+      {
+        error: 'khala_sync_hub_binding_missing',
+        reason:
+          'Durable Object binding (env.KHALA_SYNC_HUB) is absent. Add the ' +
+          'durable_objects binding + migration to wrangler.jsonc and deploy.',
+        routeRef: KHALA_SYNC_HUB_ROUTE_REF,
+      },
+      { status: 503 },
+    )
+  }
+
+  const stub = deps.namespace.get(
+    deps.namespace.idFromName(scopeRaw as string),
+  )
+  const target = new URL(
+    'https://khala-sync-hub.openagents.internal/access-changed',
+  )
+  target.searchParams.set('scope', scopeRaw as string)
+  return stub.fetch(new Request(target.toString(), { method: 'POST' }))
 }

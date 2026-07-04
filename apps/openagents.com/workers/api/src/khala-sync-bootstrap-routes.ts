@@ -14,9 +14,10 @@
 //
 // The caller is resolved via the Worker's standard actor auth (browser
 // session or programmatic agent bearer — same closure as push/log), and
-// scope reads are gated by the same v1 predicate as GET /api/sync/log
-// (`canReadScopeV1`: own personal scope + scope.public.*; membership scopes
-// arrive with KS-7).
+// scope reads are gated by the same KS-7.1 resolver seam as GET
+// /api/sync/log (`resolveScopeRead`: full taxonomy — personal, public,
+// live team membership, agent_run/thread ownership, fleet_run scope owner;
+// unknown kinds and failed lookups fail CLOSED).
 //
 // CACHING (deliberate: always `Cache-Control: no-store`): a bootstrap page
 // is specific to the CALLER'S PAGING POSITION, not just its URL — the same
@@ -66,12 +67,15 @@ import {
 } from '@openagentsinc/khala-sync-server'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
-import { canReadScopeV1 } from './khala-sync-log-routes'
 import type {
   KhalaSyncHyperdriveBinding,
   KhalaSyncPushSqlClient,
   MakeKhalaSyncPushSqlClient,
 } from './khala-sync-push-routes'
+import {
+  type KhalaSyncScopeReadResolver,
+  scopeReadDecisionResponse,
+} from './khala-sync-scope-auth'
 
 type HttpResponse = globalThis.Response
 
@@ -102,6 +106,11 @@ export type KhalaSyncBootstrapDependencies = Readonly<{
    * `undefined` ⇒ 401.
    */
   authenticate: () => Promise<{ readonly userId: string } | undefined>
+  /**
+   * Scope-read authorization (KS-7.1): the taxonomy-complete resolver
+   * (`makeKhalaSyncScopeReadResolver`) — same seam as GET /api/sync/log.
+   */
+  resolveScopeRead: KhalaSyncScopeReadResolver
   /** `env.KHALA_SYNC_DB` — absent until the binding is deployed. */
   binding: KhalaSyncHyperdriveBinding | undefined
   /**
@@ -236,13 +245,11 @@ export const handleKhalaSyncBootstrap = (
       )
     }
 
-    if (!canReadScopeV1(actor.userId, bootstrapRequest.scope)) {
-      return syncErrorResponse(
-        403,
-        'unauthorized_scope',
-        'This user cannot read the requested scope.',
-        false,
-      )
+    const authDenied = scopeReadDecisionResponse(
+      await deps.resolveScopeRead(actor.userId, bootstrapRequest.scope),
+    )
+    if (authDenied !== undefined) {
+      return authDenied
     }
 
     if (

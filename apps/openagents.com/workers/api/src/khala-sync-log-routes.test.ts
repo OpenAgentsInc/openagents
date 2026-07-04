@@ -22,6 +22,7 @@ import {
   DEFAULT_LOG_PAGE_LIMIT,
   KhalaSyncCursorBehindRetainedWindowError,
   KhalaSyncStorageError,
+  resolveScopeRead,
   type SyncSql,
 } from '@openagentsinc/khala-sync-server'
 
@@ -30,7 +31,6 @@ import type {
   KhalaSyncHubStubLike,
 } from './khala-sync-hub-do'
 import {
-  canReadScopeV1,
   handleKhalaSyncLog,
   KHALA_SYNC_LOG_PATH,
   type KhalaSyncLogDependencies,
@@ -38,6 +38,10 @@ import {
   type LogPageFromPostgresFn,
 } from './khala-sync-log-routes'
 import type { KhalaSyncPushSqlClient } from './khala-sync-push-routes'
+import {
+  makeKhalaSyncScopeReadResolver,
+  type KhalaSyncScopeReadResolver,
+} from './khala-sync-scope-auth'
 
 const encodeLogPage = S.encodeSync(LogPage)
 const scopeOf = S.decodeUnknownSync(SyncScope)
@@ -136,6 +140,33 @@ const neverLogPage: LogPageFromPostgresFn = async () => {
   throw new Error('postgres logPage must not be called on a hub window hit')
 }
 
+/**
+ * The REAL package resolver (KS-7.1) over deterministic in-test
+ * capabilities. Defaults preserve the pre-KS-7.1 test surface: own
+ * personal scope + public scopes only; membership/ownership denies.
+ */
+const testResolver = (
+  input: Readonly<{
+    memberOfTeams?: ReadonlySet<string>
+    fleetOwners?: Readonly<Record<string, string>>
+  }> = {},
+): KhalaSyncScopeReadResolver =>
+  (userId, scope) =>
+    resolveScopeRead(
+      {
+        canReadAgentRun: async () => false,
+        canReadThread: async () => false,
+        isTeamMember: async (uid, teamId) =>
+          uid === userId && (input.memberOfTeams?.has(teamId) ?? false),
+        readFleetScopeOwner: async requested =>
+          input.fleetOwners?.[requested] ?? null,
+      },
+      userId,
+      scope,
+    )
+
+const defaultResolveScopeRead = testResolver()
+
 const run = (
   input: Readonly<{
     request?: Request
@@ -144,6 +175,7 @@ const run = (
     binding?: { connectionString: string } | undefined
     client?: KhalaSyncPushSqlClient
     logPage?: LogPageFromPostgresFn
+    resolveScopeRead?: KhalaSyncScopeReadResolver
   }> = {},
 ) => {
   const deps: KhalaSyncLogDependencies = {
@@ -160,6 +192,7 @@ const run = (
     hubNamespace: 'hubNamespace' in input ? input.hubNamespace : undefined,
     logPageFromPostgres: input.logPage ?? neverLogPage,
     makeSqlClient: async () => input.client ?? makeFakeClient().client,
+    resolveScopeRead: input.resolveScopeRead ?? defaultResolveScopeRead,
   }
   return Effect.runPromise(handleKhalaSyncLog(input.request ?? get(), deps))
 }
@@ -170,15 +203,6 @@ const syncErrorBody = async (response: Response) =>
     messageSafe: string
     retryable: boolean
   }
-
-describe('canReadScopeV1', () => {
-  test('grants own personal scope and public scopes only', () => {
-    expect(canReadScopeV1(USER_ID, OWN_SCOPE)).toBe(true)
-    expect(canReadScopeV1(USER_ID, PUBLIC_SCOPE)).toBe(true)
-    expect(canReadScopeV1(USER_ID, personalScope('user-2'))).toBe(false)
-    expect(canReadScopeV1(USER_ID, scopeOf('scope.team.t-1'))).toBe(false)
-  })
-})
 
 describe('handleKhalaSyncLog', () => {
   test('non-GET methods are 405', async () => {
@@ -230,9 +254,48 @@ describe('handleKhalaSyncLog', () => {
     expect(body.retryable).toBe(false)
   })
 
-  test('membership scopes (scope.team.*) are denied by the v1 gate', async () => {
+  test('a NON-MEMBER is denied a team scope (403 unauthorized_scope)', async () => {
     const response = await run({ request: get({ scope: 'scope.team.t-1' }) })
     expect(response.status).toBe(403)
+    expect((await syncErrorBody(response)).code).toBe('unauthorized_scope')
+  })
+
+  test('a LIVE team member reads the team scope (hub-served)', async () => {
+    const TEAM_SCOPE = scopeOf('scope.team.t-1')
+    const served = page({ nextCursor: 1, scope: TEAM_SCOPE, upToDate: true })
+    const response = await run({
+      hubNamespace: hubServing(served).namespace,
+      request: get({ scope: TEAM_SCOPE }),
+      resolveScopeRead: testResolver({ memberOfTeams: new Set(['t-1']) }),
+    })
+    expect(response.status).toBe(200)
+  })
+
+  test('an unknown scope taxonomy member is gated CLOSED (403 unknown_scope)', async () => {
+    const response = await run({
+      request: get({ scope: 'scope.workspace.w-1' }),
+    })
+    expect(response.status).toBe(403)
+    const body = await syncErrorBody(response)
+    expect(body.code).toBe('unknown_scope')
+    expect(body.retryable).toBe(false)
+  })
+
+  test('a failed authorization lookup fails CLOSED as 503 retryable (never a grant)', async () => {
+    const response = await run({
+      request: get({ scope: 'scope.team.t-1' }),
+      resolveScopeRead: testResolver({
+        memberOfTeams: {
+          has: () => {
+            throw new Error('D1 unavailable')
+          },
+        } as unknown as ReadonlySet<string>,
+      }),
+    })
+    expect(response.status).toBe(503)
+    const body = await syncErrorBody(response)
+    expect(body.code).toBe('storage_unavailable')
+    expect(body.retryable).toBe(true)
   })
 
   // -------------------------------------------------------------------------
@@ -245,6 +308,7 @@ describe('handleKhalaSyncLog', () => {
     const response = await Effect.runPromise(
       handleKhalaSyncLog(get({ cursor: '1', limit: '2', scope: OWN_SCOPE }), {
         authenticate: async () => ({ userId: USER_ID }),
+        resolveScopeRead: defaultResolveScopeRead,
         binding: { connectionString: FAKE_CONNECTION_STRING },
         hubNamespace: hub.namespace,
         logPageFromPostgres: neverLogPage,
@@ -271,6 +335,7 @@ describe('handleKhalaSyncLog', () => {
     await Effect.runPromise(
       handleKhalaSyncLog(get({ scope: OWN_SCOPE }), {
         authenticate: async () => ({ userId: USER_ID }),
+        resolveScopeRead: defaultResolveScopeRead,
         binding: { connectionString: FAKE_CONNECTION_STRING },
         hubNamespace: hub.namespace,
         logPageFromPostgres: neverLogPage,
@@ -287,6 +352,7 @@ describe('handleKhalaSyncLog', () => {
     await Effect.runPromise(
       handleKhalaSyncLog(get({ limit: '999999', scope: OWN_SCOPE }), {
         authenticate: async () => ({ userId: USER_ID }),
+        resolveScopeRead: defaultResolveScopeRead,
         binding: { connectionString: FAKE_CONNECTION_STRING },
         hubNamespace: hub.namespace,
         logPageFromPostgres: neverLogPage,
@@ -536,11 +602,23 @@ describe('handleKhalaSyncLog', () => {
 })
 
 // ---------------------------------------------------------------------------
-// KS-6.1 (#8302): owned fleet_run scopes via khala_sync_scope_owners
+// KS-6.1 (#8302) fleet_run scopes via khala_sync_scope_owners — now resolved
+// through the REAL KS-7.1 Worker resolver (makeKhalaSyncScopeReadResolver)
+// wired into the route, over a fake sql client. D1 must never be consulted
+// for fleet scopes.
 // ---------------------------------------------------------------------------
 
-describe('fleet_run scope read gate (KS-6.1)', () => {
+describe('fleet_run scope read gate (KS-6.1 via the KS-7.1 resolver)', () => {
   const FLEET_SCOPE = scopeOf('scope.fleet_run.fleet-run.pylon.abc123')
+
+  const untouchableD1 = new Proxy(
+    {},
+    {
+      get: () => {
+        throw new Error('D1 must not be consulted for fleet_run scopes')
+      },
+    },
+  ) as D1Database
 
   /** A client whose sql answers ONLY the scope-owner SELECT. */
   const ownerLookupClient = (owner: string | null) => {
@@ -569,17 +647,20 @@ describe('fleet_run scope read gate (KS-6.1)', () => {
     return { client, endedCount: () => ended }
   }
 
-  test('the sync predicate still denies fleet scopes (storage decides)', () => {
-    expect(canReadScopeV1(USER_ID, FLEET_SCOPE)).toBe(false)
-  })
+  const workerResolver = (fake: { client: KhalaSyncPushSqlClient }) =>
+    makeKhalaSyncScopeReadResolver({
+      binding: { connectionString: FAKE_CONNECTION_STRING },
+      db: untouchableD1,
+      makeSqlClient: async () => fake.client,
+    })
 
   test('the scope OWNER reads an owned fleet scope (hub-served)', async () => {
     const served = page({ nextCursor: 2, scope: FLEET_SCOPE, upToDate: true })
     const fake = ownerLookupClient(USER_ID)
     const response = await run({
-      client: fake.client,
       hubNamespace: hubServing(served).namespace,
       request: get({ scope: FLEET_SCOPE }),
+      resolveScopeRead: workerResolver(fake),
     })
     expect(response.status).toBe(200)
     // The owner-lookup client is always released.
@@ -589,8 +670,8 @@ describe('fleet_run scope read gate (KS-6.1)', () => {
   test('a FOREIGN user gets 403 unauthorized_scope', async () => {
     const fake = ownerLookupClient('someone-else')
     const response = await run({
-      client: fake.client,
       request: get({ scope: FLEET_SCOPE }),
+      resolveScopeRead: workerResolver(fake),
     })
     expect(response.status).toBe(403)
     expect((await syncErrorBody(response)).code).toBe('unauthorized_scope')
@@ -600,17 +681,22 @@ describe('fleet_run scope read gate (KS-6.1)', () => {
   test('an UNOWNED fleet scope is denied (fail-closed)', async () => {
     const fake = ownerLookupClient(null)
     const response = await run({
-      client: fake.client,
       request: get({ scope: FLEET_SCOPE }),
+      resolveScopeRead: workerResolver(fake),
     })
     expect(response.status).toBe(403)
     expect((await syncErrorBody(response)).code).toBe('unauthorized_scope')
   })
 
   test('binding absent ⇒ 503, never a grant', async () => {
+    const fake = ownerLookupClient(USER_ID)
     const response = await run({
-      binding: undefined,
       request: get({ scope: FLEET_SCOPE }),
+      resolveScopeRead: makeKhalaSyncScopeReadResolver({
+        binding: undefined,
+        db: untouchableD1,
+        makeSqlClient: async () => fake.client,
+      }),
     })
     expect(response.status).toBe(503)
     expect((await syncErrorBody(response)).code).toBe('storage_unavailable')
@@ -620,8 +706,10 @@ describe('fleet_run scope read gate (KS-6.1)', () => {
     const sql = (() =>
       Promise.reject(new Error('boom'))) as unknown as SyncSql
     const response = await run({
-      client: { end: () => Promise.resolve(), sql },
       request: get({ scope: FLEET_SCOPE }),
+      resolveScopeRead: workerResolver({
+        client: { end: () => Promise.resolve(), sql },
+      }),
     })
     expect(response.status).toBe(503)
     const body = await syncErrorBody(response)

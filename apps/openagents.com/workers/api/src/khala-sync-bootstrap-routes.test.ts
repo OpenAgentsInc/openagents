@@ -15,6 +15,7 @@ import {
   KHALA_SYNC_PROTOCOL_VERSION,
   personalScope,
   publicScope,
+  SyncScope,
   SyncVersionWatermark,
 } from '@openagentsinc/khala-sync'
 import {
@@ -22,6 +23,7 @@ import {
   KhalaSyncInvalidPageTokenError,
   KhalaSyncStorageError,
   MAX_BOOTSTRAP_PAGE_SIZE,
+  resolveScopeRead,
   type SyncSql,
 } from '@openagentsinc/khala-sync-server'
 
@@ -32,6 +34,7 @@ import {
   type KhalaSyncBootstrapDependencies,
 } from './khala-sync-bootstrap-routes'
 import type { KhalaSyncPushSqlClient } from './khala-sync-push-routes'
+import type { KhalaSyncScopeReadResolver } from './khala-sync-scope-auth'
 
 const decodeBootstrapEntity = S.decodeUnknownSync(BootstrapEntity)
 
@@ -96,6 +99,29 @@ const makeFakeClient = () => {
   return { client, endedCount: () => ended }
 }
 
+/**
+ * The REAL package resolver (KS-7.1) over deterministic in-test
+ * capabilities: own personal scope + public scopes, plus any teams in
+ * `memberOfTeams`. Same shape as the log-route suite.
+ */
+const testResolver = (
+  input: Readonly<{ memberOfTeams?: ReadonlySet<string> }> = {},
+): KhalaSyncScopeReadResolver =>
+  (userId, scope) =>
+    resolveScopeRead(
+      {
+        canReadAgentRun: async () => false,
+        canReadThread: async () => false,
+        isTeamMember: async (uid, teamId) =>
+          uid === userId && (input.memberOfTeams?.has(teamId) ?? false),
+        readFleetScopeOwner: async () => null,
+      },
+      userId,
+      scope,
+    )
+
+const defaultResolveScopeRead = testResolver()
+
 const run = (
   input: Readonly<{
     request?: Request
@@ -103,6 +129,7 @@ const run = (
     binding?: { connectionString: string } | undefined
     client?: KhalaSyncPushSqlClient
     bootstrap?: BootstrapFromPostgresFn
+    resolveScopeRead?: KhalaSyncScopeReadResolver
   }> = {},
 ) => {
   const deps: KhalaSyncBootstrapDependencies = {
@@ -122,6 +149,7 @@ const run = (
         throw new Error('bootstrapFromPostgres must be injected for this test')
       }),
     makeSqlClient: async () => input.client ?? makeFakeClient().client,
+    resolveScopeRead: input.resolveScopeRead ?? defaultResolveScopeRead,
   }
   return Effect.runPromise(
     handleKhalaSyncBootstrap(input.request ?? post(requestBody()), deps),
@@ -205,11 +233,49 @@ describe('handleKhalaSyncBootstrap', () => {
     expect(body.retryable).toBe(false)
   })
 
-  test('membership scopes (scope.team.*) are denied by the v1 gate', async () => {
+  test('a NON-MEMBER is denied a team scope (403 unauthorized_scope)', async () => {
     const response = await run({
       request: post(requestBody({ scope: 'scope.team.t-1' })),
     })
     expect(response.status).toBe(403)
+    expect((await syncErrorBody(response)).code).toBe('unauthorized_scope')
+  })
+
+  test('a LIVE team member bootstraps the team scope', async () => {
+    const response = await run({
+      bootstrap: async () =>
+        new BootstrapResponse({
+          cursor: SyncVersionWatermark.make(0),
+          entities: [],
+          protocolVersion: KHALA_SYNC_PROTOCOL_VERSION,
+          scope: S.decodeUnknownSync(SyncScope)('scope.team.t-1'),
+        }),
+      request: post(requestBody({ scope: 'scope.team.t-1' })),
+      resolveScopeRead: testResolver({ memberOfTeams: new Set(['t-1']) }),
+    })
+    expect(response.status).toBe(200)
+  })
+
+  test('an unknown scope taxonomy member is gated CLOSED (403 unknown_scope)', async () => {
+    const response = await run({
+      request: post(requestBody({ scope: 'scope.workspace.w-1' })),
+    })
+    expect(response.status).toBe(403)
+    expect((await syncErrorBody(response)).code).toBe('unknown_scope')
+  })
+
+  test('a failed authorization lookup fails CLOSED as 503 retryable', async () => {
+    const response = await run({
+      request: post(requestBody({ scope: 'scope.team.t-1' })),
+      resolveScopeRead: async () => ({
+        kind: 'unavailable',
+        messageSafe: 'authorization lookup failed; retry the request.',
+      }),
+    })
+    expect(response.status).toBe(503)
+    const body = await syncErrorBody(response)
+    expect(body.code).toBe('storage_unavailable')
+    expect(body.retryable).toBe(true)
   })
 
   test('missing KHALA_SYNC_DB binding is 503 storage_unavailable', async () => {

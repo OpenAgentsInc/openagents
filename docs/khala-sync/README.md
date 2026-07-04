@@ -58,8 +58,11 @@ clients with server-authoritative mutators and rebase.
 All four wire-protocol surfaces are live in the `openagents.com` Worker
 (`apps/openagents.com/workers/api/src/khala-sync-*-routes.ts`), each
 authenticated via the standard actor auth (session or agent bearer) and
-scope-gated by the v1 `canReadScopeV1` predicate (own personal scope +
-`scope.public.*`; membership scopes arrive with KS-7):
+scope-gated by the KS-7.1 taxonomy-complete resolver (`resolveScopeRead`
+from `packages/khala-sync-server`, Worker capabilities in
+`khala-sync-scope-auth.ts`: personal self-only, public, live D1 team
+membership, agent_run/thread ownership, fleet_run scope owners; unknown
+kinds and failed lookups fail CLOSED — SPEC §3):
 
 | Route | Lane | Serving |
 |---|---|---|
@@ -69,8 +72,10 @@ scope-gated by the v1 `canReadScopeV1` predicate (own personal scope +
 | `GET /api/sync/connect` | KS-4.4 #8297 | WebSocket upgrade proxied to the per-scope `KhalaSyncHubDO` `/connect` (auth + scope gate BEFORE the upgrade) |
 
 The admin-bearer internal hub surface
-(`/api/internal/khala-sync/hub/{append,log,connect}`) remains for the
-capture daemon and operators only. The end-to-end stitch seam — bootstrap
+(`/api/internal/khala-sync/hub/{append,log,connect,access-changed}`)
+remains for the capture daemon and operators only; `access-changed` is the
+KS-7.1 revocation trigger (`POST { scope }` → hub broadcasts
+`MustRefetch(access_changed)` and closes every socket — see RUNBOOK). The end-to-end stitch seam — bootstrap
 under concurrent writes, catch-up from the snapshot cursor, live
 DeltaFrames, byte-equal convergence with apply idempotence — is verified by
 `apps/openagents.com/workers/api/src/khala-sync-stitch-seam.e2e.test.ts`
@@ -87,7 +92,7 @@ against local Postgres + the real hub DO + the real client SQLite store.
 | KS-4 Capture + Hub DO (capture, hub, catch-up, bootstrap/seam) | #8294 #8295 #8296 #8297 |
 | KS-5 Client engine (store, rebase, session, web lane) | #8298 #8299 #8300 #8301 |
 | KS-6 First consumers (fleet projection, desktop, tokens-served) | #8302 (server-side projection + operator mutators landed; supervisor intent enforcement is follow-up) #8303 (desktop fleet cockpit wired behind `KHALA_SYNC_FLEET=1`; live verification deferred to the deploy pass) #8304 |
-| KS-7 Permissions (scope auth, CVR v2) | #8305 #8306 |
+| KS-7 Permissions (scope auth, CVR v2) | #8305 (scope-auth resolver + access-change refetch landed) #8306 |
 | KS-8 Domain migration (assignments, ledger, rolling plan) | #8307 #8308 #8309 (plan: [`MIGRATION_PLAN.md`](./MIGRATION_PLAN.md)); per-domain waves #8315–#8330 |
 | KS-9 QA/ops (load test, behavior contracts, invariants+runbook) | #8310 #8311 #8312 (invariants+runbook landed: [`RUNBOOK.md`](./RUNBOOK.md) + the "Khala Sync (SPEC §7 invariant set)" section in `apps/openagents.com/INVARIANTS.md`) |
 

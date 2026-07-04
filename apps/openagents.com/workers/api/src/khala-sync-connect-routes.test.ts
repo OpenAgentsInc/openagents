@@ -1,5 +1,5 @@
 // Route tests for GET /api/sync/connect (KS-4.4, #8297): auth BEFORE the
-// upgrade, param validation, v1 scope gate, 426 for non-WebSocket requests,
+// upgrade, param validation, the KS-7.1 scope gate, 426 for non-WebSocket requests,
 // 503 while the hub binding is absent, and the DO WebSocket-proxy forward
 // (per-scope idFromName, /connect target with scope + cursor params, Upgrade
 // header preserved, hub response passed through untouched). All seams are
@@ -9,6 +9,7 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import { personalScope, publicScope } from '@openagentsinc/khala-sync'
+import { resolveScopeRead } from '@openagentsinc/khala-sync-server'
 
 import type {
   KhalaSyncHubNamespaceLike,
@@ -19,6 +20,7 @@ import {
   KHALA_SYNC_CONNECT_PATH,
   type KhalaSyncConnectDependencies,
 } from './khala-sync-connect-routes'
+import type { KhalaSyncScopeReadResolver } from './khala-sync-scope-auth'
 
 const USER_ID = 'user-1'
 const OWN_SCOPE = personalScope(USER_ID)
@@ -57,11 +59,35 @@ const fakeHub = (
   return { idsRequested, namespace, requests }
 }
 
+/**
+ * The REAL package resolver (KS-7.1) over deterministic in-test
+ * capabilities: own personal scope + public scopes, plus any teams in
+ * `memberOfTeams`. Same shape as the log/bootstrap suites.
+ */
+const testResolver = (
+  input: Readonly<{ memberOfTeams?: ReadonlySet<string> }> = {},
+): KhalaSyncScopeReadResolver =>
+  (userId, scope) =>
+    resolveScopeRead(
+      {
+        canReadAgentRun: async () => false,
+        canReadThread: async () => false,
+        isTeamMember: async (uid, teamId) =>
+          uid === userId && (input.memberOfTeams?.has(teamId) ?? false),
+        readFleetScopeOwner: async () => null,
+      },
+      userId,
+      scope,
+    )
+
+const defaultResolveScopeRead = testResolver()
+
 const run = (
   input: Readonly<{
     request?: Request
     userId?: string | undefined
     hubNamespace?: KhalaSyncHubNamespaceLike | undefined
+    resolveScopeRead?: KhalaSyncScopeReadResolver
   }> = {},
 ) => {
   const deps: KhalaSyncConnectDependencies = {
@@ -72,6 +98,7 @@ const run = (
           : { userId: input.userId }
         : { userId: USER_ID },
     hubNamespace: 'hubNamespace' in input ? input.hubNamespace : undefined,
+    resolveScopeRead: input.resolveScopeRead ?? defaultResolveScopeRead,
   }
   return Effect.runPromise(handleKhalaSyncConnect(input.request ?? get(), deps))
 }
@@ -140,9 +167,53 @@ describe('handleKhalaSyncConnect', () => {
     expect(hub.requests).toHaveLength(0)
   })
 
-  test('membership scopes (scope.team.*) are denied by the v1 gate', async () => {
-    const response = await run({ request: get({ scope: 'scope.team.t-1' }) })
+  test('a NON-MEMBER is denied a team scope BEFORE any hub contact', async () => {
+    const hub = fakeHub(() => {
+      throw new Error('hub must not be reached for an unauthorized scope')
+    })
+    const response = await run({
+      hubNamespace: hub.namespace,
+      request: get({ scope: 'scope.team.t-1' }),
+    })
     expect(response.status).toBe(403)
+    expect((await syncErrorBody(response)).code).toBe('unauthorized_scope')
+    expect(hub.requests).toHaveLength(0)
+  })
+
+  test('a LIVE team member connects to the team scope (upgrade forwarded to the hub)', async () => {
+    const hub = fakeHub(() => new Response(null, { status: 204 }))
+    const response = await run({
+      hubNamespace: hub.namespace,
+      request: get({ scope: 'scope.team.t-1' }),
+      resolveScopeRead: testResolver({ memberOfTeams: new Set(['t-1']) }),
+    })
+    expect(response.status).toBe(204)
+    expect(hub.requests).toHaveLength(1)
+  })
+
+  test('an unknown scope taxonomy member is gated CLOSED (403 unknown_scope)', async () => {
+    const response = await run({
+      request: get({ scope: 'scope.workspace.w-1' }),
+    })
+    expect(response.status).toBe(403)
+    expect((await syncErrorBody(response)).code).toBe('unknown_scope')
+  })
+
+  test('a failed authorization lookup fails CLOSED as 503 retryable, BEFORE any hub contact', async () => {
+    const hub = fakeHub(() => {
+      throw new Error('hub must not be reached when authorization is unavailable')
+    })
+    const response = await run({
+      hubNamespace: hub.namespace,
+      request: get({ scope: 'scope.team.t-1' }),
+      resolveScopeRead: async () => ({
+        kind: 'unavailable',
+        messageSafe: 'authorization lookup failed; retry the request.',
+      }),
+    })
+    expect(response.status).toBe(503)
+    expect((await syncErrorBody(response)).code).toBe('storage_unavailable')
+    expect(hub.requests).toHaveLength(0)
   })
 
   test('a plain HTTP request (no Upgrade header) is 426 invalid_request', async () => {

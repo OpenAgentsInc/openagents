@@ -784,15 +784,18 @@ import { handleKhalaSyncBootstrap } from './khala-sync-bootstrap-routes'
 import { handleKhalaSyncConnect } from './khala-sync-connect-routes'
 import { handleKhalaSyncDbSmoke } from './khala-sync-db-smoke-routes'
 import {
+  KHALA_SYNC_HUB_ACCESS_CHANGED_PATH,
   KHALA_SYNC_HUB_APPEND_PATH,
   KHALA_SYNC_HUB_CONNECT_PATH,
   KHALA_SYNC_HUB_LOG_PATH,
   type KhalaSyncHubNamespaceLike,
+  handleKhalaSyncHubAccessChangedRoute,
   handleKhalaSyncHubInternalRoute,
 } from './khala-sync-hub-do'
 export { KhalaSyncHubDO } from './khala-sync-hub-do'
 import { projectFleetAssignmentTransition } from './khala-sync-fleet-projection'
 import { handleKhalaSyncLog } from './khala-sync-log-routes'
+import { makeKhalaSyncScopeReadResolver } from './khala-sync-scope-auth'
 import { makeKhalaSyncWorkerMutatorRegistry } from './khala-sync-mutators'
 import {
   defaultMakeKhalaSyncSqlClient,
@@ -12034,6 +12037,24 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       ),
   },
   {
+    // Khala Sync access-change refetch trigger (KS-7.1, #8305; SPEC §7
+    // invariant 7). Admin bearer only: POST { scope } instructs the scope's
+    // hub DO to broadcast MustRefetch(access_changed) and close every
+    // socket; sockets re-authenticate through the KS-7.1 resolver on
+    // reconnect, so revoked users cannot re-attach. Run after any
+    // membership/scope-owner revocation (see docs/khala-sync/RUNBOOK.md).
+    path: KHALA_SYNC_HUB_ACCESS_CHANGED_PATH,
+    handler: (request, env) =>
+      Effect.promise(() =>
+        handleKhalaSyncHubAccessChangedRoute(request, {
+          namespace: env.KHALA_SYNC_HUB as
+            | KhalaSyncHubNamespaceLike
+            | undefined,
+          requireOperator: () => requireAdminApiToken(request, env),
+        }),
+      ),
+  },
+  {
     // Khala Sync push (KS-3.1, #8291): authenticated transactional mutator
     // execution. Decodes a typed PushRequest, resolves the caller via the
     // standard actor auth (session or agent bearer), and runs each mutation
@@ -12065,8 +12086,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // KhalaSyncHubDO window (KHALA_SYNC_HUB), falling through to the
     // authoritative Postgres read substrate (KHALA_SYNC_DB Hyperdrive)
     // when the hub cannot prove the range; a cursor behind the retained
-    // window gets a 410 typed SyncError (MustRefetch, invariant 6). v1
-    // scope gate: own personal scope + scope.public.* (KS-7 seam).
+    // window gets a 410 typed SyncError (MustRefetch, invariant 6). Scope
+    // gate: the KS-7.1 taxonomy-complete resolver (live D1 membership/
+    // ownership + Postgres fleet scope owners; fail-closed).
     path: '/api/sync/log',
     handler: (request, env, ctx) =>
       handleKhalaSyncLog(request, {
@@ -12084,6 +12106,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         hubNamespace: env.KHALA_SYNC_HUB as
           | KhalaSyncHubNamespaceLike
           | undefined,
+        resolveScopeRead: makeKhalaSyncScopeReadResolver({
+          binding: env.KHALA_SYNC_DB,
+          db: openAgentsDatabase(env),
+        }),
       }),
   },
   {
@@ -12092,7 +12118,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // KHALA_SYNC_DB Hyperdrive binding (KS-2.2 read substrate:
     // REPEATABLE READ pages, self-contained page tokens, final page carries
     // the stitch cursor). Typed 400s incl. protocol/schema version gates;
-    // same v1 scope gate as /api/sync/log. Snapshot pages are
+    // same KS-7.1 scope gate as /api/sync/log. Snapshot pages are
     // paging-position-specific, so every response is no-store.
     path: '/api/sync/bootstrap',
     handler: (request, env, ctx) =>
@@ -12108,14 +12134,19 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           }
         },
         binding: env.KHALA_SYNC_DB,
+        resolveScopeRead: makeKhalaSyncScopeReadResolver({
+          binding: env.KHALA_SYNC_DB,
+          db: openAgentsDatabase(env),
+        }),
       }),
   },
   {
     // Khala Sync live tail (KS-4.4, #8297): authenticated WebSocket upgrade
     // proxied to the per-scope KhalaSyncHubDO /connect (Hibernation API,
-    // catch-up from the socket cursor out of the DO window). Auth + the v1
-    // scope gate run BEFORE the upgrade is forwarded; the admin-guarded
-    // internal hub route stays capture/operator-only.
+    // catch-up from the socket cursor out of the DO window). Auth + the
+    // KS-7.1 scope gate run BEFORE the upgrade is forwarded (and again on
+    // every reconnect — how access_changed revocation sticks); the
+    // admin-guarded internal hub route stays capture/operator-only.
     path: '/api/sync/connect',
     handler: (request, env, ctx) =>
       handleKhalaSyncConnect(request, {
@@ -12132,6 +12163,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         hubNamespace: env.KHALA_SYNC_HUB as
           | KhalaSyncHubNamespaceLike
           | undefined,
+        resolveScopeRead: makeKhalaSyncScopeReadResolver({
+          binding: env.KHALA_SYNC_DB,
+          db: openAgentsDatabase(env),
+        }),
       }),
   },
   {
