@@ -776,6 +776,14 @@ import {
   makeKhalaMcpCatalog,
 } from './khala-mcp'
 import { handleKhalaSyncDbSmoke } from './khala-sync-db-smoke-routes'
+import {
+  KHALA_SYNC_HUB_APPEND_PATH,
+  KHALA_SYNC_HUB_CONNECT_PATH,
+  KHALA_SYNC_HUB_LOG_PATH,
+  type KhalaSyncHubNamespaceLike,
+  handleKhalaSyncHubInternalRoute,
+} from './khala-sync-hub-do'
+export { KhalaSyncHubDO } from './khala-sync-hub-do'
 import { makeOpenAgentsL402HmacSigningBoundary } from './l402-credential-service'
 import { handlePublicLaborEarningsApi } from './labor-earnings-routes'
 import { handleSelfServeLaborPayoutApi } from './labor-self-serve-earning-payout-routes'
@@ -11916,6 +11924,51 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         binding: env.KHALA_SYNC_DB,
         requireOperator: () => requireAdminApiToken(request, env),
       }),
+  },
+  {
+    // Khala Sync hub internal surface (KS-4.2, #8295). Admin bearer only —
+    // the public /api/sync/* routes land with KS-4.3/4.4. Proxies to the
+    // per-scope KhalaSyncHubDO (`idFromName(scope)`): capture/post-commit
+    // appends, offset-resumable log pages served from the DO window, and the
+    // hibernating-WebSocket live tail. Honest 503 while the KHALA_SYNC_HUB
+    // binding is absent.
+    path: KHALA_SYNC_HUB_APPEND_PATH,
+    handler: (request, env) =>
+      Effect.promise(() =>
+        handleKhalaSyncHubInternalRoute(request, {
+          doPath: '/append',
+          namespace: env.KHALA_SYNC_HUB as
+            | KhalaSyncHubNamespaceLike
+            | undefined,
+          requireOperator: () => requireAdminApiToken(request, env),
+        }),
+      ),
+  },
+  {
+    path: KHALA_SYNC_HUB_LOG_PATH,
+    handler: (request, env) =>
+      Effect.promise(() =>
+        handleKhalaSyncHubInternalRoute(request, {
+          doPath: '/log',
+          namespace: env.KHALA_SYNC_HUB as
+            | KhalaSyncHubNamespaceLike
+            | undefined,
+          requireOperator: () => requireAdminApiToken(request, env),
+        }),
+      ),
+  },
+  {
+    path: KHALA_SYNC_HUB_CONNECT_PATH,
+    handler: (request, env) =>
+      Effect.promise(() =>
+        handleKhalaSyncHubInternalRoute(request, {
+          doPath: '/connect',
+          namespace: env.KHALA_SYNC_HUB as
+            | KhalaSyncHubNamespaceLike
+            | undefined,
+          requireOperator: () => requireAdminApiToken(request, env),
+        }),
+      ),
   },
   {
     path: '/api/stats/token-usage/events',

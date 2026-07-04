@@ -106,6 +106,12 @@ const approvedExactRoutePaths = [
   '/api/admin/overview',
   '/api/admin/cf-browser-smoke',
   '/api/internal/khala-sync/db-smoke',
+  // Khala Sync hub internal surface (KS-4.2, #8295): admin bearer only;
+  // per-scope KhalaSyncHubDO append / log / connect. Public /api/sync/*
+  // arrives with KS-4.3/4.4.
+  '/api/internal/khala-sync/hub/append',
+  '/api/internal/khala-sync/hub/log',
+  '/api/internal/khala-sync/hub/connect',
   '/api/stats/token-usage/events',
   '/api/stats/token-usage/aggregate',
   '/api/admin/inference-analytics',

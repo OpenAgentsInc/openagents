@@ -420,6 +420,14 @@
         "name": "EVENT_LEDGER_OWNER",
         "class_name": "EventLedgerOwnerDurableObject",
       },
+      // Khala Sync hub (KS-4.2, #8295). One SQLite-class DO per scope
+      // (`idFromName(scope)`) holds the recent changelog window + hibernating
+      // WebSockets; cache/fan-out only, Postgres stays authoritative
+      // (docs/khala-sync/SPEC.md §5).
+      {
+        "name": "KHALA_SYNC_HUB",
+        "class_name": "KhalaSyncHubDO",
+      },
     ],
   },
   "migrations": [
@@ -454,6 +462,10 @@
     {
       "tag": "v8",
       "new_sqlite_classes": ["EventLedgerOwnerDurableObject"],
+    },
+    {
+      "tag": "v9",
+      "new_sqlite_classes": ["KhalaSyncHubDO"],
     },
   ],
   "env": {
@@ -621,6 +633,12 @@
             "name": "EVENT_LEDGER_OWNER",
             "class_name": "EventLedgerOwnerDurableObject",
           },
+          // Khala Sync hub (KS-4.2, #8295): per-scope changelog window +
+          // hibernating WebSockets; cache/fan-out only.
+          {
+            "name": "KHALA_SYNC_HUB",
+            "class_name": "KhalaSyncHubDO",
+          },
         ],
       },
       "migrations": [
@@ -643,6 +661,10 @@
         {
           "tag": "v5",
           "new_sqlite_classes": ["EventLedgerOwnerDurableObject"],
+        },
+        {
+          "tag": "v6",
+          "new_sqlite_classes": ["KhalaSyncHubDO"],
         },
       ],
     },

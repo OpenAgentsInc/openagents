@@ -39,6 +39,11 @@ export type WorkerBindings = Readonly<{
   // (docs/khala-sync/SPEC.md §4); typed structurally so packages do not need
   // the workers-types `Hyperdrive` ambient.
   KHALA_SYNC_DB?: Readonly<{ connectionString: string }>
+  // Khala Sync hub (KS-4.2, #8295). Optional SQLite-class DO namespace; one
+  // KhalaSyncHubDO per scope (`idFromName(scope)`) holds the recent changelog
+  // window + hibernating WebSockets (docs/khala-sync/SPEC.md §5). Absent
+  // until the wrangler binding + migration are deployed.
+  KHALA_SYNC_HUB?: DurableObjectNamespace
   MARKET_RELAY_SERVICE?: Fetcher
   ARTIFACTS: R2Bucket
   RUNNER_EVENTS: Queue

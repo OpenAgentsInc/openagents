@@ -43,6 +43,8 @@
     "@openagentsinc/atif": "workspace:*",
     "@openagentsinc/durable-stream": "workspace:*",
     "@openagentsinc/effect-boundary": "workspace:*",
+    "@openagentsinc/khala-sync": "workspace:*",
+    "@openagentsinc/khala-sync-server": "workspace:*",
     "@openagentsinc/mcp-contract": "workspace:*",
     "@openagentsinc/nip90": "workspace:*",
     "@openagentsinc/proof-replay": "workspace:*",

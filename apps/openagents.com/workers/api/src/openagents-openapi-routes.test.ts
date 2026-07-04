@@ -1426,6 +1426,12 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   // Khala Sync Hyperdrive connectivity smoke (KS-0.2, #8284): admin bearer
   // only, internal deploy-time smoke; not part of the public OpenAPI surface.
   '/api/internal/khala-sync/db-smoke',
+  // Khala Sync hub internal surface (KS-4.2, #8295): admin bearer only,
+  // per-scope KhalaSyncHubDO append/log/connect; not part of the public
+  // OpenAPI surface (the public /api/sync/* routes land with KS-4.3/4.4).
+  '/api/internal/khala-sync/hub/append',
+  '/api/internal/khala-sync/hub/log',
+  '/api/internal/khala-sync/hub/connect',
   // Operator business-pipeline console (operator/admin only): internal queue
   // surface, not part of the public OpenAPI contract. (Allowlisted here as
   // clean-up: the routes landed without a coverage decision.)

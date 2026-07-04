@@ -257,6 +257,8 @@
         "@openagentsinc/effect-boundary": "workspace:*",
         "@openagentsinc/email-templates": "workspace:*",
         "@openagentsinc/forge-protocol": "workspace:*",
+        "@openagentsinc/khala-sync": "workspace:*",
+        "@openagentsinc/khala-sync-server": "workspace:*",
         "@openagentsinc/mcp-contract": "workspace:*",
         "@openagentsinc/mullet-schema": "workspace:*",
         "@openagentsinc/mullet-sim": "workspace:*",

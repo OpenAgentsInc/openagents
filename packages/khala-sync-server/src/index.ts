@@ -166,8 +166,4 @@ export const KHALA_SYNC_NOTIFY_CHANNEL = "khala_sync_changelog_append"
 // offset-resumable catch-up. See issue KS-4.2.
 // ---------------------------------------------------------------------------
 
-export const KHALA_SYNC_HUB_BINDING = "KHALA_SYNC_HUB"
-
-/** Bounds for the hub's DO SQLite log window. */
-export const HUB_WINDOW_MAX_ENTRIES = 10_000
-export const HUB_WINDOW_MAX_BYTES = 64 * 1024 * 1024
+export * from "./hub.js"
