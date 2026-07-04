@@ -266,6 +266,7 @@
         "@openagentsinc/proof-replay": "workspace:*",
         "@openagentsinc/provider-account-schema": "workspace:*",
         "@openagentsinc/public-activity-timeline": "workspace:*",
+        "@openagentsinc/reactor-contracts": "workspace:*",
         "@openagentsinc/replay-clips": "workspace:*",
         "@openagentsinc/sync-schema": "workspace:*",
         "@openagentsinc/sync-worker": "workspace:*",
