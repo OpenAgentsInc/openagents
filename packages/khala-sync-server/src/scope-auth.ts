@@ -11,7 +11,9 @@ import type { SyncScope } from "@openagentsinc/khala-sync"
  *   scope.public.<channel>       every authenticated caller
  *   scope.team.<teamId>          LIVE team membership (capability callback)
  *   scope.agent_run.<runId>      run owner, or a member of the run's team
- *   scope.thread.<threadId>      same ownership rule via the thread mapping
+ *   scope.thread.<threadId>      thread capability callback (legacy
+ *                                agent-run/autopilot mappings plus
+ *                                owner-private chat thread ownership)
  *   scope.fleet_run.<fleetRunId> the khala_sync_scope_owners owner
  *   anything else                DENIED with a typed `unknown_scope` —
  *                                a taxonomy member without a read policy is
@@ -73,10 +75,9 @@ export interface KhalaSyncScopeAuthCapabilities {
    */
   readonly canReadAgentRun: (userId: string, runId: string) => Promise<boolean>
   /**
-   * `scope.thread.<threadId>` ownership: the thread route id resolves to
-   * its agent run (including the autopilot-thread mapping) and follows the
-   * same ownership rule as {@link canReadAgentRun}. Unresolvable threads
-   * must answer `false`.
+   * `scope.thread.<threadId>` ownership: Worker-side callbacks may resolve
+   * legacy agent-run/autopilot-thread mappings and owner-private chat
+   * thread ownership. Unresolvable threads must answer `false`.
    */
   readonly canReadThread: (userId: string, threadId: string) => Promise<boolean>
   /**

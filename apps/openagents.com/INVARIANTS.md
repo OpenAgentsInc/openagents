@@ -3474,7 +3474,8 @@ name the blocking issue instead of claiming enforcement.
    (`packages/khala-sync-server/src/scope-auth.ts`) over live capability
    callbacks (`workers/api/src/khala-sync-scope-auth.ts`): personal
    self-only, public, live D1 team membership, agent_run/thread ownership
-   (the `agent_runs` rule incl. the autopilot-thread mapping), fleet_run
+   (the `agent_runs` rule incl. the autopilot-thread mapping, plus MC-1
+   owner-private thread ownership via `khala_sync_scope_owners`), fleet_run
    `khala_sync_scope_owners` owners; UNKNOWN taxonomy members are gated
    CLOSED (403 typed `unknown_scope`) and a failed lookup fails CLOSED as a
    retryable 503 — never a grant. Resolver matrix:
@@ -3488,8 +3489,10 @@ name the blocking issue instead of claiming enforcement.
    membership grants; non-member and removed-member deny", "agent_run:
    owner allowed; team run readable by an active member; foreign denied",
    "thread: resolves through agent_runs directly and via the
-   autopilot-thread mapping", "fleet_run: khala_sync_scope_owners owner
-   allowed, foreign/unowned denied; client always released"). Routes:
+   autopilot-thread mapping", "thread: owner-private MC-1 chat scopes
+   resolve through khala_sync_scope_owners", "fleet_run:
+   khala_sync_scope_owners owner allowed, foreign/unowned denied; client
+   always released"). Routes:
    `workers/api/src/khala-sync-log-routes.test.ts` ("a LIVE team member
    reads the team scope (hub-served)", "a NON-MEMBER is denied a team scope
    (403 unauthorized_scope)", "an unknown scope taxonomy member is gated

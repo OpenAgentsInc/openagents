@@ -40,12 +40,14 @@ clients with server-authoritative mutators and rebase.
 ## Packages
 
 - `packages/khala-sync` — wire/domain contracts (Effect Schema), including
-  the KS-6.1 fleet cockpit entity contracts (`src/fleet.ts`). Landed.
+  the KS-6.1 fleet cockpit entity contracts (`src/fleet.ts`) and MC-1
+  owner-private chat entity contracts (`src/chat.ts`). Landed.
 - `packages/khala-sync-server` — Postgres substrate + mutator engine +
   capture + compaction + `KhalaSyncHubDO` + the KS-6.1 fleet scope
   projection/mutators (`fleet-projection.ts`, `fleet-mutators.ts`,
   `khala_sync_scope_owners` / `khala_sync_fleet_intents` in
-  `migrations/0004`). Landed through KS-6.1 server-side.
+  `migrations/0004`) + MC-1 chat mutators (`chat-mutators.ts`,
+  `migrations/0018_owner_private_chat.sql`). Landed through MC-1 server-side.
 - `packages/khala-sync-client` — local store + overlay/rebase + session.
   Contracts landed.
 - `clients/khala-code-desktop` — FIRST CONSUMER WIRED (KS-6.2, #8303):
@@ -67,8 +69,9 @@ authenticated via the standard actor auth (session or agent bearer) and
 scope-gated by the KS-7.1 taxonomy-complete resolver (`resolveScopeRead`
 from `packages/khala-sync-server`, Worker capabilities in
 `khala-sync-scope-auth.ts`: personal self-only, public, live D1 team
-membership, agent_run/thread ownership, fleet_run scope owners; unknown
-kinds and failed lookups fail CLOSED — SPEC §3):
+membership, agent_run ownership, legacy thread ownership, owner-private
+chat thread scope owners, fleet_run scope owners; unknown kinds and failed
+lookups fail CLOSED — SPEC §3):
 
 | Route | Lane | Serving |
 |---|---|---|

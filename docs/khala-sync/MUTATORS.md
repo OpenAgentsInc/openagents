@@ -71,6 +71,9 @@ a cross-package completeness test in
 | Name | Args | Writes | In-band rejections |
 | --- | --- | --- | --- |
 | `sync.debugEcho` | `scope`, `entityId`, `echo` | `sync_debug_echo` post-image in the caller's own personal scope | `unauthorized_scope` |
+| `chat.createThread` | `threadId`, `title` | `khala_sync_chat_threads` row + `chat_thread` post-image in `scope.user.<owner>` and `scope.thread.<threadId>` | `thread_exists`, `unauthorized_scope` |
+| `chat.appendMessage` | `threadId`, `messageId`, `body` | `khala_sync_chat_messages` row + updated `chat_thread`; message body only in `scope.thread.<threadId>` | `thread_not_found`, `message_exists`, `unauthorized_scope` |
+| `chat.renameThread` | `threadId`, `title` | updated `khala_sync_chat_threads.title` + `chat_thread` post-image in owner and thread scopes | `thread_not_found`, `unauthorized_scope` |
 | `fleet.setDesiredSlots` | `runId`, `desiredSlots` (0–1024) | intent row + `fleet_run` post-image | `unauthorized_scope` |
 | `fleet.pauseRun` | `runId` | intent row + `fleet_run` post-image (`status: paused`) | `unauthorized_scope` |
 | `fleet.resumeRun` | `runId` | intent row + `fleet_run` post-image (`status: running`) | `unauthorized_scope` |
@@ -123,6 +126,15 @@ assignment-transition projections — enforced run/worker state is not yet
 independently re-projected from the Pylon store, so an intent enforcement
 skip (`skipped_stale` on an unknown/terminal run) is visible in the
 outcome rows, not in a corrected post-image.
+
+The MC-1 chat mutators are owner-private by construction: thread metadata
+appears in the caller's personal scope for thread-list discovery and in the
+thread scope; message bodies appear only in `scope.thread.<threadId>`. Thread
+read authority for newly-created chat scopes is the first-writer-wins
+`khala_sync_scope_owners` row, while legacy thread scopes continue to resolve
+through the `agent_runs` / autopilot-thread D1 mapping. Integration coverage
+lives in `packages/khala-sync-server/src/chat-mutators.test.ts` and proves a
+thread created by push appears through the catch-up read service.
 
 ## 1. The single-transaction rule (SPEC §7 invariant 5)
 

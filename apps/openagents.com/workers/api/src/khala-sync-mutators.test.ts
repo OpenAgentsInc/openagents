@@ -12,6 +12,11 @@ import type {
   MutatorContext,
   SyncTransactionWriter,
 } from '@openagentsinc/khala-sync-server'
+import {
+  CHAT_APPEND_MESSAGE_MUTATOR_NAME,
+  CHAT_CREATE_THREAD_MUTATOR_NAME,
+  CHAT_RENAME_THREAD_MUTATOR_NAME,
+} from '@openagentsinc/khala-sync-server'
 
 import {
   debugEchoMutator,
@@ -49,10 +54,13 @@ const makeCtx = (userId: string, writer: SyncTransactionWriter): MutatorContext 
 })
 
 describe('khala sync worker mutator registry', () => {
-  test('the registry carries sync.debugEcho and the KS-6.1 + KS-3.2 fleet operator mutators', () => {
+  test('the registry carries sync.debugEcho, MC-1 chat, and the KS-6.1 + KS-3.2 fleet operator mutators', () => {
     const registry = makeKhalaSyncWorkerMutatorRegistry()
     expect(registry.names().map(String)).toEqual([
       SYNC_DEBUG_ECHO_MUTATOR_NAME,
+      CHAT_CREATE_THREAD_MUTATOR_NAME,
+      CHAT_APPEND_MESSAGE_MUTATOR_NAME,
+      CHAT_RENAME_THREAD_MUTATOR_NAME,
       'fleet.setDesiredSlots',
       'fleet.pauseRun',
       'fleet.resumeRun',
@@ -64,6 +72,13 @@ describe('khala sync worker mutator registry', () => {
     expect(
       registry.get(MutatorName.make(SYNC_DEBUG_ECHO_MUTATOR_NAME)),
     ).toBeDefined()
+    for (const name of [
+      CHAT_CREATE_THREAD_MUTATOR_NAME,
+      CHAT_APPEND_MESSAGE_MUTATOR_NAME,
+      CHAT_RENAME_THREAD_MUTATOR_NAME,
+    ]) {
+      expect(registry.get(MutatorName.make(name))).toBeDefined()
+    }
     for (const name of [
       'fleet.setDesiredSlots',
       'fleet.pauseRun',

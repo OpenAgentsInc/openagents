@@ -104,6 +104,25 @@ from D1, mirrored fail-soft into Postgres, and projected into Khala Sync
 scope changelog rows where applicable. Final read/poll retirement and D1
 drop remain blocked on #8324/#8330 evidence.
 
+## Owner-private chat mutators (MC-1, #8352)
+
+`src/chat-mutators.ts` + `migrations/0018_owner_private_chat.sql`:
+
+- **Business state** — `khala_sync_chat_threads` and
+  `khala_sync_chat_messages` are written inside the same transaction as the
+  Khala Sync changelog. The mutation ledger remains the idempotency boundary.
+- **Named mutators** — `chat.createThread`, `chat.appendMessage`, and
+  `chat.renameThread` are registered in the `openagents.com` Worker registry.
+  Business refusals are in-band `MutationResult` values, so a bad append never
+  blocks later mutations in the client queue.
+- **Scopes** — `scope.user.<owner>` carries thread metadata only; message
+  bodies replicate only to `scope.thread.<threadId>`. The thread scope owner is
+  recorded in `khala_sync_scope_owners`, reusing the existing first-writer-wins
+  owner gate without creating a public firehose.
+- **Evidence** — `src/chat-mutators.test.ts` runs the real `executePush`
+  engine against local Postgres and reads the resulting owner/thread scopes
+  through `logPage`, proving a pushed thread appears over catch-up.
+
 ## Fleet cockpit scope (KS-6.1, #8302)
 
 `src/fleet-projection.ts` + `src/fleet-mutators.ts` +
@@ -392,7 +411,8 @@ per-mutation rejections IN-BAND in a 200 `PushResponse` — never a
 queue-blocking 4xx. The Worker's v1 registry
 (`src/khala-sync-mutators.ts` there) carries one system-test mutator,
 `sync.debugEcho`, which writes a `sync_debug_echo` entity into the
-caller's OWN personal scope only; fleet mutators land per KS-3.2.
+caller's OWN personal scope only; MC-1 chat mutators for owner-private
+threads/messages; and the KS-3.2 fleet mutators.
 
 `src/push-engine.test.ts` proves the engine against real local Postgres:
 applied/rejected/duplicate/out-of-order flows, request-order results,

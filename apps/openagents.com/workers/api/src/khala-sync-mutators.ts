@@ -27,6 +27,7 @@ import {
   SyncScope,
 } from '@openagentsinc/khala-sync'
 import {
+  chatMutators,
   defineMutator,
   fleetOperatorMutators,
   makeMutatorRegistry,
@@ -93,8 +94,10 @@ export const debugEchoMutator: MutatorDefinition =
 
 /**
  * The Worker's Khala Sync mutator registry: the `sync.debugEcho` system
- * test mutator plus the fleet cockpit operator mutators (KS-6.1 #8302 +
- * KS-3.2 #8292: `fleet.setDesiredSlots` / `fleet.pauseRun` /
+ * test mutator, owner-private chat mutators (MC-1 #8352:
+ * `chat.createThread` / `chat.appendMessage` / `chat.renameThread`), plus
+ * the fleet cockpit operator mutators (KS-6.1 #8302 + KS-3.2 #8292:
+ * `fleet.setDesiredSlots` / `fleet.pauseRun` /
  * `fleet.resumeRun` / `fleet.pauseWorker` / `fleet.resumeWorker` /
  * `fleet.acknowledgeInboxFlag` / `fleet.stopRun`, defined in
  * `@openagentsinc/khala-sync-server` and integration-tested there through
@@ -109,4 +112,8 @@ export const debugEchoMutator: MutatorDefinition =
  * docs/khala-sync/README.md).
  */
 export const makeKhalaSyncWorkerMutatorRegistry = (): MutatorRegistry =>
-  makeMutatorRegistry([debugEchoMutator, ...fleetOperatorMutators])
+  makeMutatorRegistry([
+    debugEchoMutator,
+    ...chatMutators,
+    ...fleetOperatorMutators,
+  ])

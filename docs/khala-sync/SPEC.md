@@ -133,10 +133,11 @@ Scope-read resolution (KS-7.1, #8305) is one taxonomy-complete resolver
 wired Worker-side in `khala-sync-scope-auth.ts`) consulted by log,
 bootstrap, AND connect: `scope.user.*` self-only; `scope.public.*` any
 authenticated caller; `scope.team.*` live D1 team membership;
-`scope.agent_run.*` / `scope.thread.*` run owner or active member of the
-run's team (the existing `agent_runs` ownership rule, including the
-autopilot-thread mapping); `scope.fleet_run.*` the `khala_sync_scope_owners`
-owner. A taxonomy member with no read policy is gated CLOSED (403 typed
+`scope.agent_run.*` run owner or active member of the run's team;
+`scope.thread.*` either that legacy `agent_runs` / autopilot-thread mapping
+or the owner-private chat thread's `khala_sync_scope_owners` row;
+`scope.fleet_run.*` the `khala_sync_scope_owners` owner. A taxonomy member
+with no read policy is gated CLOSED (403 typed
 `unknown_scope`), and a failed membership/ownership lookup fails CLOSED as
 a retryable 503 `storage_unavailable` — never a grant. Membership is
 re-read live per request, so a revoked user fails their very next

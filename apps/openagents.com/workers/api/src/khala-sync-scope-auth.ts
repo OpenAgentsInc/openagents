@@ -11,10 +11,10 @@
 //                             predicate the legacy sync-worker path uses in
 //                             `authorizeSyncPath`)
 //   scope.agent_run.<runId>   D1 `agent_runs` (owner user, or an active
-//   scope.thread.<threadId>   member of the run's team — the exact
-//                             `thread-access.ts` ownership rule, including
-//                             the legacy-run-id and autopilot-thread
-//                             mappings)
+//                             member of the run's team)
+//   scope.thread.<threadId>   legacy D1 agent-run/autopilot-thread ownership
+//                             OR owner-private MC-1 chat ownership via
+//                             Khala Sync Postgres `khala_sync_scope_owners`
 //   scope.fleet_run.<id>      Khala Sync Postgres `khala_sync_scope_owners`
 //                             through the KHALA_SYNC_DB Hyperdrive binding
 //                             (KS-6.1 `readScopeOwner`)
@@ -31,7 +31,7 @@
 // shared decision → HTTP response mapper the read routes consume is
 // `scopeReadDecisionResponse` in ./http/khala-sync-scope-read-response.
 
-import type { SyncScope } from '@openagentsinc/khala-sync'
+import { threadScope, type SyncScope } from '@openagentsinc/khala-sync'
 import {
   readScopeOwner,
   resolveScopeRead,
@@ -66,7 +66,7 @@ export type KhalaSyncScopeAuthDeps = Readonly<{
   /** `KHALA_SYNC_DB` — absent until the Hyperdrive binding is deployed. */
   binding: KhalaSyncHyperdriveBinding | undefined
   /**
-   * Injectable Postgres client factory for the fleet scope-owner lookup.
+   * Injectable Postgres client factory for owner-scoped scope lookups.
    * Default: dynamic import of `postgres` (postgres.js), Worker-runtime
    * only. Tests inject a fake — no network, no database.
    */
@@ -139,7 +139,7 @@ const canReadResolvedRun = async (
 export const makeKhalaSyncScopeReadResolver = (
   deps: KhalaSyncScopeAuthDeps,
 ): KhalaSyncScopeReadResolver => {
-  const readFleetScopeOwner = async (
+  const readOwnedScopeOwner = async (
     scope: SyncScope,
   ): Promise<string | null> => {
     if (
@@ -173,7 +173,7 @@ export const makeKhalaSyncScopeReadResolver = (
             await resolveAgentRunIdAsync(deps.db, runId),
           ),
         canReadThread: async (uid, threadId) =>
-          canReadResolvedRun(
+          (await canReadResolvedRun(
             deps.db,
             uid,
             (await resolveAgentRunIdAsync(deps.db, threadId)) ??
@@ -181,11 +181,11 @@ export const makeKhalaSyncScopeReadResolver = (
                 deps.db,
                 threadId,
               )),
-          ),
+          )) || (await readOwnedScopeOwner(threadScope(threadId))) === uid,
         isTeamMember: async (uid, teamId) =>
           (await readActiveTeamMembershipRole(deps.db, teamId, uid)) !==
           undefined,
-        readFleetScopeOwner,
+        readFleetScopeOwner: readOwnedScopeOwner,
       },
       userId,
       scope,
