@@ -1441,6 +1441,15 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/operator/business/pipeline/{param}/commitments',
   '/api/operator/business/pipeline/{param}/starter-credit-grants',
   '/api/operator/business/pipeline/{param}/starter-credit-redemptions',
+  // Operator outreach console (operator/admin only): approval-gated outreach
+  // sequences landed without a coverage decision; allowlisted like the rest
+  // of the operator business-pipeline surface (internal, not part of the
+  // public OpenAPI contract).
+  '/api/operator/business/outreach/suppressions',
+  '/api/operator/business/outreach/template-approvals',
+  '/api/operator/business/outreach/templates',
+  '/api/operator/business/pipeline/{param}/outreach-drafts',
+  '/api/operator/business/pipeline/{param}/outreach-sends',
   // Owner/admin agent token reissue console (admin bearer only): operator
   // credential surface, not part of the public OpenAPI contract.
   '/api/admin/agents/reissue-token',
