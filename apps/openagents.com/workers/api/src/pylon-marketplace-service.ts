@@ -1,7 +1,15 @@
 import { Schema as S } from 'effect'
+import type { SyncSql } from '@openagentsinc/khala-sync-server'
 
+import {
+  defaultMakeKhalaSyncSqlClient,
+  type KhalaSyncHyperdriveBinding,
+  type KhalaSyncPushSqlClient,
+  type MakeKhalaSyncPushSqlClient,
+} from './khala-sync-push-routes'
 import { sha256Hex } from './agent-registration'
 import { OmniProjectionAudience } from './omni-data-classification'
+import { logWorkerRouteWarning } from './observability'
 import {
   PYLON_MARKETPLACE_NO_SPEND_AUTHORITY,
   PylonMarketplaceAssignmentRecord,
@@ -15,9 +23,15 @@ import {
   PylonMarketplaceUnsafe,
   projectPylonMarketplaceLedger,
 } from './pylon-marketplace-jobs'
+import {
+  pylonDispatchFlagsFromEnv,
+  type PylonDispatchFlagEnv,
+  type PylonDispatchLog,
+} from './pylon-dispatch-store'
 import { PylonResourceMode } from './pylon-resource-mode-setup'
 import { decodeUnknownWithSchema, parseJsonUnknown } from './json-boundary'
 import { publicRefSegment, uniqueRefs } from './public-ref-format'
+import { openAgentsDatabase } from './runtime'
 
 export const PylonMarketplaceTriageOutcome = S.Literals([
   'accepted_for_review',
@@ -931,6 +945,221 @@ export const makeD1PylonMarketplaceJobStore = (
         throw storageError(error)
       }),
 })
+
+type PylonMarketplaceJobWriteStore = Pick<
+  PylonMarketplaceJobStore,
+  'insertAssignment' | 'insertIntake' | 'insertTriageAction' | 'updateIntake'
+>
+
+export type MakePostgresPylonMarketplaceJobStoreDependencies = Readonly<{
+  acquireSql: () => Promise<KhalaSyncPushSqlClient>
+}>
+
+export const makePostgresPylonMarketplaceJobStore = (
+  deps: MakePostgresPylonMarketplaceJobStoreDependencies,
+): PylonMarketplaceJobWriteStore => {
+  const withSql = async <A>(fn: (sql: SyncSql) => Promise<A>): Promise<A> => {
+    const client = await deps.acquireSql()
+    try {
+      return await fn(client.sql)
+    } finally {
+      try {
+        await client.end()
+      } catch {
+        // best-effort teardown, same discipline as the sync push route.
+      }
+    }
+  }
+
+  return {
+    insertAssignment: assignment =>
+      withSql(async sql => {
+        await sql`
+          INSERT INTO pylon_marketplace_assignments
+            (id, assignment_ref, intake_ref, job_ref, idempotency_key,
+             request_hash, state, payout_state, record_json, created_at,
+             updated_at)
+          VALUES
+            (${`assignment:${assignment.assignmentRef}`},
+             ${assignment.assignmentRef}, ${assignment.intakeRef},
+             ${assignment.jobRef}, ${assignment.idempotencyKey},
+             ${assignment.requestHash}, ${assignment.state},
+             ${assignment.payoutState}, ${stableJson(assignment.record)},
+             ${assignment.createdAtIso}, ${assignment.updatedAtIso})
+          ON CONFLICT (assignment_ref) DO NOTHING`
+      }),
+
+    insertIntake: intake =>
+      withSql(async sql => {
+        await sql`
+          INSERT INTO pylon_marketplace_job_intakes
+            (id, intake_ref, job_ref, idempotency_key, request_hash, state,
+             source, job_kind, privacy_class, record_json, created_at,
+             updated_at)
+          VALUES
+            (${`intake:${intake.intakeRef}`}, ${intake.intakeRef},
+             ${intake.jobRef}, ${intake.idempotencyKey}, ${intake.requestHash},
+             ${intake.state}, ${intake.record.source}, ${intake.record.jobKind},
+             ${intake.record.privacyClass}, ${stableJson(intake.record)},
+             ${intake.createdAtIso}, ${intake.updatedAtIso})
+          ON CONFLICT (intake_ref) DO NOTHING`
+      }),
+
+    insertTriageAction: action =>
+      withSql(async sql => {
+        await sql`
+          INSERT INTO pylon_marketplace_triage_actions
+            (id, target_intake_ref, idempotency_key, request_hash, outcome,
+             response_json, created_at)
+          VALUES
+            (${`triage:${action.idempotencyKey}`}, ${action.targetIntakeRef},
+             ${action.idempotencyKey}, ${action.requestHash}, ${action.outcome},
+             ${stableJson(action.response)}, ${action.createdAtIso})
+          ON CONFLICT (idempotency_key) DO NOTHING`
+      }),
+
+    updateIntake: intake =>
+      withSql(async sql => {
+        await sql`
+          INSERT INTO pylon_marketplace_job_intakes
+            (id, intake_ref, job_ref, idempotency_key, request_hash, state,
+             source, job_kind, privacy_class, record_json, created_at,
+             updated_at)
+          VALUES
+            (${`intake:${intake.intakeRef}`}, ${intake.intakeRef},
+             ${intake.jobRef}, ${intake.idempotencyKey}, ${intake.requestHash},
+             ${intake.state}, ${intake.record.source}, ${intake.record.jobKind},
+             ${intake.record.privacyClass}, ${stableJson(intake.record)},
+             ${intake.createdAtIso}, ${intake.updatedAtIso})
+          ON CONFLICT (intake_ref) DO UPDATE SET
+            state = EXCLUDED.state,
+            record_json = EXCLUDED.record_json,
+            updated_at = EXCLUDED.updated_at`
+      }),
+  }
+}
+
+export type MakeDualWritePylonMarketplaceJobStoreDependencies = Readonly<{
+  d1: PylonMarketplaceJobStore
+  flags: Readonly<{ dualWrite: boolean }>
+  log?: PylonDispatchLog | undefined
+  postgres: PylonMarketplaceJobWriteStore | undefined
+}>
+
+const safeMarketplaceMirrorMessage = (error: unknown): string => {
+  const raw = error instanceof Error ? error.message : String(error)
+  return raw.replaceAll(/\s+/g, ' ').slice(0, 200)
+}
+
+export const makeDualWritePylonMarketplaceJobStore = (
+  deps: MakeDualWritePylonMarketplaceJobStoreDependencies,
+): PylonMarketplaceJobStore => {
+  const { d1, flags, postgres } = deps
+  const log = deps.log ?? (() => {})
+
+  if (postgres === undefined) {
+    return d1
+  }
+
+  const mirror = (
+    op: string,
+    refs: ReadonlyArray<string>,
+    run: () => Promise<void>,
+  ): Promise<void> =>
+    !flags.dualWrite
+      ? Promise.resolve()
+      : run().catch((error: unknown) => {
+          log('khala_sync_pylon_dual_write_failed', {
+            messageSafe: safeMarketplaceMirrorMessage(error),
+            op,
+            refs,
+          })
+        })
+
+  return {
+    ...d1,
+    insertAssignment: async assignment => {
+      await d1.insertAssignment(assignment)
+      await mirror(
+        'insertMarketplaceAssignment',
+        [assignment.assignmentRef, assignment.intakeRef],
+        () => postgres.insertAssignment(assignment),
+      )
+    },
+    insertIntake: async intake => {
+      await d1.insertIntake(intake)
+      await mirror(
+        'insertMarketplaceIntake',
+        [intake.intakeRef, intake.jobRef],
+        () => postgres.insertIntake(intake),
+      )
+    },
+    insertTriageAction: async action => {
+      await d1.insertTriageAction(action)
+      await mirror(
+        'insertMarketplaceTriageAction',
+        [action.targetIntakeRef, action.idempotencyKey],
+        () => postgres.insertTriageAction(action),
+      )
+    },
+    updateIntake: async intake => {
+      await d1.updateIntake(intake)
+      await mirror(
+        'updateMarketplaceIntake',
+        [intake.intakeRef, intake.state],
+        () => postgres.updateIntake(intake),
+      )
+    },
+  }
+}
+
+export type PylonMarketplaceJobStoreEnv = PylonDispatchFlagEnv &
+  Readonly<{
+    OPENAGENTS_DB: D1Database
+    KHALA_SYNC_DB?: KhalaSyncHyperdriveBinding | undefined
+  }>
+
+export type MakePylonMarketplaceJobStoreForEnvOptions = Readonly<{
+  log?: PylonDispatchLog | undefined
+  makeSqlClient?: MakeKhalaSyncPushSqlClient | undefined
+}>
+
+const defaultMarketplaceMirrorLog: PylonDispatchLog = (event, fields) => {
+  logWorkerRouteWarning(event, {
+    messageSafe: fields.messageSafe,
+    op: fields.op,
+    refs: fields.refs.slice(0, 10).join(','),
+  })
+}
+
+export const makePylonMarketplaceJobStoreForEnv = (
+  env: PylonMarketplaceJobStoreEnv,
+  options: MakePylonMarketplaceJobStoreForEnvOptions = {},
+): PylonMarketplaceJobStore => {
+  const d1 = makeD1PylonMarketplaceJobStore(openAgentsDatabase(env))
+  const connectionString = env.KHALA_SYNC_DB?.connectionString
+  const flags = pylonDispatchFlagsFromEnv(env)
+
+  if (
+    connectionString === undefined ||
+    connectionString.length === 0 ||
+    !flags.dualWrite
+  ) {
+    return d1
+  }
+
+  const makeSqlClient = options.makeSqlClient ?? defaultMakeKhalaSyncSqlClient
+  const postgres = makePostgresPylonMarketplaceJobStore({
+    acquireSql: () => makeSqlClient(connectionString),
+  })
+
+  return makeDualWritePylonMarketplaceJobStore({
+    d1,
+    flags,
+    log: options.log ?? defaultMarketplaceMirrorLog,
+    postgres,
+  })
+}
 
 export const pylonMarketplaceStoreErrorFromUnknown = (
   error: unknown,

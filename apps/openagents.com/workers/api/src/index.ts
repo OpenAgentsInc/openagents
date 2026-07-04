@@ -1025,7 +1025,7 @@ import {
   PylonLargestDecentralizedTrainingClaimEndpoint,
   handlePylonLargestDecentralizedTrainingClaimStatusApi,
 } from './pylon-largest-decentralized-training-claim-status-routes'
-import { makeD1PylonMarketplaceJobStore } from './pylon-marketplace-service'
+import { makePylonMarketplaceJobStoreForEnv } from './pylon-marketplace-service'
 import {
   PylonMultiEarningNodeEndpoint,
   handlePylonMultiEarningNodeApi,
@@ -9468,7 +9468,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
 const operatorPylonMarketplaceRoutes = makeOperatorPylonMarketplaceRoutes({
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
-  makeStore: env => makeD1PylonMarketplaceJobStore(openAgentsDatabase(env)),
+  makeStore: env => makePylonMarketplaceJobStoreForEnv(env),
   requireAdminApiToken,
   requireBrowserSession,
 })

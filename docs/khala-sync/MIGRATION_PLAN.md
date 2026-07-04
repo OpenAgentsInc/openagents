@@ -189,7 +189,8 @@ copies bounded rowid pages from D1, preserves natural-key `ON CONFLICT DO
 NOTHING` semantics, and verifies exact row counts, per-domain tallies, and
 newest-N hashes. Partial Worker mirrors are live in source for
 assignment-derived provider lifecycle, explicit provider lifecycle updates,
-Pylon quarantines, raw Spark payout target registrations, scheduled
+Pylon quarantines, Pylon marketplace intake/assignment/triage writes, raw
+Spark payout target registrations, scheduled
 `PylonCapacityFunnel.recordSnapshots` capacity-funnel snapshot upsert/prune
 writes, and `fleet_alerts` cron alert rows from FleetBurnStallDetector and
 ServingRateMonitor; those remain D1-first and read-authoritative until
