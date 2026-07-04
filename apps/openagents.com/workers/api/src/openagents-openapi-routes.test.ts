@@ -1617,6 +1617,9 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/omni/operator/fleet',
   '/api/omni/operator/team-chat/messages',
   // Provider-account credential plumbing (owner-bound; never public contract surface):
+  '/api/khala-code/auth/openagents/device/start',
+  '/api/khala-code/auth/openagents/device/verify',
+  '/api/khala-code/auth/openagents/device/{param}',
   '/api/pylon/auth/openagents/device/start',
   '/api/pylon/auth/openagents/device/verify',
   '/api/pylon/auth/openagents/device/{param}',

@@ -492,6 +492,18 @@ describe('provider api key connect route dispatch', () => {
         'pylonOpenAgentsAuthVerify',
         calls,
       ),
+      handleKhalaCodeOpenAgentsAuthStartApi: stub(
+        'khalaCodeOpenAgentsAuthStart',
+        calls,
+      ),
+      handleKhalaCodeOpenAgentsAuthStatusApi: stub(
+        'khalaCodeOpenAgentsAuthStatus',
+        calls,
+      ),
+      handleKhalaCodeOpenAgentsAuthVerifyApi: stub(
+        'khalaCodeOpenAgentsAuthVerify',
+        calls,
+      ),
     })
 
   const ctx = {
@@ -598,6 +610,35 @@ describe('provider api key connect route dispatch', () => {
       'pylonOpenAgentsAuthStart',
       'pylonOpenAgentsAuthVerify',
       'pylonOpenAgentsAuthStatus',
+    ])
+  })
+
+  test('routes Khala Code OpenAgents auth device paths to auth handlers', async () => {
+    const calls: Array<string> = []
+    const router = makeRouter(calls)
+
+    for (const path of [
+      '/api/khala-code/auth/openagents/device/start',
+      '/api/khala-code/auth/openagents/device/verify?attempt=khala_code_desktop_openauth_1&code=ABCD-EFGH',
+      '/api/khala-code/auth/openagents/device/khala_code_desktop_openauth_1',
+    ]) {
+      const effect = router.routeProviderAccountRequest(
+        new Request(`https://openagents.com${path}`, { method: 'POST' }),
+        {},
+        ctx,
+      )
+
+      expect(effect).toBeDefined()
+
+      if (effect !== undefined) {
+        await Effect.runPromise(effect)
+      }
+    }
+
+    expect(calls).toEqual([
+      'khalaCodeOpenAgentsAuthStart',
+      'khalaCodeOpenAgentsAuthVerify',
+      'khalaCodeOpenAgentsAuthStatus',
     ])
   })
 })

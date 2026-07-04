@@ -85,6 +85,9 @@ import {
   type KhalaCodeDesktopModelRoleRegistryWriteRequest,
   type KhalaCodeDesktopModelRoleRegistryWriteResult,
   type KhalaCodeDesktopPlanCatalogResult,
+  type KhalaCodeDesktopOpenAgentsAuthPollResult,
+  type KhalaCodeDesktopOpenAgentsAuthStartResult,
+  type KhalaCodeDesktopOpenAgentsAuthStatusResult,
   type KhalaCodeDesktopOutsideUserRunReportRequest,
   type KhalaCodeDesktopOutsideUserRunReportResult,
   type KhalaCodeDesktopPlanPurchaseRequest,
@@ -150,15 +153,21 @@ import {
 import {
   khalaCodeDesktopRuntimeEnvOverride,
   hasKhalaCodeDesktopPersistedModelRoleRegistry,
+  envWithKhalaCodeDesktopOpenAgentsAgentToken,
+  readKhalaCodeDesktopOpenAgentsAuthSetting,
   readKhalaCodeDesktopHarnessSetting,
   readKhalaCodeDesktopModelRoleRegistry,
   readKhalaCodeDesktopPersistedHarnessMode,
   readKhalaCodeDesktopTraceCaptureConsent,
+  resolveKhalaCodeDesktopOpenAgentsAgentToken,
   resolveKhalaCodeDesktopModelRole,
   writeKhalaCodeDesktopHarnessSetting,
+  writeKhalaCodeDesktopOpenAgentsAgentToken,
+  writeKhalaCodeDesktopOpenAgentsAuthPendingAttempt,
   writeKhalaCodeDesktopModelRoleEntry,
   writeKhalaCodeDesktopModelRoleRegistry,
   writeKhalaCodeDesktopTraceCaptureConsent,
+  type KhalaCodeDesktopOpenAgentsAuthPendingAttempt,
 } from "./harness-setting.js"
 import type {
   KhalaCodeModelRole,
@@ -363,11 +372,16 @@ const KHALA_CODE_PLAN_CATALOG_PATH = "/api/public/khala-code/plans"
 const KHALA_CODE_PLAN_STATUS_PATH = "/v1/khala-code/plan"
 const KHALA_CODE_PLAN_PURCHASE_PATH = "/v1/khala-code/plans/purchases"
 const KHALA_CODE_OUTSIDE_USER_RUNS_PATH = "/api/public/khala-code/outside-user-runs"
+const KHALA_CODE_OPENAGENTS_AUTH_START_PATH =
+  "/api/khala-code/auth/openagents/device/start"
+const KHALA_CODE_OPENAGENTS_AUTH_STATUS_PREFIX =
+  "/api/khala-code/auth/openagents/device/"
 const KHALA_CODE_PLAN_ALLOWED_PATHS: ReadonlySet<string> = new Set([
   KHALA_CODE_PLAN_CATALOG_PATH,
   KHALA_CODE_PLAN_STATUS_PATH,
   KHALA_CODE_PLAN_PURCHASE_PATH,
   KHALA_CODE_OUTSIDE_USER_RUNS_PATH,
+  KHALA_CODE_OPENAGENTS_AUTH_START_PATH,
 ])
 
 const khalaCodePlanBaseUrl = (env: ChatEnv): string => {
@@ -379,7 +393,10 @@ const khalaCodePlanBaseUrl = (env: ChatEnv): string => {
 }
 
 const khalaCodePlanRequestUrl = (baseUrl: string, path: string): URL => {
-  if (!KHALA_CODE_PLAN_ALLOWED_PATHS.has(path)) {
+  const isAuthStatusPath =
+    path.startsWith(KHALA_CODE_OPENAGENTS_AUTH_STATUS_PREFIX) &&
+    /^\/api\/khala-code\/auth\/openagents\/device\/khala_code_desktop_openauth_[A-Za-z0-9_-]+$/u.test(path)
+  if (!KHALA_CODE_PLAN_ALLOWED_PATHS.has(path) && !isAuthStatusPath) {
     throw new Error("Khala Code plan RPC path is not allowlisted.")
   }
   // Append after the FULL configured base (the khala-chat-runtime join style)
@@ -394,10 +411,48 @@ const khalaCodePlanRequestUrl = (baseUrl: string, path: string): URL => {
   return url
 }
 
-const khalaCodeAgentToken = (env: ChatEnv): string | null => {
-  const token = env.OPENAGENTS_AGENT_TOKEN?.trim() || env.OPENAGENTS_API_KEY?.trim()
-  return token !== undefined && token.length > 0 ? token : null
-}
+type KhalaCodeOpenAgentsAuthStartWire = Readonly<{
+  attemptId: string
+  expiresAt: string
+  intervalSeconds: number
+  pollSecret: string
+  status: "pending"
+  userCode: string
+  verificationUrl: string
+}>
+
+const isKhalaCodeOpenAgentsAuthStartWire = (
+  value: unknown,
+): value is KhalaCodeOpenAgentsAuthStartWire =>
+  isRecord(value) &&
+  value.status === "pending" &&
+  typeof value.attemptId === "string" &&
+  typeof value.expiresAt === "string" &&
+  typeof value.intervalSeconds === "number" &&
+  typeof value.pollSecret === "string" &&
+  typeof value.userCode === "string" &&
+  typeof value.verificationUrl === "string"
+
+const khalaCodeOpenAgentsAuthPendingAttemptFromWire = (
+  value: KhalaCodeOpenAgentsAuthStartWire,
+): KhalaCodeDesktopOpenAgentsAuthPendingAttempt => ({
+  attemptId: value.attemptId,
+  expiresAt: value.expiresAt,
+  intervalSeconds: value.intervalSeconds,
+  pollSecret: value.pollSecret,
+  userCode: value.userCode,
+  verificationUrl: value.verificationUrl,
+})
+
+const khalaCodeOpenAgentsAuthPublicPendingAttempt = (
+  value: KhalaCodeDesktopOpenAgentsAuthPendingAttempt,
+) => ({
+  attemptId: value.attemptId,
+  expiresAt: value.expiresAt,
+  intervalSeconds: value.intervalSeconds,
+  userCode: value.userCode,
+  verificationUrl: value.verificationUrl,
+})
 
 const khalaCodeTraceCaptureStatusFromConsent = (input: {
   readonly enabled: boolean
@@ -2481,7 +2536,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       }
     },
     async khalaCodePlanStatus(): Promise<KhalaCodeDesktopPlanStatusResult> {
-      const token = khalaCodeAgentToken(input.env)
+      const token = await resolveKhalaCodeDesktopOpenAgentsAgentToken(input.env)
       // No configured agent token means we honestly do not know a server-side
       // plan; the UI treats this as "Free (default)" without fabricating one.
       if (token === null) return { state: "unauthenticated" }
@@ -2510,10 +2565,117 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         return { state: "unavailable" }
       }
     },
+    async khalaCodeOpenAgentsAuthStatus(): Promise<KhalaCodeDesktopOpenAgentsAuthStatusResult> {
+      const setting = await readKhalaCodeDesktopOpenAgentsAuthSetting(input.env)
+      return {
+        ok: true,
+        path: setting.path,
+        pendingAttempt: setting.pendingAttempt === null
+          ? null
+          : khalaCodeOpenAgentsAuthPublicPendingAttempt(setting.pendingAttempt),
+        source: setting.source,
+        state: setting.state,
+        tokenPrefix: setting.tokenPrefix,
+      }
+    },
+    async khalaCodeOpenAgentsAuthStart(): Promise<KhalaCodeDesktopOpenAgentsAuthStartResult> {
+      const planFetch = input.fetch ?? fetch
+      try {
+        const response = await planFetch(
+          khalaCodePlanRequestUrl(
+            khalaCodePlanBaseUrl(input.env),
+            KHALA_CODE_OPENAGENTS_AUTH_START_PATH,
+          ),
+          {
+            method: "POST",
+            headers: {
+              accept: "application/json",
+            },
+          },
+        )
+        const payload = await response.json().catch(() => null) as unknown
+        if (!response.ok || !isKhalaCodeOpenAgentsAuthStartWire(payload)) {
+          return { ok: false, error: "connect_unavailable" }
+        }
+        const pendingAttempt = khalaCodeOpenAgentsAuthPendingAttemptFromWire(payload)
+        await writeKhalaCodeDesktopOpenAgentsAuthPendingAttempt(
+          pendingAttempt,
+          input.env,
+        )
+        return {
+          ok: true,
+          status: "pending",
+          ...khalaCodeOpenAgentsAuthPublicPendingAttempt(pendingAttempt),
+        }
+      } catch {
+        return { ok: false, error: "connect_unavailable" }
+      }
+    },
+    async khalaCodeOpenAgentsAuthPoll(): Promise<KhalaCodeDesktopOpenAgentsAuthPollResult> {
+      const setting = await readKhalaCodeDesktopOpenAgentsAuthSetting(input.env)
+      if (setting.pendingAttempt === null) {
+        return { ok: false, error: "no_pending_attempt" }
+      }
+      const pendingAttempt = setting.pendingAttempt
+      const planFetch = input.fetch ?? fetch
+      try {
+        const response = await planFetch(
+          khalaCodePlanRequestUrl(
+            khalaCodePlanBaseUrl(input.env),
+            `${KHALA_CODE_OPENAGENTS_AUTH_STATUS_PREFIX}${encodeURIComponent(pendingAttempt.attemptId)}`,
+          ),
+          {
+            headers: {
+              accept: "application/json",
+              "x-openagents-device-secret": pendingAttempt.pollSecret,
+            },
+          },
+        )
+        const payload = await response.json().catch(() => null) as unknown
+        if (response.status === 410) {
+          return {
+            attemptId: pendingAttempt.attemptId,
+            ok: true,
+            status: "expired",
+          }
+        }
+        if (!response.ok || !isRecord(payload)) {
+          return { ok: false, error: "connect_unavailable" }
+        }
+        const status = stringValue(payload.status)
+        if (status === "pending") {
+          return {
+            ok: true,
+            status: "pending",
+            ...khalaCodeOpenAgentsAuthPublicPendingAttempt(pendingAttempt),
+          }
+        }
+        if (status !== "linked") {
+          return { ok: false, error: "connect_unavailable" }
+        }
+        const agentToken = stringValue(payload.agentToken)
+        if (agentToken === null || !agentToken.startsWith("oa_agent_")) {
+          return { ok: false, error: "connect_unavailable" }
+        }
+        const saved = await writeKhalaCodeDesktopOpenAgentsAgentToken(
+          agentToken,
+          input.env,
+        )
+        return {
+          ok: true,
+          saved: true,
+          source: "persisted",
+          status: "linked",
+          tokenPrefix: saved.tokenPrefix ?? agentToken.slice(0, 20),
+        }
+      } catch {
+        return { ok: false, error: "connect_unavailable" }
+      }
+    },
     async khalaCodePlanPurchase(
       request?: KhalaCodeDesktopPlanPurchaseRequest,
     ): Promise<KhalaCodeDesktopPlanPurchaseResult> {
-      const token = khalaCodeAgentToken(input.env)
+      const token = await resolveKhalaCodeDesktopOpenAgentsAgentToken(input.env)
       if (token === null) return { ok: false, error: "unauthenticated" }
       const planFetch = input.fetch ?? fetch
       try {
@@ -3017,7 +3179,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
             })
           }
           return labelLegacyRuntimeResponse(await legacyChatTurn({
-            env: input.env,
+            env: await envWithKhalaCodeDesktopOpenAgentsAgentToken(input.env),
             ...(input.emitChatTurnEvent === undefined ? {} : { onEvent: input.emitChatTurnEvent }),
             request: materializedRequest,
             workingDirectory: input.workingDirectory,

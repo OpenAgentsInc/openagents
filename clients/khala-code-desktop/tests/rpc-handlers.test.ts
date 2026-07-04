@@ -3940,6 +3940,141 @@ describe("khala code plan RPC handlers", () => {
     expect(requests).toHaveLength(0)
   })
 
+  // Oracle for khala_code.chat.khala_lane_connect_button.v1
+  test("khalaCodeOpenAgentsAuthStatus and plan status use the persisted desktop token", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "khala-openagents-token-"))
+    tempDirs.push(dir)
+    const settingsPath = join(dir, "desktop-settings.json")
+    await writeFile(settingsPath, JSON.stringify({
+      schema: "khala-code-desktop.harness-setting.v1",
+      openAgentsAgentToken: "oa_agent_persisted_secret_token",
+    }))
+    const { fetch: fetchStub, requests } = planFetchStub(() =>
+      json(200, {
+        ok: true,
+        plan: {
+          captureExcluded: false,
+          kind: "free",
+          planId: "khala_code.plan.free.v1",
+        },
+      }))
+    const handlers = planHandlers({
+      env: { KHALA_CODE_DESKTOP_HARNESS_SETTING_PATH: settingsPath },
+      fetch: fetchStub,
+    })
+
+    await expect(handlers.khalaCodeOpenAgentsAuthStatus()).resolves.toMatchObject({
+      ok: true,
+      source: "persisted",
+      state: "connected",
+      tokenPrefix: "oa_agent_persisted_s",
+    })
+    await expect(handlers.khalaCodePlanStatus()).resolves.toMatchObject({
+      state: "ok",
+    })
+
+    expect(requests[0]?.headers.authorization)
+      .toBe("Bearer oa_agent_persisted_secret_token")
+  })
+
+  test("khalaCodeOpenAgentsAuthStart stores a pending attempt without returning the poll secret", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "khala-openagents-start-"))
+    tempDirs.push(dir)
+    const settingsPath = join(dir, "desktop-settings.json")
+    const { fetch: fetchStub, requests } = planFetchStub(() =>
+      json(201, {
+        attemptId: "khala_code_desktop_openauth_attempt-1",
+        expiresAt: "2026-07-04T12:10:00.000Z",
+        intervalSeconds: 2,
+        pollSecret: "khala_code_desktop_poll_secret-1",
+        status: "pending",
+        userCode: "ATTE-MPT1",
+        verificationUrl: "https://openagents.test/api/khala-code/auth/openagents/device/verify?attempt=khala_code_desktop_openauth_attempt-1&code=ATTE-MPT1",
+      }))
+    const handlers = planHandlers({
+      env: {
+        KHALA_CODE_DESKTOP_HARNESS_SETTING_PATH: settingsPath,
+        OPENAGENTS_BASE_URL: "https://openagents.test",
+      },
+      fetch: fetchStub,
+    })
+
+    const result = await handlers.khalaCodeOpenAgentsAuthStart()
+    const persisted = JSON.parse(await readFile(settingsPath, "utf8")) as {
+      readonly openAgentsAuthPendingAttempt?: { readonly pollSecret?: string }
+    }
+
+    expect(requests[0]?.url)
+      .toBe("https://openagents.test/api/khala-code/auth/openagents/device/start")
+    expect(result).toEqual({
+      attemptId: "khala_code_desktop_openauth_attempt-1",
+      expiresAt: "2026-07-04T12:10:00.000Z",
+      intervalSeconds: 2,
+      ok: true,
+      status: "pending",
+      userCode: "ATTE-MPT1",
+      verificationUrl: "https://openagents.test/api/khala-code/auth/openagents/device/verify?attempt=khala_code_desktop_openauth_attempt-1&code=ATTE-MPT1",
+    })
+    expect(JSON.stringify(result)).not.toContain("poll_secret")
+    expect(JSON.stringify(result)).not.toContain("khala_code_desktop_poll_secret-1")
+    expect(persisted.openAgentsAuthPendingAttempt?.pollSecret)
+      .toBe("khala_code_desktop_poll_secret-1")
+  })
+
+  test("khalaCodeOpenAgentsAuthPoll persists the linked token without echoing it", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "khala-openagents-poll-"))
+    tempDirs.push(dir)
+    const settingsPath = join(dir, "desktop-settings.json")
+    await writeFile(settingsPath, JSON.stringify({
+      schema: "khala-code-desktop.harness-setting.v1",
+      openAgentsAuthPendingAttempt: {
+        attemptId: "khala_code_desktop_openauth_attempt-1",
+        expiresAt: "2026-07-04T12:10:00.000Z",
+        intervalSeconds: 2,
+        pollSecret: "khala_code_desktop_poll_secret-1",
+        userCode: "ATTE-MPT1",
+        verificationUrl: "https://openagents.test/api/khala-code/auth/openagents/device/verify?attempt=khala_code_desktop_openauth_attempt-1&code=ATTE-MPT1",
+      },
+    }))
+    const { fetch: fetchStub, requests } = planFetchStub(() =>
+      json(200, {
+        agentToken: "oa_agent_linked_secret_token",
+        attemptId: "khala_code_desktop_openauth_attempt-1",
+        linkedAgent: {
+          tokenPrefix: "oa_agent_linked_secr",
+        },
+        status: "linked",
+      }))
+    const handlers = planHandlers({
+      env: {
+        KHALA_CODE_DESKTOP_HARNESS_SETTING_PATH: settingsPath,
+        OPENAGENTS_BASE_URL: "https://openagents.test",
+      },
+      fetch: fetchStub,
+    })
+
+    const result = await handlers.khalaCodeOpenAgentsAuthPoll()
+    const persisted = JSON.parse(await readFile(settingsPath, "utf8")) as {
+      readonly openAgentsAgentToken?: string
+      readonly openAgentsAuthPendingAttempt?: unknown
+    }
+
+    expect(requests[0]?.url)
+      .toBe("https://openagents.test/api/khala-code/auth/openagents/device/khala_code_desktop_openauth_attempt-1")
+    expect(requests[0]?.headers["x-openagents-device-secret"])
+      .toBe("khala_code_desktop_poll_secret-1")
+    expect(result).toEqual({
+      ok: true,
+      saved: true,
+      source: "persisted",
+      status: "linked",
+      tokenPrefix: "oa_agent_linked_secr",
+    })
+    expect(JSON.stringify(result)).not.toContain("oa_agent_linked_secret_token")
+    expect(persisted.openAgentsAgentToken).toBe("oa_agent_linked_secret_token")
+    expect(persisted.openAgentsAuthPendingAttempt).toBeUndefined()
+  })
+
   test("khalaCodePlanStatus sends the bearer token and returns the server-resolved plan without leaking it", async () => {
     const { fetch: fetchStub, requests } = planFetchStub(() =>
       json(200, {

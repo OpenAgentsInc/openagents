@@ -55,6 +55,54 @@ describe("Khala Code desktop schema-first RPC contract", () => {
     expect(result).toMatchObject({ ok: true })
   })
 
+  test("decodes Khala OpenAgents auth status, start, and poll results without raw tokens", () => {
+    expect(decodeKhalaCodeDesktopRpcResult("khalaCodeOpenAgentsAuthStatus", {
+      ok: true,
+      path: "/tmp/desktop-settings.json",
+      pendingAttempt: null,
+      source: "persisted",
+      state: "connected",
+      tokenPrefix: "oa_agent_linked_secr",
+    })).toMatchObject({
+      source: "persisted",
+      state: "connected",
+    })
+
+    expect(decodeKhalaCodeDesktopRpcResult("khalaCodeOpenAgentsAuthStart", {
+      attemptId: "khala_code_desktop_openauth_attempt-1",
+      expiresAt: "2026-07-04T12:10:00.000Z",
+      intervalSeconds: 2,
+      ok: true,
+      status: "pending",
+      userCode: "ATTE-MPT1",
+      verificationUrl: "https://openagents.test/api/khala-code/auth/openagents/device/verify",
+    })).toMatchObject({
+      ok: true,
+      status: "pending",
+      userCode: "ATTE-MPT1",
+    })
+
+    const poll = decodeKhalaCodeDesktopRpcResult("khalaCodeOpenAgentsAuthPoll", {
+      ok: true,
+      saved: true,
+      source: "persisted",
+      status: "linked",
+      tokenPrefix: "oa_agent_linked_secr",
+    })
+    expect(JSON.stringify(poll)).not.toContain("oa_agent_linked_secret_token")
+
+    expect(() =>
+      decodeKhalaCodeDesktopRpcResult("khalaCodeOpenAgentsAuthPoll", {
+        agentToken: "oa_agent_linked_secret_token",
+        ok: true,
+        saved: true,
+        source: "persisted",
+        status: "linked",
+        tokenPrefix: "oa_agent_linked_secr",
+      }),
+    ).toThrow()
+  })
+
   test("accepts neutral harnessItem while keeping codexItem back-compat", () => {
     const harnessItem = {
       itemId: "item-1",

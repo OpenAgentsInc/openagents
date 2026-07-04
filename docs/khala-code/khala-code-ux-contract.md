@@ -53,7 +53,7 @@ sweep if this doc, the registry, or the oracle tests drift apart.
 
 ## Registry
 
-Registry version: `2026-07-04.3` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-04.4` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_code.chat.sidebar_spinner_streaming_only.v1` — ENFORCED
 
@@ -447,12 +447,14 @@ Registry version: `2026-07-04.3` (schema `openagents.behavior_contracts.v1`)
 - **Verification:** Enforced 2026-07-04: fixed for GitHub issue #8254. bun test tests/codex-settings-panel.test.ts tests/codex-settings.test.ts tests/rpc-handlers.test.ts tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** Binds settings-panel editability for values that are structurally configurable (Codex/Claude config keys); does not apply to values that are genuinely environment-only by design (e.g. secrets that must never be typed into the UI), which should instead say so honestly per khala_code.settings.no_bare_unset_labels.v1.
 
-### `khala_code.chat.khala_lane_connect_button.v1` — PENDING
+### `khala_code.chat.khala_lane_connect_button.v1` — ENFORCED
 
 - **Surface:** khala-code-desktop (Khala lane)
 - **Stated by:** TheBenMeadows (community; relayed via Lathe operator agent issues/PR) via community-feedback-discord on 2026-07-03
 - **Statement:** When the Khala lane is unavailable because the desktop process has no OPENAGENTS_AGENT_TOKEN, the lane offers a 'Connect' button that drives an in-app flow to obtain and persist a token, instead of only explaining the missing environment variable in text.
-- **Enforcement tier:** unenforced
-- **Verification:** Not yet enforced: recorded from community feedback (relayed by TheBenMeadows, formalized by the Lathe operator agent) on 2026-07-03. Tracked in GitHub issue #8255, filed the same day: needs a backend token-minting/device-auth flow and a new local persistence RPC before it can flip to enforced.
-- **Blockers:** `blocker.github_issue.8255`
-- **Authority boundary:** Binds the Khala lane's missing-token UI affordance only; does not itself define the token-minting backend flow, which is separate implementation work tracked by the same issue.
+- **Enforcement tier:** test-sweep
+- **Oracle** `desktop_auth_device_route.unit` (bun-test, unit): Exercises the Worker desktop auth device route: start creates a short-code verification link without an agent token, browser verify mints and links an agent credential, and poll requires the short-lived secret before returning the raw token once to the desktop client. — `apps/openagents.com/workers/api/src/khala-code-openagents-auth-routes.test.ts`
+- **Oracle** `desktop_auth_rpc_persistence.unit` (bun-test, unit): Exercises the desktop RPC persistence path: persisted tokens satisfy plan status, start saves only a pending attempt to the settings file, and poll persists the linked token while returning only its prefix to the renderer. — `clients/khala-code-desktop/tests/rpc-handlers.test.ts`
+- **Oracle** `missing_token_connect_panel.source` (bun-test, unit): Static shell guard proving the missing-token transcript path renders the OpenAgents Connect panel and wires start/poll/open-link RPC methods instead of remaining a plain text banner. — `clients/khala-code-desktop/tests/app-shell.test.ts`
+- **Verification:** Enforced 2026-07-04 for GitHub issue #8255: Worker route tests cover the browser-verified token mint/poll flow; desktop RPC tests cover local pending-attempt/token persistence and persisted-token use for hosted plan status; app-shell tests cover the inline missing-token Connect panel. Runs in the package test glob, the Worker API test sweep, and the deploy check before pushes to main.
+- **Authority boundary:** Binds the Khala lane missing-token recovery path: the browser-verified device flow may mint a linked OpenAgents agent token, and the desktop may persist that token locally for hosted Khala. It does not touch the default Codex home, grant provider-account authority, publish the raw token in renderer UI, or authorize any promise-state/payment/payout change.

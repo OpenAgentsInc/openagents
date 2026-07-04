@@ -154,6 +154,28 @@ describe("khala code desktop app shell", () => {
     expect(css).toContain(".khala-architect-plan-actions")
   })
 
+  // Oracle for khala_code.chat.khala_lane_connect_button.v1
+  test("renders a Khala OpenAgents connect action for the missing-token lane", async () => {
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const rpc = await Bun.file(new URL("../src/shared/rpc.ts", import.meta.url)).text()
+    const handlers = await Bun.file(new URL("../src/bun/rpc-handlers.ts", import.meta.url)).text()
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    expect(main).toContain("KHALA_OPENAGENTS_MISSING_TOKEN_MARKER")
+    expect(main).toContain("renderKhalaOpenAgentsConnectPanel")
+    expect(main).toContain('button.textContent = view.state === "failed" ? "Try again" : "Connect"')
+    expect(main).toContain("khalaCodeOpenAgentsAuthStart")
+    expect(main).toContain("khalaCodeOpenAgentsAuthPoll")
+    expect(main).toContain("openExternalUrl(pendingAttempt.verificationUrl)")
+    expect(rpc).toContain("khalaCodeOpenAgentsAuthStatus")
+    expect(rpc).toContain("khalaCodeOpenAgentsAuthStart")
+    expect(rpc).toContain("khalaCodeOpenAgentsAuthPoll")
+    expect(handlers).toContain("writeKhalaCodeDesktopOpenAgentsAgentToken")
+    expect(handlers).toContain("envWithKhalaCodeDesktopOpenAgentsAgentToken")
+    expect(css).toContain(".khala-openagents-connect")
+    expect(css).toContain(".khala-openagents-connect-button")
+  })
+
   test("keeps backend runtime hooks while visible composer selectors stay commented out", async () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()

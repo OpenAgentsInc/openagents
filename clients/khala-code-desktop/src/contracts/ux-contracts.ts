@@ -1409,29 +1409,61 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
-        "Binds the Khala lane's missing-token UI affordance only; does not itself define the token-minting backend flow, which is separate implementation work tracked by the same issue.",
-      blockerRefs: ["blocker.github_issue.8255"],
+        "Binds the Khala lane missing-token recovery path: the browser-verified device flow may mint a linked OpenAgents agent token, and the desktop may persist that token locally for hosted Khala. It does not touch the default Codex home, grant provider-account authority, publish the raw token in renderer UI, or authorize any promise-state/payment/payout change.",
+      blockerRefs: [],
       contractId: "khala_code.chat.khala_lane_connect_button.v1",
-      enforcementTier: "unenforced",
+      enforcementTier: "test-sweep",
       evidenceRefs: [
+        "apps/openagents.com/workers/api/src/khala-code-openagents-auth-routes.ts",
+        "apps/openagents.com/workers/api/src/khala-code-openagents-auth-routes.test.ts",
+        "clients/khala-code-desktop/src/bun/harness-setting.ts",
+        "clients/khala-code-desktop/src/bun/rpc-handlers.ts",
+        "clients/khala-code-desktop/src/shared/rpc.ts",
         "clients/khala-code-desktop/src/ui/main.ts",
+        "clients/khala-code-desktop/tests/app-shell.test.ts",
+        "clients/khala-code-desktop/tests/rpc-handlers.test.ts",
         "docs/khala-code/khala-code-ux-contract.md",
       ],
-      oracles: [],
+      oracles: [
+        {
+          description:
+            "Exercises the Worker desktop auth device route: start creates a short-code verification link without an agent token, browser verify mints and links an agent credential, and poll requires the short-lived secret before returning the raw token once to the desktop client.",
+          id: "desktop_auth_device_route.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents.com/workers/api/src/khala-code-openagents-auth-routes.test.ts",
+        },
+        {
+          description:
+            "Exercises the desktop RPC persistence path: persisted tokens satisfy plan status, start saves only a pending attempt to the settings file, and poll persists the linked token while returning only its prefix to the renderer.",
+          id: "desktop_auth_rpc_persistence.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-code-desktop/tests/rpc-handlers.test.ts",
+        },
+        {
+          description:
+            "Static shell guard proving the missing-token transcript path renders the OpenAgents Connect panel and wires start/poll/open-link RPC methods instead of remaining a plain text banner.",
+          id: "missing_token_connect_panel.source",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-code-desktop/tests/app-shell.test.ts",
+        },
+      ],
       productArea: "Khala lane",
       source: {
         channel: "community-feedback-discord",
         statedBy: "TheBenMeadows (community; relayed via Lathe operator agent issues/PR)",
         statedOn: "2026-07-03",
       },
-      state: "pending",
+      state: "enforced",
       statement:
         "When the Khala lane is unavailable because the desktop process has no OPENAGENTS_AGENT_TOKEN, the lane offers a 'Connect' button that drives an in-app flow to obtain and persist a token, instead of only explaining the missing environment variable in text.",
       surface: "khala-code-desktop",
       verification:
-        "Not yet enforced: recorded from community feedback (relayed by TheBenMeadows, formalized by the Lathe operator agent) on 2026-07-03. Tracked in GitHub issue #8255, filed the same day: needs a backend token-minting/device-auth flow and a new local persistence RPC before it can flip to enforced.",
+        "Enforced 2026-07-04 for GitHub issue #8255: Worker route tests cover the browser-verified token mint/poll flow; desktop RPC tests cover local pending-attempt/token persistence and persisted-token use for hosted plan status; app-shell tests cover the inline missing-token Connect panel. Runs in the package test glob, the Worker API test sweep, and the deploy check before pushes to main.",
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-04.3",
+  version: "2026-07-04.4",
 }

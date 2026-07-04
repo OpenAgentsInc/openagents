@@ -63,6 +63,16 @@ This is the invariant ledger for `openagents`.
 - Login only authenticates. Authorization stays gated downstream
   (`authHasCoreTeamAccess` / `isAdmin` / onboarding in
   `apps/web/src/product-policy.ts`); email sign-in does not widen product access.
+- Khala Code Desktop's OpenAgents connect flow is a device-style bridge to the
+  real browser session, not simulated auth. `/api/khala-code/auth/openagents/device/start`
+  may create only a short-lived pending attempt and poll secret; `/verify` must
+  require a real browser session before minting a linked `oa_agent_` programmatic
+  token; `/device/{attempt}` may return the raw token only to the desktop caller
+  that presents the matching short-lived poll secret. The raw token must not be
+  projected into browser UI, public docs, logs, or OpenAPI public contract
+  surfaces, and this flow must not touch the primary Codex auth home.
+  Regression coverage lives in
+  `workers/api/src/khala-code-openagents-auth-routes.test.ts`.
 - Background context: `docs/auth/2026-06-16-login-and-auth-audit.md`.
 
 ## Clean Public URLs

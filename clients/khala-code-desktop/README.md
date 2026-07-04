@@ -157,13 +157,18 @@ console/pageerror oracle.
 The legacy hosted Khala/OpenRouter runtime is a fallback/prototype path, not the
 Codex-parity default and not the local coding engine. When it is explicitly
 enabled, OpenRouter BYOK is passed to hosted Khala instead of being used as a
-local model backend:
+local model backend. Khala Code can now recover a missing OpenAgents token from
+inside the Khala lane: click **Connect** on the missing-token banner, confirm
+the short code in the browser, and the desktop stores the minted `oa_agent_`
+token in the local `~/.khala-code/desktop-settings.json` settings file. The
+environment variable path still works for scripted launches:
 
 ```sh
 OPENAGENTS_AGENT_TOKEN=... OPENROUTER_API_KEY=... bun run dev
 ```
 
-`OPENROUTER_API_KEY` alone is not enough for the legacy hosted path.
+`OPENROUTER_API_KEY` alone is not enough for the legacy hosted path, and the
+in-app connect flow does not touch the primary Codex auth home.
 
 ## Tools
 

@@ -49,6 +49,29 @@ export type KhalaCodeDesktopTraceCaptureConsentWriteResult =
     readonly saved: boolean
   }
 
+export type KhalaCodeDesktopOpenAgentsAuthPendingAttempt = {
+  readonly attemptId: string
+  readonly expiresAt: string
+  readonly intervalSeconds: number
+  readonly pollSecret: string
+  readonly userCode: string
+  readonly verificationUrl: string
+}
+
+export type KhalaCodeDesktopOpenAgentsAuthSetting = {
+  readonly ok: true
+  readonly path: string
+  readonly pendingAttempt: KhalaCodeDesktopOpenAgentsAuthPendingAttempt | null
+  readonly source: "env" | "persisted" | null
+  readonly state: "connected" | "missing" | "pending"
+  readonly tokenPrefix: string | null
+}
+
+export type KhalaCodeDesktopOpenAgentsAuthPendingAttemptWriteResult =
+  KhalaCodeDesktopOpenAgentsAuthSetting & {
+    readonly saved: boolean
+  }
+
 const DEFAULT_HARNESS_MODE: KhalaCodeDesktopRuntimeMode = "codex_harness"
 const VALID_HARNESS_MODES = new Set<KhalaCodeDesktopRuntimeMode>([
   "claude_runtime",
@@ -66,6 +89,39 @@ const settingsObject = (value: unknown): Record<string, unknown> =>
 
 const booleanValue = (value: unknown): boolean =>
   typeof value === "boolean" ? value : false
+
+const stringValue = (value: unknown): string | null =>
+  typeof value === "string" && value.trim().length > 0 ? value.trim() : null
+
+const numberValue = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) ? value : null
+
+const openAgentsAgentTokenValue = (value: unknown): string | null => {
+  const token = stringValue(value)
+  return token !== null && token.startsWith("oa_agent_") ? token : null
+}
+
+const tokenPrefixFor = (token: string): string => token.slice(0, 20)
+
+const pendingAttemptValue = (
+  value: unknown,
+): KhalaCodeDesktopOpenAgentsAuthPendingAttempt | null => {
+  const attempt = settingsObject(value)
+  const attemptId = stringValue(attempt.attemptId)
+  const expiresAt = stringValue(attempt.expiresAt)
+  const intervalSeconds = numberValue(attempt.intervalSeconds)
+  const pollSecret = stringValue(attempt.pollSecret)
+  const userCode = stringValue(attempt.userCode)
+  const verificationUrl = stringValue(attempt.verificationUrl)
+  return attemptId !== null &&
+    expiresAt !== null &&
+    intervalSeconds !== null &&
+    pollSecret !== null &&
+    userCode !== null &&
+    verificationUrl !== null
+    ? { attemptId, expiresAt, intervalSeconds, pollSecret, userCode, verificationUrl }
+    : null
+}
 
 export const khalaCodeDesktopHarnessSettingPath = (env: ChatEnv): string =>
   env.KHALA_CODE_DESKTOP_HARNESS_SETTING_PATH?.trim() ||
@@ -186,6 +242,115 @@ export async function writeKhalaCodeDesktopTraceCaptureConsent(
   const setting = await readKhalaCodeDesktopTraceCaptureConsent(env)
   return {
     ...setting,
+    saved: true,
+  }
+}
+
+export function khalaCodeDesktopOpenAgentsEnvToken(env: ChatEnv): string | null {
+  const token = env.OPENAGENTS_AGENT_TOKEN?.trim() || env.OPENAGENTS_API_KEY?.trim()
+  return token !== undefined && token.length > 0 ? token : null
+}
+
+export async function readKhalaCodeDesktopPersistedOpenAgentsAgentToken(
+  env: ChatEnv,
+): Promise<string | null> {
+  const settings = await readKhalaCodeDesktopSettingsDocument(env)
+  return openAgentsAgentTokenValue(settings.openAgentsAgentToken)
+}
+
+export async function resolveKhalaCodeDesktopOpenAgentsAgentToken(
+  env: ChatEnv,
+): Promise<string | null> {
+  return khalaCodeDesktopOpenAgentsEnvToken(env) ??
+    await readKhalaCodeDesktopPersistedOpenAgentsAgentToken(env)
+}
+
+export async function envWithKhalaCodeDesktopOpenAgentsAgentToken(
+  env: ChatEnv,
+): Promise<ChatEnv> {
+  if (khalaCodeDesktopOpenAgentsEnvToken(env) !== null) return env
+  const token = await readKhalaCodeDesktopPersistedOpenAgentsAgentToken(env)
+  return token === null ? env : { ...env, OPENAGENTS_AGENT_TOKEN: token }
+}
+
+export async function readKhalaCodeDesktopOpenAgentsAuthSetting(
+  env: ChatEnv,
+): Promise<KhalaCodeDesktopOpenAgentsAuthSetting> {
+  const path = khalaCodeDesktopHarnessSettingPath(env)
+  const settings = await readKhalaCodeDesktopSettingsDocument(env)
+  const envToken = khalaCodeDesktopOpenAgentsEnvToken(env)
+  if (envToken !== null) {
+    return {
+      ok: true,
+      path,
+      pendingAttempt: null,
+      source: "env",
+      state: "connected",
+      tokenPrefix: tokenPrefixFor(envToken),
+    }
+  }
+
+  const persistedToken = openAgentsAgentTokenValue(settings.openAgentsAgentToken)
+  if (persistedToken !== null) {
+    return {
+      ok: true,
+      path,
+      pendingAttempt: null,
+      source: "persisted",
+      state: "connected",
+      tokenPrefix: tokenPrefixFor(persistedToken),
+    }
+  }
+
+  const pendingAttempt = pendingAttemptValue(settings.openAgentsAuthPendingAttempt)
+  return {
+    ok: true,
+    path,
+    pendingAttempt,
+    source: null,
+    state: pendingAttempt === null ? "missing" : "pending",
+    tokenPrefix: null,
+  }
+}
+
+export async function writeKhalaCodeDesktopOpenAgentsAuthPendingAttempt(
+  attempt: KhalaCodeDesktopOpenAgentsAuthPendingAttempt,
+  env: ChatEnv,
+): Promise<KhalaCodeDesktopOpenAgentsAuthPendingAttemptWriteResult> {
+  const path = khalaCodeDesktopHarnessSettingPath(env)
+  const current = await readKhalaCodeDesktopSettingsDocument(env)
+  await mkdir(dirname(path), { recursive: true })
+  await writeFile(path, `${JSON.stringify({
+    ...current,
+    schema: "khala-code-desktop.harness-setting.v1",
+    harnessMode: isRuntimeMode(current.harnessMode) ? current.harnessMode : DEFAULT_HARNESS_MODE,
+    openAgentsAuthPendingAttempt: attempt,
+  }, null, 2)}\n`)
+  return {
+    ...await readKhalaCodeDesktopOpenAgentsAuthSetting(env),
+    saved: true,
+  }
+}
+
+export async function writeKhalaCodeDesktopOpenAgentsAgentToken(
+  token: string,
+  env: ChatEnv,
+): Promise<KhalaCodeDesktopOpenAgentsAuthPendingAttemptWriteResult> {
+  const trimmed = openAgentsAgentTokenValue(token)
+  if (trimmed === null) throw new Error("OpenAgents agent token must start with oa_agent_.")
+  const path = khalaCodeDesktopHarnessSettingPath(env)
+  const current = await readKhalaCodeDesktopSettingsDocument(env)
+  const rest = { ...current }
+  delete rest.openAgentsAuthPendingAttempt
+  await mkdir(dirname(path), { recursive: true })
+  await writeFile(path, `${JSON.stringify({
+    ...rest,
+    schema: "khala-code-desktop.harness-setting.v1",
+    harnessMode: isRuntimeMode(current.harnessMode) ? current.harnessMode : DEFAULT_HARNESS_MODE,
+    openAgentsAgentToken: trimmed,
+  }, null, 2)}\n`)
+  return {
+    ...await readKhalaCodeDesktopOpenAgentsAuthSetting(env),
     saved: true,
   }
 }

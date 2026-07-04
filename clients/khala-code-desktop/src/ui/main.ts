@@ -52,6 +52,7 @@ import {
   type KhalaCodeDesktopFleetStatus,
   type KhalaCodeDesktopMessage,
   type KhalaCodeDesktopMessageRole,
+  type KhalaCodeDesktopOpenAgentsAuthPendingAttempt,
   type KhalaCodeDesktopRPCSchema,
   type KhalaCodeDesktopSessionCatalogResult,
   type KhalaCodeDesktopThreadTokenSummary,
@@ -269,6 +270,18 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["khalaCodePlanStatus"]>>
       >("khalaCodePlanStatus"),
+    khalaCodeOpenAgentsAuthStatus: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["khalaCodeOpenAgentsAuthStatus"]>>
+      >("khalaCodeOpenAgentsAuthStatus"),
+    khalaCodeOpenAgentsAuthStart: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["khalaCodeOpenAgentsAuthStart"]>>
+      >("khalaCodeOpenAgentsAuthStart"),
+    khalaCodeOpenAgentsAuthPoll: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["khalaCodeOpenAgentsAuthPoll"]>>
+      >("khalaCodeOpenAgentsAuthPoll"),
     khalaCodePlanPurchase: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["khalaCodePlanPurchase"]>>
@@ -1317,6 +1330,220 @@ let composerHudRuntime: ComposerHudRuntime | null = null
 const messageClass = (role: KhalaCodeDesktopMessageRole): string =>
   `message-bubble message-bubble--${role}`
 
+const KHALA_OPENAGENTS_MISSING_TOKEN_MARKER =
+  "does not have an OPENAGENTS_AGENT_TOKEN"
+
+type KhalaOpenAgentsConnectView = Readonly<{
+  error?: string
+  pendingAttempt?: KhalaCodeDesktopOpenAgentsAuthPendingAttempt
+  state: "idle" | "starting" | "pending" | "polling" | "linked" | "failed"
+  tokenPrefix?: string
+}>
+
+let khalaOpenAgentsConnectView: KhalaOpenAgentsConnectView = {
+  state: "idle",
+}
+let khalaOpenAgentsConnectPollTimer: number | null = null
+
+const isKhalaOpenAgentsMissingTokenMessage = (
+  message: KhalaCodeDesktopMessage,
+): boolean =>
+  message.role === "assistant" &&
+  message.body.includes(KHALA_OPENAGENTS_MISSING_TOKEN_MARKER)
+
+const setKhalaOpenAgentsConnectView = (
+  view: KhalaOpenAgentsConnectView,
+): void => {
+  khalaOpenAgentsConnectView = view
+  renderMessages()
+}
+
+const clearKhalaOpenAgentsConnectPollTimer = (): void => {
+  if (khalaOpenAgentsConnectPollTimer === null) return
+  window.clearTimeout(khalaOpenAgentsConnectPollTimer)
+  khalaOpenAgentsConnectPollTimer = null
+}
+
+const scheduleKhalaOpenAgentsConnectPoll = (delayMs: number): void => {
+  clearKhalaOpenAgentsConnectPollTimer()
+  khalaOpenAgentsConnectPollTimer = window.setTimeout(() => {
+    void pollKhalaOpenAgentsConnect()
+  }, delayMs)
+}
+
+const startKhalaOpenAgentsConnect = async (): Promise<void> => {
+  clearKhalaOpenAgentsConnectPollTimer()
+  setKhalaOpenAgentsConnectView({ state: "starting" })
+  try {
+    const existing = await rpc.request.khalaCodeOpenAgentsAuthStatus()
+    if (existing.state === "connected") {
+      setKhalaOpenAgentsConnectView({
+        state: "linked",
+        ...(existing.tokenPrefix === null ? {} : { tokenPrefix: existing.tokenPrefix }),
+      })
+      return
+    }
+
+    const result = await rpc.request.khalaCodeOpenAgentsAuthStart()
+    if (!result.ok) {
+      setKhalaOpenAgentsConnectView({
+        error: "Khala Code could not start the OpenAgents connect flow.",
+        state: "failed",
+      })
+      return
+    }
+
+    const pendingAttempt = {
+      attemptId: result.attemptId,
+      expiresAt: result.expiresAt,
+      intervalSeconds: result.intervalSeconds,
+      userCode: result.userCode,
+      verificationUrl: result.verificationUrl,
+    }
+    setKhalaOpenAgentsConnectView({
+      pendingAttempt,
+      state: "pending",
+    })
+    void rpc.request.openExternalUrl(pendingAttempt.verificationUrl)
+    scheduleKhalaOpenAgentsConnectPoll(
+      Math.max(1, pendingAttempt.intervalSeconds) * 1000,
+    )
+  } catch (error) {
+    setKhalaOpenAgentsConnectView({
+      error: error instanceof Error ? error.message : String(error),
+      state: "failed",
+    })
+  }
+}
+
+async function pollKhalaOpenAgentsConnect(): Promise<void> {
+  const current = khalaOpenAgentsConnectView
+  if (current.state !== "pending" && current.state !== "polling") return
+  setKhalaOpenAgentsConnectView({
+    ...current,
+    state: "polling",
+  })
+  try {
+    const result = await rpc.request.khalaCodeOpenAgentsAuthPoll()
+    if (!result.ok) {
+      setKhalaOpenAgentsConnectView({
+        error: "Khala Code could not finish the OpenAgents connect flow.",
+        state: "failed",
+      })
+      return
+    }
+    if (result.status === "pending") {
+      const pendingAttempt = {
+        attemptId: result.attemptId,
+        expiresAt: result.expiresAt,
+        intervalSeconds: result.intervalSeconds,
+        userCode: result.userCode,
+        verificationUrl: result.verificationUrl,
+      }
+      setKhalaOpenAgentsConnectView({
+        pendingAttempt,
+        state: "pending",
+      })
+      scheduleKhalaOpenAgentsConnectPoll(
+        Math.max(1, pendingAttempt.intervalSeconds) * 1000,
+      )
+      return
+    }
+    if (result.status === "expired") {
+      setKhalaOpenAgentsConnectView({
+        error: "The OpenAgents connect code expired.",
+        state: "failed",
+      })
+      return
+    }
+    clearKhalaOpenAgentsConnectPollTimer()
+    setKhalaOpenAgentsConnectView({
+      state: "linked",
+      tokenPrefix: result.tokenPrefix,
+    })
+    appendMessages([{
+      body: "Khala Code is connected to OpenAgents. Send the message again to continue.",
+      id: nextMessageId("system"),
+      role: "system",
+    }])
+  } catch (error) {
+    setKhalaOpenAgentsConnectView({
+      error: error instanceof Error ? error.message : String(error),
+      state: "failed",
+    })
+  }
+}
+
+const renderKhalaOpenAgentsConnectPanel = (): HTMLElement => {
+  const panel = document.createElement("section")
+  panel.className = "khala-openagents-connect"
+  panel.setAttribute("aria-label", "Connect Khala Code to OpenAgents")
+
+  const title = document.createElement("p")
+  title.className = "khala-openagents-connect-title"
+  title.textContent = "Connect OpenAgents"
+
+  const hint = document.createElement("p")
+  hint.className = "khala-openagents-connect-hint"
+
+  const actionRow = document.createElement("div")
+  actionRow.className = "khala-openagents-connect-actions"
+
+  const button = document.createElement("button")
+  button.type = "button"
+  button.className = "khala-openagents-connect-button"
+
+  const view = khalaOpenAgentsConnectView
+  if (view.state === "linked") {
+    hint.textContent = view.tokenPrefix === undefined
+      ? "Connected. Send the message again to continue."
+      : `Connected with token ${view.tokenPrefix}... Send the message again to continue.`
+    button.textContent = "Connected"
+    button.disabled = true
+  } else if (view.state === "starting") {
+    hint.textContent = "Opening the OpenAgents sign-in flow."
+    button.textContent = "Opening..."
+    button.disabled = true
+  } else if (view.state === "pending" || view.state === "polling") {
+    const attempt = view.pendingAttempt
+    hint.textContent = view.state === "polling"
+      ? "Checking whether the browser confirmation finished."
+      : "Confirm the code in your browser, then Khala Code will save the token locally."
+    if (attempt !== undefined) {
+      const code = document.createElement("code")
+      code.className = "khala-openagents-connect-code"
+      code.textContent = attempt.userCode
+      actionRow.append(code)
+
+      const link = document.createElement("button")
+      link.type = "button"
+      link.className = "khala-openagents-connect-secondary"
+      link.textContent = "Open link"
+      link.addEventListener("click", () => {
+        void rpc.request.openExternalUrl(attempt.verificationUrl)
+      })
+      actionRow.append(link)
+    }
+    button.textContent = view.state === "polling" ? "Checking..." : "Check now"
+    button.disabled = view.state === "polling"
+    button.addEventListener("click", () => {
+      void pollKhalaOpenAgentsConnect()
+    })
+  } else {
+    hint.textContent = view.state === "failed" && view.error !== undefined
+      ? view.error
+      : "Sign in once and Khala Code will save an OpenAgents token for future launches."
+    button.textContent = view.state === "failed" ? "Try again" : "Connect"
+    button.addEventListener("click", () => {
+      void startKhalaOpenAgentsConnect()
+    })
+  }
+
+  actionRow.prepend(button)
+  panel.append(title, hint, actionRow)
+  return panel
+}
+
 const renderMessage = (message: KhalaCodeDesktopMessage): HTMLElement => {
   const article = document.createElement("article")
   article.className = messageClass(message.role)
@@ -1330,6 +1557,9 @@ const renderMessage = (message: KhalaCodeDesktopMessage): HTMLElement => {
   const body = document.createElement("div")
   body.className = "message-body"
   body.append(...renderMessageBody(message.body, message.role, message.codexItem))
+  if (isKhalaOpenAgentsMissingTokenMessage(message)) {
+    body.append(renderKhalaOpenAgentsConnectPanel())
+  }
 
   article.append(body)
   return article
@@ -3645,6 +3875,12 @@ const controls = {
     rpc.request.forumRequest(request),
   khalaCodePlanCatalog: () => rpc.request.khalaCodePlanCatalog(),
   khalaCodePlanStatus: () => rpc.request.khalaCodePlanStatus(),
+  khalaCodeOpenAgentsAuthStatus: () =>
+    rpc.request.khalaCodeOpenAgentsAuthStatus(),
+  khalaCodeOpenAgentsAuthStart: () =>
+    rpc.request.khalaCodeOpenAgentsAuthStart(),
+  khalaCodeOpenAgentsAuthPoll: () =>
+    rpc.request.khalaCodeOpenAgentsAuthPoll(),
   khalaCodePlanPurchase: (request?: Parameters<DesktopRpcRequests["khalaCodePlanPurchase"]>[0]) =>
     rpc.request.khalaCodePlanPurchase(request),
   khalaCodeTraceCaptureStatus: () => rpc.request.khalaCodeTraceCaptureStatus(),

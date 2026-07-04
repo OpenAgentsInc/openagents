@@ -236,6 +236,14 @@ export type KhalaCodeDesktopPlanStatusPlan = typeof RpcKhalaCodePlanStatusPlan.T
 export type KhalaCodeDesktopPlanStatusResult = typeof RpcKhalaCodePlanStatusResult.Type
 export type KhalaCodeDesktopPlanPurchaseRequest = typeof RpcKhalaCodePlanPurchaseRequest.Type
 export type KhalaCodeDesktopPlanPurchaseResult = typeof RpcKhalaCodePlanPurchaseResult.Type
+export type KhalaCodeDesktopOpenAgentsAuthPendingAttempt =
+  typeof RpcKhalaCodeOpenAgentsAuthPendingAttempt.Type
+export type KhalaCodeDesktopOpenAgentsAuthStatusResult =
+  typeof RpcKhalaCodeOpenAgentsAuthStatusResult.Type
+export type KhalaCodeDesktopOpenAgentsAuthStartResult =
+  typeof RpcKhalaCodeOpenAgentsAuthStartResult.Type
+export type KhalaCodeDesktopOpenAgentsAuthPollResult =
+  typeof RpcKhalaCodeOpenAgentsAuthPollResult.Type
 export type KhalaCodeDesktopTraceCaptureStatusResult =
   typeof RpcKhalaCodeTraceCaptureStatusResult.Type
 export type KhalaCodeDesktopTraceCaptureConsentWriteRequest =
@@ -1885,6 +1893,56 @@ const RpcKhalaCodePlanStatusResult = S.Union([
   S.Struct({ state: S.Literal("unauthenticated") }),
   S.Struct({ state: S.Literal("unavailable") }),
 ])
+const RpcKhalaCodeOpenAgentsAuthPendingAttempt = S.Struct({
+  attemptId: S.String,
+  expiresAt: S.String,
+  intervalSeconds: S.Number,
+  userCode: S.String,
+  verificationUrl: S.String,
+})
+const RpcKhalaCodeOpenAgentsAuthStatusResult = S.Struct({
+  ok: S.Literal(true),
+  path: S.String,
+  pendingAttempt: S.NullOr(RpcKhalaCodeOpenAgentsAuthPendingAttempt),
+  source: S.NullOr(S.Literals(["env", "persisted"])),
+  state: S.Literals(["connected", "missing", "pending"]),
+  tokenPrefix: RpcStringNull,
+})
+const RpcKhalaCodeOpenAgentsAuthStartSuccess = S.Struct({
+  ...RpcKhalaCodeOpenAgentsAuthPendingAttempt.fields,
+  ok: S.Literal(true),
+  status: S.Literal("pending"),
+})
+const RpcKhalaCodeOpenAgentsAuthStartResult = S.Union([
+  RpcKhalaCodeOpenAgentsAuthStartSuccess,
+  S.Struct({
+    ok: S.Literal(false),
+    error: S.Literal("connect_unavailable"),
+  }),
+])
+const RpcKhalaCodeOpenAgentsAuthPollResult = S.Union([
+  S.Struct({
+    ...RpcKhalaCodeOpenAgentsAuthPendingAttempt.fields,
+    ok: S.Literal(true),
+    status: S.Literal("pending"),
+  }),
+  S.Struct({
+    ok: S.Literal(true),
+    saved: S.Literal(true),
+    source: S.Literal("persisted"),
+    status: S.Literal("linked"),
+    tokenPrefix: S.String,
+  }),
+  S.Struct({
+    attemptId: S.String,
+    ok: S.Literal(true),
+    status: S.Literal("expired"),
+  }),
+  S.Struct({
+    ok: S.Literal(false),
+    error: S.Literals(["connect_unavailable", "no_pending_attempt"]),
+  }),
+])
 const RpcKhalaCodePlanPurchaseRequest = S.Struct({
   idempotencyKey: S.optional(S.String),
   lightningPaymentHash: S.optional(S.String),
@@ -2108,6 +2166,9 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   forumRequest: { parameters: [param(RpcForumRequest)], result: RpcForumResponse },
   khalaCodePlanCatalog: { parameters: noParams(), result: RpcKhalaCodePlanCatalogResult },
   khalaCodePlanStatus: { parameters: noParams(), result: RpcKhalaCodePlanStatusResult },
+  khalaCodeOpenAgentsAuthStatus: { parameters: noParams(), result: RpcKhalaCodeOpenAgentsAuthStatusResult },
+  khalaCodeOpenAgentsAuthStart: { parameters: noParams(), result: RpcKhalaCodeOpenAgentsAuthStartResult },
+  khalaCodeOpenAgentsAuthPoll: { parameters: noParams(), result: RpcKhalaCodeOpenAgentsAuthPollResult },
   khalaCodePlanPurchase: { parameters: [optionalParam(RpcKhalaCodePlanPurchaseRequest)], result: RpcKhalaCodePlanPurchaseResult },
   khalaCodeTraceCaptureStatus: { parameters: noParams(), result: RpcKhalaCodeTraceCaptureStatusResult },
   khalaCodeTraceCaptureConsentWrite: { parameters: [param(RpcKhalaCodeTraceCaptureConsentWriteRequest)], result: RpcKhalaCodeTraceCaptureConsentWriteResult },
@@ -2202,7 +2263,7 @@ const decodeWithSchema = (
   schema: S.Schema<unknown>,
   value: unknown,
 ): unknown =>
-  S.decodeUnknownSync(schema as never)(value)
+  S.decodeUnknownSync(schema as never, { onExcessProperty: "error" })(value)
 
 export const decodeKhalaCodeDesktopRpcParameters = (
   method: KhalaCodeDesktopRpcMethodName,
@@ -2271,6 +2332,9 @@ export type KhalaCodeDesktopRPCSchema = {
     forumRequest(request: KhalaCodeDesktopForumRequest): Promise<KhalaCodeDesktopForumResponse>
     khalaCodePlanCatalog(): Promise<KhalaCodeDesktopPlanCatalogResult>
     khalaCodePlanStatus(): Promise<KhalaCodeDesktopPlanStatusResult>
+    khalaCodeOpenAgentsAuthStatus(): Promise<KhalaCodeDesktopOpenAgentsAuthStatusResult>
+    khalaCodeOpenAgentsAuthStart(): Promise<KhalaCodeDesktopOpenAgentsAuthStartResult>
+    khalaCodeOpenAgentsAuthPoll(): Promise<KhalaCodeDesktopOpenAgentsAuthPollResult>
     khalaCodePlanPurchase(request?: KhalaCodeDesktopPlanPurchaseRequest): Promise<KhalaCodeDesktopPlanPurchaseResult>
     khalaCodeTraceCaptureStatus(): Promise<KhalaCodeDesktopTraceCaptureStatusResult>
     khalaCodeTraceCaptureConsentWrite(request: KhalaCodeDesktopTraceCaptureConsentWriteRequest): Promise<KhalaCodeDesktopTraceCaptureConsentWriteResult>

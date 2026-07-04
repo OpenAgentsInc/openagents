@@ -711,6 +711,84 @@ button {
   opacity: 0.52;
 }
 
+.khala-openagents-connect {
+  display: grid;
+  gap: 8px;
+  max-width: min(100%, 34rem);
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 28%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 6%, transparent);
+}
+
+.khala-openagents-connect-title,
+.khala-openagents-connect-hint {
+  margin: 0;
+}
+
+.khala-openagents-connect-title {
+  color: var(--oa-color-khala-energy-text-strong);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.khala-openagents-connect-hint {
+  color: var(--oa-color-khala-text-muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.khala-openagents-connect-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 30px;
+}
+
+.khala-openagents-connect-button,
+.khala-openagents-connect-secondary {
+  min-height: 30px;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 42%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 16%, transparent);
+  color: var(--oa-color-khala-energy-button-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+  line-height: 1;
+  padding: 7px 10px;
+}
+
+.khala-openagents-connect-secondary {
+  background: color-mix(in srgb, var(--oa-color-khala-surface-panel) 72%, transparent);
+  color: var(--oa-color-khala-text-primary);
+}
+
+.khala-openagents-connect-button:hover,
+.khala-openagents-connect-button:focus-visible,
+.khala-openagents-connect-secondary:hover,
+.khala-openagents-connect-secondary:focus-visible {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 70%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 38%, transparent);
+}
+
+.khala-openagents-connect-button:disabled,
+.khala-openagents-connect-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+}
+
+.khala-openagents-connect-code {
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 12%, transparent);
+  color: var(--oa-color-khala-energy-text-strong);
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 5px 8px;
+}
+
 .tool-card-output {
   display: none;
   margin: 0;

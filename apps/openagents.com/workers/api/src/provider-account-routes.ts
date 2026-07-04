@@ -120,6 +120,20 @@ type ProviderAccountRouteDependencies<Bindings = OpenAgentsEnv> = Readonly<{
     env: Bindings,
     ctx: ExecutionContext,
   ) => RouteEffect
+  handleKhalaCodeOpenAgentsAuthStartApi: (
+    request: Request,
+    env: Bindings,
+  ) => RouteEffect
+  handleKhalaCodeOpenAgentsAuthStatusApi: (
+    request: Request,
+    env: Bindings,
+    attemptId: string,
+  ) => RouteEffect
+  handleKhalaCodeOpenAgentsAuthVerifyApi: (
+    request: Request,
+    env: Bindings,
+    ctx: ExecutionContext,
+  ) => RouteEffect
 }>
 
 export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
@@ -197,6 +211,18 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
     if (url.pathname === '/api/pylon/auth/openagents/device/verify') {
       return routeEffectOrResponse(
         dependencies.handlePylonOpenAgentsAuthVerifyApi(request, env, ctx),
+      )
+    }
+
+    if (url.pathname === '/api/khala-code/auth/openagents/device/start') {
+      return routeEffectOrResponse(
+        dependencies.handleKhalaCodeOpenAgentsAuthStartApi(request, env),
+      )
+    }
+
+    if (url.pathname === '/api/khala-code/auth/openagents/device/verify') {
+      return routeEffectOrResponse(
+        dependencies.handleKhalaCodeOpenAgentsAuthVerifyApi(request, env, ctx),
       )
     }
 
@@ -350,6 +376,25 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
       if (attemptId !== undefined) {
         return routeEffectOrResponse(
           dependencies.handlePylonOpenAgentsAuthStatusApi(
+            request,
+            env,
+            attemptId,
+          ),
+        )
+      }
+    }
+
+    const khalaCodeOpenAgentsAuthStatusMatch =
+      /^\/api\/khala-code\/auth\/openagents\/device\/([^/]+)$/.exec(
+        url.pathname,
+      )
+
+    if (khalaCodeOpenAgentsAuthStatusMatch !== null) {
+      const attemptId = khalaCodeOpenAgentsAuthStatusMatch[1]
+
+      if (attemptId !== undefined) {
+        return routeEffectOrResponse(
+          dependencies.handleKhalaCodeOpenAgentsAuthStatusApi(
             request,
             env,
             attemptId,

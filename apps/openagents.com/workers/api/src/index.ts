@@ -981,6 +981,10 @@ import {
 } from './pylon-multi-earning-node-routes'
 import { makePylonOpenAgentsAuthHandlers } from './pylon-openagents-auth-routes'
 import {
+  isKhalaCodeOpenAgentsAuthVerifyReturnPath,
+  makeKhalaCodeOpenAgentsAuthHandlers,
+} from './khala-code-openagents-auth-routes'
+import {
   type RelayHealthFetch,
   canonicalMarketRelayUrl,
   makeD1RelayHealthStore,
@@ -4133,6 +4137,13 @@ const cleanLoginReturnPath = (value: string | null): string | undefined => {
         !/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code)
         ? undefined
         : `${url.pathname}?attempt=${encodeURIComponent(attempt)}&code=${encodeURIComponent(code)}`
+    }
+
+    if (isKhalaCodeOpenAgentsAuthVerifyReturnPath(url)) {
+      const attempt = url.searchParams.get('attempt')?.trim() ?? ''
+      const code = url.searchParams.get('code')?.trim().toUpperCase() ?? ''
+
+      return `${url.pathname}?attempt=${encodeURIComponent(attempt)}&code=${encodeURIComponent(code)}`
     }
 
     const isAgentClaimReturn = isAgentClaimReturnPath(url.pathname)
@@ -7656,6 +7667,12 @@ const pylonOpenAgentsAuthHandlers = makePylonOpenAgentsAuthHandlers({
   requireBrowserSession,
 })
 
+const khalaCodeOpenAgentsAuthHandlers = makeKhalaCodeOpenAgentsAuthHandlers({
+  agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  appendRefreshedSessionCookies,
+  requireBrowserSession,
+})
+
 const providerAccountServiceHandlers = makeProviderAccountServiceHandlers({
   readConnectedCodexAuthMaterial,
   requireProviderServiceActor,
@@ -7864,6 +7881,23 @@ const providerAccountRoutes = makeProviderAccountRoutes({
     ),
   handlePylonOpenAgentsAuthVerifyApi: (request, env, ctx) =>
     pylonOpenAgentsAuthHandlers.handlePylonOpenAgentsAuthVerifyApi(
+      request,
+      env,
+      ctx,
+    ),
+  handleKhalaCodeOpenAgentsAuthStartApi: (request, env) =>
+    khalaCodeOpenAgentsAuthHandlers.handleKhalaCodeOpenAgentsAuthStartApi(
+      request,
+      env,
+    ),
+  handleKhalaCodeOpenAgentsAuthStatusApi: (request, env, attemptId) =>
+    khalaCodeOpenAgentsAuthHandlers.handleKhalaCodeOpenAgentsAuthStatusApi(
+      request,
+      env,
+      attemptId,
+    ),
+  handleKhalaCodeOpenAgentsAuthVerifyApi: (request, env, ctx) =>
+    khalaCodeOpenAgentsAuthHandlers.handleKhalaCodeOpenAgentsAuthVerifyApi(
       request,
       env,
       ctx,
