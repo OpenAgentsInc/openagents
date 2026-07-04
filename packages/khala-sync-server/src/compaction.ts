@@ -1,6 +1,6 @@
 import type { SyncScope } from "@openagentsinc/khala-sync"
-import type { SQL, TransactionSQL } from "bun"
 import { KhalaSyncStorageError, storageErrorFromUnknown } from "./errors.js"
+import type { SyncSql, SyncTransactionSql } from "./sql.js"
 
 /**
  * Changelog compaction + retained-window watermark (KS-2.3; SPEC §2.3, §4,
@@ -192,7 +192,7 @@ const validateWindow = (config: CompactionWindowConfig): void => {
   }
 }
 
-const checkpointTableExists = async (tx: TransactionSQL): Promise<boolean> => {
+const checkpointTableExists = async (tx: SyncTransactionSql): Promise<boolean> => {
   const rows: Array<{ table_exists: boolean }> = await tx`
     SELECT to_regclass(${CAPTURE_CHECKPOINTS_TABLE}) IS NOT NULL AS table_exists
   `
@@ -213,7 +213,7 @@ const checkpointTableExists = async (tx: TransactionSQL): Promise<boolean> => {
  * plan (including would-delete row counts) without writing.
  */
 export const compactScope = async (
-  sql: SQL,
+  sql: SyncSql,
   options: CompactScopeOptions,
 ): Promise<CompactScopeResult> => {
   validateWindow(options)
@@ -221,7 +221,7 @@ export const compactScope = async (
   const now = options.now ?? Date.now()
 
   try {
-    return await sql.begin(async (tx) => {
+    return await sql.begin(async (tx: SyncTransactionSql) => {
       // Lock the scope counter row: serializes against version allocation
       // (outbox-writer takes the same lock), so last_version is stable for
       // the whole plan+delete and the CHECK constraint is provably safe.
@@ -418,7 +418,7 @@ export const compactScope = async (
  * together) never blocks the rest.
  */
 export const compactAll = async (
-  sql: SQL,
+  sql: SyncSql,
   options: CompactAllOptions,
 ): Promise<CompactAllSummary> => {
   validateWindow(options)
