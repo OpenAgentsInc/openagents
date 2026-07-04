@@ -287,6 +287,12 @@ heartbeater_loop() {
     while IFS= read -r slot_acc; do account_slots+=("$slot_acc"); done < <(sup_expand_account_slots $(ready_codex_account_refs))
     desired="${#account_slots[@]}"
     supervisor_state sync --desired-slots "$desired" >> "$SUP_LOG" 2>&1 || true
+    # Fleet-intent enforcement (#8332): consume durable cockpit intents
+    # (pause/resume/desired-slots/stop, worker pause) BEFORE reading the
+    # effective desired slots so operator intents steer this very beat.
+    if [ -n "${OPENAGENTS_ADMIN_API_TOKEN:-}" ]; then
+      supervisor_state enforce-intents >> "$SUP_LOG" 2>&1 || true
+    fi
     advertised_desired="$(desired_slots)"
     case "$advertised_desired" in
       ''|*[!0-9]*) advertised_desired="$desired" ;;

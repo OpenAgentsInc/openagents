@@ -10,6 +10,7 @@ export type DispatchEligibility =
       reason:
         | "not_idle"
         | "circuit_broken"
+        | "worker_paused"
         | "heartbeat_missing"
         | "heartbeat_stale"
         | "dispatch_hung"
@@ -69,6 +70,9 @@ export function dispatchEligibility(
     ? (taskOrOptions as SupervisorCoordinatorOptions | undefined) ?? maybeOptions
     : maybeOptions
   if (context.status === "circuit_broken") return { ok: false, reason: "circuit_broken" }
+  // Operator slot gate (KS-3.2 #8332): a worker paused by a durable
+  // `pause_worker` fleet intent takes no new work until resumed.
+  if (context.paused) return { ok: false, reason: "worker_paused" }
   if (context.status !== "idle") return { ok: false, reason: "not_idle" }
   if (task?.spec.runnerKind !== undefined && context.runnerKind !== "generic" && context.runnerKind !== task.spec.runnerKind) {
     return { ok: false, reason: "runner_mismatch" }

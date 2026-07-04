@@ -5,6 +5,7 @@ import { createHash } from "node:crypto"
 import { mkdir } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { enforcePendingFleetIntents } from "./fleet-intent-enforcement.js"
 import {
   createPylonOrchestrationStore,
   type FleetRunWorkerKind,
@@ -123,6 +124,7 @@ const ensureContext = (accountRef: string, slot?: string) => {
 const COMMANDS = [
   "sync",
   "desired-slots",
+  "enforce-intents",
   "pause",
   "resume",
   "heartbeat",
@@ -140,6 +142,31 @@ const command = args.find((arg): arg is typeof COMMANDS[number] =>
 ) ?? fail("command is required")
 
 try {
+  if (command === "enforce-intents") {
+    // Async path: poll the Worker's admin-gated fleet-intents route and
+    // enforce every new durable operator intent against this store
+    // (KS-3.2 #8332). The token is read from the environment and NEVER
+    // echoed into stdout, logs, or the persisted outcome rows.
+    const baseUrl = option("--base-url")
+      ?? Bun.env.OPENAGENTS_BASE_URL
+      ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+      ?? "https://openagents.com"
+    const adminToken = option("--admin-token") ?? Bun.env.OPENAGENTS_ADMIN_API_TOKEN ?? ""
+    if (adminToken.trim() === "") {
+      print({ ok: false, error: "missing_admin_token", reason: "set OPENAGENTS_ADMIN_API_TOKEN" })
+      process.exitCode = 1
+    } else {
+      withSqliteBusyRetry(() => ensureRun())
+      const result = await enforcePendingFleetIntents(store, {
+        adminToken,
+        baseUrl,
+        limit: intOption("--limit", 64),
+        now,
+      })
+      print(result)
+      if (!result.ok) process.exitCode = 1
+    }
+  } else {
   withSqliteBusyRetry(() => {
     switch (command) {
       case "sync": {
@@ -162,7 +189,16 @@ try {
       }
       case "desired-slots": {
         const run = ensureRun()
-        print({ ok: true, desiredSlots: run.state === "paused" ? 0 : run.targetConcurrency, state: run.state })
+        // Effective slots (KS-3.2 #8332): 0 when paused/draining/stopped/
+        // completed, else local capacity bounded by the operator's durable
+        // desired-slots cap from enforced `set_desired_slots` intents.
+        print({
+          ok: true,
+          desiredSlots: store.effectiveFleetRunDesiredSlots(run.runRef),
+          state: run.state,
+          targetConcurrency: run.targetConcurrency,
+          desiredSlotsCap: store.getFleetRunDesiredSlotsCap(run.runRef),
+        })
         break
       }
       case "pause": {
@@ -300,6 +336,7 @@ try {
       }
     }
   })
+  }
 } finally {
   db.close()
 }

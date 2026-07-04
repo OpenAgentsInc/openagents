@@ -216,6 +216,12 @@ heartbeater_loop() {
     desired=$(( ready * SUP_PER_ACCOUNT ))
     [ "$desired" -gt "$SUP_MAX_SLOTS" ] && desired="$SUP_MAX_SLOTS"
     supervisor_state sync --desired-slots "$desired" >> "$SUP_LOG" 2>&1 || true
+    # Fleet-intent enforcement (#8332): consume durable cockpit intents so
+    # operator pause/resume/desired-slots/stop steer the worker loop's
+    # desired_slots() reads.
+    if [ -n "${OPENAGENTS_ADMIN_API_TOKEN:-}" ]; then
+      supervisor_state enforce-intents >> "$SUP_LOG" 2>&1 || true
+    fi
     OPENAGENTS_PYLON_CLAUDE_CONCURRENCY="$desired" \
     OPENAGENTS_PYLON_CLAUDE_BUSY=0 \
     OPENAGENTS_PYLON_CLAUDE_QUEUED=0 \

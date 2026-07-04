@@ -187,6 +187,44 @@ export type ReconcileWorkClaimsInput = {
   workerHeartbeatTtlMs?: number
 }
 
+/**
+ * Per-intent enforcement outcome vocabulary (KS-3.2 #8332):
+ *
+ * - `applied` — the intent changed (or already matched) supervisor state
+ * - `skipped_stale` — honestly not applicable anymore (unknown run/worker,
+ *   terminal run, transition no longer valid); recorded, never retried
+ * - `failed` — the application step itself errored; recorded with a bounded
+ *   public-safe detail so the loop is never wedged by one bad intent
+ */
+export type FleetIntentOutcomeStatus = "applied" | "skipped_stale" | "failed"
+
+/**
+ * One durably recorded fleet-intent application outcome. `intentId` is the
+ * monotonic `khala_sync_fleet_intents.id`; the primary key on it is the
+ * exactly-once guard under route redelivery.
+ */
+export type FleetIntentOutcomeRecord = {
+  intentId: number
+  scope: string
+  runRef: string
+  intent: string
+  outcome: FleetIntentOutcomeStatus
+  detail: string | null
+  mutationRef: string
+  recordedAt: string
+}
+
+export type RecordFleetIntentOutcomeInput = {
+  intentId: number
+  scope: string
+  runRef: string
+  intent: string
+  outcome: FleetIntentOutcomeStatus
+  detail?: string | null
+  mutationRef: string
+  now?: Date
+}
+
 export type CreateFleetRunInput = {
   runRef: string
   objective: string
@@ -245,6 +283,12 @@ export type DispatchContext = {
   lastHeartbeatAt: string | null
   baseBehindBy: number
   maxConcurrentSlots: number
+  /**
+   * Operator-level slot gate (KS-3.2 #8332): a paused context is refused by
+   * `dispatchEligibility` until an operator resumes it. Enforced from the
+   * durable `pause_worker` / `resume_worker` fleet intents.
+   */
+  paused: boolean
   createdAt: string
   updatedAt: string
 }
@@ -579,6 +623,7 @@ type DispatchContextRow = {
   last_heartbeat_at: string | null
   base_behind_by: number
   max_concurrent_slots: number
+  paused?: number | null
   created_at: string
   updated_at: string
 }
@@ -663,6 +708,28 @@ type MessageRow = {
   created_at: string
 }
 
+type FleetIntentOutcomeRow = {
+  intent_id: number
+  scope: string
+  run_ref: string
+  intent: string
+  outcome: FleetIntentOutcomeStatus
+  detail: string | null
+  mutation_ref: string
+  recorded_at: string
+}
+
+const fleetIntentOutcomeFromRow = (row: FleetIntentOutcomeRow): FleetIntentOutcomeRecord => ({
+  intentId: row.intent_id,
+  scope: row.scope,
+  runRef: row.run_ref,
+  intent: row.intent,
+  outcome: row.outcome,
+  detail: row.detail,
+  mutationRef: row.mutation_ref,
+  recordedAt: row.recorded_at,
+})
+
 const taskFromRow = (row: TaskRow): OrchestrationTask => ({
   id: row.id,
   parentId: row.parent_id,
@@ -705,6 +772,7 @@ const contextFromRow = (row: DispatchContextRow): DispatchContext => ({
   lastHeartbeatAt: row.last_heartbeat_at,
   baseBehindBy: row.base_behind_by,
   maxConcurrentSlots: row.max_concurrent_slots,
+  paused: (row.paused ?? 0) === 1,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 })
@@ -1017,8 +1085,21 @@ export class PylonOrchestrationStore {
         ON pylon_orchestration_work_claims(run_ref, updated_at);
       CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_work_claims_worker
         ON pylon_orchestration_work_claims(worker_account_ref, state);
+      CREATE TABLE IF NOT EXISTS pylon_orchestration_fleet_intent_outcomes (
+        intent_id INTEGER PRIMARY KEY,
+        scope TEXT NOT NULL,
+        run_ref TEXT NOT NULL,
+        intent TEXT NOT NULL,
+        outcome TEXT NOT NULL CHECK (outcome IN ('applied', 'skipped_stale', 'failed')),
+        detail TEXT,
+        mutation_ref TEXT NOT NULL,
+        recorded_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_fleet_intent_outcomes_run
+        ON pylon_orchestration_fleet_intent_outcomes(run_ref, intent_id);
     `)
     this.ensureDispatchContextBreakerColumns()
+    this.ensureDispatchContextPausedColumn()
     this.db
       .query("INSERT OR REPLACE INTO pylon_orchestration_meta (key, value) VALUES ('schema_version', $version)")
       .run({ $version: String(ORCHESTRATION_SCHEMA_VERSION) })
@@ -1052,6 +1133,13 @@ export class PylonOrchestrationStore {
       CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_dispatch_breakers_lane_account
         ON pylon_orchestration_dispatch_breakers(lane, account_ref_hash);
     `)
+  }
+
+  private ensureDispatchContextPausedColumn(): void {
+    const contextColumns = this.tableColumnNames("pylon_orchestration_dispatch_contexts")
+    if (!contextColumns.has("paused")) {
+      this.db.exec("ALTER TABLE pylon_orchestration_dispatch_contexts ADD COLUMN paused INTEGER NOT NULL DEFAULT 0")
+    }
   }
 
   createFleetRun(input: CreateFleetRunInput): FleetRun {
@@ -1177,6 +1265,151 @@ export class PylonOrchestrationStore {
 
   reconcileFleetRuns(now: Date = new Date()): FleetRun[] {
     return this.listFleetRuns().map((run) => this.reconcileFleetRun(run.runRef, now))
+  }
+
+  private getMeta(key: string): string | null {
+    const row = this.db
+      .query("SELECT value FROM pylon_orchestration_meta WHERE key = $key")
+      .get({ $key: key }) as { value: string } | null
+    return row?.value ?? null
+  }
+
+  private setMeta(key: string, value: string): void {
+    this.db
+      .query("INSERT OR REPLACE INTO pylon_orchestration_meta (key, value) VALUES ($key, $value)")
+      .run({ $key: key, $value: value })
+  }
+
+  private fleetIntentWatermarkKey(scope?: string): string {
+    return scope === undefined ? "fleet_intents_watermark" : `fleet_intents_watermark.${scope}`
+  }
+
+  /**
+   * Persisted fleet-intent consumption watermark (KS-3.2 #8332): the highest
+   * `khala_sync_fleet_intents.id` this supervisor has consumed, resumed
+   * across restarts. One global watermark by default; a per-scope key when
+   * the enforcement loop polls a single fleet scope.
+   */
+  getFleetIntentWatermark(scope?: string): number {
+    const raw = this.getMeta(this.fleetIntentWatermarkKey(scope))
+    if (raw === null) return 0
+    const value = Number(raw)
+    return Number.isInteger(value) && value >= 0 ? value : 0
+  }
+
+  setFleetIntentWatermark(after: number, scope?: string): void {
+    if (!Number.isInteger(after) || after < 0) {
+      throw new Error("fleet intent watermark must be a non-negative integer")
+    }
+    this.setMeta(this.fleetIntentWatermarkKey(scope), String(after))
+  }
+
+  /**
+   * Operator desired-slots cap (KS-3.2 #8332), the durable overlay written
+   * by `set_desired_slots` intents. Kept separate from
+   * `FleetRun.targetConcurrency` because the supervisor heartbeat re-derives
+   * targetConcurrency from local account capacity on every beat; the cap
+   * survives those beats and bounds the effective slots.
+   */
+  getFleetRunDesiredSlotsCap(runRef: string): number | null {
+    const raw = this.getMeta(`fleet_intent_desired_slots_cap.${runRef}`)
+    if (raw === null) return null
+    const value = Number(raw)
+    return Number.isInteger(value) && value >= 0 ? value : null
+  }
+
+  setFleetRunDesiredSlotsCap(runRef: string, cap: number | null): void {
+    const key = `fleet_intent_desired_slots_cap.${runRef}`
+    if (cap === null) {
+      this.db.query("DELETE FROM pylon_orchestration_meta WHERE key = $key").run({ $key: key })
+      return
+    }
+    if (!Number.isInteger(cap) || cap < 0) {
+      throw new Error("fleet run desired-slots cap must be a non-negative integer")
+    }
+    this.setMeta(key, String(cap))
+  }
+
+  /**
+   * The slots the supervisor loop should actually dispatch at: 0 when the
+   * run is paused/draining/stopped/completed (or unknown), else the local
+   * capacity (`targetConcurrency`) bounded by the operator cap.
+   */
+  effectiveFleetRunDesiredSlots(runRef: string): number {
+    const run = this.getFleetRun(runRef)
+    if (run === null) return 0
+    if (run.state !== "running" && run.state !== "draft") return 0
+    const cap = this.getFleetRunDesiredSlotsCap(runRef)
+    return cap === null ? run.targetConcurrency : Math.min(run.targetConcurrency, cap)
+  }
+
+  setDispatchContextPaused(id: string, paused: boolean, now: Date = new Date()): DispatchContext {
+    const current = this.getDispatchContext(id)
+    if (current === null) throw new Error(`unknown dispatch context: ${id}`)
+    this.db
+      .query(`
+        UPDATE pylon_orchestration_dispatch_contexts
+           SET paused = $paused,
+               updated_at = $now
+         WHERE id = $id
+      `)
+      .run({ $id: id, $paused: paused ? 1 : 0, $now: iso(now) })
+    return this.getDispatchContext(id) ?? current
+  }
+
+  getFleetIntentOutcome(intentId: number): FleetIntentOutcomeRecord | null {
+    const row = this.db
+      .query("SELECT * FROM pylon_orchestration_fleet_intent_outcomes WHERE intent_id = $intentId")
+      .get({ $intentId: intentId }) as FleetIntentOutcomeRow | null
+    return row === null ? null : fleetIntentOutcomeFromRow(row)
+  }
+
+  listFleetIntentOutcomes(input: { runRef?: string } = {}): FleetIntentOutcomeRecord[] {
+    const rows = input.runRef === undefined
+      ? this.db
+        .query("SELECT * FROM pylon_orchestration_fleet_intent_outcomes ORDER BY intent_id ASC")
+        .all()
+      : this.db
+        .query(`
+          SELECT * FROM pylon_orchestration_fleet_intent_outcomes
+           WHERE run_ref = $runRef
+           ORDER BY intent_id ASC
+        `)
+        .all({ $runRef: input.runRef })
+    return (rows as FleetIntentOutcomeRow[]).map(fleetIntentOutcomeFromRow)
+  }
+
+  /**
+   * Record one intent application outcome exactly once. A second record for
+   * the same `intentId` (route redelivery, restart replay) is refused and
+   * the FIRST recorded outcome is returned with `recorded: false` — callers
+   * must treat that as "already applied, do not re-apply".
+   */
+  recordFleetIntentOutcome(
+    input: RecordFleetIntentOutcomeInput,
+  ): { recorded: boolean; outcome: FleetIntentOutcomeRecord } {
+    const existing = this.getFleetIntentOutcome(input.intentId)
+    if (existing !== null) return { outcome: existing, recorded: false }
+    this.db
+      .query(`
+        INSERT OR IGNORE INTO pylon_orchestration_fleet_intent_outcomes
+          (intent_id, scope, run_ref, intent, outcome, detail, mutation_ref, recorded_at)
+        VALUES
+          ($intentId, $scope, $runRef, $intent, $outcome, $detail, $mutationRef, $recordedAt)
+      `)
+      .run({
+        $intentId: input.intentId,
+        $scope: input.scope,
+        $runRef: input.runRef,
+        $intent: input.intent,
+        $outcome: input.outcome,
+        $detail: input.detail ?? null,
+        $mutationRef: input.mutationRef,
+        $recordedAt: iso(input.now),
+      })
+    const stored = this.getFleetIntentOutcome(input.intentId)
+    if (stored === null) throw new Error(`failed to record fleet intent outcome ${input.intentId}`)
+    return { outcome: stored, recorded: true }
   }
 
   tryClaimWorkUnit(input: CreateWorkClaimInput): WorkClaim | null {

@@ -84,18 +84,45 @@ Every fleet mutator is owner-gated via `khala_sync_scope_owners`
 writes) and executes intent row + post-image append in ONE transaction,
 attributable to `ctx.mutationRef`.
 
-**Honest v1 enforcement status:** an applied fleet mutation is a DURABLE
-OPERATOR REQUEST (`khala_sync_fleet_intents`, migrations 0004/0005) plus a
-projected post-image that cockpit clients converge on — it does not change
-Pylon dispatch behavior by itself yet. The consumption seam is
-`readPendingFleetIntents` (`packages/khala-sync-server/src/fleet-intents.ts`)
-exposed through the admin-bearer-gated
-`GET /api/internal/khala-sync/fleet-intents?scope=&after=&limit=` route,
-with the typed Pylon-side poller in
-`apps/pylon/src/orchestration/fleet-intents.ts` (polls with
-`OPENAGENTS_ADMIN_API_TOKEN`, resumes from the `nextAfter` watermark).
-Wiring the Pylon supervisor loop to poll + enforce those intents is the
-follow-up lane tracked on epic #8282.
+**Honest enforcement status (#8332):** an applied fleet mutation is a
+DURABLE OPERATOR REQUEST (`khala_sync_fleet_intents`, migrations 0004/0005)
+plus a projected post-image, AND it is now ENFORCED by the Pylon
+supervisor loop. The consumption seam is `readPendingFleetIntents`
+(`packages/khala-sync-server/src/fleet-intents.ts`) exposed through the
+admin-bearer-gated
+`GET /api/internal/khala-sync/fleet-intents?scope=&after=&limit=` route and
+the typed Pylon-side poller in
+`apps/pylon/src/orchestration/fleet-intents.ts`. Enforcement lives in
+`apps/pylon/src/orchestration/fleet-intent-enforcement.ts`
+(`enforcePendingFleetIntents`), invoked as the `enforce-intents`
+supervisor-state command from the codex/claude supervisor heartbeat loops
+whenever `OPENAGENTS_ADMIN_API_TOKEN` is present:
+
+- **Exactly-once:** the `nextAfter` watermark persists in the orchestration
+  store (`pylon_orchestration_meta`, survives restarts) and every intent id
+  records one `pylon_orchestration_fleet_intent_outcomes` row
+  (`applied` / `skipped_stale` / `failed`); a redelivered intent with a
+  recorded outcome is deduped, never re-applied.
+- **Mapping:** `set_desired_slots` → durable operator slots cap +
+  `targetConcurrency` (the loop reads `effectiveFleetRunDesiredSlots`);
+  `pause`/`resume` → `FleetRun` state with operator provenance; `stop` →
+  terminal `stopped` + live-claim release; `pause_worker`/`resume_worker` →
+  dispatch-context `paused` gate (`dispatchEligibility` refuses with
+  `worker_paused`).
+- **Failure isolation:** a bad intent records a `failed` outcome with a
+  bounded public-safe detail and never wedges the loop; poll/transport
+  failures leave the watermark untouched and retry next beat.
+
+Remaining honest gaps (epic #8282): `acknowledge_inbox_flag` is a recorded
+no-op on the Pylon side — the acknowledged `fleet_inbox_flag` post-image is
+already durable server-side and there are no pylon-local attention-item
+rows to clear until flag producers land. And projection LOOPBACK of
+supervisor-enforced state is still indirect: cockpit clients converge on
+the mutator's desired post-image (which enforcement now makes true), plus
+assignment-transition projections — enforced run/worker state is not yet
+independently re-projected from the Pylon store, so an intent enforcement
+skip (`skipped_stale` on an unknown/terminal run) is visible in the
+outcome rows, not in a corrected post-image.
 
 ## 1. The single-transaction rule (SPEC §7 invariant 5)
 
