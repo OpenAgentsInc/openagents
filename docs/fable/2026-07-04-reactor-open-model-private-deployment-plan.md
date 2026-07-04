@@ -250,6 +250,18 @@ unauthorized. This is internal dogfood evidence only: no customer flywheel,
 customer dataset, customer-owned weights, public capability copy, or external
 pilot is created.
 
+RX-7 status (2026-07-04): [#8280](https://github.com/OpenAgentsInc/openagents/issues/8280)
+is closed as gated/deferred for the SELL implementation epic. The closeout
+record is
+[`2026-07-04-rx-7-customer-pilot-gated-closeout.md`](./2026-07-04-rx-7-customer-pilot-gated-closeout.md).
+No first external customer pilot was delivered or claimed. The remaining gates
+are real-world owner/customer refs: engagement approval, per-deal pricing,
+customer-signed `reactor.model_policy.v1`, a customer-controlled install, one
+approved workload, opaque metering/policy/delivery refs, and a paid Reactor
+receipt plan. Until those refs exist, Reactor remains registry-planned with no
+customer deployment, public price, compliance copy, payout, settlement, or green
+promise authority.
+
 ## 4. Architecture (owned seams, honest state)
 
 ```
@@ -477,7 +489,7 @@ RX-11 [#8279](https://github.com/OpenAgentsInc/openagents/issues/8279).
 | RX-4 | Eval receipts: psionic-run task-class evals across the catalog seed (drafting, extraction, RAG, agent-tool-use). A score is a (model, harness) pair — every eval receipt carries a `harnessRef` naming the harness it was measured under (same-model harness variance ran 3.5%→80.1% in the 2026-07-04 harness-optimization audit) | Landed Reactor-side with measured 2 models × 2 task-class fixture receipts, hosted-equivalent labels, and `not_measured` coverage cells; Psionic runtime remains separate |
 | RX-5 | Install/ops runbook + air-gap update path (signed bundles), fleet-executable | Landed runbook, signed-bundle manifest, install/upgrade/rollback receipts, and clean-temp smoke; no deployed node |
 | RX-6 | Dogfood deployment: Reactor node on our own hardware running a real internal workload under a strict policy (e.g. `us`-only) — customer number one, again | Landed public-safe dogfood-run receipt seed with exact metering, policy receipts, and refused Qwen refresh; external claims still blocked |
-| RX-7 | First customer pilot (likely the legal design partner's stated ask), BF-3.1/3.2 gated, opaque refs only | First paid Reactor receipt |
+| RX-7 | First customer pilot (likely the legal design partner's stated ask), BF-3.1/3.2 gated, opaque refs only | Closed as gated/deferred in #8280; no customer pilot claimed; reopen/new issue only with owner approval, customer-signed policy, pricing/copy posture, and receipt plan |
 | RX-8 | Lead Gen segment: model-custody analyzer angle + Reactor sequence for regulated verticals | Landed public-only analyzer config, regulated template variant, LG-7 customer config, and LG-2 quoted-pipeline coverage; no live sends |
 | RX-9 | **Need-to-know access layer**: per-user scoped retrieval over the corpus store — typed hard access rules enforced in the system + model-oracle checks for soft rules, with an adversarial "Bob must not see Alice" fixture suite | Landed deny-by-default contracts, access-decision receipts, and Worker deploy-sweep fixture; no live customer corpus |
 | RX-10 | **Data Liberation offering**: walled-garden export/transform/verify pipeline as a packaged quick win (per-vendor adapters as config), verification receipts per migrated record class | Landed synthetic generic CSV/API + Salesforce-shaped adapter fixtures and verification reports; no customer engagement |

@@ -79,6 +79,12 @@ the provenance catalog and policy resolver while keeping those records planned.
 RX-3 (#8273) then added the lane-neutral serving skeleton, Hydralisk fixture
 profile, policy-refusing provision/router smoke, and exact local metering
 receipt shape while still leaving live Reactor deployment planned.
+RX-7 (#8280) is now closed as gated/deferred for the code epic, not delivered:
+the remaining first-customer-pilot gates are owner approval, per-deal pricing,
+customer-signed `reactor.model_policy.v1`, customer-controlled install refs,
+and paid Reactor receipt planning. The closeout doc is
+`docs/fable/2026-07-04-rx-7-customer-pilot-gated-closeout.md`; no registry
+state or public copy changes.
 The one current-plan record still missing at the time of this audit was
 `autopilot.lead_gen.v1` - deliberately left to LG-7 (#8268), whose scope
 already included it.
