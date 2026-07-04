@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-07-04.15'
+export const PublicProductPromisesVersion = '2026-07-04.16'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -5096,7 +5096,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Reactor is a planned private/customer-controlled open-model deployment lane for businesses that need model serving inside their own trust boundary.',
         safeCopy:
-          'Reactor is a drafted private-deployment lane, not an available product: source now has a lane-neutral serving skeleton for a server-class Hydralisk profile, OpenAI-compatible routing, policy refusal before weight pull, exact local metering receipts, initial catalog-cited task-class eval receipts, a signed air-gap install/update runbook, an internal OpenAgents dogfood run receipt under a strict US-only policy, and an adversarial need-to-know corpus access fixture that refuses Bob access to Alice citations or summaries. Customer-controlled deployment, customer data custody, external customer pilots, and owner-approved public copy remain unshipped. Modeled assessment/pilot/managed package bands are staged in NEEDS_OWNER.md for owner review only.',
+          'Reactor is a drafted private-deployment lane, not an available product: source now has a lane-neutral serving skeleton for a server-class Hydralisk profile, OpenAI-compatible routing, policy refusal before weight pull, exact local metering receipts, initial catalog-cited task-class eval receipts, a signed air-gap install/update runbook, an internal OpenAgents dogfood run receipt under a strict US-only policy, an adversarial need-to-know corpus access fixture that refuses Bob access to Alice citations or summaries, and synthetic Data Liberation adapter/verification fixtures. Customer-controlled deployment, customer data custody, customer migrations, external customer pilots, and owner-approved public copy remain unshipped. Modeled assessment/pilot/managed package bands are staged in NEEDS_OWNER.md for owner review only.',
         unsafeCopy:
           'Do not claim Reactor is available, installed on-prem today, HIPAA/sovereign/compliance-ready, priced publicly, broadly US-origin-only enforced beyond the internal dogfood receipt, or proof that customer data never leaves until deployed receipts and owner-approved copy exist.',
         evidenceRefs: [
@@ -5106,15 +5106,18 @@ export const publicProductPromisesDocument = () => {
           'https://github.com/OpenAgentsInc/openagents/issues/8275',
           'https://github.com/OpenAgentsInc/openagents/issues/8276',
           'https://github.com/OpenAgentsInc/openagents/issues/8277',
+          'https://github.com/OpenAgentsInc/openagents/issues/8278',
           'packages/reactor-contracts/src/index.ts',
           'packages/reactor-contracts/src/index.test.ts',
           'packages/reactor-contracts/scripts/install-smoke.ts',
           'packages/reactor-contracts/scripts/dogfood-smoke.ts',
           'apps/openagents.com/workers/api/src/reactor-need-to-know-access.test.ts',
+          'apps/openagents.com/workers/api/src/reactor-data-liberation.test.ts',
           'docs/fable/2026-07-04-rx-3-reactor-serving-skeleton-receipt.md',
           'docs/fable/2026-07-04-rx-4-reactor-eval-receipts.md',
           'docs/fable/2026-07-04-rx-5-reactor-install-airgap-runbook.md',
           'docs/fable/2026-07-04-rx-6-reactor-dogfood-run.md',
+          'docs/fable/2026-07-04-rx-10-reactor-data-liberation-pipeline.md',
           'docs/fable/2026-07-04-rx-9-reactor-need-to-know-access.md',
           'https://openagents.com/forum/t/2efaeed7-1f4f-4f2f-9b26-dc8445885bca',
           'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md',
@@ -5132,7 +5135,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.owner.reactor_customer_pilot_approval_missing',
         ],
         verification:
-          'Planned only. The contract package now proves the policy-enforced serving skeleton, exact local metering receipt shape, initial task-class eval receipt integration, signed air-gap install/update smoke with fixture weights, a public-safe internal dogfood-run receipt seed with a policy-refused Qwen refresh, and hard-rule plus soft-oracle need-to-know access receipts that fail closed under adversarial Bob/Alice fixtures. Yellow still requires customer-boundary data handling and owner-approved copy. Green requires deployed customer-controlled proof, signed owner review, and no compliance or availability overclaim.',
+          'Planned only. The contract package now proves the policy-enforced serving skeleton, exact local metering receipt shape, initial task-class eval receipt integration, signed air-gap install/update smoke with fixture weights, a public-safe internal dogfood-run receipt seed with a policy-refused Qwen refresh, hard-rule plus soft-oracle need-to-know access receipts that fail closed under adversarial Bob/Alice fixtures, and synthetic Data Liberation adapter reports with counts, checksums, failed-row refs, and spot-diff hashes. Yellow still requires customer-boundary data handling and owner-approved copy. Green requires deployed customer-controlled proof, signed owner review, and no compliance or availability overclaim.',
         authorityBoundary:
           'This registry entry grants no external serving, customer-data custody, customer install, pricing, compliance, sales-contract, spend, payout, settlement, model-pull, or deployment authority. It is a public boundary record for the planned lane only.',
       },
@@ -5246,6 +5249,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-04.16 is the RX-10 Reactor Data Liberation pipeline pass (#8278) and flips NO promise state - green stays exactly 34. The @openagentsinc/reactor-contracts package now exports openagents.reactor.data_liberation_adapter_config.v1, openagents.reactor.data_liberation_record_class_verification_receipt.v1, and openagents.reactor.data_liberation_pipeline_report.v1, plus a config-driven pipeline runner. Two synthetic seed adapters prove the shape: a generic CSV/API SaaS contact export passes, and a Salesforce-contact-shaped export reports a partial migration when one row is missing required Email. Verification receipts include counts, checksums, failed row refs, partial row refs, and spot-diff hashes, while setting customerDataLogged:false, customerEngagementAuthorized:false, and packageCopyAuthorized:false. The normal deploy sweep now runs apps/openagents.com/workers/api/src/reactor-data-liberation.test.ts. This clears only the fixture-level adapter/verification blocker. Customer migrations, customer data custody, package copy, pricing, external pilots, compliance, payout, and settlement claims remain blocked.',
       'Registry 2026-07-04.15 is the RX-9 Reactor need-to-know access pass (#8277) and flips NO promise state - green stays exactly 34. The @openagentsinc/reactor-contracts package now exports openagents.reactor.need_to_know_ruleset.v1, openagents.reactor.corpus_document.v1, openagents.reactor.corpus_access_decision_receipt.v1, a deny-by-default evaluator, and adversarial Bob/Alice fixtures. Hard workspace/matter/role-or-user rules run before the model-oracle plausibility pass; an oracle can further deny but cannot rescue a hard-rule denial. The normal deploy sweep now runs apps/openagents.com/workers/api/src/reactor-need-to-know-access.test.ts, including citation and summary leakage fixtures, missing-oracle fail-closed behavior, and a deliberately broken allow-all rule fixture. This clears only the fixture-level need-to-know access blocker. Customer premises deployment, customer data custody, external customer pilots, full eval coverage, owner-approved public copy, pricing, compliance, payout, and settlement claims remain blocked.',
       'Registry 2026-07-04.14 is the RX-6 Reactor dogfood pass (#8276) and flips NO promise state - green stays exactly 34. The @openagentsinc/reactor-contracts package now exports openagents.reactor.dogfood_run_receipt.v1 plus an OpenAgents dogfood Hydralisk profile, RX-5 fresh-install receipt, two routed internal lead-gen workload requests, exact local metering receipts totaling 743 tokens, and a deliberate Qwen refresh refused by reactor.model_policy.v1 revalidation before model refresh. This clears only the internal dogfood-proof blocker and replaces the dogfood/customer-deployment blocker with external-customer-pilot and owner-case-study-copy blockers. Customer premises deployment, customer data custody, need-to-know access, full eval coverage, owner-approved public copy, pricing, compliance, payout, and settlement claims remain blocked.',
       'Registry 2026-07-04.13 is the RX-5 Reactor install/air-gap pass (#8275) and flips NO promise state - green stays exactly 34. The @openagentsinc/reactor-contracts package now exports signed air-gap update-bundle manifests, install/upgrade/rollback receipts, guidance-only hardware tier specs, and a clean-temp install smoke. The smoke reuses the existing apps/oa-updates ed25519 verifier pattern with a generated test key, verifies a signed fixture bundle, confirms tampering fails closed, writes fresh-install/upgrade/rollback receipts, and revalidates reactor.model_policy.v1 on model refresh. This clears only the air-gap-update-path blocker and replaces it with the remaining dogfood/customer-deployment blocker. Customer or dogfood deployment, customer data-custody proof, full eval coverage, owner-approved public copy, pricing, compliance, payout, and settlement claims remain blocked.',

@@ -38,6 +38,10 @@ Exports:
   plausibility verdict, no raw document or generated summary logs, and
   adversarial Bob/Alice fixtures that fail closed across citation and summary
   modes.
+- Data Liberation pipeline reports: config-driven synthetic export adapters,
+  schema-mapped transforms, customer-controlled open-store refs, verification
+  receipts per record class, checksums, spot-diff hashes, and honest partial
+  migration blockers without raw customer row values.
 
 Smoke:
 

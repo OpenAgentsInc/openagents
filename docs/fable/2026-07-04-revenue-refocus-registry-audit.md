@@ -168,6 +168,19 @@ fixture-level access blocker; customer premises deployment, customer data
 custody, external pilot, full eval coverage, owner-approved copy, compliance,
 payout, and settlement remain blocked.
 
+RX-10 note (2026-07-04): the Reactor Data Liberation lane landed as
+machinery-only contracts and synthetic fixtures in `packages/reactor-contracts`
+plus `apps/openagents.com/workers/api/src/reactor-data-liberation.test.ts` in
+the deploy sweep. The new adapter/report records model per-vendor export
+config, schema-mapped transforms, customer-controlled open-store refs, and
+verification receipts with counts, checksums, failed row refs, partial row
+refs, and spot-diff hashes. A generic CSV/API SaaS fixture passes; a
+Salesforce-contact-shaped fixture reports partial when one synthetic row is
+missing required `Email`. This clears only the fixture-level
+adapter/verification blocker; customer migrations, customer data custody,
+package copy, pricing, external pilot, compliance, payout, and settlement
+remain blocked.
+
 ## 3. The focus: closing the revenue loop, independence-first
 
 The company objective (Episode 246: "close the gap between what I've been

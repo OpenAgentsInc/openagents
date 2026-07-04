@@ -4,6 +4,9 @@ import { Schema as S } from 'effect'
 import {
   REACTOR_AIRGAP_BUNDLE_PUBLIC_KEY_REF,
   REACTOR_AIRGAP_BUNDLE_VERIFIER_REF,
+  REACTOR_DATA_LIBERATION_ADAPTERS,
+  REACTOR_DATA_LIBERATION_FIXTURE_REPORTS,
+  REACTOR_DATA_LIBERATION_SYNTHETIC_EXPORTS,
   REACTOR_EVAL_COVERAGE_MATRIX_SEED,
   REACTOR_EVAL_TASK_CLASS_REFS,
   REACTOR_EXAMPLE_POLICIES,
@@ -27,6 +30,9 @@ import {
   ReactorCapabilityCopyEvalDecision,
   ReactorAirgapUpdateBundleManifest,
   ReactorCorpusAccessDecisionReceipt,
+  ReactorDataLiberationAdapterConfig,
+  ReactorDataLiberationPipelineReport,
+  ReactorDataLiberationRecordClassVerificationReceipt,
   ReactorDogfoodRunReceipt,
   ReactorEvalCoverageMatrix,
   ReactorEvalHarnessProfile,
@@ -48,6 +54,7 @@ import {
   buildReactorModelEvalReceipt,
   evaluateReactorNeedToKnowAccess,
   provisionReactorModel,
+  runReactorDataLiberationPipeline,
   routeReactorOpenAiCompatibleRequest,
   selectReactorCapabilityCopyEvalRefs,
   resolveReactorModelPolicy,
@@ -1047,5 +1054,187 @@ describe('Reactor need-to-know corpus access', () => {
         ruleSet: REACTOR_NEED_TO_KNOW_BROKEN_ALLOW_ALL_RULESET_FIXTURE as unknown as typeof REACTOR_NEED_TO_KNOW_RULESET_V1,
       }),
     ).toThrow()
+  })
+})
+
+describe('Reactor data liberation pipeline receipts', () => {
+  test('decodes synthetic adapter configs and keeps customer data disallowed', () => {
+    const adapters = [
+      REACTOR_DATA_LIBERATION_ADAPTERS.genericCsvApiSaas,
+      REACTOR_DATA_LIBERATION_ADAPTERS.salesforceContactExport,
+    ].map(adapter =>
+      S.decodeUnknownSync(ReactorDataLiberationAdapterConfig)(adapter),
+    )
+
+    expect(adapters.map(adapter => adapter.adapterKind)).toEqual([
+      'generic_csv_api_saas_export',
+      'salesforce_contact_export',
+    ])
+    expect(adapters.every(adapter => adapter.customerDataAllowed === false)).toBe(
+      true,
+    )
+    expect(
+      adapters.every(
+        adapter => adapter.fixtureTruth === 'synthetic_public_fixture',
+      ),
+    ).toBe(true)
+    expect(
+      adapters.flatMap(adapter =>
+        adapter.recordClassMappings.flatMap(mapping =>
+          mapping.fieldMappings.map(field => field.mappingRef),
+        ),
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        'reactor.data_liberation.mapping.generic_contact.email',
+        'reactor.data_liberation.mapping.salesforce_contact.email',
+      ]),
+    )
+  })
+
+  test('passes a generic CSV/API SaaS fixture with counts, checksums, and spot diffs', () => {
+    const report = S.decodeUnknownSync(ReactorDataLiberationPipelineReport)(
+      REACTOR_DATA_LIBERATION_FIXTURE_REPORTS.genericCsvApiSaasPassed,
+    )
+    const receipt = S.decodeUnknownSync(
+      ReactorDataLiberationRecordClassVerificationReceipt,
+    )(report.verificationReceipts[0])
+
+    expect(report).toMatchObject({
+      status: 'passed',
+      sourceRowCount: 2,
+      loadedRowCount: 2,
+      failedRowCount: 0,
+      partialRowCount: 0,
+      customerDataLogged: false,
+      customerEngagementAuthorized: false,
+      packageCopyAuthorized: false,
+      fixtureTruth: 'synthetic_public_fixture',
+    })
+    expect(receipt).toMatchObject({
+      recordClassRef: 'crm_contact',
+      sourceRowCount: 2,
+      transformedRowCount: 2,
+      loadedRowCount: 2,
+      failedRowCount: 0,
+      status: 'passed',
+    })
+    expect(receipt.sourceChecksum).toMatch(/^fnv1a32:/)
+    expect(receipt.loadedChecksum).toMatch(/^fnv1a32:/)
+    expect(receipt.spotDiffSamples).toHaveLength(2)
+    expect(
+      receipt.spotDiffSamples.every(sample =>
+        sample.fieldChecks.every(field => field.matched),
+      ),
+    ).toBe(true)
+    expect(JSON.stringify(report)).not.toContain('ALICE.EXAMPLE')
+    expect(JSON.stringify(report)).not.toContain('bob.example@example.test')
+  })
+
+  test('reports partial Salesforce-style migrations without silently dropping rows', () => {
+    const report = S.decodeUnknownSync(ReactorDataLiberationPipelineReport)(
+      REACTOR_DATA_LIBERATION_FIXTURE_REPORTS.salesforceContactPartial,
+    )
+    const receipt = report.verificationReceipts[0]
+
+    expect(report).toMatchObject({
+      status: 'partial',
+      sourceRowCount: 3,
+      loadedRowCount: 2,
+      failedRowCount: 1,
+      partialRowCount: 0,
+      customerDataLogged: false,
+      fixtureTruth: 'synthetic_public_fixture',
+    })
+    expect(receipt?.failedRowRefs).toEqual([
+      'row.synthetic.salesforce.contact.003',
+    ])
+    expect(receipt?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.reactor.data_liberation.record_class_partial',
+        'reason.reactor.data_liberation.missing_required_field:Email',
+      ]),
+    )
+    expect(report.sourceRowCount).toBe(
+      report.loadedRowCount + report.failedRowCount + report.partialRowCount,
+    )
+    expect(JSON.stringify(report)).not.toContain('charlie.fixture@example.test')
+    expect(JSON.stringify(report)).not.toContain('DANA.FIXTURE')
+  })
+
+  test('uses adapter config rather than vendor forks for custom mappings', () => {
+    const baseMapping =
+      REACTOR_DATA_LIBERATION_ADAPTERS.genericCsvApiSaas.recordClassMappings[0]!
+    const report = runReactorDataLiberationPipeline({
+      adapter: {
+        ...REACTOR_DATA_LIBERATION_ADAPTERS.genericCsvApiSaas,
+        adapterRef:
+          'reactor.data_liberation.adapter.generic_csv_api_saas.renamed_fixture',
+        recordClassMappings: [
+          {
+            ...baseMapping,
+            fieldMappings: [
+              {
+                mappingRef:
+                  'reactor.data_liberation.mapping.renamed_contact.identifier',
+                required: true,
+                sourceField: 'legacy_identifier',
+                targetField: 'external_id',
+                transformRefs: ['trim'],
+              },
+              {
+                mappingRef:
+                  'reactor.data_liberation.mapping.renamed_contact.email',
+                required: true,
+                sourceField: 'mailbox',
+                targetField: 'email',
+                transformRefs: ['trim', 'lowercase'],
+              },
+            ],
+            schemaMappingRef:
+              'reactor.data_liberation.schema_mapping.renamed_contact_to_open_crm.v1',
+          },
+        ],
+      },
+      customerControlledStoreRef:
+        'customer_controlled_store.synthetic.open_crm.renamed_columns',
+      exportRows: [
+        {
+          fields: {
+            legacy_identifier: ' renamed-001 ',
+            mailbox: ' RENAMED@example.test ',
+          },
+          rowRef: 'row.synthetic.renamed.contact.001',
+          sourceRecordTypeRef: 'generic_saas.contact',
+        },
+      ],
+      generatedAt: DECIDED_AT,
+      reportRef: 'reactor.data_liberation.report.renamed_columns.001',
+    })
+
+    expect(report.status).toBe('passed')
+    expect(report.verificationReceipts[0]?.schemaMappingRef).toBe(
+      'reactor.data_liberation.schema_mapping.renamed_contact_to_open_crm.v1',
+    )
+    expect(report.verificationReceipts[0]?.spotDiffSamples[0]?.fieldChecks).toHaveLength(
+      2,
+    )
+  })
+
+  test('fixtures remain synthetic and public-safe by construction', () => {
+    const fixtureRows = [
+      ...REACTOR_DATA_LIBERATION_SYNTHETIC_EXPORTS.genericCsvApiSaasContacts,
+      ...REACTOR_DATA_LIBERATION_SYNTHETIC_EXPORTS.salesforceContacts,
+    ]
+
+    const serializedRows = JSON.stringify(fixtureRows)
+
+    expect(serializedRows).toContain('example.test')
+    expect(serializedRows).not.toMatch(/@(gmail|yahoo|outlook|hotmail)\./i)
+    expect(
+      JSON.stringify(REACTOR_DATA_LIBERATION_FIXTURE_REPORTS).includes(
+        'example.test',
+      ),
+    ).toBe(false)
   })
 })

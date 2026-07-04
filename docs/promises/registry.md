@@ -1,5 +1,23 @@
 # Promise Registry
 
+> Registry `2026-07-04.16` is the RX-10 Reactor Data Liberation
+> pipeline pass (#8278) and flips NO promise state (green stays exactly
+> 34). The `@openagentsinc/reactor-contracts` package now exports
+> `openagents.reactor.data_liberation_adapter_config.v1`,
+> `openagents.reactor.data_liberation_record_class_verification_receipt.v1`,
+> and `openagents.reactor.data_liberation_pipeline_report.v1`, plus a
+> config-driven pipeline runner. Two synthetic seed adapters prove the
+> shape: a generic CSV/API SaaS contact export passes, and a
+> Salesforce-contact-shaped export reports a partial migration when one row
+> is missing required `Email`. Verification receipts include counts,
+> checksums, failed row refs, partial row refs, and spot-diff hashes, while
+> setting `customerDataLogged: false`, `customerEngagementAuthorized:
+> false`, and `packageCopyAuthorized: false`. The normal deploy sweep now
+> runs `apps/openagents.com/workers/api/src/reactor-data-liberation.test.ts`.
+> This clears only the fixture-level adapter/verification blocker. Customer
+> migrations, customer data custody, package copy, pricing, external pilots,
+> compliance, payout, and settlement claims remain blocked.
+
 > Registry `2026-07-04.15` is the RX-9 Reactor need-to-know access
 > pass (#8277) and flips NO promise state (green stays exactly 34). The
 > `@openagentsinc/reactor-contracts` package now exports

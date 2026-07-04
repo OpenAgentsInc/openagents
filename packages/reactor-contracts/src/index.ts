@@ -630,6 +630,162 @@ export const ReactorCorpusAccessDecisionReceipt = S.Struct({
 export type ReactorCorpusAccessDecisionReceipt =
   typeof ReactorCorpusAccessDecisionReceipt.Type
 
+export const ReactorDataLiberationAdapterKind = S.Literals([
+  'generic_csv_api_saas_export',
+  'salesforce_contact_export',
+])
+export type ReactorDataLiberationAdapterKind =
+  typeof ReactorDataLiberationAdapterKind.Type
+
+export const ReactorDataLiberationExportTransport = S.Literals([
+  'api_json',
+  'csv_file',
+])
+export type ReactorDataLiberationExportTransport =
+  typeof ReactorDataLiberationExportTransport.Type
+
+export const ReactorDataLiberationFixtureTruth = S.Literal(
+  'synthetic_public_fixture',
+)
+export type ReactorDataLiberationFixtureTruth =
+  typeof ReactorDataLiberationFixtureTruth.Type
+
+export const ReactorDataLiberationTransformRef = S.Literals([
+  'identity',
+  'lowercase',
+  'trim',
+])
+export type ReactorDataLiberationTransformRef =
+  typeof ReactorDataLiberationTransformRef.Type
+
+export const ReactorDataLiberationStatus = S.Literals([
+  'failed',
+  'partial',
+  'passed',
+])
+export type ReactorDataLiberationStatus =
+  typeof ReactorDataLiberationStatus.Type
+
+export const ReactorDataLiberationFieldMapping = S.Struct({
+  mappingRef: S.String,
+  required: S.Boolean,
+  sourceField: S.String,
+  targetField: S.String,
+  transformRefs: S.Array(ReactorDataLiberationTransformRef),
+})
+export type ReactorDataLiberationFieldMapping =
+  typeof ReactorDataLiberationFieldMapping.Type
+
+export const ReactorDataLiberationRecordClassMapping = S.Struct({
+  fieldMappings: S.Array(ReactorDataLiberationFieldMapping),
+  recordClassRef: S.String,
+  schemaMappingRef: S.String,
+  sourceRecordTypeRef: S.String,
+  targetSchemaRef: S.String,
+})
+export type ReactorDataLiberationRecordClassMapping =
+  typeof ReactorDataLiberationRecordClassMapping.Type
+
+export const ReactorDataLiberationAdapterConfig = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.reactor.data_liberation_adapter_config.v1',
+  ),
+  adapterKind: ReactorDataLiberationAdapterKind,
+  adapterRef: S.String,
+  customerDataAllowed: S.Literal(false),
+  exportTransport: ReactorDataLiberationExportTransport,
+  fixtureTruth: ReactorDataLiberationFixtureTruth,
+  recordClassMappings: S.Array(ReactorDataLiberationRecordClassMapping),
+  sourceRefs: S.Array(S.String),
+  vendorRef: S.String,
+  version: S.String,
+})
+export type ReactorDataLiberationAdapterConfig =
+  typeof ReactorDataLiberationAdapterConfig.Type
+
+export const ReactorDataLiberationExportRow = S.Struct({
+  fields: S.Record(S.String, S.String),
+  rowRef: S.String,
+  sourceRecordTypeRef: S.String,
+})
+export type ReactorDataLiberationExportRow =
+  typeof ReactorDataLiberationExportRow.Type
+
+export const ReactorDataLiberationSpotDiffFieldCheck = S.Struct({
+  loadedValueChecksum: S.String,
+  matched: S.Boolean,
+  sourceValueChecksum: S.String,
+  targetField: S.String,
+})
+export type ReactorDataLiberationSpotDiffFieldCheck =
+  typeof ReactorDataLiberationSpotDiffFieldCheck.Type
+
+export const ReactorDataLiberationSpotDiffSample = S.Struct({
+  fieldChecks: S.Array(ReactorDataLiberationSpotDiffFieldCheck),
+  sampleRef: S.String,
+  sourceRowRef: S.String,
+  targetRecordRef: S.String,
+})
+export type ReactorDataLiberationSpotDiffSample =
+  typeof ReactorDataLiberationSpotDiffSample.Type
+
+export const ReactorDataLiberationRecordClassVerificationReceipt = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.reactor.data_liberation_record_class_verification_receipt.v1',
+  ),
+  adapterRef: S.String,
+  blockerRefs: S.Array(S.String),
+  customerControlledStoreRef: S.String,
+  customerDataLogged: S.Literal(false),
+  failedRowCount: S.Number,
+  failedRowRefs: S.Array(S.String),
+  generatedAt: S.String,
+  loadedChecksum: S.String,
+  loadedRowCount: S.Number,
+  partialRowCount: S.Number,
+  partialRowRefs: S.Array(S.String),
+  receiptRef: S.String,
+  recordClassRef: S.String,
+  schemaMappingRef: S.String,
+  sourceChecksum: S.String,
+  sourceRefs: S.Array(S.String),
+  sourceRowCount: S.Number,
+  spotDiffSamples: S.Array(ReactorDataLiberationSpotDiffSample),
+  status: ReactorDataLiberationStatus,
+  targetSchemaRef: S.String,
+  transformedRowCount: S.Number,
+})
+export type ReactorDataLiberationRecordClassVerificationReceipt =
+  typeof ReactorDataLiberationRecordClassVerificationReceipt.Type
+
+export const ReactorDataLiberationPipelineReport = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.reactor.data_liberation_pipeline_report.v1',
+  ),
+  adapterRefs: S.Array(S.String),
+  blockerRefs: S.Array(S.String),
+  customerControlledStoreRef: S.String,
+  customerDataLogged: S.Literal(false),
+  customerEngagementAuthorized: S.Literal(false),
+  failedRowCount: S.Number,
+  fixtureTruth: ReactorDataLiberationFixtureTruth,
+  generatedAt: S.String,
+  loadedRowCount: S.Number,
+  packageCopyAuthorized: S.Literal(false),
+  partialRowCount: S.Number,
+  recordClassRefs: S.Array(S.String),
+  reportRef: S.String,
+  sourceRefs: S.Array(S.String),
+  sourceRowCount: S.Number,
+  status: ReactorDataLiberationStatus,
+  verificationReceiptRefs: S.Array(S.String),
+  verificationReceipts: S.Array(
+    ReactorDataLiberationRecordClassVerificationReceipt,
+  ),
+})
+export type ReactorDataLiberationPipelineReport =
+  typeof ReactorDataLiberationPipelineReport.Type
+
 export type ResolveReactorModelPolicyInput = Readonly<{
   catalog: ReactorModelCatalog
   decidedAt: string
@@ -782,6 +938,15 @@ export type EvaluateReactorNeedToKnowAccessInput = Readonly<{
   receiptRef: string
   request: ReactorCorpusRetrievalRequest
   ruleSet: ReactorNeedToKnowRuleSet
+  sourceRefs?: ReadonlyArray<string>
+}>
+
+export type RunReactorDataLiberationPipelineInput = Readonly<{
+  adapter: ReactorDataLiberationAdapterConfig
+  customerControlledStoreRef: string
+  exportRows: ReadonlyArray<ReactorDataLiberationExportRow>
+  generatedAt: string
+  reportRef: string
   sourceRefs?: ReadonlyArray<string>
 }>
 
@@ -1821,6 +1986,267 @@ export const evaluateReactorNeedToKnowAccess = (
   })
 }
 
+const canonicalForChecksum = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(canonicalForChecksum)
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, canonicalForChecksum(entry)]),
+    )
+  }
+  return value
+}
+
+const stableChecksum = (value: unknown): string => {
+  const serialized = JSON.stringify(canonicalForChecksum(value))
+  let hash = 0x811c9dc5
+
+  for (let index = 0; index < serialized.length; index += 1) {
+    hash ^= serialized.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193) >>> 0
+  }
+
+  return `fnv1a32:${hash.toString(16).padStart(8, '0')}`
+}
+
+const applyDataLiberationTransforms = (
+  value: string,
+  transformRefs: ReadonlyArray<ReactorDataLiberationTransformRef>,
+): string =>
+  transformRefs.reduce((current, transformRef) => {
+    switch (transformRef) {
+      case 'identity':
+        return current
+      case 'lowercase':
+        return current.toLowerCase()
+      case 'trim':
+        return current.trim()
+    }
+  }, value)
+
+export const runReactorDataLiberationPipeline = (
+  input: RunReactorDataLiberationPipelineInput,
+): ReactorDataLiberationPipelineReport => {
+  const adapter = S.decodeUnknownSync(ReactorDataLiberationAdapterConfig)(
+    input.adapter,
+  )
+  const exportRows = input.exportRows.map(row =>
+    S.decodeUnknownSync(ReactorDataLiberationExportRow)(row),
+  )
+  const verificationReceipts =
+    adapter.recordClassMappings.map(recordClassMapping => {
+      const sourceRows = exportRows.filter(
+        row =>
+          row.sourceRecordTypeRef === recordClassMapping.sourceRecordTypeRef,
+      )
+      const loadedRecords: Array<{
+        recordClassRef: string
+        sourceRowRef: string
+        targetRecordRef: string
+        values: Record<string, string>
+      }> = []
+      const failedRowRefs: Array<string> = []
+      const partialRowRefs: Array<string> = []
+      const failureReasonRefs: Array<string> = []
+
+      for (const row of sourceRows) {
+        const values: Record<string, string> = {}
+        const missingRequiredFields: Array<string> = []
+        const missingOptionalFields: Array<string> = []
+
+        for (const fieldMapping of recordClassMapping.fieldMappings) {
+          const rawValue = row.fields[fieldMapping.sourceField]
+          if (rawValue === undefined || rawValue.trim() === '') {
+            if (fieldMapping.required) {
+              missingRequiredFields.push(fieldMapping.sourceField)
+            } else {
+              missingOptionalFields.push(fieldMapping.sourceField)
+            }
+            continue
+          }
+
+          values[fieldMapping.targetField] = applyDataLiberationTransforms(
+            rawValue,
+            fieldMapping.transformRefs,
+          )
+        }
+
+        if (missingRequiredFields.length > 0) {
+          failedRowRefs.push(row.rowRef)
+          failureReasonRefs.push(
+            ...missingRequiredFields.map(
+              field =>
+                `reason.reactor.data_liberation.missing_required_field:${field}`,
+            ),
+          )
+          continue
+        }
+
+        if (missingOptionalFields.length > 0) {
+          partialRowRefs.push(row.rowRef)
+          failureReasonRefs.push(
+            ...missingOptionalFields.map(
+              field =>
+                `reason.reactor.data_liberation.missing_optional_field:${field}`,
+            ),
+          )
+        }
+
+        loadedRecords.push({
+          recordClassRef: recordClassMapping.recordClassRef,
+          sourceRowRef: row.rowRef,
+          targetRecordRef: `${input.customerControlledStoreRef}.${recordClassMapping.recordClassRef}.${row.rowRef}`,
+          values,
+        })
+      }
+
+      const status: ReactorDataLiberationStatus =
+        failedRowRefs.length === 0 && partialRowRefs.length === 0
+          ? 'passed'
+          : loadedRecords.length === 0
+            ? 'failed'
+            : 'partial'
+      const blockerRefs =
+        status === 'passed'
+          ? []
+          : unique([
+              status === 'failed'
+                ? 'blocker.reactor.data_liberation.record_class_failed'
+                : 'blocker.reactor.data_liberation.record_class_partial',
+              ...failureReasonRefs,
+            ])
+      const spotDiffSamples = loadedRecords.slice(0, 3).map(loadedRecord => {
+        const sourceRow = sourceRows.find(
+          row => row.rowRef === loadedRecord.sourceRowRef,
+        )
+        return {
+          fieldChecks: recordClassMapping.fieldMappings
+            .filter(mapping => loadedRecord.values[mapping.targetField] !== undefined)
+            .map(mapping => {
+              const loadedValue = loadedRecord.values[mapping.targetField] ?? ''
+              const sourceValue = applyDataLiberationTransforms(
+                sourceRow?.fields[mapping.sourceField] ?? '',
+                mapping.transformRefs,
+              )
+              return {
+                loadedValueChecksum: stableChecksum(loadedValue),
+                matched: stableChecksum(sourceValue) === stableChecksum(loadedValue),
+                sourceValueChecksum: stableChecksum(sourceValue),
+                targetField: mapping.targetField,
+              }
+            }),
+          sampleRef: `${input.reportRef}.sample.${loadedRecord.sourceRowRef}`,
+          sourceRowRef: loadedRecord.sourceRowRef,
+          targetRecordRef: loadedRecord.targetRecordRef,
+        }
+      })
+
+      return S.decodeUnknownSync(
+        ReactorDataLiberationRecordClassVerificationReceipt,
+      )({
+        schemaVersion:
+          'openagents.reactor.data_liberation_record_class_verification_receipt.v1',
+        adapterRef: adapter.adapterRef,
+        blockerRefs,
+        customerControlledStoreRef: input.customerControlledStoreRef,
+        customerDataLogged: false,
+        failedRowCount: failedRowRefs.length,
+        failedRowRefs,
+        generatedAt: input.generatedAt,
+        loadedChecksum: stableChecksum(
+          loadedRecords.map(record => ({
+            recordClassRef: record.recordClassRef,
+            sourceRowRef: record.sourceRowRef,
+            targetRecordRef: record.targetRecordRef,
+            values: record.values,
+          })),
+        ),
+        loadedRowCount: loadedRecords.length,
+        partialRowCount: partialRowRefs.length,
+        partialRowRefs,
+        receiptRef: `${input.reportRef}.receipt.${recordClassMapping.recordClassRef}`,
+        recordClassRef: recordClassMapping.recordClassRef,
+        schemaMappingRef: recordClassMapping.schemaMappingRef,
+        sourceChecksum: stableChecksum(
+          sourceRows.map(row => ({
+            fields: row.fields,
+            rowRef: row.rowRef,
+            sourceRecordTypeRef: row.sourceRecordTypeRef,
+          })),
+        ),
+        sourceRefs: unique([
+          adapter.adapterRef,
+          recordClassMapping.schemaMappingRef,
+          ...(input.sourceRefs ?? []),
+        ]),
+        sourceRowCount: sourceRows.length,
+        spotDiffSamples,
+        status,
+        targetSchemaRef: recordClassMapping.targetSchemaRef,
+        transformedRowCount: loadedRecords.length,
+      })
+    })
+  const status: ReactorDataLiberationStatus = verificationReceipts.every(
+    receipt => receipt.status === 'passed',
+  )
+    ? 'passed'
+    : verificationReceipts.some(receipt => receipt.status !== 'failed')
+      ? 'partial'
+      : 'failed'
+  const blockerRefs =
+    status === 'passed'
+      ? []
+      : unique([
+          status === 'failed'
+            ? 'blocker.reactor.data_liberation.pipeline_failed'
+            : 'blocker.reactor.data_liberation.pipeline_partial',
+          ...verificationReceipts.flatMap(receipt => receipt.blockerRefs),
+        ])
+
+  return S.decodeUnknownSync(ReactorDataLiberationPipelineReport)({
+    schemaVersion: 'openagents.reactor.data_liberation_pipeline_report.v1',
+    adapterRefs: [adapter.adapterRef],
+    blockerRefs,
+    customerControlledStoreRef: input.customerControlledStoreRef,
+    customerDataLogged: false,
+    customerEngagementAuthorized: false,
+    failedRowCount: verificationReceipts.reduce(
+      (sum, receipt) => sum + receipt.failedRowCount,
+      0,
+    ),
+    fixtureTruth: adapter.fixtureTruth,
+    generatedAt: input.generatedAt,
+    loadedRowCount: verificationReceipts.reduce(
+      (sum, receipt) => sum + receipt.loadedRowCount,
+      0,
+    ),
+    packageCopyAuthorized: false,
+    partialRowCount: verificationReceipts.reduce(
+      (sum, receipt) => sum + receipt.partialRowCount,
+      0,
+    ),
+    recordClassRefs: verificationReceipts.map(receipt => receipt.recordClassRef),
+    reportRef: input.reportRef,
+    sourceRefs: unique([
+      adapter.adapterRef,
+      ...verificationReceipts.flatMap(receipt => receipt.receiptRef),
+      ...(input.sourceRefs ?? []),
+    ]),
+    sourceRowCount: verificationReceipts.reduce(
+      (sum, receipt) => sum + receipt.sourceRowCount,
+      0,
+    ),
+    status,
+    verificationReceiptRefs: verificationReceipts.map(
+      receipt => receipt.receiptRef,
+    ),
+    verificationReceipts,
+  })
+}
+
 const model = (
   record: Omit<ReactorModelProvenance, 'schemaVersion'>,
 ): ReactorModelProvenance =>
@@ -2667,5 +3093,222 @@ export const REACTOR_NEED_TO_KNOW_ADVERSARIAL_RECEIPTS = {
     request: REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS.bobAliceSummary,
     ruleSet: REACTOR_NEED_TO_KNOW_RULESET_V1,
     sourceRefs: ['github:OpenAgentsInc/openagents#8277'],
+  }),
+} as const
+
+const dataLiberationAdapter = (
+  record: Omit<ReactorDataLiberationAdapterConfig, 'schemaVersion'>,
+): ReactorDataLiberationAdapterConfig =>
+  S.decodeUnknownSync(ReactorDataLiberationAdapterConfig)({
+    schemaVersion: 'openagents.reactor.data_liberation_adapter_config.v1',
+    ...record,
+  })
+
+const dataLiberationRow = (
+  record: ReactorDataLiberationExportRow,
+): ReactorDataLiberationExportRow =>
+  S.decodeUnknownSync(ReactorDataLiberationExportRow)(record)
+
+export const REACTOR_DATA_LIBERATION_ADAPTERS = {
+  genericCsvApiSaas: dataLiberationAdapter({
+    adapterKind: 'generic_csv_api_saas_export',
+    adapterRef: 'reactor.data_liberation.adapter.generic_csv_api_saas.v1',
+    customerDataAllowed: false,
+    exportTransport: 'csv_file',
+    fixtureTruth: 'synthetic_public_fixture',
+    recordClassMappings: [
+      {
+        fieldMappings: [
+          {
+            mappingRef:
+              'reactor.data_liberation.mapping.generic_contact.external_id',
+            required: true,
+            sourceField: 'contact_id',
+            targetField: 'external_id',
+            transformRefs: ['trim'],
+          },
+          {
+            mappingRef: 'reactor.data_liberation.mapping.generic_contact.email',
+            required: true,
+            sourceField: 'email',
+            targetField: 'email',
+            transformRefs: ['trim', 'lowercase'],
+          },
+          {
+            mappingRef:
+              'reactor.data_liberation.mapping.generic_contact.display_name',
+            required: false,
+            sourceField: 'display_name',
+            targetField: 'display_name',
+            transformRefs: ['trim'],
+          },
+          {
+            mappingRef:
+              'reactor.data_liberation.mapping.generic_contact.company_name',
+            required: false,
+            sourceField: 'company',
+            targetField: 'company_name',
+            transformRefs: ['trim'],
+          },
+        ],
+        recordClassRef: 'crm_contact',
+        schemaMappingRef:
+          'reactor.data_liberation.schema_mapping.generic_contact_to_open_crm.v1',
+        sourceRecordTypeRef: 'generic_saas.contact',
+        targetSchemaRef: 'openagents.open_crm.contact.v1',
+      },
+    ],
+    sourceRefs: [
+      'github:OpenAgentsInc/openagents#8278',
+      'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md#10-competitive-read-the-mistral-playbook-harvested-2026-07-04',
+    ],
+    vendorRef: 'vendor.generic_saas.synthetic_csv_api',
+    version: '2026-07-04.rx10',
+  }),
+  salesforceContactExport: dataLiberationAdapter({
+    adapterKind: 'salesforce_contact_export',
+    adapterRef: 'reactor.data_liberation.adapter.salesforce_contact_export.v1',
+    customerDataAllowed: false,
+    exportTransport: 'csv_file',
+    fixtureTruth: 'synthetic_public_fixture',
+    recordClassMappings: [
+      {
+        fieldMappings: [
+          {
+            mappingRef:
+              'reactor.data_liberation.mapping.salesforce_contact.external_id',
+            required: true,
+            sourceField: 'Id',
+            targetField: 'external_id',
+            transformRefs: ['trim'],
+          },
+          {
+            mappingRef:
+              'reactor.data_liberation.mapping.salesforce_contact.email',
+            required: true,
+            sourceField: 'Email',
+            targetField: 'email',
+            transformRefs: ['trim', 'lowercase'],
+          },
+          {
+            mappingRef:
+              'reactor.data_liberation.mapping.salesforce_contact.first_name',
+            required: false,
+            sourceField: 'FirstName',
+            targetField: 'first_name',
+            transformRefs: ['trim'],
+          },
+          {
+            mappingRef:
+              'reactor.data_liberation.mapping.salesforce_contact.last_name',
+            required: false,
+            sourceField: 'LastName',
+            targetField: 'last_name',
+            transformRefs: ['trim'],
+          },
+          {
+            mappingRef:
+              'reactor.data_liberation.mapping.salesforce_contact.account_id',
+            required: false,
+            sourceField: 'AccountId',
+            targetField: 'account_external_id',
+            transformRefs: ['trim'],
+          },
+        ],
+        recordClassRef: 'crm_contact',
+        schemaMappingRef:
+          'reactor.data_liberation.schema_mapping.salesforce_contact_to_open_crm.v1',
+        sourceRecordTypeRef: 'salesforce.Contact',
+        targetSchemaRef: 'openagents.open_crm.contact.v1',
+      },
+    ],
+    sourceRefs: [
+      'github:OpenAgentsInc/openagents#8278',
+      'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md#5-what-the-customer-buys-packages-modeled-owner-gated-like-all-prices',
+    ],
+    vendorRef: 'vendor.salesforce.synthetic_contact_export',
+    version: '2026-07-04.rx10',
+  }),
+} as const
+
+export const REACTOR_DATA_LIBERATION_SYNTHETIC_EXPORTS = {
+  genericCsvApiSaasContacts: [
+    dataLiberationRow({
+      fields: {
+        company: 'Example Works',
+        contact_id: ' csv-contact-001 ',
+        display_name: ' Alice Example ',
+        email: ' ALICE.EXAMPLE@example.test ',
+      },
+      rowRef: 'row.synthetic.generic_csv_api.contact.001',
+      sourceRecordTypeRef: 'generic_saas.contact',
+    }),
+    dataLiberationRow({
+      fields: {
+        company: 'Example Works',
+        contact_id: 'csv-contact-002',
+        display_name: 'Bob Example',
+        email: 'bob.example@example.test',
+      },
+      rowRef: 'row.synthetic.generic_csv_api.contact.002',
+      sourceRecordTypeRef: 'generic_saas.contact',
+    }),
+  ],
+  salesforceContacts: [
+    dataLiberationRow({
+      fields: {
+        AccountId: '001xx000003DGbYAAW',
+        Email: 'charlie.fixture@example.test',
+        FirstName: 'Charlie',
+        Id: '003xx000004TmiAAAS',
+        LastName: 'Fixture',
+      },
+      rowRef: 'row.synthetic.salesforce.contact.001',
+      sourceRecordTypeRef: 'salesforce.Contact',
+    }),
+    dataLiberationRow({
+      fields: {
+        AccountId: '001xx000003DGbYAAW',
+        Email: ' DANA.FIXTURE@example.test ',
+        FirstName: 'Dana',
+        Id: '003xx000004TmiBAAS',
+        LastName: 'Fixture',
+      },
+      rowRef: 'row.synthetic.salesforce.contact.002',
+      sourceRecordTypeRef: 'salesforce.Contact',
+    }),
+    dataLiberationRow({
+      fields: {
+        AccountId: '001xx000003DGbYAAW',
+        Email: '',
+        FirstName: 'Missing',
+        Id: '003xx000004TmiCAAS',
+        LastName: 'EmailFixture',
+      },
+      rowRef: 'row.synthetic.salesforce.contact.003',
+      sourceRecordTypeRef: 'salesforce.Contact',
+    }),
+  ],
+} as const
+
+export const REACTOR_DATA_LIBERATION_FIXTURE_REPORTS = {
+  genericCsvApiSaasPassed: runReactorDataLiberationPipeline({
+    adapter: REACTOR_DATA_LIBERATION_ADAPTERS.genericCsvApiSaas,
+    customerControlledStoreRef:
+      'customer_controlled_store.synthetic.open_crm.generic_csv_api',
+    exportRows: REACTOR_DATA_LIBERATION_SYNTHETIC_EXPORTS.genericCsvApiSaasContacts,
+    generatedAt: '2026-07-04T16:10:00.000Z',
+    reportRef: 'reactor.data_liberation.report.generic_csv_api.passed.20260704',
+    sourceRefs: ['github:OpenAgentsInc/openagents#8278'],
+  }),
+  salesforceContactPartial: runReactorDataLiberationPipeline({
+    adapter: REACTOR_DATA_LIBERATION_ADAPTERS.salesforceContactExport,
+    customerControlledStoreRef:
+      'customer_controlled_store.synthetic.open_crm.salesforce_contact',
+    exportRows: REACTOR_DATA_LIBERATION_SYNTHETIC_EXPORTS.salesforceContacts,
+    generatedAt: '2026-07-04T16:12:00.000Z',
+    reportRef:
+      'reactor.data_liberation.report.salesforce_contact.partial.20260704',
+    sourceRefs: ['github:OpenAgentsInc/openagents#8278'],
   }),
 } as const
