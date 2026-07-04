@@ -161,7 +161,8 @@ constraint set above still resolves to a strong stack.
 Customer premises / customer-controlled cloud
 ┌─────────────────────────────────────────────────────────────┐
 │  REACTOR NODE(S)                                            │
-│  serving layer (vLLM/SGLang/TensorRT-LLM/llama.cpp class)   │
+│  serving layer — Hydralisk lane by default (vLLM/SGLang/    │
+│    TensorRT-LLM); Psionic lane by exception (§4.1)          │
 │    └─ open-weight models per model_policy         [planned] │
 │  OpenAI-compatible gateway + router                          │
 │    └─ policy-enforced model selection             [planned] │
@@ -180,12 +181,70 @@ Autopilot workroom/KPI surfaces, billing (cloud/openagents.com)
 
 Reality check on the substrate (what this leans on vs invents):
 
-- **Owned inference direction lives in `psionic`** (inference engine,
-  serving, eval) — Reactor's serving layer starts on the proven open stacks
-  (we hold deep reference lanes: vllm, sglang, llama.cpp, mlx, flashinfer,
-  rvllm) with Psionic as the long-run owned-runtime path. Execution truth
-  stays in psionic; managed-node/ops truth in `cloud`; product surface in
-  `openagents`.
+- **Two owned serving lanes exist, with a clear default — see §4.1.**
+  `hydralisk` is the standalone Python/NVIDIA inference lane (vLLM, SGLang,
+  TensorRT-LLM, CUDA host runbooks, model profiles, smokes, public-safe
+  receipts — it already serves the production `openagents/khala` lane on
+  GCE) and is **Reactor's default serving layer**. `psionic` is the
+  Rust-native ML substrate and remains the long-run owned-runtime path,
+  used by exception where its properties are the point. Execution truth
+  stays in psionic, conventional-serving truth in hydralisk,
+  managed-node/ops truth in `cloud`, product surface in `openagents`.
+### 4.1 Serving-lane policy: Hydralisk by default, Psionic by exception
+
+Reactor has two owned serving lanes and must never blur them (the boundary
+is already written into `hydralisk/AGENTS.md`: "Hydralisk exists beside
+Psionic, not inside it").
+
+**Default: the Hydralisk lane** (`hydralisk` — the standalone Python/NVIDIA
+inference repo). Most customer Reactor nodes should run it, because for
+conventional NVIDIA serving the Python ecosystem is simply the most mature
+honest path:
+
+- **Day-one model support.** New open releases (Nemotron, Llama, Qwen,
+  DeepSeek, GPT-OSS successors) land in vLLM/SGLang/TensorRT-LLM within
+  days, with quantization kernels, paged attention, tool-call parsers, and
+  bugfix velocity no owned runtime can match this year.
+- **It is already production-proven for us.** Hydralisk serves the live
+  `openagents/khala` lane (vLLM on GCE L4) with model profiles, systemd
+  runbooks, smokes, rollback, and public-safe receipts — the exact
+  operational shape a customer install needs; RX-5's runbook extends what
+  exists rather than inventing one.
+- **Customer-side operability.** A customer's own IT staff (and future
+  partner orgs) can reason about a vLLM/TensorRT deployment; hiring and
+  vendor support exist for it. "The switch button in your hand" (§7 exit
+  invariant) is more credible on a stack the world already knows.
+- Hydralisk's own fail-closed discipline (explicit model revision, engine
+  pin, image digest, GPU admission, quantization eval, receipt path per
+  lane) is exactly the §3 policy-enforcement posture — RX-3 composes with
+  it instead of fighting it.
+
+**By exception: the Psionic lane** (`psionic` — the Rust-native ML
+substrate). Choose it only when its properties are the point of the deal:
+
+- **Non-NVIDIA / workstation-class targets** where the Python stack is the
+  wrong fit (e.g. Apple-Silicon or CPU-constrained small-firm boxes).
+- **Minimal-footprint / no-Python constraints**: air-gapped or
+  audit-hardened environments that want a single static binary and a
+  dependency surface a reviewer can actually read.
+- **Verification-grade execution**: engagements that want Psionic's
+  exact-execution/verification-by-replay direction as a differentiator,
+  priced as such.
+- **Strategic dogfood**: our own RX-6 node may run dual-lane so Hydralisk
+  behavior becomes Psionic's behavior target — Hydralisk's stated role is
+  producing evidence and targets for Psionic, and Reactor is the natural
+  place that loop runs.
+
+**The contract that keeps this clean:** everything Reactor-specific — the
+model catalog, `reactor.model_policy.v1` enforcement, the gateway surface,
+metering receipts, lifecycle events — is **lane-neutral by construction**
+(RX-2/RX-3). A Reactor node declares `servingLane: hydralisk | psionic`
+per model profile; policy enforcement and receipts are identical across
+lanes; swapping lanes is a config change with an eval-gated cutover, never
+a re-integration. Sales copy never leads with the engine: customers buy
+custody, policy, and receipts — the lane is an implementation detail we
+choose per the table above, disclosed honestly in the node profile.
+
 - **BF-3.4 already defines** the isolation contract, lifecycle events, trust
   tiers, and metering receipt shape for the cloud-side regulated-private
   lane; Reactor reuses that vocabulary with a `customer_premises` placement
@@ -301,7 +360,7 @@ RX-11 [#8279](https://github.com/OpenAgentsInc/openagents/issues/8279).
 | --- | --- | --- |
 | RX-1 | Registry records: `reactor.private_deployment.v1` (planned) + model-policy and provenance record family; modeled rate card staged for the owner sitting | Records live at planned; no copy |
 | RX-2 | Model catalog + `model_provenance.v1` / `reactor.model_policy.v1` schemas in a contracts package, with the initial curated seed and honest disclosure fields | Typed catalog with tests |
-| RX-3 | Policy-enforced serving skeleton: one node profile (server-class), open serving stack, gateway + router refusing non-conforming models, exact local metering | A policy violation is structurally impossible in the smoke |
+| RX-3 | Policy-enforced serving skeleton: one node profile (server-class) on the **Hydralisk lane** (§4.1 default; contracts lane-neutral with `servingLane` declared per profile), gateway + router refusing non-conforming models, exact local metering | A policy violation is structurally impossible in the smoke |
 | RX-4 | Eval receipts: psionic-run task-class evals across the catalog seed (drafting, extraction, RAG, agent-tool-use) | Per-model eval receipt refs the catalog can cite |
 | RX-5 | Install/ops runbook + air-gap update path (signed bundles), fleet-executable | Clean install on a fresh box from the runbook alone |
 | RX-6 | Dogfood deployment: Reactor node on our own hardware running a real internal workload under a strict policy (e.g. `us`-only) — customer number one, again | Metering + policy receipts from our own node |
