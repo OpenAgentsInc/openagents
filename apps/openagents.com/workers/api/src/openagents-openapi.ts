@@ -1768,7 +1768,7 @@ const schemaComponents = (): JsonSchema => ({
         minLength: 1,
         maxLength: 80,
         description:
-          'Optional bounded public-safe acquisition token such as direct, apollo_agent_readiness_a, partner_expansion, or affiliate_<code>. Raw UTMs, URLs, emails, and contact data are rejected.',
+          'Optional bounded public-safe acquisition token such as direct, own_your_ai, apollo_model_custody, apollo_agent_readiness_a, partner_expansion, or affiliate_<code>. Raw UTMs, URLs, emails, and contact data are rejected.',
       },
       referralCode: {
         type: 'string',
@@ -1816,7 +1816,7 @@ const schemaComponents = (): JsonSchema => ({
         minLength: 1,
         maxLength: 80,
         description:
-          'Optional bounded public-safe acquisition token for aggregate funnel accounting. Defaults to direct; examples include apollo_agent_readiness_a, partner_expansion, and affiliate_<code>.',
+          'Optional bounded public-safe acquisition token for aggregate funnel accounting. Defaults to direct; examples include own_your_ai, apollo_model_custody, apollo_agent_readiness_a, partner_expansion, and affiliate_<code>.',
       },
     },
   },

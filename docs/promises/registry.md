@@ -12,6 +12,79 @@
 > reports those versions. This caveat changes no promise state, blocker,
 > evidence ref, receipt, or public availability claim.
 
+> Registry `2026-07-04.18` is the RX-8 model-custody Lead Gen segment
+> pass (#8281) and flips NO promise state (green stays exactly 34).
+> `@openagentsinc/agent-readiness` now exports
+> `openagents.model_custody_analyzer_config.v1` and
+> `openagents.model_custody_report.v1` for the Own Your AI analyzer:
+> public URLs only, no raw page bodies stored, no speculation, and findings
+> limited to reproducible subprocessors/DPA, AI-feature/privacy, and
+> careers/tech-stack signals. `openagents.com` now accepts
+> `sourceRef=apollo_model_custody`, registers the model-custody customer
+> config in the LG-7 run payload shape, ships a claim-lint-clean regulated
+> Reactor Assessment template variant, and tests quoted Reactor Assessment
+> rows in the LG-2 pipeline. This clears only the RX-8
+> config/template/pipeline blocker. Live customer runs, Apollo sends,
+> customer-result receipts, public pricing, compliance/custody claims,
+> payout, settlement, and promise-green authority remain blocked.
+
+> Registry `2026-07-04.17` is the RX-11 Reactor improvement-ladder
+> pass (#8279) and flips NO promise state (green stays exactly 34). The
+> `@openagentsinc/reactor-contracts` package now exports
+> `openagents.reactor.improvement_ladder_plan_receipt.v1`,
+> `openagents.reactor.harness_evolution_dogfood_receipt.v1`,
+> `openagents.reactor.distill_to_fit_dogfood_receipt.v1`, and
+> `openagents.reactor.improvement_ladder_dogfood_receipt.v1`. The design
+> doc orders the ladder as harness evolution -> distill-to-fit -> customer
+> flywheel, with consent, customer boundary, dataset snapshot, run, eval
+> delta, and customer-owned weights required before customer data can be
+> used. The internal dogfood receipts record a Psionic/Mutalisk
+> deliverable-landing harness delta (+16.70 points, no weight changes) and
+> a distill-to-fit shrink delta (quality -1.20 points, cost -58.10%, policy
+> revalidated, RX-3 router gate passed, route swap still unauthorized).
+> The normal deploy sweep now runs
+> `apps/openagents.com/workers/api/src/reactor-improvement-ladder.test.ts`.
+> This clears only the design/internal-dogfood receipt blocker. Customer
+> flywheel training, customer datasets, customer-owned weights, public
+> capability copy, route swaps, pricing, external pilots, compliance,
+> payout, and settlement claims remain blocked.
+
+> Registry `2026-07-04.16` is the RX-10 Reactor Data Liberation
+> pipeline pass (#8278) and flips NO promise state (green stays exactly
+> 34). The `@openagentsinc/reactor-contracts` package now exports
+> `openagents.reactor.data_liberation_adapter_config.v1`,
+> `openagents.reactor.data_liberation_record_class_verification_receipt.v1`,
+> and `openagents.reactor.data_liberation_pipeline_report.v1`, plus a
+> config-driven pipeline runner. Two synthetic seed adapters prove the
+> shape: a generic CSV/API SaaS contact export passes, and a
+> Salesforce-contact-shaped export reports a partial migration when one row
+> is missing required `Email`. Verification receipts include counts,
+> checksums, failed row refs, partial row refs, and spot-diff hashes, while
+> setting `customerDataLogged: false`, `customerEngagementAuthorized:
+> false`, and `packageCopyAuthorized: false`. The normal deploy sweep now
+> runs `apps/openagents.com/workers/api/src/reactor-data-liberation.test.ts`.
+> This clears only the fixture-level adapter/verification blocker. Customer
+> migrations, customer data custody, package copy, pricing, external pilots,
+> compliance, payout, and settlement claims remain blocked.
+
+> Registry `2026-07-04.15` is the RX-9 Reactor need-to-know access
+> pass (#8277) and flips NO promise state (green stays exactly 34). The
+> `@openagentsinc/reactor-contracts` package now exports
+> `openagents.reactor.need_to_know_ruleset.v1`,
+> `openagents.reactor.corpus_document.v1`, and
+> `openagents.reactor.corpus_access_decision_receipt.v1`, plus a
+> deny-by-default evaluator and adversarial Bob/Alice fixtures. Hard
+> workspace/matter/role-or-user rules run before the model-oracle
+> plausibility pass; an oracle can further deny but cannot rescue a
+> hard-rule denial. The normal deploy sweep now runs
+> `apps/openagents.com/workers/api/src/reactor-need-to-know-access.test.ts`,
+> including citation and summary leakage fixtures, missing-oracle
+> fail-closed behavior, and a deliberately broken allow-all rule fixture.
+> This clears only the fixture-level need-to-know access blocker. Customer
+> premises deployment, customer data custody, external customer pilots,
+> full eval coverage, owner-approved public copy, pricing, compliance,
+> payout, and settlement claims remain blocked.
+
 > Registry `2026-07-04.14` is the RX-6 Reactor dogfood pass
 > (#8276) and flips NO promise state (green stays exactly 34). The
 > `@openagentsinc/reactor-contracts` package now exports

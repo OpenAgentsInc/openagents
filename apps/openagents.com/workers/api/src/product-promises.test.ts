@@ -237,7 +237,7 @@ describe('public product promises document', () => {
     expect(qaSwarmCopy).not.toContain('paid delivery receipts exist')
   })
 
-  test('registers Autopilot Lead Gen as planned and drafting-only for issue 8268', () => {
+  test('registers Autopilot Lead Gen as planned and drafting-only for issues 8268 and 8281', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
     )
@@ -258,19 +258,33 @@ describe('public product promises document', () => {
         'docs/fable/2026-07-04-autopilot-lead-gen-agent-definition-receipt.md',
         'apps/openagents.com/workers/api/src/autopilot-lead-gen-agent-definition.ts',
         'apps/openagents.com/workers/api/src/autopilot-lead-gen-agent-definition.test.ts',
+        'apps/openagents.com/workers/api/src/model-custody-lead-gen.test.ts',
+        'apps/openagents.com/workers/api/src/business-outreach-routes.test.ts',
+        'apps/openagents.com/workers/api/src/business-pipeline-routes.test.ts',
+        'packages/agent-readiness/src/index.test.ts',
         'contract:lead_gen_agent.drafting_only_toolset.v1',
         'contract:lead_gen_agent.no_send_without_approval_receipt.v1',
         'https://github.com/OpenAgentsInc/openagents/issues/8268',
+        'https://github.com/OpenAgentsInc/openagents/issues/8281',
       ]),
     })
     expect(leadGen?.safeCopy).toContain('drafting-only')
     expect(leadGen?.safeCopy).toContain('sendAuthority.allowed=false')
     expect(leadGen?.safeCopy).toContain('Ora-style public-URL')
+    expect(leadGen?.safeCopy).toContain('model-custody segment')
+    expect(leadGen?.safeCopy).toContain('public-only model-custody analyzer')
     expect(leadGen?.unsafeCopy).toContain('without a separate LG-4 approval receipt')
     expect(leadGen?.authorityBoundary).toContain('grant no Apollo credential')
     expect(
       decoded.notes.find(note => note.includes('Registry 2026-07-04.9')),
     ).toContain('green stays exactly 34')
+    const rx8Note = decoded.notes.find(note =>
+      note.includes('Registry 2026-07-04.18'),
+    )
+    expect(rx8Note).toContain('RX-8 model-custody Lead Gen segment pass')
+    expect(rx8Note).toContain('sourceRef=apollo_model_custody')
+    expect(rx8Note).toContain('flips NO promise state')
+    expect(rx8Note).toContain('Live customer runs')
   })
 
   test('keeps Khala Code install truth public but desktop release gated', () => {
@@ -383,7 +397,7 @@ describe('public product promises document', () => {
     expect(decoded.notes.join('\n')).toContain('flips NO promise state')
   })
 
-  test('lands and advances Reactor records as planned-only boundaries for issues 8271 through 8276', () => {
+  test('lands and advances Reactor records as planned-only boundaries for issues 8271 through 8279', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
     )
@@ -404,14 +418,23 @@ describe('public product promises document', () => {
         'https://github.com/OpenAgentsInc/openagents/issues/8274',
         'https://github.com/OpenAgentsInc/openagents/issues/8275',
         'https://github.com/OpenAgentsInc/openagents/issues/8276',
+        'https://github.com/OpenAgentsInc/openagents/issues/8277',
+        'https://github.com/OpenAgentsInc/openagents/issues/8278',
+        'https://github.com/OpenAgentsInc/openagents/issues/8279',
         'packages/reactor-contracts/src/index.ts',
         'packages/reactor-contracts/src/index.test.ts',
         'packages/reactor-contracts/scripts/install-smoke.ts',
         'packages/reactor-contracts/scripts/dogfood-smoke.ts',
+        'apps/openagents.com/workers/api/src/reactor-need-to-know-access.test.ts',
+        'apps/openagents.com/workers/api/src/reactor-data-liberation.test.ts',
+        'apps/openagents.com/workers/api/src/reactor-improvement-ladder.test.ts',
         'docs/fable/2026-07-04-rx-3-reactor-serving-skeleton-receipt.md',
         'docs/fable/2026-07-04-rx-4-reactor-eval-receipts.md',
         'docs/fable/2026-07-04-rx-5-reactor-install-airgap-runbook.md',
         'docs/fable/2026-07-04-rx-6-reactor-dogfood-run.md',
+        'docs/fable/2026-07-04-rx-10-reactor-data-liberation-pipeline.md',
+        'docs/fable/2026-07-04-rx-11-reactor-improvement-ladder.md',
+        'docs/fable/2026-07-04-rx-9-reactor-need-to-know-access.md',
         'https://openagents.com/forum/t/2efaeed7-1f4f-4f2f-9b26-dc8445885bca',
         'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md',
         'NEEDS_OWNER.md',
@@ -439,6 +462,12 @@ describe('public product promises document', () => {
     expect(privateDeployment?.safeCopy).toContain(
       'internal OpenAgents dogfood run receipt',
     )
+    expect(privateDeployment?.safeCopy).toContain('need-to-know corpus access')
+    expect(privateDeployment?.safeCopy).toContain('Bob access to Alice')
+    expect(privateDeployment?.safeCopy).toContain('Data Liberation')
+    expect(privateDeployment?.safeCopy).toContain('customer migrations')
+    expect(privateDeployment?.safeCopy).toContain('improvement-ladder')
+    expect(privateDeployment?.safeCopy).toContain('customer flywheel training')
     expect(privateDeployment?.safeCopy).toContain('NEEDS_OWNER.md')
     expect(privateDeployment?.unsafeCopy).toContain('Do not claim Reactor is available')
     expect(privateDeployment?.unsafeCopy).toContain('priced publicly')
@@ -536,6 +565,15 @@ describe('public product promises document', () => {
     expect(policy?.unsafeCopy).toContain('live Reactor customer deployments')
     expect(policy?.authorityBoundary).toContain('planned policy record')
 
+    const rx9Note = decoded.notes.find(note =>
+      note.includes('Registry 2026-07-04.15'),
+    )
+    const rx10Note = decoded.notes.find(note =>
+      note.includes('Registry 2026-07-04.16'),
+    )
+    const rx11Note = decoded.notes.find(note =>
+      note.includes('Registry 2026-07-04.17'),
+    )
     const rx2Note = decoded.notes.find(note =>
       note.includes('Registry 2026-07-04.10'),
     )
@@ -556,6 +594,9 @@ describe('public product promises document', () => {
       privateDeployment?.safeCopy,
       provenance?.safeCopy,
       policy?.safeCopy,
+      rx11Note,
+      rx10Note,
+      rx9Note,
       rx6Note,
       rx5Note,
       rx4Note,
@@ -569,8 +610,18 @@ describe('public product promises document', () => {
     expect(publicReactorBoundary).toContain('RX-4 Reactor eval-receipts pass')
     expect(publicReactorBoundary).toContain('RX-5 Reactor install/air-gap pass')
     expect(publicReactorBoundary).toContain('RX-6 Reactor dogfood pass')
+    expect(publicReactorBoundary).toContain('RX-9 Reactor need-to-know access pass')
+    expect(publicReactorBoundary).toContain('RX-10 Reactor Data Liberation pipeline pass')
+    expect(publicReactorBoundary).toContain('RX-11 Reactor improvement-ladder pass')
+    expect(publicReactorBoundary).toContain('hard-rule denial')
+    expect(publicReactorBoundary).toContain('broken allow-all rule fixture')
+    expect(publicReactorBoundary).toContain('Salesforce-contact-shaped export')
+    expect(publicReactorBoundary).toContain('fixture-level adapter/verification blocker')
+    expect(publicReactorBoundary).toContain('deliverable-landing harness delta')
+    expect(publicReactorBoundary).toContain('route swap still unauthorized')
     expect(publicReactorBoundary).toContain('full-eval-coverage blocker')
     expect(publicReactorBoundary).toContain('internal dogfood-proof blocker')
+    expect(publicReactorBoundary).toContain('fixture-level need-to-know access blocker')
     expect(publicReactorBoundary).toContain('external-customer-pilot')
     expect(publicReactorBoundary).toContain('planned only')
     expect(publicReactorBoundary).not.toMatch(/\$2,500|\$7,500|\$10,000|\$25,000/)

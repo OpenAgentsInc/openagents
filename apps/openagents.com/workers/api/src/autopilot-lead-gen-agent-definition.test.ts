@@ -12,6 +12,7 @@ import {
   OPENAGENTS_LEAD_GEN_AGENT_DEFINITION,
   OPENAGENTS_LEAD_GEN_DOGFOOD_CONFIG,
   OPENAGENTS_LEAD_GEN_DOGFOOD_RUN_RECEIPT,
+  OPENAGENTS_MODEL_CUSTODY_LEAD_GEN_CONFIG,
   decodeLeadGenCustomerConfig,
   decodeLeadGenRunPayload,
   leadGenRunRequest,
@@ -149,6 +150,40 @@ describe('Autopilot Lead Gen agent definition', () => {
       allowed: false,
       deniedToolRefs: [...LEAD_GEN_SEND_TOOL_REFS],
     })
+  })
+
+  test('registers the RX-8 Own Your AI model-custody segment as another LG-7 customer config', () => {
+    const payload = decodeLeadGenRunPayload(
+      leadGenRunRequest(OPENAGENTS_MODEL_CUSTODY_LEAD_GEN_CONFIG)
+        .triggerPayload,
+    )
+
+    expect(payload.customerConfig).toMatchObject({
+      analyzerConfigRef:
+        'analyzer.agent_readiness.model_custody.own_your_ai.v1',
+      configRef: 'lead_gen_config.openagents.model_custody.campaign_b.v1',
+      sourceRef: 'apollo_model_custody',
+      targetDiscoveryConfigRef:
+        'target_discovery.openagents.model_custody.hand_approved.v1',
+      templateFamilyRef:
+        'template_family.lead_gen.model_custody_regulated.reactor_assessment.v1',
+    })
+    expect(payload.customerConfig.caps).toMatchObject({
+      maxContactsPerRun: 25,
+      maxCreditsPerDay: 0,
+      maxDomainsPerRun: 25,
+    })
+    expect(payload.pipeline).toEqual([...LEAD_GEN_PIPELINE_REFS])
+    expect(payload.sendAuthority).toMatchObject({
+      allowed: false,
+      deniedToolRefs: [...LEAD_GEN_SEND_TOOL_REFS],
+    })
+    expect(payload.customerConfig.sourceRefs).toEqual(
+      expect.arrayContaining([
+        'docs/fable/2026-07-03-apollo-outbound-sales-plan.md#11-campaign-b-own-your-ai',
+        'https://github.com/OpenAgentsInc/openagents/issues/8281',
+      ]),
+    )
   })
 
   test('records the OpenAgents dogfood run receipt as drafts awaiting operator approval', () => {

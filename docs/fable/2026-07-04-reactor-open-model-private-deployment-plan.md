@@ -211,6 +211,57 @@ customer premises deployment, customer data custody, need-to-know access, full
 eval coverage, pricing/copy approval, compliance, payout, and settlement remain
 blocked.
 
+RX-9 status (2026-07-04): the need-to-know access layer now has typed source
+contracts and adversarial fixtures in `packages/reactor-contracts`, plus a
+Worker-side deploy-sweep test. `openagents.reactor.need_to_know_ruleset.v1`
+is deny-by-default; hard workspace/matter/role-or-user rules run before the
+soft model-oracle plausibility verdict; receipts log who/what/scope/rule
+version and explicitly do not log raw document content or generated summaries.
+The Bob/Alice fixture denies citation and summary leakage, denies missing
+oracle verdicts, and proves a broken allow-all rule fixture fails closed. This
+is still source-level access evidence only: no customer corpus store, premises
+deployment, customer custody proof, external pilot, or owner-approved copy is
+created.
+
+RX-10 status (2026-07-04): the Data Liberation lane now has machinery-only
+contracts and synthetic adapter fixtures in `packages/reactor-contracts`, plus
+a Worker-side deploy-sweep test. The new
+`openagents.reactor.data_liberation_adapter_config.v1`,
+`openagents.reactor.data_liberation_record_class_verification_receipt.v1`, and
+`openagents.reactor.data_liberation_pipeline_report.v1` records model the
+per-vendor export adapter -> schema-mapped transform -> customer-controlled
+open-store load -> verification receipt flow. The seed set includes a generic
+CSV/API SaaS contact export that passes and a Salesforce-contact-shaped export
+that honestly reports a partial migration when a synthetic row is missing
+required `Email`. This is still fixture evidence only: no customer migration,
+customer data custody, public package copy, pricing, or external pilot is
+created.
+
+RX-11 status (2026-07-04): the improvement ladder now has a design doc and
+internal dogfood receipts in `packages/reactor-contracts`. The ladder is ordered
+as harness evolution -> distill-to-fit -> flywheel training: consent, customer
+boundary, dataset snapshot, run ref, eval delta, and customer-owned weights are
+required before customer data can be used. The dogfood harness receipt records a
+Psionic/Mutalisk `deliverable_landing` mechanism on internal OpenAgents traffic
+with +16.70 points and no weight changes. The dogfood distill-to-fit receipt
+records a smaller distilled artifact with quality -1.20 points, cost -58.10%,
+policy revalidated, and the RX-3 router gate passed while route swap remains
+unauthorized. This is internal dogfood evidence only: no customer flywheel,
+customer dataset, customer-owned weights, public capability copy, or external
+pilot is created.
+
+RX-7 status (2026-07-04): [#8280](https://github.com/OpenAgentsInc/openagents/issues/8280)
+is closed as gated/deferred for the SELL implementation epic. The closeout
+record is
+[`2026-07-04-rx-7-customer-pilot-gated-closeout.md`](./2026-07-04-rx-7-customer-pilot-gated-closeout.md).
+No first external customer pilot was delivered or claimed. The remaining gates
+are real-world owner/customer refs: engagement approval, per-deal pricing,
+customer-signed `reactor.model_policy.v1`, a customer-controlled install, one
+approved workload, opaque metering/policy/delivery refs, and a paid Reactor
+receipt plan. Until those refs exist, Reactor remains registry-planned with no
+customer deployment, public price, compliance copy, payout, settlement, or green
+promise authority.
+
 ## 4. Architecture (owned seams, honest state)
 
 ```
@@ -223,8 +274,8 @@ Customer premises / customer-controlled cloud
 │  OpenAI-compatible gateway + router                          │
 │    └─ policy-enforced model selection             [planned] │
 │  corpus store + redaction at boundary (BF-3.1/3.2)[planned] │
-│  need-to-know access layer (hard rules + model    [planned] │
-│    oracles; per-user scoped retrieval — §10 item 3)              │
+│  need-to-know access layer (hard rules + model    [fixture] │
+│    oracles; per-user scoped retrieval — RX-9)                   │
 │  workroom sidecar / lifecycle hooks (BF-3.4 shape)[spec]    │
 │  metering → usage receipts (resource_usage_receipt.v1)      │
 │    └─ receipts flow OUT; raw data NEVER does     [pattern]  │
@@ -341,6 +392,14 @@ bands above upward — Assessment $7.5–15k, Pilot + internal code forge
 $25–75k, sovereignty retainer $5–20k/mo, replatform quoted — with the
 custom-software quick wins folded in as sweeteners rather than headliners.
 
+RX-8 status (2026-07-04): Campaign B now has source-backed wiring: a
+public-only model-custody analyzer config in `@openagentsinc/agent-readiness`,
+a regulated Reactor Assessment template variant under LG-4, an LG-7 customer
+config with `sourceRef=apollo_model_custody`, and LG-2 pipeline tests for
+quoted Reactor Assessment rows. This is draft/config evidence only. Live sends,
+target approval, customer results, public pricing, and public-copy promotion
+remain owner-gated.
+
 ## 6. Fit with the two-product frame
 
 Episode 246 named the frame: Khala Code plus **Autopilot, the business
@@ -390,20 +449,23 @@ objects, no client-identifying info in-repo). Added:
 
 ## 8. Honest gap list (what does not exist today)
 
-1. No model catalog or provenance registry (the §3 schemas are this doc's
-   proposal).
-2. No policy-enforcing provisioner or router — the semantic-selector and
-   entitlement patterns exist; this composition does not.
-3. No packaged on-prem install (the stack runs where we run it; nobody has
-   installed it in a stranger's closet).
-4. No owned eval receipts across the catalog on customer-shaped tasks
-   (psionic eval machinery exists; this suite does not).
-5. No air-gap update path (signed release machinery exists for the desktop
-   app; the node-bundle variant does not).
+1. No packaged customer-premises install or external customer pilot receipt.
+   The stack has source fixtures and an internal dogfood receipt only.
+2. No deployed customer corpus store or customer data-custody proof. RX-9
+   covers source-level access decisions over public-safe fixture refs, not a
+   live customer corpus.
+3. No customer Data Liberation engagement or real vendor export has been run;
+   RX-10 covers synthetic adapter/verification machinery only.
+4. No customer improvement-ladder run, customer interaction dataset, or
+   customer-owned distilled/fine-tuned weight artifact exists; RX-11 covers the
+   design and internal OpenAgents dogfood receipts only.
+5. No owned eval receipts across the full catalog on all customer-shaped tasks;
+   RX-4 covers only the initial measured fixture cells.
 6. BF-3.1/3.2 corpus ingestion + redaction remain the shared prerequisite
    (already the BF-3 spine; Reactor raises their priority).
-7. No pricing sign-off, no registry records, no copy. Everything above is
-   sales-conversation-only until QS1-style records land.
+7. No pricing sign-off, customer contract, compliance certification, public
+   case-study copy, payout, or settlement authority. Everything above remains
+   registry-planned until receipt-backed gates land.
 
 ## 9. Workstream map (RX — filed 2026-07-04 under epic [#8261](https://github.com/OpenAgentsInc/openagents/issues/8261))
 
@@ -427,17 +489,19 @@ RX-11 [#8279](https://github.com/OpenAgentsInc/openagents/issues/8279).
 | RX-4 | Eval receipts: psionic-run task-class evals across the catalog seed (drafting, extraction, RAG, agent-tool-use). A score is a (model, harness) pair — every eval receipt carries a `harnessRef` naming the harness it was measured under (same-model harness variance ran 3.5%→80.1% in the 2026-07-04 harness-optimization audit) | Landed Reactor-side with measured 2 models × 2 task-class fixture receipts, hosted-equivalent labels, and `not_measured` coverage cells; Psionic runtime remains separate |
 | RX-5 | Install/ops runbook + air-gap update path (signed bundles), fleet-executable | Landed runbook, signed-bundle manifest, install/upgrade/rollback receipts, and clean-temp smoke; no deployed node |
 | RX-6 | Dogfood deployment: Reactor node on our own hardware running a real internal workload under a strict policy (e.g. `us`-only) — customer number one, again | Landed public-safe dogfood-run receipt seed with exact metering, policy receipts, and refused Qwen refresh; external claims still blocked |
-| RX-7 | First customer pilot (likely the legal design partner's stated ask), BF-3.1/3.2 gated, opaque refs only | First paid Reactor receipt |
-| RX-8 | Lead Gen segment: model-custody analyzer angle + Reactor sequence for regulated verticals | Quoted Reactor pipeline via Autopilot Lead Gen |
-| RX-9 | **Need-to-know access layer**: per-user scoped retrieval over the corpus store — typed hard access rules enforced in the system + model-oracle checks for soft rules, with an adversarial "Bob must not see Alice" fixture suite | Access-violation smoke structurally fails closed |
-| RX-10 | **Data Liberation offering**: walled-garden export/transform/verify pipeline as a packaged quick win (per-vendor adapters as config), verification receipts per migrated record class | First liberation engagement receipt |
-| RX-11 | **Improvement ladder: harness evolution → distill-to-fit → flywheel.** Rung zero is the Mutalisk loop evolving harness-code mechanisms against the customer's tasks (evidence-gated candidates, one mechanism per iteration, cost term in the objective, transfer labels per model family — see the 2026-07-04 harness-optimization audit); then input-distribution-driven model shrinking; then the continuous-improvement training loop on customer interaction data (their boundary, their weights, consent recorded) — design + psionic/mutalisk hooks; no capability claims until receipts | Design doc + first dogfood harness-evolution receipt + first dogfood distill receipt |
+| RX-7 | First customer pilot (likely the legal design partner's stated ask), BF-3.1/3.2 gated, opaque refs only | Closed as gated/deferred in #8280; no customer pilot claimed; reopen/new issue only with owner approval, customer-signed policy, pricing/copy posture, and receipt plan |
+| RX-8 | Lead Gen segment: model-custody analyzer angle + Reactor sequence for regulated verticals | Landed public-only analyzer config, regulated template variant, LG-7 customer config, and LG-2 quoted-pipeline coverage; no live sends |
+| RX-9 | **Need-to-know access layer**: per-user scoped retrieval over the corpus store — typed hard access rules enforced in the system + model-oracle checks for soft rules, with an adversarial "Bob must not see Alice" fixture suite | Landed deny-by-default contracts, access-decision receipts, and Worker deploy-sweep fixture; no live customer corpus |
+| RX-10 | **Data Liberation offering**: walled-garden export/transform/verify pipeline as a packaged quick win (per-vendor adapters as config), verification receipts per migrated record class | Landed synthetic generic CSV/API + Salesforce-shaped adapter fixtures and verification reports; no customer engagement |
+| RX-11 | **Improvement ladder: harness evolution → distill-to-fit → flywheel.** Rung zero is the Mutalisk loop evolving harness-code mechanisms against the customer's tasks (evidence-gated candidates, one mechanism per iteration, cost term in the objective, transfer labels per model family — see the 2026-07-04 harness-optimization audit); then input-distribution-driven model shrinking; then the continuous-improvement training loop on customer interaction data (their boundary, their weights, consent recorded) — design + psionic/mutalisk hooks; no capability claims until receipts | Landed design doc, internal dogfood harness-evolution receipt, internal dogfood distill receipt, and aggregate claim blockers |
 
 Sequencing: RX-1/RX-2 are paper + schemas (start now); RX-3 gates RX-5/6/7;
-RX-4 runs parallel in psionic; RX-6 (dogfood) precedes any external pilot,
-per the standing pattern — we are always customer number one. BF-3.1/3.2
-(ingestion + redaction) remain the shared critical path for any regulated
-corpus touching any model, ours or theirs.
+RX-4 runs parallel in psionic; RX-6 (dogfood), RX-9 (need-to-know fixtures),
+RX-10 (synthetic Data Liberation verification), and RX-11 (improvement-ladder
+dogfood receipts) precede any external pilot, per the standing pattern — we are
+always customer number one. BF-3.1/3.2 (ingestion + redaction) remain the
+shared critical path for any regulated corpus touching any model, ours or
+theirs.
 
 ## 10. Competitive read: the Mistral playbook (harvested 2026-07-04)
 

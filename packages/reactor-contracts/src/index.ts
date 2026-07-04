@@ -480,6 +480,436 @@ export const ReactorDogfoodRunReceipt = S.Struct({
 })
 export type ReactorDogfoodRunReceipt = typeof ReactorDogfoodRunReceipt.Type
 
+export const ReactorNeedToKnowRoleRef = S.Literals([
+  'client_admin',
+  'client_member',
+  'external_reviewer',
+  'matter_attorney',
+  'matter_analyst',
+  'operator',
+])
+export type ReactorNeedToKnowRoleRef = typeof ReactorNeedToKnowRoleRef.Type
+
+export const ReactorNeedToKnowOutputMode = S.Literals([
+  'citation',
+  'source',
+  'summary',
+])
+export type ReactorNeedToKnowOutputMode =
+  typeof ReactorNeedToKnowOutputMode.Type
+
+export const ReactorNeedToKnowOracleVerdictKind = S.Literals([
+  'need_to_know_plausible',
+  'not_need_to_know',
+  'not_evaluated',
+])
+export type ReactorNeedToKnowOracleVerdictKind =
+  typeof ReactorNeedToKnowOracleVerdictKind.Type
+
+export const ReactorNeedToKnowDecisionStatus = S.Literals([
+  'allowed',
+  'denied_hard_rule',
+  'denied_soft_oracle',
+])
+export type ReactorNeedToKnowDecisionStatus =
+  typeof ReactorNeedToKnowDecisionStatus.Type
+
+export const ReactorNeedToKnowHardDecisionStatus = S.Literals([
+  'failed',
+  'passed',
+])
+export type ReactorNeedToKnowHardDecisionStatus =
+  typeof ReactorNeedToKnowHardDecisionStatus.Type
+
+export const ReactorNeedToKnowOracleDecisionStatus = S.Literals([
+  'failed',
+  'passed',
+  'skipped_hard_denied',
+])
+export type ReactorNeedToKnowOracleDecisionStatus =
+  typeof ReactorNeedToKnowOracleDecisionStatus.Type
+
+export const ReactorNeedToKnowRuleSet = S.Struct({
+  schemaVersion: S.Literal('openagents.reactor.need_to_know_ruleset.v1'),
+  defaultAction: S.Literal('deny'),
+  hardRuleRefs: S.Array(S.String),
+  oraclePolicyRef: S.String,
+  ruleSetRef: S.String,
+  sourceRefs: S.Array(S.String),
+  version: S.String,
+})
+export type ReactorNeedToKnowRuleSet = typeof ReactorNeedToKnowRuleSet.Type
+
+export const ReactorCorpusDocumentRecord = S.Struct({
+  schemaVersion: S.Literal('openagents.reactor.corpus_document.v1'),
+  allowedRoleRefs: S.Array(ReactorNeedToKnowRoleRef),
+  allowedUserRefs: S.Array(S.String),
+  citationRefs: S.Array(S.String),
+  documentRef: S.String,
+  matterRef: S.String,
+  sourceRefs: S.Array(S.String),
+  summaryRef: S.String,
+  workspaceRef: S.String,
+})
+export type ReactorCorpusDocumentRecord =
+  typeof ReactorCorpusDocumentRecord.Type
+
+export const ReactorCorpusAccessSubject = S.Struct({
+  matterRefs: S.Array(S.String),
+  roleRefs: S.Array(ReactorNeedToKnowRoleRef),
+  subjectUserRef: S.String,
+  workspaceRefs: S.Array(S.String),
+})
+export type ReactorCorpusAccessSubject =
+  typeof ReactorCorpusAccessSubject.Type
+
+export const ReactorCorpusRetrievalRequest = S.Struct({
+  matterRef: S.String,
+  outputMode: ReactorNeedToKnowOutputMode,
+  queryIntentRef: S.String,
+  requestRef: S.String,
+  requestedDocumentRefs: S.Array(S.String),
+  subject: ReactorCorpusAccessSubject,
+  workspaceRef: S.String,
+})
+export type ReactorCorpusRetrievalRequest =
+  typeof ReactorCorpusRetrievalRequest.Type
+
+export const ReactorNeedToKnowOracleVerdict = S.Struct({
+  documentRef: S.String,
+  loggedAt: S.String,
+  modelRef: S.String,
+  reasonRefs: S.Array(S.String),
+  requestRef: S.String,
+  verdict: ReactorNeedToKnowOracleVerdictKind,
+  verdictRef: S.String,
+})
+export type ReactorNeedToKnowOracleVerdict =
+  typeof ReactorNeedToKnowOracleVerdict.Type
+
+export const ReactorNeedToKnowDocumentDecision = S.Struct({
+  blockerRefs: S.Array(S.String),
+  citationRefs: S.Array(S.String),
+  decisionRef: S.String,
+  documentRef: S.String,
+  hardDecisionStatus: ReactorNeedToKnowHardDecisionStatus,
+  hardRuleRefs: S.Array(S.String),
+  oracleDecisionStatus: ReactorNeedToKnowOracleDecisionStatus,
+  oracleVerdictRef: S.NullOr(S.String),
+  reasonRefs: S.Array(S.String),
+  status: ReactorNeedToKnowDecisionStatus,
+})
+export type ReactorNeedToKnowDocumentDecision =
+  typeof ReactorNeedToKnowDocumentDecision.Type
+
+export const ReactorCorpusAccessDecisionReceipt = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.reactor.corpus_access_decision_receipt.v1',
+  ),
+  decidedAt: S.String,
+  deniedCitationRefs: S.Array(S.String),
+  deniedDocumentRefs: S.Array(S.String),
+  documentDecisions: S.Array(ReactorNeedToKnowDocumentDecision),
+  generatedSummaryContentLogged: S.Literal(false),
+  matterRef: S.String,
+  oracleAppliedAfterHardRules: S.Literal(true),
+  oracleVerdictRefs: S.Array(S.String),
+  outputMode: ReactorNeedToKnowOutputMode,
+  queryIntentRef: S.String,
+  rawDocumentContentLogged: S.Literal(false),
+  receiptRef: S.String,
+  requestedDocumentRefs: S.Array(S.String),
+  ruleSetRef: S.String,
+  ruleSetVersion: S.String,
+  selectedCitationRefs: S.Array(S.String),
+  selectedDocumentRefs: S.Array(S.String),
+  sourceRefs: S.Array(S.String),
+  subjectUserRef: S.String,
+  workspaceRef: S.String,
+})
+export type ReactorCorpusAccessDecisionReceipt =
+  typeof ReactorCorpusAccessDecisionReceipt.Type
+
+export const ReactorDataLiberationAdapterKind = S.Literals([
+  'generic_csv_api_saas_export',
+  'salesforce_contact_export',
+])
+export type ReactorDataLiberationAdapterKind =
+  typeof ReactorDataLiberationAdapterKind.Type
+
+export const ReactorDataLiberationExportTransport = S.Literals([
+  'api_json',
+  'csv_file',
+])
+export type ReactorDataLiberationExportTransport =
+  typeof ReactorDataLiberationExportTransport.Type
+
+export const ReactorDataLiberationFixtureTruth = S.Literal(
+  'synthetic_public_fixture',
+)
+export type ReactorDataLiberationFixtureTruth =
+  typeof ReactorDataLiberationFixtureTruth.Type
+
+export const ReactorDataLiberationTransformRef = S.Literals([
+  'identity',
+  'lowercase',
+  'trim',
+])
+export type ReactorDataLiberationTransformRef =
+  typeof ReactorDataLiberationTransformRef.Type
+
+export const ReactorDataLiberationStatus = S.Literals([
+  'failed',
+  'partial',
+  'passed',
+])
+export type ReactorDataLiberationStatus =
+  typeof ReactorDataLiberationStatus.Type
+
+export const ReactorDataLiberationFieldMapping = S.Struct({
+  mappingRef: S.String,
+  required: S.Boolean,
+  sourceField: S.String,
+  targetField: S.String,
+  transformRefs: S.Array(ReactorDataLiberationTransformRef),
+})
+export type ReactorDataLiberationFieldMapping =
+  typeof ReactorDataLiberationFieldMapping.Type
+
+export const ReactorDataLiberationRecordClassMapping = S.Struct({
+  fieldMappings: S.Array(ReactorDataLiberationFieldMapping),
+  recordClassRef: S.String,
+  schemaMappingRef: S.String,
+  sourceRecordTypeRef: S.String,
+  targetSchemaRef: S.String,
+})
+export type ReactorDataLiberationRecordClassMapping =
+  typeof ReactorDataLiberationRecordClassMapping.Type
+
+export const ReactorDataLiberationAdapterConfig = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.reactor.data_liberation_adapter_config.v1',
+  ),
+  adapterKind: ReactorDataLiberationAdapterKind,
+  adapterRef: S.String,
+  customerDataAllowed: S.Literal(false),
+  exportTransport: ReactorDataLiberationExportTransport,
+  fixtureTruth: ReactorDataLiberationFixtureTruth,
+  recordClassMappings: S.Array(ReactorDataLiberationRecordClassMapping),
+  sourceRefs: S.Array(S.String),
+  vendorRef: S.String,
+  version: S.String,
+})
+export type ReactorDataLiberationAdapterConfig =
+  typeof ReactorDataLiberationAdapterConfig.Type
+
+export const ReactorDataLiberationExportRow = S.Struct({
+  fields: S.Record(S.String, S.String),
+  rowRef: S.String,
+  sourceRecordTypeRef: S.String,
+})
+export type ReactorDataLiberationExportRow =
+  typeof ReactorDataLiberationExportRow.Type
+
+export const ReactorDataLiberationSpotDiffFieldCheck = S.Struct({
+  loadedValueChecksum: S.String,
+  matched: S.Boolean,
+  sourceValueChecksum: S.String,
+  targetField: S.String,
+})
+export type ReactorDataLiberationSpotDiffFieldCheck =
+  typeof ReactorDataLiberationSpotDiffFieldCheck.Type
+
+export const ReactorDataLiberationSpotDiffSample = S.Struct({
+  fieldChecks: S.Array(ReactorDataLiberationSpotDiffFieldCheck),
+  sampleRef: S.String,
+  sourceRowRef: S.String,
+  targetRecordRef: S.String,
+})
+export type ReactorDataLiberationSpotDiffSample =
+  typeof ReactorDataLiberationSpotDiffSample.Type
+
+export const ReactorDataLiberationRecordClassVerificationReceipt = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.reactor.data_liberation_record_class_verification_receipt.v1',
+  ),
+  adapterRef: S.String,
+  blockerRefs: S.Array(S.String),
+  customerControlledStoreRef: S.String,
+  customerDataLogged: S.Literal(false),
+  failedRowCount: S.Number,
+  failedRowRefs: S.Array(S.String),
+  generatedAt: S.String,
+  loadedChecksum: S.String,
+  loadedRowCount: S.Number,
+  partialRowCount: S.Number,
+  partialRowRefs: S.Array(S.String),
+  receiptRef: S.String,
+  recordClassRef: S.String,
+  schemaMappingRef: S.String,
+  sourceChecksum: S.String,
+  sourceRefs: S.Array(S.String),
+  sourceRowCount: S.Number,
+  spotDiffSamples: S.Array(ReactorDataLiberationSpotDiffSample),
+  status: ReactorDataLiberationStatus,
+  targetSchemaRef: S.String,
+  transformedRowCount: S.Number,
+})
+export type ReactorDataLiberationRecordClassVerificationReceipt =
+  typeof ReactorDataLiberationRecordClassVerificationReceipt.Type
+
+export const ReactorDataLiberationPipelineReport = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.reactor.data_liberation_pipeline_report.v1',
+  ),
+  adapterRefs: S.Array(S.String),
+  blockerRefs: S.Array(S.String),
+  customerControlledStoreRef: S.String,
+  customerDataLogged: S.Literal(false),
+  customerEngagementAuthorized: S.Literal(false),
+  failedRowCount: S.Number,
+  fixtureTruth: ReactorDataLiberationFixtureTruth,
+  generatedAt: S.String,
+  loadedRowCount: S.Number,
+  packageCopyAuthorized: S.Literal(false),
+  partialRowCount: S.Number,
+  recordClassRefs: S.Array(S.String),
+  reportRef: S.String,
+  sourceRefs: S.Array(S.String),
+  sourceRowCount: S.Number,
+  status: ReactorDataLiberationStatus,
+  verificationReceiptRefs: S.Array(S.String),
+  verificationReceipts: S.Array(
+    ReactorDataLiberationRecordClassVerificationReceipt,
+  ),
+})
+export type ReactorDataLiberationPipelineReport =
+  typeof ReactorDataLiberationPipelineReport.Type
+
+export const ReactorImprovementLadderStage = S.Literals([
+  'distill_to_fit',
+  'flywheel_training',
+  'harness_evolution',
+])
+export type ReactorImprovementLadderStage =
+  typeof ReactorImprovementLadderStage.Type
+
+export const ReactorHarnessEvolutionMechanismClass = S.Literals([
+  'context_fidelity',
+  'deliverable_landing',
+  'loop_robustness',
+  'tool_call_repair',
+])
+export type ReactorHarnessEvolutionMechanismClass =
+  typeof ReactorHarnessEvolutionMechanismClass.Type
+
+export const ReactorImprovementLadderPlanReceipt = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.reactor.improvement_ladder_plan_receipt.v1',
+  ),
+  boundaryRequirement: S.Literal('customer_premises_or_regulated_private'),
+  capabilityClaimsAuthorized: S.Literal(false),
+  consentRequired: S.Literal(true),
+  customerDataUsed: S.Literal(false),
+  customerWeightsOwnerRequired: S.Literal(true),
+  designDocRef: S.String,
+  generatedAt: S.String,
+  planRef: S.String,
+  sourceRefs: S.Array(S.String),
+  stages: S.Array(ReactorImprovementLadderStage),
+})
+export type ReactorImprovementLadderPlanReceipt =
+  typeof ReactorImprovementLadderPlanReceipt.Type
+
+export const ReactorHarnessEvolutionDogfoodReceipt = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.reactor.harness_evolution_dogfood_receipt.v1',
+  ),
+  acceptanceThresholdBps: S.Number,
+  accepted: S.Boolean,
+  baselineHarnessRef: S.String,
+  baselineScoreBps: S.Number,
+  candidateHarnessRef: S.String,
+  candidateScoreBps: S.Number,
+  costObjectiveIncluded: S.Literal(true),
+  customerDataUsed: S.Literal(false),
+  datasetSnapshotRef: S.String,
+  deltaBps: S.Number,
+  evalDeltaRef: S.String,
+  generatedAt: S.String,
+  mechanismClass: ReactorHarnessEvolutionMechanismClass,
+  modelRef: S.String,
+  oneMechanismOnly: S.Literal(true),
+  optimizerRef: S.Literal('mutalisk'),
+  policyRef: S.String,
+  policyVersion: S.String,
+  receiptRef: S.String,
+  runnerRef: S.Literal('psionic'),
+  sourceRefs: S.Array(S.String),
+  stage: S.Literal('harness_evolution'),
+  transferLabels: S.Array(S.String),
+  weightChangesAllowed: S.Literal(false),
+  workloadTruth: S.Literal('internal_openagents_dogfood'),
+})
+export type ReactorHarnessEvolutionDogfoodReceipt =
+  typeof ReactorHarnessEvolutionDogfoodReceipt.Type
+
+export const ReactorDistillToFitDogfoodReceipt = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.reactor.distill_to_fit_dogfood_receipt.v1',
+  ),
+  acceptedForDogfood: S.Boolean,
+  baselineCostPer1kTokensMicrousd: S.Number,
+  baselineQualityScoreBps: S.Number,
+  candidateArtifactRef: S.String,
+  candidateCostPer1kTokensMicrousd: S.Number,
+  candidateModelClass: S.Literal('smaller_distilled_model'),
+  candidateQualityScoreBps: S.Number,
+  costReductionBps: S.Number,
+  customerDataUsed: S.Literal(false),
+  datasetSnapshotRef: S.String,
+  distillationRunRef: S.String,
+  evalDeltaRef: S.String,
+  generatedAt: S.String,
+  inputDistributionCaptureRef: S.String,
+  policyRef: S.String,
+  policyRevalidated: S.Literal(true),
+  policyVersion: S.String,
+  qualityDeltaBps: S.Number,
+  receiptRef: S.String,
+  routeSwapAuthorized: S.Literal(false),
+  routerSwapGate: S.Literal('eval_gated_rx3_router'),
+  routerSwapGateStatus: S.Literals(['blocked', 'passed']),
+  runnerRef: S.Literal('psionic'),
+  sourceModelRef: S.String,
+  sourceRefs: S.Array(S.String),
+  stage: S.Literal('distill_to_fit'),
+  weightsOwnerRef: S.Literal('owner.openagents'),
+  workloadTruth: S.Literal('internal_openagents_dogfood'),
+})
+export type ReactorDistillToFitDogfoodReceipt =
+  typeof ReactorDistillToFitDogfoodReceipt.Type
+
+export const ReactorImprovementLadderDogfoodReceipt = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.reactor.improvement_ladder_dogfood_receipt.v1',
+  ),
+  blockerRefs: S.Array(S.String),
+  capabilityClaimsAuthorized: S.Literal(false),
+  customerDataUsed: S.Literal(false),
+  distillToFitReceiptRef: S.String,
+  externalClaimFlipAllowed: S.Literal(false),
+  generatedAt: S.String,
+  harnessEvolutionReceiptRef: S.String,
+  planRef: S.String,
+  receiptRef: S.String,
+  sourceRefs: S.Array(S.String),
+  status: S.Literals(['blocked_for_public_claims', 'completed_internal']),
+  workloadTruth: S.Literal('internal_openagents_dogfood'),
+})
+export type ReactorImprovementLadderDogfoodReceipt =
+  typeof ReactorImprovementLadderDogfoodReceipt.Type
+
 export type ResolveReactorModelPolicyInput = Readonly<{
   catalog: ReactorModelCatalog
   decidedAt: string
@@ -623,6 +1053,25 @@ export type BuildReactorDogfoodRunReceiptInput = Readonly<{
   routeReceipts: ReadonlyArray<ReactorRouteDecisionReceipt>
   sourceRefs?: ReadonlyArray<string>
   workloadRef: string
+}>
+
+export type EvaluateReactorNeedToKnowAccessInput = Readonly<{
+  decidedAt: string
+  documents: ReadonlyArray<ReactorCorpusDocumentRecord>
+  oracleVerdicts?: ReadonlyArray<ReactorNeedToKnowOracleVerdict>
+  receiptRef: string
+  request: ReactorCorpusRetrievalRequest
+  ruleSet: ReactorNeedToKnowRuleSet
+  sourceRefs?: ReadonlyArray<string>
+}>
+
+export type RunReactorDataLiberationPipelineInput = Readonly<{
+  adapter: ReactorDataLiberationAdapterConfig
+  customerControlledStoreRef: string
+  exportRows: ReadonlyArray<ReactorDataLiberationExportRow>
+  generatedAt: string
+  reportRef: string
+  sourceRefs?: ReadonlyArray<string>
 }>
 
 const unique = <T extends string>(values: ReadonlyArray<T>): ReadonlyArray<T> =>
@@ -1500,6 +1949,428 @@ export const buildReactorDogfoodRunReceipt = (
   })
 }
 
+const intersects = <T extends string>(
+  left: ReadonlyArray<T>,
+  right: ReadonlyArray<T>,
+): boolean => left.some(value => right.includes(value))
+
+const hardAccessBlockerRefs = (
+  request: ReactorCorpusRetrievalRequest,
+  document: ReactorCorpusDocumentRecord,
+): ReadonlyArray<string> =>
+  unique([
+    ...(request.subject.workspaceRefs.includes(document.workspaceRef) &&
+    request.workspaceRef === document.workspaceRef
+      ? []
+      : ['blocker.reactor.need_to_know.workspace_scope_mismatch']),
+    ...(request.subject.matterRefs.includes(document.matterRef) &&
+    request.matterRef === document.matterRef
+      ? []
+      : ['blocker.reactor.need_to_know.matter_scope_mismatch']),
+    ...(intersects(request.subject.roleRefs, document.allowedRoleRefs) ||
+    document.allowedUserRefs.includes(request.subject.subjectUserRef)
+      ? []
+      : ['blocker.reactor.need_to_know.role_or_user_scope_missing']),
+  ])
+
+const oracleBlockerRefs = (
+  verdict: ReactorNeedToKnowOracleVerdict | undefined,
+): ReadonlyArray<string> => {
+  if (verdict === undefined) {
+    return ['blocker.reactor.need_to_know.oracle_verdict_missing']
+  }
+
+  return verdict.verdict === 'need_to_know_plausible'
+    ? []
+    : [
+        'blocker.reactor.need_to_know.oracle_not_plausible',
+        ...verdict.reasonRefs,
+      ]
+}
+
+export const evaluateReactorNeedToKnowAccess = (
+  input: EvaluateReactorNeedToKnowAccessInput,
+): ReactorCorpusAccessDecisionReceipt => {
+  const ruleSet = S.decodeUnknownSync(ReactorNeedToKnowRuleSet)(input.ruleSet)
+  const request = S.decodeUnknownSync(ReactorCorpusRetrievalRequest)(
+    input.request,
+  )
+  const documents = input.documents.map(document =>
+    S.decodeUnknownSync(ReactorCorpusDocumentRecord)(document),
+  )
+  const oracleVerdicts = new Map(
+    (input.oracleVerdicts ?? []).map(verdictLike => {
+      const verdict = S.decodeUnknownSync(ReactorNeedToKnowOracleVerdict)(
+        verdictLike,
+      )
+      return [verdict.documentRef, verdict] as const
+    }),
+  )
+  const documentsByRef = new Map(
+    documents.map(document => [document.documentRef, document] as const),
+  )
+  const documentDecisions = request.requestedDocumentRefs.map(documentRef => {
+    const document = documentsByRef.get(documentRef)
+
+    if (document === undefined) {
+      return {
+        blockerRefs: ['blocker.reactor.need_to_know.document_not_found'],
+        citationRefs: [],
+        decisionRef: `${input.receiptRef}.decision.${documentRef}`,
+        documentRef,
+        hardDecisionStatus: 'failed' as const,
+        hardRuleRefs: ruleSet.hardRuleRefs,
+        oracleDecisionStatus: 'skipped_hard_denied' as const,
+        oracleVerdictRef: null,
+        reasonRefs: ['reason.reactor.need_to_know.document_not_found'],
+        status: 'denied_hard_rule' as const,
+      } satisfies ReactorNeedToKnowDocumentDecision
+    }
+
+    const hardBlockers = hardAccessBlockerRefs(request, document)
+    const hardPassed = hardBlockers.length === 0
+    const oracleVerdict = oracleVerdicts.get(document.documentRef)
+
+    if (!hardPassed) {
+      return {
+        blockerRefs: hardBlockers,
+        citationRefs: [],
+        decisionRef: `${input.receiptRef}.decision.${document.documentRef}`,
+        documentRef: document.documentRef,
+        hardDecisionStatus: 'failed' as const,
+        hardRuleRefs: ruleSet.hardRuleRefs,
+        oracleDecisionStatus: 'skipped_hard_denied' as const,
+        oracleVerdictRef: oracleVerdict?.verdictRef ?? null,
+        reasonRefs: hardBlockers,
+        status: 'denied_hard_rule' as const,
+      } satisfies ReactorNeedToKnowDocumentDecision
+    }
+
+    const softBlockers = oracleBlockerRefs(oracleVerdict)
+    const softPassed = softBlockers.length === 0
+
+    return {
+      blockerRefs: softBlockers,
+      citationRefs: softPassed ? document.citationRefs : [],
+      decisionRef: `${input.receiptRef}.decision.${document.documentRef}`,
+      documentRef: document.documentRef,
+      hardDecisionStatus: 'passed' as const,
+      hardRuleRefs: ruleSet.hardRuleRefs,
+      oracleDecisionStatus: softPassed ? ('passed' as const) : ('failed' as const),
+      oracleVerdictRef: oracleVerdict?.verdictRef ?? null,
+      reasonRefs: softPassed ? ['reason.reactor.need_to_know.allowed'] : softBlockers,
+      status: softPassed ? ('allowed' as const) : ('denied_soft_oracle' as const),
+    } satisfies ReactorNeedToKnowDocumentDecision
+  })
+  const selectedDocumentRefs = documentDecisions
+    .filter(decision => decision.status === 'allowed')
+    .map(decision => decision.documentRef)
+  const deniedDocumentRefs = documentDecisions
+    .filter(decision => decision.status !== 'allowed')
+    .map(decision => decision.documentRef)
+  const selectedCitationRefs = unique(
+    documentDecisions.flatMap(decision => decision.citationRefs),
+  )
+  const deniedCitationRefs = unique(
+    deniedDocumentRefs.flatMap(documentRef => {
+      const document = documentsByRef.get(documentRef)
+      return document === undefined ? [] : document.citationRefs
+    }),
+  )
+
+  return S.decodeUnknownSync(ReactorCorpusAccessDecisionReceipt)({
+    schemaVersion: 'openagents.reactor.corpus_access_decision_receipt.v1',
+    decidedAt: input.decidedAt,
+    deniedCitationRefs,
+    deniedDocumentRefs,
+    documentDecisions,
+    generatedSummaryContentLogged: false,
+    matterRef: request.matterRef,
+    oracleAppliedAfterHardRules: true,
+    oracleVerdictRefs: unique(
+      [...oracleVerdicts.values()].map(verdict => verdict.verdictRef),
+    ),
+    outputMode: request.outputMode,
+    queryIntentRef: request.queryIntentRef,
+    rawDocumentContentLogged: false,
+    receiptRef: input.receiptRef,
+    requestedDocumentRefs: request.requestedDocumentRefs,
+    ruleSetRef: ruleSet.ruleSetRef,
+    ruleSetVersion: ruleSet.version,
+    selectedCitationRefs,
+    selectedDocumentRefs,
+    sourceRefs: unique([
+      ruleSet.ruleSetRef,
+      request.requestRef,
+      ...documentDecisions.map(decision => decision.decisionRef),
+      ...(input.sourceRefs ?? []),
+    ]),
+    subjectUserRef: request.subject.subjectUserRef,
+    workspaceRef: request.workspaceRef,
+  })
+}
+
+const canonicalForChecksum = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(canonicalForChecksum)
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, canonicalForChecksum(entry)]),
+    )
+  }
+  return value
+}
+
+const stableChecksum = (value: unknown): string => {
+  const serialized = JSON.stringify(canonicalForChecksum(value))
+  let hash = 0x811c9dc5
+
+  for (let index = 0; index < serialized.length; index += 1) {
+    hash ^= serialized.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193) >>> 0
+  }
+
+  return `fnv1a32:${hash.toString(16).padStart(8, '0')}`
+}
+
+const applyDataLiberationTransforms = (
+  value: string,
+  transformRefs: ReadonlyArray<ReactorDataLiberationTransformRef>,
+): string =>
+  transformRefs.reduce((current, transformRef) => {
+    switch (transformRef) {
+      case 'identity':
+        return current
+      case 'lowercase':
+        return current.toLowerCase()
+      case 'trim':
+        return current.trim()
+    }
+  }, value)
+
+export const runReactorDataLiberationPipeline = (
+  input: RunReactorDataLiberationPipelineInput,
+): ReactorDataLiberationPipelineReport => {
+  const adapter = S.decodeUnknownSync(ReactorDataLiberationAdapterConfig)(
+    input.adapter,
+  )
+  const exportRows = input.exportRows.map(row =>
+    S.decodeUnknownSync(ReactorDataLiberationExportRow)(row),
+  )
+  const verificationReceipts =
+    adapter.recordClassMappings.map(recordClassMapping => {
+      const sourceRows = exportRows.filter(
+        row =>
+          row.sourceRecordTypeRef === recordClassMapping.sourceRecordTypeRef,
+      )
+      const loadedRecords: Array<{
+        recordClassRef: string
+        sourceRowRef: string
+        targetRecordRef: string
+        values: Record<string, string>
+      }> = []
+      const failedRowRefs: Array<string> = []
+      const partialRowRefs: Array<string> = []
+      const failureReasonRefs: Array<string> = []
+
+      for (const row of sourceRows) {
+        const values: Record<string, string> = {}
+        const missingRequiredFields: Array<string> = []
+        const missingOptionalFields: Array<string> = []
+
+        for (const fieldMapping of recordClassMapping.fieldMappings) {
+          const rawValue = row.fields[fieldMapping.sourceField]
+          if (rawValue === undefined || rawValue.trim() === '') {
+            if (fieldMapping.required) {
+              missingRequiredFields.push(fieldMapping.sourceField)
+            } else {
+              missingOptionalFields.push(fieldMapping.sourceField)
+            }
+            continue
+          }
+
+          values[fieldMapping.targetField] = applyDataLiberationTransforms(
+            rawValue,
+            fieldMapping.transformRefs,
+          )
+        }
+
+        if (missingRequiredFields.length > 0) {
+          failedRowRefs.push(row.rowRef)
+          failureReasonRefs.push(
+            ...missingRequiredFields.map(
+              field =>
+                `reason.reactor.data_liberation.missing_required_field:${field}`,
+            ),
+          )
+          continue
+        }
+
+        if (missingOptionalFields.length > 0) {
+          partialRowRefs.push(row.rowRef)
+          failureReasonRefs.push(
+            ...missingOptionalFields.map(
+              field =>
+                `reason.reactor.data_liberation.missing_optional_field:${field}`,
+            ),
+          )
+        }
+
+        loadedRecords.push({
+          recordClassRef: recordClassMapping.recordClassRef,
+          sourceRowRef: row.rowRef,
+          targetRecordRef: `${input.customerControlledStoreRef}.${recordClassMapping.recordClassRef}.${row.rowRef}`,
+          values,
+        })
+      }
+
+      const status: ReactorDataLiberationStatus =
+        failedRowRefs.length === 0 && partialRowRefs.length === 0
+          ? 'passed'
+          : loadedRecords.length === 0
+            ? 'failed'
+            : 'partial'
+      const blockerRefs =
+        status === 'passed'
+          ? []
+          : unique([
+              status === 'failed'
+                ? 'blocker.reactor.data_liberation.record_class_failed'
+                : 'blocker.reactor.data_liberation.record_class_partial',
+              ...failureReasonRefs,
+            ])
+      const spotDiffSamples = loadedRecords.slice(0, 3).map(loadedRecord => {
+        const sourceRow = sourceRows.find(
+          row => row.rowRef === loadedRecord.sourceRowRef,
+        )
+        return {
+          fieldChecks: recordClassMapping.fieldMappings
+            .filter(mapping => loadedRecord.values[mapping.targetField] !== undefined)
+            .map(mapping => {
+              const loadedValue = loadedRecord.values[mapping.targetField] ?? ''
+              const sourceValue = applyDataLiberationTransforms(
+                sourceRow?.fields[mapping.sourceField] ?? '',
+                mapping.transformRefs,
+              )
+              return {
+                loadedValueChecksum: stableChecksum(loadedValue),
+                matched: stableChecksum(sourceValue) === stableChecksum(loadedValue),
+                sourceValueChecksum: stableChecksum(sourceValue),
+                targetField: mapping.targetField,
+              }
+            }),
+          sampleRef: `${input.reportRef}.sample.${loadedRecord.sourceRowRef}`,
+          sourceRowRef: loadedRecord.sourceRowRef,
+          targetRecordRef: loadedRecord.targetRecordRef,
+        }
+      })
+
+      return S.decodeUnknownSync(
+        ReactorDataLiberationRecordClassVerificationReceipt,
+      )({
+        schemaVersion:
+          'openagents.reactor.data_liberation_record_class_verification_receipt.v1',
+        adapterRef: adapter.adapterRef,
+        blockerRefs,
+        customerControlledStoreRef: input.customerControlledStoreRef,
+        customerDataLogged: false,
+        failedRowCount: failedRowRefs.length,
+        failedRowRefs,
+        generatedAt: input.generatedAt,
+        loadedChecksum: stableChecksum(
+          loadedRecords.map(record => ({
+            recordClassRef: record.recordClassRef,
+            sourceRowRef: record.sourceRowRef,
+            targetRecordRef: record.targetRecordRef,
+            values: record.values,
+          })),
+        ),
+        loadedRowCount: loadedRecords.length,
+        partialRowCount: partialRowRefs.length,
+        partialRowRefs,
+        receiptRef: `${input.reportRef}.receipt.${recordClassMapping.recordClassRef}`,
+        recordClassRef: recordClassMapping.recordClassRef,
+        schemaMappingRef: recordClassMapping.schemaMappingRef,
+        sourceChecksum: stableChecksum(
+          sourceRows.map(row => ({
+            fields: row.fields,
+            rowRef: row.rowRef,
+            sourceRecordTypeRef: row.sourceRecordTypeRef,
+          })),
+        ),
+        sourceRefs: unique([
+          adapter.adapterRef,
+          recordClassMapping.schemaMappingRef,
+          ...(input.sourceRefs ?? []),
+        ]),
+        sourceRowCount: sourceRows.length,
+        spotDiffSamples,
+        status,
+        targetSchemaRef: recordClassMapping.targetSchemaRef,
+        transformedRowCount: loadedRecords.length,
+      })
+    })
+  const status: ReactorDataLiberationStatus = verificationReceipts.every(
+    receipt => receipt.status === 'passed',
+  )
+    ? 'passed'
+    : verificationReceipts.some(receipt => receipt.status !== 'failed')
+      ? 'partial'
+      : 'failed'
+  const blockerRefs =
+    status === 'passed'
+      ? []
+      : unique([
+          status === 'failed'
+            ? 'blocker.reactor.data_liberation.pipeline_failed'
+            : 'blocker.reactor.data_liberation.pipeline_partial',
+          ...verificationReceipts.flatMap(receipt => receipt.blockerRefs),
+        ])
+
+  return S.decodeUnknownSync(ReactorDataLiberationPipelineReport)({
+    schemaVersion: 'openagents.reactor.data_liberation_pipeline_report.v1',
+    adapterRefs: [adapter.adapterRef],
+    blockerRefs,
+    customerControlledStoreRef: input.customerControlledStoreRef,
+    customerDataLogged: false,
+    customerEngagementAuthorized: false,
+    failedRowCount: verificationReceipts.reduce(
+      (sum, receipt) => sum + receipt.failedRowCount,
+      0,
+    ),
+    fixtureTruth: adapter.fixtureTruth,
+    generatedAt: input.generatedAt,
+    loadedRowCount: verificationReceipts.reduce(
+      (sum, receipt) => sum + receipt.loadedRowCount,
+      0,
+    ),
+    packageCopyAuthorized: false,
+    partialRowCount: verificationReceipts.reduce(
+      (sum, receipt) => sum + receipt.partialRowCount,
+      0,
+    ),
+    recordClassRefs: verificationReceipts.map(receipt => receipt.recordClassRef),
+    reportRef: input.reportRef,
+    sourceRefs: unique([
+      adapter.adapterRef,
+      ...verificationReceipts.flatMap(receipt => receipt.receiptRef),
+      ...(input.sourceRefs ?? []),
+    ]),
+    sourceRowCount: verificationReceipts.reduce(
+      (sum, receipt) => sum + receipt.sourceRowCount,
+      0,
+    ),
+    status,
+    verificationReceiptRefs: verificationReceipts.map(
+      receipt => receipt.receiptRef,
+    ),
+    verificationReceipts,
+  })
+}
+
 const model = (
   record: Omit<ReactorModelProvenance, 'schemaVersion'>,
 ): ReactorModelProvenance =>
@@ -2131,4 +3002,570 @@ export const REACTOR_OPENAGENTS_DOGFOOD_RUN_RECEIPT =
       'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md#9-workstream-map-rx--filed-2026-07-04-under-epic-8261',
     ],
     workloadRef: 'workload.openagents.lead_gen_reactor.case_study_seed.20260704',
+  })
+
+const corpusDocument = (
+  record: Omit<ReactorCorpusDocumentRecord, 'schemaVersion'>,
+): ReactorCorpusDocumentRecord =>
+  S.decodeUnknownSync(ReactorCorpusDocumentRecord)({
+    schemaVersion: 'openagents.reactor.corpus_document.v1',
+    ...record,
+  })
+
+const corpusSubject = (
+  record: ReactorCorpusAccessSubject,
+): ReactorCorpusAccessSubject =>
+  S.decodeUnknownSync(ReactorCorpusAccessSubject)(record)
+
+const corpusRequest = (
+  record: ReactorCorpusRetrievalRequest,
+): ReactorCorpusRetrievalRequest =>
+  S.decodeUnknownSync(ReactorCorpusRetrievalRequest)(record)
+
+const oracleVerdict = (
+  record: ReactorNeedToKnowOracleVerdict,
+): ReactorNeedToKnowOracleVerdict =>
+  S.decodeUnknownSync(ReactorNeedToKnowOracleVerdict)(record)
+
+export const REACTOR_NEED_TO_KNOW_RULESET_V1 =
+  S.decodeUnknownSync(ReactorNeedToKnowRuleSet)({
+    schemaVersion: 'openagents.reactor.need_to_know_ruleset.v1',
+    defaultAction: 'deny',
+    hardRuleRefs: [
+      'hard_rule.reactor.need_to_know.workspace_scope.v1',
+      'hard_rule.reactor.need_to_know.matter_scope.v1',
+      'hard_rule.reactor.need_to_know.role_or_user_scope.v1',
+    ],
+    oraclePolicyRef: 'soft_oracle.reactor.need_to_know.plausibility.v1',
+    ruleSetRef: 'reactor.need_to_know.ruleset.v1',
+    sourceRefs: [
+      'github:OpenAgentsInc/openagents#8277',
+      'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md#9-workstream-map-rx--filed-2026-07-04-under-epic-8261',
+    ],
+    version: '2026-07-04.rx9',
+  })
+
+export const REACTOR_NEED_TO_KNOW_BROKEN_ALLOW_ALL_RULESET_FIXTURE = {
+  schemaVersion: 'openagents.reactor.need_to_know_ruleset.v1',
+  defaultAction: 'allow',
+  hardRuleRefs: [],
+  oraclePolicyRef: 'soft_oracle.reactor.need_to_know.disabled',
+  ruleSetRef: 'reactor.need_to_know.ruleset.broken_allow_all',
+  sourceRefs: ['github:OpenAgentsInc/openagents#8277'],
+  version: '2026-07-04.broken',
+} as const
+
+export const REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS = {
+  aliceStrategyMemo: corpusDocument({
+    allowedRoleRefs: ['matter_attorney'],
+    allowedUserRefs: ['user.alice'],
+    citationRefs: ['citation.reactor.fixture.alice.strategy_memo'],
+    documentRef: 'document.reactor.fixture.alice.strategy_memo',
+    matterRef: 'matter.reactor.fixture.alice',
+    sourceRefs: ['source.reactor.fixture.alice.strategy_memo'],
+    summaryRef: 'summary.reactor.fixture.alice.strategy_memo',
+    workspaceRef: 'workspace.reactor.fixture.customer_one',
+  }),
+  bobIntakeNote: corpusDocument({
+    allowedRoleRefs: ['matter_analyst'],
+    allowedUserRefs: ['user.bob'],
+    citationRefs: ['citation.reactor.fixture.bob.intake_note'],
+    documentRef: 'document.reactor.fixture.bob.intake_note',
+    matterRef: 'matter.reactor.fixture.bob',
+    sourceRefs: ['source.reactor.fixture.bob.intake_note'],
+    summaryRef: 'summary.reactor.fixture.bob.intake_note',
+    workspaceRef: 'workspace.reactor.fixture.customer_one',
+  }),
+} as const
+
+export const REACTOR_NEED_TO_KNOW_ADVERSARIAL_SUBJECTS = {
+  alice: corpusSubject({
+    matterRefs: ['matter.reactor.fixture.alice'],
+    roleRefs: ['matter_attorney'],
+    subjectUserRef: 'user.alice',
+    workspaceRefs: ['workspace.reactor.fixture.customer_one'],
+  }),
+  bob: corpusSubject({
+    matterRefs: ['matter.reactor.fixture.bob'],
+    roleRefs: ['matter_analyst'],
+    subjectUserRef: 'user.bob',
+    workspaceRefs: ['workspace.reactor.fixture.customer_one'],
+  }),
+} as const
+
+export const REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS = {
+  aliceDirect: corpusRequest({
+    matterRef: 'matter.reactor.fixture.alice',
+    outputMode: 'source',
+    queryIntentRef: 'query_intent.reactor.fixture.alice.direct',
+    requestRef: 'request.reactor.fixture.alice.direct',
+    requestedDocumentRefs: [
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo.documentRef,
+    ],
+    subject: REACTOR_NEED_TO_KNOW_ADVERSARIAL_SUBJECTS.alice,
+    workspaceRef: 'workspace.reactor.fixture.customer_one',
+  }),
+  aliceSoftDenied: corpusRequest({
+    matterRef: 'matter.reactor.fixture.alice',
+    outputMode: 'summary',
+    queryIntentRef: 'query_intent.reactor.fixture.alice.soft_denied',
+    requestRef: 'request.reactor.fixture.alice.soft_denied',
+    requestedDocumentRefs: [
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo.documentRef,
+    ],
+    subject: REACTOR_NEED_TO_KNOW_ADVERSARIAL_SUBJECTS.alice,
+    workspaceRef: 'workspace.reactor.fixture.customer_one',
+  }),
+  bobAliceCitation: corpusRequest({
+    matterRef: 'matter.reactor.fixture.bob',
+    outputMode: 'citation',
+    queryIntentRef: 'query_intent.reactor.fixture.bob.alice_citation',
+    requestRef: 'request.reactor.fixture.bob.alice_citation',
+    requestedDocumentRefs: [
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo.documentRef,
+    ],
+    subject: REACTOR_NEED_TO_KNOW_ADVERSARIAL_SUBJECTS.bob,
+    workspaceRef: 'workspace.reactor.fixture.customer_one',
+  }),
+  bobAliceSummary: corpusRequest({
+    matterRef: 'matter.reactor.fixture.bob',
+    outputMode: 'summary',
+    queryIntentRef: 'query_intent.reactor.fixture.bob.alice_summary',
+    requestRef: 'request.reactor.fixture.bob.alice_summary',
+    requestedDocumentRefs: [
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo.documentRef,
+    ],
+    subject: REACTOR_NEED_TO_KNOW_ADVERSARIAL_SUBJECTS.bob,
+    workspaceRef: 'workspace.reactor.fixture.customer_one',
+  }),
+} as const
+
+export const REACTOR_NEED_TO_KNOW_ADVERSARIAL_ORACLES = {
+  alicePlausible: oracleVerdict({
+    documentRef: REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo
+      .documentRef,
+    loggedAt: '2026-07-04T15:05:00.000Z',
+    modelRef: 'model.openagents.need_to_know.oracle.fixture',
+    reasonRefs: ['reason.reactor.need_to_know.alice_direct_plausible'],
+    requestRef: REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS.aliceDirect.requestRef,
+    verdict: 'need_to_know_plausible',
+    verdictRef: 'oracle.reactor.fixture.alice.direct.plausible',
+  }),
+  aliceNotNeeded: oracleVerdict({
+    documentRef: REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo
+      .documentRef,
+    loggedAt: '2026-07-04T15:06:00.000Z',
+    modelRef: 'model.openagents.need_to_know.oracle.fixture',
+    reasonRefs: ['reason.reactor.need_to_know.alice_summary_not_needed'],
+    requestRef:
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS.aliceSoftDenied.requestRef,
+    verdict: 'not_need_to_know',
+    verdictRef: 'oracle.reactor.fixture.alice.soft_denied.not_needed',
+  }),
+  bobAlicePlausibleButHardDenied: oracleVerdict({
+    documentRef: REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo
+      .documentRef,
+    loggedAt: '2026-07-04T15:07:00.000Z',
+    modelRef: 'model.openagents.need_to_know.oracle.fixture',
+    reasonRefs: ['reason.reactor.need_to_know.bob_prompt_claimed_relevance'],
+    requestRef:
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS.bobAliceSummary.requestRef,
+    verdict: 'need_to_know_plausible',
+    verdictRef: 'oracle.reactor.fixture.bob.alice.plausible_but_hard_denied',
+  }),
+} as const
+
+export const REACTOR_NEED_TO_KNOW_ADVERSARIAL_RECEIPTS = {
+  aliceAllowed: evaluateReactorNeedToKnowAccess({
+    decidedAt: '2026-07-04T15:05:30.000Z',
+    documents: [REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo],
+    oracleVerdicts: [
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_ORACLES.alicePlausible,
+    ],
+    receiptRef: 'reactor.corpus_access.alice.direct.allowed.20260704',
+    request: REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS.aliceDirect,
+    ruleSet: REACTOR_NEED_TO_KNOW_RULESET_V1,
+    sourceRefs: ['github:OpenAgentsInc/openagents#8277'],
+  }),
+  aliceSoftDenied: evaluateReactorNeedToKnowAccess({
+    decidedAt: '2026-07-04T15:06:30.000Z',
+    documents: [REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo],
+    oracleVerdicts: [
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_ORACLES.aliceNotNeeded,
+    ],
+    receiptRef: 'reactor.corpus_access.alice.summary.soft_denied.20260704',
+    request: REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS.aliceSoftDenied,
+    ruleSet: REACTOR_NEED_TO_KNOW_RULESET_V1,
+    sourceRefs: ['github:OpenAgentsInc/openagents#8277'],
+  }),
+  bobAliceCitationDenied: evaluateReactorNeedToKnowAccess({
+    decidedAt: '2026-07-04T15:08:30.000Z',
+    documents: [REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo],
+    receiptRef: 'reactor.corpus_access.bob.alice_citation.denied.20260704',
+    request: REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS.bobAliceCitation,
+    ruleSet: REACTOR_NEED_TO_KNOW_RULESET_V1,
+    sourceRefs: ['github:OpenAgentsInc/openagents#8277'],
+  }),
+  bobAliceSummaryDenied: evaluateReactorNeedToKnowAccess({
+    decidedAt: '2026-07-04T15:07:30.000Z',
+    documents: [REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo],
+    oracleVerdicts: [
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_ORACLES
+        .bobAlicePlausibleButHardDenied,
+    ],
+    receiptRef: 'reactor.corpus_access.bob.alice_summary.denied.20260704',
+    request: REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS.bobAliceSummary,
+    ruleSet: REACTOR_NEED_TO_KNOW_RULESET_V1,
+    sourceRefs: ['github:OpenAgentsInc/openagents#8277'],
+  }),
+} as const
+
+const dataLiberationAdapter = (
+  record: Omit<ReactorDataLiberationAdapterConfig, 'schemaVersion'>,
+): ReactorDataLiberationAdapterConfig =>
+  S.decodeUnknownSync(ReactorDataLiberationAdapterConfig)({
+    schemaVersion: 'openagents.reactor.data_liberation_adapter_config.v1',
+    ...record,
+  })
+
+const dataLiberationRow = (
+  record: ReactorDataLiberationExportRow,
+): ReactorDataLiberationExportRow =>
+  S.decodeUnknownSync(ReactorDataLiberationExportRow)(record)
+
+export const REACTOR_DATA_LIBERATION_ADAPTERS = {
+  genericCsvApiSaas: dataLiberationAdapter({
+    adapterKind: 'generic_csv_api_saas_export',
+    adapterRef: 'reactor.data_liberation.adapter.generic_csv_api_saas.v1',
+    customerDataAllowed: false,
+    exportTransport: 'csv_file',
+    fixtureTruth: 'synthetic_public_fixture',
+    recordClassMappings: [
+      {
+        fieldMappings: [
+          {
+            mappingRef:
+              'reactor.data_liberation.mapping.generic_contact.external_id',
+            required: true,
+            sourceField: 'contact_id',
+            targetField: 'external_id',
+            transformRefs: ['trim'],
+          },
+          {
+            mappingRef: 'reactor.data_liberation.mapping.generic_contact.email',
+            required: true,
+            sourceField: 'email',
+            targetField: 'email',
+            transformRefs: ['trim', 'lowercase'],
+          },
+          {
+            mappingRef:
+              'reactor.data_liberation.mapping.generic_contact.display_name',
+            required: false,
+            sourceField: 'display_name',
+            targetField: 'display_name',
+            transformRefs: ['trim'],
+          },
+          {
+            mappingRef:
+              'reactor.data_liberation.mapping.generic_contact.company_name',
+            required: false,
+            sourceField: 'company',
+            targetField: 'company_name',
+            transformRefs: ['trim'],
+          },
+        ],
+        recordClassRef: 'crm_contact',
+        schemaMappingRef:
+          'reactor.data_liberation.schema_mapping.generic_contact_to_open_crm.v1',
+        sourceRecordTypeRef: 'generic_saas.contact',
+        targetSchemaRef: 'openagents.open_crm.contact.v1',
+      },
+    ],
+    sourceRefs: [
+      'github:OpenAgentsInc/openagents#8278',
+      'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md#10-competitive-read-the-mistral-playbook-harvested-2026-07-04',
+    ],
+    vendorRef: 'vendor.generic_saas.synthetic_csv_api',
+    version: '2026-07-04.rx10',
+  }),
+  salesforceContactExport: dataLiberationAdapter({
+    adapterKind: 'salesforce_contact_export',
+    adapterRef: 'reactor.data_liberation.adapter.salesforce_contact_export.v1',
+    customerDataAllowed: false,
+    exportTransport: 'csv_file',
+    fixtureTruth: 'synthetic_public_fixture',
+    recordClassMappings: [
+      {
+        fieldMappings: [
+          {
+            mappingRef:
+              'reactor.data_liberation.mapping.salesforce_contact.external_id',
+            required: true,
+            sourceField: 'Id',
+            targetField: 'external_id',
+            transformRefs: ['trim'],
+          },
+          {
+            mappingRef:
+              'reactor.data_liberation.mapping.salesforce_contact.email',
+            required: true,
+            sourceField: 'Email',
+            targetField: 'email',
+            transformRefs: ['trim', 'lowercase'],
+          },
+          {
+            mappingRef:
+              'reactor.data_liberation.mapping.salesforce_contact.first_name',
+            required: false,
+            sourceField: 'FirstName',
+            targetField: 'first_name',
+            transformRefs: ['trim'],
+          },
+          {
+            mappingRef:
+              'reactor.data_liberation.mapping.salesforce_contact.last_name',
+            required: false,
+            sourceField: 'LastName',
+            targetField: 'last_name',
+            transformRefs: ['trim'],
+          },
+          {
+            mappingRef:
+              'reactor.data_liberation.mapping.salesforce_contact.account_id',
+            required: false,
+            sourceField: 'AccountId',
+            targetField: 'account_external_id',
+            transformRefs: ['trim'],
+          },
+        ],
+        recordClassRef: 'crm_contact',
+        schemaMappingRef:
+          'reactor.data_liberation.schema_mapping.salesforce_contact_to_open_crm.v1',
+        sourceRecordTypeRef: 'salesforce.Contact',
+        targetSchemaRef: 'openagents.open_crm.contact.v1',
+      },
+    ],
+    sourceRefs: [
+      'github:OpenAgentsInc/openagents#8278',
+      'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md#5-what-the-customer-buys-packages-modeled-owner-gated-like-all-prices',
+    ],
+    vendorRef: 'vendor.salesforce.synthetic_contact_export',
+    version: '2026-07-04.rx10',
+  }),
+} as const
+
+export const REACTOR_DATA_LIBERATION_SYNTHETIC_EXPORTS = {
+  genericCsvApiSaasContacts: [
+    dataLiberationRow({
+      fields: {
+        company: 'Example Works',
+        contact_id: ' csv-contact-001 ',
+        display_name: ' Alice Example ',
+        email: ' ALICE.EXAMPLE@example.test ',
+      },
+      rowRef: 'row.synthetic.generic_csv_api.contact.001',
+      sourceRecordTypeRef: 'generic_saas.contact',
+    }),
+    dataLiberationRow({
+      fields: {
+        company: 'Example Works',
+        contact_id: 'csv-contact-002',
+        display_name: 'Bob Example',
+        email: 'bob.example@example.test',
+      },
+      rowRef: 'row.synthetic.generic_csv_api.contact.002',
+      sourceRecordTypeRef: 'generic_saas.contact',
+    }),
+  ],
+  salesforceContacts: [
+    dataLiberationRow({
+      fields: {
+        AccountId: '001xx000003DGbYAAW',
+        Email: 'charlie.fixture@example.test',
+        FirstName: 'Charlie',
+        Id: '003xx000004TmiAAAS',
+        LastName: 'Fixture',
+      },
+      rowRef: 'row.synthetic.salesforce.contact.001',
+      sourceRecordTypeRef: 'salesforce.Contact',
+    }),
+    dataLiberationRow({
+      fields: {
+        AccountId: '001xx000003DGbYAAW',
+        Email: ' DANA.FIXTURE@example.test ',
+        FirstName: 'Dana',
+        Id: '003xx000004TmiBAAS',
+        LastName: 'Fixture',
+      },
+      rowRef: 'row.synthetic.salesforce.contact.002',
+      sourceRecordTypeRef: 'salesforce.Contact',
+    }),
+    dataLiberationRow({
+      fields: {
+        AccountId: '001xx000003DGbYAAW',
+        Email: '',
+        FirstName: 'Missing',
+        Id: '003xx000004TmiCAAS',
+        LastName: 'EmailFixture',
+      },
+      rowRef: 'row.synthetic.salesforce.contact.003',
+      sourceRecordTypeRef: 'salesforce.Contact',
+    }),
+  ],
+} as const
+
+export const REACTOR_DATA_LIBERATION_FIXTURE_REPORTS = {
+  genericCsvApiSaasPassed: runReactorDataLiberationPipeline({
+    adapter: REACTOR_DATA_LIBERATION_ADAPTERS.genericCsvApiSaas,
+    customerControlledStoreRef:
+      'customer_controlled_store.synthetic.open_crm.generic_csv_api',
+    exportRows: REACTOR_DATA_LIBERATION_SYNTHETIC_EXPORTS.genericCsvApiSaasContacts,
+    generatedAt: '2026-07-04T16:10:00.000Z',
+    reportRef: 'reactor.data_liberation.report.generic_csv_api.passed.20260704',
+    sourceRefs: ['github:OpenAgentsInc/openagents#8278'],
+  }),
+  salesforceContactPartial: runReactorDataLiberationPipeline({
+    adapter: REACTOR_DATA_LIBERATION_ADAPTERS.salesforceContactExport,
+    customerControlledStoreRef:
+      'customer_controlled_store.synthetic.open_crm.salesforce_contact',
+    exportRows: REACTOR_DATA_LIBERATION_SYNTHETIC_EXPORTS.salesforceContacts,
+    generatedAt: '2026-07-04T16:12:00.000Z',
+    reportRef:
+      'reactor.data_liberation.report.salesforce_contact.partial.20260704',
+    sourceRefs: ['github:OpenAgentsInc/openagents#8278'],
+  }),
+} as const
+
+export const REACTOR_IMPROVEMENT_LADDER_PLAN_RECEIPT =
+  S.decodeUnknownSync(ReactorImprovementLadderPlanReceipt)({
+    schemaVersion: 'openagents.reactor.improvement_ladder_plan_receipt.v1',
+    boundaryRequirement: 'customer_premises_or_regulated_private',
+    capabilityClaimsAuthorized: false,
+    consentRequired: true,
+    customerDataUsed: false,
+    customerWeightsOwnerRequired: true,
+    designDocRef:
+      'docs/fable/2026-07-04-rx-11-reactor-improvement-ladder.md',
+    generatedAt: '2026-07-04T16:35:00.000Z',
+    planRef: 'reactor.improvement_ladder.plan.v1',
+    sourceRefs: [
+      'github:OpenAgentsInc/openagents#8279',
+      'docs/research/2026-07-04-harness-optimization-evolve-the-harness-audit.md',
+      'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md#5-what-the-customer-buys-packages-modeled-owner-gated-like-all-prices',
+    ],
+    stages: ['harness_evolution', 'distill_to_fit', 'flywheel_training'],
+  })
+
+export const REACTOR_DOGFOOD_HARNESS_EVOLUTION_RECEIPT =
+  S.decodeUnknownSync(ReactorHarnessEvolutionDogfoodReceipt)({
+    schemaVersion:
+      'openagents.reactor.harness_evolution_dogfood_receipt.v1',
+    acceptanceThresholdBps: 100,
+    accepted: true,
+    baselineHarnessRef:
+      'reactor.harness.openagents.lead_gen.case_study_seed.baseline.20260704',
+    baselineScoreBps: 6340,
+    candidateHarnessRef:
+      'reactor.harness.openagents.lead_gen.case_study_seed.deliverable_landing.20260704',
+    candidateScoreBps: 8010,
+    costObjectiveIncluded: true,
+    customerDataUsed: false,
+    datasetSnapshotRef:
+      'reactor.dataset_snapshot.openagents.lead_gen.case_study_seed.harness.20260704',
+    deltaBps: 1670,
+    evalDeltaRef:
+      'reactor.eval_delta.openagents.harness_evolution.deliverable_landing.20260704',
+    generatedAt: '2026-07-04T16:40:00.000Z',
+    mechanismClass: 'deliverable_landing',
+    modelRef: REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE.modelRef,
+    oneMechanismOnly: true,
+    optimizerRef: 'mutalisk',
+    policyRef: REACTOR_EXAMPLE_POLICIES.usOnly.policyRef,
+    policyVersion: REACTOR_EXAMPLE_POLICIES.usOnly.version,
+    receiptRef:
+      'reactor.harness_evolution.openagents.dogfood.deliverable_landing.20260704',
+    runnerRef: 'psionic',
+    sourceRefs: [
+      'github:OpenAgentsInc/openagents#8279',
+      'docs/research/2026-07-04-harness-optimization-evolve-the-harness-audit.md',
+    ],
+    stage: 'harness_evolution',
+    transferLabels: [
+      'transfer.code_mechanism.model_family:gpt_oss',
+      'transfer.prompt_playbook.requires_re_eval',
+    ],
+    weightChangesAllowed: false,
+    workloadTruth: 'internal_openagents_dogfood',
+  })
+
+export const REACTOR_DOGFOOD_DISTILL_TO_FIT_RECEIPT =
+  S.decodeUnknownSync(ReactorDistillToFitDogfoodReceipt)({
+    schemaVersion: 'openagents.reactor.distill_to_fit_dogfood_receipt.v1',
+    acceptedForDogfood: true,
+    baselineCostPer1kTokensMicrousd: 420,
+    baselineQualityScoreBps: 8010,
+    candidateArtifactRef:
+      'reactor.artifact.openagents.dogfood.gpt_oss_distilled_lead_gen_4b.20260704',
+    candidateCostPer1kTokensMicrousd: 176,
+    candidateModelClass: 'smaller_distilled_model',
+    candidateQualityScoreBps: 7890,
+    costReductionBps: 5810,
+    customerDataUsed: false,
+    datasetSnapshotRef:
+      'reactor.dataset_snapshot.openagents.lead_gen.case_study_seed.distill.20260704',
+    distillationRunRef:
+      'psionic.distillation_run.openagents.lead_gen_distill_to_fit.20260704',
+    evalDeltaRef:
+      'reactor.eval_delta.openagents.distill_to_fit.cost_quality.20260704',
+    generatedAt: '2026-07-04T16:45:00.000Z',
+    inputDistributionCaptureRef:
+      'reactor.input_distribution.openagents.lead_gen.case_study_seed.20260704',
+    policyRef: REACTOR_EXAMPLE_POLICIES.usOnly.policyRef,
+    policyRevalidated: true,
+    policyVersion: REACTOR_EXAMPLE_POLICIES.usOnly.version,
+    qualityDeltaBps: -120,
+    receiptRef:
+      'reactor.distill_to_fit.openagents.dogfood.gpt_oss_4b.20260704',
+    routeSwapAuthorized: false,
+    routerSwapGate: 'eval_gated_rx3_router',
+    routerSwapGateStatus: 'passed',
+    runnerRef: 'psionic',
+    sourceModelRef: REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE.modelRef,
+    sourceRefs: [
+      'github:OpenAgentsInc/openagents#8279',
+      REACTOR_DOGFOOD_HARNESS_EVOLUTION_RECEIPT.receiptRef,
+    ],
+    stage: 'distill_to_fit',
+    weightsOwnerRef: 'owner.openagents',
+    workloadTruth: 'internal_openagents_dogfood',
+  })
+
+export const REACTOR_IMPROVEMENT_LADDER_DOGFOOD_RECEIPT =
+  S.decodeUnknownSync(ReactorImprovementLadderDogfoodReceipt)({
+    schemaVersion:
+      'openagents.reactor.improvement_ladder_dogfood_receipt.v1',
+    blockerRefs: [
+      'blocker.reactor.improvement_ladder.no_customer_consent_receipt',
+      'blocker.reactor.improvement_ladder.no_customer_boundary_run',
+      'blocker.reactor.improvement_ladder.public_claims_owner_approval_missing',
+    ],
+    capabilityClaimsAuthorized: false,
+    customerDataUsed: false,
+    distillToFitReceiptRef: REACTOR_DOGFOOD_DISTILL_TO_FIT_RECEIPT.receiptRef,
+    externalClaimFlipAllowed: false,
+    generatedAt: '2026-07-04T16:50:00.000Z',
+    harnessEvolutionReceiptRef:
+      REACTOR_DOGFOOD_HARNESS_EVOLUTION_RECEIPT.receiptRef,
+    planRef: REACTOR_IMPROVEMENT_LADDER_PLAN_RECEIPT.planRef,
+    receiptRef:
+      'reactor.improvement_ladder.openagents.dogfood.aggregate.20260704',
+    sourceRefs: [
+      'github:OpenAgentsInc/openagents#8279',
+      REACTOR_DOGFOOD_HARNESS_EVOLUTION_RECEIPT.receiptRef,
+      REACTOR_DOGFOOD_DISTILL_TO_FIT_RECEIPT.receiptRef,
+      REACTOR_IMPROVEMENT_LADDER_PLAN_RECEIPT.designDocRef,
+    ],
+    status: 'completed_internal',
+    workloadTruth: 'internal_openagents_dogfood',
   })

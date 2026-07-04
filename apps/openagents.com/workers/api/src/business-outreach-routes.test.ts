@@ -76,6 +76,8 @@ const runtime: BusinessPipelineRuntime = {
 const PIPELINE_REF = 'biz-pipe-2026w27-outreach-001'
 const SUBJECT_REF = 'prospect.agent_ready.001'
 const TEMPLATE_REF = 'business.outreach.agent_readiness_ecommerce.report_led.v1'
+const MODEL_CUSTODY_TEMPLATE_REF =
+  'business.outreach.model_custody_regulated.reactor_assessment.v1'
 const APPROVAL_RECEIPT_REF = 'receipt.owner.template_approval.lg4.001'
 
 const makeStores = (db: D1Database) => {
@@ -260,6 +262,42 @@ describe('business outreach sequence routes', () => {
       error: 'business_outreach_refused',
       reason: 'claim_lint_failed',
     })
+  })
+
+  test('renders the RX-8 regulated model-custody Reactor Assessment template without gated claims', async () => {
+    const db = makeDb()
+    await seedPipeline(db, {
+      sourceRef: 'apollo_model_custody',
+      vertical: 'regulated legal',
+    })
+
+    const response = await renderDraft(db, {
+      auditReportRef: 'model_custody.report.001',
+      findingRefs: ['model_custody.finding.frontier_lab_subprocessor'],
+      observedFact:
+        'public subprocessors page names OpenAI and Anthropic as AI providers',
+      subjectRef: 'prospect.model_custody.001',
+      templateVersionRef: MODEL_CUSTODY_TEMPLATE_REF,
+    })
+    const body = await response.json() as {
+      draft: {
+        bodyText: string
+        claimLintRefs: ReadonlyArray<string>
+        segmentRef: string
+        sourceRef: string
+      }
+    }
+
+    expect(response.status, JSON.stringify(body)).toBe(201)
+    expect(body.draft).toMatchObject({
+      claimLintRefs: [],
+      segmentRef: 'model_custody_regulated',
+      sourceRef: 'apollo_model_custody',
+    })
+    expect(body.draft.bodyText).toContain('Reactor Assessment')
+    expect(body.draft.bodyText).toContain('Friedberg/Mistral')
+    expect(body.draft.bodyText).toContain('Own Your AI')
+    expect(body.draft.bodyText).not.toMatch(/\b(HIPAA|sovereign|\$\s?\d)/i)
   })
 
   test('requires owner-approved template versions and enforces mailbox send caps', async () => {

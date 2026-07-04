@@ -15,7 +15,7 @@ export type BusinessSourceRefDecode =
 
 const SOURCE_REF_MAX_LENGTH = 80
 const SOURCE_REF_TOKEN_PATTERN =
-  /^(direct|unknown|ai_search|own_your_ai|apollo_agent_readiness_[a-z0-9][a-z0-9_-]{0,63}|affiliate_[a-z0-9][a-z0-9_-]{0,63}|partner_[a-z0-9][a-z0-9_-]{0,63}|content_[a-z0-9][a-z0-9_-]{0,63}|vertical_[a-z0-9][a-z0-9_-]{0,63})$/
+  /^(direct|unknown|ai_search|own_your_ai|apollo_model_custody|apollo_agent_readiness_[a-z0-9][a-z0-9_-]{0,63}|affiliate_[a-z0-9][a-z0-9_-]{0,63}|partner_[a-z0-9][a-z0-9_-]{0,63}|content_[a-z0-9][a-z0-9_-]{0,63}|vertical_[a-z0-9][a-z0-9_-]{0,63})$/
 const UNSAFE_SOURCE_REF_PATTERN =
   /@|https?:\/\/|www\.|[/?#&=]|(?:^|[_-])(utm|email|phone|contact|customer|client|raw|payload|token|secret|key|mnemonic|xprv)(?:$|[_-])/i
 
@@ -33,6 +33,14 @@ const aliasSourceRef = (value: string): string => {
   }
   if (normalized === 'own-your-ai' || normalized === 'own your ai') {
     return 'own_your_ai'
+  }
+  if (
+    normalized === 'apollo-model-custody' ||
+    normalized === 'apollo model custody' ||
+    normalized === 'model-custody' ||
+    normalized === 'model custody'
+  ) {
+    return 'apollo_model_custody'
   }
   return normalized
 }
@@ -91,7 +99,8 @@ export const businessSourceKindForSourceRef = (
   }
   if (
     sourceRef.startsWith('apollo_agent_readiness_') ||
-    sourceRef === 'own_your_ai'
+    sourceRef === 'own_your_ai' ||
+    sourceRef === 'apollo_model_custody'
   ) {
     return 'outbound'
   }

@@ -49,6 +49,7 @@
     "@openagentsinc/nip90": "workspace:*",
     "@openagentsinc/proof-replay": "workspace:*",
     "@openagentsinc/public-activity-timeline": "workspace:*",
+    "@openagentsinc/reactor-contracts": "workspace:*",
     "@openagentsinc/replay-clips": "workspace:*",
     "@openagentsinc/email-templates": "workspace:*",
     "@openagentsinc/forge-protocol": "workspace:*",

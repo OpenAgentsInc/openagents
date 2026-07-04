@@ -33,6 +33,19 @@ Exports:
 - OpenAgents dogfood-run receipts for the customer-number-one Reactor gate:
   dogfood placement, strict US-only policy, routed internal workload refs,
   exact local token-metering receipts, and a refused nonconforming refresh.
+- Need-to-know corpus access receipts: deny-by-default hard rules for
+  workspace, matter, and role-or-user scope, a downstream model-oracle
+  plausibility verdict, no raw document or generated summary logs, and
+  adversarial Bob/Alice fixtures that fail closed across citation and summary
+  modes.
+- Data Liberation pipeline reports: config-driven synthetic export adapters,
+  schema-mapped transforms, customer-controlled open-store refs, verification
+  receipts per record class, checksums, spot-diff hashes, and honest partial
+  migration blockers without raw customer row values.
+- Improvement-ladder dogfood receipts: harness evolution as rung zero,
+  distill-to-fit cost/quality deltas, customer-consent/boundary/weight-owner
+  design requirements, and aggregate claim blockers for anything beyond
+  internal OpenAgents dogfood evidence.
 
 Smoke:
 

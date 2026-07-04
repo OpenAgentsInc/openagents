@@ -386,6 +386,93 @@ describe('business pipeline queue routes', () => {
     )
   })
 
+  test('accepts quoted Reactor Assessment rows from the RX-8 model-custody source ref', async () => {
+    const db = makeDb()
+
+    const create = await runRoute(
+      db,
+      operatorRequest('/api/operator/business/pipeline', {
+        body: JSON.stringify({
+          ownerRole: 'operator',
+          pipelineRef: 'biz-pipe-2026w27-model-custody-001',
+          quotedBandLabel: 'Reactor Assessment',
+          quotedMaxUsdCents: 1_500_000,
+          quotedMinUsdCents: 750_000,
+          receiptRefs: ['receipt.business.model_custody_intake.001'],
+          sourceRef: 'apollo_model_custody',
+          vertical: 'regulated legal',
+        }),
+        method: 'POST',
+      }),
+    )
+    expect(create.status).toBe(201)
+    expect(await create.json()).toMatchObject({
+      row: {
+        pipelineRef: 'biz-pipe-2026w27-model-custody-001',
+        provenanceLabel: 'direct',
+        quotedBand: {
+          label: 'Reactor Assessment',
+          maxUsdCents: 1_500_000,
+          minUsdCents: 750_000,
+        },
+        sourceRef: 'apollo_model_custody',
+      },
+    })
+
+    const advance = await runRoute(
+      db,
+      operatorRequest(
+        '/api/operator/business/pipeline/biz-pipe-2026w27-model-custody-001/advance',
+        {
+          body: JSON.stringify({
+            receiptRef: 'receipt.business.model_custody_scope_scheduled.001',
+            stage: 'scope_scheduled',
+          }),
+          method: 'POST',
+        },
+      ),
+    )
+    expect(advance.status).toBe(200)
+
+    const metrics = await runRoute(
+      db,
+      operatorRequest('/api/operator/business/pipeline/metrics'),
+    )
+    const body = await metrics.json() as {
+      qualifiedPipeline: {
+        maxUsdCents: number
+        minUsdCents: number
+        status: string
+      }
+      sourceRefBreakdown: ReadonlyArray<{
+        qualifiedPipeline: {
+          maxUsdCents: number
+          minUsdCents: number
+          status: string
+        }
+        rowCount: number
+        sourceRef: string
+      }>
+    }
+
+    expect(body.qualifiedPipeline).toMatchObject({
+      maxUsdCents: 1_500_000,
+      minUsdCents: 750_000,
+      status: 'measured',
+    })
+    expect(body.sourceRefBreakdown).toContainEqual({
+      qualifiedPipeline: expect.objectContaining({
+        maxUsdCents: 1_500_000,
+        minUsdCents: 750_000,
+        status: 'measured',
+      }),
+      rates: expect.any(Object),
+      rowCount: 1,
+      sourceRef: 'apollo_model_custody',
+      stageCounts: expect.any(Array),
+    })
+  })
+
   test('rejects private prospect fields and receipt-less stage transitions', async () => {
     const db = makeDb()
 

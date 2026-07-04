@@ -79,6 +79,12 @@ the provenance catalog and policy resolver while keeping those records planned.
 RX-3 (#8273) then added the lane-neutral serving skeleton, Hydralisk fixture
 profile, policy-refusing provision/router smoke, and exact local metering
 receipt shape while still leaving live Reactor deployment planned.
+RX-7 (#8280) is now closed as gated/deferred for the code epic, not delivered:
+the remaining first-customer-pilot gates are owner approval, per-deal pricing,
+customer-signed `reactor.model_policy.v1`, customer-controlled install refs,
+and paid Reactor receipt planning. The closeout doc is
+`docs/fable/2026-07-04-rx-7-customer-pilot-gated-closeout.md`; no registry
+state or public copy changes.
 The one current-plan record still missing at the time of this audit was
 `autopilot.lead_gen.v1` - deliberately left to LG-7 (#8268), whose scope
 already included it.
@@ -156,6 +162,55 @@ tokens, and a deliberate Qwen refresh refused by policy revalidation. This
 clears dogfood proof only; customer premises deployment, customer data custody,
 need-to-know access, full eval coverage, owner-approved pricing/copy,
 compliance, payout, and settlement remain blocked.
+
+RX-9 note (2026-07-04): the Reactor need-to-know access layer landed as
+source-level contracts and adversarial fixtures in `packages/reactor-contracts`
+plus `apps/openagents.com/workers/api/src/reactor-need-to-know-access.test.ts`
+in the deploy sweep. The guard is deny-by-default, applies hard
+workspace/matter/role-or-user scope before the model-oracle plausibility pass,
+receipts decisions without raw document or generated summary logs, and proves
+Bob cannot see Alice through citations or summaries. This clears only the
+fixture-level access blocker; customer premises deployment, customer data
+custody, external pilot, full eval coverage, owner-approved copy, compliance,
+payout, and settlement remain blocked.
+
+RX-10 note (2026-07-04): the Reactor Data Liberation lane landed as
+machinery-only contracts and synthetic fixtures in `packages/reactor-contracts`
+plus `apps/openagents.com/workers/api/src/reactor-data-liberation.test.ts` in
+the deploy sweep. The new adapter/report records model per-vendor export
+config, schema-mapped transforms, customer-controlled open-store refs, and
+verification receipts with counts, checksums, failed row refs, partial row
+refs, and spot-diff hashes. A generic CSV/API SaaS fixture passes; a
+Salesforce-contact-shaped fixture reports partial when one synthetic row is
+missing required `Email`. This clears only the fixture-level
+adapter/verification blocker; customer migrations, customer data custody,
+package copy, pricing, external pilot, compliance, payout, and settlement
+remain blocked.
+
+RX-11 note (2026-07-04): the Reactor improvement ladder landed as a design doc
+and internal dogfood receipts in `packages/reactor-contracts`, plus
+`apps/openagents.com/workers/api/src/reactor-improvement-ladder.test.ts` in the
+deploy sweep. The ladder is ordered harness evolution -> distill-to-fit ->
+flywheel training, with customer consent, customer boundary, dataset snapshot,
+run ref, eval delta, and customer-owned weights required before customer data
+can be used. The internal harness-evolution receipt records a Psionic/Mutalisk
+deliverable-landing mechanism with +16.70 points and no weight changes; the
+distill-to-fit receipt records quality -1.20 points, cost -58.10%, policy
+revalidation, and an RX-3 router gate pass with route swap still unauthorized.
+This clears only the design/internal-dogfood receipt blocker; customer flywheel
+training, customer datasets, customer-owned weights, route swaps, public
+capability copy, pricing, external pilot, compliance, payout, and settlement
+remain blocked.
+
+RX-8 note (2026-07-04): the model-custody Lead Gen segment landed as
+configuration and tests only. `@openagentsinc/agent-readiness` now has a
+public-only model-custody analyzer config/report shape; the Worker accepts
+`sourceRef=apollo_model_custody`, registers a Campaign B LG-7 customer config,
+ships a claim-lint-clean regulated Reactor Assessment template variant, and
+tests quoted Reactor Assessment rows in the LG-2 pipeline. This clears only
+the config/template/pipeline blocker; live customer runs, Apollo sends,
+customer-result receipts, public pricing, compliance/custody claims, payout,
+settlement, and green promotion remain blocked.
 
 ## 3. The focus: closing the revenue loop, independence-first
 

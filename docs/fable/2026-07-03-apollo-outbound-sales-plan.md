@@ -570,6 +570,16 @@ conversations. Every quoted rung lands in LG-2 as pipeline with amounts —
 one accepted Campaign-B conversation can carry the whole $25k target by
 itself.
 
+Implementation status (#8281, 2026-07-04): RX-8 now has a typed
+model-custody analyzer config in `@openagentsinc/agent-readiness`, a
+claim-lint-clean regulated Reactor Assessment template variant, an LG-7
+customer config for the Campaign B segment, and LG-2 pipeline coverage for
+`sourceRef=apollo_model_custody`. The public-fact analyzer records only
+subprocessor/DPA, AI-feature/privacy, and careers/tech-stack signals from
+public URLs and never stores raw prospect page bodies or infers customer data
+movement. Live sends, customer results, pricing, and owner public-copy approval
+remain gated.
+
 ## 12. Owner actions (staged in NEEDS_OWNER.md; nothing here stalls the loop)
 
 1. **Approve the email template family + call script** (Campaign A) — one

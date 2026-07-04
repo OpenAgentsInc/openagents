@@ -10,6 +10,12 @@ export const AGENT_READINESS_BATCH_SCHEMA_VERSION =
   "openagents.agent_readiness_batch.v1" as const
 export const AGENT_READINESS_REPORT_RENDER_SCHEMA_VERSION =
   "openagents.agent_readiness_report_render.v1" as const
+export const MODEL_CUSTODY_ANALYZER_CONFIG_SCHEMA_VERSION =
+  "openagents.model_custody_analyzer_config.v1" as const
+export const MODEL_CUSTODY_FINDING_SCHEMA_VERSION =
+  "openagents.model_custody_finding.v1" as const
+export const MODEL_CUSTODY_REPORT_SCHEMA_VERSION =
+  "openagents.model_custody_report.v1" as const
 
 export const AgentReadinessSeverity = S.Literals([
   "critical",
@@ -186,6 +192,88 @@ export const AgentReadinessReportRender = S.Struct({
 export type AgentReadinessReportRender =
   typeof AgentReadinessReportRender.Type
 
+export const ModelCustodyProbeKind = S.Literals([
+  "ai_feature_disclosure",
+  "careers_tech_stack",
+  "privacy_training_terms",
+  "subprocessors_dpa",
+])
+export type ModelCustodyProbeKind = typeof ModelCustodyProbeKind.Type
+
+export const ModelCustodyFindingCode = S.Literals([
+  "ai_feature_data_use_disclosed",
+  "frontier_lab_stack_hiring_signal",
+  "frontier_lab_subprocessor_named",
+  "privacy_training_terms_published",
+  "target_disallowed",
+])
+export type ModelCustodyFindingCode = typeof ModelCustodyFindingCode.Type
+
+export const ModelCustodyPublicProbe = S.Struct({
+  id: S.String,
+  kind: ModelCustodyProbeKind,
+  path: S.String,
+  required: S.Boolean,
+})
+export type ModelCustodyPublicProbe = typeof ModelCustodyPublicProbe.Type
+
+export const ModelCustodyAnalyzerConfig = S.Struct({
+  schemaVersion: S.Literal(MODEL_CUSTODY_ANALYZER_CONFIG_SCHEMA_VERSION),
+  analyzerRef: S.Literal("@openagentsinc/agent-readiness/model-custody.v1"),
+  campaignRef: S.Literal("campaign.own_your_ai"),
+  disallowedClaimRefs: S.Array(S.String),
+  dossierFormatRef: S.Literal("dossier.model_custody.public_facts.v1"),
+  evidenceBoundary: S.Struct({
+    publicUrlsOnly: S.Literal(true),
+    rawPageBodiesStored: S.Literal(false),
+    speculationAllowed: S.Literal(false),
+  }),
+  probes: S.Array(ModelCustodyPublicProbe),
+  sourceRef: S.Literal("apollo_model_custody"),
+  sourceRefs: S.Array(S.String),
+})
+export type ModelCustodyAnalyzerConfig =
+  typeof ModelCustodyAnalyzerConfig.Type
+
+export const ModelCustodyFinding = S.Struct({
+  schemaVersion: S.Literal(MODEL_CUSTODY_FINDING_SCHEMA_VERSION),
+  code: ModelCustodyFindingCode,
+  domain: S.String,
+  evidence: S.Array(AgentReadinessEvidence),
+  evidenceRefs: S.Array(S.String),
+  factuality: S.Literal("public_surface_only"),
+  findingRef: S.String,
+  inferenceBoundary: S.String,
+  kind: ModelCustodyProbeKind,
+  matchedPublicTerms: S.Array(S.String),
+  observedAt: S.String,
+  publicStatement: S.String,
+  severity: AgentReadinessSeverity,
+  speculationAllowed: S.Literal(false),
+  title: S.String,
+})
+export type ModelCustodyFinding = typeof ModelCustodyFinding.Type
+
+export const ModelCustodyReport = S.Struct({
+  schemaVersion: S.Literal(MODEL_CUSTODY_REPORT_SCHEMA_VERSION),
+  analyzerConfigRef: S.Literal(
+    "@openagentsinc/agent-readiness/model-custody.v1",
+  ),
+  baseUrl: S.String,
+  domain: S.String,
+  findings: S.Array(ModelCustodyFinding),
+  generatedAt: S.String,
+  sourceRef: S.Literal("apollo_model_custody"),
+  sourceRefs: S.Array(S.String),
+  status: S.Literals([
+    "blocked",
+    "no_public_signals_observed",
+    "signals_observed",
+  ]),
+  summary: S.String,
+})
+export type ModelCustodyReport = typeof ModelCustodyReport.Type
+
 export const AgentReadinessExpectedContent = S.Literals([
   "json",
   "text",
@@ -214,6 +302,81 @@ export const AgentReadinessProbeDefinition = S.Struct({
 })
 export type AgentReadinessProbeDefinition =
   typeof AgentReadinessProbeDefinition.Type
+
+export const MODEL_CUSTODY_ANALYZER_CONFIG =
+  S.decodeUnknownSync(ModelCustodyAnalyzerConfig)({
+    schemaVersion: MODEL_CUSTODY_ANALYZER_CONFIG_SCHEMA_VERSION,
+    analyzerRef: "@openagentsinc/agent-readiness/model-custody.v1",
+    campaignRef: "campaign.own_your_ai",
+    disallowedClaimRefs: [
+      "claim_lint.hipaa_sovereign",
+      "claim_lint.published_prices",
+      "claim_lint.customer_data_transfer_inferred",
+      "claim_lint.provider_training_inferred",
+    ],
+    dossierFormatRef: "dossier.model_custody.public_facts.v1",
+    evidenceBoundary: {
+      publicUrlsOnly: true,
+      rawPageBodiesStored: false,
+      speculationAllowed: false,
+    },
+    probes: [
+      {
+        id: "subprocessors",
+        kind: "subprocessors_dpa",
+        path: "/subprocessors",
+        required: false,
+      },
+      {
+        id: "legal_subprocessors",
+        kind: "subprocessors_dpa",
+        path: "/legal/subprocessors",
+        required: false,
+      },
+      {
+        id: "dpa",
+        kind: "subprocessors_dpa",
+        path: "/dpa",
+        required: false,
+      },
+      {
+        id: "privacy",
+        kind: "privacy_training_terms",
+        path: "/privacy",
+        required: false,
+      },
+      {
+        id: "ai_terms",
+        kind: "ai_feature_disclosure",
+        path: "/legal/ai-terms",
+        required: false,
+      },
+      {
+        id: "ai_features",
+        kind: "ai_feature_disclosure",
+        path: "/ai",
+        required: false,
+      },
+      {
+        id: "careers",
+        kind: "careers_tech_stack",
+        path: "/careers",
+        required: false,
+      },
+      {
+        id: "jobs",
+        kind: "careers_tech_stack",
+        path: "/jobs",
+        required: false,
+      },
+    ],
+    sourceRef: "apollo_model_custody",
+    sourceRefs: [
+      "docs/fable/2026-07-03-apollo-outbound-sales-plan.md#11-campaign-b-own-your-ai",
+      "docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md",
+      "https://github.com/OpenAgentsInc/openagents/issues/8281",
+    ],
+  })
 
 export const defaultAgentReadinessProbeSet: ReadonlyArray<AgentReadinessProbeDefinition> = [
   {
@@ -669,6 +832,257 @@ const acceptFor = (expected: AgentReadinessExpectedContent): string => {
     case "homepage_structured_data":
       return "text/html,application/xhtml+xml,*/*;q=0.2"
   }
+}
+
+export type ModelCustodyScanOptions = Readonly<{
+  fetch?: AgentReadinessFetch
+  generatedAt?: string
+  maxResponseChars?: number
+  minRequestIntervalMs?: number
+  probeSet?: ReadonlyArray<ModelCustodyPublicProbe>
+  sourceRefs?: ReadonlyArray<string>
+  timeoutMs?: number
+}>
+
+type ModelCustodyTerm = Readonly<{
+  label: string
+  pattern: RegExp
+}>
+
+const FRONTIER_LAB_TERMS: ReadonlyArray<ModelCustodyTerm> = [
+  { label: "Anthropic", pattern: /\b(anthropic|claude)\b/iu },
+  { label: "AWS Bedrock", pattern: /\b(aws bedrock|bedrock)\b/iu },
+  { label: "Azure OpenAI", pattern: /\b(azure openai)\b/iu },
+  { label: "Cohere", pattern: /\bcohere\b/iu },
+  { label: "Google Gemini", pattern: /\b(gemini|google vertex ai|vertex ai)\b/iu },
+  { label: "Mistral", pattern: /\bmistral\b/iu },
+  { label: "OpenAI", pattern: /\b(openai|chatgpt|gpt-4|gpt-5)\b/iu },
+]
+
+const AI_DISCLOSURE_TERMS: ReadonlyArray<ModelCustodyTerm> = [
+  { label: "AI assistant", pattern: /\b(ai assistant|copilot|agentic feature)\b/iu },
+  { label: "customer content", pattern: /\b(customer content|user content|prompt data|uploaded files)\b/iu },
+  { label: "foundation model", pattern: /\b(foundation model|large language model|llm)\b/iu },
+  { label: "retention", pattern: /\b(retain|retention|store prompts|stored prompts)\b/iu },
+  { label: "training", pattern: /\b(train|training|model improvement|improve models)\b/iu },
+]
+
+const uniqueMatchedTerms = (
+  body: string,
+  terms: ReadonlyArray<ModelCustodyTerm>,
+): ReadonlyArray<string> =>
+  terms
+    .filter(term => term.pattern.test(body))
+    .map(term => term.label)
+    .filter((label, index, all) => all.indexOf(label) === index)
+
+const modelCustodyTermsFor = (
+  probe: ModelCustodyPublicProbe,
+  body: string,
+): ReadonlyArray<string> => {
+  switch (probe.kind) {
+    case "careers_tech_stack":
+    case "subprocessors_dpa":
+      return uniqueMatchedTerms(body, FRONTIER_LAB_TERMS)
+    case "ai_feature_disclosure":
+    case "privacy_training_terms":
+      return [
+        ...uniqueMatchedTerms(body, FRONTIER_LAB_TERMS),
+        ...uniqueMatchedTerms(body, AI_DISCLOSURE_TERMS),
+      ].filter((label, index, all) => all.indexOf(label) === index)
+  }
+}
+
+const modelCustodyFindingShape = (
+  probe: ModelCustodyPublicProbe,
+  matchedPublicTerms: ReadonlyArray<string>,
+): Pick<
+  ModelCustodyFinding,
+  "code" | "inferenceBoundary" | "publicStatement" | "severity" | "title"
+> => {
+  const termList = matchedPublicTerms.join(", ")
+  switch (probe.kind) {
+    case "subprocessors_dpa":
+      return {
+        code: "frontier_lab_subprocessor_named",
+        inferenceBoundary:
+          "This records named public subprocessor/DPA terms only; it does not prove any customer data transfer occurred.",
+        publicStatement: `Public ${probe.path} content names model-provider terms: ${termList}.`,
+        severity: "medium",
+        title: "Public subprocessors/DPA page names model-provider terms",
+      }
+    case "privacy_training_terms":
+      return {
+        code: "privacy_training_terms_published",
+        inferenceBoundary:
+          "This records public privacy/data-use terms only; it does not infer provider training, retention, or contractual posture beyond the page text.",
+        publicStatement: `Public ${probe.path} content publishes AI/data-use posture terms: ${termList}.`,
+        severity: "medium",
+        title: "Public privacy page describes AI/data-use posture terms",
+      }
+    case "ai_feature_disclosure":
+      return {
+        code: "ai_feature_data_use_disclosed",
+        inferenceBoundary:
+          "This records public AI-feature disclosure terms only; it does not assert which customer records any provider receives.",
+        publicStatement: `Public ${probe.path} content advertises AI-feature/data-use terms: ${termList}.`,
+        severity: "medium",
+        title: "Public AI-feature page discloses AI/data-use terms",
+      }
+    case "careers_tech_stack":
+      return {
+        code: "frontier_lab_stack_hiring_signal",
+        inferenceBoundary:
+          "This records public hiring/tech-stack terms only; it is not proof that production customer data flows to that provider.",
+        publicStatement: `Public ${probe.path} content names model-provider stack terms: ${termList}.`,
+        severity: "low",
+        title: "Public careers page names model-provider stack terms",
+      }
+  }
+}
+
+const modelCustodyFindingFor = (
+  domain: string,
+  probe: ModelCustodyPublicProbe,
+  observedAt: string,
+  result: ProbeFetchResult,
+): ModelCustodyFinding | null => {
+  if (!result.ok || looksLikeSpaShell(result.body, result.contentType)) {
+    return null
+  }
+  const matchedPublicTerms = modelCustodyTermsFor(probe, result.body)
+  if (matchedPublicTerms.length === 0) return null
+  const shape = modelCustodyFindingShape(probe, matchedPublicTerms)
+  const evidence = evidenceFor(
+    {
+      id: `model_custody_${probe.id}`,
+      kind: "structured_data",
+      layer: "identity",
+      maturity: "verified",
+      points: 0,
+      path: probe.path,
+      expectedContent: "homepage_structured_data",
+      required: probe.required,
+      severity: shape.severity,
+      missingCode: "missing_structured_data",
+      missingTitle: shape.title,
+      missingImpact: shape.inferenceBoundary,
+    },
+    result,
+  )
+  return S.decodeUnknownSync(ModelCustodyFinding)({
+    schemaVersion: MODEL_CUSTODY_FINDING_SCHEMA_VERSION,
+    code: shape.code,
+    domain,
+    evidence,
+    evidenceRefs: evidence.map(item => item.ref),
+    factuality: "public_surface_only",
+    findingRef: `model_custody.${safeRefPart(domain)}.${probe.id}.${shape.code}`,
+    inferenceBoundary: shape.inferenceBoundary,
+    kind: probe.kind,
+    matchedPublicTerms,
+    observedAt,
+    publicStatement: shape.publicStatement,
+    severity: shape.severity,
+    speculationAllowed: false,
+    title: shape.title,
+  })
+}
+
+export const analyzeModelCustodyPublicSurfaces = async (
+  target: string,
+  options: ModelCustodyScanOptions = {},
+): Promise<ModelCustodyReport> => {
+  const generatedAt = options.generatedAt ?? new Date().toISOString()
+  let baseUrl: URL
+  try {
+    baseUrl = normalizeAgentReadinessTarget(target)
+  } catch {
+    const domain = safeRefPart(target) || "invalid"
+    const evidence: ReadonlyArray<AgentReadinessEvidence> = [
+      {
+        ref: "model_custody.target.disallowed",
+        url: target,
+        status: null,
+        contentType: null,
+      },
+    ]
+    const finding = S.decodeUnknownSync(ModelCustodyFinding)({
+      schemaVersion: MODEL_CUSTODY_FINDING_SCHEMA_VERSION,
+      code: "target_disallowed",
+      domain,
+      evidence,
+      evidenceRefs: evidence.map(item => item.ref),
+      factuality: "public_surface_only",
+      findingRef: `model_custody.${domain}.target_disallowed`,
+      inferenceBoundary:
+        "The analyzer accepts only public http/https domains and never scans local, private, or credentialed targets.",
+      kind: "privacy_training_terms",
+      matchedPublicTerms: [],
+      observedAt: generatedAt,
+      publicStatement: "The requested target is not a public scan target.",
+      severity: "critical",
+      speculationAllowed: false,
+      title: "Target is not a public URL",
+    })
+    return S.decodeUnknownSync(ModelCustodyReport)({
+      schemaVersion: MODEL_CUSTODY_REPORT_SCHEMA_VERSION,
+      analyzerConfigRef: MODEL_CUSTODY_ANALYZER_CONFIG.analyzerRef,
+      baseUrl: target,
+      domain,
+      findings: [finding],
+      generatedAt,
+      sourceRef: MODEL_CUSTODY_ANALYZER_CONFIG.sourceRef,
+      sourceRefs: options.sourceRefs ?? MODEL_CUSTODY_ANALYZER_CONFIG.sourceRefs,
+      status: "blocked",
+      summary: finding.title,
+    })
+  }
+
+  const fetchImpl = options.fetch ?? fetch
+  const maxResponseChars = options.maxResponseChars ?? DEFAULT_MAX_RESPONSE_CHARS
+  const minRequestIntervalMs =
+    options.minRequestIntervalMs ?? DEFAULT_MIN_REQUEST_INTERVAL_MS
+  const probeSet = options.probeSet ?? MODEL_CUSTODY_ANALYZER_CONFIG.probes
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  const findings: Array<ModelCustodyFinding> = []
+  for (const probe of probeSet) {
+    const result = await fetchProbeText(probeUrl(baseUrl, probe.path), {
+      fetchImpl,
+      timeoutMs,
+      maxResponseChars,
+      userAgent: DEFAULT_USER_AGENT,
+      accept: "text/html,text/plain,application/json,*/*;q=0.2",
+    })
+    const finding = modelCustodyFindingFor(
+      baseUrl.hostname,
+      probe,
+      generatedAt,
+      result,
+    )
+    if (finding !== null) findings.push(finding)
+    await sleep(minRequestIntervalMs)
+  }
+  const status =
+    findings.length === 0 ? "no_public_signals_observed" : "signals_observed"
+  const summary =
+    findings.length === 0
+      ? "No configured model-custody public signals were observed on the scanned public paths."
+      : findings
+          .map(finding => `${finding.severity}: ${finding.title}`)
+          .join("; ")
+  return S.decodeUnknownSync(ModelCustodyReport)({
+    schemaVersion: MODEL_CUSTODY_REPORT_SCHEMA_VERSION,
+    analyzerConfigRef: MODEL_CUSTODY_ANALYZER_CONFIG.analyzerRef,
+    baseUrl: baseUrl.toString(),
+    domain: baseUrl.hostname,
+    findings,
+    generatedAt,
+    sourceRef: MODEL_CUSTODY_ANALYZER_CONFIG.sourceRef,
+    sourceRefs: options.sourceRefs ?? MODEL_CUSTODY_ANALYZER_CONFIG.sourceRefs,
+    status,
+    summary,
+  })
 }
 
 const missingFindingFor = (

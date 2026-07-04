@@ -4,10 +4,23 @@ import { Schema as S } from 'effect'
 import {
   REACTOR_AIRGAP_BUNDLE_PUBLIC_KEY_REF,
   REACTOR_AIRGAP_BUNDLE_VERIFIER_REF,
+  REACTOR_DATA_LIBERATION_ADAPTERS,
+  REACTOR_DATA_LIBERATION_FIXTURE_REPORTS,
+  REACTOR_DATA_LIBERATION_SYNTHETIC_EXPORTS,
+  REACTOR_DOGFOOD_DISTILL_TO_FIT_RECEIPT,
+  REACTOR_DOGFOOD_HARNESS_EVOLUTION_RECEIPT,
   REACTOR_EVAL_COVERAGE_MATRIX_SEED,
   REACTOR_EVAL_TASK_CLASS_REFS,
   REACTOR_EXAMPLE_POLICIES,
   REACTOR_HARDWARE_TIER_SPECS,
+  REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS,
+  REACTOR_NEED_TO_KNOW_ADVERSARIAL_ORACLES,
+  REACTOR_NEED_TO_KNOW_ADVERSARIAL_RECEIPTS,
+  REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS,
+  REACTOR_NEED_TO_KNOW_BROKEN_ALLOW_ALL_RULESET_FIXTURE,
+  REACTOR_NEED_TO_KNOW_RULESET_V1,
+  REACTOR_IMPROVEMENT_LADDER_DOGFOOD_RECEIPT,
+  REACTOR_IMPROVEMENT_LADDER_PLAN_RECEIPT,
   REACTOR_MODEL_EVAL_RECEIPT_SEED,
   REACTOR_MODEL_CATALOG_SEED,
   REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE,
@@ -20,10 +33,18 @@ import {
   REACTOR_SERVER_CLASS_HYDRALISK_PROFILE,
   ReactorCapabilityCopyEvalDecision,
   ReactorAirgapUpdateBundleManifest,
+  ReactorCorpusAccessDecisionReceipt,
+  ReactorDataLiberationAdapterConfig,
+  ReactorDataLiberationPipelineReport,
+  ReactorDataLiberationRecordClassVerificationReceipt,
+  ReactorDistillToFitDogfoodReceipt,
   ReactorDogfoodRunReceipt,
   ReactorEvalCoverageMatrix,
   ReactorEvalHarnessProfile,
   ReactorInstallOpsReceipt,
+  ReactorHarnessEvolutionDogfoodReceipt,
+  ReactorImprovementLadderDogfoodReceipt,
+  ReactorImprovementLadderPlanReceipt,
   ReactorLocalTokenMeteringReceipt,
   ReactorModelInstallReceipt,
   ReactorModelCatalog,
@@ -31,6 +52,7 @@ import {
   type ReactorModelCatalog as ReactorModelCatalogType,
   type ReactorModelProvenance,
   ReactorModelPolicyDecisionReceipt,
+  ReactorNeedToKnowRuleSet,
   ReactorNodeModelProfile,
   buildReactorAirgapUpdateBundleManifest,
   buildReactorDogfoodRunReceipt,
@@ -38,7 +60,9 @@ import {
   buildReactorInstallOpsReceipt,
   buildReactorLocalTokenMeteringReceipt,
   buildReactorModelEvalReceipt,
+  evaluateReactorNeedToKnowAccess,
   provisionReactorModel,
+  runReactorDataLiberationPipeline,
   routeReactorOpenAiCompatibleRequest,
   selectReactorCapabilityCopyEvalRefs,
   resolveReactorModelPolicy,
@@ -901,6 +925,429 @@ describe('Reactor dogfood run receipts', () => {
     expect(receipt.status).toBe('refused')
     expect(receipt.blockerRefs).toContain(
       'blocker.reactor.dogfood.local_metering_not_exact',
+    )
+  })
+})
+
+describe('Reactor need-to-know corpus access', () => {
+  test('allows Alice direct source retrieval only after hard rules and oracle pass', () => {
+    const receipt = S.decodeUnknownSync(ReactorCorpusAccessDecisionReceipt)(
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_RECEIPTS.aliceAllowed,
+    )
+
+    expect(receipt).toMatchObject({
+      schemaVersion: 'openagents.reactor.corpus_access_decision_receipt.v1',
+      matterRef: 'matter.reactor.fixture.alice',
+      oracleAppliedAfterHardRules: true,
+      outputMode: 'source',
+      rawDocumentContentLogged: false,
+      generatedSummaryContentLogged: false,
+      ruleSetRef: REACTOR_NEED_TO_KNOW_RULESET_V1.ruleSetRef,
+      ruleSetVersion: REACTOR_NEED_TO_KNOW_RULESET_V1.version,
+      subjectUserRef: 'user.alice',
+      workspaceRef: 'workspace.reactor.fixture.customer_one',
+    })
+    expect(receipt.selectedDocumentRefs).toEqual([
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo.documentRef,
+    ])
+    expect(receipt.selectedCitationRefs).toEqual([
+      'citation.reactor.fixture.alice.strategy_memo',
+    ])
+    expect(receipt.deniedDocumentRefs).toEqual([])
+    expect(receipt.documentDecisions[0]).toMatchObject({
+      blockerRefs: [],
+      hardDecisionStatus: 'passed',
+      oracleDecisionStatus: 'passed',
+      oracleVerdictRef:
+        REACTOR_NEED_TO_KNOW_ADVERSARIAL_ORACLES.alicePlausible.verdictRef,
+      status: 'allowed',
+    })
+  })
+
+  test('denies Bob access to Alice citations and summaries at the hard layer', () => {
+    const citationDenied =
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_RECEIPTS.bobAliceCitationDenied
+    const summaryDenied =
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_RECEIPTS.bobAliceSummaryDenied
+
+    for (const receipt of [citationDenied, summaryDenied]) {
+      expect(receipt.selectedDocumentRefs).toEqual([])
+      expect(receipt.selectedCitationRefs).toEqual([])
+      expect(receipt.deniedDocumentRefs).toEqual([
+        REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo.documentRef,
+      ])
+      expect(receipt.deniedCitationRefs).toEqual([
+        'citation.reactor.fixture.alice.strategy_memo',
+      ])
+      expect(receipt.rawDocumentContentLogged).toBe(false)
+      expect(receipt.generatedSummaryContentLogged).toBe(false)
+      expect(receipt.documentDecisions[0]).toMatchObject({
+        hardDecisionStatus: 'failed',
+        oracleDecisionStatus: 'skipped_hard_denied',
+        status: 'denied_hard_rule',
+      })
+      expect(receipt.documentDecisions[0]?.blockerRefs).toEqual(
+        expect.arrayContaining([
+          'blocker.reactor.need_to_know.matter_scope_mismatch',
+          'blocker.reactor.need_to_know.role_or_user_scope_missing',
+        ]),
+      )
+      expect(JSON.stringify(receipt)).not.toContain('Alice private strategy text')
+    }
+
+    expect(summaryDenied.documentDecisions[0]?.oracleVerdictRef).toBe(
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_ORACLES.bobAlicePlausibleButHardDenied
+        .verdictRef,
+    )
+  })
+
+  test('soft oracle can deny after hard rules pass', () => {
+    const receipt = REACTOR_NEED_TO_KNOW_ADVERSARIAL_RECEIPTS.aliceSoftDenied
+
+    expect(receipt.selectedDocumentRefs).toEqual([])
+    expect(receipt.selectedCitationRefs).toEqual([])
+    expect(receipt.deniedDocumentRefs).toEqual([
+      REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo.documentRef,
+    ])
+    expect(receipt.documentDecisions[0]).toMatchObject({
+      hardDecisionStatus: 'passed',
+      oracleDecisionStatus: 'failed',
+      oracleVerdictRef:
+        REACTOR_NEED_TO_KNOW_ADVERSARIAL_ORACLES.aliceNotNeeded.verdictRef,
+      status: 'denied_soft_oracle',
+    })
+    expect(receipt.documentDecisions[0]?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.reactor.need_to_know.oracle_not_plausible',
+        'reason.reactor.need_to_know.alice_summary_not_needed',
+      ]),
+    )
+  })
+
+  test('fails closed when a hard-allowed request lacks an oracle verdict', () => {
+    const receipt = evaluateReactorNeedToKnowAccess({
+      decidedAt: DECIDED_AT,
+      documents: [REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo],
+      receiptRef: 'reactor.corpus_access.alice.missing_oracle.denied.001',
+      request: REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS.aliceDirect,
+      ruleSet: REACTOR_NEED_TO_KNOW_RULESET_V1,
+    })
+
+    expect(receipt.selectedDocumentRefs).toEqual([])
+    expect(receipt.documentDecisions[0]).toMatchObject({
+      blockerRefs: ['blocker.reactor.need_to_know.oracle_verdict_missing'],
+      hardDecisionStatus: 'passed',
+      oracleDecisionStatus: 'failed',
+      status: 'denied_soft_oracle',
+    })
+  })
+
+  test('rejects broken allow-all rule fixtures before evaluation', () => {
+    expect(() =>
+      S.decodeUnknownSync(ReactorNeedToKnowRuleSet)(
+        REACTOR_NEED_TO_KNOW_BROKEN_ALLOW_ALL_RULESET_FIXTURE,
+      ),
+    ).toThrow()
+    expect(() =>
+      evaluateReactorNeedToKnowAccess({
+        decidedAt: DECIDED_AT,
+        documents: [
+          REACTOR_NEED_TO_KNOW_ADVERSARIAL_DOCUMENTS.aliceStrategyMemo,
+        ],
+        oracleVerdicts: [
+          REACTOR_NEED_TO_KNOW_ADVERSARIAL_ORACLES.bobAlicePlausibleButHardDenied,
+        ],
+        receiptRef: 'reactor.corpus_access.broken_allow_all.denied.001',
+        request: REACTOR_NEED_TO_KNOW_ADVERSARIAL_REQUESTS.bobAliceSummary,
+        ruleSet: REACTOR_NEED_TO_KNOW_BROKEN_ALLOW_ALL_RULESET_FIXTURE as unknown as typeof REACTOR_NEED_TO_KNOW_RULESET_V1,
+      }),
+    ).toThrow()
+  })
+})
+
+describe('Reactor data liberation pipeline receipts', () => {
+  test('decodes synthetic adapter configs and keeps customer data disallowed', () => {
+    const adapters = [
+      REACTOR_DATA_LIBERATION_ADAPTERS.genericCsvApiSaas,
+      REACTOR_DATA_LIBERATION_ADAPTERS.salesforceContactExport,
+    ].map(adapter =>
+      S.decodeUnknownSync(ReactorDataLiberationAdapterConfig)(adapter),
+    )
+
+    expect(adapters.map(adapter => adapter.adapterKind)).toEqual([
+      'generic_csv_api_saas_export',
+      'salesforce_contact_export',
+    ])
+    expect(adapters.every(adapter => adapter.customerDataAllowed === false)).toBe(
+      true,
+    )
+    expect(
+      adapters.every(
+        adapter => adapter.fixtureTruth === 'synthetic_public_fixture',
+      ),
+    ).toBe(true)
+    expect(
+      adapters.flatMap(adapter =>
+        adapter.recordClassMappings.flatMap(mapping =>
+          mapping.fieldMappings.map(field => field.mappingRef),
+        ),
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        'reactor.data_liberation.mapping.generic_contact.email',
+        'reactor.data_liberation.mapping.salesforce_contact.email',
+      ]),
+    )
+  })
+
+  test('passes a generic CSV/API SaaS fixture with counts, checksums, and spot diffs', () => {
+    const report = S.decodeUnknownSync(ReactorDataLiberationPipelineReport)(
+      REACTOR_DATA_LIBERATION_FIXTURE_REPORTS.genericCsvApiSaasPassed,
+    )
+    const receipt = S.decodeUnknownSync(
+      ReactorDataLiberationRecordClassVerificationReceipt,
+    )(report.verificationReceipts[0])
+
+    expect(report).toMatchObject({
+      status: 'passed',
+      sourceRowCount: 2,
+      loadedRowCount: 2,
+      failedRowCount: 0,
+      partialRowCount: 0,
+      customerDataLogged: false,
+      customerEngagementAuthorized: false,
+      packageCopyAuthorized: false,
+      fixtureTruth: 'synthetic_public_fixture',
+    })
+    expect(receipt).toMatchObject({
+      recordClassRef: 'crm_contact',
+      sourceRowCount: 2,
+      transformedRowCount: 2,
+      loadedRowCount: 2,
+      failedRowCount: 0,
+      status: 'passed',
+    })
+    expect(receipt.sourceChecksum).toMatch(/^fnv1a32:/)
+    expect(receipt.loadedChecksum).toMatch(/^fnv1a32:/)
+    expect(receipt.spotDiffSamples).toHaveLength(2)
+    expect(
+      receipt.spotDiffSamples.every(sample =>
+        sample.fieldChecks.every(field => field.matched),
+      ),
+    ).toBe(true)
+    expect(JSON.stringify(report)).not.toContain('ALICE.EXAMPLE')
+    expect(JSON.stringify(report)).not.toContain('bob.example@example.test')
+  })
+
+  test('reports partial Salesforce-style migrations without silently dropping rows', () => {
+    const report = S.decodeUnknownSync(ReactorDataLiberationPipelineReport)(
+      REACTOR_DATA_LIBERATION_FIXTURE_REPORTS.salesforceContactPartial,
+    )
+    const receipt = report.verificationReceipts[0]
+
+    expect(report).toMatchObject({
+      status: 'partial',
+      sourceRowCount: 3,
+      loadedRowCount: 2,
+      failedRowCount: 1,
+      partialRowCount: 0,
+      customerDataLogged: false,
+      fixtureTruth: 'synthetic_public_fixture',
+    })
+    expect(receipt?.failedRowRefs).toEqual([
+      'row.synthetic.salesforce.contact.003',
+    ])
+    expect(receipt?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.reactor.data_liberation.record_class_partial',
+        'reason.reactor.data_liberation.missing_required_field:Email',
+      ]),
+    )
+    expect(report.sourceRowCount).toBe(
+      report.loadedRowCount + report.failedRowCount + report.partialRowCount,
+    )
+    expect(JSON.stringify(report)).not.toContain('charlie.fixture@example.test')
+    expect(JSON.stringify(report)).not.toContain('DANA.FIXTURE')
+  })
+
+  test('uses adapter config rather than vendor forks for custom mappings', () => {
+    const baseMapping =
+      REACTOR_DATA_LIBERATION_ADAPTERS.genericCsvApiSaas.recordClassMappings[0]!
+    const report = runReactorDataLiberationPipeline({
+      adapter: {
+        ...REACTOR_DATA_LIBERATION_ADAPTERS.genericCsvApiSaas,
+        adapterRef:
+          'reactor.data_liberation.adapter.generic_csv_api_saas.renamed_fixture',
+        recordClassMappings: [
+          {
+            ...baseMapping,
+            fieldMappings: [
+              {
+                mappingRef:
+                  'reactor.data_liberation.mapping.renamed_contact.identifier',
+                required: true,
+                sourceField: 'legacy_identifier',
+                targetField: 'external_id',
+                transformRefs: ['trim'],
+              },
+              {
+                mappingRef:
+                  'reactor.data_liberation.mapping.renamed_contact.email',
+                required: true,
+                sourceField: 'mailbox',
+                targetField: 'email',
+                transformRefs: ['trim', 'lowercase'],
+              },
+            ],
+            schemaMappingRef:
+              'reactor.data_liberation.schema_mapping.renamed_contact_to_open_crm.v1',
+          },
+        ],
+      },
+      customerControlledStoreRef:
+        'customer_controlled_store.synthetic.open_crm.renamed_columns',
+      exportRows: [
+        {
+          fields: {
+            legacy_identifier: ' renamed-001 ',
+            mailbox: ' RENAMED@example.test ',
+          },
+          rowRef: 'row.synthetic.renamed.contact.001',
+          sourceRecordTypeRef: 'generic_saas.contact',
+        },
+      ],
+      generatedAt: DECIDED_AT,
+      reportRef: 'reactor.data_liberation.report.renamed_columns.001',
+    })
+
+    expect(report.status).toBe('passed')
+    expect(report.verificationReceipts[0]?.schemaMappingRef).toBe(
+      'reactor.data_liberation.schema_mapping.renamed_contact_to_open_crm.v1',
+    )
+    expect(report.verificationReceipts[0]?.spotDiffSamples[0]?.fieldChecks).toHaveLength(
+      2,
+    )
+  })
+
+  test('fixtures remain synthetic and public-safe by construction', () => {
+    const fixtureRows = [
+      ...REACTOR_DATA_LIBERATION_SYNTHETIC_EXPORTS.genericCsvApiSaasContacts,
+      ...REACTOR_DATA_LIBERATION_SYNTHETIC_EXPORTS.salesforceContacts,
+    ]
+
+    const serializedRows = JSON.stringify(fixtureRows)
+
+    expect(serializedRows).toContain('example.test')
+    expect(serializedRows).not.toMatch(/@(gmail|yahoo|outlook|hotmail)\./i)
+    expect(
+      JSON.stringify(REACTOR_DATA_LIBERATION_FIXTURE_REPORTS).includes(
+        'example.test',
+      ),
+    ).toBe(false)
+  })
+})
+
+describe('Reactor improvement ladder dogfood receipts', () => {
+  test('records the continuous-improvement design boundary before claims', () => {
+    const plan = S.decodeUnknownSync(ReactorImprovementLadderPlanReceipt)(
+      REACTOR_IMPROVEMENT_LADDER_PLAN_RECEIPT,
+    )
+
+    expect(plan.stages).toEqual([
+      'harness_evolution',
+      'distill_to_fit',
+      'flywheel_training',
+    ])
+    expect(plan.consentRequired).toBe(true)
+    expect(plan.boundaryRequirement).toBe('customer_premises_or_regulated_private')
+    expect(plan.customerWeightsOwnerRequired).toBe(true)
+    expect(plan.customerDataUsed).toBe(false)
+    expect(plan.capabilityClaimsAuthorized).toBe(false)
+    expect(plan.designDocRef).toBe(
+      'docs/fable/2026-07-04-rx-11-reactor-improvement-ladder.md',
+    )
+  })
+
+  test('records a dogfood harness-evolution receipt with one mechanism and no weight changes', () => {
+    const receipt = S.decodeUnknownSync(ReactorHarnessEvolutionDogfoodReceipt)(
+      REACTOR_DOGFOOD_HARNESS_EVOLUTION_RECEIPT,
+    )
+
+    expect(receipt).toMatchObject({
+      stage: 'harness_evolution',
+      runnerRef: 'psionic',
+      optimizerRef: 'mutalisk',
+      mechanismClass: 'deliverable_landing',
+      oneMechanismOnly: true,
+      weightChangesAllowed: false,
+      customerDataUsed: false,
+      workloadTruth: 'internal_openagents_dogfood',
+      accepted: true,
+    })
+    expect(receipt.deltaBps).toBe(
+      receipt.candidateScoreBps - receipt.baselineScoreBps,
+    )
+    expect(receipt.deltaBps).toBeGreaterThan(receipt.acceptanceThresholdBps)
+    expect(receipt.costObjectiveIncluded).toBe(true)
+    expect(receipt.transferLabels).toEqual(
+      expect.arrayContaining([
+        'transfer.code_mechanism.model_family:gpt_oss',
+        'transfer.prompt_playbook.requires_re_eval',
+      ]),
+    )
+  })
+
+  test('records a dogfood distill-to-fit receipt with measured cost and quality deltas', () => {
+    const receipt = S.decodeUnknownSync(ReactorDistillToFitDogfoodReceipt)(
+      REACTOR_DOGFOOD_DISTILL_TO_FIT_RECEIPT,
+    )
+
+    expect(receipt).toMatchObject({
+      stage: 'distill_to_fit',
+      runnerRef: 'psionic',
+      candidateModelClass: 'smaller_distilled_model',
+      policyRevalidated: true,
+      routerSwapGate: 'eval_gated_rx3_router',
+      routerSwapGateStatus: 'passed',
+      routeSwapAuthorized: false,
+      customerDataUsed: false,
+      weightsOwnerRef: 'owner.openagents',
+      acceptedForDogfood: true,
+    })
+    expect(receipt.qualityDeltaBps).toBe(
+      receipt.candidateQualityScoreBps - receipt.baselineQualityScoreBps,
+    )
+    expect(receipt.qualityDeltaBps).toBe(-120)
+    expect(receipt.costReductionBps).toBeGreaterThan(5000)
+    expect(receipt.candidateCostPer1kTokensMicrousd).toBeLessThan(
+      receipt.baselineCostPer1kTokensMicrousd,
+    )
+    expect(receipt.datasetSnapshotRef).toContain('openagents')
+    expect(receipt.inputDistributionCaptureRef).toContain('openagents')
+  })
+
+  test('keeps the aggregate dogfood receipt internal and blocked for public claims', () => {
+    const receipt = S.decodeUnknownSync(ReactorImprovementLadderDogfoodReceipt)(
+      REACTOR_IMPROVEMENT_LADDER_DOGFOOD_RECEIPT,
+    )
+
+    expect(receipt).toMatchObject({
+      status: 'completed_internal',
+      capabilityClaimsAuthorized: false,
+      externalClaimFlipAllowed: false,
+      customerDataUsed: false,
+      workloadTruth: 'internal_openagents_dogfood',
+      harnessEvolutionReceiptRef:
+        REACTOR_DOGFOOD_HARNESS_EVOLUTION_RECEIPT.receiptRef,
+      distillToFitReceiptRef: REACTOR_DOGFOOD_DISTILL_TO_FIT_RECEIPT.receiptRef,
+      planRef: REACTOR_IMPROVEMENT_LADDER_PLAN_RECEIPT.planRef,
+    })
+    expect(receipt.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.reactor.improvement_ladder.no_customer_consent_receipt',
+        'blocker.reactor.improvement_ladder.no_customer_boundary_run',
+        'blocker.reactor.improvement_ladder.public_claims_owner_approval_missing',
+      ]),
     )
   })
 })

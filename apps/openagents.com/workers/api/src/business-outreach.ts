@@ -20,6 +20,7 @@ export const BusinessOutreachSegmentRef = S.Literals([
   'agent_readiness_agency',
   'agent_readiness_marketplace',
   'agent_readiness_bitcoin',
+  'model_custody_regulated',
 ])
 export type BusinessOutreachSegmentRef = typeof BusinessOutreachSegmentRef.Type
 
@@ -348,6 +349,26 @@ export const BUSINESS_OUTREACH_TEMPLATE_VERSIONS: ReadonlyArray<BusinessOutreach
       templateVersionRef:
         'business.outreach.agent_readiness_bitcoin.report_led.v1',
     },
+    {
+      cta: 'Worth a 30-minute Own Your AI review?',
+      familyRef: BUSINESS_OUTREACH_TEMPLATE_FAMILY_REF,
+      identificationOptOut:
+        'Christopher at OpenAgents. Reply opt out and we will not follow up.',
+      offerSentence:
+        'We can turn the dossier into a Reactor Assessment: model-policy workshop, custody map, and deployment roadmap.',
+      proofPoint:
+        'Registry-true proof point: Friedberg/Mistral frames the independence problem; Reactor records stay planned until receipts support stronger copy.',
+      requiredSlots: ['auditReportRef', 'findingRefs', 'observedFact', 'pipelineRef'],
+      segmentRef: 'model_custody_regulated',
+      skeleton,
+      sourceRefs: [
+        'github:OpenAgentsInc/openagents#8281',
+        'docs/fable/2026-07-03-apollo-outbound-sales-plan.md#11-campaign-b-own-your-ai',
+        'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md',
+      ],
+      templateVersionRef:
+        'business.outreach.model_custody_regulated.reactor_assessment.v1',
+    },
   ].map(template =>
     S.decodeUnknownSync(BusinessOutreachTemplateVersion)(template),
   )
@@ -428,6 +449,12 @@ const assertPublicSafeText = (field: string, value: string): void => {
 
 const segmentFromVertical = (vertical: string): BusinessOutreachSegmentRef => {
   const normalized = vertical.toLowerCase()
+  if (
+    /\b(regulated|legal|law|health|biotech|finance|insurance|defense|manufacturing|logistics|ip-sensitive|data-rich)\b/i
+      .test(normalized)
+  ) {
+    return 'model_custody_regulated'
+  }
   if (normalized.includes('commerce')) return 'agent_readiness_ecommerce'
   if (normalized.includes('saas') || normalized.includes('api')) {
     return 'agent_readiness_saas'
