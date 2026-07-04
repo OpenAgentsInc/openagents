@@ -256,6 +256,39 @@ describe("updates server", () => {
     ])
   })
 
+  test("serves Khala Code desktop feeds on a product-specific path", async () => {
+    const server = createUpdatesServer()
+
+    server.registerDesktopUpdate(
+      "rc",
+      {
+        version: "0.1.0-rc.1",
+        artifactUrl: "https://updates.openagents.test/assets/khala-code-rc",
+        sha256: "khala-sha",
+      },
+      "khala-code-desktop",
+    )
+
+    const khalaResponse = await server.fetch(
+      new Request(
+        "https://updates.openagents.test/desktop/khala-code-desktop/rc/feed.json",
+      ),
+    )
+    const defaultResponse = await server.fetch(
+      new Request("https://updates.openagents.test/desktop/rc/feed.json"),
+    )
+
+    expect(khalaResponse.status).toBe(200)
+    expect(await khalaResponse.json()).toEqual([
+      {
+        version: "0.1.0-rc.1",
+        artifactUrl: "https://updates.openagents.test/assets/khala-code-rc",
+        sha256: "khala-sha",
+      },
+    ])
+    expect(await defaultResponse.json()).toEqual([])
+  })
+
   test("serves signed pylon feeds by channel + platform, drops yanked", async () => {
     const server = createUpdatesServer()
     const release = (version: string, extra = {}) => ({

@@ -75,9 +75,10 @@ published feed manifests is tracked in #5043 / the OTA epic #5039.)
 ## Apple Developer ID (macOS code signing / notarization)
 
 Separate from the ed25519 release key above. The **Developer ID Application**
-cert signs + notarizes the Autopilot Desktop `.app`/`.dmg` so Gatekeeper accepts
-it (#5048 / Autopilot v1.0-rc #5046). It does **not** sign Pylon CLI binaries —
-those use the ed25519 release key; headless Pylon needs no Apple signing.
+cert signs + notarizes the Autopilot Desktop and Khala Code Desktop
+`.app`/`.dmg` artifacts so Gatekeeper accepts them (#5048 / Autopilot v1.0-rc
+#5046, #8245 for Khala Code). It does **not** sign Pylon CLI binaries — those
+use the ed25519 release key; headless Pylon needs no Apple signing.
 
 - **Identity:** `Developer ID Application: OpenAgents, Inc. (HQWSG26L43)`, issued
   by Apple Developer ID CA (G2), team `HQWSG26L43`, valid 2026-06-15 → 2031.
@@ -94,6 +95,15 @@ those use the ed25519 release key; headless Pylon needs no Apple signing.
   `OA_DEVELOPER_ID_APPLICATION="Developer ID Application: OpenAgents, Inc. (HQWSG26L43)"`
   (quoted — value has spaces/parens) alongside the `ASC_API_*` notary key.
   `apps/autopilot-desktop/scripts/notarize-macos.sh` reads both.
+- **Khala Code Desktop:** run
+  `bun run --cwd clients/khala-code-desktop release:macos -- --version <version> --channel rc`
+  on the owner-controlled Mac. The script points
+  `OA_DESKTOP_APP_PATH` at `Khala Code.app`, skips Autopilot's Apple-FM bridge
+  preflight, re-creates the DMG from the stapled app, signs/notarizes/staples
+  the DMG, and stages the `desktop/khala-code-desktop/<channel>/feed.json`
+  product feed. Upload/GitHub release creation stay behind explicit owner env
+  flags and must be paired with the clean-Mac first-run smoke receipt in
+  `NEEDS_OWNER.md`.
 
 ### Backup & recovery (device loss)
 

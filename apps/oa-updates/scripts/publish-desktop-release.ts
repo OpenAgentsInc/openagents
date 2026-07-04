@@ -6,12 +6,16 @@ import { tmpdir } from "node:os"
 import { assetKeyFromBytes } from "../src/asset-store.ts"
 import {
   DEFAULT_DESKTOP_ARTIFACT_CONTENT_TYPE,
+  DEFAULT_DESKTOP_RELEASE_PRODUCT,
+  normalizeDesktopReleaseProduct,
   normalizeDesktopReleaseSeed,
   sha256Hex,
+  type DesktopReleaseProduct,
   type DesktopReleaseSeed,
 } from "../src/desktop-release.ts"
 
 type Args = {
+  readonly product: DesktopReleaseProduct
   readonly channel: string
   readonly version: string
   readonly artifact: string
@@ -47,6 +51,7 @@ async function main(): Promise<void> {
   }
 
   const release: DesktopReleaseSeed = normalizeDesktopReleaseSeed({
+    product: args.product,
     channel: args.channel,
     version: args.version,
     artifactPath,
@@ -74,7 +79,9 @@ async function main(): Promise<void> {
     `${JSON.stringify({ releases: next }, null, 2)}\n`,
   )
 
-  console.log(`desktop release ${args.version} staged for ${args.channel}`)
+  console.log(
+    `desktop release ${args.product} ${args.version} staged for ${args.channel}`,
+  )
   console.log(`artifact: ${artifactPath} sha256=${sha256Hex(artifactBytes)}`)
   if (bsdiffBytes !== undefined && bsdiffPath !== undefined) {
     console.log(
@@ -103,6 +110,9 @@ function parseArgs(argv: string[]): Args {
   }
 
   const channel = values.get("channel")
+  const product = normalizeDesktopReleaseProduct(
+    values.get("product") ?? DEFAULT_DESKTOP_RELEASE_PRODUCT,
+  )
   const version = values.get("version")
   const artifact = values.get("artifact")
   const previousVersion = values.get("previous-version")
@@ -117,6 +127,7 @@ function parseArgs(argv: string[]): Args {
   }
 
   return {
+    product,
     channel,
     version,
     artifact: resolve(artifact),
@@ -184,7 +195,7 @@ function usage(): string {
   return [
     "Usage:",
     "  bun apps/oa-updates/scripts/publish-desktop-release.ts",
-    "    --channel stable --version 1.2.0 --artifact ./AutopilotDesktop.zip",
+    "    --product autopilot-desktop --channel stable --version 1.2.0 --artifact ./AutopilotDesktop.zip",
     "    [--previous-version 1.1.0 --previous-artifact ./AutopilotDesktop-1.1.0.zip]",
     "    [--out apps/oa-updates/desktop-dist]",
   ].join("\n")

@@ -2,7 +2,12 @@ import { createHash } from "node:crypto"
 
 import type { AssetStore } from "./asset-store.ts"
 
+export type DesktopReleaseProduct =
+  | "autopilot-desktop"
+  | "khala-code-desktop"
+
 export type DesktopReleaseSeed = {
+  readonly product: DesktopReleaseProduct
   readonly channel: string
   readonly version: string
   readonly artifactPath: string
@@ -41,6 +46,12 @@ export type BuildDesktopUpdateResult = {
 
 export const DEFAULT_DESKTOP_ARTIFACT_CONTENT_TYPE = "application/zip"
 export const BSDIFF_CONTENT_TYPE = "application/octet-stream"
+export const DEFAULT_DESKTOP_RELEASE_PRODUCT: DesktopReleaseProduct =
+  "autopilot-desktop"
+export const DESKTOP_RELEASE_PRODUCTS = [
+  DEFAULT_DESKTOP_RELEASE_PRODUCT,
+  "khala-code-desktop",
+] as const satisfies readonly DesktopReleaseProduct[]
 
 export function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex")
@@ -87,6 +98,9 @@ export function normalizeDesktopReleaseSeed(value: unknown): DesktopReleaseSeed 
 
   const channel = readRequiredString(value, "channel")
   const version = readRequiredString(value, "version")
+  const product = normalizeDesktopReleaseProduct(
+    readOptionalString(value, "product") ?? DEFAULT_DESKTOP_RELEASE_PRODUCT,
+  )
   const artifactPath = readRequiredString(value, "artifactPath")
   const artifactContentType = readOptionalString(value, "artifactContentType")
   const createdAt = readOptionalString(value, "createdAt")
@@ -99,7 +113,14 @@ export function normalizeDesktopReleaseSeed(value: unknown): DesktopReleaseSeed 
     )
   }
 
+  if (channel === "stable" && isPrereleaseVersion(version)) {
+    throw new Error(
+      "Desktop stable channel must not contain prerelease versions; publish RCs to rc/canary and mark GitHub releases as prerelease",
+    )
+  }
+
   return {
+    product,
     channel,
     version,
     artifactPath,
@@ -116,6 +137,21 @@ export function sortDesktopFeed(
   return [...feed].sort((left, right) =>
     compareVersions(right.version, left.version),
   )
+}
+
+export function normalizeDesktopReleaseProduct(
+  value: string,
+): DesktopReleaseProduct {
+  const normalized = value.trim()
+  if (isDesktopReleaseProduct(normalized)) return normalized
+
+  throw new Error(
+    `Desktop release product must be one of: ${DESKTOP_RELEASE_PRODUCTS.join(", ")}`,
+  )
+}
+
+export function isPrereleaseVersion(version: string): boolean {
+  return version.includes("-")
 }
 
 function assetUrl(baseUrl: string, hash: string): string {
@@ -153,8 +189,10 @@ function readOptionalString(
 }
 
 function compareVersions(left: string, right: string): number {
-  const leftParts = versionParts(left)
-  const rightParts = versionParts(right)
+  const leftVersion = parseVersion(left)
+  const rightVersion = parseVersion(right)
+  const leftParts = leftVersion.core
+  const rightParts = rightVersion.core
   const partCount = Math.max(leftParts.length, rightParts.length)
 
   for (let index = 0; index < partCount; index += 1) {
@@ -163,7 +201,35 @@ function compareVersions(left: string, right: string): number {
     if (leftPart !== rightPart) return leftPart - rightPart
   }
 
-  return 0
+  if (leftVersion.prerelease === undefined && rightVersion.prerelease !== undefined) {
+    return 1
+  }
+
+  if (leftVersion.prerelease !== undefined && rightVersion.prerelease === undefined) {
+    return -1
+  }
+
+  if (leftVersion.prerelease === undefined && rightVersion.prerelease === undefined) {
+    return 0
+  }
+
+  return comparePrerelease(
+    leftVersion.prerelease ?? [],
+    rightVersion.prerelease ?? [],
+  )
+}
+
+function parseVersion(version: string): {
+  readonly core: number[]
+  readonly prerelease?: readonly string[]
+} {
+  const [core, prerelease] = version.split("-", 2)
+  return {
+    core: versionParts(core ?? version),
+    ...(prerelease === undefined
+      ? {}
+      : { prerelease: prerelease.split(".").filter((part) => part.length > 0) }),
+  }
 }
 
 function versionParts(version: string): number[] {
@@ -173,6 +239,38 @@ function versionParts(version: string): number[] {
   })
 }
 
+function comparePrerelease(
+  leftParts: readonly string[],
+  rightParts: readonly string[],
+): number {
+  const partCount = Math.max(leftParts.length, rightParts.length)
+
+  for (let index = 0; index < partCount; index += 1) {
+    const left = leftParts[index]
+    const right = rightParts[index]
+
+    if (left === undefined) return -1
+    if (right === undefined) return 1
+
+    const leftNumber = Number.parseInt(left, 10)
+    const rightNumber = Number.parseInt(right, 10)
+    const leftIsNumber = String(leftNumber) === left
+    const rightIsNumber = String(rightNumber) === right
+
+    if (leftIsNumber && rightIsNumber && leftNumber !== rightNumber) {
+      return leftNumber - rightNumber
+    }
+
+    if (left !== right) return left.localeCompare(right)
+  }
+
+  return 0
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function isDesktopReleaseProduct(value: string): value is DesktopReleaseProduct {
+  return DESKTOP_RELEASE_PRODUCTS.includes(value as DesktopReleaseProduct)
 }

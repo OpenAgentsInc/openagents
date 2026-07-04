@@ -102,6 +102,21 @@ More specific invariant ledgers apply inside imported apps and packages.
   payloads, and private customer data must not be committed or written into
   docs, tests, fixtures, logs, or public projections.
 
+## Desktop Release Artifact Authority
+
+- Khala Code Desktop public distribution is not a code-complete claim until the
+  owner records public-safe receipts for the signed app, notarized app, stapled
+  app, recreated/signed/notarized/stapled DMG, updates-feed upload, GitHub
+  release, and clean-Mac first-run smoke. The smoke must prove the app boots
+  from the DMG and shows the honest Codex install/login path when Codex is
+  missing or unauthenticated.
+- Khala Code Desktop releases publish only to the product-specific feed
+  `desktop/khala-code-desktop/<channel>/feed.json` and tag as
+  `khala-code-desktop-v<version>`. The legacy `/desktop/<channel>/feed.json`
+  route remains the default Autopilot Desktop lane. RC/prerelease Khala builds
+  must use the `rc` channel and GitHub `--prerelease --latest=false`; stable
+  latest eligibility is reserved for non-prerelease versions.
+
 ## Background Agent Definition Tool Authority
 
 - Harness-agnostic background agents are defined by

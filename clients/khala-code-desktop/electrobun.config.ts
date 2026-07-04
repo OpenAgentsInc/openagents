@@ -8,6 +8,9 @@ export default {
     identifier: "com.openagents.khala.code.desktop",
     version: "0.1.0",
   },
+  release: {
+    baseUrl: "https://updates.openagents.com/desktop/khala-code-desktop",
+  },
   build: {
     bun: {
       entrypoint: "src/bun/index.ts",

@@ -64,6 +64,36 @@ describe("desktop release manifests", () => {
     ).toThrow("bsdiffFromVersion and bsdiffPath together")
   })
 
+  test("defaults legacy desktop seeds to Autopilot and accepts Khala product lanes", () => {
+    expect(
+      normalizeDesktopReleaseSeed({
+        channel: "stable",
+        version: "1.2.0",
+        artifactPath: "assets/app.dmg",
+      }).product,
+    ).toBe("autopilot-desktop")
+
+    expect(
+      normalizeDesktopReleaseSeed({
+        product: "khala-code-desktop",
+        channel: "rc",
+        version: "0.1.0-rc.1",
+        artifactPath: "assets/khala-code.dmg",
+      }).product,
+    ).toBe("khala-code-desktop")
+  })
+
+  test("rejects prerelease versions from the stable desktop feed", () => {
+    expect(() =>
+      normalizeDesktopReleaseSeed({
+        product: "khala-code-desktop",
+        channel: "stable",
+        version: "0.1.0-rc.1",
+        artifactPath: "assets/khala-code.dmg",
+      }),
+    ).toThrow("stable channel must not contain prerelease")
+  })
+
   test("sorts feed entries newest first", () => {
     expect(
       sortDesktopFeed([
@@ -72,5 +102,15 @@ describe("desktop release manifests", () => {
         { version: "1.0.9", artifactUrl: "c", sha256: "c" },
       ]).map((manifest) => manifest.version),
     ).toEqual(["1.10.0", "1.2.0", "1.0.9"])
+  })
+
+  test("keeps stable releases ahead of release candidates with the same core", () => {
+    expect(
+      sortDesktopFeed([
+        { version: "1.0.0-rc.10", artifactUrl: "rc10", sha256: "rc10" },
+        { version: "1.0.0", artifactUrl: "stable", sha256: "stable" },
+        { version: "1.0.0-rc.2", artifactUrl: "rc2", sha256: "rc2" },
+      ]).map((manifest) => manifest.version),
+    ).toEqual(["1.0.0", "1.0.0-rc.10", "1.0.0-rc.2"])
   })
 })

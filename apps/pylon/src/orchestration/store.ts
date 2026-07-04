@@ -921,8 +921,6 @@ export class PylonOrchestrationStore {
         ON pylon_orchestration_dispatch_contexts(status, updated_at);
       CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_contexts_worktree
         ON pylon_orchestration_dispatch_contexts(worktree_id);
-      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_contexts_account_lane
-        ON pylon_orchestration_dispatch_contexts(account_ref_hash, lane);
       CREATE TABLE IF NOT EXISTS pylon_orchestration_dispatch_breakers (
         scope_key TEXT PRIMARY KEY,
         lane TEXT NOT NULL,
@@ -937,8 +935,6 @@ export class PylonOrchestrationStore {
         cooldown_until TEXT,
         source_digest_ref TEXT NOT NULL
       );
-      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_dispatch_breakers_lane_account
-        ON pylon_orchestration_dispatch_breakers(lane, account_ref_hash);
       CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_dispatch_breakers_cooldown
         ON pylon_orchestration_dispatch_breakers(failure_kind, cooldown_until);
       CREATE TABLE IF NOT EXISTS pylon_orchestration_runner_statuses (
@@ -1034,16 +1030,27 @@ export class PylonOrchestrationStore {
   }
 
   private ensureDispatchContextBreakerColumns(): void {
-    const columns = this.tableColumnNames("pylon_orchestration_dispatch_contexts")
-    if (!columns.has("lane")) {
+    const contextColumns = this.tableColumnNames("pylon_orchestration_dispatch_contexts")
+    if (!contextColumns.has("lane")) {
       this.db.exec("ALTER TABLE pylon_orchestration_dispatch_contexts ADD COLUMN lane TEXT")
     }
-    if (!columns.has("account_ref_hash")) {
+    if (!contextColumns.has("account_ref_hash")) {
       this.db.exec("ALTER TABLE pylon_orchestration_dispatch_contexts ADD COLUMN account_ref_hash TEXT")
     }
+
+    const breakerColumns = this.tableColumnNames("pylon_orchestration_dispatch_breakers")
+    if (!breakerColumns.has("lane")) {
+      this.db.exec("ALTER TABLE pylon_orchestration_dispatch_breakers ADD COLUMN lane TEXT NOT NULL DEFAULT 'default'")
+    }
+    if (!breakerColumns.has("account_ref_hash")) {
+      this.db.exec("ALTER TABLE pylon_orchestration_dispatch_breakers ADD COLUMN account_ref_hash TEXT")
+    }
+
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_contexts_account_lane
         ON pylon_orchestration_dispatch_contexts(account_ref_hash, lane);
+      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_dispatch_breakers_lane_account
+        ON pylon_orchestration_dispatch_breakers(lane, account_ref_hash);
     `)
   }
 

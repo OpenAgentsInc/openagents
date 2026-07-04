@@ -10,7 +10,10 @@ import {
 import { buildSignedManifestResponse } from "./signed-response.ts"
 import { createNodeRegistry, type NodeRegistration } from "./node-registry.ts"
 import {
+  DEFAULT_DESKTOP_RELEASE_PRODUCT,
+  normalizeDesktopReleaseProduct,
   sortDesktopFeed,
+  type DesktopReleaseProduct,
   type DesktopUpdateManifest,
 } from "./desktop-release.ts"
 import {
@@ -32,6 +35,7 @@ export type UpdatesServer = {
   registerDesktopUpdate: (
     channel: string,
     manifest: DesktopUpdateManifest,
+    product?: DesktopReleaseProduct,
   ) => void
   registerPylonUpdate: (manifest: PylonReleaseManifest) => void
   // Serve a large asset (e.g. a Pylon binary) straight from disk by hash,
@@ -47,6 +51,11 @@ export type UpdatesServer = {
 }
 
 const defaultPort = 3000
+
+const desktopFeedKey = (
+  product: DesktopReleaseProduct,
+  channel: string,
+): string => `${product}/${channel}`
 
 const headersFromRequest = (request: Request): Record<string, string> =>
   Object.fromEntries(request.headers.entries())
@@ -213,15 +222,42 @@ export function createUpdatesServer(
           })
         }
 
+        const productDesktopFeedMatch = url.pathname.match(
+          /^\/desktop\/([^/]+)\/([^/]+)\/feed\.json$/,
+        )
+
+        if (productDesktopFeedMatch !== null) {
+          let product: DesktopReleaseProduct
+          try {
+            product = normalizeDesktopReleaseProduct(productDesktopFeedMatch[1])
+          } catch {
+            return new Response("Unknown desktop product", { status: 404 })
+          }
+          const channel = productDesktopFeedMatch[2]
+          return jsonResponse(
+            sortDesktopFeed(desktopFeeds.get(desktopFeedKey(product, channel)) ?? []),
+            {
+              "cache-control": "no-store",
+            },
+          )
+        }
+
         const desktopFeedMatch = url.pathname.match(
           /^\/desktop\/([^/]+)\/feed\.json$/,
         )
 
         if (desktopFeedMatch !== null) {
           const channel = desktopFeedMatch[1]
-          return jsonResponse(sortDesktopFeed(desktopFeeds.get(channel) ?? []), {
-            "cache-control": "no-store",
-          })
+          return jsonResponse(
+            sortDesktopFeed(
+              desktopFeeds.get(
+                desktopFeedKey(DEFAULT_DESKTOP_RELEASE_PRODUCT, channel),
+              ) ?? [],
+            ),
+            {
+              "cache-control": "no-store",
+            },
+          )
         }
 
         // Electrobun desktop OTA artifact: /desktop/<filename> (the updater fetches
@@ -296,10 +332,11 @@ export function createUpdatesServer(
       channelToBranch.set(update.branch, update.branch)
     },
 
-    registerDesktopUpdate(channel, manifest) {
+    registerDesktopUpdate(channel, manifest, product = DEFAULT_DESKTOP_RELEASE_PRODUCT) {
       const normalizedChannel = channel.trim()
-      const current = desktopFeeds.get(normalizedChannel) ?? []
-      desktopFeeds.set(normalizedChannel, [
+      const key = desktopFeedKey(product, normalizedChannel)
+      const current = desktopFeeds.get(key) ?? []
+      desktopFeeds.set(key, [
         manifest,
         ...current.filter((candidate) => candidate.version !== manifest.version),
       ])

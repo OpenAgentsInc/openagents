@@ -46,6 +46,60 @@ const greenVerifyEvidence = (commandRef = "command.public.pylon_khala.verify.284
 })
 
 describe("Pylon supervisor orchestration store", () => {
+  test("migrates older dispatch tables before creating account-lane indexes", () => {
+    const db = new Database(":memory:")
+    db.exec(`
+      CREATE TABLE pylon_orchestration_dispatch_contexts (
+        id TEXT PRIMARY KEY,
+        assignee_handle TEXT NOT NULL,
+        runner_kind TEXT NOT NULL,
+        worktree_id TEXT,
+        worktree_path TEXT,
+        status TEXT NOT NULL,
+        current_task_id TEXT,
+        failure_count INTEGER NOT NULL DEFAULT 0,
+        last_heartbeat_at TEXT,
+        base_behind_by INTEGER NOT NULL DEFAULT 0,
+        max_concurrent_slots INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE pylon_orchestration_dispatch_breakers (
+        scope_key TEXT PRIMARY KEY,
+        failure_kind TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        blocker_refs_json TEXT NOT NULL,
+        failure_count INTEGER NOT NULL DEFAULT 1,
+        first_observed_at TEXT NOT NULL,
+        last_observed_at TEXT NOT NULL,
+        cooldown_until TEXT,
+        source_digest_ref TEXT NOT NULL
+      );
+    `)
+
+    createPylonOrchestrationStore(db)
+
+    const contextColumns = new Set(
+      (db.query("PRAGMA table_info(pylon_orchestration_dispatch_contexts)").all() as Array<{ name: string }>)
+        .map((row) => row.name),
+    )
+    const breakerColumns = new Set(
+      (db.query("PRAGMA table_info(pylon_orchestration_dispatch_breakers)").all() as Array<{ name: string }>)
+        .map((row) => row.name),
+    )
+    const indexes = new Set(
+      (db.query("SELECT name FROM sqlite_master WHERE type = 'index'").all() as Array<{ name: string }>)
+        .map((row) => row.name),
+    )
+
+    expect(contextColumns.has("account_ref_hash")).toBe(true)
+    expect(contextColumns.has("lane")).toBe(true)
+    expect(breakerColumns.has("account_ref_hash")).toBe(true)
+    expect(breakerColumns.has("lane")).toBe(true)
+    expect(indexes.has("idx_pylon_orchestration_contexts_account_lane")).toBe(true)
+    expect(indexes.has("idx_pylon_orchestration_dispatch_breakers_lane_account")).toBe(true)
+  })
+
   test("persists a dependency DAG and promotes dependents when prerequisites complete", () => {
     const store = createPylonOrchestrationStore(new Database(":memory:"))
 

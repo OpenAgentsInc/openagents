@@ -21,6 +21,7 @@ describe("desktop release seeding", () => {
           JSON.stringify({
             releases: [
               {
+                product: "khala-code-desktop",
                 channel: "stable",
                 version: "1.2.0",
                 artifactPath: "assets/app.zip",
@@ -52,9 +53,12 @@ describe("desktop release seeding", () => {
     })
 
     expect(seeded.releases).toHaveLength(1)
+    expect(seeded.releases[0]?.product).toBe("khala-code-desktop")
 
     const feedResponse = await server.fetch(
-      new Request("https://updates.openagents.test/desktop/stable/feed.json"),
+      new Request(
+        "https://updates.openagents.test/desktop/khala-code-desktop/stable/feed.json",
+      ),
     )
     const feed = await feedResponse.json() as any[]
 

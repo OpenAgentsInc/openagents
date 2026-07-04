@@ -18,6 +18,7 @@ type SeedDesktopReleasesInput = {
 
 export type SeedDesktopReleasesResult = {
   readonly releases: ReadonlyArray<{
+    readonly product: DesktopReleaseSeed["product"]
     readonly channel: string
     readonly manifest: DesktopUpdateManifest
   }>
@@ -64,8 +65,12 @@ export async function seedDesktopReleases(
       },
     })
 
-    input.server.registerDesktopUpdate(seed.channel, result.manifest)
-    releases.push({ channel: seed.channel, manifest: result.manifest })
+    input.server.registerDesktopUpdate(seed.channel, result.manifest, seed.product)
+    releases.push({
+      product: seed.product,
+      channel: seed.channel,
+      manifest: result.manifest,
+    })
   }
 
   return { releases }

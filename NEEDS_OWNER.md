@@ -35,12 +35,19 @@ Current state:
 
 - `clients/khala-code-desktop/electrobun.config.ts` names the app
   `Khala Code` with bundle id `com.openagents.khala.code.desktop`.
-- `bun run --cwd clients/khala-code-desktop build` is the unsigned Electrobun
-  build path.
-- The reusable Apple Developer ID path is documented in `docs/DEPLOYMENT.md`
-  and `apps/autopilot-desktop/scripts/notarize-macos.sh`, but the release
-  owner must confirm the Khala-specific pre-notary gate before using it for this
-  app.
+- `bun run --cwd clients/khala-code-desktop build:rc` and
+  `bun run --cwd clients/khala-code-desktop build:stable` are the unsigned
+  channel build paths.
+- `bun run --cwd clients/khala-code-desktop release:plan -- --version <version> --channel rc --artifact ./Khala-Code-<version>.dmg`
+  validates the product tag, RC/stable/latest rules, GitHub tag convention, and
+  Khala-specific updates-feed path before signing work starts.
+- `bun run --cwd clients/khala-code-desktop release:macos -- --version <version> --channel rc`
+  is the owner-run macOS lane. It reuses
+  `apps/autopilot-desktop/scripts/notarize-macos.sh` with `OA_DESKTOP_APP_PATH`
+  pointed at the Khala app, re-creates the DMG from the stapled `.app`,
+  signs/notarizes/staples the DMG, stages
+  `desktop/khala-code-desktop/<channel>/feed.json`, and refuses to upload or
+  create a GitHub release unless the owner sets the explicit release env flags.
 - No signed/notarized/stapled Khala Code DMG, owner-approved updates-feed path,
   GitHub release, or clean-Mac first-run smoke receipt is recorded here yet.
 
@@ -52,6 +59,19 @@ artifact, and record public-safe receipt refs for the clean-Mac smoke. The smoke
 must prove the app boots from the DMG and, when Codex is missing or unauthenticated,
 shows the honest `npm install -g @openai/codex` / `codex login` path without
 claiming Khala Code bundles or replaces Codex.
+
+Receipt refs required before RL-1 may be called complete:
+
+- signed app
+- notarized app
+- stapled app
+- recreated DMG from the stapled app
+- signed DMG
+- notarized DMG
+- stapled DMG
+- updates-feed upload
+- GitHub release
+- clean-Mac first-run smoke showing the missing-Codex install/login hint
 
 ## QS7 Rhys Sales Motion Owner Gate
 

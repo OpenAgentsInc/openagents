@@ -433,6 +433,15 @@ rung a receipt:
 1. **Ship the artifact.** Signed/notarized Khala Code build + one outside
    user running it → `khala_code.desktop_codex_wrapper.v1` green-candidate.
    Everything else is throttled by this.
+
+   2026-07-04 RL-1 release-lane update: the repo now has an owner-run macOS
+   release lane for this rung. `clients/khala-code-desktop` exposes
+   `release:plan` and `release:macos`; `apps/oa-updates` has a product-specific
+   `desktop/khala-code-desktop/<channel>/feed.json` path; RC versions are
+   rejected from stable/latest lanes; and `NEEDS_OWNER.md` names the receipt
+   set required before this rung can be represented as complete. The physical
+   signed/notarized/stapled DMG, feed upload, GitHub release, and clean-Mac
+   first-run proof remain owner-gated receipts, not repo claims.
 2. **Rehearse the flagship live.** One real message-triggered fleet run
    (the WS-17 "clean 2B day" is the maximal version: ≥2.0B exact
    tokens/day, ≥15 workers, zero duplicate PRs, 100% closeout coverage).

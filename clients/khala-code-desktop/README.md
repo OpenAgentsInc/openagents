@@ -32,6 +32,32 @@ under the Pylon account directory. The desktop app must not run `codex login`
 against the user's default home automatically and must not reuse the primary
 user home for worker accounts.
 
+## Release Builds
+
+Khala Code Desktop releases use the same Apple Developer ID/notary lane as
+Autopilot Desktop, but publish to the product-specific updates feed:
+
+```sh
+bun run release:plan -- --version 0.1.0-rc.1 --channel rc --artifact ./Khala-Code-0.1.0-rc.1.dmg
+bun run release:macos -- --version 0.1.0-rc.1 --channel rc
+```
+
+The release script builds the Electrobun app with `build:rc` or `build:stable`,
+reuses `apps/autopilot-desktop/scripts/notarize-macos.sh` with
+`OA_DESKTOP_APP_PATH` pointed at `Khala Code.app`, recreates the DMG from the
+stapled app, signs/notarizes/staples the DMG, and stages a
+`khala-code-desktop` feed entry. RC versions are forced onto the `rc` channel
+and GitHub prerelease path with `--latest=false`; stable latest is reserved for
+non-prerelease versions.
+
+Live upload and GitHub release creation are owner-gated. Set
+`KHALA_CODE_RELEASE_UPLOAD=1` and `KHALA_CODE_RELEASE_CREATE_GITHUB=1` only on
+an owner-controlled machine after the signing/notary/update-feed credentials
+are confirmed. The release is not complete until the owner records the signed
+app, notarized app, stapled app, recreated/signed/notarized/stapled DMG,
+updates-feed upload, GitHub release, and clean-Mac first-run smoke receipt refs
+listed in `NEEDS_OWNER.md`.
+
 ## Product Boundary
 
 The product center is: Codex owns coding-agent execution; Khala Code wraps it in
