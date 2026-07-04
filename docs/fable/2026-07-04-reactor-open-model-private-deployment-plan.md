@@ -26,8 +26,11 @@ packs), [`ROADMAP_AFTER.md`](./ROADMAP_AFTER.md) AW-0 (services engine),
 [`2026-07-03-apollo-outbound-sales-plan.md`](./2026-07-03-apollo-outbound-sales-plan.md)
 (Autopilot Lead Gen — Reactor becomes a target segment and upsell),
 `docs/transcripts/external/2026-07-03-friedberg.md` (the market thesis,
-verbatim from the buyer side), and Episode 247 (`docs/transcripts/247.md`,
-the sell-in-public revenue loop this product feeds).
+verbatim from the buyer side),
+`docs/transcripts/external/2026-07-04-mistral-ceo-enterprise-ai.md` (the
+competitor playbook this doc's §10 reads and harvests), and Episode 247
+(`docs/transcripts/247.md`, the sell-in-public revenue loop this product
+feeds).
 
 ## 0. The one-paragraph product
 
@@ -65,6 +68,13 @@ the demand we keep hearing edge-on:
    IT closet."
 3. **The timeline is now.** "Everyone… is going to walk this path over the
    next couple of months."
+4. **The competition is already selling it.** The Mistral CEO's 2026-07-04
+   post (§10) makes the same case from the vendor side — closed providers
+   "forcing data retention… gaining immense leverage on your business,"
+   with "a track record of going after their most successful customers" —
+   and packages the answer as a control plane + training platform deployed
+   on customer infrastructure. The category is being named for us; our job
+   is to sell it with receipts.
 
 Our own corpus already carries the same signal from real buyers: the legal
 design partner's first ask was a private pre-drafting workspace **on compute
@@ -156,6 +166,8 @@ Customer premises / customer-controlled cloud
 │  OpenAI-compatible gateway + router                          │
 │    └─ policy-enforced model selection             [planned] │
 │  corpus store + redaction at boundary (BF-3.1/3.2)[planned] │
+│  need-to-know access layer (hard rules + model    [planned] │
+│    oracles; per-user scoped retrieval — §10 item 3)              │
 │  workroom sidecar / lifecycle hooks (BF-3.4 shape)[spec]    │
 │  metering → usage receipts (resource_usage_receipt.v1)      │
 │    └─ receipts flow OUT; raw data NEVER does     [pattern]  │
@@ -195,7 +207,8 @@ Reality check on the substrate (what this leans on vs invents):
 | **Reactor Assessment** (quick win) | Workload + data-custody audit, model-policy workshop (their provenance constraints become a signed `model_policy.v1`), hardware spec, pilot plan. Fixed scope, days. | $2.5–7.5k |
 | **Reactor Pilot** | One node installed (their hardware or ours-specced), policy-conforming model set served, one real workload (e.g. the pre-drafting workspace pattern) grounded on their corpus behind their firewall, before/after receipts | $10–25k |
 | **Reactor Managed** (retainer) | Ops, upgrades, model refreshes within policy, eval regressions on their tasks, metering/KPI reporting, fulfillment-agent lanes on top | $2.5–10k/mo |
-| **Fine-tune add-on** (later) | Per-customer adaptation on their corpus, trained inside their boundary or on the BF-3.4 regulated-private lane — the Friedberg "medium hub" tier | quoted |
+| **Data Liberation** (quick win, standalone or bundled) | Migrate the customer's records out of walled-garden vendors into open, AI-accessible systems they control — the Mistral-named precondition ("your software vendors might block you… AI fortunately allows you to migrate quite fast"), and exactly fleet-shaped work: schema mapping, bulk export/transform, verification receipts per record class | $2.5–10k |
+| **Fine-tune / flywheel add-on** (later) | Per-customer adaptation on their corpus and — once running — the **continuous training flywheel**: improvement from their own interaction data, inside their boundary, producing weights *they own* ("the edges of your business into AI systems your vendors and competitors cannot replicate"); includes **distill-to-fit** — shrinking models to their observed input distribution to cut serving cost | quoted |
 
 The upsell path from the rest of the portfolio is natural in both
 directions: services customers with data sensitivity graduate to Reactor;
@@ -243,6 +256,15 @@ objects, no client-identifying info in-repo). Added:
   customer lock-in is operational excellence and the policy/eval/receipt
   layer, never data hostage-taking — we are selling the *escape* from
   that model, and copying it would be fatal to the pitch.
+- **Exit-friendly by contract.** Knowledge transfer is a deliverable, not a
+  concession: runbooks, configs, and weights hand over cleanly, and the
+  engagement is designed so we *can* disappear once systems run — "the
+  switch button fully in your hand" is the posture that wins this buyer,
+  and our receipts discipline makes it verifiable rather than rhetorical.
+- **Need-to-know is enforced, not assumed.** AI retrieval over a company
+  corpus surfaces need-to-know errors mercilessly; per-user access scoping
+  (hard rules in systems, soft rules checked by model oracles) gates every
+  retrieval path before any org-wide assistant ships.
 
 ## 8. Honest gap list (what does not exist today)
 
@@ -273,6 +295,9 @@ objects, no client-identifying info in-repo). Added:
 | RX-6 | Dogfood deployment: Reactor node on our own hardware running a real internal workload under a strict policy (e.g. `us`-only) — customer number one, again | Metering + policy receipts from our own node |
 | RX-7 | First customer pilot (likely the legal design partner's stated ask), BF-3.1/3.2 gated, opaque refs only | First paid Reactor receipt |
 | RX-8 | Lead Gen segment: model-custody analyzer angle + Reactor sequence for regulated verticals | Quoted Reactor pipeline via Autopilot Lead Gen |
+| RX-9 | **Need-to-know access layer**: per-user scoped retrieval over the corpus store — typed hard access rules enforced in the system + model-oracle checks for soft rules, with an adversarial "Bob must not see Alice" fixture suite | Access-violation smoke structurally fails closed |
+| RX-10 | **Data Liberation offering**: walled-garden export/transform/verify pipeline as a packaged quick win (per-vendor adapters as config), verification receipts per migrated record class | First liberation engagement receipt |
+| RX-11 | **Flywheel + distill-to-fit design**: continuous-improvement loop on customer interaction data (their boundary, their weights, consent recorded) and input-distribution-driven model shrinking for serving-cost reduction — design + psionic eval hooks; no training claims until receipts | Design doc + first dogfood distill receipt |
 
 Sequencing: RX-1/RX-2 are paper + schemas (start now); RX-3 gates RX-5/6/7;
 RX-4 runs parallel in psionic; RX-6 (dogfood) precedes any external pilot,
@@ -280,7 +305,58 @@ per the standing pattern — we are always customer number one. BF-3.1/3.2
 (ingestion + redaction) remain the shared critical path for any regulated
 corpus touching any model, ours or theirs.
 
-## 10. Non-goals
+## 10. Competitive read: the Mistral playbook (harvested 2026-07-04)
+
+Source: `docs/transcripts/external/2026-07-04-mistral-ceo-enterprise-ai.md`
+— the Mistral CEO's enterprise-sovereignty post. Mistral is the
+best-positioned direct competitor for exactly this buyer (their answer: the
+**Studio** control plane + the **Forge** training platform — note the naming
+collision with our own Forge; keep public copy unambiguous). Their argument
+proceeds in five steps, and each one either validates a Reactor lane or
+hands us a missing one:
+
+1. **Open models or leverage** — closed providers forcing data retention
+   "see it and learn from it" and have "a track record of going after their
+   most successful customers." Validates §1; adopted as thesis signal 1.4
+   and outbound copy raw material (their CEO making our pitch is
+   third-party validation, like the Friedberg clip).
+2. **Open data systems, not just open models** — walled-garden SaaS vendors
+   can block AI access to *your own records*, and "AI fortunately allows
+   you to migrate quite fast." This was our gap: harvested as the **Data
+   Liberation** package (§5) and RX-10 — a fleet-shaped migration quick win
+   that is also the natural first engagement for a customer not yet ready
+   for a full Reactor install.
+3. **Need-to-know access control** — "you don't always want Bob to see what
+   Alice is doing"; hard rules in systems, soft rules checked by models.
+   Previously implicit in our workroom visibility tiers; now explicit as
+   the access layer in §4, an invariant in §7, and RX-9. This is a genuine
+   hard problem ("hard and merciless") and therefore a durable service
+   margin, not a commodity feature.
+4. **The continuous training flywheel** — improving the customer's AI from
+   its own interaction data, turning "the edges of your business into AI
+   systems your vendors and competitors cannot replicate," plus
+   **distill-to-fit** (shrink models to the observed input distribution to
+   cut serving cost). Harvested into the §5 flywheel add-on and RX-11. Our
+   twist is custody + receipts: the flywheel runs inside their boundary,
+   the improved weights are *theirs*, consent and training runs are
+   receipted — the same loop the Khala Code free-plan story tells, sold
+   privately with the ownership inverted to the customer.
+5. **Knowledge transfer and the exit** — "we transfer knowledge… we can
+   disappear once the systems are up and running… the switch button can be
+   fully in your hand." Adopted as the exit-friendly invariant (§7). This
+   is where we can out-credential them: they assert it; our promise
+   registry, receipts, and open-source posture let a customer *verify* it.
+
+Where we differ and should say so: Mistral sells its own models first and
+its zero-data-retention hosted tier second; Reactor is **model-neutral by
+construction** — the provenance policy (§3) treats Mistral's models as
+catalog entries like Nemotron or Llama, and neutrality is exactly what a
+"no single-vendor leverage" buyer is shopping for. Their "applied AI
+engineers working hand-in-hand" is a headcount-shaped delivery model; ours
+is the fleet + operator-minutes discipline (BF-9.4) — the same agency-trap
+falsifier applies to Reactor engagements as everywhere else.
+
+## 11. Non-goals
 
 - No HIPAA/FedRAMP/SOC2 or "sovereign" certification claims from this doc.
 - No hosted-Khala changes: `openagents/khala` stays the single hosted model
