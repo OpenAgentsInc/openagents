@@ -75,6 +75,7 @@ const createInputFromBody = (
 
   return {
     blockerRef: optionalString(body.blockerRef) ?? null,
+    businessSignupRequestId: optionalString(body.businessSignupRequestId) ?? null,
     nextActionDueAt: optionalString(body.nextActionDueAt) ?? null,
     ownerRole: (optionalString(body.ownerRole) ?? 'operator') as BusinessPipelineCreateInput['ownerRole'],
     partnerRouteFlag: optionalBoolean(body.partnerRouteFlag) ?? false,

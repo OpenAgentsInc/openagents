@@ -95,8 +95,12 @@ const makeDb = (): D1Database => {
     '0192_prefilled_workspace_invite_engagement.sql',
     '0195_private_prefilled_workspace_access.sql',
     '0216_business_signup_referral_attribution.sql',
+    '0270_business_funnel_events.sql',
     '0271_business_signup_fulfillment.sql',
     '0272_business_checkout_kickoffs.sql',
+    '0278_business_commitment_ledger.sql',
+    '0294_business_pipeline_queue.sql',
+    '0297_business_source_attribution.sql',
   ]) {
     db.exec(migration(name))
   }
@@ -124,7 +128,7 @@ describe('business checkout kickoff', () => {
         phone: '+1 555 0100',
         referralCode: null,
         requestSlackChannel: false,
-        sourceAttribution: null,
+        sourceRef: 'direct',
         website: 'https://example.com',
       },
       {

@@ -76,7 +76,7 @@ describe('business funnel dashboard', () => {
         eventRef: 'visit:content:2026-07-02',
         stage: 'visit',
         sourceKind: 'content',
-        sourceRef: 'source.public.business.content',
+        sourceRef: 'content_business_guide',
         occurredAt: '2026-07-02T16:00:00.000Z',
       },
       runtime,
@@ -86,8 +86,8 @@ describe('business funnel dashboard', () => {
       {
         eventRef: 'signup:business_signup_1',
         stage: 'signup',
-        sourceKind: 'ai_search',
-        sourceRef: 'source.public.ai_search',
+        sourceKind: 'outbound',
+        sourceRef: 'apollo_agent_readiness_a',
         occurredAt: '2026-07-02T16:05:00.000Z',
       },
       runtime,
@@ -97,8 +97,8 @@ describe('business funnel dashboard', () => {
       {
         eventRef: 'signup:business_signup_1',
         stage: 'signup',
-        sourceKind: 'ai_search',
-        sourceRef: 'source.public.ai_search',
+        sourceKind: 'outbound',
+        sourceRef: 'apollo_agent_readiness_a',
         occurredAt: '2026-07-02T16:05:00.000Z',
       },
       runtime,
@@ -117,6 +117,18 @@ describe('business funnel dashboard', () => {
         stage: string
         count: number
         sourceBreakdown: ReadonlyArray<{ sourceKind: string; count: number }>
+        sourceRefBreakdown: ReadonlyArray<{
+          sourceKind: string
+          sourceRef: string
+          count: number
+        }>
+      }>
+      sourceRefs: ReadonlyArray<{
+        sourceRef: string
+        eventCount: number
+        rates: {
+          visitToSignup: { status: string; value: number | null }
+        }
       }>
       privacyBoundary: { aggregateOnly: boolean; excludes: ReadonlyArray<string> }
       staleness: { composition: string; rebuildsOn: ReadonlyArray<string> }
@@ -137,8 +149,40 @@ describe('business funnel dashboard', () => {
     const signup = body.stages.find(stage => stage.stage === 'signup')
     expect(signup).toMatchObject({ count: 1 })
     expect(
-      signup?.sourceBreakdown.find(source => source.sourceKind === 'ai_search'),
-    ).toEqual({ sourceKind: 'ai_search', count: 1 })
+      signup?.sourceBreakdown.find(source => source.sourceKind === 'outbound'),
+    ).toEqual({ sourceKind: 'outbound', count: 1 })
+    expect(signup?.sourceRefBreakdown).toContainEqual({
+      count: 1,
+      sourceKind: 'outbound',
+      sourceRef: 'apollo_agent_readiness_a',
+    })
+    expect(body.sourceRefs).toContainEqual(
+      expect.objectContaining({
+        eventCount: 1,
+        rates: {
+          signupToSpec: {
+            denominator: 1,
+            numerator: 0,
+            status: 'measured',
+            value: 0,
+          },
+          specToPayment: {
+            denominator: 0,
+            numerator: 0,
+            status: 'not_measured',
+            value: null,
+          },
+          visitToSignup: {
+            denominator: 0,
+            numerator: 1,
+            status: 'not_measured',
+            value: null,
+          },
+        },
+        sourceKind: 'outbound',
+        sourceRef: 'apollo_agent_readiness_a',
+      }),
+    )
     expect(body.stages.map(stage => stage.stage)).toContain(
       'referred_engagement',
     )

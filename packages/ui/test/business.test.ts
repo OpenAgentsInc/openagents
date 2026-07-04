@@ -211,6 +211,9 @@ describe("business landing components", () => {
     expect(rendered).toContain(
       `name="${defaultBusinessIntakeFieldNames.referralCode}"`,
     );
+    expect(rendered).toContain(
+      `name="${defaultBusinessIntakeFieldNames.sourceRef}"`,
+    );
     expect(rendered).toContain('type="submit"');
     expect(rendered).toContain(
       "Paid runs are scoped with an explicit receipt plan.",

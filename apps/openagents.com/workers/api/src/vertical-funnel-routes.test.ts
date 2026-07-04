@@ -54,7 +54,11 @@ const migration = (name: string): string =>
 const SCHEMA = [
   '0191_business_signup_requests.sql',
   '0216_business_signup_referral_attribution.sql',
+  '0270_business_funnel_events.sql',
   '0271_business_signup_fulfillment.sql',
+  '0278_business_commitment_ledger.sql',
+  '0294_business_pipeline_queue.sql',
+  '0297_business_source_attribution.sql',
 ].map(migration)
 
 const makeDb = (): D1Database => {

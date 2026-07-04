@@ -5,6 +5,7 @@ import {
   insertBusinessSignupRequest,
   systemBusinessSignupRuntime,
 } from './business-signup-routes'
+import { businessSourceRefForVertical } from './business-source-attribution'
 import type { ResendEmailConfig } from './config'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 
@@ -323,7 +324,7 @@ const handleApplyPost = (
           phone,
           referralCode: null,
           requestSlackChannel: false,
-          sourceAttribution: `vertical:${template.slug}`,
+          sourceRef: businessSourceRefForVertical(template.slug),
           sourceRoute: template.applyRoute,
           website,
         },

@@ -224,6 +224,15 @@ declined). Sends, opens, and unanswered replies are not pipeline. Every
 row: `sourceRef=apollo_agent_readiness_<segment>`, opaque prospect ref,
 quoted band, stage, next action.
 
+Implementation status (#8267): `/business` signup and Khala intake-chat now
+accept a bounded `sourceRef` token (`direct`,
+`apollo_agent_readiness_<segment>`, `partner_expansion`,
+`affiliate_<code>`), reject raw URLs/UTMs/contact data, and write aggregate
+funnel events split by that token. BF-9.2 pipeline rows can link to the
+originating signup row by `businessSignupRequestId`; the signup row records
+the reciprocal `linkedPipelineRef`, so Apollo payback is readable from the
+sourceRef slices without joining private prospect data.
+
 The math to $25k, with audit-led relevance doing the lifting:
 
 | Funnel stage | Conservative | Good |

@@ -38,12 +38,24 @@ Every row must carry:
 - `vertical`: non-identifying descriptor such as `legal`, `agency`,
   `e-commerce`, `health`, or `internal`.
 - `sourceRef`: public-safe attribution ref, not raw UTM or private contact data.
+- `businessSignupRequestId`: optional link to the originating
+  `business_signup_requests.id`; when present, the row's `sourceRef` must match
+  the signup row.
 - `stage`: one of the queue states above.
 - `ownerRole`: role label only, such as `operator`, `reviewer`, or
   `fulfillment-agent`.
 - `nextActionDueAt`: date or `none`.
 - `blockerRef`: typed blocker or `none`.
 - `receiptRefs`: public-safe refs for the current stage receipts.
+
+Implementation status (#8267): source attribution is durable on `/business`
+signup and completed Khala intake specs. The funnel dashboard splits
+visit/signup/spec/pay counts by bounded `sourceRef` with `not_measured` rates
+when a denominator is absent. Pipeline rows store only opaque source refs and
+can reciprocally link to signup rows, allowing questions like
+`sourceRef=apollo_agent_readiness_a` payback to be answered from aggregate
+pipeline/funnel metrics without storing raw UTM strings or private prospect
+identity.
 
 ## Weekly Metrics
 

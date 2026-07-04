@@ -37,8 +37,8 @@ describe('business-new restructured page', () => {
     expect(html).toContain('href="/business/agents.md"')
     expect(html).toContain('application/ld+json')
     expect(html).toContain('Questions buyers and agents ask')
-    expect(html).toContain('source=ai-search')
-    expect(html).toContain('name="sourceAttribution"')
+    expect(html).toContain('sourceRef=ai_search')
+    expect(html).toContain('name="sourceRef"')
     expect(html).not.toContain('name="robots" content="noindex"')
     expect(html).not.toContain('/assets/index-')
   })
@@ -57,7 +57,7 @@ describe('business-new restructured page', () => {
     const body = await response.text()
     expect(body).toContain('5,500,000')
     expect(body).toContain(
-      'id="source-attribution" name="sourceAttribution" value="ai-search"',
+      'id="business-source-ref" name="sourceRef" value="ai_search"',
     )
 
     const rejected = await Effect.runPromise(
@@ -82,9 +82,9 @@ describe('business-new restructured page', () => {
 
     const body = await response.text()
     expect(body).toContain('# OpenAgents Business')
-    expect(body).toContain('https://openagents.com/business?source=ai-search')
+    expect(body).toContain('https://openagents.com/business?sourceRef=ai_search')
     expect(body).toContain('operator-assisted')
-    expect(body).toContain('source=ai-search')
+    expect(body).toContain('sourceRef=ai_search')
     expect(body).toContain('/api/public/business/funnel-dashboard')
 
     const rejected = await Effect.runPromise(

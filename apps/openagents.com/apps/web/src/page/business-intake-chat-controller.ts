@@ -133,6 +133,18 @@ const componentRow = (
   return row
 }
 
+const sourceRefFromDocument = (root: HTMLElement): string => {
+  const doc = root.ownerDocument
+  const formValue = doc
+    .querySelector<HTMLInputElement>('input[name="sourceRef"]')
+    ?.value.trim()
+  if (formValue !== undefined && formValue !== '') {
+    return formValue
+  }
+  const rootValue = root.dataset['businessSourceRef']?.trim()
+  return rootValue === undefined || rootValue === '' ? 'direct' : rootValue
+}
+
 const wireConsole = (root: HTMLElement, fetchLike: FetchLike): void => {
   const doc = root.ownerDocument
   const transcript = root.querySelector<HTMLElement>(
@@ -201,6 +213,13 @@ const wireConsole = (root: HTMLElement, fetchLike: FetchLike): void => {
       specObject.value = JSON.stringify(state.specObject)
       specObject.dispatchEvent(new Event('input', { bubbles: true }))
     }
+    const sourceRef = doc.querySelector<HTMLInputElement>(
+      'input[name="sourceRef"]',
+    )
+    if (sourceRef !== null) {
+      sourceRef.value = sourceRefFromDocument(root)
+      sourceRef.dispatchEvent(new Event('input', { bubbles: true }))
+    }
     const form = doc.getElementById('business-signup')
     if (form !== null && typeof form.scrollIntoView === 'function') {
       form.scrollIntoView({
@@ -224,7 +243,10 @@ const wireConsole = (root: HTMLElement, fetchLike: FetchLike): void => {
       const response = await fetchLike(BUSINESS_INTAKE_CHAT_ENDPOINT, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ messages: state.messages }),
+        body: JSON.stringify({
+          messages: state.messages,
+          sourceRef: sourceRefFromDocument(root),
+        }),
       })
       if (!response.ok) {
         state = applyIntakeChatFailure(state, response.status)

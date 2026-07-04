@@ -49,6 +49,11 @@ import {
   type KhalaComponentFrame,
   runComponentChannel,
 } from './inference/khala-component-channel'
+import type { BusinessFunnelEventInput } from './business-funnel-dashboard'
+import {
+  businessSourceKindForSourceRef,
+  decodeBusinessSourceRef,
+} from './business-source-attribution'
 import { isRecord, parseJsonUnknown } from './json-boundary'
 import { liveAtReadStaleness } from './public-projection-staleness'
 import {
@@ -342,6 +347,10 @@ export type BusinessIntakeChatDeps = Readonly<{
   ) => Effect.Effect<InferenceResult, InferenceAdapterError>
   // Canonical exact token-usage recording (served-tokens recorder seam).
   recordTokensServed: ServedTokensRecorder
+  // Optional aggregate funnel counter for completed typed intake specs.
+  recordFunnelEvent?:
+    | ((input: BusinessFunnelEventInput) => Effect.Effect<void, unknown>)
+    | undefined
   // Per-IP admission. Defaults to the module-level in-memory window limiter.
   rateLimit?: ((request: Request) => boolean) | undefined
   // Stable per-completion request id (idempotency for the ledger row).
@@ -353,7 +362,10 @@ export type BusinessIntakeChatDeps = Readonly<{
 // --- request decoding (fail closed, typed 400 reasons) ----------------------
 
 type DecodedMessages =
-  | Readonly<{ messages: ReadonlyArray<BusinessIntakeChatMessage> }>
+  | Readonly<{
+      messages: ReadonlyArray<BusinessIntakeChatMessage>
+      sourceRef: string
+    }>
   | Readonly<{ reason: string }>
 
 const decodeMessages = (value: unknown): DecodedMessages => {
@@ -401,7 +413,13 @@ const decodeMessages = (value: unknown): DecodedMessages => {
   if (decoded.length > 0 && decoded[0]?.role !== 'user') {
     return { reason: 'the first message must be from the user' }
   }
-  return { messages: decoded }
+  const decodedSourceRef = decodeBusinessSourceRef(
+    value['sourceRef'] ?? value['source_ref'] ?? value['source'],
+  )
+  if ('reason' in decodedSourceRef) {
+    return { reason: decodedSourceRef.reason }
+  }
+  return { messages: decoded, sourceRef: decodedSourceRef.sourceRef }
 }
 
 const safeJsonParse = (text: string): unknown => {
@@ -624,6 +642,7 @@ export const handleBusinessIntakeChatApi = (
     }
 
     const nowIso = deps.nowIso ?? currentIsoTimestamp
+    const sourceRef = decoded.sourceRef
 
     // Empty transcript: Khala's deterministic opening greeting + first
     // question. No model call, so nothing was served and nothing is recorded.
@@ -633,6 +652,7 @@ export const handleBusinessIntakeChatApi = (
         generatedAt: nowIso(),
         ok: true,
         reply: BUSINESS_INTAKE_CHAT_OPENING_REPLY,
+        sourceRef,
         spec: null,
         specObject: null,
         component: {
@@ -678,6 +698,7 @@ export const handleBusinessIntakeChatApi = (
     // the reply below returns even when the ledger write fails or dies.
     const makeRequestId =
       deps.makeRequestId ?? (() => compactRandomId('business_intake_chat'))
+    const requestId = makeRequestId()
     yield* meterServedTokensFailSoft(deps.recordTokensServed, {
       accountRef: BUSINESS_INTAKE_CHAT_ACCOUNT_REF,
       adapterId: FIREWORKS_ADAPTER_ID,
@@ -686,7 +707,7 @@ export const handleBusinessIntakeChatApi = (
         demandKind: 'internal',
         demandSource: BUSINESS_INTAKE_CHAT_DEMAND_SOURCE,
       },
-      requestId: makeRequestId(),
+      requestId,
       requestMetrics: {
         requestClass: 'interactive_stream',
         supplyLane: FIREWORKS_ADAPTER_ID,
@@ -703,14 +724,27 @@ export const handleBusinessIntakeChatApi = (
       }),
     )
     const extraction = extractBusinessIntakeSpec(componentChannel.prose)
+    const generatedAt = nowIso()
+    if (extraction.done && deps.recordFunnelEvent !== undefined) {
+      yield* deps
+        .recordFunnelEvent({
+          eventRef: `business_intake_spec:${requestId}`,
+          occurredAt: generatedAt,
+          sourceKind: businessSourceKindForSourceRef(sourceRef),
+          sourceRef,
+          stage: 'intake_spec',
+        })
+        .pipe(Effect.catch(() => Effect.void))
+    }
     return noStoreJsonResponse({
       component: componentChannel.frames[0] ?? null,
       components: componentChannel.frames,
       done: extraction.done,
-      generatedAt: nowIso(),
+      generatedAt,
       missingRequiredFields: extraction.missingRequiredFields,
       ok: true,
       reply: extraction.reply,
+      sourceRef,
       spec: extraction.spec,
       specObject: extraction.specObject,
       staleness: intakeChatStaleness,

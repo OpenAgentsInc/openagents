@@ -1,6 +1,7 @@
 import { Schema as S } from 'effect'
 
 import { BUSINESS_COMMITMENT_WEEKLY_REVIEW_REF } from './business-commitment-ledger'
+import { decodeBusinessSourceRef } from './business-source-attribution'
 import { parseJsonStringArray } from './json-boundary'
 import { liveAtReadStaleness } from './public-projection-staleness'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
@@ -59,6 +60,7 @@ export type BusinessPipelineQuotedBand = typeof BusinessPipelineQuotedBand.Type
 
 export const BusinessPipelineRow = S.Struct({
   blockerRef: S.NullOr(S.String),
+  businessSignupRequestId: S.NullOr(S.String),
   createdAt: S.String,
   nextActionDueAt: S.NullOr(S.String),
   ownerRole: BusinessPipelineOwnerRole,
@@ -106,6 +108,28 @@ export const BusinessPipelineRateMetric = S.Struct({
 })
 export type BusinessPipelineRateMetric = typeof BusinessPipelineRateMetric.Type
 
+const BusinessPipelineQualifiedPipelineMetric = S.Struct({
+  maxUsdCents: S.Number,
+  minUsdCents: S.Number,
+  qualifiedRowCount: S.Number,
+  status: BusinessPipelineMetricStatus,
+  targetUsdCents: S.Literal(2_500_000),
+})
+
+const BusinessPipelineSourceRefMetric = S.Struct({
+  qualifiedPipeline: BusinessPipelineQualifiedPipelineMetric,
+  rates: S.Struct({
+    closeRate: BusinessPipelineRateMetric,
+    intakeToScopeRate: BusinessPipelineRateMetric,
+  }),
+  rowCount: S.Number,
+  sourceRef: S.String,
+  stageCounts: S.Array(S.Struct({
+    count: S.Number,
+    stage: BusinessPipelineStage,
+  })),
+})
+
 export const BusinessPipelineMetrics = S.Struct({
   schemaVersion: S.Literal('openagents.business_pipeline_metrics.v1'),
   commitmentCoverage: S.Struct({
@@ -119,17 +143,12 @@ export const BusinessPipelineMetrics = S.Struct({
     excludes: S.Array(S.String),
     opaqueRefsOnly: S.Literal(true),
   }),
-  qualifiedPipeline: S.Struct({
-    maxUsdCents: S.Number,
-    minUsdCents: S.Number,
-    qualifiedRowCount: S.Number,
-    status: BusinessPipelineMetricStatus,
-    targetUsdCents: S.Literal(2_500_000),
-  }),
+  qualifiedPipeline: BusinessPipelineQualifiedPipelineMetric,
   rates: S.Struct({
     closeRate: BusinessPipelineRateMetric,
     intakeToScopeRate: BusinessPipelineRateMetric,
   }),
+  sourceRefBreakdown: S.Array(BusinessPipelineSourceRefMetric),
   sourceRefs: S.Array(S.String),
   stageCounts: S.Array(S.Struct({
     count: S.Number,
@@ -157,6 +176,7 @@ export class BusinessPipelineStoreError extends S.TaggedErrorClass<BusinessPipel
 
 export type BusinessPipelineCreateInput = Readonly<{
   blockerRef?: string | null
+  businessSignupRequestId?: string | null
   nextActionDueAt?: string | null
   ownerRole: BusinessPipelineOwnerRole
   partnerRouteFlag?: boolean
@@ -204,6 +224,7 @@ export const systemBusinessPipelineRuntime: BusinessPipelineRuntime = {
 
 type BusinessPipelineD1Row = Readonly<{
   blocker_ref: string | null
+  business_signup_request_id: string | null
   created_at: string
   next_action_due_at: string | null
   owner_role: BusinessPipelineOwnerRole
@@ -240,6 +261,11 @@ type StageCountRow = Readonly<{ count: number; stage: BusinessPipelineStage }>
 type PipelineCommitmentCountRow = Readonly<{
   commitment_count: number
   pipeline_ref: string
+}>
+type BusinessSignupPipelineLinkRow = Readonly<{
+  id: string
+  linked_pipeline_ref: string | null
+  source_ref: string | null
 }>
 
 const SAFE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:/=#-]{0,240}$/
@@ -342,6 +368,7 @@ const hasQuotedBand = (row: Pick<BusinessPipelineRow, 'quotedBand'>): boolean =>
 const businessPipelineRowFromD1 = (row: BusinessPipelineD1Row): BusinessPipelineRow => {
   const record: BusinessPipelineRow = {
     blockerRef: row.blocker_ref,
+    businessSignupRequestId: row.business_signup_request_id,
     createdAt: row.created_at,
     nextActionDueAt: row.next_action_due_at,
     ownerRole: S.decodeUnknownSync(BusinessPipelineOwnerRole)(row.owner_role),
@@ -369,6 +396,12 @@ const businessPipelineRowFromD1 = (row: BusinessPipelineD1Row): BusinessPipeline
   }
   if (record.blockerRef !== null) {
     assertPublicSafeRef('blockerRef', record.blockerRef)
+  }
+  if (record.businessSignupRequestId !== null) {
+    assertPublicSafeRef(
+      'businessSignupRequestId',
+      record.businessSignupRequestId,
+    )
   }
   assertPublicSafeRefs('receiptRefs', record.receiptRefs)
   normalizeQuotedBand(record.quotedBand)
@@ -444,6 +477,7 @@ const rateMetric = (
 
 const pipelineRowSelect = `SELECT
   blocker_ref,
+  business_signup_request_id,
   created_at,
   next_action_due_at,
   owner_role,
@@ -459,6 +493,87 @@ const pipelineRowSelect = `SELECT
   updated_at,
   vertical
  FROM business_pipeline_rows`
+
+const qualifiedPipelineMetric = (
+  rows: ReadonlyArray<BusinessPipelineRow>,
+) => {
+  const qualifiedRows = rows.filter(
+    row => qualifiedQuotedStages.has(row.stage) && hasQuotedBand(row),
+  )
+  return {
+    maxUsdCents: qualifiedRows.reduce(
+      (sum, row) => sum + row.quotedBand.maxUsdCents,
+      0,
+    ),
+    minUsdCents: qualifiedRows.reduce(
+      (sum, row) => sum + row.quotedBand.minUsdCents,
+      0,
+    ),
+    qualifiedRowCount: qualifiedRows.length,
+    status:
+      qualifiedRows.length === 0
+        ? ('not_measured' as const)
+        : ('measured' as const),
+    targetUsdCents: 2_500_000 as const,
+  }
+}
+
+const pipelineRates = (rows: ReadonlyArray<BusinessPipelineRow>) => {
+  const receiptDecisions = rows.filter(
+    row => row.stage === 'closed_won' || row.stage === 'closed_lost',
+  ).length
+  const scopeCompleted = rows.filter(row =>
+    ['scope_completed', 'receipt_plan_sent', 'closed_won', 'quick_win_started'].includes(
+      row.stage,
+    ),
+  ).length
+  const scopedOrBeyond = rows.filter(row =>
+    qualifiedQuotedStages.has(row.stage) || row.stage === 'closed_lost',
+  ).length
+
+  return {
+    closeRate: rateMetric(
+      rows.filter(row => row.stage === 'closed_won').length,
+      receiptDecisions,
+    ),
+    intakeToScopeRate: rateMetric(scopeCompleted, scopedOrBeyond),
+  }
+}
+
+const sourceRefBreakdown = (
+  rows: ReadonlyArray<BusinessPipelineRow>,
+): BusinessPipelineMetrics['sourceRefBreakdown'] => {
+  const rowsBySourceRef = new Map<string, Array<BusinessPipelineRow>>()
+  for (const row of rows) {
+    const existing = rowsBySourceRef.get(row.sourceRef) ?? []
+    existing.push(row)
+    rowsBySourceRef.set(row.sourceRef, existing)
+  }
+
+  return [...rowsBySourceRef.entries()]
+    .map(([sourceRef, sourceRows]) => {
+      const stageCountMap = new Map<BusinessPipelineStage, number>()
+      for (const row of sourceRows) {
+        stageCountMap.set(row.stage, (stageCountMap.get(row.stage) ?? 0) + 1)
+      }
+
+      return {
+        qualifiedPipeline: qualifiedPipelineMetric(sourceRows),
+        rates: pipelineRates(sourceRows),
+        rowCount: sourceRows.length,
+        sourceRef,
+        stageCounts: BUSINESS_PIPELINE_STAGE_ORDER.map(stage => ({
+          count: stageCountMap.get(stage) ?? 0,
+          stage,
+        })),
+      }
+    })
+    .sort((a, b) =>
+      b.rowCount === a.rowCount
+        ? a.sourceRef.localeCompare(b.sourceRef)
+        : b.rowCount - a.rowCount,
+    )
+}
 
 export type BusinessPipelineStore = Readonly<{
   appendPipelineReceiptRefs: (
@@ -537,6 +652,70 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
     return (rows.results ?? []).map(businessPipelineCommitmentFromD1)
   }
 
+  const readBusinessSignupPipelineLink = async (
+    businessSignupRequestId: string | null,
+    pipelineRef: string,
+    sourceRef: string,
+  ): Promise<BusinessSignupPipelineLinkRow | null> => {
+    if (businessSignupRequestId === null) {
+      return null
+    }
+
+    const row = await db
+      .prepare(
+        `SELECT id, source_ref, linked_pipeline_ref
+           FROM business_signup_requests
+          WHERE id = ?`,
+      )
+      .bind(businessSignupRequestId)
+      .first<BusinessSignupPipelineLinkRow>()
+
+    if (row === null) {
+      throw new BusinessPipelineStoreError({
+        kind: 'not_found',
+        reason: `business signup request not found: ${businessSignupRequestId}`,
+      })
+    }
+
+    if ((row.source_ref ?? 'direct') !== sourceRef) {
+      throw validationError(
+        'sourceRef must match linked business signup sourceRef',
+      )
+    }
+    if (
+      row.linked_pipeline_ref !== null &&
+      row.linked_pipeline_ref !== pipelineRef
+    ) {
+      throw new BusinessPipelineStoreError({
+        kind: 'conflict',
+        reason: `business signup request already linked: ${businessSignupRequestId}`,
+      })
+    }
+
+    return row
+  }
+
+  const linkBusinessSignupToPipeline = async (
+    businessSignupRequestId: string | null,
+    pipelineRef: string,
+    nowIso: string,
+  ): Promise<void> => {
+    if (businessSignupRequestId === null) {
+      return
+    }
+
+    await db
+      .prepare(
+        `UPDATE business_signup_requests
+            SET linked_pipeline_ref = ?,
+                updated_at = ?
+          WHERE id = ?
+            AND (linked_pipeline_ref IS NULL OR linked_pipeline_ref = ?)`,
+      )
+      .bind(pipelineRef, nowIso, businessSignupRequestId, pipelineRef)
+      .run()
+  }
+
   const createPipelineRow = async (
     input: BusinessPipelineCreateInput,
     runtime: BusinessPipelineRuntime = systemBusinessPipelineRuntime,
@@ -544,28 +723,41 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
     try {
       const pipelineRef = input.pipelineRef.trim()
       const vertical = input.vertical.trim().toLowerCase()
-      const sourceRef = input.sourceRef.trim()
+      const decodedSourceRef = decodeBusinessSourceRef(input.sourceRef)
+      if ('reason' in decodedSourceRef) {
+        throw validationError(decodedSourceRef.reason)
+      }
+      const sourceRef = decodedSourceRef.sourceRef
       const stage = input.stage ?? 'intake_received'
       const receiptRefs = normalizeReceiptRefs(input.receiptRefs)
       const quotedBand = normalizeQuotedBand(input.quotedBand)
       const nextActionDueAt = input.nextActionDueAt?.trim() || null
       const blockerRef = normalizeNullableRef('blockerRef', input.blockerRef)
+      const businessSignupRequestId = normalizeNullableRef(
+        'businessSignupRequestId',
+        input.businessSignupRequestId,
+      )
       const nowIso = runtime.nowIso()
 
       assertPublicSafeRef('pipelineRef', pipelineRef)
       assertPublicSafeDescriptor('vertical', vertical)
-      assertPublicSafeRef('sourceRef', sourceRef)
       if (nextActionDueAt !== null) {
         assertPublicSafeDescriptor('nextActionDueAt', nextActionDueAt)
       }
       if (stage !== 'intake_received' && receiptRefs.length === 0) {
         throw validationError('non-intake pipeline rows require at least one receipt ref')
       }
+      await readBusinessSignupPipelineLink(
+        businessSignupRequestId,
+        pipelineRef,
+        sourceRef,
+      )
 
       const result = await db
         .prepare(
           `INSERT OR IGNORE INTO business_pipeline_rows (
             pipeline_ref,
+            business_signup_request_id,
             vertical,
             source_ref,
             stage,
@@ -580,10 +772,11 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
             created_at,
             updated_at,
             stage_updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           pipelineRef,
+          businessSignupRequestId,
           vertical,
           sourceRef,
           stage,
@@ -607,6 +800,11 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
           reason: `pipeline row already exists: ${pipelineRef}`,
         })
       }
+      await linkBusinessSignupToPipeline(
+        businessSignupRequestId,
+        pipelineRef,
+        nowIso,
+      )
 
       const created = await readPipelineRow(pipelineRef)
       if (created === null) {
@@ -887,20 +1085,6 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
     const stageCountMap = new Map(
       (stageCountRows.results ?? []).map(row => [row.stage, Number(row.count)]),
     )
-    const qualifiedRows = rows.filter(
-      row => qualifiedQuotedStages.has(row.stage) && hasQuotedBand(row),
-    )
-    const receiptDecisions = rows.filter(
-      row => row.stage === 'closed_won' || row.stage === 'closed_lost',
-    ).length
-    const scopeCompleted = rows.filter(row =>
-      ['scope_completed', 'receipt_plan_sent', 'closed_won', 'quick_win_started'].includes(
-        row.stage,
-      ),
-    ).length
-    const scopedOrBeyond = rows.filter(row =>
-      qualifiedQuotedStages.has(row.stage) || row.stage === 'closed_lost',
-    ).length
 
     return S.decodeUnknownSync(BusinessPipelineMetrics)({
       schemaVersion: 'openagents.business_pipeline_metrics.v1',
@@ -922,28 +1106,12 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
         ],
         opaqueRefsOnly: true,
       },
-      qualifiedPipeline: {
-        maxUsdCents: qualifiedRows.reduce(
-          (sum, row) => sum + row.quotedBand.maxUsdCents,
-          0,
-        ),
-        minUsdCents: qualifiedRows.reduce(
-          (sum, row) => sum + row.quotedBand.minUsdCents,
-          0,
-        ),
-        qualifiedRowCount: qualifiedRows.length,
-        status: qualifiedRows.length === 0 ? 'not_measured' : 'measured',
-        targetUsdCents: 2_500_000,
-      },
-      rates: {
-        closeRate: rateMetric(
-          rows.filter(row => row.stage === 'closed_won').length,
-          receiptDecisions,
-        ),
-        intakeToScopeRate: rateMetric(scopeCompleted, scopedOrBeyond),
-      },
+      qualifiedPipeline: qualifiedPipelineMetric(rows),
+      rates: pipelineRates(rows),
+      sourceRefBreakdown: sourceRefBreakdown(rows),
       sourceRefs: [
         'github:OpenAgentsInc/openagents#8263',
+        'github:OpenAgentsInc/openagents#8267',
         'docs/fable/2026-07-03-bf-9-2-weekly-pipeline-review.md',
         'docs/fable/2026-07-03-apollo-outbound-sales-plan.md#7-pipeline-definition-and-the-25k-math-honest',
       ],
@@ -954,6 +1122,7 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
       staleness: liveAtReadStaleness([
         'business_pipeline_rows.insert',
         'business_pipeline_rows.update',
+        'business_signup_requests.update',
         'business_commitment_ledger.insert',
         'business_commitment_ledger.update',
       ]),

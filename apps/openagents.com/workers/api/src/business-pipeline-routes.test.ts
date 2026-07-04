@@ -55,9 +55,43 @@ const migration = (name: string): string =>
 
 const makeDb = (): D1Database => {
   const db = new DatabaseSync(':memory:')
+  db.exec(migration('0191_business_signup_requests.sql'))
+  db.exec(migration('0270_business_funnel_events.sql'))
   db.exec(migration('0278_business_commitment_ledger.sql'))
   db.exec(migration('0294_business_pipeline_queue.sql'))
+  db.exec(migration('0297_business_source_attribution.sql'))
   return new SqliteD1(db) as unknown as D1Database
+}
+
+const insertSignup = async (
+  db: D1Database,
+  sourceRef = 'apollo_agent_readiness_ecommerce',
+): Promise<void> => {
+  await db
+    .prepare(
+      `INSERT INTO business_signup_requests (
+        id,
+        business_name,
+        contact_email,
+        phone,
+        request_slack_channel,
+        slack_connect_status,
+        source_route,
+        source_ref,
+        created_at,
+        updated_at
+      ) VALUES (?, ?, ?, ?, 0, 'not_requested', '/business', ?, ?, ?)`,
+    )
+    .bind(
+      'business_signup_001',
+      'Example Prospect',
+      'lead@example.com',
+      '+1 555 0100',
+      sourceRef,
+      runtime.nowIso(),
+      runtime.nowIso(),
+    )
+    .run()
 }
 
 const runtime: BusinessPipelineRuntime = {
@@ -96,12 +130,14 @@ const runRoute = async (db: D1Database, request: Request): Promise<Response> => 
 describe('business pipeline queue routes', () => {
   test('creates, advances, and measures opaque pipeline rows with linked commitments', async () => {
     const db = makeDb()
+    await insertSignup(db)
 
     const create = await runRoute(
       db,
       operatorRequest('/api/operator/business/pipeline', {
         body: JSON.stringify({
           ownerRole: 'operator',
+          businessSignupRequestId: 'business_signup_001',
           partnerRouteFlag: true,
           pipelineRef: 'biz-pipe-2026w27-001',
           quotedBandLabel: 'agent-ready quick win',
@@ -117,10 +153,23 @@ describe('business pipeline queue routes', () => {
     expect(create.status).toBe(201)
     expect(await create.json()).toMatchObject({
       row: {
+        businessSignupRequestId: 'business_signup_001',
         partnerRouteFlag: true,
         pipelineRef: 'biz-pipe-2026w27-001',
         stage: 'intake_received',
       },
+    })
+    const linkedSignup = await db
+      .prepare(
+        `SELECT linked_pipeline_ref, source_ref
+           FROM business_signup_requests
+          WHERE id = ?`,
+      )
+      .bind('business_signup_001')
+      .first<Row>()
+    expect(linkedSignup).toMatchObject({
+      linked_pipeline_ref: 'biz-pipe-2026w27-001',
+      source_ref: 'apollo_agent_readiness_ecommerce',
     })
 
     const advance = await runRoute(
@@ -190,6 +239,11 @@ describe('business pipeline queue routes', () => {
         targetUsdCents: number
       }
       rates: { intakeToScopeRate: { status: string } }
+      sourceRefBreakdown: ReadonlyArray<{
+        qualifiedPipeline: { maxUsdCents: number; minUsdCents: number }
+        rowCount: number
+        sourceRef: string
+      }>
     }
 
     expect(metrics.status).toBe(200)
@@ -203,6 +257,16 @@ describe('business pipeline queue routes', () => {
     expect(body.commitmentCoverage).toMatchObject({
       linkedPipelineRowCount: 1,
       missingCommitmentDefects: [],
+    })
+    expect(body.sourceRefBreakdown).toContainEqual({
+      qualifiedPipeline: expect.objectContaining({
+        maxUsdCents: 500_000,
+        minUsdCents: 150_000,
+      }),
+      rates: expect.any(Object),
+      rowCount: 1,
+      sourceRef: 'apollo_agent_readiness_ecommerce',
+      stageCounts: expect.any(Array),
     })
     expect(JSON.stringify(body)).not.toMatch(
       /lead@example\.com|private\.example\.com|raw call note|customer name/i,

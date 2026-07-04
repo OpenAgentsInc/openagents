@@ -157,6 +157,10 @@ describe('business intake chat controller (DOM)', () => {
   test('wires the console, sends a message, renders the reply', async () => {
     document.body.innerHTML = ''
     const root = consoleDom()
+    const sourceRef = document.createElement('input')
+    sourceRef.name = 'sourceRef'
+    sourceRef.value = 'apollo_agent_readiness_a'
+    document.body.appendChild(sourceRef)
     const fetchLike = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -180,6 +184,7 @@ describe('business intake chat controller (DOM)', () => {
     expect(fetchLike).toHaveBeenCalledTimes(1)
     const [, init] = fetchLike.mock.calls[0] as [string, RequestInit]
     expect(String(init.body)).toContain('billing page rebuilt')
+    expect(String(init.body)).toContain('apollo_agent_readiness_a')
     expect(root.querySelectorAll('[data-intake-chat-row]').length).toBe(2)
     expect(root.textContent).toContain('What does your business do?')
     expect(root.querySelector('[data-intake-chat-empty]')).toBeNull()
@@ -195,7 +200,10 @@ describe('business intake chat controller (DOM)', () => {
     helpWith.name = 'helpWith'
     const intakeSpecObject = document.createElement('input')
     intakeSpecObject.name = 'intakeSpecObject'
-    form.append(helpWith, intakeSpecObject)
+    const sourceRef = document.createElement('input')
+    sourceRef.name = 'sourceRef'
+    sourceRef.value = 'apollo_agent_readiness_a'
+    form.append(helpWith, intakeSpecObject, sourceRef)
     document.body.appendChild(form)
 
     const fetchLike = vi.fn().mockResolvedValue({
@@ -236,6 +244,7 @@ describe('business intake chat controller (DOM)', () => {
 
     expect(helpWith.value).toContain('Customer Intake Spec')
     expect(intakeSpecObject.value).toContain('business_intake_spec.v1')
+    expect(sourceRef.value).toBe('apollo_agent_readiness_a')
     expect(root.textContent).toContain('Quick win: Billing page')
     expect(root.querySelector('[data-intake-chat-component="quick_win_card"]')).not.toBeNull()
     expect(input!.disabled).toBe(true)

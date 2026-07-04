@@ -15,6 +15,10 @@ import {
   type TokenUsageLedgerShape,
   makeD1TokenUsageLedger,
 } from './token-usage-ledger'
+import {
+  BUSINESS_SOURCE_REF_DIRECT,
+  decodeBusinessSourceRef,
+} from './business-source-attribution'
 
 // `/business` — the page restructured in the lander-family
 // system (site-speed lane): same server-rendered shell, shared navigation
@@ -68,24 +72,27 @@ const SOURCE_CAPTURE_SCRIPT = `
 (function(){
   try{
     var params=new URLSearchParams(window.location.search);
-    var source=(params.get("source")||params.get("utm_source")||"").trim();
-    if(!source)return;
-    if(!/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$/.test(source))return;
-    var el=document.getElementById("source-attribution");
+    var source=(params.get("sourceRef")||params.get("source_ref")||params.get("source")||"").trim().toLowerCase();
+    if(source==="ai-search"||source==="aisearch")source="ai_search";
+    if(source==="partner-expansion")source="partner_expansion";
+    if(source==="own-your-ai")source="own_your_ai";
+    if(!/^(direct|ai_search|own_your_ai|apollo_agent_readiness_[a-z0-9][a-z0-9_-]{0,63}|affiliate_[a-z0-9][a-z0-9_-]{0,63}|partner_[a-z0-9][a-z0-9_-]{0,63}|content_[a-z0-9][a-z0-9_-]{0,63}|vertical_[a-z0-9][a-z0-9_-]{0,63})$/.test(source))return;
+    var el=document.getElementById("business-source-ref");
     if(el)el.value=source;
   }catch(e){}
 })();
 `.trim()
 
-const normalizeSourceAttribution = (request: Request): string => {
+const normalizeSourceRef = (request: Request): string => {
   const url = new URL(request.url)
-  const source = (
-    url.searchParams.get('source') ??
-    url.searchParams.get('utm_source') ??
-    ''
-  ).trim()
+  const decoded = decodeBusinessSourceRef(
+    url.searchParams.get('sourceRef') ??
+      url.searchParams.get('source_ref') ??
+      url.searchParams.get('source') ??
+      BUSINESS_SOURCE_REF_DIRECT,
+  )
 
-  return /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$/.test(source) ? source : ''
+  return 'sourceRef' in decoded ? decoded.sourceRef : BUSINESS_SOURCE_REF_DIRECT
 }
 
 export const renderBusinessAgentGuide = (): string => `# OpenAgents Business
@@ -93,7 +100,7 @@ export const renderBusinessAgentGuide = (): string => `# OpenAgents Business
 OpenAgents Business is the operator-assisted path for hiring agents to do
 bounded, reviewable work.
 
-Canonical human page: https://openagents.com/business?source=ai-search
+Canonical human page: https://openagents.com/business?sourceRef=ai_search
 
 ## What can OpenAgents Business do today?
 
@@ -110,14 +117,14 @@ surface says so.
 
 ## What should an interested buyer do?
 
-Send a short intake at https://openagents.com/business?source=ai-search#intake
+Send a short intake at https://openagents.com/business?sourceRef=ai_search#intake
 or start with Khala at https://openagents.com/khala. Do not paste credentials,
 private customer data, privileged matter facts, wallet material, or secrets into
 the public intake.
 
 ## How is AI-search attribution measured?
 
-The linked business URL carries source=ai-search. A converted signup records a
+The linked business URL carries sourceRef=ai_search. A converted signup records a
 coarse business-funnel source bucket under the existing BF-1.4 funnel dashboard.
 The public dashboard exposes aggregate counts only.
 
@@ -145,7 +152,7 @@ export const handleBusinessAgentGuide = (request: Request) => {
 
 export const renderBusinessNewHtml = (
   tokensServed: number | null,
-  sourceAttribution = '',
+  sourceRef: string = BUSINESS_SOURCE_REF_DIRECT,
 ): string => {
   const display = formatLanderTokens(tokensServed)
   return `<!doctype html>
@@ -213,9 +220,9 @@ ${renderLanderHeader('business', display)}
 <span class="chip assisted">BOUNDARY</span>
 </div>
 <div class="row">
-<span class="ref">source=ai-search</span>
+<span class="ref">sourceRef=ai_search</span>
 <div class="what"><strong>How does an AI answer cite this?</strong>
-<p>Use the canonical page and agent guide: <a href="/business/agents.md" style="color:var(--ink-blue)">/business/agents.md</a>. Links from AI-search answers should preserve <code>source=ai-search</code> so aggregate BF-1.4 source attribution can count converted signups.</p></div>
+<p>Use the canonical page and agent guide: <a href="/business/agents.md" style="color:var(--ink-blue)">/business/agents.md</a>. Links from AI-search answers should preserve <code>sourceRef=ai_search</code> so aggregate BF-1.4 source attribution can count converted signups.</p></div>
 <span class="chip live">MEASURED</span>
 </div>
 </div>
@@ -223,7 +230,7 @@ ${renderLanderHeader('business', display)}
 <section class="register" id="intake">
 <h2>Talk to Sales</h2>
 <form class="intake" id="intake-form" method="post" action="/api/public/business-signup">
-<input type="hidden" id="source-attribution" name="sourceAttribution" value="${sourceAttribution}">
+<input type="hidden" id="business-source-ref" name="sourceRef" value="${sourceRef}">
 <label class="check wide optin"><input type="checkbox" name="requestSlackChannel" value="true">Set up a shared Slack channel</label>
 <label><span class="lab">Business name *</span>
 <input type="text" name="businessName" required maxlength="200" autocomplete="organization"></label>
@@ -260,13 +267,13 @@ export const handleBusinessNewPage = (
   }
   const ledger =
     input.ledger ?? makeD1TokenUsageLedger(input.OPENAGENTS_DB as D1Database)
-  const sourceAttribution = normalizeSourceAttribution(request)
+  const sourceRef = normalizeSourceRef(request)
   const render = ledger.readPublicTokensServed().pipe(
     Effect.map(aggregate =>
-      renderBusinessNewHtml(aggregate.tokensServed, sourceAttribution),
+      renderBusinessNewHtml(aggregate.tokensServed, sourceRef),
     ),
     Effect.catch(() =>
-      Effect.succeed(renderBusinessNewHtml(null, sourceAttribution)),
+      Effect.succeed(renderBusinessNewHtml(null, sourceRef)),
     ),
   )
   return edgeCachedLanderHtml(request, ctx, render)

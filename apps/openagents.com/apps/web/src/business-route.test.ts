@@ -257,8 +257,11 @@ describe('business route', () => {
 
     expect(rendered).toContain('name="referralCode"')
     expect(rendered).toContain('id="business-referral-code"')
+    expect(rendered).toContain('name="sourceRef"')
+    expect(rendered).toContain('id="business-source-ref"')
     // The capture script reads ?ref= into the hidden field.
     expect(rendered).toContain("p.get('ref')")
+    expect(rendered).toContain("p.get('sourceRef')")
   })
 
   test('renders the KPI scorekeeper with baseline, live metrics, evidence, and privacy boundaries', () => {

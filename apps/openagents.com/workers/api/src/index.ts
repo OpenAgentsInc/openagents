@@ -283,6 +283,7 @@ import { makeD1BusinessPipelineStore } from './business-pipeline-queue'
 import { makeOperatorBusinessPipelineRoutes } from './business-pipeline-routes'
 import { makeD1BusinessStarterCreditStore } from './business-starter-credit'
 import { makeOperatorBusinessStarterCreditRoutes } from './business-starter-credit-routes'
+import { recordBusinessFunnelEvent } from './business-funnel-dashboard'
 import { handlePublicBusinessFunnelDashboardApi } from './business-funnel-dashboard-routes'
 import { handleBusinessIntakeChatApi } from './business-intake-chat-routes'
 import { runBusinessFulfillmentLoopScheduled } from './business-fulfillment-loop'
@@ -10926,6 +10927,12 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           }).complete(inferenceRequest),
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
         fireworksArmed: resolveSupplyLaneArming(env).fireworks,
+        recordFunnelEvent: input =>
+          Effect.promise(() =>
+            recordBusinessFunnelEvent(openAgentsDatabase(env), input).then(
+              () => undefined,
+            ),
+          ),
         recordTokensServed: makeD1ServedTokensRecorder(
           openAgentsDatabase(env),
           {

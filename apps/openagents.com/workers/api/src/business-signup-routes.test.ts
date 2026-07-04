@@ -74,6 +74,9 @@ const SCHEMA = [
   '0195_private_prefilled_workspace_access.sql',
   '0194_team_workspace_invites.sql',
   '0271_business_signup_fulfillment.sql',
+  '0278_business_commitment_ledger.sql',
+  '0294_business_pipeline_queue.sql',
+  '0297_business_source_attribution.sql',
 ].map(migration)
 
 const SUPPORT_SCHEMA = `
@@ -385,7 +388,7 @@ describe('business signup routes', () => {
     })
   })
 
-  test('records a signup-stage funnel event with coarse source attribution', async () => {
+  test('persists bounded sourceRef and records a signup-stage funnel event', async () => {
     const db = makeDb()
     const response = await run(
       new Request('https://openagents.com/api/public/business-signup', {
@@ -399,7 +402,7 @@ describe('business signup routes', () => {
           contactEmail: 'lead@example.com',
           phone: '+1 555 000 0000',
           requestSlackChannel: false,
-          sourceAttribution: 'AI-search',
+          sourceRef: 'apollo_agent_readiness_a',
         }),
       }),
       db,
@@ -407,6 +410,7 @@ describe('business signup routes', () => {
 
     expect(response.status).toBe(201)
 
+    const signup = await readBusinessSignupRequest(db, 'business_signup_1')
     const row = await db
       .prepare(
         `SELECT event_ref, stage, source_kind, source_ref
@@ -424,8 +428,79 @@ describe('business signup routes', () => {
     expect(row).toEqual({
       event_ref: 'business_signup:business_signup_1',
       stage: 'signup',
-      source_kind: 'ai_search',
-      source_ref: '/business',
+      source_kind: 'outbound',
+      source_ref: 'apollo_agent_readiness_a',
+    })
+    expect(signup?.sourceRef).toBe('apollo_agent_readiness_a')
+  })
+
+  test('defaults sourceRef to direct and rejects raw source values', async () => {
+    const db = makeDb()
+    const direct = await run(
+      new Request('https://openagents.com/api/public/business-signup', {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          businessName: 'Acme Co.',
+          contactEmail: 'lead@example.com',
+          phone: '+1 555 000 0000',
+        }),
+      }),
+      db,
+    )
+
+    expect(direct.status).toBe(201)
+    expect(await direct.json()).toMatchObject({
+      request: { sourceRef: 'direct' },
+    })
+
+    const unsafe = await run(
+      new Request('https://openagents.com/api/public/business-signup', {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          businessName: 'Acme Co.',
+          contactEmail: 'lead@example.com',
+          phone: '+1 555 000 0000',
+          sourceRef: 'https://tracking.example.com/?utm_source=apollo',
+        }),
+      }),
+      db,
+    )
+
+    expect(unsafe.status).toBe(400)
+    expect(await unsafe.json()).toEqual({
+      error: 'business_signup_validation_error',
+      reason: 'sourceRef must be a bounded public-safe token',
+    })
+
+    const unsafeSegment = await run(
+      new Request('https://openagents.com/api/public/business-signup', {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          businessName: 'Acme Co.',
+          contactEmail: 'lead@example.com',
+          phone: '+1 555 000 0000',
+          sourceRef: 'affiliate_email',
+        }),
+      }),
+      db,
+    )
+
+    expect(unsafeSegment.status).toBe(400)
+    expect(await unsafeSegment.json()).toEqual({
+      error: 'business_signup_validation_error',
+      reason: 'sourceRef must be a bounded public-safe token',
     })
   })
 

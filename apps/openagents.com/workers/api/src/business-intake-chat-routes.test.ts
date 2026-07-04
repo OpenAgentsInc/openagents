@@ -33,6 +33,7 @@ import {
   type ServedTokensRecorder,
   type ServedTokensRecorderInput,
 } from './inference/served-tokens-recorder'
+import type { BusinessFunnelEventInput } from './business-funnel-dashboard'
 
 const SERVED_MODEL = 'accounts/fireworks/models/deepseek-v4-flash'
 
@@ -46,6 +47,7 @@ const servedResult = (content: string): InferenceResult => ({
 type Harness = Readonly<{
   deps: BusinessIntakeChatDeps
   completions: Array<InferenceRequest>
+  funnelEvents: Array<BusinessFunnelEventInput>
   recorded: Array<ServedTokensRecorderInput>
 }>
 
@@ -56,6 +58,7 @@ const makeHarness = (
   } = {},
 ): Harness => {
   const completions: Array<InferenceRequest> = []
+  const funnelEvents: Array<BusinessFunnelEventInput> = []
   const recorded: Array<ServedTokensRecorderInput> = []
   const recordTokensServed: ServedTokensRecorder = input =>
     Effect.sync(() => {
@@ -86,10 +89,14 @@ const makeHarness = (
     fireworksArmed: true,
     makeRequestId: () => 'business_intake_chat_test_1',
     rateLimit: () => true,
+    recordFunnelEvent: input =>
+      Effect.sync(() => {
+        funnelEvents.push(input)
+      }),
     recordTokensServed,
     ...overrides,
   }
-  return { completions, deps, recorded }
+  return { completions, deps, funnelEvents, recorded }
 }
 
 const postRequest = (body: unknown, init: RequestInit = {}): Request =>
@@ -225,6 +232,22 @@ describe('handleBusinessIntakeChatApi', () => {
     expect(body.reason).toContain('messages must be an array')
   })
 
+  it('rejects raw sourceRef values with a typed 400', async () => {
+    const { deps } = makeHarness()
+    const response = await run(
+      postRequest({
+        messages: [userTurn('hello')],
+        sourceRef: 'https://tracking.example.com/?utm_source=apollo',
+      }),
+      deps,
+    )
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({
+      error: 'business_intake_chat_validation_error',
+      reason: 'sourceRef must be a bounded public-safe token',
+    })
+  })
+
   it('rejects more than the max message count', async () => {
     const { deps } = makeHarness()
     const messages = Array.from(
@@ -294,13 +317,17 @@ describe('handleBusinessIntakeChatApi', () => {
 
   it('serves the deterministic opening greeting for an empty transcript with no model call and no usage row', async () => {
     const { completions, deps, recorded } = makeHarness()
-    const response = await run(postRequest({ messages: [] }), deps)
+    const response = await run(
+      postRequest({ messages: [], sourceRef: 'apollo_agent_readiness_a' }),
+      deps,
+    )
     expect(response.status).toBe(200)
     const body = (await response.json()) as Record<string, unknown>
     expect(body).toMatchObject({
       done: false,
       ok: true,
       reply: BUSINESS_INTAKE_CHAT_OPENING_REPLY,
+      sourceRef: 'apollo_agent_readiness_a',
       spec: null,
     })
     expect(typeof body.generatedAt).toBe('string')
@@ -354,11 +381,14 @@ describe('handleBusinessIntakeChatApi', () => {
   })
 
   it('extracts the completed intake spec, strips the sentinel, and marks the turn done', async () => {
-    const { deps } = makeHarness({
+    const { deps, funnelEvents } = makeHarness({
       replyContent: `Your intake spec is complete and will be attached to your submission.\n${BUSINESS_INTAKE_SPEC_OPEN_TAG}\n${completedSpec}\n${BUSINESS_INTAKE_SPEC_CLOSE_TAG}\nThanks!`,
     })
     const response = await run(
-      postRequest({ messages: [userTurn('yes, let us start')] }),
+      postRequest({
+        messages: [userTurn('yes, let us start')],
+        sourceRef: 'apollo_agent_readiness_a',
+      }),
       deps,
     )
     expect(response.status).toBe(200)
@@ -366,11 +396,13 @@ describe('handleBusinessIntakeChatApi', () => {
       done: boolean
       ok: boolean
       reply: string
+      sourceRef: string
       spec: string | null
       specObject: Record<string, unknown> | null
     }
     expect(body.ok).toBe(true)
     expect(body.done).toBe(true)
+    expect(body.sourceRef).toBe('apollo_agent_readiness_a')
     expect(body.spec).toBe(completedSpec)
     expect(body.specObject).toMatchObject({
       goals: ['launch a review-gated intake funnel'],
@@ -384,6 +416,15 @@ describe('handleBusinessIntakeChatApi', () => {
     expect(body.reply).not.toContain(BUSINESS_INTAKE_SPEC_CLOSE_TAG)
     expect(body.reply).toContain('intake spec is complete')
     expect(body.reply).toContain('Thanks!')
+    expect(funnelEvents).toEqual([
+      {
+        eventRef: 'business_intake_spec:business_intake_chat_test_1',
+        occurredAt: expect.any(String),
+        sourceKind: 'outbound',
+        sourceRef: 'apollo_agent_readiness_a',
+        stage: 'intake_spec',
+      },
+    ])
   })
 
   it('refuses to complete when required typed spec fields are still missing', async () => {

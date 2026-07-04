@@ -1,10 +1,13 @@
 import { Effect, Schema as S } from 'effect'
 
 import { parseCookies } from './auth-cookies'
+import { recordBusinessFunnelEvent } from './business-funnel-dashboard'
 import {
-  businessFunnelSourceKindForSignup,
-  recordBusinessFunnelEvent,
-} from './business-funnel-dashboard'
+  BUSINESS_SOURCE_REF_DIRECT,
+  businessSourceKindForSourceRef,
+  businessSourceRefForReferralCode,
+  decodeBusinessSourceRef,
+} from './business-source-attribution'
 import type { ResendEmailConfig } from './config'
 import type { PrivateWorkspaceInviteEmailInput } from './email'
 import type { EmailLedgerSendResult, EmailServiceError } from './email'
@@ -77,9 +80,8 @@ export type BusinessSignupInput = Readonly<{
   // from the /business ?ref= query param or a `referralCode` form field; null
   // when no code was present.
   referralCode: string | null
-  // Coarse acquisition bucket for aggregate funnel counters. It is deliberately
-  // a stage/source label only, not a user identity or per-contact trail.
-  sourceAttribution: string | null
+  // Public-safe acquisition token, never a raw UTM, URL, email, or identity.
+  sourceRef: string
 }>
 
 export type BusinessSignupRecord = BusinessSignupInput &
@@ -110,7 +112,8 @@ type BusinessSignupRow = Readonly<{
   source_route: string
   referral_code: string | null
   referral_attribution_id: string | null
-  source_attribution?: string | null
+  source_ref: string | null
+  linked_pipeline_ref: string | null
   fulfillment_status: 'pending' | 'invited' | 'operator_parked'
   fulfillment_ref: string | null
   fulfillment_reason: string | null
@@ -271,8 +274,20 @@ const readSignupFields = async (
   }
 }
 
+const sourceCandidateFromFields = (
+  fields: Record<string, unknown>,
+  url: URL,
+): unknown =>
+  fields.sourceRef ??
+  fields.source_ref ??
+  fields.source ??
+  url.searchParams.get('sourceRef') ??
+  url.searchParams.get('source_ref') ??
+  url.searchParams.get('source')
+
 const decodeSignupInput = (
   fields: Record<string, unknown>,
+  url: URL,
 ): { input: BusinessSignupInput } | { reason: string } => {
   const businessName = normalizeText(fields.businessName, 200)
 
@@ -298,6 +313,23 @@ const decodeSignupInput = (
     return { reason: websiteResult.reason }
   }
 
+  const referralCode =
+    normalizeReferralCode(fields.referralCode ?? fields.ref) ??
+    normalizeReferralCode(url.searchParams.get('ref'))
+  const decodedSourceRef = decodeBusinessSourceRef(
+    sourceCandidateFromFields(fields, url),
+  )
+
+  if ('reason' in decodedSourceRef) {
+    return { reason: decodedSourceRef.reason }
+  }
+
+  const sourceRef =
+    decodedSourceRef.sourceRef === BUSINESS_SOURCE_REF_DIRECT &&
+    referralCode !== null
+      ? businessSourceRefForReferralCode(referralCode)
+      : decodedSourceRef.sourceRef
+
   return {
     input: {
       businessName,
@@ -306,9 +338,8 @@ const decodeSignupInput = (
       phone,
       helpWith: normalizeMultiline(fields.helpWith, 2_000) ?? null,
       requestSlackChannel: booleanFromUnknown(fields.requestSlackChannel),
-      referralCode: normalizeReferralCode(fields.referralCode ?? fields.ref),
-      sourceAttribution:
-        normalizeText(fields.sourceAttribution ?? fields.source, 80) ?? null,
+      referralCode,
+      sourceRef,
     },
   }
 }
@@ -360,7 +391,7 @@ const rowToRecord = (row: BusinessSignupRow): BusinessSignupRecord => ({
   sourceRoute: row.source_route,
   referralCode: row.referral_code,
   referralAttributionId: row.referral_attribution_id,
-  sourceAttribution: row.source_attribution ?? null,
+  sourceRef: row.source_ref ?? BUSINESS_SOURCE_REF_DIRECT,
   fulfillmentStatus: row.fulfillment_status,
   fulfillmentRef: row.fulfillment_ref,
   fulfillmentReason: row.fulfillment_reason,
@@ -389,9 +420,10 @@ export const insertBusinessSignupRequest = async (
         source_route,
         referral_code,
         referral_attribution_id,
+        source_ref,
         created_at,
         updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       record.id,
@@ -405,6 +437,7 @@ export const insertBusinessSignupRequest = async (
       record.sourceRoute,
       record.referralCode,
       record.referralAttributionId,
+      record.sourceRef,
       record.createdAt,
       record.updatedAt,
     )
@@ -442,11 +475,8 @@ const recordBusinessSignupFunnelEvent = async (
   await recordBusinessFunnelEvent(db, {
     eventRef: `business_signup:${record.id}`,
     stage: 'signup',
-    sourceKind: businessFunnelSourceKindForSignup({
-      sourceAttribution: record.sourceAttribution,
-      referralCode: record.referralCode,
-    }),
-    sourceRef: record.referralCode ?? record.sourceRoute,
+    sourceKind: businessSourceKindForSourceRef(record.sourceRef),
+    sourceRef: record.sourceRef,
     occurredAt: record.createdAt,
   })
 }
@@ -469,6 +499,8 @@ export const readBusinessSignupRequest = async (
         source_route,
         referral_code,
         referral_attribution_id,
+        source_ref,
+        linked_pipeline_ref,
         fulfillment_status,
         fulfillment_ref,
         fulfillment_reason,
@@ -555,6 +587,7 @@ const publicResponseBody = (record: BusinessSignupRecord) => ({
   request: {
     id: record.id,
     sourceRoute: record.sourceRoute,
+    sourceRef: record.sourceRef,
     requestedSlackChannel: record.requestSlackChannel,
     slackConnectStatus: record.slackConnectStatus,
     // Public-safe: a boolean only; never echoes the referral code or the
@@ -605,28 +638,12 @@ export const handleBusinessSignupApi = (
       try: () => readSignupFields(request),
       catch: cause => new BusinessSignupIntakeFailure({ cause }),
     })
-    const decoded = decodeSignupInput(fields)
+    const decoded = decodeSignupInput(fields, new URL(request.url))
 
     if ('reason' in decoded) {
       return validationError(decoded.reason, request)
     }
-
-    // A bare ?ref= on the POST URL is honored as a fallback referral code when
-    // the form body carries none (e.g. a referral landed straight on the
-    // signup endpoint). Body fields still take precedence.
-    const urlRef = (() => {
-      const value = new URL(request.url).searchParams.get('ref')?.trim()
-
-      return value !== undefined &&
-        value !== '' &&
-        isSafeReferralSourceRef(value)
-        ? value
-        : null
-    })()
-    const input: BusinessSignupInput = {
-      ...decoded.input,
-      referralCode: decoded.input.referralCode ?? urlRef,
-    }
+    const input = decoded.input
 
     const record = yield* Effect.tryPromise({
       try: () => insertBusinessSignupRequest(db, input, runtime),

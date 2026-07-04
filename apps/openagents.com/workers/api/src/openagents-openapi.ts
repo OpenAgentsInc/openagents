@@ -1763,10 +1763,23 @@ const schemaComponents = (): JsonSchema => ({
         description:
           'When true, queues an operator Slack Connect invite handoff. Slack Connect still requires the other workspace to accept the invite.',
       },
+      sourceRef: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 80,
+        description:
+          'Optional bounded public-safe acquisition token such as direct, apollo_agent_readiness_a, partner_expansion, or affiliate_<code>. Raw UTMs, URLs, emails, and contact data are rejected.',
+      },
+      referralCode: {
+        type: 'string',
+        maxLength: 190,
+        description:
+          'Optional public referral source ref captured from ?ref or a hidden referralCode field; never echoed in the public response.',
+      },
     },
   },
   BusinessSignupResponse: objectSummary(
-    'Public-safe business signup receipt with request id, source route, requestedSlackChannel, slackConnectStatus (not_requested or manual_invite_pending at intake), nextAction, generatedAt, staleness contract, and the explicit authority boundary. It does not echo contact email, phone, website, or private request text.',
+    'Public-safe business signup receipt with request id, source route, bounded sourceRef, requestedSlackChannel, slackConnectStatus (not_requested or manual_invite_pending at intake), nextAction, generatedAt, staleness contract, and the explicit authority boundary. It does not echo contact email, phone, website, referral code, or private request text.',
   ),
   BusinessIntakeChatRequest: {
     type: 'object',
@@ -1798,10 +1811,17 @@ const schemaComponents = (): JsonSchema => ({
           },
         },
       },
+      sourceRef: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 80,
+        description:
+          'Optional bounded public-safe acquisition token for aggregate funnel accounting. Defaults to direct; examples include apollo_agent_readiness_a, partner_expansion, and affiliate_<code>.',
+      },
     },
   },
   BusinessIntakeChatResponse: objectSummary(
-    'One Khala intake-interview turn with generatedAt and the declared live_at_read staleness contract: ok, the assistant reply text, done (true only once the interview completed and required fields are present), spec (the completed intake-spec markdown), specObject (typed business_intake_spec.v1 with vertical, goals, pains, and systemsOfRecord), missingRequiredFields, and optional validated closed-catalog component frames. Bounded and non-streaming; 503 business_intake_chat_unavailable when the serving lane is unarmed, 429 business_intake_rate_limited over the per-IP bounds. The turn grants no work-order, spend, payout, settlement, or agent authority.',
+    'One Khala intake-interview turn with generatedAt and the declared live_at_read staleness contract: ok, bounded sourceRef, the assistant reply text, done (true only once the interview completed and required fields are present), spec (the completed intake-spec markdown), specObject (typed business_intake_spec.v1 with vertical, goals, pains, and systemsOfRecord), missingRequiredFields, and optional validated closed-catalog component frames. Completed specs record an aggregate intake_spec funnel event keyed by sourceRef. Bounded and non-streaming; 503 business_intake_chat_unavailable when the serving lane is unarmed, 429 business_intake_rate_limited over the per-IP bounds. The turn grants no work-order, spend, payout, settlement, or agent authority.',
   ),
   AutopilotWorkRequest: objectSummary(
     'Typed openagents.autopilot_work_request.v1 delegated coding-work request. It carries public-safe task, repository, placement, payment, and forum policy refs only, plus an optional launchPolicy ({kind: scheduled, launchAt UTC ISO, launchWindowMinutes 5-1440}) that queues the order for a later launch with placement decided at launch time. Do not include secrets, raw prompts, private repo archives, raw logs, wallet material, invoices, preimages, or provider credentials.',
@@ -6392,7 +6412,7 @@ const paths = (): JsonSchema => ({
       operationId: 'createBusinessSignupRequest',
       summary: 'Capture business signup and Slack Connect opt-in',
       description:
-        'Captures the public /business signup request. If requestSlackChannel is true, the request is stored with slackConnectStatus=manual_invite_pending for operator follow-up; Slack Connect invite creation and the other workspace acceptance remain external/manual steps. The public response is an intake receipt only and grants no Slack, workspace, spend, payout, or agent authority.',
+        'Captures the public /business signup request with an optional bounded sourceRef for aggregate funnel accounting. If requestSlackChannel is true, the request is stored with slackConnectStatus=manual_invite_pending for operator follow-up; Slack Connect invite creation and the other workspace acceptance remain external/manual steps. Raw UTMs, URLs, contact details, and provider payloads are rejected. The public response is an intake receipt only and grants no Slack, workspace, spend, payout, or agent authority.',
       tags: ['Business'],
       security: publicRead,
       responses: {
@@ -6420,7 +6440,7 @@ const paths = (): JsonSchema => ({
       operationId: 'createBusinessIntakeChatTurn',
       summary: 'Run one Khala business-intake interview turn',
       description:
-        'Runs one bounded turn of the conversational OpenAgents Business intake. The browser holds the transcript and sends the running user/assistant conversation; the server replies as Khala, interviewing per the published intake spec (offerings menu with honest availability labels, one area at a time, quick win first) over the fixed Khala serving lane with fixed params. The route reuses the closed Khala typed-component catalog: model-emitted oa-component blocks are validated server-side and returned as component frames for the business console. When the interview completes and required fields are present, done becomes true, spec carries the filled intake-spec markdown, and specObject carries the typed business_intake_spec.v1 object; missing required fields keep done false so vertical, goals, pains, and systems of record cannot be skipped. Empty messages return the opening greeting. Requests are strictly bounded (at most 24 messages, 2000 chars each, 24000 chars total, roles user/assistant only, first message from the user) and per-IP rate limited (429 business_intake_rate_limited); the route returns 503 business_intake_chat_unavailable when the serving lane is not armed. Exact token usage is recorded to the canonical usage ledger as internal demand. The turn grants no work-order, spend, payout, settlement, or agent authority and never requests credentials.',
+        'Runs one bounded turn of the conversational OpenAgents Business intake. The browser holds the transcript and sends the running user/assistant conversation plus an optional bounded sourceRef; the server replies as Khala, interviewing per the published intake spec (offerings menu with honest availability labels, one area at a time, quick win first) over the fixed Khala serving lane with fixed params. The route reuses the closed Khala typed-component catalog: model-emitted oa-component blocks are validated server-side and returned as component frames for the business console. When the interview completes and required fields are present, done becomes true, spec carries the filled intake-spec markdown, specObject carries the typed business_intake_spec.v1 object, and an aggregate intake_spec funnel event is recorded under sourceRef; missing required fields keep done false so vertical, goals, pains, and systems of record cannot be skipped. Empty messages return the opening greeting. Requests are strictly bounded (at most 24 messages, 2000 chars each, 24000 chars total, roles user/assistant only, first message from the user) and per-IP rate limited (429 business_intake_rate_limited); the route returns 503 business_intake_chat_unavailable when the serving lane is not armed. Exact token usage is recorded to the canonical usage ledger as internal demand. The turn grants no work-order, spend, payout, settlement, or agent authority and never requests credentials.',
       tags: ['Business'],
       security: publicRead,
       responses: {
