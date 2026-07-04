@@ -781,6 +781,10 @@ import {
   makeKhalaMcpCatalog,
 } from './khala-mcp'
 import { handleKhalaSyncBootstrap } from './khala-sync-bootstrap-routes'
+import {
+  handleKhalaSyncCvrPull,
+  isKhalaSyncCvrEnabled,
+} from './khala-sync-cvr-routes'
 import { handleKhalaSyncConnect } from './khala-sync-connect-routes'
 import { handleKhalaSyncDbSmoke } from './khala-sync-db-smoke-routes'
 import {
@@ -12256,6 +12260,37 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/sync/bootstrap',
     handler: (request, env, ctx) =>
       handleKhalaSyncBootstrap(request, {
+        authenticate: async () => {
+          const actor = await authenticateRequestActor(request, env, ctx)
+          if (actor === undefined) {
+            return undefined
+          }
+          return {
+            userId:
+              actor.kind === 'agent' ? actor.agent.user.id : actor.user.userId,
+          }
+        },
+        binding: env.KHALA_SYNC_DB,
+        resolveScopeRead: makeKhalaSyncScopeReadResolver({
+          binding: env.KHALA_SYNC_DB,
+          db: openAgentsDatabase(env),
+        }),
+      }),
+  },
+  {
+    // Khala Sync CVR diff pull (KS-7.2, #8306): FLAG-GATED behind
+    // KHALA_SYNC_CVR=1 — unflagged deployments answer 404 exactly like an
+    // unregistered route (zero behavior change). When flagged: the
+    // must_refetch RECOVERY path — the client sends its last CVR version
+    // (+ live drift rows) and receives puts/dels computed by set-diffing
+    // the current authorized row set against the stored CVR at one
+    // REPEATABLE READ snapshot (permission-driven retraction falls out as
+    // dels — no full re-bootstrap). Same auth + KS-7.1 scope gate as
+    // bootstrap. Design: docs/khala-sync/CVR_DESIGN.md.
+    path: '/api/sync/cvr-pull',
+    handler: (request, env, ctx) =>
+      handleKhalaSyncCvrPull(request, {
+        enabled: isKhalaSyncCvrEnabled(env.KHALA_SYNC_CVR),
         authenticate: async () => {
           const actor = await authenticateRequestActor(request, env, ctx)
           if (actor === undefined) {

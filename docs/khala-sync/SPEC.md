@@ -148,6 +148,20 @@ the client, a denied re-bootstrap after `access_changed` CLEARS the scope's
 durable local state and parks the scope in the terminal `denied` phase
 (invariant 7: revocation retracts synced state) — it never retries a 403.
 
+v2 (KS-7.2, #8306, **flag-gated `KHALA_SYNC_CVR=1`, default OFF**):
+`POST /api/sync/cvr-pull` — CVR read-set diffing per the Replicache
+row-version strategy, adapted to scopes. The server stores per
+(clientGroup, scope) Client View Records (`khala_sync_cvrs`) and answers a
+pull with `puts`/`dels` computed by set-diffing the CURRENT authorized row
+set (one REPEATABLE READ snapshot) against the client's referenced CVR
+widened by its live-drift rows; rows that left the set — deleted,
+tombstone-compacted, or no longer authorized — arrive as dels, so
+permission-driven retraction is structural instead of a full re-bootstrap.
+It is the SLOW/recovery (`must_refetch`) path only; live deltas and the
+log remain primary, and unflagged deployments answer 404 (zero behavior
+change). Full design, soundness argument, and cost bounds:
+`docs/khala-sync/CVR_DESIGN.md`.
+
 ## 4. Postgres substrate
 
 Schema (`packages/khala-sync-server/migrations/`):
@@ -162,6 +176,10 @@ khala_sync_mutations     (client_group_id, client_id, mutation_id, name,
                           PRIMARY KEY (client_group_id, client_id, mutation_id))
 khala_sync_client_state  (client_group_id PK, user_id, schema_version,
                           last_seen_at)
+khala_sync_cvrs          (client_group_id, scope, cvr_version PK triple,
+                          snapshot_cursor, entries jsonb — KS-7.2 CVR
+                          read-set diffing, flag-gated KHALA_SYNC_CVR=1;
+                          see docs/khala-sync/CVR_DESIGN.md)
 ```
 
 - Version allocation: `UPDATE khala_sync_scopes SET last_version =

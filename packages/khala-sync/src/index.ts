@@ -258,6 +258,80 @@ export class BootstrapResponse extends S.Class<BootstrapResponse>(
 }) {}
 
 // ---------------------------------------------------------------------------
+// Wire protocol — CVR diff pull (KS-7.2, #8306; flag-gated v2 surface)
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-(clientGroup, scope) Client View Record version, allocated by the
+ * server on every CVR pull (dense, starts at 1). Design:
+ * docs/khala-sync/CVR_DESIGN.md; reference spec: the Replicache row-version
+ * strategy. The whole surface is additive and gated behind
+ * `KHALA_SYNC_CVR=1` — unflagged deployments never produce or consume it.
+ */
+export const CvrVersion = S.Number.check(S.isInt(), S.isGreaterThan(0)).pipe(
+  S.brand("CvrVersion"),
+)
+export type CvrVersion = typeof CvrVersion.Type
+
+/**
+ * One client-side row the client applied AFTER its last CVR pull (its store
+ * version is greater than that pull's snapshot cursor). The hybrid live
+ * path (log/DeltaFrame) mutates client state without touching the CVR, so
+ * a diff pull must widen its base by these rows or a row acquired live and
+ * later deleted+compacted would never be retracted (CVR_DESIGN.md §5).
+ */
+export class CvrDriftEntry extends S.Class<CvrDriftEntry>("CvrDriftEntry")({
+  entityType: EntityType,
+  entityId: EntityId,
+  version: SyncVersion,
+}) {}
+
+export class CvrPullRequest extends S.Class<CvrPullRequest>(
+  "CvrPullRequest",
+)({
+  protocolVersion: S.Literal(KHALA_SYNC_PROTOCOL_VERSION),
+  schemaVersion: SyncSchemaVersion,
+  scope: SyncScope,
+  clientGroupId: ClientGroupId,
+  /**
+   * The CVR the client's durable state was last reconciled against. Absent
+   * ⇒ no usable CVR (first pull, restart, or post-bootstrap): the server
+   * answers in `reset` mode with the full current row set.
+   */
+  cvrVersion: S.optionalKey(CvrVersion),
+  /** Rows applied after the referenced CVR's snapshot (see CvrDriftEntry). */
+  drift: S.optionalKey(S.Array(CvrDriftEntry)),
+}) {}
+
+/** A retraction: the row left the authorized set — remove it locally. */
+export class CvrDel extends S.Class<CvrDel>("CvrDel")({
+  entityType: EntityType,
+  entityId: EntityId,
+}) {}
+
+/**
+ * `reset`: `puts` is the COMPLETE current row set — replace scope-local
+ * state with exactly it (same client semantics as a bootstrap snapshot).
+ * `diff`: apply `puts` and `dels` incrementally to the existing state.
+ */
+export const CvrPullMode = S.Literals(["reset", "diff"])
+export type CvrPullMode = typeof CvrPullMode.Type
+
+export class CvrPullResponse extends S.Class<CvrPullResponse>(
+  "CvrPullResponse",
+)({
+  protocolVersion: S.Literal(KHALA_SYNC_PROTOCOL_VERSION),
+  scope: SyncScope,
+  mode: CvrPullMode,
+  puts: S.Array(BootstrapEntity),
+  dels: S.Array(CvrDel),
+  /** The freshly stored CVR; send it back on the next diff pull. */
+  cvrVersion: CvrVersion,
+  /** Snapshot cursor: stitch with `logPage(afterVersion = cursor)`. */
+  cursor: SyncVersionWatermark,
+}) {}
+
+// ---------------------------------------------------------------------------
 // Wire protocol — catch-up log page
 // ---------------------------------------------------------------------------
 
@@ -441,6 +515,10 @@ export const encodeSyncError = S.encodeSync(SyncError)
 export const decodeBootstrapRequest = S.decodeUnknownSync(BootstrapRequest)
 export const encodeBootstrapRequest = S.encodeSync(BootstrapRequest)
 export const decodeBootstrapResponse = S.decodeUnknownSync(BootstrapResponse)
+export const decodeCvrPullRequest = S.decodeUnknownSync(CvrPullRequest)
+export const encodeCvrPullRequest = S.encodeSync(CvrPullRequest)
+export const decodeCvrPullResponse = S.decodeUnknownSync(CvrPullResponse)
+export const encodeCvrPullResponse = S.encodeSync(CvrPullResponse)
 export const decodeLogPage = S.decodeUnknownSync(LogPage)
 export const decodeLiveFrame = S.decodeUnknownSync(LiveFrame)
 export const encodeLiveFrame = S.encodeSync(LiveFrame)

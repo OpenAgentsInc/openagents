@@ -24,6 +24,12 @@ clients with server-authoritative mutators and rebase.
   set is registered in `apps/openagents.com/INVARIANTS.md` ("Khala Sync
   (SPEC §7 invariant set)") with per-invariant test pointers and honest
   statuses.
+- [`CVR_DESIGN.md`](./CVR_DESIGN.md) — CVR read-set diffing (KS-7.2, v2,
+  flag-gated `KHALA_SYNC_CVR=1`): per-(clientGroup, scope) Client View
+  Records in Postgres, the diff-pull flow (puts/dels fall out of a set
+  difference — permission-driven retraction without re-bootstrap), the
+  drift soundness argument for our hybrid live path, compaction interplay,
+  cost bounds, and the byte-equality verification plan.
 - [`MIGRATION_PLAN.md`](./MIGRATION_PLAN.md) — the rolling D1 → Cloud SQL
   migration plan (KS-8.3): table census, per-domain risk/verification
   notes, wave sequencing after KS-8.1/8.2, cron consolidation, and the D1
@@ -70,6 +76,7 @@ kinds and failed lookups fail CLOSED — SPEC §3):
 | `GET /api/sync/log` | KS-4.3 #8296 | offset-resumable `LogPage` catch-up, hub-window-first with authoritative Postgres fallthrough; ETag on non-`upToDate` pages |
 | `POST /api/sync/bootstrap` | KS-4.4 #8297 | consistent snapshot pages (self-contained page tokens), final page carries the stitch `cursor`; always no-store |
 | `GET /api/sync/connect` | KS-4.4 #8297 | WebSocket upgrade proxied to the per-scope `KhalaSyncHubDO` `/connect` (auth + scope gate BEFORE the upgrade) |
+| `POST /api/sync/cvr-pull` | KS-7.2 #8306 | **flag-gated (`KHALA_SYNC_CVR=1`; 404 unflagged)** CVR read-set diff pull — the v2 `must_refetch` recovery path (puts/dels vs the stored per-(clientGroup, scope) CVR; permission-driven retraction is structural). Design: [`CVR_DESIGN.md`](./CVR_DESIGN.md) |
 
 The admin-bearer internal hub surface
 (`/api/internal/khala-sync/hub/{append,log,connect,access-changed}`)
@@ -92,7 +99,7 @@ against local Postgres + the real hub DO + the real client SQLite store.
 | KS-4 Capture + Hub DO (capture, hub, catch-up, bootstrap/seam) | #8294 #8295 #8296 #8297 |
 | KS-5 Client engine (store, rebase, session, web lane) | #8298 #8299 #8300 #8301 |
 | KS-6 First consumers (fleet projection, desktop, tokens-served) | #8302 (server-side projection + operator mutators landed; supervisor intent enforcement is follow-up) #8303 (desktop fleet cockpit wired behind `KHALA_SYNC_FLEET=1`; live verification deferred to the deploy pass) #8304 |
-| KS-7 Permissions (scope auth, CVR v2) | #8305 (scope-auth resolver + access-change refetch landed) #8306 |
+| KS-7 Permissions (scope auth, CVR v2) | #8305 (scope-auth resolver + access-change refetch landed) #8306 (CVR read-set diffing landed behind `KHALA_SYNC_CVR=1` with real-Postgres equivalence tests — design: [`CVR_DESIGN.md`](./CVR_DESIGN.md)) |
 | KS-8 Domain migration (assignments, ledger, rolling plan) | #8307 #8308 #8309 (plan: [`MIGRATION_PLAN.md`](./MIGRATION_PLAN.md)); per-domain waves #8315–#8330 |
 | KS-9 QA/ops (load test, behavior contracts, invariants+runbook) | #8310 #8311 #8312 (invariants+runbook landed: [`RUNBOOK.md`](./RUNBOOK.md) + the "Khala Sync (SPEC §7 invariant set)" section in `apps/openagents.com/INVARIANTS.md`) |
 

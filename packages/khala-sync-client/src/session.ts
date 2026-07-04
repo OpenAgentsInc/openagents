@@ -1,8 +1,15 @@
 import {
   BootstrapRequest,
   type BootstrapResponse,
+  ChangelogEntry,
   type ClientGroupId,
   type ClientId,
+  CvrDriftEntry,
+  CvrPullRequest,
+  type CvrPullResponse,
+  CvrVersion,
+  EntityId,
+  EntityType,
   type MutationEnvelope,
   MutationId,
   type MutationResult,
@@ -106,6 +113,23 @@ export interface KhalaSyncSessionOptions {
   readonly logPageLimit?: number
   /** Max mutations per `POST /api/sync/push` batch (default 50). */
   readonly pushBatchSize?: number
+  /**
+   * KS-7.2 (#8306), default OFF: when true AND the transport provides
+   * `cvrPull`, the `must_refetch` recovery path tries the flag-gated CVR
+   * diff pull FIRST (docs/khala-sync/CVR_DESIGN.md) — dels retract rows
+   * that left the authorized set (deleted+compacted, or permission-driven)
+   * without replacing the whole scope. ANY CVR failure other than an
+   * access denial falls back to the plain bootstrap, so unflagged servers
+   * (404 on the route) degrade to exactly today's behavior. The very
+   * first sync of a scope (no durable cursor) always uses bootstrap.
+   */
+  readonly cvrRecovery?: boolean
+  /**
+   * Drift-set upload bound: when more local rows changed since the last
+   * CVR than this, request a reset-mode pull instead of shipping a huge
+   * drift list (default 5000).
+   */
+  readonly maxDriftEntries?: number
   /** Rejected mutation results, surfaced as they are acked in-band. */
   readonly onRejection?: (
     result: MutationResult,
@@ -207,6 +231,14 @@ interface ScopeRuntime {
   forceBootstrap: boolean
   /** Injected-clock time of the last server-confirmed apply; null = never. */
   lastDeltaAt: number | null
+  /**
+   * The CVR the durable store was last reconciled to (KS-7.2): its server
+   * version and its snapshot cursor (drift = local rows newer than that
+   * cursor). Session-lifetime only — `null` after restart, plain
+   * bootstrap, or denial, which simply makes the next CVR pull reset-mode
+   * (always sound; see CVR_DESIGN.md §5).
+   */
+  cvr: { readonly version: number; readonly cursor: number } | null
 }
 
 /** Run a typed Effect from promise-land, rethrowing the TYPED error. */
@@ -239,6 +271,8 @@ export const createKhalaSyncSession = (
   const maxBootstrapAttempts = options.maxBootstrapAttempts ?? 8
   const logPageLimit = options.logPageLimit ?? 500
   const pushBatchSize = options.pushBatchSize ?? 50
+  const cvrRecovery = options.cvrRecovery ?? false
+  const maxDriftEntries = options.maxDriftEntries ?? 5_000
   const onTransportError = options.onTransportError
 
   const backoff = (attempt: number): Promise<void> =>
@@ -282,6 +316,7 @@ export const createKhalaSyncSession = (
     runtime.forceBootstrap = false
     // The synced data is gone; its freshness stamp must not survive it.
     runtime.lastDeltaAt = null
+    runtime.cvr = null
     setState(scope, runtime, { phase: "denied", reason: "access_denied" })
   }
 
@@ -386,6 +421,154 @@ export const createKhalaSyncSession = (
       }
     }
     return undefined
+  }
+
+  // -- CVR recovery (KS-7.2, #8306 — flag-gated must_refetch path) --------------
+
+  /**
+   * A `committedAt` for synthesized CVR entries. The store ignores it (it
+   * persists key/image/version only); a fixed epoch keeps the no-wall-clock
+   * rule intact.
+   */
+  const CVR_SYNTHESIZED_COMMITTED_AT = "1970-01-01T00:00:00.000Z"
+
+  /**
+   * One CVR diff-pull recovery attempt (docs/khala-sync/CVR_DESIGN.md):
+   * send the last CVR version + the drift set (local rows newer than that
+   * CVR's snapshot), apply the response —
+   *
+   * - `reset`: replace scope state with `puts` (bootstrap semantics);
+   * - `diff`: apply `dels` + `puts` as synthesized confirmed entries at
+   *   the snapshot cursor through the overlay (store apply + rebase in one
+   *   step, exactly like a log page) — rows that left the authorized set
+   *   are RETRACTED without touching the rest of the scope
+   *
+   * — then return the snapshot cursor to stitch catch-up from. Returns
+   * `"fallback"` on any failure the plain bootstrap should absorb
+   * (unflagged server 404, row-set-too-large, storage faults, protocol
+   * violations), and `undefined` when stale or parked (access denial is
+   * TERMINAL here exactly as on the bootstrap path).
+   */
+  const cvrRecoverScope = async (
+    scope: SyncScope,
+    runtime: ScopeRuntime,
+    generation: number,
+  ): Promise<SyncVersionWatermark | "fallback" | undefined> => {
+    const pull = transport.cvrPull
+    if (pull === undefined) return "fallback"
+    const stale = (): boolean => closed || runtime.generation !== generation
+    setState(scope, runtime, { phase: "bootstrapping" })
+    try {
+      // Drift: rows applied (via log/delta) after the last CVR's snapshot.
+      // Oversized drift → reset-mode pull (no cvrVersion) instead of a
+      // huge upload.
+      let cvrVersion: number | null = runtime.cvr?.version ?? null
+      let drift: Array<CvrDriftEntry> = []
+      if (runtime.cvr !== null) {
+        const cvrCursor = runtime.cvr.cursor
+        const entities = await runEffect(store.readEntities(scope))
+        drift = entities
+          .filter((entity) => entity.version > cvrCursor)
+          .map(
+            (entity) =>
+              new CvrDriftEntry({
+                entityType: EntityType.make(entity.entityType),
+                entityId: EntityId.make(entity.entityId),
+                version: entity.version,
+              }),
+          )
+        if (drift.length > maxDriftEntries) {
+          cvrVersion = null
+          drift = []
+        }
+      }
+      const response: CvrPullResponse = await runEffect(
+        pull(
+          new CvrPullRequest({
+            protocolVersion: 1,
+            schemaVersion: config.schemaVersion,
+            scope,
+            clientGroupId: config.clientGroupId,
+            ...(cvrVersion !== null
+              ? { cvrVersion: CvrVersion.make(cvrVersion) }
+              : {}),
+            ...(drift.length > 0 ? { drift } : {}),
+          }),
+        ),
+      )
+      if (stale()) return undefined
+      if (response.scope !== scope) {
+        throw PROTOCOL_VIOLATION("cvr-pull response is for a different scope")
+      }
+      const cursor = response.cursor
+      if (response.mode === "reset" || cursor === 0) {
+        // Reset semantics = bootstrap semantics: `puts` IS the complete
+        // set (a diff at watermark 0 can only be empty — treat it as the
+        // equivalent reset to keep the store's watermark-0 rule intact).
+        if (cursor === 0 && response.puts.length > 0) {
+          throw PROTOCOL_VIOLATION("cvr-pull snapshot has puts at watermark 0")
+        }
+        await runEffect(
+          store.resetScope(
+            scope,
+            response.puts.map((put) => ({
+              entityType: put.entityType,
+              entityId: put.entityId,
+              postImageJson: put.postImageJson,
+              version: SyncVersion.make(cursor),
+            })),
+            cursor,
+          ),
+        )
+        await runEffect(overlay.refetched(scope))
+      } else {
+        const version = SyncVersion.make(cursor)
+        const entries: Array<ChangelogEntry> = [
+          // Dels first (pure defensiveness — apply is keyed per entity and
+          // no key appears in both sets).
+          ...response.dels.map(
+            (del) =>
+              new ChangelogEntry({
+                scope,
+                version,
+                entityType: del.entityType,
+                entityId: del.entityId,
+                op: "delete",
+                committedAt: CVR_SYNTHESIZED_COMMITTED_AT,
+              }),
+          ),
+          ...response.puts.map(
+            (put) =>
+              new ChangelogEntry({
+                scope,
+                version,
+                entityType: put.entityType,
+                entityId: put.entityId,
+                op: "upsert",
+                postImageJson: put.postImageJson,
+                committedAt: CVR_SYNTHESIZED_COMMITTED_AT,
+              }),
+          ),
+        ]
+        // Overlay apply = store apply + rebase, same as a log page. An
+        // empty diff still advances the durable cursor to the snapshot.
+        await runEffect(overlay.onConfirmed(scope, entries, version))
+      }
+      runtime.cvr = { version: Number(response.cvrVersion), cursor: Number(cursor) }
+      runtime.lastDeltaAt = now() // CVR pull = server-confirmed apply
+      return cursor
+    } catch (error) {
+      if (stale()) return undefined
+      onTransportError?.("bootstrap", error)
+      if (isAccessDeniedSignal(error)) {
+        await parkDenied(scope, runtime)
+        return undefined
+      }
+      // Anything else — unflagged server (404), row set too large, storage
+      // fault, decode failure — falls back to the plain bootstrap path.
+      runtime.cvr = null
+      return "fallback"
+    }
   }
 
   // -- catch-up ---------------------------------------------------------------
@@ -545,10 +728,25 @@ export const createKhalaSyncSession = (
         const durable = await runEffect(store.cursor(scope))
         let cursor: SyncVersionWatermark = watermark(durable ?? 0)
         if (durable === null || runtime.forceBootstrap) {
-          const bootstrapped = await bootstrapScope(scope, runtime, generation)
-          if (bootstrapped === undefined) return // stale or parked in must_refetch
+          // KS-7.2: when flagged, must_refetch recovery tries the CVR diff
+          // pull first (never the very first sync — no durable cursor means
+          // nothing to diff-recover). "fallback" = plain bootstrap.
+          let recovered: SyncVersionWatermark | "fallback" | undefined =
+            "fallback"
+          if (cvrRecovery && runtime.forceBootstrap && durable !== null) {
+            recovered = await cvrRecoverScope(scope, runtime, generation)
+            if (recovered === undefined) return // stale or parked denied
+          }
+          if (recovered === "fallback") {
+            const bootstrapped = await bootstrapScope(scope, runtime, generation)
+            if (bootstrapped === undefined) return // stale or parked in must_refetch
+            // A plain bootstrap replaced state the CVR does not describe;
+            // drop it so the next CVR pull is reset-mode (always sound).
+            runtime.cvr = null
+            recovered = bootstrapped
+          }
           runtime.forceBootstrap = false
-          cursor = bootstrapped
+          cursor = recovered
         }
         const caughtUp = await catchUp(scope, runtime, generation, cursor)
         if (caughtUp === undefined) return // stale
@@ -715,6 +913,7 @@ export const createKhalaSyncSession = (
           socket: null,
           forceBootstrap: false,
           lastDeltaAt: null,
+          cvr: null,
         }
         scopes.set(scope, runtime)
       }

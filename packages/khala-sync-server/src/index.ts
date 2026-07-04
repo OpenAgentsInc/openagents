@@ -18,6 +18,7 @@ import type {
 } from "./errors.js"
 
 export * from "./compaction.js"
+export * from "./cvr-service.js"
 export * from "./errors.js"
 export * from "./fleet-intents.js"
 export * from "./fleet-mutators.js"

@@ -1,12 +1,16 @@
 import {
   type BootstrapRequest,
   type BootstrapResponse,
+  type CvrPullRequest,
+  type CvrPullResponse,
   decodeBootstrapResponse,
+  decodeCvrPullResponse,
   decodeLiveFrame,
   decodeLogPage,
   decodePushResponse,
   decodeSyncError,
   encodeBootstrapRequest,
+  encodeCvrPullRequest,
   encodePushRequest,
   type LiveFrame,
   type LogPage,
@@ -37,6 +41,8 @@ export const KHALA_SYNC_PUSH_PATH = "/api/sync/push"
 export const KHALA_SYNC_BOOTSTRAP_PATH = "/api/sync/bootstrap"
 export const KHALA_SYNC_LOG_PATH = "/api/sync/log"
 export const KHALA_SYNC_CONNECT_PATH = "/api/sync/connect"
+/** KS-7.2 (#8306): flag-gated CVR diff pull (server: KHALA_SYNC_CVR=1). */
+export const KHALA_SYNC_CVR_PULL_PATH = "/api/sync/cvr-pull"
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -147,6 +153,17 @@ export interface KhalaSyncTransport {
     cursor: SyncVersionWatermark,
     handlers: LiveSocketHandlers,
   ) => Effect.Effect<LiveSocket, KhalaSyncTransportError>
+  /**
+   * `POST /api/sync/cvr-pull` — the KS-7.2 flag-gated CVR diff pull
+   * (docs/khala-sync/CVR_DESIGN.md). OPTIONAL so existing transports and
+   * test fakes stay valid: the session only uses it when its own
+   * `cvrRecovery` option is on AND the transport provides it; against an
+   * unflagged server the route 404s and the session falls back to the
+   * bootstrap path.
+   */
+  readonly cvrPull?: (
+    request: CvrPullRequest,
+  ) => Effect.Effect<CvrPullResponse, KhalaSyncTransportError>
 }
 
 // ---------------------------------------------------------------------------
@@ -300,6 +317,14 @@ export const createHttpKhalaSyncTransport = (
           KHALA_SYNC_PUSH_PATH,
           encodePushRequest(request),
           decodePushResponse,
+        ),
+      ),
+    cvrPull: (request) =>
+      run(() =>
+        postJson(
+          KHALA_SYNC_CVR_PULL_PATH,
+          encodeCvrPullRequest(request),
+          decodeCvrPullResponse,
         ),
       ),
     logPage: (scope, cursor, limit) =>

@@ -45,6 +45,11 @@ export type WorkerBindings = Readonly<{
   // docs/khala-sync/RUNBOOK.md "Pylon dispatch domain cutover".
   KHALA_SYNC_PYLON_DUAL_WRITE?: string
   KHALA_SYNC_PYLON_READS?: string
+  // KS-7.2 (#8306) CVR read-set diffing flag. '1' enables the flag-gated
+  // POST /api/sync/cvr-pull recovery path (docs/khala-sync/CVR_DESIGN.md);
+  // anything else (or absent) keeps the route answering 404 — zero
+  // behavior change.
+  KHALA_SYNC_CVR?: string
   // Khala Sync hub (KS-4.2, #8295). Optional SQLite-class DO namespace; one
   // KhalaSyncHubDO per scope (`idFromName(scope)`) holds the recent changelog
   // window + hibernating WebSockets (docs/khala-sync/SPEC.md §5). Absent
