@@ -109,6 +109,45 @@ final class ConversationStore: ObservableObject {
         return convo
     }
 
+    func bindSyncThreadId(_ syncThreadId: String, to conversation: Conversation) {
+        guard conversation.syncThreadId != syncThreadId else { return }
+        conversation.syncThreadId = syncThreadId
+        save()
+        refresh()
+    }
+
+    @discardableResult
+    func mergeSyncedThread(_ thread: KhalaClient.SyncedChatThread) -> Conversation {
+        if let existing = conversations.first(where: { $0.syncThreadId == thread.threadId }) {
+            existing.title = thread.title.isEmpty ? Conversation.defaultTitle : thread.title
+            existing.updatedAt = Self.date(from: thread.updatedAt) ?? existing.updatedAt
+            save()
+            refresh()
+            return existing
+        }
+
+        let conversation = Conversation(
+            title: thread.title.isEmpty ? Conversation.defaultTitle : thread.title,
+            syncThreadId: thread.threadId,
+            createdAt: Self.date(from: thread.createdAt) ?? Date(),
+            updatedAt: Self.date(from: thread.updatedAt) ?? Date()
+        )
+        context.insert(conversation)
+        save()
+        refresh()
+        return conversation
+    }
+
+    @discardableResult
+    func mergeSyncedThreads(_ threads: [KhalaClient.SyncedChatThread]) -> Int {
+        var changed = 0
+        for thread in threads {
+            _ = mergeSyncedThread(thread)
+            changed += 1
+        }
+        return changed
+    }
+
     /// Append a message to a conversation and bump `updatedAt`. If the
     /// conversation is still untitled and this is the first user message, derive
     /// a title from it. Returns the inserted `Message` so streaming callers can
@@ -186,5 +225,12 @@ final class ConversationStore: ObservableObject {
             print("ConversationStore save failed: \(error)")
             #endif
         }
+    }
+
+    private static func date(from iso: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: iso) { return date }
+        return ISO8601DateFormatter().date(from: iso)
     }
 }

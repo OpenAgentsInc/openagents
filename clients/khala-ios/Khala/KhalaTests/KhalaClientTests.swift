@@ -383,6 +383,190 @@ final class KhalaClientTests: XCTestCase {
         }
     }
 
+    func testPushChatSyncTurnPostsCreateAndAppendMutations() async throws {
+        let session = makeSession()
+        let store = makeChatSyncStateStore()
+        let apiKey = "oa_agent_chat_sync"
+        let threadId = "ios.thread.abc"
+        let messageId = "ios.message.def"
+
+        MockURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.absoluteString, "https://openagents.com/api/sync/push")
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer \(apiKey)")
+
+            let data = try XCTUnwrap(request.httpBodyStream.flatMap(Self.data(from:)))
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            XCTAssertEqual(json["protocolVersion"] as? Int, 1)
+            XCTAssertEqual(json["schemaVersion"] as? Int, 1)
+            XCTAssertTrue((json["clientGroupId"] as? String)?.hasPrefix("khala_ios_cg_") == true)
+            XCTAssertTrue((json["clientId"] as? String)?.hasPrefix("khala_ios_client_") == true)
+
+            let mutations = try XCTUnwrap(json["mutations"] as? [[String: Any]])
+            XCTAssertEqual(mutations.count, 2)
+            XCTAssertEqual(mutations[0]["mutationId"] as? Int, 1)
+            XCTAssertEqual(mutations[0]["name"] as? String, "chat.createThread")
+            XCTAssertEqual(mutations[1]["mutationId"] as? Int, 2)
+            XCTAssertEqual(mutations[1]["name"] as? String, "chat.appendMessage")
+
+            let createArgsData = try XCTUnwrap((mutations[0]["argsJson"] as? String)?.data(using: .utf8))
+            let createArgs = try XCTUnwrap(JSONSerialization.jsonObject(with: createArgsData) as? [String: Any])
+            XCTAssertEqual(createArgs["threadId"] as? String, threadId)
+            XCTAssertEqual(createArgs["title"] as? String, "Owner dogfood")
+
+            let appendArgsData = try XCTUnwrap((mutations[1]["argsJson"] as? String)?.data(using: .utf8))
+            let appendArgs = try XCTUnwrap(JSONSerialization.jsonObject(with: appendArgsData) as? [String: Any])
+            XCTAssertEqual(appendArgs["threadId"] as? String, threadId)
+            XCTAssertEqual(appendArgs["messageId"] as? String, messageId)
+            XCTAssertEqual(appendArgs["body"] as? String, "hello from phone")
+
+            return (
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!,
+                Data("""
+                {
+                  "protocolVersion": 1,
+                  "results": [
+                    { "mutationId": 1, "status": "applied" },
+                    { "mutationId": 2, "status": "applied" }
+                  ],
+                  "lastMutationId": 2
+                }
+                """.utf8)
+            )
+        }
+
+        let result = try await KhalaClient.pushChatSyncTurn(
+            threadId: threadId,
+            title: "  Owner dogfood  ",
+            messageId: messageId,
+            body: "hello from phone",
+            apiKey: apiKey,
+            stateStore: store,
+            session: session
+        )
+
+        XCTAssertEqual(result.routeRef, "route.khala_sync.push.v0_1")
+        XCTAssertEqual(result.mutationIds, [1, 2])
+        XCTAssertEqual(result.lastMutationId, 2)
+        XCTAssertEqual(store.load().lastMutationId, 2)
+        XCTAssertTrue(store.load().syncedThreadIds.contains(threadId))
+    }
+
+    func testPushChatSyncTurnSkipsCreateForKnownSyncedThread() async throws {
+        let session = makeSession()
+        let store = makeChatSyncStateStore()
+        var state = store.load()
+        state.lastMutationId = 2
+        state.syncedThreadIds.insert("ios.thread.known")
+        store.save(state)
+
+        MockURLProtocol.requestHandler = { request in
+            let data = try XCTUnwrap(request.httpBodyStream.flatMap(Self.data(from:)))
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            let mutations = try XCTUnwrap(json["mutations"] as? [[String: Any]])
+            XCTAssertEqual(mutations.count, 1)
+            XCTAssertEqual(mutations[0]["mutationId"] as? Int, 3)
+            XCTAssertEqual(mutations[0]["name"] as? String, "chat.appendMessage")
+
+            return (
+                HTTPURLResponse(url: try XCTUnwrap(request.url), statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                Data("""
+                {
+                  "protocolVersion": 1,
+                  "results": [{ "mutationId": 3, "status": "applied" }],
+                  "lastMutationId": 3
+                }
+                """.utf8)
+            )
+        }
+
+        let result = try await KhalaClient.pushChatSyncTurn(
+            threadId: "ios.thread.known",
+            title: "Known",
+            messageId: "ios.message.next",
+            body: "phone follow-up",
+            apiKey: "oa_agent_chat_sync",
+            stateStore: store,
+            session: session
+        )
+
+        XCTAssertEqual(result.mutationIds, [3])
+        XCTAssertEqual(store.load().lastMutationId, 3)
+    }
+
+    func testFetchChatSyncThreadsBootstrapsOwnerScopeAndDecodesThreadRows() async throws {
+        let session = makeSession()
+        let store = makeChatSyncStateStore()
+        let apiKey = "oa_agent_chat_sync"
+
+        MockURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.absoluteString, "https://openagents.com/api/sync/bootstrap")
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer \(apiKey)")
+
+            let data = try XCTUnwrap(request.httpBodyStream.flatMap(Self.data(from:)))
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            XCTAssertEqual(json["protocolVersion"] as? Int, 1)
+            XCTAssertEqual(json["schemaVersion"] as? Int, 1)
+            XCTAssertEqual(json["scope"] as? String, "scope.user.user.public.owner")
+            XCTAssertEqual(json["pageSize"] as? Int, 200)
+
+            let postImageJson = """
+            {
+              "threadId": "thread.remote.kh-202",
+              "ownerUserId": "user.public.owner",
+              "title": "Remote device thread",
+              "status": "active",
+              "messageCount": 2,
+              "lastMessageAt": "2026-07-04T17:03:00.000Z",
+              "createdAt": "2026-07-04T17:00:00.000Z",
+              "updatedAt": "2026-07-04T17:03:00.000Z"
+            }
+            """
+            let body: [String: Any] = [
+                "protocolVersion": 1,
+                "scope": "scope.user.user.public.owner",
+                "cursor": 7,
+                "entities": [
+                    [
+                        "entityType": "chat_thread",
+                        "entityId": "thread.remote.kh-202",
+                        "postImageJson": postImageJson,
+                    ],
+                ],
+            ]
+            return (
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!,
+                try JSONSerialization.data(withJSONObject: body)
+            )
+        }
+
+        let result = try await KhalaClient.fetchChatSyncThreads(
+            ownerUserId: "user.public.owner",
+            apiKey: apiKey,
+            stateStore: store,
+            session: session
+        )
+
+        XCTAssertEqual(result.routeRef, "route.khala_sync.bootstrap.v0_1")
+        XCTAssertEqual(result.scope, "scope.user.user.public.owner")
+        XCTAssertEqual(result.cursor, 7)
+        XCTAssertEqual(result.threads.map(\.threadId), ["thread.remote.kh-202"])
+        XCTAssertEqual(result.threads.first?.messageCount, 2)
+        XCTAssertTrue(store.load().syncedThreadIds.contains("thread.remote.kh-202"))
+    }
+
     func testFetchFleetInspectorStatusUsesBearerAuthAndDecodesPublicRefs() async throws {
         let session = makeSession()
         let apiKey = "oa_agent_fleet_status_test"
@@ -480,6 +664,13 @@ final class KhalaClientTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]
         return URLSession(configuration: configuration)
+    }
+
+    private func makeChatSyncStateStore() -> KhalaChatSyncStateStore {
+        let suite = "KhalaChatSyncTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        return KhalaChatSyncStateStore(defaults: defaults, key: "state")
     }
 
     private static func data(from stream: InputStream) -> Data {

@@ -42,6 +42,9 @@ struct ChatView: View {
                             if let error = model.error {
                                 chatErrorNotice(error)
                             }
+                            if let chatSyncStatus = model.chatSyncStatus {
+                                chatSyncNotice(chatSyncStatus)
+                            }
                         }
                         Color.clear.frame(height: 1).id("bottom")
                     }
@@ -204,6 +207,37 @@ struct ChatView: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func chatSyncNotice(_ status: ChatViewModel.ChatSyncStatus) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: chatSyncStatusIcon(status.phase))
+                .foregroundStyle(chatSyncStatusColor(status.phase))
+            Text(status.message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func chatSyncStatusIcon(_ phase: ChatViewModel.ChatSyncStatus.Phase) -> String {
+        switch phase {
+        case .syncing: return "arrow.triangle.2.circlepath"
+        case .synced: return "checkmark.circle.fill"
+        case .failed: return "exclamationmark.triangle.fill"
+        }
+    }
+
+    private func chatSyncStatusColor(_ phase: ChatViewModel.ChatSyncStatus.Phase) -> Color {
+        switch phase {
+        case .syncing: return .secondary
+        case .synced: return .green
+        case .failed: return .orange
+        }
     }
 
     private var composer: some View {

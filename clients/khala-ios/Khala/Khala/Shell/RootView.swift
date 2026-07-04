@@ -18,6 +18,8 @@ struct RootView: View {
     @State private var fleetStatus: FleetInspectorStatus?
     @State private var fleetStatusLoading = false
     @State private var fleetStatusError: String?
+    @State private var chatSyncRefreshing = false
+    @State private var chatSyncRefreshMessage: String?
     /// Active conversation channel. `.khala` is the public collective model;
     /// `.artanis` is the owner-only operator channel (#6363). Toggled from the
     /// title menu; switching starts a fresh conversation so the two personas
@@ -61,6 +63,11 @@ struct RootView: View {
         }
         .sheet(isPresented: $showDiagnostics) {
             DiagnosticsView(snapshot: diagnosticsSnapshot)
+        }
+        .alert("Khala Sync", isPresented: chatSyncRefreshAlertBinding) {
+            Button("OK", role: .cancel) { chatSyncRefreshMessage = nil }
+        } message: {
+            Text(chatSyncRefreshMessage ?? "")
         }
         .task { await onAppear() }
         .onChange(of: selection?.id) { _, _ in syncModel() }
@@ -127,6 +134,15 @@ struct RootView: View {
                             Label("Open traces in web", systemImage: "safari")
                         }
                         Button {
+                            Task { await refreshChatSyncThreads() }
+                        } label: {
+                            Label(
+                                chatSyncRefreshing ? "Refreshing Khala Sync" : "Refresh Khala Sync",
+                                systemImage: "arrow.triangle.2.circlepath"
+                            )
+                        }
+                        .disabled(chatSyncRefreshing)
+                        Button {
                             showDiagnostics = true
                         } label: {
                             Label("Diagnostics", systemImage: "lock.shield")
@@ -191,6 +207,13 @@ struct RootView: View {
             activeConversation: activeConversation,
             conversationCount: store.conversations.count,
             isUsingEphemeralFallback: store.isUsingEphemeralFallback
+        )
+    }
+
+    private var chatSyncRefreshAlertBinding: Binding<Bool> {
+        Binding(
+            get: { chatSyncRefreshMessage != nil },
+            set: { if !$0 { chatSyncRefreshMessage = nil } }
         )
     }
 
@@ -281,6 +304,35 @@ struct RootView: View {
             fleetStatusError = khala.recoveryMessage
         } catch {
             fleetStatusError = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func refreshChatSyncThreads() async {
+        guard !chatSyncRefreshing else { return }
+        guard let key = KeychainStore.loadAPIKey() else {
+            chatSyncRefreshMessage = "Mint or paste a Khala key in Settings to refresh Khala Sync."
+            showSettings = true
+            return
+        }
+        chatSyncRefreshing = true
+        defer { chatSyncRefreshing = false }
+        do {
+            let ownerUserId = try await KhalaClient.resolveChatSyncOwnerUserId(apiKey: key)
+            let result = try await KhalaClient.fetchChatSyncThreads(
+                ownerUserId: ownerUserId,
+                apiKey: key
+            )
+            let merged = store.mergeSyncedThreads(result.threads)
+            if selection == nil {
+                selection = store.mostRecent
+            }
+            syncModel()
+            chatSyncRefreshMessage = "Refreshed \(merged) Khala Sync thread(s) from \(result.scope)."
+        } catch let khala as KhalaClient.KhalaError {
+            chatSyncRefreshMessage = khala.recoveryMessage
+        } catch {
+            chatSyncRefreshMessage = error.localizedDescription
         }
     }
 }

@@ -16,9 +16,14 @@ chat history; the main surface is a chat `NavigationStack`.
 Chat with `openagents/khala` (`POST https://openagents.com/api/v1/chat/completions`)
 — typed or push-to-talk → on-device speech-to-text (Apple `Speech`). Conversations
 persist **locally on device** (SwiftData) and show up in the drawer Recents
-(new / rename / delete, sorted by most-recent). The API key (an `oa_agent_…`
-token) is minted in-app (`POST /api/keys/free`) or pasted, stored in the iOS
-Keychain.
+(new / rename / delete, sorted by most-recent). The app also has the MC-5
+owner-dogfood Khala Sync bridge: user turns write private `chat.createThread`
+and `chat.appendMessage` mutations through `POST /api/sync/push`, and the title
+menu's **Refresh Khala Sync** command bootstraps owner-private `chat_thread`
+metadata back into the drawer. Message bodies stay in the authenticated
+`scope.thread.<threadId>` sync scope and must never be copied into public
+evidence bundles. The API key (an `oa_agent_…` token) is minted in-app
+(`POST /api/keys/free`) or pasted, stored in the iOS Keychain.
 
 ## Xcode project: file-system-synchronized group
 
@@ -64,6 +69,19 @@ clients/khala-ios/Khala/
 - `KHALA_DEMO_PROMPT` — auto-send a prompt on launch to exercise the round-trip.
 - `KHALA_SKIP_PERMISSIONS` — skip the mic/speech prompt for launch-render
   screenshots / CI (real users still get prompted on first push-to-talk).
+
+### Khala Sync dogfood evidence
+
+The cross-device dogfood evidence format is validated by:
+
+```sh
+bun scripts/validate-khala-sync-cross-device-evidence.ts \
+  docs/khala-sync/receipts/2026-07-04-cross-device-chat-dogfood.pending.json
+```
+
+Only counts, latencies, public route/scope/receipt refs, build refs, and owner
+sign-off refs belong in that bundle. Do not record raw chat text, prompts,
+transcripts, local paths, or tokens.
 
 ## Open & run locally (Xcode)
 

@@ -1,0 +1,32 @@
+{
+  "schema": "openagents.khala_sync.cross_device_chat_dogfood.v1",
+  "status": "pending_owner_signoff",
+  "issueRef": "OpenAgentsInc/openagents#8354",
+  "epicRef": "OpenAgentsInc/openagents#8339",
+  "generatedAt": "2026-07-04T00:00:00.000Z",
+  "routeRefs": [
+    "route.khala_sync.push.v0_1",
+    "route.khala_sync.bootstrap.v0_1",
+    "route.khala_sync.connect.v0_1"
+  ],
+  "scopeRefs": [
+    "scope.user.owner_ref_pending",
+    "scope.thread.thread_ref_pending"
+  ],
+  "blockerRefs": [
+    "blocker.owner_device_signoff_required",
+    "blocker.testflight_refresh_owner_gated"
+  ],
+  "flows": [],
+  "safeguards": {
+    "containsChatContent": false,
+    "containsSecrets": false,
+    "contentFieldsRedacted": true,
+    "ownerSignedTransitionsOnly": true,
+    "promiseFlips": false
+  },
+  "khalaCodeEvidenceRefs": [
+    "khala_code.chat.sync_remote_thread_appears_without_restart.v1",
+    "khala_code.chat.cross_device_dogfood.pending.v1"
+  ]
+}

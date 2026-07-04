@@ -51,6 +51,9 @@ final class Conversation {
     var title: String
     var createdAt: Date
     var updatedAt: Date
+    /// Server-side Khala Sync thread ref when this local conversation is bound
+    /// to owner-private cross-device sync. Nil for pre-sync local-only chats.
+    var syncThreadId: String?
 
     /// Cascade-delete the transcript when the conversation is removed.
     @Relationship(deleteRule: .cascade, inverse: \Message.conversation)
@@ -59,12 +62,14 @@ final class Conversation {
     init(
         id: UUID = UUID(),
         title: String = Conversation.defaultTitle,
+        syncThreadId: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         messages: [Message] = []
     ) {
         self.id = id
         self.title = title
+        self.syncThreadId = syncThreadId
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.messages = messages

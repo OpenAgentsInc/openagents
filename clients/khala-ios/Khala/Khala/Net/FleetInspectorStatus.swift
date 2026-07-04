@@ -95,6 +95,11 @@ struct FleetInspectorStatus: Equatable {
             + allRefs.filter { $0.hasPrefix("proof.") || $0.hasPrefix("artifact.") }
         )
         let recentRefs = recentWorkRefs(from: payload, allRefs: allRefs)
+        let pylonReadinessRefs = unique(
+            [pylonRef].compactMap { $0 }
+                + capacityRefs
+                + loadRefs
+        )
 
         return FleetInspectorStatus(
             fetchedAt: fetchedAt,
@@ -103,7 +108,7 @@ struct FleetInspectorStatus: Equatable {
             localAgentIdentity: firstString(in: localAgent, keys: ["agentRef", "pylonRef", "ref"])
                 ?? pylonRef,
             pylonRef: pylonRef,
-            pylonReadiness: readiness(from: pylon, fallbackRefs: allRefs, availableHints: ["active", "ready", "online"]),
+            pylonReadiness: readiness(from: pylon, fallbackRefs: pylonReadinessRefs, availableHints: ["active", "ready", "online"]),
             heartbeatObservedAt: heartbeat,
             heartbeatFresh: heartbeatFresh,
             providerAccounts: providerAccounts(from: payload, refs: allRefs),

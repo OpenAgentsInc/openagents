@@ -56,6 +56,17 @@ final class ChatViewModel: ObservableObject {
         let isRetryable: Bool
     }
 
+    struct ChatSyncStatus: Equatable {
+        enum Phase: Equatable {
+            case syncing
+            case synced
+            case failed
+        }
+
+        let phase: Phase
+        let message: String
+    }
+
     /// The assistant message currently being streamed, if any. Views compare
     /// against this to drive `MessageBubble(isStreaming:)`.
     @Published private(set) var streamingMessageID: UUID?
@@ -65,6 +76,7 @@ final class ChatViewModel: ObservableObject {
     /// Inline error for the active turn (402 / network / HTTP). Cleared on the
     /// next send or retry.
     @Published private(set) var error: ChatError?
+    @Published private(set) var chatSyncStatus: ChatSyncStatus?
     @Published private(set) var appleFMStatus: AppleFMClient.Status?
     /// Monotonic counter bumped on every streamed delta so the chat view can
     /// auto-scroll as the assistant turn grows (SwiftData content mutations do
@@ -120,8 +132,17 @@ final class ChatViewModel: ObservableObject {
 
         error = nil
         lastUserPrompt = trimmed
-        if !alreadyPersisted {
-            store.appendMessage(.user, content: trimmed, to: conversation)
+        let userMessage: Message?
+        if alreadyPersisted {
+            userMessage = conversation.sortedMessages.last(where: { message in
+                message.role == .user && message.content == trimmed
+            })
+        } else {
+            userMessage = store.appendMessage(.user, content: trimmed, to: conversation)
+        }
+
+        if let userMessage {
+            syncUserTurnIfNeeded(userMessage, body: trimmed, apiKey: apiKey)
         }
 
         startStream(apiKey: apiKey)
@@ -231,6 +252,48 @@ final class ChatViewModel: ObservableObject {
                 self.fail(appleFM, assistant: assistant)
             } catch {
                 self.fail(.transport(error), assistant: assistant)
+            }
+        }
+    }
+
+    private func syncUserTurnIfNeeded(_ message: Message, body: String, apiKey: String?) {
+        guard channel == .khala, let apiKey else { return }
+        let threadId = conversation.syncThreadId ?? KhalaClient.chatSyncThreadId(for: conversation.id)
+        if conversation.syncThreadId == nil {
+            store.bindSyncThreadId(threadId, to: conversation)
+        }
+        let messageId = KhalaClient.chatSyncMessageId(for: message.id)
+        let title = conversation.title == Conversation.defaultTitle
+            ? Conversation.derivedTitle(from: body)
+            : conversation.title
+        chatSyncStatus = ChatSyncStatus(
+            phase: .syncing,
+            message: "Syncing to Khala Sync"
+        )
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let result = try await KhalaClient.pushChatSyncTurn(
+                    threadId: threadId,
+                    title: title,
+                    messageId: messageId,
+                    body: body,
+                    apiKey: apiKey
+                )
+                self.chatSyncStatus = ChatSyncStatus(
+                    phase: .synced,
+                    message: "Khala Sync updated \(result.statuses.count) mutation(s)"
+                )
+            } catch let khala as KhalaClient.KhalaError {
+                self.chatSyncStatus = ChatSyncStatus(
+                    phase: .failed,
+                    message: khala.recoveryMessage
+                )
+            } catch {
+                self.chatSyncStatus = ChatSyncStatus(
+                    phase: .failed,
+                    message: error.localizedDescription
+                )
             }
         }
     }

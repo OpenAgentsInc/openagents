@@ -19,6 +19,8 @@ enum KhalaClient {
         case unauthorized // HTTP 401 / 403 — key invalid, revoked, or unrecognized
         case quotaExceeded // HTTP 402
         case invalidCodingRequest(String)
+        case syncRejected(String)
+        case syncProtocol(String)
         case http(Int, String)
         case decoding
         case transport(Error)
@@ -32,6 +34,10 @@ enum KhalaClient {
             case .quotaExceeded:
                 return "Free quota reached. Add credits or wait for the UTC reset."
             case .invalidCodingRequest(let reason):
+                return reason
+            case .syncRejected(let reason):
+                return reason
+            case .syncProtocol(let reason):
                 return reason
             case .http(let code, _):
                 return "Khala API error (\(code)). Try again."
@@ -56,6 +62,10 @@ enum KhalaClient {
                 return "Key rejected"
             case .invalidCodingRequest:
                 return "Check the request"
+            case .syncRejected:
+                return "Chat sync rejected"
+            case .syncProtocol:
+                return "Chat sync protocol error"
             case .http:
                 return "Khala API error"
             case .decoding:
@@ -76,6 +86,10 @@ enum KhalaClient {
             case .unauthorized:
                 return "Khala did not accept this API key. Open Settings to mint a free key or paste a valid one, then send again."
             case .invalidCodingRequest(let reason):
+                return reason
+            case .syncRejected(let reason):
+                return reason
+            case .syncProtocol(let reason):
                 return reason
             case .http(let code, _):
                 return "Khala returned HTTP \(code). Update the request or try again after checking Settings."
