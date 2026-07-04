@@ -136,6 +136,7 @@ type ContractStore = Pick<
   | 'listAssignmentsForPylon'
   | 'listEventsForPylon'
   | 'listEventsForAssignment'
+  | 'listProviderJobLifecycleForPylons'
   | 'listRegistrations'
   | 'readAssignment'
   | 'readAssignmentByIdempotencyKeyHash'
@@ -229,6 +230,36 @@ const specContractSuite = (getStore: () => ContractStore) => {
 
     const readBack = await store.readAssignment(record.assignmentRef)
     expect(readBack).toEqual(next)
+  })
+
+  test('assignment writes keep the provider job lifecycle twin current', async () => {
+    const { registration, store } = await withRegistration()
+    const record = assignmentRecord(registration.pylonRef)
+    await store.createAssignment(record)
+
+    const offered = await store.listProviderJobLifecycleForPylons(
+      [registration.pylonRef],
+      10,
+    )
+    expect(offered).toHaveLength(1)
+    expect(offered[0]?.assignmentRef).toBe(record.assignmentRef)
+    expect(offered[0]?.stage).toBe('offered')
+
+    await store.updateAssignment({
+      ...record,
+      artifactRefs: ['artifact.contract.1'],
+      state: 'running',
+      updatedAt: '2026-07-01T01:30:00.000Z',
+    })
+
+    const updated = await store.listProviderJobLifecycleForPylons(
+      [registration.pylonRef],
+      10,
+    )
+    expect(updated).toHaveLength(1)
+    expect(updated[0]?.assignmentRef).toBe(record.assignmentRef)
+    expect(updated[0]?.artifactRefs).toEqual(['artifact.contract.1'])
+    expect(updated[0]?.stage).toBe('artifact_submitted')
   })
 
   test('updateAssignmentIfState is a compare-and-set on state', async () => {
@@ -529,6 +560,14 @@ describe.skipIf(!hasLocalPostgres())(
         'utf8',
       )
       await client.unsafe(migrationSql)
+      const controlPlaneMigrationSql = readFileSync(
+        path.resolve(
+          import.meta.dirname,
+          '../../../../../packages/khala-sync-server/migrations/0009_pylon_control_plane_remainder.sql',
+        ),
+        'utf8',
+      )
+      await client.unsafe(controlPlaneMigrationSql)
 
       store = makePostgresPylonDispatchStore({
         acquireSql: () =>

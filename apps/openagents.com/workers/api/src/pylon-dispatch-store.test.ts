@@ -10,11 +10,16 @@ import { describe, expect, test } from 'vitest'
 import type {
   PylonApiAssignmentRecord,
   PylonApiEventRecord,
+  PylonApiProviderJobLifecycleRecord,
+  PylonApiQuarantineRecord,
   PylonApiRegistrationRecord,
   PylonApiStore,
+  PylonSparkPayoutTargetRecord,
+  PylonSparkPayoutTargetStore,
 } from './pylon-api'
 import {
   makeDualWritePylonApiStore,
+  makeDualWritePylonSparkPayoutTargetStore,
   pylonDispatchFlagsFromEnv,
   type PostgresPylonDispatchStore,
   type PylonDispatchDiagnostic,
@@ -92,6 +97,48 @@ const event = (ref: string): PylonApiEventRecord => ({
   status: 'running',
 })
 
+const lifecycle = (ref: string): PylonApiProviderJobLifecycleRecord => ({
+  acceptedWorkRefs: [],
+  artifactRefs: [],
+  assignmentRef: ref,
+  closeoutRefs: [],
+  createdAt: '2026-07-01T01:00:00.000Z',
+  id: `lifecycle_${ref}`,
+  jobKind: 'codex_agent_task',
+  ownerAgentUserId: 'agent-user-1',
+  proofRefs: [],
+  publicProjectionJson: '{}',
+  pylonRef: 'pylon.dual.1',
+  stage: 'offered',
+  taskRefs: [],
+  updatedAt: '2026-07-01T01:00:00.000Z',
+})
+
+const quarantine = (ref: string): PylonApiQuarantineRecord => ({
+  actionRefs: ['action.public.pylon_quarantine'],
+  createdAt: '2026-07-01T01:00:00.000Z',
+  expiresAt: null,
+  id: `quarantine_${ref}`,
+  ownerAgentUserId: 'agent-user-1',
+  publicProjectionJson: '{}',
+  pylonRef: 'pylon.dual.1',
+  quarantineRef: ref,
+  reasonRefs: ['reason.public.pylon_quarantine'],
+  releasedAt: null,
+  sourceRefs: ['source.public.pylon_quarantine'],
+  state: 'active',
+  updatedAt: '2026-07-01T01:00:00.000Z',
+})
+
+const sparkTarget = (pylonRef: string): PylonSparkPayoutTargetRecord => ({
+  createdAt: '2026-07-01T01:00:00.000Z',
+  ownerAgentUserId: 'agent-user-1',
+  payoutTargetRef: 'payout.spark.12345678',
+  pylonRef,
+  rawSparkAddress: 'spark1abcdefghijklmnopqrstuv',
+  updatedAt: '2026-07-01T01:00:00.000Z',
+})
+
 type Call = { method: string; args: ReadonlyArray<unknown> }
 
 const makeFakeD1 = (overrides: Partial<PylonApiStore> = {}) => {
@@ -139,26 +186,22 @@ const makeFakeD1 = (overrides: Partial<PylonApiStore> = {}) => {
       'readEventByIdempotencyKeyHash',
       undefined,
     ),
+    readActiveQuarantineForPylon: track(
+      'readActiveQuarantineForPylon',
+      quarantine('quarantine.public.pylon.dual.1'),
+    ),
     readRegistration: track('readRegistration', registration('pylon.dual.1')),
     sweepStaleAssignmentLeases: track('sweepStaleAssignmentLeases', ['a9']),
     updateAssignment: track('updateAssignment', assignment('a1')),
     updateAssignmentIfState: track('updateAssignmentIfState', assignment('a1')),
-    upsertProviderJobLifecycle: track('upsertProviderJobLifecycle', {
-      acceptedWorkRefs: [],
-      artifactRefs: [],
-      assignmentRef: 'a1',
-      closeoutRefs: [],
-      createdAt: '2026-07-01T01:00:00.000Z',
-      id: 'lifecycle_a1',
-      jobKind: 'codex_agent_task',
-      ownerAgentUserId: 'agent-user-1',
-      proofRefs: [],
-      publicProjectionJson: '{}',
-      pylonRef: 'pylon.dual.1',
-      stage: 'offered',
-      taskRefs: [],
-      updatedAt: '2026-07-01T01:00:00.000Z',
-    }),
+    upsertProviderJobLifecycle: track(
+      'upsertProviderJobLifecycle',
+      lifecycle('a1'),
+    ),
+    upsertQuarantine: track(
+      'upsertQuarantine',
+      quarantine('quarantine.public.pylon.dual.1'),
+    ),
     upsertRegistration: track(
       'upsertRegistration',
       registration('pylon.dual.1'),
@@ -202,9 +245,16 @@ const makeFakePostgres = (
       'listRegistrationsForOwnerAgentUserIds',
       [registration('pylon.dual.1')],
     ),
+    listProviderJobLifecycleForPylons: track(
+      'listProviderJobLifecycleForPylons',
+      [],
+    ),
     mirrorAssignment: track('mirrorAssignment', undefined),
     mirrorEvent: track('mirrorEvent', undefined),
+    mirrorProviderJobLifecycle: track('mirrorProviderJobLifecycle', undefined),
+    mirrorQuarantine: track('mirrorQuarantine', undefined),
     mirrorRegistration: track('mirrorRegistration', undefined),
+    mirrorSparkPayoutTarget: track('mirrorSparkPayoutTarget', undefined),
     mirrorStaleSweep: track('mirrorStaleSweep', undefined),
     readAssignment: track('readAssignment', assignment('a1')),
     readAssignmentByIdempotencyKeyHash: track(
@@ -219,6 +269,14 @@ const makeFakePostgres = (
     sweepStaleAssignmentLeases: track('sweepStaleAssignmentLeases', []),
     updateAssignment: track('updateAssignment', assignment('a1')),
     updateAssignmentIfState: track('updateAssignmentIfState', assignment('a1')),
+    upsertProviderJobLifecycle: track(
+      'upsertProviderJobLifecycle',
+      lifecycle('a1'),
+    ),
+    upsertQuarantine: track(
+      'upsertQuarantine',
+      quarantine('quarantine.public.pylon.dual.1'),
+    ),
     upsertRegistration: track(
       'upsertRegistration',
       registration('pylon.dual.1'),
@@ -535,7 +593,7 @@ describe('read routing', () => {
     ])
   })
 
-  test('KS-8.4 domain operations always pass through to D1', async () => {
+  test('KS-8.4 reads stay D1-authoritative while writes mirror', async () => {
     const d1 = makeFakeD1()
     const pg = makeFakePostgres()
     const store = makeDualWritePylonApiStore({
@@ -545,10 +603,17 @@ describe('read routing', () => {
       wait: noWait,
     })
     await store.listProviderJobLifecycleForPylons(['pylon.dual.1'], 10)
+    await store.upsertProviderJobLifecycle(lifecycle('a1'))
+    await store.upsertQuarantine?.(quarantine('quarantine.public.pylon.dual.1'))
     expect(d1.calls.map(c => c.method)).toEqual([
       'listProviderJobLifecycleForPylons',
+      'upsertProviderJobLifecycle',
+      'upsertQuarantine',
     ])
-    expect(pg.calls).toEqual([])
+    expect(pg.calls.map(c => c.method)).toEqual([
+      'mirrorProviderJobLifecycle',
+      'mirrorQuarantine',
+    ])
   })
 
   test('no Postgres store (missing binding): the wrapper IS the D1 store', () => {
@@ -560,5 +625,79 @@ describe('read routing', () => {
       wait: noWait,
     })
     expect(store).toBe(d1.store)
+  })
+})
+
+describe('Spark payout target dual-write', () => {
+  test('upsert mirrors raw Spark targets without using Postgres for reads', async () => {
+    const calls: Array<Call> = []
+    const target = sparkTarget('pylon.dual.1')
+    const d1: PylonSparkPayoutTargetStore = {
+      read: async pylonRef => {
+        calls.push({ args: [pylonRef], method: 'd1.read' })
+        return target
+      },
+      readByOwner: async ownerAgentUserId => {
+        calls.push({ args: [ownerAgentUserId], method: 'd1.readByOwner' })
+        return target
+      },
+      upsert: async record => {
+        calls.push({ args: [record], method: 'd1.upsert' })
+        return record
+      },
+    }
+    const pgCalls: Array<Call> = []
+    const postgres: Pick<
+      PostgresPylonDispatchStore,
+      'mirrorSparkPayoutTarget'
+    > = {
+      mirrorSparkPayoutTarget: async record => {
+        pgCalls.push({ args: [record], method: 'mirrorSparkPayoutTarget' })
+      },
+    }
+
+    const store = makeDualWritePylonSparkPayoutTargetStore({
+      d1,
+      flags: { dualWrite: true },
+      postgres,
+    })
+
+    await store.upsert(target)
+    await store.read(target.pylonRef)
+    await store.readByOwner(target.ownerAgentUserId)
+
+    expect(calls.map(c => c.method)).toEqual([
+      'd1.upsert',
+      'd1.read',
+      'd1.readByOwner',
+    ])
+    expect(pgCalls.map(c => c.method)).toEqual(['mirrorSparkPayoutTarget'])
+  })
+
+  test('Spark target mirror failure is fail-soft and logs no raw address ref', async () => {
+    const target = sparkTarget('pylon.dual.1')
+    const d1: PylonSparkPayoutTargetStore = {
+      read: async () => target,
+      readByOwner: async () => target,
+      upsert: async record => record,
+    }
+    const sink = makeLogSink()
+    const store = makeDualWritePylonSparkPayoutTargetStore({
+      d1,
+      flags: { dualWrite: true },
+      log: sink.log,
+      postgres: {
+        mirrorSparkPayoutTarget: () => Promise.reject(new Error('pg down')),
+      },
+    })
+
+    await expect(store.upsert(target)).resolves.toEqual(target)
+    expect(sink.events).toHaveLength(1)
+    expect(sink.events[0]?.fields.op).toBe('upsertSparkPayoutTarget')
+    expect(sink.events[0]?.fields.refs).toEqual([
+      target.pylonRef,
+      target.payoutTargetRef,
+    ])
+    expect(sink.events[0]?.fields.refs).not.toContain(target.rawSparkAddress)
   })
 })

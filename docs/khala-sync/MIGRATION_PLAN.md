@@ -187,9 +187,12 @@ backfill/verify tool is
 `packages/khala-sync-server/scripts/backfill-pylon-control-plane.ts`; it
 copies bounded rowid pages from D1, preserves natural-key `ON CONFLICT DO
 NOTHING` semantics, and verifies exact row counts, per-domain tallies, and
-newest-N hashes. This is not a read or write cutover yet: the dual-write
-Worker seams, Queue-based raw-event ingestion split, closeout-verifier shadow
-read, cron re-home, and final D1 decommission remain on
+newest-N hashes. A first partial Worker mirror is live in source for
+assignment-derived provider lifecycle, explicit provider lifecycle updates,
+Pylon quarantines, and raw Spark payout target registrations; those remain
+D1-first and read-authoritative until verification/cutover. Queue-based
+raw-event ingestion split, closeout-verifier shadow read, cron re-home,
+compare/postgres read flags, and final D1 decommission remain on
 [#8315](https://github.com/OpenAgentsInc/openagents/issues/8315).
 
 - **What:** the rest of the Pylon control plane after KS-8.1:

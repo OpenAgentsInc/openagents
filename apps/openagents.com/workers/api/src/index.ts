@@ -994,11 +994,13 @@ import { makePublicStripeCheckoutReceiptRoutes } from './public-stripe-checkout-
 import { makePublicFirstDollarEvidenceRoutes } from './revenue-event-provenance-routes'
 import { buildPublicTassadarRunSummaryEnvelopeForRequest } from './public-tassadar-run-summary-routes'
 import {
-  makeD1PylonSparkPayoutTargetStore,
   type PylonApiStore,
   resolveSparkPayoutDestination,
 } from './pylon-api'
-import { makePylonApiStoreForEnv } from './pylon-dispatch-store'
+import {
+  makePylonApiStoreForEnv,
+  makePylonSparkPayoutTargetStoreForEnv,
+} from './pylon-dispatch-store'
 import { makePylonApiRoutes } from './pylon-api-routes'
 import {
   handlePylonCapacityFunnelApi,
@@ -1600,7 +1602,7 @@ const makeAcceptedOutcomeSettlementSink = (
 
   const db = openAgentsDatabase(env)
   const ledger = makeD1NexusTreasuryPayoutLedgerStore(db)
-  const sparkTargetStore = makeD1PylonSparkPayoutTargetStore(db)
+  const sparkTargetStore = makePylonSparkPayoutTargetStoreForEnv(env)
   const contributionStore = makeD1TrainingTraceContributionStore(db)
 
   // Owner resolver for a contributor's Spark payout destination — same shape as the
@@ -9580,7 +9582,7 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
   makeStore: env => makePylonApiStoreForEnv(env),
   // #5252: private operator-only store for raw Spark payout targets.
   makeSparkPayoutTargetStore: env =>
-    makeD1PylonSparkPayoutTargetStore(openAgentsDatabase(env)),
+    makePylonSparkPayoutTargetStoreForEnv(env),
   // KS-6.1 (#8302): fail-soft fleet cockpit projection of assignment
   // status transitions into Khala Sync (scope.fleet_run.<runId>) via the
   // KHALA_SYNC_DB Hyperdrive binding. Never fails the D1 business write;
@@ -9689,7 +9691,7 @@ const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({
   // resolver here; until then, no vetted Spark target == no native send.
   resolveSettlementPayoutDestination: (env, contributorRef) =>
     resolveSparkPayoutDestination(
-      makeD1PylonSparkPayoutTargetStore(openAgentsDatabase(env)),
+      makePylonSparkPayoutTargetStoreForEnv(env),
       contributorRef,
       pylonRef =>
         makePylonApiStoreForEnv(env)
@@ -9756,7 +9758,7 @@ const hygieneLaneSettlementRoutes =
     },
     resolveSettlementPayoutDestination: (env, contributorRef) =>
       resolveSparkPayoutDestination(
-        makeD1PylonSparkPayoutTargetStore(openAgentsDatabase(env)),
+        makePylonSparkPayoutTargetStoreForEnv(env),
         contributorRef,
         pylonRef =>
           makePylonApiStoreForEnv(env)
@@ -9834,7 +9836,7 @@ const firmupBitcoinSettlementRoutes =
     },
     resolveSettlementPayoutDestination: (env, contributorRef) =>
       resolveSparkPayoutDestination(
-        makeD1PylonSparkPayoutTargetStore(openAgentsDatabase(env)),
+        makePylonSparkPayoutTargetStoreForEnv(env),
         contributorRef,
         pylonRef =>
           makePylonApiStoreForEnv(env)
@@ -9899,7 +9901,7 @@ const tassadarTraceContributionRoutes =
       Effect.gen(function* () {
         const db = openAgentsDatabase(env)
         const ledger = makeD1NexusTreasuryPayoutLedgerStore(db)
-        const sparkTargetStore = makeD1PylonSparkPayoutTargetStore(db)
+        const sparkTargetStore = makePylonSparkPayoutTargetStoreForEnv(env)
         const contributionStore = makeD1TrainingTraceContributionStore(db)
         const run = yield* Effect.promise(() =>
           makeD1TrainingAuthorityStore(db).readRun(input.lease.trainingRunRef),
@@ -14722,9 +14724,7 @@ const routeRequest = makeWorkerRouteRequest({
         openAgentsDatabase(env),
       ),
       pylonApiStore: makePylonApiStoreForEnv(env),
-      pylonSparkPayoutTargetStore: makeD1PylonSparkPayoutTargetStore(
-        openAgentsDatabase(env),
-      ),
+      pylonSparkPayoutTargetStore: makePylonSparkPayoutTargetStoreForEnv(env),
       resolveModeratorActor: async request => {
         const session = await requireBrowserSession(request, env, ctx)
 
