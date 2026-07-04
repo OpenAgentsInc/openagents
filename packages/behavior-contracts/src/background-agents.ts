@@ -536,6 +536,53 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
     {
       authorityBoundary:
+        "This contract binds the private event-ledger handled-state and definition gateway read path. It does not authorize public projection, raw provider payload disclosure, cross-owner reads, unredacted model context, Slack ingest, or handled-state updates from unrelated runs.",
+      blockerRefs: [],
+      contractId: "background_agents.inbox.event_ledger_handled_gateway_redacted.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8213",
+        "https://github.com/OpenAgentsInc/openagents/issues/8218",
+        "INVARIANTS.md",
+        "apps/openagents.com/INVARIANTS.md",
+        "docs/fable/ROADMAP_BACKGROUND_AGENTS.md",
+        "apps/openagents.com/workers/api/src/event-ledger.test.ts",
+        "apps/openagents.com/workers/api/src/agent-definition-event-ledger-routes.test.ts",
+        "apps/openagents.com/workers/api/migrations/0286_event_ledger_handled_state.sql",
+      ],
+      oracles: [
+        {
+          description:
+            "The event ledger persists first-class handled-state, records the touching run and definition, filters by state, and refuses cross-owner handled-state updates.",
+          id: "background_agents.inbox.event_ledger_handled_state",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents.com/workers/api/src/event-ledger.test.ts",
+        },
+        {
+          description:
+            "The definition event-ledger gateway authenticates the owner, enforces the definition toolset, verifies same-definition touching runs, and redacts reads according to secretPolicy.",
+          id: "background_agents.inbox.event_ledger_gateway_redaction",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents.com/workers/api/src/agent-definition-event-ledger-routes.test.ts",
+        },
+      ],
+      productArea: "background agent inbox",
+      source: {
+        channel: "issue_list",
+        statedBy: "owner",
+        statedOn: "2026-07-03",
+      },
+      state: "enforced",
+      statement:
+        "event_ledger.v1 treats handled-state as first-class (`open`, `handled`, `responded`, `ignored`), records the definition run that touched an entry, and exposes owner-scoped definition reads only through a toolset-gated gateway that redacts according to secretPolicy.",
+      surface: "openagents.com-worker",
+      verification:
+        "BA-H2 is enforced by the openagents.com Worker event-ledger store and definition event-ledger gateway route tests in the normal bun test sweep.",
+    },
+    {
+      authorityBoundary:
         "This contract binds harness portability for unchanged background-agent definitions. It does not claim semantic parity between all provider outputs beyond the parity fixture's asserted behavior.",
       blockerRefs: [pendingOracleBlocker("ba_a4")],
       contractId: "background_agents.definitions.harness_swap.v1",
@@ -612,5 +659,5 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-04.2",
+  version: "2026-07-04.3",
 }

@@ -69,6 +69,10 @@ import {
   makeD1AgentDefinitionStore,
 } from './agent-definition-routes'
 import {
+  handleAgentDefinitionEventLedgerGatewayRequest,
+  matchAgentDefinitionEventLedgerGatewayRequest,
+} from './agent-definition-event-ledger-routes'
+import {
   makeD1AgentDefinitionForumCompletionForumStore,
   makeGitHubRestAgentDefinitionCompletionGitHubStore,
 } from './agent-definition-bot-integration'
@@ -94,6 +98,7 @@ import { makeD1AgentDefinitionTriggerStore } from './agent-definition-trigger-st
 import {
   EVENT_LEDGER_INGEST_QUEUE_SCHEMA_VERSION,
   EventLedgerIngestQueueMessage,
+  makeD1EventLedgerStore,
   recordEventLedgerMessageWithOwnerObject,
 } from './event-ledger'
 export { EventLedgerOwnerDurableObject } from './event-ledger'
@@ -13886,28 +13891,39 @@ const routeRequest = makeWorkerRouteRequest({
     }),
   routeAgentGoalRequest: agentGoalRoutes.routeAgentGoalRequest,
   routeAgentDefinitionRunRequest: (request, env) => {
-    if (matchAgentDefinitionRunRequest(request) === undefined) {
+    const matchedRun = matchAgentDefinitionRunRequest(request)
+    const matchedEventLedger =
+      matchAgentDefinitionEventLedgerGatewayRequest(request)
+
+    if (matchedRun === undefined && matchedEventLedger === undefined) {
       return undefined
     }
 
     return routeEffectOrResponse(
-      routeEffect('handle_agent_definition_run_request', async () => {
-        const response = await handleAgentDefinitionRunRequest(request, {
-          agentStore: makeD1AgentRegistrationStore(openAgentsDatabase(env)),
-          definitionStore: makeD1AgentDefinitionStore(openAgentsDatabase(env)),
-          durableStreamNamespace:
-            isInferenceDurableStreamEnabled(
-              env.INFERENCE_DURABLE_STREAM_ENABLED,
-            ) && env.INFERENCE_DURABLE_STREAM !== undefined
-              ? (env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
-              : undefined,
-          forgeGitAuthStore: makeD1ForgeTenantGitAuthStore(
-            openAgentsDatabase(env),
-          ),
-          forgeStore: makeD1ForgeCoordinationStore(openAgentsDatabase(env)),
-          pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
-          runStore: makeD1AgentDefinitionRunStore(openAgentsDatabase(env)),
-        })
+      routeEffect('handle_agent_definition_dynamic_request', async () => {
+        const db = openAgentsDatabase(env)
+        const response =
+          matchedEventLedger === undefined
+            ? await handleAgentDefinitionRunRequest(request, {
+                agentStore: makeD1AgentRegistrationStore(db),
+                definitionStore: makeD1AgentDefinitionStore(db),
+                durableStreamNamespace:
+                  isInferenceDurableStreamEnabled(
+                    env.INFERENCE_DURABLE_STREAM_ENABLED,
+                  ) && env.INFERENCE_DURABLE_STREAM !== undefined
+                    ? (env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
+                    : undefined,
+                forgeGitAuthStore: makeD1ForgeTenantGitAuthStore(db),
+                forgeStore: makeD1ForgeCoordinationStore(db),
+                pylonStore: makeD1PylonApiStore(db),
+                runStore: makeD1AgentDefinitionRunStore(db),
+              })
+            : await handleAgentDefinitionEventLedgerGatewayRequest(request, {
+                agentStore: makeD1AgentRegistrationStore(db),
+                definitionStore: makeD1AgentDefinitionStore(db),
+                eventLedgerStore: makeD1EventLedgerStore(db),
+                runStore: makeD1AgentDefinitionRunStore(db),
+              })
 
         return response ?? notFound()
       }),

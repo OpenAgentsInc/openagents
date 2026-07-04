@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 
+import { decodeAgentDefinition } from '@openagentsinc/agent-runtime-schema'
 import { normalizeGitHubWebhookEvent } from '@openagentsinc/agent-runtime-schema/webhooks'
 import { Schema as S } from 'effect'
 import { describe, expect, test } from 'vitest'
@@ -8,9 +9,11 @@ import { describe, expect, test } from 'vitest'
 import type { DueAgentDefinitionTriggerRecord } from './agent-definition-trigger-store'
 import {
   EVENT_LEDGER_INGEST_QUEUE_SCHEMA_VERSION,
+  EVENT_LEDGER_GATEWAY_READ_SCHEMA,
   EventLedgerIngestQueueMessage,
   type EventLedgerOwnerSequenceReservation,
   type EventLedgerOwnerSequenceStore,
+  eventLedgerGatewayReadProjectionForDefinition,
   eventLedgerMessageForMatchedTrigger,
   makeD1EventLedgerStore,
   recordEventLedgerIngestMessage,
@@ -112,10 +115,15 @@ const eventLedgerMigration = readFileSync(
   new URL('../migrations/0285_event_ledger.sql', import.meta.url),
   'utf8',
 )
+const eventLedgerHandledStateMigration = readFileSync(
+  new URL('../migrations/0286_event_ledger_handled_state.sql', import.meta.url),
+  'utf8',
+)
 
 const makeDb = (): D1Database => {
   const raw = new DatabaseSync(':memory:')
   raw.exec(eventLedgerMigration)
+  raw.exec(eventLedgerHandledStateMigration)
 
   return new SqliteD1(raw) as unknown as D1Database
 }
@@ -189,8 +197,42 @@ const normalizedGitHubMentionEvent = () => {
   return event!
 }
 
+const definition = (
+  secretPolicy: 'none' | 'owner_scoped_refs_only',
+) =>
+  decodeAgentDefinition({
+    schema: 'openagents.agent_definition.v1',
+    id: 'agent_definition.public.event_ledger',
+    ownerRef: 'agent:agent_user_owner_a',
+    name: 'Event Ledger Reader',
+    slug: 'event-ledger-reader',
+    goal: 'Read the private event ledger through a redacting gateway.',
+    harness: { kind: 'codex' },
+    toolset: {
+      allow: ['tool.openagents.event_ledger.*'],
+      deny: [],
+      ask: [],
+      networkPolicy: 'owner_scoped',
+      secretPolicy,
+    },
+    triggers: [{ kind: 'manual', triggerRef: 'trigger.public.event_ledger.manual' }],
+    lane: 'own_pylon',
+    budget: { maxRunSeconds: 900, maxRunsPerDay: 3, maxCreditsPerDay: 0 },
+    escalation: {
+      channel: 'operator',
+      askPolicy: {
+        mode: 'operator_required',
+        policyRef: 'policy.public.agent_definition.operator_required.v1',
+      },
+    },
+    sourceRefs: ['github.issue.8213'],
+    createdAt: '2026-07-04T00:00:00.000Z',
+    updatedAt: '2026-07-04T00:00:00.000Z',
+  })
+
 describe('event ledger ingest', () => {
   // background_agents.inbox.event_ledger_owner_scoped_private.v1
+  // background_agents.inbox.event_ledger_handled_gateway_redacted.v1
   test('builds a GitHub queue message with owner scope and without raw content', () => {
     const message = eventLedgerMessageForMatchedTrigger(
       normalizedGitHubMentionEvent(),
@@ -258,13 +300,21 @@ describe('event ledger ingest', () => {
       persisted: true,
     })
 
-    const ownerRows = await store.listOwnerEntries('agent_user_owner_a', 10)
+    const ownerRows = await store.listOwnerEntries({
+      limit: 10,
+      ownerAgentUserId: 'agent_user_owner_a',
+    })
     expect(ownerRows).toHaveLength(1)
     expect(ownerRows[0]).toMatchObject({
       actorRef: 'github.user.AtlantisPleb',
       contentRef: 'github.comment.OpenAgentsInc/openagents.1001',
+      handledAt: null,
+      handledByDefinitionId: null,
+      handledByRunId: null,
+      handledState: 'open',
       orderingSequence: 1,
       source: 'github',
+      subjectRef: 'github.repository.OpenAgentsInc/openagents.issue.8212',
       trainingConsent: false,
     })
     expect(JSON.stringify(ownerRows[0]?.payloadSummary)).not.toContain(
@@ -291,9 +341,150 @@ describe('event ledger ingest', () => {
       orderingSequence: 1,
       ownerAgentUserId: 'agent_user_owner_b',
     })
-    expect(await store.listOwnerEntries('agent_user_owner_b', 10)).toHaveLength(
-      1,
+    expect(
+      await store.listOwnerEntries({
+        limit: 10,
+        ownerAgentUserId: 'agent_user_owner_b',
+      }),
+    ).toHaveLength(1)
+  })
+
+  test('records handled-state with the touching run and definition', async () => {
+    const db = makeDb()
+    const store = makeD1EventLedgerStore(db)
+    const message = eventLedgerMessageForMatchedTrigger(
+      normalizedGitHubMentionEvent(),
+      triggerRecord('agent_user_owner_a'),
     )
+    expect(message).toBeDefined()
+
+    await recordEventLedgerIngestMessage(
+      {
+        nowIso: () => '2026-07-04T00:06:00.000Z',
+        sequenceStore: new MemoryOwnerSequenceStore(),
+        store,
+      },
+      message!,
+    )
+    const [openEntry] = await store.listOwnerEntries({
+      handledStates: ['open'],
+      limit: 10,
+      ownerAgentUserId: 'agent_user_owner_a',
+    })
+
+    expect(openEntry).toBeDefined()
+    const handled = await store.updateHandledState({
+      entryId: openEntry!.entryId,
+      handledAt: '2026-07-04T00:09:00.000Z',
+      handledByDefinitionId: 'agent_definition.public.event_ledger',
+      handledByRunId: 'agent_definition_run.public.touch_1',
+      handledReasonRef: 'reason.agent_definition.event_ledger.responded',
+      handledState: 'responded',
+      ownerAgentUserId: 'agent_user_owner_a',
+    })
+
+    expect(handled).toMatchObject({
+      entryId: openEntry!.entryId,
+      handledAt: '2026-07-04T00:09:00.000Z',
+      handledByDefinitionId: 'agent_definition.public.event_ledger',
+      handledByRunId: 'agent_definition_run.public.touch_1',
+      handledReasonRef: 'reason.agent_definition.event_ledger.responded',
+      handledState: 'responded',
+      updatedAt: '2026-07-04T00:09:00.000Z',
+    })
+    expect(
+      await store.listOwnerEntries({
+        handledStates: ['open'],
+        limit: 10,
+        ownerAgentUserId: 'agent_user_owner_a',
+      }),
+    ).toHaveLength(0)
+    expect(
+      await store.listOwnerEntries({
+        handledStates: ['responded'],
+        limit: 10,
+        ownerAgentUserId: 'agent_user_owner_a',
+      }),
+    ).toHaveLength(1)
+    expect(
+      await store.updateHandledState({
+        entryId: openEntry!.entryId,
+        handledAt: '2026-07-04T00:10:00.000Z',
+        handledByDefinitionId: 'agent_definition.public.event_ledger',
+        handledByRunId: 'agent_definition_run.public.other_owner',
+        handledState: 'ignored',
+        ownerAgentUserId: 'agent_user_owner_b',
+      }),
+    ).toBeUndefined()
+  })
+
+  test('redacts gateway reads according to the definition secret policy', async () => {
+    const db = makeDb()
+    const store = makeD1EventLedgerStore(db)
+    const message = eventLedgerMessageForMatchedTrigger(
+      normalizedGitHubMentionEvent(),
+      triggerRecord('agent_user_owner_a'),
+    )
+    expect(message).toBeDefined()
+
+    await recordEventLedgerIngestMessage(
+      {
+        nowIso: () => '2026-07-04T00:06:00.000Z',
+        sequenceStore: new MemoryOwnerSequenceStore(),
+        store,
+      },
+      message!,
+    )
+    const entries = await store.listOwnerEntries({
+      limit: 10,
+      ownerAgentUserId: 'agent_user_owner_a',
+    })
+    const refsOnly = eventLedgerGatewayReadProjectionForDefinition(
+      definition('owner_scoped_refs_only'),
+      entries,
+    )
+    const stateOnly = eventLedgerGatewayReadProjectionForDefinition(
+      definition('none'),
+      entries,
+    )
+
+    expect(refsOnly).toMatchObject({
+      schema: EVENT_LEDGER_GATEWAY_READ_SCHEMA,
+      count: 1,
+      redaction: {
+        policy: 'owner_scoped_refs_only',
+        redactionClass: 'owner_scoped_refs',
+      },
+    })
+    expect(refsOnly.entries[0]).toMatchObject({
+      actorRef: 'github.user.AtlantisPleb',
+      contentRef: 'github.comment.OpenAgentsInc/openagents.1001',
+      externalRef: 'github.delivery.delivery-8212',
+      handledState: 'open',
+      redactionClass: 'owner_scoped_refs',
+      subjectRef: 'github.repository.OpenAgentsInc/openagents.issue.8212',
+    })
+    expect(JSON.stringify(refsOnly)).not.toContain('Secret-ish')
+    expect(JSON.stringify(refsOnly)).not.toContain('payloadSummary')
+
+    expect(stateOnly).toMatchObject({
+      count: 1,
+      redaction: {
+        policy: 'none',
+        redactionClass: 'state_only',
+      },
+    })
+    expect(stateOnly.entries[0]).toMatchObject({
+      eventType: 'issue_comment.created.mention',
+      handledState: 'open',
+      redactionClass: 'state_only',
+      source: 'github',
+    })
+    expect(stateOnly.entries[0]).not.toHaveProperty('actorRef')
+    expect(stateOnly.entries[0]).not.toHaveProperty('contentRef')
+    expect(stateOnly.entries[0]).not.toHaveProperty('externalRef')
+    expect(stateOnly.entries[0]).not.toHaveProperty('sourceRefs')
+    expect(stateOnly.entries[0]).not.toHaveProperty('subjectRef')
   })
 
   test('keeps the Worker queue and Durable Object bindings registered', () => {

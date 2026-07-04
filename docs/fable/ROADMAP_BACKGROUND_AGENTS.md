@@ -406,6 +406,17 @@ there is no public projection or model-visible raw source payload. The BA-H1
 behavior contract is
 `background_agents.inbox.event_ledger_owner_scoped_private.v1`.
 
+BA-H2 status (2026-07-04): `event_ledger_entries` now carry first-class
+handled-state (`open`, `handled`, `responded`, `ignored`) plus the touching
+definition/run refs, timestamp, and reason ref via migration
+`0286_event_ledger_handled_state.sql`. Definition-backed reads go through the
+owner-authenticated `/v1/agent-definitions/:id/event-ledger` gateway, which
+enforces the definition toolset (`tool.openagents.event_ledger.read`) and
+redacts by `secretPolicy`; handled-state updates require
+`tool.openagents.event_ledger.handled_state.write` and a run owned by the same
+definition before the ledger row is touched. The BA-H2 behavior contract is
+`background_agents.inbox.event_ledger_handled_gateway_redacted.v1`.
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-H1 | `event_ledger.v1`: Queues ingest → D1 rows (source, externalRef, actor, content ref, timestamps) + per-owner DO for ordering/dedup; GitHub source first; owner-scoped, never training data, never leaves the account boundary | BA-B3 | MED | [#8212](https://github.com/OpenAgentsInc/openagents/issues/8212) |
@@ -429,6 +440,7 @@ the oracle rather than leaving the rule as INVARIANTS prose:
 - BA-G1 → `background_agents.integrations.forum_trigger_callback.v1`
 - BA-G2 → `background_agents.integrations.github_mention_callback.v1`
 - BA-H1 → `background_agents.inbox.event_ledger_owner_scoped_private.v1`
+- BA-H2 → `background_agents.inbox.event_ledger_handled_gateway_redacted.v1`
 - BA-G4 → an indicator-truthfulness UX contract for the Agents panel's
   run-status indicators, written **before** the panel ships (the
   `khala_code.chat.sidebar_spinner_streaming_only.v1` bug class)

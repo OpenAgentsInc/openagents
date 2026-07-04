@@ -266,12 +266,22 @@ More specific invariant ledgers apply inside imported apps and packages.
   bounded summaries, and timestamps; they must not store raw webhook bodies,
   raw comment/message text, provider payloads, secrets, signatures, tokens, or
   training/eval consent. The per-owner `EVENT_LEDGER_OWNER` Durable Object owns
-  ordering and dedupe before D1 persistence. There is no public projection,
-  model-visible read path, handled-state mutation, or training-data use in
-  BA-H1; those require explicit later gateway/redaction work. Regression
-  coverage lives in
+  ordering and dedupe before D1 persistence.
+- Handled-state is now part of the private event-ledger contract. Ledger rows
+  may move only among `open`, `handled`, `responded`, and `ignored`, and any
+  handled-state mutation must record the owner-scoped definition run and
+  definition that touched the row. Definition-backed reads must go through the
+  authenticated event-ledger gateway, must pass the compiled definition
+  toolset (`tool.openagents.event_ledger.read` for reads and
+  `tool.openagents.event_ledger.handled_state.write` for state changes), and
+  must redact according to the definition `secretPolicy`. Cross-owner reads,
+  unrelated-run touches, public projection, raw source payload disclosure,
+  model-visible unredacted context, and training-data use remain forbidden.
+  Regression coverage lives in
   `apps/openagents.com/workers/api/src/event-ledger.test.ts` and
-  `apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts`.
+  `apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts`
+  plus
+  `apps/openagents.com/workers/api/src/agent-definition-event-ledger-routes.test.ts`.
 - Any Worker, Pylon, desktop, or cloud-workroom executor that claims
   definition-backed tool enforcement must use this contract or a formally
   equivalent compiled policy at the execution boundary, with regression tests

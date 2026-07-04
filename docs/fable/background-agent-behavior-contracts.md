@@ -9,7 +9,7 @@ Issue #8218 registers the headline invariants from
 oracles land. Entries remain `pending` until the owning task adds its oracle
 test and flips that exact contract to `enforced`.
 
-Registry version: `2026-07-04.2` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-04.3` (schema `openagents.behavior_contracts.v1`)
 
 ### `background_agents.dispatch.budget_caps_enforced.v1` - ENFORCED
 
@@ -127,6 +127,17 @@ Registry version: `2026-07-04.2` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `background_agents.inbox.github_webhook_enqueue` (bun-test, unit): The GitHub webhook route enqueues exactly one event-ledger message per matched owner trigger while preserving the existing signed normalization and owner-scoped dispatch path. - `apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts`
 - **Verification:** BA-H1 is enforced by the openagents.com Worker event-ledger and GitHub webhook route tests in the normal bun test sweep.
 - **Authority boundary:** This contract binds private event-ledger ingest for matched owner-scoped background-agent GitHub triggers. It does not authorize public projection, training use, cross-owner reads, handled-state mutation, Slack ingest, or model-visible raw source payloads.
+
+### `background_agents.inbox.event_ledger_handled_gateway_redacted.v1` - ENFORCED
+
+- **Surface:** openagents.com-worker (background agent inbox)
+- **Stated by:** owner via issue_list on 2026-07-03
+- **Statement:** event_ledger.v1 treats handled-state as first-class (`open`, `handled`, `responded`, `ignored`), records the definition run that touched an entry, and exposes owner-scoped definition reads only through a toolset-gated gateway that redacts according to secretPolicy.
+- **Enforcement tier:** test-sweep
+- **Oracle** `background_agents.inbox.event_ledger_handled_state` (bun-test, unit): The event ledger persists first-class handled-state, records the touching run and definition, filters by state, and refuses cross-owner handled-state updates. - `apps/openagents.com/workers/api/src/event-ledger.test.ts`
+- **Oracle** `background_agents.inbox.event_ledger_gateway_redaction` (bun-test, unit): The definition event-ledger gateway authenticates the owner, enforces the definition toolset, verifies same-definition touching runs, and redacts reads according to secretPolicy. - `apps/openagents.com/workers/api/src/agent-definition-event-ledger-routes.test.ts`
+- **Verification:** BA-H2 is enforced by the openagents.com Worker event-ledger store and definition event-ledger gateway route tests in the normal bun test sweep.
+- **Authority boundary:** This contract binds the private event-ledger handled-state and definition gateway read path. It does not authorize public projection, raw provider payload disclosure, cross-owner reads, unredacted model context, Slack ingest, or handled-state updates from unrelated runs.
 
 ### `background_agents.definitions.harness_swap.v1` - PENDING
 

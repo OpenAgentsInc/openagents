@@ -601,10 +601,17 @@ This is the invariant ledger for `openagents`.
 - The per-owner `EVENT_LEDGER_OWNER` Durable Object is the ordering/dedup
   authority for ledger ingest. D1 uniqueness is defense-in-depth; routes,
   request isolates, and generic queue consumers must not assign cross-owner
-  ordering directly. Handled state, redacting read tools, Slack ingest, and any
-  model-visible access are later explicit scopes and must preserve this privacy
-  boundary. Regression coverage lives in `workers/api/src/event-ledger.test.ts`
-  and `workers/api/src/agent-definition-webhook-routes.test.ts`.
+  ordering directly.
+- Handled state is private owner-scoped ledger state, not a public projection.
+  Rows may be `open`, `handled`, `responded`, or `ignored`; any state change
+  must record the definition run and definition that touched the entry. The
+  `/v1/agent-definitions/:id/event-ledger` gateway must authenticate the
+  owner, read the owner-scoped definition first, enforce the compiled toolset,
+  verify handled-state touches against a same-definition run, and redact by
+  `secretPolicy` before a definition receives ledger entries. Regression
+  coverage lives in `workers/api/src/event-ledger.test.ts`,
+  `workers/api/src/agent-definition-webhook-routes.test.ts`, and
+  `workers/api/src/agent-definition-event-ledger-routes.test.ts`.
 
 ## Harbor Full Trace Archive (operator-only)
 

@@ -1,3 +1,4 @@
+import type { AgentDefinition } from '@openagentsinc/agent-runtime-schema'
 import type { AgentDefinitionWebhookNormalizedEvent } from '@openagentsinc/agent-runtime-schema/webhooks'
 import { Schema as S } from 'effect'
 
@@ -13,6 +14,16 @@ export const EVENT_LEDGER_INGEST_QUEUE_SCHEMA_VERSION =
   'openagents.event_ledger_ingest.v1' as const
 export const EVENT_LEDGER_INGEST_OUTCOME_SCHEMA =
   'openagents.event_ledger_ingest_outcome.v1' as const
+export const EVENT_LEDGER_GATEWAY_READ_SCHEMA =
+  'openagents.event_ledger_gateway_read.v1' as const
+
+export const EventLedgerHandledState = S.Literals([
+  'open',
+  'handled',
+  'responded',
+  'ignored',
+])
+export type EventLedgerHandledState = typeof EventLedgerHandledState.Type
 
 const EventLedgerPayloadSummary = S.Record(S.String, S.Unknown)
 
@@ -52,6 +63,11 @@ type EventLedgerEntryRow = Readonly<{
   entry_id: string
   event_type: string
   external_ref: string
+  handled_at: string | null
+  handled_by_definition_id: string | null
+  handled_by_run_id: string | null
+  handled_reason_ref: string | null
+  handled_state: EventLedgerHandledState
   occurred_at: string
   ordering_key: string
   ordering_sequence: number
@@ -61,6 +77,7 @@ type EventLedgerEntryRow = Readonly<{
   received_at: string
   source: 'github'
   source_refs_json: string
+  subject_ref: string
   training_consent: number
   updated_at: string
 }>
@@ -72,6 +89,11 @@ export type EventLedgerEntry = Readonly<{
   entryId: string
   eventType: string
   externalRef: string
+  handledAt: string | null
+  handledByDefinitionId: string | null
+  handledByRunId: string | null
+  handledReasonRef: string | null
+  handledState: EventLedgerHandledState
   occurredAt: string
   orderingKey: string
   orderingSequence: number
@@ -81,8 +103,16 @@ export type EventLedgerEntry = Readonly<{
   receivedAt: string
   source: 'github'
   sourceRefs: ReadonlyArray<string>
+  subjectRef: string
   trainingConsent: false
   updatedAt: string
+}>
+
+export type EventLedgerEntryListInput = Readonly<{
+  handledStates?: ReadonlyArray<EventLedgerHandledState> | undefined
+  limit: number
+  ownerAgentUserId: string
+  subjectRef?: string | undefined
 }>
 
 export type EventLedgerStore = Readonly<{
@@ -95,9 +125,23 @@ export type EventLedgerStore = Readonly<{
     }>,
   ) => Promise<EventLedgerEntry>
   listOwnerEntries: (
-    ownerAgentUserId: string,
-    limit: number,
+    input: EventLedgerEntryListInput,
   ) => Promise<ReadonlyArray<EventLedgerEntry>>
+  readOwnerEntry: (
+    ownerAgentUserId: string,
+    entryId: string,
+  ) => Promise<EventLedgerEntry | undefined>
+  updateHandledState: (
+    input: Readonly<{
+      entryId: string
+      handledAt: string
+      handledByDefinitionId: string
+      handledByRunId: string
+      handledReasonRef?: string | undefined
+      handledState: EventLedgerHandledState
+      ownerAgentUserId: string
+    }>,
+  ) => Promise<EventLedgerEntry | undefined>
 }>
 
 export type EventLedgerOwnerSequenceReservation = Readonly<{
@@ -216,6 +260,11 @@ const rowToEntry = (row: EventLedgerEntryRow): EventLedgerEntry => ({
   entryId: row.entry_id,
   eventType: row.event_type,
   externalRef: row.external_ref,
+  handledAt: row.handled_at,
+  handledByDefinitionId: row.handled_by_definition_id,
+  handledByRunId: row.handled_by_run_id,
+  handledReasonRef: row.handled_reason_ref,
+  handledState: row.handled_state,
   occurredAt: row.occurred_at,
   orderingKey: row.ordering_key,
   orderingSequence: row.ordering_sequence,
@@ -225,9 +274,20 @@ const rowToEntry = (row: EventLedgerEntryRow): EventLedgerEntry => ({
   receivedAt: row.received_at,
   source: row.source,
   sourceRefs: parseJsonStringArray(row.source_refs_json),
+  subjectRef: row.subject_ref,
   trainingConsent: false,
   updatedAt: row.updated_at,
 })
+
+const EVENT_LEDGER_SELECT_COLUMNS = `entry_id, owner_agent_user_id, owner_ref,
+        source, external_ref, actor_ref, content_ref, subject_ref, event_type,
+        source_refs_json, payload_summary_json, occurred_at, received_at,
+        ordering_key, ordering_sequence, handled_state, handled_by_run_id,
+        handled_by_definition_id, handled_at, handled_reason_ref,
+        training_consent, created_at, updated_at`
+
+const safeLimit = (limit: number): number =>
+  Number.isFinite(limit) ? Math.max(1, Math.min(Math.trunc(limit), 500)) : 50
 
 export const makeD1EventLedgerStore = (db: D1Database): EventLedgerStore => ({
   insertEntry: async ({ entryId, message, nowIso, orderingSequence }) => {
@@ -265,10 +325,7 @@ export const makeD1EventLedgerStore = (db: D1Database): EventLedgerStore => ({
 
     const row = await db
       .prepare(
-        `SELECT entry_id, owner_agent_user_id, owner_ref, source, external_ref,
-                actor_ref, content_ref, subject_ref, event_type, source_refs_json,
-                payload_summary_json, occurred_at, received_at, ordering_key,
-                ordering_sequence, training_consent, created_at, updated_at
+        `SELECT ${EVENT_LEDGER_SELECT_COLUMNS}
            FROM event_ledger_entries
           WHERE owner_agent_user_id = ?
             AND source = ?
@@ -284,24 +341,172 @@ export const makeD1EventLedgerStore = (db: D1Database): EventLedgerStore => ({
 
     return rowToEntry(row)
   },
-  listOwnerEntries: async (ownerAgentUserId, limit) => {
+  listOwnerEntries: async input => {
+    const clauses = ['owner_agent_user_id = ?']
+    const params: Array<string | number> = [input.ownerAgentUserId]
+
+    if (input.subjectRef !== undefined) {
+      clauses.push('subject_ref = ?')
+      params.push(input.subjectRef)
+    }
+
+    if (
+      input.handledStates !== undefined &&
+      input.handledStates.length > 0
+    ) {
+      clauses.push(
+        `handled_state IN (${input.handledStates.map(() => '?').join(', ')})`,
+      )
+      params.push(...input.handledStates)
+    }
+
     const rows = await db
       .prepare(
-        `SELECT entry_id, owner_agent_user_id, owner_ref, source, external_ref,
-                actor_ref, content_ref, subject_ref, event_type, source_refs_json,
-                payload_summary_json, occurred_at, received_at, ordering_key,
-                ordering_sequence, training_consent, created_at, updated_at
+        `SELECT ${EVENT_LEDGER_SELECT_COLUMNS}
            FROM event_ledger_entries
-          WHERE owner_agent_user_id = ?
+          WHERE ${clauses.join(' AND ')}
           ORDER BY ordering_sequence ASC
           LIMIT ?`,
       )
-      .bind(ownerAgentUserId, Math.max(1, Math.min(limit, 500)))
+      .bind(...params, safeLimit(input.limit))
       .all<EventLedgerEntryRow>()
 
     return (rows.results ?? []).map(rowToEntry)
   },
+  readOwnerEntry: async (ownerAgentUserId, entryId) => {
+    const row = await db
+      .prepare(
+        `SELECT ${EVENT_LEDGER_SELECT_COLUMNS}
+           FROM event_ledger_entries
+          WHERE owner_agent_user_id = ?
+            AND entry_id = ?
+          LIMIT 1`,
+      )
+      .bind(ownerAgentUserId, entryId)
+      .first<EventLedgerEntryRow>()
+
+    return row === null ? undefined : rowToEntry(row)
+  },
+  updateHandledState: async input => {
+    await db
+      .prepare(
+        `UPDATE event_ledger_entries
+            SET handled_state = ?,
+                handled_by_run_id = ?,
+                handled_by_definition_id = ?,
+                handled_at = ?,
+                handled_reason_ref = ?,
+                updated_at = ?
+          WHERE owner_agent_user_id = ?
+            AND entry_id = ?`,
+      )
+      .bind(
+        input.handledState,
+        input.handledByRunId,
+        input.handledByDefinitionId,
+        input.handledAt,
+        input.handledReasonRef ?? null,
+        input.handledAt,
+        input.ownerAgentUserId,
+        input.entryId,
+      )
+      .run()
+
+    return makeD1EventLedgerStore(db).readOwnerEntry(
+      input.ownerAgentUserId,
+      input.entryId,
+    )
+  },
 })
+
+export type EventLedgerGatewayEntry = Readonly<{
+  actorRef?: string
+  contentRef?: string
+  entryId: string
+  eventType: string
+  externalRef?: string
+  handledAt: string | null
+  handledByDefinitionId: string | null
+  handledByRunId: string | null
+  handledReasonRef: string | null
+  handledState: EventLedgerHandledState
+  occurredAt: string
+  orderingSequence: number
+  receivedAt: string
+  redactionClass: 'owner_scoped_refs' | 'state_only'
+  source: 'github'
+  sourceRefs?: ReadonlyArray<string>
+  subjectRef?: string
+}>
+
+export type EventLedgerGatewayReadProjection = Readonly<{
+  count: number
+  definitionId: string
+  entries: ReadonlyArray<EventLedgerGatewayEntry>
+  redaction: Readonly<{
+    policy: AgentDefinition['toolset']['secretPolicy']
+    redactionClass: EventLedgerGatewayEntry['redactionClass']
+  }>
+  schema: typeof EVENT_LEDGER_GATEWAY_READ_SCHEMA
+}>
+
+const gatewayEntryForDefinition = (
+  definition: AgentDefinition,
+  entry: EventLedgerEntry,
+): EventLedgerGatewayEntry => {
+  const base = {
+    entryId: entry.entryId,
+    eventType: entry.eventType,
+    handledAt: entry.handledAt,
+    handledByDefinitionId: entry.handledByDefinitionId,
+    handledByRunId: entry.handledByRunId,
+    handledReasonRef: entry.handledReasonRef,
+    handledState: entry.handledState,
+    occurredAt: entry.occurredAt,
+    orderingSequence: entry.orderingSequence,
+    receivedAt: entry.receivedAt,
+    source: entry.source,
+  }
+
+  return definition.toolset.secretPolicy === 'owner_scoped_refs_only'
+    ? {
+        ...base,
+        actorRef: entry.actorRef,
+        contentRef: entry.contentRef,
+        externalRef: entry.externalRef,
+        redactionClass: 'owner_scoped_refs',
+        sourceRefs: entry.sourceRefs,
+        subjectRef: entry.subjectRef,
+      }
+    : {
+        ...base,
+        redactionClass: 'state_only',
+      }
+}
+
+export const eventLedgerGatewayReadProjectionForDefinition = (
+  definition: AgentDefinition,
+  entries: ReadonlyArray<EventLedgerEntry>,
+): EventLedgerGatewayReadProjection => {
+  const projectedEntries = entries.map(entry =>
+    gatewayEntryForDefinition(definition, entry),
+  )
+  const redactionClass =
+    definition.toolset.secretPolicy === 'owner_scoped_refs_only'
+      ? 'owner_scoped_refs'
+      : 'state_only'
+
+  return {
+    count: projectedEntries.length,
+    definitionId: definition.id,
+    entries: projectedEntries,
+    redaction: {
+      policy: definition.toolset.secretPolicy,
+      redactionClass,
+    },
+    schema: EVENT_LEDGER_GATEWAY_READ_SCHEMA,
+  }
+}
 
 export const recordEventLedgerIngestMessage = async (
   dependencies: Readonly<{
