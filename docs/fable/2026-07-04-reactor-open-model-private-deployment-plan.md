@@ -277,7 +277,13 @@ marketing packages on top of their private endpoint. And Reactor is a
 **segment for Autopilot Lead Gen**: the outbound analyzer gains a
 "model custody" conversation ("which frontier labs currently see your
 data?") aimed at legal, health, biotech, finance, gov-adjacent — with the
-Friedberg clip as third-party validation in the sequence.
+Friedberg clip as third-party validation in the sequence. The named
+outbound track is **Campaign B, "Own your AI"** (apollo plan §11):
+founder-personal emails to 15–25 hand-picked accounts, an
+independence-from-the-big-labs narrative, and deal shapes that extend the
+bands above upward — Assessment $7.5–15k, Pilot + internal code forge
+$25–75k, sovereignty retainer $5–20k/mo, replatform quoted — with the
+custom-software quick wins folded in as sweeteners rather than headliners.
 
 ## 6. Fit with the two-product frame
 

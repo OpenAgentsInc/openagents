@@ -4,7 +4,9 @@ Date: 2026-07-03 (v2 — supersedes the v1 plan in this file; warm-partner
 expansion removed as already-in-motion, target raised to **$25,000 in
 qualified pipeline within 48 hours**, and the whole motion rebuilt around
 **audit-first outbound**: deliver each prospect a real agent-readiness
-report on their own website inside the first email).
+report on their own website inside the first email. **v3 addition
+2026-07-04:** Campaign B — "Own your AI" (§11), the Reactor-targeted
+founder-personal high-ACV track running beside the automated Campaign A.)
 
 Status: sales-operations plan in the Fable lane. **Nothing here is a product
 promise, served capability, public claim copy, or a published price.** The
@@ -46,7 +48,11 @@ opportunities, not vibes) inside 48 hours. And the second product of the
 window is the machine itself: per the Episode 246 heuristic ("if you build
 some new system to help you do the thing you're trying to do, that system
 is probably what your product should be"), this audit-led outbound stack
-**is a leadgen engine we then sell to businesses** — §10.
+**is a leadgen engine we then sell to businesses** — §10. A second track
+runs beside all of this: **Campaign B, "Own your AI"** (§11) — 15–25
+hand-picked Reactor prospects, a personal email from Chris to each,
+five-figure-plus deal shapes, with everything above folded in as
+sweeteners.
 
 ## 1. Why this motion works (and why now)
 
@@ -407,12 +413,111 @@ plan's v2 and confirms/extends it; the deltas to carry:
   aggregates and opaque refs only; no prospect-identifying data ever, and
   revenue graphs only from receipt-backed numbers.
 
-## 11. Owner actions (staged in NEEDS_OWNER.md; nothing here stalls the loop)
+## 11. Campaign B — "Own your AI" (Reactor-targeted, founder-personal, high-ACV)
 
-1. **Approve the email template family + call script** — one sitting.
+Added 2026-07-04. Runs **beside** the agent-readiness campaign, not instead
+of it. Same Apollo account, same LG-2 pipeline queue, opposite shape:
+Campaign A is 95 automated report-led emails at four-figure quick wins;
+Campaign B is **15–25 hand-picked accounts, a personal email from Chris to
+each, and five-figure-plus deal shapes**. Source frames: the Reactor plan
+(`2026-07-04-reactor-open-model-private-deployment-plan.md`), the Friedberg
+transcript, the Mistral CEO post, and the harness-optimization audit
+(`../research/2026-07-04-harness-optimization-evolve-the-harness-audit.md`).
+
+### 11.1 The message: declare independence from the big labs
+
+The narrative every touch carries, all of it registry-safe because it
+describes the *engagement*, not certifications:
+
+- **Your data is your moat, and the labs are mining it.** Closed providers
+  now force data retention; as your teams connect models to business
+  context, the labs see it, learn from it, and have "a track record of
+  going after their most successful customers" (Mistral CEO, quoted as
+  third-party validation, alongside Friedberg's "everyone is walking this
+  path"). Every prompt your company sends a frontier lab is a business-
+  intelligence leak you pay for.
+- **Owning your AI is now practical.** Open models (Nemotron, Llama,
+  GPT-OSS class) on your own hardware, under a signed model-provenance
+  policy you control (US-origin-only if you want it), with your corpus
+  never leaving your custody.
+- **Frontier quality without frontier custody.** The published
+  harness-evolution result (frozen open model 63.4→80.1 on a hard legal
+  agent benchmark, ~7× cheaper, zero weight changes — attributed, never
+  claimed as ours) means the gap buyers assume between "the lab's model"
+  and "my model" is mostly harness, and harness is buyable.
+- **Independence is a ladder, not a leap.** Assessment → pilot → managed —
+  each step receipted, each step exit-friendly ("the switch button in your
+  hand"), no rip-and-replace demanded up front.
+
+### 11.2 The motion: personal email from Chris, not a sequence
+
+This buyer (owner/CEO/GC/CTO of a data-rich mid-market company) does not
+convert on automated sequences. The mechanics:
+
+- **Target selection**: Apollo company search for data-rich, regulated or
+  IP-sensitive verticals — legal, health/biotech, finance/insurance,
+  defense-adjacent, data-heavy manufacturing/logistics — 25+ employees,
+  buying signals (AI hires in job postings, AI-feature announcements).
+  15–25 accounts max; every one hand-approved.
+- **Per-target dossier** (Apollo enrichment + the RX-8 model-custody
+  analyzer): which labs/SaaS AI features currently plausibly see their
+  data (public signals only — subprocessor lists, DPA pages, AI-feature
+  disclosures), plus one line of business context. Facts a reader can
+  verify, no speculation dressed as finding.
+- **The email is 1:1 from Chris's own mailbox** — founder-to-founder, short,
+  references their specific custody posture, carries the independence
+  narrative in two sentences, one CTA: a 30-minute "own your AI"
+  conversation. We draft (one per target, staged in the private ops
+  surface + NEEDS_OWNER queue); Chris edits and sends personally. Never an
+  Apollo sequence, never a template smell. Follow-ups tracked as Apollo
+  tasks; direct-dial reveals reserved for these accounts first.
+- Campaign A's automated machinery still serves B: the agent-readiness
+  report can ride along as a bonus attachment ("also, here's what AI
+  agents see on your public site"), and replies land in the same LG-2
+  pipeline with `sourceRef=own_your_ai`.
+
+### 11.3 The offer ladder (modeled, owner-gated; quoted per-deal on the call)
+
+Higher bands than Campaign A — this is infrastructure + independence, not
+a quick win. Extends the Reactor §5 bands upward for this buyer class:
+
+| Rung | Shape | Modeled band |
+| --- | --- | --- |
+| **Own-your-AI Assessment** | Data-custody audit (where your data goes today), model-policy workshop (their provenance constraints signed as `reactor.model_policy.v1`), hardware spec, independence roadmap | $7.5–15k |
+| **Reactor Pilot + internal code forge** | Private node on their infrastructure, policy-conforming models, one real workload on their corpus — plus the **internal code forge starter**: their own coding-agent fleet + work-coordination patterns on their infra, so their team ships internal software with agents they own | $25–75k |
+| **Sovereignty Retainer** | Managed ops, model refreshes within policy, harness evolution on their tasks (rung zero of the improvement ladder), eval regressions, KPI reporting | $5–20k/mo |
+| **Full replatform** (later, gated) | The Mistral-shaped complete engagement: data liberation + private inference + access control + flywheel | quoted, six figures; only after pilots prove the motion |
+
+**Sweeteners, not headliners:** everything Campaign A sells — agent-ready
+site fixes, coding quick wins, QA Swarm audits — folds into these deals as
+included deliverables ("and while we're in there, we'll fix what AI agents
+see on your site"). The custom-software motion becomes the concession that
+closes the infrastructure deal, not the deal itself.
+
+### 11.4 Honest state and claims discipline
+
+Reactor is planned (RX-1 records; issues #8271–#8281 open). Campaign B
+therefore sells **assessments and scoped pilots** — engagements we can
+deliver with today's machinery (audit, policy workshop, Hydralisk-lane
+install per RX-3/RX-5 as it lands) — and the pilot pipeline paces the RX
+build, exactly the staged-to-one-owner-action pattern. No "sovereign/
+HIPAA/certified" words; no capability claims beyond scoped engagements;
+published-price rules unchanged; quotes live only in 1:1 deal
+conversations. Every quoted rung lands in LG-2 as pipeline with amounts —
+one accepted Campaign-B conversation can carry the whole $25k target by
+itself.
+
+## 12. Owner actions (staged in NEEDS_OWNER.md; nothing here stalls the loop)
+
+1. **Approve the email template family + call script** (Campaign A) — one
+   sitting.
 2. **Confirm the $100-credit boundaries** in §8 (or adjust the cap).
 3. **Take the walkthrough calls** and quote inside the modeled bands —
    the scope call remains the owner's irreducible touchpoint.
-4. Optional accelerant: post the public-safe version of our own
+4. **Campaign B**: approve the 15–25 target list and the modeled §11.3
+   bands, then **edit and personally send the drafted "Own your AI"
+   emails** from your own mailbox — the founder-personal send is the
+   campaign; it cannot be delegated.
+5. Optional accelerant: post the public-safe version of our own
    before/after agent-readiness story (the `55297c5deb` wave) — it is the
    case study every email points at, and it's already true.
