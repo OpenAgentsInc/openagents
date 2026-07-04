@@ -21,6 +21,40 @@ Remaining owner-gated work: decide when QA Swarm hosted-run receipts,
 checkout/intake receipts, and outward-facing third-party report artifacts may be
 treated as live delivery evidence.
 
+## Reactor Rate Card and Pilot Arming
+
+Source issue: OpenAgentsInc/openagents#8271
+Source plan:
+`docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md`
+
+Reactor is a planned private/customer-controlled open-model deployment lane, not
+an available product or public price sheet. The registry records
+`reactor.private_deployment.v1`, `reactor.model_provenance.v1`, and
+`reactor.model_policy.v1` are planned-only boundaries until the owner approves
+copy and the policy, refusal, eval, metering, and deployment receipts exist.
+
+Modeled package bands from the Reactor plan:
+
+| Package                    | Draft modeled band       | Notes before publication                                                                                                                  |
+| -------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Reactor Assessment         | $2,500-$7,500 fixed      | Needs owner-approved scoping, model-policy workshop output, hardware/spec boundary, and public-safe receipt plan.                         |
+| Reactor Pilot              | $10,000-$25,000          | Needs customer-controlled or dogfood node receipt, policy-enforced serving smoke, exact metering, and customer-data boundary proof.       |
+| Reactor Managed            | $2,500-$10,000/month     | Needs owner-approved operating responsibilities, upgrade/eval cadence, incident policy, and customer data/corpus custody boundary.        |
+| Data Liberation            | $2,500-$10,000           | Needs source-system export authority, verification receipts per record class, and redaction/privacy handling before public package copy.  |
+| Harness evolution add-on   | quoted                   | Needs accepted harness-optimization receipt format and clear non-weight-changing scope for each customer task family.                     |
+| Fine-tune / flywheel add-on | quoted                  | Needs customer-owned training-data authority, model-artifact ownership terms, eval receipts, and no compliance/custody overclaim.         |
+
+NEEDS-OWNER: Decide whether these bands may appear in public copy, approve the
+first Reactor assessment/pilot offer language, choose the policy/eval receipt
+format, choose whether the first proof must be dogfood or customer-controlled,
+and explicitly approve any compliance, sovereignty, data-custody, or
+US-origin-only wording before it appears outside owner-gated notes.
+
+Until those owner steps are complete, the shipped state remains: Reactor is a
+draft lane with planned registry records only; no customer install, public
+price, policy-enforced serving proof, air-gapped update proof, compliance claim,
+or customer-data-custody proof exists.
+
 ## Khala Code Desktop Signed Release Gate
 
 Source issue: OpenAgentsInc/openagents#8245
