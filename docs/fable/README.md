@@ -75,7 +75,8 @@ each source doc.
   intake -> scope -> receipt-plan -> close queue contract, metric definitions
   for qualified intakes, scope calls, close rate, time-to-quick-win, commitment
   coverage, and the weekly closeout checklist. It now points to the #8263
-  operator API/CLI and D1 queue backing the review.
+  operator API/CLI and D1 queue backing the review, plus the #8264 receipted
+  starter-credit grant/redemption linkage.
 - [`2026-07-03-bf-9-4-operator-minutes-monthly-series.md`](./2026-07-03-bf-9-4-operator-minutes-monthly-series.md)
   — BF-9.4 operator-minutes monthly series: the agency-trap falsifier wired
   into the BF-7.2 business factory query pack as a caveated review-ledger floor

@@ -2,7 +2,12 @@
 
 type CliArgs = Readonly<{
   baseUrl: string
-  command: 'advance' | 'create' | 'metrics'
+  command:
+    | 'advance'
+    | 'create'
+    | 'grant-credit'
+    | 'link-credit-redemption'
+    | 'metrics'
   flags: ReadonlyMap<string, string>
   token: string
 }>
@@ -11,6 +16,8 @@ const usage = `Usage:
   bun apps/openagents.com/scripts/operator-business-pipeline.ts metrics
   bun apps/openagents.com/scripts/operator-business-pipeline.ts create --pipeline-ref REF --vertical VERTICAL --source-ref REF --owner-role operator [--receipt-ref REF] [--quoted-min-usd-cents N] [--quoted-max-usd-cents N] [--quoted-band LABEL] [--partner-route true]
   bun apps/openagents.com/scripts/operator-business-pipeline.ts advance --pipeline-ref REF --stage STAGE --receipt-ref REF [--next-action-due-at YYYY-MM-DD]
+  bun apps/openagents.com/scripts/operator-business-pipeline.ts grant-credit --pipeline-ref REF --account-ref agent:REF [--amount-usd-cents 10000] [--grant-ref REF] [--window-ref REF] [--window-grant-cap 25] [--engagement-ref REF]
+  bun apps/openagents.com/scripts/operator-business-pipeline.ts link-credit-redemption --pipeline-ref REF --grant-ref REF --redemption-receipt-ref REF
 
 Env:
   OPENAGENTS_ADMIN_API_TOKEN is required.
@@ -18,7 +25,13 @@ Env:
 
 const parseArgs = (argv: ReadonlyArray<string>): CliArgs => {
   const [command, ...rest] = argv
-  if (command !== 'create' && command !== 'advance' && command !== 'metrics') {
+  if (
+    command !== 'create' &&
+    command !== 'advance' &&
+    command !== 'grant-credit' &&
+    command !== 'link-credit-redemption' &&
+    command !== 'metrics'
+  ) {
     throw new Error(usage)
   }
 
@@ -117,6 +130,56 @@ const main = async (): Promise<void> => {
           }),
           method: 'POST',
         }),
+        null,
+        2,
+      ),
+    )
+    return
+  }
+
+  if (args.command === 'grant-credit') {
+    console.log(
+      JSON.stringify(
+        await requestJson(
+          args,
+          `/api/operator/business/pipeline/${encodeURIComponent(
+            required(args.flags, 'pipeline-ref'),
+          )}/starter-credit-grants`,
+          {
+            body: JSON.stringify({
+              accountRef: required(args.flags, 'account-ref'),
+              amountUsdCents: optionalNumber(args.flags, 'amount-usd-cents'),
+              engagementRef: args.flags.get('engagement-ref'),
+              grantRef: args.flags.get('grant-ref'),
+              windowGrantCap: optionalNumber(args.flags, 'window-grant-cap'),
+              windowRef: args.flags.get('window-ref'),
+            }),
+            method: 'POST',
+          },
+        ),
+        null,
+        2,
+      ),
+    )
+    return
+  }
+
+  if (args.command === 'link-credit-redemption') {
+    console.log(
+      JSON.stringify(
+        await requestJson(
+          args,
+          `/api/operator/business/pipeline/${encodeURIComponent(
+            required(args.flags, 'pipeline-ref'),
+          )}/starter-credit-redemptions`,
+          {
+            body: JSON.stringify({
+              grantRef: required(args.flags, 'grant-ref'),
+              redemptionReceiptRef: required(args.flags, 'redemption-receipt-ref'),
+            }),
+            method: 'POST',
+          },
+        ),
         null,
         2,
       ),

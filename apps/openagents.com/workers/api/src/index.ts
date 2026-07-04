@@ -279,6 +279,8 @@ import {
 } from './blueprint/repositories/program-runs'
 import { makeD1BusinessPipelineStore } from './business-pipeline-queue'
 import { makeOperatorBusinessPipelineRoutes } from './business-pipeline-routes'
+import { makeD1BusinessStarterCreditStore } from './business-starter-credit'
+import { makeOperatorBusinessStarterCreditRoutes } from './business-starter-credit-routes'
 import { handlePublicBusinessFunnelDashboardApi } from './business-funnel-dashboard-routes'
 import { handleBusinessIntakeChatApi } from './business-intake-chat-routes'
 import { runBusinessFulfillmentLoopScheduled } from './business-fulfillment-loop'
@@ -9290,6 +9292,14 @@ const operatorBusinessPipelineRoutes = makeOperatorBusinessPipelineRoutes({
   requireAdminApiToken,
 })
 
+const operatorBusinessStarterCreditRoutes = makeOperatorBusinessStarterCreditRoutes({
+  makeStore: env => {
+    const db = openAgentsDatabase(env)
+    return makeD1BusinessStarterCreditStore(db, makeD1BusinessPipelineStore(db))
+  },
+  requireAdminApiToken,
+})
+
 const operatorFleetStatusRoutes = makeOperatorFleetStatusRoutes({
   authenticateAgentToken: async (request, env) => {
     const token = readBearerToken(request)
@@ -14579,6 +14589,8 @@ const routeRequest = makeWorkerRouteRequest({
     operatorOrderTriageRoutes.routeOperatorOrderTriageRequest,
   routeOperatorBusinessPipelineRequest:
     operatorBusinessPipelineRoutes.routeOperatorBusinessPipelineRequest,
+  routeOperatorBusinessStarterCreditRequest:
+    operatorBusinessStarterCreditRoutes.routeOperatorBusinessStarterCreditRequest,
   routeOperatorPylonMarketplaceRequest:
     operatorPylonMarketplaceRoutes.routeOperatorPylonMarketplaceRequest,
   routeOperatorProviderAccountRequest: (request, env) => {

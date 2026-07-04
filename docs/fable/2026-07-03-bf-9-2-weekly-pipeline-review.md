@@ -155,3 +155,27 @@ The implementation preserves this artifact's privacy boundary: rows accept only
 opaque refs and vertical descriptors, never prospect names, emails, domains, raw
 CRM payloads, or call notes. Pipeline rows without linked commitment-ledger rows
 surface as `commitment.untracked` defects in the metrics response.
+
+## Starter Credit Linkage: #8264
+
+The BF-9.2 queue now carries starter-credit evidence without changing stage
+state. Operators can grant the §8 sales credit through:
+
+```sh
+bun apps/openagents.com/scripts/operator-business-pipeline.ts grant-credit \
+  --pipeline-ref biz-pipe-YYYYwNN-001 \
+  --account-ref agent:sales_starter_001
+bun apps/openagents.com/scripts/operator-business-pipeline.ts link-credit-redemption \
+  --pipeline-ref biz-pipe-YYYYwNN-001 \
+  --grant-ref sales-starter-grant-001 \
+  --redemption-receipt-ref receipt.inference.charge.example
+```
+
+The credit grant writes a normal `usd_credit_grant` credit-ledger pay-in receipt
+and records `sales_starter_credit` attribution in
+`business_starter_credit_grants`. Defaults are hard-capped at 25 grants per
+window and 10000 USD cents per grant; cap exceedance is a typed refusal. The
+credit is non-transferable, engagement-scoped, and USD-origin
+(`usd_credit_msat`), so it is spendable against the engagement but has no
+crypto/cash-out path. Both the grant receipt and later redemption receipt refs
+are appended to the pipeline row's `receiptRefs`.

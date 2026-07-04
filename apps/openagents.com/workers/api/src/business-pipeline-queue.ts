@@ -252,6 +252,8 @@ const DOMAIN_LIKE_PATTERN =
 const safeRefPart = (value: string): string =>
   value.toLowerCase().replace(/[^a-z0-9_.-]+/gu, '_').replace(/^_+|_+$/gu, '')
 
+export const businessPipelineSafeRefPart = safeRefPart
+
 const validationError = (reason: string): BusinessPipelineValidationError =>
   new BusinessPipelineValidationError({ reason })
 
@@ -290,6 +292,10 @@ const assertPublicSafeRefs = (
   field: string,
   values: ReadonlyArray<string>,
 ): void => values.forEach(value => assertPublicSafeRef(field, value))
+
+export const assertBusinessPipelinePublicSafeRef = assertPublicSafeRef
+export const assertBusinessPipelinePublicSafeDescriptor =
+  assertPublicSafeDescriptor
 
 const normalizeNullableRef = (
   field: string,
@@ -455,6 +461,11 @@ const pipelineRowSelect = `SELECT
  FROM business_pipeline_rows`
 
 export type BusinessPipelineStore = Readonly<{
+  appendPipelineReceiptRefs: (
+    pipelineRef: string,
+    receiptRefs: ReadonlyArray<string>,
+    runtime?: BusinessPipelineRuntime,
+  ) => Promise<BusinessPipelineRow>
   advancePipelineRow: (
     pipelineRef: string,
     input: BusinessPipelineAdvanceInput,
@@ -697,6 +708,54 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
     }
   }
 
+  const appendPipelineReceiptRefs = async (
+    pipelineRef: string,
+    refs: ReadonlyArray<string>,
+    runtime: BusinessPipelineRuntime = systemBusinessPipelineRuntime,
+  ): Promise<BusinessPipelineRow> => {
+    try {
+      const current = await readPipelineRow(pipelineRef)
+      if (current === null) {
+        throw new BusinessPipelineStoreError({
+          kind: 'not_found',
+          reason: `pipeline row not found: ${pipelineRef}`,
+        })
+      }
+
+      const receiptRefs = [
+        ...new Set([
+          ...current.receiptRefs,
+          ...normalizeReceiptRefs(refs),
+        ]),
+      ]
+      const nowIso = runtime.nowIso()
+
+      await db
+        .prepare(
+          `UPDATE business_pipeline_rows
+              SET receipt_refs_json = ?,
+                  updated_at = ?
+            WHERE pipeline_ref = ?`,
+        )
+        .bind(JSON.stringify(receiptRefs), nowIso, current.pipelineRef)
+        .run()
+
+      const updated = await readPipelineRow(current.pipelineRef)
+      if (updated === null) {
+        throw new BusinessPipelineStoreError({
+          kind: 'storage_error',
+          reason: `pipeline row was not readable after receipt append: ${pipelineRef}`,
+        })
+      }
+      return updated
+    } catch (error) {
+      if (error instanceof BusinessPipelineValidationError) {
+        throw storeValidationError(error.reason)
+      }
+      throw storageError(error)
+    }
+  }
+
   const createCommitment = async (
     input: BusinessPipelineCommitmentInput,
     runtime: BusinessPipelineRuntime = systemBusinessPipelineRuntime,
@@ -902,6 +961,7 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
   }
 
   return {
+    appendPipelineReceiptRefs,
     advancePipelineRow,
     createCommitment,
     createPipelineRow,

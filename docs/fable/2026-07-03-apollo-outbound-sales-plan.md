@@ -235,6 +235,15 @@ Boundaries so it stays a sales instrument and not a leak:
   engagement — non-transferable, no cash value, no crypto payout path;
   granting produces a receipt row like every other credit event
   (exact-only discipline; no invented balances).
+- Implementation status (#8264): operators grant this through
+  `POST /api/operator/business/pipeline/{pipelineRef}/starter-credit-grants`
+  or
+  `bun apps/openagents.com/scripts/operator-business-pipeline.ts grant-credit`.
+  The default grant is exactly `10000` USD cents, the default window cap is
+  `25`, and cap exceedance returns a typed refusal without minting a credit.
+  Redemption receipt refs are linked with
+  `/starter-credit-redemptions` and appear on the same BF-9.2 pipeline row
+  receipt list as the grant receipt.
 - Copy: "a $100 credit toward your first engagement" — never "free money,"
   never implying self-serve redemption while delivery is operator-assisted.
 - If the ledger grant path needs a small piece of plumbing, that is a
