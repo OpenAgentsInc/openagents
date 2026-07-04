@@ -106,6 +106,7 @@ import {
   runnerWorkloadTrustFromSelector,
 } from './runner-backend-readiness'
 import { openAgentsDatabase, scheduleBackgroundWork } from './runtime'
+import { sitesContentDatabaseForEnv } from './sites-content-store'
 import {
   notifyAgentRunSyncScopes,
   notifySyncScopes,
@@ -2898,7 +2899,9 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
       try {
         await observedEffect(
           'OmniRunnerCallback.applyAdjutantRunLifecycleEvents',
-          applyAdjutantRunLifecycleEvents(openAgentsDatabase(env), {
+          // KS-8.12 (#8323): lifecycle events write site_deployments /
+          // site_events — ride the sites dual-write mirror seam.
+          applyAdjutantRunLifecycleEvents(sitesContentDatabaseForEnv(env), {
             actorUserId: 'openagents:runner-ingest',
             appOrigin: dependencies.getAppOrigin(env),
             artifacts: env.ARTIFACTS,

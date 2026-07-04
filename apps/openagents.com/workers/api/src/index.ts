@@ -1131,6 +1131,7 @@ import { makeD1SiteReferralPayoutReceiptStore } from './site-referral-payout-rec
 import { makeSiteReferralRoutes } from './site-referral-routes'
 import { PENDING_REFERRAL_COOKIE } from './site-referrals'
 import { makeSiteRuntimeRoutes } from './site-runtime-routes'
+import { sitesContentDatabaseForEnv } from './sites-content-store'
 import { makeSitesOrchestrationRoutes } from './sites-orchestration-routes'
 import {
   makeStripeCheckoutServiceForRoutes,
@@ -5641,7 +5642,8 @@ const notifyCustomerSiteDeployed = async (
     siteUrl: string
   }>,
 ): Promise<SiteCustomerNotificationOutcome> => {
-  const db = openAgentsDatabase(env)
+  // KS-8.12 (#8323): writes site_events — sites dual-write mirror seam.
+  const db = sitesContentDatabaseForEnv(env)
   const existingSiteEvent = await db
     .prepare(
       `SELECT id
@@ -5981,7 +5983,8 @@ const sendReviewReadySiteNotification = async (
   env: Parameters<typeof getResendEmailConfig>[0],
   row: ReviewReadyNotificationRow,
 ): Promise<SiteCustomerNotificationOutcome> => {
-  const db = openAgentsDatabase(env)
+  // KS-8.12 (#8323): writes site_events — sites dual-write mirror seam.
+  const db = sitesContentDatabaseForEnv(env)
   const email = row.primary_email?.trim()
   const resend = getResendEmailConfig(env)
   const notification =
@@ -7464,7 +7467,9 @@ const agentSiteRoutes = makeAgentSiteRoutes({
     makeAgentRegistrationStoreForEnv(env),
   appendRefreshedSessionCookies,
   artifactsForEnv: env => env.ARTIFACTS,
-  dbForEnv: openAgentsDatabase,
+  // KS-8.12 (#8323): agent site routes (builder sessions, site library,
+  // saved versions) ride the sites dual-write mirror seam.
+  dbForEnv: env => sitesContentDatabaseForEnv(env),
   isAdminEmail: isOpenAgentsAdminEmail,
   requireBrowserSession,
 })

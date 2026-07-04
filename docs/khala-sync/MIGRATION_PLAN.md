@@ -781,6 +781,39 @@ evidence + D1 drop tracked on epic
 
 ### 3.9 KS-8.12 — Sites, site builder, targeted sites
 
+**KS-8.12 source status (2026-07-04):** CORE machinery LANDED — Postgres
+schema (`khala-sync-server` migration `0020_sites_core.sql`) covers the
+FIFTEEN content/builder tables the version-chain and deployment state
+machine live on (`site_projects`, `site_versions`, `site_deployments`,
+`site_deployment_attempts`, `site_access_grants`, `site_events`, and the
+nine `site_builder_*` tables); the shared registry
+`packages/khala-sync-server/src/sites-content-tables.ts` owns column/key
+order for both the Worker mirror and the backfill verifier; the Worker
+seam `apps/openagents.com/workers/api/src/sites-content-store.ts` is a
+mirroring D1Database (`sitesContentDatabaseForEnv`) — sites module SQL is
+untouched; after a successful D1 write the proxy reads back the affected
+rows (PK or the registered PARENT keys `site_id`/`session_id` for the
+rollback/disable and archival transitions) and converge-upserts them into
+Cloud SQL, fail-soft. Wired at the sites write call sites: the
+`AutopilotSitesService.layer` db seam, agent site routes `dbForEnv`,
+site-library, builder orchestration routes, customer orders, operator
+sites/triage/adjutant/email-inspection routes, omni runner lifecycle, and
+the index.ts site-event notification writers. Backfill + exact verify
+lives at `packages/khala-sync-server/scripts/backfill-sites-content.ts`
+(counts, domain tallies, PER-PROJECT VERSION CHAINS, the deployment
+state-machine census, builder sequence chains, newest-N row hashes;
+rowid-cursor resumable — file snapshots/manifests page small). Read
+authority remains D1 (`KHALA_SYNC_SITES_READS` default `d1`; `compare`
+shadow-reads; `postgres` defers). The REMAINDER (~36 tables: content
+satellites, `site_environment_values` (secrets — invariant 9), site
+COMMERCE/`site_mdk_*` money tables (KS-8.7/KS-8.8 rails by ID),
+`targeted_site_*`, `tenant_custom_hostnames`, legacy
+`deployments`/`deployment_events`) moves in the filed follow-up
+remainder lane
+[#8357](https://github.com/OpenAgentsInc/openagents/issues/8357); final
+destructive D1 retirement stays in KS-8.19
+[#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
+
 - **What:** the Sites product: projects/versions/deployments/grants,
   builder sessions (messages, phase runs, file snapshots, previews,
   repair attempts), site commerce, environment values, custom hostnames,

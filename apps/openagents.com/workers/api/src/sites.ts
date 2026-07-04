@@ -6,7 +6,13 @@ import { Effect, Layer, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
 import { parseJsonRecord } from './json-boundary'
-import { openAgentsDatabase } from './runtime'
+// KS-8.12 (#8323): the AutopilotSitesService layer is the central db seam
+// for sites.ts writes — acquire the dual-write mirroring database here so
+// every layer-provided caller (operator sites/triage routes, adjutant run
+// lifecycle) mirrors scoped writes into Postgres. Passthrough for
+// non-scoped statements; degrades to the raw D1 handle when no
+// KHALA_SYNC_DB binding exists.
+import { sitesContentDatabaseForEnv as openAgentsDatabase } from './sites-content-store'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 
 type AutopilotSitesEnv = Readonly<{

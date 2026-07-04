@@ -35,6 +35,7 @@ export * from "./public-counter-projection.js"
 export * from "./push-engine.js"
 export * from "./read-service.js"
 export * from "./scope-auth.js"
+export * from "./sites-content-tables.js"
 export * from "./sql.js"
 export * from "./training-domain-tables.js"
 

@@ -1,6 +1,8 @@
 import { Effect, Schema as S } from 'effect'
 
-import { openAgentsDatabase } from './runtime'
+// KS-8.12 (#8323): the site-library db seam rides the dual-write mirror —
+// passthrough for non-scoped statements, raw D1 when no binding.
+import { sitesContentDatabaseForEnv as openAgentsDatabase } from './sites-content-store'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 import {
   AutopilotSiteAccessMode,

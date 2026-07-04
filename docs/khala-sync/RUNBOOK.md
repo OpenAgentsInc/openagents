@@ -898,6 +898,91 @@ Rollback at ANY step: set `KHALA_SYNC_FORUM_READS=d1` (reads) and/or
 `KHALA_SYNC_FORUM_DUAL_WRITE=off` (writes). D1 authority is never
 behind.
 
+## Sites content domain cutover (KS-8.12, #8323)
+
+The KS-8.12 domain migration CORE: the fifteen sites content/builder
+tables `site_projects` / `site_versions` / `site_deployments` /
+`site_deployment_attempts` / `site_access_grants` / `site_events` /
+`site_builder_sessions` / `site_builder_messages` / `site_builder_events`
+/ `site_builder_phase_runs` / `site_builder_file_snapshots` /
+`site_builder_previews` / `site_builder_artifacts` /
+`site_builder_repair_attempts` / `site_builder_saved_versions` (D1) →
+same-named Postgres twins (khala-sync migration `0020_sites_core.sql`).
+Machinery:
+`apps/openagents.com/workers/api/src/sites-content-store.ts` (the
+mirroring D1Database `sitesContentDatabaseForEnv` — the sites modules'
+`db: D1Database` parameter IS the seam; module SQL is untouched; unlike
+the forum classifier this one also mirrors PARENT-keyed transitions —
+`UPDATE site_deployments … WHERE site_id = ?` rollback/disable and the
+site-library archival batch — by reading back all rows for the parent
+key) and `packages/khala-sync-server/scripts/backfill-sites-content.ts`
+(backfill + verify). The issue's remaining ~36 tables (content
+satellites, `site_environment_values` — may carry SECRETS, invariant-9
+handling — site commerce/`site_mdk_*` money tables which reference the
+KS-8.7/KS-8.8 rails by ID and must never fork them, `targeted_site_*`,
+`tenant_custom_hostnames`, legacy `deployments`/`deployment_events`)
+move in the follow-up remainder lane #8357 — see MIGRATION_PLAN §3.9.
+
+Diagnostics are keys-and-hashes only (never prompts, message bodies, or
+snapshot preview text): the drift metric is
+`khala_sync_sites_dual_write_failed`; a write shape the statement
+classifier cannot key logs `khala_sync_sites_write_unclassified` — treat
+a nonzero rate of EITHER as drift and re-run the backfill sweep after
+fixing.
+
+Flags (Worker vars):
+
+- `KHALA_SYNC_SITES_DUAL_WRITE` — default **on** wherever
+  `KHALA_SYNC_DB` exists; `off|0|false|disabled` disables the mirror.
+- `KHALA_SYNC_SITES_READS` — default `d1`. `compare` shadow-runs every
+  scoped-table SELECT against the Postgres twin, SERVES D1, and logs
+  `khala_sync_sites_read_compare_mismatch` /
+  `khala_sync_sites_read_compare_failed`. `postgres` serving is DEFERRED
+  to the read-cutover follow-up (the sites read surface is domain-wide
+  and live SITE SERVING reads must be inventoried first): setting it
+  today behaves as `compare` and logs
+  `khala_sync_sites_postgres_reads_deferred` once, so a premature flip
+  can never serve an unproven read path.
+
+Flag-flip order — never skip a step, each step soaks before the next:
+
+1. **Dual-write on** (default after KS-8.12 lands + `0020` applied via
+   the migration runner). Watch `khala_sync_sites_dual_write_failed` and
+   `khala_sync_sites_write_unclassified` in Worker logs; a nonzero
+   steady rate blocks progression.
+2. **Backfill**: from `packages/khala-sync-server/`,
+   `KHALA_SYNC_DATABASE_URL=<direct-url> bun
+   scripts/backfill-sites-content.ts` (wrangler-auth'd; rowid-cursor
+   resumable via `.sites-content-backfill-state.json` — builder message
+   bodies, 4000-char snapshot preview text, and version asset manifests
+   are the long pole, safe to interrupt/resume; `--batch-size` down if
+   wrangler JSON pages get heavy). Run it a SECOND time (`--restart`) as
+   the catch-up sweep once dual-write has covered the whole window.
+3. **Verify**: `bun scripts/backfill-sites-content.ts --verify` — exact
+   row counts, domain tallies (project/deployment status tallies,
+   builder sequence sums, snapshot byte totals), PER-PROJECT VERSION
+   CHAINS (count / distinct / min / max created_at per site — the
+   KS-8.12 version-chain acceptance), the DEPLOYMENT STATE-MACHINE
+   census (per-site per-status counts), BUILDER SEQUENCE CHAINS per
+   session (messages / events / phase runs), and newest-50 row hashes.
+   Post the output on the migration issue. Exact or explain; no cutover
+   on a red verify.
+4. **Compare reads**: set `KHALA_SYNC_SITES_READS=compare`; soak until
+   the mismatch log is silent over a window that includes real builder
+   traffic (an active site build exercises the hot satellite writes).
+5. **Read cutover + remainder LATER**: serving reads from Postgres
+   (AFTER inventorying live site-serving reads — most hit R2/KV
+   already), migrating the remainder tables (satellites / environment
+   values / commerce with money discipline / targeted sites / custom
+   hostnames / legacy deployments), moving write authority, and
+   dropping the D1 tables is follow-up #8357 on epic #8282 — never
+   in the same change as this lane. Until then rollback is one flag
+   flip back to `d1`.
+
+Rollback at ANY step: set `KHALA_SYNC_SITES_READS=d1` (reads) and/or
+`KHALA_SYNC_SITES_DUAL_WRITE=off` (writes). D1 authority is never
+behind.
+
 ## Khala Code product-state domain cutover (KS-8.13, #8324)
 
 The KS-8.13 domain migration is the product-state lane where migration

@@ -1102,3 +1102,306 @@ CREATE TABLE training_trace_contributions (
   UNIQUE (lease_ref, workload_family)
 );
 `
+
+/**
+ * The D1 DDL for the KS-8.12 sites content-core domain (worker migrations
+ * 0032/0038/0082/0083/0084/0085, condensed to the live column set — FK
+ * clauses dropped so the contract suite seeds rows directly; the UNIQUE
+ * dedupe keys and D1-authority partial uniques are kept EXACTLY because
+ * they are load-bearing for the INSERT OR IGNORE builder write paths and
+ * the one-active-deployment / active-slug invariants).
+ */
+export const SITES_CONTENT_D1_SCHEMA = `
+CREATE TABLE site_projects (
+  id TEXT PRIMARY KEY NOT NULL,
+  software_order_id TEXT,
+  owner_user_id TEXT NOT NULL,
+  team_id TEXT,
+  project_id TEXT,
+  slug TEXT NOT NULL,
+  title TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  status TEXT NOT NULL,
+  access_mode TEXT NOT NULL,
+  visibility TEXT NOT NULL,
+  source_repository_provider TEXT,
+  source_repository_owner TEXT,
+  source_repository_name TEXT,
+  source_repository_ref TEXT,
+  active_version_id TEXT,
+  active_deployment_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE UNIQUE INDEX site_projects_slug_active_idx
+  ON site_projects(slug)
+  WHERE archived_at IS NULL;
+
+CREATE UNIQUE INDEX site_projects_order_active_idx
+  ON site_projects(software_order_id)
+  WHERE software_order_id IS NOT NULL AND archived_at IS NULL;
+
+CREATE TABLE site_versions (
+  id TEXT PRIMARY KEY NOT NULL,
+  site_id TEXT NOT NULL,
+  source_kind TEXT NOT NULL,
+  source_commit_sha TEXT,
+  source_archive_r2_key TEXT,
+  artifact_manifest_r2_key TEXT,
+  build_log_r2_key TEXT,
+  build_status TEXT NOT NULL,
+  build_command TEXT,
+  worker_module_r2_key TEXT,
+  static_assets_manifest_json TEXT NOT NULL DEFAULT '{}',
+  d1_binding_name TEXT,
+  r2_binding_name TEXT,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_by_user_id TEXT,
+  created_by_run_id TEXT,
+  created_at TEXT NOT NULL,
+  saved_at TEXT,
+  rejected_at TEXT
+);
+
+CREATE TABLE site_deployments (
+  id TEXT PRIMARY KEY NOT NULL,
+  site_id TEXT NOT NULL,
+  version_id TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  url TEXT NOT NULL,
+  runtime_kind TEXT NOT NULL,
+  runtime_script_name TEXT,
+  dispatch_namespace TEXT,
+  status TEXT NOT NULL,
+  deployed_by_user_id TEXT,
+  external_deployment_id TEXT,
+  started_at TEXT,
+  activated_at TEXT,
+  failed_at TEXT,
+  disabled_at TEXT,
+  rolled_back_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX site_deployments_site_active_idx
+  ON site_deployments(site_id)
+  WHERE status = 'active';
+
+CREATE TABLE site_deployment_attempts (
+  id TEXT PRIMARY KEY NOT NULL,
+  site_id TEXT NOT NULL,
+  version_id TEXT NOT NULL,
+  deployment_id TEXT,
+  runtime_kind TEXT NOT NULL,
+  runtime_script_name TEXT,
+  dispatch_namespace TEXT,
+  external_deployment_id TEXT,
+  status TEXT NOT NULL,
+  upload_receipt_ref TEXT,
+  health_status TEXT NOT NULL,
+  health_url TEXT,
+  health_ref TEXT,
+  rollback_ref TEXT,
+  observability_ref TEXT,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE site_access_grants (
+  id TEXT PRIMARY KEY NOT NULL,
+  site_id TEXT NOT NULL,
+  principal_kind TEXT NOT NULL,
+  principal_ref TEXT NOT NULL,
+  role TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  revoked_at TEXT
+);
+
+CREATE UNIQUE INDEX site_access_grants_active_principal_idx
+  ON site_access_grants(site_id, principal_kind, principal_ref, role)
+  WHERE revoked_at IS NULL;
+
+CREATE TABLE site_events (
+  id TEXT PRIMARY KEY NOT NULL,
+  site_id TEXT NOT NULL,
+  version_id TEXT,
+  deployment_id TEXT,
+  type TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  actor_user_id TEXT,
+  actor_run_id TEXT,
+  payload_json TEXT,
+  created_at TEXT NOT NULL,
+  email_message_id TEXT
+);
+
+CREATE TABLE site_builder_sessions (
+  id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  site_id TEXT,
+  order_id TEXT,
+  workroom_id TEXT,
+  owner_user_id TEXT NOT NULL,
+  customer_user_id TEXT,
+  created_by_actor_ref TEXT NOT NULL,
+  status TEXT NOT NULL,
+  prompt_summary TEXT NOT NULL,
+  source_site_version_id TEXT,
+  source_revision_id TEXT,
+  active_preview_id TEXT,
+  active_artifact_id TEXT,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE site_builder_messages (
+  id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  session_id TEXT NOT NULL,
+  sequence INTEGER NOT NULL,
+  actor_kind TEXT NOT NULL,
+  visibility TEXT NOT NULL,
+  body TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE UNIQUE INDEX idx_site_builder_messages_session_sequence
+  ON site_builder_messages(session_id, sequence);
+
+CREATE TABLE site_builder_events (
+  id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  session_id TEXT NOT NULL,
+  sequence INTEGER NOT NULL,
+  event_kind TEXT NOT NULL,
+  phase_kind TEXT,
+  visibility TEXT NOT NULL,
+  status TEXT NOT NULL,
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  source_ref TEXT,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE UNIQUE INDEX idx_site_builder_events_session_sequence
+  ON site_builder_events(session_id, sequence);
+
+CREATE TABLE site_builder_phase_runs (
+  id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  session_id TEXT NOT NULL,
+  sequence INTEGER NOT NULL,
+  phase_kind TEXT NOT NULL,
+  status TEXT NOT NULL,
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  started_at TEXT,
+  completed_at TEXT,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE UNIQUE INDEX idx_site_builder_phase_runs_session_sequence
+  ON site_builder_phase_runs(session_id, sequence);
+
+CREATE TABLE site_builder_file_snapshots (
+  id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  session_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  sequence INTEGER NOT NULL,
+  language TEXT,
+  content_hash TEXT NOT NULL,
+  byte_size INTEGER NOT NULL,
+  source_ref TEXT,
+  artifact_ref TEXT,
+  preview_text TEXT,
+  visibility TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE UNIQUE INDEX idx_site_builder_file_snapshots_session_path_sequence
+  ON site_builder_file_snapshots(session_id, path, sequence);
+
+CREATE TABLE site_builder_previews (
+  id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  session_id TEXT NOT NULL,
+  preview_kind TEXT NOT NULL,
+  status TEXT NOT NULL,
+  preview_url TEXT,
+  version_ref TEXT,
+  artifact_ref TEXT,
+  health_ref TEXT,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE site_builder_artifacts (
+  id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  session_id TEXT NOT NULL,
+  artifact_kind TEXT NOT NULL,
+  artifact_ref TEXT NOT NULL,
+  content_hash TEXT,
+  byte_size INTEGER,
+  manifest_ref TEXT,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE site_builder_repair_attempts (
+  id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  session_id TEXT NOT NULL,
+  preview_id TEXT,
+  phase_kind TEXT,
+  attempt_number INTEGER NOT NULL,
+  retry_budget INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  failure_kind TEXT NOT NULL,
+  redacted_summary TEXT NOT NULL,
+  stop_reason TEXT,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  completed_at TEXT,
+  archived_at TEXT
+);
+
+CREATE UNIQUE INDEX idx_site_builder_repair_attempts_session_attempt
+  ON site_builder_repair_attempts(session_id, attempt_number);
+
+CREATE TABLE site_builder_saved_versions (
+  id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  session_id TEXT NOT NULL,
+  site_id TEXT NOT NULL,
+  site_version_id TEXT NOT NULL,
+  preview_id TEXT,
+  artifact_ref TEXT,
+  build_receipt_ref TEXT,
+  source_hash TEXT,
+  notes TEXT,
+  site_metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  archived_at TEXT
+);
+`
