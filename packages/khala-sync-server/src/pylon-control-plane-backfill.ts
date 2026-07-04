@@ -498,3 +498,254 @@ export const comparePylonControlPlaneTallies = (
     table,
   }
 }
+
+export type PylonCodexRawEventAggregateRow = Readonly<{
+  assignment_ref: string
+  byte_length: unknown
+  event_count: unknown
+  lease_ref: string
+  owner_user_id: string
+  pylon_ref: string
+  row_count: unknown
+  turn_index: unknown
+}>
+
+export type PylonCodexRawEventChunkAggregateRow =
+  PylonCodexRawEventAggregateRow &
+    Readonly<{
+      distinct_chunk_indexes: unknown
+      max_chunk_index: unknown
+      min_chunk_index: unknown
+    }>
+
+export type PylonCodexRawEventAggregateMismatch = Readonly<{
+  d1: Readonly<{
+    byteLength: number
+    eventCount: number
+    rowCount: number
+  }> | null
+  key: string
+  postgres: Readonly<{
+    byteLength: number
+    eventCount: number
+    rowCount: number
+  }> | null
+}>
+
+export type PylonCodexRawEventChunkChainGap = Readonly<{
+  chunkCount: number
+  distinctChunkIndexes: number
+  expectedChunkCount: number
+  key: string
+  maxChunkIndex: number
+  minChunkIndex: number
+  source: "d1" | "postgres"
+}>
+
+export type PylonCodexRawEventAggregateCompare = Readonly<{
+  d1Total: number
+  mismatches: ReadonlyArray<PylonCodexRawEventAggregateMismatch>
+  postgresTotal: number
+}>
+
+export type PylonCodexRawEventChunkCompare =
+  PylonCodexRawEventAggregateCompare &
+    Readonly<{
+      chainGaps: ReadonlyArray<PylonCodexRawEventChunkChainGap>
+    }>
+
+export type PylonCodexRawEventMetadataReconcileReport = Readonly<{
+  chunks: PylonCodexRawEventChunkCompare
+  ok: boolean
+  turnEvents: PylonCodexRawEventAggregateCompare
+}>
+
+type ComparableRawEventAggregate = Readonly<{
+  byteLength: number
+  eventCount: number
+  rowCount: number
+}>
+
+type ComparableRawEventChunkAggregate = ComparableRawEventAggregate &
+  Readonly<{
+    distinctChunkIndexes: number
+    maxChunkIndex: number
+    minChunkIndex: number
+  }>
+
+const rawEventNumber = (value: unknown): number => Number(normalizeValue(value) ?? 0)
+
+const rawEventAggregateKey = (
+  row: Pick<
+    PylonCodexRawEventAggregateRow,
+    "assignment_ref" | "lease_ref" | "owner_user_id" | "pylon_ref" | "turn_index"
+  >,
+): string =>
+  [
+    normalizeValue(row.owner_user_id),
+    normalizeValue(row.assignment_ref),
+    normalizeValue(row.lease_ref),
+    normalizeValue(row.pylon_ref),
+    normalizeValue(row.turn_index),
+  ].join(":")
+
+const comparableRawEventAggregate = (
+  row: PylonCodexRawEventAggregateRow,
+): ComparableRawEventAggregate => ({
+  byteLength: rawEventNumber(row.byte_length),
+  eventCount: rawEventNumber(row.event_count),
+  rowCount: rawEventNumber(row.row_count),
+})
+
+const comparableRawEventChunkAggregate = (
+  row: PylonCodexRawEventChunkAggregateRow,
+): ComparableRawEventChunkAggregate => ({
+  ...comparableRawEventAggregate(row),
+  distinctChunkIndexes: rawEventNumber(row.distinct_chunk_indexes),
+  maxChunkIndex: rawEventNumber(row.max_chunk_index),
+  minChunkIndex: rawEventNumber(row.min_chunk_index),
+})
+
+const rawEventAggregatesEqual = (
+  d1: ComparableRawEventAggregate | null,
+  postgres: ComparableRawEventAggregate | null,
+): boolean =>
+  d1 !== null &&
+  postgres !== null &&
+  d1.byteLength === postgres.byteLength &&
+  d1.eventCount === postgres.eventCount &&
+  d1.rowCount === postgres.rowCount
+
+export const comparePylonCodexRawEventAggregates = (
+  d1Rows: ReadonlyArray<PylonCodexRawEventAggregateRow>,
+  postgresRows: ReadonlyArray<PylonCodexRawEventAggregateRow>,
+): PylonCodexRawEventAggregateCompare => {
+  const d1ByKey = new Map(
+    d1Rows.map((row) => [rawEventAggregateKey(row), comparableRawEventAggregate(row)]),
+  )
+  const postgresByKey = new Map(
+    postgresRows.map((row) => [
+      rawEventAggregateKey(row),
+      comparableRawEventAggregate(row),
+    ]),
+  )
+  const keys = new Set([...d1ByKey.keys(), ...postgresByKey.keys()])
+  const mismatches = [...keys]
+    .sort()
+    .flatMap((key): ReadonlyArray<PylonCodexRawEventAggregateMismatch> => {
+      const d1 = d1ByKey.get(key) ?? null
+      const postgres = postgresByKey.get(key) ?? null
+      return rawEventAggregatesEqual(d1, postgres)
+        ? []
+        : [{ d1, key, postgres }]
+    })
+  return {
+    d1Total: d1Rows.reduce(
+      (sum, row) => sum + rawEventNumber(row.row_count),
+      0,
+    ),
+    mismatches,
+    postgresTotal: postgresRows.reduce(
+      (sum, row) => sum + rawEventNumber(row.row_count),
+      0,
+    ),
+  }
+}
+
+export const findPylonCodexRawEventChunkChainGaps = (
+  source: "d1" | "postgres",
+  rows: ReadonlyArray<PylonCodexRawEventChunkAggregateRow>,
+): ReadonlyArray<PylonCodexRawEventChunkChainGap> =>
+  rows.flatMap((row): ReadonlyArray<PylonCodexRawEventChunkChainGap> => {
+    const aggregate = comparableRawEventChunkAggregate(row)
+    const expectedChunkCount =
+      aggregate.maxChunkIndex - aggregate.minChunkIndex + 1
+    const contiguous =
+      aggregate.rowCount === aggregate.distinctChunkIndexes &&
+      aggregate.rowCount === expectedChunkCount
+    return contiguous
+      ? []
+      : [
+          {
+            chunkCount: aggregate.rowCount,
+            distinctChunkIndexes: aggregate.distinctChunkIndexes,
+            expectedChunkCount,
+            key: rawEventAggregateKey(row),
+            maxChunkIndex: aggregate.maxChunkIndex,
+            minChunkIndex: aggregate.minChunkIndex,
+            source,
+          },
+        ]
+  })
+
+export const reconcilePylonCodexRawEventMetadata = (input: {
+  d1Chunks: ReadonlyArray<PylonCodexRawEventChunkAggregateRow>
+  d1TurnEvents: ReadonlyArray<PylonCodexRawEventAggregateRow>
+  postgresChunks: ReadonlyArray<PylonCodexRawEventChunkAggregateRow>
+  postgresTurnEvents: ReadonlyArray<PylonCodexRawEventAggregateRow>
+}): PylonCodexRawEventMetadataReconcileReport => {
+  const turnEvents = comparePylonCodexRawEventAggregates(
+    input.d1TurnEvents,
+    input.postgresTurnEvents,
+  )
+  const chunkAggregateCompare = comparePylonCodexRawEventAggregates(
+    input.d1Chunks,
+    input.postgresChunks,
+  )
+  const chunks = {
+    ...chunkAggregateCompare,
+    chainGaps: [
+      ...findPylonCodexRawEventChunkChainGaps("d1", input.d1Chunks),
+      ...findPylonCodexRawEventChunkChainGaps("postgres", input.postgresChunks),
+    ],
+  }
+  return {
+    chunks,
+    ok:
+      turnEvents.mismatches.length === 0 &&
+      chunks.mismatches.length === 0 &&
+      chunks.chainGaps.length === 0,
+    turnEvents,
+  }
+}
+
+export const postgresPylonCodexRawEventTurnAggregates = async (
+  sql: SyncSql,
+): Promise<ReadonlyArray<PylonCodexRawEventAggregateRow>> =>
+  (await requireUnsafe(sql)(
+    `SELECT
+       assignment_ref,
+       lease_ref,
+       pylon_ref,
+       owner_user_id,
+       turn_index,
+       COUNT(*) AS row_count,
+       COALESCE(SUM(event_count), 0) AS event_count,
+       COALESCE(SUM(byte_length), 0) AS byte_length
+     FROM pylon_codex_raw_events
+     GROUP BY assignment_ref, lease_ref, pylon_ref, owner_user_id, turn_index
+     ORDER BY owner_user_id, assignment_ref, lease_ref, pylon_ref, turn_index`,
+    [],
+  )) as unknown as ReadonlyArray<PylonCodexRawEventAggregateRow>
+
+export const postgresPylonCodexRawEventChunkAggregates = async (
+  sql: SyncSql,
+): Promise<ReadonlyArray<PylonCodexRawEventChunkAggregateRow>> =>
+  (await requireUnsafe(sql)(
+    `SELECT
+       assignment_ref,
+       lease_ref,
+       pylon_ref,
+       owner_user_id,
+       turn_index,
+       COUNT(*) AS row_count,
+       COUNT(DISTINCT chunk_index) AS distinct_chunk_indexes,
+       MIN(chunk_index) AS min_chunk_index,
+       MAX(chunk_index) AS max_chunk_index,
+       COALESCE(SUM(event_count), 0) AS event_count,
+       COALESCE(SUM(byte_length), 0) AS byte_length
+     FROM pylon_codex_raw_event_chunks
+     GROUP BY assignment_ref, lease_ref, pylon_ref, owner_user_id, turn_index
+     ORDER BY owner_user_id, assignment_ref, lease_ref, pylon_ref, turn_index`,
+    [],
+  )) as unknown as ReadonlyArray<PylonCodexRawEventChunkAggregateRow>

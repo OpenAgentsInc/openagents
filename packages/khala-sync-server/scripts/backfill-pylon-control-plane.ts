@@ -18,6 +18,7 @@
  *     [--restart]                       # ignore saved cursor
  *     [--local]                         # wrangler --local (dev smoke)
  *     [--verify] [--verify-newest <n>]  # verify mode (default N=50)
+ *     [--raw-event-reconcile]           # raw Codex metadata aggregate + chunk-chain proof
  */
 import { spawnSync } from "node:child_process"
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
@@ -27,15 +28,23 @@ import {
   comparePylonControlPlaneTallies,
   D1_SOURCE_TABLES,
   d1PylonControlPlaneNewestHashes,
+  postgresPylonCodexRawEventChunkAggregates,
+  postgresPylonCodexRawEventTurnAggregates,
   postgresPylonControlPlaneNewestHashes,
   postgresPylonControlPlaneTally,
   PYLON_CONTROL_PLANE_TABLES,
+  reconcilePylonCodexRawEventMetadata,
   TABLE_CONFLICT_KEY,
   TABLE_ORDER_COLUMN,
   TABLE_TALLY_COLUMN,
   tallyFromRows,
   upsertPylonControlPlaneRows,
   type D1SourceRow,
+  type PylonCodexRawEventAggregateMismatch,
+  type PylonCodexRawEventAggregateRow,
+  type PylonCodexRawEventChunkAggregateRow,
+  type PylonCodexRawEventChunkChainGap,
+  type PylonCodexRawEventMetadataReconcileReport,
   type PylonControlPlaneBackfillTable,
   type PylonControlPlaneVerifyReport,
 } from "../src/pylon-control-plane-backfill.js"
@@ -49,6 +58,7 @@ type Options = {
   d1Database: string
   databaseUrl: string | undefined
   local: boolean
+  rawEventReconcile: boolean
   restart: boolean
   stateFile: string
   table: PylonControlPlaneBackfillTable | undefined
@@ -63,6 +73,7 @@ const parseArgs = (argv: ReadonlyArray<string>): Options | undefined => {
     d1Database: "openagents-autopilot",
     databaseUrl: process.env["KHALA_SYNC_DATABASE_URL"],
     local: false,
+    rawEventReconcile: false,
     restart: false,
     stateFile: ".pylon-control-plane-backfill-state.json",
     table: undefined,
@@ -96,6 +107,7 @@ const parseArgs = (argv: ReadonlyArray<string>): Options | undefined => {
     else if (arg === "--local") options.local = true
     else if (arg === "--verify") options.verify = true
     else if (arg === "--verify-newest") options.verifyNewest = Number(next())
+    else if (arg === "--raw-event-reconcile") options.rawEventReconcile = true
     else if (arg === "--help" || arg === "-h") {
       console.log(USAGE)
       return undefined
@@ -272,6 +284,120 @@ const verifyTable = async (
   return printReport(report, options.verifyNewest)
 }
 
+const d1RawEventTurnAggregateRows = (
+  options: Options,
+): ReadonlyArray<PylonCodexRawEventAggregateRow> =>
+  d1Query(
+    options,
+    `SELECT
+       assignment_ref,
+       lease_ref,
+       pylon_ref,
+       owner_user_id,
+       turn_index,
+       COUNT(*) AS row_count,
+       COALESCE(SUM(event_count), 0) AS event_count,
+       COALESCE(SUM(byte_length), 0) AS byte_length
+     FROM ${D1_SOURCE_TABLES.pylon_codex_raw_events}
+     GROUP BY assignment_ref, lease_ref, pylon_ref, owner_user_id, turn_index
+     ORDER BY owner_user_id, assignment_ref, lease_ref, pylon_ref, turn_index`,
+  ) as unknown as ReadonlyArray<PylonCodexRawEventAggregateRow>
+
+const d1RawEventChunkAggregateRows = (
+  options: Options,
+): ReadonlyArray<PylonCodexRawEventChunkAggregateRow> =>
+  d1Query(
+    options,
+    `SELECT
+       assignment_ref,
+       lease_ref,
+       pylon_ref,
+       owner_user_id,
+       turn_index,
+       COUNT(*) AS row_count,
+       COUNT(DISTINCT chunk_index) AS distinct_chunk_indexes,
+       MIN(chunk_index) AS min_chunk_index,
+       MAX(chunk_index) AS max_chunk_index,
+       COALESCE(SUM(event_count), 0) AS event_count,
+       COALESCE(SUM(byte_length), 0) AS byte_length
+     FROM ${D1_SOURCE_TABLES.pylon_codex_raw_event_chunks}
+     GROUP BY assignment_ref, lease_ref, pylon_ref, owner_user_id, turn_index
+     ORDER BY owner_user_id, assignment_ref, lease_ref, pylon_ref, turn_index`,
+  ) as unknown as ReadonlyArray<PylonCodexRawEventChunkAggregateRow>
+
+const printRawEventMismatch = (
+  label: string,
+  mismatch: PylonCodexRawEventAggregateMismatch,
+): void => {
+  console.log(
+    `  ${label} ${mismatch.key}: d1=${JSON.stringify(mismatch.d1)} postgres=${JSON.stringify(mismatch.postgres)}`,
+  )
+}
+
+const printRawEventChunkGap = (
+  gap: PylonCodexRawEventChunkChainGap,
+): void => {
+  console.log(
+    `  CHUNK GAP ${gap.source} ${gap.key}: min=${gap.minChunkIndex} max=${gap.maxChunkIndex} rows=${gap.chunkCount} distinct=${gap.distinctChunkIndexes} expected=${gap.expectedChunkCount}`,
+  )
+}
+
+const printRawEventReconcileReport = (
+  report: PylonCodexRawEventMetadataReconcileReport,
+): boolean => {
+  console.log("\n== pylon_codex_raw_event_metadata ==")
+  console.log(
+    `  turn metadata rows: d1=${report.turnEvents.d1Total} postgres=${report.turnEvents.postgresTotal}`,
+  )
+  console.log(
+    `  chunk metadata rows: d1=${report.chunks.d1Total} postgres=${report.chunks.postgresTotal}`,
+  )
+  console.log(
+    `  turn aggregate parity: ${
+      report.turnEvents.mismatches.length === 0
+        ? "all match"
+        : `${report.turnEvents.mismatches.length} MISMATCH(ES)`
+    }`,
+  )
+  for (const mismatch of report.turnEvents.mismatches.slice(0, 25)) {
+    printRawEventMismatch("TURN MISMATCH", mismatch)
+  }
+  console.log(
+    `  chunk aggregate parity: ${
+      report.chunks.mismatches.length === 0
+        ? "all match"
+        : `${report.chunks.mismatches.length} MISMATCH(ES)`
+    }`,
+  )
+  for (const mismatch of report.chunks.mismatches.slice(0, 25)) {
+    printRawEventMismatch("CHUNK MISMATCH", mismatch)
+  }
+  console.log(
+    `  chunk chains: ${
+      report.chunks.chainGaps.length === 0
+        ? "contiguous per turn"
+        : `${report.chunks.chainGaps.length} GAP(S)`
+    }`,
+  )
+  for (const gap of report.chunks.chainGaps.slice(0, 25)) {
+    printRawEventChunkGap(gap)
+  }
+  return report.ok
+}
+
+const reconcileRawEventMetadata = async (
+  sql: SyncSql,
+  options: Options,
+): Promise<boolean> => {
+  const report = reconcilePylonCodexRawEventMetadata({
+    d1Chunks: d1RawEventChunkAggregateRows(options),
+    d1TurnEvents: d1RawEventTurnAggregateRows(options),
+    postgresChunks: await postgresPylonCodexRawEventChunkAggregates(sql),
+    postgresTurnEvents: await postgresPylonCodexRawEventTurnAggregates(sql),
+  })
+  return printRawEventReconcileReport(report)
+}
+
 const main = async (): Promise<number> => {
   const options = parseArgs(process.argv.slice(2))
   if (options === undefined) return 2
@@ -286,14 +412,19 @@ const main = async (): Promise<number> => {
   const tables =
     options.table === undefined ? PYLON_CONTROL_PLANE_TABLES : [options.table]
   try {
-    if (options.verify) {
+    if (options.verify || options.rawEventReconcile) {
       let allGood = true
-      for (const table of tables) {
-        allGood = (await verifyTable(sql, options, table)) && allGood
+      if (options.verify) {
+        for (const table of tables) {
+          allGood = (await verifyTable(sql, options, table)) && allGood
+        }
+      }
+      if (options.rawEventReconcile) {
+        allGood = (await reconcileRawEventMetadata(sql, options)) && allGood
       }
       console.log(
         allGood
-          ? "\nVERIFY OK: exact row counts, tallies, and newest-N hashes match."
+          ? "\nVERIFY OK: exact row counts, tallies, newest-N hashes, and requested raw-event checks match."
           : "\nVERIFY FAILED: mismatches above -- investigate before read cutover.",
       )
       return allGood ? 0 : 1

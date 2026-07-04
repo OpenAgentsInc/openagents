@@ -353,6 +353,11 @@ KHALA_SYNC_DATABASE_URL="<direct-url>" \
 # exact verification before any read cutover
 KHALA_SYNC_DATABASE_URL="<direct-url>" \
   bun scripts/backfill-pylon-control-plane.ts --verify
+
+# raw Codex metadata queue reconciliation:
+# exact aggregate parity plus per-turn chunk-chain contiguity
+KHALA_SYNC_DATABASE_URL="<direct-url>" \
+  bun scripts/backfill-pylon-control-plane.ts --verify --raw-event-reconcile
 ```
 
 Use `--table <target-table>` for a single table and `--local` for a local D1
@@ -360,7 +365,11 @@ smoke. The target table names are the Postgres names, e.g.
 `pylon_quarantines`, `pylon_codex_raw_event_chunks`, or `fleet_alerts`.
 
 Verification output covers row counts, per-domain tallies, and newest-N row
-hashes. The first #8315 live mirror slices cover D1-first Worker writes for
+hashes. Add `--raw-event-reconcile` after the raw-event metadata queue has
+live traffic; it compares D1 and Postgres raw-event/chunk aggregates by
+assignment/lease/pylon/turn and proves each recorded chunk chain is contiguous
+for both stores. The first #8315 live mirror slices cover D1-first Worker
+writes for
 assignment-derived provider lifecycle, explicit provider lifecycle updates,
 Pylon quarantines, Pylon marketplace intake/assignment/triage writes, raw
 Spark payout target registrations, scheduled
@@ -379,9 +388,10 @@ Cloud SQL with bounded retry and D1 fallback. Pylon Codex proof and
 trace-status closeout reads now use the same flag for their raw-event metadata
 sections: `compare` serves D1 with Postgres-shadow source refs and drift logs,
 and `postgres` serves those metadata sections from Cloud SQL with bounded D1
-fallback. The live #8315 cutover still requires live raw-event queue
-reconciliation, final cutover evidence, and D1 decommission evidence. Do not
-treat a green backfill alone as permission to drop D1 tables.
+fallback. The live #8315 cutover still requires running the raw-event
+reconciliation command against production data, final cutover evidence, and D1
+decommission evidence. Do not treat a green backfill alone as permission to
+drop D1 tables.
 
 ## Public tokens-served projection (KS-6.3, #8304)
 

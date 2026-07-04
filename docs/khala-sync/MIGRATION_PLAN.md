@@ -206,8 +206,10 @@ in-worker Artanis status-spine loader; compare serves D1 while adding the
 Postgres shadow source ref and logging drift. Pylon Codex proof and
 trace-status closeout reads now route their raw-event metadata sections through
 the same D1/compare/Postgres seam, exposing D1/Postgres-shadow source refs and
-logging raw-metadata drift. Live raw-event queue reconciliation, final cutover
-evidence, and D1 decommission remain on
+logging raw-metadata drift. The backfill CLI now has `--raw-event-reconcile`
+for live raw Codex metadata aggregate parity and per-turn chunk-chain
+contiguity evidence. Running that reconciliation against production data, final
+cutover evidence, and D1 decommission remain on
 [#8315](https://github.com/OpenAgentsInc/openagents/issues/8315).
 
 - **What:** the rest of the Pylon control plane after KS-8.1:
