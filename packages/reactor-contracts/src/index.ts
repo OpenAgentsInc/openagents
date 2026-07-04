@@ -446,6 +446,40 @@ export const ReactorInstallOpsReceipt = S.Struct({
 })
 export type ReactorInstallOpsReceipt = typeof ReactorInstallOpsReceipt.Type
 
+export const ReactorDogfoodRunReceipt = S.Struct({
+  schemaVersion: S.Literal('openagents.reactor.dogfood_run_receipt.v1'),
+  blockerRefs: S.Array(S.String),
+  caseStudyWriteupRef: S.String,
+  externalClaimFlipAllowed: S.Literal(false),
+  externalPilotAuthorized: S.Literal(false),
+  generatedAt: S.String,
+  hardwareOwnerRef: S.Literal('owner.openagents'),
+  installOpsReceiptRef: S.String,
+  localMeteringReceiptRefs: S.Array(S.String),
+  measuredWindowEndedAt: S.String,
+  measuredWindowStartedAt: S.String,
+  nodeProfileRef: S.String,
+  placement: S.Literal('dogfood'),
+  policyConstraintRefs: S.Array(S.String),
+  policyDecisionReceiptRefs: S.Array(S.String),
+  policyRef: S.String,
+  policyVersion: S.String,
+  publicSafe: S.Literal(true),
+  receiptRef: S.String,
+  refusedNonconformingInstallOpsReceiptRef: S.String,
+  refusedNonconformingModelRef: S.String,
+  requestRefs: S.Array(S.String),
+  routeDecisionRefs: S.Array(S.String),
+  sourceRefs: S.Array(S.String),
+  status: S.Literals(['completed', 'refused']),
+  strictPolicyRef: S.String,
+  totalMeasuredTokens: S.Number,
+  workloadClass: S.Literal('internal_lead_gen_case_study_seed'),
+  workloadRef: S.String,
+  workloadTruth: S.Literal('internal_openagents'),
+})
+export type ReactorDogfoodRunReceipt = typeof ReactorDogfoodRunReceipt.Type
+
 export type ResolveReactorModelPolicyInput = Readonly<{
   catalog: ReactorModelCatalog
   decidedAt: string
@@ -573,6 +607,22 @@ export type BuildReactorInstallOpsReceiptInput = Readonly<{
   rollbackFromBundleRef?: string
   rollbackToBundleRef?: string
   sourceRefs?: ReadonlyArray<string>
+}>
+
+export type BuildReactorDogfoodRunReceiptInput = Readonly<{
+  caseStudyWriteupRef: string
+  generatedAt: string
+  installOpsReceipt: ReactorInstallOpsReceipt
+  measuredWindowEndedAt: string
+  measuredWindowStartedAt: string
+  meteringReceipts: ReadonlyArray<ReactorLocalTokenMeteringReceipt>
+  nodeProfile: ReactorNodeModelProfile
+  policy: ReactorModelPolicy
+  receiptRef: string
+  refusedNonconformingInstallOpsReceipt: ReactorInstallOpsReceipt
+  routeReceipts: ReadonlyArray<ReactorRouteDecisionReceipt>
+  sourceRefs?: ReadonlyArray<string>
+  workloadRef: string
 }>
 
 const unique = <T extends string>(values: ReadonlyArray<T>): ReadonlyArray<T> =>
@@ -1294,6 +1344,162 @@ export const buildReactorInstallOpsReceipt = (
   })
 }
 
+const strictPolicyConstraintRefs = (
+  policy: ReactorModelPolicy,
+): ReadonlyArray<string> =>
+  unique([
+    ...(policy.constraints.allowOriginJurisdictions ?? []).map(
+      jurisdiction => `constraint.origin_jurisdiction:${jurisdiction}`,
+    ),
+    policy.constraints.enforceDistillationLineageJurisdiction
+      ? 'constraint.distillation_lineage_jurisdiction:enforced'
+      : 'constraint.distillation_lineage_jurisdiction:not_enforced',
+  ])
+
+const policyIsUsOnly = (policy: ReactorModelPolicy): boolean =>
+  policy.constraints.enforceDistillationLineageJurisdiction &&
+  policy.constraints.allowOriginJurisdictions?.length === 1 &&
+  policy.constraints.allowOriginJurisdictions[0] === 'us'
+
+export const buildReactorDogfoodRunReceipt = (
+  input: BuildReactorDogfoodRunReceiptInput,
+): ReactorDogfoodRunReceipt => {
+  const nodeProfile = S.decodeUnknownSync(ReactorNodeModelProfile)(
+    input.nodeProfile,
+  )
+  const policy = S.decodeUnknownSync(ReactorModelPolicy)(input.policy)
+  const installOpsReceipt = S.decodeUnknownSync(ReactorInstallOpsReceipt)(
+    input.installOpsReceipt,
+  )
+  const refusedNonconformingInstallOpsReceipt = S.decodeUnknownSync(
+    ReactorInstallOpsReceipt,
+  )(input.refusedNonconformingInstallOpsReceipt)
+  const routeReceipts = input.routeReceipts.map(receipt =>
+    S.decodeUnknownSync(ReactorRouteDecisionReceipt)(receipt),
+  )
+  const meteringReceipts = input.meteringReceipts.map(receipt =>
+    S.decodeUnknownSync(ReactorLocalTokenMeteringReceipt)(receipt),
+  )
+  const routeRequestRefs = unique(routeReceipts.map(receipt => receipt.requestRef))
+  const meteringRequestRefs = new Set(
+    meteringReceipts.map(receipt => receipt.requestRef),
+  )
+  const missingMeteringRequestRefs = routeRequestRefs.filter(
+    requestRef => !meteringRequestRefs.has(requestRef),
+  )
+  const totalMeasuredTokens = meteringReceipts.reduce(
+    (total, receipt) => total + (receipt.totalTokens ?? 0),
+    0,
+  )
+  const blockerRefs = unique([
+    ...(nodeProfile.placement === 'dogfood'
+      ? []
+      : ['blocker.reactor.dogfood.node_not_dogfood_placement']),
+    ...(nodeProfile.policyRef === policy.policyRef &&
+    nodeProfile.policyVersion === policy.version
+      ? []
+      : ['blocker.reactor.dogfood.profile_policy_binding_mismatch']),
+    ...(policyIsUsOnly(policy)
+      ? []
+      : ['blocker.reactor.dogfood.strict_us_only_policy_missing']),
+    ...(installOpsReceipt.status === 'succeeded'
+      ? []
+      : ['blocker.reactor.dogfood.install_ops_not_succeeded']),
+    ...(installOpsReceipt.nodeProfileRef === nodeProfile.nodeProfileRef &&
+    installOpsReceipt.modelRef === nodeProfile.modelRef &&
+    installOpsReceipt.policyRef === policy.policyRef &&
+    installOpsReceipt.policyVersion === policy.version
+      ? []
+      : ['blocker.reactor.dogfood.install_ops_binding_mismatch']),
+    ...(refusedNonconformingInstallOpsReceipt.status === 'refused'
+      ? []
+      : ['blocker.reactor.dogfood.nonconforming_pull_not_refused']),
+    ...(refusedNonconformingInstallOpsReceipt.blockerRefs.includes(
+      'blocker.reactor.install_ops.policy_revalidation_failed',
+    )
+      ? []
+      : ['blocker.reactor.dogfood.nonconforming_pull_not_policy_refused']),
+    ...(refusedNonconformingInstallOpsReceipt.modelRef !== nodeProfile.modelRef
+      ? []
+      : ['blocker.reactor.dogfood.refused_model_matches_served_model']),
+    ...routeReceipts.flatMap(receipt => [
+      ...(receipt.status === 'routed'
+        ? []
+        : [
+            'blocker.reactor.dogfood.route_not_routed',
+            ...receipt.blockerRefs,
+          ]),
+      ...(receipt.nodeProfileRef === nodeProfile.nodeProfileRef &&
+      receipt.policyRef === policy.policyRef &&
+      receipt.policyVersion === policy.version
+        ? []
+        : ['blocker.reactor.dogfood.route_binding_mismatch']),
+    ]),
+    ...meteringReceipts.flatMap(receipt => [
+      ...(receipt.nodeProfileRef === nodeProfile.nodeProfileRef &&
+      receipt.policyRef === policy.policyRef &&
+      receipt.policyVersion === policy.version
+        ? []
+        : ['blocker.reactor.dogfood.metering_binding_mismatch']),
+      ...(receipt.measurementState === 'measured' &&
+      receipt.usageTruth === 'exact' &&
+      receipt.totalTokens !== null
+        ? []
+        : ['blocker.reactor.dogfood.local_metering_not_exact']),
+    ]),
+    ...missingMeteringRequestRefs.map(
+      requestRef => `blocker.reactor.dogfood.missing_metering:${requestRef}`,
+    ),
+  ])
+
+  return S.decodeUnknownSync(ReactorDogfoodRunReceipt)({
+    schemaVersion: 'openagents.reactor.dogfood_run_receipt.v1',
+    blockerRefs,
+    caseStudyWriteupRef: input.caseStudyWriteupRef,
+    externalClaimFlipAllowed: false,
+    externalPilotAuthorized: false,
+    generatedAt: input.generatedAt,
+    hardwareOwnerRef: 'owner.openagents',
+    installOpsReceiptRef: installOpsReceipt.receiptRef,
+    localMeteringReceiptRefs: meteringReceipts.map(receipt => receipt.receiptRef),
+    measuredWindowEndedAt: input.measuredWindowEndedAt,
+    measuredWindowStartedAt: input.measuredWindowStartedAt,
+    nodeProfileRef: nodeProfile.nodeProfileRef,
+    placement: nodeProfile.placement,
+    policyConstraintRefs: strictPolicyConstraintRefs(policy),
+    policyDecisionReceiptRefs: unique([
+      installOpsReceipt.policyDecisionRef,
+      refusedNonconformingInstallOpsReceipt.policyDecisionRef,
+      ...routeReceipts.map(receipt => receipt.policyDecisionRef),
+    ]),
+    policyRef: policy.policyRef,
+    policyVersion: policy.version,
+    publicSafe: true,
+    receiptRef: input.receiptRef,
+    refusedNonconformingInstallOpsReceiptRef:
+      refusedNonconformingInstallOpsReceipt.receiptRef,
+    refusedNonconformingModelRef: refusedNonconformingInstallOpsReceipt.modelRef,
+    requestRefs: routeRequestRefs,
+    routeDecisionRefs: routeReceipts.map(receipt => receipt.decisionRef),
+    sourceRefs: unique([
+      nodeProfile.nodeProfileRef,
+      policy.policyRef,
+      installOpsReceipt.receiptRef,
+      refusedNonconformingInstallOpsReceipt.receiptRef,
+      input.caseStudyWriteupRef,
+      ...routeReceipts.map(receipt => receipt.decisionRef),
+      ...meteringReceipts.map(receipt => receipt.receiptRef),
+      ...(input.sourceRefs ?? []),
+    ]),
+    status: blockerRefs.length === 0 ? 'completed' : 'refused',
+    strictPolicyRef: policy.policyRef,
+    totalMeasuredTokens,
+    workloadClass: 'internal_lead_gen_case_study_seed',
+    workloadRef: input.workloadRef,
+    workloadTruth: 'internal_openagents',
+  })
+}
+
 const model = (
   record: Omit<ReactorModelProvenance, 'schemaVersion'>,
 ): ReactorModelProvenance =>
@@ -1712,3 +1918,217 @@ export const REACTOR_SERVER_CLASS_HYDRALISK_PROFILE = nodeProfile({
     'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md#41-serving-lane-policy-hydralisk-by-default-psionic-by-exception',
   ],
 })
+
+const DOGFOOD_DECIDED_AT = '2026-07-04T14:10:00.000Z'
+
+export const REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE = nodeProfile({
+  displayName: 'OpenAgents dogfood Reactor Hydralisk profile',
+  exactLocalMeteringRequired: true,
+  gateway: {
+    endpointRef: 'endpoint.reactor.openagents.dogfood.openai_compatible.local',
+    phoneHomeAllowedInServingPath: false,
+    protocol: 'openai.chat_completions.v1',
+    servingPathNetwork: 'offline_once_provisioned',
+  },
+  modelRef: 'model.openai.gpt_oss.open_family',
+  nodeProfileRef: 'reactor.node_profile.openagents.dogfood.hydralisk.v1',
+  placement: 'dogfood',
+  policyRef: REACTOR_EXAMPLE_POLICIES.usOnly.policyRef,
+  policyVersion: REACTOR_EXAMPLE_POLICIES.usOnly.version,
+  servingLane: 'hydralisk',
+  servingStack: {
+    engineRef: 'engine.hydralisk.vllm.openagents.dogfood',
+    imageDigestRef: 'image.hydralisk.vllm.openagents.dogfood.sha256',
+    kind: 'vllm',
+    modelArtifactRefs: ['artifact.openagents.dogfood.gpt_oss.open_family.weights'],
+    versionRef: 'vllm.openagents.dogfood.20260704',
+  },
+  sourceRefs: [
+    'github:OpenAgentsInc/openagents#8276',
+    'docs/fable/2026-07-04-rx-5-reactor-install-airgap-runbook.md',
+  ],
+})
+
+export const REACTOR_OPENAGENTS_DOGFOOD_AIRGAP_BUNDLE =
+  buildReactorAirgapUpdateBundleManifest({
+    artifactSha256:
+      'd0a6f9e2a4fcd1b91f4a2a6726d0c36922cfb6e6b6d312d7bfb28f0d1a0f8276',
+    bundleRef: 'reactor.airgap_bundle.openagents.dogfood.gpt_oss.20260704',
+    bundleVersion: '2026-07-04.rx6.dogfood',
+    createdAt: DOGFOOD_DECIDED_AT,
+    modelRef: REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE.modelRef,
+    nodeProfile: REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE,
+    policyRef: REACTOR_EXAMPLE_POLICIES.usOnly.policyRef,
+    policyVersion: REACTOR_EXAMPLE_POLICIES.usOnly.version,
+    signatureKid: 'openagents-release-ed25519-20260704',
+    signatureRef: 'reactor.airgap_bundle.openagents.dogfood.gpt_oss.20260704.sig',
+    sourceRefs: [
+      'github:OpenAgentsInc/openagents#8276',
+      'docs/fable/2026-07-04-rx-5-reactor-install-airgap-runbook.md',
+    ],
+  })
+
+export const REACTOR_OPENAGENTS_DOGFOOD_INSTALL_OPS_RECEIPT =
+  buildReactorInstallOpsReceipt({
+    action: 'fresh_install',
+    bundle: REACTOR_OPENAGENTS_DOGFOOD_AIRGAP_BUNDLE,
+    catalog: REACTOR_MODEL_CATALOG_SEED,
+    decidedAt: DOGFOOD_DECIDED_AT,
+    nodeProfile: REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE,
+    policy: REACTOR_EXAMPLE_POLICIES.usOnly,
+    receiptRef: 'reactor.install_ops.openagents.dogfood.fresh.gpt_oss.20260704',
+    sourceRefs: ['github:OpenAgentsInc/openagents#8276'],
+  })
+
+export const REACTOR_OPENAGENTS_DOGFOOD_MODEL_INSTALL_RECEIPT =
+  provisionReactorModel({
+    action: 'install',
+    artifactRefs: [
+      REACTOR_OPENAGENTS_DOGFOOD_AIRGAP_BUNDLE.bundleRef,
+      `sha256:${REACTOR_OPENAGENTS_DOGFOOD_AIRGAP_BUNDLE.artifactSha256}`,
+    ],
+    catalog: REACTOR_MODEL_CATALOG_SEED,
+    decidedAt: DOGFOOD_DECIDED_AT,
+    decisionRef:
+      'reactor.install_ops.openagents.dogfood.fresh.gpt_oss.20260704.policy_decision',
+    nodeProfile: REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE,
+    policy: REACTOR_EXAMPLE_POLICIES.usOnly,
+    receiptRef:
+      'reactor.install_ops.openagents.dogfood.fresh.gpt_oss.20260704.model_install',
+    sourceRefs: [REACTOR_OPENAGENTS_DOGFOOD_AIRGAP_BUNDLE.bundleRef],
+  })
+
+export const REACTOR_OPENAGENTS_DOGFOOD_ROUTE_DECISION_SEED = [
+  routeReactorOpenAiCompatibleRequest({
+    catalog: REACTOR_MODEL_CATALOG_SEED,
+    decidedAt: '2026-07-04T14:12:00.000Z',
+    decisionRef: 'reactor.route_decision.openagents.dogfood.discovery.20260704',
+    installReceipt: REACTOR_OPENAGENTS_DOGFOOD_MODEL_INSTALL_RECEIPT,
+    nodeProfile: REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE,
+    policy: REACTOR_EXAMPLE_POLICIES.usOnly,
+    requestRef: 'reactor.request.openagents.dogfood.lead_gen.discovery.20260704',
+    requestedModelRef: REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE.modelRef,
+    sourceRefs: ['workload.openagents.lead_gen_reactor.case_study_seed.20260704'],
+  }),
+  routeReactorOpenAiCompatibleRequest({
+    catalog: REACTOR_MODEL_CATALOG_SEED,
+    decidedAt: '2026-07-04T14:14:00.000Z',
+    decisionRef: 'reactor.route_decision.openagents.dogfood.sequence.20260704',
+    installReceipt: REACTOR_OPENAGENTS_DOGFOOD_MODEL_INSTALL_RECEIPT,
+    nodeProfile: REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE,
+    policy: REACTOR_EXAMPLE_POLICIES.usOnly,
+    requestRef: 'reactor.request.openagents.dogfood.lead_gen.sequence.20260704',
+    requestedModelRef: REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE.modelRef,
+    sourceRefs: ['workload.openagents.lead_gen_reactor.case_study_seed.20260704'],
+  }),
+] as const satisfies ReadonlyArray<ReactorRouteDecisionReceipt>
+
+export const REACTOR_OPENAGENTS_DOGFOOD_LOCAL_METERING_RECEIPT_SEED = [
+  buildReactorLocalTokenMeteringReceipt({
+    generatedAt: '2026-07-04T14:12:30.000Z',
+    modelRef: REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE.modelRef,
+    nodeProfile: REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE,
+    policyRef: REACTOR_EXAMPLE_POLICIES.usOnly.policyRef,
+    policyVersion: REACTOR_EXAMPLE_POLICIES.usOnly.version,
+    receiptRef: 'reactor.local_metering.openagents.dogfood.discovery.20260704',
+    requestRef: 'reactor.request.openagents.dogfood.lead_gen.discovery.20260704',
+    sourceRefs: ['reactor.route_decision.openagents.dogfood.discovery.20260704'],
+    usage: {
+      completionTokens: 69,
+      promptTokens: 243,
+      state: 'exact',
+      totalTokens: 312,
+    },
+  }),
+  buildReactorLocalTokenMeteringReceipt({
+    generatedAt: '2026-07-04T14:14:30.000Z',
+    modelRef: REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE.modelRef,
+    nodeProfile: REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE,
+    policyRef: REACTOR_EXAMPLE_POLICIES.usOnly.policyRef,
+    policyVersion: REACTOR_EXAMPLE_POLICIES.usOnly.version,
+    receiptRef: 'reactor.local_metering.openagents.dogfood.sequence.20260704',
+    requestRef: 'reactor.request.openagents.dogfood.lead_gen.sequence.20260704',
+    sourceRefs: ['reactor.route_decision.openagents.dogfood.sequence.20260704'],
+    usage: {
+      completionTokens: 112,
+      promptTokens: 319,
+      state: 'exact',
+      totalTokens: 431,
+    },
+  }),
+] as const satisfies ReadonlyArray<ReactorLocalTokenMeteringReceipt>
+
+const REACTOR_OPENAGENTS_DOGFOOD_QWEN_PROFILE = nodeProfile({
+  displayName: 'Refused OpenAgents dogfood Reactor Qwen refresh profile',
+  exactLocalMeteringRequired: true,
+  gateway: {
+    endpointRef: 'endpoint.reactor.openagents.dogfood.openai_compatible.local',
+    phoneHomeAllowedInServingPath: false,
+    protocol: 'openai.chat_completions.v1',
+    servingPathNetwork: 'offline_once_provisioned',
+  },
+  modelRef: 'model.alibaba.qwen.open_family',
+  nodeProfileRef: 'reactor.node_profile.openagents.dogfood.hydralisk.qwen_refused.v1',
+  placement: 'dogfood',
+  policyRef: REACTOR_EXAMPLE_POLICIES.usOnly.policyRef,
+  policyVersion: REACTOR_EXAMPLE_POLICIES.usOnly.version,
+  servingLane: 'hydralisk',
+  servingStack: {
+    engineRef: 'engine.hydralisk.vllm.openagents.dogfood.qwen_refused',
+    imageDigestRef: 'image.hydralisk.vllm.openagents.dogfood.qwen_refused.sha256',
+    kind: 'vllm',
+    modelArtifactRefs: ['artifact.openagents.dogfood.qwen.open_family.weights'],
+    versionRef: 'vllm.openagents.dogfood.qwen_refused.20260704',
+  },
+  sourceRefs: ['github:OpenAgentsInc/openagents#8276'],
+})
+
+export const REACTOR_OPENAGENTS_DOGFOOD_QWEN_REFUSED_BUNDLE =
+  buildReactorAirgapUpdateBundleManifest({
+    artifactSha256:
+      'b0a6f9e2a4fcd1b91f4a2a6726d0c36922cfb6e6b6d312d7bfb28f0d1a0f8276',
+    bundleRef: 'reactor.airgap_bundle.openagents.dogfood.qwen.refused.20260704',
+    bundleVersion: '2026-07-04.rx6.qwen-refused',
+    createdAt: '2026-07-04T14:16:00.000Z',
+    modelRef: REACTOR_OPENAGENTS_DOGFOOD_QWEN_PROFILE.modelRef,
+    nodeProfile: REACTOR_OPENAGENTS_DOGFOOD_QWEN_PROFILE,
+    policyRef: REACTOR_EXAMPLE_POLICIES.usOnly.policyRef,
+    policyVersion: REACTOR_EXAMPLE_POLICIES.usOnly.version,
+    signatureKid: 'openagents-release-ed25519-20260704',
+    signatureRef: 'reactor.airgap_bundle.openagents.dogfood.qwen.refused.20260704.sig',
+    sourceRefs: ['github:OpenAgentsInc/openagents#8276'],
+  })
+
+export const REACTOR_OPENAGENTS_DOGFOOD_REFUSED_INSTALL_OPS_RECEIPT =
+  buildReactorInstallOpsReceipt({
+    action: 'upgrade',
+    bundle: REACTOR_OPENAGENTS_DOGFOOD_QWEN_REFUSED_BUNDLE,
+    catalog: REACTOR_MODEL_CATALOG_SEED,
+    decidedAt: '2026-07-04T14:16:30.000Z',
+    nodeProfile: REACTOR_OPENAGENTS_DOGFOOD_QWEN_PROFILE,
+    policy: REACTOR_EXAMPLE_POLICIES.usOnly,
+    receiptRef: 'reactor.install_ops.openagents.dogfood.qwen.refused.20260704',
+    sourceRefs: ['github:OpenAgentsInc/openagents#8276'],
+  })
+
+export const REACTOR_OPENAGENTS_DOGFOOD_RUN_RECEIPT =
+  buildReactorDogfoodRunReceipt({
+    caseStudyWriteupRef:
+      'docs/fable/2026-07-04-rx-6-reactor-dogfood-run.md',
+    generatedAt: '2026-07-04T14:20:00.000Z',
+    installOpsReceipt: REACTOR_OPENAGENTS_DOGFOOD_INSTALL_OPS_RECEIPT,
+    measuredWindowEndedAt: '2026-07-04T14:15:00.000Z',
+    measuredWindowStartedAt: '2026-07-04T14:10:00.000Z',
+    meteringReceipts: REACTOR_OPENAGENTS_DOGFOOD_LOCAL_METERING_RECEIPT_SEED,
+    nodeProfile: REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE,
+    policy: REACTOR_EXAMPLE_POLICIES.usOnly,
+    receiptRef: 'reactor.dogfood_run.openagents.lead_gen_case_study_seed.20260704',
+    refusedNonconformingInstallOpsReceipt:
+      REACTOR_OPENAGENTS_DOGFOOD_REFUSED_INSTALL_OPS_RECEIPT,
+    routeReceipts: REACTOR_OPENAGENTS_DOGFOOD_ROUTE_DECISION_SEED,
+    sourceRefs: [
+      'github:OpenAgentsInc/openagents#8276',
+      'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md#9-workstream-map-rx--filed-2026-07-04-under-epic-8261',
+    ],
+    workloadRef: 'workload.openagents.lead_gen_reactor.case_study_seed.20260704',
+  })

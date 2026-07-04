@@ -10,10 +10,17 @@ import {
   REACTOR_HARDWARE_TIER_SPECS,
   REACTOR_MODEL_EVAL_RECEIPT_SEED,
   REACTOR_MODEL_CATALOG_SEED,
+  REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE,
+  REACTOR_OPENAGENTS_DOGFOOD_INSTALL_OPS_RECEIPT,
+  REACTOR_OPENAGENTS_DOGFOOD_LOCAL_METERING_RECEIPT_SEED,
+  REACTOR_OPENAGENTS_DOGFOOD_REFUSED_INSTALL_OPS_RECEIPT,
+  REACTOR_OPENAGENTS_DOGFOOD_ROUTE_DECISION_SEED,
+  REACTOR_OPENAGENTS_DOGFOOD_RUN_RECEIPT,
   REACTOR_PSIONIC_EVAL_HARNESS_PROFILE,
   REACTOR_SERVER_CLASS_HYDRALISK_PROFILE,
   ReactorCapabilityCopyEvalDecision,
   ReactorAirgapUpdateBundleManifest,
+  ReactorDogfoodRunReceipt,
   ReactorEvalCoverageMatrix,
   ReactorEvalHarnessProfile,
   ReactorInstallOpsReceipt,
@@ -26,6 +33,7 @@ import {
   ReactorModelPolicyDecisionReceipt,
   ReactorNodeModelProfile,
   buildReactorAirgapUpdateBundleManifest,
+  buildReactorDogfoodRunReceipt,
   buildReactorEvalCoverageMatrix,
   buildReactorInstallOpsReceipt,
   buildReactorLocalTokenMeteringReceipt,
@@ -795,5 +803,104 @@ describe('Reactor install and air-gap update receipts', () => {
     expect(
       REACTOR_HARDWARE_TIER_SPECS.flatMap(spec => spec.notes).join('\n'),
     ).toContain('no purchase commitment')
+  })
+})
+
+describe('Reactor dogfood run receipts', () => {
+  test('records OpenAgents as customer number one under a strict US-only policy', () => {
+    const receipt = S.decodeUnknownSync(ReactorDogfoodRunReceipt)(
+      REACTOR_OPENAGENTS_DOGFOOD_RUN_RECEIPT,
+    )
+
+    expect(receipt.status).toBe('completed')
+    expect(receipt.blockerRefs).toEqual([])
+    expect(receipt.hardwareOwnerRef).toBe('owner.openagents')
+    expect(receipt.placement).toBe('dogfood')
+    expect(receipt.workloadTruth).toBe('internal_openagents')
+    expect(receipt.workloadClass).toBe('internal_lead_gen_case_study_seed')
+    expect(receipt.caseStudyWriteupRef).toBe(
+      'docs/fable/2026-07-04-rx-6-reactor-dogfood-run.md',
+    )
+    expect(receipt.policyConstraintRefs).toContain(
+      'constraint.origin_jurisdiction:us',
+    )
+    expect(receipt.policyConstraintRefs).toContain(
+      'constraint.distillation_lineage_jurisdiction:enforced',
+    )
+    expect(receipt.installOpsReceiptRef).toBe(
+      REACTOR_OPENAGENTS_DOGFOOD_INSTALL_OPS_RECEIPT.receiptRef,
+    )
+    expect(receipt.routeDecisionRefs).toEqual(
+      REACTOR_OPENAGENTS_DOGFOOD_ROUTE_DECISION_SEED.map(
+        route => route.decisionRef,
+      ),
+    )
+    expect(receipt.localMeteringReceiptRefs).toEqual(
+      REACTOR_OPENAGENTS_DOGFOOD_LOCAL_METERING_RECEIPT_SEED.map(
+        metering => metering.receiptRef,
+      ),
+    )
+    expect(receipt.totalMeasuredTokens).toBe(743)
+    expect(receipt.publicSafe).toBe(true)
+    expect(receipt.externalPilotAuthorized).toBe(false)
+    expect(receipt.externalClaimFlipAllowed).toBe(false)
+  })
+
+  test('ties the deliberate nonconforming pull attempt to a policy refusal', () => {
+    const refused = S.decodeUnknownSync(ReactorInstallOpsReceipt)(
+      REACTOR_OPENAGENTS_DOGFOOD_REFUSED_INSTALL_OPS_RECEIPT,
+    )
+    const receipt = REACTOR_OPENAGENTS_DOGFOOD_RUN_RECEIPT
+
+    expect(refused.status).toBe('refused')
+    expect(refused.modelRef).toBe('model.alibaba.qwen.open_family')
+    expect(refused.blockerRefs).toContain(
+      'blocker.reactor.install_ops.policy_revalidation_failed',
+    )
+    expect(refused.blockerRefs).toContain('reactor.policy.origin_not_allowed')
+    expect(receipt.refusedNonconformingInstallOpsReceiptRef).toBe(
+      refused.receiptRef,
+    )
+    expect(receipt.refusedNonconformingModelRef).toBe(refused.modelRef)
+  })
+
+  test('refuses dogfood completion when exact local metering is missing', () => {
+    const unmeasured = buildReactorLocalTokenMeteringReceipt({
+      generatedAt: DECIDED_AT,
+      modelRef: REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE.modelRef,
+      nodeProfile: REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE,
+      policyRef: REACTOR_EXAMPLE_POLICIES.usOnly.policyRef,
+      policyVersion: REACTOR_EXAMPLE_POLICIES.usOnly.version,
+      receiptRef: 'reactor.local_metering.openagents.dogfood.not_measured.001',
+      requestRef:
+        REACTOR_OPENAGENTS_DOGFOOD_ROUTE_DECISION_SEED[0]?.requestRef ??
+        'reactor.request.openagents.dogfood.lead_gen.discovery.20260704',
+      usage: {
+        reasonRef: 'reason.test.counter_unavailable',
+        state: 'not_measured',
+      },
+    })
+
+    const receipt = buildReactorDogfoodRunReceipt({
+      caseStudyWriteupRef:
+        'docs/fable/2026-07-04-rx-6-reactor-dogfood-run.md',
+      generatedAt: DECIDED_AT,
+      installOpsReceipt: REACTOR_OPENAGENTS_DOGFOOD_INSTALL_OPS_RECEIPT,
+      measuredWindowEndedAt: '2026-07-04T14:15:00.000Z',
+      measuredWindowStartedAt: '2026-07-04T14:10:00.000Z',
+      meteringReceipts: [unmeasured],
+      nodeProfile: REACTOR_OPENAGENTS_DOGFOOD_HYDRALISK_PROFILE,
+      policy: REACTOR_EXAMPLE_POLICIES.usOnly,
+      receiptRef: 'reactor.dogfood_run.openagents.not_measured.001',
+      refusedNonconformingInstallOpsReceipt:
+        REACTOR_OPENAGENTS_DOGFOOD_REFUSED_INSTALL_OPS_RECEIPT,
+      routeReceipts: [REACTOR_OPENAGENTS_DOGFOOD_ROUTE_DECISION_SEED[0]],
+      workloadRef: 'workload.openagents.lead_gen_reactor.case_study_seed.20260704',
+    })
+
+    expect(receipt.status).toBe('refused')
+    expect(receipt.blockerRefs).toContain(
+      'blocker.reactor.dogfood.local_metering_not_exact',
+    )
   })
 })

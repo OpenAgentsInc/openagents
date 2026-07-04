@@ -30,14 +30,26 @@ Exports:
 - Install, upgrade, and rollback receipt helpers that revalidate model policy on
   every model refresh.
 - Guidance-only hardware tier specs for workstation, server, and rack planning.
+- OpenAgents dogfood-run receipts for the customer-number-one Reactor gate:
+  dogfood placement, strict US-only policy, routed internal workload refs,
+  exact local token-metering receipts, and a refused nonconforming refresh.
 
 Smoke:
 
 ```sh
 bun run --cwd packages/reactor-contracts smoke:install
+bun run --cwd packages/reactor-contracts smoke:dogfood
 ```
 
 The smoke creates a clean temporary Reactor node directory, signs a fixture
 bundle with a generated test ed25519 key, verifies it with the existing
 `apps/oa-updates/scripts/verify-release.ts` fail-closed verifier, rejects a
 tampered bundle, and writes fresh-install, upgrade, and rollback receipts.
+
+The dogfood smoke writes the public-safe RX-6 receipt set into a clean
+temporary directory: the OpenAgents dogfood node profile, signed bundle
+manifest, fresh-install receipt, routed internal workload receipts, exact local
+metering receipts, the policy-refused Qwen refresh, and the aggregate
+`openagents.reactor.dogfood_run_receipt.v1` record. It remains internal
+dogfood evidence only; it does not authorize external pilots or public
+availability copy.
