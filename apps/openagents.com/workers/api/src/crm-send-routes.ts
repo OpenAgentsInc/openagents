@@ -9,6 +9,9 @@
  *
  * Resend deps are injected via the central config resolver (zero-debt rule).
  */
+// KS-8.11 (#8322): CRM/email entry points construct the dual-write seam
+// (plain D1 drop-in when KHALA_SYNC_DB / the flags are absent).
+import { makeCrmEmailDatabaseForEnv } from './crm-email-domain-store'
 import { Effect } from 'effect'
 
 import { listCrmQueuedGmailMessages } from './crm-email'
@@ -16,7 +19,6 @@ import { type CrmResendDeps } from './crm-resend'
 import { CrmEmailError, dispatchCrmSend } from './crm-send'
 import { DEFAULT_CRM_TENANT_REF } from './crm-store'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
-import { openAgentsDatabase } from './runtime'
 
 type HttpResponse = globalThis.Response
 
@@ -81,7 +83,7 @@ export const makeCrmSendRoutes = <Bindings extends CrmSendEnv>(
               ? error
               : new CrmEmailError({ reason: `crm.gmailQueue: ${String(error)}` }),
           try: () =>
-            listCrmQueuedGmailMessages(openAgentsDatabase(env), tenantOf(url), {
+            listCrmQueuedGmailMessages(makeCrmEmailDatabaseForEnv(env), tenantOf(url), {
               limit: limit !== undefined && Number.isFinite(limit) ? limit : undefined,
             }),
         })
@@ -132,7 +134,7 @@ export const makeCrmSendRoutes = <Bindings extends CrmSendEnv>(
             : new CrmEmailError({ reason: `crm.send: ${String(error)}` }),
         try: () =>
           dispatchCrmSend(
-            openAgentsDatabase(env),
+            makeCrmEmailDatabaseForEnv(env),
             { resend: dependencies.resolveResendDeps(env) },
             {
               channel,

@@ -1,3 +1,10 @@
+// KS-8.11 (#8322): CrmEmailDatabase union — preference upserts mirror to
+// Postgres fail-soft (suppression writes mirror inside addEmailSuppression).
+import {
+  type CrmEmailDatabase,
+  crmEmailAuthorityDb,
+  mirrorCrmEmailRows,
+} from './crm-email-domain-store'
 import {
   type EmailCampaignRuntime,
   type EmailSuppressionReason,
@@ -46,10 +53,10 @@ export const defaultEmailPreferenceState = (): EmailPreferenceState => ({
 })
 
 export const readEmailPreferenceState = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   email: string,
 ): Promise<EmailPreferenceState> => {
-  const row = await db
+  const row = await crmEmailAuthorityDb(db)
     .prepare(
       `SELECT marketing_opt_in, drip_opt_in, transactional_opt_in
          FROM email_preferences
@@ -69,7 +76,7 @@ export const readEmailPreferenceState = async (
 }
 
 export const upsertEmailPreferenceCategory = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{
     category: EmailPolicyCategory
     email: string
@@ -92,7 +99,7 @@ export const upsertEmailPreferenceCategory = async (
         : current.transactionalOptIn,
   }
 
-  await db
+  await crmEmailAuthorityDb(db)
     .prepare(
       `INSERT INTO email_preferences
         (id, user_id, email, marketing_opt_in, drip_opt_in,
@@ -121,14 +128,17 @@ export const upsertEmailPreferenceCategory = async (
       now,
     )
     .run()
+  await mirrorCrmEmailRows(db, 'email_preferences', 'email', [
+    normalizeEmail(input.email),
+  ])
 }
 
 const readSuppression = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   email: string,
   category: EmailPolicyCategory,
 ): Promise<'all' | 'category' | 'none'> => {
-  const row = await db
+  const row = await crmEmailAuthorityDb(db)
     .prepare(
       `SELECT id, scope
          FROM email_suppression_entries
@@ -152,7 +162,7 @@ const readSuppression = async (
 }
 
 export const readEmailSendEligibility = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{
     category: EmailPolicyCategory
     email: string
@@ -190,7 +200,7 @@ export const readEmailSendEligibility = async (
 }
 
 export const recordEmailUnsubscribe = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{
     category: Exclude<EmailPolicyCategory, 'transactional'>
     email: string
@@ -213,7 +223,7 @@ export const recordEmailUnsubscribe = async (
 }
 
 export const recordProviderEmailSuppression = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{
     email: string
     providerEventId?: string | null | undefined

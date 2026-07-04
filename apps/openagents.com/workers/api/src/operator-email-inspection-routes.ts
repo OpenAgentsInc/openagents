@@ -1,3 +1,10 @@
+// KS-8.11 (#8322): CRM/email entry points construct the dual-write seam
+// (plain D1 drop-in when KHALA_SYNC_DB / the flags are absent).
+import {
+  type CrmEmailDatabase,
+  crmEmailAuthorityDb,
+  makeCrmEmailDatabaseForEnv,
+} from './crm-email-domain-store'
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import type { ResendEmailConfig } from './config'
@@ -247,7 +254,7 @@ const decodeReviewReadySmokeRequest = (
   )
 
 const readReviewReadyArtifactSmokeTarget = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   artifactId: string,
 ): Effect.Effect<
   ReviewReadyArtifactSmokeTargetRow | null,
@@ -260,7 +267,7 @@ const readReviewReadyArtifactSmokeTarget = (
           error instanceof Error ? error.message : 'artifact target read failed',
       }),
     try: () =>
-      db
+      crmEmailAuthorityDb(db)
         .prepare(
           `SELECT order_fulfillment_artifacts.id AS artifact_id,
                   order_fulfillment_artifacts.title AS artifact_title,
@@ -301,7 +308,7 @@ const readReviewReadyArtifactSmokeTarget = (
   })
 
 const readReviewReadySmokeTarget = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: ReviewReadySmokeRequest,
 ): Effect.Effect<
   ReviewReadySmokeTargetRow | null,
@@ -313,7 +320,7 @@ const readReviewReadySmokeTarget = (
         reason: error instanceof Error ? error.message : 'target read failed',
       }),
     try: () =>
-      db
+      crmEmailAuthorityDb(db)
         .prepare(
           `SELECT site_projects.id AS site_id,
                   site_projects.title AS site_title,
@@ -353,7 +360,7 @@ const readReviewReadySmokeTarget = (
   })
 
 const readReviewReadySmokeAssignment = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   siteId: string,
 ): Effect.Effect<
   ReviewReadySmokeAssignmentRow | null,
@@ -365,7 +372,7 @@ const readReviewReadySmokeAssignment = (
         reason: error instanceof Error ? error.message : 'assignment read failed',
       }),
     try: () =>
-      db
+      crmEmailAuthorityDb(db)
         .prepare(
           `SELECT id,
                   software_order_id,
@@ -437,7 +444,7 @@ const siteRevisionUrl = (
     : `${siteUrl.replace(/\/+$/, '')}/versions/${encodeURIComponent(versionId)}`
 
 const recordReviewReadySmokeEvents = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{
     actorRunId: string | null
     actorUserId: string
@@ -461,7 +468,7 @@ const recordReviewReadySmokeEvents = (
               error instanceof Error ? error.message : 'assignment event failed',
           }),
         try: () =>
-          db
+          crmEmailAuthorityDb(db)
             .prepare(
               `INSERT INTO adjutant_assignment_events
                  (id,
@@ -503,7 +510,7 @@ const recordReviewReadySmokeEvents = (
           reason: error instanceof Error ? error.message : 'site event failed',
         }),
       try: () =>
-        db
+        crmEmailAuthorityDb(db)
           .prepare(
             `INSERT INTO site_events
                (id,
@@ -535,7 +542,7 @@ const recordReviewReadySmokeEvents = (
   })
 
 const recordReviewReadyArtifactSmokeEvent = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{
     actorUserId: string
     emailMessageId: string | null
@@ -551,7 +558,7 @@ const recordReviewReadyArtifactSmokeEvent = (
           error instanceof Error ? error.message : 'artifact event failed',
       }),
     try: () =>
-      db
+      crmEmailAuthorityDb(db)
         .prepare(
           `INSERT INTO adjutant_assignment_events
              (id,
@@ -611,7 +618,7 @@ export const makeOperatorEmailInspectionRoutes = <
           ctx,
         )
         const body = yield* decodeReviewReadySmokeRequest(request)
-        const db = openAgentsDatabase(env)
+        const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
 
         if (body.artifactId !== undefined) {
           const target = yield* readReviewReadyArtifactSmokeTarget(
@@ -1031,7 +1038,7 @@ export const makeOperatorEmailInspectionRoutes = <
         ctx,
       )
       const inspection = yield* inspectOperatorEmailDelivery(
-        openAgentsDatabase(env),
+        makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) }),
         scopeFromUrl(url),
       )
 

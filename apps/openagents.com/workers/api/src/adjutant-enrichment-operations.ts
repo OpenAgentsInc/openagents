@@ -9,6 +9,14 @@ import {
   ExaProviderHttpError,
   ExaProviderTimeout,
 } from './exa'
+// KS-8.11 (#8322): operations take the `CrmEmailDatabase` union — a plain
+// D1Database keeps working (no mirroring); the dual-write handle converges
+// the Postgres twins fail-soft after each authoritative D1 write.
+import {
+  type CrmEmailDatabase,
+  crmEmailAuthorityDb,
+  mirrorCrmEmailRows,
+} from './crm-email-domain-store'
 import { parseJsonWithSchema } from './json-boundary'
 import { openAgentsDatabase } from './runtime'
 import {
@@ -230,7 +238,7 @@ export const exaCacheKey = (
   })
 
 const reserveBudget = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   runtime: AdjutantEnrichmentOperationsRuntime,
   input: ReserveExaBudgetInput,
 ): Effect.Effect<void, AdjutantEnrichmentOperationsError> =>
@@ -243,7 +251,7 @@ const reserveBudget = (
     }
 
     const usage = yield* d1Effect('adjutantEnrichment.budget.read', () =>
-      db
+      crmEmailAuthorityDb(db)
         .prepare(
           `SELECT COALESCE(SUM(CASE WHEN assignment_id = ? THEN request_units ELSE 0 END), 0) AS assignment_units,
                   COALESCE(SUM(request_units), 0) AS day_units
@@ -285,8 +293,9 @@ const reserveBudget = (
       })
     }
 
+    const budgetEventId = runtime.makeBudgetEventId()
     yield* d1Effect('adjutantEnrichment.budget.insert', () =>
-      db
+      crmEmailAuthorityDb(db)
         .prepare(
           `INSERT INTO exa_enrichment_budget_events
              (id,
@@ -299,7 +308,7 @@ const reserveBudget = (
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
-          runtime.makeBudgetEventId(),
+          budgetEventId,
           input.assignmentId,
           input.runId ?? null,
           dayKey(now),
@@ -309,10 +318,15 @@ const reserveBudget = (
         )
         .run(),
     )
+    yield* Effect.promise(() =>
+      mirrorCrmEmailRows(db, 'exa_enrichment_budget_events', 'id', [
+        budgetEventId,
+      ]),
+    )
   })
 
 const readFreshCache = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   runtime: AdjutantEnrichmentOperationsRuntime,
   input: ExaCacheLookupInput,
 ): Effect.Effect<
@@ -320,7 +334,7 @@ const readFreshCache = (
   ExaEnrichmentOperationsStorageError
 > =>
   d1Effect('adjutantEnrichment.cache.read', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `SELECT id,
                 results_json,
@@ -349,7 +363,7 @@ const readFreshCache = (
   )
 
 const storeCache = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   runtime: AdjutantEnrichmentOperationsRuntime,
   input: ExaCacheStoreInput,
 ): Effect.Effect<void, AdjutantEnrichmentOperationsError> =>
@@ -370,7 +384,7 @@ const storeCache = (
     }
 
     yield* d1Effect('adjutantEnrichment.cache.archiveExisting', () =>
-      db
+      crmEmailAuthorityDb(db)
         .prepare(
           `UPDATE exa_enrichment_cache_entries
               SET archived_at = ?
@@ -381,7 +395,7 @@ const storeCache = (
         .run(),
     )
     yield* d1Effect('adjutantEnrichment.cache.insert', () =>
-      db
+      crmEmailAuthorityDb(db)
         .prepare(
           `INSERT INTO exa_enrichment_cache_entries
              (id,
@@ -410,18 +424,26 @@ const storeCache = (
         )
         .run(),
     )
+    // Mirrors the archived rows AND the fresh insert (cache_key is a
+    // registered key column for exa_enrichment_cache_entries).
+    yield* Effect.promise(() =>
+      mirrorCrmEmailRows(db, 'exa_enrichment_cache_entries', 'cache_key', [
+        input.cacheKey,
+      ]),
+    )
   })
 
 const recordMetric = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   runtime: AdjutantEnrichmentOperationsRuntime,
   input: RecordExaMetricInput,
 ): Effect.Effect<void, AdjutantEnrichmentOperationsError> =>
   Effect.gen(function* () {
     yield* assertMetricSafe(input)
 
+    const metricEventId = runtime.makeMetricEventId()
     yield* d1Effect('adjutantEnrichment.metric.insert', () =>
-      db
+      crmEmailAuthorityDb(db)
         .prepare(
           `INSERT INTO exa_enrichment_metric_events
              (id,
@@ -442,7 +464,7 @@ const recordMetric = (
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
-          runtime.makeMetricEventId(),
+          metricEventId,
           input.assignmentId,
           input.runId ?? null,
           input.queryId ?? null,
@@ -459,6 +481,11 @@ const recordMetric = (
           runtime.nowIso(),
         )
         .run(),
+    )
+    yield* Effect.promise(() =>
+      mirrorCrmEmailRows(db, 'exa_enrichment_metric_events', 'id', [
+        metricEventId,
+      ]),
     )
   })
 
@@ -528,7 +555,7 @@ export const retryExaEffect = <A>(
 }
 
 export const makeAdjutantEnrichmentOperationsService = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   runtime: AdjutantEnrichmentOperationsRuntime = systemAdjutantEnrichmentOperationsRuntime,
 ) => ({
   readFreshCache: Effect.fn('AdjutantEnrichmentOperations.readFreshCache')(

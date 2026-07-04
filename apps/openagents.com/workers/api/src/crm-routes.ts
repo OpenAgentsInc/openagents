@@ -16,6 +16,12 @@
  *   ...chain crmRoutes.routeCrmRequest(request, env, ctx) in routeOmniRequest.
  *   Apply migration 0218_crm_contacts.sql before serving.
  */
+// KS-8.11 (#8322): CRM/email entry points construct the dual-write seam
+// (plain D1 drop-in when KHALA_SYNC_DB / the flags are absent).
+import {
+  type CrmEmailDatabase,
+  makeCrmEmailDatabaseForEnv,
+} from './crm-email-domain-store'
 import { Effect } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
@@ -33,7 +39,6 @@ import {
   listCrmOpportunities,
   listCrmSourceImportRuns,
 } from './crm-store'
-import { openAgentsDatabase } from './runtime'
 
 type HttpResponse = globalThis.Response
 
@@ -69,7 +74,7 @@ const guarded = <Bindings extends CrmRouteEnv>(
   dependencies: CrmRouteDependencies<Bindings>,
   request: Request,
   env: Bindings,
-  read: (db: D1Database) => Promise<HttpResponse>,
+  read: (db: CrmEmailDatabase) => Promise<HttpResponse>,
 ): Effect.Effect<HttpResponse> =>
   Effect.gen(function* () {
     const authorized = yield* Effect.tryPromise({
@@ -84,7 +89,7 @@ const guarded = <Bindings extends CrmRouteEnv>(
         error instanceof CrmStorageError
           ? error
           : new CrmStorageError({ operation: `crm.read: ${String(error)}` }),
-      try: () => read(openAgentsDatabase(env)),
+      try: () => read(makeCrmEmailDatabaseForEnv(env)),
     })
   }).pipe(
     Effect.catch(() =>
@@ -141,7 +146,7 @@ export const makeCrmRoutes = <Bindings extends CrmRouteEnv>(
     }
 
     const tenant = tenantOf(url)
-    const run = (read: (db: D1Database) => Promise<HttpResponse>) =>
+    const run = (read: (db: CrmEmailDatabase) => Promise<HttpResponse>) =>
       guarded(dependencies, request, env, read)
 
     if (CONTACTS.test(path)) {

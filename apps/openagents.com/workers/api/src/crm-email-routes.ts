@@ -18,6 +18,12 @@
  * write-back the old Laravel-coupled script never did. Resend (#5984) reuses the
  * same compose + ledger.
  */
+// KS-8.11 (#8322): CRM/email entry points construct the dual-write seam
+// (plain D1 drop-in when KHALA_SYNC_DB / the flags are absent).
+import {
+  type CrmEmailDatabase,
+  makeCrmEmailDatabaseForEnv,
+} from './crm-email-domain-store'
 import { Effect } from 'effect'
 
 import {
@@ -34,7 +40,6 @@ import {
 import { DEFAULT_CRM_TENANT_REF, recordCrmActivity } from './crm-store'
 import { readEmailSendEligibility } from './email-preferences'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
-import { openAgentsDatabase } from './runtime'
 
 type HttpResponse = globalThis.Response
 
@@ -72,7 +77,7 @@ export const makeCrmEmailRoutes = <Bindings extends CrmEmailEnv>(
   const guard = (
     request: Request,
     env: Bindings,
-    body: (db: D1Database) => Promise<HttpResponse>,
+    body: (db: CrmEmailDatabase) => Promise<HttpResponse>,
   ): Effect.Effect<HttpResponse> =>
     Effect.gen(function* () {
       const authorized = yield* Effect.tryPromise({
@@ -87,7 +92,7 @@ export const makeCrmEmailRoutes = <Bindings extends CrmEmailEnv>(
           error instanceof CrmEmailError
             ? error
             : new CrmEmailError({ reason: `crm.email: ${String(error)}` }),
-        try: () => body(openAgentsDatabase(env)),
+        try: () => body(makeCrmEmailDatabaseForEnv(env)),
       })
     }).pipe(
       Effect.catch(error =>

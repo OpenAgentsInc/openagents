@@ -17,6 +17,15 @@
  */
 import { Schema as S } from 'effect'
 
+// KS-8.11 (#8322): every function here takes the `CrmEmailDatabase` union —
+// a plain D1Database keeps working (no mirroring); when the caller passes
+// the dual-write handle, each write converges its Postgres twin fail-soft
+// (`mirrorCrmEmailRows` never throws) after the authoritative D1 write.
+import {
+  type CrmEmailDatabase,
+  crmEmailAuthorityDb,
+  mirrorCrmEmailRows,
+} from './crm-email-domain-store'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 
 export class CrmStorageError extends S.TaggedErrorClass<CrmStorageError>()(
@@ -162,7 +171,8 @@ export type CrmSourceImportRun = Readonly<{
 // Row decoders (defensive coercion from D1 result objects)
 // ---------------------------------------------------------------------------
 
-const str = (value: unknown): string => (value === null || value === undefined ? '' : String(value))
+const str = (value: unknown): string =>
+  value === null || value === undefined ? '' : String(value)
 const nullableStr = (value: unknown): string | null =>
   value === null || value === undefined ? null : String(value)
 const num = (value: unknown): number => {
@@ -240,7 +250,9 @@ const decodeActivity = (row: Record<string, unknown>): CrmActivity => ({
   createdAt: str(row.created_at),
 })
 
-const decodeSnapshot = (row: Record<string, unknown>): CrmEngagementSnapshot => ({
+const decodeSnapshot = (
+  row: Record<string, unknown>,
+): CrmEngagementSnapshot => ({
   contactId: str(row.contact_id),
   tenantRef: str(row.tenant_ref),
   lastEmailSentAt: nullableStr(row.last_email_sent_at),
@@ -356,7 +368,7 @@ export type UpsertCrmContactResult = Readonly<{
  * row was created so callers can keep honest imported-vs-updated counts.
  */
 export const upsertCrmContact = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: UpsertCrmContactInput,
   runtime: CrmRuntime = defaultCrmRuntime,
 ): Promise<UpsertCrmContactResult> => {
@@ -365,7 +377,7 @@ export const upsertCrmContact = async (
 
   const existing = await queryFirst(
     'crm.upsertContact.find',
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         'SELECT * FROM crm_contacts WHERE tenant_ref = ? AND primary_email = ? LIMIT 1',
       )
@@ -375,7 +387,7 @@ export const upsertCrmContact = async (
 
   if (existing !== null) {
     await runWrite('crm.upsertContact.update', () =>
-      db
+      crmEmailAuthorityDb(db)
         .prepare(
           `UPDATE crm_contacts SET
              secondary_email = COALESCE(?, secondary_email),
@@ -414,9 +426,13 @@ export const upsertCrmContact = async (
         .run(),
     )
 
+    await mirrorCrmEmailRows(db, 'crm_contacts', 'id', [existing.id])
+
     const updated = await queryFirst(
       'crm.upsertContact.reread',
-      db.prepare('SELECT * FROM crm_contacts WHERE id = ? LIMIT 1').bind(existing.id),
+      crmEmailAuthorityDb(db)
+        .prepare('SELECT * FROM crm_contacts WHERE id = ? LIMIT 1')
+        .bind(existing.id),
       decodeContact,
     )
     return { contact: updated ?? existing, created: false }
@@ -424,7 +440,7 @@ export const upsertCrmContact = async (
 
   const id = runtime.makeId('crm_contact')
   await runWrite('crm.upsertContact.insert', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `INSERT INTO crm_contacts (
            id, tenant_ref, primary_email, secondary_email, full_name,
@@ -457,25 +473,31 @@ export const upsertCrmContact = async (
       .run(),
   )
 
+  await mirrorCrmEmailRows(db, 'crm_contacts', 'id', [id])
+
   const created = await queryFirst(
     'crm.upsertContact.created',
-    db.prepare('SELECT * FROM crm_contacts WHERE id = ? LIMIT 1').bind(id),
+    crmEmailAuthorityDb(db)
+      .prepare('SELECT * FROM crm_contacts WHERE id = ? LIMIT 1')
+      .bind(id),
     decodeContact,
   )
   if (created === null) {
-    throw new CrmStorageError({ operation: 'crm.upsertContact: row vanished after insert' })
+    throw new CrmStorageError({
+      operation: 'crm.upsertContact: row vanished after insert',
+    })
   }
   return { contact: created, created: true }
 }
 
 export const getCrmContactById = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   tenantRef: string,
   id: string,
 ): Promise<CrmContact | null> =>
   queryFirst(
     'crm.getContact',
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         'SELECT * FROM crm_contacts WHERE tenant_ref = ? AND id = ? AND archived_at IS NULL LIMIT 1',
       )
@@ -488,13 +510,18 @@ export type ListCrmContactsQuery = Readonly<{
   search?: string | null | undefined
 }>
 
-const clampLimit = (limit: number | undefined, fallback: number, max: number): number => {
-  if (limit === undefined || !Number.isFinite(limit) || limit <= 0) return fallback
+const clampLimit = (
+  limit: number | undefined,
+  fallback: number,
+  max: number,
+): number => {
+  if (limit === undefined || !Number.isFinite(limit) || limit <= 0)
+    return fallback
   return Math.min(Math.floor(limit), max)
 }
 
 export const listCrmContacts = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   tenantRef: string,
   query: ListCrmContactsQuery = {},
 ): Promise<ReadonlyArray<CrmContact>> => {
@@ -504,7 +531,7 @@ export const listCrmContacts = (
   if (search === '') {
     return queryAll(
       'crm.listContacts',
-      db
+      crmEmailAuthorityDb(db)
         .prepare(
           'SELECT * FROM crm_contacts WHERE tenant_ref = ? AND archived_at IS NULL ORDER BY created_at DESC LIMIT ?',
         )
@@ -516,7 +543,7 @@ export const listCrmContacts = (
   const like = `%${search}%`
   return queryAll(
     'crm.listContacts.search',
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `SELECT * FROM crm_contacts
            WHERE tenant_ref = ? AND archived_at IS NULL
@@ -533,13 +560,13 @@ export const listCrmContacts = (
 // ---------------------------------------------------------------------------
 
 export const getCrmAccountById = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   tenantRef: string,
   id: string,
 ): Promise<CrmAccount | null> =>
   queryFirst(
     'crm.getAccount',
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         'SELECT * FROM crm_accounts WHERE tenant_ref = ? AND id = ? AND archived_at IS NULL LIMIT 1',
       )
@@ -548,13 +575,13 @@ export const getCrmAccountById = (
   )
 
 export const listCrmAccounts = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   tenantRef: string,
   query: Readonly<{ limit?: number | undefined }> = {},
 ): Promise<ReadonlyArray<CrmAccount>> =>
   queryAll(
     'crm.listAccounts',
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         'SELECT * FROM crm_accounts WHERE tenant_ref = ? AND archived_at IS NULL ORDER BY created_at DESC LIMIT ?',
       )
@@ -572,14 +599,14 @@ export type UpsertCrmAccountInput = Readonly<{
 }>
 
 export const upsertCrmAccount = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: UpsertCrmAccountInput,
   runtime: CrmRuntime = defaultCrmRuntime,
 ): Promise<CrmAccount> => {
   const now = runtime.nowIso()
   const existing = await queryFirst(
     'crm.upsertAccount.find',
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         'SELECT * FROM crm_accounts WHERE tenant_ref = ? AND name = ? AND archived_at IS NULL LIMIT 1',
       )
@@ -591,7 +618,7 @@ export const upsertCrmAccount = async (
   }
   const id = runtime.makeId('crm_account')
   await runWrite('crm.upsertAccount.insert', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `INSERT INTO crm_accounts (
            id, tenant_ref, name, domain, account_type, status, website_url,
@@ -611,13 +638,19 @@ export const upsertCrmAccount = async (
       )
       .run(),
   )
+  await mirrorCrmEmailRows(db, 'crm_accounts', 'id', [id])
+
   const created = await queryFirst(
     'crm.upsertAccount.created',
-    db.prepare('SELECT * FROM crm_accounts WHERE id = ? LIMIT 1').bind(id),
+    crmEmailAuthorityDb(db)
+      .prepare('SELECT * FROM crm_accounts WHERE id = ? LIMIT 1')
+      .bind(id),
     decodeAccount,
   )
   if (created === null) {
-    throw new CrmStorageError({ operation: 'crm.upsertAccount: row vanished after insert' })
+    throw new CrmStorageError({
+      operation: 'crm.upsertAccount: row vanished after insert',
+    })
   }
   return created
 }
@@ -627,12 +660,12 @@ export const upsertCrmAccount = async (
 // ---------------------------------------------------------------------------
 
 export const listCrmContactLists = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   tenantRef: string,
 ): Promise<ReadonlyArray<CrmContactList>> =>
   queryAll(
     'crm.listContactLists',
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         'SELECT * FROM crm_contact_lists WHERE tenant_ref = ? AND archived_at IS NULL ORDER BY created_at DESC',
       )
@@ -641,7 +674,7 @@ export const listCrmContactLists = (
   )
 
 export const upsertCrmContactList = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{
     tenantRef: string
     slug: string
@@ -654,8 +687,10 @@ export const upsertCrmContactList = async (
   const now = runtime.nowIso()
   const existing = await queryFirst(
     'crm.upsertList.find',
-    db
-      .prepare('SELECT * FROM crm_contact_lists WHERE tenant_ref = ? AND slug = ? LIMIT 1')
+    crmEmailAuthorityDb(db)
+      .prepare(
+        'SELECT * FROM crm_contact_lists WHERE tenant_ref = ? AND slug = ? LIMIT 1',
+      )
       .bind(input.tenantRef, input.slug),
     decodeList,
   )
@@ -664,7 +699,7 @@ export const upsertCrmContactList = async (
   }
   const id = runtime.makeId('crm_list')
   await runWrite('crm.upsertList.insert', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `INSERT INTO crm_contact_lists (
            id, tenant_ref, slug, name, description, is_system, created_at, updated_at
@@ -682,19 +717,25 @@ export const upsertCrmContactList = async (
       )
       .run(),
   )
+  await mirrorCrmEmailRows(db, 'crm_contact_lists', 'id', [id])
+
   const created = await queryFirst(
     'crm.upsertList.created',
-    db.prepare('SELECT * FROM crm_contact_lists WHERE id = ? LIMIT 1').bind(id),
+    crmEmailAuthorityDb(db)
+      .prepare('SELECT * FROM crm_contact_lists WHERE id = ? LIMIT 1')
+      .bind(id),
     decodeList,
   )
   if (created === null) {
-    throw new CrmStorageError({ operation: 'crm.upsertList: row vanished after insert' })
+    throw new CrmStorageError({
+      operation: 'crm.upsertList: row vanished after insert',
+    })
   }
   return created
 }
 
 export const addCrmContactListMembership = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{
     tenantRef: string
     contactId: string
@@ -705,7 +746,7 @@ export const addCrmContactListMembership = async (
 ): Promise<void> => {
   const now = runtime.nowIso()
   await runWrite('crm.addListMembership', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `INSERT INTO crm_contact_list_memberships (
            id, tenant_ref, contact_id, list_id, membership_status, source, created_at, updated_at
@@ -724,6 +765,9 @@ export const addCrmContactListMembership = async (
       )
       .run(),
   )
+  await mirrorCrmEmailRows(db, 'crm_contact_list_memberships', 'contact_id', [
+    input.contactId,
+  ])
 }
 
 // ---------------------------------------------------------------------------
@@ -750,13 +794,14 @@ export type RecordCrmActivityInput = Readonly<{
  * backfills never double-log.
  */
 export const recordCrmActivity = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: RecordCrmActivityInput,
   runtime: CrmRuntime = defaultCrmRuntime,
 ): Promise<void> => {
   const now = runtime.nowIso()
+  const id = runtime.makeId('crm_activity')
   await runWrite('crm.recordActivity', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `INSERT OR IGNORE INTO crm_activities (
            id, tenant_ref, contact_id, account_id, activity_type, subject,
@@ -765,7 +810,7 @@ export const recordCrmActivity = async (
          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?)`,
       )
       .bind(
-        runtime.makeId('crm_activity'),
+        id,
         input.tenantRef,
         input.contactId,
         input.accountId ?? null,
@@ -782,17 +827,20 @@ export const recordCrmActivity = async (
       )
       .run(),
   )
+  // No-op when the INSERT OR IGNORE deduped (no row with this fresh id):
+  // the surviving row was mirrored when it was first recorded.
+  await mirrorCrmEmailRows(db, 'crm_activities', 'id', [id])
 }
 
 export const listCrmActivitiesForContact = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   tenantRef: string,
   contactId: string,
   query: Readonly<{ limit?: number | undefined }> = {},
 ): Promise<ReadonlyArray<CrmActivity>> =>
   queryAll(
     'crm.listActivities',
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         'SELECT * FROM crm_activities WHERE tenant_ref = ? AND contact_id = ? ORDER BY occurred_at DESC LIMIT ?',
       )
@@ -805,13 +853,13 @@ export const listCrmActivitiesForContact = (
 // ---------------------------------------------------------------------------
 
 export const getCrmEngagementSnapshot = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   tenantRef: string,
   contactId: string,
 ): Promise<CrmEngagementSnapshot | null> =>
   queryFirst(
     'crm.getEngagementSnapshot',
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         'SELECT * FROM crm_engagement_snapshots WHERE tenant_ref = ? AND contact_id = ? LIMIT 1',
       )
@@ -824,13 +872,13 @@ export const getCrmEngagementSnapshot = (
 // ---------------------------------------------------------------------------
 
 export const listCrmOpportunities = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   tenantRef: string,
   query: Readonly<{ limit?: number | undefined }> = {},
 ): Promise<ReadonlyArray<CrmOpportunity>> =>
   queryAll(
     'crm.listOpportunities',
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         'SELECT * FROM crm_opportunities WHERE tenant_ref = ? AND archived_at IS NULL ORDER BY created_at DESC LIMIT ?',
       )
@@ -839,13 +887,13 @@ export const listCrmOpportunities = (
   )
 
 export const getCrmOpportunityById = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   tenantRef: string,
   id: string,
 ): Promise<CrmOpportunity | null> =>
   queryFirst(
     'crm.getOpportunity',
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         'SELECT * FROM crm_opportunities WHERE tenant_ref = ? AND id = ? AND archived_at IS NULL LIMIT 1',
       )
@@ -858,14 +906,14 @@ export const getCrmOpportunityById = (
 // ---------------------------------------------------------------------------
 
 export const startCrmSourceImportRun = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{ tenantRef: string; sourceLabel: string }>,
   runtime: CrmRuntime = defaultCrmRuntime,
 ): Promise<string> => {
   const id = runtime.makeId('crm_import')
   const now = runtime.nowIso()
   await runWrite('crm.startImportRun', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `INSERT INTO crm_source_import_runs (
            id, tenant_ref, source_label, status, created_at, updated_at
@@ -874,11 +922,12 @@ export const startCrmSourceImportRun = async (
       .bind(id, input.tenantRef, input.sourceLabel, now, now)
       .run(),
   )
+  await mirrorCrmEmailRows(db, 'crm_source_import_runs', 'id', [id])
   return id
 }
 
 export const completeCrmSourceImportRun = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{
     id: string
     status: 'completed' | 'failed'
@@ -892,7 +941,7 @@ export const completeCrmSourceImportRun = async (
   runtime: CrmRuntime = defaultCrmRuntime,
 ): Promise<void> => {
   await runWrite('crm.completeImportRun', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `UPDATE crm_source_import_runs SET
            status = ?, total_rows = ?, imported_rows = ?, updated_rows = ?,
@@ -912,29 +961,32 @@ export const completeCrmSourceImportRun = async (
       )
       .run(),
   )
+  await mirrorCrmEmailRows(db, 'crm_source_import_runs', 'id', [input.id])
 }
 
 export const getCrmSourceImportRun = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   tenantRef: string,
   id: string,
 ): Promise<CrmSourceImportRun | null> =>
   queryFirst(
     'crm.getImportRun',
-    db
-      .prepare('SELECT * FROM crm_source_import_runs WHERE tenant_ref = ? AND id = ? LIMIT 1')
+    crmEmailAuthorityDb(db)
+      .prepare(
+        'SELECT * FROM crm_source_import_runs WHERE tenant_ref = ? AND id = ? LIMIT 1',
+      )
       .bind(tenantRef, id),
     decodeImportRun,
   )
 
 export const listCrmSourceImportRuns = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   tenantRef: string,
   query: Readonly<{ limit?: number | undefined }> = {},
 ): Promise<ReadonlyArray<CrmSourceImportRun>> =>
   queryAll(
     'crm.listImportRuns',
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         'SELECT * FROM crm_source_import_runs WHERE tenant_ref = ? ORDER BY created_at DESC LIMIT ?',
       )

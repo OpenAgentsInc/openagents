@@ -14,6 +14,8 @@
  * one wave per call with a delay. This module is the per-wave engine + a pure
  * planner, both unit-tested.
  */
+// KS-8.11 (#8322): union type so the dual-write handle flows through.
+import { type CrmEmailDatabase } from './crm-email-domain-store'
 import {
   composeCrmEmailForContact,
   CrmEmailError,
@@ -94,7 +96,7 @@ export type RunCrmBatchInput = Readonly<{
 }>
 
 export const runCrmBatch = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   deps: CrmDispatchDeps,
   input: RunCrmBatchInput,
   runtime: CrmRuntime = defaultCrmRuntime,

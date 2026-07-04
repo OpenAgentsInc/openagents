@@ -24,6 +24,8 @@ import {
   recordCrmEmailMessage,
   updateCrmEmailMessageDelivery,
 } from './crm-email'
+// KS-8.11 (#8322): union type so the dual-write handle flows through.
+import { type CrmEmailDatabase } from './crm-email-domain-store'
 import { type CrmRuntime, defaultCrmRuntime, recordCrmActivity } from './crm-store'
 import { readEmailSendEligibility } from './email-preferences'
 
@@ -124,7 +126,7 @@ export type CrmResendSendResult =
  * contact/template (the route maps that to 422).
  */
 export const sendCrmEmailViaResend = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   deps: CrmResendDeps,
   input: CrmResendSendInput,
   runtime: CrmRuntime = defaultCrmRuntime,

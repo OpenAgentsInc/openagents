@@ -19,6 +19,9 @@ import {
   type CrmSendChannel,
   recordCrmEmailMessage,
 } from './crm-email'
+// KS-8.11 (#8322): the dispatch seam takes the `CrmEmailDatabase` union so
+// the dual-write handle flows through to the gate reads + ledger writes.
+import { type CrmEmailDatabase } from './crm-email-domain-store'
 import {
   type CrmResendDeps,
   type CrmResendSendResult,
@@ -61,7 +64,7 @@ export type CrmDispatchDeps = Readonly<{
  * for a missing contact/template (the route maps that to 422).
  */
 export const dispatchCrmSend = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   deps: CrmDispatchDeps,
   request: CrmSendRequest,
   runtime: CrmRuntime = defaultCrmRuntime,

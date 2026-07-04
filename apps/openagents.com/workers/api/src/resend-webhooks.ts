@@ -1,6 +1,13 @@
 import { Redacted } from 'effect'
 
 import type { WorkerSecret } from './config'
+// KS-8.11 (#8322): CrmEmailDatabase union — provider events + delivery-state
+// updates mirror to Postgres fail-soft (suppression mirrors downstream).
+import {
+  type CrmEmailDatabase,
+  crmEmailAuthorityDb,
+  mirrorCrmEmailRows,
+} from './crm-email-domain-store'
 import { recordProviderEmailSuppression } from './email-preferences'
 import {
   nestedUnknown,
@@ -197,7 +204,7 @@ const payloadSummary = (
   })
 
 export const handleResendWebhook = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{
     body: string
     headers: Headers
@@ -238,12 +245,13 @@ export const handleResendWebhook = async (
   }
 
   const now = runtime.nowIso()
+  const eventRowId = runtime.makeId('email_provider_event')
   const messageId = providerMessageId(payload)
   const recipient = recipientEmail(payload)
   const occurredAt =
     optionalString(payload.created_at) ??
     optionalString(nestedUnknown(payload, ['data', 'created_at']))
-  const result = await db
+  const result = await crmEmailAuthorityDb(db)
     .prepare(
       `INSERT INTO email_provider_events
         (id, provider, provider_event_id, event_type, email,
@@ -253,7 +261,7 @@ export const handleResendWebhook = async (
        ON CONFLICT(provider, provider_event_id) DO NOTHING`,
     )
     .bind(
-      runtime.makeId('email_provider_event'),
+      eventRowId,
       providerEventId,
       eventType,
       recipient,
@@ -272,10 +280,15 @@ export const handleResendWebhook = async (
   const duplicate =
     typeof (result.meta as { changes?: unknown }).changes === 'number' &&
     (result.meta as { changes: number }).changes === 0
+  // Replay-safe: on a duplicate the INSERT deduped on (provider,
+  // provider_event_id) and no row carries eventRowId — the mirror no-ops.
+  await mirrorCrmEmailRows(db, 'email_provider_events', 'provider_event_id', [
+    providerEventId,
+  ])
   const projection = deliveryProjection(eventType, payload)
 
   if (!duplicate && messageId !== null) {
-    await db
+    await crmEmailAuthorityDb(db)
       .prepare(
         `UPDATE email_deliveries
             SET status = ?,
@@ -295,6 +308,9 @@ export const handleResendWebhook = async (
         messageId,
       )
       .run()
+    await mirrorCrmEmailRows(db, 'email_deliveries', 'provider_message_id', [
+      messageId,
+    ])
   }
 
   if (

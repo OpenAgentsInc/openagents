@@ -1,5 +1,13 @@
 import { Schema as S } from 'effect'
 
+// KS-8.11 (#8322): list functions take the `CrmEmailDatabase` union — a
+// plain D1Database keeps working (no mirroring); the dual-write handle
+// converges the Postgres twins fail-soft after each authoritative D1 write.
+import {
+  type CrmEmailDatabase,
+  crmEmailAuthorityDb,
+  mirrorCrmEmailRows,
+} from './crm-email-domain-store'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 
 export const SubscriberListStatus = S.Literals(['active', 'paused', 'archived'])
@@ -207,71 +215,84 @@ export type NativeListsServiceShape = Readonly<{
 const SUBSCRIBER_LIST_LIMIT = 500
 
 export const makeNativeListsService = (
-  db: D1Database,
+  database: CrmEmailDatabase,
   runtime: NativeListsRuntime = systemNativeListsRuntime,
-): NativeListsServiceShape => ({
-  addSubscriber: async input => {
-    const now = runtime.nowIso()
-    const record = makeListSubscriberRecord(
-      {
-        email: input.email,
-        listId: input.listId,
-        metadata: input.metadata,
-        sourceRef: input.sourceRef,
-      },
-      runtime,
-    )
+): NativeListsServiceShape => {
+  // KS-8.11 (#8322): D1 stays the write/read authority; when `database` is
+  // the dual-write handle each write below also converges its Postgres twin
+  // fail-soft.
+  const db = crmEmailAuthorityDb(database)
 
-    await db
-      .prepare(
-        `INSERT INTO list_subscribers
+  return {
+    addSubscriber: async input => {
+      const now = runtime.nowIso()
+      const record = makeListSubscriberRecord(
+        {
+          email: input.email,
+          listId: input.listId,
+          metadata: input.metadata,
+          sourceRef: input.sourceRef,
+        },
+        runtime,
+      )
+
+      await db
+        .prepare(
+          `INSERT INTO list_subscribers
           (id, list_id, email, status, source_ref, idempotency_key,
            metadata_json, subscribed_at, unsubscribed_at, bounced_at,
            created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
          ON CONFLICT(idempotency_key) DO NOTHING`,
-      )
-      .bind(
-        record.id,
-        record.listId,
-        record.email,
-        record.status,
-        record.sourceRef,
-        record.idempotencyKey,
-        record.metadataJson,
-        now,
-        now,
-        now,
-      )
-      .run()
+        )
+        .bind(
+          record.id,
+          record.listId,
+          record.email,
+          record.status,
+          record.sourceRef,
+          record.idempotencyKey,
+          record.metadataJson,
+          now,
+          now,
+          now,
+        )
+        .run()
 
-    const stored = await db
-      .prepare(
-        `SELECT id, list_id, email, status, source_ref, idempotency_key,
+      await mirrorCrmEmailRows(
+        database,
+        'list_subscribers',
+        'idempotency_key',
+        [record.idempotencyKey],
+      )
+
+      const stored = await db
+        .prepare(
+          `SELECT id, list_id, email, status, source_ref, idempotency_key,
                 metadata_json
            FROM list_subscribers
           WHERE idempotency_key = ?
           LIMIT 1`,
-      )
-      .bind(record.idempotencyKey)
-      .first<ListSubscriberRow>()
+        )
+        .bind(record.idempotencyKey)
+        .first<ListSubscriberRow>()
 
-    if (stored === null) {
-      return { idempotent: false, subscriber: record }
-    }
+      if (stored === null) {
+        return { idempotent: false, subscriber: record }
+      }
 
-    return {
-      idempotent: stored.id !== record.id,
-      subscriber: subscriberFromRow(stored),
-    }
-  },
-  createList: async input => {
-    const now = runtime.nowIso()
-    const record = makeSubscriberListRecord(input, runtime)
+      return {
+        idempotent: stored.id !== record.id,
+        subscriber: subscriberFromRow(stored),
+      }
+    },
+    createList: async input => {
+      const now = runtime.nowIso()
+      const record = makeSubscriberListRecord(input, runtime)
 
-    await db
-      .prepare(
-        `INSERT INTO subscriber_lists
+      await db
+        .prepare(
+          `INSERT INTO subscriber_lists
           (id, owner_user_id, team_id, slug, name, status,
            source_authority_ref, metadata_json, created_at, updated_at,
            archived_at)
@@ -282,111 +303,120 @@ export const makeNativeListsService = (
            source_authority_ref = excluded.source_authority_ref,
            metadata_json = excluded.metadata_json,
            updated_at = excluded.updated_at`,
-      )
-      .bind(
-        record.id,
-        record.ownerUserId,
-        record.teamId,
-        record.slug,
-        record.name,
-        record.status,
-        record.sourceAuthorityRef,
-        record.metadataJson,
-        now,
-        now,
-      )
-      .run()
+        )
+        .bind(
+          record.id,
+          record.ownerUserId,
+          record.teamId,
+          record.slug,
+          record.name,
+          record.status,
+          record.sourceAuthorityRef,
+          record.metadataJson,
+          now,
+          now,
+        )
+        .run()
 
-    const stored = await db
-      .prepare(
-        `SELECT id, owner_user_id, team_id, slug, name, status,
+      await mirrorCrmEmailRows(database, 'subscriber_lists', 'slug', [
+        record.slug,
+      ])
+
+      const stored = await db
+        .prepare(
+          `SELECT id, owner_user_id, team_id, slug, name, status,
                 source_authority_ref, metadata_json
            FROM subscriber_lists
           WHERE slug = ?
           LIMIT 1`,
-      )
-      .bind(record.slug)
-      .first<SubscriberListRow>()
+        )
+        .bind(record.slug)
+        .first<SubscriberListRow>()
 
-    return stored === null ? record : listFromRow(stored)
-  },
-  listSubscribers: async input => {
-    const limit = Math.max(
-      1,
-      Math.min(SUBSCRIBER_LIST_LIMIT, Math.floor(input.limit ?? 200)),
-    )
-    const result =
-      input.status === undefined
-        ? await db
-            .prepare(
-              `SELECT id, list_id, email, status, source_ref, idempotency_key,
+      return stored === null ? record : listFromRow(stored)
+    },
+    listSubscribers: async input => {
+      const limit = Math.max(
+        1,
+        Math.min(SUBSCRIBER_LIST_LIMIT, Math.floor(input.limit ?? 200)),
+      )
+      const result =
+        input.status === undefined
+          ? await db
+              .prepare(
+                `SELECT id, list_id, email, status, source_ref, idempotency_key,
                       metadata_json
                  FROM list_subscribers
                 WHERE list_id = ?
                 ORDER BY updated_at DESC
                 LIMIT ?`,
-            )
-            .bind(input.listId, limit)
-            .all<ListSubscriberRow>()
-        : await db
-            .prepare(
-              `SELECT id, list_id, email, status, source_ref, idempotency_key,
+              )
+              .bind(input.listId, limit)
+              .all<ListSubscriberRow>()
+          : await db
+              .prepare(
+                `SELECT id, list_id, email, status, source_ref, idempotency_key,
                       metadata_json
                  FROM list_subscribers
                 WHERE list_id = ?
                   AND status = ?
                 ORDER BY updated_at DESC
                 LIMIT ?`,
-            )
-            .bind(input.listId, input.status, limit)
-            .all<ListSubscriberRow>()
+              )
+              .bind(input.listId, input.status, limit)
+              .all<ListSubscriberRow>()
 
-    return result.results.map(subscriberFromRow)
-  },
-  readList: async listId => {
-    const row = await db
-      .prepare(
-        `SELECT id, owner_user_id, team_id, slug, name, status,
+      return result.results.map(subscriberFromRow)
+    },
+    readList: async listId => {
+      const row = await db
+        .prepare(
+          `SELECT id, owner_user_id, team_id, slug, name, status,
                 source_authority_ref, metadata_json
            FROM subscriber_lists
           WHERE id = ?
             AND archived_at IS NULL
           LIMIT 1`,
-      )
-      .bind(listId)
-      .first<SubscriberListRow>()
+        )
+        .bind(listId)
+        .first<SubscriberListRow>()
 
-    return row === null ? undefined : listFromRow(row)
-  },
-  unsubscribe: async input => {
-    const now = runtime.nowIso()
-    const email = normalizeEmail(input.email)
+      return row === null ? undefined : listFromRow(row)
+    },
+    unsubscribe: async input => {
+      const now = runtime.nowIso()
+      const email = normalizeEmail(input.email)
 
-    await db
-      .prepare(
-        `UPDATE list_subscribers
+      await db
+        .prepare(
+          `UPDATE list_subscribers
             SET status = 'unsubscribed',
                 unsubscribed_at = ?,
                 updated_at = ?
           WHERE list_id = ?
             AND email = ?
             AND status <> 'unsubscribed'`,
-      )
-      .bind(now, now, input.listId, email)
-      .run()
+        )
+        .bind(now, now, input.listId, email)
+        .run()
 
-    const row = await db
-      .prepare(
-        `SELECT id, list_id, email, status, source_ref, idempotency_key,
+      const row = await db
+        .prepare(
+          `SELECT id, list_id, email, status, source_ref, idempotency_key,
                 metadata_json
            FROM list_subscribers
           WHERE list_id = ?
             AND email = ?
           LIMIT 1`,
-      )
-      .bind(input.listId, email)
-      .first<ListSubscriberRow>()
+        )
+        .bind(input.listId, email)
+        .first<ListSubscriberRow>()
 
-    return row === null ? undefined : subscriberFromRow(row)
-  },
-})
+      if (row !== null) {
+        await mirrorCrmEmailRows(database, 'list_subscribers', 'id', [row.id])
+      }
+
+      return row === null ? undefined : subscriberFromRow(row)
+    },
+  }
+}

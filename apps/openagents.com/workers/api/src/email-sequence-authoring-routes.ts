@@ -16,7 +16,7 @@
 //      })
 //
 //    (The factory only needs OPENAGENTS_DB on the bindings; it reads the DB via
-//    openAgentsDatabase(env) like operator-email-inspection-routes.ts.)
+//    makeCrmEmailDatabaseForEnv(env) like operator-email-inspection-routes.ts.)
 //
 // 2) Expose it on the worker-routes dependency object alongside the other
 //    operator routes. Add to WorkerRouteDependencies in
@@ -55,6 +55,9 @@
 // No new migration: reuses migration 0063 (email_campaigns,
 // email_campaign_steps, email_campaign_enrollments, email_campaign_sends).
 
+// KS-8.11 (#8322): CRM/email entry points construct the dual-write seam
+// (plain D1 drop-in when KHALA_SYNC_DB / the flags are absent).
+import { makeCrmEmailDatabaseForEnv } from './crm-email-domain-store'
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import {
@@ -71,7 +74,6 @@ import {
 } from './email-sequence-authoring'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { readJsonObject } from './json-boundary'
-import { openAgentsDatabase } from './runtime'
 
 type EmailSequenceAuthoringEnv = Readonly<{
   OPENAGENTS_DB: D1Database
@@ -280,7 +282,7 @@ const handleCreate = <
     )
     const definition = yield* storage('create failed', () =>
       createEmailSequence(
-        openAgentsDatabase(env),
+        makeCrmEmailDatabaseForEnv(env),
         session.user.userId,
         body,
       ),
@@ -312,7 +314,7 @@ const handleStatus = <
       decodeUpdateEmailSequenceStatusRequest,
     )
     const definition = yield* storage('status update failed', () =>
-      updateEmailSequenceStatus(openAgentsDatabase(env), slug, body),
+      updateEmailSequenceStatus(makeCrmEmailDatabaseForEnv(env), slug, body),
     )
 
     if (definition === null) {
@@ -345,7 +347,7 @@ const handleEnroll = <
     )
     const result = yield* storage('enroll failed', () =>
       enrollSubscriberInSequence(
-        openAgentsDatabase(env),
+        makeCrmEmailDatabaseForEnv(env),
         slug,
         body,
         session.user.userId,

@@ -11,12 +11,14 @@
  * writes only into the tenant-scoped CRM model and records a
  * `crm_source_import_runs` audit row. It never sends email.
  */
+// KS-8.11 (#8322): CRM/email entry points construct the dual-write seam
+// (plain D1 drop-in when KHALA_SYNC_DB / the flags are absent).
+import { makeCrmEmailDatabaseForEnv } from './crm-email-domain-store'
 import { Effect } from 'effect'
 
 import { crmImportDepsFromDb, importCrmContactsFromCsv } from './crm-import'
 import { CrmStorageError, DEFAULT_CRM_TENANT_REF } from './crm-store'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
-import { openAgentsDatabase } from './runtime'
 
 type HttpResponse = globalThis.Response
 
@@ -117,7 +119,7 @@ export const makeCrmImportRoutes = <Bindings extends CrmImportEnv>(
             ? error
             : new CrmStorageError({ operation: `crm.import: ${String(error)}` }),
         try: () =>
-          importCrmContactsFromCsv(crmImportDepsFromDb(openAgentsDatabase(env)), {
+          importCrmContactsFromCsv(crmImportDepsFromDb(makeCrmEmailDatabaseForEnv(env)), {
             csv: args.csv,
             listName: args.listName,
             listSlug: args.listSlug,

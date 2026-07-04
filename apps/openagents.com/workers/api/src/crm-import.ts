@@ -13,6 +13,8 @@
  * a pure data migration off the old prod DB (CSV handoff), with zero ongoing
  * legacy dependency.
  */
+// KS-8.11 (#8322): union type so the dual-write handle flows through.
+import { type CrmEmailDatabase } from './crm-email-domain-store'
 import {
   addCrmContactListMembership,
   completeCrmSourceImportRun,
@@ -194,7 +196,7 @@ export type CrmImportDeps = Readonly<{
 }>
 
 export const crmImportDepsFromDb = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   runtime: CrmRuntime = defaultCrmRuntime,
 ): CrmImportDeps => ({
   addMembership: input => addCrmContactListMembership(db, input, runtime),

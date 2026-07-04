@@ -9,6 +9,9 @@
  * DEFAULTS TO dry-run: you must pass `dryRun:false` to actually send. Resend
  * deps are injected via the central config resolver.
  */
+// KS-8.11 (#8322): CRM/email entry points construct the dual-write seam
+// (plain D1 drop-in when KHALA_SYNC_DB / the flags are absent).
+import { makeCrmEmailDatabaseForEnv } from './crm-email-domain-store'
 import { Effect } from 'effect'
 
 import { type CrmBatchSummary, runCrmBatch } from './crm-batch'
@@ -17,7 +20,6 @@ import { type CrmResendDeps } from './crm-resend'
 import { DEFAULT_CRM_TENANT_REF } from './crm-store'
 import { isRecord, stringArrayFromUnknown } from './json-boundary'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
-import { openAgentsDatabase } from './runtime'
 
 type HttpResponse = globalThis.Response
 
@@ -92,7 +94,7 @@ export const makeCrmBatchRoutes = <Bindings extends CrmBatchEnv>(
             ? error
             : new CrmEmailError({ reason: `crm.batch: ${String(error)}` }),
         try: () =>
-          runCrmBatch(openAgentsDatabase(env), { resend: dependencies.resolveResendDeps(env) }, {
+          runCrmBatch(makeCrmEmailDatabaseForEnv(env), { resend: dependencies.resolveResendDeps(env) }, {
             channel,
             contactIds,
             dryRun,

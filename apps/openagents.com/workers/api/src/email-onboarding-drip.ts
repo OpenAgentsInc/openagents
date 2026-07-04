@@ -1,5 +1,8 @@
 import type { DripEmailKind } from '@openagentsinc/email-templates'
 
+// KS-8.11 (#8322): CrmEmailDatabase union — pure pass-through: the campaign
+// writers imported below mirror to Postgres internally.
+import { type CrmEmailDatabase } from './crm-email-domain-store'
 import {
   type EmailCampaignRecord,
   type EmailCampaignRuntime,
@@ -59,12 +62,15 @@ export type OnboardingDripEnrollmentInput = Readonly<{
   displayName?: string | null | undefined
   email: string
   orderState: OnboardingDripOrderState
-  referral?: Readonly<{
-    attributionId: string
-    referralSourceId: string
-    sourceLabel: string
-    sourceSiteUrl: string | null
-  }> | null | undefined
+  referral?:
+    | Readonly<{
+        attributionId: string
+        referralSourceId: string
+        sourceLabel: string
+        sourceSiteUrl: string | null
+      }>
+    | null
+    | undefined
   sourceAuthorityRef: string
   userId?: string | null | undefined
 }>
@@ -96,7 +102,7 @@ const scheduledSendSourceAuthority = (stepKey: string): string =>
   `${ONBOARDING_DRIP_SOURCE_AUTHORITY}:send:${stepKey}`
 
 export const seedOnboardingDripCampaign = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   runtime: EmailCampaignRuntime = systemEmailCampaignRuntime,
 ): Promise<OnboardingDripCampaignDefinition> => {
   const now = runtime.nowIso()
@@ -153,7 +159,7 @@ export const seedOnboardingDripCampaign = async (
 }
 
 export const enrollInOnboardingDrip = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: OnboardingDripEnrollmentInput,
   runtime: EmailCampaignRuntime = systemEmailCampaignRuntime,
 ): Promise<OnboardingDripEnrollmentResult> => {

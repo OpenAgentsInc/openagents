@@ -13,7 +13,18 @@
 import { Schema as S } from 'effect'
 
 import { type CrmSendChannel } from './crm-email'
-import { type CrmDispatchDeps, type CrmSendOutcome, dispatchCrmSend } from './crm-send'
+// KS-8.11 (#8322): CrmEmailDatabase union — command proposals/updates mirror
+// their crm_contact_commands rows to Postgres fail-soft.
+import {
+  type CrmEmailDatabase,
+  crmEmailAuthorityDb,
+  mirrorCrmEmailRows,
+} from './crm-email-domain-store'
+import {
+  type CrmDispatchDeps,
+  type CrmSendOutcome,
+  dispatchCrmSend,
+} from './crm-send'
 import { type CrmRuntime, defaultCrmRuntime } from './crm-store'
 import { parseJsonRecord } from './json-boundary'
 
@@ -42,7 +53,8 @@ export type CrmSendCommandPayload = Readonly<{
   sendReason?: string | null
 }>
 
-const str = (v: unknown): string => (v === null || v === undefined ? '' : String(v))
+const str = (v: unknown): string =>
+  v === null || v === undefined ? '' : String(v)
 const nullableStr = (v: unknown): string | null =>
   v === null || v === undefined ? null : String(v)
 
@@ -63,7 +75,10 @@ const decodeCommand = (row: Record<string, unknown>): CrmContactCommand => ({
   updatedAt: str(row.updated_at),
 })
 
-const wrap = async (operation: string, fn: () => Promise<unknown>): Promise<void> => {
+const wrap = async (
+  operation: string,
+  fn: () => Promise<unknown>,
+): Promise<void> => {
   try {
     await fn()
   } catch (error) {
@@ -76,7 +91,7 @@ const wrap = async (operation: string, fn: () => Promise<unknown>): Promise<void
 // ---------------------------------------------------------------------------
 
 export const proposeCrmSendCommand = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{
     tenantRef: string
     contactId: string
@@ -95,7 +110,7 @@ export const proposeCrmSendCommand = async (
     templateSlug: input.templateSlug,
   }
   await wrap('crm.proposeSendCommand', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `INSERT INTO crm_contact_commands (
            id, tenant_ref, contact_id, command_kind, status, proposed_by_ref,
@@ -115,19 +130,24 @@ export const proposeCrmSendCommand = async (
   )
   const stored = await getCrmCommand(db, input.tenantRef, id)
   if (stored === null) {
-    throw new CrmCommandError({ reason: 'crm.proposeSendCommand: vanished after insert' })
+    throw new CrmCommandError({
+      reason: 'crm.proposeSendCommand: vanished after insert',
+    })
   }
+  await mirrorCrmEmailRows(db, 'crm_contact_commands', 'id', [id])
   return stored
 }
 
 export const getCrmCommand = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   tenantRef: string,
   id: string,
 ): Promise<CrmContactCommand | null> => {
   try {
-    const row = await db
-      .prepare('SELECT * FROM crm_contact_commands WHERE tenant_ref = ? AND id = ? LIMIT 1')
+    const row = await crmEmailAuthorityDb(db)
+      .prepare(
+        'SELECT * FROM crm_contact_commands WHERE tenant_ref = ? AND id = ? LIMIT 1',
+      )
       .bind(tenantRef, id)
       .first<Record<string, unknown>>()
     return row === null ? null : decodeCommand(row)
@@ -137,23 +157,28 @@ export const getCrmCommand = async (
 }
 
 export const listCrmCommands = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   tenantRef: string,
-  query: Readonly<{ status?: string | undefined; limit?: number | undefined }> = {},
+  query: Readonly<{
+    status?: string | undefined
+    limit?: number | undefined
+  }> = {},
 ): Promise<ReadonlyArray<CrmContactCommand>> => {
   const limit =
-    query.limit === undefined || !Number.isFinite(query.limit) || query.limit <= 0
+    query.limit === undefined ||
+    !Number.isFinite(query.limit) ||
+    query.limit <= 0
       ? 100
       : Math.min(Math.floor(query.limit), 500)
   try {
     const statement =
       query.status === undefined || query.status.trim() === ''
-        ? db
+        ? crmEmailAuthorityDb(db)
             .prepare(
               'SELECT * FROM crm_contact_commands WHERE tenant_ref = ? ORDER BY created_at DESC LIMIT ?',
             )
             .bind(tenantRef, limit)
-        : db
+        : crmEmailAuthorityDb(db)
             .prepare(
               'SELECT * FROM crm_contact_commands WHERE tenant_ref = ? AND status = ? ORDER BY created_at DESC LIMIT ?',
             )
@@ -166,7 +191,7 @@ export const listCrmCommands = async (
 }
 
 const updateCommand = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{
     tenantRef: string
     id: string
@@ -177,7 +202,7 @@ const updateCommand = (
   runtime: CrmRuntime,
 ): Promise<void> =>
   wrap('crm.updateCommand', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `UPDATE crm_contact_commands SET
            status = ?, approval_state = ?, result_json = ?, updated_at = ?
@@ -191,7 +216,10 @@ const updateCommand = (
         input.tenantRef,
         input.id,
       )
-      .run(),
+      .run()
+      .then(() =>
+        mirrorCrmEmailRows(db, 'crm_contact_commands', 'id', [input.id]),
+      ),
   )
 
 // ---------------------------------------------------------------------------
@@ -199,21 +227,31 @@ const updateCommand = (
 // ---------------------------------------------------------------------------
 
 export type ApproveCrmCommandResult =
-  | Readonly<{ kind: 'executed'; command: CrmContactCommand; outcome: CrmSendOutcome }>
+  | Readonly<{
+      kind: 'executed'
+      command: CrmContactCommand
+      outcome: CrmSendOutcome
+    }>
   | Readonly<{ kind: 'not_pending'; command: CrmContactCommand }>
   | Readonly<{ kind: 'not_found' }>
 
 const outcomeFailed = (outcome: CrmSendOutcome): boolean => {
   if (outcome.channel === 'resend') {
-    return outcome.result.kind === 'failed' || outcome.result.kind === 'suppressed'
+    return (
+      outcome.result.kind === 'failed' || outcome.result.kind === 'suppressed'
+    )
   }
   return outcome.kind === 'suppressed'
 }
 
 export const approveAndExecuteCrmSendCommand = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   deps: CrmDispatchDeps,
-  input: Readonly<{ tenantRef: string; commandId: string; approvedByRef?: string | null }>,
+  input: Readonly<{
+    tenantRef: string
+    commandId: string
+    approvedByRef?: string | null
+  }>,
   runtime: CrmRuntime = defaultCrmRuntime,
 ): Promise<ApproveCrmCommandResult> => {
   const command = await getCrmCommand(db, input.tenantRef, input.commandId)
@@ -229,9 +267,13 @@ export const approveAndExecuteCrmSendCommand = async (
 
   const channel = command.payload.channel === 'resend' ? 'resend' : 'gmail_gws'
   const templateSlug =
-    typeof command.payload.templateSlug === 'string' ? command.payload.templateSlug : ''
+    typeof command.payload.templateSlug === 'string'
+      ? command.payload.templateSlug
+      : ''
   if (templateSlug === '') {
-    throw new CrmCommandError({ reason: 'command payload missing templateSlug' })
+    throw new CrmCommandError({
+      reason: 'command payload missing templateSlug',
+    })
   }
 
   const outcome = await dispatchCrmSend(
@@ -241,7 +283,9 @@ export const approveAndExecuteCrmSendCommand = async (
       channel,
       contactId: command.contactId,
       sendReason:
-        typeof command.payload.sendReason === 'string' ? command.payload.sendReason : null,
+        typeof command.payload.sendReason === 'string'
+          ? command.payload.sendReason
+          : null,
       templateSlug,
       tenantRef: input.tenantRef,
     },
@@ -269,8 +313,12 @@ export const approveAndExecuteCrmSendCommand = async (
 }
 
 export const rejectCrmCommand = async (
-  db: D1Database,
-  input: Readonly<{ tenantRef: string; commandId: string; reason?: string | null }>,
+  db: CrmEmailDatabase,
+  input: Readonly<{
+    tenantRef: string
+    commandId: string
+    reason?: string | null
+  }>,
   runtime: CrmRuntime = defaultCrmRuntime,
 ): Promise<ApproveCrmCommandResult> => {
   const command = await getCrmCommand(db, input.tenantRef, input.commandId)

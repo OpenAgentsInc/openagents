@@ -9,6 +9,12 @@
  * `operator_read`, `read_only`, no receipts. Resources land in #5994; grant
  * filtering + tenant binding in #5995.
  */
+// KS-8.11 (#8322): CRM/email entry points construct the dual-write seam
+// (plain D1 drop-in when KHALA_SYNC_DB / the flags are absent).
+import {
+  type CrmEmailDatabase,
+  makeCrmEmailDatabaseForEnv,
+} from './crm-email-domain-store'
 import {
   filterOpenAgentsMcpDescriptorsByGrantSet,
   openAgentsMcpDescriptorIsGranted,
@@ -57,7 +63,6 @@ import {
 } from './crm-store'
 import { readEmailSendEligibility } from './email-preferences'
 import { stringArrayFromUnknown } from './json-boundary'
-import { openAgentsDatabase } from './runtime'
 
 type CrmMcpEnv = Readonly<{ OPENAGENTS_DB: D1Database }>
 
@@ -360,7 +365,7 @@ export const CRM_MCP_TOOLS: ReadonlyArray<OpenAgentsMcpToolDescriptor> = [
 // Tenant is the principal's bound tenant — never client-supplied `args.tenant`.
 type CrmToolContext = Readonly<{ subjectRef: string; dispatchDeps: CrmDispatchDeps }>
 type CrmToolHandler = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   tenant: string,
   a: Record<string, unknown>,
   ctx: CrmToolContext,
@@ -561,7 +566,7 @@ export const CRM_MCP_RESOURCES: ReadonlyArray<McpResourceListing> = [
 
 /** Resolve a parsed `crm/...` resource path to its read data (bound tenant). */
 const readCrmResourceData = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   tenant: string,
   path: string,
 ): Promise<unknown> => {
@@ -617,7 +622,7 @@ export const makeCrmMcpCatalog = <Bindings extends CrmMcpEnv>(
     if (handler === undefined) {
       throw new CrmMcpToolError('unknown_tool')
     }
-    const data = await handler(openAgentsDatabase(env), principal.tenantRef, args(callArgs), {
+    const data = await handler(makeCrmEmailDatabaseForEnv(env), principal.tenantRef, args(callArgs), {
       dispatchDeps: { resend: deps.resolveResendDeps(env) },
       subjectRef: principal.subjectRef,
     })
@@ -641,7 +646,7 @@ export const makeCrmMcpCatalog = <Bindings extends CrmMcpEnv>(
     if (parsed.namespace !== 'worker') {
       throw new CrmMcpToolError('unknown_resource')
     }
-    const data = await readCrmResourceData(openAgentsDatabase(env), principal.tenantRef, parsed.path)
+    const data = await readCrmResourceData(makeCrmEmailDatabaseForEnv(env), principal.tenantRef, parsed.path)
     const projection = projectOpenAgentsMcpOutput({
       maxTextBytes: 131072,
       outputRef: uri,

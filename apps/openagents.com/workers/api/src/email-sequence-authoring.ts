@@ -1,5 +1,13 @@
+// KS-8.11 (#8322): CrmEmailDatabase union — pass-through to the campaign
+// writers (which mirror internally) plus mirrors for this module's own
+// archive/status UPDATEs.
 import { Schema as S } from 'effect'
 
+import {
+  type CrmEmailDatabase,
+  crmEmailAuthorityDb,
+  mirrorCrmEmailRows,
+} from './crm-email-domain-store'
 import {
   type EmailCampaignEnrollmentRecord,
   type EmailCampaignRecord,
@@ -127,7 +135,7 @@ const sequenceSourceAuthority = (
 // were authored previously but are absent from this request are archived so the
 // dispatcher stops scheduling them for new enrollments.
 export const createEmailSequence = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   operatorUserId: string,
   request: CreateEmailSequenceRequest,
   runtime: EmailCampaignRuntime = systemEmailCampaignRuntime,
@@ -193,7 +201,7 @@ export const createEmailSequence = async (
 }
 
 const archiveRemovedSequenceSteps = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   campaignId: string,
   keepStepKeys: ReadonlySet<string>,
   now: string,
@@ -203,7 +211,7 @@ const archiveRemovedSequenceSteps = async (
 
   await Promise.all(
     stale.map(step =>
-      db
+      crmEmailAuthorityDb(db)
         .prepare(
           `UPDATE email_campaign_steps
               SET status = 'archived',
@@ -216,6 +224,11 @@ const archiveRemovedSequenceSteps = async (
         .run(),
     ),
   )
+  if (stale.length > 0) {
+    await mirrorCrmEmailRows(db, 'email_campaign_steps', 'campaign_id', [
+      campaignId,
+    ])
+  }
 }
 
 // Update the lifecycle status of an authored sequence. Activating or pausing
@@ -223,7 +236,7 @@ const archiveRemovedSequenceSteps = async (
 // scheduled sends honor the operator decision for future enrollments. Returns
 // null when no campaign with the slug exists.
 export const updateEmailSequenceStatus = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   slug: string,
   request: UpdateEmailSequenceStatusRequest,
   runtime: EmailCampaignRuntime = systemEmailCampaignRuntime,
@@ -236,7 +249,7 @@ export const updateEmailSequenceStatus = async (
 
   const now = runtime.nowIso()
 
-  await db
+  await crmEmailAuthorityDb(db)
     .prepare(
       `UPDATE email_campaigns
           SET status = ?,
@@ -253,7 +266,7 @@ export const updateEmailSequenceStatus = async (
     )
     .run()
 
-  await db
+  await crmEmailAuthorityDb(db)
     .prepare(
       `UPDATE email_campaign_steps
           SET status = ?,
@@ -269,6 +282,11 @@ export const updateEmailSequenceStatus = async (
       existing.id,
     )
     .run()
+
+  await mirrorCrmEmailRows(db, 'email_campaigns', 'id', [existing.id])
+  await mirrorCrmEmailRows(db, 'email_campaign_steps', 'campaign_id', [
+    existing.id,
+  ])
 
   const campaign = await readEmailCampaignBySlug(db, slug)
 
@@ -292,7 +310,7 @@ export const updateEmailSequenceStatus = async (
 // so repeated enrollment for the same email is safe. Returns null when no
 // campaign with the slug exists.
 export const enrollSubscriberInSequence = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   slug: string,
   request: EnrollSubscriberRequest,
   operatorUserId: string,

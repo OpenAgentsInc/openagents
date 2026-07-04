@@ -8,6 +8,9 @@
  * truthy AND `RESEND_API_KEY` + `RESEND_FROM_EMAIL` are present. Disabled =>
  * dry-run (never calls Resend). Suppressed => 409. Provider failure => 502.
  */
+// KS-8.11 (#8322): CRM/email entry points construct the dual-write seam
+// (plain D1 drop-in when KHALA_SYNC_DB / the flags are absent).
+import { makeCrmEmailDatabaseForEnv } from './crm-email-domain-store'
 import { Effect } from 'effect'
 
 import { DEFAULT_CRM_TENANT_REF } from './crm-store'
@@ -17,7 +20,6 @@ import {
   sendCrmEmailViaResend,
 } from './crm-resend'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
-import { openAgentsDatabase } from './runtime'
 
 type HttpResponse = globalThis.Response
 
@@ -91,7 +93,7 @@ export const makeCrmResendRoutes = <Bindings extends CrmResendEnv>(
             ? error
             : new CrmEmailError({ reason: `crm.resend: ${String(error)}` }),
         try: () =>
-          sendCrmEmailViaResend(openAgentsDatabase(env), dependencies.resolveResendDeps(env), {
+          sendCrmEmailViaResend(makeCrmEmailDatabaseForEnv(env), dependencies.resolveResendDeps(env), {
             contactId,
             sendReason: body !== null && typeof body.sendReason === 'string' ? body.sendReason : null,
             templateSlug,

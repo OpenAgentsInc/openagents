@@ -1,5 +1,16 @@
 import { Schema as S } from 'effect'
 
+// KS-8.11 (#8322): CrmEmailDatabase union — campaign/enrollment/send/
+// preference/suppression writes mirror to Postgres fail-soft, and the
+// SUPPRESSION COMPLIANCE GATE reads (isEmailSuppressed /
+// readEmailPreferenceAllows) route through the flag-gated seam so the send
+// path consults exactly one authoritative store per read.
+import {
+  type CrmEmailDatabase,
+  crmEmailAuthorityDb,
+  crmEmailRead,
+  mirrorCrmEmailRows,
+} from './crm-email-domain-store'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 
 export const EmailCampaignStatus = S.Literals([
@@ -280,11 +291,11 @@ export const makeEmailCampaignSendRecord = (
 }
 
 export const insertEmailCampaign = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   campaign: EmailCampaignRecord,
   now: string,
 ): Promise<void> => {
-  await db
+  await crmEmailAuthorityDb(db)
     .prepare(
       `INSERT INTO email_campaigns
         (id, slug, name, audience, status, source_authority_ref,
@@ -310,6 +321,7 @@ export const insertEmailCampaign = async (
       now,
     )
     .run()
+  await mirrorCrmEmailRows(db, 'email_campaigns', 'slug', [campaign.slug])
 }
 
 const campaignFromRow = (row: EmailCampaignRow): EmailCampaignRecord => ({
@@ -323,10 +335,10 @@ const campaignFromRow = (row: EmailCampaignRow): EmailCampaignRecord => ({
 })
 
 export const readEmailCampaignBySlug = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   slug: string,
 ): Promise<EmailCampaignRecord | null> => {
-  const row = await db
+  const row = await crmEmailAuthorityDb(db)
     .prepare(
       `SELECT id, slug, name, audience, status, source_authority_ref,
               metadata_json
@@ -342,11 +354,11 @@ export const readEmailCampaignBySlug = async (
 }
 
 export const insertEmailCampaignStep = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   step: EmailCampaignStepRecord,
   now: string,
 ): Promise<void> => {
-  await db
+  await crmEmailAuthorityDb(db)
     .prepare(
       `INSERT INTO email_campaign_steps
         (id, campaign_id, step_key, name, delay_seconds, template_slug,
@@ -376,6 +388,9 @@ export const insertEmailCampaignStep = async (
       now,
     )
     .run()
+  await mirrorCrmEmailRows(db, 'email_campaign_steps', 'campaign_id', [
+    step.campaignId,
+  ])
 }
 
 const campaignStepFromRow = (
@@ -393,10 +408,10 @@ const campaignStepFromRow = (
 })
 
 export const listEmailCampaignSteps = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   campaignId: string,
 ): Promise<ReadonlyArray<EmailCampaignStepRecord>> => {
-  const result = await db
+  const result = await crmEmailAuthorityDb(db)
     .prepare(
       `SELECT id, campaign_id, step_key, name, delay_seconds, template_slug,
               lifecycle_kind, status, metadata_json
@@ -412,11 +427,11 @@ export const listEmailCampaignSteps = async (
 }
 
 export const insertEmailCampaignEnrollment = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   enrollment: EmailCampaignEnrollmentRecord,
   now: string,
 ): Promise<void> => {
-  await db
+  await crmEmailAuthorityDb(db)
     .prepare(
       `INSERT INTO email_campaign_enrollments
         (id, campaign_id, user_id, email, status, idempotency_key,
@@ -439,6 +454,12 @@ export const insertEmailCampaignEnrollment = async (
       now,
     )
     .run()
+  await mirrorCrmEmailRows(
+    db,
+    'email_campaign_enrollments',
+    'idempotency_key',
+    [enrollment.idempotencyKey],
+  )
 }
 
 const campaignEnrollmentFromRow = (
@@ -455,10 +476,10 @@ const campaignEnrollmentFromRow = (
 })
 
 export const readEmailCampaignEnrollmentByIdempotencyKey = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   idempotencyKey: string,
 ): Promise<EmailCampaignEnrollmentRecord | null> => {
-  const row = await db
+  const row = await crmEmailAuthorityDb(db)
     .prepare(
       `SELECT id, campaign_id, user_id, email, status, idempotency_key,
               source_authority_ref, metadata_json
@@ -473,11 +494,11 @@ export const readEmailCampaignEnrollmentByIdempotencyKey = async (
 }
 
 export const insertEmailCampaignSend = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   send: EmailCampaignSendRecord,
   now: string,
 ): Promise<void> => {
-  await db
+  await crmEmailAuthorityDb(db)
     .prepare(
       `INSERT INTO email_campaign_sends
         (id, campaign_id, step_id, enrollment_id, user_id, email, due_at,
@@ -504,16 +525,19 @@ export const insertEmailCampaignSend = async (
       now,
     )
     .run()
+  await mirrorCrmEmailRows(db, 'email_campaign_sends', 'idempotency_key', [
+    send.idempotencyKey,
+  ])
 }
 
 export const upsertEmailPreference = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: EmailPreferenceInput,
   runtime: EmailCampaignRuntime = systemEmailCampaignRuntime,
 ): Promise<void> => {
   const now = runtime.nowIso()
 
-  await db
+  await crmEmailAuthorityDb(db)
     .prepare(
       `INSERT INTO email_preferences
         (id, user_id, email, marketing_opt_in, drip_opt_in,
@@ -542,16 +566,20 @@ export const upsertEmailPreference = async (
       now,
     )
     .run()
+  await mirrorCrmEmailRows(db, 'email_preferences', 'email', [
+    normalizeEmail(input.email),
+  ])
 }
 
 export const addEmailSuppression = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: EmailSuppressionInput,
   runtime: EmailCampaignRuntime = systemEmailCampaignRuntime,
 ): Promise<void> => {
   const now = runtime.nowIso()
+  const id = runtime.makeId('email_suppression')
 
-  await db
+  await crmEmailAuthorityDb(db)
     .prepare(
       `INSERT INTO email_suppression_entries
         (id, email, reason, scope, active, source_authority_ref,
@@ -559,7 +587,7 @@ export const addEmailSuppression = async (
        VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, NULL)`,
     )
     .bind(
-      runtime.makeId('email_suppression'),
+      id,
       normalizeEmail(input.email),
       input.reason,
       input.scope,
@@ -572,6 +600,7 @@ export const addEmailSuppression = async (
       now,
     )
     .run()
+  await mirrorCrmEmailRows(db, 'email_suppression_entries', 'id', [id])
 }
 
 type SuppressionLookupRow = Readonly<{ id: string }>
@@ -582,45 +611,60 @@ type PreferenceLookupRow = Readonly<{
 }>
 
 export const isEmailSuppressed = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   email: string,
   scope: EmailSuppressionScope,
 ): Promise<boolean> => {
-  const row = await db
-    .prepare(
-      `SELECT id
-         FROM email_suppression_entries
-        WHERE email = ?
-          AND active = 1
-          AND archived_at IS NULL
-          AND scope IN (?, 'all')
-        LIMIT 1`,
-    )
-    .bind(normalizeEmail(email), scope)
-    .first<SuppressionLookupRow>()
+  const normalized = normalizeEmail(email)
 
-  return row !== null
+  // COMPLIANCE GATE (KS-8.11): flag-routed so the send path reads exactly
+  // one authoritative suppression store per read. Both implementations
+  // answer the SAME question: any active, non-archived entry whose scope is
+  // this scope or 'all'.
+  return crmEmailRead(
+    db,
+    'email_suppression_entries.isSuppressed',
+    [normalized],
+    async () => {
+      const row = await crmEmailAuthorityDb(db)
+        .prepare(
+          `SELECT id
+             FROM email_suppression_entries
+            WHERE email = ?
+              AND active = 1
+              AND archived_at IS NULL
+              AND scope IN (?, 'all')
+            LIMIT 1`,
+        )
+        .bind(normalized, scope)
+        .first<SuppressionLookupRow>()
+
+      return row !== null
+    },
+    async postgres => {
+      const rows = await postgres.selectRowsByKey(
+        'email_suppression_entries',
+        'email',
+        [normalized],
+      )
+
+      return rows.some(
+        row =>
+          Number(row.active) === 1 &&
+          (row.archived_at === null || row.archived_at === undefined) &&
+          (row.scope === scope || row.scope === 'all'),
+      )
+    },
+  )
 }
 
-export const readEmailPreferenceAllows = async (
-  db: D1Database,
-  email: string,
+const preferenceAllowsScope = (
+  row: Readonly<{
+    drip_opt_in: number
+    marketing_opt_in: number
+  }>,
   scope: EmailSuppressionScope,
-): Promise<boolean> => {
-  const row = await db
-    .prepare(
-      `SELECT marketing_opt_in, drip_opt_in, transactional_opt_in
-         FROM email_preferences
-        WHERE email = ?
-        LIMIT 1`,
-    )
-    .bind(normalizeEmail(email))
-    .first<PreferenceLookupRow>()
-
-  if (row === null) {
-    return true
-  }
-
+): boolean => {
   switch (scope) {
     case 'marketing':
       return row.marketing_opt_in === 1
@@ -629,4 +673,50 @@ export const readEmailPreferenceAllows = async (
     case 'all':
       return row.marketing_opt_in === 1 && row.drip_opt_in === 1
   }
+}
+
+export const readEmailPreferenceAllows = async (
+  db: CrmEmailDatabase,
+  email: string,
+  scope: EmailSuppressionScope,
+): Promise<boolean> => {
+  const normalized = normalizeEmail(email)
+
+  // COMPLIANCE GATE (KS-8.11): flag-routed alongside isEmailSuppressed.
+  return crmEmailRead(
+    db,
+    'email_preferences.allows',
+    [normalized],
+    async () => {
+      const row = await crmEmailAuthorityDb(db)
+        .prepare(
+          `SELECT marketing_opt_in, drip_opt_in, transactional_opt_in
+             FROM email_preferences
+            WHERE email = ?
+            LIMIT 1`,
+        )
+        .bind(normalized)
+        .first<PreferenceLookupRow>()
+
+      return row === null ? true : preferenceAllowsScope(row, scope)
+    },
+    async postgres => {
+      const rows = await postgres.selectRowsByKey(
+        'email_preferences',
+        'email',
+        [normalized],
+      )
+      const row = rows[0]
+
+      return row === undefined
+        ? true
+        : preferenceAllowsScope(
+            {
+              drip_opt_in: Number(row.drip_opt_in),
+              marketing_opt_in: Number(row.marketing_opt_in),
+            },
+            scope,
+          )
+    },
+  )
 }

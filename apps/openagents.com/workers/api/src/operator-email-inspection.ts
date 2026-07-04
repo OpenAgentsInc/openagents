@@ -1,3 +1,9 @@
+// KS-8.11 (#8322): read-only inspection accepts the union; reads stay on
+// the authoritative D1 (no flag routing needed for operator inspection).
+import {
+  type CrmEmailDatabase,
+  crmEmailAuthorityDb,
+} from './crm-email-domain-store'
 import {
   containsProviderSecretMaterial,
   redactProviderAccountSecretMaterial,
@@ -160,11 +166,11 @@ const wildcard = (value: string | undefined): string =>
   `%:${(value ?? '').replaceAll('%', '\\%').replaceAll('_', '\\_')}:%`
 
 const readMessages = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   scope: OperatorEmailInspectionScope,
 ): Effect.Effect<ReadonlyArray<EmailMessageRow>, OperatorEmailInspectionError> =>
   d1Effect('OperatorEmailInspection.messages.read', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `SELECT DISTINCT email_messages.id,
                 email_messages.kind,
@@ -214,11 +220,11 @@ const readMessages = (
   ).pipe(Effect.map(result => result.results ?? []))
 
 const readDeliveries = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   messageId: string,
 ): Effect.Effect<ReadonlyArray<EmailDeliveryRow>, OperatorEmailInspectionError> =>
   d1Effect('OperatorEmailInspection.deliveries.read', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `SELECT id,
                 provider,
@@ -238,11 +244,11 @@ const readDeliveries = (
   ).pipe(Effect.map(result => result.results ?? []))
 
 const readEventLinks = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   messageId: string,
 ): Effect.Effect<ReadonlyArray<EventLinkRow>, OperatorEmailInspectionError> =>
   d1Effect('OperatorEmailInspection.eventLinks.read', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `SELECT 'site' AS event_source,
                 site_events.id AS event_id,
@@ -379,7 +385,7 @@ const projectionFromRows = (
 }
 
 export const inspectOperatorEmailDelivery = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   scope: OperatorEmailInspectionScope,
 ): Effect.Effect<OperatorEmailInspectionResult, OperatorEmailInspectionError> =>
   Effect.gen(function* () {

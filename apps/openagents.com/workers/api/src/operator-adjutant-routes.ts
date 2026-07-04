@@ -1,4 +1,11 @@
 import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
+// KS-8.11 (#8322): enrichment ledger/operations ride the CRM/email
+// dual-write seam; non-domain services keep the authoritative D1.
+import {
+  type CrmEmailDatabase,
+  crmEmailAuthorityDb,
+  makeCrmEmailDatabaseForEnv,
+} from './crm-email-domain-store'
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import {
@@ -1308,10 +1315,10 @@ const researchBriefReviewSummary = (
       }
 
 const latestApprovedResearchBrief = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   assignmentId: string,
 ): Effect.Effect<AdjutantResearchBrief | null, OperatorAdjutantStorageError> =>
-  makeAdjutantResearchBriefService(db)
+  makeAdjutantResearchBriefService(crmEmailAuthorityDb(db))
     .latestApprovedBriefForAssignment(assignmentId)
     .pipe(
       Effect.mapError(
@@ -1322,13 +1329,13 @@ const latestApprovedResearchBrief = (
     )
 
 const latestResearchBriefForPreflight = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   assignmentId: string,
 ): Effect.Effect<
   AdjutantResearchBrief | null,
   OperatorAdjutantPreflightError
 > =>
-  makeAdjutantResearchBriefService(db)
+  makeAdjutantResearchBriefService(crmEmailAuthorityDb(db))
     .latestBriefForAssignment(assignmentId)
     .pipe(
       Effect.mapError(
@@ -1339,7 +1346,7 @@ const latestResearchBriefForPreflight = (
     )
 
 const latestEnrichmentRunForPreflight = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   assignmentId: string,
 ): Effect.Effect<ExaEnrichmentRun | null, OperatorAdjutantPreflightError> =>
   makeAdjutantEnrichmentLedger(db)
@@ -1355,13 +1362,13 @@ const latestEnrichmentRunForPreflight = (
     )
 
 const latestEnrichmentJobForPreflight = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   assignmentId: string,
 ): Effect.Effect<
   AdjutantEnrichmentJob | null,
   OperatorAdjutantPreflightError
 > =>
-  makeAdjutantEnrichmentJobService(db)
+  makeAdjutantEnrichmentJobService(crmEmailAuthorityDb(db))
     .latestJobForAssignment(assignmentId)
     .pipe(
       Effect.mapError(
@@ -1372,10 +1379,10 @@ const latestEnrichmentJobForPreflight = (
     )
 
 const effectiveResearchPolicyForPreflight = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   assignment: AdjutantAssignment,
 ): Effect.Effect<AdjutantResearchPolicy, OperatorAdjutantPreflightError> =>
-  makeAdjutantResearchPolicyService(db)
+  makeAdjutantResearchPolicyService(crmEmailAuthorityDb(db))
     .readEffectivePolicy(assignment)
     .pipe(
       Effect.mapError(
@@ -1386,10 +1393,10 @@ const effectiveResearchPolicyForPreflight = (
     )
 
 const latestResearchBriefForReview = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   assignmentId: string,
 ): Effect.Effect<AdjutantResearchBrief | null, OperatorAdjutantStorageError> =>
-  makeAdjutantResearchBriefService(db)
+  makeAdjutantResearchBriefService(crmEmailAuthorityDb(db))
     .latestBriefForAssignment(assignmentId)
     .pipe(
       Effect.mapError(
@@ -1400,10 +1407,10 @@ const latestResearchBriefForReview = (
     )
 
 const effectiveResearchPolicyForReview = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   assignment: AdjutantAssignment,
 ): Effect.Effect<AdjutantResearchPolicy, OperatorAdjutantStorageError> =>
-  makeAdjutantResearchPolicyService(db)
+  makeAdjutantResearchPolicyService(crmEmailAuthorityDb(db))
     .readEffectivePolicy(assignment)
     .pipe(
       Effect.mapError(
@@ -1536,7 +1543,7 @@ const enrichmentNextAction = (
 }
 
 const readEnrichmentReview = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   assignmentId: string,
   exaConfigured: boolean,
 ): Effect.Effect<
@@ -1545,9 +1552,9 @@ const readEnrichmentReview = (
 > =>
   Effect.gen(function* () {
     const ledger = makeAdjutantEnrichmentLedger(db)
-    const jobs = makeAdjutantEnrichmentJobService(db)
-    const sourceRefs = makeAdjutantPublicSourceRefService(db)
-    const briefService = makeAdjutantResearchBriefService(db)
+    const jobs = makeAdjutantEnrichmentJobService(crmEmailAuthorityDb(db))
+    const sourceRefs = makeAdjutantPublicSourceRefService(crmEmailAuthorityDb(db))
+    const briefService = makeAdjutantResearchBriefService(crmEmailAuthorityDb(db))
     const latestJob = yield* jobs.latestJobForAssignment(assignmentId)
     const latestRun = yield* ledger.latestRunForAssignment(assignmentId)
     const queries =
@@ -1577,14 +1584,14 @@ const readEnrichmentReview = (
   })
 
 const readEnrichmentSoftwareOrder = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   softwareOrderId: string,
 ): Effect.Effect<
   AdjutantEnrichmentOrderContext | null,
   OperatorAdjutantStorageError
 > =>
   storageD1Effect('operatorAdjutant.enrichment.softwareOrder.read', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `SELECT id,
                 request,
@@ -1622,14 +1629,14 @@ const readEnrichmentSoftwareOrder = (
   )
 
 const readEnrichmentSite = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   siteId: string,
 ): Effect.Effect<
   AdjutantEnrichmentSiteContext | null,
   OperatorAdjutantStorageError
 > =>
   storageD1Effect('operatorAdjutant.enrichment.site.read', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `SELECT id,
                 slug,
@@ -1662,7 +1669,7 @@ const readEnrichmentSite = (
   )
 
 const buildEnrichmentPlan = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   assignment: AdjutantAssignment,
   body:
     | PlanOperatorAdjutantEnrichmentRequest
@@ -1678,7 +1685,7 @@ const buildEnrichmentPlan = (
         ? null
         : yield* readEnrichmentSite(db, assignment.siteId)
     const explicitSourceRefs = yield* makeAdjutantPublicSourceRefService(
-      db,
+      crmEmailAuthorityDb(db),
     ).plannerSourceRefsForAssignment(assignment.id)
 
     return yield* makeAdjutantEnrichmentPlanner().buildPlan({
@@ -2407,14 +2414,14 @@ const optionalStringFromRecord = (
   typeof record[key] === 'string' ? record[key] : undefined
 
 const failQueuedEnrichmentJob = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   jobId: string,
   runId: string | null,
   errorCode: string,
   errorSummary: string,
 ): Effect.Effect<void, OperatorAdjutantRouteError> =>
   Effect.gen(function* () {
-    const jobs = makeAdjutantEnrichmentJobService(db)
+    const jobs = makeAdjutantEnrichmentJobService(crmEmailAuthorityDb(db))
     const ledger = makeAdjutantEnrichmentLedger(db)
 
     if (runId !== null) {
@@ -2441,17 +2448,17 @@ export const executeQueuedAdjutantEnrichmentJob = (
   message: AdjutantEnrichmentQueueMessage,
 ): Effect.Effect<void, OperatorAdjutantRouteError> =>
   Effect.gen(function* () {
-    const db = openAgentsDatabase(env)
+    const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
     const assignments = makeAdjutantAssignmentService(
-      db,
+      crmEmailAuthorityDb(db),
       systemAdjutantAssignmentRuntime,
       // KS-8.5 (#8316): goal mutations ride the agent-runtime dual-write
       // seam.
       makeAgentGoalRepositoryForEnv(env),
     )
-    const jobs = makeAdjutantEnrichmentJobService(db)
+    const jobs = makeAdjutantEnrichmentJobService(crmEmailAuthorityDb(db))
     const ledger = makeAdjutantEnrichmentLedger(db)
-    const briefService = makeAdjutantResearchBriefService(db)
+    const briefService = makeAdjutantResearchBriefService(crmEmailAuthorityDb(db))
     const operations = makeAdjutantEnrichmentOperationsService(db)
     const job = yield* jobs.readJobById(message.jobId)
 
@@ -2680,7 +2687,7 @@ const siteEventPayloadJson = (
   })
 
 const updateSoftwareOrderLaunchState = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{
     runId: string
     softwareOrderId: string | null
@@ -2691,7 +2698,7 @@ const updateSoftwareOrderLaunchState = (
   input.softwareOrderId === null
     ? Effect.void
     : storageD1Effect('operatorAdjutant.softwareOrder.launch.update', () =>
-        db
+        crmEmailAuthorityDb(db)
           .prepare(
             `UPDATE software_orders
                 SET current_run_id = ?,
@@ -2712,7 +2719,7 @@ const updateSoftwareOrderLaunchState = (
       ).pipe(Effect.asVoid)
 
 const updateSiteAdjustmentState = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{
     siteId: string
     status: 'generating' | 'needs_review'
@@ -2720,7 +2727,7 @@ const updateSiteAdjustmentState = (
   }>,
 ): Effect.Effect<void, OperatorAdjutantStorageError> =>
   storageD1Effect('operatorAdjutant.site.adjustment.update', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `UPDATE site_projects
             SET status = ?,
@@ -2733,7 +2740,7 @@ const updateSiteAdjustmentState = (
   ).pipe(Effect.asVoid)
 
 const recordSiteLaunchEvent = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{
     actorUserId: string
     eventType:
@@ -2754,7 +2761,7 @@ const recordSiteLaunchEvent = (
         const now = currentIsoTimestamp()
 
         yield* storageD1Effect('operatorAdjutant.siteEvent.launch.insert', () =>
-          db
+          crmEmailAuthorityDb(db)
             .prepare(
               `INSERT INTO site_events
                  (id,
@@ -2788,7 +2795,7 @@ const generationReceiptEligible = (assignment: AdjutantAssignment): boolean =>
   assignment.assignmentKind === 'general_order_fulfillment'
 
 const recordGenerationLaunchUsageReceipt = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{
     assignment: AdjutantAssignment
     paymentPolicy?: FirstBatchPaymentPolicy | null | undefined
@@ -2797,7 +2804,7 @@ const recordGenerationLaunchUsageReceipt = (
   }>,
 ): Effect.Effect<void, AdjutantUsageReceiptError> =>
   generationReceiptEligible(input.assignment)
-    ? recordAdjutantUsageReceipt(db, {
+    ? recordAdjutantUsageReceipt(crmEmailAuthorityDb(db), {
         assignmentId: input.assignment.id,
         billingMode: 'public_beta_free',
         category: 'generation',
@@ -2834,7 +2841,7 @@ const recordGenerationLaunchUsageReceipt = (
     : Effect.void
 
 const recordAdjustmentLaunchUsageReceipt = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{
     adjustment: AdjutantAdjustmentRequest
     assignment: AdjutantAssignment
@@ -2842,7 +2849,7 @@ const recordAdjustmentLaunchUsageReceipt = (
     runId: string
   }>,
 ): Effect.Effect<void, AdjutantUsageReceiptError> =>
-  recordAdjutantUsageReceipt(db, {
+  recordAdjutantUsageReceipt(crmEmailAuthorityDb(db), {
     adjustmentId: input.adjustment.id,
     assignmentId: input.assignment.id,
     billingMode: 'public_beta_free',
@@ -2898,14 +2905,14 @@ const operatorCheckRollup = (
         : 'ok'
 
 const readPreflightSoftwareOrder = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   softwareOrderId: string,
 ): Effect.Effect<
   PreflightSoftwareOrderRow | null,
   OperatorAdjutantPreflightError
 > =>
   preflightD1Effect('operatorAdjutant.preflight.softwareOrder.read', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `SELECT id,
                 repository_provider,
@@ -2922,11 +2929,11 @@ const readPreflightSoftwareOrder = (
   )
 
 const readPreflightSite = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   siteId: string,
 ): Effect.Effect<PreflightSiteRow | null, OperatorAdjutantPreflightError> =>
   preflightD1Effect('operatorAdjutant.preflight.site.read', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `SELECT id,
                 slug,
@@ -3061,14 +3068,14 @@ const reviewAdjustmentFromRow = (
 })
 
 const readReviewSoftwareOrder = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   softwareOrderId: string,
 ): Effect.Effect<
   OperatorAdjutantReviewSoftwareOrder | null,
   OperatorAdjutantStorageError
 > =>
   storageD1Effect('operatorAdjutant.review.softwareOrder.read', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `SELECT id,
                 status,
@@ -3090,14 +3097,14 @@ const readReviewSoftwareOrder = (
   )
 
 const readReviewSite = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   siteId: string,
 ): Effect.Effect<
   OperatorAdjutantReviewSite | null,
   OperatorAdjutantStorageError
 > =>
   storageD1Effect('operatorAdjutant.review.site.read', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `SELECT id,
                 slug,
@@ -3117,14 +3124,14 @@ const readReviewSite = (
   ).pipe(Effect.map(row => (row === null ? null : reviewSiteFromRow(row))))
 
 const readReviewGoal = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   goalId: string,
 ): Effect.Effect<
   OperatorAdjutantReviewGoal | null,
   OperatorAdjutantStorageError
 > =>
   storageD1Effect('operatorAdjutant.review.goal.read', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `SELECT id,
                 agent_id,
@@ -3145,14 +3152,14 @@ const readReviewGoal = (
   ).pipe(Effect.map(row => (row === null ? null : reviewGoalFromRow(row))))
 
 const readReviewRun = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   runId: string,
 ): Effect.Effect<
   OperatorAdjutantReviewRun | null,
   OperatorAdjutantStorageError
 > =>
   storageD1Effect('operatorAdjutant.review.run.read', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `SELECT id,
                 runtime,
@@ -3172,14 +3179,14 @@ const readReviewRun = (
   ).pipe(Effect.map(row => (row === null ? null : reviewRunFromRow(row))))
 
 const listReviewVersions = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   siteId: string,
 ): Effect.Effect<
   ReadonlyArray<OperatorAdjutantReviewVersion>,
   OperatorAdjutantStorageError
 > =>
   storageD1Effect('operatorAdjutant.review.versions.list', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `SELECT id,
                 source_kind,
@@ -3201,14 +3208,14 @@ const listReviewVersions = (
   ).pipe(Effect.map(result => result.results.map(reviewVersionFromRow)))
 
 const listReviewDeployments = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   siteId: string,
 ): Effect.Effect<
   ReadonlyArray<OperatorAdjutantReviewDeployment>,
   OperatorAdjutantStorageError
 > =>
   storageD1Effect('operatorAdjutant.review.deployments.list', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `SELECT id,
                 version_id,
@@ -3230,14 +3237,14 @@ const listReviewDeployments = (
   ).pipe(Effect.map(result => result.results.map(reviewDeploymentFromRow)))
 
 const listReviewAssignmentEvents = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   assignmentId: string,
 ): Effect.Effect<
   ReadonlyArray<OperatorAdjutantReviewEvent>,
   OperatorAdjutantStorageError
 > =>
   storageD1Effect('operatorAdjutant.review.assignmentEvents.list', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `SELECT id,
                 event_type,
@@ -3254,14 +3261,14 @@ const listReviewAssignmentEvents = (
   ).pipe(Effect.map(result => result.results.map(reviewAssignmentEventFromRow)))
 
 const listReviewSiteEvents = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   siteId: string,
 ): Effect.Effect<
   ReadonlyArray<OperatorAdjutantReviewEvent>,
   OperatorAdjutantStorageError
 > =>
   storageD1Effect('operatorAdjutant.review.siteEvents.list', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `SELECT id,
                 type,
@@ -3278,14 +3285,14 @@ const listReviewSiteEvents = (
   ).pipe(Effect.map(result => result.results.map(reviewSiteEventFromRow)))
 
 const listReviewAdjustments = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   assignmentId: string,
 ): Effect.Effect<
   ReadonlyArray<OperatorAdjutantReviewAdjustment>,
   OperatorAdjutantStorageError
 > =>
   storageD1Effect('operatorAdjutant.review.adjustments.list', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `SELECT id,
                 instruction,
@@ -3308,13 +3315,13 @@ const listReviewAdjustments = (
   ).pipe(Effect.map(result => result.results.map(reviewAdjustmentFromRow)))
 
 const listReviewUsageReceipts = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   assignmentId: string,
 ): Effect.Effect<
   ReadonlyArray<AdjutantUsageReceipt>,
   OperatorAdjutantStorageError
 > =>
-  listAdjutantUsageReceiptsForAssignment(db, assignmentId, 50).pipe(
+  listAdjutantUsageReceiptsForAssignment(crmEmailAuthorityDb(db), assignmentId, 50).pipe(
     Effect.mapError(
       error =>
         new OperatorAdjutantStorageError({
@@ -3372,7 +3379,7 @@ const reviewNextAction = (
 }
 
 const readAssignmentReview = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   assignment: AdjutantAssignment,
   exaConfigured: boolean,
 ): Effect.Effect<
@@ -3426,7 +3433,7 @@ const readAssignmentReview = (
       assignment.id,
     )
     const taskPacketFreshness = yield* makeAdjutantTaskPacketFreshnessService(
-      db,
+      crmEmailAuthorityDb(db),
     )
       .readFreshness(assignment, latestApprovedBrief)
       .pipe(
@@ -3938,7 +3945,7 @@ const researchGateStatus = (
 }
 
 const assignmentSourceChecks = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   assignment: AdjutantAssignment,
   body: PreflightOperatorAdjutantAssignmentRequest,
   exaConfigured: boolean,
@@ -3973,7 +3980,7 @@ const assignmentSourceChecks = (
       ),
     )
     const taskPacketFreshness = yield* makeAdjutantTaskPacketFreshnessService(
-      db,
+      crmEmailAuthorityDb(db),
     )
       .readFreshness(assignment, latestApprovedBrief)
       .pipe(
@@ -4623,7 +4630,7 @@ export const makeOperatorAdjutantRoutes = <
         const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const review = yield* readAssignmentReview(
-          openAgentsDatabase(env),
+          makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) }),
           assignment,
           getOpenAgentsWorkerConfig(env).exa.enabled,
         )
@@ -4656,7 +4663,7 @@ export const makeOperatorAdjutantRoutes = <
         const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const enrichment = yield* readEnrichmentReview(
-          openAgentsDatabase(env),
+          makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) }),
           assignment.id,
           getOpenAgentsWorkerConfig(env).exa.enabled,
         )
@@ -4692,8 +4699,8 @@ export const makeOperatorAdjutantRoutes = <
         const assignments = yield* AdjutantAssignmentService
         const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
-        const db = openAgentsDatabase(env)
-        const jobs = makeAdjutantEnrichmentJobService(db)
+        const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
+        const jobs = makeAdjutantEnrichmentJobService(crmEmailAuthorityDb(db))
         const triggerKind =
           body.triggerKind ??
           (body.refresh === true ? 'operator_refresh' : 'operator_requested')
@@ -4778,8 +4785,8 @@ export const makeOperatorAdjutantRoutes = <
         const assignments = yield* AdjutantAssignmentService
         const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
-        const db = openAgentsDatabase(env)
-        const service = makeAdjutantResearchPolicyService(db)
+        const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
+        const service = makeAdjutantResearchPolicyService(crmEmailAuthorityDb(db))
 
         if (request.method === 'GET') {
           const policy = yield* service.readEffectivePolicy(assignment)
@@ -4853,7 +4860,7 @@ export const makeOperatorAdjutantRoutes = <
 
         const config = getOpenAgentsWorkerConfig(env)
         const plan = yield* buildEnrichmentPlan(
-          openAgentsDatabase(env),
+          makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) }),
           assignment,
           body,
         )
@@ -4901,8 +4908,8 @@ export const makeOperatorAdjutantRoutes = <
           })
         }
 
-        const db = openAgentsDatabase(env)
-        const briefService = makeAdjutantResearchBriefService(db)
+        const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
+        const briefService = makeAdjutantResearchBriefService(crmEmailAuthorityDb(db))
         const ledger = makeAdjutantEnrichmentLedger(db)
         const operations = makeAdjutantEnrichmentOperationsService(db)
         const policy = exaEnrichmentOperationsPolicyFromConfig(config.exa)
@@ -5090,12 +5097,12 @@ export const makeOperatorAdjutantRoutes = <
         const assignments = yield* AdjutantAssignmentService
         const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
-        const db = openAgentsDatabase(env)
+        const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
         const order =
           assignment.softwareOrderId === null
             ? null
             : yield* readEnrichmentSoftwareOrder(db, assignment.softwareOrderId)
-        const service = makeAdjutantPublicSourceRefService(db)
+        const service = makeAdjutantPublicSourceRefService(crmEmailAuthorityDb(db))
         const sourceRef = yield* service.createSourceRef({
           assignmentId: assignment.id,
           kind: body.kind,
@@ -5145,9 +5152,9 @@ export const makeOperatorAdjutantRoutes = <
         const assignments = yield* AdjutantAssignmentService
         const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
-        const db = openAgentsDatabase(env)
+        const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
 
-        yield* makeAdjutantPublicSourceRefService(db).reviewSourceRef({
+        yield* makeAdjutantPublicSourceRefService(crmEmailAuthorityDb(db)).reviewSourceRef({
           reviewedByUserId: session.user.userId,
           sourceRefId,
           status: body.status,
@@ -5197,9 +5204,9 @@ export const makeOperatorAdjutantRoutes = <
         const assignments = yield* AdjutantAssignmentService
         const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
-        const db = openAgentsDatabase(env)
+        const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
         const ledger = makeAdjutantEnrichmentLedger(db)
-        const briefService = makeAdjutantResearchBriefService(db)
+        const briefService = makeAdjutantResearchBriefService(crmEmailAuthorityDb(db))
 
         yield* ledger.reviewSourceCard({
           reviewStatus: body.reviewStatus,
@@ -5283,8 +5290,8 @@ export const makeOperatorAdjutantRoutes = <
         const assignments = yield* AdjutantAssignmentService
         const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
-        const db = openAgentsDatabase(env)
-        const briefService = makeAdjutantResearchBriefService(db)
+        const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
+        const briefService = makeAdjutantResearchBriefService(crmEmailAuthorityDb(db))
         const ledger = makeAdjutantEnrichmentLedger(db)
 
         yield* briefService.reviewBrief({
@@ -5341,7 +5348,7 @@ export const makeOperatorAdjutantRoutes = <
           latestBrief.id === briefId &&
           body.status === 'approved'
             ? yield* makeAdjutantTaskPacketFreshnessService(
-                db,
+                crmEmailAuthorityDb(db),
               ).markStaleForApprovedResearch({
                 assignment,
                 researchBrief: latestBrief,
@@ -5438,7 +5445,7 @@ export const makeOperatorAdjutantRoutes = <
             ),
         })
         const sourceChecks = yield* assignmentSourceChecks(
-          openAgentsDatabase(env),
+          makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) }),
           assignment,
           body,
           getOpenAgentsWorkerConfig(env).exa.enabled,
@@ -5519,7 +5526,7 @@ export const makeOperatorAdjutantRoutes = <
           assignment.siteId === null
             ? null
             : yield* readPreflightSite(
-                openAgentsDatabase(env),
+                makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) }),
                 assignment.siteId,
               )
 
@@ -5530,7 +5537,7 @@ export const makeOperatorAdjutantRoutes = <
         }
 
         const researchBrief = yield* latestApprovedResearchBrief(
-          openAgentsDatabase(env),
+          makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) }),
           assignment.id,
         )
         const packet = yield* buildAdjutantTaskPacket({
@@ -5636,13 +5643,13 @@ export const makeOperatorAdjutantRoutes = <
         const assignments = yield* AdjutantAssignmentService
         const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
-        const db = openAgentsDatabase(env)
+        const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
         const latestApprovedBrief = yield* latestApprovedResearchBrief(
           db,
           assignment.id,
         )
         const taskPacketFreshness =
-          yield* makeAdjutantTaskPacketFreshnessService(db).keepCurrent({
+          yield* makeAdjutantTaskPacketFreshnessService(crmEmailAuthorityDb(db)).keepCurrent({
             actorUserId: session.user.userId,
             assignment,
             customerSafeSummary: body.customerSafeSummary,
@@ -5734,7 +5741,7 @@ export const makeOperatorAdjutantRoutes = <
           })
         }
 
-        const run = yield* readReviewRun(openAgentsDatabase(env), body.runId)
+        const run = yield* readReviewRun(makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) }), body.runId)
 
         if (run === null) {
           return yield* new OperatorAdjutantConflict({
@@ -5839,7 +5846,7 @@ export const makeOperatorAdjutantRoutes = <
               targetUser,
             ),
         })
-        const db = openAgentsDatabase(env)
+        const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
         const config = getOpenAgentsWorkerConfig(env)
         const sourceChecks = yield* assignmentSourceChecks(
           db,
@@ -5855,7 +5862,7 @@ export const makeOperatorAdjutantRoutes = <
           config.exa.enabled,
         )
         const paymentGate = yield* readFirstBatchPaymentGate(
-          db,
+          crmEmailAuthorityDb(db),
           assignment.softwareOrderId,
         ).pipe(
           Effect.mapError(
@@ -6111,7 +6118,7 @@ export const makeOperatorAdjutantRoutes = <
           })
         }
 
-        const db = openAgentsDatabase(env)
+        const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
         const order =
           assignment.softwareOrderId === null
             ? null
@@ -6124,7 +6131,7 @@ export const makeOperatorAdjutantRoutes = <
           })
         }
 
-        const adjustments = makeAdjutantAdjustmentService(db)
+        const adjustments = makeAdjutantAdjustmentService(crmEmailAuthorityDb(db))
         const adjustment = yield* adjustments.createAdjustment({
           assignmentId: assignment.id,
           goalId: assignment.goalId,

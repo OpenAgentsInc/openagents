@@ -982,6 +982,83 @@ Flag-flip order — never skip a step, each step soaks before the next:
 Rollback at ANY step: set `KHALA_SYNC_SITES_READS=d1` (reads) and/or
 `KHALA_SYNC_SITES_DUAL_WRITE=off` (writes). D1 authority is never
 behind.
+## CRM / email / enrichment domain cutover (KS-8.11, #8322)
+
+The KS-8.11 domain migration: the 36 canonical CRM/email/enrichment tables
+— `crm_*` (13), `email_*` (11), `subscriber_lists` + `list_subscribers`,
+`business_outreach_*` (4), `exa_enrichment_*` (6) — D1 → Postgres
+(khala-sync migration `0021_crm_email_domain.sql`). Machinery: the
+`CrmEmailDatabase` union handle in
+`apps/openagents.com/workers/api/src/crm-email-domain-store.ts`
+(read-back fail-soft mirror + flag-routed reads) and
+`packages/khala-sync-server/scripts/backfill-crm-email.ts` (resumable
+backfill + PII-safe verify).
+
+THIS DOMAIN CARRIES TWO COMPLIANCE GATES: (1) the send path must read
+exactly ONE authoritative suppression/preference store at every moment of
+the cutover — the seam's flag is consulted exactly once per read, so the
+flip is atomic per-read; (2) campaign-send dedupe (enrollment × step
+idempotency key) ports as the SAME unique constraint on Postgres, so no
+store can double-email a real person. And it is a PII domain: rows carry
+names/emails/notes. Postgres stores exactly what D1 stores; every
+diagnostic and every verify line is keys/hashes/counts only —
+email-valued keys appear as `sha256:<12 hex>` prefixes, never raw.
+
+Flags (Worker vars):
+
+- `KHALA_SYNC_CRM_DUAL_WRITE` — default **on** wherever `KHALA_SYNC_DB`
+  exists; `off|0|false|disabled` disables the mirror. The mirror is
+  fail-soft: an email send, a webhook ack, or a CRM import never fails
+  because the mirror did; failures log `khala_sync_crm_dual_write_failed`
+  (the drift metric).
+- `KHALA_SYNC_CRM_READS` — default `d1` (all reads stay inline D1, zero
+  added latency); `compare` serves D1 and logs
+  `khala_sync_crm_read_compare_mismatch` (keys/hashes only); `postgres`
+  serves seam-routed reads from Postgres with bounded retry (50/150ms)
+  and D1 fallback (`khala_sync_crm_postgres_read_fallback`). Unknown
+  values fall back to `d1` — the suppression gate never fails open on a
+  typo.
+
+Flag-flip order — every flip is an EPIC-GATED ops decision on
+[#8282](https://github.com/OpenAgentsInc/openagents/issues/8282), never a
+code default; each step soaks before the next:
+
+1. **Dual-write on** (default after KS-8.11 lands + `0019` applied via
+   the migration runner). Watch `khala_sync_crm_dual_write_failed`; a
+   nonzero steady rate blocks progression.
+2. **Backfill**: from `packages/khala-sync-server/`,
+   `KHALA_SYNC_DATABASE_URL=<direct-url> bun
+   scripts/backfill-crm-email.ts` (wrangler-auth'd; rowid-cursor
+   resumable via `.crm-email-backfill-state.json`; `--table <name>` to
+   scope, `--restart` to resweep). Run it a SECOND time (`--restart`) as
+   the catch-up sweep once dual-write has covered the whole window.
+3. **Verify**: `bun scripts/backfill-crm-email.ts --verify` — exact row
+   counts per table, per-status tallies over non-PII columns, newest-50
+   row hashes, and WHOLE-SET digests for the compliance-bearing tables
+   (`crm_contacts`, `email_preferences`, `email_suppression_entries`,
+   `list_subscribers`, `business_outreach_suppressions`) — suppression
+   set equality proven without printing a single address. Exits non-zero
+   on ANY mismatch. Post the (PII-safe) output on the migration issue.
+   Exact or explain; no cutover on a red verify.
+4. **Compare reads**: set `KHALA_SYNC_CRM_READS=compare`; soak until the
+   mismatch log is silent over a window that includes real sends. The
+   staging acceptance MUST include a deliberately suppressed send
+   attempt: enter a test address into `email_suppression_entries`,
+   attempt the send under compare mode, and confirm it is refused with
+   zero compare mismatch on the gate read.
+5. **Postgres reads** (LOW-TRAFFIC WINDOW): set
+   `KHALA_SYNC_CRM_READS=postgres`. Repeat the suppressed-send probe
+   FIRST thing after the flip — the gate must still refuse. Any Postgres
+   fault falls back to the still-authoritative D1.
+6. **Cron re-home + decommission LATER**: `EmailCampaignDispatcher.dispatchDue`
+   already rides the seam (its claim/skip/suppress/sent writes mirror);
+   moving write authority and dropping the D1 tables is consolidated into
+   KS-8.19 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330)
+   — never in the same change as a read cutover. Until then rollback is
+   one flag flip back to `d1`.
+
+Rollback at ANY step: set `KHALA_SYNC_CRM_READS=d1` (reads) and/or
+`KHALA_SYNC_CRM_DUAL_WRITE=off` (writes). D1 authority is never behind.
 
 ## Khala Code product-state domain cutover (KS-8.13, #8324)
 

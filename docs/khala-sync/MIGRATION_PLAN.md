@@ -807,6 +807,47 @@ evidence + D1 drop tracked on epic
 
 ### 3.8 KS-8.11 — CRM, email, enrichment
 
+**KS-8.11 machinery status (2026-07-04, #8322):** LANDED — Postgres schema
+(`khala-sync-server` migration `0021_crm_email_domain.sql`: the 36
+canonical tables — `crm_*` (13), `email_*` (11 live; the `_0193_new` D1
+names were transient rebuild artifacts, verified superseded, no twins),
+`subscriber_lists` + `list_subscribers`, `business_outreach_*` (4),
+`exa_enrichment_*` (6); every idempotency/dedupe UNIQUE ports verbatim —
+including the campaign-send enrollment×step key, webhook
+`(provider, provider_event_id)` replay safety, and the outreach
+`(subject_ref, reason)` suppression key — so the Postgres side can never
+double-email where D1 could not). The seam is the `CrmEmailDatabase`
+union handle (`apps/openagents.com/workers/api/src/crm-email-domain-store.ts`,
+artanis-style: the domain's SQL lives in ~15 owning modules): a plain
+`D1Database` keeps working unchanged; the dual-write handle read-back
+mirrors the RESOLVED D1 rows fail-soft after every authoritative write
+(`mirrorCrmEmailRows` never throws; drift metric
+`khala_sync_crm_dual_write_failed`), and `crmEmailRead` flag-routes reads
+(d1 | compare | postgres with bounded retry + D1 fallback) — the
+suppression/preference compliance gate rides this seam, so the send path
+reads exactly ONE authoritative suppression store at every moment of the
+cutover. Flags `KHALA_SYNC_CRM_DUAL_WRITE` (default on) /
+`KHALA_SYNC_CRM_READS` (default d1). Wired at the write entry points:
+CRM routes/import/batch/send/command/MCP surfaces, email
+campaigns/sequences/preferences/suppression, native lists +
+list→sequence enrollment, the Resend webhook ingest, transactional email
+ledger writers, business outreach, Exa enrichment ledger/operations, and
+the `EmailCampaignDispatcher.dispatchDue` cron. PII discipline: Postgres
+stores exactly what D1 stores; every diagnostic carries table names,
+keys, and hashes only, email-valued keys as sha256 prefixes. Resumable
+(rowid-cursor) idempotent backfill + exact-verify CLI
+(`packages/khala-sync-server/scripts/backfill-crm-email.ts`: exact
+counts, per-status tallies over non-PII columns, newest-N row hashes,
+whole-set digests for the compliance tables — suppression set equality
+without printing an address). Contract tests cover both engines, the
+fail-soft paths, and backfill idempotency
+(`crm-email-domain-store.test.ts`, `crm-email-backfill.test.ts`). Prod
+cutover procedure: [`RUNBOOK.md`](./RUNBOOK.md) "CRM / email / enrichment
+domain cutover"; flag flips are epic-gated on
+[#8282](https://github.com/OpenAgentsInc/openagents/issues/8282); final
+D1 retirement is consolidated into KS-8.19
+[#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
+
 - **What:** CRM accounts/contacts/opportunities/activities/lists, MCP
   grants, email messages/deliveries/campaigns/templates/suppression,
   subscriber lists, business outreach sends/suppressions, Exa enrichment.

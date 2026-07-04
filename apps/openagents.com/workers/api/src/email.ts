@@ -21,6 +21,15 @@ import {
   ResendEmailSender,
   WorkerSecret,
 } from './config'
+// KS-8.11 (#8322): CrmEmailDatabase union — every ledger write below
+// (email_messages / email_deliveries / email_drafts) mirrors its resolved
+// D1 row(s) to Postgres fail-soft when the caller passes the dual-write
+// handle; a plain D1Database keeps working unchanged.
+import {
+  crmEmailAuthorityDb,
+  mirrorCrmEmailRows,
+  type CrmEmailDatabase,
+} from './crm-email-domain-store'
 import { parseJsonRecord, parseJsonWithSchema } from './json-boundary'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 
@@ -363,7 +372,7 @@ type EmailMessageRow = Readonly<{
 
 export type EmailServiceShape = Readonly<{
   recordDraft: (
-    db: D1Database,
+    db: CrmEmailDatabase,
     input: Readonly<{
       context?: EmailIntentContext | undefined
       provider: EmailProvider
@@ -410,7 +419,7 @@ export type EmailServiceShape = Readonly<{
     input: OrderSitesTransactionalEmailInput,
   ) => Effect.Effect<RenderedEmail, EmailServiceError>
   sendOrderSitesTransactionalEmailWithLedger: (
-    db: D1Database,
+    db: CrmEmailDatabase,
     config: ResendEmailConfig,
     input: OrderSitesTransactionalEmailInput,
     context?: EmailIntentContext | undefined,
@@ -418,7 +427,7 @@ export type EmailServiceShape = Readonly<{
     runtime?: EmailRuntime,
   ) => Effect.Effect<EmailLedgerSendResult, EmailServiceError>
   sendAdjutantCustomerNotificationWithLedger: (
-    db: D1Database,
+    db: CrmEmailDatabase,
     config: ResendEmailConfig,
     input: SendAdjutantCustomerNotificationInput,
     context?: EmailIntentContext | undefined,
@@ -426,7 +435,7 @@ export type EmailServiceShape = Readonly<{
     runtime?: EmailRuntime,
   ) => Effect.Effect<EmailLedgerSendResult, EmailServiceError>
   sendAutopilotDecisionEmailWithLedger: (
-    db: D1Database,
+    db: CrmEmailDatabase,
     config: ResendEmailConfig,
     input: AutopilotDecisionEmailInput,
     context?: EmailIntentContext | undefined,
@@ -434,7 +443,7 @@ export type EmailServiceShape = Readonly<{
     runtime?: EmailRuntime,
   ) => Effect.Effect<EmailLedgerSendResult, EmailServiceError>
   sendDripCampaignEmailWithLedger: (
-    db: D1Database,
+    db: CrmEmailDatabase,
     config: ResendEmailConfig,
     input: DripCampaignEmailInput,
     context?: EmailIntentContext | undefined,
@@ -442,7 +451,7 @@ export type EmailServiceShape = Readonly<{
     runtime?: EmailRuntime,
   ) => Effect.Effect<EmailLedgerSendResult, EmailServiceError>
   sendSiteReferralOnboardingEmailWithLedger: (
-    db: D1Database,
+    db: CrmEmailDatabase,
     config: ResendEmailConfig,
     input: SiteReferralOnboardingEmailInput,
     context?: EmailIntentContext | undefined,
@@ -450,7 +459,7 @@ export type EmailServiceShape = Readonly<{
     runtime?: EmailRuntime,
   ) => Effect.Effect<EmailLedgerSendResult, EmailServiceError>
   sendTargetedRemakeOutreachEmailWithLedger: (
-    db: D1Database,
+    db: CrmEmailDatabase,
     config: ResendEmailConfig,
     input: TargetedRemakeOutreachEmailInput,
     context?: EmailIntentContext | undefined,
@@ -458,7 +467,7 @@ export type EmailServiceShape = Readonly<{
     runtime?: EmailRuntime,
   ) => Effect.Effect<EmailLedgerSendResult, EmailServiceError>
   sendPrivateWorkspaceInviteEmailWithLedger: (
-    db: D1Database,
+    db: CrmEmailDatabase,
     config: ResendEmailConfig,
     input: PrivateWorkspaceInviteEmailInput,
     context?: EmailIntentContext | undefined,
@@ -466,7 +475,7 @@ export type EmailServiceShape = Readonly<{
     runtime?: EmailRuntime,
   ) => Effect.Effect<EmailLedgerSendResult, EmailServiceError>
   reserveMessage: (
-    db: D1Database,
+    db: CrmEmailDatabase,
     rendered: RenderedEmail,
     context?: EmailIntentContext | undefined,
     runtime?: EmailRuntime,
@@ -477,7 +486,7 @@ export type EmailServiceShape = Readonly<{
     fetcher?: typeof fetch,
   ) => Effect.Effect<SendEmailResult>
   sendOutOfCreditsEmailWithLedger: (
-    db: D1Database,
+    db: CrmEmailDatabase,
     config: ResendEmailConfig,
     input: SendOutOfCreditsEmailInput,
     context?: EmailIntentContext | undefined,
@@ -494,7 +503,7 @@ export type EmailServiceShape = Readonly<{
     rendered: RenderedEmail,
   ) => Effect.Effect<EmailProviderResult>
   sendRenderedEmailViaCloudflareBindingWithLedger: (
-    db: D1Database,
+    db: CrmEmailDatabase,
     binding: CloudflareEmailBinding,
     rendered: RenderedEmail,
     context?: EmailIntentContext | undefined,
@@ -1388,7 +1397,7 @@ const emailMessageRecordFromRow = (row: EmailMessageRow): EmailMessageRecord =>
   }) satisfies EmailMessageRecord
 
 const reserveEmailMessage = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   rendered: RenderedEmail,
   context: EmailIntentContext | undefined = undefined,
   runtime: EmailRuntime = systemEmailRuntime,
@@ -1402,7 +1411,7 @@ const reserveEmailMessage = (
         rendered: parseJsonRecord(rendered.metadataJson) ?? {},
       })
 
-      await db
+      await crmEmailAuthorityDb(db)
         .prepare(
           `INSERT INTO email_messages
             (id, kind, actor_user_id, target_user_id, to_email, from_email,
@@ -1435,7 +1444,7 @@ const reserveEmailMessage = (
         )
         .run()
 
-      await db
+      await crmEmailAuthorityDb(db)
         .prepare(
           `UPDATE email_messages
            SET kind = ?,
@@ -1478,7 +1487,7 @@ const reserveEmailMessage = (
         )
         .run()
 
-      const row = await db
+      const row = await crmEmailAuthorityDb(db)
         .prepare(
           `SELECT id, kind, status, provider, provider_message_id,
                   error_name, error_message, idempotency_key, created_at,
@@ -1488,6 +1497,10 @@ const reserveEmailMessage = (
         )
         .bind(rendered.idempotencyKey)
         .first<EmailMessageRow>()
+
+      await mirrorCrmEmailRows(db, 'email_messages', 'idempotency_key', [
+        rendered.idempotencyKey,
+      ])
 
       return row
     },
@@ -1507,7 +1520,7 @@ const reserveEmailMessage = (
   )
 
 const markEmailMessageAccepted = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   messageId: EmailMessageId,
   provider: EmailProvider,
   providerMessageId: string | null,
@@ -1515,7 +1528,7 @@ const markEmailMessageAccepted = (
 ): Effect.Effect<void, EmailServiceError> =>
   Effect.tryPromise({
     try: async () => {
-      await db
+      await crmEmailAuthorityDb(db)
         .prepare(
           `UPDATE email_messages
            SET status = 'accepted',
@@ -1528,13 +1541,15 @@ const markEmailMessageAccepted = (
         )
         .bind(provider, providerMessageId, runtime.nowIso(), messageId)
         .run()
+
+      await mirrorCrmEmailRows(db, 'email_messages', 'id', [messageId])
     },
     catch: error =>
       emailServiceError('EmailService.markMessageAccepted', error),
   }).pipe(Effect.withSpan('EmailService.markMessageAccepted'))
 
 const markEmailMessageFailed = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   messageId: EmailMessageId,
   provider: EmailProvider,
   result: EmailProviderRejected,
@@ -1542,7 +1557,7 @@ const markEmailMessageFailed = (
 ): Effect.Effect<void, EmailServiceError> =>
   Effect.tryPromise({
     try: async () => {
-      await db
+      await crmEmailAuthorityDb(db)
         .prepare(
           `UPDATE email_messages
            SET status = 'failed',
@@ -1561,12 +1576,14 @@ const markEmailMessageFailed = (
           messageId,
         )
         .run()
+
+      await mirrorCrmEmailRows(db, 'email_messages', 'id', [messageId])
     },
     catch: error => emailServiceError('EmailService.markMessageFailed', error),
   }).pipe(Effect.withSpan('EmailService.markMessageFailed'))
 
 const recordEmailDelivery = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   messageId: EmailMessageId,
   rendered: RenderedEmail,
   result: EmailProviderResult,
@@ -1575,6 +1592,7 @@ const recordEmailDelivery = (
   Effect.tryPromise({
     try: async () => {
       const now = runtime.nowIso()
+      const deliveryId = runtime.randomId('email_del')
       const accepted = result._tag === 'EmailProviderAccepted'
       const providerMessageId = accepted ? result.providerMessageId : null
       const errorName = accepted ? null : compactText(result.errorName, 120)
@@ -1582,7 +1600,7 @@ const recordEmailDelivery = (
         ? null
         : compactText(result.errorMessage, 500)
 
-      await db
+      await crmEmailAuthorityDb(db)
         .prepare(
           `INSERT INTO email_deliveries
             (id, message_id, provider, provider_message_id,
@@ -1592,7 +1610,7 @@ const recordEmailDelivery = (
            VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
-          runtime.randomId('email_del'),
+          deliveryId,
           messageId,
           result.provider,
           providerMessageId,
@@ -1611,12 +1629,14 @@ const recordEmailDelivery = (
           now,
         )
         .run()
+
+      await mirrorCrmEmailRows(db, 'email_deliveries', 'id', [deliveryId])
     },
     catch: error => emailServiceError('EmailService.recordDelivery', error),
   }).pipe(Effect.withSpan('EmailService.recordDelivery'))
 
 const recordDraft = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{
     context?: EmailIntentContext | undefined
     provider: EmailProvider
@@ -1638,7 +1658,7 @@ const recordDraft = (
 
     yield* Effect.tryPromise({
       try: async () => {
-        await db
+        await crmEmailAuthorityDb(db)
           .prepare(
             `UPDATE email_messages
              SET status = 'draft_recorded',
@@ -1661,7 +1681,7 @@ const recordDraft = (
           )
           .run()
 
-        await db
+        await crmEmailAuthorityDb(db)
           .prepare(
             `INSERT INTO email_drafts
               (id, message_id, provider, provider_draft_id,
@@ -1688,6 +1708,11 @@ const recordDraft = (
             now,
           )
           .run()
+
+        await mirrorCrmEmailRows(db, 'email_messages', 'id', [message.id])
+        await mirrorCrmEmailRows(db, 'email_drafts', 'provider_draft_id', [
+          input.providerDraftId,
+        ])
       },
       catch: error => emailServiceError('EmailService.recordDraft', error),
     })
@@ -1832,7 +1857,7 @@ const sendRenderedEmailViaCloudflareBindingEffect = (
   )
 
 const sendRenderedEmailViaCloudflareBindingWithLedgerEffect = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   binding: CloudflareEmailBinding,
   rendered: RenderedEmail,
   context: EmailIntentContext | undefined = undefined,
@@ -1980,7 +2005,7 @@ export const makeEmailService = (): EmailServiceShape => {
     'EmailService.sendOutOfCreditsEmailWithLedger',
   )(
     (
-      db: D1Database,
+      db: CrmEmailDatabase,
       config: ResendEmailConfig,
       input: SendOutOfCreditsEmailInput,
       context: EmailIntentContext | undefined = undefined,
@@ -2028,7 +2053,7 @@ export const makeEmailService = (): EmailServiceShape => {
     'EmailService.sendAdjutantCustomerNotificationWithLedger',
   )(
     (
-      db: D1Database,
+      db: CrmEmailDatabase,
       config: ResendEmailConfig,
       input: SendAdjutantCustomerNotificationInput,
       context: EmailIntentContext | undefined = undefined,
@@ -2100,7 +2125,7 @@ export const makeEmailService = (): EmailServiceShape => {
     'EmailService.sendDripCampaignEmailWithLedger',
   )(
     (
-      db: D1Database,
+      db: CrmEmailDatabase,
       config: ResendEmailConfig,
       input: DripCampaignEmailInput,
       context: EmailIntentContext | undefined = undefined,
@@ -2172,7 +2197,7 @@ export const makeEmailService = (): EmailServiceShape => {
     'EmailService.sendSiteReferralOnboardingEmailWithLedger',
   )(
     (
-      db: D1Database,
+      db: CrmEmailDatabase,
       config: ResendEmailConfig,
       input: SiteReferralOnboardingEmailInput,
       context: EmailIntentContext | undefined = undefined,
@@ -2245,7 +2270,7 @@ export const makeEmailService = (): EmailServiceShape => {
     'EmailService.sendAutopilotDecisionEmailWithLedger',
   )(
     (
-      db: D1Database,
+      db: CrmEmailDatabase,
       config: ResendEmailConfig,
       input: AutopilotDecisionEmailInput,
       context: EmailIntentContext | undefined = undefined,
@@ -2322,7 +2347,7 @@ export const makeEmailService = (): EmailServiceShape => {
     'EmailService.sendOrderSitesTransactionalEmailWithLedger',
   )(
     (
-      db: D1Database,
+      db: CrmEmailDatabase,
       config: ResendEmailConfig,
       input: OrderSitesTransactionalEmailInput,
       context: EmailIntentContext | undefined = undefined,
@@ -2398,7 +2423,7 @@ export const makeEmailService = (): EmailServiceShape => {
     'EmailService.sendTargetedRemakeOutreachEmailWithLedger',
   )(
     (
-      db: D1Database,
+      db: CrmEmailDatabase,
       config: ResendEmailConfig,
       input: TargetedRemakeOutreachEmailInput,
       context: EmailIntentContext | undefined = undefined,
@@ -2474,7 +2499,7 @@ export const makeEmailService = (): EmailServiceShape => {
     'EmailService.sendPrivateWorkspaceInviteEmailWithLedger',
   )(
     (
-      db: D1Database,
+      db: CrmEmailDatabase,
       config: ResendEmailConfig,
       input: PrivateWorkspaceInviteEmailInput,
       context: EmailIntentContext | undefined = undefined,
@@ -2577,7 +2602,7 @@ export const makeEmailService = (): EmailServiceShape => {
 }
 
 export const runOperatorEmailLedgerSmoke = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   config: ResendEmailConfig | undefined,
   input: OperatorEmailLedgerSmokeInput,
   fetcher: typeof fetch = fetch,
@@ -2727,7 +2752,7 @@ export const sendOutOfCreditsEmail = (
   defaultEmailService.sendOutOfCreditsEmail(config, input, fetcher)
 
 export const sendOutOfCreditsEmailWithLedger = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   config: ResendEmailConfig,
   input: SendOutOfCreditsEmailInput,
   context?: EmailIntentContext | undefined,
@@ -2750,7 +2775,7 @@ export const renderOrderSitesTransactionalEmail = (
   defaultEmailService.renderOrderSitesTransactionalEmail(config, input)
 
 export const sendOrderSitesTransactionalEmailWithLedger = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   config: ResendEmailConfig,
   input: OrderSitesTransactionalEmailInput,
   context?: EmailIntentContext | undefined,
@@ -2773,7 +2798,7 @@ export const sendRenderedEmailViaCloudflareBinding = (
   defaultEmailService.sendRenderedEmailViaCloudflareBinding(binding, rendered)
 
 export const sendRenderedEmailViaCloudflareBindingWithLedger = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   binding: CloudflareEmailBinding,
   rendered: RenderedEmail,
   context?: EmailIntentContext | undefined,
@@ -2788,7 +2813,7 @@ export const sendRenderedEmailViaCloudflareBindingWithLedger = (
   )
 
 export const sendAdjutantCustomerNotificationWithLedger = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   config: ResendEmailConfig,
   input: SendAdjutantCustomerNotificationInput,
   context?: EmailIntentContext | undefined,
@@ -2805,7 +2830,7 @@ export const sendAdjutantCustomerNotificationWithLedger = (
   )
 
 export const sendAutopilotDecisionEmailWithLedger = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   config: ResendEmailConfig,
   input: AutopilotDecisionEmailInput,
   context?: EmailIntentContext | undefined,
@@ -2822,7 +2847,7 @@ export const sendAutopilotDecisionEmailWithLedger = (
   )
 
 export const sendDripCampaignEmailWithLedger = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   config: ResendEmailConfig,
   input: DripCampaignEmailInput,
   context?: EmailIntentContext | undefined,
@@ -2839,7 +2864,7 @@ export const sendDripCampaignEmailWithLedger = (
   )
 
 export const sendSiteReferralOnboardingEmailWithLedger = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   config: ResendEmailConfig,
   input: SiteReferralOnboardingEmailInput,
   context?: EmailIntentContext | undefined,
@@ -2856,7 +2881,7 @@ export const sendSiteReferralOnboardingEmailWithLedger = (
   )
 
 export const sendPrivateWorkspaceInviteEmailWithLedger = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   config: ResendEmailConfig,
   input: PrivateWorkspaceInviteEmailInput,
   context?: EmailIntentContext | undefined,

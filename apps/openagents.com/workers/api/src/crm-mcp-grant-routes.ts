@@ -9,6 +9,12 @@
  * Admin-gated. The minted token authenticates an MCP client at `POST /api/mcp`
  * with exactly the declared authorities + bound tenant.
  */
+// KS-8.11 (#8322): CRM/email entry points construct the dual-write seam
+// (plain D1 drop-in when KHALA_SYNC_DB / the flags are absent).
+import {
+  type CrmEmailDatabase,
+  makeCrmEmailDatabaseForEnv,
+} from './crm-email-domain-store'
 import { Effect, Schema as S } from 'effect'
 
 import {
@@ -20,7 +26,6 @@ import {
 import { DEFAULT_CRM_TENANT_REF } from './crm-store'
 import { isRecord, stringArrayFromUnknown } from './json-boundary'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
-import { openAgentsDatabase } from './runtime'
 
 type HttpResponse = globalThis.Response
 
@@ -50,7 +55,7 @@ export const makeCrmMcpGrantRoutes = <Bindings extends CrmMcpGrantEnv>(
   const guard = (
     request: Request,
     env: Bindings,
-    body: (db: D1Database) => Promise<HttpResponse>,
+    body: (db: CrmEmailDatabase) => Promise<HttpResponse>,
   ): Effect.Effect<HttpResponse> =>
     Effect.gen(function* () {
       const authorized = yield* Effect.tryPromise({
@@ -65,7 +70,7 @@ export const makeCrmMcpGrantRoutes = <Bindings extends CrmMcpGrantEnv>(
           new CrmMcpGrantRouteError({
             message: error instanceof Error ? error.message : String(error),
           }),
-        try: () => body(openAgentsDatabase(env)),
+        try: () => body(makeCrmEmailDatabaseForEnv(env)),
       })
     }).pipe(
       Effect.catch(() =>

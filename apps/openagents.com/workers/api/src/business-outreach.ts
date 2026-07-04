@@ -1,5 +1,12 @@
 import { Schema as S } from 'effect'
 
+// KS-8.11 (#8322): CrmEmailDatabase union — outreach approvals/suppressions/
+// drafts/sends mirror to Postgres fail-soft after the authoritative D1 write.
+import {
+  crmEmailAuthorityDb,
+  mirrorCrmEmailRows,
+  type CrmEmailDatabase,
+} from './crm-email-domain-store'
 import {
   assertBusinessPipelinePublicSafeRef,
   businessPipelineSafeRefPart,
@@ -648,9 +655,14 @@ export type BusinessOutreachStore = Readonly<{
 }>
 
 export const makeD1BusinessOutreachStore = (
-  db: D1Database,
+  database: CrmEmailDatabase,
   pipelineStore: BusinessPipelineStore,
 ): BusinessOutreachStore => {
+  // KS-8.11 (#8322): D1 stays the write/read authority; when `database` is
+  // the dual-write handle each outreach write below also converges its
+  // Postgres twin fail-soft.
+  const db = crmEmailAuthorityDb(database)
+
   const findTemplateApproval = async (
     templateVersionRef: string,
     approvalReceiptRef?: string,
@@ -783,6 +795,13 @@ export const makeD1BusinessOutreachStore = (
         })
       }
 
+      await mirrorCrmEmailRows(
+        database,
+        'business_outreach_template_approvals',
+        'approval_receipt_ref',
+        [approvalReceiptRef],
+      )
+
       const approval = await findTemplateApproval(
         templateVersionRef,
         approvalReceiptRef,
@@ -835,6 +854,13 @@ export const makeD1BusinessOutreachStore = (
           reason: `suppression already exists: ${subjectRef}/${input.reason}`,
         })
       }
+
+      await mirrorCrmEmailRows(
+        database,
+        'business_outreach_suppressions',
+        'suppression_ref',
+        [suppressionRef],
+      )
 
       const suppression = await findSuppression(subjectRef)
       if (suppression === null) {
@@ -904,6 +930,7 @@ export const makeD1BusinessOutreachStore = (
       assertBusinessPipelinePublicSafeRef('subjectRef', subjectRef)
       assertBusinessPipelinePublicSafeRef('auditReportRef', auditReportRef)
       assertBusinessPipelinePublicSafeRef('sourceRef', sourceRef)
+
       const suppression = await findSuppression(subjectRef)
       if (suppression !== null) {
         return {
@@ -978,6 +1005,10 @@ export const makeD1BusinessOutreachStore = (
           reason: `draft already exists: ${draftRef}`,
         })
       }
+
+      await mirrorCrmEmailRows(database, 'business_outreach_drafts', 'draft_ref', [
+        draftRef,
+      ])
 
       const draft = await readDraft(draftRef)
       if (draft === null) {
@@ -1112,6 +1143,10 @@ export const makeD1BusinessOutreachStore = (
           reason: `send already exists: ${sendRef}`,
         })
       }
+
+      await mirrorCrmEmailRows(database, 'business_outreach_sends', 'send_ref', [
+        sendRef,
+      ])
 
       const row = await db
         .prepare(

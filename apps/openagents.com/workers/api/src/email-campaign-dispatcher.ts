@@ -2,6 +2,15 @@ import type { DripEmailKind } from '@openagentsinc/email-templates'
 import { Effect } from 'effect'
 
 import type { ResendEmailConfig } from './config'
+// KS-8.11 (#8322): CrmEmailDatabase union — the dispatch cron's claim/skip/
+// sent/failed transitions on email_campaign_sends mirror to Postgres
+// fail-soft; the suppression/preference gates route through the flag-gated
+// seam inside email-campaigns.ts.
+import {
+  crmEmailAuthorityDb,
+  mirrorCrmEmailRows,
+  type CrmEmailDatabase,
+} from './crm-email-domain-store'
 import {
   DripCampaignEmailInput,
   type EmailLedgerSendResult,
@@ -114,12 +123,12 @@ const managePreferencesUrl = (appOrigin: string): string =>
   `${appOrigin.replace(/\/+$/, '')}/email/preferences`
 
 const listDueCampaignSends = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   now: string,
   limit: number,
 ): Effect.Effect<ReadonlyArray<DueCampaignSendRow>, never> =>
   Effect.tryPromise(async () => {
-    const result = await db
+    const result = await crmEmailAuthorityDb(db)
       .prepare(
         `SELECT sends.id,
                   sends.campaign_id,
@@ -152,12 +161,12 @@ const listDueCampaignSends = (
   }).pipe(Effect.catch(() => Effect.succeed([])))
 
 const claimCampaignSend = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   sendId: string,
   now: string,
 ): Effect.Effect<boolean, never> =>
   Effect.tryPromise(async () => {
-    const result = await db
+    const result = await crmEmailAuthorityDb(db)
       .prepare(
         `UPDATE email_campaign_sends
               SET status = 'claimed',
@@ -170,11 +179,13 @@ const claimCampaignSend = (
       .bind(now, now, sendId)
       .run()
 
+    await mirrorCrmEmailRows(db, 'email_campaign_sends', 'id', [sendId])
+
     return campaignSendChanges(result) > 0
   }).pipe(Effect.catch(() => Effect.succeed(false)))
 
 const readUserOrderState = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   userId: string | null,
 ): Effect.Effect<'active' | 'delivered' | 'none', never> => {
   if (userId === null) {
@@ -182,7 +193,7 @@ const readUserOrderState = (
   }
 
   return Effect.tryPromise(async () => {
-    const row = await db
+    const row = await crmEmailAuthorityDb(db)
       .prepare(
         `SELECT status
              FROM software_orders
@@ -225,7 +236,7 @@ const readUserOrderState = (
 }
 
 const markCampaignSendSkipped = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   row: DueCampaignSendRow,
   now: string,
   errorName: string,
@@ -233,7 +244,7 @@ const markCampaignSendSkipped = (
   status: 'skipped' | 'suppressed',
 ): Effect.Effect<void, never> =>
   Effect.tryPromise(async () => {
-    await db
+    await crmEmailAuthorityDb(db)
       .prepare(
         `UPDATE email_campaign_sends
               SET status = ?,
@@ -252,16 +263,18 @@ const markCampaignSendSkipped = (
         row.id,
       )
       .run()
+
+    await mirrorCrmEmailRows(db, 'email_campaign_sends', 'id', [row.id])
   }).pipe(Effect.catch(() => Effect.void))
 
 const markCampaignSendSent = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   row: DueCampaignSendRow,
   now: string,
   result: EmailLedgerSendResult & { ok: true },
 ): Effect.Effect<void, never> =>
   Effect.tryPromise(async () => {
-    await db
+    await crmEmailAuthorityDb(db)
       .prepare(
         `UPDATE email_campaign_sends
               SET status = 'sent',
@@ -275,10 +288,12 @@ const markCampaignSendSent = (
       )
       .bind(result.emailMessageId, result.providerMessageId, now, now, row.id)
       .run()
+
+    await mirrorCrmEmailRows(db, 'email_campaign_sends', 'id', [row.id])
   }).pipe(Effect.catch(() => Effect.void))
 
 const markCampaignSendFailedOrRetry = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   row: DueCampaignSendRow,
   now: string,
   attemptCount: number,
@@ -292,7 +307,7 @@ const markCampaignSendFailedOrRetry = (
     if (attemptCount < maxAttempts) {
       const retryAt = isoTimestampAfterIso(now, 300_000 * attemptCount)
 
-      await db
+      await crmEmailAuthorityDb(db)
         .prepare(
           `UPDATE email_campaign_sends
                 SET status = 'scheduled',
@@ -316,10 +331,12 @@ const markCampaignSendFailedOrRetry = (
         )
         .run()
 
+      await mirrorCrmEmailRows(db, 'email_campaign_sends', 'id', [row.id])
+
       return 'retried'
     }
 
-    await db
+    await crmEmailAuthorityDb(db)
       .prepare(
         `UPDATE email_campaign_sends
               SET status = 'failed',
@@ -332,6 +349,8 @@ const markCampaignSendFailedOrRetry = (
       )
       .bind(result.emailMessageId, errorName, errorMessage, now, now, row.id)
       .run()
+
+    await mirrorCrmEmailRows(db, 'email_campaign_sends', 'id', [row.id])
 
     return 'failed'
   }).pipe(Effect.catch(() => Effect.succeed('failed' as const)))
@@ -363,7 +382,7 @@ const dueCampaignSendRowToSequenceRow = (
 })
 
 const dispatchClaimedCampaignSend = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   row: DueCampaignSendRow,
   input: ClaimedDispatchOptions,
 ): Effect.Effect<EmailCampaignDispatcherResult, never> =>
@@ -543,7 +562,7 @@ const dispatchClaimedCampaignSend = (
   })
 
 export const dispatchDueEmailCampaignSends = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   options: EmailCampaignDispatcherOptions,
 ): Effect.Effect<EmailCampaignDispatcherResult, never> =>
   Effect.gen(function* () {

@@ -13,16 +13,24 @@ import {
   type OpenAgentsMcpGrant,
 } from '@openagentsinc/mcp-contract'
 
-import { type CrmRuntime, DEFAULT_CRM_TENANT_REF, defaultCrmRuntime } from './crm-store'
+// KS-8.11 (#8322): CrmEmailDatabase union — grant mint/revoke mirror their
+// crm_mcp_grants rows to Postgres fail-soft (token hashes only, never tokens).
+import {
+  type CrmEmailDatabase,
+  crmEmailAuthorityDb,
+  mirrorCrmEmailRows,
+} from './crm-email-domain-store'
 import type { McpPrincipal } from './crm-mcp-routes'
+import {
+  type CrmRuntime,
+  DEFAULT_CRM_TENANT_REF,
+  defaultCrmRuntime,
+} from './crm-store'
 import { parseJsonStringArray } from './json-boundary'
 
 /** Authority classes the CRM MCP tools use across all waves. */
-export const CRM_MCP_AUTHORITY_CLASSES: ReadonlyArray<OpenAgentsMcpAuthorityClass> = [
-  'operator_read',
-  'approval_resolution',
-  'workspace_write',
-]
+export const CRM_MCP_AUTHORITY_CLASSES: ReadonlyArray<OpenAgentsMcpAuthorityClass> =
+  ['operator_read', 'approval_resolution', 'workspace_write']
 
 const MCP_TOKEN_PREFIX = 'oa_mcp_'
 
@@ -33,18 +41,27 @@ export const readMcpBearerToken = (request: Request): string | undefined => {
   const header = request.headers.get('authorization')
   if (header === null) return undefined
   const [scheme, token] = header.split(' ')
-  return scheme?.toLowerCase() === 'bearer' && token !== undefined ? token : undefined
+  return scheme?.toLowerCase() === 'bearer' && token !== undefined
+    ? token
+    : undefined
 }
 
 export const mcpTenantHeader = (request: Request): string => {
   const value = request.headers.get('x-openagents-tenant')
-  return value === null || value.trim() === '' ? DEFAULT_CRM_TENANT_REF : value.trim()
+  return value === null || value.trim() === ''
+    ? DEFAULT_CRM_TENANT_REF
+    : value.trim()
 }
 
 /** SHA-256 hex of a token (Web Crypto; available in the Worker runtime). */
 export const hashCrmMcpToken = async (token: string): Promise<string> => {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token))
-  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('')
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(token),
+  )
+  return [...new Uint8Array(digest)]
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
 }
 
 const grantsFor = (
@@ -88,7 +105,7 @@ export type CrmMcpGrantSummary = Readonly<{
 const VALID_AUTHORITIES = new Set<string>(CRM_MCP_AUTHORITY_CLASSES)
 
 export const mintCrmMcpGrant = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{
     tenantRef: string
     authorities: ReadonlyArray<string>
@@ -96,7 +113,9 @@ export const mintCrmMcpGrant = async (
     expiresAt?: string | null
   }>,
   runtime: CrmRuntime = defaultCrmRuntime,
-): Promise<Readonly<{ grantRef: string; token: string; summary: CrmMcpGrantSummary }>> => {
+): Promise<
+  Readonly<{ grantRef: string; token: string; summary: CrmMcpGrantSummary }>
+> => {
   const authorities = input.authorities.filter(a => VALID_AUTHORITIES.has(a))
   if (authorities.length === 0) {
     throw new CrmMcpGrantError('at least one valid authority class is required')
@@ -105,7 +124,7 @@ export const mintCrmMcpGrant = async (
   const token = runtime.makeId(MCP_TOKEN_PREFIX.replace(/_$/, ''))
   const tokenHash = await hashCrmMcpToken(token)
   const now = runtime.nowIso()
-  await db
+  await crmEmailAuthorityDb(db)
     .prepare(
       `INSERT INTO crm_mcp_grants (
          id, grant_ref, token_hash, tenant_ref, authority_classes_json, label,
@@ -123,6 +142,7 @@ export const mintCrmMcpGrant = async (
       input.expiresAt ?? null,
     )
     .run()
+  await mirrorCrmEmailRows(db, 'crm_mcp_grants', 'grant_ref', [grantRef])
   return {
     grantRef,
     summary: {
@@ -153,12 +173,12 @@ const validAuthority = (value: string): value is OpenAgentsMcpAuthorityClass =>
 
 /** Resolve a scoped bearer token to a principal, or null if invalid/expired/revoked. */
 export const resolveCrmMcpGrantPrincipal = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   token: string,
   nowIso: string,
 ): Promise<McpPrincipal | null> => {
   const tokenHash = await hashCrmMcpToken(token)
-  const row = await db
+  const row = await crmEmailAuthorityDb(db)
     .prepare(
       `SELECT grant_ref, tenant_ref, authority_classes_json, label, status, created_at, expires_at
          FROM crm_mcp_grants WHERE token_hash = ? AND status = 'active' LIMIT 1`,
@@ -167,20 +187,27 @@ export const resolveCrmMcpGrantPrincipal = async (
     .first<GrantRow>()
   if (row === null) return null
   if (row.expires_at !== null && row.expires_at <= nowIso) return null
-  const authorities = parseJsonStringArray(row.authority_classes_json).filter(validAuthority)
+  const authorities = parseJsonStringArray(row.authority_classes_json).filter(
+    validAuthority,
+  )
   if (authorities.length === 0) return null
   return {
-    grants: grantsFor(row.grant_ref, row.grant_ref, authorities, row.created_at),
+    grants: grantsFor(
+      row.grant_ref,
+      row.grant_ref,
+      authorities,
+      row.created_at,
+    ),
     subjectRef: row.grant_ref,
     tenantRef: row.tenant_ref,
   }
 }
 
 export const listCrmMcpGrants = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   tenantRef: string,
 ): Promise<ReadonlyArray<CrmMcpGrantSummary>> => {
-  const result = await db
+  const result = await crmEmailAuthorityDb(db)
     .prepare(
       `SELECT grant_ref, tenant_ref, authority_classes_json, label, status, created_at, expires_at
          FROM crm_mcp_grants WHERE tenant_ref = ? ORDER BY created_at DESC LIMIT 200`,
@@ -199,17 +226,18 @@ export const listCrmMcpGrants = async (
 }
 
 export const revokeCrmMcpGrant = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   tenantRef: string,
   grantRef: string,
   runtime: CrmRuntime = defaultCrmRuntime,
 ): Promise<boolean> => {
   void runtime
-  const result = await db
+  const result = await crmEmailAuthorityDb(db)
     .prepare(
       `UPDATE crm_mcp_grants SET status = 'revoked' WHERE tenant_ref = ? AND grant_ref = ? AND status = 'active'`,
     )
     .bind(tenantRef, grantRef)
     .run()
+  await mirrorCrmEmailRows(db, 'crm_mcp_grants', 'grant_ref', [grantRef])
   return (result.meta?.changes ?? 0) > 0
 }

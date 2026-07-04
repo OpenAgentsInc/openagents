@@ -2,6 +2,14 @@ import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-
 import { Effect, Layer, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
+// KS-8.11 (#8322): enrichment ledger functions take the `CrmEmailDatabase`
+// union — a plain D1Database keeps working (no mirroring); the dual-write
+// handle converges the Postgres twins fail-soft after each D1 write.
+import {
+  type CrmEmailDatabase,
+  crmEmailAuthorityDb,
+  mirrorCrmEmailRows,
+} from './crm-email-domain-store'
 import { openAgentsDatabase } from './runtime'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 
@@ -525,7 +533,7 @@ const sha256Hex = (
   })
 
 const createRun = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   runtime: AdjutantEnrichmentLedgerRuntime,
   input: CreateExaEnrichmentRunInput,
 ): Effect.Effect<ExaEnrichmentRun, AdjutantEnrichmentLedgerError> =>
@@ -540,7 +548,7 @@ const createRun = (
     const status = input.status ?? 'planned'
 
     yield* d1Effect('adjutantEnrichment.runs.insert', () =>
-      db
+      crmEmailAuthorityDb(db)
         .prepare(
           `INSERT INTO exa_enrichment_runs
              (id,
@@ -572,6 +580,10 @@ const createRun = (
         .run(),
     )
 
+    yield* Effect.promise(() =>
+      mirrorCrmEmailRows(db, 'exa_enrichment_runs', 'id', [runId]),
+    )
+
     return {
       id: runId,
       assignmentId: input.assignmentId,
@@ -597,7 +609,7 @@ const createRun = (
   })
 
 const recordQuery = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   runtime: AdjutantEnrichmentLedgerRuntime,
   input: RecordExaEnrichmentQueryInput,
 ): Effect.Effect<ExaEnrichmentQuery, AdjutantEnrichmentLedgerError> =>
@@ -622,7 +634,7 @@ const recordQuery = (
       input.latencyMs === undefined ? null : Math.max(0, Math.trunc(input.latencyMs))
 
     yield* d1Effect('adjutantEnrichment.queries.insert', () =>
-      db
+      crmEmailAuthorityDb(db)
         .prepare(
           `INSERT INTO exa_enrichment_queries
              (id,
@@ -665,7 +677,7 @@ const recordQuery = (
     )
 
     yield* d1Effect('adjutantEnrichment.runs.incrementRequests', () =>
-      db
+      crmEmailAuthorityDb(db)
         .prepare(
           `UPDATE exa_enrichment_runs
               SET request_count = request_count + 1,
@@ -677,6 +689,11 @@ const recordQuery = (
         .bind(input.status === 'cached' ? 1 : 0, input.costDollars ?? 0, now, input.runId)
         .run(),
     )
+
+    yield* Effect.promise(async () => {
+      await mirrorCrmEmailRows(db, 'exa_enrichment_queries', 'id', [queryId])
+      await mirrorCrmEmailRows(db, 'exa_enrichment_runs', 'id', [input.runId])
+    })
 
     return {
       id: queryId,
@@ -699,12 +716,12 @@ const recordQuery = (
   })
 
 const refreshRunSourceCounts = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   runId: string,
   now: string,
 ): Effect.Effect<void, AdjutantEnrichmentLedgerStorageError> =>
   d1Effect('adjutantEnrichment.runs.refreshSourceCounts', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `UPDATE exa_enrichment_runs
             SET source_count = (
@@ -724,10 +741,17 @@ const refreshRunSourceCounts = (
       )
       .bind(now, runId)
       .run(),
-  ).pipe(Effect.asVoid)
+  ).pipe(
+    Effect.flatMap(() =>
+      Effect.promise(() =>
+        mirrorCrmEmailRows(db, 'exa_enrichment_runs', 'id', [runId]),
+      ),
+    ),
+    Effect.asVoid,
+  )
 
 const storeSourceCard = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   runtime: AdjutantEnrichmentLedgerRuntime,
   input: StoreExaSourceCardInput,
 ): Effect.Effect<ExaEnrichmentSourceCard, AdjutantEnrichmentLedgerError> =>
@@ -787,7 +811,7 @@ const storeSourceCard = (
     })
 
     yield* d1Effect('adjutantEnrichment.sources.insert', () =>
-      db
+      crmEmailAuthorityDb(db)
         .prepare(
           `INSERT INTO exa_enrichment_sources
              (id,
@@ -841,6 +865,9 @@ const storeSourceCard = (
         .run(),
     )
 
+    yield* Effect.promise(() =>
+      mirrorCrmEmailRows(db, 'exa_enrichment_sources', 'id', [sourceId]),
+    )
     yield* refreshRunSourceCounts(db, input.runId, now)
 
     return {
@@ -870,7 +897,7 @@ const storeSourceCard = (
   })
 
 const reviewSourceCard = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   runtime: AdjutantEnrichmentLedgerRuntime,
   input: ReviewExaSourceCardInput,
 ): Effect.Effect<void, AdjutantEnrichmentLedgerError> =>
@@ -885,7 +912,7 @@ const reviewSourceCard = (
     )
 
     yield* d1Effect('adjutantEnrichment.sources.review', () =>
-      db
+      crmEmailAuthorityDb(db)
         .prepare(
           `UPDATE exa_enrichment_sources
               SET review_status = ?,
@@ -911,7 +938,7 @@ const reviewSourceCard = (
     )
 
     yield* d1Effect('adjutantEnrichment.runs.refreshReviewedSourceCounts', () =>
-      db
+      crmEmailAuthorityDb(db)
         .prepare(
           `UPDATE exa_enrichment_runs
               SET approved_source_count = (
@@ -932,17 +959,34 @@ const reviewSourceCard = (
         .bind(now, input.sourceId)
         .run(),
     )
+
+    yield* Effect.promise(async () => {
+      await mirrorCrmEmailRows(db, 'exa_enrichment_sources', 'id', [
+        input.sourceId,
+      ])
+      const runRow = await crmEmailAuthorityDb(db)
+        .prepare(
+          `SELECT run_id FROM exa_enrichment_sources WHERE id = ? LIMIT 1`,
+        )
+        .bind(input.sourceId)
+        .first<{ run_id: string }>()
+      if (runRow !== null) {
+        await mirrorCrmEmailRows(db, 'exa_enrichment_runs', 'id', [
+          runRow.run_id,
+        ])
+      }
+    })
   })
 
 const linkAssignmentRun = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   runtime: AdjutantEnrichmentLedgerRuntime,
   input: LinkAssignmentEnrichmentInput,
 ): Effect.Effect<void, AdjutantEnrichmentLedgerError> => {
   const now = runtime.nowIso()
 
   return d1Effect('adjutantEnrichment.assignment.link', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `INSERT INTO adjutant_assignment_enrichments
            (assignment_id,
@@ -976,7 +1020,7 @@ const linkAssignmentRun = (
 }
 
 const updateRunStatus = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   runtime: AdjutantEnrichmentLedgerRuntime,
   input: UpdateExaEnrichmentRunStatusInput,
 ): Effect.Effect<void, AdjutantEnrichmentLedgerError> =>
@@ -989,7 +1033,7 @@ const updateRunStatus = (
     )
 
     yield* d1Effect('adjutantEnrichment.runs.updateStatus', () =>
-      db
+      crmEmailAuthorityDb(db)
         .prepare(
           `UPDATE exa_enrichment_runs
               SET status = ?,
@@ -1010,17 +1054,21 @@ const updateRunStatus = (
         )
         .run(),
     )
+
+    yield* Effect.promise(() =>
+      mirrorCrmEmailRows(db, 'exa_enrichment_runs', 'id', [input.runId]),
+    )
   })
 
 const latestRunForAssignment = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   assignmentId: string,
 ): Effect.Effect<
   ExaEnrichmentRun | null,
   AdjutantEnrichmentLedgerStorageError
 > =>
   d1Effect('adjutantEnrichment.runs.latestForAssignment', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `SELECT id,
                 assignment_id,
@@ -1053,14 +1101,14 @@ const latestRunForAssignment = (
   ).pipe(Effect.map(row => (row === null ? null : runFromRow(row))))
 
 const listQueriesForRun = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   runId: string,
 ): Effect.Effect<
   ReadonlyArray<ExaEnrichmentQuery>,
   AdjutantEnrichmentLedgerStorageError
 > =>
   d1Effect('adjutantEnrichment.queries.listForRun', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `SELECT id,
                 run_id,
@@ -1087,14 +1135,14 @@ const listQueriesForRun = (
   ).pipe(Effect.map(result => result.results.map(queryFromRow)))
 
 const listSourceCardsForAssignment = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   assignmentId: string,
 ): Effect.Effect<
   ReadonlyArray<ExaEnrichmentSourceCard>,
   AdjutantEnrichmentLedgerStorageError
 > =>
   d1Effect('adjutantEnrichment.sources.listForAssignment', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `SELECT id,
                 run_id,
@@ -1141,7 +1189,7 @@ export const publicSafeExaSourceCards = (
   })
 
 const publicSafeSourceCardsForAssignment = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   assignmentId: string,
 ): Effect.Effect<
   ReadonlyArray<ExaEnrichmentSourceCard>,
@@ -1152,7 +1200,7 @@ const publicSafeSourceCardsForAssignment = (
   )
 
 export const makeAdjutantEnrichmentLedger = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   runtime: AdjutantEnrichmentLedgerRuntime =
     systemAdjutantEnrichmentLedgerRuntime,
 ) => ({

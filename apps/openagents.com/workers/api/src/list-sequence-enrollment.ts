@@ -1,5 +1,7 @@
 import { Schema as S } from 'effect'
 
+// KS-8.11 (#8322): union type so the dual-write handle flows through.
+import { type CrmEmailDatabase } from './crm-email-domain-store'
 import {
   type EmailCampaignRuntime,
   systemEmailCampaignRuntime,
@@ -108,7 +110,7 @@ const findListSubscriber = async (
 //   4. delegate to enrollSubscriberInSequence, which honors suppression and
 //      per-email drip preference and is idempotent on replay.
 export const enrollListSubscriberInSequence = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   request: EnrollListSubscriberRequest,
   operatorUserId: string,
   nativeListsRuntime: NativeListsRuntime = systemNativeListsRuntime,
@@ -158,7 +160,7 @@ export const enrollListSubscriberInSequence = async (
 // double form submit does not create duplicate subscribers or duplicate
 // scheduled sends.
 export const enrollNewSubscriberAndSequence = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   request: EnrollNewSubscriberAndSequenceRequest,
   operatorUserId: string,
   nativeListsRuntime: NativeListsRuntime = systemNativeListsRuntime,

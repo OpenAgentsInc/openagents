@@ -15,6 +15,13 @@
  */
 import { Schema as S } from 'effect'
 
+// KS-8.11 (#8322): CrmEmailDatabase union — plain D1 keeps working; the
+// dual-write handle mirrors template/message writes to Postgres fail-soft.
+import {
+  type CrmEmailDatabase,
+  crmEmailAuthorityDb,
+  mirrorCrmEmailRows,
+} from './crm-email-domain-store'
 import {
   type CrmContact,
   type CrmRuntime,
@@ -73,7 +80,8 @@ export type ComposedCrmEmail = Readonly<{
   bodyHtml: string
 }>
 
-const str = (v: unknown): string => (v === null || v === undefined ? '' : String(v))
+const str = (v: unknown): string =>
+  v === null || v === undefined ? '' : String(v)
 const nullableStr = (v: unknown): string | null =>
   v === null || v === undefined ? null : String(v)
 
@@ -92,7 +100,9 @@ const decodeTemplate = (row: Record<string, unknown>): CrmEmailTemplate => ({
 const decodeMessage = (row: Record<string, unknown>): CrmEmailMessage => ({
   bodyHtml: nullableStr(row.body_html),
   bodyMarkdown: str(row.body_markdown),
-  channel: (str(row.channel) === 'resend' ? 'resend' : 'gmail_gws') as CrmSendChannel,
+  channel: (str(row.channel) === 'resend'
+    ? 'resend'
+    : 'gmail_gws') as CrmSendChannel,
   contactId: str(row.contact_id),
   createdAt: str(row.created_at),
   errorMessage: nullableStr(row.error_message),
@@ -157,14 +167,13 @@ export const renderCrmTemplateString = (
   tokens: Readonly<Record<string, string>>,
 ): string =>
   template.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (_match, key: string) =>
-    Object.prototype.hasOwnProperty.call(tokens, key) ? tokens[key] ?? '' : '',
+    Object.prototype.hasOwnProperty.call(tokens, key)
+      ? (tokens[key] ?? '')
+      : '',
   )
 
 const escapeHtml = (text: string): string =>
-  text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
+  text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 /**
  * Minimal, safe markdown→HTML: escapes first, then applies `**bold**`,
@@ -177,10 +186,7 @@ export const crmMarkdownToHtml = (markdown: string): string => {
     .map(block => {
       const escaped = escapeHtml(block)
         .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-        .replace(
-          /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
-          '<a href="$2">$1</a>',
-        )
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2">$1</a>')
         .replace(/\n/g, '<br />')
       return `<p>${escaped}</p>`
     })
@@ -194,7 +200,10 @@ export const renderCrmEmail = (
 ): Readonly<{ bodyHtml: string; bodyMarkdown: string; subject: string }> => {
   const tokens = buildTokens(contact, context)
   const subject = renderCrmTemplateString(template.subjectTemplate, tokens)
-  const bodyMarkdown = renderCrmTemplateString(template.bodyMarkdownTemplate, tokens)
+  const bodyMarkdown = renderCrmTemplateString(
+    template.bodyMarkdownTemplate,
+    tokens,
+  )
   return { bodyHtml: crmMarkdownToHtml(bodyMarkdown), bodyMarkdown, subject }
 }
 
@@ -202,7 +211,10 @@ export const renderCrmEmail = (
 // Template store
 // ---------------------------------------------------------------------------
 
-const wrap = async (operation: string, fn: () => Promise<unknown>): Promise<void> => {
+const wrap = async (
+  operation: string,
+  fn: () => Promise<unknown>,
+): Promise<void> => {
   try {
     await fn()
   } catch (error) {
@@ -211,7 +223,7 @@ const wrap = async (operation: string, fn: () => Promise<unknown>): Promise<void
 }
 
 export const upsertCrmEmailTemplate = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{
     tenantRef: string
     slug: string
@@ -223,7 +235,7 @@ export const upsertCrmEmailTemplate = async (
 ): Promise<CrmEmailTemplate> => {
   const now = runtime.nowIso()
   await wrap('crm.upsertTemplate', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `INSERT INTO crm_email_templates (
            id, tenant_ref, slug, name, subject_template, body_markdown_template,
@@ -248,20 +260,27 @@ export const upsertCrmEmailTemplate = async (
       )
       .run(),
   )
-  const stored = await getCrmEmailTemplateBySlug(db, input.tenantRef, input.slug)
+  const stored = await getCrmEmailTemplateBySlug(
+    db,
+    input.tenantRef,
+    input.slug,
+  )
   if (stored === null) {
-    throw new CrmEmailError({ reason: 'crm.upsertTemplate: template vanished after upsert' })
+    throw new CrmEmailError({
+      reason: 'crm.upsertTemplate: template vanished after upsert',
+    })
   }
+  await mirrorCrmEmailRows(db, 'crm_email_templates', 'id', [stored.id])
   return stored
 }
 
 export const getCrmEmailTemplateBySlug = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   tenantRef: string,
   slug: string,
 ): Promise<CrmEmailTemplate | null> => {
   try {
-    const row = await db
+    const row = await crmEmailAuthorityDb(db)
       .prepare(
         'SELECT * FROM crm_email_templates WHERE tenant_ref = ? AND slug = ? AND archived_at IS NULL LIMIT 1',
       )
@@ -274,11 +293,11 @@ export const getCrmEmailTemplateBySlug = async (
 }
 
 export const listCrmEmailTemplates = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   tenantRef: string,
 ): Promise<ReadonlyArray<CrmEmailTemplate>> => {
   try {
-    const result = await db
+    const result = await crmEmailAuthorityDb(db)
       .prepare(
         'SELECT * FROM crm_email_templates WHERE tenant_ref = ? AND archived_at IS NULL ORDER BY created_at DESC',
       )
@@ -295,7 +314,7 @@ export const listCrmEmailTemplates = async (
 // ---------------------------------------------------------------------------
 
 export const composeCrmEmailForContact = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{
     tenantRef: string
     contactId: string
@@ -307,9 +326,15 @@ export const composeCrmEmailForContact = async (
   if (contact === null) {
     throw new CrmEmailError({ reason: `contact not found: ${input.contactId}` })
   }
-  const template = await getCrmEmailTemplateBySlug(db, input.tenantRef, input.templateSlug)
+  const template = await getCrmEmailTemplateBySlug(
+    db,
+    input.tenantRef,
+    input.templateSlug,
+  )
   if (template === null) {
-    throw new CrmEmailError({ reason: `template not found: ${input.templateSlug}` })
+    throw new CrmEmailError({
+      reason: `template not found: ${input.templateSlug}`,
+    })
   }
   const rendered = renderCrmEmail(template, contact, input.renderContext)
   return {
@@ -345,14 +370,14 @@ export type RecordCrmEmailMessageInput = Readonly<{
 }>
 
 export const recordCrmEmailMessage = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: RecordCrmEmailMessageInput,
   runtime: CrmRuntime = defaultCrmRuntime,
 ): Promise<CrmEmailMessage> => {
   const id = runtime.makeId('crm_email')
   const now = runtime.nowIso()
   await wrap('crm.recordEmailMessage', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `INSERT INTO crm_email_messages (
            id, tenant_ref, contact_id, template_id, channel, from_email,
@@ -385,13 +410,16 @@ export const recordCrmEmailMessage = async (
   )
   const stored = await getCrmEmailMessageById(db, input.tenantRef, id)
   if (stored === null) {
-    throw new CrmEmailError({ reason: 'crm.recordEmailMessage: row vanished after insert' })
+    throw new CrmEmailError({
+      reason: 'crm.recordEmailMessage: row vanished after insert',
+    })
   }
+  await mirrorCrmEmailRows(db, 'crm_email_messages', 'id', [id])
   return stored
 }
 
 export const updateCrmEmailMessageDelivery = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   input: Readonly<{
     tenantRef: string
     id: string
@@ -405,7 +433,7 @@ export const updateCrmEmailMessageDelivery = async (
 ): Promise<void> => {
   const now = runtime.nowIso()
   await wrap('crm.updateEmailMessageDelivery', () =>
-    db
+    crmEmailAuthorityDb(db)
       .prepare(
         `UPDATE crm_email_messages SET
            status = ?,
@@ -428,16 +456,19 @@ export const updateCrmEmailMessageDelivery = async (
       )
       .run(),
   )
+  await mirrorCrmEmailRows(db, 'crm_email_messages', 'id', [input.id])
 }
 
 export const getCrmEmailMessageById = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   tenantRef: string,
   id: string,
 ): Promise<CrmEmailMessage | null> => {
   try {
-    const row = await db
-      .prepare('SELECT * FROM crm_email_messages WHERE tenant_ref = ? AND id = ? LIMIT 1')
+    const row = await crmEmailAuthorityDb(db)
+      .prepare(
+        'SELECT * FROM crm_email_messages WHERE tenant_ref = ? AND id = ? LIMIT 1',
+      )
       .bind(tenantRef, id)
       .first<Record<string, unknown>>()
     return row === null ? null : decodeMessage(row)
@@ -452,16 +483,18 @@ export const getCrmEmailMessageById = async (
  * executor lists them, sends via `gws`, and writes the outcome back.
  */
 export const listCrmQueuedGmailMessages = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   tenantRef: string,
   query: Readonly<{ limit?: number | undefined }> = {},
 ): Promise<ReadonlyArray<CrmEmailMessage>> => {
   const limit =
-    query.limit === undefined || !Number.isFinite(query.limit) || query.limit <= 0
+    query.limit === undefined ||
+    !Number.isFinite(query.limit) ||
+    query.limit <= 0
       ? 100
       : Math.min(Math.floor(query.limit), 500)
   try {
-    const result = await db
+    const result = await crmEmailAuthorityDb(db)
       .prepare(
         `SELECT * FROM crm_email_messages
            WHERE tenant_ref = ? AND channel = 'gmail_gws' AND status = 'queued'
@@ -476,17 +509,19 @@ export const listCrmQueuedGmailMessages = async (
 }
 
 export const listCrmEmailMessagesForContact = async (
-  db: D1Database,
+  db: CrmEmailDatabase,
   tenantRef: string,
   contactId: string,
   query: Readonly<{ limit?: number | undefined }> = {},
 ): Promise<ReadonlyArray<CrmEmailMessage>> => {
   const limit =
-    query.limit === undefined || !Number.isFinite(query.limit) || query.limit <= 0
+    query.limit === undefined ||
+    !Number.isFinite(query.limit) ||
+    query.limit <= 0
       ? 100
       : Math.min(Math.floor(query.limit), 500)
   try {
-    const result = await db
+    const result = await crmEmailAuthorityDb(db)
       .prepare(
         'SELECT * FROM crm_email_messages WHERE tenant_ref = ? AND contact_id = ? ORDER BY created_at DESC LIMIT ?',
       )
@@ -494,6 +529,8 @@ export const listCrmEmailMessagesForContact = async (
       .all<Record<string, unknown>>()
     return (result.results ?? []).map(decodeMessage)
   } catch (error) {
-    throw new CrmEmailError({ reason: `crm.listEmailMessages: ${String(error)}` })
+    throw new CrmEmailError({
+      reason: `crm.listEmailMessages: ${String(error)}`,
+    })
   }
 }

@@ -30,6 +30,8 @@
 // No new migration: reuses the migration-0063 campaign send tables and the
 // existing email send ledger via the injected sender.
 
+// KS-8.11 (#8322): union type so the dual-write handle flows through.
+import { type CrmEmailDatabase } from './crm-email-domain-store'
 import { Effect } from 'effect'
 
 import {
@@ -235,7 +237,7 @@ export const renderEmailSequenceSend = (
 }
 
 export const makeCloudflareEmailSequenceSender = (
-  db: D1Database,
+  db: CrmEmailDatabase,
   binding: CloudflareEmailBinding,
   config: EmailSequenceCloudflareSenderConfig,
   runtime: EmailRuntime = systemEmailRuntime,

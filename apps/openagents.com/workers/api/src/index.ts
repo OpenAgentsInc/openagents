@@ -148,6 +148,11 @@ import {
   makeArtanisDatabaseForEnv,
   type ArtanisDatabase,
 } from './artanis-domain-store'
+// KS-8.11 (#8322): CRM/email write entry points ride the dual-write seam.
+import {
+  crmEmailAuthorityDb,
+  makeCrmEmailDatabaseForEnv,
+} from './crm-email-domain-store'
 import { makeTreasuryDatabaseForEnv } from './treasury-domain-store'
 import { ArtanisMindSmokeSystem, artanisMindComplete } from './artanis-mind'
 import {
@@ -5469,7 +5474,7 @@ const handleEmailResendWebhookApi = async (
     }
 
     const config = getOpenAgentsWorkerConfig(env)
-    const result = await handleResendWebhook(openAgentsDatabase(env), {
+    const result = await handleResendWebhook(makeCrmEmailDatabaseForEnv(env), {
       body: await request.text(),
       headers: request.headers,
       secret: config.email.resendWebhookSecret,
@@ -6536,7 +6541,9 @@ const dispatchDueEmailCampaignSendsScheduled = (
 ): Effect.Effect<EmailCampaignDispatcherResult, never> =>
   Effect.gen(function* () {
     const config = getOpenAgentsWorkerConfig(env)
-    const db = yield* OpenAgentsDatabase
+    // KS-8.11 (#8322): the dispatch cron rides the dual-write seam — every
+    // claim/skip/suppress/sent write mirrors its Postgres twin fail-soft.
+    const db = makeCrmEmailDatabaseForEnv(env)
     const emailSequenceFromEmail =
       env.EMAIL_SEQUENCE_FROM_EMAIL ?? config.email.resend?.fromEmail
     const sequenceSend =
@@ -8381,7 +8388,7 @@ const omniHandoffRoutes = makeOmniHandoffRoutes<WorkerBindings>({
 })
 
 const nativeListsRoutes = makeNativeListsRoutes<WorkerBindings>({
-  makeStore: env => makeNativeListsService(openAgentsDatabase(env)),
+  makeStore: env => makeNativeListsService(makeCrmEmailDatabaseForEnv(env)),
   requireOperator: (request, env) => requireAdminApiToken(request, env),
 })
 
@@ -8403,7 +8410,7 @@ const sitePageFormCaptureRoutes = makeSitePageFormCaptureRoutes<WorkerBindings>(
       ),
     makeSink: env => ({
       addSubscriber: async input => {
-        const db = openAgentsDatabase(env)
+        const db = makeCrmEmailDatabaseForEnv(env)
         const lists = makeNativeListsService(db)
         const result = await lists.addSubscriber(input)
 
@@ -9596,8 +9603,11 @@ const operatorBusinessPipelineRoutes = makeOperatorBusinessPipelineRoutes({
 
 const operatorBusinessOutreachRoutes = makeOperatorBusinessOutreachRoutes({
   makeStore: env => {
-    const db = openAgentsDatabase(env)
-    return makeD1BusinessOutreachStore(db, makeD1BusinessPipelineStore(db))
+    const db = makeCrmEmailDatabaseForEnv(env)
+    return makeD1BusinessOutreachStore(
+      db,
+      makeD1BusinessPipelineStore(crmEmailAuthorityDb(db)),
+    )
   },
   requireAdminApiToken,
 })
