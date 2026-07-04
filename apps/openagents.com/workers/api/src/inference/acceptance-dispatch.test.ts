@@ -31,7 +31,9 @@ import {
   backfillVerdictIntoVerification,
   enqueueAcceptanceJob,
   isAcceptanceDispatchEnabled,
+  type KhalaVerificationRecord,
   makeInMemoryKhalaVerificationStore,
+  makeMirroredKhalaVerificationStore,
 } from './acceptance-dispatch'
 import { handleAcceptanceVerdictCallback } from './acceptance-verdict-callback-routes'
 import {
@@ -42,6 +44,7 @@ import {
 import { crossyRoadAcceptanceSpec } from './acceptance-spec'
 import { CROSSY_ROAD_BROKEN_HTML } from './acceptance-runner/fixtures/crossy-road-broken.html'
 import { CROSSY_ROAD_FIXED_HTML } from './acceptance-runner/fixtures/crossy-road-fixed.html'
+import type { AgentRuntimeRemainderMirror } from '../agent-runtime-remainder-store'
 
 let browser: Browser
 
@@ -54,6 +57,20 @@ afterAll(async () => {
 })
 
 const CALLBACK_TOKEN = 'test-runner-callback-token'
+
+class MemoryAgentRuntimeRemainderMirror implements AgentRuntimeRemainderMirror {
+  readonly calls: Array<{
+    pkValues: ReadonlyArray<string>
+    table: string
+  }> = []
+
+  mirrorRowsByPk = async (
+    table: Parameters<AgentRuntimeRemainderMirror['mirrorRowsByPk']>[0],
+    pkValues: ReadonlyArray<string>,
+  ) => {
+    this.calls.push({ pkValues, table })
+  }
+}
 
 // Wire the full loop against in-memory seams: a fake queue records the enqueued job;
 // the harness transport resolves the artifact from a fixture map and posts the verdict
@@ -209,6 +226,37 @@ describe('acceptance-dispatch — enqueue is inert by default', () => {
     expect(isAcceptanceDispatchEnabled('')).toBe(false)
     expect(isAcceptanceDispatchEnabled(undefined)).toBe(false)
     expect(isAcceptanceDispatchEnabled('armed-ish')).toBe(false)
+  })
+
+  test('mirrored verification store mirrors verdict upserts by request id', async () => {
+    const mirror = new MemoryAgentRuntimeRemainderMirror()
+    const store = makeMirroredKhalaVerificationStore(
+      makeInMemoryKhalaVerificationStore(() => '2026-06-22T00:00:00.000Z'),
+      mirror,
+    )
+    const record: KhalaVerificationRecord = {
+      executed: true,
+      failedChecks: [],
+      passedChecks: [...crossyRoadAcceptanceSpec().checks],
+      requestId: 'chatcmpl-mirror-verdict',
+      rubricRef: crossyRoadAcceptanceSpec().rubricRef,
+      scalarReward: 1,
+      updatedAt: '2026-06-22T00:00:00.000Z',
+      verification: 'test_passed',
+      verificationReceiptRef:
+        'receipt.inference.khala_code_acceptance.chatcmpl-mirror-verdict',
+      verified: true,
+      version: 1,
+    }
+
+    await Effect.runPromise(store.upsert(record))
+
+    expect(mirror.calls).toEqual([
+      {
+        pkValues: ['chatcmpl-mirror-verdict'],
+        table: 'khala_acceptance_verdicts',
+      },
+    ])
   })
 })
 

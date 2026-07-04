@@ -11,11 +11,15 @@ import { Effect } from 'effect'
 import { AcceptanceJobMessage } from './acceptance-dispatch'
 import { crossyRoadAcceptanceSpec } from './acceptance-spec'
 import { acceptanceJobSpecFromSpec } from './acceptance-dispatch'
-import { makeInMemoryAcceptanceJobQueueStore } from './acceptance-job-queue-store'
+import {
+  makeInMemoryAcceptanceJobQueueStore,
+  makeMirroredAcceptanceJobQueueStore,
+} from './acceptance-job-queue-store'
 import {
   handleAcceptanceJobAck,
   handleAcceptanceJobLease,
 } from './acceptance-job-lease-routes'
+import type { AgentRuntimeRemainderMirror } from '../agent-runtime-remainder-store'
 
 const job = (requestId: string): AcceptanceJobMessage =>
   AcceptanceJobMessage.make({
@@ -34,7 +38,91 @@ const TOKEN = 'test-runner-token'
 let leaseCounter = 0
 const newLeaseId = () => `lease-${(leaseCounter += 1)}`
 
+class MemoryAgentRuntimeRemainderMirror implements AgentRuntimeRemainderMirror {
+  readonly deletes: Array<{
+    pkValues: ReadonlyArray<string>
+    table: string
+  }> = []
+
+  readonly upserts: Array<{
+    pkValues: ReadonlyArray<string>
+    table: string
+  }> = []
+
+  deleteRowsByPk = async (
+    table: Parameters<NonNullable<AgentRuntimeRemainderMirror['deleteRowsByPk']>>[0],
+    pkValues: ReadonlyArray<string>,
+  ) => {
+    this.deletes.push({ pkValues, table })
+  }
+
+  mirrorRowsByPk = async (
+    table: Parameters<AgentRuntimeRemainderMirror['mirrorRowsByPk']>[0],
+    pkValues: ReadonlyArray<string>,
+  ) => {
+    this.upserts.push({ pkValues, table })
+  }
+}
+
 describe('acceptance job queue store', () => {
+  test('mirrored store mirrors enqueue, lease, retry ack, and delivered deletion by request id', async () => {
+    const leaseToRequestId = new Map<string, string>()
+    const mirror = new MemoryAgentRuntimeRemainderMirror()
+    const store = makeMirroredAcceptanceJobQueueStore(
+      makeInMemoryAcceptanceJobQueueStore(),
+      mirror,
+      {
+        readRequestIdByLease: leaseId =>
+          Effect.succeed(leaseToRequestId.get(leaseId) ?? null),
+      },
+    )
+
+    await run(store.enqueue(job('deliver')))
+    const delivered = await run(
+      store.lease({
+        leaseTtlMs: 1000,
+        newLeaseId: 'lease-deliver',
+        nowIso: '2026-06-22T00:00:00.000Z',
+      }),
+    )
+    leaseToRequestId.set(delivered!.leaseId, delivered!.message.requestId)
+    await run(
+      store.ack({
+        delivered: true,
+        leaseId: delivered!.leaseId,
+        nowIso: '2026-06-22T00:00:01.000Z',
+      }),
+    )
+
+    await run(store.enqueue(job('retry')))
+    const retry = await run(
+      store.lease({
+        leaseTtlMs: 1000,
+        newLeaseId: 'lease-retry',
+        nowIso: '2026-06-22T00:00:02.000Z',
+      }),
+    )
+    leaseToRequestId.set(retry!.leaseId, retry!.message.requestId)
+    await run(
+      store.ack({
+        delivered: false,
+        leaseId: retry!.leaseId,
+        nowIso: '2026-06-22T00:00:03.000Z',
+      }),
+    )
+
+    expect(mirror.upserts).toEqual([
+      { pkValues: ['deliver'], table: 'khala_acceptance_jobs' },
+      { pkValues: ['deliver'], table: 'khala_acceptance_jobs' },
+      { pkValues: ['retry'], table: 'khala_acceptance_jobs' },
+      { pkValues: ['retry'], table: 'khala_acceptance_jobs' },
+      { pkValues: ['retry'], table: 'khala_acceptance_jobs' },
+    ])
+    expect(mirror.deletes).toEqual([
+      { pkValues: ['deliver'], table: 'khala_acceptance_jobs' },
+    ])
+  })
+
   test('enqueue is idempotent per request id', async () => {
     const store = makeInMemoryAcceptanceJobQueueStore()
     await run(store.enqueue(job('r1')))

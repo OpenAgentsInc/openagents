@@ -483,13 +483,13 @@ import { makeImageGenerationRoutes } from './image-generation-routes'
 import { makeD1InferenceReceiptStore } from './inference-receipts'
 import {
   isAcceptanceDispatchEnabled,
-  makeD1KhalaVerificationStore,
+  makeKhalaVerificationStoreForEnv,
 } from './inference/acceptance-dispatch'
 import {
   handleAcceptanceJobAck,
   handleAcceptanceJobLease,
 } from './inference/acceptance-job-lease-routes'
-import { makeD1AcceptanceJobQueueStore } from './inference/acceptance-job-queue-store'
+import { makeAcceptanceJobQueueStoreForEnv } from './inference/acceptance-job-queue-store'
 import {
   type AcceptedOutcomeSettlementSink,
   handleAcceptanceVerdictCallback,
@@ -14483,7 +14483,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         callbackToken: env.ACCEPTANCE_VERDICT_CALLBACK_TOKEN,
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
         nowIso: currentIsoTimestamp,
-        store: makeD1KhalaVerificationStore(openAgentsDatabase(env)),
+        store: makeKhalaVerificationStoreForEnv(env),
         // Accepted-outcome settlement (#6011): fires worker+validator Bitcoin payout on
         // the first VERIFIED+EXECUTED backfill. Double-gated + inert by default (undefined
         // unless the KHALA loop flag is armed; even then the owner real-settlement gate +
@@ -14511,10 +14511,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
         newLeaseId: randomUuid,
         nowIso: currentIsoTimestamp,
-        store: makeD1AcceptanceJobQueueStore(
-          openAgentsDatabase(env),
-          currentIsoTimestamp,
-        ),
+        store: makeAcceptanceJobQueueStoreForEnv(env, currentIsoTimestamp),
       }),
   },
   {
@@ -14529,10 +14526,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
         newLeaseId: randomUuid,
         nowIso: currentIsoTimestamp,
-        store: makeD1AcceptanceJobQueueStore(
-          openAgentsDatabase(env),
-          currentIsoTimestamp,
-        ),
+        store: makeAcceptanceJobQueueStoreForEnv(env, currentIsoTimestamp),
       }),
   },
   {

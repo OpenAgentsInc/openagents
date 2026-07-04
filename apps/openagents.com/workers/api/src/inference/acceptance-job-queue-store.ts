@@ -21,7 +21,13 @@
 
 import { Effect, Schema as S } from 'effect'
 
+import {
+  makeAgentRuntimeRemainderMirrorForEnv,
+  type AgentRuntimeRemainderMirror,
+  type AgentRuntimeRemainderStoreEnv,
+} from '../agent-runtime-remainder-store'
 import { parseJsonWithSchema } from '../json-boundary'
+import { openAgentsDatabase } from '../runtime'
 import { isoTimestampAfterIso } from '../runtime-primitives'
 import { AcceptanceJobMessage } from './acceptance-dispatch'
 
@@ -213,3 +219,88 @@ export const makeD1AcceptanceJobQueueStore = (
       Effect.orDie,
     ),
 })
+
+const mirrorAcceptanceJob = (
+  mirror: AgentRuntimeRemainderMirror,
+  requestId: string,
+): Effect.Effect<void> =>
+  Effect.promise(() =>
+    mirror.mirrorRowsByPk('khala_acceptance_jobs', [requestId]),
+  )
+
+const deleteMirroredAcceptanceJob = (
+  mirror: AgentRuntimeRemainderMirror,
+  requestId: string,
+): Effect.Effect<void> =>
+  Effect.promise(() =>
+    mirror.deleteRowsByPk?.('khala_acceptance_jobs', [requestId]) ??
+    Promise.resolve(),
+  )
+
+export const makeMirroredAcceptanceJobQueueStore = (
+  d1: AcceptanceJobQueueStore,
+  mirror: AgentRuntimeRemainderMirror | undefined,
+  deps: Readonly<{
+    readRequestIdByLease: (leaseId: string) => Effect.Effect<string | null>
+  }>,
+): AcceptanceJobQueueStore => {
+  if (mirror === undefined) {
+    return d1
+  }
+
+  return {
+    ack: input =>
+      Effect.gen(function* () {
+        const requestId = yield* deps.readRequestIdByLease(input.leaseId)
+        yield* d1.ack(input)
+        if (requestId === null) {
+          return
+        }
+        if (input.delivered) {
+          yield* deleteMirroredAcceptanceJob(mirror, requestId)
+        } else {
+          yield* mirrorAcceptanceJob(mirror, requestId)
+        }
+      }),
+    enqueue: message =>
+      Effect.gen(function* () {
+        yield* d1.enqueue(message)
+        yield* mirrorAcceptanceJob(mirror, message.requestId)
+      }),
+    lease: input =>
+      Effect.gen(function* () {
+        const leased = yield* d1.lease(input)
+        if (leased !== null) {
+          yield* mirrorAcceptanceJob(mirror, leased.message.requestId)
+        }
+        return leased
+      }),
+  }
+}
+
+export const makeAcceptanceJobQueueStoreForEnv = (
+  env: AgentRuntimeRemainderStoreEnv,
+  nowIso: () => string,
+): AcceptanceJobQueueStore => {
+  const db = openAgentsDatabase(env)
+  return makeMirroredAcceptanceJobQueueStore(
+    makeD1AcceptanceJobQueueStore(db, nowIso),
+    makeAgentRuntimeRemainderMirrorForEnv(env),
+    {
+      readRequestIdByLease: leaseId =>
+        Effect.tryPromise(() =>
+          db
+            .prepare(
+              `SELECT request_id FROM khala_acceptance_jobs
+                 WHERE lease_id = ? AND status = 'leased'
+                 LIMIT 1`,
+            )
+            .bind(leaseId)
+            .first<{ request_id: string }>(),
+        ).pipe(
+          Effect.map(row => (row === null ? null : String(row.request_id))),
+          Effect.orDie,
+        ),
+    },
+  )
+}

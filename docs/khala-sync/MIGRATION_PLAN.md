@@ -437,16 +437,21 @@ private `token_hash` byte value, but output prints credential ids and
 sha256 row hashes only, never token hashes or payloads. Runtime mirror
 seams are wired for `event_ledger_entries`, `agent_profiles`,
 `agent_credentials`, `agent_owner_claims`, and
-`agent_owner_x_claim_challenges`, and `agent_proposals`
+`agent_owner_x_claim_challenges`, `agent_proposals`,
+`khala_acceptance_jobs`, and `khala_acceptance_verdicts`
 (`apps/openagents.com/workers/api/src/agent-runtime-remainder-store.ts`,
 `event-ledger.ts`, `agent-registration.ts`, `agent-owner-claim-routes.ts`,
-`agent-proposal-routes.ts`):
+`agent-proposal-routes.ts`, `inference/acceptance-job-queue-store.ts`,
+`inference/acceptance-dispatch.ts`):
 D1 remains authority, and Postgres mirror failures log
 `khala_sync_agent_runtime_remainder_dual_write_failed` without blocking
 event-ledger ingest, handled-state updates, registration, credential touch,
 OpenAuth credential linking, credential reissue, owner-claim approval, X
-claim verification, proposal submission, or proposal transition. Runtime
-mirrors for acceptance job/verdict rows are still open on
+claim verification, proposal submission, proposal transition, acceptance
+job enqueue/lease/ack, or acceptance verdict backfill. Acceptance job
+mirror deletes delivered jobs when the D1 queue deletes them so the
+Postgres twin does not retain stale queue rows. Live backfill/verify and
+read-back evidence remain open on
 [#8334](https://github.com/OpenAgentsInc/openagents/issues/8334);
 destructive D1 retirement is deferred to KS-8.19
 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330), not a

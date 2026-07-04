@@ -38,7 +38,13 @@
 
 import { Effect, Schema as S } from 'effect'
 
+import {
+  makeAgentRuntimeRemainderMirrorForEnv,
+  type AgentRuntimeRemainderMirror,
+  type AgentRuntimeRemainderStoreEnv,
+} from '../agent-runtime-remainder-store'
 import { parseJsonStringArray } from '../json-boundary'
+import { openAgentsDatabase } from '../runtime'
 import { currentIsoTimestamp } from '../runtime-primitives'
 
 import type { AcceptanceSpec } from './acceptance-spec'
@@ -395,6 +401,41 @@ export const makeD1KhalaVerificationStore = (
         .run(),
     ).pipe(Effect.asVoid, Effect.orDie),
 })
+
+const mirrorAcceptanceVerdict = (
+  mirror: AgentRuntimeRemainderMirror,
+  requestId: string,
+): Effect.Effect<void> =>
+  Effect.promise(() =>
+    mirror.mirrorRowsByPk('khala_acceptance_verdicts', [requestId]),
+  )
+
+export const makeMirroredKhalaVerificationStore = (
+  d1: KhalaVerificationStore,
+  mirror: AgentRuntimeRemainderMirror | undefined,
+): KhalaVerificationStore => {
+  if (mirror === undefined) {
+    return d1
+  }
+
+  return {
+    read: requestId => d1.read(requestId),
+    upsert: record =>
+      Effect.gen(function* () {
+        yield* d1.upsert(record)
+        yield* mirrorAcceptanceVerdict(mirror, record.requestId)
+      }),
+  }
+}
+
+export const makeKhalaVerificationStoreForEnv = (
+  env: AgentRuntimeRemainderStoreEnv,
+  nowIso: () => string = currentIsoTimestamp,
+): KhalaVerificationStore =>
+  makeMirroredKhalaVerificationStore(
+    makeD1KhalaVerificationStore(openAgentsDatabase(env), nowIso),
+    makeAgentRuntimeRemainderMirrorForEnv(env),
+  )
 
 // Map a `KhalaCodeVerificationVerdict` (the verifier's output) onto a stored record.
 export const verificationRecordFromVerdict = (

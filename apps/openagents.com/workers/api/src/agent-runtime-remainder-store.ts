@@ -20,10 +20,16 @@ export type AgentRuntimeRemainderTable =
   | 'agent_owner_x_claim_challenges'
   | 'agent_proposals'
   | 'event_ledger_entries'
+  | 'khala_acceptance_jobs'
+  | 'khala_acceptance_verdicts'
 
 export type AgentRuntimeRemainderRow = Readonly<Record<string, unknown>>
 
 export type AgentRuntimeRemainderWriteStore = Readonly<{
+  deleteRowsByPk: (
+    table: AgentRuntimeRemainderTable,
+    pkValues: ReadonlyArray<string>,
+  ) => Promise<number>
   upsertRows: (
     table: AgentRuntimeRemainderTable,
     rows: ReadonlyArray<AgentRuntimeRemainderRow>,
@@ -147,6 +153,31 @@ const EVENT_LEDGER_COLUMNS = [
   'updated_at',
 ] as const
 
+const ACCEPTANCE_JOB_COLUMNS = [
+  'request_id',
+  'status',
+  'job_payload',
+  'lease_id',
+  'lease_expires_at',
+  'attempts',
+  'created_at',
+  'updated_at',
+] as const
+
+const ACCEPTANCE_VERDICT_COLUMNS = [
+  'request_id',
+  'verification',
+  'verified',
+  'executed',
+  'scalar_reward',
+  'rubric_ref',
+  'passed_checks',
+  'failed_checks',
+  'verification_receipt_ref',
+  'version',
+  'updated_at',
+] as const
+
 const TABLE_COLUMNS: Readonly<
   Record<AgentRuntimeRemainderTable, ReadonlyArray<string>>
 > = {
@@ -156,6 +187,8 @@ const TABLE_COLUMNS: Readonly<
   agent_profiles: PROFILE_COLUMNS,
   agent_proposals: PROPOSAL_COLUMNS,
   event_ledger_entries: EVENT_LEDGER_COLUMNS,
+  khala_acceptance_jobs: ACCEPTANCE_JOB_COLUMNS,
+  khala_acceptance_verdicts: ACCEPTANCE_VERDICT_COLUMNS,
 }
 
 const TABLE_PK: Readonly<Record<AgentRuntimeRemainderTable, string>> = {
@@ -165,6 +198,8 @@ const TABLE_PK: Readonly<Record<AgentRuntimeRemainderTable, string>> = {
   agent_profiles: 'user_id',
   agent_proposals: 'id',
   event_ledger_entries: 'entry_id',
+  khala_acceptance_jobs: 'request_id',
+  khala_acceptance_verdicts: 'request_id',
 }
 
 const TABLE_CONFLICT: Readonly<
@@ -176,6 +211,8 @@ const TABLE_CONFLICT: Readonly<
   agent_profiles: ['user_id'],
   agent_proposals: ['id'],
   event_ledger_entries: ['entry_id'],
+  khala_acceptance_jobs: ['request_id'],
+  khala_acceptance_verdicts: ['request_id'],
 }
 
 const normalizeValue = (value: unknown): string | number | null => {
@@ -273,6 +310,21 @@ export const makePostgresAgentRuntimeRemainderStore = (
   }
 
   return {
+    deleteRowsByPk: async (table, pkValues) => {
+      if (pkValues.length === 0) {
+        return 0
+      }
+      const pk = TABLE_PK[table]
+      const placeholders = pkValues.map((_, index) => `$${index + 1}`).join(', ')
+      return withSql(async sql => {
+        const unsafe = requireUnsafe(sql)
+        const result = await unsafe(
+          `DELETE FROM ${table} WHERE ${pk} IN (${placeholders}) RETURNING 1 AS touched`,
+          [...pkValues],
+        )
+        return result.length
+      })
+    },
     upsertRows: async (table, rows) => {
       if (rows.length === 0) {
         return 0
@@ -302,6 +354,10 @@ export const makePostgresAgentRuntimeRemainderStore = (
 }
 
 export type AgentRuntimeRemainderMirror = Readonly<{
+  deleteRowsByPk?: (
+    table: AgentRuntimeRemainderTable,
+    pkValues: ReadonlyArray<string>,
+  ) => Promise<void>
   mirrorRowsByPk: (
     table: AgentRuntimeRemainderTable,
     pkValues: ReadonlyArray<string>,
@@ -336,6 +392,13 @@ export const makeAgentRuntimeRemainderMirror = (
   }
 
   return {
+    deleteRowsByPk: (table, pkValues) =>
+      guarded(`delete:${table}`, pkValues, async () => {
+        if (pkValues.length === 0) {
+          return
+        }
+        await deps.postgres.deleteRowsByPk(table, pkValues)
+      }),
     mirrorRowsByPk: (table, pkValues) =>
       guarded(`mirror:${table}`, pkValues, async () => {
         if (pkValues.length === 0) {
