@@ -21,6 +21,7 @@ const routeBudgets = [
   { path: '/clients-preview', marker: 'Autopilot control surface' },
   { path: '/components', marker: 'Component library' },
   { path: '/code/download', marker: 'Install paths, with the Codex requirement kept visible' },
+  { path: '/download', marker: 'Download Autopilot for Mac' },
   { path: '/autopilot/legal', marker: 'For legal teams' },
   { path: '/gym', marker: 'OpenAgents Gym' },
   { path: '/login', marker: 'Log in to OpenAgents' },

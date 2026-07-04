@@ -152,6 +152,20 @@ business scorekeeper route.
   `issue:8105`, `roadmap:BF-7.1`, and the excluded private fields.
 - The route test keeps customer emails and phone-like private values absent.
 
+## Landed Slice 10: Download
+
+The Start staging app now owns `/download` as the Autopilot Desktop download
+page, distinct from `/code/download` for Khala Code.
+
+- `/download` preserves `data-route="download"` and the signed DMG CTA
+  `data-cta="download-autopilot"`.
+- The current signed asset remains
+  `AutopilotDesktop-1.0.0-rc.3-macos-arm64.dmg`, with the one-click
+  auto-onboarding gate still false.
+- Platform honesty remains visible for macOS Apple Silicon, macOS Intel,
+  Windows, and Linux.
+- The Pylon CLI alternative remains visible as `npx @openagentsinc/pylon`.
+
 ## Boundary
 
 This is not the final TS-6 closure. The live `openagents.com` Worker still

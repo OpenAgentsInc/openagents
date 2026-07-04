@@ -14,6 +14,7 @@ import { Route as RunRouteImport } from './routes/run'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as KhalaRouteImport } from './routes/khala'
 import { Route as GymRouteImport } from './routes/gym'
+import { Route as DownloadRouteImport } from './routes/download'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as ComponentsRouteImport } from './routes/components'
 import { Route as ClientsPreviewRouteImport } from './routes/clients-preview'
@@ -54,6 +55,11 @@ const KhalaRoute = KhalaRouteImport.update({
 const GymRoute = GymRouteImport.update({
   id: '/gym',
   path: '/gym',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DownloadRoute = DownloadRouteImport.update({
+  id: '/download',
+  path: '/download',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DocsRoute = DocsRouteImport.update({
@@ -146,6 +152,7 @@ export interface FileRoutesByFullPath {
   '/clients-preview': typeof ClientsPreviewRoute
   '/components': typeof ComponentsRouteWithChildren
   '/docs': typeof DocsRouteWithChildren
+  '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
   '/khala': typeof KhalaRouteWithChildren
   '/login': typeof LoginRoute
@@ -169,6 +176,7 @@ export interface FileRoutesByTo {
   '/clients-preview': typeof ClientsPreviewRoute
   '/components': typeof ComponentsRouteWithChildren
   '/docs': typeof DocsRouteWithChildren
+  '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
   '/khala': typeof KhalaRouteWithChildren
   '/login': typeof LoginRoute
@@ -193,6 +201,7 @@ export interface FileRoutesById {
   '/clients-preview': typeof ClientsPreviewRoute
   '/components': typeof ComponentsRouteWithChildren
   '/docs': typeof DocsRouteWithChildren
+  '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
   '/khala': typeof KhalaRouteWithChildren
   '/login': typeof LoginRoute
@@ -218,6 +227,7 @@ export interface FileRouteTypes {
     | '/clients-preview'
     | '/components'
     | '/docs'
+    | '/download'
     | '/gym'
     | '/khala'
     | '/login'
@@ -241,6 +251,7 @@ export interface FileRouteTypes {
     | '/clients-preview'
     | '/components'
     | '/docs'
+    | '/download'
     | '/gym'
     | '/khala'
     | '/login'
@@ -264,6 +275,7 @@ export interface FileRouteTypes {
     | '/clients-preview'
     | '/components'
     | '/docs'
+    | '/download'
     | '/gym'
     | '/khala'
     | '/login'
@@ -288,6 +300,7 @@ export interface RootRouteChildren {
   ClientsPreviewRoute: typeof ClientsPreviewRoute
   ComponentsRoute: typeof ComponentsRouteWithChildren
   DocsRoute: typeof DocsRouteWithChildren
+  DownloadRoute: typeof DownloadRoute
   GymRoute: typeof GymRoute
   KhalaRoute: typeof KhalaRouteWithChildren
   LoginRoute: typeof LoginRoute
@@ -334,6 +347,13 @@ declare module '@tanstack/react-router' {
       path: '/gym'
       fullPath: '/gym'
       preLoaderRoute: typeof GymRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/download': {
+      id: '/download'
+      path: '/download'
+      fullPath: '/download'
+      preLoaderRoute: typeof DownloadRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/docs': {
@@ -513,6 +533,7 @@ const rootRouteChildren: RootRouteChildren = {
   ClientsPreviewRoute: ClientsPreviewRoute,
   ComponentsRoute: ComponentsRouteWithChildren,
   DocsRoute: DocsRouteWithChildren,
+  DownloadRoute: DownloadRoute,
   GymRoute: GymRoute,
   KhalaRoute: KhalaRouteWithChildren,
   LoginRoute: LoginRoute,
