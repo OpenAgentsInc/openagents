@@ -4469,6 +4469,255 @@ const requestSchemas = (): JsonSchema => ({
       },
     },
   },
+  KhalaCodeOutsideUserRunHarnessReadiness: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['codexCli', 'codexAuth', 'pylon'],
+    description:
+      'Bounded public-safe Khala Code harness readiness states. This shape contains no binary paths, home paths, prompts, logs, tokens, account identifiers, or machine identifiers.',
+    properties: {
+      codexCli: {
+        type: 'string',
+        enum: ['ready', 'missing', 'unknown'],
+      },
+      codexAuth: {
+        type: 'string',
+        enum: ['ready', 'credentials_missing', 'invalid', 'error', 'unknown'],
+      },
+      pylon: {
+        type: 'string',
+        enum: ['ready', 'unavailable', 'not_configured', 'unknown'],
+      },
+    },
+  },
+  KhalaCodeOutsideUserRunIntakeRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'schemaVersion',
+      'consent',
+      'appVersion',
+      'platform',
+      'arch',
+      'distributionChannel',
+      'harnessReadiness',
+    ],
+    description:
+      'Explicit user-action Khala Code outside-user run evidence intake. The caller may only submit app version, platform, architecture, distribution channel, bounded harness readiness, and an optional idempotency key. The route rejects obvious private-material keys and stores no paths, prompts, logs, tokens, request body blob, user id, account id, or machine id.',
+    properties: {
+      schemaVersion: {
+        type: 'string',
+        enum: ['openagents.khala_code.outside_user_run_intake.v1'],
+      },
+      consent: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['publicReceipt', 'noPrivateDataIncluded'],
+        properties: {
+          publicReceipt: { type: 'boolean', enum: [true] },
+          noPrivateDataIncluded: { type: 'boolean', enum: [true] },
+        },
+      },
+      appVersion: { type: 'string', minLength: 1, maxLength: 80 },
+      platform: {
+        type: 'string',
+        enum: ['darwin', 'linux', 'win32', 'other'],
+      },
+      arch: { type: 'string', enum: ['arm64', 'x64', 'other'] },
+      distributionChannel: {
+        type: 'string',
+        enum: ['desktop_dmg', 'npm_cli', 'source_build', 'unknown'],
+      },
+      harnessReadiness: {
+        $ref: '#/components/schemas/KhalaCodeOutsideUserRunHarnessReadiness',
+      },
+      idempotencyKey: {
+        type: 'string',
+        pattern: '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$',
+      },
+    },
+  },
+  PublicKhalaCodeOutsideUserRunReceipt: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'schemaVersion',
+      'product',
+      'promiseId',
+      'receiptRef',
+      'receiptUrl',
+      'generatedAt',
+      'submittedAt',
+      'appVersion',
+      'platform',
+      'arch',
+      'distributionChannel',
+      'harnessReadiness',
+      'publicSafety',
+      'evidenceRefs',
+      'caveatRefs',
+      'sourceRefs',
+      'staleness',
+    ],
+    description:
+      'Dereferenceable public-safe Khala Code outside-user run receipt. It is citable registry evidence that a user explicitly posted a bounded run-readiness receipt; it grants no public installer, billing, capture, payout, settlement, outside-user-count, or promise-green authority.',
+    properties: {
+      schemaVersion: {
+        type: 'string',
+        enum: ['openagents.khala_code.outside_user_run_receipt.v1'],
+      },
+      product: { type: 'string', enum: ['khala-code'] },
+      promiseId: {
+        type: 'string',
+        enum: ['khala_code.desktop_codex_wrapper.v1'],
+      },
+      receiptRef: { type: 'string' },
+      receiptUrl: { type: 'string' },
+      generatedAt: { type: 'string', format: 'date-time' },
+      submittedAt: { type: 'string', format: 'date-time' },
+      appVersion: { type: 'string' },
+      platform: {
+        type: 'string',
+        enum: ['darwin', 'linux', 'win32', 'other'],
+      },
+      arch: { type: 'string', enum: ['arm64', 'x64', 'other'] },
+      distributionChannel: {
+        type: 'string',
+        enum: ['desktop_dmg', 'npm_cli', 'source_build', 'unknown'],
+      },
+      harnessReadiness: {
+        $ref: '#/components/schemas/KhalaCodeOutsideUserRunHarnessReadiness',
+      },
+      publicSafety: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'userActionRequired',
+          'noPhoneHome',
+          'noPaths',
+          'noPrompts',
+          'noTokens',
+          'noLogs',
+        ],
+        properties: {
+          userActionRequired: { type: 'boolean', enum: [true] },
+          noPhoneHome: { type: 'boolean', enum: [true] },
+          noPaths: { type: 'boolean', enum: [true] },
+          noPrompts: { type: 'boolean', enum: [true] },
+          noTokens: { type: 'boolean', enum: [true] },
+          noLogs: { type: 'boolean', enum: [true] },
+        },
+      },
+      evidenceRefs: { type: 'array', items: { type: 'string' } },
+      caveatRefs: { type: 'array', items: { type: 'string' } },
+      sourceRefs: { type: 'array', items: { type: 'string' } },
+      staleness: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'composition',
+          'contractVersion',
+          'maxStalenessSeconds',
+          'rebuildsOn',
+        ],
+        description:
+          'Shared public-projection staleness contract (live_at_read over khala_code_outside_user_run_receipts).',
+        properties: {
+          composition: { type: 'string', enum: ['live_at_read'] },
+          contractVersion: {
+            type: 'string',
+            enum: ['projection_staleness.v1'],
+          },
+          maxStalenessSeconds: { type: 'integer', enum: [0] },
+          rebuildsOn: {
+            type: 'array',
+            items: {
+              type: 'string',
+              enum: ['khala_code_outside_user_run_receipts'],
+            },
+          },
+        },
+      },
+    },
+  },
+  PublicKhalaCodeOutsideUserRunReceiptEnvelope: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['generatedAt', 'staleness', 'receipt'],
+    description:
+      'Public-safe Khala Code outside-user run receipt read envelope with generatedAt and a declared live_at_read staleness contract.',
+    properties: {
+      generatedAt: { type: 'string', format: 'date-time' },
+      staleness: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'composition',
+          'contractVersion',
+          'maxStalenessSeconds',
+          'rebuildsOn',
+        ],
+        properties: {
+          composition: { type: 'string', enum: ['live_at_read'] },
+          contractVersion: {
+            type: 'string',
+            enum: ['projection_staleness.v1'],
+          },
+          maxStalenessSeconds: { type: 'integer', enum: [0] },
+          rebuildsOn: {
+            type: 'array',
+            items: {
+              type: 'string',
+              enum: ['khala_code_outside_user_run_receipts'],
+            },
+          },
+        },
+      },
+      receipt: {
+        $ref: '#/components/schemas/PublicKhalaCodeOutsideUserRunReceipt',
+      },
+    },
+  },
+  PublicKhalaCodeOutsideUserRunReceiptIntake: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['ok', 'idempotent', 'generatedAt', 'staleness', 'receipt'],
+    description:
+      'Public-safe Khala Code outside-user run receipt intake envelope with generatedAt and a declared live_at_read staleness contract.',
+    properties: {
+      ok: { type: 'boolean', enum: [true] },
+      idempotent: { type: 'boolean' },
+      generatedAt: { type: 'string', format: 'date-time' },
+      staleness: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'composition',
+          'contractVersion',
+          'maxStalenessSeconds',
+          'rebuildsOn',
+        ],
+        properties: {
+          composition: { type: 'string', enum: ['live_at_read'] },
+          contractVersion: {
+            type: 'string',
+            enum: ['projection_staleness.v1'],
+          },
+          maxStalenessSeconds: { type: 'integer', enum: [0] },
+          rebuildsOn: {
+            type: 'array',
+            items: {
+              type: 'string',
+              enum: ['khala_code_outside_user_run_receipts'],
+            },
+          },
+        },
+      },
+      receipt: {
+        $ref: '#/components/schemas/PublicKhalaCodeOutsideUserRunReceipt',
+      },
+    },
+  },
   FreeApiKeyMintResponse: {
     type: 'object',
     additionalProperties: false,
@@ -6079,6 +6328,53 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Khala Code download counts.',
           '#/components/schemas/PublicKhalaCodeDownloadCounts',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/khala-code/outside-user-runs': {
+    post: operation({
+      operationId: 'createPublicKhalaCodeOutsideUserRunReceipt',
+      summary: 'Post a public-safe Khala Code outside-user run receipt',
+      description:
+        'Creates an opt-in Khala Code outside-user run receipt only when the user explicitly submits this request. It records app version, platform, architecture, distribution channel, and bounded harness readiness; it rejects obvious private-material keys and stores no paths, prompts, logs, tokens, account identifiers, machine identifiers, or request body blobs. No phone-home is implied or performed by this route, and the receipt grants no public installer, billing, capture, payout, settlement, outside-user-count, or promise-green authority.',
+      tags: ['Public Proof', 'Agents'],
+      security: publicRead,
+      responses: {
+        '201': okJson(
+          'Khala Code outside-user run receipt recorded.',
+          '#/components/schemas/PublicKhalaCodeOutsideUserRunReceiptIntake',
+        ),
+        '200': okJson(
+          'Khala Code outside-user run receipt idempotently replayed.',
+          '#/components/schemas/PublicKhalaCodeOutsideUserRunReceiptIntake',
+        ),
+        ...errorResponses(),
+      },
+      requestBody: jsonContent(
+        '#/components/schemas/KhalaCodeOutsideUserRunIntakeRequest',
+      ),
+    }),
+  },
+  '/api/public/khala-code/outside-user-runs/{receiptRef}': {
+    get: operation({
+      operationId: 'getPublicKhalaCodeOutsideUserRunReceipt',
+      summary: 'Read a Khala Code outside-user run receipt',
+      description:
+        'Dereferences one public-safe Khala Code outside-user run receipt by receiptRef. The receipt is registry-citable evidence of an explicit user-posted run-readiness report and includes generatedAt plus a live_at_read staleness contract. It contains no raw paths, prompts, logs, tokens, account identifiers, machine identifiers, or request body blob, and grants no public installer, billing, capture, payout, settlement, outside-user-count, or promise-green authority.',
+      tags: ['Public Proof', 'Agents'],
+      security: publicRead,
+      parameters: [
+        pathParam(
+          'receiptRef',
+          'Public Khala Code outside-user run receipt ref.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Khala Code outside-user run receipt.',
+          '#/components/schemas/PublicKhalaCodeOutsideUserRunReceiptEnvelope',
         ),
         ...errorResponses(),
       },

@@ -27,6 +27,8 @@ const approvedExactRoutePaths = [
   '/api/public/free-tier-data-sharing',
   '/api/public/khala-code/plans',
   '/api/public/khala-code/download-counts',
+  '/api/public/khala-code/outside-user-runs',
+  '/api/public/khala-code/outside-user-runs/:receiptRef',
   '/api/public/product-promises/transitions',
   '/api/public/product-promises/api.hosted_gemini.v1/readiness',
   '/api/public/product-promises/audit',

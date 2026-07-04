@@ -234,22 +234,38 @@ describe('public product promises document', () => {
         'apps/openagents.com/workers/api/src/khala-code-download-counts-routes.ts',
         'apps/openagents.com/workers/api/src/khala-code-download-counts-routes.test.ts',
         'apps/openagents.com/workers/api/migrations/0288_khala_code_download_events.sql',
+        'apps/openagents.com/workers/api/src/khala-code-outside-user-run-routes.ts',
+        'apps/openagents.com/workers/api/src/khala-code-outside-user-run-routes.test.ts',
+        'apps/openagents.com/workers/api/migrations/0289_khala_code_outside_user_run_receipts.sql',
+        'clients/khala-code-desktop/src/ui/run-evidence-panel.ts',
+        'docs/khala-code/2026-07-04-outside-user-run-receipt-template.md',
         'route:/code/download',
         'route:/api/public/khala-code/download-counts',
+        'route:/api/public/khala-code/outside-user-runs',
+        'route:/api/public/khala-code/outside-user-runs/:receiptRef',
       ]),
     })
     expect(khalaCode?.safeCopy).toContain('/code/download')
+    expect(khalaCode?.safeCopy).toContain('Run evidence action')
+    expect(khalaCode?.safeCopy).toContain('no paths, prompts, tokens, logs')
     expect(khalaCode?.safeCopy).toContain('pending public artifact')
     expect(khalaCode?.verification).toContain(
       'exact-row-or-empty public counters',
     )
+    expect(khalaCode?.verification).toContain(
+      'outside-user run receipt tests',
+    )
     expect(khalaCode?.authorityBoundary).toContain(
       'exact rows from khala_code_download_events',
+    )
+    expect(khalaCode?.authorityBoundary).toContain(
+      'Outside-user run receipts are opt-in evidence only',
     )
     expect(khalaCode?.unsafeCopy).toContain(
       'Do not claim Khala Code is downloadable',
     )
-    expect(decoded.notes.join('\n')).toContain('Registry 2026-07-04.1')
+    expect(decoded.notes.join('\n')).toContain('Registry 2026-07-04.2')
+    expect(decoded.notes.join('\n')).toContain('No phone-home')
     expect(decoded.notes.join('\n')).toContain('flips NO promise state')
   })
 

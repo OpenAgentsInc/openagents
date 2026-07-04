@@ -1,5 +1,17 @@
 # Promise Registry
 
+> Registry `2026-07-04.2` is the RL-3 Khala Code outside-user run
+> evidence-intake pass (#8247) and flips NO promise green (green stays exactly
+> 34). `khala_code.desktop_codex_wrapper.v1` remains yellow: desktop Settings
+> now offers an explicit opt-in Run evidence action, `POST
+> /api/public/khala-code/outside-user-runs` records only app version, platform,
+> architecture, distribution channel, and bounded Codex/Pylon readiness, and
+> `GET /api/public/khala-code/outside-user-runs/{receiptRef}` dereferences the
+> public-safe receipt with `generatedAt` plus `live_at_read` staleness. This
+> creates no phone-home, paths, prompts, tokens, logs, account ids, machine ids,
+> signed DMG, real outside-user row, free/paid economics, capture, payout,
+> settlement, installer availability, or promise-green claim.
+
 > Registry `2026-07-04.1` is the RL-2 Khala Code public install-truth pass
 > (#8246) and flips NO promise green (green stays exactly 34).
 > `khala_code.desktop_codex_wrapper.v1` remains yellow: `/code/download`

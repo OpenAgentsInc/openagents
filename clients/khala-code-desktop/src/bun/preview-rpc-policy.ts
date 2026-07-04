@@ -46,6 +46,7 @@ export const mutatingPreviewRpcMethods = new Set<KhalaCodeDesktopRpcMethodName>(
   "fleetWorkerControl",
   "forumRequest",
   "harnessSettingWrite",
+  "khalaCodeOutsideUserRunReport",
   "khalaCodePlanPurchase",
   "modelRoleRegistryWrite",
   "openExternalUrl",

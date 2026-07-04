@@ -4783,6 +4783,39 @@ button {
   cursor: not-allowed;
 }
 
+/* Khala Code outside-user run evidence: explicit, public-safe receipt post. */
+.khala-run-evidence-subtitle,
+.khala-run-evidence-copy,
+.khala-run-evidence-note,
+.khala-run-evidence-receipt {
+  margin: 0;
+  color: color-mix(in srgb, var(--oa-color-component-text) 62%, transparent);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.khala-run-evidence-copy {
+  color: color-mix(in srgb, var(--oa-color-component-text) 72%, transparent);
+}
+.khala-run-evidence-submit {
+  justify-self: start;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--oa-color-component-text);
+  background: var(--oa-color-component-surface);
+  border: 1px solid var(--oa-color-component-border);
+  border-radius: 0.4rem;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+}
+.khala-run-evidence-submit[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.khala-run-evidence-receipt {
+  overflow-wrap: anywhere;
+  color: color-mix(in srgb, var(--oa-color-khala-success) 84%, var(--oa-color-component-text));
+}
+
 /* Tool cards: compact auto-scrolling live feed; click the header to expand. */
 .tool-card-header--toggle {
   cursor: pointer;

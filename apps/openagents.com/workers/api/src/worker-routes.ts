@@ -83,6 +83,7 @@ type WorkerRouteDependencies = Readonly<{
   routePublicCardCreditSpendReceiptRequest: OptionalEffectRoute
   routePublicCloudPrimitiveReceiptRequest: OptionalEffectRoute
   routePublicInferenceReceiptRequest: OptionalEffectRoute
+  routePublicKhalaCodeOutsideUserRunReceiptRequest: OptionalEffectRoute
   routePublicNip90MarketReceiptRequest: OptionalEffectRoute
   routePublicPartnerPayoutReceiptRequest: OptionalEffectRoute
   routePublicSiteReferralPayoutReceiptRequest: OptionalEffectRoute
@@ -600,6 +601,17 @@ export const makeWorkerRouteRequest =
 
       if (publicInferenceReceiptResponse !== undefined) {
         return yield* publicInferenceReceiptResponse
+      }
+
+      const publicKhalaCodeOutsideUserRunReceiptResponse =
+        dependencies.routePublicKhalaCodeOutsideUserRunReceiptRequest(
+          request,
+          env,
+          ctx,
+        )
+
+      if (publicKhalaCodeOutsideUserRunReceiptResponse !== undefined) {
+        return yield* publicKhalaCodeOutsideUserRunReceiptResponse
       }
 
       const publicCloudPrimitiveReceiptResponse =

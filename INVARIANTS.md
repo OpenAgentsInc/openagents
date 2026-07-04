@@ -122,6 +122,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   exists. Public download counters must be exact grouped
   `khala_code_download_events` rows or an explicit empty response with blocker
   refs; page views, feed presence, or planned artifacts are not install counts.
+- Khala Code outside-user run evidence is opt-in only. The desktop may offer a
+  "post run receipt" control, but it must not phone home or submit evidence on
+  startup, refresh, harness inspection, or page view. Public run receipts may
+  contain only app version, platform, architecture, distribution channel, and
+  bounded harness readiness; they must not store or project paths, prompts,
+  logs, tokens, account identifiers, machine identifiers, request body blobs, or
+  user identity. A run receipt is evidence only: it does not replace the signed
+  DMG/notary/update-feed receipt set and does not by itself flip a product
+  promise green.
 
 ## Background Agent Definition Tool Authority
 

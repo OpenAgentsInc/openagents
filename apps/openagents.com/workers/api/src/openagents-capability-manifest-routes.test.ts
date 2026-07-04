@@ -182,6 +182,20 @@ describe('OpenAgents capability manifest route', () => {
         }),
         expect.objectContaining({
           auth: 'public',
+          href: 'https://openagents.com/api/public/khala-code/outside-user-runs',
+          id: 'public_khala_code_outside_user_run_intake',
+          method: 'POST',
+          description: expect.stringContaining('Zero telemetry by default'),
+        }),
+        expect.objectContaining({
+          auth: 'public',
+          href: 'https://openagents.com/api/public/khala-code/outside-user-runs/{receiptRef}',
+          id: 'public_khala_code_outside_user_run_receipt',
+          method: 'GET',
+          description: expect.stringContaining('live_at_read'),
+        }),
+        expect.objectContaining({
+          auth: 'public',
           href: 'https://openagents.com/api/public/tassadar-run-summary',
           id: 'public_tassadar_run_summary',
           description: expect.stringContaining('real-vs-simulation'),

@@ -230,6 +230,9 @@ export type KhalaCodeDesktopPlanStatusPlan = typeof RpcKhalaCodePlanStatusPlan.T
 export type KhalaCodeDesktopPlanStatusResult = typeof RpcKhalaCodePlanStatusResult.Type
 export type KhalaCodeDesktopPlanPurchaseRequest = typeof RpcKhalaCodePlanPurchaseRequest.Type
 export type KhalaCodeDesktopPlanPurchaseResult = typeof RpcKhalaCodePlanPurchaseResult.Type
+export type KhalaCodeDesktopOutsideUserRunReportRequest = typeof RpcKhalaCodeOutsideUserRunReportRequest.Type
+export type KhalaCodeDesktopOutsideUserRunReportResult = typeof RpcKhalaCodeOutsideUserRunReportResult.Type
+export type KhalaCodeDesktopOutsideUserRunReceipt = typeof RpcKhalaCodeOutsideUserRunReceipt.Type
 export type KhalaCodeDesktopRemoveAccountResult = typeof RpcRemoveAccountResult.Type
 export type KhalaCodeDesktopConnectStart = typeof RpcConnectStart.Type
 
@@ -1878,12 +1881,67 @@ const RpcKhalaCodePlanPurchaseResult = S.Union([
     ]),
   }),
 ])
+const RpcKhalaCodeOutsideUserRunHarnessReadiness = S.Struct({
+  codexCli: S.Literals(["ready", "missing", "unknown"]),
+  codexAuth: S.Literals(["ready", "credentials_missing", "invalid", "error", "unknown"]),
+  pylon: S.Literals(["ready", "unavailable", "not_configured", "unknown"]),
+})
+const RpcKhalaCodeOutsideUserRunStaleness = S.Struct({
+  composition: S.Literal("live_at_read"),
+  contractVersion: S.String,
+  maxStalenessSeconds: S.Number,
+  rebuildsOn: RpcStringArray,
+})
+const RpcKhalaCodeOutsideUserRunReceipt = S.Struct({
+  schemaVersion: S.Literal("openagents.khala_code.outside_user_run_receipt.v1"),
+  product: S.Literal("khala-code"),
+  promiseId: S.Literal("khala_code.desktop_codex_wrapper.v1"),
+  receiptRef: S.String,
+  receiptUrl: S.String,
+  generatedAt: S.String,
+  submittedAt: S.String,
+  appVersion: S.String,
+  platform: S.Literals(["darwin", "linux", "win32", "other"]),
+  arch: S.Literals(["arm64", "x64", "other"]),
+  distributionChannel: S.Literals(["desktop_dmg", "npm_cli", "source_build", "unknown"]),
+  harnessReadiness: RpcKhalaCodeOutsideUserRunHarnessReadiness,
+  publicSafety: S.Struct({
+    userActionRequired: S.Literal(true),
+    noPhoneHome: S.Literal(true),
+    noPaths: S.Literal(true),
+    noPrompts: S.Literal(true),
+    noTokens: S.Literal(true),
+    noLogs: S.Literal(true),
+  }),
+  evidenceRefs: RpcStringArray,
+  caveatRefs: RpcStringArray,
+  sourceRefs: RpcStringArray,
+  staleness: RpcKhalaCodeOutsideUserRunStaleness,
+})
+const RpcKhalaCodeOutsideUserRunReportRequest = S.Struct({
+  idempotencyKey: S.optional(S.String),
+})
+const RpcKhalaCodeOutsideUserRunReportResult = S.Union([
+  S.Struct({
+    ok: S.Literal(true),
+    idempotent: S.Boolean,
+    generatedAt: S.String,
+    staleness: RpcKhalaCodeOutsideUserRunStaleness,
+    receipt: RpcKhalaCodeOutsideUserRunReceipt,
+  }),
+  S.Struct({
+    ok: S.Literal(false),
+    error: S.Literal("outside_user_run_receipt_unavailable"),
+  }),
+])
 
 // Exported for the bun-side RPC handlers so wire payloads are schema-validated
 // before they are surfaced as typed plan results.
 export const KhalaCodeDesktopPlanCatalogSchema = RpcKhalaCodePlanCatalog
 export const KhalaCodeDesktopPlanStatusPlanSchema = RpcKhalaCodePlanStatusPlan
 export const KhalaCodeDesktopPlanPurchaseSuccessSchema = RpcKhalaCodePlanPurchaseSuccess
+export const KhalaCodeDesktopOutsideUserRunReportResultSchema =
+  RpcKhalaCodeOutsideUserRunReportResult
 
 const RpcConnectStart = S.Struct({
   ok: S.Boolean,
@@ -1953,6 +2011,7 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   khalaCodePlanCatalog: { parameters: noParams(), result: RpcKhalaCodePlanCatalogResult },
   khalaCodePlanStatus: { parameters: noParams(), result: RpcKhalaCodePlanStatusResult },
   khalaCodePlanPurchase: { parameters: [optionalParam(RpcKhalaCodePlanPurchaseRequest)], result: RpcKhalaCodePlanPurchaseResult },
+  khalaCodeOutsideUserRunReport: { parameters: [optionalParam(RpcKhalaCodeOutsideUserRunReportRequest)], result: RpcKhalaCodeOutsideUserRunReportResult },
   claudeApprovalPending: { parameters: noParams(), result: RpcClaudeApprovalPendingResult },
   claudeApprovalRespond: { parameters: [param(RpcClaudeApprovalRespondRequest)], result: RpcClaudeApprovalRespondResult },
   claudeSettingsRead: { parameters: noParams(), result: RpcClaudeSettingsProjection },
@@ -2113,6 +2172,7 @@ export type KhalaCodeDesktopRPCSchema = {
     khalaCodePlanCatalog(): Promise<KhalaCodeDesktopPlanCatalogResult>
     khalaCodePlanStatus(): Promise<KhalaCodeDesktopPlanStatusResult>
     khalaCodePlanPurchase(request?: KhalaCodeDesktopPlanPurchaseRequest): Promise<KhalaCodeDesktopPlanPurchaseResult>
+    khalaCodeOutsideUserRunReport(request?: KhalaCodeDesktopOutsideUserRunReportRequest): Promise<KhalaCodeDesktopOutsideUserRunReportResult>
     claudeApprovalPending(): Promise<KhalaCodeDesktopClaudeApprovalPendingResult>
     claudeApprovalRespond(request: KhalaCodeDesktopClaudeApprovalRespondRequest): Promise<KhalaCodeDesktopClaudeApprovalRespondResult>
     claudeSettingsRead(): Promise<KhalaCodeDesktopClaudeSettingsReadResult>

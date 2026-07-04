@@ -3838,6 +3838,7 @@ describe("khala code plan RPC handlers", () => {
   }
 
   const planHandlers = (input: {
+    readonly codexHarnessStatus?: Parameters<typeof createKhalaCodeDesktopRpcRequestHandlers>[0]["codexHarnessStatus"]
     readonly env?: Record<string, string>
     readonly fetch: typeof fetch
   }) =>
@@ -3845,6 +3846,9 @@ describe("khala code plan RPC handlers", () => {
       appleFmReadiness: () => {
         throw new Error("not used")
       },
+      ...(input.codexHarnessStatus === undefined
+        ? {}
+        : { codexHarnessStatus: input.codexHarnessStatus }),
       env: input.env ?? {},
       fetch: input.fetch,
       onDeviceDeciderStatus: () => {
@@ -4038,6 +4042,143 @@ describe("khala code plan RPC handlers", () => {
       planId: "khala_code.plan.paid.v1",
       receiptRef: "receipt.khala_code.paid.1",
       receiptUrl: "https://openagents.com/receipts/receipt.khala_code.paid.1",
+    })
+  })
+
+  test("khalaCodeOutsideUserRunReport posts a public-safe body without auth", async () => {
+    const { fetch: fetchStub, requests } = planFetchStub(request => {
+      const body = JSON.parse(request.body ?? "{}") as {
+        appVersion: string
+        arch: string
+        platform: string
+        distributionChannel: string
+        harnessReadiness: Record<string, string>
+        idempotencyKey: string
+      }
+      expect(request.headers.authorization).toBeUndefined()
+      expect(request.headers["content-type"]).toBe("application/json")
+      expect(JSON.stringify(body)).not.toContain("/Users/alice")
+      expect(JSON.stringify(body)).not.toContain("auth.json")
+      expect(JSON.stringify(body)).not.toContain("secret")
+      expect(body).toMatchObject({
+        schemaVersion: "openagents.khala_code.outside_user_run_intake.v1",
+        consent: {
+          publicReceipt: true,
+          noPrivateDataIncluded: true,
+        },
+        appVersion: "0.0.1",
+        distributionChannel: "source_build",
+        harnessReadiness: {
+          codexCli: "ready",
+          codexAuth: "ready",
+        },
+        idempotencyKey: "run-1",
+      })
+
+      return json(201, {
+        ok: true,
+        idempotent: false,
+        generatedAt: "2026-07-04T13:00:00.000Z",
+        staleness: {
+          composition: "live_at_read",
+          contractVersion: "projection_staleness.v1",
+          maxStalenessSeconds: 0,
+          rebuildsOn: ["khala_code_outside_user_run_receipts"],
+        },
+        receipt: {
+          schemaVersion: "openagents.khala_code.outside_user_run_receipt.v1",
+          product: "khala-code",
+          promiseId: "khala_code.desktop_codex_wrapper.v1",
+          receiptRef: "receipt.khala_code.outside_user_run.test",
+          receiptUrl: "/api/public/khala-code/outside-user-runs/receipt.khala_code.outside_user_run.test",
+          generatedAt: "2026-07-04T13:00:00.000Z",
+          submittedAt: "2026-07-04T13:00:00.000Z",
+          appVersion: body.appVersion,
+          platform: body.platform,
+          arch: body.arch,
+          distributionChannel: body.distributionChannel,
+          harnessReadiness: body.harnessReadiness,
+          publicSafety: {
+            userActionRequired: true,
+            noPhoneHome: true,
+            noPaths: true,
+            noPrompts: true,
+            noTokens: true,
+            noLogs: true,
+          },
+          evidenceRefs: [],
+          caveatRefs: [],
+          sourceRefs: [],
+          staleness: {
+            composition: "live_at_read",
+            contractVersion: "projection_staleness.v1",
+            maxStalenessSeconds: 0,
+            rebuildsOn: ["khala_code_outside_user_run_receipts"],
+          },
+        },
+      })
+    })
+    const handlers = planHandlers({
+      fetch: fetchStub,
+      codexHarnessStatus: () => ({
+        ok: true,
+        app: "Khala Code Desktop",
+        available: true,
+        capability: "codex_harness",
+        observedAt: "2026-07-04T13:00:00.000Z",
+        reason: "ready",
+        status: "ready",
+        binary: {
+          command: "codex",
+          source: "PATH",
+          available: true,
+          version: "1.0.0",
+          error: null,
+        },
+        home: {
+          path: "/Users/alice/.codex",
+          source: "default:~/.codex",
+          role: "main_user_codex_home",
+          authPath: "/Users/alice/.codex/auth.json",
+          fleetIsolation: "fleet_accounts_use_pylon_isolated_homes",
+        },
+        auth: {
+          state: "ready",
+          blockerRefs: [],
+          accessTokenPresent: true,
+          accountIdPresent: true,
+          refreshTokenPresent: true,
+        },
+        signIn: {
+          required: false,
+          command: "codex login",
+          warning: "",
+        },
+      }),
+    })
+
+    const result = await handlers.khalaCodeOutsideUserRunReport({ idempotencyKey: "run-1" })
+
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.url).toBe("https://openagents.com/api/public/khala-code/outside-user-runs")
+    expect(requests[0]?.method).toBe("POST")
+    expect(result).toMatchObject({
+      ok: true,
+      idempotent: false,
+      generatedAt: "2026-07-04T13:00:00.000Z",
+      staleness: {
+        composition: "live_at_read",
+        maxStalenessSeconds: 0,
+      },
+      receipt: {
+        receiptRef: "receipt.khala_code.outside_user_run.test",
+        publicSafety: {
+          noPhoneHome: true,
+          noPaths: true,
+          noPrompts: true,
+          noTokens: true,
+        },
+      },
     })
   })
 })

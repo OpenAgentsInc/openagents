@@ -513,6 +513,31 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/inference/khala-code-plan-catalog.test.ts`,
   `workers/api/src/inference/khala-code-plan-routes.test.ts`.
 
+## Khala Code Outside-User Run Receipts (opt-in only)
+
+- The Khala Code outside-user run evidence intake
+  (`workers/api/src/khala-code-outside-user-run-routes.ts`,
+  `khala_code_outside_user_run_receipts`, #8247) is explicit-action only. No
+  desktop startup, refresh, harness inspection, page view, or background task
+  may post to `/api/public/khala-code/outside-user-runs`; only a user-invoked
+  report action may submit.
+- The stored receipt shape is public-safe and intentionally small: app version,
+  platform, architecture, distribution channel, bounded Codex CLI/auth/Pylon
+  readiness states, receipt ref, idempotency key, and timestamps. It must not
+  store or project local paths, prompts, logs, tokens, account identifiers,
+  machine identifiers, raw request bodies, user ids, cookies, IP addresses, or
+  auth headers.
+- The public readback
+  `/api/public/khala-code/outside-user-runs/{receiptRef}` is evidence only. It
+  is registry-citable and carries `generatedAt` plus the shared live-at-read
+  staleness contract, but it grants no public installer availability,
+  outside-user count, trace capture, billing, payout, settlement, or
+  product-promise green authority. A future green flip still requires the
+  owner-signed receipt-first upgrade path.
+- Regression coverage:
+  `workers/api/src/khala-code-outside-user-run-routes.test.ts`,
+  `clients/khala-code-desktop/tests/app-shell.test.ts`.
+
 ## Captured Trace Demand-Origin Segmentation
 
 - A captured trace is auto-tagged with its DEMAND ORIGIN (#6298, migration
@@ -2499,6 +2524,14 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     with blocker refs instead of synthetic totals, and the route grants no
     public installer, outside-user, payout, settlement, or promise-green
     authority. `staleness_declared`.
+  - `GET /api/public/khala-code/outside-user-runs/{receiptRef}` — live at read
+    over `khala_code_outside_user_run_receipts`
+    (khala_code.desktop_codex_wrapper.v1, #8247) — compliant (`generatedAt`,
+    `live_at_read` contract rebuilt on the outside-user run receipt ledger).
+    Public receipts project only app version, platform, architecture,
+    distribution channel, and bounded harness readiness; no paths, prompts,
+    tokens, logs, account ids, machine ids, request body blob, billing,
+    payout, settlement, or promise-green authority. `staleness_declared`.
   - `GET /api/public/artanis/report` — live at read over tick rows rebuilt on
     closeout — compliant (`generatedAtUnixMs`, report + loop contracts, stale
     and example-fallback flags with caveat refs).

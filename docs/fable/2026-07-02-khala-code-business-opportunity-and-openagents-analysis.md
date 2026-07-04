@@ -451,6 +451,16 @@ rung a receipt:
    `khala_code_download_events` rows, or `counts: []` with blocker refs. This
    improves funnel clarity but still does not supply the missing signed DMG or
    outside-user evidence.
+
+   2026-07-04 RL-3 evidence-intake update: Khala Code now has an explicit,
+   opt-in outside-user run receipt path. Desktop Settings offers a "Run
+   evidence" action that posts only app version, platform, architecture,
+   distribution channel, and bounded Codex/Pylon readiness to
+   `POST /api/public/khala-code/outside-user-runs`; each receipt dereferences
+   at `/api/public/khala-code/outside-user-runs/{receiptRef}` with
+   `generatedAt` and the public projection staleness contract. This creates a
+   citable intake lane and outside-user template, but still does not supply a
+   real outside-user receipt row, signed DMG, or owner-signed promise upgrade.
 2. **Rehearse the flagship live.** One real message-triggered fleet run
    (the WS-17 "clean 2B day" is the maximal version: ≥2.0B exact
    tokens/day, ≥15 workers, zero duplicate PRs, 100% closeout coverage).

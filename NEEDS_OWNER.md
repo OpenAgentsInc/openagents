@@ -25,6 +25,7 @@ treated as live delivery evidence.
 
 Source issue: OpenAgentsInc/openagents#8245
 Public install-truth surface: OpenAgentsInc/openagents#8246
+Outside-user evidence intake: OpenAgentsInc/openagents#8247
 
 Khala Code Desktop has a buildable Electrobun app, but RL-1 is not complete
 until the release owner signs, notarizes, staples, uploads, and smoke-tests a
@@ -56,15 +57,21 @@ Current state:
   the desktop DMG marked as a pending public artifact until the receipt set
   below exists, and the counter may report only exact
   `khala_code_download_events` rows or an empty response with blocker refs.
+- `POST /api/public/khala-code/outside-user-runs` and
+  `GET /api/public/khala-code/outside-user-runs/{receiptRef}` now exist for
+  opt-in outside-user run receipts. They are evidence intake only: no
+  background phone-home, no paths/prompts/tokens/logs/account ids/machine ids,
+  and no promise-state movement until a real receipt is reviewed.
 
 NEEDS-OWNER: Provide or confirm the Developer ID/notary environment on an
 owner-controlled machine, approve the Khala Code version and release channel,
 approve the update-feed destination, run or authorize the signing/notarization
 flow, re-create/sign/notarize/staple the DMG from the stapled `.app`, upload the
-artifact, and record public-safe receipt refs for the clean-Mac smoke. The smoke
-must prove the app boots from the DMG and, when Codex is missing or unauthenticated,
-shows the honest `npm install -g @openai/codex` / `codex login` path without
-claiming Khala Code bundles or replaces Codex.
+artifact, recruit or approve at least one outside-user run receipt, and record
+public-safe receipt refs for the clean-Mac smoke. The smoke must prove the app
+boots from the DMG and, when Codex is missing or unauthenticated, shows the
+honest `npm install -g @openai/codex` / `codex login` path without claiming
+Khala Code bundles or replaces Codex.
 
 Receipt refs required before RL-1 may be called complete:
 

@@ -736,6 +736,11 @@ import {
 } from './khala-feedback-routes'
 import { handlePublicKhalaCodeDownloadCountsApi } from './khala-code-download-counts-routes'
 import {
+  handlePublicKhalaCodeOutsideUserRunsApi,
+  makeD1KhalaCodeOutsideUserRunStore,
+  makePublicKhalaCodeOutsideUserRunReceiptRoutes,
+} from './khala-code-outside-user-run-routes'
+import {
   handleOperatorKhalaTraceReview,
   makeD1KhalaTraceReviewStore,
 } from './khala-trace-review-routes'
@@ -8601,6 +8606,13 @@ const publicInferenceReceiptRoutes = makePublicInferenceReceiptRoutes<Env>({
   nowIso: currentIsoTimestamp,
 })
 
+const publicKhalaCodeOutsideUserRunReceiptRoutes =
+  makePublicKhalaCodeOutsideUserRunReceiptRoutes<Env>({
+    makeStore: env =>
+      makeD1KhalaCodeOutsideUserRunStore(openAgentsDatabase(env)),
+    nowIso: currentIsoTimestamp,
+  })
+
 const hostedGeminiPromiseReadinessRoutes =
   makeHostedGeminiPromiseReadinessRoutes<Env>({
     makeInferenceReceiptStore: env =>
@@ -10902,6 +10914,23 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handlePublicKhalaCodeDownloadCountsApi(request, {
         OPENAGENTS_DB: openAgentsDatabase(env),
       }),
+  },
+  {
+    // Khala Code outside-user run receipt intake (RL-3, #8247). Public-safe
+    // POST-only, explicit-user-action only: records app version, platform,
+    // architecture, distribution channel, and bounded harness readiness. It
+    // stores no paths, prompts, tokens, logs, user identity, or request blob.
+    path: '/api/public/khala-code/outside-user-runs',
+    handler: (request, env) =>
+      handlePublicKhalaCodeOutsideUserRunsApi(request, {
+        OPENAGENTS_DB: openAgentsDatabase(env),
+      }),
+  },
+  {
+    // Manifest-only path-param readback for RL-3 receipts. The optional route
+    // cascade below handles matching because the exact registry is literal.
+    path: '/api/public/khala-code/outside-user-runs/:receiptRef',
+    handler: () => Effect.succeed(notFound()),
   },
   {
     path: '/api/public/product-promises/transitions',
@@ -14309,6 +14338,8 @@ const routeRequest = makeWorkerRouteRequest({
     publicCardCreditSpendReceiptRoutes.routePublicCardCreditSpendReceiptRequest,
   routePublicInferenceReceiptRequest:
     publicInferenceReceiptRoutes.routePublicInferenceReceiptRequest,
+  routePublicKhalaCodeOutsideUserRunReceiptRequest:
+    publicKhalaCodeOutsideUserRunReceiptRoutes.routePublicKhalaCodeOutsideUserRunReceiptRequest,
   routePublicCloudPrimitiveReceiptRequest:
     publicCloudPrimitiveReceiptRoutes.routePublicCloudPrimitiveReceiptRequest,
   routePublicNip90MarketReceiptRequest:

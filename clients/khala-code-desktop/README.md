@@ -28,6 +28,15 @@ Codex or set `KHALA_CODE_CODEX_BINARY` / `KHALA_CODE_CODEX_COMMAND`. If auth is
 missing, run `codex login` yourself for the primary user Codex home before
 using the default chat surface.
 
+Settings includes an opt-in **Run evidence** action for outside-user proof. It
+posts a public-safe receipt to
+`/api/public/khala-code/outside-user-runs` only after the user clicks the
+button. The receipt contains app version, platform, architecture, distribution
+channel, and bounded Codex/Pylon readiness only; it must not include paths,
+prompts, tokens, logs, account identifiers, machine identifiers, or raw
+telemetry. See
+`docs/khala-code/2026-07-04-outside-user-run-receipt-template.md`.
+
 `CODEX_HOME` may point the main wrapper session at an explicit primary home;
 otherwise the normal `~/.codex` home is used. Khala Code never starts
 `codex login` against that primary home automatically.

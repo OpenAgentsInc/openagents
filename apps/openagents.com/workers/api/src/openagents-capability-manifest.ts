@@ -399,6 +399,22 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Public-safe Khala Code download counter for /code/download: exact grouped rows from khala_code_download_events only, returning counts: [] with blocker refs when no public-countable rows or table exists. No per-user, per-account, private path, raw installer, or secret material. Read-only counter; grants no public installer, outside-user, payout, settlement, or promise-green authority.',
       },
       {
+        id: 'public_khala_code_outside_user_run_intake',
+        href: 'https://openagents.com/api/public/khala-code/outside-user-runs',
+        method: 'POST',
+        auth: 'public',
+        description:
+          'Explicit-user-action Khala Code outside-user run receipt intake: records only app version, platform, architecture, distribution channel, and bounded harness readiness, then returns a dereferenceable public receipt. Zero telemetry by default: no phone-home, no paths, prompts, logs, tokens, account identifiers, machine identifiers, or request body blob are stored. Grants no installer, outside-user-count, billing, capture, payout, settlement, or promise-green authority.',
+      },
+      {
+        id: 'public_khala_code_outside_user_run_receipt',
+        href: 'https://openagents.com/api/public/khala-code/outside-user-runs/{receiptRef}',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'Dereferences one public-safe Khala Code outside-user run receipt with generatedAt and a live_at_read staleness contract over khala_code_outside_user_run_receipts. Receipt fields are app version, platform, architecture, distribution channel, and harness readiness only; no paths, prompts, logs, tokens, account identifiers, machine identifiers, or raw telemetry. Evidence-only; grants no installer, outside-user-count, billing, capture, payout, settlement, or promise-green authority.',
+      },
+      {
         id: 'public_khala_tokens_served_history',
         href: 'https://openagents.com/api/public/khala-tokens-served/history',
         method: 'GET',

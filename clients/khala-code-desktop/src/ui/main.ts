@@ -69,6 +69,7 @@ import { iconForCodexItem, renderMessageBody } from "./transcript-render"
 import { mountFleetPanel } from "./fleet-status"
 import { mountKhalaCodeForumPanel } from "./forum-panel"
 import { mountKhalaCodePlansPanel } from "./plans-panel"
+import { mountKhalaCodeRunEvidencePanel } from "./run-evidence-panel"
 import { mountCodexSettingsPanel } from "./codex-settings-panel"
 import { mountClaudeSettingsSection } from "./claude-settings-panel"
 import {
@@ -272,6 +273,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["khalaCodePlanPurchase"]>>
       >("khalaCodePlanPurchase", request),
+    khalaCodeOutsideUserRunReport: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["khalaCodeOutsideUserRunReport"]>>
+      >("khalaCodeOutsideUserRunReport", request),
     claudeApprovalPending: () =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["claudeApprovalPending"]>>
@@ -3634,6 +3639,8 @@ const controls = {
   khalaCodePlanStatus: () => rpc.request.khalaCodePlanStatus(),
   khalaCodePlanPurchase: (request?: Parameters<DesktopRpcRequests["khalaCodePlanPurchase"]>[0]) =>
     rpc.request.khalaCodePlanPurchase(request),
+  khalaCodeOutsideUserRunReport: (request?: Parameters<DesktopRpcRequests["khalaCodeOutsideUserRunReport"]>[0]) =>
+    rpc.request.khalaCodeOutsideUserRunReport(request),
   claudeApprovalPending: () => rpc.request.claudeApprovalPending(),
   claudeApprovalRespond: (request: Parameters<DesktopRpcRequests["claudeApprovalRespond"]>[0]) =>
     rpc.request.claudeApprovalRespond(request),
@@ -4041,6 +4048,7 @@ const gymPanel =
 
 let claudeSettingsSection: ReturnType<typeof mountClaudeSettingsSection> | null = null
 let plansSection: ReturnType<typeof mountKhalaCodePlansPanel> | null = null
+let runEvidenceSection: ReturnType<typeof mountKhalaCodeRunEvidencePanel> | null = null
 
 const settingsPanel =
   settingsPanelEl === null
@@ -4058,6 +4066,7 @@ const settingsPanel =
         onRender: () => {
           void claudeSettingsSection?.refresh()
           void plansSection?.refresh()
+          void runEvidenceSection?.refresh()
         },
         fetchModelRoles: () => controls.modelRoleRegistryRead(),
         writeModelRole: request => controls.modelRoleRegistryWrite(request),
@@ -4081,6 +4090,11 @@ plansSection = settingsPanelEl === null
       catalog: () => controls.khalaCodePlanCatalog(),
       purchase: request => controls.khalaCodePlanPurchase(request),
       status: () => controls.khalaCodePlanStatus(),
+    })
+runEvidenceSection = settingsPanelEl === null
+  ? null
+  : mountKhalaCodeRunEvidencePanel(settingsPanelEl, {
+      report: request => controls.khalaCodeOutsideUserRunReport(request),
     })
 
 const threadListCacheKey = (

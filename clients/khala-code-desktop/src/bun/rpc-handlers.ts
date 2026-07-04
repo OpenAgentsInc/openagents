@@ -85,9 +85,12 @@ import {
   type KhalaCodeDesktopModelRoleRegistryWriteRequest,
   type KhalaCodeDesktopModelRoleRegistryWriteResult,
   type KhalaCodeDesktopPlanCatalogResult,
+  type KhalaCodeDesktopOutsideUserRunReportRequest,
+  type KhalaCodeDesktopOutsideUserRunReportResult,
   type KhalaCodeDesktopPlanPurchaseRequest,
   type KhalaCodeDesktopPlanPurchaseResult,
   type KhalaCodeDesktopPlanStatusResult,
+  KhalaCodeDesktopOutsideUserRunReportResultSchema,
   KhalaCodeDesktopPlanCatalogSchema,
   KhalaCodeDesktopPlanPurchaseSuccessSchema,
   KhalaCodeDesktopPlanStatusPlanSchema,
@@ -339,18 +342,19 @@ const fetchOpenAgentsForum = async (
   }
 }
 
-// Khala Code plan surfaces (promise khala_code.free_paid_plans.v1). The only
-// wire routes the desktop host may touch are the three exact paths below, pinned
-// to the resolved OpenAgents origin. The bearer token never leaves this module:
-// it is read from env, sent as an Authorization header, and never logged or
-// echoed into RPC results.
+// Khala Code public product surfaces. The desktop host only touches the exact
+// allowlisted paths below, pinned to the resolved OpenAgents origin. The bearer
+// token for plan routes never leaves this module: it is read from env, sent as
+// an Authorization header, and never logged or echoed into RPC results.
 const KHALA_CODE_PLAN_CATALOG_PATH = "/api/public/khala-code/plans"
 const KHALA_CODE_PLAN_STATUS_PATH = "/v1/khala-code/plan"
 const KHALA_CODE_PLAN_PURCHASE_PATH = "/v1/khala-code/plans/purchases"
+const KHALA_CODE_OUTSIDE_USER_RUNS_PATH = "/api/public/khala-code/outside-user-runs"
 const KHALA_CODE_PLAN_ALLOWED_PATHS: ReadonlySet<string> = new Set([
   KHALA_CODE_PLAN_CATALOG_PATH,
   KHALA_CODE_PLAN_STATUS_PATH,
   KHALA_CODE_PLAN_PURCHASE_PATH,
+  KHALA_CODE_OUTSIDE_USER_RUNS_PATH,
 ])
 
 const khalaCodePlanBaseUrl = (env: ChatEnv): string => {
@@ -381,6 +385,55 @@ const khalaCodeAgentToken = (env: ChatEnv): string | null => {
   const token = env.OPENAGENTS_AGENT_TOKEN?.trim() || env.OPENAGENTS_API_KEY?.trim()
   return token !== undefined && token.length > 0 ? token : null
 }
+
+const KHALA_CODE_DESKTOP_APP_VERSION = "0.0.1"
+
+const khalaCodeDesktopAppVersion = (env: ChatEnv): string => {
+  const version = env.KHALA_CODE_DESKTOP_VERSION?.trim()
+  return version !== undefined && version.length > 0
+    ? version
+    : KHALA_CODE_DESKTOP_APP_VERSION
+}
+
+const khalaCodeOutsideUserPlatform = (platform: string) =>
+  platform === "darwin" || platform === "linux" || platform === "win32"
+    ? platform
+    : "other"
+
+const khalaCodeOutsideUserArch = (arch: string) =>
+  arch === "arm64" || arch === "x64" ? arch : "other"
+
+const khalaCodeDistributionChannel = (env: ChatEnv) => {
+  const channel = env.KHALA_CODE_DISTRIBUTION_CHANNEL?.trim()
+  return channel === "desktop_dmg" ||
+    channel === "npm_cli" ||
+    channel === "source_build" ||
+    channel === "unknown"
+    ? channel
+    : "source_build"
+}
+
+const codexCliRunEvidenceState = (
+  harness: KhalaCodeDesktopCodexHarnessStatus,
+) =>
+  harness.binary.available
+    ? "ready" as const
+    : harness.status === "not_configured" || harness.status === "unavailable"
+      ? "missing" as const
+      : "unknown" as const
+
+const codexAuthRunEvidenceState = (
+  harness: KhalaCodeDesktopCodexHarnessStatus,
+) => harness.auth.state
+
+const pylonRunEvidenceState = (status: KhalaCodeDesktopRuntimeStatus) =>
+  status.status === "ready"
+    ? "ready" as const
+    : status.status === "not_configured"
+      ? "not_configured" as const
+      : status.status === "unavailable" || status.status === "error"
+        ? "unavailable" as const
+        : "unknown" as const
 
 const safePathSegment = (value: string, fallback: string): string => {
   const sanitized = value.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "")
@@ -1293,6 +1346,24 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     const rateLimits = await (input.codexRateLimitStatus?.() ??
       fetchKhalaCodexRateLimitStatus({ env: input.env as NodeJS.ProcessEnv }))
     return codexStatusFromRateLimits(rateLimits, harness, input.env)
+  }
+
+  const pylonRuntimeStatus = async (): Promise<KhalaCodeDesktopRuntimeStatus> => {
+    const status = await ensureLocalPylon({
+      start: false,
+      timeoutMs: 10_000,
+      waitMs: 0,
+    }, {
+      env: input.env,
+    })
+    return runtimeStatus({
+      available: status.ok,
+      capability: "pylon",
+      reason: status.ok
+        ? status.message
+        : `${status.message}${status.unavailableReason ? ` ${status.unavailableReason}` : ""}`,
+      status: status.ok ? "ready" : "unavailable",
+    })
   }
 
   const codexHomePathForResetCredit = async (accountRef: string): Promise<string | null> => {
@@ -2433,6 +2504,60 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         return { ok: false, error: "purchase_unavailable" }
       }
     },
+    async khalaCodeOutsideUserRunReport(
+      request?: KhalaCodeDesktopOutsideUserRunReportRequest,
+    ): Promise<KhalaCodeDesktopOutsideUserRunReportResult> {
+      const reportFetch = input.fetch ?? fetch
+      try {
+        const [harness, pylon] = await Promise.all([
+          codexHarnessStatus(),
+          pylonRuntimeStatus().catch(() =>
+            runtimeStatus({
+              available: false,
+              capability: "pylon",
+              reason: "Pylon status unavailable.",
+              status: "unavailable",
+            }),
+          ),
+        ])
+        const response = await reportFetch(
+          khalaCodePlanRequestUrl(khalaCodePlanBaseUrl(input.env), KHALA_CODE_OUTSIDE_USER_RUNS_PATH),
+          {
+            method: "POST",
+            headers: {
+              accept: "application/json",
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              schemaVersion: "openagents.khala_code.outside_user_run_intake.v1",
+              consent: {
+                publicReceipt: true,
+                noPrivateDataIncluded: true,
+              },
+              appVersion: khalaCodeDesktopAppVersion(input.env),
+              platform: khalaCodeOutsideUserPlatform(process.platform),
+              arch: khalaCodeOutsideUserArch(process.arch),
+              distributionChannel: khalaCodeDistributionChannel(input.env),
+              harnessReadiness: {
+                codexCli: codexCliRunEvidenceState(harness),
+                codexAuth: codexAuthRunEvidenceState(harness),
+                pylon: pylonRunEvidenceState(pylon),
+              },
+              ...(request?.idempotencyKey === undefined
+                ? {}
+                : { idempotencyKey: request.idempotencyKey }),
+            }),
+          },
+        )
+        const payload = await response.json().catch(() => null) as unknown
+        if (!response.ok) {
+          return { ok: false, error: "outside_user_run_receipt_unavailable" }
+        }
+        return S.decodeUnknownSync(KhalaCodeDesktopOutsideUserRunReportResultSchema)(payload)
+      } catch {
+        return { ok: false, error: "outside_user_run_receipt_unavailable" }
+      }
+    },
     async claudeApprovalPending() {
       return {
         ok: true,
@@ -2777,21 +2902,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       return setCodexAccountPaused(request.accountRef, request.paused, { env: input.env })
     },
     async pylonStatus() {
-      const status = await ensureLocalPylon({
-        start: false,
-        timeoutMs: 10_000,
-        waitMs: 0,
-      }, {
-        env: input.env,
-      })
-      return runtimeStatus({
-        available: status.ok,
-        capability: "pylon",
-        reason: status.ok
-          ? status.message
-          : `${status.message}${status.unavailableReason ? ` ${status.unavailableReason}` : ""}`,
-        status: status.ok ? "ready" : "unavailable",
-      })
+      return pylonRuntimeStatus()
     },
     async qaMetricSample(sample): Promise<KhalaCodeDesktopQaMetricSampleResult> {
       await input.recordQaMetricSample?.(sample)

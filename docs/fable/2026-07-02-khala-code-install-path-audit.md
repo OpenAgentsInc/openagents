@@ -20,6 +20,16 @@ artifact. `GET /api/public/khala-code/download-counts` is the only public
 download counter for this page; it reads exact `khala_code_download_events`
 rows or returns `counts: []` with blocker refs instead of synthesizing totals.
 
+**2026-07-04 RL-3 update:** Khala Code Desktop now has an opt-in Run evidence
+action for outside users. It posts a public-safe receipt to
+`POST /api/public/khala-code/outside-user-runs` only after a user action, and
+`GET /api/public/khala-code/outside-user-runs/{receiptRef}` dereferences that
+receipt for registry citation. The receipt shape is deliberately small (app
+version, platform, architecture, distribution channel, Codex/Pylon readiness)
+and excludes paths, prompts, tokens, logs, account ids, machine ids, and raw
+telemetry. This is an intake lane, not proof that a signed DMG or real
+outside-user row exists yet.
+
 ---
 
 ## 1. The triggering failure

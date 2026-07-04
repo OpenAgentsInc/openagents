@@ -888,6 +888,15 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    // Khala Code outside-user run receipt readback (#8247): one public-safe
+    // receipt by receiptRef from khala_code_outside_user_run_receipts. It is
+    // live_at_read with generatedAt + the shared staleness contract and stores
+    // no paths, prompts, tokens, logs, account ids, or machine ids.
+    module: 'workers/api/src/khala-code-outside-user-run-routes.ts',
+    route: '/api/public/khala-code/outside-user-runs/{receiptRef}',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/marketing-agency-receipt-public-routes.ts',
     route: '/api/public/marketing-agency/receipts',
     status: 'staleness_declared',

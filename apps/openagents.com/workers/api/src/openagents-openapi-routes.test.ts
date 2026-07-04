@@ -119,6 +119,21 @@ describe('OpenAgents OpenAPI route', () => {
       operationAt(body, '/api/public/khala-code/download-counts', 'get')
         .operationId,
     ).toBe('getPublicKhalaCodeDownloadCounts')
+    expect(
+      operationAt(body, '/api/public/khala-code/outside-user-runs', 'post')
+        .operationId,
+    ).toBe('createPublicKhalaCodeOutsideUserRunReceipt')
+    const outsideUserRunReceipt = operationAt(
+      body,
+      '/api/public/khala-code/outside-user-runs/{receiptRef}',
+      'get',
+    )
+    expect(outsideUserRunReceipt.operationId).toBe(
+      'getPublicKhalaCodeOutsideUserRunReceipt',
+    )
+    expect(outsideUserRunReceipt.description).toContain('explicit user-posted')
+    expect(outsideUserRunReceipt.description).toContain('live_at_read')
+    expect(outsideUserRunReceipt.description).toContain('no raw paths')
     const deprecatedFleetStatus = operationAt(
       body,
       '/api/operator/fleet/status',
