@@ -1,0 +1,17 @@
+{
+  "protocolVersion": 1,
+  "scope": "scope.team.team_42",
+  "entities": [
+    {
+      "entityType": "fleet_worker",
+      "entityId": "w1",
+      "postImageJson": "{\"id\":\"w1\",\"status\":\"running\"}"
+    },
+    {
+      "entityType": "fleet_worker",
+      "entityId": "w2",
+      "postImageJson": "{\"id\":\"w2\",\"status\":\"paused\"}"
+    }
+  ],
+  "nextPageToken": "page_2"
+}

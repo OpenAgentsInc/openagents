@@ -1,0 +1,9 @@
+{
+  "scope": "scope.agent_run.run_7",
+  "version": 13,
+  "entityType": "agent_step",
+  "entityId": "step_3",
+  "op": "delete",
+  "mutationRef": "mut.cg_browser_profile_1.c_tab_1.10",
+  "committedAt": "2026-07-04T00:00:04.000Z"
+}

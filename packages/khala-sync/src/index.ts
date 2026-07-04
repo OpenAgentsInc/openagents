@@ -289,6 +289,89 @@ export class SyncError extends S.TaggedClass<SyncError>()("SyncError", {
 }) {}
 
 // ---------------------------------------------------------------------------
+// Canonical JSON (postImageJson / argsJson producer)
+// ---------------------------------------------------------------------------
+
+/**
+ * Typed error thrown by {@link canonicalJson} when a value cannot be
+ * represented in canonical JSON (non-finite number, unsupported type, or an
+ * `undefined` array element). `path` locates the offending value.
+ */
+export class CanonicalJsonError extends Error {
+  readonly _tag = "CanonicalJsonError"
+  override readonly name = "CanonicalJsonError"
+  readonly path: ReadonlyArray<string | number>
+  constructor(message: string, path: ReadonlyArray<string | number>) {
+    super(
+      path.length === 0 ? message : `${message} (at ${path.map(String).join(".")})`,
+    )
+    this.path = path
+  }
+}
+
+/**
+ * Serialize a value as **canonical JSON**. All `postImageJson` (and mutator
+ * `argsJson`) strings MUST be produced through this function — on the server
+ * and on every client — so that byte-wise comparison, hashing, and diffing of
+ * post-images is stable across implementations.
+ *
+ * Rules (a strict subset of RFC 8785 / JCS):
+ *
+ * - Object keys are sorted recursively (lexicographic by UTF-16 code unit,
+ *   i.e. plain `Array.prototype.sort` on the key strings).
+ * - Object members whose value is `undefined` are dropped (matching
+ *   `JSON.stringify` semantics); `undefined` array elements are rejected.
+ * - Numbers must be finite; `NaN` / `Infinity` throw {@link CanonicalJsonError}.
+ *   `-0` normalizes to `0`. Number/string tokens use `JSON.stringify`
+ *   (shortest ES round-trip form, matching RFC 8785).
+ * - Allowed values: `null`, booleans, finite numbers, strings, arrays, and
+ *   objects of those. Anything else (function, symbol, bigint) throws
+ *   {@link CanonicalJsonError}.
+ * - No whitespace is emitted.
+ */
+export const canonicalJson = (value: unknown): string => {
+  const go = (v: unknown, path: ReadonlyArray<string | number>): string => {
+    if (v === null) return "null"
+    switch (typeof v) {
+      case "boolean":
+        return v ? "true" : "false"
+      case "number":
+        if (!Number.isFinite(v)) {
+          throw new CanonicalJsonError(`non-finite number: ${String(v)}`, path)
+        }
+        return JSON.stringify(v)
+      case "string":
+        return JSON.stringify(v)
+      case "object": {
+        if (Array.isArray(v)) {
+          const items = v.map((item, index) => {
+            if (item === undefined) {
+              throw new CanonicalJsonError("undefined array element", [
+                ...path,
+                index,
+              ])
+            }
+            return go(item, [...path, index])
+          })
+          return `[${items.join(",")}]`
+        }
+        const record = v as Record<string, unknown>
+        const members: Array<string> = []
+        for (const key of Object.keys(record).sort()) {
+          const member = record[key]
+          if (member === undefined) continue
+          members.push(`${JSON.stringify(key)}:${go(member, [...path, key])}`)
+        }
+        return `{${members.join(",")}}`
+      }
+      default:
+        throw new CanonicalJsonError(`unsupported value of type ${typeof v}`, path)
+    }
+  }
+  return go(value, [])
+}
+
+// ---------------------------------------------------------------------------
 // Boundary codecs (throwing; pair with decodeUnknownExit at fallible edges)
 // ---------------------------------------------------------------------------
 

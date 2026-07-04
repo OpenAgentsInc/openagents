@@ -1,0 +1,16 @@
+{
+  "_tag": "DeltaFrame",
+  "scope": "scope.public.tokens-served",
+  "entries": [
+    {
+      "scope": "scope.public.tokens-served",
+      "version": 42,
+      "entityType": "counter",
+      "entityId": "khala-tokens-served",
+      "op": "upsert",
+      "postImageJson": "{\"id\":\"khala-tokens-served\",\"value\":123456789}",
+      "committedAt": "2026-07-04T00:00:02.000Z"
+    }
+  ],
+  "cursor": 42
+}

@@ -1,0 +1,6 @@
+{
+  "_tag": "SyncError",
+  "code": "unauthorized_scope",
+  "messageSafe": "caller is not authorized for this scope",
+  "retryable": false
+}

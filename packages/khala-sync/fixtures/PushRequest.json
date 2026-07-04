@@ -1,0 +1,18 @@
+{
+  "protocolVersion": 1,
+  "schemaVersion": 1,
+  "clientGroupId": "cg_browser_profile_1",
+  "clientId": "c_tab_1",
+  "mutations": [
+    {
+      "mutationId": 4,
+      "name": "fleet.pauseWorker",
+      "argsJson": "{\"workerId\":\"w1\"}"
+    },
+    {
+      "mutationId": 5,
+      "name": "thread.appendMessage",
+      "argsJson": "{\"body\":\"hello\",\"threadId\":\"t1\"}"
+    }
+  ]
+}

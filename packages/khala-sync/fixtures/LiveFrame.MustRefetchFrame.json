@@ -1,0 +1,5 @@
+{
+  "_tag": "MustRefetchFrame",
+  "scope": "scope.user.user_123",
+  "reason": "cursor_behind_retained_window"
+}

@@ -1,0 +1,12 @@
+{
+  "protocolVersion": 1,
+  "scope": "scope.team.team_42",
+  "entities": [
+    {
+      "entityType": "thread",
+      "entityId": "t1",
+      "postImageJson": "{\"id\":\"t1\",\"title\":\"launch checklist\"}"
+    }
+  ],
+  "cursor": 137
+}

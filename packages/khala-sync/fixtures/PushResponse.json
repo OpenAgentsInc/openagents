@@ -1,0 +1,20 @@
+{
+  "protocolVersion": 1,
+  "results": [
+    {
+      "mutationId": 4,
+      "status": "applied"
+    },
+    {
+      "mutationId": 5,
+      "status": "rejected",
+      "errorCode": "mutation_rejected",
+      "errorMessageSafe": "thread is archived"
+    },
+    {
+      "mutationId": 3,
+      "status": "duplicate"
+    }
+  ],
+  "lastMutationId": 5
+}

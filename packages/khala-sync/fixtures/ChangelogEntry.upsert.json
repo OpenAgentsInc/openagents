@@ -1,0 +1,10 @@
+{
+  "scope": "scope.agent_run.run_7",
+  "version": 12,
+  "entityType": "agent_step",
+  "entityId": "step_3",
+  "op": "upsert",
+  "postImageJson": "{\"id\":\"step_3\",\"kind\":\"tool_call\",\"tokens\":1024}",
+  "mutationRef": "mut.cg_browser_profile_1.c_tab_1.9",
+  "committedAt": "2026-07-04T00:00:03.000Z"
+}

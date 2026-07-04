@@ -1,0 +1,26 @@
+{
+  "protocolVersion": 1,
+  "scope": "scope.fleet_run.fr_1",
+  "entries": [
+    {
+      "scope": "scope.fleet_run.fr_1",
+      "version": 7,
+      "entityType": "fleet_worker",
+      "entityId": "w1",
+      "op": "upsert",
+      "postImageJson": "{\"id\":\"w1\",\"status\":\"running\"}",
+      "mutationRef": "mut.cg_browser_profile_1.c_tab_1.4",
+      "committedAt": "2026-07-04T00:00:00.000Z"
+    },
+    {
+      "scope": "scope.fleet_run.fr_1",
+      "version": 8,
+      "entityType": "fleet_worker",
+      "entityId": "w2",
+      "op": "delete",
+      "committedAt": "2026-07-04T00:00:01.000Z"
+    }
+  ],
+  "nextCursor": 8,
+  "upToDate": true
+}
