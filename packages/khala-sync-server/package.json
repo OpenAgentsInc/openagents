@@ -18,6 +18,7 @@
   ],
   "scripts": {
     "compact": "bun scripts/compact.ts",
+    "load-test": "bun scripts/load-test.ts",
     "migrate": "bun scripts/migrate.ts",
     "test": "bun test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
