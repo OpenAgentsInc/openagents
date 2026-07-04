@@ -23,6 +23,7 @@ import { Route as BlogRouteImport } from './routes/blog'
 import { Route as ActivityRouteImport } from './routes/activity'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AutopilotIndexRouteImport } from './routes/autopilot/index'
+import { Route as SitesDemoCheckoutRouteImport } from './routes/sites/demo-checkout'
 import { Route as PreviewLandingRouteImport } from './routes/preview/landing'
 import { Route as KhalaChatSyncRouteImport } from './routes/khala/chat-sync'
 import { Route as DocsSlugRouteImport } from './routes/docs/$slug'
@@ -30,6 +31,7 @@ import { Route as ComponentsFamilyRouteImport } from './routes/components/$famil
 import { Route as CodeDownloadRouteImport } from './routes/code/download'
 import { Route as BlogSlugRouteImport } from './routes/blog/$slug'
 import { Route as AutopilotLegalRouteImport } from './routes/autopilot/legal'
+import { Route as SitesDemoCheckoutReturnActionRouteImport } from './routes/sites/demo-checkout/$returnAction'
 import { Route as BusinessKpiEngagementRefRouteImport } from './routes/business/kpi/$engagementRef'
 
 const TassadarRoute = TassadarRouteImport.update({
@@ -102,6 +104,11 @@ const AutopilotIndexRoute = AutopilotIndexRouteImport.update({
   path: '/autopilot/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SitesDemoCheckoutRoute = SitesDemoCheckoutRouteImport.update({
+  id: '/sites/demo-checkout',
+  path: '/sites/demo-checkout',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PreviewLandingRoute = PreviewLandingRouteImport.update({
   id: '/preview/landing',
   path: '/preview/landing',
@@ -137,6 +144,12 @@ const AutopilotLegalRoute = AutopilotLegalRouteImport.update({
   path: '/autopilot/legal',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SitesDemoCheckoutReturnActionRoute =
+  SitesDemoCheckoutReturnActionRouteImport.update({
+    id: '/$returnAction',
+    path: '/$returnAction',
+    getParentRoute: () => SitesDemoCheckoutRoute,
+  } as any)
 const BusinessKpiEngagementRefRoute =
   BusinessKpiEngagementRefRouteImport.update({
     id: '/kpi/$engagementRef',
@@ -165,8 +178,10 @@ export interface FileRoutesByFullPath {
   '/docs/$slug': typeof DocsSlugRoute
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
+  '/sites/demo-checkout': typeof SitesDemoCheckoutRouteWithChildren
   '/autopilot/': typeof AutopilotIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
+  '/sites/demo-checkout/$returnAction': typeof SitesDemoCheckoutReturnActionRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -189,8 +204,10 @@ export interface FileRoutesByTo {
   '/docs/$slug': typeof DocsSlugRoute
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
+  '/sites/demo-checkout': typeof SitesDemoCheckoutRouteWithChildren
   '/autopilot': typeof AutopilotIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
+  '/sites/demo-checkout/$returnAction': typeof SitesDemoCheckoutReturnActionRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -214,8 +231,10 @@ export interface FileRoutesById {
   '/docs/$slug': typeof DocsSlugRoute
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
+  '/sites/demo-checkout': typeof SitesDemoCheckoutRouteWithChildren
   '/autopilot/': typeof AutopilotIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
+  '/sites/demo-checkout/$returnAction': typeof SitesDemoCheckoutReturnActionRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -240,8 +259,10 @@ export interface FileRouteTypes {
     | '/docs/$slug'
     | '/khala/chat-sync'
     | '/preview/landing'
+    | '/sites/demo-checkout'
     | '/autopilot/'
     | '/business/kpi/$engagementRef'
+    | '/sites/demo-checkout/$returnAction'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -264,8 +285,10 @@ export interface FileRouteTypes {
     | '/docs/$slug'
     | '/khala/chat-sync'
     | '/preview/landing'
+    | '/sites/demo-checkout'
     | '/autopilot'
     | '/business/kpi/$engagementRef'
+    | '/sites/demo-checkout/$returnAction'
   id:
     | '__root__'
     | '/'
@@ -288,8 +311,10 @@ export interface FileRouteTypes {
     | '/docs/$slug'
     | '/khala/chat-sync'
     | '/preview/landing'
+    | '/sites/demo-checkout'
     | '/autopilot/'
     | '/business/kpi/$engagementRef'
+    | '/sites/demo-checkout/$returnAction'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -309,6 +334,7 @@ export interface RootRouteChildren {
   AutopilotLegalRoute: typeof AutopilotLegalRoute
   CodeDownloadRoute: typeof CodeDownloadRoute
   PreviewLandingRoute: typeof PreviewLandingRoute
+  SitesDemoCheckoutRoute: typeof SitesDemoCheckoutRouteWithChildren
   AutopilotIndexRoute: typeof AutopilotIndexRoute
 }
 
@@ -412,6 +438,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AutopilotIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sites/demo-checkout': {
+      id: '/sites/demo-checkout'
+      path: '/sites/demo-checkout'
+      fullPath: '/sites/demo-checkout'
+      preLoaderRoute: typeof SitesDemoCheckoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/preview/landing': {
       id: '/preview/landing'
       path: '/preview/landing'
@@ -460,6 +493,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/autopilot/legal'
       preLoaderRoute: typeof AutopilotLegalRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/sites/demo-checkout/$returnAction': {
+      id: '/sites/demo-checkout/$returnAction'
+      path: '/$returnAction'
+      fullPath: '/sites/demo-checkout/$returnAction'
+      preLoaderRoute: typeof SitesDemoCheckoutReturnActionRouteImport
+      parentRoute: typeof SitesDemoCheckoutRoute
     }
     '/business/kpi/$engagementRef': {
       id: '/business/kpi/$engagementRef'
@@ -525,6 +565,17 @@ const KhalaRouteChildren: KhalaRouteChildren = {
 
 const KhalaRouteWithChildren = KhalaRoute._addFileChildren(KhalaRouteChildren)
 
+interface SitesDemoCheckoutRouteChildren {
+  SitesDemoCheckoutReturnActionRoute: typeof SitesDemoCheckoutReturnActionRoute
+}
+
+const SitesDemoCheckoutRouteChildren: SitesDemoCheckoutRouteChildren = {
+  SitesDemoCheckoutReturnActionRoute: SitesDemoCheckoutReturnActionRoute,
+}
+
+const SitesDemoCheckoutRouteWithChildren =
+  SitesDemoCheckoutRoute._addFileChildren(SitesDemoCheckoutRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ActivityRoute: ActivityRoute,
@@ -542,6 +593,7 @@ const rootRouteChildren: RootRouteChildren = {
   AutopilotLegalRoute: AutopilotLegalRoute,
   CodeDownloadRoute: CodeDownloadRoute,
   PreviewLandingRoute: PreviewLandingRoute,
+  SitesDemoCheckoutRoute: SitesDemoCheckoutRouteWithChildren,
   AutopilotIndexRoute: AutopilotIndexRoute,
 }
 export const routeTree = rootRouteImport

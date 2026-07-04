@@ -166,6 +166,26 @@ page, distinct from `/code/download` for Khala Code.
   Windows, and Linux.
 - The Pylon CLI alternative remains visible as `npx @openagentsinc/pylon`.
 
+## Landed Slice 11: Site Checkout Demo
+
+The Start staging app now owns `/sites/demo-checkout` and
+`/sites/demo-checkout/$returnAction` as the public Omega Site checkout demo.
+
+- The route preserves `data-route="site-checkout-demo"` and
+  `data-site-checkout-demo`.
+- The visible shell keeps the old contract copy: `Demo checkout`, `Start
+  checkout`, and `Start a demo checkout for an Omega Site product and inspect
+  the clean return status.`
+- The browser script continues to use Site commerce APIs only:
+  `/api/sites/{siteId}/commerce/discovery` and
+  `/commerce/checkout-returns/{intentRef}/{action}`.
+- The checkout intent request keeps the idempotency header and public-safe
+  customer-data references:
+  `'Idempotency-Key': idempotencyKey()` and
+  `customerDataRefs: item.customerDataRequirementRefs || []`.
+- The route test keeps unsafe checkout query/material words absent from the
+  rendered shell and script contract.
+
 ## Boundary
 
 This is not the final TS-6 closure. The live `openagents.com` Worker still
