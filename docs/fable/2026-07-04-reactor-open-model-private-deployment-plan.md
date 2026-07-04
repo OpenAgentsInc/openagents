@@ -283,7 +283,19 @@ objects, no client-identifying info in-repo). Added:
 7. No pricing sign-off, no registry records, no copy. Everything above is
    sales-conversation-only until QS1-style records land.
 
-## 9. Proposed workstream map (RX; issues to be filed in a follow-up pass)
+## 9. Workstream map (RX — filed 2026-07-04 under epic [#8261](https://github.com/OpenAgentsInc/openagents/issues/8261))
+
+Issue map: RX-1 [#8271](https://github.com/OpenAgentsInc/openagents/issues/8271),
+RX-2 [#8272](https://github.com/OpenAgentsInc/openagents/issues/8272),
+RX-3 [#8273](https://github.com/OpenAgentsInc/openagents/issues/8273),
+RX-4 [#8274](https://github.com/OpenAgentsInc/openagents/issues/8274),
+RX-5 [#8275](https://github.com/OpenAgentsInc/openagents/issues/8275),
+RX-6 [#8276](https://github.com/OpenAgentsInc/openagents/issues/8276),
+RX-7 [#8280](https://github.com/OpenAgentsInc/openagents/issues/8280),
+RX-8 [#8281](https://github.com/OpenAgentsInc/openagents/issues/8281),
+RX-9 [#8277](https://github.com/OpenAgentsInc/openagents/issues/8277),
+RX-10 [#8278](https://github.com/OpenAgentsInc/openagents/issues/8278),
+RX-11 [#8279](https://github.com/OpenAgentsInc/openagents/issues/8279).
 
 | Task | Description | Gate/receipt |
 | --- | --- | --- |

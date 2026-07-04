@@ -331,6 +331,19 @@ In-window actions this adds (cheap, because it's the same work):
 - After the window, the engine's own receipts (this plan's measured funnel)
   become the case study that sells it — A0.9 pattern, opaque refs.
 
+Implementation issue map (filed 2026-07-04 under epic
+[#8261](https://github.com/OpenAgentsInc/openagents/issues/8261), shared
+with the Reactor RX lane): LG-1 prober
+[#8262](https://github.com/OpenAgentsInc/openagents/issues/8262), LG-2
+pipeline queue [#8263](https://github.com/OpenAgentsInc/openagents/issues/8263),
+LG-3 starter credits [#8264](https://github.com/OpenAgentsInc/openagents/issues/8264),
+LG-4 sequence tooling [#8265](https://github.com/OpenAgentsInc/openagents/issues/8265),
+LG-5 report renderer [#8266](https://github.com/OpenAgentsInc/openagents/issues/8266),
+LG-6 source attribution [#8267](https://github.com/OpenAgentsInc/openagents/issues/8267),
+LG-7 Lead Gen agent definition [#8268](https://github.com/OpenAgentsInc/openagents/issues/8268),
+LG-8 affiliate attribution [#8269](https://github.com/OpenAgentsInc/openagents/issues/8269),
+LG-9 partner routing [#8270](https://github.com/OpenAgentsInc/openagents/issues/8270).
+
 ### 10.1 Episode 247 reconciliation (2026-07-04)
 
 Episode 247 ("Sell in Public", `docs/transcripts/247.md`) landed after this
