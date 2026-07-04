@@ -20,8 +20,10 @@ import {
 import {
   type AgentProposalRecord,
   type AgentProposalStore,
+  makeMirroredAgentProposalStore,
   makeAgentProposalRoutes,
 } from './agent-proposal-routes'
+import type { AgentRuntimeRemainderMirror } from './agent-runtime-remainder-store'
 
 type TestSession = Readonly<{
   user: Readonly<{
@@ -105,6 +107,20 @@ class MemoryAgentProposalStore implements AgentProposalStore {
     this.proposals.set(input.proposalId, transitioned)
 
     return Promise.resolve(transitioned)
+  }
+}
+
+class MemoryAgentRuntimeRemainderMirror implements AgentRuntimeRemainderMirror {
+  readonly calls: Array<{
+    pkValues: ReadonlyArray<string>
+    table: string
+  }> = []
+
+  mirrorRowsByPk = async (
+    table: Parameters<AgentRuntimeRemainderMirror['mirrorRowsByPk']>[0],
+    pkValues: ReadonlyArray<string>,
+  ) => {
+    this.calls.push({ pkValues, table })
   }
 }
 
@@ -417,7 +433,58 @@ const recoveryPreviewRequest = (idempotencyKey: string) =>
     method: 'POST',
   })
 
+const proposalRecord = (id: string): AgentProposalRecord => ({
+  authorJson: JSON.stringify({ agentName: 'Mirror Agent' }),
+  bodyText:
+    'This is a bounded proposal with public evidence and no authority-bearing action.',
+  clientFingerprintHash: 'fingerprint_hash_mirror',
+  createdAt: '2026-06-06T00:00:00.000Z',
+  decidedAt: null,
+  id,
+  idempotencyKeyHash: `idempotency_hash_${id}`,
+  kind: 'site_improvement',
+  operatorNote: null,
+  operatorUserId: null,
+  promotedTargetRef: null,
+  promotionKind: null,
+  receiptRef: `agent_proposal_receipt_${id}`,
+  sourceUrlsJson: JSON.stringify(['https://example.com/source']),
+  status: 'pending',
+  summary: 'Improve a public evidence section.',
+  targetJson: JSON.stringify({ siteSlug: 'otec' }),
+  title: 'Improve public evidence',
+  updatedAt: '2026-06-06T00:00:00.000Z',
+})
+
 describe('agent proposal routes', () => {
+  test('mirrored store mirrors proposal creates and transitions by key only', async () => {
+    const d1 = new MemoryAgentProposalStore()
+    const mirror = new MemoryAgentRuntimeRemainderMirror()
+    const store = makeMirroredAgentProposalStore(d1, mirror)
+
+    await store.createProposal(proposalRecord('agent_proposal_mirror'))
+    await store.transitionProposal({
+      decidedAt: '2026-06-06T00:05:00.000Z',
+      note: 'Looks useful.',
+      operatorUserId: 'github:admin',
+      promotedTargetRef: 'site_feedback:otec:evidence',
+      promotionKind: 'site_feedback',
+      proposalId: 'agent_proposal_mirror',
+      status: 'promoted',
+    })
+
+    expect(mirror.calls).toEqual([
+      {
+        pkValues: ['agent_proposal_mirror'],
+        table: 'agent_proposals',
+      },
+      {
+        pkValues: ['agent_proposal_mirror'],
+        table: 'agent_proposals',
+      },
+    ])
+  })
+
   test('lets no-token agents submit pending public-safe proposals', async () => {
     const store = new MemoryAgentProposalStore()
     const response = await runRoute(store, proposalRequest())

@@ -47,7 +47,7 @@ import {
 } from './agent-owner-claim-routes'
 import {
   makeAgentProposalRoutes,
-  makeD1AgentProposalStore,
+  makeAgentProposalStoreForEnv,
 } from './agent-proposal-routes'
 import { withAgentRateLimitHeaders } from './agent-rate-limit-policy'
 import { makeD1AgentRateLimitRecoveryStore } from './agent-rate-limit-recovery'
@@ -8255,7 +8255,7 @@ const agentProposalRoutes = makeAgentProposalRoutes({
   appOrigin: getAppOrigin,
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
-  makeStore: env => makeD1AgentProposalStore(openAgentsDatabase(env)),
+  makeStore: env => makeAgentProposalStoreForEnv(env),
   recoveryStore: env =>
     makeD1AgentRateLimitRecoveryStore(
       openAgentsDatabase(env),

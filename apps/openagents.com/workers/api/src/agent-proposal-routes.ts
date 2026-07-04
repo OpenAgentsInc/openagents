@@ -24,6 +24,11 @@ import {
   authenticateProgrammaticAgent,
 } from './agent-registration'
 import {
+  makeAgentRuntimeRemainderMirrorForEnv,
+  type AgentRuntimeRemainderMirror,
+  type AgentRuntimeRemainderStoreEnv,
+} from './agent-runtime-remainder-store'
+import {
   methodNotAllowed,
   noStoreJsonResponse,
   serverError,
@@ -42,6 +47,7 @@ import {
   isoTimestampAfterIso,
   randomUuid,
 } from './runtime-primitives'
+import { openAgentsDatabase } from './runtime'
 
 const PROPOSAL_RATE_LIMIT = 5
 const PROPOSAL_RATE_WINDOW_MS = 1000 * 60 * 60
@@ -655,6 +661,48 @@ export const makeD1AgentProposalStore = (
     },
   }
 }
+
+const mirrorAgentProposal = (
+  mirror: AgentRuntimeRemainderMirror,
+  proposalId: string,
+): Promise<void> => mirror.mirrorRowsByPk('agent_proposals', [proposalId])
+
+export const makeMirroredAgentProposalStore = (
+  d1: AgentProposalStore,
+  mirror: AgentRuntimeRemainderMirror | undefined,
+): AgentProposalStore => {
+  if (mirror === undefined) {
+    return d1
+  }
+
+  return {
+    countRecentByClientFingerprint: (clientFingerprintHash, sinceIso) =>
+      d1.countRecentByClientFingerprint(clientFingerprintHash, sinceIso),
+    createProposal: async record => {
+      await d1.createProposal(record)
+      await mirrorAgentProposal(mirror, record.id)
+    },
+    listProposals: input => d1.listProposals(input),
+    readById: proposalId => d1.readById(proposalId),
+    readByIdempotencyKeyHash: idempotencyKeyHash =>
+      d1.readByIdempotencyKeyHash(idempotencyKeyHash),
+    transitionProposal: async input => {
+      const proposal = await d1.transitionProposal(input)
+      if (proposal !== undefined) {
+        await mirrorAgentProposal(mirror, proposal.id)
+      }
+      return proposal
+    },
+  }
+}
+
+export const makeAgentProposalStoreForEnv = (
+  env: AgentRuntimeRemainderStoreEnv,
+): AgentProposalStore =>
+  makeMirroredAgentProposalStore(
+    makeD1AgentProposalStore(openAgentsDatabase(env)),
+    makeAgentRuntimeRemainderMirrorForEnv(env),
+  )
 
 const requireAdminSession = async <
   Session extends AgentProposalSession,

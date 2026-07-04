@@ -18,6 +18,7 @@ export type AgentRuntimeRemainderTable =
   | 'agent_credentials'
   | 'agent_owner_claims'
   | 'agent_owner_x_claim_challenges'
+  | 'agent_proposals'
   | 'event_ledger_entries'
 
 export type AgentRuntimeRemainderRow = Readonly<Record<string, unknown>>
@@ -98,6 +99,28 @@ const X_CLAIM_COLUMNS = [
   'updated_at',
 ] as const
 
+const PROPOSAL_COLUMNS = [
+  'id',
+  'receipt_ref',
+  'status',
+  'kind',
+  'title',
+  'summary',
+  'body_text',
+  'source_urls_json',
+  'target_json',
+  'author_json',
+  'client_fingerprint_hash',
+  'idempotency_key_hash',
+  'promotion_kind',
+  'promoted_target_ref',
+  'operator_note',
+  'operator_user_id',
+  'decided_at',
+  'created_at',
+  'updated_at',
+] as const
+
 const EVENT_LEDGER_COLUMNS = [
   'entry_id',
   'owner_agent_user_id',
@@ -131,6 +154,7 @@ const TABLE_COLUMNS: Readonly<
   agent_owner_claims: OWNER_CLAIM_COLUMNS,
   agent_owner_x_claim_challenges: X_CLAIM_COLUMNS,
   agent_profiles: PROFILE_COLUMNS,
+  agent_proposals: PROPOSAL_COLUMNS,
   event_ledger_entries: EVENT_LEDGER_COLUMNS,
 }
 
@@ -139,6 +163,7 @@ const TABLE_PK: Readonly<Record<AgentRuntimeRemainderTable, string>> = {
   agent_owner_claims: 'id',
   agent_owner_x_claim_challenges: 'id',
   agent_profiles: 'user_id',
+  agent_proposals: 'id',
   event_ledger_entries: 'entry_id',
 }
 
@@ -149,6 +174,7 @@ const TABLE_CONFLICT: Readonly<
   agent_owner_claims: ['id'],
   agent_owner_x_claim_challenges: ['id'],
   agent_profiles: ['user_id'],
+  agent_proposals: ['id'],
   event_ledger_entries: ['entry_id'],
 }
 

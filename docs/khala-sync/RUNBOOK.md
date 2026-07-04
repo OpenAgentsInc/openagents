@@ -539,15 +539,15 @@ any remaining rows are drift and must be explained before cutover.
 Runtime mirror status: `event_ledger_entries` ingestion and handled-state
 updates, `agent_profiles` / `agent_credentials` registration and
 credential-touch paths, and `agent_owner_claims` /
-`agent_owner_x_claim_challenges` claim/verification paths now use the #8334
+`agent_owner_x_claim_challenges` claim/verification paths, plus
+`agent_proposals` submission and transition paths, now use the #8334
 fail-soft mirror seam when
 `KHALA_SYNC_AGENT_RUNTIME_REMAINDER_DUAL_WRITE` is not disabled and the
 `KHALA_SYNC_DB` binding exists. D1 remains authority; mirror failures emit
 `khala_sync_agent_runtime_remainder_dual_write_failed` with row keys only
 and never fail the request. Credential diagnostics stay key-only in logs:
 token hashes are copied only as private row data and are not printed. The
-remaining proposal and acceptance job/verdict write seams are still #8334
-work.
+remaining acceptance job/verdict write seams are still #8334 work.
 
 This lane does **not** drop D1 tables. Runtime write-authority movement,
 read cutover, flag deletion, and destructive retirement remain explicit
