@@ -961,7 +961,7 @@ export class PylonApiStoreError extends S.TaggedErrorClass<PylonApiStoreError>()
   },
 ) {}
 
-type PylonApiRegistrationRow = Readonly<{
+export type PylonApiRegistrationRow = Readonly<{
   capability_refs_json: string
   client_protocol_version?: string | null
   client_version?: string | null
@@ -990,7 +990,7 @@ type PylonApiRegistrationRow = Readonly<{
   wallet_ref: string | null
 }>
 
-type PylonApiEventRow = Readonly<{
+export type PylonApiEventRow = Readonly<{
   assignment_ref: string | null
   created_at: string
   event_body_json: string
@@ -1004,7 +1004,7 @@ type PylonApiEventRow = Readonly<{
   status: string
 }>
 
-type PylonApiAssignmentRow = Readonly<{
+export type PylonApiAssignmentRow = Readonly<{
   acceptance_criteria_refs_json: string
   accepted_work_refs_json: string
   artifact_refs_json: string
@@ -1458,8 +1458,17 @@ const terminalAssignmentStates: ReadonlyArray<PylonApiAssignmentState> = [
   'rejected',
 ]
 
-const activeLeaseAssignmentStateSql =
-  "('accepted', 'blocked', 'offered', 'proof_submitted', 'running')"
+/**
+ * Assignment states that hold an active lease (dispatch-gate capacity
+ * accounting + stale-lease sweeps). Exported for the KS-8.1 Postgres
+ * dispatch store so both stores filter on the identical state set.
+ */
+export const ACTIVE_LEASE_ASSIGNMENT_STATES: ReadonlyArray<PylonApiAssignmentState> =
+  ['accepted', 'blocked', 'offered', 'proof_submitted', 'running']
+
+const activeLeaseAssignmentStateSql = `(${ACTIVE_LEASE_ASSIGNMENT_STATES.map(
+  state => `'${state}'`,
+).join(', ')})`
 
 const assignmentLeaseState = (
   record: PylonApiAssignmentRecord,
@@ -1500,7 +1509,7 @@ const paidSettlementTransitionReceiptRef = (assignmentRef: string): string =>
     '_',
   )}`
 
-const pylonApiAssignmentPaymentMode = (
+export const pylonApiAssignmentPaymentMode = (
   assignment: PylonApiAssignmentRecord,
 ): PylonApiAssignmentPaymentMode => assignment.paymentMode ?? 'unpaid_smoke'
 
@@ -2157,7 +2166,7 @@ export const nextRegistrationForEvent = (
   }
 }
 
-const rowToRegistration = (
+export const rowToRegistration = (
   row: PylonApiRegistrationRow,
 ): PylonApiRegistrationRecord => ({
   capabilityRefs: parseJsonStringArray(row.capability_refs_json),
@@ -2194,7 +2203,7 @@ const rowToRegistration = (
   walletRef: row.wallet_ref,
 })
 
-const rowToEvent = (row: PylonApiEventRow): PylonApiEventRecord => ({
+export const rowToEvent = (row: PylonApiEventRow): PylonApiEventRecord => ({
   assignmentRef: row.assignment_ref,
   createdAt: row.created_at,
   eventBody: parseJsonRecord(row.event_body_json) ?? {},
@@ -2208,7 +2217,7 @@ const rowToEvent = (row: PylonApiEventRow): PylonApiEventRecord => ({
   status: row.status,
 })
 
-const rowToAssignment = (
+export const rowToAssignment = (
   row: PylonApiAssignmentRow,
 ): PylonApiAssignmentRecord => ({
   acceptanceCriteriaRefs: parseJsonStringArray(

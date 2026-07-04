@@ -975,10 +975,10 @@ import { makePublicStripeCheckoutReceiptRoutes } from './public-stripe-checkout-
 import { makePublicFirstDollarEvidenceRoutes } from './revenue-event-provenance-routes'
 import { buildPublicTassadarRunSummaryEnvelopeForRequest } from './public-tassadar-run-summary-routes'
 import {
-  makeD1PylonApiStore,
   makeD1PylonSparkPayoutTargetStore,
   resolveSparkPayoutDestination,
 } from './pylon-api'
+import { makePylonApiStoreForEnv } from './pylon-dispatch-store'
 import { makePylonApiRoutes } from './pylon-api-routes'
 import {
   handlePylonCapacityFunnelApi,
@@ -1578,7 +1578,7 @@ const makeAcceptedOutcomeSettlementSink = (
   const resolveContributorOwnerAgentUserId = async (
     contributorRef: string,
   ): Promise<string | undefined> => {
-    const pylonApiStore = makeD1PylonApiStore(db)
+    const pylonApiStore = makePylonApiStoreForEnv(env)
     const direct = await pylonApiStore
       .readRegistration(contributorRef)
       .then(registration => registration?.ownerAgentUserId)
@@ -6500,7 +6500,7 @@ const runArtanisScheduledTickScheduled = (
   )
 
 const recordPylonCapacityFunnelSnapshotsScheduled = (
-  db: D1Database,
+  env: Env,
   scheduledTime: number,
 ): Effect.Effect<void, never> =>
   Effect.tryPromise({
@@ -6508,8 +6508,10 @@ const recordPylonCapacityFunnelSnapshotsScheduled = (
     try: () =>
       recordPylonCapacityFunnelSnapshots({
         nowIso: epochMillisToIsoTimestamp(scheduledTime),
-        snapshotStore: makeD1PylonCapacityFunnelSnapshotStore(db),
-        store: makeD1PylonApiStore(db),
+        snapshotStore: makeD1PylonCapacityFunnelSnapshotStore(
+          openAgentsDatabase(env),
+        ),
+        store: makePylonApiStoreForEnv(env),
       }),
   }).pipe(
     Effect.asVoid,
@@ -7413,7 +7415,7 @@ const traceStoreRoutes = makeTraceStoreRoutes({
 const pylonCodexTurnIngestRoutes = makePylonCodexTurnIngestRoutes<Env>({
   agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
   ledger: env => makeD1TokenUsageLedger(openAgentsDatabase(env)),
-  pylonStore: env => makeD1PylonApiStore(openAgentsDatabase(env)),
+  pylonStore: env => makePylonApiStoreForEnv(env),
   proofStore: env => makeD1PylonCodexAssignmentProofStore(openAgentsDatabase(env)),
   traceStatusStore: env =>
     makeD1PylonCodexAssignmentProofStore(openAgentsDatabase(env)),
@@ -8094,7 +8096,7 @@ const autopilotWorkRouteDependencies = {
   makeBuyerPaymentLedgerStore: (env: WorkerBindings) =>
     makeD1BuyerPaymentLedgerStore(openAgentsDatabase(env)),
   makePylonApiStore: (env: WorkerBindings) =>
-    makeD1PylonApiStore(openAgentsDatabase(env)),
+    makePylonApiStoreForEnv(env),
   makeStore: (env: WorkerBindings) =>
     makeD1AutopilotWorkStore(openAgentsDatabase(env)),
   // Feed the registered-pylon registry into the work-order placement selector
@@ -8105,7 +8107,7 @@ const autopilotWorkRouteDependencies = {
   // owner's job (#4782). The selector itself enforces owner-match + active +
   // fresh-heartbeat eligibility.
   pylonRegistrations: (env: WorkerBindings) =>
-    makeD1PylonApiStore(openAgentsDatabase(env)).listRegistrations(100),
+    makePylonApiStoreForEnv(env).listRegistrations(100),
   requireBrowserSession,
   verifyL402PaymentProof: (
     env: WorkerBindings,
@@ -8596,7 +8598,7 @@ const crmMcpRoutes = makeCrmMcpRoutes<WorkerBindings>({
     }),
     makeKhalaMcpCatalog<WorkerBindings>({
       agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
-      pylonStore: env => makeD1PylonApiStore(openAgentsDatabase(env)),
+      pylonStore: env => makePylonApiStoreForEnv(env),
       recordTokensServed: env =>
         makeKhalaMcpServedTokensRecorder(openAgentsDatabase(env), {
           publishDelta: delta =>
@@ -9030,7 +9032,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
           listLinkedAgentUserIds,
           nowIso: currentIsoTimestamp,
           ownerOpenAuthUserId: session.user.userId,
-          pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
+          pylonStore: makePylonApiStoreForEnv(env),
         }),
       },
       pylonJobStatus: {
@@ -9038,7 +9040,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
           listLinkedAgentUserIds,
           nowIso: currentIsoTimestamp,
           ownerOpenAuthUserId: session.user.userId,
-          pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
+          pylonStore: makePylonApiStoreForEnv(env),
         }),
       },
     } satisfies Parameters<typeof makeArtanisOperatorTools>[0]
@@ -9172,7 +9174,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
         makeId: () => compactRandomId('artanis_dispatch'),
         nowIso: currentIsoTimestamp,
         ownerOpenAuthUserId: session.user.userId,
-        pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
+        pylonStore: makePylonApiStoreForEnv(env),
         readEffectivePylonDispatchApproval: authorityScope =>
           // Owner-promotion-aware (owner-directed 2026-06-27): owner-Artanis
           // carries a STANDING owner approval for his own pylon_job_dispatch, so
@@ -9411,7 +9413,7 @@ const nexusPylonVisibilityRoutes = makeNexusPylonVisibilityRoutes({
       ledgerStore,
     })
   },
-  makePylonApiStore: env => makeD1PylonApiStore(openAgentsDatabase(env)),
+  makePylonApiStore: env => makePylonApiStoreForEnv(env),
   makeTipRecipientReadinessReader: env => ({
     readForActor: actorRef =>
       readForumTipRecipientReadinessForActor(openAgentsDatabase(env), actorRef),
@@ -9422,7 +9424,7 @@ const nexusPylonVisibilityRoutes = makeNexusPylonVisibilityRoutes({
 
 const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
   agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
-  makeStore: env => makeD1PylonApiStore(openAgentsDatabase(env)),
+  makeStore: env => makePylonApiStoreForEnv(env),
   // #5252: private operator-only store for raw Spark payout targets.
   makeSparkPayoutTargetStore: env =>
     makeD1PylonSparkPayoutTargetStore(openAgentsDatabase(env)),
@@ -9537,7 +9539,7 @@ const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({
       makeD1PylonSparkPayoutTargetStore(openAgentsDatabase(env)),
       contributorRef,
       pylonRef =>
-        makeD1PylonApiStore(openAgentsDatabase(env))
+        makePylonApiStoreForEnv(env)
           .readRegistration(pylonRef)
           .then(registration => registration?.ownerAgentUserId),
     ),
@@ -9604,7 +9606,7 @@ const hygieneLaneSettlementRoutes =
         makeD1PylonSparkPayoutTargetStore(openAgentsDatabase(env)),
         contributorRef,
         pylonRef =>
-          makeD1PylonApiStore(openAgentsDatabase(env))
+          makePylonApiStoreForEnv(env)
             .readRegistration(pylonRef)
             .then(registration => registration?.ownerAgentUserId),
       ),
@@ -9682,7 +9684,7 @@ const firmupBitcoinSettlementRoutes =
         makeD1PylonSparkPayoutTargetStore(openAgentsDatabase(env)),
         contributorRef,
         pylonRef =>
-          makeD1PylonApiStore(openAgentsDatabase(env))
+          makePylonApiStoreForEnv(env)
             .readRegistration(pylonRef)
             .then(registration => registration?.ownerAgentUserId),
       ),
@@ -9769,7 +9771,7 @@ const tassadarTraceContributionRoutes =
         const resolveContributorOwnerAgentUserId = async (
           contributorRef: string,
         ): Promise<string | undefined> => {
-          const pylonApiStore = makeD1PylonApiStore(db)
+          const pylonApiStore = makePylonApiStoreForEnv(env)
           const direct = await pylonApiStore
             .readRegistration(contributorRef)
             .then(registration => registration?.ownerAgentUserId)
@@ -9899,9 +9901,7 @@ const tassadarTraceContributionRoutes =
         }
       }),
     resolvePylonOwnerUserId: async (env, pylonRef) => {
-      const registration = await makeD1PylonApiStore(
-        openAgentsDatabase(env),
-      ).readRegistration(pylonRef)
+      const registration = await makePylonApiStoreForEnv(env).readRegistration(pylonRef)
 
       return registration?.ownerAgentUserId
     },
@@ -10665,7 +10665,7 @@ const khalaChatRoutes = makeKhalaChatRoutes({
     Effect.gen(function* () {
       const workerEnv = env as Env & WorkerBindings
       const db = openAgentsDatabase(workerEnv)
-      const pylonStore = makeD1PylonApiStore(db)
+      const pylonStore = makePylonApiStoreForEnv(workerEnv)
       const publicContext = yield* loadKhalaChatPylonContext(pylonStore)
 
       if (ctx === undefined) {
@@ -13051,7 +13051,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               openAgentsDatabase(env),
             ),
             forgeStore: makeD1ForgeCoordinationStore(openAgentsDatabase(env)),
-            pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
+            pylonStore: makePylonApiStoreForEnv(env),
             runStore: makeD1AgentDefinitionRunStore(openAgentsDatabase(env)),
           },
           githubSecret: (
@@ -13115,7 +13115,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               openAgentsDatabase(env),
             ),
             forgeStore: makeD1ForgeCoordinationStore(openAgentsDatabase(env)),
-            pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
+            pylonStore: makePylonApiStoreForEnv(env),
             runStore: makeD1AgentDefinitionRunStore(openAgentsDatabase(env)),
           },
           eventLedgerEnqueue: makeEventLedgerIngestEnqueue(
@@ -13147,7 +13147,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               : undefined,
           forgeGitAuthStore: makeD1ForgeTenantGitAuthStore(db),
           forgeStore: makeD1ForgeCoordinationStore(db),
-          pylonStore: makeD1PylonApiStore(db),
+          pylonStore: makePylonApiStoreForEnv(env),
           runStore: makeD1AgentDefinitionRunStore(db),
         },
         forumEventSourceVerifier: event =>
@@ -13665,7 +13665,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         },
         codingDelegation: {
           agentStore: makeD1AgentRegistrationStore(openAgentsDatabase(env)),
-          pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
+          pylonStore: makePylonApiStoreForEnv(env),
           resolveOpenAuthUserId: async accountRef => {
             const agentUserId = accountRef.startsWith('agent:')
               ? accountRef.slice('agent:'.length)
@@ -14383,7 +14383,7 @@ const routeRequest = makeWorkerRouteRequest({
                     : undefined,
                 forgeGitAuthStore: makeD1ForgeTenantGitAuthStore(db),
                 forgeStore: makeD1ForgeCoordinationStore(db),
-                pylonStore: makeD1PylonApiStore(db),
+                pylonStore: makePylonApiStoreForEnv(env),
                 runStore: makeD1AgentDefinitionRunStore(db),
               })
             : await handleAgentDefinitionEventLedgerGatewayRequest(request, {
@@ -14461,7 +14461,7 @@ const routeRequest = makeWorkerRouteRequest({
       publicIdentityClaimStore: makeD1AgentOwnerClaimStore(
         openAgentsDatabase(env),
       ),
-      pylonApiStore: makeD1PylonApiStore(openAgentsDatabase(env)),
+      pylonApiStore: makePylonApiStoreForEnv(env),
       pylonSparkPayoutTargetStore: makeD1PylonSparkPayoutTargetStore(
         openAgentsDatabase(env),
       ),
@@ -14576,7 +14576,7 @@ const routeRequest = makeWorkerRouteRequest({
       Response | undefined
     > => {
       const db = openAgentsDatabase(env)
-      const pylonStore = makeD1PylonApiStore(db)
+      const pylonStore = makePylonApiStoreForEnv(env)
       let khalaAssignmentExists = false
       try {
         khalaAssignmentExists =
@@ -15171,6 +15171,9 @@ export class AgentDefinitionSchedulerDurableObject {
       makeAgentDefinitionSchedulerDependencies({
         db: openAgentsDatabase(this.env),
         durableStreamNamespace,
+        // KS-8.1 (#8307): scheduler-dispatched assignments ride the same
+        // dual-write store as the request-path writers.
+        pylonStore: makePylonApiStoreForEnv(this.env),
       }),
       { nowIso: scheduledAt },
     )
@@ -15422,10 +15425,7 @@ export default {
       ),
       observedEffect(
         'PylonCapacityFunnel.recordSnapshots',
-        recordPylonCapacityFunnelSnapshotsScheduled(
-          openAgentsDatabase(env),
-          event.scheduledTime,
-        ),
+        recordPylonCapacityFunnelSnapshotsScheduled(env, event.scheduledTime),
       ),
       observedEffect(
         'RelayHealth.probeTick',

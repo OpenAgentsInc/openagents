@@ -21,7 +21,7 @@ import { makeD1ForgeTenantGitAuthStore } from './forge-tenant-git-auth-store'
 import {
   type DurableStreamNamespace,
 } from './inference/durable-inference-do-transport'
-import { makeD1PylonApiStore } from './pylon-api'
+import { makeD1PylonApiStore, type PylonApiStore } from './pylon-api'
 
 export const AGENT_DEFINITION_SCHEDULER_SINGLETON_NAME =
   'agent-definition-scheduler'
@@ -241,6 +241,11 @@ export const makeAgentDefinitionSchedulerDependencies = (
   input: Readonly<{
     db: D1Database
     durableStreamNamespace?: DurableStreamNamespace | undefined
+    /**
+     * KS-8.1 (#8307): injectable pylon store so scheduler-dispatched
+     * assignments ride the dual-write dispatch store. Default: plain D1.
+     */
+    pylonStore?: PylonApiStore | undefined
   }>,
 ): AgentDefinitionSchedulerDependencies => {
   return {
@@ -249,7 +254,7 @@ export const makeAgentDefinitionSchedulerDependencies = (
       durableStreamNamespace: input.durableStreamNamespace,
       forgeGitAuthStore: makeD1ForgeTenantGitAuthStore(input.db),
       forgeStore: makeD1ForgeCoordinationStore(input.db),
-      pylonStore: makeD1PylonApiStore(input.db),
+      pylonStore: input.pylonStore ?? makeD1PylonApiStore(input.db),
       runStore: makeD1AgentDefinitionRunStore(input.db),
     },
     triggerStore: makeD1AgentDefinitionTriggerStore(input.db),

@@ -1,0 +1,564 @@
+// KS-8.1 (#8307): dual-write wrapper + flag routing unit tests.
+//
+// Fake stores, no databases: these prove the wrapper's CONTRACT —
+// D1-first authority, fail-soft Postgres mirroring with typed drift
+// diagnostics, per-flag read routing, bounded retry + D1 fallback in
+// postgres mode, and mismatch logging (with refs) in compare mode.
+
+import { describe, expect, test } from 'vitest'
+
+import type {
+  PylonApiAssignmentRecord,
+  PylonApiEventRecord,
+  PylonApiRegistrationRecord,
+  PylonApiStore,
+} from './pylon-api'
+import {
+  makeDualWritePylonApiStore,
+  pylonDispatchFlagsFromEnv,
+  type PostgresPylonDispatchStore,
+  type PylonDispatchDiagnostic,
+  type PylonDispatchDiagnosticEvent,
+} from './pylon-dispatch-store'
+
+// ---------------------------------------------------------------------------
+// Fixtures + fakes
+// ---------------------------------------------------------------------------
+
+const assignment = (ref: string): PylonApiAssignmentRecord => ({
+  acceptanceCriteriaRefs: [],
+  acceptedWorkRefs: [],
+  artifactRefs: [],
+  assignmentRef: ref,
+  closeoutRefs: [],
+  codingAssignment: null,
+  createdAt: '2026-07-01T01:00:00.000Z',
+  id: `assignment_${ref}`,
+  idempotencyKeyHash: `hash-${ref}`,
+  jobKind: 'codex_agent_task',
+  leaseExpiresAt: '2026-07-01T02:00:00.000Z',
+  ownerAgentUserId: 'agent-user-1',
+  paymentMode: 'unpaid_smoke',
+  proofRefs: [],
+  publicProjectionJson: '{}',
+  pylonRef: 'pylon.dual.1',
+  rejectionRefs: [],
+  resultExpectationRefs: [],
+  state: 'offered',
+  taskRefs: [],
+  updatedAt: '2026-07-01T01:00:00.000Z',
+})
+
+const registration = (pylonRef: string): PylonApiRegistrationRecord => ({
+  capabilityRefs: [],
+  clientProtocolVersion: null,
+  clientVersion: null,
+  createdAt: '2026-07-01T00:00:00.000Z',
+  displayName: 'Dual Pylon',
+  id: `registration_${pylonRef}`,
+  latestCapacityRefs: [],
+  latestHealthRefs: [],
+  latestHeartbeatAt: null,
+  latestHeartbeatStatus: null,
+  latestLoadRefs: [],
+  latestResourceMode: null,
+  ownerAgentCredentialId: 'credential-1',
+  ownerAgentTokenPrefix: 'oa_agent_x',
+  ownerAgentUserId: 'agent-user-1',
+  providerMarketRelayRefs: [],
+  providerNip90LaneRefs: [],
+  providerNostrNpub: null,
+  providerNostrPubkey: null,
+  publicProjectionJson: '{}',
+  pylonRef,
+  resourceMode: 'balanced',
+  status: 'active',
+  updatedAt: '2026-07-01T00:00:00.000Z',
+  walletReady: false,
+  walletRef: null,
+})
+
+const event = (ref: string): PylonApiEventRecord => ({
+  assignmentRef: null,
+  createdAt: '2026-07-01T01:10:00.000Z',
+  eventBody: {},
+  eventKind: 'assignment_progress',
+  eventRef: ref,
+  id: `event_${ref}`,
+  idempotencyKeyHash: `hash-${ref}`,
+  ownerAgentUserId: 'agent-user-1',
+  publicProjectionJson: '{}',
+  pylonRef: 'pylon.dual.1',
+  status: 'running',
+})
+
+type Call = { method: string; args: ReadonlyArray<unknown> }
+
+const makeFakeD1 = (overrides: Partial<PylonApiStore> = {}) => {
+  const calls: Array<Call> = []
+  const track =
+    <A extends ReadonlyArray<unknown>, R>(method: string, result: R) =>
+    (...args: A): Promise<R> => {
+      calls.push({ args, method })
+      return Promise.resolve(result)
+    }
+  const store: PylonApiStore = {
+    createAssignment: track('createAssignment', {
+      idempotent: false,
+      record: assignment('a1'),
+    }),
+    createEvent: track('createEvent', {
+      idempotent: false,
+      record: event('e1'),
+    }),
+    listAssignmentsForPylon: track('listAssignmentsForPylon', [
+      assignment('a1'),
+    ]),
+    listAssignmentsForPylons: track('listAssignmentsForPylons', [
+      assignment('a1'),
+    ]),
+    listEventsForAssignment: track('listEventsForAssignment', []),
+    listEventsForPylon: track('listEventsForPylon', []),
+    listProviderJobLifecycleForPylons: track(
+      'listProviderJobLifecycleForPylons',
+      [],
+    ),
+    listRegistrations: track('listRegistrations', [
+      registration('pylon.dual.1'),
+    ]),
+    listRegistrationsForOwnerAgentUserIds: track(
+      'listRegistrationsForOwnerAgentUserIds',
+      [registration('pylon.dual.1')],
+    ),
+    readAssignment: track('readAssignment', assignment('a1')),
+    readAssignmentByIdempotencyKeyHash: track(
+      'readAssignmentByIdempotencyKeyHash',
+      undefined,
+    ),
+    readEventByIdempotencyKeyHash: track(
+      'readEventByIdempotencyKeyHash',
+      undefined,
+    ),
+    readRegistration: track('readRegistration', registration('pylon.dual.1')),
+    sweepStaleAssignmentLeases: track('sweepStaleAssignmentLeases', ['a9']),
+    updateAssignment: track('updateAssignment', assignment('a1')),
+    updateAssignmentIfState: track('updateAssignmentIfState', assignment('a1')),
+    upsertProviderJobLifecycle: track('upsertProviderJobLifecycle', {
+      acceptedWorkRefs: [],
+      artifactRefs: [],
+      assignmentRef: 'a1',
+      closeoutRefs: [],
+      createdAt: '2026-07-01T01:00:00.000Z',
+      id: 'lifecycle_a1',
+      jobKind: 'codex_agent_task',
+      ownerAgentUserId: 'agent-user-1',
+      proofRefs: [],
+      publicProjectionJson: '{}',
+      pylonRef: 'pylon.dual.1',
+      stage: 'offered',
+      taskRefs: [],
+      updatedAt: '2026-07-01T01:00:00.000Z',
+    }),
+    upsertRegistration: track(
+      'upsertRegistration',
+      registration('pylon.dual.1'),
+    ),
+    ...overrides,
+  }
+  return { calls, store }
+}
+
+const makeFakePostgres = (
+  overrides: Partial<PostgresPylonDispatchStore> = {},
+) => {
+  const calls: Array<Call> = []
+  const track =
+    <A extends ReadonlyArray<unknown>, R>(method: string, result: R) =>
+    (...args: A): Promise<R> => {
+      calls.push({ args, method })
+      return Promise.resolve(result)
+    }
+  const store: PostgresPylonDispatchStore = {
+    createAssignment: track('createAssignment', {
+      idempotent: false,
+      record: assignment('a1'),
+    }),
+    createEvent: track('createEvent', {
+      idempotent: false,
+      record: event('e1'),
+    }),
+    listAssignmentsForPylon: track('listAssignmentsForPylon', [
+      assignment('a1'),
+    ]),
+    listAssignmentsForPylons: track('listAssignmentsForPylons', [
+      assignment('a1'),
+    ]),
+    listEventsForAssignment: track('listEventsForAssignment', []),
+    listEventsForPylon: track('listEventsForPylon', []),
+    listRegistrations: track('listRegistrations', [
+      registration('pylon.dual.1'),
+    ]),
+    listRegistrationsForOwnerAgentUserIds: track(
+      'listRegistrationsForOwnerAgentUserIds',
+      [registration('pylon.dual.1')],
+    ),
+    mirrorAssignment: track('mirrorAssignment', undefined),
+    mirrorEvent: track('mirrorEvent', undefined),
+    mirrorRegistration: track('mirrorRegistration', undefined),
+    mirrorStaleSweep: track('mirrorStaleSweep', undefined),
+    readAssignment: track('readAssignment', assignment('a1')),
+    readAssignmentByIdempotencyKeyHash: track(
+      'readAssignmentByIdempotencyKeyHash',
+      undefined,
+    ),
+    readEventByIdempotencyKeyHash: track(
+      'readEventByIdempotencyKeyHash',
+      undefined,
+    ),
+    readRegistration: track('readRegistration', registration('pylon.dual.1')),
+    sweepStaleAssignmentLeases: track('sweepStaleAssignmentLeases', []),
+    updateAssignment: track('updateAssignment', assignment('a1')),
+    updateAssignmentIfState: track('updateAssignmentIfState', assignment('a1')),
+    upsertRegistration: track(
+      'upsertRegistration',
+      registration('pylon.dual.1'),
+    ),
+    ...overrides,
+  }
+  return { calls, store }
+}
+
+const makeLogSink = () => {
+  const events: Array<{
+    event: PylonDispatchDiagnosticEvent
+    fields: PylonDispatchDiagnostic
+  }> = []
+  return {
+    events,
+    log: (
+      event: PylonDispatchDiagnosticEvent,
+      fields: PylonDispatchDiagnostic,
+    ) => {
+      events.push({ event, fields })
+    },
+  }
+}
+
+const noWait = () => Promise.resolve()
+
+// ---------------------------------------------------------------------------
+// Flags
+// ---------------------------------------------------------------------------
+
+describe('pylonDispatchFlagsFromEnv', () => {
+  test('dual-write defaults ON; reads default d1', () => {
+    expect(pylonDispatchFlagsFromEnv({})).toEqual({
+      dualWrite: true,
+      reads: 'd1',
+    })
+  })
+
+  test('dual-write off values', () => {
+    for (const value of ['off', '0', 'false', 'DISABLED', 'no']) {
+      expect(
+        pylonDispatchFlagsFromEnv({ KHALA_SYNC_PYLON_DUAL_WRITE: value })
+          .dualWrite,
+      ).toBe(false)
+    }
+    expect(
+      pylonDispatchFlagsFromEnv({ KHALA_SYNC_PYLON_DUAL_WRITE: 'on' })
+        .dualWrite,
+    ).toBe(true)
+  })
+
+  test('reads accepts postgres/compare; typos fall back to d1', () => {
+    expect(
+      pylonDispatchFlagsFromEnv({ KHALA_SYNC_PYLON_READS: 'postgres' }).reads,
+    ).toBe('postgres')
+    expect(
+      pylonDispatchFlagsFromEnv({ KHALA_SYNC_PYLON_READS: 'Compare' }).reads,
+    ).toBe('compare')
+    expect(
+      pylonDispatchFlagsFromEnv({ KHALA_SYNC_PYLON_READS: 'psotgres' }).reads,
+    ).toBe('d1')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Dual-write
+// ---------------------------------------------------------------------------
+
+describe('dual-write mirroring', () => {
+  test('writes go D1 first, then mirror the RESOLVED record to Postgres', async () => {
+    const d1 = makeFakeD1()
+    const pg = makeFakePostgres()
+    const store = makeDualWritePylonApiStore({
+      d1: d1.store,
+      flags: { dualWrite: true, reads: 'd1' },
+      postgres: pg.store,
+      wait: noWait,
+    })
+
+    const created = await store.createAssignment(assignment('a1'))
+    expect(created.idempotent).toBe(false)
+    await store.createEvent(event('e1'))
+    await store.updateAssignment(assignment('a1'))
+    await store.updateAssignmentIfState(assignment('a1'), 'offered')
+    await store.upsertRegistration(registration('pylon.dual.1'))
+    const swept = await store.sweepStaleAssignmentLeases!(
+      'pylon.dual.1',
+      '2026-07-01T05:00:00.000Z',
+      '2026-07-01T04:00:00.000Z',
+    )
+    expect(swept).toEqual(['a9'])
+
+    expect(pg.calls.map(call => call.method)).toEqual([
+      'mirrorAssignment',
+      'mirrorEvent',
+      'mirrorAssignment',
+      'mirrorAssignment',
+      'mirrorRegistration',
+      'mirrorStaleSweep',
+    ])
+    // The sweep mirrors exactly what D1 swept.
+    expect(pg.calls[5]?.args).toEqual([['a9'], '2026-07-01T05:00:00.000Z'])
+  })
+
+  test('a Postgres mirror failure NEVER fails the request; it logs a typed diagnostic', async () => {
+    const d1 = makeFakeD1()
+    const pg = makeFakePostgres({
+      mirrorAssignment: () => Promise.reject(new Error('pg down')),
+    })
+    const sink = makeLogSink()
+    const store = makeDualWritePylonApiStore({
+      d1: d1.store,
+      flags: { dualWrite: true, reads: 'd1' },
+      log: sink.log,
+      postgres: pg.store,
+      wait: noWait,
+    })
+
+    const result = await store.createAssignment(assignment('a1'))
+    expect(result.record.assignmentRef).toBe('a1')
+    expect(sink.events).toHaveLength(1)
+    expect(sink.events[0]?.event).toBe('khala_sync_pylon_dual_write_failed')
+    expect(sink.events[0]?.fields.op).toBe('createAssignment')
+    expect(sink.events[0]?.fields.refs).toEqual(['a1'])
+    expect(sink.events[0]?.fields.messageSafe).toContain('pg down')
+  })
+
+  test('dual-write OFF: nothing reaches Postgres', async () => {
+    const d1 = makeFakeD1()
+    const pg = makeFakePostgres()
+    const store = makeDualWritePylonApiStore({
+      d1: d1.store,
+      flags: { dualWrite: false, reads: 'd1' },
+      postgres: pg.store,
+      wait: noWait,
+    })
+    await store.createAssignment(assignment('a1'))
+    await store.upsertRegistration(registration('pylon.dual.1'))
+    expect(pg.calls).toEqual([])
+  })
+
+  test('updateAssignmentIfState skips the mirror when the CAS missed', async () => {
+    const d1 = makeFakeD1({
+      updateAssignmentIfState: () => Promise.resolve(undefined),
+    })
+    const pg = makeFakePostgres()
+    const store = makeDualWritePylonApiStore({
+      d1: d1.store,
+      flags: { dualWrite: true, reads: 'd1' },
+      postgres: pg.store,
+      wait: noWait,
+    })
+    expect(
+      await store.updateAssignmentIfState(assignment('a1'), 'accepted'),
+    ).toBeUndefined()
+    expect(pg.calls).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Read routing
+// ---------------------------------------------------------------------------
+
+describe('read routing', () => {
+  test('d1 mode: reads never touch Postgres', async () => {
+    const d1 = makeFakeD1()
+    const pg = makeFakePostgres()
+    const store = makeDualWritePylonApiStore({
+      d1: d1.store,
+      flags: { dualWrite: true, reads: 'd1' },
+      postgres: pg.store,
+      wait: noWait,
+    })
+    await store.readRegistration('pylon.dual.1')
+    await store.listAssignmentsForPylons!(['pylon.dual.1'], 10)
+    expect(pg.calls).toEqual([])
+    expect(d1.calls.map(c => c.method)).toEqual([
+      'readRegistration',
+      'listAssignmentsForPylons',
+    ])
+  })
+
+  test('postgres mode: gate reads are served from Postgres, D1 untouched', async () => {
+    const d1 = makeFakeD1()
+    const pg = makeFakePostgres()
+    const store = makeDualWritePylonApiStore({
+      d1: d1.store,
+      flags: { dualWrite: true, reads: 'postgres' },
+      postgres: pg.store,
+      wait: noWait,
+    })
+    await store.readRegistration('pylon.dual.1')
+    await store.listRegistrationsForOwnerAgentUserIds!(['agent-user-1'], 100)
+    await store.listAssignmentsForPylons!(['pylon.dual.1'], 10)
+    expect(d1.calls).toEqual([])
+    expect(pg.calls.map(c => c.method)).toEqual([
+      'readRegistration',
+      'listRegistrationsForOwnerAgentUserIds',
+      'listAssignmentsForPylons',
+    ])
+  })
+
+  test('postgres mode: bounded retry (3 attempts), then D1 fallback + diagnostics', async () => {
+    let attempts = 0
+    const d1 = makeFakeD1()
+    const pg = makeFakePostgres({
+      readRegistration: () => {
+        attempts += 1
+        return Promise.reject(new Error(`pg transient ${attempts}`))
+      },
+    })
+    const sink = makeLogSink()
+    const store = makeDualWritePylonApiStore({
+      d1: d1.store,
+      flags: { dualWrite: true, reads: 'postgres' },
+      log: sink.log,
+      postgres: pg.store,
+      wait: noWait,
+    })
+
+    const result = await store.readRegistration('pylon.dual.1')
+    expect(result?.pylonRef).toBe('pylon.dual.1')
+    expect(attempts).toBe(3)
+    expect(d1.calls.map(c => c.method)).toEqual(['readRegistration'])
+    expect(sink.events.map(e => e.event)).toEqual([
+      'khala_sync_pylon_postgres_read_failed',
+      'khala_sync_pylon_postgres_read_failed',
+      'khala_sync_pylon_postgres_read_fallback',
+    ])
+    expect(sink.events[2]?.fields.refs).toEqual(['pylon.dual.1'])
+  })
+
+  test('postgres mode: a transient failure recovers within the retry budget', async () => {
+    let attempts = 0
+    const pg = makeFakePostgres({
+      readRegistration: () => {
+        attempts += 1
+        return attempts < 2
+          ? Promise.reject(new Error('blip'))
+          : Promise.resolve(registration('pylon.dual.1'))
+      },
+    })
+    const d1 = makeFakeD1()
+    const store = makeDualWritePylonApiStore({
+      d1: d1.store,
+      flags: { dualWrite: true, reads: 'postgres' },
+      postgres: pg.store,
+      wait: noWait,
+    })
+    const result = await store.readRegistration('pylon.dual.1')
+    expect(result?.pylonRef).toBe('pylon.dual.1')
+    expect(attempts).toBe(2)
+    expect(d1.calls).toEqual([])
+  })
+
+  test('compare mode: serves D1, logs mismatches with refs', async () => {
+    const d1 = makeFakeD1()
+    const pg = makeFakePostgres({
+      readRegistration: () =>
+        Promise.resolve({
+          ...registration('pylon.dual.1'),
+          displayName: 'Diverged Pylon',
+        }),
+    })
+    const sink = makeLogSink()
+    const store = makeDualWritePylonApiStore({
+      d1: d1.store,
+      flags: { dualWrite: true, reads: 'compare' },
+      log: sink.log,
+      postgres: pg.store,
+      wait: noWait,
+    })
+
+    const result = await store.readRegistration('pylon.dual.1')
+    expect(result?.displayName).toBe('Dual Pylon') // D1 authority served
+    expect(sink.events).toHaveLength(1)
+    expect(sink.events[0]?.event).toBe(
+      'khala_sync_pylon_read_compare_mismatch',
+    )
+    expect(sink.events[0]?.fields.op).toBe('readRegistration')
+    expect(sink.events[0]?.fields.refs).toEqual(['pylon.dual.1'])
+  })
+
+  test('compare mode: matching reads log nothing; Postgres errors log read_failed but never fail', async () => {
+    const d1 = makeFakeD1()
+    const matching = makeFakePostgres()
+    const sink = makeLogSink()
+    const store = makeDualWritePylonApiStore({
+      d1: d1.store,
+      flags: { dualWrite: true, reads: 'compare' },
+      log: sink.log,
+      postgres: matching.store,
+      wait: noWait,
+    })
+    await store.readRegistration('pylon.dual.1')
+    expect(sink.events).toEqual([])
+
+    const broken = makeFakePostgres({
+      readRegistration: () => Promise.reject(new Error('pg down')),
+    })
+    const sink2 = makeLogSink()
+    const store2 = makeDualWritePylonApiStore({
+      d1: makeFakeD1().store,
+      flags: { dualWrite: true, reads: 'compare' },
+      log: sink2.log,
+      postgres: broken.store,
+      wait: noWait,
+    })
+    const served = await store2.readRegistration('pylon.dual.1')
+    expect(served?.pylonRef).toBe('pylon.dual.1')
+    expect(sink2.events.map(e => e.event)).toEqual([
+      'khala_sync_pylon_postgres_read_failed',
+    ])
+  })
+
+  test('KS-8.4 domain operations always pass through to D1', async () => {
+    const d1 = makeFakeD1()
+    const pg = makeFakePostgres()
+    const store = makeDualWritePylonApiStore({
+      d1: d1.store,
+      flags: { dualWrite: true, reads: 'postgres' },
+      postgres: pg.store,
+      wait: noWait,
+    })
+    await store.listProviderJobLifecycleForPylons(['pylon.dual.1'], 10)
+    expect(d1.calls.map(c => c.method)).toEqual([
+      'listProviderJobLifecycleForPylons',
+    ])
+    expect(pg.calls).toEqual([])
+  })
+
+  test('no Postgres store (missing binding): the wrapper IS the D1 store', () => {
+    const d1 = makeFakeD1()
+    const store = makeDualWritePylonApiStore({
+      d1: d1.store,
+      flags: { dualWrite: true, reads: 'postgres' },
+      postgres: undefined,
+      wait: noWait,
+    })
+    expect(store).toBe(d1.store)
+  })
+})

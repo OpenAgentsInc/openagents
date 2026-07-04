@@ -12,6 +12,22 @@ assignments/dispatch and
 [#8308](https://github.com/OpenAgentsInc/openagents/issues/8308) KS-8.2
 token ledger. This document sequences **everything after those two**.
 
+**KS-8.1 status (2026-07-04):** machinery LANDED — Postgres schema
+(`khala-sync-server` migration `0005_pylon_dispatch.sql`:
+`pylon_registrations` / `pylon_assignments` / `pylon_assignment_events`,
+indexes re-derived from actual query patterns), typed repository seam with
+D1 + Postgres implementations and a fail-soft dual-write wrapper
+(`apps/openagents.com/workers/api/src/pylon-dispatch-store.ts`), flags
+`KHALA_SYNC_PYLON_DUAL_WRITE` (default on) / `KHALA_SYNC_PYLON_READS`
+(d1|compare|postgres, default d1), resumable backfill + exact-verify CLI
+(`packages/khala-sync-server/scripts/backfill-pylon.ts`), and a contract
+suite run against BOTH stores. The prod cutover (flag flips + backfill +
+verification evidence) is tracked on epic
+[#8282](https://github.com/OpenAgentsInc/openagents/issues/8282); the
+cutover procedure is [`RUNBOOK.md`](./RUNBOOK.md) "Pylon dispatch domain
+cutover". D1 tables are NOT dropped in that lane — decommission is a
+separate follow-up issue.
+
 Everything except the Verse world runs through one D1 database
 (`openagents-autopilot`, binding `OPENAGENTS_DB`). As of `main` today the
 migrations directory (`apps/openagents.com/workers/api/migrations/`) holds

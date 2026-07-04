@@ -39,6 +39,12 @@ export type WorkerBindings = Readonly<{
   // (docs/khala-sync/SPEC.md §4); typed structurally so packages do not need
   // the workers-types `Hyperdrive` ambient.
   KHALA_SYNC_DB?: Readonly<{ connectionString: string }>
+  // KS-8.1 (#8307) pylon assignments/dispatch migration flags. Dual-write
+  // defaults ON wherever KHALA_SYNC_DB exists ('off'|'0'|'false'|'disabled'
+  // to disable); reads default 'd1' ('d1'|'postgres'|'compare'). See
+  // docs/khala-sync/RUNBOOK.md "Pylon dispatch domain cutover".
+  KHALA_SYNC_PYLON_DUAL_WRITE?: string
+  KHALA_SYNC_PYLON_READS?: string
   // Khala Sync hub (KS-4.2, #8295). Optional SQLite-class DO namespace; one
   // KhalaSyncHubDO per scope (`idFromName(scope)`) holds the recent changelog
   // window + hibernating WebSockets (docs/khala-sync/SPEC.md §5). Absent

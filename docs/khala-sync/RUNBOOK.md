@@ -244,6 +244,54 @@ Clients treat 503 `storage_unavailable` as retryable with backoff (session
 tests cover transient-failure retry with the queue intact), so a short
 saturation window degrades to latency, not data loss.
 
+## Pylon dispatch domain cutover (KS-8.1, #8307)
+
+The first KS-8 domain migration: `pylon_api_assignments` /
+`pylon_api_events` / `pylon_api_registrations` (D1) → `pylon_assignments` /
+`pylon_assignment_events` / `pylon_registrations` (Postgres, khala-sync
+migration `0005_pylon_dispatch.sql`). Machinery:
+`apps/openagents.com/workers/api/src/pylon-dispatch-store.ts` (dual-write
+wrapper + Postgres store) and
+`packages/khala-sync-server/scripts/backfill-pylon.ts` (backfill + verify).
+
+Flags (Worker vars; see `WorkerBindings`):
+
+- `KHALA_SYNC_PYLON_DUAL_WRITE` — default **on** wherever `KHALA_SYNC_DB`
+  exists; `off|0|false|disabled` disables the mirror.
+- `KHALA_SYNC_PYLON_READS` — default `d1`; `compare` reads both, serves D1,
+  logs `khala_sync_pylon_read_compare_mismatch`; `postgres` serves reads
+  from Postgres with bounded retry (50/150ms) and D1 fallback on exhaustion.
+
+Flag-flip order — never skip a step, each step soaks before the next:
+
+1. **Dual-write on** (default after KS-8.1 lands + `0005` applied via the
+   migration runner). Watch `khala_sync_pylon_dual_write_failed` in Worker
+   logs — that event IS the drift metric; a nonzero steady rate blocks
+   progression.
+2. **Backfill**: from `packages/khala-sync-server/`,
+   `KHALA_SYNC_DATABASE_URL=<direct-url> bun scripts/backfill-pylon.ts`
+   (wrangler-auth'd; rowid-cursor resumable via
+   `.pylon-backfill-state.json`). Run it a SECOND time (`--restart`) as the
+   catch-up sweep once dual-write has covered the whole window.
+3. **Verify**: `bun scripts/backfill-pylon.ts --verify` — exact row counts,
+   per-state/kind/status tallies, newest-50 row-hash comparison. Post the
+   output on the migration issue. Exact or explain; no cutover on a red
+   verify.
+4. **Compare reads**: set `KHALA_SYNC_PYLON_READS=compare`; soak until the
+   mismatch log is silent over a representative window (include a fleet
+   dispatch burst).
+5. **Postgres reads**: set `KHALA_SYNC_PYLON_READS=postgres`. The dispatch
+   gate (owner-registration + capacity reads — the June-29 503 victims) now
+   reads Postgres with retry headroom; D1 remains the write authority and
+   the fallback.
+6. **Decommission LATER**: dropping the D1 tables (and moving write
+   authority) is a separate follow-up issue on epic #8282 — never in the
+   same change as a read cutover. Until then rollback is one flag flip
+   back to `d1`.
+
+Rollback at ANY step: set `KHALA_SYNC_PYLON_READS=d1` (reads) and/or
+`KHALA_SYNC_PYLON_DUAL_WRITE=off` (writes). D1 authority is never behind.
+
 ## What this runbook does NOT cover
 
 - Deploying the Worker/hub DO: `docs/DEPLOYMENT.md` (deploy:safe gate).
