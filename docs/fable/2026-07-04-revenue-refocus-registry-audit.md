@@ -133,6 +133,13 @@ policy-enforced Hydralisk-lane serving, harness-attributed eval receipts,
 air-gap install, dogfood node, need-to-know layer, data liberation,
 improvement ladder, gated pilot, model-custody segment).
 
+RX-4 note (2026-07-04): the Reactor-side eval receipt integration landed in
+`packages/reactor-contracts`: Psionic-owned task-class harness profile,
+measured fixture receipts for GPT-OSS and Llama across drafting/extraction,
+hosted-equivalent labels where applicable, a catalog-cited evalRef set, and
+`not_measured` coverage cells for unrun task/model combinations. This is not
+Psionic execution machinery and not deployed Reactor capability evidence.
+
 ## 3. The focus: closing the revenue loop, independence-first
 
 The company objective (Episode 246: "close the gap between what I've been

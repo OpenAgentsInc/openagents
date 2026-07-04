@@ -78,6 +78,42 @@ export const ReactorDeploymentPlacement = S.Literals([
 ])
 export type ReactorDeploymentPlacement = typeof ReactorDeploymentPlacement.Type
 
+export const REACTOR_EVAL_TASK_CLASS_REFS = [
+  'drafting',
+  'extraction',
+  'rag_over_corpus',
+  'agent_tool_use',
+] as const
+
+export const ReactorEvalTaskClassRef = S.Literals(REACTOR_EVAL_TASK_CLASS_REFS)
+export type ReactorEvalTaskClassRef = typeof ReactorEvalTaskClassRef.Type
+
+export const ReactorEvalExecutionTarget = S.Literals([
+  'rx3_served_model',
+  'hosted_equivalent_large_model',
+  'not_measured',
+])
+export type ReactorEvalExecutionTarget = typeof ReactorEvalExecutionTarget.Type
+
+export const ReactorEvalScoreUnit = S.Literals([
+  'score_0_to_1',
+  'pass_rate',
+  'exact_match',
+  'f1',
+])
+export type ReactorEvalScoreUnit = typeof ReactorEvalScoreUnit.Type
+
+export const ReactorEvalHarnessProfile = S.Struct({
+  schemaVersion: S.Literal('openagents.reactor.eval_harness_profile.v1'),
+  harnessRef: S.String,
+  runnerOwner: S.Literal('psionic'),
+  sourceRefs: S.Array(S.String),
+  supportedExecutionTargets: S.Array(ReactorEvalExecutionTarget),
+  taskClassRefs: S.Array(ReactorEvalTaskClassRef),
+  unrunMeasurementState: S.Literal('not_measured'),
+})
+export type ReactorEvalHarnessProfile = typeof ReactorEvalHarnessProfile.Type
+
 export const ReactorGatewayProfile = S.Struct({
   endpointRef: S.String,
   phoneHomeAllowedInServingPath: S.Literal(false),
@@ -290,6 +326,63 @@ export const ReactorLocalTokenMeteringReceipt = S.Struct({
 export type ReactorLocalTokenMeteringReceipt =
   typeof ReactorLocalTokenMeteringReceipt.Type
 
+export const ReactorModelEvalReceipt = S.Struct({
+  schemaVersion: S.Literal('openagents.reactor.model_eval_receipt.v1'),
+  blockerRefs: S.Array(S.String),
+  capabilityCopyAllowed: S.Boolean,
+  evalDatasetRef: S.String,
+  executionTarget: ReactorEvalExecutionTarget,
+  generatedAt: S.String,
+  harnessRef: S.String,
+  measurementState: S.Literals(['measured', 'not_measured']),
+  modelRef: S.String,
+  receiptRef: S.String,
+  runnerOwner: S.Literal('psionic'),
+  sampleCount: S.NullOr(S.Number),
+  score: S.NullOr(S.Number),
+  scoreUnit: S.NullOr(ReactorEvalScoreUnit),
+  sourceRefs: S.Array(S.String),
+  taskClassRef: ReactorEvalTaskClassRef,
+})
+export type ReactorModelEvalReceipt = typeof ReactorModelEvalReceipt.Type
+
+export const ReactorEvalCoverageCell = S.Struct({
+  blockerRefs: S.Array(S.String),
+  capabilityCopyAllowed: S.Boolean,
+  measurementState: S.Literals(['measured', 'not_measured']),
+  modelRef: S.String,
+  receiptRef: S.NullOr(S.String),
+  score: S.NullOr(S.Number),
+  taskClassRef: ReactorEvalTaskClassRef,
+})
+export type ReactorEvalCoverageCell = typeof ReactorEvalCoverageCell.Type
+
+export const ReactorEvalCoverageMatrix = S.Struct({
+  schemaVersion: S.Literal('openagents.reactor.eval_coverage_matrix.v1'),
+  catalogRef: S.String,
+  cells: S.Array(ReactorEvalCoverageCell),
+  generatedAt: S.String,
+  matrixRef: S.String,
+  sourceRefs: S.Array(S.String),
+})
+export type ReactorEvalCoverageMatrix = typeof ReactorEvalCoverageMatrix.Type
+
+export const ReactorCapabilityCopyEvalDecision = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.reactor.capability_copy_eval_decision.v1',
+  ),
+  allowedEvalRefs: S.Array(S.String),
+  blockerRefs: S.Array(S.String),
+  decidedAt: S.String,
+  decisionRef: S.String,
+  modelRef: S.String,
+  sourceRefs: S.Array(S.String),
+  status: S.Literals(['allowed', 'blocked_not_measured']),
+  taskClassRefs: S.Array(ReactorEvalTaskClassRef),
+})
+export type ReactorCapabilityCopyEvalDecision =
+  typeof ReactorCapabilityCopyEvalDecision.Type
+
 export type ResolveReactorModelPolicyInput = Readonly<{
   catalog: ReactorModelCatalog
   decidedAt: string
@@ -344,6 +437,50 @@ export type BuildReactorLocalTokenMeteringReceiptInput = Readonly<{
   requestRef: string
   sourceRefs?: ReadonlyArray<string>
   usage: ReactorLocalMeteringUsage
+}>
+
+export type ReactorEvalMeasurement =
+  | Readonly<{
+      evalDatasetRef: string
+      executionTarget: Exclude<ReactorEvalExecutionTarget, 'not_measured'>
+      sampleCount: number
+      score: number
+      scoreUnit: ReactorEvalScoreUnit
+      state: 'measured'
+    }>
+  | Readonly<{
+      evalDatasetRef?: string
+      reasonRef: string
+      state: 'not_measured'
+    }>
+
+export type BuildReactorModelEvalReceiptInput = Readonly<{
+  catalog: ReactorModelCatalog
+  generatedAt: string
+  harnessProfile?: ReactorEvalHarnessProfile
+  measurement: ReactorEvalMeasurement
+  modelRef: string
+  receiptRef: string
+  sourceRefs?: ReadonlyArray<string>
+  taskClassRef: ReactorEvalTaskClassRef
+}>
+
+export type BuildReactorEvalCoverageMatrixInput = Readonly<{
+  catalog: ReactorModelCatalog
+  evalReceipts: ReadonlyArray<ReactorModelEvalReceipt>
+  generatedAt: string
+  matrixRef: string
+  sourceRefs?: ReadonlyArray<string>
+  taskClassRefs?: ReadonlyArray<ReactorEvalTaskClassRef>
+}>
+
+export type SelectReactorCapabilityCopyEvalRefsInput = Readonly<{
+  decidedAt: string
+  decisionRef: string
+  evalReceipts: ReadonlyArray<ReactorModelEvalReceipt>
+  modelRef: string
+  sourceRefs?: ReadonlyArray<string>
+  taskClassRefs: ReadonlyArray<ReactorEvalTaskClassRef>
 }>
 
 const unique = <T extends string>(values: ReadonlyArray<T>): ReadonlyArray<T> =>
@@ -715,6 +852,235 @@ export const buildReactorLocalTokenMeteringReceipt = (
   })
 }
 
+const evalHarnessProfile = (
+  record: Omit<ReactorEvalHarnessProfile, 'schemaVersion'>,
+): ReactorEvalHarnessProfile =>
+  S.decodeUnknownSync(ReactorEvalHarnessProfile)({
+    schemaVersion: 'openagents.reactor.eval_harness_profile.v1',
+    ...record,
+  })
+
+export const REACTOR_PSIONIC_EVAL_HARNESS_PROFILE = evalHarnessProfile({
+  harnessRef: 'reactor.eval_harness.psionic.task_class.v1',
+  runnerOwner: 'psionic',
+  sourceRefs: [
+    'github:OpenAgentsInc/openagents#8274',
+    'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md#5-quick-win-workstreams',
+  ],
+  supportedExecutionTargets: [
+    'rx3_served_model',
+    'hosted_equivalent_large_model',
+    'not_measured',
+  ],
+  taskClassRefs: [...REACTOR_EVAL_TASK_CLASS_REFS],
+  unrunMeasurementState: 'not_measured',
+})
+
+const validEvalScore = (value: number): boolean =>
+  Number.isFinite(value) && value >= 0 && value <= 1
+
+const validEvalSampleCount = (value: number): boolean =>
+  Number.isInteger(value) && value > 0
+
+export const buildReactorModelEvalReceipt = (
+  input: BuildReactorModelEvalReceiptInput,
+): ReactorModelEvalReceipt => {
+  const catalog = S.decodeUnknownSync(ReactorModelCatalog)(input.catalog)
+  const harnessProfile = S.decodeUnknownSync(ReactorEvalHarnessProfile)(
+    input.harnessProfile ?? REACTOR_PSIONIC_EVAL_HARNESS_PROFILE,
+  )
+  const taskClassRef = S.decodeUnknownSync(ReactorEvalTaskClassRef)(
+    input.taskClassRef,
+  )
+  const modelExists = catalog.models.some(model => model.modelRef === input.modelRef)
+
+  if (!modelExists) {
+    throw new Error('reactor.eval.model_not_in_catalog')
+  }
+  if (!harnessProfile.taskClassRefs.includes(taskClassRef)) {
+    throw new Error('reactor.eval.task_class_not_supported_by_harness')
+  }
+  if (input.measurement.state === 'measured') {
+    if (
+      !validEvalScore(input.measurement.score) ||
+      !validEvalSampleCount(input.measurement.sampleCount)
+    ) {
+      throw new Error('reactor.eval.measured_receipt_invalid_score_or_samples')
+    }
+    if (
+      !harnessProfile.supportedExecutionTargets.includes(
+        input.measurement.executionTarget,
+      )
+    ) {
+      throw new Error('reactor.eval.execution_target_not_supported_by_harness')
+    }
+  }
+
+  return S.decodeUnknownSync(ReactorModelEvalReceipt)({
+    schemaVersion: 'openagents.reactor.model_eval_receipt.v1',
+    blockerRefs:
+      input.measurement.state === 'measured'
+        ? []
+        : ['blocker.reactor.eval.not_measured', input.measurement.reasonRef],
+    capabilityCopyAllowed: input.measurement.state === 'measured',
+    evalDatasetRef:
+      input.measurement.state === 'measured'
+        ? input.measurement.evalDatasetRef
+        : (input.measurement.evalDatasetRef ??
+          'dataset.reactor.task_class_eval.not_measured'),
+    executionTarget:
+      input.measurement.state === 'measured'
+        ? input.measurement.executionTarget
+        : 'not_measured',
+    generatedAt: input.generatedAt,
+    harnessRef: harnessProfile.harnessRef,
+    measurementState:
+      input.measurement.state === 'measured' ? 'measured' : 'not_measured',
+    modelRef: input.modelRef,
+    receiptRef: input.receiptRef,
+    runnerOwner: harnessProfile.runnerOwner,
+    sampleCount:
+      input.measurement.state === 'measured'
+        ? input.measurement.sampleCount
+        : null,
+    score: input.measurement.state === 'measured' ? input.measurement.score : null,
+    scoreUnit:
+      input.measurement.state === 'measured'
+        ? input.measurement.scoreUnit
+        : null,
+    sourceRefs: unique([
+      catalog.catalogRef,
+      harnessProfile.harnessRef,
+      ...(input.sourceRefs ?? []),
+    ]),
+    taskClassRef,
+  })
+}
+
+const evalReceiptKey = (
+  modelRef: string,
+  taskClassRef: ReactorEvalTaskClassRef,
+): string => `${modelRef}::${taskClassRef}`
+
+const measuredEvalReceiptByKey = (
+  evalReceipts: ReadonlyArray<ReactorModelEvalReceipt>,
+): ReadonlyMap<string, ReactorModelEvalReceipt> =>
+  evalReceipts.reduce((map, receiptLike) => {
+    const receipt = S.decodeUnknownSync(ReactorModelEvalReceipt)(receiptLike)
+    if (
+      receipt.measurementState !== 'measured' ||
+      receipt.capabilityCopyAllowed !== true
+    ) {
+      return map
+    }
+
+    const key = evalReceiptKey(receipt.modelRef, receipt.taskClassRef)
+    if (map.has(key)) {
+      throw new Error('reactor.eval.duplicate_measured_receipt_for_model_task')
+    }
+
+    map.set(key, receipt)
+    return map
+  }, new Map<string, ReactorModelEvalReceipt>())
+
+export const buildReactorEvalCoverageMatrix = (
+  input: BuildReactorEvalCoverageMatrixInput,
+): ReactorEvalCoverageMatrix => {
+  const catalog = S.decodeUnknownSync(ReactorModelCatalog)(input.catalog)
+  const taskClassRefs = unique(
+    [...(input.taskClassRefs ?? REACTOR_EVAL_TASK_CLASS_REFS)].map(taskClassRef =>
+      S.decodeUnknownSync(ReactorEvalTaskClassRef)(taskClassRef),
+    ),
+  )
+  const receiptsByKey = measuredEvalReceiptByKey(input.evalReceipts)
+  const cells = catalog.models.flatMap(modelRecord =>
+    taskClassRefs.map(taskClassRef => {
+      const receipt = receiptsByKey.get(
+        evalReceiptKey(modelRecord.modelRef, taskClassRef),
+      )
+
+      if (receipt !== undefined) {
+        return {
+          blockerRefs: [],
+          capabilityCopyAllowed: true,
+          measurementState: 'measured' as const,
+          modelRef: modelRecord.modelRef,
+          receiptRef: receipt.receiptRef,
+          score: receipt.score,
+          taskClassRef,
+        } satisfies ReactorEvalCoverageCell
+      }
+
+      return {
+        blockerRefs: [
+          'blocker.reactor.eval.not_measured',
+          `model:${modelRecord.modelRef}`,
+          `task_class:${taskClassRef}`,
+        ],
+        capabilityCopyAllowed: false,
+        measurementState: 'not_measured' as const,
+        modelRef: modelRecord.modelRef,
+        receiptRef: null,
+        score: null,
+        taskClassRef,
+      } satisfies ReactorEvalCoverageCell
+    }),
+  )
+
+  return S.decodeUnknownSync(ReactorEvalCoverageMatrix)({
+    schemaVersion: 'openagents.reactor.eval_coverage_matrix.v1',
+    catalogRef: catalog.catalogRef,
+    cells,
+    generatedAt: input.generatedAt,
+    matrixRef: input.matrixRef,
+    sourceRefs: unique([
+      catalog.catalogRef,
+      ...input.evalReceipts.map(receipt => receipt.receiptRef),
+      ...(input.sourceRefs ?? []),
+    ]),
+  })
+}
+
+export const selectReactorCapabilityCopyEvalRefs = (
+  input: SelectReactorCapabilityCopyEvalRefsInput,
+): ReactorCapabilityCopyEvalDecision => {
+  const taskClassRefs = unique(
+    input.taskClassRefs.map(taskClassRef =>
+      S.decodeUnknownSync(ReactorEvalTaskClassRef)(taskClassRef),
+    ),
+  )
+  const receiptsByKey = measuredEvalReceiptByKey(input.evalReceipts)
+  const allowedEvalRefs = taskClassRefs.flatMap(taskClassRef => {
+    const receipt = receiptsByKey.get(evalReceiptKey(input.modelRef, taskClassRef))
+    return receipt === undefined ? [] : [receipt.receiptRef]
+  })
+  const blockerRefs = taskClassRefs.flatMap(taskClassRef => {
+    const receipt = receiptsByKey.get(evalReceiptKey(input.modelRef, taskClassRef))
+    return receipt === undefined
+      ? [
+          'blocker.reactor.capability_copy.eval_not_measured',
+          `model:${input.modelRef}`,
+          `task_class:${taskClassRef}`,
+        ]
+      : []
+  })
+
+  return S.decodeUnknownSync(ReactorCapabilityCopyEvalDecision)({
+    schemaVersion: 'openagents.reactor.capability_copy_eval_decision.v1',
+    allowedEvalRefs,
+    blockerRefs,
+    decidedAt: input.decidedAt,
+    decisionRef: input.decisionRef,
+    modelRef: input.modelRef,
+    sourceRefs: unique([
+      ...allowedEvalRefs,
+      ...(input.sourceRefs ?? []),
+    ]),
+    status: blockerRefs.length === 0 ? 'allowed' : 'blocked_not_measured',
+    taskClassRefs,
+  })
+}
+
 const model = (
   record: Omit<ReactorModelProvenance, 'schemaVersion'>,
 ): ReactorModelProvenance =>
@@ -731,6 +1097,7 @@ export const REACTOR_MODEL_CATALOG_SEED = S.decodeUnknownSync(
   generatedAt: '2026-07-04T00:00:00.000Z',
   sourceRefs: [
     'github:OpenAgentsInc/openagents#8272',
+    'github:OpenAgentsInc/openagents#8274',
     'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md#3-the-model-catalog-and-the-provenance-policy-the-differentiator',
   ],
   models: [
@@ -755,7 +1122,10 @@ export const REACTOR_MODEL_CATALOG_SEED = S.decodeUnknownSync(
       developer: 'meta',
       displayName: 'Meta Llama family',
       distillationLineage: [],
-      evalRefs: [],
+      evalRefs: [
+        'reactor.eval_receipt.llama.drafting.fixture.20260704',
+        'reactor.eval_receipt.llama.extraction.fixture.20260704',
+      ],
       family: 'llama',
       license: 'llama-community',
       licenseClass: 'community_restricted',
@@ -772,7 +1142,10 @@ export const REACTOR_MODEL_CATALOG_SEED = S.decodeUnknownSync(
       developer: 'openai',
       displayName: 'OpenAI GPT-OSS family',
       distillationLineage: [],
-      evalRefs: [],
+      evalRefs: [
+        'reactor.eval_receipt.gpt_oss.drafting.fixture.20260704',
+        'reactor.eval_receipt.gpt_oss.extraction.fixture.20260704',
+      ],
       family: 'gpt-oss',
       license: 'apache-2.0',
       licenseClass: 'permissive',
@@ -897,6 +1270,94 @@ export const REACTOR_MODEL_CATALOG_SEED = S.decodeUnknownSync(
     }),
   ],
 })
+
+export const REACTOR_MODEL_EVAL_RECEIPT_SEED = [
+  buildReactorModelEvalReceipt({
+    catalog: REACTOR_MODEL_CATALOG_SEED,
+    generatedAt: '2026-07-04T12:15:00.000Z',
+    measurement: {
+      evalDatasetRef: 'dataset.reactor.fixture.drafting.v1',
+      executionTarget: 'rx3_served_model',
+      sampleCount: 12,
+      score: 0.82,
+      scoreUnit: 'score_0_to_1',
+      state: 'measured',
+    },
+    modelRef: 'model.openai.gpt_oss.open_family',
+    receiptRef: 'reactor.eval_receipt.gpt_oss.drafting.fixture.20260704',
+    sourceRefs: [
+      'github:OpenAgentsInc/openagents#8274',
+      'reactor.node_profile.fixture.hydralisk.server_class.v1',
+    ],
+    taskClassRef: 'drafting',
+  }),
+  buildReactorModelEvalReceipt({
+    catalog: REACTOR_MODEL_CATALOG_SEED,
+    generatedAt: '2026-07-04T12:16:00.000Z',
+    measurement: {
+      evalDatasetRef: 'dataset.reactor.fixture.extraction.v1',
+      executionTarget: 'rx3_served_model',
+      sampleCount: 12,
+      score: 0.88,
+      scoreUnit: 'score_0_to_1',
+      state: 'measured',
+    },
+    modelRef: 'model.openai.gpt_oss.open_family',
+    receiptRef: 'reactor.eval_receipt.gpt_oss.extraction.fixture.20260704',
+    sourceRefs: [
+      'github:OpenAgentsInc/openagents#8274',
+      'reactor.node_profile.fixture.hydralisk.server_class.v1',
+    ],
+    taskClassRef: 'extraction',
+  }),
+  buildReactorModelEvalReceipt({
+    catalog: REACTOR_MODEL_CATALOG_SEED,
+    generatedAt: '2026-07-04T12:17:00.000Z',
+    measurement: {
+      evalDatasetRef: 'dataset.reactor.fixture.drafting.v1',
+      executionTarget: 'hosted_equivalent_large_model',
+      sampleCount: 12,
+      score: 0.79,
+      scoreUnit: 'score_0_to_1',
+      state: 'measured',
+    },
+    modelRef: 'model.meta.llama.open_family',
+    receiptRef: 'reactor.eval_receipt.llama.drafting.fixture.20260704',
+    sourceRefs: [
+      'github:OpenAgentsInc/openagents#8274',
+      'label:hosted_equivalent_large_model',
+    ],
+    taskClassRef: 'drafting',
+  }),
+  buildReactorModelEvalReceipt({
+    catalog: REACTOR_MODEL_CATALOG_SEED,
+    generatedAt: '2026-07-04T12:18:00.000Z',
+    measurement: {
+      evalDatasetRef: 'dataset.reactor.fixture.extraction.v1',
+      executionTarget: 'hosted_equivalent_large_model',
+      sampleCount: 12,
+      score: 0.84,
+      scoreUnit: 'score_0_to_1',
+      state: 'measured',
+    },
+    modelRef: 'model.meta.llama.open_family',
+    receiptRef: 'reactor.eval_receipt.llama.extraction.fixture.20260704',
+    sourceRefs: [
+      'github:OpenAgentsInc/openagents#8274',
+      'label:hosted_equivalent_large_model',
+    ],
+    taskClassRef: 'extraction',
+  }),
+] as const satisfies ReadonlyArray<ReactorModelEvalReceipt>
+
+export const REACTOR_EVAL_COVERAGE_MATRIX_SEED =
+  buildReactorEvalCoverageMatrix({
+    catalog: REACTOR_MODEL_CATALOG_SEED,
+    evalReceipts: REACTOR_MODEL_EVAL_RECEIPT_SEED,
+    generatedAt: '2026-07-04T12:20:00.000Z',
+    matrixRef: 'reactor.eval_coverage_matrix.seed.20260704.v1',
+    sourceRefs: ['github:OpenAgentsInc/openagents#8274'],
+  })
 
 const policy = (
   record: Omit<ReactorModelPolicy, 'schemaVersion'>,

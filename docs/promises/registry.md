@@ -1,5 +1,20 @@
 # Promise Registry
 
+> Registry `2026-07-04.12` is the RX-4 Reactor eval-receipts pass
+> (#8274) and flips NO promise state (green stays exactly 34). The
+> `@openagentsinc/reactor-contracts` package now exports the Psionic-owned
+> task-class eval harness profile, model eval receipts, eval coverage
+> matrix, and capability-copy eval decision helper. The seed catalog cites
+> measured fixture receipts for GPT-OSS and Llama on drafting/extraction,
+> labels GPT-OSS as `rx3_served_model` and Llama as
+> `hosted_equivalent_large_model`, and marks all unrun model/task cells
+> `not_measured` rather than blank or zero. This clears only the initial
+> eval-receipts-missing blocker and replaces it with a narrower
+> full-eval-coverage blocker. Psionic runtime execution machinery,
+> RAG/agent-tool-use coverage, customer/dogfood deployment, data custody,
+> air-gap bundles, owner-approved copy, pricing, compliance, payout, and
+> settlement claims remain blocked.
+
 > Registry `2026-07-04.11` is the RX-3 Reactor serving-skeleton pass
 > (#8273) and flips NO promise state (green stays exactly 34). The
 > `@openagentsinc/reactor-contracts` package now adds lane-neutral node

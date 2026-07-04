@@ -2,19 +2,30 @@ import { describe, expect, test } from 'bun:test'
 import { Schema as S } from 'effect'
 
 import {
+  REACTOR_EVAL_COVERAGE_MATRIX_SEED,
+  REACTOR_EVAL_TASK_CLASS_REFS,
   REACTOR_EXAMPLE_POLICIES,
+  REACTOR_MODEL_EVAL_RECEIPT_SEED,
   REACTOR_MODEL_CATALOG_SEED,
+  REACTOR_PSIONIC_EVAL_HARNESS_PROFILE,
   REACTOR_SERVER_CLASS_HYDRALISK_PROFILE,
+  ReactorCapabilityCopyEvalDecision,
+  ReactorEvalCoverageMatrix,
+  ReactorEvalHarnessProfile,
   ReactorLocalTokenMeteringReceipt,
   ReactorModelInstallReceipt,
   ReactorModelCatalog,
+  ReactorModelEvalReceipt,
   type ReactorModelCatalog as ReactorModelCatalogType,
   type ReactorModelProvenance,
   ReactorModelPolicyDecisionReceipt,
   ReactorNodeModelProfile,
+  buildReactorEvalCoverageMatrix,
   buildReactorLocalTokenMeteringReceipt,
+  buildReactorModelEvalReceipt,
   provisionReactorModel,
   routeReactorOpenAiCompatibleRequest,
+  selectReactorCapabilityCopyEvalRefs,
   resolveReactorModelPolicy,
 } from './index'
 
@@ -55,7 +66,31 @@ describe('Reactor model provenance catalog', () => {
     ])
     expect(catalog.models.some(model => model.trainingDataDisclosure === 'unknown')).toBe(true)
     expect(catalog.models.some(model => model.trainingDataDisclosure === 'partial')).toBe(true)
-    expect(catalog.models.every(model => model.evalRefs.length === 0)).toBe(true)
+    expect(
+      catalog.models.find(
+        model => model.modelRef === 'model.openai.gpt_oss.open_family',
+      )?.evalRefs,
+    ).toEqual([
+      'reactor.eval_receipt.gpt_oss.drafting.fixture.20260704',
+      'reactor.eval_receipt.gpt_oss.extraction.fixture.20260704',
+    ])
+    expect(
+      catalog.models.find(
+        model => model.modelRef === 'model.meta.llama.open_family',
+      )?.evalRefs,
+    ).toEqual([
+      'reactor.eval_receipt.llama.drafting.fixture.20260704',
+      'reactor.eval_receipt.llama.extraction.fixture.20260704',
+    ])
+    expect(
+      catalog.models
+        .filter(
+          model =>
+            model.modelRef !== 'model.openai.gpt_oss.open_family' &&
+            model.modelRef !== 'model.meta.llama.open_family',
+        )
+        .every(model => model.evalRefs.length === 0),
+    ).toBe(true)
   })
 
   test('policy decisions are receipt-shaped and name the policy version', () => {
@@ -75,6 +110,177 @@ describe('Reactor model provenance catalog', () => {
     )
     expect(decoded.decidedAt).toBe(DECIDED_AT)
     expect(decoded.sourceRefs).toContain(REACTOR_MODEL_CATALOG_SEED.catalogRef)
+  })
+})
+
+describe('Reactor task-class eval receipts', () => {
+  test('declares a Psionic-owned harness profile for the four Reactor task classes', () => {
+    const profile = S.decodeUnknownSync(ReactorEvalHarnessProfile)(
+      REACTOR_PSIONIC_EVAL_HARNESS_PROFILE,
+    )
+
+    expect(profile.runnerOwner).toBe('psionic')
+    expect(profile.taskClassRefs).toEqual([...REACTOR_EVAL_TASK_CLASS_REFS])
+    expect(profile.supportedExecutionTargets).toEqual([
+      'rx3_served_model',
+      'hosted_equivalent_large_model',
+      'not_measured',
+    ])
+    expect(profile.unrunMeasurementState).toBe('not_measured')
+  })
+
+  test('ships measured receipts for two models across two task classes', () => {
+    const receipts = REACTOR_MODEL_EVAL_RECEIPT_SEED.map(receipt =>
+      S.decodeUnknownSync(ReactorModelEvalReceipt)(receipt),
+    )
+    const byModel = new Map(
+      REACTOR_MODEL_CATALOG_SEED.models.map(model => [
+        model.modelRef,
+        model.evalRefs,
+      ]),
+    )
+
+    expect(receipts).toHaveLength(4)
+    expect(
+      receipts.map(receipt => [
+        receipt.modelRef,
+        receipt.taskClassRef,
+        receipt.executionTarget,
+      ]),
+    ).toEqual([
+      [
+        'model.openai.gpt_oss.open_family',
+        'drafting',
+        'rx3_served_model',
+      ],
+      [
+        'model.openai.gpt_oss.open_family',
+        'extraction',
+        'rx3_served_model',
+      ],
+      [
+        'model.meta.llama.open_family',
+        'drafting',
+        'hosted_equivalent_large_model',
+      ],
+      [
+        'model.meta.llama.open_family',
+        'extraction',
+        'hosted_equivalent_large_model',
+      ],
+    ])
+    expect(receipts.every(receipt => receipt.measurementState === 'measured')).toBe(true)
+    expect(receipts.every(receipt => receipt.capabilityCopyAllowed)).toBe(true)
+    for (const receipt of receipts) {
+      expect(receipt.score).not.toBeNull()
+      expect(receipt.sampleCount).toBeGreaterThan(0)
+      expect(byModel.get(receipt.modelRef)).toContain(receipt.receiptRef)
+    }
+  })
+
+  test('coverage matrix marks unrun combinations not_measured rather than zero', () => {
+    const matrix = S.decodeUnknownSync(ReactorEvalCoverageMatrix)(
+      REACTOR_EVAL_COVERAGE_MATRIX_SEED,
+    )
+    const measuredCells = matrix.cells.filter(
+      cell => cell.measurementState === 'measured',
+    )
+    const notMeasuredCells = matrix.cells.filter(
+      cell => cell.measurementState === 'not_measured',
+    )
+    const qwenAgentToolUseCell = matrix.cells.find(
+      cell =>
+        cell.modelRef === 'model.alibaba.qwen.open_family' &&
+        cell.taskClassRef === 'agent_tool_use',
+    )
+
+    expect(matrix.cells).toHaveLength(
+      REACTOR_MODEL_CATALOG_SEED.models.length *
+        REACTOR_EVAL_TASK_CLASS_REFS.length,
+    )
+    expect(measuredCells).toHaveLength(4)
+    expect(notMeasuredCells.length).toBe(matrix.cells.length - 4)
+    expect(qwenAgentToolUseCell).toMatchObject({
+      capabilityCopyAllowed: false,
+      measurementState: 'not_measured',
+      receiptRef: null,
+      score: null,
+    })
+    expect(qwenAgentToolUseCell?.blockerRefs).toContain(
+      'blocker.reactor.eval.not_measured',
+    )
+    expect(notMeasuredCells.every(cell => cell.score === null)).toBe(true)
+  })
+
+  test('capability copy decisions only return measured eval receipt refs', () => {
+    const allowed = selectReactorCapabilityCopyEvalRefs({
+      decidedAt: DECIDED_AT,
+      decisionRef: 'reactor.capability_copy.gpt_oss.draft_extract.001',
+      evalReceipts: REACTOR_MODEL_EVAL_RECEIPT_SEED,
+      modelRef: 'model.openai.gpt_oss.open_family',
+      taskClassRefs: ['drafting', 'extraction'],
+    })
+    const blocked = selectReactorCapabilityCopyEvalRefs({
+      decidedAt: DECIDED_AT,
+      decisionRef: 'reactor.capability_copy.gpt_oss.agent_tool_use.001',
+      evalReceipts: REACTOR_MODEL_EVAL_RECEIPT_SEED,
+      modelRef: 'model.openai.gpt_oss.open_family',
+      taskClassRefs: ['drafting', 'agent_tool_use'],
+    })
+
+    expect(
+      S.decodeUnknownSync(ReactorCapabilityCopyEvalDecision)(allowed),
+    ).toMatchObject({
+      allowedEvalRefs: [
+        'reactor.eval_receipt.gpt_oss.drafting.fixture.20260704',
+        'reactor.eval_receipt.gpt_oss.extraction.fixture.20260704',
+      ],
+      blockerRefs: [],
+      status: 'allowed',
+    })
+    expect(blocked.status).toBe('blocked_not_measured')
+    expect(blocked.allowedEvalRefs).toEqual([
+      'reactor.eval_receipt.gpt_oss.drafting.fixture.20260704',
+    ])
+    expect(blocked.blockerRefs).toContain(
+      'blocker.reactor.capability_copy.eval_not_measured',
+    )
+    expect(blocked.blockerRefs).toContain('task_class:agent_tool_use')
+  })
+
+  test('eval builders reject invalid measured scores and duplicate matrix cells', () => {
+    expect(() =>
+      buildReactorModelEvalReceipt({
+        catalog: REACTOR_MODEL_CATALOG_SEED,
+        generatedAt: DECIDED_AT,
+        measurement: {
+          evalDatasetRef: 'dataset.reactor.fixture.drafting.v1',
+          executionTarget: 'rx3_served_model',
+          sampleCount: 0,
+          score: 0.7,
+          scoreUnit: 'score_0_to_1',
+          state: 'measured',
+        },
+        modelRef: 'model.openai.gpt_oss.open_family',
+        receiptRef: 'reactor.eval_receipt.invalid.001',
+        taskClassRef: 'drafting',
+      }),
+    ).toThrow('reactor.eval.measured_receipt_invalid_score_or_samples')
+
+    expect(() =>
+      buildReactorEvalCoverageMatrix({
+        catalog: REACTOR_MODEL_CATALOG_SEED,
+        evalReceipts: [
+          REACTOR_MODEL_EVAL_RECEIPT_SEED[0],
+          {
+            ...REACTOR_MODEL_EVAL_RECEIPT_SEED[0],
+            receiptRef: 'reactor.eval_receipt.duplicate.001',
+          },
+        ],
+        generatedAt: DECIDED_AT,
+        matrixRef: 'reactor.eval_matrix.duplicate.001',
+      }),
+    ).toThrow('reactor.eval.duplicate_measured_receipt_for_model_task')
   })
 })
 
