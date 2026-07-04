@@ -7,6 +7,8 @@ import type {
   KhalaCodeDesktopFleetRunStartRequest,
   KhalaCodeDesktopFleetRunStartResult,
   KhalaCodeDesktopFleetStatus,
+  KhalaCodeDesktopKhalaSyncFleetMutateRequest,
+  KhalaCodeDesktopKhalaSyncFleetStateResult,
 } from "../src/shared/rpc"
 import {
   buildKhalaFleetThroughputGauges,
@@ -751,5 +753,167 @@ describe("Fleet status panel", () => {
       { runRef: "fleet.run.public.test", verb: "drain" },
       { runRef: "fleet.run.public.test", verb: "stop" },
     ])
+  })
+
+  // KS-6.2 (#8303): flag-gated Khala Sync consumption for the Fleet screen.
+  const syncState = (
+    input: Partial<KhalaCodeDesktopKhalaSyncFleetStateResult> = {},
+  ): KhalaCodeDesktopKhalaSyncFleetStateResult => ({
+    accounts: [],
+    assignments: [],
+    authState: "connected",
+    cursor: 7,
+    enabled: true,
+    ok: true,
+    pendingMutations: 0,
+    phase: "live",
+    reason: null,
+    rejections: [],
+    run: {
+      counters: {
+        activeAssignments: 5,
+        blockedAssignments: 0,
+        completedAssignments: 6,
+        failedAssignments: 1,
+        workUnitsTotal: 12,
+      },
+      desiredSlots: 8,
+      runId: "fleet.run.public.test",
+      startedAt: "2026-07-01T18:00:01.000Z",
+      status: "running",
+      updatedAt: "2026-07-01T18:05:00.000Z",
+      workerKind: "codex",
+    },
+    workers: [],
+    ...input,
+  })
+
+  const mountSyncPanel = (input: {
+    readonly state: () => Promise<KhalaCodeDesktopKhalaSyncFleetStateResult>
+    readonly mutations?: KhalaCodeDesktopKhalaSyncFleetMutateRequest[]
+    readonly controls?: KhalaCodeDesktopFleetRunControlRequest[]
+  }) => {
+    const root = document.createElement("div")
+    const panel = mountFleetPanel(root, {
+      connectAccount: async accountRef => ({
+        ok: true,
+        accountRef,
+        output: "",
+        userCode: null,
+        verificationUrl: null,
+      }),
+      delegateRun: async () => {
+        throw new Error("delegate runner should not be called")
+      },
+      fetch: async () => status(),
+      fleetRunControl: async request => {
+        input.controls?.push(request)
+        return {
+          ok: true,
+          previousState: "running",
+          run: fleetRunProjection(),
+          supervisorActive: true,
+          verb: request.verb,
+        }
+      },
+      fleetRunList: async () => ({ ok: true, runs: [fleetRunProjection()] }),
+      fleetRunStart: async request => runStartResult(request),
+      fleetWorkerControl: async () => {
+        throw new Error("fleet worker control should not be called")
+      },
+      khalaSyncFleetState: async () => input.state(),
+      khalaSyncFleetMutate: async request => {
+        input.mutations?.push(request)
+        return { ok: true }
+      },
+      loadGymDemoProof: () => {
+        throw new Error("gym proof should not be called")
+      },
+      openExternal: async () => false,
+      removeAccount: async () => ({ ok: true }),
+      setAccountPaused: async () => ({ ok: true }),
+      consumeResetCredit: async () => ({ ok: true }),
+      startDelegationOptimization: async () => {
+        throw new Error("optimization should not be called")
+      },
+    })
+    return { root, panel }
+  }
+
+  test("khala sync enabled: active run header renders server truth from the synced fleet_run", async () => {
+    const { root, panel } = mountSyncPanel({ state: async () => syncState() })
+    await panel.refresh()
+    await flushPanelWork()
+
+    const chip = root.querySelector<HTMLElement>(".khala-fleet-sync-indicator")
+    expect(chip).not.toBeNull()
+    expect(chip!.dataset.khalaSyncPhase).toBe("live")
+    expect(chip!.dataset.khalaSyncLive).toBe("true")
+    expect(chip!.textContent).toBe("Khala Sync: Live")
+    // Server truth wins over the local polling projection: desiredSlots 8
+    // (local targetConcurrency was 3) and the synced counters.
+    expect(root.textContent).toContain("target8")
+    expect(root.textContent).toContain("khala sync")
+  })
+
+  test("khala sync disabled result: polling path renders untouched, no sync indicator", async () => {
+    const { root, panel } = mountSyncPanel({
+      state: async () => syncState({ enabled: false, phase: "disabled", run: null }),
+    })
+    await panel.refresh()
+    await flushPanelWork()
+
+    expect(root.querySelector(".khala-fleet-sync-indicator")).toBeNull()
+    expect(root.textContent).toContain("target3")
+    expect(root.textContent).toContain("orchestration store")
+  })
+
+  test("khala sync enabled: pause routes the operator intent through khalaSyncFleetMutate", async () => {
+    const mutations: KhalaCodeDesktopKhalaSyncFleetMutateRequest[] = []
+    const controlRequests: KhalaCodeDesktopFleetRunControlRequest[] = []
+    const { root, panel } = mountSyncPanel({
+      state: async () => syncState(),
+      mutations,
+      controls: controlRequests,
+    })
+    await panel.refresh()
+    await flushPanelWork()
+
+    clickButton(root, "Pause")
+    await flushPanelWork()
+    await flushPanelWork()
+
+    expect(mutations).toEqual([
+      { action: "pause", runId: "fleet.run.public.test" },
+    ])
+    // The local supervisor stays the enforcement path until the Pylon-side
+    // intent consumer lands (#8302 honest v1 contract).
+    expect(controlRequests[0]).toEqual({ runRef: "fleet.run.public.test", verb: "pause" })
+  })
+
+  test("khala sync in-band rejection is surfaced in the header state", async () => {
+    const { root, panel } = mountSyncPanel({
+      state: async () =>
+        syncState({
+          rejections: [
+            {
+              errorCode: "unauthorized_scope",
+              messageSafe: "this fleet run scope belongs to a different user",
+              mutationId: 3,
+              mutatorName: "fleet.pauseRun",
+              observedAt: "2026-07-01T18:06:00.000Z",
+              runId: "fleet.run.public.test",
+            },
+          ],
+        }),
+    })
+    await panel.refresh()
+    await flushPanelWork()
+
+    const rejection = root.querySelector<HTMLElement>(".khala-fleet-sync-rejection")
+    expect(rejection).not.toBeNull()
+    expect(rejection!.dataset.khalaSyncRejection).toBe("unauthorized_scope")
+    expect(rejection!.textContent).toContain("fleet.pauseRun")
+    expect(rejection!.textContent).toContain("unauthorized_scope")
   })
 })

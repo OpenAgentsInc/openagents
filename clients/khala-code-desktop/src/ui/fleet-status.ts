@@ -15,7 +15,12 @@ import type {
   KhalaCodeDesktopFleetStatus,
   KhalaCodeDesktopFleetWorkerControlRequest,
   KhalaCodeDesktopFleetWorkerControlResult,
+  KhalaCodeDesktopKhalaSyncFleetMutateRequest,
+  KhalaCodeDesktopKhalaSyncFleetMutateResult,
+  KhalaCodeDesktopKhalaSyncFleetStateRequest,
+  KhalaCodeDesktopKhalaSyncFleetStateResult,
 } from "../shared/rpc"
+import { khalaSyncFleetIndicator, mergeKhalaSyncActiveFleetRun } from "./fleet-sync-projection"
 import { buildKhalaFleetBoardProjection } from "./fleet-board-projection"
 import { renderKhalaFleetBoardHtml } from "./fleet-board-renderer"
 import {
@@ -75,6 +80,18 @@ export type FleetPanelOptions = Readonly<{
   ) => Promise<{ readonly ok: boolean; readonly error?: string }>
   connectAccount: (accountRef: string) => Promise<KhalaCodeDesktopConnectStart>
   openExternal: (url: string) => Promise<boolean>
+  // Khala Sync fleet consumer (KS-6.2, #8303): optional, flag-gated
+  // (KHALA_SYNC_FLEET=1). When the state RPC reports enabled, the active-run
+  // header renders from the synced fleet_run scope (server truth) with an
+  // honest freshness indicator, and pause/resume also record the operator
+  // intent through the Khala Sync mutators. The polling source above stays
+  // the default until the server deploy is verified.
+  khalaSyncFleetState?: (
+    request: KhalaCodeDesktopKhalaSyncFleetStateRequest,
+  ) => Promise<KhalaCodeDesktopKhalaSyncFleetStateResult>
+  khalaSyncFleetMutate?: (
+    request: KhalaCodeDesktopKhalaSyncFleetMutateRequest,
+  ) => Promise<KhalaCodeDesktopKhalaSyncFleetMutateResult>
   lifecycleNdjson?: () => AsyncIterable<string | Uint8Array>
   lifecycleUpdateThrottleMs?: number
   lifecycleUpdateClock?: {
@@ -179,6 +196,8 @@ type ActiveFleetRunView = Readonly<{
   error: ActiveFleetRunError | null
   objective: string | null
   run: KhalaCodeDesktopFleetRunProjection | null
+  /** Khala Sync state for the active run's scope; null while flag-off/unavailable. */
+  sync: KhalaCodeDesktopKhalaSyncFleetStateResult | null
 }>
 
 type FleetView =
@@ -941,7 +960,40 @@ const renderFleetRunHeader = (
 
   const section = el("section", "khala-fleet-section khala-fleet-run-header")
   section.dataset.state = run?.state ?? "degraded"
-  section.append(sectionHeader("Active FleetRun", "orchestration store"))
+  section.append(
+    sectionHeader(
+      "Active FleetRun",
+      activeRun.sync?.enabled === true ? "khala sync" : "orchestration store",
+    ),
+  )
+
+  // Khala Sync freshness indicator (contracts:
+  // khala_code.fleet.khala_sync_indicator_truthful.v1,
+  // khala_code.fleet.khala_sync_must_refetch_recovers.v1): "Live" is
+  // rendered ONLY while the sync session's live socket is open; every other
+  // phase renders an explicit syncing/reconnecting/resyncing state, and
+  // must_refetch stays visible while the session re-bootstraps itself.
+  if (activeRun.sync !== null && activeRun.sync.enabled) {
+    const indicator = khalaSyncFleetIndicator(activeRun.sync)
+    const chip = el("span", "khala-fleet-sync-indicator", indicator.label)
+    chip.dataset.khalaSyncPhase = indicator.phase
+    chip.dataset.khalaSyncLive = indicator.live ? "true" : "false"
+    chip.dataset.khalaSyncTone = indicator.tone
+    section.append(chip)
+    const runRejections = activeRun.sync.rejections.filter(
+      rejection => rejection.runId === null || rejection.runId === run?.runRef,
+    )
+    const lastRejection = runRejections[runRejections.length - 1]
+    if (lastRejection !== undefined) {
+      const rejectionRow = el(
+        "p",
+        "khala-fleet-sync-rejection",
+        `Khala Sync rejected ${lastRejection.mutatorName}: ${lastRejection.errorCode} — ${lastRejection.messageSafe}`,
+      )
+      rejectionRow.dataset.khalaSyncRejection = lastRejection.errorCode
+      section.append(rejectionRow)
+    }
+  }
 
   if (run === null) {
     const error = activeRun.error
@@ -1566,6 +1618,7 @@ export const mountFleetPanel = (
     error: null,
     objective: null,
     run: null,
+    sync: null,
   }
   const objectiveByRunRef = new Map<string, string>()
   let optimizationInFlight = false
@@ -1839,6 +1892,7 @@ export const mountFleetPanel = (
           error: null,
           objective: request.objective,
           run: result.run,
+          sync: activeRun.sync,
         }
         fleetRun = { phase: "ready", result, slots: preview }
         await refresh()
@@ -1864,12 +1918,45 @@ export const mountFleetPanel = (
     paint()
     void (async () => {
       try {
-        const result = await options.fleetRunControl({ runRef, verb })
+        // Khala Sync path (KS-6.2, flag-gated): pause/resume also record the
+        // operator intent through the sync session's fleet mutators, so the
+        // fleet_run scope converges on the new desired state server-side.
+        // The local supervisor call remains the enforcement path until the
+        // Pylon-side intent consumer lands (#8302 honest v1 contract). An
+        // in-band mutate rejection is surfaced as UI state, never thrown.
+        const syncMutate =
+          activeRun.sync?.enabled === true &&
+          options.khalaSyncFleetMutate !== undefined &&
+          (verb === "pause" || verb === "resume")
+            ? options
+                .khalaSyncFleetMutate({ action: verb, runId: runRef })
+                .catch((error: unknown): KhalaCodeDesktopKhalaSyncFleetMutateResult => ({
+                  ok: false,
+                  error: error instanceof Error ? error.message : String(error),
+                }))
+            : Promise.resolve<KhalaCodeDesktopKhalaSyncFleetMutateResult | null>(null)
+        const [result, syncResult] = await Promise.all([
+          options.fleetRunControl({ runRef, verb }),
+          syncMutate,
+        ])
+        const syncFailure = syncResult !== null && !syncResult.ok
+          ? {
+              kind: "fleet_run_control" as const,
+              message: `Khala Sync ${verb} intent failed: ${syncResult.error ?? "unknown error"}`,
+            }
+          : null
         activeRun = {
           controlInFlight: null,
-          error: null,
+          error: syncFailure,
           objective: objectiveByRunRef.get(result.run.runRef) ?? activeRun.objective,
           run: result.run,
+          sync: activeRun.sync,
+        }
+        if (syncFailure !== null) {
+          // Keep the sync failure visible instead of letting the immediate
+          // refresh clear it; the next visible-poll refresh reconciles.
+          paint()
+          return
         }
         await refresh()
       } catch (error) {
@@ -2061,6 +2148,20 @@ export const mountFleetPanel = (
     })()
   }
 
+  const loadKhalaSyncState = async (
+    selected: KhalaCodeDesktopFleetRunProjection | null,
+  ): Promise<KhalaCodeDesktopKhalaSyncFleetStateResult | null> => {
+    if (options.khalaSyncFleetState === undefined || selected === null) return null
+    try {
+      const state = await options.khalaSyncFleetState({ runId: selected.runRef })
+      return state.enabled ? state : null
+    } catch {
+      // The sync source is flag-gated and additive: a failed read falls back
+      // to the polling truth instead of degrading the screen.
+      return null
+    }
+  }
+
   const refresh = async (): Promise<void> => {
     if (inFlight) return
     inFlight = true
@@ -2088,6 +2189,10 @@ export const mountFleetPanel = (
 
       if (listResult.status === "fulfilled") {
         const selected = selectActiveFleetRun(listResult.value.runs)
+        // KS-6.2 (#8303), flag-gated: when Khala Sync is enabled, the active
+        // run renders from the synced fleet_run scope (server truth) merged
+        // over the local projection; polling truth stays the fallback.
+        const sync = await loadKhalaSyncState(selected)
         const listError: ActiveFleetRunError | null = listResult.value.ok
           ? null
           : {
@@ -2102,7 +2207,10 @@ export const mountFleetPanel = (
             : objectiveByRunRef.get(selected.runRef) ?? (
                 activeRun.run?.runRef === selected.runRef ? activeRun.objective : null
               ),
-          run: selected,
+          run: selected !== null && sync !== null
+            ? mergeKhalaSyncActiveFleetRun(selected, sync)
+            : selected,
+          sync,
         }
         paint()
         return

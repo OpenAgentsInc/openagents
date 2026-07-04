@@ -42,6 +42,16 @@ clients with server-authoritative mutators and rebase.
   `migrations/0004`). Landed through KS-6.1 server-side.
 - `packages/khala-sync-client` — local store + overlay/rebase + session.
   Contracts landed.
+- `clients/khala-code-desktop` — FIRST CONSUMER WIRED (KS-6.2, #8303):
+  bun-side `KhalaSyncService` (`src/bun/khala-sync-service.ts`) opens the
+  local store under `~/.khala-code/`, runs the client session against the
+  OpenAgents base URL with the user's agent token, and exposes
+  `khalaSyncFleetState` / `khalaSyncFleetMutate` over the desktop RPC; the
+  Fleet screen renders the synced `fleet_run` scope and routes
+  pause/resume/setDesiredSlots through the fleet mutators. FLAG-GATED
+  behind `KHALA_SYNC_FLEET=1` — the polling path stays default until the
+  server routes are deployed and verified live; the default flips in a
+  follow-up on this epic.
 
 ## Worker routes (SPEC §3 — complete)
 
@@ -76,7 +86,7 @@ against local Postgres + the real hub DO + the real client SQLite store.
 | KS-3 Mutator engine (push route, registry, guide+contract) | #8291 #8292 #8293 (guide+contract landed: [`MUTATORS.md`](./MUTATORS.md), `packages/behavior-contracts/src/khala-sync.ts`) |
 | KS-4 Capture + Hub DO (capture, hub, catch-up, bootstrap/seam) | #8294 #8295 #8296 #8297 |
 | KS-5 Client engine (store, rebase, session, web lane) | #8298 #8299 #8300 #8301 |
-| KS-6 First consumers (fleet projection, desktop, tokens-served) | #8302 (server-side projection + operator mutators landed; supervisor intent enforcement is follow-up) #8303 #8304 |
+| KS-6 First consumers (fleet projection, desktop, tokens-served) | #8302 (server-side projection + operator mutators landed; supervisor intent enforcement is follow-up) #8303 (desktop fleet cockpit wired behind `KHALA_SYNC_FLEET=1`; live verification deferred to the deploy pass) #8304 |
 | KS-7 Permissions (scope auth, CVR v2) | #8305 #8306 |
 | KS-8 Domain migration (assignments, ledger, rolling plan) | #8307 #8308 #8309 (plan: [`MIGRATION_PLAN.md`](./MIGRATION_PLAN.md)); per-domain waves #8315–#8330 |
 | KS-9 QA/ops (load test, behavior contracts, invariants+runbook) | #8310 #8311 #8312 (invariants+runbook landed: [`RUNBOOK.md`](./RUNBOOK.md) + the "Khala Sync (SPEC §7 invariant set)" section in `apps/openagents.com/INVARIANTS.md`) |

@@ -27,6 +27,10 @@ import {
   ensureCodexFleetMcpBridge,
   type CodexFleetMcpBridgeEnsureResult,
 } from "./codex-fleet-mcp-bridge.js"
+import {
+  khalaSyncFleetDisabledState,
+  type KhalaCodeDesktopKhalaSyncRpc,
+} from "./khala-sync-service.js"
 import type { KhalaAppleFmReadiness } from "../shared/apple-fm-readiness.js"
 import type { OnDeviceDeciderSelection } from "../shared/on-device-decider.js"
 import {
@@ -81,6 +85,10 @@ import {
   type KhalaCodeDesktopFleetStatus,
   type KhalaCodeDesktopForumRequest,
   type KhalaCodeDesktopForumResponse,
+  type KhalaCodeDesktopKhalaSyncFleetMutateRequest,
+  type KhalaCodeDesktopKhalaSyncFleetMutateResult,
+  type KhalaCodeDesktopKhalaSyncFleetStateRequest,
+  type KhalaCodeDesktopKhalaSyncFleetStateResult,
   type KhalaCodeDesktopModelRoleRegistryReadResult,
   type KhalaCodeDesktopModelRoleRegistryWriteRequest,
   type KhalaCodeDesktopModelRoleRegistryWriteResult,
@@ -269,6 +277,12 @@ export type KhalaCodeDesktopRpcHandlersInput = {
   readonly codexFleetToolOptions?: KhalaCodexFleetToolOptions
   readonly fleetRunSupervisor?: KhalaCodeDesktopFleetRunSupervisorRpc
   readonly fleetMcpBridgeRepoRoot?: string
+  /**
+   * Khala Sync fleet consumer (KS-6.2, #8303). Absent (the default until the
+   * KHALA_SYNC_FLEET flag is set) means these RPCs answer with the honest
+   * disabled state and the Fleet screen stays on its polling source.
+   */
+  readonly khalaSync?: KhalaCodeDesktopKhalaSyncRpc
   readonly env: ChatEnv
   // Test seam for network-backed handlers (Khala Code plan routes). Defaults to
   // the global fetch in production.
@@ -2513,6 +2527,22 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         throw new Error("fleetWorkerControl requires fleet-run supervisor worker control")
       }
       return supervisor.workerControl(request)
+    },
+    async khalaSyncFleetState(
+      request: KhalaCodeDesktopKhalaSyncFleetStateRequest,
+    ): Promise<KhalaCodeDesktopKhalaSyncFleetStateResult> {
+      requireNonEmpty("khalaSyncFleetState", "runId", request.runId)
+      if (input.khalaSync === undefined) return khalaSyncFleetDisabledState()
+      return input.khalaSync.fleetState(request)
+    },
+    async khalaSyncFleetMutate(
+      request: KhalaCodeDesktopKhalaSyncFleetMutateRequest,
+    ): Promise<KhalaCodeDesktopKhalaSyncFleetMutateResult> {
+      requireNonEmpty("khalaSyncFleetMutate", "runId", request.runId)
+      if (input.khalaSync === undefined) {
+        return { ok: false, error: "khala_sync_fleet_disabled" }
+      }
+      return input.khalaSync.fleetMutate(request)
     },
     async forumRequest(request): Promise<KhalaCodeDesktopForumResponse> {
       return fetchOpenAgentsForum(request)

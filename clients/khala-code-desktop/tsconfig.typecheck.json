@@ -8,6 +8,8 @@
       "@openagentsinc/composer-state": ["../../packages/composer-state/src/index.ts"],
       "@openagentsinc/khala-qa-harness": ["../../packages/khala-qa-harness/src/index.ts"],
       "@openagentsinc/khala-qa-harness/*": ["../../packages/khala-qa-harness/src/*"],
+      "@openagentsinc/khala-sync": ["../../packages/khala-sync/src/index.ts"],
+      "@openagentsinc/khala-sync-client": ["../../packages/khala-sync-client/src/index.ts"],
       "@openagentsinc/khala-tools": ["../../packages/khala-tools/src/index.ts"],
       "@openagentsinc/ui": ["../../packages/ui/src/index.ts"],
       "@openagentsinc/ui/*": ["../../packages/ui/src/*"],

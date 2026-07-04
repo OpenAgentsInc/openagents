@@ -337,6 +337,68 @@ describe("Khala Code desktop schema-first RPC contract", () => {
     })).rejects.toThrow("Forum RPC path must stay under /api/forum")
   })
 
+  test("decodes Khala Sync fleet RPCs and defaults to the honest disabled state (KS-6.2, #8303)", async () => {
+    expect(decodeKhalaCodeDesktopRpcParameters("khalaSyncFleetState", [{
+      runId: "fleet.run.public.test",
+    }])[0]).toMatchObject({ runId: "fleet.run.public.test" })
+
+    expect(decodeKhalaCodeDesktopRpcResult("khalaSyncFleetState", {
+      accounts: [],
+      assignments: [],
+      authState: "connected",
+      cursor: 12,
+      enabled: true,
+      ok: true,
+      pendingMutations: 0,
+      phase: "live",
+      reason: null,
+      rejections: [],
+      run: {
+        counters: {
+          activeAssignments: 1,
+          blockedAssignments: 0,
+          completedAssignments: 2,
+          failedAssignments: 0,
+          workUnitsTotal: 4,
+        },
+        desiredSlots: 3,
+        runId: "fleet.run.public.test",
+        startedAt: null,
+        status: "running",
+        updatedAt: "2026-07-04T00:00:00.000Z",
+        workerKind: "codex",
+      },
+      workers: [],
+    })).toMatchObject({ enabled: true, phase: "live" })
+
+    expect(decodeKhalaCodeDesktopRpcParameters("khalaSyncFleetMutate", [{
+      action: "set_desired_slots",
+      desiredSlots: 4,
+      runId: "fleet.run.public.test",
+    }])[0]).toMatchObject({ action: "set_desired_slots", desiredSlots: 4 })
+
+    // Without a wired Khala Sync service (flag off), the handlers answer
+    // honestly disabled instead of pretending a sync path exists.
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+    await expect(handlers.khalaSyncFleetState({ runId: "fleet.run.public.test" })).resolves.toMatchObject({
+      enabled: false,
+      phase: "disabled",
+    })
+    await expect(handlers.khalaSyncFleetMutate({ action: "pause", runId: "fleet.run.public.test" })).resolves.toEqual({
+      ok: false,
+      error: "khala_sync_fleet_disabled",
+    })
+  })
+
   test("models handler failures as distinct tagged bridge errors", () => {
     const failure = khalaCodeDesktopRpcHandlerFailure(
       "appInfo",

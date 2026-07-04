@@ -46,6 +46,10 @@ import {
 import { createOnDeviceDeciderHost } from "./on-device-decider-host.js"
 import { ensureKhalaCodeDesktopBundledSkillsInstalled } from "./khala-bundled-skills.js"
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
+import {
+  createKhalaCodeDesktopKhalaSyncService,
+  khalaCodeDesktopKhalaSyncFleetEnabled,
+} from "./khala-sync-service.js"
 import { createKhalaCodeDesktopFleetRunSupervisorRpcAdapter } from "./fleet-run-supervisor-rpc-adapter.js"
 import { createKhalaCodeDesktopRpcRequestHandlers } from "./rpc-handlers.js"
 import { mutatingPreviewRpcMethods } from "./preview-rpc-policy.js"
@@ -587,6 +591,13 @@ const tokenUsageBackgroundSync = startKhalaCodeDesktopTokenUsageBackgroundSync({
 // host deliberately opts it back in.
 const onDeviceDecider = createOnDeviceDeciderHost({ env: khalaCodeEnv })
 
+// Khala Sync fleet consumer (KS-6.2, #8303): flag-gated behind
+// KHALA_SYNC_FLEET=1. When unset the Fleet screen stays on its default
+// polling source and the khalaSyncFleet* RPCs answer honestly disabled.
+const khalaSyncService = khalaCodeDesktopKhalaSyncFleetEnabled(khalaCodeEnv)
+  ? createKhalaCodeDesktopKhalaSyncService({ env: khalaCodeEnv })
+  : null
+
 rpcRequestHandlers = createKhalaCodeDesktopRpcRequestHandlers({
   appleFmReadiness,
   codexAppServerHost,
@@ -601,6 +612,7 @@ rpcRequestHandlers = createKhalaCodeDesktopRpcRequestHandlers({
     }),
   }),
   fleetMcpBridgeRepoRoot: resolveSourceRepositoryRoot(),
+  ...(khalaSyncService === null ? {} : { khalaSync: khalaSyncService }),
   onDeviceDeciderStatus: () => onDeviceDecider.select(),
   qaMetrics: qaMetricsSnapshot,
   recordQaMetricSample,
@@ -610,6 +622,7 @@ rpcRequestHandlers = createKhalaCodeDesktopRpcRequestHandlers({
 const disposeRuntime = (): void => {
   tokenUsageBackgroundSync.dispose()
   codexAppServerHost.dispose()
+  void khalaSyncService?.close()
 }
 
 process.once("exit", disposeRuntime)

@@ -1463,7 +1463,95 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
       verification:
         "Enforced 2026-07-04 for GitHub issue #8255: Worker route tests cover the browser-verified token mint/poll flow; desktop RPC tests cover local pending-attempt/token persistence and persisted-token use for hosted plan status; app-shell tests cover the inline missing-token Connect panel. Runs in the package test glob, the Worker API test sweep, and the deploy check before pushes to main.",
     },
+    {
+      authorityBoundary:
+        "Binds the Fleet screen's Khala Sync freshness indicator semantics only (KS-6.2, #8303). It does not claim delivery latency, server availability, or correctness of the fleet projection itself, and it makes no statement about the default polling source, which remains the fallback while KHALA_SYNC_FLEET is off.",
+      blockerRefs: [],
+      contractId: "khala_code.fleet.khala_sync_indicator_truthful.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-code-desktop/src/ui/fleet-sync-projection.ts",
+        "clients/khala-code-desktop/src/ui/fleet-status.ts",
+        "clients/khala-code-desktop/src/bun/khala-sync-service.ts",
+        "docs/khala-sync/SPEC.md",
+        "docs/khala-code/khala-code-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Mounts the real Fleet panel in a DOM with a fake Khala Sync source and proves the indicator renders 'Live' ONLY when the sync session's phase is live (open live socket); bootstrapping/catching_up/must_refetch/idle phases render explicit syncing, resyncing, or reconnecting labels and never the live marker.",
+          id: "khala_sync_indicator_truthful.dom",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "clients/khala-code-desktop/tests/ux-contracts.test.ts",
+        },
+        {
+          description:
+            "Drives the real desktop Khala Sync service over a deterministic fake transport and proves the RPC-exposed phase is the session's real scope state: live only after bootstrap+catch-up complete and the live socket is open.",
+          id: "khala_sync_phase_is_session_truth.service",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-code-desktop/tests/khala-sync-service.test.ts",
+        },
+      ],
+      productArea: "fleet cockpit",
+      source: {
+        channel: "issue",
+        statedBy: "owner",
+        statedOn: "2026-07-04",
+      },
+      state: "enforced",
+      statement:
+        "Synced fleet indicators reflect server truth: the Fleet screen may claim live freshness only while the Khala Sync live socket is open, and any other sync state is shown as an explicit syncing or reconnecting state — never fake freshness.",
+      surface: "khala-code-desktop",
+      verification:
+        "bun test tests/ux-contracts.test.ts tests/khala-sync-service.test.ts tests/fleet-status.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main. Live end-to-end verification against the deployed sync routes is tracked on epic #8282.",
+    },
+    {
+      authorityBoundary:
+        "Binds the Fleet screen's recovery behavior on a MustRefetch signal (KS-6.2, #8303): automatic re-bootstrap with a visible re-sync state. It does not bind bootstrap retry budgets or server compaction policy, which stay owned by the khala-sync client/server packages and docs/khala-sync/SPEC.md.",
+      blockerRefs: [],
+      contractId: "khala_code.fleet.khala_sync_must_refetch_recovers.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-code-desktop/src/bun/khala-sync-service.ts",
+        "clients/khala-code-desktop/src/ui/fleet-sync-projection.ts",
+        "packages/khala-sync-client/src/session.ts",
+        "docs/khala-sync/SPEC.md",
+        "docs/khala-code/khala-code-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Drives the real desktop Khala Sync service over a fake transport, emits a MustRefetch frame after a server-side scope reset, and proves the session re-bootstraps automatically: the RPC view converges on the replaced scope content and returns to live without any manual recovery call.",
+          id: "khala_sync_must_refetch_rebootstraps.service",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-code-desktop/tests/khala-sync-service.test.ts",
+        },
+        {
+          description:
+            "Mounts the real Fleet panel in a DOM with the sync source in must_refetch and proves the screen stays populated (polling fallback data still renders) with a visible 'Resyncing' indicator instead of a stranded or empty state.",
+          id: "khala_sync_must_refetch_visible.dom",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "clients/khala-code-desktop/tests/ux-contracts.test.ts",
+        },
+      ],
+      productArea: "fleet cockpit",
+      source: {
+        channel: "issue",
+        statedBy: "owner",
+        statedOn: "2026-07-04",
+      },
+      state: "enforced",
+      statement:
+        "MustRefetch never strands the Fleet screen: the sync client re-bootstraps automatically and the screen shows a visible re-sync state until live truth returns.",
+      surface: "khala-code-desktop",
+      verification:
+        "bun test tests/ux-contracts.test.ts tests/khala-sync-service.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main. Live end-to-end verification against the deployed sync routes is tracked on epic #8282.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-04.4",
+  version: "2026-07-04.5",
 }

@@ -199,6 +199,35 @@ Tool calls are executed by the Bun host through `@openagentsinc/khala-tools`.
 In default Codex-harness mode, Codex owns those local coding capabilities and
 Khala tools stay supplemental rather than becoming a second coding harness.
 
+## Khala Sync Fleet Source (flag-gated)
+
+The Fleet screen has a second, Khala Sync-backed state source (KS-6.2,
+[#8303](https://github.com/OpenAgentsInc/openagents/issues/8303); spec:
+`docs/khala-sync/SPEC.md`). The bun-side `KhalaSyncService`
+(`src/bun/khala-sync-service.ts`) opens the durable local store at
+`~/.khala-code/khala-sync.sqlite3`, runs the
+`@openagentsinc/khala-sync-client` session against the configured OpenAgents
+base URL with the user's `oa_agent_` token, and exposes
+`khalaSyncFleetState` / `khalaSyncFleetMutate` over the desktop RPC. When
+enabled, the Active FleetRun header renders server truth from the synced
+`fleet_run` scope with an honest freshness indicator ("Live" only while the
+live socket is open), and pause/resume also record operator intents through
+the `fleet.pauseRun` / `fleet.resumeRun` / `fleet.setDesiredSlots` mutators
+(in-band rejections surface in the header).
+
+```sh
+KHALA_SYNC_FLEET=1 bun run dev
+```
+
+The flag is DEFAULT OFF: the existing polling source stays authoritative
+until the Khala Sync server routes are deployed and verified end-to-end
+(tracked on epic #8282); a follow-up flips the default. The local supervisor
+also remains the enforcement path for pause/resume until the Pylon-side
+intent consumer lands (#8302 honest v1 contract). Behavior contracts:
+`khala_code.fleet.khala_sync_indicator_truthful.v1` and
+`khala_code.fleet.khala_sync_must_refetch_recovers.v1` in
+`src/contracts/ux-contracts.ts`.
+
 ## Local Checks
 
 ```sh

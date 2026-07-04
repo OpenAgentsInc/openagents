@@ -34,6 +34,8 @@
     "@openagentsinc/arbiter-effect": "workspace:*",
     "@openagentsinc/behavior-contracts": "workspace:*",
     "@openagentsinc/composer-state": "workspace:*",
+    "@openagentsinc/khala-sync": "workspace:*",
+    "@openagentsinc/khala-sync-client": "workspace:*",
     "@openagentsinc/khala-tools": "workspace:*",
     "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#fa84064796",
     "@openagentsinc/ui": "workspace:*",

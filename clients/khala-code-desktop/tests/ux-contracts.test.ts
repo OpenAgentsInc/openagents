@@ -20,9 +20,14 @@ import {
 import type {
   KhalaCodeDesktopCodexThreadListResult,
   KhalaCodeDesktopCodexThreadMutationResult,
+  KhalaCodeDesktopFleetRunProjection,
+  KhalaCodeDesktopFleetStatus,
+  KhalaCodeDesktopKhalaSyncFleetStateResult,
 } from "../src/shared/rpc"
 import { sessionCatalogEntryToThreadSummary } from "../src/shared/session-catalog"
 import { mountCodexThreadSidebar } from "../src/ui/codex-thread-sidebar"
+import { mountFleetPanel } from "../src/ui/fleet-status"
+import { khalaSyncFleetIndicator } from "../src/ui/fleet-sync-projection"
 import { bindRecentThreadHotkeyHints } from "../src/ui/recent-thread-hotkey-hints"
 import { KHALA_CODE_HOTBAR_SLOTS, mountKhalaCodeSidebar } from "../src/ui/sidebar"
 import {
@@ -1074,5 +1079,237 @@ describe("contract khala_code.terminal.tui_mode_available.v1", () => {
     expect(tui).toContain("/new")
     expect(tui).toContain("/status")
     expect(tui).toContain("/exit")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// KS-6.2 (#8303): Khala Sync fleet cockpit contracts.
+// ---------------------------------------------------------------------------
+
+const khalaSyncFleetStateFixture = (
+  input: Partial<KhalaCodeDesktopKhalaSyncFleetStateResult> = {},
+): KhalaCodeDesktopKhalaSyncFleetStateResult => ({
+  accounts: [],
+  assignments: [],
+  authState: "connected",
+  cursor: 4,
+  enabled: true,
+  ok: true,
+  pendingMutations: 0,
+  phase: "live",
+  reason: null,
+  rejections: [],
+  run: {
+    counters: {
+      activeAssignments: 2,
+      blockedAssignments: 0,
+      completedAssignments: 3,
+      failedAssignments: 0,
+      workUnitsTotal: 9,
+    },
+    desiredSlots: 4,
+    runId: "fleet.run.contract.test",
+    startedAt: "2026-07-04T00:00:01.000Z",
+    status: "running",
+    updatedAt: "2026-07-04T00:05:00.000Z",
+    workerKind: "codex",
+  },
+  workers: [],
+  ...input,
+})
+
+const khalaSyncFleetLocalRun = (): KhalaCodeDesktopFleetRunProjection => ({
+  counters: {
+    activeAssignments: 1,
+    blockedAssignments: 0,
+    completedAssignments: 1,
+    failedAssignments: 0,
+    workUnitsTotal: 9,
+  },
+  createdAt: "2026-07-04T00:00:00.000Z",
+  dispatchKind: "supervised_dispatch",
+  objectiveProjected: false,
+  pylonRef: null,
+  refillPolicy: {
+    cooldownAware: true,
+    maxPerAccount: 1,
+    stopCondition: "backlog_empty",
+  },
+  runRef: "fleet.run.contract.test",
+  startedAt: "2026-07-04T00:00:01.000Z",
+  state: "running",
+  targetConcurrency: 2,
+  updatedAt: "2026-07-04T00:00:30.000Z",
+  workerKind: "codex",
+  workSource: { kind: "fixture" },
+})
+
+const khalaSyncFleetStatusFixture = (): KhalaCodeDesktopFleetStatus => ({
+  ok: true,
+  observedAt: "2026-07-04T00:05:00.000Z",
+  pylon: { message: "online", pylonRef: "pylon.public.contract", status: "online" },
+  availableCodexAssignments: 1,
+  maxCodexAssignments: 2,
+  tokenRate: {
+    activeAdjustedTokensPerMinute: null,
+    completedStatus: "not_measured",
+    completedTokenRows: null,
+    completedTokensPerMinute: null,
+    tokensWindow: null,
+    inFlightTokens: null,
+    inFlightTokensPerMinute: null,
+    source: "unavailable",
+    unavailableReason: null,
+  },
+  accounts: [],
+  activeAssignments: [],
+  processes: [],
+})
+
+const withFleetDom = async (
+  run: (window: Window) => Promise<void> | void,
+): Promise<void> => {
+  const window = new Window()
+  const previousDocument = globalThis.document
+  const previousWindow = globalThis.window
+  const previousMatchMedia = globalThis.matchMedia
+  Object.defineProperty(globalThis, "document", { configurable: true, value: window.document })
+  Object.defineProperty(globalThis, "window", { configurable: true, value: window })
+  Object.defineProperty(globalThis, "matchMedia", {
+    configurable: true,
+    value: () => ({ matches: false }),
+  })
+  try {
+    await run(window)
+  } finally {
+    Object.defineProperty(globalThis, "document", { configurable: true, value: previousDocument })
+    Object.defineProperty(globalThis, "window", { configurable: true, value: previousWindow })
+    Object.defineProperty(globalThis, "matchMedia", { configurable: true, value: previousMatchMedia })
+    window.close()
+  }
+}
+
+const mountKhalaSyncFleetPanel = (
+  state: () => Promise<KhalaCodeDesktopKhalaSyncFleetStateResult>,
+) => {
+  const container = document.createElement("div")
+  document.body.append(container)
+  const panel = mountFleetPanel(container, {
+    connectAccount: async accountRef => ({
+      ok: true,
+      accountRef,
+      output: "",
+      userCode: null,
+      verificationUrl: null,
+    }),
+    delegateRun: async () => {
+      throw new Error("delegate runner should not be called")
+    },
+    fetch: async () => khalaSyncFleetStatusFixture(),
+    fleetRunControl: async request => ({
+      ok: true,
+      previousState: "running",
+      run: khalaSyncFleetLocalRun(),
+      supervisorActive: true,
+      verb: request.verb,
+    }),
+    fleetRunList: async () => ({ ok: true, runs: [khalaSyncFleetLocalRun()] }),
+    fleetRunStart: async () => {
+      throw new Error("fleet run start should not be called")
+    },
+    fleetWorkerControl: async () => {
+      throw new Error("fleet worker control should not be called")
+    },
+    khalaSyncFleetState: async () => state(),
+    khalaSyncFleetMutate: async () => ({ ok: true }),
+    loadGymDemoProof: () => {
+      throw new Error("gym proof should not be called")
+    },
+    openExternal: async () => false,
+    removeAccount: async () => ({ ok: true }),
+    setAccountPaused: async () => ({ ok: true }),
+    consumeResetCredit: async () => ({ ok: true }),
+    startDelegationOptimization: async () => {
+      throw new Error("optimization should not be called")
+    },
+  })
+  return { container, panel }
+}
+
+// Oracle khala_sync_indicator_truthful.dom for contract
+// khala_code.fleet.khala_sync_indicator_truthful.v1
+describe("contract khala_code.fleet.khala_sync_indicator_truthful.v1", () => {
+  test("the indicator claims Live only while the sync session phase is live", async () => {
+    await withFleetDom(async () => {
+      const { container, panel } = mountKhalaSyncFleetPanel(async () =>
+        khalaSyncFleetStateFixture({ phase: "live" }),
+      )
+      await panel.refresh()
+      const chip = container.querySelector<HTMLElement>(".khala-fleet-sync-indicator")
+      expect(chip).not.toBeNull()
+      expect(chip!.dataset.khalaSyncLive).toBe("true")
+      expect(chip!.textContent).toBe("Khala Sync: Live")
+    })
+  })
+
+  test("non-live phases render explicit syncing/reconnecting states, never fake freshness", async () => {
+    const cases: ReadonlyArray<{
+      phase: KhalaCodeDesktopKhalaSyncFleetStateResult["phase"]
+      expected: string
+    }> = [
+      { phase: "bootstrapping", expected: "Khala Sync: Bootstrapping…" },
+      { phase: "catching_up", expected: "Khala Sync: Catching up…" },
+      { phase: "idle", expected: "Khala Sync: Reconnecting…" },
+    ]
+    for (const item of cases) {
+      await withFleetDom(async () => {
+        const { container, panel } = mountKhalaSyncFleetPanel(async () =>
+          khalaSyncFleetStateFixture({ phase: item.phase, cursor: null }),
+        )
+        await panel.refresh()
+        const chip = container.querySelector<HTMLElement>(".khala-fleet-sync-indicator")
+        expect(chip).not.toBeNull()
+        expect(chip!.dataset.khalaSyncLive).toBe("false")
+        expect(chip!.textContent).toBe(item.expected)
+        expect(container.textContent).not.toContain("Khala Sync: Live")
+      })
+    }
+  })
+
+  test("pure indicator mapping is truthful for every phase", () => {
+    expect(khalaSyncFleetIndicator(khalaSyncFleetStateFixture({ phase: "live" })).live).toBe(true)
+    for (const phase of ["bootstrapping", "catching_up", "must_refetch", "idle"] as const) {
+      const indicator = khalaSyncFleetIndicator(
+        khalaSyncFleetStateFixture({ phase, reason: phase === "must_refetch" ? "scope_reset" : null }),
+      )
+      expect(indicator.live).toBe(false)
+      expect(indicator.label).not.toContain("Live")
+    }
+  })
+})
+
+// Oracle khala_sync_must_refetch_visible.dom for contract
+// khala_code.fleet.khala_sync_must_refetch_recovers.v1
+describe("contract khala_code.fleet.khala_sync_must_refetch_recovers.v1", () => {
+  test("must_refetch keeps the Fleet screen populated with a visible resync state", async () => {
+    await withFleetDom(async () => {
+      const { container, panel } = mountKhalaSyncFleetPanel(async () =>
+        khalaSyncFleetStateFixture({
+          phase: "must_refetch",
+          cursor: null,
+          reason: "scope_reset",
+        }),
+      )
+      await panel.refresh()
+      const chip = container.querySelector<HTMLElement>(".khala-fleet-sync-indicator")
+      expect(chip).not.toBeNull()
+      expect(chip!.dataset.khalaSyncPhase).toBe("must_refetch")
+      expect(chip!.dataset.khalaSyncLive).toBe("false")
+      expect(chip!.textContent).toBe("Khala Sync: Resyncing (scope_reset)…")
+      // Not stranded: the active-run header still renders run state (the
+      // synced entities + polling fallback stay visible during re-bootstrap).
+      expect(container.textContent).toContain("Active FleetRun")
+      expect(container.textContent).toContain("fleet.run.contract.test")
+    })
   })
 })

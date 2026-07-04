@@ -258,6 +258,14 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["fleetWorkerControl"]>>
       >("fleetWorkerControl", request),
+    khalaSyncFleetState: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["khalaSyncFleetState"]>>
+      >("khalaSyncFleetState", request),
+    khalaSyncFleetMutate: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["khalaSyncFleetMutate"]>>
+      >("khalaSyncFleetMutate", request),
     forumRequest: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["forumRequest"]>>
@@ -3871,6 +3879,10 @@ const controls = {
     rpc.request.architectPlanDecision(request),
   fleetWorkerControl: (request: Parameters<DesktopRpcRequests["fleetWorkerControl"]>[0]) =>
     rpc.request.fleetWorkerControl(request),
+  khalaSyncFleetState: (request: Parameters<DesktopRpcRequests["khalaSyncFleetState"]>[0]) =>
+    rpc.request.khalaSyncFleetState(request),
+  khalaSyncFleetMutate: (request: Parameters<DesktopRpcRequests["khalaSyncFleetMutate"]>[0]) =>
+    rpc.request.khalaSyncFleetMutate(request),
   forumRequest: (request: Parameters<DesktopRpcRequests["forumRequest"]>[0]) =>
     rpc.request.forumRequest(request),
   khalaCodePlanCatalog: () => rpc.request.khalaCodePlanCatalog(),
@@ -4210,6 +4222,10 @@ const fleetPanel =
         },
         fleetRunStart: request => controls.fleetRunStart(request),
         fleetWorkerControl: request => controls.fleetWorkerControl(request),
+        // KS-6.2 (#8303): Khala Sync fleet source, flag-gated server-side —
+        // the bun handler answers honestly disabled until KHALA_SYNC_FLEET=1.
+        khalaSyncFleetState: request => controls.khalaSyncFleetState(request),
+        khalaSyncFleetMutate: request => controls.khalaSyncFleetMutate(request),
         lifecycleNdjson: fleetLifecycleLines.iterable,
         loadGymDemoProof: () => loadGymDemoOptimization(),
         startDelegationOptimization: async () => loadGymDemoOptimization(),

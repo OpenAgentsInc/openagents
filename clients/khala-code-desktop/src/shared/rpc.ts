@@ -226,6 +226,16 @@ export type KhalaCodeDesktopArchitectPlanDecisionRequest = typeof RpcArchitectPl
 export type KhalaCodeDesktopArchitectPlanDecisionResult = typeof RpcArchitectPlanDecisionResult.Type
 export type KhalaCodeDesktopFleetWorkerControlRequest = typeof RpcFleetWorkerControlRequest.Type
 export type KhalaCodeDesktopFleetWorkerControlResult = typeof RpcFleetWorkerControlResult.Type
+export type KhalaCodeDesktopKhalaSyncFleetPhase = typeof RpcKhalaSyncFleetPhase.Type
+export type KhalaCodeDesktopKhalaSyncFleetRun = typeof RpcKhalaSyncFleetRun.Type
+export type KhalaCodeDesktopKhalaSyncFleetWorker = typeof RpcKhalaSyncFleetWorker.Type
+export type KhalaCodeDesktopKhalaSyncFleetAssignment = typeof RpcKhalaSyncFleetAssignment.Type
+export type KhalaCodeDesktopKhalaSyncFleetAccount = typeof RpcKhalaSyncFleetAccount.Type
+export type KhalaCodeDesktopKhalaSyncFleetRejection = typeof RpcKhalaSyncFleetRejection.Type
+export type KhalaCodeDesktopKhalaSyncFleetStateRequest = typeof RpcKhalaSyncFleetStateRequest.Type
+export type KhalaCodeDesktopKhalaSyncFleetStateResult = typeof RpcKhalaSyncFleetStateResult.Type
+export type KhalaCodeDesktopKhalaSyncFleetMutateRequest = typeof RpcKhalaSyncFleetMutateRequest.Type
+export type KhalaCodeDesktopKhalaSyncFleetMutateResult = typeof RpcKhalaSyncFleetMutateResult.Type
 export type KhalaCodeDesktopForumRequest = typeof RpcForumRequest.Type
 export type KhalaCodeDesktopForumResponse = typeof RpcForumResponse.Type
 export type KhalaCodeDesktopPlanKind = typeof RpcKhalaCodePlanKind.Type
@@ -1742,6 +1752,87 @@ const RpcFleetRunListResult = S.Struct({
   ok: S.Boolean,
   runs: S.Array(RpcFleetRunProjection),
 })
+// ---------------------------------------------------------------------------
+// Khala Sync fleet cockpit (KS-6.2, #8303; docs/khala-sync/SPEC.md §6).
+// Flag-gated (KHALA_SYNC_FLEET=1) replacement source for the Fleet screen:
+// state reads the synced fleet_run scope through the local Khala Sync store +
+// overlay; mutate routes operator intents through the session's optimistic
+// mutators. The wire entity shapes mirror packages/khala-sync/src/fleet.ts.
+// ---------------------------------------------------------------------------
+const RpcKhalaSyncFleetPhase = S.Literals([
+  "disabled",
+  "idle",
+  "bootstrapping",
+  "catching_up",
+  "live",
+  "must_refetch",
+])
+const RpcKhalaSyncFleetRun = S.Struct({
+  counters: RpcFleetRunCounters,
+  desiredSlots: S.Number,
+  runId: S.String,
+  startedAt: RpcStringNull,
+  status: RpcFleetRunState,
+  updatedAt: S.String,
+  workerKind: RpcFleetRunWorkerKind,
+})
+const RpcKhalaSyncFleetWorker = S.Struct({
+  accountRefHash: RpcStringNull,
+  assignmentRef: RpcStringNull,
+  lastProgressAt: RpcStringNull,
+  phase: S.Literals(["idle", "dispatched", "completed", "failed", "blocked", "circuit_broken"]),
+  updatedAt: S.String,
+  workerId: S.String,
+})
+const RpcKhalaSyncFleetAssignment = S.Struct({
+  assignmentRef: S.String,
+  closeoutClass: RpcStringNull,
+  issueRef: RpcStringNull,
+  status: S.String,
+  updatedAt: S.String,
+})
+const RpcKhalaSyncFleetAccount = S.Struct({
+  accountRefHash: S.String,
+  rateLimitClass: RpcStringNull,
+  readiness: S.Literals(["ready", "cooldown", "unavailable", "unknown"]),
+  updatedAt: S.String,
+})
+// In-band mutation rejections (SPEC §2.4): surfaced to the UI as state, never
+// thrown — the queue keeps draining.
+const RpcKhalaSyncFleetRejection = S.Struct({
+  errorCode: S.String,
+  messageSafe: S.String,
+  mutationId: S.Number,
+  mutatorName: S.String,
+  observedAt: S.String,
+  runId: RpcStringNull,
+})
+const RpcKhalaSyncFleetStateRequest = S.Struct({ runId: S.String })
+const RpcKhalaSyncFleetStateResult = S.Struct({
+  accounts: S.Array(RpcKhalaSyncFleetAccount),
+  assignments: S.Array(RpcKhalaSyncFleetAssignment),
+  authState: S.Literals(["connected", "missing"]),
+  cursor: S.NullOr(S.Number),
+  enabled: S.Boolean,
+  error: S.optional(S.String),
+  ok: S.Boolean,
+  pendingMutations: S.Number,
+  phase: RpcKhalaSyncFleetPhase,
+  reason: RpcStringNull,
+  rejections: S.Array(RpcKhalaSyncFleetRejection),
+  run: S.NullOr(RpcKhalaSyncFleetRun),
+  workers: S.Array(RpcKhalaSyncFleetWorker),
+})
+const RpcKhalaSyncFleetMutateRequest = S.Struct({
+  action: S.Literals(["pause", "resume", "set_desired_slots"]),
+  desiredSlots: S.optional(S.Number),
+  runId: S.String,
+})
+const RpcKhalaSyncFleetMutateResult = S.Struct({
+  error: S.optional(S.String),
+  ok: S.Boolean,
+  queuedMutationId: S.optional(S.Number),
+})
 const RpcArchitectPlanDispatchMode = S.Literals(["in_thread", "fleet_run"])
 const RpcArchitectPlanDagNode = S.Struct({
   nodeRef: S.String,
@@ -2163,6 +2254,8 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   architectPlanRun: { parameters: [param(RpcArchitectPlanRunRequest)], result: RpcArchitectPlanRunResult },
   architectPlanDecision: { parameters: [param(RpcArchitectPlanDecisionRequest)], result: RpcArchitectPlanDecisionResult },
   fleetWorkerControl: { parameters: [param(RpcFleetWorkerControlRequest)], result: RpcFleetWorkerControlResult },
+  khalaSyncFleetState: { parameters: [param(RpcKhalaSyncFleetStateRequest)], result: RpcKhalaSyncFleetStateResult },
+  khalaSyncFleetMutate: { parameters: [param(RpcKhalaSyncFleetMutateRequest)], result: RpcKhalaSyncFleetMutateResult },
   forumRequest: { parameters: [param(RpcForumRequest)], result: RpcForumResponse },
   khalaCodePlanCatalog: { parameters: noParams(), result: RpcKhalaCodePlanCatalogResult },
   khalaCodePlanStatus: { parameters: noParams(), result: RpcKhalaCodePlanStatusResult },
@@ -2329,6 +2422,8 @@ export type KhalaCodeDesktopRPCSchema = {
     architectPlanRun(request: KhalaCodeDesktopArchitectPlanRunRequest): Promise<KhalaCodeDesktopArchitectPlanRunResult>
     architectPlanDecision(request: KhalaCodeDesktopArchitectPlanDecisionRequest): Promise<KhalaCodeDesktopArchitectPlanDecisionResult>
     fleetWorkerControl(request: KhalaCodeDesktopFleetWorkerControlRequest): Promise<KhalaCodeDesktopFleetWorkerControlResult>
+    khalaSyncFleetState(request: KhalaCodeDesktopKhalaSyncFleetStateRequest): Promise<KhalaCodeDesktopKhalaSyncFleetStateResult>
+    khalaSyncFleetMutate(request: KhalaCodeDesktopKhalaSyncFleetMutateRequest): Promise<KhalaCodeDesktopKhalaSyncFleetMutateResult>
     forumRequest(request: KhalaCodeDesktopForumRequest): Promise<KhalaCodeDesktopForumResponse>
     khalaCodePlanCatalog(): Promise<KhalaCodeDesktopPlanCatalogResult>
     khalaCodePlanStatus(): Promise<KhalaCodeDesktopPlanStatusResult>
