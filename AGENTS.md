@@ -549,8 +549,17 @@ and local Codex auth out of reports.
   too large or out of scope for the current change, fix what is cheap and **explicitly
   flag the rest** (in the report, and a tracking issue if it will persist) — never
   silently leave a red, and never describe a partially-green run as clean.
-- Keep new TypeScript implementation work on Bun, Effect, Effect Schema, and
-  Foldkit where `apps/openagents.com` already uses it.
+- Keep new TypeScript implementation work on Bun, Effect, and Effect Schema.
+  **UI layer (owner decision, 2026-07-04): one UI ecosystem — React +
+  Tailwind** across web (TanStack Start), Khala Code desktop (Electrobun +
+  React), and mobile (Expo React Native), per
+  `docs/fable/2026-07-04-tanstack-start-sites-and-web-app-evaluation.md`
+  §6/§9. Effect remains the services/logic substrate everywhere; existing
+  Foldkit surfaces in `apps/openagents.com/apps/web` are migration-era
+  legacy (bridged via `ssr:false` CSR mounts, deleted route-by-route) —
+  do not start new Foldkit surfaces there, and do not begin the previously
+  planned Foldkit shell migration in `clients/khala-code-desktop` (the
+  shell rewrite target is React + Tailwind).
 - Never stash, reset, checkout, restore, or otherwise move another agent's
   uncommitted work out of the way. If a checkout is dirty with concurrent work
   and you need a clean tree for tests, commits, or pushes, create a fresh
@@ -558,20 +567,27 @@ and local Codex auth out of reports.
   original dirty checkout intact and report the conflict or blocker honestly.
 - Do not reintroduce the old Cargo or Tauri workspace unless the user asks for
   explicit historical compatibility work.
-- **Mobile build/ship policy (owner mandate): NO Expo/EAS cloud.** The current
-  mobile app is the **native SwiftUI** voice app `clients/khala-ios/Khala`
-  (bundle `com.openagents.khala`) — see
-  `docs/mobile/2026-06-26-khala-voice-app-spec.md`. It is pure local Xcode:
-  build/run via `clients/khala-ios/Khala/Khala.xcodeproj`, archive with
-  `xcodebuild`, and upload to TestFlight with Apple-native `xcrun altool`
-  (ASC key in `.secrets/appstoreconnect.env`), under Apple Team `HQWSG26L43`.
-  Native Swift has **no OTA path** (`updates.openagents.com` / `expo-updates`
-  do not apply). Never run `eas build` / `eas submit` / `eas update`.
-  The earlier Expo React-Native app `clients/khala-ios/AutopilotRemoteControl`
-  was **retired** on 2026-06-26 and removed from the repo
-  (`docs/mobile/2026-06-26-autopilot-remote-control-retirement.md`); the Expo
-  prebuild + own-OTA path (`apps/oa-updates/scripts/publish-ota.sh`) and the
-  `expo` CLI only apply if an Expo app is ever reintroduced.
+- **Mobile policy (owner decision, 2026-07-04 — supersedes the 2026-06-26
+  no-Expo mandate for the framework):** the mobile destination is an **Expo
+  React Native app** (one codebase, iOS + Android — no separate Swift and
+  Kotlin apps), with TanStack DB + `khala-sync-db-collection` as the data
+  layer, NativeWind on the shared design tokens, and expo-modules ports of
+  the native Swift pieces (voice/STT, Apple FM bridge). See
+  `docs/fable/2026-07-04-tanstack-start-sites-and-web-app-evaluation.md`
+  §6.2–6.4. Build/ship posture stays **local-first**: `expo prebuild` +
+  local Xcode/Gradle, archive with `xcodebuild`, upload to TestFlight with
+  `xcrun altool` (ASC key in `.secrets/appstoreconnect.env`, Apple Team
+  `HQWSG26L43`); JS updates may ship over the own-OTA feed
+  (`apps/oa-updates/scripts/publish-ota.sh`, `updates.openagents.com`).
+  **EAS cloud (`eas build` / `eas submit` / `eas update`) remains
+  owner-gated — do not run it without explicit owner direction.**
+  The existing native SwiftUI app `clients/khala-ios/Khala`
+  (`com.openagents.khala`, `docs/mobile/2026-06-26-khala-voice-app-spec.md`)
+  is the **interim companion and native-module reference** until the Expo
+  app reaches parity — keep it buildable; near-term dogfood milestones
+  (e.g. chat sync) may land there first. The earlier Expo app
+  `AutopilotRemoteControl` remains retired
+  (`docs/mobile/2026-06-26-autopilot-remote-control-retirement.md`).
 - Route new user-facing and agent-facing product claim systems through
   `docs/promises/` before broadening copy.
 - **Behavior contracts (owner mandate, 2026-07-03):** when the owner (or a

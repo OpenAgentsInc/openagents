@@ -269,40 +269,130 @@ hold a *materialized* collection server-side — a plausible future for
 per-scope read replicas — and `offline-transactions` is the maintained
 path to the offline queue the sync design deliberately deferred.
 
-## 6. Mobile roadmap implications (adjusting yesterday's report)
+## 6. One UI ecosystem — owner decision recorded (2026-07-04)
 
-Yesterday's mobile report recommended native SwiftUI with the wire
-protocol as the reuse boundary. Today's findings adjust the picture
-without overturning it:
+An earlier revision of this section presented the fork ("one UI ecosystem
+across web/desktop/mobile vs two") as an open flag. **The owner has since
+decided: ONE UI ecosystem — React + Tailwind everywhere, with React
+Native via Expo for mobile** ("yes expo, then we don't need both Swift
+and Kotlin apps"). This section now records that decision and carries the
+velocity assessment the owner asked for. Two standing rules change with
+it, and the rule text updates ride the same change set: the CLAUDE.md
+Foldkit-for-web default, and the 2026-06-26 no-Expo mobile mandate
+(reversed for the Expo framework; see the EAS nuance in §6.3).
 
-- **TanStack Router/Start do not support React Native** — so "one Start
-  codebase everywhere" is not on the table; the RN option remains a
-  separate-app option, not a shared-routing one.
-- **TanStack DB does support RN/Expo SQLite persistence** — so if the
-  khala-sync-db-collection adapter becomes the client half (§5), a React
-  Native companion would inherit the *entire* data layer (collections,
-  live queries, optimistic writes, offline transactions, SQLite
-  persistence) from the same package the web and desktop use. That
-  materially strengthens the bare-RN option (Option B) relative to
-  yesterday's analysis, where RN's win was only "Effect runs on Hermes."
-- The recommendation therefore becomes **sequenced rather than final**:
-  keep the SwiftUI app for the near-term dogfood milestone (it exists, is
-  shipped, and the chat-sync test shouldn't wait), implement the Swift
-  thin-protocol port as planned — but **re-evaluate RN after the web
-  migration proves the TanStack stack**, because at that point a RN
-  companion would share the data layer with web/desktop and the "second
-  protocol implementation" cost that motivated conformance fixtures
-  partially disappears. The no-Expo/EAS-cloud mandate constrains build
-  tooling, not the RN library ecosystem (`react-native-db-sqlite-
-  persistence` is not Expo-bound); that mandate stays respected either
-  way.
-- Khala Code desktop is the sleeper consideration: it's Electrobun (web
-  tech) with a vanilla-DOM shell and a planned Foldkit migration. If the
-  web surface goes React/TanStack, the desktop shell decision should be
-  revisited *before* the Foldkit migration spends effort — one UI
-  ecosystem across web/desktop (and possibly RN mobile) vs two is a real
-  fork in the road, and it should be decided deliberately, not by
-  default. Flagged for the owner alongside this doc's main decision.
+### 6.1 The velocity assessment: does React/Tailwind actually make us faster?
+
+Yes — and the strongest argument is specific to *how this company builds*.
+
+1. **Our engineering throughput is fleet throughput, and the fleet is
+   dramatically more fluent in React+Tailwind than in Foldkit.** React is
+   the largest UI corpus in every frontier model's training data;
+   Tailwind is its styling lingua franca. Foldkit is an in-house
+   Elm-architecture framework that requires curated rules
+   (effect-solutions consultation is a standing instruction), produces
+   more correction cycles per PR, and gives reviewers fewer ecosystem
+   priors to check against. This is the harness-evolution and Lovable
+   thesis pointed at ourselves: *primitives the model already knows are a
+   direct quality and speed lever for AI-generated code.* Every workday
+   here is dozens of agent-written UI diffs; shifting them onto the
+   stack the models are best at is a compounding velocity gain, not a
+   taste preference.
+2. **One component system, three surfaces.** Web (Start), Khala Code
+   desktop (Electrobun **is** web tech — React drops into it without
+   changing the runtime), and mobile (Expo RN). Honest boundary: React
+   DOM components do not render in RN — what's fully shared across all
+   three is business logic, Effect services, schemas, the TanStack DB
+   data layer (khala-sync-db-collection), hooks, and the design tokens;
+   styling parity on RN comes via NativeWind (Tailwind-for-RN) over the
+   same token set, and component *structure* stays parallel even where
+   the leaf primitives differ (`div` vs `View`). Web↔desktop share
+   literally everything.
+3. **Maintenance we stop paying.** Foldkit is ours to maintain, document,
+   and teach to every agent; the vanilla-DOM desktop shell (2,598 lines)
+   was due for a rewrite regardless (the planned Foldkit migration).
+   Redirecting that rewrite to React costs nothing extra *because it has
+   not started* — this was the entire point of flagging the fork now.
+   The React path replaces framework-maintenance hours with ecosystem
+   leverage (TanStack, shadcn/radix-class components re-skinned onto the
+   StarCraft tokens, testing tooling our QA harness already drives via
+   the DOM).
+4. **What we give up, named honestly.** Foldkit's Elm discipline —
+   single-state-atom, message-typed updates, principled effects — is a
+   real correctness asset; React's default culture is looser. Mitigation
+   is architectural, not nostalgic: TanStack DB collections + live
+   queries carry app state (not ad-hoc useState sprawl), Effect services
+   stay the logic layer, `importProtection` and lint rules enforce the
+   boundaries, and the UX behavior-contract registry keeps product
+   behavior pinned regardless of framework. Effect is untouched
+   everywhere — this decision is about the **view layer only**.
+5. **Net:** faster agent PRs, one hiring/ecosystem story, one design
+   system, one data layer, minus a framework we maintain ourselves. The
+   velocity claim will be *measured*, not asserted: fleet cycle time and
+   review-minutes per merged UI PR are already instrumented (BF-7.2
+   metric shapes) — compare Foldkit-era vs React-era after TS-2 lands.
+
+### 6.2 What one ecosystem looks like, surface by surface
+
+- **Web** — TanStack Start on the tanstack.com Worker pattern (§4);
+  React + Tailwind 4 + tokens; Foldkit surfaces bridge via `ssr:false`
+  CSR mounts strictly as a migration vehicle, deleted route-by-route.
+- **Khala Code desktop** — Electrobun stays (runtime unchanged, all the
+  Codex/RPC/fleet machinery untouched); the shell rewrite goes to
+  **React + Tailwind instead of Foldkit**. The Effect-integration audit's
+  substance survives intact — its schema-first RPC contracts and scoped
+  process/services phases are view-layer-independent; only its "staged
+  Foldkit shell migration" phase is superseded. Existing UX behavior
+  contracts are the safety net for the shell swap: the oracles don't care
+  which framework renders the pixels.
+- **Mobile** — **Expo React Native app** replacing the both-Swift-and-
+  Kotlin future: one codebase for iOS + Android, expo-modules API for the
+  native pieces we already wrote in Swift (push-to-talk/STT, the Apple FM
+  bridge port as an Expo native module), TanStack DB
+  `expo-db-sqlite-persistence` + khala-sync-db-collection as the data
+  layer, NativeWind + tokens for the theme. Expo Router provides typed
+  file-based routing on mobile (TanStack Router does not support RN —
+  accepted; routing is the one per-surface piece).
+  The shipped SwiftUI app remains the interim companion and the
+  reference implementation for the native modules until the Expo app
+  reaches parity; the chat-sync dogfood milestone does not wait for the
+  rewrite (see §6.4).
+- **Shared packages** — `@openagentsinc/ui` evolves to React components
+  on the token system; `khala-sync-db-collection`, schemas, contracts,
+  and Effect services shared verbatim across all three.
+
+### 6.3 The Expo mandate reversal, precisely
+
+The 2026-06-26 mandate ("NO Expo/EAS cloud; native SwiftUI only") is
+**reversed for the Expo framework by owner direction (2026-07-04)**. Two
+nuances preserved deliberately:
+
+- **Build/ship path**: `expo prebuild` + local Xcode/Gradle + the proven
+  `altool` TestFlight lane keeps working with Expo — local-first
+  building remains the default posture. **EAS cloud builds/updates
+  remain owner-gated** until the owner explicitly re-enables them (the
+  original mandate's sharpest edge was EAS cloud specifically; "yes
+  expo" re-admits the framework, and EAS can be a separate convenience
+  decision).
+- **OTA**: the own-OTA publisher built for the previous Expo era
+  (`apps/oa-updates` + `publish-ota.sh`, `updates.openagents.com`)
+  becomes relevant again — we can ship JS updates over our own feed
+  without EAS.
+
+### 6.4 What this changes in yesterday's mobile report
+
+The mobile report's Option A (SwiftUI + Swift protocol port) is
+**superseded as the destination** — Option B wins by owner decision, with
+the calculus improved by §5 (the RN app inherits the entire TanStack DB
+data layer rather than hand-rolling anything). What survives: the
+SwiftUI app as interim companion + native-module reference; the
+chat-sync dogfood milestone (KS-1/KS-3/KS-5) unchanged; KS-2 superseded
+by khala-sync-db-collection (TS-3); **KS-4 (Swift protocol port)
+canceled** — the Expo app consumes the TS client directly, and the
+conformance-fixture machinery shrinks to whatever non-JS consumers ever
+exist. The near-term test can still run on the SwiftUI app via the
+simplest possible path (direct mutation HTTP calls + WS refetch) without
+building the full Swift client that KS-4 described.
 
 ## 7. Dogfood loop (why this compounds)
 
@@ -336,26 +426,37 @@ billable somewhere in the current revenue plan.
 6. **WfP build costs** for user sites (container builds): metered tier
    exists; receipts per build; budget caps per site.
 
-## 9. Owner decision points
+## 9. Owner decision points — status after the 2026-07-04 direction
 
-1. Approve the direction: TanStack Start as (a) Autopilot Sites'
-   canonical output and (b) the openagents.com web-surface target —
-   including the CLAUDE.md default change.
-2. Sequencing: funnel pages first (recommended) vs Sites template first.
-3. The desktop-shell question (§6): pause the Khala Code Foldkit-shell
-   migration pending this decision, or proceed as planned.
-4. Mobile: confirm SwiftUI-now / re-evaluate-RN-later sequencing.
+1. ~~Approve the direction~~ **DECIDED**: one UI ecosystem — React +
+   Tailwind across web/desktop/mobile; TanStack Start for the web surface
+   and as Autopilot Sites' canonical output; Expo React Native for
+   mobile. CLAUDE.md rule text updates ride this change set.
+2. Sequencing: funnel pages first (recommended) vs Sites template first —
+   still open; recommendation stands.
+3. ~~Desktop-shell question~~ **DECIDED**: Khala Code shell rewrite goes
+   to React + Tailwind (Foldkit shell migration superseded before it
+   started); Electrobun runtime unchanged.
+4. ~~Mobile~~ **DECIDED**: Expo RN app is the destination (one codebase,
+   no separate Swift + Kotlin apps); SwiftUI app is interim + native-
+   module reference; **EAS cloud remains owner-gated** as a separate
+   convenience decision (§6.3); chat-sync dogfood milestone proceeds now
+   on the interim app.
 
-## 10. Proposed workstream map (TS; not filed — follow-up pass after §9)
+## 10. Proposed workstream map (TS; not filed — follow-up filing pass next)
 
 | Task | Description | Depends |
 | --- | --- | --- |
-| TS-1 | `effect-start` bridge helper (managed Effect runtime + per-request context in Start server fns/loaders) + pinned-version parity contract | decision |
+| TS-1 | `effect-start` bridge helper (managed Effect runtime + per-request context in Start server fns/loaders) + pinned-version parity contract | — |
 | TS-2 | `apps/start` Worker: funnel pages (landing, /business, /blog, /docs, /code/download) SSR'd on the tanstack.com pattern; well-known agent surfaces served from the shell; site-speed budgets as merge gates | TS-1 |
 | TS-3 | `@openagentsinc/khala-sync-db-collection` (SyncConfig adapter over scope rooms + cursors + mutation-id matching) — supersedes KS-2; first consumer = a live surface in TS-2 or the chat-sync milestone | — |
-| TS-4 | Autopilot Sites Start template v1 + containerized build lane (version → build → WfP module → existing gates), agent-ready surfaces baked in | decision |
+| TS-4 | Autopilot Sites Start template v1 + containerized build lane (version → build → WfP module → existing gates), agent-ready surfaces baked in | — |
 | TS-5 | Sites rules pack + per-site behavior contracts (the Lovable curated-rules lesson, enforced our way) | TS-4 |
-| TS-6 | App-shell panel migration (Foldkit-in-CSR bridge, route-by-route, delete-as-you-go) | TS-2 |
-| TS-7 | Mobile/desktop-shell re-evaluation checkpoint (RN + TanStack DB data layer vs SwiftUI protocol port; Khala Code shell direction) | TS-2, TS-3 |
+| TS-6 | Web app-shell panel migration (Foldkit-in-CSR bridge, route-by-route, delete-as-you-go) | TS-2 |
+| TS-7 | Khala Code desktop shell rewrite in React + Tailwind (replaces the planned Foldkit shell migration; Electrobun + RPC/fleet machinery untouched; existing UX behavior contracts as the regression net) | TS-2 patterns helpful, not blocking |
+| TS-8 | Expo RN companion app v0: Expo Router shell, NativeWind + tokens, khala-sync-db-collection + expo-sqlite persistence, expo-modules ports of the Swift voice/Apple-FM pieces; local prebuild + Xcode/Gradle builds; own-OTA feed wiring | TS-3; KS-1 server work |
+| TS-9 | `@openagentsinc/ui` React edition on the shared token system (StarCraft theme), consumed by TS-2/TS-6/TS-7 and (via NativeWind parallel) TS-8 | TS-1 |
+| TS-10 | Fleet UI velocity measurement: cycle-time and review-minutes per merged UI PR, Foldkit-era baseline vs React-era, on the BF-7.2 metric shapes — the §6.1 claim gets a receipt | TS-2 |
 
-Start-now set once §9.1 is signed: TS-1, TS-3, TS-4 scaffolding.
+Start-now set: TS-1, TS-3, TS-4 scaffolding, TS-9; TS-7 before any
+further Foldkit-shell effort is spent in the desktop app.

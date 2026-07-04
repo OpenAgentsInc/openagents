@@ -242,3 +242,20 @@ until the receipts exist.
 
 Sequencing note: KS-1 and KS-2 start immediately and in parallel; KS-5 is
 the owner's requested test and the milestone's only definition of done.
+
+## 9. Superseded-in-part addendum (2026-07-04, same day)
+
+The owner decided **one UI ecosystem — React + Tailwind + Expo React
+Native** (recorded in
+`2026-07-04-tanstack-start-sites-and-web-app-evaluation.md` §6/§9, with
+the AGENTS.md/CLAUDE.md rule updates in the same change). Effect on this
+report: §3's Option A is superseded as the *destination* (the companion's
+end-state is the Expo RN app, sharing the TanStack DB +
+khala-sync-db-collection data layer with web/desktop); the SwiftUI app
+becomes the interim companion and native-module reference; KS-2 is
+superseded by the khala-sync-db-collection adapter (TS-3) and **KS-4 (the
+Swift protocol port) is canceled**. KS-1 (chat collection + mutators),
+KS-3 (desktop/web consumers), and KS-5 (the cross-device dogfood test)
+stand unchanged, and the near-term test may still run on the interim
+SwiftUI app via direct mutation calls + WS refetch. EAS cloud remains
+owner-gated; local prebuild + Xcode/Gradle is the build posture.
