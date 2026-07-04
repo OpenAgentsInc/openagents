@@ -629,6 +629,14 @@ retired `AutopilotRemoteControl` path. The issue remains open for owner-gated
 prebuild/Xcode/Gradle/TestFlight and signed OTA round-trip proof. See
 `docs/fable/2026-07-04-ts-8-expo-mobile-scaffold.md`.
 
+2026-07-04 TS-10b checkpoint note: the Foldkit-era velocity method is now
+extracted as `bun run perf:ui-velocity`, and it reproduces the TS-10a baseline
+numbers exactly. The React-era comparison remains time-gated: the later
+dependency anchor is TS-7 phase 1 at `2026-07-04T21:36:04Z`, so the first
+honest 30-day row is not eligible until `2026-08-03T21:36:04Z`; the full
+30/60-day two-row table matures on `2026-09-02T21:36:04Z`. See
+`docs/perf/2026-07-04-react-ui-velocity-receipt-checkpoint.md`.
+
 ### 11.3 Explicit dependency spine
 
 ```

@@ -225,3 +225,17 @@ landed by then, TS-10b may replace the `not_measured` review-minute cells only
 by joining the BF-7.2 economics receipt rows to the relevant PR refs. If that
 join is still absent, TS-10b must keep the review-minute comparison
 `not_measured` rather than filling in elapsed GitHub review latency.
+
+The reusable extraction of the method is:
+
+```sh
+bun run perf:ui-velocity -- \
+  --ref 1b9063bd30697c50adb466df566c1473cff7dbd3 \
+  --cutoff 2026-07-04T20:06:51Z \
+  --paths apps/openagents.com/apps/web,clients/khala-code-desktop \
+  --window-days 30,60
+```
+
+On 2026-07-04 this command reproduced the headline TS-10a values exactly:
+131 UI PRs, 60 web-path PRs, 72 desktop-path PRs, 586 direct/no-PR UI commits,
+median cycle time 12.4 minutes, average 43.5 minutes, and P75 39.0 minutes.
