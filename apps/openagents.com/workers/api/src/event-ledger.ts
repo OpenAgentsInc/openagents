@@ -4,6 +4,11 @@ import { Schema as S } from 'effect'
 
 import type { DueAgentDefinitionTriggerRecord } from './agent-definition-trigger-store'
 import {
+  makeAgentRuntimeRemainderMirrorForEnv,
+  type AgentRuntimeRemainderMirror,
+  type AgentRuntimeRemainderStoreEnv,
+} from './agent-runtime-remainder-store'
+import {
   parseJsonRecord as parseBoundaryJsonRecord,
   parseJsonStringArray,
 } from './json-boundary'
@@ -506,6 +511,46 @@ export const makeD1EventLedgerStore = (db: D1Database): EventLedgerStore => ({
   },
 })
 
+export const makeMirroredEventLedgerStore = (
+  d1: EventLedgerStore,
+  mirror: AgentRuntimeRemainderMirror | undefined,
+): EventLedgerStore => {
+  if (mirror === undefined) {
+    return d1
+  }
+
+  const mirrorEntry = (entry: EventLedgerEntry | undefined): Promise<void> =>
+    entry === undefined
+      ? Promise.resolve()
+      : mirror.mirrorRowsByPk('event_ledger_entries', [entry.entryId])
+
+  return {
+    insertEntry: async input => {
+      const entry = await d1.insertEntry(input)
+      await mirrorEntry(entry)
+      return entry
+    },
+    listOwnerEntries: input => d1.listOwnerEntries(input),
+    readOwnerEntry: (ownerAgentUserId, entryId) =>
+      d1.readOwnerEntry(ownerAgentUserId, entryId),
+    updateHandledState: async input => {
+      const entry = await d1.updateHandledState(input)
+      await mirrorEntry(entry)
+      return entry
+    },
+  }
+}
+
+export const makeEventLedgerStoreForEnv = (
+  env: AgentRuntimeRemainderStoreEnv & Readonly<{ OPENAGENTS_DB: D1Database }>,
+): EventLedgerStore => {
+  const d1 = makeD1EventLedgerStore(openAgentsDatabase(env))
+  return makeMirroredEventLedgerStore(
+    d1,
+    makeAgentRuntimeRemainderMirrorForEnv(env),
+  )
+}
+
 export type EventLedgerGatewayEntry = Readonly<{
   actorRef?: string
   contentRef?: string
@@ -692,9 +737,10 @@ const makeDurableObjectSequenceStore = (
   },
 })
 
-type EventLedgerOwnerDurableObjectEnv = Readonly<{
-  OPENAGENTS_DB: D1Database
-}>
+type EventLedgerOwnerDurableObjectEnv = AgentRuntimeRemainderStoreEnv &
+  Readonly<{
+    OPENAGENTS_DB: D1Database
+  }>
 
 export class EventLedgerOwnerDurableObject {
   constructor(
@@ -721,7 +767,7 @@ export class EventLedgerOwnerDurableObject {
     return recordEventLedgerIngestMessage(
       {
         sequenceStore: makeDurableObjectSequenceStore(this.state.storage),
-        store: makeD1EventLedgerStore(openAgentsDatabase(this.env)),
+        store: makeEventLedgerStoreForEnv(this.env),
       },
       decoded,
     )

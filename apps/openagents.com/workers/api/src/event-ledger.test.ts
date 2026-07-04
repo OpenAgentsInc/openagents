@@ -19,6 +19,7 @@ import {
   eventLedgerGatewayReadProjectionForDefinition,
   eventLedgerMessageForMatchedTrigger,
   makeD1EventLedgerStore,
+  makeMirroredEventLedgerStore,
   recordEventLedgerIngestMessage,
 } from './event-ledger'
 
@@ -451,6 +452,50 @@ describe('event ledger ingest', () => {
         ownerAgentUserId: 'agent_user_owner_b',
       }),
     ).toHaveLength(1)
+  })
+
+  test('mirrored store mirrors inserted and updated event-ledger rows by key', async () => {
+    const db = makeDb()
+    const mirrored: Array<{ table: string; ids: ReadonlyArray<string> }> = []
+    const store = makeMirroredEventLedgerStore(makeD1EventLedgerStore(db), {
+      mirrorRowsByPk: async (table, ids) => {
+        mirrored.push({ ids, table })
+      },
+    })
+    const sequenceStore = new MemoryOwnerSequenceStore()
+    const message = eventLedgerMessageForMatchedTrigger(
+      normalizedGitHubMentionEvent(),
+      triggerRecord('agent_user_owner_a'),
+    )
+    expect(message).toBeDefined()
+
+    const outcome = await recordEventLedgerIngestMessage(
+      {
+        nowIso: () => '2026-07-04T00:06:00.000Z',
+        sequenceStore,
+        store,
+      },
+      message!,
+    )
+
+    expect(mirrored).toEqual([
+      { ids: [outcome.entryId], table: 'event_ledger_entries' },
+    ])
+
+    await store.updateHandledState({
+      entryId: outcome.entryId,
+      handledAt: '2026-07-04T00:10:00.000Z',
+      handledByDefinitionId: 'definition-1',
+      handledByRunId: 'run-1',
+      handledReasonRef: 'event-ledger.test',
+      handledState: 'handled',
+      ownerAgentUserId: 'agent_user_owner_a',
+    })
+
+    expect(mirrored).toEqual([
+      { ids: [outcome.entryId], table: 'event_ledger_entries' },
+      { ids: [outcome.entryId], table: 'event_ledger_entries' },
+    ])
   })
 
   test('persists Slack D1 rows under the same owner-scoped privacy contract', async () => {

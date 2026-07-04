@@ -536,6 +536,14 @@ density (`count == distinct == max - min + 1`). It also checks the old
 D1 rewrite artifact `event_ledger_entries_next`: absent or empty is clean;
 any remaining rows are drift and must be explained before cutover.
 
+Runtime mirror status: `event_ledger_entries` ingestion and handled-state
+updates now use the #8334 fail-soft mirror seam when
+`KHALA_SYNC_AGENT_RUNTIME_REMAINDER_DUAL_WRITE` is not disabled and the
+`KHALA_SYNC_DB` binding exists. D1 remains authority; mirror failures emit
+`khala_sync_agent_runtime_remainder_dual_write_failed` with row keys only
+and never fail the request. The remaining profile, credential, owner-claim,
+proposal, and acceptance job/verdict write seams are still #8334 work.
+
 This lane does **not** drop D1 tables. Runtime write-authority movement,
 read cutover, flag deletion, and destructive retirement remain explicit
 follow-up work; D1 retirement is consolidated into KS-8.19 (#8330).

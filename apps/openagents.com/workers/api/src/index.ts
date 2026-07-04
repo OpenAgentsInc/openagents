@@ -102,7 +102,7 @@ import {
 import {
   EVENT_LEDGER_INGEST_QUEUE_SCHEMA_VERSION,
   EventLedgerIngestQueueMessage,
-  makeD1EventLedgerStore,
+  makeEventLedgerStoreForEnv,
   recordEventLedgerMessageWithOwnerObject,
 } from './event-ledger'
 export { EventLedgerOwnerDurableObject } from './event-ledger'
@@ -14692,7 +14692,7 @@ const routeRequest = makeWorkerRouteRequest({
             : await handleAgentDefinitionEventLedgerGatewayRequest(request, {
                 agentStore: makeD1AgentRegistrationStore(db),
                 definitionStore: makeAgentDefinitionStoreForEnv(env),
-                eventLedgerStore: makeD1EventLedgerStore(db),
+                eventLedgerStore: makeEventLedgerStoreForEnv(env),
                 runStore: makeAgentDefinitionRunStoreForEnv(env),
               })
 

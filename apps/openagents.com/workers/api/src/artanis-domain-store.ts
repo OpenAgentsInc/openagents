@@ -386,12 +386,16 @@ export const ARTANIS_DOMAIN_TABLES: Readonly<
 
 export type ArtanisDomainRow = Readonly<Record<string, unknown>>
 
+class ArtanisDomainKeyColumnError extends TypeError {}
+
+class ArtanisDomainSqlCapabilityError extends TypeError {}
+
 const requireKeyColumn = (
   table: ArtanisDomainTable,
   keyColumn: string,
 ): string => {
   if (!ARTANIS_DOMAIN_TABLES[table].keyColumns.includes(keyColumn)) {
-    throw new Error(
+    throw new ArtanisDomainKeyColumnError(
       `artanis domain store: ${keyColumn} is not a registered key column of ${table}`,
     )
   }
@@ -419,7 +423,7 @@ type UnsafeQuery = (
 const requireUnsafe = (sql: SyncSql): UnsafeQuery => {
   const unsafe = (sql as SyncSql & { unsafe?: UnsafeQuery }).unsafe
   if (typeof unsafe !== 'function') {
-    throw new Error(
+    throw new ArtanisDomainSqlCapabilityError(
       'artanis domain store requires a driver exposing unsafe(text, params)',
     )
   }
