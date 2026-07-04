@@ -206,3 +206,23 @@ NEEDS-OWNER: Decide when QA Swarm hosted-run engagement receipts may evidence
 `buyer_paid` / `provider_settled` refs, which checkout/payment source is
 approved for those refs, and what operator review is required before any paid
 QA Swarm engagement is represented as paid or settled.
+
+## QA Swarm First Paid Delivery Receipt
+
+Source issue: OpenAgentsInc/openagents#8252
+
+The RL-8 first-engagement spine now exists for operator-assisted Swarm Audit
+commitments:
+
+- `POST /api/operator/qa-swarm/first-engagements`
+- `GET /api/public/qa-swarm/first-engagements/{receiptRef}`
+
+The route records only public-safe intake plus checkout/deposit receipt refs,
+provisions the workspace and active service promise, and creates the
+business-commitment-ledger row. It intentionally leaves first paid delivery,
+self-serve hosted delivery, payout, and settlement unclaimed.
+
+NEEDS-OWNER: For the first real QA Swarm sales outcome, review the production
+intake/payment evidence, approve the target-adapter/redaction boundary, decide
+which public-safe delivery receipt may count as the first paid delivery, and
+record that receipt before any copy claims paid QA Swarm delivery exists.

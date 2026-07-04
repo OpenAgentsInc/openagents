@@ -4836,6 +4836,52 @@ const requestSchemas = (): JsonSchema => ({
       },
     },
   },
+  QaSwarmFirstEngagementIntakeRequest: objectSummary(
+    'Admin-token request to record a QA Swarm Swarm Audit first engagement. The body names the operator-assisted package, business signup intake receipt, checkout-kickoff or deposit-invoice receipt, target-adapter review ref, public package contract ref, committed amount in the published Swarm Audit band, and an optional idempotency key. Values must be public-safe refs only: no raw invoice body, checkout URL, payment hash, preimage, target credential, customer identity, runner log, provider payload, wallet material, or secret.',
+  ),
+  PublicQaSwarmFirstEngagementReceipt: objectSummary(
+    'Public-safe QA Swarm first-engagement receipt: proves an operator-assisted Swarm Audit was committed through the BF-2 spine, with intake/payment evidence refs, provisioned workspace and active service-promise refs, and a business commitment-ledger ref for the first report. It carries generatedAt and live_at_read staleness and explicitly keeps selfServe=false, firstPaidDeliveryReceipt=false, and settlementMovedMoney=false.',
+  ),
+  PublicQaSwarmFirstEngagementEnvelope: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['generatedAt', 'staleness', 'receipt'],
+    description:
+      'Public read envelope for one QA Swarm first-engagement receipt: generatedAt, live_at_read staleness, and the public-safe receipt. Read-only; grants no checkout creation, target access, hosted-run dispatch, first paid delivery claim, payout, settlement, self-serve, or green-claim authority.',
+    properties: {
+      generatedAt: { type: 'string', format: 'date-time' },
+      staleness: {
+        type: 'object',
+        additionalProperties: true,
+        description:
+          'Shared public-projection staleness contract over QA Swarm first-engagement, workspace, service-promise, and commitment-ledger rows.',
+      },
+      receipt: {
+        $ref: '#/components/schemas/PublicQaSwarmFirstEngagementReceipt',
+      },
+    },
+  },
+  OperatorQaSwarmFirstEngagementIntakeEnvelope: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['ok', 'idempotent', 'generatedAt', 'staleness', 'receipt'],
+    description:
+      'Admin-token response envelope for QA Swarm first-engagement intake: ok, idempotent, generatedAt, staleness, and the public-safe receipt. It confirms workspace, active service-promise, and commitment-ledger provisioning only; no money movement or first paid delivery is claimed.',
+    properties: {
+      ok: { type: 'boolean', enum: [true] },
+      idempotent: { type: 'boolean' },
+      generatedAt: { type: 'string', format: 'date-time' },
+      staleness: {
+        type: 'object',
+        additionalProperties: true,
+        description:
+          'Shared public-projection staleness contract over QA Swarm first-engagement, workspace, service-promise, and commitment-ledger rows.',
+      },
+      receipt: {
+        $ref: '#/components/schemas/PublicQaSwarmFirstEngagementReceipt',
+      },
+    },
+  },
   FreeApiKeyMintResponse: {
     type: 'object',
     additionalProperties: false,
@@ -6544,6 +6590,53 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Khala Code trace plugin revenue-share precedent receipt.',
           '#/components/schemas/PublicKhalaCodeTracePluginRevenueSharePrecedentEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/qa-swarm/first-engagements': {
+    post: operation({
+      operationId: 'createOperatorQaSwarmFirstEngagement',
+      summary: 'Record a QA Swarm first-engagement receipt',
+      description:
+        'Admin-token intake for RL-8 QA Swarm first engagements. It records public-safe intake and checkout/deposit evidence refs, provisions the engagement workspace plus active service promise, and writes the Swarm Audit first-report commitment into the business commitment ledger. It is operator-assisted only and does not move money, create self-serve hosted runs, accept raw invoices/payment material/customer identity/target credentials, claim first paid delivery, or flip product-promise state.',
+      tags: ['Operator', 'Public Proof'],
+      security: adminBearer,
+      responses: {
+        '201': okJson(
+          'QA Swarm first engagement recorded.',
+          '#/components/schemas/OperatorQaSwarmFirstEngagementIntakeEnvelope',
+        ),
+        '200': okJson(
+          'QA Swarm first engagement idempotently replayed.',
+          '#/components/schemas/OperatorQaSwarmFirstEngagementIntakeEnvelope',
+        ),
+        ...errorResponses(),
+      },
+      requestBody: jsonContent(
+        '#/components/schemas/QaSwarmFirstEngagementIntakeRequest',
+      ),
+    }),
+  },
+  '/api/public/qa-swarm/first-engagements/{receiptRef}': {
+    get: operation({
+      operationId: 'getPublicQaSwarmFirstEngagementReceipt',
+      summary: 'Read a QA Swarm first-engagement receipt',
+      description:
+        'Dereferences one public-safe QA Swarm first-engagement receipt by receiptRef. The receipt proves the operator-assisted Swarm Audit commitment path has intake/payment evidence, a provisioned workspace, an active service-promise contract, and a commitment-ledger row with generatedAt plus live_at_read staleness. It excludes customer identity, raw invoice/payment material, payment hashes, preimages, target credentials, raw runner logs, provider payloads, and wallet material; it grants no checkout creation, hosted-run dispatch, first paid delivery, payout, settlement, self-serve, or green-claim authority.',
+      tags: ['Public Proof', 'Agents'],
+      security: publicRead,
+      parameters: [
+        pathParam(
+          'receiptRef',
+          'Public QA Swarm first-engagement receipt ref.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'QA Swarm first-engagement receipt.',
+          '#/components/schemas/PublicQaSwarmFirstEngagementEnvelope',
         ),
         ...errorResponses(),
       },

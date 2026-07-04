@@ -1,5 +1,18 @@
 # Promise Registry
 
+> Registry `2026-07-04.5` is the RL-8 QA Swarm first-engagement
+> checkout/intake spine pass (#8252) and flips NO promise green (green stays
+> exactly 34). `qa_swarm.service_packages.v1` remains yellow: source now has an
+> admin-token first-engagement intake route and public readback that records
+> public-safe business intake plus checkout/deposit evidence refs, provisions a
+> QA Swarm Audit workspace, creates an active accepted-outcome service-promise
+> contract, and writes the Swarm Audit first-report row into
+> `business_commitment_ledger`. This clears only
+> `blocker.product_promises.qa_swarm_checkout_or_intake_receipts_missing`.
+> First paid delivery receipts, self-serve hosted delivery, broad hosted
+> availability, payout, settlement, target access, and promise-green authority
+> remain blocked.
+
 > Registry `2026-07-04.4` is the RL-7 Khala Code trace→plugin→revenue-share
 > precedent spine pass (#8251) and flips NO promise green (green stays exactly
 > 34). `khala_code.trace_derived_plugins.v1` and

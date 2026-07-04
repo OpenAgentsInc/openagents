@@ -907,6 +907,15 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    // QA Swarm first-engagement receipt readback (#8252): one public-safe
+    // operator-assisted Swarm Audit commitment by receiptRef from the
+    // first-engagement, workspace, service-promise, and commitment-ledger rows.
+    // It is live_at_read with generatedAt + the shared staleness contract.
+    module: 'workers/api/src/qa-swarm-first-engagement-routes.ts',
+    route: '/api/public/qa-swarm/first-engagements/{receiptRef}',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/marketing-agency-receipt-public-routes.ts',
     route: '/api/public/marketing-agency/receipts',
     status: 'staleness_declared',

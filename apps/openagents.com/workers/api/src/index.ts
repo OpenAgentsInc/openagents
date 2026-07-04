@@ -747,6 +747,11 @@ import {
   makeKhalaCodeTracePluginRevenueShareRoutes,
 } from './khala-code-trace-plugin-revenue-share-routes'
 import {
+  handleOperatorQaSwarmFirstEngagementsApi,
+  makeD1QaSwarmFirstEngagementStore,
+  makeQaSwarmFirstEngagementRoutes,
+} from './qa-swarm-first-engagement-routes'
+import {
   handleOperatorKhalaTraceReview,
   makeD1KhalaTraceReviewStore,
 } from './khala-trace-review-routes'
@@ -8629,6 +8634,13 @@ const khalaCodeTracePluginRevenueShareRoutes =
     nowIso: currentIsoTimestamp,
   })
 
+const qaSwarmFirstEngagementRoutes =
+  makeQaSwarmFirstEngagementRoutes<Env>({
+    makeStore: env =>
+      makeD1QaSwarmFirstEngagementStore(openAgentsDatabase(env)),
+    nowIso: currentIsoTimestamp,
+  })
+
 const hostedGeminiPromiseReadinessRoutes =
   makeHostedGeminiPromiseReadinessRoutes<Env>({
     makeInferenceReceiptStore: env =>
@@ -10966,6 +10978,27 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // optional route cascade below handles matching because the exact registry
     // is literal.
     path: '/api/public/khala-code/trace-plugin-revenue-share-precedents/:receiptRef',
+    handler: () => Effect.succeed(notFound()),
+  },
+  {
+    // QA Swarm first-engagement intake (RL-8, #8252). Admin-token gated and
+    // operator-assisted: records public-safe intake + checkout/deposit receipt
+    // refs, provisions the engagement workspace/service promise, and adds the
+    // Swarm Audit deliverable to the business commitment ledger. It does not
+    // claim self-serve delivery, first paid delivery, payout, or settlement.
+    path: '/api/operator/qa-swarm/first-engagements',
+    handler: (request, env) =>
+      handleOperatorQaSwarmFirstEngagementsApi(request, {
+        OPENAGENTS_DB: openAgentsDatabase(env),
+        requireAdminApiToken: authRequest =>
+          requireAdminApiToken(authRequest, env),
+      }),
+  },
+  {
+    // Manifest-only path-param readback for RL-8 engagement receipts. The
+    // optional route cascade below handles matching because the exact registry
+    // is literal.
+    path: '/api/public/qa-swarm/first-engagements/:receiptRef',
     handler: () => Effect.succeed(notFound()),
   },
   {
@@ -14397,6 +14430,8 @@ const routeRequest = makeWorkerRouteRequest({
     publicKhalaCodeOutsideUserRunReceiptRoutes.routePublicKhalaCodeOutsideUserRunReceiptRequest,
   routePublicKhalaCodeTracePluginRevenueShareRequest:
     khalaCodeTracePluginRevenueShareRoutes.routePublicKhalaCodeTracePluginRevenueShareRequest,
+  routePublicQaSwarmFirstEngagementRequest:
+    qaSwarmFirstEngagementRoutes.routePublicQaSwarmFirstEngagementRequest,
   routePublicCloudPrimitiveReceiptRequest:
     publicCloudPrimitiveReceiptRoutes.routePublicCloudPrimitiveReceiptRequest,
   routePublicNip90MarketReceiptRequest:

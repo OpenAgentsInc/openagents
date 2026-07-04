@@ -394,6 +394,7 @@ describe('Worker route dual-serve resolution (#6148)', () => {
       routePublicInferenceReceiptRequest: noRoute,
       routePublicKhalaCodeOutsideUserRunReceiptRequest: noRoute,
       routePublicKhalaCodeTracePluginRevenueShareRequest: noRoute,
+      routePublicQaSwarmFirstEngagementRequest: noRoute,
       routePublicNip90MarketReceiptRequest: noRoute,
       routePublicPartnerPayoutReceiptRequest: noRoute,
       routePublicSiteReferralPayoutReceiptRequest: noRoute,

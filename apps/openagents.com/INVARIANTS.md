@@ -571,6 +571,37 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/openagents-openapi-routes.test.ts`,
   `workers/api/src/openagents-capability-manifest-routes.test.ts`.
 
+## QA Swarm First-Engagement Receipts
+
+- The RL-8 first-engagement intake
+  (`workers/api/src/qa-swarm-first-engagement-routes.ts`,
+  `qa_swarm_first_engagements`, #8252) is admin-token gated,
+  operator-assisted, and idempotent. It records only public-safe intake and
+  checkout/deposit receipt refs, provisions the engagement workspace plus active
+  service promise, and writes the Swarm Audit first-report commitment into the
+  business commitment ledger.
+- A valid first-engagement row must keep the refs distinct: business signup
+  request id, intake receipt, checkout-kickoff or deposit-invoice receipt,
+  target-adapter review, package contract, workspace, service-promise contract,
+  and commitment-ledger ref. It must reject raw invoice/payment material,
+  checkout URLs, payment hashes, preimages, target credentials, customer
+  identity, raw runner logs, provider payloads, wallet material, private source
+  refs, and raw timestamps before persistence or projection.
+- The route covers only the public Swarm Audit package band
+  ($1,000-$5,000). It is not self-serve checkout, not a hosted-run dispatch
+  path, and not a first paid delivery receipt. It does not move sats, settle a
+  payout, authorize target access, flip product-promise state, or prove broad
+  availability.
+- The public readback `/api/public/qa-swarm/first-engagements/{receiptRef}` is
+  registry-citable evidence with `generatedAt` and live-at-read staleness. It
+  grants no checkout creation, hosted-run dispatch, first paid delivery, payout,
+  settlement, self-serve, or promise-green authority.
+- Regression coverage:
+  `workers/api/src/qa-swarm-first-engagement-routes.test.ts`,
+  `workers/api/src/product-promises.test.ts`,
+  `workers/api/src/openagents-openapi-routes.test.ts`,
+  `workers/api/src/openagents-capability-manifest-routes.test.ts`.
+
 ## Captured Trace Demand-Origin Segmentation
 
 - A captured trace is auto-tagged with its DEMAND ORIGIN (#6298, migration
@@ -2575,6 +2606,17 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     receipt refs; no raw traces, prompts, usage payloads, invoices, payment
     hashes, preimages, payout destinations, wallet material, provider payloads,
     private source refs, spend, settlement authority, or promise-green
+    authority. `staleness_declared`.
+  - `GET /api/public/qa-swarm/first-engagements/{receiptRef}` — live at read
+    over `qa_swarm_first_engagements`, `prefilled_workspaces`,
+    `omni_accepted_outcome_contracts`, and `business_commitment_ledger`
+    (qa_swarm.service_packages.v1, #8252) — compliant (`generatedAt`,
+    top-level `projection_staleness.v1` `live_at_read` contract). Public
+    receipts project only operator-assisted intake/payment refs, workspace ref,
+    active service-promise ref, and commitment-ledger ref; no customer identity,
+    raw invoices, payment hashes/preimages, target credentials, raw runner logs,
+    provider payloads, wallet material, checkout creation, hosted-run dispatch,
+    first paid delivery, payout, settlement, self-serve, or promise-green
     authority. `staleness_declared`.
   - `GET /api/public/artanis/report` — live at read over tick rows rebuilt on
     closeout — compliant (`generatedAtUnixMs`, report + loop contracts, stale

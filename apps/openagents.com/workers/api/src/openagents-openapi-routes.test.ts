@@ -158,6 +158,28 @@ describe('OpenAgents OpenAPI route', () => {
     expect(tracePluginRevenueSharePrecedent.description).toContain(
       'no raw traces',
     )
+    expect(
+      operationAt(
+        body,
+        '/api/operator/qa-swarm/first-engagements',
+        'post',
+      ).operationId,
+    ).toBe('createOperatorQaSwarmFirstEngagement')
+    const qaSwarmFirstEngagement = operationAt(
+      body,
+      '/api/public/qa-swarm/first-engagements/{receiptRef}',
+      'get',
+    )
+    expect(qaSwarmFirstEngagement.operationId).toBe(
+      'getPublicQaSwarmFirstEngagementReceipt',
+    )
+    expect(qaSwarmFirstEngagement.description).toContain(
+      'operator-assisted Swarm Audit',
+    )
+    expect(qaSwarmFirstEngagement.description).toContain('live_at_read')
+    expect(qaSwarmFirstEngagement.description).toContain(
+      'excludes customer identity',
+    )
     const deprecatedFleetStatus = operationAt(
       body,
       '/api/operator/fleet/status',

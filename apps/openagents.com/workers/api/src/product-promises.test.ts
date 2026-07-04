@@ -186,13 +186,21 @@ describe('public product promises document', () => {
         'NEEDS_OWNER.md',
         'apps/openagents.com/apps/web/src/page/business.ts',
         'apps/openagents.com/apps/web/src/business-route.test.ts',
+        'apps/openagents.com/workers/api/src/qa-swarm-first-engagement-routes.ts',
+        'apps/openagents.com/workers/api/src/qa-swarm-first-engagement-routes.test.ts',
+        'route:/api/operator/qa-swarm/first-engagements',
+        'route:/api/public/qa-swarm/first-engagements/:receiptRef',
       ]),
       blockerRefs: expect.arrayContaining([
-        'blocker.product_promises.qa_swarm_checkout_or_intake_receipts_missing',
         'blocker.product_promises.qa_swarm_first_paid_delivery_receipt_missing',
         'blocker.product_promises.qa_swarm_self_serve_delivery_missing',
       ]),
     })
+    expect(
+      promiseById.get('qa_swarm.service_packages.v1')?.blockerRefs,
+    ).not.toContain(
+      'blocker.product_promises.qa_swarm_checkout_or_intake_receipts_missing',
+    )
 
     const qaSwarmCopy = [
       promiseById.get('qa_swarm.product_surface.v1')?.safeCopy,
@@ -207,8 +215,10 @@ describe('public product promises document', () => {
     expect(qaSwarmCopy).toContain(
       'QA-on-every-push retainers at $2,000-$10,000/month',
     )
+    expect(qaSwarmCopy).toContain('Operator-assisted sales can now record')
+    expect(qaSwarmCopy).toContain('business_commitment_ledger')
     expect(qaSwarmCopy).toContain('not self-serve checkout products')
-    expect(qaSwarmCopy).toContain('Do not imply purchase/checkout is live')
+    expect(qaSwarmCopy).toContain('Do not imply self-serve checkout')
     expect(qaSwarmCopy).toContain('green stays exactly 34')
     expect(qaSwarmCopy).not.toContain('paid delivery receipts exist')
   })

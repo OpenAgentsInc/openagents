@@ -209,6 +209,20 @@ describe('OpenAgents capability manifest route', () => {
           description: expect.stringContaining('live_at_read'),
         }),
         expect.objectContaining({
+          auth: 'admin_api_token',
+          href: 'https://openagents.com/api/operator/qa-swarm/first-engagements',
+          id: 'operator_qa_swarm_first_engagement_intake',
+          method: 'POST',
+          description: expect.stringContaining('business commitment ledger'),
+        }),
+        expect.objectContaining({
+          auth: 'public',
+          href: 'https://openagents.com/api/public/qa-swarm/first-engagements/{receiptRef}',
+          id: 'public_qa_swarm_first_engagement_receipt',
+          method: 'GET',
+          description: expect.stringContaining('live_at_read'),
+        }),
+        expect.objectContaining({
           auth: 'public',
           href: 'https://openagents.com/api/public/tassadar-run-summary',
           id: 'public_tassadar_run_summary',

@@ -280,3 +280,13 @@ and commits to the sequencing in the owner's words:
   micro-promise registry whose oracles the swarm exercises — §9d of
   ROADMAP_QA and `2026-07-03-behavior-contracts-and-customer-invariants.md`
   carry that design.
+
+2026-07-04 RL-8 update (#8252): the operator-assisted first-engagement spine now
+exists for Swarm Audit commitments. `POST /api/operator/qa-swarm/first-engagements`
+records public-safe intake plus checkout/deposit receipt refs, provisions the QA
+Swarm Audit workspace and active service promise, and writes the first-report
+commitment into `business_commitment_ledger`. Public readback is
+`GET /api/public/qa-swarm/first-engagements/{receiptRef}`. This clears the
+checkout/intake receipt blocker only; first paid delivery, self-serve hosted
+delivery, broad hosted availability, payout, settlement, and promise-green copy
+remain blocked.

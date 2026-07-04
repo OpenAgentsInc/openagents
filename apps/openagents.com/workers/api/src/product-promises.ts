@@ -5010,26 +5010,30 @@ export const publicProductPromisesDocument = () => {
         claim:
           'QA Swarm has operator-assisted service packages for audits, QA-on-every-push retainers, and swarm sprints.',
         safeCopy:
-          'QA Swarm package bands are published on /business as operator-assisted services: Swarm Audit at $1,000-$5,000, Swarm Sprint at $5,000-$15,000, and QA-on-every-push retainers at $2,000-$10,000/month. Public copy must continue to say operator-assisted until self-serve delivery and hosted-run receipts exist. The packages are not self-serve checkout products.',
+          'QA Swarm package bands are published on /business as operator-assisted services: Swarm Audit at $1,000-$5,000, Swarm Sprint at $5,000-$15,000, and QA-on-every-push retainers at $2,000-$10,000/month. Operator-assisted sales can now record a Swarm Audit first engagement through the admin BF-2 route when intake plus checkout/deposit evidence exists; that provisions the workspace, active service promise, and commitment-ledger row. Public copy must continue to say operator-assisted until self-serve delivery and hosted-run receipts exist. The packages are not self-serve checkout products, and first paid delivery remains unclaimed.',
         unsafeCopy:
-          'Do not present QA Swarm packages as self-serve, generally hosted, available for arbitrary third-party apps without target-adapter review, or proven by paid delivery receipts. Do not imply purchase/checkout is live.',
+          'Do not present QA Swarm packages as self-serve, generally hosted, available for arbitrary third-party apps without target-adapter review, or proven by paid delivery receipts. Do not imply self-serve checkout, instant purchase, first paid delivery, payout, settlement, or generally hosted execution is live.',
         evidenceRefs: [
           'docs/fable/2026-07-02-qa-swarm-product-plan.md',
           'NEEDS_OWNER.md',
           'apps/openagents.com/apps/web/src/page/business.ts',
           'apps/openagents.com/apps/web/src/business-route.test.ts',
+          'apps/openagents.com/workers/api/src/qa-swarm-first-engagement-routes.ts',
+          'apps/openagents.com/workers/api/src/qa-swarm-first-engagement-routes.test.ts',
+          'apps/openagents.com/workers/api/migrations/0292_qa_swarm_first_engagements.sql',
+          'route:/api/operator/qa-swarm/first-engagements',
+          'route:/api/public/qa-swarm/first-engagements/:receiptRef',
           'promise:qa_swarm.product_surface.v1',
           'promise:qa_swarm.hosted_runs.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.qa_swarm_checkout_or_intake_receipts_missing',
           'blocker.product_promises.qa_swarm_first_paid_delivery_receipt_missing',
           'blocker.product_promises.qa_swarm_self_serve_delivery_missing',
         ],
         verification:
-          'Yellow is limited to owner-approved public package copy and pricing on /business. Green requires an intake/checkout or explicit operator-sales path with receipts, at least one paid or owner-accepted delivery receipt, and clear copy that distinguishes operator-assisted delivery from self-serve hosting.',
+          'Yellow is limited to owner-approved public package copy and pricing on /business plus the admin-token first-engagement route that records public-safe intake/payment refs, workspace, active service promise, and commitment-ledger evidence. Green requires at least one paid or owner-accepted delivery receipt and clear copy that distinguishes operator-assisted delivery from self-serve hosting.',
         authorityBoundary:
-          'Package records do not authorize charging, checkout, settlement, payout, third-party target access, or external outreach. Public prices are quote starters only; each engagement still needs scoped intake, redaction/target review where applicable, and operator acceptance before work runs.',
+          'Package records do not authorize self-serve checkout, settlement, payout, third-party target access, hosted-run dispatch, or external outreach. Public prices are quote starters only; each engagement still needs scoped intake, checkout/deposit evidence, redaction/target review where applicable, and operator acceptance before work runs.',
       },
       {
         ...basePromiseFields,
@@ -5065,6 +5069,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-04.5 is the RL-8 QA Swarm first-engagement checkout/intake spine pass (#8252) and flips NO promise green — green stays exactly 34. qa_swarm.service_packages.v1 remains yellow: source now has an admin-token first-engagement intake route and public readback that records public-safe business intake plus checkout/deposit evidence refs, provisions a QA Swarm Audit workspace, creates an active accepted-outcome service-promise contract, and writes the Swarm Audit first-report row into business_commitment_ledger. This clears only blocker.product_promises.qa_swarm_checkout_or_intake_receipts_missing. First paid delivery receipts, self-serve hosted delivery, broad hosted availability, payout, settlement, target access, and promise-green authority remain blocked.',
       'Registry 2026-07-04.4 is the RL-7 Khala Code trace→plugin→revenue-share precedent spine pass (#8251) and flips NO promise state — green stays exactly 34. khala_code.trace_derived_plugins.v1 and khala_code.plugin_backend_revenue_share.v1 remain planned: source now has an admin-token intake route and public readback for one n=1 precedent receipt linking a consented trace digest, admitted/registered/routable plugin, exact routed usage/idempotency, contributor attribution, msat accounting, Spark payout receipt, and settlement receipt. The route records already-settled public-safe evidence only; it does not move sats, accept raw trace/payment material, define a rate/pool, create market-demand proof, or claim anyone has been paid until the owner supplies and reviews a production receipt row.',
       'Registry 2026-07-04.3 is the RL-4 Khala Code paid-plan payment-collection pass (#8248) and flips NO promise state — green stays exactly 34. khala_code.free_paid_plans.v1 remains planned: POST /v1/khala-code/plans/purchases is still KHALA_CODE_PAID_PLANS_ENABLED default-OFF and fail-closed, but when armed it now creates a real payment-required leg on Stripe Checkout (card) or the Spark/MPP Lightning invoice rail and grants the existing paid-privacy entitlement receipt only after settled payment. The payment intent ledger is not a second entitlement truth; /api/public/inference/privacy-receipts/{receiptRef} remains the dereferenceable receipt surface. Owner-gated arming, Stripe price id, Lightning sats price, live credentials, public copy, and one production collected purchase remain in NEEDS_OWNER. No paid-plan availability, capture-default, payout, settlement, or promise-green claim is created.',
       'Registry 2026-07-04.2 is the RL-3 Khala Code outside-user run evidence-intake pass (#8247) and flips NO promise state — green stays exactly 34. khala_code.desktop_codex_wrapper.v1 stays yellow: desktop Settings now offers an explicit opt-in Run evidence action; POST /api/public/khala-code/outside-user-runs records only app version, platform, architecture, distribution channel, and bounded Codex/Pylon readiness; GET /api/public/khala-code/outside-user-runs/{receiptRef} dereferences the public-safe receipt with generatedAt + live_at_read staleness. No phone-home, paths, prompts, tokens, logs, account ids, machine ids, signed DMG, real outside-user row, free/paid economics, capture, payout, settlement, installer availability, or promise-green claim is created.',

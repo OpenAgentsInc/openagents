@@ -53,6 +53,51 @@ The report is allowed to say what the evidence shows for Khala Code. It is not
 allowed to imply third-party hosted runs, pricing, settlement, or self-serve
 availability before those lanes pass their own gates.
 
+## First-Engagement Checkout/Intake Spine
+
+Issue #8252 adds the operator-assisted first-engagement spine for Swarm Audit
+commitments. The route is intentionally admin-only:
+
+- Intake: `POST /api/operator/qa-swarm/first-engagements`
+- Public receipt readback:
+  `/api/public/qa-swarm/first-engagements/{receiptRef}`
+
+The intake requires public-safe refs for the business intake receipt, either a
+checkout-kickoff receipt or a deposit-invoice receipt, the target-adapter
+review, and the Swarm Audit package contract. A successful record provisions
+the QA Swarm Audit workspace, creates an active accepted-outcome service
+promise, and writes the first-report commitment to `business_commitment_ledger`.
+
+Operator template:
+
+```json
+{
+  "schemaVersion": "openagents.qa_swarm.first_engagement_intake.v1",
+  "packageKind": "swarm_audit",
+  "paymentPath": "operator_sales_deposit_invoice",
+  "businessSignupRequestId": "business_signup_opaque_id",
+  "userId": "github:buyer_ref",
+  "committedAmountCents": 300000,
+  "intakeReceiptRef": "receipt.business.intake.qa_swarm.example",
+  "depositInvoiceReceiptRef": "receipt.qa_swarm.deposit_invoice.example",
+  "targetAdapterReviewRef": "review.qa_swarm.target_adapter.example",
+  "packageContractRef": "contract.qa_swarm.swarm_audit.operator_assisted.v1",
+  "firstReportDueAt": "2026-07-11T18:00:00.000Z",
+  "idempotencyKey": "qa-swarm-first-engagement-example"
+}
+```
+
+Use `paymentPath: "checkout_kickoff_receipt"` with
+`checkoutKickoffReceiptRef` instead of `depositInvoiceReceiptRef` when the BF-2
+checkout kickoff receipt is the evidence. The public receipt keeps
+`selfServe=false`, `firstPaidDeliveryReceipt=false`, and
+`settlementMovedMoney=false`.
+
+Do not include customer names, emails, raw invoice bodies, checkout URLs,
+payment hashes, preimages, target credentials, private repo material, raw runner
+logs, provider payloads, wallet material, or secrets. First paid delivery is
+still owner/sales-gated in `NEEDS_OWNER.md`.
+
 ## Case-Study Seed: 2026-07-02 Audit Session
 
 The first useful evidence came before the standing loop was fully automated. On

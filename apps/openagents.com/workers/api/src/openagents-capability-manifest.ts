@@ -431,6 +431,22 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Dereferences one public-safe RL-7 Khala Code trace plugin revenue-share precedent receipt with generatedAt and a live_at_read staleness contract over khala_code_trace_plugin_revenue_share_precedents. The receipt carries provenance, plugin registry/routing, exact usage, attribution, and settlement refs only; no raw traces, prompts, usage payloads, invoices, payment hashes, payout destinations, wallet material, provider payloads, or private source refs.',
       },
       {
+        id: 'operator_qa_swarm_first_engagement_intake',
+        href: 'https://openagents.com/api/operator/qa-swarm/first-engagements',
+        method: 'POST',
+        auth: 'admin_api_token',
+        description:
+          'Admin-token intake for RL-8 QA Swarm first engagements. It records public-safe intake and checkout/deposit receipt refs, provisions the engagement workspace plus active service promise, and writes the Swarm Audit first-report commitment into the business commitment ledger. Operator-assisted only: no money movement, self-serve hosted run, raw invoice/payment material, customer identity, target credential, first paid delivery, payout, settlement, or promise-green claim.',
+      },
+      {
+        id: 'public_qa_swarm_first_engagement_receipt',
+        href: 'https://openagents.com/api/public/qa-swarm/first-engagements/{receiptRef}',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'Dereferences one public-safe QA Swarm first-engagement receipt with generatedAt and a live_at_read staleness contract over qa_swarm_first_engagements, prefilled_workspaces, omni_accepted_outcome_contracts, and business_commitment_ledger. The receipt carries operator-assisted intake/payment evidence, workspace, service promise, and commitment refs only; no customer identity, raw invoice/payment material, payment hashes, preimages, target credentials, raw runner logs, provider payloads, or wallet material.',
+      },
+      {
         id: 'public_khala_tokens_served_history',
         href: 'https://openagents.com/api/public/khala-tokens-served/history',
         method: 'GET',
