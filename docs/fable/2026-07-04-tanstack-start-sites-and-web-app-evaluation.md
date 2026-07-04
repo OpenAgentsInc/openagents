@@ -367,17 +367,23 @@ The 2026-06-26 mandate ("NO Expo/EAS cloud; native SwiftUI only") is
 **reversed for the Expo framework by owner direction (2026-07-04)**. Two
 nuances preserved deliberately:
 
-- **Build/ship path**: `expo prebuild` + local Xcode/Gradle + the proven
-  `altool` TestFlight lane keeps working with Expo — local-first
-  building remains the default posture. **EAS cloud builds/updates
-  remain owner-gated** until the owner explicitly re-enables them (the
-  original mandate's sharpest edge was EAS cloud specifically; "yes
-  expo" re-admits the framework, and EAS can be a separate convenience
-  decision).
-- **OTA**: the own-OTA publisher built for the previous Expo era
-  (`apps/oa-updates` + `publish-ota.sh`, `updates.openagents.com`)
-  becomes relevant again — we can ship JS updates over our own feed
-  without EAS.
+- **Builds**: local for now — `expo prebuild` + local Xcode/Gradle + the
+  proven `altool` TestFlight lane. `eas build`/`eas submit` stay unused
+  unless the owner explicitly changes that later.
+- **Updates: we already built the drop-in EAS Updates replacement, and we
+  preserve it** (owner clarification, 2026-07-04). The **OpenAgents
+  Updates server** (`apps/oa-updates`) implements the expo-updates
+  protocol (`expo-protocol-version: 1`), signs manifests with
+  `expo-signature` code signing, stores assets, and models update
+  channels/branches + runtime fingerprints; it runs on OpenAgents cloud
+  behind `updates.openagents.com`, with the publish pipeline in
+  `scripts/publish-ota.sh` (compute runtime fingerprint → `expo export` →
+  bake as seed → deploy) — fully off Expo's CDN, and it also carries the
+  desktop and Pylon signed-release feeds. The TS-8 Expo app embeds
+  `updates.url` → our server and ships OTA through it; `eas update` is
+  not part of the stack at all. One repair item for TS-8: `publish-ota.sh`
+  still points at the retired `AutopilotRemoteControl` mobile path and
+  gets repointed to the new app.
 
 ### 6.4 What this changes in yesterday's mobile report
 
@@ -439,9 +445,10 @@ billable somewhere in the current revenue plan.
    started); Electrobun runtime unchanged.
 4. ~~Mobile~~ **DECIDED**: Expo RN app is the destination (one codebase,
    no separate Swift + Kotlin apps); SwiftUI app is interim + native-
-   module reference; **EAS cloud remains owner-gated** as a separate
-   convenience decision (§6.3); chat-sync dogfood milestone proceeds now
-   on the interim app.
+   module reference; **updates ship via our own EAS-Updates-replacement
+   server (`apps/oa-updates` → `updates.openagents.com`), builds stay
+   local for now** (§6.3); chat-sync dogfood milestone proceeds now on
+   the interim app.
 
 ## 10. Proposed workstream map (TS; not filed — follow-up filing pass next)
 

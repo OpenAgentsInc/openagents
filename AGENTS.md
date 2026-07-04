@@ -577,10 +577,18 @@ and local Codex auth out of reports.
   §6.2–6.4. Build/ship posture stays **local-first**: `expo prebuild` +
   local Xcode/Gradle, archive with `xcodebuild`, upload to TestFlight with
   `xcrun altool` (ASC key in `.secrets/appstoreconnect.env`, Apple Team
-  `HQWSG26L43`); JS updates may ship over the own-OTA feed
-  (`apps/oa-updates/scripts/publish-ota.sh`, `updates.openagents.com`).
-  **EAS cloud (`eas build` / `eas submit` / `eas update`) remains
-  owner-gated — do not run it without explicit owner direction.**
+  `HQWSG26L43`). **Updates: we built and preserve our own drop-in EAS
+  Updates replacement — the OpenAgents Updates server (`apps/oa-updates`:
+  expo-updates protocol v1, signed manifests via `expo-signature` code
+  signing, asset store, channels/branches, runtime fingerprints), deployed
+  on OpenAgents cloud and serving `updates.openagents.com`, publish via
+  `apps/oa-updates/scripts/publish-ota.sh` (fingerprint → `expo export` →
+  seed → deploy), fully off Expo's CDN.** JS/OTA updates ship through that
+  server — never `eas update`. **Builds are local for now** (`expo
+  prebuild` + Xcode/Gradle); `eas build`/`eas submit` stay unused unless
+  the owner explicitly changes that. Note: `publish-ota.sh` currently
+  points at the retired `AutopilotRemoteControl` path and must be
+  repointed to the new Expo app when it lands (TS-8).
   The existing native SwiftUI app `clients/khala-ios/Khala`
   (`com.openagents.khala`, `docs/mobile/2026-06-26-khala-voice-app-spec.md`)
   is the **interim companion and native-module reference** until the Expo

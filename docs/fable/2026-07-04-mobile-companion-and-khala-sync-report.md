@@ -257,5 +257,7 @@ superseded by the khala-sync-db-collection adapter (TS-3) and **KS-4 (the
 Swift protocol port) is canceled**. KS-1 (chat collection + mutators),
 KS-3 (desktop/web consumers), and KS-5 (the cross-device dogfood test)
 stand unchanged, and the near-term test may still run on the interim
-SwiftUI app via direct mutation calls + WS refetch. EAS cloud remains
-owner-gated; local prebuild + Xcode/Gradle is the build posture.
+SwiftUI app via direct mutation calls + WS refetch. Updates ship through
+our own EAS-Updates-replacement server (`apps/oa-updates`, expo-updates
+protocol v1 + signed manifests, `updates.openagents.com`) — preserved by
+owner direction; builds stay local (prebuild + Xcode/Gradle) for now.
