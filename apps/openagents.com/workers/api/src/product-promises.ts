@@ -5096,11 +5096,15 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Reactor is a planned private/customer-controlled open-model deployment lane for businesses that need model serving inside their own trust boundary.',
         safeCopy:
-          'Reactor is a drafted private-deployment lane, not an available product: the plan is customer-controlled open-weight serving behind an OpenAI-compatible gateway, with receipts for model policy, customer data custody, exact metering, and on-prem enforcement before any public availability claim. Modeled assessment/pilot/managed package bands are staged in NEEDS_OWNER.md for owner review only.',
+          'Reactor is a drafted private-deployment lane, not an available product: source now has a lane-neutral serving skeleton for a server-class Hydralisk profile, OpenAI-compatible routing, policy refusal before weight pull, and exact local metering receipts. Customer-controlled deployment, customer data custody, air-gap updates, and owner-approved public copy remain unshipped. Modeled assessment/pilot/managed package bands are staged in NEEDS_OWNER.md for owner review only.',
         unsafeCopy:
           'Do not claim Reactor is available, installed on-prem today, HIPAA/sovereign/compliance-ready, priced publicly, US-origin-only enforced, or proof that customer data never leaves until deployed receipts and owner-approved copy exist.',
         evidenceRefs: [
           'https://github.com/OpenAgentsInc/openagents/issues/8271',
+          'https://github.com/OpenAgentsInc/openagents/issues/8273',
+          'packages/reactor-contracts/src/index.ts',
+          'packages/reactor-contracts/src/index.test.ts',
+          'docs/fable/2026-07-04-rx-3-reactor-serving-skeleton-receipt.md',
           'https://openagents.com/forum/t/2efaeed7-1f4f-4f2f-9b26-dc8445885bca',
           'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md',
           'docs/fable/2026-07-02-bf-3-4-private-sovereign-compute-tier.md',
@@ -5113,13 +5117,11 @@ export const publicProductPromisesDocument = () => {
         ],
         blockerRefs: [
           'blocker.product_promises.reactor_customer_premises_deployment_missing',
-          'blocker.product_promises.reactor_policy_enforced_serving_smoke_missing',
-          'blocker.product_promises.reactor_exact_metering_receipt_missing',
           'blocker.owner.reactor_rate_card_publication_approval_missing',
           'blocker.owner.reactor_customer_pilot_approval_missing',
         ],
         verification:
-          'Planned only. Yellow requires a bounded Reactor node plan or smoke that proves policy-enforced model serving, customer-boundary data handling, exact metering receipts, and owner-approved copy. Green requires at least one deployed customer-controlled or dogfood node with dereferenceable public-safe receipts, signed owner review, and no compliance or availability overclaim.',
+          'Planned only. The contract package now proves the policy-enforced serving skeleton and exact local metering receipt shape with fixture weights. Yellow still requires customer-boundary data handling, air-gap/update evidence where applicable, and owner-approved copy. Green requires at least one deployed customer-controlled or dogfood node with dereferenceable public-safe receipts, signed owner review, and no compliance or availability overclaim.',
         authorityBoundary:
           'This registry entry grants no serving, customer-data custody, install, pricing, compliance, sales-contract, spend, payout, settlement, model-pull, or deployment authority. It is a public boundary record for the planned lane only.',
       },
@@ -5163,15 +5165,17 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Reactor will enforce a customer-owned model policy over the provenance catalog at provisioning and routing time.',
         safeCopy:
-          'Reactor model policy now has a versioned schema, pure resolver, and receipt-shaped decisions over provenance metadata, including allow/block constraints by jurisdiction, developer, license, disclosure level, distillation lineage, and routing preference. The next real gate is still a structural serving refusal smoke where a nonconforming model is rejected before serving.',
+          'Reactor model policy now has a versioned schema, pure resolver, receipt-shaped decisions, and a lane-neutral serving skeleton that refuses nonconforming models before weight pull and again before OpenAI-compatible routing. The next real gate is the air-gap/install path and a dogfood or customer deployment receipt.',
         unsafeCopy:
-          'Do not claim Reactor currently refuses nonconforming models, enforces customer policy, supports air-gapped updates, or substitutes models safely under incident pressure. Do not describe policy options as available product controls until router enforcement, runtime receipts, and owner-approved copy exist.',
+          'Do not claim live Reactor customer deployments currently refuse nonconforming models, enforce customer policy, support air-gapped updates, or substitute models safely under incident pressure. Do not describe policy options as available product controls until deployment receipts and owner-approved copy exist.',
         evidenceRefs: [
           'https://github.com/OpenAgentsInc/openagents/issues/8271',
           'https://github.com/OpenAgentsInc/openagents/issues/8272',
+          'https://github.com/OpenAgentsInc/openagents/issues/8273',
           'packages/reactor-contracts/src/index.ts',
           'packages/reactor-contracts/src/index.test.ts',
           'docs/fable/2026-07-04-rx-2-reactor-model-policy-contracts-receipt.md',
+          'docs/fable/2026-07-04-rx-3-reactor-serving-skeleton-receipt.md',
           'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md#3-the-model-catalog-and-the-provenance-policy-the-differentiator',
           'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md#7-invariants-inherited--reactor-specific',
           'https://openagents.com/forum/t/2efaeed7-1f4f-4f2f-9b26-dc8445885bca',
@@ -5179,14 +5183,12 @@ export const publicProductPromisesDocument = () => {
           'promise:reactor.private_deployment.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.reactor_policy_router_missing',
-          'blocker.product_promises.reactor_policy_refusal_smoke_missing',
           'blocker.product_promises.reactor_airgap_update_path_missing',
         ],
         verification:
-          'The contract package provides the typed reactor.model_policy.v1 schema, example policy fixtures, resolver refusal tests for nonconforming models, and policy-version receipt-shaped decisions. Provisioner/router enforcement, structural serving refusal smoke, install/upgrade receipt refs, and owner-approved public copy remain required before any yellow movement.',
+          'The contract package provides the typed reactor.model_policy.v1 schema, example policy fixtures, policy-version receipts, a Hydralisk server-class node profile, provisioner refusal before weight pull, router refusal before OpenAI-compatible serving, and exact local metering receipt tests. Air-gap/update receipts, dogfood/customer deployment receipts, and owner-approved public copy remain required before any yellow movement.',
         authorityBoundary:
-          'A planned policy record grants no routing, model substitution, model install, data access, compliance, incident-response, or customer-control authority. Customer policy becomes authority only when the typed decision path and receipts exist.',
+          'A planned policy record and local skeleton grant no live routing, model substitution, model install, data access, compliance, incident-response, or customer-control authority. Customer policy becomes production authority only when deployed decision paths and receipts exist.',
       },
       {
         ...basePromiseFields,
@@ -5222,6 +5224,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-04.11 is the RX-3 Reactor serving-skeleton pass (#8273) and flips NO promise state - green stays exactly 34. The @openagentsinc/reactor-contracts package now adds lane-neutral node model profiles with servingLane hydralisk|psionic, a server-class Hydralisk fixture profile behind an OpenAI-compatible offline-once-provisioned gateway, model install/upgrade receipts naming the satisfied policy version, provisioner refusal before weight pull, router refusal before serving, and exact local token-metering receipts that reject non-reconciling counts and use not_measured rather than estimates. This clears only the policy-router/refusal-smoke and exact-metering skeleton blockers. Customer or dogfood deployment, customer data-custody proof, air-gap update bundles, eval receipts, owner-approved public copy, pricing, compliance, payout, and settlement claims remain blocked.',
       'Registry 2026-07-04.10 is the RX-2 Reactor contracts pass (#8272) and flips NO promise state - green stays exactly 34. The @openagentsinc/reactor-contracts package now exports Effect Schema contracts for openagents.model_provenance.v1, openagents.reactor_model_catalog.v1, openagents.reactor.model_policy.v1, and openagents.reactor.model_policy_decision.v1; ships the curated Nemotron, Llama, GPT-OSS, Gemma, Mistral, Qwen, DeepSeek, Kimi, and GLM seed with honest unknown/partial labels; and resolves US-only, no-cn, permissive-license-only, and unconstrained example policies into receipt-shaped decisions that name the policy version. This clears only the contract-level schema/catalog/lineage-policy/decision-receipt blockers. Eval receipts, provisioner/router enforcement, structural serving refusal smoke, air-gap update path, customer or dogfood deployment, public pricing/copy, compliance, data-custody, serving, payout, and settlement claims remain blocked.',
       'Registry 2026-07-04.9 is the LG-7 Autopilot Lead Gen agent-definition boundary pass (#8268) and flips NO promise green - green stays exactly 34. New planned record autopilot.lead_gen.v1 makes the lead-generation engine visible without claiming availability: source now has a v0 standing background-agent definition, per-customer ICP/analyzer/template/cap config payload, drafting-only toolset, weekday/manual triggers, BA-B4 budget caps, BA-B5-compatible run-history route, two enforced behavior contracts, and one OpenAgents dogfood run receipt that records reports/sequences as drafts awaiting operator approval. The useful Ora-style public-URL readiness rubric idea is folded into the analyzer config ref only; no ora.ai integration or score claim is made. No live customer run, send approval receipt, customer result, Apollo credential, contact reveal, email send, spend, payout, settlement, or green product claim is created.',
       'Registry 2026-07-04.8 is the owner-directed revenue-refocus demotion pass (2026-07-04) and flips NO promise green — green stays exactly 34. On owner direction, 29 non-green records outside the current focus (Khala Code, the services/QA Swarm revenue engine, payments/credits, Reactor, and Autopilot Lead Gen) are demoted to planned: 19 yellow and 10 red records across the legacy Autopilot desktop feature family (desktop_gui_client, mission_briefing, builtin_compute_agent, cloud_credits_ui, control_center_fanout_marketplace, repo_study_packets, external_repo_studying_pilot, agent_character_creation, agentic_labor_products, bitcoin_payment_visualization, pylon_growth_visualization, local_apple_fm_tool_chat), Artanis labor lanes (labor_requester, pylon_support_responder), Pylon compute-mining (consumer_compute_earns_bitcoin_self_serve, v0_3_multi_earning_node), training-run claims (world_first_ai_training_paid_bitcoin, world_first_public_llm_computer_training_run), cloud service suite (fine_tuning_service, sandbox_compute_service), decentralized serving fabric, bounties surface, mobile companions (voice_approval_companion, voice_session_evidence_transcript_ingest), referral bitcoin streams (sites.referral_bitcoin_stream, autopilot_sites.partner_payout_ledger), provider compliant-usage labor, accepted-outcomes-per-kWh metrics, and agents.x_claim_reward. Demotion is a focus statement, not an evidence claim: prior yellow/red evidence and public-claim history remain in each record and in prior registry notes; demoted red records still carry their original on-camera claim lineage and must not be re-marketed without receipt-first re-promotion. Kept non-green in place (in-focus): khala_code.*, qa.*/qa_swarm.*, business.*, workrooms.*, data.* capture, privacy.khala_paid_capture_optout, inference free-tier/providers/gateway-credits, payments.* (credits purchase + accepted-outcome economics), autopilot_sites site/email/hostname fulfillment surfaces, identity.orange_check_forum_signal, autopilot.cloud_coding_sessions (Reactor-adjacent), and referral.refer_once_earn_forever (stays red as the standing overclaim marker). All training.* and marketplace.* records were already planned. Source plans: docs/fable/2026-07-03-apollo-outbound-sales-plan.md (Campaign B Own your AI), docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md, epic #8261.',

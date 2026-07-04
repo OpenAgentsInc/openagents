@@ -76,6 +76,9 @@ purpose** as the standing overclaim marker the Lead Gen plans depend on.
 `reactor.model_policy.v1`) landed planned in `2026-07-04.7` (RX-1 #8271).
 RX-2 (#8272) later added `packages/reactor-contracts` as source evidence for
 the provenance catalog and policy resolver while keeping those records planned.
+RX-3 (#8273) then added the lane-neutral serving skeleton, Hydralisk fixture
+profile, policy-refusing provision/router smoke, and exact local metering
+receipt shape while still leaving live Reactor deployment planned.
 The one current-plan record still missing at the time of this audit was
 `autopilot.lead_gen.v1` - deliberately left to LG-7 (#8268), whose scope
 already included it.

@@ -4,10 +4,17 @@ import { Schema as S } from 'effect'
 import {
   REACTOR_EXAMPLE_POLICIES,
   REACTOR_MODEL_CATALOG_SEED,
+  REACTOR_SERVER_CLASS_HYDRALISK_PROFILE,
+  ReactorLocalTokenMeteringReceipt,
+  ReactorModelInstallReceipt,
   ReactorModelCatalog,
   type ReactorModelCatalog as ReactorModelCatalogType,
   type ReactorModelProvenance,
   ReactorModelPolicyDecisionReceipt,
+  ReactorNodeModelProfile,
+  buildReactorLocalTokenMeteringReceipt,
+  provisionReactorModel,
+  routeReactorOpenAiCompatibleRequest,
   resolveReactorModelPolicy,
 } from './index'
 
@@ -204,5 +211,246 @@ describe('Reactor lineage and refusal behavior', () => {
       ]),
       reason: 'no_conforming_models',
     })
+  })
+})
+
+describe('Reactor serving skeleton', () => {
+  test('declares one server-class Hydralisk profile behind an offline OpenAI-compatible gateway', () => {
+    const profile = S.decodeUnknownSync(ReactorNodeModelProfile)(
+      REACTOR_SERVER_CLASS_HYDRALISK_PROFILE,
+    )
+
+    expect(profile.servingLane).toBe('hydralisk')
+    expect(profile.servingStack.kind).toBe('vllm')
+    expect(profile.gateway.protocol).toBe('openai.chat_completions.v1')
+    expect(profile.gateway.servingPathNetwork).toBe('offline_once_provisioned')
+    expect(profile.gateway.phoneHomeAllowedInServingPath).toBe(false)
+    expect(profile.exactLocalMeteringRequired).toBe(true)
+    expect(profile.policyVersion).toBe(REACTOR_EXAMPLE_POLICIES.usOnly.version)
+  })
+
+  test('provisions a conforming model with a receipt naming the policy version', () => {
+    const receipt = provisionReactorModel({
+      action: 'install',
+      artifactRefs: ['artifact.fixture.gpt_oss.open_family.weights'],
+      catalog: REACTOR_MODEL_CATALOG_SEED,
+      decidedAt: DECIDED_AT,
+      decisionRef: 'reactor.policy_decision.install.gpt_oss.001',
+      nodeProfile: REACTOR_SERVER_CLASS_HYDRALISK_PROFILE,
+      policy: REACTOR_EXAMPLE_POLICIES.usOnly,
+      receiptRef: 'reactor.install_receipt.gpt_oss.001',
+      sourceRefs: ['test:reactor-serving-skeleton'],
+    })
+    const decoded = S.decodeUnknownSync(ReactorModelInstallReceipt)(receipt)
+
+    expect(decoded.status).toBe('installed')
+    expect(decoded.weightsPullAuthorization).toBe('authorized')
+    expect(decoded.policyRef).toBe(REACTOR_EXAMPLE_POLICIES.usOnly.policyRef)
+    expect(decoded.policyVersion).toBe(REACTOR_EXAMPLE_POLICIES.usOnly.version)
+    expect(decoded.refusal).toBeNull()
+  })
+
+  test('provisioning refuses nonconforming weights before pull even with a bypass-like env var set', () => {
+    const previous = process.env.REACTOR_MODEL_POLICY_BYPASS
+    process.env.REACTOR_MODEL_POLICY_BYPASS = '1'
+    const qwenProfile = S.decodeUnknownSync(ReactorNodeModelProfile)({
+      ...REACTOR_SERVER_CLASS_HYDRALISK_PROFILE,
+      modelRef: 'model.alibaba.qwen.open_family',
+      nodeProfileRef: 'reactor.node_profile.fixture.hydralisk.qwen.v1',
+      servingStack: {
+        ...REACTOR_SERVER_CLASS_HYDRALISK_PROFILE.servingStack,
+        modelArtifactRefs: ['artifact.fixture.qwen.open_family.weights'],
+      },
+    })
+
+    try {
+      const receipt = provisionReactorModel({
+        action: 'install',
+        artifactRefs: ['artifact.fixture.qwen.open_family.weights'],
+        catalog: REACTOR_MODEL_CATALOG_SEED,
+        decidedAt: DECIDED_AT,
+        decisionRef: 'reactor.policy_decision.install.qwen.001',
+        nodeProfile: qwenProfile,
+        policy: REACTOR_EXAMPLE_POLICIES.usOnly,
+        receiptRef: 'reactor.install_receipt.qwen.001',
+      })
+
+      expect(receipt.status).toBe('refused_policy')
+      expect(receipt.weightsPullAuthorization).toBe('refused_before_pull')
+      expect(receipt.refusal?.blockerRefs).toContain(
+        'blocker.reactor.provision.policy_nonconforming_model',
+      )
+      expect(receipt.refusal?.blockerRefs).toContain(
+        'reactor.policy.origin_not_allowed',
+      )
+    } finally {
+      if (previous === undefined) {
+        delete process.env.REACTOR_MODEL_POLICY_BYPASS
+      } else {
+        process.env.REACTOR_MODEL_POLICY_BYPASS = previous
+      }
+    }
+  })
+
+  test('router routes only an installed conforming model through the OpenAI-compatible gateway', () => {
+    const installReceipt = provisionReactorModel({
+      action: 'install',
+      artifactRefs: ['artifact.fixture.gpt_oss.open_family.weights'],
+      catalog: REACTOR_MODEL_CATALOG_SEED,
+      decidedAt: DECIDED_AT,
+      decisionRef: 'reactor.policy_decision.install.route.001',
+      nodeProfile: REACTOR_SERVER_CLASS_HYDRALISK_PROFILE,
+      policy: REACTOR_EXAMPLE_POLICIES.usOnly,
+      receiptRef: 'reactor.install_receipt.route.001',
+    })
+    const routeReceipt = routeReactorOpenAiCompatibleRequest({
+      catalog: REACTOR_MODEL_CATALOG_SEED,
+      decidedAt: DECIDED_AT,
+      decisionRef: 'reactor.route_decision.gpt_oss.001',
+      installReceipt,
+      nodeProfile: REACTOR_SERVER_CLASS_HYDRALISK_PROFILE,
+      policy: REACTOR_EXAMPLE_POLICIES.usOnly,
+      requestRef: 'reactor.request.openai_chat.001',
+      requestedModelRef: REACTOR_SERVER_CLASS_HYDRALISK_PROFILE.modelRef,
+    })
+
+    expect(routeReceipt.status).toBe('routed')
+    expect(routeReceipt.routedModelRef).toBe(
+      REACTOR_SERVER_CLASS_HYDRALISK_PROFILE.modelRef,
+    )
+    expect(routeReceipt.gatewayProtocol).toBe('openai.chat_completions.v1')
+    expect(routeReceipt.servingPathNetwork).toBe('offline_once_provisioned')
+    expect(routeReceipt.blockerRefs).toEqual([])
+  })
+
+  test('router recomputes policy and refuses a forged installed receipt for a nonconforming model', () => {
+    const qwenProfile = S.decodeUnknownSync(ReactorNodeModelProfile)({
+      ...REACTOR_SERVER_CLASS_HYDRALISK_PROFILE,
+      modelRef: 'model.alibaba.qwen.open_family',
+      nodeProfileRef: 'reactor.node_profile.fixture.hydralisk.qwen.forged.v1',
+    })
+    const forgedInstalledReceipt = S.decodeUnknownSync(ReactorModelInstallReceipt)({
+      schemaVersion: 'openagents.reactor.model_install_receipt.v1',
+      action: 'install',
+      artifactRefs: ['artifact.fixture.qwen.open_family.weights'],
+      catalogRef: REACTOR_MODEL_CATALOG_SEED.catalogRef,
+      decidedAt: DECIDED_AT,
+      decisionRef: 'reactor.policy_decision.forged.qwen.001',
+      modelRef: qwenProfile.modelRef,
+      nodeProfileRef: qwenProfile.nodeProfileRef,
+      policyDecisionRef: 'reactor.policy_decision.forged.qwen.001',
+      policyRef: REACTOR_EXAMPLE_POLICIES.usOnly.policyRef,
+      policyVersion: REACTOR_EXAMPLE_POLICIES.usOnly.version,
+      receiptRef: 'reactor.install_receipt.forged.qwen.001',
+      refusal: null,
+      servingLane: 'hydralisk',
+      sourceRefs: ['test:forged-install-receipt'],
+      status: 'installed',
+      weightsPullAuthorization: 'authorized',
+    })
+
+    const routeReceipt = routeReactorOpenAiCompatibleRequest({
+      catalog: REACTOR_MODEL_CATALOG_SEED,
+      decidedAt: DECIDED_AT,
+      decisionRef: 'reactor.route_decision.forged.qwen.001',
+      installReceipt: forgedInstalledReceipt,
+      nodeProfile: qwenProfile,
+      policy: REACTOR_EXAMPLE_POLICIES.usOnly,
+      requestRef: 'reactor.request.openai_chat.forged.qwen.001',
+      requestedModelRef: qwenProfile.modelRef,
+    })
+
+    expect(routeReceipt.status).toBe('refused_policy')
+    expect(routeReceipt.routedModelRef).toBeNull()
+    expect(routeReceipt.blockerRefs).toContain(
+      'blocker.reactor.router.policy_nonconforming_model',
+    )
+    expect(routeReceipt.blockerRefs).toContain('reactor.policy.origin_not_allowed')
+  })
+
+  test('local token metering records exact reconciled rows and marks unknowns not_measured', () => {
+    const exactReceipt = buildReactorLocalTokenMeteringReceipt({
+      generatedAt: DECIDED_AT,
+      modelRef: REACTOR_SERVER_CLASS_HYDRALISK_PROFILE.modelRef,
+      nodeProfile: REACTOR_SERVER_CLASS_HYDRALISK_PROFILE,
+      policyRef: REACTOR_EXAMPLE_POLICIES.usOnly.policyRef,
+      policyVersion: REACTOR_EXAMPLE_POLICIES.usOnly.version,
+      receiptRef: 'reactor.local_metering.exact.001',
+      requestRef: 'reactor.request.openai_chat.metered.001',
+      usage: {
+        completionTokens: 8,
+        promptTokens: 13,
+        state: 'exact',
+        totalTokens: 21,
+      },
+    })
+
+    expect(exactReceipt.measurementState).toBe('measured')
+    expect(exactReceipt.usageTruth).toBe('exact')
+    expect(exactReceipt.totalTokens).toBe(21)
+    expect(exactReceipt.localOnly).toBe(true)
+
+    expect(() =>
+      buildReactorLocalTokenMeteringReceipt({
+        generatedAt: DECIDED_AT,
+        modelRef: REACTOR_SERVER_CLASS_HYDRALISK_PROFILE.modelRef,
+        nodeProfile: REACTOR_SERVER_CLASS_HYDRALISK_PROFILE,
+        policyRef: REACTOR_EXAMPLE_POLICIES.usOnly.policyRef,
+        policyVersion: REACTOR_EXAMPLE_POLICIES.usOnly.version,
+        receiptRef: 'reactor.local_metering.bad_total.001',
+        requestRef: 'reactor.request.openai_chat.bad_total.001',
+        usage: {
+          completionTokens: 8,
+          promptTokens: 13,
+          state: 'exact',
+          totalTokens: 20,
+        },
+      }),
+    ).toThrow('reactor.local_metering.exact_counts_do_not_reconcile')
+
+    const notMeasuredReceipt = buildReactorLocalTokenMeteringReceipt({
+      generatedAt: DECIDED_AT,
+      modelRef: REACTOR_SERVER_CLASS_HYDRALISK_PROFILE.modelRef,
+      nodeProfile: REACTOR_SERVER_CLASS_HYDRALISK_PROFILE,
+      policyRef: REACTOR_EXAMPLE_POLICIES.usOnly.policyRef,
+      policyVersion: REACTOR_EXAMPLE_POLICIES.usOnly.version,
+      receiptRef: 'reactor.local_metering.not_measured.001',
+      requestRef: 'reactor.request.openai_chat.not_measured.001',
+      usage: {
+        reasonRef: 'reason.fixture.counter_unavailable',
+        state: 'not_measured',
+      },
+    })
+
+    expect(notMeasuredReceipt.measurementState).toBe('not_measured')
+    expect(notMeasuredReceipt.usageTruth).toBe('not_measured')
+    expect(notMeasuredReceipt.totalTokens).toBeNull()
+    expect(notMeasuredReceipt.blockerRefs).toContain(
+      'blocker.reactor.local_metering.not_measured',
+    )
+  })
+
+  test('metering schema rejects estimated token usage labels', () => {
+    expect(() =>
+      S.decodeUnknownSync(ReactorLocalTokenMeteringReceipt)({
+        schemaVersion: 'openagents.reactor.local_token_metering_receipt.v1',
+        blockerRefs: [],
+        completionTokens: 8,
+        generatedAt: DECIDED_AT,
+        localOnly: true,
+        measurementState: 'measured',
+        modelRef: REACTOR_SERVER_CLASS_HYDRALISK_PROFILE.modelRef,
+        nodeProfileRef: REACTOR_SERVER_CLASS_HYDRALISK_PROFILE.nodeProfileRef,
+        policyRef: REACTOR_EXAMPLE_POLICIES.usOnly.policyRef,
+        policyVersion: REACTOR_EXAMPLE_POLICIES.usOnly.version,
+        promptTokens: 13,
+        receiptRef: 'reactor.local_metering.estimated.001',
+        requestRef: 'reactor.request.openai_chat.estimated.001',
+        servingLane: 'hydralisk',
+        sourceRefs: [],
+        totalTokens: 21,
+        usageTruth: 'estimated',
+      }),
+    ).toThrow()
   })
 })

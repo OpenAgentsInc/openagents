@@ -164,6 +164,16 @@ provisioner/router enforcement, eval receipts, model install receipts,
 air-gap update handling, dogfood/customer deployment, and public availability
 copy remain future RX items.
 
+RX-3 status (2026-07-04): `packages/reactor-contracts` now also carries the
+lane-neutral serving skeleton: `openagents.reactor.node_model_profile.v1`,
+model install/upgrade receipts, OpenAI-compatible route-decision receipts, and
+local token-metering receipts. The fixture server-class profile declares
+`servingLane: hydralisk`, vLLM, an offline-once-provisioned gateway, and exact
+local metering. Provisioning refuses nonconforming weights before pull; routing
+recomputes policy and refuses nonconforming models before serving, even if a
+caller presents a forged installed receipt. This is still a skeleton smoke, not
+a deployed Reactor node.
+
 ## 4. Architecture (owned seams, honest state)
 
 ```
@@ -376,7 +386,7 @@ RX-11 [#8279](https://github.com/OpenAgentsInc/openagents/issues/8279).
 | --- | --- | --- |
 | RX-1 | Registry records: `reactor.private_deployment.v1` (planned) + model-policy and provenance record family; modeled rate card staged for the owner sitting | Records live at planned; no copy |
 | RX-2 | Model catalog + `model_provenance.v1` / `reactor.model_policy.v1` schemas in `packages/reactor-contracts`, with the initial curated seed and honest disclosure fields | Landed in source with resolver + tests; no runtime authority |
-| RX-3 | Policy-enforced serving skeleton: one node profile (server-class) on the **Hydralisk lane** (§4.1 default; contracts lane-neutral with `servingLane` declared per profile), gateway + router refusing non-conforming models, exact local metering | A policy violation is structurally impossible in the smoke |
+| RX-3 | Policy-enforced serving skeleton: one node profile (server-class) on the **Hydralisk lane** (§4.1 default; contracts lane-neutral with `servingLane` declared per profile), gateway + router refusing non-conforming models, exact local metering | Landed in source with fixture-weight smoke; no deployed node |
 | RX-4 | Eval receipts: psionic-run task-class evals across the catalog seed (drafting, extraction, RAG, agent-tool-use). A score is a (model, harness) pair — every eval receipt carries a `harnessRef` naming the harness it was measured under (same-model harness variance ran 3.5%→80.1% in the 2026-07-04 harness-optimization audit) | Per-model, harness-attributed eval receipt refs the catalog can cite |
 | RX-5 | Install/ops runbook + air-gap update path (signed bundles), fleet-executable | Clean install on a fresh box from the runbook alone |
 | RX-6 | Dogfood deployment: Reactor node on our own hardware running a real internal workload under a strict policy (e.g. `us`-only) — customer number one, again | Metering + policy receipts from our own node |

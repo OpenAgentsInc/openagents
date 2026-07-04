@@ -1,10 +1,10 @@
 # Reactor Contracts
 
-Typed Reactor model provenance and model-policy contracts.
+Typed Reactor model provenance, model-policy, and serving-skeleton contracts.
 
-This package is metadata and decision plumbing only. It does not authorize
-model installation, routing, customer deployment, compliance claims, spend, or
-public availability copy.
+This package is metadata, policy-decision, and skeleton-routing plumbing only.
+It does not authorize live model installation, serving, customer deployment,
+compliance claims, spend, or public availability copy.
 
 Exports:
 
@@ -14,3 +14,8 @@ Exports:
   receipt-shaped decision naming the policy version.
 - A curated seed catalog with honest `unknown` / `partial` disclosure values
   where facts are not complete.
+- Lane-neutral Reactor node profiles with `servingLane: hydralisk | psionic`.
+- Fixture provision/router helpers that refuse nonconforming models before
+  weight pull or OpenAI-compatible routing.
+- Exact local token-metering receipt helpers that use `not_measured` instead
+  of estimates when counts are unavailable.

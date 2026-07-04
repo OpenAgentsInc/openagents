@@ -1,5 +1,19 @@
 # Promise Registry
 
+> Registry `2026-07-04.11` is the RX-3 Reactor serving-skeleton pass
+> (#8273) and flips NO promise state (green stays exactly 34). The
+> `@openagentsinc/reactor-contracts` package now adds lane-neutral node
+> model profiles with `servingLane: hydralisk | psionic`, a server-class
+> Hydralisk fixture profile behind an OpenAI-compatible offline-once-provisioned
+> gateway, model install/upgrade receipts naming the satisfied policy
+> version, provisioner refusal before weight pull, router refusal before
+> serving, and exact local token-metering receipts that reject non-reconciling
+> counts and use `not_measured` rather than estimates. This clears only the
+> policy-router/refusal-smoke and exact-metering skeleton blockers. Customer
+> or dogfood deployment, customer data-custody proof, air-gap update bundles,
+> eval receipts, owner-approved public copy, pricing, compliance, payout, and
+> settlement claims remain blocked.
+
 > Registry `2026-07-04.10` is the RX-2 Reactor contracts pass (#8272)
 > and flips NO promise state (green stays exactly 34). The
 > `@openagentsinc/reactor-contracts` package now exports Effect Schema
