@@ -677,6 +677,20 @@
         "typescript": "catalog:",
       },
     },
+    "packages/khala-sync-db-collection": {
+      "name": "@openagentsinc/khala-sync-db-collection",
+      "version": "0.1.0",
+      "dependencies": {
+        "@openagentsinc/khala-sync": "workspace:*",
+        "@openagentsinc/khala-sync-client": "workspace:*",
+        "@tanstack/db": "0.6.14",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
     "packages/khala-sync-server": {
       "name": "@openagentsinc/khala-sync-server",
       "version": "0.1.0",
@@ -1258,6 +1272,8 @@
     "@openagentsinc/khala-sync": ["@openagentsinc/khala-sync@workspace:packages/khala-sync"],
 
     "@openagentsinc/khala-sync-client": ["@openagentsinc/khala-sync-client@workspace:packages/khala-sync-client"],
+
+    "@openagentsinc/khala-sync-db-collection": ["@openagentsinc/khala-sync-db-collection@workspace:packages/khala-sync-db-collection"],
 
     "@openagentsinc/khala-sync-server": ["@openagentsinc/khala-sync-server@workspace:packages/khala-sync-server"],
 
