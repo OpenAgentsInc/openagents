@@ -1,4 +1,11 @@
+import { withStartRequestContext } from '@openagentsinc/effect-start'
 import handler, { createServerEntry } from '@tanstack/react-start/server-entry'
+
+type StartWorkerEnv = Record<string, unknown>
+
+type StartExecutionContext = Readonly<{
+  waitUntil(promise: Promise<unknown>): void
+}>
 
 export const SECURITY_HEADERS = {
   'X-Frame-Options': 'DENY',
@@ -37,7 +44,13 @@ const server = createServerEntry({
 })
 
 export default {
-  fetch(request: Request) {
-    return server.fetch(request)
+  fetch(
+    request: Request,
+    env: StartWorkerEnv,
+    executionCtx: StartExecutionContext,
+  ) {
+    return withStartRequestContext({ request, env, executionCtx }, () =>
+      server.fetch(request),
+    )
   },
 }

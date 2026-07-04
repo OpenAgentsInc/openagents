@@ -3,9 +3,16 @@
 TanStack Start staging scaffold for TS-2a (#8343). This package is intentionally
 isolated from the live `openagents.com` Worker and routes.
 
+The TS-1 parity contract and pinned TanStack/Cloudflare versions live in
+[`docs/fable/2026-07-04-tanstack-start-parity-contract.md`](../../../../docs/fable/2026-07-04-tanstack-start-parity-contract.md).
+Server loaders/functions should use `@openagentsinc/effect-start` for the
+Effect boundary and Worker request context instead of creating app-local
+bridges.
+
 ## Verify
 
 ```sh
+bun run --cwd packages/effect-start test
 bun run --cwd apps/openagents.com/apps/start build
 bun run --cwd apps/openagents.com/apps/start test
 ```

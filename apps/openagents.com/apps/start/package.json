@@ -14,7 +14,11 @@
     "cf:typegen": "wrangler types"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.100.11",
+    "@openagentsinc/effect-start": "workspace:*",
+    "@tanstack/db": "0.6.14",
+    "@tanstack/query-core": "5.101.0",
+    "@tanstack/react-db": "0.1.92",
+    "@tanstack/react-query": "5.101.0",
     "@tanstack/react-router": "1.170.16",
     "@tanstack/react-router-ssr-query": "1.167.1",
     "@tanstack/react-start": "1.168.26",
@@ -24,7 +28,7 @@
     "react-dom": "19.2.3"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.42.0",
+    "@cloudflare/vite-plugin": "1.42.0",
     "@tailwindcss/vite": "^4.2.2",
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
