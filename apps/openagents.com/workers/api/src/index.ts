@@ -143,6 +143,10 @@ import {
   handlePublicArtanisLaborReceiptsApi,
 } from './artanis-labor-receipt-routes'
 import { makeD1ArtanisLaborUnattendedReceiptStore } from './artanis-labor-receipt-store'
+import {
+  makeArtanisDatabaseForEnv,
+  type ArtanisDatabase,
+} from './artanis-domain-store'
 import { ArtanisMindSmokeSystem, artanisMindComplete } from './artanis-mind'
 import {
   ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
@@ -6528,7 +6532,7 @@ const dispatchDueEmailCampaignSendsScheduled = (
   )
 
 const runArtanisScheduledTickScheduled = (
-  db: D1Database,
+  db: ArtanisDatabase,
   scheduledRunnerEnabled: boolean,
   scheduledTime: number,
 ): Effect.Effect<void, never> =>
@@ -12015,13 +12019,13 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             updatedAtIso: nowIso,
           })
           forumPost = yield* saveArtanisForumPublicationIntent(
-            openAgentsDatabase(env),
+            makeArtanisDatabaseForEnv(env),
             intent,
             nowIso,
           ).pipe(
             Effect.flatMap(() =>
               deliverArtanisForumPublicationIntent(
-                openAgentsDatabase(env),
+                makeArtanisDatabaseForEnv(env),
                 intent,
               ),
             ),
@@ -12773,7 +12777,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           )
         }
         const outcome = yield* Effect.promise(() =>
-          runArtanisSpendDecision(openAgentsDatabase(env), {
+          runArtanisSpendDecision(makeArtanisDatabaseForEnv(env), {
             candidate: {
               destination: wallet.lightning_address ?? wallet.bolt12_offer!,
               context: body.context!,
@@ -12937,7 +12941,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handlePublicArtanisLaborReceiptsApi(request, {
         nowIso: currentIsoTimestamp,
         store: makeD1ArtanisLaborUnattendedReceiptStore(
-          openAgentsDatabase(env),
+          makeArtanisDatabaseForEnv(env),
           currentIsoTimestamp,
         ),
       }),
@@ -12948,7 +12952,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handlePublicArtanisLaborGreenReadinessApi(request, {
         nowIso: currentIsoTimestamp,
         store: makeD1ArtanisLaborUnattendedReceiptStore(
-          openAgentsDatabase(env),
+          makeArtanisDatabaseForEnv(env),
           currentIsoTimestamp,
         ),
       }),
@@ -15752,7 +15756,7 @@ export default {
       observedEffect(
         'ArtanisScheduledRunner.runTick',
         runArtanisScheduledTickScheduled(
-          openAgentsDatabase(env),
+          makeArtanisDatabaseForEnv(env),
           config.artanis.scheduledRunnerEnabled,
           event.scheduledTime,
         ),
@@ -15884,7 +15888,7 @@ export default {
       ),
       observedEffect(
         'ArtanisResponder.scan',
-        runArtanisResponderScanScheduled(openAgentsDatabase(env), {
+        runArtanisResponderScanScheduled(makeArtanisDatabaseForEnv(env), {
           artanisActorRefs: [ARTANIS_REGISTERED_ACTOR_REF],
           enabled:
             (env as { ARTANIS_FORUM_RESPONDER_ENABLED?: string })
@@ -15898,7 +15902,7 @@ export default {
       ),
       observedEffect(
         'ArtanisAdmin.tick',
-        runArtanisAdminTickScheduled(openAgentsDatabase(env), {
+        runArtanisAdminTickScheduled(makeArtanisDatabaseForEnv(env), {
           dispatch: async body => {
             const adminToken = (env as { OPENAGENTS_ADMIN_API_TOKEN?: string })
               .OPENAGENTS_ADMIN_API_TOKEN
@@ -15943,7 +15947,7 @@ export default {
       ),
       observedEffect(
         'ArtanisFleet.tick',
-        runArtanisFleetOverseerTickScheduled(openAgentsDatabase(env), {
+        runArtanisFleetOverseerTickScheduled(makeArtanisDatabaseForEnv(env), {
           enabled: config.artanis.fleetOverseerEnabled,
           gatewayToken: (env as { CF_AIG_TOKEN?: string }).CF_AIG_TOKEN,
           geminiApiKey:
@@ -15954,7 +15958,7 @@ export default {
       ),
       observedEffect(
         'ArtanisAdmin.closeoutVerifier',
-        runArtanisCloseoutVerifierScheduled(openAgentsDatabase(env), {
+        runArtanisCloseoutVerifierScheduled(makeArtanisDatabaseForEnv(env), {
           accept: async input => {
             const adminToken = (env as { OPENAGENTS_ADMIN_API_TOKEN?: string })
               .OPENAGENTS_ADMIN_API_TOKEN
@@ -16046,7 +16050,7 @@ export default {
       ),
       observedEffect(
         'ArtanisResponder.compose',
-        runArtanisComposerScheduled(openAgentsDatabase(env), {
+        runArtanisComposerScheduled(makeArtanisDatabaseForEnv(env), {
           artanisActorRef: ARTANIS_REGISTERED_ACTOR_REF,
           enabled:
             (env as { ARTANIS_FORUM_RESPONDER_ENABLED?: string })

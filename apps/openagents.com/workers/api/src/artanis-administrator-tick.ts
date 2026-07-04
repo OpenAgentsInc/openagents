@@ -17,6 +17,11 @@ import {
 
 import { artanisMindComplete } from './artanis-mind'
 import {
+  artanisAuthorityDb,
+  mirrorArtanisRows,
+  type ArtanisDatabase,
+} from './artanis-domain-store'
+import {
   type ArtanisLaborPersistedTick,
   runAndPersistArtanisLaborRequestTick,
 } from './artanis-labor-tick-driver'
@@ -253,7 +258,7 @@ const assembleContext = async (db: D1Database, nowIso: string) => {
 }
 
 export const runArtanisAdminTick = async (
-  db: D1Database,
+  database: ArtanisDatabase,
   deps: Readonly<{
     geminiApiKey: string | null
     gatewayToken?: string | undefined
@@ -261,6 +266,9 @@ export const runArtanisAdminTick = async (
     nowIso: string
   }>,
 ): Promise<AdminTickOutcome> => {
+  // The authoritative D1 handle; every decision insert below mirrors to
+  // Postgres through the KS-8.6 seam before returning (fail-soft).
+  const db = artanisAuthorityDb(database)
   const skipped = (reason: string): AdminTickOutcome => ({
     assignmentRef: null,
     decisionId: null,
@@ -357,6 +365,9 @@ export const runArtanisAdminTick = async (
         deps.nowIso,
       )
       .run()
+    await mirrorArtanisRows(database, 'artanis_admin_tick_decisions', 'id', [
+      decisionId,
+    ])
     return {
       assignmentRef: null,
       decisionId,
@@ -374,6 +385,9 @@ export const runArtanisAdminTick = async (
       )
       .bind(decisionId, JSON.stringify(action), deps.nowIso)
       .run()
+    await mirrorArtanisRows(database, 'artanis_admin_tick_decisions', 'id', [
+      decisionId,
+    ])
     return {
       assignmentRef: null,
       decisionId,
@@ -399,6 +413,9 @@ export const runArtanisAdminTick = async (
         deps.nowIso,
       )
       .run()
+    await mirrorArtanisRows(database, 'artanis_admin_tick_decisions', 'id', [
+      decisionId,
+    ])
     return {
       assignmentRef: null,
       decisionId,
@@ -430,6 +447,9 @@ export const runArtanisAdminTick = async (
       deps.nowIso,
     )
     .run()
+  await mirrorArtanisRows(database, 'artanis_admin_tick_decisions', 'id', [
+    decisionId,
+  ])
 
   return {
     assignmentRef,
@@ -440,7 +460,7 @@ export const runArtanisAdminTick = async (
 }
 
 export const runArtanisAdminTickScheduled = (
-  db: D1Database,
+  db: ArtanisDatabase,
   deps: Readonly<{
     enabled: boolean
     geminiApiKey: string | null
@@ -580,7 +600,7 @@ const digestFromRefs = (refsJson: unknown): string | null => {
 }
 
 export const runArtanisCloseoutVerifier = async (
-  db: D1Database,
+  database: ArtanisDatabase,
   deps: Readonly<{
     replay: (input: {
       assignmentRef: string
@@ -596,6 +616,9 @@ export const runArtanisCloseoutVerifier = async (
     nowIso: string
   }>,
 ): Promise<CloseoutVerifierOutcome> => {
+  // The authoritative D1 handle; verdict upserts mirror to Postgres
+  // through the KS-8.6 seam (fail-soft).
+  const db = artanisAuthorityDb(database)
   const rows = (
     (
       await db
@@ -642,6 +665,12 @@ export const runArtanisCloseoutVerifier = async (
         )
         .bind(randomUuid(), assignmentRef, deps.nowIso)
         .run()
+      await mirrorArtanisRows(
+        database,
+        'artanis_closeout_verdicts',
+        'assignment_ref',
+        [assignmentRef],
+      )
       continue
     }
 
@@ -708,6 +737,12 @@ export const runArtanisCloseoutVerifier = async (
         deps.nowIso,
       )
       .run()
+    await mirrorArtanisRows(
+      database,
+      'artanis_closeout_verdicts',
+      'assignment_ref',
+      [assignmentRef],
+    )
 
     if (isVerified) {
       verified += 1
@@ -720,7 +755,7 @@ export const runArtanisCloseoutVerifier = async (
 }
 
 export const runArtanisCloseoutVerifierScheduled = (
-  db: D1Database,
+  db: ArtanisDatabase,
   deps: Readonly<{
     enabled: boolean
     replay: Parameters<typeof runArtanisCloseoutVerifier>[1]['replay']

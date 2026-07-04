@@ -11,6 +11,10 @@ import {
   readLatestArtanisPersistedRows,
 } from './artanis-persistence'
 import {
+  artanisAuthorityDb,
+  type ArtanisDatabase,
+} from './artanis-domain-store'
+import {
   ArtanisForumIdentityError,
   isArtanisForumPostActor,
   resolveRegisteredArtanisForumIdentityFromD1,
@@ -293,7 +297,7 @@ const assertReadyIntent = (
   )
 
 const markDelivered = (
-  db: D1Database,
+  db: ArtanisDatabase,
   intent: ArtanisForumPublicationIntentRecord,
   delivered: ArtanisForumDeliveredPost,
   nowIso: string,
@@ -306,7 +310,7 @@ const markDelivered = (
   }).pipe(Effect.mapError(mapDependencyError))
 
 export const deliverArtanisForumPublicationIntent = (
-  db: D1Database,
+  db: ArtanisDatabase,
   intent: ArtanisForumPublicationIntentRecord,
   runtimeInput?: Partial<DeliveryRuntime> | undefined,
 ): Effect.Effect<ArtanisForumDeliveredPost, ArtanisForumDeliveryError> => {
@@ -330,7 +334,7 @@ export const deliverArtanisForumPublicationIntent = (
       )
     }
 
-    const forum = yield* readForumSummaryByRef(db, 'artanis').pipe(
+    const forum = yield* readForumSummaryByRef(artanisAuthorityDb(db), 'artanis').pipe(
       Effect.mapError(mapDependencyError),
     )
 
@@ -357,7 +361,7 @@ export const deliverArtanisForumPublicationIntent = (
       )
     }
 
-    const topic = yield* readForumTopicById(db, topicId).pipe(
+    const topic = yield* readForumTopicById(artanisAuthorityDb(db), topicId).pipe(
       Effect.mapError(mapDependencyError),
     )
 
@@ -376,12 +380,12 @@ export const deliverArtanisForumPublicationIntent = (
     }
 
     const identity = yield* resolveRegisteredArtanisForumIdentityFromD1(
-      db,
+      artanisAuthorityDb(db),
       nowIso,
     ).pipe(Effect.mapError(mapDependencyError))
 
     const existingPost = yield* readForumPostByIdempotencyKey(
-      db,
+      artanisAuthorityDb(db),
       intent.idempotencyKey,
     ).pipe(Effect.mapError(mapDependencyError))
 
@@ -426,7 +430,7 @@ export const deliverArtanisForumPublicationIntent = (
       nowIso: runtime.nowIso,
     }
     const post = yield* createForumReplyPost(
-      db,
+      artanisAuthorityDb(db),
       {
         actor: writer.actor,
         bodyText: intent.bodyText,
@@ -453,7 +457,7 @@ export const deliverArtanisForumPublicationIntent = (
 }
 
 export const deliverReadyArtanisForumPublications = (
-  db: D1Database,
+  db: ArtanisDatabase,
   input: Readonly<{
     limit?: number | undefined
     runtime?: Partial<DeliveryRuntime> | undefined

@@ -1,4 +1,9 @@
 import {
+  artanisAuthorityDb,
+  mirrorArtanisRows,
+  type ArtanisDatabase,
+} from './artanis-domain-store'
+import {
   ArtanisLaborReceiptError,
   buildArtanisLaborUnattendedRequestReceipt,
   deriveArtanisLaborUnattendedRequestReceiptRef,
@@ -152,11 +157,15 @@ const sealedFromRow = (
 }
 
 export const makeD1ArtanisLaborUnattendedReceiptStore = (
-  db: D1Database,
+  database: ArtanisDatabase,
   // Deterministic clock for the created_at audit column (insertion order is kept
   // by rowid regardless; created_at is denormalized for query/audit only).
   nowIso: () => string,
-): ArtanisLaborUnattendedReceiptStore => ({
+): ArtanisLaborUnattendedReceiptStore => {
+  // The authoritative D1 handle; puts mirror to Postgres through the
+  // KS-8.6 seam (fail-soft).
+  const db = artanisAuthorityDb(database)
+  return {
   get: async receiptRef => {
     const row = await db
       .prepare(
@@ -216,9 +225,18 @@ export const makeD1ArtanisLaborUnattendedReceiptStore = (
     }
 
     const stored = sealedFromRow(row)
+    // KS-8.6 dual-write: converge the content-addressed row into Postgres
+    // (fail-soft; also idempotent — the ref IS the content hash).
+    await mirrorArtanisRows(
+      database,
+      'artanis_labor_unattended_receipts',
+      'receipt_ref',
+      [checked.receiptRef],
+    )
     // changes === 0 means the ref already existed and the insert was ignored.
     return (inserted.meta?.changes ?? 0) > 0
       ? { kind: 'stored', sealed: stored }
       : { kind: 'already_stored', sealed: stored }
   },
-})
+  }
+}

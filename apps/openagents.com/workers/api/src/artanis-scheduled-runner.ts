@@ -1,6 +1,11 @@
 import { Effect } from 'effect'
 
 import {
+  artanisAuthorityDb,
+  type ArtanisDatabase,
+} from './artanis-domain-store'
+
+import {
   authorizeDiagnosisRemediation,
   authorizeMergeDeployLiveReport,
 } from '@openagentsinc/blueprint-contracts'
@@ -83,7 +88,7 @@ export type ArtanisKhalaReadinessObservation = Readonly<{
 
 export type ArtanisScheduledRunnerInput = Readonly<{
   context?: Partial<ArtanisScheduledRunnerContext> | undefined
-  db: D1Database
+  db: ArtanisDatabase
   enabled: boolean
   khalaFeedback?: ReadonlyArray<KhalaFeedbackRecord> | undefined
   khalaFeedbackStore?: KhalaFeedbackStore | undefined
@@ -1520,7 +1525,7 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
 
 export const runArtanisScheduledTickForWorker = (
   input: Readonly<{
-    db: D1Database
+    db: ArtanisDatabase
     khalaReadinessObservation?: ArtanisKhalaReadinessObservation | undefined
     scheduledRunnerEnabled: boolean
     scheduledTime: number
@@ -1531,10 +1536,10 @@ export const runArtanisScheduledTickForWorker = (
   return runArtanisScheduledTick({
     db: input.db,
     enabled: input.scheduledRunnerEnabled,
-    khalaFeedbackStore: makeD1KhalaFeedbackStore(input.db),
+    khalaFeedbackStore: makeD1KhalaFeedbackStore(artanisAuthorityDb(input.db)),
     khalaReadinessObservation: input.khalaReadinessObservation,
     nowIso,
     scheduleRef: `cron.public.artanis.${refSuffix(nowIso)}`,
-    unsupportedRequestStore: makeD1KhalaUnsupportedRequestStore(input.db),
+    unsupportedRequestStore: makeD1KhalaUnsupportedRequestStore(artanisAuthorityDb(input.db)),
   })
 }

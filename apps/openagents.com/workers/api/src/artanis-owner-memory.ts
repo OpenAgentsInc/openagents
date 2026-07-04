@@ -18,6 +18,11 @@
 // `ArtanisOwnerMemoryStore` they hang off. The store is injectable so it is
 // independently unit-testable against an in-memory fake or a real D1 binding.
 
+import {
+  artanisAuthorityDb,
+  mirrorArtanisRows,
+  type ArtanisDatabase,
+} from './artanis-domain-store'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 
 // Bounded so a single owner timeline read stays cheap and a single turn/note
@@ -181,8 +186,12 @@ const memoryRef = (makeRef?: () => string): string =>
 // D1-backed store. Every read is filtered by owner_id in the SQL, so the
 // owner-scoping invariant is enforced at the query, not by a caller convention.
 export const makeD1ArtanisOwnerMemoryStore = (
-  db: D1Database,
-): ArtanisOwnerMemoryStore => ({
+  database: ArtanisDatabase,
+): ArtanisOwnerMemoryStore => {
+  // The authoritative D1 handle; appends mirror to Postgres through the
+  // KS-8.6 seam (fail-soft). Reads stay owner-scoped on D1 authority.
+  const db = artanisAuthorityDb(database)
+  return {
   append: async input => {
     const normalized = normalizeArtanisMemoryTurn(input.turn)
     await db
@@ -207,6 +216,9 @@ export const makeD1ArtanisOwnerMemoryStore = (
         input.createdAt,
       )
       .run()
+    await mirrorArtanisRows(database, 'artanis_owner_memory', 'memory_ref', [
+      input.memoryRef,
+    ])
 
     return {
       body: normalized.body,
@@ -245,7 +257,8 @@ export const makeD1ArtanisOwnerMemoryStore = (
     const rows = await query.all<ArtanisMemoryRow>()
     return rows.results.map(rowToEntry)
   },
-})
+  }
+}
 
 // Contract surface consumed by the Artanis operator core (#6359).
 //

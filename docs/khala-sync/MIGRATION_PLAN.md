@@ -58,6 +58,40 @@ evidence is tracked on epic
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282), while the
 per-domain soak/drop ticket is intentionally closed as not planned.
 
+**KS-8.6 status (2026-07-04):** machinery LANDED — Postgres schema
+(`khala-sync-server` migration `0011_artanis_domain.sql`: all twenty
+`artanis_*` twins; indexes re-derived from the owning modules' actual
+query patterns; D1's one-active-loop-per-scope partial unique index
+deliberately NOT ported mid-migration, rationale in the migration
+header), the `ArtanisDatabase` seam — a database-shaped handle
+(`apps/openagents.com/workers/api/src/artanis-domain-store.ts`) rather
+than a per-operation store, because this domain's SQL lives in eleven
+owning modules — with a registry-driven Postgres converge store,
+read-back full-row dual-write mirrors (`mirrorArtanisRows`, fail-soft:
+the 2d46d808 operator-chat precedent holds through the seam), and
+flag-routed reads (`artanisRead`), flags `KHALA_SYNC_ARTANIS_DUAL_WRITE`
+(default on) / `KHALA_SYNC_ARTANIS_READS` (d1|compare|postgres, default
+d1). Wired at the artanis write call sites INCLUDING all six every-minute
+cron ticks (`ArtanisScheduledRunner.runTick`, `ArtanisResponder.scan`,
+`ArtanisResponder.compose`, `ArtanisAdmin.tick`,
+`ArtanisAdmin.closeoutVerifier`, `ArtanisFleet.tick`) — the ticks keep D1
+authority and mirror to Postgres until the read-cutover evidence lands.
+Resumable backfill + exact-verify CLI
+(`packages/khala-sync-server/scripts/backfill-artanis.ts`: exact counts,
+per-state tallies, newest-N row hashes over all twenty tables), and a
+contract suite run against BOTH engines
+(`artanis-domain-repository.contract.test.ts`: registry fidelity across
+all twenty tables, tick double-fire idempotency, mutation convergence,
+D1-vs-Postgres persistence read equivalence). Analytics-style JOIN reads
+(`artanis-tick-streak.ts`, `artanis-distillation-dataset-receipt.ts`
+cross-table joins) and dashboard aggregations stay D1-only and move at
+read cutover. Health/runtime snapshot retention (Analytics Engine vs
+row-porting history) is a cutover-time decision: the backfill ports rows
+as-is today; bounding retention before cutover shrinks the port. Prod
+cutover procedure: [`RUNBOOK.md`](./RUNBOOK.md) "Artanis supervision
+domain cutover"; cutover evidence + D1 drop tracked in the decommission
+follow-up filed off [#8317](https://github.com/OpenAgentsInc/openagents/issues/8317).
+
 Everything except the Verse world runs through one D1 database
 (`openagents-autopilot`, binding `OPENAGENTS_DB`). As of `main` today the
 migrations directory (`apps/openagents.com/workers/api/migrations/`) holds

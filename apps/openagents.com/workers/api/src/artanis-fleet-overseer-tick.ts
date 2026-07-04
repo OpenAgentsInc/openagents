@@ -9,6 +9,11 @@ import {
 } from './artanis-approval-gates'
 import { ARTANIS_SHARED_FLEET_AUTHORITY_SCOPE } from './artanis-authority-scope'
 import {
+  artanisAuthorityDb,
+  mirrorArtanisRows,
+  type ArtanisDatabase,
+} from './artanis-domain-store'
+import {
   artanisHealthProjectionHasPrivateMaterial,
   ArtanisHealthSignalRecord,
   ArtanisHealthSnapshotRecord,
@@ -145,7 +150,7 @@ const stableValue = (value: unknown): unknown => {
 const stableJson = (value: unknown): string => JSON.stringify(stableValue(value))
 
 const insertPersistencePayload = async (
-  db: D1Database,
+  db: ArtanisDatabase,
   input: Readonly<{
     active: boolean
     agentId: string
@@ -169,7 +174,7 @@ const insertPersistencePayload = async (
     record: input.record,
   })
 
-  await db
+  await artanisAuthorityDb(db)
     .prepare(
       `INSERT INTO ${input.tableName} (
          id,
@@ -209,10 +214,12 @@ const insertPersistencePayload = async (
       null,
     )
     .run()
+  // KS-8.6 dual-write: converge into Postgres (fail-soft).
+  await mirrorArtanisRows(db, input.tableName, 'record_ref', [input.recordRef])
 }
 
 const saveHealthSnapshot = async (
-  db: D1Database,
+  db: ArtanisDatabase,
   record: ArtanisHealthSnapshotRecord,
   nowIso: string,
 ): Promise<void> => {
@@ -245,7 +252,7 @@ const saveHealthSnapshot = async (
 }
 
 const saveApprovalGate = async (
-  db: D1Database,
+  db: ArtanisDatabase,
   record: ArtanisApprovalGateRecord,
   nowIso: string,
 ): Promise<void> => {
@@ -524,7 +531,7 @@ const publicDispatchReason = (reason: string): string =>
     .slice(0, 48) || 'reason'
 
 const insertDecision = async (
-  db: D1Database,
+  db: ArtanisDatabase,
   input: Readonly<{
     action: Record<string, unknown>
     approvalGateRef: string | null
@@ -535,7 +542,7 @@ const insertDecision = async (
     state: ArtanisFleetOverseerDecisionState
   }>,
 ): Promise<void> => {
-  await db
+  await artanisAuthorityDb(db)
     .prepare(
       `INSERT INTO artanis_fleet_overseer_decisions
        (id, state, action_json, context_json, approval_gate_ref, health_snapshot_ref, created_at)
@@ -551,6 +558,10 @@ const insertDecision = async (
       input.nowIso,
     )
     .run()
+  // KS-8.6 dual-write: converge the decision row into Postgres (fail-soft).
+  await mirrorArtanisRows(db, 'artanis_fleet_overseer_decisions', 'id', [
+    input.decisionId,
+  ])
 }
 
 const readExternalDemandTokens10m = async (
@@ -784,7 +795,7 @@ const actionState = (
 }
 
 export const runArtanisFleetOverseerTick = async (
-  db: D1Database,
+  db: ArtanisDatabase,
   deps: Readonly<{
     assembleContext?: (() => Promise<ArtanisFleetOverseerContext>) | undefined
     gatewayToken?: string | undefined
@@ -795,7 +806,7 @@ export const runArtanisFleetOverseerTick = async (
   }>,
 ): Promise<ArtanisFleetOverseerOutcome> => {
   const context = await (deps.assembleContext ??
-    (() => assembleContext(db, deps.nowIso)))()
+    (() => assembleContext(artanisAuthorityDb(db), deps.nowIso)))()
   const decisionId = randomUuid()
   const skipped = async (reason: string): Promise<ArtanisFleetOverseerOutcome> => {
     await insertDecision(db, {
@@ -807,7 +818,7 @@ export const runArtanisFleetOverseerTick = async (
       nowIso: deps.nowIso,
       state: 'skipped',
     })
-    await recordFleetOverseerRunnerStatus(db, {
+    await recordFleetOverseerRunnerStatus(artanisAuthorityDb(db), {
       context,
       decisionId,
       healthSnapshotRef: null,
@@ -880,7 +891,7 @@ export const runArtanisFleetOverseerTick = async (
       nowIso: deps.nowIso,
       state: 'blocked',
     })
-    await recordFleetOverseerRunnerStatus(db, {
+    await recordFleetOverseerRunnerStatus(artanisAuthorityDb(db), {
       context,
       decisionId,
       healthSnapshotRef: snapshot.snapshotRef,
@@ -920,7 +931,7 @@ export const runArtanisFleetOverseerTick = async (
     nowIso: deps.nowIso,
     state,
   })
-  await recordFleetOverseerRunnerStatus(db, {
+  await recordFleetOverseerRunnerStatus(artanisAuthorityDb(db), {
     context,
     decisionId,
     healthSnapshotRef: snapshot.snapshotRef,
@@ -940,7 +951,7 @@ export const runArtanisFleetOverseerTick = async (
 }
 
 export const runArtanisFleetOverseerTickScheduled = (
-  db: D1Database,
+  db: ArtanisDatabase,
   deps: Readonly<{
     enabled: boolean
     gatewayToken?: string | undefined

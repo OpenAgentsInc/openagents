@@ -49,11 +49,13 @@ import {
   currentEpochMillis,
   epochMillisToIsoTimestamp,
 } from './runtime-primitives'
-import { openAgentsDatabase } from './runtime'
+import {
+  makeArtanisDatabaseForEnv,
+  type ArtanisDatabase,
+  type ArtanisDomainStoreEnv,
+} from './artanis-domain-store'
 
-type OperatorArtanisConsoleEnv = Readonly<{
-  OPENAGENTS_DB: D1Database
-}>
+type OperatorArtanisConsoleEnv = ArtanisDomainStoreEnv
 type HttpResponse = globalThis.Response
 
 type OperatorArtanisConsoleSession = Readonly<{
@@ -194,7 +196,7 @@ const requireAdminSession = <
   })
 
 const readRows = (
-  db: D1Database,
+  db: ArtanisDatabase,
   kind: ArtanisPersistenceRecordKind,
   limit = 12,
 ) => readLatestArtanisPersistedRows(db, kind, limit)
@@ -606,7 +608,7 @@ const approvalActionRecord = (input: {
 }
 
 const loadConsole = (
-  db: D1Database,
+  db: ArtanisDatabase,
   nowIso: string,
 ) =>
   Effect.gen(function* () {
@@ -630,7 +632,7 @@ const loadConsole = (
   )
 
 const applyApprovalAction = (
-  db: D1Database,
+  db: ArtanisDatabase,
   encodedGateRef: string,
   action: OperatorApprovalAction,
   nowIso: string,
@@ -673,7 +675,7 @@ const applyApprovalAction = (
   })
 
 const armPylonDispatchGate = (
-  db: D1Database,
+  db: ArtanisDatabase,
   request: Request,
   epochMillis: number,
   nowIso: string,
@@ -758,7 +760,7 @@ export const makeOperatorArtanisConsoleRoutes = <
         dependencies.currentEpochMillis ?? currentEpochMillis
       const epochMillis = nowEpochMillis()
       const nowIso = epochMillisToIsoTimestamp(epochMillis)
-      const db = openAgentsDatabase(env)
+      const db = makeArtanisDatabaseForEnv(env)
       const snapshot = isCreateGateRoute
         ? yield* armPylonDispatchGate(db, request, epochMillis, nowIso)
         : approvalActionMatch === null

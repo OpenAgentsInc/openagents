@@ -1,4 +1,9 @@
 import { artanisMindComplete } from './artanis-mind'
+import {
+  artanisAuthorityDb,
+  mirrorArtanisRows,
+  type ArtanisDatabase,
+} from './artanis-domain-store'
 import { parseJsonWithSchema } from './json-boundary'
 import { randomUuid } from './runtime-primitives'
 import {
@@ -31,9 +36,9 @@ export type StandingGrant = Readonly<{
 }>
 
 export const readActiveStandingGrant = async (
-  db: D1Database,
+  db: ArtanisDatabase,
 ): Promise<StandingGrant | null> => {
-  const row = (await db
+  const row = (await artanisAuthorityDb(db)
     .prepare(
       `SELECT grant_ref, per_payout_cap_sat, per_day_cap_sat
          FROM artanis_standing_spend_grants
@@ -54,10 +59,10 @@ export const readActiveStandingGrant = async (
 }
 
 export const spentTodaySat = async (
-  db: D1Database,
+  db: ArtanisDatabase,
   nowIso: string,
 ): Promise<number> => {
-  const row = (await db
+  const row = (await artanisAuthorityDb(db)
     .prepare(
       `SELECT COALESCE(SUM(paid_amount_sat), 0) AS spent
          FROM artanis_spend_decisions
@@ -88,7 +93,7 @@ export type ArtanisSpendOutcome = Readonly<{
 }>
 
 export const runArtanisSpendDecision = async (
-  db: D1Database,
+  database: ArtanisDatabase,
   deps: Readonly<{
     geminiApiKey: string | null
     gatewayToken?: string | undefined
@@ -97,6 +102,10 @@ export const runArtanisSpendDecision = async (
     nowIso: string
   }>,
 ): Promise<ArtanisSpendOutcome> => {
+  // The authoritative D1 handle; decision inserts mirror to Postgres
+  // through the KS-8.6 seam (fail-soft). Spend decisions reference the
+  // treasury by payment_ref ID only — no cross-store joins (KS-8.8).
+  const db = artanisAuthorityDb(database)
   const skipped = (reason: string): ArtanisSpendOutcome => ({
     decided: false,
     decisionId: null,
@@ -111,12 +120,12 @@ export const runArtanisSpendDecision = async (
     return skipped('mind_unconfigured')
   }
 
-  const grant = await readActiveStandingGrant(db)
+  const grant = await readActiveStandingGrant(database)
   if (grant === null) {
     return skipped('no_active_standing_grant')
   }
 
-  const alreadySpentSat = await spentTodaySat(db, deps.nowIso)
+  const alreadySpentSat = await spentTodaySat(database, deps.nowIso)
   const dayBudgetLeftSat = grant.perDayCapSat - alreadySpentSat
   if (dayBudgetLeftSat <= 0) {
     return skipped('per_day_cap_exhausted')
@@ -196,6 +205,9 @@ export const runArtanisSpendDecision = async (
         deps.nowIso,
       )
       .run()
+    await mirrorArtanisRows(database, 'artanis_spend_decisions', 'id', [
+      decisionId,
+    ])
     return {
       decided: true,
       decisionId,
@@ -239,6 +251,9 @@ export const runArtanisSpendDecision = async (
       deps.nowIso,
     )
     .run()
+  await mirrorArtanisRows(database, 'artanis_spend_decisions', 'id', [
+    decisionId,
+  ])
 
   return {
     decided: true,

@@ -496,6 +496,77 @@ Rollback at ANY step: set `KHALA_SYNC_AGENT_RUNTIME_READS=d1` (reads)
 and/or `KHALA_SYNC_AGENT_RUNTIME_DUAL_WRITE=off` (writes). D1 authority
 is never behind.
 
+## Artanis supervision domain cutover (KS-8.6, #8317)
+
+All twenty `artanis_*` tables (D1) → same-named Postgres twins
+(khala-sync migration `0011_artanis_domain.sql`). Machinery:
+`apps/openagents.com/workers/api/src/artanis-domain-store.ts` (the
+`ArtanisDatabase` seam: registry-driven Postgres converge store,
+`mirrorArtanisRows` fail-soft dual-write, `artanisRead` flag routing) and
+`packages/khala-sync-server/scripts/backfill-artanis.ts` (backfill +
+verify). Six of the ~23 every-minute cron tasks are Artanis ticks
+(`ArtanisScheduledRunner.runTick`, `ArtanisResponder.scan`,
+`ArtanisResponder.compose`, `ArtanisAdmin.tick`,
+`ArtanisAdmin.closeoutVerifier`, `ArtanisFleet.tick`); they mirror on
+every tick today and keep D1 authority until step 5.
+
+Flags (Worker vars):
+
+- `KHALA_SYNC_ARTANIS_DUAL_WRITE` — default **on** wherever
+  `KHALA_SYNC_DB` exists; `off|0|false|disabled` disables the mirror.
+- `KHALA_SYNC_ARTANIS_READS` — default `d1`; `compare` reads both, serves
+  D1, logs `khala_sync_artanis_read_compare_mismatch`; `postgres` serves
+  the seam-routed reads from Postgres with bounded retry (50/150ms) and
+  D1 fallback on exhaustion.
+
+Fail-soft invariant: `mirrorArtanisRows` NEVER throws — a Postgres outage
+degrades to D1-only with `khala_sync_artanis_dual_write_failed`
+diagnostics, preserving the operator-chat fail-soft precedent (2d46d808).
+A tick, a chat turn, or a spend decision must never fail because the
+mirror did.
+
+Flag-flip order — never skip a step, each step soaks before the next:
+
+1. **Dual-write on** (default after KS-8.6 lands + `0011` applied via the
+   migration runner). Watch `khala_sync_artanis_dual_write_failed` in
+   Worker logs — that event IS the drift metric; a nonzero steady rate
+   blocks progression.
+2. **Backfill**: from `packages/khala-sync-server/`,
+   `KHALA_SYNC_DATABASE_URL=<direct-url> bun scripts/backfill-artanis.ts`
+   (wrangler-auth'd; rowid-cursor resumable via
+   `.artanis-backfill-state.json`). Run it a SECOND time (`--restart`) as
+   the catch-up sweep once dual-write has covered the whole window.
+   Optional pre-step: decide `artanis_health_snapshots` /
+   `artanis_runtime_snapshots` retention (Analytics Engine or a bounded
+   window) BEFORE the sweep — bounding retention first shrinks the port.
+3. **Verify**: `bun scripts/backfill-artanis.ts --verify` — exact row
+   counts, per-state tallies, newest-50 row-hash comparison across all
+   twenty tables. Post the output on the migration issue. Exact or
+   explain; no cutover on a red verify.
+4. **Compare reads**: set `KHALA_SYNC_ARTANIS_READS=compare`; soak until
+   the mismatch log is silent over a window that includes all six cron
+   ticks firing (one full minute cadence is enough to touch every tick
+   family; include an operator chat turn and a responder scan with real
+   candidates).
+5. **Postgres reads + tick re-homing**: set
+   `KHALA_SYNC_ARTANIS_READS=postgres`. Landing requirement before this
+   flip: one-tick shadow replay per tick family yields identical decisions
+   from both stores, and tick-chain contiguity holds (the contract suite's
+   double-fire and read-equivalence cases are the CI half of that
+   evidence; the prod half is the compare-mode soak). The analytics JOIN
+   readers (`artanis-tick-streak.ts`,
+   `artanis-distillation-dataset-receipt.ts`) and dashboard aggregations
+   are still D1-direct at this step and move with the decommission
+   follow-up.
+6. **Decommission LATER**: dropping the twenty D1 tables (and moving write
+   authority) is the follow-up issue filed off #8317 — never in the same
+   change as a read cutover. Until then rollback is one flag flip back to
+   `d1`.
+
+Rollback at ANY step: set `KHALA_SYNC_ARTANIS_READS=d1` (reads) and/or
+`KHALA_SYNC_ARTANIS_DUAL_WRITE=off` (writes). D1 authority is never
+behind.
+
 ## Public tokens-served projection (KS-6.3, #8304)
 
 The public "Khala Tokens Served" counter

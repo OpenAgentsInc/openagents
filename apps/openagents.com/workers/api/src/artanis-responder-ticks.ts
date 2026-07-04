@@ -1,4 +1,9 @@
 import {
+  artanisAuthorityDb,
+  mirrorArtanisRows,
+  type ArtanisDatabase,
+} from './artanis-domain-store'
+import {
   type PublicProjectionStalenessContract,
   liveAtReadStaleness,
 } from './public-projection-staleness'
@@ -113,11 +118,11 @@ const outcomeState = (
 }
 
 export const recordArtanisResponderScanTick = async (
-  db: D1Database,
+  db: ArtanisDatabase,
   input: Readonly<{ nowIso: string; outcome: ArtanisResponderScanTickOutcome }>,
 ): Promise<void> => {
   const tickRef = artanisResponderTickRef(input.nowIso)
-  await db
+  await artanisAuthorityDb(db)
     .prepare(
       `INSERT INTO artanis_responder_ticks
        (tick_ref, scheduled_at, scan_state, scan_scanned, scan_proposed,
@@ -145,17 +150,21 @@ export const recordArtanisResponderScanTick = async (
       input.nowIso,
     )
     .run()
+  // KS-8.6 dual-write: converge the tick receipt into Postgres (fail-soft).
+  await mirrorArtanisRows(db, 'artanis_responder_ticks', 'scheduled_at', [
+    input.nowIso,
+  ])
 }
 
 export const recordArtanisResponderComposeTick = async (
-  db: D1Database,
+  db: ArtanisDatabase,
   input: Readonly<{
     nowIso: string
     outcome: ArtanisResponderComposeTickOutcome
   }>,
 ): Promise<void> => {
   const tickRef = artanisResponderTickRef(input.nowIso)
-  await db
+  await artanisAuthorityDb(db)
     .prepare(
       `INSERT INTO artanis_responder_ticks
        (tick_ref, scheduled_at, compose_state, compose_considered,
@@ -184,6 +193,10 @@ export const recordArtanisResponderComposeTick = async (
       input.nowIso,
     )
     .run()
+  // KS-8.6 dual-write: converge the tick receipt into Postgres (fail-soft).
+  await mirrorArtanisRows(db, 'artanis_responder_ticks', 'scheduled_at', [
+    input.nowIso,
+  ])
 }
 
 export const projectArtanisResponderTickReadiness = (
@@ -297,11 +310,11 @@ export const projectArtanisResponderTickReadiness = (
 }
 
 export const readArtanisResponderTickReadiness = async (
-  db: D1Database,
+  db: ArtanisDatabase,
   input: Readonly<{ limit: number }>,
 ): Promise<ArtanisResponderTickReadinessProjection> => {
   const limit = Math.max(1, Math.min(200, Math.trunc(input.limit)))
-  const tickResult = await db
+  const tickResult = await artanisAuthorityDb(db)
     .prepare(
       `SELECT tick_ref,
               scheduled_at,
@@ -324,7 +337,7 @@ export const readArtanisResponderTickReadiness = async (
     .bind(limit)
     .all()
 
-  const actionResult = await db
+  const actionResult = await artanisAuthorityDb(db)
     .prepare(
       `SELECT id, topic_id, asker_provenance, reply_post_id, replied_at, state
          FROM artanis_responder_actions

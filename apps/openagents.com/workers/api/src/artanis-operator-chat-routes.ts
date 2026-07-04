@@ -55,16 +55,20 @@ import {
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import type { InferenceMessage, InferenceResult } from './inference/provider-adapter'
 import { logWorkerRouteWarning, workerErrorName } from './observability'
-import { openAgentsDatabase } from './runtime'
+import {
+  artanisAuthorityDb,
+  makeArtanisDatabaseForEnv,
+  mirrorArtanisRows,
+  type ArtanisDatabase,
+  type ArtanisDomainStoreEnv,
+} from './artanis-domain-store'
 import {
   compactRandomId,
   currentIsoTimestamp,
   randomUuid,
 } from './runtime-primitives'
 
-type OperatorArtanisChatEnv = Readonly<{
-  OPENAGENTS_DB: D1Database
-}>
+type OperatorArtanisChatEnv = ArtanisDomainStoreEnv
 type HttpResponse = globalThis.Response
 
 type OperatorArtanisChatSession = Readonly<{
@@ -392,8 +396,14 @@ const threadTitleFromMessages = (
 }
 
 const makeD1ArtanisOperatorThreadStore = (
-  db: D1Database,
-): ArtanisOperatorThreadStore => ({
+  database: ArtanisDatabase,
+): ArtanisOperatorThreadStore => {
+  // The authoritative D1 handle; thread/message appends mirror to Postgres
+  // through the KS-8.6 seam. `mirrorArtanisRows` NEVER throws — the chat
+  // fail-soft precedent (2d46d808) holds: persistence degradation must not
+  // take down a chat turn.
+  const db = artanisAuthorityDb(database)
+  return {
   appendTurn: async input => {
     const callerKind = callerKindForCallerId(input.callerId)
     await db
@@ -469,6 +479,15 @@ const makeD1ArtanisOperatorThreadStore = (
         threadRef: input.threadRef,
       })
     }
+    await mirrorArtanisRows(database, 'artanis_threads', 'thread_ref', [
+      input.threadRef,
+    ])
+    await mirrorArtanisRows(
+      database,
+      'artanis_messages',
+      'message_ref',
+      inserted.map(message => message.messageRef),
+    )
     return inserted
   },
 
@@ -510,7 +529,8 @@ const makeD1ArtanisOperatorThreadStore = (
         threadRef: row.thread_ref,
       }))
   },
-})
+  }
+}
 
 const parseBody = (request: Request) =>
   Effect.gen(function* () {
@@ -643,11 +663,11 @@ export const makeOperatorArtanisChatRoutes = <
     const makeMemoryStore =
       dependencies.makeMemoryStore ??
       ((bindings: Bindings) =>
-        makeD1ArtanisOwnerMemoryStore(openAgentsDatabase(bindings)))
+        makeD1ArtanisOwnerMemoryStore(makeArtanisDatabaseForEnv(bindings)))
     const makeThreadStore =
       dependencies.makeThreadStore ??
       ((bindings: Bindings) =>
-        makeD1ArtanisOperatorThreadStore(openAgentsDatabase(bindings)))
+        makeD1ArtanisOperatorThreadStore(makeArtanisDatabaseForEnv(bindings)))
     const awarenessReaders = dependencies.awarenessReaders?.(env) ?? {}
 
     return Effect.gen(function* () {

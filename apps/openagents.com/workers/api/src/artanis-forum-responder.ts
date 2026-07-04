@@ -1,6 +1,11 @@
 import { Effect, Schema as S } from 'effect'
 
 import { artanisMindComplete } from './artanis-mind'
+import {
+  artanisAuthorityDb,
+  mirrorArtanisRows,
+  type ArtanisDatabase,
+} from './artanis-domain-store'
 import type {
   InferenceAdapterError,
   InferenceRequest,
@@ -145,10 +150,10 @@ const completeResponderMind = async (
 }
 
 const readScanCursor = async (
-  db: D1Database,
+  db: ArtanisDatabase,
   nowIso: string,
 ): Promise<{ cursorIso: string; responsesToday: number }> => {
-  const row = (await db
+  const row = (await artanisAuthorityDb(db)
     .prepare(
       'SELECT scan_cursor_iso, responses_today, responses_day FROM artanis_responder_state WHERE id = 1',
     )
@@ -157,13 +162,14 @@ const readScanCursor = async (
     | null
 
   if (row === null) {
-    await db
+    await artanisAuthorityDb(db)
       .prepare(
         `INSERT INTO artanis_responder_state (id, scan_cursor_iso, responses_today, responses_day, updated_at)
          VALUES (1, ?, 0, ?, ?)`,
       )
       .bind(nowIso, nowIso.slice(0, 10), nowIso)
       .run()
+    await mirrorArtanisRows(db, 'artanis_responder_state', 'id', [1])
     return { cursorIso: nowIso, responsesToday: 0 }
   }
 
@@ -173,11 +179,11 @@ const readScanCursor = async (
 }
 
 const readCandidates = async (
-  db: D1Database,
+  db: ArtanisDatabase,
   sinceIso: string,
   artanisActorRefs: ReadonlyArray<string>,
 ): Promise<ReadonlyArray<CandidateTopic>> => {
-  const result = await db
+  const result = await artanisAuthorityDb(db)
     .prepare(
       `SELECT t.id AS topic_id, t.first_post_id, t.title, t.actor_ref,
               t.created_at, COALESCE(b.body_text, '') AS body_text
@@ -212,7 +218,7 @@ const readCandidates = async (
 }
 
 export const runArtanisResponderScan = async (
-  db: D1Database,
+  db: ArtanisDatabase,
   deps: Readonly<{
     geminiApiKey: string | null
     gatewayToken?: string | undefined
@@ -281,7 +287,7 @@ export const runArtanisResponderScan = async (
   if ('error' in mindResult) {
     blocked = candidates.length
     for (const candidate of candidates) {
-      await db
+      await artanisAuthorityDb(db)
         .prepare(
           `INSERT INTO artanis_responder_actions
            (id, topic_id, first_post_id, question_class, state, proposal_json, asker_actor_ref, asker_provenance, asked_at, created_at, updated_at)
@@ -317,7 +323,7 @@ export const runArtanisResponderScan = async (
       // Schema-invalid mind output: record blocked with the raw text.
       blocked = candidates.length
       for (const candidate of candidates) {
-        await db
+        await artanisAuthorityDb(db)
           .prepare(
             `INSERT INTO artanis_responder_actions
              (id, topic_id, first_post_id, question_class, state, proposal_json, asker_actor_ref, asker_provenance, asked_at, created_at, updated_at)
@@ -352,7 +358,7 @@ export const runArtanisResponderScan = async (
           verdict.questionClass !== 'not_a_pylon_question' &&
           proposed < maxNew
 
-        await db
+        await artanisAuthorityDb(db)
           .prepare(
             `INSERT INTO artanis_responder_actions
              (id, topic_id, first_post_id, question_class, state, proposal_json, asker_actor_ref, asker_provenance, asked_at, created_at, updated_at)
@@ -388,7 +394,7 @@ export const runArtanisResponderScan = async (
   }
 
   const latestCreatedAt = candidates[candidates.length - 1]!.createdAt
-  await db
+  await artanisAuthorityDb(db)
     .prepare(
       `UPDATE artanis_responder_state
        SET scan_cursor_iso = ?, updated_at = ?
@@ -396,6 +402,16 @@ export const runArtanisResponderScan = async (
     )
     .bind(latestCreatedAt, deps.nowIso)
     .run()
+
+  // KS-8.6 dual-write: converge the tick's touched rows into Postgres
+  // (fail-soft; a mirror failure never fails the scan).
+  await mirrorArtanisRows(
+    db,
+    'artanis_responder_actions',
+    'topic_id',
+    candidates.map(candidate => candidate.topicId),
+  )
+  await mirrorArtanisRows(db, 'artanis_responder_state', 'id', [1])
 
   return {
     blocked,
@@ -408,7 +424,7 @@ export const runArtanisResponderScan = async (
 }
 
 export const runArtanisResponderScanScheduled = (
-  db: D1Database,
+  db: ArtanisDatabase,
   deps: Readonly<{
     enabled: boolean
     geminiApiKey: string | null

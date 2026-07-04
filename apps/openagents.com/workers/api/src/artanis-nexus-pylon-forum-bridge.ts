@@ -11,6 +11,7 @@ import {
   type ArtanisPersistenceError,
   type ArtanisPersistenceWriteReceipt,
 } from './artanis-persistence'
+import { type ArtanisDatabase } from './artanis-domain-store'
 import type {
   PylonV02OmegaReleaseGateProjection,
 } from './pylon-v02-omega-release-gate'
@@ -284,7 +285,7 @@ export const projectArtanisNexusPylonForumBridge = (
 }
 
 export const saveArtanisNexusPylonForumPublicationIntents = (
-  db: D1Database,
+  db: ArtanisDatabase,
   input: Readonly<{
     events: ReadonlyArray<ArtanisNexusPylonForumEventRecord>
     nowIso: string

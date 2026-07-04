@@ -1,6 +1,14 @@
 import { Effect, Schema as S } from 'effect'
 
 import {
+  artanisAuthorityDb,
+  artanisRead,
+  mirrorArtanisRows,
+  type ArtanisDatabase,
+  type ArtanisDomainRow,
+  type ArtanisDomainTable,
+} from './artanis-domain-store'
+import {
   ARTANIS_LOOP_READ_ONLY_AUTHORITY,
   ArtanisLoopLedgerRecord,
   ArtanisLoopTickRecord,
@@ -122,7 +130,7 @@ type PersistableArtanisRecord =
 
 type PersistenceTableSpec = Readonly<{
   kind: ArtanisPersistenceRecordKind
-  tableName: string
+  tableName: ArtanisDomainTable
 }>
 
 type PersistencePayload = Readonly<{
@@ -246,17 +254,29 @@ const rowToStored = (
     updatedAtIso: row.updated_at,
   })
 
-const readByIdempotencyKey = (
-  db: D1Database,
-  spec: PersistenceTableSpec,
-  idempotencyKey: string,
-): Effect.Effect<ArtanisPersistenceStoredRow | null, ArtanisPersistenceError> =>
-  storageEffect(
-    `read ${spec.kind} by idempotency key`,
-    () =>
-      db
-        .prepare(
-          `SELECT agent_id,
+/**
+ * Map a seam-level row (Postgres read path; carries the full registry
+ * column set) onto the subset the D1 reads select, so both engines yield
+ * byte-identical `ArtanisPersistenceStoredRow`s in compare mode.
+ */
+const domainRowToPersistenceRow = (row: ArtanisDomainRow): PersistenceRow => ({
+  agent_id: String(row['agent_id']),
+  closed_at: row['closed_at'] === null ? null : String(row['closed_at']),
+  closeout_json:
+    row['closeout_json'] === null ? null : String(row['closeout_json']),
+  content_hash: String(row['content_hash']),
+  created_at: String(row['created_at']),
+  idempotency_key: String(row['idempotency_key']),
+  parent_ref: row['parent_ref'] === null ? null : String(row['parent_ref']),
+  public_projection_json: String(row['public_projection_json']),
+  record_json: String(row['record_json']),
+  record_ref: String(row['record_ref']),
+  scope_ref: row['scope_ref'] === null ? null : String(row['scope_ref']),
+  state: String(row['state']),
+  updated_at: String(row['updated_at']),
+})
+
+const PERSISTENCE_READ_COLUMNS = `agent_id,
                   closed_at,
                   closeout_json,
                   content_hash,
@@ -268,46 +288,70 @@ const readByIdempotencyKey = (
                   record_ref,
                   scope_ref,
                   state,
-                  updated_at
+                  updated_at`
+
+const readByKeyColumn = (
+  db: ArtanisDatabase,
+  spec: PersistenceTableSpec,
+  keyColumn: 'idempotency_key' | 'record_ref',
+  keyValue: string,
+): Effect.Effect<ArtanisPersistenceStoredRow | null, ArtanisPersistenceError> =>
+  storageEffect(
+    `read ${spec.kind} by ${keyColumn === 'record_ref' ? 'record ref' : 'idempotency key'}`,
+    () =>
+      artanisRead(
+        db,
+        `${spec.tableName}.read_by_${keyColumn}`,
+        [keyValue],
+        () =>
+          artanisAuthorityDb(db)
+            .prepare(
+              `SELECT ${PERSISTENCE_READ_COLUMNS}
              FROM ${spec.tableName}
-            WHERE idempotency_key = ?`,
-        )
-        .bind(idempotencyKey)
-        .first<PersistenceRow>(),
+            WHERE ${keyColumn} = ?`,
+            )
+            .bind(keyValue)
+            .first<PersistenceRow>(),
+        async postgres => {
+          const rows = await postgres.selectRowsByKey(
+            spec.tableName,
+            keyColumn,
+            [keyValue],
+          )
+          const row = rows[0]
+          return row === undefined ? null : domainRowToPersistenceRow(row)
+        },
+      ),
   ).pipe(
     Effect.map(row => row === null ? null : rowToStored(spec, row)),
   )
 
+const readByIdempotencyKey = (
+  db: ArtanisDatabase,
+  spec: PersistenceTableSpec,
+  idempotencyKey: string,
+): Effect.Effect<ArtanisPersistenceStoredRow | null, ArtanisPersistenceError> =>
+  readByKeyColumn(db, spec, 'idempotency_key', idempotencyKey)
+
 const readByRecordRef = (
-  db: D1Database,
+  db: ArtanisDatabase,
   spec: PersistenceTableSpec,
   recordRef: string,
 ): Effect.Effect<ArtanisPersistenceStoredRow | null, ArtanisPersistenceError> =>
-  storageEffect(
-    `read ${spec.kind} by record ref`,
-    () =>
-      db
-        .prepare(
-          `SELECT agent_id,
-                  closed_at,
-                  closeout_json,
-                  content_hash,
-                  created_at,
-                  idempotency_key,
-                  parent_ref,
-                  public_projection_json,
-                  record_json,
-                  record_ref,
-                  scope_ref,
-                  state,
-                  updated_at
-             FROM ${spec.tableName}
-            WHERE record_ref = ?`,
-        )
-        .bind(recordRef)
-        .first<PersistenceRow>(),
-  ).pipe(
-    Effect.map(row => row === null ? null : rowToStored(spec, row)),
+  readByKeyColumn(db, spec, 'record_ref', recordRef)
+
+/**
+ * KS-8.6 dual-write: converge the resolved D1 row into Postgres after an
+ * authoritative write. `mirrorArtanisRows` never throws (fail-soft — the
+ * 2d46d808 precedent holds through the seam), so this cannot fail a tick.
+ */
+const mirrorPersistedRecord = (
+  db: ArtanisDatabase,
+  spec: PersistenceTableSpec,
+  recordRef: string,
+): Effect.Effect<void> =>
+  Effect.promise(() =>
+    mirrorArtanisRows(db, spec.tableName, 'record_ref', [recordRef]),
   )
 
 const insertPayload = (
@@ -384,7 +428,7 @@ const writeReceipt = (
   })
 
 const persistPayload = (
-  db: D1Database,
+  db: ArtanisDatabase,
   spec: PersistenceTableSpec,
   payload: PersistencePayload,
 ): Effect.Effect<ArtanisPersistenceWriteReceipt, ArtanisPersistenceError> =>
@@ -436,13 +480,14 @@ const persistPayload = (
     }
 
     yield* insertPayload(
-      db,
+      artanisAuthorityDb(db),
       spec,
       payload,
       recordJson,
       projectionJson,
       contentHash,
     )
+    yield* mirrorPersistedRecord(db, spec, payload.recordRef)
 
     return writeReceipt(spec.kind, payload.recordRef, payload.publicProjection, {
       closedAtIso: null,
@@ -564,7 +609,7 @@ const loopTickProjection = (
   )
 
 export const saveArtanisRuntimeSnapshot = (
-  db: D1Database,
+  db: ArtanisDatabase,
   record: ArtanisRuntimeRecord,
   idempotencyKey: string,
   nowIso: string,
@@ -592,7 +637,7 @@ export const saveArtanisRuntimeSnapshot = (
   })
 
 export const saveArtanisLoopRecord = (
-  db: D1Database,
+  db: ArtanisDatabase,
   record: ArtanisLoopRecord,
   idempotencyKey: string,
   nowIso: string,
@@ -632,7 +677,7 @@ export const saveArtanisLoopRecord = (
   })
 
 export const saveArtanisLoopTick = (
-  db: D1Database,
+  db: ArtanisDatabase,
   record: ArtanisLoopTickRecord,
   nowIso: string,
 ): Effect.Effect<ArtanisPersistenceWriteReceipt, ArtanisPersistenceError> =>
@@ -659,7 +704,7 @@ export const saveArtanisLoopTick = (
   })
 
 export const saveArtanisApprovalGate = (
-  db: D1Database,
+  db: ArtanisDatabase,
   record: ArtanisApprovalGateRecord,
   nowIso: string,
 ): Effect.Effect<ArtanisPersistenceWriteReceipt, ArtanisPersistenceError> =>
@@ -697,7 +742,7 @@ export const saveArtanisApprovalGate = (
   })
 
 export const saveArtanisHealthSnapshot = (
-  db: D1Database,
+  db: ArtanisDatabase,
   record: ArtanisHealthSnapshotRecord,
   nowIso: string,
 ): Effect.Effect<ArtanisPersistenceWriteReceipt, ArtanisPersistenceError> =>
@@ -728,7 +773,7 @@ export const saveArtanisHealthSnapshot = (
   })
 
 export const saveArtanisWorkRoutingProposal = (
-  db: D1Database,
+  db: ArtanisDatabase,
   record: ArtanisWorkRoutingProposalRecord,
   nowIso: string,
 ): Effect.Effect<ArtanisPersistenceWriteReceipt, ArtanisPersistenceError> =>
@@ -768,7 +813,7 @@ export const saveArtanisWorkRoutingProposal = (
   })
 
 export const saveArtanisForumPublicationIntent = (
-  db: D1Database,
+  db: ArtanisDatabase,
   record: ArtanisForumPublicationIntentRecord,
   nowIso: string,
 ): Effect.Effect<ArtanisPersistenceWriteReceipt, ArtanisPersistenceError> =>
@@ -795,7 +840,7 @@ export const saveArtanisForumPublicationIntent = (
   })
 
 export const saveArtanisNexusPylonAdapterDispatch = (
-  db: D1Database,
+  db: ArtanisDatabase,
   record: ArtanisNexusPylonDispatchRecord,
   nowIso: string,
 ): Effect.Effect<ArtanisPersistenceWriteReceipt, ArtanisPersistenceError> =>
@@ -859,7 +904,7 @@ export const saveArtanisNexusPylonAdapterDispatch = (
   })
 
 export const markArtanisForumPublicationIntentDelivered = (
-  db: D1Database,
+  db: ArtanisDatabase,
   intentRef: string,
   input: Readonly<{
     deliveredAtIso: string
@@ -914,7 +959,7 @@ export const markArtanisForumPublicationIntentDelivered = (
     yield* storageEffect(
       'mark Artanis Forum publication delivered',
       () =>
-        db
+        artanisAuthorityDb(db)
           .prepare(
             `UPDATE ${spec.tableName}
                 SET state = ?,
@@ -936,6 +981,7 @@ export const markArtanisForumPublicationIntentDelivered = (
           )
           .run(),
     )
+    yield* mirrorPersistedRecord(db, spec, record.intentRef)
 
     const updated = yield* readByRecordRef(db, spec, intentRef)
 
@@ -950,49 +996,53 @@ export const markArtanisForumPublicationIntentDelivered = (
   })
 
 export const readArtanisPersistedRecord = (
-  db: D1Database,
+  db: ArtanisDatabase,
   kind: ArtanisPersistenceRecordKind,
   recordRef: string,
 ): Effect.Effect<ArtanisPersistenceStoredRow | null, ArtanisPersistenceError> =>
   readByRecordRef(db, tableSpecs[kind], recordRef)
 
 export const readLatestArtanisPersistedRows = (
-  db: D1Database,
+  db: ArtanisDatabase,
   kind: ArtanisPersistenceRecordKind,
   limit: number,
 ): Effect.Effect<ReadonlyArray<ArtanisPersistenceStoredRow>, ArtanisPersistenceError> =>
   storageEffect(
     `read latest ${kind}`,
-    () =>
-      db
-        .prepare(
-          `SELECT agent_id,
-                  closed_at,
-                  closeout_json,
-                  content_hash,
-                  created_at,
-                  idempotency_key,
-                  parent_ref,
-                  public_projection_json,
-                  record_json,
-                  record_ref,
-                  scope_ref,
-                  state,
-                  updated_at
-             FROM ${tableSpecs[kind].tableName}
+    () => {
+      const spec = tableSpecs[kind]
+      const boundedLimit = Math.max(1, Math.min(50, Math.trunc(limit)))
+      return artanisRead(
+        db,
+        `${spec.tableName}.read_latest`,
+        [],
+        async () => {
+          const result = await artanisAuthorityDb(db)
+            .prepare(
+              `SELECT ${PERSISTENCE_READ_COLUMNS}
+             FROM ${spec.tableName}
             ORDER BY updated_at DESC
             LIMIT ?`,
-        )
-        .bind(Math.max(1, Math.min(50, Math.trunc(limit))))
-        .all<PersistenceRow>(),
+            )
+            .bind(boundedLimit)
+            .all<PersistenceRow>()
+          return result.results ?? []
+        },
+        async postgres => {
+          const rows = await postgres.selectLatestRows(
+            spec.tableName,
+            boundedLimit,
+          )
+          return rows.map(domainRowToPersistenceRow)
+        },
+      )
+    },
   ).pipe(
-    Effect.map(result =>
-      (result.results ?? []).map(row => rowToStored(tableSpecs[kind], row)),
-    ),
+    Effect.map(rows => rows.map(row => rowToStored(tableSpecs[kind], row))),
   )
 
 export const closeArtanisPersistedLoopTick = (
-  db: D1Database,
+  db: ArtanisDatabase,
   tickRef: string,
   input: Readonly<{
     closedAtIso: string
@@ -1069,7 +1119,7 @@ export const closeArtanisPersistedLoopTick = (
     yield* storageEffect(
       'close Artanis loop tick',
       () =>
-        db
+        artanisAuthorityDb(db)
           .prepare(
             `UPDATE ${spec.tableName}
                 SET state = ?,
@@ -1094,6 +1144,7 @@ export const closeArtanisPersistedLoopTick = (
           )
           .run(),
     )
+    yield* mirrorPersistedRecord(db, spec, tickRef)
 
     return writeReceipt(spec.kind, existing.recordRef, projection, {
       closedAtIso: input.closedAtIso,

@@ -4,6 +4,11 @@ import {
   ArtanisMindEscalatedMaxOutputTokens,
   artanisMindComplete,
 } from './artanis-mind'
+import {
+  artanisAuthorityDb,
+  mirrorArtanisRows,
+  type ArtanisDatabase,
+} from './artanis-domain-store'
 import { artanisDiagnosisGroundingPolicy } from './artanis-diagnosis-grounding-gate'
 import { artanisOperationalGrounding } from './artanis-operational-grounding'
 import { recordArtanisResponderComposeTick } from './artanis-responder-ticks'
@@ -117,7 +122,7 @@ const groundingPromises = () => {
 }
 
 export const runArtanisComposerTick = async (
-  db: D1Database,
+  database: ArtanisDatabase,
   deps: Readonly<{
     geminiApiKey: string | null
     gatewayToken?: string | undefined
@@ -127,6 +132,9 @@ export const runArtanisComposerTick = async (
     nowIso: string
   }>,
 ): Promise<ComposerTickOutcome> => {
+  // The authoritative D1 handle; every write below mirrors to Postgres
+  // through the KS-8.6 seam before the tick returns (fail-soft).
+  const db = artanisAuthorityDb(database)
   if (deps.geminiApiKey === null || deps.geminiApiKey === '') {
     return {
       blocked: 0,
@@ -353,6 +361,17 @@ export const runArtanisComposerTick = async (
     }
   }
 
+  // KS-8.6 dual-write: converge every action row this tick touched (and
+  // the response counter) into Postgres. Never throws — a mirror failure
+  // never fails the compose tick.
+  await mirrorArtanisRows(
+    database,
+    'artanis_responder_actions',
+    'topic_id',
+    proposals.map(proposal => String(proposal.topic_id)),
+  )
+  await mirrorArtanisRows(database, 'artanis_responder_state', 'id', [1])
+
   return {
     blocked,
     considered: proposals.length,
@@ -363,7 +382,7 @@ export const runArtanisComposerTick = async (
 }
 
 export const runArtanisComposerScheduled = (
-  db: D1Database,
+  db: ArtanisDatabase,
   deps: Readonly<{
     enabled: boolean
     geminiApiKey: string | null
