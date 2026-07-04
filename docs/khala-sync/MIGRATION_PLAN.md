@@ -419,8 +419,8 @@ stay owner-private: the Postgres twin carries visibility/owner/consent
 columns verbatim, no new read path is exposed, and migration
 diagnostics reference row keys only — never trajectory content.
 
-**KS-8.5 remainder status (2026-07-04, #8334):** first machinery slice
-LANDED — Postgres schema (`khala-sync-server` migration
+**KS-8.5 remainder status (2026-07-04, #8334):** COMPLETE for the
+follow-up remainder lane — Postgres schema (`khala-sync-server` migration
 `0012_agent_runtime_remainder.sql`) creates twins for
 `agent_profiles`, `agent_credentials`, `agent_owner_claims`,
 `agent_owner_x_claim_challenges`, `agent_proposals`,
@@ -450,10 +450,18 @@ OpenAuth credential linking, credential reissue, owner-claim approval, X
 claim verification, proposal submission, proposal transition, acceptance
 job enqueue/lease/ack, or acceptance verdict backfill. Acceptance job
 mirror deletes delivered jobs when the D1 queue deletes them so the
-Postgres twin does not retain stale queue rows. Live backfill/verify and
-read-back evidence remain open on
-[#8334](https://github.com/OpenAgentsInc/openagents/issues/8334);
-destructive D1 retirement is deferred to KS-8.19
+Postgres twin does not retain stale queue rows. Production evidence for
+[#8334](https://github.com/OpenAgentsInc/openagents/issues/8334) was recorded
+on 2026-07-04 after deploying Worker version
+`afaf8272-a654-4dd6-ba1c-69418f12dcae`: `deploy:safe` completed, the
+served document and concrete `/assets/index-DWcdsn2N.js` asset both returned
+HTTP 200, `/api/internal/khala-sync/db-smoke` returned `ok: true` with 12
+Khala Sync tables, the production backfill touched 416 `agent_profiles`,
+418 `agent_credentials`, 14 `agent_owner_claims`, 5
+`agent_owner_x_claim_challenges`, and 1 `agent_proposals` row, and
+`--verify --verify-newest 50` reported clean counts/hashes for all eight
+tables with `event_ledger_entries_next` absent-or-empty. Destructive D1
+retirement is deferred to KS-8.19
 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330), not a
 per-domain soak/drop follow-up. Prod cutover procedure:
 [`RUNBOOK.md`](./RUNBOOK.md) "Agent runtime metadata domain cutover" and

@@ -550,8 +550,23 @@ and never fail the request. Credential diagnostics stay key-only in logs:
 token hashes are copied only as private row data and are not printed.
 Delivered acceptance-job acknowledgements delete the mirrored Postgres queue
 row after the D1 queue deletes it, while retryable acknowledgements mirror
-the returned-pending row. The remaining #8334 work is live
-backfill/verify/read-back evidence.
+the returned-pending row.
+
+Live closeout evidence (2026-07-04, #8334): Worker deploy `deploy:safe`
+completed and produced production version
+`afaf8272-a654-4dd6-ba1c-69418f12dcae`; `curl -fsSI
+https://openagents.com/` returned HTTP 200; the served concrete asset
+`/assets/index-DWcdsn2N.js` returned HTTP 200; the deployed Worker
+Hyperdrive smoke `/api/internal/khala-sync/db-smoke` returned `ok: true`
+with 12 Khala Sync tables; production backfill touched 416
+`agent_profiles`, 418 `agent_credentials`, 14 `agent_owner_claims`, 5
+`agent_owner_x_claim_challenges`, and 1 `agent_proposals` row, while
+`event_ledger_entries`, `khala_acceptance_jobs`, and
+`khala_acceptance_verdicts` were empty; `--verify --verify-newest 50`
+reported clean counts/hashes for all eight tables and
+`event_ledger_entries_next` absent-or-empty. Do not paste private direct
+database URLs, credential token hashes, payloads, or bearer tokens into this
+evidence trail.
 
 This lane does **not** drop D1 tables. Runtime write-authority movement,
 read cutover, flag deletion, and destructive retirement remain explicit

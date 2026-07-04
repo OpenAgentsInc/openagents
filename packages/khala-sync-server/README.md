@@ -634,4 +634,7 @@ direct Postgres URL for the destination; never run them through Hyperdrive.
   checks exact counts, scalar tallies, newest row hashes, and per-owner
   event-ledger ordering density, and treats `event_ledger_entries_next` as an
   absent-or-empty D1 rewrite artifact. Output is public-safe: credential
-  equality is row-key/sha256 only, never raw `token_hash`.
+  equality is row-key/sha256 only, never raw `token_hash`. Production
+  closeout on 2026-07-04 verified clean D1/Postgres parity for all eight
+  #8334 tables after a restart backfill and Worker deploy
+  `afaf8272-a654-4dd6-ba1c-69418f12dcae`.
