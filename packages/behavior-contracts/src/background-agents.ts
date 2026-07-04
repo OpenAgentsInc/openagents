@@ -399,6 +399,51 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
     {
       authorityBoundary:
+        "This contract binds the background-agent bot integration template for Forum-triggered runs only. It does not authorize arbitrary Forum writes, raw Forum body payloads in model-visible trigger context, or non-Forum provider callbacks beyond their own future source-specific verification.",
+      blockerRefs: [],
+      contractId: "background_agents.integrations.forum_trigger_callback.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8208",
+        "https://github.com/OpenAgentsInc/openagents/issues/8218",
+        "INVARIANTS.md",
+        "docs/fable/ROADMAP_BACKGROUND_AGENTS.md",
+        "packages/agent-runtime-schema/src/webhooks.test.ts",
+        "apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts",
+      ],
+      oracles: [
+        {
+          description:
+            "Forum webhook normalization emits only bounded event, actor, forum, topic, post, source URL, and source-ref fields that trigger conditions can match without exposing raw Forum body text.",
+          id: "background_agents.integrations.forum_event_normalization",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "packages/agent-runtime-schema/src/webhooks.test.ts",
+        },
+        {
+          description:
+            "The Forum webhook route verifies the signed source event before dispatch, uses the shared bot-integration trigger template, stores a Forum completion callback descriptor on the run trigger payload, and the completion route posts only through the stored run callback plus Forum writer policy.",
+          id: "background_agents.integrations.forum_dispatch_callback",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts",
+        },
+      ],
+      productArea: "background agent integrations",
+      source: {
+        channel: "issue_list",
+        statedBy: "owner",
+        statedOn: "2026-07-03",
+      },
+      state: "enforced",
+      statement:
+        "Forum-triggered background-agent runs follow one integration template: signed source event, verified Forum source post, bounded normalization, owner-scoped definition dispatch, and a completion callback that can post only back to the stored source Forum thread through Forum write authority.",
+      surface: "openagents.com-worker",
+      verification:
+        "BA-G1 is enforced by agent-runtime-schema Forum webhook normalization tests and openagents.com Worker Forum webhook/completion route tests in the normal bun test sweep.",
+    },
+    {
+      authorityBoundary:
         "This contract binds harness portability for unchanged background-agent definitions. It does not claim semantic parity between all provider outputs beyond the parity fixture's asserted behavior.",
       blockerRefs: [pendingOracleBlocker("ba_a4")],
       contractId: "background_agents.definitions.harness_swap.v1",
@@ -475,5 +520,5 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-03.7",
+  version: "2026-07-03.8",
 }

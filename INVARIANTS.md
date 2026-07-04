@@ -211,6 +211,19 @@ More specific invariant ledgers apply inside imported apps and packages.
   Dispatch remains owner-scoped: matching trigger rows read the definition
   with the row's `ownerAgentUserId` before using the shared definition-run
   dispatch helper.
+- Forum-triggered definition runs use the same bot-integration template, with
+  source-specific authority. Forum ingress is owned by
+  `/v1/agent-definitions/webhooks/forum`, verifies
+  `x-openagents-signature-256` before parsing, verifies that the bounded Forum
+  event names an existing readable source post/topic/forum, normalizes only
+  public-safe Forum refs through
+  `@openagentsinc/agent-runtime-schema/webhooks`, and dispatches matching
+  `inbound_webhook` rows through the same owner-scoped definition-run helper.
+  The Forum completion callback route may not accept an arbitrary topic/post
+  target from the caller: it reads the stored definition-run trigger payload,
+  decodes the Forum callback descriptor written at dispatch time, and posts
+  only back to that source thread through Forum writer context, topic/forum
+  lock checks, idempotency, and write-policy enforcement.
 - Per-definition run history and manual run-now endpoints remain
   registered-agent, owner-scoped views over stored definition-run rows.
   `GET /v1/agent-definitions/:id/runs` must first read the definition for the
@@ -236,8 +249,9 @@ More specific invariant ledgers apply inside imported apps and packages.
   singleton tick semantics, cap handling, owner scope, and next-run advancement,
   and
   `apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts`
-  for signature-gated GitHub ingress, typed condition matching, and
-  owner-scoped dispatch, and
+  for signature-gated GitHub ingress, typed condition matching,
+  owner-scoped dispatch, Forum-triggered runs, and Forum completion callbacks,
+  and
   `apps/openagents.com/workers/api/src/agent-definition-run-routes.test.ts` for
   dispatch budget refusals, capped assignment timeouts, owner-scoped run
   history, receipt refs, manual run-now, and ref-only SCM auth broker

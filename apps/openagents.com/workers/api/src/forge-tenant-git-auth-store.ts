@@ -15,6 +15,7 @@ import {
   type AgentDefinitionToolAuthorityDecision,
 } from '@openagentsinc/agent-runtime-schema'
 
+import { parseJsonStringArray } from './json-boundary'
 import { randomUuid } from './runtime-primitives'
 
 export const FORGE_GIT_TOKEN_PREFIX = 'oa_forge_git_'
@@ -132,18 +133,6 @@ const bytesToHex = (bytes: Uint8Array): string =>
 
 const jsonArray = (values: ReadonlyArray<string>): string =>
   JSON.stringify([...values])
-
-const parseJsonStringArray = (value: string | undefined): ReadonlyArray<string> => {
-  if (value === undefined) {
-    return []
-  }
-
-  const parsed = JSON.parse(value) as unknown
-
-  return Array.isArray(parsed)
-    ? parsed.filter((item): item is string => typeof item === 'string')
-    : []
-}
 
 const rowOrFail = <T>(row: T | null, label: string): T => {
   if (row === null) {

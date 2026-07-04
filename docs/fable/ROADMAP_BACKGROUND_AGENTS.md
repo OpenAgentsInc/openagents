@@ -349,6 +349,16 @@ behavior contract is enforced by orchestration-store and Khala planner tests.
 
 ### WS-G — Client surfaces (harvest H6 + H8; definitions audit §4.5)
 
+BA-G1 status (2026-07-03): the openagents.com Worker now has a reusable
+bot-integration dispatch template shared by GitHub and Forum ingress. Forum
+events enter through signed source webhooks, verify the source Forum post/topic,
+normalize into bounded public refs, dispatch owner-scoped definition runs, and
+store a Forum completion callback descriptor on the run trigger payload.
+Completion callbacks read the stored run callback and post only back to the
+source Forum thread through Forum writer context and write policy. The BA-G1
+behavior contract is
+`background_agents.integrations.forum_trigger_callback.v1`.
+
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-G1 | Integration template + Forum-triggered runs: external event → verify → normalize → definition run → completion callback posts the result back to the source thread; Forum first (Forum stays posting/moderation authority) | BA-A2, BA-B3 | MED | [#8208](https://github.com/OpenAgentsInc/openagents/issues/8208) |
@@ -381,6 +391,7 @@ the oracle rather than leaving the rule as INVARIANTS prose:
   (BA-D3's test *is* the oracle)
 - BA-A4 → `background_agents.definitions.harness_swap.v1` (the parity
   fixture is the oracle)
+- BA-G1 → `background_agents.integrations.forum_trigger_callback.v1`
 - BA-G4 → an indicator-truthfulness UX contract for the Agents panel's
   run-status indicators, written **before** the panel ships (the
   `khala_code.chat.sidebar_spinner_streaming_only.v1` bug class)

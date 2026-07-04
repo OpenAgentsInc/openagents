@@ -9,7 +9,7 @@ Issue #8218 registers the headline invariants from
 oracles land. Entries remain `pending` until the owning task adds its oracle
 test and flips that exact contract to `enforced`.
 
-Registry version: `2026-07-03.7` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-03.8` (schema `openagents.behavior_contracts.v1`)
 
 ### `background_agents.dispatch.budget_caps_enforced.v1` - ENFORCED
 
@@ -94,6 +94,17 @@ Registry version: `2026-07-03.7` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `background_agents.warm_dispatch.prebuilt_baseline_refresh_metrics` (bun-test, unit): A requested commit that is newer than the cached prebuild before the refresh cadence records an honest miss and falls back to normal materialization, then a due cadence refresh advances to the newest upstream baseline. - `apps/pylon/tests/workspace-worktree.test.ts`
 - **Verification:** BA-E2 is enforced by the Pylon workspace-worktree test suite in the normal Pylon bun test sweep.
 - **Authority boundary:** This contract binds local Pylon prebuilt baseline cache selection, refresh, and metrics only. It does not claim post-completion exact prepared snapshots or Khala Code warm-on-intent dispatch.
+
+### `background_agents.integrations.forum_trigger_callback.v1` - ENFORCED
+
+- **Surface:** openagents.com-worker (background agent integrations)
+- **Stated by:** owner via issue_list on 2026-07-03
+- **Statement:** Forum-triggered background-agent runs follow one integration template: signed source event, verified Forum source post, bounded normalization, owner-scoped definition dispatch, and a completion callback that can post only back to the stored source Forum thread through Forum write authority.
+- **Enforcement tier:** test-sweep
+- **Oracle** `background_agents.integrations.forum_event_normalization` (bun-test, unit): Forum webhook normalization emits only bounded event, actor, forum, topic, post, source URL, and source-ref fields that trigger conditions can match without exposing raw Forum body text. - `packages/agent-runtime-schema/src/webhooks.test.ts`
+- **Oracle** `background_agents.integrations.forum_dispatch_callback` (bun-test, unit): The Forum webhook route verifies the signed source event before dispatch, uses the shared bot-integration trigger template, stores a Forum completion callback descriptor on the run trigger payload, and the completion route posts only through the stored run callback plus Forum writer policy. - `apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts`
+- **Verification:** BA-G1 is enforced by agent-runtime-schema Forum webhook normalization tests and openagents.com Worker Forum webhook/completion route tests in the normal bun test sweep.
+- **Authority boundary:** This contract binds the background-agent bot integration template for Forum-triggered runs only. It does not authorize arbitrary Forum writes, raw Forum body payloads in model-visible trigger context, or non-Forum provider callbacks beyond their own future source-specific verification.
 
 ### `background_agents.definitions.harness_swap.v1` - PENDING
 

@@ -68,7 +68,15 @@ import {
   handleAgentDefinitionsApi,
   makeD1AgentDefinitionStore,
 } from './agent-definition-routes'
-import { handleAgentDefinitionWebhookRequest } from './agent-definition-webhook-routes'
+import {
+  makeD1AgentDefinitionForumCompletionForumStore,
+} from './agent-definition-bot-integration'
+import {
+  handleAgentDefinitionForumCompletionRequest,
+  handleAgentDefinitionForumWebhookRequest,
+  handleAgentDefinitionWebhookRequest,
+  verifyAgentDefinitionForumEventSource,
+} from './agent-definition-webhook-routes'
 import {
   handleAgentDefinitionRunRequest,
   makeD1AgentDefinitionRunStore,
@@ -12596,6 +12604,53 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           triggerStore: makeD1AgentDefinitionTriggerStore(openAgentsDatabase(env)),
         }),
       ),
+  },
+  {
+    path: '/v1/agent-definitions/webhooks/forum',
+    handler: (request, env) => {
+      const db = openAgentsDatabase(env)
+      const forum = makeD1AgentDefinitionForumCompletionForumStore(db)
+
+      return handleAgentDefinitionForumWebhookRequest(request, {
+        definitionStore: makeD1AgentDefinitionStore(db),
+        dispatchDependencies: {
+          durableStreamNamespace:
+            isInferenceDurableStreamEnabled(
+              env.INFERENCE_DURABLE_STREAM_ENABLED,
+            ) && env.INFERENCE_DURABLE_STREAM !== undefined
+              ? (env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
+              : undefined,
+          forgeGitAuthStore: makeD1ForgeTenantGitAuthStore(db),
+          forgeStore: makeD1ForgeCoordinationStore(db),
+          pylonStore: makeD1PylonApiStore(db),
+          runStore: makeD1AgentDefinitionRunStore(db),
+        },
+        forumEventSourceVerifier: event =>
+          verifyAgentDefinitionForumEventSource(forum, event),
+        forumSecret: (
+          env as Env & {
+            AGENT_DEFINITION_FORUM_WEBHOOK_SECRET?: string
+          }
+        ).AGENT_DEFINITION_FORUM_WEBHOOK_SECRET,
+        triggerStore: makeD1AgentDefinitionTriggerStore(db),
+      })
+    },
+  },
+  {
+    path: '/v1/agent-definitions/webhooks/forum/completions',
+    handler: (request, env) => {
+      const db = openAgentsDatabase(env)
+
+      return handleAgentDefinitionForumCompletionRequest(request, {
+        forum: makeD1AgentDefinitionForumCompletionForumStore(db),
+        forumSecret: (
+          env as Env & {
+            AGENT_DEFINITION_FORUM_WEBHOOK_SECRET?: string
+          }
+        ).AGENT_DEFINITION_FORUM_WEBHOOK_SECRET,
+        runStore: makeD1AgentDefinitionRunStore(db),
+      })
+    },
   },
   {
     path: '/api/agents/me/balance',

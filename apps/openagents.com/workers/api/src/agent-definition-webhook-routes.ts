@@ -1,55 +1,50 @@
 import {
-  agentDefinitionWebhookConditionsMatch,
+  normalizeForumWebhookEvent,
   normalizeGitHubWebhookEvent,
   type AgentDefinitionWebhookNormalizedEvent,
 } from '@openagentsinc/agent-runtime-schema/webhooks'
-import type { AgentDefinition } from '@openagentsinc/agent-runtime-schema'
+import { Effect, Schema as S } from 'effect'
 
-import type { AgentDefinitionStore } from './agent-definition-routes'
 import {
-  type AgentDefinitionRunDispatchDependencies,
-  type AgentDefinitionRunDispatchOutcome,
-  dispatchAgentDefinitionRun,
-} from './agent-definition-run-routes'
-import {
-  type AgentDefinitionTriggerStore,
-  type DueAgentDefinitionTriggerRecord,
-} from './agent-definition-trigger-store'
+  AGENT_DEFINITION_BOT_INTEGRATION_RESULT_SCHEMA,
+  AGENT_DEFINITION_FORUM_COMPLETION_RESULT_SCHEMA,
+  AgentDefinitionForumCompletionRequest,
+  type AgentDefinitionBotIntegrationDependencies,
+  type AgentDefinitionForumCompletionDependencies,
+  type AgentDefinitionForumCompletionForumStore,
+  forumCompletionCallbackForEvent,
+  postAgentDefinitionForumCompletion,
+  runAgentDefinitionBotIntegration,
+} from './agent-definition-bot-integration'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { parseJsonRecord } from './json-boundary'
 import { currentIsoTimestamp } from './runtime-primitives'
 
 const encoder = new TextEncoder()
-const AGENT_DEFINITION_WEBHOOK_RESULT_SCHEMA =
-  'openagents.agent_definition_webhook_ingress.v1' as const
 const GITHUB_WEBHOOK_PATH = '/v1/agent-definitions/webhooks/github'
+const FORUM_WEBHOOK_PATH = '/v1/agent-definitions/webhooks/forum'
+const FORUM_COMPLETION_PATH =
+  '/v1/agent-definitions/webhooks/forum/completions'
 
-type WebhookDispatchDependencies = Omit<
-  AgentDefinitionRunDispatchDependencies,
-  'linkedAgents' | 'nowIso'
->
+export type AgentDefinitionWebhookRouteDependencies =
+  AgentDefinitionBotIntegrationDependencies & Readonly<{
+    githubSecret?: string | undefined
+    nowIso?: (() => string) | undefined
+  }>
 
-type WebhookDispatch = (
-  dependencies: AgentDefinitionRunDispatchDependencies,
-  input: Readonly<{
-    definition: AgentDefinition
-    request: Parameters<typeof dispatchAgentDefinitionRun>[1]['request']
-  }>,
-) => Promise<AgentDefinitionRunDispatchOutcome>
+export type AgentDefinitionForumWebhookRouteDependencies =
+  AgentDefinitionBotIntegrationDependencies & Readonly<{
+    forumEventSourceVerifier: (
+      event: AgentDefinitionWebhookNormalizedEvent,
+    ) => Effect.Effect<boolean, unknown>
+    forumSecret?: string | undefined
+    nowIso?: (() => string) | undefined
+  }>
 
-export type AgentDefinitionWebhookRouteDependencies = Readonly<{
-  definitionStore: Pick<AgentDefinitionStore, 'readDefinition'>
-  dispatchDependencies: WebhookDispatchDependencies
-  dispatchRun?: WebhookDispatch | undefined
-  githubSecret?: string | undefined
-  nowIso?: (() => string) | undefined
-  triggerStore: Pick<
-    AgentDefinitionTriggerStore,
-    | 'listInboundWebhookTriggers'
-    | 'recordTriggerFailure'
-    | 'recordTriggerSuccess'
-  >
-}>
+export type AgentDefinitionForumCompletionRouteDependencies =
+  AgentDefinitionForumCompletionDependencies & Readonly<{
+    forumSecret?: string | undefined
+  }>
 
 const arrayBufferFromBytes = (bytes: Uint8Array): ArrayBuffer =>
   bytes.buffer.slice(
@@ -113,6 +108,25 @@ export const verifyGitHubWebhookSignature = async (
   return timingSafeEqual(supplied, expected)
 }
 
+export const verifyOpenAgentsWebhookSignature = async (
+  input: Readonly<{
+    body: string
+    headers: Headers
+    secret: string
+  }>,
+): Promise<boolean> => {
+  const signature = input.headers.get('x-openagents-signature-256')
+  const supplied = signature?.trim().replace(/^sha256=/iu, '')
+
+  if (supplied === undefined || supplied === '') {
+    return false
+  }
+
+  const expected = await hmacSha256Hex(input.secret, input.body)
+
+  return timingSafeEqual(supplied, expected)
+}
+
 const webhookResponse = (body: unknown, init: ResponseInit = {}) =>
   noStoreJsonResponse(body, init)
 
@@ -134,59 +148,58 @@ const webhookSecretMissing = () =>
     { status: 503 },
   )
 
-const triggerMatches = (
-  trigger: DueAgentDefinitionTriggerRecord,
+const sourceString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
+
+const decodeForumCompletionRequest = (
+  value: unknown,
+): AgentDefinitionForumCompletionRequest | undefined => {
+  try {
+    return S.decodeUnknownSync(AgentDefinitionForumCompletionRequest)(value)
+  } catch {
+    return undefined
+  }
+}
+
+export const verifyAgentDefinitionForumEventSource = (
+  forum: Pick<
+    AgentDefinitionForumCompletionForumStore,
+    'readPostDetail' | 'readSummaryByRef' | 'readTopicById'
+  >,
   event: AgentDefinitionWebhookNormalizedEvent,
-): boolean =>
-  trigger.trigger.kind === 'inbound_webhook' &&
-  trigger.trigger.source === event.source &&
-  agentDefinitionWebhookConditionsMatch(event, trigger.trigger.conditions)
+): Effect.Effect<boolean, unknown> =>
+  Effect.gen(function* () {
+    const callback = forumCompletionCallbackForEvent(event)
 
-const markWebhookFailure = (
-  dependencies: AgentDefinitionWebhookRouteDependencies,
-  trigger: DueAgentDefinitionTriggerRecord,
-  nowIso: string,
-): Promise<boolean> =>
-  dependencies.triggerStore.recordTriggerFailure(
-    trigger.ownerAgentUserId,
-    trigger.triggerRef,
-    nowIso,
-  )
+    if (callback === undefined) {
+      return false
+    }
 
-const markWebhookSuccess = (
-  dependencies: AgentDefinitionWebhookRouteDependencies,
-  trigger: DueAgentDefinitionTriggerRecord,
-  nowIso: string,
-): Promise<boolean> =>
-  dependencies.triggerStore.recordTriggerSuccess(
-    trigger.ownerAgentUserId,
-    trigger.triggerRef,
-    undefined,
-    nowIso,
-  )
+    const post = yield* forum.readPostDetail(callback.sourcePostId)
 
-const dispatchMatchedWebhookTrigger = async (
-  dependencies: AgentDefinitionWebhookRouteDependencies,
-  input: Readonly<{
-    definition: AgentDefinition
-    event: AgentDefinitionWebhookNormalizedEvent
-    nowIso: string
-    trigger: DueAgentDefinitionTriggerRecord
-  }>,
-): Promise<AgentDefinitionRunDispatchOutcome> =>
-  (dependencies.dispatchRun ?? dispatchAgentDefinitionRun)({
-    ...dependencies.dispatchDependencies,
-    linkedAgents: [{ agentUserId: input.trigger.ownerAgentUserId }],
-    nowIso: () => input.nowIso,
-  }, {
-    definition: input.definition,
-    request: {
-      triggerPayload: {
-        ...input.event,
-        triggerRef: input.trigger.triggerRef,
-      },
-      triggerRef: input.trigger.triggerRef,
-    },
+    if (
+      post === null ||
+      post.containingTopicId !== callback.topicId ||
+      post.post.state === 'tombstoned'
+    ) {
+      return false
+    }
+
+    const topic = yield* forum.readTopicById(callback.topicId)
+
+    if (
+      topic === null ||
+      topic.forumId !== callback.forumId ||
+      topic.state === 'archived' ||
+      topic.state === 'hidden' ||
+      topic.state === 'locked'
+    ) {
+      return false
+    }
+
+    const sourceForum = yield* forum.readSummaryByRef(callback.forumId)
+
+    return sourceForum !== null && !sourceForum.locked
   })
 
 export const handleAgentDefinitionWebhookRequest = async (
@@ -238,86 +251,194 @@ export const handleAgentDefinitionWebhookRequest = async (
     return invalidWebhook('GitHub webhook payload could not be normalized.')
   }
 
-  const triggers = await dependencies.triggerStore.listInboundWebhookTriggers(
-    event.source,
-    250,
-  )
-  let dispatched = 0
-  let failed = 0
-  let matched = 0
-  let refused = 0
-  let skipped = 0
-
-  for (const trigger of triggers) {
-    if (!triggerMatches(trigger, event)) {
-      skipped += 1
-      continue
-    }
-
-    matched += 1
-    const definition = await dependencies.definitionStore
-      .readDefinition(trigger.ownerAgentUserId, trigger.definitionId)
-      .catch(() => undefined)
-
-    if (definition === undefined) {
-      failed += 1
-      await markWebhookFailure(dependencies, trigger, nowIso).catch(
-        () => undefined,
-      )
-      continue
-    }
-
-    const dispatch = await dispatchMatchedWebhookTrigger(dependencies, {
-      definition,
-      event,
-      nowIso,
-      trigger,
-    }).catch((): AgentDefinitionRunDispatchOutcome => ({
-      kind: 'storage_error',
-    }))
-
-    if (dispatch.kind === 'dispatched') {
-      const marked = await markWebhookSuccess(
-        dependencies,
-        trigger,
-        nowIso,
-      ).catch(() => false)
-      if (marked) {
-        dispatched += 1
-      } else {
-        failed += 1
-      }
-      continue
-    }
-
-    const marked = await markWebhookFailure(
-      dependencies,
-      trigger,
-      nowIso,
-    ).catch(() => false)
-
-    if (!marked) {
-      failed += 1
-    } else if (dispatch.kind === 'refused') {
-      refused += 1
-    } else {
-      failed += 1
-    }
-  }
+  const result = await runAgentDefinitionBotIntegration(dependencies, {
+    event,
+    nowIso,
+  })
 
   return webhookResponse(
     {
-      schema: AGENT_DEFINITION_WEBHOOK_RESULT_SCHEMA,
-      deliveryId: event.deliveryId,
-      dispatched,
-      eventType: event.eventType,
-      failed,
-      matched,
-      refused,
-      skipped,
-      source: event.source,
-      subjectRef: event.subjectRef,
+      schema: AGENT_DEFINITION_BOT_INTEGRATION_RESULT_SCHEMA,
+      ...result,
     },
     { status: 202 },
   )
 }
+
+export const handleAgentDefinitionForumWebhookRequest = (
+  request: Request,
+  dependencies: AgentDefinitionForumWebhookRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const url = new URL(request.url)
+
+    if (url.pathname !== FORUM_WEBHOOK_PATH) {
+      return webhookResponse({ error: 'not_found' }, { status: 404 })
+    }
+
+    if (request.method !== 'POST') {
+      return methodNotAllowed(['POST'])
+    }
+
+    const secret = dependencies.forumSecret?.trim()
+
+    if (secret === undefined || secret === '') {
+      return webhookSecretMissing()
+    }
+
+    const body = yield* Effect.promise(() => request.text())
+    const authorized = yield* Effect.promise(() =>
+      verifyOpenAgentsWebhookSignature({
+        body,
+        headers: request.headers,
+        secret,
+      }),
+    )
+
+    if (!authorized) {
+      return unauthorizedWebhook()
+    }
+
+    const payload = parseJsonRecord(body)
+    const eventType =
+      request.headers.get('x-openagents-event')?.trim() ??
+      sourceString(payload?.eventType) ??
+      ''
+    const deliveryId =
+      request.headers.get('x-openagents-delivery')?.trim() ??
+      sourceString(payload?.deliveryId) ??
+      ''
+    const nowIso = dependencies.nowIso?.() ?? currentIsoTimestamp()
+    const event =
+      payload === undefined
+        ? undefined
+        : normalizeForumWebhookEvent({
+            deliveryId,
+            eventType,
+            payload,
+            receivedAt: nowIso,
+          })
+
+    if (event === undefined) {
+      return invalidWebhook('Forum event payload could not be normalized.')
+    }
+
+    const completionCallback = forumCompletionCallbackForEvent(event)
+
+    if (completionCallback === undefined) {
+      return invalidWebhook('Forum event does not carry a callback source.')
+    }
+
+    const verified = yield* dependencies.forumEventSourceVerifier(event)
+
+    if (!verified) {
+      return invalidWebhook('Forum source post could not be verified.')
+    }
+
+    const result = yield* Effect.promise(() =>
+      runAgentDefinitionBotIntegration(dependencies, {
+        completionCallback,
+        event,
+        nowIso,
+      }),
+    )
+
+    return webhookResponse(
+      {
+        schema: AGENT_DEFINITION_BOT_INTEGRATION_RESULT_SCHEMA,
+        ...result,
+        completionCallback: {
+          kind: completionCallback.kind,
+          source: completionCallback.source,
+          topicId: completionCallback.topicId,
+        },
+      },
+      { status: 202 },
+    )
+  }).pipe(
+    Effect.catch(() =>
+      Effect.succeed(
+        webhookResponse(
+          { error: 'agent_definition_forum_webhook_failed' },
+          { status: 500 },
+        ),
+      ),
+    ),
+  )
+
+export const handleAgentDefinitionForumCompletionRequest = (
+  request: Request,
+  dependencies: AgentDefinitionForumCompletionRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const url = new URL(request.url)
+
+    if (url.pathname !== FORUM_COMPLETION_PATH) {
+      return webhookResponse({ error: 'not_found' }, { status: 404 })
+    }
+
+    if (request.method !== 'POST') {
+      return methodNotAllowed(['POST'])
+    }
+
+    const secret = dependencies.forumSecret?.trim()
+
+    if (secret === undefined || secret === '') {
+      return webhookSecretMissing()
+    }
+
+    const body = yield* Effect.promise(() => request.text())
+    const authorized = yield* Effect.promise(() =>
+      verifyOpenAgentsWebhookSignature({
+        body,
+        headers: request.headers,
+        secret,
+      }),
+    )
+
+    if (!authorized) {
+      return unauthorizedWebhook()
+    }
+
+    const requestBody = decodeForumCompletionRequest(parseJsonRecord(body))
+
+    if (requestBody === undefined) {
+      return invalidWebhook('Forum completion payload could not be decoded.')
+    }
+
+    const outcome = yield* postAgentDefinitionForumCompletion(
+      dependencies,
+      requestBody,
+    )
+
+    if (outcome.kind === 'invalid') {
+      return webhookResponse(
+        {
+          error: 'invalid_agent_definition_forum_completion',
+          reason: outcome.reason,
+        },
+        { status: outcome.statusCode },
+      )
+    }
+
+    return webhookResponse(
+      {
+        schema: AGENT_DEFINITION_FORUM_COMPLETION_RESULT_SCHEMA,
+        assignmentRef: requestBody.assignmentRef,
+        idempotent: outcome.idempotent,
+        postId: outcome.post.postId,
+        runId: outcome.run.runId,
+        topicId: outcome.topic.topicId,
+      },
+      { status: outcome.idempotent ? 200 : 201 },
+    )
+  }).pipe(
+    Effect.catch(() =>
+      Effect.succeed(
+        webhookResponse(
+          { error: 'agent_definition_forum_completion_failed' },
+          { status: 500 },
+        ),
+      ),
+    ),
+  )

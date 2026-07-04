@@ -5,7 +5,7 @@ import type { AgentDefinitionInboundWebhookCondition } from "./index.js"
 export const AgentDefinitionWebhookNormalizedEventSchemaLiteral =
   "openagents.agent_definition_webhook_event.v1" as const
 
-export const AgentDefinitionWebhookSource = S.Literals(["github"])
+export const AgentDefinitionWebhookSource = S.Literals(["github", "forum"])
 export type AgentDefinitionWebhookSource =
   typeof AgentDefinitionWebhookSource.Type
 
@@ -148,6 +148,93 @@ const githubSourceRefs = (
   return refs
 }
 
+const forumPayload = (
+  payload: Record<string, unknown>,
+): Record<string, unknown> => {
+  const forum = optionalObject([
+    ["id", stringValue(payload.forumId)],
+    ["slug", stringValue(payload.forumSlug)],
+    ["title", stringValue(payload.forumTitle)],
+  ])
+  const topic = optionalObject([
+    ["id", stringValue(payload.topicId)],
+    ["slug", stringValue(payload.topicSlug)],
+    ["state", stringValue(payload.topicState)],
+    ["title", stringValue(payload.topicTitle)],
+  ])
+  const post = optionalObject([
+    ["id", stringValue(payload.postId)],
+    ["number", numberValue(payload.postNumber)],
+    ["state", stringValue(payload.postState)],
+  ])
+  const actor = optionalObject([
+    ["ref", stringValue(payload.actorRef)],
+    ["slug", stringValue(payload.actorSlug)],
+    ["display_name", stringValue(payload.actorDisplayName)],
+  ])
+
+  return optionalObject([
+    ["event", stringValue(payload.eventType)],
+    ["forum", Object.keys(forum).length === 0 ? undefined : forum],
+    ["topic", Object.keys(topic).length === 0 ? undefined : topic],
+    ["post", Object.keys(post).length === 0 ? undefined : post],
+    ["actor", Object.keys(actor).length === 0 ? undefined : actor],
+    ["source_url", stringValue(payload.sourceUrl)],
+  ])
+}
+
+const forumSubjectRef = (
+  payload: Record<string, unknown>,
+  deliveryId: string,
+): string => {
+  const topicId = stringValue(payload.topicId)
+  const postId = stringValue(payload.postId)
+  const forumId = stringValue(payload.forumId) ?? stringValue(payload.forumSlug)
+
+  if (topicId !== undefined && postId !== undefined) {
+    return `forum.topic.${compactRefSegment(topicId)}.post.${compactRefSegment(postId)}`
+  }
+
+  if (topicId !== undefined) {
+    return `forum.topic.${compactRefSegment(topicId)}`
+  }
+
+  if (forumId !== undefined) {
+    return `forum.${compactRefSegment(forumId)}.delivery.${compactRefSegment(deliveryId)}`
+  }
+
+  return `forum.delivery.${compactRefSegment(deliveryId)}`
+}
+
+const forumSourceRefs = (
+  payload: Record<string, unknown>,
+  deliveryId: string,
+): ReadonlyArray<string> => {
+  const refs = [`forum.delivery.${compactRefSegment(deliveryId)}`]
+  const forumId = stringValue(payload.forumId)
+  const forumSlug = stringValue(payload.forumSlug)
+  const topicId = stringValue(payload.topicId)
+  const postId = stringValue(payload.postId)
+
+  if (forumId !== undefined) {
+    refs.push(`forum.forum.${compactRefSegment(forumId)}`)
+  }
+
+  if (forumSlug !== undefined) {
+    refs.push(`forum.slug.${compactRefSegment(forumSlug)}`)
+  }
+
+  if (topicId !== undefined) {
+    refs.push(`forum.topic.${compactRefSegment(topicId)}`)
+  }
+
+  if (postId !== undefined) {
+    refs.push(`forum.post.${compactRefSegment(postId)}`)
+  }
+
+  return refs
+}
+
 export const normalizeGitHubWebhookEvent = (
   input: Readonly<{
     deliveryId: string
@@ -186,6 +273,42 @@ export const normalizeGitHubWebhookEvent = (
     receivedAt: input.receivedAt,
     payload: normalizedPayload,
     sourceRefs: githubSourceRefs(input.payload, deliveryId),
+  }
+}
+
+export const normalizeForumWebhookEvent = (
+  input: Readonly<{
+    deliveryId: string
+    eventType: string
+    payload: Record<string, unknown>
+    receivedAt: string
+  }>,
+): AgentDefinitionWebhookNormalizedEvent | undefined => {
+  const eventType = input.eventType.trim()
+  const deliveryId = input.deliveryId.trim()
+  const forumId = stringValue(input.payload.forumId)
+  const topicId = stringValue(input.payload.topicId)
+  const postId = stringValue(input.payload.postId)
+
+  if (
+    eventType === "" ||
+    deliveryId === "" ||
+    forumId === undefined ||
+    topicId === undefined ||
+    postId === undefined
+  ) {
+    return undefined
+  }
+
+  return {
+    schema: AgentDefinitionWebhookNormalizedEventSchemaLiteral,
+    source: "forum",
+    eventType,
+    deliveryId,
+    subjectRef: forumSubjectRef(input.payload, deliveryId),
+    receivedAt: input.receivedAt,
+    payload: forumPayload({ ...input.payload, eventType }),
+    sourceRefs: forumSourceRefs(input.payload, deliveryId),
   }
 }
 
