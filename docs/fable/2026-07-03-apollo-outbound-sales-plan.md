@@ -266,18 +266,21 @@ Boundaries so it stays a sales instrument and not a leak:
 - Credit budget is hard: 95 reveals, then stop — more credits is an owner
   purchase decision argued from this window's conversion data.
 
-## 10. The second product: sell the leadgen engine itself (dogfood → product)
+## 10. The second product: Autopilot Lead Gen (dogfood → product)
 
-The QA Swarm arc is the template: the owner needed a QA fleet for his own
-say/ship gap, built it, and it became the second product ("built first for
-Khala Code, then added to the Autopilot suite for businesses"). This window
-runs the same arc on sales. The stack we are assembling to hit our own $25k
-target — targeted company discovery, an automated value-add analyzer
+**Episode 247 named this product on camera** (`docs/transcripts/247.md`,
+"Sell in Public"): *Autopilot Lead Gen*, introduced with "don't worry about
+it, we're using it ourselves" — which is precisely this plan. The QA Swarm
+arc is the template: the owner needed a QA fleet for his own say/ship gap,
+built it, and it became the second product ("built first for Khala Code,
+then added to the Autopilot suite for businesses"). This window runs the
+same arc on sales. The stack we are assembling to hit our own $25k target —
+targeted company discovery, an automated value-add analyzer
 (agent-readiness audits today; any vertical-specific analyzer tomorrow),
 personalized report-led sequences, dial lists, pipeline queue with receipts
-— **is a leadgen engine**, and the buyer for it walks up to us at every
-event: the agency operator who says "I need leadgen." She doesn't want an
-audit; she wants *this machine pointed at her ICP*.
+— **is Autopilot Lead Gen v0**, and the buyer for it walks up to us at
+every event: the agency operator who says "I need leadgen." She doesn't
+want an audit; she wants *this machine pointed at her ICP*.
 
 What makes ours sellable rather than "another Apollo wrapper":
 
@@ -327,6 +330,43 @@ In-window actions this adds (cheap, because it's the same work):
   it for you"). Quoted engine setups count toward the $25k pipeline.
 - After the window, the engine's own receipts (this plan's measured funnel)
   become the case study that sells it — A0.9 pattern, opaque refs.
+
+### 10.1 Episode 247 reconciliation (2026-07-04)
+
+Episode 247 ("Sell in Public", `docs/transcripts/247.md`) landed after this
+plan's v2 and confirms/extends it; the deltas to carry:
+
+- **Product name is settled: Autopilot Lead Gen.** All engine work from this
+  window ships under that name (Autopilot suite member, alongside QA Swarm),
+  not as an unnamed "leadgen engine."
+- **The affiliate lane is announced direction.** 247 attaches an affiliate
+  program with referral codes wired into openagents.com surfaces (homepage,
+  landing pages, Autopilot sites). Build posture: referral *attribution* is
+  BF-8.4 (honest, end-to-end) and can start now; referral *payout copy*
+  stays gated by the red `referral.refer_once_earn_forever.v1` record —
+  attribution first, payout claims only when the ledger settles them.
+- **Partner-org fulfillment joins the funnel.** ~Five design-partner orgs
+  (agentic ad running, performance marketing, brand design) share
+  fulfillment; OpenAgents is the front door. For this plan: a prospect whose
+  need is ad-running/brand work is a *routable* opportunity, not a
+  disqualify — record it in the pipeline queue with a partner-route flag,
+  and count it toward the $25k only when a quoted arrangement exists. The
+  formal machinery is the BF-8.5 overflow/peer design (its entry gates and
+  opaque-ref receipts apply); until those gates pass, partner routing is
+  manual, operator-approved, and receipt-planned per deal.
+- **The Coding Agent Pool is the named delivery asset.** 247's framing —
+  community agents pointed at our backlog, paid for coding work through
+  mechanisms already built (never subscription-inference pooling; the
+  no-resale invariant holds) — is what delivers the Agent-Ready Quick Wins
+  this plan quotes. Sales copy may say "our agent pool builds it fast"
+  only as far as the registry backs it: own-capacity delegation is proven
+  at billions of exact-counted tokens; third-party-paid pool labor claims
+  stay within the existing labor-market records.
+- **Sell-in-public is the reporting format.** This window's funnel numbers
+  (sends, replies, walkthroughs, quoted pipeline — §7 table, honest-state
+  discipline intact) are candidate on-channel material. Public versions use
+  aggregates and opaque refs only; no prospect-identifying data ever, and
+  revenue graphs only from receipt-backed numbers.
 
 ## 11. Owner actions (staged in NEEDS_OWNER.md; nothing here stalls the loop)
 
