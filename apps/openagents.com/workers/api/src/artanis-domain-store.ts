@@ -739,6 +739,14 @@ export type MakeArtanisDatabaseForEnvOptions = Readonly<{
   /** Injectable client factory (tests). Default: postgres.js/Hyperdrive. */
   makeSqlClient?: MakeKhalaSyncPushSqlClient | undefined
   log?: ArtanisDomainLog | undefined
+  /**
+   * Override the D1 authority handle. Used to COMPOSE domain mirrors at
+   * call sites whose writes span domains (KS-8.10 #8321: Artanis forum
+   * publication delivery writes forum_posts — passing the forum content
+   * mirroring database here keeps both domains' Postgres twins fresh
+   * from one code path).
+   */
+  d1?: D1Database | undefined
 }>
 
 const defaultLog: ArtanisDomainLog = (event, fields) => {
@@ -760,7 +768,7 @@ export const makeArtanisDatabaseForEnv = (
   env: ArtanisDomainStoreEnv,
   options: MakeArtanisDatabaseForEnvOptions = {},
 ): ArtanisDatabase => {
-  const d1 = openAgentsDatabase(env)
+  const d1 = options.d1 ?? openAgentsDatabase(env)
   const connectionString = env.KHALA_SYNC_DB?.connectionString
   const flags = artanisDomainFlagsFromEnv(env)
 

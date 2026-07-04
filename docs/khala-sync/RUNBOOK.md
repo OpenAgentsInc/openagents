@@ -693,6 +693,81 @@ Flag-flip order — never skip a step, each step soaks before the next:
 Rollback at ANY step: set `KHALA_SYNC_ENTITLEMENTS_READS=d1` (reads)
 and/or `KHALA_SYNC_ENTITLEMENTS_DUAL_WRITE=off` (writes). D1 authority is
 never behind.
+## Forum content domain cutover (KS-8.10, #8321)
+
+The KS-8.10 domain migration: the thirteen forum content-core tables
+`forum_boards` / `forum_categories` / `forum_forums` / `forum_topics` /
+`forum_posts` / `forum_post_bodies` / `forum_post_revisions` /
+`forum_actor_follows` / `forum_watches` / `forum_bookmarks` /
+`forum_reports` / `forum_moderation_events` / `forum_context_links` (D1)
+→ same-named Postgres twins (khala-sync migration
+`0014_forum_content.sql`). Machinery:
+`apps/openagents.com/workers/api/src/forum/forum-content-store.ts` (the
+mirroring D1Database `forumContentDatabaseForEnv` — the forum
+repository's `db: D1Database` parameter IS the seam; repository SQL is
+untouched) and
+`packages/khala-sync-server/scripts/backfill-forum-content.ts`
+(backfill + verify). The issue's remaining tables (private messages, ACL
+grants, trust edges/scores, score snapshots, notification reads, work
+requests) move in the follow-up remainder lane — see MIGRATION_PLAN
+§3.7. The forum MONEY tables belong to KS-8.8 and are not part of this
+procedure.
+
+Diagnostics are keys-and-hashes only (never post bodies): the drift
+metric is `khala_sync_forum_dual_write_failed`; a write shape the
+statement classifier cannot key logs
+`khala_sync_forum_write_unclassified` — treat a nonzero rate of EITHER
+as drift and re-run the backfill sweep after fixing.
+
+Flags (Worker vars):
+
+- `KHALA_SYNC_FORUM_DUAL_WRITE` — default **on** wherever
+  `KHALA_SYNC_DB` exists; `off|0|false|disabled` disables the mirror.
+- `KHALA_SYNC_FORUM_READS` — default `d1`. `compare` shadow-runs every
+  scoped-table SELECT against the Postgres twin, SERVES D1, and logs
+  `khala_sync_forum_read_compare_mismatch` /
+  `khala_sync_forum_read_compare_failed` — this is the "public thread
+  pages shadow-compared" cutover evidence. `postgres` serving is
+  DEFERRED to the read-cutover follow-up (the forum read surface is
+  domain-wide): setting it today behaves as `compare` and logs
+  `khala_sync_forum_postgres_reads_deferred` once, so a premature flip
+  can never serve an unproven read path.
+
+Flag-flip order — never skip a step, each step soaks before the next:
+
+1. **Dual-write on** (default after KS-8.10 lands + `0014` applied via
+   the migration runner). Watch `khala_sync_forum_dual_write_failed` and
+   `khala_sync_forum_write_unclassified` in Worker logs; a nonzero
+   steady rate blocks progression.
+2. **Backfill**: from `packages/khala-sync-server/`,
+   `KHALA_SYNC_DATABASE_URL=<direct-url> bun
+   scripts/backfill-forum-content.ts` (wrangler-auth'd; rowid-cursor
+   resumable via `.forum-content-backfill-state.json` — post bodies are
+   the long pole, safe to interrupt/resume). Run it a SECOND time
+   (`--restart`) as the catch-up sweep once dual-write has covered the
+   whole window.
+3. **Verify**: `bun scripts/backfill-forum-content.ts --verify` — exact
+   row counts, domain tallies (counter sums, state tallies, body byte
+   totals), PER-TOPIC post-chain comparison (count / distinct / min /
+   max post_number per topic), per-thread spot hashes over the 25 most
+   recently bumped topics (`--verify-threads` to widen), and newest-50
+   row hashes. Post the output on the migration issue. Exact or explain;
+   no cutover on a red verify.
+4. **Compare reads**: set `KHALA_SYNC_FORUM_READS=compare`; soak until
+   the mismatch log is silent over a window that includes real forum
+   traffic (agents poll the forum continuously, so a few hours is a real
+   soak).
+5. **Read cutover + remainder LATER**: serving reads from Postgres,
+   migrating the remainder tables (private messages / ACLs / trust /
+   score snapshots / notification reads / work requests — with the
+   set-membership referential checks against KS-8.1 assignments and
+   KS-8.8 tips), moving write authority, and dropping the D1 tables is
+   the follow-up issue on epic #8282 — never in the same change as this
+   lane. Until then rollback is one flag flip back to `d1`.
+
+Rollback at ANY step: set `KHALA_SYNC_FORUM_READS=d1` (reads) and/or
+`KHALA_SYNC_FORUM_DUAL_WRITE=off` (writes). D1 authority is never
+behind.
 
 ## Public tokens-served projection (KS-6.3, #8304)
 

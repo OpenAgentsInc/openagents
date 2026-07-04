@@ -418,6 +418,7 @@ import { makeFirmupBitcoinSettlementRoutes } from './firmup-bitcoin-settlement-r
 import { readFirmupSettleableEscrow } from './firmup-settleable-escrow'
 import { makeForumRoutes } from './forum-routes'
 import { forumWorkRequestRelayPublisherForEnv } from './forum-work-request-live-publisher'
+import { forumContentDatabaseForEnv } from './forum/forum-content-store'
 import { archiveStaleDirectTipRecoveries } from './forum/paid-actions'
 import { readForumTipRecipientReadinessForActor } from './forum/repository'
 import {
@@ -1848,7 +1849,7 @@ const artanisComposerForumPostForEnv =
               method: 'POST',
             },
           ),
-          openAgentsDatabase(environment),
+          forumContentDatabaseForEnv(environment),
           {
             agentStore: makeAgentRegistrationStoreForEnv(environment),
           },
@@ -1911,7 +1912,7 @@ const artanisComposerTipForEnv =
               method: 'POST',
             },
           ),
-          openAgentsDatabase(environment),
+          forumContentDatabaseForEnv(environment),
           {
             agentStore: makeAgentRegistrationStoreForEnv(environment),
             tipsBufferPay: tipsBufferPayFnForEnv(environment),
@@ -9373,7 +9374,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
             ),
           ),
         writer: makeArtanisForumUpdateWriter({
-          db: openAgentsDatabase(env),
+          db: forumContentDatabaseForEnv(env),
         }),
       },
       dispatchExecution: makeArtanisDispatchExecution({
@@ -12039,7 +12040,13 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           ).pipe(
             Effect.flatMap(() =>
               deliverArtanisForumPublicationIntent(
-                makeArtanisDatabaseForEnv(env),
+                // KS-8.10 (#8321) x KS-8.6 (#8317): delivery writes BOTH
+                // forum_posts and artanis intent state — compose the forum
+                // content mirroring database under the artanis handle so
+                // both domains' Postgres twins stay fresh.
+                makeArtanisDatabaseForEnv(env, {
+                  d1: forumContentDatabaseForEnv(env),
+                }),
                 intent,
               ),
             ),
@@ -13442,7 +13449,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/v1/agent-definitions/webhooks/forum',
     handler: (request, env) => {
-      const db = openAgentsDatabase(env)
+      // KS-8.10 (#8321): bot completion reply posts ride the forum content
+      // dual-write seam.
+      const db = forumContentDatabaseForEnv(env)
       const forum = makeD1AgentDefinitionForumCompletionForumStore(db)
 
       return handleAgentDefinitionForumWebhookRequest(request, {
@@ -13473,7 +13482,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/v1/agent-definitions/webhooks/forum/completions',
     handler: (request, env) => {
-      const db = openAgentsDatabase(env)
+      // KS-8.10 (#8321): bot completion reply posts ride the forum content
+      // dual-write seam.
+      const db = forumContentDatabaseForEnv(env)
 
       return handleAgentDefinitionForumCompletionRequest(request, {
         forum: makeD1AgentDefinitionForumCompletionForumStore(db),
@@ -14782,7 +14793,9 @@ const routeRequest = makeWorkerRouteRequest({
     agentScopedGrantRoutes.routeAgentScopedGrantRequest,
   routeAgentSiteRequest: agentSiteRoutes.routeAgentSiteRequest,
   routeForumRequest: (request, env, ctx) =>
-    forumRoutes.routeForumRequest(request, openAgentsDatabase(env), {
+    // KS-8.10 (#8321): the forum content dual-write seam — scoped forum
+    // table writes read-back-mirror into Postgres (fail-soft).
+    forumRoutes.routeForumRequest(request, forumContentDatabaseForEnv(env), {
       tipsBufferPay: tipsBufferPayFnForEnv(env),
       agentStore: makeAgentRegistrationStoreForEnv(env),
       // KS-8.9 (#8320): fire-safe Postgres dual-write mirror (orange check).

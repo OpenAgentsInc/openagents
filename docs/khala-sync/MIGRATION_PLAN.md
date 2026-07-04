@@ -550,6 +550,55 @@ per-domain soak/drop follow-up. Prod cutover procedure:
 
 ### 3.7 KS-8.10 — Forum (content + trust)
 
+**KS-8.10 machinery status (2026-07-04, #8321):** LANDED for the
+thirteen content-core tables — Postgres schema (`khala-sync-server`
+migration `0014_forum_content.sql`: `forum_boards`, `forum_categories`,
+`forum_forums`, `forum_topics`, `forum_posts`, `forum_post_bodies`,
+`forum_post_revisions`, `forum_actor_follows`, `forum_watches`,
+`forum_bookmarks`, `forum_reports`, `forum_moderation_events`,
+`forum_context_links`; every idempotency-key and natural-key unique
+ports verbatim, incl. the moderation-events partial unique). The seam is
+the forum repository's OWN interface: every scoped write lives in
+`apps/openagents.com/workers/api/src/forum/repository.ts` and takes
+`db: D1Database`, so the production wiring is a mirroring D1Database
+(`forumContentDatabaseForEnv` in
+`apps/openagents.com/workers/api/src/forum/forum-content-store.ts`)
+dropped in at the forum write entry points in `index.ts` (the forum API
+route, both Artanis composer paths, the Artanis forum-update writer,
+Artanis publication delivery, and the two agent-definition forum
+webhooks). Repository SQL is untouched; after each successful D1 write
+to a scoped table the proxy reads the row back by PK and
+converge-upserts the exact D1 row into Postgres (fail-soft; the drift
+metric is `khala_sync_forum_dual_write_failed`, and any write shape the
+classifier cannot key logs `khala_sync_forum_write_unclassified` instead
+of guessing). Column/PK registry is SHARED between the Worker store and
+the backfill via `@openagentsinc/khala-sync-server`
+(`forum-content-tables.ts`) — one source of truth. Flags
+`KHALA_SYNC_FORUM_DUAL_WRITE` (default on) / `KHALA_SYNC_FORUM_READS`
+(d1|compare|postgres, default d1; `compare` shadow-runs scoped-table
+SELECTs against Postgres and serves D1 — the thread-page shadow-compare
+evidence; `postgres` serving is deferred to the read-cutover follow-up
+and downgrades to compare with a loud diagnostic). Resumable backfill +
+exact-verify CLI
+(`packages/khala-sync-server/scripts/backfill-forum-content.ts`: exact
+counts, domain tallies, PER-TOPIC post-chain comparison, per-thread
+body-content spot hashes over sampled topics, newest-N row hashes), and
+a contract suite that runs the row seam against BOTH stores plus the
+REAL repository write functions end-to-end through the mirror
+(`forum-content-repository.contract.test.ts`). The issue's REMAINING
+tables — `forum_private_message_threads`, `forum_private_messages`,
+`forum_acl_grants`, `forum_actor_forum_trust`, `forum_trust_edges`
+(recompute-and-compare), `forum_score_snapshots` (derived — recompute on
+Postgres), `forum_notification_reads`, and `forum_work_request_*` (6;
+set-membership referential verification against KS-8.1 assignments and
+KS-8.8 tips at cutover) — move in the follow-up remainder lane tracked
+with the read cutover + D1 decommission follow-up. The forum MONEY
+tables stay with KS-8.8 (D1 authority, that lane's mirror discipline) —
+this lane never touches them. Prod cutover procedure:
+[`RUNBOOK.md`](./RUNBOOK.md) "Forum content domain cutover"; cutover
+evidence + D1 drop tracked on epic
+[#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
+
 - **What:** the forum content core: forums/boards/categories, topics,
   posts + bodies + revisions, private messages, trust edges/scores, ACLs,
   moderation, watches/bookmarks/notifications, work-request lifecycle.

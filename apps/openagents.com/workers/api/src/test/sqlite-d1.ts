@@ -289,6 +289,215 @@ CREATE TABLE pylon_provider_job_lifecycle (
 `
 
 /**
+ * The D1 DDL for the KS-8.10 forum content domain (worker migrations
+ * 0101/0102/0103/0105/0110/0111/0112, condensed to the live column set —
+ * FK clauses dropped so the contract suite seeds rows directly; the
+ * UNIQUE dedupe keys are kept EXACTLY because they are load-bearing for
+ * the INSERT OR IGNORE write paths).
+ */
+export const FORUM_CONTENT_D1_SCHEMA = `
+CREATE TABLE forum_boards (
+  id TEXT PRIMARY KEY NOT NULL,
+  slug TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL,
+  description_ref TEXT,
+  visibility TEXT NOT NULL DEFAULT 'public',
+  public_projection_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE forum_categories (
+  id TEXT PRIMARY KEY NOT NULL,
+  board_id TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description_ref TEXT,
+  order_index INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT,
+  discoverability TEXT NOT NULL DEFAULT 'listed',
+  UNIQUE (board_id, slug)
+);
+
+CREATE TABLE forum_forums (
+  id TEXT PRIMARY KEY NOT NULL,
+  board_id TEXT NOT NULL,
+  category_id TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description_ref TEXT,
+  visibility TEXT NOT NULL DEFAULT 'public',
+  locked INTEGER NOT NULL DEFAULT 0,
+  topic_count INTEGER NOT NULL DEFAULT 0,
+  post_count INTEGER NOT NULL DEFAULT 0,
+  latest_topic_id TEXT,
+  latest_post_id TEXT,
+  public_projection_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT,
+  discoverability TEXT NOT NULL DEFAULT 'listed',
+  UNIQUE (category_id, slug)
+);
+
+CREATE TABLE forum_topics (
+  id TEXT PRIMARY KEY NOT NULL,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  forum_id TEXT NOT NULL,
+  actor_ref TEXT NOT NULL,
+  actor_json TEXT NOT NULL DEFAULT '{}',
+  slug TEXT NOT NULL,
+  title TEXT NOT NULL,
+  first_post_id TEXT NOT NULL,
+  latest_post_id TEXT NOT NULL,
+  post_count INTEGER NOT NULL DEFAULT 1,
+  pin_state TEXT NOT NULL DEFAULT 'normal',
+  state TEXT NOT NULL DEFAULT 'open',
+  score_ref TEXT,
+  public_projection_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT,
+  UNIQUE (forum_id, slug)
+);
+
+CREATE TABLE forum_posts (
+  id TEXT PRIMARY KEY NOT NULL,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  topic_id TEXT NOT NULL,
+  forum_id TEXT NOT NULL,
+  actor_ref TEXT NOT NULL,
+  actor_json TEXT NOT NULL DEFAULT '{}',
+  content_ref TEXT NOT NULL,
+  parent_post_id TEXT,
+  quote_post_id TEXT,
+  post_number INTEGER NOT NULL,
+  state TEXT NOT NULL DEFAULT 'visible',
+  revision_ref TEXT,
+  public_projection_json TEXT NOT NULL DEFAULT '{}',
+  receipt_refs_json TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT,
+  UNIQUE (topic_id, post_number)
+);
+
+CREATE TABLE forum_post_bodies (
+  post_id TEXT PRIMARY KEY NOT NULL,
+  content_kind TEXT NOT NULL DEFAULT 'plain_text',
+  body_text TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE forum_post_revisions (
+  id TEXT PRIMARY KEY NOT NULL,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  post_id TEXT NOT NULL,
+  actor_ref TEXT NOT NULL,
+  action_kind TEXT NOT NULL,
+  previous_body_text TEXT,
+  next_body_text TEXT,
+  previous_state TEXT NOT NULL,
+  next_state TEXT NOT NULL,
+  reason_ref TEXT,
+  public_projection_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE forum_actor_follows (
+  id TEXT PRIMARY KEY NOT NULL,
+  actor_ref TEXT NOT NULL,
+  target_actor_ref TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  archived_at TEXT,
+  UNIQUE (actor_ref, target_actor_ref)
+);
+
+CREATE TABLE forum_watches (
+  id TEXT PRIMARY KEY NOT NULL,
+  actor_ref TEXT NOT NULL,
+  forum_id TEXT,
+  topic_id TEXT,
+  watch_kind TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  archived_at TEXT,
+  UNIQUE (actor_ref, watch_kind, forum_id, topic_id)
+);
+
+CREATE TABLE forum_bookmarks (
+  id TEXT PRIMARY KEY NOT NULL,
+  actor_ref TEXT NOT NULL,
+  topic_id TEXT,
+  post_id TEXT,
+  bookmark_kind TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  archived_at TEXT,
+  UNIQUE (actor_ref, bookmark_kind, topic_id, post_id)
+);
+
+CREATE TABLE forum_reports (
+  id TEXT PRIMARY KEY NOT NULL,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  reporter_actor_ref TEXT NOT NULL,
+  target_kind TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  reason_ref TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',
+  public_projection_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE forum_moderation_events (
+  id TEXT PRIMARY KEY NOT NULL,
+  moderator_actor_ref TEXT NOT NULL,
+  action_kind TEXT NOT NULL,
+  target_kind TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  reason_ref TEXT NOT NULL,
+  report_id TEXT,
+  public_projection_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  archived_at TEXT,
+  idempotency_key TEXT
+);
+
+CREATE UNIQUE INDEX idx_forum_moderation_events_idempotency
+  ON forum_moderation_events(idempotency_key)
+  WHERE idempotency_key IS NOT NULL
+    AND archived_at IS NULL;
+
+CREATE TABLE forum_context_links (
+  id TEXT PRIMARY KEY NOT NULL,
+  target_kind TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  forum_id TEXT NOT NULL,
+  topic_id TEXT,
+  post_id TEXT,
+  context_kind TEXT NOT NULL,
+  context_id TEXT NOT NULL,
+  context_slug TEXT,
+  context_title TEXT,
+  public_url TEXT,
+  source_ref TEXT,
+  public_projection_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  archived_at TEXT,
+  UNIQUE (target_kind, target_id, context_kind, context_id)
+);
+`
+
+/**
  * The D1 DDL for the KS-8.5 agent runtime metadata domain (worker
  * migrations 0019/0022/0023/0027/0028/0029/0228/0229/0230/0236/0279/0280/
  * 0281/0282/0284, condensed to the live column set — FKs to users/teams
