@@ -89,12 +89,16 @@ export type OmniBundleRoutesDependencies<Bindings> = Readonly<{
   // `mirror: env => makeSupervisionLongtailMirrorForEnv(env, { db: dependencies.db(env) })`
   // alongside `db`; undefined stays a safe no-op.
   mirror?: (env: Bindings) => SupervisionLongtailMirror | undefined
-  // KS-8.17 read-cutover follow-up (#8361): optional fire-and-forget
-  // shadow-compare hook for the public proof-bundle read — pass
-  // `compareProofBundleRead: env => makeOmniPublicProofBundleCompareReader(env)`.
+  // KS-8.17 read-cutover follow-up (#8361): optional, fail-soft (never
+  // throws/rejects) shadow-compare hook for the public proof-bundle read —
+  // pass `compareProofBundleRead: env => makeOmniPublicProofBundleCompareReader(env)`.
   // Undefined (the default) or a no-Postgres-binding/`reads=d1` environment
-  // is a safe no-op; D1 always serves the actual response either way.
-  compareProofBundleRead?: (env: Bindings) => ((id: string) => void) | undefined
+  // is a safe no-op; D1 always serves the actual response either way. MUST
+  // be awaited inline (not fire-and-forget) — a Worker may cancel an
+  // un-awaited async tail once the response is sent.
+  compareProofBundleRead?: (
+    env: Bindings,
+  ) => ((id: string) => Promise<void>) | undefined
   readEvidenceBundle: OmniEvidenceBundleReader<D1Database>
   readProofBundle: OmniPublicProofBundleReader<D1Database>
   requireOperator: (request: Request, env: Bindings) => Promise<boolean>
@@ -531,17 +535,18 @@ const readEvidenceBundle = <Bindings extends OmniBundleRouteEnv>(
   )
 
 /**
- * Fire-and-forget KS-8.17 read-compare shadow (#8361): never awaited on the
- * response path, never throws, never changes what is served — D1 always
- * serves this route regardless of `KHALA_SYNC_SUPERVISION_READS`.
+ * KS-8.17 read-compare shadow (#8361): awaited inline (a Worker may cancel
+ * an un-awaited async tail once the response is sent), but fail-soft — it
+ * never throws/rejects and never changes what is served. D1 always serves
+ * this route regardless of `KHALA_SYNC_SUPERVISION_READS`.
  */
-const fireProofBundleCompare = <Bindings extends OmniBundleRouteEnv>(
+const runProofBundleCompare = async <Bindings extends OmniBundleRouteEnv>(
   dependencies: OmniBundleRoutesDependencies<Bindings>,
   env: Bindings,
   id: string,
-): void => {
+): Promise<void> => {
   try {
-    dependencies.compareProofBundleRead?.(env)?.(id)
+    await dependencies.compareProofBundleRead?.(env)?.(id)
   } catch {
     // Shadow-compare wiring itself must never affect a served response.
   }
@@ -560,7 +565,7 @@ const readProofBundle = <Bindings extends OmniBundleRouteEnv>(
       yield* requireOperatorAuth(dependencies, request, env)
     }
 
-    fireProofBundleCompare(dependencies, env, id)
+    yield* Effect.promise(() => runProofBundleCompare(dependencies, env, id))
 
     const record = yield* Effect.promise(() =>
       dependencies.readProofBundle(dependencies.db(env), id),
@@ -595,7 +600,7 @@ const readProofBundleHandoffPage = <Bindings extends OmniBundleRouteEnv>(
   id: string,
 ): Effect.Effect<HttpResponse> =>
   Effect.gen(function* () {
-    fireProofBundleCompare(dependencies, env, id)
+    yield* Effect.promise(() => runProofBundleCompare(dependencies, env, id))
 
     const record = yield* Effect.tryPromise(() =>
       dependencies.readProofBundle(dependencies.db(env), id),

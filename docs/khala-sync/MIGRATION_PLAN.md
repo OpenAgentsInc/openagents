@@ -684,9 +684,11 @@ idempotency-key-set equality (`omni_idempotency_keys`), public proof-bundle
 digests (`omni_public_proof_bundles`), and newest-50 row hashes ALL MATCH —
 zero drift, confirming dual-write has been converging cleanly since the
 writer-wiring deploy. READ-COMPARE MACHINERY BUILT (the piece the parent
-lane deferred): `makeOmniPublicProofBundleCompareReader` — a fail-soft,
-non-blocking shadow-compare reader wired into the one public projection
-surface this domain serves (`omni_public_proof_bundles`, read by both the
+lane deferred): `makeOmniPublicProofBundleCompareReader` — a fail-soft
+shadow-compare reader, inline-awaited by its call sites (never
+fire-and-forget, since a Worker can cancel an un-awaited async tail once the
+response is sent) wired into the one public projection surface this domain
+serves (`omni_public_proof_bundles`, read by both the
 redacted public handoff page and the operator JSON view in
 `omni-bundle-routes.ts`). D1 remains the ONLY store that ever serves a
 response, at every flag value; `compare`/`postgres` only widen when the

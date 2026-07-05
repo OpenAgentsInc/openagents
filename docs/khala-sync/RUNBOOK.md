@@ -2413,7 +2413,8 @@ Flags (Worker vars):
 - `KHALA_SYNC_SUPERVISION_READS` — default `d1`; current value **`compare`**
   (prod + staging, set #8361). D1 is the ONLY store this domain ever serves
   a response from at ANY flag value — `compare`/`postgres` only arm the
-  fail-soft, non-blocking shadow-compare reader
+  fail-soft, inline-awaited shadow-compare reader (never fire-and-forget — a
+  Worker can cancel an un-awaited async tail once the response is sent)
   (`makeOmniPublicProofBundleCompareReader` in
   `supervision-longtail-domain-store.ts`) for the one public projection
   surface here, `omni_public_proof_bundles` (read by both the redacted

@@ -527,12 +527,6 @@ describe.skipIf(!hasLocalPostgres())(
       sqlite?.close()
     }, 60_000)
 
-    // The reader is deliberately fire-and-forget (void, never awaited by call
-    // sites); give its internal promise chain a tick to settle before
-    // asserting on the diagnostics it logs.
-    const flush = (): Promise<void> =>
-      new Promise(resolve => setTimeout(resolve, 25))
-
     const postgresStore = () =>
       makePostgresSupervisionLongtailStore({
         acquireSql: () =>
@@ -580,8 +574,7 @@ describe.skipIf(!hasLocalPostgres())(
 
       const reader = makeReader('compare', diagnostics)
       expect(reader).toBeDefined()
-      reader!('compare.match')
-      await flush()
+      await reader!('compare.match')
       expect(diagnostics).toEqual([])
     })
 
@@ -599,8 +592,7 @@ describe.skipIf(!hasLocalPostgres())(
       ])
 
       const reader = makeReader('compare', diagnostics)
-      reader!('compare.mismatch')
-      await flush()
+      await reader!('compare.mismatch')
       expect(diagnostics.map(d => d.event)).toContain(
         'khala_sync_supervision_read_compare_mismatch',
       )
@@ -619,8 +611,7 @@ describe.skipIf(!hasLocalPostgres())(
       ])
 
       const reader = makeReader('compare', diagnostics)
-      reader!('compare.missing-pg')
-      await flush()
+      await reader!('compare.missing-pg')
       expect(diagnostics.map(d => d.event)).toContain(
         'khala_sync_supervision_read_compare_mismatch',
       )
@@ -632,8 +623,7 @@ describe.skipIf(!hasLocalPostgres())(
         fields: SupervisionLongtailDiagnostic
       }> = []
       const reader = makeReader('compare', diagnostics)
-      reader!('compare.nowhere')
-      await flush()
+      await reader!('compare.nowhere')
       expect(diagnostics).toEqual([])
     })
 
@@ -651,9 +641,8 @@ describe.skipIf(!hasLocalPostgres())(
       ])
 
       const reader = makeReader('postgres', diagnostics)
-      reader!('compare.deferred')
-      reader!('compare.deferred')
-      await flush()
+      await reader!('compare.deferred')
+      await reader!('compare.deferred')
       const deferredCount = diagnostics.filter(
         d => d.event === 'khala_sync_supervision_postgres_reads_deferred',
       ).length
@@ -680,8 +669,7 @@ describe.skipIf(!hasLocalPostgres())(
         },
       )
       expect(reader).toBeDefined()
-      expect(() => reader!('compare.broken')).not.toThrow()
-      await flush()
+      await expect(reader!('compare.broken')).resolves.toBeUndefined()
       expect(diagnostics.map(d => d.event)).toContain(
         'khala_sync_supervision_read_compare_failed',
       )

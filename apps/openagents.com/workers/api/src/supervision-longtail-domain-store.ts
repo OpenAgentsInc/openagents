@@ -700,14 +700,17 @@ const supervisionLongtailRowsEqual = (
  * projection surface in this domain (the redacted handoff page and the
  * operator JSON view both key off `readOmniPublicProofBundleById`).
  * `undefined` when no Postgres binding or `KHALA_SYNC_SUPERVISION_READS=d1`
- * (the default). The returned function is fire-and-forget: call sites invoke
- * it after their own D1-served read completes and must NOT await it on the
- * response path — it never throws and never affects the served result.
+ * (the default). The returned function is fail-soft (NEVER throws/rejects —
+ * every error is caught and logged as a diagnostic) but call sites MUST
+ * `await` it inline before returning their response (same discipline as
+ * `forge-domain-store.ts`'s `compareListRefs`): a Cloudflare Worker may
+ * cancel an un-awaited async tail after the response is sent, so a bare
+ * fire-and-forget call here could silently never run.
  */
 export const makeOmniPublicProofBundleCompareReader = (
   env: SupervisionLongtailStoreEnv,
   options: MakeSupervisionLongtailStoreOptions = {},
-): ((id: string) => void) | undefined => {
+): ((id: string) => Promise<void>) | undefined => {
   const runtime = runtimeForEnv(env, options)
   const { compareStore, db, flags, log } = runtime
   if (compareStore === undefined) {
@@ -715,7 +718,7 @@ export const makeOmniPublicProofBundleCompareReader = (
   }
   let deferredLogged = false
   const op = 'omni_public_proof_bundles:readById'
-  return (id: string): void => {
+  return async (id: string): Promise<void> => {
     if (flags.reads === 'postgres' && !deferredLogged) {
       deferredLogged = true
       log('khala_sync_supervision_postgres_reads_deferred', {
@@ -725,43 +728,41 @@ export const makeOmniPublicProofBundleCompareReader = (
         refs: [id],
       })
     }
-    void (async () => {
-      try {
-        const d1Row = await db
-          .prepare(
-            `SELECT * FROM omni_public_proof_bundles WHERE id = ? AND archived_at IS NULL LIMIT 1`,
-          )
-          .bind(id)
-          .first<Record<string, unknown>>()
-        const pgRows = await compareStore.queryRows(
-          `SELECT * FROM omni_public_proof_bundles WHERE id = $1 AND archived_at IS NULL LIMIT 1`,
-          [id],
+    try {
+      const d1Row = await db
+        .prepare(
+          `SELECT * FROM omni_public_proof_bundles WHERE id = ? AND archived_at IS NULL LIMIT 1`,
         )
-        const pgRow = pgRows[0]
-        const bothMissing = d1Row === null && pgRow === undefined
-        const rowsMatch =
-          bothMissing ||
-          (d1Row !== null &&
-            pgRow !== undefined &&
-            supervisionLongtailRowsEqual(
-              'omni_public_proof_bundles',
-              d1Row,
-              pgRow,
-            ))
-        if (!rowsMatch) {
-          log('khala_sync_supervision_read_compare_mismatch', {
-            messageSafe: `public proof bundle differs: d1=${d1Row === null ? 'missing' : 'present'} postgres=${pgRow === undefined ? 'missing' : 'present'}`,
-            op,
-            refs: [id],
-          })
-        }
-      } catch (error) {
-        log('khala_sync_supervision_read_compare_failed', {
-          messageSafe: safeMessage(error),
+        .bind(id)
+        .first<Record<string, unknown>>()
+      const pgRows = await compareStore.queryRows(
+        `SELECT * FROM omni_public_proof_bundles WHERE id = $1 AND archived_at IS NULL LIMIT 1`,
+        [id],
+      )
+      const pgRow = pgRows[0]
+      const bothMissing = d1Row === null && pgRow === undefined
+      const rowsMatch =
+        bothMissing ||
+        (d1Row !== null &&
+          pgRow !== undefined &&
+          supervisionLongtailRowsEqual(
+            'omni_public_proof_bundles',
+            d1Row,
+            pgRow,
+          ))
+      if (!rowsMatch) {
+        log('khala_sync_supervision_read_compare_mismatch', {
+          messageSafe: `public proof bundle differs: d1=${d1Row === null ? 'missing' : 'present'} postgres=${pgRow === undefined ? 'missing' : 'present'}`,
           op,
           refs: [id],
         })
       }
-    })()
+    } catch (error) {
+      log('khala_sync_supervision_read_compare_failed', {
+        messageSafe: safeMessage(error),
+        op,
+        refs: [id],
+      })
+    }
   }
 }

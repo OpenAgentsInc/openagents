@@ -593,7 +593,7 @@ describe('Omni bundle routes', () => {
     expect(store.proofs).toHaveLength(0)
   })
 
-  test('KS-8.17 read-compare hook (#8361) fires fire-and-forget and never affects the served response', async () => {
+  test('KS-8.17 read-compare hook (#8361) is awaited inline and never affects the served response', async () => {
     const store = new BundleStore()
     const routes = makeRoutes(store, true)
 
@@ -624,7 +624,7 @@ describe('Omni bundle routes', () => {
     ])
 
     const handoffCalls: Array<string> = []
-    const handoffRoutes = makeRoutes(store, true, () => id => {
+    const handoffRoutes = makeRoutes(store, true, () => async id => {
       handoffCalls.push(id)
     })
     const handoffResponse = await run(
