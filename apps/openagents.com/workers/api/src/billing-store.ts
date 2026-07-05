@@ -66,8 +66,11 @@
 
 import {
   BILLING_DOMAIN_TABLE_SPECS,
+  makeCompareSoakMetrics,
+  noopCompareSoakMetrics,
   normalizeBillingValue,
   type BillingDomainTable,
+  type CompareSoakMetrics,
 } from '@openagentsinc/khala-sync-server'
 
 import type {
@@ -565,6 +568,8 @@ export type MakeRoutedBillingBalanceReadDependencies = Readonly<{
   log?: BillingSyncLog | undefined
   /** Bounded-retry backoff hook (tests inject a no-op). */
   wait?: ((ms: number) => Promise<void>) | undefined
+  /** Compare-mode soak observability (#8282 shared follow-up). No-op recorder by default. */
+  metrics?: CompareSoakMetrics | undefined
 }>
 
 /**
@@ -578,6 +583,7 @@ export const makeRoutedBillingBalanceRead = (
   deps: MakeRoutedBillingBalanceReadDependencies,
 ): BillingBalanceRead => {
   const log = deps.log ?? defaultLog
+  const metrics = deps.metrics ?? noopCompareSoakMetrics
   const wait =
     deps.wait ??
     ((ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)))
@@ -593,6 +599,9 @@ export const makeRoutedBillingBalanceRead = (
             op: 'readBalanceCents',
             refs: [userId],
           })
+          metrics.record({ domain: 'billing', outcome: 'mismatch', readKind: 'readBalanceCents' })
+        } else {
+          metrics.record({ domain: 'billing', outcome: 'match', readKind: 'readBalanceCents' })
         }
       } catch (error) {
         log('khala_sync_billing_postgres_read_failed', {
@@ -600,6 +609,7 @@ export const makeRoutedBillingBalanceRead = (
           op: 'readBalanceCents',
           refs: [userId],
         })
+        metrics.record({ domain: 'billing', outcome: 'error', readKind: 'readBalanceCents' })
       }
       return d1Balance
     }
@@ -667,6 +677,8 @@ export type MakeRoutedBillingRecentEntriesReadDependencies = Readonly<{
   postgres: Pick<PostgresBillingStore, 'readRecentLedgerEntryRows'>
   reads: Exclude<BillingSyncReadsMode, 'd1'>
   log?: BillingSyncLog | undefined
+  /** Compare-mode soak observability (#8282 shared follow-up). No-op recorder by default. */
+  metrics?: CompareSoakMetrics | undefined
 }>
 
 /**
@@ -683,6 +695,7 @@ export const makeRoutedBillingRecentEntriesRead = (
   deps: MakeRoutedBillingRecentEntriesReadDependencies,
 ): BillingRecentEntriesRead => {
   const log = deps.log ?? defaultLog
+  const metrics = deps.metrics ?? noopCompareSoakMetrics
   const readPostgres = async (
     userId: string,
   ): Promise<ReadonlyArray<BillingLedgerEntry>> =>
@@ -701,6 +714,9 @@ export const makeRoutedBillingRecentEntriesRead = (
             op: 'readRecentLedgerEntries',
             refs: [userId],
           })
+          metrics.record({ domain: 'billing', outcome: 'mismatch', readKind: 'readRecentLedgerEntries' })
+        } else {
+          metrics.record({ domain: 'billing', outcome: 'match', readKind: 'readRecentLedgerEntries' })
         }
       } catch (error) {
         log('khala_sync_billing_postgres_read_failed', {
@@ -708,6 +724,7 @@ export const makeRoutedBillingRecentEntriesRead = (
           op: 'readRecentLedgerEntries',
           refs: [userId],
         })
+        metrics.record({ domain: 'billing', outcome: 'error', readKind: 'readRecentLedgerEntries' })
       }
       return d1Entries
     }
@@ -732,6 +749,8 @@ export type MakeRoutedBillingAutoTopUpStateReadDependencies = Readonly<{
   reads: Exclude<BillingSyncReadsMode, 'd1'>
   log?: BillingSyncLog | undefined
   runtime?: BillingRuntime | undefined
+  /** Compare-mode soak observability (#8282 shared follow-up). No-op recorder by default. */
+  metrics?: CompareSoakMetrics | undefined
 }>
 
 /**
@@ -745,6 +764,7 @@ export const makeRoutedBillingAutoTopUpStateRead = (
   deps: MakeRoutedBillingAutoTopUpStateReadDependencies,
 ): BillingAutoTopUpStateRead => {
   const log = deps.log ?? defaultLog
+  const metrics = deps.metrics ?? noopCompareSoakMetrics
   const runtime = deps.runtime ?? systemBillingRuntime
   const readPostgres = async (
     userId: string,
@@ -765,6 +785,9 @@ export const makeRoutedBillingAutoTopUpStateRead = (
             op: 'readBillingAutoTopUpState',
             refs: [userId],
           })
+          metrics.record({ domain: 'billing', outcome: 'mismatch', readKind: 'readBillingAutoTopUpState' })
+        } else {
+          metrics.record({ domain: 'billing', outcome: 'match', readKind: 'readBillingAutoTopUpState' })
         }
       } catch (error) {
         log('khala_sync_billing_postgres_read_failed', {
@@ -772,6 +795,7 @@ export const makeRoutedBillingAutoTopUpStateRead = (
           op: 'readBillingAutoTopUpState',
           refs: [userId],
         })
+        metrics.record({ domain: 'billing', outcome: 'error', readKind: 'readBillingAutoTopUpState' })
       }
       return d1State
     }
@@ -802,12 +826,21 @@ export const makeRoutedBillingAutoTopUpStateRead = (
 export type BillingSyncEnv = BillingSyncFlagEnv &
   Readonly<{
     KHALA_SYNC_DB?: KhalaSyncHyperdriveBinding | undefined
+    /**
+     * Compare-mode soak observability (#8282 shared follow-up). Optional:
+     * absent until the `analytics_engine_datasets` wrangler binding is
+     * deployed, in which case the routed reads' compare branch simply
+     * skips the durable metric (existing diagnostics unaffected).
+     */
+    ANALYTICS?: AnalyticsEngineDataset | undefined
   }>
 
 export type MakeBillingStoreOptions = Readonly<{
   /** Injectable client factory (tests). Default: postgres.js/Hyperdrive. */
   makeSqlClient?: MakeKhalaSyncPushSqlClient | undefined
   log?: BillingSyncLog | undefined
+  /** Compare-mode soak metrics override (tests inject a collector). */
+  metrics?: CompareSoakMetrics | undefined
 }>
 
 export const postgresBillingStoreForEnv = (
@@ -919,13 +952,14 @@ export const billingRuntimeForEnv = (
     return systemBillingRuntime
   }
   const log = options.log ?? defaultLog
+  const metrics = options.metrics ?? makeCompareSoakMetrics(env.ANALYTICS)
 
   const mirror = flags.dualWrite
     ? makeBillingDomainMirror({ log, postgres })
     : undefined
   const balanceRead =
     options.routeReads === true && flags.reads !== 'd1'
-      ? makeRoutedBillingBalanceRead({ log, postgres, reads: flags.reads })
+      ? makeRoutedBillingBalanceRead({ log, metrics, postgres, reads: flags.reads })
       : undefined
   // #8337: unlike `balanceRead`, these two are wired unconditionally
   // whenever reads !== 'd1' — no separate `routeReads`-style opt-in is
@@ -935,11 +969,11 @@ export const billingRuntimeForEnv = (
   const recentEntriesRead =
     flags.reads === 'd1'
       ? undefined
-      : makeRoutedBillingRecentEntriesRead({ log, postgres, reads: flags.reads })
+      : makeRoutedBillingRecentEntriesRead({ log, metrics, postgres, reads: flags.reads })
   const autoTopUpStateRead =
     flags.reads === 'd1'
       ? undefined
-      : makeRoutedBillingAutoTopUpStateRead({ log, postgres, reads: flags.reads })
+      : makeRoutedBillingAutoTopUpStateRead({ log, metrics, postgres, reads: flags.reads })
 
   if (
     mirror === undefined &&

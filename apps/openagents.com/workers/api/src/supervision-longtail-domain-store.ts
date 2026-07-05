@@ -58,10 +58,12 @@
 // D1 drop in a further follow-up.
 
 import {
+  makeCompareSoakMetrics,
   normalizeSupervisionLongtailValue,
   requireSupervisionLongtailUnsafe,
   SUPERVISION_LONGTAIL_TABLE_SPECS,
   upsertSupervisionLongtailRows,
+  type CompareSoakMetrics,
   type SupervisionLongtailRow,
   type SupervisionLongtailTable,
   type SyncSql,
@@ -385,6 +387,13 @@ export type SupervisionLongtailStoreEnv = SupervisionLongtailFlagEnv &
   Readonly<{
     OPENAGENTS_DB?: D1Database
     KHALA_SYNC_DB?: KhalaSyncHyperdriveBinding | undefined
+    /**
+     * Compare-mode soak observability (#8282 shared follow-up, #8361).
+     * Optional: absent until the `analytics_engine_datasets` wrangler
+     * binding is deployed, in which case the shadow-compare reader below
+     * simply skips the durable metric (existing diagnostics unaffected).
+     */
+    ANALYTICS?: AnalyticsEngineDataset | undefined
   }>
 
 export type MakeSupervisionLongtailStoreOptions = Readonly<{
@@ -393,6 +402,8 @@ export type MakeSupervisionLongtailStoreOptions = Readonly<{
   log?: SupervisionLongtailLog | undefined
   /** D1 handle override (call sites that already hold a proxied database). */
   db?: D1Database | undefined
+  /** Compare-mode soak metrics override (tests inject a collector). */
+  metrics?: CompareSoakMetrics | undefined
 }>
 
 const defaultLog: SupervisionLongtailLog = (event, fields) => {
@@ -429,6 +440,8 @@ type SupervisionLongtailRuntime = Readonly<{
    * store's `compareStore` (see `forge-domain-store.ts`).
    */
   compareStore: PostgresSupervisionLongtailStore | undefined
+  /** Compare-mode soak observability recorder (no-op when unbound). */
+  metrics: CompareSoakMetrics
 }>
 
 const runtimeForEnv = (
@@ -440,12 +453,14 @@ const runtimeForEnv = (
   const flags = supervisionLongtailFlagsFromEnv(env)
   const log = options.log ?? defaultLog
   const postgres = postgresStoreForEnv(env, options)
+  const metrics = options.metrics ?? makeCompareSoakMetrics(env.ANALYTICS)
   return {
     compareStore:
       postgres !== undefined && flags.reads !== 'd1' ? postgres : undefined,
     db,
     flags,
     log,
+    metrics,
     mirror:
       postgres !== undefined && flags.dualWrite
         ? makeSupervisionLongtailMirror({ db, log, postgres })
@@ -712,7 +727,7 @@ export const makeOmniPublicProofBundleCompareReader = (
   options: MakeSupervisionLongtailStoreOptions = {},
 ): ((id: string) => Promise<void>) | undefined => {
   const runtime = runtimeForEnv(env, options)
-  const { compareStore, db, flags, log } = runtime
+  const { compareStore, db, flags, log, metrics } = runtime
   if (compareStore === undefined) {
     return undefined
   }
@@ -756,6 +771,9 @@ export const makeOmniPublicProofBundleCompareReader = (
           op,
           refs: [id],
         })
+        metrics.record({ domain: 'supervision', outcome: 'mismatch', readKind: op })
+      } else {
+        metrics.record({ domain: 'supervision', outcome: 'match', readKind: op })
       }
     } catch (error) {
       log('khala_sync_supervision_read_compare_failed', {
@@ -763,6 +781,7 @@ export const makeOmniPublicProofBundleCompareReader = (
         op,
         refs: [id],
       })
+      metrics.record({ domain: 'supervision', outcome: 'error', readKind: op })
     }
   }
 }

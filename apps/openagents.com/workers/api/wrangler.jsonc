@@ -402,6 +402,21 @@
       "id": "6cd885288e5b4b2f8fd2d76200c980bf",
     },
   ],
+  // Khala Sync compare-mode soak observability (#8282 shared follow-up):
+  // one durable Analytics Engine data point per compare-mode read across
+  // the KS-8 domains, additive to the existing per-call
+  // `khala_sync_*_compare_mismatch` diagnostics. Query via
+  // `packages/khala-sync-server/scripts/query-compare-soak.ts` (Analytics
+  // Engine SQL API). Writes are fail-soft (see
+  // `@openagentsinc/khala-sync-server`'s `compare-soak-metrics.ts`) — a
+  // missing binding or a write fault never affects the compare-mode read
+  // path it instruments.
+  "analytics_engine_datasets": [
+    {
+      "binding": "ANALYTICS",
+      "dataset": "khala_sync_compare_soak",
+    },
+  ],
   // Smart Placement (#8284 acceptance) is deliberately NOT enabled: this
   // Worker serves the whole site's static assets with `run_worker_first:
   // true`, and Wrangler warns that Smart Placement would move ALL requests
@@ -657,6 +672,15 @@
         {
           "binding": "KHALA_SYNC_DB",
           "id": "63a375a24d6f475db60d9490f55c9102",
+        },
+      ],
+      // Khala Sync compare-mode soak observability (#8282), staging parity
+      // for the production dataset — a distinct dataset so staging traffic
+      // never pollutes the production soak counts.
+      "analytics_engine_datasets": [
+        {
+          "binding": "ANALYTICS",
+          "dataset": "khala_sync_compare_soak_staging",
         },
       ],
       "r2_buckets": [

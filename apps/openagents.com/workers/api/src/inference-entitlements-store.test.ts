@@ -21,6 +21,8 @@
 
 import { describe, expect, test } from 'vitest'
 
+import type { CompareSoakSample } from '@openagentsinc/khala-sync-server'
+
 import {
   inferenceEntitlementsFlagsFromEnv,
   makeInferenceEntitlementsMirror,
@@ -49,6 +51,14 @@ const collectLog = () => {
       events.push({ event, fields })
     },
   }
+}
+
+/** Collects compare-soak samples (#8282 shared follow-up) the same way
+ * `collectLog` collects diagnostics — used to pin that every compare-mode
+ * read emits exactly one durable soak sample alongside its diagnostic. */
+const collectMetrics = () => {
+  const samples: CompareSoakSample[] = []
+  return { metrics: { record: (sample: CompareSoakSample) => samples.push(sample) }, samples }
 }
 
 const gateReadsStub = (
@@ -319,6 +329,7 @@ describe('makeInferenceEntitlementsMirror (fire-safe dual-write)', () => {
 describe('makeRoutedEntitlementsGateReads', () => {
   test('compare mode serves the D1 decision immediately and logs the mismatch OFF the response path', async () => {
     const { events, log } = collectLog()
+    const { metrics, samples } = collectMetrics()
     const scheduled: Array<Promise<void>> = []
     let releasePg: (value: boolean) => void = () => {}
     const pgGate = new Promise<boolean>(resolve => {
@@ -328,6 +339,7 @@ describe('makeRoutedEntitlementsGateReads', () => {
       d1: gateReadsStub({ freeTierKeyExists: () => Promise.resolve(true) }),
       flags: { dualWrite: true, nonGateReads: 'd1', reads: 'compare' },
       log,
+      metrics,
       postgres: gateReadsStub({ freeTierKeyExists: () => pgGate }),
       schedule: work => {
         scheduled.push(work)
@@ -339,6 +351,7 @@ describe('makeRoutedEntitlementsGateReads', () => {
     const decision = await routed.freeTierKeyExists('agent:a')
     expect(decision).toBe(true)
     expect(events).toHaveLength(0)
+    expect(samples).toHaveLength(0)
 
     releasePg(false)
     await Promise.all(scheduled)
@@ -347,15 +360,22 @@ describe('makeRoutedEntitlementsGateReads', () => {
       'khala_sync_entitlements_read_compare_mismatch',
     )
     expect(events[0]?.fields.op).toBe('freeTierKeyExists')
+    // The durable soak sample (#8282) accompanies the diagnostic — one
+    // record per compare-mode read, tagged with the mismatch outcome.
+    expect(samples).toEqual([
+      { domain: 'entitlements_gate', outcome: 'mismatch', readKind: 'freeTierKeyExists' },
+    ])
   })
 
-  test('compare mode: matching decisions log nothing; a failing shadow read logs read_failed', async () => {
+  test('compare mode: matching decisions log nothing but still record a match sample; a failing shadow read logs read_failed and records an error sample', async () => {
     const { events, log } = collectLog()
+    const { metrics, samples } = collectMetrics()
     const scheduled: Array<Promise<void>> = []
     const routed = makeRoutedEntitlementsGateReads({
       d1: gateReadsStub(),
       flags: { dualWrite: true, nonGateReads: 'd1', reads: 'compare' },
       log,
+      metrics,
       postgres: gateReadsStub({
         freeTierUsage: () => Promise.reject(new Error('pg exploded')),
       }),
@@ -372,6 +392,10 @@ describe('makeRoutedEntitlementsGateReads', () => {
     await Promise.all(scheduled)
     expect(events.map(entry => entry.event)).toEqual([
       'khala_sync_entitlements_postgres_read_failed',
+    ])
+    expect(samples).toEqual([
+      { domain: 'entitlements_gate', outcome: 'match', readKind: 'freeTierKeyExists' },
+      { domain: 'entitlements_gate', outcome: 'error', readKind: 'freeTierUsage' },
     ])
   })
 
@@ -421,6 +445,7 @@ describe('makeRoutedEntitlementsGateReads', () => {
 describe('makeRoutedEntitlementsNonGateReads', () => {
   test('compare mode serves the D1 answer immediately and logs the mismatch OFF the response path, under the non-gate event names', async () => {
     const { events, log } = collectLog()
+    const { metrics, samples } = collectMetrics()
     const scheduled: Array<Promise<void>> = []
     let releasePg: (value: number | null) => void = () => {}
     const pgGate = new Promise<number | null>(resolve => {
@@ -430,6 +455,7 @@ describe('makeRoutedEntitlementsNonGateReads', () => {
       d1: nonGateReadsStub({ activeOrangeCheckCount: () => Promise.resolve(3) }),
       flags: { dualWrite: true, nonGateReads: 'compare', reads: 'd1' },
       log,
+      metrics,
       postgres: nonGateReadsStub({ activeOrangeCheckCount: () => pgGate }),
       schedule: work => {
         scheduled.push(work)
@@ -439,6 +465,7 @@ describe('makeRoutedEntitlementsNonGateReads', () => {
     const count = await routed.activeOrangeCheckCount()
     expect(count).toBe(3)
     expect(events).toHaveLength(0)
+    expect(samples).toHaveLength(0)
 
     releasePg(4)
     await Promise.all(scheduled)
@@ -447,15 +474,22 @@ describe('makeRoutedEntitlementsNonGateReads', () => {
       'khala_sync_entitlements_non_gate_read_compare_mismatch',
     )
     expect(events[0]?.fields.op).toBe('activeOrangeCheckCount')
+    // Same durable soak sample discipline as the gate reads, tagged with the
+    // non-gate domain slug so a dashboard never conflates the two surfaces.
+    expect(samples).toEqual([
+      { domain: 'entitlements_non_gate', outcome: 'mismatch', readKind: 'activeOrangeCheckCount' },
+    ])
   })
 
-  test('compare mode: a failing shadow read logs the non-gate postgres_read_failed event, never the gate-read event name', async () => {
+  test('compare mode: a failing shadow read logs the non-gate postgres_read_failed event, never the gate-read event name, and records an error sample', async () => {
     const { events, log } = collectLog()
+    const { metrics, samples } = collectMetrics()
     const scheduled: Array<Promise<void>> = []
     const routed = makeRoutedEntitlementsNonGateReads({
       d1: nonGateReadsStub(),
       flags: { dualWrite: true, nonGateReads: 'compare', reads: 'd1' },
       log,
+      metrics,
       postgres: nonGateReadsStub({
         publicPrivacyReceiptByRef: () =>
           Promise.reject(new Error('pg exploded')),
@@ -469,6 +503,9 @@ describe('makeRoutedEntitlementsNonGateReads', () => {
     await Promise.all(scheduled)
     expect(events.map(entry => entry.event)).toEqual([
       'khala_sync_entitlements_non_gate_postgres_read_failed',
+    ])
+    expect(samples).toEqual([
+      { domain: 'entitlements_non_gate', outcome: 'error', readKind: 'publicPrivacyReceiptByRef' },
     ])
   })
 

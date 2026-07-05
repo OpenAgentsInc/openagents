@@ -2909,6 +2909,112 @@ touched; both sit in domains under active concurrent work this session
 per the shared multi-agent git-hygiene policy) — 1060/1062 files,
 9481/9489 tests passed; `bun run check:architecture` (zero-debt) passed.
 
+## Compare-mode soak observability (#8282 shared follow-up)
+
+**Problem this closes.** Proving a `compare`-mode read (D1 serves, Postgres
+shadow-read compared, mismatches logged via the existing
+`khala_sync_*_compare_mismatch` / `khala_sync_*_read_compare_failed`
+diagnostics) is safe to flip to real Postgres serving requires a genuine
+multi-hour-or-longer soak with ZERO mismatches. Before this landed, the only
+way to observe that was a `wrangler tail` piped to one agent's terminal for
+the length of a single session:
+
+1. Not a genuine long soak — an hour-plus read-heavy domain needs far more
+   observation time than one agent session allows.
+2. Invisible after the session ends — no durable record exists of "this flag
+   has run mismatch-free for N hours across M requests."
+3. Silently vacuous for low/zero-traffic domains. The supervision pass
+   (#8361) found `omni_public_proof_bundles` has zero organic traffic, so a
+   "clean" `wrangler tail` there proved nothing — and there was no way to see
+   that pattern except by noticing it manually.
+
+**What was built.** A durable, queryable Cloudflare Analytics Engine data
+point per compare-mode read, ADDITIVE to (never a replacement for) the
+existing per-call diagnostic events:
+
+- `packages/khala-sync-server/src/compare-soak-metrics.ts` —
+  `makeCompareSoakMetrics(dataset)` builds a fail-soft recorder:
+  `record({ domain, readKind, outcome })` where `outcome` is
+  `"match" | "mismatch" | "error"`. **Fail-soft contract (load-bearing):**
+  `record()` never throws, blocks, or slows the real read path — a missing
+  `ANALYTICS` binding degrades to a true no-op (`makeCompareSoakMetrics(undefined)`),
+  and any `writeDataPoint` fault is caught and swallowed. Never required for
+  correctness; always safe to wire in unconditionally.
+- The `analytics_engine_datasets` wrangler binding `ANALYTICS` →
+  dataset `khala_sync_compare_soak` (prod) /
+  `khala_sync_compare_soak_staging` (staging), added to
+  `apps/openagents.com/workers/api/wrangler.jsonc`. Optional on the
+  `WorkerBindings` type (`apps/openagents.com/packages/sync-worker/src/index.ts`)
+  — absent binding = no-op, never an error.
+- Each domain constructs its recorder as
+  `options.metrics ?? makeCompareSoakMetrics(env.ANALYTICS)` inside its own
+  `*StoreEnv` → runtime factory (same pattern as the existing `log`/`mirror`
+  injection points), then calls `metrics.record(...)` alongside the existing
+  `log(...)` diagnostic call in every compare-mode branch: once on match, once
+  on mismatch, once on a shadow-read error (recorded as `outcome: "error"` so
+  a domain never reads as vacuous just because its Postgres shadow reads are
+  themselves erroring — that is still real traffic, just not a comparable
+  result).
+- `packages/khala-sync-server/scripts/query-compare-soak.ts` — queries the
+  dataset via the Cloudflare Analytics Engine SQL API
+  (`POST https://api.cloudflare.com/client/v4/accounts/{account_id}/analytics_engine/sql`)
+  and reports, per domain, over a lookback window: total compare-mode reads,
+  match/mismatch/error counts, and a `vacuous: true` flag for any known
+  domain that had ZERO rows in the window at all — the exact #8361 failure
+  mode made explicit and automatic instead of something an agent has to
+  notice by hand.
+
+**Wired call sites today** (the `domain` slug each records under):
+
+| Domain slug | File | Flag | Live in prod as `compare`? |
+| --- | --- | --- | --- |
+| `entitlements_gate` | `inference-entitlements-store.ts`, `makeRoutedEntitlementsGateReads` | `KHALA_SYNC_ENTITLEMENTS_READS` | No (default `d1`; this was the #8336 explicitly-blocked lane) |
+| `entitlements_non_gate` | `inference-entitlements-store.ts`, `makeRoutedEntitlementsNonGateReads` | `KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS` | No (prod runs `postgres`, not `compare`, today) |
+| `supervision` | `supervision-longtail-domain-store.ts`, `makeOmniPublicProofBundleCompareReader` | `KHALA_SYNC_SUPERVISION_READS` | **Yes** (`compare` in prod — the #8361 zero-traffic case) |
+| `artanis` | `artanis-domain-store.ts`, `artanisRead` | `KHALA_SYNC_ARTANIS_READS` | **Yes** (`compare` in prod) |
+| `billing` | `billing-store.ts`, `makeRoutedBillingBalanceRead` / `makeRoutedBillingRecentEntriesRead` / `makeRoutedBillingAutoTopUpStateRead` | `KHALA_SYNC_BILLING_READS` | No (default `d1`) |
+| `forge` | `forge-domain-store.ts`, `compareListRefs` (inside `makeForgeGitCanonicalStoreForEnv`) | `KHALA_SYNC_FORGE_READS` | No (prod runs `postgres`, not `compare`, today) |
+
+A domain not yet listed above (e.g. a future KS-8 lane) gets the pipeline
+"for free" the moment its compare branch calls
+`metrics.record({ domain: "<slug>", readKind: "<op>", outcome })` — add the
+slug to `KNOWN_COMPARE_SOAK_DOMAINS` in `query-compare-soak.ts` so the query
+script reports it (rather than silently omitting it) and to the table above.
+
+**Querying a soak window:**
+
+```sh
+cd packages/khala-sync-server
+CLOUDFLARE_API_TOKEN=<token> CLOUDFLARE_ACCOUNT_ID=<id> \
+  bun run query-compare-soak -- --hours 6
+# or: bun scripts/query-compare-soak.ts --hours 6 --dataset khala_sync_compare_soak_staging
+```
+
+The owner's Cloudflare API token (needs "Account Analytics Read" permission)
+normally lives in `~/work/.secrets/cloudflare-openagents.env`
+(`CLOUDFLARE_API_TOKEN`); the account id is visible via `wrangler whoami`.
+Output is a per-domain table: total reads, matches, mismatches, errors, and a
+status column that reads `VACUOUS` (zero traffic — treat a soak here as
+NO evidence, not clean evidence), `MISMATCHES — do NOT flip`, or `clean`.
+Pass `--json` for a machine-readable report instead
+(`CompareSoakQueryReport`).
+
+**Deciding to flip a domain's read flag to `postgres` still requires:**
+
+1. This pipeline reporting `clean` (zero mismatches) for the domain over a
+   genuinely representative window — hours, not minutes, and matching the
+   domain's real traffic pattern (a read-heavy domain needs proportionally
+   more observation).
+2. `totalReads` meaningfully greater than zero — a `VACUOUS` window is NOT
+   evidence of anything; wait for real traffic or accept that the domain
+   cannot be soak-verified this way and needs another proof strategy.
+3. The epic-gated ops decision recorded on #8282 (or the domain's own
+   follow-up issue), per every other KS-8 domain's cutover discipline in this
+   runbook.
+
+This tool only makes the soak *observable*; it does not itself constitute
+soak time, and it never flips any domain's read flag.
+
 ## Public tokens-served projection (KS-6.3, #8304)
 
 The public "Khala Tokens Served" counter

@@ -4,6 +4,8 @@
 
 import { describe, expect, test } from 'vitest'
 
+import type { CompareSoakSample } from '@openagentsinc/khala-sync-server'
+
 import {
   ARTANIS_DOMAIN_TABLES,
   artanisAuthorityDb,
@@ -278,11 +280,13 @@ describe('artanisRead (flag routing)', () => {
     reads: 'd1' | 'postgres' | 'compare',
     postgres: PostgresArtanisDomainStore,
     logged: Array<Logged>,
+    samples?: CompareSoakSample[],
   ) =>
     makeArtanisDomainHandle({
       d1,
       flags: { dualWrite: true, reads },
       log: (event, fields) => logged.push([event, fields]),
+      metrics: samples ? { record: sample => samples.push(sample) } : undefined,
       postgres,
       wait: () => Promise.resolve(),
     })
@@ -361,10 +365,11 @@ describe('artanisRead (flag routing)', () => {
     ])
   })
 
-  test("reads: 'compare' SERVES D1 and logs a mismatch diagnostic", async () => {
+  test("reads: 'compare' SERVES D1 and logs a mismatch diagnostic, plus a durable mismatch soak sample (#8282)", async () => {
     const logged: Array<Logged> = []
+    const samples: CompareSoakSample[] = []
     const result = await artanisRead(
-      handleWith('compare', fakePostgres(), logged),
+      handleWith('compare', fakePostgres(), logged, samples),
       'op',
       ['ref-1'],
       () => Promise.resolve({ a: 1, b: 2 }),
@@ -374,12 +379,16 @@ describe('artanisRead (flag routing)', () => {
     expect(logged.map(([event]) => event)).toEqual([
       'khala_sync_artanis_read_compare_mismatch',
     ])
+    expect(samples).toEqual([
+      { domain: 'artanis', outcome: 'mismatch', readKind: 'op' },
+    ])
   })
 
-  test("reads: 'compare' is silent on equal results regardless of key order", async () => {
+  test("reads: 'compare' is silent on equal results regardless of key order, but still records a match soak sample", async () => {
     const logged: Array<Logged> = []
+    const samples: CompareSoakSample[] = []
     const result = await artanisRead(
-      handleWith('compare', fakePostgres(), logged),
+      handleWith('compare', fakePostgres(), logged, samples),
       'op',
       [],
       () => Promise.resolve({ a: 1, b: 2 }),
@@ -387,12 +396,14 @@ describe('artanisRead (flag routing)', () => {
     )
     expect(result).toEqual({ a: 1, b: 2 })
     expect(logged).toEqual([])
+    expect(samples).toEqual([{ domain: 'artanis', outcome: 'match', readKind: 'op' }])
   })
 
-  test("reads: 'compare' never fails the read when the Postgres side throws", async () => {
+  test("reads: 'compare' never fails the read when the Postgres side throws, and records an error soak sample", async () => {
     const logged: Array<Logged> = []
+    const samples: CompareSoakSample[] = []
     const result = await artanisRead(
-      handleWith('compare', fakePostgres(), logged),
+      handleWith('compare', fakePostgres(), logged, samples),
       'op',
       [],
       () => Promise.resolve('from-d1'),
@@ -402,6 +413,7 @@ describe('artanisRead (flag routing)', () => {
     expect(logged.map(([event]) => event)).toEqual([
       'khala_sync_artanis_postgres_read_failed',
     ])
+    expect(samples).toEqual([{ domain: 'artanis', outcome: 'error', readKind: 'op' }])
   })
 })
 

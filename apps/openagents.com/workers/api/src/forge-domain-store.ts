@@ -74,9 +74,11 @@
 
 import {
   FORGE_DOMAIN_TABLE_SPECS,
+  makeCompareSoakMetrics,
   normalizeForgeDomainValue,
   requireForgeDomainUnsafe,
   upsertForgeDomainRows,
+  type CompareSoakMetrics,
   type ForgeDomainRow,
   type ForgeDomainTable,
   type SyncSql,
@@ -468,6 +470,13 @@ export type ForgeDomainStoreEnv = ForgeDomainFlagEnv &
   Readonly<{
     OPENAGENTS_DB?: D1Database
     KHALA_SYNC_DB?: KhalaSyncHyperdriveBinding | undefined
+    /**
+     * Compare-mode soak observability (#8282 shared follow-up). Optional:
+     * absent until the `analytics_engine_datasets` wrangler binding is
+     * deployed, in which case the `listRefs` shadow compare simply skips
+     * the durable metric (existing diagnostics unaffected).
+     */
+    ANALYTICS?: AnalyticsEngineDataset | undefined
   }>
 
 export type MakeForgeDomainStoreOptions = Readonly<{
@@ -480,6 +489,8 @@ export type MakeForgeDomainStoreOptions = Readonly<{
    * — and must keep using it as the authority.
    */
   db?: D1Database | undefined
+  /** Compare-mode soak metrics override (tests inject a collector). */
+  metrics?: CompareSoakMetrics | undefined
 }>
 
 const defaultLog: ForgeDomainLog = (event, fields) => {
@@ -531,6 +542,8 @@ type ForgeDomainRuntime = Readonly<{
    * Postgres read serving.
    */
   acquireSql: AcquireForgeSql | undefined
+  /** Compare-mode soak observability recorder (no-op when unbound). */
+  metrics: CompareSoakMetrics
 }>
 
 const runtimeForEnv = (
@@ -543,6 +556,7 @@ const runtimeForEnv = (
   const log = options.log ?? defaultLog
   const acquireSql = acquireSqlForEnv(env, options)
   const postgres = postgresStoreForEnv(acquireSql)
+  const metrics = options.metrics ?? makeCompareSoakMetrics(env.ANALYTICS)
   return {
     acquireSql,
     compareStore:
@@ -550,6 +564,7 @@ const runtimeForEnv = (
     db,
     flags,
     log,
+    metrics,
     mirror:
       postgres !== undefined && flags.dualWrite
         ? makeForgeDomainMirror({ db, log, postgres })
@@ -664,7 +679,7 @@ export const makeForgeGitCanonicalStoreForEnv = (
 ): ForgeGitCanonicalStore => {
   const runtime = runtimeForEnv(env, options)
   const base = makeD1ForgeGitCanonicalStore(runtime.db)
-  const { acquireSql, compareStore, flags, log, mirror } = runtime
+  const { acquireSql, compareStore, flags, log, metrics, mirror } = runtime
 
   // KS-8.16 follow-up (#8358) read cutover: in `postgres` mode SERVE the
   // `listRefs` ref advertisement from the Postgres twin, reusing the
@@ -734,6 +749,9 @@ export const makeForgeGitCanonicalStoreForEnv = (
                 op: 'listRefs',
                 refs: [tenantRef, repositoryRef],
               })
+              metrics.record({ domain: 'forge', outcome: 'mismatch', readKind: 'listRefs' })
+            } else {
+              metrics.record({ domain: 'forge', outcome: 'match', readKind: 'listRefs' })
             }
           } catch (error) {
             log('khala_sync_forge_read_compare_failed', {
@@ -741,6 +759,7 @@ export const makeForgeGitCanonicalStoreForEnv = (
               op: 'listRefs',
               refs: [tenantRef, repositoryRef],
             })
+            metrics.record({ domain: 'forge', outcome: 'error', readKind: 'listRefs' })
           }
         }
 

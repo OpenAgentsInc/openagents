@@ -27,6 +27,7 @@ import {
   BILLING_DOMAIN_TABLE_SPECS,
   normalizeBillingValue,
   type BillingDomainTable,
+  type CompareSoakSample,
 } from '@openagentsinc/khala-sync-server'
 import {
   hasLocalPostgres,
@@ -267,10 +268,12 @@ describe('fail-soft mirror + routed balance read', () => {
     sqlite.close()
   })
 
-  test('compare mode serves D1 and logs cent-level divergence', async () => {
+  test('compare mode serves D1 and logs cent-level divergence, plus a durable soak sample (#8282)', async () => {
     const logs: Array<LogEntry> = []
+    const samples: CompareSoakSample[] = []
     const read = makeRoutedBillingBalanceRead({
       log: (event, fields) => logs.push({ event, op: fields.op }),
+      metrics: { record: sample => samples.push(sample) },
       postgres: { readBalanceCents: () => Promise.resolve(999) },
       reads: 'compare',
     })
@@ -280,16 +283,25 @@ describe('fail-soft mirror + routed balance read', () => {
         entry => entry.event === 'khala_sync_billing_read_compare_mismatch',
       ),
     ).toBe(true)
+    expect(samples).toEqual([
+      { domain: 'billing', outcome: 'mismatch', readKind: 'readBalanceCents' },
+    ])
 
     logs.length = 0
+    samples.length = 0
     expect(await read('user-x', () => Promise.resolve(999))).toBe(999)
     expect(logs).toHaveLength(0)
+    expect(samples).toEqual([
+      { domain: 'billing', outcome: 'match', readKind: 'readBalanceCents' },
+    ])
   })
 
-  test('compare mode: a Postgres failure logs and still serves D1', async () => {
+  test('compare mode: a Postgres failure logs and still serves D1, and records an error soak sample', async () => {
     const logs: Array<LogEntry> = []
+    const samples: CompareSoakSample[] = []
     const read = makeRoutedBillingBalanceRead({
       log: (event, fields) => logs.push({ event, op: fields.op }),
+      metrics: { record: sample => samples.push(sample) },
       postgres: {
         readBalanceCents: () => Promise.reject(new Error('pg down')),
       },
@@ -301,6 +313,9 @@ describe('fail-soft mirror + routed balance read', () => {
         entry => entry.event === 'khala_sync_billing_postgres_read_failed',
       ),
     ).toBe(true)
+    expect(samples).toEqual([
+      { domain: 'billing', outcome: 'error', readKind: 'readBalanceCents' },
+    ])
   })
 
   test('postgres mode serves Postgres; exhausted retries fall back to D1', async () => {

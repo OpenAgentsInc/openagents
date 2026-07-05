@@ -100,7 +100,12 @@
 // provider call, or false quota allowance) and stays D1-only permanently by
 // the same discipline, not merely deferred.
 
-import type { SyncSql } from '@openagentsinc/khala-sync-server'
+import {
+  makeCompareSoakMetrics,
+  noopCompareSoakMetrics,
+  type CompareSoakMetrics,
+  type SyncSql,
+} from '@openagentsinc/khala-sync-server'
 
 import {
   defaultMakeKhalaSyncSqlClient,
@@ -1243,6 +1248,14 @@ export type MakeRoutedEntitlementsGateReadsDependencies = Readonly<{
    * default — the shadow promise runs detached; tests inject a collector).
    */
   schedule?: ((work: Promise<void>) => void) | undefined
+  /**
+   * Compare-mode soak observability (#8282 shared follow-up): a durable
+   * Analytics Engine data point per compare-mode read, additive to the
+   * `khala_sync_entitlements_read_compare_mismatch` diagnostic above.
+   * Defaults to the no-op recorder when absent (tests, or an env without
+   * the ANALYTICS binding yet) — never required for correctness.
+   */
+  metrics?: CompareSoakMetrics | undefined
 }>
 
 /**
@@ -1262,6 +1275,7 @@ export const makeRoutedEntitlementsGateReads = (
 ): InferenceEntitlementsGateReads => {
   const { d1, flags, postgres } = deps
   const log = deps.log ?? defaultLog
+  const metrics = deps.metrics ?? noopCompareSoakMetrics
   const schedule =
     deps.schedule ??
     ((work: Promise<void>) => {
@@ -1297,6 +1311,9 @@ export const makeRoutedEntitlementsGateReads = (
               op,
               refs: [],
             })
+            metrics.record({ domain: 'entitlements_gate', outcome: 'mismatch', readKind: op })
+          } else {
+            metrics.record({ domain: 'entitlements_gate', outcome: 'match', readKind: op })
           }
         })
         .catch((error: unknown) => {
@@ -1305,6 +1322,7 @@ export const makeRoutedEntitlementsGateReads = (
             op,
             refs: [],
           })
+          metrics.record({ domain: 'entitlements_gate', outcome: 'error', readKind: op })
         }),
     )
     return d1Result
@@ -1360,6 +1378,11 @@ export type MakeRoutedEntitlementsNonGateReadsDependencies = Readonly<{
    * default — the shadow promise runs detached; tests inject a collector).
    */
   schedule?: ((work: Promise<void>) => void) | undefined
+  /**
+   * Compare-mode soak observability (#8282 shared follow-up). See
+   * {@link MakeRoutedEntitlementsGateReadsDependencies.metrics}.
+   */
+  metrics?: CompareSoakMetrics | undefined
 }>
 
 /**
@@ -1382,6 +1405,7 @@ export const makeRoutedEntitlementsNonGateReads = (
 ): InferenceEntitlementsNonGateReads => {
   const { d1, flags, postgres } = deps
   const log = deps.log ?? defaultLog
+  const metrics = deps.metrics ?? noopCompareSoakMetrics
   const schedule =
     deps.schedule ??
     ((work: Promise<void>) => {
@@ -1417,6 +1441,9 @@ export const makeRoutedEntitlementsNonGateReads = (
               op,
               refs: [],
             })
+            metrics.record({ domain: 'entitlements_non_gate', outcome: 'mismatch', readKind: op })
+          } else {
+            metrics.record({ domain: 'entitlements_non_gate', outcome: 'match', readKind: op })
           }
         })
         .catch((error: unknown) => {
@@ -1425,6 +1452,7 @@ export const makeRoutedEntitlementsNonGateReads = (
             op,
             refs: [],
           })
+          metrics.record({ domain: 'entitlements_non_gate', outcome: 'error', readKind: op })
         }),
     )
     return d1Result
@@ -1511,6 +1539,13 @@ export type InferenceEntitlementsStoreEnv = InferenceEntitlementsFlagEnv &
   Readonly<{
     OPENAGENTS_DB: D1Database
     KHALA_SYNC_DB?: KhalaSyncHyperdriveBinding | undefined
+    /**
+     * Compare-mode soak observability (#8282 shared follow-up). Optional:
+     * absent until the `analytics_engine_datasets` wrangler binding is
+     * deployed, in which case compare-mode reads simply skip the durable
+     * metric (the existing per-call diagnostics are unaffected).
+     */
+    ANALYTICS?: AnalyticsEngineDataset | undefined
   }>
 
 export type MakeInferenceEntitlementsRoutingOptions = Readonly<{
@@ -1518,6 +1553,8 @@ export type MakeInferenceEntitlementsRoutingOptions = Readonly<{
   makeSqlClient?: MakeKhalaSyncPushSqlClient | undefined
   log?: InferenceEntitlementsLog | undefined
   schedule?: ((work: Promise<void>) => void) | undefined
+  /** Compare-mode soak metrics override (tests inject a collector). */
+  metrics?: CompareSoakMetrics | undefined
 }>
 
 export type InferenceEntitlementsRouting = Readonly<{
@@ -1572,6 +1609,7 @@ export const makeInferenceEntitlementsRoutingForEnv = (
     return undefined
   }
   const log = options.log ?? defaultLog
+  const metrics = options.metrics ?? makeCompareSoakMetrics(env.ANALYTICS)
 
   return {
     flags,
@@ -1582,6 +1620,7 @@ export const makeInferenceEntitlementsRoutingForEnv = (
             d1: makeD1InferenceEntitlementsGateReads(openAgentsDatabase(env)),
             flags,
             log,
+            metrics,
             postgres: postgres.gateReads,
             schedule: options.schedule,
           }),
@@ -1599,6 +1638,7 @@ export const makeInferenceEntitlementsRoutingForEnv = (
             d1: makeD1InferenceEntitlementsNonGateReads(
               openAgentsDatabase(env),
             ),
+            metrics,
             flags,
             log,
             postgres: postgres.nonGateReads,

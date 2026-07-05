@@ -49,7 +49,12 @@
 // → second sweep → --verify → compare reads → postgres reads → re-home the
 // six cron ticks → drop the D1 tables in the follow-up decommission issue.
 
-import type { SyncSql } from '@openagentsinc/khala-sync-server'
+import {
+  makeCompareSoakMetrics,
+  noopCompareSoakMetrics,
+  type CompareSoakMetrics,
+  type SyncSql,
+} from '@openagentsinc/khala-sync-server'
 
 import {
   defaultMakeKhalaSyncSqlClient,
@@ -598,6 +603,8 @@ export type ArtanisDomainHandle = Readonly<{
   postgres: PostgresArtanisDomainStore | undefined
   /** Bounded-retry backoff hook (tests inject a no-op). */
   wait: (ms: number) => Promise<void>
+  /** Compare-mode soak observability (#8282 shared follow-up). No-op recorder by default. */
+  metrics: CompareSoakMetrics
 }>
 
 /**
@@ -643,6 +650,8 @@ export type MakeArtanisDomainHandleDependencies = Readonly<{
   log?: ArtanisDomainLog | undefined
   postgres: PostgresArtanisDomainStore | undefined
   wait?: ((ms: number) => Promise<void>) | undefined
+  /** Compare-mode soak metrics override (tests inject a collector). */
+  metrics?: CompareSoakMetrics | undefined
 }>
 
 export const makeArtanisDomainHandle = (
@@ -652,6 +661,7 @@ export const makeArtanisDomainHandle = (
   d1: deps.d1,
   flags: deps.flags,
   log: deps.log ?? (() => {}),
+  metrics: deps.metrics ?? noopCompareSoakMetrics,
   postgres: deps.postgres,
   wait:
     deps.wait ??
@@ -786,7 +796,7 @@ export const artanisRead = async <A>(
   readPostgres?: (postgres: PostgresArtanisDomainStore) => Promise<A>,
 ): Promise<A> => {
   if (!isArtanisDomainHandle(db)) return readD1()
-  const { flags, log, postgres, wait } = db
+  const { flags, log, metrics, postgres, wait } = db
   if (
     postgres === undefined ||
     readPostgres === undefined ||
@@ -829,6 +839,9 @@ export const artanisRead = async <A>(
         op,
         refs,
       })
+      metrics.record({ domain: 'artanis', outcome: 'mismatch', readKind: op })
+    } else {
+      metrics.record({ domain: 'artanis', outcome: 'match', readKind: op })
     }
   } catch (error) {
     log('khala_sync_artanis_postgres_read_failed', {
@@ -836,6 +849,7 @@ export const artanisRead = async <A>(
       op,
       refs,
     })
+    metrics.record({ domain: 'artanis', outcome: 'error', readKind: op })
   }
   return d1Result
 }
@@ -848,6 +862,13 @@ export type ArtanisDomainStoreEnv = ArtanisDomainFlagEnv &
   Readonly<{
     OPENAGENTS_DB: D1Database
     KHALA_SYNC_DB?: KhalaSyncHyperdriveBinding | undefined
+    /**
+     * Compare-mode soak observability (#8282 shared follow-up). Optional:
+     * absent until the `analytics_engine_datasets` wrangler binding is
+     * deployed, in which case `artanisRead`'s compare branch simply skips
+     * the durable metric (existing diagnostics unaffected).
+     */
+    ANALYTICS?: AnalyticsEngineDataset | undefined
   }>
 
 export type MakeArtanisDatabaseForEnvOptions = Readonly<{
@@ -862,6 +883,8 @@ export type MakeArtanisDatabaseForEnvOptions = Readonly<{
    * from one code path).
    */
   d1?: D1Database | undefined
+  /** Compare-mode soak metrics override (tests inject a collector). */
+  metrics?: CompareSoakMetrics | undefined
 }>
 
 const defaultLog: ArtanisDomainLog = (event, fields) => {
@@ -904,6 +927,7 @@ export const makeArtanisDatabaseForEnv = (
     d1,
     flags,
     log: options.log ?? defaultLog,
+    metrics: options.metrics ?? makeCompareSoakMetrics(env.ANALYTICS),
     postgres,
   })
 }

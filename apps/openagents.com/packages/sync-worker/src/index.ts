@@ -89,6 +89,14 @@ export type WorkerBindings = Readonly<{
   SHC_CONTROL_API_BEARER_TOKEN?: string
   SHC_DISPATCH_MODE?: string
   SHC_RUNNER_CALLBACK_TOKEN?: string
+  // Khala Sync compare-mode soak observability (#8282 shared follow-up).
+  // Optional Cloudflare Analytics Engine dataset binding: one durable data
+  // point per compare-mode read across the KS-8 domains (see
+  // `@openagentsinc/khala-sync-server`'s `compare-soak-metrics.ts` and
+  // `packages/khala-sync-server/scripts/query-compare-soak.ts`). Absent =>
+  // every compare-mode read simply skips the durable metric (fail-soft by
+  // construction) — the existing per-call diagnostic events are unaffected.
+  ANALYTICS?: AnalyticsEngineDataset
 }>
 
 export const jsonResponse = (

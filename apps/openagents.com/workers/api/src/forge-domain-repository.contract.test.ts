@@ -37,6 +37,7 @@ import {
   FORGE_DOMAIN_TABLE_SPECS,
   FORGE_DOMAIN_TABLES,
   normalizeForgeDomainValue,
+  type CompareSoakSample,
   type ForgeDomainTable,
 } from '@openagentsinc/khala-sync-server'
 import {
@@ -308,6 +309,9 @@ describe.skipIf(!hasLocalPostgres())(
       event: ForgeDomainDiagnosticEvent
       fields: ForgeDomainDiagnostic
     }> = []
+    // Compare-mode soak observability (#8282 shared follow-up) — durable
+    // samples emitted alongside the diagnostics above.
+    const soakSamples: CompareSoakSample[] = []
 
     beforeAll(async () => {
       pg = await startLocalPostgres()
@@ -338,6 +342,7 @@ describe.skipIf(!hasLocalPostgres())(
             end: () => Promise.resolve(),
             sql: raw as never,
           }),
+        metrics: { record: sample => soakSamples.push(sample) },
       }
     }, 120_000)
 
@@ -688,9 +693,15 @@ describe.skipIf(!hasLocalPostgres())(
       const canonical = makeForgeGitCanonicalStoreForEnv(compareEnv, options)
 
       diagnostics.length = 0
+      soakSamples.length = 0
       const clean = await canonical.listRefs(TENANT, REPO)
       expect(clean.length).toBeGreaterThan(0)
       expect(diagnostics).toEqual([])
+      // A clean compare still emits a durable "match" soak sample (#8282) —
+      // proof the pipeline sees every compare-mode read, not just drifts.
+      expect(soakSamples).toEqual([
+        { domain: 'forge', outcome: 'match', readKind: 'listRefs' },
+      ])
 
       // Drift the Postgres twin: the shadow compare flags it, D1 is
       // still served unchanged (compare mode SERVES D1).
@@ -698,6 +709,7 @@ describe.skipIf(!hasLocalPostgres())(
         `UPDATE forge_git_refs SET object_id = '${'f'.repeat(40)}' WHERE tenant_ref = $1 AND repository_ref = $2 AND ref_name = 'refs/heads/main'`,
         [TENANT, REPO],
       )
+      soakSamples.length = 0
       const served = await canonical.listRefs(TENANT, REPO)
       expect(served.length).toBe(clean.length)
       // Compare mode serves the D1 value, not the drifted Postgres value.
@@ -707,6 +719,9 @@ describe.skipIf(!hasLocalPostgres())(
       expect(
         diagnostics.map(d => d.event),
       ).toContain('khala_sync_forge_read_compare_mismatch')
+      expect(soakSamples).toEqual([
+        { domain: 'forge', outcome: 'mismatch', readKind: 'listRefs' },
+      ])
 
       // Heal the twin for the later assertions.
       await (client as PgClient).unsafe(

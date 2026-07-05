@@ -24,7 +24,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "capture": "bun scripts/capture.ts",
     "check:pending-migrations": "bun scripts/check-pending-migrations.ts",
-    "test:pending-migrations-guard": "bun test scripts/check-pending-migrations.test.ts"
+    "test:pending-migrations-guard": "bun test scripts/check-pending-migrations.test.ts",
+    "query-compare-soak": "bun scripts/query-compare-soak.ts"
   },
   "dependencies": {
     "@openagentsinc/khala-sync": "workspace:*",
