@@ -666,6 +666,75 @@ describe('pylon capacity funnel live bridge', () => {
     ])
   })
 
+  // Regression coverage for the #8282 Promise.all landmine audit
+  // (docs/2026-07-05-promise-all-cron-landmine-audit.md, Lane 1 #3): one
+  // bucket's snapshot upsert (or prune) failing must not prevent the OTHER
+  // bucket's write from happening.
+  test('one bucket failing to upsert/prune does not prevent the sibling bucket write', async () => {
+    const store: PylonApiStore = {
+      createAssignment: () => Promise.reject(new Error('unused')),
+      createEvent: () => Promise.reject(new Error('unused')),
+      listAssignmentsForPylon: () => Promise.resolve([assignment()]),
+      listEventsForPylon: () => Promise.resolve([]),
+      listEventsForAssignment: () => Promise.resolve([]),
+      listRegistrations: () =>
+        Promise.resolve([
+          registration({ latestHeartbeatAt: '2026-06-09T20:41:00.000Z' }),
+        ]),
+      listProviderJobLifecycleForPylons: () =>
+        Promise.resolve([providerJobLifecycleRecordFromAssignment(assignment())]),
+      readEventByIdempotencyKeyHash: () => Promise.resolve(undefined),
+      readAssignment: () => Promise.resolve(undefined),
+      readAssignmentByIdempotencyKeyHash: () => Promise.resolve(undefined),
+      readRegistrationByPylonRef: () => Promise.resolve(undefined),
+      updateAssignment: () => Promise.reject(new Error('unused')),
+      upsertProviderJobLifecycle: () => Promise.reject(new Error('unused')),
+      upsertRegistration: () => Promise.reject(new Error('unused')),
+    } as unknown as PylonApiStore
+    const snapshotStore = new MemorySnapshotStore()
+    const originalUpsert = snapshotStore.upsertSnapshot.bind(snapshotStore)
+    const originalPrune = snapshotStore.pruneSnapshotsBefore.bind(snapshotStore)
+    snapshotStore.upsertSnapshot = async record => {
+      if (record.bucketKind === 'hourly') {
+        throw new Error('D1 upsert failure (simulated)')
+      }
+
+      return originalUpsert(record)
+    }
+    snapshotStore.pruneSnapshotsBefore = async input => {
+      if (input.bucketKind === 'hourly') {
+        throw new Error('D1 prune failure (simulated)')
+      }
+
+      return originalPrune(input)
+    }
+
+    // Must not throw: the hourly bucket's failures are isolated and logged,
+    // not left to abort the whole recording call.
+    const snapshots = await recordPylonCapacityFunnelSnapshots({
+      nowIso: '2026-06-09T20:42:00.000Z',
+      snapshotStore,
+      store,
+    })
+
+    // The function still returns both built snapshot records (the failure
+    // is in persisting them, not building them) ...
+    expect(snapshots.map(snapshot => snapshot.bucketKind).sort()).toEqual([
+      'daily',
+      'hourly',
+    ])
+    // ... but only the healthy daily bucket actually persisted / pruned.
+    expect([...snapshotStore.records.keys()]).toEqual([
+      `daily:${snapshots.find(s => s.bucketKind === 'daily')?.bucketStartAt}`,
+    ])
+    expect(snapshotStore.pruned).toEqual([
+      {
+        beforeIso: '2025-12-11T20:42:00.000Z',
+        bucketKind: 'daily',
+      },
+    ])
+  })
+
   test('serves retained public funnel history as counts only', async () => {
     const snapshotStore = new MemorySnapshotStore()
     const records = pylonCapacityFunnelRecordsFromStore({
