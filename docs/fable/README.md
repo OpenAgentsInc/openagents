@@ -96,6 +96,14 @@ each source doc.
 
 ## Analysis Docs
 
+- `2026-07-04-khala-sync-implementation-status.md` — end-of-run status for
+  the 2026-07-04 Khala Sync build: the engine (contracts → substrate →
+  mutators → capture → hub DOs → client) live in production on Cloud SQL via
+  Hyperdrive; the tokens-served counter served from the Postgres projection;
+  every audited domain dual-writing to Postgres twins (migrations 0001–0028
+  applied to staging+prod); the 2× June-peak load test passing with zero
+  overload-class failures; and the remaining owner-gated destructive batch
+  (per-domain read cutover + D1 decommission, money/auth last).
 - `2026-07-04-database-alternatives-and-postgres-sync-engine.md` — why the
   single `openagents-autopilot` D1 database overloads under internal-only
   fleet load (single-threaded SQLite-in-a-DO, per-item raw-event-chunk
