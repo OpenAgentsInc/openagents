@@ -6,6 +6,7 @@ import type {
   ReadPendingRuntimeControlIntentsInput,
   RuntimeChatMessageRow,
   RuntimeControlIntentRow,
+  RuntimeTurnRow,
   SyncSql,
 } from '@openagentsinc/khala-sync-server'
 
@@ -14,8 +15,11 @@ import {
   KHALA_SYNC_CHAT_MESSAGE_READ_ROUTE_REF,
   KHALA_SYNC_RUNTIME_INTENTS_PATH,
   KHALA_SYNC_RUNTIME_INTENTS_ROUTE_REF,
+  KHALA_SYNC_RUNTIME_TURN_READ_PATH,
+  KHALA_SYNC_RUNTIME_TURN_READ_ROUTE_REF,
   handleKhalaSyncChatMessageRead,
   handleKhalaSyncRuntimeIntents,
+  handleKhalaSyncRuntimeTurnRead,
 } from './khala-sync-runtime-intents-routes'
 
 const FAKE_CONNECTION_STRING =
@@ -29,6 +33,11 @@ const getIntents = (query = '') =>
 const getMessage = (query = '') =>
   new Request(
     `https://openagents.com${KHALA_SYNC_CHAT_MESSAGE_READ_PATH}${query}`,
+  )
+
+const getRuntimeTurn = (query = '') =>
+  new Request(
+    `https://openagents.com${KHALA_SYNC_RUNTIME_TURN_READ_PATH}${query}`,
   )
 
 const controlIntent = (
@@ -247,6 +256,109 @@ describe('handleKhalaSyncRuntimeIntents', () => {
   test('client factory failure: 503 without echoing driver detail', async () => {
     const { response } = runIntents({
       factoryError: new Error(`auth failed for ${FAKE_CONNECTION_STRING}`),
+    })
+    const result = await response
+    expect(result.status).toBe(503)
+    expect(await result.text()).not.toContain('secret')
+  })
+})
+
+const runRuntimeTurn = (
+  input: Readonly<{
+    authorized?: boolean
+    binding?: { connectionString: string } | undefined
+    request?: Request
+    turn?: RuntimeTurnRow | null
+    readError?: Error
+    factoryError?: Error
+  }> = {},
+) => {
+  const reads: Array<{ turnId: string }> = []
+  let ended = 0
+  const response = Effect.runPromise(
+    handleKhalaSyncRuntimeTurnRead(input.request ?? getRuntimeTurn('?turnId=turn-1'), {
+      binding:
+        'binding' in input
+          ? input.binding
+          : { connectionString: FAKE_CONNECTION_STRING },
+      makeSqlClient: connectionString => {
+        expect(connectionString).toBe(FAKE_CONNECTION_STRING)
+        if (input.factoryError !== undefined) {
+          return Promise.reject(input.factoryError)
+        }
+        return Promise.resolve({
+          end: () => {
+            ended += 1
+            return Promise.resolve()
+          },
+          sql: {} as SyncSql,
+        })
+      },
+      readRuntimeTurnById: (_sql, readInput) => {
+        reads.push(readInput)
+        if (input.readError !== undefined) {
+          return Promise.reject(input.readError)
+        }
+        return Promise.resolve(input.turn === undefined ? null : input.turn)
+      },
+      requireOperator: () => Promise.resolve(input.authorized ?? true),
+    }),
+  )
+  return { endedCount: () => ended, reads, response }
+}
+
+describe('handleKhalaSyncRuntimeTurnRead', () => {
+  test('rejects non-GET methods', async () => {
+    const { response } = runRuntimeTurn({
+      request: new Request(`https://openagents.com${KHALA_SYNC_RUNTIME_TURN_READ_PATH}`, {
+        method: 'POST',
+      }),
+    })
+    expect((await response).status).toBe(405)
+  })
+
+  test('requires the admin bearer', async () => {
+    const { reads, response } = runRuntimeTurn({ authorized: false })
+    expect((await response).status).toBe(401)
+    expect(reads).toHaveLength(0)
+  })
+
+  test('requires a bounded turnId', async () => {
+    const { reads, response } = runRuntimeTurn({ request: getRuntimeTurn('') })
+    expect((await response).status).toBe(400)
+    expect(reads).toHaveLength(0)
+  })
+
+  test('returns the turn when found, including its current event count', async () => {
+    const turn: RuntimeTurnRow = {
+      eventCount: 7,
+      lane: 'codex_app_server',
+      ownerUserId: 'user-1',
+      status: 'failed',
+      threadId: 'thread-1',
+      turnId: 'turn-1',
+    }
+    const { reads, response } = runRuntimeTurn({ turn })
+    const result = await response
+    expect(result.status).toBe(200)
+    const body = (await result.json()) as { ok: boolean; turn: RuntimeTurnRow; routeRef: string }
+    expect(body.ok).toBe(true)
+    expect(body.turn).toEqual(turn)
+    expect(body.routeRef).toBe(KHALA_SYNC_RUNTIME_TURN_READ_ROUTE_REF)
+    expect(reads).toEqual([{ turnId: 'turn-1' }])
+  })
+
+  test('returns ok:true, turn:null when the turn does not exist', async () => {
+    const { response } = runRuntimeTurn({ turn: null })
+    const result = await response
+    const body = (await result.json()) as { ok: boolean; turn: null }
+    expect(body.ok).toBe(true)
+    expect(body.turn).toBeNull()
+  })
+
+  test('storage failure: 503 without echoing driver detail', async () => {
+    const { response } = runRuntimeTurn({
+      readError: new Error(`connect ECONNREFUSED at ${FAKE_CONNECTION_STRING}`),
     })
     const result = await response
     expect(result.status).toBe(503)

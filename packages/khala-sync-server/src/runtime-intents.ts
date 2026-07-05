@@ -179,3 +179,60 @@ export const readChatMessageById = async (
     updatedAt: row.updated_at,
   }
 }
+
+// ---------------------------------------------------------------------------
+// runtime_turn reader (#8410 follow-up) — lets the Pylon-side dispatch
+// consumer safely REDISPATCH an existing turnId for `turn.continue`/
+// `turn.retry` (see `apps/pylon/src/orchestration/runtime-intent-enforcement.ts`'s
+// `handleTurnContinueOrRetry`). The consumer needs the turn's CURRENT
+// `event_count` before redispatching so its local event-sequence counter
+// resumes numbering after whatever events the turn's earlier attempt already
+// recorded, instead of restarting at 0 and colliding with an existing
+// `(turn_id, sequence)` pair (which `runtime.recordEvent` rejects as a
+// duplicate).
+// ---------------------------------------------------------------------------
+
+export type RuntimeTurnRow = {
+  readonly turnId: string
+  readonly threadId: string
+  readonly ownerUserId: string
+  readonly lane: string
+  readonly status: string
+  readonly eventCount: number
+}
+
+interface RawRuntimeTurnRow {
+  readonly turn_id: string
+  readonly thread_id: string
+  readonly owner_user_id: string
+  readonly lane: string
+  readonly status: string
+  readonly event_count: number | string
+}
+
+/**
+ * Read one `khala_sync_runtime_turns` row by id. Returns `null` when the
+ * turn does not exist — the caller treats that as a real error condition
+ * (a `turn.continue`/`turn.retry` naming a turn nobody ever started), never
+ * a silent skip.
+ */
+export const readRuntimeTurnById = async (
+  sql: SqlTag,
+  input: { readonly turnId: string },
+): Promise<RuntimeTurnRow | null> => {
+  const rows: Array<RawRuntimeTurnRow> = await sql`
+    SELECT turn_id, thread_id, owner_user_id, lane, status, event_count
+    FROM khala_sync_runtime_turns
+    WHERE turn_id = ${input.turnId}
+  `
+  const row = rows[0]
+  if (row === undefined) return null
+  return {
+    eventCount: Number(row.event_count),
+    lane: row.lane,
+    ownerUserId: row.owner_user_id,
+    status: row.status,
+    threadId: row.thread_id,
+    turnId: row.turn_id,
+  }
+}

@@ -19,7 +19,12 @@ import {
   type CodexRawEvent,
   type EnforceRuntimeIntentsOptions,
 } from "./runtime-intent-enforcement.js"
-import type { ChatMessageBody, ReadPendingRuntimeIntentsResult } from "./runtime-intents.js"
+import type {
+  ChatMessageBody,
+  FetchRuntimeTurnResult,
+  ReadPendingRuntimeIntentsResult,
+  RuntimeTurnState,
+} from "./runtime-intents.js"
 import { createPylonOrchestrationStore, type PylonOrchestrationStore } from "./store.js"
 
 describe("candidateAccountsFromRegistry", () => {
@@ -953,20 +958,244 @@ describe("enforcePendingRuntimeIntents", () => {
     }
   })
 
-  test("turn.continue / turn.retry are honestly skipped_stale, not faked applied", async () => {
+  const fixtureRuntimeTurn = (overrides: Partial<RuntimeTurnState> = {}): RuntimeTurnState => ({
+    eventCount: 3,
+    lane: "codex_app_server",
+    ownerUserId: "user-1",
+    status: "failed",
+    threadId: "thread-1",
+    turnId: "turn-8",
+    ...overrides,
+  })
+
+  const fetchRuntimeTurnImplFor = (
+    turn: RuntimeTurnState | null,
+  ): EnforceRuntimeIntentsOptions["fetchRuntimeTurnImpl"] =>
+    async () => ({ ok: true, turn }) satisfies FetchRuntimeTurnResult
+
+  test("turn.continue against a still-actively-dispatching local turn is skipped_stale — nothing to resume yet", async () => {
     const store = memoryStore()
+    const activeTurns: ActiveRuntimeTurns = new Map()
+    activeTurns.set("turn-8", {
+      abortController: new AbortController(),
+      clientGroupId: "cg-fixture",
+      clientId: "c-fixture",
+      interrupted: false,
+      lane: "codex_app_server",
+      nextEventSequence: () => 1,
+      nextMutationId: () => 1,
+      pendingAppendMessageIds: [],
+      threadId: "thread-1",
+    })
     const { options, cleanup } = await baseOptions({
+      activeTurns,
       readImpl: pageReader([
         controlIntentRow({ intentId: "intent-8", kind: "turn.continue", seq: 1, threadId: "thread-1", turnId: "turn-8" }),
-        controlIntentRow({ intentId: "intent-9", kind: "turn.retry", seq: 2, threadId: "thread-1", turnId: "turn-8" }),
       ]),
     })
     try {
       const result = await enforcePendingRuntimeIntents(store, options)
       expect(result.ok).toBe(true)
       if (result.ok) {
-        expect(result.outcomes.map((o) => o.outcome)).toEqual(["skipped_stale", "skipped_stale"])
-        expect(result.outcomes.every((o) => o.detail?.includes("not implemented") === true)).toBe(true)
+        expect(result.outcomes[0]!.outcome).toBe("skipped_stale")
+        expect(result.outcomes[0]!.detail).toContain("still actively dispatching")
+      }
+    } finally {
+      await cleanup()
+    }
+  })
+
+  test("turn.continue naming a turn that does not exist is failed, not silently skipped", async () => {
+    const store = memoryStore()
+    const { options, cleanup } = await baseOptions({
+      fetchRuntimeTurnImpl: fetchRuntimeTurnImplFor(null),
+      readImpl: pageReader([
+        controlIntentRow({ intentId: "intent-8", kind: "turn.continue", seq: 1, threadId: "thread-1", turnId: "turn-8" }),
+      ]),
+    })
+    try {
+      const result = await enforcePendingRuntimeIntents(store, options)
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.outcomes[0]!.outcome).toBe("failed")
+        expect(result.outcomes[0]!.detail).toContain("does not exist")
+      }
+    } finally {
+      await cleanup()
+    }
+  })
+
+  test("turn.retry against target.lane claude_pylon with no ready Claude account is recorded failed", async () => {
+    const store = memoryStore()
+    const { options, cleanup } = await baseOptions({
+      fetchRuntimeTurnImpl: fetchRuntimeTurnImplFor(fixtureRuntimeTurn({ lane: "claude_pylon" })),
+      listCandidateAccounts: async () => candidateAccountsFromRegistryForTest(), // codex-only registry
+      readImpl: pageReader([
+        controlIntentRow({
+          intentId: "intent-8",
+          kind: "turn.retry",
+          seq: 1,
+          targetLane: "claude_pylon",
+          threadId: "thread-1",
+          turnId: "turn-8",
+        }),
+      ]),
+    })
+    try {
+      const result = await enforcePendingRuntimeIntents(store, options)
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.outcomes[0]!.outcome).toBe("failed")
+        expect(result.outcomes[0]!.detail).toContain("no dispatch-ready local Claude account")
+      }
+    } finally {
+      await cleanup()
+    }
+  })
+
+  test("a real turn.continue redispatch resumes the SAME turnId with a built-in continuation prompt, starting its event sequence AFTER the turn's existing event_count", async () => {
+    const store = memoryStore()
+    let finishSeen: (() => void) | undefined
+    const finished = new Promise<void>((resolve) => {
+      finishSeen = resolve
+    })
+    const pushedEvents: Array<KhalaRuntimeEvent> = []
+    const seenPrompts: Array<string> = []
+    const { options, cleanup } = await baseOptions({
+      codexThreadRunner: async (input) => {
+        seenPrompts.push(input.instructions)
+        return {
+          events: (async function* () {
+            yield { type: "turn.started" }
+            yield {
+              item: { text: "continuing!", type: "agent_message" },
+              type: "item.completed",
+            }
+            yield { type: "turn.completed", usage: { input_tokens: 5, output_tokens: 1, reasoning_output_tokens: 0 } }
+          })(),
+        }
+      },
+      fetchRuntimeTurnImpl: fetchRuntimeTurnImplFor(fixtureRuntimeTurn({ eventCount: 3 })),
+      pushEventImpl: async (input) => {
+        pushedEvents.push(input.event)
+        if (input.event.kind === "turn.finished") finishSeen?.()
+      },
+      readImpl: pageReader([
+        controlIntentRow({ intentId: "intent-8", kind: "turn.continue", seq: 1, threadId: "thread-1", turnId: "turn-8" }),
+      ]),
+    })
+    try {
+      const result = await enforcePendingRuntimeIntents(store, options)
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.outcomes[0]!.outcome).toBe("applied")
+        expect(result.outcomes[0]!.detail).toContain("turn.continue redispatch started against account")
+        expect(result.outcomes[0]!.detail).toContain("resuming event sequence after 3")
+      }
+      await finished
+      expect(seenPrompts).toEqual(["Continue where you left off."])
+      expect(pushedEvents.map((e) => e.kind)).toEqual([
+        "turn.started",
+        "text.delta",
+        "text.completed",
+        "usage.recorded",
+        "turn.finished",
+      ])
+      // Existing event_count was 3, so the FIRST pushed event's sequence must
+      // be 4, never restarting at 1 (which would collide with the earlier
+      // attempt's already-recorded sequences 1-3).
+      const sequences = pushedEvents.map((e) => e.sequence)
+      expect(sequences[0]).toBe(4)
+      expect(sequences).toEqual([4, 5, 6, 7, 8])
+    } finally {
+      await cleanup()
+    }
+  })
+
+  test("a real turn.retry redispatch with a resolvable bodyRef uses that message's body as the prompt instead of the built-in instruction", async () => {
+    const store = memoryStore()
+    const message: ChatMessageBody = {
+      authorUserId: "user-1",
+      body: "please retry with these exact instructions",
+      createdAt: iso,
+      deletedAt: null,
+      messageId: "msg-retry-1",
+      threadId: "thread-1",
+      updatedAt: iso,
+    }
+    let finishSeen: (() => void) | undefined
+    const finished = new Promise<void>((resolve) => {
+      finishSeen = resolve
+    })
+    const seenPrompts: Array<string> = []
+    const { options, cleanup } = await baseOptions({
+      codexThreadRunner: async (input) => {
+        seenPrompts.push(input.instructions)
+        return {
+          events: (async function* () {
+            yield { type: "turn.started" }
+            yield { type: "turn.completed", usage: { input_tokens: 1, output_tokens: 1, reasoning_output_tokens: 0 } }
+          })(),
+        }
+      },
+      fetchChatMessageImpl: async () => ({ message, ok: true }),
+      fetchRuntimeTurnImpl: fetchRuntimeTurnImplFor(fixtureRuntimeTurn({ eventCount: 0 })),
+      pushEventImpl: async (input) => {
+        if (input.event.kind === "turn.finished") finishSeen?.()
+      },
+      readImpl: pageReader([
+        controlIntentRow({
+          bodyRef: "chat_message.msg-retry-1",
+          intentId: "intent-8",
+          kind: "turn.retry",
+          seq: 1,
+          threadId: "thread-1",
+          turnId: "turn-8",
+        }),
+      ]),
+    })
+    try {
+      const result = await enforcePendingRuntimeIntents(store, options)
+      expect(result.ok).toBe(true)
+      if (result.ok) expect(result.outcomes[0]!.outcome).toBe("applied")
+      await finished
+      expect(seenPrompts).toEqual(["please retry with these exact instructions"])
+    } finally {
+      await cleanup()
+    }
+  })
+
+  test("turn.retry whose resolvable bodyRef points at a deleted chat_message is failed", async () => {
+    const store = memoryStore()
+    const message: ChatMessageBody = {
+      authorUserId: "user-1",
+      body: "deleted",
+      createdAt: iso,
+      deletedAt: iso,
+      messageId: "msg-retry-2",
+      threadId: "thread-1",
+      updatedAt: iso,
+    }
+    const { options, cleanup } = await baseOptions({
+      fetchChatMessageImpl: async () => ({ message, ok: true }),
+      fetchRuntimeTurnImpl: fetchRuntimeTurnImplFor(fixtureRuntimeTurn()),
+      readImpl: pageReader([
+        controlIntentRow({
+          bodyRef: "chat_message.msg-retry-2",
+          intentId: "intent-8",
+          kind: "turn.retry",
+          seq: 1,
+          threadId: "thread-1",
+          turnId: "turn-8",
+        }),
+      ]),
+    })
+    try {
+      const result = await enforcePendingRuntimeIntents(store, options)
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.outcomes[0]!.outcome).toBe("failed")
+        expect(result.outcomes[0]!.detail).toContain("does not exist (or was deleted)")
       }
     } finally {
       await cleanup()

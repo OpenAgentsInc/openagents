@@ -1532,6 +1532,173 @@ exited zero.
   independently verified. Tracked as remaining scope on the tracking issue
   rather than force-fit into this change.
 
+## #8410 second follow-up: agent-scope delegation (item 3) and real `turn.continue`/`turn.retry` dispatch (item 5) (2026-07-05)
+
+Both remaining items landed this pass, each with real (not just mocked)
+verification.
+
+### Item 3: agent-scope delegation — the actual root cause and fix
+
+Reading `ensureScopeOwner` (`packages/khala-sync-server/src/fleet-projection.ts`)
+and its call sites in `chat-mutators.ts`/`runtime-mutators.ts` showed the
+scope-ownership check itself is correct and untouched by this fix: it compares
+`ctx.userId` against the row's `owner_user_id` and rejects a mismatch. The real
+bug was upstream, in how `ctx.userId` gets resolved for an AGENT bearer at the
+Worker route boundary (`apps/openagents.com/workers/api/src/index.ts`, the
+`authenticate` callback wired into `/api/sync/push` and its sibling
+log/bootstrap/cvr-pull/connect routes):
+
+```ts
+userId: actor.kind === 'agent' ? actor.agent.user.id : actor.user.userId
+```
+
+Every registered agent (`agent-registration.ts`'s
+`buildProgrammaticAgentRegistrationRecord`) is its own distinct
+`AgentUserRecord` with its own `user_...` id — NEVER the same id as any human
+OpenAuth user, even for a Pylon whose credential is fully owner-linked. So a
+chat thread or runtime turn created by a human's own browser/mobile session
+(owned by `session.user.userId`) could never be written into by that SAME
+owner's own Pylon posting `runtime.recordEvent`/`turn.close`/etc through its
+OWN agent bearer — `ctx.userId` (the agent's own id) would never match the
+thread's `owner_user_id`, and `ensureScopeOwner` correctly rejected it as a
+foreign scope. This is the literal "agent identities can't write into a human
+owner's own thread" gap.
+
+The fix reuses an ALREADY-EXISTING, already-owner-approved delegation
+authority rather than inventing a new one:
+`agent_credentials.openauth_user_id` (carried through
+`authenticateProgrammaticAgent` as `agent.credential.openauthUserId`) is
+populated ONLY by the owner-approved claim/link flow
+(`linkOpenAuthAgent` in `agent-owner-claim-routes.ts` — an agent can never set
+this for itself). This is the SAME authority the Pylon/Codex custody re-prime
+route and the Khala coding-delegation gate already trust for "act on behalf of
+my linked owner" (`apps/openagents.com/INVARIANTS.md`, "Owner-linked Pylon
+Codex accounts re-prime..." / "Khala Coding Delegation Through Pylons") — it
+was simply never consulted by the Khala Sync actor-resolution glue.
+
+New pure helper `resolveKhalaSyncActorUserId` (exported from `index.ts`):
+
+```ts
+export const resolveKhalaSyncActorUserId = (actor: AuthenticatedActor): string =>
+  actor.kind === 'agent'
+    ? (actor.agent.credential.openauthUserId ?? actor.agent.user.id)
+    : actor.user.userId
+```
+
+Wired into all 5 `/api/sync/*` route `authenticate` callbacks (`push`, `log`,
+`bootstrap`, `cvr-pull`, `connect`) so the fix is consistent across the whole
+sync surface, not just the write path. A linked agent now resolves to its
+OWNER's scope; an unlinked agent (or one linked to a DIFFERENT owner) is
+UNAFFECTED — it still resolves to its own agent-user id, exactly as before,
+and `ensureScopeOwner`'s reject-on-mismatch behavior is completely untouched.
+No new schema, no new header, no new trust boundary — a single upstream
+resolution bug, fixed at its source.
+
+Verified for real (not mocked) with a new e2e suite,
+`apps/openagents.com/workers/api/src/khala-sync-agent-delegation.e2e.test.ts`,
+driving the REAL `handleKhalaSyncPush` route against a real local Postgres
+instance with the real production mutator registry:
+
+1. A human creates a chat thread and starts a runtime turn as themselves.
+2. An agent LINKED to that same human (`openauthUserId` set to the owner)
+   successfully appends a chat message AND posts `runtime.recordEvent` +
+   `runtime.closeTurn` into that human's thread/turn — the exact Pylon
+   dispatch-consumer scenario — confirmed against real
+   `khala_sync_chat_messages`/`khala_sync_runtime_turns`/
+   `khala_sync_runtime_events` rows (owner_user_id = the human, not the
+   agent).
+3. An agent linked to a DIFFERENT human, and a fully unlinked agent, are both
+   still rejected (`unauthorized_scope`) against that same thread/turn —
+   delegation never widens to an arbitrary owner.
+
+Plus direct unit coverage of `resolveKhalaSyncActorUserId` for all four actor
+shapes (human; agent linked; agent with `openauthUserId: null`; agent with no
+`openauthUserId` key at all).
+
+### Item 5: real `turn.continue`/`turn.retry` dispatch
+
+`runtime.continueTurn`/`runtime.retryTurn` (the Khala Sync mutators,
+`packages/khala-sync-server/src/runtime-mutators.ts`) already existed and
+correctly re-queue the turn's EXISTING `turnId` back to `"queued"` status —
+they do not create a new turn. The gap was entirely on the Pylon dispatch
+consumer (`apps/pylon/src/orchestration/runtime-intent-enforcement.ts`):
+`turn.continue`/`turn.retry` were recorded `skipped_stale` with an explicit
+"not implemented" detail; nothing locally redispatched the turn.
+
+New `handleTurnContinueOrRetry` implements real redispatch of the SAME
+`turnId`, reusing `handleTurnStart`'s exact account selection/pin (extracted
+into a shared `selectAndPinDispatchAccount` helper) and the SAME
+`dispatchTurnStart` shell, so a redispatched turn resumes the same
+Codex/Claude session (`resumeThreadId`/`resumeSessionId`) exactly like a
+follow-up `turn.start` would. Two things needed real, new plumbing to do this
+correctly rather than as a shortcut:
+
+1. **The event-sequence cursor.** A turn's earlier attempt may already have
+   recorded events (e.g. `turn.started`, some deltas, before it failed or was
+   interrupted). Redispatching and starting the local sequence counter at 0
+   again would collide with the existing `(turn_id, sequence)` rows and get
+   rejected as a duplicate by `runtime.recordEvent`. New reader
+   `readRuntimeTurnById` (`packages/khala-sync-server/src/runtime-intents.ts`)
+   and internal route `GET /api/internal/khala-sync/runtime-turn?turnId=`
+   (mirrors the existing `chat-message` read route exactly, same admin-bearer
+   gate) let Pylon fetch the turn's CURRENT `event_count` before redispatch,
+   so the local counter (`makeCounter(turnState.eventCount)`) resumes
+   numbering AFTER whatever was already recorded.
+2. **The prompt.** `turn.continue`/`turn.retry` are not new user messages — a
+   caller-supplied `bodyRef` (if present) still resolves exactly like
+   `turn.start`'s, but absent one (the expected common case) there is no
+   original message to resend; this consumer sends a short built-in
+   continuation instruction instead ("Continue where you left off." /
+   "That didn't complete — please try again.") rather than looking up and
+   replaying the turn's ORIGINAL triggering message verbatim. Documented as a
+   deliberate, honest, bounded limitation in the code, not a silent shortcut —
+   the resumed provider session already has full prior conversation context
+   either way via `resumeThreadId`/`resumeSessionId`.
+
+If the turnId is STILL actively dispatching on this exact process
+(`options.activeTurns`), there is nothing to continue/retry yet —
+`skipped_stale`, mirroring `handleTurnClose`'s precedent for the same shape.
+
+Verified for real (not mocked):
+
+- `packages/khala-sync-server/src/runtime-intents.test.ts`: a new real-Postgres
+  test drives a real `turn.start` → 3 real `runtime.recordEvent` mutations →
+  a real `turn.retry` mutation through the production push engine, and asserts
+  `readRuntimeTurnById` reports `event_count: 3` both before and after the
+  retry re-queues the turn (the mutator does not reset it), proving the exact
+  value a redispatch would resume numbering from.
+- `apps/pylon/src/orchestration/runtime-intent-enforcement.test.ts`: new real
+  end-to-end dispatch tests drive `enforcePendingRuntimeIntents` with a fake
+  Codex thread runner and assert (1) a `turn.continue` redispatch sends the
+  built-in continuation prompt and its FIRST pushed event lands at sequence
+  4 (not 1) when the fetched turn already had `eventCount: 3`; (2) a
+  `turn.retry` with a resolvable `bodyRef` uses that message's body as the
+  prompt instead of the built-in instruction; (3) a still-locally-active
+  turn is `skipped_stale`; (4) a turn that does not exist, or one whose
+  `bodyRef` points at a deleted message, is honestly `failed`.
+
+### Test/typecheck evidence for this pass
+
+- `apps/pylon`: `bun run typecheck` clean; `bun test` — 2156 pass / 6
+  pre-existing fail / 2 pre-existing errors (Codex external `sessionRef`
+  normalization, a flaky assignment-progress timing test, and a
+  `cloudflare:workers` module-resolution error under plain `bun test` — same
+  3 pre-existing classes flagged in the first #8410 follow-up pass, confirmed
+  unrelated to this change's files).
+- `packages/khala-sync-server`: `bun run typecheck` clean; `bun test` — 355
+  pass / 0 fail (up from 353).
+- `apps/openagents.com/workers/api`: `bun run typecheck` clean; targeted
+  suite (`khala-sync-agent-delegation.e2e`, `khala-sync-runtime-intents-routes`,
+  `khala-sync-push-routes`, `khala-sync-mutators`, `admin-access`,
+  `khala-sync-log-routes`, `khala-sync-bootstrap-routes`,
+  `khala-sync-cvr-routes`, `khala-sync-connect-routes`) — 168 pass / 0 fail.
+  Also fixed one unrelated pre-existing drift found while touching this area:
+  `khala-sync-mutators.test.ts`'s registry name list was missing the
+  `fleet.reportAccountState` mutator landed by concurrent work earlier today.
+- `apps/openagents.com`: `bun run check:architecture` — "Zero-debt
+  architecture check passed" (all findings are pre-existing Khala
+  desktop/tools report-only items, unrelated to this change's files).
+
 ## #8407: cross-agent delegation — "Ask Claude/Codex to review this" (2026-07-05)
 
 Epic #8408's last sub-issue. Ships exactly the narrow slice the issue's own

@@ -22,6 +22,7 @@ import {
 
 export const RUNTIME_INTENTS_ROUTE_PATH = "/api/internal/khala-sync/runtime-intents"
 export const CHAT_MESSAGE_READ_ROUTE_PATH = "/api/internal/khala-sync/chat-message"
+export const RUNTIME_TURN_READ_ROUTE_PATH = "/api/internal/khala-sync/runtime-turn"
 
 export type { RuntimeControlIntentRow } from "@openagentsinc/khala-sync"
 
@@ -247,4 +248,88 @@ export const fetchChatMessage = async (
     return { error: "bad_response", ok: false, reason: "message shape was not an object", status: 200 }
   }
   return { message: record.message as ChatMessageBody, ok: true }
+}
+
+// ---------------------------------------------------------------------------
+// runtime_turn reader (#8410 follow-up)
+// ---------------------------------------------------------------------------
+
+export type FetchRuntimeTurnOptions = {
+  readonly baseUrl: string
+  readonly adminToken: string
+  readonly turnId: string
+  readonly fetchImpl?: typeof globalThis.fetch
+}
+
+export type RuntimeTurnState = {
+  readonly turnId: string
+  readonly threadId: string
+  readonly ownerUserId: string
+  readonly lane: string
+  readonly status: string
+  readonly eventCount: number
+}
+
+export type FetchRuntimeTurnResult =
+  | Readonly<{ ok: true; turn: RuntimeTurnState | null }>
+  | Readonly<{
+      ok: false
+      error: "unauthorized" | "invalid_request" | "storage_unavailable" | "not_enabled" | "bad_response" | "network_failed"
+      status: number | null
+      reason: string | null
+    }>
+
+/**
+ * Look up a turn's CURRENT status/event-count (#8410 follow-up) before
+ * redispatching a `turn.continue`/`turn.retry` for it — see
+ * `handleTurnContinueOrRetry` in `./runtime-intent-enforcement.ts` for why
+ * the redispatch's local event-sequence counter must resume from
+ * `turn.eventCount` rather than restarting at 0. Never throws.
+ */
+export const fetchRuntimeTurn = async (
+  options: FetchRuntimeTurnOptions,
+): Promise<FetchRuntimeTurnResult> => {
+  const url = new URL(RUNTIME_TURN_READ_ROUTE_PATH, options.baseUrl)
+  url.searchParams.set("turnId", options.turnId)
+
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch
+  let response: Response
+  try {
+    response = await fetchImpl(url.toString(), {
+      headers: { Authorization: `Bearer ${options.adminToken}` },
+      method: "GET",
+    })
+  } catch (error) {
+    return {
+      error: "network_failed",
+      ok: false,
+      reason: boundedReason(error instanceof Error ? error.message : null),
+      status: null,
+    }
+  }
+
+  if (response.status === 401) return { error: "unauthorized", ok: false, reason: null, status: 401 }
+  if (response.status === 400) return { error: "invalid_request", ok: false, reason: null, status: 400 }
+  if (response.status === 503) return { error: "storage_unavailable", ok: false, reason: null, status: 503 }
+  if (response.status !== 200) {
+    return { error: "bad_response", ok: false, reason: `unexpected status ${response.status}`, status: response.status }
+  }
+
+  let body: unknown
+  try {
+    body = await response.json()
+  } catch {
+    return { error: "bad_response", ok: false, reason: "response body was not JSON", status: 200 }
+  }
+  const record = body as { ok?: unknown; reason?: unknown; turn?: unknown }
+  if (record.ok !== true) {
+    return { error: "not_enabled", ok: false, reason: boundedReason(record.reason), status: 200 }
+  }
+  if (record.turn === null) {
+    return { ok: true, turn: null }
+  }
+  if (typeof record.turn !== "object" || record.turn === null) {
+    return { error: "bad_response", ok: false, reason: "turn shape was not an object", status: 200 }
+  }
+  return { ok: true, turn: record.turn as RuntimeTurnState }
 }

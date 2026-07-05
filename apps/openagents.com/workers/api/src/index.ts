@@ -805,8 +805,10 @@ import {
 import {
   KHALA_SYNC_CHAT_MESSAGE_READ_PATH,
   KHALA_SYNC_RUNTIME_INTENTS_PATH,
+  KHALA_SYNC_RUNTIME_TURN_READ_PATH,
   handleKhalaSyncChatMessageRead,
   handleKhalaSyncRuntimeIntents,
+  handleKhalaSyncRuntimeTurnRead,
 } from './khala-sync-runtime-intents-routes'
 import {
   KHALA_SYNC_HUB_ACCESS_CHANGED_PATH,
@@ -2145,7 +2147,7 @@ const optionalUuid = (value: unknown): string | undefined => {
     : undefined
 }
 
-type AuthenticatedActor =
+export type AuthenticatedActor =
   | Readonly<{
       kind: 'human'
       user: UserSubject
@@ -3888,6 +3890,49 @@ const authenticateRequestActor = async (
     tokens: session.tokens,
   }
 }
+
+/**
+ * Resolves the Khala Sync scope-owner userId for an authenticated actor
+ * (#8410 follow-up — agent-scope delegation; see
+ * docs/khala-code/2026-07-04-mobile-tailnet-handshake.md).
+ *
+ * A human actor always writes/reads as themselves. An AGENT actor (e.g. a
+ * Pylon's own registered `oa_agent_...` credential) defaults to its OWN
+ * distinct agent-user identity (`agent.user.id` — every registered agent is
+ * a separate `AgentUserRecord`, never the same id as any human OpenAuth
+ * user, see `agent-registration.ts`'s `buildProgrammaticAgentRegistrationRecord`).
+ * This is the root cause of "agent identities can't write into a human
+ * owner's own Khala Sync thread": a chat thread/runtime turn created by a
+ * human's own browser/mobile session is owned by THEIR userId
+ * (`khala_sync_chat_threads.owner_user_id` /
+ * `khala_sync_runtime_turns.owner_user_id`); when a Pylon later authenticates
+ * with its OWN agent bearer to post `runtime.recordEvent`/`turn.close`/etc
+ * progress into that SAME thread, `ctx.userId` (the agent's own id) would
+ * never match the thread's owner and `ensureScopeOwner` correctly rejects it
+ * as a foreign scope.
+ *
+ * The fix: when that agent credential has been explicitly linked to a human
+ * OpenAuth owner (`agent_credentials.openauth_user_id`, carried through as
+ * `agent.credential.openauthUserId` — populated ONLY by an owner-approved
+ * claim/link flow, `linkOpenAuthAgent` in `agent-owner-claim-routes.ts`;
+ * never something an agent can set for itself), resolve to THAT owner's
+ * scope instead of the agent's own. This reuses the EXACT SAME delegation
+ * authority the Pylon/Codex custody re-prime route and the Khala
+ * coding-delegation gate already trust for this class of "act on behalf of
+ * my linked owner" request (`apps/openagents.com/INVARIANTS.md`,
+ * "Owner-linked Pylon Codex accounts re-prime..." / "Khala Coding
+ * Delegation Through Pylons") — it does not introduce a new trust boundary,
+ * it applies the existing one to a route that was not consulting it. An
+ * agent credential with NO link is unaffected: it keeps writing/reading only
+ * its own scope, exactly as before this change. `ensureScopeOwner`'s
+ * first-writer-wins check is untouched — a wrong `openauthUserId` (there is
+ * none possible outside the owner-approved link flow) would still only ever
+ * grant access to the SAME scope that flow approved, never an arbitrary one.
+ */
+export const resolveKhalaSyncActorUserId = (actor: AuthenticatedActor): string =>
+  actor.kind === 'agent'
+    ? (actor.agent.credential.openauthUserId ?? actor.agent.user.id)
+    : actor.user.userId
 
 const actorJson = (actor: AuthenticatedActor) => {
   if (actor.kind === 'agent') {
@@ -12273,6 +12318,19 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
+    // Companion to the runtime-intents route above (#8410 follow-up):
+    // resolves a turn's CURRENT status/event-count so the dispatch consumer
+    // can safely redispatch an existing turnId for turn.continue/turn.retry
+    // without colliding with events its earlier attempt already recorded.
+    // Admin bearer only.
+    path: KHALA_SYNC_RUNTIME_TURN_READ_PATH,
+    handler: (request, env) =>
+      handleKhalaSyncRuntimeTurnRead(request, {
+        binding: env.KHALA_SYNC_DB,
+        requireOperator: () => requireAdminApiToken(request, env),
+      }),
+  },
+  {
     // Khala Sync hub internal surface (KS-4.2, #8295). Admin bearer only —
     // the public /api/sync/* catch-up/connect routes land with KS-4.3/4.4.
     // Proxies to the
@@ -12353,10 +12411,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           if (actor === undefined) {
             return undefined
           }
-          return {
-            userId:
-              actor.kind === 'agent' ? actor.agent.user.id : actor.user.userId,
-          }
+          return { userId: resolveKhalaSyncActorUserId(actor) }
         },
         binding: env.KHALA_SYNC_DB,
         registry: khalaSyncMutatorRegistry,
@@ -12379,10 +12434,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           if (actor === undefined) {
             return undefined
           }
-          return {
-            userId:
-              actor.kind === 'agent' ? actor.agent.user.id : actor.user.userId,
-          }
+          return { userId: resolveKhalaSyncActorUserId(actor) }
         },
         binding: env.KHALA_SYNC_DB,
         hubNamespace: env.KHALA_SYNC_HUB as
@@ -12410,10 +12462,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           if (actor === undefined) {
             return undefined
           }
-          return {
-            userId:
-              actor.kind === 'agent' ? actor.agent.user.id : actor.user.userId,
-          }
+          return { userId: resolveKhalaSyncActorUserId(actor) }
         },
         binding: env.KHALA_SYNC_DB,
         resolveScopeRead: makeKhalaSyncScopeReadResolver({
@@ -12441,10 +12490,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           if (actor === undefined) {
             return undefined
           }
-          return {
-            userId:
-              actor.kind === 'agent' ? actor.agent.user.id : actor.user.userId,
-          }
+          return { userId: resolveKhalaSyncActorUserId(actor) }
         },
         binding: env.KHALA_SYNC_DB,
         resolveScopeRead: makeKhalaSyncScopeReadResolver({
@@ -12468,10 +12514,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           if (actor === undefined) {
             return undefined
           }
-          return {
-            userId:
-              actor.kind === 'agent' ? actor.agent.user.id : actor.user.userId,
-          }
+          return { userId: resolveKhalaSyncActorUserId(actor) }
         },
         hubNamespace: env.KHALA_SYNC_HUB as
           | KhalaSyncHubNamespaceLike

@@ -82,6 +82,7 @@ describe('khala sync worker mutator registry', () => {
       'fleet.resumeWorker',
       'fleet.acknowledgeInboxFlag',
       'fleet.stopRun',
+      'fleet.reportAccountState',
     ])
     expect(
       registry.get(MutatorName.make(SYNC_DEBUG_ECHO_MUTATOR_NAME)),
@@ -112,6 +113,7 @@ describe('khala sync worker mutator registry', () => {
       'fleet.resumeWorker',
       'fleet.acknowledgeInboxFlag',
       'fleet.stopRun',
+      'fleet.reportAccountState',
     ]) {
       expect(registry.get(MutatorName.make(name))).toBeDefined()
     }

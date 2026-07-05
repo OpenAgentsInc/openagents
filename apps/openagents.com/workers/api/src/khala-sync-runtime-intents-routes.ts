@@ -34,9 +34,11 @@ import {
   MAX_RUNTIME_INTENTS_LIMIT,
   readChatMessageById as readChatMessageByIdFromPostgres,
   readPendingRuntimeControlIntents as readPendingRuntimeControlIntentsFromPostgres,
+  readRuntimeTurnById as readRuntimeTurnByIdFromPostgres,
   type ReadPendingRuntimeControlIntentsInput,
   type RuntimeChatMessageRow,
   type RuntimeControlIntentRow,
+  type RuntimeTurnRow,
   type SyncSql,
 } from '@openagentsinc/khala-sync-server'
 
@@ -59,6 +61,11 @@ export const KHALA_SYNC_CHAT_MESSAGE_READ_PATH =
   '/api/internal/khala-sync/chat-message'
 export const KHALA_SYNC_CHAT_MESSAGE_READ_ROUTE_REF =
   'route.internal.khala_sync.chat_message_read.v0_1'
+
+export const KHALA_SYNC_RUNTIME_TURN_READ_PATH =
+  '/api/internal/khala-sync/runtime-turn'
+export const KHALA_SYNC_RUNTIME_TURN_READ_ROUTE_REF =
+  'route.internal.khala_sync.runtime_turn_read.v0_1'
 
 const OWNER_USER_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/
 const REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/
@@ -90,6 +97,19 @@ export type KhalaSyncChatMessageReadDependencies = Readonly<{
   binding: KhalaSyncHyperdriveBinding | undefined
   makeSqlClient?: MakeKhalaSyncPushSqlClient | undefined
   readChatMessageById?: ReadChatMessageByIdFn | undefined
+}>
+
+/** Injectable read seam so route tests never need a database. */
+export type ReadRuntimeTurnByIdFn = (
+  sql: SyncSql,
+  input: { readonly turnId: string },
+) => Promise<RuntimeTurnRow | null>
+
+export type KhalaSyncRuntimeTurnReadDependencies = Readonly<{
+  requireOperator: () => Promise<boolean>
+  binding: KhalaSyncHyperdriveBinding | undefined
+  makeSqlClient?: MakeKhalaSyncPushSqlClient | undefined
+  readRuntimeTurnById?: ReadRuntimeTurnByIdFn | undefined
 }>
 
 const invalidRequest = (reason: string): HttpResponse =>
@@ -276,6 +296,76 @@ export const handleKhalaSyncChatMessageRead = (
           error: 'khala_sync_chat_message_read_failed',
           ok: false,
           routeRef: KHALA_SYNC_CHAT_MESSAGE_READ_ROUTE_REF,
+        },
+        { status: 503 },
+      )
+    } finally {
+      if (client !== undefined) {
+        try {
+          await client.end()
+        } catch {
+          // best-effort teardown, mirrors the sibling routes above.
+        }
+      }
+    }
+  })
+
+/**
+ * `GET /api/internal/khala-sync/runtime-turn?turnId=` — admin bearer only
+ * (#8410 follow-up). Lets the Pylon-side runtime dispatch consumer look up a
+ * turn's CURRENT status/event-count before redispatching a `turn.continue`/
+ * `turn.retry` for it, so the redispatch's local event-sequence counter
+ * resumes numbering after whatever the turn's earlier attempt already
+ * recorded instead of restarting at 0 (see `readRuntimeTurnById`'s doc).
+ *
+ * Success: `{ ok: true, turn }` where `turn` is `null` when no turn with
+ * that id exists — the caller treats that as a real error condition (a
+ * continue/retry naming a turn nobody ever started), never a silent skip.
+ * Binding absent / storage failure follow the same honest conventions as
+ * every other internal khala-sync route.
+ */
+export const handleKhalaSyncRuntimeTurnRead = (
+  request: Request,
+  deps: KhalaSyncRuntimeTurnReadDependencies,
+): Effect.Effect<HttpResponse> =>
+  Effect.promise(async () => {
+    if (request.method !== 'GET') {
+      return methodNotAllowed(['GET'])
+    }
+
+    if (!(await deps.requireOperator())) {
+      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    }
+
+    const url = new URL(request.url)
+    const turnId = url.searchParams.get('turnId')
+    if (turnId === null || !REF_PATTERN.test(turnId)) {
+      return invalidRequest('turnId is required and must be a bounded safe-ref string.')
+    }
+
+    const connectionString = bindingConnectionString(deps.binding)
+    if (connectionString === undefined) {
+      return storageNotConfigured(KHALA_SYNC_RUNTIME_TURN_READ_ROUTE_REF)
+    }
+
+    const makeSqlClient = deps.makeSqlClient ?? defaultMakeKhalaSyncSqlClient
+    const readTurn = deps.readRuntimeTurnById ?? readRuntimeTurnByIdFromPostgres
+
+    let client: KhalaSyncPushSqlClient | undefined
+    try {
+      client = await makeSqlClient(connectionString)
+      const turn = await readTurn(client.sql, { turnId })
+      return noStoreJsonResponse({
+        ok: true,
+        routeRef: KHALA_SYNC_RUNTIME_TURN_READ_ROUTE_REF,
+        turn,
+      })
+    } catch {
+      return noStoreJsonResponse(
+        {
+          error: 'khala_sync_runtime_turn_read_failed',
+          ok: false,
+          routeRef: KHALA_SYNC_RUNTIME_TURN_READ_ROUTE_REF,
         },
         { status: 503 },
       )

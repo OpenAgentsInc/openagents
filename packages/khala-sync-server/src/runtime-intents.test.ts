@@ -4,6 +4,7 @@ import {
   ClientId,
   KHALA_SYNC_PROTOCOL_VERSION,
   KhalaRuntimeControlIntentSchemaLiteral,
+  KhalaRuntimeEventSchemaLiteral,
   MutationEnvelope,
   MutationId,
   MutatorName,
@@ -29,8 +30,14 @@ import { executePush, makeMutatorRegistry } from "./push-engine.js"
 import {
   readChatMessageById,
   readPendingRuntimeControlIntents,
+  readRuntimeTurnById,
 } from "./runtime-intents.js"
-import { RUNTIME_START_TURN_MUTATOR_NAME, runtimeMutators } from "./runtime-mutators.js"
+import {
+  RUNTIME_RECORD_EVENT_MUTATOR_NAME,
+  RUNTIME_RETRY_TURN_MUTATOR_NAME,
+  RUNTIME_START_TURN_MUTATOR_NAME,
+  runtimeMutators,
+} from "./runtime-mutators.js"
 import type { SyncSql } from "./sql.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
 import type { LocalPostgres } from "./test/local-postgres.js"
@@ -91,6 +98,29 @@ const turnStartIntent = (input: {
   target: {
     adapterKind: "codex" as const,
     lane: "codex_app_server" as const,
+  },
+  threadId: input.threadId,
+  turnId: input.turnId,
+  visibility: "private" as const,
+})
+
+const runtimeEvent = (input: {
+  eventId: string
+  threadId: string
+  turnId: string
+  sequence: number
+}) => ({
+  causalityRefs: [],
+  eventId: input.eventId,
+  kind: "turn.started" as const,
+  observedAt: iso,
+  redactionClass: "private_ref" as const,
+  schema: KhalaRuntimeEventSchemaLiteral,
+  sequence: input.sequence,
+  source: {
+    adapterKind: "codex" as const,
+    lane: "codex_app_server" as const,
+    surface: "desktop" as const,
   },
   threadId: input.threadId,
   turnId: input.turnId,
@@ -277,6 +307,107 @@ describe.skipIf(!hasLocalPostgres())(
         messageId: "chat-message.does-not-exist.1",
       })
       expect(message).toBeNull()
+    })
+
+    test("readRuntimeTurnById reports the CURRENT event_count so a turn.retry redispatch can resume numbering past it (#8410 follow-up)", async () => {
+      const client = freshClient()
+      const threadId = "runtime-thread.turn-reader.1"
+      const turnId = "runtime-turn.turn-reader.1"
+
+      const started = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(
+            1,
+            RUNTIME_START_TURN_MUTATOR_NAME,
+            turnStartIntent({
+              bodyRef: "chat_message.turn-reader-msg-1",
+              intentId: "runtime-intent.turn-reader.start",
+              threadId,
+              turnId,
+            }),
+          ),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(started.results.map((r) => r.status)).toEqual(["applied"])
+
+      const freshTurn = await readRuntimeTurnById(sql as unknown as SyncSql, { turnId })
+      expect(freshTurn).not.toBeNull()
+      expect(freshTurn?.status).toBe("queued")
+      expect(freshTurn?.eventCount).toBe(0)
+      expect(freshTurn?.ownerUserId).toBe(client.userId)
+      expect(freshTurn?.threadId).toBe(threadId)
+      expect(freshTurn?.lane).toBe("codex_app_server")
+
+      // Record 3 real runtime events against this turn (as the dispatch
+      // consumer would while the turn is running), then close it out.
+      // mutationId continues from where the `started` push left off (1) —
+      // the push engine's idempotency ledger is a per-client monotonic
+      // sequence, not scoped to a single request.
+      const eventsPush = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(2, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
+            eventId: "runtime-event.turn-reader.1",
+            sequence: 1,
+            threadId,
+            turnId,
+          })),
+          envelope(3, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
+            eventId: "runtime-event.turn-reader.2",
+            sequence: 2,
+            threadId,
+            turnId,
+          })),
+          envelope(4, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
+            eventId: "runtime-event.turn-reader.3",
+            sequence: 3,
+            threadId,
+            turnId,
+          })),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(eventsPush.results.map((r) => r.status)).toEqual(["applied", "applied", "applied"])
+
+      const afterEvents = await readRuntimeTurnById(sql as unknown as SyncSql, { turnId })
+      expect(afterEvents?.eventCount).toBe(3)
+
+      // A real turn.retry control intent re-queues the SAME turnId (the
+      // mutator does not create a new turn row) — readRuntimeTurnById must
+      // keep reporting the accumulated event_count so a redispatch resumes
+      // numbering at 4, not 1.
+      const retryPush = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(5, RUNTIME_RETRY_TURN_MUTATOR_NAME, {
+            ...turnStartIntent({
+              bodyRef: "chat_message.turn-reader-msg-1",
+              intentId: "runtime-intent.turn-reader.retry",
+              threadId,
+              turnId,
+            }),
+            kind: "turn.retry",
+          }),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(retryPush.results.map((r) => r.status)).toEqual(["applied"])
+
+      const afterRetry = await readRuntimeTurnById(sql as unknown as SyncSql, { turnId })
+      expect(afterRetry?.status).toBe("queued")
+      expect(afterRetry?.eventCount).toBe(3)
+    })
+
+    test("readRuntimeTurnById returns null for a turnId nobody ever started — a real error condition for turn.continue/turn.retry, never a silent skip", async () => {
+      const turn = await readRuntimeTurnById(sql as unknown as SyncSql, {
+        turnId: "runtime-turn.does-not-exist.1",
+      })
+      expect(turn).toBeNull()
     })
   },
 )

@@ -36,8 +36,10 @@ import {
 import {
   readPendingRuntimeIntents,
   fetchChatMessage as fetchChatMessageFromWorker,
+  fetchRuntimeTurn as fetchRuntimeTurnFromWorker,
   type ChatMessageBody,
   type FetchChatMessageResult,
+  type FetchRuntimeTurnResult,
   type ReadPendingRuntimeIntentsResult,
   type RuntimeControlIntentRow,
 } from "./runtime-intents.js"
@@ -137,16 +139,36 @@ import type {
  *   is a concrete, scoped follow-up, not implemented here. See
  *   `handleMessageAppend`'s doc for the exact outcome in every case
  *   (attached / not-currently-running / no turn to attach to).
- * - `turn.continue` / `turn.retry` are still recorded `skipped_stale` with
- *   an explicit "not implemented in this pass" detail — no pylon-local
- *   action is taken for them (tracked as tracked follow-up work; the
- *   server-side turn status transition still happens at mutation time
- *   regardless). `turn.close` IS implemented (`handleTurnClose`): the
- *   server-side mutator already makes "closed" authoritative at
- *   mutation-apply time (mirrors `turn.interrupt`), so Pylon's job is only
- *   local bookkeeping — there is none beyond the `activeTurns` cleanup the
- *   dispatch loop already does, since the Codex/Claude workspace is
- *   per-THREAD (reused across turns), not per-turn.
+ * - `turn.continue` / `turn.retry` are now REAL local redispatch (#8410
+ *   follow-up, `handleTurnContinueOrRetry`) of the SAME turnId the mutator
+ *   already re-queued (`executeExistingTurnIntent` flips that turn's status
+ *   back to "queued" for its OWN id — this is not a fresh turn.start with a
+ *   new id). Redispatch reuses `handleTurnStart`'s exact account
+ *   selection/pin and `dispatchTurnStart` shell, resuming the same
+ *   Codex/Claude session (`resumeThreadId`/`resumeSessionId`) so prior
+ *   context is not lost. Two things are specific to resuming an
+ *   ALREADY-SETTLED turn rather than starting a brand new one: (1) the
+ *   prompt — a caller-supplied `bodyRef` wins (resolved exactly like
+ *   `turn.start`); absent one (the common case — continue/retry are not new
+ *   user messages), a short built-in continuation instruction is sent
+ *   instead of the ORIGINAL triggering message, since this consumer does not
+ *   look that up (a bounded, honestly-documented limitation, not a silent
+ *   shortcut — the resumed session already has full prior context either
+ *   way); (2) the event-sequence cursor — the turn may already have events
+ *   recorded from its earlier attempt, so redispatch resumes numbering from
+ *   the turn's current `event_count` (fetched via the new
+ *   `GET .../runtime-turn` internal route / `fetchRuntimeTurn`) rather than
+ *   restarting at 0, which would collide with an existing `(turn_id,
+ *   sequence)` pair and be rejected as a duplicate. If the turnId is STILL
+ *   actively dispatching on this exact process, there is nothing to
+ *   continue/retry yet — `skipped_stale`, mirroring `turn.close`'s
+ *   precedent for the same shape. `turn.close` IS implemented
+ *   (`handleTurnClose`): the server-side mutator already makes "closed"
+ *   authoritative at mutation-apply time (mirrors `turn.interrupt`), so
+ *   Pylon's job is only local bookkeeping — there is none beyond the
+ *   `activeTurns` cleanup the dispatch loop already does, since the
+ *   Codex/Claude workspace is per-THREAD (reused across turns), not
+ *   per-turn.
  * - Dispatch targets `codex`-provider accounts for `target.lane ===
  *   "codex_app_server"` and `claude_agent`-provider accounts for
  *   `target.lane === "claude_pylon"` (#8404). Any OTHER `target.lane` (e.g.
@@ -865,6 +887,12 @@ export interface EnforceRuntimeIntentsOptions {
     threadId: string
     messageId: string
   }) => Promise<FetchChatMessageResult>
+  /** Test/override seam for the `turn.continue`/`turn.retry` turn-state lookup. */
+  readonly fetchRuntimeTurnImpl?: (options: {
+    baseUrl: string
+    adminToken: string
+    turnId: string
+  }) => Promise<FetchRuntimeTurnResult>
   /** Test/override seam for pushing runtime events. */
   readonly pushEventImpl?: PushRuntimeEventFn
   /**
@@ -1135,6 +1163,95 @@ const sourceForLane = (lane: KhalaRuntimeLane): KhalaRuntimeSource =>
     ? { adapterKind: "claude_code", lane: "claude_pylon", surface: "server" }
     : { adapterKind: "codex", lane: "codex_app_server", surface: "server" }
 
+type SelectDispatchAccountResult =
+  | {
+      readonly ok: true
+      readonly account: ResolvedPylonAccountSelection
+      readonly accountRefHash: string
+      readonly resumeRef?: string
+    }
+  | { readonly ok: false; readonly detail: string }
+
+/**
+ * Shared account selection/pin for both `handleTurnStart` and
+ * `handleTurnContinueOrRetry` (#8410 follow-up — extracted so redispatching
+ * an existing turn gets EXACTLY the same thread-resume account affinity,
+ * round-robin tie-break, and pin-persistence behavior as starting one).
+ * Never throws.
+ */
+const selectAndPinDispatchAccount = async (
+  options: EnforceRuntimeIntentsOptions,
+  store: PylonOrchestrationStore,
+  threadId: string,
+  lane: KhalaRuntimeLane,
+): Promise<SelectDispatchAccountResult> => {
+  const provider = providerForLane(lane)
+  const candidates = await options.listCandidateAccounts()
+
+  // Thread-resume account affinity (#8410 follow-up): prefer the account
+  // already PINNED to this Khala thread (see `store.getRuntimeDispatchAccountRefHash`'s
+  // doc) over the ordinary round-robin pick, as long as it is STILL in the
+  // real dispatch-ready set for this lane's provider — Codex/Claude sessions
+  // are account-specific, so staying on the same account is what actually
+  // lets `resumeThreadId`/`resumeSessionId` keep working across turns.
+  const pinnedAccountRefHash = store.getRuntimeDispatchAccountRefHash(threadId)
+  const pinnedCandidate = candidates.find(
+    (c) =>
+      c.fleetAccount.accountRefHash === pinnedAccountRefHash &&
+      c.fleetAccount.provider === provider &&
+      c.fleetAccount.readiness === "ready",
+  )
+  const lastUsedAccountRefHash = options.lastDispatchedAccountByThread?.get(threadId)
+  const selected =
+    pinnedCandidate?.fleetAccount ??
+    selectDispatchAccount(candidates.map((c) => c.fleetAccount), {
+      provider,
+      ...(lastUsedAccountRefHash === undefined ? {} : { lastUsedAccountRefHash }),
+    })
+  if (selected === undefined) {
+    return {
+      detail: `no dispatch-ready local ${provider === "claude_agent" ? "Claude" : "Codex"} account available`,
+      ok: false,
+    }
+  }
+  const candidate = candidates.find((c) => c.fleetAccount.accountRefHash === selected.accountRefHash)
+  if (candidate === undefined) {
+    return { detail: "invariant violated: selected account has no matching registry entry", ok: false }
+  }
+  const account = await options.resolveAccountSelection(candidate.registryEntry)
+  if (account === null) {
+    return {
+      detail: `local ${provider === "claude_agent" ? "Claude" : "Codex"} account home for ${candidate.registryEntry.ref} could not be resolved`,
+      ok: false,
+    }
+  }
+  options.lastDispatchedAccountByThread?.set(threadId, selected.accountRefHash)
+  try {
+    // Pin (or re-pin) this thread to the account just selected, whether that
+    // was the existing pin, a fresh round-robin pick, or a re-pin after the
+    // previous pin went unhealthy — see `getRuntimeDispatchAccountRefHash`'s
+    // doc. Best-effort: a failure to persist this is a lost continuity
+    // opportunity for the NEXT dispatch, never a reason to fail this one.
+    store.setRuntimeDispatchAccountRefHash(threadId, selected.accountRefHash)
+  } catch (error) {
+    options.log?.(
+      `runtime-intent thread=${threadId} failed to persist dispatch account pin: ${boundedDetail(
+        error instanceof Error ? error.message : "unknown",
+      )}`,
+    )
+  }
+  const resumeRef =
+    lane === "claude_pylon"
+      ? store.getRuntimeClaudeSessionId(threadId)
+      : store.getRuntimeCodexThreadId(threadId)
+  return {
+    account,
+    accountRefHash: selected.accountRefHash,
+    ok: true,
+    ...(resumeRef === null ? {} : { resumeRef }),
+  }
+}
+
 const handleTurnStart = async (
   options: EnforceRuntimeIntentsOptions,
   row: RuntimeControlIntentRow,
@@ -1188,60 +1305,9 @@ const handleTurnStart = async (
     }
   }
 
-  const provider = providerForLane(lane)
-  const candidates = await options.listCandidateAccounts()
-
-  // Thread-resume account affinity (#8410 follow-up): prefer the account
-  // already PINNED to this Khala thread (see `store.getRuntimeDispatchAccountRefHash`'s
-  // doc) over the ordinary round-robin pick, as long as it is STILL in the
-  // real dispatch-ready set for this lane's provider — Codex/Claude sessions
-  // are account-specific, so staying on the same account is what actually
-  // lets `resumeThreadId`/`resumeSessionId` keep working across turns.
-  const pinnedAccountRefHash = store.getRuntimeDispatchAccountRefHash(row.threadId)
-  const pinnedCandidate = candidates.find(
-    (c) =>
-      c.fleetAccount.accountRefHash === pinnedAccountRefHash &&
-      c.fleetAccount.provider === provider &&
-      c.fleetAccount.readiness === "ready",
-  )
-  const lastUsedAccountRefHash = options.lastDispatchedAccountByThread?.get(row.threadId)
-  const selected =
-    pinnedCandidate?.fleetAccount ??
-    selectDispatchAccount(candidates.map((c) => c.fleetAccount), {
-      provider,
-      ...(lastUsedAccountRefHash === undefined ? {} : { lastUsedAccountRefHash }),
-    })
-  if (selected === undefined) {
-    return {
-      detail: `no dispatch-ready local ${provider === "claude_agent" ? "Claude" : "Codex"} account available`,
-      outcome: "failed",
-    }
-  }
-  const candidate = candidates.find((c) => c.fleetAccount.accountRefHash === selected.accountRefHash)
-  if (candidate === undefined) {
-    return { detail: "invariant violated: selected account has no matching registry entry", outcome: "failed" }
-  }
-  const account = await options.resolveAccountSelection(candidate.registryEntry)
-  if (account === null) {
-    return {
-      detail: `local ${provider === "claude_agent" ? "Claude" : "Codex"} account home for ${candidate.registryEntry.ref} could not be resolved`,
-      outcome: "failed",
-    }
-  }
-  options.lastDispatchedAccountByThread?.set(row.threadId, selected.accountRefHash)
-  try {
-    // Pin (or re-pin) this thread to the account just selected, whether that
-    // was the existing pin, a fresh round-robin pick, or a re-pin after the
-    // previous pin went unhealthy — see `getRuntimeDispatchAccountRefHash`'s
-    // doc. Best-effort: a failure to persist this is a lost continuity
-    // opportunity for the NEXT dispatch, never a reason to fail this one.
-    store.setRuntimeDispatchAccountRefHash(row.threadId, selected.accountRefHash)
-  } catch (error) {
-    options.log?.(
-      `runtime-intent thread=${row.threadId} failed to persist dispatch account pin: ${boundedDetail(
-        error instanceof Error ? error.message : "unknown",
-      )}`,
-    )
+  const selection = await selectAndPinDispatchAccount(options, store, row.threadId, lane)
+  if (!selection.ok) {
+    return { detail: selection.detail, outcome: "failed" }
   }
 
   const clientIdentity = runtimeSyncClientForTurn({ pylonRef: options.pylonRef, turnId })
@@ -1257,17 +1323,13 @@ const handleTurnStart = async (
     threadId: row.threadId,
   }
   options.activeTurns.set(turnId, turn)
-  const resumeRef =
-    lane === "claude_pylon"
-      ? store.getRuntimeClaudeSessionId(row.threadId)
-      : store.getRuntimeCodexThreadId(row.threadId)
   void dispatchTurnStart({
-    account,
+    account: selection.account,
     intent: row,
     lane,
     options,
     prompt: message.body,
-    ...(resumeRef === null ? {} : { resumeRef }),
+    ...(selection.resumeRef === undefined ? {} : { resumeRef: selection.resumeRef }),
     source,
     store,
     turn,
@@ -1285,7 +1347,7 @@ const handleTurnStart = async (
   })
 
   return {
-    detail: `dispatch started against account ${selected.accountRefHash}`,
+    detail: `dispatch started against account ${selection.accountRefHash}`,
     outcome: "applied",
   }
 }
@@ -1411,8 +1473,6 @@ const pushFinishedInterruptedEvent = async (input: {
     mutationId: input.turn.nextMutationId(),
   })
 }
-
-const NOT_IMPLEMENTED_KINDS = new Set(["turn.continue", "turn.retry"])
 
 /**
  * Handle a `message.append` control intent. NOT literal mid-turn steering
@@ -1541,6 +1601,172 @@ const handleTurnClose = async (
   }
 }
 
+const CONTINUE_INSTRUCTION = "Continue where you left off."
+const RETRY_INSTRUCTION = "That didn't complete — please try again."
+
+/**
+ * Resolve the prompt for a `turn.continue`/`turn.retry` control intent
+ * (#8410 follow-up). If the intent itself carries a resolvable
+ * `chat_message.<id>` bodyRef (a caller explicitly supplying fresh
+ * instructions), that message's body wins — identical resolution to
+ * `turn.start`. Otherwise there is no new user input to resend: this is a
+ * genuine "keep going"/"try again" request, not a disguised turn.start, so a
+ * short built-in continuation instruction is used instead. Codex/Claude both
+ * retain full prior conversation context via `resumeThreadId`/
+ * `resumeSessionId` (the SAME cross-turn continuity `handleTurnStart`
+ * already relies on), so this instruction is enough to make the resumed
+ * session actually produce a new response — this consumer does not look up
+ * the turn's ORIGINAL triggering message to resend verbatim, a bounded,
+ * honestly-documented limitation rather than a silent shortcut.
+ */
+const resolvePromptForContinueOrRetry = async (
+  options: EnforceRuntimeIntentsOptions,
+  row: RuntimeControlIntentRow,
+): Promise<{ ok: true; prompt: string } | { ok: false; detail: string }> => {
+  const bodyRef =
+    row.intent.kind === "turn.continue" || row.intent.kind === "turn.retry" ? row.intent.bodyRef : undefined
+  const messageId = chatMessageIdFromBodyRef(bodyRef)
+  if (messageId === null) {
+    return { ok: true, prompt: row.intent.kind === "turn.retry" ? RETRY_INSTRUCTION : CONTINUE_INSTRUCTION }
+  }
+
+  const fetchChatMessageImpl = options.fetchChatMessageImpl ?? fetchChatMessageFromWorker
+  const messageResult = await fetchChatMessageImpl({
+    adminToken: options.adminToken,
+    baseUrl: options.baseUrl,
+    messageId,
+    threadId: row.threadId,
+  })
+  if (!messageResult.ok) {
+    return { detail: boundedDetail(`chat_message lookup transport failed: ${messageResult.error}`), ok: false }
+  }
+  if (messageResult.message === null || messageResult.message.deletedAt !== null) {
+    return {
+      detail: `referenced chat_message.${messageId} does not exist (or was deleted) in thread ${row.threadId}`,
+      ok: false,
+    }
+  }
+  return { ok: true, prompt: messageResult.message.body }
+}
+
+/**
+ * Handle a `turn.continue`/`turn.retry` control intent (#8410 follow-up):
+ * genuine local redispatch of the SAME turnId the mutator already re-queued
+ * (see the module doc). Mirrors `handleTurnStart`'s account selection/pin
+ * (`selectAndPinDispatchAccount`) and `dispatchTurnStart` shell exactly,
+ * with two differences specific to resuming an ALREADY-SETTLED turn: the
+ * prompt (`resolvePromptForContinueOrRetry`) and the event-sequence cursor,
+ * which resumes from the turn's CURRENT `event_count`
+ * (`fetchRuntimeTurnImpl`) instead of restarting at 0 — redispatching a turn
+ * that already recorded events and renumbering from 0 would collide with an
+ * existing `(turn_id, sequence)` pair and be rejected as a duplicate by
+ * `runtime.recordEvent`.
+ *
+ * If this turnId is STILL actively dispatching on this exact process
+ * (`options.activeTurns`), there is nothing to continue/retry yet —
+ * `skipped_stale`, mirroring `handleTurnClose`'s precedent for the same
+ * "nothing local to act on yet" shape.
+ */
+const handleTurnContinueOrRetry = async (
+  options: EnforceRuntimeIntentsOptions,
+  row: RuntimeControlIntentRow,
+  store: PylonOrchestrationStore,
+): Promise<{ outcome: RuntimeIntentOutcomeStatus; detail: string }> => {
+  const turnId = row.intent.turnId
+  if (turnId === undefined) {
+    return { detail: `${row.intent.kind} intent carried no turnId`, outcome: "failed" }
+  }
+  if (options.activeTurns.has(turnId)) {
+    return {
+      detail:
+        `turn ${turnId} is still actively dispatching locally; ${row.intent.kind} only resumes an already-` +
+        `settled turn`,
+      outcome: "skipped_stale",
+    }
+  }
+
+  const targetLane = row.intent.target.lane
+  if (!SUPPORTED_DISPATCH_LANES.includes(targetLane)) {
+    return {
+      detail:
+        `runtime.${row.intent.kind} dispatch does not support target.lane "${targetLane}" — only ` +
+        `${SUPPORTED_DISPATCH_LANES.join(" and ")} are wired in this consumer`,
+      outcome: "failed",
+    }
+  }
+  const lane = targetLane
+  const source = sourceForLane(lane)
+
+  const fetchRuntimeTurnImpl = options.fetchRuntimeTurnImpl ?? fetchRuntimeTurnFromWorker
+  const turnResult = await fetchRuntimeTurnImpl({ adminToken: options.adminToken, baseUrl: options.baseUrl, turnId })
+  if (!turnResult.ok) {
+    return { detail: boundedDetail(`runtime-turn lookup transport failed: ${turnResult.error}`), outcome: "failed" }
+  }
+  const turnState = turnResult.turn
+  if (turnState === null) {
+    return { detail: `referenced turn ${turnId} does not exist`, outcome: "failed" }
+  }
+  if (turnState.threadId !== row.threadId) {
+    return {
+      detail: `turn ${turnId} belongs to thread ${turnState.threadId}, not the ${row.intent.kind} intent's thread ${row.threadId}`,
+      outcome: "failed",
+    }
+  }
+
+  const promptResult = await resolvePromptForContinueOrRetry(options, row)
+  if (!promptResult.ok) {
+    return { detail: promptResult.detail, outcome: "failed" }
+  }
+
+  const selection = await selectAndPinDispatchAccount(options, store, row.threadId, lane)
+  if (!selection.ok) {
+    return { detail: selection.detail, outcome: "failed" }
+  }
+
+  const clientIdentity = runtimeSyncClientForTurn({ pylonRef: options.pylonRef, turnId })
+  const turn: ActiveRuntimeTurn = {
+    abortController: new AbortController(),
+    clientGroupId: clientIdentity.clientGroupId,
+    clientId: clientIdentity.clientId,
+    interrupted: false,
+    lane,
+    // Resume numbering AFTER whatever this turn's earlier attempt already
+    // recorded — never restart at 0 (see this function's doc).
+    nextEventSequence: makeCounter(turnState.eventCount),
+    nextMutationId: makeCounter(0),
+    pendingAppendMessageIds: [],
+    threadId: row.threadId,
+  }
+  options.activeTurns.set(turnId, turn)
+  void dispatchTurnStart({
+    account: selection.account,
+    intent: row,
+    lane,
+    options,
+    prompt: promptResult.prompt,
+    ...(selection.resumeRef === undefined ? {} : { resumeRef: selection.resumeRef }),
+    source,
+    store,
+    turn,
+    turnId,
+  }).finally(() => {
+    if (options.activeTurns.get(turnId) === turn) options.activeTurns.delete(turnId)
+    if (turn.pendingAppendMessageIds.length > 0) {
+      void dispatchQueuedFollowUps({
+        lane,
+        messageIds: turn.pendingAppendMessageIds,
+        options,
+        threadId: row.threadId,
+      })
+    }
+  })
+
+  return {
+    detail: `${row.intent.kind} redispatch started against account ${selection.accountRefHash}, resuming event sequence after ${turnState.eventCount}`,
+    outcome: "applied",
+  }
+}
+
 /**
  * Apply ONE decoded control-intent row. Never throws — synchronous
  * validation failures come back as `failed`; a `turn.start` that passes
@@ -1563,14 +1789,9 @@ const applyRuntimeIntent = async (
       return handleTurnClose(options, row)
     case "turn.continue":
     case "turn.retry":
-      return {
-        detail: `runtime.${row.intent.kind} dispatch is not implemented in this pass (turn.start/turn.interrupt/message.append/turn.close are)`,
-        outcome: "skipped_stale",
-      }
+      return handleTurnContinueOrRetry(options, row, store)
     default:
-      return NOT_IMPLEMENTED_KINDS.has(row.intent.kind)
-        ? { detail: `unhandled kind ${row.intent.kind}`, outcome: "skipped_stale" }
-        : { detail: `unrecognized control-intent kind ${row.intent.kind}`, outcome: "failed" }
+      return { detail: `unrecognized control-intent kind ${row.intent.kind}`, outcome: "failed" }
   }
 }
 

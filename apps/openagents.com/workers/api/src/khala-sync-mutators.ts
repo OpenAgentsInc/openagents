@@ -104,7 +104,7 @@ export const debugEchoMutator: MutatorDefinition =
  * the fleet cockpit operator mutators (KS-6.1 #8302 + KS-3.2 #8292:
  * `fleet.setDesiredSlots` / `fleet.pauseRun` /
  * `fleet.resumeRun` / `fleet.pauseWorker` / `fleet.resumeWorker` /
- * `fleet.acknowledgeInboxFlag` / `fleet.stopRun`, defined in
+ * `fleet.acknowledgeInboxFlag` / `fleet.stopRun` / `fleet.reportAccountState`, defined in
  * `@openagentsinc/khala-sync-server` and integration-tested there through
  * `executePush` against real Postgres — catalog in
  * docs/khala-sync/MUTATORS.md). The fleet mutators are owner-gated via
