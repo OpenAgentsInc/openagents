@@ -8,8 +8,6 @@ import {
   threadScope,
   type ChatMessageEntity,
   type KhalaRuntimeLane,
-  type RuntimeEventEntity,
-  type RuntimeTurnEntity,
 } from "@openagentsinc/khala-sync"
 import * as Clipboard from "expo-clipboard"
 import { useEffect, useMemo, useRef, useState } from "react"
@@ -40,7 +38,8 @@ import {
   type TranscriptPart,
 } from "../sync/khala-runtime-transcript-core"
 import { buildQuoteSnippet } from "../sync/swipe-quote-core"
-import { useKhalaSyncCollection } from "../sync/use-khala-sync-collection"
+import { useKhalaMobileSyncPrimitives } from "../sync/khala-mobile-sync-runtime-context"
+import { useKhalaSyncScopeEntities } from "../sync/use-khala-sync-scope-entities"
 import { useKhalaSyncPush } from "../sync/use-khala-sync-push"
 import { MOTION_MEDIUM, MOTION_STAGGER_MS } from "../theme/motion"
 
@@ -67,10 +66,7 @@ const TRANSCRIPT_STAGGER_CAP = 8
 const transcriptEntranceDelay = (index: number): number =>
   MOTION_STAGGER_MS * Math.min(index, TRANSCRIPT_STAGGER_CAP)
 
-const messageIdOf = (message: ChatMessageEntity): string => message.messageId
 const createdAtOf = (message: ChatMessageEntity): string => message.createdAt
-const runtimeEventIdOf = (event: RuntimeEventEntity): string => event.eventId
-const runtimeTurnIdOf = (turn: RuntimeTurnEntity): string => turn.turnId
 
 const formatClockTime = (iso: string): string => {
   const parsed = new Date(iso)
@@ -85,25 +81,40 @@ export const ThreadMessagesScreen = ({ route }: ThreadMessagesScreenProps) => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- shared scroll ref across two independently-typed FlatLists (chat vs. transcript)
   const listRef = useRef<FlatList<any>>(null)
   const scope = String(threadScope(threadId))
-
-  const chatState = useKhalaSyncCollection(
+  // Local-first, delta-synced (issue: "every time i open a new thread
+  // session in the app it loads the messages from scratch"): these read
+  // straight from the durable Expo SQLite store opened once at app root
+  // (`khala-mobile-sync-runtime-context.tsx`), rendering whatever is already
+  // on-device for this thread immediately, while the shared session's
+  // durable cursor resumes with only the entries new since the last visit —
+  // never a full history re-bootstrap once this thread has been opened
+  // before. See `use-khala-sync-scope-entities.ts`.
+  const { error: syncRuntimeError, overlay, session, status: syncRuntimeStatus, store } =
+    useKhalaMobileSyncPrimitives()
+  const chatState = useKhalaSyncScopeEntities({
+    decode: decodeChatMessageEntity,
+    entityType: CHAT_MESSAGE_ENTITY_TYPE,
+    overlay,
     scope,
-    CHAT_MESSAGE_ENTITY_TYPE,
-    decodeChatMessageEntity,
-    messageIdOf,
-  )
-  const runtimeState = useKhalaSyncCollection(
+    session,
+    store
+  })
+  const runtimeState = useKhalaSyncScopeEntities({
+    decode: decodeRuntimeEventEntity,
+    entityType: RUNTIME_EVENT_ENTITY_TYPE,
+    overlay,
     scope,
-    RUNTIME_EVENT_ENTITY_TYPE,
-    decodeRuntimeEventEntity,
-    runtimeEventIdOf,
-  )
-  const turnState = useKhalaSyncCollection(
+    session,
+    store
+  })
+  const turnState = useKhalaSyncScopeEntities({
+    decode: decodeRuntimeTurnEntity,
+    entityType: RUNTIME_TURN_ENTITY_TYPE,
+    overlay,
     scope,
-    RUNTIME_TURN_ENTITY_TYPE,
-    decodeRuntimeTurnEntity,
-    runtimeTurnIdOf,
-  )
+    session,
+    store
+  })
   const activeTurn = useMemo(() => findActiveTurn(turnState.items), [turnState.items])
   const defaultLane = useMemo(() => mostRecentTurnLane(turnState.items), [turnState.items])
   const push = useKhalaSyncPush()
@@ -179,11 +190,15 @@ export const ThreadMessagesScreen = ({ route }: ThreadMessagesScreenProps) => {
         keyboardVerticalOffset={chatComposerKeyboardVerticalOffset}
       >
         <View className="flex-1">
-          {status === "missing_token" ? (
+          {syncRuntimeStatus === "missing_token" ? (
             <View className="flex-1 items-center justify-center px-8">
               <Text className="text-center font-mono text-sm text-textFaint">
                 Not signed in. Restart the app to sign in again.
               </Text>
+            </View>
+          ) : syncRuntimeStatus === "error" ? (
+            <View className="flex-1 items-center justify-center px-8">
+              <Text className="text-center font-sans text-base text-danger">{syncRuntimeError}</Text>
             </View>
           ) : status === "error" ? (
             <View className="flex-1 items-center justify-center px-8">
@@ -248,7 +263,7 @@ export const ThreadMessagesScreen = ({ route }: ThreadMessagesScreenProps) => {
             {handoffError}
           </Text>
         )}
-        {status === "missing_token" ? null : (
+        {syncRuntimeStatus === "missing_token" ? null : (
           <ChatComposer
             activeTurn={activeTurn}
             defaultLane={defaultLane}

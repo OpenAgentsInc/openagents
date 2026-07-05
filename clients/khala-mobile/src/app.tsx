@@ -11,6 +11,7 @@ import { BlurredPopupProvider } from "./components/blurred-popup"
 import { KhalaErrorBoundary } from "./components/khala-error-boundary"
 import { SignInScreen } from "./components/sign-in-screen"
 import { AppNavigator } from "./navigators/AppNavigator"
+import { KhalaMobileSyncRuntimeProvider } from "./sync/khala-mobile-sync-runtime-context"
 import { KhalaThemeProvider } from "./theme/khala-theme-provider"
 
 // React Native's own dev-only LogBox notification pill renders with broken
@@ -19,7 +20,7 @@ import { KhalaThemeProvider } from "./theme/khala-theme-provider"
 LogBox.ignoreAllLogs(true)
 
 const AuthGate = () => {
-  const { status } = useKhalaAuth()
+  const { baseUrl, ownerUserId, status, token } = useKhalaAuth()
 
   if (status === "loading") {
     return (
@@ -37,10 +38,16 @@ const AuthGate = () => {
   return (
     // Mounted once around the whole signed-in app so a long-press screenshot
     // (`BlurredPopupProvider`, issue #8395) captures the real rendered screen
-    // behind it regardless of which route is active.
+    // behind it regardless of which route is active. The Khala Sync runtime
+    // (Expo SQLite store + durable-cursor session, MC-8/#8433) is opened here
+    // too — once per signed-in session — so every thread screen shares the
+    // SAME durable local cache instead of each mount bootstrapping its own
+    // from-scratch fetch.
     <KhalaErrorBoundary>
       <BlurredPopupProvider>
-        <AppNavigator />
+        <KhalaMobileSyncRuntimeProvider ownerUserId={ownerUserId} syncBaseUrl={baseUrl} token={token}>
+          <AppNavigator />
+        </KhalaMobileSyncRuntimeProvider>
       </BlurredPopupProvider>
     </KhalaErrorBoundary>
   )
