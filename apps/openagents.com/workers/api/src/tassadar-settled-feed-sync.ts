@@ -14,7 +14,6 @@ import { assertNexusPylonPublicSafe } from './nexus-pylon-visibility'
 import { observedPromise } from './observability'
 import { openAgentsDatabase, scheduleBackgroundWork } from './runtime'
 import type { SyncNotificationContext } from './sync-notifier'
-import { notifySyncScopes } from './sync-notifier'
 
 /**
  * LIVE SETTLED FEED over the OpenAgents sync engine (openagents #5311).
@@ -204,14 +203,14 @@ export const settledFeedSummaryFromEvents = (
   }
 }
 
-type SettledFeedSyncEnv = Pick<WorkerBindings, 'OPENAGENTS_DB' | 'SYNC_ROOM'> &
+type SettledFeedSyncEnv = Pick<WorkerBindings, 'OPENAGENTS_DB'> &
   Readonly<{
     /**
      * `env.KHALA_SYNC_DB` — absent until the binding is deployed. KS-6.4
-     * (#8414) dual-write: best-effort projects the SAME public-safe events
-     * this function already writes to the legacy sync room into
-     * `scope.public.settled-feed` via khala-sync. Never required; a missing
-     * binding simply skips the new-path projection.
+     * (#8414) projects the SAME public-safe events this function already
+     * writes to the legacy D1 sync-outbox into `scope.public.settled-feed`
+     * via khala-sync. Never required; a missing binding simply skips the
+     * new-path projection.
      */
     KHALA_SYNC_DB?: KhalaSyncHyperdriveBinding
     /** Diagnostic sink for the khala-sync projection (public-safe only). */
@@ -220,19 +219,24 @@ type SettledFeedSyncEnv = Pick<WorkerBindings, 'OPENAGENTS_DB' | 'SYNC_ROOM'> &
 
 /**
  * Publish a batch of public-safe settled events to the public settled-feed
- * scope, then poke the room. Each event is scanned for unsafe material before
- * it can be written; a rejected payload is skipped (it never reaches the
- * outbox). The whole operation is fail-soft via `observedPromise` so the caller
- * is never broken or slowed by a broadcast failure.
+ * scope. Each event is scanned for unsafe material before it can be written;
+ * a rejected payload is skipped (it never reaches the outbox). The whole
+ * operation is fail-soft via `observedPromise` so the caller is never broken
+ * or slowed by a broadcast failure.
  *
- * KS-6.4 (#8414): ALSO best-effort projects the same safe events + summary
- * into the khala-sync `scope.public.settled-feed` projection (dual-write,
- * same discipline as the KS-6.1 fleet / KS-6.3 tokens-served cutovers). The
- * legacy `notifySyncScopes` room-poke stays live until the new projection
- * has real production evidence AND an anonymous-safe read path exists for
- * it (the new `/api/sync/connect` live-tail route requires an authenticated
- * actor and cannot serve this feed's anonymous/logged-out audience today —
- * see docs/khala-sync/RUNBOOK.md).
+ * KS-6.4 (#8414) full cutover: this ALSO best-effort projects the same safe
+ * events + summary into the khala-sync `scope.public.settled-feed`
+ * projection (same discipline as the KS-6.1 fleet / KS-6.3 tokens-served
+ * cutovers) — that projection is now the ONLY live delivery path for the
+ * homepage/stats settled feed's `WS /api/sync/connect` live-tail
+ * (`apps/web/src/subscriptions.ts`). The legacy `notifySyncScopes`
+ * `SyncRoomDurableObject` room-poke has been retired now that the KS-8.x
+ * anonymous-read exception makes the new engine's connect/log/bootstrap
+ * routes reachable by this feed's anonymous/logged-out audience (see
+ * docs/khala-sync/RUNBOOK.md "Anonymous read scopes"). The D1 sync-outbox
+ * writes below are UNRELATED to that legacy room and stay live: they are the
+ * fail-open fallback source for `GET /api/public/settled-feed`
+ * (`public-settled-feed-routes.ts`), a separate public read route.
  */
 export const publishSettledFeedEvents = async (
   env: SettledFeedSyncEnv,
@@ -292,12 +296,12 @@ export const publishSettledFeedEvents = async (
       summaryIsSafe = false
     }
 
-    const notify = notifySyncScopes(env, [scope])
-    // Fail-soft dual-write into khala-sync (KS-6.4, #8414): never awaited
-    // into the caller's critical path via `ctx`-scheduled background work
-    // when a context is available, exactly like the legacy room notify;
-    // a failure here is swallowed by `projectSettledFeedBatchBestEffort`
-    // itself and only ever surfaces as a typed diagnostic log.
+    // Fail-soft projection into khala-sync (KS-6.4, #8414) — the ONLY live
+    // delivery path now (the legacy room poke is retired). Scheduled into
+    // background work via `ctx` when available, exactly like the retired
+    // legacy notify was; a failure here is swallowed by
+    // `projectSettledFeedBatchBestEffort` itself and only ever surfaces as a
+    // typed diagnostic log, never a broken/slowed settlement dispatch.
     const projectToKhalaSync = summaryIsSafe
       ? projectSettledFeedBatchBestEffort(
           {
@@ -311,9 +315,8 @@ export const publishSettledFeedEvents = async (
       : Promise.resolve(undefined)
 
     if (options.ctx === undefined) {
-      await Promise.all([notify, projectToKhalaSync])
+      await projectToKhalaSync
     } else {
-      scheduleBackgroundWork(options.ctx, notify)
       scheduleBackgroundWork(options.ctx, projectToKhalaSync)
     }
   })

@@ -9,6 +9,7 @@ import {
   GYM_RUN_PROGRESS_SCOPE,
   gymRunProgressStreamOpen,
 } from './page/loggedOut/gym/runProgressFeed'
+import { SETTLED_FEED_SCOPE } from './page/loggedOut/settled-feed'
 import { Demo, LoggedIn, LoggedOut } from './model'
 import {
   LoadedStoredAutopilotOnboarding,
@@ -50,6 +51,8 @@ import {
   khalaTokensServedStreamDependenciesForModel,
   onboardingResumeDependenciesForModel,
   onboardingStreamDependenciesForModel,
+  settledFeedDependenciesForModel,
+  settledFeedMessagesFromLiveFramePayload,
   syncMessageFromPayload,
   syncStreamDependenciesForModel,
   workspaceSyncDependenciesForModel,
@@ -209,6 +212,127 @@ describe('gym run-progress realtime stream subscription (#6261)', () => {
       gymRunProgressStreamDependenciesForModel(LoggedOut.init(HomeRoute()))
         .isActive,
     ).toBe(false)
+  })
+})
+
+describe('settled feed live-tail subscription (KS-6.4, #8414 cutover)', () => {
+  test('does not open until the cold-read snapshot has settled (same #6324-style race guard as tokens-served)', () => {
+    const model = LoggedOut.init(HomeRoute())
+
+    expect(model.settledFeed.snapshotLoaded).toBe(false)
+    expect(settledFeedDependenciesForModel(model).isActive).toBe(false)
+  })
+
+  test('opens the khala-sync connect WebSocket at the seeded cursor once snapshotLoaded', () => {
+    const model = evo(LoggedOut.init(HomeRoute()), {
+      settledFeed: feed => ({ ...feed, snapshotLoaded: true, cursor: 42 }),
+    })
+    const dependencies = settledFeedDependenciesForModel(model)
+
+    expect(dependencies.isActive).toBe(true)
+    expect(dependencies.scope).toBe(SETTLED_FEED_SCOPE)
+    expect(dependencies.scope).toBe('scope.public.settled-feed')
+    expect(dependencies.streamHref).toBe(
+      '/api/sync/connect?scope=scope.public.settled-feed&cursor=42',
+    )
+  })
+
+  test('is gated to Home/Stats routes (inactive elsewhere) even once snapshotLoaded', () => {
+    const model = evo(LoggedOut.init(KhalaRoute()), {
+      settledFeed: feed => ({ ...feed, snapshotLoaded: true }),
+    })
+
+    expect(settledFeedDependenciesForModel(model).isActive).toBe(false)
+  })
+})
+
+describe('settledFeedMessagesFromLiveFramePayload (KS-6.4, #8414 cutover)', () => {
+  test('decodes a DeltaFrame into one ReceivedSettledFeedPatch per changed entity', () => {
+    const payload = JSON.stringify({
+      _tag: 'DeltaFrame',
+      scope: 'scope.public.settled-feed',
+      cursor: 2,
+      entries: [
+        {
+          scope: 'scope.public.settled-feed',
+          version: 1,
+          entityType: 'settled_feed_event',
+          entityId: 'settled.0',
+          op: 'upsert',
+          postImageJson: JSON.stringify({
+            amountSats: 5,
+            challengeRef: 'challenge.tassadar.window.0001',
+            contributorRef: 'pylon.worker.orrery',
+            eventRef: 'settled.0',
+            party: 'worker',
+            runRef: 'run.tassadar.poc',
+            settledAt: '2026-07-05T00:00:00.000Z',
+            totalSettledCount: 1,
+            totalSettledSats: 5,
+            windowRef: null,
+          }),
+          committedAt: '2026-07-05T00:00:00.000Z',
+        },
+        {
+          scope: 'scope.public.settled-feed',
+          version: 2,
+          entityType: 'settled_feed_summary',
+          entityId: 'summary',
+          op: 'upsert',
+          postImageJson: JSON.stringify({
+            latestEventRef: 'settled.0',
+            latestSettledAt: '2026-07-05T00:00:00.000Z',
+            totalSettledCount: 1,
+            totalSettledSats: 5,
+            updatedAt: '2026-07-05T00:00:00.000Z',
+          }),
+          committedAt: '2026-07-05T00:00:00.000Z',
+        },
+      ],
+    })
+
+    const messages = settledFeedMessagesFromLiveFramePayload(payload)
+
+    expect(messages).toHaveLength(2)
+    expect(messages[0]?._tag).toBe('ReceivedSettledFeedPatch')
+    expect(messages[1]?._tag).toBe('ReceivedSettledFeedPatch')
+  })
+
+  test('ignores PingFrame and MutationAckFrame (no message produced)', () => {
+    expect(
+      settledFeedMessagesFromLiveFramePayload(
+        JSON.stringify({ _tag: 'PingFrame' }),
+      ),
+    ).toHaveLength(0)
+    expect(
+      settledFeedMessagesFromLiveFramePayload(
+        JSON.stringify({
+          _tag: 'MutationAckFrame',
+          clientId: 'c1',
+          lastMutationId: 1,
+        }),
+      ),
+    ).toHaveLength(0)
+  })
+
+  test('maps MustRefetchFrame to a FailedSettledFeedStream (no first-class reconnect loop exists; same degrade posture as any other stream fault)', () => {
+    const messages = settledFeedMessagesFromLiveFramePayload(
+      JSON.stringify({
+        _tag: 'MustRefetchFrame',
+        scope: 'scope.public.settled-feed',
+        reason: 'cursor_behind_retained_window',
+      }),
+    )
+
+    expect(messages).toHaveLength(1)
+    expect(messages[0]?._tag).toBe('FailedSettledFeedStream')
+  })
+
+  test('returns a FailedSettledFeedStream for an undecodable payload', () => {
+    const messages = settledFeedMessagesFromLiveFramePayload('{not json')
+
+    expect(messages).toHaveLength(1)
+    expect(messages[0]?._tag).toBe('FailedSettledFeedStream')
   })
 })
 

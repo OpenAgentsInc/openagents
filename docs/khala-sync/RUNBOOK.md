@@ -3411,7 +3411,13 @@ Postgres failure never blocks or fails the `/gym` ingest — see
 `packages/khala-sync-server/src/gym-run-progress-projection.ts`. Worker
 glue: `workers/api/src/khala-sync-gym-run-progress-projection.ts`.
 
-## Settled-feed public projection — dual-write only, NOT a cutover (KS-6.4, #8414)
+## Settled-feed public projection — full cutover complete (KS-6.4, #8414)
+
+**Status: LIVE, full cutover.** The section below is kept for history — it
+records the dual-write-only phase and why the legacy producer stayed live
+until the KS-8.x anonymous-read exception landed. See the "FULL CUTOVER
+COMPLETE" update near the end of this section for what changed and the
+production evidence.
 
 The live settled feed's producer (`publishSettledFeedEvents` in
 `workers/api/src/tassadar-settled-feed-sync.ts`) now ALSO best-effort
@@ -3582,6 +3588,98 @@ are NOT done in this pass** — doing so would have been a broken repoint per
 this issue's own guardrail, not a verified-live cutover. #8416 stays open
 with this precise blocker; no code changed in this pass, only this research
 recorded.
+
+## Settled-feed public projection — full cutover complete, continued (KS-6.4, #8414)
+
+**UPDATE (2026-07-05): FULL CUTOVER COMPLETE (KS-6.4, #8414).** Verified the
+anonymous-read exception covers this feed's EXACT scope id before touching
+anything — `curl` (no auth header) against production:
+`GET /api/sync/log?scope=scope.public.settled-feed&cursor=0` → `200` (real
+payload, not 401), and a WebSocket-upgrade request to
+`GET /api/sync/connect?scope=scope.public.settled-feed` → `426` (past the
+auth gate; 426 only because a bare `curl` cannot complete the real WS
+handshake) — confirming `isAnonymousReadableScope` matches this scope by its
+real name, not just `tokens-served`'s.
+
+With that confirmed, completed the repoint:
+
+- `apps/web/src/subscriptions.ts`: `settledFeedDependenciesForModel` now
+  builds `/api/sync/connect?scope=scope.public.settled-feed&cursor=<seeded>`
+  (new `khalaSyncConnectHref`) instead of the legacy
+  `syncStreamHref`/`/api/sync/${kind}/${id}/stream`. `settledFeedStream`'s
+  message handler now decodes the new engine's `LiveFrame` wire shape
+  (`DeltaFrame`/`MustRefetchFrame`/`PingFrame`/`MutationAckFrame` — a
+  DIFFERENT shape from the legacy `ServerMessage`/`SyncPatch` the socket used
+  to speak) via the new `settledFeedMessagesFromLiveFramePayload`. A
+  `DeltaFrame` can batch several changed entities into one socket message
+  (unlike the legacy one-`ServerMessage`-per-message contract), so this fans
+  out into zero or more messages per frame. `MustRefetchFrame` degrades to
+  the same `FailedSettledFeedStream` fallback as any other stream fault — no
+  first-class "clear and re-bootstrap" reconnect loop exists for this
+  read-only public surface (the legacy engine never auto-reconnected
+  either), so this is a deliberate no-regression choice, not a gap.
+- `page/loggedOut/settled-feed.ts`: new pure adapter
+  `settledFeedPatchFromChangelogEntry` maps one khala-sync `ChangelogEntry`
+  (`entityType`/`postImageJson`/`version`/`op: upsert|delete`) into the
+  legacy `SyncPatch` shape (`collection`/`value`/`seq`/`op: put|delete`) the
+  existing `applySettledFeedPatch` reducer already understood — so the
+  reducer itself needed ZERO changes for the engine cutover. `SETTLED_FEED_SCOPE`
+  changed from the legacy `public-settled-feed:tassadar` room id to the
+  khala-sync engine's `scope.public.settled-feed`.
+- `page/loggedOut/model.ts`: added `SettledFeedModel.snapshotLoaded`
+  (mirrors the #6324 tokens-served race guard exactly) so the live-tail
+  socket opens at the SEEDED cursor, never at cursor 0 — opening at 0 would
+  have the hub replay the scope's entire historical settled-event log as the
+  connect catch-up burst instead of showing only new live settlements.
+- `page/loggedOut/update.ts`: `LoadSettledFeedSnapshot` now pages
+  `GET /api/sync/log?scope=scope.public.settled-feed` (bounded loop on
+  `upToDate`) instead of the legacy D1
+  `/api/sync/${kind}/${id}/snapshot` route, extracting the `summary` entity
+  via the same `settledFeedPatchFromChangelogEntry` adapter and seeding
+  `cursor` from `LogPage.nextCursor`. Deliberately still discards individual
+  settled-event log entries on load — same behavior as the route it
+  replaces: only the summary seeds totals; the event feed itself stays
+  live-only, filling in only as NEW settlements stream in (the original
+  openagents #5311 design). A `cursor_behind_retained_window` (410) on the
+  very first page degrades the same way any other snapshot failure
+  degrades — no crash, just a socket that falls back to opening at cursor 0.
+- `workers/api/src/tassadar-settled-feed-sync.ts`: deleted the legacy
+  `notifySyncScopes(env, [scope])` call (and the now-unused `SYNC_ROOM`
+  binding requirement) from `publishSettledFeedEvents` — the khala-sync
+  projection is now the ONLY live delivery path for the homepage/stats
+  settled feed. The D1 sync-outbox `store.appendChange` writes in that same
+  function are UNRELATED and were NOT touched: they remain the fail-open
+  fallback source for the separate `GET /api/public/settled-feed` read route
+  (`public-settled-feed-routes.ts`), which this change did not touch.
+
+Production verification (evidence, post-deploy):
+
+```sh
+# Anonymous log read of the exact settled-feed scope succeeds (no 401):
+curl -sS -D - -o /dev/null \
+  'https://openagents.com/api/sync/log?scope=scope.public.settled-feed&cursor=0'
+
+# Anonymous connect upgrade attempt reaches the WebSocket-required check
+# (past the auth gate — 426, not 401):
+curl -sS -D - -o /dev/null \
+  -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+  -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+  'https://openagents.com/api/sync/connect?scope=scope.public.settled-feed&cursor=0'
+```
+
+Test evidence: `apps/web/src/page/loggedOut/settled-feed.test.ts` (the
+`ChangelogEntry` → `SyncPatch` adapter, both entity kinds, delete op,
+malformed-JSON fallback, `snapshotLoaded` transitions),
+`apps/web/src/subscriptions.test.ts` (the `snapshotLoaded` gate, the new
+connect href, `LiveFrame` decode for `DeltaFrame`/`PingFrame`/
+`MutationAckFrame`/`MustRefetchFrame`/undecodable payloads),
+`apps/web/src/page/loggedOut/update.test.ts` (`LoadSettledFeedSnapshot`'s new
+`/api/sync/log` request shape, empty-scope seed, HTTP-failure degrade),
+`workers/api/src/tassadar-settled-feed-sync.test.ts` (the legacy room poke is
+gone; the D1 outbox write is unaffected). Full `check:deploy` green.
+`notifySyncScopes`/`SyncRoomDurableObject` remain live for the other
+still-open KS-6.x items (gym run-progress #8415, tokens-served-derived
+surfaces) — this update retires them for the settled feed ONLY.
 
 ## Anonymous read scopes (KS-8.x, scope.public.* only)
 

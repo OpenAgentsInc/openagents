@@ -182,32 +182,6 @@ const makeMemoryD1 = (): MemoryD1 => {
   } satisfies MemoryD1
 }
 
-const makeSyncRoom = (
-  notifiedScopes: Array<string>,
-): DurableObjectNamespace =>
-  // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
-  ({
-    getByName: (scope: string) => ({
-      fetch: async (request: Request) => {
-        notifiedScopes.push(
-          request.headers.get('x-openagents-sync-scope') ?? scope,
-        )
-
-        return new Response(null, { status: 204 })
-      },
-    }),
-    idFromName: (scope: string) => scope,
-    get: (scope: string) => ({
-      fetch: async (request: Request) => {
-        notifiedScopes.push(
-          request.headers.get('x-openagents-sync-scope') ?? scope,
-        )
-
-        return new Response(null, { status: 204 })
-      },
-    }),
-  }) as never
-
 const settledLeg = (
   overrides: Partial<{
     amountSats: number
@@ -348,7 +322,6 @@ describe('assertSettledFeedPayloadPublicSafe (redaction)', () => {
 describe('publishSettledFeedEvents', () => {
   test('writes public-safe events + summary to the public scope and pokes the room', async () => {
     const db = makeMemoryD1()
-    const notifiedScopes: Array<string> = []
     const events = buildSettledFeedEvents({
       legs: [
         settledLeg({ amountSats: 5, party: 'worker' }),
@@ -366,7 +339,6 @@ describe('publishSettledFeedEvents', () => {
     await publishSettledFeedEvents(
       {
         OPENAGENTS_DB: db,
-        SYNC_ROOM: makeSyncRoom(notifiedScopes),
       },
       events,
     )
@@ -389,12 +361,10 @@ describe('publishSettledFeedEvents', () => {
       totalSettledCount: 2,
       totalSettledSats: 10,
     })
-    expect(notifiedScopes).toEqual(['public-settled-feed:tassadar'])
   })
 
   test('no raw spark/invoice/preimage material ever lands in the outbox', async () => {
     const db = makeMemoryD1()
-    const notifiedScopes: Array<string> = []
     // An (impossible by construction, but defensively guarded) event that smuggles
     // a raw spark destination must be filtered out before it can be written.
     const unsafeEvent: PublicSettledFeedEvent = {
@@ -413,7 +383,6 @@ describe('publishSettledFeedEvents', () => {
     await publishSettledFeedEvents(
       {
         OPENAGENTS_DB: db,
-        SYNC_ROOM: makeSyncRoom(notifiedScopes),
       },
       [unsafeEvent],
     )
@@ -426,23 +395,19 @@ describe('publishSettledFeedEvents', () => {
 
   test('no-ops with no events', async () => {
     const db = makeMemoryD1()
-    const notifiedScopes: Array<string> = []
 
     await publishSettledFeedEvents(
       {
         OPENAGENTS_DB: db,
-        SYNC_ROOM: makeSyncRoom(notifiedScopes),
       },
       [],
     )
 
     expect(db.changes).toHaveLength(0)
-    expect(notifiedScopes).toHaveLength(0)
   })
 
-  test('KS-6.4 (#8414): legacy write + room poke still succeed with no KHALA_SYNC_DB binding, and the khala-sync projection stays silent (skipped_no_binding, never a diagnostic)', async () => {
+  test('KS-6.4 (#8414): D1 outbox write still succeeds with no KHALA_SYNC_DB binding, and the khala-sync projection stays silent (skipped_no_binding, never a diagnostic)', async () => {
     const db = makeMemoryD1()
-    const notifiedScopes: Array<string> = []
     const khalaSyncLogCalls: Array<{ event: string }> = []
     const events = buildSettledFeedEvents({
       legs: [settledLeg({ amountSats: 5, party: 'worker' })],
@@ -454,11 +419,9 @@ describe('publishSettledFeedEvents', () => {
     await publishSettledFeedEvents(
       {
         OPENAGENTS_DB: db,
-        SYNC_ROOM: makeSyncRoom(notifiedScopes),
-        // No KHALA_SYNC_DB binding — the KS-6.4 dual-write must be a
+        // No KHALA_SYNC_DB binding — the KS-6.4 projection must be a
         // silent, fail-soft no-op (outcome `skipped_no_binding`) and must
-        // never block, slow, or fail the legacy write/poke it rides
-        // alongside.
+        // never block, slow, or fail the D1 outbox write it rides alongside.
         khalaSyncSettledFeedLog: (event) => {
           khalaSyncLogCalls.push({ event })
         },
@@ -466,12 +429,11 @@ describe('publishSettledFeedEvents', () => {
       events,
     )
 
-    // Legacy path is unaffected: events + summary still land, room still
-    // pokes.
+    // The D1 outbox write (the `GET /api/public/settled-feed` fail-open
+    // fallback source) is unaffected by the khala-sync binding's presence.
     expect(
       db.changes.filter(c => c.collection === SETTLED_FEED_SYNC_COLLECTION),
     ).toHaveLength(1)
-    expect(notifiedScopes).toEqual(['public-settled-feed:tassadar'])
     // The new khala-sync path never fires a diagnostic for the expected
     // "no binding deployed yet" case.
     expect(khalaSyncLogCalls).toHaveLength(0)

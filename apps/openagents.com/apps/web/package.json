@@ -29,6 +29,7 @@
     "@openagentsinc/ui": "workspace:*",
     "@openagentsinc/world-client": "workspace:*",
     "@openagentsinc/world-contract": "workspace:*",
+    "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/sync-client": "workspace:*",
     "@openagentsinc/sync-schema": "workspace:*",
     "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#b3bdc2a",

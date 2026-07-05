@@ -1620,6 +1620,15 @@ export const SettledFeedModel = ts('LoggedOutSettledFeed', {
   events: S.Array(PublicSettledFeedEvent),
   totalSettledCount: S.Number,
   totalSettledSats: S.Number,
+  // The khala-sync live-tail socket must open at the SEEDED cursor, never at
+  // 0 (KS-6.4, #8414 cutover — same #6324 race the tokens-served stream
+  // already guards against): opening at cursor 0 would have the hub replay
+  // the scope's ENTIRE historical settled-event log as the connect catch-up
+  // burst, flooding the feed with old events instead of showing only new
+  // live settlements. `LoadSettledFeedSnapshot`'s success/failure both flip
+  // this true AFTER seeding `cursor`, so the stream subscription (gated on
+  // this flag in subscriptions.ts) opens exactly once, at the seeded cursor.
+  snapshotLoaded: S.Boolean,
 })
 export type SettledFeedModel = typeof SettledFeedModel.Type
 
@@ -1630,6 +1639,7 @@ export const initSettledFeedModel = (): SettledFeedModel =>
     events: [],
     totalSettledCount: 0,
     totalSettledSats: 0,
+    snapshotLoaded: false,
   })
 
 // Live "Khala Tokens Served" stream (#6231 + follow-up). The homepage/stats

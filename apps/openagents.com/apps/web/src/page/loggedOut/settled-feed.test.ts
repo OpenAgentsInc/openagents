@@ -1,4 +1,11 @@
 import {
+  ChangelogEntry,
+  EntityId as KhalaSyncEntityId,
+  EntityType,
+  SyncScope as KhalaSyncScope,
+  SyncVersion,
+} from '@openagentsinc/khala-sync'
+import {
   CollectionName,
   CursorGap,
   EntityId,
@@ -20,6 +27,8 @@ import {
   settledFeedAfterSnapshot,
   settledFeedFailed,
   settledFeedOpen,
+  settledFeedPatchFromChangelogEntry,
+  settledFeedStreamSnapshotSettled,
 } from './settled-feed'
 
 const eventPatch = (
@@ -201,5 +210,151 @@ describe('connection state', () => {
     const updated = settledFeedAfterCursorGap(initSettledFeedModel(), gap)
 
     expect(updated.cursor).toBe(9)
+  })
+})
+
+describe('settledFeedAfterSnapshot / settledFeedStreamSnapshotSettled (KS-6.4, #8414)', () => {
+  test('a successful snapshot flips snapshotLoaded so the live-tail socket may open', () => {
+    const updated = settledFeedAfterSnapshot(initSettledFeedModel(), {
+      cursor: 12,
+      summary: { totalSettledCount: 4, totalSettledSats: 20 },
+    })
+
+    expect(updated.snapshotLoaded).toBe(true)
+  })
+
+  test('a failed snapshot also flips snapshotLoaded (degraded: opens at cursor 0)', () => {
+    expect(initSettledFeedModel().snapshotLoaded).toBe(false)
+
+    const settled = settledFeedStreamSnapshotSettled(initSettledFeedModel())
+
+    expect(settled.snapshotLoaded).toBe(true)
+    expect(settled.cursor).toBe(0)
+  })
+
+  test('settledFeedStreamSnapshotSettled is idempotent and never rewinds an already-seeded cursor', () => {
+    const seeded = settledFeedAfterSnapshot(initSettledFeedModel(), {
+      cursor: 42,
+      summary: null,
+    })
+
+    const settled = settledFeedStreamSnapshotSettled(seeded)
+
+    expect(settled).toEqual(seeded)
+  })
+})
+
+// KS-6.4 (#8414) cutover: `settledFeedPatchFromChangelogEntry` adapts one
+// khala-sync `ChangelogEntry` (the `GET /api/sync/log` catch-up + `WS
+// /api/sync/connect` `DeltaFrame` wire shape) into the legacy `SyncPatch`
+// shape `applySettledFeedPatch` already understands, so the reducer above
+// needed no changes for the engine cutover.
+describe('settledFeedPatchFromChangelogEntry', () => {
+  const entry = (
+    input: Readonly<{
+      entityId: string
+      entityType: string
+      op: 'upsert' | 'delete'
+      postImageJson?: string
+      version: number
+    }>,
+  ): ChangelogEntry =>
+    new ChangelogEntry({
+      scope: KhalaSyncScope.make(SETTLED_FEED_SCOPE),
+      version: SyncVersion.make(input.version),
+      entityType: EntityType.make(input.entityType),
+      entityId: KhalaSyncEntityId.make(input.entityId),
+      op: input.op,
+      committedAt: '2026-07-05T00:00:00.000Z',
+      ...(input.postImageJson === undefined
+        ? {}
+        : { postImageJson: input.postImageJson }),
+    })
+
+  test('adapts a settled_feed_event upsert into a settled_events put patch', () => {
+    const patch = settledFeedPatchFromChangelogEntry(
+      entry({
+        entityId: 'settled.0',
+        entityType: 'settled_feed_event',
+        op: 'upsert',
+        postImageJson: JSON.stringify({
+          amountSats: 5,
+          challengeRef: 'challenge.tassadar.window.0001',
+          contributorRef: 'pylon.worker.orrery',
+          eventRef: 'settled.0',
+          party: 'worker',
+          runRef: 'run.tassadar.poc',
+          settledAt: '2026-07-05T00:00:00.000Z',
+          totalSettledCount: 1,
+          totalSettledSats: 5,
+          windowRef: null,
+        }),
+        version: 1,
+      }),
+    )
+
+    expect(patch).toBeDefined()
+    expect(patch?.collection).toBe(SETTLED_FEED_EVENTS_COLLECTION)
+    expect(patch?.op).toBe('put')
+    expect(patch?.seq).toBe(1)
+    expect(patch?.id).toBe('settled.0')
+    expect(patch?.value).toMatchObject({ amountSats: 5, totalSettledCount: 1 })
+
+    // Round-trips through the existing reducer unchanged.
+    const updated = applySettledFeedPatch(initSettledFeedModel(), patch!)
+    expect(updated.totalSettledSats).toBe(5)
+    expect(updated.events).toHaveLength(1)
+  })
+
+  test('adapts a settled_feed_summary upsert into a settled_summary put patch', () => {
+    const patch = settledFeedPatchFromChangelogEntry(
+      entry({
+        entityId: 'summary',
+        entityType: 'settled_feed_summary',
+        op: 'upsert',
+        postImageJson: JSON.stringify({
+          latestEventRef: 'settled.0',
+          latestSettledAt: '2026-07-05T00:00:00.000Z',
+          totalSettledCount: 7,
+          totalSettledSats: 35,
+          updatedAt: '2026-07-05T00:00:00.000Z',
+        }),
+        version: 3,
+      }),
+    )
+
+    expect(patch?.collection).toBe(SETTLED_FEED_SUMMARY_COLLECTION)
+    expect(patch?.value).toMatchObject({
+      totalSettledCount: 7,
+      totalSettledSats: 35,
+    })
+  })
+
+  test('adapts a delete op with no value', () => {
+    const patch = settledFeedPatchFromChangelogEntry(
+      entry({
+        entityId: 'settled.stale',
+        entityType: 'settled_feed_event',
+        op: 'delete',
+        version: 5,
+      }),
+    )
+
+    expect(patch?.op).toBe('delete')
+    expect(patch?.value).toBeUndefined()
+  })
+
+  test('returns undefined for an unparseable upsert post-image', () => {
+    const patch = settledFeedPatchFromChangelogEntry(
+      entry({
+        entityId: 'settled.bad',
+        entityType: 'settled_feed_event',
+        op: 'upsert',
+        postImageJson: '{not json',
+        version: 6,
+      }),
+    )
+
+    expect(patch).toBeUndefined()
   })
 })

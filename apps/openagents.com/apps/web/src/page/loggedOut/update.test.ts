@@ -19,6 +19,7 @@ import {
   FailedLoadPublicKhalaTokensServedChannelMix,
   FailedLoadKhalaTokensServedSnapshot,
   FailedLoadPublicKhalaTokensServedModelMix,
+  FailedLoadSettledFeedSnapshot,
   FailedLoadTrace,
   OpenedKhalaChatStream,
   ReceivedKhalaChatDelta,
@@ -40,6 +41,7 @@ import {
   LoadPublicKhalaTokensServedHistory,
   LoadPublicKhalaTokensServedChannelMix,
   LoadPublicKhalaTokensServedModelMix,
+  LoadSettledFeedSnapshot,
   LoadTrace,
   TASSADAR_AGENT_INSTRUCTIONS,
   initialCommands,
@@ -100,6 +102,19 @@ describe('logged-out nav + copy update', () => {
     expect(next.khalaTokensServedStream.snapshotLoaded).toBe(true)
     // No seeded cursor on failure; self-heals via per-event authoritative totals.
     expect(next.khalaTokensServedStream.cursor).toBe(0)
+  })
+
+  test('FailedLoadSettledFeedSnapshot still unlocks the live-tail socket (KS-6.4, #8414 cutover)', () => {
+    expect(model.settledFeed.snapshotLoaded).toBe(false)
+
+    const [next] = update(
+      model,
+      FailedLoadSettledFeedSnapshot({ error: 'HTTP 410' }),
+    )
+
+    expect(next.settledFeed.snapshotLoaded).toBe(true)
+    // No seeded cursor on failure — the socket falls back to opening at 0.
+    expect(next.settledFeed.cursor).toBe(0)
   })
 
   test('ClickedExitKhala returns home to / (shared by both info pages)', () => {
@@ -239,6 +254,94 @@ describe('logged-out nav + copy update', () => {
       cache: 'no-store',
       headers: { accept: 'application/json' },
     })
+  })
+
+  test('LoadSettledFeedSnapshot reads the khala-sync engine log, not the legacy D1 snapshot route (KS-6.4, #8414 cutover)', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          protocolVersion: 1,
+          scope: 'scope.public.settled-feed',
+          entries: [
+            {
+              scope: 'scope.public.settled-feed',
+              version: 7,
+              entityType: 'settled_feed_summary',
+              entityId: 'summary',
+              op: 'upsert',
+              postImageJson: JSON.stringify({
+                latestEventRef: 'settled.6',
+                latestSettledAt: '2026-07-05T00:00:00.000Z',
+                totalSettledCount: 4,
+                totalSettledSats: 20,
+                updatedAt: '2026-07-05T00:00:00.000Z',
+              }),
+              committedAt: '2026-07-05T00:00:00.000Z',
+            },
+          ],
+          nextCursor: 7,
+          upToDate: true,
+        }),
+        { headers: { 'content-type': 'application/json' } },
+      ),
+    )
+
+    const message = await Effect.runPromise(LoadSettledFeedSnapshot().effect)
+
+    expect(message._tag).toBe('SucceededLoadSettledFeedSnapshot')
+    expect(message).toMatchObject({
+      cursor: 7,
+      summary: { totalSettledCount: 4, totalSettledSats: 20 },
+    })
+    const [requestUrl, requestInit] = fetchSpy.mock.calls[0]!
+    expect(requestUrl).toBe(
+      '/api/sync/log?scope=scope.public.settled-feed&cursor=0&limit=200',
+    )
+    expect(requestInit).toEqual({
+      cache: 'no-store',
+      headers: { accept: 'application/json' },
+    })
+  })
+
+  test('LoadSettledFeedSnapshot seeds a null summary + cursor 0 for a brand-new scope', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          protocolVersion: 1,
+          scope: 'scope.public.settled-feed',
+          entries: [],
+          nextCursor: 0,
+          upToDate: true,
+        }),
+        { headers: { 'content-type': 'application/json' } },
+      ),
+    )
+
+    const message = await Effect.runPromise(LoadSettledFeedSnapshot().effect)
+
+    expect(message).toEqual({
+      _tag: 'SucceededLoadSettledFeedSnapshot',
+      cursor: 0,
+      summary: null,
+    })
+  })
+
+  test('LoadSettledFeedSnapshot degrades gracefully on an HTTP failure (e.g. a compacted/behind-retained-window scope)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          _tag: 'SyncError',
+          code: 'cursor_behind_retained_window',
+          messageSafe: 'Cursor is behind the retained window for this scope.',
+          retryable: false,
+        }),
+        { status: 410, headers: { 'content-type': 'application/json' } },
+      ),
+    )
+
+    const message = await Effect.runPromise(LoadSettledFeedSnapshot().effect)
+
+    expect(message._tag).toBe('FailedLoadSettledFeedSnapshot')
   })
 
   test('Stats route loads public Khala aggregate endpoints', () => {

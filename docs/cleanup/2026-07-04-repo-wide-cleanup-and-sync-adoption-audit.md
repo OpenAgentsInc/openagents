@@ -435,6 +435,31 @@ and the D1 `sync_*` tables have zero remaining users and drop cleanly**
      `docs/khala-sync/RUNBOOK.md`'s "Settled-feed public projection"
      section. #8414 stays open on the same anonymous-connect-exception
      blocker.
+   - **2026-07-05 CUTOVER COMPLETE (KS-6.4, #8414):** the KS-8.x
+     anonymous-read exception (`scope.public.*` on
+     connect/log/bootstrap) unblocked this item's own follow-up. Repointed
+     `apps/web/src/subscriptions.ts`'s `settledFeedDependenciesForModel`/
+     `settledFeedStream` from the legacy `syncStreamHref` →
+     `/api/sync/${kind}/${id}/stream` WebSocket onto
+     `/api/sync/connect?scope=scope.public.settled-feed` (a genuinely new
+     wire adapter — the new engine's `LiveFrame`/`ChangelogEntry` shape
+     differs from the legacy `ServerMessage`/`SyncPatch` shape, so
+     `settledFeedPatchFromChangelogEntry` in
+     `page/loggedOut/settled-feed.ts` bridges one into the other so the
+     existing `applySettledFeedPatch` reducer needed no changes). Also
+     repointed `LoadSettledFeedSnapshot`'s cold-read seed from the legacy D1
+     `/api/sync/${kind}/${id}/snapshot` route to `GET /api/sync/log`, and
+     added a `snapshotLoaded` gate on `SettledFeedModel` (mirroring the
+     #6324 tokens-served race guard) so the live-tail socket opens at the
+     seeded cursor, never at 0. Deleted the legacy `notifySyncScopes` call
+     in `publishSettledFeedEvents` (`tassadar-settled-feed-sync.ts`) — the
+     D1 sync-outbox WRITES themselves stay (unrelated: they are
+     `GET /api/public/settled-feed`'s own fail-open fallback source, a
+     separate route this change did not touch). Verified live in
+     production: `GET /api/sync/log?scope=scope.public.settled-feed` and
+     `WS /api/sync/connect?scope=scope.public.settled-feed` both succeed
+     anonymously (no auth header), and the homepage/stats settled feed now
+     renders from the new engine exclusively. #8414 closed.
 4. **Team chat + thread files + agent goals**: the flagship "migration = sync adoption" case per KS-8.13/#8324 — land on `scope.team.<id>` / `scope.thread.<id>` / `scope.agent_run.<id>` / `scope.user.<id>`, replacing both the notifier fan-out and the desktop/web polling in one move. (L, med)
    - **2026-07-05 correction (KS-6.6, #8416):** `scope.agent_run.<runId>`
      specifically had ZERO producers before this issue — KS-8.13/#8324's

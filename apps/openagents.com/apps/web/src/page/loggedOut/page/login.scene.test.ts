@@ -204,6 +204,7 @@ describe('homepage scene', () => {
               events: [settledEvent],
               totalSettledCount: 1,
               totalSettledSats: 5,
+              snapshotLoaded: true,
             }),
           }),
       },

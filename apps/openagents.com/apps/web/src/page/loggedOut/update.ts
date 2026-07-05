@@ -1,3 +1,7 @@
+import {
+  LogPage,
+  SETTLED_FEED_SUMMARY_ENTITY_TYPE,
+} from '@openagentsinc/khala-sync'
 import { PublicActivityTimelineEnvelope } from '@openagentsinc/public-activity-timeline'
 import {
   Array as Arr,
@@ -193,12 +197,15 @@ import {
 } from './model'
 import {
   SETTLED_FEED_SCOPE,
+  SETTLED_FEED_SUMMARY_COLLECTION,
   applySettledFeedPatch,
   settledFeedAfterCursorGap,
   settledFeedAfterSnapshot,
   settledFeedClosed,
   settledFeedFailed,
   settledFeedOpen,
+  settledFeedPatchFromChangelogEntry,
+  settledFeedStreamSnapshotSettled,
 } from './settled-feed'
 
 type UpdateReturn = readonly [Model, ReadonlyArray<Command.Command<Message>>]
@@ -957,57 +964,105 @@ class SettledFeedSnapshotLoadError extends S.TaggedErrorClass<SettledFeedSnapsho
   },
 ) {}
 
-const SettledFeedSnapshotPayload = S.Struct({
-  collections: S.Record(S.String, S.Record(S.String, S.Unknown)),
-  cursor: S.Number,
-})
-
 const SettledFeedSnapshotSummary = S.Struct({
   totalSettledCount: S.Number,
   totalSettledSats: S.Number,
 })
 
-// Non-realtime cold read of the public settled-feed scope. Seeds the running
-// totals + cursor before the WebSocket attaches, and is the graceful fallback
-// when the socket is unavailable (the homepage still renders these totals).
+// One `GET /api/sync/log` catch-up page over the khala-sync engine (KS-6.4,
+// #8414 cutover — this replaces the legacy D1 sync-outbox
+// `/api/sync/${kind}/${id}/snapshot` route entirely).
+const KHALA_SYNC_SETTLED_FEED_LOG_PAGE_LIMIT = 200
+// Bounds the catch-up loop below (worst case ~4,000 changelog entries
+// scanned) so a pathological/compacted scope can never spin forever.
+const KHALA_SYNC_SETTLED_FEED_LOG_MAX_PAGES = 20
+
+// Non-realtime cold read of the public settled-feed scope over the khala-sync
+// engine. Seeds the running totals + cursor before the live-tail socket
+// attaches (subscriptions.ts gates the socket on `snapshotLoaded`, seeded
+// below via `settledFeedAfterSnapshot`), and is the graceful fallback when the
+// socket never opens. Pages `GET /api/sync/log` from cursor 0 until
+// `upToDate` — in practice always ONE round trip today (the feed's summary is
+// a single upserted entity and the dual-write is brand new), but the loop
+// keeps this correct as the scope's distinct settled-event entity count
+// grows. Deliberately discards individual settled-event log entries — same
+// behavior as the legacy snapshot fetch it replaces: only the SUMMARY seeds
+// totals on load, and the event feed itself renders live-only, filling in
+// only as NEW settlements stream in (openagents #5311's original design).
+// A `cursor_behind_retained_window` (410) on the very first page — this
+// scope's history already compacted past the retained window — is treated
+// like any other snapshot failure: no seeded totals this load, and the
+// live-tail socket falls back to opening at cursor 0 (see
+// `settledFeedStreamSnapshotSettled`), an honest degraded path rather than a
+// crash.
 export const LoadSettledFeedSnapshot = Command.define(
   'LoadSettledFeedSnapshot',
   SucceededLoadSettledFeedSnapshot,
   FailedLoadSettledFeedSnapshot,
 )(
   Effect.gen(function* () {
-    const response = yield* Effect.tryPromise({
-      try: () =>
-        fetch(`/api/sync/${SETTLED_FEED_SCOPE.replace(':', '/')}/snapshot`, {
-          cache: 'no-store',
-          headers: { accept: 'application/json' },
-        }),
-      catch: error => new SettledFeedSnapshotLoadError({ error }),
-    })
+    let pageCursor = 0
+    let tipCursor = 0
+    let summaryValue: unknown
 
-    if (!response.ok) {
-      return yield* new SettledFeedSnapshotLoadError({
-        error: `Settled feed snapshot returned HTTP ${response.status}.`,
+    for (let page = 0; page < KHALA_SYNC_SETTLED_FEED_LOG_MAX_PAGES; page++) {
+      const query = new URLSearchParams({
+        scope: SETTLED_FEED_SCOPE,
+        cursor: String(pageCursor),
+        limit: String(KHALA_SYNC_SETTLED_FEED_LOG_PAGE_LIMIT),
       })
+      const response = yield* Effect.tryPromise({
+        try: () =>
+          fetch(`/api/sync/log?${query.toString()}`, {
+            cache: 'no-store',
+            headers: { accept: 'application/json' },
+          }),
+        catch: error => new SettledFeedSnapshotLoadError({ error }),
+      })
+
+      if (!response.ok) {
+        return yield* new SettledFeedSnapshotLoadError({
+          error: `Settled feed log page returned HTTP ${response.status}.`,
+        })
+      }
+
+      const payload = yield* Effect.tryPromise({
+        try: () => response.json(),
+        catch: error => new SettledFeedSnapshotLoadError({ error }),
+      })
+      const logPage = yield* S.decodeUnknownEffect(LogPage)(payload).pipe(
+        Effect.mapError(error => new SettledFeedSnapshotLoadError({ error })),
+      )
+
+      const summaryEntry = logPage.entries.find(
+        entry => entry.entityType === SETTLED_FEED_SUMMARY_ENTITY_TYPE,
+      )
+      if (summaryEntry !== undefined) {
+        const patch = settledFeedPatchFromChangelogEntry(summaryEntry)
+        if (
+          patch !== undefined &&
+          patch.collection === SETTLED_FEED_SUMMARY_COLLECTION
+        ) {
+          summaryValue = patch.value
+        }
+      }
+
+      tipCursor = logPage.nextCursor
+      if (logPage.upToDate) {
+        break
+      }
+      pageCursor = logPage.nextCursor
     }
 
-    const payload = yield* Effect.tryPromise({
-      try: () => response.json(),
-      catch: error => new SettledFeedSnapshotLoadError({ error }),
-    })
-    const decoded = yield* S.decodeUnknownEffect(SettledFeedSnapshotPayload)(
-      payload,
-    )
-    const rawSummary = decoded.collections['settled_summary']?.['summary']
     const summary =
-      rawSummary === undefined
+      summaryValue === undefined
         ? null
         : yield* S.decodeUnknownEffect(SettledFeedSnapshotSummary)(
-            rawSummary,
+            summaryValue,
           ).pipe(Effect.orElseSucceed(() => null))
 
     return SucceededLoadSettledFeedSnapshot({
-      cursor: decoded.cursor,
+      cursor: tipCursor,
       summary,
     })
   }).pipe(
@@ -2418,7 +2473,10 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         }),
         [],
       ],
-      FailedLoadSettledFeedSnapshot: () => [model, []],
+      FailedLoadSettledFeedSnapshot: () => [
+        evo(model, { settledFeed: settledFeedStreamSnapshotSettled }),
+        [],
+      ],
       OpenedSettledFeedStream: () => [
         evo(model, { settledFeed: settledFeedOpen }),
         [],

@@ -112,7 +112,7 @@ describe('GET /api/public/settled-feed', () => {
     // does — no binding for the new khala-sync path, so the route MUST
     // fall back here (proving no availability regression).
     await publishSettledFeedEvents(
-      { OPENAGENTS_DB: db, SYNC_ROOM: makeSyncRoom() },
+      { OPENAGENTS_DB: db },
       events,
     )
 
@@ -272,11 +272,3 @@ const makeMemoryD1 = (): MemoryD1 => {
       }) satisfies D1DatabaseSession,
   } satisfies MemoryD1
 }
-
-const makeSyncRoom = (): DurableObjectNamespace =>
-  // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
-  ({
-    getByName: () => ({ fetch: async () => new Response(null, { status: 204 }) }),
-    idFromName: (scope: string) => scope,
-    get: () => ({ fetch: async () => new Response(null, { status: 204 }) }),
-  }) as never

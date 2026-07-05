@@ -176,6 +176,7 @@
         "@openagentsinc/autopilot-control-protocol": "workspace:*",
         "@openagentsinc/autopilot-ui": "workspace:*",
         "@openagentsinc/design-tokens": "workspace:*",
+        "@openagentsinc/khala-sync": "workspace:*",
         "@openagentsinc/mcp-contract": "workspace:*",
         "@openagentsinc/mullet-schema": "workspace:*",
         "@openagentsinc/mullet-sim": "workspace:*",

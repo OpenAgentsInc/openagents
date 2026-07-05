@@ -1,3 +1,4 @@
+import { decodeLiveFrame, type LiveFrame } from '@openagentsinc/khala-sync'
 import { ServerMessage, SyncPatch } from '@openagentsinc/sync-schema'
 import { Duration, Effect, Exit, Queue, Schema as S, Stream } from 'effect'
 import { Subscription } from 'foldkit'
@@ -31,7 +32,6 @@ import {
   ReceivedAutopilotOnboardingDelta,
   ReceivedAutopilotOnboardingResumeReply,
   ReceivedAutopilotOnboardingStreamHandshake,
-  ReceivedSettledFeedCursorGap,
   ReceivedSettledFeedPatch,
   ClosedKhalaTokensServedStream,
   FailedKhalaTokensServedStream,
@@ -67,7 +67,10 @@ import {
   parseKhalaChatStreamEvent,
 } from './page/khala-chat/flow'
 import { newOnboardingSessionId } from './page/loggedOut/update'
-import { SETTLED_FEED_SCOPE } from './page/loggedOut/settled-feed'
+import {
+  SETTLED_FEED_SCOPE,
+  settledFeedPatchFromChangelogEntry,
+} from './page/loggedOut/settled-feed'
 import { KHALA_TOKENS_SERVED_SCOPE } from './page/loggedOut/khala-tokens-served-feed'
 import { GYM_RUN_PROGRESS_SCOPE } from './page/loggedOut/gym/runProgressFeed'
 import {
@@ -281,7 +284,18 @@ const khalaTokensServedSurfaceIsLive = (
 export const settledFeedDependenciesForModel = (
   model: Model,
 ): SettledFeedDependencies => {
-  if (model._tag !== 'LoggedOut' || !settledFeedRouteIsLive(model)) {
+  if (
+    model._tag !== 'LoggedOut' ||
+    !settledFeedRouteIsLive(model) ||
+    // The khala-sync live-tail socket must open at the SEEDED cursor, never
+    // at 0 (KS-6.4, #8414 cutover — same #6324 race the tokens-served stream
+    // already guards against): opening at 0 would have the hub replay the
+    // scope's entire historical settled-event log as the connect catch-up
+    // burst. `LoadSettledFeedSnapshot`'s success/failure both flip
+    // `snapshotLoaded` (see model.ts) after the cold read settles, so the
+    // socket opens exactly once, at that seeded cursor.
+    !model.settledFeed.snapshotLoaded
+  ) {
     return inactiveSettledFeed
   }
 
@@ -291,7 +305,7 @@ export const settledFeedDependenciesForModel = (
     cursor,
     isActive: true,
     scope: SETTLED_FEED_SCOPE,
-    streamHref: syncStreamHref(SETTLED_FEED_SCOPE, cursor),
+    streamHref: khalaSyncConnectHref(SETTLED_FEED_SCOPE, cursor),
   }
 }
 
@@ -687,19 +701,11 @@ const settledFeedStream = (
           )
         })
         socket.addEventListener('message', event => {
-          const decoded = syncMessageFromPayload(String(event.data))
-
-          Queue.offerUnsafe(
-            queue,
-            GotLoggedOutMessage({
-              message:
-                decoded._tag === 'ReceivedSyncPatch'
-                  ? ReceivedSettledFeedPatch({ patch: decoded.patch })
-                  : decoded._tag === 'ReceivedSyncCursorGap'
-                    ? ReceivedSettledFeedCursorGap({ gap: decoded.gap })
-                    : FailedSettledFeedStream({ error: decoded.error }),
-            }),
-          )
+          for (const message of settledFeedMessagesFromLiveFramePayload(
+            String(event.data),
+          )) {
+            Queue.offerUnsafe(queue, GotLoggedOutMessage({ message }))
+          }
         })
         socket.addEventListener('close', () => {
           if (resource.released) {
@@ -739,6 +745,58 @@ const settledFeedStream = (
     ).pipe(Effect.flatMap(() => Effect.never)),
   )
 }
+
+// KS-6.4 (#8414) cutover: decode one khala-sync `LiveFrame` WebSocket payload
+// (`WS /api/sync/connect`) into zero or more settled-feed messages. Unlike
+// the legacy engine's `syncMessageFromPayload` (one `ServerMessage` per
+// socket message), a `DeltaFrame` may batch several changed entities into one
+// frame, so this can fan out into several `ReceivedSettledFeedPatch`
+// messages from a single `message` event.
+export const settledFeedMessagesFromLiveFramePayload = (
+  payload: string,
+): ReadonlyArray<LoggedOutMessage> => {
+  const record = parseJsonRecord(payload)
+  let frame: LiveFrame
+  try {
+    if (record === undefined) {
+      throw new Error('not a JSON object')
+    }
+    frame = decodeLiveFrame(record)
+  } catch {
+    return [
+      FailedSettledFeedStream({
+        error: 'Settled feed live-tail message could not be decoded.',
+      }),
+    ]
+  }
+
+  if (frame._tag === 'PingFrame' || frame._tag === 'MutationAckFrame') {
+    return []
+  }
+
+  if (frame._tag === 'MustRefetchFrame') {
+    // No first-class "clear scope-local state and re-bootstrap" reconnect
+    // loop exists for this read-only public surface — the legacy engine
+    // never auto-reconnected either. Degrade the same way any other stream
+    // fault degrades: the last known totals stay rendered, and a page
+    // reload re-seeds via `LoadSettledFeedSnapshot`.
+    return [
+      FailedSettledFeedStream({
+        error: `Settled feed live-tail requested a refetch (${frame.reason}).`,
+      }),
+    ]
+  }
+
+  // DeltaFrame: one message per changed entity, in server order.
+  return frame.entries.flatMap(entry => {
+    const patch = settledFeedPatchFromChangelogEntry(entry)
+
+    return patch === undefined ? [] : [ReceivedSettledFeedPatch({ patch })]
+  })
+}
+
+const khalaSyncConnectHref = (scope: string, cursor: number): string =>
+  `/api/sync/connect?scope=${encodeURIComponent(scope)}&cursor=${cursor}`
 
 const webSocketUrl = (href: string): string => {
   const url = new URL(href, window.location.href)
