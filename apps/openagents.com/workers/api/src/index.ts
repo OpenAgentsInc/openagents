@@ -13564,6 +13564,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           env.INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED,
         ),
         db: openAgentsDatabase(env),
+        // KS-8.9 decommission follow-up (#8336): the bounded non-gate read
+        // allowlist — serves this public receipt projection from Postgres
+        // for real under KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS=postgres;
+        // absent/'d1' => byte-identical inline D1 behavior.
+        nonGateReads: makeInferenceEntitlementsRoutingForEnv(env)?.nonGateReads,
         nowIso: currentIsoTimestamp,
       }),
   },
@@ -14621,6 +14626,13 @@ const routeRequest = makeWorkerRouteRequest({
       agentStore: makeAgentRegistrationStoreForEnv(env),
       // KS-8.9 (#8320): fire-safe Postgres dual-write mirror (orange check).
       entitlementsMirror: inferenceEntitlementsMirrorForEnv(env),
+      // KS-8.9 decommission follow-up (#8336): the bounded non-gate read
+      // allowlist — serves the orange-check count + per-actor badge lookup
+      // from Postgres for real under
+      // KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS=postgres; absent/'d1' =>
+      // byte-identical inline D1 behavior.
+      entitlementsNonGateReads:
+        makeInferenceEntitlementsRoutingForEnv(env)?.nonGateReads,
       ...(() => {
         const forumWorkRequestRelayPublisher =
           forumWorkRequestRelayPublisherForEnv(env)

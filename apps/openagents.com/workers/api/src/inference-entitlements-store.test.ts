@@ -26,11 +26,13 @@ import {
   makeInferenceEntitlementsMirror,
   makeInferenceEntitlementsRoutingForEnv,
   makeRoutedEntitlementsGateReads,
+  makeRoutedEntitlementsNonGateReads,
   mirrorOpRefs,
   type InferenceEntitlementsDiagnostic,
   type InferenceEntitlementsDiagnosticEvent,
   type InferenceEntitlementsGateReads,
   type InferenceEntitlementsMirrorOp,
+  type InferenceEntitlementsNonGateReads,
 } from './inference-entitlements-store'
 
 const collectLog = () => {
@@ -62,10 +64,20 @@ const gateReadsStub = (
   ...overrides,
 })
 
+const nonGateReadsStub = (
+  overrides: Partial<InferenceEntitlementsNonGateReads> = {},
+): InferenceEntitlementsNonGateReads => ({
+  activeOrangeCheckByActorRef: () => Promise.resolve(null),
+  activeOrangeCheckCount: () => Promise.resolve(0),
+  publicPrivacyReceiptByRef: () => Promise.resolve(null),
+  ...overrides,
+})
+
 describe('inferenceEntitlementsFlagsFromEnv', () => {
   test('dual-write defaults ON; reads default d1', () => {
     expect(inferenceEntitlementsFlagsFromEnv({})).toEqual({
       dualWrite: true,
+      nonGateReads: 'd1',
       reads: 'd1',
     })
   })
@@ -96,6 +108,34 @@ describe('inferenceEntitlementsFlagsFromEnv', () => {
         KHALA_SYNC_ENTITLEMENTS_READS: 'postgress-typo',
       }).reads,
     ).toBe('d1')
+  })
+
+  // KS-8.9 decommission follow-up (#8336): nonGateReads is parsed the same
+  // way as reads, but from a FULLY SEPARATE env var — flipping one must
+  // never move the other.
+  test('nonGateReads accepts postgres/compare independently of reads; unknown falls back to d1', () => {
+    expect(
+      inferenceEntitlementsFlagsFromEnv({
+        KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS: 'postgres',
+      }),
+    ).toEqual({ dualWrite: true, nonGateReads: 'postgres', reads: 'd1' })
+    expect(
+      inferenceEntitlementsFlagsFromEnv({
+        KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS: ' COMPARE ',
+      }).nonGateReads,
+    ).toBe('compare')
+    expect(
+      inferenceEntitlementsFlagsFromEnv({
+        KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS: 'postgress-typo',
+      }).nonGateReads,
+    ).toBe('d1')
+    // Flipping reads=postgres must NOT move nonGateReads, and vice versa.
+    expect(
+      inferenceEntitlementsFlagsFromEnv({
+        KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS: 'postgres',
+        KHALA_SYNC_ENTITLEMENTS_READS: 'compare',
+      }),
+    ).toEqual({ dualWrite: true, nonGateReads: 'postgres', reads: 'compare' })
   })
 })
 
@@ -135,10 +175,46 @@ describe('makeInferenceEntitlementsRoutingForEnv', () => {
     expect(routing).toBeDefined()
     // Reads stay unrouted: gates keep their inline D1 reads untouched.
     expect(routing?.gateReads).toBeUndefined()
+    // The bounded non-gate reads are ALSO unrouted by default — a fully
+    // independent flag, off by the same 'd1' default.
+    expect(routing?.nonGateReads).toBeUndefined()
     // Constructing the seam costs no connection; a mirror with zero ops
     // costs no connection either.
     routing?.mirror([])
     expect(clientAcquisitions).toBe(0)
+  })
+
+  // KS-8.9 decommission follow-up (#8336): nonGateReads is a fully
+  // independent flag from reads/gateReads — flipping one must never
+  // construct or influence the other.
+  test('dual-write off AND reads=d1 BUT nonGateReads=postgres => routing IS built, gateReads stays ABSENT, nonGateReads is present', () => {
+    const routing = makeInferenceEntitlementsRoutingForEnv({
+      KHALA_SYNC_DB: { connectionString: 'postgres://example' },
+      KHALA_SYNC_ENTITLEMENTS_DUAL_WRITE: 'off',
+      KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS: 'postgres',
+      OPENAGENTS_DB: fakeDb,
+    })
+    expect(routing).toBeDefined()
+    expect(routing?.gateReads).toBeUndefined()
+    expect(routing?.nonGateReads).toBeDefined()
+  })
+
+  test('reads=postgres does NOT flip nonGateReads, and vice versa', () => {
+    const gateOnly = makeInferenceEntitlementsRoutingForEnv({
+      KHALA_SYNC_DB: { connectionString: 'postgres://example' },
+      KHALA_SYNC_ENTITLEMENTS_READS: 'postgres',
+      OPENAGENTS_DB: fakeDb,
+    })
+    expect(gateOnly?.gateReads).toBeDefined()
+    expect(gateOnly?.nonGateReads).toBeUndefined()
+
+    const nonGateOnly = makeInferenceEntitlementsRoutingForEnv({
+      KHALA_SYNC_DB: { connectionString: 'postgres://example' },
+      KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS: 'postgres',
+      OPENAGENTS_DB: fakeDb,
+    })
+    expect(nonGateOnly?.gateReads).toBeUndefined()
+    expect(nonGateOnly?.nonGateReads).toBeDefined()
   })
 })
 
@@ -250,7 +326,7 @@ describe('makeRoutedEntitlementsGateReads', () => {
     })
     const routed = makeRoutedEntitlementsGateReads({
       d1: gateReadsStub({ freeTierKeyExists: () => Promise.resolve(true) }),
-      flags: { dualWrite: true, reads: 'compare' },
+      flags: { dualWrite: true, nonGateReads: 'd1', reads: 'compare' },
       log,
       postgres: gateReadsStub({ freeTierKeyExists: () => pgGate }),
       schedule: work => {
@@ -278,7 +354,7 @@ describe('makeRoutedEntitlementsGateReads', () => {
     const scheduled: Array<Promise<void>> = []
     const routed = makeRoutedEntitlementsGateReads({
       d1: gateReadsStub(),
-      flags: { dualWrite: true, reads: 'compare' },
+      flags: { dualWrite: true, nonGateReads: 'd1', reads: 'compare' },
       log,
       postgres: gateReadsStub({
         freeTierUsage: () => Promise.reject(new Error('pg exploded')),
@@ -310,7 +386,7 @@ describe('makeRoutedEntitlementsGateReads', () => {
           }),
         premiumAllowlisted: () => Promise.resolve(true),
       }),
-      flags: { dualWrite: true, reads: 'postgres' },
+      flags: { dualWrite: true, nonGateReads: 'd1', reads: 'postgres' },
       log,
       postgres: gateReadsStub({
         freeUsageState: () =>
@@ -334,5 +410,105 @@ describe('makeRoutedEntitlementsGateReads', () => {
       'khala_sync_entitlements_postgres_read_fallback',
     ])
     expect(events[0]?.fields.op).toBe('premiumAllowlisted')
+  })
+})
+
+// KS-8.9 decommission follow-up (#8336): the bounded, non-decision read
+// allowlist — orange-check count/lookup + the public privacy-receipt
+// projection. Same three-mode discipline as the gate reads, but its OWN
+// diagnostic events (never conflated with enforcement drift) and a flag
+// fully independent of KHALA_SYNC_ENTITLEMENTS_READS.
+describe('makeRoutedEntitlementsNonGateReads', () => {
+  test('compare mode serves the D1 answer immediately and logs the mismatch OFF the response path, under the non-gate event names', async () => {
+    const { events, log } = collectLog()
+    const scheduled: Array<Promise<void>> = []
+    let releasePg: (value: number | null) => void = () => {}
+    const pgGate = new Promise<number | null>(resolve => {
+      releasePg = resolve
+    })
+    const routed = makeRoutedEntitlementsNonGateReads({
+      d1: nonGateReadsStub({ activeOrangeCheckCount: () => Promise.resolve(3) }),
+      flags: { dualWrite: true, nonGateReads: 'compare', reads: 'd1' },
+      log,
+      postgres: nonGateReadsStub({ activeOrangeCheckCount: () => pgGate }),
+      schedule: work => {
+        scheduled.push(work)
+      },
+    })
+
+    const count = await routed.activeOrangeCheckCount()
+    expect(count).toBe(3)
+    expect(events).toHaveLength(0)
+
+    releasePg(4)
+    await Promise.all(scheduled)
+    expect(events).toHaveLength(1)
+    expect(events[0]?.event).toBe(
+      'khala_sync_entitlements_non_gate_read_compare_mismatch',
+    )
+    expect(events[0]?.fields.op).toBe('activeOrangeCheckCount')
+  })
+
+  test('compare mode: a failing shadow read logs the non-gate postgres_read_failed event, never the gate-read event name', async () => {
+    const { events, log } = collectLog()
+    const scheduled: Array<Promise<void>> = []
+    const routed = makeRoutedEntitlementsNonGateReads({
+      d1: nonGateReadsStub(),
+      flags: { dualWrite: true, nonGateReads: 'compare', reads: 'd1' },
+      log,
+      postgres: nonGateReadsStub({
+        publicPrivacyReceiptByRef: () =>
+          Promise.reject(new Error('pg exploded')),
+      }),
+      schedule: work => {
+        scheduled.push(work)
+      },
+    })
+
+    expect(await routed.publicPrivacyReceiptByRef('receipt.1')).toBeNull()
+    await Promise.all(scheduled)
+    expect(events.map(entry => entry.event)).toEqual([
+      'khala_sync_entitlements_non_gate_postgres_read_failed',
+    ])
+  })
+
+  test('postgres mode serves Postgres for real when healthy; falls back to D1 with a diagnostic on error', async () => {
+    const { events, log } = collectLog()
+    const postgresRow = {
+      action_ref: null,
+      actor_ref: 'actor:1',
+      agent_user_id: 'agent:1',
+      created_at: 'now',
+      id: 'orange_check_agent:1',
+      paid_amount_cents: 500,
+      receipt_ref: 'receipt.orange.1',
+      state: 'active',
+      updated_at: 'now',
+    }
+    const routed = makeRoutedEntitlementsNonGateReads({
+      d1: nonGateReadsStub({
+        activeOrangeCheckByActorRef: () =>
+          Promise.resolve({ ...postgresRow, paid_amount_cents: 1 }),
+        activeOrangeCheckCount: () => Promise.resolve(1),
+      }),
+      flags: { dualWrite: true, nonGateReads: 'postgres', reads: 'd1' },
+      log,
+      postgres: nonGateReadsStub({
+        activeOrangeCheckByActorRef: () => Promise.resolve(postgresRow),
+        activeOrangeCheckCount: () => Promise.reject(new Error('pg timeout')),
+      }),
+    })
+
+    // Healthy: the Postgres row is served for real.
+    expect(await routed.activeOrangeCheckByActorRef('actor:1')).toEqual(
+      postgresRow,
+    )
+    // Broken: single attempt, D1 fallback + diagnostic — this read can
+    // never break the caller.
+    expect(await routed.activeOrangeCheckCount()).toBe(1)
+    expect(events.map(entry => entry.event)).toEqual([
+      'khala_sync_entitlements_non_gate_postgres_read_fallback',
+    ])
+    expect(events[0]?.fields.op).toBe('activeOrangeCheckCount')
   })
 })

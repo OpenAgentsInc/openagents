@@ -1,7 +1,10 @@
 import { Effect, Schema as S } from 'effect'
 
 import { noStoreJsonResponse } from '../http/responses'
-import type { InferenceEntitlementsMirror } from '../inference-entitlements-store'
+import type {
+  InferenceEntitlementsMirror,
+  InferenceEntitlementsNonGateReads,
+} from '../inference-entitlements-store'
 import { parseJsonUnknown } from '../json-boundary'
 import {
   type PublicProjectionStalenessContract,
@@ -29,6 +32,13 @@ export type PrivacyReceiptRoutesDeps = Readonly<{
   nowIso?: (() => string) | undefined
   // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
   mirror?: InferenceEntitlementsMirror | undefined
+  // KS-8.9 decommission follow-up (#8336): the bounded non-gate read
+  // allowlist's routed reads. Present only when
+  // KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS != 'd1'; absent => byte-identical
+  // inline D1 behavior for `readPublicPrivacyReceipt` below.
+  nonGateReads?:
+    | Pick<InferenceEntitlementsNonGateReads, 'publicPrivacyReceiptByRef'>
+    | undefined
 }>
 
 type PrivacyEntitlementReceiptRow = Readonly<{
@@ -204,11 +214,33 @@ const publicConfidentialProjection = (
   staleness: privacyReceiptStaleness,
 })
 
+// KS-8.9 decommission follow-up (#8336): a pure public-projection read by
+// receipt ref (an opaque, already-issued public identifier) for
+// `/api/public/inference/privacy-receipts/{receiptRef}` — it decides no
+// grant, spend, or admission outcome, unlike this file's OTHER reads
+// (`grantPaidPrivacyEntitlement` / `recordConfidentialComputeExecutionReceipt`
+// read back the row they JUST wrote, on the same D1 connection, before the
+// async mirror could possibly have landed it in Postgres — those stay
+// D1-only permanently). Safe to serve from Postgres for real when
+// `nonGateReads` is present; absent => byte-identical inline D1 behavior.
 export const readPublicPrivacyReceipt = async (
   db: D1Database,
   receiptRef: string,
   generatedAt: string,
+  nonGateReads?:
+    | Pick<InferenceEntitlementsNonGateReads, 'publicPrivacyReceiptByRef'>
+    | undefined,
 ): Promise<PublicPrivacyReceiptProjection | null> => {
+  if (nonGateReads !== undefined) {
+    const routed = await nonGateReads.publicPrivacyReceiptByRef(receiptRef)
+    if (routed === null) {
+      return null
+    }
+    return routed.kind === 'entitlement'
+      ? publicEntitlementProjection(routed.row, generatedAt)
+      : publicConfidentialProjection(routed.row, generatedAt)
+  }
+
   const entitlementRow = await db
     .prepare(
       `SELECT receipt_ref, entitlement_ref, account_ref, purchase_ref,
@@ -573,6 +605,7 @@ export const handlePublicPrivacyReceiptRead = (
         deps.db,
         receiptRef,
         deps.nowIso?.() ?? currentIsoTimestamp(),
+        deps.nonGateReads,
       ),
     ).pipe(Effect.orDie)
 

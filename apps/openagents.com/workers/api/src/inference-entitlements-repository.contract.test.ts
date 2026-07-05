@@ -37,9 +37,11 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
 import {
   makeD1InferenceEntitlementsGateReads,
+  makeD1InferenceEntitlementsNonGateReads,
   makePostgresInferenceEntitlementsStore,
   type InferenceEntitlementsGateReads,
   type InferenceEntitlementsMirrorOp,
+  type InferenceEntitlementsNonGateReads,
   type PostgresInferenceEntitlementsStore,
 } from './inference-entitlements-store'
 import {
@@ -59,7 +61,10 @@ import {
   grantPremiumAccess,
   revokePremiumAccess,
 } from './inference/inference-premium-allowlist'
-import { grantPaidPrivacyEntitlement } from './inference/inference-privacy-receipt-routes'
+import {
+  grantPaidPrivacyEntitlement,
+  recordConfidentialComputeExecutionReceipt,
+} from './inference/inference-privacy-receipt-routes'
 import type {
   MeteringContext,
   MeteringHook,
@@ -182,6 +187,17 @@ CREATE TABLE orange_check_entitlements (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+CREATE TABLE inference_confidential_compute_execution_receipts (
+  receipt_ref TEXT PRIMARY KEY,
+  execution_ref TEXT NOT NULL UNIQUE,
+  account_ref TEXT NOT NULL,
+  request_ref TEXT NOT NULL UNIQUE,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  capture_excluded INTEGER NOT NULL DEFAULT 1,
+  reason_ref TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 `
 
 const MIGRATION_0013 = path.resolve(
@@ -228,6 +244,7 @@ describe.skipIf(!hasLocalPostgres())(
     let sqlite: SqliteD1
     let d1: D1Database
     let d1Reads: InferenceEntitlementsGateReads
+    let d1NonGateReads: InferenceEntitlementsNonGateReads
     let store: PostgresInferenceEntitlementsStore
     let collected: Array<InferenceEntitlementsMirrorOp>
     /**
@@ -294,6 +311,7 @@ describe.skipIf(!hasLocalPostgres())(
       sqlite.exec(ENTITLEMENTS_D1_SCHEMA)
       d1 = sqlite.db
       d1Reads = makeD1InferenceEntitlementsGateReads(d1)
+      d1NonGateReads = makeD1InferenceEntitlementsNonGateReads(d1)
       collected = []
     }, 120_000)
 
@@ -483,6 +501,80 @@ describe.skipIf(!hasLocalPostgres())(
         `SELECT COUNT(*) AS c FROM orange_check_entitlements WHERE agent_user_id = 'orange-user'`,
       )
       expect(Number(rows?.[0]?.['c'])).toBe(1)
+    })
+
+    // KS-8.9 decommission follow-up (#8336): the bounded NON-GATE read
+    // allowlist — orange-check count/lookup + the public privacy-receipt
+    // projection. These are safe to actually SERVE from Postgres (unlike
+    // the six enforcement gate reads above), so this proves D1-vs-Postgres
+    // ANSWER parity (not just decision parity) for every non-gate read.
+    test('bounded non-gate reads: D1 and Postgres agree on the orange-check count/lookup and BOTH privacy-receipt kinds', async () => {
+      // Orange-check count/lookup — granted by the test above.
+      expect(await store.nonGateReads.activeOrangeCheckCount()).toEqual(
+        await d1NonGateReads.activeOrangeCheckCount(),
+      )
+      expect(
+        await store.nonGateReads.activeOrangeCheckByActorRef(
+          'agent:orange-actor',
+        ),
+      ).toEqual(
+        await d1NonGateReads.activeOrangeCheckByActorRef('agent:orange-actor'),
+      )
+      // A non-existent actor: both sides agree on null, never throw.
+      expect(
+        await store.nonGateReads.activeOrangeCheckByActorRef('agent:nobody'),
+      ).toBeNull()
+      expect(
+        await d1NonGateReads.activeOrangeCheckByActorRef('agent:nobody'),
+      ).toBeNull()
+
+      // Entitlement-kind privacy receipt — granted by the "privacy purchase"
+      // test above (`purchaseRef: 'purchase-1'`).
+      const entitlementReceiptRef =
+        'receipt.inference.privacy_entitlement.purchase-1'
+      expect(
+        await store.nonGateReads.publicPrivacyReceiptByRef(
+          entitlementReceiptRef,
+        ),
+      ).toEqual(
+        await d1NonGateReads.publicPrivacyReceiptByRef(entitlementReceiptRef),
+      )
+      const entitlementRead = await d1NonGateReads.publicPrivacyReceiptByRef(
+        entitlementReceiptRef,
+      )
+      expect(entitlementRead?.kind).toBe('entitlement')
+
+      // Confidential-compute-kind privacy receipt — a distinct row/table.
+      const confidentialRow = await recordConfidentialComputeExecutionReceipt(
+        d1,
+        {
+          accountRef,
+          idempotencyKey: 'confidential-key-1',
+          nowIso: NOW,
+          requestRef: 'request-1',
+        },
+        mirror,
+      )
+      expect(confidentialRow).not.toBeNull()
+      await flushTwice()
+      const confidentialReceiptRef =
+        'receipt.inference.confidential_compute.request-1'
+      expect(
+        await store.nonGateReads.publicPrivacyReceiptByRef(
+          confidentialReceiptRef,
+        ),
+      ).toEqual(
+        await d1NonGateReads.publicPrivacyReceiptByRef(confidentialReceiptRef),
+      )
+      const confidentialRead = await d1NonGateReads.publicPrivacyReceiptByRef(
+        confidentialReceiptRef,
+      )
+      expect(confidentialRead?.kind).toBe('confidential')
+
+      // An unknown receipt ref: both sides agree on null.
+      expect(
+        await store.nonGateReads.publicPrivacyReceiptByRef('receipt.unknown'),
+      ).toBeNull()
     })
 
     test('consume_entitlement converges to the terminal state idempotently', async () => {

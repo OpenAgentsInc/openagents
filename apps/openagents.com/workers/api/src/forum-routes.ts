@@ -245,6 +245,17 @@ type ForumRouteDependencies = Readonly<{
   entitlementsMirror?:
     | import('./inference-entitlements-store').InferenceEntitlementsMirror
     | undefined
+  // KS-8.9 decommission follow-up (#8336): the bounded non-gate read
+  // allowlist's routed reads (orange-check count + per-actor lookup only —
+  // both public badge/stat display, never a grant/spend/admission
+  // decision). Present only when KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS !=
+  // 'd1'; absent => byte-identical inline D1 behavior.
+  entitlementsNonGateReads?:
+    | Pick<
+        import('./inference-entitlements-store').InferenceEntitlementsNonGateReads,
+        'activeOrangeCheckByActorRef' | 'activeOrangeCheckCount'
+      >
+    | undefined
 
   agentStore?: AgentRegistrationStore
   hostedMdkClient?: OpenAgentsHostedMdkClient
@@ -4954,7 +4965,11 @@ const orangeCheckNostrExportResponse = (
   url: URL,
   dependencies: ForumRouteDependencies,
 ) =>
-  readActiveOrangeCheckByActorRef(db, actorRef).pipe(
+  readActiveOrangeCheckByActorRef(
+    db,
+    actorRef,
+    dependencies.entitlementsNonGateReads,
+  ).pipe(
     Effect.flatMap(entitlement => {
       if (entitlement === null) {
         return Effect.succeed(notFound())
@@ -5169,12 +5184,20 @@ const agentProfileProjectionStaleness = liveAtReadStaleness([
   'orange_check_entitlement_changed',
 ])
 
-const agentProfileResponse = (db: D1Database, profileRef: string) =>
+const agentProfileResponse = (
+  db: D1Database,
+  profileRef: string,
+  dependencies: ForumRouteDependencies = {},
+) =>
   readForumAgentPublicProfile(db, profileRef).pipe(
     Effect.flatMap(profile =>
       profile === null
         ? Effect.succeed(notFound())
-        : readActiveOrangeCheckByActorRef(db, profile.actor.actorRef).pipe(
+        : readActiveOrangeCheckByActorRef(
+            db,
+            profile.actor.actorRef,
+            dependencies.entitlementsNonGateReads,
+          ).pipe(
             Effect.map(entitlement =>
               noStoreJsonResponse({
                 generatedAt: currentIsoTimestamp(),
@@ -5215,13 +5238,21 @@ const profileTipSummary = (db: D1Database, actorRef: string) =>
     })),
   )
 
-const agentProfilePageResponse = (db: D1Database, profileRef: string) =>
+const agentProfilePageResponse = (
+  db: D1Database,
+  profileRef: string,
+  dependencies: ForumRouteDependencies = {},
+) =>
   readForumAgentPublicProfile(db, profileRef).pipe(
     Effect.flatMap(profile =>
       profile === null
         ? Effect.succeed(notFound())
         : Effect.all([
-            readActiveOrangeCheckByActorRef(db, profile.actor.actorRef),
+            readActiveOrangeCheckByActorRef(
+              db,
+              profile.actor.actorRef,
+              dependencies.entitlementsNonGateReads,
+            ),
             profileTipSummary(db, profile.actor.actorRef),
           ]).pipe(
             Effect.map(([entitlement, tips]) =>
@@ -5647,7 +5678,7 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
       }
 
       return request.method === 'GET'
-        ? agentProfilePageResponse(db, actorId)
+        ? agentProfilePageResponse(db, actorId, requestDependencies)
         : Effect.succeed(methodNotAllowed(['GET']))
     }
 
@@ -5902,7 +5933,10 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
 
     if (url.pathname === '/api/forum/launch-status') {
       return request.method === 'GET'
-        ? countActiveOrangeChecks(db).pipe(
+        ? countActiveOrangeChecks(
+            db,
+            requestDependencies.entitlementsNonGateReads,
+          ).pipe(
             Effect.map(orangeChecksSold =>
               noStoreJsonResponse({
                 ...forumLaunchGateStatus(),
@@ -6249,7 +6283,7 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
       }
 
       return request.method === 'GET'
-        ? agentProfileResponse(db, profileRef)
+        ? agentProfileResponse(db, profileRef, requestDependencies)
         : Effect.succeed(methodNotAllowed(['GET']))
     }
 
@@ -6521,7 +6555,7 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
       }
 
       return request.method === 'GET'
-        ? agentProfileResponse(db, actorRef)
+        ? agentProfileResponse(db, actorRef, requestDependencies)
         : Effect.succeed(methodNotAllowed(['GET']))
     }
 
@@ -6846,6 +6880,7 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
                   : readActiveOrangeCheckByActorRef(
                       db,
                       detail.post.author.actorRef,
+                      requestDependencies.entitlementsNonGateReads,
                     ).pipe(
                       Effect.map(entitlement => ({
                         ...detail,

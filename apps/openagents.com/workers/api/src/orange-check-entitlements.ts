@@ -1,6 +1,9 @@
 import { Effect } from 'effect'
 
-import type { InferenceEntitlementsMirror } from './inference-entitlements-store'
+import type {
+  InferenceEntitlementsMirror,
+  InferenceEntitlementsNonGateReads,
+} from './inference-entitlements-store'
 
 export type OrangeCheckEntitlement = Readonly<{
   actionRef: string | null
@@ -61,10 +64,21 @@ const entitlementFromRow = (row: EntitlementRow): OrangeCheckEntitlement => ({
 
 export class OrangeCheckStorageError extends Error {}
 
+// KS-8.9 decommission follow-up (#8336): the count is a public stat only
+// ("orangeChecksSold" on `/api/forum/launch-status`) — it never gates a
+// grant, spend, or admission decision, so it is safe to serve from
+// Postgres for real. `nonGateReads`, when present, ALREADY implements its
+// own d1/compare/postgres routing (see
+// `makeRoutedEntitlementsNonGateReads`) with fail-soft D1 fallback built
+// in; absent => byte-identical inline D1 behavior.
 export const countActiveOrangeChecks = (
   db: D1Database,
+  nonGateReads?: Pick<InferenceEntitlementsNonGateReads, 'activeOrangeCheckCount'> | undefined,
 ): Effect.Effect<number | null> =>
   Effect.promise(async () => {
+    if (nonGateReads !== undefined) {
+      return nonGateReads.activeOrangeCheckCount()
+    }
     try {
       const row = await db
         .prepare(
@@ -148,11 +162,23 @@ export const grantOrangeCheckEntitlement = (
     }
   })
 
+// KS-8.9 decommission follow-up (#8336): a public badge-display lookup by
+// actor (agent profile pages, post author badges, the Nostr badge export) —
+// never a grant/spend/admission decision, so it is safe to serve from
+// Postgres for real. Same fail-soft-routed `nonGateReads` contract as
+// `countActiveOrangeChecks` above.
 export const readActiveOrangeCheckByActorRef = (
   db: D1Database,
   actorRef: string,
+  nonGateReads?:
+    | Pick<InferenceEntitlementsNonGateReads, 'activeOrangeCheckByActorRef'>
+    | undefined,
 ): Effect.Effect<OrangeCheckEntitlement | null> =>
   Effect.promise(async () => {
+    if (nonGateReads !== undefined) {
+      const row = await nonGateReads.activeOrangeCheckByActorRef(actorRef)
+      return row === null ? null : entitlementFromRow(row)
+    }
     try {
       const row = await db
         .prepare(

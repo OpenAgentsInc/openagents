@@ -75,6 +75,30 @@
 // compare reads over a low-traffic window (zero divergence required — the
 // read cutover changes which store ENFORCES) → postgres reads →
 // decommission D1 tables in a follow-up issue.
+//
+// KS-8.9 decommission follow-up (2026-07-05, #8336): a SECOND, INDEPENDENT
+// bounded read-allowlist, following the KS-8.14 business-domain precedent
+// (#8360) of serving only a narrow, non-decision-critical read surface for
+// real. `KHALA_SYNC_ENTITLEMENTS_READS` (above) governs ONLY the six
+// enforcement gate reads and is DELIBERATELY left untouched (default 'd1',
+// never flipped) — this pass does not attempt the multi-hour representative
+// soak that changing the ALLOW/DENY authority would require. A brand-new,
+// fully decoupled flag, `KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS`
+// (d1|compare|postgres, default 'd1'), instead governs a bounded set of
+// PUBLIC PROJECTION / DISPLAY reads that decide nothing: the orange-check
+// badge count + per-actor lookup (`orange-check-entitlements.ts`) and the
+// public privacy-receipt-by-ref projection
+// (`inference-privacy-receipt-routes.ts`'s `readPublicPrivacyReceipt`).
+// See `InferenceEntitlementsNonGateReads` below for the exact bounded
+// surface and the read-after-write exclusions (a just-written row's
+// read-back must stay on D1 — the async mirror has not necessarily landed
+// it in Postgres yet). Every other read inventoried in the #8336 decommission
+// follow-up (agent-search request/cache/quota/count reads, agent-rate-limit
+// recovery reads, the two gate reads sometimes called "admin/list" reads)
+// turned out on inspection to be enforcement/idempotency-decision-adjacent
+// (a lagging Postgres read could silently allow a double-spend, double
+// provider call, or false quota allowance) and stays D1-only permanently by
+// the same discipline, not merely deferred.
 
 import type { SyncSql } from '@openagentsinc/khala-sync-server'
 
@@ -96,34 +120,48 @@ export type InferenceEntitlementsReadsMode = 'd1' | 'postgres' | 'compare'
 export type InferenceEntitlementsFlags = Readonly<{
   dualWrite: boolean
   reads: InferenceEntitlementsReadsMode
+  /**
+   * KS-8.9 decommission follow-up (#8336): governs ONLY the bounded
+   * non-gate read surface (`InferenceEntitlementsNonGateReads`) — fully
+   * independent of `reads`, which stays scoped to the six enforcement gate
+   * reads. Flipping this flag can never change what the serving path
+   * ALLOWS or DENIES.
+   */
+  nonGateReads: InferenceEntitlementsReadsMode
 }>
 
 export type InferenceEntitlementsFlagEnv = Readonly<{
   KHALA_SYNC_ENTITLEMENTS_DUAL_WRITE?: string | undefined
   KHALA_SYNC_ENTITLEMENTS_READS?: string | undefined
+  KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS?: string | undefined
 }>
 
 const FLAG_OFF_VALUES = new Set(['0', 'off', 'false', 'disabled', 'no'])
+
+const parseReadsMode = (raw: string | undefined): InferenceEntitlementsReadsMode =>
+  raw === 'postgres' || raw === 'compare' ? raw : 'd1'
 
 /**
  * Parse the KS-8.9 migration flags from Worker vars. Dual-write defaults
  * ON (this lane lands with the mirror active wherever the binding exists);
  * reads default to D1 authority until the runbook's cutover sequence flips
  * them. Unknown read values fall back to 'd1' — never fail open into an
- * unproven ENFORCING read path on a typo.
+ * unproven ENFORCING read path on a typo. `nonGateReads` is parsed the same
+ * way but is a SEPARATE env var governing only the bounded non-gate reads.
  */
 export const inferenceEntitlementsFlagsFromEnv = (
   env: InferenceEntitlementsFlagEnv,
 ): InferenceEntitlementsFlags => {
   const dualWriteRaw =
     env.KHALA_SYNC_ENTITLEMENTS_DUAL_WRITE?.trim().toLowerCase()
-  const readsRaw = env.KHALA_SYNC_ENTITLEMENTS_READS?.trim().toLowerCase()
 
   return {
     dualWrite:
       dualWriteRaw === undefined || !FLAG_OFF_VALUES.has(dualWriteRaw),
-    reads:
-      readsRaw === 'postgres' || readsRaw === 'compare' ? readsRaw : 'd1',
+    nonGateReads: parseReadsMode(
+      env.KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS?.trim().toLowerCase(),
+    ),
+    reads: parseReadsMode(env.KHALA_SYNC_ENTITLEMENTS_READS?.trim().toLowerCase()),
   }
 }
 
@@ -136,6 +174,13 @@ export type InferenceEntitlementsDiagnosticEvent =
   | 'khala_sync_entitlements_read_compare_mismatch'
   | 'khala_sync_entitlements_postgres_read_failed'
   | 'khala_sync_entitlements_postgres_read_fallback'
+  // KS-8.9 decommission follow-up (#8336): the bounded non-gate read
+  // allowlist's OWN diagnostics — deliberately distinct event names so a
+  // dashboard can never conflate enforcement-gate drift with the
+  // display-only non-gate surface.
+  | 'khala_sync_entitlements_non_gate_read_compare_mismatch'
+  | 'khala_sync_entitlements_non_gate_postgres_read_failed'
+  | 'khala_sync_entitlements_non_gate_postgres_read_fallback'
 
 export type InferenceEntitlementsDiagnostic = Readonly<{
   /** The store operation, e.g. 'accrue_free_tier_usage'. */
@@ -612,6 +657,153 @@ export const makeD1InferenceEntitlementsGateReads = (
 })
 
 // ---------------------------------------------------------------------------
+// Bounded non-gate reads (KS-8.9 decommission follow-up, #8336)
+// ---------------------------------------------------------------------------
+//
+// The genuinely safe, non-decision, PUBLIC PROJECTION read surface this
+// domain exposes today. Each was individually reviewed for the read-back
+// hazard (a just-written row read back before the async mirror lands it in
+// Postgres) and the enforcement/idempotency hazard (a lagging Postgres read
+// silently allowing a double-spend, double provider call, or false quota
+// decision) — this is the ONLY subset that is neither:
+//
+//   - `orange-check-entitlements.ts`'s `countActiveOrangeChecks` (a public
+//     stat: how many orange checks are active) and
+//     `readActiveOrangeCheckByActorRef` (a public badge-display lookup by
+//     actor) — both display-only, never gate a grant, spend, or admission
+//     decision.
+//   - `inference-privacy-receipt-routes.ts`'s `readPublicPrivacyReceipt` —
+//     the public `/api/public/inference/privacy-receipts/{receiptRef}` GET
+//     projection, read by receipt ref (an opaque, already-issued public
+//     identifier), never by an idempotency key that a request is trying to
+//     deduplicate against.
+//
+// Everything else inventoried in the #8336 follow-up (agent-search
+// request/cache/quota/count reads, agent-rate-limit recovery reads, the
+// grant-write read-backs in this same file's other modules) either DECIDES
+// something (quota admission, idempotent-replay detection, redemption
+// validity) or is a read-your-own-write immediately after a D1 insert this
+// same request just made — both stay D1-only permanently, not merely
+// deferred.
+
+export type OrangeCheckEntitlementRow = Readonly<{
+  action_ref: string | null
+  actor_ref: string
+  agent_user_id: string
+  created_at: string
+  id: string
+  paid_amount_cents: number
+  receipt_ref: string
+  state: string
+  updated_at: string
+}>
+
+export type PrivacyEntitlementReceiptRow = Readonly<{
+  account_ref: string
+  capture_excluded: number
+  created_at: string
+  entitlement_ref: string
+  privacy_tier: string
+  purchase_ref: string
+  reason_ref: string
+  receipt_ref: string
+  updated_at: string
+}>
+
+export type ConfidentialComputeReceiptRow = Readonly<{
+  account_ref: string
+  capture_excluded: number
+  created_at: string
+  execution_ref: string
+  reason_ref: string
+  receipt_ref: string
+  request_ref: string
+  updated_at: string
+}>
+
+export type PublicPrivacyReceiptRowRead =
+  | Readonly<{ kind: 'entitlement'; row: PrivacyEntitlementReceiptRow }>
+  | Readonly<{ kind: 'confidential'; row: ConfidentialComputeReceiptRow }>
+  | null
+
+/**
+ * The bounded non-gate read surface. Both stores implement this interface;
+ * the routing wrapper below serves it per
+ * KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS, fully independent of the
+ * enforcement gate reads' own `reads` flag.
+ */
+export type InferenceEntitlementsNonGateReads = Readonly<{
+  activeOrangeCheckCount: () => Promise<number | null>
+  activeOrangeCheckByActorRef: (
+    actorRef: string,
+  ) => Promise<OrangeCheckEntitlementRow | null>
+  publicPrivacyReceiptByRef: (
+    receiptRef: string,
+  ) => Promise<PublicPrivacyReceiptRowRead>
+}>
+
+/**
+ * The D1 implementations — the SAME statements `orange-check-entitlements.ts`
+ * and `inference-privacy-receipt-routes.ts` run inline today. Kept here so
+ * the compare/postgres router has a D1 side without a runtime import cycle
+ * into those modules.
+ */
+export const makeD1InferenceEntitlementsNonGateReads = (
+  db: D1Database,
+): InferenceEntitlementsNonGateReads => ({
+  activeOrangeCheckCount: async () => {
+    const row = await db
+      .prepare(
+        `SELECT COUNT(*) AS orange_count
+           FROM orange_check_entitlements
+          WHERE state = 'active'`,
+      )
+      .first<Record<string, unknown>>()
+    return row === null ? null : Number(row.orange_count)
+  },
+  activeOrangeCheckByActorRef: async actorRef =>
+    db
+      .prepare(
+        `SELECT id, agent_user_id, actor_ref, state, receipt_ref, action_ref,
+                paid_amount_cents, created_at, updated_at
+           FROM orange_check_entitlements
+          WHERE actor_ref = ?
+            AND state = 'active'
+          LIMIT 1`,
+      )
+      .bind(actorRef)
+      .first<OrangeCheckEntitlementRow>(),
+  publicPrivacyReceiptByRef: async receiptRef => {
+    const entitlementRow = await db
+      .prepare(
+        `SELECT receipt_ref, entitlement_ref, account_ref, purchase_ref,
+                privacy_tier, capture_excluded, reason_ref, created_at, updated_at
+           FROM inference_privacy_entitlement_receipts
+          WHERE receipt_ref = ?
+          LIMIT 1`,
+      )
+      .bind(receiptRef)
+      .first<PrivacyEntitlementReceiptRow>()
+    if (entitlementRow !== null) {
+      return { kind: 'entitlement', row: entitlementRow }
+    }
+    const confidentialRow = await db
+      .prepare(
+        `SELECT receipt_ref, execution_ref, account_ref, request_ref,
+                capture_excluded, reason_ref, created_at, updated_at
+           FROM inference_confidential_compute_execution_receipts
+          WHERE receipt_ref = ?
+          LIMIT 1`,
+      )
+      .bind(receiptRef)
+      .first<ConfidentialComputeReceiptRow>()
+    return confidentialRow === null
+      ? null
+      : { kind: 'confidential', row: confidentialRow }
+  },
+})
+
+// ---------------------------------------------------------------------------
 // Postgres store
 // ---------------------------------------------------------------------------
 
@@ -627,6 +819,8 @@ export type PostgresInferenceEntitlementsStore = Readonly<{
   ) => Promise<void>
   /** The Postgres side of the enforcement gate reads. */
   gateReads: InferenceEntitlementsGateReads
+  /** The Postgres side of the bounded non-gate reads (KS-8.9, #8336). */
+  nonGateReads: InferenceEntitlementsNonGateReads
 }>
 
 export type MakePostgresInferenceEntitlementsStoreDependencies = Readonly<{
@@ -937,6 +1131,64 @@ export const makePostgresInferenceEntitlementsStore = (
           return rows.length > 0
         }),
     },
+    nonGateReads: {
+      activeOrangeCheckCount: () =>
+        withSql(async sql => {
+          const rows: Array<{ orange_count: unknown }> = await sql`
+            SELECT COUNT(*) AS orange_count FROM orange_check_entitlements
+             WHERE state = 'active'`
+          return rows[0] === undefined ? null : toCount(rows[0].orange_count)
+        }),
+      activeOrangeCheckByActorRef: actorRef =>
+        withSql(async sql => {
+          const rows: Array<OrangeCheckEntitlementRow> = await sql`
+            SELECT id, agent_user_id, actor_ref, state, receipt_ref,
+                   action_ref, paid_amount_cents, created_at, updated_at
+              FROM orange_check_entitlements
+             WHERE actor_ref = ${actorRef} AND state = 'active'
+             LIMIT 1`
+          const row = rows[0]
+          return row === undefined
+            ? null
+            : { ...row, paid_amount_cents: toCount(row.paid_amount_cents) }
+        }),
+      publicPrivacyReceiptByRef: receiptRef =>
+        withSql(async sql => {
+          const entitlementRows: Array<PrivacyEntitlementReceiptRow> = await sql`
+            SELECT receipt_ref, entitlement_ref, account_ref, purchase_ref,
+                   privacy_tier, capture_excluded, reason_ref, created_at,
+                   updated_at
+              FROM inference_privacy_entitlement_receipts
+             WHERE receipt_ref = ${receiptRef}
+             LIMIT 1`
+          const entitlementRow = entitlementRows[0]
+          if (entitlementRow !== undefined) {
+            return {
+              kind: 'entitlement' as const,
+              row: {
+                ...entitlementRow,
+                capture_excluded: toCount(entitlementRow.capture_excluded),
+              },
+            }
+          }
+          const confidentialRows: Array<ConfidentialComputeReceiptRow> = await sql`
+            SELECT receipt_ref, execution_ref, account_ref, request_ref,
+                   capture_excluded, reason_ref, created_at, updated_at
+              FROM inference_confidential_compute_execution_receipts
+             WHERE receipt_ref = ${receiptRef}
+             LIMIT 1`
+          const confidentialRow = confidentialRows[0]
+          return confidentialRow === undefined
+            ? null
+            : {
+                kind: 'confidential' as const,
+                row: {
+                  ...confidentialRow,
+                  capture_excluded: toCount(confidentialRow.capture_excluded),
+                },
+              }
+        }),
+    },
   }
 }
 
@@ -1098,6 +1350,108 @@ export const makeRoutedEntitlementsGateReads = (
   }
 }
 
+export type MakeRoutedEntitlementsNonGateReadsDependencies = Readonly<{
+  d1: InferenceEntitlementsNonGateReads
+  postgres: InferenceEntitlementsNonGateReads
+  flags: InferenceEntitlementsFlags
+  log?: InferenceEntitlementsLog | undefined
+  /**
+   * Fire-safe scheduler for compare-mode shadow reads (production: leave
+   * default — the shadow promise runs detached; tests inject a collector).
+   */
+  schedule?: ((work: Promise<void>) => void) | undefined
+}>
+
+/**
+ * Route the bounded non-gate reads per
+ * KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS — a flag fully independent of
+ * `KHALA_SYNC_ENTITLEMENTS_READS` (the enforcement gate reads' flag). NEVER
+ * constructed in 'd1' mode (the routing factory returns no `nonGateReads`
+ * then, so call sites run their untouched inline D1 reads).
+ *
+ * compare — serve D1 immediately; schedule a detached Postgres shadow read
+ * + comparison, logging the non-gate-scoped drift diagnostic. ZERO
+ * blocking latency.
+ *
+ * postgres — ONE real Postgres attempt, then D1 fallback + diagnostic on
+ * ANY error. Safe to actually serve here (unlike the gate reads) because
+ * none of these three reads decides an allow/deny/consume outcome.
+ */
+export const makeRoutedEntitlementsNonGateReads = (
+  deps: MakeRoutedEntitlementsNonGateReadsDependencies,
+): InferenceEntitlementsNonGateReads => {
+  const { d1, flags, postgres } = deps
+  const log = deps.log ?? defaultLog
+  const schedule =
+    deps.schedule ??
+    ((work: Promise<void>) => {
+      void work
+    })
+
+  const route = async <A>(
+    op: string,
+    d1Read: () => Promise<A>,
+    postgresRead: () => Promise<A>,
+  ): Promise<A> => {
+    if (flags.nonGateReads === 'postgres') {
+      try {
+        return await postgresRead()
+      } catch (error) {
+        log('khala_sync_entitlements_non_gate_postgres_read_fallback', {
+          messageSafe: safeMessage(error),
+          op,
+          refs: [],
+        })
+        return d1Read()
+      }
+    }
+
+    // compare: serve D1; shadow-compare off the response path.
+    const d1Result = await d1Read()
+    schedule(
+      postgresRead()
+        .then(postgresResult => {
+          if (stableStringify(d1Result) !== stableStringify(postgresResult)) {
+            log('khala_sync_entitlements_non_gate_read_compare_mismatch', {
+              messageSafe: 'postgres non-gate read differs from d1',
+              op,
+              refs: [],
+            })
+          }
+        })
+        .catch((error: unknown) => {
+          log('khala_sync_entitlements_non_gate_postgres_read_failed', {
+            messageSafe: safeMessage(error),
+            op,
+            refs: [],
+          })
+        }),
+    )
+    return d1Result
+  }
+
+  return {
+    activeOrangeCheckByActorRef: actorRef =>
+      route(
+        'activeOrangeCheckByActorRef',
+        () => d1.activeOrangeCheckByActorRef(actorRef),
+        () => postgres.activeOrangeCheckByActorRef(actorRef),
+      ),
+    activeOrangeCheckCount: () =>
+      route(
+        'activeOrangeCheckCount',
+        () => d1.activeOrangeCheckCount(),
+        () => postgres.activeOrangeCheckCount(),
+      ),
+    publicPrivacyReceiptByRef: receiptRef =>
+      route(
+        'publicPrivacyReceiptByRef',
+        () => d1.publicPrivacyReceiptByRef(receiptRef),
+        () => postgres.publicPrivacyReceiptByRef(receiptRef),
+      ),
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Fire-safe mirror
 // ---------------------------------------------------------------------------
@@ -1176,6 +1530,13 @@ export type InferenceEntitlementsRouting = Readonly<{
    * inline D1 reads (zero added hot-path latency).
    */
   gateReads: InferenceEntitlementsGateReads | undefined
+  /**
+   * Routed BOUNDED NON-GATE reads (KS-8.9 decommission follow-up, #8336) —
+   * present ONLY when the fully independent
+   * KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS flag != 'd1'. Never influenced
+   * by (and never influences) `reads` / `gateReads` above.
+   */
+  nonGateReads: InferenceEntitlementsNonGateReads | undefined
 }>
 
 const postgresStoreForEnv = (
@@ -1194,16 +1555,16 @@ const postgresStoreForEnv = (
 
 /**
  * The production KS-8.9 seam factory. Returns undefined when the domain
- * runs plainly on D1 (no KHALA_SYNC_DB binding, or dual-write off AND
- * reads on 'd1') — call sites then pass nothing and every module keeps its
- * byte-identical D1 behavior.
+ * runs plainly on D1 (no KHALA_SYNC_DB binding, or dual-write off AND both
+ * `reads` and `nonGateReads` on 'd1') — call sites then pass nothing and
+ * every module keeps its byte-identical D1 behavior.
  */
 export const makeInferenceEntitlementsRoutingForEnv = (
   env: InferenceEntitlementsStoreEnv,
   options: MakeInferenceEntitlementsRoutingOptions = {},
 ): InferenceEntitlementsRouting | undefined => {
   const flags = inferenceEntitlementsFlagsFromEnv(env)
-  if (!flags.dualWrite && flags.reads === 'd1') {
+  if (!flags.dualWrite && flags.reads === 'd1' && flags.nonGateReads === 'd1') {
     return undefined
   }
   const postgres = postgresStoreForEnv(env, options)
@@ -1231,6 +1592,18 @@ export const makeInferenceEntitlementsRoutingForEnv = (
           store: postgres,
         })
       : () => {},
+    nonGateReads:
+      flags.nonGateReads === 'd1'
+        ? undefined
+        : makeRoutedEntitlementsNonGateReads({
+            d1: makeD1InferenceEntitlementsNonGateReads(
+              openAgentsDatabase(env),
+            ),
+            flags,
+            log,
+            postgres: postgres.nonGateReads,
+            schedule: options.schedule,
+          }),
   }
 }
 
