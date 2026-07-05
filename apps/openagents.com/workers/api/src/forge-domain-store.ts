@@ -171,6 +171,13 @@ export type ForgeDomainDiagnosticEvent =
   | 'khala_sync_forge_read_compare_mismatch'
   | 'khala_sync_forge_read_compare_failed'
   | 'khala_sync_forge_postgres_read_serve_failed'
+  // KS-8.16 write cutover (#8358): the canonical git store's Postgres
+  // write-authority mirror-back (`forge-git-canonical-postgres-store.ts`).
+  // Re-declared here (rather than imported) so `ForgeDomainLog` can be
+  // passed directly as `makePostgresForgeGitCanonicalStore`'s `mirror.log`
+  // without an adapter — the field shapes are identical by construction.
+  | 'khala_sync_forge_postgres_write_mirror_failed'
+  | 'khala_sync_forge_postgres_write_mirror_retry'
 
 export type ForgeDomainDiagnostic = Readonly<{
   /** The mirrored table or read operation, e.g. 'mirror:forge_git_refs'. */
@@ -445,6 +452,22 @@ export type ForgeDomainStoreEnv = ForgeDomainFlagEnv &
     OPENAGENTS_DB?: D1Database
     KHALA_SYNC_DB?: KhalaSyncHyperdriveBinding | undefined
     /**
+     * KS-8.16 WRITE cutover (#8358), narrower and SEPARATE from
+     * `KHALA_SYNC_FORGE_READS`/`KHALA_SYNC_FORGE_DUAL_WRITE`: default
+     * `'d1'`. `'postgres'` makes Postgres the SOLE authority for every
+     * canonical-git-store operation (preflight/apply/import/read/list),
+     * using the real `pg_advisory_xact_lock` + `SELECT ... FOR UPDATE`
+     * ref-lock port (`makePostgresForgeGitCanonicalStore`) with its own
+     * fail-soft Postgres→D1 mirror-back — NOT the D1-first dual-write path
+     * below. Scoped to ONLY the canonical git store: the other four Forge
+     * stores (coordination, packfile-archive, tenant-git-auth, GitHub
+     * mirror) are UNAFFECTED and stay on `KHALA_SYNC_FORGE_DUAL_WRITE`'s
+     * D1-first/mirror-to-Postgres path regardless of this flag. An unknown
+     * value falls back to `'d1'` — never fail open into unproven write
+     * authority on a typo.
+     */
+    KHALA_SYNC_FORGE_GIT_CANONICAL_WRITES?: string | undefined
+    /**
      * Compare-mode soak observability (#8282 shared follow-up). Optional:
      * absent until the `analytics_engine_datasets` wrangler binding is
      * deployed, in which case the `listRefs` shadow compare simply skips
@@ -646,14 +669,82 @@ const refRowsEqual = (
   return true
 }
 
+/**
+ * KS-8.16 WRITE cutover (#8358): parse `KHALA_SYNC_FORGE_GIT_CANONICAL_WRITES`
+ * — SEPARATE from `forgeDomainFlagsFromEnv` (the domain-wide dual-write/reads
+ * flags) because this flag is scoped to ONLY the canonical git store. An
+ * unknown value falls back to `'d1'`, matching every other KS-8 read/write
+ * flag's typo-safety discipline.
+ */
+export const forgeGitCanonicalWritesFromEnv = (
+  env: Pick<ForgeDomainStoreEnv, 'KHALA_SYNC_FORGE_GIT_CANONICAL_WRITES'>,
+): 'd1' | 'postgres' =>
+  env.KHALA_SYNC_FORGE_GIT_CANONICAL_WRITES?.trim().toLowerCase() === 'postgres'
+    ? 'postgres'
+    : 'd1'
+
 /** Drop-in for `makeD1ForgeGitCanonicalStore(openAgentsDatabase(env))`. */
 export const makeForgeGitCanonicalStoreForEnv = (
   env: ForgeDomainStoreEnv,
   options: MakeForgeDomainStoreOptions = {},
 ): ForgeGitCanonicalStore => {
   const runtime = runtimeForEnv(env, options)
-  const base = makeD1ForgeGitCanonicalStore(runtime.db)
-  const { acquireSql, compareStore, flags, log, metrics, mirror } = runtime
+  const { acquireSql, compareStore, db, flags, log, metrics, mirror } = runtime
+
+  // KS-8.16 WRITE cutover (#8358): when 'postgres', Postgres becomes the
+  // SOLE authority for every canonical-git-store operation — real
+  // `pg_advisory_xact_lock` + `SELECT ... FOR UPDATE` ref locks
+  // (`makePostgresForgeGitCanonicalStore`), with its own fail-soft
+  // Postgres→D1 mirror-back. This is a SEPARATE, narrower flag from the
+  // D1-first dual-write path below: flipping it does not touch the other
+  // four Forge stores, which remain D1-first/mirror-to-Postgres. There is
+  // deliberately NO fallback to D1 here on a Postgres error — once this
+  // flag is on, D1 is no longer the lock authority, so silently falling
+  // back to a D1 write would let two ref-lock protocols race the same ref;
+  // a Postgres outage must fail the request loud, not silently diverge.
+  if (forgeGitCanonicalWritesFromEnv(env) === 'postgres' && acquireSql !== undefined) {
+    const withPostgresCanonicalStore = async <A>(
+      run: (store: ForgeGitCanonicalStore) => Promise<A>,
+    ): Promise<A> => {
+      const client = await acquireSql()
+      try {
+        const store = makePostgresForgeGitCanonicalStore(client.sql, {
+          d1: db,
+          log,
+        })
+        return await run(store)
+      } finally {
+        try {
+          await client.end()
+        } catch {
+          // best-effort teardown, same discipline as the push route.
+        }
+      }
+    }
+
+    return {
+      preflightReceivePack: input =>
+        withPostgresCanonicalStore(store => store.preflightReceivePack(input)),
+      applyReceivePack: input =>
+        withPostgresCanonicalStore(store => store.applyReceivePack(input)),
+      importExternalRef: input =>
+        withPostgresCanonicalStore(store => store.importExternalRef(input)),
+      readRef: (tenantRef, repositoryRef, refName) =>
+        withPostgresCanonicalStore(store =>
+          store.readRef(tenantRef, repositoryRef, refName),
+        ),
+      listRefs: (tenantRef, repositoryRef, input) =>
+        withPostgresCanonicalStore(store =>
+          store.listRefs(tenantRef, repositoryRef, input),
+        ),
+      readObject: (tenantRef, repositoryRef, objectId) =>
+        withPostgresCanonicalStore(store =>
+          store.readObject(tenantRef, repositoryRef, objectId),
+        ),
+    }
+  }
+
+  const base = makeD1ForgeGitCanonicalStore(db)
 
   // KS-8.16 follow-up (#8358) read cutover: in `postgres` mode SERVE the
   // `listRefs` ref advertisement from the Postgres twin, reusing the
