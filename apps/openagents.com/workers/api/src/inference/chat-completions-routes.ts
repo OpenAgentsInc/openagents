@@ -490,9 +490,9 @@ export const isInferenceGatewayEnabled = (
 }
 
 // Parse the INFERENCE_DURABLE_STREAM_ENABLED flag (durable-stream Rank-1, #6058).
-// Default OFF: the streaming pass-through degrades to today's behaviour (no
-// persistence/resume) unless this is an explicit truthy token AND a durable
-// store factory is wired. Fail-safe + inert by default.
+// The parser is fail-safe false for absent/unrecognized values, but production
+// and staging currently arm this for Khala MCP coding-assignment resume/status.
+// A durable store/namespace must still be wired before any stream is persisted.
 export const isInferenceDurableStreamEnabled = (
   value: string | undefined,
 ): boolean => {
@@ -745,8 +745,9 @@ export type ChatCompletionsDeps = Readonly<{
   // is true AND `durableStream` resolves a per-request `StreamStore`, a streaming
   // completion is teed into a durable offset log keyed by the response id, so a
   // client disconnect mid-generation can be resumed by offset (the durable read
-  // route). DEFAULT OFF + UNWIRED: with the flag off or no store factory, the
-  // streaming path is byte-for-byte today's pass-through (no persistence/resume).
+  // route). This is owner-armed in production/staging for Khala MCP coding
+  // assignments; with the flag off or no store factory, the streaming path is
+  // byte-for-byte today's pass-through (no persistence/resume).
   // Metering still settles EXACTLY ONCE on the real upstream EOF and NEVER on a
   // resume/replay read (the resume route has no metering hook).
   durableStreamEnabled?: boolean | undefined

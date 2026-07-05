@@ -162,13 +162,13 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // ops/canaries need fresh keys during an incident.
   FREE_KEY_MAX_MINTS_PER_IP_PER_DAY?: string | undefined
   // Durable-stream resumable inference feature flag (durable-stream Rank-1,
-  // #6058, EPIC #6056). Default OFF: a streaming completion is NOT persisted into
-  // a durable offset log, so the `/v1/chat/completions` stream behaves as today's
-  // pure pass-through (no resume on a client disconnect). Set "true"/"1"/"on" to
-  // tee the upstream token stream into the per-request durable stream (the DO
-  // binding `INFERENCE_DURABLE_STREAM` must also be wired) and expose the
-  // resumable read URL. Metering still settles EXACTLY ONCE on the real upstream
-  // EOF and NEVER on a resume/replay read.
+  // #6058, EPIC #6056). Owner-armed in production/staging Wrangler config as of
+  // 2026-07-05 because Khala MCP coding assignments (`khala.request`,
+  // `khala.spawn`, `khala.resume`, `khala.status`) depend on the durable read
+  // URL for caller-owned Pylon/Codex resume/status. If unset, the gateway remains
+  // fail-safe non-durable pass-through. When set "true"/"1"/"on", the DO binding
+  // `INFERENCE_DURABLE_STREAM` must also be wired; metering still settles
+  // EXACTLY ONCE on the real upstream EOF and NEVER on a resume/replay read.
   INFERENCE_DURABLE_STREAM_ENABLED?: string | undefined
   // Typed component-channel feature flag (Khala, EPIC #6123, issue #6127).
   // Default OFF: the `/v1/chat/completions` `oa.component` SSE channel is inert,

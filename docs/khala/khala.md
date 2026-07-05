@@ -305,15 +305,20 @@ owner-approved, receipt-first design rather than reviving that inert lane.
 **Durable-connection scope (deliverable 4).** The chat gateway uses Durable
 Objects in exactly one bounded place: the durable-stream proxy (#6056 /
 `durable-inference-proxy.ts`) tees a single client's paid token stream into a
-per-`requestId` offset log so a *reconnect* can replay the suffix — it is a
-single-subscriber resumability aid, not multi-subscriber fan-out, and metering
-still fires exactly once on the real upstream EOF (replays are free). DO +
-hibernatable-WebSocket **multi-subscriber** transport is reserved for the live
-Verse world (`apps/openagents-world` Region DO + `packages/world-client`), where a
-live "watch the energy flow" projection genuinely needs many subscribers on one
-long-lived generation. Plain request/response inference does **not** spin up a DO
-or WebSocket — that would be over-applying the heaviest transport to the lightest
-shape.
+per-`requestId` offset log so a *reconnect* can replay the suffix. As of the
+2026-07-05 #8385 cleanup review this is **not inert cleanup debt**: production
+and staging keep `INFERENCE_DURABLE_STREAM_ENABLED` armed because Khala MCP
+coding assignments return the durable URL from `khala.request` / `khala.spawn`
+and read it through `khala.resume` / `khala.status` for caller-owned Pylon/Codex
+resume/status. It remains a single-subscriber resumability aid, not
+multi-subscriber fan-out, and metering still fires exactly once on the real
+upstream EOF (replays are free). DO + hibernatable-WebSocket
+**multi-subscriber** transport is reserved for the live Verse world
+(`apps/openagents-world` Region DO + `packages/world-client`), where a live
+"watch the energy flow" projection genuinely needs many subscribers on one
+long-lived generation. Plain request/response inference does **not** spin up a
+DO or WebSocket beyond this bounded resume log — that would be over-applying the
+heaviest transport to the lightest shape.
 
 ## 5. The coordinator (the missing middle)
 

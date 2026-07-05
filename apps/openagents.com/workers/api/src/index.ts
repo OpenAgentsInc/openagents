@@ -15179,8 +15179,10 @@ const syncScopeFromRequest = (request: Request, url: URL): string | undefined =>
 // durable offset log in SQLite (the `@openagentsinc/durable-stream`
 // `SqliteStreamStore`). The gateway tees the upstream token stream in as the
 // producer; a dropped client resumes by reading `/v1/stream/{requestId}?offset=`.
-// TTL/expiry is driven by DO alarms (storage bounded). INERT unless the
-// INFERENCE_DURABLE_STREAM_ENABLED flag is on AND this binding is wired.
+// TTL/expiry is driven by DO alarms (storage bounded). LIVE in production and
+// staging for Khala MCP coding-assignment resume/status when
+// INFERENCE_DURABLE_STREAM_ENABLED is on AND this binding is wired; envs that
+// omit either stay fail-safe non-durable.
 export class DurableInferenceStreamObject {
   // The durable offset log is entirely self-contained in this DO's SQLite
   // storage, so the DO needs no `Env` — it does not read bindings/secrets. The

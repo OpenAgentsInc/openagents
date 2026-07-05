@@ -116,17 +116,22 @@ retained tables. The confirmed zero-production-reference set now includes
 `gym_agentcl_eval_*` family. Both families have explicit Worker D1 drop
 migrations and the matching Khala Sync mirror/twin cleanup.
 
-### 2.3 Inert flag-gated features (never armed, still taxed by the debt ledger)
+### 2.3 Flag-gated cleanup candidates
 
-`INFERENCE_DURABLE_STREAM_ENABLED`, `VOICE_PROGRAM_INGEST_ENABLED`,
-`KHALA_MPP_ENABLED` — still default-OFF with full code surfaces present,
-disproportionately responsible for Response-surface and runPromise-bridge
-budget consumption. `INFERENCE_BATCH_JOBS_ENABLED` was removed in #8384
-after the owner-preferred remove decision: the route/queue/store/OpenAPI
-surface had no Khala Code dependency and no owner-approved arming evidence.
-Estimated remaining combined **2,000–4,000 LOC**. **Decide
-arm-or-remove per remaining flag**; voice ingest remains the clear REMOVE
-candidate.
+`VOICE_PROGRAM_INGEST_ENABLED` and `KHALA_MPP_ENABLED` remain full code
+surfaces behind owner decision points, disproportionately responsible for
+Response-surface and runPromise-bridge budget consumption.
+`INFERENCE_BATCH_JOBS_ENABLED` was removed in #8384 after the owner-preferred
+remove decision: the route/queue/store/OpenAPI surface had no Khala Code
+dependency and no owner-approved arming evidence.
+`INFERENCE_DURABLE_STREAM_ENABLED` was reclassified in #8385 as **KEEP** after
+current-main verification: it is owner-armed in production/staging Wrangler
+config and is the live Khala MCP resume/status contract for caller-owned
+Pylon/Codex assignments (`khala.request`, `khala.spawn`, `khala.resume`,
+`khala.status`), plus the background-agent run session-event projection. Do
+not delete it as inert cleanup without replacing that Khala Code contract.
+Estimated remaining combined **1,000–2,500 LOC**. **Decide arm-or-remove per
+remaining flag**; voice ingest remains the clear REMOVE candidate.
 
 ### 2.4 Dual-store layering (23 domain stores, 3-4 seam patterns)
 
@@ -445,8 +450,10 @@ pair is dropped, the AgentCL Vertex runner plus `gym_agentcl_eval_*` table
 family are retired, the orphaned GLM stress scheduler/adaptive runner is
 gone, #8382 consolidated the 66-file auth-helper sprawl, and #8383 made the
 desktop fleet cockpit Khala Sync-first by default while deleting the old
-visible 5s poll. Next: decide arm-or-remove on the four inert flags (remove
-voice-ingest and durable-stream if truly unconsumed).
+visible 5s poll, #8384 removed the batch-job async lane, and #8385 confirmed
+durable-stream is a live Khala Code resume/status contract rather than an inert
+flag. Next: decide arm-or-remove on the remaining owner-decision flags (voice
+ingest is the clear remove candidate).
 
 2026-07-05 Wave 1 issue index:
 
@@ -469,7 +476,9 @@ voice-ingest and durable-stream if truly unconsumed).
 - #8384 - Complete: removed the default-off `INFERENCE_BATCH_JOBS_ENABLED`
   batch-job route/queue/store/OpenAPI surface and added forward D1/Postgres
   drop migrations for `inference_batch_jobs`.
-- #8385 - Decide/remove `INFERENCE_DURABLE_STREAM_ENABLED`.
+- #8385 - Complete: kept `INFERENCE_DURABLE_STREAM_ENABLED` after current-main
+  verification found it owner-armed and directly consumed by Khala MCP
+  request/spawn/resume/status plus background-agent run projections.
 - #8386 - Remove the unarmed `VOICE_PROGRAM_INGEST_ENABLED` voice ingest path.
 - #8387 - Decide arm-or-remove for `KHALA_MPP_ENABLED`.
 
