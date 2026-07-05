@@ -98,6 +98,10 @@ import {
   type KhalaCodeProviderCatalogSettingsSectionHandle,
 } from "./provider-catalog-settings-section"
 import {
+  mountKhalaCodeModelMcpPermissionSettingsSection,
+  type KhalaCodeModelMcpPermissionSettingsSectionHandle,
+} from "./model-mcp-permission-settings-section"
+import {
   mountCodexThreadSidebar,
   type CodexThreadSelectionSource,
 } from "./codex-thread-sidebar"
@@ -5642,6 +5646,7 @@ const gymPanel =
 let claudeSettingsSection: ReturnType<typeof mountClaudeSettingsSection> | null = null
 let updaterSection: ReturnType<typeof mountKhalaCodeUpdaterSettingsSection> | null = null
 let providerCatalogSection: KhalaCodeProviderCatalogSettingsSectionHandle | null = null
+let modelMcpPermissionSection: KhalaCodeModelMcpPermissionSettingsSectionHandle | null = null
 let plansSection: ReturnType<typeof mountKhalaCodePlansPanel> | null = null
 let runEvidenceSection: ReturnType<typeof mountKhalaCodeRunEvidencePanel> | null = null
 let commandRegistry: KhalaCodeCommandRegistry | null = null
@@ -5663,6 +5668,7 @@ const settingsPanel =
         onRender: () => {
           void claudeSettingsSection?.refresh()
           void providerCatalogSection?.refresh()
+          void modelMcpPermissionSection?.refresh()
           void plansSection?.refresh()
           void runEvidenceSection?.refresh()
           void updaterSection?.refresh()
@@ -5671,6 +5677,7 @@ const settingsPanel =
           [
             ...(commandKeybindingsSection === null ? [] : [commandKeybindingsSection.render()]),
             ...(providerCatalogSection === null ? [] : [providerCatalogSection.render()]),
+            ...(modelMcpPermissionSection === null ? [] : [modelMcpPermissionSection.render()]),
           ],
         fetchModelRoles: () => controls.modelRoleRegistryRead(),
         writeModelRole: request => controls.modelRoleRegistryWrite(request),
@@ -5691,6 +5698,23 @@ providerCatalogSection = settingsPanelEl === null
         const result = await controls.codexConfigValueWrite({
           keyPath: "model_provider",
           value: providerId,
+        })
+        return {
+          ok: result.ok,
+          ...(result.settings === undefined ? {} : { settings: result.settings }),
+          ...(result.error === undefined ? {} : { error: result.error }),
+        }
+      },
+    })
+modelMcpPermissionSection = settingsPanelEl === null
+  ? null
+  : mountKhalaCodeModelMcpPermissionSettingsSection({
+      fetchEcosystem: () => controls.codexEcosystemRead({}),
+      fetchSettings: () => controls.codexSettingsRead({ includeHiddenModels: true }),
+      writePermissionProfile: async profileId => {
+        const result = await controls.codexConfigValueWrite({
+          keyPath: "default_permissions",
+          value: profileId,
         })
         return {
           ok: result.ok,

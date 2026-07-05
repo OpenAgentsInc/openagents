@@ -424,9 +424,12 @@ OpenCode has provider/model/MCP management surfaces that Khala does not mirror:
 Khala has Codex settings projection, model/provider configuration reads and
 writes, Codex MCP/plugin/skill marketplace pass-through, and an Inbox for
 operator attention. The first provider-catalog slice landed in
-[#8461](https://github.com/OpenAgentsInc/openagents/issues/8461), but Khala
-still needs runtime-backed connect/disconnect authority, a model visibility
-manager, MCP status picker, and per-session permission auto-accept UI.
+[#8461](https://github.com/OpenAgentsInc/openagents/issues/8461), and the
+first model/MCP/permission manager slice landed in
+[#8462](https://github.com/OpenAgentsInc/openagents/issues/8462), but Khala
+still needs runtime-backed provider connect/disconnect authority, durable model
+visibility storage, deeper MCP mutation APIs, and fully enforced per-session
+permission auto-accept policy.
 
 ### 13. Settings, Themes, Locales, Notifications, And Sounds
 
@@ -679,6 +682,31 @@ UI ([#8461](https://github.com/OpenAgentsInc/openagents/issues/8461)).
   UI selection writes, and app-shell wiring. Remaining work is runtime-backed
   provider registration, durable custom-provider storage, richer billing/auth
   status, model visibility management, and MCP picker parity.
+
+Issue: add model manager, MCP status picker, and permission auto-accept controls
+([#8462](https://github.com/OpenAgentsInc/openagents/issues/8462)).
+
+- Status: first implementation pass complete on 2026-07-05. Khala Code desktop
+  now has a combined Settings section for searchable model management, MCP
+  status, and permission controls. The model manager groups by provider,
+  filters by search term, and supports local visibility toggles while keeping
+  runtime-hidden models disabled. The MCP picker projects Codex ecosystem MCP
+  state into connected, failed, needs-auth, needs-registration, and disabled
+  rows with typed enable/disable/authentication intent instead of pretending the
+  renderer owns MCP OAuth or server registration. Permission profile changes
+  continue through the Codex `default_permissions` config path, and
+  per-session/directory auto-accept controls are disabled with explanatory copy
+  when Codex managed requirements own the policy boundary.
+- Scope: model search/grouping/local visibility, MCP status projection and
+  intent, permission profile selector, auto-accept mode projection, settings
+  section wiring, and secret-blind tests.
+- Acceptance gates: tests cover model visibility changes, hidden model
+  filtering, MCP status rendering, MCP enable/auth intent, permission profile
+  writes, auto-accept managed-policy disabling, and source wiring. Remaining
+  work is durable model visibility storage, real MCP enable/disable
+  app-server/runtime APIs, server-owned OAuth flows, and enforced
+  per-session/directory permission policy in the Khala-owned runtime/Pylon
+  boundary.
 
 Issue: add composer context and docks
 ([#8437](https://github.com/OpenAgentsInc/openagents/issues/8437)).

@@ -6249,6 +6249,111 @@ button {
   color: color-mix(in srgb, var(--oa-color-component-text) 70%, transparent);
   font-size: 0.75rem;
 }
+.khala-model-mcp-section {
+  gap: 0.7rem;
+}
+.khala-model-manager,
+.khala-mcp-manager-list,
+.khala-permission-manager {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.khala-model-manager-search {
+  max-width: 28rem;
+}
+.khala-model-manager-provider {
+  margin-top: 0.35rem;
+  color: color-mix(in srgb, var(--oa-color-component-text) 46%, transparent);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.khala-model-manager-row,
+.khala-mcp-manager-row {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) minmax(12rem, 1fr) auto;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  padding: 0.42rem 0;
+  border-top: 1px solid color-mix(in srgb, var(--oa-color-component-border) 52%, transparent);
+}
+.khala-model-manager-row[data-visible="false"] {
+  opacity: 0.66;
+}
+.khala-model-manager-row[data-state="unpaid"] .khala-model-manager-meta,
+.khala-mcp-manager-row[data-state="needs_auth"] .khala-mcp-manager-meta,
+.khala-mcp-manager-row[data-state="failed"] .khala-mcp-manager-meta {
+  color: color-mix(in srgb, var(--oa-color-khala-warning) 82%, var(--oa-color-component-text));
+}
+.khala-model-manager-label,
+.khala-mcp-manager-label {
+  display: grid;
+  min-width: 0;
+  gap: 0.12rem;
+}
+.khala-model-manager-name,
+.khala-model-manager-meta,
+.khala-model-manager-detail,
+.khala-mcp-manager-name,
+.khala-mcp-manager-meta,
+.khala-mcp-manager-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.khala-model-manager-name,
+.khala-mcp-manager-name {
+  color: var(--oa-color-component-text);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.khala-model-manager-meta,
+.khala-model-manager-detail,
+.khala-mcp-manager-meta,
+.khala-mcp-manager-detail {
+  color: color-mix(in srgb, var(--oa-color-component-text) 50%, transparent);
+  font-size: 0.68rem;
+}
+.khala-model-manager-action,
+.khala-mcp-manager-action,
+.khala-permission-auto-action {
+  font: inherit;
+  font-size: 0.74rem;
+  padding: 0.34rem 0.55rem;
+  border-radius: 0.36rem;
+  border: 1px solid var(--oa-color-component-border);
+  background: var(--oa-color-component-surface);
+  color: var(--oa-color-component-text);
+}
+.khala-model-manager-action:hover,
+.khala-mcp-manager-action:hover,
+.khala-permission-auto-action:hover {
+  background: var(--oa-color-component-surface-active);
+}
+.khala-model-manager-action:disabled,
+.khala-mcp-manager-action:disabled,
+.khala-permission-auto-action:disabled {
+  opacity: 0.45;
+}
+.khala-permission-auto-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.khala-permission-auto-action[data-selected="true"] {
+  border-color: color-mix(in srgb, var(--oa-color-khala-success) 58%, var(--oa-color-component-border));
+  background: color-mix(in srgb, var(--oa-color-khala-success) 12%, var(--oa-color-component-surface));
+}
+.khala-permission-auto-detail {
+  margin: 0;
+  color: color-mix(in srgb, var(--oa-color-component-text) 60%, transparent);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
 
 @media (max-width: 760px) {
   .khala-settings-header {
@@ -6266,12 +6371,16 @@ button {
   .khala-keybindings-toolbar,
   .khala-keybindings-row,
   .khala-provider-catalog-row,
+  .khala-model-manager-row,
+  .khala-mcp-manager-row,
   .khala-provider-custom-form {
     grid-template-columns: minmax(0, 1fr);
   }
   .khala-keybindings-capture,
   .khala-keybindings-action,
-  .khala-provider-catalog-action {
+  .khala-provider-catalog-action,
+  .khala-model-manager-action,
+  .khala-mcp-manager-action {
     justify-self: start;
   }
 }

@@ -34,8 +34,8 @@ export type KhalaCodeDesktopCodexEcosystemItem = Readonly<{
   enabled: boolean | null
   installed: boolean | null
   managed: boolean
-  marketplaceName?: string
-  pluginId?: string
+  marketplaceName?: string | undefined
+  pluginId?: string | undefined
 }>
 
 export type KhalaCodeDesktopCodexEcosystemSection = Readonly<{
@@ -59,7 +59,7 @@ export type KhalaCodeDesktopCodexEcosystemDiagnostic = Readonly<{
   title: string
   detail: string
   action: "authenticate" | "install" | "open_settings" | "refresh" | "review"
-  itemId?: string
+  itemId?: string | undefined
   observedAt: string
 }>
 
@@ -593,7 +593,7 @@ const parseMcp = (
     const state: KhalaCodeDesktopCodexEcosystemState =
       authStatus === "notLoggedIn"
         ? "auth_required"
-        : authStatus === "unsupported" || authStatus === "bearerToken" || authStatus === "oAuth"
+        : authStatus === "unsupported" || authStatus === "bearerToken" || authStatus === "oAuth" || authStatus === "notRequired"
           ? "ready"
           : "unknown"
     const item: KhalaCodeDesktopCodexEcosystemItem = {
