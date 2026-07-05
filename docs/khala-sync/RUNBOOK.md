@@ -1726,6 +1726,100 @@ Flag-flip order — never skip a step, each soaks before the next:
 Rollback at ANY step: `KHALA_SYNC_SUPERVISION_DUAL_WRITE=off`. D1 authority
 is never behind.
 
+## Identity/auth domain cutover (KS-8.18, #8329)
+
+The KS-8.18 domain migration — the LAST and most sensitive domain: the
+SEVENTEEN canonical identity/auth tables (`users`, `auth_identities`,
+`openauth_storage`, `openauth_agent_links`, `github_write_connections` /
+`_connection_attempts` / `_auth_grants`, and the provider (BYOK) account
+custody family: `provider_accounts`, `_connection_attempts`,
+`_auth_grants`, `_events`, `_sanity_checks`, `_parallel_probe_receipts`,
+`_leases`, `_failover_receipts`, `_token_custody`, `_token_custody_audit`)
+(D1) → same-named Postgres twins (khala-sync migration
+`0027_identity_auth_domain.sql`). Machinery:
+`apps/openagents.com/workers/api/src/identity-auth-domain-store.ts` (the
+`identityAuthMirrorFromEnv` fail-soft read-back mirror handle + the
+flagship `makeProviderAccountTokenCustodyStoreForEnv` drop-in) and
+`packages/khala-sync-server/scripts/backfill-identity-auth.ts` (backfill +
+verify).
+
+**WHY LAST, and why extra caution.** Auth runs on EVERY request — this is
+the hottest read family and the maximum blast radius. A bad cutover
+breaks literally everything. It goes last, after the recipe has been
+proven ~14 times. This lane lands MACHINERY ONLY: D1 stays the SOLE
+authority; there is NO read cutover here.
+
+SECRETS (SPEC invariant 9 — the invariant this domain motivated). The
+twin holds EXACTLY what D1 holds (no widening), same at-rest encryption
+posture. Raw tokens live on NEITHER engine — `provider_account_token_custody`
+holds AES-GCM ciphertext keyed by KMS key id. Custody columns (that
+ciphertext + its IVs + key ids; `openauth_storage.value_json`;
+`provider_account_connection_attempts.user_code`;
+`github_write_connection_attempts.state`) are twinned byte-for-byte but
+NEVER appear in diagnostics or backfill/verify output — row KEYS
+(ids/refs/owner_user_id) and sha256 hashes ONLY. If ANY log line or
+verify row ever shows a ciphertext, session payload, device code, or
+state nonce, treat it as an incident, not drift.
+
+Diagnostics: the drift metric is `khala_sync_identity_dual_write_failed`
+(keys only). Treat a nonzero steady rate as drift — fix, then re-run the
+backfill sweep.
+
+Flags (Worker vars):
+
+- `KHALA_SYNC_IDENTITY_DUAL_WRITE` — default **on** wherever
+  `KHALA_SYNC_DB` exists; `off|0|false|disabled` disables the mirror.
+- `KHALA_SYNC_IDENTITY_READS` — default `d1`. There is NO routed identity
+  read in this lane: `postgres` DEFERS (logs
+  `khala_sync_identity_postgres_reads_deferred` once and still serves D1),
+  so a premature flip can never serve an unproven AUTH read path.
+
+WIRING STATUS. This lane wires the flagship secret-bearing owner — the
+provider-account token-custody vault — end-to-end (two `index.ts`
+construction sites). The remaining writers (the five other typed
+factories `makeD1GitHubWriteRepository`, `makeD1ProviderAccountRepository`,
+`makeD1Storage`, `makeD1AgentRegistrationStore`, `makeD1AgentOwnerClaimStore`,
+and the scattered inline writers in `index.ts`, `onboarding/repository.ts`,
+`auth/email-otp-hardening.ts`, `operator-provider-account-routes.ts`,
+`provider-account-pool-routes.ts`, `artanis-operator-dashboard-routes.ts`)
+adopt `identityAuthMirrorFromEnv` in follow-up #8362 — dozens of sites
+across ~10 hot auth files is deliberately too broad for one secret lane.
+Until each writer is wired, its rows converge on the backfill sweep, so a
+`--restart` sweep + `--verify` immediately before ANY read cutover is
+MANDATORY.
+
+Flag-flip order — never skip a step, each step soaks before the next:
+
+1. **Dual-write on** (default after KS-8.18 lands + `0027` applied via the
+   migration runner). Watch `khala_sync_identity_dual_write_failed`; a
+   nonzero steady rate blocks progression.
+2. **Backfill**: from `packages/khala-sync-server/`,
+   `KHALA_SYNC_DATABASE_URL=<direct-url> bun scripts/backfill-identity-auth.ts`
+   (wrangler-auth'd; rowid-cursor resumable via
+   `.identity-auth-backfill-state.json`). Run it a SECOND time
+   (`--restart`) as the catch-up sweep once dual-write has covered the
+   whole window AND every writer has been wired (follow-up #8362).
+3. **Verify**: `bun scripts/backfill-identity-auth.ts --verify` — exact
+   row counts (identity SET EQUALITY over `users`/`auth_identities`),
+   custody-safe per-state tallies, newest-50 row hashes. Post the output
+   on the migration issue (it is secret-safe by construction). Exact or
+   explain; no cutover on a red verify.
+4. **Auth matrix replay** (the §3.15 acceptance): replay each credential
+   class × allow/deny against SHADOW reads and confirm ZERO divergence,
+   and run the explicit SESSION-REVOCATION check — revoke in staging and
+   observe BOTH stores deny — before considering any read move.
+5. **Read cutover — OWNER-GATED, HIGHEST-RISK, DONE LAST.** Serving auth
+   reads from Postgres requires: the KV/cache layer in front (so Postgres
+   does not inherit a per-request read storm), the session-invalidation
+   proof above, custody audit-chain contiguity, re-adding the D1
+   uniques/FKs on the twins, moving write authority, and dropping the D1
+   tables. This is follow-up #8362 on epic #8282 — NEVER in the same
+   change as this lane, and NEVER without explicit owner sign-off.
+
+Rollback at ANY step: set `KHALA_SYNC_IDENTITY_READS=d1` (reads) and/or
+`KHALA_SYNC_IDENTITY_DUAL_WRITE=off` (writes). D1 authority is never
+behind.
+
 ## Public tokens-served projection (KS-6.3, #8304)
 
 The public "Khala Tokens Served" counter

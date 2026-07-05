@@ -347,6 +347,62 @@ proof-bundle endpoint serving, and the D1 drop. Prod cutover procedure:
 [`RUNBOOK.md`](./RUNBOOK.md) "Supervision long-tail cutover"; cutover
 evidence is tracked on epic
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
+**KS-8.18 status (2026-07-04, #8329):** machinery LANDED (CORE) — the
+LAST and most sensitive domain. Postgres schema (`khala-sync-server`
+migration `0027_identity_auth_domain.sql`: the SEVENTEEN canonical
+identity/auth twins — `users`, `auth_identities`, `openauth_storage`,
+`openauth_agent_links`, the three `github_write_*` tables, and the
+provider (BYOK) account custody family incl. `provider_account_token_custody`
++ `_audit`; column-for-column with worker migrations
+0002/0003/0004/0009/0011/0044–0050/0173/0234/0237/0283; the `_0173_new`/
+`_0173_data`/`_0237_data` rebuild artifacts are deliberately NOT twinned;
+indexes re-derived from the owning stores' reads; D1 uniques and FKs NOT
+ported mid-migration so a transiently stale mirror can never reject a
+converge upsert — rationale in the migration header). SECRETS (invariant
+9 — the invariant this domain motivated): the twin stores EXACTLY what D1
+stores with NO widening and the same at-rest encryption posture; the
+custody columns (token ciphertext/IVs/key ids on
+`provider_account_token_custody`, `openauth_storage.value_json`,
+`provider_account_connection_attempts.user_code`,
+`github_write_connection_attempts.state`) are declared in the shared
+registry and NEVER appear in diagnostics or backfill/verify output —
+row KEYS (ids/refs/owner_user_id) and sha256 row hashes ONLY. Seam +
+flags: the KS-8.16 fail-soft read-back mirror
+(`apps/openagents.com/workers/api/src/identity-auth-domain-store.ts`)
+exposed two ways — `identityAuthMirrorFromEnv(env)` (the uniform adoption
+handle every writer calls after its authoritative D1 write) and the
+flagship drop-in `makeProviderAccountTokenCustodyStoreForEnv(env)` (the
+encrypted-token vault), WIRED in this lane at its two centralized
+`index.ts` construction sites. Flags `KHALA_SYNC_IDENTITY_DUAL_WRITE`
+(default ON) / `KHALA_SYNC_IDENTITY_READS` (default `d1`); there is NO
+read cutover in this lane — `postgres` DEFERS and logs
+`khala_sync_identity_postgres_reads_deferred` once (auth read serving +
+KV cache + session-revocation verification is the highest-risk,
+OWNER-GATED, done-LAST step). Resumable backfill + secret-safe
+exact-verify CLI
+(`packages/khala-sync-server/scripts/backfill-identity-auth.ts`: exact
+counts / identity set equality, custody-safe scalar tallies, newest-N row
+hashes), and contract suites on BOTH engines
+(`identity-auth-domain-repository.contract.test.ts` — composite-PK
+converge on D1/SQLite AND Postgres incl. a custody round-trip, end-to-end
+token-custody mirror fidelity, fail-soft, custody redaction;
+`identity-auth-backfill.test.ts` — all seventeen twins converge, rotation
+idempotency, no tally references a custody column).
+REMAINDER (wiring the rest of the write surface is intentionally
+NOT in this lane — dozens of construction sites across ~10 hot auth
+files is too broad for one secret-bearing change): the other five typed
+factories (`makeD1GitHubWriteRepository`, `makeD1ProviderAccountRepository`,
+`makeD1Storage`, `makeD1AgentRegistrationStore`, `makeD1AgentOwnerClaimStore`)
+and the scattered inline writers (`index.ts` user upserts,
+`onboarding/repository.ts`, `auth/email-otp-hardening.ts`,
+`operator-provider-account-routes.ts`, `provider-account-pool-routes.ts`,
+`artanis-operator-dashboard-routes.ts`) adopt `identityAuthMirrorFromEnv`
+in the decommission/wiring follow-up
+[#8362](https://github.com/OpenAgentsInc/openagents/issues/8362); until
+then their rows converge on the backfill sweep. Prod cutover procedure:
+[`RUNBOOK.md`](./RUNBOOK.md) "Identity/auth domain cutover"; the
+OWNER-GATED auth read cutover, KV cache, session-revocation proof, and D1
+drop are the same follow-up.
 
 Everything except the Verse world runs through one D1 database
 (`openagents-autopilot`, binding `OPENAGENTS_DB`). As of `main` today the

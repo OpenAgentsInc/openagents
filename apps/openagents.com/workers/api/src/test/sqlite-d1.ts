@@ -3407,3 +3407,324 @@ CREATE TABLE mirrorcode_runs (
   created_at TEXT NOT NULL
 );
 `
+
+// KS-8.18 (#8329): identity/auth core domain D1 schema (condensed from
+// worker migrations 0002/0003/0004/0009/0011/0044-0050/0173/0234/0237/0283
+// — final canonical columns only; FKs/CHECKs/UNIQUEs omitted for the
+// contract fixture, PKs kept). Secret-bearing columns are present exactly
+// as in D1 (no widening).
+export const IDENTITY_AUTH_DOMAIN_D1_SCHEMA = `
+CREATE TABLE users (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  primary_email TEXT,
+  avatar_url TEXT,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  deleted_at TEXT
+);
+
+CREATE TABLE auth_identities (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  provider_subject TEXT NOT NULL,
+  email TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  deleted_at TEXT,
+  provider_username TEXT
+);
+
+CREATE TABLE openauth_storage (
+  key TEXT PRIMARY KEY,
+  value_json TEXT NOT NULL,
+  expires_at INTEGER,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE openauth_agent_links (
+  id TEXT PRIMARY KEY,
+  openauth_user_id TEXT NOT NULL,
+  agent_user_id TEXT NOT NULL,
+  agent_credential_id TEXT,
+  link_kind TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  revoked_at TEXT
+);
+
+CREATE TABLE github_write_connections (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  github_id TEXT NOT NULL,
+  github_login TEXT NOT NULL,
+  connection_ref TEXT NOT NULL,
+  secret_ref TEXT,
+  scopes_json TEXT NOT NULL,
+  status TEXT NOT NULL,
+  health TEXT NOT NULL,
+  connected_at TEXT,
+  disconnected_at TEXT,
+  last_status_at TEXT NOT NULL,
+  metadata_json TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  deleted_at TEXT
+);
+
+CREATE TABLE github_write_connection_attempts (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  state TEXT NOT NULL,
+  expected_github_id TEXT NOT NULL,
+  expected_github_login TEXT NOT NULL,
+  redirect_after TEXT,
+  scopes_json TEXT NOT NULL,
+  status TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  completed_at TEXT,
+  failed_at TEXT,
+  failure_reason TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE github_write_auth_grants (
+  id TEXT PRIMARY KEY,
+  connection_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  runner_session_id TEXT,
+  connection_ref TEXT NOT NULL,
+  secret_ref TEXT NOT NULL,
+  grant_ref TEXT NOT NULL,
+  status TEXT NOT NULL,
+  requested_action TEXT,
+  metadata_json TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  revoked_at TEXT,
+  failed_at TEXT
+);
+
+CREATE TABLE provider_accounts (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  team_id TEXT,
+  provider TEXT NOT NULL,
+  auth_mode TEXT NOT NULL,
+  status TEXT NOT NULL,
+  health TEXT NOT NULL,
+  provider_account_ref TEXT NOT NULL,
+  secret_ref TEXT,
+  account_label TEXT,
+  plan_type TEXT,
+  connected_at TEXT,
+  disconnected_at TEXT,
+  denied_at TEXT,
+  last_status_at TEXT NOT NULL,
+  metadata_json TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  deleted_at TEXT,
+  last_sanity_check_at TEXT,
+  last_sanity_check_result TEXT,
+  operator_priority INTEGER NOT NULL DEFAULT 100,
+  cooldown_until TEXT,
+  low_credit_flag INTEGER NOT NULL DEFAULT 0,
+  recent_failure_class TEXT,
+  last_selected_at TEXT,
+  operator_label TEXT,
+  lease_limit INTEGER NOT NULL DEFAULT 1,
+  last_parallel_probe_at TEXT,
+  last_parallel_probe_result TEXT,
+  last_successful_launch_at TEXT,
+  last_failed_launch_at TEXT,
+  reauth_required_reason TEXT,
+  operator_note TEXT,
+  refill_note TEXT
+);
+
+CREATE TABLE provider_account_connection_attempts (
+  id TEXT PRIMARY KEY,
+  provider_account_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  team_id TEXT,
+  provider TEXT NOT NULL,
+  method TEXT NOT NULL,
+  source TEXT NOT NULL,
+  login_ref TEXT,
+  verification_url TEXT,
+  user_code TEXT,
+  status TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  completed_at TEXT,
+  failed_at TEXT,
+  metadata_json TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE provider_account_auth_grants (
+  id TEXT PRIMARY KEY,
+  provider_account_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  team_id TEXT,
+  thread_id TEXT,
+  workroom_id TEXT,
+  runner_session_id TEXT,
+  provider TEXT NOT NULL,
+  provider_account_ref TEXT NOT NULL,
+  provider_secret_ref TEXT NOT NULL,
+  grant_ref TEXT NOT NULL,
+  status TEXT NOT NULL,
+  requested_action TEXT,
+  metadata_json TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  revoked_at TEXT,
+  failed_at TEXT
+);
+
+CREATE TABLE provider_account_events (
+  id TEXT PRIMARY KEY,
+  provider_account_id TEXT,
+  auth_grant_id TEXT,
+  user_id TEXT NOT NULL,
+  team_id TEXT,
+  thread_id TEXT,
+  workroom_id TEXT,
+  runner_session_id TEXT,
+  kind TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  source_refs_json TEXT NOT NULL,
+  evidence_refs_json TEXT NOT NULL,
+  target_ref TEXT,
+  metadata_json TEXT,
+  actor_id TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE provider_account_sanity_checks (
+  id TEXT PRIMARY KEY,
+  provider_account_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  team_id TEXT,
+  provider TEXT NOT NULL,
+  provider_account_ref TEXT NOT NULL,
+  classification TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  grant_ref TEXT,
+  created_at TEXT NOT NULL,
+  metadata_json TEXT
+);
+
+CREATE TABLE provider_account_parallel_probe_receipts (
+  id TEXT PRIMARY KEY,
+  probe_run_id TEXT NOT NULL,
+  probe_id TEXT NOT NULL,
+  lease_id TEXT NOT NULL,
+  provider_account_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  team_id TEXT,
+  provider_account_ref TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  finished_at TEXT NOT NULL,
+  terminal_status TEXT NOT NULL,
+  classification TEXT NOT NULL,
+  collision_class TEXT NOT NULL,
+  metadata_json TEXT
+);
+
+CREATE TABLE provider_account_leases (
+  id TEXT PRIMARY KEY,
+  lease_ref TEXT NOT NULL,
+  provider_account_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  team_id TEXT,
+  provider TEXT NOT NULL,
+  provider_account_ref TEXT NOT NULL,
+  requested_action TEXT NOT NULL,
+  run_id TEXT,
+  assignment_id TEXT,
+  selected_by_policy_version TEXT NOT NULL,
+  selection_reason TEXT NOT NULL,
+  status TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  released_at TEXT,
+  terminal_outcome TEXT,
+  metadata_json TEXT,
+  order_id TEXT,
+  selected_by_actor TEXT,
+  last_touched_at TEXT,
+  failure_class TEXT
+);
+
+CREATE TABLE provider_account_failover_receipts (
+  id TEXT PRIMARY KEY,
+  run_id TEXT,
+  assignment_id TEXT,
+  requested_action TEXT NOT NULL,
+  previous_lease_ref TEXT,
+  previous_provider_account_ref TEXT,
+  next_lease_ref TEXT,
+  next_provider_account_ref TEXT,
+  failure_class TEXT NOT NULL,
+  account_state_action TEXT NOT NULL,
+  outcome TEXT NOT NULL,
+  attempt_number INTEGER NOT NULL,
+  max_attempts INTEGER NOT NULL,
+  customer_safe_status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  metadata_json TEXT,
+  order_id TEXT,
+  policy_version TEXT NOT NULL DEFAULT 'provider-account-lease-policy:v1',
+  cooldown_until TEXT,
+  operator_summary TEXT NOT NULL DEFAULT 'Provider account failover was recorded.',
+  customer_safe_summary TEXT
+);
+
+CREATE TABLE provider_account_token_custody (
+  provider_account_ref TEXT PRIMARY KEY,
+  owner_user_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  secret_ref TEXT NOT NULL,
+  refresh_ciphertext_b64 TEXT NOT NULL,
+  refresh_iv_b64 TEXT NOT NULL,
+  refresh_key_id TEXT NOT NULL,
+  access_ciphertext_b64 TEXT NOT NULL,
+  access_iv_b64 TEXT NOT NULL,
+  access_key_id TEXT NOT NULL,
+  access_expires_at TEXT NOT NULL,
+  account_id TEXT,
+  id_token_ciphertext_b64 TEXT,
+  id_token_iv_b64 TEXT,
+  id_token_key_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  last_refreshed_at TEXT
+);
+
+CREATE TABLE provider_account_token_custody_audit (
+  id TEXT PRIMARY KEY,
+  provider_account_ref TEXT NOT NULL,
+  owner_user_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  event_kind TEXT NOT NULL,
+  status TEXT NOT NULL,
+  actor_ref TEXT,
+  source_ref TEXT,
+  error_tag TEXT,
+  error_message TEXT,
+  metadata_json TEXT,
+  created_at TEXT NOT NULL
+);
+`

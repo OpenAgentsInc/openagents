@@ -983,10 +983,10 @@ import { makeProviderAccountPoolRoutes } from './provider-account-pool-routes'
 import { makeProviderAccountPylonHandlers } from './provider-account-pylon-routes'
 import { makeProviderAccountRoutes } from './provider-account-routes'
 import { makeProviderAccountServiceHandlers } from './provider-account-service-routes'
+import { makeProviderAccountTokenCustodyStoreForEnv } from './identity-auth-domain-store'
 import {
   codexAccessToAuthMaterial,
   issueShortLivedCodexAccessFromCustody,
-  makeD1ProviderAccountTokenCustodyStore,
   providerAccountTokenCustodyCipherFromEnv,
   storeConnectedCodexAuthInCustody,
   type ProviderTokenCustodyKeyEnv,
@@ -6904,7 +6904,9 @@ const storeConnectedCodexAuth =
     const cipher = await providerAccountTokenCustodyCipherFromEnv(env)
 
     return storeConnectedCodexAuthInCustody(
-      makeD1ProviderAccountTokenCustodyStore(openAgentsDatabase(env)),
+      // KS-8.18 (#8329): flagship dual-write wiring — the encrypted token
+      // vault mirrors to Postgres after the authoritative D1 write.
+      makeProviderAccountTokenCustodyStoreForEnv(env),
       cipher,
       {
         auth: input.auth,
@@ -6927,7 +6929,9 @@ const readConnectedCodexAuthMaterial = async (
   | undefined
 > => {
   const cipher = await providerAccountTokenCustodyCipherFromEnv(env)
-  const store = makeD1ProviderAccountTokenCustodyStore(openAgentsDatabase(env))
+  // KS-8.18 (#8329): the read path issues a fresh short-lived access token
+  // and persists the refreshed material — dual-write mirrored to Postgres.
+  const store = makeProviderAccountTokenCustodyStoreForEnv(env)
 
   try {
     return codexAccessToAuthMaterial(
