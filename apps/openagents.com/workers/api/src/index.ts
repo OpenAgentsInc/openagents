@@ -650,10 +650,6 @@ import {
   readKhalaLoopArming,
 } from './inference/khala-loop-integration'
 import {
-  buildKhalaTokensServedDelta,
-  publishKhalaTokensServedDelta,
-} from './inference/khala-tokens-served-sync'
-import {
   type InternalStressSchedulerNamespace,
   makeInternalStressPreemptionCoordinatorDO,
   makeInternalStressPreemptionRegistry,
@@ -732,7 +728,6 @@ import {
   buildServedTokensIngestBody,
   makeD1ServedTokensRecorder,
   meterServedTokensFailSoft,
-  servedTokensRowIsPublicCountable,
 } from './inference/served-tokens-recorder'
 import { stubEchoAdapter } from './inference/stub-echo-adapter'
 import {
@@ -1151,10 +1146,6 @@ import {
   readBillingCreditPackages,
 } from './stripe-billing'
 import { makeD1StripeCheckoutReceiptStore } from './stripe-checkout-receipts'
-import {
-  decideHighFrequencyBroadcast,
-  highFrequencyBroadcastLastAtStorageKey,
-} from './sync-broadcast-throttle'
 import {
   type SyncNotificationContext,
   notifyAgentRunSyncScopes,
@@ -7655,10 +7646,6 @@ const pylonCodexTurnIngestRoutes = makePylonCodexTurnIngestRoutes<Env>({
     makePylonCodexAssignmentProofStoreForEnv(env, openAgentsDatabase(env)),
   rawEventChunkStore: makePylonCodexRawEventChunkStoreForEnv,
   rawEventStore: makePylonCodexRawEventStoreForEnv,
-  publishDelta: (env, delta) =>
-    Effect.promise(() =>
-      publishKhalaTokensServedDelta(env, buildKhalaTokensServedDelta(delta)),
-    ),
   traceStore: env => makeTraceStoreForEnv(env),
 })
 
@@ -8683,17 +8670,10 @@ const crmBatchRoutes = makeCrmBatchRoutes<WorkerBindings>({
   resolveResendDeps: resolveCrmResendDeps,
 })
 
-type KhalaMcpTokensServedDelta = Readonly<{
-  eventRef: string
-  observedAt: string
-  tokensServedDelta: number
-}>
-
 const makeKhalaMcpServedTokensRecorder = (
   db: D1Database,
   options: Readonly<{
     nowIso?: () => string
-    publishDelta?: (input: KhalaMcpTokensServedDelta) => Promise<void>
     /**
      * KS-6.3 (#8304): fail-soft public tokens-served projection producer,
      * fired once per FRESH ledger row with its idempotency key.
@@ -8837,19 +8817,6 @@ const makeKhalaMcpServedTokensRecorder = (
           })
           .catch(() => undefined)
       }
-      if (
-        inserted &&
-        options.publishDelta !== undefined &&
-        servedTokensRowIsPublicCountable(input.requestAttribution)
-      ) {
-        await options
-          .publishDelta({
-            eventRef: body.eventId,
-            observedAt,
-            tokensServedDelta,
-          })
-          .catch(() => undefined)
-      }
     } catch {
       return
     }
@@ -8902,11 +8869,6 @@ const crmMcpRoutes = makeCrmMcpRoutes<WorkerBindings>({
           mirrorRow: row => mirrorTokenLedgerDirectInsertBestEffort(env, row),
           // KS-6.3 (#8304): projection producer (fail-soft, exact-once).
           onIngestedEvent: makeTokensServedProjectionObserver(env),
-          publishDelta: delta =>
-            publishKhalaTokensServedDelta(
-              env,
-              buildKhalaTokensServedDelta(delta),
-            ).catch(() => undefined),
         }),
     }),
   ]),
@@ -10924,13 +10886,6 @@ const makeArtanisResponderKhalaClient = (
       onIngestedEvent: makeTokensServedProjectionObserver(env),
       // KS-8.2 (#8308): Postgres dual-write mirror (fail-soft).
       ...tokenLedgerWriteStoreOptionForEnv(env),
-      publishDelta: delta =>
-        Effect.promise(() =>
-          publishKhalaTokensServedDelta(
-            env,
-            buildKhalaTokensServedDelta(delta),
-          ).catch(() => undefined),
-        ),
     },
   )
 
@@ -11325,13 +11280,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             onIngestedEvent: makeTokensServedProjectionObserver(env),
             // KS-8.2 (#8308): Postgres dual-write mirror (fail-soft).
             ...tokenLedgerWriteStoreOptionForEnv(env),
-            publishDelta: delta =>
-              Effect.promise(() =>
-                publishKhalaTokensServedDelta(
-                  env,
-                  buildKhalaTokensServedDelta(delta),
-                ).catch(() => undefined),
-              ),
           },
         ),
       }),
@@ -14042,16 +13990,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             onIngestedEvent: makeTokensServedProjectionObserver(env),
             // KS-8.2 (#8308): Postgres dual-write mirror (fail-soft).
             ...tokenLedgerWriteStoreOptionForEnv(env),
-            // Live-counter push (#6231): on a REAL new served-tokens row, push the
-            // public-safe delta onto the tokens-served sync scope so the homepage
-            // odometer rolls up instantly. Fail-soft: never breaks the completion.
-            publishDelta: delta =>
-              Effect.promise(() =>
-                publishKhalaTokensServedDelta(
-                  env,
-                  buildKhalaTokensServedDelta(delta),
-                ).catch(() => undefined),
-              ),
           },
         ),
         // INTERNAL/OPS ACCOUNT DEMAND ALLOWLIST (#6298 follow-up). Parsed once
@@ -14515,15 +14453,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               onIngestedEvent: makeTokensServedProjectionObserver(env),
               // KS-8.2 (#8308): Postgres dual-write mirror (fail-soft).
               ...tokenLedgerWriteStoreOptionForEnv(env),
-              // Live-counter push (#6231): MPP traffic rolls the homepage
-              // odometer up instantly too. Fail-soft.
-              publishDelta: delta =>
-                Effect.promise(() =>
-                  publishKhalaTokensServedDelta(
-                    env,
-                    buildKhalaTokensServedDelta(delta),
-                  ).catch(() => undefined),
-                ),
             },
           ),
           // Same internal/ops account demand allowlist on the MPP path (#6298
@@ -15441,11 +15370,6 @@ export class DurableInferenceStreamObject {
   }
 }
 
-// High-frequency public tokens-served broadcast throttle (openagents #6324).
-// The throttle DECISION + interval + scope predicate now live in the pure,
-// unit-tested module `./sync-broadcast-throttle`. This DO only persists the
-// durable `lastBroadcastAt` and performs the fanout. See that module for the
-// hibernation/freeze-then-jump root cause and the leading-edge fix rationale.
 export class SyncRoomDurableObject {
   constructor(
     private readonly state: DurableObjectState,
@@ -15503,40 +15427,6 @@ export class SyncRoomDurableObject {
     )
   }
 
-  // Hibernation-safe, burst-safe leading-edge throttle for the high-frequency
-  // public tokens-served scope (openagents #6324). The decision is made by the
-  // pure `decideHighFrequencyBroadcast` helper against a DURABLE `lastBroadcastAt`
-  // read from `state.storage`, so it survives DO hibernation between hibernatable
-  // WebSocket events and never depends on a sub-second alarm. Non-throttled scopes
-  // always broadcast immediately. A skipped intermediate poke loses nothing: the
-  // authoritative running total rides every event + the summary row, so the next
-  // poke ~334ms later carries the latest total — the counter never freezes-then-
-  // jumps, it advances in steady ≤3/sec steps.
-  private async notifyScopeThrottled(scope: string): Promise<void> {
-    const storageKey = highFrequencyBroadcastLastAtStorageKey(scope)
-    const lastBroadcastAtMs =
-      (await this.state.storage.get<number>(storageKey)) ?? null
-
-    const decision = decideHighFrequencyBroadcast({
-      scope,
-      nowMs: currentEpochMillis(),
-      lastBroadcastAtMs,
-    })
-
-    if (!decision.broadcast) {
-      return
-    }
-
-    if (decision.persistLastBroadcastAtMs !== undefined) {
-      await this.state.storage.put(
-        storageKey,
-        decision.persistLastBroadcastAtMs,
-      )
-    }
-
-    await this.broadcastScope(scope)
-  }
-
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url)
     const scope = syncScopeFromRequest(request, url)
@@ -15546,7 +15436,7 @@ export class SyncRoomDurableObject {
         return badRequest('scope is required')
       }
 
-      this.state.waitUntil(this.notifyScopeThrottled(scope))
+      this.state.waitUntil(this.broadcastScope(scope))
 
       return jsonResponse({ ok: true, scope })
     }

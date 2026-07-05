@@ -30,7 +30,7 @@ import {
  * `runRef`. The `/gym` client subscribes to that scope and replaces that run's
  * card the instant the snapshot lands — no per-12s poll.
  *
- * Hard constraints, mirroring `khala-tokens-served-sync.ts`:
+ * Hard constraints, mirroring the legacy public sync publishers:
  *  - PUBLIC-SAFE ONLY: the published value is the already-redacted
  *    `openagents.gym.run_progress.v1` PROJECTION — counts / denominators /
  *    public-safe profile refs / freshness, or an "awaiting authorization" marker

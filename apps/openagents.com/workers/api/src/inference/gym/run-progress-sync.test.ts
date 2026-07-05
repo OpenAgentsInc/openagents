@@ -6,7 +6,7 @@ import {
 } from './run-progress-sync'
 import { buildGymRunProgress, type GymRunProgress } from './run-progress'
 
-// Minimal in-memory D1 + sync room (mirrors khala-tokens-served-sync.test.ts)
+// Minimal in-memory D1 + sync room fixture.
 // that records the rows appended to the outbox and the scopes poked, so the
 // publisher's upsert-by-runRef, public-safe, and fail-soft behavior is exercised
 // against the REAL outbox append path.
