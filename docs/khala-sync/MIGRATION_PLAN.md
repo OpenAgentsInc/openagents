@@ -1464,6 +1464,25 @@ final D1 drop remain epic-gated on
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282) /
 KS-8.19 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
 
+**KS-8.10 backup verification (2026-07-05):** a dedicated owner-directed
+pass (the "forum posts must be backed up" gate ahead of KS-8.19) found that,
+despite both closeout comments above, **the production Postgres mirror for
+BOTH the content core AND the remainder tables had never actually been
+backfilled** — Postgres held only a single fresh dual-write-converged row
+per table (e.g. 1 topic/1 post) while D1 held the real corpus (219 topics,
+1,303 posts, 91 notification-reads, 6 work-requests, etc.). This is the
+exact gap the independent Orrery audit on #8338 flagged as "no production
+execution receipt" and that was never subsequently closed. Ran the existing
+backfill CLIs (two sweeps + `--verify`) against production for real this
+time: **VERIFY OK** on both the content-core (13 tables, incl. per-topic
+post-chain comparison and 25 sampled thread spot-hashes) and the remainder
+(11 active tables, incl. work-request cross-domain ref-set digest equality
+against KS-8.1/KS-8.8). Full evidence:
+[`2026-07-05-forum-and-user-content-backup-verification.md`](./2026-07-05-forum-and-user-content-backup-verification.md).
+D1 was not read from, written to, or altered; no flag was flipped. **Forum
+content + remainder mirror-completeness is now SAFE TO CITE on KS-8.19
+(#8330).**
+
 - **What:** the forum content core: forums/boards/categories, topics,
   posts + bodies + revisions, private messages, score snapshots, ACLs,
   moderation, watches/bookmarks/notifications, work-request lifecycle.
@@ -1536,6 +1555,19 @@ domain cutover"; flag flips are epic-gated on
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282); final
 D1 retirement is consolidated into KS-8.19
 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
+
+**KS-8.11 backup verification (2026-07-05):** the same dedicated pass that
+found the KS-8.10 gap found the identical pattern here — the production
+Postgres mirror had never actually been backfilled (business-outreach
+acceptances, transactional email delivery events, and all six
+`exa_enrichment_*` ledgers were present in D1 and absent in Postgres; no
+real `crm_contacts` rows exist in production today, so no customer PII was
+at risk). Ran the existing `backfill-crm-email.ts` CLI (two sweeps +
+`--verify`) against production: **VERIFY OK** — exact counts, tallies,
+newest-N hashes, and the suppression-list compliance-gate set digest all
+match. Full evidence:
+[`2026-07-05-forum-and-user-content-backup-verification.md`](./2026-07-05-forum-and-user-content-backup-verification.md).
+D1 untouched, no flag flipped. **Safe to cite on KS-8.19 (#8330).**
 
 - **What:** CRM accounts/contacts/opportunities/activities/lists, MCP
   grants, email messages/deliveries/campaigns/templates/suppression,
@@ -1617,6 +1649,20 @@ backfills + verifies the full core+remainder set
 read-serving indexes are re-derived at that cutover. Final destructive
 D1 retirement stays in KS-8.19
 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
+
+**KS-8.12 backup verification (2026-07-05):** the same dedicated pass found
+the identical undetected gap here — `site_projects`, `site_versions`,
+`site_deployments`, `site_deployment_attempts`, `site_access_grants`, one
+`site_builder_*` table, `site_build_validations`, and
+`site_revision_feedback` were all present in D1 (real user-authored site
+content) and entirely absent from the Postgres mirror. Ran the existing
+`backfill-sites-content.ts` CLI (two sweeps + `--verify`) against
+production: **VERIFY OK** — exact counts, domain tallies (incl. commerce
+totals), per-project version-chain contiguity, deployment state-machine
+census, builder sequence chains, and referential set-membership all match.
+Full evidence:
+[`2026-07-05-forum-and-user-content-backup-verification.md`](./2026-07-05-forum-and-user-content-backup-verification.md).
+D1 untouched, no flag flipped. **Safe to cite on KS-8.19 (#8330).**
 
 - **What:** the Sites product: projects/versions/deployments/grants,
   builder sessions (messages, phase runs, file snapshots, previews,
@@ -1733,6 +1779,22 @@ unclassified-write sweep (task 3): drive
 `khala_sync_khala_code_state_write_unclassified` +
 `khala_sync_khala_code_state_projection_skipped` to steady-state zero in
 staging/prod (tracked on epic #8282).
+
+**KS-8.13 backup verification (2026-07-05):** the dedicated owner-directed
+forum-and-user-content backup pass also checked this domain fresh, since it
+is the single most sensitive user-generated-content lane (actual chat/thread
+messages) and — unlike KS-8.8/8.9/8.14/8.16/8.17 — this section had never
+recorded a production backfill/verify run. Ran
+`backfill-khala-code-product-state.ts --verify` against production:
+**exit 0, zero mismatches**, cross-checked directly against D1 (e.g.
+`team_chat_messages` 41/41, `teams` 2/2, `team_memberships` 11/11,
+`khala_feedback` 7/7 — genuinely non-zero and exact, not a trivial
+both-empty result). No backfill was needed; dual-write has kept this domain
+converged. `thread_messages` itself is 0/0 in both stores — live Khala Code
+chat already rides the Khala Sync scope-native path per this domain's own
+"migration = sync adoption" framing, not this D1 table. Full evidence:
+[`2026-07-05-forum-and-user-content-backup-verification.md`](./2026-07-05-forum-and-user-content-backup-verification.md).
+**Safe to cite on KS-8.19 (#8330).**
 
 - **What:** the product-surface state that Khala Sync exists to serve:
   threads/messages/files, teams + memberships + chat + invites, prefilled
@@ -2079,6 +2141,18 @@ flag, its own compare-mode soak, and (for the actual auth-decision reads) the
 KV/cache layer and auth-matrix replay tooling that still do not exist.
 Forum posts are confirmed out of scope for this domain's backup concerns —
 they live under the separate, already-landed KS-8.10 Forum lane (#8321).
+
+**KS-8.18 fresh re-verification (2026-07-05, dedicated forum-and-user-content
+backup pass):** re-ran `backfill-identity-auth.ts --verify` (read-only,
+secret-safe by construction) against production as an independent
+confirmation, not a re-quote of the #8362 evidence above. Result: exit 0, all
+17 tables exact (`users`/`auth_identities` 462/462, `openauth_storage`
+176/176, `openauth_agent_links` 21/21, the provider custody family
+155/478/64/31/26/12, etc.). No secret values were read into this report or
+that pass — only row counts and the script's own custody-safe scalar
+tallies. Confirms the domain's own #8362 evidence still holds today. Full
+evidence:
+[`2026-07-05-forum-and-user-content-backup-verification.md`](./2026-07-05-forum-and-user-content-backup-verification.md).
 
 - **What:** the tables every request touches: users, auth identities,
   OpenAuth storage + agent links, GitHub write connections/grants,
