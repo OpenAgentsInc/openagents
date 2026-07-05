@@ -25,6 +25,14 @@ export type TranscriptPart =
        * `source.lane`, the same lane value `RuntimeTurnEntity.lane` carries
        * for this turn. Purely a display addition; never affects dispatch. */
       lane: KhalaRuntimeLane
+      /** The turn this status event belongs to — every `KhalaRuntimeEvent`
+       * already carries its own `turnId` at the envelope level (see
+       * `KhalaRuntimeEventBase` in `@openagentsinc/agent-runtime-schema`), so
+       * this is a read-through, not new data. Lets #8407's "Ask [other
+       * provider] to review this" action on a completed turn look up that
+       * turn's own event list (filter `runtime_event` rows by this id) to
+       * build a bounded handoff summary. */
+      turnId: string
     }>
 
 export const sortEventsBySequence = (
@@ -53,17 +61,30 @@ export const reduceRuntimeTranscript = (
   for (const event of events) {
     switch (event.kind) {
       case "turn.started":
-        parts.push({ id: `turn-status-${parts.length}`, kind: "turn-status", lane: event.source.lane, status: "running" })
+        parts.push({
+          id: `turn-status-${parts.length}`,
+          kind: "turn-status",
+          lane: event.source.lane,
+          status: "running",
+          turnId: event.turnId
+        })
         break
       case "turn.interrupted":
-        parts.push({ id: `turn-status-${parts.length}`, kind: "turn-status", lane: event.source.lane, status: "interrupted" })
+        parts.push({
+          id: `turn-status-${parts.length}`,
+          kind: "turn-status",
+          lane: event.source.lane,
+          status: "interrupted",
+          turnId: event.turnId
+        })
         break
       case "turn.finished":
         parts.push({
           id: `turn-status-${parts.length}`,
           kind: "turn-status",
           lane: event.source.lane,
-          status: event.finishReason === "error" ? "failed" : "completed"
+          status: event.finishReason === "error" ? "failed" : "completed",
+          turnId: event.turnId
         })
         break
       case "text.delta":

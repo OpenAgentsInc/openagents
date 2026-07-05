@@ -79,6 +79,18 @@ describe("reduceRuntimeTranscript", () => {
     ])
   })
 
+  test("turn-status parts carry the turnId straight off the event envelope (#8407)", () => {
+    // #8407's "Ask [other provider] to review this" handoff action needs to
+    // look up a completed turn's own events by turnId, so this read-through
+    // (every KhalaRuntimeEvent already carries turnId at the envelope level)
+    // must survive the fold.
+    const parts = reduceRuntimeTranscript([
+      { ...base, eventId: "e1", kind: "turn.started", turnId: "turnA" },
+      { ...base, eventId: "e2", kind: "turn.finished", finishReason: "stop", turnId: "turnA" }
+    ])
+    expect(parts.map(p => (p.kind === "turn-status" ? p.turnId : undefined))).toEqual(["turnA", "turnA"])
+  })
+
   test("appending new events preserves the id (and position) of previously-produced parts", () => {
     // This id-stability property is what lets the mobile transcript FlatList
     // (`app/thread/[threadId].tsx`) safely rely on Reanimated's `entering=`

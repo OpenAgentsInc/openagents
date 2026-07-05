@@ -39,7 +39,9 @@ describe("buildCopyText", () => {
 
   test("returns undefined for usage and turn-status parts", () => {
     expect(buildCopyText({ id: "u1", kind: "usage" })).toBeUndefined()
-    expect(buildCopyText({ id: "t1", kind: "turn-status", status: "running", lane: "ai_sdk_core" })).toBeUndefined()
+    expect(
+      buildCopyText({ id: "t1", kind: "turn-status", status: "running", lane: "ai_sdk_core", turnId: "turn1" })
+    ).toBeUndefined()
   })
 })
 
@@ -80,7 +82,13 @@ describe("buildCopyMarkdown", () => {
   test("returns undefined for usage and turn-status parts", () => {
     expect(buildCopyMarkdown({ id: "u1", kind: "usage" })).toBeUndefined()
     expect(
-      buildCopyMarkdown({ id: "t1", kind: "turn-status", status: "completed", lane: "codex_app_server" })
+      buildCopyMarkdown({
+        id: "t1",
+        kind: "turn-status",
+        status: "completed",
+        lane: "codex_app_server",
+        turnId: "turn1"
+      })
     ).toBeUndefined()
   })
 })

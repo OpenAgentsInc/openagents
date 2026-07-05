@@ -1531,3 +1531,150 @@ exited zero.
   attempted in this pass to keep the shipped diff reviewable and each part
   independently verified. Tracked as remaining scope on the tracking issue
   rather than force-fit into this change.
+
+## #8407: cross-agent delegation — "Ask Claude/Codex to review this" (2026-07-05)
+
+Epic #8408's last sub-issue. Ships exactly the narrow slice the issue's own
+body recommends: an explicit user action on a COMPLETED turn that starts a
+NEW turn on the OTHER lane, carrying a bounded summary of the just-completed
+turn as context. Explicitly NOT built (per the issue's own scope): agent-
+initiated delegation, automatic/heuristic routing, or a generic "any lane to
+any lane" framework.
+
+### What's new
+
+- **`khala-cross-agent-handoff-core.ts`** (new pure module, no RN imports) —
+  named `cross-agent-handoff`, not `delegation`, on purpose: the repo already
+  has an unrelated `src/security/delegation-prompt.ts` (validates a
+  user-typed prompt for the separate "Khala -> Pylon -> Codex own-capacity
+  coding delegation" runbook in the root `CLAUDE.md`). Same English word,
+  different feature; kept the names visibly distinct rather than overload
+  "delegation" for two unrelated mechanisms.
+  - `handoffTargetLane(lane)` — maps `codex_app_server` <-> `claude_pylon`;
+    `undefined` for every internal routing lane (no user-facing counterpart
+    to hand off to).
+  - `summarizeTurnEventsForHandoff(events)` — re-runs the turn's OWN
+    (turnId-filtered, sequence-sorted) events through the EXISTING
+    `reduceRuntimeTranscript` fold (`khala-runtime-transcript-core.ts`) —
+    the same fold the live transcript UI itself uses — then renders the
+    resulting text/reasoning/tool parts into a bounded (6000-char, truncated
+    with a visible marker past that) plain-text summary. Deliberately never
+    includes raw tool `resultRef`/`errorRef` blob pointers, only `toolName` +
+    settled status (+ the already-public-safe `messageSafe` on a failure) —
+    exactly what `TranscriptPartRow` itself renders for a tool part, so the
+    summary can never leak anything the reviewing side couldn't already see
+    on screen.
+  - `buildHandoffPromptBody({sourceLane, targetLane, summary})` — the new
+    turn's actual prompt text, e.g. "Claude, please review the following
+    turn Codex just completed in this thread and give your assessment
+    (correctness, risks, anything you'd change): --- <summary> ---".
+- **`khala-runtime-transcript-core.ts`** — the `turn-status` `TranscriptPart`
+  now also carries `turnId` (a straight read-through: every
+  `KhalaRuntimeEvent` already carries its own `turnId` at the envelope
+  level), so the handoff button can look its own turn's events back up by
+  id. Existing fixture-literal tests across `blurred-popup-menu-core.test.ts`
+  and `swipe-quote-core.test.ts` needed the new required field added (pure
+  type-completeness fixes, no behavior change).
+- **`transcript-part-row.tsx`** — a small pill button renders under a
+  `turn-status` divider ONLY when `status === "completed"` AND
+  `handoffTargetLane(part.lane)` resolves (i.e. only for the two
+  user-pickable lanes, never an internal routing lane): "ask
+  claude/codex to review this". New optional props `onRequestHandoff`,
+  `handoffPending`, `handoffDisabled` — all optional, so this stays a pure
+  display component when the caller doesn't wire them. Also deduplicated
+  this file's own `LANE_LABEL`/`laneLabel` lookup down to a re-export of the
+  new module's `handoffLaneLabel` (one lane->label mapping instead of two in
+  the same file).
+- **`app/thread/[threadId].tsx`** — `requestHandoff(input)`: filters
+  `runtimeState.items` by the source turn's own `turnId`, sorts by
+  `sequence` (`sortEventsBySequence`, already existed), summarizes, persists
+  the summary as an ordinary `chat_message` via the EXISTING
+  `buildChatAppendMessageArgs`/`chat.appendMessage` mutator under a fresh
+  messageId, then starts a brand-new turn via the EXISTING
+  `buildStartTurnIntentArgs`/`runtime.startTurn` mutator with `bodyRef`
+  pointing at that message and `target.lane` set to the OTHER lane — the
+  exact same two-mutation shape the composer's own send flow already uses,
+  just a second `target.lane`. No new schema, no new mutator, no server-side
+  code changed at all (the dispatch consumer already treats `claude_pylon`
+  and `codex_app_server` identically as of #8404). Disabled thread-wide
+  while another turn is active (`activeTurn !== undefined`), mirroring the
+  composer's own idle-only lane picker (#8405) — retargeting only ever
+  applies to starting a brand-new turn. A small inline error banner surfaces
+  a failed push (network/rejected mutation), matching the composer's own
+  error-banner pattern.
+
+### Real end-to-end production verification
+
+Used the real thread `019f309c-d9b1-70f2-9228-e3992ca1fa5a` (the SAME thread
+prior #8388/#8404/#8405/#8410 sessions verified against), owned by
+`user_ccf97bf1-ad33-4c55-b9c7-41eeeb9e0c93`, authenticated with the linked
+Pylon's own registered agent credential (`~/.pylon-fable/auth/openagents-agent-token`
+— the one credential that resolves to the real owner id, per the #8404
+section above). A temporary script (not committed) called the ACTUAL new
+functions — `summarizeTurnEventsForHandoff`, `buildHandoffPromptBody`,
+`handoffTargetLane`, `buildChatAppendMessageArgs`, `buildStartTurnIntentArgs`,
+`chatMessageBodyRef` — against a real `POST /api/sync/bootstrap` read of the
+thread and pushed the result through the real production
+`POST /api/sync/push`:
+
+1. Bootstrap-read the thread's real `runtime_turn`/`runtime_event` rows,
+   picked the most recent COMPLETED turn (`turn.rrfinal2.1783235990379882000`,
+   lane `codex_app_server`), and ran its real events through
+   `summarizeTurnEventsForHandoff` — produced the correct real summary
+   (`"100 plus 250 is 350."`, the turn's actual completed answer).
+2. `handoffTargetLane("codex_app_server")` correctly resolved
+   `"claude_pylon"`.
+3. Pushed a real `chat.appendMessage` + `runtime.startTurn`
+   (`target.lane: "claude_pylon"`) — production responded
+   `{"results":[{"mutationId":1,"status":"applied"},{"mutationId":2,"status":"applied"}],"lastMutationId":2}`.
+   A follow-up bootstrap read confirmed the new `runtime_turn` row exists
+   with `lane: "claude_pylon"` — the handoff correctly targets the OTHER
+   lane from the source turn.
+4. The real, already-standing `com.openagents.runtime-supervisor` launchd
+   process picked up the new intent on its next 3s poll tick and made a
+   real, correct, provider-aware dispatch decision for it.
+
+**Found (and fixed) a real, unrelated infra bug along the way**: the
+standing supervisor process was running from a checkout 16 commits behind
+`origin/main` (predating #8410's real per-account-readiness and
+thread-resume-pin work) — its FIRST dispatch attempt for the new
+`claude_pylon` turn incorrectly ran against a **Codex** account
+(`account.pylon.codex.651c03fed68925d7acb2c02f`, `Codex Exec exited...
+no rollout found`), which is exactly the class of bug #8410 already fixed.
+Fast-forwarded the (clean, unrelated) local `openagents` checkout that
+launchd job runs from to current `origin/main` and restarted it
+(`launchctl kickstart -k`). On the SAME real thread with a fresh handoff
+push, it then correctly required a `claude_agent`-provider account for the
+`claude_pylon` target (confirms #8410's provider filter is now doing its
+job) — and correctly, honestly reported `"no dispatch-ready local Claude
+account available"` instead of mis-dispatching, because:
+
+**Root cause, fully traced (not a code defect in this change)**:
+`~/.pylon-fable/config.json`'s `dev.accounts` registry has five `codex`
+entries and ZERO `claude_agent` entries — `~/.pylon-fable/accounts/claude_agent/`
+does not exist on disk. `candidateAccountsFromRegistry` (the standing
+supervisor's account source) reads ONLY that exact registry list; it does
+not do the broader home-directory auto-discovery scan `pylon accounts list`
+does (that CLI command has no `--pylon-home` flag at all — it was silently
+reading a completely different, unrelated default pylon home the whole
+time, which is why it appeared to show ready `claude-pylon-2`/
+`claude-pylon-3` accounts). This specific owner-linked Pylon genuinely has
+no Claude account provisioned yet. Flagged for the owner (see the workspace
+`NEEDS_OWNER.md` note from this session): running
+`PYLON_HOME=$HOME/.pylon-fable pylon auth claude --account claude-fable-1`
+would register one, and the standing supervisor would dispatch a real
+completed Claude turn on its very next poll tick with zero further code
+changes — this is purely an account-provisioning gap, not a defect in
+#8407's implementation.
+
+### Honest status
+
+The client-side feature (trigger, context carry-forward, attribution) is
+fully implemented, unit-tested, and independently proven correct via a real
+production push whose mutations came back `applied` and whose new
+`runtime_turn` row correctly carries the OTHER lane. The dispatch consumer
+correctly recognized the request and made a correct (if capacity-blocked)
+decision. The one thing NOT independently observed in this pass is the new
+turn reaching `completed` with a real Claude response — blocked purely by
+the account-provisioning gap above, external to this change's own
+correctness.

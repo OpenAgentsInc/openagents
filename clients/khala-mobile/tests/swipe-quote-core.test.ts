@@ -43,7 +43,13 @@ describe("buildQuoteSnippet", () => {
   })
 
   test("returns undefined for turn-status parts (nothing meaningful to quote)", () => {
-    const part: TranscriptPart = { id: "m1", kind: "turn-status", lane: "codex_app_server", status: "completed" }
+    const part: TranscriptPart = {
+      id: "m1",
+      kind: "turn-status",
+      lane: "codex_app_server",
+      status: "completed",
+      turnId: "turn1"
+    }
     expect(buildQuoteSnippet(part)).toBeUndefined()
   })
 })

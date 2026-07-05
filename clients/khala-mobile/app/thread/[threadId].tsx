@@ -7,6 +7,7 @@ import {
   RUNTIME_TURN_ENTITY_TYPE,
   threadScope,
   type ChatMessageEntity,
+  type KhalaRuntimeLane,
   type RuntimeEventEntity,
   type RuntimeTurnEntity
 } from "@openagentsinc/khala-sync"
@@ -23,8 +24,16 @@ import { ChatComposer, chatComposerKeyboardVerticalOffset } from "../../src/comp
 import { SwipeableItem } from "../../src/components/swipeable-item"
 import { TranscriptPartRow } from "../../src/components/transcript-part-row"
 import { buildCopyMarkdown, buildCopyText } from "../../src/sync/blurred-popup-menu-core"
-import { findActiveTurn, mostRecentTurnLane } from "../../src/sync/khala-runtime-compose-core"
+import { buildHandoffPromptBody, summarizeTurnEventsForHandoff } from "../../src/sync/khala-cross-agent-handoff-core"
+import {
+  buildChatAppendMessageArgs,
+  buildStartTurnIntentArgs,
+  chatMessageBodyRef,
+  findActiveTurn,
+  mostRecentTurnLane
+} from "../../src/sync/khala-runtime-compose-core"
 import { sortByKeyAsc } from "../../src/sync/khala-sync-entities-core"
+import { makeSafeRef } from "../../src/sync/khala-sync-push-core"
 import {
   reduceRuntimeTranscript,
   sortEventsBySequence,
@@ -130,6 +139,54 @@ export default function ThreadMessagesScreen() {
   const defaultLane = useMemo(() => mostRecentTurnLane(turnState.items), [turnState.items])
   const push = useKhalaSyncPush()
   const [quoteRequest, setQuoteRequest] = useState<QuoteRequest | undefined>(undefined)
+  const [handoffPendingTurnId, setHandoffPendingTurnId] = useState<string | undefined>(undefined)
+  const [handoffError, setHandoffError] = useState<string | null>(null)
+
+  // "Ask [other provider] to review this" (#8407) — starts a brand-new turn
+  // on the OTHER lane, its prompt carrying a bounded summary of the
+  // just-completed turn (built by re-folding that turn's OWN events through
+  // `summarizeTurnEventsForHandoff`, never the full raw stream). Persists the
+  // summary as an ordinary `chat_message` first (same `chatMessageBodyRef`
+  // convention the composer's own send flow uses in
+  // `khala-runtime-compose-core.ts`), then starts the new turn referencing
+  // it — no new schema or mutator, just a second `target.lane`.
+  const requestHandoff = async (input: {
+    turnId: string
+    sourceLane: KhalaRuntimeLane
+    targetLane: KhalaRuntimeLane
+  }) => {
+    if (threadId === undefined || handoffPendingTurnId !== undefined) return
+    setHandoffPendingTurnId(input.turnId)
+    setHandoffError(null)
+    try {
+      const turnEvents = sortEventsBySequence(
+        runtimeState.items.filter(entity => entity.turnId === input.turnId)
+      ).map(entity => entity.event)
+      const summary = summarizeTurnEventsForHandoff(turnEvents)
+      const body = buildHandoffPromptBody({ sourceLane: input.sourceLane, summary, targetLane: input.targetLane })
+      const nowIso = new Date().toISOString()
+      const messageId = makeSafeRef("msg")
+      const bodyRef = chatMessageBodyRef(messageId)
+      const newTurnId = makeSafeRef("turn")
+      await push([
+        { args: buildChatAppendMessageArgs({ body, messageId, threadId }), name: "chat.appendMessage" },
+        {
+          args: buildStartTurnIntentArgs({
+            bodyRef,
+            nowIso,
+            target: { lane: input.targetLane },
+            threadId,
+            turnId: newTurnId
+          }),
+          name: "runtime.startTurn"
+        }
+      ])
+    } catch (error) {
+      setHandoffError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setHandoffPendingTurnId(undefined)
+    }
+  }
 
   const messages = sortByKeyAsc(
     chatState.items.filter(message => message.deletedAt === null),
@@ -186,7 +243,12 @@ export default function ThreadMessagesScreen() {
               renderItem={({ index, item: part }) => {
                 const row = (
                   <Animated.View entering={FadeIn.delay(transcriptEntranceDelay(index)).duration(MOTION_MEDIUM)}>
-                    <TranscriptPartRow part={part} />
+                    <TranscriptPartRow
+                      handoffDisabled={activeTurn !== undefined}
+                      handoffPending={part.kind === "turn-status" && handoffPendingTurnId === part.turnId}
+                      onRequestHandoff={requestHandoff}
+                      part={part}
+                    />
                   </Animated.View>
                 )
                 // Only wrap parts with meaningful quotable content (text,
@@ -224,6 +286,11 @@ export default function ThreadMessagesScreen() {
             />
           )}
         </View>
+        {handoffError === null ? null : (
+          <Text className="px-3 pb-1 font-mono text-xs text-danger" numberOfLines={2}>
+            {handoffError}
+          </Text>
+        )}
         {threadId === undefined || status === "missing_token" ? null : (
           <ChatComposer
             activeTurn={activeTurn}
