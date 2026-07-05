@@ -13,6 +13,7 @@ import {
 import { useLocalSearchParams } from "expo-router"
 import { useEffect, useMemo, useRef } from "react"
 import { FlatList, KeyboardAvoidingView, Text, View } from "react-native"
+import Animated, { FadeIn } from "react-native-reanimated"
 import { SafeAreaView } from "react-native-safe-area-context"
 
 import { AppHeader } from "../../src/components/app-header"
@@ -27,6 +28,29 @@ import {
 } from "../../src/sync/khala-runtime-transcript-core"
 import { useKhalaSyncCollection } from "../../src/sync/use-khala-sync-collection"
 import { useKhalaSyncPush } from "../../src/sync/use-khala-sync-push"
+import { MOTION_MEDIUM, MOTION_STAGGER_MS } from "../../src/theme/motion"
+
+// `reduceRuntimeTranscript` re-folds the FULL event list on every render, but
+// it's a deterministic left-to-right fold over an append-only event log, so
+// previously-produced parts keep the exact same `id` (and position) across
+// recomputations — only the newly appended tail is new. Combined with
+// `keyExtractor={part => part.id}`, React/FlatList reuse the same row
+// component instance for every already-rendered part (no remount), so
+// Reanimated's `entering=` (which only fires on a component's first mount)
+// naturally animates ONLY newly-appended parts, not the whole list, on every
+// streaming update. See `khala-runtime-transcript-core.test.ts` for a
+// regression test asserting that id-stability property.
+//
+// The per-row stagger delay is capped (rather than `index * STAGGER_MS`
+// uncapped) because `index` here is the item's absolute position in a
+// potentially long-running thread: an uncapped delay would make a part
+// appended at index 300 wait 18s+ before fading in. Capping bounds the delay
+// to a small, still-cascading amount for the common "many parts mount at
+// once on initial thread load" case while staying snappy for the common
+// "one part streams in at a time" case.
+const TRANSCRIPT_STAGGER_CAP = 8
+const transcriptEntranceDelay = (index: number): number =>
+  MOTION_STAGGER_MS * Math.min(index, TRANSCRIPT_STAGGER_CAP)
 
 const messageIdOf = (message: ChatMessageEntity): string => message.messageId
 const createdAtOf = (message: ChatMessageEntity): string => message.createdAt
@@ -118,7 +142,11 @@ export default function ThreadMessagesScreen() {
               data={transcriptParts}
               keyExtractor={part => part.id}
               ref={listRef}
-              renderItem={({ item: part }) => <TranscriptPartRow part={part} />}
+              renderItem={({ index, item: part }) => (
+                <Animated.View entering={FadeIn.delay(transcriptEntranceDelay(index)).duration(MOTION_MEDIUM)}>
+                  <TranscriptPartRow part={part} />
+                </Animated.View>
+              )}
             />
           ) : messages.length === 0 ? (
             <View className="flex-1 items-center justify-center">

@@ -1,7 +1,9 @@
 import { Link, type Href } from "expo-router"
 import type { ReactNode } from "react"
-import { Pressable, ScrollView, Text, View } from "react-native"
+import { ScrollView, Text, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
+
+import { TouchableFeedback } from "./touchable-feedback"
 
 type ScreenShellProps = Readonly<{
   title: string
@@ -36,10 +38,10 @@ type NavigationTileProps = Readonly<{
 
 export const NavigationTile = ({ detail, href, title }: NavigationTileProps) => (
   <Link asChild href={href}>
-    <Pressable className="rounded-xl border border-border bg-surfaceRaised p-4 active:bg-surfaceActive">
+    <TouchableFeedback className="rounded-xl border border-border bg-surfaceRaised p-4">
       <Text className="font-sans text-lg font-semibold text-text">{title}</Text>
       <Text className="mt-2 font-sans text-base text-textMuted">{detail}</Text>
-    </Pressable>
+    </TouchableFeedback>
   </Link>
 )
 

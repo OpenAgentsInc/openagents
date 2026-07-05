@@ -1,4 +1,5 @@
 import "../global.css"
+import "../src/native/animated-view-css-interop"
 
 import { Stack } from "expo-router"
 import { StatusBar } from "expo-status-bar"

@@ -66,6 +66,52 @@ describe("reduceRuntimeTranscript", () => {
     expect(parts[0]).toMatchObject({ status: "failed" })
   })
 
+  test("appending new events preserves the id (and position) of previously-produced parts", () => {
+    // This id-stability property is what lets the mobile transcript FlatList
+    // (`app/thread/[threadId].tsx`) safely rely on Reanimated's `entering=`
+    // FadeIn to animate ONLY newly-appended parts as a turn streams in: since
+    // `reduceRuntimeTranscript` re-folds the full event log from scratch on
+    // every call, only appending strictly-new events at the end must leave
+    // every earlier part's `id` (React/FlatList's `keyExtractor` key)
+    // unchanged, so React reuses the same row component instance instead of
+    // remounting it and re-triggering the entrance animation.
+    const events: Array<Parameters<typeof reduceRuntimeTranscript>[0][number]> = [
+      { ...base, eventId: "e1", kind: "turn.started" },
+      { ...base, eventId: "e2", kind: "text.delta", messageId: "m1", chunkId: "c1", text: "checking" },
+      {
+        ...base,
+        authority: {} as never,
+        eventId: "e3",
+        kind: "tool.call",
+        toolCallId: "call1",
+        toolName: "search"
+      }
+    ]
+
+    const before = reduceRuntimeTranscript(events)
+
+    const after = reduceRuntimeTranscript([
+      ...events,
+      {
+        ...base,
+        authority: {} as never,
+        eventId: "e4",
+        kind: "tool.result",
+        resultRef: "ref1",
+        toolCallId: "call1",
+        toolName: "search"
+      },
+      { ...base, eventId: "e5", kind: "text.delta", messageId: "m2", chunkId: "c2", text: "found it" }
+    ])
+
+    // Every part id from the earlier fold still appears, in the same order,
+    // as a prefix of the new fold's ids.
+    expect(after.slice(0, before.length).map(p => p.id)).toEqual(before.map(p => p.id))
+    // Exactly one new part id was appended (the text.delta for m2) — the
+    // tool.call part was updated in place (same id) rather than duplicated.
+    expect(after.length).toEqual(before.length + 1)
+  })
+
   test("usage.recorded becomes a usage part carrying token counts", () => {
     const parts = reduceRuntimeTranscript([
       {

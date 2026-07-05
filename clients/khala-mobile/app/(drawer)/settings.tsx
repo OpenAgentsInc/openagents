@@ -11,6 +11,7 @@ import {
   type FleetWorkerEntity
 } from "@openagentsinc/khala-sync"
 import { ScrollView, Text, View } from "react-native"
+import Animated, { FadeIn } from "react-native-reanimated"
 import { SafeAreaView } from "react-native-safe-area-context"
 
 import { AppHeader } from "../../src/components/app-header"
@@ -24,6 +25,7 @@ import {
   sortWorkersByIdAsc
 } from "../../src/sync/khala-fleet-collections-core"
 import { useKhalaSyncCollection } from "../../src/sync/use-khala-sync-collection"
+import { MOTION_MEDIUM, MOTION_STAGGER_MS } from "../../src/theme/motion"
 
 const READINESS_COLOR: Record<FleetAccountEntity["readiness"], string> = {
   cooldown: "text-warning",
@@ -83,7 +85,10 @@ const FleetSection = () => {
             {runState.status === "loading" ? "loading…" : "No run data for this id yet"}
           </Text>
         ) : (
-          <View className="rounded-xl border border-border bg-surfaceRaised p-3">
+          <Animated.View
+            className="rounded-xl border border-border bg-surfaceRaised p-3"
+            entering={FadeIn.duration(MOTION_MEDIUM)}
+          >
             <View className="flex-row items-center justify-between">
               <Text className="font-sans text-base font-semibold text-text">{run.status}</Text>
               <Text className="font-mono text-xs text-textFaint">{run.workerKind}</Text>
@@ -93,7 +98,7 @@ const FleetSection = () => {
               {run.counters.completedAssignments} completed · {run.counters.failedAssignments} failed ·{" "}
               {run.counters.blockedAssignments} blocked
             </Text>
-          </View>
+          </Animated.View>
         )}
       </View>
 
@@ -104,9 +109,10 @@ const FleetSection = () => {
             {accountState.status === "loading" ? "loading…" : "No connected accounts synced yet"}
           </Text>
         ) : (
-          accounts.map((account: FleetAccountEntity) => (
-            <View
+          accounts.map((account: FleetAccountEntity, index) => (
+            <Animated.View
               className="rounded-xl border border-border bg-surfaceRaised px-3 py-2"
+              entering={FadeIn.delay(MOTION_STAGGER_MS * index).duration(MOTION_MEDIUM)}
               key={account.accountRefHash}
             >
               <View className="flex-row items-center justify-between">
@@ -127,7 +133,7 @@ const FleetSection = () => {
                   {account.capacityBusy ?? 0} busy · {account.capacityQueued ?? 0} queued
                 </Text>
               )}
-            </View>
+            </Animated.View>
           ))
         )}
       </View>
@@ -139,14 +145,15 @@ const FleetSection = () => {
             {workerState.status === "loading" ? "loading…" : "No worker slots synced yet"}
           </Text>
         ) : (
-          workers.map((worker: FleetWorkerEntity) => (
-            <View
+          workers.map((worker: FleetWorkerEntity, index) => (
+            <Animated.View
               className="flex-row items-center justify-between rounded-xl border border-border bg-surfaceRaised px-3 py-2"
+              entering={FadeIn.delay(MOTION_STAGGER_MS * index).duration(MOTION_MEDIUM)}
               key={worker.workerId}
             >
               <Text className="font-mono text-sm text-text">{worker.workerId}</Text>
               <Text className="font-mono text-xs text-textFaint">{worker.phase}</Text>
-            </View>
+            </Animated.View>
           ))
         )}
       </View>
