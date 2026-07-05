@@ -1,0 +1,68 @@
+{
+  "_comment": "Pre-remediation snapshot for issue #8412 (KS-8.7). Captured 2026-07-05 via `wrangler d1 execute openagents-autopilot --remote --json` against production D1, BEFORE any corrective UPDATE was applied. Referenced from docs/khala-sync/2026-07-05-pay-in-legs-8412-remediation.md.",
+  "query": "SELECT rowid, id, pay_in_id, direction, kind, party_ref, amount_msat, resulting_balance_msat, external_ref, refund_of_leg_id, created_at FROM pay_in_legs WHERE typeof(amount_msat) != 'integer'",
+  "captured_at": "2026-07-05T00:00:00Z",
+  "d1_database": "openagents-autopilot",
+  "rows_before_correction": [
+    {
+      "rowid": 66,
+      "id": "mpp-lightning:e92fefb88c0e01e53204b4c662a75558e85703cb5dace1e23c77aefc97f07250:grant",
+      "pay_in_id": "inference:lightning-charge:mpp-lightning:e92fefb88c0e01e53204b4c662a75558e85703cb5dace1e23c77aefc97f07250",
+      "direction": "in",
+      "kind": "lightning",
+      "party_ref": "1000.0",
+      "amount_msat": "agent:mpp-lightning:e92fefb88c0e01e53204b4c662a75558e85703cb5dace1e23c77aefc97f07250",
+      "party_ref_type": "text",
+      "amount_msat_type": "text",
+      "resulting_balance_msat": 1000,
+      "external_ref": "lightning_charge",
+      "refund_of_leg_id": null,
+      "created_at": "2026-06-24T01:51:11.981Z"
+    },
+    {
+      "rowid": 127,
+      "id": "operator-inference-credit:opencode-gym-edit-20260625:grant",
+      "pay_in_id": "inference:usd-credit:operator-inference-credit:opencode-gym-edit-20260625",
+      "direction": "in",
+      "kind": "balance",
+      "party_ref": "1000000.0",
+      "amount_msat": "agent:user_98141a79-049d-4e4f-8077-bf3f40fcf065",
+      "party_ref_type": "text",
+      "amount_msat_type": "text",
+      "resulting_balance_msat": 1000000,
+      "external_ref": "usd_credit_grant",
+      "refund_of_leg_id": null,
+      "created_at": "2026-06-25T03:58:19.688Z"
+    }
+  ],
+  "corroborating_pay_ins_rows": [
+    {
+      "id": "inference:lightning-charge:mpp-lightning:e92fefb88c0e01e53204b4c662a75558e85703cb5dace1e23c77aefc97f07250",
+      "pay_in_type": "lightning_charge",
+      "payer_ref": "agent:mpp-lightning:e92fefb88c0e01e53204b4c662a75558e85703cb5dace1e23c77aefc97f07250",
+      "cost_msat": 1000,
+      "state": "paid"
+    },
+    {
+      "id": "inference:usd-credit:operator-inference-credit:opencode-gym-edit-20260625",
+      "pay_in_type": "usd_credit_grant",
+      "payer_ref": "agent:user_98141a79-049d-4e4f-8077-bf3f40fcf065",
+      "cost_msat": 1000000,
+      "state": "paid"
+    }
+  ],
+  "corrected_values_to_apply": [
+    {
+      "rowid": 66,
+      "id": "mpp-lightning:e92fefb88c0e01e53204b4c662a75558e85703cb5dace1e23c77aefc97f07250:grant",
+      "correct_party_ref": "agent:mpp-lightning:e92fefb88c0e01e53204b4c662a75558e85703cb5dace1e23c77aefc97f07250",
+      "correct_amount_msat": 1000
+    },
+    {
+      "rowid": 127,
+      "id": "operator-inference-credit:opencode-gym-edit-20260625:grant",
+      "correct_party_ref": "agent:user_98141a79-049d-4e4f-8077-bf3f40fcf065",
+      "correct_amount_msat": 1000000
+    }
+  ]
+}
