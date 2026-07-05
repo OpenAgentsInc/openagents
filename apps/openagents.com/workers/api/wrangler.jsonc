@@ -64,6 +64,17 @@
     // `d1` at any time — the read/write cutover (real FOR UPDATE ref locks)
     // stays gated on a silent soak over a representative window.
     "KHALA_SYNC_FORGE_READS": "compare",
+    // KS-8.14 business funnel read cutover (#8360): production
+    // backfill/--restart/--verify are green across all 32 tables. `postgres`
+    // serves REAL Postgres reads ONLY for the bounded allowlist
+    // BUSINESS_DOMAIN_POSTGRES_SERVED_READ_TABLES in business-domain-store.ts
+    // (today: business_funnel_events alone — the public funnel dashboard's
+    // two full-table aggregate reads). Every other comparable-select in this
+    // domain (the escalation pager, referral-attribution existence-checks,
+    // pipeline/order/referral list reads) stays D1-served under `postgres`
+    // PERMANENTLY, logging khala_sync_business_postgres_reads_deferred. Roll
+    // back to `d1` at any time.
+    "KHALA_SYNC_BUSINESS_READS": "compare",
     // #6408 "fleet never silently stalls" watchdog (1-min cron). Detection is
     // default-ON so a live stall is flagged immediately. Recovery is also ON but
     // is a no-op unless FLEET_WATCHDOG_OWNER_PYLON_REFS lists the owner pylon(s)
@@ -510,6 +521,9 @@
         // KS-8.16 follow-up Forge read cutover (#8358, TEMPORARY compare
         // soak), staging parity for the production compare-mode soak.
         "KHALA_SYNC_FORGE_READS": "compare",
+        // KS-8.14 business funnel read cutover (#8360), staging parity for
+        // the production compare-mode soak.
+        "KHALA_SYNC_BUSINESS_READS": "compare",
         // Internal/ops account allowlist (#6298 demand + #6232 quota exemption) —
         // staging too, so dogfood classifies `demand_kind=internal` consistently
         // and internal testing accounts (ops/heartbeat/canary, Artanis, Raynor)
