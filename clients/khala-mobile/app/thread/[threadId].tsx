@@ -2,18 +2,23 @@ import {
   CHAT_MESSAGE_ENTITY_TYPE,
   decodeChatMessageEntity,
   decodeRuntimeEventEntity,
+  decodeRuntimeTurnEntity,
   RUNTIME_EVENT_ENTITY_TYPE,
+  RUNTIME_TURN_ENTITY_TYPE,
   threadScope,
   type ChatMessageEntity,
-  type RuntimeEventEntity
+  type RuntimeEventEntity,
+  type RuntimeTurnEntity
 } from "@openagentsinc/khala-sync"
 import { useLocalSearchParams } from "expo-router"
 import { useEffect, useMemo, useRef } from "react"
-import { FlatList, Text, View } from "react-native"
+import { FlatList, KeyboardAvoidingView, Text, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 
 import { AppHeader } from "../../src/components/app-header"
+import { ChatComposer, chatComposerKeyboardVerticalOffset } from "../../src/components/chat-composer"
 import { TranscriptPartRow } from "../../src/components/transcript-part-row"
+import { findActiveTurn } from "../../src/sync/khala-runtime-compose-core"
 import { sortByKeyAsc } from "../../src/sync/khala-sync-entities-core"
 import {
   reduceRuntimeTranscript,
@@ -21,10 +26,12 @@ import {
   type TranscriptPart
 } from "../../src/sync/khala-runtime-transcript-core"
 import { useKhalaSyncCollection } from "../../src/sync/use-khala-sync-collection"
+import { useKhalaSyncPush } from "../../src/sync/use-khala-sync-push"
 
 const messageIdOf = (message: ChatMessageEntity): string => message.messageId
 const createdAtOf = (message: ChatMessageEntity): string => message.createdAt
 const runtimeEventIdOf = (event: RuntimeEventEntity): string => event.eventId
+const runtimeTurnIdOf = (turn: RuntimeTurnEntity): string => turn.turnId
 
 const formatClockTime = (iso: string): string => {
   const parsed = new Date(iso)
@@ -50,6 +57,14 @@ export default function ThreadMessagesScreen() {
     decodeRuntimeEventEntity,
     runtimeEventIdOf
   )
+  const turnState = useKhalaSyncCollection(
+    scope,
+    RUNTIME_TURN_ENTITY_TYPE,
+    decodeRuntimeTurnEntity,
+    runtimeTurnIdOf
+  )
+  const activeTurn = useMemo(() => findActiveTurn(turnState.items), [turnState.items])
+  const push = useKhalaSyncPush()
 
   const messages = sortByKeyAsc(
     chatState.items.filter(message => message.deletedAt === null),
@@ -75,50 +90,61 @@ export default function ThreadMessagesScreen() {
   return (
     <SafeAreaView className="flex-1 bg-bg" edges={["top", "bottom", "left", "right"]}>
       <AppHeader showBack title={title ?? "Thread"} />
-      {status === "missing_token" ? (
-        <View className="flex-1 items-center justify-center px-8">
-          <Text className="text-center font-mono text-sm text-textFaint">
-            Set EXPO_PUBLIC_KHALA_SYNC_DEMO_TOKEN before starting the app.
-          </Text>
-        </View>
-      ) : status === "error" ? (
-        <View className="flex-1 items-center justify-center px-8">
-          <Text className="text-center font-sans text-base text-danger">
-            {chatState.error ?? runtimeState.error}
-          </Text>
-        </View>
-      ) : loading ? (
-        <View className="flex-1 items-center justify-center">
-          <Text className="font-sans text-base text-textMuted">loading messages…</Text>
-        </View>
-      ) : hasRichTranscript ? (
-        <FlatList
-          contentContainerClassName="gap-2 px-4 py-4"
-          data={transcriptParts}
-          keyExtractor={part => part.id}
-          ref={listRef}
-          renderItem={({ item: part }) => <TranscriptPartRow part={part} />}
-        />
-      ) : messages.length === 0 ? (
-        <View className="flex-1 items-center justify-center">
-          <Text className="font-sans text-base text-textMuted">No messages yet</Text>
-        </View>
-      ) : (
-        <FlatList
-          contentContainerClassName="gap-2 px-4 py-4"
-          data={messages}
-          keyExtractor={message => message.messageId}
-          ref={listRef}
-          renderItem={({ item: message }) => (
-            <View className="rounded-xl border border-border bg-surfaceRaised px-3 py-2">
-              <Text className="font-mono text-xs text-textFaint">
-                {formatClockTime(message.createdAt)}
+      <KeyboardAvoidingView
+        behavior={chatComposerKeyboardVerticalOffset === 0 ? "height" : "padding"}
+        className="flex-1"
+        keyboardVerticalOffset={chatComposerKeyboardVerticalOffset}
+      >
+        <View className="flex-1">
+          {status === "missing_token" ? (
+            <View className="flex-1 items-center justify-center px-8">
+              <Text className="text-center font-mono text-sm text-textFaint">
+                Set EXPO_PUBLIC_KHALA_SYNC_DEMO_TOKEN before starting the app.
               </Text>
-              <Text className="mt-1 font-sans text-base text-text">{message.body}</Text>
             </View>
+          ) : status === "error" ? (
+            <View className="flex-1 items-center justify-center px-8">
+              <Text className="text-center font-sans text-base text-danger">
+                {chatState.error ?? runtimeState.error}
+              </Text>
+            </View>
+          ) : loading ? (
+            <View className="flex-1 items-center justify-center">
+              <Text className="font-sans text-base text-textMuted">loading messages…</Text>
+            </View>
+          ) : hasRichTranscript ? (
+            <FlatList
+              contentContainerClassName="gap-2 px-4 py-4"
+              data={transcriptParts}
+              keyExtractor={part => part.id}
+              ref={listRef}
+              renderItem={({ item: part }) => <TranscriptPartRow part={part} />}
+            />
+          ) : messages.length === 0 ? (
+            <View className="flex-1 items-center justify-center">
+              <Text className="font-sans text-base text-textMuted">No messages yet</Text>
+            </View>
+          ) : (
+            <FlatList
+              contentContainerClassName="gap-2 px-4 py-4"
+              data={messages}
+              keyExtractor={message => message.messageId}
+              ref={listRef}
+              renderItem={({ item: message }) => (
+                <View className="rounded-xl border border-border bg-surfaceRaised px-3 py-2">
+                  <Text className="font-mono text-xs text-textFaint">
+                    {formatClockTime(message.createdAt)}
+                  </Text>
+                  <Text className="mt-1 font-sans text-base text-text">{message.body}</Text>
+                </View>
+              )}
+            />
           )}
-        />
-      )}
+        </View>
+        {threadId === undefined || status === "missing_token" ? null : (
+          <ChatComposer activeTurn={activeTurn} push={push} threadId={threadId} />
+        )}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   )
 }

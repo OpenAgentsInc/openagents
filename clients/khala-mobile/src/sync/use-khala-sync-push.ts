@@ -1,0 +1,59 @@
+import { useCallback, useMemo, useRef } from "react"
+import { decodePushResponse, type PushResponse } from "@openagentsinc/khala-sync"
+
+import { KHALA_SYNC_DEMO_BASE_URL, KHALA_SYNC_DEMO_TOKEN } from "../config/khala-sync-demo"
+import { buildPushRequestBody, buildPushUrl, makeSafeRef, stableArgsJson } from "./khala-sync-push-core"
+
+export type PendingMutation = Readonly<{
+  name: string
+  args: Record<string, unknown>
+}>
+
+/** POSTs a batch of mutations to /api/sync/push and returns the decoded
+ * response. Generates a fresh clientId per app session (not reused across
+ * relaunches) so the mutationId counter can always start at 1 without
+ * colliding with a stale server-side ledger watermark from a prior session. */
+export function useKhalaSyncPush(): (mutations: ReadonlyArray<PendingMutation>) => Promise<PushResponse> {
+  const clientIdRef = useRef<string | undefined>(undefined)
+  if (clientIdRef.current === undefined) clientIdRef.current = makeSafeRef("mobile-composer")
+  const nextMutationIdRef = useRef(1)
+  const clientGroupId = useMemo(() => "khala-mobile-composer", [])
+
+  return useCallback(
+    async (mutations: ReadonlyArray<PendingMutation>): Promise<PushResponse> => {
+      const envelopes = mutations.map(mutation => ({
+        argsJson: stableArgsJson(mutation.args),
+        mutationId: nextMutationIdRef.current++,
+        name: mutation.name
+      }))
+      const body = buildPushRequestBody({
+        clientGroupId,
+        clientId: clientIdRef.current as string,
+        mutations: envelopes
+      })
+      const response = await fetch(buildPushUrl(KHALA_SYNC_DEMO_BASE_URL), {
+        body: JSON.stringify(body),
+        headers: {
+          authorization: `Bearer ${KHALA_SYNC_DEMO_TOKEN}`,
+          "content-type": "application/json"
+        },
+        method: "POST"
+      })
+      const json: unknown = await response.json()
+      if (!response.ok) {
+        const messageSafe =
+          typeof json === "object" && json !== null && "messageSafe" in json
+            ? String((json as { messageSafe: unknown }).messageSafe)
+            : `push failed (${response.status})`
+        throw new Error(messageSafe)
+      }
+      const decoded = decodePushResponse(json)
+      const rejected = decoded.results.find(result => result.status === "rejected")
+      if (rejected !== undefined) {
+        throw new Error(rejected.errorMessageSafe ?? rejected.errorCode ?? "mutation rejected")
+      }
+      return decoded
+    },
+    [clientGroupId]
+  )
+}
