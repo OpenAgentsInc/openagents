@@ -31,6 +31,10 @@ import {
   deploymentStateSql,
   groupChainRowsFromRaw,
   groupChainSql,
+  missingReferences,
+  ALL_SITES_CONTENT_TABLES,
+  SITES_REMAINDER_TABLES,
+  SITES_REMAINDER_REFERENTIAL_CHECKS,
   postgresDeploymentStates,
   postgresGroupChains,
   postgresSitesContentNewestHashes,
@@ -347,6 +351,51 @@ describe("verify report (pure)", () => {
     expect(drifted.scalarMismatches).toHaveLength(1)
     expect(drifted.stateMismatches).toHaveLength(1)
     expect(drifted.newestHashMismatches).toHaveLength(1)
+  })
+})
+
+describe("remainder registry + referential helpers (pure)", () => {
+  test("ALL tables include the remainder set and exclude the AE firehose", () => {
+    for (const table of SITES_REMAINDER_TABLES) {
+      expect(ALL_SITES_CONTENT_TABLES).toContain(table)
+    }
+    // 15 core + 36 remainder = 51 mirrored sites tables.
+    expect(ALL_SITES_CONTENT_TABLES.length).toBe(51)
+    // The Analytics-Engine-candidate campaign firehose is NOT ported.
+    expect(SITES_REMAINDER_TABLES as ReadonlyArray<string>).not.toContain(
+      "targeted_site_campaign_metric_events",
+    )
+    // Secret-bearing env values ARE mirrored (metadata only) …
+    expect(SITES_REMAINDER_TABLES as ReadonlyArray<string>).toContain(
+      "site_environment_values",
+    )
+  })
+
+  test("commerce money tables carry to-the-cent sum tallies", () => {
+    const amount = SITES_CONTENT_SCALAR_TALLIES.site_commerce_payment_events
+    expect(amount.map((t) => t.metric)).toContain("sum_amount")
+    expect(
+      SITES_CONTENT_SCALAR_TALLIES.site_payment_catalog_items.map(
+        (t) => t.metric,
+      ),
+    ).toContain("sum_price_amount_minor_units")
+  })
+
+  test("missingReferences finds orphan child keys; canonicalizes number/string", () => {
+    // All present → no orphans.
+    expect(missingReferences(["a", "b"], ["a", "b", "c"])).toEqual([])
+    // Orphan detected.
+    expect(missingReferences(["a", "x"], ["a", "b"])).toEqual(["x"])
+    // NULLs are ignored, and 7 (number) matches "7" (postgres.js bigint text).
+    expect(missingReferences([null, 7], ["7"])).toEqual([])
+  })
+
+  test("referential checks target the money/referral relations", () => {
+    expect(SITES_REMAINDER_REFERENTIAL_CHECKS.map((c) => c.childTable)).toEqual([
+      "site_commerce_revenue_share_links",
+      "site_referral_payout_ledger_entries",
+      "referral_invites",
+    ])
   })
 })
 

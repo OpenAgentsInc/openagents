@@ -10,14 +10,18 @@
 // `site_builder_events`, `site_builder_phase_runs`,
 // `site_builder_file_snapshots`, `site_builder_previews`,
 // `site_builder_artifacts`, `site_builder_repair_attempts`,
-// `site_builder_saved_versions`. (The KS-8.12 issue's remaining ~36
-// tables — content satellites, `site_environment_values` (secrets —
-// SPEC invariant 9), the site COMMERCE/payment tables (money discipline:
-// KS-8.7/KS-8.8 rails referenced by ID, never forked), `targeted_site_*`
-// incl. the Analytics-Engine-candidate metric events,
-// `tenant_custom_hostnames`, legacy `deployments`/`deployment_events` —
-// move in the filed follow-up remainder lane #8357; see MIGRATION_PLAN.md
-// §3.9.)
+// `site_builder_saved_versions`. The KS-8.12 REMAINDER (#8357) then added
+// the 36 follow-up tables — content satellites,
+// `site_environment_values` (secret-bearing; `plain_value` EXCLUDED from
+// the shared registry column list so it never rides the sync path — SPEC
+// invariant 9), the site COMMERCE/payment tables (money discipline:
+// KS-8.7/KS-8.8 rails referenced by ID, mirror-only, never forked),
+// `targeted_site_*` (minus the Analytics-Engine-candidate
+// `targeted_site_campaign_metric_events`), `tenant_custom_hostnames`, and
+// the legacy `deployments`/`deployment_events` pair — to the SAME shared
+// registry (`0025_sites_remainder.sql`), so this seam auto-classifies and
+// mirrors them wherever a sites write call site is already wrapped. See
+// MIGRATION_PLAN.md §3.9.
 //
 // THE SEAM: like the forum domain, sites writes are plain D1 SQL spread
 // across repository-style modules whose functions all take
@@ -77,8 +81,14 @@
 //
 // PUBLIC-SAFETY: site prompts, builder message bodies, and snapshot
 // preview text are customer content — diagnostics reference row KEYS and
-// statement heads only, never row values. `site_environment_values`
-// (which may carry secrets) is deliberately OUTSIDE the scoped set.
+// statement heads only, never row values. `site_environment_values` may
+// carry secrets: its `plain_value` column is EXCLUDED from the shared
+// registry column list, so the read-back mirror projects it away and the
+// secret material never reaches Postgres (only metadata + the `secret_ref`
+// indirection is mirrored — SPEC invariant 9). NOTE: because the twin
+// omits `plain_value`, an env-values row is not byte-identical across
+// stores; `compare`-mode row-equality would flag it, but reads stay `d1`
+// this lane (Scope E deferred), so no compare runs against it.
 //
 // Cutover order (docs/khala-sync/RUNBOOK.md "Sites domain cutover"):
 // dual-write on → backfill (scripts/backfill-sites-content.ts) → verify

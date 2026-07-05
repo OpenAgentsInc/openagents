@@ -5,8 +5,12 @@
  * Reads D1 rows through `wrangler d1 execute <db> --remote --json` (the
  * KS-8.1/8.2/8.5/8.10 pattern: reuses the repo's existing wrangler auth —
  * no new admin-API surface) in bounded rowid-keyset pages, and converges
- * them into the Postgres twins from khala-sync migration
- * `0020_sites_core.sql` over a DIRECT connection (never Hyperdrive).
+ * them into the Postgres twins from khala-sync migrations
+ * `0020_sites_core.sql` (core) + `0025_sites_remainder.sql` (the KS-8.12
+ * remainder, #8357: satellites, secret-safe `site_environment_values`,
+ * commerce/money, targeted sites, hostnames, legacy deployments) over a
+ * DIRECT connection (never Hyperdrive). Default table set is the full
+ * core+remainder `ALL_SITES_CONTENT_TABLES`.
  * Every table converges on its PK to the D1 snapshot value — idempotent;
  * a re-run converges to the same state, and the runbook's sequence runs
  * the backfill TWICE (the second sweep is the catch-up pass after
@@ -47,12 +51,15 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import * as path from "node:path"
 import { SQL } from "bun"
 import {
+  ALL_SITES_CONTENT_TABLES,
   buildSitesContentVerifyReport,
   d1SitesContentNewestHashes,
   deploymentStateRowsFromRaw,
   deploymentStateSql,
   groupChainRowsFromRaw,
+  missingReferences,
   postgresDeploymentStates,
+  postgresDistinctColumn,
   postgresGroupChains,
   postgresSitesContentNewestHashes,
   postgresSitesContentRowCount,
@@ -61,7 +68,7 @@ import {
   SITES_CONTENT_SCALAR_TALLIES,
   SITES_CONTENT_TABLE_ORDER,
   SITES_CONTENT_TABLE_PK,
-  SITES_CONTENT_TABLES,
+  SITES_REMAINDER_REFERENTIAL_CHECKS,
   sitesContentVerifyReportClean,
   upsertSitesContentRows,
   type D1SourceRow,
@@ -118,7 +125,7 @@ const parseArgs = (argv: ReadonlyArray<string>): Options | undefined => {
     else if (arg === "--state-file") options.stateFile = next()
     else if (arg === "--table") {
       const table = next()
-      if (!SITES_CONTENT_TABLES.includes(table as SitesContentTable)) {
+      if (!ALL_SITES_CONTENT_TABLES.includes(table as SitesContentTable)) {
         console.error(`error: unknown table ${table}`)
         return undefined
       }
@@ -360,6 +367,53 @@ const verifyTable = async (
   return printReport(report, options.verifyNewest)
 }
 
+const verifyReferentialChecks = async (
+  sql: SyncSql,
+  options: Options,
+): Promise<boolean> => {
+  console.log(`\n== referential set-membership (money / referral) ==`)
+  let allGood = true
+  for (const check of SITES_REMAINDER_REFERENTIAL_CHECKS) {
+    // D1 side: child column values vs parent ids.
+    const d1Child = d1Query(
+      options,
+      `SELECT DISTINCT ${check.childColumn} AS value FROM ${check.childTable} WHERE ${check.childColumn} IS NOT NULL`,
+    ).map((row) => row["value"])
+    const d1Parent = d1Query(
+      options,
+      `SELECT ${check.parentColumn} AS value FROM ${check.parentTable}`,
+    ).map((row) => row["value"])
+    const d1Missing = missingReferences(d1Child, d1Parent)
+
+    // Postgres side: same relation must hold on the twin.
+    const pgChild = await postgresDistinctColumn(
+      sql,
+      check.childTable,
+      check.childColumn,
+    )
+    const pgParent = await postgresDistinctColumn(
+      sql,
+      check.parentTable,
+      check.parentColumn,
+    )
+    const pgMissing = missingReferences([...pgChild], [...pgParent])
+
+    const ok = d1Missing.length === 0 && pgMissing.length === 0
+    allGood = allGood && ok
+    console.log(
+      `  ${check.name}: ${
+        ok
+          ? "ok"
+          : `MISSING d1=${d1Missing.length} postgres=${pgMissing.length}`
+      }`,
+    )
+    for (const key of [...d1Missing, ...pgMissing].slice(0, 10)) {
+      console.log(`    orphan key: ${key}`)
+    }
+  }
+  return allGood
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -376,16 +430,22 @@ const main = async (): Promise<number> => {
 
   const sql = new SQL(options.databaseUrl) as unknown as SyncSql
   const tables =
-    options.table === undefined ? SITES_CONTENT_TABLES : [options.table]
+    options.table === undefined ? ALL_SITES_CONTENT_TABLES : [options.table]
   try {
     if (options.verify) {
       let allGood = true
       for (const table of tables) {
         allGood = (await verifyTable(sql, options, table)) && allGood
       }
+      // Money/referral set-membership: child.column values must be a subset
+      // of parent ids WITHIN each store (no cross-store joins). Only run when
+      // the whole table set is in scope (a single --table run skips it).
+      if (options.table === undefined) {
+        allGood = (await verifyReferentialChecks(sql, options)) && allGood
+      }
       console.log(
         allGood
-          ? "\nVERIFY OK: exact counts, domain tallies, version chains, deployment states, builder sequence chains, and newest-N hashes match."
+          ? "\nVERIFY OK: exact counts, domain tallies (incl. commerce totals), version chains, deployment states, builder sequence chains, referential set-membership, and newest-N hashes match."
           : "\nVERIFY FAILED: mismatches above — investigate before any read cutover.",
       )
       return allGood ? 0 : 1

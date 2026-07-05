@@ -982,6 +982,50 @@ Flag-flip order — never skip a step, each step soaks before the next:
 Rollback at ANY step: set `KHALA_SYNC_SITES_READS=d1` (reads) and/or
 `KHALA_SYNC_SITES_DUAL_WRITE=off` (writes). D1 authority is never
 behind.
+
+### Sites REMAINDER tables (KS-8.12 follow-up, #8357)
+
+The remainder 36 tables ride the SAME shared registry
+(`sites-content-tables.ts`), the SAME mirroring seam
+(`sitesContentDatabaseForEnv`), and the SAME flags as the core above —
+they were simply added to the registry (Postgres twins in khala-sync
+migration `0025_sites_remainder.sql`), so no new flag or wiring is
+needed: the mirror auto-classifies + read-back-mirrors them wherever a
+sites write call site is already wrapped, and
+`scripts/backfill-sites-content.ts` now backfills + verifies the full
+core+remainder set (`ALL_SITES_CONTENT_TABLES`). Scope:
+
+- **Content satellites** — build validations, revision feedback,
+  compatibility checks, provisioning plans, storage bindings, source
+  exports, and the referral family (`site_referral_sources`,
+  `referral_invites`, `site_referral_policy_events`).
+- **`site_environment_values` (SECRETS, invariant 9)** — the twin
+  carries metadata + the `secret_ref` INDIRECTION only. `plain_value` is
+  EXCLUDED from the registry column list, so neither the dual-write
+  mirror nor the backfill ever reads or ships it. (Because the twin omits
+  `plain_value`, an env-values row is not byte-identical across stores;
+  reads stay `d1` this lane so no `compare` runs against it.)
+- **Commerce / money** — `site_commerce_*`, `site_mdk_*`,
+  `site_payment_catalog_items`, `site_referral_payout_ledger_entries`.
+  D1 stays the money authority; the twin is MIRROR-ONLY. These reference
+  the KS-8.7/8.8 rails BY ID and MUST NOT fork them (plain text refs, no
+  FKs). Verify adds commerce totals to the cent (`SUM(amount)` per asset)
+  and set-membership referential checks (revenue-share → payment-event,
+  payout-ledger → referral-source, invite → referral-source) run WITHIN
+  each store — no cross-store joins.
+- **Targeted sites + hostnames + legacy** — `targeted_site_*` (14),
+  `tenant_custom_hostnames`, legacy `deployments`/`deployment_events`.
+  `targeted_site_campaign_metric_events` is DELIBERATELY EXCLUDED — the
+  Analytics-Engine-candidate campaign firehose stays on D1/AE pending a
+  telemetry-sink decision.
+
+Backfill/verify is the same procedure as the core (steps 2–3 above);
+`bun scripts/backfill-sites-content.ts --verify` now also prints the
+commerce totals and the referential set-membership section. Read cutover
+(Scope E) stays DEFERRED for the whole sites domain, so read-serving
+secondary indexes are re-derived at that cutover rather than ported now.
+Same rollback: one flag flip back to `d1` / `off`.
+
 ## CRM / email / enrichment domain cutover (KS-8.11, #8322)
 
 The KS-8.11 domain migration: the 36 canonical CRM/email/enrichment tables

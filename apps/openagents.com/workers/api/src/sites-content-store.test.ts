@@ -299,7 +299,7 @@ describe('classifySitesContentStatement', () => {
   test('writes to non-scoped tables pass through', () => {
     expect(
       classifySitesContentStatement(
-        `INSERT INTO site_environment_values (id, site_id, key, kind) VALUES (?, ?, ?, ?)`,
+        `INSERT INTO software_orders (id, status) VALUES (?, ?)`,
       ),
     ).toEqual({ kind: 'passthrough' })
     expect(
@@ -307,6 +307,31 @@ describe('classifySitesContentStatement', () => {
         `UPDATE software_orders SET status = ? WHERE id = ?`,
       ),
     ).toEqual({ kind: 'passthrough' })
+  })
+
+  test('KS-8.12 remainder tables are now scoped mirrored-writes', () => {
+    // env values (secret-bearing) join the scoped set via the shared
+    // registry; the secret payload is excluded at the column-projection
+    // layer, not here.
+    expect(
+      classifySitesContentStatement(
+        `INSERT INTO site_environment_values (id, site_id, key, kind) VALUES (?, ?, ?, ?)`,
+      ),
+    ).toEqual({
+      keySource: { column: 'id', index: 0, kind: 'bind' },
+      kind: 'mirrored-write',
+      table: 'site_environment_values',
+    })
+    // a targeted-site write keyed by its PK.
+    expect(
+      classifySitesContentStatement(
+        `UPDATE targeted_site_prospects SET review_state = ? WHERE id = ?`,
+      ),
+    ).toEqual({
+      keySource: { column: 'id', index: 1, kind: 'bind' },
+      kind: 'mirrored-write',
+      table: 'targeted_site_prospects',
+    })
   })
 
   test('SELECTs over only scoped tables are comparable; mixed refs pass through', () => {

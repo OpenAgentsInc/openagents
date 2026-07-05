@@ -950,14 +950,38 @@ lives at `packages/khala-sync-server/scripts/backfill-sites-content.ts`
 state-machine census, builder sequence chains, newest-N row hashes;
 rowid-cursor resumable — file snapshots/manifests page small). Read
 authority remains D1 (`KHALA_SYNC_SITES_READS` default `d1`; `compare`
-shadow-reads; `postgres` defers). The REMAINDER (~36 tables: content
-satellites, `site_environment_values` (secrets — invariant 9), site
-COMMERCE/`site_mdk_*` money tables (KS-8.7/KS-8.8 rails by ID),
-`targeted_site_*`, `tenant_custom_hostnames`, legacy
-`deployments`/`deployment_events`) moves in the filed follow-up
-remainder lane
-[#8357](https://github.com/OpenAgentsInc/openagents/issues/8357); final
-destructive D1 retirement stays in KS-8.19
+shadow-reads; `postgres` defers).
+
+**KS-8.12 remainder status (2026-07-04, #8357):** the REMAINDER 36 tables
+are now LANDED behind the SAME shared registry
+(`sites-content-tables.ts`) and mirroring seam — Postgres twins in
+`khala-sync-server` migration `0025_sites_remainder.sql`. Coverage:
+Scope A content satellites (`site_build_validations`,
+`site_revision_feedback`, `site_compatibility_checks`,
+`site_provisioning_plans`, `site_storage_bindings`,
+`site_source_exports`, and the referral family `site_referral_sources` /
+`referral_invites` / `site_referral_policy_events`); Scope B
+`site_environment_values` — SECRET-BEARING, so `plain_value` is EXCLUDED
+from the registry column list and the twin carries metadata + the
+`secret_ref` INDIRECTION only (SPEC invariant 9; the KS-8.5 credential
+posture); Scope C site COMMERCE/money (`site_commerce_*` (5),
+`site_mdk_checkout_intents`, `site_mdk_account_bindings`,
+`site_payment_catalog_items`, `site_referral_payout_ledger_entries`) —
+D1 stays money authority, twin is MIRROR-ONLY, KS-8.7/8.8 rails
+referenced BY ID (never forked, no FKs), verified by commerce totals to
+the cent (`SUM(amount)` per asset) + set-membership referential checks
+(no cross-store joins); Scope D `targeted_site_*` (14) +
+`tenant_custom_hostnames` + legacy `deployments`/`deployment_events`.
+DELIBERATELY EXCLUDED: `targeted_site_campaign_metric_events` — the
+Analytics-Engine-candidate campaign firehose stays on D1/AE pending a
+telemetry-sink decision, not blind-copied into a relational twin. The
+dual-write mirror auto-covers these tables wherever a sites write call
+site is already wrapped; `scripts/backfill-sites-content.ts` now
+backfills + verifies the full core+remainder set
+(`ALL_SITES_CONTENT_TABLES`). SITES READ CUTOVER (Scope E,
+`KHALA_SYNC_SITES_READS=postgres`) stays DEFERRED — reads remain `d1`;
+read-serving indexes are re-derived at that cutover. Final destructive
+D1 retirement stays in KS-8.19
 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
 
 - **What:** the Sites product: projects/versions/deployments/grants,

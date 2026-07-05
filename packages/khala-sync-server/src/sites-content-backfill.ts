@@ -39,6 +39,8 @@ import {
   SITES_CONTENT_TABLE_COLUMNS,
   SITES_CONTENT_TABLE_PK,
   SITES_CONTENT_TABLES,
+  SITES_REMAINDER_TABLES,
+  ALL_SITES_CONTENT_TABLES,
   upsertSitesContentRows,
   type SitesContentRow,
   type SitesContentTable,
@@ -49,6 +51,8 @@ export {
   SITES_CONTENT_TABLE_COLUMNS,
   SITES_CONTENT_TABLE_PK,
   SITES_CONTENT_TABLES,
+  SITES_REMAINDER_TABLES,
+  ALL_SITES_CONTENT_TABLES,
   upsertSitesContentRows,
   type SitesContentRow,
   type SitesContentTable,
@@ -75,6 +79,43 @@ export const SITES_CONTENT_TABLE_ORDER: Readonly<
   site_events: "created_at",
   site_projects: "updated_at",
   site_versions: "created_at",
+  site_build_validations: "created_at",
+  site_revision_feedback: "updated_at",
+  site_compatibility_checks: "created_at",
+  site_provisioning_plans: "updated_at",
+  site_storage_bindings: "updated_at",
+  site_source_exports: "updated_at",
+  site_referral_sources: "updated_at",
+  referral_invites: "updated_at",
+  site_referral_policy_events: "created_at",
+  site_environment_values: "updated_at",
+  site_commerce_products: "updated_at",
+  site_commerce_paid_actions: "updated_at",
+  site_commerce_payment_events: "created_at",
+  site_commerce_revenue_share_links: "created_at",
+  site_commerce_review_decisions: "updated_at",
+  site_mdk_checkout_intents: "updated_at",
+  site_mdk_account_bindings: "updated_at",
+  site_payment_catalog_items: "updated_at",
+  site_referral_payout_ledger_entries: "created_at",
+  targeted_site_campaigns: "updated_at",
+  targeted_site_prospects: "updated_at",
+  targeted_site_capture_policy_events: "created_at",
+  targeted_site_static_capture_runs: "created_at",
+  targeted_site_rendered_capture_runs: "created_at",
+  targeted_site_capture_provider_adapter_runs: "created_at",
+  targeted_site_quality_audits: "created_at",
+  targeted_site_remake_briefs: "created_at",
+  targeted_site_remake_preview_generations: "created_at",
+  targeted_site_operator_review_events: "created_at",
+  targeted_site_remake_outreach_email_dispatches: "created_at",
+  targeted_site_agent_toolkit_grants: "updated_at",
+  targeted_site_agent_toolkit_actions: "created_at",
+  targeted_site_sales_reward_policy_events: "created_at",
+  tenant_custom_hostnames: "updated_at",
+  deployments: "updated_at",
+  deployment_events: "created_at",
+
 }
 
 // ---------------------------------------------------------------------------
@@ -309,6 +350,99 @@ export const SITES_CONTENT_SCALAR_TALLIES: Readonly<
       sql: `SELECT COALESCE(SUM(LENGTH(static_assets_manifest_json)), 0) AS value FROM site_versions`,
     },
   ],
+  site_build_validations: [],
+  site_revision_feedback: [],
+  site_compatibility_checks: [],
+  site_provisioning_plans: [],
+  site_storage_bindings: [],
+  site_source_exports: [],
+  site_referral_sources: [],
+  referral_invites: [],
+  site_referral_policy_events: [],
+  site_environment_values: [],
+  site_commerce_products: [
+    {
+      metric: "sum_amount_minor_units",
+      sql: `SELECT COALESCE(SUM(amount), 0) AS value FROM site_commerce_products`,
+    },
+  ],
+  site_commerce_paid_actions: [
+    {
+      metric: "sum_amount_minor_units",
+      sql: `SELECT COALESCE(SUM(amount), 0) AS value FROM site_commerce_paid_actions`,
+    },
+  ],
+  site_commerce_payment_events: [
+    {
+      metric: "sum_amount",
+      sql: `SELECT COALESCE(SUM(amount), 0) AS value FROM site_commerce_payment_events`,
+    },
+    {
+      metric: "sum_amount_credits",
+      sql: `SELECT COALESCE(SUM(CASE WHEN asset = 'credits' THEN amount ELSE 0 END), 0) AS value FROM site_commerce_payment_events`,
+    },
+    {
+      metric: "sum_amount_sats",
+      sql: `SELECT COALESCE(SUM(CASE WHEN asset = 'sats' THEN amount ELSE 0 END), 0) AS value FROM site_commerce_payment_events`,
+    },
+    {
+      metric: "sum_amount_usd",
+      sql: `SELECT COALESCE(SUM(CASE WHEN asset = 'usd' THEN amount ELSE 0 END), 0) AS value FROM site_commerce_payment_events`,
+    },
+  ],
+  site_commerce_revenue_share_links: [
+    {
+      metric: "claimed_payouts",
+      sql: `SELECT COALESCE(SUM(provider_payout_claimed), 0) AS value FROM site_commerce_revenue_share_links`,
+    },
+  ],
+  site_commerce_review_decisions: [],
+  site_mdk_checkout_intents: [
+    {
+      metric: "sum_amount_minor_units",
+      sql: `SELECT COALESCE(SUM(amount_minor_units), 0) AS value FROM site_mdk_checkout_intents`,
+    },
+  ],
+  site_mdk_account_bindings: [],
+  site_payment_catalog_items: [
+    {
+      metric: "sum_price_amount_minor_units",
+      sql: `SELECT COALESCE(SUM(price_amount_minor_units), 0) AS value FROM site_payment_catalog_items`,
+    },
+  ],
+  site_referral_payout_ledger_entries: [
+    {
+      metric: "sum_amount_sats",
+      sql: `SELECT COALESCE(SUM(amount_sats), 0) AS value FROM site_referral_payout_ledger_entries`,
+    },
+    {
+      metric: "sum_qualifying_amount_sats",
+      sql: `SELECT COALESCE(SUM(qualifying_amount_sats), 0) AS value FROM site_referral_payout_ledger_entries`,
+    },
+  ],
+  targeted_site_campaigns: [],
+  targeted_site_prospects: [],
+  targeted_site_capture_policy_events: [],
+  targeted_site_static_capture_runs: [],
+  targeted_site_rendered_capture_runs: [],
+  targeted_site_capture_provider_adapter_runs: [],
+  targeted_site_quality_audits: [],
+  targeted_site_remake_briefs: [],
+  targeted_site_remake_preview_generations: [],
+  targeted_site_operator_review_events: [],
+  targeted_site_remake_outreach_email_dispatches: [],
+  targeted_site_agent_toolkit_grants: [],
+  targeted_site_agent_toolkit_actions: [],
+  targeted_site_sales_reward_policy_events: [
+    {
+      metric: "sum_reward_amount",
+      sql: `SELECT COALESCE(SUM(reward_amount), 0) AS value FROM targeted_site_sales_reward_policy_events`,
+    },
+  ],
+  tenant_custom_hostnames: [],
+  deployments: [],
+  deployment_events: [],
+
 }
 
 export const postgresSitesContentScalar = async (
@@ -609,3 +743,81 @@ export const sitesContentVerifyReportClean = (
   report.chainMismatches.length === 0 &&
   report.stateMismatches.length === 0 &&
   report.newestHashMismatches.length === 0
+
+// ---------------------------------------------------------------------------
+// Set-membership referential checks (money/referral integrity, no cross-store
+// joins — the KS-8.12 acceptance for the commerce tables)
+// ---------------------------------------------------------------------------
+
+/**
+ * A child.column ⊆ parent.column referential check run WITHIN each store
+ * (never a cross-store join): the commerce/referral remainder tables carry
+ * KS-8.7/8.8-style refs and parent ids, and mirror-only fidelity means the
+ * membership relation must hold on Postgres exactly as it holds on D1.
+ */
+export type SitesReferentialCheck = Readonly<{
+  name: string
+  childTable: SitesContentTable
+  childColumn: string
+  parentTable: SitesContentTable
+  parentColumn: string
+}>
+
+export const SITES_REMAINDER_REFERENTIAL_CHECKS: ReadonlyArray<SitesReferentialCheck> =
+  [
+    {
+      childColumn: "payment_event_id",
+      childTable: "site_commerce_revenue_share_links",
+      name: "revenue_share_links.payment_event_id in payment_events.id",
+      parentColumn: "id",
+      parentTable: "site_commerce_payment_events",
+    },
+    {
+      childColumn: "referral_source_id",
+      childTable: "site_referral_payout_ledger_entries",
+      name: "payout_ledger.referral_source_id in referral_sources.id",
+      parentColumn: "id",
+      parentTable: "site_referral_sources",
+    },
+    {
+      childColumn: "referral_source_id",
+      childTable: "referral_invites",
+      name: "referral_invites.referral_source_id in referral_sources.id",
+      parentColumn: "id",
+      parentTable: "site_referral_sources",
+    },
+  ]
+
+/** Child key values (non-null) that are absent from the parent key set. */
+export const missingReferences = (
+  childValues: ReadonlyArray<unknown>,
+  parentValues: ReadonlyArray<unknown>,
+): ReadonlyArray<string> => {
+  const parents = new Set(
+    parentValues
+      .map((value) => normalizeSitesContentValue(value))
+      .filter((value): value is string | number => value !== null)
+      .map((value) => String(value)),
+  )
+  const missing = new Set<string>()
+  for (const raw of childValues) {
+    const value = normalizeSitesContentValue(raw)
+    if (value === null) continue
+    if (!parents.has(String(value))) missing.add(String(value))
+  }
+  return [...missing]
+}
+
+/** Distinct non-null values of one column on the Postgres twin. */
+export const postgresDistinctColumn = async (
+  sql: SyncSql,
+  table: SitesContentTable,
+  column: string,
+): Promise<ReadonlyArray<string>> => {
+  const unsafe = requireSitesContentUnsafe(sql)
+  const rows = await unsafe(
+    `SELECT DISTINCT ${column} AS value FROM ${table} WHERE ${column} IS NOT NULL`,
+    [],
+  )
+  return rows.map((row) => String(row["value"]))
+}

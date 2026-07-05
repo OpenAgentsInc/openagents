@@ -1407,6 +1407,166 @@ CREATE TABLE site_builder_saved_versions (
 `
 
 /**
+ * Condensed live D1 schema for the KS-8.12 REMAINDER (#8357) contract
+ * suite — the subset of remainder tables the suite exercises: secrets
+ * (site_environment_values, WITH plain_value so the test can prove the
+ * mirror DROPS it), idempotency dedupe (site_provisioning_plans,
+ * targeted_site_*), and the money/referral tables (payment_events,
+ * revenue_share_links, referral_sources, payout_ledger). D1-authority
+ * dedupe UNIQUEs are KEPT so the suite exercises real dedupe rejection.
+ */
+export const SITES_REMAINDER_D1_SCHEMA = `
+CREATE TABLE site_environment_values (
+  id TEXT PRIMARY KEY NOT NULL,
+  site_id TEXT,
+  key TEXT,
+  kind TEXT,
+  secret_ref TEXT,
+  plain_value TEXT,
+  created_at TEXT,
+  updated_at TEXT,
+  deleted_at TEXT
+);
+
+CREATE TABLE site_provisioning_plans (
+  id TEXT PRIMARY KEY NOT NULL,
+  idempotency_key TEXT,
+  site_id TEXT,
+  status TEXT,
+  requested_by_user_id TEXT,
+  reviewed_by_user_id TEXT,
+  resource_manifest_json TEXT,
+  receipt_json TEXT,
+  created_at TEXT,
+  reviewed_at TEXT,
+  updated_at TEXT,
+  archived_at TEXT,
+  UNIQUE(idempotency_key)
+);
+
+CREATE TABLE targeted_site_campaigns (
+  id TEXT PRIMARY KEY NOT NULL,
+  slug TEXT,
+  name TEXT,
+  owner_user_id TEXT,
+  operator_user_id TEXT,
+  vertical TEXT,
+  geography TEXT,
+  source_authority_ref TEXT,
+  budget_cap_ref TEXT,
+  suppression_policy_ref TEXT,
+  operator_state TEXT,
+  metadata_json TEXT,
+  created_at TEXT,
+  updated_at TEXT,
+  archived_at TEXT,
+  UNIQUE(slug)
+);
+
+CREATE TABLE targeted_site_prospects (
+  id TEXT PRIMARY KEY NOT NULL,
+  campaign_id TEXT,
+  idempotency_key TEXT,
+  normalized_domain TEXT,
+  origin_url TEXT,
+  company_name TEXT,
+  site_name TEXT,
+  contact_refs_json TEXT,
+  vertical TEXT,
+  geography TEXT,
+  source_ref TEXT,
+  discovery_confidence NUMERIC,
+  suppression_state TEXT,
+  capture_state TEXT,
+  review_state TEXT,
+  metadata_json TEXT,
+  discovered_at TEXT,
+  created_at TEXT,
+  updated_at TEXT,
+  archived_at TEXT,
+  UNIQUE(idempotency_key),
+  UNIQUE(campaign_id, normalized_domain)
+);
+
+CREATE TABLE site_referral_sources (
+  id TEXT PRIMARY KEY NOT NULL,
+  site_id TEXT,
+  site_version_id TEXT,
+  referrer_user_id TEXT,
+  public_source_ref TEXT,
+  public_slug TEXT,
+  campaign_ref TEXT,
+  source_label TEXT,
+  policy_state TEXT,
+  created_at TEXT,
+  updated_at TEXT,
+  archived_at TEXT,
+  UNIQUE(public_source_ref)
+);
+
+CREATE TABLE site_referral_payout_ledger_entries (
+  id TEXT PRIMARY KEY NOT NULL,
+  payout_ref TEXT,
+  idempotency_key TEXT,
+  referral_attribution_id TEXT,
+  referral_source_id TEXT,
+  referral_invite_id TEXT,
+  referrer_user_id TEXT,
+  referred_user_id TEXT,
+  qualifying_event_ref TEXT,
+  qualifying_event_kind TEXT,
+  qualifying_amount_sats INTEGER,
+  amount_sats INTEGER,
+  period_key TEXT,
+  state TEXT,
+  state_reason_ref TEXT,
+  previous_entry_id TEXT,
+  reversal_of_entry_id TEXT,
+  evidence_refs_json TEXT,
+  policy_refs_json TEXT,
+  caveat_refs_json TEXT,
+  created_at TEXT,
+  archived_at TEXT,
+  UNIQUE(idempotency_key)
+);
+
+CREATE TABLE site_commerce_payment_events (
+  id TEXT PRIMARY KEY NOT NULL,
+  site_id TEXT,
+  site_version_id TEXT,
+  software_order_id TEXT,
+  product_id TEXT,
+  paid_action_id TEXT,
+  customer_ref TEXT,
+  referral_source_ref TEXT,
+  payment_evidence_ref TEXT,
+  entitlement_ref TEXT,
+  public_receipt_ref TEXT,
+  event_kind TEXT,
+  amount NUMERIC,
+  asset TEXT,
+  created_at TEXT,
+  UNIQUE(public_receipt_ref)
+);
+
+CREATE TABLE site_commerce_revenue_share_links (
+  id TEXT PRIMARY KEY NOT NULL,
+  payment_event_id TEXT,
+  accepted_work_ref TEXT,
+  requested_contributor_asset TEXT,
+  provider_payout_claimed INTEGER,
+  nexus_receipt_ref TEXT,
+  treasury_receipt_ref TEXT,
+  ldk_settlement_receipt_ref TEXT,
+  referral_reward_trigger TEXT,
+  provider_payout_eligibility_state TEXT,
+  withdrawal_posture TEXT,
+  projection_json TEXT,
+  created_at TEXT
+);
+`
+
+/**
  * Condensed live D1 schema for the KS-8.16 forge domain contract suite
  * (worker migrations 0251/0252/0253/0254/0255/0256/0259/0260/0284,
  * post-ALTER final shape). The D1-authority uniques/partials are KEPT
