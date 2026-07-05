@@ -6,7 +6,7 @@ import type { SyncSql, SyncTransactionSql } from "./sql.js"
  *
  * Shared table metadata and Postgres converge/upsert helpers for the
  * SEVENTEEN canonical identity/auth tables moving from D1 to Cloud SQL
- * (khala-sync migration `0027_identity_auth_domain.sql`, mirroring worker
+ * (khala-sync migration `0028_identity_auth_domain.sql`, mirroring worker
  * migrations 0002/0003/0004/0009/0011/0044-0050/0173/0234/0237/0283). This
  * file is imported by both the Worker dual-write mirror
  * (`apps/openagents.com/workers/api/src/identity-auth-domain-store.ts`) and

@@ -4,7 +4,7 @@
 // store-factory read-back mirror, `billing-store.ts` #8318 for the
 // money-/secret-domain discipline).
 //
-// Domain tables (khala-sync migration `0027_identity_auth_domain.sql`, the
+// Domain tables (khala-sync migration `0028_identity_auth_domain.sql`, the
 // SEVENTEEN canonical identity/auth tables): users, auth identities,
 // OpenAuth storage + agent links, GitHub write connections / attempts /
 // grants, and the provider (BYOK) account custody family (accounts,

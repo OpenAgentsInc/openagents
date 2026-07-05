@@ -349,7 +349,7 @@ evidence is tracked on epic
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
 **KS-8.18 status (2026-07-04, #8329):** machinery LANDED (CORE) — the
 LAST and most sensitive domain. Postgres schema (`khala-sync-server`
-migration `0027_identity_auth_domain.sql`: the SEVENTEEN canonical
+migration `0028_identity_auth_domain.sql`: the SEVENTEEN canonical
 identity/auth twins — `users`, `auth_identities`, `openauth_storage`,
 `openauth_agent_links`, the three `github_write_*` tables, and the
 provider (BYOK) account custody family incl. `provider_account_token_custody`

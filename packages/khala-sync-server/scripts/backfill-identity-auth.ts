@@ -7,7 +7,7 @@
  * KS-8.1/8.2/8.16 pattern: reuses the repo's existing wrangler auth — no
  * new admin-API surface) in bounded rowid-keyset pages, and converges them
  * into the Postgres twins from khala-sync migration
- * `0027_identity_auth_domain.sql` over a DIRECT connection (never
+ * `0028_identity_auth_domain.sql` over a DIRECT connection (never
  * Hyperdrive). Every table converges on its PRIMARY KEY to the D1 snapshot
  * value — idempotent; a re-run converges to the same state, and the
  * runbook's sequence runs the backfill TWICE (the second sweep is the

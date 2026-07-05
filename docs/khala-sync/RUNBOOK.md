@@ -1736,7 +1736,7 @@ custody family: `provider_accounts`, `_connection_attempts`,
 `_auth_grants`, `_events`, `_sanity_checks`, `_parallel_probe_receipts`,
 `_leases`, `_failover_receipts`, `_token_custody`, `_token_custody_audit`)
 (D1) → same-named Postgres twins (khala-sync migration
-`0027_identity_auth_domain.sql`). Machinery:
+`0028_identity_auth_domain.sql`). Machinery:
 `apps/openagents.com/workers/api/src/identity-auth-domain-store.ts` (the
 `identityAuthMirrorFromEnv` fail-soft read-back mirror handle + the
 flagship `makeProviderAccountTokenCustodyStoreForEnv` drop-in) and
@@ -1790,7 +1790,7 @@ MANDATORY.
 
 Flag-flip order — never skip a step, each step soaks before the next:
 
-1. **Dual-write on** (default after KS-8.18 lands + `0027` applied via the
+1. **Dual-write on** (default after KS-8.18 lands + `0028` applied via the
    migration runner). Watch `khala_sync_identity_dual_write_failed`; a
    nonzero steady rate blocks progression.
 2. **Backfill**: from `packages/khala-sync-server/`,

@@ -9,7 +9,7 @@
 //       the engine D1 is built on), schema from the worker migrations
 //       (condensed in test/sqlite-d1.ts).
 //     - Postgres: `makePostgresIdentityAuthStore` over a throwaway local
-//       Postgres, schema from khala-sync migration 0027. Skipped when no
+//       Postgres, schema from khala-sync migration 0028. Skipped when no
 //       local Postgres binaries exist.
 //     Includes a CUSTODY round-trip: the encrypted token vault
 //     (ciphertext/IVs/key ids) converges byte-exact on both engines.
@@ -225,9 +225,9 @@ describe('identity/auth write-store contract — D1 (real SQLite)', () => {
   specContractSuite(() => harness)
 })
 
-const MIGRATION_0027 = path.resolve(
+const MIGRATION_0028 = path.resolve(
   __dirname,
-  '../../../../../packages/khala-sync-server/migrations/0027_identity_auth_domain.sql',
+  '../../../../../packages/khala-sync-server/migrations/0028_identity_auth_domain.sql',
 )
 
 type PgClient = Readonly<{
@@ -256,7 +256,7 @@ describe.skipIf(!hasLocalPostgres())(
         prepare: false,
       })
       client = raw as unknown as PgClient
-      await raw.unsafe(readFileSync(MIGRATION_0027, 'utf8'))
+      await raw.unsafe(readFileSync(MIGRATION_0028, 'utf8'))
       harness = {
         query: async sql => (client as PgClient).unsafe(sql),
         store: makePostgresIdentityAuthStore({
@@ -362,7 +362,7 @@ describe.skipIf(!hasLocalPostgres())(
         prepare: false,
       })
       client = raw as unknown as PgClient
-      await raw.unsafe(readFileSync(MIGRATION_0027, 'utf8'))
+      await raw.unsafe(readFileSync(MIGRATION_0028, 'utf8'))
 
       sqlite = makeSqliteD1()
       sqlite.exec(IDENTITY_AUTH_DOMAIN_D1_SCHEMA)

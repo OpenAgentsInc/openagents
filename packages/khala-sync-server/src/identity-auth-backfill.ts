@@ -6,7 +6,7 @@
  * KS-8.16 template (`forge-backfill.ts`). Takes raw D1 rows (snake_case
  * objects, exactly as `wrangler d1 execute --json` returns them) and
  * converges them into the Postgres twins from migration
- * `0027_identity_auth_domain.sql` via the SHARED registry in
+ * `0028_identity_auth_domain.sql` via the SHARED registry in
  * `./identity-auth-domain-tables.ts` (the same `upsertIdentityAuthRows`
  * the Worker's dual-write mirror uses — backfill and mirror can never
  * fight because they write identical converge upserts keyed on the

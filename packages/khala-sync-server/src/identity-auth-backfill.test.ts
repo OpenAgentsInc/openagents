@@ -509,7 +509,7 @@ describe.skipIf(!hasLocalPostgres())("identity/auth backfill — Postgres", () =
     await admin.end()
     const url = pg.urlFor("khala_identity_auth_backfill")
     const result = await runMigrations({ databaseUrl: url })
-    expect(result.applied).toContain("0027_identity_auth_domain.sql")
+    expect(result.applied).toContain("0028_identity_auth_domain.sql")
     rawSql = new SQL({ url, max: 4 })
     sql = rawSql as unknown as SyncSql
   })
