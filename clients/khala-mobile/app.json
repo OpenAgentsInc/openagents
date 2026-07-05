@@ -4,6 +4,7 @@
     "slug": "khala-mobile",
     "scheme": "khala",
     "version": "0.1.0",
+    "icon": "./assets/images/icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
