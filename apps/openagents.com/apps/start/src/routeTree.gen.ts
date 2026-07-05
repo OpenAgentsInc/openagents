@@ -20,6 +20,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as GymRouteImport } from './routes/gym'
 import { Route as DownloadRouteImport } from './routes/download'
 import { Route as ClientsPreviewRouteImport } from './routes/clients-preview'
+import { Route as AdjutantRouteImport } from './routes/adjutant'
 import { Route as ActivityRouteImport } from './routes/activity'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as KhalaIndexRouteImport } from './routes/khala/index'
@@ -29,6 +30,7 @@ import { Route as CodeIndexRouteImport } from './routes/code/index'
 import { Route as BusinessIndexRouteImport } from './routes/business/index'
 import { Route as BlogIndexRouteImport } from './routes/blog/index'
 import { Route as AutopilotIndexRouteImport } from './routes/autopilot/index'
+import { Route as ArtanisIndexRouteImport } from './routes/artanis/index'
 import { Route as WorkspacesWorkspaceIdRouteImport } from './routes/workspaces/$workspaceId'
 import { Route as SitesDemoCheckoutRouteImport } from './routes/sites/demo-checkout'
 import { Route as PreviewLandingRouteImport } from './routes/preview/landing'
@@ -40,6 +42,7 @@ import { Route as BlogSlugRouteImport } from './routes/blog/$slug'
 import { Route as AutopilotLegalRouteImport } from './routes/autopilot/legal'
 import { Route as ArtanisTracesRouteImport } from './routes/artanis/traces'
 import { Route as ArtanisAccountsRouteImport } from './routes/artanis/accounts'
+import { Route as AgentsAgentRefRouteImport } from './routes/agents/$agentRef'
 import { Route as TrainingRunsIndexRouteImport } from './routes/training/runs/index'
 import { Route as SitesDemoCheckoutReturnActionRouteImport } from './routes/sites/demo-checkout/$returnAction'
 import { Route as BusinessKpiEngagementRefRouteImport } from './routes/business/kpi/$engagementRef'
@@ -100,6 +103,11 @@ const ClientsPreviewRoute = ClientsPreviewRouteImport.update({
   path: '/clients-preview',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdjutantRoute = AdjutantRouteImport.update({
+  id: '/adjutant',
+  path: '/adjutant',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ActivityRoute = ActivityRouteImport.update({
   id: '/activity',
   path: '/activity',
@@ -143,6 +151,11 @@ const BlogIndexRoute = BlogIndexRouteImport.update({
 const AutopilotIndexRoute = AutopilotIndexRouteImport.update({
   id: '/autopilot/',
   path: '/autopilot/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ArtanisIndexRoute = ArtanisIndexRouteImport.update({
+  id: '/artanis/',
+  path: '/artanis/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WorkspacesWorkspaceIdRoute = WorkspacesWorkspaceIdRouteImport.update({
@@ -200,6 +213,11 @@ const ArtanisAccountsRoute = ArtanisAccountsRouteImport.update({
   path: '/artanis/accounts',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AgentsAgentRefRoute = AgentsAgentRefRouteImport.update({
+  id: '/agents/$agentRef',
+  path: '/agents/$agentRef',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TrainingRunsIndexRoute = TrainingRunsIndexRouteImport.update({
   id: '/training/runs/',
   path: '/training/runs/',
@@ -227,6 +245,7 @@ const PylonCodexAssignmentsAssignmentRefRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
+  '/adjutant': typeof AdjutantRoute
   '/clients-preview': typeof ClientsPreviewRoute
   '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
@@ -238,6 +257,7 @@ export interface FileRoutesByFullPath {
   '/run': typeof RunRoute
   '/tassadar': typeof TassadarRoute
   '/terms': typeof TermsRoute
+  '/agents/$agentRef': typeof AgentsAgentRefRoute
   '/artanis/accounts': typeof ArtanisAccountsRoute
   '/artanis/traces': typeof ArtanisTracesRoute
   '/autopilot/legal': typeof AutopilotLegalRoute
@@ -249,6 +269,7 @@ export interface FileRoutesByFullPath {
   '/preview/landing': typeof PreviewLandingRoute
   '/sites/demo-checkout': typeof SitesDemoCheckoutRouteWithChildren
   '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
+  '/artanis/': typeof ArtanisIndexRoute
   '/autopilot/': typeof AutopilotIndexRoute
   '/blog/': typeof BlogIndexRoute
   '/business/': typeof BusinessIndexRoute
@@ -264,6 +285,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
+  '/adjutant': typeof AdjutantRoute
   '/clients-preview': typeof ClientsPreviewRoute
   '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
@@ -275,6 +297,7 @@ export interface FileRoutesByTo {
   '/run': typeof RunRoute
   '/tassadar': typeof TassadarRoute
   '/terms': typeof TermsRoute
+  '/agents/$agentRef': typeof AgentsAgentRefRoute
   '/artanis/accounts': typeof ArtanisAccountsRoute
   '/artanis/traces': typeof ArtanisTracesRoute
   '/autopilot/legal': typeof AutopilotLegalRoute
@@ -286,6 +309,7 @@ export interface FileRoutesByTo {
   '/preview/landing': typeof PreviewLandingRoute
   '/sites/demo-checkout': typeof SitesDemoCheckoutRouteWithChildren
   '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
+  '/artanis': typeof ArtanisIndexRoute
   '/autopilot': typeof AutopilotIndexRoute
   '/blog': typeof BlogIndexRoute
   '/business': typeof BusinessIndexRoute
@@ -302,6 +326,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
+  '/adjutant': typeof AdjutantRoute
   '/clients-preview': typeof ClientsPreviewRoute
   '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
@@ -313,6 +338,7 @@ export interface FileRoutesById {
   '/run': typeof RunRoute
   '/tassadar': typeof TassadarRoute
   '/terms': typeof TermsRoute
+  '/agents/$agentRef': typeof AgentsAgentRefRoute
   '/artanis/accounts': typeof ArtanisAccountsRoute
   '/artanis/traces': typeof ArtanisTracesRoute
   '/autopilot/legal': typeof AutopilotLegalRoute
@@ -324,6 +350,7 @@ export interface FileRoutesById {
   '/preview/landing': typeof PreviewLandingRoute
   '/sites/demo-checkout': typeof SitesDemoCheckoutRouteWithChildren
   '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
+  '/artanis/': typeof ArtanisIndexRoute
   '/autopilot/': typeof AutopilotIndexRoute
   '/blog/': typeof BlogIndexRoute
   '/business/': typeof BusinessIndexRoute
@@ -341,6 +368,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/activity'
+    | '/adjutant'
     | '/clients-preview'
     | '/download'
     | '/gym'
@@ -352,6 +380,7 @@ export interface FileRouteTypes {
     | '/run'
     | '/tassadar'
     | '/terms'
+    | '/agents/$agentRef'
     | '/artanis/accounts'
     | '/artanis/traces'
     | '/autopilot/legal'
@@ -363,6 +392,7 @@ export interface FileRouteTypes {
     | '/preview/landing'
     | '/sites/demo-checkout'
     | '/workspaces/$workspaceId'
+    | '/artanis/'
     | '/autopilot/'
     | '/blog/'
     | '/business/'
@@ -378,6 +408,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/activity'
+    | '/adjutant'
     | '/clients-preview'
     | '/download'
     | '/gym'
@@ -389,6 +420,7 @@ export interface FileRouteTypes {
     | '/run'
     | '/tassadar'
     | '/terms'
+    | '/agents/$agentRef'
     | '/artanis/accounts'
     | '/artanis/traces'
     | '/autopilot/legal'
@@ -400,6 +432,7 @@ export interface FileRouteTypes {
     | '/preview/landing'
     | '/sites/demo-checkout'
     | '/workspaces/$workspaceId'
+    | '/artanis'
     | '/autopilot'
     | '/blog'
     | '/business'
@@ -415,6 +448,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/activity'
+    | '/adjutant'
     | '/clients-preview'
     | '/download'
     | '/gym'
@@ -426,6 +460,7 @@ export interface FileRouteTypes {
     | '/run'
     | '/tassadar'
     | '/terms'
+    | '/agents/$agentRef'
     | '/artanis/accounts'
     | '/artanis/traces'
     | '/autopilot/legal'
@@ -437,6 +472,7 @@ export interface FileRouteTypes {
     | '/preview/landing'
     | '/sites/demo-checkout'
     | '/workspaces/$workspaceId'
+    | '/artanis/'
     | '/autopilot/'
     | '/blog/'
     | '/business/'
@@ -453,6 +489,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ActivityRoute: typeof ActivityRoute
+  AdjutantRoute: typeof AdjutantRoute
   ClientsPreviewRoute: typeof ClientsPreviewRoute
   DownloadRoute: typeof DownloadRoute
   GymRoute: typeof GymRoute
@@ -464,6 +501,7 @@ export interface RootRouteChildren {
   RunRoute: typeof RunRoute
   TassadarRoute: typeof TassadarRoute
   TermsRoute: typeof TermsRoute
+  AgentsAgentRefRoute: typeof AgentsAgentRefRoute
   ArtanisAccountsRoute: typeof ArtanisAccountsRoute
   ArtanisTracesRoute: typeof ArtanisTracesRoute
   AutopilotLegalRoute: typeof AutopilotLegalRoute
@@ -475,6 +513,7 @@ export interface RootRouteChildren {
   PreviewLandingRoute: typeof PreviewLandingRoute
   SitesDemoCheckoutRoute: typeof SitesDemoCheckoutRouteWithChildren
   WorkspacesWorkspaceIdRoute: typeof WorkspacesWorkspaceIdRoute
+  ArtanisIndexRoute: typeof ArtanisIndexRoute
   AutopilotIndexRoute: typeof AutopilotIndexRoute
   BlogIndexRoute: typeof BlogIndexRoute
   BusinessIndexRoute: typeof BusinessIndexRoute
@@ -566,6 +605,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ClientsPreviewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/adjutant': {
+      id: '/adjutant'
+      path: '/adjutant'
+      fullPath: '/adjutant'
+      preLoaderRoute: typeof AdjutantRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/activity': {
       id: '/activity'
       path: '/activity'
@@ -627,6 +673,13 @@ declare module '@tanstack/react-router' {
       path: '/autopilot'
       fullPath: '/autopilot/'
       preLoaderRoute: typeof AutopilotIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/artanis/': {
+      id: '/artanis/'
+      path: '/artanis'
+      fullPath: '/artanis/'
+      preLoaderRoute: typeof ArtanisIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/workspaces/$workspaceId': {
@@ -706,6 +759,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ArtanisAccountsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/agents/$agentRef': {
+      id: '/agents/$agentRef'
+      path: '/agents/$agentRef'
+      fullPath: '/agents/$agentRef'
+      preLoaderRoute: typeof AgentsAgentRefRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/training/runs/': {
       id: '/training/runs/'
       path: '/training/runs'
@@ -751,6 +811,7 @@ const SitesDemoCheckoutRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ActivityRoute: ActivityRoute,
+  AdjutantRoute: AdjutantRoute,
   ClientsPreviewRoute: ClientsPreviewRoute,
   DownloadRoute: DownloadRoute,
   GymRoute: GymRoute,
@@ -762,6 +823,7 @@ const rootRouteChildren: RootRouteChildren = {
   RunRoute: RunRoute,
   TassadarRoute: TassadarRoute,
   TermsRoute: TermsRoute,
+  AgentsAgentRefRoute: AgentsAgentRefRoute,
   ArtanisAccountsRoute: ArtanisAccountsRoute,
   ArtanisTracesRoute: ArtanisTracesRoute,
   AutopilotLegalRoute: AutopilotLegalRoute,
@@ -773,6 +835,7 @@ const rootRouteChildren: RootRouteChildren = {
   PreviewLandingRoute: PreviewLandingRoute,
   SitesDemoCheckoutRoute: SitesDemoCheckoutRouteWithChildren,
   WorkspacesWorkspaceIdRoute: WorkspacesWorkspaceIdRoute,
+  ArtanisIndexRoute: ArtanisIndexRoute,
   AutopilotIndexRoute: AutopilotIndexRoute,
   BlogIndexRoute: BlogIndexRoute,
   BusinessIndexRoute: BusinessIndexRoute,

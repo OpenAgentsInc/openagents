@@ -466,6 +466,86 @@ The Start staging app now owns `/mirrorcode` and `/promises`, ported from
 - Kept both Foldkit `apps/web` counterparts in place, same as every prior
   TS-6 slice.
 
+## Landed Slice 19: Public Agent Console (Artanis, Adjutant, And Arbitrary Refs)
+
+The Start staging app now owns `/artanis`, `/agents/$agentRef`, and
+`/adjutant`, ported from the ~2,700-line
+`apps/web/src/page/loggedOut/page/publicAgent.ts` that the prior slice
+deliberately backlogged for its own dedicated pass.
+
+- The Foldkit `view(model, agentRef)` function has three distinct branches:
+  the special-cased `artanis` branch (always renders the full recruitment
+  console regardless of load state), the `Loaded`/`Failed` branch for any
+  `agentRef` whose `model.publicAgent` has resolved, and a minimal fallback
+  shell (eyebrow "Public agent", the agent's display name, and "Loading
+  public goal.") for every other case — including the true first-paint
+  `PublicAgentIdle` state. No prior TS-6 Start route has wired a live client
+  fetch on a standalone page, so this port renders exactly that first-paint
+  state for every route: the full static console for `artanis` (matching the
+  Foldkit special case), and the minimal fallback shell for `adjutant` and
+  any other `agentRef` (matching what a real anonymous visitor sees before
+  the Foldkit page's fetch resolves).
+- `/artanis` (`artanis/index.tsx`, using the established `X/index.tsx` +
+  `createFileRoute('/X/')` folder convention since `artanis/traces.tsx` and
+  `artanis/accounts.tsx` already exist as siblings — a bare `artanis.tsx`
+  would have made it an implicit parent layout for those two routes, the
+  same nested-route footgun fixed in Slice 15) renders the full console:
+  - The masthead (`ARTANIS console`, the `LIVE` badge, `Artanis` h1, `No
+    public goal` / `Active slots loading` / `no active public run` status
+    strip, and a 0% daily-token-pace bar) — the exact copy the Foldkit
+    `artanisConsoleHeader` produces for a null goal and unresolved Pylon
+    stats.
+  - The Pulse panel renders `Token pace unavailable.`, the exact fallback
+    `artanisPulseView` produces once `PublicKhalaTokensServedHistoryModel`
+    is anything but `Loaded` (including the `Idle` first-paint tag).
+  - The fleet map + task board (`data-component="artanis-fleet-map-task-board"`)
+    renders all 8 fleet-map slots as genuinely empty
+    (`data-fleet-map-slot="empty"`, "no public heartbeat") and all four task
+    board lanes (Ready / Claimed / Verifying / Resolved) with "No public rows
+    in this lane." — this is not fabricated: `fleetMapSlots(null)` and
+    `activeTaskBoardEvents` on a non-`Loaded` model produce exactly these
+    outputs in the Foldkit original.
+  - The virtual merge queue (`data-component="artanis-virtual-merge-queue"`)
+    and the fleet-onboarding panel ("Have Codex or Claude? Join the fleet.",
+    the `khala fleet connect` command block) are ported in full fidelity —
+    neither Foldkit view function takes a model argument, so nothing here is
+    an idle placeholder.
+  - The 3-column grid (campaign objective / fleet shipping / Pylon stats +
+    onboarding) renders the campaign-objective goal panel verbatim, the
+    fleet-shipping feed's own `Loading live fleet activity.` fallback text,
+    and the Pylon-stats panel's own `-` metrics / `Feed loading` / `Loading
+    recent Pylon presence.` fallback copy.
+- `/agents/$agentRef` (`agents/$agentRef.tsx`, no nested-layout risk since
+  there is no sibling `agents.tsx` or `agents/index.tsx`) reproduces the same
+  `agentRef === 'artanis'` special case for URL parity with `/artanis`
+  (matching `urlToAppRoute` mapping both paths to the same route value), and
+  falls back to the generic shell for every other ref.
+- `/adjutant` (top-level, no sibling `adjutant/` folder so no nested-layout
+  risk) renders the same generic fallback shell as any other non-artanis
+  `agentRef` — the Foldkit `isAdjutant`-specific Autopilot-activity content
+  (deployed Sites, milestones) only renders once `model.publicAgent` reaches
+  `Loaded`/`Failed`, which requires the live fetch this slice intentionally
+  does not wire.
+- Added `/artanis`, `/agents/artanis`, and `/adjutant` to the Start budget
+  list; total client JS moved to 696.7 KiB (still under the 760 KiB budget).
+- Re-verified with a local `vite preview` + `curl` pass: `/artanis` and
+  `/agents/artanis` both render `data-route="artanis"` with the identical
+  `Artanis - OpenAgents` title and console markup; `/adjutant` and
+  `/agents/some-other-ref` both render `data-route="public-agent"` with
+  their own display name and `Loading public goal.`; and
+  `/artanis/traces`, `/artanis/accounts`, `/code`, `/mirrorcode`,
+  `/training/runs`, `/promises`, `/onboarding`, `/gym`, and `/login` are all
+  unaffected by the new `artanis/index.tsx` and `agents/$agentRef.tsx`
+  siblings.
+
+Not migrated in this slice (deliberately out of scope, same posture as every
+prior live-data page): the rich `Loaded`-state content for `artanis` (real
+token-burn pace, real Pylon/fleet-map rows, real task-board rows, real
+fleet-shipping events, real campaign-goal data) and for `adjutant` (real
+Autopilot deployed-Sites/milestone rows) — all of it requires a live client
+fetch this app does not wire yet, same as `/mirrorcode`, `/promises`, and
+`/training/runs`.
+
 ## Boundary
 
 This is not the final TS-6 closure. The live `openagents.com` Worker still
@@ -480,15 +560,10 @@ Remaining TS-6 work:
   in Start: `apps/web/src/page/loggedOut/page/pylon.ts` (depends on the
   three.js/scene custom elements — bigger lift than a plain static port),
   `share.ts` (a full shared-workroom-timeline viewer — bigger lift, needs the
-  workroom timeline/file-panel component set ported to React first),
-  `publicAgent.ts` (the largest of the remaining standalone pages at ~2,700
-  lines — the live `/artanis` recruitment console, including fleet
-  onboarding, "fleet shipping/reconnecting", and a virtual-merge-queue view,
-  each with their own model-driven state machines; bigger lift than
-  `mirrorcode.ts` or `promises.ts` turned out to be), and `stats.ts`
-  (public/anonymous variant only — the same `/stats` URL also has a distinct
-  authenticated `loggedIn/page/stats.ts` view, and the public variant
-  composes ~9 shared panel components from `home.ts`
+  workroom timeline/file-panel component set ported to React first), and
+  `stats.ts` (public/anonymous variant only — the same `/stats` URL also has
+  a distinct authenticated `loggedIn/page/stats.ts` view, and the public
+  variant composes ~9 shared panel components from `home.ts`
   (`khalaTokensServedHeaderCounter`, `pylonStatsPanel`, `forumStatsPanel`,
   `accountingPanel`, etc.) that would need React ports of their own first, so
   this needs the same "public-safe default until Start has real session auth"
@@ -509,7 +584,7 @@ Remaining TS-6 work:
 ## Verification
 
 ```sh
-bun run --cwd apps/openagents.com/apps/start test -- src/routes/-code.test.tsx src/routes/-app-shell.test.tsx src/routes/-components.test.tsx src/routes/-gym.test.tsx src/routes/-index.test.tsx src/routes/-artanis-accounts.test.tsx src/routes/-workspace-invite.test.tsx src/routes/-mirrorcode.test.tsx src/routes/-promises.test.tsx
+bun run --cwd apps/openagents.com/apps/start test -- src/routes/-code.test.tsx src/routes/-app-shell.test.tsx src/routes/-components.test.tsx src/routes/-gym.test.tsx src/routes/-index.test.tsx src/routes/-artanis-accounts.test.tsx src/routes/-workspace-invite.test.tsx src/routes/-mirrorcode.test.tsx src/routes/-promises.test.tsx src/routes/-artanis-console.test.tsx src/routes/-public-agent.test.tsx
 bun run --cwd apps/openagents.com/apps/start test
 bun run --cwd apps/openagents.com/apps/start typecheck
 bun run --cwd apps/openagents.com/apps/start build
