@@ -117,10 +117,8 @@ import { sitesContentDatabaseForEnv } from './sites-content-store'
 import { makeSupervisionLongtailMirrorForEnv } from './supervision-longtail-domain-store'
 import {
   notifyAgentRunSyncScopes,
-  notifySyncScopes,
   publishAgentGoalEventSync,
   publishAgentGoalSync,
-  syncScopeForAgentRun,
 } from './sync-notifier'
 import { type TeamChatRunSummary, listTeamChatMessages } from './team-chat'
 import {
@@ -651,24 +649,29 @@ const applyGoalRuntimeEvents = (
   )
 
 /**
- * Dual-write a queued/relaunched agent run into `scope.agent_run.<runId>`
- * (KS-6.6, #8416) ALONGSIDE the legacy `notifySyncScopes(env,
- * syncScopeForAgentRun(run))` poke at this issue's three call sites. Never
- * throws — a projection failure only logs a public-safe diagnostic; the
- * legacy poke remains the sole delivery path for the live web client until
- * `apps/web/src/subscriptions.ts` is repointed to the khala-sync connect
- * surface for this scope (see docs/khala-sync/RUNBOOK.md).
+ * Project a queued/relaunched agent run into `scope.agent_run.<runId>`
+ * (KS-6.6, #8416). Never throws — a projection failure only logs a
+ * public-safe diagnostic.
+ *
+ * This is now the ONLY producer at these three creation-time call sites.
+ * The legacy `notifySyncScopes(env, syncScopeForAgentRun(run))` poke was
+ * deleted (2026-07-05, #8416 final pass): the web client's active-run
+ * WebSocket was repointed to the khala-sync `/api/sync/connect` surface
+ * (`apps/web/src/subscriptions.ts`, commit `6ff849527f`), proven correct via
+ * extensive contract/adapter tests plus a real production deploy, so the
+ * legacy dual-write was redundant. See docs/khala-sync/RUNBOOK.md's
+ * "2026-07-05 legacy poke deleted" subsection for the full disposition.
  *
  * KS-6.6 event-feed follow-up (#8416): `agent-runtime-store.ts`'s
- * `makeOmniRunStoreForEnv` now ALSO fires this SAME run/goal projection
- * (plus a new `agent_run_event` companion projection) unconditionally from
+ * `makeOmniRunStoreForEnv` ALSO fires this SAME run/goal projection (plus a
+ * `agent_run_event` companion projection) unconditionally from
  * `store.saveAgentRun`/`store.appendAgentRunEvents` whenever a
  * `KHALA_SYNC_DB` binding exists — including on every ONGOING event append,
- * not just at creation. The three explicit calls below are therefore now a
+ * not just at creation. The three explicit calls below are therefore a
  * harmless duplicate of that universal wiring at creation time (both upsert
- * the same post-image); they were left in place rather than removed, to
- * avoid touching these already-tested call sites in this pass. See
- * docs/khala-sync/RUNBOOK.md's "2026-07-05 producer-completeness follow-up".
+ * the same post-image); left in place to avoid touching these
+ * already-tested call sites. See docs/khala-sync/RUNBOOK.md's
+ * "2026-07-05 producer-completeness follow-up".
  */
 const projectAgentRunSyncScope = (
   workerEnv: OmniHandlerEnv,
@@ -1790,9 +1793,6 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
     })
     await store.saveAgentRun(queued.run, queued.events)
     await applyGoalRuntimeEvents(env, launchGoal.id, queued.events)
-    // Legacy sync-worker poke (kept live — see `projectAgentRunSyncScope`'s
-    // doc header for why KS-6.6/#8416 dual-writes rather than cuts over).
-    await notifySyncScopes(env, syncScopeForAgentRun(queued.run))
     await projectAgentRunSyncScope(env, queued.run)
     await dispatchQueuedAgentRun(env, queued.run)
 
@@ -2312,13 +2312,6 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
                 input.goal.id,
                 queued.events,
               )
-              // Legacy sync-worker poke (kept live — see
-              // `projectAgentRunSyncScope`'s doc header for why KS-6.6/#8416
-              // dual-writes rather than cuts over).
-              await notifySyncScopes(
-                workerEnv,
-                syncScopeForAgentRun(queued.run),
-              )
               await projectAgentRunSyncScope(workerEnv, queued.run)
               await dispatchQueuedAgentRun(workerEnv, queued.run)
             },
@@ -2670,12 +2663,6 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
     })
     await store.saveAgentRun(queued.run, queued.events)
     await applyGoalRuntimeEvents(env, launchGoal.id, queued.events)
-    // Legacy sync-worker poke (kept live — see `projectAgentRunSyncScope`'s
-    // doc header for why KS-6.6/#8416 dual-writes rather than cuts over).
-    scheduleBackgroundWork(
-      ctx,
-      notifySyncScopes(env, syncScopeForAgentRun(queued.run)),
-    )
     scheduleBackgroundWork(ctx, projectAgentRunSyncScope(env, queued.run))
     await dispatchQueuedAgentRun(env, queued.run)
 

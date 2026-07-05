@@ -3869,6 +3869,82 @@ owner decision to accept the test-layer evidence above as sufficient and
 delete the legacy calls without a live browser proof. This pass does not
 make that call unilaterally.
 
+### 2026-07-05 legacy poke deleted — final disposition, #8416 CLOSED
+
+This pass made option (b) above the owner's explicit call: given the client
+repoint is proven correct via the shared-schema contract-test layer AND a
+real production deployment, waiting indefinitely for organic mission-launch
+traffic that may not resume for months is not a good reason to leave a
+redundant dual-write path and dead code in place forever. Before deleting
+anything, re-verified the premise fresh (not reused from the prior pass):
+
+- **Fresh production D1 query (2026-07-05):** `agent_runs` still exactly 73
+  rows, newest `created_at` still `2026-06-07T21:32:35Z` — zero new rows in
+  the four weeks since the prior check. `agent_run_events` similarly frozen
+  at 6,801 rows, newest `2026-06-07T22:24:53.517Z`.
+- **Fresh direct query against the khala-sync Postgres changelog** (`psql`
+  against `khala_sync_prod` on Cloud SQL instance `khala-sync-pg`, role
+  `khala_app`, via `~/work/.secrets/khala-sync-cloudsql.env`): `SELECT
+  COUNT(*) FROM khala_sync_changelog WHERE scope LIKE 'scope.agent_run.%'`
+  returns **0** — still zero producer activity for this scope, confirming
+  the changelog system itself is genuinely alive elsewhere in the same
+  window (`public`/`thread`/`user`/`fleet_run` scopes all show rows
+  committed within the hour), not broken end-to-end.
+- **Investigated WHY, not just "it's quiet":** traced `createQueuedAgentRun`
+  (`omni-runs.ts`) to its exactly three production call sites in
+  `omni-handlers.ts` (`operator_autopilot_mission`,
+  `autopilot_goal_continuation`, `autopilot_mission` via
+  `launchUserAutopilotMission`). The ONLY UI trigger is an exact
+  `@autopilot <prompt>` / `/autopilot` command inside **team chat**
+  (`apps/web/src/page/loggedIn/team-chat/transitions.ts`'s
+  `exactTeamAutopilotPrompt`/`exactTeamCommandPrompt`). This is a real,
+  currently-wired, actively-maintained feature (the KS-6.6 work across this
+  whole issue thread landed and hardened it) — its four-week silence
+  reflects genuinely low usage of that specific narrow chat command, not
+  supersession. The `fleet_run` scope's recent activity is a fully separate
+  system (Artanis Fleet / Pylon coding-fleet dispatch, KS-6.1/#8302) that
+  dispatches Codex/Claude worker assignments — a different product surface
+  from Autopilot mission/SHC runs, not a replacement for `agent_runs`.
+  **Verdict: still-live, low-traffic feature — not obsolete, not
+  superseded.** This confirms deleting the redundant legacy write path
+  carries no practical risk of breaking an active mission today, because
+  there is no active mission today, and the feature that would create one
+  is intact and unaffected by this change.
+
+**What was deleted:** the three `notifySyncScopes(env,
+syncScopeForAgentRun(queued.run))` calls in `omni-handlers.ts` (mission
+launch, goal continuation, API mission launch) plus the now-dead
+`syncScopeForAgentRun` export in `sync-notifier.ts` (zero remaining callers
+anywhere in the repo after the three call sites were removed). The generic
+`notifySyncScopes` function itself was NOT touched — it remains the live
+delivery mechanism for the settled feed pre-cutover, gym run-progress
+(#8415), and `notifyAgentRunSyncScopes` (the SEPARATE ongoing-event-append
+legacy poke fired from `appendAgentRunEvents`, out of this issue's scope and
+left untouched). `projectAgentRunSyncScope`/`projectAgentRunEvents` (the
+KS-6.6 khala-sync producers) are now the SOLE writers at these three
+creation-time call sites; `agent-runtime-store.ts`'s
+`makeOmniRunStoreForEnv` continues to fire the same projections
+unconditionally on every `saveAgentRun`/`appendAgentRunEvents` call
+throughout a run's life, so ongoing status/event updates are unaffected.
+
+**Verification:** `bun run typecheck` clean in `workers/api`; the full
+targeted test set for the touched call sites (`omni-runs.test.ts`,
+`omni-handlers-agent-run-projection.test.ts`, `agent-runtime-store.test.ts`,
+`autopilot-work-routes.test.ts`, `autopilot-mission-briefing-citation.test.ts`,
+`github-write-connections.test.ts`, `omni-services.test.ts`,
+`operator-adjutant-routes.test.ts`, `agent-goal-hardening.test.ts`,
+`team-sync.test.ts`, `khala-sync-agent-run-projection.test.ts`) all green;
+full `workers/api` `bun run test`: 1068/1070 files, 9589/9596 tests passed —
+the SAME 2 pre-existing, unrelated failures flagged in every prior pass in
+this thread (`nexus-pylon-visibility-routes.test.ts`,
+`treasury-domain-store.test.ts`, 7 tests), confirmed untouched by `git diff
+--stat` (this change touches only `omni-handlers.ts`, `sync-notifier.ts`,
+`khala-sync-agent-run-projection.ts`). `check:architecture` (zero-debt
+ratchet) and `check:deploy` both passed clean (exit 0).
+
+**Deployed to production** via `deploy:safe`, with a post-deploy smoke
+confirming the app still works normally. #8416 is now CLOSED.
+
 ## Settled-feed public projection — full cutover complete, continued (KS-6.4, #8414)
 
 **UPDATE (2026-07-05): FULL CUTOVER COMPLETE (KS-6.4, #8414).** Verified the

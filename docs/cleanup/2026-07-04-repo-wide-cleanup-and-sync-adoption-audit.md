@@ -530,6 +530,30 @@ and the D1 `sync_*` tables have zero remaining users and drop cleanly**
      — the honest reason a live-mission browser smoke could not be performed.
      Full detail in `docs/khala-sync/RUNBOOK.md`'s "2026-07-05 client repoint
      landed" subsection.
+   - **2026-07-05 legacy poke deleted — final disposition, #8416 CLOSED:**
+     re-confirmed the premise fresh (not reused): `agent_runs` in D1 still
+     exactly 73 rows/newest `2026-06-07T21:32:35Z`, and a fresh direct query
+     against the khala-sync Postgres changelog confirms zero rows for any
+     `scope.agent_run.*` scope, while sibling scopes (`public`/`thread`/
+     `user`/`fleet_run`) show rows committed within the hour — the changelog
+     system is alive, this scope specifically is quiet. Traced WHY: the only
+     producer path (`createQueuedAgentRun`, three call sites in
+     `omni-handlers.ts`) is reachable only through an exact `@autopilot
+     <prompt>` team-chat command — a real, currently-wired, actively
+     maintained feature (this whole issue thread's work hardened it), just
+     genuinely low-traffic, not obsolete or superseded by `fleet_run`
+     (a fully separate Artanis Fleet/Pylon coding-dispatch system, #8302).
+     Deleted the three `notifySyncScopes(env, syncScopeForAgentRun(...))`
+     calls plus the now-fully-dead `syncScopeForAgentRun` export in
+     `sync-notifier.ts`. `projectAgentRunSyncScope`/`projectAgentRunEvents`
+     are now the sole producers at these three call sites;
+     `agent-runtime-store.ts`'s always-on hook is unaffected. Full
+     `workers/api` suite: 1068/1070 files, 9589/9596 tests — the same 2
+     pre-existing unrelated failures every prior pass in this thread
+     flagged. `check:architecture` and `check:deploy` both green. Deployed
+     to production via `deploy:safe`. Full detail in
+     `docs/khala-sync/RUNBOOK.md`'s "2026-07-05 legacy poke deleted" final
+     subsection. **#8416 closed.**
 5. **Public aggregates** (demand-mix, model-mix, tokens-history, public activity timeline): project off live-at-read D1 onto `scope.public.*` counters — the Postgres rollup twins already exist from KS-8.2. (M, low)
    - **2026-07-05 update (KS-6.7, #8417):** shipped model-mix, demand-mix,
      channel-mix, and tokens-history as a `scope.public.tokens-served-aggregates`

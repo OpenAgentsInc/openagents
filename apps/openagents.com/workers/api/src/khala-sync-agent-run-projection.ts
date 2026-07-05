@@ -1,28 +1,29 @@
-// Khala Sync agent run + goal dual-write (KS-6.6, #8416).
+// Khala Sync agent run + goal projection (KS-6.6, #8416).
 //
 // Best-effort projection of a just-queued/relaunched agent run (with its
 // currently-attached goal) into `scope.agent_run.<runId>` via the
-// KHALA_SYNC_DB Hyperdrive binding — invoked ALONGSIDE the legacy
-// `notifySyncScopes(env, syncScopeForAgentRun(run))` poke at the three
-// `omni-handlers.ts` call sites this issue targets (mission launch, goal
-// continuation-after-completed-run, and the API mission launch).
+// KHALA_SYNC_DB Hyperdrive binding. This is now the SOLE producer at the
+// three `omni-handlers.ts` call sites this issue targets (mission launch,
+// goal continuation-after-completed-run, and the API mission launch) — the
+// legacy `notifySyncScopes(env, syncScopeForAgentRun(run))` poke at those
+// same sites was deleted (2026-07-05, #8416 final pass) once the web
+// client's active-run WebSocket was repointed to the khala-sync
+// `/api/sync/connect` surface (`apps/web/src/subscriptions.ts`, commit
+// `6ff849527f`) and proven correct. See docs/khala-sync/RUNBOOK.md's
+// "2026-07-05 legacy poke deleted" subsection for the full disposition,
+// including the production evidence (zero `agent_runs` rows created since
+// 2026-06-07, so the mission-launch feature itself was simply quiet — not
+// obsolete) that made the deletion safe.
 //
 // FAIL-SOFT CONTRACT (same discipline as KS-6.1 fleet / KS-6.3
 // tokens-served / KS-6.5 gym run-progress): a projection failure — missing
 // binding, unreachable Postgres, redaction refusal — NEVER fails the
 // queued-run response. Every outcome is a value; nothing here throws.
 //
-// HONEST STATUS: unlike KS-6.4/KS-6.5 (blocked on an anonymous-read gap),
+// AUTH STATUS: unlike KS-6.4/KS-6.5 (blocked on an anonymous-read gap),
 // `scope.agent_run.<runId>` is AUTHENTICATED-ONLY (run owner or an active
 // team member — see `khala-sync-scope-auth.ts`'s `canReadResolvedRun`), so
-// there is no anonymous-read blocker here. The reason the legacy
-// `notifySyncScopes` calls stay live is different: the web client
-// (`apps/web/src/subscriptions.ts`'s `syncScopesForModel` /
-// `syncAgentRunScope`) still opens the LEGACY `/api/sync/agent-run/<id>/
-// stream` WebSocket for the active chat run — it has not been repointed to
-// `GET/WS /api/sync/connect` (khala-sync) for this scope. Deleting the
-// legacy poke before that client repoint lands would silently break live
-// run/goal updates on the chat page. See docs/khala-sync/RUNBOOK.md.
+// there is no anonymous-read blocker here.
 //
 // EVENT-FEED FOLLOW-UP (KS-6.6 producer-completeness pass): the
 // 2026-07-05 client-repoint research recorded in RUNBOOK.md found two real
@@ -34,7 +35,8 @@
 // see `agent-runtime-store.ts`'s `makeOmniRunStoreForEnv` for how BOTH this
 // function and `projectAgentRun` are now wired into every
 // `saveAgentRun`/`appendAgentRunEvents` call unconditionally, closing gap
-// (2). The client repoint itself remains a separate, NOT-YET-DONE follow-up.
+// (2). Both gaps were closed before the client repoint (which then landed)
+// and before this legacy-poke deletion.
 
 import {
   type AgentRunProjectionDiagnostic,

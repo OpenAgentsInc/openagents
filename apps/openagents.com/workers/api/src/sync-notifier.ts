@@ -19,7 +19,7 @@ import {
   type AgentGoalRecord,
   publicAgentGoalRecord,
 } from './agent-goals'
-import { type AgentRunRecord, agentRunRouteId } from './omni-runs'
+import { agentRunRouteId } from './omni-runs'
 import { observedPromise } from './observability'
 import {
   openAgentsDatabase,
@@ -42,19 +42,6 @@ export const AGENT_GOAL_EVENTS_SYNC_COLLECTION = 'agent_goal_events'
 export const PUBLIC_AGENT_GOALS_SYNC_COLLECTION = 'public_agent_goals'
 export const PUBLIC_AGENT_GOAL_EVENTS_SYNC_COLLECTION =
   'public_agent_goal_events'
-
-export const syncScopeForAgentRun = (
-  run: AgentRunRecord,
-): ReadonlyArray<string> => {
-  const routeId = agentRunRouteId(run.id)
-
-  return [
-    personalWorkroomScope(run.userId),
-    ...(run.teamId === null ? [] : [teamScope(run.teamId)]),
-    agentRunScope(run.id),
-    syncThreadScope(routeId),
-  ]
-}
 
 export const notifySyncScopes = async (
   env: SyncRoomEnv,
