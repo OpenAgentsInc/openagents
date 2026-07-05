@@ -4,10 +4,6 @@ import { Effect } from 'effect'
 import type { OnboardingStreamMetadata } from './autopilot-onboarding-program'
 import type { OpenAgentsWorkerConfigEnv } from './config'
 import {
-  buildKhalaTokensServedDelta,
-  publishKhalaTokensServedDelta,
-} from './inference/khala-tokens-served-sync'
-import {
   type InferenceAdapterRouteMetadata,
   type InferenceUsage,
 } from './inference/provider-adapter'
@@ -28,7 +24,7 @@ const PUBLIC_KHALA_CHAT_ACCOUNT_REF = 'public:khala-chat'
 const PUBLIC_KHALA_CHAT_DEMAND_SOURCE = 'khala-cli-public-chat'
 
 type PublicKhalaChatServedTokenEnv = OpenAgentsWorkerConfigEnv &
-  Pick<WorkerBindings, 'OPENAGENTS_DB' | 'SYNC_ROOM'> &
+  Pick<WorkerBindings, 'OPENAGENTS_DB'> &
   Readonly<{ KHALA_SYNC_DB?: KhalaSyncHyperdriveBinding }>
 
 const publicKhalaChatServedTokenMetrics = (
@@ -235,15 +231,6 @@ export const recordPublicKhalaChatServedTokens = ({
           observedAt,
           tokensServedDelta: inputTokens + outputTokens,
         },
-      ).catch(() => undefined)
-
-      await publishKhalaTokensServedDelta(
-        env,
-        buildKhalaTokensServedDelta({
-          eventRef: body.eventId,
-          observedAt,
-          tokensServedDelta: inputTokens + outputTokens,
-        }),
       ).catch(() => undefined)
     }
   })

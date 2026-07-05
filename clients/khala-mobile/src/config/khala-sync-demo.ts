@@ -1,8 +1,8 @@
 /**
- * Dev-only auth wiring for the mobile Khala Sync chat UI (no login flow
- * exists yet). The bearer token must be exported as
- * EXPO_PUBLIC_KHALA_SYNC_DEMO_TOKEN before `expo start` / `expo run:ios` —
- * never hardcode a real token here.
+ * Dev-only wiring for the mobile Khala Sync chat UI (no login flow exists
+ * yet). Base URL and owner user id are non-secret routing hints; the bearer
+ * token must be exported as EXPO_PUBLIC_KHALA_SYNC_DEMO_TOKEN before
+ * `expo start` / `expo run:ios` — never hardcode a real token here.
  */
 export const KHALA_SYNC_DEMO_BASE_URL =
   process.env.EXPO_PUBLIC_OPENAGENTS_BASE_URL?.trim() || "https://openagents.com"

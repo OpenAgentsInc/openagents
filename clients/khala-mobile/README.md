@@ -84,7 +84,9 @@ deploys the OpenAgents server. It does not call Expo hosted update commands.
 ## Security
 
 - API keys are stored through `expo-secure-store` with the Khala keychain
-  service. SQLite is only for sync checkpoints/projection cache.
+  service. SQLite stores durable Khala Sync cursors/checkpoints, confirmed
+  projection rows, client identity, and pending mutation intents; it does not
+  store bearer/API keys.
 - Delegation prompts pass `validateDelegationPrompt` before submission. The
   validator rejects local paths, Codex auth paths, bearer/API tokens,
   provider-secret env names, emails, and high-entropy strings.

@@ -471,6 +471,7 @@
         "@openagentsinc/khala-sync-db-collection": "workspace:*",
         "@openagentsinc/ui": "workspace:*",
         "@tanstack/db": "0.6.14",
+        "effect": "catalog:",
         "expo": "57.0.2",
         "expo-constants": "57.0.3",
         "expo-device": "^57.0.0",

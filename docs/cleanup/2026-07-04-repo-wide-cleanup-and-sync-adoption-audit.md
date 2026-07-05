@@ -374,7 +374,10 @@ and the D1 `sync_*` tables have zero remaining users and drop cleanly**
 
 ### 6.2 Concrete ADOPT-SYNC list, ranked by effort/risk
 
-1. **Tokens-served**: delete the *legacy* producer (`inference/khala-tokens-served-sync.ts`) now that #8304's projection is live and duplicate-publishing. Pure deletion, no new work. (S, low)
+1. **Tokens-served**: complete in #8372 — the *legacy* producer
+   (`inference/khala-tokens-served-sync.ts`) and its stale old-sync
+   broadcast throttle were deleted after #8304's `scope.public.tokens-served`
+   projection was re-verified as the live producer path. (S, low)
 2. **Desktop fleet cockpit**: flip `KHALA_SYNC_FLEET` default-on, delete the 5s poll in `fleet-status.ts`. Projection already proven at load (9,909 pushes, zero failures). (S, low)
 3. **Settled feed** (`tassadar-settled-feed-sync.ts`): new `scope.public.settled-feed` projection, same #8304 pattern, then delete the legacy producer. (M, med)
 4. **Team chat + thread files + agent goals**: the flagship "migration = sync adoption" case per KS-8.13/#8324 — land on `scope.team.<id>` / `scope.thread.<id>` / `scope.agent_run.<id>` / `scope.user.<id>`, replacing both the notifier fan-out and the desktop/web polling in one move. (L, med)
@@ -415,9 +418,9 @@ Reclaim the 11 GB pylon build cache; remove `clients/openagents-desktop`
 (the only one of the three dead-client stubs still present — see §5.1);
 remove `scripts/vertex-fleet`, `scripts/gemini-fleet`; remove the dead
 `apps/web` routes (Moksha×2, Landing variants, `/forge`, `/stats-old`,
-`/animations`, `/components`); convert the 12 untyped `throw new Error`
-sites; delete the legacy tokens-served producer now that #8304
-double-publishes.
+`/animations`, `/components`); convert the live untyped `throw new Error`
+sites; delete the legacy tokens-served producer now that #8304's projection is
+live.
 
 **Wave 1 — mechanical, low risk, high leverage:**
 Retrofit the 16 legacy public-projection staleness contracts; drop the
@@ -488,6 +491,12 @@ untouched).
   budget to `0/0`. A small `team-chat` helper input was narrowed so a
   pre-existing Response-surface overage was retired without raising that
   budget; `check:architecture` is green.
+- #8372 complete — deleted the legacy
+  `workers/api/src/inference/khala-tokens-served-sync.ts` producer and its tests,
+  removed every production `publishKhalaTokensServedDelta` caller, and dropped
+  the stale high-frequency `public-khala-tokens-served:*` SyncRoom throttle. The
+  #8304 `scope.public.tokens-served` projection/reconcile path remains the live
+  public counter producer.
 
 ---
 

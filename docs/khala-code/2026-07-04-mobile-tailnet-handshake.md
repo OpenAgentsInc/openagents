@@ -6,10 +6,17 @@ Status: live on `main`. Covers the connectivity status dot shipped in
 
 ## What this is
 
-The mobile app (`clients/khala-mobile`, Expo/React Native) has a single home
-screen: a red/green status dot showing whether it can currently see a running
-Khala Code desktop instance. There is no login, pairing, or configuration step
-— it just probes a fixed local port.
+The mobile app (`clients/khala-mobile`, Expo/React Native) is a real chat UI
+now: a thread list on the home screen, tap a thread to see its messages. The
+Tailnet connectivity dot moved out of being the home-screen centerpiece into
+a small indicator in a custom header bar shared by both screens.
+
+Auth for the demo build is dev-only: `EXPO_PUBLIC_OPENAGENTS_BASE_URL`,
+`EXPO_PUBLIC_KHALA_SYNC_DEMO_OWNER_USER_ID`, and
+`EXPO_PUBLIC_KHALA_SYNC_DEMO_TOKEN` are read at build time (never committed).
+There is no login flow yet. See the "two sync-client implementations" note
+below — a separate, more production-appropriate keychain-backed durable
+runtime also exists in the repo but is not yet wired into these screens.
 
 ## Desktop side: the health beacon
 
@@ -48,15 +55,26 @@ Bun's plain JS/TS parser):
     candidate URL in order with a 1500ms per-host abort timeout, returns the
     first reachable one (`{ reachable, target, hostname, checkedAt }`), or an
     unreachable result if all fail.
+  - `resolveKhalaCodeConnectionProfile(...)`: wraps the health result in a
+    configured connection profile with `targetKind` (`simulator_loopback` or
+    `tailnet`) and a normalized Khala Sync base URL. This keeps liveness
+    discovery separate from the authenticated sync route.
 - `khala-code-connectivity.ts` — thin wrapper: imports `expo-device` to detect
-  `Device.isDevice`, and exposes `checkKhalaCodeConnectivity()` which calls the
-  core resolver with real `fetch`.
+  `Device.isDevice`, and exposes `checkKhalaCodeConnectivity()` plus
+  `resolveKhalaCodeProfile()` with real `fetch`.
 
-`app/index.tsx` is the entire mobile home screen: it polls
-`checkKhalaCodeConnectivity()` every 5 seconds and again whenever the app
-returns to the foreground (`AppState` "active" transition), then renders a
-colored dot (gray while checking, green if reachable, red otherwise) plus the
-hostname and target URL it found.
+`src/status/use-khala-code-connectivity.ts` is a small hook wrapping the same
+polling logic (every 5 seconds, plus on `AppState` "active" transitions).
+`src/status/connectivity-dot.tsx` consumes it and renders a plain 10×10
+colored circle (gray while checking, green if reachable, red otherwise) — no
+hostname/target text anymore, since it now lives in the header rather than
+being the whole screen. `src/components/app-header.tsx` is a fully custom
+header bar (title + optional back chevron + the dot) shared by both screens,
+deliberately NOT using React Navigation's native `headerRight` — on this iOS
+version, native headers wrap header accessories in the same circular button
+chrome as the back button, which left the dot looking oversized and
+off-center. `app/_layout.tsx` sets `headerShown: false` globally so this
+custom header is the only header rendered.
 
 ## Simulator vs. device targeting
 
@@ -78,7 +96,7 @@ a local `bun run dev` Khala Code desktop instance is up and the beacon
 responds on `:50099`; red dot + "no khala code instance found" when the
 desktop app (and thus the beacon) is not running.
 
-## Chat streaming over Khala Sync
+## Chat sync over Khala Sync
 
 Built on top of the same Tailnet handshake and the same single mobile home
 screen: the desktop's already-flag-gated Khala Sync chat service
@@ -92,30 +110,52 @@ Khala Sync `scope.thread.<threadId>` (message bodies + thread metadata) and
 server-authoritative mutators `chat.createThread` / `chat.appendMessage` /
 `chat.renameThread` (MC-1, #8352, `packages/khala-sync-server/src/chat-mutators.ts`).
 
-### Mobile side: raw JSON chat feed
+### Mobile side: real chat UI (thread list + message view)
 
-`clients/khala-mobile` now has a second piece on the same home screen (below
-the connectivity dot): a raw JSON event feed
-(`src/sync/khala-chat-feed.tsx` + pure wire-protocol helpers in
-`src/sync/khala-chat-feed-core.ts`). It talks directly to the Khala Sync wire
-protocol — no TanStack DB collection layer, deliberately, since the ask was
-"just show raw ugly json for now":
+`clients/khala-mobile` is a two-screen chat app now:
 
-1. `POST /api/sync/bootstrap` for `scope.thread.<threadId>` (a consistent
-   snapshot page + a `cursor`).
-2. Opens a WebSocket to `GET /api/sync/connect?scope=…&cursor=…` using React
-   Native's `WebSocket` third-argument `{ headers }` extension to carry the
-   bearer token (browsers can't set WebSocket headers; RN can).
-3. Renders every bootstrap response and every live `LiveFrame` (`DeltaFrame`,
-   `MutationAckFrame`, `MustRefetchFrame`, `PingFrame`) as a raw
-   `JSON.stringify` block, newest first.
+- `app/index.tsx` — thread list. Bootstraps `scope.user.<owner>`
+  (`chat_thread` entities), sorted by recency (`lastMessageAt` ??
+  `updatedAt` ?? `createdAt`), live-tailed over `/api/sync/connect`. Tap a
+  thread to navigate to `/thread/[threadId]`.
+- `app/thread/[threadId].tsx` — message view for one thread. Bootstraps
+  `scope.thread.<id>` (`chat_message` entities), sorted chronologically,
+  each rendered as a timestamp + body card, auto-scrolling to the newest
+  message. Since `chat_message` has no role/sender field (MC-1 is an
+  owner-private primitive — `authorUserId` is always the calling user),
+  messages render as a plain chronological list rather than fabricating a
+  left/right bubble distinction the data doesn't support.
+- Both screens share one generic hook, `src/sync/use-khala-sync-collection.ts`:
+  POST `/api/sync/bootstrap` once, then open a live WebSocket to
+  `/api/sync/connect` (React Native's `WebSocket` third-argument `{ headers }`
+  extension carries the bearer token — browsers can't do this, RN can), and
+  merge every `DeltaFrame` in. Parametrized by entity type + decoder, so the
+  same hook backs both `chat_thread` and `chat_message` collections. The pure
+  merge/sort/decode logic lives in `src/sync/khala-sync-entities-core.ts`
+  (unit tested, no native imports).
+- This screen-level implementation is read-only (view only, no compose box)
+  and uses the dev-only `EXPO_PUBLIC_KHALA_SYNC_DEMO_TOKEN` env var for auth,
+  not the keychain.
 
-Demo wiring lives in `src/config/khala-sync-demo.ts` — there is no mobile
-login flow yet, so the bearer token, owner user id, and thread id are read
-from `EXPO_PUBLIC_KHALA_SYNC_DEMO_TOKEN` /
-`EXPO_PUBLIC_KHALA_SYNC_DEMO_OWNER_USER_ID` /
-`EXPO_PUBLIC_KHALA_SYNC_DEMO_THREAD_ID` at build time (never hardcoded, never
-committed).
+### Two sync-client implementations currently coexist (reconcile later)
+
+A separate, more production-appropriate implementation was built in parallel
+in this same repo and is **not yet wired into the screens above**:
+`src/sync/khala-mobile-sync-runtime.ts` + `src/sync/expo-db-sqlite-persistence.ts`
+open a durable `KhalaSyncSession` backed by Expo SQLite (confirmed rows,
+cursors/checkpoints, client identity, pending mutation intents), load auth
+through the keychain adapter (`loadKhalaApiKey()`, never Expo public env or
+SQLite), and expose `chatThreads()` / `chatMessages()` **and mutation
+support** (`createThread()` / `appendMessage()` — this repo's mobile app
+could send messages, not just view them, through this path). It has its own
+test suite (`tests/khala-mobile-sync-runtime.test.ts`,
+`tests/expo-db-sqlite-persistence.test.ts`).
+
+Both implementations currently exist, tested and working, but only the
+screen-level one above is actually rendered. Swapping the screens over to the
+durable runtime (keychain auth, SQLite persistence, and message-send support)
+is a real, worthwhile follow-up — not done here to avoid a risky last-minute
+integration on top of already-verified, working screens.
 
 ### Resolved: prod deploy was blocked, now live (was tracked in #8376)
 
@@ -189,3 +229,24 @@ Khala-Sync-only threads (e.g. ones created purely from mobile, with no
 desktop-side session) openable/readable on desktop is a separate, real
 follow-up (`codexThreadRead` would need a Khala-Sync-message fallback render
 path when no local session file exists) — not done here.
+
+### Verification
+
+- `bun run --cwd clients/khala-mobile typecheck` and `bun test` both green.
+- Connectivity tests cover simulator loopback profiles, Tailnet profiles, and
+  sync-base URL normalization.
+- `khala-sync-entities-core.test.ts` covers the generic decode/merge-by-id/
+  delete/sort logic shared by both screens.
+- `relative-time-core.test.ts` covers the thread list's "5m"/"3h"/"2d" recency
+  labels.
+- The unused-but-preserved durable runtime keeps its own test coverage:
+  Expo SQLite tests (checkpoints, projection rows, sync-store identity,
+  durable cursors, confirmed entities, pending mutation queue, ACK handling,
+  reopen/resume) and runtime tests (fake-session chat create/append flow,
+  app-restart cursor resume without duplicate messages, public-safe rejection
+  state).
+- Live-verified on the iOS Simulator: thread list renders both real threads
+  with recency + message counts; tapping a thread opens the message view
+  with correctly formatted, chronologically ordered, timestamped messages;
+  the header dot renders as a plain small circle (not native button chrome)
+  on both screens, confirmed via simulator screenshots.
