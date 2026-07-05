@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { Buffer } from "node:buffer"
-import { mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { basename, extname, isAbsolute, join, relative } from "node:path"
 import { Effect, Schema as S } from "effect"
@@ -49,8 +49,10 @@ import {
   type KhalaCodeDesktopChatTurnEvent,
   type KhalaCodeDesktopChatTurnRequest,
   type KhalaCodeDesktopChatTurnResponse,
+  type KhalaCodeDesktopComposerNativeDirectoryPickerRequest,
   type KhalaCodeDesktopComposerNativeFileGrant,
   type KhalaCodeDesktopComposerNativeFilePickerRequest,
+  type KhalaCodeDesktopComposerNativeSaveDialogRequest,
   type KhalaCodeDesktopCodexConfigValueWriteRequest,
   type KhalaCodeDesktopCodexBackgroundTerminalsCleanRequest,
   type KhalaCodeDesktopCodexBackgroundTerminalsListRequest,
@@ -246,8 +248,37 @@ type ComposerNativeFilePicker = (
   readonly paths?: readonly string[]
   readonly unavailableReason?: string
 }>
+type ComposerNativeDirectoryPicker = (
+  request: KhalaCodeDesktopComposerNativeDirectoryPickerRequest,
+) => MaybePromise<{
+  readonly cancelled: boolean
+  readonly paths?: readonly string[]
+  readonly unavailableReason?: string
+}>
+type ComposerNativeSaveDialog = (
+  request: KhalaCodeDesktopComposerNativeSaveDialogRequest,
+) => MaybePromise<{
+  readonly cancelled: boolean
+  readonly path?: string
+  readonly unavailableReason?: string
+}>
+type ComposerNativeClipboardImageReader = () => MaybePromise<
+  | {
+    readonly dataBase64: string
+    readonly mime: string
+    readonly name: string
+    readonly ok: true
+    readonly sizeBytes: number
+  }
+  | {
+    readonly ok: false
+    readonly unavailableReason: string
+  }
+>
 type NativeFileGrantRecord = KhalaCodeDesktopComposerNativeFileGrant & Readonly<{
-  path: string
+  dataBase64?: string
+  expiresAtMs: number
+  path?: string
 }>
 
 type ChatRuntimeSelection =
@@ -322,6 +353,10 @@ export type KhalaCodeDesktopRpcHandlersInput = {
   readonly khalaSync?: KhalaCodeDesktopKhalaSyncRpc
   readonly editorFileService?: KhalaCodeEditorFileService
   readonly nativeFilePicker?: ComposerNativeFilePicker
+  readonly nativeDirectoryPicker?: ComposerNativeDirectoryPicker
+  readonly nativeSaveDialog?: ComposerNativeSaveDialog
+  readonly nativeClipboardImageReader?: ComposerNativeClipboardImageReader
+  readonly nativeFileGrantTtlMs?: number
   readonly env: ChatEnv
   // Test seam for network-backed handlers (Khala Code plan routes). Defaults to
   // the global fetch in production.
@@ -389,6 +424,8 @@ const MAX_DIRECTORY_CANDIDATES = 20
 const MAX_DIFF_DISPLAY_CHARS = 80_000
 const CHAT_ATTACHMENT_TMP_ROOT = join(tmpdir(), "khala-code-chat-attachments")
 const MAX_NATIVE_COMPOSER_PICKER_FILES = 16
+const MAX_NATIVE_COMPOSER_PICKER_DIRECTORIES = 8
+const NATIVE_FILE_GRANT_TTL_MS = 15 * 60 * 1000
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null
@@ -451,6 +488,17 @@ const boundedNativePickerFileLimit = (
   if (raw === undefined || !Number.isFinite(raw)) return MAX_NATIVE_COMPOSER_PICKER_FILES
   return Math.max(1, Math.min(MAX_NATIVE_COMPOSER_PICKER_FILES, Math.trunc(raw)))
 }
+
+const boundedNativePickerDirectoryLimit = (
+  request: KhalaCodeDesktopComposerNativeDirectoryPickerRequest,
+): number => {
+  const raw = request.maxDirectories
+  if (raw === undefined || !Number.isFinite(raw)) return MAX_NATIVE_COMPOSER_PICKER_DIRECTORIES
+  return Math.max(1, Math.min(MAX_NATIVE_COMPOSER_PICKER_DIRECTORIES, Math.trunc(raw)))
+}
+
+const appleScriptString = (value: string): string =>
+  `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
 
 const workspaceRelativeFilePath = (
   path: string,
@@ -530,6 +578,158 @@ const runMacOsNativeFilePicker = async (
   return {
     cancelled: false,
     paths: stdout.split(/\r?\n/u).map(line => line.trim()).filter(Boolean),
+  }
+}
+
+const runMacOsNativeDirectoryPicker = async (
+  request: KhalaCodeDesktopComposerNativeDirectoryPickerRequest,
+): Promise<{
+  readonly cancelled: boolean
+  readonly paths?: readonly string[]
+  readonly unavailableReason?: string
+}> => {
+  if (process.platform !== "darwin") {
+    return {
+      cancelled: false,
+      paths: [],
+      unavailableReason: "Native directory picker is only implemented on macOS in this build.",
+    }
+  }
+  const multiple = request.multiple ?? false
+  const script = multiple
+    ? [
+        'set pickedFolders to choose folder with prompt "Open workspace folders in Khala Code" with multiple selections allowed',
+        'set output to ""',
+        'repeat with pickedFolder in pickedFolders',
+        'set output to output & POSIX path of pickedFolder & linefeed',
+        'end repeat',
+        "return output",
+      ].join("\n")
+    : 'POSIX path of (choose folder with prompt "Open a workspace folder in Khala Code")'
+  const proc = Bun.spawn(["osascript", "-e", script], {
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  if (exitCode !== 0) {
+    return /cancel/iu.test(stderr)
+      ? { cancelled: true, paths: [] }
+      : {
+          cancelled: false,
+          paths: [],
+          unavailableReason: stderr.trim() || `Native directory picker exited with ${exitCode}.`,
+        }
+  }
+  return {
+    cancelled: false,
+    paths: stdout.split(/\r?\n/u).map(line => line.trim()).filter(Boolean),
+  }
+}
+
+const runMacOsNativeSaveDialog = async (
+  request: KhalaCodeDesktopComposerNativeSaveDialogRequest,
+): Promise<{
+  readonly cancelled: boolean
+  readonly path?: string
+  readonly unavailableReason?: string
+}> => {
+  if (process.platform !== "darwin") {
+    return {
+      cancelled: false,
+      unavailableReason: "Native save dialog is only implemented on macOS in this build.",
+    }
+  }
+  const prompt = request.prompt?.trim() || "Save from Khala Code"
+  const defaultName = request.defaultName?.trim()
+  const script = defaultName === undefined || defaultName.length === 0
+    ? `POSIX path of (choose file name with prompt ${appleScriptString(prompt)})`
+    : `POSIX path of (choose file name with prompt ${appleScriptString(prompt)} default name ${appleScriptString(defaultName)})`
+  const proc = Bun.spawn(["osascript", "-e", script], {
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  if (exitCode !== 0) {
+    return /cancel/iu.test(stderr)
+      ? { cancelled: true }
+      : {
+          cancelled: false,
+          unavailableReason: stderr.trim() || `Native save dialog exited with ${exitCode}.`,
+        }
+  }
+  return {
+    cancelled: false,
+    path: stdout.trim(),
+  }
+}
+
+const runNativeClipboardImageReader = async (): Promise<
+  | {
+    readonly dataBase64: string
+    readonly mime: string
+    readonly name: string
+    readonly ok: true
+    readonly sizeBytes: number
+  }
+  | {
+    readonly ok: false
+    readonly unavailableReason: string
+  }
+> => {
+  if (process.platform !== "darwin") {
+    return {
+      ok: false,
+      unavailableReason: "Native clipboard image import is only implemented on macOS in this build.",
+    }
+  }
+  const pngpasteProbe = Bun.spawn(["/bin/zsh", "-lc", "command -v pngpaste"], {
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  const [pngpastePath, _probeStderr, probeExitCode] = await Promise.all([
+    new Response(pngpasteProbe.stdout).text(),
+    new Response(pngpasteProbe.stderr).text(),
+    pngpasteProbe.exited,
+  ])
+  if (probeExitCode !== 0 || pngpastePath.trim().length === 0) {
+    return {
+      ok: false,
+      unavailableReason: "Clipboard image import requires pngpaste on macOS.",
+    }
+  }
+  const directory = await mkdtemp(join(tmpdir(), "khala-code-clipboard-image-"))
+  const path = join(directory, "clipboard.png")
+  const pngpaste = Bun.spawn([pngpastePath.trim(), path], {
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  const [stderr, exitCode] = await Promise.all([
+    new Response(pngpaste.stderr).text(),
+    pngpaste.exited,
+  ])
+  if (exitCode !== 0) {
+    await rm(directory, { force: true, recursive: true })
+    return {
+      ok: false,
+      unavailableReason: stderr.trim() || "Clipboard does not contain a readable image.",
+    }
+  }
+  const bytes = await readFile(path)
+  await rm(directory, { force: true, recursive: true })
+  return {
+    dataBase64: bytes.toString("base64"),
+    mime: "image/png",
+    name: "clipboard.png",
+    ok: true,
+    sizeBytes: bytes.byteLength,
   }
 }
 
@@ -1328,11 +1528,44 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
   const editorFileService = input.editorFileService ??
     createKhalaCodeEditorFileService({ workingDirectory: input.workingDirectory })
   const nativeFilePicker = input.nativeFilePicker ?? runMacOsNativeFilePicker
+  const nativeDirectoryPicker = input.nativeDirectoryPicker ?? runMacOsNativeDirectoryPicker
+  const nativeSaveDialog = input.nativeSaveDialog ?? runMacOsNativeSaveDialog
+  const nativeClipboardImageReader = input.nativeClipboardImageReader ?? runNativeClipboardImageReader
   const nativeFileGrants = new Map<string, NativeFileGrantRecord>()
   let nativeWorkspaceRootPromise: Promise<string> | null = null
   const nativeWorkspaceRoot = (): Promise<string> => {
     nativeWorkspaceRootPromise ??= realpath(input.workingDirectory).catch(() => input.workingDirectory)
     return nativeWorkspaceRootPromise
+  }
+  const nativeGrantExpiry = (): {
+    readonly expiresAtIso: string
+    readonly expiresAtMs: number
+  } => {
+    const ttlMs = input.nativeFileGrantTtlMs === undefined
+      ? NATIVE_FILE_GRANT_TTL_MS
+      : Math.max(0, Math.trunc(input.nativeFileGrantTtlMs))
+    const expiresAtMs = Date.now() + ttlMs
+    return {
+      expiresAtIso: new Date(expiresAtMs).toISOString(),
+      expiresAtMs,
+    }
+  }
+  const publicNativeGrant = (
+    grant: NativeFileGrantRecord,
+  ): KhalaCodeDesktopComposerNativeFileGrant => {
+    const {
+      dataBase64: _dataBase64,
+      expiresAtMs: _expiresAtMs,
+      path: _privatePath,
+      ...publicGrant
+    } = grant
+    return publicGrant
+  }
+  const pruneExpiredNativeFileGrants = (): void => {
+    const now = Date.now()
+    for (const [grantId, grant] of nativeFileGrants) {
+      if (grant.expiresAtMs <= now) nativeFileGrants.delete(grantId)
+    }
   }
   const nativeFileGrantForPath = async (
     path: string,
@@ -1342,8 +1575,11 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     if (!fileStat.isFile()) return null
     const workspaceRoot = await nativeWorkspaceRoot()
     const labels = nativeGrantDisplayPath(resolved, workspaceRoot)
+    const expiry = nativeGrantExpiry()
     const grant: NativeFileGrantRecord = {
       displayPath: labels.displayPath,
+      expiresAtIso: expiry.expiresAtIso,
+      expiresAtMs: expiry.expiresAtMs,
       grantId: `native-file-grant-${randomUUID()}`,
       mime: mimeTypeForPath(resolved),
       name: basename(resolved) || "attachment",
@@ -1355,8 +1591,25 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         : { workspaceRelativePath: labels.workspaceRelativePath }),
     }
     nativeFileGrants.set(grant.grantId, grant)
-    const { path: _privatePath, ...publicGrant } = grant
-    return publicGrant
+    return publicNativeGrant(grant)
+  }
+  const nativeFileGrantForClipboardImage = (
+    image: Extract<Awaited<ReturnType<ComposerNativeClipboardImageReader>>, { readonly ok: true }>,
+  ): KhalaCodeDesktopComposerNativeFileGrant => {
+    const expiry = nativeGrantExpiry()
+    const grant: NativeFileGrantRecord = {
+      dataBase64: image.dataBase64,
+      displayPath: image.name,
+      expiresAtIso: expiry.expiresAtIso,
+      expiresAtMs: expiry.expiresAtMs,
+      grantId: `native-file-grant-${randomUUID()}`,
+      mime: image.mime,
+      name: image.name,
+      sizeBytes: image.sizeBytes,
+      source: "native_clipboard",
+    }
+    nativeFileGrants.set(grant.grantId, grant)
+    return publicNativeGrant(grant)
   }
   const requireCodexChatRuntime = (): CodexAppServerChatRuntime => {
     if (codexChatRuntime === null) {
@@ -2882,6 +3135,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       return editorFileService.fileRead(request)
     },
     async composerNativeFilePickerOpen(request = {}) {
+      pruneExpiredNativeFileGrants()
       const limit = boundedNativePickerFileLimit(request)
       try {
         const picked = await nativeFilePicker({
@@ -2906,7 +3160,96 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         }
       }
     },
+    async composerNativeDirectoryPickerOpen(request = {}) {
+      const limit = boundedNativePickerDirectoryLimit(request)
+      try {
+        const picked = await nativeDirectoryPicker({
+          ...request,
+          maxDirectories: limit,
+          multiple: request.multiple ?? false,
+        })
+        const workspaceRoot = await nativeWorkspaceRoot()
+        const directories = (await Promise.all(
+          [...(picked.paths ?? [])].slice(0, limit).map(async path => {
+            const resolved = await realpath(path)
+            const directoryStat = await stat(resolved)
+            if (!directoryStat.isDirectory()) return null
+            const labels = nativeGrantDisplayPath(resolved, workspaceRoot)
+            return {
+              displayPath: labels.displayPath,
+              path: resolved,
+              ...(labels.workspaceRelativePath === undefined
+                ? {}
+                : { workspaceRelativePath: labels.workspaceRelativePath }),
+            }
+          }),
+        )).filter((directory): directory is {
+          readonly displayPath: string
+          readonly path: string
+          readonly workspaceRelativePath?: string
+        } => directory !== null)
+        return {
+          cancelled: picked.cancelled,
+          directories,
+          ok: true as const,
+          ...(picked.unavailableReason === undefined ? {} : { unavailableReason: picked.unavailableReason }),
+        }
+      } catch (error) {
+        return {
+          error: error instanceof Error ? error.message : String(error),
+          ok: false as const,
+        }
+      }
+    },
+    async composerNativeSaveDialogOpen(request = {}) {
+      try {
+        const picked = await nativeSaveDialog(request)
+        if (picked.path === undefined || picked.path.trim().length === 0) {
+          return {
+            cancelled: picked.cancelled,
+            ok: true as const,
+            ...(picked.unavailableReason === undefined ? {} : { unavailableReason: picked.unavailableReason }),
+          }
+        }
+        const workspaceRoot = await nativeWorkspaceRoot()
+        const labels = nativeGrantDisplayPath(picked.path, workspaceRoot)
+        return {
+          cancelled: picked.cancelled,
+          displayPath: labels.displayPath,
+          ok: true as const,
+          path: picked.path,
+          ...(picked.unavailableReason === undefined ? {} : { unavailableReason: picked.unavailableReason }),
+        }
+      } catch (error) {
+        return {
+          error: error instanceof Error ? error.message : String(error),
+          ok: false as const,
+        }
+      }
+    },
+    async composerNativeClipboardImageRead() {
+      pruneExpiredNativeFileGrants()
+      try {
+        const image = await nativeClipboardImageReader()
+        if (!image.ok) {
+          return {
+            ok: false as const,
+            unavailableReason: image.unavailableReason,
+          }
+        }
+        return {
+          file: nativeFileGrantForClipboardImage(image),
+          ok: true as const,
+        }
+      } catch (error) {
+        return {
+          error: error instanceof Error ? error.message : String(error),
+          ok: false as const,
+        }
+      }
+    },
     async composerNativeFileGrantRead(request) {
+      pruneExpiredNativeFileGrants()
       const grant = nativeFileGrants.get(request.grantId)
       if (grant === undefined) {
         return {
@@ -2916,14 +3259,26 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         }
       }
       try {
-        const bytes = await readFile(grant.path)
+        const dataBase64 = grant.dataBase64 ?? (
+          grant.path === undefined
+            ? null
+            : (await readFile(grant.path)).toString("base64")
+        )
+        if (dataBase64 === null) {
+          return {
+            error: "Native file grant has no readable backing store.",
+            grantId: request.grantId,
+            ok: false as const,
+          }
+        }
+        const sizeBytes = Buffer.from(dataBase64, "base64").byteLength
         return {
-          dataBase64: bytes.toString("base64"),
+          dataBase64,
           grantId: grant.grantId,
           mime: grant.mime,
           name: grant.name,
           ok: true as const,
-          sizeBytes: bytes.byteLength,
+          sizeBytes,
         }
       } catch (error) {
         return {

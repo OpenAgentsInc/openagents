@@ -2003,6 +2003,9 @@ describe("khala code desktop app shell", () => {
 
     for (const method of [
       "composerNativeFilePickerOpen",
+      "composerNativeDirectoryPickerOpen",
+      "composerNativeSaveDialogOpen",
+      "composerNativeClipboardImageRead",
       "composerNativeFileGrantRead",
       "composerNativeFileGrantRelease",
     ]) {
@@ -2016,6 +2019,7 @@ describe("khala code desktop app shell", () => {
     expect(handlers).toContain("nativeGrantDisplayPath")
     expect(handlers).toContain("displayPath: basename(path)")
     expect(main).toContain("openComposerAttachmentPicker")
+    expect(main).toContain("tryStageNativeClipboardImage")
     expect(main).toContain("stageNativeFileGrants")
     expect(main).toContain("bytesForNativeAttachmentGrant")
     expect(main).toContain("localNativeAttachmentGrantIds")

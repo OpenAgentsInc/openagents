@@ -123,6 +123,16 @@ export type KhalaCodeDesktopComposerNativeFilePickerRequest =
   typeof RpcComposerNativeFilePickerRequest.Type
 export type KhalaCodeDesktopComposerNativeFilePickerResult =
   typeof RpcComposerNativeFilePickerResult.Type
+export type KhalaCodeDesktopComposerNativeDirectoryPickerRequest =
+  typeof RpcComposerNativeDirectoryPickerRequest.Type
+export type KhalaCodeDesktopComposerNativeDirectoryPickerResult =
+  typeof RpcComposerNativeDirectoryPickerResult.Type
+export type KhalaCodeDesktopComposerNativeSaveDialogRequest =
+  typeof RpcComposerNativeSaveDialogRequest.Type
+export type KhalaCodeDesktopComposerNativeSaveDialogResult =
+  typeof RpcComposerNativeSaveDialogResult.Type
+export type KhalaCodeDesktopComposerNativeClipboardImageReadResult =
+  typeof RpcComposerNativeClipboardImageReadResult.Type
 export type KhalaCodeDesktopComposerNativeFileGrantReadRequest =
   typeof RpcComposerNativeFileGrantReadRequest.Type
 export type KhalaCodeDesktopComposerNativeFileGrantReadResult =
@@ -488,11 +498,12 @@ const RpcChatAttachment = S.Struct({
 
 const RpcComposerNativeFileGrant = S.Struct({
   displayPath: S.String,
+  expiresAtIso: S.String,
   grantId: S.String,
   mime: S.String,
   name: S.String,
   sizeBytes: S.Number,
-  source: S.Literal("native_picker"),
+  source: S.Literals(["native_clipboard", "native_picker"]),
   workspaceRelativePath: S.optional(S.String),
 })
 const RpcComposerNativeFilePickerRequest = S.Struct({
@@ -505,6 +516,58 @@ const RpcComposerNativeFilePickerResult = S.Union([
     files: S.Array(RpcComposerNativeFileGrant),
     ok: S.Literal(true),
     unavailableReason: S.optional(S.String),
+  }),
+  S.Struct({
+    error: S.String,
+    ok: S.Literal(false),
+  }),
+])
+const RpcComposerNativeDirectoryGrant = S.Struct({
+  displayPath: S.String,
+  path: S.String,
+  workspaceRelativePath: S.optional(S.String),
+})
+const RpcComposerNativeDirectoryPickerRequest = S.Struct({
+  maxDirectories: S.optional(S.Number),
+  multiple: S.optional(S.Boolean),
+})
+const RpcComposerNativeDirectoryPickerResult = S.Union([
+  S.Struct({
+    cancelled: S.Boolean,
+    directories: S.Array(RpcComposerNativeDirectoryGrant),
+    ok: S.Literal(true),
+    unavailableReason: S.optional(S.String),
+  }),
+  S.Struct({
+    error: S.String,
+    ok: S.Literal(false),
+  }),
+])
+const RpcComposerNativeSaveDialogRequest = S.Struct({
+  defaultName: S.optional(S.String),
+  prompt: S.optional(S.String),
+})
+const RpcComposerNativeSaveDialogResult = S.Union([
+  S.Struct({
+    cancelled: S.Boolean,
+    displayPath: S.optional(S.String),
+    ok: S.Literal(true),
+    path: S.optional(S.String),
+    unavailableReason: S.optional(S.String),
+  }),
+  S.Struct({
+    error: S.String,
+    ok: S.Literal(false),
+  }),
+])
+const RpcComposerNativeClipboardImageReadResult = S.Union([
+  S.Struct({
+    file: RpcComposerNativeFileGrant,
+    ok: S.Literal(true),
+  }),
+  S.Struct({
+    ok: S.Literal(false),
+    unavailableReason: S.String,
   }),
   S.Struct({
     error: S.String,
@@ -2553,6 +2616,9 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   editorDirectoryRead: { parameters: [optionalParam(KhalaCodeEditorDirectoryReadRequest)], result: KhalaCodeEditorDirectoryReadResult },
   editorFileRead: { parameters: [param(KhalaCodeEditorFileReadRequest)], result: KhalaCodeEditorFileReadResult },
   composerNativeFilePickerOpen: { parameters: [optionalParam(RpcComposerNativeFilePickerRequest)], result: RpcComposerNativeFilePickerResult },
+  composerNativeDirectoryPickerOpen: { parameters: [optionalParam(RpcComposerNativeDirectoryPickerRequest)], result: RpcComposerNativeDirectoryPickerResult },
+  composerNativeSaveDialogOpen: { parameters: [optionalParam(RpcComposerNativeSaveDialogRequest)], result: RpcComposerNativeSaveDialogResult },
+  composerNativeClipboardImageRead: { parameters: noParams(), result: RpcComposerNativeClipboardImageReadResult },
   composerNativeFileGrantRead: { parameters: [param(RpcComposerNativeFileGrantReadRequest)], result: RpcComposerNativeFileGrantReadResult },
   composerNativeFileGrantRelease: { parameters: [param(RpcComposerNativeFileGrantReleaseRequest)], result: RpcComposerNativeFileGrantReleaseResult },
   forumRequest: { parameters: [param(RpcForumRequest)], result: RpcForumResponse },
@@ -2738,6 +2804,9 @@ export type KhalaCodeDesktopRPCSchema = {
     editorDirectoryRead(request?: KhalaCodeDesktopEditorDirectoryReadRequest): Promise<KhalaCodeDesktopEditorDirectoryReadResult>
     editorFileRead(request: KhalaCodeDesktopEditorFileReadRequest): Promise<KhalaCodeDesktopEditorFileReadResult>
     composerNativeFilePickerOpen(request?: KhalaCodeDesktopComposerNativeFilePickerRequest): Promise<KhalaCodeDesktopComposerNativeFilePickerResult>
+    composerNativeDirectoryPickerOpen(request?: KhalaCodeDesktopComposerNativeDirectoryPickerRequest): Promise<KhalaCodeDesktopComposerNativeDirectoryPickerResult>
+    composerNativeSaveDialogOpen(request?: KhalaCodeDesktopComposerNativeSaveDialogRequest): Promise<KhalaCodeDesktopComposerNativeSaveDialogResult>
+    composerNativeClipboardImageRead(): Promise<KhalaCodeDesktopComposerNativeClipboardImageReadResult>
     composerNativeFileGrantRead(request: KhalaCodeDesktopComposerNativeFileGrantReadRequest): Promise<KhalaCodeDesktopComposerNativeFileGrantReadResult>
     composerNativeFileGrantRelease(request: KhalaCodeDesktopComposerNativeFileGrantReleaseRequest): Promise<KhalaCodeDesktopComposerNativeFileGrantReleaseResult>
     forumRequest(request: KhalaCodeDesktopForumRequest): Promise<KhalaCodeDesktopForumResponse>

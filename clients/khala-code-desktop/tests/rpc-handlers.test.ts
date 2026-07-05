@@ -356,6 +356,166 @@ describe("Khala Code desktop RPC handlers", () => {
       })
   })
 
+  test("expires native composer file grants before replay", async () => {
+    const root = await mkdtemp(join(tmpdir(), "khala-code-native-expired-grants-"))
+    tempDirs.push(root)
+    const pickedPath = join(root, "clipboard.png")
+    await writeFile(pickedPath, "image bytes")
+
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      env: {},
+      nativeFileGrantTtlMs: 0,
+      nativeFilePicker: async () => ({
+        cancelled: false,
+        paths: [pickedPath],
+      }),
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: root,
+    })
+
+    const picked = await handlers.composerNativeFilePickerOpen()
+    expect(picked.ok).toBe(true)
+    if (!picked.ok) throw new Error(picked.error)
+    const [grant] = picked.files
+    expect(grant?.expiresAtIso).toMatch(/T/)
+    if (grant === undefined) throw new Error("missing grant")
+    await expect(handlers.composerNativeFileGrantRead({ grantId: grant.grantId }))
+      .resolves.toMatchObject({
+        grantId: grant.grantId,
+        ok: false,
+      })
+  })
+
+  test("opens native directory picker and save dialog with public-safe paths", async () => {
+    const root = await mkdtemp(join(tmpdir(), "khala-code-native-directory-save-"))
+    tempDirs.push(root)
+    const workspace = join(root, "workspace")
+    const src = join(workspace, "src")
+    const outside = join(root, "private")
+    await mkdir(src, { recursive: true })
+    await mkdir(outside, { recursive: true })
+
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      env: {},
+      nativeDirectoryPicker: async request => {
+        expect(request.maxDirectories).toBe(2)
+        expect(request.multiple).toBe(true)
+        return {
+          cancelled: false,
+          paths: [src, outside],
+        }
+      },
+      nativeSaveDialog: async request => {
+        expect(request.defaultName).toBe("trace.zip")
+        return {
+          cancelled: false,
+          path: join(workspace, "trace.zip"),
+        }
+      },
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: workspace,
+    })
+
+    const directories = await handlers.composerNativeDirectoryPickerOpen({
+      maxDirectories: 2,
+      multiple: true,
+    })
+    expect(directories).toMatchObject({
+      cancelled: false,
+      ok: true,
+      directories: [
+        { displayPath: "src", workspaceRelativePath: "src" },
+        { displayPath: "private" },
+      ],
+    })
+
+    const save = await handlers.composerNativeSaveDialogOpen({
+      defaultName: "trace.zip",
+    })
+    expect(save).toMatchObject({
+      cancelled: false,
+      displayPath: "trace.zip",
+      ok: true,
+      path: join(workspace, "trace.zip"),
+    })
+  })
+
+  test("reports native save cancellation and unavailable clipboard image states", async () => {
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      env: {},
+      nativeClipboardImageReader: async () => ({
+        ok: false,
+        unavailableReason: "Clipboard does not contain an image.",
+      }),
+      nativeSaveDialog: async () => ({
+        cancelled: true,
+      }),
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: "/repo",
+    })
+
+    await expect(handlers.composerNativeSaveDialogOpen()).resolves.toEqual({
+      cancelled: true,
+      ok: true,
+    })
+    await expect(handlers.composerNativeClipboardImageRead()).resolves.toEqual({
+      ok: false,
+      unavailableReason: "Clipboard does not contain an image.",
+    })
+  })
+
+  test("turns native clipboard images into expiring attachment grants", async () => {
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      env: {},
+      nativeClipboardImageReader: async () => ({
+        dataBase64: Buffer.from("clipboard image bytes").toString("base64"),
+        mime: "image/png",
+        name: "clipboard.png",
+        ok: true,
+        sizeBytes: "clipboard image bytes".length,
+      }),
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: "/repo",
+    })
+
+    const result = await handlers.composerNativeClipboardImageRead()
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error("clipboard image was not granted")
+    expect(result.file).toMatchObject({
+      displayPath: "clipboard.png",
+      mime: "image/png",
+      name: "clipboard.png",
+      source: "native_clipboard",
+    })
+    expect(result.file.expiresAtIso).toMatch(/T/)
+    expect(JSON.stringify(result)).not.toContain("clipboard image bytes")
+
+    const read = await handlers.composerNativeFileGrantRead({ grantId: result.file.grantId })
+    expect(read.ok).toBe(true)
+    if (!read.ok) throw new Error(read.error)
+    expect(Buffer.from(read.dataBase64, "base64").toString("utf8")).toBe("clipboard image bytes")
+  })
+
   test("starts fleet runs through the supervisor RPC port", async () => {
     const calls: KhalaCodeDesktopFleetRunStartRequest[] = []
     const run = fleetRunProjection()

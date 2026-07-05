@@ -382,6 +382,18 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["composerNativeFilePickerOpen"]>>
       >("composerNativeFilePickerOpen", request),
+    composerNativeDirectoryPickerOpen: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["composerNativeDirectoryPickerOpen"]>>
+      >("composerNativeDirectoryPickerOpen", request),
+    composerNativeSaveDialogOpen: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["composerNativeSaveDialogOpen"]>>
+      >("composerNativeSaveDialogOpen", request),
+    composerNativeClipboardImageRead: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["composerNativeClipboardImageRead"]>>
+      >("composerNativeClipboardImageRead"),
     composerNativeFileGrantRead: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["composerNativeFileGrantRead"]>>
@@ -4710,6 +4722,18 @@ const openComposerAttachmentPicker = async (): Promise<void> => {
   fileInput.click()
 }
 
+const tryStageNativeClipboardImage = async (): Promise<boolean> => {
+  try {
+    const result = await controls.composerNativeClipboardImageRead()
+    if (!result.ok) return false
+    stageNativeFileGrants([result.file])
+    requestAnimationFrame(focusComposerInput)
+    return true
+  } catch {
+    return false
+  }
+}
+
 composerForm.addEventListener("submit", event => {
   event.preventDefault()
   void submitComposer()
@@ -4802,7 +4826,13 @@ composerInput.addEventListener("paste", event => {
     return
   }
   const text = data.getData("text/plain")
-  if (text === "") return
+  if (text === "") {
+    event.preventDefault()
+    void tryStageNativeClipboardImage().then(staged => {
+      if (!staged) requestAnimationFrame(focusComposerInput)
+    })
+    return
+  }
   const normalized = normalizeKhalaComposerPasteText(text)
   if (stageLargeTextPaste(normalized)) {
     event.preventDefault()
@@ -4960,6 +4990,11 @@ const controls = {
     rpc.request.editorFileRead(request),
   composerNativeFilePickerOpen: (request?: Parameters<DesktopRpcRequests["composerNativeFilePickerOpen"]>[0]) =>
     rpc.request.composerNativeFilePickerOpen(request),
+  composerNativeDirectoryPickerOpen: (request?: Parameters<DesktopRpcRequests["composerNativeDirectoryPickerOpen"]>[0]) =>
+    rpc.request.composerNativeDirectoryPickerOpen(request),
+  composerNativeSaveDialogOpen: (request?: Parameters<DesktopRpcRequests["composerNativeSaveDialogOpen"]>[0]) =>
+    rpc.request.composerNativeSaveDialogOpen(request),
+  composerNativeClipboardImageRead: () => rpc.request.composerNativeClipboardImageRead(),
   composerNativeFileGrantRead: (request: Parameters<DesktopRpcRequests["composerNativeFileGrantRead"]>[0]) =>
     rpc.request.composerNativeFileGrantRead(request),
   composerNativeFileGrantRelease: (request: Parameters<DesktopRpcRequests["composerNativeFileGrantRelease"]>[0]) =>

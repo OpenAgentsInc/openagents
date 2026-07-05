@@ -628,14 +628,34 @@ Issue: add attachment parity
   grant release on attachment removal/reset/window unload, and native image
   grants routed through the existing local attachment uploader. Browser file
   input, paste/drop attachments, image previews, oversized paste refusal, and
-  public-safe transcript projection stay on the shared composer-state path.
-  Native clipboard-image IPC and save-dialog parity remain follow-up work.
+  public-safe transcript projection stay on the shared composer-state path. The
+  native directory picker, save-dialog, clipboard-image, and deterministic grant
+  expiry bridge landed in the next-wave native bridge issue below.
 - Scope: native file picker bridge, drag/drop files, paste files/images,
   clipboard image import, image thumbnails, preview/open, removal, source-path
   metadata, attachment budgets, and release of native file grants.
 - Acceptance gates: tests for picker grants, file release, paste/drop handling,
   image preview rendering, oversized file refusal, and public-safe transcript
   projection.
+
+Issue: add native file, directory, save, and clipboard-image bridges
+([#8460](https://github.com/OpenAgentsInc/openagents/issues/8460)).
+
+- Status: first implementation pass complete on 2026-07-05. Khala Code desktop
+  now exposes typed native directory picker, save-dialog, and clipboard-image
+  RPCs beside the existing file picker/grant bridge. Native file grants carry a
+  public expiry timestamp, expire deterministically in the Bun handler, and can
+  be backed either by a private local path or in-memory clipboard image bytes.
+  Renderer preview classifies all native picker/grant/clipboard/save methods as
+  mutating so browser preview cannot inspect local native state. The composer
+  paste path now asks the native bridge for an image when the web clipboard has
+  no files or text.
+- Scope: directory picker, save dialog, clipboard-image import, expiring grants,
+  preview read-only policy, and composer paste fallback.
+- Acceptance gates: fixture tests cover pick-grant-read-release, grant expiry,
+  directory picker, save cancellation, clipboard unavailable, and clipboard
+  image grant/read states. App-shell and preview tests cover renderer wiring and
+  mutating RPC classification.
 
 Issue: add composer context and docks
 ([#8437](https://github.com/OpenAgentsInc/openagents/issues/8437)).
