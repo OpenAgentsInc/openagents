@@ -214,6 +214,10 @@ deploys the OpenAgents server. It does not call Expo hosted update commands.
 
 ## Security
 
+- `src/config/public-config.ts` is the named boundary for Expo-bundled public
+  metadata and endpoints (`app.json` / `extra.khala`). Bundled config is public:
+  never place API keys, bearer tokens, private endpoints, customer data, or
+  other credential material there.
 - API keys are stored through `expo-secure-store` with the Khala keychain
   service. SQLite stores durable Khala Sync cursors/checkpoints, confirmed
   projection rows, client identity, and pending mutation intents; it does not

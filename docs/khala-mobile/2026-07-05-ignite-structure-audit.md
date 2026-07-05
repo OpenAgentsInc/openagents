@@ -47,6 +47,11 @@ Any Ignite pattern that conflicts with those rules is explicitly out of scope.
   `clients/khala-mobile/.dependency-cruiser.cjs`,
   `bun run --cwd clients/khala-mobile architecture:check`, and local
   `.ejs` scaffolds under `clients/khala-mobile/templates`.
+- [#8447](https://github.com/OpenAgentsInc/openagents/issues/8447) - add a
+  typed public config boundary. Implemented: `src/config/public-config.ts`
+  validates Expo-bundled public endpoints/build metadata and rejects
+  secret-shaped `extra.khala` keys; README security docs now point secrets back
+  to SecureStore/keychain.
 
 ## One-Line Verdict
 
@@ -263,6 +268,8 @@ and type-only native DTO imports in pure native helpers.
 
 ### 7. Typed Public Config With a Secrets Warning
 
+Tracking: [#8447](https://github.com/OpenAgentsInc/openagents/issues/8447)
+
 Ignite's config module carries a blunt, correct warning: bundled config is
 public. Khala already follows the important rule through SecureStore, but
 `app.json` has public endpoints in `extra.khala` and the README explains the
@@ -279,6 +286,13 @@ Recommended Khala shape:
 
 Why borrow: it gives reviewers a named place to reject future secret-bearing
 config edits.
+
+Implementation note: #8447 added `src/config/public-config.ts`, a pure parser
+for Expo-bundled public metadata/endpoints plus the default Expo Constants
+loader. The parser validates HTTPS public URLs, build metadata, and
+`updatesOwner`, and rejects secret-shaped keys anywhere under `extra.khala`.
+The README now names this module as public-only config and keeps bearer/API-key
+persistence scoped to SecureStore/keychain.
 
 ### 8. Local Templates For Screens, Components, Navigators, And Contract Oracles
 
