@@ -143,6 +143,10 @@ import {
   mountKhalaCodeAppPreferencesSettingsSection,
   type KhalaCodeAppPreferencesSettingsSectionHandle,
 } from "./app-preferences-settings-section"
+import {
+  mountKhalaCodeStatusUsageSettingsSection,
+  type KhalaCodeStatusUsageSettingsSectionHandle,
+} from "./status-usage-settings-section"
 import { mountUnifiedInboxPanel } from "./inbox"
 import {
   normalizeThreadTimestampSeconds,
@@ -196,6 +200,7 @@ import {
   resetKhalaCodeAppPreferences,
   writeKhalaCodeAppPreferences,
 } from "../shared/app-preferences"
+import { projectKhalaCodeStatusUsage } from "../shared/status-usage"
 import {
   initialKhalaCodeMainShellModel,
   shouldPollThreadTokenSummary,
@@ -5662,6 +5667,7 @@ let updaterSection: ReturnType<typeof mountKhalaCodeUpdaterSettingsSection> | nu
 let providerCatalogSection: KhalaCodeProviderCatalogSettingsSectionHandle | null = null
 let modelMcpPermissionSection: KhalaCodeModelMcpPermissionSettingsSectionHandle | null = null
 let appPreferencesSection: KhalaCodeAppPreferencesSettingsSectionHandle | null = null
+let statusUsageSection: KhalaCodeStatusUsageSettingsSectionHandle | null = null
 let plansSection: ReturnType<typeof mountKhalaCodePlansPanel> | null = null
 let runEvidenceSection: ReturnType<typeof mountKhalaCodeRunEvidencePanel> | null = null
 let commandRegistry: KhalaCodeCommandRegistry | null = null
@@ -5685,6 +5691,7 @@ const settingsPanel =
           void providerCatalogSection?.refresh()
           void modelMcpPermissionSection?.refresh()
           appPreferencesSection?.refresh()
+          void statusUsageSection?.refresh()
           void plansSection?.refresh()
           void runEvidenceSection?.refresh()
           void updaterSection?.refresh()
@@ -5695,6 +5702,7 @@ const settingsPanel =
             ...(providerCatalogSection === null ? [] : [providerCatalogSection.render()]),
             ...(modelMcpPermissionSection === null ? [] : [modelMcpPermissionSection.render()]),
             ...(appPreferencesSection === null ? [] : [appPreferencesSection.render()]),
+            ...(statusUsageSection === null ? [] : [statusUsageSection.render()]),
           ],
         fetchModelRoles: () => controls.modelRoleRegistryRead(),
         writeModelRole: request => controls.modelRoleRegistryWrite(request),
@@ -5747,6 +5755,38 @@ appPreferencesSection = settingsPanelEl === null
       read: () => readKhalaCodeAppPreferences(localStorage),
       reset: () => resetKhalaCodeAppPreferences(localStorage),
       write: preferences => writeKhalaCodeAppPreferences(localStorage, preferences),
+    })
+statusUsageSection = settingsPanelEl === null
+  ? null
+  : mountKhalaCodeStatusUsageSettingsSection({
+      fetch: async () => {
+        const statuses = await Promise.allSettled([
+          controls.codexHarnessStatus(),
+          controls.codingStatus(),
+          controls.pylonStatus(),
+          controls.tokenAccountingStatus(),
+        ])
+        const runtimeStatuses = statuses
+          .filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof controls.codexHarnessStatus>>> =>
+            result.status === "fulfilled"
+          )
+          .map(result => result.value)
+        const errors = [
+          ...statuses
+            .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+            .map(result => result.reason),
+          ...(shellModel().lastTurnFailed
+            ? [shellModel().messages.at(-1)?.body ?? "Last turn failed"]
+            : []),
+        ]
+        return projectKhalaCodeStatusUsage({
+          bootDegradedStates: shellModel().bootDegradedStates,
+          messages: shellModel().messages,
+          runtimeStatuses,
+          threadTokenSummary: shellModel().threadTokenSummary,
+          turnErrors: errors,
+        })
+      },
     })
 claudeSettingsSection = settingsPanelEl === null
   ? null

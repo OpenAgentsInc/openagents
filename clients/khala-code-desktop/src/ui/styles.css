@@ -6413,6 +6413,80 @@ button {
   font-size: 0.75rem;
   line-height: 1.4;
 }
+.khala-status-usage-section {
+  gap: 0.65rem;
+}
+.khala-status-usage-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+.khala-status-usage-metric {
+  display: grid;
+  min-width: 0;
+  gap: 0.12rem;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 62%, transparent);
+  border-radius: 0.36rem;
+}
+.khala-status-usage-label,
+.khala-status-usage-group-title {
+  color: color-mix(in srgb, var(--oa-color-component-text) 46%, transparent);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.khala-status-usage-value {
+  overflow: hidden;
+  color: var(--oa-color-component-text);
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.khala-status-usage-list {
+  display: grid;
+  gap: 0.25rem;
+}
+.khala-status-usage-row {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1fr) minmax(5.5rem, auto) minmax(12rem, 1.3fr);
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  padding: 0.42rem 0;
+  border-top: 1px solid color-mix(in srgb, var(--oa-color-component-border) 52%, transparent);
+}
+.khala-status-usage-row-title,
+.khala-status-usage-row-state,
+.khala-status-usage-row-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.khala-status-usage-row-title {
+  color: var(--oa-color-component-text);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.khala-status-usage-row-state {
+  color: color-mix(in srgb, var(--oa-color-khala-success) 82%, var(--oa-color-component-text));
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.khala-status-usage-row[data-state="degraded"] .khala-status-usage-row-state,
+.khala-status-usage-row[data-state="unavailable"] .khala-status-usage-row-state,
+.khala-status-usage-row[data-state="provider_auth"] .khala-status-usage-row-state,
+.khala-status-usage-row[data-state="quota_or_rate_limit"] .khala-status-usage-row-state,
+.khala-status-usage-row[data-state="local_server_unavailable"] .khala-status-usage-row-state,
+.khala-status-usage-row[data-state="model_unavailable"] .khala-status-usage-row-state {
+  color: color-mix(in srgb, var(--oa-color-khala-warning) 82%, var(--oa-color-component-text));
+}
+.khala-status-usage-row-detail {
+  color: color-mix(in srgb, var(--oa-color-component-text) 54%, transparent);
+  font-size: 0.7rem;
+}
 
 @media (max-width: 760px) {
   .khala-settings-header {
@@ -6432,6 +6506,8 @@ button {
   .khala-provider-catalog-row,
   .khala-model-manager-row,
   .khala-mcp-manager-row,
+  .khala-status-usage-grid,
+  .khala-status-usage-row,
   .khala-provider-custom-form,
   .khala-preferences-group {
     grid-template-columns: minmax(0, 1fr);

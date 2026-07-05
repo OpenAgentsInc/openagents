@@ -476,8 +476,10 @@ OpenCode has app-wide UI models around status and errors:
 - Debug bar.
 
 Khala has transcript rendering, status indicators, rate-limit/capacity panels,
-and public-safety projection rules, but not this exact OpenCode timeline,
-status, provider-error, usage-exceeded, and context-usage UI stack.
+public-safety projection rules, and the first status/usage projection slice
+from [#8464](https://github.com/OpenAgentsInc/openagents/issues/8464), but not
+this exact OpenCode fully virtualized timeline, hash-scroll navigation,
+provider-error dialog, usage-exceeded modal, and context-usage UI stack.
 
 ### 15. Sharing, Forking, Archive, And Session Management Extras
 
@@ -730,6 +732,26 @@ toggles ([#8463](https://github.com/OpenAgentsInc/openagents/issues/8463)).
 - Postponed intentionally: full i18n dictionaries, native OS notification
   delivery, native sound playback, Windows/Wayland/WSL display backend
   settings, and deep terminal settings until the terminal parity issue lands.
+
+Issue: add timeline, status, provider-error, and usage UX
+([#8464](https://github.com/OpenAgentsInc/openagents/issues/8464)).
+
+- Status: first implementation pass complete on 2026-07-05. Khala Code desktop
+  now has a shared status/usage projection for transcript timeline metrics,
+  token/usage breakdown, runtime health rows, and provider-specific error
+  classes. A Settings status panel renders message/tool-call counts,
+  virtualization usefulness, token sync/missing-usage state, runtime degraded
+  or unavailable rows, and provider error entries that distinguish provider
+  auth, model unavailable, quota/rate limit, local server unavailable, and
+  generic failure. Error details run through the existing diagnostics redactor
+  before projection so public-safe UI/tests never retain provider credentials.
+- Scope: timeline metrics, usage breakdown, runtime health summary,
+  provider-error classification, status settings panel, and tests for
+  status/error rendering and secret redaction.
+- Remaining work: true transcript virtualization and measurement in the main
+  message list, hash/anchor navigation, dedicated provider-error and
+  usage-exceeded dialogs, notification-click routing into the active session,
+  and richer context-window usage once the runtime exposes that data.
 
 Issue: add composer context and docks
 ([#8437](https://github.com/OpenAgentsInc/openagents/issues/8437)).
