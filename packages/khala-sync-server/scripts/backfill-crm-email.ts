@@ -6,7 +6,7 @@
  * Reads D1 rows through `wrangler d1 execute <db> --remote --json` (the
  * workable path: it needs only the repo's existing wrangler auth — no new
  * admin-API token surface) in bounded rowid-keyset pages, and upserts them
- * into the Postgres twins (migration 0021_crm_email_domain.sql; identical
+ * into the Postgres twins (migration 0022_crm_email_domain.sql; identical
  * table names) over a DIRECT connection (never Hyperdrive).
  * `ON CONFLICT ... DO NOTHING`, so:
  *   - re-running is idempotent (safe to interrupt + resume);

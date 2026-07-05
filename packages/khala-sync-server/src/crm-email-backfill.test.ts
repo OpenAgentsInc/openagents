@@ -256,7 +256,7 @@ describe.skipIf(!hasLocalPostgres())("crm/email backfill — Postgres", () => {
     await admin.end()
     const url = pg.urlFor("khala_crm_email_backfill")
     const result = await runMigrations({ databaseUrl: url })
-    expect(result.applied).toContain("0021_crm_email_domain.sql")
+    expect(result.applied).toContain("0022_crm_email_domain.sql")
     rawSql = new SQL({ url, max: 4 })
     sql = rawSql as unknown as SyncSql
   })

@@ -6,7 +6,7 @@
  * KS-8.6 artanis lane (`artanis-backfill.ts`). Takes raw D1 rows
  * (snake_case objects, exactly as `wrangler d1 execute --json` returns
  * them) and upserts them into the Postgres twins from migration
- * `0021_crm_email_domain.sql` with `ON CONFLICT ... DO NOTHING` — so the
+ * `0022_crm_email_domain.sql` with `ON CONFLICT ... DO NOTHING` — so the
  * backfill NEVER fights the live dual-write mirror (MIGRATION_PLAN §1.2:
  * rows the mirror already converged are fresher than any snapshot page;
  * rows the mirror never touched are filled here). Running a batch twice is
@@ -35,7 +35,7 @@ import { createHash } from "node:crypto"
 import type { SyncSql } from "./sql.js"
 
 // ---------------------------------------------------------------------------
-// Table registry (column lists mirror migration 0021 exactly, which mirrors
+// Table registry (column lists mirror migration 0022 exactly, which mirrors
 // the live D1 schema: worker migrations 0026/0038/0041/0063/0064/0181/0193/
 // 0218/0219/0220/0296)
 // ---------------------------------------------------------------------------

@@ -808,7 +808,7 @@ evidence + D1 drop tracked on epic
 ### 3.8 KS-8.11 — CRM, email, enrichment
 
 **KS-8.11 machinery status (2026-07-04, #8322):** LANDED — Postgres schema
-(`khala-sync-server` migration `0021_crm_email_domain.sql`: the 36
+(`khala-sync-server` migration `0022_crm_email_domain.sql`: the 36
 canonical tables — `crm_*` (13), `email_*` (11 live; the `_0193_new` D1
 names were transient rebuild artifacts, verified superseded, no twins),
 `subscriber_lists` + `list_subscribers`, `business_outreach_*` (4),

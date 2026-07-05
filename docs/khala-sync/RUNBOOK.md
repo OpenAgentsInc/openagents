@@ -987,7 +987,7 @@ behind.
 The KS-8.11 domain migration: the 36 canonical CRM/email/enrichment tables
 — `crm_*` (13), `email_*` (11), `subscriber_lists` + `list_subscribers`,
 `business_outreach_*` (4), `exa_enrichment_*` (6) — D1 → Postgres
-(khala-sync migration `0021_crm_email_domain.sql`). Machinery: the
+(khala-sync migration `0022_crm_email_domain.sql`). Machinery: the
 `CrmEmailDatabase` union handle in
 `apps/openagents.com/workers/api/src/crm-email-domain-store.ts`
 (read-back fail-soft mirror + flag-routed reads) and

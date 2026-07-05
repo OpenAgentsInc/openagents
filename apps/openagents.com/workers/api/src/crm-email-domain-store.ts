@@ -169,7 +169,7 @@ export const publicSafeRefs = async (
 // Table registry
 // ---------------------------------------------------------------------------
 //
-// Column lists mirror khala-sync-server migration 0021_crm_email_domain.sql
+// Column lists mirror khala-sync-server migration 0022_crm_email_domain.sql
 // (which mirrors the live D1 schema: worker migrations 0026/0038/0041/0063/
 // 0064/0181/0193/0218/0219/0220/0296) and the registry in
 // packages/khala-sync-server/src/crm-email-backfill.ts. The contract test
