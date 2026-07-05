@@ -103,15 +103,17 @@ dispatchers (retires most of the 135-ceiling Response-surface debt).
 | `lander2/3/4/5-routes.ts` + `lander-shell.ts` | Landing-page A/B experiments | Actively iterated (2 days old) | **DEPRECATE now, REMOVE on ONE-UI cutover** — collapse to one winner |
 | `voice-program-ingest-routes.ts` | Voice ingest, `VOICE_PROGRAM_INGEST_ENABLED` never armed | Inert flag | **REMOVE** (native SwiftUI voice app supersedes this path per CLAUDE.md mobile policy) |
 
-**Write-dead D1 table sweep (feeds #8330):** confirmed write-dead so far —
-`gym_agentcl_eval_*`, `forum_trust_edges`, `forum_actor_forum_trust`.
-Conservative estimate across all 438 `CREATE TABLE` statements: **40–70
-tables (~10–16%) with zero non-test reader or writer**, concentrated in
-eval/benchmark/experiment shadow tables. Note: no `_new`/`_shadow`/`_data`
-migration-artifact naming pattern was found — the drop-list is real dead
-experiment tables, not rename-swap leftovers. **Action:** script a
-repo-wide zero-reference sweep across all 438 tables before batching the
-DROP into #8330.
+**Write-dead D1 table sweep (feeds #8330):** #8378 added
+`bun run d1:zero-reference-sweep` plus the deterministic report
+[`2026-07-05-d1-zero-reference-sweep.md`](./2026-07-05-d1-zero-reference-sweep.md).
+Current-main evidence supersedes the original 438-table audit estimate:
+the migrations now contain 446 `CREATE TABLE` statements and 419 unique
+table names. The sweep classifies 385 referenced, 2 confirmed
+zero-production-reference, 6 test-only, 26 migration-only, and 0 manually
+retained tables. The confirmed zero-production-reference pair is
+`forum_trust_edges` / `forum_actor_forum_trust`; `gym_agentcl_eval_*` now
+has current production references in `gym-evals-domain-store.ts`, so #8380
+must remove that store path before dropping those tables.
 
 ### 2.3 Inert flag-gated features (never armed, still taxed by the debt ledger)
 
@@ -436,8 +438,8 @@ the desktop fleet poll; decide arm-or-remove on the four inert flags
 
 - #8377 - Complete: retrofitted the 16 legacy public-projection staleness
   contracts and ratcheted the zero-debt legacy-missing-staleness count to zero.
-- #8378 - Script the repo-wide D1 zero-reference table sweep across the 438
-  declared tables, feeding the KS-8.19 retirement tracker (#8330).
+- #8378 - Complete: added the repo-wide D1 zero-reference table sweep and
+  committed the KS-8.19 evidence report for #8330.
 - #8379 - Drop the confirmed write-dead forum trust D1 tables after a final
   zero-reference verification.
 - #8380 - Remove the AgentCL Vertex runner and retire the `gym_agentcl_eval_*`

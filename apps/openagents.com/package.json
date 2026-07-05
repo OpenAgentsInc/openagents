@@ -30,6 +30,7 @@
     "check:public-projection-freshness": "bun scripts/check-public-projection-freshness.mjs",
     "check:architecture": "bun scripts/check-zero-debt-architecture.mjs",
     "check:contract-drift": "bun scripts/check-contract-drift.mjs",
+    "d1:zero-reference-sweep": "bun scripts/d1-zero-reference-sweep.mjs",
     "test:contract-drift-guard": "vitest run scripts/check-contract-drift.test.ts",
     "check:conflict-markers": "bun scripts/check-conflict-markers.mjs",
     "test:conflict-markers-guard": "vitest run scripts/check-conflict-markers.test.ts",

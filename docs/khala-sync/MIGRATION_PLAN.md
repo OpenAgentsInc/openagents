@@ -1559,9 +1559,12 @@ final D1 retirement gate:
 
 1. **Inventory zero:** every table in §2 is either migrated (Postgres),
    re-homed (Analytics Engine/R2), decommissioned (legacy sync), or
-   explicitly retained (see 6.7). `wrangler d1 execute … "SELECT name
-   FROM sqlite_master"` output reconciled against this plan, table by
-   table.
+   explicitly retained (see 6.7). Before batching any drop migration, rerun
+   `bun run d1:zero-reference-sweep` from `apps/openagents.com` and compare
+   it to
+   [`../cleanup/2026-07-05-d1-zero-reference-sweep.md`](../cleanup/2026-07-05-d1-zero-reference-sweep.md)
+   (#8378). `wrangler d1 execute … "SELECT name FROM sqlite_master"` output
+   still reconciles against this plan, table by table.
 2. **Code zero:** no production code path reaches `OPENAGENTS_DB` — grep
    gate on the binding and on `openAgentsDatabase(` outside any retained
    staging module; the ~50 local `d1Effect` wrappers deleted.
