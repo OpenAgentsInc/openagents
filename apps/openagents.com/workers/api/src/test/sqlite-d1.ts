@@ -498,6 +498,213 @@ CREATE TABLE forum_context_links (
 `
 
 /**
+ * The D1 DDL for the KS-8.10 remainder domain (#8338): the thirteen
+ * remainder forum tables (worker migrations 0101/0113/0166/0168/0179),
+ * with `provider_pubkey` appended to offers as migration 0179 does. FKs
+ * dropped so the contract suite seeds rows directly.
+ */
+export const FORUM_REMAINDER_D1_SCHEMA = `
+CREATE TABLE forum_private_message_threads (
+  id TEXT PRIMARY KEY NOT NULL,
+  subject TEXT NOT NULL,
+  slug TEXT NOT NULL,
+  created_by_actor_ref TEXT NOT NULL,
+  participant_refs_json TEXT NOT NULL DEFAULT '[]',
+  latest_message_id TEXT,
+  message_count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE forum_private_messages (
+  id TEXT PRIMARY KEY NOT NULL,
+  thread_id TEXT NOT NULL,
+  sender_actor_ref TEXT NOT NULL,
+  recipient_actor_ref TEXT NOT NULL,
+  content_ref TEXT NOT NULL,
+  public_projection_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE forum_acl_grants (
+  id TEXT PRIMARY KEY NOT NULL,
+  actor_ref TEXT NOT NULL,
+  forum_id TEXT,
+  permission TEXT NOT NULL,
+  scope_ref TEXT NOT NULL,
+  granted_by_actor_ref TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  revoked_at TEXT,
+  UNIQUE (actor_ref, forum_id, permission, scope_ref)
+);
+
+CREATE TABLE forum_trust_edges (
+  id TEXT PRIMARY KEY NOT NULL,
+  source_actor_ref TEXT NOT NULL,
+  target_actor_ref TEXT NOT NULL,
+  forum_id TEXT,
+  trust_kind TEXT NOT NULL,
+  weight INTEGER NOT NULL DEFAULT 0,
+  event_ref TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE forum_actor_forum_trust (
+  id TEXT PRIMARY KEY NOT NULL,
+  actor_ref TEXT NOT NULL,
+  forum_id TEXT NOT NULL,
+  trust_score INTEGER NOT NULL DEFAULT 0,
+  reward_count INTEGER NOT NULL DEFAULT 0,
+  report_count INTEGER NOT NULL DEFAULT 0,
+  moderator_adjustment_count INTEGER NOT NULL DEFAULT 0,
+  score_ref TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT,
+  UNIQUE (actor_ref, forum_id)
+);
+
+CREATE TABLE forum_score_snapshots (
+  id TEXT PRIMARY KEY NOT NULL,
+  target_kind TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  positive_bitcoin_sats INTEGER NOT NULL DEFAULT 0,
+  boost_bitcoin_sats INTEGER NOT NULL DEFAULT 0,
+  down_signal_bitcoin_sats INTEGER NOT NULL DEFAULT 0,
+  reply_count INTEGER NOT NULL DEFAULT 0,
+  net_investment_sats INTEGER NOT NULL DEFAULT 0,
+  score_ref TEXT NOT NULL,
+  rebuilt_from_event_ref TEXT NOT NULL,
+  public_projection_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE forum_notification_reads (
+  id TEXT PRIMARY KEY,
+  actor_ref TEXT NOT NULL,
+  notification_id TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  read_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE UNIQUE INDEX idx_forum_notification_reads_actor_notification
+  ON forum_notification_reads(actor_ref, notification_id)
+  WHERE archived_at IS NULL;
+
+CREATE UNIQUE INDEX idx_forum_notification_reads_actor_idempotency
+  ON forum_notification_reads(actor_ref, idempotency_key)
+  WHERE archived_at IS NULL;
+
+CREATE TABLE forum_work_requests (
+  id TEXT PRIMARY KEY NOT NULL,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  topic_id TEXT NOT NULL UNIQUE,
+  first_post_id TEXT NOT NULL,
+  requester_actor_ref TEXT NOT NULL,
+  title TEXT NOT NULL,
+  objective_ref TEXT NOT NULL,
+  verification_command_ref TEXT NOT NULL,
+  repository_refs_json TEXT NOT NULL DEFAULT '[]',
+  required_capability_refs_json TEXT NOT NULL DEFAULT '[]',
+  budget_sats INTEGER NOT NULL,
+  budget_msats INTEGER NOT NULL,
+  deadline_ref TEXT NOT NULL,
+  relay_url TEXT NOT NULL,
+  job_event_id TEXT NOT NULL UNIQUE,
+  job_event_kind INTEGER NOT NULL,
+  job_result_kind INTEGER NOT NULL,
+  state TEXT NOT NULL DEFAULT 'open',
+  quote_count INTEGER NOT NULL DEFAULT 0,
+  public_projection_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE forum_work_request_relay_links (
+  id TEXT PRIMARY KEY NOT NULL,
+  work_request_id TEXT NOT NULL UNIQUE,
+  topic_id TEXT NOT NULL UNIQUE,
+  job_event_id TEXT NOT NULL UNIQUE,
+  job_event_kind INTEGER NOT NULL,
+  relay_url TEXT NOT NULL,
+  relay_ref TEXT NOT NULL,
+  bridge_actor_ref TEXT NOT NULL,
+  event_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE forum_work_request_offers (
+  id TEXT PRIMARY KEY NOT NULL,
+  work_request_id TEXT NOT NULL,
+  quote_ref TEXT NOT NULL UNIQUE,
+  provider_actor_ref TEXT NOT NULL,
+  amount_sats INTEGER NOT NULL,
+  amount_msats INTEGER NOT NULL,
+  capability_refs_json TEXT NOT NULL DEFAULT '[]',
+  relay_event_ref TEXT,
+  state TEXT NOT NULL DEFAULT 'offered',
+  public_projection_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT,
+  provider_pubkey TEXT
+);
+
+CREATE TABLE forum_work_request_lifecycle_posts (
+  id TEXT PRIMARY KEY NOT NULL,
+  work_request_id TEXT NOT NULL,
+  topic_id TEXT NOT NULL,
+  post_id TEXT NOT NULL UNIQUE,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  lifecycle_kind TEXT NOT NULL,
+  receipt_ref TEXT NOT NULL,
+  state_after TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE forum_work_request_acceptances (
+  id TEXT PRIMARY KEY NOT NULL,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  work_request_id TEXT NOT NULL UNIQUE,
+  offer_id TEXT NOT NULL,
+  quote_ref TEXT NOT NULL,
+  requester_actor_ref TEXT NOT NULL,
+  provider_actor_ref TEXT NOT NULL,
+  amount_msats INTEGER NOT NULL,
+  escrow_id TEXT NOT NULL UNIQUE,
+  reserve_receipt_ref TEXT NOT NULL UNIQUE,
+  acceptance_event_ref TEXT NOT NULL,
+  public_projection_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE forum_work_request_results (
+  id TEXT PRIMARY KEY NOT NULL,
+  work_request_id TEXT NOT NULL,
+  offer_id TEXT NOT NULL,
+  quote_ref TEXT NOT NULL UNIQUE,
+  provider_actor_ref TEXT NOT NULL,
+  result_event_ref TEXT NOT NULL,
+  verification_command_ref TEXT NOT NULL,
+  artifact_refs_json TEXT NOT NULL DEFAULT '[]',
+  closeout_ref TEXT,
+  public_projection_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  archived_at TEXT
+);
+`
+
+/**
  * The D1 DDL for the KS-8.5 agent runtime metadata domain (worker
  * migrations 0019/0022/0023/0027/0028/0029/0228/0229/0230/0236/0279/0280/
  * 0281/0282/0284, condensed to the live column set — FKs to users/teams

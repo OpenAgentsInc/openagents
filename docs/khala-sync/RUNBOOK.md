@@ -838,9 +838,10 @@ untouched) and
 `packages/khala-sync-server/scripts/backfill-forum-content.ts`
 (backfill + verify). The issue's remaining tables (private messages, ACL
 grants, trust edges/scores, score snapshots, notification reads, work
-requests) move in the follow-up remainder lane — see MIGRATION_PLAN
-§3.7. The forum MONEY tables belong to KS-8.8 and are not part of this
-procedure.
+requests) LANDED in the remainder lane (#8338) and ride the same sequence
+below — see "Remainder tables (KS-8.10 remainder, #8338)" at the end of
+this section and MIGRATION_PLAN §3.7. The forum MONEY tables belong to
+KS-8.8 and are not part of this procedure.
 
 Diagnostics are keys-and-hashes only (never post bodies): the drift
 metric is `khala_sync_forum_dual_write_failed`; a write shape the
@@ -897,6 +898,44 @@ Flag-flip order — never skip a step, each step soaks before the next:
 Rollback at ANY step: set `KHALA_SYNC_FORUM_READS=d1` (reads) and/or
 `KHALA_SYNC_FORUM_DUAL_WRITE=off` (writes). D1 authority is never
 behind.
+
+### Remainder tables (KS-8.10 remainder, #8338)
+
+The thirteen remainder forum tables — `forum_private_message_threads`,
+`forum_private_messages`, `forum_acl_grants`, `forum_trust_edges`,
+`forum_actor_forum_trust`, `forum_score_snapshots`,
+`forum_notification_reads`, and the work-request lifecycle family (6) —
+ride this SAME sequence and the SAME flags (`KHALA_SYNC_FORUM_DUAL_WRITE` /
+`KHALA_SYNC_FORUM_READS`). Their mirror
+(`apps/openagents.com/workers/api/src/forum/forum-remainder-store.ts`,
+`wrapForumRemainderMirroring`) is composed around
+`forumContentDatabaseForEnv`, so dual-write turning on for the content lane
+turns it on for the remainder tables too — no separate flag. Postgres
+schema is `0026_forum_remainder.sql` (apply with the same migration
+runner). Backfill + verify is the sibling CLI
+`packages/khala-sync-server/scripts/backfill-forum-remainder.ts` (same
+`--verify` / `--restart` / rowid-cursor semantics; state file
+`.forum-remainder-backfill-state.json`). Its `--verify` adds two
+domain-specific gates beyond counts/tallies/hashes:
+
+- **Trust recompute-and-compare** — the `forum_trust_edges` grouped
+  aggregate (per target_actor / forum / kind: count + weight sum) is
+  computed identically on D1 and Postgres and compared; the derived trust
+  tables are verified against D1, not re-derived on Postgres.
+- **Work-request set-membership referential checks** — within-store orphan
+  counts (every lifecycle child's `work_request_id` and acceptance/result
+  `offer_id` resolves to a parent, no cross-store joins) plus cross-store
+  equality of the distinct cross-domain reference sets (`escrow_id`,
+  `reserve_receipt_ref`, `quote_ref`, `receipt_ref`) that point at KS-8.1
+  assignments / KS-8.8 tips by id.
+
+PRIVACY: private-message threads/messages are sensitive; the Postgres twin
+stores exactly what D1 stores (bodies behind `content_ref`), and every
+diagnostic and verify line carries row keys and sha256 hashes only — never
+subjects, participants, or message content. Diagnostics reuse the content
+lane's events (`khala_sync_forum_dual_write_failed` /
+`khala_sync_forum_write_unclassified`). Actual Postgres read serving and the
+D1 drop stay deferred/epic-gated exactly as for the content core.
 
 ## Sites content domain cutover (KS-8.12, #8323)
 

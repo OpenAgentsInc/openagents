@@ -816,19 +816,63 @@ counts, domain tallies, PER-TOPIC post-chain comparison, per-thread
 body-content spot hashes over sampled topics, newest-N row hashes), and
 a contract suite that runs the row seam against BOTH stores plus the
 REAL repository write functions end-to-end through the mirror
-(`forum-content-repository.contract.test.ts`). The issue's REMAINING
-tables — `forum_private_message_threads`, `forum_private_messages`,
-`forum_acl_grants`, `forum_actor_forum_trust`, `forum_trust_edges`
-(recompute-and-compare), `forum_score_snapshots` (derived — recompute on
-Postgres), `forum_notification_reads`, and `forum_work_request_*` (6;
-set-membership referential verification against KS-8.1 assignments and
-KS-8.8 tips at cutover) — move in the follow-up remainder lane tracked
-with the read cutover + D1 decommission follow-up. The forum MONEY
+(`forum-content-repository.contract.test.ts`). The forum MONEY
 tables stay with KS-8.8 (D1 authority, that lane's mirror discipline) —
 this lane never touches them. Prod cutover procedure:
 [`RUNBOOK.md`](./RUNBOOK.md) "Forum content domain cutover"; cutover
 evidence + D1 drop tracked on epic
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
+
+**KS-8.10 REMAINDER machinery status (2026-07-04, #8338):** LANDED for the
+thirteen remainder tables — Postgres schema (`khala-sync-server` migration
+`0026_forum_remainder.sql`: `forum_private_message_threads`,
+`forum_private_messages`, `forum_acl_grants`, `forum_trust_edges`,
+`forum_actor_forum_trust`, `forum_score_snapshots`,
+`forum_notification_reads`, and the work-request lifecycle family (6)
+`forum_work_requests`, `forum_work_request_relay_links`,
+`forum_work_request_offers`, `forum_work_request_lifecycle_posts`,
+`forum_work_request_acceptances`, `forum_work_request_results`; every
+idempotency/natural-key unique ports verbatim, including the offers
+`provider_pubkey` ALTER (0179) trailing in D1 physical order and the
+notification-read partial uniques). Shared registry
+`packages/khala-sync-server/src/forum-remainder-tables.ts`
+(`upsertForumRemainderRows`) is the ONE source of truth for both the
+Worker mirror and the backfill. The Worker seam
+(`apps/openagents.com/workers/api/src/forum/forum-remainder-store.ts`,
+`wrapForumRemainderMirroring`) is COMPOSED around the content lane's
+`forumContentDatabaseForEnv`, so the SAME forum write call sites cover the
+remainder tables with no new wiring; the content classifier treats
+remainder tables as passthrough and the remainder classifier treats content
+tables as passthrough, so the two nested mirroring wrappers never
+double-mirror. PRIVACY: private-message threads/messages store exactly what
+D1 stores (bodies behind `content_ref`); diagnostics carry row keys/hashes
+only — never subjects, participants, or content. The DERIVED tables
+(`forum_trust_edges`, `forum_actor_forum_trust`, `forum_score_snapshots`)
+are recomputed from events in D1; this lane mirrors the D1 snapshot and
+VERIFIES against D1 rather than re-running the recompute on Postgres.
+Resumable backfill + exact-verify CLI
+(`packages/khala-sync-server/scripts/backfill-forum-remainder.ts`: exact
+counts, domain tallies, newest-N row hashes, TRUST RECOMPUTE-AND-COMPARE —
+`forum_trust_edges` grouped aggregate computed identically on both stores
+and compared — and WORK-REQUEST SET-MEMBERSHIP referential checks:
+within-store orphan counts plus cross-store equality of the cross-domain
+reference sets that point at KS-8.1 assignments / KS-8.8 tips by id, no
+cross-store joins). Contract suite runs the row seam against BOTH stores
+plus the REAL private-message + notification-read repository writers
+end-to-end through the mirror
+(`forum-remainder-repository.contract.test.ts`,
+`forum-remainder-store.test.ts`, `forum-remainder-backfill.test.ts`).
+Flags/binding are SHARED with the content lane
+(`KHALA_SYNC_FORUM_DUAL_WRITE` / `KHALA_SYNC_FORUM_READS`); Postgres read
+serving stays deferred lane-wide (the content wrapper logs the single
+`khala_sync_forum_postgres_reads_deferred`; the remainder wrapper treats
+`postgres` as `compare` silently). Prod cutover procedure:
+[`RUNBOOK.md`](./RUNBOOK.md) "Forum content domain cutover" (the remainder
+tables ride the same sequence, with the extra trust-recompute and
+work-request set-membership verify gates); actual Postgres read serving +
+final D1 drop remain epic-gated on
+[#8282](https://github.com/OpenAgentsInc/openagents/issues/8282) /
+KS-8.19 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
 
 - **What:** the forum content core: forums/boards/categories, topics,
   posts + bodies + revisions, private messages, trust edges/scores, ACLs,

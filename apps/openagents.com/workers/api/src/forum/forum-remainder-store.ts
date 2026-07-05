@@ -1,170 +1,92 @@
-// KS-8.10 (#8321): forum content + trust domain — D1 → Cloud SQL migration
-// machinery. Fourth KS-8 domain lane; follows the KS-8.1/8.2/8.5 templates
-// (`pylon-dispatch-store.ts` #8307, `token-ledger-store.ts` #8308,
-// `agent-runtime-store.ts` #8316 — the freshest pattern).
+// KS-8.10 remainder (#8338): forum remainder domain — D1 → Cloud SQL
+// migration machinery for the THIRTEEN remainder forum tables that finish
+// the KS-8.10 family behind the parent content lane
+// (`forum-content-store.ts`, #8321). Same seam, same mirror recipe.
 //
-// Domain tables (khala-sync migration `0014_forum_content.sql`, THIRTEEN
-// content-core tables): `forum_boards`, `forum_categories`,
-// `forum_forums`, `forum_topics`, `forum_posts`, `forum_post_bodies`,
-// `forum_post_revisions`, `forum_actor_follows`, `forum_watches`,
-// `forum_bookmarks`, `forum_reports`, `forum_moderation_events`,
-// `forum_context_links`. (The KS-8.10 issue's remaining tables — private
-// messages, ACL grants, trust edges/scores, score snapshots, notification
-// reads, work requests — move in the follow-up remainder lane; see
-// MIGRATION_PLAN.md §3.7. The forum MONEY tables belong to KS-8.8 and are
-// deliberately NOT touched here — money keeps D1 authority with its own
-// lane's mirror discipline.)
+// Domain tables (khala-sync migration `0026_forum_remainder.sql`):
+// `forum_private_message_threads`, `forum_private_messages` (PRIVATE),
+// `forum_acl_grants`, `forum_trust_edges`, `forum_actor_forum_trust`
+// (DERIVED), `forum_score_snapshots` (DERIVED), `forum_notification_reads`,
+// and the work-request lifecycle family (6) `forum_work_requests`,
+// `forum_work_request_relay_links`, `forum_work_request_offers`,
+// `forum_work_request_lifecycle_posts`, `forum_work_request_acceptances`,
+// `forum_work_request_results`.
 //
-// THE SEAM: unlike the KS-8.5 domain, the forum repository
-// (`./repository.ts`) is not a store object — it is ~40 exported Effect
-// functions that all take `db: D1Database` as their FIRST argument, and
-// it is the ONLY writer of the thirteen scoped tables. That makes
-// `D1Database` itself the existing repository interface, so this lane's
-// production wiring is a MIRRORING D1Database (`forumContentDatabaseForEnv`)
-// dropped in at the handful of `openAgentsDatabase(env)` call sites that
-// feed forum writes. Every repository function keeps its authoritative D1
-// SQL byte-for-byte; after a successful D1 write to a scoped table the
-// proxy READS BACK the affected row by primary key and converge-upserts
-// the exact D1 row into Postgres (read-back mirroring is what keeps
-// counter bumps, CASE-free state transitions, and clamped decrements
-// hash-identical across stores). A mirror failure NEVER fails the
-// request — it logs the typed drift diagnostic
+// THE SEAM: identical to the content lane. Every scoped write lives behind
+// a `db: D1Database` first argument (forum `repository.ts`, `forum-work-
+// requests.ts`, `forum-work-request-negotiation.ts`), all reached from the
+// forum route with the SAME wrapped db. This module exports
+// `wrapForumRemainderMirroring`, which the content lane's
+// `forumContentDatabaseForEnv` COMPOSES around its own wrapper so the
+// existing forum write call sites cover the remainder tables with NO new
+// wiring. The content classifier treats remainder tables as passthrough
+// (they were out of the #8321 scope), and this classifier treats content
+// tables as passthrough — the two wrappers nest cleanly, each mirroring
+// only its own tables. A mirror failure NEVER fails the request; it logs
 // `khala_sync_forum_dual_write_failed`.
 //
-// The proxy classifies statements with `classifyForumContentStatement`:
-// the scoped write-statement set is CLOSED (all of it lives in
-// repository.ts) and the contract suite pins every one of those
-// statements against the classifier, so a new/changed write either
-// classifies cleanly or logs `khala_sync_forum_write_unclassified` (a
-// loud drift signal, still fail-soft) — it can never silently corrupt.
+// PRIVACY: `forum_private_message_threads` / `forum_private_messages` carry
+// sensitive content (behind `content_ref` / `participant_refs_json`). The
+// read-back mirror only ever logs row KEYS (ids) on failure and never a
+// subject, participant, or body — same discipline the diagnostics enforce
+// for every table here.
 //
-// Pieces:
-//
-//  1. `ForumContentWriteStore` — the typed row-level seam (`upsertRows`)
-//     with `makeD1ForumContentWriteStore` (real D1/SQLite),
-//     `makePostgresForumContentStore` (KHALA_SYNC_DB Hyperdrive, sharing
-//     the SAME column/PK registry as the backfill via
-//     `@openagentsinc/khala-sync-server` — one source of truth), and
-//     `makeDualWriteForumContentWriteStore` (D1 authority + fail-soft
-//     Postgres mirror). One behavioral contract suite runs against BOTH
-//     concrete stores (`forum-content-repository.contract.test.ts`).
-//
-//  2. `makeForumContentMirror` — fail-soft read-back mirror
-//     (`mirrorRowsByPk`).
-//
-//  3. `forumContentDatabaseForEnv` — the call-site drop-in for
-//     `openAgentsDatabase(env)` on forum write paths. Flags:
-//       KHALA_SYNC_FORUM_DUAL_WRITE (default ON; off|0|false|disabled)
-//       KHALA_SYNC_FORUM_READS     (default 'd1'; d1|compare|postgres)
-//     With no KHALA_SYNC_DB binding everything degrades to plain D1.
-//     `compare` shadow-runs scoped-table SELECTs against Postgres, SERVES
-//     D1, and logs `khala_sync_forum_read_compare_mismatch` — the
-//     "public thread pages shadow-compared" cutover evidence. `postgres`
-//     read serving is DEFERRED to the cutover follow-up (the forum read
-//     surface is domain-wide, not one bounded scan): in this lane the
-//     flag behaves as `compare` and logs
-//     `khala_sync_forum_postgres_reads_deferred` once, so a premature
-//     flag flip can never serve an unproven read path.
-//
-// PUBLIC-SAFETY: forum content is a public projection surface, but
-// diagnostics still reference row KEYS and statement heads only — never
-// post bodies or projection payloads.
-//
-// Cutover order (docs/khala-sync/RUNBOOK.md "Forum content domain
-// cutover"): dual-write on → backfill
-// (scripts/backfill-forum-content.ts) → verify (exact counts, per-topic
-// post chains, thread spot hashes, newest-N row hashes) → compare reads →
-// read cutover + remainder tables + D1 drop in the follow-up.
+// Flags are SHARED with the content lane (`KHALA_SYNC_FORUM_DUAL_WRITE` /
+// `KHALA_SYNC_FORUM_READS`), read via `forumContentFlagsFromEnv`. Postgres
+// read serving is deferred lane-wide by the content wrapper (which emits
+// the single `khala_sync_forum_postgres_reads_deferred` diagnostic); this
+// wrapper treats `postgres` as `compare` SILENTLY so the deferral is
+// logged exactly once for the whole forum read surface.
 
 import {
-  FORUM_CONTENT_TABLE_COLUMNS,
-  FORUM_CONTENT_TABLE_PK,
-  isForumContentTable,
+  FORUM_REMAINDER_TABLE_COLUMNS,
+  FORUM_REMAINDER_TABLE_PK,
+  isForumRemainderTable,
   normalizeForumContentValue,
   requireForumContentUnsafe,
-  upsertForumContentRows,
-  type ForumContentRow,
-  type ForumContentTable,
+  upsertForumRemainderRows,
+  type ForumRemainderRow,
+  type ForumRemainderTable,
   type SyncSql,
 } from '@openagentsinc/khala-sync-server'
 
 import {
   defaultMakeKhalaSyncSqlClient,
-  type KhalaSyncHyperdriveBinding,
   type KhalaSyncPushSqlClient,
   type MakeKhalaSyncPushSqlClient,
 } from '../khala-sync-push-routes'
 import { logWorkerRouteWarning } from '../observability'
-import { openAgentsDatabase } from '../runtime'
-import { wrapForumRemainderMirroring } from './forum-remainder-store'
+import {
+  forumContentFlagsFromEnv,
+  toPostgresPlaceholders,
+  type ForumContentFlags,
+  type ForumContentStoreEnv,
+} from './forum-content-store'
 
-export type { ForumContentRow, ForumContentTable }
-
-// ---------------------------------------------------------------------------
-// Flags
-// ---------------------------------------------------------------------------
-
-export type ForumContentReadsMode = 'd1' | 'postgres' | 'compare'
-
-export type ForumContentFlags = Readonly<{
-  dualWrite: boolean
-  reads: ForumContentReadsMode
-}>
-
-export type ForumContentFlagEnv = Readonly<{
-  KHALA_SYNC_FORUM_DUAL_WRITE?: string | undefined
-  KHALA_SYNC_FORUM_READS?: string | undefined
-}>
-
-const FLAG_OFF_VALUES = new Set(['0', 'off', 'false', 'disabled', 'no'])
-
-/**
- * Parse the KS-8.10 migration flags from Worker vars. Dual-write defaults
- * ON (this lane lands with the mirror active wherever the binding
- * exists); reads default to D1 authority until the runbook's cutover
- * sequence flips them. Unknown read values fall back to 'd1' — never
- * fail open into an unproven read path on a typo.
- */
-export const forumContentFlagsFromEnv = (
-  env: ForumContentFlagEnv,
-): ForumContentFlags => {
-  const dualWriteRaw = env.KHALA_SYNC_FORUM_DUAL_WRITE?.trim().toLowerCase()
-  const readsRaw = env.KHALA_SYNC_FORUM_READS?.trim().toLowerCase()
-
-  return {
-    dualWrite:
-      dualWriteRaw === undefined || !FLAG_OFF_VALUES.has(dualWriteRaw),
-    reads:
-      readsRaw === 'postgres' || readsRaw === 'compare' ? readsRaw : 'd1',
-  }
-}
+export type { ForumRemainderRow, ForumRemainderTable }
 
 // ---------------------------------------------------------------------------
-// Diagnostics (the drift metric)
+// Diagnostics — the SAME event vocabulary as the content lane
 // ---------------------------------------------------------------------------
 
-export type ForumContentDiagnosticEvent =
+export type ForumRemainderDiagnosticEvent =
   | 'khala_sync_forum_dual_write_failed'
   | 'khala_sync_forum_write_unclassified'
   | 'khala_sync_forum_read_compare_mismatch'
   | 'khala_sync_forum_read_compare_failed'
-  | 'khala_sync_forum_postgres_reads_deferred'
 
-export type ForumContentDiagnostic = Readonly<{
-  /** The store operation, e.g. 'mirror:forum_posts' or a statement head. */
+export type ForumRemainderDiagnostic = Readonly<{
+  /** Store op, e.g. 'mirror:forum_private_messages' or a statement head. */
   op: string
-  /**
-   * Public-safe refs identifying the affected rows — row KEYS only
-   * (ids/refs). NEVER post bodies, titles, or projection payloads.
-   */
+  /** Public-safe refs — row KEYS only (ids). NEVER subjects/bodies. */
   refs: ReadonlyArray<string>
   /** Public-safe failure summary (error class/message head, no values). */
   messageSafe: string
 }>
 
-export type ForumContentLog = (
-  event: ForumContentDiagnosticEvent,
-  fields: ForumContentDiagnostic,
+export type ForumRemainderLog = (
+  event: ForumRemainderDiagnosticEvent,
+  fields: ForumRemainderDiagnostic,
 ) => void
 
 const safeMessage = (error: unknown): string => {
@@ -172,7 +94,6 @@ const safeMessage = (error: unknown): string => {
   return raw.replaceAll(/\s+/g, ' ').slice(0, 200)
 }
 
-/** The leading keywords of a statement — safe to log (SQL text is code). */
 const statementHead = (sql: string): string =>
   sql.replaceAll(/\s+/g, ' ').trim().slice(0, 80)
 
@@ -180,15 +101,10 @@ const statementHead = (sql: string): string =>
 // The row-level repository seam
 // ---------------------------------------------------------------------------
 
-/**
- * The typed row-level write seam: converge upserts (PK arbiter, D1
- * snapshot wins) for all thirteen tables. Returns how many rows were
- * touched.
- */
-export type ForumContentWriteStore = Readonly<{
+export type ForumRemainderWriteStore = Readonly<{
   upsertRows: (
-    table: ForumContentTable,
-    rows: ReadonlyArray<ForumContentRow>,
+    table: ForumRemainderTable,
+    rows: ReadonlyArray<ForumRemainderRow>,
   ) => Promise<number>
 }>
 
@@ -196,31 +112,21 @@ export type ForumContentWriteStore = Readonly<{
 // Postgres implementation
 // ---------------------------------------------------------------------------
 
-export type PostgresForumContentStore = ForumContentWriteStore &
+export type PostgresForumRemainderStore = ForumRemainderWriteStore &
   Readonly<{
-    /**
-     * Run one read-only statement on the Postgres twin (compare-mode
-     * shadow reads and verification). `text` uses `$n` placeholders.
-     */
     queryRows: (
       text: string,
       params: ReadonlyArray<unknown>,
     ) => Promise<ReadonlyArray<Record<string, unknown>>>
   }>
 
-export type MakePostgresForumContentStoreDependencies = Readonly<{
-  /**
-   * Acquire a transaction-mode-safe SQL client (Hyperdrive in production,
-   * a direct local URL in tests). One client per store operation; always
-   * ended, even on error — the same discipline as the KS-8.1/8.2/8.5
-   * stores.
-   */
+export type MakePostgresForumRemainderStoreDependencies = Readonly<{
   acquireSql: () => Promise<KhalaSyncPushSqlClient>
 }>
 
-export const makePostgresForumContentStore = (
-  deps: MakePostgresForumContentStoreDependencies,
-): PostgresForumContentStore => {
+export const makePostgresForumRemainderStore = (
+  deps: MakePostgresForumRemainderStoreDependencies,
+): PostgresForumRemainderStore => {
   const withSql = async <A>(fn: (sql: SyncSql) => Promise<A>): Promise<A> => {
     const client = await deps.acquireSql()
     try {
@@ -240,28 +146,23 @@ export const makePostgresForumContentStore = (
         requireForumContentUnsafe(sql)(text, [...params]),
       ),
     upsertRows: (table, rows) =>
-      withSql(sql => upsertForumContentRows(sql, table, rows)),
+      withSql(sql => upsertForumRemainderRows(sql, table, rows)),
   }
 }
 
 // ---------------------------------------------------------------------------
-// D1 implementation of the same seam (contract-suite twin)
+// D1 twin of the same seam (contract-suite twin)
 // ---------------------------------------------------------------------------
 
-/**
- * The D1 twin of the row-level seam (used by the contract suite and
- * available as the write path at eventual full cutover). Same converge
- * semantics over the same PK arbiters, driven by the SAME shared registry.
- */
-export const makeD1ForumContentWriteStore = (
+export const makeD1ForumRemainderWriteStore = (
   db: D1Database,
-): ForumContentWriteStore => ({
+): ForumRemainderWriteStore => ({
   upsertRows: async (table, rows) => {
     if (rows.length === 0) {
       return 0
     }
-    const columns = FORUM_CONTENT_TABLE_COLUMNS[table]
-    const pk = FORUM_CONTENT_TABLE_PK[table]
+    const columns = FORUM_REMAINDER_TABLE_COLUMNS[table]
+    const pk = FORUM_REMAINDER_TABLE_PK[table]
     const setClauses = columns
       .filter(column => column !== pk)
       .map(column => `${column} = excluded.${column}`)
@@ -289,23 +190,16 @@ export const makeD1ForumContentWriteStore = (
 // Dual-write wrapper over the row seam
 // ---------------------------------------------------------------------------
 
-export type MakeDualWriteForumContentWriteStoreDependencies = Readonly<{
-  /** The authoritative D1 write store. */
-  d1: ForumContentWriteStore
-  /** The Postgres store, or undefined when no KHALA_SYNC_DB binding. */
-  postgres: ForumContentWriteStore | undefined
+export type MakeDualWriteForumRemainderWriteStoreDependencies = Readonly<{
+  d1: ForumRemainderWriteStore
+  postgres: ForumRemainderWriteStore | undefined
   flags: ForumContentFlags
-  log?: ForumContentLog | undefined
+  log?: ForumRemainderLog | undefined
 }>
 
-/**
- * D1 writes first (authority); the same rows then mirror to Postgres
- * best-effort. A mirror failure never fails the write — it emits
- * `khala_sync_forum_dual_write_failed` (the drift metric).
- */
-export const makeDualWriteForumContentWriteStore = (
-  deps: MakeDualWriteForumContentWriteStoreDependencies,
-): ForumContentWriteStore => {
+export const makeDualWriteForumRemainderWriteStore = (
+  deps: MakeDualWriteForumRemainderWriteStoreDependencies,
+): ForumRemainderWriteStore => {
   const { d1, flags, postgres } = deps
   const log = deps.log ?? (() => {})
 
@@ -324,7 +218,7 @@ export const makeDualWriteForumContentWriteStore = (
           op: `upsertRows:${table}`,
           refs: rows
             .slice(0, 10)
-            .map(row => String(row[FORUM_CONTENT_TABLE_PK[table]] ?? '')),
+            .map(row => String(row[FORUM_REMAINDER_TABLE_PK[table]] ?? '')),
         })
       }
       return outcome
@@ -336,31 +230,22 @@ export const makeDualWriteForumContentWriteStore = (
 // The read-back mirror
 // ---------------------------------------------------------------------------
 
-export type ForumContentMirror = Readonly<{
-  /** Read the rows for `pkValues` back from D1 and upsert into Postgres. */
+export type ForumRemainderMirror = Readonly<{
   mirrorRowsByPk: (
-    table: ForumContentTable,
+    table: ForumRemainderTable,
     pkValues: ReadonlyArray<string>,
   ) => Promise<void>
 }>
 
-export type MakeForumContentMirrorDependencies = Readonly<{
+export type MakeForumRemainderMirrorDependencies = Readonly<{
   db: D1Database
-  postgres: ForumContentWriteStore
-  log: ForumContentLog
+  postgres: ForumRemainderWriteStore
+  log: ForumRemainderLog
 }>
 
-/**
- * Fail-soft read-back mirror: reads the authoritative rows from D1 and
- * converge-upserts them into Postgres; every failure is logged (keys
- * only) and swallowed. NEVER throws. A PK that no longer/never matched a
- * D1 row (e.g. an `INSERT OR IGNORE` dedupe that discarded the new id)
- * mirrors zero rows — exactly right, the surviving row was mirrored when
- * it was first written.
- */
-export const makeForumContentMirror = (
-  deps: MakeForumContentMirrorDependencies,
-): ForumContentMirror => {
+export const makeForumRemainderMirror = (
+  deps: MakeForumRemainderMirrorDependencies,
+): ForumRemainderMirror => {
   const { db, log, postgres } = deps
 
   return {
@@ -369,12 +254,12 @@ export const makeForumContentMirror = (
         return
       }
       try {
-        const pk = FORUM_CONTENT_TABLE_PK[table]
+        const pk = FORUM_REMAINDER_TABLE_PK[table]
         const placeholders = pkValues.map(() => '?').join(', ')
         const rows = await db
           .prepare(`SELECT * FROM ${table} WHERE ${pk} IN (${placeholders})`)
           .bind(...pkValues)
-          .all<ForumContentRow>()
+          .all<ForumRemainderRow>()
         await postgres.upsertRows(table, rows.results ?? [])
       } catch (error) {
         log('khala_sync_forum_dual_write_failed', {
@@ -388,31 +273,29 @@ export const makeForumContentMirror = (
 }
 
 // ---------------------------------------------------------------------------
-// Statement classification (the closed write set in ./repository.ts)
+// Statement classification (the closed remainder write set)
 // ---------------------------------------------------------------------------
 
-export type ForumContentPkSource =
+export type ForumRemainderPkSource =
   | Readonly<{ kind: 'bind'; index: number }>
   | Readonly<{ kind: 'literal'; value: string }>
 
-export type ForumContentStatementClass =
+export type ForumRemainderStatementClass =
   | Readonly<{
       kind: 'mirrored-write'
-      table: ForumContentTable
-      pkSource: ForumContentPkSource
+      table: ForumRemainderTable
+      pkSource: ForumRemainderPkSource
     }>
-  | Readonly<{ kind: 'unclassified-write'; table: ForumContentTable }>
+  | Readonly<{ kind: 'unclassified-write'; table: ForumRemainderTable }>
   | Readonly<{ kind: 'comparable-select' }>
   | Readonly<{ kind: 'passthrough' }>
 
-/** SQL text with string literals blanked, for placeholder counting. */
 const withoutStringLiterals = (sql: string): string =>
   sql.replaceAll(/'(?:[^']|'')*'/g, "''")
 
 const countBinds = (sql: string): number =>
   (withoutStringLiterals(sql).match(/\?/g) ?? []).length
 
-/** Split a VALUES tuple body on top-level commas (quote/paren aware). */
 const splitTupleItems = (body: string): ReadonlyArray<string> => {
   const items: Array<string> = []
   let depth = 0
@@ -467,34 +350,31 @@ const SELECT_HEAD_RE = /^\s*select\b/i
 const TABLE_REF_RE = /\b(?:from|join)\s+([a-z_][a-z0-9_]*)/gi
 
 /**
- * Classify one prepared statement against the scoped table set.
- *
- *  - INSERT [OR IGNORE|REPLACE] INTO <scoped> (cols) VALUES (tuple):
- *    the PK's tuple item is either a `?` (bind index = number of `?`
- *    items before it — INSERT binds only appear in the tuple) or a
- *    quoted literal.
- *  - UPDATE <scoped> SET … WHERE … <pk> = ?|'literal' …: bind index =
- *    binds in SET + binds in WHERE before the PK equality.
- *  - Any other INSERT/UPDATE/DELETE touching a scoped table →
- *    `unclassified-write` (loud diagnostic; the contract suite keeps this
- *    branch unreachable for the live repository statements).
- *  - SELECTs whose from/join refs are ALL scoped tables →
- *    `comparable-select` (compare-mode shadow reads).
+ * Classify one prepared statement against the remainder table set. Same
+ * parser as the content lane, scoped to `isForumRemainderTable`:
+ *  - INSERT [OR IGNORE|REPLACE]: the PK's tuple item is a `?` (bind index =
+ *    `?` items before it) or a quoted literal.
+ *  - UPDATE … WHERE … <pk> = ?|'literal': bind index = binds in SET + binds
+ *    in WHERE before the PK equality.
+ *  - other scoped INSERT/UPDATE/DELETE → `unclassified-write` (loud, still
+ *    fail-soft).
+ *  - SELECTs whose from/join refs are ALL remainder tables →
+ *    `comparable-select`.
  */
-export const classifyForumContentStatement = (
+export const classifyForumRemainderStatement = (
   sql: string,
-): ForumContentStatementClass => {
+): ForumRemainderStatementClass => {
   const insertMatch = INSERT_RE.exec(sql)
   if (insertMatch !== null) {
     const table = insertMatch[1]!.toLowerCase()
-    if (!isForumContentTable(table)) {
+    if (!isForumRemainderTable(table)) {
       return { kind: 'passthrough' }
     }
     const columns = insertMatch[2]!
       .split(',')
       .map(column => column.trim().toLowerCase())
     const items = splitTupleItems(insertMatch[3]!)
-    const pk = FORUM_CONTENT_TABLE_PK[table]
+    const pk = FORUM_REMAINDER_TABLE_PK[table]
     const pkIndex = columns.indexOf(pk)
     if (pkIndex === -1 || items.length !== columns.length) {
       return { kind: 'unclassified-write', table }
@@ -527,10 +407,10 @@ export const classifyForumContentStatement = (
   const updateMatch = UPDATE_RE.exec(sql)
   if (updateMatch !== null) {
     const table = updateMatch[1]!.toLowerCase()
-    if (!isForumContentTable(table)) {
+    if (!isForumRemainderTable(table)) {
       return { kind: 'passthrough' }
     }
-    const pk = FORUM_CONTENT_TABLE_PK[table]
+    const pk = FORUM_REMAINDER_TABLE_PK[table]
     const whereClause = updateMatch[3]!
     const pkEquality = new RegExp(
       `\\b${pk}\\s*=\\s*(\\?|'(?:[^']|'')*')`,
@@ -565,8 +445,6 @@ export const classifyForumContentStatement = (
   }
 
   if (WRITE_HEAD_RE.test(sql)) {
-    // DELETE or an unparsable INSERT/UPDATE: only loud if it touches a
-    // scoped table.
     const touched = new Set<string>()
     for (const match of withoutStringLiterals(sql).matchAll(
       /\b(?:into|update|from)\s+([a-z_][a-z0-9_]*)/gi,
@@ -574,7 +452,7 @@ export const classifyForumContentStatement = (
       touched.add(match[1]!.toLowerCase())
     }
     for (const table of touched) {
-      if (isForumContentTable(table)) {
+      if (isForumRemainderTable(table)) {
         return { kind: 'unclassified-write', table }
       }
     }
@@ -586,7 +464,7 @@ export const classifyForumContentStatement = (
     for (const match of withoutStringLiterals(sql).matchAll(TABLE_REF_RE)) {
       refs.push(match[1]!.toLowerCase())
     }
-    if (refs.length > 0 && refs.every(ref => isForumContentTable(ref))) {
+    if (refs.length > 0 && refs.every(ref => isForumRemainderTable(ref))) {
       return { kind: 'comparable-select' }
     }
   }
@@ -594,9 +472,8 @@ export const classifyForumContentStatement = (
   return { kind: 'passthrough' }
 }
 
-/** Resolve the affected row's PK value from the statement's bound params. */
-export const resolveForumContentPk = (
-  pkSource: ForumContentPkSource,
+export const resolveForumRemainderPk = (
+  pkSource: ForumRemainderPkSource,
   params: ReadonlyArray<unknown>,
 ): string | undefined => {
   if (pkSource.kind === 'literal') {
@@ -606,38 +483,6 @@ export const resolveForumContentPk = (
   return value === undefined || value === null ? undefined : String(value)
 }
 
-/** Convert D1 `?` placeholders to Postgres `$n` (quote-aware). */
-export const toPostgresPlaceholders = (sql: string): string => {
-  let out = ''
-  let inString = false
-  let n = 0
-  for (let i = 0; i < sql.length; i++) {
-    const ch = sql[i]!
-    if (inString) {
-      out += ch
-      if (ch === "'") {
-        if (sql[i + 1] === "'") {
-          out += "'"
-          i += 1
-        } else {
-          inString = false
-        }
-      }
-      continue
-    }
-    if (ch === "'") {
-      inString = true
-      out += ch
-    } else if (ch === '?') {
-      n += 1
-      out += `$${n}`
-    } else {
-      out += ch
-    }
-  }
-  return out
-}
-
 // ---------------------------------------------------------------------------
 // The mirroring D1Database (production dual-write wiring)
 // ---------------------------------------------------------------------------
@@ -645,12 +490,11 @@ export const toPostgresPlaceholders = (sql: string): string => {
 const stableRowString = (row: Record<string, unknown>): string => {
   const entries = Object.entries(row)
     .map(
-      ([key, value]) =>
-        [key, normalizeForumContentValue(value)] as const,
+      ([key, value]) => [key, normalizeForumContentValue(value)] as const,
     )
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([key, value]) => `${key}=${value === null ? '<null>' : String(value)}`)
-  return entries.join('')
+  return entries.join('')
 }
 
 const rowsEqual = (
@@ -668,16 +512,11 @@ const rowsEqual = (
   return true
 }
 
-export type MakeForumContentMirroringDatabaseDependencies = Readonly<{
+export type MakeForumRemainderMirroringDatabaseDependencies = Readonly<{
   db: D1Database
-  /** The write mirror, or undefined when dual-write is off. */
-  mirror: ForumContentMirror | undefined
-  /**
-   * The Postgres store for compare-mode shadow reads, or undefined when
-   * reads stay on plain D1.
-   */
-  compareStore: PostgresForumContentStore | undefined
-  log: ForumContentLog
+  mirror: ForumRemainderMirror | undefined
+  compareStore: PostgresForumRemainderStore | undefined
+  log: ForumRemainderLog
 }>
 
 type BoundStatement = Readonly<{
@@ -686,15 +525,15 @@ type BoundStatement = Readonly<{
 }>
 
 /**
- * Wrap one D1Database so that every successful write to a scoped forum
- * content table read-back-mirrors the affected row into Postgres, and
- * (compare mode) every scoped-table SELECT is shadow-run against the
- * Postgres twin with D1 always served. All other statements pass through
- * untouched. Fail-soft everywhere: no mirror or compare outcome can fail
- * or alter the D1 result.
+ * Wrap one D1Database so every successful write to a scoped remainder table
+ * read-back-mirrors the affected row into Postgres, and (compare mode)
+ * every scoped-table SELECT shadow-runs against the twin with D1 always
+ * served. All other statements pass through untouched — including forum
+ * CONTENT writes, which the inner content wrapper mirrors. Fail-soft
+ * everywhere.
  */
-export const makeForumContentMirroringDatabase = (
-  deps: MakeForumContentMirroringDatabaseDependencies,
+export const makeForumRemainderMirroringDatabase = (
+  deps: MakeForumRemainderMirroringDatabaseDependencies,
 ): D1Database => {
   const { compareStore, db, log, mirror } = deps
 
@@ -735,14 +574,14 @@ export const makeForumContentMirroringDatabase = (
       params.length === 0
         ? db.prepare(sql)
         : db.prepare(sql).bind(...params)
-    const classified = classifyForumContentStatement(sql)
+    const classified = classifyForumRemainderStatement(sql)
 
     if (classified.kind === 'unclassified-write') {
       return {
         onWriteSuccess: () => {
           log('khala_sync_forum_write_unclassified', {
             messageSafe:
-              'scoped forum table write did not classify; postgres twin may drift until the next backfill sweep',
+              'scoped forum remainder table write did not classify; postgres twin may drift until the next backfill sweep',
             op: statementHead(sql),
             refs: [],
           })
@@ -755,7 +594,7 @@ export const makeForumContentMirroringDatabase = (
     if (classified.kind === 'mirrored-write' && mirror !== undefined) {
       return {
         onWriteSuccess: () => {
-          const pk = resolveForumContentPk(classified.pkSource, params)
+          const pk = resolveForumRemainderPk(classified.pkSource, params)
           return pk === undefined
             ? Promise.resolve()
             : mirror.mirrorRowsByPk(classified.table, [pk])
@@ -772,7 +611,7 @@ export const makeForumContentMirroringDatabase = (
     params: ReadonlyArray<unknown>,
   ): D1PreparedStatement => {
     const bound = makeBound(sql, params)
-    const classified = classifyForumContentStatement(sql)
+    const classified = classifyForumRemainderStatement(sql)
     const comparable =
       compareSelect !== undefined && classified.kind === 'comparable-select'
 
@@ -800,9 +639,6 @@ export const makeForumContentMirroringDatabase = (
             ...a: ReadonlyArray<unknown>
           ) => Promise<T | null>
         )(...args)
-        // Compare only whole-row `first()` reads; `first(column)` scalar
-        // reads ride the same statement shape and are covered by `all`
-        // call sites.
         if (comparable && args.length === 0) {
           await compareSelect(
             sql,
@@ -831,8 +667,7 @@ export const makeForumContentMirroringDatabase = (
         }
         return result
       },
-      // The proxy carries the inner statement so `batch` can unwrap it.
-      __forumContentInner: bound,
+      __forumRemainderInner: bound,
     }
 
     return wrapper as unknown as D1PreparedStatement
@@ -843,9 +678,9 @@ export const makeForumContentMirroringDatabase = (
       const inners = statements.map(statement => {
         const carried = (
           statement as unknown as {
-            __forumContentInner?: BoundStatement
+            __forumRemainderInner?: BoundStatement
           }
-        ).__forumContentInner
+        ).__forumRemainderInner
         return carried ?? { onWriteSuccess: undefined, statement }
       })
       const results = await db.batch<T>(inners.map(inner => inner.statement))
@@ -873,22 +708,15 @@ export const makeForumContentMirroringDatabase = (
 }
 
 // ---------------------------------------------------------------------------
-// Env plumbing (the call-site drop-in)
+// The composition entry point (wraps the content-lane db)
 // ---------------------------------------------------------------------------
 
-export type ForumContentStoreEnv = ForumContentFlagEnv &
-  Readonly<{
-    OPENAGENTS_DB?: D1Database
-    KHALA_SYNC_DB?: KhalaSyncHyperdriveBinding | undefined
-  }>
-
-export type MakeForumContentStoreOptions = Readonly<{
-  /** Injectable client factory (tests). Default: postgres.js/Hyperdrive. */
+export type MakeForumRemainderStoreOptions = Readonly<{
   makeSqlClient?: MakeKhalaSyncPushSqlClient | undefined
-  log?: ForumContentLog | undefined
+  log?: ForumRemainderLog | undefined
 }>
 
-const defaultLog: ForumContentLog = (event, fields) => {
+const defaultLog: ForumRemainderLog = (event, fields) => {
   logWorkerRouteWarning(event, {
     messageSafe: fields.messageSafe,
     op: fields.op,
@@ -898,69 +726,44 @@ const defaultLog: ForumContentLog = (event, fields) => {
 
 const postgresStoreForEnv = (
   env: ForumContentStoreEnv,
-  options: MakeForumContentStoreOptions,
-): PostgresForumContentStore | undefined => {
+  options: MakeForumRemainderStoreOptions,
+): PostgresForumRemainderStore | undefined => {
   const connectionString = env.KHALA_SYNC_DB?.connectionString
   if (connectionString === undefined || connectionString.length === 0) {
     return undefined
   }
   const makeSqlClient = options.makeSqlClient ?? defaultMakeKhalaSyncSqlClient
-  return makePostgresForumContentStore({
+  return makePostgresForumRemainderStore({
     acquireSql: () => makeSqlClient(connectionString),
   })
 }
 
 /**
- * The drop-in for `openAgentsDatabase(env)` at forum write entry points:
- * the same D1Database, wrapped so scoped forum content writes read-back
- * mirror into Postgres (dual-write flag) and scoped SELECTs shadow-compare
- * (reads flag). With no KHALA_SYNC_DB binding, dual-write off AND reads
- * 'd1', the RAW database is returned — zero overhead.
+ * Compose the remainder mirror around an already-resolved forum D1Database
+ * (the content-lane wrapper or a raw db). Returns `base` unchanged when
+ * there is no KHALA_SYNC_DB binding or when dual-write is off AND reads are
+ * 'd1' — so the fast path stays zero-overhead. `reads=postgres` is treated
+ * as `compare` SILENTLY: the content lane already logs the single
+ * lane-wide `khala_sync_forum_postgres_reads_deferred` diagnostic.
  */
-export const forumContentDatabaseForEnv = (
+export const wrapForumRemainderMirroring = (
+  base: D1Database,
   env: ForumContentStoreEnv,
-  options: MakeForumContentStoreOptions = {},
+  options: MakeForumRemainderStoreOptions = {},
 ): D1Database => {
-  const db = openAgentsDatabase(env as { OPENAGENTS_DB: D1Database })
   const flags = forumContentFlagsFromEnv(env)
-  const log = options.log ?? defaultLog
   const postgres = postgresStoreForEnv(env, options)
-
-  // The KS-8.10 remainder lane (#8338) composes its own mirror around this
-  // one so the SAME forum write call sites cover the remainder tables with
-  // no extra wiring. It shares the flags/binding and is a no-op in exactly
-  // the cases below, preserving the zero-overhead identity fast path.
-  const wrapRemainder = (base: D1Database): D1Database =>
-    wrapForumRemainderMirroring(base, env, {
-      log,
-      makeSqlClient: options.makeSqlClient,
-    })
-
   if (postgres === undefined || (!flags.dualWrite && flags.reads === 'd1')) {
-    return wrapRemainder(db)
+    return base
   }
+  const log = options.log ?? defaultLog
 
-  if (flags.reads === 'postgres') {
-    // Serving forum reads from Postgres is the cutover follow-up (the
-    // read surface is domain-wide). Never fail open into an unproven
-    // path: behave as compare and say so once. The remainder wrapper
-    // stays silent on this so the deferral logs exactly once lane-wide.
-    log('khala_sync_forum_postgres_reads_deferred', {
-      messageSafe:
-        'KHALA_SYNC_FORUM_READS=postgres is deferred to the read-cutover follow-up; serving d1 with compare shadow reads',
-      op: 'forumContentDatabaseForEnv',
-      refs: [],
-    })
-  }
-
-  return wrapRemainder(
-    makeForumContentMirroringDatabase({
-      compareStore: flags.reads === 'd1' ? undefined : postgres,
-      db,
-      log,
-      mirror: flags.dualWrite
-        ? makeForumContentMirror({ db, log, postgres })
-        : undefined,
-    }),
-  )
+  return makeForumRemainderMirroringDatabase({
+    compareStore: flags.reads === 'd1' ? undefined : postgres,
+    db: base,
+    log,
+    mirror: flags.dualWrite
+      ? makeForumRemainderMirror({ db: base, log, postgres })
+      : undefined,
+  })
 }
