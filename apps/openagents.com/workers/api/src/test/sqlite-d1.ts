@@ -2866,3 +2866,337 @@ CREATE TABLE hygiene_debt_receipts (
   created_at TEXT NOT NULL, updated_at TEXT NOT NULL, retired_at TEXT, settlement_receipt_ref TEXT
 );
 `
+
+/**
+ * KS-8.15 remainder (#8355): D1 schema for the gym / mullet / blueprint /
+ * replay-clip / mirrorcode eval remainder (worker migrations 0100/0132/0133/
+ * 0136/0208/0233/0239/0240/0246/0256/0266), condensed to the live column set.
+ * FK clauses are dropped so the contract suite seeds rows directly; the UNIQUE
+ * dedupe keys the INSERT OR IGNORE / converge write paths rely on are kept
+ * EXACTLY (harbor artifact_sha256, mutalisk job_ref, blueprint
+ * idempotency_key, the agentcl run-state order key, the mullet hourly/candidate
+ * order keys).
+ */
+export const GYM_EVALS_DOMAIN_D1_SCHEMA = `
+CREATE TABLE gym_agentcl_eval_runs (
+  eval_ref TEXT PRIMARY KEY,
+  schema_version TEXT NOT NULL,
+  environment_ref TEXT NOT NULL,
+  experiment_id TEXT NOT NULL,
+  stream_kind TEXT NOT NULL,
+  run_ref TEXT NOT NULL,
+  task_set_ref TEXT,
+  verifier_ref TEXT,
+  runner_config_id TEXT,
+  seam_id TEXT,
+  seam_can_spend INTEGER NOT NULL DEFAULT 0,
+  state TEXT NOT NULL,
+  decision_grade INTEGER NOT NULL DEFAULT 0,
+  public_claim_eligible INTEGER NOT NULL DEFAULT 0,
+  collapse_gains_into_one_number INTEGER NOT NULL DEFAULT 0,
+  run_metadata_json TEXT NOT NULL,
+  proof_refs_json TEXT NOT NULL,
+  caveat_refs_json TEXT NOT NULL,
+  blocker_refs_json TEXT NOT NULL,
+  started_at TEXT,
+  completed_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE gym_agentcl_eval_phase_metrics (
+  eval_ref TEXT NOT NULL,
+  phase TEXT NOT NULL,
+  task_role TEXT NOT NULL,
+  task_count INTEGER NOT NULL,
+  accepted_outcome_rate REAL NOT NULL,
+  score_bps INTEGER NOT NULL,
+  report_ref TEXT,
+  receipt_ref TEXT,
+  metric_metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (eval_ref, phase)
+);
+CREATE TABLE gym_agentcl_eval_gain_metrics (
+  eval_ref TEXT NOT NULL,
+  gain_kind TEXT NOT NULL,
+  gain_value REAL NOT NULL,
+  gain_bps INTEGER NOT NULL,
+  baseline_phase TEXT NOT NULL,
+  comparison_phase TEXT NOT NULL,
+  evidence_refs_json TEXT NOT NULL,
+  metric_metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (eval_ref, gain_kind)
+);
+CREATE TABLE gym_agentcl_eval_run_state_events (
+  event_ref TEXT PRIMARY KEY,
+  eval_ref TEXT NOT NULL,
+  event_index INTEGER NOT NULL,
+  state TEXT NOT NULL,
+  observed_at TEXT NOT NULL,
+  state_metadata_json TEXT NOT NULL DEFAULT '{}'
+);
+CREATE UNIQUE INDEX idx_gym_agentcl_eval_run_state_events_order
+  ON gym_agentcl_eval_run_state_events (eval_ref, event_index);
+CREATE TABLE gym_agentcl_eval_prompt_mutations (
+  mutation_ref TEXT PRIMARY KEY,
+  eval_ref TEXT NOT NULL,
+  run_ref TEXT NOT NULL,
+  pass TEXT NOT NULL,
+  task_ref TEXT NOT NULL,
+  step_index INTEGER NOT NULL,
+  template_ref TEXT NOT NULL,
+  memory_before_refs_json TEXT NOT NULL,
+  memory_after_refs_json TEXT NOT NULL,
+  feedback_ref TEXT NOT NULL,
+  mutation_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE gym_harbor_full_trace_archives (
+  archive_ref TEXT PRIMARY KEY,
+  run_ref TEXT NOT NULL,
+  job_ref TEXT NOT NULL,
+  source_kind TEXT NOT NULL DEFAULT 'harbor_job_tarball',
+  artifact_r2_key TEXT NOT NULL,
+  artifact_sha256 TEXT NOT NULL UNIQUE,
+  artifact_bytes INTEGER NOT NULL,
+  content_type TEXT NOT NULL DEFAULT 'application/gzip',
+  capture_started_at TEXT,
+  capture_completed_at TEXT NOT NULL,
+  visibility TEXT NOT NULL DEFAULT 'operator_only',
+  contains_raw_prompts INTEGER NOT NULL DEFAULT 1,
+  contains_raw_logs INTEGER NOT NULL DEFAULT 1,
+  contains_private_material INTEGER NOT NULL DEFAULT 1,
+  demand_kind TEXT NOT NULL DEFAULT 'internal',
+  demand_source TEXT NOT NULL DEFAULT 'harbor_terminal_bench',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE gym_ladder_leaderboard_snapshots (
+  ladder_ref TEXT PRIMARY KEY,
+  ladder_json TEXT NOT NULL,
+  published_at TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE gym_mutalisk_khala_delegation_jobs (
+  run_ref TEXT PRIMARY KEY,
+  job_ref TEXT NOT NULL UNIQUE,
+  job_json TEXT NOT NULL,
+  projection_json TEXT NOT NULL,
+  latest_stage TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE gym_mutalisk_khala_delegation_progress (
+  run_ref TEXT NOT NULL,
+  stage TEXT NOT NULL,
+  progress_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (run_ref, stage)
+);
+CREATE TABLE gym_mutalisk_khala_delegation_summaries (
+  run_ref TEXT PRIMARY KEY,
+  candidate_manifest_ref TEXT NOT NULL,
+  candidate_ref TEXT NOT NULL,
+  summary_json TEXT NOT NULL,
+  admission_json TEXT NOT NULL,
+  bridge_output_json TEXT NOT NULL,
+  metric_value_bps INTEGER NOT NULL,
+  admission_decision TEXT NOT NULL,
+  ingested_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE gym_run_progress_snapshots (
+  run_ref TEXT PRIMARY KEY,
+  progress_json TEXT NOT NULL,
+  last_updated_at TEXT NOT NULL,
+  ingested_at TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE mullet_scenarios (
+  id TEXT PRIMARY KEY,
+  owner_user_id TEXT NOT NULL,
+  owner_email TEXT NOT NULL,
+  schema_version TEXT NOT NULL,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  scenario_json TEXT NOT NULL,
+  source_refs_json TEXT NOT NULL,
+  provenance_summary_json TEXT NOT NULL,
+  visibility TEXT NOT NULL DEFAULT 'private',
+  export_redaction_state TEXT NOT NULL DEFAULT 'not_checked',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  deleted_at TEXT
+);
+CREATE TABLE mullet_simulation_runs (
+  id TEXT PRIMARY KEY,
+  scenario_id TEXT NOT NULL,
+  owner_user_id TEXT NOT NULL,
+  owner_email TEXT NOT NULL,
+  schema_version TEXT NOT NULL,
+  status TEXT NOT NULL,
+  run_json TEXT NOT NULL,
+  source_refs_json TEXT NOT NULL,
+  provenance_summary_json TEXT NOT NULL,
+  provider_settlement_state TEXT NOT NULL,
+  power_data_state TEXT NOT NULL,
+  visibility TEXT NOT NULL DEFAULT 'private',
+  export_redaction_state TEXT NOT NULL DEFAULT 'not_checked',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  completed_at TEXT,
+  deleted_at TEXT
+);
+CREATE TABLE mullet_run_hourly_results (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  scenario_id TEXT NOT NULL,
+  owner_user_id TEXT NOT NULL,
+  hour_index INTEGER NOT NULL,
+  timestamp TEXT NOT NULL,
+  selected_mode TEXT NOT NULL,
+  reason_code TEXT NOT NULL,
+  energy_mwh REAL NOT NULL,
+  result_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX idx_mullet_run_hourly_results_run_hour
+  ON mullet_run_hourly_results (run_id, hour_index);
+CREATE TABLE mullet_run_candidate_modes (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  hourly_result_id TEXT NOT NULL,
+  scenario_id TEXT NOT NULL,
+  owner_user_id TEXT NOT NULL,
+  hour_index INTEGER NOT NULL,
+  candidate_index INTEGER NOT NULL,
+  timestamp TEXT NOT NULL,
+  mode TEXT NOT NULL,
+  reason_code TEXT NOT NULL,
+  risk_adjusted_net_usd_per_mwh REAL NOT NULL,
+  clears_readiness INTEGER NOT NULL,
+  clears_demand INTEGER NOT NULL,
+  clears_provider_floor INTEGER NOT NULL,
+  candidate_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX idx_mullet_run_candidate_modes_run_hour_candidate
+  ON mullet_run_candidate_modes (run_id, hour_index, candidate_index);
+CREATE TABLE mullet_run_exports (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  scenario_id TEXT NOT NULL,
+  owner_user_id TEXT NOT NULL,
+  owner_email TEXT NOT NULL,
+  schema_version TEXT NOT NULL,
+  format TEXT NOT NULL,
+  export_json TEXT NOT NULL,
+  private_visibility INTEGER NOT NULL DEFAULT 1,
+  redaction_status TEXT NOT NULL,
+  content_ref TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE blueprint_program_runs (
+  id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  actor_ref TEXT NOT NULL,
+  purpose_ref TEXT NOT NULL,
+  program_type_id TEXT NOT NULL,
+  program_signature_id TEXT NOT NULL,
+  module_version_id TEXT NOT NULL,
+  input_snapshot_hash TEXT NOT NULL,
+  typed_output_json TEXT NOT NULL DEFAULT '{}',
+  confidence REAL NOT NULL,
+  route_ref TEXT NOT NULL,
+  cost_ref TEXT NOT NULL,
+  latency_ms INTEGER NOT NULL,
+  evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+  receipt_refs_json TEXT NOT NULL DEFAULT '[]',
+  authority_boundary TEXT NOT NULL DEFAULT 'evidence_only',
+  direct_mutation_disabled INTEGER NOT NULL DEFAULT 1,
+  no_deploy INTEGER NOT NULL DEFAULT 1,
+  no_email INTEGER NOT NULL DEFAULT 1,
+  no_spend INTEGER NOT NULL DEFAULT 1,
+  no_source_mutation INTEGER NOT NULL DEFAULT 1,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+CREATE TABLE blueprint_action_submissions (
+  id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  action_kind TEXT NOT NULL,
+  approval_policy_ref TEXT NOT NULL,
+  approval_receipt_ref TEXT,
+  approval_state TEXT NOT NULL,
+  approved_by_ref TEXT,
+  content_redacted INTEGER NOT NULL DEFAULT 1,
+  context_pack_refs_json TEXT NOT NULL DEFAULT '[]',
+  direct_execution INTEGER NOT NULL DEFAULT 0,
+  direct_program_run_execution_allowed INTEGER NOT NULL DEFAULT 0,
+  dry_run_receipt_ref TEXT,
+  dry_run_required INTEGER NOT NULL DEFAULT 1,
+  evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+  execution_receipt_ref TEXT,
+  failure_ref TEXT,
+  model_confidence_bypass_disabled INTEGER NOT NULL DEFAULT 1,
+  program_run_authority_boundary TEXT NOT NULL DEFAULT 'evidence_only',
+  proposal_only INTEGER NOT NULL DEFAULT 1,
+  proposed_by_program_run_id TEXT NOT NULL,
+  proposed_effect_ref TEXT NOT NULL,
+  receipt_refs_json TEXT NOT NULL DEFAULT '[]',
+  source_authority_refs_json TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL,
+  summary_ref TEXT NOT NULL,
+  tool_refs_json TEXT NOT NULL DEFAULT '[]',
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+CREATE TABLE blueprint_probe_contributions (
+  id TEXT PRIMARY KEY,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  contribution_kind TEXT NOT NULL,
+  status TEXT NOT NULL,
+  review_status TEXT NOT NULL,
+  release_gate_ready INTEGER NOT NULL DEFAULT 0,
+  candidate_runtime_allowed INTEGER NOT NULL DEFAULT 0,
+  production_runtime_allowed INTEGER NOT NULL DEFAULT 0,
+  blocker_refs_json TEXT NOT NULL DEFAULT '[]',
+  release_gate_refs_json TEXT NOT NULL DEFAULT '[]',
+  fixture_refs_json TEXT NOT NULL DEFAULT '[]',
+  retained_failure_refs_json TEXT NOT NULL DEFAULT '[]',
+  target_refs_json TEXT NOT NULL DEFAULT '[]',
+  signature_contribution_json TEXT,
+  developer_package_contribution_json TEXT,
+  projection_json TEXT NOT NULL DEFAULT '{}',
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+CREATE TABLE replay_clip_jobs (
+  job_ref TEXT PRIMARY KEY NOT NULL,
+  status TEXT NOT NULL,
+  request_json TEXT NOT NULL,
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
+  caveat_refs_json TEXT NOT NULL DEFAULT '[]',
+  blocker_refs_json TEXT NOT NULL DEFAULT '[]',
+  manifest_ref TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE mirrorcode_runs (
+  run_id TEXT PRIMARY KEY,
+  run_json TEXT NOT NULL,
+  bucket TEXT NOT NULL,
+  grade TEXT NOT NULL,
+  status TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+`

@@ -1265,12 +1265,32 @@ site, behind `KHALA_SYNC_TRAINING_DUAL_WRITE` (default ON) /
 newest-N row hashes, window/verification event-chain fingerprints,
 per-window lease-set fingerprint, state tallies). Lease claiming stays
 D1-authoritative until cutover, where it becomes a real Postgres
-row-lock transaction (RUNBOOK "Training domain cutover"). The gym /
-mullet / blueprint / replay-clip / mirrorcode remainder (~22 tables,
-incl. the `gym_harbor_full_trace_archives` R2-split check and
-leaderboard recomputation) moves in the follow-up remainder lane
-[#8355](https://github.com/OpenAgentsInc/openagents/issues/8355);
-destructive D1 retirement stays in KS-8.19
+row-lock transaction (RUNBOOK "Training domain cutover").
+
+**KS-8.15 remainder status (2026-07-04, #8355): LANDED.** The gym /
+mullet / blueprint / replay-clip / mirrorcode remainder (21 tables)
+now has its Postgres twins (khala-sync migration
+`0026_gym_evals_domain.sql`), shared registry
+`packages/khala-sync-server/src/gym-evals-domain-tables.ts`, Worker seam
+`apps/openagents.com/workers/api/src/gym-evals-domain-store.ts` (row-level
+dual-write store + fail-soft read-back mirror + `make*ForEnv` drop-ins,
+flag `KHALA_SYNC_GYM_EVALS_DUAL_WRITE` default ON /
+`KHALA_SYNC_GYM_EVALS_READS` default `d1`), cursor-resumable backfill +
+exact verify (`packages/khala-sync-server/scripts/backfill-gym-evals.ts`),
+and a contract suite against both stores
+(`gym-evals-domain-repository.contract.test.ts`). Confirmed findings:
+`gym_harbor_full_trace_archives` is R2-body-split (D1 carries only
+`artifact_r2_key`/`artifact_sha256`/`artifact_bytes`; the twin never
+carries a body — no table skipped); the derived
+`gym_ladder_leaderboard_snapshots` / `gym_run_progress_snapshots` are
+verified by newest-N byte-exact copy-equality (leaderboard recomputation
+equality), NOT recomputed in Postgres; the five write-dead
+`gym_agentcl_eval_*` tables take the KS-8.17 short path (copy + verify
+only, no dual-write). Live dual-write is wired for the gym stores
+(run-progress, mirrorcode, ladder, mutalisk delegation, harbor); the
+transactional `mullet_*` / `blueprint_*` / `replay_clip_jobs` call-site
+mirror wiring lands with the read-cutover follow-up (RUNBOOK "Gym/evals
+domain cutover"). Destructive D1 retirement stays in KS-8.19
 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
 
 - **What:** training runs/windows/leases/verification, trace

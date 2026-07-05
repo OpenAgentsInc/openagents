@@ -548,12 +548,17 @@ import {
   runScheduledGlmPoolHeartbeatForD1,
 } from './inference/glm-pool-heartbeat'
 import { handleOperatorHarborFullTraceArchivesApi } from './inference/gym/harbor-full-trace-archive-routes'
-import { makeD1R2HarborFullTraceArchiveStore } from './inference/gym/harbor-full-trace-archive-store'
+import {
+  makeGymLadderStoreForEnv,
+  makeGymRunProgressStoreForEnv,
+  makeHarborFullTraceArchiveStoreForEnv,
+  makeMirrorCodeRunStoreForEnv,
+  makeMutaliskKhalaDelegationWorkflowStoreForEnv,
+} from './gym-evals-domain-store'
 import {
   handleOperatorGymRunProgressApi,
   handlePublicGymRunProgressApi,
 } from './inference/gym/run-progress-routes'
-import { makeD1GymRunProgressStore } from './inference/gym/run-progress-store'
 import { publishGymRunProgressSnapshot } from './inference/gym/run-progress-sync'
 import {
   handleOperatorMutaliskKhalaDelegationProgressApi,
@@ -561,18 +566,15 @@ import {
   handleOperatorMutaliskKhalaDelegationSummaryApi,
   handlePublicMutaliskKhalaDelegationRunsApi,
 } from './inference/gym/mutalisk-khala-delegation-routes'
-import { makeD1MutaliskKhalaDelegationWorkflowStore } from './inference/gym/mutalisk-khala-delegation-store'
 import {
   handleOperatorGymLeaderboardApi,
   handlePublicGymLeaderboardApi,
 } from './inference/gym/ladder-routes'
-import { makeD1GymLadderStore } from './inference/gym/ladder-store'
 import {
   handleMirrorCodeRunByIdApi,
   handleMirrorCodeRunsApi,
   matchMirrorCodeRunByIdRequest,
 } from './inference/gym/mirrorcode-routes'
-import { makeD1MirrorCodeRunStore } from './inference/gym/mirrorcode-store'
 import { runServingRateMonitorScheduled } from './inference/serving-rate-monitor'
 import {
   handleOperatorKhalaHeadToHeadApi,
@@ -11514,7 +11516,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/gym/run-progress',
     handler: (request, env) =>
       handlePublicGymRunProgressApi(request, {
-        store: makeD1GymRunProgressStore(openAgentsDatabase(env)),
+        store: makeGymRunProgressStoreForEnv(env),
       }),
   },
   {
@@ -11525,9 +11527,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/gym/mutalisk-khala-delegation/runs',
     handler: (request, env) =>
       handlePublicMutaliskKhalaDelegationRunsApi(request, {
-        store: makeD1MutaliskKhalaDelegationWorkflowStore(
-          openAgentsDatabase(env),
-        ),
+        store: makeMutaliskKhalaDelegationWorkflowStoreForEnv(env),
       }),
   },
   {
@@ -11541,7 +11541,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/gym/leaderboard',
     handler: (request, env) =>
       handlePublicGymLeaderboardApi(request, {
-        store: makeD1GymLadderStore(openAgentsDatabase(env)),
+        store: makeGymLadderStoreForEnv(env),
       }),
   },
   {
@@ -11889,7 +11889,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleOperatorGymRunProgressApi(request, {
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
-        store: makeD1GymRunProgressStore(openAgentsDatabase(env)),
+        store: makeGymRunProgressStoreForEnv(env),
         // Realtime push (#6261): after the upsert lands, publish the public-safe
         // projected snapshot to the live `public-gym-run-progress` sync scope so
         // the `/gym` follow-along updates the instant the snapshot is ingested.
@@ -11907,9 +11907,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleOperatorMutaliskKhalaDelegationRunsApi(request, {
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
-        store: makeD1MutaliskKhalaDelegationWorkflowStore(
-          openAgentsDatabase(env),
-        ),
+        store: makeMutaliskKhalaDelegationWorkflowStoreForEnv(env),
       }),
   },
   {
@@ -11920,9 +11918,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleOperatorMutaliskKhalaDelegationProgressApi(request, {
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
-        store: makeD1MutaliskKhalaDelegationWorkflowStore(
-          openAgentsDatabase(env),
-        ),
+        store: makeMutaliskKhalaDelegationWorkflowStoreForEnv(env),
       }),
   },
   {
@@ -11934,9 +11930,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleOperatorMutaliskKhalaDelegationSummaryApi(request, {
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
-        store: makeD1MutaliskKhalaDelegationWorkflowStore(
-          openAgentsDatabase(env),
-        ),
+        store: makeMutaliskKhalaDelegationWorkflowStoreForEnv(env),
       }),
   },
   {
@@ -11951,8 +11945,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleOperatorGymLeaderboardApi(request, {
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
-        store: makeD1GymLadderStore(openAgentsDatabase(env)),
-        mirrorCodeRunStore: makeD1MirrorCodeRunStore(openAgentsDatabase(env)),
+        store: makeGymLadderStoreForEnv(env),
+        mirrorCodeRunStore: makeMirrorCodeRunStoreForEnv(env),
       }),
   },
   {
@@ -11985,7 +11979,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleMirrorCodeRunsApi(request, {
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
-        store: makeD1MirrorCodeRunStore(openAgentsDatabase(env)),
+        store: makeMirrorCodeRunStoreForEnv(env),
       }),
   },
   {
@@ -11997,7 +11991,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleMirrorCodeRunsApi(request, {
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
-        store: makeD1MirrorCodeRunStore(openAgentsDatabase(env)),
+        store: makeMirrorCodeRunStoreForEnv(env),
       }),
   },
   {
@@ -12009,7 +12003,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleMirrorCodeRunsApi(request, {
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
-        store: makeD1MirrorCodeRunStore(openAgentsDatabase(env)),
+        store: makeMirrorCodeRunStoreForEnv(env),
       }),
   },
   {
@@ -12021,10 +12015,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleOperatorHarborFullTraceArchivesApi(request, {
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
-        store: makeD1R2HarborFullTraceArchiveStore(
-          openAgentsDatabase(env),
-          env.ARTIFACTS,
-        ),
+        store: makeHarborFullTraceArchiveStoreForEnv(env, env.ARTIFACTS),
       }),
   },
   {
@@ -15020,7 +15011,7 @@ const routeRequest = makeWorkerRouteRequest({
       return undefined
     }
     return handleMirrorCodeRunByIdApi(request, runId, {
-      store: makeD1MirrorCodeRunStore(openAgentsDatabase(env)),
+      store: makeMirrorCodeRunStoreForEnv(env),
     })
   },
   // Durable inference resume read GET /v1/chat/completions/durable/{requestId}

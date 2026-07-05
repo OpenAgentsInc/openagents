@@ -1290,6 +1290,71 @@ Rollback at ANY step: set `KHALA_SYNC_TRAINING_READS=d1` (reads) and/or
 `KHALA_SYNC_TRAINING_DUAL_WRITE=off` (writes). D1 authority is never
 behind.
 
+## Gym/evals domain cutover (KS-8.15 remainder, #8355)
+
+The Wave D gym/evals remainder: 21 D1 tables → same-named Postgres twins
+(khala-sync migration `0026_gym_evals_domain.sql`) — `gym_*` (11),
+`mullet_*` (5), `blueprint_*` (3), `replay_clip_jobs`, `mirrorcode_runs`.
+Machinery mirrors the training core:
+`apps/openagents.com/workers/api/src/gym-evals-domain-store.ts` (row-level
+seam over the shared registry
+`packages/khala-sync-server/src/gym-evals-domain-tables.ts`, fail-soft
+read-back mirror + `make*ForEnv` store drop-ins) and
+`packages/khala-sync-server/scripts/backfill-gym-evals.ts`
+(cursor-resumable backfill + verify).
+
+R2 PAYLOAD SPLIT (the issue's gate): `gym_harbor_full_trace_archives`
+carries ONLY refs/metadata — the archive tarball body lives in R2
+(`putArchive` → `bucket.put`), and D1/Postgres keep `artifact_r2_key` +
+`artifact_sha256` + `artifact_bytes`. The twin never carries a body; no
+table is skipped (every remainder D1 row is refs/metadata/public-safe
+projection JSON).
+
+DERIVED SNAPSHOTS — VERIFY BY COPY-EQUALITY, DON'T RECOMPUTE:
+`gym_ladder_leaderboard_snapshots.ladder_json` and
+`gym_run_progress_snapshots.progress_json` already hold the public-safe
+projection the D1 write path built. The backfill copies those bytes
+verbatim; `--verify` proves the "leaderboard recomputation equality"
+acceptance as newest-N full-row hash equality — Postgres never recomputes
+a leaderboard.
+
+WRITE-DEAD (KS-8.17 short path): the five `gym_agentcl_eval_*` tables have
+no live Worker writer, so they are NEVER dual-written — the backfill
+copies + verifies them, and the destructive snapshot-to-R2 + D1 drop
+stays in KS-8.19 (#8330).
+
+Flag (Worker vars):
+
+- `KHALA_SYNC_GYM_EVALS_DUAL_WRITE` — default **on** wherever
+  `KHALA_SYNC_DB` exists; `off|0|false|disabled` disables the mirror.
+- `KHALA_SYNC_GYM_EVALS_READS` — parsed (default `d1`) and reserved for
+  this follow-up: reads stay on D1 authority this lane so public gym
+  projections never regress mid-cutover; the derived-snapshot read flip to
+  Postgres lands with the read-cutover follow-up.
+
+Flag-flip order:
+
+1. **Dual-write on** (default after #8355 lands + `0026` applied). The
+   live gym stores (run-progress, mirrorcode, ladder, mutalisk delegation,
+   harbor full-trace archive) mirror via their `make*ForEnv` drop-ins.
+   Watch `khala_sync_gym_evals_dual_write_failed` — that event IS the
+   drift metric. The `mullet_*` / `blueprint_*` / `replay_clip_jobs`
+   writers are transactional/functional and route-threaded; their
+   call-site mirror wiring lands here (their twins + backfill + contract
+   coverage ship now).
+2. **Backfill**: from `packages/khala-sync-server/`,
+   `KHALA_SYNC_DATABASE_URL=<direct-url> bun scripts/backfill-gym-evals.ts`
+   (rowid-cursor resumable via `.gym-evals-backfill-state.json`; includes
+   the write-dead `gym_agentcl_eval_*` copy). Re-run `--restart` as the
+   catch-up sweep.
+3. **Verify**: `bun scripts/backfill-gym-evals.ts --verify` — exact row
+   counts, newest-50 full-row hashes (the derived-snapshot equality), and
+   lifecycle state tallies. Post the output on #8355. No cutover on a red
+   verify.
+4. **Retire later**: dropping D1 tables and deleting flags is deferred to
+   KS-8.19 (#8330). Until then rollback is one flag flip:
+   `KHALA_SYNC_GYM_EVALS_DUAL_WRITE=off`. D1 authority is never behind.
+
 ## Forge domain cutover (KS-8.16, #8327)
 
 The KS-8.16 domain migration: ALL SIXTEEN `forge_*` tables —
