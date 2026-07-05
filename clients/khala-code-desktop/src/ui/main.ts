@@ -5927,6 +5927,7 @@ const commandSidebarShortcutLabels = (): Partial<Record<KhalaCodeHotbarValue, st
     editor: commandRegistry.keybindingLabel("view.editor"),
     fleet: commandRegistry.keybindingLabel("view.fleet"),
     forum: commandRegistry.keybindingLabel("view.forum"),
+    home: commandRegistry.keybindingLabel("view.home"),
     inbox: commandRegistry.keybindingLabel("view.inbox"),
     settings: commandRegistry.keybindingLabel("view.settings"),
   }
