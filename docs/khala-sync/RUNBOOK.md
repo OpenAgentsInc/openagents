@@ -4941,6 +4941,90 @@ carry the actual remaining migration work.
   verification belongs with KS-6.11a's client repoint, when there is an
   actual wire behavior change to confirm.
 
+### 2026-07-05 KS-6.11a (#8423) client repoint — shipped, legacy deletion deliberately deferred
+
+Ships the client half of the KS-6.11 scope breakdown above: `apps/web/src/subscriptions.ts`
+now handles `team_chat_message`/`thread_file` `LiveFrame` entities delivered on
+`scope.team.<teamId>` (one combined handler, matching the two entity types'
+shared wire scope per the KS-6.11 scoping note), and `team:<teamId>` was
+removed from `syncScopesForModel`'s legacy-scope list. Code committed and
+pushed to `origin/main`, then deployed to production.
+
+**Deploy note — a real gap in `deploy:safe` itself, not this change:** the
+first `deploy:safe` run staged everything correctly (staging deploy, predeploy
+parallel-dispatch smoke, prod D1 migrations all green) but then the
+`bun run --cwd packages/khala-sync-server check:pending-migrations` step
+failed with "no database URL" because `KHALA_SYNC_DATABASE_URL` was not set in
+the deploying shell. Because `deploy:safe` chains its steps with `&&`, this
+silently aborted the whole script **before** the final production
+`wrangler deploy`, even though nothing in the visible output screamed
+"deploy failed" — the script just stopped. Recovery: sourced
+`~/work/.secrets/khala-sync-cloudsql.env`, built
+`postgres://$KHALA_SYNC_MIGRATE_USER:$KHALA_SYNC_MIGRATE_PASSWORD@$KHALA_SYNC_CLOUDSQL_IP:5432/$KHALA_SYNC_DB_PROD?sslmode=require`
+(note: `sslmode=require` is mandatory — the Cloud SQL instance's `pg_hba.conf`
+rejects plaintext connections outright, not just unauthorized IPs), reran the
+Postgres gate (now green — 0 pending Khala Sync migrations), then ran the
+final `wrangler deploy --containers-rollout=none --assets ../../apps/web/dist`
+directly since `deploy:safe` never reached it. Production Worker Version ID
+`81fb3a2c-d0a4-4419-9c84-a8681686f548`, custom domains
+(`openagents.com`, `auth.openagents.com`, `sites.openagents.com`) all
+redeployed cleanly; `https://openagents.com/` → 200,
+`/api/health` → `{"ok":true}` immediately after. **Flagging for whoever owns
+`deploy:safe` next:** this gate should fail LOUD (its own explicit
+non-`&&`-swallowed check, or a final "did the last deploy step actually run"
+assertion) instead of silently no-op'ing the production deploy when an owner
+secret isn't loaded in the calling shell.
+
+**Production verification — real evidence, one honest gap flagged.** No
+owner browser session was available to this pass, so a literal fresh
+authenticated `scope.team.<teamId>` WebSocket frame with a brand-new message
+was not captured. What WAS verified directly against live production data
+(not fixtures):
+
+- Queried `khala_sync_changelog` (direct Postgres connection) for
+  `entity_type = 'team_chat_message'`: exactly one row exists,
+  `scope.team.team_openagents_core`, `committed_at` ~4.5 hours before this
+  verification pass — i.e., written **before** this deploy, by an earlier
+  step in this same work. Its `post_image_json` has no `authorName`/
+  `authorAvatarUrl`/`authorGithubUsername` keys at all (not even `null`),
+  confirming it predates the KS-6.11 entity-schema change entirely — not a
+  live bug, a stale pre-fix artifact.
+- Ran the EXACT `TEAM_CHAT_MESSAGE_AUTHOR_JOIN_SELECT` LEFT JOIN
+  (`khala-code-product-state-store.ts`) directly against production D1 via
+  `wrangler d1 execute --remote`: the join resolves correctly for real rows,
+  including that same stale message's own author
+  (`author_user_id: "github:14167547"` → `author_name: "Christopher David"`,
+  `author_avatar_url`, `author_github_username: "AtlantisPleb"`) and three
+  other real users. This proves the join SQL is correct against live schema
+  and data, not just the mock-DB unit tests — so the NEXT real team chat
+  message written after this deploy should carry hydrated author fields
+  through to `scope.team.<teamId>`.
+- Did not (and could not, headlessly) confirm the actual live
+  `khalaCodeProductStateDatabaseForEnv` read-back mirroring path executes this
+  join at write time in the deployed Worker, only that the SQL text is correct
+  and matches source. That last mile — one fresh authenticated message,
+  observed both in the `khala_sync_changelog` post-image and rendered by a
+  real client — is NOT done.
+
+**Legacy producer deletion (`publishTeamChatMessageSync`/
+`publishTeamThreadFileSync`, their `notifySyncScopes` calls, and
+`team-sync.test.ts`): deliberately NOT done this pass.** The original KS-6.11
+scoping note's own sequencing (client repoint → real production
+verification → THEN legacy deletion) is a real safety gate, not decoration:
+deleting the legacy dual-write removes the fallback for every team-chat/
+thread-file consumer at once, and this pass could not complete the literal
+last-mile verification step above. Dual-write stays live (both the legacy D1
+`sync_changes` push and the new `scope.team.<teamId>` Postgres-backed push
+fire on every write) until a follow-up either (a) gets an owner-provided
+authenticated session to run the real WS-frame check, or (b) builds a small
+service-context verification script that calls `insertTeamChatMessage`
+through the real `khalaCodeProductStateDatabaseForEnv` shim against
+production without needing a browser session (no such tooling exists yet in
+this repo — every prior KS-8.x domain cutover's "real production
+verification" bullet was evidently satisfied by an owner running the flow
+live, not by an agent). Track this as a same-scope follow-up on #8423 rather
+than opening a new issue.
+
 ## What this runbook does NOT cover
 
 - Deploying the Worker/hub DO: `docs/DEPLOYMENT.md` (deploy:safe gate).

@@ -917,6 +917,25 @@ consolidation effort.
   build), and #8425 (verify `notifyAgentRunSyncScopes`'s remaining live
   legacy consumers).
 
+  **2026-07-05 #8423 client repoint — shipped to production, legacy deletion
+  deliberately deferred.** `apps/web/src/subscriptions.ts` now handles
+  `team_chat_message`/`thread_file` off `scope.team.<teamId>` and
+  `syncScopesForModel` no longer lists `team:<teamId>` as legacy. Deployed to
+  production (Worker Version ID `81fb3a2c-d0a4-4419-9c84-a8681686f548`) after
+  recovering from a real `deploy:safe` gap: the gate's Postgres
+  `check:pending-migrations` step failed on a missing `KHALA_SYNC_DATABASE_URL`
+  and, because the script chains steps with `&&`, silently stopped BEFORE the
+  final production `wrangler deploy` — worth a follow-up to make that gate
+  fail loud instead of quietly no-op'ing a production deploy. Verified the
+  KS-6.11 author-hydration LEFT JOIN directly against live production D1 data
+  (real users resolved correctly), but did not obtain an owner browser
+  session to capture one fresh authenticated `scope.team.<teamId>` WebSocket
+  frame end-to-end — so the legacy `publishTeamChatMessageSync`/
+  `publishTeamThreadFileSync` dual-write producers and `team-sync.test.ts`
+  were deliberately NOT deleted this pass, preserving the fallback until that
+  last-mile live proof exists. Full narrative:
+  `docs/khala-sync/RUNBOOK.md`'s "KS-6.11a (#8423) client repoint" section.
+
 **Wave 4 — big, deliberate, needs an owner call before starting:**
 Consolidate `probe-runtime` and `pylon-runtime` (~48K LOC of duplicated
 coding-agent runtime — the single largest dedupe in the audit, but touches
