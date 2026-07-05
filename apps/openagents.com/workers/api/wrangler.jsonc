@@ -64,19 +64,25 @@
     // can never break. Gated on a fresh full backfill --verify (exact
     // ref-set digest match) + a live ground-truth `git`-advertisement
     // cross-check + zero compare-mode drift. Roll back to `d1` at any time.
-    // WRITE authority stays on D1 (the `makePostgresForgeGitCanonicalStore`
-    // FOR-UPDATE ref-lock port is built + tested but NOT wired as write
-    // authority — that domain-wide write cutover is separate follow-up).
+    // WRITE authority for the OTHER FOUR Forge stores (coordination,
+    // packfile-archive, tenant-git-auth, GitHub mirror) stays on D1
+    // regardless of the canonical-store flag below — this is a scoped,
+    // one-store flip, not a domain-wide one.
     "KHALA_SYNC_FORGE_READS": "postgres",
-    // KS-8.16 WRITE cutover (#8358, fifth pass): STAGING-FIRST canary. This
-    // flips ONLY the canonical git store (of Forge's five stores) to real
-    // Postgres write authority (pg_advisory_xact_lock + SELECT...FOR UPDATE,
-    // with a fail-soft Postgres->D1 mirror-back) — see
-    // forge-domain-store.ts's `forgeGitCanonicalWritesFromEnv`. NOT set here
-    // (production) yet: staged behind a real end-to-end synthetic
-    // receive-pack push verified on staging first. Roll back to `d1` (or
-    // simply leave unset) at any time; D1 stays the four-other-stores
-    // authority regardless.
+    // KS-8.16 WRITE cutover (#8358, fifth pass): LIVE — flips ONLY the
+    // canonical git store (of Forge's five stores) to real Postgres write
+    // authority (pg_advisory_xact_lock + SELECT...FOR UPDATE, with a
+    // fail-soft Postgres->D1 mirror-back) — see forge-domain-store.ts's
+    // `forgeGitCanonicalWritesFromEnv`. Verified first on staging with a
+    // real end-to-end `git push` (create + fast-forward update) through the
+    // actual Worker route, confirming Postgres-authoritative writes and
+    // byte-identical D1 mirror-back convergence across forge_git_refs,
+    // forge_git_objects, and forge_git_receive_pack_intakes. Then verified
+    // again in production the same way against a dedicated canary
+    // tenant/repo (never the real customer tenant/repo) before this pass
+    // closed. Roll back to `d1` (or unset) at any time; the other four
+    // Forge stores are unaffected either way.
+    "KHALA_SYNC_FORGE_GIT_CANONICAL_WRITES": "postgres",
     // KS-8.14 business funnel read cutover (#8360): production
     // backfill/--restart/--verify are green across all 32 tables; the
     // compare-mode soak (2026-07-05) showed zero
@@ -606,11 +612,12 @@
         // KS-8.16 follow-up Forge READ cutover (#8358), staging parity for
         // the production Postgres-served, fail-soft ref advertisement.
         "KHALA_SYNC_FORGE_READS": "postgres",
-        // KS-8.16 WRITE cutover (#8358, fifth pass): LIVE ON STAGING ONLY
-        // for the initial real end-to-end synthetic receive-pack push
-        // verification, before this is considered for production. See the
-        // matching comment on the production `KHALA_SYNC_FORGE_READS` var
-        // above for what this does and does not change.
+        // KS-8.16 WRITE cutover (#8358, fifth pass), staging parity for the
+        // production canonical-git-store Postgres write authority. This was
+        // the FIRST env verified (real end-to-end `git push` create +
+        // fast-forward update) before production was flipped — see the
+        // matching comment on the production `KHALA_SYNC_FORGE_GIT_CANONICAL_WRITES`
+        // var above.
         "KHALA_SYNC_FORGE_GIT_CANONICAL_WRITES": "postgres",
         // KS-8.14 business funnel read cutover (#8360), staging parity for
         // the production bounded postgres read serving.
