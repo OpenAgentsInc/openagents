@@ -222,6 +222,10 @@ deploys the OpenAgents server. It does not call Expo hosted update commands.
   classifier. Mobile request boundaries should map status, transport, timeout,
   and malformed-response failures through this seam instead of surfacing raw
   response bodies, provider payloads, tokens, or chat content.
+- `src/preferences/nonsecret-preferences.ts` is the only local preference
+  wrapper for safe UI/onboarding state. It uses a dedicated Expo SQLite
+  database and a fixed key set; do not use it for API keys, bearer tokens,
+  session material, chat bodies, prompts, or Khala Sync projection rows.
 - API keys are stored through `expo-secure-store` with the Khala keychain
   service. SQLite stores durable Khala Sync cursors/checkpoints, confirmed
   projection rows, client identity, and pending mutation intents; it does not

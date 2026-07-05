@@ -57,6 +57,11 @@ Any Ignite pattern that conflicts with those rules is explicitly out of scope.
   `src/network/mobile-problem.ts` classifies transport/status/auth/sync
   failures into public-safe problem kinds, and the auth validation plus Khala
   Sync bootstrap/push call sites now use it.
+- [#8449](https://github.com/OpenAgentsInc/openagents/issues/8449) - add a
+  nonsecret preferences wrapper. Implemented:
+  `src/preferences/nonsecret-preferences.ts` stores only a fixed typed set of
+  UI/onboarding preferences in a dedicated Expo SQLite database, with tests
+  rejecting secret-shaped keys and invalid values.
 
 ## One-Line Verdict
 
@@ -81,7 +86,7 @@ Khala's existing sync/security/native domains.
 | Theme | `src/theme/tokens.ts` bridges shared `@openagentsinc/ui` NativeWind tokens and `tailwind.config.cjs`; `KhalaThemeProvider` exposes those typed tokens at the app root. | `app/theme` has typed colors, spacing, typography, timing, light/dark themes, provider, and `themed()` helper. | Khala should keep shared tokens. The first theme-context affordance is now in place; only add more helpers when they reduce duplicated classes or unlock safe native styles. |
 | Config | `app.json` has self-hosted updates, local native module plugins, and public `extra.khala` endpoints. | `app/config` separates base/dev/prod and documents that bundled config is public, not secret. | Borrow the "bundled config is public" documentation and maybe a typed public config module. Do not put secrets there. |
 | Networking/errors | Sync/auth code returns or throws `messageSafe` strings and typed Khala Sync states. | `services/api/apiProblem.ts` normalizes transport/status failures into a typed union. | Borrow typed problem classification for mobile HTTP boundaries, adapted to Effect/Khala Sync instead of `apisauce`. |
-| Storage | SecureStore for API keys, SQLite for sync cursors/projections, explicit invariant banning secrets outside secure-store. | `utils/storage` wraps MMKV for nonsecret local state and has unit tests. | Borrow the wrapper/test pattern only for nonsecret preferences, if needed. Do not borrow MMKV for bearer material. |
+| Storage | SecureStore for API keys, SQLite for sync cursors/projections, explicit invariant banning secrets outside secure-store. A dedicated nonsecret preference wrapper now covers typed UI/onboarding state only. | `utils/storage` wraps MMKV for nonsecret local state and has unit tests. | Borrowed the wrapper/test pattern without MMKV: #8449 adds a fixed-key, nonsecret Expo SQLite preference database and keeps bearer material in SecureStore. |
 | Tests | `bun test`, pure-core tests, behavior-contract registry, and a custom RN component mount harness for `ChatComposer`. | `jest-expo`, React Native Testing Library example, i18n missing-key test, Maestro flows. | Khala's Bun harness is stronger than Ignite's sample for current needs. Borrow Maestro flow structure next. |
 | Architecture checks | A package-local Dependency Cruiser config now guards test boundaries, package deps, dev-dep leakage, domain-to-route direction, native runtime imports, and circular deps in warning mode. | `.dependency-cruiser.js` checks circular deps, orphan modules, test imports, missing package deps, dev-dep leakage, and platform extensions. | First-pass borrow implemented. Keep false positives documented and tighten circulars to error after the migrated graph stays clean. |
 | Generators | Local `.ejs` templates now cover screen, component, navigator, and UX-contract oracle skeletons under `clients/khala-mobile/templates`. | `ignite/templates/*` EJS templates with front matter, destination dirs, patches, route/type anchors, app-icon and splash helpers. | First-pass borrow implemented without adding the Ignite CLI as a runtime dependency. Add rendering automation only when repetition justifies it. |
