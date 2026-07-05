@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs"
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto"
+import * as os from "node:os"
 import { resolve } from "node:path"
 
 import {
@@ -467,6 +468,56 @@ const startPreviewServer = (): void => {
   }
 }
 
+// Tailnet health beacon (MC-5): a separate, read-only listener from the
+// RPC-bearing preview server above. It exists solely so a paired mobile
+// device can answer "can I see a Khala Code instance on the network" —
+// GET /health only, no RPC surface, no token. The preview server stays
+// loopback-only on purpose (its /rpc/* routes carry a per-boot secret);
+// widening that bind address would widen the RPC attack surface, so this
+// beacon is intentionally a second, minimal server bound to all
+// interfaces instead.
+const KHALA_CODE_DESKTOP_TAILNET_HEALTH_PORT = 50099
+
+const tailnetHealthFetch = (): Response =>
+  jsonResponse({
+    ok: true,
+    app: "Khala Code Desktop",
+    hostname: os.hostname(),
+    observedAt: new Date().toISOString(),
+  })
+
+const startTailnetHealthBeacon = (): void => {
+  if (khalaCodeEnv.KHALA_CODE_DESKTOP_TAILNET_HEALTH === "0") return
+  const requestedPort = Number(
+    khalaCodeEnv.KHALA_CODE_DESKTOP_TAILNET_HEALTH_PORT ??
+      String(KHALA_CODE_DESKTOP_TAILNET_HEALTH_PORT),
+  )
+  const port = Number.isInteger(requestedPort) && requestedPort > 0
+    ? requestedPort
+    : KHALA_CODE_DESKTOP_TAILNET_HEALTH_PORT
+  try {
+    const server = Bun.serve({
+      hostname: "0.0.0.0",
+      port,
+      fetch: (request) => {
+        const url = new URL(request.url)
+        return url.pathname === "/health"
+          ? tailnetHealthFetch()
+          : new Response("not found", { status: 404 })
+      },
+    })
+    console.info(
+      `Khala Code Tailnet health beacon: http://0.0.0.0:${server.port}/health`,
+    )
+  } catch (error) {
+    console.warn(
+      `Khala Code Tailnet health beacon unavailable: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    )
+  }
+}
+
 const headlessInterruptAfterMs = (
   env: Readonly<Record<string, string | undefined>>,
 ): number | undefined => {
@@ -700,6 +751,7 @@ process.on("uncaughtExceptionMonitor", publishCrashDiagnostic)
 process.on("unhandledRejection", publishCrashDiagnostic)
 
 startPreviewServer()
+startTailnetHealthBeacon()
 
 const resolveMainViewUrl = async (): Promise<string> => {
   // HMR: when the Vite dev server (dev:hmr) is up, load the webview from it

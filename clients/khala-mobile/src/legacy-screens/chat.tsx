@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react"
 import { Pressable, Text, TextInput, View } from "react-native"
 
-import { Pill, ScreenShell } from "../src/components/shell"
-import { assertDelegationPrompt, validateDelegationPrompt } from "../src/security/delegation-prompt"
-import { createMobileKhalaSyncPreviewState } from "../src/sync/khala-sync-mobile"
+import { Pill, ScreenShell } from "../components/shell"
+import { assertDelegationPrompt, validateDelegationPrompt } from "../security/delegation-prompt"
+import { createMobileKhalaSyncPreviewState } from "../sync/khala-sync-mobile"
 
 export default function ChatScreen() {
   const { chatThreads } = useMemo(createMobileKhalaSyncPreviewState, [])

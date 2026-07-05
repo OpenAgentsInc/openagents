@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react"
 import { View } from "react-native"
 
-import { Pill, ScreenShell, StatLine } from "../src/components/shell"
-import { KHALA_MOBILE_OTA_CONTRACT } from "../src/config/updates"
-import { readNativeReadiness } from "../src/native/modules"
-import { loadKhalaApiKey } from "../src/security/keychain"
+import { Pill, ScreenShell, StatLine } from "../components/shell"
+import { KHALA_MOBILE_OTA_CONTRACT } from "../config/updates"
+import { readNativeReadiness } from "../native/modules"
+import { loadKhalaApiKey } from "../security/keychain"
 
 type Readiness = Readonly<{
   speech: string

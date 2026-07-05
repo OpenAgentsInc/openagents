@@ -1,8 +1,8 @@
 import { useMemo } from "react"
 import { Text, View } from "react-native"
 
-import { Pill, ScreenShell, StatLine } from "../src/components/shell"
-import { createMobileKhalaSyncPreviewState } from "../src/sync/khala-sync-mobile"
+import { Pill, ScreenShell, StatLine } from "../components/shell"
+import { createMobileKhalaSyncPreviewState } from "../sync/khala-sync-mobile"
 
 export default function FleetScreen() {
   const { fleetRun } = useMemo(createMobileKhalaSyncPreviewState, [])
