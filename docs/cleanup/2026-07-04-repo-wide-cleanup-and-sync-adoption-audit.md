@@ -96,8 +96,8 @@ dispatchers (retires most of the 135-ceiling Response-surface debt).
 | File(s) | What | Last touched | Verdict |
 |---|---|---|---|
 | `mullet/*` (6 files, ~800–1,200 LOC) | Power/energy-telemetry market memory | No functional change since 2026-06-12 | **DEPRECATE→REMOVE** |
-| `inference/internal-stress-preemption*`, `GlmStressSchedulerDurableObject` | GLM stress scheduler | Companion runner reverted 2026-06-28; scheduler DO left orphaned | **REMOVE** (one DO migration) |
-| `inference/benchmark/live-adaptive-stress-runner.ts`, `stress-saturation-plan.ts` | GLM adaptive-stress benchmark | Reverted 2026-06-28 | **REMOVE** |
+| `inference/internal-stress-preemption*`, `GlmStressSchedulerDurableObject` | GLM stress scheduler | Removed 2026-07-05 in #8381; Wrangler keeps historical create tags plus delete migrations | **REMOVED scheduler + deleted DO class** |
+| `inference/benchmark/live-adaptive-stress-runner.ts`, `stress-saturation-plan.ts` | GLM adaptive-stress benchmark | Removed 2026-07-05 in #8381 after reverted lane audit | **REMOVED** |
 | `inference/gym/agentcl-vertex-runner.ts` + table `gym_agentcl_eval_*` | AgentCL Vertex eval runner | Removed 2026-07-05 in #8380 | **REMOVED runner + DROPPED table family** |
 | `omni-investor-demo-bundle-export.ts` | Investor demo bundle | Untouched since repo genesis | **REMOVE** |
 | `lander2/3/4/5-routes.ts` + `lander-shell.ts` | Landing-page A/B experiments | Actively iterated (2 days old) | **DEPRECATE now, REMOVE on ONE-UI cutover** — collapse to one winner |
@@ -427,12 +427,13 @@ live.
 
 **Wave 1 — mechanical, low risk, high leverage:**
 After #8377, the legacy public-projection staleness budget is zero; after
-#8378/#8379/#8380, the D1 zero-reference sweep exists, the forum trust pair is
-dropped, and the AgentCL Vertex runner plus `gym_agentcl_eval_*` table family
-are retired. Next: remove the GLM stress-scheduler remnants; consolidate the
-66-file auth-helper sprawl; flip `KHALA_SYNC_FLEET` default-on and delete
-the desktop fleet poll; decide arm-or-remove on the four inert flags
-(remove voice-ingest and durable-stream if truly unconsumed).
+#8378/#8379/#8380/#8381, the D1 zero-reference sweep exists, the forum trust
+pair is dropped, the AgentCL Vertex runner plus `gym_agentcl_eval_*` table
+family are retired, and the orphaned GLM stress scheduler/adaptive runner is
+gone. Next: consolidate the 66-file auth-helper sprawl; flip
+`KHALA_SYNC_FLEET` default-on and delete the desktop fleet poll; decide
+arm-or-remove on the four inert flags (remove voice-ingest and durable-stream
+if truly unconsumed).
 
 2026-07-05 Wave 1 issue index:
 
@@ -444,8 +445,9 @@ the desktop fleet poll; decide arm-or-remove on the four inert flags
   the stale Khala Sync/forum fixture surfaces that kept them alive.
 - #8380 - Complete: removed the AgentCL Vertex runner/CLI/test surface and
   retired the `gym_agentcl_eval_*` D1/Postgres table family.
-- #8381 - Remove the GLM stress-scheduler remnants and adaptive-stress
-  benchmark paths.
+- #8381 - Complete: removed the GLM stress-scheduler remnants, appended
+  Durable Object delete migrations, and deleted the adaptive-stress benchmark
+  paths.
 - #8382 - Consolidate the 66-file Worker auth-helper sprawl into the canonical
   auth module.
 - #8383 - Flip `KHALA_SYNC_FLEET` default-on and delete the desktop fleet

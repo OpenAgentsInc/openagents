@@ -655,22 +655,6 @@ export type DispatchRouteAdmissionPolicy = Readonly<{
   reason: string
 }>
 
-export type DispatchSchedulerPreemptionEvidence = Readonly<{
-  evidenceRef: string
-  reason: string
-  targetDemandClass: 'internal_stress'
-  targetOutcome: 'preempted_yielded'
-}>
-
-export type DispatchSchedulerPreemptionPolicy = Readonly<{
-  demandClass: InferenceDemandClass
-  reservedExternalHeadroomAvailable: boolean
-  reason: string
-  preempt: () => Effect.Effect<
-    DispatchSchedulerPreemptionEvidence | undefined
-  >
-}>
-
 export type DispatchHedgingPolicy = Readonly<{
   demandClass: InferenceDemandClass
   enabled: boolean
@@ -759,10 +743,6 @@ export type DispatchDeps = Readonly<{
   // the control-plane snapshot says reserved external headroom is unavailable;
   // external demand still dispatches through the normal lane plan.
   admission?: DispatchRouteAdmissionPolicy | undefined
-  // Optional typed scheduler hook. It can preempt one in-flight internal_stress
-  // request only when external demand arrives and reserved external headroom is
-  // unavailable. The hook is inert for every non-external demand class.
-  preemption?: DispatchSchedulerPreemptionPolicy | undefined
   // Optional bounded hedge. When enabled for external demand, a quarantined or
   // P99-breaching primary can be skipped once to a different warm eligible lane.
   hedging?: DispatchHedgingPolicy | undefined
@@ -784,7 +764,6 @@ export type DispatchRouteMetadata = Readonly<{
   providerHealthScore?: number | undefined
   region?: string | undefined
   fallbackAdapterRouteMetadata?: InferenceAdapterRouteMetadata | undefined
-  schedulerPreemption?: DispatchSchedulerPreemptionEvidence | undefined
   ttftP99Ms?: number | undefined
   warmState?: ProviderWarmState | undefined
 }>
@@ -942,33 +921,6 @@ const admissionError = (
     reason: `internal_stress rejected because reserved external headroom is unavailable: ${admission.reason}`,
     retryable: true,
   })
-
-const internalStressPreemptedError = (
-  request: InferenceRequest,
-): InferenceAdapterError => {
-  const reason =
-    typeof request.abortSignal?.reason === 'string' &&
-    request.abortSignal.reason.trim() !== ''
-      ? request.abortSignal.reason.trim()
-      : 'external_preemption'
-  return new InferenceAdapterError({
-    adapterId: 'router',
-    httpStatus: 429,
-    kind: 'internal_stress_yielded',
-    reason: `internal_stress yielded because external demand preempted it: ${reason}`,
-    retryable: true,
-  })
-}
-
-const wasInternalStressPreempted = (request: InferenceRequest): boolean =>
-  request.priority === 'internal_stress' && request.abortSignal?.aborted === true
-
-const shouldPreemptInternalStress = (
-  preemption: DispatchSchedulerPreemptionPolicy | undefined,
-): boolean =>
-  preemption !== undefined &&
-  preemption.demandClass === 'external' &&
-  !preemption.reservedExternalHeadroomAvailable
 
 const normalizedRetryCount = (
   retry: DispatchRetryPolicy | undefined,
@@ -1188,19 +1140,6 @@ const attemptAdapterWithRetry = <A>(
     }
   })
 
-const shouldRetryPrimaryValidationAfterPreemption = (
-  input: Readonly<{
-    adapterId: string
-    error: InferenceAdapterError
-    primaryAdapterId: string
-    schedulerPreemption: DispatchSchedulerPreemptionEvidence | undefined
-  }>,
-): boolean =>
-  input.schedulerPreemption !== undefined &&
-  input.adapterId === input.primaryAdapterId &&
-  input.error.retryable &&
-  input.error.kind === 'empty_assistant_content'
-
 // Run an adapter operation across the model's lane plan with bounded-backoff
 // overflow. Lanes that are not registered (e.g. an absent partner secret) are
 // skipped. A retryable failure backs off and overflows to the next lane; a
@@ -1241,10 +1180,6 @@ export const dispatchWithOverflowWithMetadata = <A>(
       )
       return yield* Effect.fail(error)
     }
-
-    const schedulerPreemption = shouldPreemptInternalStress(deps.preemption)
-      ? yield* deps.preemption!.preempt()
-      : undefined
 
     const recoveredGlmOwnCapacity =
       glmOwnCapacityFailover?.isActive() === true &&
@@ -1368,12 +1303,6 @@ export const dispatchWithOverflowWithMetadata = <A>(
         overflowCount += 1
       }
 
-      let validationRetryAttempt = 0
-      // #6318: after external demand preempts internal stress, an empty primary
-      // assistant response gets one same-lane validation retry before overflow.
-      const validationRetryLimit =
-        schedulerPreemption === undefined ? retryCount : Math.max(1, retryCount)
-
       while (true) {
         const outcome = yield* attemptAdapterWithRetry({
           adapter,
@@ -1402,19 +1331,6 @@ export const dispatchWithOverflowWithMetadata = <A>(
             if (!validation.error.retryable) {
               return yield* Effect.fail(validation.error)
             }
-            if (
-              validationRetryAttempt < validationRetryLimit &&
-              shouldRetryPrimaryValidationAfterPreemption({
-                adapterId: adapter.id,
-                error: validation.error,
-                primaryAdapterId,
-                schedulerPreemption,
-              })
-            ) {
-              yield* sleep(backoffDelayMs(backoff, validationRetryAttempt))
-              validationRetryAttempt += 1
-              continue
-            }
             fallbackReason = fallbackReasonFor(validation.error)
             fallbackAdapterRouteMetadata = validation.error.adapterRouteMetadata
             continue adapterLoop
@@ -1441,9 +1357,6 @@ export const dispatchWithOverflowWithMetadata = <A>(
               ...(fallbackAdapterRouteMetadata === undefined
                 ? {}
                 : { fallbackAdapterRouteMetadata }),
-              ...(schedulerPreemption === undefined
-                ? {}
-                : { schedulerPreemption }),
               ...(signals?.laneHealth === undefined
                 ? {}
                 : { laneHealth: signals.laneHealth }),
@@ -1464,9 +1377,6 @@ export const dispatchWithOverflowWithMetadata = <A>(
 
         lastError = outcome.error
         deps.glmOwnCapacityFailover?.recordFailure(outcome.error)
-        if (wasInternalStressPreempted(adapterRequest)) {
-          return yield* Effect.fail(internalStressPreemptedError(adapterRequest))
-        }
         // Non-retryable: surface immediately, no overflow.
         if (!outcome.error.retryable) {
           return yield* Effect.fail(outcome.error)

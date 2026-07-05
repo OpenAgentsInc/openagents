@@ -23,7 +23,6 @@
     "smoke:autopilot-coder:claude-agent-git-checkout": "vitest run src/autopilot-work-routes.test.ts -t \"claude_agent_task git_checkout\"",
     "marching-orders": "bun run scripts/marching-orders-agent.ts",
     "glm-fleet:durability": "bun run scripts/khala-glm-fleet-durability.ts",
-    "glm-stress:adaptive": "bun run scripts/khala-glm-adaptive-stress.ts",
     "pilot:glm-nvfp4": "bun run scripts/khala-glm-nvfp4-pilot.ts",
     "smoke:autopilot-coder:paid": "vitest run src/autopilot-work-routes.test.ts -t \"paid Autopilot Coder end-to-end smoke\"",
     "smoke:autopilot-coder:rate-limit-rotation": "vitest run src/autopilot-rate-limit-rotation-smoke.test.ts src/provider-account-lease-policy.test.ts src/provider-account-failover-policy.test.ts",

@@ -90,10 +90,6 @@ import {
   type SpendCapDecision,
 } from './inference-abuse-controls'
 import { applyInternalAccountAttribution } from './inference-internal-account'
-import type {
-  InternalStressPreemptionCoordinator,
-  InternalStressPreemptionRegistry,
-} from './internal-stress-preemption'
 import { agentUserIdFromAccountRef } from './inference-owner-identity'
 import { type PremiumAccessDecision } from './inference-premium-allowlist'
 import { resolveKhalaChatTraceOptIn } from './khala-chat-trace-emitter'
@@ -140,7 +136,6 @@ import {
   type DispatchLoadSheddingPolicy,
   type DispatchRouteAdmissionPolicy,
   type DispatchRouteMetadata,
-  type DispatchSchedulerPreemptionPolicy,
   type DispatchSuccessValidator,
   FIREWORKS_ADAPTER_ID,
   FIREWORKS_STRONG_CODING_ADAPTER_ID,
@@ -190,7 +185,6 @@ import {
   type InferenceProviderRegistry,
   type InferenceRequest,
   type InferenceResult,
-  type InferenceStreamEvent,
   type InferenceStreamSource,
   type InferenceToolCallDelta,
 } from './provider-adapter'
@@ -448,13 +442,10 @@ export type ModelLanePlanner = (model: string) => ReadonlyArray<string>
 
 type ChatCompletionsDispatchDeps = Omit<
   DispatchDeps,
-  'hedging' | 'plan' | 'preemption' | 'registry' | 'shedding'
+  'hedging' | 'plan' | 'registry' | 'shedding'
 > &
   Readonly<{
     hedging?: Omit<DispatchHedgingPolicy, 'demandClass'> | undefined
-    preemption?:
-      | Omit<DispatchSchedulerPreemptionPolicy, 'demandClass'>
-      | undefined
     shedding?: Omit<DispatchLoadSheddingPolicy, 'demandClass'> | undefined
   }>
 
@@ -605,8 +596,6 @@ export type ChatCompletionsDeps = Readonly<{
   // never waits. Ignored unless `lanePlan` is supplied.
   dispatch?: ChatCompletionsDispatchDeps | undefined
   routeAdmission?: Omit<DispatchRouteAdmissionPolicy, 'demandClass'> | undefined
-  internalStressPreemption?: InternalStressPreemptionRegistry | undefined
-  internalStressCoordinator?: InternalStressPreemptionCoordinator | undefined
   // Defaults to the no-op/log metering stub. The Worker supplies the live
   // ledger hook (`makeLedgerMeteringHook`, #5477) when the gateway is enabled.
   meteringHook?: MeteringHook
@@ -1147,7 +1136,6 @@ const toInferenceRequest = (
   componentChannelActive?: boolean,
   autopilotConcierge?: AutopilotConciergeRequestConfig | undefined,
   scheduler?: Readonly<{
-    abortSignal?: AbortSignal | undefined
     priority: InferenceRequest['priority']
   }>,
   callerProviderKey?: InferenceRequest['callerProviderKey'],
@@ -1182,9 +1170,6 @@ const toInferenceRequest = (
     ...rest
   } = raw
   return {
-    ...(scheduler?.abortSignal === undefined
-      ? {}
-      : { abortSignal: scheduler.abortSignal }),
     ...(callerProviderKey === undefined ? {} : { callerProviderKey }),
     messages,
     model: requestedModel,
@@ -1403,14 +1388,6 @@ type OpenAgentsReceipt = Readonly<{
         replica_busy_reason?: string | null | undefined
         queue_wait_ms?: number | typeof NOT_MEASURED | undefined
         glm_saturation_policy?: string | undefined
-        scheduler_preemption?:
-          | Readonly<{
-              evidence_ref: string
-              reason: string
-              target_demand_class: 'internal_stress'
-              target_outcome: 'preempted_yielded'
-            }>
-          | undefined
       }>
     | undefined
   // `unverified` is the HONEST default for an executable artifact we have not actually
@@ -1693,18 +1670,6 @@ const servedTokensRequestMetrics = (
     ...(input.timing?.generationWallClockMs === undefined
       ? {}
       : { generationWallClockMs: input.timing.generationWallClockMs }),
-    ...(input.routeMetadata?.schedulerPreemption === undefined
-      ? {}
-      : {
-          schedulerPreemptionEvidenceRef:
-            input.routeMetadata.schedulerPreemption.evidenceRef,
-          schedulerPreemptionReason:
-            input.routeMetadata.schedulerPreemption.reason,
-          schedulerPreemptionTargetDemandClass:
-            input.routeMetadata.schedulerPreemption.targetDemandClass,
-          schedulerPreemptionTargetOutcome:
-            input.routeMetadata.schedulerPreemption.targetOutcome,
-        }),
   }
 }
 
@@ -1845,18 +1810,6 @@ const openAgentsReceiptForResult = (
     ...(routeGlmSaturationPolicy === undefined
       ? {}
       : { glm_saturation_policy: routeGlmSaturationPolicy }),
-    ...(input.routeMetadata?.schedulerPreemption === undefined
-      ? {}
-      : {
-          scheduler_preemption: {
-            evidence_ref: input.routeMetadata.schedulerPreemption.evidenceRef,
-            reason: input.routeMetadata.schedulerPreemption.reason,
-            target_demand_class:
-              input.routeMetadata.schedulerPreemption.targetDemandClass,
-            target_outcome:
-              input.routeMetadata.schedulerPreemption.targetOutcome,
-          },
-        }),
   } satisfies NonNullable<OpenAgentsReceipt['routing']>
 
   if (!isKhala) {
@@ -3157,49 +3110,6 @@ export const handleChatCompletions = (
     const traceEmitOptIn = resolveKhalaChatTraceOptIn({ rawBody, request })
 
     const routeDemandClass = routeDemandClassFromAttribution(requestAttribution)
-    const internalStressRouteAdmissionRejected =
-      routeDemandClass === 'internal_stress' &&
-      deps.routeAdmission !== undefined &&
-      !(
-        deps.routeAdmission.internalStressHeadroomAvailable ??
-        deps.routeAdmission.reservedExternalHeadroomAvailable
-      )
-    const preemptionAbortController =
-      routeDemandClass === 'internal_stress' &&
-      !internalStressRouteAdmissionRejected &&
-      (deps.internalStressPreemption !== undefined ||
-        deps.internalStressCoordinator !== undefined)
-        ? new AbortController()
-        : undefined
-    const releasePreemptionSlot: () => Promise<void> =
-      preemptionAbortController === undefined
-        ? async () => {}
-        : deps.internalStressCoordinator !== undefined
-          ? yield* Effect.tryPromise({
-              catch: () => 'internal_stress_scheduler_register_failed' as const,
-              try: () =>
-                deps.internalStressCoordinator!.register({
-                  abortController: preemptionAbortController,
-                  nowMs: requestStartMs,
-                  requestId: responseId,
-                }),
-            }).pipe(
-              Effect.catch(() =>
-                Effect.sync(() => {
-                  preemptionAbortController.abort(
-                    'internal_stress_global_scheduler_unavailable',
-                  )
-                  return async () => {}
-                }),
-              ),
-            )
-          : (() => {
-              const release = deps.internalStressPreemption!.register({
-                abortController: preemptionAbortController,
-                requestId: responseId,
-              })
-              return async () => release()
-            })()
     const inferenceRequest = toInferenceRequest(
       body,
       rawBody,
@@ -3208,9 +3118,6 @@ export const handleChatCompletions = (
       componentChannelActive,
       autopilotConcierge?.ok === true ? autopilotConcierge.config : undefined,
       {
-        ...(preemptionAbortController === undefined
-          ? {}
-          : { abortSignal: preemptionAbortController.signal }),
         priority: routeDemandClass,
       },
       byok._tag === 'accepted'
@@ -3224,52 +3131,6 @@ export const handleChatCompletions = (
     // Dispatch deps for the overflow loop. The plan is pinned to `plannedIds`
     // (already resolved from lanePlan/router above) so selection + dispatch use
     // exactly the same ordering.
-    const coordinatorSnapshot =
-      routeDemandClass === 'external' &&
-      deps.internalStressCoordinator !== undefined
-        ? yield* Effect.tryPromise({
-            catch: () => undefined,
-            try: () =>
-              deps.internalStressCoordinator!.snapshot({
-                nowMs: nowEpochMillis(),
-              }),
-          }).pipe(Effect.orElseSucceed(() => undefined))
-        : undefined
-    const effectiveRouteAdmission =
-      routeDemandClass === 'external' &&
-      coordinatorSnapshot !== undefined &&
-      coordinatorSnapshot.activeStressCount > 0
-        ? {
-            reason: 'glm_global_internal_stress_active',
-            reservedExternalHeadroomAvailable: false,
-          }
-        : deps.routeAdmission
-    const preemptionPolicy =
-      deps.dispatch?.preemption ??
-      ((deps.internalStressPreemption === undefined &&
-        deps.internalStressCoordinator === undefined) ||
-      effectiveRouteAdmission === undefined
-        ? undefined
-        : {
-            preempt: () =>
-              deps.internalStressCoordinator !== undefined
-                ? Effect.tryPromise({
-                    catch: () => undefined,
-                    try: () =>
-                      deps.internalStressCoordinator!.preempt({
-                        nowMs: nowEpochMillis(),
-                        reason: 'external_reserved_headroom_unavailable',
-                      }),
-                  }).pipe(Effect.orElseSucceed(() => undefined))
-                : Effect.sync(() =>
-                    deps.internalStressPreemption!.preempt({
-                      reason: 'external_reserved_headroom_unavailable',
-                    }),
-                  ),
-            reason: effectiveRouteAdmission.reason,
-            reservedExternalHeadroomAvailable:
-              effectiveRouteAdmission.reservedExternalHeadroomAvailable,
-          })
     const dispatchGlmOwnCapacityFailover =
       glmSaturationStressKhalaRequest &&
       deps.dispatch?.glmOwnCapacityFailover !== undefined
@@ -3301,19 +3162,11 @@ export const handleChatCompletions = (
               demandClass: routeDemandClass,
             },
           }),
-      ...(effectiveRouteAdmission === undefined
+      ...(deps.routeAdmission === undefined
         ? {}
         : {
             admission: {
-              ...effectiveRouteAdmission,
-              demandClass: routeDemandClass,
-            },
-          }),
-      ...(preemptionPolicy === undefined
-        ? {}
-        : {
-            preemption: {
-              ...preemptionPolicy,
+              ...deps.routeAdmission,
               demandClass: routeDemandClass,
             },
           }),
@@ -3398,18 +3251,6 @@ export const handleChatCompletions = (
 
       if (sseDispatch.ok) {
         const { adapterId, source } = sseDispatch.served.value
-        const sourceWithPreemptionRelease: InferenceStreamSource = {
-          frames: (async function* (): AsyncIterable<InferenceStreamEvent> {
-            try {
-              for await (const frame of source.frames) {
-                yield frame
-              }
-            } finally {
-              await releasePreemptionSlot()
-            }
-          })() as InferenceStreamSource['frames'],
-          terminal: source.terminal,
-        }
         // DURABLE-STREAM RANK-1 (#6058). Resolve a per-request durable store when
         // the flag is on AND a store factory is wired; a failing/absent factory
         // leaves `durableStore` undefined so the stream degrades to today's
@@ -3451,7 +3292,7 @@ export const handleChatCompletions = (
           requestStartMs,
           requestedModel,
           responseId,
-          source: sourceWithPreemptionRelease,
+          source,
           routeMetadata: sseDispatch.served.route,
         })
         return new Response(responseStream, {
@@ -3478,7 +3319,6 @@ export const handleChatCompletions = (
       // error) must surface as the 502 it is, not be retried via the buffered
       // path (which would double-dispatch and could 524 again).
       if (sseDispatch.error.kind !== 'stream_not_supported') {
-        yield* Effect.promise(() => releasePreemptionSlot())
         const response = providerErrorResponse(sseDispatch.error)
         applyByokResponseHeader(response, byok, false)
         return response
@@ -3496,7 +3336,6 @@ export const handleChatCompletions = (
       ).pipe(
         Effect.map(served => ({ ok: true as const, served })),
         Effect.catch(error => Effect.succeed({ error, ok: false as const })),
-        Effect.ensuring(Effect.promise(() => releasePreemptionSlot())),
       )
       if (!chunks.ok) {
         const response = providerErrorResponse(chunks.error)
@@ -3736,7 +3575,6 @@ export const handleChatCompletions = (
     ).pipe(
       Effect.map(served => ({ ok: true as const, served })),
       Effect.catch(error => Effect.succeed({ error, ok: false as const })),
-      Effect.ensuring(Effect.promise(() => releasePreemptionSlot())),
     )
     if (!result.ok) {
       const response = providerErrorResponse(result.error)

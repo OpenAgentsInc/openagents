@@ -418,13 +418,6 @@
         "name": "INFERENCE_DURABLE_STREAM",
         "class_name": "DurableInferenceStreamObject",
       },
-      // GLM internal-stress scheduler (#6318). One named SQLite-class DO
-      // coordinates short-lived stress leases so external traffic can preempt
-      // internal stress across Worker isolates.
-      {
-        "name": "GLM_STRESS_SCHEDULER",
-        "class_name": "GlmStressSchedulerDurableObject",
-      },
       // Background-agent cron scheduler (BA-B2). The Worker scheduled() hook wakes
       // exactly this named DO, which serializes due-trigger ticks across isolates.
       {
@@ -481,6 +474,10 @@
     {
       "tag": "v9",
       "new_sqlite_classes": ["KhalaSyncHubDO"],
+    },
+    {
+      "tag": "v10",
+      "deleted_classes": ["GlmStressSchedulerDurableObject"],
     },
   ],
   "env": {
@@ -650,10 +647,6 @@
             "class_name": "DurableInferenceStreamObject",
           },
           {
-            "name": "GLM_STRESS_SCHEDULER",
-            "class_name": "GlmStressSchedulerDurableObject",
-          },
-          {
             "name": "AGENT_DEFINITION_SCHEDULER",
             "class_name": "AgentDefinitionSchedulerDurableObject",
           },
@@ -693,6 +686,10 @@
         {
           "tag": "v6",
           "new_sqlite_classes": ["KhalaSyncHubDO"],
+        },
+        {
+          "tag": "v7",
+          "deleted_classes": ["GlmStressSchedulerDurableObject"],
         },
       ],
     },

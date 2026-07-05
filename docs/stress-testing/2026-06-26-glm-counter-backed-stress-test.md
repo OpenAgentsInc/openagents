@@ -1,5 +1,10 @@
 # 2026-06-26 GLM Counter-Backed Stress Test
 
+Retirement note (2026-07-05, #8381): this document is historical. The
+`glm-stress:adaptive` script, adaptive runner helpers, stress-saturation plan,
+and GLM stress-scheduler Durable Object described below were removed from
+current `main`.
+
 ## Purpose
 
 Issue #6317 needs continuous GLM saturation traffic that also moves the primary

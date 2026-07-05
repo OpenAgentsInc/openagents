@@ -233,8 +233,10 @@ operator view of what remains, not a public product claim.
   still remains open for a committed continuous runner, external-demand spike
   proof with zero external failure, and sustained telemetry publication.
 - 2026-06-27T14:22Z #6317 committed adaptive runner: the curl-shaped manual
-  stress loop is now a repo script, `glm-stress:adaptive`, backed by
-  `live-adaptive-stress-runner` utilities and focused tests. Its first live run
+  stress loop was promoted to a repo script, `glm-stress:adaptive`, backed by
+  `live-adaptive-stress-runner` utilities and focused tests. That script and
+  helper surface were retired on 2026-07-05 in #8381 after the lane was audited
+  as reverted; the following run remains historical evidence only. Its first live run
   `issue6317-committed-adaptive-20260627T1415Z` started at concurrency `2`,
   held through three clean windows, probed to `3`, observed the present overload
   edge (`13` OK / `6` HTTP `502`), backed down to `2`, and returned to clean
@@ -448,6 +450,12 @@ operator view of what remains, not a public product claim.
   the external response served through Fireworks after
   `fallback_reason: empty_assistant_content`; acceptance still requires no
   premature overflow to a weaker lane under saturation.
+
+2026-07-05 note: #8381 retired the cross-isolate GLM stress scheduler, its
+Durable Object binding, and the adaptive-stress runner/helper modules. Current
+`main` keeps typed `internal_stress` attribution plus route-admission/headroom
+coverage, but no longer exposes scheduler preemption metadata or the
+`glm-stress:adaptive` command.
 - Current local #6318 follow-up adds a typed
   `openagents.khala.glm_external_wins_proof.v0_1` evaluator. It accepts a live
   external-wins proof only when the external response has scheduler-preemption

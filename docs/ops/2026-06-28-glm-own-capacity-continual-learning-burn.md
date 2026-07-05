@@ -26,12 +26,13 @@ Vertex Gemini / Fireworks / OpenRouter paid fallback. Consequences:
   **never spills to a paid provider**. The driver retries/skips; it never incurs
   external spend. (Confirmed live: a GLM-down tick returns `000`, not a paid
   serve.)
-- `internal_stress` is **preemptible** — real external Khala users always win;
-  this burn yields under load (reserved-headroom + preemption policy).
+- `internal_stress` is **admission-limited** — real external Khala users win at
+  the route gate; this burn yields before dispatch when reserved headroom is
+  unavailable.
 
-This is the same demand tag the GLM stress harness uses
-(`inference/benchmark/stress-saturation-plan.ts`,
-`GLM_STRESS_DEMAND_SOURCE = 'glm-saturation'`).
+This is the same demand tag covered by the GLM route-admission tests. The old
+adaptive stress harness (`glm-stress:adaptive` /
+`stress-saturation-plan.ts`) was retired on 2026-07-05 in #8381.
 
 > The raw model id `openagents/glm-5.2-reap-504b` is **not** publicly servable
 > (returns `model_unavailable`); the public Khala alias + the glm-saturation

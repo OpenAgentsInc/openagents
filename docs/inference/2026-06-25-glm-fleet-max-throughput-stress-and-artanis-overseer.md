@@ -75,22 +75,21 @@ Concretely the invariant has three enforceable clauses:
    admitted. When external demand rises toward saturation, internal-stress
    admission is refused *before* any external request is refused. External
    requests are admitted as long as there is any servable lane.
-2. **Preemptibility.** An in-flight internal-stress request is cancellable. When
-   external pressure arrives and no replica slot is free, the scheduler aborts
-   internal-stress in-flight work (returning its slot) rather than queueing or
-   overflowing the external request to a weaker lane.
+2. **Admission-limited stress.** Current `main` keeps the demand class and
+   headroom gate, but the cross-isolate scheduler/preemption lane was retired
+   on 2026-07-05 in #8381. Internal-stress work yields before dispatch when
+   reserved headroom is unavailable; do not treat in-flight scheduler aborts as
+   a live product promise.
 3. **Accounting honesty.** Internal stress carries a distinct, typed demand tag
    so it is never confused with external market demand in `token_usage_events`,
    goodput metrics, or GTM claims. Served internal-stress tokens still count in
    the public all-demand tokens-served counter. Preempted/cancelled stress
    requests are recorded as such, not as failures of the external SLO.
 
-The live proof has an additional fail-closed acceptance rule: scheduler
-preemption is not enough by itself. The external response must remain on the GLM
-primary lane with `fallbackReason:null`. A response that carries
-`scheduler_preemption` but then serves through Fireworks/OpenRouter/Gemini after
-`fallback_reason: empty_assistant_content` is a useful diagnostic, not an
-external-wins pass.
+Historical scheduler-preemption probes remain useful diagnostics, but they are
+not current-main acceptance criteria. Any future external-wins proof should be
+reintroduced explicitly with a live runner and docs before being treated as a
+serving contract.
 
 ### Priority / admission model
 

@@ -79,10 +79,6 @@ export type ServedTokensRequestMetrics = Readonly<{
   glmAggregateInflightCount?: number | undefined
   glmAggregateMaxInflight?: number | undefined
   glmSaturationPolicy?: string | undefined
-  schedulerPreemptionEvidenceRef?: string | undefined
-  schedulerPreemptionReason?: string | undefined
-  schedulerPreemptionTargetDemandClass?: 'internal_stress' | undefined
-  schedulerPreemptionTargetOutcome?: 'preempted_yielded' | undefined
   queueWaitMs?: number | undefined
   batchWaitMs?: number | undefined
   ttftMs?: number | undefined
@@ -273,32 +269,6 @@ const servedTokensSafeMetrics = (
     ...(optionalText(metrics.glmSaturationPolicy) === undefined
       ? {}
       : { glmSaturationPolicy: optionalText(metrics.glmSaturationPolicy) }),
-    ...(optionalText(metrics.schedulerPreemptionEvidenceRef) === undefined
-      ? {}
-      : {
-          schedulerPreemptionEvidenceRef: optionalText(
-            metrics.schedulerPreemptionEvidenceRef,
-          ),
-        }),
-    ...(optionalText(metrics.schedulerPreemptionReason) === undefined
-      ? {}
-      : {
-          schedulerPreemptionReason: optionalText(
-            metrics.schedulerPreemptionReason,
-          ),
-        }),
-    ...(metrics.schedulerPreemptionTargetDemandClass === undefined
-      ? {}
-      : {
-          schedulerPreemptionTargetDemandClass:
-            metrics.schedulerPreemptionTargetDemandClass,
-        }),
-    ...(metrics.schedulerPreemptionTargetOutcome === undefined
-      ? {}
-      : {
-          schedulerPreemptionTargetOutcome:
-            metrics.schedulerPreemptionTargetOutcome,
-        }),
     ...(finiteNonNegative(metrics.queueWaitMs) === undefined
       ? {}
       : { queueWaitMs: finiteNonNegative(metrics.queueWaitMs) }),
