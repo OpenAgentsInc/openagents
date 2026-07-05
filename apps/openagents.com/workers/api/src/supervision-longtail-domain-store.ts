@@ -37,17 +37,25 @@
 // Flags (per KS-8 convention):
 //   KHALA_SYNC_SUPERVISION_DUAL_WRITE (default ON; '0'|'off'|'false'|'disabled'|'no')
 //   KHALA_SYNC_SUPERVISION_READS      (default 'd1'; 'd1'|'compare'|'postgres')
-// With no KHALA_SYNC_DB binding everything degrades to plain D1. `postgres`
-// read serving is DEFERRED to the read/write-cutover follow-up: the flag
-// behaves as `compare` and logs `khala_sync_supervision_postgres_reads_deferred`
-// once, so a premature flag flip can never serve an unproven read path.
+// With no KHALA_SYNC_DB binding everything degrades to plain D1. Real
+// `postgres` read SERVING is still DEFERRED to a further read-cutover
+// follow-up (#8361): D1 remains the ONLY store this domain ever serves a
+// response from, at every flag value. What `reads !== 'd1'` DOES turn on is
+// the shadow-compare wiring below (`makeOmniPublicProofBundleCompareReader`)
+// — a fail-soft, non-blocking read-back diff against the Postgres twin for
+// the one public projection surface in this domain
+// (`omni_public_proof_bundles`, read by both the redacted public handoff page
+// and the operator JSON view). `postgres` additionally logs
+// `khala_sync_supervision_postgres_reads_deferred` once, so a premature flag
+// flip can never silently believe it is being served.
 //
 // Cutover order (docs/khala-sync/RUNBOOK.md "Supervision long-tail cutover"):
 // dual-write on → backfill
 // (khala-sync-server scripts/backfill-supervision-longtail.ts) → second sweep
 // → --verify (exact counts, tallies, idempotency-key-set equality, public
-// proof-bundle digests, newest-N row hashes) → compare reads → read/write
-// cutover + D1 drop in the follow-up.
+// proof-bundle digests, newest-N row hashes) → compare reads (this file's
+// shadow-compare reader) → a genuinely silent soak → read/write cutover +
+// D1 drop in a further follow-up.
 
 import {
   normalizeSupervisionLongtailValue,
@@ -414,6 +422,13 @@ type SupervisionLongtailRuntime = Readonly<{
   flags: SupervisionLongtailFlags
   log: SupervisionLongtailLog
   mirror: SupervisionLongtailMirror | undefined
+  /**
+   * The read-only twin handle for shadow-compare reads, present whenever a
+   * Postgres binding exists AND `KHALA_SYNC_SUPERVISION_READS` is not `d1`
+   * (independent of dual-write) — same gate as every other KS-8 domain
+   * store's `compareStore` (see `forge-domain-store.ts`).
+   */
+  compareStore: PostgresSupervisionLongtailStore | undefined
 }>
 
 const runtimeForEnv = (
@@ -426,6 +441,8 @@ const runtimeForEnv = (
   const log = options.log ?? defaultLog
   const postgres = postgresStoreForEnv(env, options)
   return {
+    compareStore:
+      postgres !== undefined && flags.reads !== 'd1' ? postgres : undefined,
     db,
     flags,
     log,
@@ -644,5 +661,107 @@ export const makeHygieneDebtReceiptStoreForEnv = (
       ])
       return result
     },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Read-compare shadow (the KS-8.17 follow-up piece deferred by the parent
+// lane, #8361): D1 stays the ONLY store that ever serves a response. When
+// `KHALA_SYNC_SUPERVISION_READS` is `compare` or `postgres`, this fires a
+// fail-soft, non-blocking shadow read against the Postgres twin after the
+// real D1-served read and diffs it column-for-column, logging
+// `khala_sync_supervision_read_compare_mismatch` /
+// `khala_sync_supervision_read_compare_failed`. A `postgres` flag value NEVER
+// serves Postgres here — real serving stays deferred to a follow-up with a
+// genuinely silent soak; the flag only widens which values trigger the shadow
+// compare (`khala_sync_supervision_postgres_reads_deferred`, logged once).
+// ---------------------------------------------------------------------------
+
+/** Column-for-column equality using the same normalizer the mirror uses. */
+const supervisionLongtailRowsEqual = (
+  table: SupervisionLongtailTable,
+  left: Record<string, unknown>,
+  right: Record<string, unknown>,
+): boolean => {
+  const spec = SUPERVISION_LONGTAIL_TABLE_SPECS[table]
+  for (const column of spec.columns) {
+    if (
+      String(normalizeSupervisionLongtailValue(left[column])) !==
+      String(normalizeSupervisionLongtailValue(right[column]))
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
+/**
+ * The `omni_public_proof_bundles` shadow-compare reader — the one public
+ * projection surface in this domain (the redacted handoff page and the
+ * operator JSON view both key off `readOmniPublicProofBundleById`).
+ * `undefined` when no Postgres binding or `KHALA_SYNC_SUPERVISION_READS=d1`
+ * (the default). The returned function is fire-and-forget: call sites invoke
+ * it after their own D1-served read completes and must NOT await it on the
+ * response path — it never throws and never affects the served result.
+ */
+export const makeOmniPublicProofBundleCompareReader = (
+  env: SupervisionLongtailStoreEnv,
+  options: MakeSupervisionLongtailStoreOptions = {},
+): ((id: string) => void) | undefined => {
+  const runtime = runtimeForEnv(env, options)
+  const { compareStore, db, flags, log } = runtime
+  if (compareStore === undefined) {
+    return undefined
+  }
+  let deferredLogged = false
+  const op = 'omni_public_proof_bundles:readById'
+  return (id: string): void => {
+    if (flags.reads === 'postgres' && !deferredLogged) {
+      deferredLogged = true
+      log('khala_sync_supervision_postgres_reads_deferred', {
+        messageSafe:
+          'KHALA_SYNC_SUPERVISION_READS=postgres is deferred to a further read-cutover follow-up; serving d1 with compare shadow reads',
+        op,
+        refs: [id],
+      })
+    }
+    void (async () => {
+      try {
+        const d1Row = await db
+          .prepare(
+            `SELECT * FROM omni_public_proof_bundles WHERE id = ? AND archived_at IS NULL LIMIT 1`,
+          )
+          .bind(id)
+          .first<Record<string, unknown>>()
+        const pgRows = await compareStore.queryRows(
+          `SELECT * FROM omni_public_proof_bundles WHERE id = $1 AND archived_at IS NULL LIMIT 1`,
+          [id],
+        )
+        const pgRow = pgRows[0]
+        const bothMissing = d1Row === null && pgRow === undefined
+        const rowsMatch =
+          bothMissing ||
+          (d1Row !== null &&
+            pgRow !== undefined &&
+            supervisionLongtailRowsEqual(
+              'omni_public_proof_bundles',
+              d1Row,
+              pgRow,
+            ))
+        if (!rowsMatch) {
+          log('khala_sync_supervision_read_compare_mismatch', {
+            messageSafe: `public proof bundle differs: d1=${d1Row === null ? 'missing' : 'present'} postgres=${pgRow === undefined ? 'missing' : 'present'}`,
+            op,
+            refs: [id],
+          })
+        }
+      } catch (error) {
+        log('khala_sync_supervision_read_compare_failed', {
+          messageSafe: safeMessage(error),
+          op,
+          refs: [id],
+        })
+      }
+    })()
   }
 }

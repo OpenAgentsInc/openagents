@@ -101,6 +101,18 @@
     // backfill/--restart/--verify are green across all 28 tables. Epic-gated
     // ops decision recorded on #8282. Roll back to `d1` at any time.
     "KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS": "postgres",
+    // KS-8.17 follow-up supervision long-tail read cutover (#8361, TEMPORARY
+    // compare soak): dual-write has been live since 4acd3704c2; production
+    // backfill/second-sweep/--verify are green across all 29 tables. This
+    // shadow-runs the one public projection surface in this domain
+    // (`omni_public_proof_bundles`, read by both the redacted public handoff
+    // page and the operator JSON view) against Postgres, SERVES D1, and logs
+    // `khala_sync_supervision_read_compare_mismatch` on any drift. Roll back
+    // to `d1` at any time — the real read/write cutover stays gated on a
+    // genuinely silent soak over a representative window (this domain is
+    // near-zero-traffic today, so a short soak is thin evidence by design;
+    // do not force-flip on it).
+    "KHALA_SYNC_SUPERVISION_READS": "compare",
     // #6408 "fleet never silently stalls" watchdog (1-min cron). Detection is
     // default-ON so a live stall is flagged immediately. Recovery is also ON but
     // is a no-op unless FLEET_WATCHDOG_OWNER_PYLON_REFS lists the owner pylon(s)
@@ -553,6 +565,10 @@
         // KS-8.9 decommission follow-up (#8336), staging parity for the
         // production bounded non-gate read allowlist soak.
         "KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS": "postgres",
+        // KS-8.17 follow-up supervision long-tail read cutover (#8361,
+        // TEMPORARY compare soak), staging parity for the production
+        // compare-mode soak.
+        "KHALA_SYNC_SUPERVISION_READS": "compare",
         // Internal/ops account allowlist (#6298 demand + #6232 quota exemption) —
         // staging too, so dogfood classifies `demand_kind=internal` consistently
         // and internal testing accounts (ops/heartbeat/canary, Artanis, Raynor)

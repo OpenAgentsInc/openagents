@@ -39,6 +39,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import {
   makeD1SupervisionLongtailWriteStore,
   makeHygieneDebtReceiptStoreForEnv,
+  makeOmniPublicProofBundleCompareReader,
   makePostgresSupervisionLongtailStore,
   makeSupervisionLongtailMirror,
   makeSupervisionLongtailMirrorForEnv,
@@ -460,6 +461,230 @@ describe.skipIf(!hasLocalPostgres())(
       )
       // Diagnostic carries the row KEY only — no custody value.
       expect(diagnostics[0]?.fields.refs).toEqual(['key.1'])
+    })
+  },
+)
+
+// ---------------------------------------------------------------------------
+// Read-compare shadow (KS-8.17 follow-up, #8361): the public proof-bundle
+// reader is fire-and-forget, D1-serving-always, and only ever LOGS a diff —
+// it never changes a served response, at any flag value.
+// ---------------------------------------------------------------------------
+
+describe('makeOmniPublicProofBundleCompareReader — flag gate (no Postgres binding needed)', () => {
+  test('no KHALA_SYNC_DB binding → undefined even when reads=compare', () => {
+    const sqlite = makeSqliteD1()
+    sqlite.exec(SUPERVISION_LONGTAIL_D1_SCHEMA)
+    const reader = makeOmniPublicProofBundleCompareReader(
+      { KHALA_SYNC_SUPERVISION_READS: 'compare' },
+      { db: sqlite.db },
+    )
+    expect(reader).toBeUndefined()
+    sqlite.close()
+  })
+
+  test('reads=d1 (default) → undefined even with a Postgres binding', () => {
+    const sqlite = makeSqliteD1()
+    sqlite.exec(SUPERVISION_LONGTAIL_D1_SCHEMA)
+    const reader = makeOmniPublicProofBundleCompareReader(
+      { KHALA_SYNC_DB: { connectionString: 'postgres://contract' } },
+      {
+        db: sqlite.db,
+        makeSqlClient: () => Promise.reject(new Error('unused')),
+      },
+    )
+    expect(reader).toBeUndefined()
+    sqlite.close()
+  })
+})
+
+describe.skipIf(!hasLocalPostgres())(
+  'makeOmniPublicProofBundleCompareReader — shadow compare against the Postgres twin',
+  () => {
+    let pg: Awaited<ReturnType<typeof startLocalPostgres>>
+    let client: PgClient | undefined
+    let sqlite: ReturnType<typeof makeSqliteD1> | undefined
+
+    beforeAll(async () => {
+      pg = await startLocalPostgres()
+      const postgres = (await import('postgres')).default
+      const admin = postgres(pg.url, { max: 1, prepare: false })
+      await admin.unsafe('CREATE DATABASE supervision_compare')
+      await admin.end({ timeout: 5 })
+      const raw = postgres(pg.urlFor('supervision_compare'), {
+        max: 4,
+        prepare: false,
+      })
+      client = raw as unknown as PgClient
+      await raw.unsafe(readFileSync(MIGRATION_0024, 'utf8'))
+      sqlite = makeSqliteD1()
+      sqlite.exec(SUPERVISION_LONGTAIL_D1_SCHEMA)
+    }, 120_000)
+
+    afterAll(async () => {
+      await client?.end({ timeout: 5 })
+      await pg?.stop()
+      sqlite?.close()
+    }, 60_000)
+
+    // The reader is deliberately fire-and-forget (void, never awaited by call
+    // sites); give its internal promise chain a tick to settle before
+    // asserting on the diagnostics it logs.
+    const flush = (): Promise<void> =>
+      new Promise(resolve => setTimeout(resolve, 25))
+
+    const postgresStore = () =>
+      makePostgresSupervisionLongtailStore({
+        acquireSql: () =>
+          Promise.resolve({
+            end: () => Promise.resolve(),
+            sql: (client as unknown as { unsafe: unknown }) as never,
+          }),
+      })
+
+    const makeReader = (
+      reads: 'compare' | 'postgres',
+      diagnostics: Array<{
+        event: SupervisionLongtailDiagnosticEvent
+        fields: SupervisionLongtailDiagnostic
+      }>,
+    ) =>
+      makeOmniPublicProofBundleCompareReader(
+        {
+          KHALA_SYNC_DB: { connectionString: 'postgres://contract' },
+          KHALA_SYNC_SUPERVISION_READS: reads,
+        },
+        {
+          db: sqlite!.db,
+          log: (event, fields) => diagnostics.push({ event, fields }),
+          makeSqlClient: () =>
+            Promise.resolve({
+              end: () => Promise.resolve(),
+              sql: (client as unknown as { unsafe: unknown }) as never,
+            }),
+        },
+      )
+
+    test('rows match in D1 and Postgres → no diagnostic', async () => {
+      const diagnostics: Array<{
+        event: SupervisionLongtailDiagnosticEvent
+        fields: SupervisionLongtailDiagnostic
+      }> = []
+      const d1 = makeD1SupervisionLongtailWriteStore(sqlite!.db)
+      await d1.upsertRows('omni_public_proof_bundles', [
+        proofBundleRow('compare.match'),
+      ])
+      await postgresStore().upsertRows('omni_public_proof_bundles', [
+        proofBundleRow('compare.match'),
+      ])
+
+      const reader = makeReader('compare', diagnostics)
+      expect(reader).toBeDefined()
+      reader!('compare.match')
+      await flush()
+      expect(diagnostics).toEqual([])
+    })
+
+    test('rows differ → khala_sync_supervision_read_compare_mismatch (D1 still serves the response)', async () => {
+      const diagnostics: Array<{
+        event: SupervisionLongtailDiagnosticEvent
+        fields: SupervisionLongtailDiagnostic
+      }> = []
+      const d1 = makeD1SupervisionLongtailWriteStore(sqlite!.db)
+      await d1.upsertRows('omni_public_proof_bundles', [
+        proofBundleRow('compare.mismatch', { status: 'ready' }),
+      ])
+      await postgresStore().upsertRows('omni_public_proof_bundles', [
+        proofBundleRow('compare.mismatch', { status: 'superseded' }),
+      ])
+
+      const reader = makeReader('compare', diagnostics)
+      reader!('compare.mismatch')
+      await flush()
+      expect(diagnostics.map(d => d.event)).toContain(
+        'khala_sync_supervision_read_compare_mismatch',
+      )
+      // Diagnostic carries the row KEY only — no custody value.
+      expect(diagnostics[0]?.fields.refs).toEqual(['compare.mismatch'])
+    })
+
+    test('present in D1, missing in Postgres → mismatch diagnostic', async () => {
+      const diagnostics: Array<{
+        event: SupervisionLongtailDiagnosticEvent
+        fields: SupervisionLongtailDiagnostic
+      }> = []
+      const d1 = makeD1SupervisionLongtailWriteStore(sqlite!.db)
+      await d1.upsertRows('omni_public_proof_bundles', [
+        proofBundleRow('compare.missing-pg'),
+      ])
+
+      const reader = makeReader('compare', diagnostics)
+      reader!('compare.missing-pg')
+      await flush()
+      expect(diagnostics.map(d => d.event)).toContain(
+        'khala_sync_supervision_read_compare_mismatch',
+      )
+    })
+
+    test('absent from both stores → no diagnostic (not a mismatch)', async () => {
+      const diagnostics: Array<{
+        event: SupervisionLongtailDiagnosticEvent
+        fields: SupervisionLongtailDiagnostic
+      }> = []
+      const reader = makeReader('compare', diagnostics)
+      reader!('compare.nowhere')
+      await flush()
+      expect(diagnostics).toEqual([])
+    })
+
+    test('reads=postgres logs the deferred diagnostic once and never serves Postgres', async () => {
+      const diagnostics: Array<{
+        event: SupervisionLongtailDiagnosticEvent
+        fields: SupervisionLongtailDiagnostic
+      }> = []
+      const d1 = makeD1SupervisionLongtailWriteStore(sqlite!.db)
+      await d1.upsertRows('omni_public_proof_bundles', [
+        proofBundleRow('compare.deferred'),
+      ])
+      await postgresStore().upsertRows('omni_public_proof_bundles', [
+        proofBundleRow('compare.deferred'),
+      ])
+
+      const reader = makeReader('postgres', diagnostics)
+      reader!('compare.deferred')
+      reader!('compare.deferred')
+      await flush()
+      const deferredCount = diagnostics.filter(
+        d => d.event === 'khala_sync_supervision_postgres_reads_deferred',
+      ).length
+      expect(deferredCount).toBe(1)
+      expect(diagnostics.map(d => d.event)).not.toContain(
+        'khala_sync_supervision_read_compare_mismatch',
+      )
+    })
+
+    test('a broken Postgres twin never throws — it emits the failed diagnostic', async () => {
+      const diagnostics: Array<{
+        event: SupervisionLongtailDiagnosticEvent
+        fields: SupervisionLongtailDiagnostic
+      }> = []
+      const reader = makeOmniPublicProofBundleCompareReader(
+        {
+          KHALA_SYNC_DB: { connectionString: 'postgres://contract' },
+          KHALA_SYNC_SUPERVISION_READS: 'compare',
+        },
+        {
+          db: sqlite!.db,
+          log: (event, fields) => diagnostics.push({ event, fields }),
+          makeSqlClient: () => Promise.reject(new Error('postgres is down')),
+        },
+      )
+      expect(reader).toBeDefined()
+      expect(() => reader!('compare.broken')).not.toThrow()
+      await flush()
+      expect(diagnostics.map(d => d.event)).toContain(
+        'khala_sync_supervision_read_compare_failed',
+      )
     })
   },
 )

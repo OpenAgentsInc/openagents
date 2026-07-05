@@ -283,8 +283,10 @@ const proofReader = (
 const makeRoutes = (
   store: BundleStore,
   operatorAllowed: boolean,
+  compareProofBundleRead?: OmniBundleRoutesDependencies<TestEnv>['compareProofBundleRead'],
 ): ReturnType<typeof makeOmniBundleRoutes<TestEnv>> => {
   const dependencies: OmniBundleRoutesDependencies<TestEnv> = {
+    ...(compareProofBundleRead === undefined ? {} : { compareProofBundleRead }),
     db: () => bundleDb(store),
     readEvidenceBundle: evidenceReader(store),
     readProofBundle: proofReader(store),
@@ -589,6 +591,51 @@ describe('Omni bundle routes', () => {
     )
     expect(response.status).toBe(400)
     expect(store.proofs).toHaveLength(0)
+  })
+
+  test('KS-8.17 read-compare hook (#8361) fires fire-and-forget and never affects the served response', async () => {
+    const store = new BundleStore()
+    const routes = makeRoutes(store, true)
+
+    await run(
+      routes.routeOmniBundleRequest(
+        jsonPost('/api/omni/public-proof-bundles', proofBody),
+        { store },
+        ctx,
+      ),
+    )
+
+    const calls: Array<string> = []
+    const throwingRoutes = makeRoutes(store, true, env => id => {
+      calls.push(`${JSON.stringify(env)}:${id}`)
+      throw new Error('compare hook must never break the response')
+    })
+
+    const response = await run(
+      throwingRoutes.routeOmniBundleRequest(
+        get('/api/omni/public-proof-bundles/omni_public_proof_bundle_1'),
+        { store },
+        ctx,
+      ),
+    )
+    expect(response.status).toBe(200)
+    expect(calls).toEqual([
+      `${JSON.stringify({ store })}:omni_public_proof_bundle_1`,
+    ])
+
+    const handoffCalls: Array<string> = []
+    const handoffRoutes = makeRoutes(store, true, () => id => {
+      handoffCalls.push(id)
+    })
+    const handoffResponse = await run(
+      handoffRoutes.routeOmniBundleRequest(
+        get('/handoff/omni_public_proof_bundle_1'),
+        { store },
+        ctx,
+      ),
+    )
+    expect(handoffResponse.status).toBe(200)
+    expect(handoffCalls).toEqual(['omni_public_proof_bundle_1'])
   })
 
   test('returns 405 for unsupported methods on bundle collections', async () => {
