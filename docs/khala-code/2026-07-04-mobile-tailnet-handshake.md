@@ -550,3 +550,52 @@ currently guesses/hardcodes an account:
 This is a one-line call once `#8388` lands; no further schema or mutator
 changes are needed on the `khala-sync`/`khala-sync-server` side for basic
 capacity-aware selection.
+
+### Follow-up: a bottom composer for real follow-up messages
+
+Added `ChatComposer` (`clients/khala-mobile/src/components/chat-composer.tsx`)
+to the thread screen — a text input plus a trailing action button that
+changes behavior based on whether the thread has an active (unsettled)
+`runtime_turn`:
+
+- **Idle** (no turn, or the latest turn is `completed`/`failed`/`closed`/
+  `interrupted`): the button is a plain Send. Tapping it writes the real
+  prompt via the already-proven `chat.appendMessage` mutator, then starts a
+  brand-new turn via `runtime.startTurn` with `bodyRef: "chat_message.<id>"`
+  pointing at that message — the exact convention the future dispatch
+  consumer (#8388) is expected to resolve.
+- **Busy** (turn status `queued`/`running`/`waiting_for_input`): the trailing
+  button becomes Stop and is always reachable — tapping it fires
+  `runtime.interruptTurn` regardless of what's typed. Typing a follow-up
+  while busy surfaces an explicit **Steer** (default, matches the dominant
+  pattern in reference agent CLIs like opencode: `runtime.appendUserMessage`
+  attaches to the currently-running turn's context without aborting it) vs
+  **Queue** (`runtime.startTurn` with a fresh turn id — sits `queued` until
+  whatever's running settles, since nothing promotes it early) choice.
+
+Pure logic lives in `khala-runtime-compose-core.ts` (`findActiveTurn`,
+mutation-arg builders — 10 unit tests) and `khala-sync-push-core.ts`
+(push request wiring, safe-ref id generation — 6 unit tests); `RuntimeTurnEntity`
+is now also subscribed on the thread screen (alongside `chat_message` and
+`runtime_event`) to drive this. `use-khala-sync-push.ts` mints a fresh
+`clientId` per app session so the mutation counter can always start at 1
+without colliding with a prior session's ledger watermark (the same
+`out_of_order` failure mode hit earlier this session with the mirror script).
+
+**Verified end-to-end on the iOS Simulator against production Khala Sync**,
+against the same real thread used for the transcript proof above:
+1. Typed a message with no active turn, tapped Send — a real `runtime.startTurn`
+   landed; the transcript screen picked it up live and showed "● TURN QUEUED"
+   with the composer switching to the Stop button.
+2. Typed a follow-up while that turn was queued — the Steer/Queue picker
+   appeared; tapped Send with Steer selected — a real `runtime.appendUserMessage`
+   landed (text cleared, turn stayed queued).
+3. Tapped Stop — a real `runtime.interruptTurn` landed; the turn left the
+   active set and the composer reverted cleanly to the idle Send state.
+
+**Still a gap:** none of these turns actually execute anything yet — there's
+still no consumer (#8388) reading `khala_sync_runtime_control_intents` and
+starting a real Codex/Claude session, so a `runtime.startTurn` from this
+composer sits `queued` forever until that consumer exists. This composer
+proves the write side of the contract is complete and correct; #8388/#8389
+are what make a tapped Send actually produce a new assistant turn.
