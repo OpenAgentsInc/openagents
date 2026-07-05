@@ -3,8 +3,15 @@
 Status: structure audit only. This document compares the current
 `clients/khala-mobile` Expo React Native app against the local Ignite
 reference at `/Users/christopherdavid/work/projects/repos/ignite`. It does not
-change a product promise, claim new device proof, or recommend adopting Ignite
-as a framework wholesale.
+change a product promise or claim new device proof.
+
+Owner direction, clarified after the first pass: **do not preserve Expo Router
+as the target architecture.** Treat the current Expo Router layout as migration
+source material and adopt Ignite's React Navigation stack/app-spine structure
+more directly: `App` entry, typed stack/tab navigators, navigation utilities,
+provider spine, screen primitives, error boundary, i18n/copy discipline,
+Maestro flows, dependency-cruiser, and local generators. Keep only the Khala
+authority boundaries that Ignite cannot know about.
 
 Scope:
 
@@ -21,22 +28,22 @@ Any Ignite pattern that conflicts with those rules is explicitly out of scope.
 ## One-Line Verdict
 
 Khala Mobile already has the hard product-specific pieces Ignite cannot give
-us: Khala Sync, secure-store policy, OTA policy, Expo Router routes, native
-module seams, and a serious Bun test harness. Ignite is useful as a mature
-React Native app-structure reference: it shows successful patterns for a
-boring reusable screen shell, typed theme/provider ergonomics, dependency
-architecture checks, generator templates, Maestro flows, i18n/copy discipline,
-error boundaries, and development diagnostics.
+us: Khala Sync, secure-store policy, OpenAgents Updates policy, native module
+seams, behavior-contract tests, and a serious Bun test harness. The routing/app
+shell is the piece to change: the audit target is now **Ignite-style React
+Navigation stacks and more of Ignite's app spine**, not continued Expo Router.
 
-The highest-leverage borrow is not a dependency. It is a small "mobile app
-spine" layer around Khala's existing product code.
+The highest-leverage borrow is a structural migration: move Khala Mobile toward
+Ignite's `App` + `AppNavigator` + typed stack/tab navigator pattern, then layer
+Ignite's reusable screen/components/config/testing/devtools conventions around
+Khala's existing sync/security/native domains.
 
 ## Side-by-Side Shape
 
 | Area | Khala Mobile today | Ignite pattern | Audit read |
 | --- | --- | --- | --- |
-| App entry | Expo Router `app/_layout.tsx` owns `GestureHandlerRootView`, `StatusBar`, `KhalaAuthProvider`, auth gate, and signed-in `Stack`. | `app/app.tsx` owns `SafeAreaProvider`, `KeyboardProvider`, font/i18n readiness, `ThemeProvider`, navigation persistence, and `ErrorBoundary`. | Keep Expo Router. Borrow the explicit provider spine and error/loading boundaries. |
-| Routes | File routes in `app/(drawer)` and `app/thread/[threadId].tsx`; reusable code in `src/*`. | Classic React Navigation stack/tab files in `app/navigators`, plus an Expo Router conversion path that moves reusable code out of the router namespace. | Khala's route/source split is already right. Preserve it as route count grows. |
+| App entry | Expo Router `app/_layout.tsx` owns `GestureHandlerRootView`, `StatusBar`, `KhalaAuthProvider`, auth gate, and signed-in `Stack`. | `app/app.tsx` owns `SafeAreaProvider`, `KeyboardProvider`, font/i18n readiness, `ThemeProvider`, navigation persistence, and `ErrorBoundary`. | Adopt Ignite's explicit `App` entry/provider spine. Migrate away from `expo-router/entry` as the main app entry. |
+| Routes | File routes in `app/(drawer)` and `app/thread/[threadId].tsx`; reusable code in `src/*`. | Classic React Navigation stack/tab files in `app/navigators`, with typed `AppStackParamList`, stack screens, back-button handling, navigation refs, and optional tab/drawer navigators. | Adopt the React Navigation stack shape as target. Preserve the `src/*` domain split, but move route ownership into typed navigators/screens. |
 | UI primitives | Product-specific primitives (`ArwesButton`, `BackgroundGradient`, `Frame`, `SwipeableItem`, `Toggle`, `ChatComposer`) plus direct RN `Text`, `Pressable`, `View` in many places. | Reusable `Text`, `Button`, `Screen`, `Header`, `ListItem`, `TextField`, `EmptyState`, `AutoImage`, `Icon` with common accessibility/theming behavior. | Borrow the primitive architecture, not the visual style. Khala needs OpenAgents-flavored `Text/Button/Screen` wrappers. |
 | Theme | `src/theme/tokens.ts` bridges shared `@openagentsinc/ui` NativeWind tokens and `tailwind.config.cjs`. | `app/theme` has typed colors, spacing, typography, timing, light/dark themes, provider, and `themed()` helper. | Khala should keep shared tokens. Borrow typed theme/context affordances only if they reduce duplicated classes or unlock safe native styles. |
 | Config | `app.json` has self-hosted updates, local native module plugins, and public `extra.khala` endpoints. | `app/config` separates base/dev/prod and documents that bundled config is public, not secret. | Borrow the "bundled config is public" documentation and maybe a typed public config module. Do not put secrets there. |
@@ -49,7 +56,61 @@ spine" layer around Khala's existing product code.
 
 ## Borrow First
 
-### 1. A Khala `Screen` Primitive
+### 1. Ignite-Style React Navigation Stacks
+
+The first architectural borrow should be Ignite's navigator spine, not a
+surface-level component cleanup. Khala should migrate from Expo Router's file
+routes to explicit React Navigation stacks/drawers/tabs, because that is the
+shape the owner wants and it matches Ignite's mature app structure.
+
+Recommended Khala shape:
+
+- Replace `main: "expo-router/entry"` with an explicit app entry (`index.tsx`
+  -> `src/app.tsx` or equivalent) that mounts the provider spine.
+- Move route ownership out of `app/(drawer)` and `app/thread/[threadId].tsx`
+  into typed screens plus `src/navigators/AppNavigator.tsx`,
+  `src/navigators/navigationTypes.ts`, and
+  `src/navigators/navigationUtilities.ts`.
+- Model the signed-out/signed-in split as typed stack groups, with drawer or
+  tab navigation inside the signed-in app where it is actually useful.
+- Carry over Ignite's Android back-button handling, navigation refs, active
+  route helpers, and optional navigation persistence after deciding what state
+  is safe to persist.
+- Keep Khala's auth gate, sync runtime, secure-store adapter, and native module
+  seams. Those are product authority, not router concerns.
+
+Why borrow: it makes navigation explicit, typed, testable, and closer to the
+mobile app architecture we want long-term. It also lets future generated
+screens patch navigator/type files the way Ignite does, instead of relying on
+file-path conventions.
+
+Migration note: this is a real app-shell migration, not a docs-only rename.
+Expect package/app-entry changes, screen file moves, replacement typed route
+params, and focused regression coverage for sign-in, drawer/settings, thread
+open, and deep-link behavior.
+
+### 2. Ignite's Provider Spine
+
+Ignite's `app/app.tsx` is useful because it centralizes readiness and global
+providers: safe area, keyboard provider, theme provider, auth provider,
+font/i18n readiness, navigation persistence, and the app navigator. Khala's
+current `_layout.tsx` has some of that, but it is constrained by Expo Router's
+route wrapper model.
+
+Recommended Khala shape:
+
+- Add an `App` component that mounts `GestureHandlerRootView`,
+  `SafeAreaProvider`, a keyboard provider, `StatusBar`/system bar setup,
+  `KhalaAuthProvider`, future `ThemeProvider`, and `AppNavigator`.
+- Move the current auth gate into the navigator or an app-level stack decision
+  instead of making Expo Router's layout component own it.
+- Add an app-level error boundary around the signed-in navigator early in the
+  migration, with public-safe fallback copy.
+
+Why borrow: this creates one obvious place to reason about launch readiness,
+auth state, system UI, crash containment, and navigation state.
+
+### 3. A Khala `Screen` Primitive
 
 Ignite's `Screen` component is the best structural pattern to borrow. It
 centralizes safe-area edges, keyboard behavior, status/system bar styling, and
@@ -71,7 +132,7 @@ Recommended Khala shape:
 Why borrow: this reduces screen-by-screen layout drift and gives Maestro tests
 stable surfaces to target.
 
-### 2. Text and Button Wrappers With Accessibility Defaults
+### 4. Text and Button Wrappers With Accessibility Defaults
 
 Ignite's `Text` and `Button` wrappers consistently apply typography presets,
 accessibility roles/states, disabled styling, and accessory slots. Khala has
@@ -91,7 +152,7 @@ Recommended Khala shape:
 Why borrow: better default accessibility and less duplicated text class
 composition.
 
-### 3. Maestro Flows For the Pending Device Smoke
+### 5. Maestro Flows For the Pending Device Smoke
 
 Ignite's `.maestro` folder is small and useful: shared startup, shared login,
 environment-driven `MAESTRO_APP_ID`, and scenario flows that assert real visible
@@ -110,7 +171,7 @@ Recommended Khala shape:
 Why borrow: it converts the current "builds" evidence into actual launched app
 interaction evidence.
 
-### 4. Dependency-Cruiser Architecture Rules
+### 6. Dependency-Cruiser Architecture Rules
 
 Ignite's dependency-cruiser config is valuable because React Native apps
 accumulate accidental coupling quickly. Khala has separate domains
@@ -124,16 +185,16 @@ Recommended Khala rules:
 - No missing/unknown package deps.
 - No devDependency imports from production app/source files.
 - Optional: domain rules, for example `src/security` must not import UI,
-  native modules import through `src/native/modules.ts`, and route files in
-  `app/` may import domain modules but domain modules may not import route
-  files.
+  native modules import through `src/native/modules.ts`, navigator/screen
+  files may import domain modules, and domain modules may not import
+  navigator/screen files.
 - Add monorepo-aware exceptions for workspace packages and Expo/Metro
   resolution.
 
 Why borrow: it is a cheap way to protect the route/source split and the
 security boundary.
 
-### 5. Typed Public Config With a Secrets Warning
+### 7. Typed Public Config With a Secrets Warning
 
 Ignite's config module carries a blunt, correct warning: bundled config is
 public. Khala already follows the important rule through SecureStore, but
@@ -152,7 +213,7 @@ Recommended Khala shape:
 Why borrow: it gives reviewers a named place to reject future secret-bearing
 config edits.
 
-### 6. Local Templates For Screens, Components, and Contract Oracles
+### 8. Local Templates For Screens, Components, Navigators, And Contract Oracles
 
 Ignite's generator templates are successful because they encode local
 conventions. Khala does not need the full CLI, but it would benefit from a
@@ -160,7 +221,9 @@ tiny repo-local scaffold for repeatable mobile additions.
 
 Recommended Khala shape:
 
-- `clients/khala-mobile/templates/screen` for Expo Router screen shells.
+- `clients/khala-mobile/templates/screen` for React Navigation screen files.
+- `clients/khala-mobile/templates/navigator` for typed stack/drawer navigator
+  additions.
 - `clients/khala-mobile/templates/component` for `KhalaText`/`KhalaButton`/
   NativeWind conventions.
 - `clients/khala-mobile/templates/contract-oracle` for adding a UX contract
@@ -180,8 +243,10 @@ i18n surface, and that is acceptable while the app is still proving device
 parity. Once onboarding, settings, wallet/payout state, or customer-facing
 errors grow, copy keys become worthwhile.
 
-Recommended trigger: introduce this when the same user-facing phrase appears in
-multiple screens or when owner/customer copy needs review gates.
+Updated recommendation: borrow this sooner than the first audit suggested.
+During the React Navigation migration, introduce the i18n module and typed copy
+helpers for new navigator/screen chrome so the migrated app does not bake raw
+strings into every new screen.
 
 ### Error Boundary And Crash Reporting Seam
 
@@ -221,8 +286,9 @@ do not adopt EAS cloud lanes.
 - Do not borrow Ignite's EAS build/submit/update scripts. Khala Mobile's
   contract is local prebuild/Xcode/Gradle/native upload tools only, with
   OpenAgents Updates for OTA.
-- Do not replace Expo Router with Ignite's classic React Navigation shell.
-  Khala's file-route split is already aligned with Expo's modern path.
+- Do not keep Expo Router as the target architecture merely because the current
+  app already uses it. The clarified direction is to migrate toward Ignite's
+  React Navigation stack shell.
 - Do not use Ignite's MMKV wrapper for secrets. At most, adapt the wrapper
   shape for nonsecret preferences. API keys and bearer material stay in
   `expo-secure-store` through `src/security/keychain.ts`.
@@ -236,17 +302,22 @@ do not adopt EAS cloud lanes.
 
 ## Suggested Implementation Order
 
-1. Add a Khala `Screen` primitive and migrate the smallest static screen first
+1. Spike the React Navigation migration: explicit `App` entry, provider spine,
+   typed `AppNavigator`, signed-out/sign-in stack, signed-in stack/drawer, and
+   thread screen params.
+2. Port the existing Expo Router screens into typed React Navigation screens,
+   keeping Khala auth/sync/security/native modules in place.
+3. Add a Khala `Screen` primitive and migrate the smallest static screen first
    (`settings` is probably the easiest).
-2. Add `KhalaText` and `KhalaButton` wrappers, then use them only in new or
+4. Add `KhalaText` and `KhalaButton` wrappers, then use them only in new or
    touched screens until the shape proves itself.
-3. Add a package-local `depcruise` script in warning mode, then tighten one
+5. Add a package-local `depcruise` script in warning mode, then tighten one
    rule at a time after false positives are known.
-4. Add `.maestro` shared startup plus one public-safe smoke flow for the
+6. Add `.maestro` shared startup plus one public-safe smoke flow for the
    pending launched-app interaction contract.
-5. Add typed public config with the explicit "bundled config is public" warning.
-6. Add local templates once the primitives are stable, so generated code starts
-   from the settled conventions.
+7. Add typed public config with the explicit "bundled config is public" warning.
+8. Add local templates once the navigators/primitives are stable, so generated
+   code starts from the settled conventions.
 
 ## Existing Khala Strengths To Preserve
 
@@ -263,8 +334,10 @@ do not adopt EAS cloud lanes.
 
 ## Bottom Line
 
-Borrow Ignite's boring production discipline: a shared screen shell, accessible
-primitive wrappers, architecture checks, local generators, typed public config,
+Borrow Ignite's app structure more aggressively than the first audit said:
+React Navigation stacks, explicit `App` entry, provider spine, typed
+navigation utilities, shared screen shell, accessible primitive wrappers,
+architecture checks, local generators, typed public config, i18n/copy tests,
 Maestro device flows, and error/devtools seams. Keep Khala's product-specific
-authority boundaries, Expo Router app shape, Bun test infrastructure, secure
-storage rules, self-hosted OTA, and native module fail-closed behavior.
+authority boundaries, Bun test infrastructure, secure storage rules,
+self-hosted OTA, and native module fail-closed behavior.
