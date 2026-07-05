@@ -255,6 +255,17 @@ export const makeAgentDefinitionSchedulerDependencies = (
     definitionStore?: AgentDefinitionStore | undefined
     runStore?: AgentDefinitionRunDispatchDependencies['runStore'] | undefined
     triggerStore?: AgentDefinitionTriggerStore | undefined
+    /**
+     * KS-8.16 (#8327): injectable forge stores so scheduler-dispatched
+     * definition runs (issue upserts + per-task git token mints) ride the
+     * forge domain dual-write seam. Default: plain D1.
+     */
+    forgeGitAuthStore?:
+      | AgentDefinitionRunDispatchDependencies['forgeGitAuthStore']
+      | undefined
+    forgeStore?:
+      | AgentDefinitionRunDispatchDependencies['forgeStore']
+      | undefined
   }>,
 ): AgentDefinitionSchedulerDependencies => {
   return {
@@ -262,8 +273,9 @@ export const makeAgentDefinitionSchedulerDependencies = (
       input.definitionStore ?? makeD1AgentDefinitionStore(input.db),
     dispatchDependencies: {
       durableStreamNamespace: input.durableStreamNamespace,
-      forgeGitAuthStore: makeD1ForgeTenantGitAuthStore(input.db),
-      forgeStore: makeD1ForgeCoordinationStore(input.db),
+      forgeGitAuthStore:
+        input.forgeGitAuthStore ?? makeD1ForgeTenantGitAuthStore(input.db),
+      forgeStore: input.forgeStore ?? makeD1ForgeCoordinationStore(input.db),
       pylonStore: input.pylonStore ?? makeD1PylonApiStore(input.db),
       runStore: input.runStore ?? makeD1AgentDefinitionRunStore(input.db),
     },

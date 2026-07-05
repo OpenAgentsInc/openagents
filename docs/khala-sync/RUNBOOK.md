@@ -1142,6 +1142,89 @@ Rollback at ANY step: set `KHALA_SYNC_TRAINING_READS=d1` (reads) and/or
 `KHALA_SYNC_TRAINING_DUAL_WRITE=off` (writes). D1 authority is never
 behind.
 
+## Forge domain cutover (KS-8.16, #8327)
+
+The KS-8.16 domain migration: ALL SIXTEEN `forge_*` tables —
+coordination issues/PRs/status, dispatch leases, merge-queue ledger,
+packfile archives (metadata only; raw bytes stay in R2), tenants, git
+access tokens (+scopes), verification receipts, promotion decisions,
+receive-pack intakes, canonical refs, object tips, ref locks, GitHub
+mirror receipts (D1) → same-named Postgres twins (khala-sync migration
+`0021_forge_domain.sql`). Machinery:
+`apps/openagents.com/workers/api/src/forge-domain-store.ts` (the five
+`makeForge*StoreForEnv` store-factory drop-ins — the forge stores ARE
+the seam; their D1 SQL is untouched, and every write method read-back
+mirrors its rows by composite key) and
+`packages/khala-sync-server/scripts/backfill-forge.ts` (backfill +
+verify).
+
+SECRETS (SPEC invariant 9): `forge_git_access_tokens` carries token
+HASHES/prefixes only on BOTH engines (no widening); diagnostics and
+backfill/verify output reference row keys and sha256 hashes only — the
+one mirror path keyed on `token_hash` (the authenticate-path expiry /
+last-used transitions) redacts its diagnostic refs. If any log line ever
+shows a token hash or prefix, treat it as an incident, not drift.
+
+REF LOCKING: D1 remains the SOLE lock authority in this phase. The
+Postgres twin only receives resolved lock rows via read-back; the
+held-lock protocol is deliberately NOT emulated in Postgres. The
+read/write cutover step re-ports the protocol onto real
+`SELECT ... FOR UPDATE` row locks and re-adds the partial uniques
+(active-lease-per-work, held-lock-per-ref, token-hash, packfile digest,
+mirror destination tuple) that were intentionally left off the twins.
+
+Diagnostics: the drift metric is `khala_sync_forge_dual_write_failed`
+(keys only). Treat a nonzero steady rate as drift — fix, then re-run the
+backfill sweep.
+
+Flags (Worker vars):
+
+- `KHALA_SYNC_FORGE_DUAL_WRITE` — default **on** wherever
+  `KHALA_SYNC_DB` exists; `off|0|false|disabled` disables the mirror.
+- `KHALA_SYNC_FORGE_READS` — default `d1`. `compare` shadow-runs the
+  canonical `listRefs` ref advertisement (the ref-set surface the §3.13
+  acceptance keys on) against the Postgres twin, SERVES D1, and logs
+  `khala_sync_forge_read_compare_mismatch` /
+  `khala_sync_forge_read_compare_failed`. `postgres` serving is DEFERRED
+  to the cutover follow-up (the forge read surface is protocol-wide):
+  setting it today behaves as `compare` and logs
+  `khala_sync_forge_postgres_reads_deferred` once, so a premature flip
+  can never serve an unproven read path.
+
+Flag-flip order — never skip a step, each step soaks before the next:
+
+1. **Dual-write on** (default after KS-8.16 lands + `0021` applied via
+   the migration runner). Watch `khala_sync_forge_dual_write_failed` in
+   Worker logs; a nonzero steady rate blocks progression.
+2. **Backfill**: from `packages/khala-sync-server/`,
+   `KHALA_SYNC_DATABASE_URL=<direct-url> bun scripts/backfill-forge.ts`
+   (wrangler-auth'd; rowid-cursor resumable via
+   `.forge-backfill-state.json` — safe to interrupt/resume). Run it a
+   SECOND time (`--restart`) as the catch-up sweep once dual-write has
+   covered the whole window.
+3. **Verify**: `bun scripts/backfill-forge.ts --verify` — exact row
+   counts, per-state tallies, per-(tenant, repository) REF-SET digests,
+   per-(tenant, queue) merge-queue LEDGER REPLAY digests, newest-50 row
+   hashes. Post the output on the migration issue (it is secret-safe by
+   construction). Exact or explain; no cutover on a red verify.
+4. **Ground-truth cross-check**: for each live tenant repo, run
+   `git ls-remote` against the Forge intake surface and diff the
+   advertised (ref, tip) set against BOTH stores' `forge_git_refs`
+   active rows — git itself is the §3.13 acceptance authority, the
+   verify digests only prove D1 ≡ Postgres.
+5. **Compare reads**: set `KHALA_SYNC_FORGE_READS=compare`; soak until
+   the mismatch log is silent over a window that includes real push +
+   mirror traffic.
+6. **Read/write cutover LATER**: serving reads from Postgres, porting
+   the ref-lock protocol onto `SELECT ... FOR UPDATE`, re-adding the
+   uniques, moving write authority, and dropping the D1 tables is the
+   follow-up #8358 on epic #8282 — never in the same change as this
+   lane. Until then rollback is one flag flip back to `d1`.
+
+Rollback at ANY step: set `KHALA_SYNC_FORGE_READS=d1` (reads) and/or
+`KHALA_SYNC_FORGE_DUAL_WRITE=off` (writes). D1 authority is never
+behind.
+
 ## Billing/Stripe/pay-ins domain cutover (KS-8.7, #8318)
 
 The FIRST money domain in the KS-8 sequence: the 22 live

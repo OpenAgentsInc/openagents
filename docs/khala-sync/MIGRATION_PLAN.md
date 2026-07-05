@@ -243,6 +243,56 @@ procedure: [`RUNBOOK.md`](./RUNBOOK.md) "Billing/Stripe/pay-ins domain
 cutover"; cutover evidence + D1 drop tracked on epic
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
 
+**KS-8.16 status (2026-07-04):** machinery LANDED — Postgres schema
+(`khala-sync-server` migration `0021_forge_domain.sql`: ALL SIXTEEN
+`forge_*` twins, column-for-column with worker migrations
+0251–0256/0259/0260/0284; indexes re-derived from the five owning
+stores' actual reads — D1 artifacts with no live read (token prefix,
+object-by-packfile) are dropped, and the D1 uniques/partial-uniques
+(active-lease-per-work, held-lock-per-ref, token-hash, packfile digest,
+mirror destination tuple) are deliberately NOT ported mid-migration so a
+transiently stale mirror can never reject a converge upsert — rationale
+in the migration header). THE SEAM: the domain's writes are already
+CLOSED behind the five typed forge stores (coordination, git canonical,
+packfile archive, tenant git auth, GitHub mirror — the only writers of
+the sixteen tables), so the wiring is the KS-8.5 store-factory wrap:
+five `makeForge*StoreForEnv` drop-ins
+(`apps/openagents.com/workers/api/src/forge-domain-store.ts`) whose
+write methods read back the affected rows by composite key after the
+authoritative D1 write and converge-upsert the byte-exact rows into
+Postgres, fail-soft (`khala_sync_forge_dual_write_failed` is the drift
+metric). Wired at ALL construction call sites: the git intake routes,
+the control-plane routes, the three agent-definition webhook paths, the
+dynamic run request path, assignment token revocation, and the
+AgentDefinitionScheduler tick (injectable stores, same pattern as
+KS-8.1/8.5). REF LOCKING: D1 stays the sole lock authority — the
+held/applied/rejected dance is NOT emulated in Postgres; porting the
+protocol onto real `SELECT ... FOR UPDATE` is the read/write-cutover
+step (§3.13). SECRETS (invariant 9): the token twin stores exactly what
+D1 stores (hashes/prefixes, no widening); custody values never appear in
+diagnostics (the one token_hash-keyed mirror path redacts its refs) or
+in backfill/verify output. Flags `KHALA_SYNC_FORGE_DUAL_WRITE` (default
+on) / `KHALA_SYNC_FORGE_READS` (d1|compare|postgres, default d1;
+`compare` shadow-compares the canonical `listRefs` ref advertisement —
+the §3.13 ref-set surface; `postgres` serving is deferred to the cutover
+follow-up and behaves as compare with a one-time
+`khala_sync_forge_postgres_reads_deferred`). Resumable backfill +
+exact-verify CLI (`packages/khala-sync-server/scripts/backfill-forge.ts`:
+exact counts, per-state tallies, per-(tenant, repository) REF-SET
+digests — the storage twin of `git ls-remote`; the live ls-remote
+cross-check is the runbook's cutover step — per-(tenant, queue)
+merge-queue LEDGER REPLAY digests, newest-N row hashes; secret-safe
+output), and a contract suite run against BOTH engines
+(`forge-domain-repository.contract.test.ts`: composite-PK converge on
+D1/SQLite AND Postgres, end-to-end mirror fidelity across all sixteen
+tables through the real stores incl. lease double-fire idempotency and
+mirror-receipt attempt bumps, fail-soft proofs, custody redaction,
+compare-read drift detection). Prod cutover procedure:
+[`RUNBOOK.md`](./RUNBOOK.md) "Forge domain cutover"; cutover evidence,
+the FOR UPDATE lock-protocol port, read/write cutover, and the D1 drop
+are tracked in the follow-up
+[#8358](https://github.com/OpenAgentsInc/openagents/issues/8358).
+
 Everything except the Verse world runs through one D1 database
 (`openagents-autopilot`, binding `OPENAGENTS_DB`). As of `main` today the
 migrations directory (`apps/openagents.com/workers/api/migrations/`) holds

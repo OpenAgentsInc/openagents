@@ -1405,3 +1405,315 @@ CREATE TABLE site_builder_saved_versions (
   archived_at TEXT
 );
 `
+
+/**
+ * Condensed live D1 schema for the KS-8.16 forge domain contract suite
+ * (worker migrations 0251/0252/0253/0254/0255/0256/0259/0260/0284,
+ * post-ALTER final shape). The D1-authority uniques/partials are KEPT
+ * here — the contract suite exercises the real lease-conflict and
+ * held-lock behavior of the authoritative engine.
+ */
+export const FORGE_DOMAIN_D1_SCHEMA = `
+CREATE TABLE forge_coordination_issues (
+  tenant_ref TEXT NOT NULL,
+  issue_ref TEXT NOT NULL,
+  github_issue_number INTEGER,
+  title TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('open', 'closed', 'draft')),
+  priority_ref TEXT,
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  git_token_refs_json TEXT NOT NULL DEFAULT '[]',
+  PRIMARY KEY (tenant_ref, issue_ref)
+);
+CREATE UNIQUE INDEX idx_forge_coordination_issues_github_number
+  ON forge_coordination_issues (tenant_ref, github_issue_number)
+  WHERE github_issue_number IS NOT NULL;
+
+CREATE TABLE forge_coordination_prs (
+  tenant_ref TEXT NOT NULL,
+  pr_ref TEXT NOT NULL,
+  issue_ref TEXT NOT NULL,
+  change_ref TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('draft', 'open', 'ready', 'blocked', 'applied', 'closed')),
+  base_head TEXT NOT NULL,
+  patch_head TEXT NOT NULL,
+  verification_ref TEXT,
+  blocker_refs_json TEXT NOT NULL DEFAULT '[]',
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (tenant_ref, pr_ref)
+);
+CREATE UNIQUE INDEX idx_forge_coordination_prs_change_ref
+  ON forge_coordination_prs (tenant_ref, change_ref);
+
+CREATE TABLE forge_coordination_status (
+  tenant_ref TEXT NOT NULL,
+  status_ref TEXT NOT NULL,
+  subject_ref TEXT NOT NULL,
+  nip34_kind INTEGER NOT NULL CHECK (nip34_kind IN (1630, 1631, 1632, 1633)),
+  state TEXT NOT NULL CHECK (state IN ('open', 'applied', 'closed', 'draft')),
+  actor_ref TEXT NOT NULL,
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (tenant_ref, status_ref)
+);
+
+CREATE TABLE forge_dispatch_leases (
+  tenant_ref TEXT NOT NULL,
+  lease_ref TEXT NOT NULL,
+  work_ref TEXT NOT NULL,
+  owner_agent_ref TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('active', 'released', 'expired', 'cancelled')),
+  idempotency_key_hash TEXT,
+  acquired_at TEXT NOT NULL,
+  heartbeat_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  released_at TEXT,
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
+  PRIMARY KEY (tenant_ref, lease_ref)
+);
+CREATE UNIQUE INDEX idx_forge_dispatch_leases_active_work
+  ON forge_dispatch_leases (tenant_ref, work_ref)
+  WHERE state = 'active';
+CREATE UNIQUE INDEX idx_forge_dispatch_leases_idempotency
+  ON forge_dispatch_leases (tenant_ref, idempotency_key_hash)
+  WHERE idempotency_key_hash IS NOT NULL;
+
+CREATE TABLE forge_merge_queue_ledger (
+  tenant_ref TEXT NOT NULL,
+  queue_ref TEXT NOT NULL,
+  base_head TEXT NOT NULL,
+  actual_head TEXT NOT NULL,
+  virtual_head TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('projected', 'blocked', 'promoting', 'promoted', 'superseded')),
+  next_promotion_ref TEXT,
+  ready_json TEXT NOT NULL DEFAULT '[]',
+  blocked_json TEXT NOT NULL DEFAULT '[]',
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (tenant_ref, queue_ref)
+);
+
+CREATE TABLE forge_git_packfile_archives (
+  tenant_ref TEXT NOT NULL,
+  packfile_ref TEXT NOT NULL,
+  repository_ref TEXT NOT NULL,
+  change_ref TEXT,
+  receive_pack_ref TEXT,
+  artifact_r2_key TEXT NOT NULL,
+  packfile_sha256 TEXT NOT NULL,
+  packfile_bytes INTEGER NOT NULL CHECK (packfile_bytes >= 0),
+  object_format TEXT NOT NULL CHECK (object_format IN ('sha1', 'sha256', 'unknown')),
+  command_count INTEGER NOT NULL CHECK (command_count >= 0),
+  capabilities_json TEXT NOT NULL DEFAULT '[]',
+  ref_updates_json TEXT NOT NULL DEFAULT '[]',
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
+  content_type TEXT NOT NULL DEFAULT 'application/x-git-packed-objects',
+  visibility TEXT NOT NULL CHECK (visibility = 'operator_only'),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (tenant_ref, packfile_ref)
+);
+CREATE UNIQUE INDEX idx_forge_git_packfile_archives_digest
+  ON forge_git_packfile_archives (tenant_ref, packfile_sha256);
+CREATE UNIQUE INDEX idx_forge_git_packfile_archives_r2_key
+  ON forge_git_packfile_archives (artifact_r2_key);
+
+CREATE TABLE forge_tenants (
+  tenant_ref TEXT PRIMARY KEY,
+  display_name TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('active', 'suspended')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  confidential_workspace_mode TEXT,
+  attestation_ref TEXT,
+  encrypted_knowledge_pack_ref TEXT,
+  refusal_reason TEXT,
+  retention_policy_ref TEXT
+);
+
+CREATE TABLE forge_git_access_tokens (
+  tenant_ref TEXT NOT NULL,
+  token_ref TEXT NOT NULL,
+  subject_ref TEXT NOT NULL,
+  repository_ref TEXT NOT NULL,
+  token_hash TEXT NOT NULL,
+  token_prefix TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('active', 'revoked', 'expired')),
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  last_used_at TEXT,
+  revoked_at TEXT,
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
+  ref_restrictions_json TEXT NOT NULL DEFAULT '[]',
+  PRIMARY KEY (tenant_ref, token_ref)
+);
+CREATE UNIQUE INDEX idx_forge_git_access_tokens_hash
+  ON forge_git_access_tokens (token_hash);
+
+CREATE TABLE forge_git_access_token_scopes (
+  tenant_ref TEXT NOT NULL,
+  token_ref TEXT NOT NULL,
+  scope TEXT NOT NULL CHECK (scope IN ('git:upload-pack', 'git:receive-pack', 'git:admin')),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (tenant_ref, token_ref, scope)
+);
+
+CREATE TABLE forge_verification_receipts (
+  tenant_ref TEXT NOT NULL,
+  verification_ref TEXT NOT NULL,
+  change_ref TEXT NOT NULL,
+  repository_ref TEXT NOT NULL,
+  base_ref TEXT NOT NULL,
+  base_head TEXT NOT NULL,
+  head_ref TEXT NOT NULL,
+  head_head TEXT NOT NULL,
+  packfile_ref TEXT NOT NULL,
+  packfile_sha256 TEXT NOT NULL,
+  executor_identity_ref TEXT NOT NULL,
+  command_ref TEXT NOT NULL,
+  command_args_json TEXT NOT NULL DEFAULT '[]',
+  exit_code INTEGER,
+  verdict TEXT NOT NULL CHECK (verdict IN ('passed', 'failed', 'timed_out', 'cancelled', 'errored')),
+  started_at TEXT NOT NULL,
+  completed_at TEXT NOT NULL,
+  artifact_refs_json TEXT NOT NULL DEFAULT '[]',
+  log_sha256 TEXT NOT NULL,
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
+  redacted INTEGER NOT NULL DEFAULT 1 CHECK (redacted = 1),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (tenant_ref, verification_ref)
+);
+
+CREATE TABLE forge_promotion_decisions (
+  tenant_ref TEXT NOT NULL,
+  promotion_ref TEXT NOT NULL,
+  queue_ref TEXT NOT NULL,
+  change_ref TEXT NOT NULL,
+  decision TEXT NOT NULL CHECK (decision IN ('approved', 'blocked', 'superseded')),
+  base_head TEXT NOT NULL,
+  candidate_head TEXT NOT NULL,
+  promoted_head TEXT,
+  verification_ref TEXT,
+  gate_refs_json TEXT NOT NULL DEFAULT '[]',
+  blocker_refs_json TEXT NOT NULL DEFAULT '[]',
+  decided_by_ref TEXT NOT NULL,
+  decided_at TEXT NOT NULL,
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
+  redacted INTEGER NOT NULL DEFAULT 1 CHECK (redacted = 1),
+  created_at TEXT NOT NULL,
+  target_ref TEXT NOT NULL DEFAULT '',
+  queue_position INTEGER NOT NULL DEFAULT 0,
+  gate_results_json TEXT NOT NULL DEFAULT '[]',
+  PRIMARY KEY (tenant_ref, promotion_ref)
+);
+
+CREATE TABLE forge_git_receive_pack_intakes (
+  tenant_ref TEXT NOT NULL,
+  receive_pack_ref TEXT NOT NULL,
+  repository_ref TEXT NOT NULL,
+  token_ref TEXT NOT NULL,
+  subject_ref TEXT NOT NULL,
+  change_ref TEXT,
+  packfile_ref TEXT,
+  packfile_sha256 TEXT,
+  packfile_bytes INTEGER NOT NULL CHECK (packfile_bytes >= 0),
+  object_format TEXT NOT NULL CHECK (object_format IN ('sha1', 'sha256', 'unknown')),
+  state TEXT NOT NULL CHECK (state IN ('accepted', 'rejected')),
+  command_count INTEGER NOT NULL CHECK (command_count >= 0),
+  ref_updates_json TEXT NOT NULL DEFAULT '[]',
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
+  rejection_code TEXT,
+  rejection_reason TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (tenant_ref, receive_pack_ref)
+);
+
+CREATE TABLE forge_git_refs (
+  tenant_ref TEXT NOT NULL,
+  repository_ref TEXT NOT NULL,
+  ref_name TEXT NOT NULL,
+  object_id TEXT,
+  previous_object_id TEXT,
+  object_format TEXT NOT NULL CHECK (object_format IN ('sha1', 'sha256', 'unknown')),
+  state TEXT NOT NULL CHECK (state IN ('active', 'deleted')),
+  updated_by_change_ref TEXT NOT NULL,
+  updated_by_packfile_ref TEXT NOT NULL,
+  updated_by_receive_pack_ref TEXT NOT NULL,
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (tenant_ref, repository_ref, ref_name),
+  CHECK (
+    (state = 'active' AND object_id IS NOT NULL)
+    OR (state = 'deleted' AND object_id IS NULL)
+  )
+);
+
+CREATE TABLE forge_git_objects (
+  tenant_ref TEXT NOT NULL,
+  repository_ref TEXT NOT NULL,
+  object_id TEXT NOT NULL,
+  object_format TEXT NOT NULL CHECK (object_format IN ('sha1', 'sha256')),
+  packfile_ref TEXT NOT NULL,
+  packfile_sha256 TEXT NOT NULL,
+  first_seen_at TEXT NOT NULL,
+  latest_seen_at TEXT NOT NULL,
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
+  PRIMARY KEY (tenant_ref, repository_ref, object_id)
+);
+
+CREATE TABLE forge_git_ref_locks (
+  tenant_ref TEXT NOT NULL,
+  lock_ref TEXT NOT NULL,
+  repository_ref TEXT NOT NULL,
+  ref_name TEXT NOT NULL,
+  receive_pack_ref TEXT NOT NULL,
+  expected_old_object_id TEXT NOT NULL,
+  new_object_id TEXT NOT NULL,
+  action TEXT NOT NULL CHECK (action IN ('create', 'update', 'delete')),
+  state TEXT NOT NULL CHECK (state IN ('held', 'applied', 'rejected')),
+  acquired_at TEXT NOT NULL,
+  released_at TEXT,
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
+  PRIMARY KEY (tenant_ref, lock_ref)
+);
+CREATE UNIQUE INDEX idx_forge_git_ref_locks_held_ref
+  ON forge_git_ref_locks (tenant_ref, repository_ref, ref_name)
+  WHERE state = 'held';
+
+CREATE TABLE forge_github_mirror_receipts (
+  tenant_ref TEXT NOT NULL,
+  mirror_ref TEXT NOT NULL,
+  promotion_ref TEXT NOT NULL,
+  change_ref TEXT NOT NULL,
+  repository_ref TEXT NOT NULL,
+  source_canonical_ref TEXT NOT NULL,
+  destination_github_repository TEXT NOT NULL,
+  destination_github_ref TEXT NOT NULL,
+  commit_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('mirrored', 'refused', 'failed')),
+  attempt_count INTEGER NOT NULL DEFAULT 1 CHECK (attempt_count >= 1),
+  first_attempted_at TEXT NOT NULL,
+  last_attempted_at TEXT NOT NULL,
+  completed_at TEXT,
+  refusal_reason TEXT,
+  error_reason TEXT,
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
+  redacted INTEGER NOT NULL DEFAULT 1 CHECK (redacted = 1),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (tenant_ref, mirror_ref),
+  UNIQUE (
+    tenant_ref,
+    promotion_ref,
+    destination_github_repository,
+    destination_github_ref
+  )
+);
+`

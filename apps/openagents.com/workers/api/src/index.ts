@@ -750,12 +750,16 @@ import {
   authorizeForgeControlPlaneBearer,
   makeForgeControlPlaneRoutes,
 } from './forge-control-plane-routes'
-import { makeD1ForgeCoordinationStore } from './forge-coordination-store'
-import { makeD1ForgeGitCanonicalStore } from './forge-git-canonical-store'
+// KS-8.16 (#8327): every forge store construction site rides the forge
+// domain dual-write seam (D1 authority + fail-soft Postgres mirror).
+import {
+  makeForgeCoordinationStoreForEnv,
+  makeForgeGitCanonicalStoreForEnv,
+  makeForgeGitHubMirrorStoreForEnv,
+  makeForgeGitPackfileArchiveStoreForEnv,
+  makeForgeTenantGitAuthStoreForEnv,
+} from './forge-domain-store'
 import { makeForgeGitIntakeRoutes } from './forge-git-intake-routes'
-import { makeD1R2ForgeGitPackfileArchiveStore } from './forge-git-packfile-archive-store'
-import { makeD1ForgeGitHubMirrorStore } from './forge-github-mirror-store'
-import { makeD1ForgeTenantGitAuthStore } from './forge-tenant-git-auth-store'
 import type { KhalaChatStreamClient } from './khala-chat-program'
 import {
   loadKhalaChatAccountPylonContext,
@@ -9728,7 +9732,7 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
   },
   revokeAssignmentForgeGitAccess: async (env, input) =>
     revokeAgentDefinitionRunForgeGitTokensForAssignment({
-      forgeGitAuthStore: makeD1ForgeTenantGitAuthStore(openAgentsDatabase(env)),
+      forgeGitAuthStore: makeForgeTenantGitAuthStoreForEnv(env),
       runStore: makeAgentDefinitionRunStoreForEnv(env),
     }, {
       assignmentRef: input.assignment.assignmentRef,
@@ -13434,10 +13438,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               ) && env.INFERENCE_DURABLE_STREAM !== undefined
                 ? (env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
                 : undefined,
-            forgeGitAuthStore: makeD1ForgeTenantGitAuthStore(
-              openAgentsDatabase(env),
-            ),
-            forgeStore: makeD1ForgeCoordinationStore(openAgentsDatabase(env)),
+            forgeGitAuthStore: makeForgeTenantGitAuthStoreForEnv(env),
+            forgeStore: makeForgeCoordinationStoreForEnv(env),
             pylonStore: makePylonApiStoreForEnv(env),
             runStore: makeAgentDefinitionRunStoreForEnv(env),
           },
@@ -13497,10 +13499,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               ) && env.INFERENCE_DURABLE_STREAM !== undefined
                 ? (env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
                 : undefined,
-            forgeGitAuthStore: makeD1ForgeTenantGitAuthStore(
-              openAgentsDatabase(env),
-            ),
-            forgeStore: makeD1ForgeCoordinationStore(openAgentsDatabase(env)),
+            forgeGitAuthStore: makeForgeTenantGitAuthStoreForEnv(env),
+            forgeStore: makeForgeCoordinationStoreForEnv(env),
             pylonStore: makePylonApiStoreForEnv(env),
             runStore: makeAgentDefinitionRunStoreForEnv(env),
           },
@@ -13533,8 +13533,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             ) && env.INFERENCE_DURABLE_STREAM !== undefined
               ? (env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
               : undefined,
-          forgeGitAuthStore: makeD1ForgeTenantGitAuthStore(db),
-          forgeStore: makeD1ForgeCoordinationStore(db),
+          forgeGitAuthStore: makeForgeTenantGitAuthStoreForEnv(env, { db }),
+          forgeStore: makeForgeCoordinationStoreForEnv(env, { db }),
           pylonStore: makePylonApiStoreForEnv(env),
           runStore: makeAgentDefinitionRunStoreForEnv(env),
         },
@@ -14822,8 +14822,8 @@ const routeRequest = makeWorkerRouteRequest({
                   ) && env.INFERENCE_DURABLE_STREAM !== undefined
                     ? (env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
                     : undefined,
-                forgeGitAuthStore: makeD1ForgeTenantGitAuthStore(db),
-                forgeStore: makeD1ForgeCoordinationStore(db),
+                forgeGitAuthStore: makeForgeTenantGitAuthStoreForEnv(env, { db }),
+                forgeStore: makeForgeCoordinationStoreForEnv(env, { db }),
                 pylonStore: makePylonApiStoreForEnv(env),
                 runStore: makeAgentDefinitionRunStoreForEnv(env),
               })
@@ -15224,16 +15224,13 @@ const routeRequest = makeWorkerRouteRequest({
   routeForgeGitIntakeRequest: (request, env) =>
     makeForgeGitIntakeRoutes<Env>({
       makeArchiveStore: storeEnv =>
-        makeD1R2ForgeGitPackfileArchiveStore(
-          openAgentsDatabase(storeEnv),
-          storeEnv.ARTIFACTS,
-        ),
+        makeForgeGitPackfileArchiveStoreForEnv(storeEnv, storeEnv.ARTIFACTS),
       makeCanonicalStore: storeEnv =>
-        makeD1ForgeGitCanonicalStore(openAgentsDatabase(storeEnv)),
+        makeForgeGitCanonicalStoreForEnv(storeEnv),
       makeCoordinationStore: storeEnv =>
-        makeD1ForgeCoordinationStore(openAgentsDatabase(storeEnv)),
+        makeForgeCoordinationStoreForEnv(storeEnv),
       makeTenantGitAuthStore: storeEnv =>
-        makeD1ForgeTenantGitAuthStore(openAgentsDatabase(storeEnv)),
+        makeForgeTenantGitAuthStoreForEnv(storeEnv),
       nowIso: currentIsoTimestamp,
     }).routeForgeGitIntakeRequest(request, env),
   routeForgeControlPlaneRequest: (request, env) =>
@@ -15245,11 +15242,11 @@ const routeRequest = makeWorkerRouteRequest({
           requiredScope,
         ),
       makeCanonicalStore: storeEnv =>
-        makeD1ForgeGitCanonicalStore(openAgentsDatabase(storeEnv)),
+        makeForgeGitCanonicalStoreForEnv(storeEnv),
       makeGitHubMirrorStore: storeEnv =>
-        makeD1ForgeGitHubMirrorStore(openAgentsDatabase(storeEnv)),
+        makeForgeGitHubMirrorStoreForEnv(storeEnv),
       makeStore: storeEnv =>
-        makeD1ForgeCoordinationStore(openAgentsDatabase(storeEnv)),
+        makeForgeCoordinationStoreForEnv(storeEnv),
       mirrorGitHubToken: storeEnv => getForgeGitHubMirrorToken(storeEnv),
       nowIso: currentIsoTimestamp,
       requireAdminApiToken: (authRequest, authEnv) =>
@@ -15624,6 +15621,11 @@ export class AgentDefinitionSchedulerDurableObject {
         // due-trigger scans).
         definitionStore: makeAgentDefinitionStoreForEnv(this.env),
         durableStreamNamespace,
+        // KS-8.16 (#8327): scheduler-dispatched definition runs mint
+        // forge git tokens and upsert coordination issues — those writes
+        // ride the forge domain dual-write seam.
+        forgeGitAuthStore: makeForgeTenantGitAuthStoreForEnv(this.env),
+        forgeStore: makeForgeCoordinationStoreForEnv(this.env),
         // KS-8.1 (#8307): scheduler-dispatched assignments ride the same
         // dual-write store as the request-path writers.
         pylonStore: makePylonApiStoreForEnv(this.env),
