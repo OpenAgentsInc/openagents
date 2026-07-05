@@ -9,6 +9,7 @@ export const khalaMobileTheme = {
   surfaceActive: khalaMobileTokens.colors.surfaceActive,
   border: khalaMobileTokens.colors.border,
   accent: khalaMobileTokens.colors.accent,
+  accentSoft: khalaMobileTokens.colors.accentSoft,
   text: khalaMobileTokens.colors.text,
   textBody: khalaMobileTokens.colors.textBody,
   textMuted: khalaMobileTokens.colors.textMuted,

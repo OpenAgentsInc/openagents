@@ -5,6 +5,7 @@ import Animated, { useAnimatedStyle, useDerivedValue, withTiming } from "react-n
 
 import { ActivityIndicator } from "./activity-indicator"
 import { ArwesButton } from "./arwes-button"
+import { BackgroundGradient } from "./background-gradient"
 import {
   buildAppendUserMessageIntentArgs,
   buildChatAppendMessageArgs,
@@ -202,9 +203,21 @@ export const ChatComposer = ({ activeTurn, defaultLane, push, threadId }: ChatCo
         </Text>
       )}
       {hasActiveTurn ? (
-        <Text className="mb-1 font-mono text-xs uppercase tracking-wide text-textFaint">
-          ● turn {TURN_STATUS_LABEL[activeTurn.status] ?? activeTurn.status}
-        </Text>
+        // `BackgroundGradient` (ported from Arcade, see
+        // `docs/design/2026-07-05-arcade-ui-harvest-audit.md` §2.9) gives the
+        // active-turn status line a slow "breathing" glow so it reads as a
+        // live, in-progress surface instead of static text. Reserved for this
+        // row only while a turn is actually active — it unmounts (and stops
+        // animating) the moment `activeTurn` clears.
+        <BackgroundGradient
+          cornerRadius={6}
+          maxBlur={6}
+          style={{ alignSelf: "flex-start", borderRadius: 6, marginBottom: 4, overflow: "hidden" }}
+        >
+          <Text className="px-2 py-0.5 font-mono text-xs uppercase tracking-wide text-textFaint">
+            ● turn {TURN_STATUS_LABEL[activeTurn.status] ?? activeTurn.status}
+          </Text>
+        </BackgroundGradient>
       ) : (
         // Lane picker (#8405) — only meaningful while idle: a running
         // turn's provider is already fixed, so hide this rather than imply

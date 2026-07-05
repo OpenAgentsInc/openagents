@@ -3,6 +3,7 @@ import { Text, View } from "react-native"
 import type { KhalaRuntimeLane } from "@openagentsinc/khala-sync"
 
 import type { TranscriptPart } from "../sync/khala-runtime-transcript-core"
+import { BackgroundGradient } from "./background-gradient"
 
 const TURN_STATUS_LABEL: Record<
   Extract<TranscriptPart, { kind: "turn-status" }>["status"],
@@ -51,9 +52,16 @@ export const TranscriptPartRow = ({ part }: { part: TranscriptPart }) => {
           <Text className="mt-1 font-mono text-sm italic text-textMuted">{part.text}</Text>
         </View>
       )
-    case "tool":
-      return (
-        <View className="rounded-xl border border-border bg-surface px-3 py-2">
+    case "tool": {
+      // In-flight (`called`, not yet `completed`/`failed`) tool calls drop
+      // the static `bg-surface` fill and sit inside a `BackgroundGradient`
+      // (ported from Arcade, see
+      // `docs/design/2026-07-05-arcade-ui-harvest-audit.md` §2.9) so the
+      // card reads as a "live" in-progress surface. Settled cards keep the
+      // plain static fill so the ambient signal stays meaningful.
+      const isInFlight = part.status === "called"
+      const card = (
+        <View className={`rounded-xl border border-border px-3 py-2 ${isInFlight ? "" : "bg-surface"}`}>
           <View className="flex-row items-center justify-between">
             <Text className="font-mono text-sm text-text">🔧 {part.toolName}</Text>
             <Text className={`font-mono text-xs ${TOOL_STATUS_COLOR[part.status]}`}>
@@ -65,6 +73,13 @@ export const TranscriptPartRow = ({ part }: { part: TranscriptPart }) => {
           )}
         </View>
       )
+      if (!isInFlight) return card
+      return (
+        <BackgroundGradient cornerRadius={12} style={{ borderRadius: 12, overflow: "hidden" }}>
+          {card}
+        </BackgroundGradient>
+      )
+    }
     case "usage":
       return (
         <Text className="font-mono text-xs text-textFaint">
