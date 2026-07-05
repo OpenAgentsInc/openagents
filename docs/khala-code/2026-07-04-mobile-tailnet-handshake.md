@@ -6,10 +6,18 @@ Status: live on `main`. Covers the connectivity status dot shipped in
 
 ## What this is
 
-The mobile app (`clients/khala-mobile`, Expo/React Native) has a single home
-screen: a red/green status dot showing whether it can currently see a running
-Khala Code desktop instance. There is no login, pairing, or configuration step
-— it just probes a fixed local port.
+The mobile app (`clients/khala-mobile`, Expo/React Native) now uses the
+Tailnet health probe as connection discovery for a real Khala Sync client. The
+home screen still shows a red/green status dot for the desktop health beacon,
+but the chat panel underneath it opens a durable Khala Sync session, resumes
+from Expo SQLite cursors, and reads confirmed chat projections instead of
+fabricating preview state.
+
+Auth remains keychain-only. The Expo public config carries non-secret routing
+hints such as `EXPO_PUBLIC_OPENAGENTS_BASE_URL`,
+`EXPO_PUBLIC_KHALA_SYNC_DEMO_OWNER_USER_ID`, and
+`EXPO_PUBLIC_KHALA_SYNC_DEMO_THREAD_ID`; bearer/API material is loaded through
+`expo-secure-store` via `loadKhalaApiKey()`.
 
 ## Desktop side: the health beacon
 
@@ -48,9 +56,13 @@ Bun's plain JS/TS parser):
     candidate URL in order with a 1500ms per-host abort timeout, returns the
     first reachable one (`{ reachable, target, hostname, checkedAt }`), or an
     unreachable result if all fail.
+  - `resolveKhalaCodeConnectionProfile(...)`: wraps the health result in a
+    configured connection profile with `targetKind` (`simulator_loopback` or
+    `tailnet`) and a normalized Khala Sync base URL. This keeps liveness
+    discovery separate from the authenticated sync route.
 - `khala-code-connectivity.ts` — thin wrapper: imports `expo-device` to detect
-  `Device.isDevice`, and exposes `checkKhalaCodeConnectivity()` which calls the
-  core resolver with real `fetch`.
+  `Device.isDevice`, and exposes `checkKhalaCodeConnectivity()` plus
+  `resolveKhalaCodeProfile()` with real `fetch`.
 
 `app/index.tsx` is the entire mobile home screen: it polls
 `checkKhalaCodeConnectivity()` every 5 seconds and again whenever the app
@@ -78,7 +90,7 @@ a local `bun run dev` Khala Code desktop instance is up and the beacon
 responds on `:50099`; red dot + "no khala code instance found" when the
 desktop app (and thus the beacon) is not running.
 
-## Chat streaming over Khala Sync
+## Chat sync over Khala Sync
 
 Built on top of the same Tailnet handshake and the same single mobile home
 screen: the desktop's already-flag-gated Khala Sync chat service
@@ -92,30 +104,33 @@ Khala Sync `scope.thread.<threadId>` (message bodies + thread metadata) and
 server-authoritative mutators `chat.createThread` / `chat.appendMessage` /
 `chat.renameThread` (MC-1, #8352, `packages/khala-sync-server/src/chat-mutators.ts`).
 
-### Mobile side: raw JSON chat feed
+### Mobile side: durable Khala Sync client
 
-`clients/khala-mobile` now has a second piece on the same home screen (below
-the connectivity dot): a raw JSON event feed
-(`src/sync/khala-chat-feed.tsx` + pure wire-protocol helpers in
-`src/sync/khala-chat-feed-core.ts`). It talks directly to the Khala Sync wire
-protocol — no TanStack DB collection layer, deliberately, since the ask was
-"just show raw ugly json for now":
+`clients/khala-mobile` now has a second piece on the home screen below the
+connectivity dot: `src/sync/khala-chat-feed.tsx` opens
+`openKhalaMobileSyncRuntime()` and renders the typed chat read model. The
+runtime lives in `src/sync/khala-mobile-sync-runtime.ts`:
 
-1. `POST /api/sync/bootstrap` for `scope.thread.<threadId>` (a consistent
-   snapshot page + a `cursor`).
-2. Opens a WebSocket to `GET /api/sync/connect?scope=…&cursor=…` using React
-   Native's `WebSocket` third-argument `{ headers }` extension to carry the
-   bearer token (browsers can't set WebSocket headers; RN can).
-3. Renders every bootstrap response and every live `LiveFrame` (`DeltaFrame`,
-   `MutationAckFrame`, `MustRefetchFrame`, `PingFrame`) as a raw
-   `JSON.stringify` block, newest first.
+1. Loads auth through the Khala keychain adapter, never through Expo public env
+   or SQLite.
+2. Opens `openKhalaMobileSyncStore()` from
+   `src/sync/expo-db-sqlite-persistence.ts`, an Expo SQLite implementation of
+   `KhalaSyncLocalStore`.
+3. Creates a real `KhalaSyncSession`, optimistic overlay, chat mutators, and
+   TanStack DB Khala Sync collections for `chat_thread` and
+   `scope.thread.<threadId>` `chat_message` rows.
+4. Reads confirmed chat projections from the durable store after collection
+   preload/startSync, while surfacing pending mutations and in-band rejections
+   separately.
+5. Submits chat create/append intents with client-generated IDs and returns
+   public-safe rejection state. Rejected private message bodies are not kept in
+   the confirmed read model.
 
-Demo wiring lives in `src/config/khala-sync-demo.ts` — there is no mobile
-login flow yet, so the bearer token, owner user id, and thread id are read
-from `EXPO_PUBLIC_KHALA_SYNC_DEMO_TOKEN` /
-`EXPO_PUBLIC_KHALA_SYNC_DEMO_OWNER_USER_ID` /
-`EXPO_PUBLIC_KHALA_SYNC_DEMO_THREAD_ID` at build time (never hardcoded, never
-committed).
+Expo SQLite now holds confirmed sync rows, durable cursors/checkpoints, client
+identity, and pending mutation intents. It does not hold bearer tokens or API
+keys. Public diagnostics should keep using counts, phases, route names, issue
+IDs, and rejection codes; private chat bodies stay inside authenticated Sync
+scopes.
 
 ### Resolved: prod deploy was blocked, now live (was tracked in #8376)
 
@@ -189,3 +204,16 @@ Khala-Sync-only threads (e.g. ones created purely from mobile, with no
 desktop-side session) openable/readable on desktop is a separate, real
 follow-up (`codexThreadRead` would need a Khala-Sync-message fallback render
 path when no local session file exists) — not done here.
+
+### Verification added for the durable mobile path
+
+- `bun run --cwd clients/khala-mobile typecheck`
+- `bun run --cwd clients/khala-mobile test`
+- Connectivity tests cover simulator loopback profiles, Tailnet profiles, and
+  sync-base URL normalization.
+- Expo SQLite tests cover checkpoints, projection rows, sync-store identity,
+  durable cursors, confirmed entities, pending mutation queue, ACK handling,
+  and reopen/resume.
+- Runtime tests cover a fake-session chat create/append flow, app-restart
+  cursor resume without duplicate messages, and public-safe rejection state
+  without retaining rejected private bodies in the confirmed read model.

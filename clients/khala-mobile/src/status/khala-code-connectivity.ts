@@ -2,7 +2,10 @@ import * as Device from "expo-device"
 
 import {
   candidateTargets,
+  connectionProfileFromStatus,
+  resolveKhalaCodeConnectionProfile,
   resolveKhalaCodeConnectivity,
+  type KhalaCodeConnectionProfile,
   type KhalaCodeConnectivityStatus
 } from "./khala-code-connectivity-core"
 
@@ -10,8 +13,11 @@ export {
   KHALA_CODE_TAILNET_HEALTH_PORT,
   KHALA_CODE_TAILNET_CANDIDATE_HOSTS,
   candidateTargets,
+  connectionProfileFromStatus,
+  resolveKhalaCodeConnectionProfile,
   resolveKhalaCodeConnectivity,
   type FetchLike,
+  type KhalaCodeConnectionProfile,
   type KhalaCodeConnectivityStatus
 } from "./khala-code-connectivity-core"
 
@@ -25,3 +31,11 @@ export {
 export const checkKhalaCodeConnectivity =
   async (): Promise<KhalaCodeConnectivityStatus> =>
     resolveKhalaCodeConnectivity(candidateTargets(Device.isDevice), fetch)
+
+export const resolveKhalaCodeProfile =
+  async (): Promise<KhalaCodeConnectionProfile> =>
+    resolveKhalaCodeConnectionProfile({
+      fetchImpl: fetch,
+      isDevice: Device.isDevice,
+      syncBaseUrl: process.env.EXPO_PUBLIC_OPENAGENTS_BASE_URL
+    })

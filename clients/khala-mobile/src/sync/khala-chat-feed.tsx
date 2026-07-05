@@ -4,106 +4,103 @@ import { ScrollView, Text, View } from "react-native"
 import {
   KHALA_SYNC_DEMO_BASE_URL,
   KHALA_SYNC_DEMO_CLIENT_GROUP_ID,
-  KHALA_SYNC_DEMO_THREAD_ID,
-  KHALA_SYNC_DEMO_TOKEN
+  KHALA_SYNC_DEMO_OWNER_USER_ID,
+  KHALA_SYNC_DEMO_THREAD_ID
 } from "../config/khala-sync-demo"
 import {
-  buildBootstrapRequestBody,
-  buildBootstrapUrl,
-  buildConnectUrl,
-  chatFeedScope,
-  makeFeedEvent,
-  type ChatFeedEvent
-} from "./khala-chat-feed-core"
+  openKhalaMobileSyncRuntime,
+  type KhalaMobileChatMessagesState,
+  type KhalaMobileChatThreadsState,
+  type KhalaMobileSyncRuntime
+} from "./khala-mobile-sync-runtime"
 
-const MAX_EVENTS = 200
+const REFRESH_INTERVAL_MS = 2_000
 
-/** React Native's WebSocket accepts a third `{ headers }` arg for the
- * upgrade request (a RN-specific extension beyond the DOM WebSocket type
- * this repo's TypeScript lib picks up), so this constructor is typed by
- * hand rather than fighting the ambient DOM declaration. */
-type RNWebSocketConstructor = new (
-  url: string,
-  protocols: ReadonlyArray<string>,
-  options: { headers: Record<string, string> }
-) => WebSocket
-const RNWebSocket = WebSocket as unknown as RNWebSocketConstructor
+type FeedState =
+  | Readonly<{ status: "connecting" }>
+  | Readonly<{ status: "missing_config"; error: string }>
+  | Readonly<{ status: "missing_auth"; error: string }>
+  | Readonly<{ status: "error"; error: string }>
+  | Readonly<{
+      status: "ready"
+      messages: KhalaMobileChatMessagesState
+      threads: KhalaMobileChatThreadsState
+      updatedAt: string
+    }>
 
 export const KhalaChatFeed = () => {
-  const [events, setEvents] = useState<ReadonlyArray<ChatFeedEvent>>([])
-  const seqRef = useRef(0)
-
-  const pushEvent = (kind: ChatFeedEvent["kind"], payload: unknown) => {
-    seqRef.current += 1
-    const event = makeFeedEvent(kind, payload, new Date().toISOString(), seqRef.current)
-    setEvents(previous => [event, ...previous].slice(0, MAX_EVENTS))
-  }
+  const [state, setState] = useState<FeedState>({ status: "connecting" })
+  const runtimeRef = useRef<KhalaMobileSyncRuntime | null>(null)
+  const refreshingRef = useRef(false)
 
   useEffect(() => {
-    if (KHALA_SYNC_DEMO_TOKEN === "") {
-      pushEvent("error", {
-        error: "missing_demo_token",
-        hint: "export EXPO_PUBLIC_KHALA_SYNC_DEMO_TOKEN before starting the app"
+    if (KHALA_SYNC_DEMO_OWNER_USER_ID === "") {
+      setState({
+        error: "missing_owner_user_id",
+        status: "missing_config"
       })
       return
     }
 
     let cancelled = false
-    let socket: WebSocket | null = null
-    const scope = chatFeedScope(KHALA_SYNC_DEMO_THREAD_ID)
+    let timer: ReturnType<typeof setInterval> | null = null
 
-    const run = async () => {
-      let cursor = 0
+    const refresh = async (runtime: KhalaMobileSyncRuntime) => {
+      if (refreshingRef.current) return
+      refreshingRef.current = true
       try {
-        const response = await fetch(buildBootstrapUrl(KHALA_SYNC_DEMO_BASE_URL), {
-          body: JSON.stringify(
-            buildBootstrapRequestBody(scope, KHALA_SYNC_DEMO_CLIENT_GROUP_ID)
-          ),
-          headers: {
-            authorization: `Bearer ${KHALA_SYNC_DEMO_TOKEN}`,
-            "content-type": "application/json"
-          },
-          method: "POST"
-        })
-        const body: unknown = await response.json()
-        if (cancelled) return
-        pushEvent("bootstrap", body)
-        if (
-          response.ok &&
-          typeof body === "object" &&
-          body !== null &&
-          "cursor" in body &&
-          typeof (body as { cursor?: unknown }).cursor === "number"
-        ) {
-          cursor = (body as { cursor: number }).cursor
+        const [threads, messages] = await Promise.all([
+          runtime.chatThreads(),
+          runtime.chatMessages({
+            limit: 100,
+            threadId: KHALA_SYNC_DEMO_THREAD_ID
+          })
+        ])
+        if (!cancelled) {
+          setState({
+            messages,
+            status: "ready",
+            threads,
+            updatedAt: new Date().toISOString()
+          })
         }
       } catch (error) {
         if (!cancelled) {
-          pushEvent("error", { error: String(error) })
+          setState({
+            error: error instanceof Error ? error.message : String(error),
+            status: "error"
+          })
         }
-        return
+      } finally {
+        refreshingRef.current = false
       }
+    }
 
-      if (cancelled) return
-
-      socket = new RNWebSocket(
-        buildConnectUrl(KHALA_SYNC_DEMO_BASE_URL, scope, cursor),
-        [],
-        { headers: { authorization: `Bearer ${KHALA_SYNC_DEMO_TOKEN}` } }
-      )
-      socket.onmessage = event => {
-        try {
-          pushEvent("frame", JSON.parse(String(event.data)))
-        } catch {
-          pushEvent("frame", { raw: String(event.data) })
+    const run = async () => {
+      setState({ status: "connecting" })
+      try {
+        const opened = await openKhalaMobileSyncRuntime({
+          clientGroupId: KHALA_SYNC_DEMO_CLIENT_GROUP_ID,
+          ownerUserId: KHALA_SYNC_DEMO_OWNER_USER_ID,
+          syncBaseUrl: KHALA_SYNC_DEMO_BASE_URL
+        })
+        if (cancelled) return
+        if (!opened.ok) {
+          setState({
+            error: opened.error,
+            status: opened.authState === "missing" ? "missing_auth" : "error"
+          })
+          return
         }
-      }
-      socket.onerror = () => {
-        if (!cancelled) pushEvent("error", { error: "websocket_error" })
-      }
-      socket.onclose = closeEvent => {
+        runtimeRef.current = opened.runtime
+        await refresh(opened.runtime)
+        timer = setInterval(() => void refresh(opened.runtime), REFRESH_INTERVAL_MS)
+      } catch (error) {
         if (!cancelled) {
-          pushEvent("error", { code: closeEvent.code, reason: closeEvent.reason })
+          setState({
+            error: error instanceof Error ? error.message : String(error),
+            status: "error"
+          })
         }
       }
     }
@@ -112,27 +109,68 @@ export const KhalaChatFeed = () => {
 
     return () => {
       cancelled = true
-      socket?.close()
+      if (timer !== null) clearInterval(timer)
+      const runtime = runtimeRef.current
+      runtimeRef.current = null
+      void runtime?.close()
     }
   }, [])
+
+  const statusLine =
+    state.status === "ready"
+      ? `${state.messages.phase} - ${state.messages.messages.length} messages - ${state.messages.pendingMutations} pending`
+      : state.status === "connecting"
+        ? "connecting to Khala Sync"
+        : state.status === "missing_auth"
+          ? "auth required"
+          : state.error
 
   return (
     <View className="mt-8 w-full flex-1 gap-2 px-4">
       <Text className="font-sans text-sm text-textMuted">
-        chat feed — {KHALA_SYNC_DEMO_THREAD_ID}
+        chat sync - {KHALA_SYNC_DEMO_THREAD_ID}
       </Text>
+      <Text className="font-mono text-xs text-textFaint">{statusLine}</Text>
+      {state.status === "ready" ? (
+        <View className="flex-row gap-3">
+          <Text className="font-mono text-xs text-textFaint">
+            threads {state.threads.threads.length}
+          </Text>
+          <Text className="font-mono text-xs text-textFaint">
+            updated {state.updatedAt}
+          </Text>
+        </View>
+      ) : null}
       <ScrollView className="flex-1 rounded-lg border border-border bg-surface">
-        {events.length === 0 ? (
+        {state.status !== "ready" ? (
           <Text className="p-3 font-mono text-xs text-textFaint">
-            waiting for events…
+            {statusLine}
+          </Text>
+        ) : state.messages.rejections.length > 0 ? (
+          state.messages.rejections.map(rejection => (
+            <View
+              key={`${rejection.mutationId}-${rejection.observedAt}`}
+              className="border-b border-borderMuted p-3"
+            >
+              <Text className="font-mono text-xs text-textFaint">
+                rejected {rejection.errorCode}
+              </Text>
+              <Text className="mt-1 font-mono text-xs text-text">
+                {rejection.messageSafe}
+              </Text>
+            </View>
+          ))
+        ) : state.messages.messages.length === 0 ? (
+          <Text className="p-3 font-mono text-xs text-textFaint">
+            no synced messages
           </Text>
         ) : (
-          events.map(event => (
-            <View key={event.id} className="border-b border-borderMuted p-3">
+          state.messages.messages.map(message => (
+            <View key={message.messageId} className="border-b border-borderMuted p-3">
               <Text className="font-mono text-xs text-textFaint">
-                {event.kind} · {event.receivedAt}
+                {message.authorUserId} - {message.createdAt}
               </Text>
-              <Text className="mt-1 font-mono text-xs text-text">{event.raw}</Text>
+              <Text className="mt-1 font-sans text-sm text-text">{message.body}</Text>
             </View>
           ))
         )}

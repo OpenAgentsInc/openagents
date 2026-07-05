@@ -21,12 +21,24 @@ export type KhalaCodeConnectivityStatus = Readonly<{
   checkedAt: string
 }>
 
+export type KhalaCodeConnectionTargetKind = "simulator_loopback" | "tailnet"
+
+export type KhalaCodeConnectionProfile = Readonly<{
+  checkedAt: string
+  healthTarget: string | null
+  hostname: string | null
+  reachable: boolean
+  syncBaseUrl: string
+  targetKind: KhalaCodeConnectionTargetKind
+}>
+
 export type FetchLike = (
   url: string,
   init: { signal: AbortSignal },
 ) => Promise<{ ok: boolean; json: () => Promise<unknown> }>
 
 const PER_HOST_TIMEOUT_MS = 1500
+const DEFAULT_OPENAGENTS_SYNC_BASE_URL = "https://openagents.com"
 
 const probeHealthUrl = async (
   url: string,
@@ -58,6 +70,29 @@ export const candidateTargets = (
     // whatever is running the desktop app on this same machine.
     : [`http://127.0.0.1:${port}/health`]
 
+export const normalizeSyncBaseUrl = (
+  value: string | null | undefined,
+): string => {
+  const trimmed = value?.trim() ?? ""
+  return (trimmed.length === 0 ? DEFAULT_OPENAGENTS_SYNC_BASE_URL : trimmed)
+    .replace(/\/+$/, "")
+}
+
+export const connectionProfileFromStatus = (
+  status: KhalaCodeConnectivityStatus,
+  input: {
+    readonly isDevice: boolean
+    readonly syncBaseUrl?: string | null
+  },
+): KhalaCodeConnectionProfile => ({
+  checkedAt: status.checkedAt,
+  healthTarget: status.target,
+  hostname: status.hostname,
+  reachable: status.reachable,
+  syncBaseUrl: normalizeSyncBaseUrl(input.syncBaseUrl),
+  targetKind: input.isDevice ? "tailnet" : "simulator_loopback"
+})
+
 export const resolveKhalaCodeConnectivity = async (
   targets: ReadonlyArray<string>,
   fetchImpl: FetchLike,
@@ -71,4 +106,25 @@ export const resolveKhalaCodeConnectivity = async (
     }
   }
   return { checkedAt, hostname: null, reachable: false, target: null }
+}
+
+export const resolveKhalaCodeConnectionProfile = async (
+  input: {
+    readonly isDevice: boolean
+    readonly fetchImpl: FetchLike
+    readonly port?: number
+    readonly syncBaseUrl?: string | null
+    readonly tailnetHosts?: ReadonlyArray<string>
+    readonly timeoutMs?: number
+  },
+): Promise<KhalaCodeConnectionProfile> => {
+  const status = await resolveKhalaCodeConnectivity(
+    candidateTargets(input.isDevice, input.port, input.tailnetHosts),
+    input.fetchImpl,
+    input.timeoutMs
+  )
+  return connectionProfileFromStatus(status, {
+    isDevice: input.isDevice,
+    syncBaseUrl: input.syncBaseUrl
+  })
 }

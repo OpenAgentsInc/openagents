@@ -106,9 +106,8 @@ Current OpenAgents files reviewed on 2026-07-05:
 | Recent commits | `2526a91e7a`, `9b566511d8`, `e0bb4bc630`, `970f6d1bdd`, `5964c3a7f9`, `636eb30bd6`. |
 | Khala Sync contracts/client/server | `docs/khala-sync/SPEC.md`, `packages/khala-sync`, `packages/khala-sync-client`, `packages/khala-sync-server`. |
 | Desktop Sync consumer | `clients/khala-code-desktop/src/bun/khala-sync-service.ts`, `rpc-handlers.ts`, `src/shared/rpc.ts`, `tests/khala-sync-service.test.ts`, `tests/rpc-schema.test.ts`. |
-| Mobile destination | `clients/khala-mobile/AGENTS.md`, `README.md`, `app/index.tsx`, `src/status/khala-code-connectivity*.ts`, `src/sync/khala-sync-mobile.ts`, `src/sync/expo-db-sqlite-persistence.ts`. |
+| Mobile destination | `clients/khala-mobile/AGENTS.md`, `README.md`, `app/index.tsx`, `src/status/khala-code-connectivity*.ts`, `src/sync/khala-chat-feed.tsx`, `src/sync/khala-mobile-sync-runtime.ts`, `src/sync/expo-db-sqlite-persistence.ts`. |
 | Sync UI/docs receipts | `docs/fable/2026-07-04-khala-sync-implementation-status.md`, `2026-07-04-khala-sync-db-collection.md`, `2026-07-04-chat-sidebar-sync-consumers.md`, `2026-07-04-khala-sync-cross-device-dogfood.md`. |
-| Active uncommitted desktop work | Local diff in the main checkout adds `khalaSyncChatAppendMessage`; this audit did not edit or stage that work. |
 
 ## OpenCode's Vercel AI SDK Core Pattern
 
@@ -276,11 +275,12 @@ surface while SwiftUI remains the interim shipping/native-reference app.
   keeps a durable SQLite store under `~/.khala-code`, and surfaces real sync
   phases (`idle`, `bootstrapping`, `catching_up`, `live`, `must_refetch`,
   `denied`) instead of fabricating liveness.
-- Mobile now has a minimal Tailnet health dot that probes the desktop health
-  beacon (`:50099/health`), plus collection factories for chat/fleet preview
-  state and an Expo SQLite checkpoint/projection-cache scaffold. It is ready
-  to be connected to a real `KhalaSyncSession`; it is not yet a full runtime
-  control surface.
+- Mobile now has a Tailnet health dot that probes the desktop health beacon
+  (`:50099/health`) and resolves a `KhalaCodeConnectionProfile` for simulator
+  loopback vs physical-device Tailnet routing. It also has a durable
+  `KhalaSyncSession` runtime over Expo SQLite, confirmed chat projection reads,
+  keychain-only auth loading, and typed chat create/append intents with
+  public-safe pending/rejection state.
 - The server already has `chat.createThread`, `chat.appendMessage`, and
   `chat.renameThread`, with `scope.user.<owner>` carrying thread metadata and
   `scope.thread.<threadId>` carrying message bodies. That is the exact shape
@@ -348,6 +348,21 @@ adapters match in-band server rejections without guessing from a per-collection
 pending queue. Remaining runtime controls should build on this as additional
 typed control intents rather than as ad hoc desktop RPCs.
 
+Issue #8365 implementation status: the Expo mobile app now opens a real
+`KhalaSyncSession` through `openKhalaMobileSyncRuntime()`, with auth loaded
+from the Khala keychain adapter and an Expo SQLite implementation of
+`KhalaSyncLocalStore` for durable cursors, confirmed rows, client identity, and
+pending mutation intents. The home-screen chat panel consumes confirmed
+`chat_thread` and `scope.thread.<threadId>` `chat_message` projections instead
+of the old raw JSON demo feed, while surfacing sync phase, pending count, and
+public-safe rejections separately. The health resolver now produces a
+connection profile that distinguishes simulator loopback (`127.0.0.1:50099`)
+from physical-device Tailnet host routing and normalizes the Khala Sync base
+URL independently from the health beacon. Mobile tests cover connection
+profiles, SQLite checkpoint/store behavior, fake-session create/append,
+app-restart cursor resume without duplicate messages, and rejection handling
+without retaining rejected private bodies in the confirmed read model.
+
 ### Sequenced implementation path
 
 P0 should be the event/control schema (#8363). Without this, each bridge will
@@ -364,13 +379,14 @@ and close remain the runtime subset. Those controls should return typed
 public-safe results and surface rejections as state, matching Khala Sync's
 queue-never-blocks model.
 
-P2 should make mobile a real Sync client (#8365). The health dot should become
-connection discovery/pairing/auth status, then the app should open a durable
-sync session, persist cursors/checkpoints via Expo SQLite, consume
-`chat_thread` and `scope.thread.<threadId>` projections, and submit control
-intents with client-generated IDs. The key UX rule is honesty: stale,
-offline, pending, denied, and rejected are visible states, never coerced into
-"connected."
+P2 is now landed for the mobile chat subset (#8365): the health dot feeds
+connection discovery, the app opens a durable sync session, Expo SQLite stores
+confirmed sync state and pending mutation intents, `chat_thread` plus
+`scope.thread.<threadId>` projections drive the UI, and chat create/append use
+client-generated IDs. The key UX rule remains honesty: stale, offline,
+pending, denied, and rejected are visible states, never coerced into
+"connected." Pairing/auth UX beyond the keychain token loader remains product
+work, not a Sync substrate blocker.
 
 P3 should add runtime state on the server side (#8370). The existing chat
 mutators prove the shape, but runtime events need their own typed rows or
@@ -406,8 +422,10 @@ Yes, we can get this working locally in increments:
 1. Fake or local Khala Sync transport now proves desktop chat create, append,
    rename, thread-scope read convergence, pending retry visibility, and
    public-safe rejection handling.
-2. The existing Tailnet health beacon proves mobile can locate a desktop over
-   simulator localhost or physical-device Tailnet hostnames.
+2. The mobile runtime now proves simulator loopback vs physical-device Tailnet
+   connection profiles, Expo SQLite durable cursor/checkpoint resume, and a
+   fake-session chat create/append flow without duplicate messages after app
+   restart.
 3. AI SDK Core can be proven with a fixture provider and one low-risk model
    without any harness sandbox provider.
 4. The local unsafe harness provider can prove Codex/Claude bridge mechanics
@@ -665,12 +683,12 @@ sandbox plan exists to enforce.
 
 ### P0: Khala Sync mobile/desktop event contract
 
-Run the Khala Sync/mobile path in parallel with the AI SDK Core lane. Define
-the canonical runtime event/control schema first (#8363), land the desktop
-append/control bridge (#8364), connect mobile to a durable Sync session
-(#8365), and extend server-side runtime scopes/policy (#8370). This is the
-path that makes mobile-to-desktop Khala Code feel AI SDK-shaped without letting
-AI SDK own the product state.
+Run the Khala Sync/mobile path in parallel with the AI SDK Core lane. The
+canonical runtime event/control schema (#8363), desktop append/control bridge
+(#8364), and mobile durable Sync session (#8365) are now the base. Next, extend
+server-side runtime scopes/policy (#8370). This is the path that makes
+mobile-to-desktop Khala Code feel AI SDK-shaped without letting AI SDK own the
+product state.
 
 Required tests:
 

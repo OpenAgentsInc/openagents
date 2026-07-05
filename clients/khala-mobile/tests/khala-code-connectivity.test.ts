@@ -3,6 +3,9 @@ import { describe, expect, test } from "bun:test"
 import {
   KHALA_CODE_TAILNET_HEALTH_PORT,
   candidateTargets,
+  connectionProfileFromStatus,
+  normalizeSyncBaseUrl,
+  resolveKhalaCodeConnectionProfile,
   resolveKhalaCodeConnectivity,
   type FetchLike
 } from "../src/status/khala-code-connectivity-core"
@@ -80,5 +83,48 @@ describe("Khala mobile connectivity resolution", () => {
       5
     )
     expect(result.reachable).toBe(false)
+  })
+})
+
+describe("Khala mobile connection profile", () => {
+  test("normalizes the sync base url separately from the health beacon", () => {
+    expect(normalizeSyncBaseUrl(" http://127.0.0.1:8787/ ")).toBe(
+      "http://127.0.0.1:8787"
+    )
+    expect(normalizeSyncBaseUrl("")).toBe("https://openagents.com")
+  })
+
+  test("turns a simulator health check into a loopback sync profile", async () => {
+    const profile = await resolveKhalaCodeConnectionProfile({
+      fetchImpl: fakeFetch({
+        "http://127.0.0.1:50099/health": { hostname: "local-mac", ok: true }
+      }),
+      isDevice: false,
+      syncBaseUrl: "http://127.0.0.1:8787/"
+    })
+
+    expect(profile).toMatchObject({
+      healthTarget: "http://127.0.0.1:50099/health",
+      hostname: "local-mac",
+      reachable: true,
+      syncBaseUrl: "http://127.0.0.1:8787",
+      targetKind: "simulator_loopback"
+    })
+  })
+
+  test("marks physical-device profiles as Tailnet even when unreachable", () => {
+    const profile = connectionProfileFromStatus(
+      {
+        checkedAt: "2026-07-04T20:00:00.000Z",
+        hostname: null,
+        reachable: false,
+        target: null
+      },
+      { isDevice: true, syncBaseUrl: "https://openagents.com" }
+    )
+
+    expect(profile.targetKind).toBe("tailnet")
+    expect(profile.healthTarget).toBeNull()
+    expect(profile.reachable).toBe(false)
   })
 })
