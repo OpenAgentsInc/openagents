@@ -5,6 +5,10 @@ import {
   type AgentRuntimeRemainderMirror,
   type AgentRuntimeRemainderStoreEnv,
 } from './agent-runtime-remainder-store'
+import {
+  identityAuthMirrorFromEnv,
+  type IdentityAuthMirror,
+} from './identity-auth-domain-store'
 import { openAgentsDatabase } from './runtime'
 import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
 
@@ -895,12 +899,66 @@ export const makeMirroredAgentRegistrationStore = <
   } as Store
 }
 
+// KS-8.18 follow-up (#8362): identity/auth domain mirror — `users`,
+// `auth_identities`, `openauth_agent_links`. Composed ON TOP of (not
+// instead of) the pre-existing `AgentRuntimeRemainderMirror` above, which
+// only ever covered `agent_profiles`/`agent_credentials` — a DIFFERENT
+// domain. Before this wiring `updateAgentDisplayName` and
+// `linkOpenAuthAgent`'s `openauth_agent_links` row were not mirrored to
+// Postgres at all (only the remainder mirror's `agent_credentials` touch
+// on `linkOpenAuthAgent` existed). Fail-soft: `mirror` methods never throw.
+const makeIdentityAuthMirroredAgentRegistrationStore = <
+  Store extends MirrorableAgentRegistrationStore,
+>(
+  d1: Store,
+  mirror: IdentityAuthMirror | undefined,
+): Store => {
+  if (mirror === undefined) {
+    return d1
+  }
+
+  const linkOpenAuthAgent = d1.linkOpenAuthAgent
+
+  return {
+    ...d1,
+    createAgentRegistration: async record => {
+      await d1.createAgentRegistration(record)
+      await mirror.mirrorRowsByKey('users', [[record.user.id]])
+      await mirror.mirrorRowsByKey('auth_identities', [[record.identity.id]])
+    },
+    updateAgentDisplayName: async (userId, displayName, updatedAt) => {
+      const changes = await d1.updateAgentDisplayName(
+        userId,
+        displayName,
+        updatedAt,
+      )
+      if (changes > 0) {
+        await mirror.mirrorRowsByKey('users', [[userId]])
+      }
+      return changes
+    },
+    ...(linkOpenAuthAgent === undefined
+      ? {}
+      : {
+          linkOpenAuthAgent: async (record: OpenAuthAgentLinkRecord) => {
+            await linkOpenAuthAgent.call(d1, record)
+            await mirror.mirrorRowsByKey('openauth_agent_links', [
+              [record.id],
+            ])
+          },
+        }),
+  } as Store
+}
+
 export const makeAgentRegistrationStoreForEnv = (
   env: AgentRuntimeRemainderStoreEnv,
 ): AgentRegistrationStore & AgentReissueStore & AgentForumIdentityStore =>
-  makeMirroredAgentRegistrationStore(
-    makeD1AgentRegistrationStore(openAgentsDatabase(env)),
-    makeAgentRuntimeRemainderMirrorForEnv(env),
+  makeIdentityAuthMirroredAgentRegistrationStore(
+    makeMirroredAgentRegistrationStore(
+      makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+      makeAgentRuntimeRemainderMirrorForEnv(env),
+    ),
+    identityAuthMirrorFromEnv(env),
   )
 
 export const buildProgrammaticAgentRegistrationRecord = (

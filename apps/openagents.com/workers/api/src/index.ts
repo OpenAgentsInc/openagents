@@ -224,7 +224,6 @@ import {
   stampAuthEmailOtpClaims,
 } from './auth/email-otp-hardening'
 import { readBearerToken } from './auth/bearer-token'
-import { makeD1Storage } from './auth/openauth-storage'
 import {
   type VerifiedSession as VerifiedAuthSession,
   makeBrowserSessionBoundary,
@@ -447,7 +446,6 @@ import {
   githubWriteSecretKey,
   githubWriteSecretRef,
   listGitHubWriteConnectionsForUser,
-  makeD1GitHubWriteRepository,
   recordGitHubWriteConnectionConnected,
   requireGitHubWriteCallbackAccount,
   requireGitHubWritePermissions,
@@ -966,7 +964,14 @@ import { makeProviderAccountPoolRoutes } from './provider-account-pool-routes'
 import { makeProviderAccountPylonHandlers } from './provider-account-pylon-routes'
 import { makeProviderAccountRoutes } from './provider-account-routes'
 import { makeProviderAccountServiceHandlers } from './provider-account-service-routes'
-import { makeProviderAccountTokenCustodyStoreForEnv } from './identity-auth-domain-store'
+import {
+  identityAuthMirrorFromEnv,
+  makeGitHubWriteRepositoryForEnv,
+  makeOpenAuthStorageForEnv,
+  makeProviderAccountRepositoryForEnv,
+  makeProviderAccountTokenCustodyStoreForEnv,
+  type IdentityAuthMirror,
+} from './identity-auth-domain-store'
 import {
   codexAccessToAuthMaterial,
   issueShortLivedCodexAccessFromCustody,
@@ -2502,6 +2507,8 @@ const githubUserToSubject = (
 const upsertGitHubUser = async (
   db: D1Database,
   user: UserSubject,
+  // KS-8.18 follow-up (#8362): fail-soft identity/auth mirror handle.
+  mirror?: IdentityAuthMirror | undefined,
 ): Promise<void> => {
   if (user.githubId === undefined || user.login === undefined) {
     throw new AuthSignInError({
@@ -2511,6 +2518,7 @@ const upsertGitHubUser = async (
   const githubId = user.githubId
   const login = user.login
   const now = workerRuntime.nowIso()
+  const authIdentityId = `auth_identity_github_${githubId}`
 
   await db.batch([
     db
@@ -2540,7 +2548,7 @@ const upsertGitHubUser = async (
           deleted_at = NULL`,
       )
       .bind(
-        `auth_identity_github_${githubId}`,
+        authIdentityId,
         user.userId,
         githubId,
         login,
@@ -2549,6 +2557,11 @@ const upsertGitHubUser = async (
         now,
       ),
   ])
+
+  if (mirror !== undefined) {
+    await mirror.mirrorRowsByKey('users', [[user.userId]])
+    await mirror.mirrorRowsByKey('auth_identities', [[authIdentityId]])
+  }
 }
 
 const normalizeEmail = (email: string): string => email.trim().toLowerCase()
@@ -2571,8 +2584,11 @@ const emailToSubject = (rawEmail: string): UserSubject => {
 const upsertEmailUser = async (
   db: D1Database,
   user: UserSubject,
+  // KS-8.18 follow-up (#8362): fail-soft identity/auth mirror handle.
+  mirror?: IdentityAuthMirror | undefined,
 ): Promise<void> => {
   const now = workerRuntime.nowIso()
+  const authIdentityId = `auth_identity_email_${user.email}`
 
   await db.batch([
     db
@@ -2600,7 +2616,7 @@ const upsertEmailUser = async (
           deleted_at = NULL`,
       )
       .bind(
-        `auth_identity_email_${user.email}`,
+        authIdentityId,
         user.userId,
         user.email,
         user.name,
@@ -2609,14 +2625,24 @@ const upsertEmailUser = async (
         now,
       ),
   ])
+
+  if (mirror !== undefined) {
+    await mirror.mirrorRowsByKey('users', [[user.userId]])
+    await mirror.mirrorRowsByKey('auth_identities', [[authIdentityId]])
+  }
 }
 
 // Persist a session subject regardless of provider (session refresh paths can
 // carry either a GitHub or an email user).
-const upsertUser = async (db: D1Database, user: UserSubject): Promise<void> =>
+const upsertUser = async (
+  db: D1Database,
+  user: UserSubject,
+  // KS-8.18 follow-up (#8362): fail-soft identity/auth mirror handle.
+  mirror?: IdentityAuthMirror | undefined,
+): Promise<void> =>
   user.provider === 'email'
-    ? upsertEmailUser(db, user)
-    : upsertGitHubUser(db, user)
+    ? upsertEmailUser(db, user, mirror)
+    : upsertGitHubUser(db, user, mirror)
 
 // Send the one-time sign-in code via Resend directly (auth email stays decoupled
 // from the CRM/marketing email-intent machinery). The auth OTP guard owns the
@@ -2772,6 +2798,8 @@ const maybeAuthEmailOtpGuardResponse = async (request: Request, env: Env) => {
       ipAddress: authEmailOtpClientIp(request),
     },
     workerRuntime,
+    undefined,
+    identityAuthMirrorFromEnv(env),
   ).catch(error => {
     logWorkerRouteError('auth_email_otp_rate_limit_failed', error, {
       errorName: errorName(error),
@@ -3651,7 +3679,7 @@ const makeAuthIssuer = (env: Env) => {
         },
       }),
     },
-    storage: makeD1Storage(openAgentsDatabase(env)),
+    storage: makeOpenAuthStorageForEnv(env),
     subjects,
     allow: async ({ redirectURI }) => {
       const hostname = new URL(redirectURI).hostname
@@ -3817,7 +3845,7 @@ const scheduleSiteReferralOnboardingEmail = (
 
 const { appendRefreshedSessionCookies, requireBrowserSession } =
   makeBrowserSessionBoundary<UserSubject, Env>({
-    persistUser: (env, user) => upsertUser(openAgentsDatabase(env), user),
+    persistUser: (env, user) => upsertUser(openAgentsDatabase(env), user, identityAuthMirrorFromEnv(env)),
     verifySession,
   })
 
@@ -3845,7 +3873,7 @@ const authenticateRequestActor = async (
     return undefined
   }
 
-  await upsertUser(openAgentsDatabase(env), session.user)
+  await upsertUser(openAgentsDatabase(env), session.user, identityAuthMirrorFromEnv(env))
 
   if (session.tokens === undefined) {
     return {
@@ -3939,14 +3967,10 @@ const readAuthenticatedPageContext = async (
     onboarding: Awaited<ReturnType<typeof readOnboardingStatusForUser>>
   }>
 > => {
-  await upsertUser(openAgentsDatabase(env), session.user)
+  await upsertUser(openAgentsDatabase(env), session.user, identityAuthMirrorFromEnv(env))
 
-  const providerAccountRepository = makeD1ProviderAccountRepository(
-    openAgentsDatabase(env),
-  )
-  const githubWriteRepository = makeD1GitHubWriteRepository(
-    openAgentsDatabase(env),
-  )
+  const providerAccountRepository = makeProviderAccountRepositoryForEnv(env)
+  const githubWriteRepository = makeGitHubWriteRepositoryForEnv(env)
   const [
     maybeTotals,
     teams,
@@ -4321,7 +4345,7 @@ const handleGitHubWriteStart = async (
   }
 
   const attempt = await startGitHubWriteConnectionAttempt(
-    makeD1GitHubWriteRepository(openAgentsDatabase(env)),
+    makeGitHubWriteRepositoryForEnv(env),
     {
       expectedGithubId: session.user.githubId,
       expectedGithubLogin: session.user.login,
@@ -4345,7 +4369,7 @@ const handleGitHubWriteCallback = async (
     return githubWriteResultRedirect(env)
   }
 
-  const repository = makeD1GitHubWriteRepository(openAgentsDatabase(env))
+  const repository = makeGitHubWriteRepositoryForEnv(env)
   const url = new URL(request.url)
   const now = workerRuntime.now()
   const nowIso = now.toISOString()
@@ -4455,7 +4479,7 @@ const handleGitHubWriteConnectionsApi = async (
   }
 
   const githubWriteConnections = await listGitHubWriteConnectionsForUser(
-    makeD1GitHubWriteRepository(openAgentsDatabase(env)),
+    makeGitHubWriteRepositoryForEnv(env),
     session.user.userId,
   )
 
@@ -4486,7 +4510,7 @@ const handleGitHubWriteDisconnectApi = async (
   }
 
   const now = workerRuntime.nowIso()
-  const repository = makeD1GitHubWriteRepository(openAgentsDatabase(env))
+  const repository = makeGitHubWriteRepositoryForEnv(env)
   const connection = await repository.disconnectConnection({
     connectionRef,
     metadataJson: gitHubWriteConnectionMetadataJson({
@@ -4601,7 +4625,7 @@ const handleGitHubWriteGrantResolveApi = async (
 
   try {
     const grant = await resolveGitHubWriteGrant(
-      makeD1GitHubWriteRepository(openAgentsDatabase(env)),
+      makeGitHubWriteRepositoryForEnv(env),
       {
         grantRef,
         ...(runnerSessionId === undefined ? {} : { runnerSessionId }),
@@ -4747,7 +4771,7 @@ const handleSessionApi = async (
     return response
   }
 
-  await upsertUser(openAgentsDatabase(env), session.user)
+  await upsertUser(openAgentsDatabase(env), session.user, identityAuthMirrorFromEnv(env))
   const referralResult = await consumePendingReferralForUser(
     // KS-8.14 (#8325): consume-once attribution writes mirror fail-soft.
     businessDomainDatabaseForEnv(env),
@@ -7356,7 +7380,12 @@ const handleProgrammaticAgentMe = async (
   // the same agent-self surface that GET reads from. GET keeps returning the
   // identity projection; PATCH updates the agent's own user row.
   if (request.method === 'PATCH') {
-    return handleProgrammaticAgentSelfUpdate(request, openAgentsDatabase(env))
+    // KS-8.18 follow-up (#8362): route the self-serve rename write through
+    // the identity-auth-mirrored store so `users.display_name` converges
+    // to Postgres, not the raw unwrapped D1 factory.
+    return handleProgrammaticAgentSelfUpdate(request, openAgentsDatabase(env), {
+      agentStore: makeAgentRegistrationStoreForEnv(env),
+    })
   }
 
   if (request.method !== 'GET') {
@@ -7398,9 +7427,9 @@ const routeAuthHostRequest = async (
     const state = url.searchParams.get('state')
 
     if (state !== null) {
-      const attempt = await makeD1GitHubWriteRepository(
-        openAgentsDatabase(env),
-      ).findAttemptByState(state)
+      const attempt = await makeGitHubWriteRepositoryForEnv(env).findAttemptByState(
+        state,
+      )
 
       if (attempt !== undefined) {
         return handleGitHubWriteCallback(request, env, attempt)

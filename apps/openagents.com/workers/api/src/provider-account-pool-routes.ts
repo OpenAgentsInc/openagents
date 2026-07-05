@@ -8,6 +8,10 @@ import {
 } from './customer-order-agent-auth'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import type { RouteEffect } from './http/route-effects'
+import {
+  identityAuthMirrorFromEnv,
+  type IdentityAuthMirror,
+} from './identity-auth-domain-store'
 import { optionalString, readJsonObject } from './json-boundary'
 import { logWorkerRouteError } from './observability'
 import { PROVIDER_ACCOUNT_LEASE_POLICY_VERSION } from './provider-account-lease-policy'
@@ -233,6 +237,13 @@ const cooldownRemainingSeconds = (
     : null
 }
 
+// KS-8.18 follow-up (#8362): deliberately NOT mirrored. This runs inside
+// `buildProviderAccountPoolProjection`, on the hot GET-projection read
+// path (every pool status fetch), and is a bulk, key-less UPDATE — mirroring
+// it here would add an unbounded Postgres write to a read path, which is
+// exactly what the identity/auth RUNBOOK section warns against inheriting.
+// These status='expired' transitions converge on the next `--restart`
+// backfill sweep instead.
 const expireStalePoolLeases = async (
   db: D1Database,
   now: string,
@@ -568,6 +579,8 @@ const resetProviderAccountPoolAccount = async (
     resetAt: string
     userId: string
   }>,
+  // KS-8.18 follow-up (#8362): fail-soft identity/auth mirror handle.
+  mirror?: IdentityAuthMirror | undefined,
 ): Promise<boolean> => {
   const result = await db
     .prepare(
@@ -582,7 +595,17 @@ const resetProviderAccountPoolAccount = async (
     .bind(input.resetAt, input.userId, input.providerAccountRef)
     .run()
 
-  return (result.meta?.changes ?? 0) > 0
+  const changed = (result.meta?.changes ?? 0) > 0
+  if (changed && mirror !== undefined) {
+    // No `id` in scope — scan-mirror on the composite WHERE predicate
+    // (neither column is custody-bearing).
+    await mirror.mirrorRowsWhere(
+      'provider_accounts',
+      ['user_id', 'provider_account_ref'],
+      [input.userId, input.providerAccountRef],
+    )
+  }
+  return changed
 }
 
 const agentAuthFailureStatus = (
@@ -645,11 +668,15 @@ export const makeProviderAccountPoolRoutes = <
         const reset = yield* Effect.tryPromise({
           catch: poolProjectionError,
           try: () =>
-            resetProviderAccountPoolAccount(openAgentsDatabase(env), {
-              providerAccountRef,
-              resetAt: now,
-              userId: session.user.userId,
-            }),
+            resetProviderAccountPoolAccount(
+              openAgentsDatabase(env),
+              {
+                providerAccountRef,
+                resetAt: now,
+                userId: session.user.userId,
+              },
+              identityAuthMirrorFromEnv(env),
+            ),
         })
 
         if (!reset) {

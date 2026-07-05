@@ -540,6 +540,46 @@ export const requireIdentityAuthUnsafe = (
 }
 
 /**
+ * Delete the given composite-PK keys from the Postgres twin. Used ONLY for
+ * the narrow set of explicit-delete write call sites in this domain (today:
+ * `openauth_storage.remove()` — an explicit OpenAuth session/OTP-bucket
+ * invalidation, keyed on `key`). Idempotent — deleting an already-absent
+ * key is a no-op, so a mirror can safely call this even when it cannot
+ * prove the row still exists.
+ *
+ * Deliberately NOT used for D1's incidental read-path lazy-expiry or
+ * bulk-expiry side effects (e.g. `openauth_storage.get()`'s opportunistic
+ * expired-row cleanup, or the provider-account-lease stale-expiry sweeps
+ * that run inline on read-heavy projection builds) — those stay documented
+ * drift that converges on the next `--restart` backfill sweep rather than
+ * adding a Postgres round-trip to a hot read path.
+ */
+export const deleteIdentityAuthRows = async (
+  sql: SyncSql | SyncTransactionSql,
+  table: IdentityAuthDomainTable,
+  keys: ReadonlyArray<ReadonlyArray<string>>,
+): Promise<number> => {
+  if (keys.length === 0) return 0
+  const unsafe = requireIdentityAuthUnsafe(sql as SyncSql)
+  const spec = IDENTITY_AUTH_DOMAIN_TABLE_SPECS[table]
+  const values: Array<unknown> = []
+  const whereClauses = keys.map((key) => {
+    const clause = spec.keyColumns
+      .map((_column, columnIndex) => {
+        values.push(key[columnIndex] ?? null)
+        return `${spec.keyColumns[columnIndex]} = $${values.length}`
+      })
+      .join(" AND ")
+    return `(${clause})`
+  })
+  const result = await unsafe(
+    `DELETE FROM ${table} WHERE ${whereClauses.join(" OR ")} RETURNING 1 AS deleted`,
+    values,
+  )
+  return result.length
+}
+
+/**
  * Converge Postgres to the given D1 snapshot rows: full-row
  * `ON CONFLICT (composite PK) DO UPDATE` upserts. Idempotent — re-running
  * the same rows converges to the identical state; the mirror can never

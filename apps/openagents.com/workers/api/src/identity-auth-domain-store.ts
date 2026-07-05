@@ -20,21 +20,41 @@
 // exactly where they are: revoking on D1 denies immediately; the mirror
 // only ever copies the resolved D1 row.
 //
-// THE SEAM: identity/auth writes are spread across ~7 owning modules (six
+// THE SEAM: identity/auth writes are spread across ~10 owning modules (six
 // typed store/repository factories plus scattered inline route helpers).
-// The seam here is the KS-8.16 read-back mirror exposed two ways:
+// The seam here is the read-back mirror exposed two ways:
 //   1. `identityAuthMirrorFromEnv(env)` — a fail-soft `IdentityAuthMirror`
 //      handle a write call site invokes AFTER its authoritative D1 write
 //      to converge the touched rows (by PK) into Postgres. This is the
 //      uniform adoption path for every writer.
-//   2. `makeProviderAccountTokenCustodyStoreForEnv(env)` — the flagship
-//      drop-in: a `makeD1ProviderAccountTokenCustodyStore` wrap whose write
-//      methods read-back mirror after the D1 write. Token custody is the
-//      single most secret-bearing table (SPEC invariant 9) and its
-//      construction is centralized, so it is wired end-to-end in THIS lane.
-//      The remaining writers adopt `identityAuthMirrorFromEnv` in the
-//      decommission/wiring follow-up (RUNBOOK "Identity/auth domain
-//      cutover"); until then their rows converge on the backfill sweep.
+//   2. Drop-in `make*ForEnv(env)` factories — `makeProviderAccountTokenCustodyStoreForEnv`
+//      (the flagship, secret-bearing token-custody vault, wired in #8329),
+//      plus this follow-up's (#8362) `makeOpenAuthStorageForEnv`,
+//      `makeGitHubWriteRepositoryForEnv`, and
+//      `makeProviderAccountRepositoryForEnv` — each wraps a base D1
+//      store/repository and read-back mirrors every write method.
+//
+// WIRING STATUS (#8362 — every write call site listed in the follow-up
+// issue is now wired): all five typed factories adopt a mirror
+// (`agent-registration.ts`'s and `agent-owner-claim-routes.ts`'s
+// `makeAgentRegistrationStoreForEnv`/`makeAgentOwnerClaimStoreForEnv`
+// compose a dedicated identity-auth wrapper ON TOP of their pre-existing,
+// DIFFERENT-domain `AgentRuntimeRemainderMirror` wrap). The scattered
+// inline writers (`index.ts`'s `upsertGitHubUser`/`upsertEmailUser`,
+// `onboarding/repository.ts`'s five `users` UPDATEs,
+// `auth/email-otp-hardening.ts`'s SECOND `openauth_storage` writer,
+// `operator-provider-account-routes.ts`, `provider-account-pool-routes.ts`,
+// `artanis-operator-dashboard-routes.ts`) all take an optional
+// `IdentityAuthMirror` parameter, threaded from the nearest call site that
+// holds `env`. Two categories are DELIBERATELY left unmirrored, documented
+// inline at each site: (a) D1's own incidental bulk/lazy-expiry side
+// effects on HOT READ paths (`provider_account_leases` stale-expiry sweeps,
+// `openauth_storage.get()`'s lazy TTL cleanup) — mirroring those would add
+// unbounded/per-request Postgres writes to a read path, exactly what this
+// lane must avoid; they converge on the next `--restart` backfill sweep
+// instead; (b) a small number of call sites that only ever invoke READ
+// methods (e.g. `omni-handlers.ts`'s preflight checks, `artanis-forum-identity.ts`'s
+// resolve helper) need no mirror at all.
 //
 // SECRETS (SPEC invariant 9 — the invariant this domain motivated): the
 // Postgres twin holds EXACTLY what D1 holds (no widening), same at-rest
@@ -61,6 +81,7 @@
 // session-revocation verification + D1 drop.
 
 import {
+  deleteIdentityAuthRows,
   IDENTITY_AUTH_DOMAIN_TABLE_SPECS,
   normalizeIdentityAuthValue,
   requireIdentityAuthUnsafe,
@@ -69,7 +90,18 @@ import {
   type IdentityAuthDomainTable,
   type SyncSql,
 } from '@openagentsinc/khala-sync-server'
+import { joinKey } from '@openauthjs/openauth/storage/storage'
+import type { StorageAdapter } from '@openauthjs/openauth/storage/storage'
 
+import {
+  type OpenAuthStorageRuntime,
+  makeD1Storage,
+  systemOpenAuthStorageRuntime,
+} from './auth/openauth-storage'
+import {
+  makeD1GitHubWriteRepository,
+  type GitHubWriteRepository,
+} from './github-write-connections'
 import {
   defaultMakeKhalaSyncSqlClient,
   type KhalaSyncHyperdriveBinding,
@@ -77,6 +109,8 @@ import {
   type MakeKhalaSyncPushSqlClient,
 } from './khala-sync-push-routes'
 import { logWorkerRouteWarning } from './observability'
+import type { ProviderAccountRepository } from './provider-account-domain'
+import { makeD1ProviderAccountRepository } from './provider-account-repository'
 import {
   makeD1ProviderAccountTokenCustodyStore,
   type ProviderAccountTokenCustodyStore,
@@ -196,6 +230,16 @@ export type PostgresIdentityAuthStore = IdentityAuthWriteStore &
       text: string,
       params: ReadonlyArray<unknown>,
     ) => Promise<ReadonlyArray<Record<string, unknown>>>
+    /**
+     * Delete rows by composite PK from the Postgres twin ONLY — never
+     * touches D1. Used exclusively by `mirrorDeleteByKey` for the narrow
+     * set of explicit-delete writers in this domain (today:
+     * `openauth_storage.remove()`). Idempotent.
+     */
+    deleteRows: (
+      table: IdentityAuthDomainTable,
+      keys: ReadonlyArray<IdentityAuthKey>,
+    ) => Promise<number>
   }>
 
 export type MakePostgresIdentityAuthStoreDependencies = Readonly<{
@@ -224,6 +268,8 @@ export const makePostgresIdentityAuthStore = (
   }
 
   return {
+    deleteRows: (table, keys) =>
+      withSql(sql => deleteIdentityAuthRows(sql, table, keys)),
     queryRows: (text, params) =>
       withSql(async sql => requireIdentityAuthUnsafe(sql)(text, [...params])),
     upsertRows: (table, rows) =>
@@ -357,11 +403,24 @@ export type IdentityAuthMirror = Readonly<{
     values: ReadonlyArray<string>,
     refs?: ReadonlyArray<string>,
   ) => Promise<void>
+  /**
+   * Delete the given composite keys from the Postgres twin ONLY (D1 is
+   * unaffected — this is called AFTER an authoritative D1 delete/expiry to
+   * converge the mirror). Reserved for genuine explicit-delete write call
+   * sites (today: `openauth_storage.remove()`), never for incidental
+   * read-path cleanup or unbounded bulk-expiry sweeps.
+   */
+  mirrorDeleteByKey: (
+    table: IdentityAuthDomainTable,
+    keys: ReadonlyArray<IdentityAuthKey>,
+  ) => Promise<void>
 }>
 
 export type MakeIdentityAuthMirrorDependencies = Readonly<{
   db: D1Database
-  postgres: IdentityAuthWriteStore
+  // Needs `deleteRows` (only on `PostgresIdentityAuthStore`) for
+  // `mirrorDeleteByKey`.
+  postgres: PostgresIdentityAuthStore
   log: IdentityAuthLog
 }>
 
@@ -433,6 +492,17 @@ export const makeIdentityAuthMirror = (
           await postgres.upsertRows(table, rows.results ?? [])
         },
       ),
+
+    mirrorDeleteByKey: (table, keys) =>
+      keys.length === 0
+        ? Promise.resolve()
+        : guarded(
+            `mirror-delete:${table}`,
+            keys.slice(0, 10).map(key => key.join('/')),
+            async () => {
+              await postgres.deleteRows(table, keys)
+            },
+          ),
   }
 }
 
@@ -555,6 +625,259 @@ export const makeProviderAccountTokenCustodyStoreForEnv = (
       await mirror.mirrorRowsByKey('provider_account_token_custody_audit', [
         [auditEvent.id],
       ])
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// OpenAuth storage drop-in (#8362 follow-up wiring)
+// ---------------------------------------------------------------------------
+
+/**
+ * Drop-in for `makeD1Storage(openAgentsDatabase(env), runtime)` (the
+ * OpenAuth `StorageAdapter`, `openauth_storage` — every session/refresh
+ * payload and email-OTP rate-limit bucket lives here; SECOND writer is
+ * `auth/email-otp-hardening.ts` `reserveAuthEmailOtpSend`, wired
+ * separately below). Wraps the WRITE surface:
+ *   - `set` (upsert): read-back mirrors the row by `key` after the D1
+ *     write, same as every other writer in this file.
+ *   - `remove` (explicit delete): the ONLY hard-delete write call site in
+ *     this domain. The D1 delete runs unchanged, then
+ *     `mirror.mirrorDeleteByKey` removes the same `key` from the Postgres
+ *     twin — this is the one writer that needed the new delete-mirror
+ *     capability above.
+ *
+ * KNOWN, DOCUMENTED DRIFT (not a bug): `get()` also deletes a row
+ * internally when it discovers the row already expired
+ * (`auth/openauth-storage.ts` lines ~39-46) — a lazy-expiry side effect of
+ * a READ. This wrapper deliberately does NOT mirror that path: `get()` is
+ * the single hottest call in the entire identity/auth domain (every
+ * OpenAuth session/code lookup), and adding a Postgres round-trip there
+ * would be exactly the "per-request read storm" RUNBOOK.md's identity/auth
+ * cutover section warns against inheriting. The result is that the
+ * Postgres twin can accumulate expired-but-undeleted `openauth_storage`
+ * rows the mirror never proactively removes, so this table's row COUNT
+ * will not converge to exact equality the way `users`/`auth_identities`
+ * do — a structural property of a read-back-only mirror over a lazily
+ * TTL'd table, not incomplete wiring. See RUNBOOK.md's identity/auth
+ * section for the explicit callout and the recommended remediation before
+ * any future read cutover (an active TTL-based prune of Postgres's own
+ * expired rows, independent of D1, or accept it the same way the
+ * tokens-served projection documents its own expected drift sources).
+ */
+export const makeOpenAuthStorageForEnv = (
+  env: IdentityAuthStoreEnv,
+  runtime: OpenAuthStorageRuntime = systemOpenAuthStorageRuntime,
+  options: MakeIdentityAuthStoreOptions = {},
+): StorageAdapter => {
+  const db =
+    options.db ?? openAgentsDatabase(env as { OPENAGENTS_DB: D1Database })
+  const base = makeD1Storage(db, runtime)
+  const mirror = identityAuthMirrorFromEnv(env, { ...options, db })
+  if (mirror === undefined) {
+    return base
+  }
+  return {
+    ...base,
+    set: async (key, value, expiry) => {
+      await base.set(key, value, expiry)
+      await mirror.mirrorRowsByKey('openauth_storage', [[joinKey(key)]])
+    },
+    remove: async key => {
+      await base.remove(key)
+      await mirror.mirrorDeleteByKey('openauth_storage', [[joinKey(key)]])
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GitHub write-connections drop-in (#8362 follow-up wiring)
+// ---------------------------------------------------------------------------
+
+/**
+ * Drop-in for `makeD1GitHubWriteRepository(openAgentsDatabase(env))`.
+ * Wraps all six WRITE methods on `GitHubWriteRepository`; the authoritative
+ * D1 write (or `db.batch`) runs unchanged, then the affected rows read-back
+ * mirror by their PKs (all three `github_write_*` tables key on `id`).
+ * `disconnectConnection` additionally scan-mirrors
+ * `github_write_auth_grants` on `connection_id` because it can revoke an
+ * unbounded number of issued grants without ever resolving their
+ * individual ids (not a custody column, so the scan ref is safe to log).
+ */
+export const makeGitHubWriteRepositoryForEnv = (
+  env: IdentityAuthStoreEnv,
+  options: MakeIdentityAuthStoreOptions = {},
+): GitHubWriteRepository => {
+  const db =
+    options.db ?? openAgentsDatabase(env as { OPENAGENTS_DB: D1Database })
+  const base = makeD1GitHubWriteRepository(db)
+  const mirror = identityAuthMirrorFromEnv(env, { ...options, db })
+  if (mirror === undefined) {
+    return base
+  }
+  return {
+    ...base,
+    createAttempt: async attempt => {
+      const result = await base.createAttempt(attempt)
+      await mirror.mirrorRowsByKey('github_write_connection_attempts', [
+        [result.id],
+      ])
+      return result
+    },
+    markAttemptFailed: async (attempt, status, reason, now) => {
+      const result = await base.markAttemptFailed(attempt, status, reason, now)
+      await mirror.mirrorRowsByKey('github_write_connection_attempts', [
+        [result.id],
+      ])
+      return result
+    },
+    recordConnectedAttempt: async input => {
+      const result = await base.recordConnectedAttempt(input)
+      await mirror.mirrorRowsByKey('github_write_connections', [[result.id]])
+      await mirror.mirrorRowsByKey('github_write_connection_attempts', [
+        [input.attempt.id],
+      ])
+      return result
+    },
+    disconnectConnection: async input => {
+      const result = await base.disconnectConnection(input)
+      if (result !== undefined) {
+        await mirror.mirrorRowsByKey('github_write_connections', [
+          [result.id],
+        ])
+        await mirror.mirrorRowsWhere(
+          'github_write_auth_grants',
+          ['connection_id'],
+          [result.id],
+        )
+      }
+      return result
+    },
+    createGrant: async grant => {
+      const result = await base.createGrant(grant)
+      await mirror.mirrorRowsByKey('github_write_auth_grants', [[result.id]])
+      return result
+    },
+    markGrantUsed: async grant => {
+      const result = await base.markGrantUsed(grant)
+      await mirror.mirrorRowsByKey('github_write_auth_grants', [[result.id]])
+      return result
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Provider-account repository drop-in (#8362 follow-up wiring)
+// ---------------------------------------------------------------------------
+
+/**
+ * Drop-in for `makeD1ProviderAccountRepository(openAgentsDatabase(env))`.
+ * Wraps all seven WRITE methods; every one of them already writes 2-3
+ * tables per call (`provider_accounts`, `provider_account_connection_attempts`,
+ * `provider_account_auth_grants`, `provider_account_events` — all keyed on
+ * `id`), so each wrapper issues one `mirrorRowsByKey` per touched table
+ * after the unchanged D1 write. `recordAccountHealth` locates its account
+ * row by `provider_account_ref` in D1 but the input `account` record still
+ * carries `.id`, so the mirror key is `account.id` there too.
+ * `disconnectAccount` additionally scan-mirrors
+ * `provider_account_auth_grants` on `provider_account_id` (can revoke an
+ * unbounded number of issued grants with no individual ids in scope).
+ * `provider_account_token_custody`/`_audit` are NOT part of this
+ * repository (separate flagship drop-in above).
+ */
+export const makeProviderAccountRepositoryForEnv = (
+  env: IdentityAuthStoreEnv,
+  options: MakeIdentityAuthStoreOptions = {},
+): ProviderAccountRepository => {
+  const db =
+    options.db ?? openAgentsDatabase(env as { OPENAGENTS_DB: D1Database })
+  const base = makeD1ProviderAccountRepository(db)
+  const mirror = identityAuthMirrorFromEnv(env, { ...options, db })
+  if (mirror === undefined) {
+    return base
+  }
+  return {
+    ...base,
+    saveStartedDeviceLogin: async (
+      account,
+      attempt,
+      event,
+      accountAlreadyExists,
+    ) => {
+      await base.saveStartedDeviceLogin(
+        account,
+        attempt,
+        event,
+        accountAlreadyExists,
+      )
+      await mirror.mirrorRowsByKey('provider_accounts', [[account.id]])
+      await mirror.mirrorRowsByKey('provider_account_connection_attempts', [
+        [attempt.id],
+      ])
+      await mirror.mirrorRowsByKey('provider_account_events', [[event.id]])
+    },
+    recordConnectedAttempt: async (account, attempt, event) => {
+      const result = await base.recordConnectedAttempt(account, attempt, event)
+      await mirror.mirrorRowsByKey('provider_accounts', [[result.id]])
+      await mirror.mirrorRowsByKey('provider_account_connection_attempts', [
+        [attempt.id],
+      ])
+      await mirror.mirrorRowsByKey('provider_account_events', [[event.id]])
+      return result
+    },
+    recordFailedAttempt: async (account, attempt, event) => {
+      const result = await base.recordFailedAttempt(account, attempt, event)
+      await mirror.mirrorRowsByKey('provider_accounts', [[result.id]])
+      await mirror.mirrorRowsByKey('provider_account_connection_attempts', [
+        [attempt.id],
+      ])
+      await mirror.mirrorRowsByKey('provider_account_events', [[event.id]])
+      return result
+    },
+    recordAccountHealth: async (providerAccountRef, account, event) => {
+      const result = await base.recordAccountHealth(
+        providerAccountRef,
+        account,
+        event,
+      )
+      await mirror.mirrorRowsByKey('provider_accounts', [[account.id]])
+      await mirror.mirrorRowsByKey('provider_account_events', [[event.id]])
+      return result
+    },
+    createAuthGrant: async (grant, event) => {
+      const result = await base.createAuthGrant(grant, event)
+      await mirror.mirrorRowsByKey('provider_account_auth_grants', [
+        [result.id],
+      ])
+      await mirror.mirrorRowsByKey('provider_account_events', [[event.id]])
+      return result
+    },
+    markGrantUsed: async (grant, event) => {
+      const result = await base.markGrantUsed(grant, event)
+      await mirror.mirrorRowsByKey('provider_account_auth_grants', [
+        [result.id],
+      ])
+      await mirror.mirrorRowsByKey('provider_account_events', [[event.id]])
+      return result
+    },
+    disconnectAccount: async (userId, providerAccountRef, now, metadataJson, event) => {
+      const result = await base.disconnectAccount(
+        userId,
+        providerAccountRef,
+        now,
+        metadataJson,
+        event,
+      )
+      if (result !== undefined) {
+        await mirror.mirrorRowsByKey('provider_accounts', [[result.id]])
+        await mirror.mirrorRowsWhere(
+          'provider_account_auth_grants',
+          ['provider_account_id'],
+          [result.id],
+        )
+        await mirror.mirrorRowsByKey('provider_account_events', [[event.id]])
+      }
+      return result
     },
   }
 }

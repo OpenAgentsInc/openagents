@@ -23,6 +23,10 @@ import {
   unauthorized,
 } from './http/responses'
 import {
+  identityAuthMirrorFromEnv,
+  type IdentityAuthMirror,
+} from './identity-auth-domain-store'
+import {
   decodeUnknownWithSchema,
   optionalString,
   parseJsonRecord,
@@ -1260,12 +1264,50 @@ export const makeMirroredAgentOwnerClaimStore = (
   }
 }
 
+// KS-8.18 follow-up (#8362): identity/auth domain mirror for `approveClaim`
+// — the only method here that writes `users`/`auth_identities`/
+// `openauth_agent_links`. Composed ON TOP of the pre-existing
+// `AgentRuntimeRemainderMirror` wrapper above (which only ever covered
+// `agent_profiles`/`agent_credentials`, a different domain, plus the
+// owner-claim-specific `agent_owner_claims` table — none of those are part
+// of the 17-table identity/auth registry). Before this wiring the
+// `openauth_agent_links` row created here was never mirrored to Postgres
+// at all. Fail-soft: mirror methods never throw.
+const makeIdentityAuthMirroredAgentOwnerClaimStore = (
+  d1: AgentOwnerClaimStore,
+  mirror: IdentityAuthMirror | undefined,
+): AgentOwnerClaimStore => {
+  if (mirror === undefined) {
+    return d1
+  }
+
+  return {
+    ...d1,
+    approveClaim: async input => {
+      const claim = await d1.approveClaim(input)
+      if (claim !== undefined) {
+        await mirror.mirrorRowsByKey('users', [[input.registration.user.id]])
+        await mirror.mirrorRowsByKey('auth_identities', [
+          [input.registration.identity.id],
+        ])
+        await mirror.mirrorRowsByKey('openauth_agent_links', [
+          [`openauth_agent_link_${input.claimId}`],
+        ])
+      }
+      return claim
+    },
+  }
+}
+
 export const makeAgentOwnerClaimStoreForEnv = (
   env: AgentRuntimeRemainderStoreEnv,
 ): AgentOwnerClaimStore =>
-  makeMirroredAgentOwnerClaimStore(
-    makeD1AgentOwnerClaimStore(openAgentsDatabase(env)),
-    makeAgentRuntimeRemainderMirrorForEnv(env),
+  makeIdentityAuthMirroredAgentOwnerClaimStore(
+    makeMirroredAgentOwnerClaimStore(
+      makeD1AgentOwnerClaimStore(openAgentsDatabase(env)),
+      makeAgentRuntimeRemainderMirrorForEnv(env),
+    ),
+    identityAuthMirrorFromEnv(env),
   )
 
 const bearerTokenFromRequest = (request: Request): string | undefined => {

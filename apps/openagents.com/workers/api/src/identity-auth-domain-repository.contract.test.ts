@@ -38,6 +38,7 @@ import {
   hasLocalPostgres,
   startLocalPostgres,
 } from '@openagentsinc/khala-sync-server/test/local-postgres'
+import { joinKey } from '@openauthjs/openauth/storage/storage'
 import { readFileSync } from 'node:fs'
 import * as path from 'node:path'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
@@ -46,6 +47,7 @@ import {
   identityAuthFlagsFromEnv,
   identityAuthMirrorFromEnv,
   makeD1IdentityAuthWriteStore,
+  makeOpenAuthStorageForEnv,
   makePostgresIdentityAuthStore,
   makeProviderAccountTokenCustodyStoreForEnv,
   type IdentityAuthDiagnostic,
@@ -507,6 +509,145 @@ describe.skipIf(!hasLocalPostgres())(
           d.fields.refs.includes('provider-account.failsoft'),
         ),
       ).toBe(true)
+    })
+  },
+)
+
+// ---------------------------------------------------------------------------
+// #8362 follow-up: makeOpenAuthStorageForEnv — the drop-in with the NEW
+// `mirrorDeleteByKey` capability (the only hard-delete writer in this
+// domain: `remove()`). Verifies set→mirror AND remove→delete-mirror, plus
+// custody redaction (value_json never leaks into a diagnostic).
+// ---------------------------------------------------------------------------
+
+describe.skipIf(!hasLocalPostgres())(
+  'makeOpenAuthStorageForEnv mirrors set() and delete-mirrors remove()',
+  () => {
+    let pg: Awaited<ReturnType<typeof startLocalPostgres>>
+    let client: PgClient | undefined
+    let sqlite: ReturnType<typeof makeSqliteD1> | undefined
+    let env: IdentityAuthStoreEnv
+    let options: MakeIdentityAuthStoreOptions
+    const diagnostics: Array<{
+      event: IdentityAuthDiagnosticEvent
+      fields: IdentityAuthDiagnostic
+    }> = []
+
+    beforeAll(async () => {
+      pg = await startLocalPostgres()
+      const postgres = (await import('postgres')).default
+      const admin = postgres(pg.url, { max: 1, prepare: false })
+      await admin.unsafe('CREATE DATABASE identity_auth_openauth_storage')
+      await admin.end({ timeout: 5 })
+      const raw = postgres(pg.urlFor('identity_auth_openauth_storage'), {
+        max: 4,
+        prepare: false,
+      })
+      client = raw as unknown as PgClient
+      await raw.unsafe(readFileSync(MIGRATION_0028, 'utf8'))
+
+      sqlite = makeSqliteD1()
+      sqlite.exec(IDENTITY_AUTH_DOMAIN_D1_SCHEMA)
+
+      env = {
+        KHALA_SYNC_DB: { connectionString: 'postgres://contract' },
+        OPENAGENTS_DB: sqlite.db,
+      }
+      options = {
+        db: sqlite.db,
+        log: (event, fields) => {
+          diagnostics.push({ event, fields })
+        },
+        makeSqlClient: () =>
+          Promise.resolve({
+            end: () => Promise.resolve(),
+            sql: raw as never,
+          }),
+      }
+    }, 120_000)
+
+    afterAll(async () => {
+      await client?.end({ timeout: 5 })
+      await pg?.stop()
+      sqlite?.close()
+    }, 60_000)
+
+    test('set() mirrors the row byte-faithfully; remove() converges the delete to Postgres', async () => {
+      const storage = makeOpenAuthStorageForEnv(env, undefined, options)
+      const key = ['session', 'contract-1']
+      const storageKey = joinKey(key)
+
+      await storage.set(key, { hello: 'world' }, undefined)
+
+      expect(diagnostics).toEqual([])
+
+      const pgRowsAfterSet = await (client as PgClient).unsafe(
+        `SELECT key, value_json FROM openauth_storage WHERE key = $1`,
+        [storageKey],
+      )
+      expect(pgRowsAfterSet.length).toBe(1)
+      expect(JSON.parse(String(pgRowsAfterSet[0]?.['value_json']))).toEqual({
+        hello: 'world',
+      })
+
+      // D1 remains sole authority — the mirror never invents a read path.
+      const fromStorage = await storage.get(key)
+      expect(fromStorage).toEqual({ hello: 'world' })
+
+      await storage.remove(key)
+
+      const d1RowsAfterRemove = await sqlite!.db
+        .prepare(`SELECT key FROM openauth_storage WHERE key = ?`)
+        .bind(storageKey)
+        .all<{ key: string }>()
+      expect(d1RowsAfterRemove.results.length).toBe(0)
+
+      const pgRowsAfterRemove = await (client as PgClient).unsafe(
+        `SELECT key FROM openauth_storage WHERE key = $1`,
+        [storageKey],
+      )
+      expect(
+        pgRowsAfterRemove.length,
+        'remove() must delete-mirror the Postgres twin, not just leave it stale',
+      ).toBe(0)
+      expect(diagnostics).toEqual([])
+    })
+
+    test('a broken Postgres twin never fails set()/remove(), and value_json never leaks', async () => {
+      const broken: Array<{
+        event: IdentityAuthDiagnosticEvent
+        fields: IdentityAuthDiagnostic
+      }> = []
+      const brokenOptions: MakeIdentityAuthStoreOptions = {
+        db: sqlite!.db,
+        log: (event, fields) => {
+          broken.push({ event, fields })
+        },
+        makeSqlClient: () => Promise.reject(new Error('postgres is down')),
+      }
+      const storage = makeOpenAuthStorageForEnv(env, undefined, brokenOptions)
+      const key = ['session', 'contract-failsoft']
+      const storageKey = joinKey(key)
+
+      await storage.set(key, { secretPayload: 'never-leak-this' }, undefined)
+      const persisted = await sqlite!.db
+        .prepare(`SELECT value_json FROM openauth_storage WHERE key = ?`)
+        .bind(storageKey)
+        .first<{ value_json: string }>()
+      expect(JSON.parse(String(persisted?.value_json))).toEqual({
+        secretPayload: 'never-leak-this',
+      })
+
+      await storage.remove(key)
+
+      expect(broken.map(d => d.event)).toContain(
+        'khala_sync_identity_dual_write_failed',
+      )
+      for (const diagnostic of broken) {
+        const line = JSON.stringify(diagnostic)
+        expect(line).not.toContain('secretPayload')
+        expect(line).not.toContain('never-leak-this')
+      }
     })
   },
 )

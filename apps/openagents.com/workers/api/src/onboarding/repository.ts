@@ -1,6 +1,11 @@
 import { Effect, Layer, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
+import {
+  identityAuthMirrorFromEnv,
+  type IdentityAuthMirror,
+  type IdentityAuthStoreEnv,
+} from '../identity-auth-domain-store'
 import { openAgentsDatabase } from '../runtime'
 import { currentIsoTimestamp } from '../runtime-primitives'
 import {
@@ -11,9 +16,10 @@ import {
   type OnboardingStep,
 } from './schema'
 
-type OnboardingEnv = Readonly<{
-  OPENAGENTS_DB: D1Database
-}>
+type OnboardingEnv = IdentityAuthStoreEnv &
+  Readonly<{
+    OPENAGENTS_DB: D1Database
+  }>
 
 export type OnboardingRuntime = Readonly<{
   nowIso: () => string
@@ -208,17 +214,29 @@ const readStatus = (
     return statusFromRow(row)
   })
 
+// KS-8.18 follow-up (#8362): every write below is a `users` row UPDATE.
+// After the D1 write completes, fail-soft mirror the row by `id` (never
+// blocks or fails onboarding on a mirror error).
+const mirrorUserRow = (
+  mirror: IdentityAuthMirror | undefined,
+  userId: string,
+): Effect.Effect<void> =>
+  mirror === undefined
+    ? Effect.void
+    : Effect.promise(() => mirror.mirrorRowsByKey('users', [[userId]]))
+
 const selectRepository = (
   db: D1Database,
   runtime: OnboardingRuntime,
   userId: string,
   repository: OnboardingGitHubRepository,
+  mirror?: IdentityAuthMirror | undefined,
 ): Effect.Effect<OnboardingStatus, OnboardingRepositoryError> =>
   Effect.gen(function* () {
     const current = yield* readStatus(db, userId)
 
     if (current.step !== 'repository') {
-      return yield* updateRepository(db, runtime, userId, repository)
+      return yield* updateRepository(db, runtime, userId, repository, mirror)
     }
 
     const now = runtime.nowIso()
@@ -261,6 +279,7 @@ const selectRepository = (
         )
         .run(),
     )
+    yield* mirrorUserRow(mirror, userId)
 
     return yield* readStatus(db, userId)
   })
@@ -270,6 +289,7 @@ const updateRepository = (
   runtime: OnboardingRuntime,
   userId: string,
   repository: OnboardingGitHubRepository,
+  mirror?: IdentityAuthMirror | undefined,
 ): Effect.Effect<OnboardingStatus, OnboardingRepositoryError> =>
   Effect.gen(function* () {
     yield* readStatus(db, userId)
@@ -313,6 +333,7 @@ const updateRepository = (
         )
         .run(),
     )
+    yield* mirrorUserRow(mirror, userId)
 
     return yield* readStatus(db, userId)
   })
@@ -321,6 +342,7 @@ const skipRepository = (
   db: D1Database,
   runtime: OnboardingRuntime,
   userId: string,
+  mirror?: IdentityAuthMirror | undefined,
 ): Effect.Effect<OnboardingStatus, OnboardingRepositoryError> =>
   Effect.gen(function* () {
     const current = yield* readStatus(db, userId)
@@ -356,6 +378,7 @@ const skipRepository = (
         .bind(now, now, now, userId)
         .run(),
     )
+    yield* mirrorUserRow(mirror, userId)
 
     return yield* readStatus(db, userId)
   })
@@ -364,6 +387,7 @@ const skipBilling = (
   db: D1Database,
   runtime: OnboardingRuntime,
   userId: string,
+  mirror?: IdentityAuthMirror | undefined,
 ): Effect.Effect<OnboardingStatus, OnboardingRepositoryError> =>
   Effect.gen(function* () {
     const current = yield* readStatus(db, userId)
@@ -390,6 +414,7 @@ const skipBilling = (
         .bind(now, now, now, now, userId)
         .run(),
     )
+    yield* mirrorUserRow(mirror, userId)
 
     return yield* readStatus(db, userId)
   })
@@ -399,6 +424,7 @@ const submitGoal = (
   runtime: OnboardingRuntime,
   userId: string,
   goal: string,
+  mirror?: IdentityAuthMirror | undefined,
 ): Effect.Effect<OnboardingStatus, OnboardingRepositoryError> =>
   Effect.gen(function* () {
     const current = yield* readStatus(db, userId)
@@ -430,6 +456,7 @@ const submitGoal = (
         .bind(trimmedGoal, now, now, userId)
         .run(),
     )
+    yield* mirrorUserRow(mirror, userId)
 
     return yield* readStatus(db, userId)
   })
@@ -466,8 +493,10 @@ export class OnboardingStateStore extends Context.Service<
   static readonly layer = (
     env: OnboardingEnv,
     runtime: OnboardingRuntime = systemOnboardingRuntime,
-  ) =>
-    Layer.succeed(OnboardingStateStore, {
+  ) => {
+    const mirror = identityAuthMirrorFromEnv(env)
+
+    return Layer.succeed(OnboardingStateStore, {
       readStatus: Effect.fn('OnboardingStateStore.readStatus')(userId =>
         readStatus(openAgentsDatabase(env), userId),
       ),
@@ -478,6 +507,7 @@ export class OnboardingStateStore extends Context.Service<
             runtime,
             userId,
             repository,
+            mirror,
           ),
       ),
       updateRepository: Effect.fn('OnboardingStateStore.updateRepository')(
@@ -487,18 +517,20 @@ export class OnboardingStateStore extends Context.Service<
             runtime,
             userId,
             repository,
+            mirror,
           ),
       ),
       skipRepository: Effect.fn('OnboardingStateStore.skipRepository')(userId =>
-        skipRepository(openAgentsDatabase(env), runtime, userId),
+        skipRepository(openAgentsDatabase(env), runtime, userId, mirror),
       ),
       skipBilling: Effect.fn('OnboardingStateStore.skipBilling')(userId =>
-        skipBilling(openAgentsDatabase(env), runtime, userId),
+        skipBilling(openAgentsDatabase(env), runtime, userId, mirror),
       ),
       submitGoal: Effect.fn('OnboardingStateStore.submitGoal')((userId, goal) =>
-        submitGoal(openAgentsDatabase(env), runtime, userId, goal),
+        submitGoal(openAgentsDatabase(env), runtime, userId, goal, mirror),
       ),
     })
+  }
 }
 
 export const readOnboardingStatusForUser = (

@@ -1,3 +1,4 @@
+import type { IdentityAuthMirror } from '../identity-auth-domain-store'
 import { safeJsonRecord } from '../json-boundary'
 import { epochMillisToIsoTimestamp } from '../runtime-primitives'
 
@@ -137,6 +138,11 @@ export const reserveAuthEmailOtpSend = async (
   input: AuthEmailOtpRateLimitInput,
   runtime: AuthEmailOtpRateLimitRuntime,
   policy: AuthEmailOtpRateLimitPolicy = defaultAuthEmailOtpRateLimitPolicy,
+  // KS-8.18 follow-up (#8362): this is the SECOND writer to
+  // `openauth_storage` (the first is `auth/openauth-storage.ts`'s
+  // `makeD1Storage`/`makeOpenAuthStorageForEnv`). Fail-soft — a mirror
+  // failure never blocks or fails the rate-limit decision.
+  mirror?: IdentityAuthMirror | undefined,
 ): Promise<AuthEmailOtpRateLimitResult> => {
   const nowMs = runtime.nowMs()
   const buckets = await authEmailOtpRateLimitBuckets(input, policy)
@@ -169,6 +175,13 @@ export const reserveAuthEmailOtpSend = async (
       writeBucketState(db, bucket, state, state.count + 1, runtime.nowIso()),
     ),
   )
+
+  if (mirror !== undefined) {
+    await mirror.mirrorRowsByKey(
+      'openauth_storage',
+      states.map(({ state }) => [state.key]),
+    )
+  }
 
   return {
     _tag: 'Allowed',

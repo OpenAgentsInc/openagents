@@ -1,6 +1,10 @@
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import {
+  identityAuthMirrorFromEnv,
+  type IdentityAuthMirror,
+} from './identity-auth-domain-store'
 import { openAgentsDatabase } from './runtime'
 import { currentIsoTimestamp } from './runtime-primitives'
 
@@ -374,6 +378,8 @@ const resetOperatorAccountCooldown = async (
     now: string
     userId: string
   }>,
+  // KS-8.18 follow-up (#8362): fail-soft identity/auth mirror handle.
+  mirror?: IdentityAuthMirror | undefined,
 ): Promise<boolean> => {
   const result = await db
     .prepare(
@@ -388,7 +394,18 @@ const resetOperatorAccountCooldown = async (
     .bind(input.now, input.userId, input.accountRefHash)
     .run()
 
-  return (result.meta?.changes ?? 0) > 0
+  const changed = (result.meta?.changes ?? 0) > 0
+  if (changed && mirror !== undefined) {
+    // No `id` in scope (`accountRefHash` here is actually the account's
+    // provider_account_ref) — scan-mirror on the composite WHERE
+    // predicate (neither column is custody-bearing).
+    await mirror.mirrorRowsWhere(
+      'provider_accounts',
+      ['user_id', 'provider_account_ref'],
+      [input.userId, input.accountRefHash],
+    )
+  }
+  return changed
 }
 
 export const makeOperatorArtanisDashboardRoutes = <
@@ -453,11 +470,15 @@ export const makeOperatorArtanisDashboardRoutes = <
         const didReset = yield* Effect.tryPromise({
           catch: error => new OperatorArtanisDashboardStorageError({ error }),
           try: () =>
-            resetOperatorAccountCooldown(db, {
-              accountRefHash,
-              now,
-              userId: session.user.userId,
-            }),
+            resetOperatorAccountCooldown(
+              db,
+              {
+                accountRefHash,
+                now,
+                userId: session.user.userId,
+              },
+              identityAuthMirrorFromEnv(env),
+            ),
         })
 
         if (!didReset) {

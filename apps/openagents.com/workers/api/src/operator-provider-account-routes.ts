@@ -1,5 +1,10 @@
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import {
+  identityAuthMirrorFromEnv,
+  makeProviderAccountRepositoryForEnv,
+  type IdentityAuthMirror,
+} from './identity-auth-domain-store'
+import {
   isRecord,
   optionalBoolean,
   optionalString,
@@ -39,7 +44,6 @@ import {
 } from './provider-account-route-errors'
 import {
   issueProviderAccountGrant,
-  makeD1ProviderAccountRepository,
   recordProviderAccountHealth,
   refreshChatGptCodexDeviceLoginForUser,
   resolveProviderAccountGrant,
@@ -606,7 +610,10 @@ const recordSanityCheck = async (
     summary: string
     checkedAt: string
   }>,
+  // KS-8.18 follow-up (#8362): fail-soft identity/auth mirror handle.
+  mirror?: IdentityAuthMirror | undefined,
 ): Promise<void> => {
+  const sanityCheckId = compactRandomId('provider_sanity_check')
   await db.batch([
     db
       .prepare(
@@ -625,7 +632,7 @@ const recordSanityCheck = async (
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
-        compactRandomId('provider_sanity_check'),
+        sanityCheckId,
         input.account.id,
         input.account.userId,
         input.account.teamId,
@@ -657,6 +664,13 @@ const recordSanityCheck = async (
         input.account.id,
       ),
   ])
+
+  if (mirror !== undefined) {
+    await mirror.mirrorRowsByKey('provider_account_sanity_checks', [
+      [sanityCheckId],
+    ])
+    await mirror.mirrorRowsByKey('provider_accounts', [[input.account.id]])
+  }
 }
 
 const recordParallelProbeReceipt = async (
@@ -666,7 +680,10 @@ const recordParallelProbeReceipt = async (
     check: ProviderAccountSanityCheck
     probeRunId: string
   }>,
+  // KS-8.18 follow-up (#8362): fail-soft identity/auth mirror handle.
+  mirror?: IdentityAuthMirror | undefined,
 ): Promise<void> => {
+  const receiptId = compactRandomId('provider_parallel_probe_receipt')
   await db.batch([
     db
       .prepare(
@@ -688,7 +705,7 @@ const recordParallelProbeReceipt = async (
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
-        compactRandomId('provider_parallel_probe_receipt'),
+        receiptId,
         input.probeRunId,
         input.check.probeId,
         input.check.leaseId,
@@ -725,6 +742,13 @@ const recordParallelProbeReceipt = async (
         input.account.id,
       ),
   ])
+
+  if (mirror !== undefined) {
+    await mirror.mirrorRowsByKey('provider_account_parallel_probe_receipts', [
+      [receiptId],
+    ])
+    await mirror.mirrorRowsByKey('provider_accounts', [[input.account.id]])
+  }
 }
 
 const allSummary = (
@@ -818,7 +842,14 @@ const acquireProviderAccountLease = async (
     now: string
     expiresAt: string
   }>,
+  // KS-8.18 follow-up (#8362): fail-soft identity/auth mirror handle.
+  mirror?: IdentityAuthMirror | undefined,
 ): Promise<ProviderAccountLeaseResponse | undefined> => {
+  // NOTE: this bulk stale-expiry UPDATE is deliberately NOT mirrored here —
+  // it touches an unbounded number of rows with no individual ids in
+  // scope, and this function runs on the hot lease-acquire path. Those
+  // status='expired' transitions converge on the next `--restart` backfill
+  // sweep instead of adding an unbounded Postgres write to a hot path.
   await db
     .prepare(
       `UPDATE provider_account_leases
@@ -965,6 +996,13 @@ const acquireProviderAccountLease = async (
     .bind(input.now, input.now, row.provider_account_id)
     .run()
 
+  if (mirror !== undefined) {
+    await mirror.mirrorRowsByKey('provider_account_leases', [[row.id]])
+    await mirror.mirrorRowsByKey('provider_accounts', [
+      [row.provider_account_id],
+    ])
+  }
+
   const accountLabelRow = await db
     .prepare(
       `SELECT COALESCE(operator_label, account_label) AS account_label
@@ -1054,6 +1092,11 @@ const findActiveLeaseByRef = async (
   return row === null ? undefined : row
 }
 
+// KS-8.18 follow-up (#8362): deliberately NOT mirrored — called from
+// read-heavy paths (`findActiveLeaseByRef`, `listActiveProviderAccountLeases`)
+// as a bulk, key-less UPDATE. Mirroring here would add an unbounded
+// Postgres write to hot read paths. These status='expired' transitions
+// converge on the next `--restart` backfill sweep instead.
 const expireStaleProviderAccountLeases = async (
   db: D1Database,
   now: string,
@@ -1406,6 +1449,8 @@ const resetOperatorProviderAccount = async (
     resetAt: string
     userId: string
   }>,
+  // KS-8.18 follow-up (#8362): fail-soft identity/auth mirror handle.
+  mirror?: IdentityAuthMirror | undefined,
 ): Promise<boolean> => {
   const result = await db
     .prepare(
@@ -1429,12 +1474,25 @@ const resetOperatorProviderAccount = async (
     .bind(input.resetAt, input.resetAt, input.userId, input.providerAccountRef)
     .run()
 
-  return (result.meta?.changes ?? 0) > 0
+  const changed = (result.meta?.changes ?? 0) > 0
+  if (changed && mirror !== undefined) {
+    // No `id` in scope — the WHERE clause resolves by (user_id,
+    // provider_account_ref), so scan-mirror on that composite predicate
+    // (neither column is custody-bearing).
+    await mirror.mirrorRowsWhere(
+      'provider_accounts',
+      ['user_id', 'provider_account_ref'],
+      [input.userId, input.providerAccountRef],
+    )
+  }
+  return changed
 }
 
 const touchProviderAccountLease = async (
   db: D1Database,
   input: Readonly<{ leaseRef: string; now: string; expiresAt: string }>,
+  // KS-8.18 follow-up (#8362): fail-soft identity/auth mirror handle.
+  mirror?: IdentityAuthMirror | undefined,
 ): Promise<boolean> => {
   const result = await db
     .prepare(
@@ -1447,6 +1505,14 @@ const touchProviderAccountLease = async (
     .bind(input.now, input.expiresAt, input.leaseRef)
     .run()
 
+  if (result.success && mirror !== undefined) {
+    // Keyed by `lease_ref` here, not the table's `id` PK — scan-mirror.
+    await mirror.mirrorRowsWhere(
+      'provider_account_leases',
+      ['lease_ref'],
+      [input.leaseRef],
+    )
+  }
   return result.success
 }
 
@@ -1459,6 +1525,8 @@ const releaseProviderAccountLease = async (
     terminalOutcome: string
     failureClass: string | null
   }>,
+  // KS-8.18 follow-up (#8362): fail-soft identity/auth mirror handle.
+  mirror?: IdentityAuthMirror | undefined,
 ): Promise<boolean> => {
   const result = await db
     .prepare(
@@ -1479,6 +1547,13 @@ const releaseProviderAccountLease = async (
     )
     .run()
 
+  if (result.success && mirror !== undefined) {
+    await mirror.mirrorRowsWhere(
+      'provider_account_leases',
+      ['lease_ref'],
+      [input.leaseRef],
+    )
+  }
   return result.success
 }
 
@@ -1489,6 +1564,8 @@ const applyFailoverAccountState = async (
     failureClass: ProviderAccountFailoverFailureClass
     now: string
   }>,
+  // KS-8.18 follow-up (#8362): fail-soft identity/auth mirror handle.
+  mirror?: IdentityAuthMirror | undefined,
 ): Promise<ReturnType<typeof classifyProviderAccountFailover>> => {
   const action = classifyProviderAccountFailover(input.failureClass, input.now)
 
@@ -1502,6 +1579,13 @@ const applyFailoverAccountState = async (
     )
     .bind(input.now, input.failureClass, input.lease.lease_ref)
     .run()
+  if (mirror !== undefined) {
+    await mirror.mirrorRowsWhere(
+      'provider_account_leases',
+      ['lease_ref'],
+      [input.lease.lease_ref],
+    )
+  }
 
   if (action.accountStateAction !== 'do_not_poison_account') {
     await db
@@ -1562,6 +1646,11 @@ const applyFailoverAccountState = async (
       )
       .run()
   }
+  if (mirror !== undefined) {
+    await mirror.mirrorRowsByKey('provider_accounts', [
+      [input.lease.provider_account_id],
+    ])
+  }
 
   return action
 }
@@ -1581,6 +1670,8 @@ const recordFailoverReceipt = async (
     assignmentId: string | null
     orderId: string | null
   }>,
+  // KS-8.18 follow-up (#8362): fail-soft identity/auth mirror handle.
+  mirror?: IdentityAuthMirror | undefined,
 ): Promise<ProviderAccountFailoverReceiptProjection> => {
   const receiptId = compactRandomId('provider_account_failover_receipt')
   const customerSafeStatus =
@@ -1653,6 +1744,12 @@ const recordFailoverReceipt = async (
       }),
     )
     .run()
+
+  if (mirror !== undefined) {
+    await mirror.mirrorRowsByKey('provider_account_failover_receipts', [
+      [receiptId],
+    ])
+  }
 
   return {
     receiptId,
@@ -1782,14 +1879,17 @@ const listFailoverReceipts = async (
   }))
 }
 
+// KS-8.18 follow-up (#8362): default to the identity-auth-mirrored
+// factory so operator-driven provider-account writes (health, grants,
+// events) converge to Postgres; the injectable override stays available
+// for tests that pass their own in-memory/fake repository.
 const repositoryFor = <Bindings extends OperatorProviderAccountEnv>(
   env: Bindings,
   dependencies: OperatorProviderAccountDependencies<Bindings>,
 ): ProviderAccountRepository =>
-  (
-    dependencies.makeProviderAccountRepository ??
-    makeD1ProviderAccountRepository
-  )(openAgentsDatabase(env))
+  dependencies.makeProviderAccountRepository !== undefined
+    ? dependencies.makeProviderAccountRepository(openAgentsDatabase(env))
+    : makeProviderAccountRepositoryForEnv(env)
 
 export const makeOperatorProviderAccountRoutes = <
   Bindings extends OperatorProviderAccountEnv,
@@ -1970,14 +2070,18 @@ export const makeOperatorProviderAccountRoutes = <
         health,
         reason: `sanity_check:${failureClass ?? classification}`,
       })
-      await recordSanityCheck(openAgentsDatabase(env), {
-        account,
-        checkedAt: finishedAt,
-        classification,
-        failureClass,
-        grantRef,
-        summary,
-      })
+      await recordSanityCheck(
+        openAgentsDatabase(env),
+        {
+          account,
+          checkedAt: finishedAt,
+          classification,
+          failureClass,
+          grantRef,
+          summary,
+        },
+        identityAuthMirrorFromEnv(env),
+      )
 
       return {
         providerAccountId: account.id,
@@ -2172,11 +2276,15 @@ export const makeOperatorProviderAccountRoutes = <
               },
             )
 
-            await recordParallelProbeReceipt(openAgentsDatabase(env), {
-              account,
-              check,
-              probeRunId,
-            })
+            await recordParallelProbeReceipt(
+              openAgentsDatabase(env),
+              {
+                account,
+                check,
+                probeRunId,
+              },
+              identityAuthMirrorFromEnv(env),
+            )
 
             return check
           })
@@ -2248,16 +2356,20 @@ export const makeOperatorProviderAccountRoutes = <
     }
 
     try {
-      const lease = await acquireProviderAccountLease(openAgentsDatabase(env), {
-        assignmentId: optionalString(body.assignmentId) ?? null,
-        expiresAt,
-        now,
-        orderId: optionalString(body.orderId) ?? null,
-        requiredProvider: requiredProvider ?? null,
-        requestedAction,
-        runId: optionalString(body.runId) ?? null,
-        userId: targetUser.userId,
-      })
+      const lease = await acquireProviderAccountLease(
+        openAgentsDatabase(env),
+        {
+          assignmentId: optionalString(body.assignmentId) ?? null,
+          expiresAt,
+          now,
+          orderId: optionalString(body.orderId) ?? null,
+          requiredProvider: requiredProvider ?? null,
+          requestedAction,
+          runId: optionalString(body.runId) ?? null,
+          userId: targetUser.userId,
+        },
+        identityAuthMirrorFromEnv(env),
+      )
 
       if (lease === undefined) {
         return noStoreJsonResponse(
@@ -2461,6 +2573,7 @@ export const makeOperatorProviderAccountRoutes = <
     }
 
     const db = openAgentsDatabase(env)
+    const mirror = identityAuthMirrorFromEnv(env)
     const previousLease = await findLeaseByRef(db, previousLeaseRef)
 
     if (previousLease === undefined) {
@@ -2468,45 +2581,60 @@ export const makeOperatorProviderAccountRoutes = <
     }
 
     try {
-      const action = await applyFailoverAccountState(db, {
-        failureClass,
-        lease: previousLease,
-        now,
-      })
+      const action = await applyFailoverAccountState(
+        db,
+        {
+          failureClass,
+          lease: previousLease,
+          now,
+        },
+        mirror,
+      )
       const exhausted = attemptNumber >= maxAttempts
       const nextLease =
         exhausted || !action.retryAllowed
           ? null
-          : ((await acquireProviderAccountLease(db, {
-              assignmentId:
-                optionalString(body.assignmentId) ??
-                previousLease.assignment_id ??
-                null,
-              expiresAt: isoTimestampAfterIso(now, 15 * 60 * 1_000),
-              now,
-              orderId:
-                optionalString(body.orderId) ?? previousLease.order_id ?? null,
-              requiredProvider: previousLease.provider,
-              requestedAction,
-              runId: optionalString(body.runId) ?? previousLease.run_id ?? null,
-              userId: targetUser.userId,
-            })) ?? null)
+          : ((await acquireProviderAccountLease(
+              db,
+              {
+                assignmentId:
+                  optionalString(body.assignmentId) ??
+                  previousLease.assignment_id ??
+                  null,
+                expiresAt: isoTimestampAfterIso(now, 15 * 60 * 1_000),
+                now,
+                orderId:
+                  optionalString(body.orderId) ??
+                  previousLease.order_id ??
+                  null,
+                requiredProvider: previousLease.provider,
+                requestedAction,
+                runId:
+                  optionalString(body.runId) ?? previousLease.run_id ?? null,
+                userId: targetUser.userId,
+              },
+              mirror,
+            )) ?? null)
       const outcome = nextLease === null ? 'blocked' : 'retrying'
 
-      const receipt = await recordFailoverReceipt(db, {
-        action,
-        assignmentId:
-          optionalString(body.assignmentId) ?? previousLease.assignment_id,
-        attemptNumber,
-        maxAttempts,
-        nextLease,
-        now,
-        orderId: optionalString(body.orderId) ?? previousLease.order_id,
-        outcome,
-        previousLease,
-        requestedAction,
-        runId: optionalString(body.runId) ?? previousLease.run_id,
-      })
+      const receipt = await recordFailoverReceipt(
+        db,
+        {
+          action,
+          assignmentId:
+            optionalString(body.assignmentId) ?? previousLease.assignment_id,
+          attemptNumber,
+          maxAttempts,
+          nextLease,
+          now,
+          orderId: optionalString(body.orderId) ?? previousLease.order_id,
+          outcome,
+          previousLease,
+          requestedAction,
+          runId: optionalString(body.runId) ?? previousLease.run_id,
+        },
+        mirror,
+      )
 
       return noStoreJsonResponse(
         {
@@ -2700,14 +2828,18 @@ export const makeOperatorProviderAccountRoutes = <
     }
 
     const now = currentIsoTimestamp()
-    const touched = await touchProviderAccountLease(openAgentsDatabase(env), {
-      expiresAt: isoTimestampAfterIso(
+    const touched = await touchProviderAccountLease(
+      openAgentsDatabase(env),
+      {
+        expiresAt: isoTimestampAfterIso(
+          now,
+          clampLeaseTtlSeconds(optionalParallelNumber(body.ttlSeconds)) * 1_000,
+        ),
+        leaseRef,
         now,
-        clampLeaseTtlSeconds(optionalParallelNumber(body.ttlSeconds)) * 1_000,
-      ),
-      leaseRef,
-      now,
-    })
+      },
+      identityAuthMirrorFromEnv(env),
+    )
 
     return touched
       ? noStoreJsonResponse({ leaseRef, status: 'touched' })
@@ -2750,6 +2882,7 @@ export const makeOperatorProviderAccountRoutes = <
         status: releaseStatus,
         terminalOutcome: optionalString(body.terminalOutcome) ?? releaseStatus,
       },
+      identityAuthMirrorFromEnv(env),
     )
 
     return released
@@ -2796,11 +2929,15 @@ export const makeOperatorProviderAccountRoutes = <
     }
 
     const resetAt = currentIsoTimestamp()
-    const reset = await resetOperatorProviderAccount(openAgentsDatabase(env), {
-      providerAccountRef,
-      resetAt,
-      userId: targetUser.userId,
-    })
+    const reset = await resetOperatorProviderAccount(
+      openAgentsDatabase(env),
+      {
+        providerAccountRef,
+        resetAt,
+        userId: targetUser.userId,
+      },
+      identityAuthMirrorFromEnv(env),
+    )
 
     if (!reset) {
       return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
