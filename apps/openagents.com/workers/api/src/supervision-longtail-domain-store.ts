@@ -754,7 +754,7 @@ export const makeOmniPublicProofBundleCompareReader = (
       deferredLogged = true
       log('khala_sync_supervision_postgres_reads_deferred', {
         messageSafe:
-          'KHALA_SYNC_SUPERVISION_READS=postgres is deferred to a further read-cutover follow-up; serving d1 with compare shadow reads',
+          'this shadow-compare reader itself never serves Postgres (by design); the SEPARATE makeOmniPublicProofBundlePostgresServerForEnv reader (#8361 follow-up) is what actually serves this table under postgres mode',
         op,
         refs: [id],
       })
