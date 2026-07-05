@@ -345,7 +345,10 @@ export const insertThreadFile = async (
   const row = await readThreadFileById(db, input.id)
 
   if (row === undefined) {
-    throw new Error('Inserted thread file could not be loaded.')
+    throw new ThreadFileRepositoryError({
+      message: 'Inserted thread file could not be loaded.',
+      operation: 'insert',
+    })
   }
 
   return publicThreadFile(row)

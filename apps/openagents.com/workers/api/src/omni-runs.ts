@@ -16,6 +16,7 @@ import {
   teamScope,
   threadScope,
 } from '@openagentsinc/sync-worker'
+import { Schema as S } from 'effect'
 
 import { buildAgentGoalAssignmentContext } from './agent-goal-runtime'
 import {
@@ -335,6 +336,19 @@ const DEFAULT_ASSIGNMENT_APP_ORIGIN = 'https://openagents.com'
 const SHC_CONTROL_REQUEST_TIMEOUT_MS = 10_000
 const DEFAULT_TIMEOUT_MS = 300_000
 
+export class OmniRunValidationError extends S.TaggedErrorClass<OmniRunValidationError>()(
+  'OmniRunValidationError',
+  {
+    message: S.String,
+    reason: S.Union([
+      S.Literal('unsafe_runner_event_payload'),
+      S.Literal('unsafe_artifact_refs'),
+      S.Literal('repository_required'),
+      S.Literal('repository_invalid'),
+    ]),
+  },
+) {}
+
 const textOrUndefined = (value: string | null): string | undefined =>
   value === null ? undefined : value
 
@@ -346,7 +360,10 @@ const jsonOrNull = (value: unknown | undefined): string | null => {
   const json = JSON.stringify(value)
 
   if (containsProviderSecretMaterial(json)) {
-    throw new Error('Runner event payload contains credential-shaped material.')
+    throw new OmniRunValidationError({
+      message: 'Runner event payload contains credential-shaped material.',
+      reason: 'unsafe_runner_event_payload',
+    })
   }
 
   return json
@@ -356,7 +373,10 @@ const jsonArray = (values: ReadonlyArray<string>): string => {
   const json = JSON.stringify(values)
 
   if (containsProviderSecretMaterial(json)) {
-    throw new Error('Artifact refs contain credential-shaped material.')
+    throw new OmniRunValidationError({
+      message: 'Artifact refs contain credential-shaped material.',
+      reason: 'unsafe_artifact_refs',
+    })
   }
 
   return json
@@ -474,7 +494,10 @@ export const parseGithubRepository = (value: string): RepositoryRef => {
   const trimmed = value.trim()
 
   if (trimmed === '') {
-    throw new Error('Repository is required.')
+    throw new OmniRunValidationError({
+      message: 'Repository is required.',
+      reason: 'repository_required',
+    })
   }
 
   let path = trimmed
@@ -498,9 +521,11 @@ export const parseGithubRepository = (value: string): RepositoryRef => {
     !/^[A-Za-z0-9_.-]+$/.test(repo) ||
     (ref !== undefined && !/^[A-Za-z0-9_.\/-]+$/.test(ref))
   ) {
-    throw new Error(
-      'Repository must be owner/repo, owner/repo@ref, or a GitHub repository URL.',
-    )
+    throw new OmniRunValidationError({
+      message:
+        'Repository must be owner/repo, owner/repo@ref, or a GitHub repository URL.',
+      reason: 'repository_invalid',
+    })
   }
 
   return {

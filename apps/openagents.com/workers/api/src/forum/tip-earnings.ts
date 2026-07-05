@@ -825,6 +825,13 @@ const structuralProjectionProbe = (value: unknown): string =>
     arbitraryPublicContentKeys.has(key) ? undefined : probed,
   )
 
+export class ForumTipEarningsProjectionUnsafe extends S.TaggedErrorClass<ForumTipEarningsProjectionUnsafe>()(
+  'ForumTipEarningsProjectionUnsafe',
+  {
+    message: S.String,
+  },
+) {}
+
 const assertProjectionSafe = (
   value:
     | ForumCreatorEarningsResponse
@@ -837,7 +844,9 @@ const assertProjectionSafe = (
     containsProviderSecretMaterial(json) ||
     privateMaterialPattern.test(json)
   ) {
-    throw new Error('Forum tip earnings projection contains private material.')
+    throw new ForumTipEarningsProjectionUnsafe({
+      message: 'Forum tip earnings projection contains private material.',
+    })
   }
 }
 

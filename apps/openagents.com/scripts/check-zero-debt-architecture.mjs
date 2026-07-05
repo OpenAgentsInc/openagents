@@ -136,20 +136,10 @@ const budgetChecks = [
     name: 'route dependency Effect.promise adapters',
   },
   {
-    // Raised 12 -> 13 on 2026-07-05 for the Khala Sync dual-write wave
-    // (#8318 billing, #8319 treasury, #8320 inference entitlements, #8329
-    // identity/auth, #8359 business/order writers): one net new
-    // should-never-happen guard (a Date.parse-of-an-already-serialized-value
-    // invariant in provider-account-service-routes.ts, mirrored in
-    // index.ts's GitHub-write-grant twin) caught by the same outer
-    // route try/catch + typed error classifier every sibling route already
-    // uses. One other overage (business-domain-store.ts) was fixed in the
-    // same change by converting a throw-immediately-caught-in-the-same-
-    // function into a direct log+return. Do not raise further; convert
-    // the remaining parse-or-throw / invariant guards to proper tagged
-    // errors (ProviderGrantExpired / GitHubWriteGrantExpired already exist)
-    // to ratchet this back down — tracked in #8376.
-    budget: 13,
+    // Ratcheted 13 -> 0 on 2026-07-05 (#8371) after converting the remaining
+    // live production Worker throw sites to typed TaggedError/repository errors.
+    // Do not raise; expected errors should be typed at the source.
+    budget: 0,
     description:
       'Production Worker modules may not add generic thrown expected errors while typed errors are introduced.',
     details: countByFile(workerFiles, /throw\s+new\s+Error\(/g),

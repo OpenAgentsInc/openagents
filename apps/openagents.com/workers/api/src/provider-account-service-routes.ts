@@ -1,4 +1,5 @@
 import type { AutopilotTokenUsage } from '@openagentsinc/sync-schema'
+import { Schema as S } from 'effect'
 
 import {
   executeBuiltinComputeAgentGrant,
@@ -50,6 +51,14 @@ type ConnectedCodexAuthMaterial = Readonly<{
   authContentJson: string
 }>
 
+class ProviderAccountGrantSerializationError extends S.TaggedErrorClass<ProviderAccountGrantSerializationError>()(
+  'ProviderAccountGrantSerializationError',
+  {
+    message: S.String,
+    providerAccountRef: S.String,
+  },
+) {}
+
 type ProviderAccountServiceDependencies<Env extends ProviderAccountServiceEnv> =
   Readonly<{
     readConnectedCodexAuthMaterial: (
@@ -87,7 +96,10 @@ const runnerResolvedGrantJson = (
   const expiresAt = Date.parse(grant.expiresAt)
 
   if (!Number.isFinite(expiresAt)) {
-    throw new Error('Resolved grant expiry is invalid.')
+    throw new ProviderAccountGrantSerializationError({
+      message: 'Resolved grant expiry is invalid.',
+      providerAccountRef: grant.providerAccountRef,
+    })
   }
 
   return {

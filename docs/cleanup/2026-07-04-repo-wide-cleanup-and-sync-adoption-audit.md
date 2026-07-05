@@ -53,7 +53,7 @@ do we have" answer for the Worker.
 | Raw `env: Env` handler params | **166/166** | 166 route handlers bypass the typed config/binding boundary | Introduce `OpenAgentsWorkerConfig` + capability injection at the seam; touches ~166 signatures |
 | Worker `Response`-returning domain surfaces | **135/135** | 135 symbols build HTTP `Response` inside domain code instead of returning typed values for a route-mapper | Extract a shared route-mapper; domain code returns data, not `Response` |
 | Route `Effect.promise` bridges | **18/18** | Route modules still Promise-shaped, wrapping Effect deps | Migrate the named wave-3 routes to Effect end-to-end |
-| Worker `throw new Error` | **12/12** | Untyped throws where `TaggedError` is the standard | Mechanical conversion — **cheapest real win in this whole audit** |
+| Worker `throw new Error` | **0/0** | Untyped throws where `TaggedError` is the standard | Retired in #8371 |
 | `Effect.runPromise` named bridges | 20 files (index.ts×7, omni-handlers.ts×7, 13 singles) | Temporary Promise↔Effect seams | Retire per-route as each becomes a full Effect program; `index.ts` and `omni-handlers.ts` are the two fat targets |
 | Public-projection staleness ledger | 101 tracked surfaces, **16 still "legacy" (no staleness contract)** | Public `/api/public/*` reads without a declared `maxStalenessSeconds` | Retrofit all 16 (otec-proof, pylon-stats, capacity-funnel, launch-dashboard, treasury, artanis admin-ticks, nexus-pylon, nip90-market, adjutant, agent-goal, 2×forum, training-runs) |
 | 9 other budgets (string classifiers, raw `JSON.parse`, raw time/id/random, direct config reads, direct runtime-capability access, raw console logging, response-helper misuse) | **0/0 each** | Already fully retired — these are the *finished* invariants | Don't touch; they're the guardrails proving the pattern works |
@@ -482,6 +482,12 @@ untouched).
   table, Foldkit parser, Worker document allowlist, startup policy, render
   branches, and tests. Root `/` now parses to `Home`; `/stats` is the only
   public stats document route.
+- #8371 complete — converted all 13 live production Worker `throw new Error`
+  sites counted by the zero-debt architecture ledger to typed `TaggedError`
+  variants or existing repository errors, then ratcheted the Worker throw
+  budget to `0/0`. A small `team-chat` helper input was narrowed so a
+  pre-existing Response-surface overage was retired without raising that
+  budget; `check:architecture` is green.
 
 ---
 

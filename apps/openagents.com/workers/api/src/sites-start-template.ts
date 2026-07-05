@@ -1,4 +1,5 @@
 import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
+import { Schema as S } from 'effect'
 
 import type {
   AutopilotSiteStaticAssetsManifest,
@@ -16,6 +17,13 @@ export const AUTOPILOT_START_SITE_BUILD_COMMAND =
   'bun install --frozen-lockfile && bun run build'
 export const AUTOPILOT_START_SITE_DISPATCH_NAMESPACE =
   'openagents-sites-production'
+
+export class AutopilotStartSiteTemplateUnsafe extends S.TaggedErrorClass<AutopilotStartSiteTemplateUnsafe>()(
+  'AutopilotStartSiteTemplateUnsafe',
+  {
+    message: S.String,
+  },
+) {}
 
 export type AutopilotStartSiteTemplateFile = Readonly<{
   path: string
@@ -756,6 +764,8 @@ export const assertAutopilotStartSiteLaneIsPublicSafe = (
   lane: AutopilotStartSiteContainerBuildLane,
 ): void => {
   if (containsProviderSecretMaterial(JSON.stringify(lane))) {
-    throw new Error('Start Site build lane contains secret-shaped material.')
+    throw new AutopilotStartSiteTemplateUnsafe({
+      message: 'Start Site build lane contains secret-shaped material.',
+    })
   }
 }

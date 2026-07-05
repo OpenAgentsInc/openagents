@@ -2490,17 +2490,34 @@ const storeGitHubWriteAccessToken = async (
   }
 }
 
+class GitHubEmailValidationError extends S.TaggedErrorClass<GitHubEmailValidationError>()(
+  'GitHubEmailValidationError',
+  {
+    message: S.String,
+    reason: S.Union([
+      S.Literal('primary_email_missing'),
+      S.Literal('primary_email_unverified'),
+    ]),
+  },
+) {}
+
 const getPrimaryVerifiedEmail = (
   emails: ReadonlyArray<GitHubEmail>,
 ): GitHubEmail => {
   const primary = emails.find(email => email.primary)
 
   if (primary === undefined) {
-    throw new Error('No primary GitHub email found')
+    throw new GitHubEmailValidationError({
+      message: 'No primary GitHub email found',
+      reason: 'primary_email_missing',
+    })
   }
 
   if (!primary.verified) {
-    throw new Error('Primary GitHub email is not verified')
+    throw new GitHubEmailValidationError({
+      message: 'Primary GitHub email is not verified',
+      reason: 'primary_email_unverified',
+    })
   }
 
   return primary
@@ -4538,6 +4555,14 @@ const handleGitHubWriteDisconnectApi = async (
   )
 }
 
+class GitHubWriteGrantSerializationError extends S.TaggedErrorClass<GitHubWriteGrantSerializationError>()(
+  'GitHubWriteGrantSerializationError',
+  {
+    connectionRef: S.String,
+    message: S.String,
+  },
+) {}
+
 const runnerResolvedGitHubWriteGrantJson = (
   grant: Awaited<ReturnType<typeof resolveGitHubWriteGrant>>,
   accessToken: string,
@@ -4549,7 +4574,10 @@ const runnerResolvedGitHubWriteGrantJson = (
   const expiresAt = Date.parse(grant.expiresAt)
 
   if (!Number.isFinite(expiresAt)) {
-    throw new Error('Resolved GitHub write grant expiry is invalid.')
+    throw new GitHubWriteGrantSerializationError({
+      connectionRef: grant.connectionRef,
+      message: 'Resolved GitHub write grant expiry is invalid.',
+    })
   }
 
   return {

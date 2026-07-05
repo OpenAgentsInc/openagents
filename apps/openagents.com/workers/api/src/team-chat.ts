@@ -1,3 +1,5 @@
+import { Schema as S } from 'effect'
+
 import {
   isRecord,
   optionalInteger,
@@ -59,6 +61,14 @@ type TeamChatRepositoryOptions = Readonly<{
   makeUuid?: () => string
   now?: () => Date
 }>
+
+export class TeamChatRepositoryError extends S.TaggedErrorClass<TeamChatRepositoryError>()(
+  'TeamChatRepositoryError',
+  {
+    message: S.String,
+    operation: S.String,
+  },
+) {}
 
 const teamChatNow = (options?: TeamChatRepositoryOptions): Date =>
   options?.now?.() ?? currentDate()
@@ -410,7 +420,10 @@ export const insertTeamChatMessage = async (
   const message = await readTeamChatMessageById(db, id)
 
   if (message === undefined) {
-    throw new Error('Inserted team chat message could not be loaded.')
+    throw new TeamChatRepositoryError({
+      message: 'Inserted team chat message could not be loaded.',
+      operation: 'insert',
+    })
   }
 
   return message
@@ -448,8 +461,15 @@ export const updateTeamChatMessageRunSummary = async (
   return readTeamChatMessageById(db, input.messageId)
 }
 
+type TeamChatLaunchErrorResponse = Readonly<{
+  clone: () => Readonly<{
+    json: () => Promise<unknown>
+  }>
+  status: number
+}>
+
 export const teamChatLaunchErrorFromResponse = async (
-  response: Response,
+  response: TeamChatLaunchErrorResponse,
 ): Promise<string> => {
   const payload = await response
     .clone()

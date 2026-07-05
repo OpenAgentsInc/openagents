@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Effect, Schema as S } from 'effect'
 
 import {
   type LedgerStatement,
@@ -27,6 +27,15 @@ import {
 export const TIPS_SWEEP_MIN_SAT = 100
 export const TIPS_SWEEP_MAX_PER_TICK = 5
 export const TIPS_SWEEP_FAILURE_BACKOFF_MINUTES = 30
+
+export class TipsBufferBackingViolation extends S.TaggedErrorClass<TipsBufferBackingViolation>()(
+  'TipsBufferBackingViolation',
+  {
+    agentBalancesSat: S.Number,
+    bufferBalanceSat: S.NullOr(S.Number),
+    message: S.String,
+  },
+) {}
 
 export type SweepCandidate = Readonly<{
   actorRef: string
@@ -356,9 +365,11 @@ export const checkTipsBufferBackingInvariant = async (
       : agentBalancesSat <= bufferBalanceSat
 
   if (!ok) {
-    throw new Error(
-      `tips_buffer_backing_violated: agent balances ${agentBalancesSat} sat exceed buffer ${bufferBalanceSat ?? 'unconfigured'} sat`,
-    )
+    throw new TipsBufferBackingViolation({
+      agentBalancesSat,
+      bufferBalanceSat,
+      message: `tips_buffer_backing_violated: agent balances ${agentBalancesSat} sat exceed buffer ${bufferBalanceSat ?? 'unconfigured'} sat`,
+    })
   }
 
   return { agentBalancesSat, bufferBalanceSat, ok }
