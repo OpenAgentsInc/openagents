@@ -633,6 +633,21 @@ retired `AutopilotRemoteControl` path. The issue remains open for owner-gated
 prebuild/Xcode/Gradle/TestFlight and signed OTA round-trip proof. See
 `docs/fable/2026-07-04-ts-8-expo-mobile-scaffold.md`.
 
+2026-07-05 TS-8 checkpoint (round 2): both local builds are now genuinely
+green — `expo prebuild` + `xcodebuild` (iOS) and `expo prebuild` +
+`./gradlew assembleDebug` (Android) both succeed from zero on this Mac,
+producing a real `.app` build and a real `app-debug.apk`; the earlier "Java
+not installed" note was a JDK-version/toolchain-selection issue (JDK 26 vs.
+Android's required JDK 17), not a missing capability, and fixing it surfaced a
+real Kotlin `reified`-generic compile bug in `khala-push-to-talk-stt` that is
+now fixed. Two TestFlight uploads are independently confirmed `VALID` via the
+App Store Connect API. The native STT mic button and Apple FM readiness card
+are wired into the routed chat composer and settings screen (no longer dead
+code). Issue #8350 stays open only for two owner-gated items: one signed OTA
+round-trip proof (blocked on interactive `gcloud` re-auth, tracked in
+`NEEDS_OWNER.md`) and real-device STT/Apple FM capture parity. See
+`docs/fable/2026-07-04-ts-8-expo-mobile-scaffold.md`.
+
 2026-07-04 TS-10b checkpoint note: the Foldkit-era velocity method is now
 extracted as `bun run perf:ui-velocity`, and it reproduces the TS-10a baseline
 numbers exactly. The React-era comparison remains time-gated: the later

@@ -1,12 +1,19 @@
 # TS-8 Expo Mobile Scaffold
 
-Date: 2026-07-04, evidence pass 2026-07-05
+Date: 2026-07-04, evidence passes 2026-07-05 (x2)
 Issue: #8350
-Status: iOS local build + two real TestFlight uploads (both `VALID`,
-independently confirmed via the App Store Connect API) are proven. Native
-STT/Apple FM modules and delegation-prompt validation exist as tested code but
-are not wired into any routed screen. Android Gradle build and the signed OTA
-round-trip remain blocked (Java runtime; interactive `gcloud` reauth).
+Status (2026-07-05, round 2): both platforms build clean, LOCAL, from zero on
+this Mac — iOS `** BUILD SUCCEEDED **`, Android `BUILD SUCCESSFUL` (real
+`app-debug.apk` produced) — plus two real TestFlight uploads (both `VALID`,
+independently reconfirmed via the App Store Connect API). The native STT
+push-to-talk button and the Apple FM readiness card are wired into the routed
+chat composer and settings screen. Only two items remain, both owner-gated:
+one signed OTA round-trip proof (blocked on interactive `gcloud` re-auth), and
+real-device parity for the native STT/Apple FM captures (their Swift/Kotlin
+bodies still intentionally fail closed pending a physical-device pass). The
+delegation-prompt validator has no live caller in either the mobile or Swift
+reference app today — verified as parity with the equally-unwired Swift
+`validateCodingPrompt`, not a mobile-app regression.
 
 ## Landed
 
@@ -174,14 +181,119 @@ claims.
   a real export and confirming a running dev build/simulator instance picks
   it up.
 
+## Evidence pass — 2026-07-05, round 2
+
+Re-verified from a fresh, separately-isolated `origin/main` worktree (rebased
+onto the latest `origin/main` mid-pass — the repo is very active — with a
+fresh `bun install` and no reused `node_modules`/`ios`/`android`).
+
+**Closed this pass:**
+
+- **Android Gradle build now genuinely succeeds** (previously documented as
+  blocked by "Unable to locate a Java Runtime"). That framing undersold the
+  real gap: this Mac has Java (via `brew install openjdk`), but the *default*
+  `openjdk` cask installs JDK 26, and Android's Gradle/AGP toolchain's
+  `jlink`/`core-for-system-modules.jar` transform rejects it
+  (`WARNING: A restricted method in java.lang.System has been called`,
+  `jlink` exits 1). Pointing `JAVA_HOME` at the already-installed `openjdk@17`
+  cask instead, and `ANDROID_SDK_ROOT`/`ANDROID_HOME` at the already-installed
+  `android-commandlinetools` cask (Gradle then auto-installs the missing NDK
+  27 + Build-Tools 36 + Platform 36 with license auto-accept on first run),
+  got the build past every toolchain-level failure.
+  - That surfaced a second, *real* bug in our own code:
+    `khala-push-to-talk-stt`'s `startRecognitionAsync` always
+    `throw`s, so Kotlin infers the `AsyncFunction<R, P0>` call's `R` as
+    `Nothing` — illegal as a `reified` type parameter
+    (`e: ... Cannot use 'Nothing' as reified type parameter`). This failed
+    every clean Android build regardless of JDK/SDK setup, on both the old and
+    new toolchain. Fixed by pinning the type explicitly:
+    `AsyncFunction<Map<String, Any>, String?>("startRecognitionAsync") { ... }`
+    (`Nothing` is a subtype of any type, so the always-throwing lambda still
+    satisfies the pinned signature — only the reified-generic *inference* was
+    the problem, not the runtime behavior).
+  - With both fixes, `expo prebuild --platform android` (into a directory
+    that did not previously exist) then
+    `bun run build:android:local` (`./android/gradlew :app:assembleDebug`)
+    → `BUILD SUCCESSFUL in 3m 58s`, producing a real
+    `android/app/build/outputs/apk/debug/app-debug.apk`. `app.json`'s
+    `android` block (`package: com.openagents.khala.mobile`, matching the iOS
+    `bundleIdentifier`, plus `RECORD_AUDIO` permission) confirms this is one
+    real shared codebase, not an iOS-only config with an inert Android
+    placeholder.
+  - Re-ran the iOS receipt in the same fresh worktree too:
+    `expo prebuild --platform ios` (no prior `ios/`) then
+    `bun run build:ios:local` → `** BUILD SUCCEEDED **`, confirming the prior
+    pass's result reproduces independently of the specific checkout.
+  - `bun run --cwd clients/khala-mobile test`: 133/133 pass; `typecheck`
+    clean — both in the fresh worktree.
+- **The "wired to nothing live" gap from the first 2026-07-05 pass is now
+  stale** — a later same-day commit (`afb316491b`) wired the push-to-talk mic
+  button into `src/components/chat-composer.tsx` (tap to start/stop
+  dictation, still fails closed with a surfaced error until real native
+  capture lands) and the Apple FM readiness probe into a new "On-device"
+  settings card, then deleted the unreachable `src/legacy-screens/` entirely.
+  Verified directly: `src/legacy-screens/` no longer exists;
+  `chat-composer.tsx` imports and calls `usePushToTalk`;
+  `app/(drawer)/settings.tsx` imports and renders `useOnDeviceReadiness`.
+- **Re-confirmed the two TestFlight builds independently, a second time**,
+  with a fresh JWT against the App Store Connect API
+  (`GET /v1/builds?filter[app]=6787620136`): build 1
+  (`3bb487cf-73b6-470f-a2ee-867ee924426e`, 2026-07-04T23:12:46-07:00) and
+  build 2 (`bb16234d-0cb0-4049-90c5-be9c65ac07e2`, 2026-07-05T00:27:59-07:00),
+  both still `processingState: VALID`. No new build has been uploaded since
+  the first evidence pass.
+
+**Refined, not closed — the delegation-prompt "gap" is parity, not a bug:**
+
+- `src/security/delegation-prompt.ts`'s `validateDelegationPrompt` still has
+  no live caller (confirmed: the only files referencing it are the module
+  itself and its test). But direct comparison against the Swift reference app
+  shows this is **parity, not a regression**: `KhalaClient.swift`'s
+  `requestCodexTask`/`validateCodingPrompt` — the actual Swift analog (a typed
+  `codex_agent_task` request with an explicit target Pylon ref, for the
+  separate "Khala -> Pylon -> Codex" own-capacity coding-delegation runbook,
+  *not* a filter on ordinary chat sends) — is *also* only called from
+  `KhalaClientTests.swift`, never from `ChatView.swift`
+  ("No voice, no delegation panel, no model picker — just chat"). Neither
+  client ships an in-app coding-delegation panel, so wiring the mobile
+  validator into the ordinary chat composer would not be porting an existing
+  Swift behavior — it would be inventing a feature neither app has, and would
+  risk false-positive-blocking normal chat messages that happen to contain a
+  long token-like string or an email address. Left unwired, matching the
+  Swift reference exactly. See the updated `README.md` Security section.
+
+**Still open, both owner-gated:**
+
+- **Signed OTA round-trip still unproven.** Re-confirmed the same blocker as
+  the first pass: `gcloud run services describe ... --project openagentsgemini`
+  fails with `Reauthentication failed: cannot prompt during non-interactive
+  execution`, even though `gcloud auth list` shows `chris@openagents.com` as
+  the active account — the cached token itself needs an interactive
+  `gcloud auth login` refresh. No service-account key available locally with
+  Cloud Run deploy scope for this project. Tracked in `NEEDS_OWNER.md`
+  ("gcloud re-auth needed for Khala mobile OTA publish — 2026-07-05"); the
+  manifest-serving path itself is independently reconfirmed live and correct.
+- **Real-device STT/Apple FM parity still unproven.** The native module
+  bodies intentionally fail closed (`SpeechRuntimeUnavailableException` /
+  Apple FM `status: "blocked"`) until a physical or working simulator
+  dev-client pass proves real capture — this needs a device session, not more
+  source changes.
+
 ## Not Yet Closed
 
-Issue #8350 should remain open until:
+Issue #8350 stays open for exactly two owner-gated items:
 
-- Local Gradle build receipt on a machine with a Java runtime and Android SDK.
-- One signed OpenAgents Updates OTA round-trip against a dev build (currently
-  blocked on interactive `gcloud` re-auth, see above).
-- The native STT/Apple FM modules and the delegation-prompt validator are
-  actually wired into the live, routed screens (today they are tested but
-  unreachable dead code), then device-proven for real parity with the
-  SwiftUI reference app.
+- One signed OpenAgents Updates OTA round-trip against a dev build (blocked
+  on interactive `gcloud` re-auth — see `NEEDS_OWNER.md`).
+- Real-device parity proof for the native STT capture and Apple FM bridge
+  (both are wired into the live UI and fail closed honestly today; they need
+  a physical/working simulator device session, not more source changes).
+
+Every other acceptance-criteria line item (Expo Router shell + NativeWind +
+TS-3 chat/fleet read surfaces + expo-sqlite persistence; expo-modules ports of
+both Swift native pieces with the SwiftUI app still buildable; local
+`expo prebuild` + Xcode **and** Gradle builds green with real iOS + Android
+artifacts; `xcrun altool` TestFlight uploads confirmed `VALID`; own-OTA
+`updates.url`/manifest-serving wiring off Expo's CDN; keychain-only key
+storage with no bundled secrets; delegation-prompt validation ported with
+Swift-matching (unwired) parity) is independently verified done.

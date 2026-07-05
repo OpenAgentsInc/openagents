@@ -49,9 +49,22 @@ xcrun altool --upload-app --type ios --file path/to/Khala.ipa \
 
 Team: `HQWSG26L43`.
 
-2026-07-04 receipt: iOS prebuild and local simulator build pass from a clean
-generated `ios/` directory. Android prebuild also passes; local Gradle build on
-this Mac is blocked before Gradle starts because Java is not installed.
+2026-07-05 receipt: both platforms build clean from zero on this Mac. iOS —
+`expo prebuild --platform ios` into a directory that did not previously exist,
+then `bun run build:ios:local` → `** BUILD SUCCEEDED **`. Android — the
+earlier "Java is not installed" blocker was a `JAVA_HOME`/toolchain gap, not a
+missing capability: with `JAVA_HOME` pointed at a JDK 17 install (Android's
+Gradle/AGP/jlink toolchain rejects a bare JDK 26) and `ANDROID_SDK_ROOT` set to
+an installed `android-commandlinetools` SDK (Gradle auto-installs the matching
+NDK/build-tools/platform on first run), `expo prebuild --platform android`
+then `bun run build:android:local` → `BUILD SUCCESSFUL`, producing
+`android/app/build/outputs/apk/debug/app-debug.apk`. Getting there also
+surfaced and fixed a real bug: `khala-push-to-talk-stt`'s
+`startRecognitionAsync` always threw, so Kotlin inferred its `AsyncFunction`
+return type as `Nothing` — illegal as a `reified` type parameter
+(`Cannot use 'Nothing' as reified type parameter`), which failed every clean
+Android build regardless of Java/SDK setup. Fixed by pinning the type
+explicitly (`AsyncFunction<Map<String, Any>, String?>(...)`).
 
 ## OTA Updates
 
@@ -87,19 +100,34 @@ deploys the OpenAgents server. It does not call Expo hosted update commands.
   service. SQLite stores durable Khala Sync cursors/checkpoints, confirmed
   projection rows, client identity, and pending mutation intents; it does not
   store bearer/API keys.
-- Delegation prompts pass `validateDelegationPrompt` before submission. The
-  validator rejects local paths, Codex auth paths, bearer/API tokens,
-  provider-secret env names, emails, and high-entropy strings.
+- `src/security/delegation-prompt.ts`'s `validateDelegationPrompt` is a real,
+  unit-tested port of the Swift client's `validateCodingPrompt` (rejects local
+  paths, Codex auth paths, bearer/API tokens, provider-secret env names,
+  emails, and high-entropy strings) for the separate "Khala -> Pylon -> Codex"
+  own-capacity coding-delegation runbook (a typed `codex_agent_task` request
+  with an explicit target Pylon ref) — it is not a filter applied to ordinary
+  chat messages. Parity note: the Swift reference app's equivalent
+  (`KhalaClient.requestCodexTask` / `validateCodingPrompt`) is also only
+  exercised from its test target today, not from any live `ChatView` call
+  site. Neither app currently ships an in-app coding-delegation panel, so this
+  validator has no live caller in either client yet; that is parity with the
+  reference app, not a regression introduced by the port.
 - Chat message bodies stay in authenticated Khala Sync scopes; public evidence
   may include only refs, counts, routes, and blocker IDs.
 
 ## Owner-Gated Proof Still Needed
 
-Source-level scaffold, policy tests, and local typecheck are agent-verifiable.
-The full TS-8 acceptance still needs owner/device or Android toolchain work:
+Source-level scaffold, policy tests, local typecheck, and both local
+prebuild+build receipts are agent-verifiable and green (see above and
+`docs/fable/2026-07-04-ts-8-expo-mobile-scaffold.md`). Two TestFlight uploads
+(build 1 and build 2, both `processingState: VALID`) are also independently
+confirmed via the App Store Connect API. What's left needs owner/device
+action:
 
-- Run the local Gradle build on a machine with Java and the Android SDK.
-- Upload the first TestFlight artifact through `xcrun altool`.
-- Produce one signed OTA round-trip receipt against a dev build.
+- Produce one signed OTA round-trip receipt against a dev build — the
+  manifest-serving path (`updates.openagents.com/khala-mobile/manifest`) is
+  live and correct, but `publish-ota.sh`'s `gcloud run deploy` step needs an
+  interactive `gcloud auth login` re-auth on this machine first (see
+  `NEEDS_OWNER.md`).
 - Replace the native-module shells with the device-proven STT stream and Apple
   FM bridge calls, then retire the SwiftUI app only after parity.
