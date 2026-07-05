@@ -1010,6 +1010,12 @@ Issue: define the local server contract
   permissions, file APIs, terminal APIs, review APIs, and lifecycle controls.
 - Acceptance gates: contract tests cover success, refusal, auth failure,
   health failure, restart, and version skew.
+- 2026-07-05 first pass: `clients/khala-code-desktop/src/shared/local-server-runtime.ts`
+  now defines the desktop-visible Khala local server capability contract and
+  projects runtime rows for Khala Local Server, Pylon, Codex app-server bridge,
+  and Khala AI SDK Core. This deliberately keeps Codex app-server as an
+  important bridge for Codex threads/approvals, not Khala's whole execution
+  boundary.
 
 Issue: bridge AI SDK Core into the local server
 ([#8446](https://github.com/OpenAgentsInc/openagents/issues/8446)).
@@ -1020,6 +1026,10 @@ Issue: bridge AI SDK Core into the local server
 - Acceptance gates: text, reasoning, usage, finish reason, tool call/result,
   providerOptions, and provider error fixtures all render through the same
   transcript consumer as existing Codex/Pylon events.
+- 2026-07-05 first pass: the desktop manager exposes `Khala AI SDK Core` as a
+  planned/ready runtime lane and states that AI SDK stream parts map into
+  OpenAgents events while OpenAgents keeps tool authority. Full stream fixture
+  parity remains the next implementation step.
 
 Issue: add server manager UI
 ([#8446](https://github.com/OpenAgentsInc/openagents/issues/8446)).
@@ -1029,6 +1039,11 @@ Issue: add server manager UI
 - Acceptance gates: switching servers does not corrupt local session state,
   unhealthy servers are obvious, and remote server credentials never enter
   public traces.
+- 2026-07-05 first pass: Settings now includes a `Local Server Runtime` manager
+  section with health refresh, disabled lifecycle/default-server actions until
+  credential-safe storage and lifecycle controllers exist, and a credential
+  policy that keeps remote server credentials out of renderer logs, support
+  bundles, command palette records, and public traces.
 
 ### P2: WSL Server Lifecycle
 

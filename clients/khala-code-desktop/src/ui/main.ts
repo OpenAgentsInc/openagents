@@ -159,6 +159,10 @@ import {
   mountKhalaCodeSupportSettingsSection,
   type KhalaCodeSupportSettingsSectionHandle,
 } from "./support-settings-section"
+import {
+  mountKhalaCodeLocalServerManagerSettingsSection,
+  type KhalaCodeLocalServerManagerSettingsSectionHandle,
+} from "./local-server-manager-settings-section"
 import { mountUnifiedInboxPanel } from "./inbox"
 import {
   normalizeThreadTimestampSeconds,
@@ -213,6 +217,10 @@ import {
   writeKhalaCodeAppPreferences,
 } from "../shared/app-preferences"
 import { projectKhalaCodeStatusUsage } from "../shared/status-usage"
+import {
+  projectKhalaCodeLocalServerManager,
+  type KhalaCodeLocalServerManagerActionId,
+} from "../shared/local-server-runtime"
 import {
   khalaCodeSessionActionIntentFor,
   khalaCodeSessionNavigationTarget,
@@ -5754,6 +5762,7 @@ let appPreferencesSection: KhalaCodeAppPreferencesSettingsSectionHandle | null =
 let statusUsageSection: KhalaCodeStatusUsageSettingsSectionHandle | null = null
 let sessionActionsSection: KhalaCodeSessionActionsSettingsSectionHandle | null = null
 let supportSection: KhalaCodeSupportSettingsSectionHandle | null = null
+let localServerManagerSection: KhalaCodeLocalServerManagerSettingsSectionHandle | null = null
 let plansSection: ReturnType<typeof mountKhalaCodePlansPanel> | null = null
 let runEvidenceSection: ReturnType<typeof mountKhalaCodeRunEvidencePanel> | null = null
 let commandRegistry: KhalaCodeCommandRegistry | null = null
@@ -5780,6 +5789,7 @@ const settingsPanel =
           void statusUsageSection?.refresh()
           void sessionActionsSection?.refresh()
           void supportSection?.refresh()
+          void localServerManagerSection?.refresh()
           void plansSection?.refresh()
           void runEvidenceSection?.refresh()
           void updaterSection?.refresh()
@@ -5791,6 +5801,7 @@ const settingsPanel =
             ...(modelMcpPermissionSection === null ? [] : [modelMcpPermissionSection.render()]),
             ...(appPreferencesSection === null ? [] : [appPreferencesSection.render()]),
             ...(statusUsageSection === null ? [] : [statusUsageSection.render()]),
+            ...(localServerManagerSection === null ? [] : [localServerManagerSection.render()]),
             ...(sessionActionsSection === null ? [] : [sessionActionsSection.render()]),
             ...(supportSection === null ? [] : [supportSection.render()]),
           ],
@@ -5894,6 +5905,38 @@ supportSection = settingsPanelEl === null
       exportDiagnostics: () => exportSupportDiagnostics(),
       fetch: () => projectCurrentSupportEntrypoints(),
       open: (_id, url) => openSupportUrl(url),
+    })
+const refreshLocalServerManager = async (): Promise<void> => {
+  await localServerManagerSection?.refresh()
+}
+const runLocalServerManagerAction = async (
+  action: KhalaCodeLocalServerManagerActionId,
+): Promise<void> => {
+  if (action === "server.open_manager") {
+    setActiveView("settings")
+    return
+  }
+  if (action === "server.refresh") {
+    await refreshLocalServerManager()
+  }
+}
+localServerManagerSection = settingsPanelEl === null
+  ? null
+  : mountKhalaCodeLocalServerManagerSettingsSection({
+      fetch: async () => {
+        const statuses = await Promise.allSettled([
+          controls.pylonStatus(),
+          controls.codexHarnessStatus(),
+          controls.codingStatus(),
+        ])
+        const runtimeStatuses = statuses
+          .filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof controls.pylonStatus>>> =>
+            result.status === "fulfilled"
+          )
+          .map(result => result.value)
+        return projectKhalaCodeLocalServerManager({ runtimeStatuses })
+      },
+      runAction: runLocalServerManagerAction,
     })
 claudeSettingsSection = settingsPanelEl === null
   ? null
@@ -6593,10 +6636,62 @@ const commandPaletteRecords = (): readonly KhalaCodeCommandPaletteRecord[] => {
           subtitle: "Reload sessions from the desktop bridge",
         }),
   })
+  records.push(
+    {
+      group: "server",
+      id: "server:local.manager",
+      kind: "server",
+      metadataRef: "khala_code.palette.server.local_manager",
+      scoreHints: ["local server", "pylon", "ai sdk", "runtime"],
+      subtitle: "Open the Khala-owned local server manager",
+      title: "Local Server Runtime",
+    },
+    {
+      group: "server",
+      id: "server:local.refresh",
+      kind: "server",
+      metadataRef: "khala_code.palette.server.local_refresh",
+      scoreHints: ["health", "runtime", "refresh"],
+      subtitle: "Reload Pylon, Codex bridge, and coding runtime status",
+      title: "Refresh Local Server Health",
+    },
+  )
   return records
 }
 
 commandRegistry = createKhalaCodeCommandRegistry([
+  {
+    analyticsRef: "khala_code.command.server.open_manager",
+    category: "settings",
+    execute: () => {
+      setActiveView("settings")
+    },
+    id: "server.open_manager",
+    keywords: ["server", "runtime", "pylon", "ai sdk"],
+    title: "Open Local Server Manager",
+  },
+  {
+    analyticsRef: "khala_code.command.server.refresh",
+    available: () => localServerManagerSection !== null,
+    category: "settings",
+    disabledReason: () => "Local server manager is unavailable",
+    execute: () => {
+      void refreshLocalServerManager()
+    },
+    id: "server.refresh",
+    keywords: ["server", "health", "runtime"],
+    title: "Refresh Local Server Health",
+  },
+  {
+    analyticsRef: "khala_code.command.server.restart_local",
+    available: () => false,
+    category: "settings",
+    disabledReason: () => "Khala-owned local server lifecycle controller is not wired in this build.",
+    execute: () => {},
+    id: "server.restart_local",
+    keywords: ["server", "restart", "lifecycle"],
+    title: "Restart Local Server",
+  },
   {
     analyticsRef: "khala_code.command.palette.open",
     category: "workbench",
@@ -7031,7 +7126,13 @@ commandPalette = mountKhalaCodeCommandPalette(commandPaletteRoot, {
       return
     }
     if (result.kind === "server") {
-      void executeKhalaCodeCommand(result.id === "server:session.refresh" ? "session.refresh" : "view.settings")
+      void executeKhalaCodeCommand(
+        result.id === "server:session.refresh"
+          ? "session.refresh"
+          : result.id === "server:local.refresh"
+            ? "server.refresh"
+            : "server.open_manager",
+      )
       return
     }
     if (result.kind === "session") {

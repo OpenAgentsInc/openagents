@@ -6599,6 +6599,93 @@ button {
   font-size: 0.68rem;
   white-space: pre-wrap;
 }
+.khala-local-server-section {
+  gap: 0.65rem;
+}
+.khala-local-server-boundary,
+.khala-local-server-credential-policy {
+  margin: 0;
+  color: color-mix(in srgb, var(--oa-color-component-text) 62%, transparent);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+.khala-local-server-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+.khala-local-server-action {
+  padding: 0.38rem 0.58rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 68%, transparent);
+  border-radius: 0.36rem;
+  background: color-mix(in srgb, var(--oa-color-component-surface) 80%, var(--oa-color-khala-accent) 7%);
+  color: var(--oa-color-component-text);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+.khala-local-server-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+.khala-local-server-list {
+  display: grid;
+  gap: 0.25rem;
+}
+.khala-local-server-row {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) minmax(5.5rem, auto) minmax(10rem, 1.25fr) minmax(10rem, 1fr);
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  padding: 0.42rem 0;
+  border-top: 1px solid color-mix(in srgb, var(--oa-color-component-border) 52%, transparent);
+}
+.khala-local-server-title,
+.khala-local-server-state,
+.khala-local-server-detail,
+.khala-local-server-reason {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.khala-local-server-title {
+  color: var(--oa-color-component-text);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+.khala-local-server-state {
+  color: color-mix(in srgb, var(--oa-color-khala-success) 82%, var(--oa-color-component-text));
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+.khala-local-server-row[data-state="degraded"] .khala-local-server-state,
+.khala-local-server-row[data-state="planned"] .khala-local-server-state,
+.khala-local-server-row[data-state="unavailable"] .khala-local-server-state {
+  color: color-mix(in srgb, var(--oa-color-khala-warning) 82%, var(--oa-color-component-text));
+}
+.khala-local-server-detail,
+.khala-local-server-reason {
+  color: color-mix(in srgb, var(--oa-color-component-text) 54%, transparent);
+  font-size: 0.7rem;
+}
+.khala-local-server-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.khala-local-server-capability {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.22rem 0.42rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 58%, transparent);
+  border-radius: 0.34rem;
+  color: color-mix(in srgb, var(--oa-color-component-text) 64%, transparent);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .khala-code-terminal {
   min-height: 0;
   overflow: hidden;
@@ -6703,6 +6790,7 @@ button {
   .khala-mcp-manager-row,
   .khala-status-usage-grid,
   .khala-status-usage-row,
+  .khala-local-server-row,
   .khala-session-actions-row,
   .khala-terminal-panel-header,
   .khala-provider-custom-form,
@@ -6714,6 +6802,7 @@ button {
   .khala-provider-catalog-action,
   .khala-model-manager-action,
   .khala-mcp-manager-action,
+  .khala-local-server-action,
   .khala-session-actions-button {
     justify-self: start;
   }
