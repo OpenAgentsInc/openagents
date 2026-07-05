@@ -1,5 +1,11 @@
 # Khala on Machine Payments (MPP) + Stripe Directory — full integration plan
 
+> **Current status (2026-07-05, #8387): retired/deferred.** The standalone Khala
+> MPP/x402 chat endpoint and Stripe MPP discovery/config were removed from
+> current main. This plan is preserved as historical strategy context only; any
+> future Machine Payments surface needs fresh owner approval and receipt-first
+> implementation.
+
 *2026-06-22. How to make the OpenAgents **Khala** inference API discoverable in the
 Stripe Directory and payable **per call** by agents via the Machine Payments
 Protocol (MPP) — and how that fits (and conflicts) with our Bitcoin-first stance.

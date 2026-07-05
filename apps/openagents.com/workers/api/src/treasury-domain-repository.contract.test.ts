@@ -749,25 +749,6 @@ CREATE TABLE revenue_event_provenance (
   CHECK (amount_cents IS NOT NULL OR amount_sats IS NOT NULL)
 );
 
-CREATE TABLE mpp_lightning_replay (
-  -- The BOLT11 payment hash (sha256 of the preimage), lowercase hex. PRIMARY KEY
-  -- so a second use of the same paid invoice collides and is refused.
-  payment_hash TEXT PRIMARY KEY,
-  -- The challenge id the payment was consumed under (binds the proof to the
-  -- exact quote, for audit).
-  challenge_id TEXT NOT NULL,
-  consumed_at TEXT NOT NULL
-);
-
-CREATE TABLE mpp_spt_replay (
-  -- The Shared Payment Token id (starts with \`spt_\`).
-  spt TEXT PRIMARY KEY,
-  -- The challenge id the SPT was consumed under (binds the proof to the quote).
-  challenge_id TEXT NOT NULL,
-  -- The resulting Stripe PaymentIntent id, for dereference.
-  payment_intent_id TEXT,
-  consumed_at TEXT NOT NULL
-);
 `
 
 // ---------------------------------------------------------------------------
@@ -1275,19 +1256,6 @@ const sampleRow = (table: TreasuryDomainTable): TreasuryDomainRow => {
         source_refs_json: '[]',
         updated_at: ISO,
       }
-    case 'mpp_lightning_replay':
-      return {
-        challenge_id: 'mpp-challenge-contract-1',
-        consumed_at: ISO,
-        payment_hash: `${'ab'.repeat(32)}`,
-      }
-    case 'mpp_spt_replay':
-      return {
-        challenge_id: 'mpp-challenge-contract-1',
-        consumed_at: ISO,
-        payment_intent_id: null,
-        spt: 'spt_contract_sample_1',
-      }
   }
 }
 
@@ -1477,46 +1445,6 @@ describe.skipIf(!hasLocalPostgres())(
       expect(String(pgTx?.state)).toBe('settled')
       expect(Number(pgTx?.amount_sat)).toBe(21_001)
       expect(diagnostics).toEqual([])
-    })
-
-    test('replay-guard key exactness: a second consume collides on Postgres too', async () => {
-      // The mirror converges by key; a DIFFERENT challenge under the same
-      // payment_hash can only exist if D1 held it — Postgres backfill-style
-      // inserts under the same key collide.
-      const guard = sampleRow('mpp_lightning_replay')
-      const inserted = await client!.unsafe(
-        `INSERT INTO mpp_lightning_replay (payment_hash, challenge_id, consumed_at)
-         VALUES ($1, $2, $3) ON CONFLICT (payment_hash) DO NOTHING RETURNING payment_hash`,
-        [guard['payment_hash'], 'a-DIFFERENT-challenge', ISO],
-      )
-      expect(inserted.length).toBe(0)
-      const row = await pgRow(
-        'mpp_lightning_replay',
-        'payment_hash',
-        String(guard['payment_hash']),
-      )
-      expect(String(row?.challenge_id)).toBe('mpp-challenge-contract-1')
-    })
-
-    test('replay-guard diagnostics are redacted: payment identifiers never hit logs', async () => {
-      const failing = makeTreasuryDomainHandle({
-        d1: sqlite.db,
-        flags: { dualWrite: true, reads: 'd1' },
-        log: (event, fields) => diagnostics.push([event, fields]),
-        postgres: {
-          ...postgresStore,
-          upsertRows: () => Promise.reject(new Error('postgres down')),
-        },
-        wait: () => Promise.resolve(),
-      })
-      await mirrorTreasuryRows(failing, 'mpp_spt_replay', 'spt', [
-        'spt_contract_sample_1',
-      ])
-      const logged = diagnostics.at(-1)
-      expect(logged?.[0]).toBe('khala_sync_treasury_dual_write_failed')
-      expect(logged?.[1].refs).toEqual(['<redacted:1>'])
-      expect(JSON.stringify(logged?.[1])).not.toContain('spt_contract')
-      diagnostics = []
     })
 
     test('fail-soft: a Postgres outage never fails the write path (keys-only diagnostic)', async () => {

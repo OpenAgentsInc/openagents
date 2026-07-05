@@ -102,6 +102,7 @@ dispatchers (retires most of the 134-ceiling Response-surface debt).
 | `omni-investor-demo-bundle-export.ts` | Investor demo bundle | Untouched since repo genesis | **REMOVE** |
 | `lander2/3/4/5-routes.ts` + `lander-shell.ts` | Landing-page A/B experiments | Actively iterated (2 days old) | **DEPRECATE now, REMOVE on ONE-UI cutover** — collapse to one winner |
 | `voice-program-ingest-routes.ts` | Voice ingest, `VOICE_PROGRAM_INGEST_ENABLED` never armed | Removed 2026-07-05 in #8386 | **REMOVED route/core/tests/flag** |
+| `inference/mpp/mpp-chat-completions-routes.ts` + `mpp-discovery-document.ts` | Standalone MPP/x402 Khala chat endpoint, `KHALA_MPP_ENABLED` never committed armed | Removed 2026-07-05 in #8387; no direct Khala Code dependency | **REMOVED route/discovery/smokes/Stripe MPP config/replay caches** — future no-account machine payments need a fresh owner-approved design |
 
 **Write-dead D1 table sweep (feeds #8330):** #8378 added
 `bun run d1:zero-reference-sweep` plus the deterministic report
@@ -118,9 +119,13 @@ migrations and the matching Khala Sync mirror/twin cleanup.
 
 ### 2.3 Flag-gated cleanup candidates
 
-`KHALA_MPP_ENABLED` remains the main full-code surface behind an owner
-decision point, disproportionately responsible for Response-surface and
-runPromise-bridge budget consumption.
+`KHALA_MPP_ENABLED` was removed in #8387 after current-main verification found
+no committed arming and no direct Khala Code dependency. The standalone
+`/mpp/v1/chat/completions` route, root MPP discovery document, Stripe MPP
+profile config, tests, smokes, and replay caches are gone. The Spark-primary /
+MDK-fallback Lightning invoice helper remains because the Khala Code paid-plan
+purchase route directly uses it; the legacy-named `KHALA_MPP_LIGHTNING_ENABLED`
+now gates that paid-plan Lightning rail, not a live MPP chat endpoint.
 `INFERENCE_BATCH_JOBS_ENABLED` was removed in #8384 after the owner-preferred
 remove decision: the route/queue/store/OpenAPI surface had no Khala Code
 dependency and no owner-approved arming evidence.
@@ -134,8 +139,10 @@ config and is the live Khala MCP resume/status contract for caller-owned
 Pylon/Codex assignments (`khala.request`, `khala.spawn`, `khala.resume`,
 `khala.status`), plus the background-agent run session-event projection. Do
 not delete it as inert cleanup without replacing that Khala Code contract.
-Estimated remaining combined **500–1,500 LOC**. **Decide arm-or-remove for the
-remaining flag**.
+The original estimated remaining **500–1,500 LOC** full-code flag slice is now
+resolved for the audited set: batch jobs and voice ingest were removed,
+durable-stream was kept with live Khala Code evidence, and MPP/x402 chat was
+removed/deferred.
 
 ### 2.4 Dual-store layering (23 domain stores, 3-4 seam patterns)
 
@@ -486,7 +493,10 @@ decide arm-or-remove on the remaining owner-decision flag.
 - #8386 - Complete: removed the unarmed `VOICE_PROGRAM_INGEST_ENABLED` Worker
   route/core/tests/flag and updated the product-promise evidence to keep only
   voice evidence/projection contracts.
-- #8387 - Decide arm-or-remove for `KHALA_MPP_ENABLED`.
+- #8387 - Complete: removed the unarmed standalone `KHALA_MPP_ENABLED`
+  MPP/x402 Khala chat endpoint, discovery doc, Stripe profile config, smokes,
+  and replay-cache tables while keeping the Khala Code paid-plan Lightning
+  invoice helper.
 
 **Wave 2 — structural refactors, medium risk, biggest long-term payoff:**
 Split `index.ts`'s route registry into per-domain bundles (collapses three

@@ -371,19 +371,11 @@ const budgetChecks = [
     // shared route mappers.
     // +1 (96 -> 97) for the public labor earnings read handler
     // +1 (97 -> 98) for the coding quick win pipeline
-    // +5 (98 -> 103) on 2026-06-22 (#6049) for the Khala-on-MPP +
-    // Stripe-Directory discovery lane: the flag-gated INERT machine-payment
-    // (x402/MPP) chat-completions route helpers in
-    // inference/mpp/mpp-chat-completions-routes.ts (the `handleMppChatCompletions`
-    // entrypoint `Effect.Effect<Response>`, its `runPaidCompletion`
-    // `Effect.Effect<Response>` payer-bound completion, and the `notConfigured`
-    // 503 `Response`), the `stripe-mpp-client.ts` fetch-shaped client
-    // (`Promise<Response>`), and the crawlable discovery-surface renderer in
-    // inference/discovery-surfaces.ts (`renderDiscoverySurface`
-    // `Effect.Effect<Response>`, mounted from index.ts). All return
-    // `Response`/`Effect.Effect<Response>`/`Promise<Response>` like the sibling
-    // route handlers already counted here. Ratchet back down when these MPP and
-    // discovery handlers are extracted behind shared route mappers.
+    // +1 (98 -> 99) on 2026-06-22 (#6049) for the crawlable discovery-surface
+    // renderer in inference/discovery-surfaces.ts (`renderDiscoverySurface`
+    // `Effect.Effect<Response>`, mounted from index.ts). #8387 removed the
+    // separate default-off MPP/x402 chat route, Stripe client, and MPP OpenAPI
+    // renderer, leaving only static keyed-Khala discovery docs.
     // +2 (103 -> 105) on 2026-06-22 (#6058, EPIC #6056) for the durable-stream
     // Rank-1 resumable-inference surfaces: the durable resume-read route
     // (inference/durable-inference-read-routes.ts `routeDurableInferenceReadRequest`
@@ -402,17 +394,6 @@ const budgetChecks = [
     // the sibling `handlePublicArtanisLaborReceiptsApi` already counted here, is
     // no-store and mints no authority. Ratchet back down when these Artanis read
     // handlers are extracted behind shared route mappers.
-    // +1 (106 -> 107) on 2026-06-23 (EPIC #6049) for the MPP service-discovery
-    // document renderer in inference/mpp-discovery-document.ts
-    // (`renderMppDiscoveryDocument` `Effect.Effect<Response>`, mounted from
-    // index.ts at `GET /openapi.json`). It serves the OpenAPI 3.1 discovery doc
-    // the MPP registries (MPPScan, mpp.dev/services) crawl to light the Machine
-    // Payments badge; the paid path's offers + 402 are gated behind the same
-    // KHALA_MPP_ENABLED flag the route reads, so an inert endpoint advertises
-    // nothing payable. It returns `Effect.Effect<Response>` like the sibling
-    // crawlable discovery-surface renderer already counted here, is public +
-    // cacheable, mints no authority, and never charges. Ratchet back down when
-    // these discovery handlers are extracted behind shared route mappers.
     // +3 (107 -> 110) on 2026-06-23 (#6154 / EPIC #6056) for the durable
     // resumable-inference wiring: (a) the DO-fetch transport stub type in
     // inference/durable-inference-do-transport.ts (`DurableStreamStub.fetch():
@@ -494,7 +475,11 @@ const budgetChecks = [
     // main; this records the actual count. They mint no spend/settlement/
     // payout/public-claim authority. Ratchet back down when these handlers
     // move behind a shared route mapper.
-    budget: 134,
+    // -5 (134 -> 129) on 2026-07-05 (#8387) for retiring the standalone
+    // default-off MPP/x402 chat endpoint and root MPP discovery document instead
+    // of arming them. The keyed Khala gateway and Khala Code plan-purchase
+    // Lightning helper remain.
+    budget: 129,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(

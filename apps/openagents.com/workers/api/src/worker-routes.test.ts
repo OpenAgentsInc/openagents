@@ -234,7 +234,7 @@ describe('Worker document route fallback', () => {
 })
 
 describe('Canonical /api gateway base alias (#6148)', () => {
-  test('maps canonical /api/v1 + /api/mpp paths back to their legacy gateway path', () => {
+  test('maps canonical /api/v1 paths back to their legacy gateway path', () => {
     expect(gatewayLegacyPathname('/api/v1/models')).toBe('/v1/models')
     expect(gatewayLegacyPathname('/api/v1/chat/completions')).toBe(
       '/v1/chat/completions',
@@ -243,14 +243,10 @@ describe('Canonical /api gateway base alias (#6148)', () => {
     expect(gatewayLegacyPathname('/api/v1/gateway/glm-fleet/readiness')).toBe(
       '/v1/gateway/glm-fleet/readiness',
     )
-    expect(gatewayLegacyPathname('/api/mpp/v1/chat/completions')).toBe(
-      '/mpp/v1/chat/completions',
-    )
   })
 
   test('leaves legacy gateway paths and ordinary /api product routes untouched', () => {
     expect(gatewayLegacyPathname('/v1/models')).toBeUndefined()
-    expect(gatewayLegacyPathname('/mpp/v1/chat/completions')).toBeUndefined()
     expect(gatewayLegacyPathname('/api/billing/checkout')).toBeUndefined()
     expect(
       gatewayLegacyPathname('/api/public/product-promises'),
@@ -298,7 +294,6 @@ describe('Worker route dual-serve resolution (#6148)', () => {
       exactRoute('/v1/models'),
       exactRoute('/v1/chat/completions'),
       exactRoute('/v1/gateway/glm-fleet/readiness'),
-      exactRoute('/mpp/v1/chat/completions'),
     ]
 
     const noRoute = () => undefined
@@ -492,19 +487,6 @@ describe('Worker route dual-serve resolution (#6148)', () => {
     expect(result.response.status).toBe(200)
     await expect(result.response.text()).resolves.toBe('ok')
     expect(result.observed.exactPath).toBeUndefined()
-  })
-
-  test('canonical /api/mpp/v1/chat/completions reaches the MPP handler', async () => {
-    const canonical = await runRoute(
-      new Request('https://openagents.com/api/mpp/v1/chat/completions', {
-        method: 'POST',
-        body: JSON.stringify({ model: 'x', messages: [] }),
-        headers: { 'content-type': 'application/json' },
-      }),
-    )
-
-    expect(canonical.response.status).toBe(200)
-    expect(canonical.observed.exactPath).toBe('/mpp/v1/chat/completions')
   })
 
   test('canonical /api/v1/models/:model reaches the path-param dispatcher with the normalized url', async () => {

@@ -135,16 +135,15 @@ type WorkerRouteDependencies = Readonly<{
   routeTrainingVerificationRequest: OptionalEffectRoute
 }>
 
-// API base canonicalization (#6148): `/api` is the canonical base for ALL API
-// routes, including the OpenAI-compatible inference gateway (`/v1/*`) and MPP
-// (`/mpp/v1/*`). To keep the historical `/v1` + `/mpp/v1` paths working as
-// non-breaking aliases — OpenAI/MPP clients integrate at the bare `/v1` base by
+// API base canonicalization (#6148): `/api` is the canonical base for gateway
+// routes. To keep the historical OpenAI-compatible `/v1` paths working as
+// non-breaking aliases — OpenAI clients integrate at the bare `/v1` base by
 // convention and POST endpoints must not be redirected — we DUAL-SERVE by
 // normalizing the `/api`-prefixed canonical path back to its legacy path at the
 // single route entry. The same handler then answers both `/api/v1/...` and
-// `/v1/...` (and `/api/mpp/v1/...` and `/mpp/v1/...`) identically: same auth,
-// metering, streaming, and component channel. Zero duplicate handlers.
-const canonicalApiGatewayPrefixes: ReadonlyArray<string> = ['/api/v1', '/api/mpp']
+// `/v1/...` identically: same auth, metering, streaming, and component channel.
+// Zero duplicate handlers.
+const canonicalApiGatewayPrefixes: ReadonlyArray<string> = ['/api/v1']
 
 export const gatewayLegacyPathname = (
   pathname: string,

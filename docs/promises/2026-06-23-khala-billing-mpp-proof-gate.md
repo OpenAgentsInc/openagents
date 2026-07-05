@@ -2,6 +2,11 @@
 
 Date: 2026-06-23
 
+> **Current status (2026-07-05, #8387): MPP portion retired.** The card-funded
+> inference-credit proof gate remains relevant, but the standalone MPP/x402 chat
+> endpoint and its smokes were removed/deferred. Treat all MPP smoke commands and
+> arming notes below as historical context only.
+
 Related issue: OpenAgentsInc/openagents#6108
 
 Promise records:

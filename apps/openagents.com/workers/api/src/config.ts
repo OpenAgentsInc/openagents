@@ -214,7 +214,7 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   KHALA_CODE_PAID_PLAN_STRIPE_SUCCESS_URL?: string | undefined
   KHALA_CODE_PAID_PLAN_STRIPE_CANCEL_URL?: string | undefined
   // Owner-approved Lightning price for the Khala Code paid-private-data plan,
-  // in integer sats. Absent/invalid => the Spark/MPP Lightning purchase rail
+  // in integer sats. Absent/invalid => the Spark/Lightning purchase rail
   // returns a typed 503 and grants no entitlement.
   KHALA_CODE_PAID_PLAN_PRICE_SATS?: string | undefined
   // Async acceptance-verification DISPATCH feature flag (Khala, EPIC #6017).
@@ -228,45 +228,15 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // the gateway rejects any verdict that does not present it. Worker secret; never
   // committed/logged. Absent => the callback is closed (every verdict rejected).
   ACCEPTANCE_VERDICT_CALLBACK_TOKEN?: string | undefined
-  // Machine-payable Khala endpoint feature flag (EPIC #6049). Default OFF: the
-  // `/mpp/v1/chat/completions` 402-gated endpoint is INERT on the live Worker
-  // until launch. Set "true"/"1"/"on" to arm. The endpoint is ALSO fail-safe on
-  // a missing Stripe key: with this off OR no STRIPE_API_KEY it returns "not
-  // configured" and never constructs a charge. The discovery surfaces
-  // (`/llms.txt`, `/agents.md`, `/ai.md`, `/skill.md`) are unconditional and do
-  // NOT depend on this flag.
-  KHALA_MPP_ENABLED?: string | undefined
-  // The Stripe Directory network profile id (`profile_…`) enabling the card/SPT
-  // machine-payment rail for the MPP endpoint. Absent => the MPP endpoint is
-  // crypto-only (USDC via x402/MPP); the crypto rail does not need it. This is a
-  // PUBLIC directory identifier (how the public Stripe Directory references the
-  // business), so it ships as a committed Worker `var` in wrangler.jsonc — NOT a
-  // secret. It only NAMES the card rail; it never arms charges on its own (the
-  // endpoint stays inert until KHALA_MPP_ENABLED + a STRIPE_API_KEY secret).
-  STRIPE_MPP_NETWORK_PROFILE_ID?: string | undefined
   // The Stripe SECRET API key (also used by the card-billing surface in
-  // stripe-billing.ts via the structurally-compatible StripeBillingEnv). The MPP
-  // endpoint reads it to create/verify machine-payment PaymentIntents against the
-  // Stripe REST API. Worker secret; never committed/logged. Absent => the MPP
-  // endpoint is fail-safe inert and never constructs a charge.
+  // stripe-billing.ts via the structurally-compatible StripeBillingEnv). Worker
+  // secret; never committed/logged.
   STRIPE_API_KEY?: string | undefined
-  // The MPP/Payment-Auth challenge-binding signing secret (EPIC #6049, defect B).
-  // The 402 challenge `id` is HMAC-SHA256(secret, canonical challenge fields), so
-  // the Worker verifies a retry credential STATELESSLY (draft-httpauth-payment-00
-  // §5.1.3). Worker SECRET; never committed/logged. Set via
-  //   wrangler secret put KHALA_MPP_SIGNING_SECRET
-  // Absent => the MPP endpoint is fail-safe inert and never issues a challenge or
-  // verifies a credential (alongside KHALA_MPP_ENABLED + STRIPE_API_KEY).
-  KHALA_MPP_SIGNING_SECRET?: string | undefined
-  // The Lightning rail feature flag for the MPP endpoint (EPIC #6049,
-  // draft-lightning-charge-00). Default OFF: the `/mpp/v1/chat/completions` 402
-  // does NOT offer a Lightning charge until this is armed. Bitcoin-first: when
-  // armed AND a working BOLT11 invoice issuer is present (the MDK wallet binding
-  // — MDK_CHECKOUT_ROUTE_URL + MDK_CHECKOUT_ROUTE_SECRET/MDK_ACCESS_TOKEN, or the
-  // self-hosted MDK_SIDECAR), the Lightning offer is surfaced FIRST in the 402
-  // and the discovery doc. HONESTY GATE: with the flag off OR no invoice issuer,
-  // the Lightning rail is not advertised (we never offer a rail we cannot
-  // fulfill). The crypto/card rails are unaffected. Set "1"/"true"/"yes"/"on".
+  // Legacy-named Lightning rail gate used by the Khala Code paid-plan purchase
+  // seam while the account-keyed MPP chat endpoint is retired (#8387). Default
+  // OFF: paid-plan purchases do not offer a Lightning invoice unless this flag,
+  // KHALA_CODE_PAID_PLANS_ENABLED, KHALA_CODE_PAID_PLAN_PRICE_SATS, and a working
+  // Spark-primary/MDK-fallback invoice issuer are all present.
   KHALA_MPP_LIGHTNING_ENABLED?: string | undefined
   // Cloud primitive scaffold feature flags (EPIC #5510, #5516/#5517). Default
   // OFF: the `/v1/fine_tuning/jobs` and `/v1/sandboxes` routes are inert on the

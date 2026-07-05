@@ -1,5 +1,14 @@
 # Machine Payments (MPP) at OpenAgents — Overview
 
+> **Current status (2026-07-05, #8387): RETIRED / DEFERRED.** The standalone
+> Khala MPP/x402 chat endpoint (`POST /mpp/v1/chat/completions` and canonical
+> `/api/mpp/v1/chat/completions`), root MPP discovery document, Stripe MPP
+> profile config, smokes, and replay-cache writers were removed because the
+> surface was default-off, unarmed in committed config, and not directly needed
+> by Khala Code. This document is preserved as historical design context only.
+> Future no-account machine payments need a fresh owner-approved,
+> receipt-first design before any route, discovery, or public claim returns.
+
 *Plain-language orientation. If you're new (human or agent), read this first, then
 the [operations runbook](./2026-06-23-mpp-launch-and-badge-runbook.md) for the
 how-to detail.*

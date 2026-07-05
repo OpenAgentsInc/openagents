@@ -3,20 +3,19 @@
 // the live inference API so agents (and crawlers like StripeBot, which
 // feeds the Stripe Directory) can FIND and understand the service.
 //
-// Ship-ready, no flag: these are static documents. They make NO money claim and
-// require no payment configuration — they only DESCRIBE the API and point at the
-// pricing + (forward-ref) machine-payment surfaces. They are served crawlable
-// (cache-friendly, no auth, no robots block) so the Stripe Directory crawler can
-// match OpenAgents on "llm inference api" / "openai-compatible inference" /
-// "pay-per-call" searches.
+// Ship-ready, no flag: these are static documents. They make NO live payment
+// claim and require no payment configuration — they only DESCRIBE the keyed API
+// and pricing posture. They are served crawlable (cache-friendly, no auth, no
+// robots block) so agent crawlers can match OpenAgents on "llm inference api" /
+// "openai-compatible inference" / "pay-per-call" searches.
 //
 // Mirrors the live PostalForm/Zinc directory pattern: `/llms.txt`, `/agents.md`,
 // `/ai.md`, `/skill.md`. Copy is intentionally honest and accurate to what the
 // gateway actually serves today (`/v1/chat/completions`, one public
 // `openagents/khala` model id, receipt-first metering, the `openagents`
-// disclosure block). The MPP/x402 paid endpoint is live only when its production
-// flags and payment secrets are armed; its own route remains fail-safe inert
-// otherwise.
+// disclosure block). The standalone MPP/x402 endpoint was retired in #8387; do
+// not advertise `/mpp/v1/chat/completions` unless a fresh owner-approved surface
+// is rebuilt.
 import { Effect } from 'effect'
 
 // The four discovery document paths, mirroring the PostalForm directory shape.
@@ -49,14 +48,12 @@ const ORIGIN = 'https://openagents.com'
 // ---------------------------------------------------------------------------
 
 // `/api` is the canonical base for every OpenAgents API route, including the
-// OpenAI-compatible inference gateway and MPP (#6148). The legacy bare `/v1` and
-// `/mpp/v1` paths keep working as non-breaking aliases (OpenAI/MPP clients
-// integrate at the `/v1` base by convention), so existing integrations do not
-// break — but new copy points at the canonical `/api` base.
+// OpenAI-compatible inference gateway (#6148). The legacy bare `/v1` paths keep
+// working as non-breaking aliases because OpenAI clients integrate at the `/v1`
+// base by convention, but new copy points at the canonical `/api` base.
 const KHALA_ENDPOINT = `${ORIGIN}/api/v1/chat/completions`
 const KHALA_MODELS_ENDPOINT = `${ORIGIN}/api/v1/models`
 const PRICING_DOC = `${ORIGIN}/docs/product-promises`
-const MPP_ENDPOINT = `${ORIGIN}/api/mpp/v1/chat/completions`
 
 // `/llms.txt` — the plain-language directory entry. This is what a crawler /
 // agent reads first to decide whether Khala fits the job.
@@ -82,8 +79,7 @@ agent compute, sold per call.
 - \`openagents/khala\` — the one public model id. Khala routes over OpenAgents
   owned supply, including Hydralisk/GPT-OSS under the hood, and returns a
   standard OpenAI response plus the \`openagents\` receipt/disclosure block.
-  Raw \`openai/gpt-oss-*\` ids and old Khala tier names are not public products
-  and are not MPP-payable.
+  Raw \`openai/gpt-oss-*\` ids and old Khala tier names are not public products.
 
 ## Best fit
 
@@ -101,31 +97,26 @@ agent compute, sold per call.
 Per-call, derived from a published per-token model (1 credit = $0.01 USD basis;
 Bitcoin-funded balances get a small funding discount). See: ${PRICING_DOC}
 
-## Pay per call (machine payments)
+## Pay per call
 
-The machine-payable, 402-gated endpoint is:
-${MPP_ENDPOINT} (Machine Payments Protocol / x402). An agent with a Lightning
-wallet, crypto wallet, or shared payment token can pay per request with no
-signup: the first request returns \`402 Payment Required\` with a payment
-challenge, the agent's payment tool pays and retries, and the verified request
-returns the completion. The default and only MPP model is
-\`openagents/khala\`; raw GPT-OSS ids are internal supply only and are rejected
-before any payment challenge is issued.
-The contributor payout rail stays Bitcoin/Spark.
+Khala is priced per call through OpenAgents account keys and receipt-first
+credit metering. Machine-payment discovery for a no-account 402 endpoint is
+currently deferred; the old MPP/x402 chat route was retired in #8387 until a
+fresh owner-approved receipt-first surface is rebuilt.
 
 ## Agent surfaces
 
-- ${ORIGIN}/agents.md — how an agent calls Khala (and the machine-payment flow)
+- ${ORIGIN}/agents.md — how an agent calls Khala
 - ${ORIGIN}/ai.md — short AI instructions
 - ${ORIGIN}/skill.md — skill / tool setup
 - ${ORIGIN}/AGENTS.md — full agent onboarding
 `
 
-// `/agents.md` — machine-payment workflow + how to call Khala.
+// `/agents.md` — how to call Khala.
 const agentsMd = (): string => `# OpenAgents Agent Cloud — agent guide
 
 OpenAgents sells inference and verified coding outcomes **per call**. This page
-tells an agent how to call the inference gateway and how machine payment works.
+tells an agent how to call the inference gateway.
 
 ## Call Khala (OpenAI-compatible)
 
@@ -151,28 +142,12 @@ Every response is standard OpenAI shape plus a non-breaking \`openagents\`
 disclosure block (which concrete worker served the request, the supply lane, and
 a dereferenceable receipt ref when metered).
 
-## Pay per call (no signup) — Machine Payments / x402
+## Pay per call
 
-For agents that would rather pay per request than hold an account key, the
-machine-payment endpoint is:
-
-    ${MPP_ENDPOINT}
-
-The flow follows the Machine Payments Protocol (MPP) / x402:
-
-1. Your request with **no payment credential** returns
-   \`402 Payment Required\` with one or more \`WWW-Authenticate: Payment ...\`
-   challenges describing the price and how to pay.
-2. Your payment tool (e.g. \`mppx\`) pays and **retries** the request with an
-   \`Authorization: Payment ...\` credential.
-3. The server verifies the credential, runs the same Khala completion, and
-   returns it with the usage receipt.
-
-Accepted rails: **Lightning** (BOLT11), **USDC** (x402 on Base; MPP on Solana /
-Tempo), and **card** via shared payment tokens. Microtransactions to 0.01 USDC.
-Settled machine payments mint inference credits that flow through the same
-metering + receipt path as keyed calls; the **contributor payout rail stays
-Bitcoin/Spark**.
+Use an OpenAgents agent key and account balance for keyed pay-per-call access.
+Usage is metered from provider-reported tokens and returned with receipt
+metadata. The no-account Machine Payments / x402 chat endpoint is deferred after
+#8387 and is not part of the live discovery surface.
 
 ## More
 
@@ -189,8 +164,7 @@ You can use OpenAgents Khala for OpenAI-compatible LLM inference, pay-per-call.
 - Endpoint: ${KHALA_ENDPOINT} (OpenAI Chat Completions shape)
 - Models: \`openagents/khala\`
 - Auth today: \`Authorization: Bearer <openagents-agent-key>\`
-- Pay-per-call machine payments (MPP / x402):
-  ${MPP_ENDPOINT}
+- Auth today: \`Authorization: Bearer <openagents-agent-key>\`
 - Pricing: per-call, 1 credit = $0.01 USD basis. See ${PRICING_DOC}
 
 Responses are standard OpenAI shape plus an \`openagents\` disclosure block
@@ -220,13 +194,11 @@ Add Khala as an OpenAI-compatible inference tool in your agent.
 }
 \`\`\`
 
-## Pay-per-call (machine payments)
+## Pay-per-call
 
-If your agent pays per request instead of holding a key, use the machine-payment
-endpoint (MPP / x402): ${MPP_ENDPOINT}. A request without a payment credential
-returns \`402 Payment Required\` with a payment challenge; your payment tool pays
-and retries. Accepted rails: Lightning, USDC, and card. The default MPP model is
-\`openagents/khala\`.
+Use an OpenAgents agent key and account balance for keyed pay-per-call access.
+The standalone Machine Payments / x402 chat endpoint is deferred after #8387 and
+is not part of this live skill setup.
 
 See ${ORIGIN}/agents.md for the full flow.
 `

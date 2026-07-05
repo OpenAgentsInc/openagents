@@ -214,12 +214,12 @@ HYDRALISK_GPT_OSS_120B_RECEIPT_REF=<public-safe receipt ref>
 This is model-specific arming, not lane-only arming. If only the 20B env is
 ready, `/v1/models` can still advertise `openagents/khala` backed by the 20B
 lane while the 120B adapter remains unavailable as an internal fallback. Public
-`/v1/chat/completions`, `/v1/quote`, and `/mpp/v1/chat/completions` reject raw
-`openai/gpt-oss-120b` before balance checks, payment challenges, or provider
-dispatch. That prevents the L4 dogfood lane from becoming an accidental product
-claim for a model it cannot fit. Once the Worker has the H100 host URL, token,
-and the evidence refs above, 120B can back `openagents/khala`; it still does not
-become a public raw-model id.
+`/v1/chat/completions` and `/v1/quote` reject raw `openai/gpt-oss-120b` before
+balance checks or provider dispatch. The retired MPP/x402 chat endpoint must not
+be used as a raw-model sale path. That prevents the L4 dogfood lane from becoming
+an accidental product claim for a model it cannot fit. Once the Worker has the
+H100 host URL, token, and the evidence refs above, 120B can back
+`openagents/khala`; it still does not become a public raw-model id.
 
 ## Why Hydralisk exists
 

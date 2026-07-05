@@ -237,15 +237,6 @@
     "MDK_CHECKOUT_WEBHOOK_SOURCE": "sdk_node_control",
     "SHC_CONTROL_API_URL": "http://23.182.128.195.sslip.io/v1/codex-runs",
     "SHC_DISPATCH_MODE": "live",
-    // Approved Stripe Directory network profile id for the machine-payable Khala
-    // endpoint's card/SPT rail (EPIC #6049). This is a PUBLIC identifier — it is
-    // how the public Stripe Directory references "OpenAgents, Inc." — so it ships
-    // as a committed var, NOT a Worker secret. Staging it here ONLY references
-    // the profile; it does NOT arm the endpoint: the MPP route stays fail-safe
-    // inert until KHALA_MPP_ENABLED is on AND a STRIPE_API_KEY secret is present
-    // (neither is set here). A missing profile id would only disable the card
-    // rail; setting it does not enable charges on its own.
-    "STRIPE_MPP_NETWORK_PROFILE_ID": "profile_61Uug9ZHyJKTH8vxOA6Uug9Z3HSQjWfjZIUGSnTl27Xk",
   },
   // Cloudflare Browser Rendering binding (#6205). Managed headless Chrome,
   // driven from the Worker via `@cloudflare/playwright`'s `launch(env.BROWSER)`.

@@ -137,15 +137,14 @@ model remains `openagents/khala`.
 
 ## Pricing And Receipts
 
-Quote, catalog, MPP challenge pricing, and live metering are aligned:
+Quote, catalog, and live metering are aligned. The old standalone MPP/x402
+challenge-pricing path was retired in #8387 and is no longer live evidence.
 
 - `/v1/models` still lists only `openagents/khala`, but when the Fireworks
   backing is armed it projects the DeepSeek V4 Flash lane, owner label, cost
   basis, and sell price onto the Khala row.
 - `/v1/quote` returns `model: openagents/khala` while pricing against
   `deepseek-v4-flash`.
-- `/mpp/v1/chat/completions` derives crypto/card/Lightning challenge amounts
-  against the same hidden backing price model.
 - `priceRequest` normalizes Fireworks provider-native receipt ids such as
   `accounts/fireworks/models/deepseek-v4-flash` back to the canonical
   `deepseek-v4-flash` pricing row, so receipt-first metering does not fall into

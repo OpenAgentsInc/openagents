@@ -660,12 +660,7 @@ import {
   handleModelsList,
   routeModelRetrieveRequest,
 } from './inference/models-routes'
-import { renderMppDiscoveryDocument } from './inference/mpp-discovery-document'
-import {
-  handleMppChatCompletions,
-  isKhalaMppEnabled,
-  isKhalaMppLightningEnabled,
-} from './inference/mpp/mpp-chat-completions-routes'
+import { isKhalaCodeLightningPaymentsEnabled } from './inference/khala-code-lightning-payments'
 import { makeFallbackLightningInvoiceIssuer } from './inference/mpp/mpp-lightning-invoice'
 import {
   MDK_LIGHTNING_FALLBACK_MINT_TIMEOUT_MS,
@@ -7657,9 +7652,9 @@ const hostedMdkClientForEnv = (
   )
 }
 
-// The PRIMARY Spark-backed BOLT11 invoice issuer for the Lightning MPP rail
-// (EPIC #6049). Owner directive: Spark is the primary rail for all agent/MPP
-// payments (it supports OFFLINE RECEIVES). Returns undefined when the Spark
+// The PRIMARY Spark-backed BOLT11 invoice issuer for Khala Code Lightning
+// purchases. Owner directive: Spark is the primary rail for agent payments
+// (it supports OFFLINE RECEIVES). Returns undefined when the Spark
 // treasury container is not reachable (the `MDK_TREASURY` binding is absent), so
 // the selector can fall back to MDK. POSTs `/spark/funding-invoice` to the SAME
 // `MDK_TREASURY` container the Spark payout/balance paths already reach
@@ -7688,8 +7683,8 @@ const sparkLightningInvoiceIssuerForEnv = (
   return makeSparkLightningInvoiceIssuer(post)
 }
 
-// The FALLBACK MDK-backed BOLT11 invoice issuer for the Lightning MPP rail
-// (EPIC #6049). MDK is permitted ONLY as an explicit fallback Lightning issuer
+// The FALLBACK MDK-backed BOLT11 invoice issuer for Khala Code Lightning
+// purchases. MDK is permitted ONLY as an explicit fallback Lightning issuer
 // (never primary) and remains checkouts-only otherwise. Returns undefined when
 // no MDK route is configured (route URL + secret). POSTs `create_checkout` to the
 // SAME route/sidecar the Forum L402 flow uses (the `self_hosted_mdkd_sidecar`
@@ -7741,8 +7736,8 @@ const mdkLightningInvoiceIssuerForEnv = (
   )
 }
 
-// The Lightning MPP invoice issuer for this env: SPARK PRIMARY, MDK FALLBACK
-// (EPIC #6049, owner directive). Tries Spark first; if Spark is
+// The Khala Code Lightning invoice issuer for this env: SPARK PRIMARY, MDK
+// FALLBACK (owner directive). Tries Spark first; if Spark is
 // unavailable/unconfigured/slow, falls back to the MDK Lightning issuer. Returns
 // undefined only when NEITHER is reachable, so the Lightning rail is never
 // offered without a working invoice issuer (honesty gate). The combined issuer
@@ -13169,13 +13164,12 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       ),
     path: aliasPath,
   })),
-  // Agent-discovery surfaces for Khala + the OpenAgents Agent Cloud (EPIC #6049,
-  // Phase 1). Ship-ready, UNCONDITIONAL (no flag): plain-language, machine-
-  // readable docs that describe the live Khala inference API so agents — and the
-  // Stripe Directory crawler (StripeBot) — can find and understand it. They make
-  // no money claim and require no payment config; they only describe the API and
-  // forward-reference the (flagged) MPP endpoint. Crawlable (public, cacheable,
-  // no auth, no robots block). Mirrors the live PostalForm directory shape.
+  // Agent-discovery surfaces for Khala + the OpenAgents Agent Cloud. Ship-ready,
+  // UNCONDITIONAL (no flag): plain-language, machine-readable docs that describe
+  // the live keyed Khala inference API so agents can find and understand it.
+  // They make no money claim and require no payment config. Crawlable (public,
+  // cacheable, no auth, no robots block). Mirrors the live PostalForm directory
+  // shape.
   ...(['/llms.txt', '/agents.md', '/ai.md', '/skill.md'] as const).map(
     surfacePath => ({
       handler: (request: Request) =>
@@ -13183,44 +13177,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       path: surfacePath,
     }),
   ),
-  {
-    // MPP service-discovery document (EPIC #6049). The Machine Payments Protocol
-    // registries (MPPScan, mpp.dev/services) crawl `GET /openapi.json` to light
-    // the Machine Payments badge for Khala. OpenAPI 3.1 with `x-service-info`
-    // (root) + per-operation `x-payment-info` (canonical multi-offer form).
-    //
-    // HONESTY GATE: the paid `/mpp/v1/chat/completions` path's offers + 402 are
-    // emitted ONLY when the MPP endpoint is actually armed — the SAME
-    // KHALA_MPP_ENABLED flag the route reads from config.ts (and the card offer
-    // only when STRIPE_MPP_NETWORK_PROFILE_ID is set, the same condition that
-    // arms the card rail). Inert => the document omits the paid path and
-    // advertises nothing payable. The document itself is always served (free
-    // description + x-service-info) so registries can still discover the service.
-    path: '/openapi.json',
-    handler: (request, env, ctx) => {
-      recordPublicAgentFunnelRead(
-        request,
-        businessDomainDatabaseForEnv(env),
-        ctx,
-        'openapi_read',
-        '/openapi.json',
-      )
-
-      return renderMppDiscoveryDocument(request, {
-        cardRailEnabled:
-          env.STRIPE_MPP_NETWORK_PROFILE_ID !== undefined &&
-          env.STRIPE_MPP_NETWORK_PROFILE_ID.trim() !== '',
-        // Bitcoin-first Lightning offer: armed flag AND a working Lightning
-        // invoice issuer present (Spark primary, MDK fallback — the SAME
-        // condition that arms the rail in the route). Honesty gate: omitted when
-        // we cannot actually mint an invoice.
-        lightningRailEnabled:
-          isKhalaMppLightningEnabled(env.KHALA_MPP_LIGHTNING_ENABLED) &&
-          lightningInvoiceIssuerForEnv(env) !== undefined,
-        mppEnabled: isKhalaMppEnabled(env.KHALA_MPP_ENABLED),
-      })
-    },
-  },
   {
     path: '/api/openapi.json',
     handler: (request, env, ctx) => {
@@ -13555,13 +13511,13 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // Khala Code paid-plan purchase seam (khala_code.free_paid_plans.v1,
     // #7966). FLAG-GATED, DEFAULT OFF, FAIL-CLOSED: 503 while
     // KHALA_CODE_PAID_PLANS_ENABLED is unarmed. When armed, it creates a real
-    // payment requirement on the Stripe Checkout card rail or Spark/MPP
+    // payment requirement on the Stripe Checkout card rail or Spark/Lightning
     // Lightning rail, then grants the idempotent paid-privacy entitlement only
     // after payment settlement produces the existing dereferenceable privacy
     // receipt. Pricing/arming remain owner decisions.
     path: '/v1/khala-code/plans/purchases',
     handler: (request, env) => {
-      const lightningEnabled = isKhalaMppLightningEnabled(
+      const lightningEnabled = isKhalaCodeLightningPaymentsEnabled(
         env.KHALA_MPP_LIGHTNING_ENABLED,
       )
       const mintLightningInvoice = lightningEnabled
@@ -14175,111 +14131,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           },
         },
         registry: inferenceProviderRegistry,
-      })
-    },
-  },
-  {
-    // Machine-payable (MPP / x402) Khala endpoint (EPIC #6049, Phase 2 + 3).
-    // 402-gated: a request with no payment credential returns 402 + a payment
-    // challenge (USDC crypto; card/SPT when a network profile id is configured);
-    // a verified credential mints Khala credits (Phase 3, reuses the USD-origin
-    // credit-grant seam) and runs the SAME Khala completion path + metering +
-    // receipt, so a paid call lands in the one-balance, two-inbound-rails loop
-    // with contributor payout still Bitcoin/Spark.
-    //
-    // FAIL-SAFE INERT: with KHALA_MPP_ENABLED off OR no STRIPE_API_KEY the
-    // endpoint returns a clean "not configured" 503 and NEVER constructs a
-    // charge. A missing STRIPE_MPP_NETWORK_PROFILE_ID disables only the card
-    // rail; the crypto rail still works.
-    path: '/mpp/v1/chat/completions',
-    handler: (request, env) => {
-      registerPassthroughAdapters(inferenceProviderRegistry, env)
-      registerHydraliskAdapter(inferenceProviderRegistry, env)
-      registerOpenRouterAdapter(inferenceProviderRegistry, env)
-      registerFabricServeAdapter(inferenceProviderRegistry, env)
-      setInferenceAdapterEnv(env)
-      const ownerClaimStore = makeAgentOwnerClaimStoreForEnv(env)
-      const resolveOwnerIdentity = makeVerifiedOwnerIdentityResolver(
-        ownerClaimStore.readVerifiedPublicIdentityForAgentUserId,
-      )
-      // Bitcoin-first Lightning rail (EPIC #6049). Offered FIRST when armed:
-      // KHALA_MPP_LIGHTNING_ENABLED on AND a Lightning invoice issuer is
-      // configured (Spark primary via the MDK_TREASURY container, MDK fallback
-      // via the route/sidecar wallet binding). With either absent the issuer is
-      // undefined and the rail is never advertised (honesty gate).
-      const lightningEnabled = isKhalaMppLightningEnabled(
-        env.KHALA_MPP_LIGHTNING_ENABLED,
-      )
-      const mintLightningInvoice = lightningEnabled
-        ? lightningInvoiceIssuerForEnv(env)
-        : undefined
-      const laneArming = resolveSupplyLaneArming(env)
-      // KS-8.9 (#8320): entitlements migration seam for the MPP completion
-      // path (same flags/binding as the keyed route).
-      const entitlementsRouting = makeInferenceEntitlementsRoutingForEnv(env)
-      return handleMppChatCompletions(request, {
-        db: makeTreasuryDatabaseForEnv(env),
-        enabled: isKhalaMppEnabled(env.KHALA_MPP_ENABLED),
-        lightningEnabled,
-        mirror: billingDomainMirrorFromEnv(env),
-        ...(mintLightningInvoice === undefined ? {} : { mintLightningInvoice }),
-        signingSecret: env.KHALA_MPP_SIGNING_SECRET,
-        stripeNetworkProfileId: env.STRIPE_MPP_NETWORK_PROFILE_ID,
-        stripeSecretKey: env.STRIPE_API_KEY,
-        // The underlying Khala completion reuses the SAME registry, metering
-        // hook, receipt, lane plan, serving policy, and premium gate as the keyed
-        // `/v1/chat/completions` route — only auth + balance are replaced by the
-        // payer-bound account + minted MPP credit inside the MPP handler. The
-        // completion still runs gated by INFERENCE_GATEWAY_ENABLED.
-        completionDeps: {
-          enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
-          meteringHook: withFreeAllowance(
-            withReferralAccrual(
-              makeLedgerMeteringHook({ db: openAgentsDatabase(env) }),
-              {
-                db: openAgentsDatabase(env),
-                mirror: entitlementsRouting?.mirror,
-              },
-            ),
-            {
-              db: openAgentsDatabase(env),
-              gateReads: entitlementsRouting?.gateReads,
-              mirror: entitlementsRouting?.mirror,
-              resolveOwnerIdentity,
-            },
-          ),
-          // SERVED-TOKENS COUNTER (issue #6227): the MPP (machine-payable) Khala
-          // completion path lands its served tokens in the SAME canonical ledger
-          // the public counter sums, so x402/MPP traffic counts too.
-          recordTokensServed: makeD1ServedTokensRecorder(
-            openAgentsDatabase(env),
-            {
-              // KS-6.3 (#8304): projection producer (fail-soft, exact-once).
-              onIngestedEvent: makeTokensServedProjectionObserver(env),
-              // KS-8.2 (#8308): Postgres dual-write mirror (fail-soft).
-              ...tokenLedgerWriteStoreOptionForEnv(env),
-            },
-          ),
-          // Same internal/ops account demand allowlist on the MPP path (#6298
-          // follow-up), so the resolver stays uniform across both gateways.
-          internalAccountRefs: parseInternalAccountRefs(
-            env.INFERENCE_INTERNAL_ACCOUNT_REFS,
-          ),
-          lanePlan: makeKhalaBackedAdapterPlan(laneArming.khalaBacking),
-          laneArming,
-          checkPremiumAccess: makePremiumAccessGate({
-            db: openAgentsDatabase(env),
-            gateReads: entitlementsRouting?.gateReads,
-            resolveOwnerIdentity,
-          }),
-          acceptanceDispatch: {
-            enabled: isAcceptanceDispatchEnabled(
-              env.KHALA_ACCEPTANCE_DISPATCH_ENABLED,
-            ),
-            queue: undefined,
-          },
-          registry: inferenceProviderRegistry,
-        },
       })
     },
   },

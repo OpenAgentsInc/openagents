@@ -151,6 +151,11 @@ primitives**, not on new measurement code.
 
 ## #6049 — EPIC: Khala on Machine Payments (MPP) + Stripe Directory
 
+> **2026-07-05 update (#8387):** this section is historical. The standalone
+> Khala MPP/x402 chat endpoint, Stripe MPP config, root discovery document,
+> smokes, and replay caches were removed/deferred on current main. Future
+> no-account machine payments need a fresh owner-approved, receipt-first design.
+
 **Decisions (owner):** accept MPP; **USDC + card settle into the Stripe balance**;
 **Bitcoin/Spark stays the contributor-payout rail**; do both discovery **and** payments.
 Plan: `docs/stripe/2026-06-22-khala-mpp-integration-plan.md`.

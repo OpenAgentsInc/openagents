@@ -10,11 +10,12 @@
 > **Canonical base (#6148):** `/api` is the canonical base for every OpenAgents
 > API route, so the OpenAI-compatible base URL is
 > `https://openagents.com/api/v1` (`POST /api/v1/chat/completions`,
-> `GET /api/v1/models`, `POST /api/mpp/v1/chat/completions`). The legacy bare
-> `/v1` and `/mpp/v1` paths keep working as non-breaking aliases that resolve to
-> the same handlers, so existing OpenAI/MPP client integrations do not break.
-> Older `/v1/...` references below predate the canonical-base move; read them as
-> the `/api/v1/...` canonical path.
+> `GET /api/v1/models`). The legacy bare `/v1` paths keep working as
+> non-breaking aliases that resolve to the same handlers, so existing OpenAI
+> client integrations do not break. The standalone MPP/x402 chat endpoint was
+> retired in #8387 and is no longer part of the live Khala surface. Older
+> `/v1/...` references below predate the canonical-base move; read them as the
+> `/api/v1/...` canonical path.
 
 Khala is a single OpenAI-compatible inference endpoint that **behaves like one
 model but is an agent network underneath** — it routes and orchestrates a pool

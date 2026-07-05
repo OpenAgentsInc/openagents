@@ -2,6 +2,13 @@
 
 **Date:** 2026-06-23 · **Epic:** [#6049](https://github.com/OpenAgentsInc/openagents/issues/6049)
 
+> **Current status (2026-07-05, #8387): RETIRED / DO NOT RUN.** The standalone
+> Khala MPP/x402 chat endpoint, `/openapi.json` MPP discovery document, Stripe MPP
+> profile config, smokes, and replay-cache writers were removed. The commands
+> and arming instructions below are historical only and should not be followed on
+> current main. Future no-account machine payments need a fresh owner-approved,
+> receipt-first design.
+
 How the OpenAgents inference API accepts per-call machine payments (MPP / x402),
 how it's armed/rolled back, how to prove it, and how to watch for the Stripe
 Directory **Machine Payments** badge.

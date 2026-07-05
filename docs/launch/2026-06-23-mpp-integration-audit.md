@@ -2,6 +2,12 @@
 
 Date: 2026-06-23
 
+> **Current status (2026-07-05, #8387): retired/deferred.** The standalone Khala
+> MPP/x402 chat endpoint, root MPP discovery document, Stripe MPP profile config,
+> smokes, and replay-cache writers were removed because the surface was not armed
+> in committed config and is not directly needed by Khala Code. This audit is now
+> historical context for a future rebuild, not current operating guidance.
+
 Scope: OpenAgentsInc/openagents#6049 plus the payment, credit, Stripe, and MPP
 issues that affect whether Khala can accept Machine Payments Protocol (MPP)
 payments before Stripe Directory profile approval.

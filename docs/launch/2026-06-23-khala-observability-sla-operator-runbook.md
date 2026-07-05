@@ -266,13 +266,9 @@ cd /Users/christopherdavid/work/openagents/apps/openagents.com
 bun run smoke:khala:gateway-readiness -- --approve-live-spend
 ```
 
-Billing/MPP proof has its own owner-gated smoke. Run it only when validating the
-billing lane, not as the default incident smoke:
-
-```bash
-cd /Users/christopherdavid/work/openagents/apps/openagents.com
-bun run smoke:khala:billing-mpp-proof
-```
+The old billing/MPP proof smoke was retired with the standalone MPP/x402 chat
+endpoint in #8387. Validate the keyed gateway and current billing routes instead;
+do not use removed MPP smoke commands for incident response.
 
 ## SLA And Incident Classes
 

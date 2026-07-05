@@ -2,37 +2,41 @@
 
 This is the invariant ledger for `openagents`.
 
-## Payment Rail Separation — Spark for agent/MPP payments, MDK for checkouts only
+## Payment Rail Separation — Spark for agent payments, MDK for checkouts only
 
 - **Spark (`@breeztech/breez-sdk-spark`) is the PRIMARY rail and MUST back ALL
-  agent payments and Machine Payments (MPP).** This includes the Lightning MPP
-  rail (`POST /mpp/v1/chat/completions`), agent-facing pay-per-call, and any
-  agent payment issuance / receipt / settlement. Spark is required because it
-  supports **offline receives**, which agent payments need.
+  agent payments and future Machine Payments (MPP).** This includes the Khala
+  Code paid-plan Lightning rail, future agent-facing pay-per-call, and any agent
+  payment issuance / receipt / settlement. Spark is required because it supports
+  **offline receives**, which agent payments need.
 - **MDK (MoneyDevKit, `@moneydevkit/*`, the `MDK_SIDECAR` / `mdkd` container) is
   for CHECKOUTS ONLY** (the `/api/mdk` `self_hosted_mdkd_sidecar` flow, Forum
-  tips/checkouts) and is permitted as an agent/MPP rail **ONLY as an explicit
+  tips/checkouts) and is permitted as an agent-payment rail **ONLY as an explicit
   FALLBACK Lightning issuer (never primary)**. MDK must never be re-asserted as
-  the primary or default agent/MPP rail — it does not support offline receives,
+  the primary or default agent rail — it does not support offline receives,
   so it is used only when Spark is unavailable/unconfigured.
 - History (do not regress): Spark was stripped for MDK previously, then **re-added
   as the primary rail**, demoting MDK to secondary; Pylon was moved to Spark
-  (2026-06). Never re-assert "MDK is the agent/MPP rail."
-- **MPP Lightning issuer (Spark primary, MDK fallback):** the Lightning MPP rail
+  (2026-06). Never re-assert "MDK is the agent rail."
+- The standalone Khala MPP/x402 chat endpoint (`POST /mpp/v1/chat/completions`)
+  was retired in #8387 (2026-07-05) because it was default-off, unarmed in
+  committed config, and not directly needed by Khala Code. Any future MPP rebuild
+  must start from a fresh owner-approved, receipt-first design and preserve the
+  Spark-primary / MDK-fallback boundary here.
+- **Khala Code Lightning issuer (Spark primary, MDK fallback):** the Lightning
   issuer selector (`workers/api/src/index.ts` `lightningInvoiceIssuerForEnv`)
   tries the **Spark issuer first**
   (`workers/api/src/inference/mpp/mpp-lightning-invoice-spark.ts`, minting a Spark
   BOLT11 via the `MDK_TREASURY` container's `POST /spark/funding-invoice`), and
   falls back to the MDK issuer
   (`workers/api/src/inference/mpp/mpp-lightning-invoice-mdk.ts`) **only when Spark
-  is unavailable/unconfigured**. Both legs stay behind the
-  `KHALA_MPP_LIGHTNING_ENABLED` gate, each keeps its bounded mint timeout, and the
-  combined attempt stays under the route's per-rail guard (#6149) so a slow/failed
-  issuer can only ever drop the Lightning rail, never hang the endpoint. The
-  preimage is verified LOCALLY (`sha256(preimage) === paymentHash`); offline
-  receipt is confirmable via the container's `GET /spark/received/:paymentHash`.
-  Disarmed by default (`KHALA_MPP_LIGHTNING_ENABLED` unset on prod). See
-  `docs/mpp/`.
+  is unavailable/unconfigured**. Both legs stay behind the legacy-named
+  `KHALA_MPP_LIGHTNING_ENABLED` gate and the Khala Code paid-plan purchase gate,
+  each keeps its bounded mint timeout, and a slow/failed issuer can only ever
+  drop the Lightning rail, never hang the paid-plan route. The preimage is
+  verified LOCALLY (`sha256(preimage) === paymentHash`); offline receipt is
+  confirmable via the container's `GET /spark/received/:paymentHash`. Disarmed by
+  default (`KHALA_MPP_LIGHTNING_ENABLED` unset on prod).
 - Owner directive, 2026-06-23.
 
 ## Khala BYOK Caller-Paid Inference
@@ -1427,29 +1431,15 @@ This is the invariant ledger for `openagents`.
   bounded by the available USD balance; the conversion is the single-source rate
   in `workers/api/src/inference/usd-msat-conversion.ts`. Regression coverage:
   `workers/api/src/inference/usd-credit-bridge.test.ts`.
-- MPP rail asset origin (EPIC #6049): a settled machine-payment that funds a
-  Khala completion mints inference credit, and the asset TAG must match the
-  inbound rail. The USDC/card MPP rails (`mintMppCredits`) are USD/Stripe
-  liabilities and are tagged USD-origin (`usd_credit_msat`,
-  NOT Bitcoin-withdrawable), exactly as the card->credit bridge above. The
-  Lightning MPP rail (`mintLightningCredits`, draft-lightning-charge-00) settles
-  REAL Bitcoin (a paid BOLT11 invoice verified LOCALLY by
-  `sha256(preimage)==paymentHash`), so it must NOT be tagged `usd_credit_msat`:
-  it mints a Bitcoin-origin `lightning_charge` pay-in that credits `balance_msat`
-  ONLY (Bitcoin-withdrawable, like a tip), keyed/idempotent per paymentHash.
-  Tagging real Bitcoin as USD-origin (or USD/card as Bitcoin-origin) is a
-  boundary violation. The preimage is a bearer secret: never logged, persisted,
-  or returned; the receipt/replay key is the paymentHash. The Lightning rail is
-  fail-closed inert unless `KHALA_MPP_LIGHTNING_ENABLED` + `KHALA_MPP_ENABLED` +
-  a working BOLT11 invoice issuer (Spark primary, MDK fallback) are all present
-  (honesty gate: never advertise a rail we cannot fulfill), and consume-once is
-  enforced atomically
-  via `mpp_lightning_replay`. Regression coverage:
-  `workers/api/src/inference/mpp/mpp-lightning-verify.test.ts`,
-  `workers/api/src/inference/mpp/mpp-lightning-replay.test.ts`,
-  `workers/api/src/inference/mpp/mpp-credit-grant.test.ts`, and the Lightning
-  rail cases in
-  `workers/api/src/inference/mpp/mpp-chat-completions-routes.test.ts`.
+- Retired MPP rail asset origin (EPIC #6049 historical): #8387 removed the
+  standalone MPP/x402 Khala completion route, the USD/card MPP credit-grant code,
+  and the MPP replay caches. No current Worker route accepts a no-account MPP
+  payment for Khala inference. If rebuilt, settled USD/card machine payments must
+  remain USD-origin (`usd_credit_msat`, NOT Bitcoin-withdrawable), settled
+  Lightning payments must remain Bitcoin-origin, and preimages must stay bearer
+  secrets (never logged, persisted, or returned). A future rebuild also needs
+  fresh consume-once replay storage and regression coverage before any discovery
+  or product-promise claim.
 
 ## Provider Capacity Marketplace Gate
 

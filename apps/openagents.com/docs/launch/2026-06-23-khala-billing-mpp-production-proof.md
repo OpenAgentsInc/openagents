@@ -2,6 +2,12 @@
 
 Date: 2026-06-23
 
+> **Current status (2026-07-05, #8387): MPP portion retired.** The standalone
+> Khala MPP/x402 chat endpoint, root discovery document, Stripe MPP profile
+> config, smokes, and replay-cache writers were removed/deferred. This file is
+> preserved as historical launch context; do not use the MPP arming or smoke
+> steps below on current main.
+
 Issue: OpenAgentsInc/openagents#6108
 
 > **Current status (2026-06-23/24): MPP is now ARMED and LIVE on

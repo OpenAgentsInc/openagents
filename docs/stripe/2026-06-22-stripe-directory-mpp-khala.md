@@ -1,5 +1,9 @@
 # Stripe Directory & Machine Payments (MPP) — list Khala for agent discovery + pay-per-call
 
+> **Current status (2026-07-05, #8387): retired/deferred.** Current main no
+> longer exposes the Khala MPP/x402 chat endpoint or root MPP discovery document.
+> This survey remains historical context for a possible future rebuild only.
+
 *2026-06-22. We set up the Stripe Directory CLI and surveyed it. Goal: make the
 **OpenAgents Khala API discoverable and payable per-call via MPP** (Machine
 Payments Protocol, `mpp.dev`), so any agent searching for inference finds Khala

@@ -39,9 +39,8 @@ describe('discovery surfaces (EPIC #6049 Phase 1 — agent discovery)', () => {
     expect(body).not.toContain('openai/gpt-oss-20b')
     expect(body).not.toContain('openai/gpt-oss-120b')
     expect(body).toContain('/v1/chat/completions')
-    expect(body).toContain('/mpp/v1/chat/completions')
-    expect(body).toContain('Lightning')
-    expect(body.toLowerCase()).toContain('contributor payout')
+    expect(body).not.toContain('/mpp/v1/chat/completions')
+    expect(body).toContain('MPP/x402 chat route was retired')
   })
 
   test('is crawlable: public + cacheable, no auth, no robots block', async () => {
@@ -51,13 +50,13 @@ describe('discovery surfaces (EPIC #6049 Phase 1 — agent discovery)', () => {
     expect(response.headers.get('www-authenticate')).toBeNull()
   })
 
-  test('agents.md documents the 402 machine-payment flow + the rails', async () => {
+  test('agents.md documents keyed pay-per-call access without MPP route claims', async () => {
     const response = await run(renderDiscoverySurface(get('/agents.md'), '/agents.md'))
     const body = await response.text()
-    expect(body).toContain('402 Payment Required')
-    expect(body).toContain('WWW-Authenticate')
-    expect(body).toContain('USDC')
-    expect(body).toContain('Bitcoin/Spark')
+    expect(body).toContain('authorization: Bearer <your-openagents-agent-key>')
+    expect(body).toContain('Machine Payments / x402 chat endpoint is deferred')
+    expect(body).not.toContain('WWW-Authenticate')
+    expect(body).not.toContain('/mpp/v1/chat/completions')
   })
 
   test('rejects non-GET/HEAD with 405', async () => {

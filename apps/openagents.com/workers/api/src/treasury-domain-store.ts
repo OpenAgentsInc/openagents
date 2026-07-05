@@ -181,8 +181,6 @@ export type TreasuryDomainTable =
   | 'partner_agreements'
   | 'site_referral_payout_ledger_entries'
   | 'revenue_event_provenance'
-  | 'mpp_lightning_replay'
-  | 'mpp_spt_replay'
 
 type TreasuryDomainTableSpec = Readonly<{
   columns: ReadonlyArray<string>
@@ -361,20 +359,6 @@ export const TREASURY_DOMAIN_TABLES: Readonly<
     conflictKey: 'id',
     keyColumns: ['id', 'work_request_id', 'idempotency_key'],
     orderColumn: 'updated_at',
-  },
-  mpp_lightning_replay: {
-    columns: ['payment_hash', 'challenge_id', 'consumed_at'],
-    conflictKey: 'payment_hash',
-    keyColumns: ['payment_hash'],
-    orderColumn: 'consumed_at',
-    redactKeysInDiagnostics: true,
-  },
-  mpp_spt_replay: {
-    columns: ['spt', 'challenge_id', 'payment_intent_id', 'consumed_at'],
-    conflictKey: 'spt',
-    keyColumns: ['spt'],
-    orderColumn: 'consumed_at',
-    redactKeysInDiagnostics: true,
   },
   nexus_payment_authority_receipts: {
     columns: [
