@@ -1722,6 +1722,24 @@ in KS-8.19
 
 ### 3.15 KS-8.18 — Identity and auth core (last)
 
+**KS-8.18 follow-up status (2026-07-05, #8362):** write-site wiring COMPLETE.
+Every remaining identity/auth write call site (the five typed factories
+beyond the flagship token-custody vault, plus every scattered inline
+writer across `index.ts`, `onboarding/repository.ts`,
+`auth/email-otp-hardening.ts`, `operator-provider-account-routes.ts`,
+`provider-account-pool-routes.ts`, `artanis-operator-dashboard-routes.ts`)
+now adopts `identityAuthMirrorFromEnv`. A production `--restart` backfill
+sweep + `--verify` ran clean immediately after: all 17 tables exact row
+counts, newest-50 row hashes all matched, zero scalar-tally mismatches
+(evidence on #8362). D1 remains the SOLE authority; `KHALA_SYNC_IDENTITY_READS`
+is untouched (still `d1`, still defers on `postgres`); NO flags were
+flipped. The owner-gated read cutover (KV/cache layer, real auth-matrix
+shadow-read replay tooling, session-revocation staging drill) is NOT
+built and remains a separate, not-yet-scheduled follow-up — see the
+RUNBOOK "Identity/auth domain cutover" section for the full flag-flip
+order and the one known, deliberately-accepted drift source
+(`openauth_storage`'s TTL-shaped row-count asymmetry).
+
 - **What:** the tables every request touches: users, auth identities,
   OpenAuth storage + agent links, GitHub write connections/grants,
   provider (BYOK) account custody family.

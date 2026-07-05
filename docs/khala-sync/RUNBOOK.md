@@ -2030,7 +2030,7 @@ Flag-flip order — never skip a step, each soaks before the next:
 Rollback at ANY step: `KHALA_SYNC_SUPERVISION_DUAL_WRITE=off`. D1 authority
 is never behind.
 
-## Identity/auth domain cutover (KS-8.18, #8329)
+## Identity/auth domain cutover (KS-8.18 #8329 + follow-up #8362)
 
 The KS-8.18 domain migration — the LAST and most sensitive domain: the
 SEVENTEEN canonical identity/auth tables (`users`, `auth_identities`,
@@ -2042,10 +2042,13 @@ custody family: `provider_accounts`, `_connection_attempts`,
 (D1) → same-named Postgres twins (khala-sync migration
 `0028_identity_auth_domain.sql`). Machinery:
 `apps/openagents.com/workers/api/src/identity-auth-domain-store.ts` (the
-`identityAuthMirrorFromEnv` fail-soft read-back mirror handle + the
-flagship `makeProviderAccountTokenCustodyStoreForEnv` drop-in) and
-`packages/khala-sync-server/scripts/backfill-identity-auth.ts` (backfill +
-verify).
+`identityAuthMirrorFromEnv` fail-soft read-back mirror handle, its
+`mirrorDeleteByKey` delete-mirror counterpart added in #8362, the
+flagship `makeProviderAccountTokenCustodyStoreForEnv` drop-in, and the
+four more drop-ins #8362 added: `makeOpenAuthStorageForEnv`,
+`makeGitHubWriteRepositoryForEnv`, `makeProviderAccountRepositoryForEnv`)
+and `packages/khala-sync-server/scripts/backfill-identity-auth.ts`
+(backfill + verify).
 
 **WHY LAST, and why extra caution.** Auth runs on EVERY request — this is
 the hottest read family and the maximum blast radius. A bad cutover
@@ -2078,19 +2081,48 @@ Flags (Worker vars):
   `khala_sync_identity_postgres_reads_deferred` once and still serves D1),
   so a premature flip can never serve an unproven AUTH read path.
 
-WIRING STATUS. This lane wires the flagship secret-bearing owner — the
-provider-account token-custody vault — end-to-end (two `index.ts`
-construction sites). The remaining writers (the five other typed
-factories `makeD1GitHubWriteRepository`, `makeD1ProviderAccountRepository`,
-`makeD1Storage`, `makeD1AgentRegistrationStore`, `makeD1AgentOwnerClaimStore`,
-and the scattered inline writers in `index.ts`, `onboarding/repository.ts`,
-`auth/email-otp-hardening.ts`, `operator-provider-account-routes.ts`,
-`provider-account-pool-routes.ts`, `artanis-operator-dashboard-routes.ts`)
-adopt `identityAuthMirrorFromEnv` in follow-up #8362 — dozens of sites
-across ~10 hot auth files is deliberately too broad for one secret lane.
-Until each writer is wired, its rows converge on the backfill sweep, so a
-`--restart` sweep + `--verify` immediately before ANY read cutover is
-MANDATORY.
+WIRING STATUS (updated by follow-up #8362). #8329 wired the flagship
+secret-bearing owner — the provider-account token-custody vault — end-to-
+end. #8362 wired every remaining write call site: the five other typed
+factories (`makeD1GitHubWriteRepository`, `makeD1ProviderAccountRepository`,
+`makeD1Storage`, `makeD1AgentRegistrationStore`, `makeD1AgentOwnerClaimStore`
+— each now has a `make*ForEnv(env)` drop-in in `identity-auth-domain-store.ts`
+that read-back mirrors every write method) and the scattered inline
+writers in `index.ts` (`upsertGitHubUser`/`upsertEmailUser`/`upsertUser`),
+`onboarding/repository.ts` (all five `users` UPDATEs),
+`auth/email-otp-hardening.ts` (the SECOND `openauth_storage` writer,
+`reserveAuthEmailOtpSend`), `operator-provider-account-routes.ts`,
+`provider-account-pool-routes.ts`, and `artanis-operator-dashboard-routes.ts`
+(all now take an optional `IdentityAuthMirror` parameter threaded from the
+nearest call site holding `env`). The shared machinery also gained a new
+`mirrorDeleteByKey`/`deleteRows` capability for `openauth_storage.remove()`
+— the only hard-delete write call site in this domain.
+
+**Deliberately still unmirrored (documented inline at each site), and
+this is intentional, not a gap to close later:** D1's own incidental
+bulk/lazy-expiry side effects on HOT READ paths — the
+`provider_account_leases` stale-expiry sweeps embedded in
+`acquireProviderAccountLease`/`expireStaleProviderAccountLeases`/
+`expireStalePoolLeases`, and `openauth_storage.get()`'s lazy TTL cleanup
+inside `auth/openauth-storage.ts`. Mirroring those would add an
+unbounded, per-request Postgres write to a read path — exactly the load
+pattern this domain must avoid before any read cutover. Those rows
+converge on the next `--restart` backfill sweep instead. A consequence
+worth naming plainly: because `openauth_storage` rows are deleted from D1
+lazily (only on a read that discovers expiry) while the mirror never
+proactively deletes on that path, the Postgres twin will accumulate
+expired-but-undeleted rows over time — `--verify`'s row-COUNT equality
+for `openauth_storage` specifically will NOT converge to exact zero-drift
+the way `users`/`auth_identities` do, purely because of this TTL-shaped
+asymmetry, not because of missed wiring. Before any future read cutover
+or D1 drop, this needs either an explicit active-TTL prune of Postgres's
+own expired rows or an accepted "expected drift source" note analogous to
+the tokens-served projection's drift-source list below.
+
+A `--restart` sweep + `--verify` immediately before ANY read cutover
+remains MANDATORY regardless (catches any writer this account of the
+wiring missed, plus everything written before the Worker deploy that
+carries this wiring).
 
 Flag-flip order — never skip a step, each step soaks before the next:
 
@@ -2102,7 +2134,10 @@ Flag-flip order — never skip a step, each step soaks before the next:
    (wrangler-auth'd; rowid-cursor resumable via
    `.identity-auth-backfill-state.json`). Run it a SECOND time
    (`--restart`) as the catch-up sweep once dual-write has covered the
-   whole window AND every writer has been wired (follow-up #8362).
+   whole window AND every writer has been wired (done in follow-up
+   #8362 — see "WIRING STATUS" above; a further `--restart` sweep is
+   still needed after the #8362 code deploys, to catch writes that
+   landed on the pre-#8362 Worker).
 3. **Verify**: `bun scripts/backfill-identity-auth.ts --verify` — exact
    row counts (identity SET EQUALITY over `users`/`auth_identities`),
    custody-safe per-state tallies, newest-50 row hashes. Post the output
@@ -2116,9 +2151,15 @@ Flag-flip order — never skip a step, each step soaks before the next:
    reads from Postgres requires: the KV/cache layer in front (so Postgres
    does not inherit a per-request read storm), the session-invalidation
    proof above, custody audit-chain contiguity, re-adding the D1
-   uniques/FKs on the twins, moving write authority, and dropping the D1
-   tables. This is follow-up #8362 on epic #8282 — NEVER in the same
-   change as this lane, and NEVER without explicit owner sign-off.
+   uniques/FKs on the twins, and moving write authority. Per
+   MIGRATION_PLAN §5, D1 table drops for ALL domains (including this one)
+   are consolidated into the closing KS-8.19 sweep (#8330), not any
+   per-domain issue. This read-cutover step remains a SEPARATE,
+   not-yet-scheduled follow-up on epic #8282 (writer wiring — #8362 — is
+   done; the KV/cache layer, auth-matrix replay tooling, and the
+   session-revocation staging drill are NOT built yet) — NEVER in the
+   same change as the wiring lane, and NEVER without explicit owner
+   sign-off.
 
 Rollback at ANY step: set `KHALA_SYNC_IDENTITY_READS=d1` (reads) and/or
 `KHALA_SYNC_IDENTITY_DUAL_WRITE=off` (writes). D1 authority is never
