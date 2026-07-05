@@ -243,6 +243,8 @@ export type KhalaCodeDesktopKhalaSyncFleetReportAccountStateResult =
   typeof RpcKhalaSyncFleetReportAccountStateResult.Type
 export type KhalaCodeDesktopKhalaSyncChatThread = typeof RpcKhalaSyncChatThread.Type
 export type KhalaCodeDesktopKhalaSyncChatMessage = typeof RpcKhalaSyncChatMessage.Type
+export type KhalaCodeDesktopKhalaSyncRuntimeMessage =
+  typeof RpcKhalaSyncRuntimeMessage.Type
 export type KhalaCodeDesktopKhalaSyncChatRejection = typeof RpcKhalaSyncChatRejection.Type
 export type KhalaCodeDesktopKhalaSyncChatThreadsRequest = typeof RpcKhalaSyncChatThreadsRequest.Type
 export type KhalaCodeDesktopKhalaSyncChatThreadsResult = typeof RpcKhalaSyncChatThreadsResult.Type
@@ -1904,6 +1906,20 @@ const RpcKhalaSyncChatMessage = S.Struct({
   threadId: S.String,
   updatedAt: S.String,
 })
+/**
+ * #8425 desktop render-gap closeout: one synthesized assistant reply folded
+ * from a thread's `runtime_turn` + `runtime_event` rows (see
+ * `khala-runtime-transcript-desktop-core.ts`). A turn dispatched from
+ * mobile (or any non-desktop-composer surface) never produces a
+ * `chat_message` for its reply — this is the only wire shape that carries
+ * it to desktop's chat surface.
+ */
+const RpcKhalaSyncRuntimeMessage = S.Struct({
+  body: S.String,
+  role: S.Literal("assistant"),
+  sortKey: S.String,
+  turnId: S.String,
+})
 const RpcKhalaSyncChatRejection = S.Struct({
   errorCode: S.String,
   messageSafe: S.String,
@@ -1945,6 +1961,11 @@ const RpcKhalaSyncChatMessagesResult = S.Struct({
   phase: RpcKhalaSyncFleetPhase,
   reason: RpcStringNull,
   rejections: S.Array(RpcKhalaSyncChatRejection),
+  /** #8425: synthesized assistant replies folded from runtime_turn/runtime_event
+   * rows, additive to `messages` (which stays chat_message-only). Always
+   * present (empty array when there is nothing to fold) so callers never
+   * need to guard on `undefined`. */
+  runtimeMessages: S.Array(RpcKhalaSyncRuntimeMessage),
   threadId: S.String,
 })
 const RpcKhalaSyncChatCreateThreadRequest = S.Struct({

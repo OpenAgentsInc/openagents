@@ -14,12 +14,16 @@ import {
   decodeChatMessageEntity,
   decodeChatThreadEntity,
   decodeFleetRunEntity,
+  decodeRuntimeEventEntity,
+  decodeRuntimeTurnEntity,
   encodeChatMessageEntity,
   encodeChatThreadEntity,
   encodeFleetRunEntity,
   FLEET_RUN_ENTITY_TYPE,
   fleetRunScope,
   personalScope,
+  RUNTIME_EVENT_ENTITY_TYPE,
+  RUNTIME_TURN_ENTITY_TYPE,
   threadScope,
   type ChatMessageEntity,
   type ChatThreadEntity,
@@ -28,6 +32,8 @@ import {
   type MutationEnvelope,
   MutationResult,
   MutatorName,
+  type RuntimeEventEntity,
+  type RuntimeTurnEntity,
   type SyncScope,
 } from "@openagentsinc/khala-sync"
 import type {
@@ -1042,3 +1048,53 @@ export const chatMessageKhalaSyncCollectionOptions = (
     },
   })
 }
+
+/**
+ * Read-only `runtime_event` collection (#8425 desktop render gap): Khala
+ * Code desktop never writes `runtime_event` rows itself — a turn dispatched
+ * from mobile or Codex/Claude App Server streams these into
+ * `scope.thread.<threadId>` via the Pylon runtime-intent-supervisor, and
+ * desktop only needs to fold them into a transcript. No `mutators` are
+ * configured on purpose: this collection is never the target of a local
+ * `.insert()`/`.update()`, so there is nothing to map to a named mutator.
+ */
+export type RuntimeEventCollectionOptions = Omit<
+  KhalaSyncCollectionOptions<RuntimeEventEntity, string>,
+  "collection" | "decode" | "entityIdFromKey" | "getKey" | "mutators"
+>
+
+export const runtimeEventKhalaSyncCollectionOptions = (
+  options: RuntimeEventCollectionOptions,
+): CollectionConfig<RuntimeEventEntity, string, never, KhalaSyncCollectionUtils> =>
+  khalaSyncCollectionOptions<RuntimeEventEntity, string>({
+    ...options,
+    awaitServerSync: options.awaitServerSync ?? false,
+    collection: RUNTIME_EVENT_ENTITY_TYPE,
+    decode: entity =>
+      decodeRuntimeEventEntity(JSON.parse(entity.postImageJson) as unknown),
+    entityIdFromKey: key => key,
+    getKey: row => row.eventId,
+  })
+
+/**
+ * Read-only `runtime_turn` collection — same rationale as
+ * `runtimeEventKhalaSyncCollectionOptions` above: desktop only reads turn
+ * status/lane rows to fold a transcript, never writes them locally.
+ */
+export type RuntimeTurnCollectionOptions = Omit<
+  KhalaSyncCollectionOptions<RuntimeTurnEntity, string>,
+  "collection" | "decode" | "entityIdFromKey" | "getKey" | "mutators"
+>
+
+export const runtimeTurnKhalaSyncCollectionOptions = (
+  options: RuntimeTurnCollectionOptions,
+): CollectionConfig<RuntimeTurnEntity, string, never, KhalaSyncCollectionUtils> =>
+  khalaSyncCollectionOptions<RuntimeTurnEntity, string>({
+    ...options,
+    awaitServerSync: options.awaitServerSync ?? false,
+    collection: RUNTIME_TURN_ENTITY_TYPE,
+    decode: entity =>
+      decodeRuntimeTurnEntity(JSON.parse(entity.postImageJson) as unknown),
+    entityIdFromKey: key => key,
+    getKey: row => row.turnId,
+  })

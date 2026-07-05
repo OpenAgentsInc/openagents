@@ -432,8 +432,22 @@ describe("Khala Code desktop schema-first RPC contract", () => {
       phase: "live",
       reason: null,
       rejections: [],
+      // #8425: additive assistant-reply fold from runtime_turn/runtime_event
+      // rows — see khala-runtime-transcript-desktop-core.ts.
+      runtimeMessages: [
+        {
+          body: "codex mobile-to-desktop-test-ok",
+          role: "assistant",
+          sortKey: "2026-07-04T00:00:00.000Z",
+          turnId: "turn.remote.test.1",
+        },
+      ],
       threadId: "thread.remote.test",
-    })).toMatchObject({ enabled: true, messages: [{ body: "hello from mobile" }] })
+    })).toMatchObject({
+      enabled: true,
+      messages: [{ body: "hello from mobile" }],
+      runtimeMessages: [{ body: "codex mobile-to-desktop-test-ok", role: "assistant" }],
+    })
 
     expect(decodeKhalaCodeDesktopRpcParameters("khalaSyncChatCreateThread", [{
       threadId: "thread.remote.test",

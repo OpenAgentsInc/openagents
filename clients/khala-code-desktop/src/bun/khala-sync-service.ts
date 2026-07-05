@@ -22,6 +22,8 @@ import {
   threadScope,
   type ChatMessageEntity,
   type ChatThreadEntity,
+  type RuntimeEventEntity,
+  type RuntimeTurnEntity,
   type SyncScope,
 } from "@openagentsinc/khala-sync"
 import { createCollection, type Collection } from "@tanstack/db"
@@ -48,6 +50,8 @@ import {
   chatThreadKhalaSyncCollectionOptions,
   chatThreadsForSidebar,
   createKhalaSyncMutationTracker,
+  runtimeEventKhalaSyncCollectionOptions,
+  runtimeTurnKhalaSyncCollectionOptions,
   type ChatAppendMessageArgs,
   type ChatCreateThreadArgs,
   type ChatRenameThreadArgs,
@@ -76,6 +80,7 @@ import type {
   KhalaCodeDesktopKhalaSyncFleetStateRequest,
   KhalaCodeDesktopKhalaSyncFleetStateResult,
 } from "../shared/rpc.js"
+import { buildDesktopRuntimeTurnMessages } from "./khala-runtime-transcript-desktop-core.js"
 import { resolveKhalaCodeDesktopOpenAgentsAgentToken } from "./harness-setting.js"
 
 /**
@@ -433,6 +438,7 @@ export const khalaSyncChatMessagesDisabledState = (
   reason: null,
   rejections: [],
   messages: [],
+  runtimeMessages: [],
   threadId,
 })
 
@@ -450,6 +456,11 @@ interface SessionRuntime {
   } | null
   chatMessageCollections: Map<string, Collection<ChatMessageEntity, string, KhalaSyncCollectionUtils>>
   chatThreadsCollection: Collection<ChatThreadEntity, string, KhalaSyncCollectionUtils> | null
+  /** #8425: read-only runtime_turn/runtime_event collections per thread —
+   * folded into `runtimeMessages` in `chatMessages()` so a mobile-dispatched
+   * turn's reply is visible even though it never lands as a `chat_message`. */
+  runtimeTurnCollections: Map<string, Collection<RuntimeTurnEntity, string, KhalaSyncCollectionUtils>>
+  runtimeEventCollections: Map<string, Collection<RuntimeEventEntity, string, KhalaSyncCollectionUtils>>
 }
 
 /** Run a typed Effect from promise-land, rethrowing the typed error. */
@@ -641,6 +652,8 @@ export const createKhalaCodeDesktopKhalaSyncService = (
         chatThreadsCollection: null,
         mutationTracker,
         overlay,
+        runtimeEventCollections: new Map(),
+        runtimeTurnCollections: new Map(),
         session,
         store,
       }
@@ -766,6 +779,82 @@ export const createKhalaCodeDesktopKhalaSyncService = (
     return collection
   }
 
+  /**
+   * #8425: read-only `runtime_turn` collection for one thread scope — no
+   * mutator wiring at all, since desktop never writes these rows locally
+   * (see `runtimeTurnKhalaSyncCollectionOptions`'s doc comment). Gated on
+   * the same `chatEnabled` flag as the chat_message collection above since
+   * it shares the exact same `threadScope(threadId)` subscription.
+   */
+  const ensureRuntimeTurnsCollection = (
+    active: SessionRuntime,
+    threadId: string,
+  ): Collection<RuntimeTurnEntity, string, KhalaSyncCollectionUtils> | null => {
+    if (!chatEnabled) return null
+    const existing = active.runtimeTurnCollections.get(threadId)
+    if (existing !== undefined) return existing
+    const collection = createCollection(
+      runtimeTurnKhalaSyncCollectionOptions({
+        awaitMutationPollIntervalMs: 0,
+        awaitMutationTimeoutMs: 5_000,
+        mutationTracker: active.mutationTracker,
+        overlay: active.overlay,
+        scope: threadScope(threadId),
+        session: active.session,
+        ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
+        startSync: true,
+      }),
+    )
+    active.runtimeTurnCollections.set(threadId, collection)
+    return collection
+  }
+
+  const ensureRuntimeEventsCollection = (
+    active: SessionRuntime,
+    threadId: string,
+  ): Collection<RuntimeEventEntity, string, KhalaSyncCollectionUtils> | null => {
+    if (!chatEnabled) return null
+    const existing = active.runtimeEventCollections.get(threadId)
+    if (existing !== undefined) return existing
+    const collection = createCollection(
+      runtimeEventKhalaSyncCollectionOptions({
+        awaitMutationPollIntervalMs: 0,
+        awaitMutationTimeoutMs: 5_000,
+        mutationTracker: active.mutationTracker,
+        overlay: active.overlay,
+        scope: threadScope(threadId),
+        session: active.session,
+        ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
+        startSync: true,
+      }),
+    )
+    active.runtimeEventCollections.set(threadId, collection)
+    return collection
+  }
+
+  /** Best-effort: a runtime_turn/runtime_event read failure (e.g. decode
+   * error on a foreign row, scope denial) must never break the existing
+   * chat_message-only path — `chatMessages()` already has a working
+   * fallback story for chat_message failures, and this fold is additive. */
+  const runtimeMessagesForThread = async (
+    active: SessionRuntime,
+    threadId: string,
+  ): Promise<ReadonlyArray<{ readonly turnId: string; readonly sortKey: string; readonly role: "assistant"; readonly body: string }>> => {
+    const turnCollection = ensureRuntimeTurnsCollection(active, threadId)
+    const eventCollection = ensureRuntimeEventsCollection(active, threadId)
+    if (turnCollection === null || eventCollection === null) return []
+    try {
+      await turnCollection.preload()
+      await eventCollection.preload()
+      return buildDesktopRuntimeTurnMessages(
+        [...turnCollection.values()],
+        [...eventCollection.values()],
+      )
+    } catch {
+      return []
+    }
+  }
+
   const chatThreadToRpc = (
     thread: ChatThreadEntity,
   ): KhalaCodeDesktopKhalaSyncChatThreadsResult["threads"][number] => ({
@@ -887,6 +976,14 @@ export const createKhalaCodeDesktopKhalaSyncService = (
         ? 500
         : Math.max(0, Math.min(2_000, Math.trunc(request.limit)))
       const messages = chatMessagesForTranscript(collection.values()).slice(-limit)
+      // #8425: additive fold of runtime_turn/runtime_event rows into
+      // synthesized assistant replies — a turn dispatched from mobile (or
+      // any non-desktop-composer surface) never produces a chat_message for
+      // its reply, so without this desktop's chat surface would durably
+      // have the reply in Khala Sync yet never render it. Best-effort: a
+      // failure here must never break the existing chat_message-only
+      // response.
+      const runtimeMessages = await runtimeMessagesForThread(active, request.threadId)
       return {
         authState: "connected",
         cursor,
@@ -901,6 +998,7 @@ export const createKhalaCodeDesktopKhalaSyncService = (
         phase,
         reason,
         rejections: [...chatRejections],
+        runtimeMessages,
         threadId: request.threadId,
       }
     } catch (error) {

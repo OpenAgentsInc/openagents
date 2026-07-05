@@ -11,16 +11,24 @@ import {
   EntityType,
   decodeChatMessageEntity,
   decodeChatThreadEntity,
+  decodeRuntimeEventEntity,
+  decodeRuntimeTurnEntity,
   encodeChatMessageEntity,
   encodeChatThreadEntity,
+  encodeRuntimeEventEntity,
+  encodeRuntimeTurnEntity,
   fleetRunScope,
   LogPage,
   MustRefetchFrame,
   MutationResult,
   PushResponse,
+  RUNTIME_EVENT_ENTITY_TYPE,
+  RUNTIME_TURN_ENTITY_TYPE,
   SyncVersion,
   SyncVersionWatermark,
   type MutationEnvelope,
+  type RuntimeEventEntity,
+  type RuntimeTurnEntity,
   type SyncScope,
   personalScope,
   threadScope,
@@ -486,6 +494,30 @@ class FakeChatSyncServer {
     ])
   }
 
+  /** #8425: `runtime_turn`/`runtime_event` are server-authored (the
+   * runtime-intent-supervisor writes them after a mobile-dispatched turn),
+   * never client-mutated, so these commit straight to `threadScope` like
+   * `commitMessage` above rather than round-tripping through `push()`. */
+  commitRuntimeTurn(turn: RuntimeTurnEntity): void {
+    this.commit(threadScope(turn.threadId), [
+      {
+        entityType: RUNTIME_TURN_ENTITY_TYPE,
+        entityId: turn.turnId,
+        postImageJson: canonicalJson(encodeRuntimeTurnEntity(turn)),
+      },
+    ])
+  }
+
+  commitRuntimeEvent(event: RuntimeEventEntity): void {
+    this.commit(threadScope(event.threadId), [
+      {
+        entityType: RUNTIME_EVENT_ENTITY_TYPE,
+        entityId: event.eventId,
+        postImageJson: canonicalJson(encodeRuntimeEventEntity(event)),
+      },
+    ])
+  }
+
   bootstrap(request: BootstrapRequest): BootstrapResponse {
     this.seenScopes.push(request.scope)
     const cursor = this.lastVersion(request.scope)
@@ -882,6 +914,147 @@ describe("khala-sync-service chat control bridge", () => {
       threadId: CHAT_THREAD_ID,
     })
     await disabled.service.close()
+  })
+
+  test("#8425: a mobile-dispatched turn's runtime_turn/runtime_event rows render as an assistant runtimeMessage, closing the desktop render gap", async () => {
+    // Mirrors the real production proof recorded in
+    // docs/khala-code/2026-07-04-mobile-tailnet-handshake.md scenario 3: a
+    // Codex turn started on mobile (chat.appendMessage for the human prompt
+    // + runtime.startTurn, target.lane: codex_app_server) settles with a
+    // real text.delta body "codex mobile-to-desktop-test-ok" — never a
+    // chat_message for the reply. Before this change, `chatMessages()` had
+    // no code path that could ever see it.
+    const { server, service } = makeChatHarness()
+    await service.chatCreateThread({ threadId: CHAT_THREAD_ID, title: "Mobile-dispatched thread" })
+    await service.chatAppendMessage({
+      body: "please say the test phrase",
+      messageId: CHAT_MESSAGE_ID,
+      threadId: CHAT_THREAD_ID,
+    })
+
+    server.commitRuntimeTurn(decodeRuntimeTurnEntity({
+      createdAt: FIXED_TIME,
+      eventCount: 1,
+      lane: "codex_app_server",
+      latestIntentId: null,
+      ownerUserId: CHAT_OWNER_ID,
+      settledAt: FIXED_TIME,
+      startedAt: FIXED_TIME,
+      status: "completed",
+      threadId: CHAT_THREAD_ID,
+      turnId: "turn.mc7.codex.1",
+      updatedAt: FIXED_TIME,
+    }))
+    server.commitRuntimeEvent(decodeRuntimeEventEntity({
+      createdAt: FIXED_TIME,
+      event: {
+        causalityRefs: [],
+        chunkId: "chunk.mc7.1",
+        eventId: "event.mc7.1",
+        kind: "text.delta",
+        messageId: "message.mc7.1",
+        observedAt: FIXED_TIME,
+        redactionClass: "private_ref",
+        schema: "openagents.khala_runtime_event.v1",
+        sequence: 1,
+        source: { lane: "codex_app_server", surface: "server" },
+        text: "codex mobile-to-desktop-test-ok",
+        threadId: CHAT_THREAD_ID,
+        turnId: "turn.mc7.codex.1",
+        visibility: "private",
+      },
+      eventId: "event.mc7.1",
+      kind: "text.delta",
+      observedAt: FIXED_TIME,
+      ownerUserId: CHAT_OWNER_ID,
+      sequence: 1,
+      threadId: CHAT_THREAD_ID,
+      turnId: "turn.mc7.codex.1",
+    }))
+
+    const state = await service.chatMessages({ threadId: CHAT_THREAD_ID })
+    expect(state.ok).toBe(true)
+    // The human prompt is still the only chat_message row — unchanged from
+    // today's behavior.
+    expect(state.messages.map(message => message.body)).toEqual([
+      "please say the test phrase",
+    ])
+    // The assistant's reply is now visible via the additive runtimeMessages
+    // fold — this is the exact gap the mobile-tailnet-handshake doc recorded
+    // as open.
+    expect(state.runtimeMessages).toEqual([
+      {
+        body: "codex mobile-to-desktop-test-ok",
+        role: "assistant",
+        sortKey: FIXED_TIME,
+        turnId: "turn.mc7.codex.1",
+      },
+    ])
+    await service.close()
+  })
+
+  test("#8425: a still-running turn's partial reply renders with an honest status suffix, not as a finished bubble", async () => {
+    const { server, service } = makeChatHarness()
+    await service.chatCreateThread({ threadId: CHAT_THREAD_ID, title: "Streaming thread" })
+
+    server.commitRuntimeTurn(decodeRuntimeTurnEntity({
+      createdAt: FIXED_TIME,
+      eventCount: 1,
+      lane: "claude_pylon",
+      latestIntentId: null,
+      ownerUserId: CHAT_OWNER_ID,
+      settledAt: null,
+      startedAt: FIXED_TIME,
+      status: "running",
+      threadId: CHAT_THREAD_ID,
+      turnId: "turn.running.1",
+      updatedAt: FIXED_TIME,
+    }))
+    server.commitRuntimeEvent(decodeRuntimeEventEntity({
+      createdAt: FIXED_TIME,
+      event: {
+        causalityRefs: [],
+        chunkId: "chunk.running.1",
+        eventId: "event.running.1",
+        kind: "text.delta",
+        messageId: "message.running.1",
+        observedAt: FIXED_TIME,
+        redactionClass: "private_ref",
+        schema: "openagents.khala_runtime_event.v1",
+        sequence: 1,
+        source: { lane: "claude_pylon", surface: "server" },
+        text: "still working on it",
+        threadId: CHAT_THREAD_ID,
+        turnId: "turn.running.1",
+        visibility: "private",
+      },
+      eventId: "event.running.1",
+      kind: "text.delta",
+      observedAt: FIXED_TIME,
+      ownerUserId: CHAT_OWNER_ID,
+      sequence: 1,
+      threadId: CHAT_THREAD_ID,
+      turnId: "turn.running.1",
+    }))
+
+    const state = await service.chatMessages({ threadId: CHAT_THREAD_ID })
+    expect(state.runtimeMessages).toEqual([
+      {
+        body: "still working on it (running…)",
+        role: "assistant",
+        sortKey: FIXED_TIME,
+        turnId: "turn.running.1",
+      },
+    ])
+    await service.close()
+  })
+
+  test("#8425: runtimeMessages is always an empty array (never undefined) when a thread has no runtime rows", async () => {
+    const { service } = makeChatHarness()
+    await service.chatCreateThread({ threadId: CHAT_THREAD_ID, title: "Desktop-only thread" })
+    const state = await service.chatMessages({ threadId: CHAT_THREAD_ID })
+    expect(state.runtimeMessages).toEqual([])
+    await service.close()
   })
 })
 

@@ -26,16 +26,24 @@ import {
   decodeChatMessageEntity,
   decodeChatThreadEntity,
   decodeFleetRunEntity,
+  decodeRuntimeEventEntity,
+  decodeRuntimeTurnEntity,
   encodeChatMessageEntity,
   encodeChatThreadEntity,
   encodeFleetRunEntity,
+  encodeRuntimeEventEntity,
+  encodeRuntimeTurnEntity,
   FLEET_RUN_ENTITY_TYPE,
   fleetRunScope,
   personalScope,
+  RUNTIME_EVENT_ENTITY_TYPE,
+  RUNTIME_TURN_ENTITY_TYPE,
   threadScope,
   type ChatMessageEntity,
   type ChatThreadEntity,
   type FleetRunEntity,
+  type RuntimeEventEntity,
+  type RuntimeTurnEntity,
 } from "@openagentsinc/khala-sync"
 import {
   type ClientMutator,
@@ -68,6 +76,8 @@ import {
   fleetSetDesiredSlotsClientMutator,
   type FleetSetDesiredSlotsArgs,
   KhalaSyncDbCollectionError,
+  runtimeEventKhalaSyncCollectionOptions,
+  runtimeTurnKhalaSyncCollectionOptions,
 } from "./index.js"
 
 const tick = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0))
@@ -292,6 +302,51 @@ class FleetFakeServer {
         entries: [entry],
         scope,
       }),
+    )
+    return version
+  }
+
+  /** #8425: desktop's runtime_event/runtime_turn render gap — these two rows
+   * are server-authored (the runtime-intent-supervisor writes them, never
+   * the desktop client), so this fake commits them directly to
+   * `threadScope`, matching how `commitChatMessage` above simulates a
+   * server-side write rather than a client mutation round-trip. */
+  commitRuntimeTurn(row: RuntimeTurnEntity): number {
+    const scope = threadScope(row.threadId)
+    const version = this.lastVersion(scope) + 1
+    const entry = new ChangelogEntry({
+      committedAt: FIXED_TIME,
+      entityId: EntityId.make(row.turnId),
+      entityType: EntityType.make(RUNTIME_TURN_ENTITY_TYPE),
+      op: "upsert",
+      postImageJson: canonicalJson(encodeRuntimeTurnEntity(row)),
+      scope,
+      version: SyncVersion.make(version),
+    })
+    this.logOf(scope).push(entry)
+    this.emitFrame(
+      scope,
+      new DeltaFrame({ cursor: SyncVersion.make(version), entries: [entry], scope }),
+    )
+    return version
+  }
+
+  commitRuntimeEvent(row: RuntimeEventEntity): number {
+    const scope = threadScope(row.threadId)
+    const version = this.lastVersion(scope) + 1
+    const entry = new ChangelogEntry({
+      committedAt: FIXED_TIME,
+      entityId: EntityId.make(row.eventId),
+      entityType: EntityType.make(RUNTIME_EVENT_ENTITY_TYPE),
+      op: "upsert",
+      postImageJson: canonicalJson(encodeRuntimeEventEntity(row)),
+      scope,
+      version: SyncVersion.make(version),
+    })
+    this.logOf(scope).push(entry)
+    this.emitFrame(
+      scope,
+      new DeltaFrame({ cursor: SyncVersion.make(version), entries: [entry], scope }),
     )
     return version
   }
@@ -722,6 +777,36 @@ const createChatMessageCollection = (
     }),
   )
 
+const createRuntimeTurnCollection = (
+  harness: Awaited<ReturnType<typeof makeHarness>>,
+  threadId: string,
+) =>
+  createCollection(
+    runtimeTurnKhalaSyncCollectionOptions({
+      mutationTracker: harness.tracker,
+      overlay: harness.overlay,
+      scope: threadScope(threadId),
+      session: harness.session,
+      sleep: () => tick(),
+      startSync: true,
+    }),
+  )
+
+const createRuntimeEventCollection = (
+  harness: Awaited<ReturnType<typeof makeHarness>>,
+  threadId: string,
+) =>
+  createCollection(
+    runtimeEventKhalaSyncCollectionOptions({
+      mutationTracker: harness.tracker,
+      overlay: harness.overlay,
+      scope: threadScope(threadId),
+      session: harness.session,
+      sleep: () => tick(),
+      startSync: true,
+    }),
+  )
+
 describe("khalaSyncCollectionOptions / fleet_run", () => {
   test("loads fleet_run fixture rows, applies live updates, and persists desiredSlots through the named mutator", async () => {
     const fixture = await loadFleetRunFixture()
@@ -959,5 +1044,100 @@ describe("chatThreadKhalaSyncCollectionOptions / chat_thread", () => {
       CHAT_APPEND_MESSAGE_MUTATOR_NAME,
       CHAT_RENAME_THREAD_MUTATOR_NAME,
     ])
+  })
+})
+
+describe("runtimeTurnKhalaSyncCollectionOptions / runtimeEventKhalaSyncCollectionOptions (#8425)", () => {
+  const threadId = "thread.remote.runtime.1"
+
+  const turnRow = (patch: Partial<RuntimeTurnEntity> = {}): RuntimeTurnEntity =>
+    decodeRuntimeTurnEntity({
+      createdAt: FIXED_TIME,
+      eventCount: 1,
+      lane: "codex_app_server",
+      latestIntentId: null,
+      ownerUserId: "user-chat-owner",
+      settledAt: null,
+      startedAt: FIXED_TIME,
+      status: "completed",
+      threadId,
+      turnId: "turn.remote.1",
+      updatedAt: FIXED_TIME,
+      ...patch,
+    })
+
+  const textDeltaEventRow = (patch: Partial<RuntimeEventEntity> = {}): RuntimeEventEntity =>
+    decodeRuntimeEventEntity({
+      createdAt: FIXED_TIME,
+      event: {
+        causalityRefs: [],
+        chunkId: "chunk.remote.1",
+        eventId: "event.remote.1",
+        kind: "text.delta",
+        messageId: "message.remote.1",
+        observedAt: FIXED_TIME,
+        redactionClass: "private_ref",
+        schema: "openagents.khala_runtime_event.v1",
+        sequence: 1,
+        source: { lane: "codex_app_server", surface: "server" },
+        text: "codex mobile-to-desktop-test-ok",
+        threadId,
+        turnId: "turn.remote.1",
+        visibility: "private",
+      },
+      eventId: "event.remote.1",
+      kind: "text.delta",
+      observedAt: FIXED_TIME,
+      ownerUserId: "user-chat-owner",
+      sequence: 1,
+      threadId,
+      turnId: "turn.remote.1",
+      ...patch,
+    })
+
+  test("reads server-authored runtime_turn/runtime_event rows without any local mutator — a mobile-dispatched turn's reply is visible read-only", async () => {
+    const server = new FleetFakeServer()
+    server.commitRuntimeTurn(turnRow())
+    server.commitRuntimeEvent(textDeltaEventRow())
+    const harness = await makeHarness(server, { mutators: [] })
+
+    const turns = createRuntimeTurnCollection(harness, threadId)
+    const events = createRuntimeEventCollection(harness, threadId)
+
+    await waitFor(() => turns.isReady() && events.isReady(), "runtime collections ready")
+
+    expect(turns.get("turn.remote.1")).toMatchObject({
+      lane: "codex_app_server",
+      status: "completed",
+      turnId: "turn.remote.1",
+    })
+    expect(events.get("event.remote.1")?.event).toMatchObject({
+      kind: "text.delta",
+      text: "codex mobile-to-desktop-test-ok",
+    })
+  })
+
+  test("live updates land without a restart — a turn transitioning queued -> completed is visible as it happens", async () => {
+    const server = new FleetFakeServer()
+    server.commitRuntimeTurn(turnRow({ settledAt: null, startedAt: null, status: "queued" }))
+    const harness = await makeHarness(server, { mutators: [] })
+    const turns = createRuntimeTurnCollection(harness, threadId)
+    await waitFor(() => turns.isReady(), "runtime_turn collection ready")
+    expect(turns.get("turn.remote.1")?.status).toBe("queued")
+
+    server.commitRuntimeTurn(turnRow({ status: "completed" }))
+    await waitFor(
+      () => turns.get("turn.remote.1")?.status === "completed",
+      "live turn-status update visible without restart",
+    )
+  })
+
+  test("never dispatches a mutation for these read-only collections", async () => {
+    const server = new FleetFakeServer()
+    server.commitRuntimeTurn(turnRow())
+    const harness = await makeHarness(server, { mutators: [] })
+    const turns = createRuntimeTurnCollection(harness, threadId)
+    await waitFor(() => turns.isReady(), "runtime_turn collection ready")
+    expect(server.pushCalls).toEqual([])
   })
 })

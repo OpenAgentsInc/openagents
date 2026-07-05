@@ -50,7 +50,6 @@ import {
   type KhalaCodeDesktopChatTurnRequest,
   type KhalaCodeDesktopFleetRunListResult,
   type KhalaCodeDesktopFleetStatus,
-  type KhalaCodeDesktopKhalaSyncChatMessage,
   type KhalaCodeDesktopKhalaSyncChatThread,
   type KhalaCodeDesktopMessage,
   type KhalaCodeDesktopMessageRole,
@@ -69,6 +68,7 @@ import {
   type KhalaCodeQaMetricsSnapshot,
 } from "../shared/qa-metrics"
 import { iconForCodexItem, renderMessageBody } from "./transcript-render"
+import { mergeKhalaSyncChatAndRuntimeMessages } from "./khala-sync-thread-messages-core"
 import { mountFleetPanel } from "./fleet-status"
 import { mountKhalaCodeForumPanel } from "./forum-panel"
 import { mountKhalaCodePlansPanel } from "./plans-panel"
@@ -4565,14 +4565,6 @@ const chatThreadToSidebarSummary = (
   }
 }
 
-const khalaSyncChatMessageToDesktopMessage = (
-  message: KhalaCodeDesktopKhalaSyncChatMessage,
-): KhalaCodeDesktopMessage => ({
-  body: message.body,
-  id: message.messageId,
-  role: "user",
-})
-
 const khalaSyncThreadResult = async (
   threadId: string,
 ): Promise<Awaited<ReturnType<DesktopRpcRequests["codexThreadResume"]>>> => {
@@ -4585,7 +4577,7 @@ const khalaSyncThreadResult = async (
   }
   return {
     ok: true as const,
-    messages: result.messages.map(khalaSyncChatMessageToDesktopMessage),
+    messages: mergeKhalaSyncChatAndRuntimeMessages(result.messages, result.runtimeMessages),
     thread: {
       source: "khala_sync_chat_thread",
       threadId,

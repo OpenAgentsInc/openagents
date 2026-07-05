@@ -2396,6 +2396,92 @@ than helping it. Tracked here so the next pass building this can start from
 "the data already round-trips correctly; only desktop's read/render path is
 missing" instead of re-discovering it.
 
+### Gap closeout: desktop now renders mobile-dispatched turns (this pass)
+
+The gap above is now fixed, end to end from the sync read to the actual
+rendered message list, in a scoped, additive way:
+
+- **New read-only collections**: `runtimeEventKhalaSyncCollectionOptions`
+  and `runtimeTurnKhalaSyncCollectionOptions` in
+  `packages/khala-sync-db-collection/src/index.ts`, built on the same
+  generic `khalaSyncCollectionOptions` factory `chatMessageKhalaSyncCollectionOptions`
+  already uses, with no `mutators` configured at all (desktop never writes
+  `runtime_event`/`runtime_turn` rows locally — only the Pylon
+  runtime-intent-supervisor does).
+- **A desktop-side fold**, `clients/khala-code-desktop/src/bun/khala-runtime-transcript-desktop-core.ts`:
+  folds a thread's `runtime_turn` + `runtime_event` rows into one
+  synthesized assistant message per turn (concatenated `text.delta` reply
+  text), with an honest status suffix (` (running…)`, ` (queued…)`,
+  ` (failed)`, ` (interrupted)`) appended for any turn that hasn't settled
+  cleanly, so an in-flight or non-clean turn never renders as if it were a
+  normal finished reply. This is a deliberately scoped-down port of mobile's
+  richer `TranscriptPart`-by-part reducer
+  (`khala-runtime-transcript-core.ts`) — desktop's message-list model is
+  `{ id, role, body }`, so tool calls/reasoning/usage parts are not
+  individually rendered; only the text reply is folded per turn. A future
+  pass wanting mobile's full part-by-part fidelity on desktop has that
+  reference implementation to port from.
+- **Wired into the RPC**: `khala-sync-service.ts`'s `chatMessages()` now
+  also ensures/preloads the two new per-thread collections and returns an
+  additive `runtimeMessages` array (new required field on
+  `KhalaCodeDesktopKhalaSyncChatMessagesResult`, always `[]` when there's
+  nothing to fold, never `undefined`) alongside the existing `chat_message`-only
+  `messages` array. `messages` itself is completely unchanged — this is
+  additive, not a replacement, matching the "preserve existing chat_message
+  rendering for desktop-started turns" requirement.
+- **Wired into the actual render**: a new pure module,
+  `clients/khala-code-desktop/src/ui/khala-sync-thread-messages-core.ts`
+  (extracted out of `main.ts`, which is a DOM-mounting entrypoint that isn't
+  otherwise unit-testable, mirroring how `main-shell-model.ts` already
+  extracts other pure shell-model logic from the same file), merges
+  `messages` + `runtimeMessages` into one chronological
+  `KhalaCodeDesktopMessage[]` by `createdAt`/`sortKey`. `khalaSyncThreadResult`
+  in `main.ts` (the function `resumeThread` calls for a Khala Sync-sourced
+  thread) now calls this merge instead of mapping `messages` alone — so a
+  mobile-dispatched turn's reply is genuinely rendered in
+  `activateCodexThread`'s message list, not just present in the RPC
+  response.
+
+**Test evidence** (all green, run in this pass):
+
+- `packages/khala-sync-db-collection/src/index.test.ts`: 3 new tests proving
+  the two new collections read server-authored rows with zero local
+  mutators, apply live updates without a restart, and never dispatch a
+  mutation.
+- `clients/khala-code-desktop/tests/khala-runtime-transcript-desktop-core.test.ts`:
+  17 new tests for the fold (sequencing, text concatenation, every turn
+  status's suffix, chronological interleaving across turns, dropping a
+  turn with nothing to show vs. keeping an honest queued placeholder).
+- `clients/khala-code-desktop/tests/khala-sync-service.test.ts`: 3 new
+  integration tests against the real `createKhalaCodeDesktopKhalaSyncService`
+  RPC surface — one reproduces the exact MC-7 production proof shape
+  (`turn.mc7.codex.1` / `"codex mobile-to-desktop-test-ok"`) and asserts the
+  human prompt still lands as the only `chat_message` row while the
+  assistant reply now appears in `runtimeMessages`; one covers a
+  still-running turn's partial-reply suffix; one covers the empty case.
+- `clients/khala-code-desktop/tests/khala-sync-thread-messages-core.test.ts`:
+  6 new tests for the final render-layer merge, including the literal
+  "prompt then reply" ordering a user would see.
+- `clients/khala-code-desktop/tests/rpc-schema.test.ts`: updated fixture for
+  the new required `runtimeMessages` field on the schema-first RPC contract.
+- Full suites green: `packages/khala-sync-db-collection` (7/7),
+  `packages/khala-sync` (152/152), `clients/khala-mobile` (162/162, proving
+  no regression to mobile's existing reducer), and
+  `clients/khala-code-desktop` (726/728 — the 2 failures are pre-existing
+  and unrelated: `khalaCodePlanStatus`/`khalaCodePlanPurchase` return a
+  different unauthenticated-state string in this local environment,
+  confirmed to already fail identically on a clean `origin/main` checkout
+  before any of this pass's changes, and untouched by this diff).
+  `bun run typecheck` clean in both `packages/khala-sync-db-collection` and
+  `clients/khala-code-desktop`.
+
+This closes the gap fully: the data already round-tripped correctly (proven
+in MC-7 above); now desktop's read path AND render path both exist and are
+tested. Not yet re-verified with a fresh live Simulator-dispatch-to-desktop-screenshot
+in this pass (the MC-7 pass's own note on synthetic-typing limitations in the
+Simulator still applies); the test suite above exercises the exact production
+entity shapes recorded in the MC-7 proof instead.
+
 ### Other honest gaps from this pass
 
 - Driving the real mobile Simulator app's composer via synthetic taps
