@@ -756,6 +756,157 @@ behind.
   evidence per surface, and for `artanis_responder_ticks` specifically,
   #8409 must land first) — not a config flip, and not done in this pass.
 
+### 2026-07-05 KS-8.6 follow-up — #8409 fix deployed, fresh clobber confirmed AFTER deploy (#8335)
+
+**Do not flip `KHALA_SYNC_ARTANIS_READS=postgres` on this evidence. Stop-and-report
+condition per the money/business-adjacent-data guardrail.**
+
+- **Fetched/rebased:** confirmed `06ee7de4c7` (#8409 fix) is an ancestor of
+  `origin/main`; fast-forwarded this worktree to `origin/main` (`7a1e0b8fc0`
+  at kickoff). `apps/openagents.com/workers/api` test suite: 76 files / 736
+  tests pass (incl. the #8409 regression coverage). `typecheck` clean.
+  `check:architecture` zero-debt: clean.
+- **Fresh `--verify` (before any redeploy this pass):** 19/20 tables still
+  exact. `artanis_responder_ticks`: `d1=8125 postgres=8124` (23 stale rows,
+  up from 20→21→23 across the three checks today), plus **one row entirely
+  missing from Postgres** (`scheduled_at=2026-07-05T07:06:24.000Z`, fully
+  resolved `ran`/`ran` in D1, absent from Postgres — a distinct fail-soft
+  mirror-write-loss finding, separate from the column-clobber pattern).
+- **Critical finding:** diffing the full 8000+-row table between D1 and
+  Postgres and bucketing by `scheduled_at`, one of the 23 stale rows is
+  **`2026-07-05T09:13:24.000Z`** — created (per D1 `created_at`) **27
+  minutes AFTER** the `openagents-autopilot` Worker deploy at
+  `2026-07-05T08:46:25Z` (`wrangler deployments list`), which is itself
+  **33 minutes after** the #8409 fix commit landed on `main`
+  (`06ee7de4c7`, `2026-07-05T08:13:27Z`) — i.e. chronologically, that
+  deploy *should* have shipped the fix. D1 shows `scan_state=ran
+  compose_state=ran` (fully resolved); Postgres shows `scan_state=pending
+  compose_state=ran` (scan stuck) — the EXACT #8409 symptom, recurring
+  after the fix was supposedly live.
+- **Because deploys in this repo are ad hoc (`deploy:safe` run from
+  whichever worktree an agent happens to be in, not CI-gated on every
+  main push), a deploy's wall-clock timestamp does not guarantee it
+  shipped a worktree at or after a given commit** — an agent could deploy
+  from a worktree that branched before `06ee7de4c7`. To remove that
+  variable, this pass fast-forwarded a clean worktree to `origin/main`
+  (`7a1e0b8fc0`, confirmed `06ee7de4c7` many commits back), ran the full
+  sanctioned `deploy:safe` gate (`check:deploy-from-main` OK at
+  `7a1e0b8fc0`; `check:deploy` — the full typecheck/test/architecture/
+  contract-drift/public-projection suite — green; staging deploy +
+  `predeploy:parallel-dispatch-smoke` — 5/5 dispatch OK; prod migrations
+  — 0 pending), and completed the final production
+  `wrangler deploy --containers-rollout=none` manually (the very last
+  step of the chained script failed on a missing
+  `KHALA_SYNC_DATABASE_URL` env var in the shell that invoked it, NOT a
+  code or gate problem — the two preceding gates it needed had already
+  passed; re-ran that one gate with the var set, then ran the final
+  `wrangler deploy` directly). Production Worker Version ID
+  `17543300-c80f-450f-a84a-826be0b06358`, live and smoke-tested
+  (`GET https://openagents.com/` HTTP 200,
+  `GET /api/public/artanis/report` HTTP 200) at **2026-07-05T10:00:48Z**.
+  This is now a GUARANTEED-fresh deploy of `main` HEAD, including
+  `06ee7de4c7`, with no worktree-staleness ambiguity.
+- **Post-guaranteed-deploy observation:** watched for **~24 minutes**
+  (`2026-07-05T10:00:48Z` → `10:24:57Z`). Full-table diff (not a sample) of
+  `artanis_responder_ticks` between D1 and Postgres: **23 stale rows total,
+  UNCHANGED from before the guaranteed deploy — zero of them have
+  `scheduled_at` after `2026-07-05T10:00:48Z`.** The newest mismatch overall
+  remains the pre-deploy `09:13:24Z` row; the 1 row missing from Postgres
+  (`07:06:24Z`) also remains unchanged (still absent, not self-healed). This
+  is an encouraging signal that the guaranteed-fresh deploy stopped new
+  occurrences, but treat it as suggestive rather than conclusive per the
+  sample-size caveat below.
+- **Honest caveat on sample size:** across all 23 stale rows
+  (`2026-07-04T21:27` → `2026-07-05T09:13`, an 11.76h dual-write window)
+  the historical clobber rate is ~2/hour average (median gap ~22 min, min
+  gap 1 min, max gap 115 min) — so a short post-deploy window silently
+  passing is only weak-to-moderate evidence the fix actually resolves the
+  live mechanism; treat it as suggestive, not conclusive, without a window
+  meaningfully longer than the median gap.
+- **Compare-mode soak status (the ACTUALLY flag-routed record kinds —
+  `approval_gate`, `forum_publication_intent`, `health_snapshot`,
+  `loop_record`, `loop_tick`, `nexus_pylon_adapter_dispatch`,
+  `runtime_snapshot`, `work_routing_proposal`; `artanis_responder_ticks`
+  is NOT one of them):** watched via `wrangler tail` for **~35 minutes**
+  (`2026-07-05T09:50:32Z` → `10:25:23Z`), confirmed the every-minute cron
+  kept firing throughout (fresh `artanis_responder_ticks` rows each
+  minute) and repeated `GET /api/public/artanis/report` calls all HTTP
+  200. The `--search khala_sync_artanis` flag did not actually restrict
+  the stream server-side (see the incidental finding below), so this was
+  effectively a genuinely UNFILTERED production tail — **zero** mentions
+  of the string `artanis` anywhere in over 1200 lines of real traffic,
+  meaning zero `khala_sync_artanis_read_compare_mismatch` /
+  `_dual_write_failed` / `_postgres_read_failed` diagnostics fired for the
+  eight actually-routed record kinds during this window.
+- **Decision:** did **NOT** flip `KHALA_SYNC_ARTANIS_READS` to `postgres`.
+  Even though `artanis_responder_ticks` is not itself read-routed, a
+  fresh, unresolved, in-production clobber in a sibling table mirrored by
+  the SAME `mirrorArtanisRows`/`upsertRows` machinery that the flag-routed
+  tables also depend on is a live, unexplained data-integrity signal in
+  this domain's dual-write path — per the explicit guardrail for
+  money/business-adjacent responder data, this is a stop-and-report
+  condition, not a paper-over-and-proceed one.
+- **Recommendation:** reopen #8409 (or file a fresh linked issue) with
+  this evidence. Root cause is NOT yet conclusively re-identified — the
+  cross-writer full-row-clobber mechanism #8409 fixed is real and its
+  regression tests are green, but the production symptom persisted past a
+  guaranteed-fresh deploy of that fix, so either (a) a distinct mechanism
+  produces the identical symptom (candidates worth investigating: a
+  silently-swallowed `khala_sync_artanis_dual_write_failed` on the scan
+  tick's OWN mirror call. `scan_state`/`compose_state` both default to
+  `'pending'` in the table schema, so if compose runs first (self-heal
+  INSERT captures `scan_state='pending'`, the schema default, since scan
+  hasn't run yet) and scan's LATER scoped mirror UPDATE silently fails
+  (transient Hyperdrive/Postgres connect/timeout — the SQL client uses a
+  bare 10s `connect_timeout` with NO retry in `mirrorArtanisRows`, which
+  is deliberately fail-soft), Postgres is stuck at `scan_state='pending'`
+  forever — nothing else ever touches that column again for that
+  `scheduled_at`. This produces the EXACT observed symptom with no
+  interleaving race at all, and #8409's column-scoping fix does nothing
+  to prevent it. A weaker candidate: some D1-consistency edge case on the
+  mirror's read-back — no `withSession`/bookmark is used in
+  `artanis-domain-store.ts`, unlike `business-domain-store.ts` (though no
+  `read_replication` config was found on the `OPENAGENTS_DB` D1 binding,
+  which weakens this candidate)), or (b)
+  the fix has a residual bug not covered by the current regression
+  fixtures. Querying persisted Worker logs (`observability.logs.persist:
+  true` is already on) for `khala_sync_artanis_dual_write_failed` around
+  `2026-07-05T09:13:24Z` would directly test hypothesis (a) and is the
+  concrete next step.
+- **Broader note:** the fail-soft, no-retry `mirror*Rows` pattern is
+  shared scaffolding across essentially every Khala Sync domain store
+  (`business-`, `treasury-`, `forge-`, `training-`, `identity-auth-`,
+  `sites-content-`, `gym-evals-`, `crm-email-`, `supervision-longtail-`,
+  and others), not just Artanis. Single-writer-per-key tables self-heal
+  on their NEXT write (the next full-row snapshot recaptures current D1
+  truth), so a dropped write is invisible there; only a natural key with
+  MULTIPLE independent writers (like `artanis_responder_ticks`/`_state`)
+  turns one dropped write into a permanently-stuck stale column. Worth an
+  audit of other multi-writer natural keys across domains if hypothesis
+  (a) is confirmed — out of scope for this pass.
+- **Incidental unrelated finding (out of scope, flagged for awareness only):**
+  `wrangler tail --search khala_sync_artanis` did not actually restrict the
+  stream server-side (it showed general production traffic throughout, not
+  just artanis-tagged lines) — a useful accident, since it means the "zero
+  artanis mentions" result above is from a genuinely unfiltered tail, not a
+  possibly-broken filter hiding real events. That same unfiltered tail
+  repeatedly surfaced two UNRELATED live errors this session: a Sites
+  publish path `D1_ERROR: FOREIGN KEY constraint failed`
+  (`siteId=site_project_otec`, `versionId=site_version_otec_20260605_revision_3`)
+  and a recurring `TipsBufferBackingViolation:
+  tips_buffer_backing_violated: agent balances 263 sat exceed buffer 15 sat`
+  (`checkTipsBufferBackingInvariant`). Both are money/business-adjacent and
+  real, but entirely outside this issue's Artanis/KS-8.6 scope — not
+  investigated or fixed here; flagging so they don't go unnoticed.
+- **Not done this pass (deliberately, given the stop condition):** the
+  corrective full-row re-converge sweep for the already-stale rows (would
+  be premature while the mechanism is unconfirmed-fixed — it could
+  immediately re-drift), and the remaining D1-direct read-path migration
+  work (analytics joins, dashboard/console aggregations, spend/grant
+  aggregation, responder scan/composer joins, labor receipt ordered
+  list) — all gated on this domain's dual-write mirror being trustworthy
+  first.
+
 ## Treasury settlement domain cutover (KS-8.8, #8319)
 
 All 27 live money tables (treasury_transactions, the six `nexus_*`

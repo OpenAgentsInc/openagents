@@ -151,6 +151,31 @@ but the fix is not yet deployed and the already-stale rows are not yet
 corrected; see `RUNBOOK.md` "#8409 fix landed" for the full evidence and
 the outstanding deploy + corrective-sweep follow-up.
 
+**KS-8.6 follow-up (2026-07-05, #8335): fix deployed, but the clobber
+recurred AFTER deploy — flip NOT taken.** Confirmed `06ee7de4c7`
+(#8409) is on `main`; fast-forwarded a clean worktree and ran a
+guaranteed-fresh `deploy:safe` (staging + prod; prod Worker Version
+`17543300-c80f-450f-a84a-826be0b06358`, live `2026-07-05T10:00:48Z`) so
+there is no worktree-staleness ambiguity about whether the fix is
+actually running. A fresh `--verify` still shows 23 stale
+`artanis_responder_ticks` rows (up from 20→21→23 across today's checks)
+plus one row entirely missing from Postgres — and, critically, one of
+the 23 (`scheduled_at=2026-07-05T09:13:24Z`) was created 27 minutes AFTER
+the PRIOR deploy that chronologically should already have included the
+fix. Over the ~24 minutes after the guaranteed-fresh deploy
+(`2026-07-05T10:00:48Z` → `10:24:57Z`), the full-table diff stayed at
+exactly 23 stale rows (zero new ones), and a ~35-minute genuinely
+unfiltered production tail showed zero mentions of `artanis` at all — an
+encouraging but not fully conclusive signal (historical clobber rate ~2/hr,
+median gap ~22 min). Per the explicit money/business-adjacent-data
+guardrail, this is a stop-and-report finding, not a paper-over: recommend
+reopening #8409 rather than treating it as closed, and holding the
+remaining Artanis read-path migration work (this table plus the flip
+itself for the eight actually-routed record kinds) until the mirror's
+dual-write reliability is re-confirmed. Full evidence in `RUNBOOK.md`
+"KS-8.6 follow-up — #8409 fix deployed, fresh clobber confirmed AFTER
+deploy".
+
 **KS-8.8 status (2026-07-04):** machinery LIVE — Postgres schema
 (`khala-sync-server` migration `0016_treasury_domain.sql`: all 27 live
 money tables — treasury transactions, the six nexus payout-authority
