@@ -5,7 +5,7 @@
   "type": "module",
   "main": "expo-router/entry",
   "scripts": {
-    "dev": "expo start --dev-client",
+    "dev": "expo start",
     "prebuild": "expo prebuild",
     "prebuild:ios": "expo prebuild --platform ios",
     "prebuild:android": "expo prebuild --platform android",

@@ -66,6 +66,50 @@ return type as `Nothing` — illegal as a `reified` type parameter
 Android build regardless of Java/SDK setup. Fixed by pinning the type
 explicitly (`AsyncFunction<Map<String, Any>, String?>(...)`).
 
+2026-07-05, later same day — first real simulator launch, root cause found
+for the recurring "No script URL provided" red screen that blocked every
+prior TS-8 device-parity attempt (#8393/#8395/#8398/#8399, and earlier passes
+on #8350): **this app never actually depends on `expo-dev-client`** (not in
+`package.json`), so the built binary's `AppDelegate.bundleURL()` always uses
+plain React Native's default `RCTBundleURLProvider` (Metro on `localhost:8081`
+in `DEBUG`), not the `expo-dev-client` deep-link handshake
+(`khala://expo-development-client/?url=...`). The `dev` script previously ran
+`expo start --dev-client`, which prints that deep-link/QR instruction and
+misled every prior pass into deep-linking a launcher that isn't wired
+natively — the app has no code path that reads that URL. Fixed by dropping
+the flag (`"dev": "expo start"`); the deep link is not needed and should not
+be used. **Verified working end to end** on a booted `iPhone 17 Pro`
+simulator (iOS 26.5) from a completely fresh worktree/build: `expo prebuild
+--platform ios` → `bun run build:ios:local` → `** BUILD SUCCEEDED **` →
+`xcrun simctl install` → plain `expo start --port 8081` → `xcrun simctl
+launch` → Metro bundled cleanly (`iOS Bundled 3742ms ...expo-router/entry.js
+(2454 modules)`) → the app rendered its real Tailnet auto-auth fallback
+screen ("No signed-in Mac found on your Tailnet" / Retry / Sign in manually),
+matching the documented auth-provider behavior exactly. This is the first
+session to get a `khala-mobile` build past install+launch+render on any
+simulator or device.
+
+Real STT/Apple FM capture parity remains unproven, but not because of
+simulator/device access — it is unproven because **neither platform's native
+module actually attempts capture yet**: `KhalaPushToTalkSttModule.swift`'s
+`startRecognitionAsync` unconditionally `throw`s
+`SpeechRuntimeUnavailableException` and the Kotlin module unconditionally
+throws `CodedException("android_stt_runtime_pending")`; `getAvailabilityAsync`
+on `KhalaAppleFoundationModelsModule.swift` unconditionally returns
+`"blocked"` regardless of device state. This is deliberate current scope, not
+a bug — but it means no physical device, simulator, or emulator session (this
+one included) can produce a positive capture proof until real
+`SFSpeechRecognizer`/`SpeechRecognizer` and Foundation Models bridging code
+lands; the reference SwiftUI app (`clients/khala-ios/Khala`) also has no
+`import Speech` or STT implementation to be "at parity" with today. The
+composer's mic button and the Settings "On-device" section do render and
+correctly surface each module's fail-closed error/status when the routed UI
+reaches them (verified by unit test + direct source read); reaching that
+specific screen live in this pass would have required real Khala Sync sign-in
+credentials (`EXPO_PUBLIC_KHALA_SYNC_DEMO_OWNER_USER_ID`/`_TOKEN`) or UI-tap
+automation (no `idb`/Maestro/Appium available in this environment), neither of
+which this pass exercised.
+
 ## OTA Updates
 
 `app.json` embeds:
@@ -128,6 +172,17 @@ action:
   manifest-serving path (`updates.openagents.com/khala-mobile/manifest`) is
   live and correct, but `publish-ota.sh`'s `gcloud run deploy` step needs an
   interactive `gcloud auth login` re-auth on this machine first (see
-  `NEEDS_OWNER.md`).
-- Replace the native-module shells with the device-proven STT stream and Apple
-  FM bridge calls, then retire the SwiftUI app only after parity.
+  `NEEDS_OWNER.md`). Re-checked 2026-07-05: still blocked — both
+  `gcloud auth application-default print-access-token` and
+  `gcloud run services list --account=<sa>` for the two locally-available
+  service-account keys (`oa-vertex-inference@...`, `nexus-mainnet@...`) fail
+  (reauth required / no Cloud Run permission on either SA), so there is
+  currently no non-interactive path around this.
+- Implement real native capture — `startRecognitionAsync` on both platforms
+  and the Apple FM bridge's availability probe are still hardcoded to fail
+  closed (see the 2026-07-05 simulator-launch note above); this needs actual
+  `SFSpeechRecognizer`/Android `SpeechRecognizer` and Foundation Models
+  integration code, which no device or simulator session can substitute for.
+  Only after that lands does "device-proven STT stream and Apple FM bridge
+  calls" become a meaningful proof target; retire the SwiftUI app only after
+  parity.

@@ -318,3 +318,111 @@ not the platform with more known bugs.
 - Did independently re-verify: the full unit test suite (twice), the
   typecheck, and the specific Kotlin AsyncFunction fix (by reading the source
   file directly).
+
+## Follow-up, same day: first real simulator launch + gcloud re-auth re-check
+
+This follow-up pass (issue #8350) targeted the two remaining owner-gated
+gaps directly, from a fresh isolated worktree (not the audit worktree above).
+
+### Gap 1: signed OTA round-trip — still genuinely blocked, re-verified
+
+Checked `NEEDS_OWNER.md` for the "gcloud re-auth needed" entry (dated
+2026-07-05, still present, no sign of the reauth having happened) and then
+independently re-tested every locally-available non-interactive path rather
+than trusting that note alone:
+
+- `gcloud auth application-default print-access-token` → `Reauthentication
+  failed... cannot prompt during non-interactive execution.`
+- `gcloud run services list --project=openagentsgemini` (as the default
+  `chris@openagents.com` account) → same reauth failure — confirms this is
+  not only an Application Default Credentials gap, the primary user account's
+  own gcloud CLI session is also expired.
+- Two service-account keys exist locally
+  (`.secrets/vertex-sa-inference.json` → `oa-vertex-inference@...`,
+  and `nexus-mainnet@...` is also pre-activated in this gcloud config): tried
+  `gcloud run services list --account=<sa>` for both. Both fail with
+  `Permission 'run.services.list' denied` — neither SA has Cloud Run access
+  on this project (as expected: they're scoped to Vertex inference and Nexus
+  mainnet respectively, not deploy infrastructure).
+
+Conclusion: no route around the interactive `gcloud auth login` exists today.
+This is unchanged from the prior pass's finding; NEEDS_OWNER.md's existing
+entry is accurate and was not duplicated.
+
+### Gap 2: real-device STT/Apple FM capture parity — reframed, real forward progress made
+
+**No booted simulator or running Metro instance was found at the start of
+this pass** (checked via `xcrun simctl list devices booted` and `lsof`), so —
+unlike the prior evidence pass that hit a contended shared environment — this
+pass had exclusive access to the simulator/build pipeline. From a completely
+fresh worktree: `bun install` → `expo prebuild --platform ios` → `xcodebuild
+... build` → `** BUILD SUCCEEDED **` (~15 min clean build, verified via
+`clang -cc1`/codesign subprocess activity, not just a silent hang) →
+`xcrun simctl install` on a booted `iPhone 17 Pro` (iOS 26.5) → app launch.
+
+**Root-caused the exact failure every prior device-parity attempt hit**
+("No script URL provided", seen on #8393/#8395/#8398/#8399 and the previous
+pass on this issue): `clients/khala-mobile` has never actually depended on
+`expo-dev-client` (confirmed absent from `package.json` back to its first
+commit via `git log -p`), but the `dev` script ran `expo start --dev-client`,
+which prints/implies the `expo-dev-client` deep-link handshake
+(`khala://expo-development-client/?url=...`). Every prior pass (including
+this one, initially) tried that deep link and hit the red "No script URL
+provided" screen because the app's `AppDelegate.bundleURL()` never reads that
+URL — it unconditionally uses plain React Native's `RCTBundleURLProvider`
+default (Metro on `localhost:8081` in `DEBUG`). Restarting Metro on plain port
+8081 (`expo start --port 8081`, no dev-client flag or deep link) and doing a
+plain `xcrun simctl launch` — no special handshake needed — worked
+immediately: Metro logged `iOS Bundled 3742ms
+.../expo-router/entry.js (2454 modules)` and the app rendered its real routed
+UI. **This is the first session in this issue's history to get the Expo app
+past install+launch+render on any simulator or device.** Screenshot showed
+the actual Tailnet auto-auth fallback screen ("Khala Code" / "No signed-in
+Mac found on your Tailnet" / Retry / "Sign in manually instead"), matching
+`khala-auth-context.tsx`'s documented `discovering` → `signed_out` transition
+exactly — real evidence that the auth provider's discovery-then-fallback
+logic (previously unit-tested only) also works correctly in a live rendered
+app, not just in Bun test mocks.
+
+Fixed the misleading script for future passes:
+`"dev": "expo start --dev-client"` → `"dev": "expo start"` in
+`clients/khala-mobile/package.json`, with a dated README note explaining why
+(see `clients/khala-mobile/README.md`'s "Local Builds" section).
+
+**Important reframing of the remaining gap.** Reading the native module
+source directly (not just the prior passes' summaries) shows the real-capture
+blocker is not actually about device/simulator access at all:
+`KhalaPushToTalkSttModule.swift`'s `startRecognitionAsync` unconditionally
+`throw`s `SpeechRuntimeUnavailableException`; the Kotlin module unconditionally
+throws `CodedException("android_stt_runtime_pending")`;
+`KhalaAppleFoundationModelsModule.swift`'s `getAvailabilityAsync`
+unconditionally returns `status: "blocked"`. None of these branch on real
+device state — they fail closed by hardcoded design, on simulator, physical
+device, or anywhere else, until real `SFSpeechRecognizer`/Android
+`SpeechRecognizer` capture and Foundation Models bridging code is written.
+Checking the reference SwiftUI app (`clients/khala-ios/Khala`) for "parity"
+confirms it has **no** `import Speech`, no STT/voice/dictation source files at
+all — so there is no working reference implementation on either platform to
+be at parity with yet. **This pass's conclusion: gap 2 cannot be closed by
+any further device/simulator time alone — it needs real native capture
+implementation work first, which is a different (and larger) task than an
+evidence-gathering pass.** The composer mic button and Settings "On-device"
+section do render and correctly show the fail-closed status today (confirmed
+by the existing unit tests and direct source read); reaching those specific
+screens live in this pass would have additionally required either a valid
+Khala Sync demo bearer token (`EXPO_PUBLIC_KHALA_SYNC_DEMO_TOKEN`/`_OWNER_USER_ID`)
+to bypass the Tailnet-discovery sign-in screen, or UI-tap automation — neither
+`idb`, `Maestro`, nor `Appium` was available in this environment, and no demo
+credentials were used/fetched during this pass.
+
+Cleanup: killed the Metro process and shut down the simulator at the end of
+this pass so the environment is left clean for other concurrent agents.
+
+Verification re-run after these changes: `bun run --cwd clients/khala-mobile
+test` (156 pass / 0 fail, unchanged), `bun run --cwd clients/khala-mobile
+typecheck` (clean), `bun run test:qa-pre-push-smoke` (7 pass / 0 fail).
+
+**#8350 stays open.** Both owner-gated gaps have real, current-state evidence
+now, but neither is fully closed: gap 1 needs the owner's interactive gcloud
+login; gap 2 needs actual native STT/Apple-FM implementation work (not device
+time) before any device/simulator proof would be meaningful.
