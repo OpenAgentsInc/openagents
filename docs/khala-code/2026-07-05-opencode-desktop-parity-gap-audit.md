@@ -8,9 +8,9 @@ Scope: `projects/repos/opencode/packages/desktop`, `projects/repos/opencode/pack
 
 OpenCode desktop is a mature Electron desktop workbench wrapped around the
 OpenCode server. Khala Code desktop is a Khala/Codex/Pylon/Fleet shell wrapped
-around the Codex app-server and local Khala services. Khala has stronger
-OpenAgents-specific surfaces, but OpenCode has a much broader generic desktop
-coding app surface.
+around Codex app-server integration, local Khala services, and newer
+AI SDK-shaped runtime work. Khala has stronger OpenAgents-specific surfaces,
+but OpenCode has a much broader generic desktop coding app surface.
 
 The largest OpenCode capabilities not present in Khala Code desktop are:
 
@@ -18,8 +18,8 @@ The largest OpenCode capabilities not present in Khala Code desktop are:
   debug-log export, deep links, single-instance handling, window recovery,
   custom renderer protocol, native permission gates, and rich native menus.
 - A multi-window, multi-server workbench: persisted windows/routes, default
-  server selection, remote server rows, connection health gate, and Windows WSL
-  server lifecycle.
+  server selection, remote server rows, connection health gate, and eventually
+  Windows WSL server lifecycle.
 - A full project/session IDE shell: home dashboard, project/workspace sidebar,
   session tabs, file tree, file tabs, diff/review panels, comments, and
   workspace-scoped terminal tabs.
@@ -30,11 +30,14 @@ The largest OpenCode capabilities not present in Khala Code desktop are:
 - User-configurable application settings: keybind editor, providers, models,
   themes, language, shell, fonts, notifications, sounds, server management, WSL
   management, update controls, and layout feature toggles.
+- A Khala-owned local coding server/runtime surface analogous to OpenCode's
+  server, likely sharing authority with Pylon and the existing AI SDK Core lane
+  rather than staying only a Codex app-server wrapper.
 
 This audit does not argue that Khala should copy OpenCode wholesale. Khala's
-primary product surface is still Codex plus OpenAgents Fleet/Pylon/Gym. The
-useful reading is: if Khala Code wants to feel like a complete desktop coding
-app instead of a specialized Khala control room, these are the missing pieces.
+primary product surface is still Codex plus OpenAgents Fleet/Pylon. The useful
+reading is: if Khala Code wants to feel like a complete desktop coding app
+instead of a specialized Khala control room, these are the missing pieces.
 
 ## Comparison Baseline
 
@@ -76,8 +79,14 @@ Khala Code evidence:
   `clients/khala-code-desktop/src/ui/transcript-render.ts`,
   `clients/khala-code-desktop/src/ui/codex-settings-panel.ts`,
   `clients/khala-code-desktop/src/ui/fleet-*`,
-  `clients/khala-code-desktop/src/ui/inbox.ts`, and
-  `clients/khala-code-desktop/src/ui/gym-*`.
+  and `clients/khala-code-desktop/src/ui/inbox.ts`.
+- AI SDK-shaped runtime direction:
+  `docs/khala-code/2026-07-04-ai-sdk-harness-fork-sandbox-feasibility-audit.md`,
+  `packages/khala-ai-sdk-core`,
+  `packages/ai-sdk-sandbox-local`, and
+  `packages/ai-sdk-sandbox-openagents`.
+- VS Code explorer/editor adoption companion:
+  [`2026-07-05-vscode-explorer-editor-adoption-audit.md`](./2026-07-05-vscode-explorer-editor-adoption-audit.md).
 
 ## Non-Gaps
 
@@ -86,12 +95,37 @@ different, stronger OpenAgents-specific surfaces:
 
 - Fleet/Pylon controls, own-capacity worker accounting, assignment lifecycle,
   and Khala Sync are Khala-only lanes.
-- Gym/proof/evidence panes are Khala-only lanes.
-- Codex app-server pass-through is Khala's core execution boundary; Khala does
-  not need OpenCode's SDK/server APIs to execute Codex work.
+- Codex app-server integration is a current bridge and parity source, not the
+  exclusive long-term execution boundary.
+- The desired OpenCode-server gap is a Khala-owned server/runtime surface,
+  possibly folded into Pylon, with AI SDK-shaped streams and OpenAgents policy
+  authority. The gap is not "import OpenCode server verbatim."
 - Khala already has extensive tests and smokes for its own product contracts.
   Test gaps below mean "no corresponding OpenCode-style feature tests because
   the feature does not exist", not "Khala has no tests".
+
+## Strategic Corrections
+
+These corrections should guide implementation work that follows this audit:
+
+- Build toward a Khala-owned OpenCode-style local server. Codex app-server
+  remains important, but Khala should also have its own runtime/server layer for
+  provider selection, AI SDK-shaped streams, tools, permissions, workbench state,
+  and Pylon/Fleet integration.
+- Reuse the already-started Vercel AI SDK-shaped direction. The narrow
+  `@openagentsinc/khala-ai-sdk-core` lane maps AI SDK `streamText` parts into
+  OpenAgents runtime events; the sandbox provider packages prove the adapter
+  shape. The desktop roadmap should connect those packages to user-facing
+  composer, provider, terminal, file, and server surfaces.
+- Treat the VS Code explorer/editor adoption audit as the companion design input
+  for file tree, editor, tabs, command palette, and navigation behavior. OpenCode
+  is the desktop-agent workbench reference; VS Code is the mature explorer/editor
+  interaction reference.
+- Keep OpenAgents authority outside AI SDK. AI SDK should be a compatibility
+  and stream substrate; OpenAgents still owns policy, permissions, secrets,
+  sandbox/workspace boundaries, token accounting, and private raw-event storage.
+- Postpone WSL implementation, but keep it on the roadmap. It is not a near-term
+  blocker for native lifecycle, composer, hotkeys, workbench, and server parity.
 
 ## Gap Inventory
 
@@ -196,8 +230,9 @@ first-class product concept:
 - Bundled local server spawned in an Electron utility process with random
   loopback port, generated password, Basic auth, CORS limited to the renderer,
   startup stall timeout, health polling, and controlled shutdown. Khala starts
-  Codex app-server/Pylon/Khala Bun services, but not an OpenCode-style
-  selectable local HTTP server with renderer Basic-auth connection metadata.
+  Codex app-server/Pylon/Khala Bun services and has AI SDK-shaped runtime
+  packages, but not yet an OpenCode-style selectable local HTTP server with
+  renderer Basic-auth connection metadata and workbench APIs.
 - Automatic sidecar shutdown on quit and process signals. Khala manages local
   services, but does not expose the same server lifecycle as a selectable app
   backend.
@@ -205,12 +240,18 @@ first-class product concept:
   readiness and fixture app-server paths, but no equivalent OpenCode server
   selection gate.
 - Default server URL persisted in native storage. Khala is oriented around the
-  local Codex app-server and Khala services rather than arbitrary OpenCode
-  server URLs.
+  local Codex app-server and Khala services rather than a user-visible local
+  Khala coding server plus optional remote server URLs.
 - Remote HTTP server add/edit/remove UI. Khala has no observed server manager
   for arbitrary coding backends.
 - ConnectionGate UX that retries health checks and lets the user choose another
   configured server. Khala does not show this alternate-server recovery UI.
+
+Implementation direction: Khala should build its own server/runtime API,
+potentially hosted inside Pylon or beside it, rather than depend only on Codex
+app-server. That server should expose workbench state, AI SDK-shaped stream
+events, tool/permission policy, file/terminal/review APIs, provider/model
+selection, and health/default-server semantics to the desktop renderer.
 
 ### 5. Windows WSL Server Lifecycle
 
@@ -230,7 +271,8 @@ show:
   distro-install, and server-add states.
 
 Khala has local Pylon/Codex worker concepts and a TUI mode, but no comparable
-Windows WSL coding-backend lifecycle.
+Windows WSL coding-backend lifecycle. This is desired eventually, but should sit
+behind native lifecycle, composer/keybindings, workbench, and local-server work.
 
 ### 6. Home Dashboard, Projects, Workspaces, And Session Routing
 
@@ -338,8 +380,8 @@ OpenCode's prompt composer is more like an IDE input surface:
 - Composer docks for follow-up, permission, question, revert, and todo state.
 
 Khala has a command composer, slash commands, attachments, transcript
-projection, follow-up handling, and Fleet/Gym controls. It does not have the
-same contenteditable editor, model/agent/provider controls in-composer, image
+projection, follow-up handling, and Fleet controls. It does not have the same
+contenteditable editor, model/agent/provider controls in-composer, image
 attachment previews, native attachment picker, selected-line context, or full
 composer dock stack.
 
@@ -471,41 +513,248 @@ OpenCode's desktop app has tests around many of the above surfaces:
   global sync, permission auto-respond, prompt input, attachment building, and
   many i18n/parity helpers.
 
-Khala has its own strong contract, unit, live-smoke, visual-smoke, Fleet, Gym,
-Codex, Claude, and safety test suites. It lacks corresponding tests for the
+Khala has its own strong contract, unit, live-smoke, visual-smoke, Fleet, Codex,
+Claude, and safety test suites. It lacks corresponding tests for the
 OpenCode-style native lifecycle, file tree/editor/review workbench, terminal
 panel, keybind editor, provider catalog, WSL servers, server manager, and
 in-app updater because those features are absent.
 
-## Adoption Order If Khala Wants Desktop Parity
+## First Roadmap / Issue Set
 
-The most valuable OpenCode gaps to close first are not the broadest. They are
-the ones that reduce support cost and make Khala feel reliable as a desktop
-app:
+These are written as implementation issues that should be filed or mapped onto
+existing issues. P0 means "start now"; P1 means "next wave"; P2 means "keep
+explicitly scoped, but do not block the first usable parity push."
 
-1. Native lifecycle basics: in-app updater, debug-log export, crash/load
-   recovery, deep links, single-instance handling, and a fuller native menu.
-2. Workbench basics: project/home dashboard, file tree, file tabs, diff/review
-   panel, and embedded terminal.
-3. Power-user controls: command palette, editable keybinds, native file picker,
-   clipboard image attachments, and richer prompt context.
-4. Backend breadth: server manager, remote server health gate, and WSL server
-   management if Windows support becomes a first-class target.
-5. Preference breadth: i18n, themes/fonts, notification/sound controls,
-   provider catalog, model manager, and MCP picker.
+### P0: Composer And Prompt Input
+
+Goal: emulate OpenCode's composer closely. This is the highest-priority product
+gap because it is the most frequently used interaction surface.
+
+Issue: build the rich contenteditable composer foundation.
+
+- Scope: contenteditable editor, DOM normalization, multiline handling, prompt
+  history, normal mode, shell mode, slash popover integration, and keyboard-safe
+  submission behavior.
+- Acceptance gates: unit tests for editor DOM transforms, prompt history,
+  normal/shell submission, paste normalization, and visual smoke coverage for
+  long text, multiline text, and empty/error/loading states.
+
+Issue: add model, agent, provider, and variant controls in the composer.
+
+- Scope: OpenCode-style model selector, agent selector/cycle, provider-aware
+  display, variant cycling, usage/quota/error hints, and direct integration with
+  Khala's AI SDK Core/provider direction.
+- Acceptance gates: fixture providers render in the composer, selection changes
+  affect the submitted turn, unavailable providers produce legible errors, and
+  the UI never exposes raw provider secrets.
+
+Issue: add attachment parity.
+
+- Scope: native file picker bridge, drag/drop files, paste files/images,
+  clipboard image import, image thumbnails, preview/open, removal, source-path
+  metadata, attachment budgets, and release of native file grants.
+- Acceptance gates: tests for picker grants, file release, paste/drop handling,
+  image preview rendering, oversized file refusal, and public-safe transcript
+  projection.
+
+Issue: add composer context and docks.
+
+- Scope: selected file/line/comment context, follow-up dock, permission dock,
+  question dock, revert dock, todo dock, and request tree.
+- Acceptance gates: context survives thread switching, docks are keyboard
+  reachable, permission and question states are explicit, and rejected/expired
+  states never look successful.
+
+### P0: Command Registry, Hotkeys, And Keybind Editor
+
+Goal: adopt OpenCode's command/keybind model as a first-class Khala primitive.
+
+Issue: create a central desktop command registry.
+
+- Scope: command IDs, categories, default keybinds, availability predicates,
+  menu binding, slash binding, palette binding, and analytics-safe execution
+  metadata.
+- Acceptance gates: every sidebar, composer, session, file, terminal, review,
+  settings, and server action routes through the registry or has an explicit
+  exception.
+
+Issue: build the command palette.
+
+- Scope: searchable commands, files, sessions, projects, models, providers, and
+  server actions with grouped results and keyboard navigation.
+- Acceptance gates: palette opens from the default hotkey, resolves collisions
+  deterministically, supports empty/loading/error states, and is covered by DOM
+  and visual tests.
+
+Issue: build editable keybindings.
+
+- Scope: keybind settings panel, capture, assign, clear, reset all, conflict
+  detection, grouped command list, tooltips, and migration for existing Khala
+  hotkeys.
+- Acceptance gates: conflicts are visible before save, custom keybinds persist,
+  defaults can be restored, and native menu labels reflect effective keybinds.
+
+### P0: Native Lifecycle Basics
+
+Goal: make Khala Code behave like a dependable desktop app before expanding the
+workbench.
+
+Issue: add in-app updater plumbing.
+
+- Scope: update check, update state subscription, download/install controls,
+  periodic checks, settings row, app-menu item, error state, and release-notes
+  entrypoint.
+- Acceptance gates: fixture update server tests, no silent install, legible
+  failure states, and no raw signing/notarization secrets in logs.
+
+Issue: add diagnostics and recovery.
+
+- Scope: crash/load failure handling, unresponsive-window recovery, debug-log
+  export zip, fatal renderer error reporting, net/process/service log capture,
+  restart/relaunch actions, and support handoff metadata.
+- Acceptance gates: exported bundle is public-safe by default, load failure can
+  recover or quit cleanly, and visual smoke covers recovery modals.
+
+Issue: add deep links and single-instance handling.
+
+- Scope: `khala-code://` protocol, first-open buffering, second-instance focus,
+  route resolution into thread/project/session/server targets, and invalid-link
+  errors.
+- Acceptance gates: deep links work cold and warm, invalid links are harmless,
+  and no link can bypass workspace/auth/policy gates.
+
+Issue: expand the native menu.
+
+- Scope: File, Edit, View, Go, Window, Help, command-registry integration,
+  New Session, Open Project, New Window, Close, Reload, Restart, Export Logs,
+  Settings, command palette, terminal/file tree/review toggles, docs/support,
+  zoom, fullscreen, and developer tools in dev builds.
+- Acceptance gates: menu actions share the same command IDs as hotkeys/palette,
+  disabled states are correct, and platform-specific menu roles stay native.
+
+### P1: Workbench Basics
+
+Goal: make Khala Code feel like a desktop coding workbench, not only a chat and
+Fleet control surface. This workstream should cross-check OpenCode against
+[`2026-07-05-vscode-explorer-editor-adoption-audit.md`](./2026-07-05-vscode-explorer-editor-adoption-audit.md)
+before implementing explorer/editor primitives.
+
+Issue: add project/home dashboard.
+
+- Scope: project list, recent sessions, session search, open project, new
+  session, background-open session behavior, status badges, and route
+  persistence.
+- Acceptance gates: projects/sessions can be navigated without losing active
+  work, empty/loading/error states are clear, and route state survives restart.
+
+Issue: add file tree and file tabs.
+
+- Scope: lazy file tree, file watcher invalidation, file content cache, open
+  file tabs, selected-line persistence, search/select file dialog, diff markers,
+  add-to-composer context, and the VS Code audit's explorer/editor interaction
+  guidance.
+- Acceptance gates: large repos stay responsive, file changes invalidate only
+  the right nodes, selected context submits correctly, and no private local path
+  leaks into public-safe projections.
+
+Issue: add diff/review panel.
+
+- Scope: review tab, diff kind modeling, comments, revert actions, active diff
+  focus, side-panel layout, and source-control action integration.
+- Acceptance gates: added/modified/deleted files render correctly, comments and
+  revert states are explicit, and review state remains stable across session
+  switches.
+
+Issue: add embedded terminal.
+
+- Scope: workspace-scoped PTY tabs, terminal websocket or local bridge, tab
+  persistence, resize/collapse, copy/paste, clickable links, shell/font/theme
+  settings, reconnect/recover, and command-registry actions.
+- Acceptance gates: terminal sessions are bounded to the selected workspace,
+  account-home defaults are explicit, reconnect does not duplicate commands, and
+  background-terminal Codex APIs are either integrated or deliberately separated.
+
+### P1: Khala-Owned Local Server Runtime
+
+Goal: build Khala's version of OpenCode's server layer. The local server can be
+folded into Pylon or run beside it, but the desktop should have a coherent
+server/runtime API of its own.
+
+Issue: define the local server contract.
+
+- Scope: health, authentication, renderer CORS/origin policy, server identity,
+  project/session routes, provider/model listing, stream events, tool calls,
+  permissions, file APIs, terminal APIs, review APIs, and lifecycle controls.
+- Acceptance gates: contract tests cover success, refusal, auth failure,
+  health failure, restart, and version skew.
+
+Issue: bridge AI SDK Core into the local server.
+
+- Scope: wire `@openagentsinc/khala-ai-sdk-core` into a desktop-visible runtime
+  path, map AI SDK stream parts into OpenAgents events, preserve tool authority,
+  and keep raw chunks private or discarded.
+- Acceptance gates: text, reasoning, usage, finish reason, tool call/result,
+  providerOptions, and provider error fixtures all render through the same
+  transcript consumer as existing Codex/Pylon events.
+
+Issue: add server manager UI.
+
+- Scope: local server row, default server, remote server add/edit/remove,
+  health retry, alternate server chooser, and settings integration.
+- Acceptance gates: switching servers does not corrupt local session state,
+  unhealthy servers are obvious, and remote server credentials never enter
+  public traces.
+
+### P2: WSL Server Lifecycle
+
+Goal: keep Windows WSL parity explicit, but do it after the first desktop parity
+push.
+
+Issue: add WSL discovery and setup.
+
+- Scope: WSL availability, installed distro discovery, online distro catalog,
+  install WSL, install distro, and open terminal.
+- Acceptance gates: Windows-only code is isolated, non-Windows platforms hide
+  the flow, and setup failures are recoverable.
+
+Issue: add WSL coding servers.
+
+- Scope: install/update Khala/OpenAgents runtime inside distro, add/remove/start
+  WSL server, default WSL server, event subscription, and settings rows.
+- Acceptance gates: WSL server health is visible, server removal is safe, and
+  workspace paths are translated intentionally.
+
+### P2: Preferences And Support Surface
+
+Goal: fill in the remaining desktop polish once core interaction surfaces are
+landed.
+
+Issue: broaden settings.
+
+- Scope: providers, models, MCP picker, i18n, theme/color scheme, UI/code/
+  terminal fonts, shell, notifications, sounds, updates, display backend, and
+  feature toggles.
+- Acceptance gates: settings are searchable, changes are reversible, defaults
+  are explicit, and unavailable platform settings are hidden or disabled.
+
+Issue: add help/support/release notes.
+
+- Scope: release notes dialog, docs/support/feedback/bug links, exported logs
+  entrypoint, and public-safe support metadata.
+- Acceptance gates: support flow can be used without exposing secrets, release
+  notes match the current build channel, and links are native-opened safely.
 
 ## Boundary Notes
 
 - Do not weaken Khala's public-safety, own-capacity, token-accounting, or
-  projection invariants to copy OpenCode UI speed. Khala's Fleet/Gym surfaces
-  are higher-trust than OpenCode's generic coding UI and must keep their stricter
+  projection invariants to copy OpenCode UI speed. Khala's Fleet surfaces are
+  higher-trust than OpenCode's generic coding UI and must keep their stricter
   constraints.
-- Do not rebuild Codex core execution in Khala just because OpenCode embeds its
-  own server. Khala's current boundary is correct: Codex owns coding execution,
-  approvals, sandboxing, MCP/plugins/skills/session state, and app-server
-  protocol.
-- Prefer adopting OpenCode-style user affordances around the existing Codex
-  app-server when possible: file explorer via Codex filesystem APIs, terminal
+- Build a Khala-owned server/runtime layer, but keep Codex app-server as an
+  important bridge where it is the right authority for Codex threads, approvals,
+  sandboxing, MCP/plugins/skills/session state, and app-server protocol parity.
+- Prefer adopting OpenCode-style user affordances around OpenAgents-owned
+  contracts: file explorer via Codex or Khala server filesystem APIs, terminal
   via Codex background-terminal APIs or a deliberate PTY contract, provider
-  selection via Codex config/model APIs, and deep links into Khala's thread and
-  panel model.
+  selection via AI SDK/OpenAgents provider APIs, and deep links into Khala's
+  thread/project/session/server model.
