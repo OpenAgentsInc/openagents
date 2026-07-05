@@ -77,6 +77,9 @@ export const mutatingPreviewRpcMethods = new Set<KhalaCodeDesktopRpcMethodName>(
   // app process, which is squarely a mutation of app/process state.
   "diagnosticsRelaunch",
   "diagnosticsQuit",
+  // #8442 follow-up: new window/reload/zoom/devtools actions mutate native
+  // app/window chrome.
+  "nativeWindowAction",
 ])
 
 export const readOnlySafePreviewRpcMethods = new Set<KhalaCodeDesktopRpcMethodName>([
@@ -135,4 +138,7 @@ export const readOnlySafePreviewRpcMethods = new Set<KhalaCodeDesktopRpcMethodNa
   "diagnosticsExport",
   "diagnosticsRendererHeartbeat",
   "diagnosticsReportRendererFatalError",
+  // #8442 follow-up: signals renderer boot readiness so bun can flush a
+  // buffered deep link; idempotent, no product/app state mutation.
+  "rendererReady",
 ])

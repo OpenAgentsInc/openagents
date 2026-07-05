@@ -1,6 +1,7 @@
 import { Schema as S } from "effect"
 import type { KhalaToolEvent } from "@openagentsinc/khala-tools"
 import type { KhalaAppleFmReadiness } from "./apple-fm-readiness.js"
+import type { KhalaCodeDeepLinkTarget } from "./deep-links.js"
 import type {
   KhalaCodeDesktopSlashCommandWithAvailability,
 } from "./codex-slash-commands.js"
@@ -2644,6 +2645,44 @@ const RpcRecoveryState = S.Union([
 ])
 export type KhalaCodeDesktopRecoveryStateMessage = typeof RpcRecoveryState.Type
 
+// #8442 follow-up: the closing commit's `deep-links.ts` parser plus its
+// File/Edit/View/Go/Window/Help menu was missing (a) an actual OS `khala-code://`
+// scheme registration, cold/warm launch handling, and single-instance
+// coordination, and (b) working window/zoom/devtools/reload commands (three
+// menu items used Electrobun roles that do not exist -- "reload",
+// "toggleDevTools", "togglefullscreen" -- and rendered as blank, non-functional
+// rows). `nativeWindowAction` covers the small set of menu/hotkey/palette
+// commands that must actually execute in the bun main process; `rendererReady`
+// lets bun know when it is safe to flush a buffered deep link.
+export const KhalaCodeDesktopNativeWindowActionId = S.Union([
+  S.Literal("window.new"),
+  S.Literal("app.reload_webview"),
+  S.Literal("dev.toggle_devtools"),
+  S.Literal("view.zoom_in"),
+  S.Literal("view.zoom_out"),
+  S.Literal("view.zoom_reset"),
+])
+export type KhalaCodeDesktopNativeWindowActionId =
+  typeof KhalaCodeDesktopNativeWindowActionId.Type
+
+export const KhalaCodeDesktopNativeWindowActionRequest = S.Struct({
+  action: KhalaCodeDesktopNativeWindowActionId,
+})
+export type KhalaCodeDesktopNativeWindowActionRequest =
+  typeof KhalaCodeDesktopNativeWindowActionRequest.Type
+
+export const KhalaCodeDesktopNativeWindowActionResult = S.Struct({
+  ok: S.Boolean,
+  action: S.String,
+  error: S.optional(S.String),
+})
+export type KhalaCodeDesktopNativeWindowActionResult =
+  typeof KhalaCodeDesktopNativeWindowActionResult.Type
+
+export const KhalaCodeDesktopRendererReadyResult = S.Struct({ ok: S.Literal(true) })
+export type KhalaCodeDesktopRendererReadyResult =
+  typeof KhalaCodeDesktopRendererReadyResult.Type
+
 const noParams = () => [] as const
 const param = <A>(schema: S.Schema<A>) => ({ optional: false, schema }) as const
 const optionalParam = <A>(schema: S.Schema<A>) =>
@@ -2778,6 +2817,11 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   diagnosticsReportRendererFatalError: { parameters: [param(RpcDiagnosticsRendererFatalErrorRequest)], result: RpcDiagnosticsAckResult },
   diagnosticsRelaunch: { parameters: noParams(), result: RpcDiagnosticsAckResult },
   diagnosticsQuit: { parameters: noParams(), result: RpcDiagnosticsAckResult },
+  nativeWindowAction: {
+    parameters: [param(KhalaCodeDesktopNativeWindowActionRequest)],
+    result: KhalaCodeDesktopNativeWindowActionResult,
+  },
+  rendererReady: { parameters: noParams(), result: KhalaCodeDesktopRendererReadyResult },
 } as const satisfies Record<
   keyof KhalaCodeDesktopRPCSchema["requests"],
   KhalaCodeDesktopRpcMethodSchemaSpec
@@ -2973,6 +3017,13 @@ export type KhalaCodeDesktopRPCSchema = {
     diagnosticsReportRendererFatalError(request: KhalaCodeDesktopDiagnosticsRendererFatalErrorRequest): Promise<KhalaCodeDesktopDiagnosticsAckResult>
     diagnosticsRelaunch(): Promise<KhalaCodeDesktopDiagnosticsAckResult>
     diagnosticsQuit(): Promise<KhalaCodeDesktopDiagnosticsAckResult>
+    nativeWindowAction(request: KhalaCodeDesktopNativeWindowActionRequest): Promise<KhalaCodeDesktopNativeWindowActionResult>
+    /**
+     * #8442: signals that the renderer has booted and is ready to receive a
+     * `deepLinkTarget` message. Flushes any deep link the bun main process
+     * buffered while the renderer was still starting up.
+     */
+    rendererReady(): Promise<KhalaCodeDesktopRendererReadyResult>
   }
   messages: {
     chatTurnEvent(event: KhalaCodeDesktopChatTurnEvent): void
@@ -2992,5 +3043,12 @@ export type KhalaCodeDesktopRPCSchema = {
      * polling. See src/ui/recovery-overlay-react.tsx.
      */
     diagnosticsRecoveryStateChanged(state: KhalaCodeDesktopRecoveryStateMessage): void
+    /**
+     * #8442: pushed for a resolved `khala-code://` deep link once the
+     * renderer is ready (cold launches buffer until then; warm launches --
+     * a second instance forwarding a link, or a repeat `open-url`/`reopen`
+     * event -- route immediately).
+     */
+    deepLinkTarget(target: KhalaCodeDeepLinkTarget): void
   }
 }

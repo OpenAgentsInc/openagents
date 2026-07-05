@@ -14,6 +14,8 @@ import {
   type KhalaCodeDesktopChatTurnEvent,
   type KhalaCodeDesktopClaudeApprovalRequestProjection,
   type KhalaCodeDesktopFleetLifecycleEvent,
+  type KhalaCodeDesktopNativeWindowActionRequest,
+  type KhalaCodeDesktopNativeWindowActionResult,
   type KhalaCodeDesktopQaMetricSample,
   type KhalaCodeDesktopQaMetricsSnapshot,
   type KhalaCodeDesktopRpcMethodName,
@@ -30,6 +32,12 @@ import {
   KHALA_CODE_DESKTOP_MENU_ACTION_EXPORT_DEBUG_LOGS,
   KHALA_CODE_DESKTOP_MENU_ACTION_RESTART,
 } from "./application-menu.js"
+import { createKhalaCodeDeepLinkCoordinator } from "./deep-link-coordinator.js"
+import {
+  acquireKhalaCodeDesktopSingleInstanceLock,
+  khalaCodeDesktopSingleInstanceEnabled,
+  resolveKhalaCodeDesktopSingleInstanceSocketPath,
+} from "./single-instance-lock.js"
 import {
   parseKhalaCodeHeadlessArgs,
   readKhalaCodeHeadlessPrompt,
@@ -319,6 +327,24 @@ let emitChatTurnEvent = (_event: KhalaCodeDesktopChatTurnEvent): void => {}
 let emitFleetLifecycleEvent = (_event: KhalaCodeDesktopFleetLifecycleEvent): void => {}
 let emitClaudeApprovalRequested = (_request: KhalaCodeDesktopClaudeApprovalRequestProjection): void => {}
 let rpcRequestHandlers: KhalaCodeDesktopRPCSchema["requests"]
+
+// #8442 follow-up: single-instance handling and the still-missing native
+// window/reload/zoom/devtools actions need to plug into `rpcRequestHandlers`
+// at construction time, but their real implementations depend on the window
+// registry and `rpc` transport that are only ready once the app decides to
+// open a window. Forward-declare mutable bindings -- same pattern as
+// `emitChatTurnEvent` above -- with honest "not ready yet" defaults, then
+// reassign the real implementations once the window/deep-link machinery
+// exists.
+let handleNativeWindowAction = async (
+  request: KhalaCodeDesktopNativeWindowActionRequest,
+): Promise<KhalaCodeDesktopNativeWindowActionResult> => ({
+  action: request.action,
+  error: "native_window_action_unavailable",
+  ok: false,
+})
+let handleRendererReady = async (): Promise<void> => {}
+
 const QA_METRIC_SAMPLE_LIMIT = 240
 const qaMetricSamples: KhalaCodeDesktopQaMetricSample[] = []
 
@@ -653,7 +679,7 @@ if (argv.includes("--json")) {
   process.exit(exitCode)
 }
 
-const { ApplicationMenu, BrowserView, BrowserWindow, Screen, Updater, Utils } = await import("electrobun/bun")
+const { app, ApplicationMenu, BrowserView, BrowserWindow, Screen, Updater, Utils } = await import("electrobun/bun")
 
 // #8440 in-app updater plumbing. Electrobun's Updater.getLocalInfo() reads
 // the packaged `Resources/version.json`; it resolves to empty strings (never
@@ -851,7 +877,9 @@ rpcRequestHandlers = createKhalaCodeDesktopRpcRequestHandlers({
   }),
   fleetMcpBridgeRepoRoot: resolveSourceRepositoryRoot(),
   ...(khalaSyncService === null ? {} : { khalaSync: khalaSyncService }),
+  nativeWindowAction: request => handleNativeWindowAction(request),
   onDeviceDeciderStatus: () => onDeviceDecider.select(),
+  onRendererReady: () => handleRendererReady(),
   qaMetrics: qaMetricsSnapshot,
   recordQaMetricSample,
   updaterController: khalaCodeUpdaterController,
@@ -1039,6 +1067,30 @@ ApplicationMenu.on("application-menu-clicked", event => {
   }
 })
 
+// #8442 follow-up: "New Window", "Reload", "Toggle Developer Tools", and page
+// zoom all execute directly in the bun main process -- the same
+// `handleNativeWindowAction` a hotkey or command-palette selection reaches via
+// the `nativeWindowAction` RPC request (see src/ui/main.ts), so the menu, a
+// hotkey, and the palette all share one command id space and one
+// implementation. The closing #8442 commit's "Reload"/"Toggle Full Screen"/
+// "Toggle Developer Tools" View items used Electrobun menu roles that do not
+// exist ("reload", "togglefullscreen", "toggleDevTools" -- the real role set
+// only has "toggleFullScreen"), so those three rendered as blank, dead menu
+// rows; see application-menu.ts for the corresponding fix.
+ApplicationMenu.on("application-menu-clicked", event => {
+  const action = (event as { data?: { action?: string } }).data?.action
+  if (
+    action === "window.new" ||
+    action === "app.reload_webview" ||
+    action === "dev.toggle_devtools" ||
+    action === "view.zoom_in" ||
+    action === "view.zoom_out" ||
+    action === "view.zoom_reset"
+  ) {
+    void handleNativeWindowAction({ action })
+  }
+})
+
 // Native-shell load-failure detection (issue #8441): Electrobun does not
 // currently expose an Electron-style did-fail-load/render-process-gone
 // event (see docs/khala-code/2026-07-05-opencode-desktop-parity-gap-audit.md
@@ -1048,8 +1100,157 @@ ApplicationMenu.on("application-menu-clicked", event => {
 // the bundled view failed to load.
 const MAIN_WINDOW_LOAD_TIMEOUT_MS = 20_000
 
+const deepLinkArgFromArgv = (candidateArgv: readonly string[]): string | null =>
+  candidateArgv.find(value => value.startsWith("khala-code:")) ?? null
+
 if (khalaCodeEnv.KHALA_CODE_DESKTOP_OPEN_WINDOW !== "0") {
   ApplicationMenu.setApplicationMenu(khalaCodeDesktopApplicationMenu)
+
+  // #8442 follow-up: single-instance lock. A cold launch either becomes the
+  // primary (binds a local coordination socket and proceeds to open a
+  // window) or forwards to an already-running primary and exits without
+  // opening a second window. Any `khala-code://` deep link this launch was
+  // opened with (macOS delivers it via the argv fallback below when the OS
+  // did not already route it to a running instance's `open-url` event) is
+  // forwarded along so the existing instance can focus itself and route it.
+  const argvDeepLink = deepLinkArgFromArgv(argv)
+  if (khalaCodeDesktopSingleInstanceEnabled(khalaCodeEnv)) {
+    const singleInstance = await acquireKhalaCodeDesktopSingleInstanceLock({
+      onIncomingPayload: payload => {
+        deepLinkCoordinator.handleUrl(payload)
+        focusedOrLastWindow()?.activate()
+      },
+      onListenError: error => {
+        console.warn(
+          `[khala-code] single-instance lock unavailable: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        )
+      },
+      socketPath: resolveKhalaCodeDesktopSingleInstanceSocketPath(khalaCodeEnv),
+      ...(argvDeepLink === null ? {} : { forwardPayload: argvDeepLink }),
+    })
+    if (singleInstance.role === "secondary" && singleInstance.forwarded) {
+      // Another instance is already running and has (or will) receive this
+      // launch's deep link over the coordination socket. Exit quietly
+      // instead of opening a second window.
+      process.exit(0)
+    }
+  }
+
+  type KhalaCodeDesktopWindowHandle = InstanceType<typeof BrowserWindow>
+
+  const windows = new Map<number, KhalaCodeDesktopWindowHandle>()
+  let focusedWindowId: number | null = null
+  let additionalWindowCreateCount = 0
+
+  const focusedOrLastWindow = (): KhalaCodeDesktopWindowHandle | null => {
+    if (focusedWindowId !== null) {
+      const focused = windows.get(focusedWindowId)
+      if (focused !== undefined) return focused
+    }
+    const ids = [...windows.keys()]
+    const lastId = ids[ids.length - 1]
+    return lastId === undefined ? null : (windows.get(lastId) ?? null)
+  }
+
+  // "New Window" only -- the primary window below keeps the full dom-ready/
+  // load-failure recovery instrumentation; additional windows share the same
+  // rpc/menu/deep-link machinery but not that single-window-scoped recovery
+  // watchdog wiring.
+  const openKhalaCodeAdditionalWindow = async (): Promise<KhalaCodeDesktopWindowHandle> => {
+    additionalWindowCreateCount += 1
+    const base = resolveMainWindowFrame()
+    const offset = 28 * additionalWindowCreateCount
+    const win = new BrowserWindow({
+      frame: { ...base, x: base.x + offset, y: base.y + offset },
+      rpc,
+      title: "Khala Code",
+      titleBarStyle: "hiddenInset",
+      url: await resolveMainViewUrl(),
+    })
+    windows.set(win.id, win)
+    focusedWindowId ??= win.id
+    return win
+  }
+
+  app.on("focus", payload => {
+    const id = (payload as { id?: unknown } | undefined)?.id
+    if (typeof id === "number" && windows.has(id)) focusedWindowId = id
+  })
+  app.on("close", payload => {
+    const id = (payload as { id?: unknown } | undefined)?.id
+    if (typeof id !== "number") return
+    windows.delete(id)
+    if (focusedWindowId === id) focusedWindowId = null
+  })
+  app.on("open-url", payload => {
+    const url = (payload as { url?: unknown } | undefined)?.url
+    if (typeof url === "string" && url.length > 0) deepLinkCoordinator.handleUrl(url)
+    if (windows.size === 0) void openKhalaCodeAdditionalWindow()
+    else focusedOrLastWindow()?.activate()
+  })
+  app.on("reopen", () => {
+    if (windows.size === 0) void openKhalaCodeAdditionalWindow()
+    else focusedOrLastWindow()?.activate()
+  })
+
+  handleRendererReady = async () => {
+    deepLinkCoordinator.markRendererReady()
+  }
+
+  handleNativeWindowAction = async request => {
+    const { action } = request
+    try {
+      if (action === "window.new") {
+        await openKhalaCodeAdditionalWindow()
+        return { action, ok: true }
+      }
+      const win = focusedOrLastWindow()
+      if (win === null) return { action, error: "no_window_open", ok: false }
+      if (action === "app.reload_webview") {
+        win.webview.loadURL(await resolveMainViewUrl())
+        return { action, ok: true }
+      }
+      if (action === "dev.toggle_devtools") {
+        win.webview.toggleDevTools()
+        return { action, ok: true }
+      }
+      if (action === "view.zoom_in" || action === "view.zoom_out" || action === "view.zoom_reset") {
+        const step = 0.1
+        const current = win.getPageZoom()
+        const next = action === "view.zoom_reset"
+          ? 1
+          : Math.min(3, Math.max(0.5, current + (action === "view.zoom_in" ? step : -step)))
+        win.setPageZoom(next)
+        return { action, ok: true }
+      }
+      return { action, error: "unknown_native_window_action", ok: false }
+    } catch (error) {
+      return {
+        action,
+        error: error instanceof Error ? error.message : String(error),
+        ok: false,
+      }
+    }
+  }
+
+  const deepLinkCoordinator = createKhalaCodeDeepLinkCoordinator({
+    onEvent: event => {
+      if (event.type !== "invalid") return
+      console.warn(`[khala-code] ignoring invalid deep link (${event.error}): ${event.raw}`)
+    },
+    onRoute: target => {
+      try {
+        rpc.send.deepLinkTarget(target)
+      } catch {
+        // No window/transport yet (should not happen once a window is open,
+        // but never throw out of a routing callback).
+      }
+    },
+  })
+
+  if (argvDeepLink !== null) deepLinkCoordinator.handleUrl(argvDeepLink)
 
   const mainWindow = new BrowserWindow({
     title: "Khala Code",
@@ -1058,6 +1259,8 @@ if (khalaCodeEnv.KHALA_CODE_DESKTOP_OPEN_WINDOW !== "0") {
     titleBarStyle: "hiddenInset",
     rpc,
   })
+  windows.set(mainWindow.id, mainWindow)
+  focusedWindowId = mainWindow.id
   diagnosticsService.recordNativeShellEvent("main window created")
 
   let mainWindowLoaded = false

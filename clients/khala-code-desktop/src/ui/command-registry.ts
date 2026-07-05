@@ -16,9 +16,11 @@ export type KhalaCodeCommandPaletteKind =
   | "session"
 
 export type KhalaCodeCommandId =
+  | "app.reload_webview"
   | "composer.attach_file"
   | "composer.focus"
   | "composer.stop_turn"
+  | "dev.toggle_devtools"
   | "help.bug_report"
   | "help.copy_issue_metadata"
   | "help.docs"
@@ -55,6 +57,10 @@ export type KhalaCodeCommandId =
   | "view.review"
   | "view.settings"
   | "view.terminal"
+  | "view.zoom_in"
+  | "view.zoom_out"
+  | "view.zoom_reset"
+  | "window.new"
 
 export type KhalaCodeCommandKeybinding = Readonly<{
   key: string

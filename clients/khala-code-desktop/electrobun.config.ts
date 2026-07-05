@@ -7,6 +7,12 @@ export default {
     name: "Khala Code",
     identifier: "com.openagents.khala.code.desktop",
     version: "0.1.0",
+    // #8442: registers `khala-code://` for deep links (thread/session/
+    // project/server/view targets -- see src/shared/deep-links.ts). Fully
+    // supported on macOS today; Electrobun does not yet register custom URL
+    // schemes on Windows/Linux, so this is a forward-looking no-op there
+    // until upstream adds that support.
+    urlSchemes: ["khala-code"],
   },
   release: {
     baseUrl: "https://updates.openagents.com/desktop/khala-code-desktop",

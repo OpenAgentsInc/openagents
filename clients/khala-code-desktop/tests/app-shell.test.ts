@@ -2419,4 +2419,60 @@ describe("khala code desktop app shell", () => {
     expect(menuText).toContain("\"action\":\"view.terminal\"")
     expect(menuText).toContain("\"action\":\"terminal.refresh\"")
   })
+
+  // #8442 follow-up: the closing commit registered no OS-level `khala-code://`
+  // scheme, no single-instance coordination, and no working cold/warm launch
+  // handling; it also shipped three native menu items using Electrobun roles
+  // that do not exist ("reload", "togglefullscreen", "toggleDevTools" --
+  // Electrobun's real role set only has "toggleFullScreen"), which rendered as
+  // blank, non-functional rows. These oracles cover the gap-fill.
+  test("registers the khala-code:// deep link URL scheme", () => {
+    expect(config.app.urlSchemes).toEqual(["khala-code"])
+  })
+
+  test("adds New Window, Zoom, working Reload/DevTools, and a real toggleFullScreen role", () => {
+    const menuText = JSON.stringify(khalaCodeDesktopApplicationMenu)
+    expect(menuText).toContain("\"action\":\"window.new\"")
+    expect(menuText).toContain("\"action\":\"app.reload_webview\"")
+    expect(menuText).toContain("\"action\":\"dev.toggle_devtools\"")
+    expect(menuText).toContain("\"action\":\"view.zoom_in\"")
+    expect(menuText).toContain("\"action\":\"view.zoom_out\"")
+    expect(menuText).toContain("\"action\":\"view.zoom_reset\"")
+    expect(menuText).toContain("\"role\":\"toggleFullScreen\"")
+    // The three broken roles must never reappear.
+    expect(menuText).not.toContain("\"role\":\"reload\"")
+    expect(menuText).not.toContain("\"role\":\"togglefullscreen\"")
+    expect(menuText).not.toContain("\"role\":\"toggleDevTools\"")
+  })
+
+  test("every new native menu action id is a real KhalaCodeCommandId from the command registry", async () => {
+    const registrySource = await Bun.file(
+      new URL("../src/ui/command-registry.ts", import.meta.url),
+    ).text()
+    const unionMatch = registrySource.match(/export type KhalaCodeCommandId =\n([\s\S]*?)\n\n/)
+    expect(unionMatch).not.toBeNull()
+    const commandIds = new Set(
+      [...(unionMatch?.[1] ?? "").matchAll(/"([a-z0-9_.]+)"/g)].map(match => match[1]),
+    )
+    for (const action of ["window.new", "app.reload_webview", "dev.toggle_devtools", "view.zoom_in", "view.zoom_out", "view.zoom_reset"]) {
+      expect(commandIds.has(action)).toBe(true)
+    }
+  })
+
+  test("wires single-instance handling, real deep-link routing, and the native window-action bridge in the bun entry", async () => {
+    const bunEntry = await Bun.file(new URL("../src/bun/index.ts", import.meta.url)).text()
+
+    expect(bunEntry).toContain("acquireKhalaCodeDesktopSingleInstanceLock")
+    expect(bunEntry).toContain("khalaCodeDesktopSingleInstanceEnabled")
+    expect(bunEntry).toContain("createKhalaCodeDeepLinkCoordinator")
+    expect(bunEntry).toContain("rpc.send.deepLinkTarget(")
+    expect(bunEntry).toContain('app.on("open-url"')
+    expect(bunEntry).toContain('app.on("reopen"')
+    expect(bunEntry).toContain("handleNativeWindowAction")
+  })
+
+  test("signals renderer readiness so bun can flush a buffered deep link", async () => {
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    expect(main).toContain("rpc.request.rendererReady()")
+  })
 })

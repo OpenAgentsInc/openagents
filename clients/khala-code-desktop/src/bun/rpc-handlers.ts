@@ -141,6 +141,8 @@ import {
   type KhalaCodeDesktopDiagnosticsExportResult,
   type KhalaCodeDesktopDiagnosticsRendererFatalErrorRequest,
   type KhalaCodeDesktopDiagnosticsSnapshotResult,
+  type KhalaCodeDesktopNativeWindowActionRequest,
+  type KhalaCodeDesktopNativeWindowActionResult,
 } from "../shared/rpc.js"
 import {
   khalaCodeDesktopUpdaterActionResult,
@@ -389,6 +391,21 @@ export type KhalaCodeDesktopRpcHandlersInput = {
    */
   readonly diagnosticsService?: KhalaCodeDesktopDiagnosticsService
   readonly workingDirectory: string
+  /**
+   * #8442 follow-up: performs the small set of native menu/hotkey/palette
+   * commands that must actually run in the bun main process (new window,
+   * reload, page zoom, devtools). Absent only in contexts with no native
+   * window host (headless/preview), where the honest answer is a typed
+   * `unavailable` result.
+   */
+  readonly nativeWindowAction?: (
+    request: KhalaCodeDesktopNativeWindowActionRequest,
+  ) => MaybePromise<KhalaCodeDesktopNativeWindowActionResult>
+  /** #8442 follow-up: called once the renderer has booted, so a bun-side
+   * deep-link coordinator can flush any `khala-code://` link buffered
+   * during a cold launch. Absent in contexts with no coordinator
+   * (headless). */
+  readonly onRendererReady?: () => MaybePromise<void>
 }
 
 const disabledUpdaterStatus = (): KhalaCodeDesktopUpdaterStatus => ({
@@ -4182,6 +4199,22 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     async diagnosticsQuit(): Promise<KhalaCodeDesktopDiagnosticsAckResult> {
       await input.diagnosticsService?.quit()
       return { ok: true }
+    },
+    async nativeWindowAction(
+      request: KhalaCodeDesktopNativeWindowActionRequest,
+    ): Promise<KhalaCodeDesktopNativeWindowActionResult> {
+      if (input.nativeWindowAction === undefined) {
+        return {
+          action: request.action,
+          error: "native_window_action_unavailable",
+          ok: false,
+        }
+      }
+      return input.nativeWindowAction(request)
+    },
+    async rendererReady() {
+      await input.onRendererReady?.()
+      return { ok: true as const }
     },
   }
 }

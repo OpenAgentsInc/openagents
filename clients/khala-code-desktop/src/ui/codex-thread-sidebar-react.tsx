@@ -33,6 +33,10 @@ export type CodexThreadSidebarHandle = {
   readonly refresh: () => Promise<void>
   readonly selectAdjacentRecentThread: (direction: RecentThreadCycleDirection) => Promise<boolean>
   readonly selectRecentThread: (index: number) => Promise<boolean>
+  /** Resolves and activates a thread by id, using the same resume/activate
+   * path as clicking its sidebar row. Used by external navigation triggers
+   * (deep links, #8442) that know a thread id but not its current position. */
+  readonly selectThreadById: (threadId: string) => Promise<boolean>
   readonly setActiveThreadId: (threadId: string | null) => void
   readonly setHotkeyHintsVisible: (visible: boolean) => void
   readonly setVisible: (visible: boolean) => void
@@ -1153,6 +1157,7 @@ export const mountCodexThreadSidebar = (
     refresh,
     selectAdjacentRecentThread,
     selectRecentThread,
+    selectThreadById: threadId => selectThread(threadId, "sidebar"),
     setActiveThreadId(threadId) {
       activeThreadId = threadId
       if (threadId !== selectingThreadId) selectingThreadId = null

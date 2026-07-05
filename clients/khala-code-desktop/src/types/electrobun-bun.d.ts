@@ -44,9 +44,13 @@ declare module "electrobun/bun" {
         | "download-failed",
       handler: (event: unknown) => void,
     ): void
+    loadURL(url: string): void
+    toggleDevTools(): void
   }
 
   export class BrowserWindow {
+    readonly id: number
+
     constructor(options: {
       readonly title: string
       readonly url: string
@@ -61,6 +65,10 @@ declare module "electrobun/bun" {
       readonly trafficLightOffset?: Readonly<{ x: number; y: number }>
     })
     readonly webview: BrowserWindowWebview
+
+    activate(): void
+    setPageZoom(zoomLevel: number): void
+    getPageZoom(): number
   }
 
   export type Rectangle = {
@@ -127,5 +135,10 @@ declare module "electrobun/bun" {
 
   export const Utils: Readonly<{
     showMessageBox: (options?: MessageBoxOptions) => Promise<MessageBoxResponse>
+  }>
+
+  export const app: Readonly<{
+    on: (name: string, handler: (payload: unknown) => void) => () => void
+    quit: () => void
   }>
 }

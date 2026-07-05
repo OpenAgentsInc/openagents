@@ -39,6 +39,7 @@ export const khalaCodeDesktopApplicationMenu: Array<MenuItem> = [
     label: "File",
     submenu: [
       { label: "New Session", action: "session.new_chat", accelerator: "CommandOrControl+N" },
+      { label: "New Window", action: "window.new", accelerator: "CommandOrControl+Shift+N" },
       { label: "Open Project Home", action: "view.home", accelerator: "Alt+7" },
       { type: "divider" },
       { label: "Settings", action: "view.settings", accelerator: "Alt+5" },
@@ -77,9 +78,26 @@ export const khalaCodeDesktopApplicationMenu: Array<MenuItem> = [
       { label: "Review", action: "view.review", accelerator: "Alt+8" },
       { label: "Terminal", action: "view.terminal", accelerator: "Alt+9" },
       { type: "divider" },
-      { role: "reload", accelerator: "CommandOrControl+R" },
-      { role: "togglefullscreen" },
-      { role: "toggleDevTools" },
+      // "reload"/"togglefullscreen"/"toggleDevTools" are NOT real Electrobun
+      // menu roles (the real role set only has "toggleFullScreen", capital
+      // F, for fullscreen; there is no native reload or devtools role at
+      // all) -- using them here rendered as blank, non-functional menu rows.
+      // Reload and Toggle Developer Tools now round-trip through the same
+      // `nativeWindowAction` RPC a hotkey/palette selection uses (see
+      // src/bun/index.ts and src/ui/main.ts); Toggle Full Screen uses the
+      // real native role.
+      { label: "Reload", action: "app.reload_webview", accelerator: "CommandOrControl+R" },
+      {
+        label: "Toggle Developer Tools",
+        action: "dev.toggle_devtools",
+        accelerator: "CommandOrControl+Alt+I",
+      },
+      { type: "divider" },
+      { label: "Zoom In", action: "view.zoom_in", accelerator: "CommandOrControl+Plus" },
+      { label: "Zoom Out", action: "view.zoom_out", accelerator: "CommandOrControl+-" },
+      { label: "Actual Size", action: "view.zoom_reset", accelerator: "CommandOrControl+0" },
+      { type: "divider" },
+      { role: "toggleFullScreen", accelerator: "Control+CommandOrControl+F" },
     ],
   },
   {

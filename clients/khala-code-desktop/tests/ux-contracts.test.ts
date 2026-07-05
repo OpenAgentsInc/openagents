@@ -1072,7 +1072,14 @@ describe("contract khala_code.fleet.menu_no_stray_labels.v1", () => {
 describe("contract khala_code.app.resumes_after_restart.v1", () => {
   test("the last active thread is captured at boot and restored after the initial render", async () => {
     const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
-    expect(main).toContain("const bootRestoreThreadId = localStorage.getItem(activeThreadIdStorageKey)")
+    // #8442 added a deep-link boot precedence in front of the original plain
+    // localStorage read (a `khala-code://thread/<id>` link present at boot
+    // wins over the last-active-thread restore); the localStorage read
+    // itself must still be the fallback.
+    expect(main).toContain("localStorage.getItem(activeThreadIdStorageKey)")
+    const bootRestoreThreadIdAssignment = main
+      .split("const bootRestoreThreadId =")[1]?.split(/\nconst /)[0] ?? ""
+    expect(bootRestoreThreadIdAssignment).toContain("localStorage.getItem(activeThreadIdStorageKey)")
     expect(main).not.toContain("localStorage.removeItem(activeThreadIdStorageKey)\n\ntype ThreadSwitchPerformanceSample")
     expect(main).toContain("const restoreActiveThreadAfterRestart = async (): Promise<void> => {")
     expect(main).toContain("void restoreActiveThreadAfterRestart()")

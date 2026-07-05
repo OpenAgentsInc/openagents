@@ -240,6 +240,7 @@ import {
 import {
   khalaCodeDeepLinkFromLocation,
   viewForKhalaCodeDeepLinkTarget,
+  type KhalaCodeDeepLinkTarget,
 } from "../shared/deep-links"
 import {
   projectKhalaCodeTerminalWorkbench,
@@ -814,12 +815,22 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["diagnosticsQuit"]>>>(
         "diagnosticsQuit",
       ),
+    nativeWindowAction: request =>
+      postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["nativeWindowAction"]>>>(
+        "nativeWindowAction",
+        request,
+      ),
+    rendererReady: () =>
+      postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["rendererReady"]>>>(
+        "rendererReady",
+      ),
   },
   send: {
     chatTurnEvent: () => undefined,
     fleetLifecycleEvent: () => undefined,
     claudeApprovalRequested: () => undefined,
     diagnosticsRecoveryStateChanged: () => undefined,
+    deepLinkTarget: () => undefined,
   },
 })
 
@@ -932,6 +943,13 @@ const nativeRpc = Electroview.defineRPC<KhalaCodeDesktopRPCSchema>({
       },
       diagnosticsRecoveryStateChanged(state) {
         handleRecoveryStateChanged(state)
+      },
+      deepLinkTarget(target) {
+        // #8442 follow-up: bun only sends this once the renderer has
+        // reported ready (see the `rendererReady()` call below), so
+        // `routeKhalaCodeDeepLinkTarget` is always defined by the time this
+        // fires.
+        routeKhalaCodeDeepLinkTarget(target)
       },
     },
   },
@@ -7077,6 +7095,66 @@ commandRegistry = createKhalaCodeCommandRegistry([
     keywords: ["interrupt", "cancel"],
     title: "Stop Active Turn",
   },
+  {
+    analyticsRef: "khala_code.command.window.new",
+    category: "workbench",
+    execute: () => {
+      void rpc.request.nativeWindowAction({ action: "window.new" })
+    },
+    id: "window.new",
+    keywords: ["new window"],
+    title: "New Window",
+  },
+  {
+    analyticsRef: "khala_code.command.app.reload_webview",
+    category: "workbench",
+    execute: () => {
+      void rpc.request.nativeWindowAction({ action: "app.reload_webview" })
+    },
+    id: "app.reload_webview",
+    keywords: ["reload", "refresh"],
+    title: "Reload",
+  },
+  {
+    analyticsRef: "khala_code.command.dev.toggle_devtools",
+    category: "workbench",
+    execute: () => {
+      void rpc.request.nativeWindowAction({ action: "dev.toggle_devtools" })
+    },
+    id: "dev.toggle_devtools",
+    keywords: ["devtools", "inspector", "debug"],
+    title: "Toggle Developer Tools",
+  },
+  {
+    analyticsRef: "khala_code.command.view.zoom_in",
+    category: "workbench",
+    execute: () => {
+      void rpc.request.nativeWindowAction({ action: "view.zoom_in" })
+    },
+    id: "view.zoom_in",
+    keywords: ["zoom", "bigger"],
+    title: "Zoom In",
+  },
+  {
+    analyticsRef: "khala_code.command.view.zoom_out",
+    category: "workbench",
+    execute: () => {
+      void rpc.request.nativeWindowAction({ action: "view.zoom_out" })
+    },
+    id: "view.zoom_out",
+    keywords: ["zoom", "smaller"],
+    title: "Zoom Out",
+  },
+  {
+    analyticsRef: "khala_code.command.view.zoom_reset",
+    category: "workbench",
+    execute: () => {
+      void rpc.request.nativeWindowAction({ action: "view.zoom_reset" })
+    },
+    id: "view.zoom_reset",
+    keywords: ["zoom", "actual size", "reset"],
+    title: "Actual Size",
+  },
 ], {
   getKeybindingOverrides: () => commandKeybindingOverrides,
 })
@@ -7103,6 +7181,26 @@ const executeKhalaCodeCommand = async (id: KhalaCodeCommandId): Promise<void> =>
   if (registry === null) return
   await registry.execute(id)
   render()
+}
+
+// #8442 follow-up: resolves a `khala-code://` deep link -- once already
+// parsed into a typed target by `../shared/deep-links.ts` -- into an actual
+// live UI navigation. `khalaCodeDeepLinkFromLocation`/`bootDeepLink` only
+// covers a link present at renderer boot; this covers the SAME target type
+// arriving later over a `deepLinkTarget` push (a cold launch whose renderer
+// was not ready yet, or a warm second-instance/`open-url`/`reopen` event).
+// Every branch routes through an already-authenticated, already-existing
+// surface (the same command registry hotkeys/palette use, or the thread
+// sidebar's real resume/activate path) -- a deep link can only ever select
+// what the normal UI could already reach, never bypass it.
+const routeKhalaCodeDeepLinkTarget = (target: KhalaCodeDeepLinkTarget): void => {
+  if (target.kind === "thread") {
+    void executeKhalaCodeCommand("view.chat").then(() => {
+      void threadSidebar?.selectThreadById(target.threadId)
+    })
+    return
+  }
+  void executeKhalaCodeCommand(`view.${viewForKhalaCodeDeepLinkTarget(target)}` as KhalaCodeCommandId)
 }
 
 const activeCommandRegistry = commandRegistry
@@ -7205,3 +7303,10 @@ const restoreActiveThreadAfterRestart = async (): Promise<void> => {
   }
 }
 void restoreActiveThreadAfterRestart()
+
+// #8442 follow-up: signal renderer readiness last, once the normal boot
+// render, view restoration, and thread-switch machinery above are all in
+// place. Bun buffers any `khala-code://` deep link the app was launched with
+// until this arrives, so a cold launch never routes into a half-initialized
+// UI.
+void rpc.request.rendererReady().catch(() => undefined)

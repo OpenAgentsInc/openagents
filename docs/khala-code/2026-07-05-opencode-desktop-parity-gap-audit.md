@@ -904,6 +904,20 @@ Issue: add deep links and single-instance handling
   initial view/thread restore path. Invalid links are harmless typed failures,
   path-like private project IDs are rejected, and unsupported targets fall back
   to normal persisted view/thread state.
+- Follow-up (2026-07-05, same day): the first pass parsed links but never
+  registered `khala-code://` as an OS URL scheme, never handled the native
+  `open-url`/`reopen` events, and had no single-instance coordination at all --
+  so a real double-click on a `khala-code://` link, or a second app launch,
+  could not reach the parser in practice (only a link already present in the
+  renderer's boot-time `location` could route, which nothing outside the app
+  ever sets). Closed the gap: `electrobun.config.ts` now registers the
+  `khala-code` URL scheme; a new `src/bun/single-instance-lock.ts` binds a real
+  local Unix domain socket so a second launch forwards its link and focuses the
+  existing window instead of opening a duplicate; a new
+  `src/bun/deep-link-coordinator.ts` buffers a cold-launch link until the
+  renderer reports ready (`rendererReady` RPC) and flushes it via a new
+  `deepLinkTarget` push message, reusing the existing `../shared/deep-links.ts`
+  parser end to end.
 - Scope: `khala-code://` protocol, first-open buffering, second-instance focus,
   route resolution into thread/project/session/server targets, and invalid-link
   errors.
@@ -921,6 +935,16 @@ Issue: expand the native menu
   notes, docs, support, feedback, and bug report. Help link dispatch remains
   allowlisted through the support-entrypoint policy from #8466; updater and
   diagnostics items continue through #8440/#8441.
+- Follow-up (2026-07-05, same day): the View menu's "Reload", "Toggle Full
+  Screen", and "Toggle Developer Tools" items used Electrobun menu roles that
+  do not exist (`"reload"`, `"togglefullscreen"`, `"toggleDevTools"` --
+  Electrobun's real role set only has `"toggleFullScreen"`, capital F), so
+  those three rendered as blank, non-functional rows. Fixed: Reload and Toggle
+  Developer Tools now round-trip through a new `nativeWindowAction` RPC (same
+  bun-side handler a hotkey or the command palette reaches), Toggle Full
+  Screen uses the real `toggleFullScreen` role, and File > New Window plus
+  View > Zoom In/Out/Actual Size were added through the same mechanism (all
+  previously entirely missing from the menu).
 - Scope: File, Edit, View, Go, Window, Help, command-registry integration,
   New Session, Open Project, New Window, Close, Reload, Restart, Export Logs,
   Settings, command palette, terminal/file tree/review toggles, docs/support,
