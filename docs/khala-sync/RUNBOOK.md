@@ -4583,6 +4583,253 @@ tracked migration for team chat + thread files + agent-goal CRUD + the
 ongoing agent-run-status legacy producer (recommend KS-6.11 or similar)
 before this issue can advance further.
 
+## Team chat + thread files + agent-goal CRUD scope breakdown (KS-6.11, #8422)
+
+KS-6.11 is the migration #8420 asked for: the three surfaces named in the
+original Wave 3 plan that KS-6.4–6.9 never actually covered. This first
+pass is scoping plus the smallest safe producer-side fix that unblocks the
+most tractable of the three. **No client repoint and no legacy-producer
+deletion happened this pass** — every finding below was verified against
+current `origin/main` source, not assumed from the KS-6.10 capstone note.
+
+### Headline correction to the KS-6.10 capstone's framing
+
+The capstone (#8420) described team chat and thread files as having "LIVE
+`notifySyncScopes` producer call sites" as if no new-engine work existed for
+them at all. That undercounts what's actually there: **KS-8.13 (#8324)
+already built a fully live khala-sync producer for both**, wired into the
+Worker's generic product-state mirror
+(`khala-code-product-state-store.ts`'s `khalaCodeProductStateDatabaseForEnv`).
+Every current team-chat-message write
+(`apps/openagents.com/workers/api/src/index.ts:3471,3543,5204`, all via
+`insertTeamChatMessage(khalaCodeProductStateDatabaseForEnv(env), …)`) and
+every thread-file write (`thread-file-routes.ts`'s
+`ThreadFileRepository.layer(khalaCodeProductStateDatabaseForEnv(env))`)
+**already** converge-upserts the Cloud SQL twin AND appends a
+`scope.team.<teamId>` (plus `scope.thread.<id>` where applicable) khala-sync
+changelog entry, in the SAME request as the legacy `notifySyncScopes`/
+`publishTeamChatMessageSync`/`publishTeamThreadFileSync` call that follows
+it. Both engines are dual-writing today, in production, right now. The real
+remaining gap for both surfaces is entirely on the CLIENT side — repointing
+`apps/web/src/subscriptions.ts`'s legacy `team:<teamId>` multi-scope socket
+onto `/api/sync/connect?scope=scope.team.<teamId>` — not a missing producer.
+
+`agent_goals`/`agent_goal_events` are a genuinely different story: neither
+table is in `KHALA_CODE_PRODUCT_STATE_TABLES`
+(`packages/khala-sync-server/src/khala-code-product-state-tables.ts`), there
+is no `KhalaCodeAgentGoal*Entity` contract in `packages/khala-sync`, and no
+projector routes them to any scope. This is a from-scratch build, the same
+shape as KS-6.6's `AgentRunEntity`/`AgentRunEventEntity` work, and is the
+genuinely largest of the three.
+
+### Per-surface breakdown
+
+**1. Team chat (`scope.team.<teamId>`, entity `team_chat_message`) — producer
+live, ONE real client-repoint blocker, now closed this pass.**
+
+The client's `TeamChatMessageRecord` (`apps/web/src/page/loggedIn/model.ts`)
+requires a hydrated `author: { userId, name, avatarUrl, githubUsername }`
+object on every message. The legacy wire payload
+(`team-chat.ts`'s `TeamChatMessage.author`) supplies this via a
+`users`/`auth_identities` JOIN done at read time
+(`readTeamChatMessageById`). `KhalaCodeTeamChatMessageEntity`
+(`packages/khala-sync/src/khala-code.ts`) carried only `authorUserId` — a
+bare id, no display name/avatar/GitHub username — because KS-8.13's generic
+mirror read-back (`khala-code-product-state-store.ts`'s `readRowsByWhere`)
+does a plain `SELECT * FROM team_chat_messages WHERE id IS ?`, never a JOIN.
+A client repoint that consumed the entity as-is would have shown every
+LIVE-arriving message with a blank/undefined author — a real, user-visible
+regression on an actively-used feature, exactly the guardrail this issue
+warned about.
+
+**Fixed this pass** (producer-side only, no client change, so this ships
+with zero behavior change for anyone until the repoint happens):
+
+- `KhalaCodeTeamChatMessageEntity` gained `authorName` / `authorAvatarUrl` /
+  `authorGithubUsername`, all `NullOr` (not required) — see below for why.
+- `khala-code-product-state-store.ts`'s `readRowsByWhere` now special-cases
+  `team_chat_messages` with a JOIN against `users`/`auth_identities`
+  (`LEFT JOIN`, not `INNER JOIN`, so a message whose author row is
+  missing/deleted still mirrors — it just gets `null` author-identity
+  fields instead of dropping out of the mirror). The joined columns are NOT
+  part of `team_chat_messages`'s Postgres column spec, so
+  `upsertKhalaCodeProductStateRows` silently ignores them when writing the
+  Postgres row twin — only `scopeChangesForKhalaCodeProductStateRow`'s
+  projection mapper (`khala-code-product-state-projection.ts`) reads them
+  for the changelog post-image.
+- `khalaCodeTeamChatMessagePostImage` now reads `author_name` /
+  `author_avatar_url` / `author_github_username` off the row via
+  `nullableStr`, falling back to `null` rather than throwing.
+- `authorName` was added to `KHALA_CODE_POST_IMAGE_CONTENT_FIELDS` (the
+  forbidden-material-scan exemption set) — same precedent as `name`/`title`:
+  a freely-chosen display name is content, not a leak, so it shouldn't
+  false-positive-skip a message if a user's display name happens to contain
+  something the regex flags.
+- New `KhalaCodeUrl` bounded primitive (`http(s)://`, ≤2048 chars) for
+  `authorAvatarUrl` — deliberately accepts both schemes rather than
+  https-only, so a merely-imperfect historical avatar URL degrades to a
+  fail-soft projection skip risk reduction, not an added-strictness trap.
+
+**Why `NullOr`, not required:** the generic backfill/verify CLI
+(`packages/khala-sync-server/scripts/backfill-khala-code-product-state.ts`)
+reads raw `team_chat_messages` rows with a plain `SELECT *` (no JOIN) and
+**never calls the changelog projection at all** — it only calls
+`upsertKhalaCodeProductStateRows` (the Postgres row-mirror path), not
+`scopeChangesForKhalaCodeProductStateRow`. This is a **pre-existing gap
+independent of this pass**: KS-8.13 never backfilled changelog history for
+ANY of its scopes, only the Postgres row twins. A fresh client cold-loading
+`scope.team.<teamId>` today gets zero historical `team_chat_message` /
+`thread_file` changelog rows — only live deltas from whenever KS-8.13
+shipped, forward. If a future pass wants a real cold-load story for team
+chat/thread files (not just live-tail), building a one-time changelog
+backfill sweep for these scopes is its own follow-up; it needs its own JOIN
+for the author snapshot too, at which point `authorName` etc. becomes fully
+populated for historical rows as well.
+
+Verified with new unit/integration test coverage:
+`khala-code-product-state-store.test.ts` (author hydrated when a matching
+`users`/`auth_identities` row exists; still mirrors with null author fields
+when the author's user row is missing — the LEFT JOIN degrade path) and
+`khala-code-product-state-projection.test.ts` (entity decodes with the new
+fields when present; falls back to null, does not throw, when the row
+lacks them — the historical-row/backfill path). Golden fixture
+`packages/khala-sync/fixtures/KhalaCodeTeamChatMessageEntity.json` updated
+to include the new fields, keeping `conformance.test.ts` in sync.
+
+**Still NOT done, deliberately out of scope this pass:** the actual client
+repoint (`apps/web/src/subscriptions.ts`), and legacy `notifySyncScopes`/
+`publishTeamChatMessageSync` deletion. See the entanglement note below for
+why team chat can't cut over its wire scope in isolation.
+
+**2. Thread files (`scope.team.<teamId>` + `scope.thread.<threadId>`, entity
+`thread_file`) — producer live, NO schema gap, but entangled with team chat
+on the shared team-scope socket.**
+
+`KhalaCodeThreadFileEntity` structurally omits `downloadUrl`/`detailUrl` on
+purpose (module doc: "clients fetch bytes through the authorized download
+route, never from a synced storage pointer"). Verified this is NOT a real
+client-repoint blocker: both are pure functions of already-present fields.
+`downloadUrl` is exactly `` `/api/thread-files/${fileId}/download` ``
+(`thread-files.ts`'s `publicThreadFile`) — reconstructible client-side from
+`fileId` alone, no server round trip. `detailUrl` needs a team ref (route
+slug) for the team case, which the client's `syncTeamScope`/`teamRouteRef`
+machinery (`apps/web/src/page/loggedIn/model.ts`,
+`apps/web/src/subscriptions.ts`) already resolves locally from `teamId` for
+every other team-scoped consumer. So thread files have **no producer gap
+and no client-side data gap** — they are, on their own, ready for a client
+repoint today.
+
+The catch: `scope.team.<teamId>` is ONE shared wire scope carrying BOTH
+`team_chat_message` AND `thread_file` (plus `team`/`team_membership`/
+`team_project`/`team_workspace_invite`) entities
+(`khala-code-product-state-projection.ts`'s `scopesForRow`). The client's
+`syncScopesForModel` (`apps/web/src/subscriptions.ts`) opens exactly ONE
+legacy socket per scope string, multiplexing whatever collections arrive on
+it — unlike KS-6.4's settled-feed or KS-6.6's agent-run, which each had a
+scope with only ONE entity type and nothing else sharing it. A clean,
+KS-6.4/KS-6.6-shaped cutover ("stop opening the legacy `team:<teamId>`
+socket, open a dedicated new-engine one instead") can't retire the legacy
+`team:<teamId>` traffic while team-chat-message translation still has any
+open question, because both entity kinds arrive on the exact same
+WebSocket. Team chat's author-hydration gap is now closed (see above), so
+this entanglement is no longer a hard blocker — but the actual client
+adapter work (a `team-live.ts` mirroring `agent-run-live.ts`, translating
+BOTH entity types in one `LiveFrame` handler) is real, untouched work for
+the next pass, plus real production verification before any legacy
+deletion.
+
+**3. Agent-goal CRUD (`agent_goals`/`agent_goal_events`) — no producer at
+all, largest remaining piece, full from-scratch build.**
+
+Confirmed zero existing new-engine producer: neither table appears in
+`KHALA_CODE_PRODUCT_STATE_TABLES`, there is no `KhalaCodeAgentGoal*Entity`
+in `packages/khala-sync/src/khala-code.ts`, and
+`publishAgentGoalSync`/`publishAgentGoalEventSync`
+(`apps/openagents.com/workers/api/src/omni-handlers.ts:603,610`, backed by
+`sync-notifier.ts`) are the ONLY producers today — both fully legacy,
+publishing to the OLD `sync-worker` D1 outbox + `SyncRoomDurableObject`
+spine. This needs the full KS-6.6 shape repeated from scratch: a new entity
+contract (or contracts, if goal + goal-event need separate shapes the way
+`AgentRunEntity`/`AgentRunEventEntity` did), a new projector, new Worker
+glue wired into every write call site, a dual-write proving pass, THEN a
+client repoint, THEN legacy deletion. Not attempted this pass — flagged
+honestly as the largest of the three rather than rushed.
+
+**Separate, NOT yet investigated: `notifyAgentRunSyncScopes` (ongoing
+agent-run status broadcast).** This is a DIFFERENT function from the
+`syncScopeForAgentRun`-based create-time pokes KS-6.6 (#8416) already
+deleted (that export no longer exists — confirmed by grep, only mentioned in
+comments now). `notifyAgentRunSyncScopes`/`readAgentRunSyncScopes`
+(`sync-notifier.ts`) is still called from 5 live sites
+(`omni-handlers.ts:1192,2093,2125,2983`, `index.ts:6589`) and broadcasts to
+FOUR legacy scopes at once: `personalWorkroomScope`, `teamScope`,
+`agentRunScope`, and `syncThreadScope`. The `agentRunScope` leg is very
+likely dead weight now — KS-6.6's client repoint means
+`apps/web/src/subscriptions.ts` no longer opens the legacy
+`agent-run:<runId>` socket at all — but the other three legs (workroom
+sidebar, team page, thread page) may still be feeding live legacy
+consumers that this pass did NOT verify. Do not delete any of
+`notifyAgentRunSyncScopes`'s call sites or scope legs without checking each
+one against the client's CURRENT `syncScopesForModel` list first; this is
+explicitly flagged as unfinished investigation, not confirmed-dead code.
+
+### Recommended split for follow-up passes
+
+Given the genuinely different tractability of the three surfaces, this pass
+opened separate tracked issues rather than one bundled migration:
+
+- **#8423 (KS-6.11a) — team chat + thread files client repoint.** Producer
+  complete for both (including this pass's team-chat author-hydration fix).
+  Needs: a `team-live.ts` adapter (mirroring `agent-run-live.ts`), handling
+  BOTH `team_chat_message` and `thread_file` entity types in one
+  `LiveFrame` handler (they share the exact `scope.team.<teamId>` wire
+  scope, so they are bundled into one client-repoint issue, not two),
+  removing `team:<teamId>` from `syncScopesForModel`'s legacy list, real
+  production verification (a live `scope.team.<teamId>` WebSocket handshake
+  plus a real message/file showing correctly), THEN legacy
+  `publishTeamChatMessageSync`/`publishTeamThreadFileSync`/their
+  `notifySyncScopes` call deletion.
+- **#8424 (KS-6.11c) — agent-goal CRUD.** Full from-scratch build: entity
+  contract(s), projector, Worker glue, dual-write proof, THEN client
+  repoint, THEN legacy deletion. The largest of the three; deliberately not
+  combined with #8423.
+- **#8425 — verify `notifyAgentRunSyncScopes`'s remaining live legacy
+  consumers** before touching any of its four broadcast legs or five call
+  sites. Bookkeeping cleanup adjacent to #8423/#8424, not itself a
+  scope-adoption migration (the entity/scope work for agent runs is already
+  done via KS-6.6).
+
+#8422 stays open, tracking this scoping pass; the three follow-ups above
+carry the actual remaining migration work.
+
+### Test evidence (this pass)
+
+- `packages/khala-sync/src/conformance.test.ts`: 42/42 pass (golden fixture
+  round-trips, including the updated `KhalaCodeTeamChatMessageEntity`
+  fixture).
+- `packages/khala-sync-server/src/khala-code-product-state-projection.test.ts`:
+  15/15 pass, including the two new author-hydration cases.
+- `apps/openagents.com/workers/api/src/khala-code-product-state-store.test.ts`:
+  12/12 pass, including the two new JOIN-behavior cases (author present,
+  author row missing).
+- `apps/openagents.com/workers/api` full suite: 1070/1072 files, 9610/9617
+  tests pass. The 2 failing files
+  (`nexus-pylon-visibility-routes.test.ts`, `treasury-domain-store.test.ts`)
+  are PRE-EXISTING and unrelated to this change (a timestamp-regex
+  assertion and a domain-table-count assertion, neither touching
+  `khala-code-product-state-*` or `team-chat`/`thread-file` files) — the
+  same class of pre-existing failure multiple prior passes in this thread
+  have already flagged; not fixed here, still open.
+- `bun run check:architecture` (the zero-debt ledger): passed.
+- `packages/khala-sync` and `packages/khala-sync-server` typecheck: clean.
+- `apps/openagents.com/workers/api` typecheck: clean.
+- No production deploy this pass: the change is producer-side-only and
+  purely additive (nullable fields, a widened SELECT for one table's
+  read-back path) with no client-visible behavior change, so a live
+  production check has nothing new to observe yet — the real production
+  verification belongs with KS-6.11a's client repoint, when there is an
+  actual wire behavior change to confirm.
+
 ## What this runbook does NOT cover
 
 - Deploying the Worker/hub DO: `docs/DEPLOYMENT.md` (deploy:safe gate).

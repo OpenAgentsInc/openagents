@@ -518,16 +518,56 @@ type BoundStatement = Readonly<{
   onWriteSuccess: (() => Promise<void>) | undefined
 }>
 
+// KS-6.11 (#8422): `team_chat_messages` is the one product-state table whose
+// scope-projected post-image needs a denormalized field the raw table row
+// does not carry — the author's display name/avatar/GitHub username, which
+// the legacy `readTeamChatMessageById` wire payload already sends via this
+// same JOIN (`team-chat.ts`). Read-back mirroring (this function, run after
+// every accepted D1 write) is the one place that can cheaply add it: it is
+// already doing a single extra SELECT per write, so widening THAT SELECT with
+// a JOIN costs nothing new. The joined columns are NOT part of
+// `team_chat_messages`'s Postgres column spec (`khala-code-product-state-
+// tables.ts`), so `upsertKhalaCodeProductStateRows` silently ignores them on
+// the row it writes — only `scopeChangesForKhalaCodeProductStateRow`'s
+// projection mapper reads them. A LEFT JOIN (not INNER) so a message whose
+// author user row is missing/deleted still mirrors and projects, just with
+// null author-identity fields.
+const TEAM_CHAT_MESSAGE_AUTHOR_JOIN_SELECT = `
+  SELECT team_chat_messages.*,
+         users.display_name AS author_name,
+         users.avatar_url AS author_avatar_url,
+         auth_identities.provider_username AS author_github_username
+    FROM team_chat_messages
+    LEFT JOIN users ON users.id = team_chat_messages.author_user_id
+    LEFT JOIN auth_identities
+      ON auth_identities.user_id = users.id
+     AND auth_identities.provider = 'github'
+     AND auth_identities.deleted_at IS NULL
+`
+
 const readRowsByWhere = async (
   db: D1Database,
   table: KhalaCodeProductStateTable,
   columns: ReadonlyArray<string>,
   values: ReadonlyArray<unknown>,
 ): Promise<ReadonlyArray<KhalaCodeProductStateRow>> => {
+  const normalized = values.map(normalizeKhalaCodeProductStateValue)
+
+  if (table === 'team_chat_messages') {
+    const clauses = columns
+      .map(column => `team_chat_messages.${column} IS ?`)
+      .join(' AND ')
+    const rows = await db
+      .prepare(`${TEAM_CHAT_MESSAGE_AUTHOR_JOIN_SELECT} WHERE ${clauses}`)
+      .bind(...normalized)
+      .all<KhalaCodeProductStateRow>()
+    return rows.results ?? []
+  }
+
   const clauses = columns.map(column => `${column} IS ?`).join(' AND ')
   const rows = await db
     .prepare(`SELECT * FROM ${table} WHERE ${clauses}`)
-    .bind(...values.map(normalizeKhalaCodeProductStateValue))
+    .bind(...normalized)
     .all<KhalaCodeProductStateRow>()
   return rows.results ?? []
 }

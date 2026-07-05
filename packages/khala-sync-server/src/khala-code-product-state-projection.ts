@@ -77,6 +77,7 @@ export const KHALA_CODE_POST_IMAGE_FORBIDDEN_PATTERN =
  */
 export const KHALA_CODE_POST_IMAGE_CONTENT_FIELDS: ReadonlySet<string> =
   new Set([
+    "authorName",
     "body",
     "bodyJson",
     "description",
@@ -273,6 +274,14 @@ export const khalaCodeTeamChatMessagePostImage = (
     new KhalaCodeTeamChatMessageEntity({
       agentRunId: nullableStr(row, "agent_run_id"),
       archivedAt: nullableIso(row, "archived_at"),
+      // KS-6.11 (#8422): denormalized author display-identity snapshot.
+      // Only present when the row was read back through the Worker mirror's
+      // `team_chat_messages`-specific JOIN (khala-code-product-state-store.ts);
+      // the generic backfill/verify sweep reads raw rows without it, so these
+      // fall back to `null` for historical rows rather than throwing.
+      authorAvatarUrl: nullableStr(row, "author_avatar_url"),
+      authorGithubUsername: nullableStr(row, "author_github_username"),
+      authorName: nullableStr(row, "author_name"),
       authorUserId: requireStr(row, "author_user_id"),
       autopilotThreadId: nullableStr(row, "autopilot_thread_id"),
       body: requireStr(row, "body"),

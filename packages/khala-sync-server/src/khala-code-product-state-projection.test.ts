@@ -100,6 +100,9 @@ const ROWS: Partial<Record<KhalaCodeProductStateTable, KhalaCodeProductStateRow>
     team_chat_messages: {
       agent_run_id: "run_5",
       archived_at: null,
+      author_avatar_url: "https://avatars.example.com/user_1.png",
+      author_github_username: "sarahchen",
+      author_name: "Sarah Chen",
       author_user_id: "user_1",
       autopilot_thread_id: "thread_1",
       body: "hello — email me at chris@openagents.com about /Users/chris/repo",
@@ -265,6 +268,36 @@ describe("Khala Code product-state projection (typed post-images)", () => {
     expect(entity.autopilotThreadId).toBe("thread_1")
     // Content is the product for the authorized scope.
     expect(entity.body).toContain("hello")
+    // KS-6.11 (#8422): denormalized author display-identity snapshot, joined
+    // in by the Worker mirror's read-back (khala-code-product-state-store.ts)
+    // and passed through here unchanged.
+    expect(entity.authorName).toBe("Sarah Chen")
+    expect(entity.authorAvatarUrl).toBe("https://avatars.example.com/user_1.png")
+    expect(entity.authorGithubUsername).toBe("sarahchen")
+  })
+
+  // KS-6.11 (#8422): the generic backfill/verify sweep reads raw
+  // `team_chat_messages` rows without the Worker mirror's author JOIN, so a
+  // historical row genuinely may not carry these columns at all. The mapper
+  // must fall back to `null`, not throw and skip the whole message.
+  test("team chat rows without a joined author snapshot decode with null author-identity fields", () => {
+    const rowWithoutAuthorJoin = {
+      ...ROWS["team_chat_messages"],
+      author_avatar_url: undefined,
+      author_github_username: undefined,
+      author_name: undefined,
+    }
+
+    const changes = scopeChangesForKhalaCodeProductStateRow(
+      "team_chat_messages",
+      rowWithoutAuthorJoin,
+    )
+
+    const entity = decodeKhalaCodeTeamChatMessageEntity(changes[0]?.postImage)
+    expect(entity.authorUserId).toBe("user_1")
+    expect(entity.authorName).toBeNull()
+    expect(entity.authorAvatarUrl).toBeNull()
+    expect(entity.authorGithubUsername).toBeNull()
   })
 
   test("membership, file, workspace, and share rows route to their sync scopes", () => {

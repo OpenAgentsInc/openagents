@@ -888,6 +888,35 @@ consolidation effort.
   issue. Recommend opening KS-6.11 (or similar) for that migration before
   attempting the capstone's full spine deletion again.
 
+  **2026-07-05 KS-6.11 (#8422) scoping pass — corrects "LIVE producer, no
+  new-engine work" framing for two of the three surfaces.** Verified against
+  current source, not re-assumed: KS-8.13 (#8324) already ships a fully live
+  khala-sync producer for BOTH team chat and thread files (every write
+  already dual-writes through `khalaCodeProductStateDatabaseForEnv` into
+  `scope.team.<teamId>`/`scope.thread.<id>`, alongside the legacy
+  `notifySyncScopes` call in the same request). The real remaining gap for
+  those two is the CLIENT repoint (`apps/web/src/subscriptions.ts`), not a
+  missing producer. Team chat had one genuine schema gap blocking that
+  repoint — the entity carried no author display-name/avatar/GitHub-username,
+  which the client's message renderer requires — closed in this pass
+  (entity fields + a `team_chat_messages`-specific JOIN in the Worker
+  mirror's read-back, both nullable/fail-soft for historical rows). Thread
+  files have NO schema gap (`downloadUrl`/`detailUrl` are client-
+  reconstructible from `fileId`/`teamId` alone) but share team chat's exact
+  wire scope, so the two need one combined client-repoint adapter, not two
+  independent ones. Agent-goal CRUD is confirmed the only surface with zero
+  existing producer — a genuine from-scratch build, same shape as KS-6.6's
+  agent-run work. `notifyAgentRunSyncScopes` (a separate ongoing
+  agent-run-status broadcast, distinct from the create-time poke KS-6.6
+  already deleted) is flagged as unfinished investigation, not yet touched.
+  No client repoint or legacy-producer deletion happened this pass — see
+  `docs/khala-sync/RUNBOOK.md`'s "Team chat + thread files + agent-goal CRUD
+  scope breakdown (KS-6.11, #8422)" section for the full per-surface
+  breakdown and test evidence. Opened three tracked follow-ups: #8423 (team
+  chat + thread files client repoint), #8424 (agent-goal CRUD from-scratch
+  build), and #8425 (verify `notifyAgentRunSyncScopes`'s remaining live
+  legacy consumers).
+
 **Wave 4 — big, deliberate, needs an owner call before starting:**
 Consolidate `probe-runtime` and `pylon-runtime` (~48K LOC of duplicated
 coding-agent runtime — the single largest dedupe in the audit, but touches

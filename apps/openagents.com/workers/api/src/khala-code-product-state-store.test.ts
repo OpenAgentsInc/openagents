@@ -28,6 +28,19 @@ const makeLogCapture = () => {
 }
 
 const productStateSchema = `
+CREATE TABLE users (
+  id TEXT PRIMARY KEY,
+  display_name TEXT,
+  avatar_url TEXT
+);
+
+CREATE TABLE auth_identities (
+  user_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  provider_username TEXT,
+  deleted_at TEXT
+);
+
 CREATE TABLE team_chat_messages (
   id TEXT PRIMARY KEY,
   team_id TEXT NOT NULL,
@@ -266,6 +279,135 @@ describe('makeKhalaCodeProductStateMirroringDatabase', () => {
         team_id: 'team_1',
         body: 'hello',
         autopilot_thread_id: 'thread_1',
+      })
+    } finally {
+      sqlite.close()
+    }
+  })
+
+  // KS-6.11 (#8422): team_chat_messages read-back JOINs users/auth_identities
+  // so the scope-projected post-image can carry the author's denormalized
+  // display identity — the same fields the legacy wire payload already sent.
+  test('read-back hydrates the author name/avatar/github username for team_chat_messages', async () => {
+    const sqlite = makeSqliteD1()
+    try {
+      sqlite.exec(productStateSchema)
+      await sqlite.db
+        .prepare(
+          `INSERT INTO users (id, display_name, avatar_url) VALUES (?, ?, ?)`,
+        )
+        .bind('user_1', 'Sarah Chen', 'https://avatars.example.com/user_1.png')
+        .run()
+      await sqlite.db
+        .prepare(
+          `INSERT INTO auth_identities (user_id, provider, provider_username, deleted_at)
+           VALUES (?, ?, ?, ?)`,
+        )
+        .bind('user_1', 'github', 'sarahchen', null)
+        .run()
+
+      const upserts: Array<Readonly<{ table: string; rows: ReadonlyArray<Record<string, unknown>> }>> = []
+      const mirror: KhalaCodeProductStateMirror = {
+        deleteRows: () => Promise.resolve(),
+        upsertRows: (table, rows) => {
+          upserts.push({ rows, table })
+          return Promise.resolve()
+        },
+      }
+      const { log } = makeLogCapture()
+      const db = makeKhalaCodeProductStateMirroringDatabase({
+        db: sqlite.db,
+        log,
+        mirror,
+      })
+
+      await db
+        .prepare(
+          `INSERT INTO team_chat_messages
+            (id, team_id, project_id, author_user_id, kind, body,
+             autopilot_thread_id, agent_run_id, metadata_json, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          'msg_2',
+          'team_1',
+          null,
+          'user_1',
+          'message',
+          'hello again',
+          'thread_1',
+          null,
+          '{}',
+          '2026-07-04T00:00:00.000Z',
+          '2026-07-04T00:00:00.000Z',
+        )
+        .run()
+
+      expect(upserts).toHaveLength(1)
+      expect(upserts[0]?.rows[0]).toMatchObject({
+        id: 'msg_2',
+        author_avatar_url: 'https://avatars.example.com/user_1.png',
+        author_github_username: 'sarahchen',
+        author_name: 'Sarah Chen',
+        author_user_id: 'user_1',
+      })
+    } finally {
+      sqlite.close()
+    }
+  })
+
+  // A message whose author user row is missing (deleted account, orphaned
+  // reference) must still mirror and project — the JOIN is a LEFT JOIN, not
+  // an INNER JOIN, specifically so this degrades to null author fields
+  // rather than dropping the row from the mirror read-back entirely.
+  test('read-back still mirrors team_chat_messages when the author user row is missing', async () => {
+    const sqlite = makeSqliteD1()
+    try {
+      sqlite.exec(productStateSchema)
+      const upserts: Array<Readonly<{ table: string; rows: ReadonlyArray<Record<string, unknown>> }>> = []
+      const mirror: KhalaCodeProductStateMirror = {
+        deleteRows: () => Promise.resolve(),
+        upsertRows: (table, rows) => {
+          upserts.push({ rows, table })
+          return Promise.resolve()
+        },
+      }
+      const { log } = makeLogCapture()
+      const db = makeKhalaCodeProductStateMirroringDatabase({
+        db: sqlite.db,
+        log,
+        mirror,
+      })
+
+      await db
+        .prepare(
+          `INSERT INTO team_chat_messages
+            (id, team_id, project_id, author_user_id, kind, body,
+             autopilot_thread_id, agent_run_id, metadata_json, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          'msg_3',
+          'team_1',
+          null,
+          'user_missing',
+          'message',
+          'orphaned author',
+          'thread_1',
+          null,
+          '{}',
+          '2026-07-04T00:00:00.000Z',
+          '2026-07-04T00:00:00.000Z',
+        )
+        .run()
+
+      expect(upserts).toHaveLength(1)
+      expect(upserts[0]?.rows[0]).toMatchObject({
+        id: 'msg_3',
+        author_avatar_url: null,
+        author_github_username: null,
+        author_name: null,
+        author_user_id: 'user_missing',
       })
     } finally {
       sqlite.close()

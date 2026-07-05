@@ -113,6 +113,21 @@ export const KhalaCodeText = S.String.check(S.isMaxLength(4000))
 export type KhalaCodeText = typeof KhalaCodeText.Type
 
 /**
+ * Bounded `http(s)://` URL (avatar images served from an external CDN). Not
+ * a ref: URLs legitimately carry `/`, `:`, `?`, `=` that `KhalaCodeRef`
+ * structurally forbids. Accepts both schemes deliberately — provider avatar
+ * URLs are not guaranteed https in every historical row, and a stricter
+ * check would just turn into more fail-soft projection skips rather than
+ * added safety (the value is an external CDN pointer, not authority-bearing).
+ */
+export const KhalaCodeUrl = S.String.check(
+  S.isMinLength(1),
+  S.isMaxLength(2048),
+  S.isPattern(/^https?:\/\/\S+$/),
+)
+export type KhalaCodeUrl = typeof KhalaCodeUrl.Type
+
+/**
  * Bounded message content. Team chat bodies are CHECK-bounded at 4000 in
  * D1; thread message `body_json` payloads are larger structured blobs.
  */
@@ -263,6 +278,16 @@ export class KhalaCodeTeamInviteEntity extends S.Class<
  * One team chat message (also projected into the linked autopilot thread's
  * `scope.thread.<autopilotThreadId>` when present). Excludes
  * `metadata_json`.
+ *
+ * `authorName` / `authorAvatarUrl` / `authorGithubUsername` (KS-6.11, #8422)
+ * are a denormalized snapshot of the author's display identity at write
+ * time — a JOIN against `users`/`auth_identities`, mirroring what the
+ * legacy `readTeamChatMessageById` wire payload already sends. They are
+ * `NullOr` (not required) because the historical-backfill path reads raw
+ * `team_chat_messages` rows without that JOIN and cannot supply them; a
+ * live write through the Worker mirror (`khala-code-product-state-store.ts`)
+ * always supplies all three for a message whose author user row still
+ * exists.
  */
 export class KhalaCodeTeamChatMessageEntity extends S.Class<
   KhalaCodeTeamChatMessageEntity
@@ -271,6 +296,9 @@ export class KhalaCodeTeamChatMessageEntity extends S.Class<
   teamId: KhalaCodeRef,
   projectId: S.NullOr(KhalaCodeRef),
   authorUserId: KhalaCodeRef,
+  authorName: S.NullOr(KhalaCodeName),
+  authorAvatarUrl: S.NullOr(KhalaCodeUrl),
+  authorGithubUsername: S.NullOr(KhalaCodeRef),
   kind: KhalaCodeToken,
   body: KhalaCodeMessageBody,
   autopilotThreadId: S.NullOr(KhalaCodeRef),
