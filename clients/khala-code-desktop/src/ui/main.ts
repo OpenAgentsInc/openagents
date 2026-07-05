@@ -81,6 +81,11 @@ import {
   mountKhalaCodeEditorPanel,
   type KhalaCodeEditorComposerContext,
 } from "./editor-panel"
+import {
+  mountKhalaCodeReviewPanel,
+  type KhalaCodeReviewComposerContext,
+  type KhalaCodeReviewPanelHandle,
+} from "./review-panel"
 import { mountKhalaCodeForumPanel } from "./forum-panel"
 import { mountKhalaCodePlansPanel } from "./plans-panel"
 import { mountKhalaCodeRunEvidencePanel } from "./run-evidence-panel"
@@ -378,6 +383,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["editorFileRead"]>>
       >("editorFileRead", request),
+    reviewDiffRead: (request?: Parameters<DesktopRpcRequests["reviewDiffRead"]>[0]) =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["reviewDiffRead"]>>
+      >("reviewDiffRead", request),
     composerNativeFilePickerOpen: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["composerNativeFilePickerOpen"]>>
@@ -2641,6 +2650,17 @@ const addEditorComposerContext = (
   })
 }
 
+const addReviewComposerContext = (
+  context: KhalaCodeReviewComposerContext,
+): void => {
+  addComposerContextChip({
+    displayPath: context.displayPath,
+    id: nextComposerContextChipId("file"),
+    kind: "file",
+    title: context.displayPath,
+  })
+}
+
 const addDiffReviewComposerContext = (
   comment: KhalaCodeDiffReviewComment,
 ): void => {
@@ -3902,26 +3922,14 @@ const stageSourceControlActionPromptInComposer = (prompt: string): void => {
   stageComposerText(prompt)
 }
 
-const handleDiffReviewSubmit = async (event: Event): Promise<void> => {
-  const rawDetail = "detail" in event
-    ? (event as CustomEvent<unknown>).detail
-    : undefined
-  let detail: typeof KhalaCodeDiffReviewSubmitDetailSchema.Type
-  try {
-    detail = S.decodeUnknownSync(KhalaCodeDiffReviewSubmitDetailSchema)(rawDetail)
-  } catch (error) {
-    appendMessages([{
-      body: `Diff review comment failed schema validation: ${error instanceof Error ? error.message : String(error)}`,
-      id: nextMessageId("system"),
-      role: "system",
-    }])
-    return
-  }
-
+const handleDiffReviewSubmitDetail = async (
+  detail: typeof KhalaCodeDiffReviewSubmitDetailSchema.Type,
+): Promise<void> => {
   const comment = khalaCodeDiffReviewComment({
     ...detail,
     commentRef: nextDiffReviewCommentRef(),
   })
+  reviewPanel?.addComment(comment)
   const note = khalaCodeDiffReviewSteeringNote(comment)
 
   if (!shellModel().pendingTurn) {
@@ -3960,6 +3968,24 @@ const handleDiffReviewSubmit = async (event: Event): Promise<void> => {
       role: "system",
     }])
   }
+}
+
+const handleDiffReviewSubmit = async (event: Event): Promise<void> => {
+  const rawDetail = "detail" in event
+    ? (event as CustomEvent<unknown>).detail
+    : undefined
+  let detail: typeof KhalaCodeDiffReviewSubmitDetailSchema.Type
+  try {
+    detail = S.decodeUnknownSync(KhalaCodeDiffReviewSubmitDetailSchema)(rawDetail)
+  } catch (error) {
+    appendMessages([{
+      body: `Diff review comment failed schema validation: ${error instanceof Error ? error.message : String(error)}`,
+      id: nextMessageId("system"),
+      role: "system",
+    }])
+    return
+  }
+  await handleDiffReviewSubmitDetail(detail)
 }
 
 const handleSourceControlActionSubmit = async (event: Event): Promise<void> => {
@@ -4988,6 +5014,8 @@ const controls = {
     rpc.request.editorDirectoryRead(request),
   editorFileRead: (request: Parameters<DesktopRpcRequests["editorFileRead"]>[0]) =>
     rpc.request.editorFileRead(request),
+  reviewDiffRead: (request?: Parameters<DesktopRpcRequests["reviewDiffRead"]>[0]) =>
+    rpc.request.reviewDiffRead(request),
   composerNativeFilePickerOpen: (request?: Parameters<DesktopRpcRequests["composerNativeFilePickerOpen"]>[0]) =>
     rpc.request.composerNativeFilePickerOpen(request),
   composerNativeDirectoryPickerOpen: (request?: Parameters<DesktopRpcRequests["composerNativeDirectoryPickerOpen"]>[0]) =>
@@ -5235,6 +5263,7 @@ const forumPanelEl = document.getElementById("forum-panel")
 const inboxPanelEl = document.getElementById("inbox-panel")
 const projectHomePanelEl = document.getElementById("project-home-panel")
 const editorPanelEl = document.getElementById("editor-panel")
+const reviewPanelEl = document.getElementById("review-panel")
 const gymPanelEl = document.getElementById("gym-panel")
 const settingsPanelEl = document.getElementById("settings-panel")
 const threadShell = document.querySelector<HTMLElement>(".khala-code-thread-shell")
@@ -5481,6 +5510,17 @@ const projectHomePanel =
         onOpenSessionInBackground: session => {
           void openProjectHomeSession(session, { focusChat: false })
         },
+      })
+
+const reviewPanel: KhalaCodeReviewPanelHandle | null =
+  reviewPanelEl === null
+    ? null
+    : mountKhalaCodeReviewPanel(reviewPanelEl, {
+        onCommentSubmit: detail => {
+          void handleDiffReviewSubmitDetail(detail)
+        },
+        onComposerContextSelected: addReviewComposerContext,
+        reviewDiffRead: request => controls.reviewDiffRead(request),
       })
 
 const gymPanel =
@@ -5873,8 +5913,13 @@ let sidebar: KhalaCodeSidebarHandle | null = null
 const setActiveView = (value: string): void => {
   const panelOpenStartedAt = performance.now()
   const activeValue =
-    value === "fleet" || value === "forum" || value === "inbox" || value === "settings" ||
-      value === "editor" || value === "home"
+    value === "fleet" ||
+    value === "forum" ||
+    value === "inbox" ||
+    value === "settings" ||
+    value === "editor" ||
+    value === "home" ||
+    value === "review"
       ? value
       : "chat"
   localStorage.setItem(activeViewStorageKey, activeValue)
@@ -5886,15 +5931,18 @@ const setActiveView = (value: string): void => {
   const showSettings = activeValue === "settings"
   const showEditor = activeValue === "editor"
   const showHome = activeValue === "home"
+  const showReview = activeValue === "review"
   if (threadSidebarEl !== null) threadSidebarEl.hidden = !showChat
   if (fleetPanelEl !== null) fleetPanelEl.hidden = !showFleet
   if (forumPanelEl !== null) forumPanelEl.hidden = !showForum
   if (inboxPanelEl !== null) inboxPanelEl.hidden = !showInbox
   if (projectHomePanelEl !== null) projectHomePanelEl.hidden = !showHome
   if (editorPanelEl !== null) editorPanelEl.hidden = !showEditor
+  if (reviewPanelEl !== null) reviewPanelEl.hidden = !showReview
   if (settingsPanelEl !== null) settingsPanelEl.hidden = !showSettings
   gymPanel?.setVisible(false)
-  const showsFullPanel = showFleet || showForum || showInbox || showSettings || showEditor || showHome
+  const showsFullPanel =
+    showFleet || showForum || showInbox || showSettings || showEditor || showHome || showReview
   if (threadShell !== null) threadShell.hidden = showsFullPanel
   if (composerDock !== null) composerDock.hidden = showsFullPanel
   fleetPanel?.setVisible(showFleet)
@@ -5903,6 +5951,7 @@ const setActiveView = (value: string): void => {
   projectHomePanel?.setVisible(showHome)
   settingsPanel?.setVisible(showSettings)
   editorPanel?.setVisible(showEditor)
+  reviewPanel?.setVisible(showReview)
   if (showSettings) {
     void claudeSettingsSection?.refresh()
     void plansSection?.refresh()
@@ -5921,6 +5970,7 @@ function showGymProofPane(): void {
   if (inboxPanelEl !== null) inboxPanelEl.hidden = true
   if (projectHomePanelEl !== null) projectHomePanelEl.hidden = true
   if (editorPanelEl !== null) editorPanelEl.hidden = true
+  if (reviewPanelEl !== null) reviewPanelEl.hidden = true
   if (settingsPanelEl !== null) settingsPanelEl.hidden = true
   if (threadShell !== null) threadShell.hidden = true
   if (composerDock !== null) composerDock.hidden = true
@@ -5931,6 +5981,7 @@ function showGymProofPane(): void {
   projectHomePanel?.setVisible(false)
   settingsPanel?.setVisible(false)
   editorPanel?.setVisible(false)
+  reviewPanel?.setVisible(false)
   threadSidebar?.setVisible(false)
 }
 
@@ -5948,6 +5999,8 @@ const hotbarCommandIdForValue = (value: KhalaCodeHotbarValue): KhalaCodeCommandI
       return "view.home"
     case "inbox":
       return "view.inbox"
+    case "review":
+      return "view.review"
     case "settings":
       return "view.settings"
   }
@@ -5964,6 +6017,7 @@ const commandSidebarShortcutLabels = (): Partial<Record<KhalaCodeHotbarValue, st
     forum: commandRegistry.keybindingLabel("view.forum"),
     home: commandRegistry.keybindingLabel("view.home"),
     inbox: commandRegistry.keybindingLabel("view.inbox"),
+    review: commandRegistry.keybindingLabel("view.review"),
     settings: commandRegistry.keybindingLabel("view.settings"),
   }
 }
@@ -6126,6 +6180,15 @@ commandRegistry = createKhalaCodeCommandRegistry([
     id: "view.home",
     keywords: ["projects", "dashboard", "sessions"],
     title: "Open Project Home",
+  },
+  {
+    analyticsRef: "khala_code.command.view.review",
+    category: "navigation",
+    defaultKeybindings: [{ alt: true, key: "8" }],
+    execute: () => setActiveView("review"),
+    id: "view.review",
+    keywords: ["diff", "comments", "revert"],
+    title: "Open Review",
   },
   {
     analyticsRef: "khala_code.command.session.new_chat",

@@ -551,6 +551,7 @@ export type KhalaCodeDesktopView =
   | "settings"
   | "editor"
   | "home"
+  | "review"
 
 const KHALA_CODE_VIEW_VALUES: ReadonlySet<string> = new Set<KhalaCodeDesktopView>([
   "chat",
@@ -560,6 +561,7 @@ const KHALA_CODE_VIEW_VALUES: ReadonlySet<string> = new Set<KhalaCodeDesktopView
   "settings",
   "editor",
   "home",
+  "review",
 ])
 
 const isKhalaCodeDesktopView = (value: string | null): value is KhalaCodeDesktopView =>

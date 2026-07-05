@@ -3141,6 +3141,93 @@ describe("Khala Code desktop RPC handlers", () => {
     })
   })
 
+  test("reviewDiffRead projects gitDiffToRemote into typed added/modified/deleted file entries", async () => {
+    const requests: { method: string, params: unknown }[] = []
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexAppServerHost: codexAppServerHost(async <Result>(method: string, params?: unknown) => {
+        requests.push({ method, params })
+        return {
+          sha: "abc123",
+          diff: [
+            "diff --git a/src/new-file.ts b/src/new-file.ts",
+            "new file mode 100644",
+            "index 0000000..1111111",
+            "--- /dev/null",
+            "+++ b/src/new-file.ts",
+            "@@ -0,0 +1,1 @@",
+            "+export const brandNew = true",
+            "",
+          ].join("\n"),
+        } as Result
+      }),
+      codexChatRuntime: throwingCodexChatRuntime(),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: "/repo",
+    })
+
+    const result = await handlers.reviewDiffRead({ cwd: "/repo/project" })
+    expect(result).toEqual({
+      files: [{ additions: 1, deletions: 0, diffKind: "added", path: "src/new-file.ts" }],
+      ok: true,
+      sha: "abc123",
+      truncated: false,
+    })
+    expect(requests).toEqual([{ method: "gitDiffToRemote", params: { cwd: "/repo/project" } }])
+  })
+
+  test("reviewDiffRead returns an empty file list for a no-change diff", async () => {
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexAppServerHost: codexAppServerHost(async <Result>() => ({
+        sha: "abc123",
+        diff: "",
+      } as Result)),
+      codexChatRuntime: throwingCodexChatRuntime(),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: "/repo",
+    })
+
+    await expect(handlers.reviewDiffRead()).resolves.toEqual({
+      files: [],
+      ok: true,
+      sha: "abc123",
+      truncated: false,
+    })
+  })
+
+  test("reviewDiffRead reports provider_unavailable honestly instead of a fabricated file list", async () => {
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexAppServerHost: codexAppServerHost(async () => {
+        throw new Error("gitDiffToRemote unavailable")
+      }),
+      codexChatRuntime: throwingCodexChatRuntime(),
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: "/repo",
+    })
+
+    await expect(handlers.reviewDiffRead()).resolves.toEqual({
+      error: { code: "provider_unavailable", message: "gitDiffToRemote unavailable" },
+      ok: false,
+    })
+  })
+
   test("returns blocked preference writes when Codex config is unavailable", async () => {
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({
       appleFmReadiness: () => {

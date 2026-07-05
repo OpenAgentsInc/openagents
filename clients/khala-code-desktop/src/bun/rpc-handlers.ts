@@ -37,6 +37,7 @@ import {
   createKhalaCodeEditorFileService,
   type KhalaCodeEditorFileService,
 } from "./editor-file-service.js"
+import { khalaCodeProjectReviewDiff } from "../shared/review-panel.js"
 import type { KhalaAppleFmReadiness } from "../shared/apple-fm-readiness.js"
 import type { OnDeviceDeciderSelection } from "../shared/on-device-decider.js"
 import {
@@ -3133,6 +3134,31 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     },
     async editorFileRead(request) {
       return editorFileService.fileRead(request)
+    },
+    async reviewDiffRead(request = {}) {
+      const cwd = request.cwd ?? input.workingDirectory
+      try {
+        const response = await requestCodexAppServer("gitDiffToRemote", { cwd })
+        const record = isRecord(response) ? response : {}
+        const diff = stringValue(record.diff) ?? ""
+        const sha = stringValue(record.sha)
+        const truncated = diff.length > MAX_DIFF_DISPLAY_CHARS
+        const displayDiff = truncated ? diff.slice(0, MAX_DIFF_DISPLAY_CHARS) : diff
+        return {
+          files: khalaCodeProjectReviewDiff(displayDiff),
+          ok: true as const,
+          sha,
+          truncated,
+        }
+      } catch (error) {
+        return {
+          error: {
+            code: "provider_unavailable" as const,
+            message: error instanceof Error ? error.message : "Codex gitDiffToRemote is unavailable.",
+          },
+          ok: false as const,
+        }
+      }
     },
     async composerNativeFilePickerOpen(request = {}) {
       pruneExpiredNativeFileGrants()

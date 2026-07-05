@@ -14,6 +14,7 @@ export type KhalaCodeHotbarValue =
   | "settings"
   | "editor"
   | "home"
+  | "review"
 
 export type KhalaCodeHotbarSlot = Readonly<{
   actionId: `action_bar.slot_${number}`
@@ -80,6 +81,14 @@ export const KHALA_CODE_HOTBAR_SLOTS: ReadonlyArray<KhalaCodeHotbarSlot> = [
     label: "Home",
     slot: 7,
     value: "home",
+  },
+  {
+    actionId: "action_bar.slot_8",
+    hotkey: "8",
+    icon: "Compare",
+    label: "Review",
+    slot: 8,
+    value: "review",
   },
 ]
 

@@ -28,6 +28,10 @@ import {
   KhalaCodeEditorProviderListResult,
   KhalaCodeEditorWorkspaceReadResult,
 } from "./editor.js"
+import {
+  KhalaCodeReviewDiffReadRequestSchema,
+  KhalaCodeReviewDiffReadResultSchema,
+} from "./review-panel.js"
 
 // Electrobun treats Infinity as no local request timeout; chat turns stream progress
 // over events while hosted model calls and local tools can legitimately exceed 30s.
@@ -202,6 +206,8 @@ export type KhalaCodeDesktopEditorDirectoryReadRequest = typeof KhalaCodeEditorD
 export type KhalaCodeDesktopEditorDirectoryReadResult = typeof KhalaCodeEditorDirectoryReadResult.Type
 export type KhalaCodeDesktopEditorFileReadRequest = typeof KhalaCodeEditorFileReadRequest.Type
 export type KhalaCodeDesktopEditorFileReadResult = typeof KhalaCodeEditorFileReadResult.Type
+export type KhalaCodeDesktopReviewDiffReadRequest = typeof KhalaCodeReviewDiffReadRequestSchema.Type
+export type KhalaCodeDesktopReviewDiffReadResult = typeof KhalaCodeReviewDiffReadResultSchema.Type
 export type KhalaCodeDesktopCodexBackgroundTerminalsListRequest = typeof RpcBackgroundTerminalsListRequest.Type
 export type KhalaCodeDesktopCodexBackgroundTerminalsCleanRequest = typeof RpcBackgroundTerminalsCleanRequest.Type
 export type KhalaCodeDesktopCodexBackgroundTerminalsTerminateRequest = typeof RpcBackgroundTerminalsTerminateRequest.Type
@@ -2615,6 +2621,7 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   editorWorkspaceRead: { parameters: noParams(), result: KhalaCodeEditorWorkspaceReadResult },
   editorDirectoryRead: { parameters: [optionalParam(KhalaCodeEditorDirectoryReadRequest)], result: KhalaCodeEditorDirectoryReadResult },
   editorFileRead: { parameters: [param(KhalaCodeEditorFileReadRequest)], result: KhalaCodeEditorFileReadResult },
+  reviewDiffRead: { parameters: [optionalParam(KhalaCodeReviewDiffReadRequestSchema)], result: KhalaCodeReviewDiffReadResultSchema },
   composerNativeFilePickerOpen: { parameters: [optionalParam(RpcComposerNativeFilePickerRequest)], result: RpcComposerNativeFilePickerResult },
   composerNativeDirectoryPickerOpen: { parameters: [optionalParam(RpcComposerNativeDirectoryPickerRequest)], result: RpcComposerNativeDirectoryPickerResult },
   composerNativeSaveDialogOpen: { parameters: [optionalParam(RpcComposerNativeSaveDialogRequest)], result: RpcComposerNativeSaveDialogResult },
@@ -2803,6 +2810,7 @@ export type KhalaCodeDesktopRPCSchema = {
     editorWorkspaceRead(): Promise<KhalaCodeDesktopEditorWorkspaceReadResult>
     editorDirectoryRead(request?: KhalaCodeDesktopEditorDirectoryReadRequest): Promise<KhalaCodeDesktopEditorDirectoryReadResult>
     editorFileRead(request: KhalaCodeDesktopEditorFileReadRequest): Promise<KhalaCodeDesktopEditorFileReadResult>
+    reviewDiffRead(request?: KhalaCodeDesktopReviewDiffReadRequest): Promise<KhalaCodeDesktopReviewDiffReadResult>
     composerNativeFilePickerOpen(request?: KhalaCodeDesktopComposerNativeFilePickerRequest): Promise<KhalaCodeDesktopComposerNativeFilePickerResult>
     composerNativeDirectoryPickerOpen(request?: KhalaCodeDesktopComposerNativeDirectoryPickerRequest): Promise<KhalaCodeDesktopComposerNativeDirectoryPickerResult>
     composerNativeSaveDialogOpen(request?: KhalaCodeDesktopComposerNativeSaveDialogRequest): Promise<KhalaCodeDesktopComposerNativeSaveDialogResult>

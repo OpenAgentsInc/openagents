@@ -27,6 +27,7 @@ export type KhalaCodeCommandId =
   | "view.forum"
   | "view.home"
   | "view.inbox"
+  | "view.review"
   | "view.settings"
 
 export type KhalaCodeCommandKeybinding = Readonly<{

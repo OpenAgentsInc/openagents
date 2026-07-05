@@ -5588,6 +5588,261 @@ button {
   }
 }
 
+.khala-code-review {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--oa-color-component-text);
+}
+.khala-code-review-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: var(--khala-code-review-width, 320px);
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  margin: 0 auto;
+  background: color-mix(in srgb, var(--oa-color-khala-surface) 54%, var(--oa-color-khala-void));
+}
+.khala-code-review-panel[data-collapsed="true"] .khala-code-review-body {
+  display: none;
+}
+.khala-code-review-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  min-height: 3rem;
+  padding: 0.72rem 0.9rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--oa-color-component-border) 70%, transparent);
+}
+.khala-code-review-title {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.khala-code-review-tabs {
+  display: inline-flex;
+  gap: 0.3rem;
+}
+.khala-code-review-tab {
+  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 70%, transparent);
+  border-radius: 4px;
+  background: transparent;
+  color: color-mix(in srgb, var(--oa-color-component-text) 78%, transparent);
+  font-size: 0.72rem;
+  padding: 0.3rem 0.6rem;
+}
+.khala-code-review-tab[data-active="true"] {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 58%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 14%, transparent);
+  color: var(--oa-color-component-text);
+}
+.khala-code-review-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.khala-code-review-width-button,
+.khala-code-review-refresh-button,
+.khala-code-review-collapse-button {
+  display: inline-grid;
+  width: 1.85rem;
+  height: 1.85rem;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 70%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--oa-color-khala-surface) 58%, transparent);
+  color: var(--oa-color-component-text);
+}
+.khala-code-review-width-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+.khala-code-review-header-icon {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+.khala-code-review-body {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  flex: 1;
+}
+.khala-code-review-files,
+.khala-code-review-comments {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.6rem 0.7rem 1.2rem;
+}
+.khala-code-review-state,
+.khala-code-review-empty-state {
+  color: color-mix(in srgb, var(--oa-color-component-text) 58%, transparent);
+  font-size: 0.82rem;
+  padding: 0.5rem 0.2rem;
+}
+.khala-code-review-truncated-note {
+  margin-bottom: 0.6rem;
+  color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 82%, var(--oa-color-component-text));
+  font-family: var(--oa-font-code);
+  font-size: 0.68rem;
+}
+.khala-code-review-group + .khala-code-review-group {
+  margin-top: 0.9rem;
+}
+.khala-code-review-group-heading {
+  margin: 0 0 0.35rem;
+  color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 82%, var(--oa-color-component-text));
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.khala-code-review-group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.khala-code-review-file-row {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--oa-color-component-text);
+  font: inherit;
+  text-align: left;
+}
+.khala-code-review-file-row:hover {
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 8%, transparent);
+}
+.khala-code-review-file-row:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 70%, transparent);
+  outline-offset: -2px;
+}
+.khala-code-review-file-row[data-selected="true"] {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 40%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 14%, transparent);
+}
+.khala-code-review-file-badge {
+  font-family: var(--oa-font-code);
+  font-weight: 700;
+  text-align: center;
+  color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 82%, var(--oa-color-component-text));
+}
+.khala-code-review-file-path {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.khala-code-review-file-stats {
+  flex: none;
+  color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 78%, transparent);
+  font-family: var(--oa-font-code);
+  font-size: 0.66rem;
+}
+.khala-code-review-file-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0.2rem 0 0.5rem;
+  padding: 0.6rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 70%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--oa-color-khala-void) 24%, transparent);
+}
+.khala-code-review-file-detail-summary {
+  color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 82%, var(--oa-color-component-text));
+  font-family: var(--oa-font-code);
+  font-size: 0.7rem;
+}
+.khala-code-review-file-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+.khala-code-review-add-context-button,
+.khala-code-review-revert-button {
+  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 70%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--oa-color-khala-surface) 58%, transparent);
+  color: var(--oa-color-component-text);
+  font-size: 0.72rem;
+  padding: 0.3rem 0.6rem;
+}
+.khala-code-review-add-context-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+.khala-code-review-revert-button[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+.khala-code-review-revert-status {
+  color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 88%, var(--oa-color-component-text));
+  font-size: 0.7rem;
+}
+.khala-code-review-comment-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.khala-code-review-comment-textarea {
+  min-height: 2.6rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 70%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--oa-color-khala-void) 34%, transparent);
+  color: var(--oa-color-component-text);
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.4rem 0.5rem;
+  resize: vertical;
+}
+.khala-code-review-comment-submit {
+  align-self: flex-start;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 42%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 14%, transparent);
+  color: var(--oa-color-component-text);
+  font-size: 0.72rem;
+  padding: 0.3rem 0.65rem;
+}
+.khala-code-review-comment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.khala-code-review-comment-item {
+  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 70%, transparent);
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  background: color-mix(in srgb, var(--oa-color-khala-void) 24%, transparent);
+}
+.khala-code-review-comment-label {
+  color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 82%, var(--oa-color-component-text));
+  font-family: var(--oa-font-code);
+  font-size: 0.68rem;
+  margin-bottom: 0.25rem;
+}
+.khala-code-review-comment-body {
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+}
+
 .khala-code-settings {
   grid-column: 2;
   grid-row: 1 / 3;
