@@ -19,7 +19,7 @@ import { SafeAreaView } from "react-native-safe-area-context"
 import { AppHeader } from "../../src/components/app-header"
 import { ChatComposer, chatComposerKeyboardVerticalOffset } from "../../src/components/chat-composer"
 import { TranscriptPartRow } from "../../src/components/transcript-part-row"
-import { findActiveTurn } from "../../src/sync/khala-runtime-compose-core"
+import { findActiveTurn, mostRecentTurnLane } from "../../src/sync/khala-runtime-compose-core"
 import { sortByKeyAsc } from "../../src/sync/khala-sync-entities-core"
 import {
   reduceRuntimeTranscript,
@@ -88,6 +88,7 @@ export default function ThreadMessagesScreen() {
     runtimeTurnIdOf
   )
   const activeTurn = useMemo(() => findActiveTurn(turnState.items), [turnState.items])
+  const defaultLane = useMemo(() => mostRecentTurnLane(turnState.items), [turnState.items])
   const push = useKhalaSyncPush()
 
   const messages = sortByKeyAsc(
@@ -170,7 +171,7 @@ export default function ThreadMessagesScreen() {
           )}
         </View>
         {threadId === undefined || status === "missing_token" ? null : (
-          <ChatComposer activeTurn={activeTurn} push={push} threadId={threadId} />
+          <ChatComposer activeTurn={activeTurn} defaultLane={defaultLane} push={push} threadId={threadId} />
         )}
       </KeyboardAvoidingView>
     </SafeAreaView>

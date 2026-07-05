@@ -66,6 +66,19 @@ describe("reduceRuntimeTranscript", () => {
     expect(parts[0]).toMatchObject({ status: "failed" })
   })
 
+  test("turn-status parts carry the producing lane straight off the event's own source (#8405)", () => {
+    const parts = reduceRuntimeTranscript([
+      { ...base, eventId: "e1", kind: "turn.started", source: { lane: "claude_pylon" } },
+      { ...base, eventId: "e2", kind: "turn.interrupted", source: { lane: "claude_pylon" } },
+      { ...base, eventId: "e3", kind: "turn.finished", finishReason: "stop", source: { lane: "codex_app_server" } }
+    ])
+    expect(parts.map(p => (p.kind === "turn-status" ? p.lane : undefined))).toEqual([
+      "claude_pylon",
+      "claude_pylon",
+      "codex_app_server"
+    ])
+  })
+
   test("appending new events preserves the id (and position) of previously-produced parts", () => {
     // This id-stability property is what lets the mobile transcript FlatList
     // (`app/thread/[threadId].tsx`) safely rely on Reanimated's `entering=`

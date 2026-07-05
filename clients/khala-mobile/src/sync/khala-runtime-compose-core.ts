@@ -1,4 +1,4 @@
-import type { RuntimeTurnEntity } from "@openagentsinc/khala-sync"
+import type { KhalaRuntimeLane, RuntimeTurnEntity } from "@openagentsinc/khala-sync"
 
 /**
  * Pure composer logic — building the exact mutation payloads a "send" or
@@ -28,6 +28,21 @@ export const findActiveTurn = (
   return undefined
 }
 
+/** The default lane a NEW turn's picker should preselect (#8405): whichever
+ * lane the thread's most recent turn (settled or not) actually used, so a
+ * user who always talks to Claude in a thread doesn't have to re-pick it
+ * every time; `undefined` for a thread with no turns yet, letting the caller
+ * fall back to whatever this app's overall default lane is. Turn ids are
+ * UUIDv7 (time-ordered), so lexicographic sort gives chronological order —
+ * same technique as `findActiveTurn`, just without the active-status filter. */
+export const mostRecentTurnLane = (
+  turns: ReadonlyArray<RuntimeTurnEntity>
+): KhalaRuntimeLane | undefined => {
+  if (turns.length === 0) return undefined
+  const sorted = [...turns].sort((a, b) => a.turnId.localeCompare(b.turnId))
+  return sorted[sorted.length - 1]?.lane
+}
+
 export type ChatAppendMessageArgs = Readonly<{
   threadId: string
   messageId: string
@@ -52,7 +67,13 @@ export const buildChatAppendMessageArgs = (input: {
 export const chatMessageBodyRef = (messageId: string): string => `chat_message.${messageId}`
 
 const RUNTIME_ORIGIN = { lane: "khala_sync_mobile_control", surface: "mobile" } as const
-const RUNTIME_TARGET = { lane: "codex_app_server" } as const
+
+/** The Codex lane stays the app-wide fallback (#8405): a thread with no
+ * turns yet, or a caller that hasn't threaded a `target` at all, preselects
+ * Codex — same behavior as before this issue, when the lane was hardcoded. */
+export const DEFAULT_RUNTIME_LANE: KhalaRuntimeLane = "codex_app_server"
+
+export type RuntimeControlIntentTarget = Readonly<{ lane: KhalaRuntimeLane }>
 
 export type RuntimeControlIntentArgs = Readonly<{
   schema: "openagents.khala_runtime_control_intent.v1"
@@ -63,7 +84,7 @@ export type RuntimeControlIntentArgs = Readonly<{
   messageId?: string
   createdAt: string
   origin: typeof RUNTIME_ORIGIN
-  target: typeof RUNTIME_TARGET
+  target: RuntimeControlIntentTarget
   visibility: "private"
   redactionClass: "private_ref"
   idempotencyKey: string
@@ -71,11 +92,15 @@ export type RuntimeControlIntentArgs = Readonly<{
   bodyRef?: string
 }>
 
+/** Starts a brand-new turn (#8405: `target` now names WHICH provider — Codex
+ * vs Claude — should run it, from the composer's lane picker, instead of the
+ * old hardcoded Codex-only constant). */
 export const buildStartTurnIntentArgs = (input: {
   threadId: string
   turnId: string
   bodyRef: string
   nowIso: string
+  target: RuntimeControlIntentTarget
 }): RuntimeControlIntentArgs => ({
   bodyRef: input.bodyRef,
   causalityRefs: [],
@@ -86,20 +111,26 @@ export const buildStartTurnIntentArgs = (input: {
   origin: RUNTIME_ORIGIN,
   redactionClass: "private_ref",
   schema: "openagents.khala_runtime_control_intent.v1",
-  target: RUNTIME_TARGET,
+  target: input.target,
   threadId: input.threadId,
   turnId: input.turnId,
   visibility: "private"
 })
 
 /** "Steer" — attach a follow-up message to the turn that's already running,
- * without interrupting it. */
+ * without interrupting it. `target` here is NOT a fresh user choice — a
+ * running turn's provider is already fixed, so the caller must pass the
+ * ACTIVE turn's own lane (`RuntimeTurnEntity.lane`), never the composer's
+ * lane picker (that picker only applies to a brand-new turn; switching an
+ * in-flight turn's provider is cross-agent delegation, #8407, out of scope
+ * here). */
 export const buildAppendUserMessageIntentArgs = (input: {
   threadId: string
   turnId: string
   messageId: string
   bodyRef: string
   nowIso: string
+  target: RuntimeControlIntentTarget
 }): RuntimeControlIntentArgs => ({
   bodyRef: input.bodyRef,
   causalityRefs: [],
@@ -111,7 +142,7 @@ export const buildAppendUserMessageIntentArgs = (input: {
   origin: RUNTIME_ORIGIN,
   redactionClass: "private_ref",
   schema: "openagents.khala_runtime_control_intent.v1",
-  target: RUNTIME_TARGET,
+  target: input.target,
   threadId: input.threadId,
   turnId: input.turnId,
   visibility: "private"
@@ -126,12 +157,16 @@ export const buildQueueTurnIntentArgs = buildStartTurnIntentArgs
  * interrupted), matching the runtime.interruptTurn mutator's settled=true
  * transition and the transcript reducer's turn-status handling. `nonce`
  * only needs to be unique per interrupt tap (no retry of the same turn
- * would otherwise collide on intentId/idempotencyKey). */
+ * would otherwise collide on intentId/idempotencyKey). `target` must be the
+ * turn being interrupted's own lane, for the same reason as
+ * `buildAppendUserMessageIntentArgs` above — you can't retarget a turn
+ * that's already running on a specific provider. */
 export const buildInterruptTurnIntentArgs = (input: {
   threadId: string
   turnId: string
   nowIso: string
   nonce: string
+  target: RuntimeControlIntentTarget
 }): RuntimeControlIntentArgs => ({
   causalityRefs: [],
   createdAt: input.nowIso,
@@ -141,7 +176,7 @@ export const buildInterruptTurnIntentArgs = (input: {
   origin: RUNTIME_ORIGIN,
   redactionClass: "private_ref",
   schema: "openagents.khala_runtime_control_intent.v1",
-  target: RUNTIME_TARGET,
+  target: input.target,
   threadId: input.threadId,
   turnId: input.turnId,
   visibility: "private"

@@ -1354,3 +1354,76 @@ connect/link flow was built. If a future need for Claude-side attribution
 parity with Codex emerges (billing being the most likely candidate), it
 should be scoped as its own issue rather than retrofitted here speculatively
 — nothing in the current system depends on it.
+
+## #8405: composer lane picker (Codex vs Claude) and per-turn lane badge
+
+Gap 4 above is closed: the mobile composer can now actually request
+`claude_pylon`, not just have the server-side dispatch work once picked.
+
+### What's new
+
+- **`khala-runtime-compose-core.ts`** — the old hardcoded
+  `RUNTIME_TARGET = { lane: "codex_app_server" }` constant is gone.
+  `buildStartTurnIntentArgs` and `buildAppendUserMessageIntentArgs` (and, for
+  schema completeness, `buildInterruptTurnIntentArgs`) now take an explicit
+  `target: { lane: KhalaRuntimeLane }` param instead. `DEFAULT_RUNTIME_LANE`
+  (`"codex_app_server"`) is the named fallback for a thread with no turns
+  yet — same default behavior as before this issue, just no longer baked
+  into every call site. New `mostRecentTurnLane(turns)` picks the lane of
+  the thread's chronologically-last turn (any status), mirroring
+  `findActiveTurn`'s UUIDv7-sort technique minus the active-status filter.
+- **`chat-composer.tsx`** — a small idle-only two-pill toggle ("Codex" /
+  "Claude", reusing the existing Steer/Queue pill's visual pattern per the
+  issue's own suggested precedent) appears above the input row whenever
+  there's no active turn. It preselects `defaultLane` (the thread's
+  `mostRecentTurnLane`, itself falling back to `DEFAULT_RUNTIME_LANE`) until
+  the user taps a pill, after which their choice sticks even if `defaultLane`
+  recomputes. The picker is intentionally hidden while a turn is running —
+  **a turn's provider is fixed once it starts**: `runtime.appendUserMessage`
+  (steer) and `runtime.interruptTurn` (stop) always target the ACTIVE turn's
+  own `lane` (`activeTurn.lane`), never the idle picker's current value, and
+  "Queue (after this turn)" — which does start a genuinely new turn while one
+  is active — also inherits the active turn's lane rather than silently
+  switching providers mid-thread from a hidden control. Retargeting an
+  in-flight or queued-behind turn to a different provider is cross-agent
+  delegation (#8407), explicitly out of scope here.
+- **`transcript-part-row.tsx` / `khala-runtime-transcript-core.ts`** — each
+  `turn-status` transcript part (the "— turn started —" / "— turn completed
+  —" divider) now carries a `lane` field, read straight off that lifecycle
+  event's own `source.lane` (`turn.started` / `turn.interrupted` /
+  `turn.finished` all already carry it — the same lane value
+  `RuntimeTurnEntity.lane` holds for that turn, just sourced from the event
+  stream already being folded rather than a second lookup). Rendered as a
+  tiny rounded "Codex"/"Claude" pill next to the divider text. Purely
+  additive/read-only — no new sync data, no dispatch-path change.
+
+### Decision on "no dispatch-ready account" UX (issue item 4)
+
+Checked how this is surfaced for Codex today before deciding whether Claude
+needs anything new: `handleTurnStart` in `runtime-intent-enforcement.ts`
+returns `{ outcome: "failed", detail: "no dispatch-ready local Codex account
+available" }` when `selectDispatchAccount` finds nothing — but that outcome
+is recorded only in `PylonOrchestrationStore`'s process-local
+`recordRuntimeIntentOutcome` ledger (an operator-facing log line), never
+published as a `KhalaRuntimeEvent` back to the thread. The `runtime_turn`
+entity the mobile app subscribes to was already created `queued` by the
+`runtime.startTurn` mutator itself, and nothing ever moves it out of
+`queued` in this failure path — so **today, for Codex, a "no dispatch-ready
+account" turn just sits `queued` forever with zero user-visible signal**;
+there is no timeout/stuck-detection anywhere in the mobile client either
+(confirmed: no such logic exists in `chat-composer.tsx` or
+`app/thread/[threadId].tsx`).
+
+Given that, the honest decision for Claude is: **do not invent a new error
+class**, per the issue's own instruction — there is no existing one to
+reuse (Codex's failure isn't surfaced to the user at all), and adding a
+Claude-only surfaced error would be a worse, asymmetric experience than
+matching Codex's current (silent) behavior. Picking Claude with no `ready`
+`claude_agent` account produces the exact same "queued forever, no
+mobile-visible error" outcome Codex already has today. This is a real,
+pre-existing gap — not something #8405 introduces — and is worth a future
+issue covering BOTH providers together (e.g. a `turn.finished` /
+`finishReason: "error"` event pushed from `handleTurnStart`'s failure
+branches, which the transcript reducer and turn-status rendering added in
+this pass would already render correctly with zero further UI work), rather
+than a Claude-specific patch that would leave Codex still silently stuck.

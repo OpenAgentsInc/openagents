@@ -1,4 +1,4 @@
-import type { KhalaRuntimeEvent, RuntimeEventEntity } from "@openagentsinc/khala-sync"
+import type { KhalaRuntimeEvent, KhalaRuntimeLane, RuntimeEventEntity } from "@openagentsinc/khala-sync"
 
 /** One renderable, ordered piece of a runtime transcript — folded from the
  * raw KhalaRuntimeEvent stream, preserving temporal order (unlike a
@@ -16,7 +16,16 @@ export type TranscriptPart =
       errorMessageSafe?: string
     }>
   | Readonly<{ kind: "usage"; id: string; inputTokens?: number; outputTokens?: number; totalTokens?: number }>
-  | Readonly<{ kind: "turn-status"; id: string; status: "running" | "completed" | "failed" | "interrupted" }>
+  | Readonly<{
+      kind: "turn-status"
+      id: string
+      status: "running" | "completed" | "failed" | "interrupted"
+      /** Which provider/adapter produced this turn (#8405) — read directly off
+       * the `turn.started`/`turn.interrupted`/`turn.finished` event's own
+       * `source.lane`, the same lane value `RuntimeTurnEntity.lane` carries
+       * for this turn. Purely a display addition; never affects dispatch. */
+      lane: KhalaRuntimeLane
+    }>
 
 export const sortEventsBySequence = (
   entities: ReadonlyArray<RuntimeEventEntity>
@@ -44,15 +53,16 @@ export const reduceRuntimeTranscript = (
   for (const event of events) {
     switch (event.kind) {
       case "turn.started":
-        parts.push({ id: `turn-status-${parts.length}`, kind: "turn-status", status: "running" })
+        parts.push({ id: `turn-status-${parts.length}`, kind: "turn-status", lane: event.source.lane, status: "running" })
         break
       case "turn.interrupted":
-        parts.push({ id: `turn-status-${parts.length}`, kind: "turn-status", status: "interrupted" })
+        parts.push({ id: `turn-status-${parts.length}`, kind: "turn-status", lane: event.source.lane, status: "interrupted" })
         break
       case "turn.finished":
         parts.push({
           id: `turn-status-${parts.length}`,
           kind: "turn-status",
+          lane: event.source.lane,
           status: event.finishReason === "error" ? "failed" : "completed"
         })
         break

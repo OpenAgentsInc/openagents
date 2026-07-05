@@ -1,5 +1,7 @@
 import { Text, View } from "react-native"
 
+import type { KhalaRuntimeLane } from "@openagentsinc/khala-sync"
+
 import type { TranscriptPart } from "../sync/khala-runtime-transcript-core"
 
 const TURN_STATUS_LABEL: Record<
@@ -11,6 +13,17 @@ const TURN_STATUS_LABEL: Record<
   interrupted: "turn interrupted",
   running: "turn started"
 }
+
+/** Short, user-facing provider label for the per-turn lane badge (#8405).
+ * Only the two user-selectable lanes get a friendly name — every other lane
+ * (ai_sdk_core, khala_sync_mobile_control, test_fixture, …) is an internal
+ * routing detail no chat transcript should ever show, so it falls back to
+ * the raw lane string rather than inventing a label nobody picked. */
+const LANE_LABEL: Partial<Record<KhalaRuntimeLane, string>> = {
+  claude_pylon: "Claude",
+  codex_app_server: "Codex"
+}
+const laneLabel = (lane: KhalaRuntimeLane): string => LANE_LABEL[lane] ?? lane
 
 const TOOL_STATUS_COLOR: Record<Extract<TranscriptPart, { kind: "tool" }>["status"], string> = {
   called: "text-warning",
@@ -61,9 +74,16 @@ export const TranscriptPartRow = ({ part }: { part: TranscriptPart }) => {
       )
     case "turn-status":
       return (
-        <Text className="self-center font-mono text-xs uppercase tracking-wide text-textFaint">
-          — {TURN_STATUS_LABEL[part.status]} —
-        </Text>
+        <View className="flex-row items-center justify-center gap-1.5 self-center">
+          <Text className="font-mono text-xs uppercase tracking-wide text-textFaint">
+            — {TURN_STATUS_LABEL[part.status]} —
+          </Text>
+          <View className="rounded-full border border-borderMuted bg-surface px-1.5 py-0.5">
+            <Text className="font-mono text-[10px] uppercase tracking-wide text-textFaint">
+              {laneLabel(part.lane)}
+            </Text>
+          </View>
+        </View>
       )
   }
 }
