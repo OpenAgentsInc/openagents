@@ -388,3 +388,83 @@ that goal has two remaining pieces, neither built yet:
 Both are real, scoped, buildable next phases — not done in this pass to
 avoid rushing a cross-device dispatch/execution path (security and
 correctness sensitive) without proper design and testing time.
+
+Tracked as GitHub issues:
+[#8388](https://github.com/OpenAgentsInc/openagents/issues/8388) (dispatch
+consumer) and
+[#8389](https://github.com/OpenAgentsInc/openagents/issues/8389) (capacity-
+aware account selection, depends on #8388).
+
+### Follow-up: rich AI-SDK-shaped transcript rendering on mobile
+
+Reviewed #8375 (closed by another agent — simulator-only proof,
+`docs/khala-sync/receipts/2026-07-05-runtime-ai-sdk-shaped-dogfood.simulator.json`,
+`docs/fable/2026-07-05-khala-sync-runtime-ai-sdk-shaped-dogfood.md`) and the
+new `runtime.*` Khala Sync schema it landed on top of (#8370,
+`@openagentsinc/agent-runtime-schema`'s `KhalaRuntimeEvent`: a 19-kind
+discriminated union covering turn lifecycle, text/reasoning deltas, tool
+call/result/error, usage, and provider metadata — a raw `streamText`-shaped
+event stream, not `UIMessage.parts`). The reference reducer
+`reduceKhalaRuntimeTranscript` in `packages/khala-ai-sdk-core` groups events
+by `messageId`/`toolCallId` into flat dicts, which loses temporal
+interleaving between text and tool calls — not suitable for a chat
+transcript UI as-is.
+
+To prove the desktop-to-mobile path with real components, first root-caused
+and fixed a genuine production bug blocking `runtime.startTurn` entirely:
+Khala Sync's Postgres migrations are a separate system from the Cloudflare
+Worker's D1 migration gate (`check:pending-migrations` is D1-only), and 3
+migrations for the new `runtime.*` tables
+(`0029_khala_sync_runtime.sql`/`0030`/`0031`) had never been applied to
+production — `wrangler tail` showed the push route's catch-all error
+handler silently swallowing the resulting Postgres errors into a generic
+`{code:"internal"}` with no server-side logging. Also found and reverted a
+comment-only edit to an already-applied, checksummed migration file
+(`0027_forum_remainder.sql`) made by an unrelated concurrent commit, which
+violates migration-file immutability. Applied the 3 pending migrations
+directly against production Cloud SQL Postgres once the file set was clean.
+
+With the write path unblocked, mirrored a real, rich, multi-tool-call
+conversation (the actual desktop turn that produced the "What does Khala
+Sync do?" answer) into the new schema for
+`scope.thread.019f309c-d9b1-70f2-9228-e3992ca1fa5a`: `turn.started`, 4
+interleaved `text.delta`/`text.completed` message chunks, 5 `tool.call` +
+`tool.result` pairs (real tool name `commandExecution`), `usage.recorded`
+(24528 in / 139 out / 24667 total), `turn.finished` — 21 events total,
+verified live via a prod bootstrap read (`status:"completed"`,
+`eventCount:21`).
+
+Built the mobile-side rendering to make that data legible instead of using
+the id-grouped reference reducer:
+
+- `src/sync/khala-runtime-transcript-core.ts` — `reduceRuntimeTranscript`,
+  a pure ORDER-PRESERVING reducer producing a flat `TranscriptPart[]`
+  (`text`/`reasoning`/`tool`/`usage`/`turn-status`), merging consecutive
+  `*.delta` chunks for the same message into one growing part instead of
+  one bubble per chunk, and interleaving tool cards between text bubbles
+  in original temporal order. 5 unit tests
+  (`tests/khala-runtime-transcript-core.test.ts`).
+- `src/components/transcript-part-row.tsx` — one distinct component per
+  part kind: text bubble, italic reasoning block, tool call/result card
+  (name + `called`/`completed`/`failed` status, error text if failed),
+  usage footer line, turn-status divider.
+- `app/thread/[threadId].tsx` — now reads both the `chat_message` and
+  `runtime_event` collections for the thread's scope and prefers the
+  ordered runtime transcript when any runtime events exist, falling back
+  to plain chat bubbles otherwise (so existing chat-only threads are
+  unaffected).
+
+Verified on the iOS Simulator via `com.openagents.khala.mobile://thread/...`
+deep link into the real thread above: the 21-event transcript renders as
+"— TURN STARTED —", the 4 text bubbles in order, 5 tool cards each reading
+"🔧 commandExecution — completed", the usage footer
+("24528 in · 139 out · 24667 total tokens"), and "— TURN COMPLETED —" — all
+in the correct temporal order matching the original conversation. This is
+the proof the user asked for: a conversation initiated via the desktop,
+streamed into Khala Sync, and rendered on mobile with all relevant
+components.
+
+**Still a gap, same as noted above:** this is a manually-mirrored real
+conversation, not a live mobile/desktop-initiated dispatch. #8388 (dispatch
+consumer) and #8389 (account selection) remain unbuilt — proving the
+render path was the prerequisite, not a replacement, for that work.
