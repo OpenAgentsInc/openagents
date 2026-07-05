@@ -12,6 +12,12 @@ set -uo pipefail
 
 REPO_ROOT="${SUP_REPO_ROOT:-__REPO_ROOT__}"
 
+# launchd's GUI-domain agents get a minimal PATH (no bun, no Homebrew) — add
+# the common install locations so `bun` resolves without needing an absolute
+# path baked in (verified needed against the sibling runtime-supervisor job:
+# `exec: bun: not found` before this was added).
+export PATH="$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+
 SUP_SECRET_ENV="${SUP_SECRET_ENV:-$HOME/work/.secrets/openagents-artanis-agent.env}"
 if [ -f "$SUP_SECRET_ENV" ]; then
   set -a; . "$SUP_SECRET_ENV"; set +a

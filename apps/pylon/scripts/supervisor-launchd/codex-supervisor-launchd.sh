@@ -13,6 +13,12 @@ set -uo pipefail
 
 REPO_ROOT="${SUP_REPO_ROOT:-__REPO_ROOT__}"
 
+# launchd's GUI-domain agents get a minimal PATH (no bun, no Homebrew) — add
+# the common install locations so `bun` resolves without needing an absolute
+# path baked in (verified needed against the sibling runtime-supervisor job:
+# `exec: bun: not found` before this was added).
+export PATH="$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+
 # Owner-linked (Artanis) agent token — the supervisor FIRES khala requests, so
 # it must be owner-linked (never the fable token). Read from .secrets; the file
 # exports OPENAGENTS_AGENT_TOKEN. Tokens are never echoed.

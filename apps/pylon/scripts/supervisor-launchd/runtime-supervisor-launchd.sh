@@ -20,6 +20,12 @@ set -uo pipefail
 
 REPO_ROOT="${SUP_REPO_ROOT:-__REPO_ROOT__}"
 
+# launchd's GUI-domain agents get a minimal PATH (no bun, no Homebrew) — add
+# the common install locations so `bun` resolves without needing an absolute
+# path baked in (verified needed: `caffeinate -i ... .sh` execed with
+# `exec: bun: not found` before this was added).
+export PATH="$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+
 # Owner-linked (Artanis) agent token — this process pushes `runtime.recordEvent`
 # and Pylon-authored follow-up `runtime.startTurn` mutations into the owner's
 # own scope, so it must be owner-linked (never the fable token). Read from
