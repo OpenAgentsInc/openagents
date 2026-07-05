@@ -7,6 +7,7 @@ import { ActivityIndicator, LogBox, View } from "react-native"
 import { GestureHandlerRootView } from "react-native-gesture-handler"
 
 import { KhalaAuthProvider, useKhalaAuth } from "../src/auth/khala-auth-context"
+import { BlurredPopupProvider } from "../src/components/blurred-popup"
 import { SignInScreen } from "../src/components/sign-in-screen"
 import { khalaMobileTheme } from "../src/theme/tokens"
 
@@ -30,12 +31,18 @@ const AuthGate = () => {
   if (status === "signed_out") return <SignInScreen />
 
   return (
-    <Stack
-      screenOptions={{
-        contentStyle: { backgroundColor: khalaMobileTheme.background },
-        headerShown: false
-      }}
-    />
+    // Mounted once around the whole signed-in app (Arcade's equivalent mount
+    // point wraps its entire `<AppStack/>`), so a long-press screenshot
+    // (`BlurredPopupProvider`, issue #8395) captures the real rendered
+    // screen behind it regardless of which route is active.
+    <BlurredPopupProvider>
+      <Stack
+        screenOptions={{
+          contentStyle: { backgroundColor: khalaMobileTheme.background },
+          headerShown: false
+        }}
+      />
+    </BlurredPopupProvider>
   )
 }
 

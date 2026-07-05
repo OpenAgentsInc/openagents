@@ -10,6 +10,7 @@ import {
   type RuntimeEventEntity,
   type RuntimeTurnEntity
 } from "@openagentsinc/khala-sync"
+import * as Clipboard from "expo-clipboard"
 import { useLocalSearchParams } from "expo-router"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { FlatList, KeyboardAvoidingView, Text, View } from "react-native"
@@ -17,9 +18,11 @@ import Animated, { FadeIn } from "react-native-reanimated"
 import { SafeAreaView } from "react-native-safe-area-context"
 
 import { AppHeader } from "../../src/components/app-header"
+import { type PopupOptionType, TouchablePopupHandler } from "../../src/components/blurred-popup"
 import { ChatComposer, chatComposerKeyboardVerticalOffset } from "../../src/components/chat-composer"
 import { SwipeableItem } from "../../src/components/swipeable-item"
 import { TranscriptPartRow } from "../../src/components/transcript-part-row"
+import { buildCopyMarkdown, buildCopyText } from "../../src/sync/blurred-popup-menu-core"
 import { findActiveTurn, mostRecentTurnLane } from "../../src/sync/khala-runtime-compose-core"
 import { sortByKeyAsc } from "../../src/sync/khala-sync-entities-core"
 import {
@@ -31,6 +34,35 @@ import { buildQuoteSnippet } from "../../src/sync/swipe-quote-core"
 import { useKhalaSyncCollection } from "../../src/sync/use-khala-sync-collection"
 import { useKhalaSyncPush } from "../../src/sync/use-khala-sync-push"
 import { MOTION_MEDIUM, MOTION_STAGGER_MS } from "../../src/theme/motion"
+
+/** Builds the long-press "Blurred Popup" menu (issue #8395) for one
+ * quotable transcript part: "Copy" (plain text), "Copy as Markdown" (only
+ * shown when it differs from the plain-text payload — a plain `text` part
+ * has no markdown decoration, so showing both would be a redundant no-op
+ * duplicate item), and "Quote" (reuses the exact same swipe-to-quote action
+ * `SwipeableItem` already wires up (#8393), so long-press and swipe both
+ * feed the same `onQuote` callback rather than building a second quoting
+ * mechanism). "Re-run a tool call" (named in the issue) was considered and
+ * dropped: `useKhalaSyncPush`'s mutation surface only has
+ * `chat.appendUserMessage`/`runtime.startTurn`/`runtime.interruptTurn` — no
+ * retry/rerun mutation exists to wire a real menu item to, and the issue is
+ * explicit that a non-wireable action should be skipped rather than faked. */
+const buildTranscriptPartPopupOptions = (
+  part: TranscriptPart,
+  onQuote: () => void
+): ReadonlyArray<PopupOptionType> => {
+  const copyText = buildCopyText(part)
+  const copyMarkdown = buildCopyMarkdown(part)
+  const options: Array<PopupOptionType> = []
+  if (copyText !== undefined) {
+    options.push({ label: "Copy", onPress: () => void Clipboard.setStringAsync(copyText) })
+  }
+  if (copyMarkdown !== undefined && copyMarkdown !== copyText) {
+    options.push({ label: "Copy as Markdown", onPress: () => void Clipboard.setStringAsync(copyMarkdown) })
+  }
+  options.push({ label: "Quote", onPress: onQuote })
+  return options
+}
 
 /** One pending swipe-to-quote request, handed to `ChatComposer` (see issue
  * #8393). `id` is the swiped transcript part's own id — reused as the
@@ -163,10 +195,11 @@ export default function ThreadMessagesScreen() {
                 // text with nothing to quote (see `buildQuoteSnippet`).
                 const quoteSnippet = buildQuoteSnippet(part)
                 if (quoteSnippet === undefined) return row
+                const onQuote = () => setQuoteRequest({ id: part.id, snippet: quoteSnippet })
                 return (
-                  <SwipeableItem onSwipeComplete={() => setQuoteRequest({ id: part.id, snippet: quoteSnippet })}>
-                    {row}
-                  </SwipeableItem>
+                  <TouchablePopupHandler options={buildTranscriptPartPopupOptions(part, onQuote)}>
+                    <SwipeableItem onSwipeComplete={onQuote}>{row}</SwipeableItem>
+                  </TouchablePopupHandler>
                 )
               }}
             />
