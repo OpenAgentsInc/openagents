@@ -643,6 +643,64 @@ Rollback at ANY step: set `KHALA_SYNC_ARTANIS_READS=d1` (reads) and/or
 `KHALA_SYNC_ARTANIS_DUAL_WRITE=off` (writes). D1 authority is never
 behind.
 
+### 2026-07-05 read-cutover evidence (#8335)
+
+- **Retention decision (step 2 pre-step):** `artanis_health_snapshots` /
+  `artanis_runtime_snapshots` are 125 rows each in production — porting
+  as-is is cheap; no bounding needed before the sweep.
+- **Backfill x2 + verify:** sweep 1 ported the full history; sweep 2
+  (`--restart`) inserted 0 new rows across all twenty tables (dual-write
+  had already fully caught up). `--verify --verify-newest 50`: **19/20
+  tables exact** (rows, per-state tallies, newest-50 hashes). One table,
+  `artanis_responder_ticks`, came back non-exact — see below. Full output
+  posted on #8335.
+- **Explain the one non-exact table:** `artanis_responder_ticks` matched
+  on row COUNT (7940=7940) but had 20 rows with a stale `scan_state` (or
+  `compose_state`) in Postgres and 1 newest-50 hash mismatch. Root cause:
+  `mirrorArtanisRows` does a full-row D1-read-then-Postgres-upsert with no
+  ordering guard, and this table is the one place two INDEPENDENT ticks
+  (`ArtanisResponder.scan`, `ArtanisResponder.compose`) both write the
+  SAME row (keyed by `scheduled_at`) — when their D1-write + Postgres-
+  round-trip timings interleave, whichever mirror's Postgres upsert lands
+  LAST wins for the WHOLE row, even if its D1 snapshot was read earlier
+  and is missing the other tick's column update. `created_at`/`updated_at`
+  can't break the tie because both ticks stamp the identical scheduled
+  `nowIso`. Filed as
+  [#8409](https://github.com/OpenAgentsInc/openagents/issues/8409) — real
+  bug in the landed KS-8.6 mirror, not rubber-stamped past. It does NOT
+  block the flip below (`responder_tick` is not one of the eight
+  `ArtanisPersistenceRecordKind`s routed through `artanisRead`), but it
+  DOES block ever safely reading this table from Postgres and blocks
+  KS-8.19 D1 retirement for it.
+- **What is actually flag-routed today:** only two functions route through
+  `artanisRead` — `readArtanisPersistedRecord` (used by
+  `ArtanisScheduledRunner.runTick`'s unconditional every-tick idempotency
+  check on `loop_record`) and `readLatestArtanisPersistedRows` (used by
+  the operator console `GET /api/operator/artanis/console` and the public
+  `GET /api/public/artanis/report`). The other five cron ticks
+  (`ArtanisResponder.scan/.compose`, `ArtanisAdmin.tick`,
+  `ArtanisAdmin.closeoutVerifier`, `ArtanisFleet.tick`) only mirror writes
+  today; their own decision-making reads are bare D1 SQL with no Postgres
+  reader wired, so the flag is a no-op for them either way.
+- **Compare-mode soak:** `KHALA_SYNC_ARTANIS_READS=compare` shipped to prod
+  + staging in commit `07ada9d32b` (Worker version
+  `473b6c53-8a65-40d2-b238-2e1d5c21c449`). Soaked live via `wrangler tail`
+  filtered on `khala_sync_artanis` plus repeated `GET
+  /api/public/artanis/report` calls (the operator-console path needs a
+  real logged-in WorkOS session — a bearer-token probe correctly gets 401
+  unauthenticated, so that path was not separately exercised this pass).
+  See #8335 for the exact observed window and mismatch count.
+- **Remaining D1-direct read paths** (analytics joins in
+  `artanis-tick-streak.ts` / `artanis-distillation-dataset-receipt.ts`,
+  dashboard/console aggregations, spend/grant aggregation reads in
+  `artanis-spend.ts`, responder scan/composer joins in
+  `artanis-responder-ticks.ts` / `artanis-responder-provenance.ts`, the
+  labor receipt ordered list in `artanis-labor-receipt-store.ts`) are NOT
+  yet flag-routed. Moving them is real, separate implementation work (new
+  Postgres-routed queries + re-derived indexes + their own compare
+  evidence per surface, and for `artanis_responder_ticks` specifically,
+  #8409 must land first) — not a config flip, and not done in this pass.
+
 ## Treasury settlement domain cutover (KS-8.8, #8319)
 
 All 27 live money tables (treasury_transactions, the six `nexus_*`
