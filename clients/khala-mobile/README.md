@@ -280,6 +280,14 @@ only: reset navigation, jump to a fixture thread, seed/reset fixture state, and
 inspect bounded connectivity state. They must not print tokens, chat bodies,
 raw sync rows, provider payloads, emails, or private machine/account ids.
 
+## Navigation
+
+React Navigation ownership lives under `src/navigators`. Android back behavior
+is tested through the pure `decideBackAction` helper. Navigation persistence is
+intentionally disabled for now: thread route params can include private refs or
+titles, so a future persistence pass must introduce a route-name-only safe
+snapshot before writing anything locally.
+
 ## Owner-Gated Proof Still Needed
 
 Source-level scaffold, policy tests, local typecheck, and both local

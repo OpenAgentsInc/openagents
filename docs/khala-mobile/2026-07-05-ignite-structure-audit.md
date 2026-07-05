@@ -80,6 +80,11 @@ Any Ignite pattern that conflicts with those rules is explicitly out of scope.
   `scripts/generate-assets.sh` uses local macOS `sips` to derive icon,
   adaptive icon, and splash assets from checked-in source material; app config
   now points at the generated local assets without EAS.
+- [#8455](https://github.com/OpenAgentsInc/openagents/issues/8455) - harden
+  React Navigation back behavior and persistence. Implemented:
+  `src/navigators/navigationUtilities.ts` now exposes tested pure back-action
+  and route-name-only diagnostic helpers, and documents that navigation
+  persistence stays disabled until a private-data-safe snapshot exists.
 
 ## One-Line Verdict
 
@@ -115,6 +120,7 @@ Khala's existing sync/security/native domains.
 ### 1. Ignite-Style React Navigation Stacks
 
 Tracking: [#8426](https://github.com/OpenAgentsInc/openagents/issues/8426)
+Follow-up hardening: [#8455](https://github.com/OpenAgentsInc/openagents/issues/8455)
 
 The first architectural borrow should be Ignite's navigator spine, not a
 surface-level component cleanup. Khala should migrate from Expo Router's file
@@ -146,6 +152,12 @@ Migration note: this is a real app-shell migration, not a docs-only rename.
 Expect package/app-entry changes, screen file moves, replacement typed route
 params, and focused regression coverage for sign-in, drawer/settings, thread
 open, and deep-link behavior.
+
+Implementation note: #8455 made Android back behavior explicit with a pure
+`decideBackAction` helper and added `routeNameSummary` for public-safe route
+diagnostics. Navigation state persistence is deliberately off: current thread
+route params can include private thread refs/titles, so the app must not write
+navigation snapshots until a route-name-only persistence format exists.
 
 ### 2. Ignite's Provider Spine
 
