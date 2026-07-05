@@ -29,6 +29,8 @@ import {
 } from './runtime'
 import { RouteAccessError } from './thread-access'
 
+type HttpResponse = globalThis.Response
+
 type SyncScopeKind =
   | 'agent-run'
   | 'public-agent'
@@ -101,9 +103,9 @@ type BrowserSessionShape = Readonly<{
 
 type SyncRouteDependencies<Session extends BrowserSessionShape> = Readonly<{
   appendRefreshedSessionCookies: (
-    response: Response,
+    response: HttpResponse,
     session: Session,
-  ) => Response
+  ) => HttpResponse
   authorizeSyncPath: (
     env: Env,
     session: Session,
