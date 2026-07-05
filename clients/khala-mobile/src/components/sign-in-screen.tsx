@@ -38,9 +38,9 @@ const discoveryMessage = (
 ): string => {
   if (status === "discovering") return "Looking for a signed-in Mac on your Tailnet…"
   if (discoveryOutcome?.state === "reachable_not_signed_in") {
-    return `Found a Khala Code desktop${
-      discoveryOutcome.hostname === null ? "" : ` (${discoveryOutcome.hostname})`
-    } on your Tailnet, but it isn't signed in yet. Sign in there first, then retry.`
+    return `Found Khala Code${
+      discoveryOutcome.hostname === null ? "" : ` on ${discoveryOutcome.hostname}`
+    }, but it hasn't completed "Connect OpenAgents" yet. Open Khala Code on your Mac, finish Connect, then retry.`
   }
   return "No signed-in Mac found on your Tailnet."
 }

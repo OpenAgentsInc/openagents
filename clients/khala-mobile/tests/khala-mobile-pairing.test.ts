@@ -25,8 +25,9 @@ describe("khalaMobilePairingTargets", () => {
     ])
   })
 
-  test("physical device probes the configured Tailnet hosts on the pairing path", () => {
+  test("physical device probes localhost first, then the configured Tailnet hosts", () => {
     expect(khalaMobilePairingTargets(true, 50099, ["host-a", "host-b"])).toEqual([
+      `http://127.0.0.1:50099${KHALA_MOBILE_PAIRING_PATH}`,
       `http://host-a:50099${KHALA_MOBILE_PAIRING_PATH}`,
       `http://host-b:50099${KHALA_MOBILE_PAIRING_PATH}`
     ])

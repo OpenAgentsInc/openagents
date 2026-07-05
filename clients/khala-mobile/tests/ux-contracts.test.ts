@@ -89,17 +89,22 @@ describe("contract khala_mobile.auth.tailnet_auto_discovery_before_manual_login.
   }
 
   test("tailnet_discovery_concurrent_priority.unit — probes every candidate host, not just the first", async () => {
+    // Localhost is always probed first (own-Mac simulator/dogfood case —
+    // e.g. the iOS Simulator sharing its host Mac's network stack with an
+    // already-running Khala Code desktop — must never require Tailnet
+    // routing), then every configured Tailnet host.
     const targets = khalaMobilePairingTargets(true, 50099, ["host-a", "host-b", "host-c"])
-    expect(targets).toHaveLength(3)
+    expect(targets).toHaveLength(4)
     const outcome = await discoverKhalaMobilePairingCredentials(
       targets,
       fakeFetch({
-        [targets[0]!]: { body: { ok: false }, ok: true },
-        [targets[1]!]: {
+        [targets[0]!]: { ok: false }, // localhost: unreachable (no desktop on the phone itself)
+        [targets[1]!]: { body: { ok: false }, ok: true },
+        [targets[2]!]: {
           body: { hostname: "bertha", ok: true, ownerUserId: "user_1", token: "oa_agent_1" },
           ok: true,
         },
-        [targets[2]!]: { ok: false },
+        [targets[3]!]: { ok: false },
       }),
     )
     expect(outcome).toEqual({

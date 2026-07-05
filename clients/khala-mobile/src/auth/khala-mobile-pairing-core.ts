@@ -53,12 +53,20 @@ export const khalaMobilePairingTargets = (
   isDevice: boolean,
   port: number = KHALA_CODE_TAILNET_HEALTH_PORT,
   tailnetHosts: ReadonlyArray<string> = KHALA_CODE_TAILNET_CANDIDATE_HOSTS,
-): ReadonlyArray<string> =>
-  isDevice
-    ? tailnetHosts.map(host => `http://${host}:${port}${KHALA_MOBILE_PAIRING_PATH}`)
-    // Simulator shares the host Mac's network stack, so localhost reaches
-    // whatever is running the desktop app on this same machine.
-    : [`http://127.0.0.1:${port}${KHALA_MOBILE_PAIRING_PATH}`]
+): ReadonlyArray<string> => {
+  // Simulator shares the host Mac's network stack, so localhost reaches
+  // whatever is running the desktop app on this same machine — this is the
+  // common dev/dogfood case (owner running the simulator right next to a
+  // real, open Khala Code desktop) and must never be skipped.
+  const localhost = `http://127.0.0.1:${port}${KHALA_MOBILE_PAIRING_PATH}`
+  if (!isDevice) return [localhost]
+  // On a physical device, localhost is the phone itself, not the Mac — it
+  // will simply fail fast and fall through. Trying it first is nearly free
+  // (one extra concurrent probe) and is a defensive hedge against any future
+  // isDevice misdetection, so it's always included ahead of the real Tailnet
+  // candidates rather than only reached through the simulator branch.
+  return [localhost, ...tailnetHosts.map(host => `http://${host}:${port}${KHALA_MOBILE_PAIRING_PATH}`)]
+}
 
 const probePairingUrl = async (
   url: string,
