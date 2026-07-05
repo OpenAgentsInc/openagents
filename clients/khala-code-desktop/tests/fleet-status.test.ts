@@ -755,7 +755,7 @@ describe("Fleet status panel", () => {
     ])
   })
 
-  // KS-6.2 (#8303): flag-gated Khala Sync consumption for the Fleet screen.
+  // KS-6.2 (#8303): default-on Khala Sync consumption for the Fleet screen.
   const syncState = (
     input: Partial<KhalaCodeDesktopKhalaSyncFleetStateResult> = {},
   ): KhalaCodeDesktopKhalaSyncFleetStateResult => ({
@@ -792,6 +792,8 @@ describe("Fleet status panel", () => {
     readonly state: () => Promise<KhalaCodeDesktopKhalaSyncFleetStateResult>
     readonly mutations?: KhalaCodeDesktopKhalaSyncFleetMutateRequest[]
     readonly controls?: KhalaCodeDesktopFleetRunControlRequest[]
+    readonly fetches?: { count: number }
+    readonly lists?: { count: number }
   }) => {
     const root = document.createElement("div")
     const panel = mountFleetPanel(root, {
@@ -805,7 +807,10 @@ describe("Fleet status panel", () => {
       delegateRun: async () => {
         throw new Error("delegate runner should not be called")
       },
-      fetch: async () => status(),
+      fetch: async () => {
+        if (input.fetches !== undefined) input.fetches.count += 1
+        return status()
+      },
       fleetRunControl: async request => {
         input.controls?.push(request)
         return {
@@ -816,7 +821,10 @@ describe("Fleet status panel", () => {
           verb: request.verb,
         }
       },
-      fleetRunList: async () => ({ ok: true, runs: [fleetRunProjection()] }),
+      fleetRunList: async () => {
+        if (input.lists !== undefined) input.lists.count += 1
+        return { ok: true, runs: [fleetRunProjection()] }
+      },
       fleetRunStart: async request => runStartResult(request),
       fleetWorkerControl: async () => {
         throw new Error("fleet worker control should not be called")
@@ -856,7 +864,42 @@ describe("Fleet status panel", () => {
     expect(root.textContent).toContain("khala sync")
   })
 
-  test("khala sync disabled result: polling path renders untouched, no sync indicator", async () => {
+  test("khala sync default source: visible panel reads scope without the 5s fleet-status poll", async () => {
+    let intervalCalls = 0
+    Object.defineProperty(window, "setInterval", {
+      configurable: true,
+      value: (() => {
+        intervalCalls += 1
+        return 0
+      }) as unknown as typeof window.setInterval,
+    })
+    let syncCalls = 0
+    const fetches = { count: 0 }
+    const lists = { count: 0 }
+    const { root, panel } = mountSyncPanel({
+      fetches,
+      lists,
+      state: async () => {
+        syncCalls += 1
+        return syncState()
+      },
+    })
+
+    panel.setVisible(true)
+    await flushPanelWork()
+    await flushPanelWork()
+
+    expect(fetches.count).toBe(1)
+    expect(lists.count).toBe(1)
+    expect(syncCalls).toBe(1)
+    expect(intervalCalls).toBe(0)
+    expect(root.querySelector<HTMLElement>(".khala-fleet-sync-indicator")?.textContent).toBe(
+      "Khala Sync: Live",
+    )
+    expect(root.textContent).toContain("target8")
+  })
+
+  test("khala sync disabled result: local fallback renders untouched, no sync indicator", async () => {
     const { root, panel } = mountSyncPanel({
       state: async () => syncState({ enabled: false, phase: "disabled", run: null }),
     })

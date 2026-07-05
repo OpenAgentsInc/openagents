@@ -290,9 +290,9 @@ export type KhalaCodeDesktopRpcHandlersInput = {
   readonly fleetRunSupervisor?: KhalaCodeDesktopFleetRunSupervisorRpc
   readonly fleetMcpBridgeRepoRoot?: string
   /**
-   * Khala Sync fleet consumer (KS-6.2, #8303). Absent (the default until the
-   * KHALA_SYNC_FLEET flag is set) means these RPCs answer with the honest
-   * disabled state and the Fleet screen stays on its polling source.
+   * Khala Sync fleet consumer (KS-6.2, #8303). Absent only for explicit
+   * opt-out or unavailable setup; the RPCs then answer with the honest
+   * disabled state.
    */
   readonly khalaSync?: KhalaCodeDesktopKhalaSyncRpc
   readonly env: ChatEnv

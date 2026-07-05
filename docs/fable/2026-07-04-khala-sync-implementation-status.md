@@ -59,8 +59,9 @@ Postgres serving and D1 table drops.
   state machine + HTTP/WS transport (#8300), web store on SQLite-WASM
   opfs-sahpool with Web-Locks single-writer (#8301).
 - **First consumers** — fleet cockpit projection + operator mutators
-  (#8302), Khala Code desktop Fleet screen behind `KHALA_SYNC_FLEET=1`
-  (#8303), and the public tokens-served projection: backfilled to exactly
+  (#8302), Khala Code desktop Fleet screen default-on through Khala Sync with
+  `KHALA_SYNC_FLEET=0`/`false`/`off` as explicit opt-out (#8303/#8383), and
+  the public tokens-served projection: backfilled to exactly
   8,370,108,795 (== D1 SUM), honest 2 s staleness, D1 fallback fail-open —
   **the unbounded full-table SUM is off the hot path** (#8304).
 - **Auth** — full scope-taxonomy resolver + access-change refetch with a

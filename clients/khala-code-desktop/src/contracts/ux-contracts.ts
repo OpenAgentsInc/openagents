@@ -1510,7 +1510,7 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
-        "Binds the Fleet screen's Khala Sync freshness indicator semantics only (KS-6.2, #8303). It does not claim delivery latency, server availability, or correctness of the fleet projection itself, and it makes no statement about the default polling source, which remains the fallback while KHALA_SYNC_FLEET is off.",
+        "Binds the Fleet screen's Khala Sync freshness indicator semantics only (KS-6.2, #8303). It does not claim delivery latency, server availability, or correctness of the fleet projection itself. The Fleet cockpit is Khala Sync-first by default; local status/list reads are degraded fallback state for missing auth, disconnected sync, or explicit `KHALA_SYNC_FLEET=0`/`false`/`off` opt-out.",
       blockerRefs: [],
       contractId: "khala_code.fleet.khala_sync_indicator_truthful.v1",
       enforcementTier: "test-sweep",

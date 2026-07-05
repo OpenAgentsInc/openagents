@@ -391,7 +391,7 @@ and the D1 `sync_*` tables have zero remaining users and drop cleanly**
    (`inference/khala-tokens-served-sync.ts`) and its stale old-sync
    broadcast throttle were deleted after #8304's `scope.public.tokens-served`
    projection was re-verified as the live producer path. (S, low)
-2. **Desktop fleet cockpit**: flip `KHALA_SYNC_FLEET` default-on, delete the 5s poll in `fleet-status.ts`. Projection already proven at load (9,909 pushes, zero failures). (S, low)
+2. **Desktop fleet cockpit**: complete in #8383 — `KHALA_SYNC_FLEET` is default-on, `0`/`false`/`off` are explicit opt-out values, and the Fleet panel no longer schedules the old visible 5s `fleet-status.ts` poll. Projection already proven at load (9,909 pushes, zero failures). (S, low)
 3. **Settled feed** (`tassadar-settled-feed-sync.ts`): new `scope.public.settled-feed` projection, same #8304 pattern, then delete the legacy producer. (M, med)
 4. **Team chat + thread files + agent goals**: the flagship "migration = sync adoption" case per KS-8.13/#8324 — land on `scope.team.<id>` / `scope.thread.<id>` / `scope.agent_run.<id>` / `scope.user.<id>`, replacing both the notifier fan-out and the desktop/web polling in one move. (L, med)
 5. **Public aggregates** (demand-mix, model-mix, tokens-history, public activity timeline): project off live-at-read D1 onto `scope.public.*` counters — the Postgres rollup twins already exist from KS-8.2. (M, low)
@@ -439,11 +439,11 @@ live.
 After #8377, the legacy public-projection staleness budget is zero; after
 #8378/#8379/#8380/#8381, the D1 zero-reference sweep exists, the forum trust
 pair is dropped, the AgentCL Vertex runner plus `gym_agentcl_eval_*` table
-family are retired, and the orphaned GLM stress scheduler/adaptive runner is
-gone. Next: consolidate the 66-file auth-helper sprawl; flip
-`KHALA_SYNC_FLEET` default-on and delete the desktop fleet poll; decide
-arm-or-remove on the four inert flags (remove voice-ingest and durable-stream
-if truly unconsumed).
+family are retired, the orphaned GLM stress scheduler/adaptive runner is
+gone, #8382 consolidated the 66-file auth-helper sprawl, and #8383 made the
+desktop fleet cockpit Khala Sync-first by default while deleting the old
+visible 5s poll. Next: decide arm-or-remove on the four inert flags (remove
+voice-ingest and durable-stream if truly unconsumed).
 
 2026-07-05 Wave 1 issue index:
 
@@ -461,8 +461,8 @@ if truly unconsumed).
 - #8382 - Complete: consolidated the shared Worker bearer-token parsers into
   `workers/api/src/auth/bearer-token.ts`, leaving only documented
   route-specific parser exceptions.
-- #8383 - Flip `KHALA_SYNC_FLEET` default-on and delete the desktop fleet
-  cockpit poll.
+- #8383 - Complete: flipped `KHALA_SYNC_FLEET` default-on with explicit
+  opt-out values and deleted the desktop Fleet panel's visible 5s poll.
 - #8384 - Decide arm-or-remove for `INFERENCE_BATCH_JOBS_ENABLED`.
 - #8385 - Decide/remove `INFERENCE_DURABLE_STREAM_ENABLED`.
 - #8386 - Remove the unarmed `VOICE_PROGRAM_INGEST_ENABLED` voice ingest path.

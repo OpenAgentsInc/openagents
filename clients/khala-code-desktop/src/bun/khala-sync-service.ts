@@ -88,10 +88,10 @@ import { resolveKhalaCodeDesktopOpenAgentsAgentToken } from "./harness-setting.j
  * OpenAgents agent token, and exposes fleet-scope reads + mutates over the
  * desktop RPC seam (`khalaSyncFleetState` / `khalaSyncFleetMutate`).
  *
- * FLAG-GATED: this path is active only when `KHALA_SYNC_FLEET=1` (or
- * `true`). The Fleet screen's polling source stays default-on until the
- * server routes are deployed and verified end-to-end; the flag flips
- * default in a follow-up on epic #8282.
+ * DEFAULT-ON: this path is active unless `KHALA_SYNC_FLEET` is explicitly
+ * disabled with `0`, `false`, or `off`. The Fleet screen consumes this
+ * synced fleet_run scope first and keeps local status/list reads as the
+ * degraded fallback for missing auth, disconnected sync, or explicit opt-out.
  *
  * Honesty rules carried into the RPC surface:
  * - `phase` is the session's real scope state (`live` requires an open
@@ -114,7 +114,7 @@ export const KHALA_SYNC_CHAT_OWNER_USER_ID_ENV = "KHALA_SYNC_CHAT_OWNER_USER_ID"
 
 export const khalaCodeDesktopKhalaSyncFleetEnabled = (env: ServiceEnv): boolean => {
   const value = env[KHALA_SYNC_FLEET_FLAG_ENV]?.trim().toLowerCase()
-  return value === "1" || value === "true"
+  return value !== "0" && value !== "false" && value !== "off"
 }
 
 export const khalaCodeDesktopKhalaSyncChatEnabled = (env: ServiceEnv): boolean => {

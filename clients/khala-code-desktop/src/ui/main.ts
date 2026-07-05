@@ -4300,8 +4300,8 @@ const fleetPanel =
         },
         fleetRunStart: request => controls.fleetRunStart(request),
         fleetWorkerControl: request => controls.fleetWorkerControl(request),
-        // KS-6.2 (#8303): Khala Sync fleet source, flag-gated server-side —
-        // the bun handler answers honestly disabled until KHALA_SYNC_FLEET=1.
+        // KS-6.2 (#8303): Khala Sync fleet source, default-on; the bun
+        // handler answers honestly disabled only for explicit opt-out/setup gaps.
         khalaSyncFleetState: request => controls.khalaSyncFleetState(request),
         khalaSyncFleetMutate: request => controls.khalaSyncFleetMutate(request),
         lifecycleNdjson: fleetLifecycleLines.iterable,

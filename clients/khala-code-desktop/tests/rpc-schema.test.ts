@@ -451,7 +451,7 @@ describe("Khala Code desktop schema-first RPC contract", () => {
       title: "Renamed remote thread",
     }])[0]).toMatchObject({ title: "Renamed remote thread" })
 
-    // Without a wired Khala Sync service (flag off), the handlers answer
+    // Without a wired Khala Sync service (explicit opt-out/setup gap), the handlers answer
     // honestly disabled instead of pretending a sync path exists.
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({
       appleFmReadiness: () => {

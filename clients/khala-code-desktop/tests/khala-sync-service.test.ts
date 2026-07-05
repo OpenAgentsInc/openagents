@@ -356,7 +356,6 @@ const makeHarness = (
 ): ServiceHarness => {
   const server = new FakeFleetSyncServer()
   const env: Record<string, string | undefined> = {
-    KHALA_SYNC_FLEET: "1",
     OPENAGENTS_AGENT_TOKEN: "oa_agent_test_token_1",
     OPENAGENTS_BASE_URL: "https://openagents.test",
     KHALA_CODE_DESKTOP_HARNESS_SETTING_PATH: "/tmp/khala-sync-service-test-missing-settings.json",
@@ -674,15 +673,19 @@ const makeChatHarness = (
 }
 
 describe("khala-sync-service flag gating", () => {
-  test("flag parsing accepts 1/true only", () => {
+  test("fleet flag defaults on and accepts explicit opt-out values", () => {
+    expect(khalaCodeDesktopKhalaSyncFleetEnabled({})).toBe(true)
+    expect(khalaCodeDesktopKhalaSyncFleetEnabled({ KHALA_SYNC_FLEET: undefined })).toBe(true)
+    expect(khalaCodeDesktopKhalaSyncFleetEnabled({ KHALA_SYNC_FLEET: "" })).toBe(true)
     expect(khalaCodeDesktopKhalaSyncFleetEnabled({ KHALA_SYNC_FLEET: "1" })).toBe(true)
     expect(khalaCodeDesktopKhalaSyncFleetEnabled({ KHALA_SYNC_FLEET: "true" })).toBe(true)
     expect(khalaCodeDesktopKhalaSyncFleetEnabled({ KHALA_SYNC_FLEET: "0" })).toBe(false)
-    expect(khalaCodeDesktopKhalaSyncFleetEnabled({})).toBe(false)
+    expect(khalaCodeDesktopKhalaSyncFleetEnabled({ KHALA_SYNC_FLEET: "false" })).toBe(false)
+    expect(khalaCodeDesktopKhalaSyncFleetEnabled({ KHALA_SYNC_FLEET: "off" })).toBe(false)
   })
 
-  test("flag off: state answers honestly disabled and mutate refuses", async () => {
-    const { service } = makeHarness({ KHALA_SYNC_FLEET: undefined })
+  test("explicit flag off: state answers honestly disabled and mutate refuses", async () => {
+    const { service } = makeHarness({ KHALA_SYNC_FLEET: "0" })
     expect(await service.fleetState({ runId: RUN_ID })).toEqual(khalaSyncFleetDisabledState())
     expect(await service.fleetMutate({ action: "pause", runId: RUN_ID })).toEqual({
       ok: false,

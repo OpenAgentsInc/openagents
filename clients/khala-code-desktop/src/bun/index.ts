@@ -642,9 +642,8 @@ const tokenUsageBackgroundSync = startKhalaCodeDesktopTokenUsageBackgroundSync({
 // host deliberately opts it back in.
 const onDeviceDecider = createOnDeviceDeciderHost({ env: khalaCodeEnv })
 
-// Khala Sync fleet consumer (KS-6.2, #8303): flag-gated behind
-// KHALA_SYNC_FLEET=1. When unset the Fleet screen stays on its default
-// polling source and the khalaSyncFleet* RPCs answer honestly disabled.
+// Khala Sync fleet consumer (KS-6.2, #8303): default-on. Set
+// KHALA_SYNC_FLEET=0/false/off to force the honest disabled RPC state.
 const khalaSyncService = khalaCodeDesktopKhalaSyncFleetEnabled(khalaCodeEnv)
   ? createKhalaCodeDesktopKhalaSyncService({ env: khalaCodeEnv })
   : null

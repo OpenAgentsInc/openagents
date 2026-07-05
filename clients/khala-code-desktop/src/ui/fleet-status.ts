@@ -80,12 +80,12 @@ export type FleetPanelOptions = Readonly<{
   ) => Promise<{ readonly ok: boolean; readonly error?: string }>
   connectAccount: (accountRef: string) => Promise<KhalaCodeDesktopConnectStart>
   openExternal: (url: string) => Promise<boolean>
-  // Khala Sync fleet consumer (KS-6.2, #8303): optional, flag-gated
-  // (KHALA_SYNC_FLEET=1). When the state RPC reports enabled, the active-run
-  // header renders from the synced fleet_run scope (server truth) with an
-  // honest freshness indicator, and pause/resume also record the operator
-  // intent through the Khala Sync mutators. The polling source above stays
-  // the default until the server deploy is verified.
+  // Khala Sync fleet consumer (KS-6.2, #8303): default-on desktop source.
+  // When the state RPC reports enabled, the active-run header renders from the
+  // synced fleet_run scope (server truth) with an honest freshness indicator,
+  // and pause/resume also record the operator intent through the Khala Sync
+  // mutators. Missing auth, disconnected sync, or explicit opt-out keeps the
+  // local status/list reads as a degraded fallback.
   khalaSyncFleetState?: (
     request: KhalaCodeDesktopKhalaSyncFleetStateRequest,
   ) => Promise<KhalaCodeDesktopKhalaSyncFleetStateResult>
@@ -196,7 +196,7 @@ type ActiveFleetRunView = Readonly<{
   error: ActiveFleetRunError | null
   objective: string | null
   run: KhalaCodeDesktopFleetRunProjection | null
-  /** Khala Sync state for the active run's scope; null while flag-off/unavailable. */
+  /** Khala Sync state for the active run's scope; null while disabled/unavailable. */
   sync: KhalaCodeDesktopKhalaSyncFleetStateResult | null
 }>
 
@@ -1629,8 +1629,6 @@ export const mountFleetPanel = (
   let lifecycleStarted = false
   let connectPoll = 0
   let activeConnect: ConnectView | null = null
-  let visible = false
-  let pollTimer = 0
   const now = options.now ?? (() => new Date())
 
   const currentView = (): FleetView =>
@@ -1918,7 +1916,7 @@ export const mountFleetPanel = (
     paint()
     void (async () => {
       try {
-        // Khala Sync path (KS-6.2, flag-gated): pause/resume also record the
+        // Khala Sync path (KS-6.2): pause/resume also record the
         // operator intent through the sync session's fleet mutators, so the
         // fleet_run scope converges on the new desired state server-side.
         // The local supervisor call remains the enforcement path until the
@@ -1954,7 +1952,7 @@ export const mountFleetPanel = (
         }
         if (syncFailure !== null) {
           // Keep the sync failure visible instead of letting the immediate
-          // refresh clear it; the next visible-poll refresh reconciles.
+          // refresh clear it; the next explicit/control refresh reconciles.
           paint()
           return
         }
@@ -2156,8 +2154,8 @@ export const mountFleetPanel = (
       const state = await options.khalaSyncFleetState({ runId: selected.runRef })
       return state.enabled ? state : null
     } catch {
-      // The sync source is flag-gated and additive: a failed read falls back
-      // to the polling truth instead of degrading the screen.
+      // A failed sync read falls back to the local status/list truth instead
+      // of degrading the whole screen.
       return null
     }
   }
@@ -2189,9 +2187,9 @@ export const mountFleetPanel = (
 
       if (listResult.status === "fulfilled") {
         const selected = selectActiveFleetRun(listResult.value.runs)
-        // KS-6.2 (#8303), flag-gated: when Khala Sync is enabled, the active
-        // run renders from the synced fleet_run scope (server truth) merged
-        // over the local projection; polling truth stays the fallback.
+        // KS-6.2 (#8303): when Khala Sync is enabled, the active run renders
+        // from the synced fleet_run scope (server truth) merged over the
+        // local projection; local status/list truth stays the fallback.
         const sync = await loadKhalaSyncState(selected)
         const listError: ActiveFleetRunError | null = listResult.value.ok
           ? null
@@ -2254,16 +2252,9 @@ export const mountFleetPanel = (
   }
 
   const setVisible = (next: boolean): void => {
-    visible = next
-    window.clearInterval(pollTimer)
     if (!next) return
     startLifecycleStream()
     void refresh()
-    // Live updates: poll while the panel is visible (skipping in-flight loads).
-    // The list stays live even during an active connect.
-    pollTimer = window.setInterval(() => {
-      if (visible && !inFlight) void refresh()
-    }, 5000)
   }
 
   cockpit = mountKhalaCodeFleetCockpit(cockpitHost)

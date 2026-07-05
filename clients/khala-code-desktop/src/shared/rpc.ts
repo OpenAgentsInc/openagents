@@ -1775,10 +1775,11 @@ const RpcFleetRunListResult = S.Struct({
 })
 // ---------------------------------------------------------------------------
 // Khala Sync fleet cockpit (KS-6.2, #8303; docs/khala-sync/SPEC.md §6).
-// Flag-gated (KHALA_SYNC_FLEET=1) replacement source for the Fleet screen:
-// state reads the synced fleet_run scope through the local Khala Sync store +
-// overlay; mutate routes operator intents through the session's optimistic
-// mutators. The wire entity shapes mirror packages/khala-sync/src/fleet.ts.
+// Default-on source for the Fleet screen: state reads the synced fleet_run
+// scope through the local Khala Sync store + overlay; mutate routes operator
+// intents through the session's optimistic mutators. KHALA_SYNC_FLEET is now
+// an explicit opt-out only. The wire entity shapes mirror
+// packages/khala-sync/src/fleet.ts.
 // ---------------------------------------------------------------------------
 const RpcKhalaSyncFleetPhase = S.Literals([
   "disabled",
