@@ -90,7 +90,7 @@ import { readFileSync } from "node:fs"
  * `require()`-ing the other ~90 properties is actively unsafe, not just
  * unnecessary). Extend this list only when a new real (non-mocked)
  * `react-native` named import is needed by a component under test. */
-const RN_EAGER_EXPORT_ALLOWLIST = new Set(["Platform", "Pressable", "Text", "TextInput", "View"])
+const RN_EAGER_EXPORT_ALLOWLIST = new Set(["ActivityIndicator", "Platform", "Pressable", "Text", "TextInput", "View"])
 
 /** Rewrites the one non-standard idiom in this package that ISN'T already
  * real ESM: `module.exports = ({ get X() { ... }, Y(...) {...} }: SomeType)`,
@@ -215,6 +215,15 @@ const definePropertyExportsPlugin = ({ types: t }: any) => ({
  * `jest.requireActual()` globals, which don't exist under `bun test`.
  */
 const RN_LEAF_STUBS: ReadonlyArray<{ readonly test: RegExp; readonly contents: string }> = [
+  {
+    contents: `
+      import * as React from "react"
+      const ActivityIndicator = React.forwardRef((props, ref) => React.createElement("ActivityIndicator", { ...props, ref }))
+      ActivityIndicator.displayName = "ActivityIndicator"
+      export default ActivityIndicator
+    `,
+    test: /\/Libraries\/Components\/ActivityIndicator\/ActivityIndicator\.js$/
+  },
   {
     contents: `
       import * as React from "react"

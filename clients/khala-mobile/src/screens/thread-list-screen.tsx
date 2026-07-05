@@ -11,9 +11,10 @@ import { useKhalaAuth } from "../auth/khala-auth-context"
 import { ActivityIndicator } from "../components/activity-indicator"
 import { AppHeader } from "../components/app-header"
 import { BackgroundGradient } from "../components/background-gradient"
+import { KhalaEmptyState } from "../components/khala-empty-state"
+import { KhalaListItem } from "../components/khala-list-item"
 import { KhalaScreen } from "../components/khala-screen"
 import { KhalaText } from "../components/khala-text"
-import { TouchableFeedback } from "../components/touchable-feedback"
 import type { AppDrawerScreenProps, AppStackParamList } from "../navigators/navigationTypes"
 import { formatRelativeTime } from "../sync/relative-time-core"
 import { sortByKeyDesc } from "../sync/khala-sync-entities-core"
@@ -54,29 +55,9 @@ const ThreadListNotice = ({
   title,
   tone = "muted",
 }: ThreadListNoticeProps) => {
-  const borderColor =
-    tone === "danger"
-      ? khalaMobileTheme.danger
-      : tone === "accent"
-        ? khalaMobileTheme.accent
-        : khalaMobileTheme.borderMuted
-
   return (
     <View className="flex-1 justify-center px-4">
-      <View
-        className="items-center border bg-surfaceRaised px-5 py-7"
-        style={[styles.noticePanel, { borderColor }]}
-      >
-        {loading ? <ActivityIndicator size={34} type="large" /> : null}
-        <KhalaText className={loading ? "mt-4 text-center" : "text-center"} variant="body">
-          {title}
-        </KhalaText>
-        {detail === undefined ? null : (
-          <KhalaText className="mt-2 text-center" variant={tone === "danger" ? "danger" : "muted"}>
-            {detail}
-          </KhalaText>
-        )}
-      </View>
+      <KhalaEmptyState detail={detail} loading={loading} title={title} tone={tone} />
     </View>
   )
 }
@@ -148,25 +129,14 @@ const ThreadRow = ({ now, onPress, thread }: ThreadRowProps) => {
   const title = thread.title.trim() || "Untitled chat"
 
   return (
-    <TouchableFeedback
-      accessibilityRole="button"
-      highlightColor="rgba(79, 208, 255, 0.1)"
+    <KhalaListItem
+      accessibilityLabel={title}
+      detail={messageLabel}
+      meta={formatRelativeTime(recencyOf(thread), now)}
       onPress={onPress}
-    >
-      <View className="gap-1.5" style={styles.rowContent}>
-        <View className="flex-row items-start justify-between gap-3">
-          <KhalaText className="shrink text-lg font-semibold leading-snug" numberOfLines={2} variant="body">
-            {title}
-          </KhalaText>
-          <KhalaText className="pt-1 tabular-nums" variant="faint">
-            {formatRelativeTime(recencyOf(thread), now)}
-          </KhalaText>
-        </View>
-        <KhalaText className="shrink" numberOfLines={1} variant="muted">
-          {messageLabel}
-        </KhalaText>
-      </View>
-    </TouchableFeedback>
+      title={title}
+      titleNumberOfLines={2}
+    />
   )
 }
 
@@ -176,11 +146,7 @@ const ThreadListFooter = () => <View className="h-8" />
 
 const ThreadListEmpty = () => (
   <View className="px-4 py-16">
-    <View className="border border-borderMuted bg-surfaceRaised px-5 py-7" style={styles.emptyPanel}>
-      <KhalaText className="text-center" variant="body">
-        No threads yet
-      </KhalaText>
-    </View>
+    <KhalaEmptyState title="No threads yet" />
   </View>
 )
 
@@ -260,20 +226,9 @@ export const ThreadListScreen = ({ navigation }: ThreadListScreenProps) => {
 }
 
 const styles = StyleSheet.create({
-  emptyPanel: {
-    borderRadius: 8,
-  },
-  noticePanel: {
-    borderRadius: 8,
-    minHeight: 168,
-  },
   overviewGradient: {
     backgroundColor: khalaMobileTheme.surface,
     borderRadius: 8,
     overflow: "hidden",
-  },
-  rowContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
   },
 })

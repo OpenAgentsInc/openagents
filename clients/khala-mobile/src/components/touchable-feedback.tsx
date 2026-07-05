@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import type { StyleProp, ViewStyle } from "react-native"
+import type { AccessibilityState, StyleProp, ViewStyle } from "react-native"
 import { Gesture, GestureDetector } from "react-native-gesture-handler"
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated"
 
@@ -21,7 +21,11 @@ type TouchableFeedbackProps = Readonly<{
   onPress?: () => void
   style?: StyleProp<ViewStyle>
   className?: string
+  accessibilityLabel?: string
   accessibilityRole?: "button" | "link" | "none"
+  accessibilityState?: AccessibilityState
+  disabled?: boolean
+  testID?: string
   /** Translucent highlight color shown while pressed. Defaults to the
    * app's `accent/10` opacity-modifier convention (see `Pill` in
    * `src/components/shell.tsx`). */
@@ -34,22 +38,27 @@ const DEFAULT_COLOR = "transparent"
 
 export const TouchableFeedback = ({
   accessibilityRole,
+  accessibilityLabel,
+  accessibilityState,
   children,
   className,
   defaultColor = DEFAULT_COLOR,
+  disabled = false,
   highlightColor = DEFAULT_HIGHLIGHT_COLOR,
   onPress,
-  style
+  style,
+  testID
 }: TouchableFeedbackProps) => {
   const active = useSharedValue(false)
 
   const gesture = Gesture.Tap()
+    .enabled(!disabled)
     .maxDuration(4000)
     .onBegin(() => {
       active.value = true
     })
     .onTouchesUp(() => {
-      if (onPress !== undefined) runOnJS(onPress)()
+      if (!disabled && onPress !== undefined) runOnJS(onPress)()
     })
     .onFinalize(() => {
       active.value = false
@@ -64,9 +73,12 @@ export const TouchableFeedback = ({
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View
+        accessibilityLabel={accessibilityLabel}
         accessibilityRole={accessibilityRole}
+        accessibilityState={{ ...accessibilityState, disabled }}
         className={className}
         style={[style, rAnimatedStyle]}
+        testID={testID}
       >
         {children}
       </Animated.View>

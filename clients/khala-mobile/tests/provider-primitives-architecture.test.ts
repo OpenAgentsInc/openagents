@@ -16,11 +16,14 @@ describe("Khala mobile provider spine and primitives", () => {
     expect(app).toContain("BlurredPopupProvider")
   })
 
-  test("defines token-backed Screen, Text, and Button primitives", async () => {
-    const [screen, text, button] = await Promise.all([
+  test("defines token-backed ordinary UI primitives", async () => {
+    const [screen, text, button, textField, listItem, emptyState] = await Promise.all([
       readSource("src/components/khala-screen.tsx"),
       readSource("src/components/khala-text.tsx"),
       readSource("src/components/khala-button.tsx"),
+      readSource("src/components/khala-text-field.tsx"),
+      readSource("src/components/khala-list-item.tsx"),
+      readSource("src/components/khala-empty-state.tsx"),
     ])
 
     expect(screen).toContain('export type KhalaScreenPreset = "fixed" | "keyboardAware" | "scroll"')
@@ -39,6 +42,17 @@ describe("Khala mobile provider spine and primitives", () => {
     expect(button).toContain("disabled: unavailable")
     expect(button).toContain("leftAccessory")
     expect(button).toContain("rightAccessory")
+
+    expect(textField).toContain("export type KhalaTextFieldProps")
+    expect(textField).toContain("aria-invalid")
+    expect(textField).toContain("placeholderTextColor")
+
+    expect(listItem).toContain("export type KhalaListItemProps")
+    expect(listItem).toContain("TouchableFeedback")
+    expect(listItem).toContain('accessibilityRole="button"')
+
+    expect(emptyState).toContain("export type KhalaEmptyStateProps")
+    expect(emptyState).toContain('accessibilityRole={loading ? "progressbar" : "summary"}')
   })
 
   test("migrates Settings onto the new plain UI primitives", async () => {
@@ -56,11 +70,22 @@ describe("Khala mobile provider spine and primitives", () => {
 
     expect(threadList).toContain("ActivityIndicator")
     expect(threadList).toContain("BackgroundGradient")
-    expect(threadList).toContain("TouchableFeedback")
+    expect(threadList).toContain("KhalaListItem")
+    expect(threadList).toContain("KhalaEmptyState")
     expect(threadList).not.toContain("Frame")
     expect(threadList).not.toContain("usePowerOnVisible")
     expect(threadList).not.toContain("FadeIn.delay")
     expect(threadList).not.toContain("rowFrame")
     expect(threadList).not.toContain('className="border-b border-borderMuted px-4 py-4"')
+  })
+
+  test("uses text field primitives on the manual sign-in fallback", async () => {
+    const signIn = await readSource("src/components/sign-in-screen.tsx")
+
+    expect(signIn).toContain("KhalaTextField")
+    expect(signIn).toContain("KhalaButton")
+    expect(signIn).toContain("KhalaEmptyState")
+    expect(signIn).not.toContain("<TextInput")
+    expect(signIn).not.toContain("<Pressable")
   })
 })

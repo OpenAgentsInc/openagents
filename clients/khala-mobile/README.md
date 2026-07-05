@@ -27,14 +27,17 @@ The app root also follows an Ignite-inspired provider spine:
 `GestureHandlerRootView`, `SafeAreaProvider`, `KhalaThemeProvider`,
 `StatusBar`, `KhalaAuthProvider`, then the signed-in navigator inside a
 public-safe `KhalaErrorBoundary`. New ordinary screens and plain actions should
-use `KhalaScreen`, `KhalaText`, and `KhalaButton`; keep `ArwesButton` and
-Skia-heavy controls for intentional product moments.
+use `KhalaScreen`, `KhalaText`, `KhalaButton`, `KhalaTextField`,
+`KhalaListItem`, and `KhalaEmptyState`; keep `ArwesButton` and Skia-heavy
+controls for intentional product moments.
 
 The signed-in thread list is an intentional but restrained Arcade product
 moment: it keeps the breathing `BackgroundGradient`, custom
-`ActivityIndicator`, and `TouchableFeedback` primitives, but avoids per-row
-Skia `Frame`/corner chrome. The first screen should scan like a calm mobile
-inbox with Khala atmosphere, not like every row is competing to be the UI.
+`ActivityIndicator`, and `TouchableFeedback` primitives, but routes row and
+fallback structure through quiet `KhalaListItem` and `KhalaEmptyState`
+wrappers. It avoids per-row Skia `Frame`/corner chrome. The first screen should
+scan like a calm mobile inbox with Khala atmosphere, not like every row is
+competing to be the UI.
 
 The native SwiftUI app at `clients/khala-ios/Khala` remains the interim
 shipping companion and native-reference source until this app proves parity on

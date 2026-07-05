@@ -36,7 +36,9 @@ Any Ignite pattern that conflicts with those rules is explicitly out of scope.
   `src/app.tsx` now mounts `SafeAreaProvider`, `KhalaThemeProvider`, and a
   public-safe `KhalaErrorBoundary`; `KhalaScreen`, `KhalaText`, and
   `KhalaButton` live under `clients/khala-mobile/src/components`, and Settings
-  is migrated onto them.
+  is migrated onto them. Follow-up #8457 added `KhalaTextField`,
+  `KhalaListItem`, and `KhalaEmptyState` with mounted accessibility tests and
+  real sign-in/thread-list call sites.
 - [#8428](https://github.com/OpenAgentsInc/openagents/issues/8428) - add
   Maestro launched-app smoke flows. Implemented:
   `clients/khala-mobile/.maestro/shared/_OnFlowStart.yaml`,
@@ -105,7 +107,7 @@ Khala's existing sync/security/native domains.
 | --- | --- | --- | --- |
 | App entry | Before #8426, Expo Router `app/_layout.tsx` owned `GestureHandlerRootView`, `StatusBar`, `KhalaAuthProvider`, auth gate, and signed-in `Stack`. Current app entry is explicit `index.tsx` -> `src/app.tsx`, with `SafeAreaProvider`, `KhalaThemeProvider`, and a signed-in `KhalaErrorBoundary`. | `app/app.tsx` owns `SafeAreaProvider`, `KeyboardProvider`, font/i18n readiness, `ThemeProvider`, navigation persistence, and `ErrorBoundary`. | Keep moving toward Ignite's explicit `App` entry/provider spine. The main app entry has migrated away from `expo-router/entry`; keyboard-aware behavior currently lives in `KhalaScreen` instead of a new native keyboard-provider dependency. |
 | Routes | Before #8426, file routes lived in `app/(drawer)` and `app/thread/[threadId].tsx`; current route ownership is typed React Navigation under `src/navigators` plus screens under `src/screens`. | Classic React Navigation stack/tab files in `app/navigators`, with typed `AppStackParamList`, stack screens, back-button handling, navigation refs, and optional tab/drawer navigators. | Adopted the React Navigation stack shape as target. Preserve the `src/*` domain split, and keep new route ownership in typed navigators/screens. |
-| UI primitives | Product-specific primitives (`ArwesButton`, `BackgroundGradient`, `Frame`, `SwipeableItem`, `Toggle`, `ChatComposer`) remain for high-signal moments; `KhalaScreen`, `KhalaText`, and `KhalaButton` now cover ordinary safe-area layout, copy, and actions. | Reusable `Text`, `Button`, `Screen`, `Header`, `ListItem`, `TextField`, `EmptyState`, `AutoImage`, `Icon` with common accessibility/theming behavior. | Borrowed the primitive architecture, not the visual style. Continue migrating ordinary screens/actions onto the OpenAgents-flavored wrappers. |
+| UI primitives | Product-specific primitives (`ArwesButton`, `BackgroundGradient`, `Frame`, `SwipeableItem`, `Toggle`, `ChatComposer`) remain for high-signal moments; `KhalaScreen`, `KhalaText`, `KhalaButton`, `KhalaTextField`, `KhalaListItem`, and `KhalaEmptyState` now cover ordinary safe-area layout, copy, actions, forms, rows, and fallback states. | Reusable `Text`, `Button`, `Screen`, `Header`, `ListItem`, `TextField`, `EmptyState`, `AutoImage`, `Icon` with common accessibility/theming behavior. | Borrowed the primitive architecture, not the visual style. Continue migrating ordinary screens/actions onto the OpenAgents-flavored wrappers. |
 | Theme | `src/theme/tokens.ts` bridges shared `@openagentsinc/ui` NativeWind tokens and `tailwind.config.cjs`; `KhalaThemeProvider` exposes those typed tokens at the app root. | `app/theme` has typed colors, spacing, typography, timing, light/dark themes, provider, and `themed()` helper. | Khala should keep shared tokens. The first theme-context affordance is now in place; only add more helpers when they reduce duplicated classes or unlock safe native styles. |
 | Config | `app.json` has self-hosted updates, local native module plugins, and public `extra.khala` endpoints. | `app/config` separates base/dev/prod and documents that bundled config is public, not secret. | Borrow the "bundled config is public" documentation and maybe a typed public config module. Do not put secrets there. |
 | Networking/errors | Sync/auth code returns or throws `messageSafe` strings and typed Khala Sync states. | `services/api/apiProblem.ts` normalizes transport/status failures into a typed union. | Borrow typed problem classification for mobile HTTP boundaries, adapted to Effect/Khala Sync instead of `apisauce`. |
@@ -241,7 +243,11 @@ Implementation note: #8427 added `KhalaText` and `KhalaButton`, including
 button `accessibilityRole`, disabled/busy `accessibilityState`, loading state,
 variant styling, and accessory slots. Settings now uses these wrappers for its
 plain labels and sign-out action while keeping `Frame`/Skia effects where they
-are intentional.
+are intentional. Follow-up #8457 expanded the ordinary primitive layer with
+`KhalaTextField`, `KhalaListItem`, and `KhalaEmptyState`; the manual sign-in
+fallback now uses the field/button primitives, and the signed-in thread list
+uses quiet list/empty-state wrappers instead of local ad hoc row/fallback
+chrome.
 
 ### 5. Maestro Flows For the Pending Device Smoke
 
