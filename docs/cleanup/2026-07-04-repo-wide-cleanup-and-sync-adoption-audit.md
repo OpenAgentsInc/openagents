@@ -451,6 +451,19 @@ and the D1 `sync_*` tables have zero remaining users and drop cleanly**
      legacy `/api/sync/agent-run/<id>/stream` socket for the active chat run
      and has not been repointed to `/api/sync/connect`. #8416 stays open on
      that client-repoint follow-up.
+   - **2026-07-05 second correction (#8416):** attempted the client-repoint
+     follow-up and found it is NOT safely doable yet — two real gaps, not
+     one. (a) `AgentRunEntity` has no equivalent of the legacy
+     `agent_run_events` collection (the live tool-call/message transcript),
+     only the flattened `agent_runs` status row + goal context — a schema
+     gap. (b) the KS-6.6 producer (`projectAgentRun`) is wired only into the
+     three run-CREATION call sites in `omni-handlers.ts`, not into
+     `appendAgentRunEvents` (`omni-runs.ts`), which is the actual ongoing
+     per-event/per-status-transition producer for the legacy scope — an
+     integration gap, so even the covered fields go silent after launch.
+     Full detail + exact line refs in `docs/khala-sync/RUNBOOK.md`'s
+     "2026-07-05 client-repoint research" subsection. No repoint or legacy
+     deletion done; #8416 stays open with this precise blocker.
 5. **Public aggregates** (demand-mix, model-mix, tokens-history, public activity timeline): project off live-at-read D1 onto `scope.public.*` counters — the Postgres rollup twins already exist from KS-8.2. (M, low)
    - **2026-07-05 update (KS-6.7, #8417):** shipped model-mix, demand-mix,
      channel-mix, and tokens-history as a `scope.public.tokens-served-aggregates`

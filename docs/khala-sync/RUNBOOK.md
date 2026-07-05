@@ -3524,6 +3524,65 @@ Contract test proving the exact production glue (a real `createQueuedAgentRun`
 output decodes cleanly through `AgentRunEntity`):
 `apps/openagents.com/workers/api/src/omni-handlers-agent-run-projection.test.ts`.
 
+### 2026-07-05 client-repoint research — STILL BLOCKED, two real gaps found (#8416)
+
+Read `apps/web/src/subscriptions.ts` end to end (the intended repoint target)
+plus its consumers in `page/loggedIn/sync/transitions.ts` and
+`page/loggedIn/sync/projection.ts`, and traced the legacy scope's actual
+production producers in `omni-runs.ts`/`omni-handlers.ts`. Conclusion: the
+repoint described in this issue is **not safely doable yet** — not because of
+the anonymous-read wall (agent-run is authenticated-only, as already noted
+above), but because `scope.agent_run.<runId>` is missing real coverage in two
+independent ways:
+
+1. **Schema gap — no event feed.** The legacy `agent-run:<runId>` DO-room
+   scope multiplexes TWO D1 collections onto one room:
+   `agent_runs` (run/goal status fields — what `AgentRunEntity` mirrors) AND
+   `agent_run_events` (the individual tool-call/message events that populate
+   `chatRun.events`, i.e. the actual live transcript the user watches
+   scroll by). `transitions.ts`'s `modelWithIncrementalActiveRunPatch`
+   branches on `patch.collection === 'agent_run_events'` vs `'agent_runs'`
+   and calls a different projection helper for each
+   (`activeChatRunWithSyncedEventPatch` vs `activeChatRunWithSyncedRunPatch`,
+   both in `sync/projection.ts`). `AgentRunEntity`
+   (`packages/khala-sync/src/agent-run.ts`) has no equivalent of
+   `agent_run_events` at all — by design, it is explicitly "one entity per
+   scope" (a single flattened run+goal post-image), not a per-event
+   changelog. Repointing today would mean the new scope can never deliver
+   the live transcript, only run/goal status.
+2. **Integration gap — the new producer only fires at launch, not during
+   the run.** Even for the fields `AgentRunEntity` DOES cover,
+   `projectAgentRun`/`projectAgentRunSyncScope` (the KS-6.6 producer) is
+   wired ONLY into this issue's three `omni-handlers.ts` call sites (mission
+   launch, goal continuation, API mission launch — i.e. run CREATION
+   moments). The legacy scope's real ongoing producer,
+   `appendAgentRunSyncChanges` (`omni-runs.ts`), is invoked from
+   `appendAgentRunEvents` (`omni-runs.ts`'s `OmniRunsRepository`
+   implementation, called repeatedly from `omni-handlers.ts` — see its call
+   sites around lines 1213/2119/2156/2921 — every time the runner posts a
+   new event or status transition) and from `saveAgentRun` (creation only).
+   `projectAgentRun` is NOT called from `appendAgentRunEvents`. So even a
+   perfect client repoint would see exactly one snapshot at launch/
+   continuation time and then silence from `scope.agent_run.<runId>` for
+   the rest of the run's life — the run's live status transitions
+   (`queued`→`running`→`waiting_for_input`→`completed`/`failed`) would
+   never reach the new scope after the first snapshot.
+
+**Net honest assessment:** a real cutover needs BOTH gaps closed — wiring
+`projectAgentRun` into the ongoing `appendAgentRunEvents` path (not just the
+three creation sites), and a product decision on whether
+`AgentRunEntity` needs a companion per-event entity/changelog or whether the
+existing REST poll fallback (`FetchAutopilotRun` →
+`GET /api/omni/agent-runs/<runId>`, ticking every 2s while
+`chatRunIsBusy(model)`, entirely independent of any sync scope, already
+covers full run+event parity at ≤2s latency) is an accepted design tradeoff
+for event-level detail. That product call was not made unilaterally here.
+Given both, **the client repoint and the legacy `notifySyncScopes` deletion
+are NOT done in this pass** — doing so would have been a broken repoint per
+this issue's own guardrail, not a verified-live cutover. #8416 stays open
+with this precise blocker; no code changed in this pass, only this research
+recorded.
+
 ## Anonymous read scopes (KS-8.x, scope.public.* only)
 
 **Status: LIVE.** The gap described in the previous section ("Gym
