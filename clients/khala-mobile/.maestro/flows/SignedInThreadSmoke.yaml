@@ -1,0 +1,49 @@
+# flow: Khala Mobile signed-in seeded-thread smoke
+# intent:
+# Exercise the pending launched-app interaction contract against a local
+# public-safe seeded account/thread. This flow intentionally reads credentials
+# from the caller's environment and never commits them.
+#
+# Preconditions:
+# - Installed dev/simulator build is pointed at a public-safe Khala Sync
+#   account, either by EXPO_PUBLIC_KHALA_SYNC_DEMO_* at Metro bundle time or
+#   by the manual sign-in env vars below.
+# - The account already has a public-safe thread whose visible title matches
+#   KHALA_MAESTRO_THREAD_TITLE. Khala Mobile does not have a create-thread UI
+#   yet, so this flow opens an existing seeded thread.
+#
+# Required when the app does not auto-sign-in from EXPO_PUBLIC_*:
+# - KHALA_MAESTRO_OWNER_USER_ID
+# - KHALA_MAESTRO_TOKEN
+#
+# Required for the thread assertion:
+# - KHALA_MAESTRO_THREAD_TITLE
+#
+appId: ${MAESTRO_APP_ID}
+env:
+  KHALA_MAESTRO_PUBLIC_MESSAGE: "Khala mobile public Maestro smoke"
+onFlowStart:
+  - runFlow: ../shared/_OnFlowStart.yaml
+---
+- runFlow:
+    when:
+      visible: "Sign in manually instead"
+    commands:
+      - tapOn: "Sign in manually instead"
+      - tapOn: "user_..."
+      - inputText: ${KHALA_MAESTRO_OWNER_USER_ID}
+      - tapOn: "oa_agent_..."
+      - inputText: ${KHALA_MAESTRO_TOKEN}
+      - tapOn: "Sign in"
+      - waitForAnimationToEnd
+
+- assertVisible: "Khala"
+- assertVisible: ${KHALA_MAESTRO_THREAD_TITLE}
+- tapOn: ${KHALA_MAESTRO_THREAD_TITLE}
+- assertVisible:
+    text: "${KHALA_MAESTRO_THREAD_TITLE}|Thread"
+- assertVisible: "Provider"
+- tapOn: "Message…"
+- inputText: ${KHALA_MAESTRO_PUBLIC_MESSAGE}
+- tapOn: "Send"
+- assertVisible: ${KHALA_MAESTRO_PUBLIC_MESSAGE}

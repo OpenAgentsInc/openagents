@@ -179,16 +179,15 @@ In priority order:
    part (making `react-native` importable at all under `bun test`) is done;
    each new component only needs its own leaf-component mocks (Skia/gesture-
    handler/native-module boundaries), not new harness work.
-2. **Stand up Maestro (or Detox) flows for both platforms** covering the
-   scenario in `khala_mobile.platform.launched_app_interaction_smoke.v1`:
-   launch, sign-in resolves, open a thread, send a message, see the lane
-   picker. This is the mobile equivalent of desktop's DOM-mounted scenarios
-   and is the single highest-leverage next investment, since it unblocks
-   BOTH the "launched app" contract and gives a real harness for future
-   scripted scenarios. Real device/simulator rendering, gesture/touch
-   physics, Skia drawing, and Reanimated worklets remain fully out of scope
-   for the `bun test` harness above — it exercises React
-   state/render/effect logic only, never real native rendering.
+2. **Run the staged Maestro flows on both platforms** covering the scenario in
+   `khala_mobile.platform.launched_app_interaction_smoke.v1`: launch, sign-in
+   resolves, open a thread, send a message, see the lane picker. As of #8428,
+   `clients/khala-mobile/.maestro/flows/LaunchFallback.yaml` and
+   `SignedInThreadSmoke.yaml` exist locally; the missing piece is a dated
+   device/emulator receipt, not the flow scaffold. Real device/simulator
+   rendering, gesture/touch physics, Skia drawing, and Reanimated worklets
+   remain fully out of scope for the `bun test` harness above — it exercises
+   React state/render/effect logic only, never real native rendering.
 3. **A dated physical-device manual-check pass** for push-to-talk capture and
    the Apple FM bridge, once the underlying native implementations move past
    their current always-reject/always-unavailable shells. Until then those

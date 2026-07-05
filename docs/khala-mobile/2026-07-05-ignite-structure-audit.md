@@ -38,7 +38,10 @@ Any Ignite pattern that conflicts with those rules is explicitly out of scope.
   `KhalaButton` live under `clients/khala-mobile/src/components`, and Settings
   is migrated onto them.
 - [#8428](https://github.com/OpenAgentsInc/openagents/issues/8428) - add
-  Maestro launched-app smoke flows.
+  Maestro launched-app smoke flows. Implemented:
+  `clients/khala-mobile/.maestro/shared/_OnFlowStart.yaml`,
+  `LaunchFallback.yaml`, and `SignedInThreadSmoke.yaml` provide the local-only
+  path toward the pending launched-app contract.
 - [#8429](https://github.com/OpenAgentsInc/openagents/issues/8429) - add
   dependency-cruiser guardrails and local generators.
 
@@ -212,6 +215,13 @@ Recommended Khala shape:
 
 Why borrow: it converts the current "builds" evidence into actual launched app
 interaction evidence.
+
+Implementation note: #8428 added a no-credential `LaunchFallback.yaml` that can
+prove app launch and the Tailnet/manual sign-in fallback, plus
+`SignedInThreadSmoke.yaml` for a public-safe seeded account/thread. The latter
+uses environment-provided credentials and a seeded thread title because Khala
+Mobile does not yet expose a create-thread control. The UX contract remains
+pending until a dated device/emulator run receipt is recorded.
 
 ### 6. Dependency-Cruiser Architecture Rules
 

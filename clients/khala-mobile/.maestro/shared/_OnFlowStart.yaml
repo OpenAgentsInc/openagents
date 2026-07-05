@@ -1,0 +1,31 @@
+# flow: Shared Khala Mobile startup
+# intent:
+# Launch Khala Mobile with clean local state before every Maestro scenario.
+# Keep this local-only: no EAS, hosted CI, or committed credentials.
+#
+# Example:
+#
+# appId: ${MAESTRO_APP_ID}
+# onFlowStart:
+#   - runFlow: ../shared/_OnFlowStart.yaml
+# ---
+# [your flow]
+#
+appId: ${MAESTRO_APP_ID}
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    stopApp: true
+
+- waitForAnimationToEnd
+
+# If a future dev-client build is used, borrow Ignite's defensive dismissal.
+# The current Khala build normally uses plain Metro and will skip this block.
+- runFlow:
+    when:
+      visible: "Development servers"
+    commands:
+      - tapOn: "http://.*:.*"
+      - waitForAnimationToEnd
+      - tapOn: "Close"

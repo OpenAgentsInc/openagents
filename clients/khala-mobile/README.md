@@ -40,6 +40,34 @@ bun run --cwd clients/khala-mobile test
 bun run --cwd clients/khala-mobile typecheck
 ```
 
+## Local Maestro Smoke Flows
+
+Maestro flows are local-only device/simulator checks. They do not use EAS,
+GitHub Actions, hosted CI, or committed credentials.
+
+```sh
+MAESTRO_APP_ID=com.openagents.khala.mobile \
+  maestro test clients/khala-mobile/.maestro/flows/LaunchFallback.yaml
+```
+
+The signed-in thread smoke needs a public-safe seeded account and thread. Use
+environment variables or a Metro bundle started with
+`EXPO_PUBLIC_KHALA_SYNC_DEMO_OWNER_USER_ID` and
+`EXPO_PUBLIC_KHALA_SYNC_DEMO_TOKEN`; never commit real values.
+
+```sh
+MAESTRO_APP_ID=com.openagents.khala.mobile \
+KHALA_MAESTRO_OWNER_USER_ID="<owner-user-id>" \
+KHALA_MAESTRO_TOKEN="<token-from-local-env>" \
+KHALA_MAESTRO_THREAD_TITLE="<public-safe-thread-title>" \
+  maestro test clients/khala-mobile/.maestro/flows/SignedInThreadSmoke.yaml
+```
+
+`LaunchFallback.yaml` proves launch plus a real no-credential fallback
+interaction. `SignedInThreadSmoke.yaml` is the path toward closing
+`khala_mobile.platform.launched_app_interaction_smoke.v1`, but that contract
+stays pending until a dated device/emulator run receipt is recorded.
+
 ## Local Builds
 
 Build and submit locally only.

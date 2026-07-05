@@ -503,7 +503,11 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
       contractId: "khala_mobile.platform.launched_app_interaction_smoke.v1",
       enforcementTier: "unenforced",
       evidenceRefs: [
+        "clients/khala-mobile/.maestro/shared/_OnFlowStart.yaml",
+        "clients/khala-mobile/.maestro/flows/LaunchFallback.yaml",
+        "clients/khala-mobile/.maestro/flows/SignedInThreadSmoke.yaml",
         "clients/khala-mobile/README.md",
+        "clients/khala-mobile/tests/maestro-policy.test.ts",
         "docs/khala-mobile/2026-07-05-mobile-qa-swarm-audit.md",
       ],
       oracles: [],
@@ -518,9 +522,9 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "The built app actually launches and is interactable end to end on a real Android device/emulator and a real iOS device (beyond simulator/local-build success), for at least: sign-in resolves, a thread opens, a message sends, and the composer's lane picker is visible.",
       surface: "khala-mobile",
       verification:
-        "No automated oracle yet. Current evidence is source-level scaffold, unit tests, local typecheck, iOS simulator build success, Android clean Gradle assemble, and two TestFlight uploads confirmed VALID via the App Store Connect API — none of that is a launched-and-interacted device pass. Needs an owner/device manual-check receipt per platform, or a Maestro/Detox-style scripted device flow, before this can move to enforced.",
+        "No completed device/emulator oracle yet. Current evidence is source-level scaffold, unit tests, local typecheck, iOS simulator build success, Android clean Gradle assemble, two TestFlight uploads confirmed VALID via the App Store Connect API, and staged local Maestro flows under clients/khala-mobile/.maestro. None of that is a recorded launched-and-interacted device pass yet. Needs an owner/device manual-check receipt per platform, or a completed Maestro/Detox run receipt, before this can move to enforced.",
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-05.2",
+  version: "2026-07-05.3",
 }
