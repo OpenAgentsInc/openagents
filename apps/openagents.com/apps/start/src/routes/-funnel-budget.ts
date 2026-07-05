@@ -44,8 +44,14 @@ const routeBudgets = [
   { path: '/run', marker: 'Tassadar lives in the Verse' },
   { path: '/terms', marker: 'Terms of Service' },
   { path: '/privacy', marker: 'Privacy Policy' },
-  { path: '/training/runs', marker: 'Training Runs' },
-  { path: '/training/runs/run.cs336.a1.demo', marker: 'Training Runs' },
+  // Deprecated-for-now (owner decision, 2026-07-05): both routes render the
+  // temporarily-unavailable notice, not the real page. See
+  // docs/fable/2026-07-04-ts-6-start-khala-tassadar-route-slice.md.
+  { path: '/training/runs', marker: 'temporarily unavailable' },
+  {
+    path: '/training/runs/run.cs336.a1.demo',
+    marker: 'temporarily unavailable',
+  },
 ] as const
 
 const assetDir = join(import.meta.dir, '../../dist/client/assets')

@@ -1,31 +1,24 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import { TrainingRunsPage } from '../../-training-runs-page'
+import { TrainingRunsDeprecatedPage } from '../../-training-runs-deprecated-page'
 
 // `openagents.com/training/runs/{runId}` — the per-run detail alias of the
-// already-migrated `/training/runs` list route. The Foldkit
-// `publicTrainingRunRouter` (apps/web/src/route.ts) parses this exact path
-// shape (`training/runs/{runId}`) into `PublicTrainingRunRoute({ runId })`,
-// and `loggedOut/view.ts` renders it with the very same
-// `TrainingRuns.view(model.publicTrainingRuns, route.runId)` function the
-// list route uses with `runId: null`. See `-training-runs-page.tsx` for why
-// the honest Idle-state markup is identical between the two routes.
+// `/training/runs` list route. Deprecated-for-now (owner decision,
+// 2026-07-05) along with the list route — see
+// -training-runs-deprecated-page.tsx and the TS-6 tracking doc. The real
+// per-run detail component stays dormant in `-training-runs-page.tsx`
+// (`TrainingRunsPage` with a `runId` prop) for restoration; this route just
+// no longer renders it.
 export const Route = createFileRoute('/training/runs/$runId')({
-  component: TrainingRunDetailPage,
-  head: ({ params }) => ({
+  component: TrainingRunsDeprecatedPage,
+  head: () => ({
     meta: [
-      { title: `Training run ${params.runId} - OpenAgents` },
+      { title: 'Training Runs (temporarily unavailable) - OpenAgents' },
       {
         name: 'description',
         content:
-          'Public CS336 training run state, verification, and settlement projection, rendered through the TanStack Start staging app.',
+          'The public CS336 training run detail view is temporarily unavailable while this feature is reworked.',
       },
     ],
   }),
 })
-
-function TrainingRunDetailPage() {
-  const { runId } = Route.useParams()
-
-  return <TrainingRunsPage runId={runId} />
-}

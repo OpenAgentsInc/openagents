@@ -496,7 +496,11 @@ const trainingFullscreenDemoView = (model: Model): Html => {
               trainingSidebarLink('Fullscreen demo', '/demo', true),
               trainingSidebarLink('Workroom playback', '/demo2', false),
               trainingSidebarLink('Order playback', '/demo2/order', false),
-              trainingSidebarLink('Training runs', '/training/runs', false),
+              // Training runs sidebar link intentionally removed — the
+              // training-runs/gym feature is deprecated-for-now (owner
+              // decision, restorable later); the page and its route stay in
+              // git history rather than being deleted. See
+              // docs/fable/2026-07-04-ts-6-start-khala-tassadar-route-slice.md.
             ],
           ),
           h.div(

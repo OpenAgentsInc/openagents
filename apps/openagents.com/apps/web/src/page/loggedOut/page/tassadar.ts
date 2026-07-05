@@ -508,14 +508,10 @@ export const view = (copied: boolean): Html => {
                 ['AGENTS.md'],
               ),
               h.span([Ui.className<Message>(footDividerClass)], ['·']),
-              h.a(
-                [
-                  h.Href('https://openagents.com/training/runs'),
-                  Ui.className<Message>(linkClass),
-                ],
-                ['Training runs'],
-              ),
-              h.span([Ui.className<Message>(footDividerClass)], ['·']),
+              // Training runs footer link intentionally removed — the
+              // training-runs/gym feature is deprecated-for-now (owner
+              // decision, restorable later); see
+              // docs/fable/2026-07-04-ts-6-start-khala-tassadar-route-slice.md.
               h.span([], ['OpenAgents']),
             ],
           ),

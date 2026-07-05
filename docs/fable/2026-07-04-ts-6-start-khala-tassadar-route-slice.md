@@ -606,6 +606,48 @@ chart, ~200 lines), `khalaTokensServedModelMixPanel`,
 `@openagentsinc/ui`. It stays backlogged for its own dedicated pass, same
 posture as `pylon.ts` and `share.ts`.
 
+## Deprecation Note: Training Runs / Gym (2026-07-05)
+
+**The training-runs/gym feature is intentionally deprecated-for-now** (owner
+decision, 2026-07-05), immediately after Slice 20 landed above. This is a
+scope decision, not a migration gap — do not treat it as unmigrated or
+incomplete in future TS-6 passes, and do not spend further effort porting or
+polishing training-runs/gym UI until the owner reinstates it.
+
+What changed:
+
+- Both Start routes (`training/runs/index.tsx` and `training/runs/$runId.tsx`)
+  now render a shared `TrainingRunsDeprecatedPage`
+  (`-training-runs-deprecated-page.tsx`) — an honest "This page is temporarily
+  unavailable" notice with `data-route="training-runs-deprecated"` — instead
+  of the real idle-state UI landed in Slice 20. The real `TrainingRunsPage`
+  component (`-training-runs-page.tsx`, with the `runId` prop added in
+  Slice 20) and its test coverage (`-training-runs.test.tsx`) are left in
+  place, dormant and unreferenced by any route, for restoration later.
+- The Start funnel budget list (`-funnel-budget.ts`) markers for both
+  `/training/runs` paths were updated to `'temporarily unavailable'` to match
+  the new notice copy; total client JS dropped slightly to 695.7 KiB.
+- Removed the two live nav entry points that surfaced this feature on the
+  legacy Foldkit pages still served by the production Worker: the "Training
+  runs" sidebar link on the `/demo` "Training Live" sidebar
+  (`apps/web/src/page/demo/view.ts`) and the "Training runs" footer link on
+  `/tassadar` (`apps/web/src/page/loggedOut/page/tassadar.ts`). Both removals
+  are commented in place pointing back to this note.
+- **Not touched, per the owner's explicit "restorable later" instruction:**
+  the legacy Foldkit `apps/web/src/page/loggedOut/page/trainingRuns.ts` page
+  itself, its Foldkit route registration
+  (`publicTrainingRunsRouter`/`publicTrainingRunRouter` in
+  `apps/web/src/route.ts`), and all backend training-run data/API surfaces
+  (`workers/api/src/training-*.ts`, `training_run_window*` D1 tables/
+  migrations, `/api/training/runs`, `/api/training/leaderboards`). The
+  feature is hidden from discovery, not deleted or data-scrubbed — a direct
+  URL hit on the legacy Foldkit page still works exactly as before.
+- Companion sync-engine issue [#8415](https://github.com/OpenAgentsInc/openagents/issues/8415)
+  (KS-6.5 gym run-progress public-projection cutover) was closed as not
+  applicable given this deprecation — see the issue comment for detail.
+
+Re-verified after this change: `bun run --cwd apps/openagents.com/apps/start test` (32 files, 98 tests), `typecheck`, `build`, and `budget` all green; `bun run --cwd apps/openagents.com/apps/web test` (155 files, 1795 tests) green after the two nav-link removals; a local `vite preview` + `curl` pass confirms both `/training/runs` and `/training/runs/run.cs336.a1.demo` render the deprecated notice and every other route checked in Slice 20 is still unaffected.
+
 ## Boundary
 
 This is not the final TS-6 closure. The live `openagents.com` Worker still
@@ -631,10 +673,11 @@ Remaining TS-6 work:
   them ported to React/`@openagentsinc/ui` yet, so this still needs that
   porting work first plus the same "public-safe default until Start has real
   session auth" treatment as `/artanis/accounts`);
-  `/training/runs/$runId` is now migrated (Slice 20) — the still-unmigrated
-  live-data content for that route (real metrics, Real Gradient status,
-  windows, receipts, leaderboard rows) needs the same live client fetch every
-  other data-backed route in this app is still waiting on;
+  `/training/runs/$runId` was migrated in Slice 20, but the whole
+  training-runs/gym feature (both Start routes and their nav entry points) is
+  now **deprecated-for-now** per the owner decision recorded above — do not
+  pick this back up (live-data wiring, nav restoration, or otherwise) until
+  the owner reinstates it;
 - migrate logged-in app-shell panels route-by-route (this is the large
   authenticated `loggedIn/` tree behind `Ui.workroomShell` — dozens of
   interconnected panels including chat, dashboard, billing, settings, admin,
@@ -649,7 +692,7 @@ Remaining TS-6 work:
 ## Verification
 
 ```sh
-bun run --cwd apps/openagents.com/apps/start test -- src/routes/-code.test.tsx src/routes/-app-shell.test.tsx src/routes/-components.test.tsx src/routes/-gym.test.tsx src/routes/-index.test.tsx src/routes/-artanis-accounts.test.tsx src/routes/-workspace-invite.test.tsx src/routes/-mirrorcode.test.tsx src/routes/-promises.test.tsx src/routes/-artanis-console.test.tsx src/routes/-public-agent.test.tsx src/routes/-training-runs.test.tsx
+bun run --cwd apps/openagents.com/apps/start test -- src/routes/-code.test.tsx src/routes/-app-shell.test.tsx src/routes/-components.test.tsx src/routes/-gym.test.tsx src/routes/-index.test.tsx src/routes/-artanis-accounts.test.tsx src/routes/-workspace-invite.test.tsx src/routes/-mirrorcode.test.tsx src/routes/-promises.test.tsx src/routes/-artanis-console.test.tsx src/routes/-public-agent.test.tsx src/routes/-training-runs.test.tsx src/routes/-training-runs-deprecated.test.tsx
 bun run --cwd apps/openagents.com/apps/start test
 bun run --cwd apps/openagents.com/apps/start typecheck
 bun run --cwd apps/openagents.com/apps/start build
