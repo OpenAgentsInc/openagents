@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-nativ
 import { SafeAreaView } from "react-native-safe-area-context"
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
+import { tx } from "../i18n/copy"
 
 /**
  * Shown whenever there is no signed-in session yet. Per the owner mandate
@@ -36,13 +37,13 @@ const discoveryMessage = (
   status: ReturnType<typeof useKhalaAuth>["status"],
   discoveryOutcome: ReturnType<typeof useKhalaAuth>["discoveryOutcome"]
 ): string => {
-  if (status === "discovering") return "Looking for a signed-in Mac on your Tailnet…"
+  if (status === "discovering") return tx("signIn.discovery.looking")
   if (discoveryOutcome?.state === "reachable_not_signed_in") {
-    return `Found Khala Code${
-      discoveryOutcome.hostname === null ? "" : ` on ${discoveryOutcome.hostname}`
-    }, but it hasn't completed "Connect OpenAgents" yet. Open Khala Code on your Mac, finish Connect, then retry.`
+    return discoveryOutcome.hostname === null
+      ? tx("signIn.discovery.reachableNotSignedIn")
+      : tx("signIn.discovery.reachableNotSignedInOnHost", { hostname: discoveryOutcome.hostname })
   }
-  return "No signed-in Mac found on your Tailnet."
+  return tx("signIn.discovery.noSignedInMac")
 }
 
 const AutoDiscoveryPanel = ({
@@ -72,7 +73,7 @@ const AutoDiscoveryPanel = ({
   return (
     <SafeAreaView className="flex-1 bg-bg" edges={["top", "bottom", "left", "right"]}>
       <View className="flex-1 justify-center px-6">
-        <Text className="mb-1 text-center font-sans text-2xl font-semibold text-text">Khala Code</Text>
+        <Text className="mb-1 text-center font-sans text-2xl font-semibold text-text">{tx("app.title")}</Text>
 
         <View className="mb-8 mt-6 items-center">
           {discovering || retrying ? <ActivityIndicator color="#4fd0ff" /> : null}
@@ -80,8 +81,7 @@ const AutoDiscoveryPanel = ({
             {discoveryMessage(status, discoveryOutcome)}
           </Text>
           <Text className="mt-2 text-center font-mono text-xs text-textFaint">
-            Make sure Tailscale is connected on both this phone and your Mac, and Khala Code is running and signed
-            in there.
+            {tx("signIn.discovery.help")}
           </Text>
         </View>
 
@@ -94,12 +94,12 @@ const AutoDiscoveryPanel = ({
           {retrying ? (
             <ActivityIndicator color="#000" />
           ) : (
-            <Text className="font-sans text-base font-semibold text-bg">Retry</Text>
+            <Text className="font-sans text-base font-semibold text-bg">{tx("signIn.retry")}</Text>
           )}
         </Pressable>
 
         <Pressable accessibilityRole="button" className="mt-4 items-center py-2" onPress={onShowManualForm}>
-          <Text className="font-mono text-xs uppercase tracking-wide text-textFaint">Sign in manually instead</Text>
+          <Text className="font-mono text-xs uppercase tracking-wide text-textFaint">{tx("signIn.manualInstead")}</Text>
         </Pressable>
       </View>
     </SafeAreaView>
@@ -132,12 +132,12 @@ const ManualSignInForm = ({
   return (
     <SafeAreaView className="flex-1 bg-bg" edges={["top", "bottom", "left", "right"]}>
       <View className="flex-1 justify-center px-6">
-        <Text className="mb-1 text-center font-sans text-2xl font-semibold text-text">Khala Code</Text>
+        <Text className="mb-1 text-center font-sans text-2xl font-semibold text-text">{tx("app.title")}</Text>
         <Text className="mb-8 text-center font-sans text-sm text-textMuted">
-          Sign in with your OpenAgents account to sync chats and your fleet.
+          {tx("signIn.manual.subtitle")}
         </Text>
 
-        <Text className="mb-1 font-mono text-xs uppercase tracking-wide text-textFaint">Owner user id</Text>
+        <Text className="mb-1 font-mono text-xs uppercase tracking-wide text-textFaint">{tx("signIn.manual.ownerUserId")}</Text>
         <TextInput
           autoCapitalize="none"
           autoCorrect={false}
@@ -148,7 +148,7 @@ const ManualSignInForm = ({
           value={ownerUserId}
         />
 
-        <Text className="mb-1 font-mono text-xs uppercase tracking-wide text-textFaint">OpenAgents token</Text>
+        <Text className="mb-1 font-mono text-xs uppercase tracking-wide text-textFaint">{tx("signIn.manual.token")}</Text>
         <TextInput
           autoCapitalize="none"
           autoCorrect={false}
@@ -170,12 +170,12 @@ const ManualSignInForm = ({
           disabled={!canSubmit}
           onPress={handleSubmit}
         >
-          {submitting ? <ActivityIndicator color="#000" /> : <Text className="font-sans text-base font-semibold text-bg">Sign in</Text>}
+          {submitting ? <ActivityIndicator color="#000" /> : <Text className="font-sans text-base font-semibold text-bg">{tx("signIn.manual.submit")}</Text>}
         </Pressable>
 
         <Pressable accessibilityRole="button" className="mt-4 items-center py-2" onPress={onBack}>
           <Text className="font-mono text-xs uppercase tracking-wide text-textFaint">
-            Back to Tailnet auto-discovery
+            {tx("signIn.manual.backToDiscovery")}
           </Text>
         </Pressable>
 

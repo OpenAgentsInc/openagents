@@ -11,6 +11,7 @@ import * as Linking from "expo-linking"
 import { SettingsScreen } from "../screens/settings-screen"
 import { ThreadListScreen } from "../screens/thread-list-screen"
 import { ThreadMessagesScreen } from "../screens/thread-messages-screen"
+import { tx } from "../i18n/copy"
 import { khalaMobileTheme } from "../theme/tokens"
 import { navigationRef, useBackButtonHandler } from "./navigationUtilities"
 import type { AppDrawerParamList, AppStackParamList } from "./navigationTypes"
@@ -56,8 +57,8 @@ const AppDrawerNavigator = () => (
       sceneStyle: { backgroundColor: khalaMobileTheme.background },
     }}
   >
-    <Drawer.Screen name="Threads" component={ThreadListScreen} options={{ title: "Khala" }} />
-    <Drawer.Screen name="Settings" component={SettingsScreen} options={{ title: "Settings" }} />
+    <Drawer.Screen name="Threads" component={ThreadListScreen} options={{ title: tx("nav.threads") }} />
+    <Drawer.Screen name="Settings" component={SettingsScreen} options={{ title: tx("nav.settings") }} />
   </Drawer.Navigator>
 )
 

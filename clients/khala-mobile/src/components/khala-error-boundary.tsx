@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react"
 
+import { tx } from "../i18n/copy"
 import { KhalaButton } from "./khala-button"
 import { KhalaScreen } from "./khala-screen"
 import { KhalaText } from "./khala-text"
@@ -14,18 +15,18 @@ type KhalaErrorBoundaryState = Readonly<{
 
 const KhalaErrorFallback = ({ onReset }: { onReset: () => void }) => (
   <KhalaScreen contentClassName="items-center justify-center px-6" preset="fixed">
-    <KhalaText className="text-center" text="Khala Code" variant="heading" />
+    <KhalaText className="text-center" text={tx("app.title")} variant="heading" />
     <KhalaText
       className="mt-4 text-center"
-      text="Something went wrong in this mobile view."
+      text={tx("errorBoundary.body")}
       variant="muted"
     />
     <KhalaText
       className="mt-2 text-center"
-      text="Try again or reopen the app."
+      text={tx("errorBoundary.help")}
       variant="faint"
     />
-    <KhalaButton className="mt-8 self-stretch" onPress={onReset} text="Try again" variant="primary" />
+    <KhalaButton className="mt-8 self-stretch" onPress={onReset} text={tx("errorBoundary.retry")} variant="primary" />
   </KhalaScreen>
 )
 

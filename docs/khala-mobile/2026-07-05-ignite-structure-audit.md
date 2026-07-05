@@ -62,6 +62,10 @@ Any Ignite pattern that conflicts with those rules is explicitly out of scope.
   `src/preferences/nonsecret-preferences.ts` stores only a fixed typed set of
   UI/onboarding preferences in a dedicated Expo SQLite database, with tests
   rejecting secret-shaped keys and invalid values.
+- [#8450](https://github.com/OpenAgentsInc/openagents/issues/8450) - add
+  i18n/copy-key discipline. Implemented: `src/i18n/copy.ts` defines typed
+  English-first copy keys with interpolation and missing-key tests; navigator
+  titles, sign-in chrome, and error fallback copy now use the helper.
 
 ## One-Line Verdict
 
@@ -341,6 +345,8 @@ not an Ignite CLI adoption.
 
 ### I18n And Copy-Key Discipline
 
+Tracking: [#8450](https://github.com/OpenAgentsInc/openagents/issues/8450)
+
 Ignite has a full i18n spine: locale detection, RTL setup, typed translation
 key paths, `tx` props, and a missing-key test. Khala currently has little or no
 i18n surface, and that is acceptable while the app is still proving device
@@ -351,6 +357,12 @@ Updated recommendation: borrow this sooner than the first audit suggested.
 During the React Navigation migration, introduce the i18n module and typed copy
 helpers for new navigator/screen chrome so the migrated app does not bake raw
 strings into every new screen.
+
+Implementation note: #8450 added an English-first typed copy table and `tx`
+helper under `src/i18n/copy.ts`, plus a missing-key/interpolation test. The
+first migration covers React Navigation drawer titles, sign-in/manual-auth
+chrome, and the public-safe error-boundary fallback. Future visible screen
+chrome should add typed keys instead of scattering raw strings.
 
 ### Error Boundary And Crash Reporting Seam
 

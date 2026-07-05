@@ -248,6 +248,13 @@ deploys the OpenAgents server. It does not call Expo hosted update commands.
 - Chat message bodies stay in authenticated Khala Sync scopes; public evidence
   may include only refs, counts, routes, and blocker IDs.
 
+## Copy Keys
+
+`src/i18n/copy.ts` is the English-first copy spine for navigators, screen
+chrome, public-safe fallbacks, and user-facing error text. Add new visible copy
+through typed `KhalaCopyKey` entries and keep private chat bodies, bearer
+values, raw sync payloads, and provider data out of copy tables.
+
 ## Owner-Gated Proof Still Needed
 
 Source-level scaffold, policy tests, local typecheck, and both local
