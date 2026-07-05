@@ -111,11 +111,18 @@ import {
   khalaCodeCommandForKeyboardEvent,
   type KhalaCodeCommandId,
   type KhalaCodeCommandPaletteRecord,
+  type KhalaCodeCommandRegistry,
 } from "./command-registry"
 import {
   mountKhalaCodeCommandPalette,
   type KhalaCodeCommandPaletteHandle,
 } from "./command-palette"
+import {
+  createKhalaCodeCommandKeybindingsSection,
+  readKhalaCodeCommandKeybindingOverrides,
+  writeKhalaCodeCommandKeybindingOverrides,
+  type KhalaCodeCommandKeybindingsSectionHandle,
+} from "./command-keybindings-panel"
 import { mountUnifiedInboxPanel } from "./inbox"
 import {
   normalizeThreadTimestampSeconds,
@@ -947,6 +954,12 @@ localStorage.setItem(sessionIdStorageKey, sessionId)
  * retry forever.
  */
 const bootRestoreThreadId = localStorage.getItem(activeThreadIdStorageKey)
+const commandKeybindingOverrides: Partial<Record<KhalaCodeCommandId, string>> = {
+  ...readKhalaCodeCommandKeybindingOverrides(localStorage),
+}
+
+const persistCommandKeybindingOverrides = (): void =>
+  writeKhalaCodeCommandKeybindingOverrides(localStorage, commandKeybindingOverrides)
 
 type ThreadSwitchPerformanceSample = {
   cacheHit: boolean
@@ -5393,6 +5406,8 @@ const gymPanel =
 let claudeSettingsSection: ReturnType<typeof mountClaudeSettingsSection> | null = null
 let plansSection: ReturnType<typeof mountKhalaCodePlansPanel> | null = null
 let runEvidenceSection: ReturnType<typeof mountKhalaCodeRunEvidencePanel> | null = null
+let commandRegistry: KhalaCodeCommandRegistry | null = null
+let commandKeybindingsSection: KhalaCodeCommandKeybindingsSectionHandle | null = null
 
 const settingsPanel =
   settingsPanelEl === null
@@ -5412,6 +5427,8 @@ const settingsPanel =
           void plansSection?.refresh()
           void runEvidenceSection?.refresh()
         },
+        renderAdditionalSections: () =>
+          commandKeybindingsSection === null ? [] : [commandKeybindingsSection.render()],
         fetchModelRoles: () => controls.modelRoleRegistryRead(),
         writeModelRole: request => controls.modelRoleRegistryWrite(request),
         write: async request => {
@@ -5791,6 +5808,22 @@ const hotbarCommandIdForValue = (value: KhalaCodeHotbarValue): KhalaCodeCommandI
 
 let commandPalette: KhalaCodeCommandPaletteHandle | null = null
 
+const commandSidebarShortcutLabels = (): Partial<Record<KhalaCodeHotbarValue, string>> => {
+  if (commandRegistry === null) return {}
+  return {
+    chat: commandRegistry.keybindingLabel("view.chat"),
+    editor: commandRegistry.keybindingLabel("view.editor"),
+    fleet: commandRegistry.keybindingLabel("view.fleet"),
+    forum: commandRegistry.keybindingLabel("view.forum"),
+    inbox: commandRegistry.keybindingLabel("view.inbox"),
+    settings: commandRegistry.keybindingLabel("view.settings"),
+  }
+}
+
+const syncCommandKeybindingLabels = (): void => {
+  sidebar?.setShortcutLabels(commandSidebarShortcutLabels())
+}
+
 const commandPaletteRecords = (): readonly KhalaCodeCommandPaletteRecord[] => {
   const records: KhalaCodeCommandPaletteRecord[] = [
     {
@@ -5873,7 +5906,7 @@ const commandPaletteRecords = (): readonly KhalaCodeCommandPaletteRecord[] => {
   return records
 }
 
-const commandRegistry = createKhalaCodeCommandRegistry([
+commandRegistry = createKhalaCodeCommandRegistry([
   {
     analyticsRef: "khala_code.command.palette.open",
     category: "workbench",
@@ -5986,11 +6019,37 @@ const commandRegistry = createKhalaCodeCommandRegistry([
     keywords: ["interrupt", "cancel"],
     title: "Stop Active Turn",
   },
-])
+], {
+  getKeybindingOverrides: () => commandKeybindingOverrides,
+})
+
+commandKeybindingsSection = createKhalaCodeCommandKeybindingsSection({
+  getOverrides: () => commandKeybindingOverrides,
+  onChanged: syncCommandKeybindingLabels,
+  registry: () => commandRegistry,
+  resetAll: () => {
+    for (const key of Object.keys(commandKeybindingOverrides)) {
+      delete commandKeybindingOverrides[key as KhalaCodeCommandId]
+    }
+    persistCommandKeybindingOverrides()
+  },
+  setOverride: (id, value) => {
+    if (value === null) delete commandKeybindingOverrides[id]
+    else commandKeybindingOverrides[id] = value
+    persistCommandKeybindingOverrides()
+  },
+})
 
 const executeKhalaCodeCommand = async (id: KhalaCodeCommandId): Promise<void> => {
-  await commandRegistry.execute(id)
+  const registry = commandRegistry
+  if (registry === null) return
+  await registry.execute(id)
   render()
+}
+
+const activeCommandRegistry = commandRegistry
+if (activeCommandRegistry === null) {
+  throw new Error("Command registry failed to initialize")
 }
 
 commandPalette = mountKhalaCodeCommandPalette(commandPaletteRoot, {
@@ -6016,12 +6075,14 @@ commandPalette = mountKhalaCodeCommandPalette(commandPaletteRoot, {
       void executeKhalaCodeCommand("view.chat")
     }
   },
-  registry: commandRegistry,
+  registry: activeCommandRegistry,
 })
 
 window.addEventListener("keydown", event => {
   if (commandPalette?.isOpen()) return
-  const commandId = khalaCodeCommandForKeyboardEvent(commandRegistry, event)
+  const registry = commandRegistry
+  if (registry === null) return
+  const commandId = khalaCodeCommandForKeyboardEvent(registry, event)
   if (commandId === null) return
   event.preventDefault()
   void executeKhalaCodeCommand(commandId)
@@ -6032,6 +6093,7 @@ sidebar = sidebarNavRoot === null
   : mountKhalaCodeSidebar(sidebarNavRoot, {
       enableKeyboardShortcuts: false,
       selectedValue: initialView,
+      shortcutLabels: commandSidebarShortcutLabels(),
       onActivate: value => {
         void executeKhalaCodeCommand(hotbarCommandIdForValue(value))
       },

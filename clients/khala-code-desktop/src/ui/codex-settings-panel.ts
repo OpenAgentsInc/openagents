@@ -33,6 +33,7 @@ export type CodexSettingsPanelOptions = {
   readonly fetchEcosystem?: () => Promise<KhalaCodeDesktopCodexEcosystemProjection>
   readonly fetchModelRoles?: () => Promise<KhalaCodeDesktopModelRoleRegistryReadResult>
   readonly onRender?: () => void
+  readonly renderAdditionalSections?: () => readonly HTMLElement[]
   readonly writeModelRole?: (
     request: KhalaCodeDesktopModelRoleRegistryWriteRequest,
   ) => Promise<KhalaCodeDesktopModelRoleRegistryReadResult & { readonly saved?: boolean }>
@@ -674,6 +675,7 @@ export const mountCodexSettingsPanel = (
 
     container.append(
       renderBoundarySection(),
+      ...(options.renderAdditionalSections?.() ?? []),
       renderModelRoleRegistrySection(modelRoles),
       renderModelSection(settings),
       renderPermissionsSection(settings),

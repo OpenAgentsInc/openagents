@@ -78,6 +78,7 @@ export type SidebarMountOptions = Readonly<{
   readonly enableKeyboardShortcuts?: boolean
   readonly fleetCounts?: KhalaCodeSidebarFleetCounts | null
   readonly selectedValue?: string | null
+  readonly shortcutLabels?: Partial<Record<KhalaCodeHotbarValue, string>>
   readonly onActivate?: (value: KhalaCodeHotbarValue) => void
 }>
 
@@ -92,6 +93,7 @@ export type KhalaCodeSidebarHandle = Readonly<{
   destroy: () => void
   setFleetCounts: (counts: KhalaCodeSidebarFleetCounts | null) => void
   setSelectedValue: (value: string) => void
+  setShortcutLabels: (labels: Partial<Record<KhalaCodeHotbarValue, string>>) => void
 }>
 
 type NavigatorWithUserAgentData = Navigator & {
@@ -174,6 +176,7 @@ export const mountKhalaCodeSidebar = (
   options: SidebarMountOptions = {},
 ): KhalaCodeSidebarHandle => {
   let selectedValue = options.selectedValue ?? "chat"
+  let shortcutLabels = options.shortcutLabels ?? {}
   const shortcut = hotbarShortcut()
 
   const activate = (slot: KhalaCodeHotbarSlot): void => {
@@ -197,15 +200,15 @@ export const mountKhalaCodeSidebar = (
     button.dataset.hotkey = slot.hotkey
     button.dataset.active = active ? "true" : "false"
     button.setAttribute("aria-pressed", active ? "true" : "false")
-    button.setAttribute(
-      "aria-keyshortcuts",
-      `${shortcut.ariaModifier}+${slot.hotkey}`,
-    )
-    button.setAttribute(
-      "aria-label",
-      `${slot.label}, ${shortcut.label}+${slot.hotkey}`,
-    )
-    button.title = `${slot.label} (${shortcut.label}+${slot.hotkey})`
+    const shortcutLabel = shortcutLabels[slot.value] ?? `${shortcut.label}+${slot.hotkey}`
+    if (shortcutLabel.length > 0) {
+      button.setAttribute("aria-keyshortcuts", shortcutLabel)
+      button.setAttribute("aria-label", `${slot.label}, ${shortcutLabel}`)
+      button.title = `${slot.label} (${shortcutLabel})`
+    } else {
+      button.setAttribute("aria-label", slot.label)
+      button.title = slot.label
+    }
     button.append(
       iconElement(slot.icon, {
         className: "khala-code-hotbar-icon",
@@ -216,7 +219,7 @@ export const mountKhalaCodeSidebar = (
     const key = document.createElement("span")
     key.className = "khala-code-hotbar-key"
     key.setAttribute("aria-hidden", "true")
-    key.textContent = `${shortcut.visiblePrefix}${slot.hotkey}`
+    key.textContent = shortcutLabels[slot.value] ?? `${shortcut.visiblePrefix}${slot.hotkey}`
 
     const label = document.createElement("span")
     label.className = "khala-code-hotbar-label"
@@ -275,6 +278,10 @@ export const mountKhalaCodeSidebar = (
     },
     setSelectedValue(value: string): void {
       selectedValue = value
+      render()
+    },
+    setShortcutLabels(labels: Partial<Record<KhalaCodeHotbarValue, string>>): void {
+      shortcutLabels = labels
       render()
     },
   }

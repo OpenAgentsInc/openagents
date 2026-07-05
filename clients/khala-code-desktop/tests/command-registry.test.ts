@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test"
 
 import {
   createKhalaCodeCommandRegistry,
+  formatKhalaCodeCommandKeybindingConfig,
   khalaCodeCommandForKeyboardEvent,
+  khalaCodeCommandKeybindingConfigForKeyboardEvent,
+  parseKhalaCodeCommandKeybindingConfig,
   type KhalaCodeCommandDefinition,
 } from "../src/ui/command-registry"
 
@@ -85,5 +88,41 @@ describe("Khala Code command registry", () => {
       registry,
       keyboardEvent({ key: "k" }),
     )).toBeNull()
+  })
+
+  test("parses, formats, captures, overrides, and disables keybindings", () => {
+    const overrides: Record<string, string> = {}
+    const registry = createKhalaCodeCommandRegistry([
+      command({
+        defaultKeybindings: [{ key: "k", meta: true }],
+        id: "palette.open",
+        title: "Open Command Palette",
+      }),
+    ], {
+      getKeybindingOverrides: () => overrides,
+    })
+
+    expect(parseKhalaCodeCommandKeybindingConfig("ctrl+alt+comma")).toEqual([
+      { alt: true, ctrl: true, key: "comma" },
+    ])
+    expect(formatKhalaCodeCommandKeybindingConfig("ctrl+alt+comma")).toBe("Ctrl+Alt+,")
+    expect(khalaCodeCommandKeybindingConfigForKeyboardEvent(
+      keyboardEvent({ ctrlKey: true, key: "j" }),
+    )).toBe("ctrl+j")
+
+    overrides["palette.open"] = "ctrl+j"
+    expect(khalaCodeCommandForKeyboardEvent(
+      registry,
+      keyboardEvent({ ctrlKey: true, key: "j" }),
+    )).toBe("palette.open")
+    expect(khalaCodeCommandForKeyboardEvent(
+      registry,
+      keyboardEvent({ key: "k", metaKey: true }),
+    )).toBeNull()
+    expect(registry.recordForCommand("palette.open")?.keybindingLabel).toBe("Ctrl+J")
+
+    overrides["palette.open"] = "none"
+    expect(registry.effectiveKeybindings("palette.open")).toEqual([])
+    expect(registry.keybindingLabel("palette.open")).toBe("")
   })
 })

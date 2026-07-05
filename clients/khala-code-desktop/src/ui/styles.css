@@ -5425,6 +5425,95 @@ button {
   line-height: 1.38;
   overflow-wrap: anywhere;
 }
+.khala-keybindings-section {
+  gap: 0.65rem;
+}
+.khala-keybindings-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.6rem;
+  align-items: center;
+}
+.khala-keybindings-search {
+  max-width: 28rem;
+}
+.khala-keybindings-status {
+  padding: 0.45rem 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-warning) 42%, transparent);
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--oa-color-khala-warning) 10%, transparent);
+}
+.khala-keybindings-status[hidden] {
+  display: none;
+}
+.khala-keybindings-list {
+  display: grid;
+  gap: 0.25rem;
+}
+.khala-keybindings-group {
+  margin: 0.55rem 0 0.15rem;
+  color: color-mix(in srgb, var(--oa-color-component-text) 46%, transparent);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.khala-keybindings-row {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) minmax(7.5rem, auto) auto auto;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  padding: 0.42rem 0;
+  border-top: 1px solid color-mix(in srgb, var(--oa-color-component-border) 52%, transparent);
+}
+.khala-keybindings-row[data-conflict="true"] {
+  background: color-mix(in srgb, var(--oa-color-khala-warning) 8%, transparent);
+}
+.khala-keybindings-label {
+  display: grid;
+  min-width: 0;
+  gap: 0.12rem;
+}
+.khala-keybindings-title,
+.khala-keybindings-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.khala-keybindings-title {
+  color: var(--oa-color-component-text);
+  font-size: 0.8rem;
+}
+.khala-keybindings-meta {
+  color: color-mix(in srgb, var(--oa-color-component-text) 48%, transparent);
+  font-size: 0.68rem;
+}
+.khala-keybindings-capture,
+.khala-keybindings-action {
+  font: inherit;
+  font-size: 0.74rem;
+  border-radius: 0.36rem;
+  border: 1px solid var(--oa-color-component-border);
+  background: var(--oa-color-component-surface);
+  color: var(--oa-color-component-text);
+}
+.khala-keybindings-capture {
+  min-width: 7.5rem;
+  padding: 0.36rem 0.55rem;
+  text-align: center;
+}
+.khala-keybindings-action {
+  padding: 0.34rem 0.55rem;
+}
+.khala-keybindings-capture:hover,
+.khala-keybindings-action:hover {
+  background: var(--oa-color-component-surface-active);
+}
+.khala-keybindings-action:disabled {
+  opacity: 0.45;
+}
 
 @media (max-width: 760px) {
   .khala-settings-header {
@@ -5438,6 +5527,14 @@ button {
   .khala-settings-metric {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.25rem;
+  }
+  .khala-keybindings-toolbar,
+  .khala-keybindings-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .khala-keybindings-capture,
+  .khala-keybindings-action {
+    justify-self: start;
   }
 }
 

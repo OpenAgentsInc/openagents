@@ -669,6 +669,17 @@ Issue: build the command palette
 Issue: build editable keybindings
 ([#8439](https://github.com/OpenAgentsInc/openagents/issues/8439)).
 
+- Status: first implementation pass complete on 2026-07-05. Khala Code now
+  loads command keybinding overrides from local desktop storage before command
+  registration, applies them to hotkey dispatch and palette labels, and exposes
+  a Settings > Keybindings section backed by the command registry. The section
+  supports search, grouped command rows, click-to-capture assignment, clear,
+  reset one, reset all, and visible conflict blocking that names the affected
+  commands before saving. Sidebar tooltip/visible labels now reflect effective
+  registered view keybindings. Native menu label reflection remains with
+  [#8442](https://github.com/OpenAgentsInc/openagents/issues/8442) because the
+  current native menu only contains static platform-role items, not registered
+  command actions.
 - Scope: keybind settings panel, capture, assign, clear, reset all, conflict
   detection, grouped command list, tooltips, and migration for existing Khala
   hotkeys.
