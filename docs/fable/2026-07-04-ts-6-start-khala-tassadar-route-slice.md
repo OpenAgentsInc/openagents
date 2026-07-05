@@ -416,6 +416,56 @@ The Start staging app now owns `/onboarding` and `/training/runs`, ported from
 - Kept both Foldkit `apps/web` counterparts in place, same as every prior
   TS-6 slice.
 
+## Landed Slice 18: MirrorCode And Product Promises
+
+The Start staging app now owns `/mirrorcode` and `/promises`, ported from
+`apps/web/src/page/loggedOut/page/mirrorcode.ts` and `promises.ts`.
+
+- Both Foldkit pages are entirely client-fetch-driven (`MirrorCodeRunsModel`
+  and `PublicProductPromisesModel` / `PublicPromiseTransitionsModel` unions,
+  each fed by a `Idle` / `Loading` / `Loaded` / `Failed` cold read on route
+  entry). Every prior TS-6 Start route has stayed static/SSR-only, so both
+  ports keep that posture rather than being first to wire a live fetch on a
+  standalone page.
+- `/mirrorcode` preserves `data-route="mirrorcode"`, the `data-mirrorcode-page`
+  contract markers, the `Live data only / public tasks only` banner, the
+  `MirrorCode, powered by Khala` headline and intro paragraph verbatim, and
+  the entire always-static playground contract (the `MirrorCode-as-a-Service
+  playground` section, its three numbered steps, the owner-gated-launch
+  notice, and both `Launch intent` / `Status read` code blocks) — none of that
+  content is behind the fetch in the Foldkit original, so it is ported in
+  full rather than summarized. The three genuinely data-dependent panels
+  (Live run, Execution visualizer, Leaderboard) render the model's own
+  `MirrorCodeRunsIdle` empty-state copy honestly — `No runs yet — machinery
+  shipped, awaiting first Phase-0 run` and `No execution rows to visualize
+  yet`, both verbatim from `mirrorcode.test.ts` — rather than fabricating run
+  rows, and the `/api/gym/mirrorcode/runs` endpoint stays visible.
+- `/promises` preserves `data-route="promises"`, the top nav (`OpenAgents`
+  home link, `Docs` / `JSON` / `Forum` links to `/docs/product-promises`,
+  `/api/public/product-promises`, `/forum/f/product-promises`), the
+  `Human-readable promise ledger` eyebrow, the `Product promises` headline,
+  and the intro paragraph verbatim. Every panel (Registry Status, State Map,
+  Product Areas, Current Caveats, Blockers And Evidence, the
+  `proof.claim_upgrade_receipts.v1` Claim-upgrade audit panel with its
+  `A passing receipt is evidence for a flip, never the flip itself.` rule
+  sentence, and Promise records) renders the exact honest "nothing fetched
+  yet" copy the Foldkit view already shows when both models are null —
+  `Waiting for live registry.`, `None listed.`, `Waiting for
+  /api/public/product-promises.`, and so on — rather than fabricating
+  registry rows or receipts. The receipt-feed and audit-projection endpoint
+  refs (`/api/public/product-promises/transitions`,
+  `/api/public/product-promises/audit`) stay visible.
+- Both routes were added to the Start budget list (`/mirrorcode`,
+  `/promises`) and `routeTree.gen.ts` was regenerated; total client JS moved
+  to 679.2 KiB (still under the 760 KiB budget).
+- Re-verified with a local `vite preview` + `curl` pass: `/mirrorcode` renders
+  `data-route="mirrorcode"` with its own title and copy, `/promises` renders
+  `data-route="promises"` with its own title and copy, and the existing
+  `/training/runs`, `/artanis/accounts`, `/artanis/traces`, `/code`,
+  `/onboarding`, and `/gym` routes are all unaffected.
+- Kept both Foldkit `apps/web` counterparts in place, same as every prior
+  TS-6 slice.
+
 ## Boundary
 
 This is not the final TS-6 closure. The live `openagents.com` Worker still
@@ -431,10 +481,14 @@ Remaining TS-6 work:
   three.js/scene custom elements — bigger lift than a plain static port),
   `share.ts` (a full shared-workroom-timeline viewer — bigger lift, needs the
   workroom timeline/file-panel component set ported to React first),
-  `mirrorcode.ts`, `promises.ts` (the product-promises page), `publicAgent.ts`,
-  and `stats.ts` (public/anonymous variant only — the same `/stats` URL also
-  has a distinct authenticated `loggedIn/page/stats.ts` view, and the public
-  variant composes ~9 shared panel components from `home.ts`
+  `publicAgent.ts` (the largest of the remaining standalone pages at ~2,700
+  lines — the live `/artanis` recruitment console, including fleet
+  onboarding, "fleet shipping/reconnecting", and a virtual-merge-queue view,
+  each with their own model-driven state machines; bigger lift than
+  `mirrorcode.ts` or `promises.ts` turned out to be), and `stats.ts`
+  (public/anonymous variant only — the same `/stats` URL also has a distinct
+  authenticated `loggedIn/page/stats.ts` view, and the public variant
+  composes ~9 shared panel components from `home.ts`
   (`khalaTokensServedHeaderCounter`, `pylonStatsPanel`, `forumStatsPanel`,
   `accountingPanel`, etc.) that would need React ports of their own first, so
   this needs the same "public-safe default until Start has real session auth"
@@ -455,11 +509,13 @@ Remaining TS-6 work:
 ## Verification
 
 ```sh
-bun run --cwd apps/openagents.com/apps/start test -- src/routes/-code.test.tsx src/routes/-app-shell.test.tsx src/routes/-components.test.tsx src/routes/-gym.test.tsx src/routes/-index.test.tsx src/routes/-artanis-accounts.test.tsx src/routes/-workspace-invite.test.tsx
+bun run --cwd apps/openagents.com/apps/start test -- src/routes/-code.test.tsx src/routes/-app-shell.test.tsx src/routes/-components.test.tsx src/routes/-gym.test.tsx src/routes/-index.test.tsx src/routes/-artanis-accounts.test.tsx src/routes/-workspace-invite.test.tsx src/routes/-mirrorcode.test.tsx src/routes/-promises.test.tsx
 bun run --cwd apps/openagents.com/apps/start test
 bun run --cwd apps/openagents.com/apps/start typecheck
 bun run --cwd apps/openagents.com/apps/start build
 bun run --cwd apps/openagents.com/apps/start budget
+bun run --cwd apps/openagents.com check:architecture
+bun run --cwd apps/openagents.com check:deploy
 bun run test:qa-pre-push-smoke
 ```
 

@@ -12,8 +12,10 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as TassadarRouteImport } from './routes/tassadar'
 import { Route as RunRouteImport } from './routes/run'
+import { Route as PromisesRouteImport } from './routes/promises'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
+import { Route as MirrorcodeRouteImport } from './routes/mirrorcode'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as GymRouteImport } from './routes/gym'
 import { Route as DownloadRouteImport } from './routes/download'
@@ -58,6 +60,11 @@ const RunRoute = RunRouteImport.update({
   path: '/run',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PromisesRoute = PromisesRouteImport.update({
+  id: '/promises',
+  path: '/promises',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PrivacyRoute = PrivacyRouteImport.update({
   id: '/privacy',
   path: '/privacy',
@@ -66,6 +73,11 @@ const PrivacyRoute = PrivacyRouteImport.update({
 const OnboardingRoute = OnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MirrorcodeRoute = MirrorcodeRouteImport.update({
+  id: '/mirrorcode',
+  path: '/mirrorcode',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -219,8 +231,10 @@ export interface FileRoutesByFullPath {
   '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
   '/login': typeof LoginRoute
+  '/mirrorcode': typeof MirrorcodeRoute
   '/onboarding': typeof OnboardingRoute
   '/privacy': typeof PrivacyRoute
+  '/promises': typeof PromisesRoute
   '/run': typeof RunRoute
   '/tassadar': typeof TassadarRoute
   '/terms': typeof TermsRoute
@@ -254,8 +268,10 @@ export interface FileRoutesByTo {
   '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
   '/login': typeof LoginRoute
+  '/mirrorcode': typeof MirrorcodeRoute
   '/onboarding': typeof OnboardingRoute
   '/privacy': typeof PrivacyRoute
+  '/promises': typeof PromisesRoute
   '/run': typeof RunRoute
   '/tassadar': typeof TassadarRoute
   '/terms': typeof TermsRoute
@@ -290,8 +306,10 @@ export interface FileRoutesById {
   '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
   '/login': typeof LoginRoute
+  '/mirrorcode': typeof MirrorcodeRoute
   '/onboarding': typeof OnboardingRoute
   '/privacy': typeof PrivacyRoute
+  '/promises': typeof PromisesRoute
   '/run': typeof RunRoute
   '/tassadar': typeof TassadarRoute
   '/terms': typeof TermsRoute
@@ -327,8 +345,10 @@ export interface FileRouteTypes {
     | '/download'
     | '/gym'
     | '/login'
+    | '/mirrorcode'
     | '/onboarding'
     | '/privacy'
+    | '/promises'
     | '/run'
     | '/tassadar'
     | '/terms'
@@ -362,8 +382,10 @@ export interface FileRouteTypes {
     | '/download'
     | '/gym'
     | '/login'
+    | '/mirrorcode'
     | '/onboarding'
     | '/privacy'
+    | '/promises'
     | '/run'
     | '/tassadar'
     | '/terms'
@@ -397,8 +419,10 @@ export interface FileRouteTypes {
     | '/download'
     | '/gym'
     | '/login'
+    | '/mirrorcode'
     | '/onboarding'
     | '/privacy'
+    | '/promises'
     | '/run'
     | '/tassadar'
     | '/terms'
@@ -433,8 +457,10 @@ export interface RootRouteChildren {
   DownloadRoute: typeof DownloadRoute
   GymRoute: typeof GymRoute
   LoginRoute: typeof LoginRoute
+  MirrorcodeRoute: typeof MirrorcodeRoute
   OnboardingRoute: typeof OnboardingRoute
   PrivacyRoute: typeof PrivacyRoute
+  PromisesRoute: typeof PromisesRoute
   RunRoute: typeof RunRoute
   TassadarRoute: typeof TassadarRoute
   TermsRoute: typeof TermsRoute
@@ -484,6 +510,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RunRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/promises': {
+      id: '/promises'
+      path: '/promises'
+      fullPath: '/promises'
+      preLoaderRoute: typeof PromisesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/privacy': {
       id: '/privacy'
       path: '/privacy'
@@ -496,6 +529,13 @@ declare module '@tanstack/react-router' {
       path: '/onboarding'
       fullPath: '/onboarding'
       preLoaderRoute: typeof OnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mirrorcode': {
+      id: '/mirrorcode'
+      path: '/mirrorcode'
+      fullPath: '/mirrorcode'
+      preLoaderRoute: typeof MirrorcodeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -715,8 +755,10 @@ const rootRouteChildren: RootRouteChildren = {
   DownloadRoute: DownloadRoute,
   GymRoute: GymRoute,
   LoginRoute: LoginRoute,
+  MirrorcodeRoute: MirrorcodeRoute,
   OnboardingRoute: OnboardingRoute,
   PrivacyRoute: PrivacyRoute,
+  PromisesRoute: PromisesRoute,
   RunRoute: RunRoute,
   TassadarRoute: TassadarRoute,
   TermsRoute: TermsRoute,
