@@ -93,6 +93,12 @@ db.exec("PRAGMA busy_timeout = 5000")
 const store = createPylonOrchestrationStore(db)
 
 const activeTurns: ActiveRuntimeTurns = new Map()
+/** Persisted across ticks (like `activeTurns`) so `selectDispatchAccount`'s
+ * round-robin tie-break actually has dispatch history to work from across
+ * separate `turn.start` intents for the same thread — passing a FRESH Map
+ * per call (or omitting this option) would make every dispatch resolve to
+ * the same deterministic lowest-`accountRefHash` account every time. */
+const lastDispatchedAccountByThread = new Map<string, string>()
 const registrySummary = { paths: { config: configPath } }
 
 let stopping = false
@@ -123,6 +129,7 @@ try {
           await mkdir(dir, { recursive: true })
           return dir
         },
+        lastDispatchedAccountByThread,
         limit,
         listCandidateAccounts: async () =>
           candidateAccountsFromRegistry(await loadPylonAccountRegistry(registrySummary)),
