@@ -26,6 +26,7 @@ import { Route as CodeIndexRouteImport } from './routes/code/index'
 import { Route as BusinessIndexRouteImport } from './routes/business/index'
 import { Route as BlogIndexRouteImport } from './routes/blog/index'
 import { Route as AutopilotIndexRouteImport } from './routes/autopilot/index'
+import { Route as WorkspacesWorkspaceIdRouteImport } from './routes/workspaces/$workspaceId'
 import { Route as SitesDemoCheckoutRouteImport } from './routes/sites/demo-checkout'
 import { Route as PreviewLandingRouteImport } from './routes/preview/landing'
 import { Route as KhalaChatSyncRouteImport } from './routes/khala/chat-sync'
@@ -35,6 +36,7 @@ import { Route as CodeDownloadRouteImport } from './routes/code/download'
 import { Route as BlogSlugRouteImport } from './routes/blog/$slug'
 import { Route as AutopilotLegalRouteImport } from './routes/autopilot/legal'
 import { Route as ArtanisTracesRouteImport } from './routes/artanis/traces'
+import { Route as ArtanisAccountsRouteImport } from './routes/artanis/accounts'
 import { Route as SitesDemoCheckoutReturnActionRouteImport } from './routes/sites/demo-checkout/$returnAction'
 import { Route as BusinessKpiEngagementRefRouteImport } from './routes/business/kpi/$engagementRef'
 import { Route as PylonCodexAssignmentsAssignmentRefRouteImport } from './routes/pylon/codex/assignments/$assignmentRef'
@@ -124,6 +126,11 @@ const AutopilotIndexRoute = AutopilotIndexRouteImport.update({
   path: '/autopilot/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WorkspacesWorkspaceIdRoute = WorkspacesWorkspaceIdRouteImport.update({
+  id: '/workspaces/$workspaceId',
+  path: '/workspaces/$workspaceId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SitesDemoCheckoutRoute = SitesDemoCheckoutRouteImport.update({
   id: '/sites/demo-checkout',
   path: '/sites/demo-checkout',
@@ -169,6 +176,11 @@ const ArtanisTracesRoute = ArtanisTracesRouteImport.update({
   path: '/artanis/traces',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ArtanisAccountsRoute = ArtanisAccountsRouteImport.update({
+  id: '/artanis/accounts',
+  path: '/artanis/accounts',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SitesDemoCheckoutReturnActionRoute =
   SitesDemoCheckoutReturnActionRouteImport.update({
     id: '/$returnAction',
@@ -199,6 +211,7 @@ export interface FileRoutesByFullPath {
   '/run': typeof RunRoute
   '/tassadar': typeof TassadarRoute
   '/terms': typeof TermsRoute
+  '/artanis/accounts': typeof ArtanisAccountsRoute
   '/artanis/traces': typeof ArtanisTracesRoute
   '/autopilot/legal': typeof AutopilotLegalRoute
   '/blog/$slug': typeof BlogSlugRoute
@@ -208,6 +221,7 @@ export interface FileRoutesByFullPath {
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
   '/sites/demo-checkout': typeof SitesDemoCheckoutRouteWithChildren
+  '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
   '/autopilot/': typeof AutopilotIndexRoute
   '/blog/': typeof BlogIndexRoute
   '/business/': typeof BusinessIndexRoute
@@ -230,6 +244,7 @@ export interface FileRoutesByTo {
   '/run': typeof RunRoute
   '/tassadar': typeof TassadarRoute
   '/terms': typeof TermsRoute
+  '/artanis/accounts': typeof ArtanisAccountsRoute
   '/artanis/traces': typeof ArtanisTracesRoute
   '/autopilot/legal': typeof AutopilotLegalRoute
   '/blog/$slug': typeof BlogSlugRoute
@@ -239,6 +254,7 @@ export interface FileRoutesByTo {
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
   '/sites/demo-checkout': typeof SitesDemoCheckoutRouteWithChildren
+  '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
   '/autopilot': typeof AutopilotIndexRoute
   '/blog': typeof BlogIndexRoute
   '/business': typeof BusinessIndexRoute
@@ -262,6 +278,7 @@ export interface FileRoutesById {
   '/run': typeof RunRoute
   '/tassadar': typeof TassadarRoute
   '/terms': typeof TermsRoute
+  '/artanis/accounts': typeof ArtanisAccountsRoute
   '/artanis/traces': typeof ArtanisTracesRoute
   '/autopilot/legal': typeof AutopilotLegalRoute
   '/blog/$slug': typeof BlogSlugRoute
@@ -271,6 +288,7 @@ export interface FileRoutesById {
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
   '/sites/demo-checkout': typeof SitesDemoCheckoutRouteWithChildren
+  '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
   '/autopilot/': typeof AutopilotIndexRoute
   '/blog/': typeof BlogIndexRoute
   '/business/': typeof BusinessIndexRoute
@@ -295,6 +313,7 @@ export interface FileRouteTypes {
     | '/run'
     | '/tassadar'
     | '/terms'
+    | '/artanis/accounts'
     | '/artanis/traces'
     | '/autopilot/legal'
     | '/blog/$slug'
@@ -304,6 +323,7 @@ export interface FileRouteTypes {
     | '/khala/chat-sync'
     | '/preview/landing'
     | '/sites/demo-checkout'
+    | '/workspaces/$workspaceId'
     | '/autopilot/'
     | '/blog/'
     | '/business/'
@@ -326,6 +346,7 @@ export interface FileRouteTypes {
     | '/run'
     | '/tassadar'
     | '/terms'
+    | '/artanis/accounts'
     | '/artanis/traces'
     | '/autopilot/legal'
     | '/blog/$slug'
@@ -335,6 +356,7 @@ export interface FileRouteTypes {
     | '/khala/chat-sync'
     | '/preview/landing'
     | '/sites/demo-checkout'
+    | '/workspaces/$workspaceId'
     | '/autopilot'
     | '/blog'
     | '/business'
@@ -357,6 +379,7 @@ export interface FileRouteTypes {
     | '/run'
     | '/tassadar'
     | '/terms'
+    | '/artanis/accounts'
     | '/artanis/traces'
     | '/autopilot/legal'
     | '/blog/$slug'
@@ -366,6 +389,7 @@ export interface FileRouteTypes {
     | '/khala/chat-sync'
     | '/preview/landing'
     | '/sites/demo-checkout'
+    | '/workspaces/$workspaceId'
     | '/autopilot/'
     | '/blog/'
     | '/business/'
@@ -389,6 +413,7 @@ export interface RootRouteChildren {
   RunRoute: typeof RunRoute
   TassadarRoute: typeof TassadarRoute
   TermsRoute: typeof TermsRoute
+  ArtanisAccountsRoute: typeof ArtanisAccountsRoute
   ArtanisTracesRoute: typeof ArtanisTracesRoute
   AutopilotLegalRoute: typeof AutopilotLegalRoute
   BlogSlugRoute: typeof BlogSlugRoute
@@ -398,6 +423,7 @@ export interface RootRouteChildren {
   KhalaChatSyncRoute: typeof KhalaChatSyncRoute
   PreviewLandingRoute: typeof PreviewLandingRoute
   SitesDemoCheckoutRoute: typeof SitesDemoCheckoutRouteWithChildren
+  WorkspacesWorkspaceIdRoute: typeof WorkspacesWorkspaceIdRoute
   AutopilotIndexRoute: typeof AutopilotIndexRoute
   BlogIndexRoute: typeof BlogIndexRoute
   BusinessIndexRoute: typeof BusinessIndexRoute
@@ -530,6 +556,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AutopilotIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/workspaces/$workspaceId': {
+      id: '/workspaces/$workspaceId'
+      path: '/workspaces/$workspaceId'
+      fullPath: '/workspaces/$workspaceId'
+      preLoaderRoute: typeof WorkspacesWorkspaceIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sites/demo-checkout': {
       id: '/sites/demo-checkout'
       path: '/sites/demo-checkout'
@@ -593,6 +626,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ArtanisTracesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/artanis/accounts': {
+      id: '/artanis/accounts'
+      path: '/artanis/accounts'
+      fullPath: '/artanis/accounts'
+      preLoaderRoute: typeof ArtanisAccountsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sites/demo-checkout/$returnAction': {
       id: '/sites/demo-checkout/$returnAction'
       path: '/$returnAction'
@@ -639,6 +679,7 @@ const rootRouteChildren: RootRouteChildren = {
   RunRoute: RunRoute,
   TassadarRoute: TassadarRoute,
   TermsRoute: TermsRoute,
+  ArtanisAccountsRoute: ArtanisAccountsRoute,
   ArtanisTracesRoute: ArtanisTracesRoute,
   AutopilotLegalRoute: AutopilotLegalRoute,
   BlogSlugRoute: BlogSlugRoute,
@@ -648,6 +689,7 @@ const rootRouteChildren: RootRouteChildren = {
   KhalaChatSyncRoute: KhalaChatSyncRoute,
   PreviewLandingRoute: PreviewLandingRoute,
   SitesDemoCheckoutRoute: SitesDemoCheckoutRouteWithChildren,
+  WorkspacesWorkspaceIdRoute: WorkspacesWorkspaceIdRoute,
   AutopilotIndexRoute: AutopilotIndexRoute,
   BlogIndexRoute: BlogIndexRoute,
   BusinessIndexRoute: BusinessIndexRoute,

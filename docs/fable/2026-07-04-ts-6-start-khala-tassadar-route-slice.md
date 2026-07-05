@@ -304,6 +304,65 @@ landing, the sibling public page next to the already-migrated
   `data-route="business-kpi"`), and the full Start test/typecheck/build/budget
   sweep stayed green.
 
+## Landed Slice 16: Artanis Accounts And Workspace Invite
+
+The Start staging app now owns two more standalone public routes ported from
+`apps/web/src/page/artanisAccounts.ts` and
+`apps/web/src/page/loggedOut/page/workspaceInvite.ts`.
+
+- `/artanis/accounts` is the owner-only operator account-observability
+  surface (Codex/Claude coding-account cooldowns and usage windows). It lives
+  under the same `artanis/` directory as the already-migrated
+  `artanis/traces.tsx`, so there is no bare-`artanis.tsx` sibling and no risk
+  of the nested-route layout bug from Slice 15.
+  - Preserves `data-route="artanis-accounts"` (additive; the Foldkit original
+    had no `data-route` DOM contract for this page), the `Artanis / accounts`
+    eyebrow, `Operator account observability` heading, and the exact
+    owner-only description and closing-boundary copy (`This surface is
+    operator evidence and control only. It does not grant dispatch, spend,
+    settlement, provider-account ownership transfer, or cross-owner routing
+    authority.`).
+  - The Foldkit original does a live client-side `fetch('/api/operator/
+    accounts/status')` with 401/403 handling, a refresh button, per-account
+    manual-reset buttons, and a live countdown timer — the first "genuinely
+    live, owner-gated" page in this migration wave. Every prior TS-6 Start
+    route has been static/SSR-only (no route in this app calls `fetch` or
+    `useEffect` yet), so rather than being the first to introduce live
+    client-fetch wiring, this slice keeps that same static posture: it
+    honestly renders the **Unauthorized** state a real anonymous visitor gets
+    today (no owner session exists in Start yet), keeps the column headers
+    and an explicit "No operator account rows are available" empty state
+    (no fabricated account rows, cooldowns, or usage numbers), and keeps the
+    `/api/operator/accounts/status` and `/api/operator/accounts/reset`
+    endpoint refs visible. Live refresh/reset/countdown behavior stays on the
+    existing Foldkit operator page until this route carries real
+    owner-session auth.
+- `/workspaces/$workspaceId` is the sign-in gate a logged-out visitor sees on
+  a shared project-workspace invite link.
+  - Preserves `data-route="workspace-invite"` (additive, same reasoning as
+    above), the `Workspace invite` eyebrow, `Open your project workspace`
+    heading, the `Your project setup is waiting. Sign in to review the seeded
+    notes and starter workflows.` body copy, the visible `workspaceId`, and
+    the `Log in with GitHub` link to `/login/github`.
+  - The raw-hex Foldkit styling (`#f1efe8`, `#222`, `#010102`) was swapped for
+    the equivalent `khala-*` design tokens, same as the Terms/Privacy slice.
+  - This is a single leaf route with no sibling `workspaces.tsx`, so there is
+    no nested-route layout risk here either.
+- Both routes were added to the Start budget list (`/artanis/accounts`,
+  `/workspaces/workspace.public.invite_example`) and `routeTree.gen.ts` was
+  regenerated; total client JS moved to 653.1 KiB (still well under the
+  760 KiB budget).
+- Re-verified with a local `vite preview` + `curl` pass: `/artanis/accounts`
+  renders `data-route="artanis-accounts"` with its own title, `/workspaces/
+  workspace.public.invite_example` renders `data-route="workspace-invite"`
+  with its own title, and the existing `/artanis/traces` route still renders
+  its own unrelated content (no cross-route regression from adding the new
+  `artanis/accounts.tsx` sibling file).
+- Kept both Foldkit `apps/web` counterparts in place, same as every prior
+  TS-6 slice — the live `openagents.com` Worker still serves `apps/web/dist`,
+  so deleting them now would remove the live pages before any production
+  cutover.
+
 ## Boundary
 
 This is not the final TS-6 closure. The live `openagents.com` Worker still
@@ -314,7 +373,21 @@ Worker to Start.
 
 Remaining TS-6 work:
 
-- migrate logged-in app-shell panels route-by-route;
+- migrate the remaining standalone public/`loggedOut` pages that are not yet
+  in Start: `apps/web/src/page/loggedOut/page/pylon.ts` (depends on the
+  three.js/scene custom elements — bigger lift than a plain static port),
+  `share.ts`, `mirrorcode.ts`, `promises.ts` (the product-promises page),
+  `publicAgent.ts`, `stats.ts` (public/anonymous variant only — the same
+  `/stats` URL also has a distinct authenticated `loggedIn/page/stats.ts`
+  view, so this needs the same "public-safe default until Start has real
+  session auth" treatment as `/artanis/accounts` above), `trainingRuns.ts`,
+  and `onboarding.ts`;
+- migrate logged-in app-shell panels route-by-route (this is the large
+  authenticated `loggedIn/` tree behind `Ui.workroomShell` — dozens of
+  interconnected panels including chat, dashboard, billing, settings, admin,
+  and workroom — and genuinely needs a real Start session/auth mechanism
+  before any panel beyond the standalone `Ui.pageShell` surfaces like
+  Onboarding/Pro/Order can be ported honestly; still fully unstarted);
 - migrate or explicitly retire the Forum web shell from `apps/web`;
 - cut production routes over from the Start Worker;
 - delete each Foldkit counterpart after its production route cutover;
@@ -323,7 +396,7 @@ Remaining TS-6 work:
 ## Verification
 
 ```sh
-bun run --cwd apps/openagents.com/apps/start test -- src/routes/-code.test.tsx src/routes/-app-shell.test.tsx src/routes/-components.test.tsx src/routes/-gym.test.tsx src/routes/-index.test.tsx
+bun run --cwd apps/openagents.com/apps/start test -- src/routes/-code.test.tsx src/routes/-app-shell.test.tsx src/routes/-components.test.tsx src/routes/-gym.test.tsx src/routes/-index.test.tsx src/routes/-artanis-accounts.test.tsx src/routes/-workspace-invite.test.tsx
 bun run --cwd apps/openagents.com/apps/start test
 bun run --cwd apps/openagents.com/apps/start typecheck
 bun run --cwd apps/openagents.com/apps/start build

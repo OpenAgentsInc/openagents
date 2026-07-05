@@ -29,6 +29,8 @@ const routeBudgets = [
     marker: 'Pylon Codex assignment',
   },
   { path: '/artanis/traces', marker: 'Artanis execution tree' },
+  { path: '/artanis/accounts', marker: 'Operator account observability' },
+  { path: '/workspaces/workspace.public.invite_example', marker: 'Open your project workspace' },
   { path: '/autopilot/legal', marker: 'For legal teams' },
   { path: '/gym', marker: 'OpenAgents Gym' },
   { path: '/login', marker: 'Log in to OpenAgents' },
