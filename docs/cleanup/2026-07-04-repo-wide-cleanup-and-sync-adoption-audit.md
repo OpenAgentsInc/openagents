@@ -425,6 +425,16 @@ and the D1 `sync_*` tables have zero remaining users and drop cleanly**
      projection" section. Settled feed will hit the identical wall; add the
      anonymous-safe exception to the new engine's connect/log/bootstrap
      routes BEFORE attempting its client repoint or legacy-producer deletion.
+   - **2026-07-05 update (KS-6.4, #8414):** confirmed hit the identical wall
+     — `settledFeedDependenciesForModel` only activates for `LoggedOut`
+     routes, so the settled feed is anonymous-only. Shipped the
+     `scope.public.settled-feed` projection as a dual-write (legacy producer
+     kept live) PLUS a new public unauthenticated `GET /api/public/
+     settled-feed` read route, so the projection has real production
+     evidence even without repointing `subscriptions.ts`. See
+     `docs/khala-sync/RUNBOOK.md`'s "Settled-feed public projection"
+     section. #8414 stays open on the same anonymous-connect-exception
+     blocker.
 4. **Team chat + thread files + agent goals**: the flagship "migration = sync adoption" case per KS-8.13/#8324 — land on `scope.team.<id>` / `scope.thread.<id>` / `scope.agent_run.<id>` / `scope.user.<id>`, replacing both the notifier fan-out and the desktop/web polling in one move. (L, med)
 5. **Public aggregates** (demand-mix, model-mix, tokens-history, public activity timeline): project off live-at-read D1 onto `scope.public.*` counters — the Postgres rollup twins already exist from KS-8.2. (M, low)
 6. **Desktop hot polls**: 1s Claude-approval poll, 2s thread-token-summary poll, 5s inbox poll — all map cleanly to `scope.agent_run`/`scope.thread`/`scope.user`. (M, med — the 1s approval poll is latency-sensitive, migrate carefully)

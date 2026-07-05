@@ -3165,6 +3165,49 @@ Postgres failure never blocks or fails the `/gym` ingest — see
 `packages/khala-sync-server/src/gym-run-progress-projection.ts`. Worker
 glue: `workers/api/src/khala-sync-gym-run-progress-projection.ts`.
 
+## Settled-feed public projection — dual-write only, NOT a cutover (KS-6.4, #8414)
+
+The live settled feed's producer (`publishSettledFeedEvents` in
+`workers/api/src/tassadar-settled-feed-sync.ts`) now ALSO best-effort
+projects every safe settled batch into `scope.public.settled-feed`
+(`@openagentsinc/khala-sync-server`'s `projectSettledFeedEventsBestEffort`,
+via the Worker's `khala-sync-public-settled-feed.ts`), one changelog upsert
+per event keyed by `entityId = eventRef` plus one `summary` entity — same
+"no bespoke table, ride the generic `khala_sync_changelog` directly" shape
+as the KS-6.5 gym run-progress projection below, since the running totals
+(`totalSettledCount`/`totalSettledSats`) are already computed authoritatively
+upstream from the real settlement ledger before an event reaches this
+projection (unlike the tokens-served counter, which increments its own
+stored total — see `packages/khala-sync/src/settled-feed.ts`'s module doc).
+
+**This is a dual-write ADDITION, not a cutover, and the legacy producer was
+deliberately NOT deleted — the identical `/api/sync/connect` (and `/log`,
+`/bootstrap`) anonymous-actor-required wall the KS-6.5 gym run-progress item
+above hit.** `settledFeedDependenciesForModel` in `apps/web/src/
+subscriptions.ts` only activates for `LoggedOut` routes (Home/Stats/Khala) —
+the settled feed is READ EXCLUSIVELY by anonymous/logged-out visitors, so
+repointing its `SETTLED_FEED_SCOPE` href to `/api/sync/connect?scope=` or
+deleting the legacy `notifySyncScopes` producer today would 401 every viewer
+of that surface. Both stay live pending the same anonymous-safe exception on
+the new engine's read surfaces called out in the gym run-progress section
+and the cleanup/sync-adoption audit's Wave 3 correction.
+
+**What IS live today, beyond the gym run-progress precedent:** a genuine
+public, unauthenticated READ path for the new projection —
+`GET /api/public/settled-feed` (`workers/api/src/
+public-settled-feed-routes.ts`) serves the `scope.public.settled-feed`
+projection (latest events + summary, behind a 2s in-isolate cache,
+`rebuilt_on_transition` staleness) with a fail-open fallback to the legacy
+D1 sync-outbox snapshot (`live_at_read`) when the projection is empty or
+unreachable, so this route already has real, verifiable production evidence
+of the projection's correctness even though the homepage/stats surfaces do
+not consume it yet (they still ride the legacy `SyncRoomDurableObject`
+stream via `subscriptions.ts`, unchanged). Contract:
+`packages/khala-sync/src/settled-feed.ts`. Projector + reader:
+`packages/khala-sync-server/src/settled-feed-projection.ts`. Worker glue:
+`workers/api/src/khala-sync-public-settled-feed.ts`. Public route:
+`workers/api/src/public-settled-feed-routes.ts`.
+
 ## What this runbook does NOT cover
 
 - Deploying the Worker/hub DO: `docs/DEPLOYMENT.md` (deploy:safe gate).
