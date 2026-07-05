@@ -139,6 +139,10 @@ import {
   writeKhalaCodeCommandKeybindingOverrides,
   type KhalaCodeCommandKeybindingsSectionHandle,
 } from "./command-keybindings-panel"
+import {
+  mountKhalaCodeAppPreferencesSettingsSection,
+  type KhalaCodeAppPreferencesSettingsSectionHandle,
+} from "./app-preferences-settings-section"
 import { mountUnifiedInboxPanel } from "./inbox"
 import {
   normalizeThreadTimestampSeconds,
@@ -186,6 +190,12 @@ import {
   KHALA_CODE_MODEL_ROLE_ORDER,
   type KhalaCodeModelRole,
 } from "../shared/model-roles"
+import {
+  applyKhalaCodeAppPreferences,
+  readKhalaCodeAppPreferences,
+  resetKhalaCodeAppPreferences,
+  writeKhalaCodeAppPreferences,
+} from "../shared/app-preferences"
 import {
   initialKhalaCodeMainShellModel,
   shouldPollThreadTokenSummary,
@@ -1113,6 +1123,10 @@ const bootRestoreThreadId = localStorage.getItem(activeThreadIdStorageKey)
 const commandKeybindingOverrides: Partial<Record<KhalaCodeCommandId, string>> = {
   ...readKhalaCodeCommandKeybindingOverrides(localStorage),
 }
+applyKhalaCodeAppPreferences(
+  document.documentElement,
+  readKhalaCodeAppPreferences(localStorage),
+)
 
 const persistCommandKeybindingOverrides = (): void =>
   writeKhalaCodeCommandKeybindingOverrides(localStorage, commandKeybindingOverrides)
@@ -5647,6 +5661,7 @@ let claudeSettingsSection: ReturnType<typeof mountClaudeSettingsSection> | null 
 let updaterSection: ReturnType<typeof mountKhalaCodeUpdaterSettingsSection> | null = null
 let providerCatalogSection: KhalaCodeProviderCatalogSettingsSectionHandle | null = null
 let modelMcpPermissionSection: KhalaCodeModelMcpPermissionSettingsSectionHandle | null = null
+let appPreferencesSection: KhalaCodeAppPreferencesSettingsSectionHandle | null = null
 let plansSection: ReturnType<typeof mountKhalaCodePlansPanel> | null = null
 let runEvidenceSection: ReturnType<typeof mountKhalaCodeRunEvidencePanel> | null = null
 let commandRegistry: KhalaCodeCommandRegistry | null = null
@@ -5669,6 +5684,7 @@ const settingsPanel =
           void claudeSettingsSection?.refresh()
           void providerCatalogSection?.refresh()
           void modelMcpPermissionSection?.refresh()
+          appPreferencesSection?.refresh()
           void plansSection?.refresh()
           void runEvidenceSection?.refresh()
           void updaterSection?.refresh()
@@ -5678,6 +5694,7 @@ const settingsPanel =
             ...(commandKeybindingsSection === null ? [] : [commandKeybindingsSection.render()]),
             ...(providerCatalogSection === null ? [] : [providerCatalogSection.render()]),
             ...(modelMcpPermissionSection === null ? [] : [modelMcpPermissionSection.render()]),
+            ...(appPreferencesSection === null ? [] : [appPreferencesSection.render()]),
           ],
         fetchModelRoles: () => controls.modelRoleRegistryRead(),
         writeModelRole: request => controls.modelRoleRegistryWrite(request),
@@ -5722,6 +5739,14 @@ modelMcpPermissionSection = settingsPanelEl === null
           ...(result.error === undefined ? {} : { error: result.error }),
         }
       },
+    })
+appPreferencesSection = settingsPanelEl === null
+  ? null
+  : mountKhalaCodeAppPreferencesSettingsSection({
+      apply: preferences => applyKhalaCodeAppPreferences(document.documentElement, preferences),
+      read: () => readKhalaCodeAppPreferences(localStorage),
+      reset: () => resetKhalaCodeAppPreferences(localStorage),
+      write: preferences => writeKhalaCodeAppPreferences(localStorage, preferences),
     })
 claudeSettingsSection = settingsPanelEl === null
   ? null

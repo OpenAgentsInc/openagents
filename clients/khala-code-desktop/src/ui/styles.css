@@ -8,6 +8,9 @@
   background: var(--oa-color-khala-void);
   color: var(--oa-color-khala-text-primary);
   font-family: var(--oa-font-sans);
+  --khala-ui-font-family: var(--oa-font-sans);
+  --khala-code-font-family: var(--oa-font-code);
+  --khala-terminal-font-family: var(--oa-font-code);
 
   --oa-scrollbar-track: color-mix(in srgb, var(--oa-color-khala-void) 92%, var(--oa-color-khala-energy-blue));
   --oa-scrollbar-track-border: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 14%, transparent);
@@ -80,6 +83,7 @@ body {
   margin: 0;
   overflow: hidden;
   background: var(--oa-color-khala-void);
+  font-family: var(--khala-ui-font-family);
 }
 
 button,
@@ -122,6 +126,18 @@ button {
       transparent 72px
     ),
     var(--oa-color-khala-void);
+}
+
+:root[data-khala-color-scheme="light"] .khala-code-shell {
+  color-scheme: light;
+}
+
+:root[data-khala-feature-dense-workbench="true"] .khala-code-shell {
+  --sidebar-rail-width: 4.75rem;
+}
+
+:root[data-khala-feature-compact-composer="true"] .khala-code-composer {
+  --oa-command-composer-min-height: 3.25rem;
 }
 
 .khala-code-sr-only {
@@ -6354,6 +6370,49 @@ button {
   font-size: 0.75rem;
   line-height: 1.4;
 }
+.khala-preferences-section {
+  gap: 0.75rem;
+}
+.khala-preferences-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 0.75rem;
+  min-width: 0;
+}
+.khala-preferences-group-title {
+  grid-column: 1 / -1;
+  color: color-mix(in srgb, var(--oa-color-component-text) 46%, transparent);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.khala-preferences-control {
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+}
+.khala-preferences-label {
+  color: color-mix(in srgb, var(--oa-color-component-text) 54%, transparent);
+  font-size: 0.72rem;
+}
+.khala-preferences-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  color: color-mix(in srgb, var(--oa-color-component-text) 70%, transparent);
+  font-size: 0.75rem;
+}
+.khala-preferences-reset {
+  justify-self: start;
+}
+.khala-preferences-summary {
+  margin: 0;
+  color: color-mix(in srgb, var(--oa-color-component-text) 60%, transparent);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
 
 @media (max-width: 760px) {
   .khala-settings-header {
@@ -6373,7 +6432,8 @@ button {
   .khala-provider-catalog-row,
   .khala-model-manager-row,
   .khala-mcp-manager-row,
-  .khala-provider-custom-form {
+  .khala-provider-custom-form,
+  .khala-preferences-group {
     grid-template-columns: minmax(0, 1fr);
   }
   .khala-keybindings-capture,

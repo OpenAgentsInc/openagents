@@ -454,9 +454,12 @@ OpenCode has a much wider application preferences surface:
 - Server settings and WSL settings embedded in the same preferences model.
 
 Khala has Codex and Claude settings panels, role/model configuration, release
-lane data, and product-specific feature flags/contracts. It does not show the
-same broad end-user preferences system, i18n layer, theme/font configurator,
-sound/notification settings, update settings, or server/WSL settings UI.
+lane data, product-specific feature flags/contracts, and the first app
+preferences slice from
+[#8463](https://github.com/OpenAgentsInc/openagents/issues/8463). It still
+does not show the same broad i18n layer, native OS notification implementation,
+native sound playback, server/WSL settings UI, or advanced display-backend
+settings.
 
 ### 14. Timeline, Status, Error, And Usage UX
 
@@ -707,6 +710,26 @@ Issue: add model manager, MCP status picker, and permission auto-accept controls
   app-server/runtime APIs, server-owned OAuth flows, and enforced
   per-session/directory permission policy in the Khala-owned runtime/Pylon
   boundary.
+
+Issue: expand settings for themes, fonts, notifications, sounds, and feature
+toggles ([#8463](https://github.com/OpenAgentsInc/openagents/issues/8463)).
+
+- Status: first implementation pass complete on 2026-07-05. Khala Code desktop
+  now has a typed app-preferences settings section backed by a
+  `khala-code-desktop.app-preferences.v1` renderer storage contract. It covers
+  color scheme, UI/code/terminal font preferences, notification toggles for
+  agent events, permission events, errors, and completions, sound toggles plus
+  volume, and layout feature toggles for compact composer, dense workbench,
+  provider diagnostics, and terminal tabs. Preferences apply to the root
+  document through `data-khala-*` attributes and CSS variables while defaults
+  preserve the current Khala look, notifications-on/sounds-off behavior, and
+  existing app density unless the user opts in.
+- Scope: typed preference parser/storage/reset, root preference application,
+  Settings UI controls, narrow-layout CSS, and tests for read/write/defaults,
+  theme/font application, and notification/sound toggle projection.
+- Postponed intentionally: full i18n dictionaries, native OS notification
+  delivery, native sound playback, Windows/Wayland/WSL display backend
+  settings, and deep terminal settings until the terminal parity issue lands.
 
 Issue: add composer context and docks
 ([#8437](https://github.com/OpenAgentsInc/openagents/issues/8437)).
