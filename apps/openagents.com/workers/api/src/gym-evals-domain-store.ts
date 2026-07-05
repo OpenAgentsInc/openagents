@@ -1,5 +1,5 @@
 // KS-8.15 remainder (#8355): gym / mullet / blueprint / replay-clip /
-// mirrorcode eval domain — D1 → Cloud SQL migration machinery for the 21
+// mirrorcode eval domain — D1 → Cloud SQL migration machinery for the 16
 // tables the training CORE lane (#8326) left for this follow-up (khala-sync
 // migration `0026_gym_evals_domain.sql`). Extends the training-domain-store.ts
 // (#8326) seam exactly; see MIGRATION_PLAN.md §3.12.
@@ -13,11 +13,6 @@
 // feed PUBLIC projections and must round-trip byte-exact. A mirror failure
 // NEVER fails the request — it logs `khala_sync_gym_evals_dual_write_failed`
 // (keys only).
-//
-// WRITE-DEAD (KS-8.17 short path): the five `gym_agentcl_eval_*` tables have
-// no live Worker writer, so they are NEVER dual-written — the registry marks
-// them writeDead and the backfill copies + verifies them; the D1 drop stays
-// in KS-8.19 (#8330).
 //
 // READS stay on D1 authority this lane (public gym projections never regress
 // mid-cutover). `KHALA_SYNC_GYM_EVALS_READS` is parsed for the runbook cutover
@@ -160,11 +155,6 @@ const safeMessage = (error: unknown): string => {
 export const GYM_EVALS_MIRROR_KEY: Readonly<
   Record<GymEvalsDomainTable, string>
 > = {
-  gym_agentcl_eval_runs: 'eval_ref',
-  gym_agentcl_eval_phase_metrics: 'eval_ref',
-  gym_agentcl_eval_gain_metrics: 'eval_ref',
-  gym_agentcl_eval_run_state_events: 'eval_ref',
-  gym_agentcl_eval_prompt_mutations: 'eval_ref',
   gym_harbor_full_trace_archives: 'archive_ref',
   gym_ladder_leaderboard_snapshots: 'ladder_ref',
   gym_mutalisk_khala_delegation_jobs: 'run_ref',

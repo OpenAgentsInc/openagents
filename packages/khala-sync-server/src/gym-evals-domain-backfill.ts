@@ -138,13 +138,11 @@ export type GymEvalsStateTally = ReadonlyArray<
 >
 
 /**
- * The tables whose lifecycle column feeds a public tally. The column differs:
- * most use `status`; the agentcl eval runs use `state`.
+ * The tables whose lifecycle column feeds a public tally.
  */
 export const GYM_EVALS_TALLY_TABLES: Readonly<
   Partial<Record<GymEvalsDomainTable, string>>
 > = {
-  gym_agentcl_eval_runs: "state",
   gym_mutalisk_khala_delegation_jobs: "latest_stage",
   mullet_simulation_runs: "status",
   blueprint_action_submissions: "status",

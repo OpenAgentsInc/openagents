@@ -3,7 +3,7 @@ import type { SyncSql, SyncTransactionSql } from "./sql.js"
 /**
  * KS-8.15 remainder (#8355): gym / mullet / blueprint / replay-clip /
  * mirrorcode eval domain — shared table metadata and Postgres
- * converge/upsert helpers for the 21 tables that move from D1 to Cloud SQL in
+ * converge/upsert helpers for the 16 tables that move from D1 to Cloud SQL in
  * the follow-up to the training CORE (khala-sync migration
  * `0026_gym_evals_domain.sql`). Extends the training-domain-tables.ts
  * registry pattern exactly.
@@ -18,16 +18,11 @@ import type { SyncSql, SyncTransactionSql } from "./sql.js"
  *    UPDATE — the last authoritative D1 row wins byte-exactly (gym / ladder /
  *    mirrorcode rows feed public projections and must round-trip byte-exact).
  *  - `insertIfAbsent`: insert-once / append-only tables (harbor archives,
- *    agentcl event + mutation ledgers, mullet child rows) use a bare
- *    ON CONFLICT DO NOTHING (exact-replay dedupe; never clobber the original).
+ *    mullet child rows) use a bare ON CONFLICT DO NOTHING (exact-replay
+ *    dedupe; never clobber the original).
  */
 
 export type GymEvalsDomainTable =
-  | "gym_agentcl_eval_runs"
-  | "gym_agentcl_eval_phase_metrics"
-  | "gym_agentcl_eval_gain_metrics"
-  | "gym_agentcl_eval_run_state_events"
-  | "gym_agentcl_eval_prompt_mutations"
   | "gym_harbor_full_trace_archives"
   | "gym_ladder_leaderboard_snapshots"
   | "gym_mutalisk_khala_delegation_jobs"
@@ -58,23 +53,12 @@ export type GymEvalsDomainTableSpec = Readonly<{
   /** Newest-first ordering column for hash verification. */
   orderColumn: string
   writeMode: GymEvalsDomainWriteMode
-  /**
-   * Write-dead tables (no live Worker writer) — the KS-8.17 short path: copy +
-   * verify only, never dual-written. Documented so the store never wires a
-   * mirror for them.
-   */
-  writeDead?: boolean
 }>
 
 export type GymEvalsDomainRow = Readonly<Record<string, unknown>>
 
 /** Parent-first order (jobs → children → ledgers) for the backfill. */
 export const GYM_EVALS_DOMAIN_TABLES: ReadonlyArray<GymEvalsDomainTable> = [
-  "gym_agentcl_eval_runs",
-  "gym_agentcl_eval_phase_metrics",
-  "gym_agentcl_eval_gain_metrics",
-  "gym_agentcl_eval_run_state_events",
-  "gym_agentcl_eval_prompt_mutations",
   "gym_harbor_full_trace_archives",
   "gym_ladder_leaderboard_snapshots",
   "gym_mutalisk_khala_delegation_jobs",
@@ -96,106 +80,6 @@ export const GYM_EVALS_DOMAIN_TABLES: ReadonlyArray<GymEvalsDomainTable> = [
 export const GYM_EVALS_DOMAIN_TABLE_SPECS: Readonly<
   Record<GymEvalsDomainTable, GymEvalsDomainTableSpec>
 > = {
-  gym_agentcl_eval_runs: {
-    columns: [
-      "eval_ref",
-      "schema_version",
-      "environment_ref",
-      "experiment_id",
-      "stream_kind",
-      "run_ref",
-      "task_set_ref",
-      "verifier_ref",
-      "runner_config_id",
-      "seam_id",
-      "seam_can_spend",
-      "state",
-      "decision_grade",
-      "public_claim_eligible",
-      "collapse_gains_into_one_number",
-      "run_metadata_json",
-      "proof_refs_json",
-      "caveat_refs_json",
-      "blocker_refs_json",
-      "started_at",
-      "completed_at",
-      "created_at",
-      "updated_at",
-    ],
-    keyColumns: ["eval_ref"],
-    orderColumn: "updated_at",
-    writeMode: "converge",
-    writeDead: true,
-  },
-  gym_agentcl_eval_phase_metrics: {
-    columns: [
-      "eval_ref",
-      "phase",
-      "task_role",
-      "task_count",
-      "accepted_outcome_rate",
-      "score_bps",
-      "report_ref",
-      "receipt_ref",
-      "metric_metadata_json",
-      "created_at",
-    ],
-    keyColumns: ["eval_ref", "phase"],
-    orderColumn: "created_at",
-    writeMode: "converge",
-    writeDead: true,
-  },
-  gym_agentcl_eval_gain_metrics: {
-    columns: [
-      "eval_ref",
-      "gain_kind",
-      "gain_value",
-      "gain_bps",
-      "baseline_phase",
-      "comparison_phase",
-      "evidence_refs_json",
-      "metric_metadata_json",
-      "created_at",
-    ],
-    keyColumns: ["eval_ref", "gain_kind"],
-    orderColumn: "created_at",
-    writeMode: "converge",
-    writeDead: true,
-  },
-  gym_agentcl_eval_run_state_events: {
-    columns: [
-      "event_ref",
-      "eval_ref",
-      "event_index",
-      "state",
-      "observed_at",
-      "state_metadata_json",
-    ],
-    keyColumns: ["event_ref"],
-    orderColumn: "observed_at",
-    writeMode: "insertIfAbsent",
-    writeDead: true,
-  },
-  gym_agentcl_eval_prompt_mutations: {
-    columns: [
-      "mutation_ref",
-      "eval_ref",
-      "run_ref",
-      "pass",
-      "task_ref",
-      "step_index",
-      "template_ref",
-      "memory_before_refs_json",
-      "memory_after_refs_json",
-      "feedback_ref",
-      "mutation_json",
-      "created_at",
-    ],
-    keyColumns: ["mutation_ref"],
-    orderColumn: "created_at",
-    writeMode: "insertIfAbsent",
-    writeDead: true,
-  },
   gym_harbor_full_trace_archives: {
     columns: [
       "archive_ref",

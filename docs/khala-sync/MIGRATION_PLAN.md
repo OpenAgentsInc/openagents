@@ -1370,10 +1370,11 @@ per-window lease-set fingerprint, state tallies). Lease claiming stays
 D1-authoritative until cutover, where it becomes a real Postgres
 row-lock transaction (RUNBOOK "Training domain cutover").
 
-**KS-8.15 remainder status (2026-07-04, #8355): LANDED.** The gym /
-mullet / blueprint / replay-clip / mirrorcode remainder (21 tables)
-now has its Postgres twins (khala-sync migration
-`0026_gym_evals_domain.sql`), shared registry
+**KS-8.15 remainder status (2026-07-05, #8355/#8380): LANDED.** The active
+gym / mullet / blueprint / replay-clip / mirrorcode remainder (16 tables after
+retiring the five write-dead `gym_agentcl_eval_*` tables) has its Postgres
+twins (khala-sync migration `0026_gym_evals_domain.sql`, followed by
+`0031_drop_gym_agentcl_eval_tables.sql`), shared registry
 `packages/khala-sync-server/src/gym-evals-domain-tables.ts`, Worker seam
 `apps/openagents.com/workers/api/src/gym-evals-domain-store.ts` (row-level
 dual-write store + fail-soft read-back mirror + `make*ForEnv` drop-ins,
@@ -1387,19 +1388,19 @@ and a contract suite against both stores
 carries a body — no table skipped); the derived
 `gym_ladder_leaderboard_snapshots` / `gym_run_progress_snapshots` are
 verified by newest-N byte-exact copy-equality (leaderboard recomputation
-equality), NOT recomputed in Postgres; the five write-dead
-`gym_agentcl_eval_*` tables take the KS-8.17 short path (copy + verify
-only, no dual-write). Live dual-write is wired for the gym stores
+equality), NOT recomputed in Postgres. Live dual-write is wired for the gym stores
 (run-progress, mirrorcode, ladder, mutalisk delegation, harbor); the
 transactional `mullet_*` / `blueprint_*` / `replay_clip_jobs` call-site
 mirror wiring lands with the read-cutover follow-up (RUNBOOK "Gym/evals
-domain cutover"). Destructive D1 retirement stays in KS-8.19
+domain cutover"). The retired AgentCL eval family is dropped by Worker
+migration `0301_drop_gym_agentcl_eval_tables.sql`; broad D1 retirement stays
+in KS-8.19
 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
 
 - **What:** training runs/windows/leases/verification, trace
-  contributions, gym eval runs + delegation + leaderboards, mullet
+  contributions, gym run progress + delegation + leaderboards, mullet
   simulations, blueprint program runs, replay clips, mirrorcode runs.
-- **Tables (~29):** `training_*` (7), `gym_*` (11), `mullet_*` (5),
+- **Tables (~23 active):** `training_*` (7), `gym_*` (6), `mullet_*` (5),
   `blueprint_*` (3), `replay_clip_jobs`, `mirrorcode_runs`.
 - **Heat:** bursty during runs, cold otherwise; leaderboard snapshots are
   derived.

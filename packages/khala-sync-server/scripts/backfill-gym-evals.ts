@@ -8,10 +8,6 @@
  * keys — rerunning any range is a no-op). Same machinery as
  * scripts/backfill-training.ts.
  *
- * The five write-dead `gym_agentcl_eval_*` tables are copied + verified here
- * (the KS-8.17 short path) with NO dual-write phase; the destructive
- * snapshot-to-R2 + D1 drop stays in KS-8.19 (#8330).
- *
  * Usage (from packages/khala-sync-server/):
  *   bun scripts/backfill-gym-evals.ts \
  *     [--database-url <postgres-url>]   # default $KHALA_SYNC_DATABASE_URL

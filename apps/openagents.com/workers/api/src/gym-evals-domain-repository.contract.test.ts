@@ -15,9 +15,8 @@
 //     row, byte-exactly (gym / ladder / mirrorcode rows feed public
 //     projections; this is the "leaderboard recomputation equality" acceptance
 //     proven by byte-equal round-trip, not recomputation);
-//   * insert-once tables (harbor archives, agentcl event ledger) dedupe on
-//     exact replay AND on their secondary unique (harbor artifact_sha256, the
-//     agentcl (eval_ref, event_index) order key) and never clobber;
+//   * insert-once tables (harbor archives) dedupe on exact replay AND on their
+//     secondary unique (harbor artifact_sha256) and never clobber;
 //   * a converge table's secondary unique (blueprint idempotency_key) REJECTS
 //     a conflicting second row on BOTH stores.
 //
@@ -125,21 +124,6 @@ const harborRow = (
   source_kind: 'harbor_job_tarball',
   updated_at: '2026-07-04T12:00:00.000Z',
   visibility: 'operator_only',
-  ...overrides,
-})
-
-const stateEventRow = (
-  eventRef: string,
-  evalRef: string,
-  eventIndex: number,
-  overrides: Partial<Record<string, unknown>> = {},
-): GymEvalsDomainRow => ({
-  eval_ref: evalRef,
-  event_index: eventIndex,
-  event_ref: eventRef,
-  observed_at: '2026-07-04T12:00:00.000Z',
-  state: 'running',
-  state_metadata_json: '{}',
   ...overrides,
 })
 
@@ -301,33 +285,6 @@ const specContractSuite = (getHarness: () => ContractHarness) => {
     expect(rows[0]?.artifact_r2_key).toBe(
       `private/gym/harbor/${archiveRef}.tar.gz`,
     )
-  })
-
-  test('agentcl run-state events insert-once: replay + (eval_ref, event_index) collision dedupe', async () => {
-    const { query, store } = getHarness()
-    const evalRef = nextRef('eval')
-    expect(
-      await store.upsertRows('gym_agentcl_eval_run_state_events', [
-        stateEventRow(`${evalRef}:e1`, evalRef, 0, { state: 'planned' }),
-        stateEventRow(`${evalRef}:e2`, evalRef, 1, { state: 'running' }),
-      ]),
-    ).toBe(2)
-    // Exact replay: no-op (a valid-but-different state must not clobber).
-    expect(
-      await store.upsertRows('gym_agentcl_eval_run_state_events', [
-        stateEventRow(`${evalRef}:e1`, evalRef, 0, { state: 'completed' }),
-      ]),
-    ).toBe(0)
-    // A different event_ref reusing (eval_ref, event_index) is ignored.
-    expect(
-      await store.upsertRows('gym_agentcl_eval_run_state_events', [
-        stateEventRow(`${evalRef}:e1b`, evalRef, 0, { state: 'aborted' }),
-      ]),
-    ).toBe(0)
-    const rows = await query(
-      `SELECT state FROM gym_agentcl_eval_run_state_events WHERE eval_ref = '${evalRef}' ORDER BY event_index`,
-    )
-    expect(rows.map(row => row.state)).toEqual(['planned', 'running'])
   })
 
   test('blueprint program runs: a conflicting second row under the same idempotency_key REJECTS on BOTH stores', async () => {

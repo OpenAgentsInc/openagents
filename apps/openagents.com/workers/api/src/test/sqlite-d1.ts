@@ -3055,84 +3055,9 @@ CREATE TABLE hygiene_debt_receipts (
  * FK clauses are dropped so the contract suite seeds rows directly; the UNIQUE
  * dedupe keys the INSERT OR IGNORE / converge write paths rely on are kept
  * EXACTLY (harbor artifact_sha256, mutalisk job_ref, blueprint
- * idempotency_key, the agentcl run-state order key, the mullet hourly/candidate
- * order keys).
+ * idempotency_key, the mullet hourly/candidate order keys).
  */
 export const GYM_EVALS_DOMAIN_D1_SCHEMA = `
-CREATE TABLE gym_agentcl_eval_runs (
-  eval_ref TEXT PRIMARY KEY,
-  schema_version TEXT NOT NULL,
-  environment_ref TEXT NOT NULL,
-  experiment_id TEXT NOT NULL,
-  stream_kind TEXT NOT NULL,
-  run_ref TEXT NOT NULL,
-  task_set_ref TEXT,
-  verifier_ref TEXT,
-  runner_config_id TEXT,
-  seam_id TEXT,
-  seam_can_spend INTEGER NOT NULL DEFAULT 0,
-  state TEXT NOT NULL,
-  decision_grade INTEGER NOT NULL DEFAULT 0,
-  public_claim_eligible INTEGER NOT NULL DEFAULT 0,
-  collapse_gains_into_one_number INTEGER NOT NULL DEFAULT 0,
-  run_metadata_json TEXT NOT NULL,
-  proof_refs_json TEXT NOT NULL,
-  caveat_refs_json TEXT NOT NULL,
-  blocker_refs_json TEXT NOT NULL,
-  started_at TEXT,
-  completed_at TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-CREATE TABLE gym_agentcl_eval_phase_metrics (
-  eval_ref TEXT NOT NULL,
-  phase TEXT NOT NULL,
-  task_role TEXT NOT NULL,
-  task_count INTEGER NOT NULL,
-  accepted_outcome_rate REAL NOT NULL,
-  score_bps INTEGER NOT NULL,
-  report_ref TEXT,
-  receipt_ref TEXT,
-  metric_metadata_json TEXT NOT NULL DEFAULT '{}',
-  created_at TEXT NOT NULL,
-  PRIMARY KEY (eval_ref, phase)
-);
-CREATE TABLE gym_agentcl_eval_gain_metrics (
-  eval_ref TEXT NOT NULL,
-  gain_kind TEXT NOT NULL,
-  gain_value REAL NOT NULL,
-  gain_bps INTEGER NOT NULL,
-  baseline_phase TEXT NOT NULL,
-  comparison_phase TEXT NOT NULL,
-  evidence_refs_json TEXT NOT NULL,
-  metric_metadata_json TEXT NOT NULL DEFAULT '{}',
-  created_at TEXT NOT NULL,
-  PRIMARY KEY (eval_ref, gain_kind)
-);
-CREATE TABLE gym_agentcl_eval_run_state_events (
-  event_ref TEXT PRIMARY KEY,
-  eval_ref TEXT NOT NULL,
-  event_index INTEGER NOT NULL,
-  state TEXT NOT NULL,
-  observed_at TEXT NOT NULL,
-  state_metadata_json TEXT NOT NULL DEFAULT '{}'
-);
-CREATE UNIQUE INDEX idx_gym_agentcl_eval_run_state_events_order
-  ON gym_agentcl_eval_run_state_events (eval_ref, event_index);
-CREATE TABLE gym_agentcl_eval_prompt_mutations (
-  mutation_ref TEXT PRIMARY KEY,
-  eval_ref TEXT NOT NULL,
-  run_ref TEXT NOT NULL,
-  pass TEXT NOT NULL,
-  task_ref TEXT NOT NULL,
-  step_index INTEGER NOT NULL,
-  template_ref TEXT NOT NULL,
-  memory_before_refs_json TEXT NOT NULL,
-  memory_after_refs_json TEXT NOT NULL,
-  feedback_ref TEXT NOT NULL,
-  mutation_json TEXT NOT NULL,
-  created_at TEXT NOT NULL
-);
 CREATE TABLE gym_harbor_full_trace_archives (
   archive_ref TEXT PRIMARY KEY,
   run_ref TEXT NOT NULL,

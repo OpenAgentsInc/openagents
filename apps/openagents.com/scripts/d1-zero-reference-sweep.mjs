@@ -47,7 +47,7 @@ export const confirmedZeroReferenceTables = new Map([
     {
       issueRef: '#8380',
       reason:
-        'Wave 1 audit target; current-main production references must be removed before drop.',
+        'Wave 1 audit found no production reader/writer after the AgentCL Vertex runner and eval registry removal.',
     },
   ],
   [
@@ -55,7 +55,7 @@ export const confirmedZeroReferenceTables = new Map([
     {
       issueRef: '#8380',
       reason:
-        'Wave 1 audit target; current-main production references must be removed before drop.',
+        'Wave 1 audit found no production reader/writer after the AgentCL Vertex runner and eval registry removal.',
     },
   ],
   [
@@ -63,7 +63,7 @@ export const confirmedZeroReferenceTables = new Map([
     {
       issueRef: '#8380',
       reason:
-        'Wave 1 audit target; current-main production references must be removed before drop.',
+        'Wave 1 audit found no production reader/writer after the AgentCL Vertex runner and eval registry removal.',
     },
   ],
   [
@@ -71,7 +71,7 @@ export const confirmedZeroReferenceTables = new Map([
     {
       issueRef: '#8380',
       reason:
-        'Wave 1 audit target; current-main production references must be removed before drop.',
+        'Wave 1 audit found no production reader/writer after the AgentCL Vertex runner and eval registry removal.',
     },
   ],
   [
@@ -79,7 +79,7 @@ export const confirmedZeroReferenceTables = new Map([
     {
       issueRef: '#8380',
       reason:
-        'Wave 1 audit target; current-main production references must be removed before drop.',
+        'Wave 1 audit found no production reader/writer after the AgentCL Vertex runner and eval registry removal.',
     },
   ],
 ])

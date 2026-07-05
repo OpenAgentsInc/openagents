@@ -1329,9 +1329,13 @@ behind.
 
 ## Gym/evals domain cutover (KS-8.15 remainder, #8355)
 
-The Wave D gym/evals remainder: 21 D1 tables → same-named Postgres twins
-(khala-sync migration `0026_gym_evals_domain.sql`) — `gym_*` (11),
-`mullet_*` (5), `blueprint_*` (3), `replay_clip_jobs`, `mirrorcode_runs`.
+The active Wave D gym/evals remainder: 16 D1 tables → same-named Postgres
+twins. Historical khala-sync migration `0026_gym_evals_domain.sql` created 21
+twins; #8380 retired the write-dead `gym_agentcl_eval_*` family with Worker
+migration `0301_drop_gym_agentcl_eval_tables.sql` and khala-sync migration
+`0031_drop_gym_agentcl_eval_tables.sql`. The active registry now covers
+`gym_*` (6), `mullet_*` (5), `blueprint_*` (3), `replay_clip_jobs`,
+`mirrorcode_runs`.
 Machinery mirrors the training core:
 `apps/openagents.com/workers/api/src/gym-evals-domain-store.ts` (row-level
 seam over the shared registry
@@ -1355,10 +1359,10 @@ verbatim; `--verify` proves the "leaderboard recomputation equality"
 acceptance as newest-N full-row hash equality — Postgres never recomputes
 a leaderboard.
 
-WRITE-DEAD (KS-8.17 short path): the five `gym_agentcl_eval_*` tables have
-no live Worker writer, so they are NEVER dual-written — the backfill
-copies + verifies them, and the destructive snapshot-to-R2 + D1 drop
-stays in KS-8.19 (#8330).
+RETIRED (Wave 1 #8380): the five `gym_agentcl_eval_*` tables had no live
+Worker writer and were removed from the active registry/backfill before the
+Worker D1 and Postgres twin drop migrations landed. They are migration history
+only and are no longer copied, verified, dual-written, or kept alive by tests.
 
 Flag (Worker vars):
 
@@ -1381,15 +1385,14 @@ Flag-flip order:
    coverage ship now).
 2. **Backfill**: from `packages/khala-sync-server/`,
    `KHALA_SYNC_DATABASE_URL=<direct-url> bun scripts/backfill-gym-evals.ts`
-   (rowid-cursor resumable via `.gym-evals-backfill-state.json`; includes
-   the write-dead `gym_agentcl_eval_*` copy). Re-run `--restart` as the
-   catch-up sweep.
+   (rowid-cursor resumable via `.gym-evals-backfill-state.json`). Re-run
+   `--restart` as the catch-up sweep.
 3. **Verify**: `bun scripts/backfill-gym-evals.ts --verify` — exact row
    counts, newest-50 full-row hashes (the derived-snapshot equality), and
    lifecycle state tallies. Post the output on #8355. No cutover on a red
    verify.
-4. **Retire later**: dropping D1 tables and deleting flags is deferred to
-   KS-8.19 (#8330). Until then rollback is one flag flip:
+4. **Retire remaining tables later**: broad D1 retirement and deleting flags is
+   deferred to KS-8.19 (#8330). Until then rollback is one flag flip:
    `KHALA_SYNC_GYM_EVALS_DUAL_WRITE=off`. D1 authority is never behind.
 
 ## Forge domain cutover (KS-8.16, #8327)
