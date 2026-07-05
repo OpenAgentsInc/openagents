@@ -75,6 +75,7 @@ export const khalaCodeDesktopApplicationMenu: Array<MenuItem> = [
       { label: "Inbox", action: "view.inbox", accelerator: "Alt+4" },
       { label: "Editor", action: "view.editor", accelerator: "Alt+6" },
       { label: "Review", action: "view.review", accelerator: "Alt+8" },
+      { label: "Terminal", action: "view.terminal", accelerator: "Alt+9" },
       { type: "divider" },
       { role: "reload", accelerator: "CommandOrControl+R" },
       { role: "togglefullscreen" },
@@ -89,6 +90,9 @@ export const khalaCodeDesktopApplicationMenu: Array<MenuItem> = [
       { type: "divider" },
       { label: "Previous Message", action: "message.previous", accelerator: "Alt+Up" },
       { label: "Next Message", action: "message.next", accelerator: "Alt+Down" },
+      { type: "divider" },
+      { label: "Refresh Terminals", action: "terminal.refresh" },
+      { label: "Clean Exited Terminals", action: "terminal.clean" },
     ],
   },
   {

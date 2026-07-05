@@ -86,6 +86,10 @@ import {
   type KhalaCodeReviewComposerContext,
   type KhalaCodeReviewPanelHandle,
 } from "./review-panel"
+import {
+  mountKhalaCodeTerminalPanel,
+  type KhalaCodeTerminalPanelHandle,
+} from "./terminal-panel"
 import { mountKhalaCodeForumPanel } from "./forum-panel"
 import { mountKhalaCodeRecoveryOverlay } from "./recovery-overlay-react"
 import { mountKhalaCodePlansPanel } from "./plans-panel"
@@ -229,6 +233,9 @@ import {
   khalaCodeDeepLinkFromLocation,
   viewForKhalaCodeDeepLinkTarget,
 } from "../shared/deep-links"
+import {
+  projectKhalaCodeTerminalWorkbench,
+} from "../shared/terminal-workbench"
 import {
   initialKhalaCodeMainShellModel,
   shouldPollThreadTokenSummary,
@@ -5219,6 +5226,12 @@ const controls = {
   codexHarnessStatus: () => rpc.request.codexHarnessStatus(),
   codexApprovalRespond: (request: Parameters<DesktopRpcRequests["codexApprovalRespond"]>[0]) =>
     rpc.request.codexApprovalRespond(request),
+  codexBackgroundTerminalsClean: (request: Parameters<DesktopRpcRequests["codexBackgroundTerminalsClean"]>[0]) =>
+    rpc.request.codexBackgroundTerminalsClean(request),
+  codexBackgroundTerminalsList: (request: Parameters<DesktopRpcRequests["codexBackgroundTerminalsList"]>[0]) =>
+    rpc.request.codexBackgroundTerminalsList(request),
+  codexBackgroundTerminalsTerminate: (request: Parameters<DesktopRpcRequests["codexBackgroundTerminalsTerminate"]>[0]) =>
+    rpc.request.codexBackgroundTerminalsTerminate(request),
   codexConfigValueWrite: (request: Parameters<DesktopRpcRequests["codexConfigValueWrite"]>[0]) =>
     rpc.request.codexConfigValueWrite(request),
   codexEcosystemRead: (request?: Parameters<DesktopRpcRequests["codexEcosystemRead"]>[0]) =>
@@ -5434,6 +5447,7 @@ const inboxPanelEl = document.getElementById("inbox-panel")
 const projectHomePanelEl = document.getElementById("project-home-panel")
 const editorPanelEl = document.getElementById("editor-panel")
 const reviewPanelEl = document.getElementById("review-panel")
+const terminalPanelEl = document.getElementById("terminal-panel")
 const gymPanelEl = document.getElementById("gym-panel")
 const settingsPanelEl = document.getElementById("settings-panel")
 const threadShell = document.querySelector<HTMLElement>(".khala-code-thread-shell")
@@ -5693,6 +5707,40 @@ const reviewPanel: KhalaCodeReviewPanelHandle | null =
         },
         onComposerContextSelected: addReviewComposerContext,
         reviewDiffRead: request => controls.reviewDiffRead(request),
+      })
+
+const terminalPanel: KhalaCodeTerminalPanelHandle | null =
+  terminalPanelEl === null
+    ? null
+    : mountKhalaCodeTerminalPanel(terminalPanelEl, {
+        clean: async () => {
+          const threadId = shellModel().activeCodexThreadId
+          if (threadId === null) throw new Error("Open a session before cleaning terminals.")
+          const result = await controls.codexBackgroundTerminalsClean({ threadId })
+          if (!result.ok) throw new Error(result.error ?? "Terminal clean failed.")
+        },
+        copy: async text => {
+          if (navigator.clipboard === undefined) throw new Error("Clipboard is unavailable.")
+          await navigator.clipboard.writeText(text)
+        },
+        fetch: async () => {
+          const threadId = shellModel().activeCodexThreadId
+          if (threadId === null) {
+            return projectKhalaCodeTerminalWorkbench({ activeThreadId: null })
+          }
+          const result = await controls.codexBackgroundTerminalsList({ limit: 25, threadId })
+          if (!result.ok) throw new Error(result.error ?? "Terminal list failed.")
+          return projectKhalaCodeTerminalWorkbench({
+            activeThreadId: threadId,
+            response: result.response,
+          })
+        },
+        terminate: async processId => {
+          const threadId = shellModel().activeCodexThreadId
+          if (threadId === null) throw new Error("Open a session before terminating terminals.")
+          const result = await controls.codexBackgroundTerminalsTerminate({ processId, threadId })
+          if (!result.ok) throw new Error(result.error ?? "Terminal terminate failed.")
+        },
       })
 
 const gymPanel =
@@ -6351,7 +6399,8 @@ const setActiveView = (value: string): void => {
     value === "settings" ||
     value === "editor" ||
     value === "home" ||
-    value === "review"
+    value === "review" ||
+    value === "terminal"
       ? value
       : "chat"
   localStorage.setItem(activeViewStorageKey, activeValue)
@@ -6364,6 +6413,7 @@ const setActiveView = (value: string): void => {
   const showEditor = activeValue === "editor"
   const showHome = activeValue === "home"
   const showReview = activeValue === "review"
+  const showTerminal = activeValue === "terminal"
   if (threadSidebarEl !== null) threadSidebarEl.hidden = !showChat
   if (fleetPanelEl !== null) fleetPanelEl.hidden = !showFleet
   if (forumPanelEl !== null) forumPanelEl.hidden = !showForum
@@ -6374,7 +6424,7 @@ const setActiveView = (value: string): void => {
   if (settingsPanelEl !== null) settingsPanelEl.hidden = !showSettings
   gymPanel?.setVisible(false)
   const showsFullPanel =
-    showFleet || showForum || showInbox || showSettings || showEditor || showHome || showReview
+    showFleet || showForum || showInbox || showSettings || showEditor || showHome || showReview || showTerminal
   if (threadShell !== null) threadShell.hidden = showsFullPanel
   if (composerDock !== null) composerDock.hidden = showsFullPanel
   fleetPanel?.setVisible(showFleet)
@@ -6384,6 +6434,7 @@ const setActiveView = (value: string): void => {
   settingsPanel?.setVisible(showSettings)
   editorPanel?.setVisible(showEditor)
   reviewPanel?.setVisible(showReview)
+  terminalPanel?.setVisible(showTerminal)
   if (showSettings) {
     void claudeSettingsSection?.refresh()
     void plansSection?.refresh()
@@ -6403,6 +6454,7 @@ function showGymProofPane(): void {
   if (projectHomePanelEl !== null) projectHomePanelEl.hidden = true
   if (editorPanelEl !== null) editorPanelEl.hidden = true
   if (reviewPanelEl !== null) reviewPanelEl.hidden = true
+  if (terminalPanelEl !== null) terminalPanelEl.hidden = true
   if (settingsPanelEl !== null) settingsPanelEl.hidden = true
   if (threadShell !== null) threadShell.hidden = true
   if (composerDock !== null) composerDock.hidden = true
@@ -6414,6 +6466,7 @@ function showGymProofPane(): void {
   settingsPanel?.setVisible(false)
   editorPanel?.setVisible(false)
   reviewPanel?.setVisible(false)
+  terminalPanel?.setVisible(false)
   threadSidebar?.setVisible(false)
 }
 
@@ -6435,6 +6488,8 @@ const hotbarCommandIdForValue = (value: KhalaCodeHotbarValue): KhalaCodeCommandI
       return "view.review"
     case "settings":
       return "view.settings"
+    case "terminal":
+      return "view.terminal"
   }
 }
 
@@ -6451,6 +6506,7 @@ const commandSidebarShortcutLabels = (): Partial<Record<KhalaCodeHotbarValue, st
     inbox: commandRegistry.keybindingLabel("view.inbox"),
     review: commandRegistry.keybindingLabel("view.review"),
     settings: commandRegistry.keybindingLabel("view.settings"),
+    terminal: commandRegistry.keybindingLabel("view.terminal"),
   }
 }
 
@@ -6691,6 +6747,71 @@ commandRegistry = createKhalaCodeCommandRegistry([
     id: "view.review",
     keywords: ["diff", "comments", "revert"],
     title: "Open Review",
+  },
+  {
+    analyticsRef: "khala_code.command.view.terminal",
+    category: "navigation",
+    defaultKeybindings: [{ alt: true, key: "9" }],
+    execute: () => setActiveView("terminal"),
+    id: "view.terminal",
+    keywords: ["shell", "pty", "background terminal"],
+    title: "Open Terminal",
+  },
+  {
+    analyticsRef: "khala_code.command.terminal.refresh",
+    available: () => terminalPanel !== null,
+    category: "workbench",
+    disabledReason: () => "Terminal panel is unavailable",
+    execute: () => {
+      void terminalPanel?.refresh()
+    },
+    id: "terminal.refresh",
+    keywords: ["shell", "reload"],
+    title: "Refresh Terminals",
+  },
+  {
+    analyticsRef: "khala_code.command.terminal.clean",
+    available: () => shellModel().activeCodexThreadId !== null,
+    category: "workbench",
+    disabledReason: () => "Open a session before cleaning terminals",
+    execute: async () => {
+      const threadId = shellModel().activeCodexThreadId
+      if (threadId === null) return
+      await controls.codexBackgroundTerminalsClean({ threadId })
+      await terminalPanel?.refresh()
+    },
+    id: "terminal.clean",
+    keywords: ["shell", "clear exited"],
+    title: "Clean Exited Terminals",
+  },
+  {
+    analyticsRef: "khala_code.command.terminal.copy",
+    available: () => terminalPanelEl?.querySelector(".khala-terminal-output") !== null,
+    category: "workbench",
+    disabledReason: () => "No active terminal output",
+    execute: async () => {
+      const output = terminalPanelEl?.querySelector<HTMLElement>(".khala-terminal-output")?.textContent ?? ""
+      if (navigator.clipboard !== undefined) await navigator.clipboard.writeText(output)
+    },
+    id: "terminal.copy",
+    keywords: ["shell", "clipboard"],
+    title: "Copy Terminal Output",
+  },
+  {
+    analyticsRef: "khala_code.command.terminal.terminate_active",
+    available: () => terminalPanelEl?.querySelector(".khala-terminal-body[data-process-id]") !== null,
+    category: "workbench",
+    disabledReason: () => "No active terminal process",
+    execute: async () => {
+      const threadId = shellModel().activeCodexThreadId
+      const processId = terminalPanelEl?.querySelector<HTMLElement>(".khala-terminal-body")?.dataset.processId
+      if (threadId === null || processId === undefined) return
+      await controls.codexBackgroundTerminalsTerminate({ processId, threadId })
+      await terminalPanel?.refresh()
+    },
+    id: "terminal.terminate_active",
+    keywords: ["shell", "stop"],
+    title: "Terminate Active Terminal",
   },
   {
     analyticsRef: "khala_code.command.session.new_chat",

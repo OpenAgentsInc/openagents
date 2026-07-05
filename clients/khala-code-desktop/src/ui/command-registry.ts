@@ -39,6 +39,10 @@ export type KhalaCodeCommandId =
   | "session.share"
   | "session.unarchive"
   | "session.unshare"
+  | "terminal.clean"
+  | "terminal.copy"
+  | "terminal.refresh"
+  | "terminal.terminate_active"
   | "view.chat"
   | "view.editor"
   | "view.fleet"
@@ -47,6 +51,7 @@ export type KhalaCodeCommandId =
   | "view.inbox"
   | "view.review"
   | "view.settings"
+  | "view.terminal"
 
 export type KhalaCodeCommandKeybinding = Readonly<{
   key: string

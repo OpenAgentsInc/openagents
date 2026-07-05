@@ -6599,6 +6599,89 @@ button {
   font-size: 0.68rem;
   white-space: pre-wrap;
 }
+.khala-code-terminal {
+  min-height: 0;
+  overflow: hidden;
+}
+.khala-terminal-panel-shell {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 0.65rem;
+  height: 100%;
+  min-height: 0;
+  padding: 0.85rem;
+}
+.khala-terminal-panel-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+}
+.khala-terminal-panel-title,
+.khala-terminal-panel-boundary {
+  margin: 0;
+}
+.khala-terminal-panel-title {
+  color: var(--oa-color-component-text);
+  font-size: 0.95rem;
+}
+.khala-terminal-panel-boundary,
+.khala-terminal-meta,
+.khala-terminal-panel-status {
+  color: color-mix(in srgb, var(--oa-color-component-text) 58%, transparent);
+  font-size: 0.72rem;
+}
+.khala-terminal-panel-actions,
+.khala-terminal-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.khala-terminal-panel-action,
+.khala-terminal-tab {
+  padding: 0.36rem 0.56rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 68%, transparent);
+  border-radius: 0.36rem;
+  background: color-mix(in srgb, var(--oa-color-component-surface) 78%, black 5%);
+  color: var(--oa-color-component-text);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+.khala-terminal-panel-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.khala-terminal-tab[data-active="true"] {
+  border-color: color-mix(in srgb, var(--oa-color-khala-accent) 58%, var(--oa-color-component-border));
+}
+.khala-terminal-body {
+  display: grid;
+  min-height: 0;
+  gap: 0.5rem;
+}
+.khala-terminal-output {
+  min-height: 12rem;
+  max-height: 100%;
+  margin: 0;
+  overflow: auto;
+  padding: 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 62%, transparent);
+  border-radius: 0.36rem;
+  background: color-mix(in srgb, var(--oa-color-component-surface) 74%, black 12%);
+  color: color-mix(in srgb, var(--oa-color-component-text) 78%, transparent);
+  font-family: var(--khala-terminal-font-family);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+.khala-terminal-panel-empty {
+  padding: 1rem;
+  border: 1px dashed color-mix(in srgb, var(--oa-color-component-border) 70%, transparent);
+  border-radius: 0.45rem;
+  color: color-mix(in srgb, var(--oa-color-component-text) 58%, transparent);
+  font-size: 0.82rem;
+}
 
 @media (max-width: 760px) {
   .khala-settings-header {
@@ -6621,6 +6704,7 @@ button {
   .khala-status-usage-grid,
   .khala-status-usage-row,
   .khala-session-actions-row,
+  .khala-terminal-panel-header,
   .khala-provider-custom-form,
   .khala-preferences-group {
     grid-template-columns: minmax(0, 1fr);

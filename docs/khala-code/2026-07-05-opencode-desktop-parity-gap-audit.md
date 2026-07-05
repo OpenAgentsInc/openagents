@@ -977,6 +977,18 @@ Issue: add diff/review panel
 Issue: add embedded terminal
 ([#8445](https://github.com/OpenAgentsInc/openagents/issues/8445)).
 
+- Status: first implementation pass complete on 2026-07-05. Khala Code now has
+  a Terminal hotbar slot, `view.terminal` command, native View/Go menu entries,
+  and a workbench terminal panel backed by the existing Codex app-server
+  background-terminal RPCs. The panel is bounded to the active session/thread,
+  renders background terminal tabs, supports switch, refresh, clean exited,
+  terminate running, and copy-output actions, and deliberately disables
+  interactive "New Terminal" creation until a Khala-owned local PTY bridge or
+  local server terminal transport exists.
+- Transport decision: this pass uses Codex background terminals for inspection
+  and lifecycle management only. It is intentionally separated from a future
+  interactive local PTY so reconnect/recover cannot duplicate commands or leak
+  stale output across sessions.
 - Scope: workspace-scoped PTY tabs, terminal websocket or local bridge, tab
   persistence, resize/collapse, copy/paste, clickable links, shell/font/theme
   settings, reconnect/recover, and command-registry actions.
