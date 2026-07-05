@@ -19,6 +19,7 @@ export type PublishExportInput = {
     readonly contentType: string
     readonly fileExtension: string
   }>
+  readonly extra?: Record<string, unknown>
 }
 
 export type PublishExportResult = {
@@ -62,6 +63,7 @@ export async function publishExport(input: PublishExportInput): Promise<PublishE
       hash: launchBundleHash,
     },
     assets,
+    extra: input.extra,
   })
 
   return {

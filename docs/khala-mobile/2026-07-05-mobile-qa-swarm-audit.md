@@ -439,3 +439,136 @@ typecheck` (clean), `bun run test:qa-pre-push-smoke` (7 pass / 0 fail).
 now, but neither is fully closed: gap 1 needs the owner's interactive gcloud
 login; gap 2 needs actual native STT/Apple-FM implementation work (not device
 time) before any device/simulator proof would be meaningful.
+
+## Gap 1 closed: real signed OTA round-trip proven (2026-07-05, later same day)
+
+The owner re-authenticated `gcloud` on this Mac ("i reatuehd google btw").
+Verified independently rather than trusting the claim: `gcloud auth list`
+still showed `chris@openagents.com` as before, but `gcloud run services
+list --project=openagentsgemini` — the exact command that failed with
+`Reauthentication failed: cannot prompt during non-interactive execution` in
+every prior pass — now succeeds. (`gcloud auth application-default
+print-access-token` is still expired; irrelevant here since `gcloud run
+deploy --source` and `gcloud run services list` use the CLI's own user
+session, not ADC.)
+
+Ran the real `apps/oa-updates/scripts/publish-ota.sh` against
+`clients/khala-mobile` for the first time ever, then drove a real
+install → launch → download → relaunch → apply round trip against an
+installed Release-configuration iOS Simulator build. This surfaced and fixed
+**five real, previously-undiscovered production bugs** in `apps/oa-updates`
+and `clients/khala-mobile/app.json` — every prior pass's "OTA round-trip
+unproven" status was masking these, not just the gcloud auth gap:
+
+1. **Missing `Expo-Channel-Name` request header.** `app.json`'s `updates`
+   block had no `requestHeaders`, so the client sent no channel name and the
+   server's branch-matching (`resolveManifest` in
+   `apps/oa-updates/src/manifest-resolver.ts`) always fell through to
+   `noUpdateAvailable`, even against a live, correctly signed manifest.
+   Fixed: added `"requestHeaders": {"expo-channel-name": "production"}` to
+   `clients/khala-mobile/app.json`'s `updates` block (matching the `production`
+   branch `publish-ota.sh` always deploys to). This edit was overwritten once
+   mid-pass by a concurrent agent's unrelated `buildNumber` bump commit
+   (`548dc5974e`) landing on `main` while a long local Xcode build ran; caught
+   it via `git status` showing no diff after the fact, re-pulled `origin/main`
+   (fast-forward, no conflicts — the concurrent commits never touched this
+   file's `updates` block or `apps/oa-updates/`), and reapplied the same edit.
+2. **Non-UUID manifest `id`.** `apps/oa-updates/src/serve.ts`'s `seedFromDist`
+   generated `id: "seed-${platform}-${Date.now()}"`. The expo-updates iOS
+   client (`FileDownloader.createUpdate`) force-parses `id` as a `UUID` and
+   **crashes the app** (`NSInternalInconsistencyException: 'update ID should
+   be a valid UUID'`, uncaught, terminates the process) the instant it tries
+   to process a manifest with a non-UUID id. Fixed: `id: crypto.randomUUID()`.
+3. **Path-separator asset `key`s.** `apps/oa-updates/src/export-reader.ts` set
+   each asset's manifest `key` to the raw Metro export path (e.g.
+   `"assets/7d40544b395c5949f4646f5e150fe020"`, and the JS bundle key like
+   `"_expo/static/js/ios/index-....hbc"`). The expo-updates client writes each
+   downloaded asset to `<updatesDir>/<key>` with **no subdirectory creation**,
+   so every asset (and the bundle) failed with `Could not write downloaded
+   asset file ... The folder "..." doesn't exist` — 21/21 assets failed,
+   `downloadError`. Fixed: `key: basename(asset.path)` /
+   `basename(platformMetadata.bundle)` — Metro's export filenames are already
+   content-hashed, so basenames stay unique. Updated
+   `export-reader.test.ts`'s fixture expectations to match (it had encoded the
+   buggy path-based keys as expected behavior).
+4. **Empty manifest `extra`.** `apps/oa-updates/src/publish-builder.ts`
+   hardcoded `extra: {}` (even typed as `Record<string, never>`). Downloaded
+   (non-embedded) updates need `manifest.extra.expoClient` — the resolved
+   public app config — for `expo-constants`/`expo-linking` to resolve things
+   like the URI scheme at runtime; without it the JS throws immediately
+   (`[runtime not ready]: Error: expo-linking needs access to the
+   expo-constants manifest...`), which expo-updates treats as a failed launch
+   (`markFailedLaunchForUpdate`) and silently rolls back to the previously
+   cached/embedded update — no crash, no visible error, just the OTA quietly
+   never taking effect. Fixed: `publish-builder.ts`/`publish.ts`/
+   `export-reader.ts` now thread an optional `extra`/`expoClientConfig`
+   through to the built manifest; `serve.ts` reads it from a new
+   `OA_SEED_EXPO_CLIENT_PATH` env var (a JSON file); `publish-ota.sh` now runs
+   `bunx expo config --type public --json` into that file before deploying.
+5. **`deploy-cloudrun.sh` env var allowlist gap.** The new
+   `OA_SEED_EXPO_CLIENT_PATH` var wasn't in the script's explicit
+   `--set-env-vars` construction, so it silently never reached the Cloud Run
+   container even after the `publish-ota.sh` fix above. Fixed: added it
+   alongside the other `OA_SEED_*` vars.
+
+All five fixes are covered by the existing `apps/oa-updates` test suite (73
+pass / 0 fail after each fix) plus one updated fixture
+(`export-reader.test.ts`); `clients/khala-mobile` stays green (213 pass / 0
+fail, typecheck clean).
+
+**Real round-trip evidence**, against runtime fingerprint
+`667493116252f0b3c7282b72f15bf8edbba19061` (read directly from the built
+`.app`'s `EXUpdates.bundle/fingerprint` — see fingerprint-determinism caveat
+below), fresh install on a booted `iPhone 17 Pro` (iOS 26.5) simulator:
+
+- **Publish**: `bash apps/oa-updates/scripts/publish-ota.sh` (plus one manual
+  `deploy-cloudrun.sh` invocation pinned to the exact installed fingerprint —
+  see caveat) → Cloud Run revision `oa-updates-00053-dvl` serving 100% traffic.
+  Manifest verified live and correctly signed:
+  `expo-signature: sig="...", keyid="main", alg="rsa-v1_5-sha256"`, `id`
+  a real UUID (`79483933-c905-4d58-9f14-fc951975d809`), `extra.expoClient.scheme
+  == "khala"`.
+- **First launch** (fresh install, embedded update only): `xcrun simctl log
+  stream` shows `state = checking, event = check` →
+  `checkCompleteAvailable` → `downloading` → **`downloadComplete`** — all 21
+  assets + the JS bundle downloaded with `0` `AssetsFailedToLoad` (vs. 21/21
+  failures before fix #3, and a hard crash before fix #2).
+- **Second launch** (after `simctl terminate` + relaunch, no code changes in
+  between): `checkCompleteUnavailable` (correct — nothing new published since
+  the last check), **no `ErrorRecovery`/rollback/crash events** (vs. a
+  `markFailedLaunchForUpdate` + silent rollback-to-embedded before fix #4).
+- **Definitive proof of successful apply**: queried the client's own
+  `expo-v11.db` SQLite tracking database directly —
+  `SELECT hex(id), successful_launch_count, failed_launch_count, manifest FROM
+  updates` shows the OTA-downloaded update
+  (`79483933-c905-4d58-9f14-fc951975d809`, `extra` contains `expoClient`) with
+  **`successful_launch_count = 1, failed_launch_count = 0`** — the app booted
+  and ran on the newly downloaded JS, not just the embedded bundle. This is
+  the first real, evidenced, non-crashing, non-rolled-back signed OTA
+  round-trip for `clients/khala-mobile` in this issue's history.
+
+**Known caveat, not yet root-caused:** `bunx expo-updates fingerprint:generate
+--platform ios` run standalone (as `publish-ota.sh` does) produced a
+different hash (`be23988e...`) than what the just-built `.app` actually
+embeds (`667493...`, read from `EXUpdates.bundle/fingerprint` inside the
+built bundle) — reproduced twice across two separate app.json states. The
+standalone CLI call is internally stable (same value on repeat calls with no
+rebuild in between), so this isn't flakiness in the hash function itself; it's
+a real skew between the CLI's fingerprint computation and whatever the Xcode
+"Generate updates resources for expo-updates" build phase computes at build
+time, not yet isolated to a specific cause. **Practical workaround used this
+pass:** after a local build, read the true runtime version from the built
+`.app`'s `EXUpdates.bundle/fingerprint` and pass it to `deploy-cloudrun.sh`
+directly via `OA_SEED_RUNTIME`, rather than trusting `publish-ota.sh`'s own
+computed value, whenever verifying against a specific already-built binary.
+For a normal publish against whatever binary is *about to be* built fresh
+from the same source tree (the common case), `publish-ota.sh`'s own
+computation should still be correct since nothing else changes in between —
+the skew only bit here because of the gap between computing the fingerprint
+and reading it back from an already-built `.app`. Flagging this as a
+follow-up worth root-causing rather than silently trusting `publish-ota.sh`'s
+number for every future publish.
+
+**#8350 gap 1 (signed OTA round-trip) is now genuinely closed with real
+evidence.** Gap 2 (native STT/Apple-FM capture) is unchanged by this pass —
+still needs real native implementation work, not device time; see above.

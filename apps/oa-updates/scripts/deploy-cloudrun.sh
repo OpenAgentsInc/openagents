@@ -12,6 +12,7 @@ set -euo pipefail
 #
 # Optional:
 #   export OA_SEED_PLATFORM=ios
+#   export OA_SEED_EXPO_CLIENT_PATH=/app/dist/expo-client.json
 #   export OA_SIGNING_KEY="$(cat private-key.pem)"
 #   export OA_DESKTOP_RELEASES_DIST=/app/desktop-dist
 #
@@ -26,6 +27,10 @@ if [[ -n "${OA_SEED_DIST:-}" || -n "${OA_SEED_RUNTIME:-}" ]]; then
     "OA_SEED_RUNTIME=${OA_SEED_RUNTIME:?set OA_SEED_RUNTIME}"
     "OA_SEED_PLATFORM=${OA_SEED_PLATFORM:-ios}"
   )
+
+  if [[ -n "${OA_SEED_EXPO_CLIENT_PATH:-}" ]]; then
+    env_vars+=("OA_SEED_EXPO_CLIENT_PATH=${OA_SEED_EXPO_CLIENT_PATH}")
+  fi
 fi
 
 if [[ -n "${OA_DESKTOP_RELEASES_DIST:-}" ]]; then

@@ -63,22 +63,26 @@ describe("readExportedUpdate", () => {
       readFile,
     })
 
+    // `key` must be a flat filename with no path separators: the expo-updates
+    // client writes each downloaded asset to disk using `key` verbatim with no
+    // subdirectory creation, so a key like "assets/icon.png" fails every write
+    // with "The folder ... doesn't exist" on a real device/simulator.
     expect(result.update.launchAsset).toEqual({
-      key: "bundles/ios/main.js",
+      key: "main.js",
       hash: bundleHash,
       contentType: "application/javascript",
       url: `${baseUrl}/assets/${bundleHash}`,
     })
     expect(result.update.assets).toEqual([
       {
-        key: "assets/icon.png",
+        key: "icon.png",
         hash: iconHash,
         contentType: "image/png",
         fileExtension: ".png",
         url: `${baseUrl}/assets/${iconHash}`,
       },
       {
-        key: "assets/data.db",
+        key: "data.db",
         hash: dbHash,
         contentType: "application/octet-stream",
         fileExtension: ".db",

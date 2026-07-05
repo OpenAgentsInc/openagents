@@ -25,11 +25,19 @@ echo "==> exporting JS bundle + assets"
 rm -rf "$REPO/apps/oa-updates/dist"
 ( cd "$MOBILE" && bunx expo export --platform "$PLATFORM" --output-dir "$REPO/apps/oa-updates/dist" )
 
+echo "==> resolving public app config (embedded as manifest extra.expoClient)"
+# expo-constants / expo-linking need Constants.expoConfig on a *downloaded*
+# update, not just the embedded one — without this a downloaded update throws
+# "runtime not ready" the instant it launches and expo-updates silently rolls
+# back to the cached/embedded update.
+( cd "$MOBILE" && bunx expo config --type public --json > "$REPO/apps/oa-updates/dist/expo-client.json" 2>/dev/null )
+
 echo "==> deploying to Cloud Run (seed = this export, runtime $RUNTIME, branch production)"
 export OA_PUBLIC_URL="${OA_PUBLIC_URL:-https://oa-updates-ezxz4mgdsq-uc.a.run.app}"
 export OA_SEED_DIST="/app/dist"
 export OA_SEED_RUNTIME="$RUNTIME"
 export OA_SEED_PLATFORM="$PLATFORM"
+export OA_SEED_EXPO_CLIENT_PATH="/app/dist/expo-client.json"
 # #4949 code signing: sign every manifest with our private key (keyid "main",
 # rsa-v1_5-sha256) so the client's embedded codeSigningCertificate verifies it.
 SIGN_KEY="$REPO/.secrets/oa-updates-codesign-private.pem"

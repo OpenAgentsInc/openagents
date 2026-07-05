@@ -1,5 +1,5 @@
 import { readFile as nodeReadFile } from "node:fs/promises"
-import { join } from "node:path"
+import { basename, join } from "node:path"
 
 import type { AssetStore } from "./asset-store"
 import { publishExport, type PublishExportResult } from "./publish"
@@ -29,6 +29,10 @@ export type ReadExportedUpdateInput = {
   readonly baseUrl: string
   readonly store: AssetStore
   readonly readFile?: (path: string) => Promise<Uint8Array>
+  // The resolved public app config (same shape as `expo config --type public
+  // --json`), embedded as `manifest.extra.expoClient` so expo-constants /
+  // expo-linking work on a downloaded update, not just the embedded one.
+  readonly expoClientConfig?: Record<string, unknown>
 }
 
 const defaultReadFile = async (path: string): Promise<Uint8Array> => {
@@ -70,7 +74,13 @@ export async function readExportedUpdate(
       const fileExtension = normalizeExtension(asset.ext)
 
       return {
-        key: asset.path,
+        // The expo-updates client (FileDownloader) writes each downloaded asset
+        // to disk at a path built directly from `key`, with no subdirectory
+        // creation — a `key` containing a `/` (like the raw export path
+        // "assets/<hash>") crashes/fails every asset write with "The folder
+        // ... doesn't exist". Use the basename only; export filenames are
+        // already content-hashed by Metro, so this stays unique.
+        key: basename(asset.path),
         bytes: await readFile(join(input.distDir, asset.path)),
         contentType: contentTypeFromExtension(fileExtension),
         fileExtension,
@@ -87,9 +97,10 @@ export async function readExportedUpdate(
     baseUrl: input.baseUrl,
     store: input.store,
     launchBundle: {
-      key: platformMetadata.bundle,
+      key: basename(platformMetadata.bundle),
       bytes: launchBundleBytes,
     },
     assets,
+    extra: input.expoClientConfig ? { expoClient: input.expoClientConfig } : undefined,
   })
 }

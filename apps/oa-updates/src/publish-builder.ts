@@ -24,7 +24,14 @@ export type Update = {
   readonly launchAsset: LaunchAsset
   readonly assets: ReadonlyArray<Asset>
   readonly metadata: Record<string, never>
-  readonly extra: Record<string, never>
+  // `extra.expoClient` carries the resolved public app config (the same
+  // shape `expo config --type public --json` produces). expo-constants /
+  // expo-linking need this on a *downloaded* (non-embedded) update to resolve
+  // things like the URI scheme at runtime — an empty `extra` here makes any
+  // module that touches Constants.expoConfig throw ("runtime not ready") the
+  // instant this update launches, which expo-updates treats as a failed
+  // launch and silently rolls back to the previously cached/embedded update.
+  readonly extra: Record<string, unknown>
 }
 
 export type BuildUpdateFromExportInput = {
@@ -44,6 +51,7 @@ export type BuildUpdateFromExportInput = {
     readonly contentType: string
     readonly fileExtension: string
   }>
+  readonly extra?: Record<string, unknown>
 }
 
 export function buildUpdateFromExport(input: BuildUpdateFromExportInput): Update {
@@ -67,6 +75,6 @@ export function buildUpdateFromExport(input: BuildUpdateFromExportInput): Update
       url: `${input.baseUrl}/assets/${asset.hash}`,
     })),
     metadata: {},
-    extra: {},
+    extra: input.extra ?? {},
   }
 }
