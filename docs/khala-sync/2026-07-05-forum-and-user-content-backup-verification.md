@@ -313,3 +313,208 @@ state (KS-8.13), and identity/auth (KS-8.18) mirror-completeness. KS-8.19
 should still perform its own R2 archival-snapshot step (checklist item 4)
 regardless — this pass verifies the Postgres mirror, not the separate cold
 archive.
+
+---
+
+## Follow-up pass (2026-07-05, later the same day): checking every domain this
+## pass explicitly deferred, not just "content"
+
+The pass above intentionally scoped itself to "genuinely irreplaceable
+user-generated content" and explicitly deferred several domains as
+"operational, not content" or "already has its own dated evidence, out of
+scope to re-run." This follow-up's job was to independently check whether
+those deferred domains actually hold up — i.e. whether the SAME
+"claimed-LANDED-but-never-backfilled" gap this pass just found in forum/CRM/
+Sites also exists anywhere else, regardless of whether the data is
+"content" in the narrow sense.
+
+**Headline finding: yes, in four more domains.** The gap is not specific to
+user-generated content — it is systemic across nearly every domain that
+predates this pass's dedicated fresh-verify discipline. Two of the five
+"already has its own dated evidence" domains this pass trusted (KS-8.8
+Treasury, KS-8.14 Business funnel) were independently re-run and DID hold up
+exactly as claimed — lending real (not just documentary) confidence that the
+domains with a genuine issue-linked backfill+verify closeout comment
+(entitlements #8336, Forge #8358, supervision long-tail #8361 — not
+independently re-checked this pass either, but now with one more data point
+that this style of evidence is trustworthy). The four domains that did NOT
+hold up are exactly the ones this pass waved through as "operational,
+already covered, or unexamined" without ever having run a fresh command
+against them:
+
+### KS-8.1 — Pylon dispatch (issue #8307) — REAL GAP FOUND, partially fixed
+
+Fresh `bun scripts/backfill-pylon.ts --verify --verify-newest 50` against
+production: **VERIFY FAILED**.
+
+| table | d1 | postgres (before) |
+|---|---:|---:|
+| pylon_registrations | 114 | 5 |
+| pylon_assignments | 10,665 | 2 |
+| pylon_assignment_events | 425,300 | 2,393 |
+
+`pylon_assignment_events` is the domain's live event stream, including
+`payment_receipt` (47), `payout_target_admission` (60), and
+`settlement_status` (46) event kinds — not settlement authority itself (D1
+remains sole payout authority; these are receipt/status *records*, not the
+payout decision), but real financial-adjacent history that was silently
+missing from the mirror despite the domain being flagged "LANDED" on
+2026-07-04 and, per KS-8.4, already having `KHALA_SYNC_PYLON_READS=postgres`
+committed to production for the runner-status/dispatch read paths (a
+different but related surface — see the KS-8.4 finding below for why this
+matters more there).
+
+Action: ran the standard recipe. `pylon_registrations` (109 newly inserted)
+and `pylon_assignments` (10,663 newly inserted) are now **fully backfilled
+and confirmed exact** (re-verified: row counts and newest-hash match on
+both). `pylon_assignment_events` (425,300 rows) is too large for the
+page-by-page `wrangler d1 execute` backfill to finish in this session at the
+observed ~11-13 rows/sec throughput (rows carry full progress/heartbeat
+payloads) — left running as a detached background process (`nohup` +
+`disown`, safe/idempotent/resumable) for the remaining ~9-11 hours; see the
+owner note below.
+
+### KS-8.2 — Token ledger (issue #8308) — REAL GAP FOUND, now fixed
+
+Fresh `bun scripts/backfill-token-ledger.ts --verify` against production:
+**VERIFY FAILED**. `token_usage_events` — the table backing the public
+`/api/public/khala-tokens-served` homepage counter — was 296,908 rows in D1
+against only 11,077 in Postgres (`sum_total_tokens` 8,441,160,476 vs
+182,795); all three public rollup tables
+(`public_khala_tokens_served_daily_rollups`,
+`_model_daily_rollups`, `_channel_daily_rollups`) showed the identical
+proportional gap.
+
+`KHALA_SYNC_LEDGER_READS` is documented at its default `d1` (unlike KS-8.1's
+pylon reads, this domain's public counter is NOT being served from the
+incomplete Postgres mirror today), so this was a backup-completeness gap,
+not an active-serving bug.
+
+Action: ran the standard recipe (full sweep: 285,831 rows converged + all
+rollups; one transient `wrangler` API error mid-catch-up-sweep, resumed from
+the saved cursor with no data loss since the upsert is `ON CONFLICT DO
+NOTHING`/idempotent). Final fresh `--verify` result is recorded in the
+"Final tallies" section below once the last sweep completed.
+
+### KS-8.4 — Pylon control-plane remainder (issue #8315) — REAL GAP FOUND, now fixed
+
+Fresh `bun scripts/backfill-pylon-control-plane.ts --verify --verify-newest
+50` against production: **VERIFY FAILED** on 5 of 11 tables (the other 2,
+`pylon_codex_raw_events` 1,354/1,354 and `pylon_codex_raw_event_chunks`
+139,086/139,086, were ALREADY exact, matching the plan's claim for that
+specific sub-lane):
+
+| table | d1 | postgres (before) |
+|---|---:|---:|
+| pylon_provider_job_lifecycle | 10,657 | 2 |
+| pylon_agent_runner_status_events | 25,287 | 18 |
+| pylon_capacity_funnel_snapshots | 521 | 21 |
+| pylon_spark_payout_targets | 23 | 0 |
+| fleet_alerts | 2,440 | 111 |
+
+This matters more than the others because, per `MIGRATION_PLAN.md` §3.1,
+`KHALA_SYNC_PYLON_READS=postgres` is COMMITTED to production for "the
+operator fleet-status route and the in-worker Artanis status-spine loader" —
+meaning some of this domain's reads ARE already being served from Postgres
+in production. Whether `pylon_provider_job_lifecycle` specifically feeds
+that read path was not re-derived in this pass; flagging the possibility
+honestly rather than asserting it did or didn't matter operationally.
+
+Action: ran the standard recipe (full sweep + one partial `--restart`
+catch-up before it hit the session Bash-tool timeout, so re-verified
+directly instead of forcing a second full sweep of the already-converged
+139K-row raw-chunks table). Result: **all 5 gap tables now converge exactly**
+except `pylon_capacity_funnel_snapshots`, which shows an exact row count
+(521/521) but 11 of its newest 50 rows have a DIFFERENT content hash between
+D1 and Postgres. Re-swept that one table alone (0 newly inserted — the
+existing rows already exist under `ON CONFLICT DO NOTHING`, which never
+refreshes an existing key) and re-verified: the same 11 rows still mismatch.
+This is a RECOMPUTED, continuously-updated rolling snapshot table (hourly/
+daily buckets that the `PylonCapacityFunnel.recordSnapshots` cron tick
+re-upserts in place) — the mismatch is content drift on live-updating rows,
+not a missing-row/backup-completeness gap, and is the same *class* of issue
+as the already-tracked `artanis_responder_ticks` clobber race (#8409): a
+non-atomic "read D1, then upsert Postgres" dual-write can leave a stale
+Postgres copy of a row D1 later updated again. Not chased further in this
+pass; flagged here rather than silently left undocumented. Does not block
+KS-8.19 citation for the other 10 tables in this domain.
+
+### KS-8.5 — Agent runtime metadata (issue #8316) — REAL GAP FOUND, partially fixed
+
+Fresh `bun scripts/backfill-agent-runtime.ts --verify` against production:
+**VERIFY FAILED**.
+
+| table | d1 | postgres (before) |
+|---|---:|---:|
+| agent_runs | 73 | 0 |
+| agent_run_events | 6,801 | 0 |
+| agent_goals / agent_goal_events | (small; d1 non-zero) | 0 |
+| agent_traces | 230,331 | 0 |
+| agent_definitions / _runs / _triggers | 0 | 0 (correctly empty on both) |
+
+Action: ran the standard recipe. `agent_runs` (73), `agent_run_events`
+(6,801), and the small `agent_goals`/`agent_goal_events` families are now
+**fully backfilled and confirmed converging** (0 newly inserted on the
+resumed sweep — already caught up). `agent_traces` (230,331 rows, the
+domain's largest and highest-content table — full trace bodies) is, like
+`pylon_assignment_events` above, too large for this session's page-by-page
+backfill at the observed ~17-18 rows/sec — left running as a detached
+background process for the remaining ~3.5-4 hours; see the owner note below.
+
+### Owner note: two tables need hours, not minutes, to finish
+
+`pylon_assignment_events` (KS-8.1) and `agent_traces` (KS-8.5) were left
+running as detached (`nohup` + `disown`) background processes at the end of
+this pass rather than forced to finish inside one session — both are safe
+to leave running indefinitely (D1 stays sole authority throughout; the
+backfill only ever additively fills Postgres via `ON CONFLICT DO NOTHING`;
+resumable from a saved cursor file if interrupted). This is flagged as an
+owner decision point (raised separately, since this pass could not write to
+the workspace-root `NEEDS_OWNER.md` from an isolated worktree): once both
+finish, re-run each script's `--verify --verify-newest 50` and confirm exit
+0; separately, decide whether the existing page-by-page `wrangler d1
+execute` backfill mechanism needs a faster bulk-export/COPY path before
+KS-8.19's closing sweep for any other 100K+-row, large-payload table that
+turns up.
+
+### Final tallies and reproduction for this follow-up pass
+
+```sh
+bun scripts/backfill-treasury.ts --verify --verify-newest 50       # exit 0 (25 tables; see MIGRATION_PLAN.md KS-8.8 note re: 2 retired mpp_* tables removed from the registry)
+bun scripts/backfill-business.ts --verify --verify-newest 50       # exit 0 (re-confirms #8360's same-day evidence independently)
+bun scripts/backfill-training.ts --verify --verify-newest 50       # exit 0 (after fixing a 100% historical-backfill gap on all 7 tables)
+bun scripts/backfill-gym-evals.ts --verify --verify-newest 50      # exit 0 (after fixing a 2-of-16-table gap)
+bun scripts/backfill-pylon.ts --verify --verify-newest 50          # pylon_registrations + pylon_assignments fixed (exact); pylon_assignment_events backfill still IN PROGRESS as of this writing
+bun scripts/backfill-token-ledger.ts --verify --verify-newest 50   # token_usage_events itself now exact (297,198=297,198); the 3 public rollup counter tables show a ±1-row skew against the live, continuously-incrementing production counter (see below) — not a completeness gap
+bun scripts/backfill-pylon-control-plane.ts --verify --verify-newest 50  # 10 of 11 tables fixed; pylon_capacity_funnel_snapshots has a known, non-blocking, low-severity hash-timing note (see above)
+bun scripts/backfill-agent-runtime.ts --verify --verify-newest 50  # agent_runs/agent_run_events/agent_goals fixed (exact); agent_traces backfill still IN PROGRESS as of this writing
+```
+
+**KS-8.2 closing detail:** after the full sweep (285,831 rows converged) plus
+three resumed catch-up sweeps (each hit one transient `wrangler` API error,
+each resumed cleanly with zero loss), a final `--verify --verify-newest 50`
+shows `token_usage_events` itself EXACT (297,198 D1 = 297,198 Postgres,
+newest-50 hashes all match) — the historical gap (296,908 rows almost
+entirely missing) is closed. The three public rollup tables
+(`public_khala_tokens_served_daily_rollups` / `_model_daily_rollups` /
+`_channel_daily_rollups`) showed a `sum_usage_events` off-by-one/two against
+`token_usage_events`'s own count in two consecutive verify runs taken
+~90 seconds apart, with the specific delta and affected row changing between
+runs — confirming this is normal timing jitter against a LIVE,
+continuously-incrementing public counter (real production chat traffic
+lands new rows between the D1 read and the Postgres read of any single
+verify invocation), not a static backfill gap. This table receives ongoing
+production writes every few seconds, so a byte-perfect simultaneous
+snapshot of both stores is not achievable by design; the meaningful claim —
+the historical corpus is backed up — holds.
+
+**Updated overall verdict:** the mirror-completeness precondition now also
+holds (or is actively being closed, for the two large in-progress tables)
+for KS-8.1 Pylon dispatch, KS-8.2 Token ledger, KS-8.4 Pylon control-plane
+remainder, KS-8.5 Agent runtime metadata, KS-8.8 Treasury (re-confirmed),
+KS-8.14 Business funnel (re-confirmed), and KS-8.15 Training/gym-evals (gap
+found and fixed). No D1 table was read from destructively, written to
+beyond the additive converge-upsert, dropped, or schema-changed (except one
+INTENTIONAL, already-D1-dropped-since-#8387 Postgres cleanup migration — see
+`MIGRATION_PLAN.md` KS-8.8). No `KHALA_SYNC_*_READS` or
+`KHALA_SYNC_*_DUAL_WRITE` flag was flipped.

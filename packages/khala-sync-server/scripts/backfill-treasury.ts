@@ -22,9 +22,12 @@
  * Verify mode (`--verify`) — MONEY RECONCILIATION IS THE ACCEPTANCE:
  * exact per-table row counts, per-(state, rail) row tallies WITH exact
  * money-column SUMs (millisat / sat / cent / minor-unit totals must match
- * to the unit), and newest-N row-hash comparison. Replay-guard tables
- * (mpp_*_replay) verify by count + key-set hashes. Exits non-zero on ANY
+ * to the unit), and newest-N row-hash comparison. Exits non-zero on ANY
  * mismatch.
+ *
+ * `mpp_lightning_replay` / `mpp_spt_replay` were retired from this table
+ * list (see `src/treasury-backfill.ts` header) — the D1 tables no longer
+ * exist (worker migration `0303_drop_mpp_replay_tables.sql`, #8387).
  *
  * Usage (from packages/khala-sync-server/):
  *   bun scripts/backfill-treasury.ts \
@@ -87,8 +90,6 @@ const TABLES: ReadonlyArray<TreasuryBackfillTable> = [
   "partner_agreements",
   "site_referral_payout_ledger_entries",
   "revenue_event_provenance",
-  "mpp_lightning_replay",
-  "mpp_spt_replay",
 ]
 
 const USAGE = `Usage: bun scripts/backfill-treasury.ts [options]   (see file header)`

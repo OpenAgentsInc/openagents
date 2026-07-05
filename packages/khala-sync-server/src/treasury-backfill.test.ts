@@ -544,19 +544,6 @@ const sampleRow = (table: TreasuryBackfillTable, n: number): D1SourceRow => {
         source_refs_json: "[]",
         updated_at: ISO,
       }
-    case "mpp_lightning_replay":
-      return {
-        challenge_id: `mpp-challenge-${n}`,
-        consumed_at: ISO,
-        payment_hash: `${"ab".repeat(31)}${n}${n}`,
-      }
-    case "mpp_spt_replay":
-      return {
-        challenge_id: `mpp-challenge-${n}`,
-        consumed_at: ISO,
-        payment_intent_id: n === 1 ? "pi_backfill_sample" : null,
-        spt: `spt_backfill_${n}`,
-      }
   }
 }
 
@@ -573,14 +560,19 @@ describe("treasuryRowHash (pure)", () => {
   })
 
   test("extra columns in the D1 export (e.g. d1_rowid) do not affect the hash", () => {
-    const row = sampleRow("mpp_spt_replay", 2)
-    expect(treasuryRowHash("mpp_spt_replay", { ...row, d1_rowid: 42 })).toBe(
-      treasuryRowHash("mpp_spt_replay", row),
-    )
+    const row = sampleRow("revenue_event_provenance", 2)
+    expect(
+      treasuryRowHash("revenue_event_provenance", { ...row, d1_rowid: 42 }),
+    ).toBe(treasuryRowHash("revenue_event_provenance", row))
   })
 
-  test("registry covers all 27 domain tables", () => {
-    expect(TREASURY_BACKFILL_TABLES.length).toBe(27)
+  test("registry covers all 25 domain tables", () => {
+    // mpp_lightning_replay / mpp_spt_replay were retired (#8282 follow-up,
+    // migration 0036_drop_treasury_mpp_replay_tables.sql): the D1 tables
+    // were already dropped in worker migration
+    // 0303_drop_mpp_replay_tables.sql (#8387), and the Postgres twin held
+    // only a stale, never-mirrored row with nothing left to reconcile.
+    expect(TREASURY_BACKFILL_TABLES.length).toBe(25)
   })
 
   test("d1 tally SQL casts money SUMs to text (bigint-safe)", () => {
@@ -615,7 +607,7 @@ describe.skipIf(!hasLocalPostgres())(
       await pg?.stop()
     })
 
-    test("all 27 tables accept registry-shaped rows; run twice → identical state", async () => {
+    test("all 25 tables accept registry-shaped rows; run twice → identical state", async () => {
       const pageFor = (table: TreasuryBackfillTable): Array<D1SourceRow> => [
         sampleRow(table, 1),
         sampleRow(table, 2),
@@ -625,7 +617,7 @@ describe.skipIf(!hasLocalPostgres())(
       for (const table of TREASURY_BACKFILL_TABLES) {
         firstInserted += await upsertTreasuryRows(sql, table, pageFor(table))
       }
-      expect(firstInserted).toBe(27 * 2)
+      expect(firstInserted).toBe(TREASURY_BACKFILL_TABLES.length * 2)
 
       const talliesAfterFirst = await Promise.all(
         TREASURY_BACKFILL_TABLES.map((table) =>
@@ -677,19 +669,6 @@ describe.skipIf(!hasLocalPostgres())(
       const rows = await rawSql`
         SELECT state FROM treasury_transactions WHERE id = 'treasury-tx-2'`
       expect(rows[0]?.state).toBe("settled")
-    })
-
-    test("replay-guard key set ports exactly (second consume collides)", async () => {
-      const guard = sampleRow("mpp_lightning_replay", 1)
-      const inserted = await upsertTreasuryRows(sql, "mpp_lightning_replay", [
-        { ...guard, challenge_id: "a-DIFFERENT-challenge" },
-      ])
-      // Same payment_hash → DO NOTHING: the original consumption wins.
-      expect(inserted).toBe(0)
-      const rows = await rawSql`
-        SELECT challenge_id FROM mpp_lightning_replay
-         WHERE payment_hash = ${String(guard["payment_hash"])}`
-      expect(rows[0]?.challenge_id).toBe("mpp-challenge-1")
     })
 
     test("verify catches a single-unit money drift per (state, rail) group", async () => {

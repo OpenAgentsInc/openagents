@@ -20,11 +20,20 @@
  * comparison over a canonical column serialization. Nothing "close
  * enough": exact or explain.
  *
- * Replay-guard tables (mpp_lightning_replay / mpp_spt_replay) are pure
- * idempotency key sets — they port key-exactly and verify by count +
- * newest-N hashes over the full key set.
- *
  * D1 and Postgres table names are IDENTICAL for this domain.
+ *
+ * `mpp_lightning_replay` / `mpp_spt_replay` (the x402/MPP chat-endpoint
+ * replay guards) were retired from this registry in migration
+ * `0036_drop_treasury_mpp_replay_tables.sql` (#8282 follow-up): D1 worker
+ * migration `0303_drop_mpp_replay_tables.sql` already dropped both tables
+ * (the `/mpp/v1/chat/completions` route was removed per #8387 — Khala Code
+ * paid-plan purchases use their own payment-intent ledger and never read
+ * either cache), the live Worker treasury store never wired a dual-write
+ * mirror for them, and the Postgres twin held only a single stale
+ * dual-write-converged row with no live D1 counterpart left to reconcile
+ * against. Keeping them in this registry made `--verify` (with no
+ * `--table` filter) hard-crash on "no such table" instead of completing —
+ * a real gap found during the 2026-07-05 backup-verification follow-up.
  */
 
 import { createHash } from "node:crypto"
@@ -63,8 +72,6 @@ export type TreasuryBackfillTable =
   | "partner_agreements"
   | "site_referral_payout_ledger_entries"
   | "revenue_event_provenance"
-  | "mpp_lightning_replay"
-  | "mpp_spt_replay"
 
 export type TreasuryTableSpec = Readonly<{
   /** Column list in canonical (migration) order. */
@@ -269,22 +276,6 @@ export const TREASURY_TABLE_SPECS: Readonly<
     orderColumn: "updated_at",
     railColumn: null,
     statusColumn: "state",
-  },
-  mpp_lightning_replay: {
-    amountColumns: [],
-    columns: ["payment_hash", "challenge_id", "consumed_at"],
-    conflictKey: "payment_hash",
-    orderColumn: "consumed_at",
-    railColumn: null,
-    statusColumn: null,
-  },
-  mpp_spt_replay: {
-    amountColumns: [],
-    columns: ["spt", "challenge_id", "payment_intent_id", "consumed_at"],
-    conflictKey: "spt",
-    orderColumn: "consumed_at",
-    railColumn: null,
-    statusColumn: null,
   },
   nexus_payment_authority_receipts: {
     amountColumns: [],

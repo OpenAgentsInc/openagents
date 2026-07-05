@@ -29,6 +29,28 @@ cutover". Per owner direction on 2026-07-04, the per-domain soak/drop ticket
 is not an active gate; final D1 retirement is consolidated into KS-8.19
 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
 
+**KS-8.1 fresh backup verification (2026-07-05, #8282/#8330 follow-up):** a
+follow-up to the same-day forum-and-user-content backup pass checked this
+domain fresh (that pass had deferred it as "operational, not content, out
+of scope"). Fresh `backfill-pylon.ts --verify --verify-newest 50` against
+production: **VERIFY FAILED** — despite the "LANDED" status above and
+`KHALA_SYNC_PYLON_READS=postgres` already being committed to production for
+the runner-status/dispatch read paths (§3.1), the historical backfill had
+never actually run: `pylon_registrations` 114 D1 / 5 Postgres,
+`pylon_assignments` 10,665 D1 / 2 Postgres, `pylon_assignment_events`
+425,300 D1 / 2,393 Postgres. Ran the standard sweep: `pylon_registrations`
+(109 newly inserted) and `pylon_assignments` (10,663 newly inserted) are
+now **backfilled and confirmed exact**. `pylon_assignment_events` (425,300
+rows, large per-row heartbeat/progress payloads) backfills at only ~11-13
+rows/sec via the page-by-page `wrangler d1 execute` CLI — too slow to
+finish inside this session — and was left running as a detached,
+safe/idempotent/resumable background process for its remaining ~9-11
+hours. Full evidence:
+[`2026-07-05-forum-and-user-content-backup-verification.md`](./2026-07-05-forum-and-user-content-backup-verification.md).
+**Registrations and assignments are safe to cite on KS-8.19; assignment
+events backfill is IN PROGRESS as of this writing — re-verify before citing
+that table specifically.**
+
 **KS-8.2 status (2026-07-04):** machinery LANDED — Postgres schema
 (`khala-sync-server` migration `0008_token_usage_ledger.sql`:
 `token_usage_events` + the three `public_khala_tokens_served_*` rollup
@@ -57,6 +79,25 @@ KS-8.19 D1 retirement sweep. Prod cutover procedure:
 evidence is tracked on epic
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282), while the
 per-domain soak/drop ticket is intentionally closed as not planned.
+
+**KS-8.2 fresh backup verification (2026-07-05, #8282/#8330 follow-up):** a
+follow-up to the same-day forum-and-user-content backup pass checked this
+domain fresh (that pass had deferred it as "operational, not content, out
+of scope"). Fresh `backfill-token-ledger.ts --verify` against production:
+**VERIFY FAILED** — `token_usage_events` (the table behind the public
+`/api/public/khala-tokens-served` homepage counter) was 296,908 D1 rows
+against only 11,077 Postgres rows (`sum_total_tokens` 8,441,160,476 vs
+182,795), and all three public rollup tables
+(`public_khala_tokens_served_daily_rollups` / `_model_daily_rollups` /
+`_channel_daily_rollups`) showed the identical proportional gap.
+`KHALA_SYNC_LEDGER_READS` stays at its documented default `d1`, so the
+public counter itself was never served from the incomplete mirror — this
+was a backup-completeness gap, not an active-serving bug. Ran the standard
+sweep (full sweep converged 285,831 rows + all rollups; several transient
+`wrangler` API errors during the resumable catch-up sweep, each resumed
+cleanly from the saved cursor with zero data loss since the upsert is `ON
+CONFLICT DO NOTHING`). Full evidence and the closing `--verify` result:
+[`2026-07-05-forum-and-user-content-backup-verification.md`](./2026-07-05-forum-and-user-content-backup-verification.md).
 
 **KS-8.6 status (2026-07-04):** machinery LANDED — Postgres schema
 (`khala-sync-server` migration `0011_artanis_domain.sql`: all twenty
@@ -261,6 +302,32 @@ domain cutover" (flag flips are epic-gated on
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282)); final
 D1 retirement is consolidated into KS-8.19
 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
+
+**KS-8.8 fresh re-verification + tooling cleanup (2026-07-05, #8282/#8330
+follow-up):** independently re-ran `backfill-treasury.ts --verify
+--verify-newest 50` against production (this domain was NOT re-checked in
+the same-day forum-and-user-content backup pass, which explicitly deferred
+it to "already has its own dated evidence"). Found the run hard-crashed on
+"no such table: mpp_lightning_replay" — a real tooling gap, not a money
+gap: D1 worker migration `0303_drop_mpp_replay_tables.sql` had already
+retired both `mpp_lightning_replay` / `mpp_spt_replay` (the `/mpp/v1/chat/
+completions` replay guards, removed per #8387 in favor of the Khala Code
+paid-plan payment-intent ledger), but this domain's backfill/verify
+registry still listed them, and the Postgres side held one stale,
+never-mirrored row each with no live D1 counterpart to reconcile against.
+Retired both tables from the registry (`treasury-backfill.ts`,
+`backfill-treasury.ts`, tests) and added Postgres migration
+`0036_drop_treasury_mpp_replay_tables.sql` (applied to staging + prod,
+mirroring the D1 drop; zero live code referenced either table). After that
+fix, a full `--verify --verify-newest 50` against production is **VERIFY
+OK** across all 25 remaining live money tables — exact row counts,
+per-(state, rail) tallies, and exact money-column SUMs to the
+sat/msat/cent. D1 was never read from destructively or written to beyond
+the retired-table Postgres migration (which mirrors an already-D1-dropped,
+already-write-dead pair); no `KHALA_SYNC_TREASURY_*` flag was touched. Full
+evidence:
+[`2026-07-05-forum-and-user-content-backup-verification.md`](./2026-07-05-forum-and-user-content-backup-verification.md).
+**Safe to cite on KS-8.19 (#8330).**
 
 **KS-8.9 status (2026-07-04):** machinery LANDED — Postgres schema
 (`khala-sync-server` migration `0013_inference_entitlements.sql`: 29
@@ -1026,6 +1093,29 @@ work is recorded on
 D1 decommission is deferred to the final KS-8.19 retirement sweep rather than
 blocking Wave A.
 
+**KS-8.4 fresh backup verification (2026-07-05, #8282/#8330 follow-up):** a
+follow-up to the same-day forum-and-user-content backup pass checked this
+domain fresh. Fresh `backfill-pylon-control-plane.ts --verify
+--verify-newest 50` against production: **VERIFY FAILED** on 5 of 11
+tables — `pylon_provider_job_lifecycle` (10,657 D1 / 2 Postgres),
+`pylon_agent_runner_status_events` (25,287 / 18),
+`pylon_capacity_funnel_snapshots` (521 / 21), `pylon_spark_payout_targets`
+(23 / 0), `fleet_alerts` (2,440 / 111). `pylon_codex_raw_events` (1,354)
+and `pylon_codex_raw_event_chunks` (139,086) were ALREADY exact, matching
+this section's claim above for that specific raw-event-metadata sub-lane.
+Ran the standard sweep: all 5 gap tables are now **backfilled and confirmed
+exact**, except `pylon_capacity_funnel_snapshots`, which shows an exact row
+count (521/521) but 11 of its newest 50 rows have a genuinely different
+content hash between stores — a continuously re-upserted rolling snapshot
+table (the cron re-writes hourly/daily buckets in place), so this reads as
+live-write timing drift (the same *class* of issue as the already-tracked
+`artanis_responder_ticks` clobber, #8409) rather than a missing-row gap; not
+chased further, flagged here rather than silently left undocumented. Full
+evidence:
+[`2026-07-05-forum-and-user-content-backup-verification.md`](./2026-07-05-forum-and-user-content-backup-verification.md).
+**10 of 11 tables safe to cite on KS-8.19; `pylon_capacity_funnel_snapshots`
+has an open, low-severity, non-blocking hash-drift note above.**
+
 - **What:** the rest of the Pylon control plane after KS-8.1:
   registrations, quarantines, marketplace intake/assignments/triage,
   provider job lifecycle, runner status, capacity funnel, Spark payout
@@ -1092,6 +1182,29 @@ fail-soft / flag-routing / diagnostics-privacy tests. `agent_traces`
 stay owner-private: the Postgres twin carries visibility/owner/consent
 columns verbatim, no new read path is exposed, and migration
 diagnostics reference row keys only — never trajectory content.
+
+**KS-8.5 CORE fresh backup verification (2026-07-05, #8282/#8330
+follow-up):** unlike the remainder lane below (#8334, which recorded real
+production backfill evidence on 2026-07-04), this CORE lane's "machinery
+LANDED" status above never recorded an actual production backfill/verify
+run. A follow-up to the same-day forum-and-user-content backup pass (which
+had deferred this domain as unexamined) ran `backfill-agent-runtime.ts
+--verify` fresh against production: **VERIFY FAILED** — `agent_runs` (73
+D1 rows), `agent_run_events` (6,801), the small `agent_goals`/
+`agent_goal_events` families, and `agent_traces` (230,331 — the largest,
+highest-content table) were ALL 0 rows in Postgres despite the "LANDED"
+claim (`agent_definitions`/`_runs`/`_triggers` are correctly 0/0 on both
+sides — genuinely no production traffic yet). Ran the standard sweep:
+`agent_runs`, `agent_run_events`, and the goal tables are now
+**backfilled and confirmed converging** (0 newly inserted on the resumed
+sweep). `agent_traces` backfills at only ~17-18 rows/sec (full trace
+bodies per row) via the page-by-page CLI — too slow to finish inside this
+session — left running as a detached, safe/idempotent/resumable background
+process for its remaining ~3.5-4 hours. Full evidence:
+[`2026-07-05-forum-and-user-content-backup-verification.md`](./2026-07-05-forum-and-user-content-backup-verification.md).
+**`agent_runs`/`agent_run_events`/goals are safe to cite on KS-8.19;
+`agent_traces` backfill is IN PROGRESS as of this writing — re-verify
+before citing that table specifically.**
 
 **KS-8.5 remainder status (2026-07-04, #8334):** COMPLETE for the
 follow-up remainder lane — Postgres schema (`khala-sync-server` migration
@@ -1994,6 +2107,18 @@ follow-up intentionally stops at read-cutover + decommission-audit
 confirmation and leaves the 32 D1 tables live for #8330 to retire in its
 own reviewed wave.
 
+**KS-8.14 independent fresh re-confirmation (2026-07-05, #8282/#8330
+follow-up):** the 2026-07-05 forum-and-user-content backup-verification pass
+noted this domain's #8360 evidence looked real but was not itself
+independently re-run. Re-ran `backfill-business.ts --verify
+--verify-newest 50` against production fresh, from scratch, in a separate
+session: **VERIFY OK** across all 32 tables — exact row counts, the five
+attribution-table set digests, `promise_transition_receipts` full-row
+hash-set equality, funnel cohort tallies, and money sums, matching the
+#8360 evidence exactly (e.g. `promise_transition_receipts` 78/78,
+`buy_mode_jobs` 51/51). Confirms the earlier claim was genuine, same-day
+evidence, not a stale re-quote. **Still safe to cite on KS-8.19 (#8330).**
+
 ### 3.12 KS-8.15 — Training, gym, evals
 
 **KS-8.15 source status (2026-07-04):** training CORE machinery LANDED —
@@ -2044,6 +2169,39 @@ domain cutover"). The retired AgentCL eval family is dropped by Worker
 migration `0301_drop_gym_agentcl_eval_tables.sql`; broad D1 retirement stays
 in KS-8.19
 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
+
+**KS-8.15 fresh backup verification (2026-07-05, dedicated forum-and-
+user-content backup follow-up, #8282/#8330):** this domain was explicitly
+flagged in the 2026-07-05 backup-verification pass as "not reviewed this
+pass — not asserted safe" (see
+[`2026-07-05-forum-and-user-content-backup-verification.md`](./2026-07-05-forum-and-user-content-backup-verification.md)).
+An independent same-day follow-up ran `backfill-training.ts --verify` fresh
+against production and found the SAME gap shape as the forum/CRM/Sites
+finding: all seven training-core tables were **100% unbackfilled** —
+Postgres held 0 rows across the board while D1 held the real corpus
+(`training_runs` 9, `training_windows` 33, `training_window_events` 53,
+`training_window_leases` 2,153, `training_verification_challenges` 43,
+`training_verification_events` 129, `training_trace_contributions` 1,006).
+Ran the standard recipe (full sweep, resumed after one transient wrangler
+API error, `--restart` catch-up sweep) then `--verify --verify-newest 50`:
+**VERIFY OK** — `{"chainMismatches":[],"countMismatches":[],"newestHashMismatches":[],"stateTallyMismatches":[]}`
+(exit 0), all seven tables exact.
+
+The gym/mullet/blueprint/replay-clip/mirrorcode remainder (16 tables) had a
+smaller, PARTIAL gap: 14 of 16 tables were already correctly converging via
+live dual-write, but `gym_run_progress_snapshots` (3 D1 rows) and
+`mirrorcode_runs` (5 D1 rows) were fully absent from Postgres — confirmed by
+direct D1 row counts on all 16 tables before backfilling (the other 14 are
+genuinely 0 rows in production today, not silently skipped). Ran
+`backfill-gym-evals.ts` (sweep, `--restart` sweep, `--verify`): **VERIFY OK**
+— `{"countMismatches":[],"newestHashMismatches":[],"stateTallyMismatches":[]}`
+(exit 0).
+
+Both training-core and gym-evals-remainder are now **SAFE TO CITE ON KS-8.19
+(#8330)** for the mirror-completeness precondition. D1 was never read from
+in a mutating way, written to beyond the additive `ON CONFLICT DO NOTHING`
+converge upsert, or schema-changed; no `KHALA_SYNC_*_READS` /
+`KHALA_SYNC_*_DUAL_WRITE` flag was flipped.
 
 - **What:** training runs/windows/leases/verification, trace
   contributions, gym run progress + delegation + leaderboards, mullet
