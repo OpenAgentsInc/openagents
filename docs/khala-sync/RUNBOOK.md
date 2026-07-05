@@ -1944,10 +1944,14 @@ packfile digest and R2 key, access-token hash, ref-locks' held-per-ref,
 mirror-receipt destination tuple — see the third-pass section below for
 the exact list, which corrects the prior "six" count to nine) are now
 also enforced in Postgres via migration
-`0035_forge_domain_ref_lock_uniques.sql`. The WRITE cutover itself
-(wiring `makePostgresForgeGitCanonicalStore` as write authority) remains
-NOT done — constraint parity was a precondition, not the whole job; see
-the third-pass section for the two concerns still open.
+`0035_forge_domain_ref_lock_uniques.sql`. **D1 mirror-back — DONE
+(2026-07-05, #8358 fourth pass):** `makePostgresForgeGitCanonicalStore`
+now has an optional fail-soft Postgres→D1 write mirror (see the
+fourth-pass section below), closing the third pass's "no path back to
+D1" finding. The WRITE cutover itself (flipping the production route
+handler to this store) remains NOT done — both named blockers are now
+closed, but the domain-wide incoherence across the five Forge stores is
+a deliberate, separate routing decision; see the fourth-pass section.
 
 Diagnostics: the drift metric is `khala_sync_forge_dual_write_failed`
 (keys only). Treat a nonzero steady rate as drift — fix, then re-run the
@@ -2218,6 +2222,75 @@ behind.
 - **Status**: left OPEN on #8358. Read cutover remains DONE and live;
   write cutover remains the next concrete step, now unblocked on
   constraints but still blocked on the reverse-mirror gap above.
+
+### 2026-07-05 D1 mirror-back pass — the reverse-mirror gap is closed (#8358, fourth pass)
+
+- **Re-verified the third pass's constraint claim, not just trusted it**:
+  `pg_indexes` against a fresh direct-URL query confirms all nine unique
+  indexes from `0035_forge_domain_ref_lock_uniques.sql` exist today on the
+  live schema; `bun scripts/backfill-forge.ts --verify --verify-newest 50`
+  against the direct prod Cloud SQL URL is CLEAN (exact row counts on all
+  sixteen tables, newest-hash matches, ref-set digest matches for the 1
+  repository, merge-queue replay digest matches vacuously). The constraint
+  parity claim from the third pass holds.
+- **Built the reverse mirror the third pass identified as missing.**
+  `makePostgresForgeGitCanonicalStore` (`forge-git-canonical-postgres-store.ts`)
+  now takes an OPTIONAL second `mirror: ForgeGitCanonicalD1MirrorDeps`
+  argument. When provided, every successful `applyReceivePack` /
+  `importExternalRef` converge-upserts its RESOLVED rows (the exact rows
+  already returned to the caller from inside the same Postgres transaction
+  via `RETURNING`/in-tx reads — no extra read-back round trip needed,
+  unlike the D1→Postgres direction) into a given D1 twin, fail-soft with
+  bounded retry (100ms/400ms, matching `mirrorArtanisRows`'s discipline in
+  `artanis-domain-store.ts`): it NEVER throws, logs
+  `khala_sync_forge_postgres_write_mirror_retry` /
+  `khala_sync_forge_postgres_write_mirror_failed`, and a dead D1 mirror
+  never fails the already-committed Postgres write. Reuses the SAME
+  generic table-driven D1 upsert the forward mirror relies on
+  (`makeD1ForgeDomainWriteStore`), now extracted into its own module
+  (`forge-domain-d1-write-store.ts`) so both mirror directions share one
+  implementation without a circular import between
+  `forge-domain-store.ts` and `forge-git-canonical-postgres-store.ts`.
+  Passing no `mirror` argument reproduces the exact prior behavior
+  (Postgres-only, zero D1 side effect) — the read-cutover call site
+  (`servePostgresListRefs`) is untouched and still calls the factory with
+  no mirror.
+- **New test coverage** (`forge-git-canonical-postgres-store-d1-mirror.test.ts`,
+  6 tests, real local Postgres + real SQLite as the D1 double): create and
+  fast-forward-update `applyReceivePack` calls mirror the resolved
+  ref/object/intake rows into D1 byte-for-byte; `importExternalRef`
+  mirrors its ref/object; a fully broken D1 mirror never fails the
+  Postgres write and logs one typed failure diagnostic per mirrored table;
+  a transient D1 failure recovers on retry with only a retry diagnostic
+  logged (no failure); omitting `mirror` entirely leaves D1 untouched.
+- **What this closes, and what it does NOT close.** The third pass's NEW
+  finding — no path to mirror Postgres writes back into D1, which would
+  have made the FAIL-SOFT-to-D1 read fallback silently serve STALE state
+  on a Postgres read error once write authority flipped — is now closed:
+  the mechanism exists, is tested, and is fail-soft. The domain-wide
+  incoherence concern (the canonical git store is one of five Forge
+  stores, the other four still write D1-first/mirror-to-Postgres) is
+  UNCHANGED and still open. This pass deliberately did NOT flip the
+  production route handler to call `makePostgresForgeGitCanonicalStore`
+  instead of `makeD1ForgeGitCanonicalStore` — that would move real tenant
+  git-ref writes onto a path with zero production traffic history and no
+  compare-mode soak of the mirror-back itself, which is a materially
+  bigger and separately-reviewable call than building the plumbing. The
+  write cutover is now reduced to an explicit routing decision (which
+  route handler each of the five stores' write paths call) plus a soak of
+  the new mirror path — not blocked on any unbuilt mechanism.
+- **Test/typecheck/architecture status**: `workers/api` typecheck clean;
+  all eight forge-prefixed `workers/api` suites (55 tests, was 49 + 6 new)
+  pass; `apps/openagents.com` `check:architecture` zero-debt clean (only
+  pre-existing tracked-debt categories, unrelated to Forge). `check:deploy`
+  not run this pass — nothing shipped changes any production code path
+  (the new `mirror` parameter is optional and the one production call site,
+  `servePostgresListRefs`, passes none), so there is nothing to deploy.
+- **D1 drop**: still out of scope, still consolidated into #8330.
+- **Status**: left OPEN on #8358. Read cutover remains DONE and live;
+  write cutover is now unblocked on both previously-named blockers
+  (constraints, mirror-back) and reduces to the domain-wide routing
+  decision plus a mirror-path soak — the next concrete step.
 
 ## Billing/Stripe/pay-ins domain cutover (KS-8.7, #8318)
 

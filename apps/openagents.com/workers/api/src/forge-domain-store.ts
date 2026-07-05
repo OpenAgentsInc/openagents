@@ -89,6 +89,10 @@ import {
   type ForgeCoordinationStore,
 } from './forge-coordination-store'
 import {
+  makeD1ForgeDomainWriteStore,
+  type ForgeDomainWriteStore,
+} from './forge-domain-d1-write-store'
+import {
   makeD1ForgeGitCanonicalStore,
   type ForgeGitCanonicalRefRow,
   type ForgeGitCanonicalRefState,
@@ -200,13 +204,14 @@ const safeMessage = (error: unknown): string => {
  * D1 snapshot wins) for all sixteen tables. Returns how many rows were
  * touched. One behavioral contract suite runs against BOTH concrete
  * implementations (`forge-domain-repository.contract.test.ts`).
+ *
+ * Re-exported from `forge-domain-d1-write-store.ts` (KS-8.16 follow-up
+ * #8358): that module also backs the Postgres→D1 mirror-back wired into
+ * `forge-git-canonical-postgres-store.ts`, so it lives outside this file
+ * to avoid a circular import between the two (this file already imports
+ * `makePostgresForgeGitCanonicalStore` from there).
  */
-export type ForgeDomainWriteStore = Readonly<{
-  upsertRows: (
-    table: ForgeDomainTable,
-    rows: ReadonlyArray<ForgeDomainRow>,
-  ) => Promise<number>
-}>
+export type { ForgeDomainWriteStore }
 
 // ---------------------------------------------------------------------------
 // Postgres implementation
@@ -261,42 +266,11 @@ export const makePostgresForgeDomainStore = (
 // D1 implementation of the same seam (contract-suite twin)
 // ---------------------------------------------------------------------------
 
-/**
- * The D1 twin of the row-level seam. Same converge semantics over the
- * same composite-PK arbiters, driven by the SAME shared registry.
- */
-export const makeD1ForgeDomainWriteStore = (
-  db: D1Database,
-): ForgeDomainWriteStore => ({
-  upsertRows: async (table, rows) => {
-    if (rows.length === 0) {
-      return 0
-    }
-    const spec = FORGE_DOMAIN_TABLE_SPECS[table]
-    const setClauses = spec.columns
-      .filter(column => !spec.keyColumns.includes(column))
-      .map(column => `${column} = excluded.${column}`)
-      .join(', ')
-    const updateClause =
-      setClauses.length === 0 ? 'DO NOTHING' : `DO UPDATE SET ${setClauses}`
-    let touched = 0
-    for (const row of rows) {
-      const values = spec.columns.map(column =>
-        normalizeForgeDomainValue(row[column]),
-      )
-      const placeholders = spec.columns.map(() => '?').join(', ')
-      await db
-        .prepare(
-          `INSERT INTO ${table} (${spec.columns.join(', ')}) VALUES (${placeholders})
-           ON CONFLICT(${spec.keyColumns.join(', ')}) ${updateClause}`,
-        )
-        .bind(...values)
-        .run()
-      touched += 1
-    }
-    return touched
-  },
-})
+// `makeD1ForgeDomainWriteStore` now lives in `forge-domain-d1-write-store.ts`
+// (see the `ForgeDomainWriteStore` re-export above for why) and is
+// re-exported here unchanged so existing imports from this module keep
+// working.
+export { makeD1ForgeDomainWriteStore }
 
 // ---------------------------------------------------------------------------
 // Dual-write wrapper over the row seam

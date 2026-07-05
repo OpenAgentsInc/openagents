@@ -4,14 +4,46 @@
 // THIS FILE IS NOT WIRED TO PRODUCTION AUTHORITY. It is the tested
 // mechanism the read/write cutover will adopt once the compare-mode soak
 // (`docs/khala-sync/RUNBOOK.md` "Forge domain cutover" step 5) is silent
-// over a representative window — that flip, plus re-adding the six
-// deliberately-unported uniques (active-lease-per-work,
-// held-lock-per-ref [made moot below], token-hash, packfile digest,
-// mirror-destination tuple, github-issue-number/change_ref) and moving
-// write authority, is tracked as remaining work on this issue. Landing the
-// mechanism now, fully tested and NOT live, lets the correctness-critical
-// locking design get reviewed and proven in isolation before it is ever on
-// the write path for a real git ref.
+// over a representative window — that flip, plus moving write authority,
+// is tracked as remaining work on this issue. Landing the mechanism now,
+// fully tested and NOT live, lets the correctness-critical locking design
+// get reviewed and proven in isolation before it is ever on the write path
+// for a real git ref. The nine previously-missing Postgres uniques
+// (0035_forge_domain_ref_lock_uniques.sql) are live on prod/staging.
+//
+// D1 MIRROR-BACK (KS-8.16 follow-up, this pass): the prior blocker — this
+// store had NO path to mirror its writes back into D1, so wiring it as
+// write authority would have made the existing FAIL-SOFT-to-D1 read
+// fallback (`KHALA_SYNC_FORGE_READS=postgres`) silently serve STALE D1
+// state on any Postgres read error — is now closed. `makePostgresForgeGitCanonicalStore`
+// takes an OPTIONAL second `mirror` argument
+// (`ForgeGitCanonicalD1MirrorDeps`); when provided, every successful write
+// (`applyReceivePack`, `importExternalRef`) converge-upserts its RESOLVED
+// rows (the exact rows already returned to the caller — no extra read-back
+// round trip needed, unlike the D1→Postgres mirror, because this store's
+// writes already resolve their rows inside the same transaction via
+// `RETURNING`/in-tx reads) into D1 via the SAME generic table-driven
+// upsert the forward mirror uses (`makeD1ForgeDomainWriteStore`,
+// `forge-domain-d1-write-store.ts`). The mirror is FAIL-SOFT with bounded
+// retry (matching `mirrorArtanisRows`'s discipline in
+// `artanis-domain-store.ts`): it NEVER throws, logs
+// `khala_sync_forge_postgres_write_mirror_retry` /
+// `khala_sync_forge_postgres_write_mirror_failed`, and a mirror failure
+// never fails the (already-committed) Postgres write.
+//
+// STILL NOT ENOUGH TO FLIP WRITE AUTHORITY ALONE: the domain-wide
+// incoherence blocker is unchanged — the canonical git store is one of
+// five Forge stores, and the other four still write D1-first/mirror-to-
+// Postgres. Wiring THIS store as write authority while the other four stay
+// D1-authoritative is a real, reviewed, deliberate call the task explicitly
+// allows scoping to just this store — but actually flipping the production
+// route handler to call this store instead of `makeD1ForgeGitCanonicalStore`
+// is a separate step this pass does NOT take: it would move real tenant
+// git-ref writes onto a path that has zero production traffic history,
+// with no compare-mode soak of the mirror-back itself. That flip stays
+// tracked as the next concrete step on #8358, now unblocked on both
+// previously-named blockers (constraints + mirror-back) and reduced to an
+// explicit routing decision plus a soak of the mirror path.
 //
 // THE D1 DANCE THIS REPLACES: `forge-git-canonical-store.ts`
 // (`makeD1ForgeGitCanonicalStore`) inserts a `forge_git_ref_locks` row
@@ -63,6 +95,7 @@
 import type { ForgeGitPackfileObjectFormat } from '@openagentsinc/forge-protocol'
 import type { SyncSql, SyncTransactionSql } from '@openagentsinc/khala-sync-server'
 
+import { makeD1ForgeDomainWriteStore } from './forge-domain-d1-write-store'
 import {
   boundedLimit,
   isZeroObjectId,
@@ -639,6 +672,146 @@ const importExternalRef = async (
 }
 
 // ---------------------------------------------------------------------------
+// D1 mirror-back (KS-8.16 follow-up, #8358: the previously-missing gap)
+// ---------------------------------------------------------------------------
+
+/**
+ * Diagnostic events for the Postgres→D1 mirror-back. Named distinctly from
+ * the forward D1→Postgres mirror's `khala_sync_forge_dual_write_failed`
+ * (`forge-domain-store.ts`) so the two directions are never confused in
+ * logs/alerts — this direction only ever runs from a store that is not
+ * (yet) write authority anywhere.
+ */
+export type ForgeGitCanonicalD1MirrorEvent =
+  | 'khala_sync_forge_postgres_write_mirror_failed'
+  | 'khala_sync_forge_postgres_write_mirror_retry'
+
+export type ForgeGitCanonicalD1MirrorLog = (
+  event: ForgeGitCanonicalD1MirrorEvent,
+  fields: Readonly<{
+    /** The mirrored table, e.g. 'mirror-to-d1:forge_git_refs'. */
+    op: string
+    /** Public-safe row-key refs only — never object ids or token values. */
+    refs: ReadonlyArray<string>
+    /** Public-safe failure summary (error class/message head, no values). */
+    messageSafe: string
+  }>,
+) => void
+
+export type ForgeGitCanonicalD1MirrorDeps = Readonly<{
+  /** The D1 twin to mirror resolved Postgres write rows into. */
+  d1: D1Database
+  log?: ForgeGitCanonicalD1MirrorLog | undefined
+  /** Bounded-retry backoff hook (tests inject a no-op / fake timer). */
+  wait?: ((ms: number) => Promise<void>) | undefined
+}>
+
+/** Matches `MIRROR_WRITE_RETRY_DELAYS_MS` in `artanis-domain-store.ts` —
+ * a couple of quick retries recovers the common transient case (a bare
+ * connect timeout, a momentary D1 hiccup) without materially slowing a
+ * receive-pack request. */
+const MIRROR_TO_D1_RETRY_DELAYS_MS: ReadonlyArray<number> = [100, 400]
+
+const safeMirrorMessage = (error: unknown): string => {
+  const raw = error instanceof Error ? error.message : String(error)
+  return raw.replaceAll(/\s+/g, ' ').slice(0, 200)
+}
+
+/**
+ * Fail-soft, bounded-retry converge-upsert of already-resolved Postgres
+ * rows into D1, for one table. NEVER throws: a Postgres write that already
+ * committed must never be reported as failed just because the D1 mirror
+ * lags. Unlike the D1→Postgres mirror (`mirrorArtanisRows`,
+ * `makeForgeDomainMirror`), there is no separate read-back step here — the
+ * rows to mirror are exactly the rows `applyReceivePack`/`importExternalRef`
+ * already resolved inside the SAME Postgres transaction via
+ * `RETURNING`/in-tx reads, so this function just converge-upserts them.
+ */
+const mirrorTableToD1 = async (
+  deps: ForgeGitCanonicalD1MirrorDeps,
+  table: 'forge_git_refs' | 'forge_git_objects' | 'forge_git_receive_pack_intakes',
+  rows: ReadonlyArray<Record<string, unknown>>,
+  refs: ReadonlyArray<string>,
+): Promise<void> => {
+  if (rows.length === 0) return
+  const log = deps.log ?? (() => {})
+  const wait =
+    deps.wait ?? ((ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)))
+  const writeStore = makeD1ForgeDomainWriteStore(deps.d1)
+
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await writeStore.upsertRows(table, rows)
+      return
+    } catch (error) {
+      const delay = MIRROR_TO_D1_RETRY_DELAYS_MS[attempt]
+      if (delay === undefined) {
+        log('khala_sync_forge_postgres_write_mirror_failed', {
+          messageSafe: safeMirrorMessage(error),
+          op: `mirror-to-d1:${table}`,
+          refs: refs.slice(0, 10),
+        })
+        return
+      }
+      log('khala_sync_forge_postgres_write_mirror_retry', {
+        messageSafe: safeMirrorMessage(error),
+        op: `mirror-to-d1:${table}`,
+        refs: refs.slice(0, 10),
+      })
+      await wait(delay)
+    }
+  }
+}
+
+const refDiagnosticRef = (ref: ForgeGitCanonicalRefRow): string =>
+  `${ref.tenant_ref}/${ref.repository_ref}/${ref.ref_name}`
+
+const objectDiagnosticRef = (object: ForgeGitCanonicalObjectRow): string =>
+  `${object.tenant_ref}/${object.repository_ref}/${object.object_id}`
+
+const intakeDiagnosticRef = (intake: ForgeGitReceivePackIntakeRow): string =>
+  `${intake.tenant_ref}/${intake.receive_pack_ref}`
+
+/** Mirrors one `applyReceivePack` result's resolved refs/objects/intake. */
+const mirrorApplyResultToD1 = async (
+  deps: ForgeGitCanonicalD1MirrorDeps,
+  result: ForgeGitCanonicalApplyResult,
+): Promise<void> => {
+  await mirrorTableToD1(
+    deps,
+    'forge_git_refs',
+    result.refs,
+    result.refs.map(refDiagnosticRef),
+  )
+  await mirrorTableToD1(
+    deps,
+    'forge_git_objects',
+    result.objects,
+    result.objects.map(objectDiagnosticRef),
+  )
+  await mirrorTableToD1(
+    deps,
+    'forge_git_receive_pack_intakes',
+    [result.intake],
+    [intakeDiagnosticRef(result.intake)],
+  )
+}
+
+/** Mirrors one `importExternalRef` result's resolved ref/object. */
+const mirrorExternalImportToD1 = async (
+  deps: ForgeGitCanonicalD1MirrorDeps,
+  result: ForgeGitCanonicalExternalRefImportResult,
+): Promise<void> => {
+  await mirrorTableToD1(deps, 'forge_git_refs', [result.ref], [refDiagnosticRef(result.ref)])
+  await mirrorTableToD1(
+    deps,
+    'forge_git_objects',
+    [result.object],
+    [objectDiagnosticRef(result.object)],
+  )
+}
+
+// ---------------------------------------------------------------------------
 // The store
 // ---------------------------------------------------------------------------
 
@@ -650,16 +823,30 @@ const importExternalRef = async (
  * read/write cutover (MIGRATION_PLAN §3.13), landed in isolation so its
  * locking design can be reviewed and proven before it is ever on the
  * write path for a real git ref.
+ *
+ * `mirror` (KS-8.16 follow-up, #8358) is OPTIONAL and defaults to none: when
+ * provided, every successful write converge-upserts its resolved rows back
+ * into the given D1 twin, fail-soft with bounded retry (see the D1
+ * mirror-back section above). Passing no `mirror` reproduces the exact
+ * prior behavior (Postgres-only, no D1 side effect) — existing callers
+ * (the contract test suite) are unaffected.
  */
 export const makePostgresForgeGitCanonicalStore = (
   sql: SyncSql,
+  mirror?: ForgeGitCanonicalD1MirrorDeps,
 ): ForgeGitCanonicalStore => ({
   preflightReceivePack: input => validateRefPreconditions(sql, input),
 
-  importExternalRef: input => importExternalRef(sql, input),
+  importExternalRef: async input => {
+    const result = await importExternalRef(sql, input)
+    if (mirror !== undefined) {
+      await mirrorExternalImportToD1(mirror, result)
+    }
+    return result
+  },
 
   async applyReceivePack(input): Promise<ForgeGitCanonicalApplyResult> {
-    return await sql.begin(async tx => {
+    const result = await sql.begin(async tx => {
       // Sorted lock acquisition order — the same deadlock-avoidance rule
       // as the D1 lane (a multi-ref push always locks refs in the same
       // order regardless of which order the commands were sent in).
@@ -719,6 +906,14 @@ export const makePostgresForgeGitCanonicalStore = (
         refs,
       }
     })
+    if (mirror !== undefined) {
+      // Mirrors AFTER the Postgres transaction has already committed —
+      // exactly the same ordering discipline as the D1→Postgres mirror
+      // (authoritative write first, best-effort mirror second). If the
+      // Postgres transaction above threw, this line never runs.
+      await mirrorApplyResultToD1(mirror, result)
+    }
+    return result
   },
 
   readRef: (tenantRef, repositoryRef, refName) =>
