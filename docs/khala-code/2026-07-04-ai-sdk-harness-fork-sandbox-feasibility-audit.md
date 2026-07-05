@@ -2,7 +2,7 @@
 
 Date: 2026-07-04
 Updated: 2026-07-05
-Status: fourth-pass audit. No runtime code changed by this document.
+Status: fifth-pass audit plus implementation receipt for #8370.
 Scope: actual published AI SDK harness package code, local Pylon Codex/Claude
 runners, OpenAgents sandbox/workroom plans, opencode's Vercel AI SDK Core usage,
 current Khala Sync mobile/desktop work, and whether a maintained fork or local
@@ -285,6 +285,12 @@ surface while SwiftUI remains the interim shipping/native-reference app.
   `chat.renameThread`, with `scope.user.<owner>` carrying thread metadata and
   `scope.thread.<threadId>` carrying message bodies. That is the exact shape
   we should extend for runtime turn/control events.
+- The server now also has `runtime.startTurn`,
+  `runtime.appendUserMessage`, `runtime.interruptTurn`,
+  `runtime.continueTurn`, `runtime.retryTurn`, `runtime.closeTurn`, and
+  `runtime.recordEvent`. Runtime turn summaries and body-free control intents
+  replicate to the owner and thread scopes; full runtime events replicate only
+  to `scope.thread.<threadId>`.
 
 ### OpenCode-shaped target
 
@@ -363,6 +369,19 @@ profiles, SQLite checkpoint/store behavior, fake-session create/append,
 app-restart cursor resume without duplicate messages, and rejection handling
 without retaining rejected private bodies in the confirmed read model.
 
+Issue #8370 implementation status: the Khala Sync server now has first-class
+runtime rows and post-image contracts for `runtime_turn`,
+`runtime_control_intent`, and `runtime_event`. The Worker registry exposes
+named mutators for start-turn, append-user-message, interrupt, continue,
+retry, close, and record-event. The mutators reuse the push engine's mutation
+ledger and in-band rejection semantics, enforce owner-private
+`scope.thread.<threadId>` ownership through `khala_sync_scope_owners`, reject
+raw control-intent bodies in favor of refs, and keep full runtime event
+payloads out of owner/public scopes. Tests prove accepted flow, duplicate
+ledger replay, duplicate event rejection, unauthorized foreign mutation,
+body-rejection without prompt retention, Worker registry wiring, and live
+thread-scope revocation.
+
 ### Sequenced implementation path
 
 P0 should be the event/control schema (#8363). Without this, each bridge will
@@ -388,12 +407,12 @@ pending, denied, and rejected are visible states, never coerced into
 "connected." Pairing/auth UX beyond the keychain token loader remains product
 work, not a Sync substrate blocker.
 
-P3 should add runtime state on the server side (#8370). The existing chat
-mutators prove the shape, but runtime events need their own typed rows or
-projection entities, owner/thread/team scope routing, idempotent mutators, and
-scope-auth coverage. Message bodies and runtime content stay in authenticated
-owner/thread scopes; public evidence gets only refs, counts, route names,
-latency buckets, and issue/build refs.
+P3 is now landed for the server runtime subset (#8370): runtime turns,
+body-free control intents, and full private events have typed Postgres rows,
+post-image contracts, named mutators, idempotency/duplicate tests,
+unauthorized tests, and Worker registry coverage. Message bodies and runtime
+content stay in authenticated owner/thread scopes; public evidence gets only
+refs, counts, route names, latency buckets, and issue/build refs.
 
 P4 should add the AI SDK Core lane (#8373). This can work locally before the
 harness sandbox work: one model fixture, one tool fixture, one providerOptions
@@ -426,12 +445,14 @@ Yes, we can get this working locally in increments:
    connection profiles, Expo SQLite durable cursor/checkpoint resume, and a
    fake-session chat create/append flow without duplicate messages after app
    restart.
-3. AI SDK Core can be proven with a fixture provider and one low-risk model
+3. The Sync server now proves runtime control/event mutators locally against
+   Postgres, including owner/thread projection and private-event containment.
+4. AI SDK Core can be proven with a fixture provider and one low-risk model
    without any harness sandbox provider.
-4. The local unsafe harness provider can prove Codex/Claude bridge mechanics
+5. The local unsafe harness provider can prove Codex/Claude bridge mechanics
    without Vercel, but it must remain owner-local until the OpenAgents sandbox
    provider is real.
-5. The real dogfood proof ties them together: mobile control intent -> Khala
+6. The real dogfood proof ties them together: mobile control intent -> Khala
    Sync -> desktop/runtime lane -> OpenAgents runtime events -> Khala Sync ->
    mobile/desktop/web projections.
 
@@ -685,10 +706,11 @@ sandbox plan exists to enforce.
 
 Run the Khala Sync/mobile path in parallel with the AI SDK Core lane. The
 canonical runtime event/control schema (#8363), desktop append/control bridge
-(#8364), and mobile durable Sync session (#8365) are now the base. Next, extend
-server-side runtime scopes/policy (#8370). This is the path that makes
-mobile-to-desktop Khala Code feel AI SDK-shaped without letting AI SDK own the
-product state.
+(#8364), mobile durable Sync session (#8365), and server runtime
+control/event mutators (#8370) are now the base. Next, bind the AI SDK Core
+lane to the same event/control contract. This is the path that makes
+mobile-to-desktop Khala Code feel AI SDK-shaped without letting AI SDK own
+the product state.
 
 Required tests:
 

@@ -74,6 +74,13 @@ a cross-package completeness test in
 | `chat.createThread` | `threadId`, `title` | `khala_sync_chat_threads` row + `chat_thread` post-image in `scope.user.<owner>` and `scope.thread.<threadId>` | `thread_exists`, `unauthorized_scope` |
 | `chat.appendMessage` | `threadId`, `messageId`, `body` | `khala_sync_chat_messages` row + updated `chat_thread`; message body only in `scope.thread.<threadId>` | `thread_not_found`, `message_exists`, `unauthorized_scope` |
 | `chat.renameThread` | `threadId`, `title` | updated `khala_sync_chat_threads.title` + `chat_thread` post-image in owner and thread scopes | `thread_not_found`, `unauthorized_scope` |
+| `runtime.startTurn` | `KhalaRuntimeControlIntent` kind `turn.start` | `khala_sync_runtime_control_intents` body-free row + `runtime_control_intent` post-image in owner/thread scopes; `khala_sync_runtime_turns` row + `runtime_turn` post-image in owner/thread scopes | `runtime_intent_kind_mismatch`, `runtime_raw_body_not_allowed`, `runtime_intent_exists`, `runtime_turn_required`, `runtime_turn_exists`, `unauthorized_scope` |
+| `runtime.appendUserMessage` | `KhalaRuntimeControlIntent` kind `message.append` | body-free control-intent row/post-image; updates `runtime_turn.latestIntentId` when tied to an existing turn; raw prompt/body content must be represented by refs | `runtime_intent_kind_mismatch`, `runtime_raw_body_not_allowed`, `runtime_intent_exists`, `runtime_message_required`, `runtime_turn_not_found`, `unauthorized_scope` |
+| `runtime.interruptTurn` | `KhalaRuntimeControlIntent` kind `turn.interrupt` | body-free control-intent row/post-image + `runtime_turn` status `interrupted` | `runtime_intent_kind_mismatch`, `runtime_raw_body_not_allowed`, `runtime_intent_exists`, `runtime_turn_required`, `runtime_turn_not_found`, `unauthorized_scope` |
+| `runtime.continueTurn` | `KhalaRuntimeControlIntent` kind `turn.continue` | body-free control-intent row/post-image + `runtime_turn` status `queued` | `runtime_intent_kind_mismatch`, `runtime_raw_body_not_allowed`, `runtime_intent_exists`, `runtime_turn_required`, `runtime_turn_not_found`, `unauthorized_scope` |
+| `runtime.retryTurn` | `KhalaRuntimeControlIntent` kind `turn.retry` | body-free control-intent row/post-image + `runtime_turn` status `queued` | `runtime_intent_kind_mismatch`, `runtime_raw_body_not_allowed`, `runtime_intent_exists`, `runtime_turn_required`, `runtime_turn_not_found`, `unauthorized_scope` |
+| `runtime.closeTurn` | `KhalaRuntimeControlIntent` kind `turn.close` | body-free settled control-intent row/post-image + `runtime_turn` status `closed` | `runtime_intent_kind_mismatch`, `runtime_raw_body_not_allowed`, `runtime_intent_exists`, `runtime_turn_required`, `runtime_turn_not_found`, `unauthorized_scope` |
+| `runtime.recordEvent` | `KhalaRuntimeEvent` | `khala_sync_runtime_events` row + full `runtime_event` post-image **only** in `scope.thread.<threadId>`; updates safe `runtime_turn` summary in owner/thread scopes | `runtime_event_sequence_invalid`, `runtime_event_exists`, `runtime_turn_not_found`, `unauthorized_scope` |
 | `fleet.setDesiredSlots` | `runId`, `desiredSlots` (0–1024) | intent row + `fleet_run` post-image | `unauthorized_scope` |
 | `fleet.pauseRun` | `runId` | intent row + `fleet_run` post-image (`status: paused`) | `unauthorized_scope` |
 | `fleet.resumeRun` | `runId` | intent row + `fleet_run` post-image (`status: running`) | `unauthorized_scope` |
@@ -135,6 +142,19 @@ read authority for newly-created chat scopes is the first-writer-wins
 through the `agent_runs` / autopilot-thread D1 mapping. Integration coverage
 lives in `packages/khala-sync-server/src/chat-mutators.test.ts` and proves a
 thread created by push appears through the catch-up read service.
+
+The #8370 runtime mutators reuse the same owner-private thread authority:
+`scope.thread.<threadId>` is claimed/read through `khala_sync_scope_owners`,
+and a foreign user receives an in-band `unauthorized_scope` rejection with no
+runtime business rows or changelog entries. Runtime control intents are stored
+and projected only after raw `body` payloads are rejected; callers must use
+`bodyRef` / `promptRef` / `reasonRef` for private material. Runtime event
+post-images may include text/tool/provider deltas, so they are projected only
+to the exact thread scope. The owner's personal scope receives only
+`runtime_turn` summaries and body-free `runtime_control_intent` rows. No
+runtime mutator writes `scope.public.*`. Integration coverage lives in
+`packages/khala-sync-server/src/runtime-mutators.test.ts` and proves accepted,
+duplicate, rejected, unauthorized, and private-projection cases.
 
 ## 1. The single-transaction rule (SPEC §7 invariant 5)
 

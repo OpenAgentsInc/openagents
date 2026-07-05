@@ -231,17 +231,25 @@ describe('makeKhalaSyncScopeReadResolver (Worker auth matrix)', () => {
     })
   })
 
-  test('thread: owner-private MC-1 chat scopes resolve through khala_sync_scope_owners', async () => {
-    const scope = threadScope('chat-thread-1')
+  test('thread: owner-private chat/runtime scopes resolve through khala_sync_scope_owners and revoke live', async () => {
+    const owners: Record<string, string> = {
+      [threadScope('runtime-thread-1')]: USER,
+    }
+    const scope = threadScope('runtime-thread-1')
     const { fleet, resolver } = makeResolver({
-      fleetOwners: { [scope]: USER },
+      fleetOwners: owners,
     })
     expect(await resolver(USER, scope)).toEqual({ kind: 'allowed' })
     expect(await resolver(OTHER, scope)).toEqual({
       kind: 'denied',
       reason: 'unauthorized_scope',
     })
-    expect(fleet.endedCount()).toBe(2)
+    delete owners[scope]
+    expect(await resolver(USER, scope)).toEqual({
+      kind: 'denied',
+      reason: 'unauthorized_scope',
+    })
+    expect(fleet.endedCount()).toBe(3)
   })
 
   test('fleet_run: khala_sync_scope_owners owner allowed, foreign/unowned denied; client always released', async () => {

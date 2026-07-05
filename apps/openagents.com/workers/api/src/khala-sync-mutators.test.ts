@@ -16,6 +16,13 @@ import {
   CHAT_APPEND_MESSAGE_MUTATOR_NAME,
   CHAT_CREATE_THREAD_MUTATOR_NAME,
   CHAT_RENAME_THREAD_MUTATOR_NAME,
+  RUNTIME_APPEND_USER_MESSAGE_MUTATOR_NAME,
+  RUNTIME_CLOSE_TURN_MUTATOR_NAME,
+  RUNTIME_CONTINUE_TURN_MUTATOR_NAME,
+  RUNTIME_INTERRUPT_TURN_MUTATOR_NAME,
+  RUNTIME_RECORD_EVENT_MUTATOR_NAME,
+  RUNTIME_RETRY_TURN_MUTATOR_NAME,
+  RUNTIME_START_TURN_MUTATOR_NAME,
 } from '@openagentsinc/khala-sync-server'
 
 import {
@@ -54,13 +61,20 @@ const makeCtx = (userId: string, writer: SyncTransactionWriter): MutatorContext 
 })
 
 describe('khala sync worker mutator registry', () => {
-  test('the registry carries sync.debugEcho, MC-1 chat, and the KS-6.1 + KS-3.2 fleet operator mutators', () => {
+  test('the registry carries sync.debugEcho, chat, runtime, and fleet operator mutators', () => {
     const registry = makeKhalaSyncWorkerMutatorRegistry()
     expect(registry.names().map(String)).toEqual([
       SYNC_DEBUG_ECHO_MUTATOR_NAME,
       CHAT_CREATE_THREAD_MUTATOR_NAME,
       CHAT_APPEND_MESSAGE_MUTATOR_NAME,
       CHAT_RENAME_THREAD_MUTATOR_NAME,
+      RUNTIME_START_TURN_MUTATOR_NAME,
+      RUNTIME_APPEND_USER_MESSAGE_MUTATOR_NAME,
+      RUNTIME_INTERRUPT_TURN_MUTATOR_NAME,
+      RUNTIME_CONTINUE_TURN_MUTATOR_NAME,
+      RUNTIME_RETRY_TURN_MUTATOR_NAME,
+      RUNTIME_CLOSE_TURN_MUTATOR_NAME,
+      RUNTIME_RECORD_EVENT_MUTATOR_NAME,
       'fleet.setDesiredSlots',
       'fleet.pauseRun',
       'fleet.resumeRun',
@@ -76,6 +90,17 @@ describe('khala sync worker mutator registry', () => {
       CHAT_CREATE_THREAD_MUTATOR_NAME,
       CHAT_APPEND_MESSAGE_MUTATOR_NAME,
       CHAT_RENAME_THREAD_MUTATOR_NAME,
+    ]) {
+      expect(registry.get(MutatorName.make(name))).toBeDefined()
+    }
+    for (const name of [
+      RUNTIME_START_TURN_MUTATOR_NAME,
+      RUNTIME_APPEND_USER_MESSAGE_MUTATOR_NAME,
+      RUNTIME_INTERRUPT_TURN_MUTATOR_NAME,
+      RUNTIME_CONTINUE_TURN_MUTATOR_NAME,
+      RUNTIME_RETRY_TURN_MUTATOR_NAME,
+      RUNTIME_CLOSE_TURN_MUTATOR_NAME,
+      RUNTIME_RECORD_EVENT_MUTATOR_NAME,
     ]) {
       expect(registry.get(MutatorName.make(name))).toBeDefined()
     }

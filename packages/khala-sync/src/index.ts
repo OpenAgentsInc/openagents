@@ -32,6 +32,10 @@ export * from "./public-counter.js"
 // changelog entries. Self-contained module (no cycle).
 export * from "./khala-code.js"
 
+// Khala Code runtime entity contracts (#8370): AI SDK-shaped turns,
+// body-free control intents, and private thread-scoped event streams.
+export * from "./runtime.js"
+
 // ---------------------------------------------------------------------------
 // Branded primitives
 // ---------------------------------------------------------------------------

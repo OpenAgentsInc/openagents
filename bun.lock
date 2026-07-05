@@ -709,6 +709,7 @@
       "name": "@openagentsinc/khala-sync",
       "version": "0.1.0",
       "dependencies": {
+        "@openagentsinc/agent-runtime-schema": "workspace:*",
         "effect": "catalog:",
       },
       "devDependencies": {
