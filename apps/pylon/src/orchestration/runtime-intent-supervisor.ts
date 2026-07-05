@@ -2,9 +2,14 @@
 
 import { Database } from "bun:sqlite"
 import { mkdir } from "node:fs/promises"
-import { homedir } from "node:os"
 import { join } from "node:path"
-import { loadPylonAccountRegistry, resolvePylonAccountSelection } from "../account-registry.js"
+import {
+  discoverPylonSiblingAccountHomes,
+  loadPylonAccountRegistry,
+  resolvePylonAccountSelection,
+  type PylonAccountRegistryEntry,
+} from "../account-registry.js"
+import { resolvePylonHome } from "../bootstrap.js"
 import {
   candidateAccountsFromRegistry,
   enforcePendingRuntimeIntents,
@@ -72,7 +77,15 @@ const required = (name: string, envValue: string | undefined): string => {
 const stableRef = (prefix: string, value: string): string =>
   `${prefix}.${Bun.hash(value).toString(16).padStart(16, "0")}`
 
-const pylonHome = option("--pylon-home") ?? Bun.env.PYLON_HOME ?? join(homedir(), ".pylon")
+// Bug found while testing #8425 cross-device dispatch: this used to default
+// bare-unset-PYLON_HOME straight to `join(homedir(), ".pylon")`, reintroducing
+// the exact "Orwell report" bug `bootstrap.ts`'s `selectPylonHomeResolution`
+// was written to fix (an operator with a real seed/registry under
+// `~/.openagents/pylon` silently got routed to an empty `~/.pylon` instead).
+// An explicit `--pylon-home`/`PYLON_HOME` still always wins; only the
+// bare-unset fallback changes, to the same smart resolution the rest of
+// Pylon already uses.
+const pylonHome = option("--pylon-home") ?? Bun.env.PYLON_HOME ?? resolvePylonHome(process.env).home
 const dbPath = option("--db", join(pylonHome, "orchestration.sqlite"))!
 const configPath = option("--config", join(pylonHome, "config.json"))!
 const workspaceRoot = option("--workspace-root", join(pylonHome, "cache", "runtime-turns"))!
@@ -120,6 +133,40 @@ const readinessSummary = {
   },
 }
 
+/**
+ * `candidateAccountsFromRegistry` only projects `loadPylonAccountRegistry`'s
+ * explicit `dev.accounts` entries — real, but NOT the same account set `pylon
+ * accounts list` shows an operator (that CLI path also calls
+ * `discoverPylonSiblingAccountHomes`, which finds real dispatch-ready
+ * accounts living as sibling home directories, e.g. `~/.claude-pylon-2`,
+ * that were never added to `dev.accounts`). Found while testing #8425
+ * cross-device Claude dispatch from mobile: this Mac has zero explicit
+ * `claude_agent` registry entries but real, ready, pooled-OAuth-token
+ * sibling Claude homes — so every `claude_pylon` turn.start intent failed
+ * with "no dispatch-ready local Claude account available" even though `pylon
+ * accounts list --json` reported those same accounts `ready`. Merging
+ * sibling-discovered accounts into the registry array here (deduped by
+ * provider+home) gets this supervisor back to parity with what the CLI
+ * already considers a valid dispatch target, without changing
+ * `candidateAccountsFromRegistry`'s own contract or tests. */
+const registryWithSiblingAccounts = async (): Promise<ReadonlyArray<PylonAccountRegistryEntry>> => {
+  const registry = await loadPylonAccountRegistry(registrySummary)
+  const seen = new Set(registry.map((entry) => `${entry.provider}:${entry.home}`))
+  const siblings = await discoverPylonSiblingAccountHomes(Bun.env as Record<string, string | undefined>)
+  const siblingEntries: PylonAccountRegistryEntry[] = siblings
+    .filter((sibling) => !seen.has(`${sibling.provider}:${sibling.home}`))
+    .map((sibling) => ({
+      provider: sibling.provider,
+      ref: sibling.ref,
+      home: sibling.home,
+      openAgentsProviderAccountRef: null,
+      hourlyCap: null,
+      weeklyCap: null,
+      manualResetsRemaining: null,
+    }))
+  return [...registry, ...siblingEntries]
+}
+
 let stopping = false
 const requestStop = (signal: string) => {
   console.error(`runtime-intent-supervisor: received ${signal}, stopping after the current tick`)
@@ -151,7 +198,7 @@ try {
         lastDispatchedAccountByThread,
         limit,
         listCandidateAccounts: async () =>
-          candidateAccountsFromRegistry(await loadPylonAccountRegistry(registrySummary), {
+          candidateAccountsFromRegistry(await registryWithSiblingAccounts(), {
             env: Bun.env as Record<string, string | undefined>,
             summary: readinessSummary,
           }),
