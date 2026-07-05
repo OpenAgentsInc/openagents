@@ -439,4 +439,41 @@ describe('publishSettledFeedEvents', () => {
     expect(db.changes).toHaveLength(0)
     expect(notifiedScopes).toHaveLength(0)
   })
+
+  test('KS-6.4 (#8414): legacy write + room poke still succeed with no KHALA_SYNC_DB binding, and the khala-sync projection stays silent (skipped_no_binding, never a diagnostic)', async () => {
+    const db = makeMemoryD1()
+    const notifiedScopes: Array<string> = []
+    const khalaSyncLogCalls: Array<{ event: string }> = []
+    const events = buildSettledFeedEvents({
+      legs: [settledLeg({ amountSats: 5, party: 'worker' })],
+      priorCount: 0,
+      priorSettledSats: 0,
+      settledAt: '2026-07-05T00:00:00.000Z',
+    })
+
+    await publishSettledFeedEvents(
+      {
+        OPENAGENTS_DB: db,
+        SYNC_ROOM: makeSyncRoom(notifiedScopes),
+        // No KHALA_SYNC_DB binding — the KS-6.4 dual-write must be a
+        // silent, fail-soft no-op (outcome `skipped_no_binding`) and must
+        // never block, slow, or fail the legacy write/poke it rides
+        // alongside.
+        khalaSyncSettledFeedLog: (event) => {
+          khalaSyncLogCalls.push({ event })
+        },
+      },
+      events,
+    )
+
+    // Legacy path is unaffected: events + summary still land, room still
+    // pokes.
+    expect(
+      db.changes.filter(c => c.collection === SETTLED_FEED_SYNC_COLLECTION),
+    ).toHaveLength(1)
+    expect(notifiedScopes).toEqual(['public-settled-feed:tassadar'])
+    // The new khala-sync path never fires a diagnostic for the expected
+    // "no binding deployed yet" case.
+    expect(khalaSyncLogCalls).toHaveLength(0)
+  })
 })

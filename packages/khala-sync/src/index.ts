@@ -33,6 +33,11 @@ export * from "./chat.js"
 // Self-contained module (no cycle).
 export * from "./public-counter.js"
 
+// Public settled-feed entity contracts (KS-6.4, #8414): post-image shapes
+// for the scope.public.settled-feed event/summary projection.
+// Self-contained module (no cycle).
+export * from "./settled-feed.js"
+
 // Khala Code product-state entity contracts (KS-8.13): thread/team/workspace
 // post-image shapes for scope.team.<teamId> + scope.thread.<threadId>
 // changelog entries. Self-contained module (no cycle).

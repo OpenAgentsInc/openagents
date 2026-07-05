@@ -171,6 +171,7 @@ const approvedExactRoutePaths = [
   '/api/public/khala-tokens-served/model-mix',
   '/api/public/khala-tokens-served/demand-mix',
   '/api/public/khala-tokens-served/channel-mix',
+  '/api/public/settled-feed',
   '/api/pylon/codex/turns',
   '/api/pylon/codex/local-usage',
   '/api/pylon/claude/turns',

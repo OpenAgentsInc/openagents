@@ -479,7 +479,12 @@ const budgetChecks = [
     // default-off MPP/x402 chat endpoint and root MPP discovery document instead
     // of arming them. The keyed Khala gateway and Khala Code plan-purchase
     // Lightning helper remain.
-    budget: 129,
+    // +1 (129 -> 130) on 2026-07-05 (#8414) for the new public settled-feed
+    // khala-sync projection read route in public-settled-feed-routes.ts
+    // (`handlePublicSettledFeedApi`) — one Effect-returning handler, same
+    // shape as the sibling public-projection routes already counted here.
+    // Mints no spend/settlement/payout/public-claim authority.
+    budget: 130,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -840,6 +845,16 @@ const publicProjectionSurfaces = [
   {
     module: 'workers/api/src/public-khala-tokens-served-routes.ts',
     route: '/api/public/khala-tokens-served',
+    status: 'staleness_declared',
+  },
+  {
+    // KS-6.4 (#8414): the live settled-feed khala-sync projection's new
+    // public, unauthenticated read route — serves the scope.public.
+    // settled-feed projection (rebuilt_on_transition) with a fail-open
+    // fallback to the legacy D1 sync-outbox snapshot (live_at_read); both
+    // branches carry generatedAt + the shared staleness contract.
+    module: 'workers/api/src/public-settled-feed-routes.ts',
+    route: '/api/public/settled-feed',
     status: 'staleness_declared',
   },
   // Added 2026-07-01: the Mutalisk Khala-delegation Gym run projection was

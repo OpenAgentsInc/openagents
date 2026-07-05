@@ -1998,6 +1998,9 @@ const schemaComponents = (): JsonSchema => ({
   PublicKhalaTokensServedDemandMix: objectSummary(
     'Public-safe "Khala Tokens Served" demand/adoption mix for /stats and Khala GTM checks: schemaVersion openagents.public_khala_demand_mix.v1, window, totalTokens, and aggregate groups { kind, source, client, tokens, reqs, pct }, plus generatedAt and the declared live_at_read staleness contract. Demand kind is bounded to external, internal, internal_stress, own_capacity, or unlabeled; source/client labels are sanitized aggregate labels with empty values bucketed as unknown. All real served-token rows count so the mix reconciles with the headline counter. No per-user, per-team, per-account, raw provider/model, prompt, completion, trace, API key, wallet, payment, or secret material. Read-only stats projection; grants no payout, settlement, routing, provider, or public-claim authority.',
   ),
+  PublicSettledFeed: objectSummary(
+    'Public-safe live settled-feed projection (KS-6.4): schemaVersion openagents.public_settled_feed.v1, a recency-ordered events array of real Bitcoin settlement legs (amountSats, challengeRef, a public contributor digest ref, eventRef, party [worker|validator], runRef, settledAt, running totalSettledCount/totalSettledSats, and an optional windowRef), a nullable summary of the latest event ref/timestamp plus the same running totals, generatedAt, and the declared staleness contract. Each event and the summary are scanned so no raw spark/on-chain address, invoice, preimage, or wallet material can ever appear. Read-only feed of already-settled amounts; grants no payout, settlement, or public-claim authority.',
+  ),
   PublicRelayHealth: objectSummary(
     'Public-safe canonical market relay health projection: current status (healthy/degraded/unhealthy, or unknown before the first probe), per-leg NIP-11 (HTTP status, latency, relay name) and websocket REQ/EOSE round-trip (outcome, latency) results, bounded retained probe history (7 days), typed status-transition events (30 days), generatedAt, probe cadence, and the declared stored_snapshot staleness contract with a staleExceeded flag. Read-only monitoring evidence; grants no relay-mutation, payout, settlement, or public-claim authority.',
   ),
@@ -5856,6 +5859,23 @@ const paths = (): JsonSchema => ({
       security: publicRead,
       responses: {
         '200': okJson('Pylon stats.', '#/components/schemas/PublicPylonStats'),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/settled-feed': {
+    get: operation({
+      operationId: 'getPublicSettledFeed',
+      summary: 'Read the live settled-feed projection',
+      description:
+        'Returns the public-safe, unauthenticated live settled-feed projection (KS-6.4, #8414): schemaVersion, a recency-ordered array of real settled Bitcoin legs, a nullable running summary, generatedAt, and the declared staleness contract. Served from the scope.public.settled-feed khala-sync projection when available, falling back to the legacy sync-outbox snapshot otherwise so availability never regresses. Read-only; grants no payout, settlement, or public-claim authority.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Live settled-feed projection.',
+          '#/components/schemas/PublicSettledFeed',
+        ),
         ...errorResponses(),
       },
     }),

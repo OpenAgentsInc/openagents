@@ -1182,6 +1182,7 @@ import {
   buildSettledFeedEvents,
   publishSettledFeedEvents,
 } from './tassadar-settled-feed-sync'
+import { handlePublicSettledFeedApi } from './public-settled-feed-routes'
 import { makeTassadarTraceContributionRoutes } from './tassadar-trace-contribution-routes'
 import { runTassadarTracePairingScheduled } from './tassadar-trace-pairing'
 import {
@@ -12647,6 +12648,12 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/khala-tokens-served/channel-mix',
     handler: (request, env) =>
       handlePublicKhalaTokensServedChannelMixApi(request, env),
+  },
+  {
+    // KS-6.4 (#8414): the settled-feed khala-sync projection's new public,
+    // unauthenticated read route (see public-settled-feed-routes.ts doc).
+    path: '/api/public/settled-feed',
+    handler: (request, env) => handlePublicSettledFeedApi(request, env),
   },
   {
     path: PYLON_CODEX_TURN_INGEST_PATH,

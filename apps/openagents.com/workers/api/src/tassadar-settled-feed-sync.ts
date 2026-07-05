@@ -5,6 +5,11 @@ import {
   publicSettledFeedScope,
 } from '@openagentsinc/sync-worker'
 
+import {
+  projectSettledFeedBatchBestEffort,
+  type SettledFeedProjectionLog,
+} from './khala-sync-public-settled-feed'
+import type { KhalaSyncHyperdriveBinding } from './khala-sync-push-routes'
 import { assertNexusPylonPublicSafe } from './nexus-pylon-visibility'
 import { observedPromise } from './observability'
 import { openAgentsDatabase, scheduleBackgroundWork } from './runtime'
@@ -199,7 +204,19 @@ export const settledFeedSummaryFromEvents = (
   }
 }
 
-type SettledFeedSyncEnv = Pick<WorkerBindings, 'OPENAGENTS_DB' | 'SYNC_ROOM'>
+type SettledFeedSyncEnv = Pick<WorkerBindings, 'OPENAGENTS_DB' | 'SYNC_ROOM'> &
+  Readonly<{
+    /**
+     * `env.KHALA_SYNC_DB` — absent until the binding is deployed. KS-6.4
+     * (#8414) dual-write: best-effort projects the SAME public-safe events
+     * this function already writes to the legacy sync room into
+     * `scope.public.settled-feed` via khala-sync. Never required; a missing
+     * binding simply skips the new-path projection.
+     */
+    KHALA_SYNC_DB?: KhalaSyncHyperdriveBinding
+    /** Diagnostic sink for the khala-sync projection (public-safe only). */
+    khalaSyncSettledFeedLog?: SettledFeedProjectionLog
+  }>
 
 /**
  * Publish a batch of public-safe settled events to the public settled-feed
@@ -207,6 +224,15 @@ type SettledFeedSyncEnv = Pick<WorkerBindings, 'OPENAGENTS_DB' | 'SYNC_ROOM'>
  * it can be written; a rejected payload is skipped (it never reaches the
  * outbox). The whole operation is fail-soft via `observedPromise` so the caller
  * is never broken or slowed by a broadcast failure.
+ *
+ * KS-6.4 (#8414): ALSO best-effort projects the same safe events + summary
+ * into the khala-sync `scope.public.settled-feed` projection (dual-write,
+ * same discipline as the KS-6.1 fleet / KS-6.3 tokens-served cutovers). The
+ * legacy `notifySyncScopes` room-poke stays live until the new projection
+ * has real production evidence AND an anonymous-safe read path exists for
+ * it (the new `/api/sync/connect` live-tail route requires an authenticated
+ * actor and cannot serve this feed's anonymous/logged-out audience today —
+ * see docs/khala-sync/RUNBOOK.md).
  */
 export const publishSettledFeedEvents = async (
   env: SettledFeedSyncEnv,
@@ -249,6 +275,7 @@ export const publishSettledFeedEvents = async (
     )
 
     const summary = settledFeedSummaryFromEvents(safeEvents)
+    let summaryIsSafe = true
 
     try {
       assertSettledFeedPayloadPublicSafe('Public settled feed summary', summary)
@@ -262,14 +289,32 @@ export const publishSettledFeedEvents = async (
       })
     } catch {
       // Summary is best-effort; skip it if it ever scans unsafe.
+      summaryIsSafe = false
     }
 
     const notify = notifySyncScopes(env, [scope])
+    // Fail-soft dual-write into khala-sync (KS-6.4, #8414): never awaited
+    // into the caller's critical path via `ctx`-scheduled background work
+    // when a context is available, exactly like the legacy room notify;
+    // a failure here is swallowed by `projectSettledFeedBatchBestEffort`
+    // itself and only ever surfaces as a typed diagnostic log.
+    const projectToKhalaSync = summaryIsSafe
+      ? projectSettledFeedBatchBestEffort(
+          {
+            binding: env.KHALA_SYNC_DB,
+            ...(env.khalaSyncSettledFeedLog === undefined
+              ? {}
+              : { log: env.khalaSyncSettledFeedLog }),
+          },
+          { events: safeEvents, summary },
+        ).then(() => undefined)
+      : Promise.resolve(undefined)
 
     if (options.ctx === undefined) {
-      await notify
+      await Promise.all([notify, projectToKhalaSync])
     } else {
       scheduleBackgroundWork(options.ctx, notify)
+      scheduleBackgroundWork(options.ctx, projectToKhalaSync)
     }
   })
 }
