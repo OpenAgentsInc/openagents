@@ -468,3 +468,79 @@ components.
 conversation, not a live mobile/desktop-initiated dispatch. #8388 (dispatch
 consumer) and #8389 (account selection) remain unbuilt — proving the
 render path was the prerequisite, not a replacement, for that work.
+
+## #8389: capacity-aware account selection, landed standalone
+
+`#8389` ("capacity-aware account selection for runtime turn dispatch —
+round-robin by available capacity") is now built and tested as a standalone
+pure module, ahead of `#8388`'s dispatch consumer (which had not landed on
+`main` at the time this was written — no
+`apps/pylon/src/orchestration/runtime-intent-enforcement.ts` or similar
+file existed yet).
+
+New file: `packages/khala-sync-server/src/fleet-account-selection.ts`,
+exporting:
+
+```ts
+export interface SelectDispatchAccountOptions {
+  readonly lastUsedAccountRefHash?: string
+}
+
+export const selectDispatchAccount = (
+  accounts: ReadonlyArray<FleetAccountEntity>,
+  options: SelectDispatchAccountOptions = {},
+): FleetAccountEntity | undefined
+```
+
+Selection rule, given the `fleet_account` post-images currently projected
+for a `scope.fleet_run.<runId>` scope:
+
+- Eligible accounts require `readiness === "ready"` AND
+  `capacityAvailable !== undefined && capacityAvailable > 0`. A
+  `cooldown`/`unavailable`/`unknown` account is excluded even if it still
+  reports leftover capacity; a missing `capacityAvailable` is treated as
+  ineligible, never as "assume available" or "zero is fine."
+- Among eligible accounts: highest `capacityAvailable` wins; ties break by
+  lowest `capacityBusy + capacityQueued` (missing busy/queued count as 0
+  for this sum only); remaining ties break by `accountRefHash` ascending.
+- If the top-ranked group is still a full tie (equal capacity and load)
+  and the caller passes `lastUsedAccountRefHash`, the selector cycles to
+  the next account in that tied group (wrapping) instead of repeating the
+  same hash — the literal round-robin behavior named in the issue title,
+  covering the residual case where capacity/load alone never breaks a tie.
+- Returns `undefined` when nothing is eligible (empty list, all zero/
+  unknown capacity, or none ready) — never fabricates a fallback account.
+
+17 unit tests in
+`packages/khala-sync-server/src/fleet-account-selection.test.ts` cover:
+empty list, single account, clear capacity winner, load tie-break, missing
+busy/queued treated as zero load, hash tie-break, all-zero-capacity,
+all-missing-capacity, non-ready exclusion (`cooldown`, `unavailable`,
+`unknown`), and the full round-robin cycle/wrap/ignore-stale-hash cases.
+Full `khala-sync-server` suite: 364 pass / 0 fail across 37 files
+(Postgres-backed `fleet-mutators`/`fleet-projection` suites included);
+`tsc --noEmit` clean.
+
+**Integration point for `#8388`'s consumer (still open):** whichever
+Pylon-side module ends up polling/consuming durable `runtime.startTurn`
+control intents (or the intent-enforcement loop that decides which
+`fleet_account` to dispatch a queued turn to) should, at the point it
+currently guesses/hardcodes an account:
+
+1. Read the current `fleet_account` post-images for the run's
+   `scope.fleet_run.<runId>` scope (already how `fleet-mutators.ts` reads
+   `fleet_account` post-images via `readCurrentFleetAccount`/
+   `readCurrentEntity`, or via the read-service's scope projection).
+2. Call `selectDispatchAccount(accounts, { lastUsedAccountRefHash })`,
+   where `lastUsedAccountRefHash` is whichever account the consumer last
+   dispatched a turn to for this run (omit the option if there is none
+   yet, e.g. first dispatch).
+3. If it returns `undefined`, the consumer must not dispatch — surface a
+   typed "no ready capacity" blocker instead of guessing an account or
+   dispatching to a cooldown/unavailable one.
+4. If it returns an account, dispatch to `account.accountRefHash` and
+   remember that hash as the next call's `lastUsedAccountRefHash`.
+
+This is a one-line call once `#8388` lands; no further schema or mutator
+changes are needed on the `khala-sync`/`khala-sync-server` side for basic
+capacity-aware selection.
