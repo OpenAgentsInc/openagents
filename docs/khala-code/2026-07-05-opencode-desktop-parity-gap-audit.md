@@ -525,12 +525,40 @@ These are written as implementation issues that should be filed or mapped onto
 existing issues. P0 means "start now"; P1 means "next wave"; P2 means "keep
 explicitly scoped, but do not block the first usable parity push."
 
+Opened issue set:
+
+- Active editor track already in progress:
+  [#8430](https://github.com/OpenAgentsInc/openagents/issues/8430),
+  [#8431](https://github.com/OpenAgentsInc/openagents/issues/8431),
+  [#8432](https://github.com/OpenAgentsInc/openagents/issues/8432),
+  [#8433](https://github.com/OpenAgentsInc/openagents/issues/8433), and
+  [#8434](https://github.com/OpenAgentsInc/openagents/issues/8434).
+- New parity issues from this audit:
+  [#8435](https://github.com/OpenAgentsInc/openagents/issues/8435),
+  [#8436](https://github.com/OpenAgentsInc/openagents/issues/8436),
+  [#8437](https://github.com/OpenAgentsInc/openagents/issues/8437),
+  [#8438](https://github.com/OpenAgentsInc/openagents/issues/8438),
+  [#8439](https://github.com/OpenAgentsInc/openagents/issues/8439),
+  [#8440](https://github.com/OpenAgentsInc/openagents/issues/8440),
+  [#8441](https://github.com/OpenAgentsInc/openagents/issues/8441),
+  [#8442](https://github.com/OpenAgentsInc/openagents/issues/8442),
+  [#8443](https://github.com/OpenAgentsInc/openagents/issues/8443),
+  [#8444](https://github.com/OpenAgentsInc/openagents/issues/8444),
+  [#8445](https://github.com/OpenAgentsInc/openagents/issues/8445), and
+  [#8446](https://github.com/OpenAgentsInc/openagents/issues/8446).
+
+Do not duplicate [#8430](https://github.com/OpenAgentsInc/openagents/issues/8430)
+through [#8434](https://github.com/OpenAgentsInc/openagents/issues/8434):
+another agent is already working the Phase 1 read-only editor source-browser
+slice.
+
 ### P0: Composer And Prompt Input
 
 Goal: emulate OpenCode's composer closely. This is the highest-priority product
 gap because it is the most frequently used interaction surface.
 
-Issue: build the rich contenteditable composer foundation.
+Issue: build the rich contenteditable composer foundation
+([#8435](https://github.com/OpenAgentsInc/openagents/issues/8435)).
 
 - Scope: contenteditable editor, DOM normalization, multiline handling, prompt
   history, normal mode, shell mode, slash popover integration, and keyboard-safe
@@ -539,7 +567,8 @@ Issue: build the rich contenteditable composer foundation.
   normal/shell submission, paste normalization, and visual smoke coverage for
   long text, multiline text, and empty/error/loading states.
 
-Issue: add model, agent, provider, and variant controls in the composer.
+Issue: add model, agent, provider, and variant controls in the composer
+([#8436](https://github.com/OpenAgentsInc/openagents/issues/8436)).
 
 - Scope: OpenCode-style model selector, agent selector/cycle, provider-aware
   display, variant cycling, usage/quota/error hints, and direct integration with
@@ -548,7 +577,8 @@ Issue: add model, agent, provider, and variant controls in the composer.
   affect the submitted turn, unavailable providers produce legible errors, and
   the UI never exposes raw provider secrets.
 
-Issue: add attachment parity.
+Issue: add attachment parity
+([#8437](https://github.com/OpenAgentsInc/openagents/issues/8437)).
 
 - Scope: native file picker bridge, drag/drop files, paste files/images,
   clipboard image import, image thumbnails, preview/open, removal, source-path
@@ -557,7 +587,8 @@ Issue: add attachment parity.
   image preview rendering, oversized file refusal, and public-safe transcript
   projection.
 
-Issue: add composer context and docks.
+Issue: add composer context and docks
+([#8437](https://github.com/OpenAgentsInc/openagents/issues/8437)).
 
 - Scope: selected file/line/comment context, follow-up dock, permission dock,
   question dock, revert dock, todo dock, and request tree.
@@ -569,7 +600,8 @@ Issue: add composer context and docks.
 
 Goal: adopt OpenCode's command/keybind model as a first-class Khala primitive.
 
-Issue: create a central desktop command registry.
+Issue: create a central desktop command registry
+([#8438](https://github.com/OpenAgentsInc/openagents/issues/8438)).
 
 - Scope: command IDs, categories, default keybinds, availability predicates,
   menu binding, slash binding, palette binding, and analytics-safe execution
@@ -578,7 +610,8 @@ Issue: create a central desktop command registry.
   settings, and server action routes through the registry or has an explicit
   exception.
 
-Issue: build the command palette.
+Issue: build the command palette
+([#8438](https://github.com/OpenAgentsInc/openagents/issues/8438)).
 
 - Scope: searchable commands, files, sessions, projects, models, providers, and
   server actions with grouped results and keyboard navigation.
@@ -586,7 +619,8 @@ Issue: build the command palette.
   deterministically, supports empty/loading/error states, and is covered by DOM
   and visual tests.
 
-Issue: build editable keybindings.
+Issue: build editable keybindings
+([#8439](https://github.com/OpenAgentsInc/openagents/issues/8439)).
 
 - Scope: keybind settings panel, capture, assign, clear, reset all, conflict
   detection, grouped command list, tooltips, and migration for existing Khala
@@ -599,7 +633,8 @@ Issue: build editable keybindings.
 Goal: make Khala Code behave like a dependable desktop app before expanding the
 workbench.
 
-Issue: add in-app updater plumbing.
+Issue: add in-app updater plumbing
+([#8440](https://github.com/OpenAgentsInc/openagents/issues/8440)).
 
 - Scope: update check, update state subscription, download/install controls,
   periodic checks, settings row, app-menu item, error state, and release-notes
@@ -607,7 +642,8 @@ Issue: add in-app updater plumbing.
 - Acceptance gates: fixture update server tests, no silent install, legible
   failure states, and no raw signing/notarization secrets in logs.
 
-Issue: add diagnostics and recovery.
+Issue: add diagnostics and recovery
+([#8441](https://github.com/OpenAgentsInc/openagents/issues/8441)).
 
 - Scope: crash/load failure handling, unresponsive-window recovery, debug-log
   export zip, fatal renderer error reporting, net/process/service log capture,
@@ -615,7 +651,8 @@ Issue: add diagnostics and recovery.
 - Acceptance gates: exported bundle is public-safe by default, load failure can
   recover or quit cleanly, and visual smoke covers recovery modals.
 
-Issue: add deep links and single-instance handling.
+Issue: add deep links and single-instance handling
+([#8442](https://github.com/OpenAgentsInc/openagents/issues/8442)).
 
 - Scope: `khala-code://` protocol, first-open buffering, second-instance focus,
   route resolution into thread/project/session/server targets, and invalid-link
@@ -623,7 +660,8 @@ Issue: add deep links and single-instance handling.
 - Acceptance gates: deep links work cold and warm, invalid links are harmless,
   and no link can bypass workspace/auth/policy gates.
 
-Issue: expand the native menu.
+Issue: expand the native menu
+([#8442](https://github.com/OpenAgentsInc/openagents/issues/8442)).
 
 - Scope: File, Edit, View, Go, Window, Help, command-registry integration,
   New Session, Open Project, New Window, Close, Reload, Restart, Export Logs,
@@ -639,7 +677,8 @@ Fleet control surface. This workstream should cross-check OpenCode against
 [`2026-07-05-vscode-explorer-editor-adoption-audit.md`](./2026-07-05-vscode-explorer-editor-adoption-audit.md)
 before implementing explorer/editor primitives.
 
-Issue: add project/home dashboard.
+Issue: add project/home dashboard
+([#8443](https://github.com/OpenAgentsInc/openagents/issues/8443)).
 
 - Scope: project list, recent sessions, session search, open project, new
   session, background-open session behavior, status badges, and route
@@ -647,7 +686,12 @@ Issue: add project/home dashboard.
 - Acceptance gates: projects/sessions can be navigated without losing active
   work, empty/loading/error states are clear, and route state survives restart.
 
-Issue: add file tree and file tabs.
+Issue: add file tree and source pane
+([#8430](https://github.com/OpenAgentsInc/openagents/issues/8430),
+[#8431](https://github.com/OpenAgentsInc/openagents/issues/8431),
+[#8432](https://github.com/OpenAgentsInc/openagents/issues/8432),
+[#8433](https://github.com/OpenAgentsInc/openagents/issues/8433),
+[#8434](https://github.com/OpenAgentsInc/openagents/issues/8434)).
 
 - Scope: lazy file tree, file watcher invalidation, file content cache, open
   file tabs, selected-line persistence, search/select file dialog, diff markers,
@@ -656,8 +700,15 @@ Issue: add file tree and file tabs.
 - Acceptance gates: large repos stay responsive, file changes invalidate only
   the right nodes, selected context submits correctly, and no private local path
   leaks into public-safe projections.
+- Current issue boundary: [#8430](https://github.com/OpenAgentsInc/openagents/issues/8430)
+  through [#8434](https://github.com/OpenAgentsInc/openagents/issues/8434)
+  cover provider-neutral file service, Editor hotbar/panel shell, lazy file tree,
+  Monaco read-only source pane, and verification. File tabs, editing, save,
+  rename/delete, watchers, compact folders, file nesting, and dirty state remain
+  follow-up work after that active Phase 1 slice lands.
 
-Issue: add diff/review panel.
+Issue: add diff/review panel
+([#8444](https://github.com/OpenAgentsInc/openagents/issues/8444)).
 
 - Scope: review tab, diff kind modeling, comments, revert actions, active diff
   focus, side-panel layout, and source-control action integration.
@@ -665,7 +716,8 @@ Issue: add diff/review panel.
   revert states are explicit, and review state remains stable across session
   switches.
 
-Issue: add embedded terminal.
+Issue: add embedded terminal
+([#8445](https://github.com/OpenAgentsInc/openagents/issues/8445)).
 
 - Scope: workspace-scoped PTY tabs, terminal websocket or local bridge, tab
   persistence, resize/collapse, copy/paste, clickable links, shell/font/theme
@@ -680,7 +732,8 @@ Goal: build Khala's version of OpenCode's server layer. The local server can be
 folded into Pylon or run beside it, but the desktop should have a coherent
 server/runtime API of its own.
 
-Issue: define the local server contract.
+Issue: define the local server contract
+([#8446](https://github.com/OpenAgentsInc/openagents/issues/8446)).
 
 - Scope: health, authentication, renderer CORS/origin policy, server identity,
   project/session routes, provider/model listing, stream events, tool calls,
@@ -688,7 +741,8 @@ Issue: define the local server contract.
 - Acceptance gates: contract tests cover success, refusal, auth failure,
   health failure, restart, and version skew.
 
-Issue: bridge AI SDK Core into the local server.
+Issue: bridge AI SDK Core into the local server
+([#8446](https://github.com/OpenAgentsInc/openagents/issues/8446)).
 
 - Scope: wire `@openagentsinc/khala-ai-sdk-core` into a desktop-visible runtime
   path, map AI SDK stream parts into OpenAgents events, preserve tool authority,
@@ -697,7 +751,8 @@ Issue: bridge AI SDK Core into the local server.
   providerOptions, and provider error fixtures all render through the same
   transcript consumer as existing Codex/Pylon events.
 
-Issue: add server manager UI.
+Issue: add server manager UI
+([#8446](https://github.com/OpenAgentsInc/openagents/issues/8446)).
 
 - Scope: local server row, default server, remote server add/edit/remove,
   health retry, alternate server chooser, and settings integration.
