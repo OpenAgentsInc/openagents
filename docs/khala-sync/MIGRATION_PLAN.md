@@ -201,6 +201,65 @@ store ENFORCES allow/deny, so it requires the low-traffic window +
 zero-divergence compare evidence; cutover evidence + D1 drop tracked on
 epic [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
 
+**KS-8.9 decommission follow-up status (2026-07-05, #8336):** `inference_batch_jobs`
+(the one write-dead table in the domain) was already retired end-to-end —
+D1 migration `0302_drop_inference_batch_jobs.sql`, Postgres migration
+`0032_drop_inference_batch_jobs.sql`, and the batch-job feature code removed
+outright — dropping this lane's table count from 29 to 28. Real production
+evidence gathered against `khala_sync_prod`: TWO backfill sweeps plus
+`--verify` are GREEN (exact row counts on all 28 tables, newest-50 hashes
+match, and all three tally=SUM(events) invariants hold exactly — see the
+#8336 issue comment for the full verbatim output) and a live production
+Worker tail sample (tens of thousands of log lines across two capture
+windows, including real `/v1/chat/completions` traffic) shows ZERO
+`khala_sync_entitlements_dual_write_failed` events. That is real but
+partial evidence: it is not the multi-hour/day representative-window soak
+the runbook's compare/postgres flip steps call for, and this pass had no
+durable production log/metrics query surface (Logpush/Analytics Engine)
+to reconstruct a longer historical window — only live `wrangler tail`.
+Per the runbook's own caution, `KHALA_SYNC_ENTITLEMENTS_READS` was
+deliberately left at the default `d1` (no compare/postgres flip attempted)
+rather than flip blind. Decommission-scope findings: (1) the two
+Effect-shaped `markAccountFreeTier`/`recordFreeKeyMint` variants in
+`inference/inference-free-tier-key.ts` had zero production call sites (only
+the mirror-wired `*Async` siblings are wired at the real write path) and
+were deleted, with call sites in
+`inference/inference-free-tier-key.test.ts` moved onto the `*Async`
+functions (37/37 tests green); (2) the `token_usage_events` row
+`builtin-compute-agent-grant.ts` writes is confirmed to belong to the
+KS-8.2 ledger domain by table ownership, but that exact call site is a
+KNOWN, ALREADY-TRACKED KS-8.2 gap (see the KS-8.2 status paragraph above:
+it stays D1-only, unhooked, "until the final KS-8.19 D1 retirement
+sweep") — not a new KS-8.9 finding, and it must close before the ledger D1
+drop, tracked on KS-8.2/KS-8.19, not here; (3) `agent_search_metric_events`
+(`agent-search.ts` `recordMetric`, ~line 1489) is confirmed WRITE-ONLY
+(zero reads anywhere in the codebase) and is a clean Analytics Engine
+candidate, but this repo has zero existing Analytics Engine binding/dataset
+precedent today, so wiring it is deferred to its own properly-scoped,
+locally-verifiable follow-up rather than a same-change addition; (4) the
+"route the non-gate reads to Postgres" scope (admin/list reads for premium
+allowlist + operator exemption, agent-search request/cache/quota/count
+reads, agent-rate-limit recovery reads, privacy-receipt reads, and the two
+orange-check reads `countActiveOrangeChecks` /
+`readActiveOrangeCheckByActorRef`) was inventoried but NOT implemented —
+the call sites span `index.ts`, `config.ts`,
+`inference/inference-premium-allowlist.ts`,
+`inference/inference-operator-exemption.ts`, `agent-search.ts`,
+`agent-proposal-routes.ts`, `agent-rate-limit-recovery.ts`,
+`inference/inference-privacy-receipt-routes.ts`,
+`inference/khala-code-paid-plan-payments.ts`,
+`orange-check-entitlements.ts`, and (for the orange-check reads)
+`forum-routes.ts` — each needs env/flag threading through existing
+Effect-based call chains, a materially larger and riskier change than fit
+safely in this pass; it stays open. Per the current owner-directed policy
+above the KS-8.1/8.2 status paragraphs ("the old per-domain soak/drop
+follow-ups are not active gates; KS-8.19 owns final D1 retirement"), moving
+write authority off D1 and dropping this domain's remaining 28 tables is
+explicitly DEFERRED to KS-8.19
+[#8330](https://github.com/OpenAgentsInc/openagents/issues/8330) rather
+than done per-domain here, superseding the #8336 issue text's original
+"drop the D1 tables" ask. #8336 stays open with this status.
+
 **KS-8.7 status (2026-07-04):** machinery LANDED — Postgres schema
 (`khala-sync-server` migration `0015_billing_pay_ins.sql`: the 22 live
 billing/Stripe/pay-ins/buyer-payment tables; the

@@ -30,12 +30,12 @@ import {
   isFreeTierEnabled,
   isFreeTierLaneModel,
   makeFreeTierGate,
-  markAccountFreeTier,
+  markAccountFreeTierAsync,
   readAccountFreeTier,
   readFreeKeyMintsToday,
   readFreeTierUsage,
   parsePositiveIntEnv,
-  recordFreeKeyMint,
+  recordFreeKeyMintAsync,
   resolveFreeKeyMintCap,
   resolveFreeTierQuota,
   sanitizeFreeKeyLabel,
@@ -364,12 +364,10 @@ describe('free-tier key store (D1)', () => {
   test('markAccountFreeTier makes the account free-tier; absent accounts are not', async () => {
     const db = makeDb()
     expect(await readAccountFreeTier(db, 'agent:free-user')).toBe(false)
-    const ok = await run(
-      markAccountFreeTier(db, {
-        accountRef: 'agent:free-user',
-        nowIso: fixedNow,
-      }),
-    )
+    const ok = await markAccountFreeTierAsync(db, {
+      accountRef: 'agent:free-user',
+      nowIso: fixedNow(),
+    })
     expect(ok).toBe(true)
     expect(await readAccountFreeTier(db, 'agent:free-user')).toBe(true)
     expect(await readAccountFreeTier(db, 'agent:other')).toBe(false)
@@ -378,20 +376,16 @@ describe('free-tier key store (D1)', () => {
   test('mint rate counter increments per IP-hash per day', async () => {
     const db = makeDb()
     expect(await readFreeKeyMintsToday(db, 'iphash', '2026-06-24')).toBe(0)
-    await run(
-      recordFreeKeyMint(db, {
-        ipHash: 'iphash',
-        mintDay: '2026-06-24',
-        nowIso: fixedNow,
-      }),
-    )
-    await run(
-      recordFreeKeyMint(db, {
-        ipHash: 'iphash',
-        mintDay: '2026-06-24',
-        nowIso: fixedNow,
-      }),
-    )
+    await recordFreeKeyMintAsync(db, {
+      ipHash: 'iphash',
+      mintDay: '2026-06-24',
+      nowIso: fixedNow(),
+    })
+    await recordFreeKeyMintAsync(db, {
+      ipHash: 'iphash',
+      mintDay: '2026-06-24',
+      nowIso: fixedNow(),
+    })
     expect(await readFreeKeyMintsToday(db, 'iphash', '2026-06-24')).toBe(2)
     // A different day is a fresh bucket.
     expect(await readFreeKeyMintsToday(db, 'iphash', '2026-06-25')).toBe(0)
@@ -405,9 +399,10 @@ describe('free-tier key store (D1)', () => {
 describe('makeFreeTierGate (balance-gate bypass)', () => {
   test('free-tier key + Khala + within quota => free', async () => {
     const db = makeDb()
-    await run(
-      markAccountFreeTier(db, { accountRef: 'agent:free-user', nowIso: fixedNow }),
-    )
+    await markAccountFreeTierAsync(db, {
+      accountRef: 'agent:free-user',
+      nowIso: fixedNow(),
+    })
     const gate = makeFreeTierGate({ db, nowIso: fixedNow })
     const d = await gate('agent:free-user', KHALA_MODEL_ID)
     expect(d.free).toBe(true)
@@ -422,9 +417,10 @@ describe('makeFreeTierGate (balance-gate bypass)', () => {
 
   test('free-tier key but a PREMIUM model => never free', async () => {
     const db = makeDb()
-    await run(
-      markAccountFreeTier(db, { accountRef: 'agent:free-user', nowIso: fixedNow }),
-    )
+    await markAccountFreeTierAsync(db, {
+      accountRef: 'agent:free-user',
+      nowIso: fixedNow(),
+    })
     const gate = makeFreeTierGate({ db, nowIso: fixedNow })
     const d = await gate('agent:free-user', 'claude-sonnet')
     expect(d.free).toBe(false)
@@ -433,9 +429,10 @@ describe('makeFreeTierGate (balance-gate bypass)', () => {
 
   test('free-tier key over the daily request quota => not free', async () => {
     const db = makeDb()
-    await run(
-      markAccountFreeTier(db, { accountRef: 'agent:free-user', nowIso: fixedNow }),
-    )
+    await markAccountFreeTierAsync(db, {
+      accountRef: 'agent:free-user',
+      nowIso: fixedNow(),
+    })
     const gate = makeFreeTierGate({
       db,
       nowIso: fixedNow,
@@ -457,12 +454,10 @@ describe('makeFreeTierGate (balance-gate bypass)', () => {
 
   test('INTERNAL-ACCOUNT EXEMPT: an allowlisted free key OVER quota is still free (never 402 on quota)', async () => {
     const db = makeDb()
-    await run(
-      markAccountFreeTier(db, {
-        accountRef: 'agent:internal-ops',
-        nowIso: fixedNow,
-      }),
-    )
+    await markAccountFreeTierAsync(db, {
+      accountRef: 'agent:internal-ops',
+      nowIso: fixedNow(),
+    })
     const internalAccountRefs = new Set(['agent:internal-ops'])
     // A tiny quota that the account is already WAY over.
     const quota = { maxRequestsPerDay: 1, maxTokensPerDay: 1 }
@@ -499,12 +494,10 @@ describe('makeFreeTierGate (balance-gate bypass)', () => {
 
   test('EXTERNAL key over quota STILL falls through (the exemption is allowlist-scoped only)', async () => {
     const db = makeDb()
-    await run(
-      markAccountFreeTier(db, {
-        accountRef: 'agent:external-user',
-        nowIso: fixedNow,
-      }),
-    )
+    await markAccountFreeTierAsync(db, {
+      accountRef: 'agent:external-user',
+      nowIso: fixedNow(),
+    })
     // The allowlist holds a DIFFERENT (internal) account; the external user is
     // not on it, so the quota path is unchanged for them.
     const internalAccountRefs = new Set(['agent:internal-ops'])
@@ -541,12 +534,10 @@ describe('makeFreeTierGate (balance-gate bypass)', () => {
 
   test('GUARDRAIL: an internal-account free key on a PREMIUM model is STILL never free', async () => {
     const db = makeDb()
-    await run(
-      markAccountFreeTier(db, {
-        accountRef: 'agent:internal-ops',
-        nowIso: fixedNow,
-      }),
-    )
+    await markAccountFreeTierAsync(db, {
+      accountRef: 'agent:internal-ops',
+      nowIso: fixedNow(),
+    })
     const gate = makeFreeTierGate({
       db,
       nowIso: fixedNow,
@@ -579,9 +570,10 @@ describe('makeFreeTierGate (balance-gate bypass)', () => {
 describe('withFreeTierKhala (metering wrapper)', () => {
   test('free-tier Khala within quota => zero-debit free receipt, inner NOT called, quota accrued', async () => {
     const db = makeDb()
-    await run(
-      markAccountFreeTier(db, { accountRef: 'agent:free-user', nowIso: fixedNow }),
-    )
+    await markAccountFreeTierAsync(db, {
+      accountRef: 'agent:free-user',
+      nowIso: fixedNow(),
+    })
     const inner = makeInnerSpy()
     const wrapped = withFreeTierKhala(inner.hook, { db, nowIso: fixedNow })
     const outcome = await run(wrapped(meteringContext({ requestId: 'free-1' })))
@@ -595,9 +587,10 @@ describe('withFreeTierKhala (metering wrapper)', () => {
 
   test('idempotent: the SAME request id never double-counts the quota', async () => {
     const db = makeDb()
-    await run(
-      markAccountFreeTier(db, { accountRef: 'agent:free-user', nowIso: fixedNow }),
-    )
+    await markAccountFreeTierAsync(db, {
+      accountRef: 'agent:free-user',
+      nowIso: fixedNow(),
+    })
     const inner = makeInnerSpy()
     const wrapped = withFreeTierKhala(inner.hook, { db, nowIso: fixedNow })
     await run(wrapped(meteringContext({ requestId: 'dup' })))
@@ -618,9 +611,10 @@ describe('withFreeTierKhala (metering wrapper)', () => {
 
   test('GUARDRAIL: a PREMIUM served model always meters (inner called)', async () => {
     const db = makeDb()
-    await run(
-      markAccountFreeTier(db, { accountRef: 'agent:free-user', nowIso: fixedNow }),
-    )
+    await markAccountFreeTierAsync(db, {
+      accountRef: 'agent:free-user',
+      nowIso: fixedNow(),
+    })
     const inner = makeInnerSpy()
     const wrapped = withFreeTierKhala(inner.hook, { db, nowIso: fixedNow })
     const outcome = await run(
@@ -632,9 +626,10 @@ describe('withFreeTierKhala (metering wrapper)', () => {
 
   test('over quota => meters normally (inner called)', async () => {
     const db = makeDb()
-    await run(
-      markAccountFreeTier(db, { accountRef: 'agent:free-user', nowIso: fixedNow }),
-    )
+    await markAccountFreeTierAsync(db, {
+      accountRef: 'agent:free-user',
+      nowIso: fixedNow(),
+    })
     const inner = makeInnerSpy()
     const wrapped = withFreeTierKhala(inner.hook, {
       db,
@@ -649,12 +644,10 @@ describe('withFreeTierKhala (metering wrapper)', () => {
 
   test('INTERNAL-ACCOUNT EXEMPT: an allowlisted free key OVER quota STILL records a zero-debit free receipt (inner NOT called)', async () => {
     const db = makeDb()
-    await run(
-      markAccountFreeTier(db, {
-        accountRef: 'agent:internal-ops',
-        nowIso: fixedNow,
-      }),
-    )
+    await markAccountFreeTierAsync(db, {
+      accountRef: 'agent:internal-ops',
+      nowIso: fixedNow(),
+    })
     const inner = makeInnerSpy()
     const wrapped = withFreeTierKhala(inner.hook, {
       db,
@@ -687,12 +680,10 @@ describe('withFreeTierKhala (metering wrapper)', () => {
 
   test('EXTERNAL key over quota STILL meters normally when the allowlist holds a different account', async () => {
     const db = makeDb()
-    await run(
-      markAccountFreeTier(db, {
-        accountRef: 'agent:external-user',
-        nowIso: fixedNow,
-      }),
-    )
+    await markAccountFreeTierAsync(db, {
+      accountRef: 'agent:external-user',
+      nowIso: fixedNow(),
+    })
     const inner = makeInnerSpy()
     const wrapped = withFreeTierKhala(inner.hook, {
       db,

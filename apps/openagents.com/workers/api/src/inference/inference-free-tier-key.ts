@@ -432,48 +432,6 @@ export const recordFreeKeyMintAsync = async (
   }
 }
 
-// Mark an account as a free-tier key (idempotent upsert). Called by the
-// self-serve mint endpoint after registering the underlying agent credential.
-export const markAccountFreeTier = (
-  db: D1Database,
-  input: Readonly<{
-    accountRef: string
-    mintSource?: string | undefined
-    note?: string | null | undefined
-    scope?: string | undefined
-    nowIso?: (() => string) | undefined
-  }>,
-): Effect.Effect<boolean> =>
-  Effect.gen(function* () {
-    const nowIso = (input.nowIso ?? currentIsoTimestamp)()
-    return yield* Effect.tryPromise({
-      catch: freeTierPersistenceError,
-      try: async () => {
-        await db
-          .prepare(
-            `INSERT INTO inference_free_tier_keys
-               (account_ref, scope, mint_source, note, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?)
-             ON CONFLICT(account_ref) DO UPDATE SET
-               scope = excluded.scope,
-               mint_source = excluded.mint_source,
-               note = excluded.note,
-               updated_at = excluded.updated_at`,
-          )
-          .bind(
-            input.accountRef,
-            input.scope ?? DEFAULT_FREE_TIER_SCOPE,
-            input.mintSource ?? 'self_serve_anonymous',
-            input.note ?? null,
-            nowIso,
-            nowIso,
-          )
-          .run()
-        return true
-      },
-    }).pipe(Effect.catch(() => Effect.succeed(false)))
-  })
-
 // ----------------------------------------------------------------------------
 // Free-tier daily usage read + idempotent accrual
 // ----------------------------------------------------------------------------
@@ -646,38 +604,6 @@ export const readFreeKeyMintsToday = async (
     return 0
   }
 }
-
-// Record one mint against an IP-hash for the day (idempotent increment). Returns
-// whether the write succeeded; a failure is logged by the caller (the mint still
-// proceeds — the pre-flight read is the primary bound).
-export const recordFreeKeyMint = (
-  db: D1Database,
-  input: Readonly<{
-    ipHash: string
-    mintDay: string
-    nowIso?: (() => string) | undefined
-  }>,
-): Effect.Effect<boolean> =>
-  Effect.gen(function* () {
-    const nowIso = (input.nowIso ?? currentIsoTimestamp)()
-    return yield* Effect.tryPromise({
-      catch: freeTierPersistenceError,
-      try: async () => {
-        await db
-          .prepare(
-            `INSERT INTO inference_free_key_mints
-               (ip_hash, mint_day, mint_count, created_at, updated_at)
-             VALUES (?, ?, 1, ?, ?)
-             ON CONFLICT(ip_hash, mint_day) DO UPDATE SET
-               mint_count = mint_count + 1,
-               updated_at = excluded.updated_at`,
-          )
-          .bind(input.ipHash, input.mintDay, nowIso, nowIso)
-          .run()
-        return true
-      },
-    }).pipe(Effect.catch(() => Effect.succeed(false)))
-  })
 
 // ----------------------------------------------------------------------------
 // Balance-gate seam (the free-tier bypass)

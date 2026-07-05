@@ -819,6 +819,25 @@ Flag-flip order — never skip a step, each step soaks before the next:
    follow-up issue on epic #8282 — never in the same change as a read
    cutover. Until then rollback is one flag flip back to `d1`.
 
+**#8336 status (2026-07-05):** batch-job reads are moot — the whole
+`inference_batch_jobs` feature (D1 + Postgres tables, code) was already
+retired (28 tables remain). Real evidence gathered against production:
+two backfill sweeps + a GREEN `--verify` (exact counts, hashes, and
+tally=SUM(events) invariants on all 28 tables) plus a live
+`wrangler tail` sample (tens of thousands of lines, zero
+`dual_write_failed`) — see the #8336 issue comment for the verbatim
+output. `KHALA_SYNC_ENTITLEMENTS_READS` was deliberately left at `d1`:
+this session had no durable production log/metrics surface to establish
+a genuine multi-hour representative-window soak, so neither the
+`compare` nor `postgres` flip was attempted rather than flip on
+incomplete evidence. Per the current owner-directed policy (see
+MIGRATION_PLAN.md's KS-8.1/KS-8.2 status notes), the D1-table-drop half
+of step 6 is deferred to the epic-wide KS-8.19 retirement sweep
+(#8330), not done per-domain. Routing the non-gate reads to Postgres was
+inventoried (see MIGRATION_PLAN.md §3.6 KS-8.9 decommission follow-up
+status) but not implemented — the call sites need env/flag threading
+through several existing Effect-based modules and stay a follow-up.
+
 Rollback at ANY step: set `KHALA_SYNC_ENTITLEMENTS_READS=d1` (reads)
 and/or `KHALA_SYNC_ENTITLEMENTS_DUAL_WRITE=off` (writes). D1 authority is
 never behind.
