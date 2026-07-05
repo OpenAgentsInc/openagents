@@ -1,12 +1,12 @@
 // KS-8.10 remainder (#8338): forum remainder domain — D1 → Cloud SQL
-// migration machinery for the THIRTEEN remainder forum tables that finish
+// migration machinery for the ELEVEN remainder forum tables that finish
 // the KS-8.10 family behind the parent content lane
 // (`forum-content-store.ts`, #8321). Same seam, same mirror recipe.
 //
 // Domain tables (khala-sync migration `0027_forum_remainder.sql`):
 // `forum_private_message_threads`, `forum_private_messages` (PRIVATE),
-// `forum_acl_grants`, `forum_trust_edges`, `forum_actor_forum_trust`
-// (DERIVED), `forum_score_snapshots` (DERIVED), `forum_notification_reads`,
+// `forum_acl_grants`, `forum_score_snapshots` (DERIVED),
+// `forum_notification_reads`,
 // and the work-request lifecycle family (6) `forum_work_requests`,
 // `forum_work_request_relay_links`, `forum_work_request_offers`,
 // `forum_work_request_lifecycle_posts`, `forum_work_request_acceptances`,

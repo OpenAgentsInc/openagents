@@ -18,12 +18,6 @@
  *   - domain scalar tallies (private-message/thread counts, work-request
  *     state tallies, offer/quote sums, notification-read tallies) — byte
  *     lengths and counts only, never subjects or message content;
- *   - TRUST RECOMPUTE-AND-COMPARE: `forum_trust_edges` grouped edge tallies
- *     (per target_actor / forum / trust_kind: count + weight sum) computed
- *     identically on both stores and compared — the "trust recomputation
- *     equality" acceptance at the storage layer (the recompute authority is
- *     D1; we verify the mirror reproduces the same inputs and derived
- *     aggregates);
  *   - WORK-REQUEST SET-MEMBERSHIP referential checks: every lifecycle
  *     child's `work_request_id` (and acceptance/result `offer_id`) resolves
  *     to a parent row WITHIN each store (no cross-store joins), and the
@@ -69,12 +63,10 @@ export const FORUM_REMAINDER_TABLE_ORDER: Readonly<
   Record<ForumRemainderTable, string>
 > = {
   forum_acl_grants: "created_at",
-  forum_actor_forum_trust: "updated_at",
   forum_notification_reads: "updated_at",
   forum_private_message_threads: "updated_at",
   forum_private_messages: "created_at",
   forum_score_snapshots: "created_at",
-  forum_trust_edges: "created_at",
   forum_work_request_acceptances: "created_at",
   forum_work_request_lifecycle_posts: "created_at",
   forum_work_request_offers: "updated_at",
@@ -176,20 +168,6 @@ export const FORUM_REMAINDER_SCALAR_TALLIES: Readonly<
       sql: `SELECT COUNT(DISTINCT actor_ref) AS value FROM forum_acl_grants`,
     },
   ],
-  forum_actor_forum_trust: [
-    {
-      metric: "sum_trust_score",
-      sql: `SELECT COALESCE(SUM(trust_score), 0) AS value FROM forum_actor_forum_trust`,
-    },
-    {
-      metric: "sum_reward_count",
-      sql: `SELECT COALESCE(SUM(reward_count), 0) AS value FROM forum_actor_forum_trust`,
-    },
-    {
-      metric: "sum_report_count",
-      sql: `SELECT COALESCE(SUM(report_count), 0) AS value FROM forum_actor_forum_trust`,
-    },
-  ],
   forum_notification_reads: [
     {
       metric: "active_reads",
@@ -228,16 +206,6 @@ export const FORUM_REMAINDER_SCALAR_TALLIES: Readonly<
     {
       metric: "sum_reply_count",
       sql: `SELECT COALESCE(SUM(reply_count), 0) AS value FROM forum_score_snapshots`,
-    },
-  ],
-  forum_trust_edges: [
-    {
-      metric: "active_edges",
-      sql: `SELECT COUNT(*) AS value FROM forum_trust_edges WHERE archived_at IS NULL`,
-    },
-    {
-      metric: "sum_weight",
-      sql: `SELECT COALESCE(SUM(weight), 0) AS value FROM forum_trust_edges`,
     },
   ],
   forum_work_request_acceptances: [
@@ -305,92 +273,6 @@ export const postgresForumRemainderScalar = async (
   const unsafe = requireForumContentUnsafe(sql)
   const rows = await unsafe(tallySql, [])
   return Number(rows[0]?.["value"] ?? 0)
-}
-
-// ---------------------------------------------------------------------------
-// Trust recompute-and-compare (derived tables)
-// ---------------------------------------------------------------------------
-
-/**
- * The per-(target_actor, forum, kind) trust-edge aggregate. A thread's
- * trust score is recomputed in D1 from exactly these grouped edges; store
- * vs store equality of the aggregate is the "trust recomputation equality"
- * evidence at the storage layer. Portable text — runs verbatim on D1 and
- * Postgres. `COALESCE(forum_id, '')` folds the SQLite-distinct NULL forum
- * into a stable group key on both engines.
- */
-export const trustEdgeRecomputeSql = (): string =>
-  `SELECT target_actor_ref,
-       COALESCE(forum_id, '') AS forum_key,
-       trust_kind,
-       COUNT(*) AS edge_count,
-       COALESCE(SUM(weight), 0) AS weight_sum
-  FROM forum_trust_edges
- WHERE archived_at IS NULL
- GROUP BY target_actor_ref, COALESCE(forum_id, ''), trust_kind
- ORDER BY target_actor_ref, forum_key, trust_kind`
-
-export type TrustEdgeAggregateRow = Readonly<{
-  targetActorRef: string
-  forumKey: string
-  trustKind: string
-  edgeCount: number
-  weightSum: number
-}>
-
-export const trustEdgeAggregateFromRows = (
-  rows: ReadonlyArray<Record<string, unknown>>,
-): ReadonlyArray<TrustEdgeAggregateRow> =>
-  rows.map((row) => ({
-    edgeCount: Number(row["edge_count"] ?? 0),
-    forumKey: String(row["forum_key"] ?? ""),
-    targetActorRef: String(row["target_actor_ref"] ?? ""),
-    trustKind: String(row["trust_kind"] ?? ""),
-    weightSum: Number(row["weight_sum"] ?? 0),
-  }))
-
-export const postgresTrustEdgeAggregate = async (
-  sql: SyncSql,
-): Promise<ReadonlyArray<TrustEdgeAggregateRow>> => {
-  const unsafe = requireForumContentUnsafe(sql)
-  return trustEdgeAggregateFromRows(await unsafe(trustEdgeRecomputeSql(), []))
-}
-
-const trustAggregateKey = (row: TrustEdgeAggregateRow): string =>
-  `${row.targetActorRef}${row.forumKey}${row.trustKind}`
-
-export type TrustRecomputeMismatch = Readonly<{
-  key: string
-  d1: TrustEdgeAggregateRow | undefined
-  postgres: TrustEdgeAggregateRow | undefined
-}>
-
-export const compareTrustEdgeAggregates = (
-  d1: ReadonlyArray<TrustEdgeAggregateRow>,
-  postgres: ReadonlyArray<TrustEdgeAggregateRow>,
-): ReadonlyArray<TrustRecomputeMismatch> => {
-  const pgByKey = new Map(postgres.map((row) => [trustAggregateKey(row), row]))
-  const mismatches: Array<TrustRecomputeMismatch> = []
-  const seen = new Set<string>()
-  for (const row of d1) {
-    const key = trustAggregateKey(row)
-    seen.add(key)
-    const twin = pgByKey.get(key)
-    if (
-      twin === undefined ||
-      twin.edgeCount !== row.edgeCount ||
-      twin.weightSum !== row.weightSum
-    ) {
-      mismatches.push({ d1: row, key, postgres: twin })
-    }
-  }
-  for (const row of postgres) {
-    const key = trustAggregateKey(row)
-    if (!seen.has(key)) {
-      mismatches.push({ d1: undefined, key, postgres: row })
-    }
-  }
-  return mismatches
 }
 
 // ---------------------------------------------------------------------------

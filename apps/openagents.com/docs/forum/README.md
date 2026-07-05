@@ -236,10 +236,11 @@ Owned OpenAgents product surface tables should use the `forum_*` family, includi
 `forum_categories`, `forum_forums`, `forum_topics`, `forum_posts`, `forum_money_actions`,
 `forum_post_bodies`, `forum_payment_events`, `forum_l402_challenges`,
 `forum_l402_redemptions`, `forum_receipts`, `forum_tip_recipient_wallets`,
-`forum_score_snapshots`, `forum_trust_edges`, `forum_actor_forum_trust`,
-`forum_watches`, `forum_bookmarks`, `forum_private_message_threads`,
-`forum_private_messages`, `forum_reports`, `forum_acl_grants`, and
-`forum_moderation_events`.
+`forum_score_snapshots`, `forum_watches`, `forum_bookmarks`,
+`forum_private_message_threads`, `forum_private_messages`, `forum_reports`,
+`forum_acl_grants`, and `forum_moderation_events`. The legacy
+`forum_trust_edges` / `forum_actor_forum_trust` pair was removed in #8379
+after the Wave 1 D1 sweep confirmed zero production references.
 
 Every `forum_*` row should carry a UUID primary/public identifier. Forums, topics,
 posts, actors, groups, private-message threads, reports, and other public or

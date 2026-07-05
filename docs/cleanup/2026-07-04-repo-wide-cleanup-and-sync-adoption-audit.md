@@ -108,12 +108,15 @@ dispatchers (retires most of the 135-ceiling Response-surface debt).
 [`2026-07-05-d1-zero-reference-sweep.md`](./2026-07-05-d1-zero-reference-sweep.md).
 Current-main evidence supersedes the original 438-table audit estimate:
 the migrations now contain 446 `CREATE TABLE` statements and 419 unique
-table names. The sweep classifies 385 referenced, 2 confirmed
-zero-production-reference, 6 test-only, 26 migration-only, and 0 manually
-retained tables. The confirmed zero-production-reference pair is
-`forum_trust_edges` / `forum_actor_forum_trust`; `gym_agentcl_eval_*` now
-has current production references in `gym-evals-domain-store.ts`, so #8380
-must remove that store path before dropping those tables.
+table names. After #8379, the sweep scans root packages as well as
+`apps/openagents.com` and classifies 397 referenced, 2 confirmed
+zero-production-reference, 0 test-only, 20 migration-only, and 0 manually
+retained tables. The confirmed zero-production-reference pair,
+`forum_trust_edges` / `forum_actor_forum_trust`, has been dropped from the
+Worker D1 schema and the Khala Sync forum remainder mirror. `gym_agentcl_eval_*`
+still has current production references in `gym-evals-domain-store.ts` and
+`packages/khala-sync-server`, so #8380 must remove those paths before
+dropping those tables.
 
 ### 2.3 Inert flag-gated features (never armed, still taxed by the debt ledger)
 
@@ -425,11 +428,11 @@ sites; delete the legacy tokens-served producer now that #8304's projection is
 live.
 
 **Wave 1 — mechanical, low risk, high leverage:**
-After #8377, the legacy public-projection staleness budget is zero. Next:
-drop the confirmed write-dead D1 tables (`gym_agentcl_eval_*`,
-`forum_trust_edges`, `forum_actor_forum_trust`) and script the full
-zero-reference sweep across all 438 tables for #8330; remove the GLM
-stress-scheduler remnants and the agentcl Vertex runner; consolidate the
+After #8377, the legacy public-projection staleness budget is zero; after
+#8378/#8379, the D1 zero-reference sweep exists and the forum trust pair is
+dropped. Next: remove the `gym_agentcl_eval_*` producer/store surfaces before
+dropping those tables; remove the GLM stress-scheduler remnants and the
+agentcl Vertex runner; consolidate the
 66-file auth-helper sprawl; flip `KHALA_SYNC_FLEET` default-on and delete
 the desktop fleet poll; decide arm-or-remove on the four inert flags
 (remove voice-ingest and durable-stream if truly unconsumed).
@@ -440,8 +443,8 @@ the desktop fleet poll; decide arm-or-remove on the four inert flags
   contracts and ratcheted the zero-debt legacy-missing-staleness count to zero.
 - #8378 - Complete: added the repo-wide D1 zero-reference table sweep and
   committed the KS-8.19 evidence report for #8330.
-- #8379 - Drop the confirmed write-dead forum trust D1 tables after a final
-  zero-reference verification.
+- #8379 - Complete: dropped the write-dead forum trust D1 tables and removed
+  the stale Khala Sync/forum fixture surfaces that kept them alive.
 - #8380 - Remove the AgentCL Vertex runner and retire the `gym_agentcl_eval_*`
   D1 tables.
 - #8381 - Remove the GLM stress-scheduler remnants and adaptive-stress

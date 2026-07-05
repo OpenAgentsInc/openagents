@@ -17,14 +17,11 @@
  * (or pass --restart) to sweep from the beginning again.
  *
  * Verify mode (`--verify`): exact row counts, per-table domain tallies,
- * newest-N full row hashes, plus two whole-domain checks —
- *   - TRUST RECOMPUTE-AND-COMPARE: `forum_trust_edges` grouped aggregate
- *     (per target_actor / forum / kind: count + weight sum) computed
- *     identically on both stores and compared for equality;
- *   - WORK-REQUEST SET-MEMBERSHIP: within-store referential orphan counts
- *     (both stores must be 0 and equal) and cross-store equality of the
- *     distinct cross-domain reference sets (escrow_id, reserve_receipt_ref,
- *     quote_ref, receipt_ref) into KS-8.1 assignments / KS-8.8 tips.
+ * newest-N full row hashes, plus WORK-REQUEST SET-MEMBERSHIP checks:
+ * within-store referential orphan counts (both stores must be 0 and equal)
+ * and cross-store equality of the distinct cross-domain reference sets
+ * (escrow_id, reserve_receipt_ref, quote_ref, receipt_ref) into KS-8.1
+ * assignments / KS-8.8 tips.
  * Exits non-zero on ANY mismatch. PRIVACY: output references row keys and
  * sha256 hashes only — never message subjects, participants, or content.
  *
@@ -46,7 +43,6 @@ import * as path from "node:path"
 import { SQL } from "bun"
 import {
   buildForumRemainderVerifyReport,
-  compareTrustEdgeAggregates,
   d1ForumRemainderNewestHashes,
   FORUM_REMAINDER_SCALAR_TALLIES,
   FORUM_REMAINDER_TABLE_ORDER,
@@ -60,10 +56,7 @@ import {
   postgresForumRemainderScalar,
   postgresRefSetDigest,
   postgresScalarValue,
-  postgresTrustEdgeAggregate,
   refSetDigest,
-  trustEdgeAggregateFromRows,
-  trustEdgeRecomputeSql,
   upsertForumRemainderRows,
   type D1RemainderRow,
   type ForumRemainderTable,
@@ -317,32 +310,6 @@ const verifyTable = async (
 }
 
 /**
- * Trust recompute-and-compare: grouped edge aggregate on both stores.
- */
-const verifyTrustRecompute = async (
-  sql: SyncSql,
-  options: Options,
-): Promise<boolean> => {
-  const d1 = trustEdgeAggregateFromRows(
-    d1Query(options, trustEdgeRecomputeSql()),
-  )
-  const postgres = await postgresTrustEdgeAggregate(sql)
-  const mismatches = compareTrustEdgeAggregates(d1, postgres)
-  console.log(`\n== trust recompute (${d1.length} edge groups) ==`)
-  console.log(
-    mismatches.length === 0
-      ? "  trust-edge aggregates match across stores"
-      : `  ${mismatches.length} TRUST-RECOMPUTE MISMATCH(ES)`,
-  )
-  for (const mismatch of mismatches.slice(0, 20)) {
-    console.log(
-      `    ${mismatch.key}: d1=${mismatch.d1 ? `${mismatch.d1.edgeCount}/${mismatch.d1.weightSum}` : "<missing>"} pg=${mismatch.postgres ? `${mismatch.postgres.edgeCount}/${mismatch.postgres.weightSum}` : "<missing>"}`,
-    )
-  }
-  return mismatches.length === 0
-}
-
-/**
  * Work-request set-membership: within-store orphan counts (both 0 + equal)
  * and cross-store equality of the cross-domain reference sets.
  */
@@ -397,13 +364,12 @@ const main = async (): Promise<number> => {
         allGood = (await verifyTable(sql, options, table)) && allGood
       }
       if (options.table === undefined) {
-        allGood = (await verifyTrustRecompute(sql, options)) && allGood
         allGood =
           (await verifyWorkRequestReferential(sql, options)) && allGood
       }
       console.log(
         allGood
-          ? "\nVERIFY OK: exact counts, domain tallies, newest-N hashes, trust recomputation equality, and work-request set-membership referential checks match."
+          ? "\nVERIFY OK: exact counts, domain tallies, newest-N hashes, and work-request set-membership referential checks match."
           : "\nVERIFY FAILED: mismatches above — investigate before any read cutover.",
       )
       return allGood ? 0 : 1

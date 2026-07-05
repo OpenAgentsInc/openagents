@@ -1,6 +1,6 @@
 /**
  * KS-8.10 remainder (#8338): forum remainder domain — the SHARED table
- * registry and Postgres converge-upsert core for the THIRTEEN remainder
+ * registry and Postgres converge-upsert core for the ELEVEN remainder
  * forum tables that finish the KS-8.10 family behind the parent content
  * lane (#8321, `forum-content-tables.ts`, migration `0014_forum_content.sql`).
  *
@@ -8,7 +8,6 @@
  *   - private content: `forum_private_message_threads`,
  *     `forum_private_messages` (bodies are refs; diagnostics stay keys-only);
  *   - `forum_acl_grants`;
- *   - trust (derived): `forum_trust_edges`, `forum_actor_forum_trust`;
  *   - `forum_score_snapshots` (derived);
  *   - `forum_notification_reads`;
  *   - the work-request lifecycle family (6): `forum_work_requests`,
@@ -38,9 +37,9 @@
  * that EXIST in D1, so a converge on the PK reproduces exactly the D1 row
  * set. Secondary uniques exist on the Postgres twins for parity; a
  * violation there surfaces as a logged dual-write failure — the drift
- * signal. The trust and score-snapshot tables are DERIVED (recomputed from
- * events in D1); this lane mirrors the D1 snapshot and VERIFIES equality
- * against D1 rather than re-running the recompute on Postgres.
+ * signal. The score-snapshot table is DERIVED (recomputed from events in
+ * D1); this lane mirrors the D1 snapshot and VERIFIES equality against D1
+ * rather than re-running the recompute on Postgres.
  */
 
 import {
@@ -54,8 +53,6 @@ export type ForumRemainderTable =
   | "forum_private_message_threads"
   | "forum_private_messages"
   | "forum_acl_grants"
-  | "forum_trust_edges"
-  | "forum_actor_forum_trust"
   | "forum_score_snapshots"
   | "forum_notification_reads"
   | "forum_work_requests"
@@ -66,18 +63,16 @@ export type ForumRemainderTable =
   | "forum_work_request_results"
 
 /**
- * Dependency order: private-message threads before messages; trust edges
- * before the aggregated actor_forum_trust; work_requests before every
- * lifecycle child (offers before acceptances/results, which reference an
- * offer id). No FKs on the Postgres twins, but backfill pages land parents
- * before children and the set-membership verify expects this order.
+ * Dependency order: private-message threads before messages; work_requests
+ * before every lifecycle child (offers before acceptances/results, which
+ * reference an offer id). No FKs on the Postgres twins, but backfill pages
+ * land parents before children and the set-membership verify expects this
+ * order.
  */
 export const FORUM_REMAINDER_TABLES: ReadonlyArray<ForumRemainderTable> = [
   "forum_private_message_threads",
   "forum_private_messages",
   "forum_acl_grants",
-  "forum_trust_edges",
-  "forum_actor_forum_trust",
   "forum_score_snapshots",
   "forum_notification_reads",
   "forum_work_requests",
@@ -106,18 +101,6 @@ export const FORUM_REMAINDER_TABLE_COLUMNS: Readonly<
     "granted_by_actor_ref",
     "created_at",
     "revoked_at",
-  ],
-  forum_actor_forum_trust: [
-    "id",
-    "actor_ref",
-    "forum_id",
-    "trust_score",
-    "reward_count",
-    "report_count",
-    "moderator_adjustment_count",
-    "score_ref",
-    "updated_at",
-    "archived_at",
   ],
   forum_notification_reads: [
     "id",
@@ -163,17 +146,6 @@ export const FORUM_REMAINDER_TABLE_COLUMNS: Readonly<
     "score_ref",
     "rebuilt_from_event_ref",
     "public_projection_json",
-    "created_at",
-    "archived_at",
-  ],
-  forum_trust_edges: [
-    "id",
-    "source_actor_ref",
-    "target_actor_ref",
-    "forum_id",
-    "trust_kind",
-    "weight",
-    "event_ref",
     "created_at",
     "archived_at",
   ],
@@ -280,18 +252,16 @@ export const FORUM_REMAINDER_TABLE_COLUMNS: Readonly<
  * Primary-key column per table — the converge-upsert arbiter AND the
  * read-back mirror key. Every scoped D1 write keys these tables by this
  * column, and D1 never replaces a row's id, so the PK is the stable
- * arbiter. All thirteen use `id`.
+ * arbiter. All eleven use `id`.
  */
 export const FORUM_REMAINDER_TABLE_PK: Readonly<
   Record<ForumRemainderTable, string>
 > = {
   forum_acl_grants: "id",
-  forum_actor_forum_trust: "id",
   forum_notification_reads: "id",
   forum_private_message_threads: "id",
   forum_private_messages: "id",
   forum_score_snapshots: "id",
-  forum_trust_edges: "id",
   forum_work_request_acceptances: "id",
   forum_work_request_lifecycle_posts: "id",
   forum_work_request_offers: "id",

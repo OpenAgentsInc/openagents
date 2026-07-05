@@ -1,13 +1,11 @@
 // KS-8.10 remainder (#8338): forum remainder backfill core — idempotency,
-// verify fidelity, trust recompute-and-compare, and work-request
-// set-membership referential checks.
+// verify fidelity, and work-request set-membership referential checks.
 //
 // Load-bearing properties: converge upserts are IDEMPOTENT and converge to
 // the LATEST D1 snapshot; the row hash canonicalizes D1 numbers and
-// postgres.js bigint strings to the same digest; the trust-edge aggregate
-// recomputes identically on both stores and the comparator catches any
-// drift; the work-request referential checks resolve within a store and
-// flag orphans; the cross-domain ref-set digest is order-stable. Privacy:
+// postgres.js bigint strings to the same digest; the work-request
+// referential checks resolve within a store and flag orphans; the
+// cross-domain ref-set digest is order-stable. Privacy:
 // no assertion prints a subject, participant, or message content — hashes,
 // keys, and counts only.
 
@@ -22,7 +20,6 @@ import {
 } from "bun:test"
 import {
   buildForumRemainderVerifyReport,
-  compareTrustEdgeAggregates,
   FORUM_REMAINDER_SCALAR_TALLIES,
   forumRemainderRowHash,
   forumRemainderVerifyReportClean,
@@ -31,9 +28,7 @@ import {
   postgresForumRemainderScalar,
   postgresRefSetDigest,
   postgresScalarValue,
-  postgresTrustEdgeAggregate,
   refSetDigest,
-  trustEdgeAggregateFromRows,
   FORUM_WORK_REQUEST_CROSS_DOMAIN_REF_SETS,
   FORUM_WORK_REQUEST_REFERENTIAL_CHECKS,
   upsertForumRemainderRows,
@@ -118,22 +113,6 @@ const offerRow = (
   ...overrides,
 })
 
-const trustEdgeRow = (
-  n: number,
-  overrides: Partial<Record<string, unknown>> = {},
-): D1RemainderRow => ({
-  archived_at: null,
-  created_at: T0,
-  event_ref: `event_${n}`,
-  forum_id: "forum_1",
-  id: `edge_${n}`,
-  source_actor_ref: "agent_src",
-  target_actor_ref: "agent_tgt",
-  trust_kind: "reward",
-  weight: 1,
-  ...overrides,
-})
-
 // ---------------------------------------------------------------------------
 // Pure comparators
 // ---------------------------------------------------------------------------
@@ -155,46 +134,6 @@ describe("forumRemainderRowHash (pure)", () => {
     expect(forumRemainderRowHash("forum_work_requests", d1Side)).toBe(
       forumRemainderRowHash("forum_work_requests", pgSide),
     )
-  })
-})
-
-describe("compareTrustEdgeAggregates (pure)", () => {
-  const rows = (
-    entries: ReadonlyArray<[string, string, string, number, number]>,
-  ) =>
-    trustEdgeAggregateFromRows(
-      entries.map(([actor, forum, kind, count, weight]) => ({
-        edge_count: count,
-        forum_key: forum,
-        target_actor_ref: actor,
-        trust_kind: kind,
-        weight_sum: weight,
-      })),
-    )
-
-  test("equal aggregates produce no mismatches", () => {
-    const agg = rows([
-      ["agent_tgt", "forum_1", "reward", 3, 5],
-      ["agent_tgt", "forum_1", "report", 1, -1],
-    ])
-    expect(compareTrustEdgeAggregates(agg, agg)).toEqual([])
-  })
-
-  test("missing group, count drift, and extra group are caught", () => {
-    const d1 = rows([
-      ["a", "f", "reward", 3, 5],
-      ["a", "f", "report", 1, -1],
-    ])
-    const pg = rows([
-      ["a", "f", "reward", 2, 5], // count drift
-      // report group missing
-      ["b", "f", "reward", 1, 1], // extra
-    ])
-    expect(compareTrustEdgeAggregates(d1, pg).map(m => m.key).sort()).toEqual([
-      "afreport",
-      "afreward",
-      "bfreward",
-    ])
   })
 })
 
@@ -297,27 +236,6 @@ describe.skipIf(!hasLocalPostgres())(
       })
       expect(report.newestHashMismatches).toEqual([])
       expect(forumRemainderVerifyReportClean(report)).toBe(true)
-    })
-
-    test("trust recompute equality: postgres aggregate matches the D1-side helper", async () => {
-      await upsertForumRemainderRows(sql, "forum_trust_edges", [
-        trustEdgeRow(1, { trust_kind: "reward", weight: 2 }),
-        trustEdgeRow(2, { trust_kind: "reward", weight: 3 }),
-        trustEdgeRow(3, { trust_kind: "report", weight: -1 }),
-      ])
-      const pgAgg = await postgresTrustEdgeAggregate(sql)
-      const d1Agg = trustEdgeAggregateFromRows([
-        { edge_count: 2, forum_key: "forum_1", target_actor_ref: "agent_tgt", trust_kind: "reward", weight_sum: 5 },
-        { edge_count: 1, forum_key: "forum_1", target_actor_ref: "agent_tgt", trust_kind: "report", weight_sum: -1 },
-      ])
-      expect(compareTrustEdgeAggregates(d1Agg, pgAgg)).toEqual([])
-
-      // Drift the D1-side reward count — the comparator must flag it.
-      const drifted = trustEdgeAggregateFromRows([
-        { edge_count: 99, forum_key: "forum_1", target_actor_ref: "agent_tgt", trust_kind: "reward", weight_sum: 5 },
-        { edge_count: 1, forum_key: "forum_1", target_actor_ref: "agent_tgt", trust_kind: "report", weight_sum: -1 },
-      ])
-      expect(compareTrustEdgeAggregates(drifted, pgAgg).length).toBe(1)
     })
 
     test("work-request set-membership: referential checks clean, orphan detected", async () => {

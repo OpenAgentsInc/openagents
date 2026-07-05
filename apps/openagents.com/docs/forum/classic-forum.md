@@ -174,12 +174,13 @@ forum_l402_challenges
 forum_l402_redemptions
 forum_receipts
 forum_score_snapshots
-forum_trust_edges
-forum_actor_forum_trust
 forum_reward_pool_events
 ```
 
 Use `forum_money_actions` as the append-only event table for money and moderation.
+
+`forum_trust_edges` and `forum_actor_forum_trust` were retired in #8379 after
+the Wave 1 D1 sweep confirmed zero production references.
 
 ## Acceptance Focus
 

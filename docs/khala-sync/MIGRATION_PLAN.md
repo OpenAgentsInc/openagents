@@ -879,12 +879,16 @@ this lane never touches them. Prod cutover procedure:
 evidence + D1 drop tracked on epic
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
 
-**KS-8.10 REMAINDER machinery status (2026-07-04, #8338):** LANDED for the
-thirteen remainder tables — Postgres schema (`khala-sync-server` migration
-`0027_forum_remainder.sql`: `forum_private_message_threads`,
-`forum_private_messages`, `forum_acl_grants`, `forum_trust_edges`,
-`forum_actor_forum_trust`, `forum_score_snapshots`,
-`forum_notification_reads`, and the work-request lifecycle family (6)
+**KS-8.10 REMAINDER machinery status (2026-07-04, #8338; #8379 cleanup on
+2026-07-05):** LANDED for the eleven active remainder tables after the
+write-dead trust pair was removed. Historical migration
+`0027_forum_remainder.sql` created the original thirteen Postgres twins;
+`0030_drop_forum_trust_remainder.sql` drops `forum_trust_edges` and
+`forum_actor_forum_trust` to match Worker D1 migration
+`0300_drop_forum_trust_tables.sql`. The active Postgres schema now covers
+`forum_private_message_threads`, `forum_private_messages`,
+`forum_acl_grants`, `forum_score_snapshots`, `forum_notification_reads`,
+and the work-request lifecycle family (6)
 `forum_work_requests`, `forum_work_request_relay_links`,
 `forum_work_request_offers`, `forum_work_request_lifecycle_posts`,
 `forum_work_request_acceptances`, `forum_work_request_results`; every
@@ -902,18 +906,17 @@ remainder tables as passthrough and the remainder classifier treats content
 tables as passthrough, so the two nested mirroring wrappers never
 double-mirror. PRIVACY: private-message threads/messages store exactly what
 D1 stores (bodies behind `content_ref`); diagnostics carry row keys/hashes
-only — never subjects, participants, or content. The DERIVED tables
-(`forum_trust_edges`, `forum_actor_forum_trust`, `forum_score_snapshots`)
-are recomputed from events in D1; this lane mirrors the D1 snapshot and
-VERIFIES against D1 rather than re-running the recompute on Postgres.
+only — never subjects, participants, or content. The remaining DERIVED
+table, `forum_score_snapshots`, is recomputed from events in D1; this lane
+mirrors the D1 snapshot and VERIFIES against D1 rather than re-running the
+recompute on Postgres.
 Resumable backfill + exact-verify CLI
 (`packages/khala-sync-server/scripts/backfill-forum-remainder.ts`: exact
-counts, domain tallies, newest-N row hashes, TRUST RECOMPUTE-AND-COMPARE —
-`forum_trust_edges` grouped aggregate computed identically on both stores
-and compared — and WORK-REQUEST SET-MEMBERSHIP referential checks:
-within-store orphan counts plus cross-store equality of the cross-domain
-reference sets that point at KS-8.1 assignments / KS-8.8 tips by id, no
-cross-store joins). Contract suite runs the row seam against BOTH stores
+counts, domain tallies, newest-N row hashes, and WORK-REQUEST
+SET-MEMBERSHIP referential checks: within-store orphan counts plus
+cross-store equality of the cross-domain reference sets that point at
+KS-8.1 assignments / KS-8.8 tips by id, no cross-store joins). Contract
+suite runs the row seam against BOTH stores
 plus the REAL private-message + notification-read repository writers
 end-to-end through the mirror
 (`forum-remainder-repository.contract.test.ts`,
@@ -931,14 +934,14 @@ final D1 drop remain epic-gated on
 KS-8.19 [#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
 
 - **What:** the forum content core: forums/boards/categories, topics,
-  posts + bodies + revisions, private messages, trust edges/scores, ACLs,
+  posts + bodies + revisions, private messages, score snapshots, ACLs,
   moderation, watches/bookmarks/notifications, work-request lifecycle.
   (The money half went in KS-8.8.)
 - **Tables (~26):** `forum_forums`, `forum_boards`, `forum_categories`,
   `forum_topics`, `forum_posts`, `forum_post_bodies`,
   `forum_post_revisions`, `forum_private_message_threads`,
   `forum_private_messages`, `forum_acl_grants`, `forum_actor_follows`,
-  `forum_actor_forum_trust`, `forum_trust_edges`, `forum_score_snapshots`,
+  `forum_score_snapshots`,
   `forum_moderation_events`, `forum_notification_reads`,
   `forum_bookmarks`, `forum_watches`, `forum_reports`,
   `forum_context_links`, `forum_work_request_*` (6).

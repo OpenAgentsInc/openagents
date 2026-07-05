@@ -19,6 +19,10 @@ export const defaultScanRoots = [
   'packages',
   'apps/web/src',
   'scripts',
+  '../../apps',
+  '../../clients',
+  '../../packages',
+  '../../scripts',
 ]
 
 export const confirmedZeroReferenceTables = new Map([
@@ -320,6 +324,7 @@ const scanReferenceFiles = ({ root, scanRoots, tableNames }) => {
   const pattern = referencePatternFor(tableNames)
   const scannedFiles = existingRoots(root, scanRoots)
     .flatMap(listFiles)
+    .filter((path, index, files) => files.indexOf(path) === index)
     .filter(path => sourceFilePattern.test(path))
     .filter(path => !path.endsWith('d1-zero-reference-sweep.mjs'))
     .filter(path => !path.endsWith('d1-zero-reference-sweep.test.ts'))
@@ -542,7 +547,7 @@ export const formatMarkdownReport = sweep => {
     '## Sweep Rules',
     '',
     '- Migration inventory is extracted from `CREATE TABLE` statements under `workers/api/migrations`.',
-    '- Production references are lexical table-name hits in non-test code under `workers/api/src`, `packages`, `apps/web/src`, and `scripts`.',
+    '- Production references are lexical table-name hits in non-test code under `apps/openagents.com` plus root `apps/`, `clients/`, `packages/`, and `scripts/`.',
     '- Test references are lexical hits in `.test.*`, `.spec.*`, `test/`, `tests/`, `fixtures/`, `__fixtures__/`, or `test-fixtures/` paths.',
     '- JavaScript and TypeScript comments are ignored before scanning so explanatory comments do not keep a table live.',
     '- The sweep is intentionally conservative: dynamic SQL/table-name construction can be a false negative, and table names mentioned in runtime strings can be a false positive. Before dropping any table, rerun this script, inspect the row, and grep the table name directly.',

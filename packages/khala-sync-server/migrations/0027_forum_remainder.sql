@@ -1,10 +1,11 @@
 -- KS-8.10 remainder (#8338): forum remainder domain — Postgres twins of the
--- THIRTEEN remainder forum tables that finish the KS-8.10 family after the
+-- original THIRTEEN remainder forum tables that finish the KS-8.10 family after the
 -- content core (#8321, migration 0014_forum_content.sql):
 --   * private content: `forum_private_message_threads`,
 --     `forum_private_messages` (worker migration 0101);
 --   * `forum_acl_grants` (0101);
---   * trust (DERIVED): `forum_trust_edges`, `forum_actor_forum_trust` (0101);
+--   * trust (DERIVED, later dropped by 0030/#8379): `forum_trust_edges`,
+--     `forum_actor_forum_trust` (0101);
 --   * `forum_score_snapshots` (DERIVED, 0101);
 --   * `forum_notification_reads` (0113);
 --   * work-request lifecycle (6): `forum_work_requests`,
@@ -34,12 +35,10 @@
 -- and sats amounts are bigint; stores cast reads with Number(). Tightening
 -- to native types is a post-retirement cleanup, never mid-migration.
 --
--- DERIVED TABLES (recompute-and-compare): `forum_trust_edges`,
--- `forum_actor_forum_trust`, and `forum_score_snapshots` are recomputed
--- from events in D1. This lane mirrors the D1 snapshot and VERIFIES the
--- twin against D1 (counts, aggregate tallies, and a portable cross-table
--- recompute of actor_forum_trust from trust_edges that runs identically on
--- both stores) rather than re-running the recompute on Postgres.
+-- DERIVED TABLES (recompute-and-compare): this migration originally carried
+-- `forum_trust_edges`, `forum_actor_forum_trust`, and `forum_score_snapshots`.
+-- #8379 / migration 0030 drops the two write-dead trust twins; the active
+-- remainder contract keeps `forum_score_snapshots`.
 --
 -- IDEMPOTENCY / NATURAL KEYS PORT EXACTLY (MIGRATION_PLAN §1):
 --   * `forum_work_requests`: UNIQUE(idempotency_key), UNIQUE(topic_id),
@@ -55,7 +54,8 @@
 --   * `forum_acl_grants`: UNIQUE(actor_ref, forum_id, permission, scope_ref)
 --     — SQLite treats NULL forum_id as distinct inside a composite unique;
 --     Postgres default (NULLS DISTINCT) matches.
---   * `forum_actor_forum_trust`: UNIQUE(actor_ref, forum_id).
+--   * `forum_actor_forum_trust`: UNIQUE(actor_ref, forum_id) (historical,
+--     dropped by 0030/#8379).
 --   * `forum_notification_reads`: D1's PARTIAL uniques
 --     (actor_ref, notification_id) and (actor_ref, idempotency_key), both
 --     WHERE archived_at IS NULL, port as the same partial indexes.

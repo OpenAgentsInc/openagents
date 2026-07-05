@@ -498,7 +498,7 @@ CREATE TABLE forum_context_links (
 `
 
 /**
- * The D1 DDL for the KS-8.10 remainder domain (#8338): the thirteen
+ * The D1 DDL for the KS-8.10 remainder domain (#8338): the eleven
  * remainder forum tables (worker migrations 0101/0113/0166/0168/0179),
  * with `provider_pubkey` appended to offers as migration 0179 does. FKs
  * dropped so the contract suite seeds rows directly.
@@ -538,32 +538,6 @@ CREATE TABLE forum_acl_grants (
   created_at TEXT NOT NULL,
   revoked_at TEXT,
   UNIQUE (actor_ref, forum_id, permission, scope_ref)
-);
-
-CREATE TABLE forum_trust_edges (
-  id TEXT PRIMARY KEY NOT NULL,
-  source_actor_ref TEXT NOT NULL,
-  target_actor_ref TEXT NOT NULL,
-  forum_id TEXT,
-  trust_kind TEXT NOT NULL,
-  weight INTEGER NOT NULL DEFAULT 0,
-  event_ref TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  archived_at TEXT
-);
-
-CREATE TABLE forum_actor_forum_trust (
-  id TEXT PRIMARY KEY NOT NULL,
-  actor_ref TEXT NOT NULL,
-  forum_id TEXT NOT NULL,
-  trust_score INTEGER NOT NULL DEFAULT 0,
-  reward_count INTEGER NOT NULL DEFAULT 0,
-  report_count INTEGER NOT NULL DEFAULT 0,
-  moderator_adjustment_count INTEGER NOT NULL DEFAULT 0,
-  score_ref TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  archived_at TEXT,
-  UNIQUE (actor_ref, forum_id)
 );
 
 CREATE TABLE forum_score_snapshots (

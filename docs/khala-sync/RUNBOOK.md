@@ -901,12 +901,14 @@ behind.
 
 ### Remainder tables (KS-8.10 remainder, #8338)
 
-The thirteen remainder forum tables — `forum_private_message_threads`,
-`forum_private_messages`, `forum_acl_grants`, `forum_trust_edges`,
-`forum_actor_forum_trust`, `forum_score_snapshots`,
+The eleven active remainder forum tables — `forum_private_message_threads`,
+`forum_private_messages`, `forum_acl_grants`, `forum_score_snapshots`,
 `forum_notification_reads`, and the work-request lifecycle family (6) —
 ride this SAME sequence and the SAME flags (`KHALA_SYNC_FORUM_DUAL_WRITE` /
-`KHALA_SYNC_FORUM_READS`). Their mirror
+`KHALA_SYNC_FORUM_READS`). The historical trust pair
+`forum_trust_edges` / `forum_actor_forum_trust` was dropped in #8379
+(`apps/openagents.com` D1 migration `0300_drop_forum_trust_tables.sql` and
+Khala Sync migration `0030_drop_forum_trust_remainder.sql`). Their mirror
 (`apps/openagents.com/workers/api/src/forum/forum-remainder-store.ts`,
 `wrapForumRemainderMirroring`) is composed around
 `forumContentDatabaseForEnv`, so dual-write turning on for the content lane
@@ -915,13 +917,9 @@ schema is `0027_forum_remainder.sql` (apply with the same migration
 runner). Backfill + verify is the sibling CLI
 `packages/khala-sync-server/scripts/backfill-forum-remainder.ts` (same
 `--verify` / `--restart` / rowid-cursor semantics; state file
-`.forum-remainder-backfill-state.json`). Its `--verify` adds two
-domain-specific gates beyond counts/tallies/hashes:
+`.forum-remainder-backfill-state.json`). Its `--verify` adds the
+domain-specific gate beyond counts/tallies/hashes:
 
-- **Trust recompute-and-compare** — the `forum_trust_edges` grouped
-  aggregate (per target_actor / forum / kind: count + weight sum) is
-  computed identically on D1 and Postgres and compared; the derived trust
-  tables are verified against D1, not re-derived on Postgres.
 - **Work-request set-membership referential checks** — within-store orphan
   counts (every lifecycle child's `work_request_id` and acceptance/result
   `offer_id` resolves to a parent, no cross-store joins) plus cross-store
