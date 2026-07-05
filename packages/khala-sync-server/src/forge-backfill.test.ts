@@ -110,7 +110,13 @@ const tokenRow = (
   state: "active",
   subject_ref: "agent_raynor",
   tenant_ref: TENANT,
-  token_hash: "e3".repeat(32),
+  // Distinct per-row by construction (KS-8.16 follow-up, #8358): D1's real
+  // `idx_forge_git_access_tokens_hash` unique index is on `token_hash`
+  // ALONE (no tenant scoping), now mirrored in Postgres by migration
+  // 0035_forge_domain_ref_lock_uniques.sql — two fixture rows sharing one
+  // hash is unrealistic test data (a real token hash collision), not a
+  // production scenario, and would violate the new constraint.
+  token_hash: `${"e3".repeat(31)}${n.toString(16).padStart(2, "0")}`,
   token_prefix: "oa_forge_git_ab",
   token_ref: `token_${n}`,
   ...overrides,

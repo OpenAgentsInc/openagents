@@ -619,6 +619,70 @@ left unwired this pass rather than risk a tenant's git-ref integrity on a
 piecemeal flip — tracked on #8358. The D1 drop is confirmed consolidated
 into the epic-wide KS-8.19 sweep (#8330), not attempted here.
 
+**KS-8.16 follow-up status (2026-07-05, #8358, third pass): constraint
+parity landed — write cutover STILL deliberately unwired.** Re-derived
+the D1 uniques EXACTLY from the worker migration files
+(0251/0252/0253/0255/0260) rather than trusting the prior pass's tracking
+comment, and found NINE distinct unique indexes/constraints were missing
+from the Postgres twin, not six: the prior count bundled two pairs
+together ("packfile digest / R2 key" is two separate D1 UNIQUE indexes on
+different columns — `idx_forge_git_packfile_archives_digest` and
+`idx_forge_git_packfile_archives_r2_key`; "github-issue-number/change_ref"
+is one unique index each on two different tables) and MISSED
+`forge_dispatch_leases`' `idx_forge_dispatch_leases_idempotency`
+(`UNIQUE (tenant_ref, idempotency_key_hash) WHERE idempotency_key_hash IS
+NOT NULL`) entirely. Verified a real backfilled copy of BOTH `khala_sync_prod`
+and `khala_sync_staging` for existing violations of all nine candidate
+constraints before writing anything — zero violations on either database
+(prod Forge traffic is still tiny: single/low-digit rows per table).
+Wrote and applied `khala-sync-server` migration
+`0035_forge_domain_ref_lock_uniques.sql` (staging then prod, via
+`bun scripts/migrate.ts`) adding all nine: `forge_coordination_issues`
+(tenant_ref, github_issue_number), `forge_coordination_prs` (tenant_ref,
+change_ref), `forge_dispatch_leases` (tenant_ref, work_ref) WHERE
+state='active', `forge_dispatch_leases` (tenant_ref,
+idempotency_key_hash) WHERE NOT NULL, `forge_git_packfile_archives`
+(tenant_ref, packfile_sha256) [replacing the existing plain index of the
+same name], `forge_git_packfile_archives` (artifact_r2_key),
+`forge_git_access_tokens` (token_hash) [a new index, distinct from the
+existing (token_hash, state) auth-lookup index], `forge_git_ref_locks`
+(tenant_ref, repository_ref, ref_name) WHERE state='held' [moot for the
+new advisory-lock write path — kept for schema parity], and
+`forge_github_mirror_receipts` (tenant_ref, promotion_ref,
+destination_github_repository, destination_github_ref) [a new index,
+distinct from the existing listing index that also orders by
+updated_at]. Post-migration `bun scripts/backfill-forge.ts --verify
+--verify-newest 50` re-ran CLEAN on prod: all 16 tables exact row counts
++ newest-hash matches, ref-set digest matches, merge-queue replay digest
+matches. The new unique constraint on `forge_git_access_tokens.token_hash`
+immediately caught a real test-fixture bug in
+`forge-backfill.test.ts` — two `tokenRow()` fixture rows shared one
+hardcoded fake hash (`"e3".repeat(32)`), which is unrealistic test data
+(a real SHA-256 collision), not a production scenario; fixed to derive a
+distinct hash per row. Full `khala-sync-server` suite (355 tests) and the
+seven forge-prefixed suites in `workers/api` (49 tests) pass;
+`workers/api` typecheck, `check:architecture` zero-debt, and
+`check:deploy` (full suite) are clean. **Write cutover — RE-EVALUATED and
+STILL deliberately NOT wired**, for two reasons: (1) the domain-wide
+write-authority-incoherence concern from the second pass is unchanged —
+flipping only the canonical git store still splits authority across the
+other four forge stores, which remain D1-first with no coordinated
+plan landed this pass to flip all five together; (2) a NEW finding on
+inspection this pass: `forge-git-canonical-postgres-store.ts` has NO
+path that mirrors its writes back into D1 at all (it is a pure
+Postgres-only implementation). Wiring it as write authority today would
+mean D1 goes stale for canonical git tables immediately, and the
+existing FAIL-SOFT-to-D1 read fallback (used when `KHALA_SYNC_FORGE_READS
+=postgres` and a Postgres call errors) would then silently serve stale
+ref state instead of failing loud — worse than today's D1-authoritative
+behavior. A safe write cutover needs either a reverse D1-mirror write
+path added to the Postgres store, or an explicit accepted-risk decision
+to drop the D1 read fallback once Postgres is write-authoritative; this
+pass does not resolve that gap, so per the task's "if in doubt, leave D1
+as sole write authority" guardrail, write authority stays on D1 for all
+five forge stores. Still tracked on #8358; the D1 drop remains
+consolidated into #8330.
+
 **KS-8.17 status (2026-07-04):** core machinery LANDED — Postgres schema
 (`khala-sync-server` migration `0024_supervision_longtail.sql`: all 29
 supervision long-tail twins — `adjutant_*` (10), `omni_*` (9),

@@ -1830,11 +1830,20 @@ shows a token hash or prefix, treat it as an incident, not drift.
 
 REF LOCKING: D1 remains the SOLE lock authority in this phase. The
 Postgres twin only receives resolved lock rows via read-back; the
-held-lock protocol is deliberately NOT emulated in Postgres. The
-read/write cutover step re-ports the protocol onto real
-`SELECT ... FOR UPDATE` row locks and re-adds the partial uniques
-(active-lease-per-work, held-lock-per-ref, token-hash, packfile digest,
-mirror destination tuple) that were intentionally left off the twins.
+held-lock protocol is deliberately NOT emulated in Postgres (a real
+`pg_advisory_xact_lock` + `SELECT ... FOR UPDATE` port exists in
+`forge-git-canonical-postgres-store.ts` but has no production call site).
+**Schema parity — DONE (2026-07-05, #8358 third pass):** all nine
+uniques the D1 side enforces (issues' github_issue_number, PRs'
+change_ref, dispatch leases' active-work and idempotency-key-hash,
+packfile digest and R2 key, access-token hash, ref-locks' held-per-ref,
+mirror-receipt destination tuple — see the third-pass section below for
+the exact list, which corrects the prior "six" count to nine) are now
+also enforced in Postgres via migration
+`0035_forge_domain_ref_lock_uniques.sql`. The WRITE cutover itself
+(wiring `makePostgresForgeGitCanonicalStore` as write authority) remains
+NOT done — constraint parity was a precondition, not the whole job; see
+the third-pass section for the two concerns still open.
 
 Diagnostics: the drift metric is `khala_sync_forge_dual_write_failed`
 (keys only). Treat a nonzero steady rate as drift — fix, then re-run the
@@ -2017,6 +2026,94 @@ behind.
   risk if done piecemeal, so deliberately left undone this pass) — and the
   D1 drop, which stays with #8330. The READ cutover is DONE (reads served
   from Postgres, fail-soft). Left OPEN on #8358 with this status.
+
+### 2026-07-05 constraint-parity pass — nine uniques added, write cutover STILL unwired (#8358, third pass)
+
+- **Re-derived the missing uniques exactly, instead of trusting the
+  "six" count.** Diffed the D1 migration files
+  (0251/0252/0253/0255/0260) against `0021_forge_domain.sql` column by
+  column. Found **NINE** distinct missing unique indexes, not six — the
+  prior pass's tracking comment bundled "packfile digest / R2 key" as one
+  bullet (it is two separate D1 UNIQUE indexes on different columns) and
+  never named `forge_dispatch_leases`' idempotency-key-hash uniqueness at
+  all. The corrected, exhaustive list:
+  1. `forge_coordination_issues` — UNIQUE (tenant_ref, github_issue_number)
+     WHERE NOT NULL
+  2. `forge_coordination_prs` — UNIQUE (tenant_ref, change_ref)
+  3. `forge_dispatch_leases` — UNIQUE (tenant_ref, work_ref) WHERE
+     state='active'
+  4. `forge_dispatch_leases` — UNIQUE (tenant_ref, idempotency_key_hash)
+     WHERE NOT NULL (missed by the prior pass's tracking comment)
+  5. `forge_git_packfile_archives` — UNIQUE (tenant_ref, packfile_sha256)
+  6. `forge_git_packfile_archives` — UNIQUE (artifact_r2_key) (missed by
+     the prior pass's tracking comment)
+  7. `forge_git_access_tokens` — UNIQUE (token_hash)
+  8. `forge_git_ref_locks` — UNIQUE (tenant_ref, repository_ref, ref_name)
+     WHERE state='held' (moot for the new advisory-lock write path, kept
+     for schema parity)
+  9. `forge_github_mirror_receipts` — UNIQUE (tenant_ref, promotion_ref,
+     destination_github_repository, destination_github_ref)
+- **Verified BEFORE writing the migration**: queried a real backfilled
+  copy of both `khala_sync_prod` and `khala_sync_staging` for existing
+  violations of all nine candidate constraints — **zero violations on
+  either database** (prod Forge traffic remains single/low-digit rows per
+  table: 3 issues, 2 PRs, 1 packfile, 4 tokens, 1 ref, 1 held lock, 0
+  mirror receipts, etc.).
+- **Migration applied**: `packages/khala-sync-server/migrations/0035_forge_domain_ref_lock_uniques.sql`
+  (full column/index definitions and D1 cross-references in the file
+  header), applied to staging then prod via `bun scripts/migrate.ts`
+  (staging also picked up the already-merged, previously-pending
+  `0034_billing_bounded_read_indexes.sql` from an unrelated concurrent
+  lane in the same run — expected, not this lane's change).
+- **Post-migration verify**: `bun scripts/backfill-forge.ts --verify
+  --verify-newest 50` against the direct prod Cloud SQL URL — CLEAN
+  across all 16 tables (exact row counts, newest-hash matches, ref-set
+  digest matches for the 1 repository, merge-queue replay digest matches
+  vacuously). `pg_indexes` confirms all nine new unique indexes exist.
+- **A real bug the new constraint caught**: `forge-git-access-tokens`'
+  new `UNIQUE (token_hash)` index immediately failed
+  `forge-backfill.test.ts`'s ephemeral-Postgres suite — two `tokenRow()`
+  test fixtures shared one hardcoded fake `token_hash`
+  (`"e3".repeat(32)`), which is unrealistic test data (a literal SHA-256
+  collision between two different tokens), not a production integrity
+  finding. Fixed the fixture to derive a distinct hash per row; the row
+  KEY used in redaction assertions is built from `tenant_ref`/`token_ref`
+  only (never `token_hash`), so the fix has no effect on custody-redaction
+  coverage.
+- **Test/typecheck/architecture/deploy status**: `khala-sync-server` full
+  suite (355 tests, was 354 + the fixture fix) and all seven
+  forge-prefixed `workers/api` suites (49 tests) pass; `workers/api`
+  typecheck clean; `apps/openagents.com` `check:architecture` zero-debt
+  clean (only pre-existing tracked-debt categories, unrelated to Forge);
+  full `check:deploy` clean.
+- **Write cutover — RE-EVALUATED, STILL deliberately NOT wired.** The
+  named blocker (missing constraints) is now fixed, but two independent
+  concerns remain:
+  1. **Domain-wide incoherence (unchanged from the second pass)**: the
+     canonical git store is one of five forge stores that all currently
+     write D1-first and mirror to Postgres; flipping only it to Postgres
+     write authority splits authority across the domain, and this pass
+     did not build or land a coordinated all-five flip.
+  2. **NEW finding this pass**: `forge-git-canonical-postgres-store.ts`
+     has **no path that mirrors its writes back into D1 at all** — it is
+     a pure Postgres-only implementation of `ForgeGitCanonicalStore`.
+     Wiring it as write authority today would mean D1 goes stale for
+     canonical git tables immediately, and the existing FAIL-SOFT-to-D1
+     read fallback (`KHALA_SYNC_FORGE_READS=postgres`, used when a
+     Postgres call errors) would then silently serve STALE ref state
+     instead of failing loud on a Postgres outage — a regression versus
+     today's behavior. Safely wiring write authority needs either a
+     reverse D1-mirror write path in the Postgres store, or an explicit
+     owner-approved decision to drop the D1 read fallback once Postgres
+     becomes write-authoritative. Neither exists yet.
+  Per the task's "if in doubt, leave D1 as sole write authority and
+  document precisely why" guardrail, D1 remains write authority for all
+  five forge stores. Constraint parity is a real, necessary precondition
+  now satisfied; it was not sufficient on its own.
+- **D1 drop**: still out of scope, still consolidated into #8330.
+- **Status**: left OPEN on #8358. Read cutover remains DONE and live;
+  write cutover remains the next concrete step, now unblocked on
+  constraints but still blocked on the reverse-mirror gap above.
 
 ## Billing/Stripe/pay-ins domain cutover (KS-8.7, #8318)
 
