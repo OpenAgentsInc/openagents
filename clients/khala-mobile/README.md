@@ -225,6 +225,9 @@ deploys the OpenAgents server. It does not call Expo hosted update commands.
   classifier. Mobile request boundaries should map status, transport, timeout,
   and malformed-response failures through this seam instead of surfacing raw
   response bodies, provider payloads, tokens, or chat content.
+- `src/diagnostics/crash-reporting.ts` is the crash-reporting seam. It is
+  no-op by default and emits only bounded/redacted render-crash payloads until
+  a future privacy-reviewed reporter is explicitly wired in.
 - `src/preferences/nonsecret-preferences.ts` is the only local preference
   wrapper for safe UI/onboarding state. It uses a dedicated Expo SQLite
   database and a fixed key set; do not use it for API keys, bearer tokens,

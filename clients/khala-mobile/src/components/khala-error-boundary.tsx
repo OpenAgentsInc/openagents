@@ -1,11 +1,17 @@
 import { Component, type ErrorInfo, type ReactNode } from "react"
 
+import {
+  buildKhalaCrashReport,
+  reportKhalaMobileCrash,
+  type KhalaCrashReporter,
+} from "../diagnostics/crash-reporting"
 import { tx } from "../i18n/copy"
 import { KhalaButton } from "./khala-button"
 import { KhalaScreen } from "./khala-screen"
 import { KhalaText } from "./khala-text"
 
 type KhalaErrorBoundaryProps = Readonly<{
+  crashReporter?: KhalaCrashReporter
   children: ReactNode
 }>
 
@@ -40,8 +46,11 @@ export class KhalaErrorBoundary extends Component<
     return { error }
   }
 
-  componentDidCatch(_error: Error, _errorInfo: ErrorInfo) {
-    console.error("Khala mobile render error boundary tripped")
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    void reportKhalaMobileCrash(
+      buildKhalaCrashReport(error, errorInfo),
+      this.props.crashReporter,
+    )
   }
 
   reset = () => {

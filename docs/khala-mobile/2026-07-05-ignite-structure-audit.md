@@ -66,6 +66,11 @@ Any Ignite pattern that conflicts with those rules is explicitly out of scope.
   i18n/copy-key discipline. Implemented: `src/i18n/copy.ts` defines typed
   English-first copy keys with interpolation and missing-key tests; navigator
   titles, sign-in chrome, and error fallback copy now use the helper.
+- [#8451](https://github.com/OpenAgentsInc/openagents/issues/8451) - finish
+  the public-safe crash reporting seam. Implemented:
+  `src/diagnostics/crash-reporting.ts` builds bounded/redacted render-crash
+  payloads and remains no-op by default; the app error boundary now reports
+  through an injectable reporter.
 
 ## One-Line Verdict
 
@@ -366,6 +371,8 @@ chrome should add typed keys instead of scattering raw strings.
 
 ### Error Boundary And Crash Reporting Seam
 
+Tracking: [#8451](https://github.com/OpenAgentsInc/openagents/issues/8451)
+
 Ignite wraps the app navigator in an `ErrorBoundary` and leaves a clean
 `crashReporting.ts` seam for Sentry/Bugsnag/Crashlytics. Khala currently
 suppresses all LogBox UI warnings in `app/_layout.tsx` because the dev warning
@@ -376,6 +383,12 @@ Recommended trigger: before wider TestFlight/user testing, add an app-level
 error boundary that renders a public-safe recovery screen and logs only
 redacted, nonsecret diagnostics. Keep crash reporting off or local until the
 privacy boundary is explicit.
+
+Implementation note: #8451 added a no-op-by-default crash reporting seam with
+bounded redaction for render errors and component stacks. `KhalaErrorBoundary`
+keeps the public-safe fallback UI and now accepts an injectable reporter for
+tests/future privacy-reviewed integrations; no Sentry/Bugsnag/Crashlytics
+transport is enabled by default.
 
 ### Devtools Commands
 
