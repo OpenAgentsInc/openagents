@@ -9,6 +9,10 @@
     <string>-i</string>
     <string>__REPO_ROOT__/apps/pylon/scripts/supervisor-launchd/codex-supervisor-launchd.sh</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>SUP_REPO_ROOT</key><string>__REPO_ROOT__</string>
+  </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ThrottleInterval</key><integer>30</integer>
