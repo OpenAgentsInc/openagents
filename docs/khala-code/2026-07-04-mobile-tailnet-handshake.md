@@ -2107,3 +2107,101 @@ only been exercised via `bun test` (mocked fetch) and the scripted real-HTTP
 smoke above, not a physical device's real Tailscale stack end-to-end. The
 TestFlight build bumped alongside this change (see release notes) is the
 mechanism for the owner to close that last gap.
+
+## MC-6 follow-up: owner reproduced a real failure, fixed and re-verified live
+
+The owner ran build 4 (TestFlight, includes the MC-6 handoff above) in the
+iOS Simulator with a real Khala Code desktop instance open on the same Mac.
+Result: the app reported "no signed-in Mac found on your Tailnet" instead of
+auto-signing in, even though the desktop was right there. Two distinct real
+causes were found — one a genuine code bug, one a real precondition gap that
+is not a bug:
+
+**Cause 1 (code bug, fixed): `khalaMobilePairingTargets` never tried
+localhost when `isDevice` was true.** The Simulator shares its host Mac's
+network stack, so the correct address for a same-Mac desktop is always
+`127.0.0.1`, regardless of what `expo-device`'s `Device.isDevice` reports.
+The original candidate-building logic only added `127.0.0.1` when
+`isDevice === false` and otherwise probed ONLY the configured Tailnet
+hostnames — so any environment where `isDevice` resolves to `true` (the
+Simulator in this exact test, or any future edge case) would never even
+attempt localhost. Fixed in
+`clients/khala-mobile/src/auth/khala-mobile-pairing-core.ts`:
+`khalaMobilePairingTargets` now always probes `127.0.0.1` FIRST (cheap,
+concurrent with everything else, fails fast when nothing's listening), then
+the configured Tailnet hosts. Updated both
+`tests/khala-mobile-pairing.test.ts` and the QA Swarm's
+`tests/ux-contracts.test.ts` oracle for
+`khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` (which had
+hardcoded the old 3-candidate assumption) to match.
+
+**Cause 2 (not a bug — a real, by-design precondition): opening Khala Code
+desktop does NOT by itself establish Khala Sync credentials.** The pairing
+endpoint hands over `resolveKhalaCodeDesktopMobilePairingCredentials`, which
+requires BOTH a persisted `openAgentsAgentToken` and a `khalaSyncOwnerUserId`
+(harness-setting.ts) — populated only by completing the desktop's own
+"Connect OpenAgents" device-link flow (`khalaCodeOpenAgentsAuthStart` /
+`Poll`, surfaced today via the "Connect OpenAgents" panel in
+`clients/khala-code-desktop/src/ui/main.ts`). Merely launching the app does
+not run that flow. This is intentional, not an oversight: minting a valid
+credential for a human OpenAgents account without any human action would be
+a real security regression (the same reason `gh auth login` or `codex login`
+need an explicit approval step). The honest fix here is a better fallback
+message, not bypassing the precondition: `sign-in-screen.tsx`'s
+`reachable_not_signed_in` message now reads "Found Khala Code on
+`<hostname>`, but it hasn't completed 'Connect OpenAgents' yet. Open Khala
+Code on your Mac, finish Connect, then retry." — naming the exact desktop
+UI panel instead of a vague "sign in there."
+
+### Live verification (real Simulator, real running desktop, this pass)
+
+1. Found the actual desktop process already running on this Mac was a
+   **stale build** — `build/dev-macos-arm64/Khala Code-dev.app/.../main.js`
+   dated before the MC-6 source edits — confirmed by `curl`ing
+   `/khala-mobile-pairing` on it and getting a real `404` (the route
+   genuinely did not exist in that running process). This alone would also
+   produce "no signed-in Mac found" regardless of the localhost bug, so it
+   was a compounding factor in whatever the owner's exact session hit.
+   Stopped that stale process tree and relaunched `bun run dev` from the
+   primary checkout (source already had the route; only the running build
+   was stale) — confirmed via a fresh `curl /health` + `/khala-mobile-pairing`
+   against the new process.
+2. Built `KhalaCode.app` for the Simulator from a clean worktree at the
+   fixed commit, installed + launched it on the booted `iPhone 17 Pro`
+   simulator (with Metro serving the Debug JS bundle), and screenshotted the
+   real running app at each step:
+   - **Before** any desktop credentials existed: the app correctly
+     discovered the real desktop over `127.0.0.1:50099` (not Tailnet — this
+     is the Simulator/same-Mac case) and rendered "Found a Khala Code
+     desktop (ChristohersMBP2.lan) on your Tailnet, but it isn't signed in
+     yet." — proving the localhost-probe fix works and the
+     `reachable_not_signed_in` differentiation is real, not theoretical.
+   - Wrote a **scoped test credential** (this agent's own registered
+     OpenAgents identity — never the owner's personal account) into the
+     real `~/.khala-code/desktop-settings.json` via the actual production
+     `writeKhalaCodeDesktopOpenAgentsAgentToken` function, confirmed via
+     `curl /khala-mobile-pairing` that the running desktop immediately
+     served real credentials.
+   - Relaunched the Simulator app fresh: it went **straight to the signed-in
+     chat thread list** (real `chat_thread` rows bootstrapped from
+     production Khala Sync, live-connectivity dot green) with **zero manual
+     credential entry** — the exact owner-mandated experience, reproduced
+     for real in the exact reported scenario (Simulator + open desktop on
+     the same Mac).
+   - Restored `~/.khala-code/desktop-settings.json` to its original
+     (not-signed-in) content afterward and uninstalled the test app from the
+     Simulator, so the owner's real desktop app is left in its honest
+     pre-test state, not silently signed in as this agent.
+3. `bun test` (mobile: 162 pass, incl. the corrected `ux-contracts.test.ts`
+   oracle) and `tsc --noEmit` green after the fix, in both the primary
+   checkout and the worktree used to build/ship it.
+
+**Still true / still honest gaps:** a genuine second physical phone over
+real Tailscale routing (not same-Mac localhost) remains unverified this
+pass — both linked iPhones are offline per `tailscale status`. And the
+day-to-day "just works" experience still requires the owner to complete
+"Connect OpenAgents" on the desktop once — that is an owner action, not
+something this fix (or any future one) should silently bypass.
+
+Build 5 (TestFlight) ships this fix; build 4 predates it and still has the
+localhost gap.
