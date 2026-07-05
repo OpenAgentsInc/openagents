@@ -1182,3 +1182,175 @@ account.pylon.claude_agent.ba8894450b3f9e52c5bbca01` as constructed by
    round-robin moving to a different `claude_agent` account than the one
    that created a session loses context on resume (fails cleanly, not a
    crash, but loses continuity for that turn).
+
+## #8406: recurring `fleet_account` reporting for Codex + Claude, and the account-link decision
+
+Two asks in one issue: (1) make the "connected accounts" visibility this doc
+already covers (the "`fleet.reportAccountState` closes the account-visibility
+gap" section above) actually recur automatically instead of needing a manual
+push, and extend it to Claude accounts; (2) investigate whether Claude needs
+a Codex-style server-side "OpenAgents link" (`--openagents-link`) and either
+build it or explicitly decide against it.
+
+### Correcting the issue's premise: no recurring reporter existed for EITHER provider
+
+The issue assumed a recurring Codex reporter already existed and just needed
+extending to Claude. Reading every real call site before writing any code
+disproved that: `git log --all --grep="reportAccountState"` shows exactly two
+commits ever touched this path — the mutator/RPC landing
+(`bcc4a340cd`) and the one-off manual proof push documented above
+(`ff2fd7ab5a`). Grepping every caller of the desktop's
+`khalaSyncFleetReportAccountState` RPC (`clients/khala-code-desktop/src/ui/main.ts`,
+`rpc-handlers.ts`, `preview-rpc-policy.ts`) turned up only the RPC wiring
+itself — no `setInterval`, no supervisor tick, no launchd job pushing it.
+Every account-state push described earlier in this doc really was manual
+(the desktop app open, an agent driving the RPC by hand). So there was
+nothing "Codex-only" to extend — the first recurring reporter had to be
+built from scratch, and it covers both providers from day one rather than
+needing a second "extend to Claude" pass later.
+
+### What was built
+
+New module: `clients/khala-code-desktop/src/bun/fleet-account-state-reporter.ts`,
+wired into `bun/index.ts` alongside the existing token-usage background
+sync (same lifecycle: started once at boot when `khalaSyncService` is
+enabled, disposed on shutdown).
+
+- **Enumeration**: reuses `inspectCodexFleet({ workerKind: "auto", ... })`
+  — the same tested code path the desktop's own Fleet panel and inbox
+  already use for local account inventory — so there is no separate/parallel
+  account-discovery logic. `workerKind: "auto"` merges `pylon accounts list
+  --json` + `pylon accounts status --provider <provider> --json` for BOTH
+  `codex` and `claude_agent`.
+- **Readiness mapping**: the real Pylon per-account readiness state
+  (`CodexAgentReadinessState` / `ClaudeAgentReadinessState`,
+  `apps/pylon/src/{codex,claude}-agent.ts` — 10 and 5 states respectively)
+  maps into the Khala Sync `FleetAccountEntity`'s coarser 4-value public enum:
+  `ready` stays `ready`; `usage_limited`/`rate_limited` become `cooldown`
+  (expected to self-recover); `credentials_missing`/`credentials_revoked`/
+  `sdk_missing`/`auth_error`/`platform_unsupported`/`disabled_by_config`
+  become `unavailable` (needs an owner action); `network`/`timeout` and
+  anything unrecognized become `unknown` — never guessed as `ready`.
+- **Capacity is reported only when resolved, never fabricated.** Unlike
+  `candidateAccountsFromRegistry`'s documented `capacityAvailable: 1`
+  placeholder (used for dispatch selection, a different consumer), this
+  reporter omits `capacityAvailable`/`Busy`/`Queued` entirely when
+  `inspectCodexFleet` did not resolve a live number for that account, rather
+  than defaulting to a made-up value.
+- **No stable per-owner scope was invented.** The pre-existing, already
+  -documented gap ("Fleet runs are scoped per session, not per owner") is
+  still open — this reporter does not solve it. It reports into whichever
+  `fleet_run` scope id(s) an operator explicitly configures via the new
+  `KHALA_SYNC_FLEET_ACCOUNT_REPORT_RUN_ID` env var (comma-separated; mirrors
+  mobile's existing `EXPO_PUBLIC_KHALA_SYNC_DEMO_FLEET_RUN_ID`). With none
+  configured, the reporter is an honest no-op (`{ skipped:
+  "no_run_id_configured" }`) every tick — it never guesses a scope.
+- **Cadence**: the issue asked to "match whatever cadence Codex uses" — there
+  was none to match (see above), so a new default of 30s was chosen
+  (`KHALA_SYNC_FLEET_ACCOUNT_REPORT_INTERVAL_MS` overrides;
+  `KHALA_SYNC_FLEET_ACCOUNT_REPORT_DISABLED=1` turns it off), matching the
+  existing `startKhalaCodeDesktopTokenUsageBackgroundSync` scheduler shape
+  (`codex-token-usage-telemetry.ts`) exactly: injectable `setInterval`/
+  `clearInterval` for deterministic tests, an in-flight guard so overlapping
+  ticks collapse into one, an immediate first report at start, and a
+  `dispose()` that stops the timer and silences any in-flight tick.
+- 18 unit tests (`clients/khala-code-desktop/tests/fleet-account-state-reporter.test.ts`)
+  cover the readiness mapping table, both-provider enumeration, capacity
+  omission vs. reporting, run-id/interval env parsing, the no-run-id no-op,
+  multi-run-id fan-out, per-account failure isolation (one account's
+  rejection does not stop the others or throw), and timer scheduling/dispose
+  with fake timers. Full `khala-code-desktop` suite: 689 pass / 0 fail across
+  81 files; `tsc --noEmit` clean.
+
+### Live verification against production — genuinely automatic, no manual push
+
+Ran the real reporter (not a test double) against deployed
+`openagents.com`, authenticated as this machine's own linked Pylon agent
+credential (`~/.pylon-fable/auth/openagents-agent-token` — the same
+owner-linked credential the runtime supervisor uses, per the auth-boundary
+finding earlier in this doc), targeting a brand-new scope
+(`scope.fleet_run.khala-mobile-fleet-demo-8406-verify`) so there was no
+pre-existing ownership to collide with. Set `intervalMs: 3000` and let it run
+completely unattended for ~13 seconds (4 automatic ticks, zero manual
+`reportNow()` calls after start) against this machine's REAL local account
+registry: 4 Codex accounts (`codex-2`, `codex-b7d4438c`, `codex-dbbb1972`,
+and the default home) and 4 Claude accounts (`claude-pylon-2`,
+`claude-pylon-3`, `claude-supervisor`, and the default home) — the same
+roster the issue itself cited.
+
+A direct, independent `POST /api/sync/bootstrap` (bypassing the client SDK
+entirely, plain `fetch` + the same bearer token) confirmed all 8 accounts
+landed as real `fleet_account` entities:
+
+```
+account.pylon.claude_agent.a83393092019de4dfbee9844  provider=claude  readiness=ready
+account.pylon.claude_agent.ba1fd0827726ff7f618c7725  provider=claude  readiness=ready
+account.pylon.claude_agent.ba8894450b3f9e52c5bbca01  provider=claude  readiness=ready
+account.pylon.claude_agent.df953bc6ba8b07a8b856654e provider=claude  readiness=unavailable
+account.pylon.codex.651c03fed68925d7acb2c02f  provider=codex  readiness=ready  capacity 5/0/0
+account.pylon.codex.6be7b6501be36164f9c6ecda  provider=codex  readiness=ready  capacity 5/0/0
+account.pylon.codex.e91f5121e2919da02ed6a931  provider=codex  readiness=ready  capacity 5/0/0
+account.pylon.codex.f3f6feb61b8af31479fe6acd  provider=codex  readiness=ready  capacity 5/0/0
+```
+
+Two things worth calling out: (1) `claude-supervisor`'s real local
+`credentials_missing` state correctly mapped to `readiness: "unavailable"`,
+not fabricated as ready — the mapping table is exercised by real data, not
+just unit-test fixtures; (2) the `updatedAt` timestamps on each entity are
+spread across the full ~13s window in tick order, which is exactly the
+signature of several independent automatic ticks re-reporting the same
+accounts, not one static push. This is the same scope-and-mutator path the
+mobile Settings > Fleet screen already reads (`fleetRunScope(runId)` +
+`fleet_account` entities) — pointing that screen's
+`EXPO_PUBLIC_KHALA_SYNC_DEMO_FLEET_RUN_ID` at this run id would render both
+providers live.
+
+### The account-link decision: (a), no server-side link needed for Claude
+
+Investigated before building anything, per the issue's own two options.
+Findings, from reading the real code rather than guessing:
+
+- `apps/pylon/src/account-connect.ts`'s `parsePylonAccountsConnectArgs` is
+  **hard-coded** to `provider !== "codex"` throwing — `pylon accounts
+  connect claude_agent` does not even parse. There is no `pylon auth
+  claude` device-login command at all (`apps/pylon/src/index.ts`'s `auth`
+  branch only recognizes `openagents` and `codex` targets).
+- `openAgentsProviderAccountRef` (`apps/pylon/src/account-registry.ts`) is
+  architecturally Codex-only, not just unused-for-Claude: both
+  `configuredProviderAccountRef` and `writeConfiguredProviderAccountRef`
+  (`apps/pylon/src/auth.ts`) filter on `record.provider === "codex"`
+  explicitly. There is no code path that could populate this field for a
+  `claude_agent` entry even if asked to.
+- Claude accounts are discovered purely through
+  `discoverPylonSiblingAccountHomes` + the local registry (isolated homes
+  under `<pylon home>/accounts/claude_agent/<ref>`, authenticated via the
+  Claude CLI's own OAuth/keychain-backed login into that isolated home) —
+  there is no OpenAgents-server round-trip in that discovery path at all,
+  confirming Codex's device-login flow exists because Codex's own CLI login
+  needs one and OpenAgents piggybacks a server-side attempt-tracking record
+  on top of it, not because a link record is independently required for
+  dispatch or billing.
+- Checked whether the just-landed real dispatch consumer needs it
+  (moving-target risk flagged in the issue): `apps/pylon/src/orchestration/
+  runtime-intent-enforcement.ts`'s `candidateAccountsFromRegistry` (current
+  `main`, post-`a3f75bb2eb` "wire a real Claude Agent SDK thread runner")
+  builds its `FleetAccountEntity` candidates directly from
+  `hashPylonAccountRef(entry.provider, entry.ref)` for BOTH `codex` and
+  `claude_agent` registry entries — it reads `openAgentsProviderAccountRef`
+  nowhere. `selectDispatchAccount` (`packages/khala-sync/src/
+  fleet-account-selection.ts`) is provider-and-capacity based, not
+  link-based. The real end-to-end Claude dispatch proof documented earlier
+  in this doc (`thread.claude-e2e-proof.1`, real Claude-generated text)
+  already runs today with ZERO formal server-side link record for the
+  Claude account it used.
+
+**Decision: (a).** Claude accounts authenticate via Anthropic's own
+OAuth/keychain-backed login already; local registry discovery
+(`pylon accounts list`) plus this issue's new recurring `fleet_account`
+reporting is sufficient for visibility, and nothing in the current dispatch
+consumer, billing, or fleet-visibility path reads or needs
+`openAgentsProviderAccountRef` for a `claude_agent` entry. No new
+connect/link flow was built. If a future need for Claude-side attribution
+parity with Codex emerges (billing being the most likely candidate), it
+should be scoped as its own issue rather than retrofitted here speculatively
+— nothing in the current system depends on it.
