@@ -53,7 +53,7 @@ First consumer: the Khala Code desktop fleet cockpit (KS-6).
 
 ```ts
 import { Effect } from "effect"
-import { openKhalaSyncStore } from "@openagentsinc/khala-sync-client"
+import { openKhalaSyncStore } from "@openagentsinc/khala-sync-client/sqlite-store"
 
 const store = openKhalaSyncStore("/path/to/store.sqlite") // or ":memory:"
 
@@ -222,8 +222,8 @@ import { Effect } from "effect"
 import {
   type ClientMutator,
   createOverlay,
-  openKhalaSyncStore,
 } from "@openagentsinc/khala-sync-client"
+import { openKhalaSyncStore } from "@openagentsinc/khala-sync-client/sqlite-store"
 import { canonicalJson, MutatorName, SyncScope } from "@openagentsinc/khala-sync"
 
 const setTitle: ClientMutator<{ scope: string; id: string; title: string }> = {

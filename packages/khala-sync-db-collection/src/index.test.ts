@@ -52,8 +52,8 @@ import {
   type KhalaSyncTransport,
   KhalaSyncTransportError,
   type LiveSocketHandlers,
-  openKhalaSyncStore,
 } from "@openagentsinc/khala-sync-client"
+import { openKhalaSyncStore } from "@openagentsinc/khala-sync-client/sqlite-store"
 import { afterEach, describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import {

@@ -66,8 +66,8 @@ import {
   type KhalaSyncTransport,
   KhalaSyncTransportError,
   type LiveSocketHandlers,
-  openKhalaSyncStore,
 } from '@openagentsinc/khala-sync-client'
+import { openKhalaSyncStore } from '@openagentsinc/khala-sync-client/sqlite-store'
 import {
   type SyncSql,
   withSyncTransaction,

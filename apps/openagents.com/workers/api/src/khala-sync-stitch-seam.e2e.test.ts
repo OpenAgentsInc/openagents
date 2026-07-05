@@ -57,10 +57,8 @@ import {
   personalScope,
   SyncVersion,
 } from '@openagentsinc/khala-sync'
-import {
-  type ConfirmedEntity,
-  openKhalaSyncStore,
-} from '@openagentsinc/khala-sync-client'
+import { type ConfirmedEntity } from '@openagentsinc/khala-sync-client'
+import { openKhalaSyncStore } from '@openagentsinc/khala-sync-client/sqlite-store'
 import { type SyncSql, withSyncTransaction } from '@openagentsinc/khala-sync-server'
 import {
   hasLocalPostgres,

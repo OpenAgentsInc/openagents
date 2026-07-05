@@ -6,6 +6,7 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
+    "./sqlite-store": "./src/sqlite-store.ts",
     "./web": "./src/web/index.ts",
     "./web/worker": "./src/web/sqlite-wasm-worker.ts"
   },

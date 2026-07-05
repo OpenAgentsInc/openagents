@@ -30,17 +30,19 @@ import { createCollection, type Collection } from "@tanstack/db"
 import {
   createHttpKhalaSyncTransport,
   createOverlay,
-  openKhalaSyncStore,
   createKhalaSyncSession,
   type ClientMutator,
   type KhalaSyncOverlay,
   type KhalaSyncSession,
-  type KhalaSyncSqliteStore,
   type KhalaSyncTransport,
   type OverlayReadView,
   type ScopeSyncState,
   type WebSocketLike,
 } from "@openagentsinc/khala-sync-client"
+import {
+  openKhalaSyncStore,
+  type KhalaSyncSqliteStore,
+} from "@openagentsinc/khala-sync-client/sqlite-store"
 import {
   chatAppendMessageClientMutator,
   chatCreateThreadClientMutator,

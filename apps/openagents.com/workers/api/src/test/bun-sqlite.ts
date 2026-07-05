@@ -1,10 +1,10 @@
 // `bun:sqlite` adapter over `node:sqlite` for this Worker's vitest suites.
 //
-// The Khala Sync client engine (`@openagentsinc/khala-sync-client`) is a Bun
-// package: its durable local store (`openKhalaSyncStore`) runs on
-// `bun:sqlite`. The KS-4.4 stitch-seam test drives that REAL store inside
-// this package's vitest (Node) runtime, so `vitest.config.ts` aliases
-// `bun:sqlite` to this module — the same test-shim idiom as
+// The Khala Sync client's desktop store
+// (`@openagentsinc/khala-sync-client/sqlite-store`) runs on `bun:sqlite`.
+// The KS-4.4 stitch-seam test drives that REAL store inside this package's
+// vitest (Node) runtime, so `vitest.config.ts` aliases `bun:sqlite` to this
+// module — the same test-shim idiom as
 // `src/test/cloudflare-workers.ts`. Only the surface the client store
 // actually uses is implemented: `Database` construction, `exec`, prepared
 // `query` handles with `get`/`all`/`run`, callable `transaction` wrappers

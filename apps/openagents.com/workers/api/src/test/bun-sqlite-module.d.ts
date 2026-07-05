@@ -1,7 +1,7 @@
 // Ambient `bun:sqlite` module declaration for THIS Worker's typecheck only.
 //
-// `@openagentsinc/khala-sync-client` (a Bun package) imports `bun:sqlite`;
-// this Worker's vitest suites drive that real client store through the
+// `@openagentsinc/khala-sync-client/sqlite-store` imports `bun:sqlite`; this
+// Worker's vitest suites drive that real client store through the
 // `node:sqlite`-backed adapter in `src/test/bun-sqlite.ts` (aliased in
 // `vitest.config.ts`). The Worker typechecks against
 // `@cloudflare/workers-types` — no `bun-types` ambients (they collide with

@@ -15,12 +15,11 @@
 
 // ---------------------------------------------------------------------------
 // Local store (KS-5.1 + KS-5.4): contracts in store.ts; ALL SQL semantics
-// in the driver-agnostic store-core.ts; bun:sqlite driver in
-// sqlite-store.ts (desktop). The web adapter (SQLite-WASM / opfs-sahpool
-// behind a storage worker with SharedWorker single-writer election) lives
-// under the `./web` subpath — and its worker entry, the only module that
-// imports @sqlite.org/sqlite-wasm, under `./web/worker` — so this desktop
-// entry never loads WASM.
+// in the driver-agnostic store-core.ts. Runtime-specific stores live behind
+// explicit subpaths: `./sqlite-store` for Bun desktop and `./web` for the
+// SQLite-WASM worker adapter. Keep this root entry free of runtime-only
+// modules so Metro/React Native can import session, overlay, and transport
+// code without trying to resolve Bun's `bun:sqlite`.
 // ---------------------------------------------------------------------------
 
 export {
@@ -39,11 +38,6 @@ export {
   type SqlValue,
   toKhalaSyncStoreError,
 } from "./store-core.js"
-export {
-  type KhalaSyncSqliteStore,
-  openKhalaSyncStore,
-} from "./sqlite-store.js"
-
 // ---------------------------------------------------------------------------
 // Optimistic mutators + rebase (KS-5.2): contracts + engine in overlay.ts.
 // Optimistic effects live ONLY in the in-memory overlay (SPEC §7
