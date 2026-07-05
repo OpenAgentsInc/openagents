@@ -169,4 +169,142 @@ itself satisfy #8354's remaining physical-device requirements (items 1 and 3
 in "What is honestly NOT proven yet" are unrelated to the web leg and remain
 open); it only removes "web has no real sync wiring" as a reason to treat
 that leg as an explicit known gap.
-compilation.
+
+## Second pass (2026-07-05, same session): code-level scope/mutator compatibility trace, plus one new honest gap
+
+This pass verified — by reading actual code, not by trusting the docs above —
+whether phone (mobile + the interim SwiftUI bridge), desktop, and web
+genuinely read/write the **same** Khala Sync scope for a chat thread with
+compatible mutator shapes, or only look similar. It also amended
+`docs/khala-sync/receipts/2026-07-05-mc5-cross-device-chat-dogfood-evidence-compilation.json`
+in place: the `blocker.web_leg_not_wired_to_real_sync`/matching gap entry is
+now `resolvedByIssueRef: "OpenAgentsInc/openagents#8413"`, a new `flows[]`
+entry records the #8413 verification transcript below, and one new gap
+(`gap.khala_sync.cross_device.ios_bridge_no_message_transcript_read_path`) is
+recorded honestly rather than silently absorbed into the existing TestFlight
+gap.
+
+### Verdict: genuinely wire-compatible, not just superficially similar
+
+Ground truth is the server mutator/entity schema:
+`packages/khala-sync-server/src/chat-mutators.ts` (scope layout comment,
+lines 27-29: `scope.user.<owner>` for `chat_thread` metadata,
+`scope.thread.<threadId>` for both `chat_thread` and `chat_message`;
+`CreateThreadArgs{threadId,title}` / `AppendMessageArgs{threadId,messageId,body}`
+at lines 55-66) and `packages/khala-sync/src/chat.ts` (`ChatThreadEntity` /
+`ChatMessageEntity` field lists, lines 35-58).
+
+- **Mobile** (`clients/khala-mobile`), **desktop**
+  (`clients/khala-code-desktop`), and **web**
+  (`apps/openagents.com/apps/start`) all import the identical
+  `personalScope`/`threadScope` builders and `ChatThreadEntity`/
+  `ChatMessageEntity` decoders from the shared `@openagentsinc/khala-sync`
+  package, and desktop + web additionally share the exact same
+  `chatCreateThreadClientMutator`/`chatAppendMessageClientMutator` builder
+  functions from `@openagentsinc/khala-sync-db-collection` — this is one
+  shared implementation, not three independent ports that happen to agree.
+- **The interim SwiftUI `khala-ios` bridge** (`KhalaChatSync.swift`) is a
+  genuinely separate Swift implementation with no shared TS package, but it
+  was checked field-by-field against the same server schema: identical
+  mutator names (`chat.createThread`/`chat.appendMessage`), identical arg
+  field names (`threadId`, `title`, `messageId`, `body`), identical entity
+  field names on read (`threadId`, `ownerUserId`, `title`, `messageCount`,
+  `lastMessageAt`, `createdAt`, `updatedAt`), and its own client-generated ref
+  formats (`ios.thread.<uuid>`, `ios.message.<uuid>`) satisfy the shared
+  server-side ref-validation regex
+  (`^[A-Za-z0-9][A-Za-z0-9._:-]*$`, present in both
+  `packages/khala-sync/src/chat.ts` and
+  `packages/khala-sync-server/src/chat-mutators.ts`). No field-name or
+  type mismatch was found anywhere (no stray `syncThreadId`/`thread_id`
+  variant on any surface).
+- **ID generation intentionally differs per surface** (mobile/web mint
+  `` `thread.<ts><hex>` `` via a shared `makeSafeRef`/push-core helper; iOS
+  mints `` `ios.thread.<uuid>` ``; desktop reuses the underlying session's own
+  thread id) but this does not break cross-surface visibility: every surface
+  discovers a thread via `scope.user.<owner>` bootstrap (reading back
+  whichever id the creating surface picked), not by independently deriving a
+  matching id. Confirmed identically implemented in the mobile drawer, the
+  web thread list panel, and the desktop sidebar.
+
+**No compatibility bug was found and nothing needed fixing.** Wire
+compatibility is real, not superficial, primarily because three of the four
+surfaces literally share the same TypeScript packages, and the fourth (Swift)
+matches the same JSON schema exactly where it implements the protocol at all.
+
+### One bounded, honest asymmetry found (not a wire bug): the SwiftUI bridge cannot render the message transcript
+
+`KhalaChatSync.swift` bootstraps `scope.user.<owner>` for `chat_thread` rows
+(thread list, title, message count) and pushes `chat.createThread`/
+`chat.appendMessage`, so **write visibility and thread-list discovery work
+correctly cross-device**. But it never bootstraps `scope.thread.<threadId>`
+and never opens `/api/sync/connect` — there is no WebSocket client code
+anywhere under `clients/khala-ios/Khala/Khala`. So if the owner's device test
+uses the SwiftUI app specifically, they will be able to create/continue a
+thread from the phone and see it (and its message count) update on
+desktop/web, but the phone app itself cannot display the actual message
+transcript authored elsewhere. This is consistent with that app's documented
+status as an "interim companion" rather than full-parity client (see this
+repo's root `CLAUDE.md`), so it is recorded as a new gap rather than treated
+as a defect requiring an immediate fix. A fix, if wanted, is small and
+additive: mirror the existing `fetchChatSyncThreads` bootstrap pattern in the
+same file for `scope.thread.<threadId>` plus a connect/live-tail path for
+`chat_message`. The Expo `clients/khala-mobile` app has no such gap — it
+already bootstraps and live-tails both scopes (see item 4 in "What is
+genuinely proven" above).
+
+### New real flow: the #8413 web-leg verification transcript
+
+The #8413 landing commit's own verification (recorded in
+`docs/khala-code/2026-07-04-mobile-tailnet-handshake.md`, "Verification (real
+production Khala Sync, this session)") is added to the JSON bundle as
+`flow.khala_sync.chat.web_real_sync_client_signin_bootstrap_push_live_tail.v1`.
+Summary: signed in through the local dev Worker (real workerd/Miniflare via
+`@cloudflare/vite-plugin`, not a Node mock) using this session's own
+already-registered agent credentials — not the owner's personal chat scope —
+then real `POST /api/khala-sync/session` -> `bootstrap` -> `push`
+(`chat.createThread` + `chat.appendMessage`, both `status: applied`) ->
+`GET /api/khala-sync/connect` (real `101` upgrade), observing a live
+`DeltaFrame` for the new thread within an approximate ~500ms of the push, then
+a second `chat.appendMessage` over the already-open socket producing another
+real-time `DeltaFrame`. This is the one qualitative-but-measured latency data
+point that exists this session; it is a different account/scope than the
+owner's real device run and does not substitute for one (see the refined
+latency gap below).
+
+### Updated "What is honestly NOT proven yet" (supersedes items 2 and 4 above)
+
+1. No physical device has run any part of this flow — **unchanged, still
+   open**.
+2. ~~Web leg does not exist as a real sync consumer~~ — **closed by #8413**,
+   see the update section above and the new flow in this section.
+3. The interim SwiftUI bridge has no TestFlight build — **unchanged, still
+   open** — plus the new, separately-tracked read-path gap: even once built,
+   it cannot render the message transcript on-device (see above).
+4. No latency measurement existed for this session — **partially updated**:
+   one real qualitative measurement now exists for the web leg (~500ms,
+   different account/scope, not the owner's device), but **no physical-device
+   latency measurement exists**, which is the number that actually matters for
+   sign-off.
+
+### Updated "What the owner still needs to do"
+
+Item 4 in the original checklist above ("decide whether 'web' is in scope...
+today it is a fixture-only demo route") is now moot — the web leg is real, so
+the owner can include it in the device test. If the owner picks the SwiftUI
+app specifically, they should know before starting that it will not show the
+transcript in-app for messages authored on desktop/web (thread list and
+message counts will still update). The rest of the original checklist
+(decide which mobile app, run the real phone <-> desktop <-> web round trip,
+record counts/latencies/refs into an `owner_signed` bundle, validate, and
+close #8354) is unchanged and still the pending owner action.
+
+### Verification run for this second pass
+
+```sh
+bun scripts/validate-khala-sync-cross-device-evidence.ts docs/khala-sync/receipts/2026-07-05-mc5-cross-device-chat-dogfood-evidence-compilation.json
+bun test scripts/validate-khala-sync-cross-device-evidence.test.ts
+```
+
+Both pass. This pass changed only the JSON evidence bundle and this doc; no
+application code was touched (the code-level scope/mutator trace above found
+no bug needing a fix).

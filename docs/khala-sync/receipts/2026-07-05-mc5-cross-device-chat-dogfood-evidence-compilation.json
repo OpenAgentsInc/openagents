@@ -4,7 +4,8 @@
   "issueRef": "OpenAgentsInc/openagents#8354",
   "epicRef": "OpenAgentsInc/openagents#8339",
   "generatedAt": "2026-07-05T00:00:00.000Z",
-  "note": "Compilation pass over this session's ALREADY-real Khala Sync production activity, prepared so the owner's remaining device-run + sign-off step is fast. This does NOT replace or claim the owner-run acceptance test in #8354; it documents what independent evidence already exists and what honestly does not yet exist. See docs/fable/2026-07-05-mc5-cross-device-dogfood-evidence-compilation.md for the full write-up.",
+  "amendedAt": "2026-07-05T10:59:25.000Z",
+  "note": "Compilation pass over this session's ALREADY-real Khala Sync production activity, prepared so the owner's remaining device-run + sign-off step is fast. This does NOT replace or claim the owner-run acceptance test in #8354; it documents what independent evidence already exists and what honestly does not yet exist. See docs/fable/2026-07-05-mc5-cross-device-dogfood-evidence-compilation.md for the full write-up. Amended same-day after issue #8413 landed (the web /khala/chat-sync route is now a real Khala Sync client, not a fixture): the web-leg blocker/gap is closed below, a new real flow documents the #8413 verification transcript, and a code-level trace across all four client surfaces (mobile, desktop, web, and the interim SwiftUI khala-ios bridge) plus the canonical server schema confirmed genuine scope/mutator wire compatibility with no fix required. One bounded, honest read-path asymmetry was found on the SwiftUI bridge only (recorded as a new gap below) and is not a wire-protocol bug.",
   "routeRefs": [
     "route.khala_sync.push.v0_1",
     "route.khala_sync.bootstrap.v0_1",
@@ -17,8 +18,17 @@
   "blockerRefs": [
     "blocker.owner_device_signoff_required",
     "blocker.testflight_refresh_owner_gated",
-    "blocker.web_leg_not_wired_to_real_sync",
     "blocker.cross_device_verification_simulator_only"
+  ],
+  "resolvedBlockerRefs": [
+    {
+      "blockerRef": "blocker.web_leg_not_wired_to_real_sync",
+      "resolvedByIssueRef": "OpenAgentsInc/openagents#8413",
+      "resolvedByCommitRef": "2ab5feecc4"
+    }
+  ],
+  "codeVerificationRefs": [
+    "verification.khala_sync.cross_surface_scope_mutator_wire_compatibility.v1"
   ],
   "buildRefs": [
     "build.khala_mobile.expo.testflight.3bb487cf-73b6-470f-a2ee-867ee924426e",
@@ -103,6 +113,38 @@
         "route.khala_sync.push.v0_1",
         "route.khala_sync.bootstrap.v0_1"
       ]
+    },
+    {
+      "flowRef": "flow.khala_sync.chat.web_real_sync_client_signin_bootstrap_push_live_tail.v1",
+      "sourceSurface": "openagents_com_start_web_local_dev_workerd",
+      "observedSurfaces": [
+        "khala_sync_production_postgres"
+      ],
+      "counts": {
+        "threadsCreated": 1,
+        "messagesAppended": 2,
+        "threadsObserved": 1,
+        "messagesObserved": 2
+      },
+      "latencyMs": {
+        "liveDeltaFrameAfterPushApprox": 500
+      },
+      "scopeRefs": [
+        "scope.user.this_sessions_registered_agent_id",
+        "scope.thread.newly_created_test_thread_id"
+      ],
+      "receiptRefs": [
+        "receipt.khala_sync.web_proxy.session.ok_true",
+        "receipt.khala_sync.web_proxy.push.chat_createThread.status_applied",
+        "receipt.khala_sync.web_proxy.push.chat_appendMessage.status_applied",
+        "receipt.khala_sync.web_proxy.connect.101_upgrade.live_delta_frame_observed"
+      ],
+      "routeRefs": [
+        "route.khala_sync.push.v0_1",
+        "route.khala_sync.bootstrap.v0_1",
+        "route.khala_sync.connect.v0_1"
+      ],
+      "note": "Verification transcript for issue #8413, run against real production Khala Sync using this session's own already-registered agent credentials (not the owner's personal chat scope). Local dev used @cloudflare/vite-plugin (real workerd/Miniflare WebSocketPair + outbound-fetch-upgrade), not a plain Node mock. Full transcript: docs/khala-code/2026-07-04-mobile-tailnet-handshake.md lines ~1920-1961. The ~500ms figure is the one qualitative-but-measured latency observation from this session (an approximate wall-clock bound on live DeltaFrame delivery after push, not an instrumented histogram); it is a different scope/account than the owner's real device run and does not substitute for one."
     }
   ],
   "gaps": [
@@ -112,19 +154,26 @@
       "summaryRef": "summary.public_safe.physical_device_owner_run_not_attached"
     },
     {
-      "gapRef": "gap.khala_sync.cross_device.web_leg_not_wired_to_real_sync",
-      "status": "open",
-      "summaryRef": "summary.public_safe.web_leg_is_client_only_fixture_demo"
-    },
-    {
       "gapRef": "gap.khala_sync.cross_device.testflight_refresh_pending_for_swiftui_bridge",
       "status": "open",
       "summaryRef": "summary.public_safe.swiftui_bridge_not_yet_uploaded_to_testflight"
     },
     {
-      "gapRef": "gap.khala_sync.cross_device.latency_not_instrumented",
+      "gapRef": "gap.khala_sync.cross_device.latency_not_instrumented_on_physical_device",
       "status": "open",
-      "summaryRef": "summary.public_safe.no_measured_cross_device_latency_this_session"
+      "summaryRef": "summary.public_safe.no_measured_physical_device_latency_this_session"
+    },
+    {
+      "gapRef": "gap.khala_sync.cross_device.ios_bridge_no_message_transcript_read_path",
+      "status": "open",
+      "summaryRef": "summary.public_safe.swiftui_bridge_writes_and_lists_threads_but_does_not_bootstrap_or_live_tail_scope_thread_for_message_transcript"
+    },
+    {
+      "gapRef": "gap.khala_sync.cross_device.web_leg_not_wired_to_real_sync",
+      "status": "closed",
+      "summaryRef": "summary.public_safe.web_leg_is_client_only_fixture_demo",
+      "resolvedByIssueRef": "OpenAgentsInc/openagents#8413",
+      "resolvedByCommitRef": "2ab5feecc4"
     }
   ],
   "safeguards": {
