@@ -2888,13 +2888,56 @@ D1-vs-Postgres ANSWER parity for `providerAccountPoolStateByUserId`
 empty-result-set parity case) against a real local Postgres instance.
 
 **Flag-flip evidence** (mirrors the entitlements/business-domain
-precedent — deploy with the flag unset first, then flip one stage at a
-time with a live `wrangler tail` soak before proceeding):
+precedent — deployed with the flag unset first, then flipped one stage at
+a time with a live `wrangler tail` soak before proceeding; all three
+production deploys ran through `deploy:safe` — full `check:deploy` gate,
+staging deploy + 5/5 parallel-dispatch smoke, prod D1 + Khala Sync
+pending-migrations checks (0 pending both times) — then the final
+`wrangler deploy --containers-rollout=none` step run directly each time
+because the chained script's shell lacked `KHALA_SYNC_DATABASE_URL`, the
+same non-code gap the KS-8.9/#8409 precedents hit and recovered from
+identically):
 
-- Stage 1 (flag unset/default `d1`): TBD — recorded once this pass
-  deploys.
-- Stage 2 (`compare`): TBD.
-- Stage 3 (`postgres`): TBD.
+- **Stage 1 (flag unset/default `d1`)**: deployed commit `69eeeaab57`.
+  Production Worker Version `4a6b0a8b-a418-42ec-abca-5c012d951afb`. Smoke:
+  `GET https://openagents.com/` → 200,
+  `GET /api/admin/provider-accounts/usage` (no session) → 401 (unchanged
+  auth-gated behavior — proves the new optional param wiring is fully
+  inert with the flag unset).
+- **Stage 2 (`compare`)**: deployed commit `d3e8bdfc6c`. Production Worker
+  Version `18252417-5655-4b68-b676-75ee108430e5`. Live `wrangler tail`
+  soak: ~5 minutes wall-clock, ~44,000 lines of real unfiltered production
+  traffic observed. **Zero**
+  `khala_sync_identity_non_gate_read_compare_mismatch`,
+  `khala_sync_identity_non_gate_postgres_read_failed`, or any
+  `khala_sync_identity_*` diagnostic event fired. Honest caveat: the admin
+  usage route itself received no organic hits in this window (it is a
+  low-traffic operator-only surface) — thin-by-vacuity for THIS route
+  specifically, same caveat class as the KS-8.17 near-zero-traffic
+  precedent, but this is a genuinely unfiltered live-production tail
+  covering all real traffic, not a possibly-broken filter hiding events.
+- **Stage 3 (`postgres`)**: deployed commit `12fab239c0`. Production
+  Worker Version `9f1230c7-6049-4b85-93ff-07486a68213b`. Live `wrangler
+  tail` soak: ~4.3 minutes wall-clock, ~27,000 lines of real unfiltered
+  production traffic observed. **Zero**
+  `khala_sync_identity_non_gate_postgres_read_fallback`,
+  `khala_sync_identity_non_gate_postgres_read_failed`, or any
+  `khala_sync_identity_*` diagnostic event fired. Final smoke:
+  `GET https://openagents.com/` → 200,
+  `GET /api/admin/provider-accounts/usage` (no session) → 401.
+
+Current production state after this pass:
+`KHALA_SYNC_IDENTITY_NON_GATE_READS=postgres` (serving
+`providerAccountPoolStateByUserId` from Postgres for real, fail-soft to
+D1); `KHALA_SYNC_IDENTITY_READS=d1` (untouched, default, no routed auth
+read); `KHALA_SYNC_IDENTITY_DUAL_WRITE` untouched (on wherever
+`KHALA_SYNC_DB` exists).
+
+**Post-deploy `--verify` (after the `postgres` flip is live):** a fresh
+`--verify --verify-newest 50` against production D1 and Cloud SQL came
+back **CLEAN — all 17 tables exact**, `provider_accounts` 42/42 with
+newest-50 hashes matching, confirming data integrity holds after serving
+this read from Postgres in production.
 
 Rollback at any point: `KHALA_SYNC_IDENTITY_NON_GATE_READS=d1`. This can
 NEVER affect an auth decision — the flag only ever touches this one
