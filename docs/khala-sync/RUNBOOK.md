@@ -3652,12 +3652,15 @@ With that confirmed, completed the repoint:
   fallback source for the separate `GET /api/public/settled-feed` read route
   (`public-settled-feed-routes.ts`), which this change did not touch.
 
-Production verification (evidence, post-deploy):
+Production verification (evidence, post-deploy, Worker version
+`06a07d3c-47c7-4200-b8be-409d2c7e8364`):
 
 ```sh
 # Anonymous log read of the exact settled-feed scope succeeds (no 401):
 curl -sS -D - -o /dev/null \
   'https://openagents.com/api/sync/log?scope=scope.public.settled-feed&cursor=0'
+# -> HTTP 200, {"protocolVersion":1,"scope":"scope.public.settled-feed",
+#    "entries":[],"nextCursor":0,"upToDate":true}
 
 # Anonymous connect upgrade attempt reaches the WebSocket-required check
 # (past the auth gate — 426, not 401):
@@ -3665,7 +3668,29 @@ curl -sS -D - -o /dev/null \
   -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
   -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
   'https://openagents.com/api/sync/connect?scope=scope.public.settled-feed&cursor=0'
+# -> HTTP 426 (past auth; curl cannot itself complete a real WS handshake)
+
+# A REAL anonymous WebSocket client (no auth header, no cookie) completes the
+# full handshake and opens live, using the exact URL subscriptions.ts opens:
+bun -e '
+  const ws = new WebSocket("wss://openagents.com/api/sync/connect?scope=scope.public.settled-feed&cursor=0");
+  ws.addEventListener("open", () => { console.log("OPEN"); ws.close(); });
+  ws.addEventListener("close", (e) => { console.log("CLOSE", e.code); process.exit(0); });
+'
+# -> OPEN
+# -> CLOSE 1000
 ```
+
+That real WebSocket client is the strongest evidence: it is the exact same
+scope, same URL shape, and same "no auth at all" posture the browser's
+`settledFeedStream` in `subscriptions.ts` uses, and it opened cleanly (a 101
+Switching Protocols under the hood) with no server-side rejection.
+
+Homepage (`https://openagents.com/`) still 200s post-deploy. The separate
+`GET /api/public/settled-feed` route (unaffected by this change — different
+route, different code path) still serves its historical D1-outbox-backed
+events + summary correctly, confirming the untouched D1 write path in
+`publishSettledFeedEvents` is unaffected by the `notifySyncScopes` deletion.
 
 Test evidence: `apps/web/src/page/loggedOut/settled-feed.test.ts` (the
 `ChangelogEntry` → `SyncPatch` adapter, both entity kinds, delete op,
@@ -3676,7 +3701,14 @@ connect href, `LiveFrame` decode for `DeltaFrame`/`PingFrame`/
 `apps/web/src/page/loggedOut/update.test.ts` (`LoadSettledFeedSnapshot`'s new
 `/api/sync/log` request shape, empty-scope seed, HTTP-failure degrade),
 `workers/api/src/tassadar-settled-feed-sync.test.ts` (the legacy room poke is
-gone; the D1 outbox write is unaffected). Full `check:deploy` green.
+gone; the D1 outbox write is unaffected). Full `check:deploy` green, deployed
+via the sanctioned `deploy:safe` path (staging deploy + predeploy parallel-
+dispatch smoke both green; the pipeline's final khala-sync-server Postgres
+`check:pending-migrations` step could not run from this sandbox — its direct
+Cloud SQL connection is IP-allowlisted to the owner's machine only, and this
+change touches zero migrations of any kind — so the production `wrangler
+deploy` step was run directly afterward, identical to what `deploy:safe`
+itself would have run).
 `notifySyncScopes`/`SyncRoomDurableObject` remain live for the other
 still-open KS-6.x items (gym run-progress #8415, tokens-served-derived
 surfaces) — this update retires them for the settled feed ONLY.

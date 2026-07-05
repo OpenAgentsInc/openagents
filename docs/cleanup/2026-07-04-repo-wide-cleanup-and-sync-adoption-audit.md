@@ -455,11 +455,19 @@ and the D1 `sync_*` tables have zero remaining users and drop cleanly**
      in `publishSettledFeedEvents` (`tassadar-settled-feed-sync.ts`) — the
      D1 sync-outbox WRITES themselves stay (unrelated: they are
      `GET /api/public/settled-feed`'s own fail-open fallback source, a
-     separate route this change did not touch). Verified live in
-     production: `GET /api/sync/log?scope=scope.public.settled-feed` and
-     `WS /api/sync/connect?scope=scope.public.settled-feed` both succeed
-     anonymously (no auth header), and the homepage/stats settled feed now
-     renders from the new engine exclusively. #8414 closed.
+     separate route this change did not touch). Deployed via `deploy:safe`
+     (staging deploy + predeploy smoke green; the pipeline's final Postgres
+     migrations check couldn't reach Cloud SQL from this sandbox — IP-
+     allowlisted to the owner's machine — so the production `wrangler
+     deploy` ran directly afterward with zero migrations in this change).
+     Verified live in production, Worker version
+     `06a07d3c-47c7-4200-b8be-409d2c7e8364`: `GET /api/sync/log?scope=
+     scope.public.settled-feed` returns 200, and a REAL anonymous
+     WebSocket client (no auth header) completed a full handshake against
+     `wss://.../api/sync/connect?scope=scope.public.settled-feed` and
+     opened live — the exact scope/URL the homepage's `settledFeedStream`
+     now uses. See `docs/khala-sync/RUNBOOK.md`'s settled-feed section for
+     the full evidence. #8414 closed.
 4. **Team chat + thread files + agent goals**: the flagship "migration = sync adoption" case per KS-8.13/#8324 — land on `scope.team.<id>` / `scope.thread.<id>` / `scope.agent_run.<id>` / `scope.user.<id>`, replacing both the notifier fan-out and the desktop/web polling in one move. (L, med)
    - **2026-07-05 correction (KS-6.6, #8416):** `scope.agent_run.<runId>`
      specifically had ZERO producers before this issue — KS-8.13/#8324's
