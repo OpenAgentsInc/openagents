@@ -25,6 +25,17 @@ submit locally only, must use OpenAgents Updates instead of Expo hosted update
 service, and must keep bearer material in the secure-store/keychain adapter.
 Any Ignite pattern that conflicts with those rules is explicitly out of scope.
 
+## Tracking Issues
+
+- [#8426](https://github.com/OpenAgentsInc/openagents/issues/8426) - migrate
+  Expo Router shell to Ignite-style React Navigation stacks.
+- [#8427](https://github.com/OpenAgentsInc/openagents/issues/8427) - adopt
+  Ignite provider spine and core UI primitives.
+- [#8428](https://github.com/OpenAgentsInc/openagents/issues/8428) - add
+  Maestro launched-app smoke flows.
+- [#8429](https://github.com/OpenAgentsInc/openagents/issues/8429) - add
+  dependency-cruiser guardrails and local generators.
+
 ## One-Line Verdict
 
 Khala Mobile already has the hard product-specific pieces Ignite cannot give
@@ -57,6 +68,8 @@ Khala's existing sync/security/native domains.
 ## Borrow First
 
 ### 1. Ignite-Style React Navigation Stacks
+
+Tracking: [#8426](https://github.com/OpenAgentsInc/openagents/issues/8426)
 
 The first architectural borrow should be Ignite's navigator spine, not a
 surface-level component cleanup. Khala should migrate from Expo Router's file
@@ -91,6 +104,8 @@ open, and deep-link behavior.
 
 ### 2. Ignite's Provider Spine
 
+Tracking: [#8427](https://github.com/OpenAgentsInc/openagents/issues/8427)
+
 Ignite's `app/app.tsx` is useful because it centralizes readiness and global
 providers: safe area, keyboard provider, theme provider, auth provider,
 font/i18n readiness, navigation persistence, and the app navigator. Khala's
@@ -111,6 +126,8 @@ Why borrow: this creates one obvious place to reason about launch readiness,
 auth state, system UI, crash containment, and navigation state.
 
 ### 3. A Khala `Screen` Primitive
+
+Tracking: [#8427](https://github.com/OpenAgentsInc/openagents/issues/8427)
 
 Ignite's `Screen` component is the best structural pattern to borrow. It
 centralizes safe-area edges, keyboard behavior, status/system bar styling, and
@@ -134,6 +151,8 @@ stable surfaces to target.
 
 ### 4. Text and Button Wrappers With Accessibility Defaults
 
+Tracking: [#8427](https://github.com/OpenAgentsInc/openagents/issues/8427)
+
 Ignite's `Text` and `Button` wrappers consistently apply typography presets,
 accessibility roles/states, disabled styling, and accessory slots. Khala has
 beautiful product-specific controls, but many ordinary labels/buttons still use
@@ -154,6 +173,8 @@ composition.
 
 ### 5. Maestro Flows For the Pending Device Smoke
 
+Tracking: [#8428](https://github.com/OpenAgentsInc/openagents/issues/8428)
+
 Ignite's `.maestro` folder is small and useful: shared startup, shared login,
 environment-driven `MAESTRO_APP_ID`, and scenario flows that assert real visible
 state. Khala's own docs already name the missing proof:
@@ -172,6 +193,8 @@ Why borrow: it converts the current "builds" evidence into actual launched app
 interaction evidence.
 
 ### 6. Dependency-Cruiser Architecture Rules
+
+Tracking: [#8429](https://github.com/OpenAgentsInc/openagents/issues/8429)
 
 Ignite's dependency-cruiser config is valuable because React Native apps
 accumulate accidental coupling quickly. Khala has separate domains
@@ -214,6 +237,8 @@ Why borrow: it gives reviewers a named place to reject future secret-bearing
 config edits.
 
 ### 8. Local Templates For Screens, Components, Navigators, And Contract Oracles
+
+Tracking: [#8429](https://github.com/OpenAgentsInc/openagents/issues/8429)
 
 Ignite's generator templates are successful because they encode local
 conventions. Khala does not need the full CLI, but it would benefit from a
