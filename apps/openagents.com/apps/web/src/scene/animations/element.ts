@@ -3,8 +3,7 @@ import type { Attribute, Html } from 'foldkit/html'
 
 // Shared factory for Three.js animation experiments: wrap a `mount(el) => {dispose}`
 // function in a Foldkit custom element (absolute-fill, transparent, pointer-none)
-// and return a typed view helper. Lets the /animations playground add a new
-// experiment with one mount function + one line.
+// and return a typed view helper with one mount function + one line.
 
 export type AnimationHandle = Readonly<{ dispose: () => void }>
 export type AnimationMount = (element: HTMLElement) => AnimationHandle

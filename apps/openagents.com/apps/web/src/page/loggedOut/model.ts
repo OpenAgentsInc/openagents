@@ -1827,20 +1827,16 @@ export const init = (
     publicPylonStats:
       route._tag === 'Home' ||
       route._tag === 'Stats' ||
-      route._tag === 'PublicStatsArchive' ||
       route._tag === 'PublicAgent'
         ? LoadingPublicPylonStats()
         : IdlePublicPylonStats(),
     publicKhalaTokensServed:
-      route._tag === 'Home' ||
-      route._tag === 'Stats' ||
-      route._tag === 'PublicStatsArchive'
+      route._tag === 'Home' || route._tag === 'Stats'
         ? LoadingPublicKhalaTokensServed()
         : IdlePublicKhalaTokensServed(),
     publicKhalaTokensServedHistory:
       route._tag === 'Home' ||
       route._tag === 'Stats' ||
-      route._tag === 'PublicStatsArchive' ||
       (route._tag === 'PublicAgent' && route.agentRef === 'artanis')
         ? LoadingPublicKhalaTokensServedHistory()
         : IdlePublicKhalaTokensServedHistory(),
@@ -1854,23 +1850,19 @@ export const init = (
         ? LoadingPublicArtanisActivity()
         : IdlePublicArtanisActivity(),
     publicKhalaTokensServedModelMix:
-      route._tag === 'Stats' || route._tag === 'PublicStatsArchive'
+      route._tag === 'Stats'
         ? LoadingPublicKhalaTokensServedModelMix()
         : IdlePublicKhalaTokensServedModelMix(),
     publicKhalaTokensServedChannelMix:
-      route._tag === 'Stats' || route._tag === 'PublicStatsArchive'
+      route._tag === 'Stats'
         ? LoadingPublicKhalaTokensServedChannelMix()
         : IdlePublicKhalaTokensServedChannelMix(),
     publicForumLaunchStatus:
-      route._tag === 'Home' ||
-      route._tag === 'Stats' ||
-      route._tag === 'PublicStatsArchive'
+      route._tag === 'Home' || route._tag === 'Stats'
         ? LoadingPublicForumLaunchStatus()
         : IdlePublicForumLaunchStatus(),
     publicForumTipLeaderboards:
-      route._tag === 'Home' ||
-      route._tag === 'Stats' ||
-      route._tag === 'PublicStatsArchive'
+      route._tag === 'Home' || route._tag === 'Stats'
         ? LoadingPublicForumTipLeaderboards()
         : IdlePublicForumTipLeaderboards(),
     publicProductPromises:

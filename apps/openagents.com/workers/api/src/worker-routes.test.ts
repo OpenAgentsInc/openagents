@@ -55,21 +55,9 @@ describe('Worker document route fallback', () => {
     ).toBe(false)
   })
 
-  test('keeps the components gallery document route in the app shell', () => {
-    expect(
-      shouldRedirectUnknownDocumentToHome(
-        requestFor('/components'),
-        '/components',
-      ),
-    ).toBe(false)
-  })
-
-  test('keeps Forge and business funnel document routes in the app shell', () => {
+  test('keeps the business funnel document route in the app shell', () => {
     expect(
       shouldRedirectUnknownDocumentToHome(requestFor('/business'), '/business'),
-    ).toBe(false)
-    expect(
-      shouldRedirectUnknownDocumentToHome(requestFor('/forge'), '/forge'),
     ).toBe(false)
   })
 
@@ -109,22 +97,23 @@ describe('Worker document route fallback', () => {
     ).toBe(true)
   })
 
-  test('keeps the Moksha document route in the app shell', () => {
-    expect(
-      shouldRedirectUnknownDocumentToHome(requestFor('/moksha'), '/moksha'),
-    ).toBe(false)
-  })
-
-  test('keeps the OpenAgents Moksha document route in the app shell', () => {
-    expect(
-      shouldRedirectUnknownDocumentToHome(requestFor('/moksha2'), '/moksha2'),
-    ).toBe(false)
-  })
-
-  test('keeps the standalone landing document route in the app shell', () => {
-    expect(
-      shouldRedirectUnknownDocumentToHome(requestFor('/landing'), '/landing'),
-    ).toBe(false)
+  test('redirects retired Wave 0 document paths home', () => {
+    for (const path of [
+      '/components',
+      '/components/buttons',
+      '/forge',
+      '/moksha',
+      '/moksha2',
+      '/landing',
+      '/stats-old',
+      '/clients-preview',
+      '/animations',
+      '/preview/landing',
+    ]) {
+      expect(shouldRedirectUnknownDocumentToHome(requestFor(path), path)).toBe(
+        true,
+      )
+    }
   })
 
   test('keeps the public Khala document route in the app shell when unauthed', () => {
@@ -187,12 +176,6 @@ describe('Worker document route fallback', () => {
   test('keeps public stats document routes in the app shell', () => {
     expect(
       shouldRedirectUnknownDocumentToHome(requestFor('/stats'), '/stats'),
-    ).toBe(false)
-    expect(
-      shouldRedirectUnknownDocumentToHome(
-        requestFor('/stats-old'),
-        '/stats-old',
-      ),
     ).toBe(false)
   })
 

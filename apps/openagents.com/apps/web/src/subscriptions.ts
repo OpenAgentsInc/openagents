@@ -264,13 +264,11 @@ type SettledFeedDependencies = typeof inactiveSettledFeed
 const settledFeedRouteIsLive = (
   model: Extract<Model, { _tag: 'LoggedOut' }>,
 ): boolean =>
-  model.route._tag === 'Home' ||
-  model.route._tag === 'Stats' ||
-  model.route._tag === 'PublicStatsArchive'
+  model.route._tag === 'Home' || model.route._tag === 'Stats'
 
 // Routes that show a live "Khala Tokens Served" total and therefore subscribe to
 // the live delta stream / reconcile poll: the /home + /stats hero counter
-// surfaces (via `settledFeedRouteIsLive`), the /khala counter, AND the / landing
+// surfaces (via `settledFeedRouteIsLive`), the /khala counter, AND the homepage
 // hero's top-left pill. The landing pill reuses the SAME stream + cursor plumbing
 // as /khala — it is not a parallel data source.
 const khalaTokensServedSurfaceIsLive = (
@@ -278,7 +276,7 @@ const khalaTokensServedSurfaceIsLive = (
 ): boolean =>
   settledFeedRouteIsLive(model) ||
   model.route._tag === 'Khala' ||
-  model.route._tag === 'Landing'
+  model.route._tag === 'Home'
 
 export const settledFeedDependenciesForModel = (
   model: Model,
@@ -560,17 +558,14 @@ export const publicActivityTimelinePollDependenciesForModel = (
     : inactiveKhalaTokensServedPoll
 
 // Model-family mix poll (#6392). The model-mix chart only renders on the /stats
-// surface (`Stats` + `PublicStatsArchive`), so its refresh poll is gated to
-// exactly those routes — narrower than the history poll above, which also runs
-// on /home, /khala, and the landing hero where there is no model-mix panel. The
+// surface, so its refresh poll is gated to exactly that route — narrower than
+// the history poll above, which also runs on /home and /khala. The
 // chart is the canonical model-family aggregate, so a timer re-fetch on the same
 // cadence as the history chart is the right "live with the counter" wire (the
 // counter's own per-event push firehose is far too hot to refetch this 30d
 // GROUP BY aggregate against).
 const khalaTokensServedModelMixRouteIsLive = (model: Model): boolean =>
-  model._tag === 'LoggedOut' &&
-  (model.route._tag === 'Stats' ||
-    model.route._tag === 'PublicStatsArchive')
+  model._tag === 'LoggedOut' && model.route._tag === 'Stats'
 
 export const khalaTokensServedModelMixPollDependenciesForModel = (
   model: Model,

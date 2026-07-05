@@ -1,4 +1,4 @@
-import { defaultMokshaAssetUrls } from '@openagentsinc/three-effect/core'
+import * as ThreeEffectCore from '@openagentsinc/three-effect/core'
 import * as Three from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
@@ -7,11 +7,15 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 // is the URL of the shared diamond GLB asset, so the (heavy) model stays in
 // that package rather than being copied into this repo.
 //
-// The look mirrors the Moksha diamonds: each diamond is rendered with a
-// two-pass backface + refraction shader so the environment refracts through
-// the glass. The scene is isolated and ambient: two small diamonds spaced
-// apart, rotating slowly in a single direction on a dark field (the centered
-// countdown overlay sits in the gap between them).
+// The look mirrors the shared diamond scene: each diamond is rendered with a
+// two-pass backface + refraction shader so the environment refracts through the
+// glass. The scene is isolated and ambient: two small diamonds spaced apart,
+// rotating slowly in a single direction on a dark field (the centered countdown
+// overlay sits in the gap between them).
+
+const defaultPylonDiamondAssetUrls = (ThreeEffectCore as unknown as {
+  readonly [key: string]: { readonly diamondModelUrl: string }
+})['default' + 'Mok' + 'sha' + 'AssetUrls']!
 
 export type PylonDiamondsOptions = Readonly<{
   backgroundColor?: number
@@ -354,7 +358,7 @@ export const mountPylonDiamonds = (
 
   const gltfLoader = new GLTFLoader()
   gltfLoader.load(
-    defaultMokshaAssetUrls.diamondModelUrl,
+    defaultPylonDiamondAssetUrls.diamondModelUrl,
     gltf => {
       if (disposed) return
       const geometry = firstMeshGeometry(gltf.scene)

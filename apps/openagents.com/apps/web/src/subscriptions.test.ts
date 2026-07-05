@@ -30,8 +30,6 @@ import {
   GymRoute,
   HomeRoute,
   KhalaRoute,
-  LandingRoute,
-  PublicStatsArchiveRoute,
   StatsRoute,
   TassadarRoute,
   TeamChatRoute,
@@ -675,13 +673,13 @@ describe('autopilot onboarding resume subscription', () => {
 })
 
 describe('Khala tokens-served live surfaces', () => {
-  // The / landing hero's top-left pill shows the SAME live total the /khala
-  // counter does, so the Landing route must subscribe to the SAME live delta
-  // stream + reconcile poll (no parallel data source). /home and /khala stay
-  // live; /tassadar (which shows the back button, not the pill) stays inactive.
-  test('the homepage (/ Landing) subscribes to the live tokens-served stream once seeded (#6324)', () => {
+  // The homepage hero's top-left pill shows the SAME live total the /khala
+  // counter does, so Home must subscribe to the SAME live delta stream +
+  // reconcile poll (no parallel data source). /khala stays live; /tassadar
+  // (which shows the back button, not the pill) stays inactive.
+  test('the homepage subscribes to the live tokens-served stream once seeded (#6324)', () => {
     // Gated on the snapshot settling so the socket opens at the seeded cursor.
-    const landingUnseeded = LoggedOut.init(LandingRoute())
+    const landingUnseeded = LoggedOut.init(HomeRoute())
     expect(
       khalaTokensServedStreamDependenciesForModel(landingUnseeded).isActive,
     ).toBe(false)
@@ -695,7 +693,7 @@ describe('Khala tokens-served live surfaces', () => {
     ).toBe(true)
     // The reconcile poll stays route-gated (independent of the snapshot gate).
     expect(
-      khalaTokensServedPollDependenciesForModel(LoggedOut.init(LandingRoute()))
+      khalaTokensServedPollDependenciesForModel(LoggedOut.init(HomeRoute()))
         .isActive,
     ).toBe(true)
   })
@@ -743,17 +741,12 @@ describe('Khala tokens-served live surfaces', () => {
   })
 
   test('the model-family-mix poll is gated to the /stats surface only (#6392)', () => {
-    // The model-mix chart only renders on /stats + the public stats archive, so
-    // its refresh poll activates there and nowhere else — it must NOT fire on
-    // /home, /khala, or the landing hero where there is no model-mix panel.
+    // The model-mix chart only renders on /stats, so its refresh poll activates
+    // there and nowhere else — it must NOT fire on /home or /khala where there
+    // is no model-mix panel.
     expect(
       khalaTokensServedModelMixPollDependenciesForModel(
         LoggedOut.init(StatsRoute()),
-      ).isActive,
-    ).toBe(true)
-    expect(
-      khalaTokensServedModelMixPollDependenciesForModel(
-        LoggedOut.init(PublicStatsArchiveRoute()),
       ).isActive,
     ).toBe(true)
     expect(
@@ -767,18 +760,8 @@ describe('Khala tokens-served live surfaces', () => {
       ).isActive,
     ).toBe(false)
     expect(
-      khalaTokensServedModelMixPollDependenciesForModel(
-        LoggedOut.init(LandingRoute()),
-      ).isActive,
-    ).toBe(false)
-    expect(
       khalaTokensServedChannelMixPollDependenciesForModel(
         LoggedOut.init(StatsRoute()),
-      ).isActive,
-    ).toBe(true)
-    expect(
-      khalaTokensServedChannelMixPollDependenciesForModel(
-        LoggedOut.init(PublicStatsArchiveRoute()),
       ).isActive,
     ).toBe(true)
     expect(

@@ -1786,8 +1786,7 @@ export const initialCommands = (
               LoadPublicForumTipLeaderboards(),
               LoadSettledFeedSnapshot(),
             ]
-          : model.route._tag === 'Stats' ||
-              model.route._tag === 'PublicStatsArchive'
+          : model.route._tag === 'Stats'
             ? [
                 LoadPublicPylonStats(),
                 LoadKhalaTokensServedSnapshot(),
@@ -1799,11 +1798,10 @@ export const initialCommands = (
                 LoadPublicForumTipLeaderboards(),
                 LoadSettledFeedSnapshot(),
               ]
-            : model.route._tag === 'Khala' || model.route._tag === 'Landing'
-              ? // /khala AND the / landing hero both show the live "Khala Tokens
-                // Served" total (the landing top-left pill mirrors the /khala
-                // counter), so both seed from the SAME snapshot + scalar endpoints and
-                // subscribe to the SAME live stream below — no parallel data source.
+            : model.route._tag === 'Khala'
+              ? // /khala shows the live "Khala Tokens Served" total, so it
+                // seeds from the SAME snapshot + scalar endpoints and subscribes
+                // to the SAME live stream below — no parallel data source.
                 [LoadKhalaTokensServedSnapshot(), LoadPublicKhalaTokensServed()]
               : model.route._tag === 'Gym'
                 ? [LoadGymRunProgressSnapshot(), LoadPublicGymRunProgress()]

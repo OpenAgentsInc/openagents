@@ -4,14 +4,14 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 
-// 3D pylon-network scene for the standalone `/landing` surface. A constellation
+// 3D pylon-network scene for the standalone homepage surface. A constellation
 // of glowing pylon cores connected by faint energy lines on a near-black field,
 // rendered through an EffectComposer -> UnrealBloomPass -> OutputPass chain so
 // the HDR-emissive blue (color above 1.0, `toneMapped = false`) blooms in the
 // dark. OutputPass owns tone-mapping, so the renderer stays linear/no-tone-map.
 //
 // The whole point: ONE persistent scene with named CAMERA POSES. Navigating
-// `/landing` <-> `/khala` tweens the camera between vantages — a continuous move
+// `/` <-> `/khala` tweens the camera between vantages — a continuous move
 // through the same space — instead of cutting between two pages. The host passes
 // the active pose via `setPose`; the render loop eases the camera toward it every
 // frame (exponential smoothing), so the transition is smooth and interruptible.

@@ -12,7 +12,7 @@ export const PERSISTENT_SCENE_SHELL_KEY = 'persistent-scene-shell'
 export const PERSISTENT_SCENE_OVERLAY_PREFIX = 'persistent-scene-overlay:'
 
 export type PersistentSceneRoute =
-  | 'Landing'
+  | 'Home'
   | 'Khala'
   | 'KhalaChat'
   | 'Tassadar'
@@ -20,7 +20,7 @@ export type PersistentSceneRoute =
   | 'Login'
 
 // Active route -> camera pose. The canvas node is keyed the same across
-// /landing <-> /khala <-> /tassadar <-> /autopilot <-> /login so the ONE scene
+// / <-> /khala <-> /tassadar <-> /autopilot <-> /login so the ONE scene
 // instance persists; only this attribute changes, and the element eases the
 // camera to the new pose (continuous flight). /autopilot and /login reuse the
 // same keyed canvas with their own vantage — no second scene is created.
@@ -260,7 +260,7 @@ const overlayForRoute = (
   landingFloatingMenu: Html | undefined,
   landingTopLeftPill: Html | undefined,
 ): Html =>
-  route === 'Landing'
+  route === 'Home'
     ? landingOverlay(h, landingFloatingMenu, landingTopLeftPill)
     : route === 'Tassadar'
       ? tassadarOverlay(h, copiedAgentInstructions)
@@ -276,9 +276,9 @@ const overlayForRoute = (
 // `khalaOverlay` is the real /khala chat HUD, and `loginOverlay` is the real
 // /login card + flush header — all supplied by the loggedOut view. Each is only
 // consulted on its own route; other routes ignore it. `landingFloatingMenu` is
-// the shared signed-in avatar menu, consulted only on the Landing route (the
+// the shared signed-in avatar menu, consulted only on the Home route (the
 // chrome-less hero). `landingTopLeftPill` is the live "Khala Tokens Served"
-// pill, also consulted only on the Landing route, occupying the same top-left
+// pill, also consulted only on the Home route, occupying the same top-left
 // slot the back button uses on the child poses. Keeping them parameters (rather
 // than importing the pages here) avoids a model/message import cycle through the
 // scene module.

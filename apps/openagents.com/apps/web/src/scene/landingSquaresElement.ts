@@ -12,7 +12,7 @@ import {
 // chain) on near-black. Full-bleed and pointer-inert, it fills the viewport
 // behind the centred landing wordmark.
 //
-// The element is mounted ONCE and persists across the /landing <-> /khala route
+// The element is mounted ONCE and persists across the / <-> /khala route
 // change (same keyed node). The active route is passed as `data-pose`; on change
 // the element eases the camera to that pose, so navigation is a continuous flight
 // through the same scene rather than a page cut.

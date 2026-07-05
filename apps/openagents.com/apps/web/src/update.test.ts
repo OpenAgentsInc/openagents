@@ -33,7 +33,6 @@ import {
   DocsRoute,
   HomeRoute,
   InviteRoute,
-  LandingRoute,
   OnboardingRoute,
   OrderRoute,
 } from './route'
@@ -166,16 +165,20 @@ describe('app link routing', () => {
       ChangedUrl({ url: appUrl('/f324f23f') }),
     )
 
-    // The homepage route is the landing scene; Pylon lives at /pylons.
-    // Unknown logged-out URLs redirect home. Landing now also seeds the live
-    // "Khala Tokens Served" pill, so the seed commands precede the redirect.
+    // Unknown logged-out URLs redirect home. Home seeds its public data before
+    // the redirect command.
     expect(model).toMatchObject({
       _tag: 'LoggedOut',
-      route: { _tag: 'Landing' },
+      route: { _tag: 'Home' },
     })
     expect(commands.map(command => command.name)).toEqual([
+      'LoadPublicPylonStats',
       'LoadKhalaTokensServedSnapshot',
       'LoadPublicKhalaTokensServed',
+      'LoadPublicKhalaTokensServedHistory',
+      'LoadPublicForumLaunchStatus',
+      'LoadPublicForumTipLeaderboards',
+      'LoadSettledFeedSnapshot',
       'RedirectToHome',
     ])
   })
@@ -529,7 +532,7 @@ describe('app link routing', () => {
   test('logging out from the homepage hero floating avatar reuses the same logout (clear session + /auth/logout)', () => {
     const [model, commands] = update(
       LoggedOut.init(
-        LandingRoute(),
+        HomeRoute(),
         Option.some(authWithTeam.session),
       ),
       GotLoggedOutMessage({ message: RequestedLandingLogout() }),

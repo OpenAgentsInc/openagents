@@ -30,10 +30,7 @@ import {
   InviteRoute,
   KhalaChatRoute,
   KhalaRoute,
-  LandingRoute,
   MirrorCodeRoute,
-  Moksha2Route,
-  MokshaRoute,
   MulletRoute,
   NotFoundRoute,
   OnboardingRoute,
@@ -41,7 +38,6 @@ import {
   PrivacyRoute,
   ProRoute,
   PublicAgentRoute,
-  PublicStatsArchiveRoute,
   PylonRoute,
   ShareRoute,
   SiteCheckoutDemoReturnRoute,
@@ -134,14 +130,6 @@ describe('startup route policy', () => {
       _tag: 'LoggedOutStartupRoute',
       redirect: Option.none(),
       route: statsRoute,
-    })
-  })
-
-  test('keeps moved public stats archive route available while logged out', () => {
-    expect(startupRouteForLoggedOut(PublicStatsArchiveRoute())).toEqual({
-      _tag: 'LoggedOutStartupRoute',
-      redirect: Option.none(),
-      route: { _tag: 'PublicStatsArchive' },
     })
   })
 
@@ -249,46 +237,6 @@ describe('startup route policy', () => {
     expect(startupCompleteDisposition.TraceCompare).toBe('public')
   })
 
-  test('keeps Moksha public for every auth state', () => {
-    const mokshaRoute = MokshaRoute()
-
-    expect(startupRouteForLoggedOut(mokshaRoute)).toEqual({
-      _tag: 'LoggedOutStartupRoute',
-      redirect: Option.none(),
-      route: mokshaRoute,
-    })
-    expect(startupRouteForLoggedIn(mokshaRoute, completeAuth)).toEqual({
-      _tag: 'LoggedOutStartupRoute',
-      redirect: Option.none(),
-      route: mokshaRoute,
-    })
-    expect(startupRouteForLoggedIn(mokshaRoute, incompleteAuth)).toEqual({
-      _tag: 'LoggedOutStartupRoute',
-      redirect: Option.none(),
-      route: mokshaRoute,
-    })
-  })
-
-  test('keeps OpenAgents Moksha public for every auth state', () => {
-    const mokshaRoute = Moksha2Route()
-
-    expect(startupRouteForLoggedOut(mokshaRoute)).toEqual({
-      _tag: 'LoggedOutStartupRoute',
-      redirect: Option.none(),
-      route: mokshaRoute,
-    })
-    expect(startupRouteForLoggedIn(mokshaRoute, completeAuth)).toEqual({
-      _tag: 'LoggedOutStartupRoute',
-      redirect: Option.none(),
-      route: mokshaRoute,
-    })
-    expect(startupRouteForLoggedIn(mokshaRoute, incompleteAuth)).toEqual({
-      _tag: 'LoggedOutStartupRoute',
-      redirect: Option.none(),
-      route: mokshaRoute,
-    })
-  })
-
   test('keeps Pylon public for every auth state', () => {
     const pylonRoute = PylonRoute()
 
@@ -366,26 +314,6 @@ describe('startup route policy', () => {
       _tag: 'LoggedInStartupRoute',
       redirect: Option.none(),
       route: tassadarReplayRoute,
-    })
-  })
-
-  test('keeps the stats archive public for every auth state', () => {
-    const archiveRoute = PublicStatsArchiveRoute()
-
-    expect(startupRouteForLoggedOut(archiveRoute)).toEqual({
-      _tag: 'LoggedOutStartupRoute',
-      redirect: Option.none(),
-      route: archiveRoute,
-    })
-    expect(startupRouteForLoggedIn(archiveRoute, completeAuth)).toEqual({
-      _tag: 'LoggedOutStartupRoute',
-      redirect: Option.none(),
-      route: archiveRoute,
-    })
-    expect(startupRouteForLoggedIn(archiveRoute, incompleteAuth)).toEqual({
-      _tag: 'LoggedOutStartupRoute',
-      redirect: Option.none(),
-      route: archiveRoute,
     })
   })
 
@@ -528,7 +456,7 @@ describe('startup route policy', () => {
         _tag: 'Some',
         value: { _tag: 'StartupRedirectToHome', href: '/' },
       },
-      route: { _tag: 'Landing' },
+      route: { _tag: 'Home' },
     })
   })
 
@@ -571,7 +499,7 @@ describe('startup route policy', () => {
         _tag: 'Some',
         value: { _tag: 'StartupRedirectToHome', href: '/' },
       },
-      route: { _tag: 'Landing' },
+      route: { _tag: 'Home' },
     })
   })
 
@@ -621,7 +549,7 @@ describe('startup route policy', () => {
         _tag: 'Some',
         value: { _tag: 'StartupRedirectToHome', href: '/' },
       },
-      route: { _tag: 'Landing' },
+      route: { _tag: 'Home' },
     })
   })
 
@@ -672,7 +600,7 @@ describe('startup route policy', () => {
         _tag: 'Some',
         value: { _tag: 'StartupRedirectToHome', href: '/' },
       },
-      route: { _tag: 'Landing' },
+      route: { _tag: 'Home' },
     })
   })
 
@@ -685,7 +613,7 @@ describe('startup route policy', () => {
         _tag: 'Some',
         value: { _tag: 'StartupRedirectToHome', href: '/' },
       },
-      route: { _tag: 'Landing' },
+      route: { _tag: 'Home' },
     })
   })
 
@@ -698,7 +626,7 @@ describe('startup route policy', () => {
         _tag: 'Some',
         value: { _tag: 'StartupRedirectToHome', href: '/' },
       },
-      route: { _tag: 'Landing' },
+      route: { _tag: 'Home' },
     })
   })
 
@@ -730,8 +658,6 @@ describe('startup route policy', () => {
       ),
     ).toBe(false)
     expect(routeRequiresAuthBootstrap(SiteCheckoutDemoRoute())).toBe(false)
-    expect(routeRequiresAuthBootstrap(MokshaRoute())).toBe(false)
-    expect(routeRequiresAuthBootstrap(Moksha2Route())).toBe(false)
     expect(routeRequiresAuthBootstrap(PylonRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(KhalaChatRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(TassadarRoute())).toBe(false)
@@ -741,7 +667,6 @@ describe('startup route policy', () => {
       ),
     ).toBe(false)
     expect(routeRequiresAuthBootstrap(StatsRoute())).toBe(false)
-    expect(routeRequiresAuthBootstrap(PublicStatsArchiveRoute())).toBe(false)
     expect(
       routeRequiresAuthBootstrap(
         SiteCheckoutDemoReturnRoute({ returnAction: 'status' }),
@@ -751,9 +676,6 @@ describe('startup route policy', () => {
 
   test('fetches auth bootstrap for product routes', () => {
     expect(routeRequiresAuthBootstrap(HomeRoute())).toBe(true)
-    // `/` parses client-side to `Landing`, so the homepage must fetch the
-    // auth bootstrap to reflect a signed-in session in the public header.
-    expect(routeRequiresAuthBootstrap(LandingRoute())).toBe(true)
     expect(routeRequiresAuthBootstrap(ChatRoute())).toBe(true)
     expect(routeRequiresAuthBootstrap(InviteRoute())).toBe(true)
     expect(routeRequiresAuthBootstrap(OnboardingRoute())).toBe(true)

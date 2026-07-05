@@ -8,16 +8,12 @@ import { notFoundView } from '../../notFoundView'
 import { homeRouter } from '../../route'
 import * as Ui from '../../ui'
 import * as Activity from '../activity'
-import * as Animations from '../animations'
 import * as ArtanisTraceTree from '../artanisTraceTree'
 import * as ArtanisAccounts from '../artanisAccounts'
 import * as AutopilotOnboardingPage from '../autopilot-onboarding/page'
 import * as Blog from '../blog'
 import * as Business from '../business'
 import * as BusinessKpi from '../businessKpi'
-import * as LandingPreview from '../landingPreview'
-import * as ClientsPreview from '../clientsPreview'
-import * as Components from '../components'
 import * as DemoLegal from '../demoLegal'
 import * as Docs from '../docs'
 import * as Download from '../download'
@@ -55,8 +51,6 @@ import { backButton, khalaTokensServedPill } from './page/backButton'
 import * as Gym from './page/gym'
 import * as Home from './page/home'
 import * as MirrorCode from './page/mirrorcode'
-import * as Moksha from './page/moksha'
-import * as Moksha2 from './page/moksha2'
 import * as Onboarding from './page/onboarding'
 import * as PersistentScene from './page/persistentScene'
 import * as Promises from './page/promises'
@@ -103,19 +97,7 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
     ])
   }
 
-  if (model.route._tag === 'Moksha') {
-    return Ui.pageShell<Message>([
-      h.keyed('div')(model.route._tag, [], [Moksha.view()]),
-    ])
-  }
-
-  if (model.route._tag === 'Moksha2') {
-    return Ui.pageShell<Message>([
-      h.keyed('div')(model.route._tag, [], [Moksha2.view()]),
-    ])
-  }
-
-  if (model.route._tag === 'Landing' || model.route._tag === 'Tassadar') {
+  if (model.route._tag === 'Home' || model.route._tag === 'Tassadar') {
     return Ui.pageShell<Message>([
       PersistentScene.view(
         model.route._tag,
@@ -123,13 +105,13 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
         undefined,
         undefined,
         undefined,
-        // Only the Landing overlay consults this floating avatar menu; the
+        // Only the Home overlay consults this floating avatar menu; the
         // scene ignores it on the Tassadar pose.
         landingFloatingMenu(model),
         // The live "Khala Tokens Served" pill occupies the top-left slot only on
-        // the Landing pose; /tassadar shows the back button in that slot instead
+        // the Home pose; /tassadar shows the back button in that slot instead
         // (its own overlay), so the pill is omitted on Tassadar — never both.
-        model.route._tag === 'Landing'
+        model.route._tag === 'Home'
           ? khalaTokensServedPill(model.publicKhalaTokensServed)
           : undefined,
       ),
@@ -254,39 +236,7 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
         [
           M.value(model.route).pipe(
             M.tagsExhaustive({
-              Home: () =>
-                Home.view({
-                  forumLaunchStatus: model.publicForumLaunchStatus,
-                  forumTipLeaderboards: model.publicForumTipLeaderboards,
-                  publicKhalaTokensServed: model.publicKhalaTokensServed,
-                  publicKhalaTokensServedHistory:
-                    model.publicKhalaTokensServedHistory,
-                  publicKhalaTokensServedHistoryGraphMetric:
-                    model.publicKhalaTokensServedHistoryGraphMetric,
-                  publicKhalaTokensServedModelMix:
-                    model.publicKhalaTokensServedModelMix,
-                  publicKhalaTokensServedChannelMix:
-                    model.publicKhalaTokensServedChannelMix,
-                  publicPylonStats: model.publicPylonStats,
-                  settledFeed: model.settledFeed,
-                }),
               Stats: () =>
-                Stats.view({
-                  forumLaunchStatus: model.publicForumLaunchStatus,
-                  forumTipLeaderboards: model.publicForumTipLeaderboards,
-                  publicKhalaTokensServed: model.publicKhalaTokensServed,
-                  publicKhalaTokensServedHistory:
-                    model.publicKhalaTokensServedHistory,
-                  publicKhalaTokensServedHistoryGraphMetric:
-                    model.publicKhalaTokensServedHistoryGraphMetric,
-                  publicKhalaTokensServedModelMix:
-                    model.publicKhalaTokensServedModelMix,
-                  publicKhalaTokensServedChannelMix:
-                    model.publicKhalaTokensServedChannelMix,
-                  publicPylonStats: model.publicPylonStats,
-                  settledFeed: model.settledFeed,
-                }),
-              PublicStatsArchive: () =>
                 Stats.view({
                   forumLaunchStatus: model.publicForumLaunchStatus,
                   forumTipLeaderboards: model.publicForumTipLeaderboards,
@@ -323,14 +273,9 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
                 SiteCheckoutDemo.view(route, { _tag: 'LoggedOut' }),
               SiteCheckoutDemoReturn: route =>
                 SiteCheckoutDemo.view(route, { _tag: 'LoggedOut' }),
-              ClientsPreview: () => ClientsPreview.view(),
-              Components: () => Components.view({ _tag: 'LoggedOut' }),
-              ComponentsFamily: route =>
-                Components.view({ _tag: 'LoggedOut' }, route.family),
               Business: () => Business.view({ _tag: 'LoggedOut' }),
               BusinessKpi: route =>
                 BusinessKpi.view(route, { _tag: 'LoggedOut' }),
-              LandingPreview: () => LandingPreview.view(),
               // /autopilot + /autopilot/{vertical} are handled by the persistent
               // scene early-return above (they mount the onboarding HUD over the
               // shared canvas), so the route union here no longer includes them.
@@ -351,7 +296,6 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
                   'Go Home',
                 ),
               Download: () => Download.view({ _tag: 'LoggedOut' }),
-              Animations: () => Animations.view({ _tag: 'LoggedOut' }),
               Activity: () => Activity.view({ _tag: 'LoggedOut' }),
               ArtanisAccounts: () =>
                 ArtanisAccounts.view({ _tag: 'LoggedOut' }),

@@ -476,6 +476,12 @@ untouched).
 - #8368 complete — retired `scripts/vertex-fleet` and `scripts/gemini-fleet`
   runnable lanes were removed. `scripts/codex-fleet` is now the only active
   script lane in that family and no longer references the deleted runner paths.
+- #8369 complete — retired the dead Foldkit web route family (`/moksha`,
+  `/moksha2`, `/landing`, `/preview/landing`, `/clients-preview`,
+  `/components`, `/animations`, `/forge`, `/stats-old`) from the central route
+  table, Foldkit parser, Worker document allowlist, startup policy, render
+  branches, and tests. Root `/` now parses to `Home`; `/stats` is the only
+  public stats document route.
 
 ---
 

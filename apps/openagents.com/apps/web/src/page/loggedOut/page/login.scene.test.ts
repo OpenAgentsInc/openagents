@@ -94,34 +94,28 @@ const loadedStatsFixture = {
   trainingModelProgressContributors: 0,
 }
 
-describe('maintenance landing scene', () => {
-  test('root login button exposes a disabled loading state on click', () => {
+describe('homepage scene', () => {
+  test('renders the chrome-less homepage scene without login-button chrome', () => {
     Scene.scene(
       { update, view },
       Scene.with(LoggedOut.init(HomeRoute())),
-      Scene.expect(
-        Scene.selector('[data-login-button="github"][onclick]'),
-      ).toExist(),
-      Scene.expect(
-        Scene.role('link', { name: 'Log in with GitHub' }),
-      ).toExist(),
+      Scene.expect(Scene.selector('oa-landing-squares')).toExist(),
+      Scene.expect(Scene.selector('[data-route="landing"]')).toExist(),
+      Scene.expect(Scene.role('link', { name: 'Log in with GitHub' })).not.toExist(),
     )
   })
 
-  test('renders the agent network landing message', () => {
+  test('renders the homepage wordmark and persistent-scene CTAs', () => {
     Scene.scene(
       { update, view },
       Scene.with(LoggedOut.init(HomeRoute())),
-      Scene.expect(Scene.text('OpenAgents is the agent network.')).toExist(),
       Scene.expect(
-        Scene.text(
-          'Connect your agent, inspect the live promises, and follow the paths for earning bitcoin through useful public work.',
-        ),
+        Scene.selector('[data-landing-wordmark="openagents"]'),
       ).toExist(),
+      Scene.expect(Scene.text('OpenAgents')).toExist(),
+      Scene.expect(Scene.text('What is Khala?')).toExist(),
+      Scene.expect(Scene.text('Join the Tassadar training run')).toExist(),
       Scene.expect(Scene.text('Join the waitlist:')).not.toExist(),
-      Scene.expect(
-        Scene.role('link', { name: 'Log in with GitHub' }),
-      ).toExist(),
       Scene.expect(Scene.text('Episode 228: Free Autopilot')).not.toExist(),
       Scene.expect(Scene.text('Launches June 4.')).not.toExist(),
       Scene.expect(Scene.text("We'll be right back")).not.toExist(),
@@ -164,7 +158,7 @@ describe('maintenance landing scene', () => {
       },
       Scene.with(LoggedOut.init(HomeRoute())),
       // The moved public homepage carries the headline strip; the detailed
-      // panels live on /stats-old.
+      // panels live on /stats.
       Scene.expect(Scene.text('Pylons online')).toExist(),
       Scene.expect(Scene.text('Pylons seen 24h')).toExist(),
       Scene.expect(Scene.text('Tip sats paid')).toExist(),
@@ -222,25 +216,14 @@ describe('maintenance landing scene', () => {
     )
   })
 
-  test('renders the compact public agent path', () => {
+  test('does not render the compact public agent path on the chrome-less homepage', () => {
     Scene.scene(
       { update, view },
       Scene.with(LoggedOut.init(HomeRoute())),
-      Scene.expect(Scene.role('heading', { name: 'I am an Agent' })).toExist(),
+      Scene.expect(Scene.role('heading', { name: 'I am an Agent' })).not.toExist(),
       Scene.expect(
         Scene.role('textbox', { name: 'Copyable agent instruction' }),
-      ).toExist(),
-      Scene.expect(
-        Scene.role('link', { name: 'Capability manifest' }),
-      ).toHaveAttr('href', '/.well-known/openagents.json'),
-      Scene.expect(Scene.role('link', { name: 'OpenAPI' })).toHaveAttr(
-        'href',
-        '/api/openapi.json',
-      ),
-      Scene.expect(Scene.role('link', { name: 'Public proof' })).toHaveAttr(
-        'href',
-        '/api/public/proof/otec',
-      ),
+      ).not.toExist(),
     )
   })
 

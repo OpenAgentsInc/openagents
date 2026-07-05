@@ -107,7 +107,7 @@ export type RouteTableEntry = Readonly<{
   // The tag the CLIENT parser yields for this entry's example paths, when it
   // differs from the entry key. Needed for the few routes whose server document
   // shape and client parser disagree by design:
-  //   - Home: `/` renders the Landing scene, so `/` parses to `Landing`.
+//   - Home: `/` renders the canonical homepage.
   //   - Dashboard: `/dashboard` is server-admitted but has no client parser yet,
   //     so it parses to `NotFound`.
   // Omit when the parse tag equals the entry key (the common case).
@@ -135,7 +135,6 @@ export type RouteTableEntry = Readonly<{
 const ROOT = /^\/$/
 const AUTOPILOT = /^\/autopilot(?:\/(?:legal|work))?$/
 const BLOG = /^\/blog(?:\/[^/]+)?$/
-const COMPONENTS = /^\/components(?:\/[^/]+)?$/
 const DEMO = /^\/demo(?:\/.*)?$/
 const DOCS = /^\/docs(?:\/[^/]+)?$/
 const FILES = /^\/files(?:\/[^/]+)?$/
@@ -164,9 +163,6 @@ export const routeTable = {
     surface: 'spaDocument',
     serverDocument: ROOT,
     examplePaths: ['/'],
-    // `/` renders the Landing scene (homeRouter/landingRouter both map root to
-    // LandingRoute), so the parser yields `Landing` for the root path.
-    clientParseTag: 'Landing',
     requiresAuthBootstrap: true,
     loggedInGate: 'open',
     inLoggedOutUnion: true,
@@ -253,16 +249,6 @@ export const routeTable = {
     surface: 'clientOnly',
     serverDocument: null,
     examplePaths: ['/autopilot/work/autopilot_work_order.visible_1'],
-    requiresAuthBootstrap: true,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  Forge: {
-    surface: 'spaDocument',
-    serverDocument: /^\/forge$/,
-    examplePaths: ['/forge'],
     requiresAuthBootstrap: true,
     loggedInGate: 'open',
     inLoggedOutUnion: false,
@@ -496,38 +482,6 @@ export const routeTable = {
     inLoggedInUnion: true,
     render: 'statelessShell',
   },
-  ClientsPreview: {
-    // `/clients-preview` resolves client-side but is NOT in the server document
-    // allowlist today (a hard nav redirects home); preserve that behavior.
-    surface: 'clientOnly',
-    serverDocument: null,
-    examplePaths: ['/clients-preview'],
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  Components: {
-    surface: 'spaDocument',
-    serverDocument: COMPONENTS,
-    examplePaths: ['/components'],
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  ComponentsFamily: {
-    surface: 'spaDocument',
-    serverDocument: COMPONENTS,
-    examplePaths: ['/components/buttons'],
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
   Business: {
     surface: 'spaDocument',
     serverDocument: /^\/business(?:\/kpi\/[^/]+)?$/,
@@ -542,26 +496,6 @@ export const routeTable = {
     surface: 'spaDocument',
     serverDocument: /^\/business(?:\/kpi\/[^/]+)?$/,
     examplePaths: ['/business/kpi/engagement.public.vertical_pipeline_1'],
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  LandingPreview: {
-    surface: 'spaDocument',
-    serverDocument: /^\/preview\/landing$/,
-    examplePaths: ['/preview/landing'],
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  Animations: {
-    surface: 'spaDocument',
-    serverDocument: /^\/animations$/,
-    examplePaths: ['/animations'],
     requiresAuthBootstrap: false,
     loggedInGate: 'open',
     inLoggedOutUnion: true,
@@ -775,42 +709,6 @@ export const routeTable = {
     inLoggedInUnion: true,
     render: 'statelessShell',
   },
-  Moksha: {
-    surface: 'spaDocument',
-    serverDocument: /^\/moksha$/,
-    examplePaths: ['/moksha'],
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: false,
-    render: 'submodel',
-  },
-  Moksha2: {
-    surface: 'spaDocument',
-    serverDocument: /^\/moksha2$/,
-    examplePaths: ['/moksha2'],
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: false,
-    render: 'submodel',
-  },
-  // Landing IS the homepage at `/` (covered by ROOT). The `/landing` path is an
-  // inbound-only alias that is also a served document.
-  Landing: {
-    surface: 'spaDocument',
-    serverDocument: /^\/landing$/,
-    examplePaths: ['/landing'],
-    // `/` parses client-side to `Landing`, so this drives whether the SPA
-    // fetches `/api/auth/session` on the homepage. Keep `true` so a signed-in
-    // user is reflected in the public header on the landing scene (and any
-    // public route that parses to Landing).
-    requiresAuthBootstrap: true,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: false,
-    render: 'submodel',
-  },
   Terms: {
     surface: 'spaDocument',
     serverDocument: /^\/terms$/,
@@ -959,16 +857,6 @@ export const routeTable = {
     loggedInGate: 'open',
     inLoggedOutUnion: true,
     inLoggedInUnion: true,
-    render: 'submodel',
-  },
-  PublicStatsArchive: {
-    surface: 'spaDocument',
-    serverDocument: /^\/stats-old$/,
-    examplePaths: ['/stats-old'],
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: false,
     render: 'submodel',
   },
   Admin: {

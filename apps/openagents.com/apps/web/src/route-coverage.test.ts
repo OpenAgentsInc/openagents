@@ -21,13 +21,11 @@ const PUBLIC_ROUTE_PARSE_COVERAGE: ReadonlyArray<readonly [string, string]> = [
   ['/khala', 'Khala'],
   ['/chat', 'KhalaChat'],
   ['/stats', 'Stats'],
-  ['/stats-old', 'PublicStatsArchive'],
   ['/terms', 'Terms'],
   ['/privacy', 'Privacy'],
   ['/code', 'Code'],
   ['/business', 'Business'],
   ['/business/kpi/engagement.public.vertical_pipeline_1', 'BusinessKpi'],
-  ['/preview/landing', 'LandingPreview'],
   ['/pylons', 'Pylon'],
   ['/run', 'Run'],
   ['/tassadar', 'Tassadar'],
@@ -35,16 +33,10 @@ const PUBLIC_ROUTE_PARSE_COVERAGE: ReadonlyArray<readonly [string, string]> = [
   ['/docs', 'Docs'],
   ['/forum', 'Forum'],
   ['/promises', 'ProductPromises'],
-  ['/components', 'Components'],
-  ['/animations', 'Animations'],
   ['/activity', 'Activity'],
   ['/artanis/accounts', 'ArtanisAccounts'],
   ['/artanis/gym', 'ArtanisGym'],
   ['/download', 'Download'],
-  ['/landing', 'Landing'],
-  ['/moksha', 'Moksha'],
-  ['/moksha2', 'Moksha2'],
-  ['/clients-preview', 'ClientsPreview'],
   ['/gym', 'Gym'],
   ['/gym/oss', 'GymOss'],
   ['/mirrorcode', 'MirrorCode'],
@@ -72,7 +64,6 @@ const PUBLIC_ROUTE_PARSE_COVERAGE: ReadonlyArray<readonly [string, string]> = [
   ['/settings', 'Settings'],
   ['/admin', 'Admin'],
   ['/mullet', 'Mullet'],
-  ['/forge', 'Forge'],
   ['/decisions', 'Decisions'],
   ['/onboarding', 'Onboarding'],
 ]
@@ -97,19 +88,11 @@ describe('public route parser coverage', () => {
 
   test('covers the documented public surface', () => {
     // Public/top-level routes incl. the authenticated `/pro` operator console
-    // top-level route, the public shareable `/trace/{uuid}` render (#6209), and
-    // the public shareable `/trace/compare/{ids}` comparison (#6211). The four
-    // `/pro/runs` + `/pro/evals` fixture subpages were retired in #6215, so the
-    // covered count dropped from 40 to 36; the public `/gym` Terminal-Bench
-    // visualizer brought the parser-covered surface to 37, the Pylon Codex
-    // assignment-status operator shell brought it to 38, the public
-    // `/mirrorcode` (MirrorCode, powered by Khala) page brings it to 39, the
-    // public `/chat` Khala chat page brings it to 40, the
-    // `/artanis/accounts` account-observability grid brings it to 41, and the
-    // `/artanis/gym` operator Gym tab surface brings it to 42.
-    // `/preview/landing` review-only landing candidate brings it to 44.
-    // `/business/kpi/{engagementRef}` customer scorekeeper brings it to 45.
-    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(45)
+    // route, the public `/trace/{uuid}` render (#6209), and the public
+    // `/trace/compare/{ids}` comparison (#6211). Wave 0 cleanup retired the old
+    // scratch/preview routes, so this count tracks the current documented
+    // surface only.
+    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(36)
   })
 
   // The public shareable trace render (#6209) must capture the uuid param so the
@@ -153,7 +136,7 @@ describe('public route parser coverage', () => {
   // The registry-driven parser derives its `oneOf` list from a single ordered
   // source; the deprecated/duplicate routers stay explicitly excluded.
   test('keeps deprecated/duplicate routers out of the parser', () => {
-    expect(unregisteredParserRouters.length).toBe(2)
+    expect(unregisteredParserRouters.length).toBe(1)
     expect(urlToAppRoute(appUrl('/chat'))._tag).toBe('KhalaChat')
     expect(urlToAppRoute(appUrl('/gym'))._tag).toBe('Gym')
   })

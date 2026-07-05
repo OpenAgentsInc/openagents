@@ -6,9 +6,9 @@ import { describe, expect, test } from 'vitest'
 import { GotLoggedOutMessage } from '../../../message'
 import { LoggedOut } from '../../../model'
 import {
+  HomeRoute,
   KhalaChatRoute,
   KhalaRoute,
-  LandingRoute,
   LoginRoute,
   TassadarRoute,
 } from '../../../route'
@@ -95,7 +95,7 @@ const allKeys = (root: SnabbVNode): ReadonlyArray<string> => {
 
 describe('persistent landing and Khala scene', () => {
   test('keeps the canvas wrapper key stable across landing and Khala', () => {
-    const landing = persistentSceneView('Landing') as SnabbVNode
+    const landing = persistentSceneView('Home') as SnabbVNode
     const khala = persistentSceneView('Khala') as SnabbVNode
 
     expect(findByKey(landing, PERSISTENT_SCENE_SHELL_KEY)).toBeDefined()
@@ -131,9 +131,9 @@ describe('persistent landing and Khala scene', () => {
   })
 
   test('changes only the overlay key between landing and Khala', () => {
-    const landing = persistentSceneView('Landing') as SnabbVNode
+    const landing = persistentSceneView('Home') as SnabbVNode
     const khala = persistentSceneView('Khala') as SnabbVNode
-    const landingOverlayKey = `${PERSISTENT_SCENE_OVERLAY_PREFIX}Landing`
+    const landingOverlayKey = `${PERSISTENT_SCENE_OVERLAY_PREFIX}Home`
     const khalaOverlayKey = `${PERSISTENT_SCENE_OVERLAY_PREFIX}Khala`
     const stableKeys = (keys: ReadonlyArray<string>): ReadonlyArray<string> =>
       keys.filter(k => !k.startsWith(PERSISTENT_SCENE_OVERLAY_PREFIX))
@@ -146,7 +146,7 @@ describe('persistent landing and Khala scene', () => {
   })
 
   test('keeps the canvas wrapper key stable for the Tassadar pose too', () => {
-    const landing = persistentSceneView('Landing') as SnabbVNode
+    const landing = persistentSceneView('Home') as SnabbVNode
     const tassadar = persistentSceneView('Tassadar') as SnabbVNode
 
     const landingCanvas = findByKey(landing, PERSISTENT_SCENE_KEY)
@@ -162,7 +162,7 @@ describe('persistent landing and Khala scene', () => {
   })
 
   test('maps each route to its distinct, non-blank camera pose', () => {
-    expect(poseForRoute('Landing')).toBe('landing')
+    expect(poseForRoute('Home')).toBe('landing')
     expect(poseForRoute('Khala')).toBe('khala')
     expect(poseForRoute('KhalaChat')).toBe('khala')
     expect(poseForRoute('Tassadar')).toBe('tassadar')
@@ -173,7 +173,7 @@ describe('persistent landing and Khala scene', () => {
     expect(poseForRoute('Login')).toBe('login')
 
     const poses = (
-      ['Landing', 'Khala', 'Tassadar', 'Autopilot', 'Login'] as const
+      ['Home', 'Khala', 'Tassadar', 'Autopilot', 'Login'] as const
     ).map(poseForRoute)
     expect(new Set(poses).size).toBe(poses.length)
     for (const pose of poses) {
@@ -182,7 +182,7 @@ describe('persistent landing and Khala scene', () => {
   })
 
   test('hosts the Login pose on the same persistent canvas (no second scene)', () => {
-    const landing = persistentSceneView('Landing') as SnabbVNode
+    const landing = persistentSceneView('Home') as SnabbVNode
     const login = persistentSceneView('Login') as SnabbVNode
 
     const landingCanvas = findByKey(landing, PERSISTENT_SCENE_KEY)
@@ -205,7 +205,7 @@ describe('persistent landing and Khala scene', () => {
   })
 
   test('hosts the Autopilot pose on the same persistent canvas (no second scene)', () => {
-    const landing = persistentSceneView('Landing') as SnabbVNode
+    const landing = persistentSceneView('Home') as SnabbVNode
     const autopilot = persistentSceneView('Autopilot') as SnabbVNode
 
     const landingCanvas = findByKey(landing, PERSISTENT_SCENE_KEY)
@@ -257,7 +257,7 @@ describe('persistent landing and Khala scene', () => {
   test('renders the landing scene with the Khala + Tassadar CTAs', () => {
     Scene.scene(
       { update, view },
-      Scene.with(LoggedOut.init(LandingRoute())),
+      Scene.with(LoggedOut.init(HomeRoute())),
       Scene.expect(Scene.selector('oa-landing-squares')).toExist(),
       Scene.expect(
         Scene.selector('[data-persistent-scene-shell="landing"]'),
@@ -446,7 +446,7 @@ describe('persistent landing and Khala scene', () => {
   test('keeps the homepage hero clean for a logged-out viewer (no floating avatar)', () => {
     Scene.scene(
       { update, view },
-      Scene.with(LoggedOut.init(LandingRoute())),
+      Scene.with(LoggedOut.init(HomeRoute())),
       // The hero (wordmark + Tassadar CTA) renders, but nothing floats over it.
       Scene.expect(
         Scene.selector('[data-landing-wordmark="openagents"]'),
@@ -461,7 +461,7 @@ describe('persistent landing and Khala scene', () => {
   test('floats the shared avatar menu top-right when signed in, with the same Log out wire', () => {
     Scene.scene(
       { update, view },
-      Scene.with(LoggedOut.init(LandingRoute(), githubViewerSession)),
+      Scene.with(LoggedOut.init(HomeRoute(), githubViewerSession)),
       // The floating control mounts over the hero (no header bar / nav).
       Scene.expect(
         Scene.selector('[data-landing-floating-avatar="viewer"]'),
@@ -484,7 +484,7 @@ describe('persistent landing and Khala scene', () => {
   test('uses the GitHub avatar image when the signed-in viewer has one', () => {
     Scene.scene(
       { update, view },
-      Scene.with(LoggedOut.init(LandingRoute(), githubViewerSession)),
+      Scene.with(LoggedOut.init(HomeRoute(), githubViewerSession)),
       Scene.expect(
         Scene.selector('[src="https://avatars.githubusercontent.com/u/1?v=4"]'),
       ).toExist(),
@@ -494,7 +494,7 @@ describe('persistent landing and Khala scene', () => {
   test('falls back to the monogram when the signed-in viewer has no avatar', () => {
     Scene.scene(
       { update, view },
-      Scene.with(LoggedOut.init(LandingRoute(), monogramViewerSession)),
+      Scene.with(LoggedOut.init(HomeRoute(), monogramViewerSession)),
       Scene.expect(
         Scene.selector('[data-landing-floating-avatar="viewer"]'),
       ).toExist(),
@@ -508,7 +508,7 @@ describe('persistent landing and Khala scene', () => {
   // powers the /khala counter, mirrors the back-button styling, and links to
   // /stats. The back button (the slot's child-route occupant) is absent on /.
   const landingWithTokens = (tokensServed: number) =>
-    evo(LoggedOut.init(LandingRoute()), {
+    evo(LoggedOut.init(HomeRoute()), {
       publicKhalaTokensServed: () =>
         LoadedPublicKhalaTokensServed({
           served: PublicKhalaTokensServed.make({
@@ -550,7 +550,7 @@ describe('persistent landing and Khala scene', () => {
   test('renders the em-dash placeholder in the pill before the live total loads', () => {
     Scene.scene(
       { update, view },
-      Scene.with(LoggedOut.init(LandingRoute())),
+      Scene.with(LoggedOut.init(HomeRoute())),
       Scene.expect(
         Scene.selector('[data-landing-khala-tokens-pill="home"]'),
       ).toExist(),

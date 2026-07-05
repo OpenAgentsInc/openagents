@@ -26,7 +26,6 @@ export const AutopilotWorkRoute = r('AutopilotWork')
 export const AutopilotWorkDetailRoute = r('AutopilotWorkDetail', {
   workOrderRef: S.String,
 })
-export const ForgeRoute = r('Forge')
 export const DecisionsRoute = r('Decisions')
 export const WorkspaceRoute = r('Workspace', { workspaceId: S.String })
 export const WorkroomRoute = r('Workroom', { workroomId: S.String })
@@ -62,15 +61,8 @@ export const SiteCheckoutDemoRoute = r('SiteCheckoutDemo')
 export const SiteCheckoutDemoReturnRoute = r('SiteCheckoutDemoReturn', {
   returnAction: S.String,
 })
-export const ClientsPreviewRoute = r('ClientsPreview')
-export const ComponentsRoute = r('Components')
-export const ComponentsFamilyRoute = r('ComponentsFamily', {
-  family: S.String,
-})
 export const BusinessRoute = r('Business')
 export const BusinessKpiRoute = r('BusinessKpi', { engagementRef: S.String })
-export const LandingPreviewRoute = r('LandingPreview')
-export const AnimationsRoute = r('Animations')
 export const ActivityRoute = r('Activity')
 export const ArtanisAccountsRoute = r('ArtanisAccounts')
 export const ArtanisGymRoute = r('ArtanisGym')
@@ -101,9 +93,6 @@ export const QaSwarmRoute = r('QaSwarm', { runRef: S.String })
 export const PylonCodexAssignmentStatusRoute = r('PylonCodexAssignmentStatus', {
   assignmentRef: S.String,
 })
-export const MokshaRoute = r('Moksha')
-export const Moksha2Route = r('Moksha2')
-export const LandingRoute = r('Landing')
 export const TermsRoute = r('Terms')
 export const PrivacyRoute = r('Privacy')
 export const CodeRoute = r('Code')
@@ -123,7 +112,6 @@ export const OperatorDashboardRoute = r('OperatorDashboard')
 export const BillingRoute = r('Billing')
 export const UsageRoute = r('Usage')
 export const StatsRoute = r('Stats')
-export const PublicStatsArchiveRoute = r('PublicStatsArchive')
 export const AdminRoute = r('Admin')
 export const MulletRoute = r('Mullet')
 export const ImagesRoute = r('Images')
@@ -165,7 +153,6 @@ export type AutopilotRoute = typeof AutopilotRoute.Type
 export type AutopilotVerticalRoute = typeof AutopilotVerticalRoute.Type
 export type AutopilotWorkRoute = typeof AutopilotWorkRoute.Type
 export type AutopilotWorkDetailRoute = typeof AutopilotWorkDetailRoute.Type
-export type ForgeRoute = typeof ForgeRoute.Type
 export type DecisionsRoute = typeof DecisionsRoute.Type
 export type WorkspaceRoute = typeof WorkspaceRoute.Type
 export type WorkroomRoute = typeof WorkroomRoute.Type
@@ -189,13 +176,8 @@ export type ForumReceiptRoute = typeof ForumReceiptRoute.Type
 export type SiteCheckoutDemoRoute = typeof SiteCheckoutDemoRoute.Type
 export type SiteCheckoutDemoReturnRoute =
   typeof SiteCheckoutDemoReturnRoute.Type
-export type ClientsPreviewRoute = typeof ClientsPreviewRoute.Type
-export type ComponentsRoute = typeof ComponentsRoute.Type
-export type ComponentsFamilyRoute = typeof ComponentsFamilyRoute.Type
 export type BusinessRoute = typeof BusinessRoute.Type
 export type BusinessKpiRoute = typeof BusinessKpiRoute.Type
-export type LandingPreviewRoute = typeof LandingPreviewRoute.Type
-export type AnimationsRoute = typeof AnimationsRoute.Type
 export type ActivityRoute = typeof ActivityRoute.Type
 export type ArtanisAccountsRoute = typeof ArtanisAccountsRoute.Type
 export type ArtanisGymRoute = typeof ArtanisGymRoute.Type
@@ -216,9 +198,6 @@ export type TraceCompareRoute = typeof TraceCompareRoute.Type
 export type QaSwarmRoute = typeof QaSwarmRoute.Type
 export type PylonCodexAssignmentStatusRoute =
   typeof PylonCodexAssignmentStatusRoute.Type
-export type MokshaRoute = typeof MokshaRoute.Type
-export type Moksha2Route = typeof Moksha2Route.Type
-export type LandingRoute = typeof LandingRoute.Type
 export type TermsRoute = typeof TermsRoute.Type
 export type PrivacyRoute = typeof PrivacyRoute.Type
 export type CodeRoute = typeof CodeRoute.Type
@@ -233,7 +212,6 @@ export type OperatorDashboardRoute = typeof OperatorDashboardRoute.Type
 export type BillingRoute = typeof BillingRoute.Type
 export type UsageRoute = typeof UsageRoute.Type
 export type StatsRoute = typeof StatsRoute.Type
-export type PublicStatsArchiveRoute = typeof PublicStatsArchiveRoute.Type
 export type AdminRoute = typeof AdminRoute.Type
 export type MulletRoute = typeof MulletRoute.Type
 export type ImagesRoute = typeof ImagesRoute.Type
@@ -257,7 +235,6 @@ export type NotFoundRoute = typeof NotFoundRoute.Type
 export const LoggedOutRoute = S.Union([
   HomeRoute,
   StatsRoute,
-  PublicStatsArchiveRoute,
   InviteRoute,
   OnboardingRoute,
   DocsRoute,
@@ -271,15 +248,10 @@ export const LoggedOutRoute = S.Union([
   ForumReceiptRoute,
   SiteCheckoutDemoRoute,
   SiteCheckoutDemoReturnRoute,
-  ClientsPreviewRoute,
-  ComponentsRoute,
-  ComponentsFamilyRoute,
   BusinessRoute,
   BusinessKpiRoute,
-  LandingPreviewRoute,
   AutopilotRoute,
   AutopilotVerticalRoute,
-  AnimationsRoute,
   ActivityRoute,
   ArtanisAccountsRoute,
   RunRoute,
@@ -297,9 +269,6 @@ export const LoggedOutRoute = S.Union([
   TraceCompareRoute,
   QaSwarmRoute,
   PylonCodexAssignmentStatusRoute,
-  MokshaRoute,
-  Moksha2Route,
-  LandingRoute,
   TermsRoute,
   PrivacyRoute,
   CodeRoute,
@@ -319,7 +288,6 @@ export const LoggedInRoute = S.Union([
   OrderDetailRoute,
   AutopilotWorkRoute,
   AutopilotWorkDetailRoute,
-  ForgeRoute,
   DecisionsRoute,
   WorkspaceRoute,
   WorkroomRoute,
@@ -341,13 +309,8 @@ export const LoggedInRoute = S.Union([
   ForumReceiptRoute,
   SiteCheckoutDemoRoute,
   SiteCheckoutDemoReturnRoute,
-  ClientsPreviewRoute,
-  ComponentsRoute,
-  ComponentsFamilyRoute,
   BusinessRoute,
   BusinessKpiRoute,
-  LandingPreviewRoute,
-  AnimationsRoute,
   ActivityRoute,
   ArtanisAccountsRoute,
   ArtanisGymRoute,
@@ -388,7 +351,6 @@ export const AppRoute = S.Union([
   AutopilotVerticalRoute,
   AutopilotWorkRoute,
   AutopilotWorkDetailRoute,
-  ForgeRoute,
   DecisionsRoute,
   WorkspaceRoute,
   WorkroomRoute,
@@ -411,13 +373,8 @@ export const AppRoute = S.Union([
   ForumReceiptRoute,
   SiteCheckoutDemoRoute,
   SiteCheckoutDemoReturnRoute,
-  ClientsPreviewRoute,
-  ComponentsRoute,
-  ComponentsFamilyRoute,
   BusinessRoute,
   BusinessKpiRoute,
-  LandingPreviewRoute,
-  AnimationsRoute,
   ActivityRoute,
   ArtanisAccountsRoute,
   ArtanisGymRoute,
@@ -437,9 +394,6 @@ export const AppRoute = S.Union([
   TraceCompareRoute,
   QaSwarmRoute,
   PylonCodexAssignmentStatusRoute,
-  MokshaRoute,
-  Moksha2Route,
-  LandingRoute,
   TermsRoute,
   PrivacyRoute,
   CodeRoute,
@@ -454,7 +408,6 @@ export const AppRoute = S.Union([
   BillingRoute,
   UsageRoute,
   StatsRoute,
-  PublicStatsArchiveRoute,
   AdminRoute,
   MulletRoute,
   ImagesRoute,
@@ -480,10 +433,8 @@ export type LoggedOutRoute = typeof LoggedOutRoute.Type
 export type LoggedInRoute = typeof LoggedInRoute.Type
 export type AppRoute = typeof AppRoute.Type
 
-// The root path `/` is now the Landing persistent scene (the homepage).
-// `homeRouter()` is the canonical "Go Home" URL builder app-wide and resolves
-// to `/`, which renders the Landing scene.
-export const homeRouter = pipe(Route.root, Route.mapTo(LandingRoute))
+// The root path `/` is the canonical homepage.
+export const homeRouter = pipe(Route.root, Route.mapTo(HomeRoute))
 export const chatRouter = pipe(literal('autopilot'), Route.mapTo(ChatRoute))
 export const autopilotRouter = pipe(
   literal('autopilot'),
@@ -530,7 +481,6 @@ export const autopilotWorkDetailRouter = pipe(
   slash(string('workOrderRef')),
   Route.mapTo(AutopilotWorkDetailRoute),
 )
-export const forgeRouter = pipe(literal('forge'), Route.mapTo(ForgeRoute))
 export const decisionsRouter = pipe(
   literal('decisions'),
   Route.mapTo(DecisionsRoute),
@@ -639,19 +589,6 @@ export const siteCheckoutDemoReturnRouter = pipe(
   slash(string('returnAction')),
   Route.mapTo(SiteCheckoutDemoReturnRoute),
 )
-export const clientsPreviewRouter = pipe(
-  literal('clients-preview'),
-  Route.mapTo(ClientsPreviewRoute),
-)
-export const componentsRouter = pipe(
-  literal('components'),
-  Route.mapTo(ComponentsRoute),
-)
-export const componentsFamilyRouter = pipe(
-  literal('components'),
-  slash(string('family')),
-  Route.mapTo(ComponentsFamilyRoute),
-)
 export const businessRouter = pipe(
   literal('business'),
   Route.mapTo(BusinessRoute),
@@ -661,15 +598,6 @@ export const businessKpiRouter = pipe(
   slash(literal('kpi')),
   slash(string('engagementRef')),
   Route.mapTo(BusinessKpiRoute),
-)
-export const landingPreviewRouter = pipe(
-  literal('preview'),
-  slash(literal('landing')),
-  Route.mapTo(LandingPreviewRoute),
-)
-export const animationsRouter = pipe(
-  literal('animations'),
-  Route.mapTo(AnimationsRoute),
 )
 export const activityRouter = pipe(
   literal('activity'),
@@ -754,17 +682,6 @@ export const pylonCodexAssignmentStatusRouter = pipe(
   slash(string('assignmentRef')),
   Route.mapTo(PylonCodexAssignmentStatusRoute),
 )
-export const mokshaRouter = pipe(literal('moksha'), Route.mapTo(MokshaRoute))
-export const moksha2Router = pipe(literal('moksha2'), Route.mapTo(Moksha2Route))
-// Landing IS the homepage at `/`. `landingRouter()` builds the root path so
-// any "navigate to landing / go home" flow lands on `/`. The `/landing` path
-// is kept as an inbound-only alias (see `landingAliasRouter`) so old links and
-// bookmarks still resolve to the same Landing scene.
-export const landingRouter = pipe(Route.root, Route.mapTo(LandingRoute))
-export const landingAliasRouter = pipe(
-  literal('landing'),
-  Route.mapTo(LandingRoute),
-)
 export const termsRouter = pipe(literal('terms'), Route.mapTo(TermsRoute))
 export const privacyRouter = pipe(literal('privacy'), Route.mapTo(PrivacyRoute))
 export const codeRouter = pipe(literal('code'), Route.mapTo(CodeRoute))
@@ -793,10 +710,6 @@ export const operatorDashboardRouter = pipe(
 export const billingRouter = pipe(literal('billing'), Route.mapTo(BillingRoute))
 export const usageRouter = pipe(literal('usage'), Route.mapTo(UsageRoute))
 export const statsRouter = pipe(literal('stats'), Route.mapTo(StatsRoute))
-export const publicStatsArchiveRouter = pipe(
-  literal('stats-old'),
-  Route.mapTo(PublicStatsArchiveRoute),
-)
 export const adminRouter = pipe(literal('admin'), Route.mapTo(AdminRoute))
 export const mulletRouter = pipe(literal('mullet'), Route.mapTo(MulletRoute))
 export const imagesRouter = pipe(literal('images'), Route.mapTo(ImagesRoute))
@@ -987,10 +900,9 @@ export const routeSpec = (tag: RouteTag): RouteSpec => routeRegistry[tag]
 // before generic ones (e.g. demo2TeamProjectChat before demo2, orderDetail
 // before order, workroomTab before workroom, settingsSection before settings,
 // homeRouter last). This ordered list captures that exact order; the parser is
-// derived from it. `chatRouter` and `landingRouter` are intentionally NOT in
-// this list (deprecated/duplicate routers, see notes at their definitions) and
-// must stay out — the `unregisteredRouters` guard below documents and asserts
-// that intent.
+// derived from it. `chatRouter` is intentionally NOT in this list
+// (deprecated/duplicate router) and must stay out — the `unregisteredRouters`
+// guard below documents and asserts that intent.
 const orderedParserRouters = [
   demo2TeamProjectChatRouter,
   demo2TeamFileRouter,
@@ -1011,13 +923,8 @@ const orderedParserRouters = [
   docsPageRouter,
   siteCheckoutDemoReturnRouter,
   siteCheckoutDemoRouter,
-  clientsPreviewRouter,
-  componentsFamilyRouter,
-  componentsRouter,
   businessKpiRouter,
   businessRouter,
-  landingPreviewRouter,
-  animationsRouter,
   activityRouter,
   artanisAccountsRouter,
   artanisGymRouter,
@@ -1041,9 +948,6 @@ const orderedParserRouters = [
   traceRouter,
   qaSwarmRouter,
   pylonCodexAssignmentStatusRouter,
-  moksha2Router,
-  mokshaRouter,
-  landingAliasRouter,
   termsRouter,
   privacyRouter,
   khalaCodeDownloadRouter,
@@ -1058,7 +962,6 @@ const orderedParserRouters = [
   autopilotWorkRouter,
   autopilotVerticalRouter,
   autopilotRouter,
-  forgeRouter,
   decisionsRouter,
   workspaceRouter,
   workroomTabRouter,
@@ -1078,7 +981,6 @@ const orderedParserRouters = [
   operatorDashboardRouter,
   billingRouter,
   usageRouter,
-  publicStatsArchiveRouter,
   statsRouter,
   adminRouter,
   mulletRouter,
@@ -1091,7 +993,7 @@ const orderedParserRouters = [
 // Routers that are intentionally NOT registered in the parser. Kept here as an
 // explicit, documented list so the parser-coverage test can assert nothing
 // slips in or out by accident.
-export const unregisteredParserRouters = [chatRouter, landingRouter] as const
+export const unregisteredParserRouters = [chatRouter] as const
 
 const routeParser = Route.oneOf(...orderedParserRouters)
 

@@ -2238,7 +2238,7 @@ const topStatsStrip = (input: HomeViewInput): Html => {
         [
           h.a(
             [
-              h.Href('/stats-old'),
+              h.Href('/stats'),
               Ui.className<Message>(
                 'text-[0.66rem] uppercase leading-none text-white/45 underline-offset-2 hover:text-white/70 hover:underline',
               ),

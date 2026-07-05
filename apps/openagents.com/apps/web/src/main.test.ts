@@ -77,8 +77,8 @@ describe('auth bootstrap flags', () => {
     window.history.replaceState({}, '', '/')
   })
 
-  test('requests the auth session on the root Landing route', async () => {
-    // `/` parses client-side to `Landing`; the homepage must fetch the auth
+  test('requests the auth session on the root Home route', async () => {
+    // `/` parses client-side to `Home`; the homepage must fetch the auth
     // bootstrap so a signed-in session is reflected in the public header.
     window.history.replaceState({}, '', '/')
     const fetchSpy = vi
@@ -134,26 +134,6 @@ describe('auth bootstrap flags', () => {
       expect(fetchSpy).not.toHaveBeenCalled()
       vi.restoreAllMocks()
     }
-  })
-
-  test('does not request the auth session on the Moksha route', async () => {
-    window.history.replaceState({}, '', '/moksha')
-    const fetchSpy = vi.spyOn(globalThis, 'fetch')
-
-    const loadedFlags = await Effect.runPromise(flags)
-
-    expect(loadedFlags.maybeAuth).toEqual(Option.none())
-    expect(fetchSpy).not.toHaveBeenCalled()
-  })
-
-  test('does not request the auth session on the OpenAgents Moksha route', async () => {
-    window.history.replaceState({}, '', '/moksha2')
-    const fetchSpy = vi.spyOn(globalThis, 'fetch')
-
-    const loadedFlags = await Effect.runPromise(flags)
-
-    expect(loadedFlags.maybeAuth).toEqual(Option.none())
-    expect(fetchSpy).not.toHaveBeenCalled()
   })
 
   test('does not request the auth session on the Pylon route', async () => {
@@ -299,47 +279,6 @@ describe('authenticated startup routing', () => {
     expect(commands).toHaveLength(0)
   })
 
-  test('opens Moksha without an auth session', () => {
-    const [model, commands] = init(
-      Flags.make({ maybeAuth: Option.none() }),
-      appUrl('/moksha'),
-    )
-
-    expect(model).toMatchObject({
-      _tag: 'LoggedOut',
-      route: { _tag: 'Moksha' },
-    })
-    expect(commands).toHaveLength(0)
-  })
-
-  test('renders the Moksha route through the top-level view', () => {
-    const [model] = init(
-      Flags.make({ maybeAuth: Option.none() }),
-      appUrl('/moksha'),
-    )
-
-    Scene.scene(
-      { update, view },
-      Scene.with(model),
-      Scene.expect(Scene.selector('[data-route="moksha"]')).toExist(),
-      Scene.expect(Scene.selector('oa-moksha')).toExist(),
-    )
-  })
-
-  test('renders the OpenAgents Moksha route through the top-level view', () => {
-    const [model] = init(
-      Flags.make({ maybeAuth: Option.none() }),
-      appUrl('/moksha2'),
-    )
-
-    Scene.scene(
-      { update, view },
-      Scene.with(model),
-      Scene.expect(Scene.selector('[data-route="moksha2"]')).toExist(),
-      Scene.expect(Scene.selector('oa-moksha')).toExist(),
-    )
-  })
-
   test('opens Pylon at /pylons without an auth session', () => {
     const [model, commands] = init(
       Flags.make({ maybeAuth: Option.none() }),
@@ -432,7 +371,7 @@ describe('authenticated startup routing', () => {
       appUrl('/tassadar'),
     )
 
-    // /tassadar is now a third persistent-scene pose (like /landing and /khala):
+    // /tassadar is a persistent-scene pose (like / and /khala):
     // the 3D pylon scene stays mounted and the camera flies to the tassadar
     // vantage, with the public info page + Copy Agent Instructions over it.
     Scene.scene(
@@ -590,37 +529,36 @@ describe('authenticated startup routing', () => {
     ])
   })
 
-  test('keeps incomplete authenticated root visits on the public Landing scene', () => {
+  test('routes incomplete authenticated root visits into onboarding', () => {
     const [model, commands] = init(
       Flags.make({ maybeAuth: Option.some(authWithIncompleteOnboarding) }),
       appUrl('/'),
     )
 
     expect(model).toMatchObject({
-      _tag: 'LoggedOut',
-      route: { _tag: 'Landing' },
+      _tag: 'LoggedIn',
+      route: { _tag: 'Onboarding' },
     })
-    // The Landing hero now seeds the live "Khala Tokens Served" pill from the
-    // SAME snapshot + scalar endpoints the /khala counter uses.
     expect(commands.map(command => command.name)).toEqual([
-      'LoadKhalaTokensServedSnapshot',
-      'LoadPublicKhalaTokensServed',
+      'InstallAccountMenuOutsideClick',
+      'LoadOnboardingRepositories',
+      'RedirectToOnboarding',
     ])
   })
 
-  test('keeps authenticated root visits on the public Landing scene', () => {
+  test('routes authenticated root visits without Core Team access to order status', () => {
     const [model, commands] = init(
       Flags.make({ maybeAuth: Option.some(authWithoutCoreTeam) }),
       appUrl('/'),
     )
 
     expect(model).toMatchObject({
-      _tag: 'LoggedOut',
-      route: { _tag: 'Landing' },
+      _tag: 'LoggedIn',
+      route: { _tag: 'Order' },
     })
     expect(commands.map(command => command.name)).toEqual([
-      'LoadKhalaTokensServedSnapshot',
-      'LoadPublicKhalaTokensServed',
+      'InstallAccountMenuOutsideClick',
+      'LoadCustomerOrders',
     ])
   })
 
@@ -641,7 +579,7 @@ describe('authenticated startup routing', () => {
     ])
   })
 
-  test('keeps logged-out root visitors on the public Landing scene', () => {
+  test('keeps logged-out root visitors on the public homepage scene', () => {
     const [model, commands] = init(
       Flags.make({ maybeAuth: Option.none() }),
       appUrl('/'),
@@ -649,11 +587,16 @@ describe('authenticated startup routing', () => {
 
     expect(model).toMatchObject({
       _tag: 'LoggedOut',
-      route: { _tag: 'Landing' },
+      route: { _tag: 'Home' },
     })
     expect(commands.map(command => command.name)).toEqual([
+      'LoadPublicPylonStats',
       'LoadKhalaTokensServedSnapshot',
       'LoadPublicKhalaTokensServed',
+      'LoadPublicKhalaTokensServedHistory',
+      'LoadPublicForumLaunchStatus',
+      'LoadPublicForumTipLeaderboards',
+      'LoadSettledFeedSnapshot',
     ])
   })
 
@@ -737,13 +680,18 @@ describe('authenticated startup routing', () => {
 
     expect(model).toMatchObject({
       _tag: 'LoggedOut',
-      route: { _tag: 'Landing' },
+      route: { _tag: 'Home' },
     })
-    // Landing is the redirect target, and it now also seeds the live
-    // "Khala Tokens Served" pill, so the seed commands precede the redirect.
+    // Home is the redirect target, so its public seed commands precede the
+    // redirect.
     expect(commands.map(command => command.name)).toEqual([
+      'LoadPublicPylonStats',
       'LoadKhalaTokensServedSnapshot',
       'LoadPublicKhalaTokensServed',
+      'LoadPublicKhalaTokensServedHistory',
+      'LoadPublicForumLaunchStatus',
+      'LoadPublicForumTipLeaderboards',
+      'LoadSettledFeedSnapshot',
       'RedirectToHome',
     ])
   })
@@ -833,19 +781,19 @@ describe('authenticated startup routing', () => {
     ])
   })
 
-  test('keeps Core Team authenticated root visits on the public Landing scene', () => {
+  test('routes Core Team authenticated root visits to order status', () => {
     const [model, commands] = init(
       Flags.make({ maybeAuth: Option.some(authWithTeam) }),
       appUrl('/'),
     )
 
     expect(model).toMatchObject({
-      _tag: 'LoggedOut',
-      route: { _tag: 'Landing' },
+      _tag: 'LoggedIn',
+      route: { _tag: 'Order' },
     })
     expect(commands.map(command => command.name)).toEqual([
-      'LoadKhalaTokensServedSnapshot',
-      'LoadPublicKhalaTokensServed',
+      'InstallAccountMenuOutsideClick',
+      'LoadCustomerOrders',
     ])
   })
 

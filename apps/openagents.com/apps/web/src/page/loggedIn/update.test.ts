@@ -25,9 +25,9 @@ import {
   incompleteOnboardingStatus,
 } from '../../domain/session'
 import {
+  AutopilotWorkRoute,
   ChatRoute,
   DocsPageRoute,
-  ForgeRoute,
   OnboardingRoute,
   SettingsRoute,
   SettingsSectionRoute,
@@ -646,7 +646,7 @@ describe('logged-in Autopilot chat runs', () => {
   })
 
   test('loads Forge automation templates into the tuned work-order draft', () => {
-    const model = init(ForgeRoute(), authWithTeam)
+    const model = init(AutopilotWorkRoute(), authWithTeam)
     const [loadedModel, commands] = update(
       model,
       SelectedForgeAutomationTemplate({
@@ -670,7 +670,7 @@ describe('logged-in Autopilot chat runs', () => {
   })
 
   test('submits Forge automation runs through the Autopilot work-order command', () => {
-    const model = init(ForgeRoute(), authWithTeam)
+    const model = init(AutopilotWorkRoute(), authWithTeam)
     const [submittingModel, commands] = update(
       model,
       SubmittedForgeAutomationRun({

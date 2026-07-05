@@ -2,8 +2,8 @@ import { Effect } from 'effect'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import {
+  HomeRoute,
   KhalaChatRoute,
-  LandingRoute,
   PublicAgentRoute,
   StatsRoute,
   TraceRoute,
@@ -46,7 +46,7 @@ import {
   update,
 } from './update'
 
-const model = init(LandingRoute())
+const model = init(HomeRoute())
 
 const commandNames = (commands: ReadonlyArray<{ readonly name: string }>) =>
   commands.map(command => command.name)

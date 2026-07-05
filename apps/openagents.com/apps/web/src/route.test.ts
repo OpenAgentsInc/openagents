@@ -22,27 +22,24 @@ import {
   DemoTeamFilesRoute,
   DemoTeamProjectChatRoute,
   DemoThreadRoute,
-  ForgeRoute,
   ForumForumRoute,
   ForumReceiptRoute,
   ForumRoute,
   ForumTopicRoute,
   GymOssRoute,
   GymRoute,
+  HomeRoute,
   ImagesRoute,
   KhalaCodeDownloadRoute,
   KhalaChatRoute,
   KhalaRoute,
-  LandingRoute,
   LoginRoute,
-  Moksha2Route,
   MulletRoute,
   NotFoundRoute,
   OrderDetailRoute,
   OrderRoute,
   PrivacyRoute,
   PublicAgentRoute,
-  PublicStatsArchiveRoute,
   PublicTrainingRunRoute,
   PublicTrainingRunsRoute,
   PylonCodexAssignmentStatusRoute,
@@ -90,10 +87,6 @@ describe('app route parser', () => {
         workOrderRef: 'autopilot_work_order.visible_1',
       }),
     )
-  })
-
-  test('accepts the Forge factory dashboard route', () => {
-    expect(urlToAppRoute(appUrl('/forge'))).toEqual(ForgeRoute())
   })
 
   test('accepts Pylon Codex assignment status routes', () => {
@@ -166,16 +159,25 @@ describe('app route parser', () => {
     )
   })
 
-  test('accepts the OpenAgents Moksha narrative route', () => {
-    expect(urlToAppRoute(appUrl('/moksha2'))).toEqual(Moksha2Route())
+  test('uses the Home persistent scene as the root route', () => {
+    expect(urlToAppRoute(appUrl('/'))).toEqual(HomeRoute())
   })
 
-  test('uses the Landing persistent scene as the root route', () => {
-    expect(urlToAppRoute(appUrl('/'))).toEqual(LandingRoute())
-  })
-
-  test('keeps the legacy /landing path as an inbound alias to Landing', () => {
-    expect(urlToAppRoute(appUrl('/landing'))).toEqual(LandingRoute())
+  test('does not resolve retired Wave 0 public scratch routes', () => {
+    for (const path of [
+      '/landing',
+      '/moksha',
+      '/moksha2',
+      '/forge',
+      '/stats-old',
+      '/clients-preview',
+      '/components',
+      '/components/buttons',
+      '/animations',
+      '/preview/landing',
+    ]) {
+      expect(urlToAppRoute(appUrl(path))).toEqual(NotFoundRoute({ path }))
+    }
   })
 
   test('accepts the public legal routes', () => {
@@ -235,9 +237,6 @@ describe('app route parser', () => {
 
   test('accepts public stats routes', () => {
     expect(urlToAppRoute(appUrl('/stats'))).toEqual(StatsRoute())
-    expect(urlToAppRoute(appUrl('/stats-old'))).toEqual(
-      PublicStatsArchiveRoute(),
-    )
   })
 
   test('accepts the admin overview route', () => {
@@ -346,14 +345,11 @@ describe('app route parser', () => {
   })
 })
 
-// Behavior-preservation snapshot of the FULL canonical URL -> route-tag mapping.
-// This is the registry-refactor's before/after evidence: every path resolves to
-// exactly the same route tag as before the registry was introduced. A change in
-// parser ordering (e.g. a more-generic router shadowing a more-specific one)
-// would flip one of these and fail loudly.
+// Snapshot of the full canonical URL -> route-tag mapping. A change in parser
+// ordering (e.g. a more-generic router shadowing a more-specific one) would flip
+// one of these and fail loudly.
 const CANONICAL_URL_TO_TAG: ReadonlyArray<readonly [string, string]> = [
-  ['/', 'Landing'],
-  ['/landing', 'Landing'],
+  ['/', 'Home'],
   ['/invite', 'Invite'],
   ['/onboarding', 'Onboarding'],
   ['/order', 'Order'],
@@ -362,7 +358,6 @@ const CANONICAL_URL_TO_TAG: ReadonlyArray<readonly [string, string]> = [
   ['/autopilot/legal', 'AutopilotVertical'],
   ['/autopilot/work', 'AutopilotWork'],
   ['/autopilot/work/wo_1', 'AutopilotWorkDetail'],
-  ['/forge', 'Forge'],
   ['/decisions', 'Decisions'],
   ['/workspaces/ws_1', 'Workspace'],
   ['/workrooms/wr_1', 'Workroom'],
@@ -385,11 +380,7 @@ const CANONICAL_URL_TO_TAG: ReadonlyArray<readonly [string, string]> = [
   ['/forum/receipts/rcpt1', 'ForumReceipt'],
   ['/sites/demo-checkout', 'SiteCheckoutDemo'],
   ['/sites/demo-checkout/success', 'SiteCheckoutDemoReturn'],
-  ['/clients-preview', 'ClientsPreview'],
-  ['/components', 'Components'],
-  ['/components/buttons', 'ComponentsFamily'],
   ['/business', 'Business'],
-  ['/animations', 'Animations'],
   ['/activity', 'Activity'],
   ['/run', 'Run'],
   ['/gym', 'Gym'],
@@ -402,8 +393,6 @@ const CANONICAL_URL_TO_TAG: ReadonlyArray<readonly [string, string]> = [
   ['/blog/post-1', 'BlogPost'],
   ['/agents/artanis', 'PublicAgent'],
   ['/share/s1', 'Share'],
-  ['/moksha', 'Moksha'],
-  ['/moksha2', 'Moksha2'],
   ['/terms', 'Terms'],
   ['/privacy', 'Privacy'],
   ['/code/download', 'KhalaCodeDownload'],
@@ -413,7 +402,6 @@ const CANONICAL_URL_TO_TAG: ReadonlyArray<readonly [string, string]> = [
   ['/billing', 'Billing'],
   ['/usage', 'Usage'],
   ['/stats', 'Stats'],
-  ['/stats-old', 'PublicStatsArchive'],
   ['/admin', 'Admin'],
   ['/mullet', 'Mullet'],
   ['/images', 'Images'],
@@ -434,6 +422,16 @@ const CANONICAL_URL_TO_TAG: ReadonlyArray<readonly [string, string]> = [
   ['/demo2/teams/t1/files/f1', 'Demo2TeamFile'],
   ['/artanis', 'PublicAgent'],
   ['/adjutant', 'PublicAgent'],
+  ['/landing', 'NotFound'],
+  ['/moksha', 'NotFound'],
+  ['/moksha2', 'NotFound'],
+  ['/forge', 'NotFound'],
+  ['/stats-old', 'NotFound'],
+  ['/clients-preview', 'NotFound'],
+  ['/components', 'NotFound'],
+  ['/components/buttons', 'NotFound'],
+  ['/animations', 'NotFound'],
+  ['/preview/landing', 'NotFound'],
   ['/pylon', 'NotFound'],
   ['/live', 'NotFound'],
   ['/totally-unknown-path', 'NotFound'],
@@ -480,10 +478,9 @@ describe('registry-driven route parser (behavior preservation)', () => {
   })
 
   test('keeps deprecated/duplicate routers OUT of the parser', () => {
-    // chatRouter and landingRouter stay unregistered: /autopilot is owned by
-    // AutopilotRoute, while / is covered by the Landing alias. /chat is now
-    // the public KhalaChat route.
-    expect(unregisteredParserRouters.length).toBe(2)
+    // chatRouter stays unregistered: /autopilot is owned by AutopilotRoute,
+    // while /chat is now the public KhalaChat route.
+    expect(unregisteredParserRouters.length).toBe(1)
     expect(urlToAppRoute(appUrl('/chat'))).toEqual(KhalaChatRoute())
     expect(urlToAppRoute(appUrl('/autopilot'))).toEqual(AutopilotRoute())
     expect(urlToAppRoute(appUrl('/gym'))).toEqual(GymRoute())

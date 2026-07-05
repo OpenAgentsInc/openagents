@@ -31,7 +31,6 @@ import {
   adminRouter,
   autopilotWorkRouter,
   decisionsRouter,
-  forgeRouter,
   mulletRouter,
   statsRouter,
   teamChatRouter,
@@ -7556,10 +7555,6 @@ export const initSidebar = (auth: AuthBootstrap): SidebarModel =>
       {
         href: autopilotWorkRouter(),
         label: 'Work',
-      },
-      {
-        href: forgeRouter(),
-        label: 'Factory',
       },
       {
         href: decisionsRouter(),

@@ -8,7 +8,6 @@ import { browserRouteIsEnabled } from '../../product-policy'
 import {
   adminRouter,
   activityRouter,
-  animationsRouter,
   artanisTraceTreeRouter,
   artanisAccountsRouter,
   artanisGymRouter,
@@ -19,16 +18,11 @@ import {
   blogRouter,
   businessKpiRouter,
   businessRouter,
-  landingPreviewRouter,
   chatRouter,
-  clientsPreviewRouter,
-  componentsFamilyRouter,
-  componentsRouter,
   decisionsRouter,
   demoLegalRouter,
   docsPageRouter,
   docsRouter,
-  forgeRouter,
   forumForumRouter,
   forumReceiptRouter,
   forumRouter,
@@ -71,7 +65,6 @@ import {
 import * as Ui from '../../ui'
 import * as Activity from '../activity'
 import * as ArtanisAccounts from '../artanisAccounts'
-import * as ClientsPreview from '../clientsPreview'
 import * as Forum from '../forum'
 import * as SiteCheckoutDemo from '../siteCheckoutDemo'
 import { ClickedLogout, ClickedNewChat, Message } from './message'
@@ -88,7 +81,6 @@ import * as Chat from './page/chat'
 import * as Dashboard from './page/dashboard'
 import * as Decisions from './page/decisions'
 import * as Files from './page/files'
-import * as Forge from './page/forge'
 import * as GymOss from './page/gymOss'
 import * as Images from './page/images'
 import * as Invite from './page/invite'
@@ -110,7 +102,6 @@ const currentHref = (model: Model): string =>
       AutopilotWork: () => autopilotWorkRouter(),
       AutopilotWorkDetail: ({ workOrderRef }) =>
         autopilotWorkDetailRouter({ workOrderRef }),
-      Forge: () => forgeRouter(),
       Decisions: () => decisionsRouter(),
       Workspace: ({ workspaceId }) => workspaceRouter({ workspaceId }),
       Workroom: ({ workroomId }) => workroomRouter({ workroomId }),
@@ -134,13 +125,8 @@ const currentHref = (model: Model): string =>
       SiteCheckoutDemo: () => siteCheckoutDemoRouter(),
       SiteCheckoutDemoReturn: ({ returnAction }) =>
         siteCheckoutDemoReturnRouter({ returnAction }),
-      ClientsPreview: () => clientsPreviewRouter(),
-      Components: () => componentsRouter(),
-      ComponentsFamily: ({ family }) => componentsFamilyRouter({ family }),
       Business: () => businessRouter(),
       BusinessKpi: ({ engagementRef }) => businessKpiRouter({ engagementRef }),
-      LandingPreview: () => landingPreviewRouter(),
-      Animations: () => animationsRouter(),
       Activity: () => activityRouter(),
       ArtanisAccounts: () => artanisAccountsRouter(),
       ArtanisGym: () => artanisGymRouter(),
@@ -186,7 +172,6 @@ const routeKey = (model: Model): string =>
       AutopilotWork: () => 'AutopilotWork',
       AutopilotWorkDetail: ({ workOrderRef }) =>
         `AutopilotWorkDetail:${workOrderRef}`,
-      Forge: () => 'Forge',
       Decisions: () => 'Decisions',
       Workspace: ({ workspaceId }) => `Workspace:${workspaceId}`,
       Workroom: ({ workroomId }) => `Workroom:${workroomId}`,
@@ -209,13 +194,8 @@ const routeKey = (model: Model): string =>
       SiteCheckoutDemo: () => 'SiteCheckoutDemo',
       SiteCheckoutDemoReturn: ({ returnAction }) =>
         `SiteCheckoutDemoReturn:${returnAction}`,
-      ClientsPreview: () => 'ClientsPreview',
-      Components: () => 'Components',
-      ComponentsFamily: () => 'Components',
       Business: () => 'Business',
       BusinessKpi: ({ engagementRef }) => `BusinessKpi:${engagementRef}`,
-      LandingPreview: () => 'LandingPreview',
-      Animations: () => 'Animations',
       Activity: () => 'Activity',
       ArtanisAccounts: () => 'ArtanisAccounts',
       ArtanisGym: () => 'ArtanisGym',
@@ -491,7 +471,6 @@ const routeView = (model: Model): Html => {
             Ui.workroomScrollableRoute<Message>([
               AutopilotWork.detailView(model),
             ]),
-          Forge: () => Ui.workroomScrollableRoute<Message>([Forge.view(model)]),
           Decisions: () =>
             Ui.workroomScrollableRoute<Message>([Decisions.view(model)]),
           Workspace: () =>
@@ -568,16 +547,6 @@ const routeView = (model: Model): Html => {
             Ui.workroomScrollableRoute<Message>([
               SiteCheckoutDemo.view(route, loggedInPublicHeaderAuthState(model)),
             ]),
-          ClientsPreview: () =>
-            Ui.workroomScrollableRoute<Message>([ClientsPreview.view()]),
-          Components: () =>
-            Ui.workroomScrollableRoute<Message>([
-              notFoundView('/components', chatRouter(), 'Go to Chat'),
-            ]),
-          ComponentsFamily: () =>
-            Ui.workroomScrollableRoute<Message>([
-              notFoundView('/components', chatRouter(), 'Go to Chat'),
-            ]),
           Business: () =>
             Ui.workroomScrollableRoute<Message>([
               notFoundView('/business', chatRouter(), 'Go to Chat'),
@@ -589,14 +558,6 @@ const routeView = (model: Model): Html => {
                 chatRouter(),
                 'Go to Chat',
               ),
-            ]),
-          LandingPreview: () =>
-            Ui.workroomScrollableRoute<Message>([
-              notFoundView('/preview/landing', chatRouter(), 'Go to Chat'),
-            ]),
-          Animations: () =>
-            Ui.workroomScrollableRoute<Message>([
-              notFoundView('/animations', chatRouter(), 'Go to Chat'),
             ]),
           Activity: () =>
             Ui.workroomScrollableRoute<Message>([

@@ -12,14 +12,11 @@ import {
 import type { Model } from './model'
 import { Demo, LoggedIn, LoggedOut } from './model'
 import * as Activity from './page/activity'
-import * as Animations from './page/animations'
 import * as ArtanisTraceTree from './page/artanisTraceTree'
 import * as ArtanisAccounts from './page/artanisAccounts'
 import * as Blog from './page/blog'
 import * as Business from './page/business'
 import * as BusinessKpi from './page/businessKpi'
-import * as LandingPreview from './page/landingPreview'
-import * as Components from './page/components'
 import * as DemoLegal from './page/demoLegal'
 import * as Docs from './page/docs'
 import * as Forum from './page/forum'
@@ -391,15 +388,10 @@ const title = (model: Model): string => {
       return 'Blog - OpenAgents'
     case 'BlogPost':
       return `${blogTitle(model.route.slug)} - OpenAgents`
-    case 'Components':
-    case 'ComponentsFamily':
-      return 'Components - OpenAgents'
     case 'Business':
       return 'Agents that work - OpenAgents'
     case 'BusinessKpi':
       return BusinessKpi.title(model.route)
-    case 'LandingPreview':
-      return 'OpenAgents'
     case 'Autopilot':
     case 'AutopilotVertical':
       return 'Autopilot - OpenAgents'
@@ -409,8 +401,6 @@ const title = (model: Model): string => {
       return 'Privacy Policy - OpenAgents'
     case 'Code':
       return 'Khala Code - OpenAgents'
-    case 'Animations':
-      return 'Animations - OpenAgents'
     case 'Activity':
       return 'Activity - OpenAgents'
     case 'ArtanisAccounts':
@@ -478,31 +468,9 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
     })
   }
 
-  if (model._tag === 'LoggedOut' && model.route._tag === 'Moksha') {
-    const h = html<Message>()
-
-    return h.submodel({
-      slotId: 'logged-out-moksha',
-      model,
-      view: LoggedOut.view,
-      toParentMessage: message => GotLoggedOutMessage({ message }),
-    })
-  }
-
-  if (model._tag === 'LoggedOut' && model.route._tag === 'Moksha2') {
-    const h = html<Message>()
-
-    return h.submodel({
-      slotId: 'logged-out-moksha2',
-      model,
-      view: LoggedOut.view,
-      toParentMessage: message => GotLoggedOutMessage({ message }),
-    })
-  }
-
   if (
     model._tag === 'LoggedOut' &&
-    (model.route._tag === 'Landing' ||
+    (model.route._tag === 'Home' ||
       model.route._tag === 'Khala' ||
       model.route._tag === 'KhalaChat' ||
       model.route._tag === 'Tassadar')
@@ -608,7 +576,6 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
     model._tag === 'LoggedOut' &&
     (model.route._tag === 'Home' ||
       model.route._tag === 'Stats' ||
-      model.route._tag === 'PublicStatsArchive' ||
       model.route._tag === 'ProductPromises')
   ) {
     const h = html<Message>()
@@ -634,18 +601,14 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
       model.route._tag !== 'SiteCheckoutDemoReturn' &&
       model.route._tag !== 'Blog' &&
       model.route._tag !== 'BlogPost' &&
-      model.route._tag !== 'Components' &&
-      model.route._tag !== 'ComponentsFamily' &&
       model.route._tag !== 'Business' &&
       model.route._tag !== 'BusinessKpi' &&
-      model.route._tag !== 'LandingPreview' &&
       model.route._tag !== 'Autopilot' &&
       model.route._tag !== 'AutopilotVertical' &&
       model.route._tag !== 'Terms' &&
       model.route._tag !== 'Privacy' &&
       model.route._tag !== 'Code' &&
       model.route._tag !== 'KhalaCodeDownload' &&
-      model.route._tag !== 'Animations' &&
       model.route._tag !== 'Activity' &&
       model.route._tag !== 'ArtanisAccounts' &&
       model.route._tag !== 'DemoLegal' &&
@@ -697,10 +660,6 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
     return BusinessKpi.view<Message>(model.route, authState)
   }
 
-  if (model.route._tag === 'LandingPreview') {
-    return LandingPreview.view<Message>()
-  }
-
   // Note: /autopilot and /autopilot/{vertical} are rendered above through the
   // loggedOut Submodel (the stateful, scene-backed onboarding flow), so they do
   // not fall through to this stateless public-header shell.
@@ -744,10 +703,6 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
     return ArtanisTraceTree.view<Message>(authState)
   }
 
-  if (model.route._tag === 'Animations') {
-    return Animations.view<Message>(authState)
-  }
-
   if (model.route._tag === 'Activity') {
     return Activity.view<Message>(authState)
   }
@@ -766,14 +721,6 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
 
   if (model.route._tag === 'TassadarReplay') {
     return Run.view<Message>(authState, model.route.replaySlug)
-  }
-
-  if (model.route._tag === 'Components') {
-    return Components.view<Message>(authState)
-  }
-
-  if (model.route._tag === 'ComponentsFamily') {
-    return Components.view<Message>(authState, model.route.family)
   }
 
   if (

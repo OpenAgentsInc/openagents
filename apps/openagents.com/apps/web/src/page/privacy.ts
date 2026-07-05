@@ -10,7 +10,8 @@ import * as PublicHeader from './publicHeader'
 // This route mirrors the standalone public page pattern (see `business.ts`
 // and `terms.ts`): it keeps the auth-aware public header, then renders a
 // clean, readable, centered legal document using the existing dark design
-// tokens. It is a content page (not the chrome-free black canvas of `/landing`).
+// tokens. It is a content page (not the chrome-free black canvas of the
+// homepage).
 //
 // <!--
 //   COPY STATUS: This Privacy Policy copy is PENDING OWNER / LEGAL REVIEW.

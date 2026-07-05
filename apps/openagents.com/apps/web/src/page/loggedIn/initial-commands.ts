@@ -9,7 +9,6 @@ import {
   LoadAutopilotWorkDetail,
   LoadAutopilotWorkEvents,
   LoadAutopilotWorkList,
-  LoadCustomerOneCohort,
 } from './autopilot-work/transitions'
 import {
   teamChatMessagesRequestForRoute,
@@ -80,16 +79,6 @@ export const initialCommands = (
       InstallAccountMenuOutsideClick(),
       LoadAutopilotWorkList({}),
       LoadAutopilotMorningReport({}),
-    ]
-  }
-
-  if (model.route._tag === 'Forge') {
-    return [
-      InstallAccountMenuOutsideClick(),
-      LoadAutopilotWorkList({}),
-      LoadAutopilotMorningReport({}),
-      LoadCustomerOneCohort({}),
-      LoadProviderAccountPool({}),
     ]
   }
 
