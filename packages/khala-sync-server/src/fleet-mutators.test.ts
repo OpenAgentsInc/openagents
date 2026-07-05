@@ -24,6 +24,7 @@ import {
   FLEET_ACKNOWLEDGE_INBOX_FLAG_MUTATOR_NAME,
   FLEET_PAUSE_RUN_MUTATOR_NAME,
   FLEET_PAUSE_WORKER_MUTATOR_NAME,
+  FLEET_REPORT_ACCOUNT_STATE_MUTATOR_NAME,
   FLEET_RESUME_RUN_MUTATOR_NAME,
   FLEET_RESUME_WORKER_MUTATOR_NAME,
   FLEET_SCOPE_REJECTION,
@@ -99,6 +100,7 @@ describe("fleet operator mutator set", () => {
       FLEET_RESUME_WORKER_MUTATOR_NAME,
       FLEET_ACKNOWLEDGE_INBOX_FLAG_MUTATOR_NAME,
       FLEET_STOP_RUN_MUTATOR_NAME,
+      FLEET_REPORT_ACCOUNT_STATE_MUTATOR_NAME,
     ])
     // Registry construction throws on duplicates — building it is the check.
     expect(() => makeMutatorRegistry([...fleetOperatorMutators])).not.toThrow()
@@ -234,6 +236,111 @@ describe.skipIf(!hasLocalPostgres())(
           return value.phase
         }),
       ).toEqual(["dispatched", "paused", "idle"])
+    })
+
+    test("reportAccountState: upserts a real fleet_account post-image, skips the intent table entirely, and merges across two reports", async () => {
+      const client = freshClient()
+      const runId = "fleet-run.mut2.account"
+      const scope = fleetRunScope(runId)
+      const accountRefHash = "account.pylon.codex.6be7b6501be36164f9c6ecda"
+
+      const first = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(1, FLEET_REPORT_ACCOUNT_STATE_MUTATOR_NAME, {
+            accountRefHash,
+            capacityAvailable: 5,
+            capacityBusy: 0,
+            capacityQueued: 0,
+            provider: "codex",
+            readiness: "ready",
+            runId,
+          }),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(first.results.map((r) => r.status)).toEqual(["applied"])
+
+      // A status report is a fact, not an operator command awaiting
+      // enforcement — it must NOT insert a durable fleet intent row.
+      const intents: Array<{ intent: string }> = await sql`
+        SELECT intent FROM khala_sync_fleet_intents WHERE scope = ${scope}
+      `
+      expect(intents).toEqual([])
+
+      const afterFirst = await latestPostImage(scope, "fleet_account", accountRefHash)
+      expect(afterFirst.readiness).toBe("ready")
+      expect(afterFirst.provider).toBe("codex")
+      expect(afterFirst.capacityAvailable).toBe(5)
+
+      // Second report changes readiness/capacity and omits provider —
+      // the mutator must preserve the previously-reported provider.
+      const second = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(2, FLEET_REPORT_ACCOUNT_STATE_MUTATOR_NAME, {
+            accountRefHash,
+            capacityAvailable: 2,
+            capacityBusy: 3,
+            rateLimitClass: "five_hour_window",
+            readiness: "cooldown",
+            runId,
+          }),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(second.results.map((r) => r.status)).toEqual(["applied"])
+
+      const afterSecond = await latestPostImage(scope, "fleet_account", accountRefHash)
+      expect(afterSecond.readiness).toBe("cooldown")
+      expect(afterSecond.provider).toBe("codex")
+      expect(afterSecond.capacityAvailable).toBe(2)
+      expect(afterSecond.capacityBusy).toBe(3)
+      expect(afterSecond.rateLimitClass).toBe("five_hour_window")
+    })
+
+    test("reportAccountState: a FOREIGN user is rejected in-band with zero writes", async () => {
+      const owner = freshClient()
+      const foreign = freshClient()
+      const runId = "fleet-run.mut2.account-foreign"
+      const scope = fleetRunScope(runId)
+      const accountRefHash = "account.pylon.codex.aaaaaaaaaaaaaaaa"
+
+      const claim = await executePush({
+        registry,
+        request: pushRequest(owner, [
+          envelope(1, FLEET_REPORT_ACCOUNT_STATE_MUTATOR_NAME, {
+            accountRefHash,
+            readiness: "ready",
+            runId,
+          }),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: owner.userId,
+      })
+      expect(claim.results.map((r) => r.status)).toEqual(["applied"])
+
+      const rejected = await executePush({
+        registry,
+        request: pushRequest(foreign, [
+          envelope(1, FLEET_REPORT_ACCOUNT_STATE_MUTATOR_NAME, {
+            accountRefHash,
+            readiness: "unavailable",
+            runId,
+          }),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: foreign.userId,
+      })
+      expect(rejected.results[0]?.status).toBe("rejected")
+      expect(rejected.results[0]?.errorCode).toBe(FLEET_SCOPE_REJECTION)
+
+      const owner2 = await readScopeOwner(sql as unknown as SyncSql, scope)
+      expect(owner2).toBe(owner.userId)
+      const image = await latestPostImage(scope, "fleet_account", accountRefHash)
+      expect(image.readiness).toBe("ready")
     })
 
     test("pauseWorker on a never-projected worker synthesizes a minimal baseline", async () => {
@@ -483,6 +590,7 @@ describe.skipIf(!hasLocalPostgres())(
         fleetRunScope("fleet-run.mut2.worker"),
         fleetRunScope("fleet-run.mut2.flags"),
         fleetRunScope("fleet-run.mut2.stop"),
+        fleetRunScope("fleet-run.mut2.account"),
       ]
       for (const scope of scopes) {
         const rows: Array<{ post_image_json: object | string | null }> =

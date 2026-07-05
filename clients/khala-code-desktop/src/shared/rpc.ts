@@ -236,6 +236,10 @@ export type KhalaCodeDesktopKhalaSyncFleetStateRequest = typeof RpcKhalaSyncFlee
 export type KhalaCodeDesktopKhalaSyncFleetStateResult = typeof RpcKhalaSyncFleetStateResult.Type
 export type KhalaCodeDesktopKhalaSyncFleetMutateRequest = typeof RpcKhalaSyncFleetMutateRequest.Type
 export type KhalaCodeDesktopKhalaSyncFleetMutateResult = typeof RpcKhalaSyncFleetMutateResult.Type
+export type KhalaCodeDesktopKhalaSyncFleetReportAccountStateRequest =
+  typeof RpcKhalaSyncFleetReportAccountStateRequest.Type
+export type KhalaCodeDesktopKhalaSyncFleetReportAccountStateResult =
+  typeof RpcKhalaSyncFleetReportAccountStateResult.Type
 export type KhalaCodeDesktopKhalaSyncChatThread = typeof RpcKhalaSyncChatThread.Type
 export type KhalaCodeDesktopKhalaSyncChatMessage = typeof RpcKhalaSyncChatMessage.Type
 export type KhalaCodeDesktopKhalaSyncChatRejection = typeof RpcKhalaSyncChatRejection.Type
@@ -1865,6 +1869,20 @@ const RpcKhalaSyncFleetMutateResult = S.Struct({
   ok: S.Boolean,
   queuedMutationId: S.optional(S.Number),
 })
+const RpcKhalaSyncFleetReportAccountStateRequest = S.Struct({
+  accountRefHash: S.String,
+  capacityAvailable: S.optional(S.Number),
+  capacityBusy: S.optional(S.Number),
+  capacityQueued: S.optional(S.Number),
+  provider: S.optional(S.String),
+  rateLimitClass: S.optional(S.String),
+  readiness: S.Literals(["ready", "cooldown", "unavailable", "unknown"]),
+  runId: S.String,
+})
+const RpcKhalaSyncFleetReportAccountStateResult = S.Struct({
+  error: S.optional(S.String),
+  ok: S.Boolean,
+})
 const RpcKhalaSyncChatThread = S.Struct({
   createdAt: S.String,
   lastMessageAt: RpcStringNull,
@@ -2369,6 +2387,7 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   fleetWorkerControl: { parameters: [param(RpcFleetWorkerControlRequest)], result: RpcFleetWorkerControlResult },
   khalaSyncFleetState: { parameters: [param(RpcKhalaSyncFleetStateRequest)], result: RpcKhalaSyncFleetStateResult },
   khalaSyncFleetMutate: { parameters: [param(RpcKhalaSyncFleetMutateRequest)], result: RpcKhalaSyncFleetMutateResult },
+  khalaSyncFleetReportAccountState: { parameters: [param(RpcKhalaSyncFleetReportAccountStateRequest)], result: RpcKhalaSyncFleetReportAccountStateResult },
   khalaSyncChatThreads: { parameters: [optionalParam(RpcKhalaSyncChatThreadsRequest)], result: RpcKhalaSyncChatThreadsResult },
   khalaSyncChatMessages: { parameters: [param(RpcKhalaSyncChatMessagesRequest)], result: RpcKhalaSyncChatMessagesResult },
   khalaSyncChatCreateThread: { parameters: [param(RpcKhalaSyncChatCreateThreadRequest)], result: RpcKhalaSyncChatMutationResult },
@@ -2542,6 +2561,7 @@ export type KhalaCodeDesktopRPCSchema = {
     fleetWorkerControl(request: KhalaCodeDesktopFleetWorkerControlRequest): Promise<KhalaCodeDesktopFleetWorkerControlResult>
     khalaSyncFleetState(request: KhalaCodeDesktopKhalaSyncFleetStateRequest): Promise<KhalaCodeDesktopKhalaSyncFleetStateResult>
     khalaSyncFleetMutate(request: KhalaCodeDesktopKhalaSyncFleetMutateRequest): Promise<KhalaCodeDesktopKhalaSyncFleetMutateResult>
+    khalaSyncFleetReportAccountState(request: KhalaCodeDesktopKhalaSyncFleetReportAccountStateRequest): Promise<KhalaCodeDesktopKhalaSyncFleetReportAccountStateResult>
     khalaSyncChatThreads(request?: KhalaCodeDesktopKhalaSyncChatThreadsRequest): Promise<KhalaCodeDesktopKhalaSyncChatThreadsResult>
     khalaSyncChatMessages(request: KhalaCodeDesktopKhalaSyncChatMessagesRequest): Promise<KhalaCodeDesktopKhalaSyncChatMessagesResult>
     khalaSyncChatCreateThread(request: KhalaCodeDesktopKhalaSyncChatCreateThreadRequest): Promise<KhalaCodeDesktopKhalaSyncChatMutationResult>

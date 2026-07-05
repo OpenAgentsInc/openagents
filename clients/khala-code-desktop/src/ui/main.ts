@@ -271,6 +271,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["khalaSyncFleetMutate"]>>
       >("khalaSyncFleetMutate", request),
+    khalaSyncFleetReportAccountState: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["khalaSyncFleetReportAccountState"]>>
+      >("khalaSyncFleetReportAccountState", request),
     khalaSyncChatThreads: (request?: Parameters<DesktopRpcRequests["khalaSyncChatThreads"]>[0]) =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["khalaSyncChatThreads"]>>
@@ -3944,6 +3948,9 @@ const controls = {
     rpc.request.khalaSyncFleetState(request),
   khalaSyncFleetMutate: (request: Parameters<DesktopRpcRequests["khalaSyncFleetMutate"]>[0]) =>
     rpc.request.khalaSyncFleetMutate(request),
+  khalaSyncFleetReportAccountState: (
+    request: Parameters<DesktopRpcRequests["khalaSyncFleetReportAccountState"]>[0],
+  ) => rpc.request.khalaSyncFleetReportAccountState(request),
   khalaSyncChatThreads: (request?: Parameters<DesktopRpcRequests["khalaSyncChatThreads"]>[0]) =>
     rpc.request.khalaSyncChatThreads(request),
   khalaSyncChatMessages: (request: Parameters<DesktopRpcRequests["khalaSyncChatMessages"]>[0]) =>

@@ -1,7 +1,12 @@
 import {
+  decodeFleetAccountEntity,
   decodeFleetInboxFlagEntity,
   decodeFleetRunEntity,
   decodeFleetWorkerEntity,
+  FleetAccountReadiness,
+  FleetAccountRefHash,
+  type FleetAccountEntity,
+  FleetClassToken,
   type FleetInboxFlagEntity,
   type FleetRunEntity,
   fleetRunScope,
@@ -101,6 +106,24 @@ type AcknowledgeInboxFlagArgs = typeof AcknowledgeInboxFlagArgs.Type
 const StopRunArgs = S.Struct({ runId: RunIdField, confirm: S.Boolean })
 type StopRunArgs = typeof StopRunArgs.Type
 
+const BoundedCapacityField = S.Number.check(
+  S.isInt(),
+  S.isGreaterThanOrEqualTo(0),
+  S.isLessThanOrEqualTo(1_000_000),
+)
+
+const ReportAccountStateArgs = S.Struct({
+  runId: RunIdField,
+  accountRefHash: FleetAccountRefHash,
+  readiness: FleetAccountReadiness,
+  provider: S.optional(FleetClassToken),
+  rateLimitClass: S.optional(FleetClassToken),
+  capacityAvailable: S.optional(BoundedCapacityField),
+  capacityBusy: S.optional(BoundedCapacityField),
+  capacityQueued: S.optional(BoundedCapacityField),
+})
+type ReportAccountStateArgs = typeof ReportAccountStateArgs.Type
+
 export const decodeFleetSetDesiredSlotsArgs = (
   argsJson: string,
 ): SetDesiredSlotsArgs =>
@@ -111,6 +134,11 @@ export const decodeFleetRunOnlyArgs = (argsJson: string): RunOnlyArgs =>
 
 export const decodeFleetWorkerArgs = (argsJson: string): WorkerArgs =>
   S.decodeUnknownSync(WorkerArgs)(JSON.parse(argsJson) as unknown)
+
+export const decodeFleetReportAccountStateArgs = (
+  argsJson: string,
+): ReportAccountStateArgs =>
+  S.decodeUnknownSync(ReportAccountStateArgs)(JSON.parse(argsJson) as unknown)
 
 export const decodeFleetAcknowledgeInboxFlagArgs = (
   argsJson: string,
@@ -187,6 +215,19 @@ const readCurrentFleetWorker = (
     "fleet_worker",
     workerId,
     decodeFleetWorkerEntity,
+  )
+
+const readCurrentFleetAccount = (
+  ctx: MutatorContext,
+  runId: string,
+  accountRefHash: string,
+): Promise<FleetAccountEntity | null> =>
+  readCurrentEntity(
+    ctx,
+    runId,
+    "fleet_account",
+    accountRefHash,
+    decodeFleetAccountEntity,
   )
 
 const readCurrentFleetInboxFlag = (
@@ -487,6 +528,72 @@ export const fleetStopRunMutator: MutatorDefinition =
     name: MutatorName.make(FLEET_STOP_RUN_MUTATOR_NAME),
   })
 
+export const FLEET_REPORT_ACCOUNT_STATE_MUTATOR_NAME =
+  "fleet.reportAccountState"
+
+/**
+ * `fleet.reportAccountState` — the desktop reports its OWN observed local
+ * account state (readiness, provider, dispatch-slot capacity) into the
+ * fleet run scope. Unlike the operator-intent mutators above, this is a
+ * STATUS REPORT of already-true fact, not a command awaiting supervisor
+ * enforcement — so it skips the `khala_sync_fleet_intents` durable-intent
+ * row entirely and goes straight to the same scope-owner gate +
+ * `fleet_account` post-image append every other fleet mutator uses.
+ * Identity stays hash-ref only (SPEC §7 invariant 9); `provider` and the
+ * `capacity*` fields are bounded non-identifying scalars.
+ */
+export const fleetReportAccountStateMutator: MutatorDefinition =
+  defineMutator<ReportAccountStateArgs>({
+    decodeArgs: decodeFleetReportAccountStateArgs,
+    execute: async (args, ctx) => {
+      const scope = fleetRunScope(args.runId)
+      const owner = await ensureScopeOwner(ctx.writer.sql, scope, ctx.userId)
+      if (owner !== ctx.userId) {
+        return new MutationResult({
+          errorCode: FLEET_SCOPE_REJECTION,
+          errorMessageSafe: "this fleet run scope belongs to a different user",
+          mutationId: ctx.mutationId,
+          status: "rejected",
+        })
+      }
+
+      const nowIso = await transactionNowIso(ctx)
+      const current = await readCurrentFleetAccount(
+        ctx,
+        args.runId,
+        args.accountRefHash,
+      )
+      const updated = decodeFleetAccountEntity({
+        ...(current ?? {}),
+        accountRefHash: args.accountRefHash,
+        ...(args.provider === undefined ? {} : { provider: args.provider }),
+        ...(args.rateLimitClass === undefined
+          ? {}
+          : { rateLimitClass: args.rateLimitClass }),
+        ...(args.capacityAvailable === undefined
+          ? {}
+          : { capacityAvailable: args.capacityAvailable }),
+        ...(args.capacityBusy === undefined
+          ? {}
+          : { capacityBusy: args.capacityBusy }),
+        ...(args.capacityQueued === undefined
+          ? {}
+          : { capacityQueued: args.capacityQueued }),
+        readiness: args.readiness,
+        updatedAt: nowIso,
+      })
+      await appendFleetEntityChange(
+        ctx.writer,
+        args.runId,
+        { entity: updated, kind: "fleet_account", op: "upsert" },
+        ctx.mutationRef,
+      )
+
+      return new MutationResult({ mutationId: ctx.mutationId, status: "applied" })
+    },
+    name: MutatorName.make(FLEET_REPORT_ACCOUNT_STATE_MUTATOR_NAME),
+  })
+
 /** All fleet operator mutators, ready for a `makeMutatorRegistry` array. */
 export const fleetOperatorMutators: ReadonlyArray<MutatorDefinition> = [
   fleetSetDesiredSlotsMutator,
@@ -496,4 +603,5 @@ export const fleetOperatorMutators: ReadonlyArray<MutatorDefinition> = [
   fleetResumeWorkerMutator,
   fleetAcknowledgeInboxFlagMutator,
   fleetStopRunMutator,
+  fleetReportAccountStateMutator,
 ]

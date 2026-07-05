@@ -222,7 +222,10 @@ export type FleetAccountReadiness = typeof FleetAccountReadiness.Type
 
 /**
  * One provider account's dispatch readiness, identified ONLY by its
- * existing public hash ref.
+ * existing public hash ref. `provider` and the `capacity*` slot counts are
+ * bounded, non-identifying scalars (which CLI backs the account, how many
+ * dispatch slots it has) — safe to sync alongside the hashed ref; they
+ * carry no raw account ref, email, or local path.
  */
 export class FleetAccountEntity extends S.Class<FleetAccountEntity>(
   "FleetAccountEntity",
@@ -231,6 +234,11 @@ export class FleetAccountEntity extends S.Class<FleetAccountEntity>(
   readiness: FleetAccountReadiness,
   /** Rate-limit classification token (e.g. `five_hour_window`). */
   rateLimitClass: S.optionalKey(FleetClassToken),
+  /** Which CLI backs this account (e.g. `codex`, `claude`). */
+  provider: S.optionalKey(FleetClassToken),
+  capacityAvailable: S.optionalKey(boundedCount),
+  capacityBusy: S.optionalKey(boundedCount),
+  capacityQueued: S.optionalKey(boundedCount),
   updatedAt: FleetIsoTimestamp,
 }) {}
 

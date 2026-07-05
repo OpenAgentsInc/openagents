@@ -89,6 +89,8 @@ import {
   type KhalaCodeDesktopForumResponse,
   type KhalaCodeDesktopKhalaSyncFleetMutateRequest,
   type KhalaCodeDesktopKhalaSyncFleetMutateResult,
+  type KhalaCodeDesktopKhalaSyncFleetReportAccountStateRequest,
+  type KhalaCodeDesktopKhalaSyncFleetReportAccountStateResult,
   type KhalaCodeDesktopKhalaSyncFleetStateRequest,
   type KhalaCodeDesktopKhalaSyncFleetStateResult,
   type KhalaCodeDesktopKhalaSyncChatAppendMessageRequest,
@@ -2553,6 +2555,20 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         return { ok: false, error: "khala_sync_fleet_disabled" }
       }
       return input.khalaSync.fleetMutate(request)
+    },
+    async khalaSyncFleetReportAccountState(
+      request: KhalaCodeDesktopKhalaSyncFleetReportAccountStateRequest,
+    ): Promise<KhalaCodeDesktopKhalaSyncFleetReportAccountStateResult> {
+      requireNonEmpty("khalaSyncFleetReportAccountState", "runId", request.runId)
+      requireNonEmpty(
+        "khalaSyncFleetReportAccountState",
+        "accountRefHash",
+        request.accountRefHash,
+      )
+      if (input.khalaSync === undefined) {
+        return { ok: false, error: "khala_sync_fleet_disabled" }
+      }
+      return input.khalaSync.fleetReportAccountState(request)
     },
     async khalaSyncChatThreads(
       request: KhalaCodeDesktopKhalaSyncChatThreadsRequest = {},

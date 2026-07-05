@@ -61,6 +61,8 @@ import { mkdirSync } from "node:fs"
 import type {
   KhalaCodeDesktopKhalaSyncFleetMutateRequest,
   KhalaCodeDesktopKhalaSyncFleetMutateResult,
+  KhalaCodeDesktopKhalaSyncFleetReportAccountStateRequest,
+  KhalaCodeDesktopKhalaSyncFleetReportAccountStateResult,
   KhalaCodeDesktopKhalaSyncChatAppendMessageRequest,
   KhalaCodeDesktopKhalaSyncChatCreateThreadRequest,
   KhalaCodeDesktopKhalaSyncChatMessagesRequest,
@@ -164,6 +166,7 @@ export const FLEET_RESUME_WORKER_MUTATOR_NAME = "fleet.resumeWorker"
 export const FLEET_ACKNOWLEDGE_INBOX_FLAG_MUTATOR_NAME =
   "fleet.acknowledgeInboxFlag"
 export const FLEET_STOP_RUN_MUTATOR_NAME = "fleet.stopRun"
+export const FLEET_REPORT_ACCOUNT_STATE_MUTATOR_NAME = "fleet.reportAccountState"
 
 type FleetEntityPatch = Readonly<Record<string, unknown>>
 
@@ -302,6 +305,28 @@ export const fleetStopRunClientMutator: ClientMutator<{
       : [],
 }
 
+/**
+ * Reports the desktop's OWN observed local account state (readiness,
+ * provider, dispatch-slot capacity) — a status report of already-true
+ * fact, not an operator command. Nothing to patch optimistically ahead of
+ * server confirmation (the overlay has no local notion of account state to
+ * begin with), so `apply` is a deliberate no-op; the confirmed
+ * `fleet_account` post-image lands from the server like any other mutation.
+ */
+export const fleetReportAccountStateClientMutator: ClientMutator<{
+  readonly runId: string
+  readonly accountRefHash: string
+  readonly readiness: "ready" | "cooldown" | "unavailable" | "unknown"
+  readonly provider?: string
+  readonly rateLimitClass?: string
+  readonly capacityAvailable?: number
+  readonly capacityBusy?: number
+  readonly capacityQueued?: number
+}> = {
+  name: MutatorName.make(FLEET_REPORT_ACCOUNT_STATE_MUTATOR_NAME),
+  apply: () => [],
+}
+
 export const fleetClientMutators = [
   fleetSetDesiredSlotsClientMutator,
   fleetPauseRunClientMutator,
@@ -310,6 +335,7 @@ export const fleetClientMutators = [
   fleetResumeWorkerClientMutator,
   fleetAcknowledgeInboxFlagClientMutator,
   fleetStopRunClientMutator,
+  fleetReportAccountStateClientMutator,
 ] as const
 
 // ---------------------------------------------------------------------------
@@ -338,6 +364,9 @@ export type KhalaCodeDesktopKhalaSyncRpc = {
   readonly fleetMutate: (
     request: KhalaCodeDesktopKhalaSyncFleetMutateRequest,
   ) => Promise<KhalaCodeDesktopKhalaSyncFleetMutateResult>
+  readonly fleetReportAccountState: (
+    request: KhalaCodeDesktopKhalaSyncFleetReportAccountStateRequest,
+  ) => Promise<KhalaCodeDesktopKhalaSyncFleetReportAccountStateResult>
 }
 
 export type KhalaCodeDesktopKhalaSyncService = KhalaCodeDesktopKhalaSyncRpc & {
@@ -1227,6 +1256,42 @@ export const createKhalaCodeDesktopKhalaSyncService = (
     }
   }
 
+  const fleetReportAccountState = async (
+    request: KhalaCodeDesktopKhalaSyncFleetReportAccountStateRequest,
+  ): Promise<KhalaCodeDesktopKhalaSyncFleetReportAccountStateResult> => {
+    if (!enabled || closed) return { ok: false, error: "khala_sync_fleet_disabled" }
+    const token = await refreshToken()
+    if (token === null) return { ok: false, error: "missing_openagents_auth" }
+    const active = await ensureRuntime()
+    if (active === null) {
+      return { ok: false, error: runtimeFailure ?? "khala_sync_store_unavailable" }
+    }
+    try {
+      await ensureSubscribed(active, fleetRunScope(request.runId))
+      await runEffect(
+        active.session.mutate(fleetReportAccountStateClientMutator, {
+          accountRefHash: request.accountRefHash,
+          ...(request.capacityAvailable === undefined
+            ? {}
+            : { capacityAvailable: request.capacityAvailable }),
+          ...(request.capacityBusy === undefined ? {} : { capacityBusy: request.capacityBusy }),
+          ...(request.capacityQueued === undefined
+            ? {}
+            : { capacityQueued: request.capacityQueued }),
+          ...(request.provider === undefined ? {} : { provider: request.provider }),
+          ...(request.rateLimitClass === undefined
+            ? {}
+            : { rateLimitClass: request.rateLimitClass }),
+          readiness: request.readiness,
+          runId: request.runId,
+        }),
+      )
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: errorText(error) }
+    }
+  }
+
   const close = async (): Promise<void> => {
     if (closed) return
     closed = true
@@ -1254,6 +1319,7 @@ export const createKhalaCodeDesktopKhalaSyncService = (
     chatThreads,
     close,
     fleetMutate,
+    fleetReportAccountState,
     fleetState,
   }
 }

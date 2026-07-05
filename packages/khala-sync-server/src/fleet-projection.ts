@@ -289,6 +289,10 @@ export interface RawFleetAccountRow {
   readonly accountRefHash: string
   readonly readiness: string
   readonly rateLimitClass?: string | null
+  readonly provider?: string | null
+  readonly capacityAvailable?: number | null
+  readonly capacityBusy?: number | null
+  readonly capacityQueued?: number | null
   readonly updatedAt: string | Date
 }
 
@@ -300,6 +304,14 @@ export const fleetAccountPostImage = (
     ...(row.rateLimitClass == null
       ? {}
       : { rateLimitClass: row.rateLimitClass }),
+    ...(row.provider == null ? {} : { provider: row.provider }),
+    ...(row.capacityAvailable == null
+      ? {}
+      : { capacityAvailable: row.capacityAvailable }),
+    ...(row.capacityBusy == null ? {} : { capacityBusy: row.capacityBusy }),
+    ...(row.capacityQueued == null
+      ? {}
+      : { capacityQueued: row.capacityQueued }),
     readiness: row.readiness,
     updatedAt: toIso(row.updatedAt),
   })
