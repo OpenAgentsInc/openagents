@@ -2,10 +2,11 @@
 
 Date: 2026-07-04
 Updated: 2026-07-05
-Status: third-pass audit. No runtime code changed by this document.
+Status: fourth-pass audit. No runtime code changed by this document.
 Scope: actual published AI SDK harness package code, local Pylon Codex/Claude
 runners, OpenAgents sandbox/workroom plans, opencode's Vercel AI SDK Core usage,
-and whether a maintained fork or local prototype is feasible.
+current Khala Sync mobile/desktop work, and whether a maintained fork or local
+prototype is feasible.
 
 ## Executive Answer
 
@@ -20,6 +21,13 @@ permissions, provider catalog, telemetry, and transcript persistence; it calls
 `streamText` as the default model transport; then it adapts AI SDK `stream` /
 `fullStream` parts back into an internal `LLMEvent` stream. Khala should do the
 same with an OpenAgents event schema.
+
+The Khala Sync/mobile pass adds the near-term product path. Main already has a
+real Khala Sync engine, desktop chat/fleet consumers, a TanStack DB adapter,
+and an Expo mobile destination with Tailnet health probing and SQLite
+persistence scaffolding. The upgrade is viable if we use Khala Sync as the
+durable cross-device transport for OpenAgents-owned runtime events and control
+intents, not as a place to serialize raw AI SDK stream parts.
 
 No, we should not maintain a broad fork of AI SDK core. The viable ownership
 shape is narrower:
@@ -90,6 +98,17 @@ Reference repositories inspected on 2026-07-05:
 | --- | --- | --- |
 | `projects/repos/opencode` | `1b9b2604581bfdac263a69a2d5846bd2a91da6cc` | `packages/opencode/src/session/llm.ts`, `packages/opencode/src/session/llm/ai-sdk.ts`, `packages/opencode/src/session/llm/request.ts`, `packages/opencode/src/session/tools.ts`, `packages/opencode/src/provider/provider.ts`, `packages/opencode/src/provider/transform.ts`, `packages/opencode/src/session/processor.ts`, `packages/opencode/src/session/llm/native-runtime.ts`, `packages/opencode/src/session/llm/native-request.ts`, `packages/opencode/src/session/llm/AGENTS.md`, `packages/opencode/package.json`. |
 | `projects/repos/ai` | `77f9f686dcf8873f8cc9eb1aa416e91b8b308a70` | `packages/ai/src/generate-text/stream-text.ts`, `packages/ai/src/generate-text/stream-text-result.ts`, `packages/provider/src/language-model/v4/language-model-v4.ts`, and harness package directories. |
+
+Current OpenAgents files reviewed on 2026-07-05:
+
+| Area | Evidence |
+| --- | --- |
+| Recent commits | `2526a91e7a`, `9b566511d8`, `e0bb4bc630`, `970f6d1bdd`, `5964c3a7f9`, `636eb30bd6`. |
+| Khala Sync contracts/client/server | `docs/khala-sync/SPEC.md`, `packages/khala-sync`, `packages/khala-sync-client`, `packages/khala-sync-server`. |
+| Desktop Sync consumer | `clients/khala-code-desktop/src/bun/khala-sync-service.ts`, `rpc-handlers.ts`, `src/shared/rpc.ts`, `tests/khala-sync-service.test.ts`, `tests/rpc-schema.test.ts`. |
+| Mobile destination | `clients/khala-mobile/AGENTS.md`, `README.md`, `app/index.tsx`, `src/status/khala-code-connectivity*.ts`, `src/sync/khala-sync-mobile.ts`, `src/sync/expo-db-sqlite-persistence.ts`. |
+| Sync UI/docs receipts | `docs/fable/2026-07-04-khala-sync-implementation-status.md`, `2026-07-04-khala-sync-db-collection.md`, `2026-07-04-chat-sidebar-sync-consumers.md`, `2026-07-04-khala-sync-cross-device-dogfood.md`. |
+| Active uncommitted desktop work | Local diff in the main checkout adds `khalaSyncChatAppendMessage`; this audit did not edit or stage that work. |
 
 ## OpenCode's Vercel AI SDK Core Pattern
 
@@ -232,6 +251,151 @@ The practical order should be:
    for workspace effects.
 5. Add AI SDK Harnesses for Codex/Claude only after the OpenAgents sandbox
    provider can be the containment boundary.
+
+## Khala Sync Mobile/Desktop Roadmap
+
+This pass changes the practical roadmap. The earlier Fable analysis correctly
+identified cross-device chat as the dogfood milestone, but parts of it are now
+stale: Khala Sync packages are no longer empty, the Postgres-backed sync engine
+is live, `@openagentsinc/khala-sync-client` exists, the TanStack DB collection
+adapter exists, and the Expo Khala mobile destination is now the TypeScript
+surface while SwiftUI remains the interim shipping/native-reference app.
+
+### Current implementation state
+
+- Khala Sync is the right substrate for this upgrade: it already has typed
+  scopes, dense cursors, named mutators, in-band rejections, local SQLite
+  state, optimistic overlay/rebase, HTTP/WS transport, owner-private chat
+  mutators, fleet mutators, and scope authorization.
+- Desktop currently exposes `khalaSyncChatThreads`,
+  `khalaSyncChatCreateThread`, `khalaSyncChatRenameThread`,
+  `khalaSyncFleetState`, and `khalaSyncFleetMutate`. The local active diff
+  adding `khalaSyncChatAppendMessage` is directionally correct: append is a
+  control intent, not a UI-only RPC.
+- The desktop service already builds chat mutators, tracks in-band rejections,
+  keeps a durable SQLite store under `~/.khala-code`, and surfaces real sync
+  phases (`idle`, `bootstrapping`, `catching_up`, `live`, `must_refetch`,
+  `denied`) instead of fabricating liveness.
+- Mobile now has a minimal Tailnet health dot that probes the desktop health
+  beacon (`:50099/health`), plus collection factories for chat/fleet preview
+  state and an Expo SQLite checkpoint/projection-cache scaffold. It is ready
+  to be connected to a real `KhalaSyncSession`; it is not yet a full runtime
+  control surface.
+- The server already has `chat.createThread`, `chat.appendMessage`, and
+  `chat.renameThread`, with `scope.user.<owner>` carrying thread metadata and
+  `scope.thread.<threadId>` carrying message bodies. That is the exact shape
+  we should extend for runtime turn/control events.
+
+### OpenCode-shaped target
+
+OpenCode's current architecture has two useful layers. The older path calls
+AI SDK `streamText`, adapts `fullStream` parts into `@opencode-ai/llm`
+`LLMEvent`s, and lets the session processor consume only `LLMEvent`. The newer
+`packages/core` runner moves that seam deeper: `llm.stream(request)` emits
+normalized `LLMEvent`s, then a publisher turns them into durable typed session
+events while local tool settlement remains outside provider transport.
+
+Khala should copy that ownership pattern:
+
+1. AI SDK stream parts are adapter input only.
+2. OpenAgents runtime events are the canonical product/session/sync contract.
+3. Khala Sync carries those canonical events and typed control intents across
+   mobile, desktop, web, and server.
+4. Tool execution re-enters OpenAgents policy and sandbox/workroom authority.
+5. Harnesses are a later runtime lane, not the foundation for mobile sync.
+
+In other words, mobile should not call "AI SDK" and desktop should not project
+"AI SDK parts." Mobile submits OpenAgents control intents through Khala Sync;
+desktop or the server-side runtime executes through the selected lane; every
+lane emits OpenAgents runtime events; Khala Sync replicates the authorized
+read model back to mobile and desktop.
+
+### Roadmap issues
+
+The whole process is now filed as GitHub issues:
+
+| Issue | Workstream |
+| --- | --- |
+| [#8363](https://github.com/OpenAgentsInc/openagents/issues/8363) | Define the AI SDK-shaped OpenAgents runtime event and control schema. |
+| [#8364](https://github.com/OpenAgentsInc/openagents/issues/8364) | Finish the desktop mobile chat/control bridge, including typed append. |
+| [#8365](https://github.com/OpenAgentsInc/openagents/issues/8365) | Connect the mobile Tailnet health dot to a durable Khala Sync client. |
+| [#8370](https://github.com/OpenAgentsInc/openagents/issues/8370) | Add server runtime control/event scopes, owner policy, and idempotency. |
+| [#8373](https://github.com/OpenAgentsInc/openagents/issues/8373) | Build the OpenCode-style AI SDK Core stream adapter to OpenAgents events. |
+| [#8374](https://github.com/OpenAgentsInc/openagents/issues/8374) | Implement local and OpenAgents AI SDK sandbox providers. |
+| [#8375](https://github.com/OpenAgentsInc/openagents/issues/8375) | Prove the mobile-to-desktop AI SDK-shaped runtime dogfood flow. |
+
+### Sequenced implementation path
+
+P0 should be the event/control schema (#8363). Without this, each bridge will
+invent its own version of "message," "turn," "tool," and "runtime state," and
+we will lose the main OpenCode benefit. The schema should cover text,
+reasoning, tool input/call/result/error, usage, provider metadata, finish
+reasons, file changes, compaction, interruption, private raw-event refs, and
+stable IDs for turns/messages/control intents/tool calls.
+
+P1 should land the desktop control bridge (#8364) and treat the active append
+work as one control intent in a growing vocabulary. Create/rename/append are
+the chat subset; start-turn, interrupt, continue/resume, retry, and close are
+the runtime subset. The bridge should return typed public-safe results and
+surface rejections as state, matching Khala Sync's queue-never-blocks model.
+
+P2 should make mobile a real Sync client (#8365). The health dot should become
+connection discovery/pairing/auth status, then the app should open a durable
+sync session, persist cursors/checkpoints via Expo SQLite, consume
+`chat_thread` and `scope.thread.<threadId>` projections, and submit control
+intents with client-generated IDs. The key UX rule is honesty: stale,
+offline, pending, denied, and rejected are visible states, never coerced into
+"connected."
+
+P3 should add runtime state on the server side (#8370). The existing chat
+mutators prove the shape, but runtime events need their own typed rows or
+projection entities, owner/thread/team scope routing, idempotent mutators, and
+scope-auth coverage. Message bodies and runtime content stay in authenticated
+owner/thread scopes; public evidence gets only refs, counts, route names,
+latency buckets, and issue/build refs.
+
+P4 should add the AI SDK Core lane (#8373). This can work locally before the
+harness sandbox work: one model fixture, one tool fixture, one providerOptions
+fixture, and one raw privacy fixture. Its output must be OpenAgents runtime
+events, not AI SDK stream parts. This is the fastest way to get "AI SDK-like"
+runtime shape into Khala Code without waiting for the harness provider.
+
+P5 should implement the sandbox provider path (#8374). Start with a clearly
+unsafe local provider for owner-local fixtures, then move to
+`@openagentsinc/ai-sdk-sandbox-openagents` over the real OpenAgents
+sandbox/workroom API. Claude should go first because its AI SDK adapter
+already supports approvals/filtering; Codex should wait until the OpenAgents
+sandbox enforces policy under the adapter's full-access posture.
+
+P6 should close with a public-safe dogfood receipt (#8375). The proof should
+show a mobile-created control intent appearing in desktop without restart, a
+runtime event appearing back on mobile after catch-up/resume, and at least one
+offline/reconnect or app-restart cursor-resume case. The evidence validator
+must reject raw prompts, chat bodies, provider chunks, local paths, tokens, and
+secrets.
+
+### Local feasibility answer
+
+Yes, we can get this working locally in increments:
+
+1. Fake or local Khala Sync transport proves desktop/mobile chat create,
+   append, rename, and thread-scope read convergence.
+2. The existing Tailnet health beacon proves mobile can locate a desktop over
+   simulator localhost or physical-device Tailnet hostnames.
+3. AI SDK Core can be proven with a fixture provider and one low-risk model
+   without any harness sandbox provider.
+4. The local unsafe harness provider can prove Codex/Claude bridge mechanics
+   without Vercel, but it must remain owner-local until the OpenAgents sandbox
+   provider is real.
+5. The real dogfood proof ties them together: mobile control intent -> Khala
+   Sync -> desktop/runtime lane -> OpenAgents runtime events -> Khala Sync ->
+   mobile/desktop/web projections.
+
+The main risk is not "can we call AI SDK?" The main risk is accidentally
+letting AI SDK, a mobile client, or a desktop RPC become the authority for
+tools, workspace effects, secrets, or transcript truth. Keep the authority in
+OpenAgents schemas, mutators, policy, and sandbox/workroom services, and this
+is a viable upgrade.
 
 ## What The AI SDK Code Actually Requires
 
@@ -473,6 +637,30 @@ sandbox plan exists to enforce.
 
 ## Recommended Pathway
 
+### P0: Khala Sync mobile/desktop event contract
+
+Run the Khala Sync/mobile path in parallel with the AI SDK Core lane. Define
+the canonical runtime event/control schema first (#8363), land the desktop
+append/control bridge (#8364), connect mobile to a durable Sync session
+(#8365), and extend server-side runtime scopes/policy (#8370). This is the
+path that makes mobile-to-desktop Khala Code feel AI SDK-shaped without letting
+AI SDK own the product state.
+
+Required tests:
+
+- schema fixtures that cover the OpenAgents event/control contract,
+- desktop RPC tests for append/control intent success, rejection, and disabled
+  states,
+- mobile fake-session tests for durable checkpoint/resume and pending/rejected
+  state,
+- scope-auth/mutator tests proving runtime content remains owner/thread scoped.
+
+Gate:
+
+- mobile, desktop, and web consume the same OpenAgents runtime event/control
+  contract over Khala Sync; no surface persists raw AI SDK stream parts as
+  canonical state.
+
 ### P0a: opencode-style AI SDK Core runtime
 
 Build a narrow `ai_sdk_core` runtime for Khala before the harness work. It
@@ -603,12 +791,16 @@ are hard requirements for that lane.
 ## Bottom Line
 
 The feasible upgrade is not "replace Khala Code with AI SDK Harnesses." The
-feasible upgrade has two lanes:
+feasible upgrade has three lanes:
 
-1. Copy opencode's AI SDK Core pattern now: use `streamText` and provider
+1. Make Khala Sync the mobile/desktop transport for OpenAgents runtime events
+   and control intents, starting with the filed roadmap issues
+   [#8363](https://github.com/OpenAgentsInc/openagents/issues/8363) through
+   [#8375](https://github.com/OpenAgentsInc/openagents/issues/8375).
+2. Copy opencode's AI SDK Core pattern now: use `streamText` and provider
    packages as a transport layer, but convert every part into OpenAgents-owned
    events.
-2. Make OpenAgents sandboxes a first-class AI SDK sandbox provider, then run
+3. Make OpenAgents sandboxes a first-class AI SDK sandbox provider, then run
    Codex/Claude harness bridges inside that provider where whole-agent runtime
    compatibility helps.
 
