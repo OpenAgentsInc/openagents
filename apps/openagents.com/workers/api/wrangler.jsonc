@@ -48,6 +48,14 @@
     // Codex proof metadata reads serve from Cloud SQL with bounded retry and D1
     // fallback. Roll back by setting this to `d1`.
     "KHALA_SYNC_PYLON_READS": "postgres",
+    // KS-8.6 Artanis read cutover (#8335, TEMPORARY compare soak): dual-write
+    // has been live since 357562dcfc; this reads BOTH stores, serves D1, and
+    // logs `khala_sync_artanis_read_compare_mismatch` on any drift. Covers the
+    // idempotency read in ArtanisScheduledRunner.runTick plus operator-console
+    // and public-report latest-row reads. Roll back to `d1` at any time; the
+    // remaining five cron ticks' own decision-making reads stay D1-direct
+    // regardless of this flag (no Postgres reader wired for them yet).
+    "KHALA_SYNC_ARTANIS_READS": "compare",
     // #6408 "fleet never silently stalls" watchdog (1-min cron). Detection is
     // default-ON so a live stall is flagged immediately. Recovery is also ON but
     // is a no-op unless FLEET_WATCHDOG_OWNER_PYLON_REFS lists the owner pylon(s)
@@ -486,6 +494,11 @@
         // KS-8 Pylon read cutover (#8315), staging parity for the production
         // Cloud SQL read path. Roll back by setting this to `d1`.
         "KHALA_SYNC_PYLON_READS": "postgres",
+        // KS-8.6 Artanis read cutover (#8335, TEMPORARY compare soak), staging
+        // parity. ARTANIS_SCHEDULED_RUNNER_ENABLED is false on staging so this
+        // mainly exercises operator-console/public-report reads here; the
+        // production var is the one under live soak observation.
+        "KHALA_SYNC_ARTANIS_READS": "compare",
         // Internal/ops account allowlist (#6298 demand + #6232 quota exemption) —
         // staging too, so dogfood classifies `demand_kind=internal` consistently
         // and internal testing accounts (ops/heartbeat/canary, Artanis, Raynor)
