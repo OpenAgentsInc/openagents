@@ -5014,13 +5014,13 @@ button {
 }
 .khala-code-editor-tree-pane {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   border-right: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 16%, transparent);
   background: color-mix(in srgb, var(--oa-color-khala-void) 34%, transparent);
 }
 .khala-code-editor-source-pane {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   background: color-mix(in srgb, var(--oa-color-khala-void) 18%, transparent);
 }
 .khala-code-editor-pane-header,
@@ -5039,6 +5039,27 @@ button {
   align-items: center;
   gap: 0.45rem;
   min-width: 0;
+}
+.khala-code-editor-search {
+  padding: 0.55rem 0.7rem 0.65rem;
+}
+.khala-code-editor-search-input {
+  width: 100%;
+  min-height: 2rem;
+  padding: 0.36rem 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 70%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--oa-color-khala-void) 68%, transparent);
+  color: var(--oa-color-component-text);
+  font: 500 0.78rem/1.4 var(--oa-font-sans);
+  outline: none;
+}
+.khala-code-editor-search-input::placeholder {
+  color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 48%, transparent);
+}
+.khala-code-editor-search-input:focus-visible {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 66%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 14%, transparent);
 }
 .khala-code-editor-pane-title,
 .khala-code-editor-source-title {
@@ -5121,7 +5142,7 @@ button {
 }
 .khala-code-editor-tree-row {
   display: grid;
-  grid-template-columns: 1rem 1rem minmax(0, 1fr) auto;
+  grid-template-columns: 1rem 1rem minmax(0, 1fr) 0.85rem auto;
   align-items: center;
   gap: 0.38rem;
   width: 100%;
@@ -5163,11 +5184,97 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.khala-code-editor-row-change {
+  min-width: 0;
+  color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 82%, transparent);
+  font: 700 0.64rem/1 var(--oa-font-code);
+  text-align: center;
+}
+.khala-code-editor-tree-row[data-change-kind="added"] .khala-code-editor-row-change {
+  color: color-mix(in srgb, var(--oa-color-khala-success) 84%, var(--oa-color-component-text));
+}
+.khala-code-editor-tree-row[data-change-kind="deleted"] .khala-code-editor-row-change {
+  color: color-mix(in srgb, var(--oa-color-khala-danger-text) 84%, var(--oa-color-component-text));
+}
 .khala-code-editor-row-status {
   color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 74%, transparent);
   font-family: var(--oa-font-code);
   font-size: 0.64rem;
   line-height: 1;
+}
+.khala-code-editor-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 2.35rem;
+  overflow-x: auto;
+  padding: 0.34rem 0.5rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--oa-color-component-border) 62%, transparent);
+}
+.khala-code-editor-tabs-empty {
+  padding: 0 0.2rem;
+  color: color-mix(in srgb, var(--oa-color-component-text) 48%, transparent);
+  font: 500 0.74rem/1.4 var(--oa-font-sans);
+}
+.khala-code-editor-tab {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.42rem;
+  max-width: 15rem;
+  min-height: 1.68rem;
+  padding: 0.16rem 0.22rem 0.16rem 0.52rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 56%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--oa-color-khala-surface) 62%, transparent);
+  color: color-mix(in srgb, var(--oa-color-component-text) 80%, transparent);
+}
+.khala-code-editor-tab:hover,
+.khala-code-editor-tab:focus-visible {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 42%, transparent);
+  color: var(--oa-color-component-text);
+  outline: none;
+}
+.khala-code-editor-tab[data-selected="true"] {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 52%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 12%, var(--oa-color-khala-surface));
+  color: var(--oa-color-component-text);
+}
+.khala-code-editor-tab-name,
+.khala-code-editor-tab-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.khala-code-editor-tab-name {
+  font: 600 0.75rem/1.2 var(--oa-font-sans);
+}
+.khala-code-editor-tab-meta {
+  color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 48%, transparent);
+  font: 500 0.66rem/1.2 var(--oa-font-sans);
+}
+.khala-code-editor-tab-close {
+  display: inline-grid;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-left: 0.08rem;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: color-mix(in srgb, var(--oa-color-component-text) 62%, transparent);
+}
+.khala-code-editor-tab-close:hover,
+.khala-code-editor-tab-close:focus-visible {
+  background: color-mix(in srgb, var(--oa-color-component-text) 8%, transparent);
+  color: var(--oa-color-component-text);
+  outline: none;
+}
+.khala-code-editor-tab-close-icon {
+  width: 0.72rem;
+  height: 0.72rem;
 }
 .khala-code-editor-source-body {
   position: relative;

@@ -546,11 +546,40 @@ Opened issue set:
   [#8444](https://github.com/OpenAgentsInc/openagents/issues/8444),
   [#8445](https://github.com/OpenAgentsInc/openagents/issues/8445), and
   [#8446](https://github.com/OpenAgentsInc/openagents/issues/8446).
+- Next-wave parity issues:
+  [#8459](https://github.com/OpenAgentsInc/openagents/issues/8459),
+  [#8460](https://github.com/OpenAgentsInc/openagents/issues/8460),
+  [#8461](https://github.com/OpenAgentsInc/openagents/issues/8461),
+  [#8462](https://github.com/OpenAgentsInc/openagents/issues/8462),
+  [#8463](https://github.com/OpenAgentsInc/openagents/issues/8463),
+  [#8464](https://github.com/OpenAgentsInc/openagents/issues/8464),
+  [#8465](https://github.com/OpenAgentsInc/openagents/issues/8465), and
+  [#8466](https://github.com/OpenAgentsInc/openagents/issues/8466).
 
 Do not duplicate [#8430](https://github.com/OpenAgentsInc/openagents/issues/8430)
 through [#8434](https://github.com/OpenAgentsInc/openagents/issues/8434):
 another agent is already working the Phase 1 read-only editor source-browser
 slice.
+
+Issue: add file explorer, tabs, search, and workspace context
+([#8459](https://github.com/OpenAgentsInc/openagents/issues/8459)).
+
+- Status: first next-wave implementation pass complete on 2026-07-05. The
+  existing Editor hotbar surface now has a compact workspace search field,
+  visible added/modified/deleted tree markers when a provider supplies
+  `changeKind`, an OpenCode-style open-files tab strip with switch/close
+  behavior, and selected-line/file context tests that prove the composer handoff
+  stays local to the typed editor contract. The implementation continues to
+  follow the VS Code explorer/editor adoption audit: stable node identity, lazy
+  tree hydration, keyboard tree navigation, read-only Monaco models, and a
+  Khala-owned local workspace provider. Editing, dirty tabs, file watchers, LSP,
+  and multi-window editor state remain follow-up work.
+- Scope: file explorer projection, read-only file tabs, loaded-tree file search,
+  selected file/line context, and typed change markers.
+- Acceptance gates: DOM tests cover lazy tree projection, tab open/switch/close,
+  file search selection, selected-line context insertion, binary/oversized file
+  refusal, and typed workspace service errors without public-safe file-content
+  leakage.
 
 ### P0: Composer And Prompt Input
 

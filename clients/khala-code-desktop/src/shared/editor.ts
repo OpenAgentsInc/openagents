@@ -16,6 +16,14 @@ export const KhalaCodeEditorNodeKind = S.Literals([
 export type KhalaCodeEditorNodeKind =
   typeof KhalaCodeEditorNodeKind.Type
 
+export const KhalaCodeEditorChangeKind = S.Literals([
+  "added",
+  "deleted",
+  "modified",
+])
+export type KhalaCodeEditorChangeKind =
+  typeof KhalaCodeEditorChangeKind.Type
+
 export const KhalaCodeEditorErrorCode = S.Literals([
   "binary_file",
   "file_too_large",
@@ -64,6 +72,7 @@ export type KhalaCodeEditorWorkspaceRoot =
 
 export const KhalaCodeEditorTreeNode = S.Struct({
   childrenLoaded: S.Boolean,
+  changeKind: S.optional(S.NullOr(KhalaCodeEditorChangeKind)),
   depth: S.Number,
   kind: KhalaCodeEditorNodeKind,
   mtime: S.NullOr(S.Number),

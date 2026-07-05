@@ -74,6 +74,15 @@ type FlatTreeRow = Readonly<{
   key: string
 }>
 
+type EditorOpenTab = Readonly<{
+  displayPath: string
+  key: string
+  language: string
+  name: string
+  path: string
+  providerId: string
+}>
+
 let monacoRuntimePromise: Promise<MonacoApi> | null = null
 let khalaMonacoThemeDefined = false
 
@@ -83,6 +92,7 @@ const nodeKey = (
 
 const rootNode = (root: KhalaCodeEditorWorkspaceRoot): KhalaCodeEditorTreeNode => ({
   childrenLoaded: false,
+  changeKind: null,
   depth: 0,
   kind: "directory",
   mtime: null,
@@ -111,6 +121,32 @@ const iconForNode = (node: KhalaCodeEditorTreeNode, expanded: boolean): IconName
       ? "FolderOpen"
       : "Folder"
     : "FileCode"
+
+const changeLabel = (changeKind: KhalaCodeEditorTreeNode["changeKind"]): string => {
+  switch (changeKind) {
+    case "added":
+      return "A"
+    case "deleted":
+      return "D"
+    case "modified":
+      return "M"
+    default:
+      return ""
+  }
+}
+
+const changeTitle = (changeKind: KhalaCodeEditorTreeNode["changeKind"]): string => {
+  switch (changeKind) {
+    case "added":
+      return "Added"
+    case "deleted":
+      return "Deleted"
+    case "modified":
+      return "Modified"
+    default:
+      return ""
+  }
+}
 
 const formatBytes = (bytes: number | null): string => {
   if (bytes === null) return "Folder"
@@ -339,8 +375,11 @@ export const mountKhalaCodeEditorPanel = (
   const treeItems = new Map<string, EditorTreeItem>()
   let rootKeys: string[] = []
   let flatRows: FlatTreeRow[] = []
+  let renderedRows: FlatTreeRow[] = []
+  let openTabs: EditorOpenTab[] = []
   let focusedKey: string | null = null
   let selectedKey: string | null = null
+  let searchQuery = ""
   let workspaceLoaded = false
   let workspaceLoading: Promise<void> | null = null
   let fileRequestSeq = 0
@@ -372,11 +411,20 @@ export const mountKhalaCodeEditorPanel = (
   treeHeaderMeta.append(treeStatus, refreshButton)
   treeHeader.append(treeTitle, treeHeaderMeta)
 
+  const searchWrap = el("div", "khala-code-editor-search")
+  const searchInput = document.createElement("input")
+  searchInput.type = "search"
+  searchInput.name = "khala-code-editor-file-search"
+  searchInput.className = "khala-code-editor-search-input"
+  searchInput.placeholder = "Search files"
+  searchInput.setAttribute("aria-label", "Search workspace files")
+  searchWrap.append(searchInput)
+
   const treeBody = el("div", "khala-code-editor-tree")
   treeBody.setAttribute("role", "tree")
   treeBody.setAttribute("aria-label", "Workspace file tree")
 
-  treePane.append(treeHeader, treeBody)
+  treePane.append(treeHeader, searchWrap, treeBody)
 
   const sourcePane = el("section", "khala-code-editor-source-pane")
   sourcePane.setAttribute("aria-label", "Editor source view")
@@ -398,13 +446,17 @@ export const mountKhalaCodeEditorPanel = (
   sourceHeaderMeta.append(fileMeta, sourceContextButton)
   sourceHeader.append(fileTitle, sourceHeaderMeta)
 
+  const tabStrip = el("div", "khala-code-editor-tabs")
+  tabStrip.setAttribute("role", "tablist")
+  tabStrip.setAttribute("aria-label", "Open editor files")
+
   const sourceBody = el("div", "khala-code-editor-source-body")
   const sourceState = el("div", "khala-code-editor-source-state", "No source open")
   const monacoHost = el("div", "khala-code-editor-source-monaco")
   monacoHost.hidden = true
   sourceBody.append(sourceState, monacoHost)
 
-  sourcePane.append(sourceHeader, sourceBody)
+  sourcePane.append(sourceHeader, tabStrip, sourceBody)
   panel.append(treePane, sourcePane)
   container.append(panel)
 
@@ -437,6 +489,13 @@ export const mountKhalaCodeEditorPanel = (
     for (const childKey of item.children) collectRows(childKey, rows)
   }
 
+  const rowMatchesSearch = (row: FlatTreeRow, normalizedQuery: string): boolean => {
+    if (normalizedQuery.length === 0) return true
+    const displayPath = relativeDisplayPath(row.item.node).toLowerCase()
+    return row.item.node.name.toLowerCase().includes(normalizedQuery) ||
+      displayPath.includes(normalizedQuery)
+  }
+
   const buttonForKey = (key: string): HTMLButtonElement | null =>
     Array.from(treeBody.querySelectorAll<HTMLButtonElement>("[data-khala-editor-node-key]"))
       .find(button => button.dataset.khalaEditorNodeKey === key) ?? null
@@ -448,10 +507,10 @@ export const mountKhalaCodeEditorPanel = (
   }
 
   const focusByDelta = (delta: number): void => {
-    if (flatRows.length === 0) return
-    const currentIndex = Math.max(0, flatRows.findIndex(row => row.key === focusedKey))
-    const nextIndex = Math.max(0, Math.min(flatRows.length - 1, currentIndex + delta))
-    focusRow(flatRows[nextIndex].key)
+    if (renderedRows.length === 0) return
+    const currentIndex = Math.max(0, renderedRows.findIndex(row => row.key === focusedKey))
+    const nextIndex = Math.max(0, Math.min(renderedRows.length - 1, currentIndex + delta))
+    focusRow(renderedRows[nextIndex].key)
   }
 
   const showSourceState = (
@@ -473,6 +532,53 @@ export const mountKhalaCodeEditorPanel = (
     monacoEditor?.setModel(null)
     monacoModel?.dispose()
     monacoModel = null
+  }
+
+  const renderTabs = (): void => {
+    tabStrip.replaceChildren()
+    tabStrip.dataset.state = openTabs.length === 0 ? "empty" : "ready"
+    if (openTabs.length === 0) {
+      const emptyTabs = el("span", "khala-code-editor-tabs-empty", "No open files")
+      tabStrip.append(emptyTabs)
+      return
+    }
+    for (const tab of openTabs) {
+      const selected = tab.key === selectedKey
+      const tabEl = el("div", "khala-code-editor-tab")
+      tabEl.dataset.path = tab.path
+      tabEl.dataset.selected = selected ? "true" : "false"
+      tabEl.setAttribute("role", "tab")
+      tabEl.setAttribute("aria-selected", selected ? "true" : "false")
+      tabEl.tabIndex = 0
+      tabEl.title = tab.displayPath
+      tabEl.addEventListener("click", () => {
+        void openFile(tab.key)
+      })
+      tabEl.addEventListener("keydown", event => {
+        if (event.key !== "Enter" && event.key !== " ") return
+        event.preventDefault()
+        void openFile(tab.key)
+      })
+
+      const tabName = el("span", "khala-code-editor-tab-name", tab.name)
+      const tabMeta = el("span", "khala-code-editor-tab-meta", languageLabel(tab.language))
+      const closeButton = document.createElement("button")
+      closeButton.type = "button"
+      closeButton.className = "khala-code-editor-tab-close"
+      closeButton.setAttribute("aria-label", `Close ${tab.name}`)
+      closeButton.title = `Close ${tab.name}`
+      closeButton.append(iconElement("X", {
+        className: "khala-code-editor-tab-close-icon",
+        dataIcon: "editor-close-tab",
+      }))
+      closeButton.addEventListener("click", event => {
+        event.stopPropagation()
+        closeTab(tab.key)
+      })
+
+      tabEl.append(tabName, tabMeta, closeButton)
+      tabStrip.append(tabEl)
+    }
   }
 
   const selectedLineRange = (): Pick<KhalaCodeEditorComposerContext, "kind" | "lineEnd" | "lineStart"> => {
@@ -508,14 +614,18 @@ export const mountKhalaCodeEditorPanel = (
   const renderTree = (): void => {
     flatRows = []
     for (const rootKey of rootKeys) collectRows(rootKey, flatRows)
+    const normalizedQuery = searchQuery.trim().toLowerCase()
+    renderedRows = flatRows.filter(row => rowMatchesSearch(row, normalizedQuery))
     treeBody.replaceChildren()
-    treeBody.dataset.state = flatRows.length === 0 ? "empty" : "ready"
-    if (flatRows.length === 0) {
-      renderTreeState("No workspace", "empty")
+    treeBody.dataset.state = renderedRows.length === 0 ? "empty" : "ready"
+    if (renderedRows.length === 0) {
+      renderTreeState(normalizedQuery.length === 0 ? "No workspace" : "No matching files", "empty")
       return
     }
-    if (focusedKey === null || !treeItems.has(focusedKey)) focusedKey = flatRows[0]?.key ?? null
-    for (const row of flatRows) {
+    if (focusedKey === null || !renderedRows.some(row => row.key === focusedKey)) {
+      focusedKey = renderedRows[0]?.key ?? null
+    }
+    for (const row of renderedRows) {
       const { item, key } = row
       const { node } = item
       const isDirectory = node.kind === "directory"
@@ -528,6 +638,9 @@ export const mountKhalaCodeEditorPanel = (
       button.dataset.khalaEditorNodeKey = key
       button.dataset.path = node.path
       button.dataset.selected = active ? "true" : "false"
+      if (node.changeKind !== undefined && node.changeKind !== null) {
+        button.dataset.changeKind = node.changeKind
+      }
       button.setAttribute("role", "treeitem")
       button.setAttribute("aria-level", String(node.depth + 1))
       button.setAttribute("aria-selected", active ? "true" : "false")
@@ -556,12 +669,19 @@ export const mountKhalaCodeEditorPanel = (
         dataIcon: node.kind,
       })
       const label = el("span", "khala-code-editor-row-label", node.name)
+      const change = el(
+        "span",
+        "khala-code-editor-row-change",
+        changeLabel(node.changeKind),
+      )
+      const changeTitleText = changeTitle(node.changeKind)
+      if (changeTitleText.length > 0) change.title = changeTitleText
       const status = el(
         "span",
         "khala-code-editor-row-status",
         item.loading ? "Loading" : item.error === null ? "" : "Error",
       )
-      button.append(chevron, fileIcon, label, status)
+      button.append(chevron, fileIcon, label, change, status)
       treeBody.append(button)
       if (item.error !== null && item.expanded) {
         const errorLine = el("div", "khala-code-editor-tree-error", item.error)
@@ -629,13 +749,27 @@ export const mountKhalaCodeEditorPanel = (
     }
     const language = languageForPath(result.path)
     const meta = `${languageLabel(language)} - ${formatBytes(result.sizeBytes)}`
+    const displayPath = relativeDisplayPath({
+      name: node.name,
+      path: result.path,
+      rootPath: result.rootPath,
+    })
+    const tab: EditorOpenTab = {
+      displayPath,
+      key,
+      language,
+      name: node.name,
+      path: result.path,
+      providerId: result.providerId,
+    }
+    openTabs = [
+      tab,
+      ...openTabs.filter(existing => existing.key !== key),
+    ].slice(0, 12)
+    renderTabs()
     showSourceState(node.name, meta, "Loading editor", "loading")
     activeFileContext = {
-      displayPath: relativeDisplayPath({
-        name: node.name,
-        path: result.path,
-        rootPath: result.rootPath,
-      }),
+      displayPath,
       path: result.path,
       providerId: result.providerId,
       rootPath: result.rootPath,
@@ -674,6 +808,7 @@ export const mountKhalaCodeEditorPanel = (
       })
       sourceContextButton.title = "Add selected line context"
       monacoEditor.layout()
+      renderTabs()
     } catch (error) {
       if (destroyed || requestSeq !== fileRequestSeq) return
       showSourceState(
@@ -683,6 +818,23 @@ export const mountKhalaCodeEditorPanel = (
         "error",
       )
     }
+  }
+
+  const closeTab = (key: string): void => {
+    const wasSelected = selectedKey === key
+    openTabs = openTabs.filter(tab => tab.key !== key)
+    if (wasSelected) {
+      selectedKey = null
+      showSourceState("No file selected", "Source", "No source open", "empty")
+      const next = openTabs[0]
+      renderTabs()
+      renderTree()
+      if (next !== undefined) {
+        void openFile(next.key)
+      }
+      return
+    }
+    renderTabs()
   }
 
   const activateItem = async (key: string): Promise<void> => {
@@ -697,7 +849,7 @@ export const mountKhalaCodeEditorPanel = (
   }
 
   const handleTreeKeydown = (event: KeyboardEvent): void => {
-    if (flatRows.length === 0) return
+    if (renderedRows.length === 0) return
     const current = treeItems.get(focusedKey ?? "")
     switch (event.key) {
       case "ArrowDown":
@@ -710,11 +862,11 @@ export const mountKhalaCodeEditorPanel = (
         return
       case "Home":
         event.preventDefault()
-        focusRow(flatRows[0].key)
+        focusRow(renderedRows[0].key)
         return
       case "End":
         event.preventDefault()
-        focusRow(flatRows[flatRows.length - 1].key)
+        focusRow(renderedRows[renderedRows.length - 1].key)
         return
       case "ArrowRight":
         event.preventDefault()
@@ -747,6 +899,13 @@ export const mountKhalaCodeEditorPanel = (
     }
   }
 
+  const openFocusedSearchResult = (): void => {
+    const row = renderedRows.find(candidate => candidate.key === focusedKey) ?? renderedRows[0]
+    if (row === undefined) return
+    focusedKey = row.key
+    void activateItem(row.key)
+  }
+
   const loadWorkspace = async (): Promise<void> => {
     treeStatus.textContent = "Loading"
     treeBody.setAttribute("aria-busy", "true")
@@ -764,6 +923,7 @@ export const mountKhalaCodeEditorPanel = (
     rootKeys = result.roots.map(root => nodeKey(storeItem(rootNode(root)).node))
     focusedKey = rootKeys[0] ?? null
     selectedKey = null
+    openTabs = []
     workspaceLoaded = true
     treeStatus.textContent = result.roots.length === 1 ? "Ready" : `${result.roots.length} roots`
     renderTree()
@@ -777,6 +937,7 @@ export const mountKhalaCodeEditorPanel = (
     monacoModel?.dispose()
     monacoModel = null
     showSourceState("No file selected", "Source", "No source open", "empty")
+    renderTabs()
     const load = loadWorkspace()
     workspaceLoading = load
     try {
@@ -798,9 +959,19 @@ export const mountKhalaCodeEditorPanel = (
   refreshButton.addEventListener("click", () => {
     void refresh()
   })
+  searchInput.addEventListener("input", () => {
+    searchQuery = searchInput.value
+    renderTree()
+  })
+  searchInput.addEventListener("keydown", event => {
+    if (event.key !== "Enter") return
+    event.preventDefault()
+    openFocusedSearchResult()
+  })
   treeBody.addEventListener("keydown", handleTreeKeydown)
 
   renderTreeState("No workspace", "empty")
+  renderTabs()
 
   return {
     destroy() {

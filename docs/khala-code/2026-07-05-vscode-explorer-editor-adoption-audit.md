@@ -361,6 +361,12 @@ Phase 1 implementation log:
   `smoke:editor-visual` Playwright lane that opens a fixture workspace, checks
   Chat before Editor, verifies Monaco lazy loading, and captures a nonblank
   tree/source pane.
+- #8459 extended the first editor surface toward OpenCode/VS Code parity with
+  an open-files tab strip, loaded-tree file search, visible change markers
+  (`added`, `modified`, `deleted`) on typed tree nodes, and selected-line/file
+  context handoff into the composer. The scope remains read-only: no dirty-tab
+  state, save path, watchers, LSP, rename/delete, or multi-window editor state
+  is claimed by this pass.
 
 ### Phase 2: workspace ergonomics
 
@@ -368,10 +374,12 @@ Goal: make browsing feel like a real coding tool.
 
 Work:
 
-- Add fuzzy file open using existing `fuzzyFileSearch`.
+- Extend file open beyond the current loaded-tree search with backend fuzzy
+  search using existing `fuzzyFileSearch`.
 - Add active-file reveal and persist expansion/selection in local storage.
 - Add `.gitignore` / exclude support using a small typed ignore matcher.
-- Add tabs or an "open files" strip.
+- Add richer tab persistence and future dirty-state affordances on top of the
+  current read-only open-files strip.
 - Add refresh debounce inspired by VS Code's `ExplorerService` delayed
   file-change reaction.
 
