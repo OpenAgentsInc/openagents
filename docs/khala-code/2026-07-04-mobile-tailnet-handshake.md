@@ -484,6 +484,7 @@ exporting:
 ```ts
 export interface SelectDispatchAccountOptions {
   readonly lastUsedAccountRefHash?: string
+  readonly provider?: string
 }
 
 export const selectDispatchAccount = (
@@ -496,7 +497,9 @@ Selection rule, given the `fleet_account` post-images currently projected
 for a `scope.fleet_run.<runId>` scope:
 
 - Eligible accounts require `readiness === "ready"` AND
-  `capacityAvailable !== undefined && capacityAvailable > 0`. A
+  `capacityAvailable !== undefined && capacityAvailable > 0`, AND (when
+  `options.provider` is set) an exact `provider` match — an account with
+  no reported `provider` never matches a set filter. A
   `cooldown`/`unavailable`/`unknown` account is excluded even if it still
   reports leftover capacity; a missing `capacityAvailable` is treated as
   ineligible, never as "assume available" or "zero is fine."
@@ -511,13 +514,14 @@ for a `scope.fleet_run.<runId>` scope:
 - Returns `undefined` when nothing is eligible (empty list, all zero/
   unknown capacity, or none ready) — never fabricates a fallback account.
 
-17 unit tests in
+19 unit tests in
 `packages/khala-sync-server/src/fleet-account-selection.test.ts` cover:
 empty list, single account, clear capacity winner, load tie-break, missing
 busy/queued treated as zero load, hash tie-break, all-zero-capacity,
 all-missing-capacity, non-ready exclusion (`cooldown`, `unavailable`,
-`unknown`), and the full round-robin cycle/wrap/ignore-stale-hash cases.
-Full `khala-sync-server` suite: 364 pass / 0 fail across 37 files
+`unknown`), provider filtering (match + no-provider-reported exclusion),
+and the full round-robin cycle/wrap/ignore-stale-hash cases. Full
+`khala-sync-server` suite: 366 pass / 0 fail across 37 files
 (Postgres-backed `fleet-mutators`/`fleet-projection` suites included);
 `tsc --noEmit` clean.
 
@@ -531,10 +535,12 @@ currently guesses/hardcodes an account:
    `scope.fleet_run.<runId>` scope (already how `fleet-mutators.ts` reads
    `fleet_account` post-images via `readCurrentFleetAccount`/
    `readCurrentEntity`, or via the read-service's scope projection).
-2. Call `selectDispatchAccount(accounts, { lastUsedAccountRefHash })`,
-   where `lastUsedAccountRefHash` is whichever account the consumer last
-   dispatched a turn to for this run (omit the option if there is none
-   yet, e.g. first dispatch).
+2. Call `selectDispatchAccount(accounts, { lastUsedAccountRefHash, provider })`,
+   where `provider` narrows to the CLI backing the turn's `target.lane`
+   (e.g. `"codex"` for a `codex_app_server` lane) and
+   `lastUsedAccountRefHash` is whichever account the consumer last
+   dispatched a turn to for this run (omit either option when not
+   applicable, e.g. first dispatch or no lane-to-provider mapping yet).
 3. If it returns `undefined`, the consumer must not dispatch — surface a
    typed "no ready capacity" blocker instead of guessing an account or
    dispatching to a cooldown/unavailable one.

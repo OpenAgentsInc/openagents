@@ -11,7 +11,7 @@ import type { FleetAccountEntity } from "@openagentsinc/khala-sync"
  * stay with the caller (the future Pylon-side consumer of durable
  * `runtime.startTurn` control intents, tracked in #8388).
  *
- * ELIGIBILITY: an account is a dispatch candidate only when BOTH hold:
+ * ELIGIBILITY: an account is a dispatch candidate only when ALL hold:
  *   - `readiness === "ready"` (a `cooldown`/`unavailable`/`unknown` account
  *     is excluded even if it still reports leftover `capacityAvailable` —
  *     readiness is the authoritative signal; capacity numbers can lag it).
@@ -20,6 +20,8 @@ import type { FleetAccountEntity } from "@openagentsinc/khala-sync"
  *     into unknown-capacity accounts) or as zero-is-fine (same failure
  *     mode as `undefined` — both mean "we don't know this account has a
  *     free slot").
+ *   - `options.provider`, when given, equals the account's `provider`
+ *     (an account with no reported `provider` never matches a set filter).
  *
  * RANKING among eligible accounts:
  *   1. Highest `capacityAvailable` wins.
@@ -55,12 +57,26 @@ export interface SelectDispatchAccountOptions {
    * ranking is unaffected by dispatch history.
    */
   readonly lastUsedAccountRefHash?: string
+  /**
+   * Restrict eligibility to accounts reporting this exact `provider`
+   * (e.g. `"codex"`, `"claude"`) — the dispatch target's lane determines
+   * which CLI backs it, so a turn destined for a Codex lane must not land
+   * on a Claude account. An account with no reported `provider` is
+   * excluded whenever this filter is set, since "unknown provider" is not
+   * a safe match. Omit to select across all providers (e.g. when the
+   * caller has already pre-filtered `accounts` itself).
+   */
+  readonly provider?: string
 }
 
-const isEligibleAccount = (account: FleetAccountEntity): boolean =>
+const isEligibleAccount = (
+  account: FleetAccountEntity,
+  options: SelectDispatchAccountOptions,
+): boolean =>
   account.readiness === "ready" &&
   account.capacityAvailable !== undefined &&
-  account.capacityAvailable > 0
+  account.capacityAvailable > 0 &&
+  (options.provider === undefined || account.provider === options.provider)
 
 const loadOf = (account: FleetAccountEntity): number =>
   (account.capacityBusy ?? 0) + (account.capacityQueued ?? 0)
@@ -105,7 +121,7 @@ export const selectDispatchAccount = (
   accounts: ReadonlyArray<FleetAccountEntity>,
   options: SelectDispatchAccountOptions = {},
 ): FleetAccountEntity | undefined => {
-  const eligible = accounts.filter(isEligibleAccount)
+  const eligible = accounts.filter((account) => isEligibleAccount(account, options))
   if (eligible.length === 0) return undefined
 
   const ranked = [...eligible].sort(compareAccounts)

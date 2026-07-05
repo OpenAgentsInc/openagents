@@ -6,6 +6,7 @@ const account = (
   overrides: Partial<{
     accountRefHash: string
     readiness: "ready" | "cooldown" | "unavailable" | "unknown"
+    provider: string
     capacityAvailable: number
     capacityBusy: number
     capacityQueued: number
@@ -149,6 +150,30 @@ describe("selectDispatchAccount", () => {
       capacityAvailable: 9,
     })
     expect(selectDispatchAccount([unavailable, unknown])).toBeUndefined()
+  })
+
+  test("filters to the matching provider when options.provider is set", () => {
+    const codexAccount = account({
+      accountRefHash: "account.pylon.codex.1111111111111111",
+      capacityAvailable: 1,
+      provider: "codex",
+    })
+    const claudeAccount = account({
+      accountRefHash: "account.pylon.claude.2222222222222222",
+      capacityAvailable: 9,
+      provider: "claude",
+    })
+    expect(
+      selectDispatchAccount([codexAccount, claudeAccount], { provider: "codex" }),
+    ).toBe(codexAccount)
+  })
+
+  test("excludes an account with no reported provider when options.provider is set", () => {
+    const noProvider = account({
+      accountRefHash: "account.pylon.codex.1111111111111111",
+      capacityAvailable: 9,
+    })
+    expect(selectDispatchAccount([noProvider], { provider: "codex" })).toBeUndefined()
   })
 
   test("returns undefined when the only ready accounts have zero/missing capacity", () => {
