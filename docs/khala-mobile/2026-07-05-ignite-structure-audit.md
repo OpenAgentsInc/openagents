@@ -71,6 +71,10 @@ Any Ignite pattern that conflicts with those rules is explicitly out of scope.
   `src/diagnostics/crash-reporting.ts` builds bounded/redacted render-crash
   payloads and remains no-op by default; the app error boundary now reports
   through an injectable reporter.
+- [#8452](https://github.com/OpenAgentsInc/openagents/issues/8452) - add
+  dev-only fixture/devtools commands. Implemented:
+  `src/devtools/khala-devtools.ts` defines a small `__DEV__`-gated command
+  registry with public-safe navigation, fixture, and connectivity helpers.
 
 ## One-Line Verdict
 
@@ -392,6 +396,8 @@ transport is enabled by default.
 
 ### Devtools Commands
 
+Tracking: [#8452](https://github.com/OpenAgentsInc/openagents/issues/8452)
+
 Ignite's Reactotron setup is useful because it provides deliberate dev-only
 commands: reset navigation, navigate, go back, show dev menu. Khala should not
 copy Reactotron by default, but the idea maps well to Khala's needs.
@@ -400,6 +406,11 @@ Recommended trigger: when the app has stable fixture auth/sync states, add
 dev-only helpers to reset local sync state, jump to a thread, seed fixture
 threads, and inspect connectivity. Keep these behind `__DEV__` and never print
 tokens or chat bodies.
+
+Implementation note: #8452 added a pure devtools registry instead of importing
+Reactotron. It exposes no commands in production mode, uses injected adapters
+for navigation/fixtures/connectivity in dev mode, and keeps command output to
+public-safe route/fixture/connectivity summaries.
 
 ### Asset Generators
 

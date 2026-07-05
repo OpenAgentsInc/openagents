@@ -258,6 +258,14 @@ chrome, public-safe fallbacks, and user-facing error text. Add new visible copy
 through typed `KhalaCopyKey` entries and keep private chat bodies, bearer
 values, raw sync payloads, and provider data out of copy tables.
 
+## Devtools
+
+`src/devtools/khala-devtools.ts` defines the local devtools command registry.
+It exposes no commands when `__DEV__` is false. Dev commands are public-safe
+only: reset navigation, jump to a fixture thread, seed/reset fixture state, and
+inspect bounded connectivity state. They must not print tokens, chat bodies,
+raw sync rows, provider payloads, emails, or private machine/account ids.
+
 ## Owner-Gated Proof Still Needed
 
 Source-level scaffold, policy tests, local typecheck, and both local
