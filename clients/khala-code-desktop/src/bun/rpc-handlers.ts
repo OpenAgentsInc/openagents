@@ -90,6 +90,7 @@ import {
   type KhalaCodeDesktopKhalaSyncFleetMutateResult,
   type KhalaCodeDesktopKhalaSyncFleetStateRequest,
   type KhalaCodeDesktopKhalaSyncFleetStateResult,
+  type KhalaCodeDesktopKhalaSyncChatAppendMessageRequest,
   type KhalaCodeDesktopKhalaSyncChatCreateThreadRequest,
   type KhalaCodeDesktopKhalaSyncChatMutationResult,
   type KhalaCodeDesktopKhalaSyncChatRenameThreadRequest,
@@ -2575,6 +2576,17 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         return { ok: false, error: "khala_sync_chat_disabled", threadId: request.threadId }
       }
       return input.khalaSync.chatRenameThread(request)
+    },
+    async khalaSyncChatAppendMessage(
+      request: KhalaCodeDesktopKhalaSyncChatAppendMessageRequest,
+    ): Promise<KhalaCodeDesktopKhalaSyncChatMutationResult> {
+      requireNonEmpty("khalaSyncChatAppendMessage", "threadId", request.threadId)
+      requireNonEmpty("khalaSyncChatAppendMessage", "messageId", request.messageId)
+      requireNonEmpty("khalaSyncChatAppendMessage", "body", request.body)
+      if (input.khalaSync === undefined) {
+        return { ok: false, error: "khala_sync_chat_disabled", threadId: request.threadId }
+      }
+      return input.khalaSync.chatAppendMessage(request)
     },
     async forumRequest(request): Promise<KhalaCodeDesktopForumResponse> {
       return fetchOpenAgentsForum(request)

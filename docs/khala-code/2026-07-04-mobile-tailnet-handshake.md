@@ -78,8 +78,64 @@ a local `bun run dev` Khala Code desktop instance is up and the beacon
 responds on `:50099`; red dot + "no khala code instance found" when the
 desktop app (and thus the beacon) is not running.
 
-## Chat streaming (added on top of this handshake)
+## Chat streaming over Khala Sync
 
-See the "Chat streaming over Khala Sync" section below, added once a live
-chat thread was wired through Khala Sync end-to-end and surfaced on the same
-mobile home screen.
+Built on top of the same Tailnet handshake and the same single mobile home
+screen: the desktop's already-flag-gated Khala Sync chat service
+(`clients/khala-code-desktop/src/bun/khala-sync-service.ts`, `KHALA_SYNC_CHAT=1`
++ `KHALA_SYNC_CHAT_OWNER_USER_ID`) can create threads, rename them, and now
+append messages (`chatAppendMessage`, wired end-to-end through
+`shared/rpc.ts` → `khala-sync-service.ts` → `bun/rpc-handlers.ts` →
+`ui/main.ts`'s preview-RPC bridge). Those mutations write into the owner's
+Khala Sync `scope.thread.<threadId>` (message bodies + thread metadata) and
+`scope.user.<owner>` (thread metadata only) scopes via the named
+server-authoritative mutators `chat.createThread` / `chat.appendMessage` /
+`chat.renameThread` (MC-1, #8352, `packages/khala-sync-server/src/chat-mutators.ts`).
+
+### Mobile side: raw JSON chat feed
+
+`clients/khala-mobile` now has a second piece on the same home screen (below
+the connectivity dot): a raw JSON event feed
+(`src/sync/khala-chat-feed.tsx` + pure wire-protocol helpers in
+`src/sync/khala-chat-feed-core.ts`). It talks directly to the Khala Sync wire
+protocol — no TanStack DB collection layer, deliberately, since the ask was
+"just show raw ugly json for now":
+
+1. `POST /api/sync/bootstrap` for `scope.thread.<threadId>` (a consistent
+   snapshot page + a `cursor`).
+2. Opens a WebSocket to `GET /api/sync/connect?scope=…&cursor=…` using React
+   Native's `WebSocket` third-argument `{ headers }` extension to carry the
+   bearer token (browsers can't set WebSocket headers; RN can).
+3. Renders every bootstrap response and every live `LiveFrame` (`DeltaFrame`,
+   `MutationAckFrame`, `MustRefetchFrame`, `PingFrame`) as a raw
+   `JSON.stringify` block, newest first.
+
+Demo wiring lives in `src/config/khala-sync-demo.ts` — there is no mobile
+login flow yet, so the bearer token, owner user id, and thread id are read
+from `EXPO_PUBLIC_KHALA_SYNC_DEMO_TOKEN` /
+`EXPO_PUBLIC_KHALA_SYNC_DEMO_OWNER_USER_ID` /
+`EXPO_PUBLIC_KHALA_SYNC_DEMO_THREAD_ID` at build time (never hardcoded, never
+committed).
+
+### Known gap: prod deploy blocked (tracked in #8376)
+
+While wiring this up, `chat.createThread` returned `unknown_mutator` against
+production. The mutator code is on `main`, but the `openagents.com` Worker
+has not been redeployed since it landed — `deploy:safe` currently fails its
+`check:architecture` zero-debt gate (`Worker throw new Error calls` and
+`Worker Response return surfaces` budgets, both exceeded by small amounts
+accumulated across today's unrelated Khala Sync dual-write PRs, not by this
+change). One of the two overages was fixed here (a self-contained
+throw-immediately-caught call in `business-domain-store.ts` converted to a
+direct log+return); the other needs a real route-mapper extraction and is
+tracked in issue #8376 rather than rushed.
+
+Until that lands and someone runs `deploy:safe`, `scope.thread.<threadId>`
+has no ownership row in prod, so the mobile feed's bootstrap call honestly
+returns `unauthorized_scope` instead of chat content. All the client and
+desktop wiring described above is real and complete — this is purely a
+server-side deploy gap, not a client-side gap. Verified live: `scope.user.<owner>`
+bootstrap reads and the full auth pipeline work correctly against prod today
+(confirmed via existing `sync.debugEcho` entities); once the chat mutators are
+live, the same mobile screen will show real chat messages with zero further
+app changes.

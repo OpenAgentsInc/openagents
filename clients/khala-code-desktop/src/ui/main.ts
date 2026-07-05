@@ -282,6 +282,10 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["khalaSyncChatRenameThread"]>>
       >("khalaSyncChatRenameThread", request),
+    khalaSyncChatAppendMessage: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["khalaSyncChatAppendMessage"]>>
+      >("khalaSyncChatAppendMessage", request),
     forumRequest: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["forumRequest"]>>
@@ -3913,6 +3917,8 @@ const controls = {
     rpc.request.khalaSyncChatCreateThread(request),
   khalaSyncChatRenameThread: (request: Parameters<DesktopRpcRequests["khalaSyncChatRenameThread"]>[0]) =>
     rpc.request.khalaSyncChatRenameThread(request),
+  khalaSyncChatAppendMessage: (request: Parameters<DesktopRpcRequests["khalaSyncChatAppendMessage"]>[0]) =>
+    rpc.request.khalaSyncChatAppendMessage(request),
   forumRequest: (request: Parameters<DesktopRpcRequests["forumRequest"]>[0]) =>
     rpc.request.forumRequest(request),
   khalaCodePlanCatalog: () => rpc.request.khalaCodePlanCatalog(),

@@ -6,6 +6,7 @@ import {
   checkKhalaCodeConnectivity,
   type KhalaCodeConnectivityStatus
 } from "../src/status/khala-code-connectivity"
+import { KhalaChatFeed } from "../src/sync/khala-chat-feed"
 
 const POLL_INTERVAL_MS = 5_000
 
@@ -44,23 +45,26 @@ export default function HomeScreen() {
   const dotColor = checking ? "#7e8a98" : reachable ? "#22c55e" : "#ef4444"
 
   return (
-    <SafeAreaView className="flex-1 items-center justify-center bg-bg">
-      <View
-        className="h-24 w-24 rounded-full"
-        style={{ backgroundColor: dotColor }}
-      />
-      <Text className="mt-6 font-sans text-base text-textMuted">
-        {checking
-          ? "checking…"
-          : reachable
-            ? `connected${status?.hostname ? ` — ${status.hostname}` : ""}`
-            : "no khala code instance found"}
-      </Text>
-      {status?.target !== null && status?.target !== undefined ? (
-        <Text className="mt-1 font-mono text-xs text-textFaint">
-          {status.target}
+    <SafeAreaView className="flex-1 items-center bg-bg">
+      <View className="items-center pt-10">
+        <View
+          className="h-24 w-24 rounded-full"
+          style={{ backgroundColor: dotColor }}
+        />
+        <Text className="mt-6 font-sans text-base text-textMuted">
+          {checking
+            ? "checking…"
+            : reachable
+              ? `connected${status?.hostname ? ` — ${status.hostname}` : ""}`
+              : "no khala code instance found"}
         </Text>
-      ) : null}
+        {status?.target !== null && status?.target !== undefined ? (
+          <Text className="mt-1 font-mono text-xs text-textFaint">
+            {status.target}
+          </Text>
+        ) : null}
+      </View>
+      <KhalaChatFeed />
     </SafeAreaView>
   )
 }

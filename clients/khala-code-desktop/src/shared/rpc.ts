@@ -244,6 +244,8 @@ export type KhalaCodeDesktopKhalaSyncChatCreateThreadRequest =
   typeof RpcKhalaSyncChatCreateThreadRequest.Type
 export type KhalaCodeDesktopKhalaSyncChatRenameThreadRequest =
   typeof RpcKhalaSyncChatRenameThreadRequest.Type
+export type KhalaCodeDesktopKhalaSyncChatAppendMessageRequest =
+  typeof RpcKhalaSyncChatAppendMessageRequest.Type
 export type KhalaCodeDesktopKhalaSyncChatMutationResult =
   typeof RpcKhalaSyncChatMutationResult.Type
 export type KhalaCodeDesktopForumRequest = typeof RpcForumRequest.Type
@@ -1901,6 +1903,11 @@ const RpcKhalaSyncChatRenameThreadRequest = S.Struct({
   threadId: S.String,
   title: S.String,
 })
+const RpcKhalaSyncChatAppendMessageRequest = S.Struct({
+  threadId: S.String,
+  messageId: S.String,
+  body: S.String,
+})
 const RpcKhalaSyncChatMutationResult = S.Struct({
   error: S.optional(S.String),
   ok: S.Boolean,
@@ -2332,6 +2339,7 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   khalaSyncChatThreads: { parameters: [optionalParam(RpcKhalaSyncChatThreadsRequest)], result: RpcKhalaSyncChatThreadsResult },
   khalaSyncChatCreateThread: { parameters: [param(RpcKhalaSyncChatCreateThreadRequest)], result: RpcKhalaSyncChatMutationResult },
   khalaSyncChatRenameThread: { parameters: [param(RpcKhalaSyncChatRenameThreadRequest)], result: RpcKhalaSyncChatMutationResult },
+  khalaSyncChatAppendMessage: { parameters: [param(RpcKhalaSyncChatAppendMessageRequest)], result: RpcKhalaSyncChatMutationResult },
   forumRequest: { parameters: [param(RpcForumRequest)], result: RpcForumResponse },
   khalaCodePlanCatalog: { parameters: noParams(), result: RpcKhalaCodePlanCatalogResult },
   khalaCodePlanStatus: { parameters: noParams(), result: RpcKhalaCodePlanStatusResult },
@@ -2503,6 +2511,7 @@ export type KhalaCodeDesktopRPCSchema = {
     khalaSyncChatThreads(request?: KhalaCodeDesktopKhalaSyncChatThreadsRequest): Promise<KhalaCodeDesktopKhalaSyncChatThreadsResult>
     khalaSyncChatCreateThread(request: KhalaCodeDesktopKhalaSyncChatCreateThreadRequest): Promise<KhalaCodeDesktopKhalaSyncChatMutationResult>
     khalaSyncChatRenameThread(request: KhalaCodeDesktopKhalaSyncChatRenameThreadRequest): Promise<KhalaCodeDesktopKhalaSyncChatMutationResult>
+    khalaSyncChatAppendMessage(request: KhalaCodeDesktopKhalaSyncChatAppendMessageRequest): Promise<KhalaCodeDesktopKhalaSyncChatMutationResult>
     forumRequest(request: KhalaCodeDesktopForumRequest): Promise<KhalaCodeDesktopForumResponse>
     khalaCodePlanCatalog(): Promise<KhalaCodeDesktopPlanCatalogResult>
     khalaCodePlanStatus(): Promise<KhalaCodeDesktopPlanStatusResult>

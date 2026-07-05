@@ -17,6 +17,7 @@ import {
   MutatorName,
   personalScope,
   SyncSchemaVersion,
+  threadScope,
   type ChatThreadEntity,
   type SyncScope,
 } from "@openagentsinc/khala-sync"
@@ -55,6 +56,7 @@ import { mkdirSync } from "node:fs"
 import type {
   KhalaCodeDesktopKhalaSyncFleetMutateRequest,
   KhalaCodeDesktopKhalaSyncFleetMutateResult,
+  KhalaCodeDesktopKhalaSyncChatAppendMessageRequest,
   KhalaCodeDesktopKhalaSyncChatCreateThreadRequest,
   KhalaCodeDesktopKhalaSyncChatMutationResult,
   KhalaCodeDesktopKhalaSyncChatRejection,
@@ -313,6 +315,9 @@ export type KhalaCodeDesktopKhalaSyncRpc = {
   ) => Promise<KhalaCodeDesktopKhalaSyncChatMutationResult>
   readonly chatRenameThread: (
     request: KhalaCodeDesktopKhalaSyncChatRenameThreadRequest,
+  ) => Promise<KhalaCodeDesktopKhalaSyncChatMutationResult>
+  readonly chatAppendMessage: (
+    request: KhalaCodeDesktopKhalaSyncChatAppendMessageRequest,
   ) => Promise<KhalaCodeDesktopKhalaSyncChatMutationResult>
   readonly chatThreads: (
     request?: KhalaCodeDesktopKhalaSyncChatThreadsRequest,
@@ -817,6 +822,45 @@ export const createKhalaCodeDesktopKhalaSyncService = (
     }
   }
 
+  const chatAppendMessage = async (
+    request: KhalaCodeDesktopKhalaSyncChatAppendMessageRequest,
+  ): Promise<KhalaCodeDesktopKhalaSyncChatMutationResult> => {
+    if (!chatEnabled || closed) {
+      return { ok: false, error: "khala_sync_chat_disabled", threadId: request.threadId }
+    }
+    if (chatOwnerUserId === null) {
+      return { ok: false, error: "missing_chat_owner_user_id", threadId: request.threadId }
+    }
+    const token = await refreshToken()
+    if (token === null) {
+      return { ok: false, error: "missing_openagents_auth", threadId: request.threadId }
+    }
+    const active = await ensureRuntime()
+    if (active === null) {
+      return {
+        ok: false,
+        error: runtimeFailure ?? "khala_sync_store_unavailable",
+        threadId: request.threadId,
+      }
+    }
+    if (active.chatMutators === null) {
+      return { ok: false, error: "khala_sync_chat_unavailable", threadId: request.threadId }
+    }
+    try {
+      await ensureSubscribed(active, threadScope(request.threadId))
+      await runEffect(
+        active.session.mutate(active.chatMutators.appendMessage, {
+          body: request.body,
+          messageId: request.messageId,
+          threadId: request.threadId,
+        }),
+      )
+      return { ok: true, threadId: request.threadId }
+    } catch (error) {
+      return { ok: false, error: errorText(error), threadId: request.threadId }
+    }
+  }
+
   const fleetState = async (
     request: KhalaCodeDesktopKhalaSyncFleetStateRequest,
   ): Promise<KhalaCodeDesktopKhalaSyncFleetStateResult> => {
@@ -1025,5 +1069,13 @@ export const createKhalaCodeDesktopKhalaSyncService = (
     }
   }
 
-  return { chatCreateThread, chatRenameThread, chatThreads, fleetState, fleetMutate, close }
+  return {
+    chatAppendMessage,
+    chatCreateThread,
+    chatRenameThread,
+    chatThreads,
+    close,
+    fleetMutate,
+    fleetState,
+  }
 }

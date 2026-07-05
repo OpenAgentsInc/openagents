@@ -315,15 +315,20 @@ export const makeBusinessDomainMirror = (
       if (values.length === 0) {
         return
       }
+      const spec = BUSINESS_DOMAIN_TABLE_SPECS[table]
+      if (
+        !spec.keyColumns.includes(column) &&
+        !spec.lookupColumns.includes(column) &&
+        !spec.columns.includes(column)
+      ) {
+        log('khala_sync_business_dual_write_failed', {
+          messageSafe: `invalid mirror lookup column for ${table}`,
+          op: `mirror:${table}`,
+          refs: values.slice(0, 10).map(String),
+        })
+        return
+      }
       try {
-        const spec = BUSINESS_DOMAIN_TABLE_SPECS[table]
-        if (
-          !spec.keyColumns.includes(column) &&
-          !spec.lookupColumns.includes(column) &&
-          !spec.columns.includes(column)
-        ) {
-          throw new Error(`invalid mirror lookup column for ${table}`)
-        }
         const placeholders = values.map(() => '?').join(', ')
         const rows = await db
           .prepare(
