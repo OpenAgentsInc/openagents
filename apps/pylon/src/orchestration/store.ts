@@ -1498,6 +1498,32 @@ export class PylonOrchestrationStore {
     return scope === undefined ? "runtime_intents_watermark" : `runtime_intents_watermark.${scope}`
   }
 
+  /**
+   * Last known Codex SDK thread id for a Khala Sync chat thread (#8388
+   * follow-up: cross-turn continuity). Captured from the SDK's own
+   * `thread.started` event the first time a `turn.start` dispatch runs for
+   * this Khala thread, and reused on the NEXT dispatch (an ordinary
+   * `turn.start`, or a Pylon-authored follow-up turn seeded from a queued
+   * `message.append`) via `Codex#resumeThread(id)` so the conversation
+   * keeps its context instead of starting fresh every turn. Best-effort
+   * only: if the account that resumes differs from the one that created
+   * the thread (each account has an isolated `~/.codex`-equivalent home),
+   * the resume attempt fails cleanly and the dispatch reports a normal
+   * `turn.finished` error — never a crash — so a stale/mismatched mapping
+   * is safe to keep around.
+   */
+  getRuntimeCodexThreadId(threadId: string): string | null {
+    return this.getMeta(this.runtimeCodexThreadIdKey(threadId))
+  }
+
+  setRuntimeCodexThreadId(threadId: string, codexThreadId: string): void {
+    this.setMeta(this.runtimeCodexThreadIdKey(threadId), codexThreadId)
+  }
+
+  private runtimeCodexThreadIdKey(threadId: string): string {
+    return `runtime_codex_thread_id.${threadId}`
+  }
+
   getRuntimeIntentOutcome(intentId: string): RuntimeIntentOutcomeRecord | null {
     const row = this.db
       .query("SELECT * FROM pylon_orchestration_runtime_intent_outcomes WHERE intent_id = $intentId")

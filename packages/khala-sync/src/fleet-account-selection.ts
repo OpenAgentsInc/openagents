@@ -1,15 +1,30 @@
-import type { FleetAccountEntity } from "@openagentsinc/khala-sync"
+import type { FleetAccountEntity } from "./fleet.js"
 
 /**
  * Capacity-aware dispatch account selection (#8389; depends on the
  * `fleet.reportAccountState` capacity fields added in #8302's follow-up —
- * see `fleet-mutators.ts`).
+ * see `packages/khala-sync-server/src/fleet-mutators.ts`).
  *
  * Pure selector: given the `fleet_account` post-images currently projected
  * for a fleet run scope, pick the single best account for the NEXT
  * `runtime.startTurn` dispatch. No I/O, no scope/ownership concerns — those
- * stay with the caller (the future Pylon-side consumer of durable
- * `runtime.startTurn` control intents, tracked in #8388).
+ * stay with the caller.
+ *
+ * Lives in `@openagentsinc/khala-sync` (not `khala-sync-server`, where it
+ * was originally written) because it is pure schema-level logic with zero
+ * I/O and now has a real caller that must not depend on
+ * `khala-sync-server`: the published, npm-distributed `apps/pylon` runtime
+ * dispatch consumer
+ * (`apps/pylon/src/orchestration/runtime-intent-enforcement.ts`, #8388).
+ * `khala-sync-server` is `"private": true` (it depends on the `postgres`
+ * driver and Worker-only mutator/projection logic) and is never published
+ * to npm, so a published package like Pylon cannot take a `workspace:*`
+ * dependency on it — see `apps/pylon/docs/npm-publishing-runbook.md`'s
+ * "leaf dependencies first" publish order, which requires every
+ * `workspace:*` dependency of Pylon to itself be a publishable
+ * (`"private": false`) leaf package. `@openagentsinc/khala-sync` already
+ * is one and is already a normal Pylon dependency, so this is the correct
+ * shared home for both the server and the Pylon-side consumer.
  *
  * ELIGIBILITY: an account is a dispatch candidate only when ALL hold:
  *   - `readiness === "ready"` (a `cooldown`/`unavailable`/`unknown` account

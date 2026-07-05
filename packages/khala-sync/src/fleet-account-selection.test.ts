@@ -1,6 +1,6 @@
-import { decodeFleetAccountEntity, type FleetAccountEntity } from "@openagentsinc/khala-sync"
 import { describe, expect, test } from "bun:test"
 import { selectDispatchAccount } from "./fleet-account-selection.js"
+import { decodeFleetAccountEntity, type FleetAccountEntity } from "./fleet.js"
 
 const account = (
   overrides: Partial<{

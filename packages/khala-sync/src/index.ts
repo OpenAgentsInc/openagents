@@ -18,6 +18,12 @@ export const KHALA_SYNC_PROTOCOL_VERSION = 1
 // scope.fleet_run.<id> changelog entries. Self-contained module (no cycle).
 export * from "./fleet.js"
 
+// Capacity-aware dispatch account selection (#8389/#8388): pure selector
+// over FleetAccountEntity, shared by khala-sync-server and the published
+// Pylon runtime dispatch consumer (see its own doc header for why it lives
+// here and not in khala-sync-server).
+export * from "./fleet-account-selection.js"
+
 // Owner-private chat entity contracts (MC-1): thread metadata and messages
 // for scope.user.<owner> + scope.thread.<threadId> clients.
 export * from "./chat.js"

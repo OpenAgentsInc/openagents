@@ -22,6 +22,18 @@
  */
 
 export const RUNTIME_RECORD_EVENT_MUTATOR_NAME = "runtime.recordEvent"
+/**
+ * Same mutator the mobile/desktop composer calls to create a turn
+ * (`packages/khala-sync-server/src/runtime-mutators.ts`'s
+ * `runtimeStartTurnMutator`, matching
+ * `clients/khala-mobile/src/sync/khala-runtime-compose-core.ts`'s
+ * `buildStartTurnIntentArgs`). Pylon reuses it, never a private import from
+ * `khala-sync-server`, to author genuine follow-up turns for queued
+ * `message.append` intents (see `runtime-intent-enforcement.ts`'s
+ * `dispatchQueuedFollowUps`) — the resulting turn is a normal,
+ * client-visible `runtime_turn` row, not a hidden side channel.
+ */
+export const RUNTIME_START_TURN_MUTATOR_NAME = "runtime.startTurn"
 export const KHALA_SYNC_PUSH_ROUTE_PATH = "/api/sync/push"
 const KHALA_SYNC_PROTOCOL_VERSION = 1
 const KHALA_SYNC_SCHEMA_VERSION = 1

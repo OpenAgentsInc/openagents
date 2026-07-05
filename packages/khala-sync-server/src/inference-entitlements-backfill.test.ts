@@ -87,8 +87,11 @@ describe("entitlementsRowHash (pure)", () => {
     ).toBe(entitlementsRowHash("inference_free_tier_usage_events", row))
   })
 
-  test("registry covers all 29 migrated tables (metric events excluded)", () => {
-    expect(INFERENCE_ENTITLEMENTS_TABLE_NAMES).toHaveLength(29)
+  test("registry covers all 28 migrated tables (metric events excluded)", () => {
+    // Was 29 until "Remove inert inference batch jobs" (0afc7cb5fe) dropped
+    // `inference_batch_jobs` from INFERENCE_ENTITLEMENTS_TABLES without
+    // updating this count — pre-existing drift, fixed here.
+    expect(INFERENCE_ENTITLEMENTS_TABLE_NAMES).toHaveLength(28)
     expect(INFERENCE_ENTITLEMENTS_TABLE_NAMES).not.toContain(
       "agent_search_metric_events",
     )

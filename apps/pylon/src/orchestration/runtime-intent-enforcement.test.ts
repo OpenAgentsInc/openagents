@@ -3,67 +3,20 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
-import { decodeFleetAccountEntity, decodeRuntimeControlIntentRow } from "@openagentsinc/khala-sync"
-import type { FleetAccountEntity, KhalaRuntimeEvent, RuntimeControlIntentRow } from "@openagentsinc/khala-sync"
+import { decodeRuntimeControlIntentRow } from "@openagentsinc/khala-sync"
+import type { KhalaRuntimeEvent, RuntimeControlIntentRow } from "@openagentsinc/khala-sync"
 
 import {
   candidateAccountsFromRegistry,
   chatMessageIdFromBodyRef,
   codexRawEventToRuntimeEvents,
   enforcePendingRuntimeIntents,
-  selectDispatchAccountNaive,
   type ActiveRuntimeTurns,
   type CodexRawEvent,
   type EnforceRuntimeIntentsOptions,
 } from "./runtime-intent-enforcement.js"
 import type { ChatMessageBody, ReadPendingRuntimeIntentsResult } from "./runtime-intents.js"
 import { createPylonOrchestrationStore, type PylonOrchestrationStore } from "./store.js"
-
-const account = (overrides: Partial<{
-  accountRefHash: string
-  readiness: "ready" | "cooldown" | "unavailable" | "unknown"
-  capacityAvailable: number
-}> = {}): FleetAccountEntity =>
-  decodeFleetAccountEntity({
-    accountRefHash: overrides.accountRefHash ?? "account.pylon.codex.aaaaaaaaaaaaaaaaaaaaaaaa",
-    readiness: overrides.readiness ?? "ready",
-    updatedAt: "2026-07-05T12:00:00.000Z",
-    ...(overrides.capacityAvailable === undefined ? {} : { capacityAvailable: overrides.capacityAvailable }),
-  })
-
-describe("selectDispatchAccountNaive", () => {
-  test("picks the first account with positive capacityAvailable", () => {
-    const a = account({ accountRefHash: "account.pylon.codex.a000000000000000000000a1", capacityAvailable: 0 })
-    const b = account({ accountRefHash: "account.pylon.codex.b000000000000000000000b1", capacityAvailable: 2 })
-    const c = account({ accountRefHash: "account.pylon.codex.c000000000000000000000c1", capacityAvailable: 1 })
-    expect(selectDispatchAccountNaive([a, b, c])?.accountRefHash).toBe(b.accountRefHash)
-  })
-
-  test("falls back to the first ready account when no account reports positive capacity", () => {
-    const a = account({
-      accountRefHash: "account.pylon.codex.a000000000000000000000a2",
-      capacityAvailable: 0,
-      readiness: "cooldown",
-    })
-    const b = account({ accountRefHash: "account.pylon.codex.b000000000000000000000b2", readiness: "ready" })
-    expect(selectDispatchAccountNaive([a, b])?.accountRefHash).toBe(b.accountRefHash)
-  })
-
-  test("falls back to the first ready account when capacity is entirely unreported", () => {
-    const a = account({ accountRefHash: "account.pylon.codex.a000000000000000000000a3", readiness: "unavailable" })
-    const b = account({ accountRefHash: "account.pylon.codex.b000000000000000000000b3", readiness: "ready" })
-    expect(selectDispatchAccountNaive([a, b])?.accountRefHash).toBe(b.accountRefHash)
-  })
-
-  test("returns undefined when no account is ready or has capacity", () => {
-    const a = account({ accountRefHash: "account.pylon.codex.a000000000000000000000a4", readiness: "unavailable" })
-    expect(selectDispatchAccountNaive([a])).toBeUndefined()
-  })
-
-  test("returns undefined for an empty list", () => {
-    expect(selectDispatchAccountNaive([])).toBeUndefined()
-  })
-})
 
 describe("candidateAccountsFromRegistry", () => {
   test("projects codex registry entries into ready, one-slot FleetAccountEntity rows", () => {
@@ -452,6 +405,8 @@ describe("enforcePendingRuntimeIntents", () => {
         return sequenceCounter
       },
       nextMutationId: () => 1,
+      pendingAppendMessageIds: [],
+      threadId: "thread-1",
     })
     const { options, cleanup } = await baseOptions({
       activeTurns,
@@ -506,7 +461,7 @@ describe("enforcePendingRuntimeIntents", () => {
     }
   })
 
-  test("message.append is explicitly rejected, never silently dropped", async () => {
+  test("message.append with an unresolvable bodyRef is recorded failed", async () => {
     const store = memoryStore()
     const { options, cleanup } = await baseOptions({
       readImpl: pageReader([
@@ -518,28 +473,228 @@ describe("enforcePendingRuntimeIntents", () => {
       expect(result.ok).toBe(true)
       if (result.ok) {
         expect(result.outcomes[0]!.outcome).toBe("failed")
-        expect(result.outcomes[0]!.detail).toContain("mid-turn steering is not supported")
+        expect(result.outcomes[0]!.detail).toContain("bodyRef")
       }
     } finally {
       await cleanup()
     }
   })
 
-  test("turn.continue / turn.retry / turn.close are honestly skipped_stale, not faked applied", async () => {
+  test("message.append with no turnId (a bare append, not steering) is applied with nothing to attach to", async () => {
     const store = memoryStore()
+    const message: ChatMessageBody = {
+      authorUserId: "user-1",
+      body: "fyi for later",
+      createdAt: iso,
+      deletedAt: null,
+      messageId: "msg-bare",
+      threadId: "thread-1",
+      updatedAt: iso,
+    }
     const { options, cleanup } = await baseOptions({
+      fetchChatMessageImpl: async () => ({ message, ok: true }),
       readImpl: pageReader([
-        controlIntentRow({ intentId: "intent-8", kind: "turn.continue", seq: 1, threadId: "thread-1", turnId: "turn-8" }),
-        controlIntentRow({ intentId: "intent-9", kind: "turn.retry", seq: 2, threadId: "thread-1", turnId: "turn-8" }),
-        controlIntentRow({ intentId: "intent-10", kind: "turn.close", seq: 3, threadId: "thread-1", turnId: "turn-8" }),
+        controlIntentRow({
+          bodyRef: "chat_message.msg-bare",
+          intentId: "intent-7b",
+          kind: "message.append",
+          seq: 1,
+          threadId: "thread-1",
+        }),
       ]),
     })
     try {
       const result = await enforcePendingRuntimeIntents(store, options)
       expect(result.ok).toBe(true)
       if (result.ok) {
-        expect(result.outcomes.map((o) => o.outcome)).toEqual(["skipped_stale", "skipped_stale", "skipped_stale"])
+        expect(result.outcomes[0]!.outcome).toBe("applied")
+        expect(result.outcomes[0]!.detail).toContain("no turn to attach to")
+      }
+    } finally {
+      await cleanup()
+    }
+  })
+
+  test("message.append targeting a turn that is not currently dispatching locally is skipped_stale, not silently dropped", async () => {
+    const store = memoryStore()
+    const message: ChatMessageBody = {
+      authorUserId: "user-1",
+      body: "steer this",
+      createdAt: iso,
+      deletedAt: null,
+      messageId: "msg-steer",
+      threadId: "thread-1",
+      updatedAt: iso,
+    }
+    const { options, cleanup } = await baseOptions({
+      fetchChatMessageImpl: async () => ({ message, ok: true }),
+      readImpl: pageReader([
+        controlIntentRow({
+          bodyRef: "chat_message.msg-steer",
+          intentId: "intent-7c",
+          kind: "message.append",
+          seq: 1,
+          threadId: "thread-1",
+          turnId: "turn-not-active",
+        }),
+      ]),
+    })
+    try {
+      const result = await enforcePendingRuntimeIntents(store, options)
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.outcomes[0]!.outcome).toBe("skipped_stale")
+        expect(result.outcomes[0]!.detail).toContain("not currently dispatching")
+      }
+    } finally {
+      await cleanup()
+    }
+  })
+
+  test("message.append queued against an actively-dispatching local turn becomes a real follow-up runtime.startTurn once that turn settles", async () => {
+    const store = memoryStore()
+    const originalMessage: ChatMessageBody = {
+      authorUserId: "user-1",
+      body: "please say hello",
+      createdAt: iso,
+      deletedAt: null,
+      messageId: "msg-1",
+      threadId: "thread-1",
+      updatedAt: iso,
+    }
+    const appendedMessage: ChatMessageBody = {
+      authorUserId: "user-1",
+      body: "actually also do this",
+      createdAt: iso,
+      deletedAt: null,
+      messageId: "msg-2",
+      threadId: "thread-1",
+      updatedAt: iso,
+    }
+    let resolveFollowUp: (() => void) | undefined
+    const followUpPushed = new Promise<void>((resolve) => {
+      resolveFollowUp = resolve
+    })
+    const followUpCalls: Array<{ name: string; args: unknown }> = []
+    const { options, cleanup } = await baseOptions({
+      codexThreadRunner: fakeCodexRunner([
+        { type: "turn.started" },
+        { type: "turn.completed", usage: { input_tokens: 1, output_tokens: 1, reasoning_output_tokens: 0 } },
+      ]),
+      fetchChatMessageImpl: async (input) => {
+        if (input.messageId === "msg-1") return { message: originalMessage, ok: true }
+        if (input.messageId === "msg-2") return { message: appendedMessage, ok: true }
+        return { message: null, ok: true }
+      },
+      pushControlIntentImpl: async (input) => {
+        followUpCalls.push({ args: input.args, name: input.name })
+        resolveFollowUp?.()
+        return { ok: true, result: { mutationId: input.mutationId, status: "applied" } }
+      },
+      readImpl: pageReader([
+        controlIntentRow({
+          bodyRef: "chat_message.msg-1",
+          intentId: "intent-20",
+          kind: "turn.start",
+          seq: 1,
+          threadId: "thread-1",
+          turnId: "turn-20",
+        }),
+        controlIntentRow({
+          bodyRef: "chat_message.msg-2",
+          intentId: "intent-21",
+          kind: "message.append",
+          seq: 2,
+          threadId: "thread-1",
+          turnId: "turn-20",
+        }),
+      ]),
+    })
+    try {
+      const result = await enforcePendingRuntimeIntents(store, options)
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.outcomes[0]!.outcome).toBe("applied")
+        expect(result.outcomes[1]!.outcome).toBe("applied")
+        expect(result.outcomes[1]!.detail).toContain("queued instead of applied")
+      }
+      await followUpPushed
+      expect(followUpCalls).toHaveLength(1)
+      expect(followUpCalls[0]!.name).toBe("runtime.startTurn")
+      const args = followUpCalls[0]!.args as { kind: string; threadId: string; bodyRef: string; turnId: string }
+      expect(args.kind).toBe("turn.start")
+      expect(args.threadId).toBe("thread-1")
+      expect(args.bodyRef).toBe("chat_message.msg-2")
+      expect(args.turnId).not.toBe("turn-20")
+    } finally {
+      await cleanup()
+    }
+  })
+
+  test("turn.continue / turn.retry are honestly skipped_stale, not faked applied", async () => {
+    const store = memoryStore()
+    const { options, cleanup } = await baseOptions({
+      readImpl: pageReader([
+        controlIntentRow({ intentId: "intent-8", kind: "turn.continue", seq: 1, threadId: "thread-1", turnId: "turn-8" }),
+        controlIntentRow({ intentId: "intent-9", kind: "turn.retry", seq: 2, threadId: "thread-1", turnId: "turn-8" }),
+      ]),
+    })
+    try {
+      const result = await enforcePendingRuntimeIntents(store, options)
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.outcomes.map((o) => o.outcome)).toEqual(["skipped_stale", "skipped_stale"])
         expect(result.outcomes.every((o) => o.detail?.includes("not implemented") === true)).toBe(true)
+      }
+    } finally {
+      await cleanup()
+    }
+  })
+
+  test("turn.close with no local dispatch active is applied — the server-side mutator already made it authoritative", async () => {
+    const store = memoryStore()
+    const { options, cleanup } = await baseOptions({
+      readImpl: pageReader([
+        controlIntentRow({ intentId: "intent-10", kind: "turn.close", seq: 1, threadId: "thread-1", turnId: "turn-10" }),
+      ]),
+    })
+    try {
+      const result = await enforcePendingRuntimeIntents(store, options)
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.outcomes[0]!.outcome).toBe("applied")
+        expect(result.outcomes[0]!.detail).toContain("closed")
+      }
+    } finally {
+      await cleanup()
+    }
+  })
+
+  test("turn.close against a still-actively-dispatching local turn is skipped_stale — close does not silently abort it", async () => {
+    const store = memoryStore()
+    const activeTurns: ActiveRuntimeTurns = new Map()
+    activeTurns.set("turn-11", {
+      abortController: new AbortController(),
+      clientGroupId: "cg-fixture",
+      clientId: "c-fixture",
+      interrupted: false,
+      nextEventSequence: () => 1,
+      nextMutationId: () => 1,
+      pendingAppendMessageIds: [],
+      threadId: "thread-1",
+    })
+    const { options, cleanup } = await baseOptions({
+      activeTurns,
+      readImpl: pageReader([
+        controlIntentRow({ intentId: "intent-11", kind: "turn.close", seq: 1, threadId: "thread-1", turnId: "turn-11" }),
+      ]),
+    })
+    try {
+      const result = await enforcePendingRuntimeIntents(store, options)
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.outcomes[0]!.outcome).toBe("skipped_stale")
+        expect(result.outcomes[0]!.detail).toContain("still actively dispatching")
       }
     } finally {
       await cleanup()

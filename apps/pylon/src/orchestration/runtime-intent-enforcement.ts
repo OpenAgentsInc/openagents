@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import {
   decodeFleetAccountEntity,
   decodeKhalaRuntimeEvent,
+  selectDispatchAccount,
   type FleetAccountEntity,
   type KhalaRuntimeEvent,
   type KhalaRuntimeFinishReason,
@@ -23,8 +24,10 @@ import {
 } from "../account-registry.js"
 import {
   RUNTIME_RECORD_EVENT_MUTATOR_NAME,
+  RUNTIME_START_TURN_MUTATOR_NAME,
   pushKhalaSyncMutation,
   runtimeSyncClientForTurn,
+  type PushKhalaSyncMutationResult,
 } from "./runtime-sync-push.js"
 import {
   readPendingRuntimeIntents,
@@ -78,43 +81,47 @@ import type {
  * `finishReason: "error"` — they can never throw back into the tick.
  *
  * KNOWN GAPS (documented honestly, not silently papered over):
- * - Account selection (`selectDispatchAccountNaive`) is a naive
- *   placeholder for #8389 (capacity-aware selection); see its doc comment.
- * - `message.append` for an in-flight turn is EXPLICITLY REJECTED, not
- *   silently dropped: the Codex SDK's `runStreamed(prompt)` call has no
- *   mid-turn steering API, so there is no real way to inject the message
- *   into the already-running turn. The rejection detail says so.
- * - `turn.continue` / `turn.retry` / `turn.close` are recorded
- *   `skipped_stale` with an explicit "not implemented in this pass"
- *   detail — no pylon-local action is taken for them yet.
+ * - Account selection now uses the real capacity/load-aware
+ *   `selectDispatchAccount` (#8389, `@openagentsinc/khala-sync`), scoped to
+ *   `provider: "codex"` and round-robin-tie-broken per thread — see
+ *   `handleTurnStart`. The remaining honest limitation is one layer below
+ *   the algorithm: `candidateAccountsFromRegistry` still projects a
+ *   placeholder `capacityAvailable: 1` for every ready registry account (a
+ *   real live-capacity signal is not wired yet), so with today's inputs the
+ *   real ranking mostly reduces to readiness + the round-robin tie-break —
+ *   the selection algorithm itself is no longer naive, only its inputs are.
+ * - `message.append` for an in-flight turn is still honestly NOT literal
+ *   mid-turn steering: the Codex SDK's `runStreamed(prompt)` call has no API
+ *   to inject into an already-running turn's stream (verified against
+ *   `@openai/codex-sdk`'s type surface — `Thread` only exposes
+ *   `run`/`runStreamed`, no `send`/`interject`). Instead of a flat
+ *   rejection, an append targeting a turn actively dispatching on THIS
+ *   Pylon is durably queued and becomes a real follow-up `runtime.startTurn`
+ *   once that turn settles (`dispatchQueuedFollowUps`), resuming the same
+ *   Codex thread where possible (`Codex#resumeThread`) so context is not
+ *   lost. See `handleMessageAppend`'s doc for the exact outcome in every
+ *   case (attached / not-currently-running / no turn to attach to).
+ * - `turn.continue` / `turn.retry` are still recorded `skipped_stale` with
+ *   an explicit "not implemented in this pass" detail — no pylon-local
+ *   action is taken for them (tracked as tracked follow-up work; the
+ *   server-side turn status transition still happens at mutation time
+ *   regardless). `turn.close` IS implemented (`handleTurnClose`): the
+ *   server-side mutator already makes "closed" authoritative at
+ *   mutation-apply time (mirrors `turn.interrupt`), so Pylon's job is only
+ *   local bookkeeping — there is none beyond the `activeTurns` cleanup the
+ *   dispatch loop already does, since the Codex workspace is per-THREAD
+ *   (reused across turns), not per-turn.
  * - Dispatch only targets `codex`-provider accounts; `claude_agent`
- *   accounts are visible to `selectDispatchAccountNaive` but this module
- *   has no Claude thread runner, so a naive selection landing on one would
- *   fail fast with an honest `provider_not_supported` finish reason.
+ *   accounts are excluded entirely by `candidateAccountsFromRegistry` before
+ *   `selectDispatchAccount` ever sees them (this module has no Claude thread
+ *   runner yet).
+ * - Cross-turn Codex context continuity (`resumeThreadId`) is best-effort:
+ *   if the account that resumes a thread differs from the one that created
+ *   it (isolated per-account homes), the resume fails cleanly into a normal
+ *   `turn.finished(error)` — never a crash — but the user does lose context
+ *   for that turn. This mostly matters once an owner has 2+ ready Codex
+ *   accounts feeding the same round-robin tie-break.
  */
-
-// ---------------------------------------------------------------------------
-// Naive account selection (placeholder for #8389)
-// ---------------------------------------------------------------------------
-
-/**
- * Pick a dispatch-ready account: the first with `capacityAvailable > 0`, or
- * (when no account reports a positive capacity, including when capacity is
- * entirely unreported) the first with `readiness: "ready"`.
- *
- * // naive placeholder for #8389 (capacity-aware selection) — a parallel
- * // session is building the real algorithm; swap this call for it once it
- * // lands on main.
- */
-export const selectDispatchAccountNaive = (
-  accounts: ReadonlyArray<FleetAccountEntity>,
-): FleetAccountEntity | undefined => {
-  const withPositiveCapacity = accounts.find(
-    (account) => account.capacityAvailable !== undefined && account.capacityAvailable > 0,
-  )
-  if (withPositiveCapacity !== undefined) return withPositiveCapacity
-  return accounts.find((account) => account.readiness === "ready")
-}
 
 export type CandidateAccount = {
   readonly fleetAccount: FleetAccountEntity
@@ -124,11 +131,12 @@ export type CandidateAccount = {
 /**
  * Projects this Pylon's OWN local Codex account registry
  * (`loadPylonAccountRegistry`) into the same `FleetAccountEntity` shape
- * `selectDispatchAccountNaive` consumes — every registered Codex account
- * reports `readiness: "ready"` and `capacityAvailable: 1` (a real,
- * one-slot-per-account placeholder; #8389 will source real live capacity).
- * Claude accounts are intentionally excluded: there is no Claude thread
- * runner wired into this dispatch consumer yet.
+ * `selectDispatchAccount` (#8389, `@openagentsinc/khala-sync`) consumes —
+ * every registered Codex account reports `readiness: "ready"` and
+ * `capacityAvailable: 1` (a real, one-slot-per-account placeholder; a real
+ * live-capacity signal is not wired yet). Claude accounts are intentionally
+ * excluded: there is no Claude thread runner wired into this dispatch
+ * consumer yet.
  */
 export const candidateAccountsFromRegistry = (
   registry: ReadonlyArray<PylonAccountRegistryEntry>,
@@ -330,6 +338,15 @@ export type RuntimeCodexThreadRunner = (input: {
   readonly networkAccessEnabled: boolean
   readonly signal: AbortSignal
   readonly model?: string
+  /**
+   * When set, resume this existing Codex SDK thread (`Codex#resumeThread`)
+   * instead of starting a fresh, contextless one — the cross-turn
+   * continuity mechanism `handleTurnStart` wires from
+   * `store.getRuntimeCodexThreadId`. Only meaningful when the account
+   * resuming is the SAME one that created the thread (isolated per-account
+   * `~/.codex`-equivalent homes); a mismatch fails cleanly, not silently.
+   */
+  readonly resumeThreadId?: string
 }) => Promise<{ readonly events: AsyncIterable<CodexRawEvent> }>
 
 /**
@@ -345,6 +362,10 @@ export type RuntimeCodexThreadRunner = (input: {
  * is a smaller, dedicated runner for this consumer, reusing the exact same
  * SDK invocation shape and sandbox/approval constants for parity with the
  * proven fleet path.
+ *
+ * When `input.resumeThreadId` is set, resumes that Codex thread
+ * (`Codex#resumeThread`) instead of starting a fresh one, so a follow-up
+ * turn in the same Khala Sync chat thread keeps the model's prior context.
  */
 export const runWithRealCodexSdk: RuntimeCodexThreadRunner = async (input) => {
   const sdk = (await import(CODEX_AGENT_SDK_PACKAGE)) as {
@@ -355,17 +376,29 @@ export const runWithRealCodexSdk: RuntimeCodexThreadRunner = async (input) => {
           turnOptions?: Record<string, unknown>,
         ) => Promise<{ events: AsyncIterable<unknown> }>
       }
+      resumeThread: (
+        id: string,
+        options: Record<string, unknown>,
+      ) => {
+        runStreamed: (
+          prompt: string,
+          turnOptions?: Record<string, unknown>,
+        ) => Promise<{ events: AsyncIterable<unknown> }>
+      }
     }
   }
   const codex = new sdk.Codex({ env: input.env })
-  const thread = codex.startThread({
+  const threadOptions = {
     approvalPolicy: CODEX_AGENT_OWNER_LOCAL_APPROVAL_POLICY,
     networkAccessEnabled: input.networkAccessEnabled,
     sandboxMode: CODEX_AGENT_OWNER_LOCAL_SANDBOX_MODE,
     skipGitRepoCheck: true,
     workingDirectory: input.cwd,
     ...(input.model === undefined ? {} : { model: input.model }),
-  })
+  }
+  const thread = input.resumeThreadId === undefined
+    ? codex.startThread(threadOptions)
+    : codex.resumeThread(input.resumeThreadId, threadOptions)
   const result = await thread.runStreamed(input.instructions, { signal: input.signal })
   return result as { events: AsyncIterable<CodexRawEvent> }
 }
@@ -381,6 +414,15 @@ type ActiveRuntimeTurn = {
   readonly clientId: string
   readonly nextEventSequence: () => number
   readonly nextMutationId: () => number
+  /** The Khala Sync thread this turn belongs to (needed to correlate a
+   * `message.append` intent's `turnId` back to a thread, and to seed any
+   * queued follow-up turn in the same thread). */
+  readonly threadId: string
+  /** `chat_message.<id>` message ids appended via `message.append` while
+   * this turn was actively dispatching. Drained into real follow-up
+   * `runtime.startTurn` dispatches once this turn settles — see
+   * `dispatchQueuedFollowUps`. */
+  pendingAppendMessageIds: string[]
 }
 
 export type ActiveRuntimeTurns = Map<string, ActiveRuntimeTurn>
@@ -408,6 +450,14 @@ export interface EnforceRuntimeIntentsOptions {
   /** Live registry of turns this PROCESS is currently running. Persist the
    * same Map across ticks so `turn.interrupt` can reach an active turn. */
   readonly activeTurns: ActiveRuntimeTurns
+  /**
+   * Per-thread last-dispatched `accountRefHash`, used ONLY to round-robin
+   * a full capacity/load tie in `selectDispatchAccount` — never dispatch
+   * correctness. Persist the same Map across ticks (like `activeTurns`) for
+   * real fairness across turns; in-memory only (does not survive a
+   * supervisor restart), which is fine since it only affects tie-breaking.
+   */
+  readonly lastDispatchedAccountByThread?: Map<string, string>
   /** Working-directory root for per-thread Codex scratch spaces. */
   readonly workspaceRoot: string
   readonly listCandidateAccounts: () => Promise<ReadonlyArray<CandidateAccount>>
@@ -432,6 +482,13 @@ export interface EnforceRuntimeIntentsOptions {
   }) => Promise<FetchChatMessageResult>
   /** Test/override seam for pushing runtime events. */
   readonly pushEventImpl?: PushRuntimeEventFn
+  /**
+   * Test/override seam for pushing a Pylon-authored follow-up
+   * `runtime.startTurn` control-intent mutation (queued `message.append`
+   * follow-up dispatch — see `dispatchQueuedFollowUps`). Default
+   * `pushKhalaSyncMutation`.
+   */
+  readonly pushControlIntentImpl?: typeof pushKhalaSyncMutation
   /** Test/override seam for the Codex thread runner. */
   readonly codexThreadRunner?: RuntimeCodexThreadRunner
   readonly log?: (line: string) => void
@@ -530,14 +587,16 @@ const pushFinishedEvent = async (input: {
  */
 const dispatchTurnStart = async (input: {
   readonly options: EnforceRuntimeIntentsOptions
+  readonly store: PylonOrchestrationStore
   readonly intent: RuntimeControlIntentRow
   readonly turnId: string
   readonly prompt: string
   readonly account: ResolvedPylonAccountSelection
   readonly turn: ActiveRuntimeTurn
   readonly source: KhalaRuntimeSource
+  readonly resumeThreadId?: string
 }): Promise<void> => {
-  const { options, intent, turnId, prompt, account, turn, source } = input
+  const { options, store, intent, turnId, prompt, account, turn, source, resumeThreadId } = input
   const pushEvent = options.pushEventImpl ?? defaultPushEvent(options.baseUrl, options.agentToken)
   const runCodexThread = options.codexThreadRunner ?? runWithRealCodexSdk
   const turnStarted = { value: false }
@@ -551,6 +610,25 @@ const dispatchTurnStart = async (input: {
     })
   }
 
+  /** Best-effort: capture the SDK's own thread id (from its `thread.started`
+   * event) so a LATER turn in this same Khala thread can resume it. Never
+   * throws — a failure to persist this is a lost continuity opportunity,
+   * not a dispatch failure. */
+  const captureCodexThreadId = (raw: CodexRawEvent): void => {
+    if (raw.type !== "thread.started") return
+    const codexThreadId = raw.thread_id
+    if (typeof codexThreadId !== "string" || codexThreadId.length === 0) return
+    try {
+      store.setRuntimeCodexThreadId(intent.threadId, codexThreadId)
+    } catch (error) {
+      options.log?.(
+        `runtime-intent turn=${turnId} thread=${intent.threadId} failed to persist codex thread id: ${boundedDetail(
+          error instanceof Error ? error.message : "unknown",
+        )}`,
+      )
+    }
+  }
+
   let finishedPushed = false
   try {
     const cwd = await options.ensureWorkspace(intent.threadId)
@@ -561,8 +639,10 @@ const dispatchTurnStart = async (input: {
       instructions: prompt,
       networkAccessEnabled: true,
       signal: turn.abortController.signal,
+      ...(resumeThreadId === undefined ? {} : { resumeThreadId }),
     })
     for await (const raw of events) {
+      captureCodexThreadId(raw)
       const translated = codexRawEventToRuntimeEvents(raw, {
         allocateSequence: turn.nextEventSequence,
         nowIso: () => new Date().toISOString(),
@@ -602,6 +682,7 @@ const dispatchTurnStart = async (input: {
 const handleTurnStart = async (
   options: EnforceRuntimeIntentsOptions,
   row: RuntimeControlIntentRow,
+  store: PylonOrchestrationStore,
 ): Promise<{ outcome: RuntimeIntentOutcomeStatus; detail: string }> => {
   const source: KhalaRuntimeSource = { adapterKind: "codex", lane: "codex_app_server", surface: "server" }
   const turnId = row.intent.turnId
@@ -641,7 +722,11 @@ const handleTurnStart = async (
   }
 
   const candidates = await options.listCandidateAccounts()
-  const selected = selectDispatchAccountNaive(candidates.map((c) => c.fleetAccount))
+  const lastUsedAccountRefHash = options.lastDispatchedAccountByThread?.get(row.threadId)
+  const selected = selectDispatchAccount(candidates.map((c) => c.fleetAccount), {
+    provider: "codex",
+    ...(lastUsedAccountRefHash === undefined ? {} : { lastUsedAccountRefHash }),
+  })
   if (selected === undefined) {
     return { detail: "no dispatch-ready local Codex account available", outcome: "failed" }
   }
@@ -653,6 +738,7 @@ const handleTurnStart = async (
   if (account === null) {
     return { detail: `local Codex account home for ${candidate.registryEntry.ref} could not be resolved`, outcome: "failed" }
   }
+  options.lastDispatchedAccountByThread?.set(row.threadId, selected.accountRefHash)
 
   const clientIdentity = runtimeSyncClientForTurn({ pylonRef: options.pylonRef, turnId })
   const turn: ActiveRuntimeTurn = {
@@ -662,23 +748,102 @@ const handleTurnStart = async (
     interrupted: false,
     nextEventSequence: makeCounter(0),
     nextMutationId: makeCounter(0),
+    pendingAppendMessageIds: [],
+    threadId: row.threadId,
   }
   options.activeTurns.set(turnId, turn)
+  const resumeThreadId = store.getRuntimeCodexThreadId(row.threadId)
   void dispatchTurnStart({
     account,
     intent: row,
     options,
     prompt: message.body,
+    ...(resumeThreadId === null ? {} : { resumeThreadId }),
     source,
+    store,
     turn,
     turnId,
   }).finally(() => {
     if (options.activeTurns.get(turnId) === turn) options.activeTurns.delete(turnId)
+    if (turn.pendingAppendMessageIds.length > 0) {
+      void dispatchQueuedFollowUps({
+        messageIds: turn.pendingAppendMessageIds,
+        options,
+        threadId: row.threadId,
+      })
+    }
   })
 
   return {
     detail: `dispatch started against account ${selected.accountRefHash}`,
     outcome: "applied",
+  }
+}
+
+/**
+ * Drains queued `message.append` follow-ups once the turn they arrived
+ * during has settled (see `ActiveRuntimeTurn.pendingAppendMessageIds` and
+ * `handleMessageAppend`). Each queued `chat_message.<id>` becomes its OWN
+ * genuine, client-visible `runtime.startTurn` mutation — the SAME mutator
+ * (`RUNTIME_START_TURN_MUTATOR_NAME`) the mobile/desktop composer calls, so
+ * the follow-up turn shows up in the thread like any other, and this
+ * Pylon's OWN next enforcement tick dispatches it exactly like any other
+ * `turn.start` (picking up `resumeThreadId` continuity automatically via
+ * `store.getRuntimeCodexThreadId`). Never thrown to the caller: failures
+ * here just mean the follow-up turn does not get created and are logged,
+ * mirroring `dispatchTurnStart`'s own fire-and-forget error handling — the
+ * ORIGINAL turn's outcome is never affected by a queued follow-up's fate.
+ */
+const dispatchQueuedFollowUps = async (input: {
+  readonly options: EnforceRuntimeIntentsOptions
+  readonly threadId: string
+  readonly messageIds: ReadonlyArray<string>
+}): Promise<void> => {
+  const { options, threadId, messageIds } = input
+  const pushMutation = options.pushControlIntentImpl ?? pushKhalaSyncMutation
+  for (const messageId of messageIds) {
+    const followUpTurnId = randomUUID()
+    const clientIdentity = runtimeSyncClientForTurn({ pylonRef: options.pylonRef, turnId: followUpTurnId })
+    const args = {
+      bodyRef: `chat_message.${messageId}`,
+      causalityRefs: [],
+      createdAt: new Date().toISOString(),
+      idempotencyKey: `idem.pylon_followup.${followUpTurnId}`,
+      intentId: `intent.pylon_followup.${followUpTurnId}`,
+      kind: "turn.start" as const,
+      origin: { lane: "codex_app_server" as const, surface: "server" as const },
+      redactionClass: "private_ref" as const,
+      schema: "openagents.khala_runtime_control_intent.v1" as const,
+      target: { lane: "codex_app_server" as const },
+      threadId,
+      turnId: followUpTurnId,
+      visibility: "private" as const,
+    }
+    let result: PushKhalaSyncMutationResult
+    try {
+      result = await pushMutation({
+        agentToken: options.agentToken,
+        args,
+        baseUrl: options.baseUrl,
+        clientGroupId: clientIdentity.clientGroupId,
+        clientId: clientIdentity.clientId,
+        mutationId: 1,
+        name: RUNTIME_START_TURN_MUTATOR_NAME,
+      })
+    } catch (error) {
+      options.log?.(
+        `runtime-intent follow-up turn.start push threw thread=${threadId} messageId=${messageId}: ${boundedDetail(
+          error instanceof Error ? error.message : "unknown",
+        )}`,
+      )
+      continue
+    }
+    if (!result.ok || result.result.status === "rejected") {
+      const detail = !result.ok ? result.reason : result.result.errorMessageSafe
+      options.log?.(
+        `runtime-intent follow-up turn.start push failed thread=${threadId} messageId=${messageId}: ${detail ?? "unknown"}`,
+      )
+    }
   }
 }
 
@@ -732,7 +897,131 @@ const pushFinishedInterruptedEvent = async (input: {
   })
 }
 
-const NOT_IMPLEMENTED_KINDS = new Set(["turn.continue", "turn.retry", "turn.close"])
+const NOT_IMPLEMENTED_KINDS = new Set(["turn.continue", "turn.retry"])
+
+/**
+ * Handle a `message.append` control intent. NOT literal mid-turn steering
+ * (see the module doc for why that is not possible with the Codex SDK) —
+ * three honest outcomes depending on what this Pylon can observe locally:
+ *
+ * 1. The intent's `turnId` matches a turn actively dispatching on THIS
+ *    process (`options.activeTurns`): the message is queued on it
+ *    (`pendingAppendMessageIds`) and becomes a real follow-up
+ *    `runtime.startTurn` once that turn settles (`dispatchQueuedFollowUps`,
+ *    triggered from `handleTurnStart`'s dispatch `.finally()`) — `applied`.
+ * 2. A `turnId` was given but does not match any locally active turn
+ *    (different process, already settled, or never started here): the
+ *    message was NOT attached to anything, but it is durably visible in the
+ *    thread already (the mutator recorded both the `chat_message` and this
+ *    control intent before Pylon ever saw it) — `skipped_stale`, mirroring
+ *    `handleTurnInterrupt`'s precedent for the same "nothing local to act
+ *    on" shape.
+ * 3. No `turnId` was given at all (a bare append, not steering): there was
+ *    never anything for Pylon to attach to by design — `applied`, since
+ *    this intent was fully and correctly processed by doing nothing more.
+ */
+const handleMessageAppend = async (
+  options: EnforceRuntimeIntentsOptions,
+  row: RuntimeControlIntentRow,
+): Promise<{ outcome: RuntimeIntentOutcomeStatus; detail: string }> => {
+  const messageId = chatMessageIdFromBodyRef(
+    row.intent.kind === "message.append" ? row.intent.bodyRef : undefined,
+  )
+  if (messageId === null) {
+    return {
+      detail: "message.append intent carried no resolvable chat_message.<messageId> bodyRef",
+      outcome: "failed",
+    }
+  }
+
+  const fetchChatMessageImpl = options.fetchChatMessageImpl ?? fetchChatMessageFromWorker
+  const messageResult = await fetchChatMessageImpl({
+    adminToken: options.adminToken,
+    baseUrl: options.baseUrl,
+    messageId,
+    threadId: row.threadId,
+  })
+  if (!messageResult.ok) {
+    return {
+      detail: boundedDetail(`chat_message lookup transport failed: ${messageResult.error}`),
+      outcome: "failed",
+    }
+  }
+  if (messageResult.message === null || messageResult.message.deletedAt !== null) {
+    return {
+      detail: `referenced chat_message.${messageId} does not exist (or was deleted) in thread ${row.threadId}`,
+      outcome: "failed",
+    }
+  }
+
+  const turnId = row.intent.turnId
+  const activeTurn = turnId === undefined ? undefined : options.activeTurns.get(turnId)
+
+  if (activeTurn !== undefined) {
+    activeTurn.pendingAppendMessageIds.push(messageId)
+    return {
+      detail:
+        `mid-turn steering is not supported by the local Codex SDK's single-prompt runStreamed call; ` +
+        `chat_message.${messageId} was queued instead of applied — it will be dispatched as a real ` +
+        `follow-up runtime.startTurn (resuming the same Codex conversation where possible) once turn ${turnId} settles`,
+      outcome: "applied",
+    }
+  }
+
+  if (turnId !== undefined) {
+    return {
+      detail:
+        `turn ${turnId} is not currently dispatching on this Pylon (different process, already settled, ` +
+        `or never started here) — chat_message.${messageId} was NOT attached to it, but remains durably ` +
+        `visible in the thread; start a new turn to have it answered`,
+      outcome: "skipped_stale",
+    }
+  }
+
+  return {
+    detail:
+      `chat_message.${messageId} is durably recorded in the thread with no turn to attach to — ` +
+      `it will be picked up by the next runtime.startTurn for this thread`,
+    outcome: "applied",
+  }
+}
+
+/**
+ * Handle a `turn.close` control intent. The server-side
+ * `runtime.closeTurn` mutator already made `closed` the authoritative turn
+ * status at mutation-apply time (mirrors how `turn.interrupt`'s mutator
+ * already sets `interrupted` before Pylon ever polls for it) — so Pylon's
+ * only job is LOCAL bookkeeping. There is none beyond `activeTurns`
+ * cleanup (already handled by `dispatchTurnStart`'s `.finally()`): the
+ * Codex working directory is per-THREAD, reused across turns on purpose,
+ * not per-turn, so there is no turn-scoped local resource to release.
+ *
+ * If the turn is STILL actively dispatching locally, this intentionally
+ * does NOT abort it — that is `turn.interrupt`'s job, not `turn.close`'s;
+ * closing an in-flight turn out from under its own dispatch would be a
+ * silent behavior change beyond what was asked for this pass.
+ */
+const handleTurnClose = async (
+  options: EnforceRuntimeIntentsOptions,
+  row: RuntimeControlIntentRow,
+): Promise<{ outcome: RuntimeIntentOutcomeStatus; detail: string }> => {
+  const turnId = row.intent.turnId
+  if (turnId === undefined) {
+    return { detail: "turn.close intent carried no turnId", outcome: "failed" }
+  }
+  if (options.activeTurns.has(turnId)) {
+    return {
+      detail:
+        `turn ${turnId} is still actively dispatching locally; turn.close only cleans up an already-` +
+        `settled turn — interrupt it first (runtime.interruptTurn) to stop it early`,
+      outcome: "skipped_stale",
+    }
+  }
+  return {
+    detail: `turn ${turnId} closed — no local dispatch was active for it, nothing further to clean up`,
+    outcome: "applied",
+  }
+}
 
 /**
  * Apply ONE decoded control-intent row. Never throws — synchronous
@@ -743,28 +1032,21 @@ const NOT_IMPLEMENTED_KINDS = new Set(["turn.continue", "turn.retry", "turn.clos
 const applyRuntimeIntent = async (
   options: EnforceRuntimeIntentsOptions,
   row: RuntimeControlIntentRow,
+  store: PylonOrchestrationStore,
 ): Promise<{ outcome: RuntimeIntentOutcomeStatus; detail: string }> => {
   switch (row.intent.kind) {
     case "turn.start":
-      return handleTurnStart(options, row)
+      return handleTurnStart(options, row, store)
     case "turn.interrupt":
       return handleTurnInterrupt(options, row)
     case "message.append":
-      // HONEST LIMITATION: the Codex SDK's runStreamed(prompt) call has no
-      // mid-turn steering API. Rather than silently drop the message or
-      // fake acceptance, this is an explicit, clearly-detailed rejection —
-      // never a silent no-op.
-      return {
-        detail:
-          "mid-turn steering is not supported by the local Codex SDK's single-prompt runStreamed call; " +
-          "this message was NOT applied to any active turn and was not queued",
-        outcome: "failed",
-      }
+      return handleMessageAppend(options, row)
+    case "turn.close":
+      return handleTurnClose(options, row)
     case "turn.continue":
     case "turn.retry":
-    case "turn.close":
       return {
-        detail: `runtime.${row.intent.kind} dispatch is not implemented in this pass (#8388 v1 handles turn.start/turn.interrupt/message.append only)`,
+        detail: `runtime.${row.intent.kind} dispatch is not implemented in this pass (turn.start/turn.interrupt/message.append/turn.close are)`,
         outcome: "skipped_stale",
       }
     default:
@@ -815,7 +1097,7 @@ export const enforcePendingRuntimeIntents = async (
     }
     let application: { outcome: RuntimeIntentOutcomeStatus; detail: string }
     try {
-      application = await applyRuntimeIntent(options, row)
+      application = await applyRuntimeIntent(options, row, store)
     } catch (error) {
       application = {
         detail: boundedDetail(error instanceof Error ? error.message : "intent application threw"),
