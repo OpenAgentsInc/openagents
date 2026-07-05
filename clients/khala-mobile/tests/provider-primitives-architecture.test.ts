@@ -51,15 +51,16 @@ describe("Khala mobile provider spine and primitives", () => {
     expect(settings).not.toContain("<Pressable")
   })
 
-  test("uses the Arcade visual primitives on the signed-in thread list", async () => {
+  test("uses restrained Arcade primitives on the signed-in thread list", async () => {
     const threadList = await readSource("src/screens/thread-list-screen.tsx")
 
     expect(threadList).toContain("ActivityIndicator")
     expect(threadList).toContain("BackgroundGradient")
-    expect(threadList).toContain("Frame")
     expect(threadList).toContain("TouchableFeedback")
-    expect(threadList).toContain("usePowerOnVisible")
-    expect(threadList).toContain("FadeIn.delay")
+    expect(threadList).not.toContain("Frame")
+    expect(threadList).not.toContain("usePowerOnVisible")
+    expect(threadList).not.toContain("FadeIn.delay")
+    expect(threadList).not.toContain("rowFrame")
     expect(threadList).not.toContain('className="border-b border-borderMuted px-4 py-4"')
   })
 })
