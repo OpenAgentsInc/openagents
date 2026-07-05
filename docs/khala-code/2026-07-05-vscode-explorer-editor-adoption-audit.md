@@ -16,9 +16,9 @@ The right path is:
   identity, lazy directory hydration, explicit selection/reveal state,
   deterministic sorting, typed file metadata, bounded refresh after file
   changes, and accessible keyboard tree behavior.
-- Keep Codex app-server as the first file authority. Khala already forwards
-  `fs/readFile`, `fs/writeFile`, and `fs/getMetadata`; the missing piece is a
-  typed Khala editor contract over those generic responses.
+- Put a Khala-owned workspace file service between the editor UI and every
+  backing source. Codex can be one optional provider later, but the editor must
+  not depend on Codex app-server as its authority.
 - Add an `Editor` hotbar slot to the existing Khala desktop shell, then mount a
   first read-only editor panel with a basic file tree and source viewer.
 
@@ -44,18 +44,20 @@ Key receiving points:
 - `clients/khala-code-desktop/src/ui/index.html` already has one hidden
   section per full-screen panel. An editor panel would fit as another sibling
   section, for example `id="editor-panel"` and `class="khala-code-editor"`.
-- `clients/khala-code-desktop/src/shared/rpc.ts` already declares raw Codex
-  app-server filesystem pass-through methods:
-  `codexFsGetMetadata`, `codexFsReadFile`, and `codexFsWriteFile`.
-- `clients/khala-code-desktop/src/bun/rpc-handlers.ts` forwards those methods
-  to `fs/getMetadata`, `fs/readFile`, and `fs/writeFile`.
+- `clients/khala-code-desktop/src/shared/rpc.ts` currently declares legacy raw
+  Codex app-server filesystem pass-through methods:
+  `codexFsGetMetadata`, `codexFsReadFile`, and `codexFsWriteFile`. Treat these
+  as compatibility context, not as the editor abstraction.
+- `clients/khala-code-desktop/src/bun/rpc-handlers.ts` forwards those legacy
+  methods to `fs/getMetadata`, `fs/readFile`, and `fs/writeFile`.
 - `clients/khala-code-desktop/src/bun/rpc-handlers.ts` already uses
   `fs/readDirectory` and `fuzzyFileSearch` to power `/mention` candidates, so
-  the app-server side has enough shape for a basic Explorer.
+  the app has prior file-discovery affordances to learn from.
 
-The main gap is that `RpcCodexAppServerActionResult` is intentionally generic:
-`{ ok, method, response?, error? }`. A polished editor should not let UI code
-parse unknown app-server payloads ad hoc. Add a typed layer before rendering.
+The main gap is a provider-neutral editor file contract. A polished editor
+should not let UI code parse unknown filesystem payloads ad hoc, and it should
+not bind source browsing to one agent runtime. Add a typed Khala editor service
+before rendering.
 
 ## VS Code Source Material To Adapt
 
@@ -90,7 +92,8 @@ Khala adaptation:
 - Use stable IDs derived from `rootPath + "::" + absolutePath`, but keep raw
   absolute paths inside local-only desktop state and never public receipts.
 - Load roots from `input.workingDirectory` first. Later add explicit extra roots
-  from the Codex workspace/environment API if available.
+  from Khala workspace selection, Fleet/Pylon workspaces, remote sessions, or
+  other provider adapters behind the same contract.
 
 ### Explorer data source, renderer, and interaction
 
@@ -168,7 +171,8 @@ Relevant ideas:
 
 Khala adaptation:
 
-- Add typed editor RPCs instead of leaking Codex action responses:
+- Add typed editor RPCs backed by a Khala-owned provider interface:
+  - `editorProviderList()`
   - `editorWorkspaceRead()`
   - `editorDirectoryRead({ path })`
   - `editorFileRead({ path, maxBytes? })`
@@ -176,11 +180,12 @@ Khala adaptation:
   - later `editorWatchStart({ rootPath })` / `editorWatchStop(...)`
 - Keep all paths root-bounded to the selected workspace. Refuse path traversal
   and return typed errors such as `outside_workspace`, `binary_file`,
-  `file_too_large`, `not_found`, and `codex_app_server_unavailable`.
-- For reads, prefer Codex app-server methods so the editor sees the same local
-  authority as chat, slash commands, and future Codex file actions.
-- Add Effect Schema decoders for every app-server payload before UI code uses
-  it.
+  `file_too_large`, `not_found`, and `provider_unavailable`.
+- Implement the first provider as a local desktop workspace filesystem adapter
+  owned by Khala. Additional adapters can cover remote worktrees, Fleet/Pylon
+  sessions, and Codex compatibility without changing the editor UI.
+- Add Effect Schema decoders for every host/provider payload before UI code
+  uses it.
 
 ### Code editor
 
@@ -224,8 +229,9 @@ Avoid these from VS Code until there is a specific measured need:
 - Inline create/rename/delete UI.
 - Compact folders and file nesting as default behavior.
 - VS Code's extension host, icon theme machinery, and file decoration provider.
-- Raw Electron disk providers. Khala is Electrobun and already has a Codex
-  app-server bridge; duplicating VS Code's provider layer would split authority.
+- Raw Electron disk providers. Khala is Electrobun and should expose its own
+  bounded desktop file provider instead of duplicating VS Code's provider layer
+  or inheriting a Codex-specific bridge.
 
 ## License And Reuse Boundary
 
