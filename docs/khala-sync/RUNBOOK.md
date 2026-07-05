@@ -2576,6 +2576,110 @@ Rollback at ANY step: set `KHALA_SYNC_IDENTITY_READS=d1` (reads) and/or
 `KHALA_SYNC_IDENTITY_DUAL_WRITE=off` (writes). D1 authority is never
 behind.
 
+### 2026-07-05 follow-up (#8362): post-deploy re-verify + read-site classification
+
+Owner authorization on file for the eventual read cutover — quoted verbatim
+per the owner's instruction so the decision trail is auditable, and it
+satisfies the "ask a human" gate only, never the "prove it" gate:
+
+> "For the D1 closeout issues etc, you have full approval from the owner (me)
+> to do all needed cutovers and retire D1 - after ensuring content is backed
+> up / moved over for example all forum posts need to be backed up and moved
+> over into the new system, and any other relevant data."
+
+**Forum-content note:** forum posts are NOT owned by this domain — they
+migrate under the separate KS-8.10 Forum (content + trust) lane
+([#8321](https://github.com/OpenAgentsInc/openagents/issues/8321), landed).
+Nothing in the identity/auth domain's own tables holds forum post bodies, so
+this domain has no forum-backup action of its own.
+
+**Confirmed the #8362 write-site wiring is now LIVE in production** (it had
+only been committed, not yet deployed, when the prior #8362 evidence was
+posted): `wrangler deployments list` shows the first post-#8362-commit
+deploy at `2026-07-05T06:53:56Z` (version `b34ad490-450b-4728-b945-ad858983917a`),
+with several more deploys since from concurrent domain work, none of which
+rolled back that wiring.
+
+**Fresh `--restart` + `--verify` against production, hours into live
+traffic on the new wiring:** `backfill-identity-auth.ts --restart` re-scanned
+all 17 tables (462/462/176/21/1/1/63/42/68/155/478/64/31/26/12/0/0 rows —
+identical counts to the pre-deploy snapshot on #8362, so no net-new rows
+appeared, but a restart sweep re-converges every row regardless of count
+drift). `--verify --verify-newest 50` came back **CLEAN — every one of the
+17 tables matched exactly** (row counts, custody-safe scalar tallies,
+newest-50 hashes), confirming the new writer wiring behaves correctly under
+real live traffic, not just against a pre-deploy snapshot. `KHALA_SYNC_IDENTITY_READS`
+remains untouched at `d1`; no flags were flipped; D1 remains sole authority.
+
+**Read call-site classification** (the concrete inventory for whoever picks
+up the owner-gated read-cutover follow-up). Grepped every
+`FROM users|auth_identities|openauth_storage|openauth_agent_links|
+github_write_*|provider_account*` call site outside this domain's own store
+and tests:
+
+*Permanent D1-only auth-decision reads — never a compare/postgres candidate
+at the current risk bar, same reasoning as the entitlements domain's 6
+enforcement-gate reads:*
+
+- `auth/openauth-storage.ts`, `auth/email-otp-hardening.ts` — session/OTP
+  validation on every request.
+- `index.ts` (`upsertGitHubUser`/`upsertEmailUser`/`upsertUser`, the
+  `openauth_agent_links` resolves, the `primary_email` lookups feeding live
+  flows) — core session/identity resolution.
+- `agent-registration.ts`, `agent-owner-claim-routes.ts`,
+  `agent-scoped-grant-routes.ts` — identity-linkage and scoped-grant
+  authorization decisions.
+- `github-write-connections.ts` — GitHub write-scope grant/connection state.
+- `provider-account-repository.ts`, `provider-account-token-custody.ts`,
+  `provider-account-pool-routes.ts` — BYOK credential resolution, secret
+  custody, and account-leasing decisions (which account serves this
+  request).
+- `operator-provider-account-routes.ts`, `provider-launch.ts` — mixed
+  operator-console reads alongside live lease acquire/release/launch
+  decisions; kept whole-file D1 rather than splitting, since a stale read
+  here can double-lease or misroute a shared provider account.
+- `onboarding/repository.ts`, `billing.ts`, `customer-orders.ts` — treated
+  conservatively as decision-adjacent (onboarding-step gating, billing/order
+  ownership resolution tied to a user identity) even though none of these
+  are literal allow/deny gates; err D1 pending a dedicated review.
+
+*Candidate genuinely-safe, non-decision-critical display/reporting reads —
+NOT implemented or flipped this pass, flagged as the starting inventory for
+a future bounded allowlist (the `inference-entitlements-store.ts`
+`*_NON_GATE_READS`-style pattern) once a dedicated follow-up builds it:*
+
+- `admin-overview-routes.ts` — admin dashboard user listing (joins
+  `software_orders`, a different domain — would need that table's own
+  Postgres twin/read-routing confirmed first).
+- `artanis-operator-dashboard-routes.ts` — operator-console
+  `provider_accounts` summary display.
+- `operator-order-triage-routes.ts` — operator triage listing over
+  `provider_account_leases` / `_failover_receipts`.
+- `operator-targets.ts` — CRM/outreach `users` listing (display/reporting,
+  not an auth gate).
+- `provider-account-usage-routes.ts` — `provider_accounts` usage/stats
+  reporting route.
+- `forum/repository.ts` — `users` join for author display name/avatar
+  projection on forum posts.
+
+None of these candidates were implemented this pass. Each would need: (a)
+confirming any cross-domain joined table already has its own Postgres twin
+and read-routing, (b) a new typed Postgres query function per route mirroring
+the entitlements bounded-allowlist pattern, (c) a NEW flag distinct from
+`KHALA_SYNC_IDENTITY_READS` (e.g. `KHALA_SYNC_IDENTITY_NON_GATE_READS`) so a
+display-read flip can never imply an auth-decision flip, and (d) its own
+compare-mode soak with live `wrangler tail` evidence before any flip — real,
+separate implementation work, not a config change. The KV/cache layer and
+auth-matrix shadow-read replay tooling required for the actual auth-decision
+read cutover (step 5 above) remain NOT built.
+
+Verification this pass: `bun run typecheck` (workers/api) clean;
+`identity-auth-domain-repository.contract.test.ts` (10/10) and
+`identity-auth-backfill.test.ts` (10/10, `bun test`) both green;
+`bun run check:architecture` (zero-debt) passed. No source files were
+changed this pass — only fresh production verification evidence and this
+documentation update.
+
 ## Public tokens-served projection (KS-6.3, #8304)
 
 The public "Khala Tokens Served" counter

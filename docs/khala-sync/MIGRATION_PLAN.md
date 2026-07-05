@@ -1946,6 +1946,22 @@ RUNBOOK "Identity/auth domain cutover" section for the full flag-flip
 order and the one known, deliberately-accepted drift source
 (`openauth_storage`'s TTL-shaped row-count asymmetry).
 
+**Second follow-up (2026-07-05, same day, #8362):** confirmed the write-site
+wiring above is now LIVE in production (first post-commit deploy
+`2026-07-05T06:53:56Z`, version `b34ad490-450b-4728-b945-ad858983917a`) and
+re-ran `--restart` + `--verify` against production hours into live traffic on
+the new code: all 17 tables still exact (same row counts as the pre-deploy
+snapshot; a restart sweep re-converges regardless), zero mismatches. Also
+produced a read call-site classification inventory — which identity/auth
+reads are permanent D1-only auth-decision paths vs. candidates for a future
+bounded non-gate-read allowlist (mirroring `inference-entitlements-store.ts`)
+— see the RUNBOOK section for the full list. No candidate was implemented or
+flipped this pass; that remains real, separate follow-up work needing its own
+flag, its own compare-mode soak, and (for the actual auth-decision reads) the
+KV/cache layer and auth-matrix replay tooling that still do not exist.
+Forum posts are confirmed out of scope for this domain's backup concerns —
+they live under the separate, already-landed KS-8.10 Forum lane (#8321).
+
 - **What:** the tables every request touches: users, auth identities,
   OpenAuth storage + agent links, GitHub write connections/grants,
   provider (BYOK) account custody family.
