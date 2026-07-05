@@ -11,13 +11,22 @@ import {
 } from "@openagentsinc/khala-sync"
 import * as Clipboard from "expo-clipboard"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { FlatList, KeyboardAvoidingView, Text, View } from "react-native"
+import {
+  FlatList,
+  KeyboardAvoidingView,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  View,
+} from "react-native"
 import Animated, { FadeIn } from "react-native-reanimated"
 import { SafeAreaView } from "react-native-safe-area-context"
 
-import { AppHeader } from "../components/app-header"
 import { type PopupOptionType, TouchablePopupHandler } from "../components/blurred-popup"
 import { ChatComposer, chatComposerKeyboardVerticalOffset } from "../components/chat-composer"
+import { KhalaEmptyState } from "../components/khala-empty-state"
+import { KhalaScrollToLatestButton } from "../components/khala-scroll-to-latest-button"
+import { KhalaText } from "../components/khala-text"
+import { KhalaThreadHeader } from "../components/khala-thread-header"
 import { SwipeableItem } from "../components/swipeable-item"
 import { TranscriptPartRow } from "../components/transcript-part-row"
 import type { AppStackScreenProps } from "../navigators/navigationTypes"
@@ -76,7 +85,13 @@ const formatClockTime = (iso: string): string => {
 
 type ThreadMessagesScreenProps = AppStackScreenProps<"ThreadMessages">
 
-export const ThreadMessagesScreen = ({ route }: ThreadMessagesScreenProps) => {
+const atBottomFromScroll = (event: NativeSyntheticEvent<NativeScrollEvent>): boolean => {
+  const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent
+  const distanceFromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height)
+  return distanceFromBottom < 120
+}
+
+export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreenProps) => {
   const { threadId, title } = route.params
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- shared scroll ref across two independently-typed FlatLists (chat vs. transcript)
   const listRef = useRef<FlatList<any>>(null)
@@ -121,6 +136,7 @@ export const ThreadMessagesScreen = ({ route }: ThreadMessagesScreenProps) => {
   const [quoteRequest, setQuoteRequest] = useState<QuoteRequest | undefined>(undefined)
   const [handoffPendingTurnId, setHandoffPendingTurnId] = useState<string | undefined>(undefined)
   const [handoffError, setHandoffError] = useState<string | null>(null)
+  const [showScrollToLatest, setShowScrollToLatest] = useState(false)
 
   const requestHandoff = async (input: {
     turnId: string
@@ -176,6 +192,7 @@ export const ThreadMessagesScreen = ({ route }: ThreadMessagesScreenProps) => {
   useEffect(() => {
     if (messages.length === 0 && transcriptParts.length === 0) return
     listRef.current?.scrollToEnd({ animated: true })
+    setShowScrollToLatest(false)
   }, [messages.length, transcriptParts.length])
 
   const status = hasRichTranscript ? runtimeState.status : chatState.status
@@ -183,7 +200,13 @@ export const ThreadMessagesScreen = ({ route }: ThreadMessagesScreenProps) => {
 
   return (
     <SafeAreaView className="flex-1 bg-bg" edges={["top", "bottom", "left", "right"]}>
-      <AppHeader showBack title={title ?? "Thread"} />
+      <KhalaThreadHeader
+        onBack={() => {
+          if (navigation.canGoBack()) navigation.goBack()
+        }}
+        subtitle="work · Khala Mobile"
+        title={title ?? "Thread"}
+      />
       <KeyboardAvoidingView
         behavior={chatComposerKeyboardVerticalOffset === 0 ? "height" : "padding"}
         className="flex-1"
@@ -191,30 +214,33 @@ export const ThreadMessagesScreen = ({ route }: ThreadMessagesScreenProps) => {
       >
         <View className="flex-1">
           {syncRuntimeStatus === "missing_token" ? (
-            <View className="flex-1 items-center justify-center px-8">
-              <Text className="text-center font-mono text-sm text-textFaint">
-                Not signed in. Restart the app to sign in again.
-              </Text>
-            </View>
+            <KhalaEmptyState
+              className="flex-1"
+              detail="Restart the app to sign in again."
+              title="Not signed in"
+            />
           ) : syncRuntimeStatus === "error" ? (
-            <View className="flex-1 items-center justify-center px-8">
-              <Text className="text-center font-sans text-base text-danger">{syncRuntimeError}</Text>
-            </View>
+            <KhalaEmptyState
+              className="flex-1"
+              detail={syncRuntimeError ?? undefined}
+              title="Sync unavailable"
+              tone="danger"
+            />
           ) : status === "error" ? (
-            <View className="flex-1 items-center justify-center px-8">
-              <Text className="text-center font-sans text-base text-danger">
-                {chatState.error ?? runtimeState.error}
-              </Text>
-            </View>
+            <KhalaEmptyState
+              className="flex-1"
+              detail={chatState.error ?? runtimeState.error ?? undefined}
+              title="Thread unavailable"
+              tone="danger"
+            />
           ) : loading ? (
-            <View className="flex-1 items-center justify-center">
-              <Text className="font-sans text-base text-textMuted">loading messages…</Text>
-            </View>
+            <KhalaEmptyState className="flex-1" loading title="Loading messages" />
           ) : hasRichTranscript ? (
             <FlatList
-              contentContainerClassName="gap-2 px-4 py-4"
+              contentContainerClassName="gap-4 px-8 pb-8 pt-1"
               data={transcriptParts}
               keyExtractor={part => part.id}
+              onScroll={event => setShowScrollToLatest(!atBottomFromScroll(event))}
               ref={listRef}
               renderItem={({ index, item: part }) => {
                 const row = (
@@ -236,32 +262,45 @@ export const ThreadMessagesScreen = ({ route }: ThreadMessagesScreenProps) => {
                   </TouchablePopupHandler>
                 )
               }}
+              scrollEventThrottle={120}
             />
           ) : messages.length === 0 ? (
-            <View className="flex-1 items-center justify-center">
-              <Text className="font-sans text-base text-textMuted">No messages yet</Text>
-            </View>
+            <KhalaEmptyState className="flex-1" title="No messages yet" />
           ) : (
             <FlatList
-              contentContainerClassName="gap-2 px-4 py-4"
+              contentContainerClassName="gap-4 px-8 pb-8 pt-1"
               data={messages}
               keyExtractor={message => message.messageId}
+              onScroll={event => setShowScrollToLatest(!atBottomFromScroll(event))}
               ref={listRef}
               renderItem={({ item: message }) => (
-                <View className="rounded-xl border border-border bg-surfaceRaised px-3 py-2">
-                  <Text className="font-mono text-xs text-textFaint">
+                <View className="gap-1 px-1 py-1">
+                  <KhalaText variant="faint">
                     {formatClockTime(message.createdAt)}
-                  </Text>
-                  <Text className="mt-1 font-sans text-base text-text">{message.body}</Text>
+                  </KhalaText>
+                  <KhalaText className="text-[22px] leading-8 text-text" variant="body">
+                    {message.body}
+                  </KhalaText>
                 </View>
               )}
+              scrollEventThrottle={120}
             />
           )}
+          {showScrollToLatest ? (
+            <View className="absolute bottom-4 left-0 right-0 items-center">
+              <KhalaScrollToLatestButton
+                onPress={() => {
+                  listRef.current?.scrollToEnd({ animated: true })
+                  setShowScrollToLatest(false)
+                }}
+              />
+            </View>
+          ) : null}
         </View>
         {handoffError === null ? null : (
-          <Text className="px-3 pb-1 font-mono text-xs text-danger" numberOfLines={2}>
+          <KhalaText className="px-4 pb-1 text-danger" numberOfLines={2} variant="faint">
             {handoffError}
-          </Text>
+          </KhalaText>
         )}
         {syncRuntimeStatus === "missing_token" ? null : (
           <ChatComposer

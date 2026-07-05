@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { reduceRuntimeTranscript } from "../src/sync/khala-runtime-transcript-core"
+import { reduceRuntimeTranscript, summarizeToolPart } from "../src/sync/khala-runtime-transcript-core"
 
 const base = {
   causalityRefs: [] as ReadonlyArray<string>,
@@ -153,5 +153,56 @@ describe("reduceRuntimeTranscript", () => {
       outputTokens: 20,
       totalTokens: 120
     })
+  })
+})
+
+describe("summarizeToolPart", () => {
+  test("summarizes read/search style tools as one-line read rows", () => {
+    expect(
+      summarizeToolPart({
+        id: "tool-1",
+        kind: "tool",
+        status: "completed",
+        toolCallId: "call1",
+        toolName: "read app-shell.test.ts",
+      }),
+    ).toEqual({ icon: "run", label: "Read app-shell.test.ts", tone: "muted" })
+  })
+
+  test("summarizes edit/write tools as edited file rows", () => {
+    expect(
+      summarizeToolPart({
+        id: "tool-1",
+        kind: "tool",
+        status: "completed",
+        toolCallId: "call1",
+        toolName: "apply_patch",
+      }),
+    ).toEqual({ icon: "edit", label: "Edited 1 file", tone: "muted" })
+  })
+
+  test("summarizes shell/exec tools as command rows", () => {
+    expect(
+      summarizeToolPart({
+        id: "tool-1",
+        kind: "tool",
+        status: "called",
+        toolCallId: "call1",
+        toolName: "exec_command",
+      }),
+    ).toEqual({ icon: "run", label: "Ran 1 command", tone: "warning" })
+  })
+
+  test("falls back to a bounded public-safe tool label", () => {
+    const summary = summarizeToolPart({
+      id: "tool-1",
+      kind: "tool",
+      status: "failed",
+      toolCallId: "call1",
+      toolName: "custom_extremely_long_unknown_tool_name_that_should_not_take_over_the_row",
+    })
+    expect(summary.icon).toBe("tool")
+    expect(summary.tone).toBe("danger")
+    expect(summary.label.length).toBeLessThanOrEqual(48)
   })
 })

@@ -4,6 +4,16 @@ Date: 2026-07-05
 
 Source reference: owner-provided screenshot `IMG_2843.PNG`
 
+Implementation note: commit target after this spec added the first shipped pass
+of this structure in `clients/khala-mobile/src/screens/thread-messages-screen.tsx`,
+`clients/khala-mobile/src/components/transcript-part-row.tsx`,
+`clients/khala-mobile/src/components/chat-composer.tsx`,
+`clients/khala-mobile/src/components/khala-thread-header.tsx`, and
+`clients/khala-mobile/src/components/khala-scroll-to-latest-button.tsx`.
+Guard coverage lives in
+`clients/khala-mobile/tests/chat-view-reference-structure.test.ts` and
+`clients/khala-mobile/tests/khala-runtime-transcript-core.test.ts`.
+
 ## Owner Direction
 
 The mobile thread view should follow the screenshot's structure exactly while
@@ -97,6 +107,13 @@ Khala adaptation:
   - unknown tool -> concise `<Tool name>` fallback
 - Summary text must be computed by a pure helper so it can be tested without a
   simulator.
+
+Current implementation caveat: today's `TranscriptPart` exposes `toolName` and
+status but not public-safe tool arguments, filenames, or command counts. The
+shipped `summarizeToolPart()` helper therefore maps known tool-name families
+to one-line labels (`Read ...`, `Edited 1 file`, `Ran 1 command`) and stays
+bounded/public-safe. If the sync event schema later adds sanitized display
+metadata, the helper should prefer that metadata.
 
 ### 4. Composer
 

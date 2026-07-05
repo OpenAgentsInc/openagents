@@ -35,6 +35,80 @@ export type TranscriptPart =
       turnId: string
     }>
 
+export type ToolSummaryTone = "danger" | "muted" | "success" | "warning"
+
+export type ToolSummary = Readonly<{
+  icon: "edit" | "run" | "tool"
+  label: string
+  tone: ToolSummaryTone
+}>
+
+const titleCaseWord = (value: string): string =>
+  value.length === 0 ? value : `${value[0]?.toUpperCase() ?? ""}${value.slice(1)}`
+
+const compactToolName = (toolName: string): string =>
+  toolName
+    .trim()
+    .replace(/^mcp__[^_]+__/, "")
+    .replace(/[_/:]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+
+const truncateSummary = (value: string, maxLength = 48): string =>
+  value.length <= maxLength ? value : `${value.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`
+
+const statusTone = (status: Extract<TranscriptPart, { kind: "tool" }>["status"]): ToolSummaryTone => {
+  switch (status) {
+    case "called":
+      return "warning"
+    case "completed":
+      return "muted"
+    case "failed":
+      return "danger"
+  }
+}
+
+export const summarizeToolPart = (
+  part: Extract<TranscriptPart, { kind: "tool" }>
+): ToolSummary => {
+  const normalized = compactToolName(part.toolName)
+  const searchable = normalized.toLowerCase()
+
+  if (/(apply patch|apply_patch|edit|write|update|create|delete|patch)/.test(searchable)) {
+    return {
+      icon: "edit",
+      label: "Edited 1 file",
+      tone: statusTone(part.status)
+    }
+  }
+
+  if (/(read|open|cat|sed|list|ls|find|search|rg|grep)/.test(searchable)) {
+    const target = normalized
+      .replace(/^(read|open|cat|sed|list|ls|find|search|rg|grep)\s+/i, "")
+      .trim()
+    return {
+      icon: "run",
+      label: truncateSummary(target.length === 0 ? `Read ${normalized || "tool output"}` : `Read ${target}`),
+      tone: statusTone(part.status)
+    }
+  }
+
+  if (/(exec|command|shell|bash|zsh|terminal|run)/.test(searchable)) {
+    return {
+      icon: "run",
+      label: "Ran 1 command",
+      tone: statusTone(part.status)
+    }
+  }
+
+  const fallback = normalized.length === 0 ? "Tool call" : normalized.split(" ").map(titleCaseWord).join(" ")
+  return {
+    icon: "tool",
+    label: truncateSummary(fallback),
+    tone: statusTone(part.status)
+  }
+}
+
 export const sortEventsBySequence = (
   entities: ReadonlyArray<RuntimeEventEntity>
 ): ReadonlyArray<RuntimeEventEntity> => [...entities].sort((a, b) => a.sequence - b.sequence)

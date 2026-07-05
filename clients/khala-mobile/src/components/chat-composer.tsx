@@ -1,11 +1,9 @@
 import type { KhalaRuntimeLane, RuntimeTurnEntity } from "@openagentsinc/khala-sync"
 import { useEffect, useRef, useState } from "react"
-import { Platform, Pressable, Text, TextInput, View } from "react-native"
-import Animated, { useAnimatedStyle, useDerivedValue, withTiming } from "react-native-reanimated"
+import { Platform, Pressable, TextInput, View } from "react-native"
 
 import { ActivityIndicator } from "./activity-indicator"
-import { ArwesButton } from "./arwes-button"
-import { BackgroundGradient } from "./background-gradient"
+import { KhalaText } from "./khala-text"
 import { mergeTranscriptIntoDraft } from "../native/push-to-talk-core"
 import { usePushToTalk } from "../native/use-push-to-talk"
 import {
@@ -81,6 +79,7 @@ export const ChatComposer = ({
   const [mode, setMode] = useState<SendMode>("steer")
   const [selectedLane, setSelectedLane] = useState<KhalaRuntimeLane>(defaultLane ?? DEFAULT_RUNTIME_LANE)
   const [laneTouched, setLaneTouched] = useState(false)
+  const [showOptions, setShowOptions] = useState(false)
   const lastQuoteRequestId = useRef<string | undefined>(undefined)
   // Push-to-talk dictation (#8350) — ported from the never-routed
   // `legacy-screens/settings.tsx`'s availability probe, extended with the
@@ -115,17 +114,6 @@ export const ChatComposer = ({
   const trimmed = text.trim()
   const hasActiveTurn = activeTurn !== undefined
   const canSend = trimmed.length > 0 && !sending
-  const showPicker = hasActiveTurn && trimmed.length > 0
-  const [pickerContentHeight, setPickerContentHeight] = useState(0)
-  // One `progress` value drives both height and opacity together, so the
-  // picker row opens/closes as one coherent motion instead of separately
-  // timed properties drifting out of sync (ported technique from Arcade's
-  // `DirectMessageReply`).
-  const pickerProgress = useDerivedValue(() => withTiming(showPicker ? 1 : 0, { duration: 180 }))
-  const pickerAnimatedStyle = useAnimatedStyle(() => ({
-    height: pickerProgress.value * pickerContentHeight,
-    opacity: pickerProgress.value
-  }))
 
   const sendMessage = async (sendMode: SendMode) => {
     if (!canSend) return
@@ -171,6 +159,7 @@ export const ChatComposer = ({
         ])
       }
       setText("")
+      setShowOptions(false)
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error))
     } finally {
@@ -202,187 +191,150 @@ export const ChatComposer = ({
     }
   }
 
-  const pickerRow = (
-    <>
+  const activeStatusLabel =
+    activeTurn === undefined ? undefined : TURN_STATUS_LABEL[activeTurn.status] ?? activeTurn.status
+
+  const optionRow = hasActiveTurn ? (
+    <View className="mb-2 flex-row gap-2 px-1">
       <Pressable
         accessibilityRole="button"
-        className={`flex-1 items-center rounded-lg border py-2 ${
+        accessibilityState={{ selected: mode === "steer" }}
+        className={`flex-1 items-center rounded-full border py-2 ${
           mode === "steer" ? "border-accent bg-surfaceActive" : "border-borderMuted bg-surface"
         }`}
         onPress={() => setMode("steer")}
       >
-        <Text className="font-mono text-xs text-text">Steer (send now)</Text>
+        <KhalaText className="text-[11px] uppercase tracking-wide text-text" variant="faint">
+          Steer
+        </KhalaText>
       </Pressable>
       <Pressable
         accessibilityRole="button"
-        className={`flex-1 items-center rounded-lg border py-2 ${
+        accessibilityState={{ selected: mode === "queue" }}
+        className={`flex-1 items-center rounded-full border py-2 ${
           mode === "queue" ? "border-accent bg-surfaceActive" : "border-borderMuted bg-surface"
         }`}
         onPress={() => setMode("queue")}
       >
-        <Text className="font-mono text-xs text-text">Queue (after this turn)</Text>
+        <KhalaText className="text-[11px] uppercase tracking-wide text-text" variant="faint">
+          Queue
+        </KhalaText>
       </Pressable>
-      <Pressable
-        accessibilityLabel="Send follow-up"
-        accessibilityRole="button"
-        className="items-center justify-center rounded-lg bg-accent px-4 py-2"
-        disabled={sending}
-        onPress={() => sendMessage(mode)}
-      >
-        <Text className="font-mono text-xs text-bg">Send</Text>
-      </Pressable>
-    </>
+    </View>
+  ) : (
+    <View accessibilityLabel="Provider" className="mb-2 flex-row gap-2 px-1">
+      {PICKABLE_LANES.map(({ label, lane }) => (
+        <Pressable
+          accessibilityLabel={`Send with ${label}`}
+          accessibilityRole="button"
+          accessibilityState={{ selected: selectedLane === lane }}
+          className={`flex-1 items-center rounded-full border py-2 ${
+            selectedLane === lane ? "border-accent bg-surfaceActive" : "border-borderMuted bg-surface"
+          }`}
+          key={lane}
+          onPress={() => {
+            setLaneTouched(true)
+            setSelectedLane(lane)
+          }}
+        >
+          <KhalaText className="text-[11px] uppercase tracking-wide text-text" variant="faint">
+            {label}
+          </KhalaText>
+        </Pressable>
+      ))}
+    </View>
   )
 
   return (
-    <View className="border-t border-borderMuted bg-bg px-3 pb-2 pt-2">
+    <View className="bg-transparent px-4 pb-3 pt-2">
       {errorMessage === null ? null : (
-        <Text className="mb-1 font-mono text-xs text-danger" numberOfLines={2}>
+        <KhalaText className="mb-1 px-3 text-danger" numberOfLines={2} variant="faint">
           {errorMessage}
-        </Text>
+        </KhalaText>
       )}
-      {hasActiveTurn ? (
-        // `BackgroundGradient` (ported from Arcade, see
-        // `docs/design/2026-07-05-arcade-ui-harvest-audit.md` §2.9) gives the
-        // active-turn status line a slow "breathing" glow so it reads as a
-        // live, in-progress surface instead of static text. Reserved for this
-        // row only while a turn is actually active — it unmounts (and stops
-        // animating) the moment `activeTurn` clears.
-        <BackgroundGradient
-          cornerRadius={6}
-          maxBlur={6}
-          style={{ alignSelf: "flex-start", borderRadius: 6, marginBottom: 4, overflow: "hidden" }}
+      {activeStatusLabel === undefined ? null : (
+        <KhalaText className="mb-1 px-3 text-textFaint" variant="faint">
+          turn {activeStatusLabel}
+        </KhalaText>
+      )}
+      {showOptions ? optionRow : null}
+      <View className="min-h-16 flex-row items-center gap-2 rounded-full border border-borderMuted bg-surfaceRaised px-3 py-2">
+        <Pressable
+          accessibilityLabel={showOptions ? "Hide composer options" : "Show composer options"}
+          accessibilityRole="button"
+          className="h-11 w-11 items-center justify-center rounded-full"
+          hitSlop={8}
+          onPress={() => setShowOptions(current => !current)}
         >
-          <Text className="px-2 py-0.5 font-mono text-xs uppercase tracking-wide text-textFaint">
-            ● turn {TURN_STATUS_LABEL[activeTurn.status] ?? activeTurn.status}
-          </Text>
-        </BackgroundGradient>
-      ) : (
-        // Lane picker (#8405) — only meaningful while idle: a running
-        // turn's provider is already fixed, so hide this rather than imply
-        // it could retarget an in-flight turn. Kept as two tiny pills (not
-        // a heavy picker) reusing the Steer/Queue toggle's visual pattern.
-        <View accessibilityLabel="Provider" className="mb-1 flex-row gap-1.5 self-start">
-          {PICKABLE_LANES.map(({ label, lane }) => (
-            <Pressable
-              accessibilityLabel={`Send with ${label}`}
-              accessibilityRole="button"
-              accessibilityState={{ selected: selectedLane === lane }}
-              className={`rounded-full border px-2 py-0.5 ${
-                selectedLane === lane ? "border-accent bg-surfaceActive" : "border-borderMuted bg-surface"
-              }`}
-              key={lane}
-              onPress={() => {
-                setLaneTouched(true)
-                setSelectedLane(lane)
-              }}
-            >
-              <Text className="font-mono text-[10px] uppercase tracking-wide text-textFaint">{label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      )}
-      <View className="flex-row items-end gap-2">
+          <KhalaText className="text-[34px] leading-9 text-text" variant="body">
+            +
+          </KhalaText>
+        </Pressable>
         <TextInput
-          className="max-h-32 flex-1 rounded-2xl border border-border bg-surfaceRaised px-3 py-2 font-sans text-base text-text"
+          className="max-h-28 min-h-10 flex-1 px-1 py-2 font-sans text-[19px] leading-6 text-text"
           multiline
           onChangeText={setText}
-          placeholder={hasActiveTurn ? "Send a follow-up…" : "Message…"}
-          placeholderTextColor="#7e8a98"
+          placeholder={hasActiveTurn ? "Follow up" : "Message"}
+          placeholderTextColor={khalaMobileTheme.textMuted}
           value={text}
         />
-        {/* Push-to-talk mic (#8350): tap to start dictation, tap again to
-         * stop and merge the transcript into the draft above. Disabled
-         * (dimmed, non-interactive) while the availability probe is still
-         * checking or reports denied/unavailable, so a doomed native call
-         * never fires just from a stray tap. */}
-        <ArwesButton
+        <Pressable
           accessibilityLabel={pushToTalk.accessibilityLabel}
-          alwaysShowBorder
-          borderColor={
-            pushToTalk.phase === "recording"
-              ? khalaMobileTheme.danger
-              : pushToTalk.pressable
-                ? undefined
-                : khalaMobileTheme.textMuted
-          }
+          accessibilityRole="button"
+          className="h-11 w-11 items-center justify-center rounded-full"
           disabled={!pushToTalk.pressable}
           onPress={pushToTalk.press}
-          style={{ height: 44, width: 44 }}
         >
-          <View className="h-11 w-11 items-center justify-center">
-            {pushToTalk.phase === "checking" ? (
-              <ActivityIndicator color={khalaMobileTheme.textMuted} size={20} />
-            ) : pushToTalk.phase === "recording" ? (
-              <Text className="text-lg text-danger">●</Text>
-            ) : (
-              <Text className={`text-lg ${pushToTalk.pressable ? "text-accent" : "text-textFaint"}`}>◉</Text>
-            )}
-          </View>
-        </ArwesButton>
+          {pushToTalk.phase === "checking" ? (
+            <ActivityIndicator color={khalaMobileTheme.textMuted} size={20} />
+          ) : (
+            <KhalaText
+              className={`text-[30px] leading-8 ${
+                pushToTalk.phase === "recording"
+                  ? "text-danger"
+                  : pushToTalk.pressable
+                    ? "text-text"
+                    : "text-textFaint"
+              }`}
+              variant="body"
+            >
+              {pushToTalk.phase === "recording" ? "●" : "◉"}
+            </KhalaText>
+          )}
+        </Pressable>
         {hasActiveTurn ? (
-          // `ArwesButton` (ported from Arcade, see
-          // `docs/design/2026-07-05-arcade-ui-harvest-audit.md` §2.2) pairs
-          // the Skia `Frame`'s press-glow with the primary composer CTA,
-          // replacing the old instant `bg-danger` className swap with no
-          // press feedback.
-          <ArwesButton
+          <Pressable
             accessibilityLabel="Stop"
-            alwaysShowBorder
-            borderColor={khalaMobileTheme.danger}
-            color={khalaMobileTheme.danger}
+            accessibilityRole="button"
+            className="h-12 w-12 items-center justify-center rounded-full bg-text"
             disabled={sending}
             onPress={stopActiveTurn}
-            style={{ height: 44, width: 44 }}
           >
-            <View className="h-11 w-11 items-center justify-center">
-              {sending ? (
-                <ActivityIndicator color={khalaMobileTheme.danger} size={24} />
-              ) : (
-                <Text className="text-base text-danger">■</Text>
-              )}
-            </View>
-          </ArwesButton>
+            {sending ? (
+              <ActivityIndicator color={khalaMobileTheme.background} size={24} />
+            ) : (
+              <KhalaText className="text-[20px] leading-6 text-bg" variant="body">
+                ■
+              </KhalaText>
+            )}
+          </Pressable>
         ) : (
-          <ArwesButton
+          <Pressable
             accessibilityLabel="Send"
-            alwaysShowBackground={canSend}
-            alwaysShowBorder
+            accessibilityRole="button"
+            className={`h-12 w-12 items-center justify-center rounded-full ${canSend ? "bg-text" : "bg-surfaceMuted"}`}
             disabled={!canSend}
             onPress={() => sendMessage("queue")}
-            style={{ height: 44, width: 44 }}
           >
-            <View className="h-11 w-11 items-center justify-center">
-              {sending ? (
-                <ActivityIndicator color={khalaMobileTheme.accent} size={24} />
-              ) : (
-                <Text className={`text-lg ${canSend ? "text-accent" : "text-textFaint"}`}>↑</Text>
-              )}
-            </View>
-          </ArwesButton>
+            {sending ? (
+              <ActivityIndicator color={khalaMobileTheme.background} size={24} />
+            ) : (
+              <KhalaText className={`text-[26px] leading-8 ${canSend ? "text-bg" : "text-textFaint"}`} variant="body">
+                ↑
+              </KhalaText>
+            )}
+          </Pressable>
         )}
-      </View>
-      <View>
-        <Animated.View className="mt-2 overflow-hidden" style={pickerAnimatedStyle}>
-          <View className="flex-row gap-2">{pickerRow}</View>
-        </Animated.View>
-        {/* Invisible, always-mounted twin of the row above, used only to
-         * measure its natural height via onLayout. The visible copy above
-         * starts animated to height 0, so it can never self-measure — RN
-         * doesn't lay out (and thus never fires onLayout for) children of a
-         * zero-height `overflow: hidden` container. This clone is never
-         * height-constrained, so its onLayout always fires with the row's
-         * real height, independent of the open/close animation. */}
-        <View
-          className="absolute left-0 right-0 top-0 flex-row gap-2 opacity-0"
-          onLayout={event => {
-            const measured = event.nativeEvent.layout.height
-            if (measured > 0 && measured !== pickerContentHeight) setPickerContentHeight(measured)
-          }}
-          pointerEvents="none"
-        >
-          {pickerRow}
-        </View>
       </View>
     </View>
   )
