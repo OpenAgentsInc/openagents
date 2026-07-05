@@ -9,9 +9,11 @@ import type { KhalaRuntimeEvent, RuntimeControlIntentRow } from "@openagentsinc/
 import {
   candidateAccountsFromRegistry,
   chatMessageIdFromBodyRef,
+  claudeRawMessageToRuntimeEvents,
   codexRawEventToRuntimeEvents,
   enforcePendingRuntimeIntents,
   type ActiveRuntimeTurns,
+  type ClaudeRawMessage,
   type CodexRawEvent,
   type EnforceRuntimeIntentsOptions,
 } from "./runtime-intent-enforcement.js"
@@ -33,11 +35,22 @@ describe("candidateAccountsFromRegistry", () => {
     expect(candidates[0]!.registryEntry.ref).toBe("acct-1")
   })
 
-  test("excludes claude_agent accounts — no Claude thread runner is wired into this consumer", () => {
+  test("projects claude_agent registry entries into ready, one-slot FleetAccountEntity rows (#8404)", () => {
     const candidates = candidateAccountsFromRegistry([
       { home: "/tmp/acct-2", hourlyCap: null, manualResetsRemaining: null, openAgentsProviderAccountRef: null, provider: "claude_agent", ref: "acct-2", weeklyCap: null },
     ])
-    expect(candidates).toHaveLength(0)
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0]!.fleetAccount.readiness).toBe("ready")
+    expect(candidates[0]!.fleetAccount.provider).toBe("claude_agent")
+    expect(candidates[0]!.registryEntry.ref).toBe("acct-2")
+  })
+
+  test("projects both providers together from a mixed registry", () => {
+    const candidates = candidateAccountsFromRegistry([
+      { home: "/tmp/acct-1", hourlyCap: null, manualResetsRemaining: null, openAgentsProviderAccountRef: null, provider: "codex", ref: "acct-1", weeklyCap: null },
+      { home: "/tmp/acct-2", hourlyCap: null, manualResetsRemaining: null, openAgentsProviderAccountRef: null, provider: "claude_agent", ref: "acct-2", weeklyCap: null },
+    ])
+    expect(candidates.map((c) => c.fleetAccount.provider)).toEqual(["codex", "claude_agent"])
   })
 })
 
@@ -129,6 +142,123 @@ describe("codexRawEventToRuntimeEvents", () => {
   })
 })
 
+describe("claudeRawMessageToRuntimeEvents", () => {
+  const ctx = () => ({
+    allocateSequence: (() => {
+      let n = 0
+      return () => {
+        n += 1
+        return n
+      }
+    })(),
+    nowIso: () => "2026-07-05T12:00:00.000Z",
+    pendingToolCalls: new Map<string, string>(),
+    source: { adapterKind: "claude_code" as const, lane: "claude_pylon" as const, surface: "server" as const },
+    threadId: "thread-1",
+    turnId: "turn-1",
+    turnStarted: { value: false },
+  })
+
+  test("system/init emits turn.started exactly once even if Claude repeats it", () => {
+    const c = ctx()
+    const first = claudeRawMessageToRuntimeEvents({ session_id: "sess-1", subtype: "init", type: "system" }, c)
+    const second = claudeRawMessageToRuntimeEvents({ session_id: "sess-1", subtype: "init", type: "system" }, c)
+    expect(first).toHaveLength(1)
+    expect(first[0]!.kind).toBe("turn.started")
+    expect(second).toHaveLength(0)
+  })
+
+  test("an assistant text content block emits a text delta + completed pair with the same messageId", () => {
+    const events = claudeRawMessageToRuntimeEvents(
+      { message: { content: [{ text: "hello from claude", type: "text" }] }, type: "assistant" },
+      ctx(),
+    )
+    expect(events.map((e) => e.kind)).toEqual(["text.delta", "text.completed"])
+    const delta = events[0]! as Extract<KhalaRuntimeEvent, { kind: "text.delta" }>
+    const completed = events[1]! as Extract<KhalaRuntimeEvent, { kind: "text.completed" }>
+    expect(delta.text).toBe("hello from claude")
+    expect(delta.messageId).toBe(completed.messageId)
+  })
+
+  test("an assistant thinking content block emits a reasoning delta + completed pair", () => {
+    const events = claudeRawMessageToRuntimeEvents(
+      { message: { content: [{ thinking: "let me think", type: "thinking" }] }, type: "assistant" },
+      ctx(),
+    )
+    expect(events.map((e) => e.kind)).toEqual(["reasoning.delta", "reasoning.completed"])
+    expect((events[0]! as Extract<KhalaRuntimeEvent, { kind: "reasoning.delta" }>).text).toBe("let me think")
+  })
+
+  test("a tool_use block emits tool.call and records the pending call for later correlation", () => {
+    const c = ctx()
+    const events = claudeRawMessageToRuntimeEvents(
+      { message: { content: [{ id: "toolu_1", input: {}, name: "Bash", type: "tool_use" }] }, type: "assistant" },
+      c,
+    )
+    expect(events.map((e) => e.kind)).toEqual(["tool.call"])
+    expect((events[0]! as Extract<KhalaRuntimeEvent, { kind: "tool.call" }>).toolName).toBe("Bash")
+    expect(c.pendingToolCalls.get("toolu_1")).toBe("Bash")
+  })
+
+  test("a matching tool_result in a later user message emits tool.result with the correlated toolName", () => {
+    const c = ctx()
+    claudeRawMessageToRuntimeEvents(
+      { message: { content: [{ id: "toolu_2", input: {}, name: "Read", type: "tool_use" }] }, type: "assistant" },
+      c,
+    )
+    const events = claudeRawMessageToRuntimeEvents(
+      { message: { content: [{ tool_use_id: "toolu_2", type: "tool_result" }] }, type: "user" },
+      c,
+    )
+    expect(events.map((e) => e.kind)).toEqual(["tool.result"])
+    expect((events[0]! as Extract<KhalaRuntimeEvent, { kind: "tool.result" }>).toolName).toBe("Read")
+  })
+
+  test("a failed tool_result (is_error) emits tool.error", () => {
+    const c = ctx()
+    claudeRawMessageToRuntimeEvents(
+      { message: { content: [{ id: "toolu_3", input: {}, name: "Bash", type: "tool_use" }] }, type: "assistant" },
+      c,
+    )
+    const events = claudeRawMessageToRuntimeEvents(
+      { message: { content: [{ is_error: true, tool_use_id: "toolu_3", type: "tool_result" }] }, type: "user" },
+      c,
+    )
+    expect(events.map((e) => e.kind)).toEqual(["tool.error"])
+  })
+
+  test("a success result emits usage.recorded + turn.finished(stop) with a required usageRef", () => {
+    const events = claudeRawMessageToRuntimeEvents(
+      {
+        is_error: false,
+        subtype: "success",
+        type: "result",
+        usage: { cache_read_input_tokens: 3, input_tokens: 100, output_tokens: 20 },
+      },
+      ctx(),
+    )
+    expect(events.map((e) => e.kind)).toEqual(["usage.recorded", "turn.finished"])
+    const usageEvent = events[0]! as Extract<KhalaRuntimeEvent, { kind: "usage.recorded" }>
+    expect(usageEvent.usage.usageRef.length).toBeGreaterThan(0)
+    expect(usageEvent.usage.totalTokens).toBe(120)
+    expect((events[1]! as Extract<KhalaRuntimeEvent, { kind: "turn.finished" }>).finishReason).toBe("stop")
+  })
+
+  test("error_max_turns maps to finishReason length", () => {
+    const events = claudeRawMessageToRuntimeEvents({ subtype: "error_max_turns", type: "result" }, ctx())
+    expect((events[1]! as Extract<KhalaRuntimeEvent, { kind: "turn.finished" }>).finishReason).toBe("length")
+  })
+
+  test("error_during_execution maps to finishReason error", () => {
+    const events = claudeRawMessageToRuntimeEvents({ subtype: "error_during_execution", type: "result" }, ctx())
+    expect((events[1]! as Extract<KhalaRuntimeEvent, { kind: "turn.finished" }>).finishReason).toBe("error")
+  })
+
+  test("unrecognized message types are ignored", () => {
+    expect(claudeRawMessageToRuntimeEvents({ type: "tool_use_summary" }, ctx())).toEqual([])
+  })
+})
+
 const iso = "2026-07-05T12:00:00.000Z"
 
 const controlIntentRow = (input: {
@@ -139,6 +269,7 @@ const controlIntentRow = (input: {
   kind: "turn.start" | "turn.interrupt" | "message.append" | "turn.continue" | "turn.retry" | "turn.close"
   bodyRef?: string
   ownerUserId?: string
+  targetLane?: "codex_app_server" | "claude_pylon" | "ai_sdk_core"
 }): RuntimeControlIntentRow =>
   decodeRuntimeControlIntentRow({
     createdAt: iso,
@@ -151,7 +282,7 @@ const controlIntentRow = (input: {
       origin: { lane: "khala_sync_mobile_control", surface: "mobile" },
       redactionClass: "private_ref",
       schema: "openagents.khala_runtime_control_intent.v1",
-      target: { adapterKind: "codex", lane: "codex_app_server" },
+      target: { lane: input.targetLane ?? "codex_app_server" },
       threadId: input.threadId,
       visibility: "private",
       ...(input.turnId === undefined ? {} : { turnId: input.turnId }),
@@ -183,6 +314,16 @@ const baseAccount = {
   openAgentsProviderAccountRef: null,
   provider: "codex" as const,
   ref: "acct-1",
+  weeklyCap: null,
+}
+
+const claudeBaseAccount = {
+  home: "/tmp/pylon-account-claude-1",
+  hourlyCap: null,
+  manualResetsRemaining: null,
+  openAgentsProviderAccountRef: null,
+  provider: "claude_agent" as const,
+  ref: "acct-claude-1",
   weeklyCap: null,
 }
 
@@ -233,6 +374,15 @@ const fakeCodexRunner = (events: ReadonlyArray<CodexRawEvent>): EnforceRuntimeIn
   async () => ({
     events: (async function* () {
       for (const event of events) yield event
+    })(),
+  })
+
+const fakeClaudeRunner = (
+  messages: ReadonlyArray<ClaudeRawMessage>,
+): EnforceRuntimeIntentsOptions["claudeThreadRunner"] =>
+  async () => ({
+    messages: (async function* () {
+      for (const message of messages) yield message
     })(),
   })
 
@@ -389,6 +539,157 @@ describe("enforcePendingRuntimeIntents", () => {
     }
   })
 
+  test("a real turn.start dispatch against target.lane claude_pylon streams translated Claude events end-to-end and finishes (#8404)", async () => {
+    const store = memoryStore()
+    const message: ChatMessageBody = {
+      authorUserId: "user-1",
+      body: "please say hello",
+      createdAt: iso,
+      deletedAt: null,
+      messageId: "msg-1",
+      threadId: "thread-1",
+      updatedAt: iso,
+    }
+    let finishSeen: (() => void) | undefined
+    const finished = new Promise<void>((resolve) => {
+      finishSeen = resolve
+    })
+    const pushedEvents: Array<KhalaRuntimeEvent> = []
+    const { options, cleanup } = await baseOptions({
+      claudeThreadRunner: fakeClaudeRunner([
+        { session_id: "claude-sess-1", subtype: "init", type: "system" },
+        { message: { content: [{ text: "hello!", type: "text" }] }, type: "assistant" },
+        {
+          message: { content: [{ id: "toolu_1", input: {}, name: "Bash", type: "tool_use" }] },
+          type: "assistant",
+        },
+        { message: { content: [{ tool_use_id: "toolu_1", type: "tool_result" }] }, type: "user" },
+        {
+          is_error: false,
+          subtype: "success",
+          type: "result",
+          usage: { input_tokens: 10, output_tokens: 2 },
+        },
+      ]),
+      fetchChatMessageImpl: async () => ({ message, ok: true }),
+      listCandidateAccounts: async () => candidateAccountsFromRegistry([claudeBaseAccount]),
+      pushEventImpl: async (input) => {
+        pushedEvents.push(input.event)
+        if (input.event.kind === "turn.finished") finishSeen?.()
+      },
+      readImpl: pageReader([
+        controlIntentRow({
+          bodyRef: "chat_message.msg-1",
+          intentId: "intent-4b",
+          kind: "turn.start",
+          seq: 1,
+          targetLane: "claude_pylon",
+          threadId: "thread-1",
+          turnId: "turn-4b",
+        }),
+      ]),
+    })
+    try {
+      const result = await enforcePendingRuntimeIntents(store, options)
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.outcomes[0]!.outcome).toBe("applied")
+      }
+      await finished
+      expect(pushedEvents.map((e) => e.kind)).toEqual([
+        "turn.started",
+        "text.delta",
+        "text.completed",
+        "tool.call",
+        "tool.result",
+        "usage.recorded",
+        "turn.finished",
+      ])
+      expect(pushedEvents.every((e) => e.source.lane === "claude_pylon")).toBe(true)
+      expect(pushedEvents.every((e) => e.source.adapterKind === "claude_code")).toBe(true)
+      expect((pushedEvents[pushedEvents.length - 1]! as Extract<KhalaRuntimeEvent, { kind: "turn.finished" }>).finishReason).toBe("stop")
+      expect(store.getRuntimeClaudeSessionId("thread-1")).toBe("claude-sess-1")
+    } finally {
+      await cleanup()
+    }
+  })
+
+  test("turn.start targeting an unsupported target.lane is recorded failed, not silently routed to Codex", async () => {
+    const store = memoryStore()
+    const message: ChatMessageBody = {
+      authorUserId: "user-1",
+      body: "irrelevant",
+      createdAt: iso,
+      deletedAt: null,
+      messageId: "msg-1",
+      threadId: "thread-1",
+      updatedAt: iso,
+    }
+    const { options, cleanup } = await baseOptions({
+      fetchChatMessageImpl: async () => ({ message, ok: true }),
+      readImpl: pageReader([
+        controlIntentRow({
+          bodyRef: "chat_message.msg-1",
+          intentId: "intent-4c",
+          kind: "turn.start",
+          seq: 1,
+          targetLane: "ai_sdk_core",
+          threadId: "thread-1",
+          turnId: "turn-4c",
+        }),
+      ]),
+    })
+    try {
+      const result = await enforcePendingRuntimeIntents(store, options)
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.outcomes[0]!.outcome).toBe("failed")
+        expect(result.outcomes[0]!.detail).toContain("ai_sdk_core")
+      }
+      expect(options.activeTurns.size).toBe(0)
+    } finally {
+      await cleanup()
+    }
+  })
+
+  test("turn.start against target.lane claude_pylon with no ready Claude account is recorded failed and names Claude", async () => {
+    const store = memoryStore()
+    const message: ChatMessageBody = {
+      authorUserId: "user-1",
+      body: "irrelevant",
+      createdAt: iso,
+      deletedAt: null,
+      messageId: "msg-1",
+      threadId: "thread-1",
+      updatedAt: iso,
+    }
+    const { options, cleanup } = await baseOptions({
+      fetchChatMessageImpl: async () => ({ message, ok: true }),
+      listCandidateAccounts: async () => candidateAccountsFromRegistryForTest(), // codex-only registry
+      readImpl: pageReader([
+        controlIntentRow({
+          bodyRef: "chat_message.msg-1",
+          intentId: "intent-4d",
+          kind: "turn.start",
+          seq: 1,
+          targetLane: "claude_pylon",
+          threadId: "thread-1",
+          turnId: "turn-4d",
+        }),
+      ]),
+    })
+    try {
+      const result = await enforcePendingRuntimeIntents(store, options)
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.outcomes[0]!.outcome).toBe("failed")
+        expect(result.outcomes[0]!.detail).toContain("no dispatch-ready local Claude account")
+      }
+    } finally {
+      await cleanup()
+    }
+  })
+
   test("turn.interrupt against an active locally-running turn aborts it and records turn.interrupted", async () => {
     const store = memoryStore()
     const pushedEvents: Array<KhalaRuntimeEvent> = []
@@ -400,6 +701,7 @@ describe("enforcePendingRuntimeIntents", () => {
       clientGroupId: "cg-fixture",
       clientId: "c-fixture",
       interrupted: false,
+      lane: "codex_app_server",
       nextEventSequence: () => {
         sequenceCounter += 1
         return sequenceCounter
@@ -678,6 +980,7 @@ describe("enforcePendingRuntimeIntents", () => {
       clientGroupId: "cg-fixture",
       clientId: "c-fixture",
       interrupted: false,
+      lane: "codex_app_server",
       nextEventSequence: () => 1,
       nextMutationId: () => 1,
       pendingAppendMessageIds: [],

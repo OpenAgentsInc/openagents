@@ -8,6 +8,7 @@ import {
   type KhalaRuntimeFinishReason,
 } from "@openagentsinc/khala-sync"
 import type {
+  KhalaRuntimeLane,
   KhalaRuntimeSource,
   KhalaRuntimeToolAuthority,
 } from "@openagentsinc/agent-runtime-schema"
@@ -16,6 +17,7 @@ import {
   CODEX_AGENT_OWNER_LOCAL_SANDBOX_MODE,
 } from "../codex-agent-executor.js"
 import { CODEX_AGENT_SDK_PACKAGE } from "../codex-agent.js"
+import { CLAUDE_AGENT_SDK_PACKAGE } from "../claude-agent.js"
 import {
   hashPylonAccountRef,
   pylonAccountEnvironment,
@@ -83,7 +85,8 @@ import type {
  * KNOWN GAPS (documented honestly, not silently papered over):
  * - Account selection now uses the real capacity/load-aware
  *   `selectDispatchAccount` (#8389, `@openagentsinc/khala-sync`), scoped to
- *   `provider: "codex"` and round-robin-tie-broken per thread — see
+ *   `provider: "codex"` or `provider: "claude_agent"` depending on the
+ *   intent's `target.lane` and round-robin-tie-broken per thread — see
  *   `handleTurnStart`. The remaining honest limitation is one layer below
  *   the algorithm: `candidateAccountsFromRegistry` still projects a
  *   placeholder `capacityAvailable: 1` for every ready registry account (a
@@ -91,16 +94,30 @@ import type {
  *   real ranking mostly reduces to readiness + the round-robin tie-break —
  *   the selection algorithm itself is no longer naive, only its inputs are.
  * - `message.append` for an in-flight turn is still honestly NOT literal
- *   mid-turn steering: the Codex SDK's `runStreamed(prompt)` call has no API
- *   to inject into an already-running turn's stream (verified against
- *   `@openai/codex-sdk`'s type surface — `Thread` only exposes
- *   `run`/`runStreamed`, no `send`/`interject`). Instead of a flat
- *   rejection, an append targeting a turn actively dispatching on THIS
- *   Pylon is durably queued and becomes a real follow-up `runtime.startTurn`
- *   once that turn settles (`dispatchQueuedFollowUps`), resuming the same
- *   Codex thread where possible (`Codex#resumeThread`) so context is not
- *   lost. See `handleMessageAppend`'s doc for the exact outcome in every
- *   case (attached / not-currently-running / no turn to attach to).
+ *   mid-turn steering, for EITHER provider today. For Codex: the SDK's
+ *   `runStreamed(prompt)` call has no API to inject into an already-running
+ *   turn's stream (verified against `@openai/codex-sdk`'s type surface —
+ *   `Thread` only exposes `run`/`runStreamed`, no `send`/`interject`). For
+ *   Claude (#8404): the Claude Agent SDK's `query()` function DOES support a
+ *   real mid-turn injection path when invoked in "streaming input mode"
+ *   (`prompt: AsyncIterable<SDKUserMessage>` instead of a plain string) —
+ *   its returned `Query` exposes `streamInput()`/`interrupt()`/
+ *   `setPermissionMode()` for a live session (verified against
+ *   `@anthropic-ai/claude-agent-sdk`'s `sdk.d.ts` type surface). This is a
+ *   REAL capability Codex does not have. `runWithRealClaudeAgentSdk` in this
+ *   module does NOT use streaming input mode yet — it calls `query()` with a
+ *   single string prompt, matching the proven invocation shape already used
+ *   for real production Claude execution elsewhere in this codebase
+ *   (`../claude-composer.ts`, `../claude-agent-executor.ts`), to keep this
+ *   pass's risk bounded. So for BOTH providers today, an append targeting a
+ *   turn actively dispatching on THIS Pylon is durably queued and becomes a
+ *   real follow-up `runtime.startTurn` once that turn settles
+ *   (`dispatchQueuedFollowUps`), resuming the same provider session where
+ *   possible (`Codex#resumeThread` / Claude `options.resume`) so context is
+ *   not lost. Wiring genuine live Claude steering via streaming input mode
+ *   is a concrete, scoped follow-up, not implemented here. See
+ *   `handleMessageAppend`'s doc for the exact outcome in every case
+ *   (attached / not-currently-running / no turn to attach to).
  * - `turn.continue` / `turn.retry` are still recorded `skipped_stale` with
  *   an explicit "not implemented in this pass" detail — no pylon-local
  *   action is taken for them (tracked as tracked follow-up work; the
@@ -109,18 +126,20 @@ import type {
  *   server-side mutator already makes "closed" authoritative at
  *   mutation-apply time (mirrors `turn.interrupt`), so Pylon's job is only
  *   local bookkeeping — there is none beyond the `activeTurns` cleanup the
- *   dispatch loop already does, since the Codex workspace is per-THREAD
- *   (reused across turns), not per-turn.
- * - Dispatch only targets `codex`-provider accounts; `claude_agent`
- *   accounts are excluded entirely by `candidateAccountsFromRegistry` before
- *   `selectDispatchAccount` ever sees them (this module has no Claude thread
- *   runner yet).
- * - Cross-turn Codex context continuity (`resumeThreadId`) is best-effort:
- *   if the account that resumes a thread differs from the one that created
+ *   dispatch loop already does, since the Codex/Claude workspace is
+ *   per-THREAD (reused across turns), not per-turn.
+ * - Dispatch targets `codex`-provider accounts for `target.lane ===
+ *   "codex_app_server"` and `claude_agent`-provider accounts for
+ *   `target.lane === "claude_pylon"` (#8404). Any OTHER `target.lane` (e.g.
+ *   `ai_sdk_core`) is recorded `failed` with an explicit "not wired" detail
+ *   rather than silently falling back to one provider.
+ * - Cross-turn context continuity (`resumeThreadId` for Codex,
+ *   `resumeSessionId` for Claude) is best-effort for both providers: if the
+ *   account that resumes a thread/session differs from the one that created
  *   it (isolated per-account homes), the resume fails cleanly into a normal
  *   `turn.finished(error)` — never a crash — but the user does lose context
- *   for that turn. This mostly matters once an owner has 2+ ready Codex
- *   accounts feeding the same round-robin tie-break.
+ *   for that turn. This mostly matters once an owner has 2+ ready accounts
+ *   for the same provider feeding the same round-robin tie-break.
  */
 
 export type CandidateAccount = {
@@ -129,21 +148,23 @@ export type CandidateAccount = {
 }
 
 /**
- * Projects this Pylon's OWN local Codex account registry
- * (`loadPylonAccountRegistry`) into the same `FleetAccountEntity` shape
- * `selectDispatchAccount` (#8389, `@openagentsinc/khala-sync`) consumes —
- * every registered Codex account reports `readiness: "ready"` and
+ * Projects this Pylon's OWN local account registry (`loadPylonAccountRegistry`)
+ * into the same `FleetAccountEntity` shape `selectDispatchAccount` (#8389,
+ * `@openagentsinc/khala-sync`) consumes — every registered `codex` OR
+ * `claude_agent` account reports `readiness: "ready"` and
  * `capacityAvailable: 1` (a real, one-slot-per-account placeholder; a real
- * live-capacity signal is not wired yet). Claude accounts are intentionally
- * excluded: there is no Claude thread runner wired into this dispatch
- * consumer yet.
+ * live-capacity signal is not wired yet). Both providers are included here
+ * (#8404): `handleTurnStart` is what actually restricts eligibility to the
+ * provider matching the intent's `target.lane`, via
+ * `selectDispatchAccount`'s `options.provider` filter — this function stays a
+ * provider-agnostic projection so a single registry load serves both lanes.
  */
 export const candidateAccountsFromRegistry = (
   registry: ReadonlyArray<PylonAccountRegistryEntry>,
   now: Date = new Date(),
 ): ReadonlyArray<CandidateAccount> =>
   registry
-    .filter((entry) => entry.provider === "codex")
+    .filter((entry) => entry.provider === "codex" || entry.provider === "claude_agent")
     .map((entry) => ({
       fleetAccount: decodeFleetAccountEntity({
         accountRefHash: hashPylonAccountRef(entry.provider, entry.ref),
@@ -328,6 +349,186 @@ export const codexRawEventToRuntimeEvents = (
 }
 
 // ---------------------------------------------------------------------------
+// Claude Agent SDK raw message -> KhalaRuntimeEvent translation (#8404)
+// ---------------------------------------------------------------------------
+
+/**
+ * One raw message from the Claude Agent SDK's `query()` async generator
+ * (`@anthropic-ai/claude-agent-sdk`'s `SDKMessage` union — see `sdk.d.ts`).
+ * Kept as a loosely-typed record (mirroring `CodexRawEvent`) rather than
+ * importing the SDK's own types, since the SDK is a lazy optional dependency
+ * everywhere else in this codebase (`claude-agent.ts`, `claude-composer.ts`,
+ * `claude-agent-executor.ts`) and this module must not force it into the
+ * always-loaded dependency graph.
+ */
+export type ClaudeRawMessage = Record<string, unknown> & { type?: unknown }
+
+export type ClaudeRuntimeEventTranslationContext = RuntimeEventTranslationContext & {
+  /**
+   * Mutable per-turn map from a `tool_use` content block's id to its tool
+   * name. The Claude Agent SDK delivers a tool call inside an `assistant`
+   * message and its result LATER inside a separate `user` message (the CLI
+   * executes the tool out-of-band and injects a synthetic tool-result turn),
+   * so the result has to be correlated back to the call by `tool_use_id`
+   * rather than arriving paired like Codex's single `item.completed`.
+   */
+  readonly pendingToolCalls: Map<string, string>
+}
+
+const claudeContentBlocks = (message: unknown): ReadonlyArray<Record<string, unknown>> => {
+  const content = (message as { content?: unknown } | undefined)?.content
+  return Array.isArray(content)
+    ? content.filter((block): block is Record<string, unknown> => block !== null && typeof block === "object")
+    : []
+}
+
+/**
+ * Maps a Claude Agent SDK `result` message's `subtype` to a
+ * `KhalaRuntimeFinishReason`. `success` (and `is_error !== true`) is the only
+ * clean-finish case; `error_max_turns`/`error_max_budget_usd` map to
+ * `"length"` (a budget was exhausted, the closest existing semantic match —
+ * `KhalaRuntimeFinishReason` has no dedicated "budget" reason); everything
+ * else (`error_during_execution`, `error_max_structured_output_retries`, an
+ * unrecognized subtype, or `is_error: true` on an otherwise-`success`
+ * result) maps to `"error"`.
+ */
+const claudeFinishReasonFromResult = (raw: ClaudeRawMessage): KhalaRuntimeFinishReason => {
+  const subtype = typeof raw.subtype === "string" ? raw.subtype : undefined
+  if (subtype === "success" && raw.is_error !== true) return "stop"
+  if (subtype === "error_max_turns" || subtype === "error_max_budget_usd") return "length"
+  return "error"
+}
+
+/**
+ * Translates ONE raw Claude Agent SDK `SDKMessage` into zero or more
+ * `KhalaRuntimeEvent`s. Pure given its context's seams, mirroring
+ * `codexRawEventToRuntimeEvents` — real production calls thread a live
+ * sequence counter, clock, and per-turn `pendingToolCalls` map through it;
+ * tests inject deterministic fakes.
+ *
+ * Only the full, non-streaming message shapes are handled (`assistant`
+ * carries a COMPLETE `BetaMessage`, not per-token deltas) since
+ * `runWithRealClaudeAgentSdk` does not enable `includePartialMessages` —
+ * matching Codex's own per-item (not per-token) granularity today. A single
+ * `text.delta` + `text.completed` pair is emitted per text content block,
+ * exactly like Codex's `agent_message` item handling.
+ */
+export const claudeRawMessageToRuntimeEvents = (
+  raw: ClaudeRawMessage,
+  ctx: ClaudeRuntimeEventTranslationContext,
+): ReadonlyArray<KhalaRuntimeEvent> => {
+  const type = typeof raw.type === "string" ? raw.type : undefined
+  const subtype = typeof raw.subtype === "string" ? raw.subtype : undefined
+  const base = (kind: string, extra: Record<string, unknown>): KhalaRuntimeEvent =>
+    decodeKhalaRuntimeEvent({
+      causalityRefs: [],
+      eventId: randomUUID(),
+      kind,
+      observedAt: ctx.nowIso(),
+      redactionClass: "private_ref",
+      schema: "openagents.khala_runtime_event.v1",
+      sequence: ctx.allocateSequence(),
+      source: ctx.source,
+      threadId: ctx.threadId,
+      turnId: ctx.turnId,
+      visibility: "private",
+      ...extra,
+    })
+
+  if (type === "system" && subtype === "init") {
+    if (ctx.turnStarted.value) return []
+    ctx.turnStarted.value = true
+    return [base("turn.started", {})]
+  }
+
+  if (type === "assistant") {
+    const events: KhalaRuntimeEvent[] = []
+    for (const block of claudeContentBlocks(raw.message)) {
+      const blockType = typeof block.type === "string" ? block.type : undefined
+      if (blockType === "text") {
+        const text = typeof block.text === "string" ? block.text : ""
+        const messageId = randomUUID()
+        events.push(base("text.delta", { chunkId: randomUUID(), messageId, text }))
+        events.push(base("text.completed", { messageId }))
+        continue
+      }
+      if (blockType === "thinking") {
+        const text = typeof block.thinking === "string" ? block.thinking : ""
+        const messageId = randomUUID()
+        events.push(base("reasoning.delta", { chunkId: randomUUID(), messageId, text }))
+        events.push(base("reasoning.completed", { messageId }))
+        continue
+      }
+      if (blockType === "tool_use") {
+        const toolCallId = typeof block.id === "string" ? block.id : randomUUID()
+        const toolName = typeof block.name === "string" ? block.name : "tool"
+        ctx.pendingToolCalls.set(toolCallId, toolName)
+        const authority = runtimeOwnerLocalToolAuthority(toolName)
+        events.push(base("tool.call", { authority, toolCallId, toolName }))
+        continue
+      }
+      // redacted_thinking, server_tool_use, image, and other block kinds are
+      // not surfaced as their own runtime event kind yet — the turn's text,
+      // tool, and usage events still fully account for the turn.
+    }
+    return events
+  }
+
+  if (type === "user") {
+    const events: KhalaRuntimeEvent[] = []
+    for (const block of claudeContentBlocks(raw.message)) {
+      if (block.type !== "tool_result") continue
+      const toolCallId = typeof block.tool_use_id === "string" ? block.tool_use_id : randomUUID()
+      const toolName = ctx.pendingToolCalls.get(toolCallId) ?? "tool"
+      const authority = runtimeOwnerLocalToolAuthority(toolName)
+      if (block.is_error === true) {
+        events.push(
+          base("tool.error", {
+            authority,
+            errorRef: randomUUID(),
+            messageSafe: `${toolName} failed`,
+            toolCallId,
+            toolName,
+          }),
+        )
+      } else {
+        events.push(base("tool.result", { authority, resultRef: randomUUID(), toolCallId, toolName }))
+      }
+    }
+    return events
+  }
+
+  if (type === "result") {
+    const usageRaw = raw.usage as Record<string, unknown> | undefined
+    const inputTokens = typeof usageRaw?.input_tokens === "number" ? usageRaw.input_tokens : 0
+    const outputTokens = typeof usageRaw?.output_tokens === "number" ? usageRaw.output_tokens : 0
+    const cacheReadInputTokens =
+      typeof usageRaw?.cache_read_input_tokens === "number" ? usageRaw.cache_read_input_tokens : 0
+    const cacheWriteInputTokens =
+      typeof usageRaw?.cache_creation_input_tokens === "number" ? usageRaw.cache_creation_input_tokens : 0
+    return [
+      base("usage.recorded", {
+        usage: {
+          cacheReadInputTokens,
+          cacheWriteInputTokens,
+          inputTokens,
+          outputTokens,
+          // Claude's usage shape has no separate reasoning/thinking token
+          // count (thinking tokens are already folded into output_tokens),
+          // unlike Codex's `reasoning_output_tokens` — omitted rather than
+          // fabricated as zero-and-meaningful.
+          totalTokens: inputTokens + outputTokens,
+          usageRef: randomUUID(),
+        },
+      }),
+      base("turn.finished", { finishReason: claudeFinishReasonFromResult(raw) }),
+    ]
+  }
+
+  return []
+}
+
+// ---------------------------------------------------------------------------
 // Codex thread execution seam
 // ---------------------------------------------------------------------------
 
@@ -404,6 +605,83 @@ export const runWithRealCodexSdk: RuntimeCodexThreadRunner = async (input) => {
 }
 
 // ---------------------------------------------------------------------------
+// Claude Agent SDK thread execution seam (#8404)
+// ---------------------------------------------------------------------------
+
+export type RuntimeClaudeThreadRunner = (input: {
+  readonly instructions: string
+  readonly cwd: string
+  readonly env: Record<string, string | undefined>
+  readonly signal: AbortSignal
+  readonly model?: string
+  /**
+   * When set, resume this existing Claude Agent SDK session
+   * (`options.resume`) instead of starting a fresh, contextless one — the
+   * cross-turn continuity mechanism `handleTurnStart` wires from
+   * `store.getRuntimeClaudeSessionId`. Only meaningful when the account
+   * resuming is the SAME one that created the session (isolated per-account
+   * `CLAUDE_CONFIG_DIR` homes); a mismatch fails cleanly, not silently.
+   */
+  readonly resumeSessionId?: string
+}) => Promise<{ readonly messages: AsyncIterable<ClaudeRawMessage> }>
+
+/**
+ * Owner-local full-access posture for the Claude Agent SDK, the direct
+ * analogue of Codex's `CODEX_AGENT_OWNER_LOCAL_APPROVAL_POLICY` /
+ * `CODEX_AGENT_OWNER_LOCAL_SANDBOX_MODE` pair above: `permissionMode:
+ * "bypassPermissions"` is the SDK's unrestricted-control mode (its
+ * permission system stands in for Codex's OS sandbox + approval policy), and
+ * `settingSources: ["project"]` loads the checkout's own CLAUDE.md/.claude
+ * settings layers — the same combination `../claude-composer.ts`'s
+ * `permissionModeForClaudeComposerExecutionMode("local_supervised_danger")`
+ * already uses for real owner-local Claude execution in this codebase. This
+ * runner is unconditionally owner-local (there is no untrusted-caller path
+ * into `runtime.startTurn` dispatch), so it applies that posture directly
+ * rather than routing through the composer's broader opt-in gate.
+ */
+const CLAUDE_AGENT_OWNER_LOCAL_PERMISSION_MODE = "bypassPermissions" as const
+const CLAUDE_AGENT_OWNER_LOCAL_SETTING_SOURCES = ["project"] as const
+
+/**
+ * The real runner: one Claude Agent SDK `query()` session against the given
+ * working directory, owner-local full access (see
+ * `CLAUDE_AGENT_OWNER_LOCAL_PERMISSION_MODE` above), aborted via the given
+ * `AbortSignal`. Bridges the caller's plain `AbortSignal` into the SDK's own
+ * `AbortController` option (the SDK wants a controller it can inspect, not
+ * just a signal, unlike the Codex SDK's `runStreamed(prompt, {signal})`).
+ *
+ * Invokes `query()` with a single string `prompt`, NOT the SDK's streaming
+ * input mode (`prompt: AsyncIterable<SDKUserMessage>`) — see this module's
+ * doc for why that means genuine mid-turn steering is not wired in this
+ * pass even though the SDK supports it.
+ *
+ * When `input.resumeSessionId` is set, resumes that Claude session
+ * (`options.resume`) instead of starting a fresh one, so a follow-up turn in
+ * the same Khala Sync chat thread keeps the model's prior context.
+ */
+export const runWithRealClaudeAgentSdk: RuntimeClaudeThreadRunner = async (input) => {
+  const sdk = (await import(CLAUDE_AGENT_SDK_PACKAGE)) as {
+    query: (args: { prompt: string; options?: Record<string, unknown> }) => AsyncIterable<ClaudeRawMessage>
+  }
+  const abort = new AbortController()
+  if (input.signal.aborted) abort.abort()
+  else input.signal.addEventListener("abort", () => abort.abort(), { once: true })
+  const messages = sdk.query({
+    prompt: input.instructions,
+    options: {
+      abortController: abort,
+      cwd: input.cwd,
+      env: input.env,
+      permissionMode: CLAUDE_AGENT_OWNER_LOCAL_PERMISSION_MODE,
+      settingSources: [...CLAUDE_AGENT_OWNER_LOCAL_SETTING_SOURCES],
+      ...(input.model === undefined ? {} : { model: input.model }),
+      ...(input.resumeSessionId === undefined ? {} : { resume: input.resumeSessionId }),
+    },
+  })
+  return { messages }
+}
+
+// ---------------------------------------------------------------------------
 // Enforcement loop
 // ---------------------------------------------------------------------------
 
@@ -418,6 +696,15 @@ type ActiveRuntimeTurn = {
    * `message.append` intent's `turnId` back to a thread, and to seed any
    * queued follow-up turn in the same thread). */
   readonly threadId: string
+  /**
+   * Which provider lane this turn is dispatching under (#8404). Threaded
+   * through so `turn.interrupt`'s `turn.interrupted` event reports the right
+   * `source.lane`/`adapterKind`, `message.append`'s queued-steering detail
+   * names the right SDK, and a queued follow-up turn (`dispatchQueuedFollowUps`)
+   * stays on the SAME provider as the turn it followed rather than defaulting
+   * to Codex.
+   */
+  readonly lane: KhalaRuntimeLane
   /** `chat_message.<id>` message ids appended via `message.append` while
    * this turn was actively dispatching. Drained into real follow-up
    * `runtime.startTurn` dispatches once this turn settles — see
@@ -491,6 +778,8 @@ export interface EnforceRuntimeIntentsOptions {
   readonly pushControlIntentImpl?: typeof pushKhalaSyncMutation
   /** Test/override seam for the Codex thread runner. */
   readonly codexThreadRunner?: RuntimeCodexThreadRunner
+  /** Test/override seam for the Claude Agent SDK thread runner (#8404). */
+  readonly claudeThreadRunner?: RuntimeClaudeThreadRunner
   readonly log?: (line: string) => void
 }
 
@@ -578,12 +867,18 @@ const pushFinishedEvent = async (input: {
 
 /**
  * Runs one `turn.start` dispatch to completion. NEVER thrown out to the
- * caller — every failure path (unreachable message, no account, Codex SDK
- * error) is reported as a `turn.finished` event with `finishReason:
+ * caller — every failure path (unreachable message, no account, Codex/Claude
+ * SDK error) is reported as a `turn.finished` event with `finishReason:
  * "error"` (or absorbed silently on a genuine `turn.interrupt` abort, since
  * the interrupt handler already recorded the terminal event for that
  * case). Callers launch this WITHOUT awaiting it (fire-and-forget) so the
  * enforcement tick stays fast.
+ *
+ * Branches on `input.lane` (#8404) for which provider actually runs the
+ * turn and which raw-event translator normalizes its stream, but shares one
+ * push/error/finish-defensive shell across both — a bad/missing terminal
+ * event, an interrupt-during-dispatch, or a thrown SDK error are handled
+ * identically regardless of provider.
  */
 const dispatchTurnStart = async (input: {
   readonly options: EnforceRuntimeIntentsOptions
@@ -594,11 +889,12 @@ const dispatchTurnStart = async (input: {
   readonly account: ResolvedPylonAccountSelection
   readonly turn: ActiveRuntimeTurn
   readonly source: KhalaRuntimeSource
-  readonly resumeThreadId?: string
+  readonly lane: KhalaRuntimeLane
+  /** Codex resume-thread id OR Claude resume-session id, depending on `lane`. */
+  readonly resumeRef?: string
 }): Promise<void> => {
-  const { options, store, intent, turnId, prompt, account, turn, source, resumeThreadId } = input
+  const { options, store, intent, turnId, prompt, account, turn, source, lane, resumeRef } = input
   const pushEvent = options.pushEventImpl ?? defaultPushEvent(options.baseUrl, options.agentToken)
-  const runCodexThread = options.codexThreadRunner ?? runWithRealCodexSdk
   const turnStarted = { value: false }
 
   const pushOne = async (event: KhalaRuntimeEvent): Promise<void> => {
@@ -610,10 +906,10 @@ const dispatchTurnStart = async (input: {
     })
   }
 
-  /** Best-effort: capture the SDK's own thread id (from its `thread.started`
-   * event) so a LATER turn in this same Khala thread can resume it. Never
-   * throws — a failure to persist this is a lost continuity opportunity,
-   * not a dispatch failure. */
+  /** Best-effort: capture the Codex SDK's own thread id (from its
+   * `thread.started` event) so a LATER turn in this same Khala thread can
+   * resume it. Never throws — a failure to persist this is a lost
+   * continuity opportunity, not a dispatch failure. */
   const captureCodexThreadId = (raw: CodexRawEvent): void => {
     if (raw.type !== "thread.started") return
     const codexThreadId = raw.thread_id
@@ -629,31 +925,77 @@ const dispatchTurnStart = async (input: {
     }
   }
 
+  /** Best-effort analogue of `captureCodexThreadId` for Claude: every SDK
+   * message carries `session_id`, so this captures it from the first one
+   * seen (mirroring `../claude-composer.ts`'s own capture loop). */
+  const captureClaudeSessionId = (raw: ClaudeRawMessage): void => {
+    const claudeSessionId = raw.session_id
+    if (typeof claudeSessionId !== "string" || claudeSessionId.length === 0) return
+    try {
+      store.setRuntimeClaudeSessionId(intent.threadId, claudeSessionId)
+    } catch (error) {
+      options.log?.(
+        `runtime-intent turn=${turnId} thread=${intent.threadId} failed to persist claude session id: ${boundedDetail(
+          error instanceof Error ? error.message : "unknown",
+        )}`,
+      )
+    }
+  }
+
   let finishedPushed = false
   try {
     const cwd = await options.ensureWorkspace(intent.threadId)
     const env = pylonAccountEnvironment(process.env as Record<string, string | undefined>, account)
-    const { events } = await runCodexThread({
-      cwd,
-      env,
-      instructions: prompt,
-      networkAccessEnabled: true,
-      signal: turn.abortController.signal,
-      ...(resumeThreadId === undefined ? {} : { resumeThreadId }),
-    })
-    for await (const raw of events) {
-      captureCodexThreadId(raw)
-      const translated = codexRawEventToRuntimeEvents(raw, {
-        allocateSequence: turn.nextEventSequence,
-        nowIso: () => new Date().toISOString(),
-        source,
-        threadId: intent.threadId,
-        turnId,
-        turnStarted,
+    if (lane === "claude_pylon") {
+      const runClaudeThread = options.claudeThreadRunner ?? runWithRealClaudeAgentSdk
+      const { messages } = await runClaudeThread({
+        cwd,
+        env,
+        instructions: prompt,
+        signal: turn.abortController.signal,
+        ...(resumeRef === undefined ? {} : { resumeSessionId: resumeRef }),
       })
-      for (const event of translated) {
-        if (event.kind === "turn.finished") finishedPushed = true
-        await pushOne(event)
+      const pendingToolCalls = new Map<string, string>()
+      for await (const raw of messages) {
+        captureClaudeSessionId(raw)
+        const translated = claudeRawMessageToRuntimeEvents(raw, {
+          allocateSequence: turn.nextEventSequence,
+          nowIso: () => new Date().toISOString(),
+          pendingToolCalls,
+          source,
+          threadId: intent.threadId,
+          turnId,
+          turnStarted,
+        })
+        for (const event of translated) {
+          if (event.kind === "turn.finished") finishedPushed = true
+          await pushOne(event)
+        }
+      }
+    } else {
+      const runCodexThread = options.codexThreadRunner ?? runWithRealCodexSdk
+      const { events } = await runCodexThread({
+        cwd,
+        env,
+        instructions: prompt,
+        networkAccessEnabled: true,
+        signal: turn.abortController.signal,
+        ...(resumeRef === undefined ? {} : { resumeThreadId: resumeRef }),
+      })
+      for await (const raw of events) {
+        captureCodexThreadId(raw)
+        const translated = codexRawEventToRuntimeEvents(raw, {
+          allocateSequence: turn.nextEventSequence,
+          nowIso: () => new Date().toISOString(),
+          source,
+          threadId: intent.threadId,
+          turnId,
+          turnStarted,
+        })
+        for (const event of translated) {
+          if (event.kind === "turn.finished") finishedPushed = true
+          await pushOne(event)
+        }
       }
     }
   } catch (error) {
@@ -679,16 +1021,43 @@ const dispatchTurnStart = async (input: {
   }
 }
 
+/**
+ * Which local provider account backs a `runtime.startTurn` intent's
+ * `target.lane` (#8404). Any lane other than the two wired here is an
+ * explicit `failed` outcome in `handleTurnStart`, never a silent fallback to
+ * Codex.
+ */
+const SUPPORTED_DISPATCH_LANES: ReadonlyArray<KhalaRuntimeLane> = ["codex_app_server", "claude_pylon"]
+
+const providerForLane = (lane: KhalaRuntimeLane): "codex" | "claude_agent" =>
+  lane === "claude_pylon" ? "claude_agent" : "codex"
+
+const sourceForLane = (lane: KhalaRuntimeLane): KhalaRuntimeSource =>
+  lane === "claude_pylon"
+    ? { adapterKind: "claude_code", lane: "claude_pylon", surface: "server" }
+    : { adapterKind: "codex", lane: "codex_app_server", surface: "server" }
+
 const handleTurnStart = async (
   options: EnforceRuntimeIntentsOptions,
   row: RuntimeControlIntentRow,
   store: PylonOrchestrationStore,
 ): Promise<{ outcome: RuntimeIntentOutcomeStatus; detail: string }> => {
-  const source: KhalaRuntimeSource = { adapterKind: "codex", lane: "codex_app_server", surface: "server" }
   const turnId = row.intent.turnId
   if (turnId === undefined) {
     return { detail: "turn.start intent carried no turnId", outcome: "failed" }
   }
+
+  const targetLane = row.intent.target.lane
+  if (!SUPPORTED_DISPATCH_LANES.includes(targetLane)) {
+    return {
+      detail:
+        `runtime.startTurn dispatch does not support target.lane "${targetLane}" — only ` +
+        `${SUPPORTED_DISPATCH_LANES.join(" and ")} are wired in this consumer`,
+      outcome: "failed",
+    }
+  }
+  const lane = targetLane
+  const source = sourceForLane(lane)
 
   const messageId = chatMessageIdFromBodyRef(
     row.intent.kind === "turn.start" ? row.intent.bodyRef : undefined,
@@ -721,14 +1090,18 @@ const handleTurnStart = async (
     }
   }
 
+  const provider = providerForLane(lane)
   const candidates = await options.listCandidateAccounts()
   const lastUsedAccountRefHash = options.lastDispatchedAccountByThread?.get(row.threadId)
   const selected = selectDispatchAccount(candidates.map((c) => c.fleetAccount), {
-    provider: "codex",
+    provider,
     ...(lastUsedAccountRefHash === undefined ? {} : { lastUsedAccountRefHash }),
   })
   if (selected === undefined) {
-    return { detail: "no dispatch-ready local Codex account available", outcome: "failed" }
+    return {
+      detail: `no dispatch-ready local ${provider === "claude_agent" ? "Claude" : "Codex"} account available`,
+      outcome: "failed",
+    }
   }
   const candidate = candidates.find((c) => c.fleetAccount.accountRefHash === selected.accountRefHash)
   if (candidate === undefined) {
@@ -736,7 +1109,10 @@ const handleTurnStart = async (
   }
   const account = await options.resolveAccountSelection(candidate.registryEntry)
   if (account === null) {
-    return { detail: `local Codex account home for ${candidate.registryEntry.ref} could not be resolved`, outcome: "failed" }
+    return {
+      detail: `local ${provider === "claude_agent" ? "Claude" : "Codex"} account home for ${candidate.registryEntry.ref} could not be resolved`,
+      outcome: "failed",
+    }
   }
   options.lastDispatchedAccountByThread?.set(row.threadId, selected.accountRefHash)
 
@@ -746,19 +1122,24 @@ const handleTurnStart = async (
     clientGroupId: clientIdentity.clientGroupId,
     clientId: clientIdentity.clientId,
     interrupted: false,
+    lane,
     nextEventSequence: makeCounter(0),
     nextMutationId: makeCounter(0),
     pendingAppendMessageIds: [],
     threadId: row.threadId,
   }
   options.activeTurns.set(turnId, turn)
-  const resumeThreadId = store.getRuntimeCodexThreadId(row.threadId)
+  const resumeRef =
+    lane === "claude_pylon"
+      ? store.getRuntimeClaudeSessionId(row.threadId)
+      : store.getRuntimeCodexThreadId(row.threadId)
   void dispatchTurnStart({
     account,
     intent: row,
+    lane,
     options,
     prompt: message.body,
-    ...(resumeThreadId === null ? {} : { resumeThreadId }),
+    ...(resumeRef === null ? {} : { resumeRef }),
     source,
     store,
     turn,
@@ -767,6 +1148,7 @@ const handleTurnStart = async (
     if (options.activeTurns.get(turnId) === turn) options.activeTurns.delete(turnId)
     if (turn.pendingAppendMessageIds.length > 0) {
       void dispatchQueuedFollowUps({
+        lane,
         messageIds: turn.pendingAppendMessageIds,
         options,
         threadId: row.threadId,
@@ -788,18 +1170,23 @@ const handleTurnStart = async (
  * (`RUNTIME_START_TURN_MUTATOR_NAME`) the mobile/desktop composer calls, so
  * the follow-up turn shows up in the thread like any other, and this
  * Pylon's OWN next enforcement tick dispatches it exactly like any other
- * `turn.start` (picking up `resumeThreadId` continuity automatically via
- * `store.getRuntimeCodexThreadId`). Never thrown to the caller: failures
- * here just mean the follow-up turn does not get created and are logged,
- * mirroring `dispatchTurnStart`'s own fire-and-forget error handling — the
- * ORIGINAL turn's outcome is never affected by a queued follow-up's fate.
+ * `turn.start` (picking up `resumeThreadId`/`resumeSessionId` continuity
+ * automatically via `store.getRuntimeCodexThreadId`/
+ * `store.getRuntimeClaudeSessionId`). The follow-up's `target.lane` is the
+ * SAME lane the original turn dispatched under (#8404) — a Claude-lane
+ * turn's queued append becomes a Claude-lane follow-up, not a silent
+ * fallback to Codex. Never thrown to the caller: failures here just mean the
+ * follow-up turn does not get created and are logged, mirroring
+ * `dispatchTurnStart`'s own fire-and-forget error handling — the ORIGINAL
+ * turn's outcome is never affected by a queued follow-up's fate.
  */
 const dispatchQueuedFollowUps = async (input: {
   readonly options: EnforceRuntimeIntentsOptions
   readonly threadId: string
+  readonly lane: KhalaRuntimeLane
   readonly messageIds: ReadonlyArray<string>
 }): Promise<void> => {
-  const { options, threadId, messageIds } = input
+  const { options, threadId, lane, messageIds } = input
   const pushMutation = options.pushControlIntentImpl ?? pushKhalaSyncMutation
   for (const messageId of messageIds) {
     const followUpTurnId = randomUUID()
@@ -811,10 +1198,10 @@ const dispatchQueuedFollowUps = async (input: {
       idempotencyKey: `idem.pylon_followup.${followUpTurnId}`,
       intentId: `intent.pylon_followup.${followUpTurnId}`,
       kind: "turn.start" as const,
-      origin: { lane: "codex_app_server" as const, surface: "server" as const },
+      origin: { lane, surface: "server" as const },
       redactionClass: "private_ref" as const,
       schema: "openagents.khala_runtime_control_intent.v1" as const,
-      target: { lane: "codex_app_server" as const },
+      target: { lane },
       threadId,
       turnId: followUpTurnId,
       visibility: "private" as const,
@@ -884,7 +1271,7 @@ const pushFinishedInterruptedEvent = async (input: {
     redactionClass: "private_ref",
     schema: "openagents.khala_runtime_event.v1",
     sequence: input.turn.nextEventSequence(),
-    source: { adapterKind: "codex", lane: "codex_app_server", surface: "server" },
+    source: sourceForLane(input.turn.lane),
     threadId: input.row.threadId,
     turnId,
     visibility: "private",
@@ -901,7 +1288,9 @@ const NOT_IMPLEMENTED_KINDS = new Set(["turn.continue", "turn.retry"])
 
 /**
  * Handle a `message.append` control intent. NOT literal mid-turn steering
- * (see the module doc for why that is not possible with the Codex SDK) —
+ * for either provider today (see the module doc for why — Codex's SDK has no
+ * mid-turn injection API at all, and this pass does not wire the Claude
+ * Agent SDK's streaming-input mode even though the SDK itself supports it) —
  * three honest outcomes depending on what this Pylon can observe locally:
  *
  * 1. The intent's `turnId` matches a turn actively dispatching on THIS
@@ -959,11 +1348,12 @@ const handleMessageAppend = async (
 
   if (activeTurn !== undefined) {
     activeTurn.pendingAppendMessageIds.push(messageId)
+    const sdkLabel = activeTurn.lane === "claude_pylon" ? "Claude Agent SDK's single-prompt query call" : "Codex SDK's single-prompt runStreamed call"
     return {
       detail:
-        `mid-turn steering is not supported by the local Codex SDK's single-prompt runStreamed call; ` +
+        `mid-turn steering is not wired against the local ${sdkLabel}; ` +
         `chat_message.${messageId} was queued instead of applied — it will be dispatched as a real ` +
-        `follow-up runtime.startTurn (resuming the same Codex conversation where possible) once turn ${turnId} settles`,
+        `follow-up runtime.startTurn (resuming the same conversation where possible) once turn ${turnId} settles`,
       outcome: "applied",
     }
   }

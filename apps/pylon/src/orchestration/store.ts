@@ -1524,6 +1524,29 @@ export class PylonOrchestrationStore {
     return `runtime_codex_thread_id.${threadId}`
   }
 
+  /**
+   * The Claude Agent SDK analogue of `getRuntimeCodexThreadId`/
+   * `setRuntimeCodexThreadId` (#8404): the SDK's own `session_id` (present on
+   * every `SDKMessage`, captured from the first message of a `claude_pylon`
+   * dispatch) so a LATER turn in the same Khala Sync thread can pass it back
+   * as `options.resume` and keep the model's prior context. Same best-effort
+   * contract as the Codex thread id: if the account resuming differs from the
+   * one that created the session (isolated per-account `CLAUDE_CONFIG_DIR`
+   * homes), the resume attempt fails cleanly into a normal `turn.finished`
+   * error, never a crash.
+   */
+  getRuntimeClaudeSessionId(threadId: string): string | null {
+    return this.getMeta(this.runtimeClaudeSessionIdKey(threadId))
+  }
+
+  setRuntimeClaudeSessionId(threadId: string, claudeSessionId: string): void {
+    this.setMeta(this.runtimeClaudeSessionIdKey(threadId), claudeSessionId)
+  }
+
+  private runtimeClaudeSessionIdKey(threadId: string): string {
+    return `runtime_claude_session_id.${threadId}`
+  }
+
   getRuntimeIntentOutcome(intentId: string): RuntimeIntentOutcomeRecord | null {
     const row = this.db
       .query("SELECT * FROM pylon_orchestration_runtime_intent_outcomes WHERE intent_id = $intentId")
