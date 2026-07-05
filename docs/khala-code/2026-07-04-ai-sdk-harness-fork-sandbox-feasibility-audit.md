@@ -1,17 +1,17 @@
-# AI SDK Harness Fork + Orb Feasibility Audit
+# AI SDK Harness Fork + OpenAgents Sandbox Feasibility Audit
 
 Date: 2026-07-04
 Updated: 2026-07-05
 Status: third-pass audit. No runtime code changed by this document.
 Scope: actual published AI SDK harness package code, local Pylon Codex/Claude
-runners, OpenAgents sandbox/Orb plans, opencode's Vercel AI SDK Core usage,
+runners, OpenAgents sandbox/workroom plans, opencode's Vercel AI SDK Core usage,
 and whether a maintained fork or local prototype is feasible.
 
 ## Executive Answer
 
 Yes, we can get AI SDK Harnesses working locally with modifications, and yes,
-the right long-term integration is to make an OpenAgents Orb/workroom implement
-the AI SDK sandbox-provider contract.
+the right long-term integration is to make an OpenAgents sandbox/workroom
+implement the AI SDK sandbox-provider contract.
 
 The opencode pass adds one important upgrade: Khala Code should copy
 opencode's AI SDK Core pattern before waiting on harnesses. Opencode does not
@@ -33,20 +33,20 @@ shape is narrower:
 - Upstream every generic extension point we need so the fork can shrink.
 - Add a first-class AI SDK Core provider runtime in Khala for normal
   provider/model calls; keep Codex/Claude agent runtimes behind their own
-  app-server or harness/Orb adapters.
+  app-server or harness/sandbox adapters.
 
 The decisive code-level finding is that AI SDK already separates the agent
 runtime from the sandbox provider. `@ai-sdk/harness` does not hard-code Vercel.
 It asks for a provider that can create/resume a network sandbox session with
 file I/O, `run`, `spawn`, an exposed WebSocket port, and lifecycle methods. That
 is almost exactly the public-safe boundary our OpenAgents sandbox docs call
-`openagents.sandbox.v1`, and almost exactly the product shape our Amp Orbs
-adaptation doc maps to Khala Code threads and workrooms.
+`openagents.sandbox.v1`, and matches the product shape we extracted from the
+Amp sandbox research for Khala Code threads and workrooms.
 
 The caution is Codex. The published Codex adapter runs the Codex SDK inside the
 sandbox with `sandboxMode: "danger-full-access"` and `approvalPolicy: "never"`.
 It explicitly rejects built-in tool filtering and permission modes other than
-`allow-all`. That is acceptable only if the sandbox/Orb is the actual
+`allow-all`. That is acceptable only if the sandbox/workroom is the actual
 containment authority. It is not acceptable as a policy boundary by itself.
 
 ## Published Code Reviewed
@@ -100,10 +100,10 @@ The repo contains no evidence that opencode itself runs through
 from `ai` / `@ai-sdk/*` and wraps them in opencode-owned Effect services.
 
 That distinction matters for Khala Code. AI SDK Harnesses are still the right
-shape for "run Codex or Claude Code as a whole agent inside an Orb." AI SDK
-Core is the right shape for "normalize provider/model streaming, tools, usage,
-reasoning, and provider metadata through one model-call adapter." We should do
-both, in that order.
+shape for "run Codex or Claude Code as a whole agent inside an OpenAgents
+sandbox." AI SDK Core is the right shape for "normalize provider/model
+streaming, tools, usage, reasoning, and provider metadata through one
+model-call adapter." We should do both, in that order.
 
 ### What opencode actually does
 
@@ -168,9 +168,10 @@ The current AI SDK Core code makes this feasible without a fork:
   abstraction while keeping its own transcript schema.
 - AI SDK Core also has an `experimental_sandbox` parameter for tool execution,
   but that is not the same boundary as AI SDK Harness sandbox providers. For
-  OpenAgents, Core tools should call into `openagents.sandbox.v1` / Orbs when
-  they need workspace execution; harnesses should use the Orb provider when
-  the whole agent runtime must live inside a sandbox.
+  OpenAgents, Core tools should call into `openagents.sandbox.v1` or the
+  OpenAgents sandbox/workroom API when they need workspace execution;
+  harnesses should use the OpenAgents sandbox provider when the whole agent
+  runtime must live inside a sandbox.
 
 One minor modernization: new Khala code should consume `result.stream`; keep
 `fullStream` support only for compatibility with opencode-style examples and
@@ -196,8 +197,8 @@ boundaries:
    provider-specific headers.
 4. Bridge OpenAgents tools into AI SDK `tool()` definitions. Tool bodies must
    re-enter Effect, enforce the compiled OpenAgents tool policy, ask
-   permissions through Khala/Pylon authority, and use Orb/workroom execution
-   APIs for workspace effects.
+   permissions through Khala/Pylon authority, and use OpenAgents
+   sandbox/workroom execution APIs for workspace effects.
 5. Keep raw provider chunks and raw agent events private. Use AI SDK `raw`
    chunks only for narrow metadata extraction or private archives, never as a
    public proof or user-visible transcript.
@@ -205,7 +206,8 @@ boundaries:
    - `ai_sdk_core` for normal provider/model calls.
    - `codex_app_server` for today's local Codex app-server path.
    - `claude_pylon` for today's local Claude path.
-   - `ai_sdk_harness_orb` for Codex/Claude harness experiments inside an Orb.
+   - `ai_sdk_harness_sandbox` for Codex/Claude harness experiments inside an
+     OpenAgents sandbox.
    - optional `native_direct` only if we later build a native request executor.
 7. Make all lanes emit the same OpenAgents event stream. This is the key
    opencode lesson: once the processor owns a canonical event contract, runtime
@@ -213,9 +215,10 @@ boundaries:
 
 ### Feasibility impact
 
-This makes the upgrade more viable, not less. The harness/Orb path is still
+This makes the upgrade more viable, not less. The harness/sandbox path is still
 needed for full Codex and Claude Code runtimes, but Khala can adopt AI SDK Core
-first without forking AI SDK and without waiting for an Orb provider.
+first without forking AI SDK and without waiting for an OpenAgents sandbox
+provider.
 
 The practical order should be:
 
@@ -225,10 +228,10 @@ The practical order should be:
    Codex/Pylon events.
 3. Move provider and tool transforms into shared packages once the shape is
    proven.
-4. Bind tool execution to `openagents.sandbox.v1` / Orb APIs for workspace
-   effects.
-5. Add AI SDK Harnesses for Codex/Claude only after the Orb provider can be the
-   containment boundary.
+4. Bind tool execution to `openagents.sandbox.v1` / OpenAgents sandbox APIs
+   for workspace effects.
+5. Add AI SDK Harnesses for Codex/Claude only after the OpenAgents sandbox
+   provider can be the containment boundary.
 
 ## What The AI SDK Code Actually Requires
 
@@ -253,8 +256,8 @@ The returned `HarnessV1NetworkSandboxSession` must provide:
 - `stop()`
 - optional `destroy()`, `setNetworkPolicy()`, and `setPorts()`
 
-This is good news. An OpenAgents Orb provider does not need to pretend to be a
-Vercel sandbox. It only needs to satisfy the contract above.
+This is good news. An OpenAgents sandbox provider does not need to pretend to
+be a Vercel sandbox. It only needs to satisfy the contract above.
 
 `@ai-sdk/sandbox-vercel` proves the provider layer is thin. It wraps
 `@vercel/sandbox`, forwards `runCommand`, `readFileToBuffer`, `writeFiles`,
@@ -266,8 +269,8 @@ our `.agents/setup` plus post-setup snapshot plan.
 The AI SDK bootstrap model also helps us: adapters provide a bootstrap recipe
 with files and commands; the framework hashes the recipe and writes an
 idempotent marker under the sandbox. For OpenAgents, that hash can become part
-of the Orb snapshot key alongside repo ref, `.agents/setup`, lockfiles, base
-image, and toolchain version.
+of the OpenAgents sandbox snapshot key alongside repo ref, `.agents/setup`,
+lockfiles, base image, and toolchain version.
 
 ## Codex Adapter Findings
 
@@ -300,20 +303,21 @@ The hard limits:
 - The bridge dependency lock pins `@openai/codex-sdk` to `0.130.0`, behind both
   current npm latest and our existing Pylon dependency range.
 
-This means upstream Codex can be used behind an Orb, but cannot by itself
-replace Pylon's current authority model. Our current Pylon Codex executor also
-uses owner-local full access and approval policy `never`, but it additionally
-has OpenAgents-specific account homes, raw event chunk archives, exact usage
-ingest, quota/auth health ledgers, post-hoc workspace escape blocking, SCM
-credential scans, and closeout semantics. The AI SDK adapter would need a fork
-or wrapper to preserve those behaviors.
+This means upstream Codex can be used behind an OpenAgents sandbox, but cannot
+by itself replace Pylon's current authority model. Our current Pylon Codex
+executor also uses owner-local full access and approval policy `never`, but it
+additionally has OpenAgents-specific account homes, raw event chunk archives,
+exact usage ingest, quota/auth health ledgers, post-hoc workspace escape
+blocking, SCM credential scans, and closeout semantics. The AI SDK adapter
+would need a fork or wrapper to preserve those behaviors.
 
 One local doc/code drift matters: `apps/pylon/docs/codex-bridge.md` still says
 the bounded assignment path disables network access, while
 `apps/pylon/src/codex-agent-executor.ts` now passes `networkAccessEnabled: true`
 for the live runner and documents the owner-local danger posture in code. The
 audit conclusion is therefore stronger: network policy must live below the
-adapter in the Orb/workroom profile, not in stale docs or model-facing settings.
+adapter in the OpenAgents sandbox/workroom profile, not in stale docs or
+model-facing settings.
 
 ## Claude Code Adapter Findings
 
@@ -352,8 +356,8 @@ Viable fork boundary:
 
 1. `@openagentsinc/ai-sdk-sandbox-local` or similar local provider for tests
    and owner-local desktop experiments.
-2. `@openagentsinc/ai-sdk-sandbox-orb` implementing `HarnessV1SandboxProvider`
-   over OpenAgents workrooms/Orbs.
+2. `@openagentsinc/ai-sdk-sandbox-openagents` implementing `HarnessV1SandboxProvider`
+   over OpenAgents workrooms/sandboxes.
 3. A shallow `@openagentsinc/harness-codex` fork only for:
    - Codex SDK version control.
    - account-home routing (`CODEX_HOME`, short-lived auth material, no default
@@ -387,7 +391,7 @@ Yes. There are now two different "working locally" targets:
 - AI SDK Core provider calls can work locally first, without a harness sandbox
   provider, if Khala adapts AI SDK stream parts into OpenAgents events.
 - AI SDK Harnesses can work locally next, through a deliberately unsafe local
-  sandbox-provider spike, before moving into real Orbs.
+  sandbox-provider spike, before moving into real OpenAgents sandboxes.
 
 For harnesses, the local path still has two stages.
 
@@ -410,13 +414,13 @@ This stage must be owner-local only. macOS Seatbelt writes-limited-to-workspace
 is useful, but it still is not the production security boundary for Codex full
 access, network egress, package installs, or hostile repositories.
 
-### Stage 2: real Orb provider
+### Stage 2: real OpenAgents sandbox provider
 
-Build an Orb/workroom provider over the OpenAgents sandbox plan:
+Build an OpenAgents sandbox/workroom provider over the OpenAgents sandbox plan:
 
 | AI SDK requirement | OpenAgents mapping |
 | --- | --- |
-| `createSession({ sessionId, identity, onFirstCreate })` | Create or resume a workroom/Orb, keyed by thread/session id and snapshot identity. |
+| `createSession({ sessionId, identity, onFirstCreate })` | Create or resume a workroom/sandbox, keyed by thread/session id and snapshot identity. |
 | `identity` | Hash of AI SDK bootstrap recipe plus `.agents/setup`, lockfiles, base image, and toolchain version. |
 | `onFirstCreate` | Run AI SDK bridge bootstrap and repo setup before snapshot. |
 | `run` / `spawn` | Workroom exec/session API over `oa-workroomd` or `openagents.sandbox.v1`. |
@@ -428,7 +432,7 @@ Build an Orb/workroom provider over the OpenAgents sandbox plan:
 | `destroy()` | Closeout/archive/destroy with artifact and receipt checks. |
 | `resumeSession()` | Reattach to the same workroom by session id. |
 
-This is a strong fit with the Orbs adaptation doc:
+This is a strong fit with the sandbox-inspiration doc:
 
 - thread -> workroom binding,
 - `.agents/setup` / `.agents/resume`,
@@ -443,18 +447,18 @@ It also fits the sandbox-platform audit's public contract plan:
 Cloudflare Containers for light/web, content-addressed artifacts, capability
 gateways, metadata endpoint, and metered receipts.
 
-## How It Should Tie Into OpenAgents Orbs
+## How It Should Tie Into OpenAgents Sandboxes
 
-The AI SDK sandbox provider should become one consumer of the Orb platform, not
-the Orb platform itself.
+The AI SDK sandbox provider should become one consumer of the OpenAgents sandbox platform, not
+the OpenAgents sandbox platform itself.
 
 Recommended layering:
 
-1. `openagents.sandbox.v1` / Orb API owns lifecycle, isolation, snapshots,
+1. `openagents.sandbox.v1` / sandbox API owns lifecycle, isolation, snapshots,
    ports, filesystem, receipts, and metering.
-2. `@openagentsinc/ai-sdk-sandbox-orb` adapts that API to
+2. `@openagentsinc/ai-sdk-sandbox-openagents` adapts that API to
    `HarnessV1SandboxProvider`.
-3. AI SDK Codex/Claude adapters run their bridges inside the Orb.
+3. AI SDK Codex/Claude adapters run their bridges inside the OpenAgents sandbox.
 4. Khala Code consumes normalized stream parts for UI, but OpenAgents sidecars
    still own raw private event archives, exact usage ledgers, account health,
    SCM credential scans, and closeout receipts.
@@ -521,7 +525,8 @@ Gates:
 
 Claude should be the first real adapter experiment because its AI SDK adapter
 already supports built-in approvals and filtering. Codex should wait until the
-Orb provider can enforce the sandbox profile underneath `danger-full-access`.
+OpenAgents sandbox provider can enforce the sandbox profile underneath
+`danger-full-access`.
 
 Gates:
 
@@ -529,9 +534,9 @@ Gates:
 - Claude tool approval/filtering parity with current Pylon bounded runner.
 - Exact usage parity with current `/api/pylon/claude/turns` expectations.
 
-### P3: Orb provider over the sandbox runtime
+### P3: OpenAgents sandbox provider over the sandbox runtime
 
-Build `@openagentsinc/ai-sdk-sandbox-orb` against the real or fixture-backed
+Build `@openagentsinc/ai-sdk-sandbox-openagents` against the real or fixture-backed
 `openagents.sandbox.v1` surface.
 
 Gates:
@@ -558,7 +563,7 @@ Required deltas:
 
 Gate:
 
-- run the same public git fixture with current Pylon runner and AI SDK Orb
+- run the same public git fixture with current Pylon runner and AI SDK sandbox
   runner, compare usage rows, file-change projection, closeout refs, and typed
   failure behavior.
 
@@ -585,12 +590,12 @@ are hard requirements for that lane.
 | Core event adapter | AI SDK Core stream parts are converted into OpenAgents events; Khala does not persist AI SDK stream parts as canonical transcript state. |
 | Tool authority | AI SDK Core tools re-enter OpenAgents Effect policy and permission checks before side effects. |
 | Local non-Vercel proof | Codex and Claude run through `HarnessAgent` in a local provider without Vercel. |
-| Orb proof | Same fixture runs inside an OpenAgents Orb/workroom with managed port ingress. |
+| Sandbox proof | Same fixture runs inside an OpenAgents sandbox/workroom with managed port ingress. |
 | Account isolation | `CODEX_HOME` and `CLAUDE_CONFIG_DIR` are selected account homes, never default ambient homes. |
 | Raw private archive | Pylon/Khala can retain ordered raw runtime events privately, or the old runner remains the authority for flows needing them. |
 | Exact usage | Usage rows match current Codex/Claude ingestion semantics; estimates never move public counters. |
-| Workspace boundary | Codex is contained by Orb policy plus post-hoc file-change validation; Claude retains pre-tool denial or equivalent. |
-| Network policy | Public/untrusted lanes cannot rely on adapter settings; egress is enforced by Orb/workroom profile. |
+| Workspace boundary | Codex is contained by OpenAgents sandbox policy plus post-hoc file-change validation; Claude retains pre-tool denial or equivalent. |
+| Network policy | Public/untrusted lanes cannot rely on adapter settings; egress is enforced by OpenAgents sandbox/workroom profile. |
 | SCM credential scan | Workspace and selected account homes are scanned before verification/PR publication. |
 | Resume | Detach, suspend, stop, destroy, and resume behave across host process restarts. |
 | Product honesty | No public claim that AI SDK harnesses are default until the gates above are receipt-backed. |
@@ -603,12 +608,13 @@ feasible upgrade has two lanes:
 1. Copy opencode's AI SDK Core pattern now: use `streamText` and provider
    packages as a transport layer, but convert every part into OpenAgents-owned
    events.
-2. Make OpenAgents Orbs a first-class AI SDK sandbox provider, then run
+2. Make OpenAgents sandboxes a first-class AI SDK sandbox provider, then run
    Codex/Claude harness bridges inside that provider where whole-agent runtime
    compatibility helps.
 
 Maintain a fork only at the adapter edge, and only for OpenAgents authority
 needs. Use upstream AI SDK core as long as it can stay unmodified. Get the
 Core stream adapter working first, get the local unsafe harness provider
-working second, move Claude through the Orb path next, and let Codex become
-default only after the Orb is the real containment boundary.
+working second, move Claude through the OpenAgents sandbox path next, and let
+Codex become default only after the OpenAgents sandbox is the real containment
+boundary.
