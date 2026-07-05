@@ -13,6 +13,7 @@ import {
   isKhalaCodeProductStateTable,
   normalizeKhalaCodeProductStateValue,
   scopeChangesForKhalaCodeProductStateRow,
+  scopeTombstonesForKhalaCodeProductStateRow,
   upsertKhalaCodeProductStateRows,
   withSyncTransaction,
   type KhalaCodeProductStateRow,
@@ -79,10 +80,19 @@ const statementHead = (sql: string): string =>
 // ---------------------------------------------------------------------------
 
 export type KhalaCodeProductStateMirror = Readonly<{
+  /**
+   * Converge a hard-delete on the Postgres twin and append `op:"delete"`
+   * tombstones for the removed rows. `deletedRows` are the rows READ from D1
+   * BEFORE the delete executed (their scope/key columns are gone afterward);
+   * the mirror resolves each row's scope targets and appends one tombstone per
+   * scope so subscribers converge on the removal. Omitted/empty `deletedRows`
+   * (a delete that matched nothing, or a scopeless table) append no tombstone.
+   */
   deleteRows: (
     table: KhalaCodeProductStateTable,
     whereColumns: ReadonlyArray<string>,
     whereValues: ReadonlyArray<unknown>,
+    deletedRows?: ReadonlyArray<KhalaCodeProductStateRow>,
   ) => Promise<void>
   upsertRows: (
     table: KhalaCodeProductStateTable,
@@ -120,14 +130,30 @@ export const makePostgresKhalaCodeProductStateMirror = (
   }
 
   return {
-    deleteRows: (table, whereColumns, whereValues) =>
+    deleteRows: (table, whereColumns, whereValues, deletedRows) =>
       withSql(sql =>
-        deleteKhalaCodeProductStateRows(
-          sql,
-          table,
-          whereColumns,
-          whereValues,
-        ).then(() => undefined),
+        withSyncTransaction(sql, async writer => {
+          await deleteKhalaCodeProductStateRows(
+            writer.sql,
+            table,
+            whereColumns,
+            whereValues,
+          )
+          for (const row of deletedRows ?? []) {
+            for (const tombstone of scopeTombstonesForKhalaCodeProductStateRow(
+              table,
+              row,
+            )) {
+              await writer.appendChange({
+                entityId: tombstone.entityId,
+                entityType: tombstone.entityType,
+                mutationRef: `d1-shadow:ks-8.13:${table}`,
+                op: 'delete',
+                scope: tombstone.scope,
+              })
+            }
+          }
+        }),
       ),
     upsertRows: (table, rows) =>
       withSql(sql =>
@@ -483,6 +509,12 @@ export type MakeKhalaCodeProductStateMirroringDatabaseDependencies = Readonly<{
 
 type BoundStatement = Readonly<{
   statement: D1PreparedStatement
+  /**
+   * Runs BEFORE the D1 write commits. Used by hard-delete mirroring to read
+   * the rows the delete will remove while their scope/key columns still exist,
+   * so tombstones can be resolved after the row is gone.
+   */
+  onBeforeWrite: (() => Promise<void>) | undefined
   onWriteSuccess: (() => Promise<void>) | undefined
 }>
 
@@ -517,6 +549,7 @@ export const makeKhalaCodeProductStateMirroringDatabase = (
 
     if (classified.kind === 'unclassified-write') {
       return {
+        onBeforeWrite: undefined,
         onWriteSuccess: () => {
           log('khala_sync_khala_code_state_write_unclassified', {
             messageSafe:
@@ -531,28 +564,66 @@ export const makeKhalaCodeProductStateMirroringDatabase = (
     }
 
     if (mirror === undefined) {
-      return { onWriteSuccess: undefined, statement }
+      return { onBeforeWrite: undefined, onWriteSuccess: undefined, statement }
     }
 
-    if (
-      classified.kind === 'mirrored-upsert' ||
-      classified.kind === 'mirrored-delete'
-    ) {
+    if (classified.kind === 'mirrored-delete') {
+      // Read the rows the delete will remove BEFORE it commits, so their
+      // scope/key columns are still available to resolve delete tombstones.
+      let capturedRows: ReadonlyArray<KhalaCodeProductStateRow> = []
       return {
+        onBeforeWrite: async () => {
+          const values = resolveWhereValues(classified.where, params)
+          if (values === undefined) {
+            return
+          }
+          try {
+            capturedRows = await readRowsByWhere(
+              db,
+              classified.table,
+              classified.where.columns,
+              values,
+            )
+          } catch {
+            // Best-effort tombstone capture: a failed pre-read still lets the
+            // D1 delete + Postgres converge proceed; only the scope tombstone
+            // is withheld (fail-soft, like the projection skip path).
+            capturedRows = []
+          }
+        },
         onWriteSuccess: async () => {
           const values = resolveWhereValues(classified.where, params)
           if (values === undefined) {
             return
           }
           try {
-            if (classified.kind === 'mirrored-delete') {
-              await mirror.deleteRows(
-                classified.table,
-                classified.where.columns,
-                values,
-              )
-              return
-            }
+            await mirror.deleteRows(
+              classified.table,
+              classified.where.columns,
+              values,
+              capturedRows,
+            )
+          } catch (error) {
+            log('khala_sync_khala_code_state_dual_write_failed', {
+              messageSafe: safeMessage(error),
+              op: `${classified.kind}:${classified.table}`,
+              refs: values.slice(0, 10).map(String),
+            })
+          }
+        },
+        statement,
+      }
+    }
+
+    if (classified.kind === 'mirrored-upsert') {
+      return {
+        onBeforeWrite: undefined,
+        onWriteSuccess: async () => {
+          const values = resolveWhereValues(classified.where, params)
+          if (values === undefined) {
+            return
+          }
+          try {
             const rows = await readRowsByWhere(
               db,
               classified.table,
@@ -572,7 +643,7 @@ export const makeKhalaCodeProductStateMirroringDatabase = (
       }
     }
 
-    return { onWriteSuccess: undefined, statement }
+    return { onBeforeWrite: undefined, onWriteSuccess: undefined, statement }
   }
 
   const wrapStatement = (
@@ -602,6 +673,9 @@ export const makeKhalaCodeProductStateMirroringDatabase = (
           ) => Promise<Array<Array<unknown>>>
         )(...args),
       run: async <T>(...args: ReadonlyArray<unknown>) => {
+        if (bound.onBeforeWrite !== undefined) {
+          await bound.onBeforeWrite()
+        }
         const result = await (
           bound.statement.run as (
             ...a: ReadonlyArray<unknown>
@@ -625,8 +699,19 @@ export const makeKhalaCodeProductStateMirroringDatabase = (
             __khalaCodeProductStateInner?: BoundStatement
           }
         ).__khalaCodeProductStateInner
-        return carried ?? { onWriteSuccess: undefined, statement }
+        return (
+          carried ?? {
+            onBeforeWrite: undefined,
+            onWriteSuccess: undefined,
+            statement,
+          }
+        )
       })
+      for (const inner of inners) {
+        if (inner.onBeforeWrite !== undefined) {
+          await inner.onBeforeWrite()
+        }
+      }
       const results = await db.batch<T>(inners.map(inner => inner.statement))
       for (const inner of inners) {
         if (inner.onWriteSuccess !== undefined) {

@@ -1,10 +1,12 @@
 import {
   canonicalJson,
+  decodeKhalaCodeShareProjectionRecipientEntity,
   decodeKhalaCodeTeamChatMessageEntity,
   decodeKhalaCodeTeamEntity,
   decodeKhalaCodeTeamInviteEntity,
   decodeKhalaCodeTeamMembershipEntity,
   decodeKhalaCodeThreadMessageEntity,
+  teamScope,
 } from "@openagentsinc/khala-sync"
 import { SQL } from "bun"
 import {
@@ -19,14 +21,17 @@ import {
 import {
   KHALA_CODE_POST_IMAGE_FORBIDDEN_PATTERN,
   scopeChangesForKhalaCodeProductStateRow,
+  scopeTombstonesForKhalaCodeProductStateRow,
 } from "./khala-code-product-state-projection.js"
 import {
+  deleteKhalaCodeProductStateRows,
   KHALA_CODE_PRODUCT_STATE_TABLES,
   upsertKhalaCodeProductStateRows,
   type KhalaCodeProductStateRow,
   type KhalaCodeProductStateTable,
 } from "./khala-code-product-state-tables.js"
 import { runMigrations } from "./migrate.js"
+import { bootstrap } from "./read-service.js"
 import { withSyncTransaction } from "./outbox-writer.js"
 import type { SyncSql } from "./sql.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
@@ -82,6 +87,15 @@ const ROWS: Partial<Record<KhalaCodeProductStateTable, KhalaCodeProductStateRow>
       team_id: "team_3",
       title: "Shared thread",
       updated_at: NOW,
+    },
+    share_projection_recipients: {
+      created_at: NOW,
+      // display_name carries the invitee's own name / an email-shaped label —
+      // it must NEVER reach the projected post-image.
+      display_name: "Jane Doe <jane@example.com>",
+      share_id: "share_1",
+      subject_id: "team_5",
+      subject_kind: "team",
     },
     team_chat_messages: {
       agent_run_id: "run_5",
@@ -223,6 +237,7 @@ const FORBIDDEN_SOURCE_COLUMNS: ReadonlyArray<
   ["share_projections", "audience_json"],
   ["share_projections", "projection_object_key"],
   ["share_projections", "canonical_url"],
+  ["share_projection_recipients", "display_name"],
 ]
 
 describe("Khala Code product-state projection (typed post-images)", () => {
@@ -280,6 +295,84 @@ describe("Khala Code product-state projection (typed post-images)", () => {
         ROWS["share_projections"]!,
       ).map((change) => String(change.scope)),
     ).toEqual(["scope.team.team_3"])
+  })
+
+  test("share recipient rows fan out to the SUBJECT's own scope (email subjects never fan out)", () => {
+    // team subject → the team's scope
+    const teamRecipient = scopeChangesForKhalaCodeProductStateRow(
+      "share_projection_recipients",
+      ROWS["share_projection_recipients"]!,
+    )
+    expect(teamRecipient.map((c) => String(c.scope))).toEqual([
+      "scope.team.team_5",
+    ])
+    expect(String(teamRecipient[0]?.entityType)).toBe(
+      "share_projection_recipient",
+    )
+    expect(String(teamRecipient[0]?.entityId)).toBe("share_1:team:team_5")
+    const recipient = decodeKhalaCodeShareProjectionRecipientEntity(
+      teamRecipient[0]?.postImage,
+    )
+    expect(recipient.shareId).toBe("share_1")
+    expect(recipient.subjectId).toBe("team_5")
+    // display_name (email-shaped label) is structurally absent.
+    expect(canonicalJson(teamRecipient[0]?.postImage)).not.toContain(
+      "jane@example.com",
+    )
+
+    // user subject → the user's personal scope
+    expect(
+      scopeChangesForKhalaCodeProductStateRow("share_projection_recipients", {
+        ...ROWS["share_projection_recipients"]!,
+        subject_id: "user_9",
+        subject_kind: "user",
+      }).map((c) => String(c.scope)),
+    ).toEqual(["scope.user.user_9"])
+
+    // email subject → no sync scope, Postgres-mirror-only
+    expect(
+      scopeChangesForKhalaCodeProductStateRow("share_projection_recipients", {
+        ...ROWS["share_projection_recipients"]!,
+        subject_id: "jane@example.com",
+        subject_kind: "email",
+      }),
+    ).toEqual([])
+  })
+
+  test("delete tombstones resolve scope/type/id without a post-image or the redaction mapper", () => {
+    const tombstones = scopeTombstonesForKhalaCodeProductStateRow(
+      "share_projection_recipients",
+      ROWS["share_projection_recipients"]!,
+    )
+    expect(tombstones.map((t) => String(t.scope))).toEqual(["scope.team.team_5"])
+    expect(String(tombstones[0]?.entityType)).toBe("share_projection_recipient")
+    expect(String(tombstones[0]?.entityId)).toBe("share_1:team:team_5")
+    expect(tombstones[0]).not.toHaveProperty("postImage")
+
+    // A row that could NOT post-image-map (missing a non-key column) still
+    // resolves a tombstone — the removal must replicate regardless.
+    const partial = scopeTombstonesForKhalaCodeProductStateRow(
+      "share_projection_recipients",
+      { share_id: "share_1", subject_id: "team_5", subject_kind: "team" },
+    )
+    expect(partial.map((t) => String(t.scope))).toEqual(["scope.team.team_5"])
+
+    // Scopeless (mirror-only) tables produce no tombstone, matching their
+    // absent upsert fan-out.
+    expect(
+      scopeTombstonesForKhalaCodeProductStateRow("khala_feedback", {
+        feedback_ref: "f_1",
+      }),
+    ).toEqual([])
+
+    // email subjects (no sync scope) produce no tombstone.
+    expect(
+      scopeTombstonesForKhalaCodeProductStateRow("share_projection_recipients", {
+        share_id: "share_1",
+        subject_id: "jane@example.com",
+        subject_kind: "email",
+      }),
+    ).toEqual([])
   })
 
   test("membership entityId is the natural key (membership-set equality rides it)", () => {
@@ -389,7 +482,6 @@ describe("Khala Code product-state projection (typed post-images)", () => {
       "khala_code_download_events",
       "khala_code_outside_user_run_receipts",
       "khala_code_trace_plugin_revenue_share_precedents",
-      "share_projection_recipients",
       "workroom_kind_templates",
       "workroom_template_packages",
       "workroom_template_package_versions",
@@ -560,6 +652,95 @@ describe.skipIf(!hasLocalPostgres())(
       expect(serialized).not.toContain("jane@example.com")
       expect(serialized).not.toContain("deadbeef")
       expect(serialized).not.toContain("owner@example.com")
+    })
+
+    /** The flow the Worker mirror runs after an accepted D1 HARD delete. */
+    const mirrorDelete = async (
+      table: KhalaCodeProductStateTable,
+      whereColumns: ReadonlyArray<string>,
+      whereValues: ReadonlyArray<unknown>,
+      deletedRows: ReadonlyArray<KhalaCodeProductStateRow>,
+    ) =>
+      withSyncTransaction(sql as unknown as SyncSql, async (writer) => {
+        await deleteKhalaCodeProductStateRows(
+          writer.sql,
+          table,
+          whereColumns,
+          whereValues,
+        )
+        for (const row of deletedRows) {
+          for (const tombstone of scopeTombstonesForKhalaCodeProductStateRow(
+            table,
+            row,
+          )) {
+            await writer.appendChange({
+              entityId: tombstone.entityId,
+              entityType: tombstone.entityType,
+              mutationRef: `d1-shadow:ks-8.13:${table}`,
+              op: "delete",
+              scope: tombstone.scope,
+            })
+          }
+        }
+      })
+
+    test("share-recipient hard-delete appends a dense tombstone into the subject scope and drops it from bootstrap", async () => {
+      const recipientRow: KhalaCodeProductStateRow = {
+        created_at: NOW,
+        display_name: "Team Bertha <ops@example.com>",
+        share_id: "share_del",
+        subject_id: "team_del",
+        subject_kind: "team",
+      }
+      const subjectScope = teamScope("team_del")
+
+      // (1) The recipient is granted → upsert fan-out into the subject scope.
+      await mirrorRow("share_projection_recipients", recipientRow)
+
+      const afterUpsert = await bootstrap(sql as unknown as SyncSql, {
+        scope: subjectScope,
+      })
+      expect(
+        afterUpsert.entities.map((e) => String(e.entityId)),
+      ).toContain("share_del:team:team_del")
+
+      // (2) `replaceRecipients` hard-deletes the row (D1 read-before-delete
+      // captured it) → tombstone appended, twin row removed.
+      await mirrorDelete(
+        "share_projection_recipients",
+        ["share_id"],
+        ["share_del"],
+        [recipientRow],
+      )
+
+      // Twin row is gone…
+      const twin = await sql.unsafe(
+        "SELECT 1 FROM share_projection_recipients WHERE share_id = 'share_del'",
+      )
+      expect(twin.length).toBe(0)
+
+      // …a delete-op changelog entry landed with a DENSE next version…
+      const log = await sql.unsafe(
+        `SELECT version, op, post_image_json
+           FROM khala_sync_changelog
+          WHERE scope = '${subjectScope}'
+            AND entity_id = 'share_del:team:team_del'
+          ORDER BY version ASC`,
+      )
+      expect(log.map((r: { op: string }) => r.op)).toEqual(["upsert", "delete"])
+      expect(
+        log.map((r: { version: string | number }) => Number(r.version)),
+      ).toEqual([1, 2])
+      // Tombstones carry no post-image.
+      expect(log[1].post_image_json).toBeNull()
+
+      // …and bootstrap now OMITS the tombstoned entity (latest row is delete).
+      const afterDelete = await bootstrap(sql as unknown as SyncSql, {
+        scope: subjectScope,
+      })
+      expect(
+        afterDelete.entities.map((e) => String(e.entityId)),
+      ).not.toContain("share_del:team:team_del")
     })
   },
 )

@@ -320,6 +320,67 @@ describe('makeKhalaCodeProductStateMirroringDatabase', () => {
     }
   })
 
+  test('reads hard-deleted recipient rows BEFORE the delete and hands them to the mirror for tombstones', async () => {
+    const sqlite = makeSqliteD1()
+    try {
+      sqlite.exec(productStateSchema)
+      await sqlite.db.batch([
+        sqlite.db
+          .prepare(
+            `INSERT INTO share_projection_recipients
+              (share_id, subject_kind, subject_id, display_name, created_at)
+             VALUES (?, ?, ?, ?, ?)`,
+          )
+          .bind('share_1', 'team', 'team_1', 'Team One', '2026-07-04T00:00:00.000Z'),
+        sqlite.db
+          .prepare(
+            `INSERT INTO share_projection_recipients
+              (share_id, subject_kind, subject_id, display_name, created_at)
+             VALUES (?, ?, ?, ?, ?)`,
+          )
+          .bind('share_1', 'user', 'user_9', 'Jane', '2026-07-04T00:00:00.000Z'),
+      ])
+      const deletes: Array<
+        Readonly<{
+          table: string
+          columns: ReadonlyArray<string>
+          values: ReadonlyArray<unknown>
+          deletedRows: ReadonlyArray<Record<string, unknown>> | undefined
+        }>
+      > = []
+      const mirror: KhalaCodeProductStateMirror = {
+        deleteRows: (table, columns, values, deletedRows) => {
+          deletes.push({ columns, deletedRows, table, values })
+          return Promise.resolve()
+        },
+        upsertRows: () => Promise.resolve(),
+      }
+      const { log } = makeLogCapture()
+      const db = makeKhalaCodeProductStateMirroringDatabase({
+        db: sqlite.db,
+        log,
+        mirror,
+      })
+
+      await db
+        .prepare('DELETE FROM share_projection_recipients WHERE share_id = ?')
+        .bind('share_1')
+        .run()
+
+      // The mirror received the FULL set of rows the delete removed (read
+      // before the delete committed) so it can resolve one tombstone per
+      // subject scope.
+      expect(deletes).toHaveLength(1)
+      expect(deletes[0]?.columns).toEqual(['share_id'])
+      const subjects = (deletes[0]?.deletedRows ?? [])
+        .map(row => `${String(row['subject_kind'])}:${String(row['subject_id'])}`)
+        .sort()
+      expect(subjects).toEqual(['team:team_1', 'user:user_9'])
+    } finally {
+      sqlite.close()
+    }
+  })
+
   test('mirrors the accepted team row when a slug upsert keeps the existing id', async () => {
     const sqlite = makeSqliteD1()
     try {

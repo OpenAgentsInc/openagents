@@ -1091,7 +1091,8 @@ Machinery:
   (`khala-code.ts`: `KhalaCodeTeamEntity`,
   `KhalaCodeTeamMembershipEntity`, `KhalaCodeTeamChatMessageEntity`,
   `KhalaCodeThreadMessageEntity`, `KhalaCodeThreadFileEntity`, invites,
-  projects, prefilled workspaces, share projections, file↔message refs).
+  projects, prefilled workspaces, share projections, share-projection
+  recipients, file↔message refs).
   Raw D1 rows never ride a changelog post-image: invite `token_hash` and
   invitee emails, R2 `object_key`s, `metadata_json` blobs, team `credits`,
   and share `projection_json` payloads are structurally absent from the
@@ -1105,8 +1106,34 @@ Machinery:
   backfill-only because no Worker writer is registered in source yet, such
   as workroom template rows and Khala Code download events.
 
+Delete tombstones (KS-8.13 follow-up, #8356): hard-delete paths append
+`op:"delete"` changelog entries so removals replicate to scope
+subscribers (interactive chat/thread/file surfaces soft-delete via
+`deleted_at`, which rides as a normal upsert and needs no tombstone).
+The one hard-delete family with a scope consumer is
+`share_projection_recipients` (`replaceRecipients` deletes the whole
+audience by `share_id`, then re-inserts): the Worker seam reads the rows
+the delete will remove BEFORE it commits (their scope/key columns are
+gone afterward), converges the Postgres twin, and appends one tombstone
+per resolved scope. A recipient is now a scope-native entity
+(`KhalaCodeShareProjectionRecipientEntity`,
+`entity_type = share_projection_recipient`) projected into the SUBJECT's
+own scope: `subject_kind='user'` → `scope.user.<id>`, `'team'` →
+`scope.team.<id>`; `'email'` subjects have NO sync scope (the id is PII,
+never a `scope.*.<id>`) and stay Postgres-mirror-only. `display_name` is
+structurally absent from the contract. The pre-read is best-effort: a
+failed capture still lets the D1 delete + Postgres converge proceed and
+only withholds the tombstone (fail-soft, like the projection skip). All
+OTHER remainder families (workroom templates, cloud sandbox/fine-tuning,
+feedback/head-to-head/unsupported, download/outside-run/trace-plugin
+receipts, `prefilled_workspace_*` child rows) stay Postgres-mirror-only
+with NO scope fan-out by design — a future scope-native consumer for any
+of them is a follow-up contract lane, and money-bearing receipt families
+project public-safe state only if/when they ever fan out.
+
 Diagnostics are row-key only: `khala_sync_khala_code_state_dual_write_failed`
-is the drift metric; `khala_sync_khala_code_state_write_unclassified`
+is the drift metric (it also fires if a hard-delete tombstone append
+fails; the twin delete still converged); `khala_sync_khala_code_state_write_unclassified`
 means a D1 write touched a product-state table but the classifier could
 not prove the row key. A nonzero steady rate blocks read/sync cutover.
 `khala_sync_khala_code_state_projection_skipped` means a mirrored row

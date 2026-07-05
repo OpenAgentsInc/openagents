@@ -1039,6 +1039,43 @@ paths (e.g. `share_projection_recipients`) are a named follow-up; the
 interactive surfaces soft-delete via `deleted_at`, which projects as a
 normal upsert.
 
+**KS-8.13 delete-tombstone + recipient-scope status (2026-07-04, #8356,
+third pass):** the named follow-up LANDED. Hard-delete paths now append
+`op:"delete"` changelog entries so removals replicate: the Worker seam
+(`khala-code-product-state-store.ts`) reads the rows a `mirrored-delete`
+will remove BEFORE the D1 delete commits (an `onBeforeWrite` capture on
+the wrapped statement, since the scope/key columns are gone afterward),
+converges the Postgres twin, and appends one tombstone per resolved scope
+via `scopeTombstonesForKhalaCodeProductStateRow` (scope/type/id only — no
+post-image mapper or redaction guard, so a row that fails post-image
+mapping on a non-key column still replicates its removal). The one
+hard-delete family with a scope consumer,
+`share_projection_recipients` (`replaceRecipients` deletes the audience
+by `share_id` then re-inserts), is now SCOPE-NATIVE: a new PUBLIC-SAFE
+contract `KhalaCodeShareProjectionRecipientEntity` (+
+`fixtures/KhalaCodeShareProjectionRecipientEntity.json` in the
+conformance suite) projects each recipient into the SUBJECT's own scope
+(`subject_kind='user'` → `scope.user.<id>`, `'team'` →
+`scope.team.<id>`); `'email'` subjects have no sync scope (PII, never a
+`scope.*.<id>`) and stay Postgres-mirror-only, and `display_name` is
+structurally absent. All OTHER remainder families
+(`workroom_*`, `cloud_*`, `khala_feedback` /
+`khala_head_to_head_snapshots` / `khala_unsupported_requests`,
+`khala_code_download_events` /
+`khala_code_outside_user_run_receipts` /
+`khala_code_trace_plugin_revenue_share_precedents`,
+`prefilled_workspace_seeded_memory` /
+`prefilled_workspace_starter_workflows`) stay Postgres-mirror-only with
+NO scope fan-out by design — a scope-native consumer for any of them
+remains a future contract lane, and money-bearing receipt families would
+project public-safe state only. Fail-soft holds throughout: a failed
+pre-read or tombstone append leaves the Cloud SQL twin converged and D1
+authoritative. The remaining item before read cutover is the
+unclassified-write sweep (task 3): drive
+`khala_sync_khala_code_state_write_unclassified` +
+`khala_sync_khala_code_state_projection_skipped` to steady-state zero in
+staging/prod (tracked on epic #8282).
+
 - **What:** the product-surface state that Khala Sync exists to serve:
   threads/messages/files, teams + memberships + chat + invites, prefilled
   workspaces, workroom templates, cloud sandbox/fine-tuning sessions,

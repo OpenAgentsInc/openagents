@@ -50,6 +50,8 @@ export const KHALA_CODE_THREAD_FILE_MESSAGE_REF_ENTITY_TYPE =
   "thread_file_message_ref"
 export const KHALA_CODE_PREFILLED_WORKSPACE_ENTITY_TYPE = "prefilled_workspace"
 export const KHALA_CODE_SHARE_PROJECTION_ENTITY_TYPE = "share_projection"
+export const KHALA_CODE_SHARE_PROJECTION_RECIPIENT_ENTITY_TYPE =
+  "share_projection_recipient"
 
 export const KHALA_CODE_PRODUCT_STATE_ENTITY_TYPES = [
   KHALA_CODE_TEAM_ENTITY_TYPE,
@@ -62,6 +64,7 @@ export const KHALA_CODE_PRODUCT_STATE_ENTITY_TYPES = [
   KHALA_CODE_THREAD_FILE_MESSAGE_REF_ENTITY_TYPE,
   KHALA_CODE_PREFILLED_WORKSPACE_ENTITY_TYPE,
   KHALA_CODE_SHARE_PROJECTION_ENTITY_TYPE,
+  KHALA_CODE_SHARE_PROJECTION_RECIPIENT_ENTITY_TYPE,
 ] as const
 
 // ---------------------------------------------------------------------------
@@ -429,6 +432,41 @@ export class KhalaCodeShareProjectionEntity extends S.Class<
 }) {}
 
 // ---------------------------------------------------------------------------
+// share_projection_recipient (KS-8.13 follow-up #8356: scope-native)
+// ---------------------------------------------------------------------------
+
+/**
+ * The subject kinds a recipient row can fan out to. A `share_projection_recipient`
+ * is projected into the SUBJECT's own scope (a user's `scope.user.<id>` or a
+ * team's `scope.team.<id>`), telling that subject "you have been granted access
+ * to this share." The D1 `subject_kind` domain also allows `email`, but an
+ * email recipient has no sync subject to notify (and an email is PII that could
+ * never decode into a `scope.*.<id>` id anyway), so email recipients stay
+ * Postgres-mirror-only with NO scope fan-out and are structurally excluded from
+ * this contract.
+ */
+export const KhalaCodeShareRecipientSubjectKind = S.Literals(["user", "team"])
+export type KhalaCodeShareRecipientSubjectKind =
+  typeof KhalaCodeShareRecipientSubjectKind.Type
+
+/**
+ * One share-projection recipient grant, redacted for the subject's scope.
+ * `display_name` is structurally absent — it can carry the invitee's own name
+ * or an email-shaped label, and the "you have access" signal does not need it;
+ * `subjectId` is ref-typed (excludes `@`) so an email subject cannot decode
+ * into it. The share's owning team learns of the audience through the
+ * `share_projection` entity, not through recipient rows.
+ */
+export class KhalaCodeShareProjectionRecipientEntity extends S.Class<
+  KhalaCodeShareProjectionRecipientEntity
+>("KhalaCodeShareProjectionRecipientEntity")({
+  shareId: KhalaCodeRef,
+  subjectKind: KhalaCodeShareRecipientSubjectKind,
+  subjectId: KhalaCodeRef,
+  createdAt: KhalaCodeIsoTimestamp,
+}) {}
+
+// ---------------------------------------------------------------------------
 // Boundary codecs
 // ---------------------------------------------------------------------------
 
@@ -489,4 +527,9 @@ export const decodeKhalaCodeShareProjectionEntity = S.decodeUnknownSync(
 )
 export const encodeKhalaCodeShareProjectionEntity = S.encodeSync(
   KhalaCodeShareProjectionEntity,
+)
+export const decodeKhalaCodeShareProjectionRecipientEntity =
+  S.decodeUnknownSync(KhalaCodeShareProjectionRecipientEntity)
+export const encodeKhalaCodeShareProjectionRecipientEntity = S.encodeSync(
+  KhalaCodeShareProjectionRecipientEntity,
 )

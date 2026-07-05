@@ -2,6 +2,7 @@ import {
   canonicalJson,
   encodeKhalaCodePrefilledWorkspaceEntity,
   encodeKhalaCodeShareProjectionEntity,
+  encodeKhalaCodeShareProjectionRecipientEntity,
   encodeKhalaCodeTeamChatMessageEntity,
   encodeKhalaCodeTeamEntity,
   encodeKhalaCodeTeamInviteEntity,
@@ -14,6 +15,7 @@ import {
   EntityType,
   KhalaCodePrefilledWorkspaceEntity,
   KhalaCodeShareProjectionEntity,
+  KhalaCodeShareProjectionRecipientEntity,
   KhalaCodeTeamChatMessageEntity,
   KhalaCodeTeamEntity,
   KhalaCodeTeamInviteEntity,
@@ -22,6 +24,7 @@ import {
   KhalaCodeThreadFileEntity,
   KhalaCodeThreadFileMessageRefEntity,
   KhalaCodeThreadMessageEntity,
+  personalScope,
   teamScope,
   threadScope,
   type SyncScope,
@@ -387,6 +390,18 @@ export const khalaCodeShareProjectionPostImage = (
     }),
   )
 
+export const khalaCodeShareProjectionRecipientPostImage = (
+  row: KhalaCodeProductStateRow,
+) =>
+  encodeKhalaCodeShareProjectionRecipientEntity(
+    new KhalaCodeShareProjectionRecipientEntity({
+      createdAt: requireIso(row, "created_at"),
+      shareId: requireStr(row, "share_id"),
+      subjectId: requireStr(row, "subject_id"),
+      subjectKind: requireStr(row, "subject_kind") as "user" | "team",
+    }),
+  )
+
 const POST_IMAGE_MAPPERS: Partial<
   Record<
     KhalaCodeProductStateTable,
@@ -394,6 +409,7 @@ const POST_IMAGE_MAPPERS: Partial<
   >
 > = {
   prefilled_workspaces: khalaCodePrefilledWorkspacePostImage,
+  share_projection_recipients: khalaCodeShareProjectionRecipientPostImage,
   share_projections: khalaCodeShareProjectionPostImage,
   team_chat_messages: khalaCodeTeamChatMessagePostImage,
   team_memberships: khalaCodeTeamMembershipPostImage,
@@ -483,6 +499,18 @@ const scopesForRow = (
     case "share_projections":
       if (teamId !== undefined) scopes.push(teamScope(teamId))
       break
+    case "share_projection_recipients": {
+      // A recipient row is projected into the SUBJECT's own scope. `email`
+      // subjects have no sync scope (and the id is PII) so they never fan
+      // out — they stay Postgres-mirror-only.
+      const subjectKind = stringValue(row, "subject_kind")
+      const subjectId = stringValue(row, "subject_id")
+      if (subjectId !== undefined) {
+        if (subjectKind === "user") scopes.push(personalScope(subjectId))
+        else if (subjectKind === "team") scopes.push(teamScope(subjectId))
+      }
+      break
+    }
     default:
       break
   }
@@ -539,4 +567,47 @@ export const scopeChangesForKhalaCodeProductStateRow = (
 
   const entityId = entityIdForRow(table, row)
   return scopes.map((scope) => ({ entityId, entityType, postImage, scope }))
+}
+
+// ---------------------------------------------------------------------------
+// Delete tombstones (KS-8.13 follow-up #8356)
+// ---------------------------------------------------------------------------
+
+/**
+ * One tombstone target: the (scope, entityType, entityId) triple a
+ * `op:"delete"` changelog entry is appended to. Tombstones carry NO
+ * post-image, so — unlike {@link scopeChangesForKhalaCodeProductStateRow} —
+ * this resolves scope/type/id purely from the row's key + scope columns and
+ * never runs the allowlist post-image mapper or the redaction guard: there is
+ * no serialized entity body to leak, and a row that fails post-image mapping
+ * (e.g. schema drift on a NON-key column) must still be able to replicate its
+ * removal to subscribers.
+ */
+export type KhalaCodeProductStateScopeTombstone = Readonly<{
+  scope: SyncScope
+  entityType: EntityType
+  entityId: EntityId
+}>
+
+/**
+ * Resolve the delete-tombstone targets for a hard-deleted product-state row.
+ *
+ * The Worker mirror READS the row(s) a hard-delete will remove BEFORE issuing
+ * the delete (their scope/key columns are gone afterward), converges the
+ * Postgres twin, and appends one `op:"delete"` changelog entry per resolved
+ * scope so that scope subscribers converge on the removal (the interactive
+ * chat/thread/file surfaces instead soft-delete via `deleted_at`, which rides
+ * as a normal upsert). Rows whose scope routing yields nothing
+ * (receipt/feedback/cloud/workroom tables — Postgres-mirror-only) return no
+ * tombstones, exactly as they produce no upsert fan-out.
+ */
+export const scopeTombstonesForKhalaCodeProductStateRow = (
+  table: KhalaCodeProductStateTable,
+  row: KhalaCodeProductStateRow,
+): ReadonlyArray<KhalaCodeProductStateScopeTombstone> => {
+  const scopes = scopesForRow(table, row)
+  if (scopes.length === 0) return []
+  const entityType = entityTypeForTable(table)
+  const entityId = entityIdForRow(table, row)
+  return scopes.map((scope) => ({ entityId, entityType, scope }))
 }
