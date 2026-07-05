@@ -126,6 +126,7 @@ import {
 } from "../shared/source-control-action"
 import {
   initialKhalaCodeMainShellModel,
+  shouldPollThreadTokenSummary,
   updateKhalaCodeMainShellModel,
   type KhalaCodeBootDegradedState,
   type KhalaCodeBootRpcName,
@@ -1856,6 +1857,7 @@ const isThreadStreaming = (threadId: string | null): boolean => {
 
 const recomputePendingTurnForActiveThread = (): void => {
   shellModel().pendingTurn = isThreadStreaming(shellModel().activeCodexThreadId)
+  syncThreadTokenPolling()
 }
 
 const statusForComposer = (): CommandComposerStatus => {
@@ -2036,6 +2038,43 @@ const refreshThreadTokenSummary = async (): Promise<void> => {
       void refreshThreadTokenSummary()
     }
   }
+}
+
+// KS-6.8 (#8418) hot-poll migration finding: `threadTokenSummary` is NOT a
+// khala-sync scope candidate. `readKhalaCodeDesktopThreadTokenSummary`
+// (codex-token-usage-telemetry.ts) reads exclusively device-local JSONL
+// ledgers and a local Codex-state SQLite DB — there is no server round trip
+// and no matching `scope.thread.<id>`/`scope.user.<id>` entity (the KS-8.13
+// thread/message contracts in `packages/khala-sync/src/khala-code.ts` carry
+// no token/usage fields). This is exactly the "device-local codex telemetry"
+// class the cleanup audit's own §6.3 already excludes from sync
+// consolidation, which contradicts §6.2 item 6's blanket claim that this
+// poll "maps cleanly" onto a sync scope — see the doc correction alongside
+// this change. The honest fix is to stop polling BLINDLY: only run the
+// short refresh interval while a turn is actively streaming for the active
+// thread (when local ledger writes can actually still be landing), and do
+// one more refresh the moment the turn stops so trailing usage writes are
+// still caught without an ambient always-on timer.
+let threadTokenPollTimer = 0
+let threadTokenPollActive = false
+
+const syncThreadTokenPolling = (): void => {
+  const shouldPoll = shouldPollThreadTokenSummary(shellModel())
+  if (shouldPoll === threadTokenPollActive) return
+  threadTokenPollActive = shouldPoll
+  window.clearInterval(threadTokenPollTimer)
+  threadTokenPollTimer = 0
+  if (shouldPoll) {
+    threadTokenPollTimer = window.setInterval(() => {
+      if (document.hidden) return
+      void refreshThreadTokenSummary()
+    }, 2_000)
+    return
+  }
+  // Turn just stopped (completed, interrupted, or thread switched away from
+  // a streaming thread): one trailing refresh catches usage-ledger writes
+  // that land just after the turn's RPC promise resolves.
+  void refreshThreadTokenSummary()
 }
 
 const attachmentPropsFor = (
@@ -3002,6 +3041,7 @@ function applyChatTurnEvent(event: KhalaCodeDesktopChatTurnEvent): void {
   switch (event.type) {
     case "message_start":
       shellModel().pendingTurn = true
+      syncThreadTokenPolling()
       appendMessages([event.message])
       visibleEventRendered = true
       break
@@ -3901,10 +3941,12 @@ window.addEventListener("keydown", event => {
   }
   proxyTranscriptKeyScroll(event)
 })
-window.setInterval(() => {
-  if (document.hidden || shellModel().activeCodexThreadId === null) return
-  void refreshThreadTokenSummary()
-}, 2_000)
+// KS-6.8 (#8418): the old unconditional "poll every 2s while a thread is
+// open" ambient timer is gone. `syncThreadTokenPolling` (see its definition
+// above `refreshThreadTokenSummary`) now schedules the same 2s interval only
+// while `pendingTurn` is true for the active thread, and does one trailing
+// refresh the moment a turn stops — see `recomputePendingTurnForActiveThread`
+// and the direct `pendingTurn` assignment sites that call it.
 window.addEventListener("beforeunload", () => {
   for (const url of objectUrls) URL.revokeObjectURL(url)
   composerHudRuntime?.dispose()
@@ -4111,6 +4153,7 @@ const controls = {
     setShellFollowUpDrafts([])
     resetComposerDraft()
     shellModel().pendingTurn = false
+    syncThreadTokenPolling()
     shellModel().thinkingTurnId = null
     shellModel().lastTurnFailed = false
     render()

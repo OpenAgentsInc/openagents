@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import {
   initialKhalaCodeMainShellModel,
+  shouldPollThreadTokenSummary,
   updateKhalaCodeMainShellModel,
 } from "../src/ui/main-shell-model"
 import type {
@@ -92,5 +93,31 @@ describe("Khala Code main shell model", () => {
     expect(model.threadTokenSummary.totalTokens).toBe(42)
     expect(model.threadTokenPopoverOpen).toBe(true)
     expect(model.claudeApprovalDialogOpen).toBe(true)
+  })
+
+  describe("shouldPollThreadTokenSummary (KS-6.8, #8418 hot-poll gating)", () => {
+    test("never polls when idle, even with an active thread open", () => {
+      expect(
+        shouldPollThreadTokenSummary({ activeCodexThreadId: "thread-1", pendingTurn: false }),
+      ).toBe(false)
+    })
+
+    test("never polls with no active thread, even mid-turn", () => {
+      expect(
+        shouldPollThreadTokenSummary({ activeCodexThreadId: null, pendingTurn: true }),
+      ).toBe(false)
+    })
+
+    test("never polls with neither an active thread nor a pending turn", () => {
+      expect(
+        shouldPollThreadTokenSummary({ activeCodexThreadId: null, pendingTurn: false }),
+      ).toBe(false)
+    })
+
+    test("polls only while a turn is actively streaming for the active thread", () => {
+      expect(
+        shouldPollThreadTokenSummary({ activeCodexThreadId: "thread-1", pendingTurn: true }),
+      ).toBe(true)
+    })
   })
 })

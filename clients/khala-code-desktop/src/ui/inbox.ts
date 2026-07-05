@@ -561,6 +561,26 @@ const render = (
   container.append(body)
 }
 
+// KS-6.8 (#8418) hot-poll migration finding: this panel's `options.fetch()`
+// aggregates SIX independently-sourced device-local RPCs
+// (`codexHarnessStatus`, `codexEcosystemRead`, `codexFleetStatus`,
+// `pylonStatus`, `codingStatus`, `tokenAccountingStatus` — see the call
+// site in `ui/main.ts`), each reading local process/config/file state on
+// this machine. None of them are khala-sync scope consumers, and none of
+// KS-8.13's product-state entities (`packages/khala-sync/src/khala-code.ts`
+// — threads/teams/chat) cover local runtime/harness/account health. This is
+// the "device-local codex telemetry" class the cleanup audit's §6.3 already
+// excludes from sync consolidation, so the 5s `setVisible`-gated poll below
+// is NOT a khala-sync push candidate today (see the doc correction
+// alongside this change). It is already bounded to on-screen visibility
+// (no interval while the panel is hidden) and explicit actions
+// (`onReconnectAccount`/`onResumeRun`) already force an immediate refresh
+// rather than waiting for the next tick. Removing the interval outright
+// would be a real regression: five of the six sources have no
+// change-notification mechanism today, so nothing would tell this panel to
+// refresh between user actions. A genuine fix needs a local event bus for
+// those five sources (or new sync-scoped entities for them), which is a
+// separate, larger follow-up — not a "mirror #8383" cutover.
 export const mountUnifiedInboxPanel = (
   container: HTMLElement,
   options: UnifiedInboxPanelOptions,

@@ -133,6 +133,24 @@ export type KhalaCodeMainShellMessage =
     }
   | { readonly _tag: "TranscriptPinnedToEndChanged"; readonly pinned: boolean }
 
+/**
+ * KS-6.8 (#8418) hot-poll migration: whether the desktop shell should run
+ * its short thread-token-summary refresh interval right now. `false` means
+ * no interval is scheduled at all — no ambient background polling while a
+ * thread is merely open and idle. Historically the shell polled every 2s
+ * any time a thread was open (even fully idle); this predicate narrows that
+ * to "a turn is actually streaming for the active thread", the only window
+ * where the underlying device-local usage-ledger files
+ * (`codex-token-usage-telemetry.ts`) can still be gaining rows. Note this is
+ * NOT a khala-sync scope migration: `threadTokenSummary` has no server
+ * round trip and no matching sync scope (see the comment beside
+ * `syncThreadTokenPolling` in `ui/main.ts`), so there is no scope to push
+ * from — the fix is bounding the poll window itself.
+ */
+export const shouldPollThreadTokenSummary = (
+  model: Pick<KhalaCodeMainShellModel, "pendingTurn" | "activeCodexThreadId">,
+): boolean => model.pendingTurn && model.activeCodexThreadId !== null
+
 export const initialKhalaCodeMainShellModel = (
   input: Readonly<{
     threadTokenSummary: KhalaCodeDesktopThreadTokenSummary

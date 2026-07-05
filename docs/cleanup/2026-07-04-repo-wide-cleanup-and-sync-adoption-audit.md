@@ -437,7 +437,43 @@ and the D1 `sync_*` tables have zero remaining users and drop cleanly**
      blocker.
 4. **Team chat + thread files + agent goals**: the flagship "migration = sync adoption" case per KS-8.13/#8324 — land on `scope.team.<id>` / `scope.thread.<id>` / `scope.agent_run.<id>` / `scope.user.<id>`, replacing both the notifier fan-out and the desktop/web polling in one move. (L, med)
 5. **Public aggregates** (demand-mix, model-mix, tokens-history, public activity timeline): project off live-at-read D1 onto `scope.public.*` counters — the Postgres rollup twins already exist from KS-8.2. (M, low)
-6. **Desktop hot polls**: 1s Claude-approval poll, 2s thread-token-summary poll, 5s inbox poll — all map cleanly to `scope.agent_run`/`scope.thread`/`scope.user`. (M, med — the 1s approval poll is latency-sensitive, migrate carefully)
+6. **Desktop hot polls**: 1s Claude-approval poll, 2s thread-token-summary poll, 5s inbox poll — ~~all map cleanly to `scope.agent_run`/`scope.thread`/`scope.user`~~. (M, med — the 1s approval poll is latency-sensitive, migrate carefully)
+   - **2026-07-05 correction (KS-6.8, #8418):** this blanket claim was WRONG
+     for the 2s thread-token-summary poll and the 5s inbox poll — verified
+     against the actual code, not assumed. `threadTokenSummary`
+     (`readKhalaCodeDesktopThreadTokenSummary` in
+     `codex-token-usage-telemetry.ts`) reads exclusively device-local JSONL
+     ledgers and a local Codex-state SQLite DB; there is no server round
+     trip and no matching `scope.thread.<id>`/`scope.user.<id>` entity (the
+     KS-8.13 thread/message contracts in
+     `packages/khala-sync/src/khala-code.ts` carry no token/usage fields).
+     The unified inbox's `options.fetch()` aggregates six independent
+     device-local RPCs (`codexHarnessStatus`, `codexEcosystemRead`,
+     `codexFleetStatus`, `pylonStatus`, `codingStatus`,
+     `tokenAccountingStatus`), none of which are khala-sync scope
+     consumers. Both pollers are squarely the "device-local codex
+     telemetry" class §6.3 (below) already excludes from consolidation —
+     §6.2 item 6 and §6.3 directly contradicted each other, and §6.3 was
+     right. Neither poll could honestly be migrated onto a khala-sync scope
+     without inventing new server-side telemetry entities that don't exist
+     today (out of scope for a "mirror #8383" cutover). What shipped
+     instead: the thread-token-summary poll no longer runs unconditionally
+     whenever a thread is open — `shouldPollThreadTokenSummary` in
+     `clients/khala-code-desktop/src/ui/main-shell-model.ts` gates the same
+     2s interval to "a turn is actively streaming for the active thread"
+     only, with an explicit trailing refresh the moment the turn stops
+     (`syncThreadTokenPolling` in `ui/main.ts`) — real activity-driven
+     refresh replacing an always-on ambient timer, verified by
+     `tests/main-shell-model.test.ts`. The inbox's 5s poll is unchanged
+     (already `setVisible`-gated to on-screen visibility, and removing it
+     outright would drop the only signal for five of its six sources, which
+     have no change-notification mechanism) — documented in place in
+     `clients/khala-code-desktop/src/ui/inbox.ts`. The 1s Claude-approval
+     poll was NOT investigated in this pass and remains open work; do not
+     assume it shares this finding without checking its own data source
+     first. **#8418 stays open**, retitled in spirit from "migrate to sync
+     push" to "verified not a sync candidate; converted to activity-gated
+     local refresh where safe."
 
 ### 6.3 Explicitly do NOT consolidate
 
@@ -446,7 +482,10 @@ shared DB per both CLAUDE.md and the migration plan), `nostr-relay`
 (unrelated protocol), `event_ledger_entries` (owner-private GitHub intake,
 correctly Postgres-only, not a public scope), internal admin
 leaderboards/analytics (D1-until-KS-8.19 by design), device-local codex
-telemetry.
+telemetry — confirmed by code inspection to include the desktop
+thread-token-summary and unified-inbox hot polls (KS-6.8, #8418; this
+section was right, §6.2 item 6's contrary claim was wrong and has been
+corrected there).
 
 ### 6.4 Adjacent substrate — note, don't merge yet
 
@@ -533,9 +572,13 @@ codex/claude executor core.
 Repoint web's `subscriptions.ts` to `/api/sync/connect`; migrate settled
 feed, team chat, thread files, and agent goals onto khala-sync scopes;
 project the remaining live-at-read public aggregates; migrate the
-remaining desktop hot polls; then retire `SyncRoomDurableObject` and drop
-the legacy `sync_*` D1 tables — the clean capstone of this whole
-consolidation effort.
+remaining desktop hot polls (2026-07-05 correction, KS-6.8/#8418: the 2s
+thread-token-summary and 5s inbox polls are device-local telemetry with no
+matching sync scope — see §6.2 item 6/§6.3 above — so this item is now
+"converted to activity-gated local refresh where safe, not migrated to
+sync" for those two; the 1s Claude-approval poll is unverified and remains
+open); then retire `SyncRoomDurableObject` and drop the legacy `sync_*` D1
+tables — the clean capstone of this whole consolidation effort.
 
 **Wave 4 — big, deliberate, needs an owner call before starting:**
 Consolidate `probe-runtime` and `pylon-runtime` (~48K LOC of duplicated

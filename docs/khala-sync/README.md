@@ -60,6 +60,20 @@ clients with server-authoritative mutators and rebase.
   #8383; `KHALA_SYNC_FLEET=0`/`false`/`off` is the explicit opt-out and the
   local status/list reads remain only as a degraded fallback for missing auth,
   disconnected sync, or intentional disablement.
+  **NOT every desktop poll is a sync candidate (KS-6.8, #8418, 2026-07-05):**
+  investigating the same-shaped "hot poll migration" for the desktop's 2s
+  thread-token-summary poll and 5s unified-inbox poll found neither reads
+  server state at all — both are exclusively device-local telemetry (local
+  usage-ledger files/SQLite for the token summary; six independent local
+  process/config RPCs for the inbox), so there is no khala-sync scope to
+  push from. Do not repeat the cleanup audit's original (wrong) assumption
+  that these "map cleanly" onto `scope.thread`/`scope.user` — see
+  `docs/cleanup/2026-07-04-repo-wide-cleanup-and-sync-adoption-audit.md`
+  §6.2 item 6/§6.3 for the corrected finding. The thread-token-summary poll
+  was converted to activity-gated local refresh instead (bounded to actual
+  turn-streaming windows, `clients/khala-code-desktop/src/ui/main-shell-model.ts`'s
+  `shouldPollThreadTokenSummary`); the inbox poll is unchanged pending a
+  real local event-bus follow-up.
 
 ## Worker routes (SPEC §3 — complete)
 
