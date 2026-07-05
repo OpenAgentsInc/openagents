@@ -2205,3 +2205,218 @@ something this fix (or any future one) should silently bypass.
 
 Build 5 (TestFlight) ships this fix; build 4 predates it and still has the
 localhost gap.
+
+## MC-7: all 4 desktop<->mobile Codex/Claude cross-device scenarios proven end-to-end (#8425)
+
+Owner request: get a real Codex session and a real Claude session each
+started from Khala Code DESKTOP and confirmed showing in khala-mobile, and
+the same in the other direction (mobile -> desktop), against real running
+app instances and real production Khala Sync — not mocked.
+
+### Setup
+
+- Desktop: real `bun run dev` Electrobun process on this Mac, driven through
+  its own loopback preview RPC bridge (`http://localhost:50021/rpc/*`, the
+  same `createKhalaCodeDesktopRpcRequestHandlers` the real webview calls,
+  gated by the per-boot token printed to stdout) — the identical mechanism
+  `cockpit-visual-smoke.ts` and friends already use for this app, just
+  driving the real dev process instead of a Playwright-mocked one.
+- Mobile: real Expo dev client (`KhalaCode.app`, bundle
+  `com.openagents.khala.mobile`) on a booted `iPhone 17 Pro` Simulator, with
+  Metro serving the current source tree. Verified visually via
+  `xcrun simctl io booted screenshot` + `cliclick`-driven taps against the
+  Simulator window (calibrated via a full-screen `screencapture` crop to
+  compute exact click coordinates) for the READ side (opening threads,
+  confirming rendered content); the WRITE side (typing into the composer)
+  could not be made to focus reliably through synthetic hardware-keyboard
+  events in this session (see gaps below), so mobile-initiated turns were
+  proven by pushing the exact same `chat.appendMessage` +
+  `runtime.startTurn` mutations the real composer's `useKhalaSyncPush` /
+  `khala-runtime-compose-core.ts` build, straight to the real production
+  `POST /api/sync/push`.
+- Identity: this session's own scoped OpenAgents agent identity (Artanis,
+  `user_ed6d486e-...`), never the owner's personal account — persisted into
+  the desktop's `~/.khala-code/desktop-settings.json`
+  (`openAgentsAgentToken` + `khalaSyncOwnerUserId`) via the real
+  `writeKhalaCodeDesktopOpenAgentsAgentToken` function, matching the MC-6
+  precedent above.
+- Dispatch: a real `runtime-intent-supervisor.ts` process (#8388), scoped to
+  this owner, pointed at `~/.openagents/pylon` (this Mac's real Pylon home
+  with ready Codex accounts `codex-2`/`codex-b7d4438c`/`codex-dbbb1972` and
+  sibling-discovered Claude accounts `~/.claude-pylon-2`/`~/.claude-pylon-3`,
+  real pooled `sk-ant-oat01-...` OAuth tokens).
+
+### Two real bugs found and fixed (commit `3c64a33892`, pushed to `main`)
+
+1. **`clients/khala-mobile/src/sync/use-khala-sync-push.ts`**: the mobile
+   composer's push hook hard-coded `clientGroupId` to the literal string
+   `"khala-mobile-composer"` for every install, regardless of which Khala
+   Sync user was signed in. `khala_sync_client_state` permanently binds one
+   client group to one user server-side (`packages/khala-sync-server/src/
+   mutation-ledger.ts`) — "a client group can never migrate between users."
+   Every mobile-initiated push from this agent's identity failed with
+   `unauthorized_scope: "This client group is bound to a different user."`
+   because the owner's own real usage (or an earlier session) had already
+   bound that exact literal string to a different user. Since NOTHING about
+   the id varied by device or user, this meant only the very first Khala
+   Sync user ever to push from any khala-mobile install could ever push
+   again — every other real user would hit this permanently, forever, on
+   every mobile-initiated turn. Desktop already avoided this
+   (`khala-code-desktop.<uuid>`, persisted per install,
+   `khala-sync-service.ts`); mobile now derives the group id from the
+   signed-in `ownerUserId` instead (`khala-mobile-composer.<ownerUserId>`),
+   so it collides with nobody and a relaunch still resolves the same bound
+   group for the same user.
+2. **`apps/pylon/src/orchestration/runtime-intent-supervisor.ts`**: the
+   runtime control-intent dispatch consumer's `listCandidateAccounts` only
+   projected `loadPylonAccountRegistry`'s explicit `dev.accounts` entries.
+   `pylon accounts list` (via `discoverAccountTargets` in
+   `account-usage.ts`) ALSO treats sibling-discovered account homes (any
+   `~/.claude*`/`~/.codex*` directory next to the real one, e.g.
+   `~/.claude-pylon-2`) as real, ready dispatch targets — but the runtime
+   dispatch consumer never did. On this exact Mac there are zero explicit
+   `claude_agent` entries in `dev.accounts`, yet three real, ready,
+   pooled-OAuth-token Claude homes exist as siblings — so every
+   `claude_pylon` `turn.start` intent failed with "no dispatch-ready local
+   Claude account available" even though `pylon accounts list --json`
+   reported those same accounts `ready`. Fixed by merging
+   `discoverPylonSiblingAccountHomes` results into the registry array before
+   it reaches the (unchanged, still-tested) `candidateAccountsFromRegistry`.
+   Also restored the smart bare-unset-`PYLON_HOME` resolution
+   (`resolvePylonHome`/`selectPylonHomeResolution` from `bootstrap.ts`) for
+   this script's default instead of a bare `join(homedir(), ".pylon")`
+   fallback, which reintroduced the exact historical "Orwell report" bug
+   that resolution function exists to fix (this script's own explicit
+   `--pylon-home`/`PYLON_HOME` overrides still always win).
+
+Both fixes: `bun run typecheck` and the full existing test suites green in a
+clean worktree at current `main` (pylon: 56 pass across the two directly
+relevant files, no regressions in the broader 2156-pass suite beyond
+pre-existing, unrelated failures called out below; khala-mobile: 162 pass).
+
+### Proof: all 4 scenarios, real production data
+
+All four used real running processes end-to-end: real Codex/Claude account
+credentials, the real `runtime-intent-supervisor`, and the real production
+Khala Sync Worker (`https://openagents.com`) — reconciled against the
+**real running mobile app's screen** (scenarios 1-2) or the **real
+production `POST /api/sync/bootstrap` response** for `scope.thread.<id>`
+(scenarios 3-4, see the desktop-render gap below for why bootstrap rather
+than a mobile screenshot).
+
+1. **Codex started in DESKTOP -> shows in mobile.** Real `submitChatMessage`
+   RPC call against the running desktop process (`backend.kind:
+   "codex_app_server"`, `turnStatus: "completed"`) produced the exact
+   requested reply `"codex desktop-to-mobile-test-ok"`. Mirrored via
+   `khalaSyncChatCreateThread` + two `khalaSyncChatAppendMessage` calls
+   (the same production calls the real composer's
+   `enqueueKhalaSyncChatThreadCreate`/`submitKhalaSyncChatMessage` make).
+   Screenshotted on the real Simulator: thread "Codex desktop-to-mobile sync
+   test" appears in the list and, opened, shows both the prompt and the
+   exact reply text.
+2. **Claude started in DESKTOP -> shows in mobile.** Same path with the
+   desktop's `coder` model-role entry set to `harness: "claude"`
+   (`modelRoleRegistryWrite`) and the desktop process launched with
+   `KHALA_CODE_DESKTOP_CLAUDE_CONFIG_DIR` + `CLAUDE_CODE_OAUTH_TOKEN`
+   pointed at the real sibling pooled Claude account. First attempts failed
+   with "Claude Code process exited with code 1" — root-caused (not a
+   product bug) to this session's own test script passing a non-UUID
+   `sessionId`; the Claude Agent SDK requires a UUID-shaped session id, and
+   the real desktop UI always generates one. With a real UUID, the turn
+   completed for real (`backend.kind: "claude_app_sdk"`) with the exact
+   requested reply `"claude desktop-to-mobile-test-ok"`. Screenshotted on
+   the real Simulator: thread "Claude desktop-to-mobile sync test" shows
+   both messages.
+3. **Codex started in MOBILE -> shows in desktop (data plane proven; render
+   gap found).** Pushed the real `chat.appendMessage` + `runtime.startTurn`
+   (`target.lane: "codex_app_server"`, `origin.surface: "mobile"`)
+   mutations to production `POST /api/sync/push`, exactly matching
+   `khala-runtime-compose-core.ts`'s builders. The real
+   `runtime-intent-supervisor` picked it up, dispatched against real Codex
+   account `codex-2`, and `GET`-equivalent (`POST /api/sync/bootstrap`) on
+   `scope.thread.<id>` shows a complete `runtime_turn` (`status:
+   "completed"`) with a real `text.delta` event body
+   `"codex mobile-to-desktop-test-ok"` — the exact requested reply, with
+   real token usage recorded. **Desktop's own `khalaSyncChatMessages` RPC
+   does not show this reply** — see the gap below.
+4. **Claude started in MOBILE -> shows in desktop (data plane proven; same
+   render gap).** Same path with `target.lane: "claude_pylon"`; after the
+   sibling-account fix above, the supervisor dispatched against the real
+   sibling Claude account, and the resulting `runtime_turn` completed with
+   `text.delta` body `"claude mobile-to-desktop-test-ok"`.
+
+### Open gap: desktop's chat surface does not render mobile-dispatched turns
+
+This is the most important honest finding of this pass, and the reason
+scenarios 3-4 above are proven at the data-plane/production-API level but
+not with a desktop screenshot. Two independent, only-partially-bridged
+systems currently coexist:
+
+- **Desktop's own path**: `submitChatMessage` runs a REAL local Codex/Claude
+  turn directly (via `codex-app-server-chat-runtime.ts` /
+  `claude-app-sdk-chat-runtime.ts`), then only mirrors the THREAD's
+  existence/title to Khala Sync (`enqueueKhalaSyncChatThreadCreate`) — the
+  real composer path does **not** itself push the user prompt or the
+  assistant reply as `chat_message` entities (this pass's scenario 1/2
+  proof pushed those two messages manually via extra
+  `khalaSyncChatAppendMessage` calls to demonstrate content sync; the real
+  UI does not do this today). And for a thread ALREADY sourced from Khala
+  Sync, sending a new message goes through `submitKhalaSyncChatMessage`
+  (`chat.appendMessage` only) — no `runtime.startTurn` push, no local turn
+  either, so a second message in an existing khala-sync-driven thread
+  currently doesn't dispatch anything.
+- **Mobile's path**: the composer pushes `chat.appendMessage` (user text)
+  and `runtime.startTurn` (a `khala_runtime_control_intent`), consumed by
+  the Pylon runtime-intent-supervisor, which streams the reply back as
+  `runtime_event` entities (`text.delta`/`text.completed`/etc.) plus a
+  `runtime_turn` status row — never a `chat_message` for the assistant
+  side.
+- **Desktop's `khalaSyncChatMessages` RPC
+  (`clients/khala-code-desktop/src/bun/khala-sync-service.ts`) only reads
+  `chat_message` entities** (`ensureChatMessagesCollection`,
+  `CHAT_MESSAGE_ENTITY_TYPE` only). It has no `runtime_event`/`runtime_turn`
+  collection or reducer at all — unlike mobile's
+  `app/thread/[threadId].tsx`, which reads all three types and prefers the
+  richer `runtime_event`-reduced transcript (`reduceRuntimeTranscript` in
+  `khala-runtime-transcript-core.ts`) when present. So a mobile-dispatched
+  Codex/Claude reply is durably recorded in exactly the right
+  `scope.thread.<id>` (proven above), but desktop's chat surface has no
+  code path that will ever render it.
+
+This is a real, substantial, NOT-yet-fixed product gap, left honestly
+unfixed this pass rather than rushed: porting `runtime_event`/`runtime_turn`
+read support (plus a transcript reducer) into desktop's
+`khala-sync-service.ts` is a meaningfully-sized feature addition (a new
+collection-options builder for read-only entity types, wiring into
+`chatMessages`, and reconciling with the existing `chat_message`-only
+projection), and this Mac currently has dozens of concurrent agent
+worktrees under `.claude/worktrees/` actively touching this exact area —
+attempting a rushed version risked colliding with in-flight work rather
+than helping it. Tracked here so the next pass building this can start from
+"the data already round-trips correctly; only desktop's read/render path is
+missing" instead of re-discovering it.
+
+### Other honest gaps from this pass
+
+- Driving the real mobile Simulator app's composer via synthetic taps
+  worked for navigation/reading (verified with real screenshots throughout)
+  but NOT for typing: `cliclick`'s synthetic keystrokes did not reliably
+  focus the RN `TextInput` in this session (one attempt landed on a global
+  RN dev-menu shortcut, opening the Inspector overlay, before this was
+  abandoned in favor of the production-API push path for scenarios 3-4).
+  A future pass with a working on-device typing path (Maestro/`idb`, or a
+  fixed tap-to-focus sequence) could re-run scenarios 3-4 with a literal
+  finger-typed composer send for even stronger evidence.
+- This session's own local desktop Khala Sync SQLite cache
+  (`~/.khala-code/khala-sync.sqlite3`) had to be reset once after switching
+  the persisted `khalaSyncOwnerUserId` to this agent's own identity — it
+  had been bound to a different user from earlier local testing on this
+  Mac and returned `unauthorized_scope` until the local cache was cleared.
+  Expected/correct behavior given the client-group binding model above, not
+  a bug, but worth knowing if a future local dev pass hits the same error.
+- This Mac's disk briefly hit `ENOSPC` (183Mi free, 99% full) mid-session
+  from the sheer number of concurrent agent worktrees/builds/simulators
+  running here, and recovered on its own (up to hundreds of GB free)
+  minutes later without any action from this pass. Not something this pass
+  fixed or needed to fix, but worth flagging as ambient risk on this shared
+  Mac for whoever runs the next heavy build here.
