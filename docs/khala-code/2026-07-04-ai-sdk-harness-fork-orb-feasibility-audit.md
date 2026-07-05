@@ -1,16 +1,25 @@
 # AI SDK Harness Fork + Orb Feasibility Audit
 
 Date: 2026-07-04
-Status: second-pass audit. No runtime code changed by this document.
+Updated: 2026-07-05
+Status: third-pass audit. No runtime code changed by this document.
 Scope: actual published AI SDK harness package code, local Pylon Codex/Claude
-runners, OpenAgents sandbox/Orb plans, and whether a maintained fork or local
-prototype is feasible.
+runners, OpenAgents sandbox/Orb plans, opencode's Vercel AI SDK Core usage,
+and whether a maintained fork or local prototype is feasible.
 
 ## Executive Answer
 
 Yes, we can get AI SDK Harnesses working locally with modifications, and yes,
 the right long-term integration is to make an OpenAgents Orb/workroom implement
 the AI SDK sandbox-provider contract.
+
+The opencode pass adds one important upgrade: Khala Code should copy
+opencode's AI SDK Core pattern before waiting on harnesses. Opencode does not
+make AI SDK stream parts its app model. It owns session state, tools,
+permissions, provider catalog, telemetry, and transcript persistence; it calls
+`streamText` as the default model transport; then it adapts AI SDK `stream` /
+`fullStream` parts back into an internal `LLMEvent` stream. Khala should do the
+same with an OpenAgents event schema.
 
 No, we should not maintain a broad fork of AI SDK core. The viable ownership
 shape is narrower:
@@ -22,6 +31,9 @@ shape is narrower:
   where OpenAgents needs account-home routing, raw private event capture,
   package version control, typed failure mapping, or stronger policy seams.
 - Upstream every generic extension point we need so the fork can shrink.
+- Add a first-class AI SDK Core provider runtime in Khala for normal
+  provider/model calls; keep Codex/Claude agent runtimes behind their own
+  app-server or harness/Orb adapters.
 
 The decisive code-level finding is that AI SDK already separates the agent
 runtime from the sandbox provider. `@ai-sdk/harness` does not hard-code Vercel.
@@ -71,6 +83,152 @@ The important package files are:
 - `@ai-sdk/harness-claude-code/src/claude-code-harness.ts`
 - `@ai-sdk/harness-claude-code/src/bridge/index.ts`
 - `@ai-sdk/harness-claude-code/src/bridge/package.json`
+
+Reference repositories inspected on 2026-07-05:
+
+| Repository | Commit | Relevant files |
+| --- | --- | --- |
+| `projects/repos/opencode` | `1b9b2604581bfdac263a69a2d5846bd2a91da6cc` | `packages/opencode/src/session/llm.ts`, `packages/opencode/src/session/llm/ai-sdk.ts`, `packages/opencode/src/session/llm/request.ts`, `packages/opencode/src/session/tools.ts`, `packages/opencode/src/provider/provider.ts`, `packages/opencode/src/provider/transform.ts`, `packages/opencode/src/session/processor.ts`, `packages/opencode/src/session/llm/native-runtime.ts`, `packages/opencode/src/session/llm/native-request.ts`, `packages/opencode/src/session/llm/AGENTS.md`, `packages/opencode/package.json`. |
+| `projects/repos/ai` | `77f9f686dcf8873f8cc9eb1aa416e91b8b308a70` | `packages/ai/src/generate-text/stream-text.ts`, `packages/ai/src/generate-text/stream-text-result.ts`, `packages/provider/src/language-model/v4/language-model-v4.ts`, and harness package directories. |
+
+## OpenCode's Vercel AI SDK Core Pattern
+
+Opencode's production runtime uses Vercel AI SDK Core, not AI SDK Harnesses.
+The repo contains no evidence that opencode itself runs through
+`@ai-sdk/harness-opencode` for its app model. Instead it imports `streamText`,
+`wrapLanguageModel`, `tool`, `jsonSchema`, `asSchema`, and provider packages
+from `ai` / `@ai-sdk/*` and wraps them in opencode-owned Effect services.
+
+That distinction matters for Khala Code. AI SDK Harnesses are still the right
+shape for "run Codex or Claude Code as a whole agent inside an Orb." AI SDK
+Core is the right shape for "normalize provider/model streaming, tools, usage,
+reasoning, and provider metadata through one model-call adapter." We should do
+both, in that order.
+
+### What opencode actually does
+
+1. `packages/opencode/src/session/llm.ts` owns runtime selection. It resolves
+   model/provider/auth/config, prepares the request, optionally tries an
+   experimental native runtime, and otherwise calls `streamText`.
+2. `packages/opencode/src/session/llm/request.ts` builds a normalized request
+   before AI SDK sees it. It merges agent, provider, user, and plugin system
+   prompts; selects model variants; computes temperature/topP/topK/max tokens;
+   filters tools through permission rules; applies provider-specific headers;
+   sets OpenAI/Codex-style `strict: false` on function tools where needed; and
+   adds compatibility tools such as Copilot's `_noop`.
+3. `packages/opencode/src/provider/provider.ts` is a real provider catalog,
+   not a static switch. It starts from models.dev data, merges config/env/auth
+   and plugin patches, lazy-loads bundled AI SDK provider packages, installs
+   non-bundled provider packages when needed, wraps `fetch` for timeout and SSE
+   quirks, caches provider SDK instances, and supports provider-specific model
+   loaders.
+4. `packages/opencode/src/provider/transform.ts` centralizes provider quirks:
+   providerOptions key mapping, reasoning variants, prompt cache keys, OpenAI /
+   Azure / Bedrock option shape, Anthropic and Gemini caching hints,
+   interleaved reasoning fields, unsupported media fallback text, and JSON
+   schema lowering for providers with stricter tool-schema rules.
+5. `packages/opencode/src/session/tools.ts` converts opencode's tool registry
+   into AI SDK `tool()` definitions. Tool execution re-enters opencode's Effect
+   runtime, runs plugin hooks, calls opencode permission `ask`, truncates large
+   outputs, normalizes attachments, and completes interrupted tool calls
+   through the session processor.
+6. `packages/opencode/src/session/llm/ai-sdk.ts` is the narrow adapter seam.
+   It maps AI SDK `TextStreamPart`s into `@opencode-ai/llm` `LLMEvent`s:
+   start/finish step, text, reasoning, tool input, tool call, tool result, tool
+   error, usage, finish reason, and provider metadata. Unsupported UI-facing
+   parts are dropped. Raw provider chunks are used only for a narrow Copilot
+   billing metadata extraction.
+7. `packages/opencode/src/session/processor.ts` consumes only `LLMEvent`.
+   It updates durable message parts, tool state, reasoning state, usage/cost,
+   snapshots, patch parts, compaction, retries, and status without caring
+   whether events came from AI SDK or native transport.
+8. `packages/opencode/src/session/llm/native-runtime.ts` and
+   `native-request.ts` prove the architecture works: native LLM support is
+   opt-in, per-request, and falls back to AI SDK. Both paths converge on the
+   same `LLMEvent` stream, and tool execution remains opencode-owned.
+
+The pattern is not "let AI SDK own the agent." The pattern is "let AI SDK own
+provider call normalization, while the product owns session authority."
+
+### What the actual AI SDK code confirms
+
+The current AI SDK Core code makes this feasible without a fork:
+
+- `streamText` accepts a `LanguageModel`, messages, headers, tools,
+  `activeTools`, `toolChoice`, `providerOptions`, telemetry, repair hooks,
+  runtime/tool context, and optional tool-approval controls.
+- `StreamTextResult` exposes `stream` plus deprecated-compatible `fullStream`,
+  along with `textStream`, usage, steps, response messages, provider metadata,
+  and UI-message conversion helpers.
+- `TextStreamPart` is the same shape opencode adapts: text, reasoning, file,
+  source, tool-input, tool-call, tool-result, tool-error, tool approval,
+  start-step, finish-step, finish, abort, error, and raw.
+- Provider packages implement the `LanguageModelV4` interface through
+  `doGenerate` and `doStream`, so Khala can depend on the provider/model
+  abstraction while keeping its own transcript schema.
+- AI SDK Core also has an `experimental_sandbox` parameter for tool execution,
+  but that is not the same boundary as AI SDK Harness sandbox providers. For
+  OpenAgents, Core tools should call into `openagents.sandbox.v1` / Orbs when
+  they need workspace execution; harnesses should use the Orb provider when
+  the whole agent runtime must live inside a sandbox.
+
+One minor modernization: new Khala code should consume `result.stream`; keep
+`fullStream` support only for compatibility with opencode-style examples and
+older AI SDK minor lines.
+
+### What Khala should copy
+
+Khala Code should add an opencode-style AI SDK Core runtime with these
+boundaries:
+
+1. Define or reuse a canonical OpenAgents stream event schema for Khala model
+   turns. It should cover text, reasoning, step boundaries, tool input, tool
+   call/result/error, provider metadata, usage, finish reason, file changes,
+   compaction, and private raw sidecar refs. AI SDK parts must not become the
+   public transcript schema.
+2. Add a `khala-ai-sdk-core-runtime` service that prepares OpenAgents messages,
+   tools, headers, provider options, and telemetry, calls `streamText`, and
+   converts AI SDK `TextStreamPart`s into OpenAgents events.
+3. Add a provider catalog / transform layer, probably in a shared package
+   rather than the desktop client. Start smaller than opencode, but keep the
+   same shape: model metadata, provider package loader, providerOptions key
+   mapping, reasoning variants, prompt cache keys, schema lowering, and
+   provider-specific headers.
+4. Bridge OpenAgents tools into AI SDK `tool()` definitions. Tool bodies must
+   re-enter Effect, enforce the compiled OpenAgents tool policy, ask
+   permissions through Khala/Pylon authority, and use Orb/workroom execution
+   APIs for workspace effects.
+5. Keep raw provider chunks and raw agent events private. Use AI SDK `raw`
+   chunks only for narrow metadata extraction or private archives, never as a
+   public proof or user-visible transcript.
+6. Use a runtime selector with explicit lanes:
+   - `ai_sdk_core` for normal provider/model calls.
+   - `codex_app_server` for today's local Codex app-server path.
+   - `claude_pylon` for today's local Claude path.
+   - `ai_sdk_harness_orb` for Codex/Claude harness experiments inside an Orb.
+   - optional `native_direct` only if we later build a native request executor.
+7. Make all lanes emit the same OpenAgents event stream. This is the key
+   opencode lesson: once the processor owns a canonical event contract, runtime
+   replacement becomes a routing decision, not a UI rewrite.
+
+### Feasibility impact
+
+This makes the upgrade more viable, not less. The harness/Orb path is still
+needed for full Codex and Claude Code runtimes, but Khala can adopt AI SDK Core
+first without forking AI SDK and without waiting for an Orb provider.
+
+The practical order should be:
+
+1. Build the AI SDK Core stream adapter locally against one low-risk model
+   provider and fixture tool.
+2. Render its OpenAgents events in Khala Code's transcript alongside existing
+   Codex/Pylon events.
+3. Move provider and tool transforms into shared packages once the shape is
+   proven.
+4. Bind tool execution to `openagents.sandbox.v1` / Orb APIs for workspace
+   effects.
+5. Add AI SDK Harnesses for Codex/Claude only after the Orb provider can be the
+   containment boundary.
 
 ## What The AI SDK Code Actually Requires
 
@@ -224,7 +382,14 @@ fixture matrix that fails when upstream package updates change event shapes.
 
 ## Can We Get It Working Locally?
 
-Yes, in two stages.
+Yes. There are now two different "working locally" targets:
+
+- AI SDK Core provider calls can work locally first, without a harness sandbox
+  provider, if Khala adapts AI SDK stream parts into OpenAgents events.
+- AI SDK Harnesses can work locally next, through a deliberately unsafe local
+  sandbox-provider spike, before moving into real Orbs.
+
+For harnesses, the local path still has two stages.
 
 ### Stage 1: unsafe local provider for proof only
 
@@ -304,7 +469,29 @@ sandbox plan exists to enforce.
 
 ## Recommended Pathway
 
-### P0: mirror and test the published package code
+### P0a: opencode-style AI SDK Core runtime
+
+Build a narrow `ai_sdk_core` runtime for Khala before the harness work. It
+should call `streamText`, consume `result.stream`, and convert AI SDK
+`TextStreamPart`s into a canonical OpenAgents event stream.
+
+Required tests:
+
+- one model-provider fixture that streams text, reasoning if available, usage,
+  and finish reason,
+- one tool fixture that proves OpenAgents permission/tool policy stays outside
+  AI SDK,
+- one providerOptions fixture for an OpenAI-family model,
+- one raw-chunk fixture proving raw provider data is private or discarded,
+- one transcript fixture proving Khala UI consumes OpenAgents events rather
+  than AI SDK parts directly.
+
+Gate:
+
+- the existing Codex/Pylon transcript path and the new AI SDK Core model path
+  render through the same Khala event consumer.
+
+### P0b: mirror and test the published package code
 
 Add a small internal mirror or patch workspace that can import the exact npm
 tarballs, run type checks, and diff the source files we patch. This is not a
@@ -389,10 +576,14 @@ The goal is to delete fork patches, not grow them.
 
 ## Promotion Gates
 
-Do not promote AI SDK Harnesses beyond experiment until all of these pass:
+Do not promote AI SDK Harnesses beyond experiment until all of these pass.
+Promote the AI SDK Core lane only as a transport adapter; the first two gates
+are hard requirements for that lane.
 
 | Gate | Required proof |
 | --- | --- |
+| Core event adapter | AI SDK Core stream parts are converted into OpenAgents events; Khala does not persist AI SDK stream parts as canonical transcript state. |
+| Tool authority | AI SDK Core tools re-enter OpenAgents Effect policy and permission checks before side effects. |
 | Local non-Vercel proof | Codex and Claude run through `HarnessAgent` in a local provider without Vercel. |
 | Orb proof | Same fixture runs inside an OpenAgents Orb/workroom with managed port ingress. |
 | Account isolation | `CODEX_HOME` and `CLAUDE_CONFIG_DIR` are selected account homes, never default ambient homes. |
@@ -407,11 +598,17 @@ Do not promote AI SDK Harnesses beyond experiment until all of these pass:
 ## Bottom Line
 
 The feasible upgrade is not "replace Khala Code with AI SDK Harnesses." The
-feasible upgrade is "make OpenAgents Orbs a first-class AI SDK sandbox provider,
-then run Codex/Claude harness bridges inside that provider where stream
-compatibility helps."
+feasible upgrade has two lanes:
+
+1. Copy opencode's AI SDK Core pattern now: use `streamText` and provider
+   packages as a transport layer, but convert every part into OpenAgents-owned
+   events.
+2. Make OpenAgents Orbs a first-class AI SDK sandbox provider, then run
+   Codex/Claude harness bridges inside that provider where whole-agent runtime
+   compatibility helps.
 
 Maintain a fork only at the adapter edge, and only for OpenAgents authority
-needs. Use upstream AI SDK core as long as it can stay unmodified. Get a local
-unsafe prototype working first, move Claude through the Orb path next, and let
-Codex become default only after the Orb is the real containment boundary.
+needs. Use upstream AI SDK core as long as it can stay unmodified. Get the
+Core stream adapter working first, get the local unsafe harness provider
+working second, move Claude through the Orb path next, and let Codex become
+default only after the Orb is the real containment boundary.
