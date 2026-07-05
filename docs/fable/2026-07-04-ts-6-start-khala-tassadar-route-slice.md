@@ -753,6 +753,155 @@ timeline viewer) remain the two standalone `loggedOut` pages still backlogged
 for their own dedicated passes — both are still genuinely bigger lifts than a
 static idle-state port, unlike `stats.ts`.
 
+## Landed Slice 22: Pylon Network Hero (Chrome Ported, 3D Scene Bridged)
+
+The Start staging app now owns `/pylons` — the Pylon network hero page,
+ported from `apps/web/src/page/loggedOut/page/pylon.ts` — with one deliberate,
+documented exception: the literal WebGL diamond-refraction scene.
+
+**Read the actual scene code before assuming the "biggest lift" reputation.**
+Prior slices repeatedly flagged `pylon.ts` as the biggest remaining lift
+"because of the three.js scene." Reading the four scene modules it composes
+(`scene/pylonElement.ts`, `scene/pylonBezierNetworkElement.ts`,
+`scene/pylonStatsElement.ts`, `scene/pylonLaunchGateElement.ts`) found that
+three of the four layers have zero dependency weight and are trivially
+portable:
+
+- The install CTA (`pylonInstallCta` in `pylon.ts` itself) is static markup —
+  a direct Tailwind port, same as every prior slice.
+- The bezier network graph (`pylonBezierNetworkElement.ts`) is pure SVG + math
+  (a golden-angle ring layout and quadratic bezier paths) polling
+  `GET /api/public/pylon-stats` — no 3D dependency at all, "Foldkit custom
+  element" was the only thing making it look heavier than it is.
+- The stats overlay (`pylonStatsElement.ts`) is four live-polled counters; the
+  legacy version uses the `slot-text` package for a digit-roll animation, which
+  this port skips (plain text updates) as a decorative simplification, not a
+  content change — same values, no separate dependency.
+- The launch gate (`pylonLaunchGateElement.ts`) branches on a fixed deadline
+  (June 15, 2026, 1 PM America/Chicago) that has already passed and can only
+  ever be in the past from here forward — so, same scoping posture as the
+  `/onboarding` funding-step branch in Slice 17, only the reachable
+  post-launch "Copy Agent Instructions" state is ported; the Effect-driven
+  countdown timer is genuinely dead code for any visitor from today onward.
+
+The one layer that is NOT ported: `scene/pylonDiamonds.ts`, the literal
+WebGL two-diamond backface/refraction-shader scene. This is a **hard bundle-
+budget conflict, not a shortcut.** `pylonDiamonds.ts` imports `three` (the
+`three.module.min.js` build alone is ~365 KiB minified, before this app's own
+code or the `GLTFLoader` it also needs) plus `@openagentsinc/three-effect/
+core`. The Start funnel enforces a 760 KiB total-client-JS budget across every
+route (`-funnel-budget.ts`, checked via `bun run budget`) plus a 120 KiB per-
+route-chunk cap, and that check sums every emitted `.js` file in the build
+output regardless of route-level code-splitting or dynamic `import()` laziness
+— so even a lazily-loaded three.js chunk would still blow the total-budget
+assertion. At 708.8 KiB going into this slice, there was only ~51 KiB of
+headroom; `three` + `GLTFLoader` would blow both budgets by several times
+over. That budget is a deliberate, existing performance gate for this exact
+bundle (the funnel pages are meant to stay fast; the current 4.1 MB Foldkit
+`apps/web` bundle is the explicit low bar being improved on, not matched) —
+relaxing it mid-migration for one decorative background scene is a call for
+the owner, not something to do unilaterally in this batch.
+
+**What was bridged instead:** a design-consistent ambient glow backdrop
+(`data-pylon-scene="ambient-placeholder"`) reusing the same blue-glow visual
+language already established for `SceneLayer` on `/code` and `/khala` — not a
+fabricated diamond shape, just the same "dark field + soft blue radial glow"
+treatment this product already uses elsewhere. The literal WebGL diamond mesh
+stays on the legacy Foldkit `/pylons` page (`apps/web`, still served by the
+production Worker) until an explicit follow-up decision: either a dedicated
+lazy sub-bundle exempted from the total-JS budget check, or a raised budget
+specifically for scene-bearing routes.
+
+**First Start route to wire a genuine client-side fetch.** Every prior TS-6
+route stayed static/SSR-only rather than being first to call `fetch` from a
+mounted component, rendering the model's own Idle first-paint state instead.
+This route breaks that posture deliberately: it polls the real, existing
+public `GET /api/public/pylon-stats` endpoint (no auth, no spend, no
+mutation — the same endpoint the legacy page already uses) to drive the live
+stats counters and the bezier network's node/edge rendering. The reasoning:
+unlike the text/copy pages that stayed Idle-only (where the Idle empty-state
+copy is itself an honest, meaningful rendering), this page's entire purpose is
+showing live network state — permanently freezing it at the pre-fetch
+placeholder would not be a faithful port of what this page is for. Fail-soft
+is preserved exactly like the legacy page: any fetch error (including the
+expected 500 when previewing the Start app in isolation without the
+`workers/api` Worker attached — see caveat below) renders the same dormant/
+loading state, never a fabricated number.
+
+Preserved contract:
+
+- `data-route="pylon"`, the full install-CTA copy and data attributes
+  (`data-cta="install-pylon"`, `install-pylon-command`,
+  `download-autopilot-link`), the exact `npx @openagentsinc/pylon` command,
+  and the `/download` link.
+- The four live stat labels verbatim (`pylons online`, `work-ready now`,
+  `sats settled · 24h`, `training contributors`) with the same
+  `data-stat-value` keys, showing the same `…` loading placeholder before the
+  first poll resolves that the legacy page shows.
+- The bezier network's exact math (golden-angle ring layout, quadratic bezier
+  edges, lit-node opacity driven by the same `computeActivityIntensity`
+  formula) — ported to `-pylon-network.ts` since this app cannot import from
+  `apps/web` (separate package).
+- The "Copy Agent Instructions" control (`data-cta="copy-agent-instructions"`)
+  with the exact same states and copy: `Copy Agent Instructions` / `Copying...`
+  / `Copied` (`Copied from openagents.com/AGENTS.md`) / `Copy failed`
+  (`Open /AGENTS.md`), fetching the real `/AGENTS.md` and writing to the
+  clipboard, same as the legacy control.
+- `/pylons` added to the Start budget list; total client JS moved to
+  716.2 KiB (still well under the 760 KiB budget — confirming the
+  three.js-avoidance decision above was the right call), with the new route's
+  own chunk at 7 KiB (well under the 120 KiB per-route cap).
+
+Known caveat (documented, not hidden): in a `vite preview` of the Start app
+run in isolation (no `workers/api` Worker attached), `/api/public/pylon-stats`
+and `/AGENTS.md` both 404/500, since this staging app does not yet proxy or
+service-bind to the API Worker. The page degrades exactly as designed (loading
+placeholders, "Copy failed" state, zero console/page errors) rather than
+crashing — confirmed with a headless-browser pass (see Verification). On the
+real production domain (or once `/pylons` is cut over into the same Worker
+that serves the API), both calls hit the real endpoints.
+
+Verified with a local `vite preview` + `curl`/headless-browser pass:
+`/pylons` renders `data-route="pylon"` with its own title
+(`Pylon - OpenAgents`) and every marker above; a Chromium/Playwright pass
+confirms the canvas-free scene mounts with zero `pageerror`s and the only
+console error is the expected same-origin API 404/500 described above;
+`/code`, `/mirrorcode`, `/artanis`, `/stats`, `/download`, `/promises`,
+`/training/runs`, `/onboarding`, `/gym`, and `/login` are all unaffected.
+
+Kept the Foldkit `apps/web` counterpart (`pylon.ts` plus its four scene
+modules) in place, same as every prior TS-6 slice — the live `openagents.com`
+Worker still serves `apps/web/dist`, and the literal WebGL scene has no Start
+equivalent yet.
+
+Verification:
+
+```sh
+bun run --cwd apps/openagents.com/apps/start test -- src/routes/-pylons.test.tsx
+bun run --cwd apps/openagents.com/apps/start test
+bun run --cwd apps/openagents.com/apps/start typecheck
+bun run --cwd apps/openagents.com/apps/start build
+bun run --cwd apps/openagents.com/apps/start budget
+bun run --cwd apps/openagents.com check:architecture
+bun run --cwd apps/openagents.com check:deploy
+bun run test:qa-pre-push-smoke
+```
+
+- `bun run --cwd apps/openagents.com/apps/start test` ✅ (34 files, 110 tests)
+- `bun run --cwd apps/openagents.com/apps/start typecheck` ✅
+- `bun run --cwd apps/openagents.com/apps/start build` ✅
+- `bun run --cwd apps/openagents.com/apps/start budget` ✅ 716.2 KiB (under
+  760 KiB budget), new route chunk 7 KiB (under 120 KiB per-route cap)
+- `bun run --cwd apps/openagents.com check:architecture` ✅ zero-debt clean
+- `bun run --cwd apps/openagents.com check:deploy` ✅ full sweep clean
+- `bun run test:qa-pre-push-smoke` ✅ (7 pass)
+
+`share.ts` (shared-workroom-timeline viewer) remains the one standalone
+`loggedOut` page still backlogged for its own dedicated pass — it needs the
+workroom timeline/file-panel component set ported to React first. `pylon.ts`
+is now migrated for every layer except the literal WebGL scene, which needs
+an explicit bundle-budget decision (see above) before it can follow.
+
 ## Boundary
 
 This is not the final TS-6 closure. The live `openagents.com` Worker still
@@ -764,10 +913,17 @@ Worker to Start.
 Remaining TS-6 work:
 
 - migrate the remaining standalone public/`loggedOut` pages that are not yet
-  in Start: `apps/web/src/page/loggedOut/page/pylon.ts` (depends on the
-  three.js/scene custom elements — bigger lift than a plain static port) and
-  `share.ts` (a full shared-workroom-timeline viewer — bigger lift, needs the
-  workroom timeline/file-panel component set ported to React first).
+  in Start: `share.ts` (a full shared-workroom-timeline viewer — bigger lift,
+  needs the workroom timeline/file-panel component set ported to React
+  first) is the one fully-unmigrated page left.
+  `apps/web/src/page/loggedOut/page/pylon.ts` was migrated in Slice 22 for
+  every layer except the literal WebGL diamond-refraction scene
+  (`scene/pylonDiamonds.ts`): that one piece is deliberately bridged, not
+  ported, because it needs `three` + `@openagentsinc/three-effect` +
+  `GLTFLoader`, and those blow the Start funnel's 760 KiB total-JS budget by
+  several times over on their own. Follow-up needed before it can land: an
+  explicit owner decision on either a dedicated lazy sub-bundle exempted from
+  the total-JS budget check, or a raised budget for scene-bearing routes.
   `stats.ts` (public/anonymous variant) was migrated in Slice 21 above,
   rendering the honest Idle first-paint state for all nine shared panels; the
   distinct authenticated `loggedIn/page/stats.ts` view stays out of scope
@@ -791,7 +947,7 @@ Remaining TS-6 work:
 ## Verification
 
 ```sh
-bun run --cwd apps/openagents.com/apps/start test -- src/routes/-code.test.tsx src/routes/-app-shell.test.tsx src/routes/-components.test.tsx src/routes/-gym.test.tsx src/routes/-index.test.tsx src/routes/-artanis-accounts.test.tsx src/routes/-workspace-invite.test.tsx src/routes/-mirrorcode.test.tsx src/routes/-promises.test.tsx src/routes/-artanis-console.test.tsx src/routes/-public-agent.test.tsx src/routes/-training-runs.test.tsx src/routes/-training-runs-deprecated.test.tsx
+bun run --cwd apps/openagents.com/apps/start test -- src/routes/-code.test.tsx src/routes/-app-shell.test.tsx src/routes/-components.test.tsx src/routes/-gym.test.tsx src/routes/-index.test.tsx src/routes/-artanis-accounts.test.tsx src/routes/-workspace-invite.test.tsx src/routes/-mirrorcode.test.tsx src/routes/-promises.test.tsx src/routes/-artanis-console.test.tsx src/routes/-public-agent.test.tsx src/routes/-training-runs.test.tsx src/routes/-training-runs-deprecated.test.tsx src/routes/-stats.test.tsx src/routes/-pylons.test.tsx
 bun run --cwd apps/openagents.com/apps/start test
 bun run --cwd apps/openagents.com/apps/start typecheck
 bun run --cwd apps/openagents.com/apps/start build

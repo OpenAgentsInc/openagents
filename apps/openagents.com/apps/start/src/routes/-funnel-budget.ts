@@ -41,6 +41,7 @@ const routeBudgets = [
   { path: '/onboarding', marker: 'Stop Babysitting Your AI' },
   { path: '/preview/landing', marker: 'Software, built by agents.' },
   { path: '/promises', marker: 'Product promises' },
+  { path: '/pylons', marker: 'Run a Pylon node' },
   { path: '/run', marker: 'Tassadar lives in the Verse' },
   { path: '/stats', marker: 'Network Stats' },
   { path: '/terms', marker: 'Terms of Service' },
