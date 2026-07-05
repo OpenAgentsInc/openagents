@@ -1104,6 +1104,117 @@ fix) landed and was deployed. Two distinct findings, one good and one bad:
   fail-soft mirrors too, and Hyperdrive-side connection-pool metrics (not
   visible from a `psql`-level session).
 
+### 2026-07-05 severe write-loss incident — ROOT CAUSE FOUND AND FIXED (#8409)
+
+Emergency follow-up to the "extended post-retry-fix soak" entry above.
+Confirmed the write-loss was **still actively ongoing** (D1 rows through
+`16:03:26Z` entirely absent from Postgres at first check) and traced it to
+its actual root cause — NOT Hyperdrive/Postgres connection capacity at all.
+
+**Two infrastructure hypotheses tested and ruled out (in that order):**
+
+1. Raised the shared `KHALA_SYNC_DB` Hyperdrive config's
+   `origin_connection_limit` from 60 to 100 (the platform max; `wrangler
+   hyperdrive update`). `pg_stat_activity` had shown 59/600 Postgres-side
+   connections in use in the prior pass — a number essentially AT
+   Hyperdrive's own (separate, much lower) 60-connection ceiling, which
+   looked like a strong lead. **Zero effect**: ticks minutes after the
+   change still lost writes at the same rate.
+2. Recreated the Hyperdrive config from scratch (`khala-sync-prod-v2`,
+   id `8724b8b5887949eda7f42f1b4807e81d`, same origin,
+   `origin_connection_limit=100`) and repointed the binding in
+   `wrangler.jsonc`, on the theory that the existing config's connection
+   pool was stuck/degraded in a way no CLI flag could reset. Deployed via
+   `deploy:safe`. **Zero effect again**: writes immediately after the fresh
+   config went live (100% traffic) still failed at the same rate.
+
+**Actual root cause (confirmed via live `wrangler tail --status error
+--format json`, timed to straddle the per-minute cron):** the Worker's
+`scheduled()` handler (`apps/openagents.com/workers/api/src/index.ts`) runs
+~25 independent per-minute tasks — Artanis responder scan/compose dual-write
+among them — in **one shared `Promise.all([...])`**. `Promise.all` rejects
+the instant ANY single entry rejects, which tears down the whole cron
+invocation; Cloudflare then abandons every OTHER still-in-flight task's
+work, including any Postgres mirror write that hadn't finished yet.
+
+Two distinct unguarded entries in that array were confirmed live, in
+sequence:
+
+- `checkTipsBufferBackingInvariant` (`TipsBuffer.backingInvariant`)
+  intentionally throws `TipsBufferBackingViolation` on a **real, already
+  known, standing violation** — agent balances (263 sat) exceeding the tips
+  buffer (15 sat) — flagged as "recurring" and out of scope in the #8335
+  soak pass days earlier. Because the balances/buffer gap never closed on
+  its own, this fired on effectively **every single tick**, killing the
+  batch almost every time. Captured directly: a `wrangler tail` event with
+  `"event": {"cron": "* * * * *", "scheduledTime": ...}`, `"outcome":
+  "exception"`, and the exact `TipsBufferBackingViolation` stack trace
+  through `Object.scheduled`.
+- `sweepActiveAgentRunBilling` (the array's first entry) throwing the
+  separate, already-documented, recurring `D1_ERROR: D1 DB is overloaded.
+  Requests queued for too long.` from `listActiveAgentRunsForBilling` — this
+  is exactly the class of problem Khala Sync's epic (#8282) was created to
+  retire. Captured live via the same `wrangler tail` method, on a DIFFERENT
+  cron tick, after the first fix had already landed — it explains the one
+  remaining miss (`17:13:26Z`) in the otherwise-clean post-first-fix window.
+
+**Neither Hyperdrive-side connection-limit checks in the prior passes could
+have found this** — `pg_stat_activity` and Hyperdrive's config only see
+connections that are actually attempted; they cannot see an invocation that
+never got that far because a sibling task killed it first.
+
+**Fix (two commits, both deployed via the sanctioned `deploy:safe` — no raw
+`wrangler deploy` used):**
+
+1. `2c9ce44bcb` — contain the confirmed, currently-firing
+   `TipsBuffer.backingInvariant` call: catch its own promise, log the
+   violation loudly via `khala_sync_tips_buffer_backing_invariant_violated`
+   (still fully observable — the original code comment's intent, "captured
+   by the scheduled observer," is preserved), and resolve instead of
+   rejecting.
+2. `e38570eaaf` — the systemic fix. Rather than special-case every one of
+   the ~25 entries individually, switched the whole array from
+   `Promise.all` to `Promise.allSettled` (its return value was already
+   discarded, so this is behavior-identical when every task succeeds) and
+   added a small post-loop that logs any rejected entry as
+   `scheduled_task_failed` with its array index. No single task's failure
+   can ever again silently truncate its ~24 unrelated siblings — covers
+   `sweepActiveAgentRunBilling`'s D1-overload case and any future
+   regression in any other entry, not just the two found live today.
+
+**Verification (real-time, production):**
+
+- Before either fix: `d1=8497 postgres=8304` (193 rows behind), newest-tick
+  hashes almost entirely `<missing>` in Postgres.
+- After the Hyperdrive-side fixes alone (both applied, zero effect): still
+  losing writes at the same rate minutes later — this is what disproved
+  the connection-capacity hypothesis.
+- After fix 1 (`TipsBuffer` containment) deployed `17:05:08Z`: 13 of the
+  next 14 ticks landed cleanly in Postgres (only `17:13:26Z` missing — the
+  separate `sweepActiveAgentRunBilling` D1-overload case).
+- After fix 2 (`Promise.allSettled`) deployed `17:19:00Z`: re-ran
+  `backfill-artanis.ts --verify --table artanis_responder_ticks
+  --verify-newest 20` at `17:28:12Z` — **"newest-20 row hashes: all
+  match."** The only remaining `STATUS MISMATCHES` are the aggregate
+  historical tallies from the incident window (rows lost `11:43:24Z`
+  through `17:19:00Z`), not new drift.
+- Ran the corrective backfill sweep (`backfill-artanis.ts --table
+  artanis_responder_ticks --restart`, `ON CONFLICT DO NOTHING`, D1 stays
+  authoritative, safe to run — this table is not read-cutover) to fill in
+  the historical gap left by the incident window.
+
+**Systemic flag for #8282:** this `Promise.all` pattern was a real,
+demonstrated, cross-domain landmine — ANY one of ~25 unrelated scheduled
+tasks throwing can silently truncate every sibling's work on the SAME
+per-minute cron tick, and two independent, already-known, already-flagged
+issues (a standing tips-buffer invariant violation, and the D1-overload
+condition the whole Khala Sync epic exists to retire) were both actively
+triggering it in production today. The `Promise.allSettled` fix closes the
+class of bug, not just today's two instances, but it is worth an epic-level
+note that other Workers/cron handlers in this repo with similar
+`Promise.all([...many unrelated tasks...])` shapes should be audited for
+the same footgun.
+
 ## Treasury settlement domain cutover (KS-8.8, #8319)
 
 All 27 live money tables (treasury_transactions, the six `nexus_*`

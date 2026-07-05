@@ -29,3 +29,6 @@ NEEDS_OWNER.md
 
 # GLM own-capacity continual-learning burn output (owner-private derived data)
 .khala-continual-learning/
+
+# Khala Sync backfill CLI resumable local cursor state (never commit)
+packages/khala-sync-server/.artanis-backfill-state.json
