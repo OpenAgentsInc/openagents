@@ -45,6 +45,7 @@
     "effect": "catalog:",
     "electrobun": "1.18.1",
     "foldkit": "^0.102.1",
+    "monaco-editor": "0.55.1",
     "playwright": "^1.61.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",

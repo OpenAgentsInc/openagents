@@ -4574,7 +4574,13 @@ const forumPanel =
       })
 
 const editorPanel =
-  editorPanelEl === null ? null : mountKhalaCodeEditorPanel(editorPanelEl)
+  editorPanelEl === null
+    ? null
+    : mountKhalaCodeEditorPanel(editorPanelEl, {
+        editorDirectoryRead: request => controls.editorDirectoryRead(request),
+        editorFileRead: request => controls.editorFileRead(request),
+        editorWorkspaceRead: () => controls.editorWorkspaceRead(),
+      })
 
 const gymPanel =
   gymPanelEl === null ? null : mountGymPane(gymPanelEl, initialGymState)

@@ -353,6 +353,10 @@ Phase 1 implementation log:
 - #8432 added the desktop Editor hotbar slot as Option/Alt+6, the empty editor
   panel shell, `?view=editor` routing, and stable split-pane layout tokens
   while preserving the existing Chat, Fleet, Forum, Inbox, and Settings slots.
+- #8433 replaced the empty shell with a lazy workspace tree and read-only
+  Monaco source pane. Monaco, workers, and editor CSS load only from the editor
+  panel path, the tree supports keyboard navigation, and binary/oversized
+  reads stay in a safe unsupported state.
 
 ### Phase 2: workspace ergonomics
 
