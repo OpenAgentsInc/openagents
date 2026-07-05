@@ -1,0 +1,127 @@
+const { getDefaultConfig } = require("expo/metro-config")
+
+const metroConfig = getDefaultConfig(__dirname)
+const platforms = ["ios", "android", "web", "native"]
+const sourceExts = metroConfig?.resolver?.sourceExts ?? ["ts", "tsx", "js", "jsx", "json"]
+const extensions = sourceExts.flatMap(ext =>
+  platforms.map(platform => `.${platform}.${ext}`).concat(`.${ext}`),
+)
+
+const productionPath = "^(index\\.tsx|src/)"
+const domainPath = "^src/(auth|config|native|security|status|sync|theme)/"
+const routePath = "^src/(navigators|screens)/"
+const nativeModulePath =
+  "(^|/)(node_modules/)?khala-(apple-foundation-models|push-to-talk-stt)(/|$)|(^|/)modules/khala-(apple-foundation-models|push-to-talk-stt)(/|$)"
+
+/** @type {import("dependency-cruiser").IConfiguration} */
+module.exports = {
+  forbidden: [
+    {
+      name: "no-circular",
+      severity: "warn",
+      comment:
+        "Warn first while the React Navigation migration settles; tighten to error once the first false-positive pass is clean.",
+      from: {},
+      to: { circular: true },
+    },
+    {
+      name: "no-production-imports-from-tests",
+      severity: "error",
+      comment:
+        "Shipping app/source files must never depend on tests or test support.",
+      from: {
+        path: productionPath,
+        pathNot: "\\.(spec|test)\\.(js|mjs|cjs|ts|tsx)$",
+      },
+      to: {
+        path: "^tests/",
+      },
+    },
+    {
+      name: "no-non-package-json",
+      severity: "error",
+      comment:
+        "NPM imports used by Khala Mobile must be declared in this package's dependencies/devDependencies.",
+      from: {},
+      to: {
+        dependencyTypes: ["npm-no-pkg", "npm-unknown"],
+      },
+    },
+    {
+      name: "not-to-unresolvable",
+      severity: "error",
+      comment:
+        "Dependency Cruiser could not resolve this import with the Expo/Metro/TypeScript extensions below. Bun's builtin test/plugin module is provided by the runtime.",
+      from: {},
+      to: {
+        couldNotResolve: true,
+        pathNot: "^bun$",
+      },
+    },
+    {
+      name: "not-to-dev-dep-from-production",
+      severity: "error",
+      comment:
+        "Production app/source files cannot import devDependencies; move the import to tests/tooling or promote the package.",
+      from: {
+        path: productionPath,
+        pathNot: "\\.(spec|test)\\.(js|mjs|cjs|ts|tsx)$",
+      },
+      to: {
+        dependencyTypes: ["npm-dev"],
+        pathNot: ["node_modules/@types/"],
+      },
+    },
+    {
+      name: "domain-must-not-import-routes",
+      severity: "error",
+      comment:
+        "Domain modules can be used by screens/navigators, but auth/sync/security/native/theme/etc. must not import route ownership back upward.",
+      from: {
+        path: domainPath,
+      },
+      to: {
+        path: routePath,
+      },
+    },
+    {
+      name: "native-modules-through-adapter",
+      severity: "error",
+      comment:
+        "Expo native module packages are imported only by src/native/modules.ts so unavailable/native-host states stay centralized.",
+      from: {
+        path: "^src/(?!native/modules\\.ts$)",
+      },
+      to: {
+        path: nativeModulePath,
+        dependencyTypesNot: ["type-only"],
+      },
+    },
+  ],
+  options: {
+    doNotFollow: {
+      path: "node_modules",
+    },
+    enhancedResolveOptions: {
+      conditionNames: ["react-native", "import", "require", "node", "default"],
+      extensions,
+      exportsFields: ["exports"],
+      mainFields: ["react-native", "browser", "module", "main"],
+    },
+    reporterOptions: {
+      archi: {
+        collapsePattern: "^(src|tests)/[^/]+",
+      },
+      dot: {
+        collapsePattern: "node_modules/(@[^/]+/[^/]+|[^/]+)",
+      },
+      text: {
+        highlightFocused: true,
+      },
+    },
+    tsConfig: {
+      fileName: "tsconfig.json",
+    },
+    tsPreCompilationDeps: true,
+  },
+}

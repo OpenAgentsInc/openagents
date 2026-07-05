@@ -1,0 +1,16 @@
+import type { ReactNode } from "react"
+import { View } from "react-native"
+
+import { KhalaText } from "./khala-text"
+
+type NAMEProps = Readonly<{
+  children?: ReactNode
+  title: string
+}>
+
+export const NAME = ({ children, title }: NAMEProps) => (
+  <View className="gap-2">
+    <KhalaText text={title} variant="label" />
+    {children}
+  </View>
+)

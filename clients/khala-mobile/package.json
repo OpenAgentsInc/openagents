@@ -14,6 +14,7 @@
     "export:ota:ios": "expo export --platform ios --output-dir ../../apps/oa-updates/dist",
     "export:ota:android": "expo export --platform android --output-dir ../../apps/oa-updates/dist",
     "publish:ota": "bash ../../apps/oa-updates/scripts/publish-ota.sh",
+    "architecture:check": "depcruise index.tsx src tests --config .dependency-cruiser.cjs",
     "test": "bun test",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -61,12 +62,13 @@
   "devDependencies": {
     "@babel/core": "7.29.7",
     "@babel/plugin-transform-react-jsx": "7.29.7",
-    "@react-native/babel-preset": "0.86.0",
     "@expo/config-plugins": "57.0.2",
+    "@react-native/babel-preset": "0.86.0",
     "@types/babel__core": "7.20.5",
     "@types/react": "^19.2.14",
     "@types/react-test-renderer": "19.1.0",
     "babel-preset-expo": "57.0.1",
+    "dependency-cruiser": "^17.0.2",
     "react-test-renderer": "19.2.7",
     "tailwindcss": "3.4.19",
     "typescript": "catalog:"

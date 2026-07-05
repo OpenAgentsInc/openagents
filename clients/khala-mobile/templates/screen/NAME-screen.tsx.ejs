@@ -1,0 +1,11 @@
+import { KhalaScreen } from "../components/khala-screen"
+import { KhalaText } from "../components/khala-text"
+import type { AppStackScreenProps } from "../navigators/navigationTypes"
+
+type NAMEScreenProps = AppStackScreenProps<"NAME">
+
+export const NAMEScreen = (_props: NAMEScreenProps) => (
+  <KhalaScreen contentClassName="px-4 py-4" preset="fixed">
+    <KhalaText text="NAME" variant="heading" />
+  </KhalaScreen>
+)

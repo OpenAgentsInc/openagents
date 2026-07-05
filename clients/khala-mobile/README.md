@@ -38,7 +38,31 @@ bun install
 bun run --cwd clients/khala-mobile dev
 bun run --cwd clients/khala-mobile test
 bun run --cwd clients/khala-mobile typecheck
+bun run --cwd clients/khala-mobile architecture:check
 ```
+
+## Architecture Guardrails
+
+Khala Mobile has a package-local Dependency Cruiser check inspired by Ignite:
+
+```sh
+bun run --cwd clients/khala-mobile architecture:check
+```
+
+The config lives at `clients/khala-mobile/.dependency-cruiser.cjs`. It checks
+for production imports from tests, unknown/missing package dependencies,
+production imports from devDependencies, domain modules importing route owners,
+and native module runtime imports outside `src/native/modules.ts`. Circular
+dependencies currently warn while the React Navigation migration settles.
+
+Documented exceptions are intentionally narrow: Bun's built-in test/plugin
+module is allowed for test support, and type-only native package imports are
+allowed in pure native helpers while runtime native access remains centralized.
+
+Local Ignite-style scaffolds live under
+`clients/khala-mobile/templates`. They are plain `.ejs` starting points for
+screens, components, navigators, and UX-contract oracle tests; the app does not
+depend on the Ignite CLI at runtime.
 
 ## Local Maestro Smoke Flows
 

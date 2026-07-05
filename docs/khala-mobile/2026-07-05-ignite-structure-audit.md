@@ -43,7 +43,10 @@ Any Ignite pattern that conflicts with those rules is explicitly out of scope.
   `LaunchFallback.yaml`, and `SignedInThreadSmoke.yaml` provide the local-only
   path toward the pending launched-app contract.
 - [#8429](https://github.com/OpenAgentsInc/openagents/issues/8429) - add
-  dependency-cruiser guardrails and local generators.
+  dependency-cruiser guardrails and local generators. Implemented:
+  `clients/khala-mobile/.dependency-cruiser.cjs`,
+  `bun run --cwd clients/khala-mobile architecture:check`, and local
+  `.ejs` scaffolds under `clients/khala-mobile/templates`.
 
 ## One-Line Verdict
 
@@ -70,8 +73,8 @@ Khala's existing sync/security/native domains.
 | Networking/errors | Sync/auth code returns or throws `messageSafe` strings and typed Khala Sync states. | `services/api/apiProblem.ts` normalizes transport/status failures into a typed union. | Borrow typed problem classification for mobile HTTP boundaries, adapted to Effect/Khala Sync instead of `apisauce`. |
 | Storage | SecureStore for API keys, SQLite for sync cursors/projections, explicit invariant banning secrets outside secure-store. | `utils/storage` wraps MMKV for nonsecret local state and has unit tests. | Borrow the wrapper/test pattern only for nonsecret preferences, if needed. Do not borrow MMKV for bearer material. |
 | Tests | `bun test`, pure-core tests, behavior-contract registry, and a custom RN component mount harness for `ChatComposer`. | `jest-expo`, React Native Testing Library example, i18n missing-key test, Maestro flows. | Khala's Bun harness is stronger than Ignite's sample for current needs. Borrow Maestro flow structure next. |
-| Architecture checks | No dependency-cruiser rule in this package today. | `.dependency-cruiser.js` checks circular deps, orphan modules, test imports, missing package deps, dev-dep leakage, and platform extensions. | Strong borrow candidate. Add a Khala-specific `depcruise` check with monorepo exceptions. |
-| Generators | No local mobile scaffolder. New screens/components are hand-shaped. | `ignite/templates/*` EJS templates with front matter, destination dirs, patches, route/type anchors, app-icon and splash helpers. | Borrow a small local template idea for Khala screens/components/contracts. Do not adopt Ignite CLI as an app dependency. |
+| Architecture checks | A package-local Dependency Cruiser config now guards test boundaries, package deps, dev-dep leakage, domain-to-route direction, native runtime imports, and circular deps in warning mode. | `.dependency-cruiser.js` checks circular deps, orphan modules, test imports, missing package deps, dev-dep leakage, and platform extensions. | First-pass borrow implemented. Keep false positives documented and tighten circulars to error after the migrated graph stays clean. |
+| Generators | Local `.ejs` templates now cover screen, component, navigator, and UX-contract oracle skeletons under `clients/khala-mobile/templates`. | `ignite/templates/*` EJS templates with front matter, destination dirs, patches, route/type anchors, app-icon and splash helpers. | First-pass borrow implemented without adding the Ignite CLI as a runtime dependency. Add rendering automation only when repetition justifies it. |
 | Device proof | Pending in the Khala UX contract: launch/sign-in/thread/send and native STT/FM proof. | `.maestro/flows` has shared startup/login flows and env-provided app id. | Highest-confidence borrow for closing the pending device-smoke gap. |
 
 ## Borrow First
@@ -248,6 +251,16 @@ Recommended Khala rules:
 Why borrow: it is a cheap way to protect the route/source split and the
 security boundary.
 
+Implementation note: #8429 added
+`clients/khala-mobile/.dependency-cruiser.cjs` and the
+`architecture:check` package script. The initial config errors on production
+imports from tests, missing or undeclared package imports, production imports
+from devDependencies, domain modules importing navigators/screens, and runtime
+native package imports outside `src/native/modules.ts`. Circular dependencies
+start as warnings while the React Navigation migration settles. The only
+documented first-pass exceptions are Bun's runtime-provided `bun` test module
+and type-only native DTO imports in pure native helpers.
+
 ### 7. Typed Public Config With a Secrets Warning
 
 Ignite's config module carries a blunt, correct warning: bundled config is
@@ -282,12 +295,16 @@ Recommended Khala shape:
   additions.
 - `clients/khala-mobile/templates/component` for `KhalaText`/`KhalaButton`/
   NativeWind conventions.
-- `clients/khala-mobile/templates/contract-oracle` for adding a UX contract
+- `clients/khala-mobile/templates/ux-contract-oracle` for adding a UX contract
   entry plus matching Bun test skeleton.
 - A simple Bun script can render templates; avoid adding a large CLI dependency.
 
 Why borrow: every new mobile feature should start with the same layout,
 accessibility, and test shape.
+
+Implementation note: #8429 added plain EJS starting points for screens,
+components, navigators, and UX-contract oracle tests. They are local templates,
+not an Ignite CLI adoption.
 
 ## Borrow Later
 
@@ -368,12 +385,13 @@ do not adopt EAS cloud lanes.
 4. Add `KhalaText` and `KhalaButton` wrappers, then use them only in new or
    touched screens until the shape proves itself.
 5. Add a package-local `depcruise` script in warning mode, then tighten one
-   rule at a time after false positives are known.
+   rule at a time after false positives are known. First pass implemented in
+   #8429, with only circular dependencies left at warning severity.
 6. Add `.maestro` shared startup plus one public-safe smoke flow for the
    pending launched-app interaction contract.
 7. Add typed public config with the explicit "bundled config is public" warning.
 8. Add local templates once the navigators/primitives are stable, so generated
-   code starts from the settled conventions.
+   code starts from the settled conventions. First pass implemented in #8429.
 
 ## Existing Khala Strengths To Preserve
 

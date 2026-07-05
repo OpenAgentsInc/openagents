@@ -1,0 +1,12 @@
+import { createNativeStackNavigator } from "@react-navigation/native-stack"
+
+import type { AppStackParamList } from "./navigationTypes"
+import { NAMEScreen } from "../screens/NAME-screen"
+
+const Stack = createNativeStackNavigator<AppStackParamList>()
+
+export const NAMENavigator = () => (
+  <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Screen name="NAME" component={NAMEScreen} />
+  </Stack.Navigator>
+)
