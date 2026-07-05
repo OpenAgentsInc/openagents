@@ -2,6 +2,11 @@ import { assertNoProviderSecretMaterial } from '@openagentsinc/provider-account-
 import { Effect, Schema as S } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import {
+  identityAuthNonGateReadsForEnv,
+  type IdentityAuthNonGateReads,
+  type IdentityAuthStoreEnv,
+} from './identity-auth-domain-store'
 import { logWorkerRouteError } from './observability'
 import {
   type ProviderAccountBudget,
@@ -176,10 +181,27 @@ const listLedgerUsageByAccount = async (
   return rows.results
 }
 
+// #8362 follow-up: this admin-only, single-table (no cross-domain JOIN)
+// `provider_accounts` pool-state projection is the ONE identity/auth read
+// call site (of six originally inventoried) that cleared the conservative
+// bar for KHALA_SYNC_IDENTITY_NON_GATE_READS — see
+// `identity-auth-domain-store.ts`'s module header for the full audit trail.
+// `nonGateReads`, when present, ALREADY implements its own d1/compare/
+// postgres routing (`makeRoutedIdentityAuthNonGateReads`) with fail-soft D1
+// fallback built in; absent => byte-identical inline D1 behavior.
 const listPoolState = async (
   db: D1Database,
   userId: string,
+  nonGateReads?:
+    | Pick<IdentityAuthNonGateReads, 'providerAccountPoolStateByUserId'>
+    | undefined,
 ): Promise<ReadonlyArray<PoolStateRow>> => {
+  if (nonGateReads !== undefined) {
+    return nonGateReads.providerAccountPoolStateByUserId(
+      userId,
+      ACCOUNT_USAGE_LIMIT,
+    )
+  }
   const rows = await db
     .prepare(
       `SELECT pa.provider_account_ref,
@@ -209,10 +231,16 @@ export const buildProviderAccountUsageProjection = async (
     userId: string
     windowSinceIso: string | null
   }>,
+  // #8362 follow-up: routed non-gate reads for `listPoolState` only (see the
+  // comment on that function). Optional and fail-soft-routed already;
+  // absent => byte-identical inline D1 behavior for the whole projection.
+  nonGateReads?:
+    | Pick<IdentityAuthNonGateReads, 'providerAccountPoolStateByUserId'>
+    | undefined,
 ): Promise<ProviderAccountUsageResponse> => {
   const [ledgerRows, poolRows] = await Promise.all([
     listLedgerUsageByAccount(db, input.userId, input.windowSinceIso),
-    listPoolState(db, input.userId),
+    listPoolState(db, input.userId, nonGateReads),
   ])
 
   const poolByRef = new Map(
@@ -282,9 +310,15 @@ export const buildProviderAccountUsageProjection = async (
   return projection
 }
 
-type ProviderAccountUsageEnv = Readonly<{
-  OPENAGENTS_DB: D1Database
-}>
+// #8362 follow-up: intersected with `IdentityAuthStoreEnv` so
+// `identityAuthNonGateReadsForEnv(env)` type-checks at the route handler;
+// every field beyond `OPENAGENTS_DB` stays optional, so this is a
+// zero-behavior-change widening for any caller that does not carry the
+// KHALA_SYNC_* bindings.
+type ProviderAccountUsageEnv = IdentityAuthStoreEnv &
+  Readonly<{
+    OPENAGENTS_DB: D1Database
+  }>
 
 type ProviderAccountUsageSession = Readonly<{
   user: Readonly<{
@@ -379,11 +413,15 @@ export const makeProviderAccountUsageRoutes = <
         catch: (error): ProviderAccountUsageProjectionError =>
           new ProviderAccountUsageProjectionError({ error }),
         try: () =>
-          buildProviderAccountUsageProjection(openAgentsDatabase(env), {
-            now,
-            userId: session.user.userId,
-            windowSinceIso: parseWindowSince(request),
-          }),
+          buildProviderAccountUsageProjection(
+            openAgentsDatabase(env),
+            {
+              now,
+              userId: session.user.userId,
+              windowSinceIso: parseWindowSince(request),
+            },
+            identityAuthNonGateReadsForEnv(env),
+          ),
       })
 
       return dependencies.appendRefreshedSessionCookies(

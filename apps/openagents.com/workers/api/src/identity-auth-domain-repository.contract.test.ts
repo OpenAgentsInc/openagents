@@ -46,12 +46,14 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import {
   identityAuthFlagsFromEnv,
   identityAuthMirrorFromEnv,
+  makeD1IdentityAuthNonGateReads,
   makeD1IdentityAuthWriteStore,
   makeOpenAuthStorageForEnv,
   makePostgresIdentityAuthStore,
   makeProviderAccountTokenCustodyStoreForEnv,
   type IdentityAuthDiagnostic,
   type IdentityAuthDiagnosticEvent,
+  type IdentityAuthNonGateReads,
   type IdentityAuthStoreEnv,
   type IdentityAuthWriteStore,
   type MakeIdentityAuthStoreOptions,
@@ -74,6 +76,7 @@ describe('identityAuthFlagsFromEnv (pure)', () => {
   test('dual-write defaults ON; reads default d1; off-values disable', () => {
     expect(identityAuthFlagsFromEnv({})).toEqual({
       dualWrite: true,
+      nonGateReads: 'd1',
       reads: 'd1',
     })
     expect(
@@ -97,6 +100,30 @@ describe('identityAuthFlagsFromEnv (pure)', () => {
     // A typo can never fail open into an unproven auth read path.
     expect(
       identityAuthFlagsFromEnv({ KHALA_SYNC_IDENTITY_READS: 'psotgres' }).reads,
+    ).toBe('d1')
+  })
+
+  // #8362 follow-up: KHALA_SYNC_IDENTITY_NON_GATE_READS is a SEPARATE flag,
+  // parsed independently of KHALA_SYNC_IDENTITY_READS — flipping one must
+  // never move the other.
+  test('nonGateReads is independent of reads', () => {
+    expect(identityAuthFlagsFromEnv({}).nonGateReads).toBe('d1')
+    expect(
+      identityAuthFlagsFromEnv({
+        KHALA_SYNC_IDENTITY_NON_GATE_READS: 'compare',
+      }),
+    ).toEqual({ dualWrite: true, nonGateReads: 'compare', reads: 'd1' })
+    expect(
+      identityAuthFlagsFromEnv({
+        KHALA_SYNC_IDENTITY_NON_GATE_READS: 'postgres',
+        KHALA_SYNC_IDENTITY_READS: 'compare',
+      }),
+    ).toEqual({ dualWrite: true, nonGateReads: 'postgres', reads: 'compare' })
+    // A typo on the non-gate flag falls back to 'd1' too.
+    expect(
+      identityAuthFlagsFromEnv({
+        KHALA_SYNC_IDENTITY_NON_GATE_READS: 'psotgres',
+      }).nonGateReads,
     ).toBe('d1')
   })
 })
@@ -648,6 +675,192 @@ describe.skipIf(!hasLocalPostgres())(
         expect(line).not.toContain('secretPayload')
         expect(line).not.toContain('never-leak-this')
       }
+    })
+  },
+)
+
+// ---------------------------------------------------------------------------
+// #8362 follow-up: bounded non-gate read allowlist — D1/Postgres ANSWER
+// parity (not just decision parity) for the ONE read that cleared the
+// conservative bar, `providerAccountPoolStateByUserId`
+// (`provider-account-usage-routes.ts`'s `listPoolState`).
+// ---------------------------------------------------------------------------
+
+const providerAccountRow = (
+  overrides: Partial<Record<string, unknown>> = {},
+): Record<string, unknown> => ({
+  account_label: null,
+  auth_mode: 'device_login',
+  connected_at: T0,
+  cooldown_until: null,
+  created_at: T0,
+  deleted_at: null,
+  denied_at: null,
+  disconnected_at: null,
+  health: 'healthy',
+  id: 'pa-nongate-1',
+  last_failed_launch_at: null,
+  last_parallel_probe_at: null,
+  last_parallel_probe_result: null,
+  last_sanity_check_at: null,
+  last_sanity_check_result: null,
+  last_selected_at: null,
+  last_status_at: T0,
+  last_successful_launch_at: null,
+  lease_limit: 1,
+  low_credit_flag: 0,
+  metadata_json: null,
+  operator_label: null,
+  operator_note: null,
+  operator_priority: 100,
+  plan_type: null,
+  provider: 'chatgpt_codex',
+  provider_account_ref: 'provider-account.nongate-1',
+  reauth_required_reason: null,
+  recent_failure_class: null,
+  refill_note: null,
+  secret_ref: 'secret-ref-nongate-1',
+  status: 'active',
+  team_id: null,
+  updated_at: T0,
+  user_id: OWNER,
+  ...overrides,
+})
+
+describe.skipIf(!hasLocalPostgres())(
+  'bounded non-gate reads (#8362 follow-up): D1 and Postgres agree',
+  () => {
+    let pg: Awaited<ReturnType<typeof startLocalPostgres>>
+    let client: PgClient | undefined
+    let sqlite: ReturnType<typeof makeSqliteD1> | undefined
+    let store: ReturnType<typeof makePostgresIdentityAuthStore>
+    let d1NonGateReads: IdentityAuthNonGateReads
+
+    beforeAll(async () => {
+      pg = await startLocalPostgres()
+      const postgres = (await import('postgres')).default
+      const admin = postgres(pg.url, { max: 1, prepare: false })
+      await admin.unsafe('CREATE DATABASE identity_auth_non_gate_reads')
+      await admin.end({ timeout: 5 })
+      const raw = postgres(pg.urlFor('identity_auth_non_gate_reads'), {
+        max: 4,
+        prepare: false,
+      })
+      client = raw as unknown as PgClient
+      await raw.unsafe(readFileSync(MIGRATION_0028, 'utf8'))
+
+      sqlite = makeSqliteD1()
+      sqlite.exec(IDENTITY_AUTH_DOMAIN_D1_SCHEMA)
+      d1NonGateReads = makeD1IdentityAuthNonGateReads(sqlite.db)
+
+      store = makePostgresIdentityAuthStore({
+        acquireSql: () =>
+          Promise.resolve({ end: () => Promise.resolve(), sql: raw as never }),
+      })
+    }, 120_000)
+
+    afterAll(async () => {
+      await client?.end({ timeout: 5 })
+      await pg?.stop()
+      sqlite?.close()
+    }, 60_000)
+
+    test('providerAccountPoolStateByUserId: D1 and Postgres agree row-for-row', async () => {
+      const d1WriteStore = makeD1IdentityAuthWriteStore(sqlite!.db)
+      await d1WriteStore.upsertRows('provider_accounts', [
+        providerAccountRow(),
+        providerAccountRow({
+          account_label: 'Prod account',
+          cooldown_until: T1,
+          health: 'degraded',
+          id: 'pa-nongate-2',
+          low_credit_flag: 1,
+          operator_label: 'ops-2',
+          provider_account_ref: 'provider-account.nongate-2',
+          secret_ref: 'secret-ref-nongate-2',
+          status: 'cooldown',
+        }),
+        // A different owner's account must never appear in this owner's rows.
+        providerAccountRow({
+          id: 'pa-nongate-other-owner',
+          provider_account_ref: 'provider-account.nongate-other-owner',
+          secret_ref: 'secret-ref-nongate-other-owner',
+          user_id: 'user.other-owner',
+        }),
+        // A soft-deleted account must never appear either.
+        providerAccountRow({
+          deleted_at: T1,
+          id: 'pa-nongate-deleted',
+          provider_account_ref: 'provider-account.nongate-deleted',
+          secret_ref: 'secret-ref-nongate-deleted',
+        }),
+      ])
+      await store.upsertRows('provider_accounts', [
+        providerAccountRow(),
+        providerAccountRow({
+          account_label: 'Prod account',
+          cooldown_until: T1,
+          health: 'degraded',
+          id: 'pa-nongate-2',
+          low_credit_flag: 1,
+          operator_label: 'ops-2',
+          provider_account_ref: 'provider-account.nongate-2',
+          secret_ref: 'secret-ref-nongate-2',
+          status: 'cooldown',
+        }),
+        providerAccountRow({
+          id: 'pa-nongate-other-owner',
+          provider_account_ref: 'provider-account.nongate-other-owner',
+          secret_ref: 'secret-ref-nongate-other-owner',
+          user_id: 'user.other-owner',
+        }),
+        providerAccountRow({
+          deleted_at: T1,
+          id: 'pa-nongate-deleted',
+          provider_account_ref: 'provider-account.nongate-deleted',
+          secret_ref: 'secret-ref-nongate-deleted',
+        }),
+      ])
+
+      const d1Rows = await d1NonGateReads.providerAccountPoolStateByUserId(
+        OWNER,
+        200,
+      )
+      const postgresRows =
+        await store.nonGateReads.providerAccountPoolStateByUserId(OWNER, 200)
+
+      expect(postgresRows).toEqual(d1Rows)
+      expect(d1Rows.map(row => row.provider_account_ref).sort()).toEqual([
+        'provider-account.nongate-1',
+        'provider-account.nongate-2',
+      ])
+      // The scoping/exclusion filters agree too: no other-owner or
+      // soft-deleted row leaked through on either engine.
+      expect(
+        d1Rows.some(
+          row => row.provider_account_ref === 'provider-account.nongate-other-owner',
+        ),
+      ).toBe(false)
+      expect(
+        d1Rows.some(
+          row => row.provider_account_ref === 'provider-account.nongate-deleted',
+        ),
+      ).toBe(false)
+    })
+
+    test('providerAccountPoolStateByUserId: an owner with no accounts agrees on empty', async () => {
+      expect(
+        await d1NonGateReads.providerAccountPoolStateByUserId(
+          'user.nobody',
+          200,
+        ),
+      ).toEqual([])
+      expect(
+        await store.nonGateReads.providerAccountPoolStateByUserId(
+          'user.nobody',
+          200,
+        ),
+      ).toEqual([])
     })
   },
 )

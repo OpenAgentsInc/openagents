@@ -824,6 +824,29 @@ then their rows converge on the backfill sweep. Prod cutover procedure:
 [`RUNBOOK.md`](./RUNBOOK.md) "Identity/auth domain cutover"; the
 OWNER-GATED auth read cutover, KV cache, session-revocation proof, and D1
 drop are the same follow-up.
+**#8362 follow-up, bounded non-gate read allowlist (2026-07-05):** a
+SECOND, fully independent read surface, following the entitlements
+domain's `*_NON_GATE_READS` precedent (#8336) and the billing/business
+bounded-allowlist precedent (#8337/#8360).
+`KHALA_SYNC_IDENTITY_NON_GATE_READS` (d1|compare|postgres, default `d1`)
+governs ONLY `IdentityAuthNonGateReads.providerAccountPoolStateByUserId`
+(`provider-account-usage-routes.ts`'s `listPoolState`) — the ONE read (of
+six re-audited candidates) that cleared the conservative bar; the other
+five (admin user listing joined to a not-yet-Postgres-served
+`software_orders`; the operator-account-status reset route, a
+read-your-own-write hazard; the operator triage lease/failover/users
+reads, blocked by the domain's own documented `provider_account_leases`
+staleness gap and a cross-domain blob shared with an existence-gate
+consumer; the CRM target-resolution reads, which feed real money-grant and
+account-linking decisions; and the forum author-profile join, which also
+gates a follow-creation existence/self-follow check) stay D1-only. Fully
+independent of `KHALA_SYNC_IDENTITY_READS`, which stays untouched at `d1`
+forever in this follow-up. Machinery:
+`identity-auth-domain-store.ts`'s `IdentityAuthNonGateReads`,
+`makeD1IdentityAuthNonGateReads`, `makeRoutedIdentityAuthNonGateReads`, and
+the `identityAuthNonGateReadsForEnv(env)` factory. Prod cutover procedure
+and flag-flip evidence: [`RUNBOOK.md`](./RUNBOOK.md) "Identity/auth domain
+cutover" §"2026-07-05 follow-up (#8362): bounded non-gate read allowlist".
 
 Everything except the Verse world runs through one D1 database
 (`openagents-autopilot`, binding `OPENAGENTS_DB`). As of `main` today the

@@ -2799,6 +2799,116 @@ Verification this pass: `bun run typecheck` (workers/api) clean;
 changed this pass — only fresh production verification evidence and this
 documentation update.
 
+### 2026-07-05 follow-up (#8362): bounded non-gate read allowlist
+
+Following the entitlements domain's `*_NON_GATE_READS` precedent (#8336)
+and the billing/business-domain bounded-allowlist precedent (#8337/#8360),
+this pass adds a SECOND, FULLY INDEPENDENT read surface for the identity/
+auth domain — never touching `KHALA_SYNC_IDENTITY_READS`, which stays at
+its default `d1` forever in this pass.
+
+**Re-audit of the six candidates the prior pass inventoried.** Every read
+call site was re-read with fresh eyes, tracing consumers 30-50+ lines out
+per the issue's own conservative-bar instruction. Five of the six turned
+out to be decision-adjacent, cross-domain-blocked, or a read-after-write
+hazard on closer inspection and stay D1-only PERMANENTLY (not merely
+deferred):
+
+- `admin-overview-routes.ts` (admin `users` listing) — the query also
+  JOINs `software_orders` in the SAME statement, and `software_orders` is
+  NOT in `BUSINESS_DOMAIN_POSTGRES_SERVED_READ_TABLES` (only
+  `business_funnel_events` is served today) — the whole statement cannot
+  be routed without a query-split refactor that is out of scope here.
+- `artanis-operator-dashboard-routes.ts` (`listOperatorAccountStatusRows`)
+  — the SAME function serves a plain GET AND a read-your-own-write
+  immediately after `resetOperatorAccountCooldown`'s mirrored D1 UPDATE; a
+  lagged/failed mirror could show the caller stale pre-reset cooldown data
+  in the reset-confirmation response.
+- `operator-order-triage-routes.ts` (lease/failover/users triage reads) —
+  the lease read sits on this domain's OWN documented
+  `provider_account_leases` staleness gap (the lazy stale-expiry sweep is
+  deliberately never mirrored); the `users` join is embedded in one giant
+  cross-domain SQL string shared with an existence-gate consumer
+  (`requireTriageRecordByOrderId`).
+- `operator-targets.ts` (CRM/outreach `users`+`auth_identities` target
+  resolution) — NOT a display list: tracing consumers shows it resolves
+  the target for a real USD-credit grant
+  (`handleOmniOperatorInferenceCreditApi` → `applyManualBillingCredit` +
+  `fundInferenceFromCredit`) and for account-linking/share-creation
+  actions. A stale read could let a money grant or admin action resolve
+  against a target D1 would have correctly rejected.
+- `forum/repository.ts` (`readForumAgentPublicProfile`) — 3 of 4 call
+  sites are pure GET display, but the 4th (`followActorResponse`, a POST
+  handler) uses the SAME function to gate a follow-creation existence/
+  self-follow check; a stale read could let a follow-write proceed against
+  a target D1 would have correctly 404'd.
+
+**The one candidate that survived:** `provider-account-usage-routes.ts`'s
+`listPoolState` — an admin-only, single-table (`provider_accounts`, no
+JOIN) pool-state projection with exactly one call site
+(`buildProviderAccountUsageProjection`, itself called only from a strict
+GET route with no mutate in the handler and no other read-after-write
+consumer anywhere in the repo).
+
+**New, fully independent flag:** `KHALA_SYNC_IDENTITY_NON_GATE_READS`
+(d1|compare|postgres, default `d1`) governs ONLY
+`IdentityAuthNonGateReads.providerAccountPoolStateByUserId`. Machinery
+added to `identity-auth-domain-store.ts`:
+`makeD1IdentityAuthNonGateReads` (the SAME SQL `listPoolState` already
+ran inline), a `nonGateReads` field on `PostgresIdentityAuthStore`,
+`makeRoutedIdentityAuthNonGateReads` (d1/compare/postgres routing, the
+same fail-soft discipline as the entitlements router — `compare` serves
+D1 and shadow-compares off the response path; `postgres` makes one real
+attempt with D1 fallback + diagnostic on any error), and the
+`identityAuthNonGateReadsForEnv(env)` factory. New diagnostic events,
+deliberately distinct from every gate-read/dual-write event name:
+`khala_sync_identity_non_gate_read_compare_mismatch`,
+`khala_sync_identity_non_gate_postgres_read_failed`,
+`khala_sync_identity_non_gate_postgres_read_fallback`. The call site
+(`provider-account-usage-routes.ts`'s `listPoolState` and
+`buildProviderAccountUsageProjection`) takes the routed reads as an
+optional trailing parameter and falls back to its untouched inline D1
+query when absent — byte-identical D1 behavior with the flag off/unbound.
+
+**Backfill/verify:** no new writer was added (this pass is read-only), so
+no backfill was needed. A fresh
+`packages/khala-sync-server/scripts/backfill-identity-auth.ts --verify
+--verify-newest 50` against production D1 (`openagents-autopilot`) and
+Cloud SQL (`khala_sync_prod`, role `khala_app`) came back **CLEAN — all
+17 tables exact**, `provider_accounts` 42/42 with newest-50 hashes
+matching, confirming the read this pass serves has zero drift to inherit.
+
+**Test coverage:** a new pure unit test file,
+`identity-auth-domain-store.test.ts`, pins the router's compare/postgres
+routing and diagnostic-event behavior without needing local Postgres. A
+new contract-test block in
+`identity-auth-domain-repository.contract.test.ts` proves real
+D1-vs-Postgres ANSWER parity for `providerAccountPoolStateByUserId`
+(including owner-scoping and soft-delete-exclusion parity, and an
+empty-result-set parity case) against a real local Postgres instance.
+
+**Flag-flip evidence** (mirrors the entitlements/business-domain
+precedent — deploy with the flag unset first, then flip one stage at a
+time with a live `wrangler tail` soak before proceeding):
+
+- Stage 1 (flag unset/default `d1`): TBD — recorded once this pass
+  deploys.
+- Stage 2 (`compare`): TBD.
+- Stage 3 (`postgres`): TBD.
+
+Rollback at any point: `KHALA_SYNC_IDENTITY_NON_GATE_READS=d1`. This can
+NEVER affect an auth decision — the flag only ever touches this one
+display/reporting projection. `KHALA_SYNC_IDENTITY_READS` and
+`KHALA_SYNC_IDENTITY_DUAL_WRITE` are untouched by this follow-up.
+
+Verification this pass: `bun run typecheck` (workers/api) clean; full
+`apps/openagents.com/workers/api` test suite green except two
+PRE-EXISTING, unrelated failures (`nexus-pylon-visibility-routes.test.ts`,
+`treasury-domain-store.test.ts` — neither imports any file this pass
+touched; both sit in domains under active concurrent work this session
+per the shared multi-agent git-hygiene policy) — 1060/1062 files,
+9481/9489 tests passed; `bun run check:architecture` (zero-debt) passed.
+
 ## Public tokens-served projection (KS-6.3, #8304)
 
 The public "Khala Tokens Served" counter

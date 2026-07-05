@@ -79,6 +79,35 @@
 // → second sweep → --verify (identity set equality, custody-safe) → full
 // write-site wiring → [OWNER-GATED, LAST] auth read cutover + KV cache +
 // session-revocation verification + D1 drop.
+//
+// #8362 follow-up (bounded non-gate read allowlist, 2026-07-05): a SECOND,
+// FULLY INDEPENDENT read surface, following the entitlements domain's
+// `*_NON_GATE_READS` precedent (#8336) and the billing/business-domain
+// bounded-allowlist precedent (#8337/#8360). `KHALA_SYNC_IDENTITY_READS`
+// (above) governs ONLY the auth-decision gate reads and is DELIBERATELY
+// left untouched (default 'd1', never flipped by this follow-up) — the KV
+// cache layer and auth-matrix shadow-read replay tooling that step needs
+// remain unbuilt. A brand-new flag, `KHALA_SYNC_IDENTITY_NON_GATE_READS`
+// (d1|compare|postgres, default 'd1'), instead governs a bounded set of
+// PUBLIC/OPERATOR PROJECTION reads that decide nothing. Every read call
+// site outside this domain's own store was re-audited for this follow-up
+// (`docs/khala-sync/RUNBOOK.md` "Identity/auth domain cutover" §"2026-07-05
+// follow-up" records the inventory); only ONE cleared the conservative bar:
+// `provider-account-usage-routes.ts`'s `listPoolState` (the admin-only,
+// single-table, no-JOIN `provider_accounts` pool-state projection powering
+// the token-usage-by-account report). Every other original candidate
+// (admin user listing joined to a not-yet-Postgres-served `software_orders`;
+// the operator-account-status reset route, which is a read-your-own-write
+// immediately after a mirrored cooldown reset; the triage lease/failover/
+// users reads, one of which sits on the domain's own documented
+// `provider_account_leases` staleness gap and another of which is embedded
+// in a cross-domain blob shared with an existence-gate consumer; the CRM
+// target-resolution reads, which actually feed real money-grant and
+// account-linking decisions; and the forum author-profile join, which the
+// same function also uses to gate a follow-creation existence/self-follow
+// check) turned out to be decision-adjacent, cross-domain-blocked, or a
+// read-after-write hazard on closer inspection and stays D1-only.
+// See `IdentityAuthNonGateReads` below for the exact bounded surface.
 
 import {
   deleteIdentityAuthRows,
@@ -128,14 +157,29 @@ export type IdentityAuthReadsMode = 'd1' | 'postgres' | 'compare'
 export type IdentityAuthFlags = Readonly<{
   dualWrite: boolean
   reads: IdentityAuthReadsMode
+  /**
+   * #8362 follow-up: governs ONLY the bounded non-gate read surface
+   * (`IdentityAuthNonGateReads`) — fully independent of `reads`, which
+   * stays scoped to auth-decision gate reads (there are none routed yet).
+   * Flipping this flag can never change what an auth decision ALLOWS or
+   * DENIES; it only changes where a display/reporting projection reads
+   * from.
+   */
+  nonGateReads: IdentityAuthReadsMode
 }>
 
 export type IdentityAuthFlagEnv = Readonly<{
   KHALA_SYNC_IDENTITY_DUAL_WRITE?: string | undefined
   KHALA_SYNC_IDENTITY_READS?: string | undefined
+  KHALA_SYNC_IDENTITY_NON_GATE_READS?: string | undefined
 }>
 
 const FLAG_OFF_VALUES = new Set(['0', 'off', 'false', 'disabled', 'no'])
+
+const parseIdentityAuthReadsMode = (
+  raw: string | undefined,
+): IdentityAuthReadsMode =>
+  raw === 'postgres' || raw === 'compare' ? raw : 'd1'
 
 /**
  * Parse the KS-8.18 migration flags from Worker vars. Dual-write defaults
@@ -143,19 +187,24 @@ const FLAG_OFF_VALUES = new Set(['0', 'off', 'false', 'disabled', 'no'])
  * reads default to D1 authority — read flips are OWNER-GATED ops decisions
  * (#8282), never a code default, and for AUTH they are the highest-risk
  * step of all. Unknown read values fall back to 'd1' — never fail open
- * into an unproven read path on a typo.
+ * into an unproven read path on a typo. `nonGateReads` is parsed the same
+ * way but is a SEPARATE env var (#8362 follow-up) governing only the
+ * bounded non-gate reads.
  */
 export const identityAuthFlagsFromEnv = (
   env: IdentityAuthFlagEnv,
 ): IdentityAuthFlags => {
   const dualWriteRaw = env.KHALA_SYNC_IDENTITY_DUAL_WRITE?.trim().toLowerCase()
-  const readsRaw = env.KHALA_SYNC_IDENTITY_READS?.trim().toLowerCase()
 
   return {
     dualWrite:
       dualWriteRaw === undefined || !FLAG_OFF_VALUES.has(dualWriteRaw),
-    reads:
-      readsRaw === 'postgres' || readsRaw === 'compare' ? readsRaw : 'd1',
+    nonGateReads: parseIdentityAuthReadsMode(
+      env.KHALA_SYNC_IDENTITY_NON_GATE_READS?.trim().toLowerCase(),
+    ),
+    reads: parseIdentityAuthReadsMode(
+      env.KHALA_SYNC_IDENTITY_READS?.trim().toLowerCase(),
+    ),
   }
 }
 
@@ -166,6 +215,12 @@ export const identityAuthFlagsFromEnv = (
 export type IdentityAuthDiagnosticEvent =
   | 'khala_sync_identity_dual_write_failed'
   | 'khala_sync_identity_postgres_reads_deferred'
+  // #8362 follow-up: the bounded non-gate read allowlist's OWN
+  // diagnostics — deliberately distinct event names so a dashboard can
+  // never conflate auth-decision drift with this display-only surface.
+  | 'khala_sync_identity_non_gate_read_compare_mismatch'
+  | 'khala_sync_identity_non_gate_postgres_read_failed'
+  | 'khala_sync_identity_non_gate_postgres_read_fallback'
 
 export type IdentityAuthDiagnostic = Readonly<{
   /** The mirrored table or operation, e.g. 'mirror:provider_account_token_custody'. */
@@ -217,6 +272,98 @@ export type IdentityAuthWriteStore = Readonly<{
 }>
 
 // ---------------------------------------------------------------------------
+// Bounded non-gate read allowlist (#8362 follow-up)
+// ---------------------------------------------------------------------------
+
+/**
+ * The single row shape `provider-account-usage-routes.ts`'s `listPoolState`
+ * reads: a live pool-state snapshot for one provider account, scoped to its
+ * owning user. No custody columns (token ciphertext/IVs/key ids never live
+ * on `provider_accounts`). Field names match the D1 column names exactly —
+ * this is the SAME shape the call site's own `PoolStateRow` type declares,
+ * kept structurally compatible on purpose so the call site needs no import
+ * cycle into this module.
+ */
+export type ProviderAccountPoolStateRow = Readonly<{
+  provider_account_ref: string
+  provider: string
+  account_label: string | null
+  operator_label: string | null
+  status: string
+  health: string
+  low_credit_flag: number
+  cooldown_until: string | null
+}>
+
+/**
+ * The bounded non-gate read surface (#8362 follow-up). Both D1 and Postgres
+ * implement this interface; the routing wrapper below serves it per
+ * KHALA_SYNC_IDENTITY_NON_GATE_READS, fully independent of the (currently
+ * unrouted) auth-decision gate reads. Every function here is a pure
+ * display/reporting projection that never influences an allow/deny, lease
+ * acquire/release, or dedupe decision — see the module header for the full
+ * audit trail of what was considered and demoted.
+ */
+export type IdentityAuthNonGateReads = Readonly<{
+  /**
+   * `provider_accounts` pool-state rows for one operator's own accounts
+   * (admin-only route, `provider-account-usage-routes.ts`'s
+   * `listPoolState`). Bounded by `limit` (the call site's own
+   * `ACCOUNT_USAGE_LIMIT` ceiling); never unbounded.
+   */
+  providerAccountPoolStateByUserId: (
+    userId: string,
+    limit: number,
+  ) => Promise<ReadonlyArray<ProviderAccountPoolStateRow>>
+}>
+
+/**
+ * The D1 implementation — the SAME statement
+ * `provider-account-usage-routes.ts`'s `listPoolState` runs inline today.
+ * Kept here so the compare/postgres router has a D1 side without a runtime
+ * import cycle into that route module.
+ */
+export const makeD1IdentityAuthNonGateReads = (
+  db: D1Database,
+): IdentityAuthNonGateReads => ({
+  providerAccountPoolStateByUserId: async (userId, limit) => {
+    const rows = await db
+      .prepare(
+        `SELECT pa.provider_account_ref,
+                pa.provider,
+                pa.account_label,
+                pa.operator_label,
+                pa.status,
+                pa.health,
+                COALESCE(pa.low_credit_flag, 0) AS low_credit_flag,
+                pa.cooldown_until
+           FROM provider_accounts pa
+          WHERE pa.user_id = ?
+            AND pa.deleted_at IS NULL
+          LIMIT ?`,
+      )
+      .bind(userId, limit)
+      .all<ProviderAccountPoolStateRow>()
+    return rows.results ?? []
+  },
+})
+
+const toNonGatePoolStateRow = (
+  row: Record<string, unknown>,
+): ProviderAccountPoolStateRow => ({
+  account_label: row.account_label === null ? null : String(row.account_label),
+  cooldown_until:
+    row.cooldown_until === null ? null : String(row.cooldown_until),
+  health: String(row.health),
+  low_credit_flag: Number(row.low_credit_flag),
+  operator_label:
+    row.operator_label === null ? null : String(row.operator_label),
+  provider: String(row.provider),
+  provider_account_ref: String(row.provider_account_ref),
+  status: String(row.status),
+})
+
+// ---------------------------------------------------------------------------
 // Postgres implementation
 // ---------------------------------------------------------------------------
 
@@ -240,6 +387,8 @@ export type PostgresIdentityAuthStore = IdentityAuthWriteStore &
       table: IdentityAuthDomainTable,
       keys: ReadonlyArray<IdentityAuthKey>,
     ) => Promise<number>
+    /** The Postgres side of the bounded non-gate reads (#8362 follow-up). */
+    nonGateReads: IdentityAuthNonGateReads
   }>
 
 export type MakePostgresIdentityAuthStoreDependencies = Readonly<{
@@ -270,6 +419,23 @@ export const makePostgresIdentityAuthStore = (
   return {
     deleteRows: (table, keys) =>
       withSql(sql => deleteIdentityAuthRows(sql, table, keys)),
+    nonGateReads: {
+      providerAccountPoolStateByUserId: (userId, limit) =>
+        withSql(async sql => {
+          const rows = await requireIdentityAuthUnsafe(sql)(
+            `SELECT provider_account_ref, provider, account_label,
+                    operator_label, status, health,
+                    COALESCE(low_credit_flag, 0) AS low_credit_flag,
+                    cooldown_until
+               FROM provider_accounts
+              WHERE user_id = $1
+                AND deleted_at IS NULL
+              LIMIT $2`,
+            [userId, limit],
+          )
+          return rows.map(toNonGatePoolStateRow)
+        }),
+    },
     queryRows: (text, params) =>
       withSql(async sql => requireIdentityAuthUnsafe(sql)(text, [...params])),
     upsertRows: (table, rows) =>
@@ -507,6 +673,110 @@ export const makeIdentityAuthMirror = (
 }
 
 // ---------------------------------------------------------------------------
+// Non-gate read routing (d1 | compare | postgres-with-D1-fallback)
+// ---------------------------------------------------------------------------
+
+const stableStringify = (value: unknown): string =>
+  JSON.stringify(value, (_key, val: unknown) =>
+    val !== null && typeof val === 'object' && !Array.isArray(val)
+      ? Object.fromEntries(
+          Object.entries(val as Record<string, unknown>).sort(([a], [b]) =>
+            a < b ? -1 : a > b ? 1 : 0,
+          ),
+        )
+      : val,
+  )
+
+export type MakeRoutedIdentityAuthNonGateReadsDependencies = Readonly<{
+  d1: IdentityAuthNonGateReads
+  postgres: IdentityAuthNonGateReads
+  flags: IdentityAuthFlags
+  log?: IdentityAuthLog | undefined
+  /**
+   * Fire-safe scheduler for compare-mode shadow reads (production: leave
+   * default — the shadow promise runs detached; tests inject a collector).
+   */
+  schedule?: ((work: Promise<void>) => void) | undefined
+}>
+
+/**
+ * Route the bounded non-gate reads per KHALA_SYNC_IDENTITY_NON_GATE_READS
+ * (#8362 follow-up) — a flag fully independent of KHALA_SYNC_IDENTITY_READS.
+ * NEVER constructed in 'd1' mode (the env factory below returns no
+ * `nonGateReads` then, so the call site runs its untouched inline D1 read).
+ *
+ * compare — serve D1 immediately; schedule a detached Postgres shadow read
+ * + comparison, logging the non-gate-scoped drift diagnostic. ZERO
+ * blocking latency.
+ *
+ * postgres — ONE real Postgres attempt, then D1 fallback + diagnostic on
+ * ANY error. Safe to actually serve here (unlike a real auth gate) because
+ * this read never decides an allow/deny/lease outcome.
+ */
+export const makeRoutedIdentityAuthNonGateReads = (
+  deps: MakeRoutedIdentityAuthNonGateReadsDependencies,
+): IdentityAuthNonGateReads => {
+  const { d1, flags, postgres } = deps
+  const log = deps.log ?? defaultLog
+  const schedule =
+    deps.schedule ??
+    ((work: Promise<void>) => {
+      void work
+    })
+
+  const route = async <A>(
+    op: string,
+    d1Read: () => Promise<A>,
+    postgresRead: () => Promise<A>,
+  ): Promise<A> => {
+    if (flags.nonGateReads === 'postgres') {
+      try {
+        return await postgresRead()
+      } catch (error) {
+        log('khala_sync_identity_non_gate_postgres_read_fallback', {
+          messageSafe: safeMessage(error),
+          op,
+          refs: [],
+        })
+        return d1Read()
+      }
+    }
+
+    // compare: serve D1; shadow-compare off the response path.
+    const d1Result = await d1Read()
+    schedule(
+      postgresRead()
+        .then(postgresResult => {
+          if (stableStringify(d1Result) !== stableStringify(postgresResult)) {
+            log('khala_sync_identity_non_gate_read_compare_mismatch', {
+              messageSafe: 'postgres non-gate read differs from d1',
+              op,
+              refs: [],
+            })
+          }
+        })
+        .catch((error: unknown) => {
+          log('khala_sync_identity_non_gate_postgres_read_failed', {
+            messageSafe: safeMessage(error),
+            op,
+            refs: [],
+          })
+        }),
+    )
+    return d1Result
+  }
+
+  return {
+    providerAccountPoolStateByUserId: (userId, limit) =>
+      route(
+        'providerAccountPoolStateByUserId',
+        () => d1.providerAccountPoolStateByUserId(userId, limit),
+        () => postgres.providerAccountPoolStateByUserId(userId, limit),
+      ),
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Env plumbing
 // ---------------------------------------------------------------------------
 
@@ -573,6 +843,37 @@ export const identityAuthMirrorFromEnv = (
   const db =
     options.db ?? openAgentsDatabase(env as { OPENAGENTS_DB: D1Database })
   return makeIdentityAuthMirror({ db, log, postgres })
+}
+
+/**
+ * The production bounded non-gate reads for this env (#8362 follow-up), or
+ * undefined when KHALA_SYNC_IDENTITY_NON_GATE_READS is 'd1' (the default) or
+ * the KHALA_SYNC_DB binding is absent — in both cases the call site keeps
+ * its byte-identical inline D1 read. Fully independent of
+ * `identityAuthMirrorFromEnv`/dual-write and of the (unrouted)
+ * `KHALA_SYNC_IDENTITY_READS` gate-read flag.
+ */
+export const identityAuthNonGateReadsForEnv = (
+  env: IdentityAuthStoreEnv,
+  options: MakeIdentityAuthStoreOptions = {},
+): IdentityAuthNonGateReads | undefined => {
+  const flags = identityAuthFlagsFromEnv(env)
+  if (flags.nonGateReads === 'd1') {
+    return undefined
+  }
+  const postgres = postgresIdentityAuthStoreForEnv(env, options)
+  if (postgres === undefined) {
+    return undefined
+  }
+  const db =
+    options.db ?? openAgentsDatabase(env as { OPENAGENTS_DB: D1Database })
+  const log = options.log ?? defaultLog
+  return makeRoutedIdentityAuthNonGateReads({
+    d1: makeD1IdentityAuthNonGateReads(db),
+    flags,
+    log,
+    postgres: postgres.nonGateReads,
+  })
 }
 
 // ---------------------------------------------------------------------------
