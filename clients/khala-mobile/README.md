@@ -14,6 +14,12 @@ packages: shared packages use NodeNext `.js` import specifiers while source
 files live as `.ts`, so Metro falls back from local `.js` requests to matching
 `.ts`/`.tsx` files.
 
+As of 2026-07-05, the app shell no longer uses Expo Router. The explicit
+entrypoint is `index.tsx`, which registers `src/app.tsx`; signed-in app routes
+live in typed React Navigation stacks/drawers under `src/navigators`, with
+screens under `src/screens`. Keep new navigation work in that Ignite-style
+navigator structure.
+
 The native SwiftUI app at `clients/khala-ios/Khala` remains the interim
 shipping companion and native-reference source until this app proves parity on
 device.
@@ -82,8 +88,8 @@ be used. **Verified working end to end** on a booted `iPhone 17 Pro`
 simulator (iOS 26.5) from a completely fresh worktree/build: `expo prebuild
 --platform ios` → `bun run build:ios:local` → `** BUILD SUCCEEDED **` →
 `xcrun simctl install` → plain `expo start --port 8081` → `xcrun simctl
-launch` → Metro bundled cleanly (`iOS Bundled 3742ms ...expo-router/entry.js
-(2454 modules)`) → the app rendered its real Tailnet auto-auth fallback
+launch` → Metro bundled cleanly at the then-current Expo Router entry
+(`iOS Bundled 3742ms ...expo-router/entry.js (2454 modules)`) → the app rendered its real Tailnet auto-auth fallback
 screen ("No signed-in Mac found on your Tailnet" / Retry / Sign in manually),
 matching the documented auth-provider behavior exactly. This is the first
 session to get a `khala-mobile` build past install+launch+render on any

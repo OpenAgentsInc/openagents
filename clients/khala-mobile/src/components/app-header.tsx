@@ -1,6 +1,6 @@
-import { useDrawerStatus } from "expo-router/drawer"
 import { DrawerActions } from "@react-navigation/native"
-import { useNavigation, useRouter } from "expo-router"
+import { useNavigation } from "@react-navigation/native"
+import { useDrawerStatus } from "@react-navigation/drawer"
 import { Pressable, Text, View } from "react-native"
 
 import { ConnectivityDot } from "../status/connectivity-dot"
@@ -34,17 +34,23 @@ const DrawerMenuButton = () => {
 }
 
 /** Fully custom header bar (native headers wrap headerRight/headerLeft in
- * their own circular button chrome on newer iOS, which looked wrong here) —
+ * their own circular button chrome on newer iOS, which looked wrong here) -
  * this gives exact control over layout, so the connectivity dot is just a
  * small, properly centered circle, not a native button. */
 export const AppHeader = ({ showBack = false, showMenu = false, title }: AppHeaderProps) => {
-  const router = useRouter()
+  const navigation = useNavigation()
 
   return (
     <View className="flex-row items-center border-b border-borderMuted px-4 py-3">
       <View className="w-14">
         {showBack ? (
-          <Pressable accessibilityRole="button" hitSlop={12} onPress={() => router.back()}>
+          <Pressable
+            accessibilityRole="button"
+            hitSlop={12}
+            onPress={() => {
+              if (navigation.canGoBack()) navigation.goBack()
+            }}
+          >
             <Text className="font-sans text-2xl text-text">‹</Text>
           </Pressable>
         ) : showMenu ? (

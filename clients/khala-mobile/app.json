@@ -35,16 +35,12 @@
       ]
     },
     "plugins": [
-      "expo-router",
       "expo-secure-store",
       "expo-sqlite",
       "expo-updates",
       "./modules/khala-push-to-talk-stt/app.plugin.js",
       "./modules/khala-apple-foundation-models/app.plugin.js"
     ],
-    "experiments": {
-      "typedRoutes": true
-    },
     "extra": {
       "khala": {
         "apiBaseUrl": "https://openagents.com",

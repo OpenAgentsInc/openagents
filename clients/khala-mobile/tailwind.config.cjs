@@ -2,7 +2,7 @@ const { openAgentsNativeWindTokens } = require("@openagentsinc/ui/nativewind-tok
 
 module.exports = {
   content: [
-    "./app/**/*.{js,jsx,ts,tsx}",
+    "./index.{js,jsx,ts,tsx}",
     "./src/**/*.{js,jsx,ts,tsx}"
   ],
   presets: [require("nativewind/preset")],

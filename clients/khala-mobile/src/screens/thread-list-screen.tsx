@@ -2,36 +2,39 @@ import {
   CHAT_THREAD_ENTITY_TYPE,
   decodeChatThreadEntity,
   personalScope,
-  type ChatThreadEntity
+  type ChatThreadEntity,
 } from "@openagentsinc/khala-sync"
-import { useRouter } from "expo-router"
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
 import { FlatList, Text, View } from "react-native"
 import Animated, { FadeIn } from "react-native-reanimated"
 import { SafeAreaView } from "react-native-safe-area-context"
 
-import { useKhalaAuth } from "../../src/auth/khala-auth-context"
-import { AppHeader } from "../../src/components/app-header"
-import { TouchableFeedback } from "../../src/components/touchable-feedback"
-import { formatRelativeTime } from "../../src/sync/relative-time-core"
-import { sortByKeyDesc } from "../../src/sync/khala-sync-entities-core"
-import { useKhalaSyncCollection } from "../../src/sync/use-khala-sync-collection"
-import { MOTION_MEDIUM, MOTION_STAGGER_MS } from "../../src/theme/motion"
+import { useKhalaAuth } from "../auth/khala-auth-context"
+import { AppHeader } from "../components/app-header"
+import { TouchableFeedback } from "../components/touchable-feedback"
+import type { AppDrawerScreenProps, AppStackParamList } from "../navigators/navigationTypes"
+import { formatRelativeTime } from "../sync/relative-time-core"
+import { sortByKeyDesc } from "../sync/khala-sync-entities-core"
+import { useKhalaSyncCollection } from "../sync/use-khala-sync-collection"
+import { MOTION_MEDIUM, MOTION_STAGGER_MS } from "../theme/motion"
 
 const threadIdOf = (thread: ChatThreadEntity): string => thread.threadId
 const recencyOf = (thread: ChatThreadEntity): string =>
   thread.lastMessageAt ?? thread.updatedAt ?? thread.createdAt
 
-export default function ThreadListScreen() {
-  const router = useRouter()
+type ThreadListScreenProps = AppDrawerScreenProps<"Threads">
+
+export const ThreadListScreen = ({ navigation }: ThreadListScreenProps) => {
   const { ownerUserId } = useKhalaAuth()
   const state = useKhalaSyncCollection(
     ownerUserId === "" ? "" : String(personalScope(ownerUserId)),
     CHAT_THREAD_ENTITY_TYPE,
     decodeChatThreadEntity,
-    threadIdOf
+    threadIdOf,
   )
   const threads = sortByKeyDesc(state.items, recencyOf)
   const now = Date.now()
+  const stackNavigation = navigation.getParent<NativeStackNavigationProp<AppStackParamList>>()
 
   return (
     <SafeAreaView className="flex-1 bg-bg" edges={["top", "bottom", "left", "right"]}>
@@ -66,9 +69,9 @@ export default function ThreadListScreen() {
                 accessibilityRole="button"
                 className="border-b border-borderMuted px-4 py-4"
                 onPress={() =>
-                  router.push({
-                    params: { threadId: thread.threadId, title: thread.title },
-                    pathname: "/thread/[threadId]"
+                  stackNavigation?.navigate("ThreadMessages", {
+                    threadId: thread.threadId,
+                    title: thread.title,
                   })
                 }
               >

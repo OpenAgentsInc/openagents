@@ -1,4 +1,3 @@
-import { Link, type Href } from "expo-router"
 import type { ReactNode } from "react"
 import { ScrollView, Text, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
@@ -31,18 +30,20 @@ export const ScreenShell = ({ children, subtitle, title }: ScreenShellProps) => 
 )
 
 type NavigationTileProps = Readonly<{
-  href: Href
+  onPress: () => void
   title: string
   detail: string
 }>
 
-export const NavigationTile = ({ detail, href, title }: NavigationTileProps) => (
-  <Link asChild href={href}>
-    <TouchableFeedback className="rounded-xl border border-border bg-surfaceRaised p-4">
-      <Text className="font-sans text-lg font-semibold text-text">{title}</Text>
-      <Text className="mt-2 font-sans text-base text-textMuted">{detail}</Text>
-    </TouchableFeedback>
-  </Link>
+export const NavigationTile = ({ detail, onPress, title }: NavigationTileProps) => (
+  <TouchableFeedback
+    accessibilityRole="button"
+    className="rounded-xl border border-border bg-surfaceRaised p-4"
+    onPress={onPress}
+  >
+    <Text className="font-sans text-lg font-semibold text-text">{title}</Text>
+    <Text className="mt-2 font-sans text-base text-textMuted">{detail}</Text>
+  </TouchableFeedback>
 )
 
 type StatLineProps = Readonly<{

@@ -28,7 +28,9 @@ Any Ignite pattern that conflicts with those rules is explicitly out of scope.
 ## Tracking Issues
 
 - [#8426](https://github.com/OpenAgentsInc/openagents/issues/8426) - migrate
-  Expo Router shell to Ignite-style React Navigation stacks.
+  Expo Router shell to Ignite-style React Navigation stacks. Implemented:
+  `index.tsx` now registers `src/app.tsx`, and typed React Navigation
+  stack/drawer ownership lives under `clients/khala-mobile/src/navigators`.
 - [#8427](https://github.com/OpenAgentsInc/openagents/issues/8427) - adopt
   Ignite provider spine and core UI primitives.
 - [#8428](https://github.com/OpenAgentsInc/openagents/issues/8428) - add
@@ -53,8 +55,8 @@ Khala's existing sync/security/native domains.
 
 | Area | Khala Mobile today | Ignite pattern | Audit read |
 | --- | --- | --- | --- |
-| App entry | Expo Router `app/_layout.tsx` owns `GestureHandlerRootView`, `StatusBar`, `KhalaAuthProvider`, auth gate, and signed-in `Stack`. | `app/app.tsx` owns `SafeAreaProvider`, `KeyboardProvider`, font/i18n readiness, `ThemeProvider`, navigation persistence, and `ErrorBoundary`. | Adopt Ignite's explicit `App` entry/provider spine. Migrate away from `expo-router/entry` as the main app entry. |
-| Routes | File routes in `app/(drawer)` and `app/thread/[threadId].tsx`; reusable code in `src/*`. | Classic React Navigation stack/tab files in `app/navigators`, with typed `AppStackParamList`, stack screens, back-button handling, navigation refs, and optional tab/drawer navigators. | Adopt the React Navigation stack shape as target. Preserve the `src/*` domain split, but move route ownership into typed navigators/screens. |
+| App entry | Before #8426, Expo Router `app/_layout.tsx` owned `GestureHandlerRootView`, `StatusBar`, `KhalaAuthProvider`, auth gate, and signed-in `Stack`. Current app entry is explicit `index.tsx` -> `src/app.tsx`. | `app/app.tsx` owns `SafeAreaProvider`, `KeyboardProvider`, font/i18n readiness, `ThemeProvider`, navigation persistence, and `ErrorBoundary`. | Keep moving toward Ignite's explicit `App` entry/provider spine. The main app entry has migrated away from `expo-router/entry`. |
+| Routes | Before #8426, file routes lived in `app/(drawer)` and `app/thread/[threadId].tsx`; current route ownership is typed React Navigation under `src/navigators` plus screens under `src/screens`. | Classic React Navigation stack/tab files in `app/navigators`, with typed `AppStackParamList`, stack screens, back-button handling, navigation refs, and optional tab/drawer navigators. | Adopted the React Navigation stack shape as target. Preserve the `src/*` domain split, and keep new route ownership in typed navigators/screens. |
 | UI primitives | Product-specific primitives (`ArwesButton`, `BackgroundGradient`, `Frame`, `SwipeableItem`, `Toggle`, `ChatComposer`) plus direct RN `Text`, `Pressable`, `View` in many places. | Reusable `Text`, `Button`, `Screen`, `Header`, `ListItem`, `TextField`, `EmptyState`, `AutoImage`, `Icon` with common accessibility/theming behavior. | Borrow the primitive architecture, not the visual style. Khala needs OpenAgents-flavored `Text/Button/Screen` wrappers. |
 | Theme | `src/theme/tokens.ts` bridges shared `@openagentsinc/ui` NativeWind tokens and `tailwind.config.cjs`. | `app/theme` has typed colors, spacing, typography, timing, light/dark themes, provider, and `themed()` helper. | Khala should keep shared tokens. Borrow typed theme/context affordances only if they reduce duplicated classes or unlock safe native styles. |
 | Config | `app.json` has self-hosted updates, local native module plugins, and public `extra.khala` endpoints. | `app/config` separates base/dev/prod and documents that bundled config is public, not secret. | Borrow the "bundled config is public" documentation and maybe a typed public config module. Do not put secrets there. |

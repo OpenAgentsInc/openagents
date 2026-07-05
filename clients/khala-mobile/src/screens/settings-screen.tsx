@@ -8,34 +8,34 @@ import {
   FLEET_WORKER_ENTITY_TYPE,
   type FleetAccountEntity,
   type FleetRunEntity,
-  type FleetWorkerEntity
+  type FleetWorkerEntity,
 } from "@openagentsinc/khala-sync"
 import { Pressable, ScrollView, Text, View } from "react-native"
 import Animated, { FadeIn } from "react-native-reanimated"
 import { SafeAreaView } from "react-native-safe-area-context"
 
-import { useKhalaAuth } from "../../src/auth/khala-auth-context"
-import { AppHeader } from "../../src/components/app-header"
-import { Frame, usePowerOnVisible } from "../../src/components/frame"
-import { KHALA_SYNC_DEMO_FLEET_RUN_ID } from "../../src/config/khala-sync-demo"
-import type { OnDeviceReadinessRow } from "../../src/native/on-device-readiness-core"
-import { useOnDeviceReadiness } from "../../src/native/use-on-device-readiness"
+import { useKhalaAuth } from "../auth/khala-auth-context"
+import { AppHeader } from "../components/app-header"
+import { Frame, usePowerOnVisible } from "../components/frame"
+import { KHALA_SYNC_DEMO_FLEET_RUN_ID } from "../config/khala-sync-demo"
+import type { OnDeviceReadinessRow } from "../native/on-device-readiness-core"
+import { useOnDeviceReadiness } from "../native/use-on-device-readiness"
 import {
   fleetAccountIdOf,
   fleetRunIdOf,
   fleetWorkerIdOf,
   formatAccountRefHash,
   sortAccountsByReadinessThenRef,
-  sortWorkersByIdAsc
-} from "../../src/sync/khala-fleet-collections-core"
-import { useKhalaSyncCollection } from "../../src/sync/use-khala-sync-collection"
-import { MOTION_MEDIUM, MOTION_STAGGER_MS } from "../../src/theme/motion"
+  sortWorkersByIdAsc,
+} from "../sync/khala-fleet-collections-core"
+import { useKhalaSyncCollection } from "../sync/use-khala-sync-collection"
+import { MOTION_MEDIUM, MOTION_STAGGER_MS } from "../theme/motion"
 
 const READINESS_COLOR: Record<FleetAccountEntity["readiness"], string> = {
   cooldown: "text-warning",
   ready: "text-success",
   unavailable: "text-danger",
-  unknown: "text-textFaint"
+  unknown: "text-textFaint",
 }
 
 const SectionLabel = ({ children }: { children: string }) => (
@@ -44,10 +44,6 @@ const SectionLabel = ({ children }: { children: string }) => (
   </Text>
 )
 
-/** Fleet run status card, framed with the ported Arwes `Frame` chrome (see
- * `docs/design/2026-07-05-arcade-ui-harvest-audit.md` §2.1) so it visually
- * "powers on" once real fleet-run data lands, per the harvest issue's own
- * guidance to reserve `Frame` for primary/active surfaces. */
 const FleetRunCard = ({ run }: { run: FleetRunEntity }) => {
   const visible = usePowerOnVisible()
   return (
@@ -67,9 +63,6 @@ const FleetRunCard = ({ run }: { run: FleetRunEntity }) => {
   )
 }
 
-/** Connected fleet-account card, same "power on" `Frame` treatment as
- * `FleetRunCard`, staggered per row via `MOTION_STAGGER_MS * index` to match
- * the existing entrance-stagger convention used elsewhere on this screen. */
 const AccountCard = ({ account, index }: { account: FleetAccountEntity; index: number }) => {
   const visible = usePowerOnVisible(MOTION_STAGGER_MS * index)
   return (
@@ -106,13 +99,13 @@ const FleetSection = () => {
     scope,
     FLEET_WORKER_ENTITY_TYPE,
     decodeFleetWorkerEntity,
-    fleetWorkerIdOf
+    fleetWorkerIdOf,
   )
   const accountState = useKhalaSyncCollection(
     scope,
     FLEET_ACCOUNT_ENTITY_TYPE,
     decodeFleetAccountEntity,
-    fleetAccountIdOf
+    fleetAccountIdOf,
   )
 
   if (KHALA_SYNC_DEMO_FLEET_RUN_ID === "") {
@@ -212,17 +205,9 @@ const ON_DEVICE_TONE_COLOR: Record<OnDeviceReadinessRow["tone"], string> = {
   danger: "text-danger",
   faint: "text-textFaint",
   success: "text-success",
-  warning: "text-warning"
+  warning: "text-warning",
 }
 
-/** Speech (push-to-talk) + Apple Foundation Models readiness, ported from
- * `src/legacy-screens/settings.tsx` (issue #8350's TS-8 gap: those two Expo
- * native modules were real and tested but only ever rendered on a screen
- * `app/` never routed to). Same "power on" `Frame` treatment as the fleet
- * section above. Read-only status, same as the legacy screen — the speech
- * module's actual dictation call is wired into the chat composer's mic
- * button (`src/components/chat-composer.tsx`), not here; this section is
- * purely the availability probe both modules already exposed. */
 const OnDeviceCard = ({ row, index }: { row: OnDeviceReadinessRow; index: number }) => {
   const visible = usePowerOnVisible(MOTION_STAGGER_MS * index)
   return (
@@ -256,15 +241,13 @@ const OnDeviceSection = () => {
   )
 }
 
-export default function SettingsScreen() {
-  return (
-    <SafeAreaView className="flex-1 bg-bg" edges={["top", "bottom", "left", "right"]}>
-      <AppHeader showMenu title="Settings" />
-      <ScrollView contentContainerClassName="gap-6 px-4 py-4">
-        <FleetSection />
-        <OnDeviceSection />
-        <AccountSection />
-      </ScrollView>
-    </SafeAreaView>
-  )
-}
+export const SettingsScreen = () => (
+  <SafeAreaView className="flex-1 bg-bg" edges={["top", "bottom", "left", "right"]}>
+    <AppHeader showMenu title="Settings" />
+    <ScrollView contentContainerClassName="gap-6 px-4 py-4">
+      <FleetSection />
+      <OnDeviceSection />
+      <AccountSection />
+    </ScrollView>
+  </SafeAreaView>
+)
