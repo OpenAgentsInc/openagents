@@ -78,6 +78,10 @@ import {
   syncTeamScope,
   teamRouteRef,
 } from './page/loggedIn/model'
+import {
+  agentRunLiveMessagesFromLiveFramePayload,
+  agentRunLiveWireScope,
+} from './page/loggedIn/sync/agent-run-live'
 import { authorizedThreadRouteScope } from './page/loggedIn/thread-route'
 import { chatRunIsBusy } from './page/loggedIn/update'
 import { loggedInWorkroomAllowed } from './product-policy'
@@ -184,6 +188,13 @@ const teamSyncScopeForRoute = (
 const syncScopesForModel = (model: Extract<Model, { _tag: 'LoggedIn' }>) => {
   const routeTeamScope = teamSyncScopeForRoute(model)
 
+  // KS-6.6 client repoint (#8416): the agent-run scope is deliberately NOT
+  // included here anymore. It used to open the legacy DO-room socket
+  // (`/api/sync/agent-run/<runId>/stream`) alongside every other scope in
+  // this list; it now has its own dedicated khala-sync `/api/sync/connect`
+  // stream (`agentRunLiveStreamDependenciesForModel` below), which emits
+  // patches under the SAME `syncAgentRunScope` key so every existing
+  // `patch.scope`-matching consumer keeps working unchanged.
   return uniqueScopes([
     model.sync.workspaceScope,
     ...(routeTeamScope === undefined ? [] : [routeTeamScope]),
@@ -192,9 +203,6 @@ const syncScopesForModel = (model: Extract<Model, { _tag: 'LoggedIn' }>) => {
 
       return maybeScope === undefined ? [] : [maybeScope]
     })(),
-    ...(model.chatRun._tag === 'Active'
-      ? [syncAgentRunScope(model.chatRun.metadata.runId)]
-      : []),
   ])
 }
 
@@ -905,6 +913,123 @@ const syncStreams = (
   )
 }
 
+// Live agent-run status + transcript stream (KS-6.6 client repoint, #8416).
+// The active chat run's scope now connects to the khala-sync engine
+// (`WS /api/sync/connect?scope=scope.agent_run.<runId>`) instead of the
+// legacy `agent-run:<runId>` DO-room socket that used to ride inside
+// `syncStreams` above. Always connects at cursor 0: `scope.agent_run.<runId>`
+// only started producing changelog entries on 2026-07-05 (KS-6.6, #8416) and
+// is scoped to one run's lifetime (bounded event count), so a full replay
+// from version 1 on every (re)connect is cheap and correct — not the
+// unbounded global-history replay the settled feed had to avoid with its own
+// snapshot-then-connect two-step (KS-6.4, #8414). Applying the SAME id-keyed
+// upsert twice (initial catch-up + a live delta that already arrived) is
+// idempotent, so no dedup bookkeeping is needed here.
+const inactiveAgentRunLiveStream: {
+  readonly isActive: boolean
+  readonly legacyScope: string
+  readonly streamHref: string
+} = {
+  isActive: false,
+  legacyScope: '',
+  streamHref: '',
+}
+
+type AgentRunLiveStreamDependencies = typeof inactiveAgentRunLiveStream
+
+export const agentRunLiveStreamDependenciesForModel = (
+  model: Model,
+): AgentRunLiveStreamDependencies => {
+  if (
+    model._tag !== 'LoggedIn' ||
+    !loggedInWorkroomAllowed(model.auth) ||
+    model.chatRun._tag !== 'Active'
+  ) {
+    return inactiveAgentRunLiveStream
+  }
+
+  const runId = model.chatRun.metadata.runId
+
+  return {
+    isActive: true,
+    legacyScope: syncAgentRunScope(runId),
+    streamHref: khalaSyncConnectHref(agentRunLiveWireScope(runId), 0),
+  }
+}
+
+const agentRunLiveStream = (
+  dependencies: AgentRunLiveStreamDependencies,
+): Stream.Stream<Message> => {
+  if (!dependencies.isActive) {
+    return Stream.empty
+  }
+
+  const { legacyScope, streamHref } = dependencies
+
+  return Stream.callback<Message>(queue =>
+    Effect.acquireRelease(
+      Effect.sync(() => {
+        const socket = new WebSocket(webSocketUrl(streamHref))
+        const resource = { released: false, socket }
+        socket.addEventListener('open', () => {
+          if (resource.released) {
+            socket.close()
+            return
+          }
+
+          Queue.offerUnsafe(
+            queue,
+            GotLoggedInMessage({ message: OpenedSyncStream({ scope: legacyScope }) }),
+          )
+        })
+        socket.addEventListener('message', event => {
+          for (const message of agentRunLiveMessagesFromLiveFramePayload(
+            String(event.data),
+            legacyScope,
+          )) {
+            Queue.offerUnsafe(queue, GotLoggedInMessage({ message }))
+          }
+        })
+        socket.addEventListener('close', () => {
+          if (resource.released) {
+            return
+          }
+
+          Queue.offerUnsafe(
+            queue,
+            GotLoggedInMessage({ message: ClosedSyncStream({ scope: legacyScope }) }),
+          )
+        })
+        socket.addEventListener('error', () => {
+          if (resource.released) {
+            return
+          }
+
+          Queue.offerUnsafe(
+            queue,
+            GotLoggedInMessage({
+              message: FailedSyncStream({
+                error: 'Agent run live-tail stream connection failed.',
+                scope: legacyScope,
+              }),
+            }),
+          )
+        })
+
+        return resource
+      }),
+      resource =>
+        Effect.sync(() => {
+          resource.released = true
+
+          if (resource.socket.readyState === WebSocket.OPEN) {
+            resource.socket.close()
+          }
+        }),
+    ).pipe(Effect.flatMap(() => Effect.never)),
+  )
+}
+
 // Live /autopilot onboarding turn stream (issue #6123 UI follow-up). When a turn
 // is pending (set on submit), open the SSE stream and dispatch prose deltas as
 // they arrive, then the terminal success/failure. Keyed by the turn id so the
@@ -1515,6 +1640,24 @@ export const subscriptions = Subscription.make<Model, Message>()(entry => ({
       keepAliveEquivalence: (left, right) =>
         left.isActive === right.isActive && left.scopeKey === right.scopeKey,
       dependenciesToStream: syncStreams,
+    },
+  ),
+  // Live agent-run status + transcript stream (KS-6.6 client repoint, #8416):
+  // the active chat run's khala-sync `/api/sync/connect` socket. Reopens
+  // whenever the active run's scope changes (a fresh mission/thread), and
+  // tears down when no chat run is active.
+  agentRunLiveStream: entry(
+    {
+      isActive: S.Boolean,
+      legacyScope: S.String,
+      streamHref: S.String,
+    },
+    {
+      modelToDependencies: agentRunLiveStreamDependenciesForModel,
+      keepAliveEquivalence: (left, right) =>
+        left.isActive === right.isActive &&
+        left.legacyScope === right.legacyScope,
+      dependenciesToStream: agentRunLiveStream,
     },
   ),
   settledFeed: entry(

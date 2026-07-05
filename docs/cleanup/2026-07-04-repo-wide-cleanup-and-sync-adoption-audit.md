@@ -512,6 +512,24 @@ and the D1 `sync_*` tables have zero remaining users and drop cleanly**
      **The client repoint itself is STILL NOT done** — `apps/web/src/
      subscriptions.ts` still opens the legacy socket; #8416 stays open for
      that remaining step.
+   - **2026-07-05 client repoint landed, legacy deletion still deferred
+     (#8416):** `apps/web/src/subscriptions.ts`'s active chat run now opens
+     its own `WS /api/sync/connect?scope=scope.agent_run.<runId>` stream
+     instead of riding the legacy multi-scope socket (new pure adapter:
+     `apps/web/src/page/loggedIn/sync/agent-run-live.ts`, following the exact
+     KS-6.4 settled-feed pattern — zero changes to `sync/transitions.ts` or
+     `sync/projection.ts`). The legacy `LoadSyncSnapshot` REST fetch stays as
+     the initial full-state seed (a different, always-on write path,
+     unaffected by the legacy poke deletion below). Full `apps/web` suite
+     1828/1828 green, `check:architecture` and `check:deploy` both green.
+     **The three legacy `notifySyncScopes(env, syncScopeForAgentRun(...))`
+     calls were NOT deleted this pass, and #8416 stays open**: production has
+     zero `agent_runs` rows created since 2026-06-07 and zero
+     `khala_sync_changelog` rows for any `scope.agent_run.*` scope, so there
+     is no live production data to open a real WebSocket against and observe
+     — the honest reason a live-mission browser smoke could not be performed.
+     Full detail in `docs/khala-sync/RUNBOOK.md`'s "2026-07-05 client repoint
+     landed" subsection.
 5. **Public aggregates** (demand-mix, model-mix, tokens-history, public activity timeline): project off live-at-read D1 onto `scope.public.*` counters — the Postgres rollup twins already exist from KS-8.2. (M, low)
    - **2026-07-05 update (KS-6.7, #8417):** shipped model-mix, demand-mix,
      channel-mix, and tokens-history as a `scope.public.tokens-served-aggregates`

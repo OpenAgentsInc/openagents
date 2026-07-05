@@ -39,6 +39,7 @@ import {
   ThreadRoute,
 } from './route'
 import {
+  agentRunLiveStreamDependenciesForModel,
   autopilotRunPollDependenciesForModel,
   demoClockDependenciesForModel,
   demoKeyboardDependenciesForModel,
@@ -424,21 +425,20 @@ describe('workspace sync subscriptions', () => {
     })
   })
 
-  test('subscribes active chat routes to workspace and agent-run scopes', () => {
+  // KS-6.6 client repoint (#8416): the agent-run scope no longer rides this
+  // legacy multi-scope socket — it has its own dedicated khala-sync
+  // `/api/sync/connect` stream (see `agentRunLiveStreamDependenciesForModel`
+  // below), so an active chat run alone no longer widens this scope list.
+  test('subscribes active chat routes to the workspace scope only (agent-run has its own khala-sync stream)', () => {
     expect(syncStreamDependenciesForModel(activeRunModel(ChatRoute()))).toEqual(
       {
         isActive: true,
-        scopeKey: 'workspace:github:14167547|agent-run:agent_run_1',
+        scopeKey: 'workspace:github:14167547',
         targets: [
           {
             cursor: 0,
             scope: 'workspace:github:14167547',
             streamHref: '/api/sync/workspace/github%3A14167547/stream?cursor=0',
-          },
-          {
-            cursor: 0,
-            scope: 'agent-run:agent_run_1',
-            streamHref: '/api/sync/agent-run/agent_run_1/stream?cursor=0',
           },
         ],
       },
@@ -452,23 +452,18 @@ describe('workspace sync subscriptions', () => {
       ),
     ).toEqual({
       isActive: true,
-      scopeKey: 'workspace:github:14167547|agent-run:agent_run_1',
+      scopeKey: 'workspace:github:14167547',
       targets: [
         {
           cursor: 0,
           scope: 'workspace:github:14167547',
           streamHref: '/api/sync/workspace/github%3A14167547/stream?cursor=0',
         },
-        {
-          cursor: 0,
-          scope: 'agent-run:agent_run_1',
-          streamHref: '/api/sync/agent-run/agent_run_1/stream?cursor=0',
-        },
       ],
     })
   })
 
-  test('subscribes authorized thread routes to workspace, thread, and active run scopes', () => {
+  test('subscribes authorized thread routes to workspace and thread scopes', () => {
     expect(
       syncStreamDependenciesForModel({
         ...activeRunModel(ThreadRoute({ threadId: 'thread-1' })),
@@ -476,8 +471,7 @@ describe('workspace sync subscriptions', () => {
       }),
     ).toEqual({
       isActive: true,
-      scopeKey:
-        'workspace:github:14167547|thread:thread-1|agent-run:agent_run_1',
+      scopeKey: 'workspace:github:14167547|thread:thread-1',
       targets: [
         {
           cursor: 0,
@@ -488,11 +482,6 @@ describe('workspace sync subscriptions', () => {
           cursor: 0,
           scope: 'thread:thread-1',
           streamHref: '/api/sync/thread/thread-1/stream?cursor=0',
-        },
-        {
-          cursor: 0,
-          scope: 'agent-run:agent_run_1',
-          streamHref: '/api/sync/agent-run/agent_run_1/stream?cursor=0',
         },
       ],
     })
@@ -576,6 +565,44 @@ describe('workspace sync subscriptions', () => {
           streamHref: '/api/sync/team/team_openagents_core/stream?cursor=0',
         },
       ],
+    })
+  })
+})
+
+describe('agent-run live-tail subscription (KS-6.6 client repoint, #8416)', () => {
+  test('does not subscribe when there is no active chat run', () => {
+    expect(
+      agentRunLiveStreamDependenciesForModel(
+        LoggedIn.init(ChatRoute(), authWithTeam),
+      ),
+    ).toEqual({
+      isActive: false,
+      legacyScope: '',
+      streamHref: '',
+    })
+  })
+
+  test('does not subscribe incomplete-onboarding models even with an active run', () => {
+    expect(
+      agentRunLiveStreamDependenciesForModel({
+        ...LoggedIn.init(ChatRoute(), authWithIncompleteOnboarding),
+        chatRun: activeRun,
+      }),
+    ).toEqual({
+      isActive: false,
+      legacyScope: '',
+      streamHref: '',
+    })
+  })
+
+  test('subscribes the active run to the khala-sync connect endpoint under the legacy scope key', () => {
+    expect(
+      agentRunLiveStreamDependenciesForModel(activeRunModel(ChatRoute())),
+    ).toEqual({
+      isActive: true,
+      legacyScope: 'agent-run:agent_run_1',
+      streamHref:
+        '/api/sync/connect?scope=scope.agent_run.agent_run_1&cursor=0',
     })
   })
 })

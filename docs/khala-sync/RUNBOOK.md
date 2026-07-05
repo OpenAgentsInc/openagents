@@ -3756,6 +3756,119 @@ repoint is a distinct, not-yet-attempted change (updating
 `notifySyncScopes` pokes). #8416 stays open; do not treat this pass as
 closing it.
 
+### 2026-07-05 client repoint landed — WS transport cut over, legacy poke deletion still deferred (#8416)
+
+This pass does the actual client repoint the two passes above unblocked.
+**Cut over:** `apps/web/src/subscriptions.ts`'s active chat run no longer
+rides the legacy multi-scope `/api/sync/<kind>/<id>/stream` socket for
+`agent-run:<runId>` (removed from `syncScopesForModel`'s list). It now opens
+its own dedicated `WS /api/sync/connect?scope=scope.agent_run.<runId>`
+stream (`agentRunLiveStreamDependenciesForModel` / `agentRunLiveStream`),
+always at cursor 0 — `scope.agent_run.<runId>` only started producing
+changelog entries today (KS-6.6) and is bounded to one run's lifetime, so a
+full replay from version 1 on every (re)connect is cheap and correct, unlike
+the settled feed's unbounded global history (which is why KS-6.4 needed a
+separate snapshot-then-connect two-step and this scope does not).
+
+**Deliberately NOT touched: the legacy `LoadSyncSnapshot` REST fetch**
+(`/api/sync/agent-run/<runId>/snapshot`, still fired from
+`SucceededLaunchAutopilotRun` in `runs/transitions.ts`) still seeds the
+initial full run+event state. That endpoint's `readSnapshot` replays
+`sync_changes` rows written by the always-on `appendAgentRunSyncChanges`
+(`omni-runs.ts`) — a completely different write path from the
+`notifySyncScopes(env, syncScopeForAgentRun(...))` broadcast calls this
+issue's final step deletes — so it stays correct regardless of what happens
+to those three calls. This keeps `runnerId`/`eventCursor`/`externalRunId`
+(fields the new `AgentRunEntity` never carries — see below) populated from a
+known-good source instead of inventing placeholder values.
+
+**New pure adapter, zero reducer changes**
+(`apps/web/src/page/loggedIn/sync/agent-run-live.ts`), following the exact
+KS-6.4 `settledFeedPatchFromChangelogEntry` pattern: translates one
+khala-sync `ChangelogEntry` into the legacy `SyncPatch` shape
+`sync/transitions.ts`'s `updateSync` and `sync/projection.ts`'s
+`agentRunFromSyncRecord` / `agentRunEventFromSyncRecord` already understand,
+addressed at the SAME legacy scope key (`agent-run:<runId>`) the socket
+always used, so `activeRunMatchesScope`, `syncScopeId`,
+`isSidebarMissionScope`, and every other `patch.scope`-matching consumer
+needed zero changes. One deliberate asymmetry: `agent_run` entities patch
+(`op: 'patch'`, merging only the fields `AgentRunEntity` actually carries)
+rather than put, because that entity never carries `runnerId` /
+`eventCursor` / `externalRunId` and the legacy reducer treats `runnerId` as
+REQUIRED — a full replace would either silently drop every status update or
+blow away already-known values; `agent_run_event` entities put directly
+(full replace), since `AgentRunEventEntity`'s fields are already named
+identically to what the legacy reducer reads.
+
+**Test evidence (no live production agent-run traffic exists to smoke
+against — see below):**
+- `apps/web/src/page/loggedIn/sync/agent-run-live.test.ts` (new, 12 tests):
+  both entity types adapt correctly; a real round-trip through
+  `syncWithPatch` + `activeChatRunWithSyncedRunPatch` proves the merge
+  preserves `runnerId`/`eventCursor`/`externalRunId` from a previously
+  seeded legacy record while applying the new `status`; `DeltaFrame`
+  fan-out, `Ping`/`MutationAck` no-ops, `MustRefetchFrame` degrade, and
+  malformed-payload/decode-failure paths.
+- `apps/web/src/subscriptions.test.ts` (updated): the legacy multi-scope
+  `syncStreamDependenciesForModel` tests no longer expect an `agent-run:*`
+  target (it correctly stops widening that scope list); new tests for
+  `agentRunLiveStreamDependenciesForModel` cover the inactive/incomplete-
+  onboarding/active-run cases, asserting the exact
+  `/api/sync/connect?scope=scope.agent_run.<runId>&cursor=0` href.
+- Every adapted fixture's field list was cross-checked directly against the
+  real server projection functions (`agentRunSyncProjectionRaw` /
+  `agentRunEventProjection` in `omni-runs.ts`) rather than invented
+  independently.
+- Full `apps/web` suite: 1828/1828 passed. `check:architecture` and
+  `check:deploy` both green (the latter runs the full predeploy composite:
+  typecheck:web, typecheck:api, contract-drift/architecture/effect-topology/
+  public-projection guards, and the curated web+worker predeploy test
+  subset, including `subscriptions.test.ts`).
+- Full `workers/api` `bun test`: 1068/1070 files, 9589/9596 tests passed. The
+  2 failing files (`nexus-pylon-visibility-routes.test.ts`,
+  `treasury-domain-store.test.ts`, 7 tests) are the SAME pre-existing,
+  unrelated failures the KS-6.6 producer pass already flagged — confirmed via
+  `git diff --stat` that this pass touches only `apps/web/src/subscriptions.ts`
+  / `subscriptions.test.ts` and the two new `agent-run-live.*` files, nowhere
+  near nexus-pylon or treasury code.
+
+**No live production agent-run smoke was possible this pass, and here is the
+honest reason why, with evidence:** production `agent_runs` (D1) has exactly
+73 rows total, the newest created `2026-06-07T21:32:35Z` — the mission-launch
+feature has not been exercised in production for four weeks. Confirmed via a
+direct read-only query against the khala-sync Postgres changelog
+(`khala_sync_changelog`) that **zero** rows currently exist for any
+`scope.agent_run.*` scope — the KS-6.6 producer has never fired in
+production (nothing has created or appended to a run since it was deployed
+today). There is therefore no live, real, in-production `scope.agent_run.<id>`
+data to open a real browser WebSocket against and observe. Manufacturing one
+would require actually launching a real SHC/VM-backed mission against a real
+GitHub repo — a heavier, slower, real-infra-cost operation that is a
+deliberate product/infra decision, not something to trigger unilaterally as
+a side effect of verifying a client repoint.
+
+**What IS proven, short of a live browser session:** the client and server
+sides are both tested against the SAME shared schema
+(`@openagentsinc/khala-sync`'s `AgentRunEntity`/`AgentRunEventEntity`) — the
+existing `omni-handlers-agent-run-projection.test.ts` proves a REAL
+`createQueuedAgentRun` output decodes through `AgentRunEntity`; this pass's
+adapter decodes through the exact same `decodeAgentRunEntity`/
+`decodeAgentRunEventEntity` functions, so any future drift in the real
+producer's shape would fail BOTH tests identically, not just one.
+
+**Per the issue's own guardrail ("do not delete the legacy path until the
+new path is proven live and correct for BOTH the run-status data and the
+event/transcript feed"), the three legacy
+`notifySyncScopes(env, syncScopeForAgentRun(...))` calls in
+`omni-handlers.ts` were NOT deleted in this pass, and #8416 stays OPEN.**
+Closing the loop needs either (a) a real live-mission browser session once
+production mission-launch traffic resumes (or the owner deliberately
+launches one), confirming both status and transcript render correctly
+through the new path, followed by deleting the three legacy calls, or (b) an
+owner decision to accept the test-layer evidence above as sufficient and
+delete the legacy calls without a live browser proof. This pass does not
+make that call unilaterally.
+
 ## Settled-feed public projection — full cutover complete, continued (KS-6.4, #8414)
 
 **UPDATE (2026-07-05): FULL CUTOVER COMPLETE (KS-6.4, #8414).** Verified the
