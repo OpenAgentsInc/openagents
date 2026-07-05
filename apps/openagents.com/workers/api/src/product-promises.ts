@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-07-05.3'
+export const PublicProductPromisesVersion = '2026-07-05.4'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -4855,30 +4855,62 @@ export const publicProductPromisesDocument = () => {
       },
       {
         ...basePromiseFields,
+        promiseId: 'khala_code.mobile_mvp.v1',
+        productArea: 'mobile and Khala Code',
+        audience: ['user', 'public'],
+        state: 'planned',
+        claim:
+          'Khala Code ships as a mobile-only app (iOS and Android): sign in with GitHub, pick a repo, and a coding agent does the work on OpenAgents Cloud — with live updates, push notifications, configurable models, and credit-based pricing including a $10 free credit per GitHub account and in-app credit purchases.',
+        safeCopy:
+          'Owner-directed MVP pivot (2026-07-05): the Khala Code launch product is the Expo React Native mobile app working entirely without a desktop — GitHub sign-in through the OpenAgents auth server, a repo picker over the user’s own GitHub authorization, coding turns executed on OpenAgents Cloud capacity (Gemini default, per-user model configuration), exact-usage credit metering with a one-per-GitHub-account $10 starter grant, in-app purchases for more credits, and push notifications when work finishes or needs input. The launch audit and full issue backlog are recorded in docs/fable/2026-07-05-khala-code-mobile-only-mvp-launch-audit.md (epic #8467). Today the app’s cloud data plane (Khala Sync), TestFlight lane, and OTA update server are live; the mobile GitHub login, cloud execution lane, credit grant, in-app purchases, and push stack are planned and unbuilt.',
+        unsafeCopy:
+          'Do not claim the mobile app is downloadable from the App Store or Play Store, that GitHub sign-in works on mobile, that coding runs execute on OpenAgents Cloud for outside users, that any free credit is currently granted, or that credits can be purchased in-app today.',
+        evidenceRefs: [
+          'docs/fable/2026-07-05-khala-code-mobile-only-mvp-launch-audit.md',
+          'clients/khala-mobile/src/sync/khala-mobile-sync-runtime.ts',
+          'docs/khala-code/2026-07-05-mobile-ota-updates-runbook.md',
+          'docs/khala-mobile/2026-07-05-mobile-qa-swarm-audit.md',
+          'promise:khala_code.desktop_codex_wrapper.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.khala_mobile_github_login_missing',
+          'blocker.product_promises.khala_mobile_cloud_execution_lane_missing',
+          'blocker.product_promises.khala_mobile_credit_grant_and_iap_missing',
+          'blocker.product_promises.khala_mobile_push_notifications_missing',
+          'blocker.product_promises.khala_mobile_store_release_missing',
+        ],
+        verification:
+          'Yellow requires the end-to-end straight line proven on a real device from a store/TestFlight/internal-track build: GitHub sign-in, visible $10 grant, repo pick, a cloud-executed turn streaming updates, exact-usage credit drain, and a push notification on completion — each backed by committed evidence on the epic #8467 issues. Green additionally requires public store availability and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+        authorityBoundary:
+          'Cloud execution runs only on org-owned capacity admitted through a credit-gated lane; it never widens access to any user’s own Pylon or another user’s capacity. Repo access rides the signed-in user’s own GitHub authorization, scoped to the repo they bound. Credits charge from exact usage receipts only; store purchases fulfill through verified receipts; free grants are idempotent per GitHub account and clawback-capable.',
+      },
+      {
+        ...basePromiseFields,
         promiseId: 'mobile.fleet_companion.v1',
         productArea: 'mobile and Khala Code',
         audience: ['operator', 'user'],
         state: 'planned',
         claim:
-          'A native SwiftUI mobile companion pairs with the owner’s fleet to observe, get notified, approve, and steer — it never hosts work.',
+          'A mobile companion pairs with the owner’s fleet to observe, get notified, approve, and steer — it never hosts work.',
         safeCopy:
-          'This is the successor to the withdrawn Expo record (mobile.autopilot_remote_control.v1): per the standing mobile policy the companion is native SwiftUI with no Expo/EAS cloud. The design shape is recorded in the Orca adoption plan and the fable roadmap (WS-11): QR pairing with per-device tokens, app-layer E2EE, a Durable-Object relay transport, an enforced allowlisted mobile RPC surface, APNs push for finished/blocked/approval-needed, then approve/steer and bounded diff review. Today only a read-only iOS fleet-status poll exists; the pairing/relay/push/steer stack is unbuilt.',
+          'Postponed by owner direction 2026-07-05: the active mobile path is the mobile-only Khala Code MVP (khala_code.mobile_mvp.v1), which works entirely without a desktop; the desktop-pairing companion model recorded here (pairing with per-device tokens, relay transport, allowlisted RPC, approve/steer against the owner’s own fleet) returns after that MVP ships. The framework baseline is the Expo React Native app per the 2026-07-04 owner decision (the earlier native-SwiftUI/no-Expo framing in this record is superseded). Today only a read-only iOS fleet-status poll exists; the pairing/relay/steer stack is unbuilt.',
         unsafeCopy:
-          'Do not claim a mobile fleet companion is live, downloadable, or can approve or steer work from a phone; the read-only status poll is not the companion.',
+          'Do not claim a mobile fleet companion is live, downloadable, or can approve or steer work from a phone; the read-only status poll is not the companion, and the mobile-only MVP is not a fleet-pairing companion.',
         evidenceRefs: [
+          'docs/fable/2026-07-05-khala-code-mobile-only-mvp-launch-audit.md',
           'docs/fable/2026-07-01-orca-analysis-and-adoption-plan.md',
           'docs/fable/ROADMAP.md',
           'docs/mobile/2026-06-26-autopilot-remote-control-retirement.md',
-          'docs/mobile/2026-06-26-khala-voice-app-spec.md',
           'packages/autopilot-control-protocol/src/remote-decision-queue.ts',
         ],
         blockerRefs: [
+          'blocker.product_promises.mobile_companion_postponed_for_mobile_mvp',
           'blocker.product_promises.mobile_companion_pairing_relay_transport_missing',
           'blocker.product_promises.mobile_companion_allowlisted_rpc_surface_missing',
           'blocker.product_promises.mobile_companion_not_shipped',
         ],
         verification:
-          'Requires the paired E2EE relay transport, the enforced RPC allowlist test, a shipped TestFlight artifact, and a dereferenceable receipt of a real approval/steer action resolved from a phone against a live fleet run.',
+          'Requires the paired relay transport, the enforced RPC allowlist test, a shipped store/TestFlight artifact, and a dereferenceable receipt of a real approval/steer action resolved from a phone against a live fleet run — after the mobile-only MVP (khala_code.mobile_mvp.v1) ships.',
         authorityBoundary:
           'The phone is a projection and control relay only: it never hosts work, never holds worker credentials, and every write action is capability-gated and allowlisted with the node as the decision authority.',
       },
@@ -5251,6 +5283,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-05.4 is the owner-directed Khala Code mobile-only MVP pivot pass (2026-07-05; audit docs/fable/2026-07-05-khala-code-mobile-only-mvp-launch-audit.md, epic #8467) and flips NO promise state — green stays exactly 34. It adds the planned record khala_code.mobile_mvp.v1: the mobile-only launch claim (GitHub sign-in through the OpenAgents auth server, repo picker over the user’s own GitHub authorization, coding turns executed on OpenAgents Cloud with per-user model configuration, exact-usage credit metering with a one-per-GitHub-account $10 starter grant, in-app credit purchases, push notifications, iOS + Android), blockered on the five unbuilt pillars (mobile GitHub login, cloud execution lane, credit grant + IAP, push, store release). It rescopes mobile.fleet_companion.v1 (stays planned): the desktop-pairing companion model is postponed by owner direction until the mobile-only MVP ships, its copy now routes the active mobile path to khala_code.mobile_mvp.v1, and the stale native-SwiftUI/no-Expo framing is dropped as superseded by the 2026-07-04 Expo React Native owner decision. The same pass closed all 15 remaining pre-pivot open issues as postponed with a reopen ledger (audit §8) and filed the launch backlog #8468-#8494. The org-cloud execution lane described by the new record is additive and never widens access to any user’s own Pylon; no revenue, payout, settlement, availability, or green claim is created.',
       'Registry 2026-07-05.3 is an inference.gateway_credits_business.v1 Wave 1 cleanup pass and flips NO promise state (stays red). Issue #8387 removed the default-off standalone MPP/x402 chat endpoint, MPP discovery document, Stripe MPP profile config, route tests, smokes, and replay-cache mirror tables because the surface was not armed in committed config and is not directly needed by Khala Code. The keyed /v1/chat/completions gateway and Khala Code paid-plan Lightning helper remain. Future no-account machine-payable inference needs a fresh owner-approved, receipt-first design before any public claim or green evidence. No paid inference collection, MPP availability, spend, payout, settlement, or green transition is created.',
       'Registry 2026-07-05.2 is a mobile.voice_session_evidence_transcript_ingest.v1 Wave 1 cleanup pass and flips NO promise state (stays planned). Issue #8386 removed the default-off Worker voice-ingest route, ingest core, tests, flag, and exact-route entry because the path was never armed, had no current Khala Code dependency, and native mobile voice work should own any future capture/ingest design. The promise now honestly retains only the voice evidence/projection contracts and restores the ingestion-endpoint blocker. No voice transcript is accepted, no command proposal is generated by the Worker, no approval/execute/spend authority is created, and no green transition is created.',
       'Registry 2026-07-05.1 is an inference.batch_processing_jobs.v1 Wave 1 cleanup pass and flips NO promise state (stays planned). Issue #8384 removed the default-off INFERENCE_BATCH_JOBS_ENABLED route, queue, D1 mirror, OpenAPI, and test surface instead of arming it, because it had no owner-approved production authority and no Khala Code dependency. The promise remains planned and future batch inference must be rebuilt from a fresh owner-approved, receipt-first design before any public claim. No route is armed, no batch job is accepted, no spend or settlement is created, and no green transition is created.',

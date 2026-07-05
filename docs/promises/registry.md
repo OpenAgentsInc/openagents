@@ -13,6 +13,26 @@
 > reports. This caveat changes no promise state, blocker, evidence ref, receipt,
 > or public availability claim.
 
+> Registry `2026-07-05.4` is the owner-directed Khala Code **mobile-only MVP
+> pivot** pass (2026-07-05; audit
+> `docs/fable/2026-07-05-khala-code-mobile-only-mvp-launch-audit.md`, epic
+> #8467). Two record changes, NO state flips (green count unchanged at 34):
+> (1) new **planned** record `khala_code.mobile_mvp.v1` — the mobile-only
+> launch claim (GitHub sign-in via the OpenAgents auth server, repo picker
+> over the user's own GitHub authorization, coding turns on OpenAgents Cloud
+> with per-user model config, exact-usage credit metering with a
+> one-per-GitHub-account $10 starter grant, in-app credit purchases, push
+> notifications, iOS + Android), blockered on the five unbuilt pillars
+> (mobile GitHub login, cloud execution lane, credit grant + IAP, push,
+> store release); (2) `mobile.fleet_companion.v1` stays **planned** but is
+> rescoped: the desktop-pairing companion is postponed by owner direction
+> until the mobile-only MVP ships, active-path copy now points at
+> `khala_code.mobile_mvp.v1`, and the stale native-SwiftUI/no-Expo framing
+> is dropped (superseded by the 2026-07-04 Expo React Native decision). The
+> same pass closed all 15 remaining pre-pivot open issues as postponed with
+> a reopen ledger (audit §8) and filed the launch backlog (#8468–#8494).
+> No revenue, payout, settlement, or availability claim changes.
+
 > Registry `2026-07-04.19` is the KS-6.3 public tokens-served projection
 > pass (#8304) and flips NO promise state (green count unchanged).
 > `GET /api/public/khala-tokens-served` no longer executes the unbounded
