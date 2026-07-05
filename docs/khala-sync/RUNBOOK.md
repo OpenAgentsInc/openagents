@@ -1333,6 +1333,28 @@ real, through a brand-new, FULLY INDEPENDENT flag:
 - Rollback at any point: `KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS=d1`. This
   can NEVER affect enforcement — the flag only touches display reads.
 
+**#8336 status, part 3 (2026-07-05): enforcement-gate compare-mode soak
+observability bring-up.** Parts 1-2 above left `KHALA_SYNC_ENTITLEMENTS_READS`
+untouched at `d1` specifically because there was no durable production
+log/metrics surface to establish a genuine multi-hour representative-window
+soak. The shared compare-mode soak observability tool (#8282 follow-up,
+commit `6c2cf72b1a`) removes that blocker: `makeRoutedEntitlementsGateReads`'s
+`compare` branch now records a durable Analytics Engine data point
+(`domain: "entitlements_gate"`) on every match/mismatch/shadow-read-error, on
+top of the existing `khala_sync_entitlements_read_compare_mismatch`
+diagnostic — see "Compare-mode soak observability" below for the query
+command. This pass flips `KHALA_SYNC_ENTITLEMENTS_READS` from `d1` to
+`compare` in both `staging` and production `vars` (`wrangler.jsonc`) so real
+soak time starts accumulating from this deploy forward. This is
+**observation only** — `compare` still serves every gate decision from D1;
+it cannot change what any request is ALLOWED or DENIED. A **future** pass
+queries `packages/khala-sync-server/scripts/query-compare-soak.ts --hours
+<N>` for the `entitlements_gate` domain once a genuinely representative
+window has accumulated (not `VACUOUS`, i.e. `totalReads` meaningfully > 0)
+and only then evaluates whether `postgres` is warranted — never on this
+pass's evidence alone, and never without the epic-gated ops decision on
+#8282. Rollback at any time: `KHALA_SYNC_ENTITLEMENTS_READS=d1`.
+
 Rollback at ANY step: set `KHALA_SYNC_ENTITLEMENTS_READS=d1` (reads)
 and/or `KHALA_SYNC_ENTITLEMENTS_DUAL_WRITE=off` (writes). D1 authority is
 never behind.
@@ -3300,7 +3322,7 @@ existing per-call diagnostic events:
 
 | Domain slug | File | Flag | Live in prod as `compare`? |
 | --- | --- | --- | --- |
-| `entitlements_gate` | `inference-entitlements-store.ts`, `makeRoutedEntitlementsGateReads` | `KHALA_SYNC_ENTITLEMENTS_READS` | No (default `d1`; this was the #8336 explicitly-blocked lane) |
+| `entitlements_gate` | `inference-entitlements-store.ts`, `makeRoutedEntitlementsGateReads` | `KHALA_SYNC_ENTITLEMENTS_READS` | **Yes** (`compare` in prod as of 2026-07-05, #8336 part 3 — soak observability bring-up, NOT a serving change; D1 still decides every gate) |
 | `entitlements_non_gate` | `inference-entitlements-store.ts`, `makeRoutedEntitlementsNonGateReads` | `KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS` | No (prod runs `postgres`, not `compare`, today) |
 | `supervision` | `supervision-longtail-domain-store.ts`, `makeOmniPublicProofBundleCompareReader` | `KHALA_SYNC_SUPERVISION_READS` | No (prod runs `postgres` as of the #8361 follow-up, 2026-07-05 — real-served through the SEPARATE `makeOmniPublicProofBundlePostgresServerForEnv` reader for the one bounded `omni_public_proof_bundles` allowlist; the shadow-compare reader in this row keeps running unconditionally regardless, so soak metrics keep accumulating past cutover too) |
 | `artanis` | `artanis-domain-store.ts`, `artanisRead` | `KHALA_SYNC_ARTANIS_READS` | **Yes** (`compare` in prod) |

@@ -514,6 +514,30 @@ projection). Landed in
 - Deploy + flag-flip decision recorded on epic
   [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
 
+**KS-8.9 decommission follow-up, part 3 (2026-07-05, #8336): enforcement-gate
+compare-mode soak observability bring-up.** Parts 1-2 above left
+`KHALA_SYNC_ENTITLEMENTS_READS` untouched at `d1` specifically because there
+was no durable production log/metrics surface for a genuine multi-hour
+representative-window soak. That blocker is now removed by the shared
+compare-mode soak observability tool (#8282 follow-up, commit `6c2cf72b1a`):
+`makeRoutedEntitlementsGateReads`'s `compare` branch records a durable
+Analytics Engine data point (`domain: "entitlements_gate"`) on every
+match/mismatch/shadow-read-error, additive to the existing
+`khala_sync_entitlements_read_compare_mismatch` diagnostic — this was
+already wired before this pass (`inference-entitlements-store.ts` lines
+~1303-1328), it was simply never exercised because the flag itself stayed
+at `d1`. This pass flips `KHALA_SYNC_ENTITLEMENTS_READS` from `d1` to
+`compare` in both `staging` and production `vars`
+(`apps/openagents.com/workers/api/wrangler.jsonc`), so real soak time starts
+accumulating from this deploy forward. This is observation-only: `compare`
+still serves every gate decision from D1 and cannot itself change an
+ALLOW/DENY outcome. A future pass queries
+`packages/khala-sync-server/scripts/query-compare-soak.ts` for the
+`entitlements_gate` domain once a genuinely representative window has
+accumulated (not `VACUOUS`) and only then evaluates a `postgres` flip —
+never on this pass's evidence alone, and only with the epic-gated ops
+decision on #8282. Rollback at any time: `KHALA_SYNC_ENTITLEMENTS_READS=d1`.
+
 **KS-8.7 status (2026-07-04):** machinery LANDED — Postgres schema
 (`khala-sync-server` migration `0015_billing_pay_ins.sql`: the 22 live
 billing/Stripe/pay-ins/buyer-payment tables; the

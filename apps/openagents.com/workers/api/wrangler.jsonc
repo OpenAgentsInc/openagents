@@ -116,6 +116,29 @@
     // backfill/--restart/--verify are green across all 28 tables. Epic-gated
     // ops decision recorded on #8282. Roll back to `d1` at any time.
     "KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS": "postgres",
+    // KS-8.9 enforcement-gate soak observability bring-up (#8336, 2026-07-05):
+    // this flips ONLY the compare-mode shadow-read soak for the six
+    // enforcement gate reads (freeTierKeyExists, freeTierUsage,
+    // freeUsageState, operatorExempt, premiumAllowlisted,
+    // privacyEntitlementExists) — it does NOT serve any request from
+    // Postgres. `compare` continues to serve D1 for every gate decision
+    // (this flag can never become an ALLOW/DENY authority change by itself)
+    // and additionally schedules a detached Postgres shadow read + diff,
+    // recording a durable Analytics Engine data point
+    // (domain: "entitlements_gate", packages/khala-sync-server's
+    // compare-soak-metrics) on every match/mismatch/shadow-read-error, on
+    // top of the existing khala_sync_entitlements_read_compare_mismatch
+    // diagnostic. Previous passes on #8336 left this flag untouched at `d1`
+    // specifically because there was no durable log/metrics surface for a
+    // genuine multi-hour soak; the shared compare-soak-metrics tool (#8282,
+    // commit 6c2cf72b1a) removes that blocker, so this flip starts real soak
+    // time accumulating from this deploy forward. A FUTURE pass queries
+    // packages/khala-sync-server/scripts/query-compare-soak.ts for the
+    // `entitlements_gate` domain and only considers `postgres` after a
+    // genuinely representative, zero-mismatch window — never on this pass's
+    // evidence alone. Roll back to `d1` at any time; D1 remains sole
+    // authority for these six reads regardless of this flag.
+    "KHALA_SYNC_ENTITLEMENTS_READS": "compare",
     // #8362 follow-up: bounded identity/auth non-gate read allowlist,
     // FULLY INDEPENDENT of KHALA_SYNC_IDENTITY_READS (the auth-decision gate
     // reads, which stay untouched at their default `d1` — there is no routed
@@ -638,6 +661,13 @@
         // KS-8.9 decommission follow-up (#8336), staging parity for the
         // production bounded non-gate read allowlist soak.
         "KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS": "postgres",
+        // KS-8.9 enforcement-gate soak observability bring-up (#8336,
+        // 2026-07-05), staging parity for the production compare-mode soak
+        // of the six enforcement gate reads. Serves D1 only; schedules a
+        // detached Postgres shadow read + Analytics Engine compare-soak
+        // data point (domain: "entitlements_gate"). Roll back to `d1` at
+        // any time.
+        "KHALA_SYNC_ENTITLEMENTS_READS": "compare",
         // #8362 follow-up, staging parity for the production bounded
         // identity/auth non-gate read allowlist Postgres-serving soak.
         "KHALA_SYNC_IDENTITY_NON_GATE_READS": "postgres",
