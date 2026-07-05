@@ -50,7 +50,12 @@ import {
   readRequestSelector,
   safeJsonRecord,
 } from './json-boundary'
-import { observedEffect, observedPromise } from './observability'
+import { projectAgentRun } from './khala-sync-agent-run-projection'
+import {
+  logWorkerRouteWarning,
+  observedEffect,
+  observedPromise,
+} from './observability'
 import {
   goalRuntimeEventFromRunEvent,
   goalRuntimeEventFromRunStatus,
@@ -61,6 +66,7 @@ import {
   type DeploymentRecord,
   type OmniEventRecord,
   type OmniRunStore,
+  agentRunProjection,
   checkShcControlHealth,
   continueAgentRunOnShc,
   createAgentRunId,
@@ -78,6 +84,7 @@ import {
   parseGithubRepository,
   publicAgentRunBundle,
   publicDeploymentBundle,
+  publicGoalContext,
   readAgentRunById,
   runStatusFromText,
 } from './omni-runs'
@@ -643,6 +650,75 @@ const applyGoalRuntimeEvents = (
       .filter((event): event is AgentGoalRuntimeEvent => event !== undefined),
     ctx,
   )
+
+/**
+ * Build the already public-safe raw shape `@openagentsinc/khala-sync`'s
+ * `AgentRunEntity` decodes (KS-6.6, #8416) — reuses `agentRunProjection`/
+ * `publicGoalContext` (the SAME fields already shipped to authenticated
+ * clients over the legacy sync-worker outbox / the mission-launch HTTP
+ * response), so this invents no new public-safe surface.
+ */
+/** Exported for the KS-6.6 contract test (`omni-handlers-agent-run-projection.test.ts`) only. */
+export const agentRunSyncProjectionRaw = (run: AgentRunRecord): unknown => {
+  const projection = agentRunProjection(run)
+  const goalContext = publicGoalContext(run.assignment)
+
+  return {
+    backend: projection.backend,
+    canceledAt: run.canceledAt,
+    completedAt: projection.completedAt,
+    createdAt: projection.createdAt,
+    failedAt: projection.failedAt,
+    goal: projection.goal,
+    goalId: projection.goalId,
+    ...(goalContext === undefined
+      ? {}
+      : {
+          goalContext: {
+            goalId: goalContext.goalId,
+            objective: goalContext.objective,
+            remainingTokens: goalContext.remainingTokens,
+            status: goalContext.status,
+            timeUsedSeconds: goalContext.timeUsedSeconds,
+            tokenBudget: goalContext.tokenBudget,
+            tokensUsed: goalContext.tokensUsed,
+            visibility: goalContext.visibility,
+          },
+        }),
+    projectId: projection.projectId,
+    repository: projection.repository,
+    routeId: projection.routeId,
+    runId: projection.id,
+    runtime: projection.runtime,
+    startedAt: projection.startedAt,
+    status: projection.status,
+    teamId: projection.teamId,
+    updatedAt: projection.updatedAt,
+    userId: projection.userId,
+  }
+}
+
+/**
+ * Dual-write a queued/relaunched agent run into `scope.agent_run.<runId>`
+ * (KS-6.6, #8416) ALONGSIDE the legacy `notifySyncScopes(env,
+ * syncScopeForAgentRun(run))` poke at this issue's three call sites. Never
+ * throws — a projection failure only logs a public-safe diagnostic; the
+ * legacy poke remains the sole delivery path for the live web client until
+ * `apps/web/src/subscriptions.ts` is repointed to the khala-sync connect
+ * surface for this scope (see docs/khala-sync/RUNBOOK.md).
+ */
+const projectAgentRunSyncScope = (
+  workerEnv: OmniHandlerEnv,
+  run: AgentRunRecord,
+): Promise<void> =>
+  projectAgentRun(
+    {
+      binding: workerEnv.KHALA_SYNC_DB,
+      log: (event, fields) => logWorkerRouteWarning(event, fields),
+    },
+    run.id,
+    agentRunSyncProjectionRaw(run),
+  ).then(() => undefined)
 
 const applyGoalRuntimeStatus = (
   workerEnv: OmniHandlerEnv,
@@ -1751,7 +1827,10 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
     })
     await store.saveAgentRun(queued.run, queued.events)
     await applyGoalRuntimeEvents(env, launchGoal.id, queued.events)
+    // Legacy sync-worker poke (kept live — see `projectAgentRunSyncScope`'s
+    // doc header for why KS-6.6/#8416 dual-writes rather than cuts over).
     await notifySyncScopes(env, syncScopeForAgentRun(queued.run))
+    await projectAgentRunSyncScope(env, queued.run)
     await dispatchQueuedAgentRun(env, queued.run)
 
     const bundle = await store.findAgentRunForUser(
@@ -2270,10 +2349,14 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
                 input.goal.id,
                 queued.events,
               )
+              // Legacy sync-worker poke (kept live — see
+              // `projectAgentRunSyncScope`'s doc header for why KS-6.6/#8416
+              // dual-writes rather than cuts over).
               await notifySyncScopes(
                 workerEnv,
                 syncScopeForAgentRun(queued.run),
               )
+              await projectAgentRunSyncScope(workerEnv, queued.run)
               await dispatchQueuedAgentRun(workerEnv, queued.run)
             },
             catch: error =>
@@ -2624,10 +2707,13 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
     })
     await store.saveAgentRun(queued.run, queued.events)
     await applyGoalRuntimeEvents(env, launchGoal.id, queued.events)
+    // Legacy sync-worker poke (kept live — see `projectAgentRunSyncScope`'s
+    // doc header for why KS-6.6/#8416 dual-writes rather than cuts over).
     scheduleBackgroundWork(
       ctx,
       notifySyncScopes(env, syncScopeForAgentRun(queued.run)),
     )
+    scheduleBackgroundWork(ctx, projectAgentRunSyncScope(env, queued.run))
     await dispatchQueuedAgentRun(env, queued.run)
 
     const bundle = (await store.findAgentRunForUser(

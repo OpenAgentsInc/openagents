@@ -17,6 +17,7 @@ import type {
   KhalaSyncStorageError,
 } from "./errors.js"
 
+export * from "./agent-run-projection.js"
 export * from "./billing-domain-tables.js"
 export * from "./business-domain-tables.js"
 export * from "./chat-mutators.js"

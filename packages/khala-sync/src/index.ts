@@ -52,6 +52,11 @@ export * from "./runtime.js"
 // runRef). Self-contained module (no cycle).
 export * from "./gym.js"
 
+// Agent run + goal entity contract (KS-6.6, #8416): post-image shape for
+// scope.agent_run.<runId> changelog entries. Self-contained module (no
+// cycle).
+export * from "./agent-run.js"
+
 // ---------------------------------------------------------------------------
 // Branded primitives
 // ---------------------------------------------------------------------------

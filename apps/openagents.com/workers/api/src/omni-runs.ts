@@ -786,7 +786,7 @@ export const agentRunMissionProjection = (run: AgentRunRecord) => {
   }
 }
 
-const agentRunProjection = (run: AgentRunRecord) => ({
+export const agentRunProjection = (run: AgentRunRecord) => ({
   backend: run.backend,
   completedAt: run.completedAt,
   createdAt: run.createdAt,
@@ -2733,7 +2733,7 @@ export const dispatchEventForDeployment = (
     },
   )
 
-const publicGoalContext = (assignment: AgentRunAssignment) =>
+export const publicGoalContext = (assignment: AgentRunAssignment) =>
   assignment.goalContext === undefined
     ? undefined
     : {

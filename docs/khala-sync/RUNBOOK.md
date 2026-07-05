@@ -3269,6 +3269,69 @@ describes today's LIVE client wiring accurately; the anonymous-read
 blocker that justified keeping it that way is resolved, so #8414's own
 follow-up work can now repoint the client and retire the legacy producer.
 
+## Agent run + goal scope projection — dual-write only, NOT a cutover (KS-6.6, #8416)
+
+`omni-handlers.ts`'s three agent-run/goal-continuation call sites (mission
+launch, goal continuation-after-completed-run, and the API mission launch)
+each call `notifySyncScopes(env, syncScopeForAgentRun(queued.run))` — a bare
+legacy-sync-worker POKE with no post-image of its own (the run/goal DATA is
+already written separately by `appendAgentRunSyncChanges`/
+`publishAgentGoalSync`/`publishAgentGoalEventSync`; this specific call just
+tells any already-connected legacy DO-room subscriber of `agent-run:<runId>`
+to go refetch). Each site now ALSO best-effort projects a real post-image —
+the run's own public state PLUS its currently-attached goal's public-safe
+fields — into `scope.agent_run.<runId>` via `@openagentsinc/khala-sync-server`'s
+`projectAgentRunBestEffort`, through the Worker's
+`khala-sync-agent-run-projection.ts` (`projectAgentRun`).
+
+**`scope.agent_run.<runId>` had ZERO producers before this change.** It has
+been part of the read-auth taxonomy since KS-7.1 (#8305,
+`scope-auth.ts`'s `case "agent_run"`), but KS-8.13/#8324's Khala Code
+product-state projection routes `scope.team.<teamId>` and
+`scope.thread.<threadId>` only — `khala-code-product-state-projection.ts`'s
+`scopesForRow` has no `agent_run` case, and `agent_runs`/`agent_goals` are
+not even in `KHALA_CODE_PRODUCT_STATE_TABLES`. So unlike KS-6.1/6.3/6.4/6.5
+(which added a SECOND write into an EXISTING scope), this issue had to build
+the scope's first-ever producer from scratch: the entity contract
+(`packages/khala-sync/src/agent-run.ts`'s `AgentRunEntity`, mirroring the
+ALREADY public-safe `agentRunProjection`/`agentRunMissionProjection`/
+`publicGoalContext` shapes in `omni-runs.ts` — nothing new is exposed), the
+projector (`packages/khala-sync-server/src/agent-run-projection.ts`), and the
+Worker glue (`khala-sync-agent-run-projection.ts`). ONE ENTITY PER SCOPE (no
+scope-owner bookkeeping table needed — read-side ownership already comes
+straight from D1 `agent_runs` via `canReadResolvedRun`), so — like gym
+run-progress and settled-feed — it rides the generic `khala_sync_changelog` +
+`khala_sync_scopes` tables directly with no bespoke migration.
+
+**This is a dual-write ADDITION, not a cutover, and the legacy producer was
+deliberately NOT deleted — for a DIFFERENT reason than the gym/settled-feed
+anonymous-read gap above.** `scope.agent_run.<runId>` is AUTHENTICATED-ONLY
+(run owner, or an active member of the run's team — see
+`khala-sync-scope-auth.ts`'s `canReadResolvedRun`; it is explicitly listed
+among the "every other scope kind... still 401 for anonymous" set in the
+"Anonymous read scopes" section below), so the anonymous-read wall does not
+apply here at all. The real reason: `apps/web/src/subscriptions.ts`'s
+`syncScopesForModel`/`syncAgentRunScope` still opens the LEGACY
+`/api/sync/agent-run/<runId>/stream` WebSocket (via `syncStreamHref` →
+`sync-routes.ts`) for the active chat run — it has not been repointed to
+`GET/WS /api/sync/connect` (khala-sync) for this scope. Deleting the legacy
+poke before that client repoint lands would silently break live run/goal
+updates on the chat page for every logged-in user actively watching a
+mission. Repointing that client surface and then deleting the legacy
+`notifySyncScopes` calls is follow-up work, tracked on #8416/epic #8282.
+
+**What IS live today:** the Postgres changelog for `scope.agent_run.<runId>`
+exists and is populated the instant a run is queued or relaunched, fail-soft
+(a Postgres failure never blocks or fails the queued-run response — see
+`khala_sync_agent_run_projection_failed` diagnostics). Contract:
+`packages/khala-sync/src/agent-run.ts`. Projector (incl. a real local-Postgres
+integration suite):
+`packages/khala-sync-server/src/agent-run-projection.ts`. Worker glue:
+`apps/openagents.com/workers/api/src/khala-sync-agent-run-projection.ts`.
+Contract test proving the exact production glue (a real `createQueuedAgentRun`
+output decodes cleanly through `AgentRunEntity`):
+`apps/openagents.com/workers/api/src/omni-handlers-agent-run-projection.test.ts`.
+
 ## Anonymous read scopes (KS-8.x, scope.public.* only)
 
 **Status: LIVE.** The gap described in the previous section ("Gym
