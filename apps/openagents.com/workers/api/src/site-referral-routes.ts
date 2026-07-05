@@ -6,7 +6,13 @@ import {
   noStoreJsonResponse,
   redirectResponse,
 } from './http/responses'
-import { openAgentsDatabase } from './runtime'
+// KS-8.14 (#8325): referral capture writes (referral_attributions) ride
+// the business dual-write seam — scoped writes read-back-mirror into
+// Postgres fail-soft; everything else passes through untouched.
+import {
+  businessDomainDatabaseForEnv,
+  type BusinessDomainStoreEnv,
+} from './business-domain-store'
 import {
   compactRandomId,
   currentDate,
@@ -30,7 +36,8 @@ import {
 
 type SiteReferralRouteEnv = Readonly<{
   OPENAGENTS_DB: D1Database
-}>
+}> &
+  BusinessDomainStoreEnv
 type HttpResponse = globalThis.Response
 
 type SiteReferralRow = Readonly<{
@@ -283,7 +290,7 @@ const sourceCaptureResponse = async (
 
   const url = new URL(request.url)
   const nowIso = currentIsoTimestamp()
-  const database = openAgentsDatabase(env)
+  const database = businessDomainDatabaseForEnv(env)
 
   const source = await findSourceByPublicRef(database, publicSourceRef)
   const sourceUnavailable = referralSourceUnavailableReason(source)
@@ -318,7 +325,7 @@ const inviteCaptureResponse = async (
   }
 
   const nowIso = currentIsoTimestamp()
-  const database = openAgentsDatabase(env)
+  const database = businessDomainDatabaseForEnv(env)
 
   const invite = await findInviteByPublicRef(database, publicInviteRef)
   const inviteUnavailable = referralInviteUnavailableReason(invite, nowIso)

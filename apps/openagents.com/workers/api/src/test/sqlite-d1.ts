@@ -1717,3 +1717,730 @@ CREATE TABLE forge_github_mirror_receipts (
   )
 );
 `
+
+// KS-8.14 (#8325): the 32 live business funnel / orders / referrals
+// tables, condensed from the worker migrations (FKs to tables outside the
+// domain dropped; constraints and uniques kept — the contract suite's
+// INSERT OR IGNORE / ON CONFLICT semantics depend on them).
+export const BUSINESS_DOMAIN_D1_SCHEMA = `
+CREATE TABLE IF NOT EXISTS business_signup_requests (
+  id                      TEXT NOT NULL PRIMARY KEY,
+  business_name           TEXT NOT NULL,
+  contact_email           TEXT NOT NULL,
+  website                 TEXT,
+  phone                   TEXT NOT NULL,
+  help_with               TEXT,
+  request_slack_channel   INTEGER NOT NULL DEFAULT 0
+    CHECK (request_slack_channel IN (0, 1)),
+  slack_connect_status    TEXT NOT NULL CHECK (
+    slack_connect_status IN (
+      'not_requested', 'manual_invite_pending', 'invite_sent', 'accepted',
+      'declined'
+    )
+  ),
+  source_route            TEXT NOT NULL DEFAULT '/business',
+  created_at              TEXT NOT NULL,
+  updated_at              TEXT NOT NULL,
+  referral_code           TEXT,
+  referral_attribution_id TEXT,
+  fulfillment_status      TEXT NOT NULL DEFAULT 'pending'
+    CHECK (fulfillment_status IN ('pending', 'invited', 'operator_parked')),
+  fulfillment_ref         TEXT,
+  fulfillment_reason      TEXT,
+  source_ref              TEXT NOT NULL DEFAULT 'direct',
+  linked_pipeline_ref     TEXT
+);
+
+CREATE TABLE IF NOT EXISTS business_signup_fulfillments (
+  id                         TEXT NOT NULL PRIMARY KEY,
+  business_signup_request_id TEXT NOT NULL UNIQUE,
+  status                     TEXT NOT NULL
+    CHECK (status IN ('invited', 'operator_parked')),
+  reason                     TEXT,
+  enrichment_ref             TEXT NOT NULL,
+  team_id                    TEXT,
+  project_id                 TEXT,
+  workspace_id               TEXT,
+  invite_id                  TEXT,
+  email_message_id           TEXT,
+  email_delivery_status      TEXT NOT NULL CHECK (
+    email_delivery_status IN (
+      'accepted', 'disabled', 'failed', 'missing_config', 'not_attempted'
+    )
+  ),
+  metadata_json              TEXT NOT NULL DEFAULT '{}',
+  created_at                 TEXT NOT NULL,
+  updated_at                 TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS business_signup_referral_attributions (
+  business_signup_request_id TEXT NOT NULL PRIMARY KEY,
+  referral_attribution_id    TEXT NOT NULL,
+  referral_source_id         TEXT NOT NULL,
+  referral_invite_id         TEXT,
+  capture_path               TEXT NOT NULL
+    CHECK (capture_path IN ('human', 'agent')),
+  target                     TEXT NOT NULL
+    CHECK (target IN ('home', 'order', 'agent_claim')),
+  linked_at                  TEXT NOT NULL,
+  policy_state               TEXT NOT NULL DEFAULT 'active'
+    CHECK (policy_state IN ('active', 'disputed', 'archived')),
+  created_at                 TEXT NOT NULL,
+  updated_at                 TEXT NOT NULL,
+  archived_at                TEXT
+);
+
+CREATE TABLE IF NOT EXISTS business_funnel_events (
+  id          TEXT NOT NULL PRIMARY KEY,
+  event_ref   TEXT NOT NULL UNIQUE,
+  stage       TEXT NOT NULL CHECK (
+    stage IN (
+      'visit', 'signup', 'intake_spec', 'payment', 'provisioned',
+      'first_outcome', 'retained', 'referred_engagement'
+    )
+  ),
+  source_kind TEXT NOT NULL CHECK (
+    source_kind IN (
+      'content', 'outbound', 'ai_search', 'referral', 'direct', 'unknown'
+    )
+  ),
+  source_ref  TEXT,
+  occurred_at TEXT NOT NULL,
+  observed_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS business_service_promises (
+  id                           TEXT NOT NULL PRIMARY KEY,
+  promise_ref                  TEXT NOT NULL UNIQUE,
+  accepted_outcome_contract_id TEXT,
+  workspace_ref                TEXT NOT NULL,
+  crm_state_ref                TEXT NOT NULL,
+  stakeholder_refs_json        TEXT NOT NULL DEFAULT '[]',
+  state                        TEXT NOT NULL
+    CHECK (state IN ('active', 'paused', 'blocked', 'closed')),
+  cadence                      TEXT NOT NULL
+    CHECK (cadence IN ('daily', 'weekly')),
+  next_motion_due_at           TEXT,
+  last_motion_receipt_ref      TEXT,
+  source_refs_json             TEXT NOT NULL DEFAULT '[]',
+  metadata_json                TEXT NOT NULL DEFAULT '{}',
+  created_at                   TEXT NOT NULL,
+  updated_at                   TEXT NOT NULL,
+  blocking_reason_ref          TEXT,
+  blocked_at                   TEXT,
+  last_escalation_page_ref     TEXT
+);
+
+CREATE TABLE IF NOT EXISTS business_fulfillment_motion_receipts (
+  id                                   TEXT NOT NULL PRIMARY KEY,
+  promise_id                           TEXT NOT NULL,
+  promise_ref                          TEXT NOT NULL,
+  motion_date                          TEXT NOT NULL,
+  receipt_ref                          TEXT NOT NULL UNIQUE,
+  agent_definition_ref                 TEXT NOT NULL,
+  crm_state_ref                        TEXT NOT NULL,
+  stakeholder_refs_json                TEXT NOT NULL DEFAULT '[]',
+  stakeholder_flag_refs_json           TEXT NOT NULL DEFAULT '[]',
+  forward_motion_ref                   TEXT NOT NULL,
+  client_comms_draft_ref               TEXT NOT NULL,
+  approval_gate_ref                    TEXT NOT NULL,
+  outbound_allowed                     INTEGER NOT NULL DEFAULT 0
+    CHECK (outbound_allowed IN (0, 1)),
+  blocker_refs_json                    TEXT NOT NULL DEFAULT '[]',
+  source_refs_json                     TEXT NOT NULL DEFAULT '[]',
+  created_at                           TEXT NOT NULL,
+  cadence                              TEXT NOT NULL DEFAULT 'daily'
+    CHECK (cadence IN ('daily', 'weekly')),
+  client_comms_email_ledger_ref        TEXT,
+  customer_visible_workroom_update_ref TEXT,
+  UNIQUE (promise_id, motion_date)
+);
+
+CREATE TABLE IF NOT EXISTS business_fulfillment_escalation_pages (
+  id                     TEXT NOT NULL PRIMARY KEY,
+  promise_id             TEXT NOT NULL,
+  promise_ref            TEXT NOT NULL,
+  escalation_date        TEXT NOT NULL,
+  receipt_ref            TEXT NOT NULL UNIQUE,
+  page_ref               TEXT NOT NULL UNIQUE,
+  owner_notification_ref TEXT NOT NULL,
+  agent_definition_ref   TEXT NOT NULL,
+  blocking_reason_ref    TEXT NOT NULL,
+  blocked_at             TEXT NOT NULL,
+  workspace_ref          TEXT NOT NULL,
+  stakeholder_refs_json  TEXT NOT NULL DEFAULT '[]',
+  source_refs_json       TEXT NOT NULL DEFAULT '[]',
+  created_at             TEXT NOT NULL,
+  UNIQUE (promise_id, escalation_date)
+);
+
+CREATE TABLE IF NOT EXISTS business_checkout_kickoffs (
+  checkout_session_id         TEXT NOT NULL PRIMARY KEY,
+  business_signup_request_id  TEXT NOT NULL,
+  user_id                     TEXT NOT NULL,
+  total_amount_cents          INTEGER NOT NULL CHECK (total_amount_cents >= 0),
+  setup_fee_cents             INTEGER NOT NULL CHECK (setup_fee_cents >= 0),
+  credit_grant_cents          INTEGER NOT NULL CHECK (credit_grant_cents >= 0),
+  workspace_id                TEXT NOT NULL,
+  service_promise_contract_id TEXT NOT NULL,
+  public_receipt_ref          TEXT NOT NULL,
+  created_at                  TEXT NOT NULL,
+  updated_at                  TEXT NOT NULL,
+  CHECK (setup_fee_cents + credit_grant_cents = total_amount_cents)
+);
+
+CREATE TABLE IF NOT EXISTS business_commitment_ledger (
+  id                   TEXT NOT NULL PRIMARY KEY,
+  commitment_ref       TEXT NOT NULL UNIQUE,
+  engagement_ref       TEXT NOT NULL,
+  owner_ref            TEXT NOT NULL,
+  vertical_ref         TEXT NOT NULL,
+  promised_object_ref  TEXT NOT NULL,
+  commitment_kind      TEXT NOT NULL
+    CHECK (commitment_kind IN ('deliverable', 'send')),
+  due_state            TEXT NOT NULL
+    CHECK (due_state IN ('due', 'blocked', 'shipped', 'parked')),
+  due_at               TEXT NOT NULL,
+  shipped_at           TEXT,
+  weekly_review_ref    TEXT NOT NULL,
+  source_refs_json     TEXT NOT NULL DEFAULT '[]',
+  blocker_refs_json    TEXT NOT NULL DEFAULT '[]',
+  evidence_refs_json   TEXT NOT NULL DEFAULT '[]',
+  created_at           TEXT NOT NULL,
+  updated_at           TEXT NOT NULL,
+  pipeline_ref         TEXT
+);
+
+CREATE TABLE IF NOT EXISTS business_pipeline_rows (
+  pipeline_ref                 TEXT NOT NULL PRIMARY KEY,
+  vertical                     TEXT NOT NULL,
+  source_ref                   TEXT NOT NULL,
+  stage                        TEXT NOT NULL CHECK (
+    stage IN (
+      'intake_received', 'scope_scheduled', 'scope_completed',
+      'receipt_plan_sent', 'closed_won', 'closed_lost', 'quick_win_started'
+    )
+  ),
+  quoted_min_usd_cents         INTEGER NOT NULL DEFAULT 0
+    CHECK (quoted_min_usd_cents >= 0),
+  quoted_max_usd_cents         INTEGER NOT NULL DEFAULT 0
+    CHECK (quoted_max_usd_cents >= quoted_min_usd_cents),
+  quoted_band_label            TEXT NOT NULL DEFAULT 'unquoted',
+  owner_role                   TEXT NOT NULL CHECK (
+    owner_role IN ('operator', 'reviewer', 'fulfillment_agent', 'owner')
+  ),
+  next_action_due_at           TEXT,
+  blocker_ref                  TEXT,
+  receipt_refs_json            TEXT NOT NULL DEFAULT '[]',
+  partner_route_flag           INTEGER NOT NULL DEFAULT 0
+    CHECK (partner_route_flag IN (0, 1)),
+  created_at                   TEXT NOT NULL,
+  updated_at                   TEXT NOT NULL,
+  stage_updated_at             TEXT NOT NULL,
+  business_signup_request_id   TEXT,
+  partner_route_state          TEXT NOT NULL DEFAULT 'none' CHECK (
+    partner_route_state IN (
+      'none', 'candidate', 'offered', 'accepted', 'declined'
+    )
+  ),
+  partner_peer_ref             TEXT,
+  partner_approval_receipt_ref TEXT,
+  partner_offer_ref            TEXT,
+  partner_scope_summary_ref    TEXT,
+  partner_due_window_ref       TEXT,
+  partner_budget_range_ref     TEXT,
+  partner_privacy_tier_ref     TEXT,
+  partner_route_updated_at     TEXT
+);
+
+CREATE TABLE IF NOT EXISTS business_starter_credit_grants (
+  grant_ref                    TEXT NOT NULL PRIMARY KEY,
+  pipeline_ref                 TEXT NOT NULL,
+  account_ref                  TEXT NOT NULL,
+  engagement_ref               TEXT NOT NULL,
+  attribution_kind             TEXT NOT NULL DEFAULT 'sales_starter_credit'
+    CHECK (attribution_kind = 'sales_starter_credit'),
+  transfer_policy              TEXT NOT NULL DEFAULT 'non_transferable'
+    CHECK (transfer_policy = 'non_transferable'),
+  amount_usd_cents             INTEGER NOT NULL CHECK (amount_usd_cents > 0),
+  amount_msat                  INTEGER NOT NULL CHECK (amount_msat > 0),
+  amount_cap_usd_cents         INTEGER NOT NULL
+    CHECK (amount_cap_usd_cents > 0),
+  window_ref                   TEXT NOT NULL,
+  window_grant_cap             INTEGER NOT NULL CHECK (window_grant_cap > 0),
+  credit_receipt_ref           TEXT NOT NULL UNIQUE,
+  redemption_receipt_refs_json TEXT NOT NULL DEFAULT '[]',
+  source_refs_json             TEXT NOT NULL DEFAULT '[]',
+  created_at                   TEXT NOT NULL,
+  updated_at                   TEXT NOT NULL,
+  CHECK (amount_usd_cents <= amount_cap_usd_cents)
+);
+
+CREATE TABLE IF NOT EXISTS business_affiliate_codes (
+  code         TEXT NOT NULL PRIMARY KEY,
+  source_ref   TEXT NOT NULL UNIQUE,
+  owner_ref    TEXT NOT NULL,
+  issued_by_ref TEXT NOT NULL,
+  policy_state TEXT NOT NULL DEFAULT 'active'
+    CHECK (policy_state IN ('active', 'paused', 'archived')),
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL,
+  archived_at  TEXT
+);
+
+CREATE TABLE IF NOT EXISTS business_affiliate_attributions (
+  attribution_ref            TEXT NOT NULL PRIMARY KEY,
+  code                       TEXT NOT NULL,
+  source_ref                 TEXT NOT NULL,
+  owner_ref                  TEXT NOT NULL,
+  business_signup_request_id TEXT NOT NULL UNIQUE,
+  pipeline_ref               TEXT,
+  payment_receipt_ref        TEXT,
+  policy_state               TEXT NOT NULL DEFAULT 'active'
+    CHECK (policy_state IN ('active', 'archived')),
+  created_at                 TEXT NOT NULL,
+  updated_at                 TEXT NOT NULL,
+  archived_at                TEXT
+);
+
+CREATE TABLE IF NOT EXISTS software_orders (
+  id                              TEXT NOT NULL PRIMARY KEY,
+  user_id                         TEXT NOT NULL,
+  status                          TEXT NOT NULL DEFAULT 'submitted' CHECK (
+    status IN (
+      'submitted', 'scoping', 'free_slice_ready', 'quote_ready',
+      'agent_queued', 'agent_running', 'delivered', 'needs_customer_input',
+      'declined', 'unavailable'
+    )
+  ),
+  visibility                      TEXT NOT NULL DEFAULT 'public'
+    CHECK (visibility IN ('public')),
+  request                         TEXT NOT NULL,
+  repository_provider             TEXT CHECK (
+    repository_provider IS NULL OR repository_provider IN ('github')
+  ),
+  repository_owner                TEXT,
+  repository_name                 TEXT,
+  repository_full_name            TEXT,
+  repository_private              INTEGER CHECK (
+    repository_private IS NULL OR repository_private IN (0, 1)
+  ),
+  repository_default_branch       TEXT,
+  repository_html_url             TEXT,
+  public_work_acknowledged_at     TEXT NOT NULL,
+  data_use_acknowledged_at        TEXT NOT NULL,
+  compute_payment_acknowledged_at TEXT NOT NULL,
+  provider_account_required       INTEGER NOT NULL DEFAULT 0
+    CHECK (provider_account_required IN (0, 1)),
+  free_slice_cents                INTEGER NOT NULL DEFAULT 5000,
+  quote_cents                     INTEGER,
+  current_run_id                  TEXT,
+  agent_started_at                TEXT,
+  created_at                      TEXT NOT NULL,
+  updated_at                      TEXT NOT NULL,
+  archived_at                     TEXT,
+  agent_idempotency_key           TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS software_orders_agent_idempotency_idx
+  ON software_orders (user_id, agent_idempotency_key)
+  WHERE agent_idempotency_key IS NOT NULL AND archived_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS order_triage_records (
+  id                   TEXT NOT NULL PRIMARY KEY,
+  software_order_id    TEXT NOT NULL,
+  classification       TEXT NOT NULL CHECK (
+    classification IN (
+      'runnable_site', 'runnable_general_autopilot', 'needs_clarification',
+      'smoke_or_test', 'legal_sensitive_policy_review',
+      'unavailable_or_declined'
+    )
+  ),
+  operator_priority    INTEGER NOT NULL DEFAULT 100,
+  first_batch_eligible INTEGER NOT NULL DEFAULT 0
+    CHECK (first_batch_eligible IN (0, 1)),
+  hold_reason          TEXT,
+  next_action          TEXT NOT NULL,
+  customer_safe_status TEXT NOT NULL,
+  customer_safe_summary TEXT NOT NULL,
+  reviewer_user_id     TEXT,
+  reviewed_at          TEXT,
+  created_at           TEXT NOT NULL,
+  updated_at           TEXT NOT NULL,
+  archived_at          TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS order_triage_records_active_order_idx
+  ON order_triage_records (software_order_id)
+  WHERE archived_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS order_triage_events (
+  id                TEXT NOT NULL PRIMARY KEY,
+  triage_record_id  TEXT NOT NULL,
+  software_order_id TEXT NOT NULL,
+  site_id           TEXT,
+  assignment_id     TEXT,
+  event_type        TEXT NOT NULL,
+  visibility        TEXT NOT NULL
+    CHECK (visibility IN ('private', 'team', 'public')),
+  summary           TEXT NOT NULL,
+  actor_user_id     TEXT,
+  payload_json      TEXT,
+  created_at        TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS order_fulfillment_artifacts (
+  id                   TEXT NOT NULL PRIMARY KEY,
+  software_order_id    TEXT NOT NULL,
+  assignment_id        TEXT,
+  run_id               TEXT,
+  kind                 TEXT NOT NULL CHECK (
+    kind IN (
+      'pull_request', 'branch', 'commit', 'diff', 'preview', 'notes',
+      'attachment'
+    )
+  ),
+  title                TEXT NOT NULL,
+  summary              TEXT NOT NULL,
+  url                  TEXT,
+  repository_full_name TEXT,
+  source_branch        TEXT,
+  target_branch        TEXT,
+  commit_sha           TEXT,
+  status               TEXT NOT NULL CHECK (
+    status IN (
+      'draft', 'customer_review_ready', 'customer_accepted', 'superseded',
+      'rejected'
+    )
+  ),
+  visibility           TEXT NOT NULL
+    CHECK (visibility IN ('private', 'team', 'public')),
+  metadata_json        TEXT NOT NULL DEFAULT '{}',
+  created_by_user_id   TEXT,
+  created_at           TEXT NOT NULL,
+  updated_at           TEXT NOT NULL,
+  archived_at          TEXT
+);
+
+CREATE TABLE IF NOT EXISTS order_fulfillment_feedback (
+  id                     TEXT NOT NULL PRIMARY KEY,
+  software_order_id      TEXT NOT NULL,
+  artifact_id            TEXT,
+  author_user_id         TEXT NOT NULL,
+  body                   TEXT NOT NULL,
+  status                 TEXT NOT NULL CHECK (
+    status IN (
+      'submitted', 'queued', 'running', 'addressed', 'closed', 'rejected'
+    )
+  ),
+  source                 TEXT NOT NULL
+    CHECK (source IN ('customer_order_ui', 'operator', 'agent')),
+  visibility             TEXT NOT NULL
+    CHECK (visibility IN ('private', 'team', 'public')),
+  adjutant_assignment_id TEXT,
+  adjutant_adjustment_id TEXT,
+  created_at             TEXT NOT NULL,
+  updated_at             TEXT NOT NULL,
+  archived_at            TEXT
+);
+
+CREATE TABLE IF NOT EXISTS order_github_write_authority_receipts (
+  id                   TEXT NOT NULL PRIMARY KEY,
+  software_order_id    TEXT NOT NULL,
+  assignment_id        TEXT,
+  user_id              TEXT NOT NULL,
+  repository_full_name TEXT NOT NULL,
+  repository_private   INTEGER NOT NULL CHECK (repository_private IN (0, 1)),
+  requested_operation  TEXT NOT NULL CHECK (
+    requested_operation IN (
+      'create_branch', 'push_commit', 'open_pull_request',
+      'open_fork_pull_request'
+    )
+  ),
+  decision             TEXT NOT NULL CHECK (decision IN ('allowed', 'blocked')),
+  authority_mode       TEXT CHECK (
+    authority_mode IS NULL OR authority_mode IN (
+      'customer_grant', 'openagents_fork', 'openagents_app'
+    )
+  ),
+  blocked_reason       TEXT,
+  connection_ref       TEXT,
+  grant_ref            TEXT,
+  approval_source      TEXT CHECK (
+    approval_source IS NULL OR approval_source IN (
+      'customer_action', 'operator_action', 'system_policy'
+    )
+  ),
+  approved_at          TEXT,
+  customer_message     TEXT NOT NULL,
+  metadata_json        TEXT NOT NULL DEFAULT '{}',
+  created_at           TEXT NOT NULL,
+  updated_at           TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS referral_invites (
+  id                 TEXT NOT NULL PRIMARY KEY,
+  referral_source_id TEXT NOT NULL,
+  public_invite_ref  TEXT NOT NULL UNIQUE,
+  token_hash         TEXT NOT NULL,
+  scope              TEXT NOT NULL
+    CHECK (scope IN ('site_join', 'order_start', 'agent_claim')),
+  audience_path      TEXT NOT NULL CHECK (audience_path IN ('human', 'agent')),
+  policy_state       TEXT NOT NULL DEFAULT 'active' CHECK (
+    policy_state IN ('active', 'redeemed', 'expired', 'disabled', 'disputed')
+  ),
+  expires_at         TEXT,
+  created_at         TEXT NOT NULL,
+  updated_at         TEXT NOT NULL,
+  archived_at        TEXT
+);
+
+CREATE TABLE IF NOT EXISTS referral_attributions (
+  id                 TEXT NOT NULL PRIMARY KEY,
+  referral_source_id TEXT NOT NULL,
+  referral_invite_id TEXT,
+  public_source_ref  TEXT NOT NULL,
+  public_invite_ref  TEXT,
+  capture_path       TEXT NOT NULL CHECK (capture_path IN ('human', 'agent')),
+  target             TEXT NOT NULL
+    CHECK (target IN ('home', 'order', 'agent_claim')),
+  policy_state       TEXT NOT NULL DEFAULT 'pending' CHECK (
+    policy_state IN (
+      'pending', 'claimed', 'expired', 'disabled', 'disputed', 'archived'
+    )
+  ),
+  first_verified_at  TEXT,
+  claimed_user_id    TEXT,
+  expires_at         TEXT NOT NULL,
+  created_at         TEXT NOT NULL,
+  updated_at         TEXT NOT NULL,
+  archived_at        TEXT
+);
+
+CREATE TABLE IF NOT EXISTS user_referral_attributions (
+  user_id                 TEXT NOT NULL PRIMARY KEY,
+  referral_attribution_id TEXT NOT NULL UNIQUE,
+  referral_source_id      TEXT NOT NULL,
+  referral_invite_id      TEXT,
+  capture_path            TEXT NOT NULL
+    CHECK (capture_path IN ('human', 'agent')),
+  target                  TEXT NOT NULL
+    CHECK (target IN ('home', 'order', 'agent_claim')),
+  first_verified_at       TEXT NOT NULL,
+  policy_state            TEXT NOT NULL DEFAULT 'active'
+    CHECK (policy_state IN ('active', 'disputed', 'archived')),
+  created_at              TEXT NOT NULL,
+  updated_at              TEXT NOT NULL,
+  archived_at             TEXT
+);
+
+CREATE TABLE IF NOT EXISTS order_referral_attributions (
+  software_order_id       TEXT NOT NULL PRIMARY KEY,
+  user_id                 TEXT NOT NULL,
+  referral_attribution_id TEXT NOT NULL,
+  referral_source_id      TEXT NOT NULL,
+  referral_invite_id      TEXT,
+  capture_path            TEXT NOT NULL
+    CHECK (capture_path IN ('human', 'agent')),
+  target                  TEXT NOT NULL
+    CHECK (target IN ('home', 'order', 'agent_claim')),
+  linked_at               TEXT NOT NULL,
+  policy_state            TEXT NOT NULL DEFAULT 'active'
+    CHECK (policy_state IN ('active', 'disputed', 'archived')),
+  created_at              TEXT NOT NULL,
+  updated_at              TEXT NOT NULL,
+  archived_at             TEXT
+);
+
+CREATE TABLE IF NOT EXISTS agent_referral_attributions (
+  agent_user_id           TEXT NOT NULL PRIMARY KEY,
+  owner_user_id           TEXT,
+  referral_attribution_id TEXT NOT NULL,
+  referral_source_id      TEXT NOT NULL,
+  referral_invite_id      TEXT,
+  capture_path            TEXT NOT NULL
+    CHECK (capture_path IN ('human', 'agent')),
+  target                  TEXT NOT NULL
+    CHECK (target IN ('home', 'order', 'agent_claim')),
+  claimed_at              TEXT NOT NULL,
+  policy_state            TEXT NOT NULL DEFAULT 'active'
+    CHECK (policy_state IN ('active', 'disputed', 'archived')),
+  created_at              TEXT NOT NULL,
+  updated_at              TEXT NOT NULL,
+  archived_at             TEXT
+);
+
+CREATE TABLE IF NOT EXISTS referral_workflow_events (
+  id                      TEXT NOT NULL PRIMARY KEY,
+  idempotency_key         TEXT NOT NULL UNIQUE,
+  event_kind              TEXT NOT NULL CHECK (
+    event_kind IN (
+      'paid_usage', 'site_checkout', 'l402_redemption', 'accepted_outcome',
+      'refund', 'reversal', 'eligibility_hold', 'dispute_hold',
+      'operator_adjustment'
+    )
+  ),
+  referral_attribution_id TEXT NOT NULL,
+  referral_source_id      TEXT NOT NULL,
+  referral_invite_id      TEXT,
+  public_source_ref       TEXT NOT NULL,
+  public_invite_ref       TEXT,
+  software_order_id       TEXT,
+  site_id                 TEXT,
+  site_version_id         TEXT,
+  product_id              TEXT,
+  paid_action_id          TEXT,
+  payment_event_id        TEXT,
+  payment_evidence_ref    TEXT,
+  entitlement_ref         TEXT,
+  accepted_work_ref       TEXT,
+  related_event_id        TEXT,
+  public_receipt_ref      TEXT NOT NULL,
+  policy_state            TEXT NOT NULL CHECK (
+    policy_state IN (
+      'recorded', 'eligible', 'held', 'disputed', 'refunded', 'reversed',
+      'ignored'
+    )
+  ),
+  amount                  NUMERIC NOT NULL DEFAULT 0 CHECK (amount >= 0),
+  asset                   TEXT NOT NULL
+    CHECK (asset IN ('none', 'credits', 'sats', 'usd')),
+  metadata_json           TEXT NOT NULL DEFAULT '{}',
+  occurred_at             TEXT NOT NULL,
+  created_at              TEXT NOT NULL,
+  archived_at             TEXT,
+  CHECK (
+    event_kind NOT IN ('refund', 'reversal') OR related_event_id IS NOT NULL
+  )
+);
+
+CREATE TABLE IF NOT EXISTS viral_agent_funnel_events (
+  id               TEXT NOT NULL PRIMARY KEY,
+  event_kind       TEXT NOT NULL CHECK (
+    event_kind IN (
+      'capability_manifest_read', 'openapi_read', 'agent_doc_read',
+      'skill_doc_read', 'public_proof_read', 'public_challenge_read',
+      'first_scoped_action_attempt'
+    )
+  ),
+  route            TEXT NOT NULL,
+  actor_class      TEXT NOT NULL CHECK (
+    actor_class IN (
+      'public_anonymous', 'signed_in_browser_possible',
+      'scoped_agent_possible'
+    )
+  ),
+  user_agent_class TEXT NOT NULL
+    CHECK (user_agent_class IN ('agent_or_cli', 'browser', 'crawler', 'unknown')),
+  site_slug        TEXT,
+  proof_ref        TEXT,
+  metadata_json    TEXT NOT NULL DEFAULT '{}',
+  created_at       TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS qa_swarm_first_engagements (
+  receipt_ref                     TEXT NOT NULL PRIMARY KEY,
+  idempotency_key                 TEXT NOT NULL UNIQUE,
+  package_kind                    TEXT NOT NULL
+    CHECK (package_kind IN ('swarm_audit')),
+  payment_path                    TEXT NOT NULL CHECK (
+    payment_path IN (
+      'operator_sales_deposit_invoice', 'checkout_kickoff_receipt'
+    )
+  ),
+  business_signup_request_id      TEXT NOT NULL,
+  user_id                         TEXT NOT NULL,
+  committed_amount_cents          INTEGER NOT NULL CHECK (
+    committed_amount_cents >= 100000 AND committed_amount_cents <= 500000
+  ),
+  intake_receipt_ref              TEXT NOT NULL,
+  checkout_or_deposit_receipt_ref TEXT NOT NULL,
+  target_adapter_review_ref       TEXT NOT NULL,
+  package_contract_ref            TEXT NOT NULL,
+  workspace_id                    TEXT NOT NULL,
+  service_promise_contract_id     TEXT NOT NULL,
+  commitment_ref                  TEXT NOT NULL UNIQUE,
+  first_report_due_at             TEXT NOT NULL,
+  recorded_at                     TEXT NOT NULL,
+  created_at                      TEXT NOT NULL,
+  updated_at                      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS promise_transition_receipts (
+  id                 TEXT NOT NULL PRIMARY KEY,
+  promise_id         TEXT NOT NULL,
+  from_state         TEXT NOT NULL,
+  to_state           TEXT NOT NULL,
+  registry_version   TEXT NOT NULL,
+  result             TEXT NOT NULL,
+  checks_json        TEXT NOT NULL,
+  evidence_refs_json TEXT NOT NULL,
+  exception_json     TEXT,
+  checked_at         TEXT NOT NULL,
+  created_at         TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS buy_mode_campaigns (
+  campaign_id          TEXT NOT NULL PRIMARY KEY,
+  idempotency_key_hash TEXT NOT NULL UNIQUE,
+  state                TEXT NOT NULL
+    CHECK (state IN ('disabled', 'enabled', 'halted')),
+  spend_enabled        INTEGER NOT NULL CHECK (spend_enabled IN (0, 1)),
+  per_job_cap_msats    INTEGER NOT NULL CHECK (per_job_cap_msats > 0),
+  daily_cap_msats      INTEGER NOT NULL CHECK (daily_cap_msats > 0),
+  spent_today_msats    INTEGER NOT NULL DEFAULT 0
+    CHECK (spent_today_msats >= 0),
+  day_key              TEXT NOT NULL,
+  operator_user_id     TEXT NOT NULL,
+  relay_url            TEXT NOT NULL,
+  last_alert_ref       TEXT,
+  created_at           TEXT NOT NULL,
+  updated_at           TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS buy_mode_jobs (
+  job_id               TEXT NOT NULL PRIMARY KEY,
+  campaign_id          TEXT NOT NULL,
+  idempotency_key_hash TEXT NOT NULL UNIQUE,
+  request_event_id     TEXT NOT NULL UNIQUE,
+  result_event_id      TEXT UNIQUE,
+  provider_pubkey      TEXT,
+  amount_msats         INTEGER NOT NULL CHECK (amount_msats > 0),
+  state                TEXT NOT NULL CHECK (
+    state IN ('issued', 'settled', 'settlement_blocked', 'settlement_failed')
+  ),
+  receipt_ref          TEXT,
+  bolt11_ref           TEXT,
+  content_digest_ref   TEXT,
+  created_at           TEXT NOT NULL,
+  updated_at           TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS buy_mode_alerts (
+  alert_id    TEXT NOT NULL PRIMARY KEY,
+  campaign_id TEXT NOT NULL,
+  reason_ref  TEXT NOT NULL,
+  created_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS customer_one_cohort_rows (
+  team_cohort_ref       TEXT NOT NULL PRIMARY KEY,
+  state                 TEXT NOT NULL,
+  candidate_ref         TEXT,
+  invite_ref            TEXT,
+  vertical_ref          TEXT,
+  template_ref          TEXT,
+  workspace_ref         TEXT,
+  routing_ref           TEXT,
+  run_ref               TEXT,
+  artifact_ref          TEXT,
+  review_ref            TEXT,
+  verification_ref      TEXT,
+  completion_bundle_ref TEXT,
+  privacy_review_ref    TEXT,
+  blocker_refs_json     TEXT NOT NULL DEFAULT '[]',
+  caveat_refs_json      TEXT NOT NULL DEFAULT '[]',
+  updated_at            TEXT NOT NULL,
+  created_at            TEXT NOT NULL
+);
+`

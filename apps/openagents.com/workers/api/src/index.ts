@@ -149,10 +149,7 @@ import {
   type ArtanisDatabase,
 } from './artanis-domain-store'
 // KS-8.11 (#8322): CRM/email write entry points ride the dual-write seam.
-import {
-  crmEmailAuthorityDb,
-  makeCrmEmailDatabaseForEnv,
-} from './crm-email-domain-store'
+import { makeCrmEmailDatabaseForEnv } from './crm-email-domain-store'
 import { makeTreasuryDatabaseForEnv } from './treasury-domain-store'
 import { ArtanisMindSmokeSystem, artanisMindComplete } from './artanis-mind'
 import {
@@ -308,6 +305,9 @@ import { makeOperatorBusinessStarterCreditRoutes } from './business-starter-cred
 import { recordBusinessFunnelEvent } from './business-funnel-dashboard'
 import { handlePublicBusinessFunnelDashboardApi } from './business-funnel-dashboard-routes'
 import { handleBusinessIntakeChatApi } from './business-intake-chat-routes'
+// KS-8.14 (#8325): business funnel/orders/referrals dual-write seam —
+// scoped table writes read-back-mirror into Postgres (fail-soft).
+import { businessDomainDatabaseForEnv } from './business-domain-store'
 import { runBusinessFulfillmentLoopScheduled } from './business-fulfillment-loop'
 import { handleBusinessSignupApi } from './business-signup-routes'
 import { makeD1BuyModeDispatcherStore } from './buy-mode-dispatcher'
@@ -4759,7 +4759,8 @@ const handleSessionApi = async (
 
   await upsertUser(openAgentsDatabase(env), session.user)
   const referralResult = await consumePendingReferralForUser(
-    openAgentsDatabase(env),
+    // KS-8.14 (#8325): consume-once attribution writes mirror fail-soft.
+    businessDomainDatabaseForEnv(env),
     workerRuntime,
     {
       pendingAttributionId: parseCookies(request).get(PENDING_REFERRAL_COOKIE),
@@ -8909,7 +8910,7 @@ const operatorBuyModeRoutes = makeOperatorBuyModeRoutes<Env>({
   makeEvalBridge: env => buyModeEvalBridgeForEnv(env),
   makePaymentBridge: env => buyModePaymentBridgeForEnv(env),
   makeRelayPublisher: env => buyModeRelayPublisherForEnv(env),
-  makeStore: env => makeD1BuyModeDispatcherStore(openAgentsDatabase(env)),
+  makeStore: env => makeD1BuyModeDispatcherStore(businessDomainDatabaseForEnv(env)),
   requireAdminApiToken,
 })
 
@@ -8977,7 +8978,7 @@ const khalaCodeTracePluginRevenueShareRoutes =
 const qaSwarmFirstEngagementRoutes =
   makeQaSwarmFirstEngagementRoutes<Env>({
     makeStore: env =>
-      makeD1QaSwarmFirstEngagementStore(openAgentsDatabase(env)),
+      makeD1QaSwarmFirstEngagementStore(businessDomainDatabaseForEnv(env)),
     nowIso: currentIsoTimestamp,
   })
 
@@ -8986,7 +8987,7 @@ const hostedGeminiPromiseReadinessRoutes =
     makeInferenceReceiptStore: env =>
       makeD1InferenceReceiptStore(openAgentsDatabase(env)),
     makeTransitionReceiptStore: env =>
-      makeD1PromiseTransitionReceiptStore(openAgentsDatabase(env)),
+      makeD1PromiseTransitionReceiptStore(businessDomainDatabaseForEnv(env)),
     nowIso: currentIsoTimestamp,
   })
 
@@ -9596,17 +9597,20 @@ const operatorPylonMarketplaceRoutes = makeOperatorPylonMarketplaceRoutes({
 })
 
 const operatorBusinessPipelineRoutes = makeOperatorBusinessPipelineRoutes({
-  makeStore: env => makeD1BusinessPipelineStore(openAgentsDatabase(env)),
+  makeStore: env => makeD1BusinessPipelineStore(businessDomainDatabaseForEnv(env)),
   nowIso: currentIsoTimestamp,
   requireAdminApiToken,
 })
 
 const operatorBusinessOutreachRoutes = makeOperatorBusinessOutreachRoutes({
   makeStore: env => {
+    // KS-8.11 (#8322) x KS-8.14 (#8325): outreach tables ride the CRM/email
+    // dual-write seam; the pipeline store's business_* writes ride the
+    // business dual-write seam (composed over the same D1 authority).
     const db = makeCrmEmailDatabaseForEnv(env)
     return makeD1BusinessOutreachStore(
       db,
-      makeD1BusinessPipelineStore(crmEmailAuthorityDb(db)),
+      makeD1BusinessPipelineStore(businessDomainDatabaseForEnv(env)),
     )
   },
   requireAdminApiToken,
@@ -9614,7 +9618,7 @@ const operatorBusinessOutreachRoutes = makeOperatorBusinessOutreachRoutes({
 
 const operatorBusinessStarterCreditRoutes = makeOperatorBusinessStarterCreditRoutes({
   makeStore: env => {
-    const db = openAgentsDatabase(env)
+    const db = businessDomainDatabaseForEnv(env)
     return makeD1BusinessStarterCreditStore(db, makeD1BusinessPipelineStore(db))
   },
   requireAdminApiToken,
@@ -11213,7 +11217,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/api/public/business-signup',
     handler: (request, env) =>
-      handleBusinessSignupApi(request, openAgentsDatabase(env), undefined, {
+      handleBusinessSignupApi(request, businessDomainDatabaseForEnv(env), undefined, {
         appOrigin: getAppOrigin(env),
         getResendEmailConfig: () => getResendEmailConfig(env),
         sendInviteEmailWithLedger: (config, input) =>
@@ -11227,14 +11231,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/api/public/business/funnel-dashboard',
     handler: (request, env) =>
-      handlePublicBusinessFunnelDashboardApi(request, openAgentsDatabase(env)),
+      handlePublicBusinessFunnelDashboardApi(request, businessDomainDatabaseForEnv(env)),
   },
   {
     path: '/api/operator/business/affiliate-codes',
     handler: (request, env) =>
       handleOperatorBusinessAffiliateCodeApi(
         request,
-        openAgentsDatabase(env),
+        businessDomainDatabaseForEnv(env),
         {
           requireAdminApiToken: adminRequest =>
             requireAdminApiToken(adminRequest, env),
@@ -11246,7 +11250,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       handleOperatorBusinessAffiliateAttributionApi(
         request,
-        openAgentsDatabase(env),
+        businessDomainDatabaseForEnv(env),
         {
           requireAdminApiToken: adminRequest =>
             requireAdminApiToken(adminRequest, env),
@@ -11274,7 +11278,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         fireworksArmed: resolveSupplyLaneArming(env).fireworks,
         recordFunnelEvent: input =>
           Effect.promise(() =>
-            recordBusinessFunnelEvent(openAgentsDatabase(env), input).then(
+            recordBusinessFunnelEvent(businessDomainDatabaseForEnv(env), input).then(
               () => undefined,
             ),
           ),
@@ -11453,7 +11457,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/product-promises/transitions',
     handler: (request, env) =>
       handlePublicPromiseTransitionsApi(request, {
-        store: makeD1PromiseTransitionReceiptStore(openAgentsDatabase(env)),
+        store: makeD1PromiseTransitionReceiptStore(businessDomainDatabaseForEnv(env)),
       }),
   },
   {
@@ -11472,7 +11476,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/product-promises/audit',
     handler: (request, env) =>
       handlePublicPromiseAuditApi(request, {
-        store: makeD1PromiseTransitionReceiptStore(openAgentsDatabase(env)),
+        store: makeD1PromiseTransitionReceiptStore(businessDomainDatabaseForEnv(env)),
       }),
   },
   {
@@ -11862,7 +11866,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: CustomerOneCohortEndpoint,
     handler: (request, env) =>
       handlePublicCustomerOneCohortApi(request, {
-        store: makeD1CustomerOneCohortRowStore(openAgentsDatabase(env)),
+        store: makeD1CustomerOneCohortRowStore(businessDomainDatabaseForEnv(env)),
       }),
   },
   {
@@ -12023,7 +12027,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleOperatorCustomerOneCohortRowsApi(request, {
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
-        store: makeD1CustomerOneCohortRowStore(openAgentsDatabase(env)),
+        store: makeD1CustomerOneCohortRowStore(businessDomainDatabaseForEnv(env)),
       }),
   },
   {
@@ -12031,7 +12035,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       handleOperatorPromiseTransitionApi(request, {
         requireAdminApiToken: () => requireAdminApiToken(request, env),
-        store: makeD1PromiseTransitionReceiptStore(openAgentsDatabase(env)),
+        store: makeD1PromiseTransitionReceiptStore(businessDomainDatabaseForEnv(env)),
       }),
   },
   {
@@ -13178,7 +13182,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env, ctx) => {
       recordPublicAgentFunnelRead(
         request,
-        openAgentsDatabase(env),
+        businessDomainDatabaseForEnv(env),
         ctx,
         'capability_manifest_read',
         '/.well-known/openagents.json',
@@ -13192,7 +13196,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env, ctx) => {
       recordPublicAgentFunnelRead(
         request,
-        openAgentsDatabase(env),
+        businessDomainDatabaseForEnv(env),
         ctx,
         'agent_doc_read',
         '/AGENTS-CORE.md',
@@ -13210,7 +13214,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env, ctx) => {
       recordPublicAgentFunnelRead(
         request,
-        openAgentsDatabase(env),
+        businessDomainDatabaseForEnv(env),
         ctx,
         'agent_doc_read',
         '/AGENTS.md',
@@ -13322,7 +13326,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env, ctx) => {
       recordPublicAgentFunnelRead(
         request,
-        openAgentsDatabase(env),
+        businessDomainDatabaseForEnv(env),
         ctx,
         'openapi_read',
         '/openapi.json',
@@ -13348,7 +13352,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env, ctx) => {
       recordPublicAgentFunnelRead(
         request,
-        openAgentsDatabase(env),
+        businessDomainDatabaseForEnv(env),
         ctx,
         'openapi_read',
         '/api/openapi.json',
@@ -13374,7 +13378,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env, ctx) => {
       recordPublicAgentFunnelRead(
         request,
-        openAgentsDatabase(env),
+        businessDomainDatabaseForEnv(env),
         ctx,
         'public_proof_read',
         '/api/public/proof/otec',
@@ -15946,7 +15950,9 @@ export default {
       observedEffect(
         'BusinessFulfillmentLoop.dailyMotion',
         runBusinessFulfillmentLoopScheduled(
-          openAgentsDatabase(env),
+          // KS-8.14 (#8325): motion receipts / escalation pages mirror
+          // fail-soft; the pager's dedupe stays on D1 (no double-page).
+          businessDomainDatabaseForEnv(env),
           event.scheduledTime,
         ).pipe(Effect.asVoid),
       ),

@@ -1036,6 +1036,56 @@ normal upsert.
 - **Depends:** KS-8.7/8.8 (attributions → payouts), KS-8.11 (outreach
   already moved).
 
+**KS-8.14 machinery status (2026-07-04, #8325):** LANDED for all 32 LIVE
+tables — Postgres schema (`khala-sync-server` migration
+`0022_business_funnel.sql`; the `business_funnel_events_0275` /
+`business_service_promises_0275` rewrite artifacts were renamed back by
+worker 0277/0275 and do not exist live, so nothing was created for them;
+indexes re-derived — PKs + every attribution/idempotency UNIQUE port
+exactly, the two partial-unique CONSTRAINTS
+(`software_orders_agent_idempotency_idx`,
+`order_triage_records_active_order_idx`) port verbatim, all D1 read
+accelerators dropped because this lane routes zero reads; the
+starter-credit window-cap TRIGGER is deliberately NOT ported — it is a
+D1 write-authority gate), the MIRRORING D1Database seam
+(`apps/openagents.com/workers/api/src/business-domain-store.ts`,
+`businessDomainDatabaseForEnv` — the KS-8.10 pattern generalized with
+per-table LOOKUP COLUMNS for update-by-unique statements and
+`ON CONFLICT(col)` read-back so the surviving
+`business_signup_fulfillments` row mirrors correctly), flags
+`KHALA_SYNC_BUSINESS_DUAL_WRITE` (default on) /
+`KHALA_SYNC_BUSINESS_READS` (d1|compare|postgres, default d1; `postgres`
+serving is deferred-to-compare until the read-cutover follow-up), wiring
+at the core write boundaries (public business-signup intake + its
+referral capture/consume/affiliate/fulfillment chain, the intake-chat and
+signup funnel-event recorders, the funnel dashboard, pipeline /
+starter-credit operator stores, buy-mode dispatcher, QA-swarm
+engagements, customer-one cohort stores, promise transition receipt
+stores incl. hosted-gemini readiness, the six viral-funnel read
+recorders, session-bootstrap referral consumption, site-referral
+capture routes, and the `BusinessFulfillmentLoop.dailyMotion` cron —
+whose escalation pager keeps its dedupe on D1, so dual-write cannot
+double-page), resumable backfill + exact-verify CLI
+(`packages/khala-sync-server/scripts/backfill-business.ts`: exact counts,
+ATTRIBUTION SET DIGESTS over the payout-feeding tuples,
+PROMISE-RECEIPT full-row hash-set equality, funnel counts per cohort,
+money sums for checkout/starter-credit/buy-mode/workflow-event/order/QA
+amounts, newest-N row hashes), and a contract suite run against BOTH
+stores incl. consume-once replay, fail-soft, and compare-read proofs.
+Funnel-event volume stays relational in this lane; the Analytics Engine
+split is a post-cutover follow-up decision. Writers still D1-only
+pending the remainder lane (backfill-converged until then): the
+`software_orders`/`order_*` boundaries inside customer-orders,
+operator-order-triage, operator-adjutant, adjutant-run-lifecycle
+(omni-handlers), github-writeback-authority/github-pr-fulfillment, the
+stripe-billing–fed `business_checkout_kickoffs` +
+`business-referral-engagement-feed` funnel writes, `business-new-routes`
+capture, site-referral-onboarding consumption, and
+`referral_workflow_events` via site-referral-policy. Prod cutover
+procedure: [`RUNBOOK.md`](./RUNBOOK.md) "Business funnel domain
+cutover"; remainder wiring + cutover evidence + D1 drop tracked on epic
+[#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
+
 ### 3.12 KS-8.15 — Training, gym, evals
 
 **KS-8.15 source status (2026-07-04):** training CORE machinery LANDED —

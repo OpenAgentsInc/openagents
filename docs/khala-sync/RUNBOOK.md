@@ -1396,6 +1396,87 @@ batch-job-metering, inference-abuse-controls, serving-node-payout,
 cloud-metering, product-promises, business-starter-credit). A final
 `--restart` sweep + `--verify` immediately before any read cutover is
 therefore MANDATORY, not optional.
+
+## Business funnel domain cutover (KS-8.14, #8325)
+
+The business funnel / orders / referrals domain: the 32 live tables from
+khala-sync migration `0022_business_funnel.sql` (business signup /
+fulfillment / pipeline / commitments / affiliates, funnel events, service
+promises + fulfillment-loop receipts + escalation pages, checkout
+kickoffs, starter credits, software orders + triage + fulfillment
+artifacts + GitHub write-authority receipts, the referral spine's
+consumption side, workflow events, viral funnel, QA-swarm engagements,
+promise transition receipts, buy-mode, customer-one cohort). Machinery:
+`apps/openagents.com/workers/api/src/business-domain-store.ts` (the
+mirroring D1Database, `businessDomainDatabaseForEnv`) and
+`packages/khala-sync-server/scripts/backfill-business.ts`.
+
+**DOMAIN DISCIPLINE (overrides the generic recipe where they differ):**
+
+- D1 is the SOLE authority for this domain for the entire life of this
+  lane. Referral attribution uniqueness keys feed payouts (KS-8.8): the
+  consume-once decision (INSERT OR IGNORE on the attribution PKs /
+  UNIQUEs) is made ONCE, on D1, and the mirror only copies accepted rows.
+- The fulfillment-loop escalation pager and the starter-credit
+  window-cap trigger evaluate against exactly ONE store (D1). Nothing in
+  Postgres feeds an evaluator — dual-write can never double-page.
+- `promise_transition_receipts` backs the PUBLIC product-promises
+  registry: it must stay continuously servable, so its verify acceptance
+  is FULL row-hash set equality, not just counts.
+- **The production flip of `KHALA_SYNC_BUSINESS_READS` is an EPIC-GATED
+  ops decision recorded on
+  [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282)** —
+  and in this lane `postgres` intentionally behaves as `compare` (logs
+  `khala_sync_business_postgres_reads_deferred`); actual Postgres read
+  serving lands with the read-cutover follow-up.
+
+Flags (Worker vars; structural — absent means default):
+
+- `KHALA_SYNC_BUSINESS_DUAL_WRITE` — default **on** wherever
+  `KHALA_SYNC_DB` exists; `off|0|false|disabled` disables the mirror.
+- `KHALA_SYNC_BUSINESS_READS` — default `d1`; `compare` shadow-runs
+  scoped-table SELECTs against Postgres, SERVES D1, and logs
+  `khala_sync_business_read_compare_mismatch`; `postgres` defers to
+  compare (above).
+
+Cutover order — never skip a step, each step soaks before the next:
+
+1. **Dual-write on** (default after this lane lands + `0022` applied via
+   the migration runner). Watch `khala_sync_business_dual_write_failed`
+   (the drift metric) AND `khala_sync_business_write_unclassified` (a
+   scoped write statement the classifier does not recognize — new writer
+   code must either classify or be added to the remainder list); nonzero
+   steady rates block progression.
+2. **Backfill**: from `packages/khala-sync-server/`,
+   `KHALA_SYNC_DATABASE_URL=<direct-url> bun scripts/backfill-business.ts`
+   (resumable; state in `.business-backfill-state.json`).
+3. **Catch-up sweep**: rerun with `--restart` after dual-write has been
+   on across the whole window — this also re-converges rows UPDATEd on
+   D1 (pipeline stages, fulfillment status, buy-mode counters,
+   attribution policy_state) after the first sweep copied them.
+4. **Verify**: `bun scripts/backfill-business.ts --verify` — exact
+   counts, ATTRIBUTION SET DIGESTS (the payout-feeding tuples across the
+   five attribution tables + workflow-event/QA idempotency sets),
+   PROMISE-RECEIPT full-row hash equality, funnel counts per cohort,
+   money sums, newest-N row hashes. Exact or explain; attribution reads
+   NEVER cut on a red verify.
+5. **Compare reads** (`KHALA_SYNC_BUSINESS_READS=compare`), soak on the
+   funnel dashboard + capture routes, then the read-cutover follow-up
+   moves reads WITH their re-derived indexes.
+6. **Remainder + decommission follow-ups**: wire the still-D1-only
+   writer boundaries (see the §3.11 status list in
+   [`MIGRATION_PLAN.md`](./MIGRATION_PLAN.md) — customer-orders /
+   triage / adjutant / github-writeback `software_orders`+`order_*`
+   paths, stripe-billing-fed checkout kickoffs + engagement-feed funnel
+   writes, site-referral-policy workflow events, onboarding
+   consumption), then drop the D1 tables. A final `--restart` sweep +
+   `--verify` immediately before any read cutover is MANDATORY, not
+   optional (the unwired boundaries are backfill-converged until then).
+
+Rollback at ANY step: set `KHALA_SYNC_BUSINESS_READS=d1` (reads) and/or
+`KHALA_SYNC_BUSINESS_DUAL_WRITE=off` (writes). D1 authority is never
+behind.
+
 ## Public tokens-served projection (KS-6.3, #8304)
 
 The public "Khala Tokens Served" counter
