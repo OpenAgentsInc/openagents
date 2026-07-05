@@ -1318,11 +1318,6 @@ import {
   type ViralAgentFunnelEventKind,
   recordViralAgentFunnelEvent,
 } from './viral-agent-funnel'
-import {
-  VoiceProgramIngestEndpoint,
-  handleVoiceProgramIngestApi,
-  isVoiceProgramIngestEnabled,
-} from './voice-program-ingest-routes'
 import { makeWorkerRouteRequest } from './worker-routes'
 import {
   makeD1XClaimRewardTreasuryDispatchStore,
@@ -11647,28 +11642,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             env.OMNI_CLIENT_DELIVERY_PROJECTION_ENABLED,
           ),
           nowIso: currentIsoTimestamp,
-        }),
-      ),
-  },
-  {
-    // Voice-session transcript ingestion endpoint (#5523 / DE-7 #5530; promise
-    // mobile.voice_session_evidence_transcript_ingest.v1, red). INERT by
-    // default: when VOICE_PROGRAM_INGEST_ENABLED is OFF the endpoint returns an
-    // honest inert/red payload and never runs the ingest core. When armed it
-    // decodes already-transcribed, redacted, ref-only segments and runs the
-    // existing pure buildVoiceProgramIngestProposal core to return an
-    // approval-gated program-input proposal (no STT, no audio capture, no
-    // mutation, no execution, no settlement). This clears ONLY
-    // blocker.product_promises.voice_ingestion_endpoint_missing; the
-    // transcription-service and approval-UI blockers stay owner/product-gated
-    // and the promise stays red. POST only.
-    path: VoiceProgramIngestEndpoint,
-    handler: (request, env) =>
-      Effect.promise(() =>
-        handleVoiceProgramIngestApi(request, {
-          enabled: isVoiceProgramIngestEnabled(
-            env.VOICE_PROGRAM_INGEST_ENABLED,
-          ),
         }),
       ),
   },

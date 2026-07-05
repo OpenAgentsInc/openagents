@@ -51,14 +51,14 @@ do we have" answer for the Worker.
 | Budget | Now/Max | What it is | Retire by |
 |---|---|---|---|
 | Raw `env: Env` handler params | **166/166** | 166 route handlers bypass the typed config/binding boundary | Introduce `OpenAgentsWorkerConfig` + capability injection at the seam; touches ~166 signatures |
-| Worker `Response`-returning domain surfaces | **135/135** | 135 symbols build HTTP `Response` inside domain code instead of returning typed values for a route-mapper | Extract a shared route-mapper; domain code returns data, not `Response` |
+| Worker `Response`-returning domain surfaces | **134/134** | 134 symbols build HTTP `Response` inside domain code instead of returning typed values for a route-mapper | Extract a shared route-mapper; domain code returns data, not `Response` |
 | Route `Effect.promise` bridges | **18/18** | Route modules still Promise-shaped, wrapping Effect deps | Migrate the named wave-3 routes to Effect end-to-end |
 | Worker `throw new Error` | **0/0** | Untyped throws where `TaggedError` is the standard | Retired in #8371 |
 | `Effect.runPromise` named bridges | 20 files (index.ts×7, omni-handlers.ts×7, 13 singles) | Temporary Promise↔Effect seams | Retire per-route as each becomes a full Effect program; `index.ts` and `omni-handlers.ts` are the two fat targets |
 | Public-projection staleness ledger | 101 tracked surfaces, **0 legacy rows** | Public projections must carry `generatedAt`/`generatedAtUnixMs` and a declared `maxStalenessSeconds` contract unless statically exempt | Keep the legacy budget at `0`; new rows must be `staleness_declared` or `static_contract_exempt` |
 | 9 other budgets (string classifiers, raw `JSON.parse`, raw time/id/random, direct config reads, direct runtime-capability access, raw console logging, response-helper misuse) | **0/0 each** | Already fully retired — these are the *finished* invariants | Don't touch; they're the guardrails proving the pattern works |
 
-**Read:** four ceilings (`env:Env` 166, Response-surfaces 135, runPromise
+**Read:** four ceilings (`env:Env` 166, Response-surfaces 134, runPromise
 bridges, promise adapters) are almost entirely a symptom of **one root
 cause** — `index.ts` is a 15,530-line hand-rolled router with inline
 handlers taking raw `env` and returning raw `Response`. Fixing the router
@@ -89,7 +89,7 @@ priority.**
 Companion moves: extract the 24-task `scheduled()` block into a task
 registry (−450 LOC, makes dead-cron pruning trivial); introduce one
 prefix/param route-mapper to replace ~15 hand-written path-param
-dispatchers (retires most of the 135-ceiling Response-surface debt).
+dispatchers (retires most of the 134-ceiling Response-surface debt).
 
 ### 2.2 Route sprawl — concrete REMOVE/DEPRECATE list (of 224 route files)
 
@@ -101,7 +101,7 @@ dispatchers (retires most of the 135-ceiling Response-surface debt).
 | `inference/gym/agentcl-vertex-runner.ts` + table `gym_agentcl_eval_*` | AgentCL Vertex eval runner | Removed 2026-07-05 in #8380 | **REMOVED runner + DROPPED table family** |
 | `omni-investor-demo-bundle-export.ts` | Investor demo bundle | Untouched since repo genesis | **REMOVE** |
 | `lander2/3/4/5-routes.ts` + `lander-shell.ts` | Landing-page A/B experiments | Actively iterated (2 days old) | **DEPRECATE now, REMOVE on ONE-UI cutover** — collapse to one winner |
-| `voice-program-ingest-routes.ts` | Voice ingest, `VOICE_PROGRAM_INGEST_ENABLED` never armed | Inert flag | **REMOVE** (native SwiftUI voice app supersedes this path per CLAUDE.md mobile policy) |
+| `voice-program-ingest-routes.ts` | Voice ingest, `VOICE_PROGRAM_INGEST_ENABLED` never armed | Removed 2026-07-05 in #8386 | **REMOVED route/core/tests/flag** |
 
 **Write-dead D1 table sweep (feeds #8330):** #8378 added
 `bun run d1:zero-reference-sweep` plus the deterministic report
@@ -118,20 +118,24 @@ migrations and the matching Khala Sync mirror/twin cleanup.
 
 ### 2.3 Flag-gated cleanup candidates
 
-`VOICE_PROGRAM_INGEST_ENABLED` and `KHALA_MPP_ENABLED` remain full code
-surfaces behind owner decision points, disproportionately responsible for
-Response-surface and runPromise-bridge budget consumption.
+`KHALA_MPP_ENABLED` remains the main full-code surface behind an owner
+decision point, disproportionately responsible for Response-surface and
+runPromise-bridge budget consumption.
 `INFERENCE_BATCH_JOBS_ENABLED` was removed in #8384 after the owner-preferred
 remove decision: the route/queue/store/OpenAPI surface had no Khala Code
 dependency and no owner-approved arming evidence.
+`VOICE_PROGRAM_INGEST_ENABLED` was removed in #8386 after current-main
+verification found no committed Wrangler arming and no Khala Code dependency:
+the Worker route/core/tests/flag were deleted, while unrelated voice evidence
+and mobile approval projection contracts stay intact.
 `INFERENCE_DURABLE_STREAM_ENABLED` was reclassified in #8385 as **KEEP** after
 current-main verification: it is owner-armed in production/staging Wrangler
 config and is the live Khala MCP resume/status contract for caller-owned
 Pylon/Codex assignments (`khala.request`, `khala.spawn`, `khala.resume`,
 `khala.status`), plus the background-agent run session-event projection. Do
 not delete it as inert cleanup without replacing that Khala Code contract.
-Estimated remaining combined **1,000–2,500 LOC**. **Decide arm-or-remove per
-remaining flag**; voice ingest remains the clear REMOVE candidate.
+Estimated remaining combined **500–1,500 LOC**. **Decide arm-or-remove for the
+remaining flag**.
 
 ### 2.4 Dual-store layering (23 domain stores, 3-4 seam patterns)
 
@@ -452,8 +456,8 @@ gone, #8382 consolidated the 66-file auth-helper sprawl, and #8383 made the
 desktop fleet cockpit Khala Sync-first by default while deleting the old
 visible 5s poll, #8384 removed the batch-job async lane, and #8385 confirmed
 durable-stream is a live Khala Code resume/status contract rather than an inert
-flag. Next: decide arm-or-remove on the remaining owner-decision flags (voice
-ingest is the clear remove candidate).
+flag. #8386 removed the unarmed voice ingest route/core/tests/flag. Next:
+decide arm-or-remove on the remaining owner-decision flag.
 
 2026-07-05 Wave 1 issue index:
 
@@ -479,7 +483,9 @@ ingest is the clear remove candidate).
 - #8385 - Complete: kept `INFERENCE_DURABLE_STREAM_ENABLED` after current-main
   verification found it owner-armed and directly consumed by Khala MCP
   request/spawn/resume/status plus background-agent run projections.
-- #8386 - Remove the unarmed `VOICE_PROGRAM_INGEST_ENABLED` voice ingest path.
+- #8386 - Complete: removed the unarmed `VOICE_PROGRAM_INGEST_ENABLED` Worker
+  route/core/tests/flag and updated the product-promise evidence to keep only
+  voice evidence/projection contracts.
 - #8387 - Decide arm-or-remove for `KHALA_MPP_ENABLED`.
 
 **Wave 2 — structural refactors, medium risk, biggest long-term payoff:**

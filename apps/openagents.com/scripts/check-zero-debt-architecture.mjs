@@ -494,7 +494,7 @@ const budgetChecks = [
     // main; this records the actual count. They mint no spend/settlement/
     // payout/public-claim authority. Ratchet back down when these handlers
     // move behind a shared route mapper.
-    budget: 135,
+    budget: 134,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -600,15 +600,6 @@ const runPromiseAllowlist = new Map([
   // bridge; ratchet down if the operator billing handlers move to an Effect
   // program.
   ['workers/api/src/operator-billing-routes.ts', 1],
-  // Added 2026-06-19 (#5523 / DE-7 #5530): the voice-session transcript
-  // ingestion route runs the Effect-returning pure ingest core
-  // (`buildVoiceProgramIngestProposal`) once from the Promise-based,
-  // flag-gated `/api/mobile/voice-sessions/ingest` handler. The route awaits
-  // the request body (so the handler is Promise-shaped) and bridges the pure
-  // Effect mapping into it. Named bridge; ratchet down if the route handler
-  // moves to an Effect program. INERT by default (VOICE_PROGRAM_INGEST_ENABLED
-  // off → the core is never run); promise stays red.
-  ['workers/api/src/voice-program-ingest-routes.ts', 1],
   // Added 2026-06-22 (#6035 / refs #6027): the inference gateway TRUE
   // pass-through SSE stream (the khala-code 524 fix) bridges the Effect-returning
   // metering hook into the Web Streams `ReadableStream.start` controller callback

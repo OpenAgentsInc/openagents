@@ -47,9 +47,8 @@ export const SITE_FORM_CAPTURE_PROMISE_ID =
 export const SITE_FORM_CAPTURE_BLOCKER_CLEARED =
   'blocker.product_promises.site_form_capture_route_unmounted'
 
-// Additive, default-OFF feature flag. Mirrors the established
-// isVoiceProgramIngestEnabled / isSignatureUsageMeteringEnabled convention:
-// absent or any non-truthy value => disabled.
+// Additive, default-OFF feature flag. Mirrors the established truthy flag parser
+// convention: absent or any non-truthy value => disabled.
 export const isSiteFormCaptureEnabled = (
   value: string | undefined,
 ): boolean => {

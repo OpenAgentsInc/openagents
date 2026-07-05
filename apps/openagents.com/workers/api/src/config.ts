@@ -45,16 +45,6 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // red/inert) surface. Metering clears only the usage-metering blocker; the
   // settlement blocker stays owner-gated and the promise stays red regardless.
   SIGNATURE_USAGE_METERING_ENABLED?: string | undefined
-  // Voice-session transcript ingestion endpoint flag (EPIC #5523 / DE-7 #5530;
-  // promise mobile.voice_session_evidence_transcript_ingest.v1, red). Default
-  // OFF: the `/api/mobile/voice-sessions/ingest` route is INERT on the live
-  // Worker (returns an honest inert/red payload and never runs the ingest
-  // core). Set "true"/"1"/"on" to arm the endpoint so it decodes
-  // already-transcribed, redacted, ref-only segments and returns an
-  // approval-gated program-input proposal. Arming clears ONLY the
-  // ingestion-endpoint blocker; STT vendor + approval UI stay owner/product-
-  // gated and the promise stays red regardless.
-  VOICE_PROGRAM_INGEST_ENABLED?: string | undefined
   // Site page form-capture wiring flag (#5523 / DE-9 #5532; promise
   // autopilot_sites.native_email_sequences.v1, yellow). Default OFF: the public
   // capture route (POST /api/sites/forms/:formId/submit) stays unmounted and

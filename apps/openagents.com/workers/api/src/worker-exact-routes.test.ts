@@ -67,7 +67,6 @@ const approvedExactRoutePaths = [
   '/api/public/pylon/multi-earning-node',
   '/api/mobile/workroom-approval-projection',
   '/api/public/omni/client-delivery-projection',
-  '/api/mobile/voice-sessions/ingest',
   '/api/public/autopilot/composed-runs',
   '/api/public/autopilot/labor-products',
   '/api/public/business/coding-quick-win-pipeline',

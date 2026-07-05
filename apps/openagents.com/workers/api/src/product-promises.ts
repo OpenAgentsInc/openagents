@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-07-05.1'
+export const PublicProductPromisesVersion = '2026-07-05.2'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -3205,23 +3205,22 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Spoken commands and intent can be ingested into Autopilot workrooms as transcribed, approval-gated action proposals.',
         safeCopy:
-          'Voice-session evidence contracts, read-only projections, and a voice-transcript→program ingest core shipped in wave-3 (#4992): voice-session metadata, transcript segments, and command proposals with approval-required and risk labels, projected with mutation disabled. Going further is a product decision plus wiring: pick an STT vendor and capture path. The flag-gated INERT ingestion endpoint (POST /api/mobile/voice-sessions/ingest, default off) is wired to the ingest core (#5542, clearing the endpoint blocker), and when armed it now returns a machine-checkable approvalGate (operator_required, needs_approval, Medium risk, no approval mutation, no command execution) alongside the program-input proposal. Remaining is an STT vendor + capture path, AI proposal generation, and the approval UI. Foundation infrastructure for mobile.voice_approval_companion.v1.',
+          'Voice-session evidence contracts and read-only projections shipped in wave-3 (#4992): voice-session metadata, transcript segments, and command-proposal shapes with approval-required and risk labels, projected with mutation disabled. The old default-off Worker ingestion endpoint (POST /api/mobile/voice-sessions/ingest) and its unused ingest core were retired in the 2026-07-05 #8386 cleanup because they were never armed and are not directly needed by Khala Code. Future spoken-command ingest should start from the native mobile voice app, a chosen STT/capture path, AI proposal generation, and approval UI instead of reviving that Worker endpoint. Foundation infrastructure for mobile.voice_approval_companion.v1 remains.',
         unsafeCopy:
-          'Do not claim users can speak commands that execute, or that voice transcripts are trusted for mutations (CRM, email send, code, deploy, spend) without server-side approval; the ingest core exists but no STT vendor or live capture path is chosen.',
+          'Do not claim users can speak commands that execute, or that voice transcripts are trusted for mutations (CRM, email send, code, deploy, spend) without server-side approval; there is no live Worker ingest endpoint, no STT vendor, and no live capture path.',
         evidenceRefs: [
           'apps/openagents.com/workers/api/src/omni-voice-session-evidence.ts',
           'apps/openagents.com/workers/api/src/omni-voice-session-evidence.test.ts',
-          'apps/openagents.com/workers/api/src/voice-program-ingest-routes.ts',
-          'route:/api/mobile/voice-sessions/ingest',
           'https://github.com/OpenAgentsInc/openagents/issues/4992',
           'https://github.com/OpenAgentsInc/openagents/pull/5542',
         ],
         blockerRefs: [
+          'blocker.product_promises.voice_ingestion_endpoint_missing',
           'blocker.product_promises.voice_transcription_service_missing',
           'blocker.product_promises.voice_proposal_and_approval_ui_missing',
         ],
         verification:
-          'Voice evidence contracts, projection logic, the flag-gated ingestion endpoint, and the explicit approvalGate response are covered by tests. Green requires a transcription service, live capture path, proposal generation, and approval UI, with every proposed action gated server-side.',
+          'Voice evidence contracts and projection logic are covered by tests. The old flag-gated Worker ingestion endpoint is retired. Green requires a transcription service, live capture path, proposal generation, ingestion/approval endpoint, and approval UI, with every proposed action gated server-side.',
         authorityBoundary:
           'A voice transcript is evidence of user intent, not command authority; all proposed actions require server-side policy checks and explicit approval.',
       },
@@ -5258,6 +5257,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-05.2 is a mobile.voice_session_evidence_transcript_ingest.v1 Wave 1 cleanup pass and flips NO promise state (stays planned). Issue #8386 removed the default-off Worker voice-ingest route, ingest core, tests, flag, and exact-route entry because the path was never armed, had no current Khala Code dependency, and native mobile voice work should own any future capture/ingest design. The promise now honestly retains only the voice evidence/projection contracts and restores the ingestion-endpoint blocker. No voice transcript is accepted, no command proposal is generated by the Worker, no approval/execute/spend authority is created, and no green transition is created.',
       'Registry 2026-07-05.1 is an inference.batch_processing_jobs.v1 Wave 1 cleanup pass and flips NO promise state (stays planned). Issue #8384 removed the default-off INFERENCE_BATCH_JOBS_ENABLED route, queue, D1 mirror, OpenAPI, and test surface instead of arming it, because it had no owner-approved production authority and no Khala Code dependency. The promise remains planned and future batch inference must be rebuilt from a fresh owner-approved, receipt-first design before any public claim. No route is armed, no batch job is accepted, no spend or settlement is created, and no green transition is created.',
       'Registry 2026-07-04.19 is the KS-6.3 public tokens-served projection pass (#8304) and flips NO promise state - green count unchanged. GET /api/public/khala-tokens-served no longer executes the unbounded full-table SUM on the hot path: it serves the Khala Sync scope.public.tokens-served counter projection (khala_sync_public_counters through the KHALA_SYNC_DB Hyperdrive binding, small in-isolate cache) with an honestly declared rebuilt_on_transition maxStalenessSeconds 2 contract (the 2026-06-29 after-action 2-second public-stats precedent), and fails OPEN to the previous live_at_read D1 SUM whenever the binding, Postgres, or backfill is unavailable - counter availability never regresses. Every ledger ingest path bumps the projection exact-once per token_usage_events row (idempotency-key guard in the same Postgres transaction) and appends the public_counter post-image to scope.public.tokens-served; the admin reconcile route plus a scheduled detect-only sweep prove projection == SUM(exact rows) (SPEC invariant 8) and repairs are explicit audited actions, never silent overwrites. The SYNC_ROOM live homepage push is unchanged. metrics.khala_tokens_served_public.v1 stays green with its verification copy updated to the declared staleness; no revenue, demand, payout, or settlement claim changes.',
       'Registry 2026-07-04.18 is the RX-8 model-custody Lead Gen segment pass (#8281) and flips NO promise state - green stays exactly 34. @openagentsinc/agent-readiness now exports openagents.model_custody_analyzer_config.v1 and openagents.model_custody_report.v1 for the Own Your AI analyzer: public URLs only, no raw page bodies stored, no speculation, and findings limited to reproducible subprocessors/DPA, AI-feature/privacy, and careers/tech-stack signals. openagents.com now accepts sourceRef=apollo_model_custody, registers the model-custody customer config in the LG-7 run payload shape, ships a claim-lint-clean regulated Reactor Assessment template variant, and tests quoted Reactor Assessment rows in the LG-2 pipeline. This clears only the RX-8 config/template/pipeline blocker. Live customer runs, Apollo sends, customer-result receipts, public pricing, compliance/custody claims, payout, settlement, and promise-green authority remain blocked.',
