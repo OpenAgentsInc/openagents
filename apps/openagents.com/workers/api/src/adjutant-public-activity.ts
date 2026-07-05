@@ -5,6 +5,18 @@ import {
   PublicClaimStateProjection,
   publicClaimStateProjection,
 } from './public-claim-state'
+import {
+  PublicProjectionStalenessContract,
+  liveAtReadStaleness,
+} from './public-projection-staleness'
+import { currentIsoTimestamp } from './runtime-primitives'
+
+export const PUBLIC_ADJUTANT_ACTIVITY_STALENESS = liveAtReadStaleness([
+  'adjutant_assignment_changed',
+  'software_order_changed',
+  'site_project_changed',
+  'site_deployment_changed',
+])
 
 export class PublicAdjutantActivityMilestone extends S.Class<PublicAdjutantActivityMilestone>(
   'PublicAdjutantActivityMilestone',
@@ -45,8 +57,10 @@ export class PublicAdjutantDeployedSite extends S.Class<PublicAdjutantDeployedSi
 export class PublicAdjutantActivity extends S.Class<PublicAdjutantActivity>(
   'PublicAdjutantActivity',
 )({
+  generatedAt: S.String,
   milestones: S.Array(PublicAdjutantActivityMilestone),
   deployedSites: S.Array(PublicAdjutantDeployedSite),
+  staleness: PublicProjectionStalenessContract,
 }) {}
 
 export class PublicAdjutantActivityStorageError extends S.TaggedErrorClass<PublicAdjutantActivityStorageError>()(
@@ -259,11 +273,14 @@ const deployedSitesFromMilestones = (
 
 export const publicAdjutantActivityFromRows = (
   rows: ReadonlyArray<PublicAdjutantActivityRow>,
+  generatedAt: string,
 ): Effect.Effect<PublicAdjutantActivity, PublicAdjutantActivityUnsafe> => {
   const milestones = rows.map(milestoneFromRow)
   const activity = new PublicAdjutantActivity({
+    generatedAt,
     milestones,
     deployedSites: deployedSitesFromMilestones(milestones),
+    staleness: PUBLIC_ADJUTANT_ACTIVITY_STALENESS,
   })
 
   return containsProviderSecretMaterial(JSON.stringify(activity))
@@ -273,6 +290,7 @@ export const publicAdjutantActivityFromRows = (
 
 export const publicAdjutantActivity = (
   db: D1Database,
+  nowIso: () => string = currentIsoTimestamp,
 ): Effect.Effect<
   PublicAdjutantActivity,
   PublicAdjutantActivityStorageError | PublicAdjutantActivityUnsafe
@@ -321,5 +339,7 @@ export const publicAdjutantActivity = (
       )
       .all<PublicAdjutantActivityRow>(),
   ).pipe(
-    Effect.flatMap(result => publicAdjutantActivityFromRows(result.results)),
+    Effect.flatMap(result =>
+      publicAdjutantActivityFromRows(result.results, nowIso()),
+    ),
   )

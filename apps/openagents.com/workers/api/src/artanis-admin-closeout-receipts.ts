@@ -2,6 +2,7 @@ import { friendlyBlueprintMissionBriefingTime } from './blueprint/services/conti
 import { parseJsonStringArray } from './json-boundary'
 import {
   assertNexusPylonPublicSafe,
+  NEXUS_PYLON_PUBLIC_RECEIPT_STALENESS,
   type NexusPylonPublicReceiptDetail,
 } from './nexus-pylon-visibility'
 import {
@@ -248,6 +249,7 @@ export const artanisAdminCloseoutReceiptDetail = (
       'caveat.public.artanis_admin.closeout_receipt_omits_private_runner_logs',
       'caveat.public.no_private_payment_material',
     ],
+    generatedAt: input.nowIso,
     movementMode: 'simulation',
     payoutAttemptRef: null,
     payoutIntentRef: null,
@@ -324,6 +326,7 @@ export const artanisAdminCloseoutReceiptDetail = (
       receiptRef,
     )}`,
     receiptRef,
+    staleness: NEXUS_PYLON_PUBLIC_RECEIPT_STALENESS,
     payoutMovement: {
       dispatchAccepted: input.record.decisionState === 'dispatched',
       terminalResultObserved: input.record.verdictOutcome !== null,

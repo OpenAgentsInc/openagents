@@ -1,6 +1,10 @@
 import { Schema as S } from 'effect'
 
 import { optionalString } from './json-boundary'
+import {
+  PublicProjectionStalenessContract,
+  liveAtReadStaleness,
+} from './public-projection-staleness'
 
 export type Nip90MarketStreamKind = 'compute' | 'data' | 'labor'
 
@@ -24,12 +28,16 @@ export type Nip90MarketReceiptStore = Readonly<{
     receiptRef: string,
   ) => Promise<Nip90MarketSettlementReceiptRecord | null>
 }>
+export const PUBLIC_NIP90_MARKET_RECEIPT_STALENESS = liveAtReadStaleness([
+  'buy_mode_job_settled',
+])
 
 export class PublicNip90MarketSettlementReceipt extends S.Class<PublicNip90MarketSettlementReceipt>(
   'PublicNip90MarketSettlementReceipt',
 )({
   amountSats: S.Number,
   caveatRefs: S.Array(S.String),
+  generatedAt: S.String,
   jobRef: S.String,
   receiptRef: S.String,
   requestEventRef: S.String,
@@ -38,6 +46,7 @@ export class PublicNip90MarketSettlementReceipt extends S.Class<PublicNip90Marke
   settledAt: S.String,
   sourceRefs: S.Array(S.String),
   state: S.Literal('settled'),
+  staleness: PublicProjectionStalenessContract,
   streamKind: S.Literals(['compute', 'data', 'labor']),
 }) {}
 
@@ -50,6 +59,7 @@ export const isPublicSafeNip90MarketReceiptProjection = (
 
 export const publicNip90MarketReceiptFromRecord = (
   record: Nip90MarketSettlementReceiptRecord,
+  generatedAt: string,
 ): PublicNip90MarketSettlementReceipt | null => {
   if (
     record.state !== 'settled' ||
@@ -66,6 +76,7 @@ export const publicNip90MarketReceiptFromRecord = (
       'caveat.public.no_private_settlement_material',
       'caveat.public.counterparty_destination_details_excluded',
     ],
+    generatedAt,
     jobRef: record.jobRef,
     receiptRef: record.receiptRef,
     requestEventRef: record.requestEventRef,
@@ -77,6 +88,7 @@ export const publicNip90MarketReceiptFromRecord = (
       `nip90.market.${record.streamKind}.settlement`,
     ],
     state: 'settled',
+    staleness: PUBLIC_NIP90_MARKET_RECEIPT_STALENESS,
     streamKind: record.streamKind,
   })
 

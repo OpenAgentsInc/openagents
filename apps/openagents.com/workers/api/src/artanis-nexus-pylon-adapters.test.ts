@@ -29,6 +29,7 @@ import type {
   NexusTreasuryPayoutReconciliationEventRecord,
 } from './nexus-treasury-payout-ledger'
 import {
+  PUBLIC_PYLON_STATS_STALENESS,
   PublicPylonAcceptedWorkSettlementGate,
   PublicPylonEarningLaunchGate,
   publicPylonStatsCounterWindows,
@@ -232,6 +233,7 @@ describe('Artanis Nexus/Pylon admin adapters', () => {
         asOfUnixMs: null,
         available: false,
         error: 'Omega public Pylon stats are unavailable.',
+        generatedAtUnixMs: Date.parse(nowIso),
         hostedNexusRelayUrl: null,
         minimumClientVersion: '0.2.5',
         nexusAcceptedWorkPayoutReceiptRefs: [],
@@ -279,6 +281,7 @@ describe('Artanis Nexus/Pylon admin adapters', () => {
         sourceUrl: 'https://openagents.com/api/public/pylon-stats',
         sourceRefs: ['route:/api/public/pylon-stats'],
         status: 'unavailable',
+        staleness: PUBLIC_PYLON_STATS_STALENESS,
         trainingAcceptedContributors: 0,
         trainingAssignedContributors: 0,
         trainingModelProgressContributors: 0,

@@ -2581,9 +2581,8 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   (`scripts/check-zero-debt-architecture.mjs`, run by `bun run
 check:architecture` inside `check:deploy`) discovers `/api/public/...`
   route literals, fails any route missing from its projection-surface ledger,
-  greps `staleness_declared` modules for the shared contract, and freezes the
-  legacy count as an exact ratchet budget that may only shrink as retrofits
-  land.
+  greps `staleness_declared` modules for the shared contract, and enforces the
+  legacy retrofit budget at zero.
 - Projection inventory (staleness mode → compliance as of epic #4751):
   - `GET /api/public/forum-activity` — live at read over public forum topics/posts, rebuilt on forum topic/post writes — compliant (`generatedAt`, `live_at_read` contract). Public-safe forum→Verse reflection source (epic #5897, BF-1). `staleness_declared`.
   - `GET /api/public/labor-earnings` — live at read over labor escrow receipts — compliant (`generatedAt`, `live_at_read` contract). `staleness_declared`.
@@ -3225,35 +3224,41 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     `registryVersion`, `registryGeneratedAt`, and the top-level
     `projection_staleness.v1` `live_at_read` contract; receipt rows remain
     transition evidence only and do not mutate registry state).
-  - `GET /api/public/proof/otec` — stored snapshot — NON-COMPLIANT (no
-    freshness fields at all).
-  - `GET /api/public/pylon-stats` — live at read — NON-COMPLIANT
-    (`asOfUnixMs` + `counterWindows` from #4735, but no declared
-    `maxStaleness` contract).
-  - `GET /api/public/pylon-capacity-funnel` — live at read — NON-COMPLIANT
-    (`generatedAt` only).
-  - `GET /api/public/pylon-capacity-funnel/history` — stored snapshots —
-    NON-COMPLIANT (`generatedAt` + per-snapshot times, no declared bound).
-  - `GET /api/public/launch-dashboard` — live at read — NON-COMPLIANT
-    (`generatedAt` only; internal 10-minute freshness gate is undeclared).
-  - `GET /api/public/treasury/launch-status` — live at read — NON-COMPLIANT
-    (no freshness fields).
-  - `GET /api/public/treasury` — live proxy — NON-COMPLIANT.
-  - `GET /api/public/artanis/admin-ticks` — live at read — NON-COMPLIANT.
-  - `GET /api/public/nexus-pylon/receipts/{receiptRef}` — stored receipt
-    projection — NON-COMPLIANT (per-receipt times only).
-  - `GET /api/public/nip90-market/receipts/{receiptRef}` — stored receipt
-    projection — NON-COMPLIANT.
-  - `GET /api/public/adjutant/activity` — live at read — NON-COMPLIANT
-    (per-item `updatedAt` only).
-  - `GET /api/public/goals/{goalId}`, `/api/public/goals/{goalId}/snapshot`,
-    and `/api/public/agents/{agentRef}/goal` — live at read — NON-COMPLIANT.
-  - `GET /api/forum/launch-status` — live at read — NON-COMPLIANT.
-  - `GET /api/forum/receipts/{receiptRef}` — live at read over pay-ins and
-    receipts — NON-COMPLIANT (no payload-level declaration).
-  - `GET /api/training/...` window/leaderboard/eval surfaces
-    (`training-run-window-routes.ts`) — mixed — NON-COMPLIANT (file owned by
-    an in-flight lane; retrofit owed on #4751).
+  - Wave 1 retrofit (#8377, 2026-07-05): the frozen legacy set is now
+    compliant and the architecture guard budget is `0/0`.
+    - `GET /api/public/proof/otec` — live-at-read closeout over the public
+      OTEC order/site/deployment/receipt rows — compliant (`generatedAt`,
+      `projection_staleness.v1`).
+    - `GET /api/public/pylon-stats` — rebuilt-on-transition public stats over
+      the cached registration/heartbeat/settlement/training aggregate —
+      compliant (`generatedAtUnixMs`, 4-second bound; raw ISO timestamps stay
+      out of this safety-scanned payload).
+    - `GET /api/public/pylon-capacity-funnel` — live at read over pylon
+      registrations, assignments, and provider job lifecycle rows — compliant.
+    - `GET /api/public/pylon-capacity-funnel/history` — stored hourly/daily
+      snapshots — compliant (`generatedAt`, `stored_snapshot` one-hour bound).
+    - `GET /api/public/launch-dashboard` — live at read over the static promise
+      table plus public stats freshness gate — compliant.
+    - `GET /api/public/treasury/launch-status` and
+      `GET /api/public/treasury` — live at read over treasury health, balances,
+      and public transaction rows — compliant.
+    - `GET /api/public/artanis/admin-ticks` — live at read over public-safe
+      administrator tick decisions — compliant.
+    - `GET /api/public/nexus-pylon/receipts/{receiptRef}` and
+      `GET /api/public/nip90-market/receipts/{receiptRef}` — live-at-read
+      public receipt projections — compliant.
+    - `GET /api/public/adjutant/activity` — live at read over public Adjutant
+      assignment/site/deployment rows — compliant.
+    - `GET /api/public/goals/{goalId}`, `/api/public/goals/{goalId}/snapshot`,
+      and `/api/public/agents/{agentRef}/goal` — live at read over public goal
+      rows and safe event projections — compliant.
+    - `GET /api/forum/launch-status` and
+      `GET /api/forum/receipts/{receiptRef}` — live at read over forum paid
+      action receipts and settlement claims — compliant.
+    - `GET /api/training/...` run/window/list/leaderboard/eval surfaces in
+      `training-run-window-routes.ts` — live at read over Worker-authoritative
+      training run, window, lease, verification challenge, and settlement rows —
+      compliant.
   - `GET /api/openapi.json` — static contract document — exempt from the
     payload rule, but its route inventory must track shipped routes (#4752,
     file owned by an in-flight lane).

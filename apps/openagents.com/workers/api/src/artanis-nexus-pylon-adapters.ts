@@ -10,6 +10,7 @@ import type {
   NexusTreasuryPayoutIntentRecord,
 } from './nexus-treasury-payout-ledger'
 import {
+  PUBLIC_PYLON_STATS_STALENESS,
   PublicPylonAcceptedWorkSettlementGate,
   PublicPylonEarningLaunchGate,
   publicPylonStatsCounterWindows,
@@ -1516,6 +1517,7 @@ export const exampleArtanisNexusPylonAdminAdapterLedger =
       asOfUnixMs: Date.parse('2026-06-07T05:55:00.000Z'),
       available: true,
       error: null,
+      generatedAtUnixMs: Date.parse(nowIso),
       hostedNexusRelayUrl: 'https://nexus.openagents.com',
       minimumClientVersion: 'legacy-nexus',
       nexusAcceptedWorkPayoutReceiptRefs: [
@@ -1565,6 +1567,7 @@ export const exampleArtanisNexusPylonAdminAdapterLedger =
       sourceUrl: 'https://nexus.openagents.com/api/stats',
       sourceRefs: ['nexus.public.stats'],
       status: 'live',
+      staleness: PUBLIC_PYLON_STATS_STALENESS,
       trainingAcceptedContributors: 1,
       trainingAssignedContributors: 2,
       trainingModelProgressContributors: 1,

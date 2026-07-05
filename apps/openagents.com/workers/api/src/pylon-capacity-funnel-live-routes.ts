@@ -36,6 +36,10 @@ import {
   type PylonDispatchLog,
 } from './pylon-dispatch-store'
 import {
+  liveAtReadStaleness,
+  storedSnapshotStaleness,
+} from './public-projection-staleness'
+import {
   PYLON_CAPACITY_FUNNEL_ACCOUNTING_READ_ONLY_AUTHORITY,
   type PylonCapacityFunnelAggregate,
   type PylonCapacityFunnelRecord,
@@ -62,6 +66,16 @@ export type PylonDarkCapacityReasonRef =
 
 const registrationListLimit = 500
 const assignmentListLimit = 20
+export const PYLON_CAPACITY_FUNNEL_LIVE_STALENESS = liveAtReadStaleness([
+  'pylon_registry_registration_changed',
+  'pylon_assignment_lifecycle_changed',
+  'pylon_provider_job_lifecycle_changed',
+])
+export const PYLON_CAPACITY_FUNNEL_HISTORY_STALENESS =
+  storedSnapshotStaleness(60 * 60, [
+    'pylon_capacity_funnel_snapshot_recorded',
+    'pylon_capacity_funnel_snapshot_pruned',
+  ])
 
 const activeAssignmentStates = new Set([
   'accepted',
@@ -422,7 +436,9 @@ const publicSnapshotProjection = (
   bucketKind: record.bucketKind,
   bucketStartAt: record.bucketStartAt,
   funnel: record.aggregate,
+  generatedAt: record.snapshotAt,
   snapshotAt: record.snapshotAt,
+  staleness: PYLON_CAPACITY_FUNNEL_HISTORY_STALENESS,
 })
 
 export const buildPylonCapacityFunnelSnapshotRecord = (
@@ -863,6 +879,7 @@ export const handlePylonCapacityFunnelHistoryApi = (
       },
       kind: 'pylon_capacity_funnel_history',
       publicSafe: true,
+      staleness: PYLON_CAPACITY_FUNNEL_HISTORY_STALENESS,
     })
   })
 }
@@ -902,6 +919,7 @@ export const handlePylonCapacityFunnelApi = (
       joinLifecycleLadder,
       kind: 'pylon_capacity_funnel_live',
       publicSafe: true,
+      staleness: PYLON_CAPACITY_FUNNEL_LIVE_STALENESS,
     })
   })
 }

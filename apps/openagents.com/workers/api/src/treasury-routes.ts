@@ -5,6 +5,7 @@ import type { ContainerPathFetch } from './http/container-fetch'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { isRecord } from './json-boundary'
 import { isLightningAddress, resolveLightningAddressInvoice } from './lnurl-pay'
+import { liveAtReadStaleness } from './public-projection-staleness'
 import { currentIsoTimestamp } from './runtime-primitives'
 import type {
   TreasuryTransactionRecord,
@@ -62,6 +63,10 @@ const TREASURY_POLICY_REFS = [
   'policy.public.treasury.bounded_campaign_rewards_only.v1',
   'policy.public.treasury.own_wallet_identity.v1',
 ] as const
+export const PUBLIC_TREASURY_LAUNCH_STATUS_STALENESS = liveAtReadStaleness([
+  'mdk_treasury_healthz',
+  'spark_treasury_healthz',
+])
 
 const healthFromPayload = (payload: unknown): TreasuryHealth | null => {
   if (typeof payload !== 'object' || payload === null) {
@@ -117,12 +122,16 @@ export const handlePublicTreasuryLaunchStatusApi = (
     return Effect.succeed(methodNotAllowed(['GET']))
   }
 
+  const generatedAt = currentIsoTimestamp()
+
   if (dependencies.fetchTreasury === undefined) {
     return Effect.succeed(
       noStoreJsonResponse({
         authorityBoundary: TREASURY_AUTHORITY_BOUNDARY,
+        generatedAt,
         policyRefs: TREASURY_POLICY_REFS,
         service: dependencies.serviceLabel ?? 'mdk_treasury',
+        staleness: PUBLIC_TREASURY_LAUNCH_STATUS_STALENESS,
         state: 'unprovisioned',
       }),
     )
@@ -139,8 +148,10 @@ export const handlePublicTreasuryLaunchStatusApi = (
               mnemonic: health.mnemonicConfigured,
               serviceToken: health.serviceTokenConfigured,
             },
+      generatedAt,
       policyRefs: TREASURY_POLICY_REFS,
       service: dependencies.serviceLabel ?? 'mdk_treasury',
+      staleness: PUBLIC_TREASURY_LAUNCH_STATUS_STALENESS,
       state: treasuryState(health),
     }),
   )

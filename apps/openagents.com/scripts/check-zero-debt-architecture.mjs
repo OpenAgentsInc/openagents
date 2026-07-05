@@ -827,15 +827,13 @@ const publicLandingCompositionChecks = [
 //   1. Every `/api/public/...` route literal discovered in route
 //      modules must be covered by a ledger row — a NEW public
 //      projection route fails this check until it is added here, and
-//      it can only be added as `staleness_declared` because the legacy
-//      set is a frozen budget.
+//      it can only be added as `staleness_declared`; the former legacy
+//      budget is now zero.
 //   2. Every `staleness_declared` row's payload module must actually
 //      reference the shared staleness contract (the grep token is
 //      `maxStalenessSeconds` or the module import path).
-//   3. The count of `legacy_missing_staleness_contract` rows must
-//      EXACTLY equal the frozen budget: retrofitting a legacy surface
-//      requires flipping its row and lowering the budget in the same
-//      change, and no new legacy rows can be smuggled in.
+//   3. Every row must be either `staleness_declared` or
+//      `static_contract_exempt`; no legacy status remains available.
 //
 // The check is module-granular: a shared route module with one
 // declared projection does not prove every route in it is compliant.
@@ -846,6 +844,10 @@ const publicLandingCompositionChecks = [
 
 const publicProjectionComplianceToken =
   /maxStalenessSeconds|public-projection-staleness/
+const publicProjectionAllowedStatuses = new Set([
+  'staleness_declared',
+  'static_contract_exempt',
+])
 
 const publicProjectionSurfaces = [
   // Declared surfaces (payload carries generatedAt + staleness contract).
@@ -1306,92 +1308,91 @@ const publicProjectionSurfaces = [
     route: '/api/public/ecommerce-campaign/workspaces',
     status: 'staleness_declared',
   },
-  // Legacy surfaces that predate the invariant (frozen budget; shrink only).
+  // Wave 1 retrofit complete: the former legacy surfaces now declare
+  // generatedAt plus the shared projection_staleness.v1 contract.
   {
     module: 'workers/api/src/public-otec-proof.ts',
     route: '/api/public/proof/otec',
-    status: 'legacy_missing_staleness_contract',
+    status: 'staleness_declared',
   },
   {
     module: 'workers/api/src/public-pylon-stats.ts',
     route: '/api/public/pylon-stats',
-    status: 'legacy_missing_staleness_contract',
+    status: 'staleness_declared',
   },
   {
     module: 'workers/api/src/pylon-capacity-funnel-live-routes.ts',
     route: '/api/public/pylon-capacity-funnel',
-    status: 'legacy_missing_staleness_contract',
+    status: 'staleness_declared',
   },
   {
     module: 'workers/api/src/pylon-capacity-funnel-live-routes.ts',
     route: '/api/public/pylon-capacity-funnel/history',
-    status: 'legacy_missing_staleness_contract',
+    status: 'staleness_declared',
   },
   {
     module: 'workers/api/src/public-launch-dashboard.ts',
     route: '/api/public/launch-dashboard',
-    status: 'legacy_missing_staleness_contract',
+    status: 'staleness_declared',
   },
   {
     module: 'workers/api/src/treasury-routes.ts',
     route: '/api/public/treasury/launch-status',
-    status: 'legacy_missing_staleness_contract',
+    status: 'staleness_declared',
   },
   {
     module: 'workers/api/src/treasury-page-routes.ts',
     route: '/api/public/treasury',
-    status: 'legacy_missing_staleness_contract',
+    status: 'staleness_declared',
   },
   {
     module: 'workers/api/src/artanis-tick-monitor.ts',
     route: '/api/public/artanis/admin-ticks',
-    status: 'legacy_missing_staleness_contract',
+    status: 'staleness_declared',
   },
   {
     module: 'workers/api/src/nexus-pylon-visibility.ts',
     route: '/api/public/nexus-pylon/receipts/{receiptRef}',
-    status: 'legacy_missing_staleness_contract',
+    status: 'staleness_declared',
   },
   {
     module: 'workers/api/src/nip90-market-receipts.ts',
     route: '/api/public/nip90-market/receipts/{receiptRef}',
-    status: 'legacy_missing_staleness_contract',
+    status: 'staleness_declared',
   },
   {
     module: 'workers/api/src/adjutant-public-activity.ts',
     route: '/api/public/adjutant/activity',
-    status: 'legacy_missing_staleness_contract',
+    status: 'staleness_declared',
   },
   {
     module: 'workers/api/src/agent-goal-public-projection.ts',
     route: '/api/public/goals/{goalId}',
-    status: 'legacy_missing_staleness_contract',
+    status: 'staleness_declared',
   },
   {
     module: 'workers/api/src/agent-goal-public-projection.ts',
     route: '/api/public/agents/{agentRef}/goal',
-    status: 'legacy_missing_staleness_contract',
+    status: 'staleness_declared',
   },
   {
     module: 'workers/api/src/forum-routes.ts',
     route: '/api/forum/launch-status',
-    status: 'legacy_missing_staleness_contract',
+    status: 'staleness_declared',
   },
   {
     module: 'workers/api/src/forum-routes.ts',
     route: '/api/forum/receipts/{receiptRef}',
-    status: 'legacy_missing_staleness_contract',
+    status: 'staleness_declared',
   },
-  // Locked by the in-flight OpenAPI/training lanes; owed retrofit is
-  // recorded on epic #4751.
   {
     module: 'workers/api/src/training-run-window-routes.ts',
     route: '/api/training/runs (window/leaderboard/eval surfaces)',
-    status: 'legacy_missing_staleness_contract',
+    status: 'staleness_declared',
   },
 ]
 
-const PUBLIC_PROJECTION_LEGACY_BUDGET = 16
+const PUBLIC_PROJECTION_LEGACY_BUDGET = 0
 
 const normalizedPublicRoute = value =>
   value.replaceAll('\\', '').replace(/\/+$/, '')
@@ -1438,19 +1439,14 @@ const publicProjectionProblems = [
         `public projection module ${surface.module} (${surface.route}) is marked ` +
         'staleness_declared but does not reference the shared staleness contract.',
     ),
-  ...(() => {
-    const legacyCount = publicProjectionSurfaces.filter(
-      surface => surface.status === 'legacy_missing_staleness_contract',
-    ).length
-
-    return legacyCount === PUBLIC_PROJECTION_LEGACY_BUDGET
-      ? []
-      : [
-          `public projection legacy count ${legacyCount} does not equal the frozen ` +
-            `budget ${PUBLIC_PROJECTION_LEGACY_BUDGET}. Retrofits must flip the ledger row to ` +
-            "'staleness_declared' and lower the budget; new legacy rows are not allowed.",
-        ]
-  })(),
+  ...publicProjectionSurfaces
+    .filter(surface => !publicProjectionAllowedStatuses.has(surface.status))
+    .map(
+      surface =>
+        `public projection module ${surface.module} (${surface.route}) has retired status ` +
+        `${surface.status}. Rows must be 'staleness_declared' or 'static_contract_exempt'; ` +
+        `legacy budget is ${PUBLIC_PROJECTION_LEGACY_BUDGET}.`,
+    ),
 ]
 
 const budgetProblems = budgetChecks.flatMap(check => {
@@ -1561,12 +1557,9 @@ publicLandingCompositionResults.forEach(result => {
 })
 console.log('')
 
-const legacyProjectionCount = publicProjectionSurfaces.filter(
-  surface => surface.status === 'legacy_missing_staleness_contract',
-).length
 console.log(
   `public projection staleness ledger (epic #4751): ${publicProjectionSurfaces.length} surfaces, ` +
-    `${legacyProjectionCount}/${PUBLIC_PROJECTION_LEGACY_BUDGET} legacy without a declared contract`,
+    `legacy budget ${PUBLIC_PROJECTION_LEGACY_BUDGET}`,
 )
 publicProjectionSurfaces.forEach(surface => {
   console.log(`  ${surface.status}: ${surface.route} (${surface.module})`)

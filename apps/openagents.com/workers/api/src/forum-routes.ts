@@ -211,6 +211,15 @@ import type {
 } from './pylon-api'
 import { resolveSparkPayoutDestination } from './pylon-api'
 
+const forumLaunchStatusStaleness = liveAtReadStaleness([
+  'forum_paid_action_receipt_recorded',
+  'forum_tip_settlement_claim_recorded',
+])
+const forumReceiptStaleness = liveAtReadStaleness([
+  'forum_paid_action_receipt_recorded',
+  'forum_tip_settlement_claim_recorded',
+])
+
 const ProductPromisesForumSlug = 'product-promises'
 const productPromisesUnsupportedRequestSourceRef = (topicId: string): string =>
   `forum.topic:${topicId}`
@@ -5068,7 +5077,13 @@ const directTipMdkWebhookResponse = (
 const receiptLookupResponse = (db: D1Database, receiptRef: string) =>
   lookupForumPaidActionReceipt(db, receiptRef).pipe(
     Effect.map(receipt =>
-      receipt === null ? notFound() : noStoreJsonResponse(receipt),
+      receipt === null
+        ? notFound()
+        : noStoreJsonResponse({
+            ...receipt,
+            generatedAt: currentIsoTimestamp(),
+            staleness: forumReceiptStaleness,
+          }),
     ),
     Effect.catch(error => Effect.succeed(paidActionFailureResponse(error))),
   )
@@ -5904,7 +5919,9 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
             Effect.map(orangeChecksSold =>
               noStoreJsonResponse({
                 ...forumLaunchGateStatus(),
+                generatedAt: currentIsoTimestamp(),
                 orangeChecksSold,
+                staleness: forumLaunchStatusStaleness,
               }),
             ),
           )

@@ -55,7 +55,7 @@ do we have" answer for the Worker.
 | Route `Effect.promise` bridges | **18/18** | Route modules still Promise-shaped, wrapping Effect deps | Migrate the named wave-3 routes to Effect end-to-end |
 | Worker `throw new Error` | **0/0** | Untyped throws where `TaggedError` is the standard | Retired in #8371 |
 | `Effect.runPromise` named bridges | 20 files (index.ts×7, omni-handlers.ts×7, 13 singles) | Temporary Promise↔Effect seams | Retire per-route as each becomes a full Effect program; `index.ts` and `omni-handlers.ts` are the two fat targets |
-| Public-projection staleness ledger | 101 tracked surfaces, **16 still "legacy" (no staleness contract)** | Public `/api/public/*` reads without a declared `maxStalenessSeconds` | Retrofit all 16 (otec-proof, pylon-stats, capacity-funnel, launch-dashboard, treasury, artanis admin-ticks, nexus-pylon, nip90-market, adjutant, agent-goal, 2×forum, training-runs) |
+| Public-projection staleness ledger | 101 tracked surfaces, **0 legacy rows** | Public projections must carry `generatedAt`/`generatedAtUnixMs` and a declared `maxStalenessSeconds` contract unless statically exempt | Keep the legacy budget at `0`; new rows must be `staleness_declared` or `static_contract_exempt` |
 | 9 other budgets (string classifiers, raw `JSON.parse`, raw time/id/random, direct config reads, direct runtime-capability access, raw console logging, response-helper misuse) | **0/0 each** | Already fully retired — these are the *finished* invariants | Don't touch; they're the guardrails proving the pattern works |
 
 **Read:** four ceilings (`env:Env` 166, Response-surfaces 135, runPromise
@@ -63,8 +63,8 @@ bridges, promise adapters) are almost entirely a symptom of **one root
 cause** — `index.ts` is a 15,530-line hand-rolled router with inline
 handlers taking raw `env` and returning raw `Response`. Fixing the router
 (§2.2) collapses three of the four ceilings at once. The `throw new Error`
-(12) and staleness-ledger (16 rows) items are cheap, mechanical, and worth
-doing regardless of anything else.
+(12) and staleness-ledger (16 rows) items have now been retired; keep their
+budgets at zero while attacking the larger router-shaped ceilings.
 
 ---
 
@@ -423,8 +423,8 @@ sites; delete the legacy tokens-served producer now that #8304's projection is
 live.
 
 **Wave 1 — mechanical, low risk, high leverage:**
-Retrofit the 16 legacy public-projection staleness contracts; drop the
-confirmed write-dead D1 tables (`gym_agentcl_eval_*`,
+After #8377, the legacy public-projection staleness budget is zero. Next:
+drop the confirmed write-dead D1 tables (`gym_agentcl_eval_*`,
 `forum_trust_edges`, `forum_actor_forum_trust`) and script the full
 zero-reference sweep across all 438 tables for #8330; remove the GLM
 stress-scheduler remnants and the agentcl Vertex runner; consolidate the
@@ -434,8 +434,8 @@ the desktop fleet poll; decide arm-or-remove on the four inert flags
 
 2026-07-05 Wave 1 issue index:
 
-- #8377 - Retrofit the 16 legacy public-projection staleness contracts and
-  ratchet the zero-debt legacy-missing-staleness count to zero.
+- #8377 - Complete: retrofitted the 16 legacy public-projection staleness
+  contracts and ratcheted the zero-debt legacy-missing-staleness count to zero.
 - #8378 - Script the repo-wide D1 zero-reference table sweep across the 438
   declared tables, feeding the KS-8.19 retirement tracker (#8330).
 - #8379 - Drop the confirmed write-dead forum trust D1 tables after a final

@@ -1,5 +1,9 @@
 import { ARTANIS_ADMIN_DISPATCH_PER_DAY } from './artanis-administrator-tick'
 import { parseJsonRecord } from './json-boundary'
+import {
+  type PublicProjectionStalenessContract,
+  liveAtReadStaleness,
+} from './public-projection-staleness'
 
 // Public Artanis administrator-tick monitor. Clears
 // blocker.product_promises.artanis_public_tick_monitor_missing on
@@ -13,6 +17,9 @@ import { parseJsonRecord } from './json-boundary'
 //
 // This module is projection-only: the HTTP Response is built by the
 // index route surface, and time arrives injected.
+export const ARTANIS_ADMIN_TICK_MONITOR_STALENESS = liveAtReadStaleness([
+  'artanis_admin_tick_decision_recorded',
+])
 
 export type ArtanisTickDecisionRow = Readonly<{
   id: unknown
@@ -40,6 +47,7 @@ export type ArtanisTickMonitor = Readonly<{
   decisions: ReadonlyArray<ArtanisTickMonitorEntry>
   generatedAt: string
   notes: ReadonlyArray<string>
+  staleness: PublicProjectionStalenessContract
 }>
 
 const VALID_STATES = new Set([
@@ -109,6 +117,7 @@ export const projectArtanisTickMonitor = (
       'Pre-mind skips (runner disabled, mind unconfigured, daily bound reached, no eligible online Pylons) are not persisted decisions; an empty window with online Pylons means the tick is skipping before the mind runs.',
     ],
     publicSafe: true,
+    staleness: ARTANIS_ADMIN_TICK_MONITOR_STALENESS,
   }
 }
 

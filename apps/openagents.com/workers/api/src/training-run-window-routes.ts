@@ -190,6 +190,14 @@ const uniqueRouteRefs = (
     ...new Set(refs.map(ref => ref?.trim() ?? '').filter(ref => ref !== '')),
   ].sort()
 
+const trainingRunAggregateStaleness = liveAtReadStaleness([
+  'training_run_record_changed',
+  'training_window_record_changed',
+  'training_window_lease_record_changed',
+  'training_verification_challenge_recorded',
+  'nexus_treasury_payout_receipt_recorded',
+])
+
 type TrainingRunPublicReadEnvelope = Readonly<{
   generatedAt: string
   run: TrainingRunProjection
@@ -1386,7 +1394,9 @@ const routeListRuns = <Bindings extends TrainingRunWindowRouteEnv>(
     )
 
     return noStoreJsonResponse({
+      generatedAt: nowIso,
       runs: runs.map(run => publicTrainingRunProjection(run, nowIso)),
+      staleness: trainingRunAggregateStaleness,
       summaries,
     })
   })
@@ -1459,6 +1469,7 @@ const routeA1Leaderboard = <Bindings extends TrainingRunWindowRouteEnv>(
       .map((row, index) => ({ ...row, rank: index + 1 }))
 
     return noStoreJsonResponse({
+      generatedAt: nowIso,
       leaderboardRows: rows,
       scopeBoundaryRefs: [
         'scope.cs336_a1.bounded_multi_device_training_evidence_only',
@@ -1469,6 +1480,7 @@ const routeA1Leaderboard = <Bindings extends TrainingRunWindowRouteEnv>(
         'route:/api/training/leaderboards/a1',
         'route:/api/training/runs',
       ],
+      staleness: trainingRunAggregateStaleness,
     })
   })
 
@@ -1603,7 +1615,9 @@ const routeTrainingLeaderboards = <Bindings extends TrainingRunWindowRouteEnv>(
     return noStoreJsonResponse({
       ...projection,
       blockerRefs: lanes.flatMap(lane => lane.blockerRefs),
+      generatedAt: nowIso,
       lanes,
+      staleness: trainingRunAggregateStaleness,
     })
   })
 
@@ -1612,6 +1626,7 @@ const routeA3IsoFlop = <Bindings extends TrainingRunWindowRouteEnv>(
   env: Bindings,
 ): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
   Effect.gen(function* () {
+    const nowIso = routeNowIso(dependencies)
     const store = dependencies.makeStore(env)
     const runs = yield* Effect.tryPromise({
       catch: trainingAuthorityStoreErrorFromUnknown,
@@ -1658,12 +1673,14 @@ const routeA3IsoFlop = <Bindings extends TrainingRunWindowRouteEnv>(
             ],
       cells,
       fitArtifacts,
+      generatedAt: nowIso,
       projections,
       schemaVersion: 'openagents.training.isoflop_dashboard.v1',
       sourceRefs: [
         'route:/api/training/isoflop/a3',
         'route:/api/training/runs',
       ],
+      staleness: trainingRunAggregateStaleness,
     })
   })
 
@@ -1672,6 +1689,7 @@ const routeA4DataRefinery = <Bindings extends TrainingRunWindowRouteEnv>(
   env: Bindings,
 ): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
   Effect.gen(function* () {
+    const nowIso = routeNowIso(dependencies)
     const store = dependencies.makeStore(env)
     const runs = yield* Effect.tryPromise({
       catch: trainingAuthorityStoreErrorFromUnknown,
@@ -1737,6 +1755,7 @@ const routeA4DataRefinery = <Bindings extends TrainingRunWindowRouteEnv>(
       ],
       evalDeltaPaymentGate:
         aggregateDataRefineryEvalDeltaPaymentGate(projections),
+      generatedAt: nowIso,
       observedVerifiedStages: verifiedStages,
       projections,
       requiredVerifiedStageCount: Cs336A4RequiredVerifiedStageCount,
@@ -1746,6 +1765,7 @@ const routeA4DataRefinery = <Bindings extends TrainingRunWindowRouteEnv>(
         'route:/api/training/refinery/a4',
         'route:/api/training/runs',
       ],
+      staleness: trainingRunAggregateStaleness,
     })
   })
 
@@ -1754,6 +1774,7 @@ const routeA2DeviceCapabilities = <Bindings extends TrainingRunWindowRouteEnv>(
   env: Bindings,
 ): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
   Effect.gen(function* () {
+    const nowIso = routeNowIso(dependencies)
     const store = dependencies.makeStore(env)
     const runs = yield* Effect.tryPromise({
       catch: trainingAuthorityStoreErrorFromUnknown,
@@ -1821,6 +1842,7 @@ const routeA2DeviceCapabilities = <Bindings extends TrainingRunWindowRouteEnv>(
         ]),
       ].sort(),
       classDistributions,
+      generatedAt: nowIso,
       observedDeviceClassCount,
       observedMeasurementCount: classDistributions.length,
       observedSettledDeviceClassCount,
@@ -1849,6 +1871,7 @@ const routeA2DeviceCapabilities = <Bindings extends TrainingRunWindowRouteEnv>(
         dashboardThermalThrottleSignals,
       ),
       thermalThrottleSignals: dashboardThermalThrottleSignals,
+      staleness: trainingRunAggregateStaleness,
     })
   })
 
@@ -1857,6 +1880,7 @@ const routeA5EvalSuites = <Bindings extends TrainingRunWindowRouteEnv>(
   env: Bindings,
 ): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
   Effect.gen(function* () {
+    const nowIso = routeNowIso(dependencies)
     const store = dependencies.makeStore(env)
     const runs = yield* Effect.tryPromise({
       catch: trainingAuthorityStoreErrorFromUnknown,
@@ -1902,9 +1926,11 @@ const routeA5EvalSuites = <Bindings extends TrainingRunWindowRouteEnv>(
               'blocker.cs336_a5.policy_gradient_update_waits_on_4669',
             ],
       evalSuites,
+      generatedAt: nowIso,
       projections,
       schemaVersion: 'openagents.training.a5_eval_dashboard.v1',
       sourceRefs: ['route:/api/training/evals/a5', 'route:/api/training/runs'],
+      staleness: trainingRunAggregateStaleness,
       updateBoundaryRef: 'issue.github.openagents.4669',
     })
   })

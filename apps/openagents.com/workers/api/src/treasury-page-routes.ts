@@ -3,6 +3,7 @@ import { Effect } from 'effect'
 
 import type { ContainerPathFetch } from './http/container-fetch'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { liveAtReadStaleness } from './public-projection-staleness'
 import { isoTimestampAfterIso } from './runtime-primitives'
 import {
   mirrorTreasuryRows,
@@ -283,6 +284,11 @@ export type TreasuryPageRouteDependencies = Readonly<{
 }>
 
 const TRANSACTION_LIST_LIMIT = 20
+export const PUBLIC_TREASURY_PAGE_STALENESS = liveAtReadStaleness([
+  'treasury_balance_read',
+  'spark_treasury_balance_read',
+  'treasury_transactions',
+])
 
 // Public projection: amount, time, direction, state only. Never the
 // recipient, destination, payment hash, or invoice of other people's rows.
@@ -583,7 +589,9 @@ export const handlePublicTreasuryApi = (
         transactions =>
           noStoreJsonResponse({
             balance,
+            generatedAt: dependencies.nowIso(),
             service: 'mdk_treasury',
+            staleness: PUBLIC_TREASURY_PAGE_STALENESS,
             transactions: balancedRecentTransactions(transactions).map(
               publicTransaction,
             ),

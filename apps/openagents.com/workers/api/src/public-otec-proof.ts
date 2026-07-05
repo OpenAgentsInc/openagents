@@ -23,10 +23,26 @@ import {
   PublicSiteAgentChallenge,
   publicSiteAgentChallenges,
 } from './public-site-agent-challenges'
+import {
+  PublicProjectionStalenessContract,
+  liveAtReadStaleness,
+} from './public-projection-staleness'
+import { currentIsoTimestamp } from './runtime-primitives'
 
 export const OTEC_SOFTWARE_ORDER_ID =
   'software_order_c34f3a52d60b41d699b71525365b6ee5'
 const UNKNOWN_UPDATED_AT = '1970-01-01T00:00:00.000Z'
+export const PUBLIC_OTEC_PROOF_STALENESS = liveAtReadStaleness([
+  'software_orders',
+  'site_projects',
+  'site_deployments',
+  'adjutant_assignments',
+  'adjutant_research_runs',
+  'site_project_versions',
+  'site_compatibility_checks',
+  'site_build_validations',
+  'usage_receipts',
+])
 
 export class PublicOtecProofOrder extends S.Class<PublicOtecProofOrder>(
   'PublicOtecProofOrder',
@@ -151,6 +167,8 @@ export class PublicOtecProofCloseout extends S.Class<PublicOtecProofCloseout>(
   agentChallenges: S.Array(PublicSiteAgentChallenge),
   claimState: PublicClaimStateProjection,
   caveats: S.Array(S.String),
+  generatedAt: S.String,
+  staleness: PublicProjectionStalenessContract,
   updatedAt: S.String,
 }) {}
 
@@ -836,6 +854,8 @@ const proofFromRows = (
     }),
     claimState: overallClaimState,
     caveats: caveats(base, research, buildValidation),
+    generatedAt: currentIsoTimestamp(),
+    staleness: PUBLIC_OTEC_PROOF_STALENESS,
     updatedAt,
   })
 

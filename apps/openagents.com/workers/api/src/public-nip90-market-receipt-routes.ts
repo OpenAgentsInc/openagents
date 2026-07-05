@@ -10,6 +10,7 @@ import {
   noStoreJsonResponse,
   serverError,
 } from './http/responses'
+import { currentIsoTimestamp } from './runtime-primitives'
 
 type HttpResponse = globalThis.Response
 
@@ -41,7 +42,7 @@ const readReceiptResponse = <Bindings>(
         Effect.map(record => {
           const receipt = record === null
             ? null
-            : publicNip90MarketReceiptFromRecord(record)
+            : publicNip90MarketReceiptFromRecord(record, currentIsoTimestamp())
 
           return receipt === null
             ? notFound()

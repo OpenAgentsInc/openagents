@@ -32,6 +32,10 @@ import {
   currentEpochMillis,
   epochMillisToIsoTimestamp,
 } from './runtime-primitives'
+import {
+  PublicProjectionStalenessContract,
+  rebuiltOnTransitionStaleness,
+} from './public-projection-staleness'
 import type { TrainingAuthorityStore } from './training-run-window-authority'
 import { publicTrainingRunSummary } from './training-run-window-authority'
 import type { TreasuryTransactionStore } from './treasury-page-routes'
@@ -40,6 +44,16 @@ export const PUBLIC_NEXUS_STATS_URL = 'https://nexus.openagents.com/api/stats'
 export const PUBLIC_PYLON_STATS_URL =
   'https://openagents.com/api/public/pylon-stats'
 export const PUBLIC_PYLON_STATS_MINIMUM_CLIENT_VERSION = '0.2.5'
+export const PUBLIC_PYLON_STATS_STALENESS = rebuiltOnTransitionStaleness(4, [
+  'pylon_registry_registration_changed',
+  'pylon_heartbeat_recorded',
+  'pylon_wallet_readiness_changed',
+  'pylon_assignment_lifecycle_changed',
+  'nexus_treasury_payout_ledger_changed',
+  'nip90_market_receipt_settled',
+  'treasury_transaction_changed',
+  'training_window_lifecycle_changed',
+])
 
 const ONLINE_WINDOW_MS = 5 * 60 * 1000
 const SEEN_24H_WINDOW_MS = 24 * 60 * 60 * 1000
@@ -189,8 +203,10 @@ export class PublicPylonStats extends S.Class<PublicPylonStats>(
   error: S.NullOr(S.String),
   sourceUrl: S.String,
   hostedNexusRelayUrl: S.NullOr(S.String),
+  generatedAtUnixMs: S.Int,
   asOfUnixMs: S.NullOr(S.Int),
   asOfLabel: S.NullOr(S.String),
+  staleness: PublicProjectionStalenessContract,
   minimumClientVersion: S.String,
   pylonsOnlineNow: S.Int,
   pylonsSeen24h: S.Int,
@@ -854,7 +870,12 @@ const publicNip90MarketSettlementTotalsFromReceipts = async (
   const receipts = (
     await input.marketReceiptStore.listSettledMarketReceipts(1000)
   )
-    .map(publicNip90MarketReceiptFromRecord)
+    .map(record =>
+      publicNip90MarketReceiptFromRecord(
+        record,
+        epochMillisToIsoTimestamp(input.nowUnixMs),
+      ),
+    )
     .filter(
       (receipt): receipt is PublicNip90MarketSettlementReceipt =>
         receipt !== null,
@@ -1110,8 +1131,10 @@ export const publicPylonStatsFromRegistrations = (
     error: null,
     sourceUrl: PUBLIC_PYLON_STATS_URL,
     hostedNexusRelayUrl: null,
+    generatedAtUnixMs: nowUnixMs,
     asOfUnixMs: nowUnixMs,
     asOfLabel: friendlyTimestampLabel(nowUnixMs, nowUnixMs),
+    staleness: PUBLIC_PYLON_STATS_STALENESS,
     minimumClientVersion: PUBLIC_PYLON_STATS_MINIMUM_CLIENT_VERSION,
     pylonsOnlineNow,
     pylonsSeen24h: seen24hRegistrations.length,
@@ -1221,8 +1244,10 @@ export const publicPylonStatsFromNexusPayload = (
     error: null,
     sourceUrl: PUBLIC_NEXUS_STATS_URL,
     hostedNexusRelayUrl: optionalString(payload.hosted_nexus_relay_url) ?? null,
+    generatedAtUnixMs: asOfUnixMs ?? currentEpochMillis(),
     asOfUnixMs,
     asOfLabel: timestampLabel(asOfUnixMs),
+    staleness: PUBLIC_PYLON_STATS_STALENESS,
     minimumClientVersion: 'legacy-nexus',
     pylonsOnlineNow,
     pylonsSeen24h: intValue(payload.pylons_seen_24h),
@@ -1278,8 +1303,10 @@ const unavailablePublicPylonStats = (error: string): PublicPylonStats =>
     error,
     sourceUrl: PUBLIC_PYLON_STATS_URL,
     hostedNexusRelayUrl: null,
+    generatedAtUnixMs: currentEpochMillis(),
     asOfUnixMs: null,
     asOfLabel: null,
+    staleness: PUBLIC_PYLON_STATS_STALENESS,
     minimumClientVersion: PUBLIC_PYLON_STATS_MINIMUM_CLIENT_VERSION,
     pylonsOnlineNow: 0,
     pylonsSeen24h: 0,

@@ -12,6 +12,7 @@ import {
 import {
   AgentPublicProjectionService,
   AgentPublicProjectionServiceLive,
+  PUBLIC_AGENT_GOAL_STALENESS,
 } from './agent-goal-public-projection'
 import {
   AgentGoalAccessDenied,
@@ -36,6 +37,7 @@ import {
 } from './agent-runtime-store'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { openAgentsDatabase } from './runtime'
+import { currentIsoTimestamp } from './runtime-primitives'
 import { publishAgentGoalSyncIfBound } from './sync-notifier'
 import type { TeamRole, UserTeamProject } from './team-repository'
 
@@ -1199,10 +1201,12 @@ export const makeAgentGoalRoutes = <
         return noStoreJsonResponse({
           agentId,
           events: snapshot.events,
+          generatedAt: currentIsoTimestamp(),
           goal:
             snapshot.goal === null
               ? null
               : publicGoalDto(request, snapshot.goal),
+          staleness: PUBLIC_AGENT_GOAL_STALENESS,
         })
       }),
     )
@@ -1222,10 +1226,12 @@ export const makeAgentGoalRoutes = <
         return noStoreJsonResponse({
           agentId: snapshot.agentId,
           events: snapshot.events,
+          generatedAt: currentIsoTimestamp(),
           goal:
             snapshot.goal === null
               ? null
               : publicGoalDto(request, snapshot.goal),
+          staleness: PUBLIC_AGENT_GOAL_STALENESS,
         })
       }),
     )

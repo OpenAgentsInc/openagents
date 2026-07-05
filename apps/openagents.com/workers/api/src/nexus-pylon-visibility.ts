@@ -17,6 +17,10 @@ import {
 } from './nexus-treasury-payout-ledger'
 import { projectPylonAcceptedWorkPayoutRow } from './pylon-accepted-work-payout-rows'
 import {
+  type PublicProjectionStalenessContract,
+  liveAtReadStaleness,
+} from './public-projection-staleness'
+import {
   examplePylonMarketplaceLedger,
   projectPylonMarketplaceLedger,
 } from './pylon-marketplace-jobs'
@@ -58,6 +62,7 @@ export type NexusPylonPublicReceiptDetail = Readonly<{
   assignmentRef: string | null
   audience: 'public'
   caveatRefs: ReadonlyArray<string>
+  generatedAt: string
   movementMode: NexusPylonVisibilityMovementMode
   payoutAttemptRef: string | null
   payoutIntentRef: string | null
@@ -66,6 +71,7 @@ export type NexusPylonPublicReceiptDetail = Readonly<{
   receiptKind: string
   receiptPageUrl: string
   receiptRef: string
+  staleness: PublicProjectionStalenessContract
   payoutMovement: Readonly<{
     dispatchAccepted: boolean
     terminalResultObserved: boolean
@@ -122,6 +128,12 @@ export class NexusPylonVisibilityUnsafe extends S.TaggedErrorClass<NexusPylonVis
 
 const fixtureCreatedAtIso = '2026-06-07T06:45:00.000Z'
 const fixtureUpdatedAtIso = '2026-06-07T07:05:00.000Z'
+export const NEXUS_PYLON_PUBLIC_RECEIPT_STALENESS = liveAtReadStaleness([
+  'nexus_payment_authority_receipt_recorded',
+  'nexus_treasury_payout_intent_recorded',
+  'nexus_treasury_payout_attempt_recorded',
+  'nexus_treasury_reconciliation_event_recorded',
+])
 const fixtureRefs = {
   artanisDispatchRef: 'artanis.dispatch.pylon_marketplace.gepa_autopilot_001',
   buyerPaymentEvidenceRef:
@@ -411,6 +423,7 @@ export const nexusPylonPublicReceiptDetail = (
       'caveat.public.nexus_pylon.simulation_receipt',
       'caveat.public.no_private_payment_material',
     ],
+    generatedAt: input.nowIso,
     movementMode: fixture.movementMode,
     payoutAttemptRef: publicReceipt.payoutAttemptRef,
     payoutIntentRef: publicReceipt.payoutIntentRef,
@@ -423,6 +436,7 @@ export const nexusPylonPublicReceiptDetail = (
       receipt.receiptRef,
     )}`,
     receiptRef: receipt.receiptRef,
+    staleness: NEXUS_PYLON_PUBLIC_RECEIPT_STALENESS,
     payoutMovement: {
       dispatchAccepted:
         receipt.receiptKind === 'dispatch_recorded' ||
@@ -546,6 +560,7 @@ export const nexusPylonPublicReceiptDetailFromLedger = (
         : 'caveat.public.nexus_pylon.simulation_receipt',
       'caveat.public.no_private_payment_material',
     ],
+    generatedAt: input.nowIso,
     movementMode,
     payoutAttemptRef: publicReceipt.payoutAttemptRef,
     payoutIntentRef: publicReceipt.payoutIntentRef,
@@ -556,6 +571,7 @@ export const nexusPylonPublicReceiptDetailFromLedger = (
       input.receipt.receiptRef,
     )}`,
     receiptRef: input.receipt.receiptRef,
+    staleness: NEXUS_PYLON_PUBLIC_RECEIPT_STALENESS,
     payoutMovement: {
       dispatchAccepted:
         input.receipt.receiptKind === 'dispatch_recorded' ||

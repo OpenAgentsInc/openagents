@@ -1,10 +1,18 @@
 import { Schema as S } from 'effect'
 
 import { PublicPylonStats } from './public-pylon-stats'
+import {
+  PublicProjectionStalenessContract,
+  liveAtReadStaleness,
+} from './public-projection-staleness'
 
 export const PublicLaunchDashboardEndpoint = '/api/public/launch-dashboard'
 export const PublicLaunchDashboardSchemaVersion =
   'openagents.public_launch_dashboard.v1'
+export const PublicLaunchDashboardStaleness = liveAtReadStaleness([
+  'public_launch_dashboard_static_rows',
+  'public_pylon_stats_projection_read',
+])
 
 export const PublicLaunchDashboardStatus = S.Literals([
   'red',
@@ -37,6 +45,7 @@ export class PublicLaunchDashboardProjection extends S.Class<PublicLaunchDashboa
   schemaVersion: S.Literal(PublicLaunchDashboardSchemaVersion),
   sourceRefs: S.Array(S.String),
   staleEndpointRefs: S.Array(S.String),
+  staleness: PublicProjectionStalenessContract,
   status: PublicLaunchDashboardStatus,
   yellowCount: S.Int,
 }) {}
@@ -485,6 +494,7 @@ export const projectPublicLaunchDashboard = (input: {
         'route:/api/forum/launch-status',
       ],
       staleEndpointRefs,
+      staleness: PublicLaunchDashboardStaleness,
       status,
       yellowCount,
     }),

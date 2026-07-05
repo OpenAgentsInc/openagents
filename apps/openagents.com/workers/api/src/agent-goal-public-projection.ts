@@ -13,6 +13,12 @@ import {
   AgentGoalEventRepository,
 } from './agent-goal-runtime'
 import { parseJsonRecord, stringArrayFromUnknown } from './json-boundary'
+import { liveAtReadStaleness } from './public-projection-staleness'
+
+export const PUBLIC_AGENT_GOAL_STALENESS = liveAtReadStaleness([
+  'agent_goal_record_changed',
+  'agent_goal_event_recorded',
+])
 
 export class PublicAgentGoalStreamEvent extends S.Class<PublicAgentGoalStreamEvent>(
   'PublicAgentGoalStreamEvent',
