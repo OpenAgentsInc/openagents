@@ -293,6 +293,61 @@ the FOR UPDATE lock-protocol port, read/write cutover, and the D1 drop
 are tracked in the follow-up
 [#8358](https://github.com/OpenAgentsInc/openagents/issues/8358).
 
+**KS-8.17 status (2026-07-04):** core machinery LANDED — Postgres schema
+(`khala-sync-server` migration `0024_supervision_longtail.sql`: all 29
+supervision long-tail twins — `adjutant_*` (10), `omni_*` (9),
+`autopilot_*` (6), `relay_health_*` (2), `backend_incident_events`,
+`hygiene_debt_receipts` — column-for-column with the worker migrations
+incl. every later ADD COLUMN; type-fidelity TEXT/bigint/smallint, no
+FK/CHECK, and the D1 uniqueness constraints deliberately NOT ported
+mid-migration except `omni_idempotency_keys` whose PRIMARY KEY *is* the
+idempotency key, ported exactly — rationale in the migration header).
+Write-dead audit: `autopilot_token_usage` has ONE live writer
+(`omni-runs.ts`, so it dual-writes, NOT reconcile-and-freeze);
+`omni_idempotency_keys` is unwritten today (twin + verified copy only). One
+shared registry
+(`packages/khala-sync-server/src/supervision-longtail-domain-tables.ts`) +
+row-level converge store, fail-soft read-back mirror, and flags
+`KHALA_SYNC_SUPERVISION_DUAL_WRITE` (default on) /
+`KHALA_SYNC_SUPERVISION_READS` (d1|compare|postgres, default d1; postgres
+serving deferred to the read-cutover follow-up)
+(`apps/openagents.com/workers/api/src/supervision-longtail-domain-store.ts`;
+drift metric `khala_sync_supervision_dual_write_failed`). LIVE WIRING: the
+three re-homed crons + the funded-hygiene store are wired as clean
+store-factory drop-ins at their construction sites — `RelayHealth.probeTick`
+(`makeRelayHealthStoreForEnv`, incl. the retention-prune converge),
+`AutopilotContinuationPolicy.sweep`
+(`makeAutopilotContinuationStoreForEnv`),
+`AutopilotScheduledLaunches.dispatchDue` (`makeAutopilotWorkStoreForEnv`,
+mirroring every work-order write by `work_order_ref` + closeout receipts),
+and `makeHygieneDebtReceiptStoreForEnv`. Resumable backfill + exact-verify
+CLI
+(`packages/khala-sync-server/scripts/backfill-supervision-longtail.ts`:
+exact counts, per-state/sum tallies, **idempotency-key-set equality**
+(`omni_idempotency_keys`), **public proof-bundle digests**
+(`omni_public_proof_bundles`), newest-N row hashes; secret-safe by
+construction), and a contract suite run against BOTH engines
+(`supervision-longtail-domain-repository.contract.test.ts`: composite-PK
+converge on D1/SQLite AND Postgres, read-back mirror byte-fidelity incl. the
+prune path, fail-soft drift, flag routing) plus pure-core unit tests
+(`supervision-longtail-backfill.test.ts`). REMAINDER (filed as the
+decommission follow-up
+[#8361](https://github.com/OpenAgentsInc/openagents/issues/8361)): the
+scattered `adjutant_*` (per-table services + raw writers in
+`customer-orders.ts` / `index.ts` / `operator-email-inspection-routes.ts` /
+`adjutant-run-lifecycle.ts`) and inline `omni_*`
+(`createOmni…`/`recordOmni…`/`promoteOmniWorkroom`) writers, the
+Effect-based onboarding store, `autopilot_token_usage`
+(`omni-runs.ts:tokenUsageInsert`), and `backend_incident_events`
+(`recordBackendIncidentEvent`) keep their twins + backfill + verify from
+this lane but plug their per-site live mirror into
+`makeSupervisionLongtailMirrorForEnv` in that follow-up; the follow-up also
+carries the compare/postgres read cutover, the shadow-compared public
+proof-bundle endpoint serving, and the D1 drop. Prod cutover procedure:
+[`RUNBOOK.md`](./RUNBOOK.md) "Supervision long-tail cutover"; cutover
+evidence is tracked on epic
+[#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
+
 Everything except the Verse world runs through one D1 database
 (`openagents-autopilot`, binding `OPENAGENTS_DB`). As of `main` today the
 migrations directory (`apps/openagents.com/workers/api/migrations/`) holds

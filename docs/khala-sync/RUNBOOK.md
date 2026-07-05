@@ -1441,7 +1441,7 @@ Flags (Worker vars; structural — absent means default):
 
 Cutover order — never skip a step, each step soaks before the next:
 
-1. **Dual-write on** (default after this lane lands + `0022` applied via
+1. **Dual-write on** (default after this lane lands + `0024` applied via
    the migration runner). Watch `khala_sync_business_dual_write_failed`
    (the drift metric) AND `khala_sync_business_write_unclassified` (a
    scoped write statement the classifier does not recognize — new writer
@@ -1476,6 +1476,80 @@ Cutover order — never skip a step, each step soaks before the next:
 Rollback at ANY step: set `KHALA_SYNC_BUSINESS_READS=d1` (reads) and/or
 `KHALA_SYNC_BUSINESS_DUAL_WRITE=off` (writes). D1 authority is never
 behind.
+## Supervision long-tail cutover (KS-8.17, #8328)
+
+The KS-8.17 domain migration: 29 D1 tables — `adjutant_*` (10), `omni_*`
+(9), `autopilot_*` (6), `relay_health_*` (2), `backend_incident_events`,
+`hygiene_debt_receipts` — → same-named Postgres twins (khala-sync migration
+`0024_supervision_longtail.sql`). Machinery:
+`apps/openagents.com/workers/api/src/supervision-longtail-domain-store.ts`
+(the row-level converge store + fail-soft read-back mirror + the four
+`make*ForEnv` store-factory drop-ins) and
+`packages/khala-sync-server/scripts/backfill-supervision-longtail.ts`
+(backfill + verify).
+
+WRITE-DEAD AUDIT (do this per table before trusting a twin): each family
+had a last-write freshness check. `autopilot_token_usage` is NOT write-dead
+(one live writer, `omni-runs.ts:tokenUsageInsert`) — it dual-writes.
+`omni_idempotency_keys` has no writer today — the twin is a verified copy
+only (backfill once + key-set-equality verify; no live mirror needed until a
+writer returns).
+
+SECRETS (SPEC invariant 9): every column is a public-safe ref/path/digest/
+count or JSON of the same. Custody columns (transcript/metadata/entries/
+result/receipt JSON — declared in the registry `custodyColumns`) are
+mirrored as column values but NEVER printed in a diagnostic or in
+backfill/verify output: row KEYS and sha256 hashes only. Any log line
+showing a custody JSON value is an incident, not drift.
+
+LIVE WIRING IN THIS LANE (the acceptance-critical seams): the three re-homed
+crons + the funded-hygiene store, wired as store-factory drop-ins:
+`RelayHealth.probeTick` (`makeRelayHealthStoreForEnv` — probes/transitions
+mirror on insert, the retention prunes converge onto the twin),
+`AutopilotContinuationPolicy.sweep` (`makeAutopilotContinuationStoreForEnv`),
+`AutopilotScheduledLaunches.dispatchDue` (`makeAutopilotWorkStoreForEnv` —
+every work-order write mirrors by `work_order_ref`, closeout receipts by
+`closeout_ref`), and `makeHygieneDebtReceiptStoreForEnv`. The scattered
+`adjutant_*` / `omni_*` writers, the Effect onboarding store,
+`autopilot_token_usage`, and `backend_incident_events` have their twins +
+backfill + verify here but plug their per-site live mirror into
+`makeSupervisionLongtailMirrorForEnv` in the decommission follow-up #8361.
+
+Flags (Worker vars):
+
+- `KHALA_SYNC_SUPERVISION_DUAL_WRITE` — default **on** wherever
+  `KHALA_SYNC_DB` exists; `off|0|false|disabled|no` disables the mirror.
+- `KHALA_SYNC_SUPERVISION_READS` — default `d1`. `compare`/`postgres`
+  serving is DEFERRED to the read-cutover follow-up (reads stay on D1 in
+  this lane); a premature flip can never serve an unproven read path.
+
+Flag-flip order — never skip a step, each soaks before the next:
+
+1. **Dual-write on** (default after KS-8.17 lands + `0024` applied via the
+   migration runner). Watch `khala_sync_supervision_dual_write_failed`; a
+   nonzero steady rate blocks progression.
+2. **Backfill**: from `packages/khala-sync-server/`,
+   `KHALA_SYNC_DATABASE_URL=<direct-url> bun scripts/backfill-supervision-longtail.ts`
+   (wrangler-auth'd; rowid-cursor resumable via
+   `.supervision-longtail-backfill-state.json`). Run a SECOND time
+   (`--restart`) as the catch-up sweep once dual-write has covered the whole
+   window.
+3. **Verify**: `bun scripts/backfill-supervision-longtail.ts --verify` —
+   exact row counts, per-state/sum tallies, **idempotency-key-set equality**
+   (`omni_idempotency_keys`), **public proof-bundle digests**
+   (`omni_public_proof_bundles`, the §3.14 shadow-compared projection
+   surface), newest-50 row hashes. Post the output on the migration issue
+   (secret-safe by construction). Exact or explain; no cutover on a red
+   verify.
+4. **Shadow-compare the public proof-bundle endpoints**: diff the servable
+   `omni_public_proof_bundles` projection against BOTH stores until silent.
+5. **Read/write cutover LATER** (follow-up #8361): wire the remaining
+   scattered writers' live mirror, serve reads from Postgres, re-add the
+   uniques left off the twins, move write authority, and drop the D1 tables.
+   Until then rollback is one flag flip back.
+
+Rollback at ANY step: `KHALA_SYNC_SUPERVISION_DUAL_WRITE=off`. D1 authority
+is never behind.
 
 ## Public tokens-served projection (KS-6.3, #8304)
 

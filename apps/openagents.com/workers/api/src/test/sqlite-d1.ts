@@ -2444,3 +2444,265 @@ CREATE TABLE IF NOT EXISTS customer_one_cohort_rows (
   created_at            TEXT NOT NULL
 );
 `
+
+/**
+ * KS-8.17 (#8328): condensed D1 (SQLite) schema for the supervision long-tail
+ * domain — the 29 `adjutant_*` / `omni_*` / `autopilot_*` / `relay_health_*` /
+ * `backend_incident_events` / `hygiene_debt_receipts` tables. Columns match
+ * the shared registry order; D1 uniqueness constraints that the mirror lane
+ * deliberately does NOT port to Postgres are KEPT here (D1 is the authority).
+ * FKs and CHECK enums are dropped — they are not needed to drive the D1
+ * authority in the contract test.
+ */
+export const SUPERVISION_LONGTAIL_D1_SCHEMA = `
+CREATE TABLE adjutant_assignments (
+  id TEXT PRIMARY KEY NOT NULL, software_order_id TEXT, site_id TEXT,
+  goal_id TEXT, current_run_id TEXT, team_id TEXT, project_id TEXT,
+  agent_id TEXT NOT NULL, assigned_by_user_id TEXT, assignment_kind TEXT NOT NULL,
+  status TEXT NOT NULL, visibility TEXT NOT NULL, task_spec_path TEXT,
+  commit_sha TEXT, objective TEXT NOT NULL, created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL, completed_at TEXT, blocked_at TEXT, archived_at TEXT
+);
+CREATE TABLE adjutant_assignment_events (
+  id TEXT PRIMARY KEY NOT NULL, assignment_id TEXT NOT NULL,
+  software_order_id TEXT, site_id TEXT, goal_id TEXT, run_id TEXT,
+  event_type TEXT NOT NULL, visibility TEXT NOT NULL, summary TEXT NOT NULL,
+  actor_user_id TEXT, payload_json TEXT, created_at TEXT NOT NULL,
+  email_message_id TEXT
+);
+CREATE TABLE adjutant_adjustment_requests (
+  id TEXT PRIMARY KEY NOT NULL, assignment_id TEXT NOT NULL,
+  software_order_id TEXT, site_id TEXT NOT NULL, goal_id TEXT,
+  requested_by_user_id TEXT, instruction TEXT NOT NULL, status TEXT NOT NULL,
+  continuation_mode TEXT, source_run_id TEXT, continuation_run_id TEXT,
+  resulting_version_id TEXT, visibility TEXT NOT NULL, created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL, completed_at TEXT, archived_at TEXT
+);
+CREATE TABLE adjutant_public_source_refs (
+  id TEXT PRIMARY KEY NOT NULL, assignment_id TEXT NOT NULL,
+  software_order_id TEXT, site_id TEXT, kind TEXT NOT NULL, status TEXT NOT NULL,
+  url TEXT NOT NULL, normalized_domain TEXT NOT NULL, label TEXT,
+  public_safe INTEGER NOT NULL DEFAULT 0, proposed_by_user_id TEXT,
+  reviewed_by_user_id TEXT, review_reason TEXT, approved_at TEXT,
+  rejected_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+CREATE TABLE adjutant_usage_receipts (
+  id TEXT PRIMARY KEY NOT NULL, assignment_id TEXT NOT NULL,
+  software_order_id TEXT, site_id TEXT, adjustment_id TEXT, run_id TEXT,
+  category TEXT NOT NULL, visibility TEXT NOT NULL, billing_mode TEXT NOT NULL,
+  summary TEXT NOT NULL, quantity INTEGER NOT NULL DEFAULT 0, unit TEXT NOT NULL,
+  credits_charged_cents INTEGER NOT NULL DEFAULT 0, currency TEXT NOT NULL DEFAULT 'USD',
+  billing_ledger_entry_id TEXT, public_receipt_json TEXT NOT NULL DEFAULT '{}',
+  team_receipt_json TEXT NOT NULL DEFAULT '{}', idempotency_key TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE adjutant_research_briefs (
+  id TEXT PRIMARY KEY NOT NULL, assignment_id TEXT NOT NULL, enrichment_run_id TEXT,
+  status TEXT NOT NULL, summary TEXT NOT NULL,
+  grounded_facts_json TEXT NOT NULL DEFAULT '[]',
+  suggested_sections_json TEXT NOT NULL DEFAULT '[]',
+  unknowns_json TEXT NOT NULL DEFAULT '[]',
+  claims_needing_review_json TEXT NOT NULL DEFAULT '[]',
+  source_cards_json TEXT NOT NULL DEFAULT '[]', created_by_user_id TEXT,
+  reviewed_by_user_id TEXT, review_reason TEXT, approved_at TEXT, rejected_at TEXT,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, archived_at TEXT
+);
+CREATE TABLE adjutant_assignment_research_policies (
+  assignment_id TEXT PRIMARY KEY NOT NULL, policy_mode TEXT NOT NULL,
+  reason TEXT NOT NULL, customer_safe_summary TEXT NOT NULL, actor_user_id TEXT,
+  source_authority_ref TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+CREATE TABLE adjutant_enrichment_jobs (
+  id TEXT PRIMARY KEY NOT NULL, assignment_id TEXT NOT NULL, enrichment_run_id TEXT,
+  status TEXT NOT NULL, trigger_kind TEXT NOT NULL, refresh INTEGER NOT NULL DEFAULT 0,
+  requested_by_user_id TEXT, request_json TEXT, error_code TEXT, error_summary TEXT,
+  started_at TEXT, completed_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+CREATE TABLE adjutant_task_packet_freshness (
+  assignment_id TEXT PRIMARY KEY NOT NULL, task_spec_path TEXT NOT NULL,
+  commit_sha TEXT, status TEXT NOT NULL, research_brief_id TEXT,
+  research_brief_approved_at TEXT, source_card_count INTEGER NOT NULL DEFAULT 0,
+  operator_keep_reason TEXT, customer_safe_summary TEXT, actor_user_id TEXT,
+  stale_at TEXT, kept_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+CREATE TABLE adjutant_assignment_enrichments (
+  assignment_id TEXT NOT NULL, enrichment_run_id TEXT NOT NULL, research_brief_id TEXT,
+  status TEXT NOT NULL, required_for_launch INTEGER NOT NULL DEFAULT 0,
+  approved_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  PRIMARY KEY (assignment_id, enrichment_run_id)
+);
+CREATE TABLE omni_accepted_outcome_contracts (
+  id TEXT PRIMARY KEY NOT NULL, idempotency_key TEXT NOT NULL UNIQUE,
+  work_kind TEXT NOT NULL, subject_ref TEXT NOT NULL, customer_ref TEXT,
+  expected_artifacts_json TEXT NOT NULL DEFAULT '[]', review_policy TEXT NOT NULL,
+  acceptance_state TEXT NOT NULL, proof_policy TEXT NOT NULL, economic_state TEXT NOT NULL,
+  closeout_requirements_json TEXT NOT NULL DEFAULT '[]',
+  legal_sensitive INTEGER NOT NULL DEFAULT 0, public_receipt_ref TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL, archived_at TEXT,
+  committed_deliverables_json TEXT NOT NULL DEFAULT '[]',
+  service_promise_state TEXT NOT NULL DEFAULT 'not_promised',
+  sla_terms_json TEXT NOT NULL DEFAULT '[]',
+  fulfillment_receipts_json TEXT NOT NULL DEFAULT '[]'
+);
+CREATE TABLE omni_workrooms (
+  id TEXT PRIMARY KEY NOT NULL, idempotency_key TEXT NOT NULL UNIQUE,
+  software_order_id TEXT NOT NULL, accepted_outcome_contract_id TEXT, site_id TEXT,
+  assignment_id TEXT, work_kind TEXT NOT NULL, status TEXT NOT NULL,
+  visibility TEXT NOT NULL, customer_intent_ref TEXT NOT NULL, task_packet_ref TEXT,
+  source_refs_json TEXT NOT NULL DEFAULT '[]', artifact_refs_json TEXT NOT NULL DEFAULT '[]',
+  email_refs_json TEXT NOT NULL DEFAULT '[]', receipt_refs_json TEXT NOT NULL DEFAULT '[]',
+  blocker_refs_json TEXT NOT NULL DEFAULT '[]', public_receipt_ref TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL, archived_at TEXT,
+  data_classification TEXT NOT NULL DEFAULT 'customer',
+  trust_tier TEXT NOT NULL DEFAULT 'unverified',
+  classification_caveat_ref TEXT NOT NULL DEFAULT 'classification_caveat_unreviewed'
+);
+CREATE TABLE omni_evidence_bundles (
+  id TEXT PRIMARY KEY NOT NULL, idempotency_key TEXT NOT NULL UNIQUE,
+  workroom_id TEXT NOT NULL, work_kind TEXT NOT NULL, status TEXT NOT NULL,
+  legal_sensitive INTEGER NOT NULL DEFAULT 0, summary_ref TEXT NOT NULL,
+  source_authority_caveat_ref TEXT, entries_json TEXT NOT NULL DEFAULT '[]',
+  public_receipt_ref TEXT NOT NULL, metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, archived_at TEXT
+);
+CREATE TABLE omni_workroom_lifecycle_decisions (
+  id TEXT PRIMARY KEY NOT NULL, idempotency_key TEXT NOT NULL UNIQUE,
+  workroom_id TEXT NOT NULL, work_kind TEXT NOT NULL, actor_kind TEXT NOT NULL,
+  decision_kind TEXT NOT NULL, resulting_state TEXT NOT NULL,
+  customer_safe_explanation_ref TEXT NOT NULL, receipt_ref TEXT NOT NULL,
+  site_revision_feedback_ref TEXT, followup_request_ref TEXT, artifact_ref TEXT,
+  no_settlement_implication INTEGER NOT NULL DEFAULT 1,
+  metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, archived_at TEXT
+);
+CREATE TABLE omni_accepted_outcome_economics (
+  id TEXT PRIMARY KEY NOT NULL, idempotency_key TEXT NOT NULL UNIQUE,
+  workroom_id TEXT NOT NULL, accepted_outcome_contract_id TEXT, work_kind TEXT NOT NULL,
+  funding_mode TEXT NOT NULL, buyer_price_asset TEXT NOT NULL,
+  buyer_price_cents INTEGER NOT NULL DEFAULT 0, credits_charged INTEGER NOT NULL DEFAULT 0,
+  sats_charged INTEGER NOT NULL DEFAULT 0, runner_cost_cents INTEGER NOT NULL DEFAULT 0,
+  provider_cost_cents INTEGER NOT NULL DEFAULT 0, retry_cost_cents INTEGER NOT NULL DEFAULT 0,
+  review_minutes INTEGER NOT NULL DEFAULT 0, review_cost_cents INTEGER NOT NULL DEFAULT 0,
+  artifact_cost_cents INTEGER NOT NULL DEFAULT 0, total_cost_cents INTEGER NOT NULL DEFAULT 0,
+  accepted_value_cents INTEGER NOT NULL DEFAULT 0, gross_margin_cents INTEGER NOT NULL DEFAULT 0,
+  public_caveat_ref TEXT NOT NULL, internal_caveat_ref TEXT,
+  no_settlement_implication INTEGER NOT NULL DEFAULT 1,
+  metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL, archived_at TEXT
+);
+CREATE TABLE omni_route_scorecards (
+  id TEXT PRIMARY KEY NOT NULL, idempotency_key TEXT NOT NULL UNIQUE,
+  workroom_id TEXT NOT NULL, work_kind TEXT NOT NULL, selected_route_ref TEXT NOT NULL,
+  selected_provider_ref TEXT NOT NULL, selected_account_ref TEXT,
+  selected_model_ref TEXT NOT NULL, selected_runtime_ref TEXT NOT NULL,
+  rejected_candidates_json TEXT NOT NULL DEFAULT '[]',
+  decision_reason_refs_json TEXT NOT NULL DEFAULT '[]', observed_result_kind TEXT NOT NULL,
+  observed_result_ref TEXT NOT NULL, post_closeout_score INTEGER,
+  cost_cents INTEGER NOT NULL DEFAULT 0, latency_ms INTEGER NOT NULL DEFAULT 0,
+  privacy_tier TEXT NOT NULL, trust_tier TEXT NOT NULL, public_caveat_ref TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL, archived_at TEXT
+);
+CREATE TABLE omni_public_proof_bundles (
+  id TEXT PRIMARY KEY NOT NULL, idempotency_key TEXT NOT NULL UNIQUE,
+  workroom_id TEXT NOT NULL, work_kind TEXT NOT NULL, status TEXT NOT NULL,
+  legal_sensitive INTEGER NOT NULL DEFAULT 0, source_refs_json TEXT NOT NULL DEFAULT '[]',
+  artifact_refs_json TEXT NOT NULL DEFAULT '[]', receipt_refs_json TEXT NOT NULL DEFAULT '[]',
+  review_state_ref TEXT NOT NULL, acceptance_state_ref TEXT NOT NULL,
+  economics_caveat_ref TEXT NOT NULL, legal_caveat_ref TEXT, privacy_caveat_ref TEXT NOT NULL,
+  public_receipt_ref TEXT NOT NULL, no_settlement_implication INTEGER NOT NULL DEFAULT 1,
+  metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL, archived_at TEXT
+);
+CREATE TABLE omni_market_memory_hooks (
+  id TEXT PRIMARY KEY, idempotency_key TEXT NOT NULL UNIQUE, workroom_id TEXT NOT NULL,
+  lifecycle_decision_id TEXT NOT NULL, work_kind TEXT NOT NULL, outcome_state TEXT NOT NULL,
+  category TEXT NOT NULL, memory_ref TEXT NOT NULL, evidence_ref TEXT NOT NULL,
+  source_ref TEXT NOT NULL, public_caveat_ref TEXT NOT NULL, route_scorecard_ref TEXT,
+  economics_ref TEXT, authority_boundary TEXT NOT NULL DEFAULT 'evidence_only',
+  no_routing_mutation INTEGER NOT NULL DEFAULT 1, no_payout_mutation INTEGER NOT NULL DEFAULT 1,
+  no_public_claim_mutation INTEGER NOT NULL DEFAULT 1, no_module_promotion INTEGER NOT NULL DEFAULT 1,
+  metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL, archived_at TEXT
+);
+CREATE TABLE omni_idempotency_keys (
+  key TEXT PRIMARY KEY, scope TEXT NOT NULL, result_json TEXT NOT NULL,
+  created_at TEXT NOT NULL, expires_at TEXT
+);
+CREATE TABLE autopilot_token_usage (
+  id TEXT PRIMARY KEY, run_id TEXT NOT NULL, event_id TEXT NOT NULL, user_id TEXT NOT NULL,
+  team_id TEXT, provider TEXT, model TEXT, input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0, reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_read_tokens INTEGER NOT NULL DEFAULT 0, cache_write_5m_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_write_1h_tokens INTEGER NOT NULL DEFAULT 0, total_tokens INTEGER NOT NULL DEFAULT 0,
+  source TEXT NOT NULL, source_ref TEXT NOT NULL, created_at TEXT NOT NULL, account_ref TEXT,
+  UNIQUE(run_id, source_ref)
+);
+CREATE TABLE autopilot_work_orders (
+  id TEXT PRIMARY KEY, work_order_ref TEXT NOT NULL UNIQUE, owner_user_id TEXT NOT NULL,
+  agent_user_id TEXT NOT NULL, agent_credential_id TEXT NOT NULL,
+  idempotency_key_hash TEXT NOT NULL, client_request_ref TEXT NOT NULL,
+  request_json TEXT NOT NULL, state TEXT NOT NULL, task_refs_json TEXT NOT NULL,
+  access_request_refs_json TEXT NOT NULL, payment_challenge_ref TEXT,
+  status_url_ref TEXT NOT NULL, event_stream_ref TEXT NOT NULL, created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL, archived_at TEXT, buyer_payment_proof_ref TEXT,
+  placement_policy_json TEXT, execution_closeout_json TEXT, review_decision_json TEXT,
+  scheduled_launch_json TEXT, UNIQUE(owner_user_id, idempotency_key_hash)
+);
+CREATE TABLE autopilot_decision_closeout_receipts (
+  closeout_ref TEXT PRIMARY KEY, decision_ref TEXT NOT NULL, work_order_ref TEXT NOT NULL,
+  action TEXT NOT NULL, resolved_state TEXT NOT NULL, outcome TEXT NOT NULL,
+  actor_agent_user_id TEXT NOT NULL, decided_at TEXT NOT NULL, receipt_refs_json TEXT NOT NULL,
+  has_answer INTEGER NOT NULL DEFAULT 0, line TEXT NOT NULL, receipt_json TEXT NOT NULL
+);
+CREATE TABLE autopilot_continuation_policies (
+  user_id TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 0,
+  max_continuations_per_run INTEGER NOT NULL DEFAULT 2,
+  max_continuations_per_day INTEGER NOT NULL DEFAULT 10,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE autopilot_continuation_events (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, run_id TEXT NOT NULL, goal_id TEXT,
+  mode TEXT NOT NULL, decision TEXT NOT NULL, reason_ref TEXT NOT NULL,
+  attempt INTEGER NOT NULL, created_at TEXT NOT NULL, UNIQUE (run_id, attempt)
+);
+CREATE TABLE autopilot_onboarding_sessions (
+  id TEXT PRIMARY KEY NOT NULL, vertical_overlay TEXT,
+  status TEXT NOT NULL DEFAULT 'interviewing', transcript_json TEXT NOT NULL DEFAULT '[]',
+  output_spec_json TEXT NOT NULL DEFAULT '{}', turn_count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE relay_health_probes (
+  id TEXT PRIMARY KEY, relay_url TEXT NOT NULL, probed_at TEXT NOT NULL,
+  nip11_outcome TEXT NOT NULL, nip11_http_status INTEGER, nip11_latency_ms INTEGER,
+  nip11_relay_name TEXT, ws_outcome TEXT NOT NULL, ws_latency_ms INTEGER,
+  status TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE relay_health_transitions (
+  id TEXT PRIMARY KEY, relay_url TEXT NOT NULL, occurred_at TEXT NOT NULL, kind TEXT NOT NULL,
+  from_status TEXT NOT NULL, to_status TEXT NOT NULL, probe_id TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE backend_incident_events (
+  id TEXT PRIMARY KEY, incident_ref TEXT NOT NULL UNIQUE, observed_at TEXT NOT NULL,
+  source TEXT NOT NULL, kind TEXT NOT NULL, severity TEXT NOT NULL,
+  route_pattern TEXT NOT NULL DEFAULT 'unknown', method TEXT NOT NULL DEFAULT 'UNKNOWN',
+  status_code INTEGER, error_name TEXT NOT NULL DEFAULT 'unknown',
+  runtime_name TEXT NOT NULL DEFAULT 'cloudflare_workers', occurrence_count INTEGER NOT NULL DEFAULT 1,
+  safe_metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL
+);
+CREATE TABLE hygiene_debt_receipts (
+  debt_receipt_key TEXT PRIMARY KEY, state TEXT NOT NULL DEFAULT 'payable',
+  debt_receipt_ref TEXT NOT NULL, repo_baseline_ref TEXT NOT NULL, scope_digest TEXT NOT NULL,
+  objective_digest TEXT NOT NULL, merged_pr_ref TEXT NOT NULL, reviewer_acceptance_ref TEXT NOT NULL,
+  baseline_metric_refs_json TEXT NOT NULL, target_metric_refs_json TEXT NOT NULL,
+  verification_command_refs_json TEXT NOT NULL, settlement_authority_actor_ref TEXT,
+  budget_cap_sats INTEGER NOT NULL, payable_sats INTEGER NOT NULL, settlement_input_json TEXT NOT NULL,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, retired_at TEXT, settlement_receipt_ref TEXT
+);
+`

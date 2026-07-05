@@ -235,7 +235,6 @@ import {
 } from './autopilot-composed-run-routes'
 import {
   listAutopilotContinuationRunCandidates,
-  makeD1AutopilotContinuationStore,
   runAutopilotContinuationSweep,
 } from './autopilot-continuation-policy'
 import { makeAutopilotContinuationPolicyRoutes } from './autopilot-continuation-policy-routes'
@@ -253,7 +252,6 @@ import {
   type AutopilotWorkOrderRecord,
   dispatchDueScheduledAutopilotWork,
   makeAutopilotWorkRoutes,
-  makeD1AutopilotWorkStore,
   recordAutopilotWorkerCloseoutFromPylon,
   verifyAutopilotL402PaymentProofFromBuyerLedger,
 } from './autopilot-work-routes'
@@ -482,7 +480,12 @@ import {
 } from './http/responses'
 import { routeAccessResponse } from './http/route-access-response'
 import { routeEffect, routeEffectOrResponse } from './http/route-effects'
-import { makeD1HygieneDebtReceiptStore } from './hygiene-debt-receipt-store'
+import {
+  makeAutopilotContinuationStoreForEnv,
+  makeAutopilotWorkStoreForEnv,
+  makeHygieneDebtReceiptStoreForEnv,
+  makeRelayHealthStoreForEnv,
+} from './supervision-longtail-domain-store'
 import { makeHygieneLaneSettlementRoutes } from './hygiene-lane-settlement-routes'
 import { makeHostedGeminiPromiseReadinessRoutes } from './hosted-gemini-promise-readiness-routes'
 import { makeImageGenerationRoutes } from './image-generation-routes'
@@ -1079,7 +1082,6 @@ import {
 import {
   type RelayHealthFetch,
   canonicalMarketRelayUrl,
-  makeD1RelayHealthStore,
   runRelayHealthProbeTick,
 } from './relay-health'
 import { handlePublicRelayHealthApi } from './relay-health-routes'
@@ -6631,7 +6633,7 @@ const runRelayHealthProbeScheduled = (
         makeId: randomUuid,
         relayUrl: canonicalMarketRelayUrl(env),
         scheduledTimeMs: scheduledTime,
-        store: makeD1RelayHealthStore(openAgentsDatabase(env)),
+        store: makeRelayHealthStoreForEnv(env),
       }),
   }).pipe(
     Effect.asVoid,
@@ -8313,7 +8315,7 @@ const autopilotWorkRouteDependencies = {
   makePylonApiStore: (env: WorkerBindings) =>
     makePylonApiStoreForEnv(env),
   makeStore: (env: WorkerBindings) =>
-    makeD1AutopilotWorkStore(openAgentsDatabase(env)),
+    makeAutopilotWorkStoreForEnv(env),
   // Feed the registered-pylon registry into the work-order placement selector
   // so an owner's online, heartbeat-fresh Pylon is eligible for `requester_pylon`
   // placement (own jobs run on the owner's own node). Without this the selector
@@ -8345,7 +8347,7 @@ const autopilotWorkRoutes = makeAutopilotWorkRoutes<Env>(
 const autopilotContinuationPolicyRoutes =
   makeAutopilotContinuationPolicyRoutes<WorkerBindings>({
     agentStore: env => makeAgentRegistrationStoreForEnv(env),
-    makeStore: env => makeD1AutopilotContinuationStore(openAgentsDatabase(env)),
+    makeStore: env => makeAutopilotContinuationStoreForEnv(env),
     requireBrowserSession,
   })
 
@@ -8353,14 +8355,14 @@ const autopilotMorningReportRoutes =
   makeAutopilotMorningReportRoutes<WorkerBindings>({
     agentStore: env => makeAgentRegistrationStoreForEnv(env),
     makeContinuationStore: env =>
-      makeD1AutopilotContinuationStore(openAgentsDatabase(env)),
-    makeWorkStore: env => makeD1AutopilotWorkStore(openAgentsDatabase(env)),
+      makeAutopilotContinuationStoreForEnv(env),
+    makeWorkStore: env => makeAutopilotWorkStoreForEnv(env),
     requireBrowserSession,
   })
 
 const autopilotDecisionRoutes = makeAutopilotDecisionRoutes<WorkerBindings>({
   agentStore: env => makeAgentRegistrationStoreForEnv(env),
-  makeStore: env => makeD1AutopilotWorkStore(openAgentsDatabase(env)),
+  makeStore: env => makeAutopilotWorkStoreForEnv(env),
   requireBrowserSession,
 })
 
@@ -9727,7 +9729,7 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
     ),
   recordAutopilotWorkerCloseout: async (env, input) => {
     const delivered = await recordAutopilotWorkerCloseoutFromPylon(
-      makeD1AutopilotWorkStore(openAgentsDatabase(env)),
+      makeAutopilotWorkStoreForEnv(env),
       input,
     )
 
@@ -9901,12 +9903,12 @@ const hygieneLaneSettlementRoutes =
     // and marks it retired once real bitcoin moves, so a second settle on the
     // same DebtReceiptKey reprojects to duplicate_replay.
     makeDebtReceiptStore: env =>
-      makeD1HygieneDebtReceiptStore(openAgentsDatabase(env)),
+      makeHygieneDebtReceiptStoreForEnv(env),
     // The settle route's source of truth for payability: the durable store.
     // Fail-closed — no row (or a retired row) yields a non-payable projection,
     // so the operator cannot assert payability through the request body.
     resolveDebtReceiptProjection: (env, debtReceiptKeyRef) =>
-      makeD1HygieneDebtReceiptStore(openAgentsDatabase(env)).resolveProjection(
+      makeHygieneDebtReceiptStoreForEnv(env).resolveProjection(
         debtReceiptKeyRef,
       ),
     requireAdminApiToken,
@@ -12707,7 +12709,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       handlePublicRelayHealthApi(request, {
         relayUrl: canonicalMarketRelayUrl(env),
-        store: makeD1RelayHealthStore(openAgentsDatabase(env)),
+        store: makeRelayHealthStoreForEnv(env),
       }),
   },
   {
@@ -16031,7 +16033,7 @@ export default {
               userId,
             }),
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
-          store: makeD1AutopilotContinuationStore(openAgentsDatabase(env)),
+          store: makeAutopilotContinuationStoreForEnv(env),
         }),
       ),
       observedEffect(
