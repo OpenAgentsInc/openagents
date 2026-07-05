@@ -38,6 +38,7 @@ export type ComposerVisualTarget = Readonly<{
   inputSelector: string
   footerSelector: string
   canvasSelector: string | null
+  commandPaletteSelector: string | null
 }>
 
 export type ComposerVisualPlan = Readonly<{
@@ -74,6 +75,17 @@ export type CanvasProbe = Readonly<{
   nonBlankPixels: number
 }>
 
+export type CommandPaletteProbe = Readonly<{
+  visible: boolean
+  panel: Rect
+  input: Rect
+  list: Rect
+  resultCount: number
+  selectedResultId: string | null
+  screenshot: string
+  viewport: Rect
+}>
+
 export type GeometryProbe = Readonly<{
   composer: Rect
   footerChildren: ReadonlyArray<Rect>
@@ -90,6 +102,7 @@ export type ComposerVisualCaptureResult = Readonly<{
   geometry: GeometryProbe
   focus: FocusProbe
   canvas: CanvasProbe | null
+  commandPalette: CommandPaletteProbe | null
   reducedMotionProbe: ReducedMotionProbe
   reducedMotion: boolean
 }>
@@ -109,6 +122,7 @@ export const composerVisualPlan = (): ComposerVisualPlan => ({
       inputSelector: "#composer-input",
       footerSelector: "#composer-form .oa-ai-command-composer-footer",
       canvasSelector: "#composer-hud canvas",
+      commandPaletteSelector: ".khala-code-command-palette",
     },
     {
       name: "openagents-khala-chat",
@@ -119,6 +133,7 @@ export const composerVisualPlan = (): ComposerVisualPlan => ({
       footerSelector:
         "[data-khala-chat-composer] .oa-ai-command-composer-footer",
       canvasSelector: null,
+      commandPaletteSelector: null,
     },
     {
       name: "openagents-autopilot-hud",
@@ -130,6 +145,7 @@ export const composerVisualPlan = (): ComposerVisualPlan => ({
       footerSelector:
         "[data-autopilot-onboarding-composer] .oa-ai-prompt-input-footer",
       canvasSelector: "oa-landing-squares",
+      commandPaletteSelector: null,
     },
   ],
   viewports: [
@@ -219,6 +235,44 @@ export const assertCanvasProbe = (
   }
   if (probe.sampledPixels < 1 || probe.nonBlankPixels < 1) {
     throw new Error(`${targetName} canvas/HUD pixels are blank`)
+  }
+}
+
+export const assertCommandPaletteProbe = (
+  targetName: string,
+  probe: CommandPaletteProbe | null,
+): void => {
+  if (probe === null) return
+  if (!probe.visible) throw new Error(`${targetName} command palette was not visible`)
+  if (probe.panel.width < 280 || probe.panel.height < 160) {
+    throw new Error(`${targetName} command palette panel is too small`)
+  }
+  if (probe.input.width <= 0 || probe.input.height <= 0) {
+    throw new Error(`${targetName} command palette input is not visible`)
+  }
+  if (probe.list.width <= 0 || probe.list.height <= 0) {
+    throw new Error(`${targetName} command palette result list is not visible`)
+  }
+  if (probe.resultCount < 1) {
+    throw new Error(`${targetName} command palette rendered no searchable results`)
+  }
+  if (probe.selectedResultId === null || probe.selectedResultId.trim() === "") {
+    throw new Error(`${targetName} command palette has no selected result`)
+  }
+  const panelRight = probe.panel.x + probe.panel.width
+  const panelBottom = probe.panel.y + probe.panel.height
+  const viewportRight = probe.viewport.x + probe.viewport.width
+  const viewportBottom = probe.viewport.y + probe.viewport.height
+  if (
+    probe.panel.x < -1 ||
+    probe.panel.y < -1 ||
+    panelRight > viewportRight + 1 ||
+    panelBottom > viewportBottom + 1
+  ) {
+    throw new Error(`${targetName} command palette panel overflows the viewport`)
+  }
+  if (probe.screenshot.trim() === "") {
+    throw new Error(`${targetName} command palette screenshot was not recorded`)
   }
 }
 
@@ -484,6 +538,16 @@ async function captureTarget(
   )
   await assertKhalaCodePagePublicSafe(page, "Composer visual smoke")
 
+  const commandPalette =
+    input.target.commandPaletteSelector === null
+      ? null
+      : await captureCommandPaletteProbe(page, {
+          outDir: input.outDir,
+          selector: input.target.commandPaletteSelector,
+          targetName: input.target.name,
+          viewportName: input.viewport.name,
+        })
+
   let canvas =
     input.target.canvasSelector === null
       ? null
@@ -616,10 +680,89 @@ async function captureTarget(
     geometry,
     focus,
     canvas,
+    commandPalette,
     reducedMotionProbe,
     reducedMotion: input.reducedMotion,
   }
   assertKhalaCodePublicSafeValue(result, "Composer visual smoke metadata")
+  return result
+}
+
+async function captureCommandPaletteProbe(
+  page: Page,
+  input: Readonly<{
+    outDir: string
+    selector: string
+    targetName: string
+    viewportName: string
+  }>,
+): Promise<CommandPaletteProbe> {
+  await page.keyboard.press("Control+K")
+  const palette = page.locator(input.selector).first()
+  await palette.waitFor({ state: "visible" })
+  await palette.locator(".khala-code-command-palette-input").first().fill("chat")
+  await page.waitForTimeout(100)
+
+  const probe = await page.evaluate(
+    (selector): Omit<CommandPaletteProbe, "screenshot"> => {
+      const root = document.querySelector(selector)
+      if (!(root instanceof HTMLElement)) {
+        throw new Error(`missing command palette selector: ${selector}`)
+      }
+      const rectFor = (element: Element | null, name: string): Rect => {
+        if (!(element instanceof HTMLElement)) {
+          throw new Error(`missing command palette ${name}`)
+        }
+        const rect = element.getBoundingClientRect()
+        return {
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
+        }
+      }
+      const panel = root.querySelector(".khala-code-command-palette-panel")
+      const input = root.querySelector(".khala-code-command-palette-input")
+      const list = root.querySelector(".khala-code-command-palette-list")
+      const selected = root.querySelector<HTMLElement>("[data-selected='true']")
+      const style = window.getComputedStyle(root)
+      return {
+        visible:
+          !root.hidden &&
+          style.display !== "none" &&
+          style.visibility !== "hidden",
+        panel: rectFor(panel, "panel"),
+        input: rectFor(input, "input"),
+        list: rectFor(list, "result list"),
+        resultCount: root.querySelectorAll(".khala-code-command-palette-result").length,
+        selectedResultId: selected?.dataset.commandPaletteResult ?? null,
+        viewport: {
+          x: 0,
+          y: 0,
+          width: window.innerWidth,
+          height: window.innerHeight,
+        },
+      }
+    },
+    input.selector,
+  )
+  const screenshot = join(
+    input.outDir,
+    `${input.targetName}-${input.viewportName}-command-palette.png`,
+  )
+  await mkdir(dirname(screenshot), { recursive: true })
+  await palette.screenshot({
+    animations: "disabled",
+    caret: "hide",
+    path: screenshot,
+  })
+  const result = {
+    ...probe,
+    screenshot: basename(screenshot),
+  }
+  assertCommandPaletteProbe(input.targetName, result)
+  await page.keyboard.press("Escape")
+  await palette.waitFor({ state: "hidden" })
   return result
 }
 

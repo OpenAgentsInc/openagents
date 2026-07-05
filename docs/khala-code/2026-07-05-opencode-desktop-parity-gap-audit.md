@@ -631,6 +631,15 @@ Goal: adopt OpenCode's command/keybind model as a first-class Khala primitive.
 Issue: create a central desktop command registry
 ([#8438](https://github.com/OpenAgentsInc/openagents/issues/8438)).
 
+- Status: first implementation pass complete on 2026-07-05. Khala Code now has
+  a typed desktop command registry with stable command IDs, categories,
+  default keybindings, availability predicates, disabled reasons, and
+  analytics-safe metadata. The visible hotbar now routes through registry
+  commands, the core view/session/composer actions are registered, and the
+  existing recent-thread number/cycle hotkeys are documented as the first
+  explicit compatibility exception because their resolution depends on live
+  thread order. File/editor, terminal/review, deeper server actions, native
+  menu wiring, and user-editable keybinds remain follow-up slices.
 - Scope: command IDs, categories, default keybinds, availability predicates,
   menu binding, slash binding, palette binding, and analytics-safe execution
   metadata.
@@ -641,6 +650,16 @@ Issue: create a central desktop command registry
 Issue: build the command palette
 ([#8438](https://github.com/OpenAgentsInc/openagents/issues/8438)).
 
+- Status: first implementation pass complete on 2026-07-05. `Cmd+K`/`Ctrl+K`
+  opens a grouped command palette with command, project, active-session,
+  selected file/context, model, provider, and server-action records. The
+  palette supports deterministic search ordering, keyboard selection,
+  execution, loading, empty, and disabled states. Non-command records navigate
+  to their current best owning surface for this pass: file/project to Editor,
+  session to Chat, model/provider to Settings, and server refresh through the
+  existing session refresh command. DOM tests cover search/navigation/disabled
+  and empty/loading states, while the composer visual smoke now captures and
+  asserts the command palette on desktop and mobile Khala Code viewports.
 - Scope: searchable commands, files, sessions, projects, models, providers, and
   server actions with grouped results and keyboard navigation.
 - Acceptance gates: palette opens from the default hotkey, resolves collisions

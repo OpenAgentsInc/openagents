@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import {
   assertCanvasProbe,
+  assertCommandPaletteProbe,
   COMPOSER_VISUAL_SMOKE_HARNESS,
   assertComposerGeometry,
   assertFocusProbe,
@@ -27,6 +28,8 @@ describe("composer visual smoke", () => {
       "mobile",
     ])
     expect(plan.targets[0]?.canvasSelector).toBe("#composer-hud canvas")
+    expect(plan.targets[0]?.commandPaletteSelector).toBe(".khala-code-command-palette")
+    expect(plan.targets[1]?.commandPaletteSelector).toBeNull()
     expect(plan.targets[2]?.canvasSelector).toBe("oa-landing-squares")
     expect(COMPOSER_VISUAL_SMOKE_HARNESS).toBe("preview_ui_codex_harness_shell")
   })
@@ -109,6 +112,44 @@ describe("composer visual smoke", () => {
       }),
     ).toThrow("blank")
     expect(() => assertCanvasProbe("desktop", null)).not.toThrow()
+  })
+
+  test("requires command palette visual probes to be visible and selected", () => {
+    assertCommandPaletteProbe("khala-code-desktop", {
+      visible: true,
+      panel: { x: 320, y: 80, width: 640, height: 360 },
+      input: { x: 344, y: 104, width: 592, height: 44 },
+      list: { x: 344, y: 164, width: 592, height: 240 },
+      resultCount: 2,
+      selectedResultId: "view.chat",
+      screenshot: "khala-code-desktop-desktop-command-palette.png",
+      viewport: { x: 0, y: 0, width: 1280, height: 800 },
+    })
+    expect(() =>
+      assertCommandPaletteProbe("khala-code-desktop", {
+        visible: false,
+        panel: { x: 320, y: 80, width: 640, height: 360 },
+        input: { x: 344, y: 104, width: 592, height: 44 },
+        list: { x: 344, y: 164, width: 592, height: 240 },
+        resultCount: 2,
+        selectedResultId: "view.chat",
+        screenshot: "khala-code-desktop-desktop-command-palette.png",
+        viewport: { x: 0, y: 0, width: 1280, height: 800 },
+      }),
+    ).toThrow("visible")
+    expect(() =>
+      assertCommandPaletteProbe("khala-code-desktop", {
+        visible: true,
+        panel: { x: 0, y: 0, width: 260, height: 120 },
+        input: { x: 12, y: 12, width: 236, height: 40 },
+        list: { x: 12, y: 64, width: 236, height: 40 },
+        resultCount: 0,
+        selectedResultId: null,
+        screenshot: "",
+        viewport: { x: 0, y: 0, width: 390, height: 844 },
+      }),
+    ).toThrow("too small")
+    expect(() => assertCommandPaletteProbe("khala-code-desktop", null)).not.toThrow()
   })
 
   test("requires focus framing and reduced-motion-safe transitions", () => {

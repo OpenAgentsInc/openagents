@@ -103,7 +103,19 @@ import { mountGymPane, type GymPaneState } from "./gym-pane"
 import {
   mountKhalaCodeSidebar,
   projectKhalaCodeSidebarFleetCounts,
+  type KhalaCodeHotbarValue,
+  type KhalaCodeSidebarHandle,
 } from "./sidebar"
+import {
+  createKhalaCodeCommandRegistry,
+  khalaCodeCommandForKeyboardEvent,
+  type KhalaCodeCommandId,
+  type KhalaCodeCommandPaletteRecord,
+} from "./command-registry"
+import {
+  mountKhalaCodeCommandPalette,
+  type KhalaCodeCommandPaletteHandle,
+} from "./command-palette"
 import { mountUnifiedInboxPanel } from "./inbox"
 import {
   normalizeThreadTimestampSeconds,
@@ -888,6 +900,7 @@ const composerFollowUpQueue = requireElement<HTMLElement>("#composer-follow-up-q
 const composerInput = requireElement<HTMLElement>("#composer-input")
 const composerRail = requireElement<HTMLElement>("#composer-rail")
 const slashCommandPalette = requireElement<HTMLElement>("#slash-command-palette")
+const commandPaletteRoot = requireElement<HTMLElement>("#command-palette-root")
 const composerPreview = requireElement<HTMLElement>("#composer-preview")
 const composerControls = requireElement<HTMLElement>("#composer-controls")
 const composerStatus = requireElement<HTMLElement>("#composer-status")
@@ -5680,7 +5693,11 @@ const threadSidebar =
 
 if (threadSidebar !== null) bindRecentThreadHotkeyHints(window, threadSidebar)
 
+const COMMAND_REGISTRY_COMPAT_RECENT_THREAD_HOTKEYS =
+  "recent_thread_hotkeys_depend_on_live_thread_order_and_remain_a_command_registry_compatibility_exception"
+
 window.addEventListener("keydown", event => {
+  void COMMAND_REGISTRY_COMPAT_RECENT_THREAD_HOTKEYS
   const recentThreadIndex = recentThreadHotkeyIndexForEvent(event)
   const recentThreadCycleDirection = recentThreadCycleDirectionForEvent(event)
   if (recentThreadIndex === null && recentThreadCycleDirection === null) return
@@ -5697,12 +5714,15 @@ window.addEventListener("keydown", event => {
   })
 })
 
+let sidebar: KhalaCodeSidebarHandle | null = null
+
 const setActiveView = (value: string): void => {
   const panelOpenStartedAt = performance.now()
   const activeValue =
     value === "fleet" || value === "forum" || value === "inbox" || value === "settings" || value === "editor"
       ? value
       : "chat"
+  sidebar?.setSelectedValue(activeValue)
   const showChat = activeValue === "chat"
   const showFleet = activeValue === "fleet"
   const showForum = activeValue === "forum"
@@ -5752,13 +5772,270 @@ function showGymProofPane(): void {
   threadSidebar?.setVisible(false)
 }
 
-const sidebar =
-  sidebarNavRoot === null
-    ? null
-    : mountKhalaCodeSidebar(sidebarNavRoot, {
-        selectedValue: initialView,
-        onActivate: value => setActiveView(value),
-      })
+const hotbarCommandIdForValue = (value: KhalaCodeHotbarValue): KhalaCodeCommandId => {
+  switch (value) {
+    case "chat":
+      return "view.chat"
+    case "editor":
+      return "view.editor"
+    case "fleet":
+      return "view.fleet"
+    case "forum":
+      return "view.forum"
+    case "inbox":
+      return "view.inbox"
+    case "settings":
+      return "view.settings"
+  }
+}
+
+let commandPalette: KhalaCodeCommandPaletteHandle | null = null
+
+const commandPaletteRecords = (): readonly KhalaCodeCommandPaletteRecord[] => {
+  const records: KhalaCodeCommandPaletteRecord[] = [
+    {
+      group: "project",
+      id: "project:khala-code-desktop",
+      kind: "project",
+      metadataRef: "khala_code.palette.project.current",
+      scoreHints: ["workspace", "openagents", "desktop"],
+      subtitle: "Current desktop workspace",
+      title: "Khala Code Desktop",
+    },
+  ]
+  const activeThreadId = shellModel().activeCodexThreadId
+  if (activeThreadId !== null) {
+    records.push({
+      group: "session",
+      id: `session:${activeThreadId}`,
+      kind: "session",
+      metadataRef: "khala_code.palette.session.active",
+      scoreHints: ["active thread", "current chat"],
+      subtitle: activeThreadId,
+      title: "Current Chat Session",
+    })
+  }
+  for (const chip of composerContextChips
+    .filter(chip => chip.kind === "file" || chip.kind === "selection")
+    .slice(-8)
+    .reverse()) {
+    records.push({
+      group: "file",
+      id: `file:${chip.id}`,
+      kind: "file",
+      metadataRef: "khala_code.palette.file.context",
+      scoreHints: [chip.displayPath, chip.title],
+      subtitle: chip.kind === "selection" ? "Selected composer context" : "Composer file context",
+      title: chip.displayPath,
+    })
+  }
+  const settings = composerSettings()
+  for (const provider of (settings?.providers.options ?? []).slice(0, 12)) {
+    const selected = provider.id === composerSelectedProvider()?.id
+    records.push({
+      group: "provider",
+      id: `provider:${provider.id}`,
+      kind: "provider",
+      metadataRef: "khala_code.palette.provider.option",
+      scoreHints: [provider.id, "model provider"],
+      subtitle: selected ? "Selected provider" : "Provider option",
+      title: provider.displayName,
+    })
+  }
+  for (const model of composerModelOptions().slice(0, 12)) {
+    const selected = model.model === composerModelValue() || model.id === composerModelValue()
+    records.push({
+      group: "model",
+      id: `model:${model.id}`,
+      kind: "model",
+      metadataRef: "khala_code.palette.model.option",
+      scoreHints: [model.model, model.providerDisplayName ?? "", "model"],
+      subtitle: selected ? "Selected model" : model.providerDisplayName ?? "Model option",
+      title: model.displayName,
+    })
+  }
+  records.push({
+    group: "server",
+    id: "server:session.refresh",
+    kind: "server",
+    metadataRef: "khala_code.palette.server.session_refresh",
+    scoreHints: ["server", "rpc", "refresh", "sessions"],
+    title: "Refresh Session Catalog",
+    ...(threadSidebar === null
+      ? {
+          disabled: true,
+          disabledReason: "Thread sidebar is unavailable",
+        }
+      : {
+          subtitle: "Reload sessions from the desktop bridge",
+        }),
+  })
+  return records
+}
+
+const commandRegistry = createKhalaCodeCommandRegistry([
+  {
+    analyticsRef: "khala_code.command.palette.open",
+    category: "workbench",
+    defaultKeybindings: [{ key: "k", meta: true }, { key: "k", ctrl: true }],
+    execute: () => commandPalette?.open(),
+    id: "palette.open",
+    keywords: ["search", "commands", "actions"],
+    title: "Open Command Palette",
+  },
+  {
+    analyticsRef: "khala_code.command.view.chat",
+    category: "navigation",
+    defaultKeybindings: [{ alt: true, key: "1" }],
+    execute: () => setActiveView("chat"),
+    id: "view.chat",
+    keywords: ["thread", "conversation"],
+    title: "Open Chat",
+  },
+  {
+    analyticsRef: "khala_code.command.view.fleet",
+    category: "navigation",
+    defaultKeybindings: [{ alt: true, key: "2" }],
+    execute: () => setActiveView("fleet"),
+    id: "view.fleet",
+    keywords: ["workers", "capacity"],
+    title: "Open Fleet",
+  },
+  {
+    analyticsRef: "khala_code.command.view.forum",
+    category: "navigation",
+    defaultKeybindings: [{ alt: true, key: "3" }],
+    execute: () => setActiveView("forum"),
+    id: "view.forum",
+    keywords: ["product promises"],
+    title: "Open Forum",
+  },
+  {
+    analyticsRef: "khala_code.command.view.inbox",
+    category: "navigation",
+    defaultKeybindings: [{ alt: true, key: "4" }],
+    execute: () => setActiveView("inbox"),
+    id: "view.inbox",
+    keywords: ["notifications", "attention"],
+    title: "Open Inbox",
+  },
+  {
+    analyticsRef: "khala_code.command.view.settings",
+    category: "navigation",
+    defaultKeybindings: [{ alt: true, key: "5" }],
+    execute: () => setActiveView("settings"),
+    id: "view.settings",
+    keywords: ["preferences", "models"],
+    title: "Open Settings",
+  },
+  {
+    analyticsRef: "khala_code.command.view.editor",
+    category: "navigation",
+    defaultKeybindings: [{ alt: true, key: "6" }],
+    execute: () => setActiveView("editor"),
+    id: "view.editor",
+    keywords: ["files", "source"],
+    title: "Open Editor",
+  },
+  {
+    analyticsRef: "khala_code.command.session.new_chat",
+    category: "session",
+    defaultKeybindings: [{ key: "n", meta: true }],
+    execute: beginNewCodexThread,
+    id: "session.new_chat",
+    keywords: ["new thread"],
+    title: "New Chat",
+  },
+  {
+    analyticsRef: "khala_code.command.session.refresh",
+    available: () => threadSidebar !== null,
+    category: "session",
+    disabledReason: () => "Thread sidebar is unavailable",
+    execute: () => {
+      void threadSidebar?.refresh()
+    },
+    id: "session.refresh",
+    keywords: ["reload threads"],
+    title: "Refresh Sessions",
+  },
+  {
+    analyticsRef: "khala_code.command.composer.focus",
+    category: "composer",
+    execute: focusComposerInput,
+    id: "composer.focus",
+    keywords: ["input prompt"],
+    title: "Focus Composer",
+  },
+  {
+    analyticsRef: "khala_code.command.composer.attach_file",
+    category: "composer",
+    execute: () => {
+      void openComposerAttachmentPicker()
+    },
+    id: "composer.attach_file",
+    keywords: ["attachment", "file picker"],
+    title: "Attach File",
+  },
+  {
+    analyticsRef: "khala_code.command.composer.stop_turn",
+    available: () => shellModel().pendingTurn,
+    category: "composer",
+    disabledReason: () => "No active turn is running",
+    execute: stopActiveTurn,
+    id: "composer.stop_turn",
+    keywords: ["interrupt", "cancel"],
+    title: "Stop Active Turn",
+  },
+])
+
+const executeKhalaCodeCommand = async (id: KhalaCodeCommandId): Promise<void> => {
+  await commandRegistry.execute(id)
+  render()
+}
+
+commandPalette = mountKhalaCodeCommandPalette(commandPaletteRoot, {
+  getRecords: commandPaletteRecords,
+  onExecute: result => {
+    if (result.kind === "command") {
+      void executeKhalaCodeCommand(result.id as KhalaCodeCommandId)
+      return
+    }
+    if (result.kind === "file" || result.kind === "project") {
+      void executeKhalaCodeCommand("view.editor")
+      return
+    }
+    if (result.kind === "model" || result.kind === "provider") {
+      void executeKhalaCodeCommand("view.settings")
+      return
+    }
+    if (result.kind === "server") {
+      void executeKhalaCodeCommand(result.id === "server:session.refresh" ? "session.refresh" : "view.settings")
+      return
+    }
+    if (result.kind === "session") {
+      void executeKhalaCodeCommand("view.chat")
+    }
+  },
+  registry: commandRegistry,
+})
+
+window.addEventListener("keydown", event => {
+  if (commandPalette?.isOpen()) return
+  const commandId = khalaCodeCommandForKeyboardEvent(commandRegistry, event)
+  if (commandId === null) return
+  event.preventDefault()
+  void executeKhalaCodeCommand(commandId)
+})
+
+sidebar = sidebarNavRoot === null
+  ? null
+  : mountKhalaCodeSidebar(sidebarNavRoot, {
+      enableKeyboardShortcuts: false,
+      selectedValue: initialView,
+      onActivate: value => {
+        void executeKhalaCodeCommand(hotbarCommandIdForValue(value))
+      },
+    })
 
 const refreshFleetSidebarCounts = async (): Promise<void> => {
   if (sidebar === null) return

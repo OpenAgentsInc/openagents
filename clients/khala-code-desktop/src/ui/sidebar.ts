@@ -75,9 +75,10 @@ export const KHALA_CODE_HOTBAR_SLOTS: ReadonlyArray<KhalaCodeHotbarSlot> = [
 ]
 
 export type SidebarMountOptions = Readonly<{
+  readonly enableKeyboardShortcuts?: boolean
   readonly fleetCounts?: KhalaCodeSidebarFleetCounts | null
   readonly selectedValue?: string | null
-  readonly onActivate?: (value: string) => void
+  readonly onActivate?: (value: KhalaCodeHotbarValue) => void
 }>
 
 export type KhalaCodeSidebarFleetCounts = Readonly<{
@@ -90,6 +91,7 @@ export type KhalaCodeSidebarFleetCounts = Readonly<{
 export type KhalaCodeSidebarHandle = Readonly<{
   destroy: () => void
   setFleetCounts: (counts: KhalaCodeSidebarFleetCounts | null) => void
+  setSelectedValue: (value: string) => void
 }>
 
 type NavigatorWithUserAgentData = Navigator & {
@@ -255,16 +257,24 @@ export const mountKhalaCodeSidebar = (
     activate(slot)
   }
 
-  window.addEventListener("keydown", onKeydown)
+  if (options.enableKeyboardShortcuts !== false) {
+    window.addEventListener("keydown", onKeydown)
+  }
 
   render()
   return {
     destroy(): void {
-      window.removeEventListener("keydown", onKeydown)
+      if (options.enableKeyboardShortcuts !== false) {
+        window.removeEventListener("keydown", onKeydown)
+      }
       container.replaceChildren()
     },
     setFleetCounts(next: KhalaCodeSidebarFleetCounts | null): void {
       void next
+      render()
+    },
+    setSelectedValue(value: string): void {
+      selectedValue = value
       render()
     },
   }

@@ -1378,6 +1378,153 @@ button {
   white-space: nowrap;
 }
 
+.khala-code-command-palette-root {
+  position: relative;
+  z-index: 20;
+}
+
+.khala-code-command-palette {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: start center;
+  padding: 9vh 1rem 1rem;
+  background: color-mix(in srgb, var(--oa-color-khala-void) 52%, transparent);
+}
+
+.khala-code-command-palette[hidden] {
+  display: none;
+}
+
+.khala-code-command-palette-panel {
+  display: grid;
+  gap: 0.55rem;
+  width: min(42rem, calc(100vw - 2rem));
+  max-height: min(36rem, 78vh);
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-blue) 44%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--oa-color-khala-void) 92%, var(--oa-color-khala-surface));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 10%, transparent),
+    0 18px 32px color-mix(in srgb, var(--oa-color-khala-void) 54%, transparent);
+  padding: 0.6rem;
+}
+
+.khala-code-command-palette-input {
+  width: 100%;
+  min-width: 0;
+  height: 2.5rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-blue) 38%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--oa-color-khala-surface) 62%, transparent);
+  color: var(--oa-color-khala-text-bright);
+  font: inherit;
+  font-size: 0.95rem;
+  outline: none;
+  padding: 0 0.75rem;
+}
+
+.khala-code-command-palette-input:focus {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 78%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 44%, transparent);
+}
+
+.khala-code-command-palette-list {
+  display: grid;
+  gap: 0.25rem;
+  min-height: 3rem;
+  max-height: min(28rem, 62vh);
+  overflow: auto;
+}
+
+.khala-code-command-palette-group {
+  color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 76%, transparent);
+  font-family: var(--oa-font-code);
+  font-size: 0.68rem;
+  letter-spacing: 0;
+  padding: 0.45rem 0.35rem 0.1rem;
+  text-transform: uppercase;
+}
+
+.khala-code-command-palette-result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "title shortcut"
+    "meta shortcut";
+  align-items: center;
+  gap: 0.12rem 0.65rem;
+  min-width: 0;
+  min-height: 3rem;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--oa-color-khala-text-body);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+}
+
+.khala-code-command-palette-result[data-selected="true"],
+.khala-code-command-palette-result:hover,
+.khala-code-command-palette-result:focus-visible {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 44%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 10%, transparent);
+  outline: none;
+}
+
+.khala-code-command-palette-result:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.khala-code-command-palette-result-title {
+  grid-area: title;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--oa-color-khala-text-bright);
+  font-size: 0.84rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.khala-code-command-palette-result-meta {
+  grid-area: meta;
+  min-width: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--oa-color-khala-text-body) 72%, transparent);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.khala-code-command-palette-result-shortcut {
+  grid-area: shortcut;
+  min-width: 3.4rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-blue) 32%, transparent);
+  border-radius: 2px;
+  color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 82%, transparent);
+  font-family: var(--oa-font-code);
+  font-size: 0.68rem;
+  line-height: 1;
+  padding: 0.35rem 0.45rem;
+  text-align: center;
+}
+
+.khala-code-command-palette-result-shortcut[hidden] {
+  display: none;
+}
+
+.khala-code-command-palette-empty {
+  display: grid;
+  min-height: 4.5rem;
+  place-items: center;
+  color: color-mix(in srgb, var(--oa-color-khala-text-body) 70%, transparent);
+  font-size: 0.82rem;
+}
+
 #send-button {
   width: 32px;
   height: 32px;
