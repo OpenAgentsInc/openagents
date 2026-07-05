@@ -672,6 +672,61 @@ behind.
   `ArtanisPersistenceRecordKind`s routed through `artanisRead`), but it
   DOES block ever safely reading this table from Postgres and blocks
   KS-8.19 D1 retirement for it.
+
+### 2026-07-05 #8409 fix landed (code only — deploy + corrective sweep still pending)
+
+- **Fix:** `mirrorArtanisRows`/`PostgresArtanisDomainStore.upsertRows`
+  (`apps/openagents.com/workers/api/src/artanis-domain-store.ts`) now take
+  an optional `updateColumns` scope. The INSERT side stays full-row
+  (self-heal, unchanged), but the `ON CONFLICT ... DO UPDATE SET` side only
+  overwrites the caller's OWN columns when a scope is passed — so a stale
+  snapshot from one writer can never clobber another writer's concurrent
+  column update on the same key. `recordArtanisResponderScanTick` /
+  `recordArtanisResponderComposeTick` (`artanis-responder-ticks.ts`) now
+  pass `SCAN_TICK_UPDATE_COLUMNS` / `COMPOSE_TICK_UPDATE_COLUMNS`
+  respectively. The SAME race shape (two independent every-minute cron
+  ticks writing disjoint columns of one singleton row) also existed for
+  `artanis_responder_state` (scan owns `scan_cursor_iso` in
+  `artanis-forum-responder.ts`; compose owns
+  `responses_today`/`responses_day` in `artanis-reply-composer.ts`) —
+  fixed the same way, though no production drift had been observed there
+  yet. An audit of every remaining `mirrorArtanisRows` call site found no
+  other genuine instance (every other table is either INSERT-only with a
+  freshly-minted key per call, or has exactly one writer module for its
+  `UPDATE` path).
+- **Regression coverage:** `artanis-domain-repository.contract.test.ts`
+  (real local Postgres + real D1/SQLite) reproduces the exact interleaving
+  — a stale full-row D1 snapshot landing in Postgres AFTER a fresher
+  concurrent writer's own converged mirror — for both
+  `artanis_responder_ticks` and `artanis_responder_state`, and asserts
+  both writers' columns survive. Verified the tests actually catch the
+  regression by reverting the column-scoping fix locally and confirming
+  both new tests fail with the exact reported symptom
+  (`compose_state`/`responses_today` reverted to the stale pre-write
+  value), then restoring the fix and confirming green again.
+- **Fresh production `--verify` (2026-07-05, same day, hours after the
+  original #8335 evidence, code fix NOT yet deployed):** 19/20 tables
+  still exact; `artanis_responder_ticks` is still the one non-exact table,
+  and the drift has GROWN since the original report — `d1=8026
+  postgres=8025` rows, `scan_state` tallies `d1 {"pending":707,"ran":7319}`
+  vs `postgres {"pending":728,"ran":7297}` (21/22-row skew, up from the
+  original 20/7940) — strong live confirmation that the race is real,
+  ongoing, and accumulates over time until the fix ships. This run used
+  the existing sanctioned read-only `--verify` path
+  (`KHALA_SYNC_APP_USER` role, the same role the live mirror itself uses)
+  — no production data was written.
+- **What is still outstanding (deliberately NOT done in this pass):**
+  deploying this fix through the sanctioned `deploy:safe` gate (a larger,
+  separate, explicitly-gated action out of scope for a narrow mirror-logic
+  fix), and a one-time corrective full-row re-converge of the already-
+  stale `artanis_responder_ticks` rows once the fix is live (safe to do at
+  that point — D1 stays authoritative and this table is not
+  read-routed — but pointless before the fix ships, since the still-live
+  buggy code would just re-drift it). Whoever runs the next
+  `deploy:safe` + backfill sweep for this domain should re-run
+  `bun scripts/backfill-artanis.ts --verify --table artanis_responder_ticks`
+  afterward and expect an exact match once both the deploy and the
+  corrective sweep have landed.
 - **What is actually flag-routed today:** only two functions route through
   `artanisRead` — `readArtanisPersistedRecord` (used by
   `ArtanisScheduledRunner.runTick`'s unconditional every-tick idempotency

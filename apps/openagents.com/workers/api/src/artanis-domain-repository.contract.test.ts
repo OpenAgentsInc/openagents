@@ -46,6 +46,7 @@ import {
   type ArtanisDomainTable,
   type PostgresArtanisDomainStore,
 } from './artanis-domain-store'
+import { RESPONDER_STATE_SCAN_UPDATE_COLUMNS } from './artanis-forum-responder'
 import { exampleArtanisLoopLedger } from './artanis-loop'
 import {
   closeArtanisPersistedLoopTick,
@@ -53,7 +54,12 @@ import {
   readLatestArtanisPersistedRows,
   saveArtanisLoopTick,
 } from './artanis-persistence'
-import { recordArtanisResponderScanTick } from './artanis-responder-ticks'
+import { RESPONDER_STATE_COMPOSE_UPDATE_COLUMNS } from './artanis-reply-composer'
+import {
+  SCAN_TICK_UPDATE_COLUMNS,
+  recordArtanisResponderComposeTick,
+  recordArtanisResponderScanTick,
+} from './artanis-responder-ticks'
 import { makeSqliteD1, type SqliteD1 } from './test/sqlite-d1'
 
 // ---------------------------------------------------------------------------
@@ -718,6 +724,154 @@ describe.skipIf(!hasLocalPostgres())(
           ([event]) => event === 'khala_sync_artanis_read_compare_mismatch',
         ),
       ).toEqual([])
+    })
+
+    // -------------------------------------------------------------------
+    // #8409 regression: two independent-writer columns on the SAME natural
+    // key must both survive a Postgres mirror race, no matter which
+    // writer's D1-read-back + Postgres-upsert round trip lands last.
+    // -------------------------------------------------------------------
+
+    test('#8409 regression: interleaved scan/compose tick mirrors do not clobber each other\'s columns', async () => {
+      const nowIso = '2026-07-05T06:08:32.000Z' // the exact production-incident scheduled_at from #8409
+      const scanOutcome = {
+        blocked: 0,
+        dailyBudgetLeft: 10,
+        proposed: 1,
+        scanned: 4,
+        skipped: 0,
+        skippedReason: null,
+      }
+      const composeOutcome = {
+        blocked: 0,
+        considered: 1,
+        responded: 1,
+        skippedReason: null,
+        tipped: 0,
+      }
+
+      // 1. The scan tick writes its columns to D1 (scan_state='ran'), then
+      //    mirrors. Capture the STALE full-row D1 snapshot right here — this
+      //    is the exact snapshot a delayed scan-mirror Postgres round trip
+      //    would carry (taken BEFORE the compose tick's D1 write lands).
+      await recordArtanisResponderScanTick(handle, {
+        nowIso,
+        outcome: scanOutcome,
+      })
+      const staleSnapshotAfterScan = await d1Row(
+        'artanis_responder_ticks',
+        'scheduled_at',
+        nowIso,
+      )
+      expect(staleSnapshotAfterScan?.['scan_state']).toBe('ran')
+      expect(staleSnapshotAfterScan?.['compose_state']).toBe('pending')
+
+      // 2. The compose tick writes its columns to D1 for the SAME
+      //    scheduled_at (compose_state='ran') and its OWN mirror lands
+      //    normally (a fresh, in-order read-back + scoped upsert).
+      await recordArtanisResponderComposeTick(handle, {
+        nowIso,
+        outcome: composeOutcome,
+      })
+      await expectConverged('artanis_responder_ticks', 'scheduled_at', nowIso)
+      const afterComposeMirror = await pgRow(
+        'artanis_responder_ticks',
+        'scheduled_at',
+        nowIso,
+      )
+      expect(afterComposeMirror?.['scan_state']).toBe('ran')
+      expect(afterComposeMirror?.['compose_state']).toBe('ran')
+
+      // 3. Now simulate the STALE scan mirror's delayed Postgres round trip
+      //    finally landing — AFTER compose's fresher upsert. With the
+      //    #8409 fix (column-scoped `ON CONFLICT DO UPDATE`, using the
+      //    exact production SCAN_TICK_UPDATE_COLUMNS scope), this must NOT
+      //    revert compose_state back to the stale snapshot's 'pending'.
+      await postgresStore.upsertRows(
+        'artanis_responder_ticks',
+        [staleSnapshotAfterScan!],
+        SCAN_TICK_UPDATE_COLUMNS,
+      )
+      const finalPostgres = await pgRow(
+        'artanis_responder_ticks',
+        'scheduled_at',
+        nowIso,
+      )
+      expect(finalPostgres?.['scan_state']).toBe('ran')
+      expect(finalPostgres?.['compose_state']).toBe('ran')
+      expect(Number(finalPostgres?.['compose_responded'])).toBe(1)
+      await expectConverged('artanis_responder_ticks', 'scheduled_at', nowIso)
+
+      // 4. Prove this is a genuine regression guard, not vacuously true: the
+      //    OLD full-row upsert (no column scope — the pre-fix behavior)
+      //    WOULD have clobbered compose_state back to the stale snapshot.
+      await postgresStore.upsertRows('artanis_responder_ticks', [
+        staleSnapshotAfterScan!,
+      ])
+      const clobbered = await pgRow(
+        'artanis_responder_ticks',
+        'scheduled_at',
+        nowIso,
+      )
+      expect(clobbered?.['compose_state']).toBe('pending')
+
+      // Restore convergence for later tests sharing this Postgres database.
+      await mirrorArtanisRows(handle, 'artanis_responder_ticks', 'scheduled_at', [
+        nowIso,
+      ])
+      await expectConverged('artanis_responder_ticks', 'scheduled_at', nowIso)
+    })
+
+    test('#8409 regression: interleaved responder_state scan/compose column updates do not clobber each other', async () => {
+      // artanis_responder_state (the id=1 singleton) has the SAME
+      // two-independent-writer shape: the scan stage owns scan_cursor_iso,
+      // the compose stage owns responses_today/responses_day, both racing
+      // on one row every minute.
+      const table = 'artanis_responder_state' as const
+      const before = await pgRow(table, 'id', 1)
+      expect(before).toBeDefined()
+
+      // Stale snapshot as scan currently sees it (before compose's write).
+      const staleScanSnapshot = { ...before! }
+
+      // Compose's D1 write + fresh in-order mirror.
+      await sqlite.db
+        .prepare(
+          `UPDATE artanis_responder_state
+             SET responses_today = 9, responses_day = ?, updated_at = ?
+           WHERE id = 1`,
+        )
+        .bind('2026-07-05', '2026-07-05T06:09:00.000Z')
+        .run()
+      await mirrorArtanisRows(
+        handle,
+        table,
+        'id',
+        [1],
+        RESPONDER_STATE_COMPOSE_UPDATE_COLUMNS,
+      )
+      const afterCompose = await pgRow(table, 'id', 1)
+      expect(Number(afterCompose?.['responses_today'])).toBe(9)
+
+      // The stale scan mirror finally lands, scoped to scan-owned columns
+      // only — must not revert responses_today/responses_day.
+      await postgresStore.upsertRows(
+        table,
+        [staleScanSnapshot],
+        RESPONDER_STATE_SCAN_UPDATE_COLUMNS,
+      )
+      const final = await pgRow(table, 'id', 1)
+      expect(Number(final?.['responses_today'])).toBe(9)
+      expect(final?.['scan_cursor_iso']).toBe(staleScanSnapshot['scan_cursor_iso'])
+
+      // Regression guard: the OLD full-row upsert would have clobbered it.
+      await postgresStore.upsertRows(table, [staleScanSnapshot])
+      const clobbered = await pgRow(table, 'id', 1)
+      expect(Number(clobbered?.['responses_today'])).not.toBe(9)
+
+      // Restore convergence for later tests.
+      await mirrorArtanisRows(handle, table, 'id', [1])
+      await expectConverged(table, 'id', 1)
     })
   },
 )

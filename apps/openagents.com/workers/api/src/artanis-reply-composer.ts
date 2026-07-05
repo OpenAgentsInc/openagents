@@ -19,6 +19,20 @@ import {
   isTipLadderReceiptRef,
 } from './tip-ladder'
 
+// #8409: `artanis_responder_state` (the id=1 singleton row) is written by
+// TWO independent cron ticks every minute — this compose stage owns
+// `responses_today`/`responses_day`, while the scan stage (artanis-forum-
+// responder.ts) independently owns `scan_cursor_iso`. Scope the Postgres
+// mirror to only the columns this stage's own D1 `UPDATE SET` below
+// actually touches, so a stale Postgres round trip from one stage can
+// never clobber the other stage's concurrent column update (the same race
+// shape as `artanis_responder_ticks`).
+export const RESPONDER_STATE_COMPOSE_UPDATE_COLUMNS = [
+  'responses_today',
+  'responses_day',
+  'updated_at',
+] as const
+
 // The Artanis grounded reply composer + tip budget (issue #4715;
 // promise artanis.pylon_support_responder.v1). For each proposed
 // responder action: assemble live platform context (the asker's own
@@ -370,7 +384,15 @@ export const runArtanisComposerTick = async (
     'topic_id',
     proposals.map(proposal => String(proposal.topic_id)),
   )
-  await mirrorArtanisRows(database, 'artanis_responder_state', 'id', [1])
+  // #8409: scoped to the compose-owned columns only — see comment above
+  // RESPONDER_STATE_COMPOSE_UPDATE_COLUMNS.
+  await mirrorArtanisRows(
+    database,
+    'artanis_responder_state',
+    'id',
+    [1],
+    RESPONDER_STATE_COMPOSE_UPDATE_COLUMNS,
+  )
 
   return {
     blocked,

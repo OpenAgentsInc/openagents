@@ -117,6 +117,36 @@ const outcomeState = (
   return skippedReason.includes('error') ? 'error' : 'skipped'
 }
 
+// #8409: the scan and compose cron ticks are two independent writers of
+// DISJOINT columns on the SAME `artanis_responder_ticks` row (keyed by
+// `scheduled_at`). Each mirror call must only converge Postgres's `ON
+// CONFLICT DO UPDATE` for the columns THIS tick's D1 write just touched —
+// scoped to match the D1 `ON CONFLICT(...) DO UPDATE SET` column list
+// exactly above — or the last Postgres round trip to land clobbers the
+// other tick's concurrently-written columns with a stale full-row snapshot.
+// Exported so the #8409 regression coverage (the contract test's
+// interleaved-mirror race reproduction) proves the exact scope the
+// production call sites use, not a copy that could drift out of sync.
+export const SCAN_TICK_UPDATE_COLUMNS = [
+  'scan_state',
+  'scan_scanned',
+  'scan_proposed',
+  'scan_blocked',
+  'scan_skipped',
+  'scan_skipped_reason',
+  'updated_at',
+] as const
+
+export const COMPOSE_TICK_UPDATE_COLUMNS = [
+  'compose_state',
+  'compose_considered',
+  'compose_responded',
+  'compose_blocked',
+  'compose_tipped',
+  'compose_skipped_reason',
+  'updated_at',
+] as const
+
 export const recordArtanisResponderScanTick = async (
   db: ArtanisDatabase,
   input: Readonly<{ nowIso: string; outcome: ArtanisResponderScanTickOutcome }>,
@@ -151,9 +181,14 @@ export const recordArtanisResponderScanTick = async (
     )
     .run()
   // KS-8.6 dual-write: converge the tick receipt into Postgres (fail-soft).
-  await mirrorArtanisRows(db, 'artanis_responder_ticks', 'scheduled_at', [
-    input.nowIso,
-  ])
+  // #8409: scoped to the scan-owned columns only — see comment above.
+  await mirrorArtanisRows(
+    db,
+    'artanis_responder_ticks',
+    'scheduled_at',
+    [input.nowIso],
+    SCAN_TICK_UPDATE_COLUMNS,
+  )
 }
 
 export const recordArtanisResponderComposeTick = async (
@@ -194,9 +229,14 @@ export const recordArtanisResponderComposeTick = async (
     )
     .run()
   // KS-8.6 dual-write: converge the tick receipt into Postgres (fail-soft).
-  await mirrorArtanisRows(db, 'artanis_responder_ticks', 'scheduled_at', [
-    input.nowIso,
-  ])
+  // #8409: scoped to the compose-owned columns only — see comment above.
+  await mirrorArtanisRows(
+    db,
+    'artanis_responder_ticks',
+    'scheduled_at',
+    [input.nowIso],
+    COMPOSE_TICK_UPDATE_COLUMNS,
+  )
 }
 
 export const projectArtanisResponderTickReadiness = (

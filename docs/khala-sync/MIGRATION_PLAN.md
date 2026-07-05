@@ -137,6 +137,20 @@ consolidated into KS-8.19
 ([#8330](https://github.com/OpenAgentsInc/openagents/issues/8330)) per
 the 2026-07-04 owner direction.
 
+**#8409 fix landed (2026-07-05, code only):** root-caused and fixed the
+`artanis_responder_ticks` full-row-upsert race above —
+`mirrorArtanisRows`/`upsertRows` now accept a column-ownership scope so
+two independent writers of disjoint columns on the same key (the scan and
+compose ticks) can never clobber each other's concurrent update; the same
+race shape, also fixed, existed for `artanis_responder_state`. Real
+Postgres+D1 regression coverage added and verified sensitive (fails
+without the fix, passes with it). A fresh production `--verify` run the
+same day shows the drift is real, ongoing, and has grown since the
+original #8335 report (20→21/22 stale rows) — confirming the diagnosis —
+but the fix is not yet deployed and the already-stale rows are not yet
+corrected; see `RUNBOOK.md` "#8409 fix landed" for the full evidence and
+the outstanding deploy + corrective-sweep follow-up.
+
 **KS-8.8 status (2026-07-04):** machinery LIVE — Postgres schema
 (`khala-sync-server` migration `0016_treasury_domain.sql`: all 27 live
 money tables — treasury transactions, the six nexus payout-authority

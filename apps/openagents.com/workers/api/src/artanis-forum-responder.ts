@@ -19,6 +19,19 @@ import { recordArtanisResponderScanTick } from './artanis-responder-ticks'
 import { parseJsonWithSchema } from './json-boundary'
 import { randomUuid } from './runtime-primitives'
 
+// #8409: `artanis_responder_state` (the id=1 singleton row) has the SAME
+// two-independent-writer shape as `artanis_responder_ticks` — this scan
+// stage owns `scan_cursor_iso`, while the compose stage (artanis-reply-
+// composer.ts) independently owns `responses_today`/`responses_day`, both
+// racing on the same row every minute. Scope the Postgres mirror to only
+// the columns this stage's own D1 `UPDATE SET` below actually touches, so
+// a stale Postgres round trip from one stage can never clobber the other
+// stage's concurrent column update.
+export const RESPONDER_STATE_SCAN_UPDATE_COLUMNS = [
+  'scan_cursor_iso',
+  'updated_at',
+] as const
+
 // The Artanis forum responder, scan stage (issue #4714; promise
 // artanis.pylon_support_responder.v1). Each cron tick: read Forum
 // topics created since the scan cursor, let the MIND classify which are
@@ -411,7 +424,15 @@ export const runArtanisResponderScan = async (
     'topic_id',
     candidates.map(candidate => candidate.topicId),
   )
-  await mirrorArtanisRows(db, 'artanis_responder_state', 'id', [1])
+  // #8409: scoped to the scan-owned columns only — see comment above
+  // RESPONDER_STATE_SCAN_UPDATE_COLUMNS.
+  await mirrorArtanisRows(
+    db,
+    'artanis_responder_state',
+    'id',
+    [1],
+    RESPONDER_STATE_SCAN_UPDATE_COLUMNS,
+  )
 
   return {
     blocked,

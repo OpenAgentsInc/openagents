@@ -402,6 +402,26 @@ const requireKeyColumn = (
   return keyColumn
 }
 
+/**
+ * Validate a caller-supplied column-ownership scope (#8409) against the
+ * table's registered column list. Every name must be a real column of
+ * `table` — always a compile-time literal array at the call site, never
+ * dynamic/user-controlled.
+ */
+const requireUpdateColumns = (
+  table: ArtanisDomainTable,
+  updateColumns: ReadonlyArray<string>,
+): ReadonlyArray<string> => {
+  for (const column of updateColumns) {
+    if (!ARTANIS_DOMAIN_TABLES[table].columns.includes(column)) {
+      throw new ArtanisDomainKeyColumnError(
+        `artanis domain store: ${column} is not a registered column of ${table}`,
+      )
+    }
+  }
+  return updateColumns
+}
+
 // ---------------------------------------------------------------------------
 // Postgres store (registry-driven, single parameterized statements)
 // ---------------------------------------------------------------------------
@@ -440,13 +460,20 @@ const normalizeValue = (value: unknown): string | number | null => {
 export type PostgresArtanisDomainStore = Readonly<{
   /**
    * Converge Postgres to the RESOLVED rows the authoritative D1 write
-   * produced — full-row `ON CONFLICT (natural key) DO UPDATE` upserts, so
-   * a row touched by dual-write self-heals even before the backfill
-   * reaches it, and re-mirroring the same row is a no-op.
+   * produced. The INSERT side always supplies every registry column (a row
+   * touched by dual-write self-heals even before the backfill reaches it,
+   * and re-mirroring the same row is a no-op). The `ON CONFLICT DO UPDATE`
+   * side, though, only overwrites `updateColumns` when given (default: all
+   * non-key columns) — #8409: two independent writers of DISJOINT columns
+   * on the SAME natural key (e.g. the Artanis responder scan/compose
+   * cron ticks) must each only clobber the columns they actually own, or
+   * whichever writer's Postgres round trip lands LAST wins the WHOLE row
+   * and silently reverts the other writer's concurrent column update.
    */
   upsertRows: (
     table: ArtanisDomainTable,
     rows: ReadonlyArray<ArtanisDomainRow>,
+    updateColumns?: ReadonlyArray<string>,
   ) => Promise<void>
   /** Registry-validated key lookup (read cutover + compare mode). */
   selectRowsByKey: (
@@ -513,16 +540,27 @@ export const makePostgresArtanisDomainStore = (
             )
           }),
 
-    upsertRows: (table, rows) =>
+    upsertRows: (table, rows, updateColumns) =>
       rows.length === 0
         ? Promise.resolve()
         : withSql(async unsafe => {
             const spec = ARTANIS_DOMAIN_TABLES[table]
             const columnsSql = spec.columns.join(', ')
-            const updates = spec.columns
-              .filter(column => column !== spec.conflictKey)
-              .map(column => `${column} = EXCLUDED.${column}`)
-              .join(', ')
+            const setColumns = (
+              updateColumns === undefined
+                ? spec.columns
+                : requireUpdateColumns(table, updateColumns)
+            ).filter(column => column !== spec.conflictKey)
+            // #8409: the conflict clause is EITHER a scoped column-owned
+            // update (never touches the other writer's columns) OR, if a
+            // caller ever scopes down to just the conflict key itself, a
+            // no-op update — never an empty (invalid) SET list.
+            const conflictClause =
+              setColumns.length === 0
+                ? `ON CONFLICT (${spec.conflictKey}) DO NOTHING`
+                : `ON CONFLICT (${spec.conflictKey}) DO UPDATE SET ${setColumns
+                    .map(column => `${column} = EXCLUDED.${column}`)
+                    .join(', ')}`
             for (const row of rows) {
               const values = spec.columns.map(column =>
                 normalizeValue(row[column]),
@@ -531,7 +569,7 @@ export const makePostgresArtanisDomainStore = (
                 .map((_, index) => `$${index + 1}`)
                 .join(', ')
               await unsafe(
-                `INSERT INTO ${table} (${columnsSql}) VALUES (${placeholders}) ON CONFLICT (${spec.conflictKey}) DO UPDATE SET ${updates}`,
+                `INSERT INTO ${table} (${columnsSql}) VALUES (${placeholders}) ${conflictClause}`,
                 values as Array<unknown>,
               )
             }
@@ -608,12 +646,24 @@ export const makeArtanisDomainHandle = (
  * the Artanis fail-soft persistence semantics (2d46d808) through the seam.
  * On a plain D1Database, a missing binding, or dual-write off it is a
  * no-op.
+ *
+ * `updateColumns` (#8409) scopes the Postgres `ON CONFLICT DO UPDATE` to
+ * only the columns THIS caller just wrote in D1. Pass it whenever a table
+ * has more than one independent writer touching disjoint columns of the
+ * SAME natural key (e.g. the Artanis responder scan/compose cron ticks
+ * both writing `artanis_responder_ticks`/`artanis_responder_state` every
+ * minute) — otherwise, whichever writer's D1-read-back + Postgres-upsert
+ * round trip lands last can overwrite the WHOLE row with a snapshot that
+ * predates the other writer's concurrent update, silently reverting it.
+ * Omit it (the default) for single-writer tables, where a full-row upsert
+ * is correct and simplest.
  */
 export const mirrorArtanisRows = async (
   db: ArtanisDatabase,
   table: ArtanisDomainTable,
   keyColumn: string,
   keys: ReadonlyArray<string | number>,
+  updateColumns?: ReadonlyArray<string>,
 ): Promise<void> => {
   if (!isArtanisDomainHandle(db)) return
   const { d1, flags, log, postgres } = db
@@ -623,6 +673,7 @@ export const mirrorArtanisRows = async (
   try {
     const spec = ARTANIS_DOMAIN_TABLES[table]
     const column = requireKeyColumn(table, keyColumn)
+    if (updateColumns !== undefined) requireUpdateColumns(table, updateColumns)
     const placeholders = keys.map(() => '?').join(', ')
     const result = await d1
       .prepare(
@@ -632,7 +683,7 @@ export const mirrorArtanisRows = async (
       .all<ArtanisDomainRow>()
     const rows = result.results ?? []
     if (rows.length === 0) return
-    await postgres.upsertRows(table, rows)
+    await postgres.upsertRows(table, rows, updateColumns)
   } catch (error) {
     log('khala_sync_artanis_dual_write_failed', {
       messageSafe: safeMessage(error),
