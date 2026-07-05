@@ -176,6 +176,23 @@ dual-write reliability is re-confirmed. Full evidence in `RUNBOOK.md`
 "KS-8.6 follow-up — #8409 fix deployed, fresh clobber confirmed AFTER
 deploy".
 
+**#8409 follow-up (2026-07-05): distinct root cause confirmed and fixed
+(retry, code only).** The reopened issue's own candidate hypothesis was
+right: `mirrorArtanisRows` attempted its D1-read-back + Postgres upsert
+exactly ONCE with no retry, so a transient failure on a writer's OWN
+mirror call permanently dropped that writer's column update — a DIFFERENT
+bug from the #8409 clobber race (which is genuinely fixed; its regression
+tests still pass), producing the identical stuck-at-`'pending'` symptom.
+Fixed with bounded retry (`[100, 400]` ms backoff, matching the existing
+`artanisRead` postgres-mode precedent) plus a new
+`khala_sync_artanis_dual_write_retry` diagnostic for observability. Real
+Postgres+D1 regression coverage added and verified sensitive. Fresh
+`--verify` baseline the same day: drift has plateaued (23-row skew, same
+order as the prior pass) rather than accelerated. Fix committed to `main`;
+not yet deployed as of this note. See `RUNBOOK.md` "#8409 follow-up — root
+cause confirmed and fixed" for full evidence and the outstanding
+deploy/soak/corrective-sweep sequence.
+
 **KS-8.8 status (2026-07-04):** machinery LIVE — Postgres schema
 (`khala-sync-server` migration `0016_treasury_domain.sql`: all 27 live
 money tables — treasury transactions, the six nexus payout-authority

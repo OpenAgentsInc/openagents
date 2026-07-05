@@ -174,9 +174,10 @@ describe('mirrorArtanisRows (fail-soft dual-write)', () => {
     sqlite.close()
   })
 
-  test('a Postgres failure NEVER throws — it logs the dual-write diagnostic (2d46d808 fail-soft)', async () => {
+  test('a Postgres failure that persists across all retries NEVER throws — it retries then logs the dual-write diagnostic (2d46d808 fail-soft, #8409 follow-up)', async () => {
     const sqlite = seededSqlite()
     const logged: Array<Logged> = []
+    const waited: Array<number> = []
     const handle = makeArtanisDomainHandle({
       d1: sqlite.db,
       flags: { dualWrite: true, reads: 'd1' },
@@ -184,6 +185,10 @@ describe('mirrorArtanisRows (fail-soft dual-write)', () => {
       postgres: fakePostgres({
         upsertRows: () => Promise.reject(new Error('pg down\nwith  detail')),
       }),
+      wait: ms => {
+        waited.push(ms)
+        return Promise.resolve()
+      },
     })
 
     await expect(
@@ -191,12 +196,62 @@ describe('mirrorArtanisRows (fail-soft dual-write)', () => {
         'mem-1',
       ]),
     ).resolves.toBeUndefined()
-    expect(logged).toHaveLength(1)
-    expect(logged[0]?.[0]).toBe('khala_sync_artanis_dual_write_failed')
-    expect(logged[0]?.[1].op).toBe('artanis_owner_memory')
-    expect(logged[0]?.[1].refs).toEqual(['mem-1'])
-    // message is bounded and single-line
-    expect(logged[0]?.[1].messageSafe).toBe('pg down with detail')
+    // #8409 follow-up: 2 bounded retries (logged distinctly) before the
+    // permanent-failure diagnostic — a transient blip that recovers within
+    // the retry budget must never again silently drop this writer's own
+    // column update the way the original bug did.
+    expect(logged.map(([event]) => event)).toEqual([
+      'khala_sync_artanis_dual_write_retry',
+      'khala_sync_artanis_dual_write_retry',
+      'khala_sync_artanis_dual_write_failed',
+    ])
+    expect(waited).toEqual([100, 400])
+    for (const entry of logged) {
+      expect(entry[1].op).toBe('artanis_owner_memory')
+      expect(entry[1].refs).toEqual(['mem-1'])
+      // message is bounded and single-line
+      expect(entry[1].messageSafe).toBe('pg down with detail')
+    }
+    sqlite.close()
+  })
+
+  test('a transient Postgres failure recovers on retry — no drift, no failure diagnostic (#8409 follow-up)', async () => {
+    const sqlite = seededSqlite()
+    const logged: Array<Logged> = []
+    let attempts = 0
+    const postgres = fakePostgres({
+      upsertRows: (table, rows) => {
+        attempts += 1
+        if (attempts === 1) {
+          return Promise.reject(new Error('connect ETIMEDOUT'))
+        }
+        postgres.upserts.push({ rows, table })
+        return Promise.resolve()
+      },
+    })
+    const handle = makeArtanisDomainHandle({
+      d1: sqlite.db,
+      flags: { dualWrite: true, reads: 'd1' },
+      log: (event, fields) => logged.push([event, fields]),
+      postgres,
+      wait: () => Promise.resolve(),
+    })
+
+    await expect(
+      mirrorArtanisRows(handle, 'artanis_owner_memory', 'memory_ref', [
+        'mem-1',
+      ]),
+    ).resolves.toBeUndefined()
+    expect(attempts).toBe(2)
+    expect(postgres.upserts).toHaveLength(1)
+    expect(postgres.upserts[0]?.rows.map(row => row['memory_ref'])).toEqual([
+      'mem-1',
+    ])
+    // Recovered within the retry budget: only the retry diagnostic fires,
+    // never the permanent-failure one — this write is NOT lost.
+    expect(logged.map(([event]) => event)).toEqual([
+      'khala_sync_artanis_dual_write_retry',
+    ])
     sqlite.close()
   })
 

@@ -907,6 +907,99 @@ condition per the money/business-adjacent-data guardrail.**
   list) — all gated on this domain's dual-write mirror being trustworthy
   first.
 
+### 2026-07-05 #8409 follow-up — root cause confirmed and fixed (retry, code only)
+
+Reopened #8409 with a specific candidate hypothesis: a silently-swallowed,
+fail-soft, NO-RETRY mirror write on one tick's OWN column update — a
+DIFFERENT mechanism from the cross-writer clobber race the original
+column-scoping fix addressed.
+
+- **Confirmed directly in code**, not assumed: `mirrorArtanisRows`
+  (`apps/openagents.com/workers/api/src/artanis-domain-store.ts`) attempted
+  its D1 read-back + Postgres upsert exactly ONCE. Any failure — including
+  a transient one — was caught, logged as
+  `khala_sync_artanis_dual_write_failed`, and discarded; the write was
+  never retried. The Postgres client factory
+  (`khala-sync-push-routes.ts::defaultMakeKhalaSyncSqlClient`) uses a bare
+  `connect_timeout: 10` with no client-level reconnect/retry either. For a
+  single-writer table this is harmless (the NEXT write re-converges the
+  full row from current D1 truth). For `artanis_responder_ticks` /
+  `artanis_responder_state` — the only tables with two independent
+  every-minute writers on disjoint columns of the SAME natural key — a
+  dropped write is a PERMANENT stale column: nothing else ever touches
+  that `scheduled_at` row's `scan_*` (or `compose_*`) columns again. This
+  is a distinct, real bug from the #8409 clobber race, and it produces the
+  IDENTICAL symptom (`scan_state` stuck at the schema default `'pending'`
+  in Postgres while D1 shows `'ran'`) — exactly what the reopening
+  evidence observed recurring after the column-scoping fix was
+  guaranteed-deployed.
+- **Fix:** `mirrorArtanisRows` now retries the whole D1-read-back +
+  Postgres-upsert up to twice more with short backoff (`[100, 400]` ms —
+  `MIRROR_WRITE_RETRY_DELAYS_MS`) before giving up, mirroring the existing
+  bounded-retry precedent already used for `artanisRead`'s `postgres` mode
+  (`READ_RETRY_DELAYS_MS = [50, 150]`). Each retry attempt logs a NEW,
+  distinct diagnostic — `khala_sync_artanis_dual_write_retry` — so a
+  recovered transient failure is observable without being confused with a
+  permanent one; the final-exhaustion event is still
+  `khala_sync_artanis_dual_write_failed` (unchanged event name, so existing
+  alerting/dashboards keep working). Registry/argument validation errors
+  (a caller passing an unregistered column — a programming error, not a
+  transient failure) are never retried. The fail-soft invariant is
+  unchanged: `mirrorArtanisRows` still NEVER throws, on any path.
+- **Regression coverage:** `artanis-domain-store.test.ts` (unit level, fake
+  Postgres) proves (a) a persistently-failing mirror write retries twice
+  with the exact configured backoff before logging exactly one
+  `_failed` diagnostic (preceded by two `_retry` diagnostics), and (b) a
+  transiently-failing write (fails once, succeeds on the 2nd attempt)
+  converges correctly with only a `_retry` diagnostic — no `_failed`, no
+  lost data. `artanis-domain-repository.contract.test.ts` (real local
+  Postgres + real D1/SQLite) adds a same-shape proof against the actual
+  `artanis_responder_ticks` cross-engine path: a scan tick's mirror call
+  fails once (transient), retries, and the row converges with
+  `scan_state='ran'` — proving the exact production defect (a
+  single-writer's own dropped mirror write) no longer permanently loses
+  that writer's column. Verified test sensitivity directly: temporarily
+  set `MIRROR_WRITE_RETRY_DELAYS_MS = []` (no retries) and confirmed all
+  three new tests fail with the exact previously-reported shape (no retry
+  attempted, write permanently lost), then restored the fix and confirmed
+  green again.
+- **Fresh production `--verify` baseline (2026-07-05, code fix NOT yet
+  deployed):** `bun scripts/backfill-artanis.ts --verify --table
+  artanis_responder_ticks` (read-only, `KHALA_SYNC_APP_USER` role, no data
+  written) — `rows: d1=8179 postgres=8178` (1 row still entirely missing
+  from Postgres, unchanged from the prior pass), `scan_state`/`compose_state`
+  tallies `d1 {"pending":707,"ran":7472}` vs `postgres
+  {"pending":730,"ran":7448}` (23-row skew — essentially unchanged from the
+  23 found in the prior #8335 pass; the drift has plateaued rather than
+  grown further in the intervening window, consistent with a low, steady
+  transient-failure rate rather than an accelerating one). Newest-50 row
+  hashes still all match.
+- **What is still outstanding:** this fix is committed to `main` but the
+  running production Worker has not been redeployed as part of this pass
+  (a separate `deploy:safe` action). Once deployed, the honest closure bar
+  is: (1) watch for `khala_sync_artanis_dual_write_retry` firing in
+  persisted Worker logs (proof the retry path is live and recovering real
+  transient failures) with `khala_sync_artanis_dual_write_failed` staying
+  at or near zero for this table across a window spanning several of the
+  historical median gaps (~22 min), THEN (2) run the corrective full-row
+  re-converge sweep for the 24 already-stale/missing rows (safe once the
+  live mirror stops re-drifting them — D1 stays authoritative and this
+  table is not read-routed), THEN (3) a final `--verify` should show an
+  exact match. Retry narrows the loss window for short blips; it does NOT
+  eliminate loss during a Postgres/Hyperdrive outage longer than ~500ms —
+  a periodic reconciliation sweep (re-running the existing backfill
+  script's converge logic on a schedule) remains a reasonable further
+  defense-in-depth follow-up for this specific multi-writer-key shape, not
+  built in this pass.
+- **Broader note (unchanged from the prior pass):** the same fail-soft,
+  now-retried `mirrorArtanisRows` machinery underlies every `artanis_*`
+  mirror call site; this fix benefits ALL of them (any transient blip
+  anywhere in the domain now gets two extra chances), not just the
+  responder-tick tables. The single-writer tables were never observably
+  affected by the original defect (their next write self-heals), so no
+  behavior change is expected for them beyond fewer redundant
+  `dual_write_failed` diagnostics on transient blips.
+
 ## Treasury settlement domain cutover (KS-8.8, #8319)
 
 All 27 live money tables (treasury_transactions, the six `nexus_*`

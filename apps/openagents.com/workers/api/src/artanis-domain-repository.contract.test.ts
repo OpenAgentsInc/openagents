@@ -873,5 +873,74 @@ describe.skipIf(!hasLocalPostgres())(
       await mirrorArtanisRows(handle, table, 'id', [1])
       await expectConverged(table, 'id', 1)
     })
+
+    // -------------------------------------------------------------------
+    // #8409 follow-up: reopened after production evidence showed the
+    // clobber symptom recurring AFTER the column-scoping fix above was
+    // deployed. Confirmed root cause: `mirrorArtanisRows` attempted its own
+    // D1-read-back + Postgres upsert exactly ONCE and, on ANY transient
+    // failure, silently and PERMANENTLY dropped that writer's own column
+    // update — column-scoping does nothing to prevent this, because it is
+    // not a cross-writer race at all. Real Postgres + real D1 proof that
+    // the bounded retry now recovers the common transient-failure case.
+    // -------------------------------------------------------------------
+
+    test("#8409 follow-up regression: a transient mirror-write failure recovers via retry instead of permanently dropping the writer's own column update", async () => {
+      const nowIso = '2026-07-05T11:41:00.000Z'
+      let upsertAttempts = 0
+      const flakyPostgres: PostgresArtanisDomainStore = {
+        ...postgresStore,
+        upsertRows: (table, rows, updateColumns) => {
+          upsertAttempts += 1
+          if (upsertAttempts === 1) {
+            return Promise.reject(new Error('connect ECONNRESET'))
+          }
+          return postgresStore.upsertRows(table, rows, updateColumns)
+        },
+      }
+      const flakyHandle = makeArtanisDomainHandle({
+        d1: sqlite.db,
+        flags: { dualWrite: true, reads: 'd1' },
+        log: (event, fields) => diagnostics.push([event, fields]),
+        postgres: flakyPostgres,
+        wait: () => Promise.resolve(),
+      })
+
+      await recordArtanisResponderScanTick(flakyHandle, {
+        nowIso,
+        outcome: {
+          blocked: 0,
+          proposed: 2,
+          scanned: 5,
+          skipped: 0,
+          skippedReason: null,
+        },
+      })
+
+      // The scan tick's own mirror write survived a transient failure via
+      // retry — its columns are NOT permanently stuck, unlike the
+      // confirmed production bug (Postgres would otherwise be stuck at
+      // scan_state='pending' forever, since nothing else ever touches
+      // this row's scan columns again for this scheduled_at).
+      expect(upsertAttempts).toBe(2)
+      await expectConverged('artanis_responder_ticks', 'scheduled_at', nowIso)
+      const converged = await pgRow(
+        'artanis_responder_ticks',
+        'scheduled_at',
+        nowIso,
+      )
+      expect(converged?.['scan_state']).toBe('ran')
+      expect(
+        diagnostics.filter(
+          ([event]) => event === 'khala_sync_artanis_dual_write_failed',
+        ),
+      ).toEqual([])
+      expect(
+        diagnostics.filter(
+          ([event]) => event === 'khala_sync_artanis_dual_write_retry',
+        ),
+      ).toHaveLength(1)
+      diagnostics.length = 0
+    })
   },
 )

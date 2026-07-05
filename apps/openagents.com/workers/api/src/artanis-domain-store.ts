@@ -20,9 +20,14 @@
 //     from D1 by key and converged into Postgres as full-row upserts
 //     (`ON CONFLICT (natural key) DO UPDATE`), so a row touched by
 //     dual-write self-heals even before the backfill reaches it, and
-//     re-mirroring is idempotent by construction. A Postgres failure NEVER
-//     fails the request — it logs the typed
-//     `khala_sync_artanis_dual_write_failed` diagnostic (the drift metric)
+//     re-mirroring is idempotent by construction. A transient failure is
+//     retried a couple of times with short backoff (#8409 follow-up — a
+//     dropped mirror write on a MULTI-writer natural key, e.g. the
+//     responder scan/compose ticks, is a PERMANENT stale column with no
+//     later write to self-heal it, unlike single-writer tables). Exhausting
+//     retries still NEVER fails the request — it logs the typed
+//     `khala_sync_artanis_dual_write_failed` diagnostic (the drift metric;
+//     each retry attempt logs `khala_sync_artanis_dual_write_retry` first)
 //     and moves on. This deliberately preserves the Artanis operator-chat
 //     fail-soft precedent (2d46d808): persistence degradation must never
 //     take down a tick or a chat turn.
@@ -100,6 +105,7 @@ export const artanisDomainFlagsFromEnv = (
 
 export type ArtanisDomainDiagnosticEvent =
   | 'khala_sync_artanis_dual_write_failed'
+  | 'khala_sync_artanis_dual_write_retry'
   | 'khala_sync_artanis_read_compare_mismatch'
   | 'khala_sync_artanis_postgres_read_failed'
   | 'khala_sync_artanis_postgres_read_fallback'
@@ -613,6 +619,24 @@ export const artanisAuthorityDb = (db: ArtanisDatabase): D1Database =>
 
 const READ_RETRY_DELAYS_MS: ReadonlyArray<number> = [50, 150]
 
+/**
+ * #8409 follow-up: bounded retry for the mirror write itself. Before this,
+ * `mirrorArtanisRows` attempted the D1 read-back + Postgres upsert exactly
+ * ONCE and, on ANY failure (a transient network blip, the bare 10s
+ * `connect_timeout`, a momentary Hyperdrive hiccup), silently dropped that
+ * writer's own column update forever — confirmed in production: a fresh
+ * `artanis_responder_ticks` clobber recurred AFTER the #8409 column-scoping
+ * fix was deployed, because column-scoping only prevents one writer from
+ * overwriting ANOTHER writer's columns; it does nothing when a writer's OWN
+ * mirror call simply fails and is never retried. Most such failures are
+ * short-lived, so a couple of quick retries recovers the common case without
+ * meaningfully slowing a once-a-minute cron tick or a chat-turn request.
+ * Exhausting all retries still degrades to D1-only (fail-soft, never
+ * throws) — this narrows the loss window, it does not close it entirely;
+ * a longer Postgres outage still needs the corrective backfill sweep.
+ */
+const MIRROR_WRITE_RETRY_DELAYS_MS: ReadonlyArray<number> = [100, 400]
+
 export type MakeArtanisDomainHandleDependencies = Readonly<{
   d1: D1Database
   flags: ArtanisDomainFlags
@@ -657,6 +681,21 @@ export const makeArtanisDomainHandle = (
  * predates the other writer's concurrent update, silently reverting it.
  * Omit it (the default) for single-writer tables, where a full-row upsert
  * is correct and simplest.
+ *
+ * #8409 follow-up (recurrence after the column-scoping fix): the D1
+ * read-back + Postgres upsert is retried up to
+ * `MIRROR_WRITE_RETRY_DELAYS_MS.length` additional times with short backoff
+ * before giving up. A transient failure (network blip, the bare 10s
+ * `connect_timeout`, a momentary Hyperdrive hiccup) on THIS writer's own
+ * mirror call used to be a silent, permanent, un-retried loss of that
+ * writer's column update — column-scoping does nothing to prevent that,
+ * since it is not a cross-writer race. Each retry logs
+ * `khala_sync_artanis_dual_write_retry` (observable, distinct from the
+ * final-exhaustion `khala_sync_artanis_dual_write_failed`); success on a
+ * retry logs nothing, matching the existing silent-success contract.
+ * Argument/registry validation errors (a caller passing an unregistered
+ * column) are programming errors, not transient failures, and are never
+ * retried.
  */
 export const mirrorArtanisRows = async (
   db: ArtanisDatabase,
@@ -666,30 +705,55 @@ export const mirrorArtanisRows = async (
   updateColumns?: ReadonlyArray<string>,
 ): Promise<void> => {
   if (!isArtanisDomainHandle(db)) return
-  const { d1, flags, log, postgres } = db
+  const { d1, flags, log, postgres, wait } = db
   if (postgres === undefined || !flags.dualWrite || keys.length === 0) return
 
   const refs = keys.map(String)
+  const spec = ARTANIS_DOMAIN_TABLES[table]
+
+  let column: string
   try {
-    const spec = ARTANIS_DOMAIN_TABLES[table]
-    const column = requireKeyColumn(table, keyColumn)
+    column = requireKeyColumn(table, keyColumn)
     if (updateColumns !== undefined) requireUpdateColumns(table, updateColumns)
-    const placeholders = keys.map(() => '?').join(', ')
-    const result = await d1
-      .prepare(
-        `SELECT ${spec.columns.join(', ')} FROM ${table} WHERE ${column} IN (${placeholders})`,
-      )
-      .bind(...keys)
-      .all<ArtanisDomainRow>()
-    const rows = result.results ?? []
-    if (rows.length === 0) return
-    await postgres.upsertRows(table, rows, updateColumns)
   } catch (error) {
     log('khala_sync_artanis_dual_write_failed', {
       messageSafe: safeMessage(error),
       op: table,
       refs,
     })
+    return
+  }
+
+  const placeholders = keys.map(() => '?').join(', ')
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const result = await d1
+        .prepare(
+          `SELECT ${spec.columns.join(', ')} FROM ${table} WHERE ${column} IN (${placeholders})`,
+        )
+        .bind(...keys)
+        .all<ArtanisDomainRow>()
+      const rows = result.results ?? []
+      if (rows.length === 0) return
+      await postgres.upsertRows(table, rows, updateColumns)
+      return
+    } catch (error) {
+      const delay = MIRROR_WRITE_RETRY_DELAYS_MS[attempt]
+      if (delay === undefined) {
+        log('khala_sync_artanis_dual_write_failed', {
+          messageSafe: safeMessage(error),
+          op: table,
+          refs,
+        })
+        return
+      }
+      log('khala_sync_artanis_dual_write_retry', {
+        messageSafe: safeMessage(error),
+        op: table,
+        refs,
+      })
+      await wait(delay)
+    }
   }
 }
 
