@@ -18,7 +18,7 @@ const validSource = (): KhalaPublicConfigSource => ({
     },
   },
   ios: {
-    buildNumber: "6",
+    buildNumber: "7",
   },
   name: "Khala Code",
   slug: "khala-mobile",
@@ -36,7 +36,7 @@ describe("Khala public config", () => {
       appName: "Khala Code",
       appSlug: "khala-mobile",
       appVersion: "0.1.0",
-      iosBuildNumber: "6",
+      iosBuildNumber: "7",
       syncBaseUrl: "https://openagents.com",
       updatesOwner: "khala-mobile",
       updatesUrl: "https://updates.openagents.com/khala-mobile/manifest",
