@@ -1,3 +1,5 @@
+import { Effect } from 'effect'
+
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import {
   identityAuthMirrorFromEnv,
@@ -11,7 +13,11 @@ import {
   readJsonObject,
   safeJsonRecord,
 } from './json-boundary'
-import { logWorkerRouteError, observedPromise } from './observability'
+import {
+  logWorkerRouteError,
+  observedPromise,
+  unwrapEffectTryPromiseCause,
+} from './observability'
 import type { OperatorTargetUser } from './operator-targets'
 import {
   pollOpenAiCodexDeviceLogin,
@@ -768,18 +774,39 @@ const clampParallelism = (value: number | undefined): number =>
 const clampLeaseTtlSeconds = (value: number | undefined): number =>
   Math.max(60, Math.min(3_600, Math.trunc(value ?? 900)))
 
+// Bounded-concurrency fan-out over independent operator bulk-action items
+// (e.g. per-provider-account sanity checks). Uses Effect structured
+// concurrency (`Effect.forEach` with a fixed concurrency) instead of a bare
+// chunked `Promise.all`: one item's uncaught failure no longer rejects its
+// whole chunk and aborts every chunk not yet reached. Each item's outcome is
+// isolated with `Effect.result`; a failure is logged and dropped from the
+// result set rather than discarding already-succeeded results (in the same
+// chunk or earlier chunks) and skipping every account never reached.
 const mapWithConcurrency = async <Input, Output>(
   values: ReadonlyArray<Input>,
   concurrency: number,
   mapper: (value: Input) => Promise<Output>,
 ): Promise<Array<Output>> => {
+  const outcomes = await Effect.runPromise(
+    Effect.forEach(
+      values,
+      value => Effect.result(Effect.tryPromise(() => mapper(value))),
+      { concurrency },
+    ),
+  )
+
   const results: Array<Output> = []
 
-  for (let index = 0; index < values.length; index += concurrency) {
-    results.push(
-      ...(await Promise.all(
-        values.slice(index, index + concurrency).map(mapper),
-      )),
+  for (const outcome of outcomes) {
+    if (outcome._tag === 'Success') {
+      results.push(outcome.success)
+      continue
+    }
+
+    logWorkerRouteError(
+      'operator_bulk_action_item_failed',
+      unwrapEffectTryPromiseCause(outcome.failure),
+      {},
     )
   }
 

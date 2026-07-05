@@ -4,6 +4,7 @@ import {
   makeD1SyncOutboxRepository,
   publicSettledFeedScope,
 } from '@openagentsinc/sync-worker'
+import { Effect } from 'effect'
 
 import {
   projectSettledFeedBatchBestEffort,
@@ -11,7 +12,11 @@ import {
 } from './khala-sync-public-settled-feed'
 import type { KhalaSyncHyperdriveBinding } from './khala-sync-push-routes'
 import { assertNexusPylonPublicSafe } from './nexus-pylon-visibility'
-import { observedPromise } from './observability'
+import {
+  logWorkerRouteError,
+  observedPromise,
+  unwrapEffectTryPromiseCause,
+} from './observability'
 import { openAgentsDatabase, scheduleBackgroundWork } from './runtime'
 import type { SyncNotificationContext } from './sync-notifier'
 
@@ -265,18 +270,42 @@ export const publishSettledFeedEvents = async (
       return
     }
 
-    await Promise.all(
-      safeEvents.map(event =>
-        store.appendChange({
-          actorId: 'system',
-          collection: SETTLED_FEED_SYNC_COLLECTION,
-          id: event.eventRef,
-          op: 'put',
-          scope,
-          value: event,
-        }),
+    // Each settled event is an independent outbox write. Isolate them with
+    // Effect structured concurrency instead of a bare `Promise.all`: one
+    // event's D1 write failing must not silently drop every OTHER unrelated
+    // settlement event in this batch. The outer caller fire-and-forgets this
+    // whole function (`.catch(() => undefined)`), so without per-event
+    // isolation a single failure here would previously have discarded
+    // visibility into (and delivery of) every sibling event too.
+    const appendOutcomes = await Effect.runPromise(
+      Effect.forEach(
+        safeEvents,
+        event =>
+          Effect.result(
+            Effect.tryPromise(() =>
+              store.appendChange({
+                actorId: 'system',
+                collection: SETTLED_FEED_SYNC_COLLECTION,
+                id: event.eventRef,
+                op: 'put',
+                scope,
+                value: event,
+              }),
+            ),
+          ).pipe(Effect.map(outcome => ({ event, outcome }))),
+        { concurrency: 'unbounded' },
       ),
     )
+
+    for (const { event, outcome } of appendOutcomes) {
+      if (outcome._tag === 'Failure') {
+        logWorkerRouteError(
+          'settled_feed_event_append_failed',
+          unwrapEffectTryPromiseCause(outcome.failure),
+          { eventRef: event.eventRef },
+        )
+      }
+    }
 
     const summary = settledFeedSummaryFromEvents(safeEvents)
     let summaryIsSafe = true

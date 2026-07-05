@@ -17,6 +17,18 @@ export type WorkerErrorLogEntry = WorkerLogEntry &
 export const workerErrorName = (error: unknown): string =>
   error instanceof Error ? error.name : typeof error
 
+// `Effect.tryPromise`'s bare-function form (the codebase's default when no
+// domain-specific typed error is warranted) wraps a promise rejection in
+// `Cause.UnknownError`, whose own `.message` is a generic
+// "An error occurred in Effect.tryPromise" — the original rejection is
+// preserved on `.cause`. Call sites that isolate per-item failures with
+// `Effect.result`/`Effect.either`-style fan-outs should unwrap this before
+// logging so the real underlying failure reason stays visible.
+export const unwrapEffectTryPromiseCause = (error: unknown): unknown => {
+  const cause = error instanceof Error ? error.cause : undefined
+  return cause instanceof Error ? cause : error
+}
+
 const redactedLogValue = (value: unknown): string =>
   redactProviderAccountLogValue(value)
 

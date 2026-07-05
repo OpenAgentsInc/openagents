@@ -133,6 +133,58 @@ describe('OpenAgents Cloudflare runtime services', () => {
     expect(notifiedScopes).toEqual(['team:team_1', 'agent-run:run_1'])
   })
 
+  // Regression coverage for the #8282 Promise.all landmine audit
+  // (docs/2026-07-05-promise-all-cron-landmine-audit.md, Lane 1 #1): one
+  // scope's Durable Object notify fetch throwing must not discard the
+  // notify for every OTHER unrelated scope in the same fan-out, and the
+  // whole `notifyScopes` call must not reject (its caller,
+  // `enforceOutOfCreditsPolicy` in index.ts, must not have the
+  // SHC-cleanup-dispatch and out-of-credits-email steps skipped just
+  // because one sync scope's notify was flaky).
+  test('one scope failing to notify does not abort notify for sibling scopes, and does not reject', async () => {
+    const notifiedScopes: Array<string> = []
+    const namespace: DurableObjectNamespace = {
+      get: () => {
+        throw new Error('Expected getByName to own sync room routing')
+      },
+      getByName: name =>
+        ({
+          fetch: async () => {
+            if (name === 'agent-run:run_bad') {
+              throw new Error('Durable Object fetch failure (simulated)')
+            }
+
+            notifiedScopes.push(name)
+
+            return new Response(null, { status: 204 })
+          },
+          id: durableObjectId(name),
+          name,
+        }) as unknown as DurableObjectStub,
+      idFromName: () => durableObjectId('id'),
+      idFromString: name => durableObjectId(name),
+      jurisdiction: () => namespace,
+      newUniqueId: () => durableObjectId('unique'),
+    }
+    const notifications = makeOpenAgentsSyncRoomNotifications(namespace)
+
+    // Must not throw/reject: the failing scope's error is caught and
+    // logged, not left to abort the whole fan-out.
+    await expect(
+      Effect.runPromise(
+        notifications.notifyScopes([
+          syncScope('team:team_1'),
+          syncScope('agent-run:run_bad'),
+          syncScope('agent-run:run_ok'),
+        ]),
+      ),
+    ).resolves.toBeUndefined()
+
+    // The healthy sibling scopes were still notified — proof the failing
+    // scope's fetch never aborted the fan-out.
+    expect(notifiedScopes).toEqual(['team:team_1', 'agent-run:run_ok'])
+  })
+
   test('schedules background work through the Worker context boundary', async () => {
     const scheduled: Array<Promise<unknown>> = []
     const ctx = {

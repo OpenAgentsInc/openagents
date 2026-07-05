@@ -471,6 +471,43 @@ describe('runRelayHealthProbeTick', () => {
     ])
   })
 
+  // Regression coverage for the #8282 Promise.all landmine audit
+  // (docs/2026-07-05-promise-all-cron-landmine-audit.md, Lane 1 #2): one
+  // retention table's prune failing must not mask whether the OTHER
+  // table's prune succeeded, and must not make the whole tick throw.
+  test('one prune table failing does not abort the tick or the sibling prune', async () => {
+    const { pruneCalls, store } = makeMemoryStore()
+    const guardedStore: RelayHealthStore = {
+      ...store,
+      pruneProbesBefore: async () => {
+        throw new Error('D1 prune failure (simulated)')
+      },
+    }
+
+    const result = await runRelayHealthProbeTick({
+      connect: makeFakeRelayConnector('eose'),
+      fetchFn: okNip11Fetch,
+      makeId: sequentialIds('id'),
+      nowMs: tickingClock(),
+      relayUrl: RELAY_URL,
+      scheduledTimeMs: DUE_SCHEDULED_TIME_MS,
+      store: guardedStore,
+    })
+
+    // Must not throw: the probes-table prune failure is isolated and
+    // logged, not left to abort the whole tick.
+    expect(result.probe?.status).toBe('healthy')
+    // The sibling transitions-table prune still ran.
+    expect(pruneCalls).toEqual([
+      {
+        beforeIso: new Date(
+          DUE_SCHEDULED_TIME_MS - RELAY_HEALTH_TRANSITION_RETENTION_MS,
+        ).toISOString(),
+        kind: 'transitions',
+      },
+    ])
+  })
+
   test('emits and retains typed transitions on failure and recovery', async () => {
     const { store, transitions } = makeMemoryStore()
     const makeId = sequentialIds('id')

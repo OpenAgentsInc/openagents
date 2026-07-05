@@ -911,6 +911,52 @@ describe('operator treasury transaction reconciliation', () => {
     expect(store.rows.get('treasury_payout_pending')?.state).toBe('pending')
     expect(store.rows.get('treasury_payout_redacted')?.state).toBe('pending')
   })
+
+  // Regression coverage for the #8282 Promise.all landmine audit
+  // (docs/2026-07-05-promise-all-cron-landmine-audit.md, Lane 1 #4): one
+  // pending transaction's reconcile throwing (e.g. a network error reading
+  // payment status) must not discard the batch-level checked/blocked/
+  // settled counts for every OTHER unrelated pending transaction in the
+  // same cron tick.
+  test('one transaction throwing during reconcile does not discard sibling reconcile outcomes', async () => {
+    const store = makeMemoryTransactionStore([
+      pendingOutTransaction('treasury_payout_succeeded', 'payment_secret_done'),
+      pendingOutTransaction('treasury_payout_throws', 'payment_secret_throws'),
+    ])
+    const fetchTreasury: ContainerPathFetch = path => {
+      if (path === '/payments/payment_secret_throws') {
+        throw new Error('treasury container network failure (simulated)')
+      }
+
+      return Promise.resolve(
+        path === '/payments/payment_secret_done'
+          ? jsonResponse(200, { status: 'succeeded' })
+          : jsonResponse(404, { error: 'not_found' }),
+      )
+    }
+
+    // Must not throw: the failing transaction's reconcile error is isolated
+    // and logged, not left to abort the whole reconciliation batch.
+    const summary = await reconcilePendingTreasuryTransactions({
+      fetchTreasury,
+      transactionStore: store,
+    })
+
+    expect(summary).toEqual({
+      blocked: 1,
+      checked: 2,
+      failed: 0,
+      pending: 0,
+      settled: 1,
+      updated: 1,
+    })
+    // The healthy sibling transaction still settled — proof the batch
+    // wasn't discarded wholesale by the other transaction's throw.
+    expect(store.rows.get('treasury_payout_succeeded')?.state).toBe('settled')
+    // The throwing transaction was never settled/failed by the reconcile
+    // that threw (its own D1 write never ran).
+    expect(store.rows.get('treasury_payout_throws')?.state).toBe('pending')
+  })
 })
 
 describe('treasury payout plan policy', () => {

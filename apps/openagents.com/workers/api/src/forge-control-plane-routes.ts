@@ -24,6 +24,7 @@ import type {
   ForgeGitCanonicalStore,
 } from './forge-git-canonical-store'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { logWorkerRouteError, unwrapEffectTryPromiseCause } from './observability'
 import {
   decodeUnknownWithSchema,
   parseJsonStringArray,
@@ -1428,11 +1429,44 @@ const routeGitHubMirrorRun = async <Bindings>(
     body.tenantRef,
     body.promotionRef,
   )
-  const mirrorReceipts = await Promise.all(
-    promotions.map(promotion =>
-      mirrorPromotionToGitHub(dependencies, env, promotion),
+  // Each promotion's GitHub mirror attempt is independent. Isolate them with
+  // Effect structured concurrency (`Effect.forEach` + `Effect.result`) rather
+  // than a bare `Promise.all`: one promotion's mirror throwing (e.g. a
+  // transient GitHub API error not already caught inside
+  // `mirrorPromotionToGitHub`) must not discard the already-computed mirror
+  // receipts for every OTHER promotion in the same batch.
+  const mirrorOutcomes = await Effect.runPromise(
+    Effect.forEach(
+      promotions,
+      promotion =>
+        Effect.result(
+          Effect.tryPromise(() => mirrorPromotionToGitHub(dependencies, env, promotion)),
+        ).pipe(
+          Effect.map(outcome => ({ outcome, promotion })),
+        ),
+      { concurrency: 'unbounded' },
     ),
   )
+
+  const mirrorReceipts: Array<ForgeGitHubMirrorReceipt> = []
+  const erroredPromotionRefs: Array<string> = []
+
+  for (const { outcome, promotion } of mirrorOutcomes) {
+    if (outcome._tag === 'Success') {
+      mirrorReceipts.push(outcome.success)
+      continue
+    }
+
+    erroredPromotionRefs.push(promotion.promotion_ref)
+    logWorkerRouteError(
+      'forge_github_mirror_promotion_failed',
+      unwrapEffectTryPromiseCause(outcome.failure),
+      {
+        promotionRef: promotion.promotion_ref,
+        tenantRef: body.tenantRef,
+      },
+    )
+  }
 
   return noStoreJsonResponse({
     attention: forgeGitHubMirrorAttention(mirrorReceipts),
@@ -1443,6 +1477,8 @@ const routeGitHubMirrorRun = async <Bindings>(
       .length,
     failedCount: mirrorReceipts.filter(receipt => receipt.status === 'failed')
       .length,
+    erroredCount: erroredPromotionRefs.length,
+    erroredPromotionRefs,
     tenantRef: body.tenantRef,
   })
 }

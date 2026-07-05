@@ -218,7 +218,16 @@ const budgetChecks = [
     // both the same env-reading shape as the sibling admin handlers already
     // counted here. Do not raise further; ratchet back down when index.ts env
     // reads move behind the config/binding boundary.
-    budget: 166,
+    // Raised 166 -> 167 on 2026-07-05 (#8282 Promise.all landmine audit
+    // follow-up) for `notifyCanceledAgentRunSyncScopesEffect(env: Env, runId:
+    // string)` in index.ts: the per-run sync-scope notify isolation helper
+    // that closes the severe `enforceOutOfCreditsPolicy` landmine (a
+    // sync-notify failure could previously block the SHC compute-cleanup
+    // dispatch and out-of-credits email for a whole batch of canceled runs).
+    // Same env-reading shape as the sibling index.ts handlers already
+    // counted here. Do not raise further; ratchet back down when index.ts
+    // env reads move behind the config/binding boundary.
+    budget: 167,
     description:
       'Worker modules may not add raw Cloudflare Env parameters outside the future config/binding boundary.',
     details: countByFile(
@@ -561,7 +570,14 @@ const runPromiseAllowlist = new Map([
   ['workers/api/src/inference/gym/mutalisk-khala-delegation-routes.ts', 1],
   // index.ts raised 6 -> 7 on 2026-06-14 for the wave-3 tenant-client
   // integration bridge; ratchet back down with the Effect-program migration.
-  ['workers/api/src/index.ts', 7],
+  // Raised 7 -> 8 on 2026-07-05 (#8282 Promise.all landmine audit follow-up):
+  // `notifyCanceledAgentRunSyncScopesEffect` bridges the isolated,
+  // per-run sync-scope notify effect into `enforceOutOfCreditsPolicy`'s
+  // Promise-shaped body, so one canceled run's notify failure can never
+  // again block the SHC compute-cleanup dispatch or the out-of-credits
+  // email for the rest of the batch. Named bridge; ratchet down if
+  // `enforceOutOfCreditsPolicy` becomes an Effect program end-to-end.
+  ['workers/api/src/index.ts', 8],
   ['workers/api/src/observability.ts', 1],
   ['workers/api/src/omni-handlers.ts', 7],
   ['workers/api/src/thread-access.ts', 1],
@@ -631,6 +647,26 @@ const runPromiseAllowlist = new Map([
   // (`runEffect`) reused for all four ledger calls per window. Named bridge;
   // ratchet down if the refresh sweep becomes an Effect program end-to-end.
   ['workers/api/src/khala-sync-public-tokens-served-mix.ts', 1],
+  // Added 2026-07-05 (#8282 Promise.all landmine audit follow-up): each of
+  // these Promise-shaped functions previously fanned out an independent,
+  // unrelated batch of async work through a bare `Promise.all`, where one
+  // item's rejection silently discarded visibility into (or delivery for)
+  // every sibling item — the same failure class as the #8409 severe
+  // write-loss incident. Each now runs its per-item-isolated fan-out
+  // (`Effect.forEach` + `Effect.result`/`Effect.catch`, one item's failure
+  // logged and skipped rather than aborting its siblings) via ONE named
+  // `Effect.runPromise` bridge at the existing Promise-shaped boundary.
+  // Named bridges; ratchet down as these call sites migrate to Effect
+  // programs end-to-end. See
+  // docs/2026-07-05-promise-all-cron-landmine-audit.md for the full list.
+  ['workers/api/src/runtime.ts', 1],
+  ['workers/api/src/tassadar-settled-feed-sync.ts', 1],
+  ['workers/api/src/treasury-routes.ts', 1],
+  ['workers/api/src/relay-health.ts', 1],
+  ['workers/api/src/pylon-capacity-funnel-live-routes.ts', 2],
+  ['workers/api/src/forge-control-plane-routes.ts', 1],
+  ['workers/api/src/operator-provider-account-routes.ts', 1],
+  ['workers/api/src/agent-definition-run-routes.ts', 2],
 ])
 
 const runPromiseDetails = countByFile(sourceFiles, /Effect\.runPromise\(/g)

@@ -8,7 +8,7 @@ import {
   type AgentRuntimeRun,
 } from '@openagentsinc/agent-runtime-schema'
 import type { ForgeGitAccessScope } from '@openagentsinc/forge-protocol'
-import { Schema as S } from 'effect'
+import { Effect, Schema as S } from 'effect'
 
 import {
   type AgentDefinitionStore,
@@ -40,6 +40,7 @@ import {
   parseJsonWithSchema,
   readJsonObject,
 } from './json-boundary'
+import { logWorkerRouteError, unwrapEffectTryPromiseCause } from './observability'
 import {
   type DurableStreamNamespace,
   seedDurableInferenceStreamDO,
@@ -1154,15 +1155,37 @@ const revokeForgeGitAccess = async (
     return
   }
 
-  await Promise.all(
-    input.gitAccess.tokenRefs.map(tokenRef =>
-      dependencies.forgeGitAuthStore.revokeGitAccessToken(
-        AGENT_DEFINITION_RUN_TENANT_REF,
-        tokenRef,
-        input.nowIso,
-      )
+  // Each Forge git access token's revoke is a security-sensitive but
+  // independent cleanup action. Isolate them with Effect structured
+  // concurrency instead of a bare `Promise.all`: one token's revoke
+  // throwing must not prevent the OTHER tokens for this run from being
+  // revoked too.
+  const outcomes = await Effect.runPromise(
+    Effect.forEach(
+      input.gitAccess.tokenRefs,
+      tokenRef =>
+        Effect.result(
+          Effect.tryPromise(() =>
+            dependencies.forgeGitAuthStore.revokeGitAccessToken(
+              AGENT_DEFINITION_RUN_TENANT_REF,
+              tokenRef,
+              input.nowIso,
+            ),
+          ),
+        ).pipe(Effect.map(outcome => ({ outcome, tokenRef }))),
+      { concurrency: 'unbounded' },
     ),
   )
+
+  for (const { outcome, tokenRef } of outcomes) {
+    if (outcome._tag === 'Failure') {
+      logWorkerRouteError(
+        'agent_definition_run_forge_git_token_revoke_failed',
+        unwrapEffectTryPromiseCause(outcome.failure),
+        { tokenRef },
+      )
+    }
+  }
 }
 
 const buildRunRecord = (input: Readonly<{
@@ -1716,17 +1739,46 @@ export const revokeAgentDefinitionRunForgeGitTokensForAssignment = async (
     }
   }
 
-  await Promise.all(
-    run.forgeGitTokenRefs.map(tokenRef =>
-      dependencies.forgeGitAuthStore.revokeGitAccessToken(
-        run.forgeTenantRef,
-        tokenRef,
-        input.nowIso,
-      )
+  // Each Forge git access token's revoke is a security-sensitive but
+  // independent cleanup action. Isolate them with Effect structured
+  // concurrency instead of a bare `Promise.all`: one token's revoke
+  // throwing must not prevent the OTHER tokens from being revoked, and must
+  // not silently skip the `forge_git_tokens_revoked` audit-trail write for
+  // whichever tokens WERE actually revoked (a naive retry over ALL tokens
+  // could otherwise attempt to re-revoke already-revoked ones).
+  const revokeOutcomes = await Effect.runPromise(
+    Effect.forEach(
+      run.forgeGitTokenRefs,
+      tokenRef =>
+        Effect.result(
+          Effect.tryPromise(() =>
+            dependencies.forgeGitAuthStore.revokeGitAccessToken(
+              run.forgeTenantRef,
+              tokenRef,
+              input.nowIso,
+            ),
+          ),
+        ).pipe(Effect.map(outcome => ({ outcome, tokenRef }))),
+      { concurrency: 'unbounded' },
     ),
   )
 
-  if (run.forgeGitTokenRefs.length > 0) {
+  const revokedTokenRefs: Array<string> = []
+
+  for (const { outcome, tokenRef } of revokeOutcomes) {
+    if (outcome._tag === 'Success') {
+      revokedTokenRefs.push(tokenRef)
+      continue
+    }
+
+    logWorkerRouteError(
+      'agent_definition_run_forge_git_token_revoke_failed',
+      unwrapEffectTryPromiseCause(outcome.failure),
+      { assignmentRef: input.assignmentRef, tokenRef },
+    )
+  }
+
+  if (revokedTokenRefs.length > 0) {
     await dependencies.runStore.upsertRun({
       ...run,
       evidenceRefs: uniqueRefs([
@@ -1740,7 +1792,7 @@ export const revokeAgentDefinitionRunForgeGitTokensForAssignment = async (
   return {
     assignmentRef: input.assignmentRef,
     foundRun: true,
-    revokedTokenRefs: run.forgeGitTokenRefs,
+    revokedTokenRefs,
   }
 }
 

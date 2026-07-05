@@ -259,6 +259,67 @@ describe("fleet run dry-run", () => {
   })
 })
 
+describe("fleet run dispatch isolation", () => {
+  test("one locked-out account's dispatch failure does not abort dispatch for other ready accounts", async () => {
+    // Fake `pylon` binary: answers `provider go-online` / `presence heartbeat`
+    // successfully for any account, but for account "codex-locked" the
+    // `request` subcommand emits the NEEDS-OWNER reauth signature and a
+    // non-zero exit — the same shape that makes real `dispatchFleetSlot`
+    // throw. Regression coverage for the #8282 Promise.all landmine audit:
+    // that throw must fail ONLY that one account's round entry, not abort
+    // dispatch for every other ready account in the same round.
+    const fakePylonScript = `
+      const args = process.argv.slice(1);
+      if (args[0] === "provider" && args[1] === "go-online") {
+        console.log(JSON.stringify({ pylonRef: "pylon.fake" }));
+        process.exit(0);
+      }
+      if (args[0] === "presence" && args[1] === "heartbeat") {
+        console.log(JSON.stringify({ ok: true }));
+        process.exit(0);
+      }
+      if (args.includes("request")) {
+        const refIndex = args.indexOf("--account-ref");
+        const accountRef = refIndex >= 0 ? args[refIndex + 1] : undefined;
+        if (accountRef === "codex-locked") {
+          console.error("please sign in again");
+          process.exit(1);
+        }
+        console.log(JSON.stringify({ assignmentRef: "assignment." + accountRef }));
+        process.exit(0);
+      }
+      process.exit(0);
+    `
+
+    const result = await runKhalaFleetSupervisor({
+      commit,
+      issues: [6384],
+      maxSlots: 2,
+      once: true,
+      perAccount: 1,
+      pylonCommand: ["node", "-e", fakePylonScript],
+      pylonRef: "pylon.fake",
+      repo: "Example/repo",
+      status: status(["codex-locked", "codex-2"]),
+      verify: "bun test",
+    })
+
+    expect(result.status).toBe("completed")
+    expect(result.rounds).toHaveLength(2)
+
+    const lockedRound = result.rounds.find(round => round.accountRef === "codex-locked")
+    const healthyRound = result.rounds.find(round => round.accountRef === "codex-2")
+
+    expect(lockedRound?.ok).toBe(false)
+    expect(lockedRound?.status).toBe("failed")
+    // The healthy sibling account must still be dispatched and accepted —
+    // the locked-out account's thrown error must not have aborted the round.
+    expect(healthyRound?.ok).toBe(true)
+    expect(healthyRound?.status).toBe("accepted")
+    expect(healthyRound?.assignmentRef).toBe("assignment.codex-2")
+  })
+})
+
 describe("fleet run harness filtering", () => {
   test("a ready Claude account contributes no Codex slot", () => {
     const mixed: KhalaFleetStatus = {

@@ -29,7 +29,7 @@
  * transition events grant no relay-mutation, payout, settlement, or
  * public-claim authority.
  */
-import { Schema as S } from 'effect'
+import { Effect, Schema as S } from 'effect'
 
 import {
   workersFetchRelayConnector,
@@ -38,6 +38,7 @@ import {
 } from './forum-work-request-live-publisher'
 import { DefaultForumWorkRequestRelayUrl } from './forum-work-requests'
 import { parseJsonUnknown, recordFromUnknown } from './json-boundary'
+import { logWorkerRouteError, unwrapEffectTryPromiseCause } from './observability'
 import {
   currentEpochMillis,
   epochMillisToIsoTimestamp,
@@ -638,15 +639,51 @@ export const runRelayHealthProbeTick = async (input: Readonly<{
     await input.store.insertTransition(transition)
   }
 
+  // Two independent retention prunes on two different tables. Isolate them
+  // with Effect structured concurrency instead of a bare `Promise.all`: one
+  // table's prune failing must not mask whether the OTHER table's prune
+  // succeeded (both are self-healing — retried next tick — but each
+  // failure should still be individually logged rather than silently lost
+  // inside one generic tick-level rejection).
   const probedAtIso = probe.probedAt
-  await Promise.all([
-    input.store.pruneProbesBefore(
-      isoTimestampAfterIso(probedAtIso, -RELAY_HEALTH_PROBE_RETENTION_MS),
+  const pruneOutcomes = await Effect.runPromise(
+    Effect.forEach(
+      [
+        {
+          name: 'probes' as const,
+          run: () =>
+            input.store.pruneProbesBefore(
+              isoTimestampAfterIso(probedAtIso, -RELAY_HEALTH_PROBE_RETENTION_MS),
+            ),
+        },
+        {
+          name: 'transitions' as const,
+          run: () =>
+            input.store.pruneTransitionsBefore(
+              isoTimestampAfterIso(
+                probedAtIso,
+                -RELAY_HEALTH_TRANSITION_RETENTION_MS,
+              ),
+            ),
+        },
+      ],
+      prune =>
+        Effect.result(Effect.tryPromise(prune.run)).pipe(
+          Effect.map(outcome => ({ name: prune.name, outcome })),
+        ),
+      { concurrency: 'unbounded' },
     ),
-    input.store.pruneTransitionsBefore(
-      isoTimestampAfterIso(probedAtIso, -RELAY_HEALTH_TRANSITION_RETENTION_MS),
-    ),
-  ])
+  )
+
+  for (const { name, outcome } of pruneOutcomes) {
+    if (outcome._tag === 'Failure') {
+      logWorkerRouteError(
+        'relay_health_prune_failed',
+        unwrapEffectTryPromiseCause(outcome.failure),
+        { table: name },
+      )
+    }
+  }
 
   return { probe, skippedReasonRef: null, transition }
 }

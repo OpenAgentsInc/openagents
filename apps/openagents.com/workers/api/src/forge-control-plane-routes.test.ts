@@ -782,6 +782,129 @@ describe('Forge control-plane routes', () => {
     expect(listBody.mirrorReceipts).toHaveLength(1)
   })
 
+  // Regression coverage for the #8282 Promise.all landmine audit
+  // (docs/2026-07-05-promise-all-cron-landmine-audit.md, Lane 1 #6): one
+  // promotion's mirror attempt throwing (an uncaught D1 read inside
+  // `mirrorPromotionToGitHub`) must not discard the already-computed mirror
+  // receipt for every OTHER unrelated promotion in the same batch.
+  test('one promotion throwing during mirror does not discard a sibling promotion\'s successful receipt', async () => {
+    const github = makeMirrorGitHubFetch({ currentSha: headA })
+    const { canonicalStore, coordinationStore, mirrorStore } = makeStores()
+    const failingPromotionRef = 'promotion.forge.6797'
+    const guardedMirrorStore: ForgeGitHubMirrorStore = {
+      ...mirrorStore,
+      readReceiptForPromotion: async (...args) => {
+        if (args[1] === failingPromotionRef) {
+          throw new Error('D1 read failure (simulated)')
+        }
+
+        return mirrorStore.readReceiptForPromotion(...args)
+      },
+    }
+    const routes = makeForgeControlPlaneRoutes({
+      authorizeControlPlaneBearer: (request, _env, scope) =>
+        authorizeForgeControlPlaneBearer(request, controlPlaneToken, scope),
+      fetch: github.fetchMock,
+      makeCanonicalStore: () => canonicalStore,
+      makeGitHubMirrorStore: () => guardedMirrorStore,
+      makeStore: () => coordinationStore,
+      mirrorGitHubToken: () => 'github-mirror-token',
+      nowIso: () => now,
+      requireAdminApiToken: () => Promise.resolve(false),
+    })
+    const run = (request: Request): Promise<Response> => {
+      const effect = routes.routeForgeControlPlaneRequest(request, {})
+
+      if (effect === undefined) {
+        throw new Error(`unmatched Forge route: ${request.url}`)
+      }
+
+      return Effect.runPromise(effect)
+    }
+    const scopes = [
+      'forge:work:write',
+      'forge:change:write',
+      'forge:receipt:write',
+      'forge:promotion:decide',
+      'forge:mirror:read',
+      'forge:mirror:write',
+    ].join(' ')
+
+    // Promotion 6796: succeeds/mirrors normally.
+    await createForgeWork(run, 6796, scopes)
+    await createForgeChange(run, {
+      baseHead: headA,
+      issueNumber: 6796,
+      patchHead: headB,
+      scopes,
+      verificationRef: 'verification.forge.6796',
+    })
+    await createPassingVerification(run, {
+      baseHead: headA,
+      changeRef: 'change.forge.6796',
+      headHead: headB,
+      scopes,
+      verificationRef: 'verification.forge.6796',
+    })
+    await createPromotionDecision(run, {
+      baseHead: headA,
+      headHead: headB,
+      issueNumber: 6796,
+      scopes,
+    })
+    await importCanonicalMain(canonicalStore, headB)
+
+    // Promotion 6797: its mirror store read is rigged to throw.
+    await createForgeWork(run, 6797, scopes)
+    await createForgeChange(run, {
+      baseHead: headB,
+      issueNumber: 6797,
+      patchHead: headC,
+      scopes,
+      verificationRef: 'verification.forge.6797',
+    })
+    await createPassingVerification(run, {
+      baseHead: headB,
+      changeRef: 'change.forge.6797',
+      headHead: headC,
+      scopes,
+      verificationRef: 'verification.forge.6797',
+    })
+    await createPromotionDecision(run, {
+      baseHead: headB,
+      headHead: headC,
+      issueNumber: 6797,
+      scopes,
+    })
+
+    const response = await run(
+      requestJson('/api/forge/github-mirror/run', {
+        json: { tenantRef: 'tenant.openagents' },
+        headers: authHeaders(scopes),
+        method: 'POST',
+      }),
+    )
+    const body = (await response.json()) as {
+      erroredCount: number
+      erroredPromotionRefs: ReadonlyArray<string>
+      mirroredCount: number
+      mirrorReceipts: ReadonlyArray<{ promotion_ref: string; status: string }>
+    }
+
+    expect(response.status).toBe(200)
+    // The failing promotion is reported as errored, not silently dropped...
+    expect(body.erroredCount).toBe(1)
+    expect(body.erroredPromotionRefs).toEqual([failingPromotionRef])
+    // ...and the healthy sibling promotion's receipt still made it through —
+    // proof the whole batch wasn't discarded by the other promotion's throw.
+    expect(body.mirroredCount).toBe(1)
+    expect(body.mirrorReceipts).toHaveLength(1)
+    expect(body.mirrorReceipts[0]).toMatchObject({
+      promotion_ref: 'promotion.forge.6796',
+      status: 'mirrored',
+    })
+  })
+
   test('refuses non-promoted changes without touching GitHub', async () => {
     const github = makeMirrorGitHubFetch()
     const { run } = makeHarness({ fetch: github.fetchMock })

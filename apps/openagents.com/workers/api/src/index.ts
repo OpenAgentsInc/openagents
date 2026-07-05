@@ -885,6 +885,7 @@ import {
   logWorkerRouteWarning,
   observedEffect,
   observedPromise,
+  unwrapEffectTryPromiseCause,
 } from './observability'
 import { handleOmniApiSdkSeedApi } from './omni-api-sdk-seed-routes'
 import { makeOmniBundleRoutes } from './omni-bundle-routes'
@@ -6561,6 +6562,21 @@ const sendPendingReviewReadyArtifactNotifications = async (
   )
 }
 
+const notifyCanceledAgentRunSyncScopesEffect = (
+  env: Env,
+  runId: string,
+): Effect.Effect<void> =>
+  Effect.tryPromise(() => notifyAgentRunSyncScopes(env, runId)).pipe(
+    Effect.catch(error => {
+      logWorkerRouteWarning('canceled_agent_run_sync_scope_notify_failed', {
+        error: errorMessage(unwrapEffectTryPromiseCause(error)),
+        runId,
+      })
+
+      return Effect.void
+    }),
+  )
+
 const enforceOutOfCreditsPolicy = async (
   env: Env,
   ctx: ExecutionContext | undefined,
@@ -6585,8 +6601,19 @@ const enforceOutOfCreditsPolicy = async (
     },
   )
 
-  await Promise.all(
-    canceledRuns.map(item => notifyAgentRunSyncScopes(env, item.run.id)),
+  // Isolate the best-effort sync-scope notify fan-out from the two actions
+  // that MUST still happen for every canceled run regardless of notify
+  // outcome: the SHC compute-cleanup dispatch and the out-of-credits email.
+  // Each run's notify failure is caught and logged individually (Effect
+  // structured concurrency) instead of sharing fate in one `Promise.all`,
+  // whose rejection on any single run would previously have skipped BOTH
+  // `cleanup` and `notify` below for the entire batch.
+  await Effect.runPromise(
+    Effect.forEach(
+      canceledRuns,
+      item => notifyCanceledAgentRunSyncScopesEffect(env, item.run.id),
+      { concurrency: 'unbounded' },
+    ),
   )
 
   const cleanup = Promise.all(

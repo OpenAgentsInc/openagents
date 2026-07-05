@@ -29,7 +29,11 @@ import {
   type KhalaSyncPushSqlClient,
   type MakeKhalaSyncPushSqlClient,
 } from './khala-sync-push-routes'
-import { logWorkerRouteWarning } from './observability'
+import {
+  logWorkerRouteError,
+  logWorkerRouteWarning,
+  unwrapEffectTryPromiseCause,
+} from './observability'
 import {
   pylonDispatchFlagsFromEnv,
   type PylonDispatchFlagEnv,
@@ -826,17 +830,57 @@ export const recordPylonCapacityFunnelSnapshots = async (
     }),
   )
 
-  await Promise.all(
-    snapshots.map(snapshot => input.snapshotStore.upsertSnapshot(snapshot)),
-  )
-  await Promise.all(
-    (['hourly', 'daily'] as const).map(bucketKind =>
-      input.snapshotStore.pruneSnapshotsBefore({
-        beforeIso: retentionCutoffFor(input.nowIso, bucketKind),
-        bucketKind,
-      }),
+  // Each bucket's (hourly/daily) upsert and prune is an independent D1
+  // write. Isolate them with Effect structured concurrency instead of a
+  // bare `Promise.all`: one bucket's write failure must not mask whether
+  // the OTHER bucket's write succeeded (self-healing next cron tick, but
+  // each failure should still be individually logged).
+  const upsertOutcomes = await Effect.runPromise(
+    Effect.forEach(
+      snapshots,
+      snapshot =>
+        Effect.result(
+          Effect.tryPromise(() => input.snapshotStore.upsertSnapshot(snapshot)),
+        ).pipe(Effect.map(outcome => ({ outcome, snapshot }))),
+      { concurrency: 'unbounded' },
     ),
   )
+
+  for (const { outcome, snapshot } of upsertOutcomes) {
+    if (outcome._tag === 'Failure') {
+      logWorkerRouteError(
+        'pylon_capacity_funnel_snapshot_upsert_failed',
+        unwrapEffectTryPromiseCause(outcome.failure),
+        { bucketKind: snapshot.bucketKind },
+      )
+    }
+  }
+
+  const pruneOutcomes = await Effect.runPromise(
+    Effect.forEach(
+      ['hourly', 'daily'] as const,
+      bucketKind =>
+        Effect.result(
+          Effect.tryPromise(() =>
+            input.snapshotStore.pruneSnapshotsBefore({
+              beforeIso: retentionCutoffFor(input.nowIso, bucketKind),
+              bucketKind,
+            }),
+          ),
+        ).pipe(Effect.map(outcome => ({ bucketKind, outcome }))),
+      { concurrency: 'unbounded' },
+    ),
+  )
+
+  for (const { bucketKind, outcome } of pruneOutcomes) {
+    if (outcome._tag === 'Failure') {
+      logWorkerRouteError(
+        'pylon_capacity_funnel_snapshot_prune_failed',
+        unwrapEffectTryPromiseCause(outcome.failure),
+        { bucketKind },
+      )
+    }
+  }
 
   return snapshots
 }

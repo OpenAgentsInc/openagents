@@ -5,6 +5,7 @@ import type { ContainerPathFetch } from './http/container-fetch'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { isRecord } from './json-boundary'
 import { isLightningAddress, resolveLightningAddressInvoice } from './lnurl-pay'
+import { logWorkerRouteError, unwrapEffectTryPromiseCause } from './observability'
 import { liveAtReadStaleness } from './public-projection-staleness'
 import { currentIsoTimestamp } from './runtime-primitives'
 import type {
@@ -418,11 +419,46 @@ export const reconcilePendingTreasuryTransactions = async (
   const records = await dependencies.transactionStore.listPendingOutbound(
     dependencies.limit ?? 20,
   )
-  const results = await Promise.all(
-    records.map(record =>
-      reconcileTreasuryTransactionRecord(dependencies, record),
+  // Each pending transaction's reconcile is independent. Isolate them with
+  // Effect structured concurrency instead of a bare `Promise.all`: one
+  // record's reconcile throwing (a network call or D1 write inside
+  // `reconcileTreasuryTransactionRecord`) must not discard the batch-level
+  // blocked/checked/failed counts for every OTHER unrelated pending
+  // transaction in this cron tick. Money itself is never at risk here (each
+  // record's own `.settle()`/`.fail()` still applies even if a sibling
+  // throws — JS doesn't cancel promises) — what was at risk was losing the
+  // granular per-cycle reconciliation visibility.
+  const outcomes = await Effect.runPromise(
+    Effect.forEach(
+      records,
+      record =>
+        Effect.result(
+          Effect.tryPromise(() =>
+            reconcileTreasuryTransactionRecord(dependencies, record),
+          ),
+        ).pipe(Effect.map(outcome => ({ outcome, record }))),
+      { concurrency: 'unbounded' },
     ),
   )
+  const results: ReadonlyArray<
+    TreasuryTransactionReconcileResult | TreasuryTransactionReconcileBlocked
+  > = outcomes.map(({ outcome, record }) => {
+    if (outcome._tag === 'Success') {
+      return outcome.success
+    }
+
+    logWorkerRouteError(
+      'treasury_transaction_reconcile_failed',
+      unwrapEffectTryPromiseCause(outcome.failure),
+      { transactionId: record.id },
+    )
+
+    return {
+      error: 'treasury_reconcile_unexpected_error',
+      kind: 'blocked',
+      status: 500,
+    }
+  })
   const reconciledResults = results.filter(
     (result): result is TreasuryTransactionReconcileResult =>
       !isTreasuryTransactionReconcileBlocked(result),

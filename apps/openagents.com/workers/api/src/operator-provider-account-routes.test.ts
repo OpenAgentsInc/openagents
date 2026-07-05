@@ -1398,6 +1398,82 @@ describe('operator provider account routes', () => {
     expect(maxActive).toBeGreaterThan(1)
   })
 
+  // Regression coverage for the #8282 Promise.all landmine audit
+  // (docs/2026-07-05-promise-all-cron-landmine-audit.md, Lane 1 #5): one
+  // account's uncaught D1 write inside `recordSanityCheck` used to reject the
+  // whole chunked `Promise.all` in `mapWithConcurrency`, discarding sanity
+  // results for every OTHER account in the bulk operator sanity-check action
+  // (including chunks not yet reached).
+  test('one account failing to persist its sanity check does not discard sibling accounts\' results', async () => {
+    const repository = new FakeProviderAccountRepository()
+    const failingRef = 'provider-account_ref_second'
+    repository.accounts.push(
+      connectedAccount(),
+      connectedAccount({
+        id: 'provider_account_2',
+        providerAccountRef: failingRef,
+        secretRef: `codex-auth://${failingRef}`,
+      }),
+      connectedAccount({
+        id: 'provider_account_3',
+        providerAccountRef: 'provider-account_ref_third',
+        secretRef: 'codex-auth://provider-account_ref_third',
+      }),
+    )
+
+    const throwingDb: D1Database = {
+      batch: async (statements: ReadonlyArray<{ run: () => Promise<unknown> }>) =>
+        Promise.all(statements.map(statement => statement.run())),
+      prepare: () => {
+        let boundValues: ReadonlyArray<unknown> = []
+
+        return {
+          bind: (...values: ReadonlyArray<unknown>) => {
+            boundValues = values
+
+            return {
+              run: async () => {
+                if (boundValues.includes(failingRef)) {
+                  throw new Error('D1 write failure (simulated)')
+                }
+
+                return { success: true }
+              },
+            }
+          },
+        }
+      },
+    } as unknown as D1Database
+
+    const response = await run(
+      repository,
+      '/api/operator/provider-accounts/chatgpt-codex/sanity',
+      {
+        body: JSON.stringify({ all: true, email: 'chris@openagents.com' }),
+        method: 'POST',
+      },
+      {},
+      throwingDb,
+    )
+    const text = await response.text()
+    const body = JSON.parse(text)
+
+    // Must not 500: the failing account's persistence error is isolated and
+    // logged, not left to abort the whole bulk sanity-check action.
+    expect(response.status).toBe(200)
+    expect(body.summary.total).toBe(2)
+    const checkedRefs = body.checks.map(
+      (check: Readonly<{ providerAccountRef: string }>) =>
+        check.providerAccountRef,
+    )
+    // The failing account never persisted a result, but BOTH sibling
+    // accounts' checks still completed — proof the bulk action wasn't
+    // discarded wholesale by the one account's write failure.
+    expect(checkedRefs).not.toContain(failingRef)
+    expect(checkedRefs).toContain('provider-account_ref_test')
+    expect(checkedRefs).toContain('provider-account_ref_third')
+  })
+
   test('parallel sanity probes classify wrong-account collision symptoms', async () => {
     const repository = new FakeProviderAccountRepository()
     repository.accounts.push(

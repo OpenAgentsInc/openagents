@@ -6,6 +6,8 @@
 // sessions appear in session.list with live timelines, so the phone + desktop
 // show exactly what every fan-out agent is doing.
 
+import { Effect } from "effect"
+
 import type { SubmittedWorkIntent, IntentQueue, IntentStatus } from "../node/intent-intake.js"
 import { planIntent } from "./planner.js"
 import { classifyShipModeFromFingerprint } from "./ship-mode-classify.js"
@@ -69,6 +71,16 @@ export type CoordinatorRuntime = {
 
 const TERMINAL: ReadonlySet<string> = new Set<TerminalState>(["completed", "failed", "cancelled"])
 
+// `Effect.tryPromise`'s bare-function form wraps a rejection in
+// `Cause.UnknownError`, whose own `.message` is a generic
+// "An error occurred in Effect.tryPromise" — the original rejection is
+// preserved on `.cause`. Unwrap it so logs keep the real underlying message.
+function underlyingErrorMessage(error: unknown): string {
+  const cause = error instanceof Error ? error.cause : undefined
+  const underlying = cause instanceof Error ? cause : error
+  return underlying instanceof Error ? underlying.message : String(underlying)
+}
+
 export function createCoordinatorRuntime(deps: CoordinatorRuntimeDeps): CoordinatorRuntime {
   const log = deps.log ?? (() => {})
   const maxFanout = deps.maxFanout ?? 4
@@ -118,10 +130,36 @@ export function createCoordinatorRuntime(deps: CoordinatorRuntimeDeps): Coordina
     deps.intentQueue.advanceStatus(intent.intentId, "fanning_out")
   }
 
+  // Each session's state read is independent of its siblings. Isolate them
+  // with Effect structured concurrency (`Effect.forEach` + `Effect.result`)
+  // instead of a bare `Promise.all`: one flaky/failed `sessionState` read
+  // must not abort `reconcile` for this intent's OTHER sessions, and — since
+  // `tick()` calls `reconcile` in a `for...of` loop over every queued intent
+  // each cycle — must not abort dispatch/reconcile for every OTHER unrelated
+  // intent still queued in the same tick either. A failed read is logged and
+  // treated as "not yet observable" (`null`), matching the existing
+  // null-handling contract below (`known.length < refs.length` defers this
+  // intent to the next tick rather than crashing the whole cycle).
   const reconcile = async (intentId: string): Promise<void> => {
     const refs = intentSessions.get(intentId) ?? []
     if (refs.length === 0) return
-    const states = await Promise.all(refs.map((ref) => deps.sessionState(ref)))
+    const stateOutcomes = await Effect.runPromise(
+      Effect.forEach(
+        refs,
+        (ref) =>
+          Effect.result(Effect.tryPromise(() => deps.sessionState(ref))).pipe(
+            Effect.map((outcome) => ({ ref, outcome })),
+          ),
+        { concurrency: "unbounded" },
+      ),
+    )
+    const states = stateOutcomes.map(({ ref, outcome }) => {
+      if (outcome._tag === "Success") return outcome.success
+      log(
+        `[coordinator] session state read failed for ${ref} (intent ${intentId}): ${underlyingErrorMessage(outcome.failure)}`,
+      )
+      return null
+    })
     const known = states.filter((s): s is string => s !== null)
     if (known.length < refs.length) return // some sessions not yet observable
     if (!known.every((s) => TERMINAL.has(s))) return // still running

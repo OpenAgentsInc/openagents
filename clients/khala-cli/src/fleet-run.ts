@@ -1,3 +1,5 @@
+import { Effect } from "effect"
+
 import { spawnProcess } from "./proc.js"
 import { listFleetAccounts, type KhalaFleetAccount, type KhalaFleetStatus } from "./fleet.js"
 import { DEFAULT_BASE_URL } from "./types.js"
@@ -356,6 +358,60 @@ export function shouldDispatchReplenishment(consecutiveLockoutRounds: number): b
   return consecutiveLockoutRounds >= LOCKOUT_REPLENISH_AFTER_ROUNDS
 }
 
+// `Effect.tryPromise`'s bare-function form wraps a rejection in
+// `Cause.UnknownError`, whose own `.message` is a generic
+// "An error occurred in Effect.tryPromise" — the original rejection is
+// preserved on `.cause`. Unwrap it so operator-facing logs keep the real
+// underlying message (e.g. the NEEDS-OWNER reauth notice).
+function underlyingErrorMessage(error: unknown): string {
+  const cause = error instanceof Error ? error.cause : undefined
+  const underlying = cause instanceof Error ? cause : error
+  return underlying instanceof Error ? underlying.message : String(underlying)
+}
+
+// One fleet account's dispatch failure (including the explicit NEEDS-OWNER
+// reauth throw in `dispatchFleetSlot`) must never abort dispatch for every
+// OTHER unrelated account still in the same round — that would kill the
+// entire perpetual supervisor loop for accounts that are perfectly healthy.
+// Convert the thrown error into a typed "failed" round instead, logging the
+// underlying message (e.g. the NEEDS-OWNER reauth notice) for operator
+// visibility without stopping the loop.
+function failedFleetRunRound(slot: FleetRunSlot, error: unknown): KhalaFleetRunRound {
+  console.error(
+    `[khala fleet run] slot dispatch failed accountRef=${slot.accountRef} slot=${slot.slot}: ${underlyingErrorMessage(error)}`,
+  )
+  return { ...slot, ok: false, status: "failed" }
+}
+
+// Effect structured concurrency replaces a bare `Promise.all` fan-out over
+// independent per-account slot dispatches: each slot's outcome is isolated
+// with `Effect.result` so one account's failure can never prevent the other
+// accounts in the same round from being dispatched or reported.
+async function dispatchRoundConcurrently(
+  slots: readonly FleetRunSlot[],
+  input: {
+    readonly env: Record<string, string | undefined>
+    readonly plan: KhalaFleetRunPlan
+    readonly pylonCommand: readonly string[]
+    readonly token?: string | undefined
+  },
+): Promise<readonly KhalaFleetRunRound[]> {
+  return await Effect.runPromise(
+    Effect.forEach(
+      slots,
+      slot =>
+        Effect.result(
+          Effect.tryPromise(() => dispatchFleetSlot({ ...input, slot })),
+        ).pipe(
+          Effect.map(outcome =>
+            outcome._tag === "Success" ? outcome.success : failedFleetRunRound(slot, outcome.failure),
+          ),
+        ),
+      { concurrency: "unbounded" },
+    ),
+  )
+}
+
 async function runSupervisorLoop(input: {
   readonly delegationParameters: KhalaFleetDelegationParameterSet
   readonly env: Record<string, string | undefined>
@@ -374,7 +430,7 @@ async function runSupervisorLoop(input: {
       ...input.plan,
       issues: rotateIssues(input.plan.issues, issueOffset),
     }, input.delegationParameters)
-    const round = await Promise.all(roundPlan.map(slot => dispatchFleetSlot({ ...input, slot })))
+    const round = await dispatchRoundConcurrently(roundPlan, input)
     rounds.push(...round)
     issueOffset = (issueOffset + round.length) % input.plan.issues.length
     const lockout = round.length > 0 && round.every(item => item.status === "refused")
@@ -389,7 +445,7 @@ async function runSupervisorLoop(input: {
         if (slot.dedupeKey !== undefined) dispatchedReplenishmentKeys.add(slot.dedupeKey)
       }
       if (replenishmentPlan.length > 0) {
-        const replenishmentRound = await Promise.all(replenishmentPlan.map(slot => dispatchFleetSlot({ ...input, slot })))
+        const replenishmentRound = await dispatchRoundConcurrently(replenishmentPlan, input)
         rounds.push(...replenishmentRound)
         refusedBackoffMs = REFUSED_BACKOFF_MS
         consecutiveLockoutRounds = 0
@@ -417,7 +473,10 @@ async function runOneRound(input: {
   readonly pylonCommand: readonly string[]
   readonly token?: string | undefined
 }): Promise<readonly KhalaFleetRunRound[]> {
-  return await Promise.all(plannedRounds(input.plan, input.delegationParameters).map(slot => dispatchFleetSlot({ ...input, slot })))
+  return await dispatchRoundConcurrently(
+    plannedRounds(input.plan, input.delegationParameters),
+    input,
+  )
 }
 
 async function dispatchFleetSlot(input: {

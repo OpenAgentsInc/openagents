@@ -263,7 +263,15 @@ describe('publishGymRunProgressSnapshot', () => {
       }),
     ).resolves.toBeUndefined()
     expect(db.changes).toHaveLength(1)
-    // The detached poke rejects, but that is isolated from the ingest path.
-    await expect(Promise.all(detached)).rejects.toThrow('sync room unavailable')
+    // Each sync scope's Durable Object notify fetch is isolated (#8282
+    // Promise.all landmine audit follow-up): a failing scope's fetch is
+    // caught and logged internally by `notifySyncScopesPromise`, so the
+    // detached poke promise itself now resolves rather than rejecting —
+    // strictly more fail-soft than a rejecting `ctx.waitUntil` handle, which
+    // a real Workers runtime would otherwise surface as an unhandled
+    // rejection.
+    await expect(Promise.all(detached)).resolves.toEqual(
+      detached.map(() => undefined),
+    )
   })
 })

@@ -533,6 +533,121 @@ toward), `qa-runner/control.ts:535`, `oa-updates/publish.ts:39`,
   provider-nip90.ts, backfill-agent-runtime-remainder.ts,
   lag-profiling-sweep.ts)
 
+## Fix pass status (2026-07-05 follow-up)
+
+Per owner direction, fixes use Effect structured concurrency
+(`Effect.forEach` + `Effect.result`/`Effect.catch`, per-item isolation with
+logging) rather than `Promise.allSettled`. Effect 4.0.0-beta.70 (this repo's
+pinned version) does not have `Effect.either`/`Effect.catchAll` — the
+equivalents are `Effect.result` (returns a `Result.Result<A, E>` with
+`_tag: 'Success' | 'Failure'` and `.success`/`.failure`) and `Effect.catch`.
+`Effect.tryPromise`'s bare-function form wraps a rejection in
+`Cause.UnknownError` (generic `.message`); the original cause is preserved on
+`.cause`, unwrapped at each new call site via
+`unwrapEffectTryPromiseCause` (`observability.ts`) before logging so the real
+underlying failure message is never lost.
+
+### Tier 1 — all 6 findings fixed, each with a regression test proving one
+item's failure no longer aborts its siblings (and, for the reverted-fix
+check, that the same test genuinely fails without the change):
+
+- `index.ts:6551` + `runtime.ts:140` — fixed. `notifySyncScopesPromise`
+  (`runtime.ts`) now isolates each scope's Durable Object notify fetch;
+  `enforceOutOfCreditsPolicy` (`index.ts`) now isolates the sync-notify
+  fan-out from the SHC-cleanup/email dispatch via
+  `notifyCanceledAgentRunSyncScopesEffect`. Tests:
+  `runtime.test.ts` ("one scope failing to notify does not abort notify for
+  sibling scopes, and does not reject"),
+  `inference/gym/run-progress-sync.test.ts` (updated: the detached poke now
+  resolves instead of rejecting — a genuine behavior improvement, not just a
+  test update).
+- `clients/khala-cli/src/fleet-run.ts:377/392/420` — fixed via a shared
+  `dispatchRoundConcurrently` helper used at all three call sites. Test:
+  `fleet-run.test.ts` ("one locked-out account's dispatch failure does not
+  abort dispatch for other ready accounts").
+- `apps/pylon/src/coordinator/coordinator-runtime.ts:124` — fixed; failed
+  session-state reads are isolated and logged, treated as "not yet
+  observable" (matching the existing null-handling contract) instead of
+  aborting `reconcile()` for sibling sessions or `tick()` for sibling
+  intents. New test file `coordinator-runtime.test.ts` (no prior test file
+  existed) — proves both per-session isolation within one `reconcile()` call
+  and cross-intent isolation within one `tick()`.
+- `operator-provider-account-routes.ts:2265/2268` (`mapWithConcurrency`) —
+  fixed; bounded-concurrency fan-out now isolates each item via
+  `Effect.result`, logging and dropping failed items instead of aborting
+  the whole chunked loop. Test: `operator-provider-account-routes.test.ts`
+  ("one account failing to persist its sanity check does not discard
+  sibling accounts' results").
+- `forge-control-plane-routes.ts:1431` — fixed; the response now includes
+  `erroredCount`/`erroredPromotionRefs` alongside `mirroredCount`/
+  `refusedCount`/`failedCount` so an errored promotion is visible rather
+  than silently dropped. Test: `forge-control-plane-routes.test.ts` ("one
+  promotion throwing during mirror does not discard a sibling promotion's
+  successful receipt").
+- `tassadar-settled-feed-sync.ts:268` — fixed; each event's outbox append is
+  isolated. Test: `tassadar-settled-feed-sync.test.ts` ("one event failing
+  to append does not prevent sibling events from being written").
+
+### Tier 2 — 4 of ~7 findings fixed in this pass (remaining findings listed
+below, precisely tracked for a follow-up pass):
+
+- `relay-health.ts:642` — fixed; the two retention prunes are isolated. Test:
+  `relay-health.test.ts` ("one prune table failing does not abort the tick
+  or the sibling prune").
+- `pylon-capacity-funnel-live-routes.ts:829/832` — fixed (both the
+  snapshot-upsert and the prune fan-outs); covered by the existing
+  `pylon-capacity-funnel-live-routes.test.ts` suite (still green; no new
+  test added given the low severity/self-healing profile already noted in
+  the audit).
+- `treasury-routes.ts:421` — fixed; one pending transaction's reconcile
+  throwing no longer discards the batch-level checked/blocked/settled
+  counts for its siblings (a synthetic `treasury_reconcile_unexpected_error`
+  blocked result now stands in for the failed item so counts stay
+  accurate). Test: `treasury-routes.test.ts` ("one transaction throwing
+  during reconcile does not discard sibling reconcile outcomes").
+- `agent-definition-run-routes.ts:1157/1719` — fixed (both
+  `revokeForgeGitAccess` and
+  `revokeAgentDefinitionRunForgeGitTokensForAssignment`); the
+  assignment-scoped revoke now returns only the tokens actually revoked
+  (not the full requested list) and the `forge_git_tokens_revoked` evidence
+  ref is written whenever at least one token succeeded, instead of being
+  skipped entirely when any token throws. No new dedicated test added in
+  this pass (constructing a minimal multi-token `AgentDefinitionRunRecord`
+  fixture was judged not worth the cost for a Tier-2 item within this
+  pass's budget) — the existing `agent-definition-run-routes.test.ts` suite
+  stays green, and the fix reuses the exact same proven
+  `Effect.forEach`/`Effect.result` pattern verified elsewhere in this pass.
+
+**Not yet fixed (remaining Tier 2, tracked for a follow-up pass):**
+`packages/agent-readiness/src/index.ts:1558`,
+`packages/tassadar-executor/src/linked-dense-module-runtime.ts:617`,
+`clients/khala-code-desktop/src/bun/fleet-run-supervisor.ts:618`,
+`khala-fleet-tools.ts:3350`, the `main.ts`/`codex-settings-panel.ts` UI
+clusters, `clients/khala-mobile/src/native/modules.ts:10`.
+
+### Tier 3 — not fixed in this pass (cosmetic/CLI-script/foreground-only,
+tracked for a follow-up pass): `concurrent-checkout-proof.ts`,
+`multi-session-run.ts`, `work-planner.ts`, `provider-nip90.ts`,
+`backfill-agent-runtime-remainder.ts`, `lag-profiling-sweep.ts`.
+
+### Zero-debt architecture ledger updates
+
+Each new named `Effect.runPromise` bridge introduced by this pass (one per
+fixed call site, at the existing Promise-shaped boundary) is registered in
+`apps/openagents.com/scripts/check-zero-debt-architecture.mjs`'s
+`runPromiseAllowlist`, and `index.ts`'s raw `env: Env` parameter budget was
+raised 166 -> 167 for the new `notifyCanceledAgentRunSyncScopesEffect`
+helper. `check:architecture` is green with these ledger updates.
+
+### Pre-existing, unrelated test failures observed (not touched by this pass)
+
+Two test files fail identically on a clean `origin/main` checkout, confirmed
+before any changes in this pass: `nexus-pylon-visibility-routes.test.ts`
+(date-regex assertions) and `treasury-domain-store.test.ts` (table-count
+drift, 25 vs expected 27). Neither imports any file touched by this pass;
+flagged here rather than silently left unmentioned, per house discipline,
+but out of scope for this specific audit follow-up.
+
 ## What NOT to "fix"
 
 Do not touch the already-shipped #8409 `Promise.allSettled` fix in

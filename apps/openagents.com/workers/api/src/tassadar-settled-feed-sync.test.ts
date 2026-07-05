@@ -363,6 +363,85 @@ describe('publishSettledFeedEvents', () => {
     })
   })
 
+  // Regression coverage for the #8282 Promise.all landmine audit
+  // (docs/2026-07-05-promise-all-cron-landmine-audit.md, Lane 1 #8): one
+  // event's D1 outbox write failing must not discard every OTHER unrelated
+  // settlement event's write in the same batch.
+  test('one event failing to append does not prevent sibling events from being written', async () => {
+    const db = makeMemoryD1()
+    const failingEventRef = 'settled.failing-event.0'
+    const guardedDb = {
+      batch: db.batch,
+      changes: db.changes,
+      dump: db.dump,
+      exec: db.exec,
+      scopes: db.scopes,
+      withSession: db.withSession,
+      prepare: (query: string) => {
+        const statement = db.prepare(query)
+
+        if (!query.includes('INSERT INTO sync_changes')) {
+          return statement
+        }
+
+        let boundValues: ReadonlyArray<unknown> = []
+
+        return {
+          ...statement,
+          bind: (...values: ReadonlyArray<unknown>) => {
+            boundValues = values
+            statement.bind(...values)
+
+            return {
+              ...statement,
+              run: async <T = Record<string, unknown>>() => {
+                // entity_id is the 5th bound value in the INSERT INTO
+                // sync_changes statement (see makeStatement above).
+                if (boundValues[4] === failingEventRef) {
+                  throw new Error('D1 write failure (simulated)')
+                }
+
+                return statement.run<T>()
+              },
+            } as D1PreparedStatement
+          },
+        } as D1PreparedStatement
+      },
+    } as unknown as MemoryD1
+
+    const events = buildSettledFeedEvents({
+      legs: [
+        settledLeg({ amountSats: 5, party: 'worker' }),
+        settledLeg({
+          amountSats: 5,
+          contributorRef: 'pylon.validator.whitefang',
+          party: 'validator',
+        }),
+      ],
+      priorCount: 0,
+      priorSettledSats: 0,
+      settledAt: '2026-07-05T00:00:00.000Z',
+    })
+    const patchedEvents = events.map((event, index) =>
+      index === 0 ? { ...event, eventRef: failingEventRef } : event,
+    )
+
+    // Must not throw: the first event's write failure is isolated and logged,
+    // not left to abort the whole publish call.
+    await expect(
+      publishSettledFeedEvents({ OPENAGENTS_DB: guardedDb }, patchedEvents),
+    ).resolves.toBeUndefined()
+
+    const eventChanges = db.changes.filter(
+      change => change.collection === SETTLED_FEED_SYNC_COLLECTION,
+    )
+
+    // The failing event never landed, but the sibling event's write still
+    // succeeded — proof the shared batch wasn't discarded wholesale.
+    expect(eventChanges).toHaveLength(1)
+    expect(eventChanges[0]?.entity_id).toBe(patchedEvents[1]?.eventRef)
+  })
+
   test('no raw spark/invoice/preimage material ever lands in the outbox', async () => {
     const db = makeMemoryD1()
     // An (impossible by construction, but defensively guarded) event that smuggles
