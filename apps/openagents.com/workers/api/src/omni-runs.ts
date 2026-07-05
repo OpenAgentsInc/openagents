@@ -226,6 +226,24 @@ export type OmniRunStoreHooks = Readonly<{
    * usage debits this store writes. Default: plain D1 (no mirror).
    */
   billingRuntime?: BillingRuntime | undefined
+  /**
+   * KS-6.6 event-feed follow-up (#8416): fires with the fresh run row and
+   * the events just appended, right after `appendAgentRunSyncChanges` writes
+   * the legacy D1 sync-outbox rows — from BOTH `saveAgentRun` (creation,
+   * `events` = the initial queued events) and `appendAgentRunEvents`
+   * (ONGOING, every time the runner posts a new event or status
+   * transition). `agent-runtime-store.ts`'s `makeOmniRunStoreForEnv` wires
+   * this UNCONDITIONALLY (whenever a `KHALA_SYNC_DB` binding exists) so the
+   * `scope.agent_run.<runId>` khala-sync producer stays complete across
+   * every call site without each one having to opt in — closing the
+   * "integration gap" from the 2026-07-05 client-repoint research
+   * (docs/khala-sync/RUNBOOK.md). Callers MUST treat this fail-soft: never
+   * let a hook failure block the run's actual progress.
+   */
+  afterAgentRunSyncChanges?: (
+    run: AgentRunRecord,
+    events: ReadonlyArray<OmniEventRecord>,
+  ) => Promise<void>
 }>
 
 export type ShcControlActionResult =
@@ -813,7 +831,64 @@ export const agentRunProjection = (run: AgentRunRecord) => ({
   userId: run.userId,
 })
 
-const agentRunEventProjection = (event: OmniEventRecord) => ({
+/**
+ * Build the already public-safe raw shape `@openagentsinc/khala-sync`'s
+ * `AgentRunEntity` decodes (KS-6.6, #8416) — reuses `agentRunProjection`/
+ * `publicGoalContext` (the SAME fields already shipped to authenticated
+ * clients over the legacy sync-worker outbox / the mission-launch HTTP
+ * response), so this invents no new public-safe surface. Co-located here
+ * (moved from `omni-handlers.ts`) so `agent-runtime-store.ts`'s universal
+ * event-append projection wiring can reuse it without a module cycle
+ * (`omni-handlers.ts` already imports `agent-runtime-store.ts`).
+ */
+export const agentRunSyncProjectionRaw = (run: AgentRunRecord): unknown => {
+  const projection = agentRunProjection(run)
+  const goalContext = publicGoalContext(run.assignment)
+
+  return {
+    backend: projection.backend,
+    canceledAt: run.canceledAt,
+    completedAt: projection.completedAt,
+    createdAt: projection.createdAt,
+    failedAt: projection.failedAt,
+    goal: projection.goal,
+    goalId: projection.goalId,
+    ...(goalContext === undefined
+      ? {}
+      : {
+          goalContext: {
+            goalId: goalContext.goalId,
+            objective: goalContext.objective,
+            remainingTokens: goalContext.remainingTokens,
+            status: goalContext.status,
+            timeUsedSeconds: goalContext.timeUsedSeconds,
+            tokenBudget: goalContext.tokenBudget,
+            tokensUsed: goalContext.tokensUsed,
+            visibility: goalContext.visibility,
+          },
+        }),
+    projectId: projection.projectId,
+    repository: projection.repository,
+    routeId: projection.routeId,
+    runId: projection.id,
+    runtime: projection.runtime,
+    startedAt: projection.startedAt,
+    status: projection.status,
+    teamId: projection.teamId,
+    updatedAt: projection.updatedAt,
+    userId: projection.userId,
+  }
+}
+
+/**
+ * Build the already public-safe raw shape `@openagentsinc/khala-sync`'s
+ * `AgentRunEventEntity` decodes (KS-6.6 event-feed follow-up, #8416) — the
+ * SAME fields already shipped to authenticated clients over the legacy
+ * sync-worker outbox's `agent_run_events` collection, so this invents no new
+ * public-safe surface. Exported for `agent-runtime-store.ts`'s universal
+ * event-append projection wiring and the KS-6.6 contract test.
+ */
+export const agentRunEventProjection = (event: OmniEventRecord) => ({
   artifactRefs: event.artifactRefs,
   createdAt: event.createdAt,
   externalEventId: event.externalEventId,
@@ -1277,6 +1352,25 @@ const readDeploymentEvents = async (
   return rows.results.map(row => toEventRecord(deployId, row))
 }
 
+/**
+ * Fail-soft invocation of `OmniRunStoreHooks.afterAgentRunSyncChanges`
+ * (KS-6.6 event-feed follow-up, #8416): a throwing hook implementation must
+ * never block the run's actual D1 write path, so this call site swallows
+ * (never rethrows) — the hook's own implementations are already fail-soft by
+ * contract, but this is defense in depth against a future hook that isn't.
+ */
+const callAfterAgentRunSyncChangesHook = async (
+  hooks: OmniRunStoreHooks,
+  run: AgentRunRecord,
+  events: ReadonlyArray<OmniEventRecord>,
+): Promise<void> => {
+  try {
+    await hooks.afterAgentRunSyncChanges?.(run, events)
+  } catch {
+    // Fail-soft: never let the khala-sync dual-write hook block a real run.
+  }
+}
+
 export const makeD1OmniRunStore = (
   db: D1Database,
   hooks: OmniRunStoreHooks = {},
@@ -1393,6 +1487,7 @@ export const makeD1OmniRunStore = (
     if (run !== undefined) {
       await recordContainerUsageDebitForRun(db, run, {}, hooks.billingRuntime)
       await appendAgentRunSyncChanges(db, run, events)
+      await callAfterAgentRunSyncChangesHook(hooks, run, events)
       await hooks.afterAgentRunMetered?.(run)
     }
   },
@@ -1514,6 +1609,7 @@ export const makeD1OmniRunStore = (
       ...events.map(event => agentEventInsert(db, event)),
     ])
     await appendAgentRunSyncChanges(db, run, events)
+    await callAfterAgentRunSyncChangesHook(hooks, run, events)
   },
   saveDeployment: async (deployment, events) => {
     await db.batch([

@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import {
   AGENT_RUN_ENTITY_TYPE,
+  AGENT_RUN_EVENT_ENTITY_TYPE,
   canonicalJson,
   decodeAgentRunEntity,
+  decodeAgentRunEventEntity,
   encodeAgentRunEntity,
+  encodeAgentRunEventEntity,
 } from "./index.js"
 
 /**
@@ -117,6 +120,102 @@ describe("agent run entity contract", () => {
     const json = canonicalJson(encodeAgentRunEntity(entity))
     expect(json).not.toContain("hiddenSteering")
     expect(json).not.toContain("toolContract")
+    expect(json).not.toContain("authGrantRef")
+    expect(json).not.toContain("providerAccountRef")
+  })
+})
+
+/**
+ * Companion `agent_run_event` entity contract (KS-6.6 event-feed follow-up,
+ * #8416) — closes the schema gap the 2026-07-05 client-repoint research
+ * found: `AgentRunEntity` alone has no equivalent of the legacy scope's
+ * `agent_run_events` transcript collection. Same load-bearing property as
+ * above: `id`/`runId` structurally refuse emails/paths/whitespace; `summary`/
+ * `payloadJson` are the exempt content fields (mirroring `goal` above).
+ */
+
+const validEvent = {
+  artifactRefs: ["apps/openagents.com/workers/api/src/omni-runs.ts"],
+  createdAt: "2026-07-05T12:00:01.000Z",
+  externalEventId: null,
+  id: "omni_event_abc123",
+  payloadJson: '{"tool":"read_file"}',
+  runId: "run.alpha",
+  sequence: 2,
+  source: "shc",
+  status: null,
+  summary: "OpenCode read a file in the workspace.",
+  type: "runner.progress",
+}
+
+describe("agent run event entity contract", () => {
+  test("entity type is the expected constant", () => {
+    expect(AGENT_RUN_EVENT_ENTITY_TYPE).toBe("agent_run_event")
+  })
+
+  test("decodes and re-encodes a runner-progress event", () => {
+    const entity = decodeAgentRunEventEntity(validEvent)
+    expect(entity.id).toBe("omni_event_abc123")
+    expect(entity.runId).toBe("run.alpha")
+    expect(entity.sequence).toBe(2)
+    expect(encodeAgentRunEventEntity(entity).id).toBe("omni_event_abc123")
+  })
+
+  test("decodes an event with no payload/status/externalEventId (all null)", () => {
+    const entity = decodeAgentRunEventEntity({
+      ...validEvent,
+      externalEventId: null,
+      payloadJson: null,
+      status: null,
+    })
+    expect(entity.payloadJson).toBeNull()
+    expect(entity.status).toBeNull()
+    expect(entity.externalEventId).toBeNull()
+  })
+
+  test("a real summary/payload containing emails or /Users/ paths still decodes (content fields)", () => {
+    const entity = decodeAgentRunEventEntity({
+      ...validEvent,
+      payloadJson: '{"path":"/Users/alice/work/file.ts"}',
+      summary: "Failed to reach support@example.com; retried the tool call.",
+    })
+    expect(entity.summary).toContain("support@example.com")
+    expect(entity.payloadJson).toContain("/Users/alice")
+  })
+
+  test("id/runId structurally refuse emails, paths, and whitespace", () => {
+    expect(() =>
+      decodeAgentRunEventEntity({ ...validEvent, id: "/Users/alice/evt" }),
+    ).toThrow()
+    expect(() =>
+      decodeAgentRunEventEntity({
+        ...validEvent,
+        runId: "user@example.com",
+      }),
+    ).toThrow()
+    expect(() =>
+      decodeAgentRunEventEntity({ ...validEvent, id: "evt with spaces" }),
+    ).toThrow()
+  })
+
+  test("rejects a negative sequence", () => {
+    expect(() =>
+      decodeAgentRunEventEntity({ ...validEvent, sequence: -1 }),
+    ).toThrow()
+  })
+
+  test("rejects an empty type/source token", () => {
+    expect(() =>
+      decodeAgentRunEventEntity({ ...validEvent, type: "" }),
+    ).toThrow()
+    expect(() =>
+      decodeAgentRunEventEntity({ ...validEvent, source: "" }),
+    ).toThrow()
+  })
+
+  test("canonicalJson of the encoded entity never spreads unknown fields", () => {
+    const entity = decodeAgentRunEventEntity(validEvent)
+    const json = canonicalJson(encodeAgentRunEventEntity(entity))
     expect(json).not.toContain("authGrantRef")
     expect(json).not.toContain("providerAccountRef")
   })

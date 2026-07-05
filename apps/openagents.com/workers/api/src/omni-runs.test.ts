@@ -15,10 +15,157 @@ import {
   eventFromRunnerPayload,
   fetchAgentRunEventsFromShc,
   legacyAgentRunIdFromUuid,
+  makeD1OmniRunStore,
   parseGithubRepository,
   publicAgentRunBundle,
+  type AgentRunRecord,
+  type OmniEventRecord,
 } from './omni-runs'
 import { buildProbeBlueprintAssignmentScope } from './probe-blueprint-assignment-scope'
+import {
+  AGENT_RUNTIME_D1_SCHEMA,
+  makeSqliteD1,
+  SYNC_OUTBOX_D1_SCHEMA,
+} from './test/sqlite-d1'
+
+// ---------------------------------------------------------------------------
+// KS-6.6 event-feed follow-up (#8416): `afterAgentRunSyncChanges` hook
+// wiring against REAL SQLite-backed D1 — proves the hook fires on
+// `saveAgentRun` (creation) AND on EVERY subsequent `appendAgentRunEvents`
+// call (the ongoing path the 2026-07-05 client-repoint research found was
+// missing), not just the first.
+// ---------------------------------------------------------------------------
+
+const nextEvent = (
+  runId: string,
+  sequence: number,
+  summary: string,
+): OmniEventRecord => ({
+  artifactRefs: [],
+  createdAt: `2026-07-05T12:00:0${sequence}.000Z`,
+  externalEventId: null,
+  id: `evt_${runId}_${sequence}`,
+  parentId: runId,
+  payloadJson: null,
+  sequence,
+  source: 'shc',
+  status: null,
+  summary,
+  type: 'runner.progress',
+})
+
+describe('makeD1OmniRunStore afterAgentRunSyncChanges hook (KS-6.6, #8416)', () => {
+  test('fires on saveAgentRun (creation) and on EVERY appendAgentRunEvents call, not just the first', async () => {
+    const sqliteD1 = makeSqliteD1()
+    sqliteD1.exec(AGENT_RUNTIME_D1_SCHEMA)
+    sqliteD1.exec(SYNC_OUTBOX_D1_SCHEMA)
+
+    const calls: Array<
+      Readonly<{ run: AgentRunRecord; events: ReadonlyArray<OmniEventRecord> }>
+    > = []
+
+    const store = makeD1OmniRunStore(sqliteD1.db, {
+      afterAgentRunSyncChanges: async (run, events) => {
+        calls.push({ events, run })
+      },
+    })
+
+    const { run, events } = createQueuedAgentRun({
+      appOrigin: 'https://openagents.com',
+      goal: 'Run a bounded repo cleanup mission.',
+      repository: {
+        owner: 'OpenAgentsInc',
+        provider: 'github',
+        ref: 'main',
+        repo: 'openagents',
+      },
+      runId: 'run.hook.alpha',
+      userId: 'user.alice',
+    })
+
+    await store.saveAgentRun(run, events)
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.run.id).toBe('run.hook.alpha')
+    expect(calls[0]?.events).toHaveLength(events.length)
+
+    // Simulate an ongoing multi-event run: three SEPARATE runner-callback
+    // appends, each with its own new event. `status` stays undefined
+    // (COALESCE keeps 'queued') so `started_at` never flips non-null and
+    // `recordContainerUsageDebitForRun` stays a no-op — isolating this test
+    // to the hook-wiring claim.
+    await store.appendAgentRunEvents(
+      'run.hook.alpha',
+      [nextEvent('run.hook.alpha', 2, 'tool call: read file')],
+    )
+    await store.appendAgentRunEvents(
+      'run.hook.alpha',
+      [nextEvent('run.hook.alpha', 3, 'tool call: edit file')],
+    )
+    await store.appendAgentRunEvents(
+      'run.hook.alpha',
+      [nextEvent('run.hook.alpha', 4, 'assistant message: done')],
+    )
+
+    // ONE call from saveAgentRun + THREE from the three ongoing appends —
+    // this is the "integration gap" the 2026-07-05 client-repoint research
+    // found: the KS-6.6 producer must fire on every one of these, not just
+    // the first (creation-time) call.
+    expect(calls).toHaveLength(4)
+    expect(calls.map(call => call.events[0]?.summary)).toEqual([
+      events[0]?.summary,
+      'tool call: read file',
+      'tool call: edit file',
+      'assistant message: done',
+    ])
+    expect(calls.every(call => call.run.id === 'run.hook.alpha')).toBe(true)
+
+    sqliteD1.close()
+  })
+
+  test('a throwing hook never blocks the real D1 write (fail-soft)', async () => {
+    const sqliteD1 = makeSqliteD1()
+    sqliteD1.exec(AGENT_RUNTIME_D1_SCHEMA)
+    sqliteD1.exec(SYNC_OUTBOX_D1_SCHEMA)
+
+    let hookCalls = 0
+    const store = makeD1OmniRunStore(sqliteD1.db, {
+      afterAgentRunSyncChanges: async () => {
+        hookCalls += 1
+        throw new Error('khala-sync projection boom')
+      },
+    })
+
+    const { run, events } = createQueuedAgentRun({
+      appOrigin: 'https://openagents.com',
+      goal: 'Run a bounded repo cleanup mission.',
+      repository: {
+        owner: 'OpenAgentsInc',
+        provider: 'github',
+        ref: 'main',
+        repo: 'openagents',
+      },
+      runId: 'run.hook.beta',
+      userId: 'user.bob',
+    })
+
+    // Must not throw despite the hook always throwing.
+    await expect(store.saveAgentRun(run, events)).resolves.toBeUndefined()
+    await expect(
+      store.appendAgentRunEvents('run.hook.beta', [
+        nextEvent('run.hook.beta', 2, 'tool call: read file'),
+      ]),
+    ).resolves.toBeUndefined()
+
+    expect(hookCalls).toBe(2)
+
+    const bundle = await store.findAgentRunForUser('user.bob', 'run.hook.beta')
+    expect(bundle?.run.id).toBe('run.hook.beta')
+    expect(bundle?.events).toHaveLength(2)
+
+    sqliteD1.close()
+  })
+})
 
 describe('OpenAgents SHC/OpenCode assignments', () => {
   test('parses GitHub repository names and URLs', () => {

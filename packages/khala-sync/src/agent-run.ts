@@ -180,3 +180,99 @@ export class AgentRunEntity extends S.Class<AgentRunEntity>("AgentRunEntity")({
 
 export const decodeAgentRunEntity = S.decodeUnknownSync(AgentRunEntity)
 export const encodeAgentRunEntity = S.encodeSync(AgentRunEntity)
+
+// ---------------------------------------------------------------------------
+// agent_run_event (`scope.agent_run.<runId>`, companion multi-entity —
+// KS-6.6 event-feed follow-up, #8416)
+// ---------------------------------------------------------------------------
+
+/**
+ * Companion entity to {@link AgentRunEntity} closing the "schema gap" from
+ * the 2026-07-05 client-repoint research (RUNBOOK.md, KS-6.6): the legacy
+ * `agent-run:<runId>` DO-room scope multiplexes TWO D1 collections onto one
+ * room — `agent_runs` (what `AgentRunEntity` mirrors) AND `agent_run_events`
+ * (the individual tool-call/message events that populate `chatRun.events`,
+ * i.e. the live transcript). `AgentRunEntity` is deliberately a single
+ * flattened run+goal post-image with no equivalent of the event collection;
+ * this entity is the "one entity per SCOPE" rule's natural extension to
+ * "many entities per scope" (same convention as
+ * `scope.public.gym-run-progress`'s `runRef`-keyed rows, except here every
+ * event entity rides the SAME `scope.agent_run.<runId>` scope as its parent
+ * run entity, keyed by the event's own id — mirroring the legacy DO room,
+ * which already multiplexes both collections onto one scope/room).
+ *
+ * The shape mirrors the ALREADY-public-safe `agentRunEventProjection`
+ * (`apps/openagents.com/workers/api/src/omni-runs.ts`) — the exact fields
+ * already shipped over the legacy sync-worker outbox to
+ * `agentRunScope(run.id)` (and `threadScope(routeId)`) today for every
+ * runner-posted event. This module invents no new public-safe surface.
+ *
+ * PUBLIC-SAFE BY CONSTRUCTION (SPEC §7 invariant 9): `summary` and
+ * `payloadJson` are the only free-content fields (bounded, but otherwise
+ * unconstrained, exactly like `goal` above) — `payloadJson` is additionally
+ * scrubbed of credential-shaped material at WRITE time
+ * (`omni-runs.ts`'s `jsonOrNull`/`containsProviderSecretMaterial`) before it
+ * ever reaches D1, so this contract's redaction guard
+ * (`packages/khala-sync-server/src/agent-run-projection.ts`) is defense in
+ * depth, not the first line.
+ */
+
+export const AGENT_RUN_EVENT_ENTITY_TYPE = "agent_run_event"
+
+/** Bounded free text: event summaries / tool-call labels. Content field. */
+export const AgentRunEventSummaryText = S.String.check(
+  S.isMinLength(1),
+  S.isMaxLength(20_000),
+)
+export type AgentRunEventSummaryText = typeof AgentRunEventSummaryText.Type
+
+/**
+ * Bounded free text: the already-scrubbed (at D1 write time) raw event
+ * payload JSON string. Content field, not a ref.
+ */
+export const AgentRunEventPayloadText = S.String.check(S.isMaxLength(262_144))
+export type AgentRunEventPayloadText = typeof AgentRunEventPayloadText.Type
+
+/**
+ * Bounded system-controlled label (event `type`/`source`/`status`) — not
+ * free user content, but not a closed literal set either (runner/provider
+ * callback vocabulary evolves independently of this contract).
+ */
+export const AgentRunEventToken = S.String.check(
+  S.isMinLength(1),
+  S.isMaxLength(256),
+)
+export type AgentRunEventToken = typeof AgentRunEventToken.Type
+
+/** Bounded external-system event ref (runner/provider callback ids). */
+export const AgentRunEventExternalRef = S.String.check(
+  S.isMinLength(1),
+  S.isMaxLength(256),
+)
+export type AgentRunEventExternalRef = typeof AgentRunEventExternalRef.Type
+
+/** Bounded artifact ref (URL, R2 key, or repo-relative path). */
+export const AgentRunEventArtifactRef = S.String.check(
+  S.isMinLength(1),
+  S.isMaxLength(1024),
+)
+export type AgentRunEventArtifactRef = typeof AgentRunEventArtifactRef.Type
+
+export class AgentRunEventEntity extends S.Class<AgentRunEventEntity>(
+  "AgentRunEventEntity",
+)({
+  id: AgentRunRef,
+  runId: AgentRunRef,
+  sequence: nonNegativeInt,
+  type: AgentRunEventToken,
+  summary: AgentRunEventSummaryText,
+  status: S.NullOr(AgentRunEventToken),
+  source: AgentRunEventToken,
+  payloadJson: S.NullOr(AgentRunEventPayloadText),
+  artifactRefs: S.Array(AgentRunEventArtifactRef),
+  externalEventId: S.NullOr(AgentRunEventExternalRef),
+  createdAt: AgentRunIsoTimestamp,
+}) {}
+
+export const decodeAgentRunEventEntity = S.decodeUnknownSync(AgentRunEventEntity)
+export const encodeAgentRunEventEntity = S.encodeSync(AgentRunEventEntity)

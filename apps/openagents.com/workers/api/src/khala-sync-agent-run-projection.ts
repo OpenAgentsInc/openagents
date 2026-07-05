@@ -23,10 +23,23 @@
 // `GET/WS /api/sync/connect` (khala-sync) for this scope. Deleting the
 // legacy poke before that client repoint lands would silently break live
 // run/goal updates on the chat page. See docs/khala-sync/RUNBOOK.md.
+//
+// EVENT-FEED FOLLOW-UP (KS-6.6 producer-completeness pass): the
+// 2026-07-05 client-repoint research recorded in RUNBOOK.md found two real
+// gaps blocking a safe client repoint — (1) `AgentRunEntity` alone had no
+// equivalent of the legacy scope's `agent_run_events` transcript collection,
+// and (2) `projectAgentRun` above only fired at the three run-CREATION call
+// sites, never on the ONGOING `appendAgentRunEvents` path that fires
+// throughout a run's life. `projectAgentRunEvents` below closes gap (1) —
+// see `agent-runtime-store.ts`'s `makeOmniRunStoreForEnv` for how BOTH this
+// function and `projectAgentRun` are now wired into every
+// `saveAgentRun`/`appendAgentRunEvents` call unconditionally, closing gap
+// (2). The client repoint itself remains a separate, NOT-YET-DONE follow-up.
 
 import {
   type AgentRunProjectionDiagnostic,
   projectAgentRunBestEffort,
+  projectAgentRunEventsBestEffort,
 } from '@openagentsinc/khala-sync-server'
 
 import type {
@@ -109,6 +122,93 @@ export const projectAgentRun = async (
     // driver errors (they can embed the DSN).
     const diagnostic: AgentRunProjectionDiagnostic = {
       messageSafe: 'agent run projection client failed',
+      reason: 'projection_failed',
+    }
+    deps.log?.('khala_sync_agent_run_projection_failed', {
+      messageSafe: diagnostic.messageSafe,
+      reason: diagnostic.reason,
+      runId,
+    })
+    return { diagnostic, outcome: 'failed', runId }
+  } finally {
+    if (client !== undefined) {
+      try {
+        await client.end()
+      } catch {
+        // best-effort teardown, same discipline as the push route.
+      }
+    }
+  }
+}
+
+export type AgentRunEventsProjectionOutcome =
+  | { readonly outcome: 'projected'; readonly runId: string; readonly count: number }
+  | { readonly outcome: 'skipped_no_binding' }
+  | { readonly outcome: 'skipped_no_events' }
+  | {
+      readonly outcome: 'failed'
+      readonly runId: string
+      readonly diagnostic: AgentRunProjectionDiagnostic
+    }
+
+/**
+ * Project a batch of agent-run events into `scope.agent_run.<runId>` as
+ * companion `agent_run_event` entities (KS-6.6 event-feed follow-up,
+ * #8416) — closes the "schema gap" from RUNBOOK.md's 2026-07-05
+ * client-repoint research: the legacy scope multiplexes `agent_runs` AND
+ * `agent_run_events` onto one room, but `AgentRunEntity` alone had no
+ * equivalent of the latter.
+ *
+ * Never throws; the returned outcome is for logging/metrics only — callers
+ * must not branch runner-event ingest response behavior on it. `rawEvents`
+ * should be the already public-safe per-event shape (see `agent-run.ts`'s
+ * `AgentRunEventEntity` doc header); this function decodes each one through
+ * the contract before anything is serialized.
+ */
+export const projectAgentRunEvents = async (
+  deps: ProjectAgentRunDependencies,
+  runId: string,
+  rawEvents: ReadonlyArray<unknown>,
+): Promise<AgentRunEventsProjectionOutcome> => {
+  if (rawEvents.length === 0) {
+    return { outcome: 'skipped_no_events' }
+  }
+
+  if (
+    deps.binding === undefined ||
+    typeof deps.binding.connectionString !== 'string' ||
+    deps.binding.connectionString.length === 0
+  ) {
+    return { outcome: 'skipped_no_binding' }
+  }
+
+  const makeSqlClient = deps.makeSqlClient ?? defaultMakeKhalaSyncSqlClient
+  let client: KhalaSyncPushSqlClient | undefined
+  try {
+    client = await makeSqlClient(deps.binding.connectionString)
+    const result = await projectAgentRunEventsBestEffort(
+      client.sql,
+      runId,
+      rawEvents,
+    )
+    if (result.ok) {
+      return { count: result.entries.length, outcome: 'projected', runId }
+    }
+    deps.log?.('khala_sync_agent_run_projection_failed', {
+      messageSafe: result.diagnostic.messageSafe,
+      reason: result.diagnostic.reason,
+      runId,
+    })
+    return {
+      diagnostic: result.diagnostic,
+      outcome: 'failed',
+      runId,
+    }
+  } catch {
+    // Client construction/teardown failures: still fail-soft. Never echo
+    // driver errors (they can embed the DSN).
+    const diagnostic: AgentRunProjectionDiagnostic = {
+      messageSafe: 'agent run event projection client failed',
       reason: 'projection_failed',
     }
     deps.log?.('khala_sync_agent_run_projection_failed', {

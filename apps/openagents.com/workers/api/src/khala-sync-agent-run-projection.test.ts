@@ -2,7 +2,10 @@ import { describe, expect, test } from 'vitest'
 
 import type { SyncSql } from '@openagentsinc/khala-sync-server'
 
-import { projectAgentRun } from './khala-sync-agent-run-projection'
+import {
+  projectAgentRun,
+  projectAgentRunEvents,
+} from './khala-sync-agent-run-projection'
 
 const FORBIDDEN =
   /apikey|authorization:|bearer[:\s]|mnemonic|secret|providerAccountRef|authGrantRef|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/i
@@ -171,6 +174,126 @@ describe('projectAgentRun', () => {
       },
       'run.web.epsilon',
       queuedRun('run.web.epsilon', { status: 'exploded' }),
+    )
+    expect(outcome.outcome).toBe('failed')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Event-feed companion projection (KS-6.6 follow-up, #8416)
+// ---------------------------------------------------------------------------
+
+const runnerEvent = (
+  runId: string,
+  sequence: number,
+  overrides: Record<string, unknown> = {},
+) => ({
+  artifactRefs: [],
+  createdAt: `2026-07-05T12:00:0${sequence}.000Z`,
+  externalEventId: null,
+  id: `omni_event_${runId}_${sequence}`,
+  payloadJson: null,
+  runId,
+  sequence,
+  source: 'shc',
+  status: null,
+  summary: `event #${sequence}`,
+  type: 'runner.progress',
+  ...overrides,
+})
+
+describe('projectAgentRunEvents', () => {
+  test('skips when the batch is empty (no client created)', async () => {
+    const outcome = await projectAgentRunEvents(
+      {
+        binding: { connectionString: 'postgres://x' },
+        makeSqlClient: () => {
+          throw new Error('must not be called')
+        },
+      },
+      'run.web.alpha',
+      [],
+    )
+    expect(outcome).toEqual({ outcome: 'skipped_no_events' })
+  })
+
+  test('skips when the KHALA_SYNC_DB binding is absent (no client created)', async () => {
+    const outcome = await projectAgentRunEvents(
+      {
+        binding: undefined,
+        makeSqlClient: () => {
+          throw new Error('must not be called')
+        },
+      },
+      'run.web.alpha',
+      [runnerEvent('run.web.alpha', 2)],
+    )
+    expect(outcome).toEqual({ outcome: 'skipped_no_binding' })
+  })
+
+  test('projects a redacted batch of agent_run_event post-images and closes the client', async () => {
+    const fake = makeFakeSqlClient()
+    const outcome = await projectAgentRunEvents(
+      {
+        binding: { connectionString: 'postgres://x' },
+        makeSqlClient: () => Promise.resolve(fake.client),
+      },
+      'run.web.alpha',
+      [runnerEvent('run.web.alpha', 2), runnerEvent('run.web.alpha', 3)],
+    )
+    expect(outcome).toEqual({
+      count: 2,
+      outcome: 'projected',
+      runId: 'run.web.alpha',
+    })
+    expect(fake.isEnded()).toBe(true)
+
+    const serialized = JSON.stringify(fake.boundValues)
+    expect(serialized).not.toMatch(FORBIDDEN)
+    expect(serialized).toContain('run.web.alpha')
+    expect(
+      fake.statements.some(text => text.includes('khala_sync_changelog')),
+    ).toBe(true)
+  })
+
+  test('a failing database is fail-soft: typed outcome, log called, no throw', async () => {
+    const logged: Array<{ event: string; reason: string }> = []
+    const outcome = await projectAgentRunEvents(
+      {
+        binding: { connectionString: 'postgres://x' },
+        log: (event, fields) => {
+          logged.push({ event, reason: fields.reason })
+        },
+        makeSqlClient: () =>
+          Promise.resolve({
+            end: () => Promise.resolve(),
+            sql: Object.assign(() => Promise.reject(new Error('boom')), {
+              begin: () => Promise.reject(new Error('connection refused')),
+            }) as unknown as SyncSql,
+          }),
+      },
+      'run.web.gamma',
+      [runnerEvent('run.web.gamma', 2)],
+    )
+    expect(outcome.outcome).toBe('failed')
+    expect(logged).toEqual([
+      {
+        event: 'khala_sync_agent_run_projection_failed',
+        reason: 'projection_failed',
+      },
+    ])
+  })
+
+  test('a malformed event in the batch refuses without touching storage', async () => {
+    const outcome = await projectAgentRunEvents(
+      {
+        binding: { connectionString: 'postgres://x' },
+        makeSqlClient: () => {
+          throw new Error('must not be reached')
+        },
+      },
+      'run.web.delta',
+      [runnerEvent('run.web.delta', -1)],
     )
     expect(outcome.outcome).toBe('failed')
   })

@@ -2,8 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import { decodeAgentRunEntity } from '@openagentsinc/khala-sync'
 
-import { agentRunSyncProjectionRaw } from './omni-handlers'
-import { createQueuedAgentRun } from './omni-runs'
+import { agentRunSyncProjectionRaw, createQueuedAgentRun } from './omni-runs'
 
 /**
  * KS-6.6 (#8416) contract test: proves the EXACT glue between a real queued

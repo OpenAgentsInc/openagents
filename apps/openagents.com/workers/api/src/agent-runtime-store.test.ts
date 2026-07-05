@@ -14,6 +14,7 @@
 //     compare serves D1 and logs divergence; postgres serves Postgres
 //     with bounded retry and falls back to D1 on exhaustion.
 
+import type { SyncSql } from '@openagentsinc/khala-sync-server'
 import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 
@@ -24,6 +25,7 @@ import {
   makeAgentGoalEventRepositoryForEnv,
   makeAgentRuntimeMirror,
   makeDualWriteAgentRuntimeWriteStore,
+  makeOmniRunStoreForEnv,
   makeTraceStoreForEnv,
   type AgentRuntimeDiagnostic,
   type AgentRuntimeDiagnosticEvent,
@@ -31,7 +33,12 @@ import {
   type AgentRuntimeWriteStore,
   type PostgresAgentRuntimeStore,
 } from './agent-runtime-store'
-import { AGENT_RUNTIME_D1_SCHEMA, makeSqliteD1 } from './test/sqlite-d1'
+import { createQueuedAgentRun } from './omni-runs'
+import {
+  AGENT_RUNTIME_D1_SCHEMA,
+  makeSqliteD1,
+  SYNC_OUTBOX_D1_SCHEMA,
+} from './test/sqlite-d1'
 
 // ---------------------------------------------------------------------------
 // Fakes
@@ -635,5 +642,196 @@ describe('cancelActiveAgentRunsForBillingExhaustionForEnv', () => {
     } finally {
       sqlite.close()
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// KS-6.6 event-feed follow-up (#8416): `makeOmniRunStoreForEnv`'s universal
+// khala-sync `scope.agent_run.<runId>` producer wiring — the ONE factory
+// both `dependencies.makeBillingAwareOmniRunStore` and every bare
+// `makeOmniRunStoreForEnv(env)` call site in `omni-handlers.ts` route
+// through. Uses a transaction-capable (`.begin()`) fake Postgres client,
+// distinct from `makeScriptedSqlClient` above (which the KS-8.5 raw-table
+// mirror uses), because `projectAgentRun`/`projectAgentRunEvents` go through
+// `withSyncTransaction`.
+// ---------------------------------------------------------------------------
+
+const makeFakeSyncTxClient = () => {
+  const statements: Array<string> = []
+  const tx = (
+    strings: TemplateStringsArray,
+    ..._values: ReadonlyArray<unknown>
+  ): Promise<Array<Record<string, unknown>>> => {
+    const text = strings.join('$')
+    statements.push(text)
+    if (text.includes('khala_sync_scopes')) {
+      return Promise.resolve([{ last_version: 1 }])
+    }
+    if (text.includes('khala_sync_changelog')) {
+      return Promise.resolve([{ committed_at: '2026-07-05T12:00:01.000Z' }])
+    }
+    return Promise.resolve([])
+  }
+  const sql = Object.assign(tx, {
+    begin: <A>(fn: (t: typeof tx) => Promise<A>): Promise<A> => fn(tx),
+  }) as unknown as SyncSql
+  return {
+    makeSqlClient: async (_connectionString: string) => ({
+      end: () => Promise.resolve(),
+      sql,
+    }),
+    statements,
+  }
+}
+
+describe('makeOmniRunStoreForEnv KS-6.6 khala-sync agent-run projection', () => {
+  let sqlite: ReturnType<typeof makeSqliteD1>
+
+  beforeEach(() => {
+    sqlite = makeSqliteD1()
+    sqlite.exec(AGENT_RUNTIME_D1_SCHEMA)
+    sqlite.exec(SYNC_OUTBOX_D1_SCHEMA)
+  })
+
+  afterEach(() => {
+    sqlite?.close()
+  })
+
+  test('fires the run+event khala-sync producer on saveAgentRun AND every appendAgentRunEvents call', async () => {
+    const fakeSync = makeFakeSyncTxClient()
+    const store = makeOmniRunStoreForEnv(
+      {
+        // Isolate this test to the KS-6.6 producer: the pre-existing KS-8.5
+        // raw-table mirror is a separate, unrelated dual-write mechanism
+        // that would ALSO try (and fail-soft-fail) against this fake client.
+        KHALA_SYNC_AGENT_RUNTIME_DUAL_WRITE: 'off',
+        KHALA_SYNC_DB: { connectionString: 'postgres://fake' },
+        OPENAGENTS_DB: sqlite.db,
+      },
+      {},
+      { makeSqlClient: fakeSync.makeSqlClient },
+    )
+
+    const { run, events } = createQueuedAgentRun({
+      appOrigin: 'https://openagents.com',
+      goal: 'Run a bounded repo cleanup mission.',
+      repository: {
+        owner: 'OpenAgentsInc',
+        provider: 'github',
+        ref: 'main',
+        repo: 'openagents',
+      },
+      runId: 'run.ks66.alpha',
+      userId: 'user.alice',
+    })
+
+    await store.saveAgentRun(run, events)
+    const changelogWritesAfterCreate = fakeSync.statements.filter(text =>
+      text.includes('khala_sync_changelog'),
+    ).length
+    // ONE agent_run upsert + one per initial event.
+    expect(changelogWritesAfterCreate).toBe(1 + events.length)
+
+    await store.appendAgentRunEvents('run.ks66.alpha', [
+      {
+        artifactRefs: [],
+        createdAt: '2026-07-05T12:00:02.000Z',
+        externalEventId: null,
+        id: 'evt.ks66.2',
+        parentId: 'run.ks66.alpha',
+        payloadJson: null,
+        sequence: 2,
+        source: 'shc',
+        status: null,
+        summary: 'tool call: read file',
+        type: 'runner.progress',
+      },
+    ])
+    await store.appendAgentRunEvents('run.ks66.alpha', [
+      {
+        artifactRefs: [],
+        createdAt: '2026-07-05T12:00:03.000Z',
+        externalEventId: null,
+        id: 'evt.ks66.3',
+        parentId: 'run.ks66.alpha',
+        payloadJson: null,
+        sequence: 3,
+        source: 'shc',
+        status: null,
+        summary: 'tool call: edit file',
+        type: 'runner.progress',
+      },
+    ])
+
+    // Each ongoing append must ALSO reach the khala-sync changelog — one
+    // agent_run refresh + one agent_run_event per call — proving the
+    // producer fires on every append, not just at creation.
+    const changelogWritesTotal = fakeSync.statements.filter(text =>
+      text.includes('khala_sync_changelog'),
+    ).length
+    expect(changelogWritesTotal).toBe(changelogWritesAfterCreate + 2 * 2)
+  })
+
+  test('with no KHALA_SYNC_DB binding, zero Postgres calls (plain D1 only)', async () => {
+    const fakeSync = makeFakeSyncTxClient()
+    const store = makeOmniRunStoreForEnv(
+      { OPENAGENTS_DB: sqlite.db },
+      {},
+      { makeSqlClient: fakeSync.makeSqlClient },
+    )
+
+    const { run, events } = createQueuedAgentRun({
+      appOrigin: 'https://openagents.com',
+      goal: 'Run a bounded repo cleanup mission.',
+      repository: {
+        owner: 'OpenAgentsInc',
+        provider: 'github',
+        ref: 'main',
+        repo: 'openagents',
+      },
+      runId: 'run.ks66.beta',
+      userId: 'user.bob',
+    })
+
+    await store.saveAgentRun(run, events)
+    expect(fakeSync.statements).toHaveLength(0)
+  })
+
+  test('a caller-supplied afterAgentRunSyncChanges hook still runs alongside the khala-sync producer', async () => {
+    const fakeSync = makeFakeSyncTxClient()
+    const callerHookRuns: Array<string> = []
+    const store = makeOmniRunStoreForEnv(
+      {
+        KHALA_SYNC_AGENT_RUNTIME_DUAL_WRITE: 'off',
+        KHALA_SYNC_DB: { connectionString: 'postgres://fake' },
+        OPENAGENTS_DB: sqlite.db,
+      },
+      {
+        afterAgentRunSyncChanges: async run => {
+          callerHookRuns.push(run.id)
+        },
+      },
+      { makeSqlClient: fakeSync.makeSqlClient },
+    )
+
+    const { run, events } = createQueuedAgentRun({
+      appOrigin: 'https://openagents.com',
+      goal: 'Run a bounded repo cleanup mission.',
+      repository: {
+        owner: 'OpenAgentsInc',
+        provider: 'github',
+        ref: 'main',
+        repo: 'openagents',
+      },
+      runId: 'run.ks66.gamma',
+      userId: 'user.carol',
+    })
+
+    await store.saveAgentRun(run, events)
+
+    expect(callerHookRuns).toEqual(['run.ks66.gamma'])
+    expect(
+      fakeSync.statements.some(text => text.includes('khala_sync_changelog')),
+    ).toBe(true)
   })
 })

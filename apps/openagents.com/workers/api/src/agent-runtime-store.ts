@@ -92,6 +92,11 @@ import {
   type AgentGoalRuntime,
 } from './agent-goals'
 import {
+  projectAgentRun,
+  projectAgentRunEvents,
+  type ProjectAgentRunDependencies,
+} from './khala-sync-agent-run-projection'
+import {
   defaultMakeKhalaSyncSqlClient,
   type KhalaSyncHyperdriveBinding,
   type KhalaSyncPushSqlClient,
@@ -99,9 +104,13 @@ import {
 } from './khala-sync-push-routes'
 import { logWorkerRouteWarning } from './observability'
 import {
+  agentRunEventProjection,
+  agentRunSyncProjectionRaw,
   cancelActiveAgentRunsForBillingExhaustion,
   makeD1OmniRunStore,
+  type AgentRunRecord,
   type BillingCanceledAgentRun,
+  type OmniEventRecord,
   type OmniRunStore,
   type OmniRunStoreHooks,
 } from './omni-runs'
@@ -1389,15 +1398,85 @@ export const makeAgentDefinitionTriggerStoreForEnv = (
   }
 }
 
+/**
+ * KS-6.6 event-feed follow-up (#8416): fires the khala-sync
+ * `scope.agent_run.<runId>` producer (BOTH the run/goal snapshot and the
+ * new event-feed companion entities) on every `saveAgentRun`/
+ * `appendAgentRunEvents` call, whenever a `KHALA_SYNC_DB` binding exists —
+ * `undefined` when there is no binding so `makeOmniRunStoreForEnv` does zero
+ * extra work in that case (same "with no binding everything degrades to
+ * plain D1" discipline as the KS-8.5 raw-table mirror above).
+ *
+ * This is the fix for the "integration gap" the 2026-07-05 client-repoint
+ * research recorded in RUNBOOK.md: the KS-6.6 producer previously only ran
+ * at the three `omni-handlers.ts` run-CREATION call sites (via their own
+ * explicit `projectAgentRunSyncScope` calls), never on the ONGOING
+ * `appendAgentRunEvents` path that fires throughout a run's life. Baking it
+ * in HERE — the one factory both `dependencies.makeBillingAwareOmniRunStore`
+ * and every bare `makeOmniRunStoreForEnv(env)` call site route through —
+ * makes the producer fire universally without each call site opting in.
+ */
+const khalaSyncAgentRunProjectionHook = (
+  env: AgentRuntimeStoreEnv,
+  options: MakeAgentRuntimeStoreOptions,
+):
+  | ((
+      run: AgentRunRecord,
+      events: ReadonlyArray<OmniEventRecord>,
+    ) => Promise<void>)
+  | undefined => {
+  const binding = env.KHALA_SYNC_DB
+  if (binding === undefined || binding.connectionString.length === 0) {
+    return undefined
+  }
+  return async (run, events) => {
+    const deps: ProjectAgentRunDependencies = {
+      binding,
+      log: (event, fields) => logWorkerRouteWarning(event, fields),
+      makeSqlClient: options.makeSqlClient,
+    }
+    // Both calls are individually fail-soft (never throw); run them
+    // sequentially so an event-feed failure never skips the run/goal
+    // snapshot refresh (the more load-bearing of the two).
+    await projectAgentRun(deps, run.id, agentRunSyncProjectionRaw(run))
+    if (events.length > 0) {
+      await projectAgentRunEvents(
+        deps,
+        run.id,
+        events.map(agentRunEventProjection),
+      )
+    }
+  }
+}
+
 /** Drop-in for `makeD1OmniRunStore(openAgentsDatabase(env), hooks)`. */
 export const makeOmniRunStoreForEnv = (
   env: AgentRuntimeStoreEnv,
   hooks: OmniRunStoreHooks = {},
   options: MakeAgentRuntimeStoreOptions = {},
 ): OmniRunStore => {
+  const syncProjectionHook = khalaSyncAgentRunProjectionHook(env, options)
+  const mergedHooks: OmniRunStoreHooks =
+    syncProjectionHook === undefined
+      ? hooks
+      : {
+          ...hooks,
+          afterAgentRunSyncChanges: async (run, events) => {
+            // Isolate the caller-supplied hook from ours: a throw in one
+            // must never skip the other (both must run every time).
+            try {
+              await hooks.afterAgentRunSyncChanges?.(run, events)
+            } catch {
+              // The caller's own hook is a separate concern; `omni-runs.ts`'s
+              // `callAfterAgentRunSyncChangesHook` is defense in depth for
+              // this same rule, but do not rely on call order for it.
+            }
+            await syncProjectionHook(run, events)
+          },
+        }
   const base = makeD1OmniRunStore(
     openAgentsDatabase(env as { OPENAGENTS_DB: D1Database }),
-    hooks,
+    mergedHooks,
   )
   const mirror = mirrorForEnv(env, options)
   // KS-8.17 (#8361): `autopilot_token_usage` (supervision long-tail registry)

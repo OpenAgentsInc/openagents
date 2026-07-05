@@ -3678,6 +3678,84 @@ this issue's own guardrail, not a verified-live cutover. #8416 stays open
 with this precise blocker; no code changed in this pass, only this research
 recorded.
 
+### 2026-07-05 producer-completeness follow-up — BOTH gaps closed, client repoint still NOT done (#8416)
+
+This pass closes both gaps the research above found, so a future client
+repoint has a real, complete producer to repoint onto. **The client itself
+(`apps/web/src/subscriptions.ts`) is still NOT repointed** — that remains a
+separate, explicitly deferred follow-up; this pass is scoped to the producer
+side only.
+
+**Gap 1 (schema) — closed with a companion multi-entity, not a schema
+change to `AgentRunEntity` itself.** `AgentRunEntity` stays exactly what it
+was: a single flattened run+goal post-image, one per scope. A NEW companion
+entity, `AgentRunEventEntity` (`packages/khala-sync/src/agent-run.ts`,
+`AGENT_RUN_EVENT_ENTITY_TYPE = "agent_run_event"`), rides the SAME
+`scope.agent_run.<runId>` scope as its parent run entity, one changelog row
+per event keyed by the event's own id — a "many entities per scope"
+extension of the "one entity per scope" rule the original KS-6.6 pass used,
+adapted from `scope.public.gym-run-progress`'s runRef-keyed convention (here
+every event shares its parent RUN's scope instead of one shared public
+scope). The shape mirrors the ALREADY-public-safe `agentRunEventProjection`
+(`omni-runs.ts`) field for field — `summary`/`payloadJson` are the exempt
+content fields (mirroring `goal`'s treatment on `AgentRunEntity`);
+`payloadJson` is additionally scrubbed of credential-shaped material at D1
+WRITE time (`omni-runs.ts`'s `jsonOrNull`), so the redaction guard here is
+defense in depth, not the first line. Projector:
+`packages/khala-sync-server/src/agent-run-projection.ts`'s
+`projectAgentRunEventsBestEffort` (batch, one Postgres transaction per call,
+all-or-nothing per batch, FAIL-SOFT). Worker glue:
+`khala-sync-agent-run-projection.ts`'s `projectAgentRunEvents`.
+
+**Gap 2 (integration) — closed by baking BOTH producers into
+`agent-runtime-store.ts`'s `makeOmniRunStoreForEnv` unconditionally**, not by
+threading a new argument through every existing call site.
+`makeOmniRunStoreForEnv` is the ONE factory every `omni-handlers.ts` call
+site routes through (both `dependencies.makeBillingAwareOmniRunStore` and
+every bare `makeOmniRunStoreForEnv(env)` call). A new `OmniRunStoreHooks`
+field, `afterAgentRunSyncChanges`, fires from `omni-runs.ts`'s
+`makeD1OmniRunStore` right after `appendAgentRunSyncChanges` writes the
+legacy D1 sync-outbox rows — from BOTH `saveAgentRun` (creation) AND
+`appendAgentRunEvents` (the ONGOING path that fires on every runner-posted
+event/status transition throughout a run's life — the exact path the
+research found the KS-6.6 producer was missing). `makeOmniRunStoreForEnv`
+wires a default implementation of that hook (`khalaSyncAgentRunProjectionHook`)
+whenever a `KHALA_SYNC_DB` binding exists, calling `projectAgentRun` (the
+run/goal snapshot, refreshed on every append now — not just at creation) AND
+`projectAgentRunEvents` (the new event-feed batch) together. With no binding,
+this is a no-op (same "degrades to plain D1" discipline as the pre-existing
+KS-8.5 raw-table mirror in the same file). The hook call itself is wrapped in
+`omni-runs.ts`'s `callAfterAgentRunSyncChangesHook` (swallows any throw) as
+defense in depth on top of `projectAgentRun`/`projectAgentRunEvents` already
+being individually fail-soft by contract — a broken khala-sync write can
+never block or fail a real run's D1 write path.
+
+The now-redundant explicit `projectAgentRunSyncScope` calls at the three
+original `omni-handlers.ts` creation call sites were LEFT IN PLACE (not
+removed) — they still fire correctly and are now simply a duplicate
+same-image upsert alongside the universal hook's own creation-time call,
+which is harmless (idempotent upsert, same post-image) and lower-risk than
+touching those three already-tested call sites in this pass.
+
+**Evidence this fires on every append, not just the first:**
+- `packages/khala-sync-server/src/agent-run-projection.test.ts` — real local-Postgres integration test calling `projectAgentRunEventsBestEffort` three separate times against the SAME run scope and asserting the changelog `version` strictly increases each time (not just once).
+- `apps/openagents.com/workers/api/src/omni-runs.test.ts` — real SQLite-backed-D1 integration test calling `store.saveAgentRun` once then `store.appendAgentRunEvents` three separate times, asserting the `afterAgentRunSyncChanges` hook fires FOUR times total (not once), each time with the correct run + new event.
+- `apps/openagents.com/workers/api/src/agent-runtime-store.test.ts` — exercises the actual production factory (`makeOmniRunStoreForEnv`) end to end against a fake transaction-capable Postgres client, asserting a `khala_sync_changelog` write for the run AND for each event on `saveAgentRun` and on every subsequent `appendAgentRunEvents` call, plus that a caller-supplied hook and the new producer both run, and that a missing `KHALA_SYNC_DB` binding degrades to zero Postgres calls.
+- `packages/khala-sync/src/agent-run.test.ts` and `apps/openagents.com/workers/api/src/khala-sync-agent-run-projection.test.ts` — contract/unit coverage for `AgentRunEventEntity` and `projectAgentRunEvents` (redaction, fail-soft failure paths, skip-no-binding/skip-no-events).
+
+**What is STILL NOT done, and stays a separate follow-up:** the client
+repoint itself. `apps/web/src/subscriptions.ts` still opens the LEGACY
+`/api/sync/agent-run/<runId>/stream` WebSocket for the active chat run. Both
+producer-side gaps that blocked a SAFE repoint are now closed, but the
+repoint is a distinct, not-yet-attempted change (updating
+`syncScopesForModel`/`syncAgentRunScope` to subscribe via
+`GET/WS /api/sync/connect` instead, verifying `transitions.ts`'s
+`modelWithIncrementalActiveRunPatch` gets equivalent behavior from the new
+`agent_run`/`agent_run_event` entities instead of the legacy `agent_runs`/
+`agent_run_events` D1 collections, and only THEN deleting the legacy
+`notifySyncScopes` pokes). #8416 stays open; do not treat this pass as
+closing it.
+
 ## Settled-feed public projection — full cutover complete, continued (KS-6.4, #8414)
 
 **UPDATE (2026-07-05): FULL CUTOVER COMPLETE (KS-6.4, #8414).** Verified the

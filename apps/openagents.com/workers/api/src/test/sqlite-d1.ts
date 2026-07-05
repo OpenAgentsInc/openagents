@@ -679,6 +679,46 @@ CREATE TABLE forum_work_request_results (
 `
 
 /**
+ * The legacy D1 sync-outbox tables (`migrations/0001_openagents_sync.sql`).
+ * `@openagentsinc/sync-worker`'s `makeD1SyncOutboxRepository` writes through
+ * these on the SAME D1 handle as the agent-runtime domain tables below, so
+ * any test exercising `omni-runs.ts`'s `appendAgentRunSyncChanges` (e.g. via
+ * `makeD1OmniRunStore`'s `saveAgentRun`/`appendAgentRunEvents`) needs both
+ * schemas loaded into the same `SqliteD1`.
+ */
+export const SYNC_OUTBOX_D1_SCHEMA = `
+CREATE TABLE sync_scopes (
+  scope TEXT PRIMARY KEY,
+  last_seq INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE sync_changes (
+  scope TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  collection TEXT NOT NULL,
+  op TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  value_json TEXT,
+  patch_json TEXT,
+  mutation_id TEXT,
+  actor_id TEXT,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (scope, seq)
+);
+
+CREATE TABLE sync_mutations (
+  mutation_id TEXT PRIMARY KEY,
+  scope TEXT NOT NULL,
+  actor_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  result_json TEXT,
+  created_at TEXT NOT NULL
+);
+`
+
+/**
  * The D1 DDL for the KS-8.5 agent runtime metadata domain (worker
  * migrations 0019/0022/0023/0027/0028/0029/0228/0229/0230/0236/0279/0280/
  * 0281/0282/0284, condensed to the live column set — FKs to users/teams

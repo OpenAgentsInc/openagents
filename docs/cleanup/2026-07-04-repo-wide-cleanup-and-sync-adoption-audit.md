@@ -497,6 +497,21 @@ and the D1 `sync_*` tables have zero remaining users and drop cleanly**
      Full detail + exact line refs in `docs/khala-sync/RUNBOOK.md`'s
      "2026-07-05 client-repoint research" subsection. No repoint or legacy
      deletion done; #8416 stays open with this precise blocker.
+   - **2026-07-05 producer-completeness follow-up (#8416):** closed BOTH
+     gaps from the correction above. A new companion `AgentRunEventEntity`
+     (`packages/khala-sync/src/agent-run.ts`) rides the SAME
+     `scope.agent_run.<runId>` scope as the run entity, one row per event,
+     closing the schema gap. `agent-runtime-store.ts`'s
+     `makeOmniRunStoreForEnv` now bakes BOTH the run/goal snapshot producer
+     and the new event-feed producer into every `saveAgentRun`/
+     `appendAgentRunEvents` call unconditionally (whenever a `KHALA_SYNC_DB`
+     binding exists), closing the integration gap — proven with a real
+     multi-append integration test showing the scope version advances on
+     every call, not just the first. Full detail in `docs/khala-sync/
+     RUNBOOK.md`'s "2026-07-05 producer-completeness follow-up" subsection.
+     **The client repoint itself is STILL NOT done** — `apps/web/src/
+     subscriptions.ts` still opens the legacy socket; #8416 stays open for
+     that remaining step.
 5. **Public aggregates** (demand-mix, model-mix, tokens-history, public activity timeline): project off live-at-read D1 onto `scope.public.*` counters — the Postgres rollup twins already exist from KS-8.2. (M, low)
    - **2026-07-05 update (KS-6.7, #8417):** shipped model-mix, demand-mix,
      channel-mix, and tokens-history as a `scope.public.tokens-served-aggregates`

@@ -66,7 +66,7 @@ import {
   type DeploymentRecord,
   type OmniEventRecord,
   type OmniRunStore,
-  agentRunProjection,
+  agentRunSyncProjectionRaw,
   checkShcControlHealth,
   continueAgentRunOnShc,
   createAgentRunId,
@@ -84,7 +84,6 @@ import {
   parseGithubRepository,
   publicAgentRunBundle,
   publicDeploymentBundle,
-  publicGoalContext,
   readAgentRunById,
   runStatusFromText,
 } from './omni-runs'
@@ -652,53 +651,6 @@ const applyGoalRuntimeEvents = (
   )
 
 /**
- * Build the already public-safe raw shape `@openagentsinc/khala-sync`'s
- * `AgentRunEntity` decodes (KS-6.6, #8416) — reuses `agentRunProjection`/
- * `publicGoalContext` (the SAME fields already shipped to authenticated
- * clients over the legacy sync-worker outbox / the mission-launch HTTP
- * response), so this invents no new public-safe surface.
- */
-/** Exported for the KS-6.6 contract test (`omni-handlers-agent-run-projection.test.ts`) only. */
-export const agentRunSyncProjectionRaw = (run: AgentRunRecord): unknown => {
-  const projection = agentRunProjection(run)
-  const goalContext = publicGoalContext(run.assignment)
-
-  return {
-    backend: projection.backend,
-    canceledAt: run.canceledAt,
-    completedAt: projection.completedAt,
-    createdAt: projection.createdAt,
-    failedAt: projection.failedAt,
-    goal: projection.goal,
-    goalId: projection.goalId,
-    ...(goalContext === undefined
-      ? {}
-      : {
-          goalContext: {
-            goalId: goalContext.goalId,
-            objective: goalContext.objective,
-            remainingTokens: goalContext.remainingTokens,
-            status: goalContext.status,
-            timeUsedSeconds: goalContext.timeUsedSeconds,
-            tokenBudget: goalContext.tokenBudget,
-            tokensUsed: goalContext.tokensUsed,
-            visibility: goalContext.visibility,
-          },
-        }),
-    projectId: projection.projectId,
-    repository: projection.repository,
-    routeId: projection.routeId,
-    runId: projection.id,
-    runtime: projection.runtime,
-    startedAt: projection.startedAt,
-    status: projection.status,
-    teamId: projection.teamId,
-    updatedAt: projection.updatedAt,
-    userId: projection.userId,
-  }
-}
-
-/**
  * Dual-write a queued/relaunched agent run into `scope.agent_run.<runId>`
  * (KS-6.6, #8416) ALONGSIDE the legacy `notifySyncScopes(env,
  * syncScopeForAgentRun(run))` poke at this issue's three call sites. Never
@@ -706,6 +658,17 @@ export const agentRunSyncProjectionRaw = (run: AgentRunRecord): unknown => {
  * legacy poke remains the sole delivery path for the live web client until
  * `apps/web/src/subscriptions.ts` is repointed to the khala-sync connect
  * surface for this scope (see docs/khala-sync/RUNBOOK.md).
+ *
+ * KS-6.6 event-feed follow-up (#8416): `agent-runtime-store.ts`'s
+ * `makeOmniRunStoreForEnv` now ALSO fires this SAME run/goal projection
+ * (plus a new `agent_run_event` companion projection) unconditionally from
+ * `store.saveAgentRun`/`store.appendAgentRunEvents` whenever a
+ * `KHALA_SYNC_DB` binding exists — including on every ONGOING event append,
+ * not just at creation. The three explicit calls below are therefore now a
+ * harmless duplicate of that universal wiring at creation time (both upsert
+ * the same post-image); they were left in place rather than removed, to
+ * avoid touching these already-tested call sites in this pass. See
+ * docs/khala-sync/RUNBOOK.md's "2026-07-05 producer-completeness follow-up".
  */
 const projectAgentRunSyncScope = (
   workerEnv: OmniHandlerEnv,
