@@ -618,9 +618,10 @@ LG-4 claim safety, and bundle budget before deploy review. See
 2026-07-04 TS-6 slice note: the Start app now serves `/khala`, `/tassadar`,
 `/gym`, `/activity`, `/business/kpi/$engagementRef`, `/clients-preview`,
 `/components`, `/components/$family`, `/download`, `/login`, `/preview/landing`,
-`/run`, `/sites/demo-checkout`, and `/pylon/codex/assignments/$assignmentRef`
-and `/artanis/traces` with route parity tests, keeping the existing Foldkit
-counterparts until a real production route cutover allows delete-as-you-go. See
+`/run`, `/sites/demo-checkout`, `/pylon/codex/assignments/$assignmentRef`,
+`/artanis/traces`, `/terms`, and `/privacy` with route parity tests, keeping
+the existing Foldkit counterparts until a real production route cutover
+allows delete-as-you-go. See
 `docs/fable/2026-07-04-ts-6-start-khala-tassadar-route-slice.md`.
 
 2026-07-04 TS-8 scaffold note: `clients/khala-mobile` now holds the Expo SDK 57

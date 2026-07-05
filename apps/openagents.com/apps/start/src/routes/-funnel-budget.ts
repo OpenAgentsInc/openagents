@@ -33,6 +33,8 @@ const routeBudgets = [
   { path: '/login', marker: 'Log in to OpenAgents' },
   { path: '/preview/landing', marker: 'Software, built by agents.' },
   { path: '/run', marker: 'Tassadar lives in the Verse' },
+  { path: '/terms', marker: 'Terms of Service' },
+  { path: '/privacy', marker: 'Privacy Policy' },
 ] as const
 
 const assetDir = join(import.meta.dir, '../../dist/client/assets')

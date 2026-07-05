@@ -9,8 +9,10 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as TassadarRouteImport } from './routes/tassadar'
 import { Route as RunRouteImport } from './routes/run'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as KhalaRouteImport } from './routes/khala'
 import { Route as GymRouteImport } from './routes/gym'
@@ -36,6 +38,11 @@ import { Route as SitesDemoCheckoutReturnActionRouteImport } from './routes/site
 import { Route as BusinessKpiEngagementRefRouteImport } from './routes/business/kpi/$engagementRef'
 import { Route as PylonCodexAssignmentsAssignmentRefRouteImport } from './routes/pylon/codex/assignments/$assignmentRef'
 
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TassadarRoute = TassadarRouteImport.update({
   id: '/tassadar',
   path: '/tassadar',
@@ -44,6 +51,11 @@ const TassadarRoute = TassadarRouteImport.update({
 const RunRoute = RunRouteImport.update({
   id: '/run',
   path: '/run',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -182,8 +194,10 @@ export interface FileRoutesByFullPath {
   '/gym': typeof GymRoute
   '/khala': typeof KhalaRouteWithChildren
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/run': typeof RunRoute
   '/tassadar': typeof TassadarRoute
+  '/terms': typeof TermsRoute
   '/artanis/traces': typeof ArtanisTracesRoute
   '/autopilot/legal': typeof AutopilotLegalRoute
   '/blog/$slug': typeof BlogSlugRoute
@@ -210,8 +224,10 @@ export interface FileRoutesByTo {
   '/gym': typeof GymRoute
   '/khala': typeof KhalaRouteWithChildren
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/run': typeof RunRoute
   '/tassadar': typeof TassadarRoute
+  '/terms': typeof TermsRoute
   '/artanis/traces': typeof ArtanisTracesRoute
   '/autopilot/legal': typeof AutopilotLegalRoute
   '/blog/$slug': typeof BlogSlugRoute
@@ -239,8 +255,10 @@ export interface FileRoutesById {
   '/gym': typeof GymRoute
   '/khala': typeof KhalaRouteWithChildren
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/run': typeof RunRoute
   '/tassadar': typeof TassadarRoute
+  '/terms': typeof TermsRoute
   '/artanis/traces': typeof ArtanisTracesRoute
   '/autopilot/legal': typeof AutopilotLegalRoute
   '/blog/$slug': typeof BlogSlugRoute
@@ -269,8 +287,10 @@ export interface FileRouteTypes {
     | '/gym'
     | '/khala'
     | '/login'
+    | '/privacy'
     | '/run'
     | '/tassadar'
+    | '/terms'
     | '/artanis/traces'
     | '/autopilot/legal'
     | '/blog/$slug'
@@ -297,8 +317,10 @@ export interface FileRouteTypes {
     | '/gym'
     | '/khala'
     | '/login'
+    | '/privacy'
     | '/run'
     | '/tassadar'
+    | '/terms'
     | '/artanis/traces'
     | '/autopilot/legal'
     | '/blog/$slug'
@@ -325,8 +347,10 @@ export interface FileRouteTypes {
     | '/gym'
     | '/khala'
     | '/login'
+    | '/privacy'
     | '/run'
     | '/tassadar'
+    | '/terms'
     | '/artanis/traces'
     | '/autopilot/legal'
     | '/blog/$slug'
@@ -354,8 +378,10 @@ export interface RootRouteChildren {
   GymRoute: typeof GymRoute
   KhalaRoute: typeof KhalaRouteWithChildren
   LoginRoute: typeof LoginRoute
+  PrivacyRoute: typeof PrivacyRoute
   RunRoute: typeof RunRoute
   TassadarRoute: typeof TassadarRoute
+  TermsRoute: typeof TermsRoute
   ArtanisTracesRoute: typeof ArtanisTracesRoute
   AutopilotLegalRoute: typeof AutopilotLegalRoute
   CodeDownloadRoute: typeof CodeDownloadRoute
@@ -367,6 +393,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/tassadar': {
       id: '/tassadar'
       path: '/tassadar'
@@ -379,6 +412,13 @@ declare module '@tanstack/react-router' {
       path: '/run'
       fullPath: '/run'
       preLoaderRoute: typeof RunRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -629,8 +669,10 @@ const rootRouteChildren: RootRouteChildren = {
   GymRoute: GymRoute,
   KhalaRoute: KhalaRouteWithChildren,
   LoginRoute: LoginRoute,
+  PrivacyRoute: PrivacyRoute,
   RunRoute: RunRoute,
   TassadarRoute: TassadarRoute,
+  TermsRoute: TermsRoute,
   ArtanisTracesRoute: ArtanisTracesRoute,
   AutopilotLegalRoute: AutopilotLegalRoute,
   CodeDownloadRoute: CodeDownloadRoute,

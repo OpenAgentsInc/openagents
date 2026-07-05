@@ -222,6 +222,34 @@ trace tree for Artanis.
   test keeps raw prompts/traces, trajectory JSON, bearer tokens, and API keys
   absent.
 
+## Landed Slice 14: Terms And Privacy
+
+The Start staging app now owns `/terms` and `/privacy` as standalone legal
+content pages, ported from the Foldkit `apps/web/src/page/terms.ts` and
+`apps/web/src/page/privacy.ts` routes.
+
+- Both routes preserve the copy verbatim, including the `PENDING OWNER /
+  LEGAL REVIEW` notice banner, the `Last updated: 2026-06-23` date, and every
+  numbered section's exact legal text (this is a legal document, so the
+  original Foldkit language could not be paraphrased).
+- The raw-hex Foldkit styling (`#000`, `#f1efe8`, `#ffb400`, `#7da3d9`) was
+  swapped for the equivalent `khala-*` design tokens (`khala-void`,
+  `khala-text`, `khala-warning`, `khala-energy-soft`/`khala-energy-cyan`) per
+  the epic's StarCraft-token requirement.
+- `/terms` and `/privacy` add `data-route="terms"` / `data-route="privacy"`
+  anchors; the Foldkit originals had no `data-route` DOM contract for these
+  two pages, so this is additive, not a behavior change.
+- A shared `-legal-components.tsx` holds the section/paragraph/bullet
+  helpers so the two pages do not duplicate ~40 lines of layout/typography
+  boilerplate.
+- Both routes were added to the Start budget list and `routeTree.gen.ts` was
+  regenerated; total client JS stayed at 628.1 KiB (well under the 760 KiB
+  budget), with each new route chunk under 8 KiB.
+- This slice keeps the old Foldkit `terms.ts` / `privacy.ts` pages in place
+  in `apps/web`, same as every prior TS-6 slice: the live `openagents.com`
+  Worker still serves `apps/web/dist`, so deleting the Foldkit counterpart
+  now would remove the live page from production before any cutover.
+
 ## Boundary
 
 This is not the final TS-6 closure. The live `openagents.com` Worker still
