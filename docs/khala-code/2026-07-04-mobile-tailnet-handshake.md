@@ -2506,3 +2506,110 @@ entity shapes recorded in the MC-7 proof instead.
   minutes later without any action from this pass. Not something this pass
   fixed or needed to fix, but worth flagging as ambient risk on this shared
   Mac for whoever runs the next heavy build here.
+
+### Owner-reported live desktop bugs (2026-07-05), root-caused and fixed
+
+Following this pass's real cross-device testing (which created several test
+threads directly in the owner's own real Khala Code Desktop chat sidebar —
+"Codex desktop-to-mobile sync test", "Claude desktop-to-mobile sync test",
+"Mobile-started Codex/Claude session test"), the owner reported two live,
+reproducible bugs while actively using the app: (1) a chat title appearing
+twice in the sidebar as two distinguishable entries, and (2) clicking a
+"Claude session" row failing with "This chat couldn't be opened. Its
+session may be missing or unavailable — try again or start a new chat."
+
+Both were investigated and fixed on a separate, scoped pass. Neither turned
+out to be caused by the `runtime_event`/`runtime_turn` render gap closed
+above (that gap was about a thread rendering with a missing assistant
+reply once opened; these two bugs are about the sidebar list and the
+open-thread path itself), though the investigation deliberately checked
+that possibility first given the overlapping area and timing.
+
+**Bug 1 (duplicate sidebar rows) — real root cause not fully pinned to a
+single mechanism, but the practical, defensible fix is a rendering-layer
+identity guarantee that holds regardless of which upstream path produces a
+duplicate.** Two places could theoretically surface the same thread id
+twice: the Khala Sync `chat_thread` projection (`chatThreadsForSidebar` in
+`packages/khala-sync-db-collection/src/index.ts`) reads raw overlay
+entities keyed by `entityId`, not `threadId` — so two distinct entity ids
+that happen to carry the same `threadId` (e.g. a retried mutation that
+created a second entity id instead of reusing the original) would
+previously render as two rows with an identical title. Separately, the
+sidebar's own `groupThreads()` projection
+(`clients/khala-code-desktop/src/ui/codex-thread-sidebar-react.tsx`) built
+each visual group by mapping `group.threadIds` to thread objects with no
+cross-group dedup, so a thread id listed in more than one group would also
+render twice. Both are now fixed: `chatThreadsForSidebar` collapses
+same-`threadId` entities to the most recently updated one before sorting,
+and `groupThreads()` tracks rendered ids across all groups and skips a
+repeat. This is intentionally defense-in-depth — it closes the symptom the
+owner saw regardless of which upstream mechanism actually produced it in
+this instance, without merging two genuinely distinct thread ids that
+happen to share a similar title.
+
+**Bug 2 (Claude session won't open) — root cause fully pinned.** The
+session-catalog projection
+(`clients/khala-code-desktop/src/shared/session-catalog.ts`) that feeds the
+sidebar's local (non-Khala-Sync) thread list has an `isResumableCatalogEntry`
+gate: a Codex entry is only offered as a clickable/resumable chat if the
+Codex app-server's own `listThreads()` confirmed it live, OR its id is
+UUID-shaped (the only format the app-server ever assigns to a real
+resumable thread) — legacy/stored-only Codex records that fail both checks
+render as a disabled "Stored Codex session" row instead. The equivalent
+Claude branch was missing this gate entirely: `if (entry.harnessKind !==
+"codex") return true` marked *every* Claude catalog entry resumable
+unconditionally, including entries sourced only from this desktop's own
+lightweight bookkeeping store (`claude-sessions.json`, which just maps a
+desktop-launch session ref to the last Claude thread id it touched) with no
+confirmation from the Claude Agent SDK's own `listSessions()` and no
+UUID-shaped id. Such a record renders with the generic fallback title
+"Claude session" (no real title/preview data available) and, when clicked,
+attempts a genuine resume that fails with the SDK's internal "no rollout
+found"/"invalid session id" error — correctly mapped to the friendly
+"couldn't be opened" message by the existing
+`friendlyKhalaCodeCodexThreadOpenErrorMessage` machinery, but the entry
+never should have been offered as a normal clickable chat in the first
+place. Fixed by generalizing `isResumableCatalogEntry` to apply the same
+UUID-or-live-source gate to both harnesses, and generalizing the "Stored
+Codex session" fallback title/`unavailableReason` copy to name whichever
+harness (`Stored Claude session`, with a Claude-specific `unavailableReason`
+string) actually produced the record.
+
+**Test evidence** (all green, run in this pass, after rebasing onto the
+`runtime_event`/render-gap fix above with no conflicts — the two changes
+touch disjoint regions of the shared files):
+
+- `packages/khala-sync-db-collection/src/index.test.ts`: new unit test
+  proving two `ChatThreadEntity` rows sharing a `threadId` (title "hello
+  from a real Khala Code chat session", matching the owner's report)
+  collapse to the single freshest row.
+- `clients/khala-code-desktop/tests/codex-thread-sidebar.test.ts`: new DOM
+  test mounting the real sidebar with a `listThreads()` result that lists
+  one thread id from two different groups, proving exactly one row and one
+  title element render.
+- `clients/khala-code-desktop/tests/session-catalog.test.ts`: two new
+  tests — a stored-only Claude record with a non-UUID id now projects to a
+  disabled "Stored Claude session" row (`resumable: false`, with the
+  Claude-specific `unavailableReason`), and a stored-only Claude record
+  with a genuine UUID-shaped id stays resumable even without a live
+  `listThreads()` confirmation (proving the fix doesn't over-restrict real
+  sessions).
+- Both fixes landed as enforced behavior contracts in
+  `clients/khala-code-desktop/src/contracts/ux-contracts.ts` (and the human
+  doc `docs/khala-code/khala-code-ux-contract.md`):
+  `khala_code.history.no_duplicate_thread_rows.v1` and
+  `khala_code.chat.claude_stored_session_records_not_resumed.v1`.
+- Full suites green: `packages/khala-sync-db-collection` (8/8),
+  `clients/khala-code-desktop` (729/731 — the same 2 pre-existing,
+  unrelated `khalaCodePlanStatus`/`khalaCodePlanPurchase` failures called
+  out above, confirmed unaffected by this diff). `bun run typecheck` clean
+  in both packages.
+- Not independently re-verified against a live running desktop instance in
+  this pass: this Mac had a concurrent desktop dev process running from a
+  different agent's worktree at the time (electrobun dev, PID observed via
+  `ps aux`), and this pass deliberately avoided touching or restarting it
+  to not disrupt that agent's active work. The DOM-mounted sidebar test and
+  the session-catalog unit tests exercise the real, unmodified production
+  code paths (`mountCodexThreadSidebar`, `readKhalaCodeDesktopSessionCatalog`,
+  `sessionCatalogEntryToThreadSummary`) rather than a reimplementation, which
+  is the practical equivalent short of a live screenshot.
