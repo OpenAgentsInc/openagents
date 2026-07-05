@@ -83,22 +83,27 @@
             aria-label="Composer attachments"
             hidden
           ></div>
-          <textarea
+          <div
             id="composer-input"
             class="oa-ai-command-composer-textarea"
-            name="khala-code-message"
-            rows="2"
-            autocomplete="off"
+            role="textbox"
+            contenteditable="plaintext-only"
+            tabindex="0"
             autofocus
             spellcheck="true"
-            placeholder="Ask for follow-up changes"
+            aria-multiline="true"
             aria-label="Message Khala Code"
+            aria-placeholder="Ask for follow-up changes"
             aria-describedby="composer-a11y"
+            data-placeholder="Ask for follow-up changes"
+            data-empty="true"
             data-oa-command-composer-textarea
             data-oa-command-composer-native-editing="true"
+            data-oa-command-composer-rich-editing="true"
+            data-oa-command-composer-mode="normal"
             data-oa-command-composer-focus-after-submit
             data-oa-command-composer-autofocus
-          ></textarea>
+          ></div>
           <div
             id="slash-command-palette"
             class="khala-code-slash-command-palette"

@@ -1,7 +1,7 @@
 # Khala Code Desktop / OpenCode Desktop Parity Gap Audit
 
 Date: 2026-07-05
-Status: audit / implementation direction. No code changed by this doc.
+Status: audit / implementation roadmap. First #8435 implementation pass complete.
 Scope: `projects/repos/opencode/packages/desktop`, `projects/repos/opencode/packages/app`, and `clients/khala-code-desktop`.
 
 ## Executive Decision
@@ -560,6 +560,12 @@ gap because it is the most frequently used interaction surface.
 Issue: build the rich contenteditable composer foundation
 ([#8435](https://github.com/OpenAgentsInc/openagents/issues/8435)).
 
+- Status: first implementation pass complete on 2026-07-05. Khala Code desktop
+  now uses a contenteditable plaintext composer surface with DOM/plain-text
+  normalization, paste normalization, explicit normal/shell mode state, per-mode
+  prompt history, slash-command continuity, IME-safe Enter handling, and
+  multiline visual-smoke coverage. Model/provider controls, composer docks, and
+  richer attachment previews remain in the follow-on issues below.
 - Scope: contenteditable editor, DOM normalization, multiline handling, prompt
   history, normal mode, shell mode, slash popover integration, and keyboard-safe
   submission behavior.

@@ -95,7 +95,7 @@ export type ComposerVisualCaptureResult = Readonly<{
 }>
 
 export const COMPOSER_VISUAL_SAFE_PROMPT =
-  "Synthetic visual smoke prompt: summarize the public onboarding flow."
+  "Synthetic visual smoke prompt:\nSummarize the public onboarding flow.\nKeep the composer focused while this multiline draft wraps across the editor."
 export const COMPOSER_VISUAL_SMOKE_HARNESS = "preview_ui_codex_harness_shell"
 
 export const composerVisualPlan = (): ComposerVisualPlan => ({

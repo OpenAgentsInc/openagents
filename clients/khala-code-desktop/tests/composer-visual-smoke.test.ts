@@ -15,6 +15,8 @@ describe("composer visual smoke", () => {
     const plan = composerVisualPlan()
 
     expect(validatePublicSafeComposerPrompt(plan.prompt)).toBe(true)
+    expect(plan.prompt).toContain("\n")
+    expect(plan.prompt.length).toBeGreaterThan(100)
     expect(plan.targets.map(target => target.name)).toEqual([
       "khala-code-desktop",
       "openagents-khala-chat",

@@ -1029,7 +1029,6 @@ button {
 #composer-input {
   min-height: 3.45rem;
   width: 100%;
-  resize: none;
   border: 0;
   background: transparent;
   padding: 0;
@@ -1039,10 +1038,58 @@ button {
   font-size: 0.8125rem;
   line-height: 1.55;
   outline: none;
+  overflow-wrap: anywhere;
+  overflow-y: auto;
+  user-select: text;
+  white-space: pre-wrap;
 }
 
-#composer-input::placeholder {
+#composer-input[data-empty="true"]::before {
   color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 76%, transparent);
+  content: attr(data-placeholder);
+  pointer-events: none;
+}
+
+.khala-composer-mode-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 76px;
+  height: 32px;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-blue) 38%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--oa-color-khala-surface-active) 54%, transparent);
+  color: color-mix(in srgb, var(--oa-color-khala-text-body) 88%, transparent);
+  cursor: pointer;
+  font-family: var(--oa-font-code);
+  font-size: 0.75rem;
+  line-height: 1;
+  padding: 0 8px;
+}
+
+.khala-composer-mode-button[data-mode="shell"] {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 58%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--oa-color-khala-energy-cyan) 14%, transparent), transparent 70%),
+    color-mix(in srgb, var(--oa-color-khala-surface-active) 72%, transparent);
+  color: var(--oa-color-khala-text-bright);
+}
+
+.khala-composer-mode-button:hover,
+.khala-composer-mode-button:focus-visible {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 72%, transparent);
+  color: var(--oa-color-khala-text-bright);
+  outline: none;
+}
+
+.khala-composer-mode-button:focus-visible {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--oa-color-khala-energy-cyan) 62%, transparent);
+}
+
+.khala-composer-mode-button-label {
+  min-width: 3.5ch;
+  text-align: left;
 }
 
 .khala-code-slash-command-palette {

@@ -112,6 +112,17 @@ import {
   renderThreadLoadingIndicator,
 } from "./transcript-status-indicators"
 import {
+  createKhalaComposerPromptHistory,
+  insertKhalaComposerTextAtSelection,
+  khalaRichComposerCommandForKey,
+  normalizeKhalaComposerPasteText,
+  readKhalaComposerPlainText,
+  setKhalaComposerCaretToEnd,
+  syncKhalaComposerEmptyState,
+  writeKhalaComposerPlainText,
+  type KhalaRichComposerMode,
+} from "./rich-composer"
+import {
   KHALA_CODE_DIFF_REVIEW_SUBMIT_EVENT,
   KhalaCodeDiffReviewSubmitDetailSchema,
   khalaCodeDiffReviewComment,
@@ -829,7 +840,7 @@ const composerForm = requireElement<HTMLFormElement>("#composer-form")
 const composerFrame = requireElement<HTMLElement>("#composer-frame")
 const composerHudMount = requireElement<HTMLElement>("#composer-hud")
 const composerFollowUpQueue = requireElement<HTMLElement>("#composer-follow-up-queue")
-const composerInput = requireElement<HTMLTextAreaElement>("#composer-input")
+const composerInput = requireElement<HTMLElement>("#composer-input")
 const composerRail = requireElement<HTMLElement>("#composer-rail")
 const slashCommandPalette = requireElement<HTMLElement>("#slash-command-palette")
 const composerPreview = requireElement<HTMLElement>("#composer-preview")
@@ -839,6 +850,9 @@ const composerA11y = requireElement<HTMLElement>("#composer-a11y")
 const sendButton = requireElement<HTMLButtonElement>("#send-button")
 const attachButton = requireElement<HTMLButtonElement>("#attach-button")
 const fileInput = requireElement<HTMLInputElement>("#file-input")
+const composerPromptHistory = createKhalaComposerPromptHistory()
+let composerMode: KhalaRichComposerMode = "normal"
+let composerIsComposing = false
 
 const activeTurnIds = new Set<string>()
 /**
@@ -1843,7 +1857,7 @@ const wheelDeltaPixels = (event: WheelEvent): number => {
 
 const isComposerScrollTarget = (target: EventTarget | null): boolean =>
   target instanceof Element &&
-  target.closest("#composer-form, #composer-input, input, textarea, select, button, [contenteditable='true']") !== null
+  target.closest("#composer-form, #composer-input, input, textarea, select, button, [contenteditable]") !== null
 
 const proxyTranscriptWheel = (event: WheelEvent): void => {
   if (event.defaultPrevented || isComposerScrollTarget(event.target) || !canScrollTranscript()) return
@@ -2141,8 +2155,33 @@ const statusTextForAttachment = (
   return "Staged"
 }
 
+const composerDraftText = (): string =>
+  readKhalaComposerPlainText(composerInput)
+
+const composerDraftTrimmed = (): string =>
+  composerDraftText().trim()
+
+const setComposerDraftText = (value: string): void => {
+  writeKhalaComposerPlainText(composerInput, value)
+}
+
+const syncComposerDraftState = (): void => {
+  syncKhalaComposerEmptyState(composerInput)
+  composerInput.dataset.oaCommandComposerMode = composerMode
+  composerInput.dataset.composerMode = composerMode
+  composerForm.dataset.oaCommandComposerMode = composerMode
+}
+
+const stageComposerText = (value: string): void => {
+  const existing = composerDraftText().trimEnd()
+  setComposerDraftText(existing.length === 0 ? value : `${existing}\n\n${value}`)
+  shellModel().lastTurnFailed = false
+  renderComposer()
+  requestAnimationFrame(focusComposerInput)
+}
+
 const canSubmitComposer = (): boolean =>
-  composerInput.value.trim() !== "" ||
+  composerDraftTrimmed() !== "" ||
   shellModel().composerState.doc.attachments.length > 0 ||
   (shellModel().lastTurnFailed && shellModel().lastSubmittedDraft.trim() !== "")
 
@@ -2168,7 +2207,7 @@ const renderMessages = (): void => {
 
 const buttonLabel = (status: CommandComposerStatus): string => {
   if (status === "streaming" || status === "submitted") return "Stop"
-  if (status === "error" && composerInput.value.trim() === "") return "Retry"
+  if (status === "error" && composerDraftTrimmed() === "") return "Retry"
   return "Send"
 }
 
@@ -2222,7 +2261,7 @@ const removeFollowUpDraft = (id: string): void => {
 }
 
 const editFollowUpDraft = (draft: KhalaCodeFollowUpDraft): void => {
-  composerInput.value = draft.text
+  setComposerDraftText(draft.text)
   removeFollowUpDraft(draft.id)
   requestAnimationFrame(focusComposerInput)
 }
@@ -2789,7 +2828,7 @@ const ensureSlashCommandsLoaded = (): void => {
 }
 
 const slashCommandQuery = (): string | null => {
-  const value = composerInput.value.trimStart()
+  const value = composerDraftText().trimStart()
   if (!value.startsWith("/")) return null
   return value.slice(1).split(/\s+/)[0]?.toLowerCase() ?? ""
 }
@@ -2826,10 +2865,9 @@ const matchingSlashCommands = (): readonly KhalaCodeMainShellSlashCommand[] => {
 }
 
 const selectSlashCommand = (command: KhalaCodeMainShellSlashCommand): void => {
-  composerInput.value = command.supportsInlineArgs ? `/${command.command} ` : `/${command.command}`
+  setComposerDraftText(command.supportsInlineArgs ? `/${command.command} ` : `/${command.command}`)
   composerInput.focus({ preventScroll: true })
-  const position = composerInput.value.length
-  composerInput.setSelectionRange(position, position)
+  setKhalaComposerCaretToEnd(composerInput)
   renderComposer()
 }
 
@@ -2905,12 +2943,44 @@ const renderReasoningModeSelect = (): HTMLElement => {
   return control
 }
 
+const composerModeLabel = (mode: KhalaRichComposerMode): string =>
+  mode === "shell" ? "Shell" : "Normal"
+
+const setComposerMode = (mode: KhalaRichComposerMode): void => {
+  composerMode = mode
+  syncComposerDraftState()
+  renderComposer()
+  requestAnimationFrame(focusComposerInput)
+}
+
+const toggleComposerMode = (): void => {
+  setComposerMode(composerMode === "normal" ? "shell" : "normal")
+}
+
+const renderComposerModeButton = (): HTMLButtonElement => {
+  const button = document.createElement("button")
+  button.type = "button"
+  button.className = "khala-composer-mode-button"
+  button.dataset.mode = composerMode
+  button.dataset.oaCommandComposerModeToggle = composerMode
+  button.setAttribute("aria-label", `Composer mode: ${composerModeLabel(composerMode)}`)
+  button.setAttribute("aria-pressed", composerMode === "shell" ? "true" : "false")
+  button.title = `Composer mode: ${composerModeLabel(composerMode)}`
+  const label = document.createElement("span")
+  label.className = "khala-composer-mode-button-label"
+  label.textContent = composerModeLabel(composerMode)
+  button.replaceChildren(composerIconElement(composerMode === "shell" ? "code" : "text"), label)
+  button.addEventListener("click", toggleComposerMode)
+  return button
+}
+
 function renderComposer(): void {
   const status = statusForComposer()
   const sendLabel = buttonLabel(status)
   const attachmentCount = shellModel().composerState.doc.attachments.length
   const followUpCount = shellModel().followUpDrafts.length
 
+  syncComposerDraftState()
   composerForm.dataset.oaCommandComposerStatus = status
   composerFrame.dataset.oaCommandComposerFrame = ""
   sendButton.disabled = !shellModel().pendingTurn && !canSubmitComposer()
@@ -2925,6 +2995,7 @@ function renderComposer(): void {
     sendLabel
   composerControls.replaceChildren(
     attachButton,
+    renderComposerModeButton(),
     renderReasoningModeSelect(),
     // renderHarnessPill(),
   )
@@ -2938,9 +3009,10 @@ function renderComposer(): void {
   composerA11y.textContent =
     `${statusLabelFor(status)}. ${attachmentCount} attachments. ` +
     `${followUpCount} queued follow-ups. ` +
+    `${composerModeLabel(composerMode)} composer mode. ` +
     `${composerReasoningModeA11yText()} ` +
     `${shellModel().architectPlanPending ? "Architect plan pending. " : ""}` +
-    `${composerInput.value.length} characters.`
+    `${composerDraftText().length} characters.`
 
   renderFollowUpQueue()
   renderAttachmentRail()
@@ -2979,6 +3051,7 @@ function renderBootDegradedStates(): void {
 
 const focusComposerInput = (): void => {
   composerInput.focus({ preventScroll: true })
+  setKhalaComposerCaretToEnd(composerInput)
   updateComposerHudProjection()
 }
 
@@ -3144,22 +3217,14 @@ const nextDiffReviewCommentRef = (): string =>
   `diff_review.${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 8)}`
 
 const stageDiffReviewNoteInComposer = (note: string): void => {
-  const existing = composerInput.value.trimEnd()
-  composerInput.value = existing.length === 0 ? note : `${existing}\n\n${note}`
-  shellModel().lastTurnFailed = false
-  renderComposer()
-  requestAnimationFrame(focusComposerInput)
+  stageComposerText(note)
 }
 
 const nextSourceControlActionRef = (): string =>
   `source_control_action.${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 8)}`
 
 const stageSourceControlActionPromptInComposer = (prompt: string): void => {
-  const existing = composerInput.value.trimEnd()
-  composerInput.value = existing.length === 0 ? prompt : `${existing}\n\n${prompt}`
-  shellModel().lastTurnFailed = false
-  renderComposer()
-  requestAnimationFrame(focusComposerInput)
+  stageComposerText(prompt)
 }
 
 const handleDiffReviewSubmit = async (event: Event): Promise<void> => {
@@ -3393,7 +3458,7 @@ const resetComposerDraft = (): void => {
   objectUrls.clear()
   localAttachmentFiles.clear()
   localTextAttachments.clear()
-  composerInput.value = ""
+  setComposerDraftText("")
   setShellComposerState(emptyComposerState())
   renderComposer()
 }
@@ -3574,7 +3639,8 @@ const submitKhalaSyncChatMessage = async (
 
 const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
   if (shellModel().pendingTurn) {
-    const draftText = composerInput.value.trim()
+    const draftRaw = composerDraftText()
+    const draftText = draftRaw.trim()
     if (draftText === "" && shellModel().composerState.doc.attachments.length === 0) return null
     if (shellModel().composerState.doc.attachments.length > 0) {
       appendMessages([{
@@ -3584,6 +3650,7 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
       }])
       return null
     }
+    composerPromptHistory.push(composerMode, draftRaw)
     if (draftText.startsWith("/")) {
       if (draftText === "/architect" || draftText.startsWith("/architect ")) {
         return submitArchitectPlan(draftText.replace(/^\/architect\b/u, "").trim())
@@ -3593,14 +3660,16 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
     queueFollowUpDraft(draftText)
     return null
   }
+  const draftRaw = composerDraftText()
   const draftText =
-    composerInput.value.trim() === "" && shellModel().lastTurnFailed
+    draftRaw.trim() === "" && shellModel().lastTurnFailed
       ? shellModel().lastSubmittedDraft
-      : composerInput.value.trim()
+      : draftRaw.trim()
   if (draftText === "" && shellModel().composerState.doc.attachments.length === 0) return null
 
   const attachments = [...shellModel().composerState.doc.attachments]
   const body = submittedBody(draftText, attachments)
+  composerPromptHistory.push(composerMode, draftRaw)
   if (draftText.startsWith("/")) {
     if (draftText === "/architect" || draftText.startsWith("/architect ")) {
       return submitArchitectPlan(draftText.replace(/^\/architect\b/u, "").trim())
@@ -3841,7 +3910,7 @@ const mountComposerHud = (): ComposerHudRuntime | null => {
 
 composerForm.addEventListener("submit", event => {
   event.preventDefault()
-  void submitComposer().finally(() => composerInput.focus())
+  void submitComposer().finally(focusComposerInput)
 })
 
 sendButton.addEventListener("click", event => {
@@ -3863,25 +3932,58 @@ fileInput.addEventListener("change", () => {
 composerInput.addEventListener("input", () => {
   const echoStartedAt = performance.now()
   shellModel().lastTurnFailed = false
+  syncComposerDraftState()
   renderComposer()
   markQaTimer("composer.keystroke_echo_ms", echoStartedAt, {
-    characters: composerInput.value.length,
+    characters: composerDraftText().length,
     surface: "composer",
   })
 })
 
 composerInput.addEventListener("focus", updateComposerHudProjection)
 composerInput.addEventListener("blur", updateComposerHudProjection)
+composerInput.addEventListener("compositionstart", () => {
+  composerIsComposing = true
+})
+composerInput.addEventListener("compositionend", () => {
+  composerIsComposing = false
+  syncComposerDraftState()
+  renderComposer()
+})
 
 composerInput.addEventListener("keydown", event => {
-  if (event.metaKey || event.ctrlKey || event.altKey) return
-  if (
-    event.key === "Enter" &&
-    !event.shiftKey &&
-    canSubmitComposer()
-  ) {
+  const command = khalaRichComposerCommandForKey(
+    {
+      altKey: event.altKey,
+      ctrlKey: event.ctrlKey,
+      isComposing: composerIsComposing || event.isComposing,
+      key: event.key,
+      metaKey: event.metaKey,
+      shiftKey: event.shiftKey,
+    },
+    composerDraftText(),
+  )
+  if (command === "submit" && canSubmitComposer()) {
     event.preventDefault()
     void submitComposer()
+    return
+  }
+  if (command === "history-previous") {
+    const previous = composerPromptHistory.previous(composerMode, composerDraftText())
+    if (previous === null) return
+    event.preventDefault()
+    setComposerDraftText(previous)
+    renderComposer()
+    setKhalaComposerCaretToEnd(composerInput)
+    return
+  }
+  if (command === "history-next") {
+    const next = composerPromptHistory.next(composerMode)
+    if (next === null) return
+    event.preventDefault()
+    setComposerDraftText(next)
+    renderComposer()
+    setKhalaComposerCaretToEnd(composerInput)
   }
 })
 
@@ -3896,10 +3998,17 @@ composerInput.addEventListener("paste", event => {
     return
   }
   const text = data.getData("text/plain")
-  if (text !== "" && stageLargeTextPaste(text)) {
+  if (text === "") return
+  const normalized = normalizeKhalaComposerPasteText(text)
+  if (stageLargeTextPaste(normalized)) {
     event.preventDefault()
     requestAnimationFrame(focusComposerInput)
+    return
   }
+  event.preventDefault()
+  insertKhalaComposerTextAtSelection(composerInput, normalized)
+  shellModel().lastTurnFailed = false
+  renderComposer()
 })
 
 for (const target of [composerForm, composerRail]) {
@@ -4195,7 +4304,7 @@ const controls = {
     render()
   },
   setComposerDraft: (value: string) => {
-    composerInput.value = value
+    setComposerDraftText(value)
     shellModel().lastTurnFailed = false
     renderComposer()
   },
