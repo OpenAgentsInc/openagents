@@ -648,6 +648,111 @@ What changed:
 
 Re-verified after this change: `bun run --cwd apps/openagents.com/apps/start test` (32 files, 98 tests), `typecheck`, `build`, and `budget` all green; `bun run --cwd apps/openagents.com/apps/web test` (155 files, 1795 tests) green after the two nav-link removals; a local `vite preview` + `curl` pass confirms both `/training/runs` and `/training/runs/run.cs336.a1.demo` render the deprecated notice and every other route checked in Slice 20 is still unaffected.
 
+## Landed Slice 21: Stats (Public/Anonymous Variant)
+
+The Start staging app now owns `/stats` — the public/anonymous variant of the
+`StatsRoute` — ported from
+`apps/web/src/page/loggedOut/page/stats.ts`. The same URL also has a distinct
+authenticated `loggedIn/page/stats.ts` view (real account dashboards, private
+settlement detail); that view stays out of scope, same "public-safe default
+until Start has real session auth" treatment as `/artanis/accounts`.
+
+- **Re-checked, not just re-assumed, the "needs 9 unbuilt panel components"
+  premise from Slice 20.** Searched `@openagentsinc/ui` and the whole Start
+  app for existing React ports of the nine shared panel functions
+  `stats.ts` composes from `home.ts`
+  (`khalaTokensServedHeaderCounter`, `khalaTokensServedHistoryChart`,
+  `khalaTokensServedModelMixPanel`, `khalaTokensServedChannelMixPanel`,
+  `pylonStatsPanel`, `forumStatsPanel`, `accountingPanel`,
+  `copyBoundaryPanel`, `endpointManifestPanel`, `nostrRelayPanel`) — none
+  exist yet, confirming the prior finding. But every one of those Foldkit
+  functions is itself model-driven (`Idle` / `Loading` / `Loaded` / `Failed`
+  unions fed by client fetches this app does not wire), and no prior TS-6
+  Start route has wired a live client fetch on a standalone page. Following
+  that established posture, the real unblocking move was not "port 9 live
+  React data panels" but "render the exact Idle first-paint markup each
+  panel already produces before its fetch resolves" — the same technique
+  already used for `/promises`, `/mirrorcode`, and `/training/runs`. That
+  made this batch tractable as a single static page rather than a
+  multi-panel component-library project, without fabricating a single
+  number.
+- `-stats-page.tsx` (a new `StatsPage` component, following the established
+  per-page local `PanelHeader`/`MetricRow` convention already used by
+  `-promises-page.tsx`, `-mirrorcode-page.tsx`, and
+  `-training-runs-page.tsx` rather than a shared cross-page primitive) ports:
+  - The hero row: `data-route="stats"`, the `Home` link, the `Network Stats`
+    heading and its exact subtitle copy, and the tokens-served hero counter
+    (`data-counter="khala-tokens-served"`, `data-counter-display`, and
+    `data-value="—"` — the exact Foldkit `khalaTokensServedHeaderCounter`
+    idle-state placeholder and caption).
+  - The history chart + mix-panel row: `data-chart="khala-tokens-served-history"`
+    on all three chart shells (matching the Foldkit `historyChartShell`
+    helper, which sets that same data attribute on every panel that uses
+    it), the `Tokens Served / Day` / `Model Family Mix` / `Channel Mix`
+    titles, the Daily/Cumulative metric toggle (rendered because `stats.ts`
+    calls the history chart with `showMetricToggle: true`), and the exact
+    `Waiting for data…` / `Waiting for model mix…` / `Waiting for channel
+    mix…` idle bodies plus their captions.
+  - The two-column evidence grid: `Pylon Stats`, `Forum Stats`, and
+    `Accounting Strip` on the left (every metric row rendering the exact
+    `Unavailable` value and idle-state detail/tone the Foldkit functions
+    produce for null models — including the one literal-typo copy string
+    `Active \ orange check badges bought by registered agents...` preserved
+    byte-for-byte from `home.ts`, and the `warn`-tone rows for `Tip gate` and
+    `Accepted-work gate` kept visually distinct from the `muted` rows); and
+    the always-static `Claim Boundary` and `Endpoint Manifest` panels plus
+    `Nostr Relay Configuration` on the right (the first two are fully static
+    in the Foldkit original — no fetch dependency — so they're ported in
+    full fidelity; the relay panel renders its own idle-state `Unavailable`
+    rows and the `No relay endpoint list is public in the current response.`
+    fallback line).
+  - A closing "Live surface" panel naming the four backing endpoints
+    (`/api/public/pylon-stats`, `/api/forum/tip-leaderboards`,
+    `/api/forum/launch-status`, `/api/public/product-promises`), same
+    pattern as the closing panel on `/promises` and `/mirrorcode`.
+- Raw-hex Foldkit styling was swapped for `khala-*` design tokens throughout
+  (no exact-hex preservation needed since the project's `khala-*` tokens are
+  the equivalent brand colors, same as every prior slice's styling swap).
+- `/stats` was added to the Start budget list; total client JS moved to
+  708.8 KiB (still under the 760 KiB budget), with the new route's own chunk
+  at 12.7 KiB.
+- Re-verified with a local `vite preview` + `curl` pass: `/stats` renders
+  `data-route="stats"` with its own title (`Network Stats - OpenAgents`) and
+  every panel listed above; `/promises`, `/mirrorcode`, `/training/runs`,
+  `/artanis`, and `/code` are all unaffected by the new sibling `stats.tsx`
+  route file (no nested-route-layout risk either — `stats.tsx` has no
+  sibling `stats/` folder).
+- Kept the Foldkit `apps/web` counterpart (`stats.ts`, plus the untouched
+  authenticated `loggedIn/page/stats.ts`) in place, same as every prior TS-6
+  slice — the live `openagents.com` Worker still serves `apps/web/dist`.
+
+Verification:
+
+```sh
+bun run --cwd apps/openagents.com/apps/start test -- src/routes/-stats.test.tsx
+bun run --cwd apps/openagents.com/apps/start test
+bun run --cwd apps/openagents.com/apps/start typecheck
+bun run --cwd apps/openagents.com/apps/start build
+bun run --cwd apps/openagents.com/apps/start budget
+bun run --cwd apps/openagents.com check:architecture
+bun run --cwd apps/openagents.com check:deploy
+bun run test:qa-pre-push-smoke
+```
+
+- `bun run --cwd apps/openagents.com/apps/start test` ✅ (33 files, 105 tests)
+- `bun run --cwd apps/openagents.com/apps/start typecheck` ✅
+- `bun run --cwd apps/openagents.com/apps/start build` ✅
+- `bun run --cwd apps/openagents.com/apps/start budget` ✅ 708.8 KiB (under
+  760 KiB budget)
+- `bun run --cwd apps/openagents.com check:architecture` ✅ zero-debt clean
+- `bun run --cwd apps/openagents.com check:deploy` ✅ full sweep clean
+- `bun run test:qa-pre-push-smoke` ✅ (7 pass)
+
+`pylon.ts` (three.js/scene custom elements) and `share.ts` (shared-workroom-
+timeline viewer) remain the two standalone `loggedOut` pages still backlogged
+for their own dedicated passes — both are still genuinely bigger lifts than a
+static idle-state port, unlike `stats.ts`.
+
 ## Boundary
 
 This is not the final TS-6 closure. The live `openagents.com` Worker still
@@ -660,20 +765,14 @@ Remaining TS-6 work:
 
 - migrate the remaining standalone public/`loggedOut` pages that are not yet
   in Start: `apps/web/src/page/loggedOut/page/pylon.ts` (depends on the
-  three.js/scene custom elements — bigger lift than a plain static port),
+  three.js/scene custom elements — bigger lift than a plain static port) and
   `share.ts` (a full shared-workroom-timeline viewer — bigger lift, needs the
-  workroom timeline/file-panel component set ported to React first), and
-  `stats.ts` (public/anonymous variant only — the same `/stats` URL also has
-  a distinct authenticated `loggedIn/page/stats.ts` view; confirmed in Slice
-  20 that the public variant's ~9 shared panel components from `home.ts`
-  (`khalaTokensServedHeaderCounter`, `khalaTokensServedHistoryChart`,
-  `khalaTokensServedModelMixPanel`, `khalaTokensServedChannelMixPanel`,
-  `pylonStatsPanel`, `forumStatsPanel`, `accountingPanel`,
-  `copyBoundaryPanel`, `endpointManifestPanel`, `nostrRelayPanel`) have none of
-  them ported to React/`@openagentsinc/ui` yet, so this still needs that
-  porting work first plus the same "public-safe default until Start has real
-  session auth" treatment as `/artanis/accounts`);
-  `/training/runs/$runId` was migrated in Slice 20, but the whole
+  workroom timeline/file-panel component set ported to React first).
+  `stats.ts` (public/anonymous variant) was migrated in Slice 21 above,
+  rendering the honest Idle first-paint state for all nine shared panels; the
+  distinct authenticated `loggedIn/page/stats.ts` view stays out of scope
+  until Start has real session auth, same as the rest of the `loggedIn/` tree
+  below. `/training/runs/$runId` was migrated in Slice 20, but the whole
   training-runs/gym feature (both Start routes and their nav entry points) is
   now **deprecated-for-now** per the owner decision recorded above — do not
   pick this back up (live-data wiring, nav restoration, or otherwise) until

@@ -42,6 +42,7 @@ const routeBudgets = [
   { path: '/preview/landing', marker: 'Software, built by agents.' },
   { path: '/promises', marker: 'Product promises' },
   { path: '/run', marker: 'Tassadar lives in the Verse' },
+  { path: '/stats', marker: 'Network Stats' },
   { path: '/terms', marker: 'Terms of Service' },
   { path: '/privacy', marker: 'Privacy Policy' },
   // Deprecated-for-now (owner decision, 2026-07-05): both routes render the
