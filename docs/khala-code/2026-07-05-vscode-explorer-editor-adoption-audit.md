@@ -350,6 +350,9 @@ Phase 1 implementation log:
   `editorProviderList`, `editorWorkspaceRead`, `editorDirectoryRead`, and
   `editorFileRead` RPC methods. The first provider is a Khala-owned local
   workspace adapter; Codex app-server is not part of the editor file authority.
+- #8432 added the desktop Editor hotbar slot as Option/Alt+6, the empty editor
+  panel shell, `?view=editor` routing, and stable split-pane layout tokens
+  while preserving the existing Chat, Fleet, Forum, Inbox, and Settings slots.
 
 ### Phase 2: workspace ergonomics
 

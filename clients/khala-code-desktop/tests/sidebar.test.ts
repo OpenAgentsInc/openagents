@@ -15,7 +15,8 @@ describe("Khala Code sidebar hotbar", () => {
     Object.defineProperty(globalThis, "navigator", { configurable: true, value: window.navigator })
 
     const activated: string[] = []
-    const handle = mountKhalaCodeSidebar(document.createElement("div"), {
+    const container = document.createElement("div")
+    const handle = mountKhalaCodeSidebar(container, {
       selectedValue: "chat",
       onActivate: value => activated.push(value),
     })
@@ -37,6 +38,25 @@ describe("Khala Code sidebar hotbar", () => {
 
       expect(event.defaultPrevented).toBe(true)
       expect(activated).toEqual(["fleet"])
+      const editorButton = container.querySelector<HTMLButtonElement>(
+        '[data-khala-code-hotbar-value="editor"]',
+      )
+      expect(editorButton?.getAttribute("aria-label")).toContain("Editor")
+      expect(editorButton?.title).toContain("+6")
+      expect(editorButton?.getAttribute("aria-pressed")).toBe("false")
+
+      window.dispatchEvent(new window.KeyboardEvent("keydown", {
+        altKey: true,
+        bubbles: true,
+        cancelable: true,
+        code: "Digit6",
+        key: "§",
+      }))
+
+      expect(activated).toEqual(["fleet", "editor"])
+      expect(container.querySelector<HTMLButtonElement>(
+        '[data-khala-code-hotbar-value="editor"]',
+      )?.getAttribute("aria-pressed")).toBe("true")
     } finally {
       handle.destroy()
       Object.defineProperty(globalThis, "window", { configurable: true, value: previousWindow })

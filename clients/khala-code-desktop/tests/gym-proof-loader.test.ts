@@ -150,6 +150,10 @@ describe("Khala Code Gym proof loader", () => {
       search: "?view=inbox",
       hash: "",
     })
+    const editorView = initialKhalaCodeViewFromLocation({
+      search: "?view=editor",
+      hash: "",
+    })
 
     expect(empty).toEqual({
       activeParameters: defaultKhalaFleetDelegationActiveParameters,
@@ -160,6 +164,7 @@ describe("Khala Code Gym proof loader", () => {
     expect(chatView).toBe("chat")
     expect(legacyGymView).toBe("chat")
     expect(legacyInboxView).toBe("inbox")
+    expect(editorView).toBe("editor")
   })
 
   test("Worker optimization projection maps into the same Gym pane state", () => {

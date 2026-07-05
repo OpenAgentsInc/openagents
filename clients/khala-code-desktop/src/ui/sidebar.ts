@@ -6,7 +6,13 @@ import {
   khalaCodeInboxReadinessNeedsHuman,
 } from "./inbox"
 
-export type KhalaCodeHotbarValue = "chat" | "fleet" | "forum" | "inbox" | "settings"
+export type KhalaCodeHotbarValue =
+  | "chat"
+  | "fleet"
+  | "forum"
+  | "inbox"
+  | "settings"
+  | "editor"
 
 export type KhalaCodeHotbarSlot = Readonly<{
   actionId: `action_bar.slot_${number}`
@@ -57,6 +63,14 @@ export const KHALA_CODE_HOTBAR_SLOTS: ReadonlyArray<KhalaCodeHotbarSlot> = [
     label: "Settings",
     slot: 5,
     value: "settings",
+  },
+  {
+    actionId: "action_bar.slot_6",
+    hotkey: "6",
+    icon: "Code",
+    label: "Editor",
+    slot: 6,
+    value: "editor",
   },
 ]
 

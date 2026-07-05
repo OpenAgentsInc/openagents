@@ -70,6 +70,7 @@ import {
 import { iconForCodexItem, renderMessageBody } from "./transcript-render"
 import { mergeKhalaSyncChatAndRuntimeMessages } from "./khala-sync-thread-messages-core"
 import { mountFleetPanel } from "./fleet-status"
+import { mountKhalaCodeEditorPanel } from "./editor-panel"
 import { mountKhalaCodeForumPanel } from "./forum-panel"
 import { mountKhalaCodePlansPanel } from "./plans-panel"
 import { mountKhalaCodeRunEvidencePanel } from "./run-evidence-panel"
@@ -4249,6 +4250,7 @@ const threadSidebarEl = document.getElementById("thread-sidebar")
 const fleetPanelEl = document.getElementById("fleet-panel")
 const forumPanelEl = document.getElementById("forum-panel")
 const inboxPanelEl = document.getElementById("inbox-panel")
+const editorPanelEl = document.getElementById("editor-panel")
 const gymPanelEl = document.getElementById("gym-panel")
 const settingsPanelEl = document.getElementById("settings-panel")
 const threadShell = document.querySelector<HTMLElement>(".khala-code-thread-shell")
@@ -4461,6 +4463,9 @@ const forumPanel =
         },
         openExternal: url => controls.openExternalUrl(url),
       })
+
+const editorPanel =
+  editorPanelEl === null ? null : mountKhalaCodeEditorPanel(editorPanelEl)
 
 const gymPanel =
   gymPanelEl === null ? null : mountGymPane(gymPanelEl, initialGymState)
@@ -4788,7 +4793,7 @@ window.addEventListener("keydown", event => {
 const setActiveView = (value: string): void => {
   const panelOpenStartedAt = performance.now()
   const activeValue =
-    value === "fleet" || value === "forum" || value === "inbox" || value === "settings"
+    value === "fleet" || value === "forum" || value === "inbox" || value === "settings" || value === "editor"
       ? value
       : "chat"
   const showChat = activeValue === "chat"
@@ -4796,18 +4801,21 @@ const setActiveView = (value: string): void => {
   const showForum = activeValue === "forum"
   const showInbox = activeValue === "inbox"
   const showSettings = activeValue === "settings"
+  const showEditor = activeValue === "editor"
   if (threadSidebarEl !== null) threadSidebarEl.hidden = !showChat
   if (fleetPanelEl !== null) fleetPanelEl.hidden = !showFleet
   if (forumPanelEl !== null) forumPanelEl.hidden = !showForum
   if (inboxPanelEl !== null) inboxPanelEl.hidden = !showInbox
+  if (editorPanelEl !== null) editorPanelEl.hidden = !showEditor
   if (settingsPanelEl !== null) settingsPanelEl.hidden = !showSettings
   gymPanel?.setVisible(false)
-  if (threadShell !== null) threadShell.hidden = showFleet || showForum || showInbox || showSettings
-  if (composerDock !== null) composerDock.hidden = showFleet || showForum || showInbox || showSettings
+  if (threadShell !== null) threadShell.hidden = showFleet || showForum || showInbox || showSettings || showEditor
+  if (composerDock !== null) composerDock.hidden = showFleet || showForum || showInbox || showSettings || showEditor
   fleetPanel?.setVisible(showFleet)
   forumPanel?.setVisible(showForum)
   inboxPanel?.setVisible(showInbox)
   settingsPanel?.setVisible(showSettings)
+  editorPanel?.setVisible(showEditor)
   if (showSettings) {
     void claudeSettingsSection?.refresh()
     void plansSection?.refresh()
@@ -4824,6 +4832,7 @@ function showGymProofPane(): void {
   if (fleetPanelEl !== null) fleetPanelEl.hidden = true
   if (forumPanelEl !== null) forumPanelEl.hidden = true
   if (inboxPanelEl !== null) inboxPanelEl.hidden = true
+  if (editorPanelEl !== null) editorPanelEl.hidden = true
   if (settingsPanelEl !== null) settingsPanelEl.hidden = true
   if (threadShell !== null) threadShell.hidden = true
   if (composerDock !== null) composerDock.hidden = true
@@ -4832,6 +4841,7 @@ function showGymProofPane(): void {
   forumPanel?.setVisible(false)
   inboxPanel?.setVisible(false)
   settingsPanel?.setVisible(false)
+  editorPanel?.setVisible(false)
   threadSidebar?.setVisible(false)
 }
 

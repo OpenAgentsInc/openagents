@@ -2007,6 +2007,7 @@ button {
   .khala-code-thread-shell,
   .composer-dock,
   .khala-code-inbox,
+  .khala-code-editor,
   .khala-code-fleet,
   .khala-code-gym,
   .khala-code-settings
@@ -4547,6 +4548,100 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .khala-gym-edge {
     animation: none;
+  }
+}
+
+.khala-code-editor {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--oa-color-component-text);
+}
+.khala-code-editor-panel {
+  display: grid;
+  grid-template-columns: minmax(14rem, 19rem) minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--oa-color-khala-void) 20%, transparent), transparent 34%),
+    color-mix(in srgb, var(--oa-color-khala-surface) 54%, var(--oa-color-khala-void));
+}
+.khala-code-editor-tree-pane,
+.khala-code-editor-source-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.khala-code-editor-tree-pane {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border-right: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 16%, transparent);
+  background: color-mix(in srgb, var(--oa-color-khala-void) 34%, transparent);
+}
+.khala-code-editor-source-pane {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: color-mix(in srgb, var(--oa-color-khala-void) 18%, transparent);
+}
+.khala-code-editor-pane-header,
+.khala-code-editor-source-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+  min-height: 3rem;
+  padding: 0.72rem 0.9rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--oa-color-component-border) 70%, transparent);
+}
+.khala-code-editor-pane-title,
+.khala-code-editor-source-title {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.khala-code-editor-pane-status,
+.khala-code-editor-source-meta {
+  flex: none;
+  color: color-mix(in srgb, var(--oa-color-khala-energy-soft) 82%, var(--oa-color-component-text));
+  font-family: var(--oa-font-code);
+  font-size: 0.68rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+.khala-code-editor-tree-empty,
+.khala-code-editor-source-empty {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.85rem 0.9rem;
+}
+.khala-code-editor-empty-line,
+.khala-code-editor-source-empty {
+  color: color-mix(in srgb, var(--oa-color-component-text) 58%, transparent);
+  font-size: 0.82rem;
+}
+.khala-code-editor-source-empty {
+  display: grid;
+  place-items: center;
+}
+@media (max-width: 720px) {
+  .khala-code-editor-panel {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(10rem, 38%) minmax(0, 1fr);
+  }
+
+  .khala-code-editor-tree-pane {
+    border-right: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-cyan) 16%, transparent);
   }
 }
 
