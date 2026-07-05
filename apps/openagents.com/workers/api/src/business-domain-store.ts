@@ -3,7 +3,7 @@
 // the KS-8.10 mirroring-database seam (`forum/forum-content-store.ts`,
 // #8321) and the KS-8.7 money discipline (`billing-store.ts`, #8318).
 //
-// Domain tables (khala-sync migration `0022_business_funnel.sql`,
+// Domain tables (khala-sync migration `0023_business_funnel.sql`,
 // THIRTY-TWO live tables): business signup/fulfillment/pipeline/
 // commitments/affiliates, funnel events, service promises + fulfillment
 // loop receipts + escalation pages, checkout kickoffs, starter credits,

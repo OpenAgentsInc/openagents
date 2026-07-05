@@ -6,7 +6,7 @@
  * KS-8.7 (`billing-backfill.ts`) template. Takes raw D1 rows (snake_case
  * objects, exactly as `wrangler d1 execute --json` returns them) and
  * copies them into the Postgres twins from migration
- * `0022_business_funnel.sql`.
+ * `0023_business_funnel.sql`.
  *
  * WRITE MODE: every table CONVERGE-upserts to the authoritative D1
  * snapshot (`ON CONFLICT (pk) DO UPDATE SET col = EXCLUDED.col`). This

@@ -220,7 +220,7 @@ describe.skipIf(!hasLocalPostgres())(
       await admin.end()
       const url = pg.urlFor("khala_business_backfill")
       const result = await runMigrations({ databaseUrl: url })
-      expect(result.applied).toContain("0022_business_funnel.sql")
+      expect(result.applied).toContain("0023_business_funnel.sql")
       rawSql = new SQL({ url, max: 4 })
       sql = rawSql as unknown as SyncSql
     })

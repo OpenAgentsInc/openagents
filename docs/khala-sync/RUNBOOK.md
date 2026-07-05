@@ -1400,7 +1400,7 @@ therefore MANDATORY, not optional.
 ## Business funnel domain cutover (KS-8.14, #8325)
 
 The business funnel / orders / referrals domain: the 32 live tables from
-khala-sync migration `0022_business_funnel.sql` (business signup /
+khala-sync migration `0023_business_funnel.sql` (business signup /
 fulfillment / pipeline / commitments / affiliates, funnel events, service
 promises + fulfillment-loop receipts + escalation pages, checkout
 kickoffs, starter credits, software orders + triage + fulfillment

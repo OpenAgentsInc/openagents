@@ -76,7 +76,7 @@ import { BUSINESS_DOMAIN_D1_SCHEMA, makeSqliteD1 } from './test/sqlite-d1'
 
 const MIGRATION_0022 = path.resolve(
   import.meta.dirname,
-  '../../../../../packages/khala-sync-server/migrations/0022_business_funnel.sql',
+  '../../../../../packages/khala-sync-server/migrations/0023_business_funnel.sql',
 )
 
 type PgClient = {

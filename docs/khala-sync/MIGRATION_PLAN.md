@@ -1038,7 +1038,7 @@ normal upsert.
 
 **KS-8.14 machinery status (2026-07-04, #8325):** LANDED for all 32 LIVE
 tables — Postgres schema (`khala-sync-server` migration
-`0022_business_funnel.sql`; the `business_funnel_events_0275` /
+`0023_business_funnel.sql`; the `business_funnel_events_0275` /
 `business_service_promises_0275` rewrite artifacts were renamed back by
 worker 0277/0275 and do not exist live, so nothing was created for them;
 indexes re-derived — PKs + every attribution/idempotency UNIQUE port

@@ -24,7 +24,7 @@
  * and attribution policy_state are legitimately UPDATEd in place on D1.
  *
  * Column orders mirror the FINAL D1 schema (after every rewrite/ALTER
- * migration) and khala-sync migration `0022_business_funnel.sql` exactly.
+ * migration) and khala-sync migration `0023_business_funnel.sql` exactly.
  * The `business_funnel_events_0275` / `business_service_promises_0275`
  * rewrite artifacts were renamed back by worker 0277/0275 and do not exist
  * as live tables (nothing to migrate — the decommission follow-up verifies
