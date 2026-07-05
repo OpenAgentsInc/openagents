@@ -23,7 +23,8 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Khala uses the microphone for push-to-talk transcription.",
-        "NSSpeechRecognitionUsageDescription": "Khala uses on-device speech recognition to transcribe push-to-talk input."
+        "NSSpeechRecognitionUsageDescription": "Khala uses on-device speech recognition to transcribe push-to-talk input.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
