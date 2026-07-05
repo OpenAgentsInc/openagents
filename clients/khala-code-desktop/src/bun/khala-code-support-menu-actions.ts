@@ -14,19 +14,19 @@ export const handleKhalaCodeSupportMenuAction = (
   action: string | null | undefined,
   deps: KhalaCodeApplicationMenuSupportDeps,
 ): boolean => {
-  if (action === KHALA_CODE_SUPPORT_MENU_ACTION_DOCS) {
+  if (action === KHALA_CODE_SUPPORT_MENU_ACTION_DOCS || action === "help.docs") {
     void deps.openDocs()
     return true
   }
-  if (action === KHALA_CODE_SUPPORT_MENU_ACTION_SUPPORT) {
+  if (action === KHALA_CODE_SUPPORT_MENU_ACTION_SUPPORT || action === "help.support") {
     void deps.openSupport()
     return true
   }
-  if (action === KHALA_CODE_SUPPORT_MENU_ACTION_FEEDBACK) {
+  if (action === KHALA_CODE_SUPPORT_MENU_ACTION_FEEDBACK || action === "help.feedback") {
     void deps.openFeedback()
     return true
   }
-  if (action === KHALA_CODE_SUPPORT_MENU_ACTION_BUG_REPORT) {
+  if (action === KHALA_CODE_SUPPORT_MENU_ACTION_BUG_REPORT || action === "help.bug_report") {
     void deps.openBugReport()
     return true
   }

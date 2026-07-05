@@ -22,11 +22,11 @@ describe("Khala Code application menu updater actions (#8440)", () => {
     expect(help).toBeDefined()
     const actions = (help?.submenu ?? []).map(item => item.action)
     expect(actions).toContain(KHALA_CODE_UPDATER_MENU_ACTION_CHECK_FOR_UPDATES)
-    expect(actions).toContain(KHALA_CODE_UPDATER_MENU_ACTION_RELEASE_NOTES)
-    expect(actions).toContain(KHALA_CODE_SUPPORT_MENU_ACTION_DOCS)
-    expect(actions).toContain(KHALA_CODE_SUPPORT_MENU_ACTION_SUPPORT)
-    expect(actions).toContain(KHALA_CODE_SUPPORT_MENU_ACTION_FEEDBACK)
-    expect(actions).toContain(KHALA_CODE_SUPPORT_MENU_ACTION_BUG_REPORT)
+    expect(actions).toContain("help.release_notes")
+    expect(actions).toContain("help.docs")
+    expect(actions).toContain("help.support")
+    expect(actions).toContain("help.feedback")
+    expect(actions).toContain("help.bug_report")
   })
 
   test("dispatches the check-for-updates action", () => {
@@ -55,6 +55,13 @@ describe("Khala Code application menu updater actions (#8440)", () => {
     })
     expect(handled).toBe(true)
     expect(opened).toBe(1)
+    expect(handleKhalaCodeApplicationMenuAction("help.release_notes", {
+      checkForUpdates: () => {},
+      openReleaseNotes: () => {
+        opened += 1
+      },
+    })).toBe(true)
+    expect(opened).toBe(2)
   })
 
   test("ignores unrelated or missing menu action ids", () => {
@@ -86,7 +93,20 @@ describe("Khala Code application menu updater actions (#8440)", () => {
     expect(handleKhalaCodeSupportMenuAction(KHALA_CODE_SUPPORT_MENU_ACTION_SUPPORT, deps)).toBe(true)
     expect(handleKhalaCodeSupportMenuAction(KHALA_CODE_SUPPORT_MENU_ACTION_FEEDBACK, deps)).toBe(true)
     expect(handleKhalaCodeSupportMenuAction(KHALA_CODE_SUPPORT_MENU_ACTION_BUG_REPORT, deps)).toBe(true)
+    expect(handleKhalaCodeSupportMenuAction("help.docs", deps)).toBe(true)
+    expect(handleKhalaCodeSupportMenuAction("help.support", deps)).toBe(true)
+    expect(handleKhalaCodeSupportMenuAction("help.feedback", deps)).toBe(true)
+    expect(handleKhalaCodeSupportMenuAction("help.bug_report", deps)).toBe(true)
     expect(handleKhalaCodeSupportMenuAction("other", deps)).toBe(false)
-    expect(opened).toEqual(["docs", "support", "feedback", "bug"])
+    expect(opened).toEqual(["docs", "support", "feedback", "bug", "docs", "support", "feedback", "bug"])
+  })
+
+  test("the expanded native menu shares command-registry action ids", () => {
+    const menuText = JSON.stringify(khalaCodeDesktopApplicationMenu)
+    expect(menuText).toContain("session.new_chat")
+    expect(menuText).toContain("palette.open")
+    expect(menuText).toContain("view.editor")
+    expect(menuText).toContain("session.previous")
+    expect(menuText).toContain("message.next")
   })
 })

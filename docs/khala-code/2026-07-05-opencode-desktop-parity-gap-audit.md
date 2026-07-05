@@ -897,6 +897,13 @@ Issue: add diagnostics and recovery
 Issue: add deep links and single-instance handling
 ([#8442](https://github.com/OpenAgentsInc/openagents/issues/8442)).
 
+- Status: first implementation pass complete on 2026-07-05. Khala Code now has
+  a typed `khala-code://` deep-link parser for view, thread/session, project,
+  and server targets; renderer boot can consume an app-link URL from the actual
+  location or an encoded `khala-code-url` query/hash and route it into the
+  initial view/thread restore path. Invalid links are harmless typed failures,
+  path-like private project IDs are rejected, and unsupported targets fall back
+  to normal persisted view/thread state.
 - Scope: `khala-code://` protocol, first-open buffering, second-instance focus,
   route resolution into thread/project/session/server targets, and invalid-link
   errors.
@@ -906,6 +913,14 @@ Issue: add deep links and single-instance handling
 Issue: expand the native menu
 ([#8442](https://github.com/OpenAgentsInc/openagents/issues/8442)).
 
+- Status: first implementation pass complete on 2026-07-05. The native menu now
+  has File, Edit, View, Go, Window, and Help groups. Platform-native edit/window
+  roles stay native, while app actions expose the same command IDs used by the
+  command registry and palette for new session, project home, settings, command
+  palette, view switches, previous/next session, previous/next message, release
+  notes, docs, support, feedback, and bug report. Help link dispatch remains
+  allowlisted through the support-entrypoint policy from #8466; updater and
+  diagnostics items continue through #8440/#8441.
 - Scope: File, Edit, View, Go, Window, Help, command-registry integration,
   New Session, Open Project, New Window, Close, Reload, Restart, Export Logs,
   Settings, command palette, terminal/file tree/review toggles, docs/support,

@@ -26,7 +26,7 @@ export const handleKhalaCodeApplicationMenuAction = (
     void deps.checkForUpdates()
     return true
   }
-  if (action === KHALA_CODE_UPDATER_MENU_ACTION_RELEASE_NOTES) {
+  if (action === KHALA_CODE_UPDATER_MENU_ACTION_RELEASE_NOTES || action === "help.release_notes") {
     void deps.openReleaseNotes()
     return true
   }

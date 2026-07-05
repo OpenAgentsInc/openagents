@@ -226,6 +226,10 @@ import {
   type KhalaCodeSupportProjection,
 } from "../shared/support-entrypoints"
 import {
+  khalaCodeDeepLinkFromLocation,
+  viewForKhalaCodeDeepLinkTarget,
+} from "../shared/deep-links"
+import {
   initialKhalaCodeMainShellModel,
   shouldPollThreadTokenSummary,
   updateKhalaCodeMainShellModel,
@@ -1135,6 +1139,7 @@ let composerContextChips: ComposerContextChip[] = []
 const sessionIdStorageKey = "khala-code-desktop.session-id.v1"
 const activeThreadIdStorageKey = "khala-code-desktop.active-thread-id.v1"
 const storedSessionId = localStorage.getItem(sessionIdStorageKey)
+const bootDeepLink = khalaCodeDeepLinkFromLocation(globalThis.location)
 const sessionId =
   storedSessionId?.startsWith("khala-code-desktop-") === true
     ? storedSessionId
@@ -1148,7 +1153,10 @@ localStorage.setItem(sessionIdStorageKey, sessionId)
  * `restoreActiveThreadAfterRestart`) so a stale/deleted thread id does not
  * retry forever.
  */
-const bootRestoreThreadId = localStorage.getItem(activeThreadIdStorageKey)
+const bootRestoreThreadId =
+  bootDeepLink?.ok === true && bootDeepLink.target.kind === "thread"
+    ? bootDeepLink.target.threadId
+    : localStorage.getItem(activeThreadIdStorageKey)
 const commandKeybindingOverrides: Partial<Record<KhalaCodeCommandId, string>> = {
   ...readKhalaCodeCommandKeybindingOverrides(localStorage),
 }
@@ -5439,7 +5447,9 @@ const initialGymState = gymPaneStateFromLocation(globalThis.location)
  */
 const activeViewStorageKey = "khala-code-desktop.active-view.v1"
 const storedActiveView = localStorage.getItem(activeViewStorageKey)
-const initialView = restoredKhalaCodeViewFromLocationAndStorage(globalThis.location, storedActiveView)
+const initialView = bootDeepLink?.ok === true
+  ? viewForKhalaCodeDeepLinkTarget(bootDeepLink.target)
+  : restoredKhalaCodeViewFromLocationAndStorage(globalThis.location, storedActiveView)
 
 const setActiveCodexThreadId = (threadId: string | null): void => {
   const changed = shellModel().activeCodexThreadId !== threadId

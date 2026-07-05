@@ -1,10 +1,4 @@
-import { KHALA_CODE_UPDATER_MENU_ACTION_CHECK_FOR_UPDATES, KHALA_CODE_UPDATER_MENU_ACTION_RELEASE_NOTES } from "./khala-code-updater-menu-actions.js"
-import {
-  KHALA_CODE_SUPPORT_MENU_ACTION_BUG_REPORT,
-  KHALA_CODE_SUPPORT_MENU_ACTION_DOCS,
-  KHALA_CODE_SUPPORT_MENU_ACTION_FEEDBACK,
-  KHALA_CODE_SUPPORT_MENU_ACTION_SUPPORT,
-} from "./khala-code-support-menu-actions.js"
+import { KHALA_CODE_UPDATER_MENU_ACTION_CHECK_FOR_UPDATES } from "./khala-code-updater-menu-actions.js"
 
 type MenuItem =
   | { type: "divider" | "separator" }
@@ -42,6 +36,17 @@ export const khalaCodeDesktopApplicationMenu: Array<MenuItem> = [
     ],
   },
   {
+    label: "File",
+    submenu: [
+      { label: "New Session", action: "session.new_chat", accelerator: "CommandOrControl+N" },
+      { label: "Open Project Home", action: "view.home", accelerator: "Alt+7" },
+      { type: "divider" },
+      { label: "Settings", action: "view.settings", accelerator: "Alt+5" },
+      { type: "divider" },
+      { role: "close", accelerator: "CommandOrControl+W" },
+    ],
+  },
+  {
     label: "Edit",
     submenu: [
       { role: "undo", accelerator: "CommandOrControl+Z" },
@@ -60,6 +65,33 @@ export const khalaCodeDesktopApplicationMenu: Array<MenuItem> = [
     ],
   },
   {
+    label: "View",
+    submenu: [
+      { label: "Command Palette", action: "palette.open", accelerator: "CommandOrControl+K" },
+      { type: "divider" },
+      { label: "Chat", action: "view.chat", accelerator: "Alt+1" },
+      { label: "Fleet", action: "view.fleet", accelerator: "Alt+2" },
+      { label: "Forum", action: "view.forum", accelerator: "Alt+3" },
+      { label: "Inbox", action: "view.inbox", accelerator: "Alt+4" },
+      { label: "Editor", action: "view.editor", accelerator: "Alt+6" },
+      { label: "Review", action: "view.review", accelerator: "Alt+8" },
+      { type: "divider" },
+      { role: "reload", accelerator: "CommandOrControl+R" },
+      { role: "togglefullscreen" },
+      { role: "toggleDevTools" },
+    ],
+  },
+  {
+    label: "Go",
+    submenu: [
+      { label: "Previous Session", action: "session.previous", accelerator: "Alt+Left" },
+      { label: "Next Session", action: "session.next", accelerator: "Alt+Right" },
+      { type: "divider" },
+      { label: "Previous Message", action: "message.previous", accelerator: "Alt+Up" },
+      { label: "Next Message", action: "message.next", accelerator: "Alt+Down" },
+    ],
+  },
+  {
     label: "Window",
     submenu: [
       { role: "minimize", accelerator: "CommandOrControl+M" },
@@ -72,12 +104,12 @@ export const khalaCodeDesktopApplicationMenu: Array<MenuItem> = [
     label: "Help",
     submenu: [
       { label: "Check for Updates…", action: KHALA_CODE_UPDATER_MENU_ACTION_CHECK_FOR_UPDATES },
-      { label: "Release Notes", action: KHALA_CODE_UPDATER_MENU_ACTION_RELEASE_NOTES },
+      { label: "Release Notes", action: "help.release_notes" },
       { type: "divider" },
-      { label: "Documentation", action: KHALA_CODE_SUPPORT_MENU_ACTION_DOCS },
-      { label: "Support", action: KHALA_CODE_SUPPORT_MENU_ACTION_SUPPORT },
-      { label: "Send Feedback", action: KHALA_CODE_SUPPORT_MENU_ACTION_FEEDBACK },
-      { label: "Report Bug", action: KHALA_CODE_SUPPORT_MENU_ACTION_BUG_REPORT },
+      { label: "Documentation", action: "help.docs" },
+      { label: "Support", action: "help.support" },
+      { label: "Send Feedback", action: "help.feedback" },
+      { label: "Report Bug", action: "help.bug_report" },
       { type: "divider" },
       {
         label: "Restart Khala Code",
