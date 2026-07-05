@@ -1,20 +1,30 @@
 import {
   CHAT_MESSAGE_ENTITY_TYPE,
   decodeChatMessageEntity,
+  decodeRuntimeEventEntity,
+  RUNTIME_EVENT_ENTITY_TYPE,
   threadScope,
-  type ChatMessageEntity
+  type ChatMessageEntity,
+  type RuntimeEventEntity
 } from "@openagentsinc/khala-sync"
 import { useLocalSearchParams } from "expo-router"
-import { useEffect, useRef } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import { FlatList, Text, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 
 import { AppHeader } from "../../src/components/app-header"
+import { TranscriptPartRow } from "../../src/components/transcript-part-row"
 import { sortByKeyAsc } from "../../src/sync/khala-sync-entities-core"
+import {
+  reduceRuntimeTranscript,
+  sortEventsBySequence,
+  type TranscriptPart
+} from "../../src/sync/khala-runtime-transcript-core"
 import { useKhalaSyncCollection } from "../../src/sync/use-khala-sync-collection"
 
 const messageIdOf = (message: ChatMessageEntity): string => message.messageId
 const createdAtOf = (message: ChatMessageEntity): string => message.createdAt
+const runtimeEventIdOf = (event: RuntimeEventEntity): string => event.eventId
 
 const formatClockTime = (iso: string): string => {
   const parsed = new Date(iso)
@@ -24,42 +34,71 @@ const formatClockTime = (iso: string): string => {
 
 export default function ThreadMessagesScreen() {
   const { threadId, title } = useLocalSearchParams<{ threadId: string; title?: string }>()
-  const listRef = useRef<FlatList<ChatMessageEntity>>(null)
-  const state = useKhalaSyncCollection(
-    threadId === undefined ? "" : String(threadScope(threadId)),
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- shared scroll ref across two independently-typed FlatLists (chat vs. transcript)
+  const listRef = useRef<FlatList<any>>(null)
+  const scope = threadId === undefined ? "" : String(threadScope(threadId))
+
+  const chatState = useKhalaSyncCollection(
+    scope,
     CHAT_MESSAGE_ENTITY_TYPE,
     decodeChatMessageEntity,
     messageIdOf
   )
-  const messages = sortByKeyAsc(
-    state.items.filter(message => message.deletedAt === null),
-    createdAtOf
+  const runtimeState = useKhalaSyncCollection(
+    scope,
+    RUNTIME_EVENT_ENTITY_TYPE,
+    decodeRuntimeEventEntity,
+    runtimeEventIdOf
   )
 
+  const messages = sortByKeyAsc(
+    chatState.items.filter(message => message.deletedAt === null),
+    createdAtOf
+  )
+  const transcriptParts = useMemo(
+    () =>
+      reduceRuntimeTranscript(
+        sortEventsBySequence(runtimeState.items).map(entity => entity.event)
+      ),
+    [runtimeState.items]
+  )
+  const hasRichTranscript = transcriptParts.length > 0
+
   useEffect(() => {
-    if (messages.length === 0) return
+    if (messages.length === 0 && transcriptParts.length === 0) return
     listRef.current?.scrollToEnd({ animated: true })
-  }, [messages.length])
+  }, [messages.length, transcriptParts.length])
+
+  const status = hasRichTranscript ? runtimeState.status : chatState.status
+  const loading = status === "loading" && messages.length === 0 && transcriptParts.length === 0
 
   return (
     <SafeAreaView className="flex-1 bg-bg" edges={["top", "bottom", "left", "right"]}>
       <AppHeader showBack title={title ?? "Thread"} />
-      {state.status === "missing_token" ? (
+      {status === "missing_token" ? (
         <View className="flex-1 items-center justify-center px-8">
           <Text className="text-center font-mono text-sm text-textFaint">
             Set EXPO_PUBLIC_KHALA_SYNC_DEMO_TOKEN before starting the app.
           </Text>
         </View>
-      ) : state.status === "error" ? (
+      ) : status === "error" ? (
         <View className="flex-1 items-center justify-center px-8">
           <Text className="text-center font-sans text-base text-danger">
-            {state.error}
+            {chatState.error ?? runtimeState.error}
           </Text>
         </View>
-      ) : state.status === "loading" && messages.length === 0 ? (
+      ) : loading ? (
         <View className="flex-1 items-center justify-center">
           <Text className="font-sans text-base text-textMuted">loading messages…</Text>
         </View>
+      ) : hasRichTranscript ? (
+        <FlatList
+          contentContainerClassName="gap-2 px-4 py-4"
+          data={transcriptParts}
+          keyExtractor={part => part.id}
+          ref={listRef}
+          renderItem={({ item: part }) => <TranscriptPartRow part={part} />}
+        />
       ) : messages.length === 0 ? (
         <View className="flex-1 items-center justify-center">
           <Text className="font-sans text-base text-textMuted">No messages yet</Text>
