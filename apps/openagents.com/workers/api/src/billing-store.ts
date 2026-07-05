@@ -23,15 +23,35 @@
 //      or double-fires because of the mirror. Side-effectful evaluators
 //      (auto-top-up, sweeps, Stripe API calls) read exactly one store: D1.
 //
-//   3. READS STAY ON D1. `KHALA_SYNC_BILLING_READS` routes exactly ONE
-//      read — the per-user balance SUM behind `readBillingSummary` — and
-//      only where a call site explicitly opts in with
+//   3. READS MOSTLY STAY ON D1. `KHALA_SYNC_BILLING_READS` routes the
+//      per-user balance SUM behind `readBillingSummary` only where a call
+//      site explicitly opts in with
 //      `billingRuntimeForEnv(env, { routeReads: true })` (the display
 //      summary path). Gates, evaluators, and receipt inputs always read
-//      D1. Flipping the flag to `postgres` in production is an EPIC-GATED
-//      ops decision (#8282) taken only after the backfill `--verify`
-//      (exact per-account balance equality) is green; see
+//      D1. Flipping the flag to `postgres` in production for the BALANCE
+//      is an EPIC-GATED ops decision (#8282) taken only after the backfill
+//      `--verify` (exact per-account balance equality) is green; see
 //      docs/khala-sync/RUNBOOK.md "Billing domain cutover".
+//
+//      #8337 (KS-8.7 follow-up) widens this with a SEPARATE, narrower,
+//      always-on bounded read-serving allowlist — the same discipline as
+//      the KS-8.14 business-domain lane's
+//      `BUSINESS_DOMAIN_POSTGRES_SERVED_READ_TABLES` (#8360):
+//      `BILLING_DOMAIN_POSTGRES_SERVED_READ_TABLES` names the tables behind
+//      exactly four DISPLAY-ONLY, non-decision-critical read surfaces —
+//      the recent-ledger-entries projection, the auto-top-up DISPLAY state
+//      (never the charge decision), Stripe checkout receipt reads
+//      (immutable, already-settled), and inference/pay-in receipt reads
+//      (immutable, already-settled) — each wired through its own
+//      hand-audited function, never a generic "does this SQL touch table
+//      X" classifier. Every other billing read (balance-gating decisions,
+//      idempotency/dedupe checks, webhook processing, auto-top-up charge
+//      evaluation, buyer-payment pipeline dedupe) stays D1-served
+//      PERMANENTLY, by design, because a lagging mirror read there could
+//      silently double-charge, double-credit, or corrupt a payout-adjacent
+//      decision. `KHALA_SYNC_BILLING_READS=postgres` unlocks serving for
+//      ONLY this allowlisted surface; `compare` shadow-runs it (serves D1,
+//      logs drift) exactly like the balance read.
 //
 // Flags:
 //   KHALA_SYNC_BILLING_DUAL_WRITE  (default ON; 'off'|'0'|'false'|'disabled')
@@ -41,7 +61,8 @@
 // Cutover order (docs/khala-sync/RUNBOOK.md "Billing domain cutover"):
 // dual-write on → backfill (scripts/backfill-billing.ts) → catch-up sweep
 // → --verify (money reconciliation) → compare reads → [EPIC-GATED]
-// postgres reads → decommission D1 tables in a follow-up.
+// postgres reads (balance) / allowlisted bounded postgres reads (#8337) →
+// decommission D1 tables in a follow-up.
 
 import {
   BILLING_DOMAIN_TABLE_SPECS,
@@ -50,12 +71,27 @@ import {
 } from '@openagentsinc/khala-sync-server'
 
 import type {
+  BillingAutoTopUpEventRow,
+  BillingAutoTopUpPolicyRow,
+  BillingAutoTopUpState,
+  BillingAutoTopUpStateRead,
   BillingBalanceRead,
   BillingDomainMirror,
+  BillingLedgerEntry,
+  BillingLedgerEntryRow,
   BillingMirrorRef,
+  BillingRecentEntriesRead,
   BillingRuntime,
+  BillingSavedPaymentMethodRow,
 } from './billing'
-import { systemBillingRuntime } from './billing'
+import {
+  BILLING_AUTO_TOP_UP_EVENTS_LIMIT,
+  BILLING_CURRENCY,
+  BILLING_RECENT_LEDGER_ENTRIES_LIMIT,
+  billingAutoTopUpStateFromRows,
+  billingLedgerEntryFromRow,
+  systemBillingRuntime,
+} from './billing'
 import {
   defaultMakeKhalaSyncSqlClient,
   type KhalaSyncHyperdriveBinding,
@@ -101,6 +137,76 @@ export const billingSyncFlagsFromEnv = (
       readsRaw === 'postgres' || readsRaw === 'compare' ? readsRaw : 'd1',
   }
 }
+
+// ---------------------------------------------------------------------------
+// #8337 bounded Postgres-served read allowlist
+// ---------------------------------------------------------------------------
+
+/**
+ * The bounded read surface that ACTUALLY serves from Postgres when
+ * `KHALA_SYNC_BILLING_READS=postgres` (KS-8.7 follow-up, #8337) — mirrors
+ * the KS-8.14 business-domain lane's
+ * `BUSINESS_DOMAIN_POSTGRES_SERVED_READ_TABLES` discipline (#8360), adapted
+ * to this domain's per-function (not generic-SQL-classifier) architecture.
+ *
+ * Unlike the business-domain lane, billing-store.ts never runs a generic
+ * "does this SQL touch table X" classifier over arbitrary statements —
+ * every read here is its own hand-audited, single-purpose function. This
+ * Set is therefore a DOCUMENTATION registry (which tables a Postgres-served
+ * read is ever allowed to touch) that each of the four allowlisted read
+ * functions below asserts against; it is NOT a generic gate that would let
+ * an unrelated future SQL statement touching one of these tables serve from
+ * Postgres automatically.
+ *
+ * The four allowlisted surfaces, and why each is safe:
+ *   - `billing_ledger_entries` — ONLY the recent-entries display projection
+ *     (`readRecentLedgerEntries`, LIMIT 12). NOT the balance SUM (that has
+ *     its own separate, still-D1-default `balanceRead` opt-in above) and
+ *     NOT any ledger write-decision input.
+ *   - `billing_auto_top_up_policies` / `billing_auto_top_up_events` /
+ *     `stripe_saved_payment_methods` — ONLY the auto-top-up DISPLAY state
+ *     (`readBillingAutoTopUpState`: saved-card summary, policy, recent
+ *     events). NEVER the auto-top-up charge decision — `chargeAutoTopUp`
+ *     (stripe-billing.ts) always reads its own dedicated D1 query directly
+ *     and takes no runtime hook, so a lagging mirror read here can never
+ *     double-charge or skip a top-up.
+ *   - `stripe_checkout_sessions` — ONLY the public checkout-receipt read
+ *     (`stripe-checkout-receipts.ts`), which projects an already-settled,
+ *     immutable receipt for a completed session. Not the webhook
+ *     processing_status write path, not the checkout-session creation.
+ *   - `pay_ins` — ONLY the public inference-receipt read
+ *     (`inference-receipts.ts`: `readInferenceReceiptByRef` /
+ *     `listRecentInferenceReceipts`), scoped to `pay_in_type IN
+ *     ('adjustment', 'usd_credit_grant')` and an immutable
+ *     `public_receipt_ref`. Not any pay-in state-transition decision.
+ *
+ * Deliberately NOT allowlisted this pass (candidates for a future,
+ * individually reviewed pass): the buyer-payment pipeline
+ * (`buyer_payment_challenges`/`receipts`/`entitlements`/`redemptions`/
+ * `reconciliation_events`) — every read there is SHARED with a
+ * decision-critical idempotency/dedupe check
+ * (`buyer-payment-ledger.ts`'s `makeD1BuyerPaymentLedgerStore`, used both
+ * by the read-only checkout-return/payment-proof status routes AND by the
+ * challenge/webhook/redemption creation paths) and cannot be split into a
+ * decision-free surface without further store-interface surgery; and the
+ * forum tip-earnings leaderboard/creator-earnings projections
+ * (`forum/tip-earnings.ts`), which JOIN `pay_ins`/`pay_in_legs` against
+ * `forum_posts` (a different domain's mirror) in a single statement.
+ */
+export const BILLING_DOMAIN_POSTGRES_SERVED_READ_TABLES: ReadonlySet<BillingDomainTable> =
+  new Set<BillingDomainTable>([
+    'billing_ledger_entries',
+    'billing_auto_top_up_policies',
+    'billing_auto_top_up_events',
+    'stripe_saved_payment_methods',
+    'stripe_checkout_sessions',
+    'pay_ins',
+  ])
+
+/** True when `table` is in the #8337 bounded Postgres-served read allowlist. */
+export const billingPostgresServesTable = (
+  table: BillingDomainTable,
+): boolean => BILLING_DOMAIN_POSTGRES_SERVED_READ_TABLES.has(table)
 
 // ---------------------------------------------------------------------------
 // Diagnostics (the drift metric)
@@ -158,6 +264,26 @@ export type PostgresBillingStore = Readonly<{
   ) => Promise<void>
   /** The routed read: per-user balance = SUM(amount_cents), exact. */
   readBalanceCents: (userId: string) => Promise<number>
+  /**
+   * #8337: the recent-ledger-entries display projection, byte-identical
+   * `ORDER BY`/`LIMIT` to the D1 path (`readD1RecentLedgerEntries`,
+   * billing.ts).
+   */
+  readRecentLedgerEntryRows: (
+    userId: string,
+  ) => Promise<ReadonlyArray<BillingLedgerEntryRow>>
+  /**
+   * #8337: the auto-top-up DISPLAY-state row set (saved card, policy,
+   * recent events), byte-identical filters/`LIMIT` to the D1 path
+   * (`readD1BillingAutoTopUpState`, billing.ts).
+   */
+  readAutoTopUpStateRows: (userId: string) => Promise<
+    Readonly<{
+      paymentMethod: BillingSavedPaymentMethodRow | null
+      policy: BillingAutoTopUpPolicyRow | null
+      events: ReadonlyArray<BillingAutoTopUpEventRow>
+    }>
+  >
 }>
 
 export type MakePostgresBillingStoreDependencies = Readonly<{
@@ -206,6 +332,64 @@ const convergeUpsertSql = (
   return `INSERT INTO ${table} (${columns.join(', ')}) VALUES ${tuples.join(', ')} ON CONFLICT (${spec.keyColumns.join(', ')}) DO UPDATE SET ${setClauses}`
 }
 
+/**
+ * postgres.js returns `bigint` (int8) columns as JS `string` by default (to
+ * avoid precision loss) while D1 returns them as JS `number`; `smallint`/
+ * `int4` columns already parse as `number` on both sides. The #8337 bounded
+ * read surfaces reconvert exactly the bigint-typed columns their row shapes
+ * carry so a Postgres-served row is field-for-field identical in JS type to
+ * the D1 row the same call site would otherwise have gotten.
+ */
+const toNullableNumber = (value: unknown): number | null =>
+  value === null || value === undefined ? null : Number(value)
+
+const ledgerEntryRowFromPostgres = (
+  row: Readonly<Record<string, unknown>>,
+): BillingLedgerEntryRow => ({
+  amount_cents: Number(row['amount_cents']),
+  created_at: String(row['created_at']),
+  description: String(row['description']),
+  id: String(row['id']),
+  quantity: toNullableNumber(row['quantity']),
+  source: row['source'] as BillingLedgerEntryRow['source'],
+  unit: row['unit'] === null ? null : String(row['unit']),
+})
+
+const autoTopUpEventRowFromPostgres = (
+  row: Readonly<Record<string, unknown>>,
+): BillingAutoTopUpEventRow => ({
+  amount_cents: Number(row['amount_cents']),
+  created_at: String(row['created_at']),
+  id: String(row['id']),
+  reason: row['reason'] === null ? null : String(row['reason']),
+  status: row['status'] as BillingAutoTopUpEventRow['status'],
+})
+
+const autoTopUpPolicyRowFromPostgres = (
+  row: Readonly<Record<string, unknown>>,
+): BillingAutoTopUpPolicyRow => ({
+  amount_cents: Number(row['amount_cents']),
+  enabled: Number(row['enabled']),
+  monthly_cap_cents: Number(row['monthly_cap_cents']),
+  pause_reason: row['pause_reason'] === null ? null : String(row['pause_reason']),
+  spent_this_month_cents: Number(row['spent_this_month_cents']),
+  status: row['status'] as BillingAutoTopUpPolicyRow['status'],
+  threshold_cents: Number(row['threshold_cents']),
+  updated_at: String(row['updated_at']),
+})
+
+const savedPaymentMethodRowFromPostgres = (
+  row: Readonly<Record<string, unknown>>,
+): BillingSavedPaymentMethodRow => ({
+  brand: row['brand'] === null ? null : String(row['brand']),
+  exp_month: toNullableNumber(row['exp_month']),
+  exp_year: toNullableNumber(row['exp_year']),
+  last4: row['last4'] === null ? null : String(row['last4']),
+  status: row['status'] as BillingSavedPaymentMethodRow['status'],
+  stripe_payment_method_id: String(row['stripe_payment_method_id']),
+  updated_at: String(row['updated_at']),
+})
+
 export const makePostgresBillingStore = (
   deps: MakePostgresBillingStoreDependencies,
 ): PostgresBillingStore => {
@@ -225,6 +409,46 @@ export const makePostgresBillingStore = (
   }
 
   return {
+    readAutoTopUpStateRows: userId =>
+      withClient(async client => {
+        const unsafe = requireUnsafe(client)
+        const [paymentMethodRows, policyRows, eventRows] = await Promise.all([
+          unsafe(
+            `SELECT stripe_payment_method_id, brand, last4, exp_month, exp_year,
+                    status, updated_at
+               FROM stripe_saved_payment_methods
+              WHERE user_id = $1 AND currency = $2 AND livemode = 0`,
+            [userId, BILLING_CURRENCY],
+          ),
+          unsafe(
+            `SELECT enabled, threshold_cents, amount_cents, monthly_cap_cents,
+                    spent_this_month_cents, status, pause_reason, updated_at
+               FROM billing_auto_top_up_policies
+              WHERE user_id = $1 AND currency = $2`,
+            [userId, BILLING_CURRENCY],
+          ),
+          unsafe(
+            `SELECT id, status, amount_cents, reason, created_at
+               FROM billing_auto_top_up_events
+              WHERE user_id = $1
+              ORDER BY created_at DESC
+              LIMIT $2`,
+            [userId, BILLING_AUTO_TOP_UP_EVENTS_LIMIT],
+          ),
+        ])
+        return {
+          events: eventRows.map(autoTopUpEventRowFromPostgres),
+          paymentMethod:
+            paymentMethodRows[0] === undefined
+              ? null
+              : savedPaymentMethodRowFromPostgres(paymentMethodRows[0]),
+          policy:
+            policyRows[0] === undefined
+              ? null
+              : autoTopUpPolicyRowFromPostgres(policyRows[0]),
+        }
+      }),
+
     readBalanceCents: userId =>
       withClient(async client => {
         const unsafe = requireUnsafe(client)
@@ -235,6 +459,20 @@ export const makePostgresBillingStore = (
           [userId],
         )
         return Math.trunc(Number(rows[0]?.['balance_cents'] ?? 0))
+      }),
+
+    readRecentLedgerEntryRows: userId =>
+      withClient(async client => {
+        const unsafe = requireUnsafe(client)
+        const rows = await unsafe(
+          `SELECT id, source, description, amount_cents, quantity, unit, created_at
+             FROM billing_ledger_entries
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2`,
+          [userId, BILLING_RECENT_LEDGER_ENTRIES_LIMIT],
+        )
+        return rows.map(ledgerEntryRowFromPostgres)
       }),
 
     upsertRows: (table, rows) =>
@@ -393,6 +631,167 @@ export const makeRoutedBillingBalanceRead = (
 }
 
 // ---------------------------------------------------------------------------
+// #8337 routed reads (compare | postgres, single attempt, fail-soft)
+// ---------------------------------------------------------------------------
+
+/**
+ * A key-order-INSENSITIVE structural stringify: object keys are sorted
+ * before serializing (arrays keep their order — order is semantically
+ * meaningful for `ORDER BY`-produced lists) so two field-for-field-equal
+ * values compare equal even if the two code paths built their object
+ * literals with keys in a different order. Plain `JSON.stringify` equality
+ * would be a false-positive-drift trap: it is only safe if D1 and Postgres
+ * ALWAYS construct their result objects via the exact same shared
+ * projection function (they do today — `billingLedgerEntryFromRow`,
+ * `billingAutoTopUpStateFromRows` — but a future refactor of either path
+ * alone should never manufacture a spurious
+ * `khala_sync_billing_read_compare_mismatch`).
+ */
+const stableStringify = (value: unknown): string => {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(',')}]`
+  }
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>).sort(
+      ([left], [right]) => (left < right ? -1 : left > right ? 1 : 0),
+    )
+    return `{${entries.map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`).join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
+const deepEqualJson = (left: unknown, right: unknown): boolean =>
+  stableStringify(left) === stableStringify(right)
+
+export type MakeRoutedBillingRecentEntriesReadDependencies = Readonly<{
+  postgres: Pick<PostgresBillingStore, 'readRecentLedgerEntryRows'>
+  reads: Exclude<BillingSyncReadsMode, 'd1'>
+  log?: BillingSyncLog | undefined
+}>
+
+/**
+ * The #8337 KHALA_SYNC_BILLING_READS router for the recent-entries display
+ * projection (`billing_ledger_entries`, allowlisted — see
+ * `BILLING_DOMAIN_POSTGRES_SERVED_READ_TABLES`):
+ *   compare  — read both, SERVE D1, log any divergence
+ *   postgres — serve Postgres (single attempt), D1 fallback on failure
+ * Unlike the balance read, this is wired unconditionally by
+ * `billingRuntimeForEnv` whenever `reads !== 'd1'` — there is no separate
+ * opt-in, because only the display summary path ever calls this hook.
+ */
+export const makeRoutedBillingRecentEntriesRead = (
+  deps: MakeRoutedBillingRecentEntriesReadDependencies,
+): BillingRecentEntriesRead => {
+  const log = deps.log ?? defaultLog
+  const readPostgres = async (
+    userId: string,
+  ): Promise<ReadonlyArray<BillingLedgerEntry>> =>
+    (await deps.postgres.readRecentLedgerEntryRows(userId)).map(
+      billingLedgerEntryFromRow,
+    )
+
+  if (deps.reads === 'compare') {
+    return async (userId, readD1) => {
+      const d1Entries = await readD1()
+      try {
+        const postgresEntries = await readPostgres(userId)
+        if (!deepEqualJson(d1Entries, postgresEntries)) {
+          log('khala_sync_billing_read_compare_mismatch', {
+            messageSafe: `recent ledger entries differ: d1=${d1Entries.length} postgres=${postgresEntries.length} rows`,
+            op: 'readRecentLedgerEntries',
+            refs: [userId],
+          })
+        }
+      } catch (error) {
+        log('khala_sync_billing_postgres_read_failed', {
+          messageSafe: safeMessage(error),
+          op: 'readRecentLedgerEntries',
+          refs: [userId],
+        })
+      }
+      return d1Entries
+    }
+  }
+
+  return async (userId, readD1) => {
+    try {
+      return await readPostgres(userId)
+    } catch (error) {
+      log('khala_sync_billing_postgres_read_fallback', {
+        messageSafe: safeMessage(error),
+        op: 'readRecentLedgerEntries',
+        refs: [userId],
+      })
+      return readD1()
+    }
+  }
+}
+
+export type MakeRoutedBillingAutoTopUpStateReadDependencies = Readonly<{
+  postgres: Pick<PostgresBillingStore, 'readAutoTopUpStateRows'>
+  reads: Exclude<BillingSyncReadsMode, 'd1'>
+  log?: BillingSyncLog | undefined
+  runtime?: BillingRuntime | undefined
+}>
+
+/**
+ * The #8337 KHALA_SYNC_BILLING_READS router for the auto-top-up DISPLAY
+ * state (allowlisted — see `BILLING_DOMAIN_POSTGRES_SERVED_READ_TABLES`).
+ * NEVER wire this into the auto-top-up charge decision (`chargeAutoTopUp`,
+ * stripe-billing.ts) — that evaluator always reads its own dedicated D1
+ * query directly and takes no runtime hook.
+ */
+export const makeRoutedBillingAutoTopUpStateRead = (
+  deps: MakeRoutedBillingAutoTopUpStateReadDependencies,
+): BillingAutoTopUpStateRead => {
+  const log = deps.log ?? defaultLog
+  const runtime = deps.runtime ?? systemBillingRuntime
+  const readPostgres = async (
+    userId: string,
+  ): Promise<BillingAutoTopUpState> =>
+    billingAutoTopUpStateFromRows(
+      await deps.postgres.readAutoTopUpStateRows(userId),
+      runtime,
+    )
+
+  if (deps.reads === 'compare') {
+    return async (userId, readD1) => {
+      const d1State = await readD1()
+      try {
+        const postgresState = await readPostgres(userId)
+        if (!deepEqualJson(d1State, postgresState)) {
+          log('khala_sync_billing_read_compare_mismatch', {
+            messageSafe: 'auto-top-up display state differs between d1 and postgres',
+            op: 'readBillingAutoTopUpState',
+            refs: [userId],
+          })
+        }
+      } catch (error) {
+        log('khala_sync_billing_postgres_read_failed', {
+          messageSafe: safeMessage(error),
+          op: 'readBillingAutoTopUpState',
+          refs: [userId],
+        })
+      }
+      return d1State
+    }
+  }
+
+  return async (userId, readD1) => {
+    try {
+      return await readPostgres(userId)
+    } catch (error) {
+      log('khala_sync_billing_postgres_read_fallback', {
+        messageSafe: safeMessage(error),
+        op: 'readBillingAutoTopUpState',
+        refs: [userId],
+      })
+      return readD1()
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Env factories (the call-site drop-ins)
 // ---------------------------------------------------------------------------
 
@@ -423,6 +822,49 @@ export const postgresBillingStoreForEnv = (
   return makePostgresBillingStore({
     acquireSql: () => makeSqlClient(connectionString),
   })
+}
+
+/**
+ * A single unsafe-SQL round trip (one connection acquired and ended per
+ * call, the same discipline as every other billing Postgres read). Used by
+ * the two #8337 standalone allowlisted read stores that live outside
+ * `BillingRuntime` — `stripe-checkout-receipts.ts` and
+ * `inference-receipts.ts` — so they can build their own narrow,
+ * hand-audited Postgres query without depending on `PostgresBillingStore`'s
+ * wider surface.
+ */
+export type BillingPostgresRawQuery = (
+  text: string,
+  params: ReadonlyArray<unknown>,
+) => Promise<ReadonlyArray<Readonly<Record<string, unknown>>>>
+
+/**
+ * The #8337 raw-query factory for env-wired call sites, or `undefined` when
+ * the KHALA_SYNC_DB binding is absent — the same degrade-to-D1-only
+ * posture as every other billing Postgres factory in this file.
+ */
+export const billingPostgresRawQueryForEnv = (
+  env: BillingSyncEnv,
+  options: MakeBillingStoreOptions = {},
+): BillingPostgresRawQuery | undefined => {
+  const connectionString = env.KHALA_SYNC_DB?.connectionString
+  if (connectionString === undefined || connectionString.length === 0) {
+    return undefined
+  }
+  const makeSqlClient = options.makeSqlClient ?? defaultMakeKhalaSyncSqlClient
+  return async (text, params) => {
+    const client = await makeSqlClient(connectionString)
+    try {
+      const unsafe = requireUnsafe(client)
+      return await unsafe(text, [...params])
+    } finally {
+      try {
+        await client.end()
+      } catch {
+        // best-effort teardown, same discipline as the push route.
+      }
+    }
+  }
 }
 
 /**
@@ -485,8 +927,26 @@ export const billingRuntimeForEnv = (
     options.routeReads === true && flags.reads !== 'd1'
       ? makeRoutedBillingBalanceRead({ log, postgres, reads: flags.reads })
       : undefined
+  // #8337: unlike `balanceRead`, these two are wired unconditionally
+  // whenever reads !== 'd1' — no separate `routeReads`-style opt-in is
+  // needed because only the display summary path (`readBillingSummary`,
+  // billing.ts) ever calls either hook; nothing decision-critical takes a
+  // `BillingRuntime` with these fields set.
+  const recentEntriesRead =
+    flags.reads === 'd1'
+      ? undefined
+      : makeRoutedBillingRecentEntriesRead({ log, postgres, reads: flags.reads })
+  const autoTopUpStateRead =
+    flags.reads === 'd1'
+      ? undefined
+      : makeRoutedBillingAutoTopUpStateRead({ log, postgres, reads: flags.reads })
 
-  if (mirror === undefined && balanceRead === undefined) {
+  if (
+    mirror === undefined &&
+    balanceRead === undefined &&
+    recentEntriesRead === undefined &&
+    autoTopUpStateRead === undefined
+  ) {
     return systemBillingRuntime
   }
 
@@ -494,5 +954,7 @@ export const billingRuntimeForEnv = (
     ...systemBillingRuntime,
     ...(mirror === undefined ? {} : { mirror }),
     ...(balanceRead === undefined ? {} : { balanceRead }),
+    ...(recentEntriesRead === undefined ? {} : { recentEntriesRead }),
+    ...(autoTopUpStateRead === undefined ? {} : { autoTopUpStateRead }),
   }
 }

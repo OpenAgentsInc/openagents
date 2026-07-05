@@ -2052,7 +2052,12 @@ Flags (Worker vars; structural — absent means default):
   serves D1, logs `khala_sync_billing_read_compare_mismatch` with the
   cent delta; `postgres` serves the routed balance read from Postgres
   with bounded retry (50/150ms) and D1 fallback. Only the display
-  summary read routes in this lane.
+  summary read (balance) routes with a separate `routeReads` opt-in. As
+  of the #8337 follow-up (below), the SAME flag also unlocks real
+  serving for a bounded allowlist of four other display-only surfaces
+  (`BILLING_DOMAIN_POSTGRES_SERVED_READ_TABLES`,
+  `billing-store.ts`) — those are wired unconditionally whenever the
+  flag isn't `d1`, no `routeReads`-style opt-in needed.
 
 Cutover order — never skip a step, each step soaks before the next:
 
@@ -2171,6 +2176,89 @@ per surface), matching the KS-8.6/Artanis precedent (#8335) of leaving
 this to a later pass; stopping dual-write; snapshotting to R2; and
 dropping any of the 22 D1 tables (per the #8330 KS-8.19 consolidation
 policy, bulk domain drops wait for that closing sweep).
+
+### 2026-07-05 follow-up #2: bounded Postgres read allowlist (#8337)
+
+The "recent-ledger-entries projection, auto-top-up state reads, checkout
+receipt reads, pay-in receipt reads" gap named above is now CLOSED for
+four of the five named surfaces, following the exact
+`BUSINESS_DOMAIN_POSTGRES_SERVED_READ_TABLES` bounded-allowlist pattern
+KS-8.14 established for the business-funnel lane (#8360), adapted to this
+domain's per-function (not generic-D1Database-proxy) architecture:
+
+- **`billing-store.ts`** now names
+  `BILLING_DOMAIN_POSTGRES_SERVED_READ_TABLES` — a `ReadonlySet<
+  BillingDomainTable>` covering `billing_ledger_entries`,
+  `billing_auto_top_up_policies`, `billing_auto_top_up_events`,
+  `stripe_saved_payment_methods`, `stripe_checkout_sessions`, `pay_ins`.
+  Since this lane has no generic "does this SQL touch table X" classifier,
+  the Set is a documentation/audit registry that four HAND-WRITTEN,
+  single-purpose read functions consult — never a blanket gate an
+  unrelated future statement could ride.
+- **Recent-entries display projection** (`billing.ts`'s
+  `readRecentLedgerEntries`, now routed via the new `BillingRuntime.
+  recentEntriesRead` hook) and **auto-top-up DISPLAY state**
+  (`readBillingAutoTopUpState`, routed via the new `autoTopUpStateRead`
+  hook) — both wired UNCONDITIONALLY by `billingRuntimeForEnv` whenever
+  `KHALA_SYNC_BILLING_READS !== 'd1'` (no separate `routeReads`-style
+  opt-in like the balance read needs, because only the display summary
+  path ever calls either hook). The auto-top-up CHARGE decision
+  (`chargeAutoTopUp`, stripe-billing.ts) is untouched — it still reads its
+  own dedicated D1 query directly and takes no runtime hook at all.
+- **Stripe checkout receipt read** (`stripe-checkout-receipts.ts`) and
+  **inference/pay-in receipt read** (`inference-receipts.ts`) are
+  standalone stores outside `BillingRuntime`; each gained a
+  `makePostgres*Store` twin plus a `makeReadsRouted*Store` compare/
+  postgres router (reusing the shared `BillingPostgresRawQuery` seam,
+  `billingPostgresRawQueryForEnv`), and an env-wiring composer
+  (`stripeCheckoutReceiptStoreForEnv`, `inferenceReceiptStoreForEnv`) now
+  wraps the three `index.ts` call sites (public checkout-receipt route,
+  public inference-receipt route, hosted-Gemini-promise-readiness route).
+  The inference receipt's free-allowance branch reads a DIFFERENT domain's
+  table (`inference_free_usage_events`, no live Postgres mirror in this
+  lane) — the Postgres store explicitly refuses that ref shape
+  (`InferenceReceiptPostgresNotServableError`) and the router transparently
+  falls back to D1 for it, in every mode. (The public activity-timeline
+  route's own `makeD1InferenceReceiptStore` call site was left unwired —
+  its narrower `PublicActivityTimelineRouteInput` doesn't carry
+  `KHALA_SYNC_DB` today; threading that through is a small, separate
+  follow-up.)
+- **Migration `0034_billing_bounded_read_indexes.sql`** re-derives the two
+  missing read accelerators (`billing_auto_top_up_events` had NO user_id
+  index at all; `pay_ins`'s `_public_receipt_ref` index was dropped by
+  `0015` since nothing served it yet) — the other four surfaces already
+  hit an existing PK/UNIQUE index.
+- **Deliberately NOT allowlisted this pass** (documented as future,
+  individually-reviewed-pass candidates in `billing-store.ts`'s own
+  comment): the buyer-payment pipeline
+  (`buyer_payment_challenges`/`receipts`/`entitlements`/`redemptions`/
+  `reconciliation_events`) — every read in `buyer-payment-ledger.ts`'s
+  `makeD1BuyerPaymentLedgerStore` is SHARED between the read-only
+  checkout-return/payment-proof status routes and the
+  challenge/webhook/redemption idempotency-dedupe decision paths, and
+  cannot be split into a decision-free surface without store-interface
+  surgery; and the forum tip-earnings leaderboard/creator-earnings
+  projections (`forum/tip-earnings.ts`), which JOIN
+  `pay_ins`/`pay_in_legs` against `forum_posts` (a different domain's
+  mirror) in a single statement.
+
+**Verification (real local Postgres, contract tests):**
+`billing-repository.contract.test.ts` (28 tests, extended in this pass),
+new `stripe-checkout-receipts.test.ts` (4 tests), new
+`inference-receipts.test.ts` (6 tests) — all prove parity (D1 vs.
+Postgres-served answers agree on real fixtures), REAL serving (a value
+diverged directly on the Postgres twin is what `postgres` mode reads back
+— proving genuine serving, not a D1-served shadow compare), fail-soft
+fallback (including a real broken-connection Postgres store, not just an
+injected throw), and compare-mode logging discipline (mismatch only on
+genuine disagreement, never a false positive from field-key ordering —
+the router's equality check is key-order-insensitive, `stableStringify`,
+not raw `JSON.stringify`).
+
+**No flag flip in this pass.** `KHALA_SYNC_BILLING_READS` stays `d1` in
+production; deploying with `compare`/`postgres` for this bounded surface
+and recording that decision on #8282 is separate, later work — same
+epic-gated discipline as the balance read.
 
 ## Business funnel domain cutover (KS-8.14, #8325)
 

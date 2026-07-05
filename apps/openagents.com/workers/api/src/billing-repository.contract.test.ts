@@ -39,8 +39,12 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import {
   applyManualBillingCredit,
   applyStripeCheckoutCredit,
+  billingAutoTopUpStateFromRows,
+  billingLedgerEntryFromRow,
   ensureBillingAccount,
+  readBillingAutoTopUpState,
   readBillingBalanceCents,
+  readBillingRecentLedgerEntries,
   recordBillingAutoTopUpEvent,
   redeemBillingCoupon,
   systemBillingRuntime,
@@ -48,11 +52,15 @@ import {
   type BillingRuntime,
 } from './billing'
 import {
+  BILLING_DOMAIN_POSTGRES_SERVED_READ_TABLES,
+  billingPostgresServesTable,
   billingSyncFlagsFromEnv,
   billingRuntimeForEnv,
   makeBillingDomainMirror,
   makePostgresBillingStore,
+  makeRoutedBillingAutoTopUpStateRead,
   makeRoutedBillingBalanceRead,
+  makeRoutedBillingRecentEntriesRead,
   type BillingSyncDiagnosticEvent,
   type PostgresBillingStore,
 } from './billing-store'
@@ -66,6 +74,10 @@ import { BILLING_DOMAIN_D1_SCHEMA, makeSqliteD1 } from './test/sqlite-d1'
 const MIGRATION_0015 = path.resolve(
   import.meta.dirname,
   '../../../../../packages/khala-sync-server/migrations/0015_billing_pay_ins.sql',
+)
+const MIGRATION_0034 = path.resolve(
+  import.meta.dirname,
+  '../../../../../packages/khala-sync-server/migrations/0034_billing_bounded_read_indexes.sql',
 )
 
 type PgClient = {
@@ -139,6 +151,59 @@ describe('billing sync flags', () => {
     expect(
       billingRuntimeForEnv(env, { ...options, routeReads: true }).balanceRead,
     ).toBeDefined()
+  })
+
+  // #8337: unlike balanceRead, the two bounded-allowlist reads are wired
+  // unconditionally whenever reads !== 'd1' — no separate routeReads-style
+  // opt-in, because only the display summary path ever calls either hook.
+  test('#8337 recent-entries + auto-top-up-state reads are wired WITHOUT routeReads', () => {
+    const env = {
+      KHALA_SYNC_BILLING_READS: 'postgres',
+      KHALA_SYNC_DB: { connectionString: 'postgres://unused' },
+    }
+    const options = {
+      makeSqlClient: () => Promise.reject(new Error('no connection in test')),
+    }
+    const runtime = billingRuntimeForEnv(env, options)
+    expect(runtime.balanceRead).toBeUndefined()
+    expect(runtime.recentEntriesRead).toBeDefined()
+    expect(runtime.autoTopUpStateRead).toBeDefined()
+  })
+
+  test('#8337 reads d1 (the default) wires neither bounded-allowlist hook', () => {
+    const runtime = billingRuntimeForEnv({
+      KHALA_SYNC_DB: { connectionString: 'postgres://unused' },
+    })
+    expect(runtime.recentEntriesRead).toBeUndefined()
+    expect(runtime.autoTopUpStateRead).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #8337 bounded Postgres-served read allowlist (pure)
+// ---------------------------------------------------------------------------
+
+describe('#8337 BILLING_DOMAIN_POSTGRES_SERVED_READ_TABLES', () => {
+  test('names exactly the four allowlisted display surfaces, never a decision-critical table', () => {
+    expect([...BILLING_DOMAIN_POSTGRES_SERVED_READ_TABLES].sort()).toEqual([
+      'billing_auto_top_up_events',
+      'billing_auto_top_up_policies',
+      'billing_ledger_entries',
+      'pay_ins',
+      'stripe_checkout_sessions',
+      'stripe_saved_payment_methods',
+    ])
+    expect(billingPostgresServesTable('billing_ledger_entries')).toBe(true)
+    expect(billingPostgresServesTable('pay_ins')).toBe(true)
+    // Decision-critical / idempotency-dedupe tables must NEVER be allowlisted.
+    expect(billingPostgresServesTable('buyer_payment_challenges')).toBe(false)
+    expect(billingPostgresServesTable('buyer_payment_receipts')).toBe(false)
+    expect(
+      billingPostgresServesTable('buyer_payment_reconciliation_events'),
+    ).toBe(false)
+    expect(billingPostgresServesTable('buyer_payment_redemptions')).toBe(false)
+    expect(billingPostgresServesTable('stripe_webhook_events')).toBe(false)
+    expect(billingPostgresServesTable('pay_in_legs')).toBe(false)
   })
 })
 
@@ -271,6 +336,175 @@ describe('fail-soft mirror + routed balance read', () => {
 })
 
 // ---------------------------------------------------------------------------
+// #8337 routed recent-entries + auto-top-up-state reads (pure, injected)
+// ---------------------------------------------------------------------------
+
+describe('#8337 routed recent-entries read', () => {
+  const entry = (id: string) => ({
+    amountCents: 100,
+    amountFormatted: '$1.00',
+    createdAt: '2026-07-05T00:00:00.000Z',
+    description: 'd',
+    id,
+    quantity: null,
+    source: 'manual_adjustment' as const,
+    unit: null,
+  })
+
+  test('compare mode serves D1 and logs divergence', async () => {
+    const logs: Array<LogEntry> = []
+    const read = makeRoutedBillingRecentEntriesRead({
+      log: (event, fields) => logs.push({ event, op: fields.op }),
+      postgres: {
+        readRecentLedgerEntryRows: () =>
+          Promise.resolve([
+            {
+              amount_cents: 999,
+              created_at: '2026-07-05T00:00:00.000Z',
+              description: 'd',
+              id: 'pg-1',
+              quantity: null,
+              source: 'manual_adjustment',
+              unit: null,
+            },
+          ]),
+      },
+      reads: 'compare',
+    })
+    const served = await read('user-x', () => Promise.resolve([entry('d1-1')]))
+    expect(served).toEqual([entry('d1-1')])
+    expect(
+      logs.some(
+        entry_ => entry_.event === 'khala_sync_billing_read_compare_mismatch',
+      ),
+    ).toBe(true)
+  })
+
+  test('compare mode: identical rows never log a mismatch', async () => {
+    const logs: Array<LogEntry> = []
+    const read = makeRoutedBillingRecentEntriesRead({
+      log: (event, fields) => logs.push({ event, op: fields.op }),
+      postgres: {
+        readRecentLedgerEntryRows: () =>
+          Promise.resolve([
+            {
+              amount_cents: 100,
+              created_at: '2026-07-05T00:00:00.000Z',
+              description: 'd',
+              id: 'match-1',
+              quantity: null,
+              source: 'manual_adjustment',
+              unit: null,
+            },
+          ]),
+      },
+      reads: 'compare',
+    })
+    await read('user-x', () => Promise.resolve([entry('match-1')]))
+    expect(logs).toHaveLength(0)
+  })
+
+  test('postgres mode serves Postgres; a failure falls back to D1', async () => {
+    const logs: Array<LogEntry> = []
+    const healthy = makeRoutedBillingRecentEntriesRead({
+      log: (event, fields) => logs.push({ event, op: fields.op }),
+      postgres: {
+        readRecentLedgerEntryRows: () =>
+          Promise.resolve([
+            {
+              amount_cents: 100,
+              created_at: '2026-07-05T00:00:00.000Z',
+              description: 'd',
+              id: 'pg-served-1',
+              quantity: null,
+              source: 'manual_adjustment',
+              unit: null,
+            },
+          ]),
+      },
+      reads: 'postgres',
+    })
+    expect(
+      (await healthy('user-x', () => Promise.resolve([]))).map(row => row.id),
+    ).toEqual(['pg-served-1'])
+
+    const failing = makeRoutedBillingRecentEntriesRead({
+      log: (event, fields) => logs.push({ event, op: fields.op }),
+      postgres: {
+        readRecentLedgerEntryRows: () => Promise.reject(new Error('pg down')),
+      },
+      reads: 'postgres',
+    })
+    expect(await failing('user-x', () => Promise.resolve([entry('d1-fallback')]))).toEqual([
+      entry('d1-fallback'),
+    ])
+    expect(
+      logs.some(
+        entry_ => entry_.event === 'khala_sync_billing_postgres_read_fallback',
+      ),
+    ).toBe(true)
+  })
+})
+
+describe('#8337 routed auto-top-up-state read', () => {
+  const d1State = billingAutoTopUpStateFromRows(
+    { events: [], paymentMethod: null, policy: null },
+    systemBillingRuntime,
+  )
+
+  test('compare mode serves D1 and logs divergence', async () => {
+    const logs: Array<LogEntry> = []
+    const read = makeRoutedBillingAutoTopUpStateRead({
+      log: (event, fields) => logs.push({ event, op: fields.op }),
+      postgres: {
+        readAutoTopUpStateRows: () =>
+          Promise.resolve({
+            events: [],
+            paymentMethod: null,
+            policy: {
+              amount_cents: 2_500,
+              enabled: 1,
+              monthly_cap_cents: 10_000,
+              pause_reason: null,
+              spent_this_month_cents: 0,
+              status: 'active',
+              threshold_cents: 500,
+              updated_at: '2026-07-05T00:00:00.000Z',
+            },
+          }),
+      },
+      reads: 'compare',
+    })
+    const served = await read('user-x', () => Promise.resolve(d1State))
+    expect(served).toEqual(d1State)
+    expect(
+      logs.some(
+        entry => entry.event === 'khala_sync_billing_read_compare_mismatch',
+      ),
+    ).toBe(true)
+  })
+
+  test('postgres mode serves Postgres; a failure falls back to D1', async () => {
+    const logs: Array<LogEntry> = []
+    const failing = makeRoutedBillingAutoTopUpStateRead({
+      log: (event, fields) => logs.push({ event, op: fields.op }),
+      postgres: {
+        readAutoTopUpStateRows: () => Promise.reject(new Error('pg down')),
+      },
+      reads: 'postgres',
+    })
+    expect(await failing('user-x', () => Promise.resolve(d1State))).toEqual(
+      d1State,
+    )
+    expect(
+      logs.some(
+        entry => entry.event === 'khala_sync_billing_postgres_read_fallback',
+      ),
+    ).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // The D1 ↔ Postgres contract (local Postgres required)
 // ---------------------------------------------------------------------------
 
@@ -297,6 +531,7 @@ describe.skipIf(!hasLocalPostgres())(
       })
       client = raw as unknown as PgClient
       await raw.unsafe(readFileSync(MIGRATION_0015, 'utf8'))
+      await raw.unsafe(readFileSync(MIGRATION_0034, 'utf8'))
 
       sqlite = makeSqliteD1()
       sqlite.exec(BILLING_DOMAIN_D1_SCHEMA)
@@ -608,6 +843,208 @@ describe.skipIf(!hasLocalPostgres())(
       expect(viaPostgres).toBe(
         await readBillingBalanceCents(sqlite.db, userId),
       )
+    })
+
+    // -----------------------------------------------------------------
+    // #8337: recent-entries + auto-top-up-state bounded read serving
+    // -----------------------------------------------------------------
+
+    test('#8337 recent-entries: mirrored rows read back byte-identical via the real Postgres store', async () => {
+      const userId = nextRef('user')
+      await ensureBillingAccount(sqlite.db, userId, runtime)
+      await applyManualBillingCredit(
+        sqlite.db,
+        {
+          amountCents: 750,
+          idempotencyKey: `billing:test:${userId}:recent`,
+          reason: 'recent-entries contract credit',
+          userId,
+        },
+        runtime,
+      )
+
+      const d1Entries = await readBillingRecentLedgerEntries(sqlite.db, userId)
+      const postgresEntries = (
+        await postgresStore.readRecentLedgerEntryRows(userId)
+      ).map(billingLedgerEntryFromRow)
+      const sortById = (
+        entries: ReadonlyArray<{ id: string }>,
+      ) => [...entries].sort((left, right) => left.id.localeCompare(right.id))
+      expect(sortById(postgresEntries)).toEqual(sortById(d1Entries))
+    })
+
+    test('#8337 recent-entries: postgres mode SERVES the Postgres row set, not D1', async () => {
+      const userId = nextRef('user')
+      await ensureBillingAccount(sqlite.db, userId, runtime)
+      await applyManualBillingCredit(
+        sqlite.db,
+        {
+          amountCents: 300,
+          idempotencyKey: `billing:test:${userId}:serve`,
+          reason: 'recent-entries serve-proof credit',
+          userId,
+        },
+        runtime,
+      )
+      const d1EntryId = (
+        await readBillingRecentLedgerEntries(sqlite.db, userId)
+      ).find(entry => entry.description === 'recent-entries serve-proof credit')
+        ?.id
+      expect(d1EntryId).toBeDefined()
+
+      // Diverge the Postgres twin directly: a DIFFERENT description on the
+      // SAME row. Real serving must read this back; D1 must still show the
+      // original.
+      await client!.unsafe(
+        `UPDATE billing_ledger_entries SET description = $1 WHERE id = $2`,
+        ['postgres_only_marker', d1EntryId],
+      )
+
+      const read = makeRoutedBillingRecentEntriesRead({
+        log: () => {},
+        postgres: postgresStore,
+        reads: 'postgres',
+      })
+      const served = await read(userId, () =>
+        readBillingRecentLedgerEntries(sqlite.db, userId),
+      )
+      expect(
+        served.find(entry => entry.id === d1EntryId)?.description,
+      ).toBe('postgres_only_marker')
+      const stillD1 = await readBillingRecentLedgerEntries(sqlite.db, userId)
+      expect(
+        stillD1.find(entry => entry.id === d1EntryId)?.description,
+      ).toBe('recent-entries serve-proof credit')
+
+      // Restore the row so later parity-sensitive tests are unaffected.
+      await client!.unsafe(
+        `UPDATE billing_ledger_entries SET description = $1 WHERE id = $2`,
+        ['recent-entries serve-proof credit', d1EntryId],
+      )
+    })
+
+    test('#8337 auto-top-up state: mirrored rows compose byte-identically via the real Postgres store', async () => {
+      const userId = nextRef('user')
+      await upsertBillingAutoTopUpPolicy(
+        sqlite.db,
+        {
+          amountCents: 1_500,
+          enabled: true,
+          monthlyCapCents: 5_000,
+          thresholdCents: 300,
+          userId,
+        },
+        runtime,
+      )
+      await recordBillingAutoTopUpEvent(
+        sqlite.db,
+        {
+          amountCents: 1_500,
+          idempotencyKey: `topup:contract:${userId}`,
+          status: 'succeeded',
+          userId,
+        },
+        runtime,
+      )
+
+      const d1State = await readBillingAutoTopUpState(sqlite.db, userId, runtime)
+      const postgresState = billingAutoTopUpStateFromRows(
+        await postgresStore.readAutoTopUpStateRows(userId),
+        runtime,
+      )
+      expect(postgresState).toEqual(d1State)
+    })
+
+    test('#8337 auto-top-up state: postgres mode SERVES the Postgres state, not D1', async () => {
+      const userId = nextRef('user')
+      await upsertBillingAutoTopUpPolicy(
+        sqlite.db,
+        {
+          amountCents: 2_000,
+          enabled: true,
+          monthlyCapCents: 8_000,
+          thresholdCents: 400,
+          userId,
+        },
+        runtime,
+      )
+
+      // Diverge the Postgres twin directly: pause the policy there only.
+      await client!.unsafe(
+        `UPDATE billing_auto_top_up_policies
+            SET status = 'paused', pause_reason = 'postgres_only_marker'
+          WHERE user_id = $1`,
+        [userId],
+      )
+
+      const read = makeRoutedBillingAutoTopUpStateRead({
+        log: () => {},
+        postgres: postgresStore,
+        reads: 'postgres',
+      })
+      const served = await read(userId, () =>
+        readBillingAutoTopUpState(sqlite.db, userId, runtime),
+      )
+      expect(served.policy.status).toBe('paused')
+      expect(served.policy.pauseReason).toBe('postgres_only_marker')
+      const stillD1 = await readBillingAutoTopUpState(sqlite.db, userId, runtime)
+      expect(stillD1.policy.status).toBe('active')
+    })
+
+    test('#8337: a real Postgres CONNECTION failure fails soft to D1 for both bounded reads', async () => {
+      const userId = nextRef('user')
+      await ensureBillingAccount(sqlite.db, userId, runtime)
+      // Seed a REAL, persisted auto-top-up policy row so the D1 read
+      // returns a stored `updatedAt` rather than the synthesized default
+      // policy (which stamps `runtime.nowIso()` fresh on every call —
+      // comparing two independent wall-clock reads would be flaky).
+      await upsertBillingAutoTopUpPolicy(
+        sqlite.db,
+        {
+          amountCents: 1_000,
+          enabled: false,
+          monthlyCapCents: 4_000,
+          thresholdCents: 200,
+          userId,
+        },
+        runtime,
+      )
+      const brokenPostgres = makePostgresBillingStore({
+        acquireSql: () => Promise.reject(new Error('connection refused')),
+      })
+      const logs: Array<LogEntry> = []
+      const log = (event: BillingSyncDiagnosticEvent, fields: { op: string }) =>
+        logs.push({ event, op: fields.op })
+
+      const recentEntriesRead = makeRoutedBillingRecentEntriesRead({
+        log,
+        postgres: brokenPostgres,
+        reads: 'postgres',
+      })
+      const entries = await recentEntriesRead(userId, () =>
+        readBillingRecentLedgerEntries(sqlite.db, userId),
+      )
+      expect(entries).toEqual(
+        await readBillingRecentLedgerEntries(sqlite.db, userId),
+      )
+
+      const autoTopUpStateRead = makeRoutedBillingAutoTopUpStateRead({
+        log,
+        postgres: brokenPostgres,
+        reads: 'postgres',
+      })
+      const state = await autoTopUpStateRead(userId, () =>
+        readBillingAutoTopUpState(sqlite.db, userId, runtime),
+      )
+      expect(state).toEqual(
+        await readBillingAutoTopUpState(sqlite.db, userId, runtime),
+      )
+      expect(
+        logs.some(
+          entry =>
+            entry.event === 'khala_sync_billing_postgres_read_fallback',
+        ),
+      ).toBe(true)
     })
   },
 )

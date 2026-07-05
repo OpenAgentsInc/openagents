@@ -159,7 +159,14 @@ type BillingContactRow = Readonly<{
   primary_email: string | null
 }>
 type NotificationRow = Readonly<{ status: 'pending' | 'sent' | 'failed' }>
-type LedgerRow = Readonly<{
+/**
+ * Exported (not just internal `LedgerRow`) so the KS-8.7 follow-up (#8337)
+ * bounded read allowlist in `billing-store.ts` can build a Postgres-served
+ * `billing_ledger_entries` "recent entries" projection using the SAME row
+ * shape and mapping function as the D1 path — no drift between the two
+ * stores' display formatting.
+ */
+export type BillingLedgerEntryRow = Readonly<{
   id: string
   source: BillingLedgerSource
   description: string
@@ -168,6 +175,7 @@ type LedgerRow = Readonly<{
   unit: string | null
   created_at: string
 }>
+type LedgerRow = BillingLedgerEntryRow
 type ActiveRunRow = Readonly<{
   id: string
   goal: string
@@ -180,7 +188,8 @@ type UsageCursorRow = Readonly<{
   last_billed_at: string
   total_billed_quantity: number
 }>
-type SavedPaymentMethodRow = Readonly<{
+/** Exported for the same reason as `BillingLedgerEntryRow` (see above). */
+export type BillingSavedPaymentMethodRow = Readonly<{
   brand: string | null
   exp_month: number | null
   exp_year: number | null
@@ -189,7 +198,9 @@ type SavedPaymentMethodRow = Readonly<{
   stripe_payment_method_id: string
   updated_at: string
 }>
-type AutoTopUpPolicyRow = Readonly<{
+type SavedPaymentMethodRow = BillingSavedPaymentMethodRow
+/** Exported for the same reason as `BillingLedgerEntryRow` (see above). */
+export type BillingAutoTopUpPolicyRow = Readonly<{
   amount_cents: number
   enabled: number
   monthly_cap_cents: number
@@ -199,13 +210,16 @@ type AutoTopUpPolicyRow = Readonly<{
   threshold_cents: number
   updated_at: string
 }>
-type AutoTopUpEventRow = Readonly<{
+type AutoTopUpPolicyRow = BillingAutoTopUpPolicyRow
+/** Exported for the same reason as `BillingLedgerEntryRow` (see above). */
+export type BillingAutoTopUpEventRow = Readonly<{
   amount_cents: number
   created_at: string
   id: string
   reason: string | null
   status: BillingAutoTopUpEvent['status']
 }>
+type AutoTopUpEventRow = BillingAutoTopUpEventRow
 
 /**
  * KS-8.7 (#8318): one row-copy request for the fail-soft Postgres mirror —
@@ -245,6 +259,33 @@ export type BillingBalanceRead = (
   readD1: () => Promise<number>,
 ) => Promise<number>
 
+/**
+ * The #8337 follow-up bounded read allowlist: the recent-entries display
+ * projection (`billing_ledger_entries`, LIMIT 12) is NOT the balance SUM —
+ * it never gates a spend/credit/refund decision, only a UI list — so it is
+ * eligible for real Postgres serving once `KHALA_SYNC_BILLING_READS=postgres`
+ * (see `BILLING_DOMAIN_POSTGRES_SERVED_READ_TABLES` in `billing-store.ts`).
+ * `readD1` is the authoritative D1 query; implementations may shadow-compare
+ * (serving D1) or serve Postgres with D1 fallback.
+ */
+export type BillingRecentEntriesRead = (
+  userId: string,
+  readD1: () => Promise<ReadonlyArray<BillingLedgerEntry>>,
+) => Promise<ReadonlyArray<BillingLedgerEntry>>
+
+/**
+ * The #8337 follow-up bounded read allowlist: the auto-top-up DISPLAY state
+ * (saved-card summary, policy, recent events) shown on the billing page.
+ * This is NEVER the auto-top-up charge decision — `chargeAutoTopUp`
+ * (stripe-billing.ts) always reads its own dedicated D1 query directly and
+ * never takes a runtime hook, so a lagging mirror read here can never
+ * double-charge or skip a top-up. `readD1` is the authoritative D1 query.
+ */
+export type BillingAutoTopUpStateRead = (
+  userId: string,
+  readD1: () => Promise<BillingAutoTopUpState>,
+) => Promise<BillingAutoTopUpState>
+
 export type BillingRuntime = Readonly<{
   nowIso: () => string
   randomId: (prefix: string) => string
@@ -252,6 +293,10 @@ export type BillingRuntime = Readonly<{
   mirror?: BillingDomainMirror | undefined
   /** KS-8.7 flag-routed balance read (absent = plain D1). */
   balanceRead?: BillingBalanceRead | undefined
+  /** #8337 flag-routed recent-ledger-entries display read (absent = plain D1). */
+  recentEntriesRead?: BillingRecentEntriesRead | undefined
+  /** #8337 flag-routed auto-top-up display-state read (absent = plain D1). */
+  autoTopUpStateRead?: BillingAutoTopUpStateRead | undefined
 }>
 
 export const systemBillingRuntime: BillingRuntime = {
@@ -441,7 +486,33 @@ const readAccountStatus = async (
   return row?.status ?? 'active'
 }
 
-const readRecentLedgerEntries = async (
+/**
+ * Row count for the recent-entries display projection. Exported so the
+ * #8337 Postgres-served read (`billing-store.ts`) runs the byte-identical
+ * `LIMIT` and both stores can never disagree on cutoff.
+ */
+export const BILLING_RECENT_LEDGER_ENTRIES_LIMIT = 12
+
+/**
+ * Pure row → domain projection for `BillingLedgerEntry`. Exported so the
+ * D1 path (below) and the #8337 Postgres-served read (`billing-store.ts`)
+ * share ONE formatting implementation — no drift between the two stores'
+ * display fields.
+ */
+export const billingLedgerEntryFromRow = (
+  row: BillingLedgerEntryRow,
+): BillingLedgerEntry => ({
+  id: row.id,
+  source: row.source,
+  description: row.description,
+  amountCents: row.amount_cents,
+  amountFormatted: formatUsdCents(row.amount_cents),
+  quantity: row.quantity,
+  unit: row.unit,
+  createdAt: row.created_at,
+})
+
+const readD1RecentLedgerEntries = async (
   db: D1Database,
   userId: string,
 ): Promise<ReadonlyArray<BillingLedgerEntry>> => {
@@ -451,22 +522,32 @@ const readRecentLedgerEntries = async (
        FROM billing_ledger_entries
        WHERE user_id = ?
        ORDER BY created_at DESC
-       LIMIT 12`,
+       LIMIT ?`,
     )
-    .bind(userId)
+    .bind(userId, BILLING_RECENT_LEDGER_ENTRIES_LIMIT)
     .all<LedgerRow>()
 
-  return rows.results.map(row => ({
-    id: row.id,
-    source: row.source,
-    description: row.description,
-    amountCents: row.amount_cents,
-    amountFormatted: formatUsdCents(row.amount_cents),
-    quantity: row.quantity,
-    unit: row.unit,
-    createdAt: row.created_at,
-  }))
+  return rows.results.map(billingLedgerEntryFromRow)
 }
+
+/**
+ * The recent-ledger-entries display projection. The optional #8337
+ * `recentEntriesRead` hook routes this per KHALA_SYNC_BILLING_READS
+ * (compare serves D1 and diffs Postgres; postgres serves Postgres with D1
+ * fallback); without the hook this is the plain authoritative D1 read.
+ */
+const readRecentLedgerEntries = async (
+  db: D1Database,
+  userId: string,
+  runtime: BillingRuntime = systemBillingRuntime,
+): Promise<ReadonlyArray<BillingLedgerEntry>> => {
+  const readD1 = () => readD1RecentLedgerEntries(db, userId)
+  return runtime.recentEntriesRead === undefined
+    ? readD1()
+    : runtime.recentEntriesRead(userId, readD1)
+}
+
+export const readBillingRecentLedgerEntries = readRecentLedgerEntries
 
 const readActiveRuns = async (
   db: D1Database,
@@ -527,7 +608,21 @@ const defaultAutoTopUpPolicy = (
   updatedAt: runtime.nowIso(),
 })
 
-const policyProjection = (row: AutoTopUpPolicyRow): BillingAutoTopUpPolicy => ({
+/**
+ * Row count for the auto-top-up recent-events display projection. Exported
+ * so the #8337 Postgres-served read (`billing-store.ts`) runs the
+ * byte-identical `LIMIT`.
+ */
+export const BILLING_AUTO_TOP_UP_EVENTS_LIMIT = 6
+
+/**
+ * Pure row → domain projections shared by the D1 path (below) and the
+ * #8337 Postgres-served auto-top-up display-state read (`billing-store.ts`)
+ * — no drift between the two stores' formatting.
+ */
+export const billingAutoTopUpPolicyFromRow = (
+  row: BillingAutoTopUpPolicyRow,
+): BillingAutoTopUpPolicy => ({
   amountCents: row.amount_cents,
   amountFormatted: formatUsdCents(row.amount_cents),
   enabled: row.enabled === 1,
@@ -542,11 +637,64 @@ const policyProjection = (row: AutoTopUpPolicyRow): BillingAutoTopUpPolicy => ({
   updatedAt: row.updated_at,
 })
 
-export const readBillingAutoTopUpState = async (
+export const billingAutoTopUpEventFromRow = (
+  row: BillingAutoTopUpEventRow,
+): BillingAutoTopUpEvent => ({
+  amountCents: row.amount_cents,
+  amountFormatted: formatUsdCents(row.amount_cents),
+  createdAt: row.created_at,
+  id: row.id,
+  reason: row.reason,
+  status: row.status,
+})
+
+export const billingSavedPaymentMethodFromRow = (
+  row: BillingSavedPaymentMethodRow,
+): BillingSavedPaymentMethod => ({
+  brand: row.brand,
+  expMonth: row.exp_month,
+  expYear: row.exp_year,
+  last4: row.last4,
+  status: row.status,
+  stripePaymentMethodId: row.stripe_payment_method_id,
+  updatedAt: row.updated_at,
+})
+
+/**
+ * Compose the full `BillingAutoTopUpState` from the three raw row sets.
+ * Exported so both the D1 path and the #8337 Postgres-served path
+ * (`billing-store.ts`) share ONE composition (including the synthesized
+ * default policy for a user who has never configured auto-top-up).
+ */
+export const billingAutoTopUpStateFromRows = (
+  rows: Readonly<{
+    paymentMethod: BillingSavedPaymentMethodRow | null
+    policy: BillingAutoTopUpPolicyRow | null
+    events: ReadonlyArray<BillingAutoTopUpEventRow>
+  }>,
+  runtime: BillingRuntime = systemBillingRuntime,
+): BillingAutoTopUpState => ({
+  events: rows.events.map(billingAutoTopUpEventFromRow),
+  policy:
+    rows.policy === null
+      ? defaultAutoTopUpPolicy(runtime)
+      : billingAutoTopUpPolicyFromRow(rows.policy),
+  savedPaymentMethod:
+    rows.paymentMethod === null
+      ? null
+      : billingSavedPaymentMethodFromRow(rows.paymentMethod),
+})
+
+const readD1BillingAutoTopUpState = async (
   db: D1Database,
   userId: string,
-  runtime: BillingRuntime = systemBillingRuntime,
-): Promise<BillingAutoTopUpState> => {
+): Promise<
+  Readonly<{
+    paymentMethod: BillingSavedPaymentMethodRow | null
+    policy: BillingAutoTopUpPolicyRow | null
+    events: ReadonlyArray<BillingAutoTopUpEventRow>
+  }>
+> => {
   const [paymentMethod, policy, events] = await Promise.all([
     db
       .prepare(
@@ -572,38 +720,38 @@ export const readBillingAutoTopUpState = async (
          FROM billing_auto_top_up_events
          WHERE user_id = ?
          ORDER BY created_at DESC
-         LIMIT 6`,
+         LIMIT ?`,
       )
-      .bind(userId)
+      .bind(userId, BILLING_AUTO_TOP_UP_EVENTS_LIMIT)
       .all<AutoTopUpEventRow>(),
   ])
 
-  return {
-    events: events.results.map(row => ({
-      amountCents: row.amount_cents,
-      amountFormatted: formatUsdCents(row.amount_cents),
-      createdAt: row.created_at,
-      id: row.id,
-      reason: row.reason,
-      status: row.status,
-    })),
-    policy:
-      policy === null
-        ? defaultAutoTopUpPolicy(runtime)
-        : policyProjection(policy),
-    savedPaymentMethod:
-      paymentMethod === null
-        ? null
-        : {
-            brand: paymentMethod.brand,
-            expMonth: paymentMethod.exp_month,
-            expYear: paymentMethod.exp_year,
-            last4: paymentMethod.last4,
-            status: paymentMethod.status,
-            stripePaymentMethodId: paymentMethod.stripe_payment_method_id,
-            updatedAt: paymentMethod.updated_at,
-          },
-  }
+  return { events: events.results, paymentMethod, policy }
+}
+
+/**
+ * The auto-top-up DISPLAY state (saved-card summary, policy, recent
+ * events) shown on the billing page. The optional #8337
+ * `autoTopUpStateRead` hook routes this per KHALA_SYNC_BILLING_READS
+ * (compare serves D1 and diffs Postgres; postgres serves Postgres with D1
+ * fallback); without the hook this is the plain authoritative D1 read.
+ * NEVER confuse this with the auto-top-up charge DECISION, which always
+ * reads its own dedicated D1 query directly (`chargeAutoTopUp`,
+ * stripe-billing.ts) and takes no runtime hook.
+ */
+export const readBillingAutoTopUpState = async (
+  db: D1Database,
+  userId: string,
+  runtime: BillingRuntime = systemBillingRuntime,
+): Promise<BillingAutoTopUpState> => {
+  const readD1 = async () =>
+    billingAutoTopUpStateFromRows(
+      await readD1BillingAutoTopUpState(db, userId),
+      runtime,
+    )
+  return runtime.autoTopUpStateRead === undefined
+    ? readD1()
+    : runtime.autoTopUpStateRead(userId, readD1)
 }
 
 export const upsertBillingAutoTopUpPolicy = async (
@@ -756,7 +904,7 @@ export const readBillingSummary = async (
     await Promise.all([
       readAccountStatus(db, userId),
       readBalanceCents(db, userId, runtime),
-      readRecentLedgerEntries(db, userId),
+      readRecentLedgerEntries(db, userId, runtime),
       readActiveRuns(db, userId, runtime),
       readBillingAutoTopUpState(db, userId, runtime),
     ])

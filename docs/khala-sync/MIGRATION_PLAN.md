@@ -1127,6 +1127,65 @@ per-domain soak/drop follow-up. Prod cutover procedure:
   NOT been made — reads stay `d1`; dual-write stays on; no D1 table was
   dropped (per the #8330 KS-8.19 consolidation policy: bulk domain drops
   wait for that closing sweep, not per-domain follow-ups).
+- **KS-8.7 follow-up #2 status (#8337, 2026-07-05): bounded read allowlist
+  landed.** Mirroring KS-8.14's `BUSINESS_DOMAIN_POSTGRES_SERVED_READ_TABLES`
+  discipline (#8360), `billing-store.ts` now names
+  `BILLING_DOMAIN_POSTGRES_SERVED_READ_TABLES` — a bounded, ALWAYS
+  narrower-than-the-flag allowlist that unlocks real Postgres serving
+  (`KHALA_SYNC_BILLING_READS=postgres`) for exactly four DISPLAY-ONLY,
+  non-decision-critical read surfaces, each wired through its own
+  hand-audited function (never a generic "SQL touches table X"
+  classifier, since this domain's reads are not routed through a single
+  mirroring `D1Database` proxy the way the business-funnel lane is):
+  - `billing_ledger_entries` — the recent-entries display projection
+    (`readRecentLedgerEntries`, `billing.ts`, LIMIT 12). NOT the balance
+    SUM (that keeps its separate, still-`d1`-default `balanceRead`
+    opt-in from the original KS-8.7 pass).
+  - `billing_auto_top_up_policies` / `billing_auto_top_up_events` /
+    `stripe_saved_payment_methods` — the auto-top-up DISPLAY state
+    (`readBillingAutoTopUpState`). NEVER the charge decision —
+    `chargeAutoTopUp` (`stripe-billing.ts`) always reads its own
+    dedicated D1 query directly and takes no runtime hook.
+  - `stripe_checkout_sessions` — the public checkout-receipt read
+    (`stripe-checkout-receipts.ts`), an already-settled, immutable
+    projection.
+  - `pay_ins` — the public inference-receipt read
+    (`inference-receipts.ts`), scoped to `pay_in_type IN ('adjustment',
+    'usd_credit_grant')` and an immutable `public_receipt_ref`. The
+    free-allowance branch (a different domain's `inference_free_usage_events`
+    table, no live Postgres mirror in this lane) is explicitly NOT
+    servable — the Postgres store throws
+    `InferenceReceiptPostgresNotServableError` and the router transparently
+    falls back to D1 for that ref shape, in every mode.
+
+  Deliberately NOT allowlisted this pass — candidates for a future,
+  individually reviewed pass: the buyer-payment pipeline
+  (`buyer_payment_challenges`/`receipts`/`entitlements`/`redemptions`/
+  `reconciliation_events`, `buyer-payment-ledger.ts`), because every read
+  there is SHARED between the read-only checkout-return/payment-proof
+  status routes AND the challenge/webhook/redemption idempotency-dedupe
+  decision paths, and cannot be split into a decision-free surface without
+  further store-interface surgery; and the forum tip-earnings
+  leaderboard/creator-earnings projections (`forum/tip-earnings.ts`),
+  which JOIN `pay_ins`/`pay_in_legs` against `forum_posts` (a different
+  domain's mirror) in a single statement.
+
+  Migration `0034_billing_bounded_read_indexes.sql` re-derives the two
+  missing accelerators for the newly-served surfaces
+  (`billing_auto_top_up_events_user_created_idx`,
+  `pay_ins_public_receipt_ref_idx`,
+  `pay_ins_receipt_listing_covering_idx`) — the other two surfaces already
+  hit an existing PK/UNIQUE index. Contract tests (real local Postgres,
+  `billing-repository.contract.test.ts` +new
+  `stripe-checkout-receipts.test.ts` + new `inference-receipts.test.ts`)
+  prove: parity between the D1 and Postgres-served answers; REAL serving
+  (a value diverged directly on the Postgres twin is what `postgres` mode
+  reads back — not a shadow compare that always answers D1); fail-soft
+  fallback to D1 on any Postgres error, including a broken connection; and
+  compare-mode logs divergence only on a genuine disagreement. No flag was
+  flipped in production this pass — `KHALA_SYNC_BILLING_READS` stays `d1`
+  until an operator deploys with `postgres`/`compare` and records that
+  decision on #8282, same epic-gated discipline as the balance read.
 
 ### 3.5 KS-8.8 — Treasury, payouts, tips settlement
 

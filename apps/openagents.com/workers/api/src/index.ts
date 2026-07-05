@@ -493,7 +493,10 @@ import {
 import { makeHygieneLaneSettlementRoutes } from './hygiene-lane-settlement-routes'
 import { makeHostedGeminiPromiseReadinessRoutes } from './hosted-gemini-promise-readiness-routes'
 import { makeImageGenerationRoutes } from './image-generation-routes'
-import { makeD1InferenceReceiptStore } from './inference-receipts'
+import {
+  inferenceReceiptStoreForEnv,
+  makeD1InferenceReceiptStore,
+} from './inference-receipts'
 import {
   isAcceptanceDispatchEnabled,
   makeKhalaVerificationStoreForEnv,
@@ -1141,7 +1144,10 @@ import {
   makeStripeCheckoutServiceForRoutes,
   readBillingCreditPackages,
 } from './stripe-billing'
-import { makeD1StripeCheckoutReceiptStore } from './stripe-checkout-receipts'
+import {
+  makeD1StripeCheckoutReceiptStore,
+  stripeCheckoutReceiptStoreForEnv,
+} from './stripe-checkout-receipts'
 import {
   type SyncNotificationContext,
   notifyAgentRunSyncScopes,
@@ -9024,7 +9030,11 @@ const publicNip90MarketReceiptRoutes = makePublicNip90MarketReceiptRoutes<Env>({
 })
 
 const publicInferenceReceiptRoutes = makePublicInferenceReceiptRoutes<Env>({
-  makeStore: env => makeD1InferenceReceiptStore(openAgentsDatabase(env)),
+  makeStore: env =>
+    inferenceReceiptStoreForEnv(
+      env,
+      makeD1InferenceReceiptStore(openAgentsDatabase(env)),
+    ),
   nowIso: currentIsoTimestamp,
 })
 
@@ -9056,7 +9066,10 @@ const qaSwarmFirstEngagementRoutes =
 const hostedGeminiPromiseReadinessRoutes =
   makeHostedGeminiPromiseReadinessRoutes<Env>({
     makeInferenceReceiptStore: env =>
-      makeD1InferenceReceiptStore(openAgentsDatabase(env)),
+      inferenceReceiptStoreForEnv(
+        env,
+        makeD1InferenceReceiptStore(openAgentsDatabase(env)),
+      ),
     makeTransitionReceiptStore: env =>
       makeD1PromiseTransitionReceiptStore(businessDomainDatabaseForEnv(env)),
     nowIso: currentIsoTimestamp,
@@ -9107,7 +9120,11 @@ const publicCardCreditSpendReceiptRoutes =
 
 const publicStripeCheckoutReceiptRoutes =
   makePublicStripeCheckoutReceiptRoutes<Env>({
-    makeStore: env => makeD1StripeCheckoutReceiptStore(openAgentsDatabase(env)),
+    makeStore: env =>
+      stripeCheckoutReceiptStoreForEnv(
+        env,
+        makeD1StripeCheckoutReceiptStore(openAgentsDatabase(env)),
+      ),
     nowIso: currentIsoTimestamp,
   })
 

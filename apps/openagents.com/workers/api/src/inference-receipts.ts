@@ -1,8 +1,15 @@
 import {
+  billingPostgresRawQueryForEnv,
+  billingSyncFlagsFromEnv,
+  type BillingSyncEnv,
+  type MakeBillingStoreOptions,
+} from './billing-store'
+import { parseInferenceChargeContextRef } from './inference/inference-charge-context'
+import { logWorkerRouteWarning } from './observability'
+import {
   type PublicProjectionStalenessContract,
   liveAtReadStaleness,
 } from './public-projection-staleness'
-import { parseInferenceChargeContextRef } from './inference/inference-charge-context'
 
 export type InferenceReceiptKind =
   | 'charge'
@@ -215,11 +222,16 @@ const freeRequestIdFromReceiptRef = (receiptRef: string): string | null => {
     : null
 }
 
+const INFERENCE_RECEIPT_LISTING_LIMIT_MAX = 200
+
 export const makeD1InferenceReceiptStore = (
   db: D1Database,
 ): InferenceReceiptStore => ({
   listRecentInferenceReceipts: async limit => {
-    const rowLimit = Math.max(1, Math.min(200, Math.trunc(limit)))
+    const rowLimit = Math.max(
+      1,
+      Math.min(INFERENCE_RECEIPT_LISTING_LIMIT_MAX, Math.trunc(limit)),
+    )
     const rows = await db
       .prepare(
         `SELECT pay_in_type, state, public_receipt_ref, context_ref, created_at, state_changed_at
@@ -272,3 +284,214 @@ export const makeD1InferenceReceiptStore = (
     return freeRow === null ? null : freeRowToInferenceReceiptRecord(freeRow)
   },
 })
+
+/**
+ * #8337: this receipt is scoped to `pay_in_type IN ('adjustment',
+ * 'usd_credit_grant')` and an immutable `public_receipt_ref` — an
+ * already-settled, non-decision-critical read — so `pay_ins` is eligible
+ * for the bounded Postgres-served read allowlist
+ * (`BILLING_DOMAIN_POSTGRES_SERVED_READ_TABLES`, billing-store.ts). The
+ * free-allowance branch (`inference_free_usage_events`) is a DIFFERENT
+ * domain's table with no live Postgres mirror in this lane, so a
+ * free-shaped ref is intentionally NOT servable here — see
+ * `InferenceReceiptPostgresNotServableError` below; the router always
+ * falls back to D1 for that shape.
+ */
+export class InferenceReceiptPostgresNotServableError extends Error {}
+
+export const makePostgresInferenceReceiptStore = (
+  query: (
+    text: string,
+    params: ReadonlyArray<unknown>,
+  ) => Promise<ReadonlyArray<Readonly<Record<string, unknown>>>>,
+): InferenceReceiptStore => {
+  const rowFromPostgres = (
+    row: Readonly<Record<string, unknown>>,
+  ): InferenceReceiptRow => ({
+    context_ref: row['context_ref'] === null ? null : String(row['context_ref']),
+    created_at: String(row['created_at']),
+    pay_in_type: String(row['pay_in_type']),
+    public_receipt_ref:
+      row['public_receipt_ref'] === null
+        ? null
+        : String(row['public_receipt_ref']),
+    state: String(row['state']),
+    state_changed_at: String(row['state_changed_at']),
+  })
+
+  return {
+    listRecentInferenceReceipts: async limit => {
+      const rowLimit = Math.max(
+        1,
+        Math.min(INFERENCE_RECEIPT_LISTING_LIMIT_MAX, Math.trunc(limit)),
+      )
+      const rows = await query(
+        `SELECT pay_in_type, state, public_receipt_ref, context_ref, created_at, state_changed_at
+           FROM pay_ins
+          WHERE public_receipt_ref LIKE 'receipt.inference.charge.%'
+            AND pay_in_type = 'adjustment'
+            AND state = 'paid'
+          ORDER BY created_at DESC
+          LIMIT $1`,
+        [rowLimit],
+      )
+      return rows
+        .map(row => rowToInferenceReceiptRecord(rowFromPostgres(row)))
+        .filter((record): record is InferenceReceiptRecord => record !== null)
+    },
+    readInferenceReceiptByRef: async receiptRef => {
+      if (freeRequestIdFromReceiptRef(receiptRef) !== null) {
+        throw new InferenceReceiptPostgresNotServableError(
+          'free-allowance receipt refs read a different domain\'s table (inference_free_usage_events) with no live Postgres mirror in this lane',
+        )
+      }
+      const rows = await query(
+        `SELECT pay_in_type, state, public_receipt_ref, context_ref, created_at, state_changed_at
+           FROM pay_ins
+          WHERE public_receipt_ref = $1
+            AND pay_in_type IN ('adjustment', 'usd_credit_grant')
+          LIMIT 1`,
+        [receiptRef],
+      )
+      const row = rows[0]
+      return row === undefined
+        ? null
+        : rowToInferenceReceiptRecord(rowFromPostgres(row))
+    },
+  }
+}
+
+/**
+ * The #8337 KHALA_SYNC_BILLING_READS router for this receipt store, the
+ * same compare/postgres semantics as
+ * `makeReadsRoutedStripeCheckoutReceiptStore` (stripe-checkout-receipts.ts):
+ *   'compare'  — read both, SERVE D1, log any divergence
+ *   'postgres' — serve Postgres (single attempt), D1 fallback on failure
+ *                (including the free-allowance-ref
+ *                `InferenceReceiptPostgresNotServableError` case)
+ */
+export const makeReadsRoutedInferenceReceiptStore = (input: {
+  d1: InferenceReceiptStore
+  postgres: InferenceReceiptStore
+  reads: 'compare' | 'postgres'
+  log: (
+    event:
+      | 'khala_sync_billing_read_compare_mismatch'
+      | 'khala_sync_billing_postgres_read_failed'
+      | 'khala_sync_billing_postgres_read_fallback',
+    fields: Readonly<{ messageSafe: string; op: string; refs: ReadonlyArray<string> }>,
+  ) => void
+}): InferenceReceiptStore => ({
+  listRecentInferenceReceipts: async limit => {
+    if (input.reads === 'postgres') {
+      try {
+        return await input.postgres.listRecentInferenceReceipts(limit)
+      } catch (error) {
+        input.log('khala_sync_billing_postgres_read_fallback', {
+          messageSafe: error instanceof Error ? error.message : String(error),
+          op: 'listRecentInferenceReceipts',
+          refs: [],
+        })
+      }
+    }
+
+    const d1Result = await input.d1.listRecentInferenceReceipts(limit)
+
+    if (input.reads === 'compare') {
+      try {
+        const postgresResult =
+          await input.postgres.listRecentInferenceReceipts(limit)
+        if (JSON.stringify(postgresResult) !== JSON.stringify(d1Result)) {
+          input.log('khala_sync_billing_read_compare_mismatch', {
+            messageSafe: `recent inference receipts differ: d1=${d1Result.length} postgres=${postgresResult.length} rows`,
+            op: 'listRecentInferenceReceipts',
+            refs: [],
+          })
+        }
+      } catch (error) {
+        input.log('khala_sync_billing_postgres_read_failed', {
+          messageSafe: error instanceof Error ? error.message : String(error),
+          op: 'listRecentInferenceReceipts',
+          refs: [],
+        })
+      }
+    }
+
+    return d1Result
+  },
+  readInferenceReceiptByRef: async receiptRef => {
+    if (input.reads === 'postgres') {
+      try {
+        return await input.postgres.readInferenceReceiptByRef(receiptRef)
+      } catch (error) {
+        input.log('khala_sync_billing_postgres_read_fallback', {
+          messageSafe: error instanceof Error ? error.message : String(error),
+          op: 'readInferenceReceiptByRef',
+          refs: [receiptRef],
+        })
+      }
+    }
+
+    const d1Result = await input.d1.readInferenceReceiptByRef(receiptRef)
+
+    if (input.reads === 'compare') {
+      try {
+        const postgresResult =
+          await input.postgres.readInferenceReceiptByRef(receiptRef)
+        if (JSON.stringify(postgresResult) !== JSON.stringify(d1Result)) {
+          input.log('khala_sync_billing_read_compare_mismatch', {
+            messageSafe: 'inference receipt differs between d1 and postgres',
+            op: 'readInferenceReceiptByRef',
+            refs: [receiptRef],
+          })
+        }
+      } catch (error) {
+        input.log('khala_sync_billing_postgres_read_failed', {
+          messageSafe: error instanceof Error ? error.message : String(error),
+          op: 'readInferenceReceiptByRef',
+          refs: [receiptRef],
+        })
+      }
+    }
+
+    return d1Result
+  },
+})
+
+/**
+ * The env-wiring drop-in for the three call sites that build
+ * `makeD1InferenceReceiptStore` (index.ts: the public inference receipt
+ * route, the hosted Gemini promise readiness route, and the public
+ * activity timeline): builds the D1 store exactly as before, then — only
+ * when `KHALA_SYNC_DB` is bound and `KHALA_SYNC_BILLING_READS !== 'd1'` —
+ * wraps it with the #8337 compare/postgres router. Degrades to the plain
+ * D1 store whenever the binding is absent or the flag is 'd1'.
+ */
+export const inferenceReceiptStoreForEnv = (
+  env: BillingSyncEnv,
+  d1Store: InferenceReceiptStore,
+  options: MakeBillingStoreOptions = {},
+): InferenceReceiptStore => {
+  const flags = billingSyncFlagsFromEnv(env)
+  if (flags.reads === 'd1') {
+    return d1Store
+  }
+  const query = billingPostgresRawQueryForEnv(env, options)
+  if (query === undefined) {
+    return d1Store
+  }
+  const log =
+    options.log ??
+    ((event, fields) =>
+      logWorkerRouteWarning(event, {
+        messageSafe: fields.messageSafe,
+        op: fields.op,
+        refs: fields.refs.slice(0, 10).join(','),
+      }))
+  return makeReadsRoutedInferenceReceiptStore({
+    d1: d1Store,
+    log,
+    postgres: makePostgresInferenceReceiptStore(query),
+    reads: flags.reads,
+  })
+}
