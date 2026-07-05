@@ -1,8 +1,9 @@
 import type { RuntimeTurnEntity } from "@openagentsinc/khala-sync"
 import { useState } from "react"
-import { ActivityIndicator, Platform, Pressable, Text, TextInput, View } from "react-native"
+import { Platform, Pressable, Text, TextInput, View } from "react-native"
 import Animated, { useAnimatedStyle, useDerivedValue, withTiming } from "react-native-reanimated"
 
+import { ActivityIndicator } from "./activity-indicator"
 import { ArwesButton } from "./arwes-button"
 import {
   buildAppendUserMessageIntentArgs,
@@ -190,7 +191,7 @@ export const ChatComposer = ({ activeTurn, push, threadId }: ChatComposerProps) 
           >
             <View className="h-11 w-11 items-center justify-center">
               {sending ? (
-                <ActivityIndicator color={khalaMobileTheme.danger} size="small" />
+                <ActivityIndicator color={khalaMobileTheme.danger} size={24} />
               ) : (
                 <Text className="text-base text-danger">■</Text>
               )}
@@ -207,7 +208,7 @@ export const ChatComposer = ({ activeTurn, push, threadId }: ChatComposerProps) 
           >
             <View className="h-11 w-11 items-center justify-center">
               {sending ? (
-                <ActivityIndicator color={khalaMobileTheme.accent} size="small" />
+                <ActivityIndicator color={khalaMobileTheme.accent} size={24} />
               ) : (
                 <Text className={`text-lg ${canSend ? "text-accent" : "text-textFaint"}`}>↑</Text>
               )}
