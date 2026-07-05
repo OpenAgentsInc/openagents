@@ -445,12 +445,15 @@ go first because its AI SDK adapter already supports approvals/filtering; Codex
 should wait until the OpenAgents sandbox enforces policy under the adapter's
 full-access posture.
 
-P6 should close with a public-safe dogfood receipt (#8375). The proof should
-show a mobile-created control intent appearing in desktop without restart, a
-runtime event appearing back on mobile after catch-up/resume, and at least one
-offline/reconnect or app-restart cursor-resume case. The evidence validator
-must reject raw prompts, chat bodies, provider chunks, local paths, tokens, and
-secrets.
+P6 now has simulator-only public-safe dogfood evidence (#8375). The checked-in
+receipt
+`docs/khala-sync/receipts/2026-07-05-runtime-ai-sdk-shaped-dogfood.simulator.json`
+shows the AI SDK-shaped runtime flow as refs/counts/buckets: mobile-origin
+control intent, desktop observation without restart, runtime event catch-up on
+mobile after restart/resume, and zero duplicate events after resume. It does
+not claim the physical Tailnet owner-device proof or full web projection
+parity; both are recorded as open gaps. The validator rejects raw prompts, chat
+bodies, provider chunks, local paths, token-shaped material, and secrets.
 
 ### Local feasibility answer
 
@@ -475,9 +478,10 @@ Yes, we can get this working locally in increments:
    `CODEX_HOME` / `CLAUDE_CONFIG_DIR`, and localhost bridge port URLs. It must
    remain owner-local until Codex/Claude bridges run inside the real
    OpenAgents sandbox/workroom provider.
-7. The real dogfood proof ties them together: mobile control intent -> Khala
-   Sync -> desktop/runtime lane -> OpenAgents runtime events -> Khala Sync ->
-   mobile/desktop/web projections.
+7. The simulator-only dogfood proof now ties the typed flow together as a
+   public-safe receipt: mobile control intent -> Khala Sync -> desktop/runtime
+   lane -> OpenAgents runtime events -> Khala Sync -> mobile resume/catch-up.
+   Physical Tailnet proof and web projection parity remain explicit gaps.
 
 The main risk is not "can we call AI SDK?" The main risk is accidentally
 letting AI SDK, a mobile client, or a desktop RPC become the authority for
