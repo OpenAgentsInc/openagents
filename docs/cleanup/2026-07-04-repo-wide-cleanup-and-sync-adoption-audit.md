@@ -1,10 +1,11 @@
 # Repo-Wide Cleanup and Khala Sync Adoption Audit
 
-**Lane:** Fable synthesis, five parallel Explore agents.
-**Date:** 2026-07-04/05. **Posture (owner directive):** aggressive
-consolidation. Nothing in production is sacred in its current form except
-user data (forum posts, receipts, ledgers, private traces). Simplify,
-streamline, delete without ceremony.
+**Lane:** Fable synthesis, five parallel Explore agents, verified and
+corrected against `origin/main` on 2026-07-05.
+**Posture (owner directive):** aggressive consolidation. Nothing in
+production is sacred in its current form except user data (forum posts,
+receipts, ledgers, private traces). Simplify, streamline, delete without
+ceremony.
 **Companion doc:** `2026-07-04-khala-sync-implementation-status.md` (what
 Khala Sync shipped). **This doc:** what to cut, merge, or migrate onto it
 next, across the whole `OpenAgentsInc/openagents` monorepo.
@@ -14,6 +15,15 @@ debt doc" is not prose — it's the executable ratchet
 every acknowledged debt class as a pinned numeric budget that a CI check
 enforces never grows. §1 below reads that ledger as the authoritative debt
 inventory.
+
+This repo moves fast — dozens of fleet lanes land daily. Every item below
+was checked against a live `origin/main` fetch, not assumed from an agent
+transcript; a first pass wrongly reported the Khala Sync packages as empty
+and three already-removed directories as still needing removal, both
+corrected here. Before acting on any item, re-verify the specific claim
+(one `find`/`grep` against current main) rather than trusting the count —
+not because the audit is unreliable in general, but because "true when
+checked" and "true now" are different things in a repo this active.
 
 Five audit lanes, run as independent deep-exploration agents against
 `origin/main`:
@@ -28,20 +38,6 @@ Verdicts use: **REMOVE** (delete now), **CONSOLIDATE** (merge N things into
 one), **REFACTOR** (restructure, keep behavior), **ADOPT-SYNC** (migrate
 onto Khala Sync scopes), **DEPRECATE** (mark dead, schedule removal),
 **KEEP** (active, leave alone).
-
----
-
-## 0. Meta-finding: verify your checkout before touching any of this
-
-The audit agents found the analysis repo checkout **159 commits behind
-`origin/main`** at run time — the Khala Sync engine, `docs/khala-sync/`,
-and the `khala-sync-*` route wiring only exist upstream. Every finding below
-was verified against `origin/main` via `git show`, not the stale local tree.
-**Before acting on any item in this doc, `git fetch && git status` and work
-from a fresh worktree off `origin/main`.** This is not a one-time caveat —
-with this many parallel fleet lanes landing hourly, treat "is this file
-still shaped like the audit says" as a standing verification step for every
-cleanup PR, not an assumption.
 
 ---
 
@@ -204,7 +200,6 @@ public origin at all before the ASSETS repoint.
 
 | App | Verdict | Why |
 |---|---|---|
-| `apps/openagents-world-spacetimedb` | **REMOVE** | Backend already deleted per commit message; directory holds only Rust `target/` build artifacts |
 | `apps/forum` | **DEPRECATE or commit to extraction** | 35-LOC stub Effect contract; the real 6,823-LOC forum lives in the Worker's `forum-routes.ts` — extraction never happened, the stub is misleading dead weight |
 | `apps/forge` | **KEEP** | Active, deployed, own domain — and the correct target that supersedes web's `/forge` |
 | `apps/openagents-world` (Verse) + `packages/world-contract`/`world-client` | **KEEP if Verse is a live product, else CONSOLIDATE** | Self-contained (zero external importers of the packages), but recent commits are QA-harness-only, not features — smells parked. **Needs an explicit owner call**: if Verse isn't shipping, fold its projection into Khala Sync scopes and retire the standalone Worker + 2 packages |
@@ -229,23 +224,22 @@ verdict.
 
 ## 4. `packages/*` — 30 packages, per-package verdicts
 
-### 4.1 The two loudest findings
+### 4.1 The single largest duplication finding: `probe` vs `pylon-runtime`
 
-**`khala-sync`, `khala-sync-client`, `khala-sync-server` are empty
-placeholder shells on the audited local tree** (zero tracked files, stub
-`node_modules` only) — but this is the §0 staleness trap: they are fully
-populated on `origin/main` (this is the engine described in the companion
-status doc). **No action needed** — just don't trust a local `packages/`
-listing without fetching first.
+**`packages/khala-sync`, `packages/khala-sync-client`,
+`packages/khala-sync-server` are fully built** — 11 + 26 + 87 = 124 source
+files, the complete engine described in the companion status doc (contracts,
+substrate, mutators, capture, hub, client store/overlay/session). Live on
+`openagents.com` in production. No action item here.
 
-**`packages/probe` (probe-runtime, 31,168 LOC) and `apps/pylon`'s bundled
-`pylon-runtime` (17,180 LOC) are near-identical forks of the same
+**`packages/probe` (probe-runtime, ~32,500 LOC) and `apps/pylon`'s bundled
+`pylon-runtime` (~17,300 LOC) are near-identical forks of the same
 coding-agent runtime** — same directory names (`auth backends benchmark
 blueprint contracts fleet llm omega runner runtime`), same core files
 (`permission.ts`, `receipt-redaction.ts`, `workspace.ts`,
 `opentui-renderer.ts`), neither imports the other. probe's own README
 frames it as the intended canonical "reset" runtime. **This is the single
-largest code-duplication finding in the whole audit (~48K LOC across two
+largest code-duplication finding in the whole audit (~50K LOC across two
 copies of one runtime).** **CONSOLIDATE** — pick probe as the one surface,
 collapse `apps/pylon/packages/runtime` onto it. High value, high risk
 (both qa-runner and pylon depend on their respective fork) — needs its own
@@ -284,8 +278,9 @@ in the slice), `effect-boundary`, `forge-protocol`. **KEEP all, no action.**
 ### 5.1 Immediate zero-risk wins
 
 - **11 GB of untracked local build output** at `apps/pylon/dist/rc/1.0.0-rc.*` (33 dirs) — disk hygiene, not a repo change, but flag it: `rm -rf apps/pylon/dist/rc`.
-- **`clients/openagents-desktop`** — REMOVE. Superseded by `khala-code-desktop`; current state is a 47-LOC empty electrobun stub (deleted 2026-06-29, re-stubbed empty the next day). Also drop its `test:openagents-desktop` wiring from root `package.json`.
-- **`clients/khala-desktop`** — REMOVE. Contains only a committed `.app` bundle (binaries in git — violates the "never commit build output" rule). **`clients/khala-macos`** — REMOVE. Empty husk, no tracked files.
+- **`clients/openagents-desktop`** — REMOVE. Superseded by `khala-code-desktop`; current state is a 6-file empty electrobun stub (deleted 2026-06-29, re-stubbed empty the next day). Also drop its `test:openagents-desktop` wiring from root `package.json`.
+- **Already done, no action needed** — `clients/khala-desktop`, `clients/khala-macos`, and `apps/openagents-world-spacetimedb` (the legacy Rust/SpacetimeDB world backend) have all already been fully removed from `origin/main`; none of the three exist in the current tree.
+- **`clients/khala-mobile`** (new since the first pass of this audit, landed 2026-07-04, TS-8) is the real Expo React Native companion — 23 source files, active. Not a cleanup target; noted here so it isn't mistaken for dead weight by a future pass.
 - **`scripts/vertex-fleet/`, `scripts/gemini-fleet/`** — REMOVE (~1,600 LOC). `vertex-fleet` carries its own `DEPRECATED.md`: *"RETIRED 2026-06-20 … superseded by scripts/codex-fleet/."*
 - **`scripts/khala-demo/`** (2,930 LOC) and the GLM/Vertex continual-learning burn scripts (1,127 LOC) — DEPRECATE/ARCHIVE, unwired milestone-closure and one-off stress harnesses.
 
@@ -416,13 +411,13 @@ posture (delete freely where nothing points at it; sequence carefully
 where live traffic depends on the old path).
 
 **Wave 0 — zero-risk, do immediately, no dependencies:**
-Reclaim the 11 GB pylon build cache; remove `openagents-desktop`,
-`khala-desktop`, `khala-macos`; remove `scripts/vertex-fleet`,
-`scripts/gemini-fleet`; remove the dead `apps/web` routes (Moksha×2,
-Landing variants, `/forge`, `/stats-old`, `/animations`, `/components`);
-remove `apps/openagents-world-spacetimedb`; convert the 12 untyped
-`throw new Error` sites; delete the legacy tokens-served producer now
-that #8304 double-publishes.
+Reclaim the 11 GB pylon build cache; remove `clients/openagents-desktop`
+(the only one of the three dead-client stubs still present — see §5.1);
+remove `scripts/vertex-fleet`, `scripts/gemini-fleet`; remove the dead
+`apps/web` routes (Moksha×2, Landing variants, `/forge`, `/stats-old`,
+`/animations`, `/components`); convert the 12 untyped `throw new Error`
+sites; delete the legacy tokens-served producer now that #8304
+double-publishes.
 
 **Wave 1 — mechanical, low risk, high leverage:**
 Retrofit the 16 legacy public-projection staleness contracts; drop the
@@ -465,11 +460,14 @@ untouched).
 
 ---
 
-## Appendix: raw per-slice reports
+## Appendix: revision note
 
-The five source Explore-agent reports (dense per-file tables with exact
-line numbers, commit hashes, and importer counts) are preserved in this
-session's transcript for any agent picking up a specific item from this
-plan — re-run the equivalent grep/git-log query rather than trusting a
-stale count, since the codebase moves fast (multiple KS-8 and ONE-UI lanes
-landed *during* this audit's own run).
+2026-07-05: corrected against a fresh `origin/main` fetch — the Khala Sync
+packages (§4.1) are fully built, not empty, and three items in the original
+Wave 0 list (`clients/khala-desktop`, `clients/khala-macos`,
+`apps/openagents-world-spacetimedb`) had already been removed before this
+audit ran and are struck from the action list (§5.1). The five source
+per-slice reports (dense per-file tables with line numbers, commit hashes,
+importer counts) remain in this session's transcript for anyone picking up
+a specific item — re-verify the specific file/count before acting, not
+because the audit is unreliable, but because dozens of lanes land daily.
