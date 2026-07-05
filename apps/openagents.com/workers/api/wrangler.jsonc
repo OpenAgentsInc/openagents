@@ -414,10 +414,23 @@
   // PREPARE, no advisory locks. Config ids are public references, not secrets;
   // origin credentials live only inside the Hyperdrive config (redacted
   // connection docs: packages/khala-sync-server/README.md).
+  //
+  // 2026-07-05 incident (#8409): the original config
+  // (6cd885288e5b4b2f8fd2d76200c980bf, origin_connection_limit raised 60->100
+  // mid-incident with zero effect) exhibited a near-total, extremely regular
+  // Postgres write-loss pattern (~77-79%/hour, writes landing almost only on
+  // a stable ~5-minute cadence) that did not respond to the connection-limit
+  // change, consistent with a stuck/degraded Hyperdrive-side connection pool
+  // rather than simple exhaustion (no CLI knob exists to reset that pool
+  // short of recreating the config). Repointed to a freshly created config
+  // (8724b8b5887949eda7f42f1b4807e81d, same origin, same
+  // origin_connection_limit=100) to force a clean pool. See
+  // docs/khala-sync/RUNBOOK.md "2026-07-05 #8409 severe write-loss incident"
+  // for full evidence and the before/after verification.
   "hyperdrive": [
     {
       "binding": "KHALA_SYNC_DB",
-      "id": "6cd885288e5b4b2f8fd2d76200c980bf",
+      "id": "8724b8b5887949eda7f42f1b4807e81d",
     },
   ],
   // Khala Sync compare-mode soak observability (#8282 shared follow-up):
