@@ -4075,6 +4075,49 @@ describe("khala code plan RPC handlers", () => {
     expect(persisted.openAgentsAuthPendingAttempt).toBeUndefined()
   })
 
+  test("khalaCodeOpenAgentsAuthPoll also persists the linked agent's userId as the Khala Sync owner (MC-6 mobile pairing)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "khala-openagents-poll-owner-"))
+    tempDirs.push(dir)
+    const settingsPath = join(dir, "desktop-settings.json")
+    await writeFile(settingsPath, JSON.stringify({
+      schema: "khala-code-desktop.harness-setting.v1",
+      openAgentsAuthPendingAttempt: {
+        attemptId: "khala_code_desktop_openauth_attempt-2",
+        expiresAt: "2026-07-04T12:10:00.000Z",
+        intervalSeconds: 2,
+        pollSecret: "khala_code_desktop_poll_secret-2",
+        userCode: "ATTE-MPT2",
+        verificationUrl: "https://openagents.test/api/khala-code/auth/openagents/device/verify?attempt=khala_code_desktop_openauth_attempt-2&code=ATTE-MPT2",
+      },
+    }))
+    const { fetch: fetchStub } = planFetchStub(() =>
+      json(200, {
+        agentToken: "oa_agent_linked_secret_token_2",
+        attemptId: "khala_code_desktop_openauth_attempt-2",
+        linkedAgent: {
+          tokenPrefix: "oa_agent_linked_secr",
+          userId: "user_abc123",
+        },
+        status: "linked",
+      }))
+    const handlers = planHandlers({
+      env: {
+        KHALA_CODE_DESKTOP_HARNESS_SETTING_PATH: settingsPath,
+        OPENAGENTS_BASE_URL: "https://openagents.test",
+      },
+      fetch: fetchStub,
+    })
+
+    await handlers.khalaCodeOpenAgentsAuthPoll()
+    const persisted = JSON.parse(await readFile(settingsPath, "utf8")) as {
+      readonly khalaSyncOwnerUserId?: string
+      readonly openAgentsAgentToken?: string
+    }
+
+    expect(persisted.khalaSyncOwnerUserId).toBe("user_abc123")
+    expect(persisted.openAgentsAgentToken).toBe("oa_agent_linked_secret_token_2")
+  })
+
   test("khalaCodePlanStatus sends the bearer token and returns the server-resolved plan without leaking it", async () => {
     const { fetch: fetchStub, requests } = planFetchStub(() =>
       json(200, {

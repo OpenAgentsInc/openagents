@@ -48,6 +48,7 @@ import {
 import { createOnDeviceDeciderHost } from "./on-device-decider-host.js"
 import { ensureKhalaCodeDesktopBundledSkillsInstalled } from "./khala-bundled-skills.js"
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
+import { resolveKhalaCodeDesktopMobilePairingCredentials } from "./harness-setting.js"
 import {
   createKhalaCodeDesktopKhalaSyncService,
   khalaCodeDesktopKhalaSyncFleetEnabled,
@@ -489,6 +490,39 @@ const tailnetHealthFetch = (): Response =>
     observedAt: new Date().toISOString(),
   })
 
+// Mobile Tailnet auto-auth handoff (MC-6, owner mandate 2026-07-04: "IF
+// THERES A DEVICE ON TAILNET THATS AUTHED, USE THAT AUTOMATICALLY - NO LOGIN
+// SCREEN"). Lives on the SAME 0.0.0.0 beacon as /health rather than a new
+// listener — Tailscale's own network ACL is the real security boundary here
+// (only devices already authorized on this tailnet can reach this port at
+// all), so this stays a narrowly-scoped read: it returns the (ownerUserId,
+// token) pair a signed-in desktop already holds, or an honest
+// `not_signed_in` when it doesn't. GET only, no request body, and the
+// response is never logged (see resolveKhalaCodeDesktopMobilePairingCredentials
+// / harness-setting.ts for where the credentials come from). Disable with
+// KHALA_CODE_DESKTOP_MOBILE_PAIRING=0.
+const KHALA_CODE_DESKTOP_MOBILE_PAIRING_PATH = "/khala-mobile-pairing"
+
+const tailnetMobilePairingFetch = async (request: Request): Promise<Response> => {
+  if (request.method !== "GET") {
+    return new Response("method not allowed", { status: 405 })
+  }
+  const credentials = await resolveKhalaCodeDesktopMobilePairingCredentials(khalaCodeEnv)
+  if (credentials === null) {
+    // Still name the host even when not signed in — it's not secret, and it
+    // lets the mobile fallback screen say "found your Mac, but it isn't
+    // signed in yet" instead of a bare "nothing found".
+    return jsonResponse({ hostname: os.hostname(), ok: false, reason: "not_signed_in" })
+  }
+  return jsonResponse({
+    ok: true,
+    hostname: os.hostname(),
+    observedAt: new Date().toISOString(),
+    ownerUserId: credentials.ownerUserId,
+    token: credentials.token,
+  })
+}
+
 const startTailnetHealthBeacon = (): void => {
   if (khalaCodeEnv.KHALA_CODE_DESKTOP_TAILNET_HEALTH === "0") return
   const requestedPort = Number(
@@ -498,15 +532,18 @@ const startTailnetHealthBeacon = (): void => {
   const port = Number.isInteger(requestedPort) && requestedPort > 0
     ? requestedPort
     : KHALA_CODE_DESKTOP_TAILNET_HEALTH_PORT
+  const mobilePairingEnabled = khalaCodeEnv.KHALA_CODE_DESKTOP_MOBILE_PAIRING !== "0"
   try {
     const server = Bun.serve({
       hostname: "0.0.0.0",
       port,
       fetch: (request) => {
         const url = new URL(request.url)
-        return url.pathname === "/health"
-          ? tailnetHealthFetch()
-          : new Response("not found", { status: 404 })
+        if (url.pathname === "/health") return tailnetHealthFetch()
+        if (mobilePairingEnabled && url.pathname === KHALA_CODE_DESKTOP_MOBILE_PAIRING_PATH) {
+          return tailnetMobilePairingFetch(request)
+        }
+        return new Response("not found", { status: 404 })
       },
     })
     console.info(

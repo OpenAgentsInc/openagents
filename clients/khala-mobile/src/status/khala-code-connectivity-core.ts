@@ -8,8 +8,12 @@
 
 export const KHALA_CODE_TAILNET_HEALTH_PORT = 50099
 
-/** Edit this list to match the Tailnet hosts you want to probe from a device. */
+/** Edit this list to match the Tailnet hosts you want to probe from a device.
+ * `macbook-pro-m5` is the current primary machine that actually runs Khala
+ * Code desktop day to day (see `tailscale status` in this workspace); list it
+ * first so it wins ties when multiple candidates answer. */
 export const KHALA_CODE_TAILNET_CANDIDATE_HOSTS: ReadonlyArray<string> = [
+  "macbook-pro-m5",
   "imac-pro-bertha",
   "macbook-pro-m2",
 ]

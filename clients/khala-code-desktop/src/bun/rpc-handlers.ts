@@ -2777,9 +2777,18 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         if (agentToken === null || !agentToken.startsWith("oa_agent_")) {
           return { ok: false, error: "connect_unavailable" }
         }
+        // Khala Sync personal-scope owner user id (KS-6.2/MC-6): the same
+        // "linked" response names the D1 agent record this token
+        // authenticates as. Capture it alongside the token so the desktop
+        // has everything a mobile Tailnet pairing handoff needs, without a
+        // separate whoami round trip.
+        const linkedAgentUserId = isRecord(payload.linkedAgent)
+          ? stringValue(payload.linkedAgent.userId)
+          : null
         const saved = await writeKhalaCodeDesktopOpenAgentsAgentToken(
           agentToken,
           input.env,
+          linkedAgentUserId,
         )
         return {
           ok: true,

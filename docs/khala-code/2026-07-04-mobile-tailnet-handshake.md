@@ -2,7 +2,9 @@
 
 Status: live on `main`. Covers the connectivity status dot shipped in
 `clients/khala-mobile` and the health beacon it talks to in
-`clients/khala-code-desktop`.
+`clients/khala-code-desktop`, plus the MC-6 Tailnet auto-auth handoff (see
+below) that lets the mobile app sign itself in from a paired, already
+signed-in desktop with no manual login screen in the common case.
 
 ## What this is
 
@@ -1959,3 +1961,149 @@ tool was available in this session, so verification went through the same
 HTTP/WebSocket requests a browser would make, not a real DOM/click-driven
 session. The request/response shapes and cookie handling are identical
 either way, but this is named honestly rather than implied.
+
+## MC-6: Tailnet auto-auth handoff (no manual sign-in in the common case)
+
+Owner mandate (2026-07-04, verbatim): "The auth screen you made is HORRIBLE.
+IF THERES A DEVICE ON TAILNET THATS AUTHED, USE THAT AUTOMATICALLY - NO LOGIN
+SCREEN." The manual sign-in screen shipped earlier this session (owner user
+id + token typed by hand, `clients/khala-mobile/src/components/sign-in-screen.tsx`,
+`src/auth/khala-auth-*`) was correct as a *fallback* but wrong as the primary
+experience. This section adds the auto-discovery path in front of it.
+
+### Design
+
+Tailscale itself is the real security boundary here: only devices already
+authorized on the owner's own tailnet can reach the desktop's Tailnet-bound
+port at all (see the health-beacon section above — same bind address, same
+port, same "why 0.0.0.0 is safe here" reasoning). So the pairing endpoint adds
+no second auth layer on top; it's a narrowly-scoped credential read, gated
+only by network reachability plus "is this desktop actually signed in".
+
+**Desktop side** (`clients/khala-code-desktop/src/bun/index.ts`):
+
+- New route `GET /khala-mobile-pairing` on the SAME 0.0.0.0:50099 Tailnet
+  health beacon as `/health` (not a new listener/port).
+- Reads `resolveKhalaCodeDesktopMobilePairingCredentials(env)`
+  (`src/bun/harness-setting.ts`), which resolves the desktop's own
+  OpenAgents agent token (`resolveKhalaCodeDesktopOpenAgentsAgentToken`, the
+  same one used by `khalaCodePlanStatus`/`khalaCodePlanPurchase`) plus a
+  companion `khalaSyncOwnerUserId` persisted alongside it.
+- Not signed in (either half missing) -> `{ ok: false, reason: "not_signed_in", hostname }`.
+  Signed in -> `{ ok: true, ownerUserId, token, hostname }`. `hostname` is
+  included in BOTH branches (not secret) so the mobile fallback screen can
+  say "found your Mac (name), but it isn't signed in yet" instead of a bare
+  "nothing found".
+- Disable with `KHALA_CODE_DESKTOP_MOBILE_PAIRING=0`.
+- The token is never logged: the route builds the JSON response directly
+  from the resolved credentials and returns; nothing touches `console.*`.
+
+**Where `khalaSyncOwnerUserId` comes from**: the existing device-auth flow
+(`khalaCodeOpenAgentsAuthStart` / `khalaCodeOpenAgentsAuthPoll` in
+`rpc-handlers.ts`, backed by
+`apps/openagents.com/workers/api/src/khala-code-openagents-auth-routes.ts`)
+already returns a `linkedAgent.userId` field in its "linked" response — the
+D1 agent record's own user id, i.e. exactly the Khala Sync personal-scope
+owner id (`scope.user.<id>`) this token authenticates as. The desktop simply
+wasn't capturing it before this change. `khalaCodeOpenAgentsAuthPoll` now
+reads `payload.linkedAgent.userId` and passes it to
+`writeKhalaCodeDesktopOpenAgentsAgentToken(agentToken, env, linkedAgentUserId)`,
+which persists both fields atomically in `desktop-settings.json`. Dev/manual
+setups that predate a real device link can still set
+`KHALA_SYNC_CHAT_OWNER_USER_ID` as an env fallback (used only when nothing is
+persisted yet); a persisted value always wins.
+
+**Mobile side** (`clients/khala-mobile/src/auth/`):
+
+- `khala-mobile-pairing-core.ts` — pure discovery logic (same MC-5 split:
+  no native imports, so it runs under plain `bun test`). Builds candidate
+  URLs from the same `KHALA_CODE_TAILNET_CANDIDATE_HOSTS` / port the
+  connectivity dot uses, but against `/khala-mobile-pairing` instead of
+  `/health`. Probes every candidate **concurrently** (`Promise.all`, not a
+  serial loop) with a 1500ms per-host abort timeout, so the common "nothing
+  signed in yet" case fails fast instead of multiplying the timeout by
+  candidate count. Returns one of three outcomes: `paired` (real
+  credentials), `reachable_not_signed_in` (found a desktop, but it has
+  nothing to hand over), or `unreachable`.
+- `khala-mobile-pairing.ts` — the `expo-device`-touching wrapper
+  (`Device.isDevice` + global `fetch`), mirroring
+  `khala-code-connectivity.ts`.
+- `khala-auth-context.tsx` (`KhalaAuthProvider`): on mount, after checking
+  on-device secure storage and the dev-env credential pair (both unchanged),
+  if neither resolved a session it now runs discovery automatically —
+  `status` transitions `loading -> discovering -> (signed_in | signed_out)`
+  — *before* ever rendering a login screen. A found pairing is validated the
+  same way manual entry is (`validateKhalaCredentials`, a real bootstrap call
+  against the owner's own personal scope) before being trusted and persisted
+  via the same `khala-auth-store.ts` (`expo-secure-store`) path manual
+  sign-in uses. A `retryDiscovery()` action and the last `discoveryOutcome`
+  are exposed on the context for the fallback screen.
+- `sign-in-screen.tsx`: no longer a bare form. The primary view is now
+  `AutoDiscoveryPanel` — shows "Looking for a signed-in Mac on your
+  Tailnet…" while `status === "discovering"`, then either nothing-found or
+  "found `<hostname>` but it isn't signed in yet" once discovery settles,
+  plus a Retry button. The original owner-user-id/token form survives only
+  behind a secondary "Sign in manually instead" link (`ManualSignInForm`) —
+  first-time setups with no desktop yet, or a phone-only user, still have a
+  way in.
+
+### Candidate host list fix (found during this pass)
+
+`KHALA_CODE_TAILNET_CANDIDATE_HOSTS` (shared by the connectivity dot and this
+pairing probe) only listed `imac-pro-bertha` and `macbook-pro-m2` — it was
+missing `macbook-pro-m5`, which `tailscale status` shows is the actual
+primary Mac these desktop-app sessions run on. Without this, a real phone on
+the tailnet would never have found this machine at all, for either feature.
+Added it (first in the list, so it wins ties when multiple candidates
+answer).
+
+### Verification (real production code, this session)
+
+Ran two throwaway Bun scripts (not committed) that import the REAL
+`harness-setting.ts` and `khala-mobile-pairing-core.ts` modules — not mocks —
+and start a real `Bun.serve()` listener bound to `0.0.0.0`, matching the
+production route byte-for-byte:
+
+- Before writing any credentials: `GET /khala-mobile-pairing` returned
+  `{"ok":false,"reason":"not_signed_in","hostname":"<real hostname>"}` from
+  BOTH `http://127.0.0.1:<port>` and `http://100.127.107.31:<port>` (this
+  Mac's real Tailscale IP, from `tailscale status`) — proving the "not
+  signed in" path is reachable over the real Tailnet interface, not just
+  loopback.
+- After calling the real `writeKhalaCodeDesktopOpenAgentsAgentToken(token,
+  env, ownerUserId)` (the exact function the real device-auth poll handler
+  calls): the same two URLs returned
+  `{"ok":true,"ownerUserId":"user_...","token":"oa_agent_..."}` — proving the
+  full write -> serve round trip works over the real network.
+- Ran the REAL mobile-side `discoverKhalaMobilePairingCredentials` (not a
+  reimplementation) against that live server over the real Tailscale IP with
+  a genuine `fetch` (not a stubbed one): returned `reachable_not_signed_in`
+  before the credential write and `paired` with the correct
+  `{ownerUserId, token}` after it, in ~800ms (bounded by the configured
+  per-host timeout, confirming the concurrent-probe fast-fail path).
+- Separately confirmed there is an actual already-running Khala Code Desktop
+  dev process on this Mac (`electrobun dev`, PID observed via `ps`/`lsof`)
+  whose PRE-EXISTING `/health` route answers on both `127.0.0.1:50099` and
+  `100.127.107.31:50099` — independent, real confirmation that the shared
+  bind-address/port design this new route reuses is genuinely reachable over
+  this Mac's real Tailscale interface today, not just in a sandbox.
+- `bun test` (desktop: 699 pass; mobile: 142 pass, including 9 new pairing-
+  discovery tests and 5 new harness-setting pairing-credential tests) and
+  `tsc --noEmit` (both packages) all green after every change in this
+  section.
+
+**Left honestly unverified**: that live desktop dev process is running an
+older build (`main.js` dated before these source edits, confirmed via
+`ls -la`) and was deliberately NOT rebuilt/restarted in this pass, to avoid
+disrupting what may be another agent's active session — so the new
+`/khala-mobile-pairing` route has not been exercised from inside the actual
+packaged/Electrobun-hosted process, only from a bespoke script that imports
+the same production functions and reuses the same bind address/port/route
+logic. Also unverified: a genuine second physical phone reaching over
+Tailnet — this workspace's `tailscale status` currently shows both linked
+iPhones (`iphone-14-pro-max`, `iphone-17-pro-max`) offline, so the concurrent
+multi-candidate probe and the on-device `KhalaAuthProvider` mount flow have
+only been exercised via `bun test` (mocked fetch) and the scripted real-HTTP
+smoke above, not a physical device's real Tailscale stack end-to-end. The
+TestFlight build bumped alongside this change (see release notes) is the
+mechanism for the owner to close that last gap.

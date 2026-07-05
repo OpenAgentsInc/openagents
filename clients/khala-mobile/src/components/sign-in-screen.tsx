@@ -4,11 +4,115 @@ import { SafeAreaView } from "react-native-safe-area-context"
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
 
-/** Shown whenever no valid Khala Sync credentials are stored on-device —
- * the only path into the app for a real (non-dev-env) install, since a
- * shipped binary never has EXPO_PUBLIC_KHALA_SYNC_DEMO_* baked in. */
+/**
+ * Shown whenever there is no signed-in session yet. Per the owner mandate
+ * (2026-07-04, verbatim): "IF THERES A DEVICE ON TAILNET THATS AUTHED, USE
+ * THAT AUTOMATICALLY - NO LOGIN SCREEN" — so the PRIMARY path here is a
+ * Tailnet auto-discovery status (`KhalaAuthProvider` already ran or is
+ * running it before this ever renders manual fields), not a form. Manual
+ * entry survives only as a secondary "advanced" fallback for the case where
+ * auto-discovery genuinely can't find a signed-in Mac (phone off Tailnet, no
+ * desktop running/signed in, first-time setup, phone-only user).
+ */
 export const SignInScreen = () => {
-  const { signIn } = useKhalaAuth()
+  const { discoveryOutcome, retryDiscovery, signIn, status } = useKhalaAuth()
+  const [showManualForm, setShowManualForm] = useState(false)
+
+  if (!showManualForm) {
+    return (
+      <AutoDiscoveryPanel
+        discoveryOutcome={discoveryOutcome}
+        onShowManualForm={() => setShowManualForm(true)}
+        onRetry={retryDiscovery}
+        status={status}
+      />
+    )
+  }
+
+  return <ManualSignInForm onBack={() => setShowManualForm(false)} signIn={signIn} />
+}
+
+const discoveryMessage = (
+  status: ReturnType<typeof useKhalaAuth>["status"],
+  discoveryOutcome: ReturnType<typeof useKhalaAuth>["discoveryOutcome"]
+): string => {
+  if (status === "discovering") return "Looking for a signed-in Mac on your Tailnet…"
+  if (discoveryOutcome?.state === "reachable_not_signed_in") {
+    return `Found a Khala Code desktop${
+      discoveryOutcome.hostname === null ? "" : ` (${discoveryOutcome.hostname})`
+    } on your Tailnet, but it isn't signed in yet. Sign in there first, then retry.`
+  }
+  return "No signed-in Mac found on your Tailnet."
+}
+
+const AutoDiscoveryPanel = ({
+  discoveryOutcome,
+  onRetry,
+  onShowManualForm,
+  status
+}: {
+  discoveryOutcome: ReturnType<typeof useKhalaAuth>["discoveryOutcome"]
+  onRetry: () => Promise<void>
+  onShowManualForm: () => void
+  status: ReturnType<typeof useKhalaAuth>["status"]
+}) => {
+  const [retrying, setRetrying] = useState(false)
+  const discovering = status === "discovering"
+
+  const handleRetry = async () => {
+    if (retrying || discovering) return
+    setRetrying(true)
+    try {
+      await onRetry()
+    } finally {
+      setRetrying(false)
+    }
+  }
+
+  return (
+    <SafeAreaView className="flex-1 bg-bg" edges={["top", "bottom", "left", "right"]}>
+      <View className="flex-1 justify-center px-6">
+        <Text className="mb-1 text-center font-sans text-2xl font-semibold text-text">Khala Code</Text>
+
+        <View className="mb-8 mt-6 items-center">
+          {discovering || retrying ? <ActivityIndicator color="#4fd0ff" /> : null}
+          <Text className="mt-4 text-center font-sans text-sm text-textMuted">
+            {discoveryMessage(status, discoveryOutcome)}
+          </Text>
+          <Text className="mt-2 text-center font-mono text-xs text-textFaint">
+            Make sure Tailscale is connected on both this phone and your Mac, and Khala Code is running and signed
+            in there.
+          </Text>
+        </View>
+
+        <Pressable
+          accessibilityRole="button"
+          className={`items-center rounded-xl py-3 ${discovering || retrying ? "bg-surfaceMuted" : "bg-accent"}`}
+          disabled={discovering || retrying}
+          onPress={handleRetry}
+        >
+          {retrying ? (
+            <ActivityIndicator color="#000" />
+          ) : (
+            <Text className="font-sans text-base font-semibold text-bg">Retry</Text>
+          )}
+        </Pressable>
+
+        <Pressable accessibilityRole="button" className="mt-4 items-center py-2" onPress={onShowManualForm}>
+          <Text className="font-mono text-xs uppercase tracking-wide text-textFaint">Sign in manually instead</Text>
+        </Pressable>
+      </View>
+    </SafeAreaView>
+  )
+}
+
+const ManualSignInForm = ({
+  onBack,
+  signIn
+}: {
+  onBack: () => void
+  signIn: ReturnType<typeof useKhalaAuth>["signIn"]
+}) => {
   const [ownerUserId, setOwnerUserId] = useState("")
   const [token, setToken] = useState("")
   const [submitting, setSubmitting] = useState(false)
@@ -67,6 +171,12 @@ export const SignInScreen = () => {
           onPress={handleSubmit}
         >
           {submitting ? <ActivityIndicator color="#000" /> : <Text className="font-sans text-base font-semibold text-bg">Sign in</Text>}
+        </Pressable>
+
+        <Pressable accessibilityRole="button" className="mt-4 items-center py-2" onPress={onBack}>
+          <Text className="font-mono text-xs uppercase tracking-wide text-textFaint">
+            Back to Tailnet auto-discovery
+          </Text>
         </Pressable>
 
         <Text className="mt-6 text-center font-mono text-xs text-textFaint">

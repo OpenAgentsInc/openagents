@@ -335,6 +335,11 @@ export async function writeKhalaCodeDesktopOpenAgentsAuthPendingAttempt(
 export async function writeKhalaCodeDesktopOpenAgentsAgentToken(
   token: string,
   env: ChatEnv,
+  // Khala Sync personal-scope owner user id (KS-6.2), captured from the same
+  // device-link response as the agent token (`linkedAgent.userId`) so the two
+  // are written together and never drift apart. Optional so existing callers
+  // that only have a token (no linked-agent identity) keep working unchanged.
+  ownerUserId?: string | null,
 ): Promise<KhalaCodeDesktopOpenAgentsAuthPendingAttemptWriteResult> {
   const trimmed = openAgentsAgentTokenValue(token)
   if (trimmed === null) throw new Error("OpenAgents agent token must start with oa_agent_.")
@@ -342,6 +347,10 @@ export async function writeKhalaCodeDesktopOpenAgentsAgentToken(
   const current = await readKhalaCodeDesktopSettingsDocument(env)
   const rest = { ...current }
   delete rest.openAgentsAuthPendingAttempt
+  const trimmedOwnerUserId = ownerUserId?.trim()
+  if (trimmedOwnerUserId !== undefined && trimmedOwnerUserId.length > 0) {
+    rest.khalaSyncOwnerUserId = trimmedOwnerUserId
+  }
   await mkdir(dirname(path), { recursive: true })
   await writeFile(path, `${JSON.stringify({
     ...rest,
@@ -353,6 +362,44 @@ export async function writeKhalaCodeDesktopOpenAgentsAgentToken(
     ...await readKhalaCodeDesktopOpenAgentsAuthSetting(env),
     saved: true,
   }
+}
+
+/**
+ * Khala Sync personal-scope owner user id for THIS device's linked OpenAgents
+ * agent — persisted alongside the agent token (see
+ * `writeKhalaCodeDesktopOpenAgentsAgentToken`) and, for local/dev setups that
+ * predate a real device link, overridable via `KHALA_SYNC_CHAT_OWNER_USER_ID`.
+ */
+export async function readKhalaCodeDesktopKhalaSyncOwnerUserId(
+  env: ChatEnv,
+): Promise<string | null> {
+  const settings = await readKhalaCodeDesktopSettingsDocument(env)
+  const persisted = stringValue(settings.khalaSyncOwnerUserId)
+  if (persisted !== null) return persisted
+  const fromEnv = env.KHALA_SYNC_CHAT_OWNER_USER_ID?.trim()
+  return fromEnv !== undefined && fromEnv.length > 0 ? fromEnv : null
+}
+
+export type KhalaCodeDesktopMobilePairingCredentials = Readonly<{
+  ownerUserId: string
+  token: string
+}>
+
+/**
+ * Resolves the exact (ownerUserId, token) pair a mobile Tailnet pairing
+ * handoff would hand to a phone (MC-6, docs/khala-code/2026-07-04-mobile-tailnet-handshake.md).
+ * `null` whenever either half is missing — this device is not meaningfully
+ * "signed in" for mobile pairing purposes yet, and callers must fail closed
+ * rather than hand over a partial credential.
+ */
+export async function resolveKhalaCodeDesktopMobilePairingCredentials(
+  env: ChatEnv,
+): Promise<KhalaCodeDesktopMobilePairingCredentials | null> {
+  const token = await resolveKhalaCodeDesktopOpenAgentsAgentToken(env)
+  if (token === null) return null
+  const ownerUserId = await readKhalaCodeDesktopKhalaSyncOwnerUserId(env)
+  if (ownerUserId === null) return null
+  return { ownerUserId, token }
 }
 
 export async function hasKhalaCodeDesktopPersistedModelRoleRegistry(
