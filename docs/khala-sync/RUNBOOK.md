@@ -1641,13 +1641,25 @@ behind.
   after (`state='revoked'`), and a follow-up backfill sweep converged the
   mint/revoke rows into Postgres, re-verified CLEAN.
 - **Compare-mode soak:** `KHALA_SYNC_FORGE_READS=compare` shipped to
-  production + staging via `deploy:safe` (commit noted in the PR/issue
-  evidence). This domain has effectively no organic traffic, so the soak
-  observation is honestly thin — see the deploy report on #8358 for the
-  exact window and `wrangler tail` observations (silence on
-  `khala_sync_forge_read_compare_mismatch` is necessary but, given how
-  little real traffic exists, not sufficient to justify a `postgres`
-  flip on its own).
+  production + staging via `deploy:safe` (Worker version
+  `75c8132b-9994-4a59-a17a-751e185b011d`). Watched live via `wrangler tail`
+  on production for ~7 continuous minutes (2026-07-05 08:47-08:54 UTC),
+  spanning all Worker traffic, not just Forge — plus 6 real
+  `GET .../info/refs?service=git-receive-pack` calls against the one live
+  tenant/repository (via a second bounded verification token, minted and
+  revoked the same way as the ground-truth check above), spaced across
+  the window: all HTTP 200, and **zero**
+  `khala_sync_forge_read_compare_mismatch` /
+  `khala_sync_forge_read_compare_failed` / `khala_sync_forge_dual_write_failed`
+  lines anywhere in the ~800-line capture. **This is a real but SHORT soak,
+  not a representative one** — this domain has effectively no organic
+  traffic, so 7 minutes with 6 self-generated reads is necessary-but-far
+  short of sufficient evidence for a `postgres` flip. Re-ran the backfill
+  + `--verify` after the soak (the soak token's mint/revoke rows) — clean.
+  `KHALA_SYNC_FORGE_READS=compare` stays live in prod/staging so the soak
+  keeps accumulating passively against any real future push traffic;
+  re-check Worker logs for `khala_sync_forge_read_compare_mismatch` over a
+  much longer window before ever flipping to `postgres`.
 - **Ref-lock protocol port — IMPLEMENTED, NOT WIRED:**
   `apps/openagents.com/workers/api/src/forge-git-canonical-postgres-store.ts`
   (`makePostgresForgeGitCanonicalStore`) ports the D1

@@ -437,10 +437,16 @@ stores' `forge_git_refs` row for that ref. The token was revoked
 immediately after use and the resulting D1 rows (mint + revoke) were
 converged into Postgres by a follow-up backfill sweep, re-verified clean.
 COMPARE-MODE SOAK: `KHALA_SYNC_FORGE_READS=compare` shipped to
-production + staging (see `RUNBOOK.md` for the exact soak window and
-observations) — always serves D1, only cross-checks Postgres and logs
-`khala_sync_forge_read_compare_mismatch` on drift. REF-LOCK PROTOCOL
-PORT: implemented and tested, NOT wired to production authority.
+production + staging (Worker version
+`75c8132b-9994-4a59-a17a-751e185b011d`) — always serves D1, only
+cross-checks Postgres and logs `khala_sync_forge_read_compare_mismatch`
+on drift. Observed live via `wrangler tail` for ~7 minutes
+(2026-07-05 08:47-08:54 UTC) plus 6 real advertisement reads against the
+one live tenant/repository: zero compare-mismatch/failed/dual-write-failed
+diagnostics. Honestly short, not representative — see `RUNBOOK.md` for
+the full readout; the flag stays live so the soak keeps accumulating.
+REF-LOCK PROTOCOL PORT: implemented and tested, NOT wired to production
+authority.
 `forge-git-canonical-postgres-store.ts`
 (`makePostgresForgeGitCanonicalStore`) replaces the D1
 held/applied/rejected lock-row dance with a real
