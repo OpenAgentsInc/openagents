@@ -1,0 +1,35 @@
+-- KS-8.14 read-cutover follow-up (#8360): the business funnel domain's
+-- bounded Postgres read serving (KHALA_SYNC_BUSINESS_READS=postgres serves
+-- ONLY business_funnel_events for real — see business-domain-store.ts's
+-- BUSINESS_DOMAIN_POSTGRES_SERVED_READ_TABLES) re-derives ONE D1 read
+-- accelerator for the exact live read pattern it now actually answers.
+--
+-- 0023_business_funnel.sql intentionally dropped ALL D1 read accelerators
+-- for this domain (including business_funnel_events_stage_time_idx /
+-- _source_time_idx / _source_ref_stage_idx) because this lane routed ZERO
+-- reads to Postgres and the read surface was "wide, not one bounded scan".
+-- The read-cutover follow-up narrows that: the ONLY production SELECTs
+-- against this table are `readBusinessFunnelDashboard`'s two full-table
+-- aggregate queries (apps/openagents.com/workers/api/src/
+-- business-funnel-dashboard.ts):
+--
+--   SELECT stage, source_kind,
+--          COALESCE(NULLIF(TRIM(source_ref), ''), 'direct') AS source_ref,
+--          COUNT(*), MAX(occurred_at)
+--     FROM business_funnel_events
+--    GROUP BY stage, source_kind, COALESCE(NULLIF(TRIM(source_ref), ''), 'direct')
+--
+--   SELECT COUNT(*) FROM business_funnel_events
+--
+-- Both are unfiltered full-table scans (no WHERE clause — the dashboard
+-- reports all-time totals), so the accelerator that matches the ACTUAL
+-- Postgres read set (the KS-8.2 re-derivation rule) is a covering index on
+-- the GROUP BY columns plus occurred_at, letting Postgres answer the
+-- aggregate via an index-only scan instead of a full heap scan as the
+-- table grows. This does not reintroduce the dropped D1 indexes — no
+-- other business_funnel_events read exists in production (verified by
+-- grepping `FROM business_funnel_events` across workers/api/src on
+-- 2026-07-05); widening this index is a follow-up if a new read call site
+-- lands.
+CREATE INDEX IF NOT EXISTS business_funnel_events_dashboard_covering_idx
+  ON business_funnel_events (stage, source_kind, source_ref, occurred_at);

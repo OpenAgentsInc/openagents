@@ -61,12 +61,26 @@
 //   KHALA_SYNC_BUSINESS_READS      (default 'd1'; d1|compare|postgres)
 // With no KHALA_SYNC_DB binding everything degrades to plain D1.
 // `compare` shadow-runs scoped-table SELECTs against Postgres, SERVES D1,
-// and logs `khala_sync_business_read_compare_mismatch`. `postgres` read
-// serving is DEFERRED to the read-cutover follow-up (the domain read
-// surface — funnel dashboards, pipeline queues, referral feeds, order
-// lists — is wide, not one bounded scan): the flag behaves as `compare`
-// and logs `khala_sync_business_postgres_reads_deferred` once, so a
-// premature flag flip can never serve an unproven read path.
+// and logs `khala_sync_business_read_compare_mismatch`.
+//
+// `postgres` (KS-8.14 read-cutover follow-up, #8360): serves ONLY the
+// bounded read surface named in `BUSINESS_DOMAIN_POSTGRES_SERVED_READ_TABLES`
+// (today: `business_funnel_events` — the public funnel dashboard's two
+// full-table aggregate reads, an append-only firehose table with no
+// write-path decision coupling) directly from Postgres, fail-soft back to
+// D1 on any Postgres read error. EVERY OTHER comparable-select in this
+// domain stays D1-served exactly like `compare` mode (shadow-compared,
+// never served) — that is a DELIBERATE, PERMANENT discipline, not a
+// staging step: the escalation pager's `listBlockedPromises`/
+// `listDuePromises`, the starter-credit window-cap evaluation, and every
+// referral-attribution existence-check feeding an `INSERT OR IGNORE`
+// consume-once decision read business-logic state that a lagging mirror
+// read could silently corrupt (under-attribute a payout-feeding referral,
+// or double/skip a cron motion) — moving any of those tables to Postgres
+// serving is a separate, individually reviewed follow-up that widens the
+// allowlist constant, never a blanket flag flip. A residual
+// `khala_sync_business_postgres_reads_deferred` log marks every request
+// that still has non-servable comparable-selects deferred.
 //
 // PUBLIC-SAFETY: diagnostics reference row KEYS and statement heads only
 // — never contact emails, request bodies, or receipt payloads.
@@ -75,8 +89,8 @@
 // cutover"): dual-write on → backfill
 // (scripts/backfill-business.ts) → catch-up sweep → --verify (attribution
 // set equality + promise-receipt hash equality + funnel cohort counts +
-// money sums) → compare reads → read cutover + remainder wiring + D1 drop
-// in the follow-ups.
+// money sums) → compare reads → bounded read cutover (this file) +
+// remainder wiring + D1 drop in the follow-ups.
 
 import {
   BUSINESS_DOMAIN_TABLE_SPECS,
@@ -150,6 +164,7 @@ export type BusinessDomainDiagnosticEvent =
   | 'khala_sync_business_read_compare_mismatch'
   | 'khala_sync_business_read_compare_failed'
   | 'khala_sync_business_postgres_reads_deferred'
+  | 'khala_sync_business_postgres_read_serve_failed'
 
 export type BusinessDomainDiagnostic = Readonly<{
   /** The store op, e.g. 'mirror:business_funnel_events' or a statement head. */
@@ -365,8 +380,43 @@ export type BusinessDomainStatementClass =
       keySource: BusinessDomainKeySource
     }>
   | Readonly<{ kind: 'unclassified-write'; table: BusinessDomainTable }>
-  | Readonly<{ kind: 'comparable-select' }>
+  | Readonly<{
+      kind: 'comparable-select'
+      /** Distinct scoped tables the SELECT's from/join clauses touch. */
+      tables: ReadonlyArray<BusinessDomainTable>
+    }>
   | Readonly<{ kind: 'passthrough' }>
+
+/**
+ * The bounded read surface that ACTUALLY serves from Postgres when
+ * `KHALA_SYNC_BUSINESS_READS=postgres` (KS-8.14 read-cutover follow-up,
+ * #8360). Restricted to `business_funnel_events`: the public funnel
+ * dashboard's two full-table aggregate reads
+ * (`business-funnel-dashboard.ts`'s `readBusinessFunnelDashboard`) are the
+ * domain's only production SELECTs against this append-only,
+ * write-decision-free table. Every other comparable-select — the
+ * escalation pager's `listBlockedPromises`/`listDuePromises`
+ * (`business-fulfillment-loop.ts`), the starter-credit window-cap
+ * evaluation, referral-attribution existence-checks feeding
+ * `INSERT OR IGNORE` consume-once decisions, pipeline/order/referral list
+ * reads — stays D1-served even under `postgres`, because a lagging
+ * mirror read on any of those tables could silently under-attribute a
+ * payout-feeding referral or double/skip a cron action. Widening this set
+ * is a deliberate, individually reviewed follow-up per table, never a
+ * blanket flip.
+ */
+export const BUSINESS_DOMAIN_POSTGRES_SERVED_READ_TABLES: ReadonlySet<BusinessDomainTable> =
+  new Set<BusinessDomainTable>(['business_funnel_events'])
+
+/** True when every table a comparable-select touches is in the allowlist. */
+export const isPostgresServableBusinessRead = (
+  classified: BusinessDomainStatementClass,
+): boolean =>
+  classified.kind === 'comparable-select' &&
+  classified.tables.length > 0 &&
+  classified.tables.every(table =>
+    BUSINESS_DOMAIN_POSTGRES_SERVED_READ_TABLES.has(table),
+  )
 
 /** SQL text with string literals blanked, for placeholder counting. */
 const withoutStringLiterals = (sql: string): string =>
@@ -488,7 +538,9 @@ const classifyInsertTuple = (
  *    `unclassified-write` (loud diagnostic, still fail-soft; the contract
  *    suite pins the live domain write statements against this branch).
  *  - SELECTs whose from/join refs are ALL scoped tables →
- *    `comparable-select` (compare-mode shadow reads).
+ *    `comparable-select` (compare-mode shadow reads; the touched table set
+ *    also gates real Postgres read serving — see
+ *    `isPostgresServableBusinessRead`).
  */
 export const classifyBusinessDomainStatement = (
   sql: string,
@@ -585,7 +637,10 @@ export const classifyBusinessDomainStatement = (
       refs.push(match[1]!.toLowerCase())
     }
     if (refs.length > 0 && refs.every(ref => isBusinessDomainTable(ref))) {
-      return { kind: 'comparable-select' }
+      return {
+        kind: 'comparable-select',
+        tables: [...new Set(refs)] as ReadonlyArray<BusinessDomainTable>,
+      }
     }
   }
 
@@ -670,10 +725,20 @@ export type MakeBusinessDomainMirroringDatabaseDependencies = Readonly<{
   /** The write mirror, or undefined when dual-write is off. */
   mirror: BusinessDomainMirror | undefined
   /**
-   * The Postgres store for compare-mode shadow reads, or undefined when
-   * reads stay on plain D1.
+   * The Postgres store for compare-mode shadow reads (and, for the
+   * allowlisted read surface, real serving), or undefined when reads stay
+   * on plain D1.
    */
   compareStore: PostgresBusinessDomainStore | undefined
+  /**
+   * Read-serving mode. Optional for backward compatibility with existing
+   * callers that only ever used `compareStore` presence to mean
+   * shadow-compare: defaults to `'compare'` when `compareStore` is set and
+   * `'d1'` otherwise, which is byte-identical to the pre-#8360 behavior.
+   * Only an explicit `'postgres'` unlocks real serving, and only for
+   * `BUSINESS_DOMAIN_POSTGRES_SERVED_READ_TABLES`.
+   */
+  reads?: BusinessDomainReadsMode | undefined
   log: BusinessDomainLog
 }>
 
@@ -684,16 +749,51 @@ type BoundStatement = Readonly<{
 
 /**
  * Wrap one D1Database so that every successful write to a scoped business
- * domain table read-back-mirrors the affected row(s) into Postgres, and
- * (compare mode) every scoped-table SELECT is shadow-run against the
- * Postgres twin with D1 always served. All other statements pass through
- * untouched. Fail-soft everywhere: no mirror or compare outcome can fail
- * or alter the D1 result.
+ * domain table read-back-mirrors the affected row(s) into Postgres;
+ * (compare mode, or postgres mode for non-allowlisted tables) every
+ * scoped-table SELECT is shadow-run against the Postgres twin with D1
+ * always served; and (postgres mode, allowlisted tables only — see
+ * `BUSINESS_DOMAIN_POSTGRES_SERVED_READ_TABLES`) the SELECT is served
+ * directly from Postgres, falling back to D1 on any Postgres error. All
+ * other statements pass through untouched. Fail-soft everywhere: no
+ * mirror, compare, or postgres-serve outcome can fail or corrupt the
+ * caller's result — a Postgres read failure always degrades to the D1
+ * answer, never an error.
  */
 export const makeBusinessDomainMirroringDatabase = (
   deps: MakeBusinessDomainMirroringDatabaseDependencies,
 ): D1Database => {
   const { compareStore, db, log, mirror } = deps
+  const reads =
+    deps.reads ?? (compareStore === undefined ? 'd1' : 'compare')
+
+  /**
+   * Real Postgres read serving for the bounded allowlist (`postgres`
+   * mode only). Returns `undefined` on ANY failure (including "not
+   * eligible") so the caller falls back to the normal D1 statement —
+   * serving can never fail a request, it can only fail to happen.
+   */
+  const serveFromPostgres =
+    reads === 'postgres' && compareStore !== undefined
+      ? async (
+          sql: string,
+          params: ReadonlyArray<unknown>,
+        ): Promise<ReadonlyArray<Record<string, unknown>> | undefined> => {
+          try {
+            return await compareStore.queryRows(
+              toPostgresPlaceholders(sql),
+              params,
+            )
+          } catch (error) {
+            log('khala_sync_business_postgres_read_serve_failed', {
+              messageSafe: safeMessage(error),
+              op: statementHead(sql),
+              refs: [],
+            })
+            return undefined
+          }
+        }
+      : undefined
 
   const compareSelect =
     compareStore === undefined
@@ -770,11 +870,27 @@ export const makeBusinessDomainMirroringDatabase = (
   ): D1PreparedStatement => {
     const bound = makeBound(sql, params)
     const classified = classifyBusinessDomainStatement(sql)
+    const servable =
+      serveFromPostgres !== undefined &&
+      isPostgresServableBusinessRead(classified)
     const comparable =
-      compareSelect !== undefined && classified.kind === 'comparable-select'
+      !servable &&
+      compareSelect !== undefined &&
+      classified.kind === 'comparable-select'
 
     const wrapper = {
       all: async <T>(...args: ReadonlyArray<unknown>) => {
+        if (servable) {
+          const postgresRows = await serveFromPostgres(sql, params)
+          if (postgresRows !== undefined) {
+            return {
+              meta: {},
+              results: postgresRows,
+              success: true,
+            } as unknown as D1Result<T>
+          }
+          // Postgres serve failed: fall through to D1, fail-soft.
+        }
         const result = await (
           bound.statement.all as (
             ...a: ReadonlyArray<unknown>
@@ -791,6 +907,13 @@ export const makeBusinessDomainMirroringDatabase = (
       },
       bind: (...values: ReadonlyArray<unknown>) => wrapStatement(sql, values),
       first: async <T>(...args: ReadonlyArray<unknown>) => {
+        if (servable && args.length === 0) {
+          const postgresRows = await serveFromPostgres(sql, params)
+          if (postgresRows !== undefined) {
+            return (postgresRows[0] ?? null) as unknown as T | null
+          }
+          // Postgres serve failed: fall through to D1, fail-soft.
+        }
         const result = await (
           bound.statement.first as (
             ...a: ReadonlyArray<unknown>
@@ -938,12 +1061,16 @@ export const businessDomainDatabaseForEnv = (
   }
 
   if (flags.reads === 'postgres') {
-    // Serving business-domain reads from Postgres is the cutover
-    // follow-up (the read surface is domain-wide). Never fail open into
-    // an unproven path: behave as compare and say so once.
+    // KS-8.14 read-cutover follow-up (#8360): `postgres` serves the
+    // bounded BUSINESS_DOMAIN_POSTGRES_SERVED_READ_TABLES surface for
+    // real (today: business_funnel_events, the public funnel dashboard).
+    // Every other comparable-select in this domain stays deferred to
+    // compare — never fail open into an unproven read path for the
+    // escalation pager, starter-credit evaluation, or referral-attribution
+    // existence-checks. Say so once per request.
     log('khala_sync_business_postgres_reads_deferred', {
       messageSafe:
-        'KHALA_SYNC_BUSINESS_READS=postgres is deferred to the read-cutover follow-up; serving d1 with compare shadow reads',
+        'KHALA_SYNC_BUSINESS_READS=postgres serves BUSINESS_DOMAIN_POSTGRES_SERVED_READ_TABLES from postgres; every other comparable-select stays d1-served with compare shadow reads',
       op: 'businessDomainDatabaseForEnv',
       refs: [],
     })
@@ -956,5 +1083,6 @@ export const businessDomainDatabaseForEnv = (
     mirror: flags.dualWrite
       ? makeBusinessDomainMirror({ db, log, postgres })
       : undefined,
+    reads: flags.reads,
   })
 }

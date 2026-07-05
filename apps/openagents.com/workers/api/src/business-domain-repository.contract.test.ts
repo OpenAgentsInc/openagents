@@ -40,8 +40,13 @@
 //       `khala_sync_business_dual_write_failed` and D1 stands (the
 //       escalation pager can never double-page off the mirror);
 //     - compare-mode scoped SELECTs serve D1 and log divergence;
-//       `postgres` mode logs the deferred diagnostic instead of serving
-//       an unproven path.
+//       `postgres` mode serves ONLY the allowlisted
+//       `BUSINESS_DOMAIN_POSTGRES_SERVED_READ_TABLES` surface
+//       (`business_funnel_events`, #8360's read-cutover follow-up) for
+//       real, fails soft back to D1 on a Postgres read error, and still
+//       logs the deferred diagnostic for every other comparable-select
+//       (the escalation pager / referral-attribution tables never serve
+//       from Postgres).
 
 import {
   BUSINESS_DOMAIN_TABLE_SPECS,
@@ -61,6 +66,7 @@ import {
   businessDomainDatabaseForEnv,
   businessDomainFlagsFromEnv,
   classifyBusinessDomainStatement,
+  isPostgresServableBusinessRead,
   makeBusinessDomainMirror,
   makeBusinessDomainMirroringDatabase,
   makeD1BusinessDomainWriteStore,
@@ -68,6 +74,7 @@ import {
   resolveBusinessDomainKey,
   type BusinessDomainDiagnostic,
   type BusinessDomainDiagnosticEvent,
+  type BusinessDomainReadsMode,
   type BusinessDomainRow,
   type BusinessDomainWriteStore,
   type PostgresBusinessDomainStore,
@@ -627,6 +634,39 @@ describe('business domain statement classifier', () => {
       ).kind,
     ).toBe('passthrough')
   })
+
+  test('#8360: business_funnel_events is postgres-servable; every other comparable-select is not', () => {
+    const funnelSelect = classifyBusinessDomainStatement(
+      `SELECT COUNT(*) AS count FROM business_funnel_events`,
+    )
+    expect(funnelSelect.kind).toBe('comparable-select')
+    expect(isPostgresServableBusinessRead(funnelSelect)).toBe(true)
+
+    const pagerSelect = classifyBusinessDomainStatement(
+      `SELECT * FROM business_service_promises WHERE state = 'blocked' AND blocking_reason_ref IS NOT NULL ORDER BY COALESCE(blocked_at, updated_at) ASC, updated_at ASC LIMIT ?`,
+    )
+    expect(pagerSelect.kind).toBe('comparable-select')
+    expect(isPostgresServableBusinessRead(pagerSelect)).toBe(false)
+
+    const attributionExistenceSelect = classifyBusinessDomainStatement(
+      `SELECT referral_attribution_id FROM user_referral_attributions WHERE user_id = ?`,
+    )
+    expect(attributionExistenceSelect.kind).toBe('comparable-select')
+    expect(isPostgresServableBusinessRead(attributionExistenceSelect)).toBe(
+      false,
+    )
+
+    // A hypothetical join touching the allowlisted table AND another
+    // scoped table must NOT be servable — the allowlist is per exact
+    // table set, not "touches the allowlisted table at all".
+    const joinedSelect = classifyBusinessDomainStatement(
+      `SELECT f.id FROM business_funnel_events f JOIN business_service_promises p ON p.id = f.stage`,
+    )
+    expect(joinedSelect.kind).toBe('comparable-select')
+    expect(isPostgresServableBusinessRead(joinedSelect)).toBe(false)
+
+    expect(isPostgresServableBusinessRead({ kind: 'passthrough' })).toBe(false)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -840,6 +880,10 @@ describe.skipIf(!hasLocalPostgres())(
     const makeMirroringDb = (options?: {
       compare?: boolean
       brokenPostgres?: boolean
+      /** Read mode; defaults to 'compare' when `compare: true`, else 'd1'. */
+      reads?: BusinessDomainReadsMode
+      /** Make the READ-serving Postgres store (not the write mirror) fail. */
+      brokenReadsPostgres?: boolean
     }) => {
       const sqlite = makeSqliteD1()
       sqlite.exec(BUSINESS_DOMAIN_D1_SCHEMA)
@@ -852,8 +896,20 @@ describe.skipIf(!hasLocalPostgres())(
               upsertRows: () => Promise.reject(new Error('postgres down')),
             }
           : postgres
+      const readsMode: BusinessDomainReadsMode =
+        options?.reads ?? (options?.compare === true ? 'compare' : 'd1')
+      const compareStore: PostgresBusinessDomainStore | undefined =
+        readsMode === 'd1'
+          ? undefined
+          : options?.brokenReadsPostgres === true
+            ? {
+                ...postgres,
+                queryRows: () =>
+                  Promise.reject(new Error('postgres reads down')),
+              }
+            : postgres
       const mirroring = makeBusinessDomainMirroringDatabase({
-        compareStore: options?.compare === true ? postgres : undefined,
+        compareStore,
         db,
         log: sink.log,
         mirror: makeBusinessDomainMirror({
@@ -861,6 +917,7 @@ describe.skipIf(!hasLocalPostgres())(
           log: sink.log,
           postgres: postgresForMirror,
         }),
+        reads: readsMode,
       })
       return { db, mirroring, sink }
     }
@@ -1286,6 +1343,158 @@ describe.skipIf(!hasLocalPostgres())(
       expect(
         sink.entries.filter(
           entry => entry.event === 'khala_sync_business_read_compare_mismatch',
+        ),
+      ).toHaveLength(1)
+    })
+
+    // -----------------------------------------------------------------
+    // 4. `postgres` mode: bounded real read serving (#8360)
+    // -----------------------------------------------------------------
+
+    test('postgres mode: business_funnel_events (allowlisted) serves the POSTGRES row set, not D1', async () => {
+      await truncate(['business_funnel_events'])
+      const { db, mirroring, sink } = makeMirroringDb({ reads: 'postgres' })
+      let n = 0
+      await recordBusinessFunnelEvent(
+        mirroring,
+        {
+          eventRef: 'business.funnel.contract.postgres_serve',
+          occurredAt: '2026-07-04T00:00:00.000Z',
+          sourceKind: 'direct',
+          sourceRef: 'direct',
+          stage: 'visit',
+        },
+        {
+          makeId: (prefix: string) => `${prefix}_pgserve_${++n}`,
+          nowIso: () => '2026-07-04T00:00:01.000Z',
+        },
+      )
+      // D1 and Postgres agree right after the write mirrors.
+      const inSync = await mirroring
+        .prepare(
+          `SELECT * FROM business_funnel_events ORDER BY occurred_at ASC`,
+        )
+        .all<Record<string, unknown>>()
+      expect(inSync.results).toHaveLength(1)
+
+      // Diverge the twin directly (simulate a mirror-ahead read): the
+      // allowlisted table must now read back the POSTGRES state, proving
+      // this is real serving and not a D1-served shadow compare.
+      await pgQuery(
+        `UPDATE business_funnel_events SET source_ref = 'postgres_only_marker'`,
+      )
+      const served = await mirroring
+        .prepare(
+          `SELECT * FROM business_funnel_events ORDER BY occurred_at ASC`,
+        )
+        .all<Record<string, unknown>>()
+      expect(served.results?.[0]?.['source_ref']).toBe('postgres_only_marker')
+      const d1Rows = await scopedRows(db, 'business_funnel_events')
+      expect(d1Rows[0]?.['source_ref']).toBe('direct')
+      // No serve-failed or compare-mismatch diagnostic: this was a clean
+      // real serve, not a failed attempt or a shadow-compare.
+      expect(
+        sink.entries.filter(entry =>
+          entry.event.startsWith('khala_sync_business_postgres_read'),
+        ),
+      ).toHaveLength(0)
+      expect(
+        sink.entries.filter(
+          entry => entry.event === 'khala_sync_business_read_compare_mismatch',
+        ),
+      ).toHaveLength(0)
+    })
+
+    test('postgres mode: a non-allowlisted table (business_service_promises) stays D1-served', async () => {
+      const { db, mirroring } = makeMirroringDb({ reads: 'postgres' })
+      // Insert THROUGH the mirroring database (a real mirrored-write
+      // statement) so the write mirrors into Postgres exactly like
+      // production — this test only cares about read routing, not write
+      // fidelity (already covered above).
+      await mirroring
+        .prepare(
+          `INSERT INTO business_service_promises (
+             id, promise_ref, accepted_outcome_contract_id, workspace_ref,
+             crm_state_ref, stakeholder_refs_json, state, cadence,
+             next_motion_due_at, last_motion_receipt_ref, source_refs_json,
+             metadata_json, created_at, updated_at, blocking_reason_ref,
+             blocked_at, last_escalation_page_ref
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          'promise_contract_pg_1',
+          'promise.contract.pg.1',
+          null,
+          'workspace_contract_1',
+          'crm_state_contract_1',
+          '[]',
+          'active',
+          'weekly',
+          null,
+          null,
+          '[]',
+          '{}',
+          '2026-07-04T00:00:00.000Z',
+          '2026-07-04T00:00:00.000Z',
+          null,
+          null,
+          null,
+        )
+        .run()
+      await expectTableParity(db, 'business_service_promises')
+
+      // Diverge the twin directly (to a DIFFERENT valid state so the
+      // escalation-pager-shaped `WHERE state = 'active'` filter below would
+      // return ZERO rows if it were wrongly served from Postgres): since
+      // this table is NOT in BUSINESS_DOMAIN_POSTGRES_SERVED_READ_TABLES,
+      // the mirroring database must still answer from D1 even in
+      // `postgres` mode — the escalation pager's read path rides this
+      // exact statement shape.
+      await pgQuery(`UPDATE business_service_promises SET state = 'paused'`)
+      const rows = await mirroring
+        .prepare(
+          `SELECT * FROM business_service_promises WHERE state = 'active' AND cadence IN ('daily', 'weekly') AND (next_motion_due_at IS NULL OR next_motion_due_at <= ?) ORDER BY COALESCE(next_motion_due_at, created_at) ASC, updated_at ASC LIMIT ?`,
+        )
+        .bind('2026-07-05T00:00:00.000Z', 10)
+        .all<Record<string, unknown>>()
+      expect(rows.results).toHaveLength(1)
+      expect(rows.results?.[0]?.['state']).toBe('active')
+    })
+
+    test('postgres mode: a Postgres read failure on the allowlisted table falls back to D1 and logs the typed diagnostic', async () => {
+      await truncate(['business_funnel_events'])
+      const { db, mirroring, sink } = makeMirroringDb({
+        reads: 'postgres',
+        brokenReadsPostgres: true,
+      })
+      let n = 0
+      await recordBusinessFunnelEvent(
+        mirroring,
+        {
+          eventRef: 'business.funnel.contract.postgres_serve_failed',
+          occurredAt: '2026-07-04T00:00:00.000Z',
+          sourceKind: 'direct',
+          sourceRef: 'direct',
+          stage: 'visit',
+        },
+        {
+          makeId: (prefix: string) => `${prefix}_pgservefail_${++n}`,
+          nowIso: () => '2026-07-04T00:00:01.000Z',
+        },
+      )
+      const rows = await mirroring
+        .prepare(
+          `SELECT * FROM business_funnel_events ORDER BY occurred_at ASC`,
+        )
+        .all<Record<string, unknown>>()
+      // Fail-soft: D1 still answers even though the Postgres read store
+      // is broken.
+      expect(rows.results).toHaveLength(1)
+      expect(await scopedRows(db, 'business_funnel_events')).toHaveLength(1)
+      expect(
+        sink.entries.filter(
+          entry =>
+            entry.event === 'khala_sync_business_postgres_read_serve_failed',
         ),
       ).toHaveLength(1)
     })

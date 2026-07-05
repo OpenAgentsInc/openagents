@@ -1553,6 +1553,61 @@ Prod cutover procedure: [`RUNBOOK.md`](./RUNBOOK.md) "Business funnel
 domain cutover"; cutover evidence + D1 drop tracked on epic
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
 
+**KS-8.14 read-cutover follow-up status (2026-07-05, #8360): BOUNDED READ
+SERVING LANDED, production backfill/verify GREEN.** Production backfill +
+`--restart` catch-up sweep + `--verify --verify-newest 50` are green across
+all 32 tables (exact counts, the five attribution-table set digests,
+`promise_transition_receipts` full-row hash-set equality, funnel cohort
+tallies, money sums, newest-50 hashes) — evidence posted on #8282 and
+#8360. `business-domain-store.ts` now implements REAL Postgres read
+serving for `KHALA_SYNC_BUSINESS_READS=postgres`, but only for the bounded
+allowlist `BUSINESS_DOMAIN_POSTGRES_SERVED_READ_TABLES` (today:
+`business_funnel_events` alone — the public funnel dashboard's two
+full-table aggregate reads, re-derived index
+`business_funnel_events_dashboard_covering_idx` added in khala-sync
+migration `0033_business_funnel_events_dashboard_read_index.sql`). Every
+OTHER comparable-select in this domain — the escalation pager's
+`listBlockedPromises`/`listDuePromises`, referral-attribution
+existence-checks feeding `INSERT OR IGNORE` consume-once decisions,
+pipeline/order/referral list reads — stays D1-served under `postgres`
+exactly like `compare` mode, PERMANENTLY, not as a staging step: those
+reads feed write-path decisions or cron evaluators where a lagging mirror
+read could silently under-attribute a payout-feeding referral or
+double/skip a cron action. Widening the allowlist to another table is a
+separate, individually reviewed follow-up, never a blanket flag flip.
+Fail-soft in both directions: a Postgres read error on the allowlisted
+surface falls back to D1 (`khala_sync_business_postgres_read_serve_failed`)
+and never fails the request.
+
+**Analytics Engine decision (§3.11's "AE candidate" flag, item 4 of
+#8360):** KEEP `business_funnel_events` RELATIONAL for now. Production
+volume is currently tiny (D1 row count was 0 at verify time — this domain
+has not yet seen meaningful signup-funnel traffic), so there is no cost or
+scan-latency pressure that would justify sacrificing the exact
+byte-hash-verified dual-write/backfill machinery already built and tested
+for this table in exchange for an Analytics Engine dataset (a distinct,
+larger lane: a new AE binding, a rewritten writer at the funnel-event
+insert call site, and a rewritten dashboard reader against the AE SQL
+API). Revisit this decision if/when funnel-event volume or Postgres
+storage/scan cost genuinely requires it — it is a dedicated follow-up, not
+a component of this read-cutover.
+
+**Decommission audit confirmation (2026-07-05):** production D1 has ZERO
+rows in `order_fulfillment_feedback` and `referral_invites` (confirmed via
+direct `wrangler d1 execute --remote` query), and zero
+`business_funnel_events_0275` / `business_service_promises_0275` tables
+exist (confirmed via `sqlite_master` query) — the #8325 rename-back
+completed cleanly in both worker migrations `0275`/`0277`, matching the
+`0023_business_funnel.sql` migration header's expectation.
+
+**D1 drop status:** NOT done in this pass. Per the epic's KS-8.19
+consolidation policy (confirmed by re-reading #8330's current wave
+evidence, e.g. `06f5b91793`, `87e6992d1e`), destructive D1 retirement is
+batched into #8330's own wave sweeps rather than per-domain — this
+follow-up intentionally stops at read-cutover + decommission-audit
+confirmation and leaves the 32 D1 tables live for #8330 to retire in its
+own reviewed wave.
+
 ### 3.12 KS-8.15 — Training, gym, evals
 
 **KS-8.15 source status (2026-07-04):** training CORE machinery LANDED —

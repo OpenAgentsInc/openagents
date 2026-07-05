@@ -1878,9 +1878,13 @@ mirroring D1Database, `businessDomainDatabaseForEnv`) and
 - **The production flip of `KHALA_SYNC_BUSINESS_READS` is an EPIC-GATED
   ops decision recorded on
   [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282)** —
-  and in this lane `postgres` intentionally behaves as `compare` (logs
-  `khala_sync_business_postgres_reads_deferred`); actual Postgres read
-  serving lands with the read-cutover follow-up.
+  `postgres` (#8360, the read-cutover follow-up) serves REAL Postgres reads
+  ONLY for the bounded allowlist `BUSINESS_DOMAIN_POSTGRES_SERVED_READ_TABLES`
+  in `business-domain-store.ts` (today: `business_funnel_events` alone);
+  every other comparable-select in this domain — including the escalation
+  pager and every referral-attribution existence-check — stays D1-served
+  under `postgres` PERMANENTLY, logging
+  `khala_sync_business_postgres_reads_deferred`.
 
 Flags (Worker vars; structural — absent means default):
 
@@ -1888,8 +1892,10 @@ Flags (Worker vars; structural — absent means default):
   `KHALA_SYNC_DB` exists; `off|0|false|disabled` disables the mirror.
 - `KHALA_SYNC_BUSINESS_READS` — default `d1`; `compare` shadow-runs
   scoped-table SELECTs against Postgres, SERVES D1, and logs
-  `khala_sync_business_read_compare_mismatch`; `postgres` defers to
-  compare (above).
+  `khala_sync_business_read_compare_mismatch`; `postgres` serves the
+  bounded allowlisted surface for real (fail-soft back to D1 on a Postgres
+  read error, `khala_sync_business_postgres_read_serve_failed`) and defers
+  every other comparable-select to `compare` behavior.
 
 Cutover order — never skip a step, each step soaks before the next:
 
@@ -1921,9 +1927,30 @@ Cutover order — never skip a step, each step soaks before the next:
    triage / adjutant / github-writeback `software_orders`+`order_*`
    paths, stripe-billing-fed checkout kickoffs + engagement-feed funnel
    writes, site-referral-policy workflow events, onboarding
-   consumption), then drop the D1 tables. A final `--restart` sweep +
-   `--verify` immediately before any read cutover is MANDATORY, not
-   optional (the unwired boundaries are backfill-converged until then).
+   consumption). LANDED in #8359.
+7. **Bounded read cutover (LANDED, #8360):** `KHALA_SYNC_BUSINESS_READS=postgres`
+   now serves REAL Postgres reads, but ONLY for the allowlist
+   `BUSINESS_DOMAIN_POSTGRES_SERVED_READ_TABLES` in
+   `business-domain-store.ts` (today: `business_funnel_events` alone — the
+   public funnel dashboard's two full-table aggregate reads, re-derived
+   index in khala-sync migration
+   `0033_business_funnel_events_dashboard_read_index.sql`). Every OTHER
+   comparable-select (the escalation pager, referral-attribution
+   existence-checks, pipeline/order/referral list reads) stays D1-served
+   under `postgres` PERMANENTLY — not a staging step — because those reads
+   feed write-path decisions or cron evaluators where a lagging mirror read
+   could silently corrupt business logic. A Postgres read error on the
+   allowlisted surface fails soft back to D1
+   (`khala_sync_business_postgres_read_serve_failed`) and never fails the
+   request. Widening the allowlist to another table is a separate,
+   individually reviewed follow-up. Production backfill/`--restart`/
+   `--verify` are green (evidence on #8282/#8360); the actual production
+   flag flip (`compare` → `postgres`) is still the EPIC-GATED step 8 below.
+8. **D1 drop**: consolidated into the epic's KS-8.19 closing sweep (#8330)
+   per the owner's decision to skip per-domain D1-drop tickets — NOT done
+   in this domain's lane. A final `--restart` sweep + `--verify`
+   immediately before any read cutover is MANDATORY, not optional (the
+   unwired boundaries are backfill-converged until then).
 
 Rollback at ANY step: set `KHALA_SYNC_BUSINESS_READS=d1` (reads) and/or
 `KHALA_SYNC_BUSINESS_DUAL_WRITE=off` (writes). D1 authority is never
