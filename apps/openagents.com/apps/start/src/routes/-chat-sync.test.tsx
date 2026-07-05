@@ -27,13 +27,19 @@ const thread = (
   })
 
 describe('Start Khala chat sync route', () => {
-  test('renders the CSR panel against the chat_thread collection contract', () => {
+  test('renders the real (pre-session-check) CSR panel shell — issue #8413 replaced the fixture demo with a real Khala Sync client', () => {
+    // `useKhalaSyncSession`'s effect never runs under `renderToStaticMarkup`
+    // (no browser, no effects), so this captures the deterministic FIRST
+    // paint before the session-status fetch resolves — no network call
+    // happens during this render. The real signed-in/signed-out UI is
+    // exercised via the proxy-level tests in `../khala-sync-proxy.test.ts`
+    // and the pure wire-protocol tests in `./-chat-sync-web-core.test.ts`;
+    // fully driving the effectful hooks needs a browser (or an injected
+    // fetch/WebSocket harness) this render helper does not provide.
     const html = renderToStaticMarkup(<WebChatSyncPanel />)
 
     expect(html).toContain('data-route="khala-chat-sync"')
-    expect(html).toContain(WEB_CHAT_THREAD_COLLECTION_ENTITY_TYPE)
-    expect(html).toContain('Desktop handoff')
-    expect(html).toContain('Simulate remote create')
+    expect(html).toContain('Loading Khala Sync session')
   })
 
   test('sorts a remote device thread ahead of older local rows with the shared projection', () => {
@@ -49,5 +55,9 @@ describe('Start Khala chat sync route', () => {
     expect(projectWebChatThreadSidebar(projected, 'remote').map(row => row.threadId)).toEqual([
       'thread.remote',
     ])
+  })
+
+  test('WEB_CHAT_THREAD_COLLECTION_ENTITY_TYPE still names the chat_thread entity used by the real bootstrap/live-tail collection', () => {
+    expect(WEB_CHAT_THREAD_COLLECTION_ENTITY_TYPE).toBe('chat_thread')
   })
 })

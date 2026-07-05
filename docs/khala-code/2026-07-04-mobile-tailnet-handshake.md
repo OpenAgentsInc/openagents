@@ -1678,3 +1678,117 @@ decision. The one thing NOT independently observed in this pass is the new
 turn reaching `completed` with a real Claude response — blocked purely by
 the account-provisioning gap above, external to this change's own
 correctness.
+
+## Web side: `/khala/chat-sync` is now a real Khala Sync client (issue #8413)
+
+Found during the MC-5 evidence pass (#8354): `apps/openagents.com/apps/start`
+(the isolated TanStack Start staging app, see
+`docs/fable/2026-07-05-mc5-cross-device-dogfood-evidence-compilation.md` for
+how the gap was found) had `/khala/chat-sync` wired to nothing but
+`useState(initialThreads)` fixture data and a "Simulate remote create"
+button — zero calls into `/api/sync/bootstrap`, `/api/sync/connect`, or
+`/api/sync/push`. This section covers wiring it to the real API, mirroring
+`clients/khala-mobile`'s proven bootstrap+live-tail+push client
+(`src/sync/khala-sync-entities-core.ts`, `use-khala-sync-collection.ts`,
+`use-khala-sync-push.ts`) but adapted for the web's two structural
+differences from React Native:
+
+1. **Different origin.** `apps/openagents.com/apps/start` deploys to its own
+   Worker (`openagents-com-start-staging.workers.dev`), not the same origin
+   as production `openagents.com`'s `/api/sync/*` routes — so a plain
+   cross-origin browser `fetch` would need CORS support the production
+   Worker doesn't grant, and a standard browser `WebSocket` cannot set an
+   `Authorization` header on the upgrade request at all (React Native's
+   3-arg `WebSocket` constructor with a `{ headers }` option is an
+   RN-specific extension with no browser equivalent).
+2. **No existing session/credential-storage pattern in this new Start app**
+   (its `/login` page is a static design preview, not wired to a real
+   auth flow yet), and `expo-secure-store` is RN-only.
+
+**Decision: a same-origin server-side proxy, never a client-held token.**
+Rather than adding a query-param bearer token to the WebSocket URL (leaks
+into logs/history) or widening the production Worker's CORS surface, the new
+module `apps/openagents.com/apps/start/src/khala-sync-proxy.ts` keeps the
+bearer token server-side ONLY, in an httpOnly cookie
+(`khala_sync_owner` / `khala_sync_token`, `Secure`, `SameSite=Lax`) set by
+`POST /api/khala-sync/session` after a REAL bootstrap-backed credential check
+(same shape as `clients/khala-mobile/src/auth/khala-auth-validate.ts`'s
+`validateKhalaCredentials`). Every other route is a same-origin
+server-to-server proxy hairpinning through this Worker's own `fetch`:
+
+- `POST /api/khala-sync/bootstrap` and `POST /api/khala-sync/push` read the
+  cookie server-side, attach `Authorization: Bearer <token>`, and forward the
+  request body verbatim to production `/api/sync/bootstrap` /
+  `/api/sync/push`, mirroring the upstream status and JSON body byte-for-byte
+  (including typed `SyncError` bodies).
+- `GET /api/khala-sync/connect` proxies the WebSocket upgrade itself: it
+  fetches the upstream `/api/sync/connect` route WITH the bearer token
+  attached (a server-to-server `fetch` with an `Upgrade: websocket` header —
+  the same "Workers-runtime outbound fetch upgrade" pattern already used for
+  the Nostr relay bridge in
+  `apps/openagents.com/workers/api/src/forum-work-request-live-publisher.ts`),
+  accepts the resulting upstream socket, then bridges it to a fresh
+  `WebSocketPair` handed back to the browser — the browser only ever
+  connects to THIS Worker's own origin, no header trick needed on its end.
+
+The client side (`apps/openagents.com/apps/start/src/routes/`) ports the
+mobile core near-verbatim into `-chat-sync-web-core.ts` (bootstrap/connect/push
+URL builders, `DeltaFrame` merge, safe-ref id generation — pure, no DOM
+dependency beyond `URL`), `-use-khala-sync-collection.ts` (bootstrap once,
+then live-tail the local `/api/khala-sync/connect` WebSocket and merge every
+`DeltaFrame`), and `-use-khala-sync-push.ts` (POST a mutation batch to the
+local `/api/khala-sync/push` proxy). `-khala-sync-session.ts` wraps
+`GET`/`POST`/`DELETE /api/khala-sync/session` as a small sign-in/out hook —
+the token never reaches this hook or any other browser JS. The route itself
+(`routes/khala/chat-sync.tsx`) now renders: a sign-in form (owner user id +
+bearer token) when signed out; otherwise a real two-pane chat UI — a thread
+list bootstrapped + live-tailed from `scope.user.<owner>` (`chat_thread`
+entities, sorted/searchable via the already-existing
+`-chat-sync-collection.ts` helpers) with a real "New thread" form that pushes
+`chat.createThread`, and a message view for the selected thread bootstrapped
++ live-tailed from `scope.thread.<id>` (`chat_message` entities, sorted via
+`@openagentsinc/khala-sync-db-collection`'s `chatMessagesForTranscript`) with
+a real composer that pushes `chat.appendMessage`.
+
+### Verification (real production Khala Sync, this session)
+
+Ran `bun run --cwd apps/openagents.com/apps/start dev` locally — this app's
+`vite.config.ts` uses `@cloudflare/vite-plugin`, so local dev actually runs
+inside workerd/Miniflare (real `WebSocketPair`, real outbound-fetch-upgrade),
+not a plain Node dev server, so this is a faithful proxy-behavior test, not
+just a mock. Signed in with this session's own registered-agent Khala Sync
+credentials (`OPENAGENTS_AGENT_USER_ID` / `OPENAGENTS_AGENT_TOKEN` — an
+already-registered agent identity, not a human's personal credentials) —
+this is the same class of credential recommended in the issue for
+verification, and is genuinely this agent's own scope, so no human account
+boundary is crossed:
+
+```
+POST /api/khala-sync/session   -> {"ok":true}                          (real bootstrap-backed validation against prod)
+POST /api/khala-sync/bootstrap -> real chat_thread + runtime_* entities from this agent's own scope.user.<id>
+POST /api/khala-sync/push      -> chat.createThread + chat.appendMessage both "status":"applied" against prod
+GET  /api/khala-sync/connect   -> real 101 upgrade; live DeltaFrame observed for the new thread within ~500ms of the push
+```
+
+Then reconnected to the new thread's own `scope.thread.<id>` and pushed a
+second `chat.appendMessage` while the socket was open: the connect proxy
+replayed the existing `chat_thread` + `chat_message` catch-up entries, and
+the live push produced a genuine new `DeltaFrame` carrying the new
+`chat_message` entity in real time — confirming the full round trip (sign-in
+-> bootstrap -> push -> live WebSocket tail) end-to-end against real
+production Khala Sync, not a fixture or a mock.
+
+`bun run --cwd apps/openagents.com/apps/start typecheck`, `test` (68 tests,
+including the new proxy and wire-protocol unit tests), and `build` all pass.
+The production build's client bundle was checked directly (`grep` over
+`dist/client`) to confirm the server-only proxy module (Node
+`AsyncLocalStorage`, the cookie helpers) is NOT included — only the pure
+wire-protocol/hook code ships to the browser.
+
+Not independently re-verified in this pass, and left as an honest gap: an
+actual browser (not curl/WebSocket-client requests shaped exactly like a
+browser's) driving the sign-in form and composer UI — no browser-automation
+tool was available in this session, so verification went through the same
+HTTP/WebSocket requests a browser would make, not a real DOM/click-driven
+session. The request/response shapes and cookie handling are identical
+either way, but this is named honestly rather than implied.

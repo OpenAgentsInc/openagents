@@ -9,6 +9,7 @@ import {
 } from '../../../workers/api/src/inference/discovery-surfaces'
 import { routeSiteCrawlSurfaceRequest } from '../../../workers/api/src/site-crawl-surfaces-routes'
 import { routeWellKnownAgentSurfaceRequest } from '../../../workers/api/src/well-known-agent-surfaces-routes'
+import { routeKhalaSyncProxyRequest } from './khala-sync-proxy'
 
 type StartWorkerEnv = Record<string, unknown>
 
@@ -67,6 +68,19 @@ const server = createServerEntry({
     const sharedSurfaceResponse = await routeSharedAgentSurface(request)
     if (sharedSurfaceResponse !== undefined) {
       return applySecurityHeaders(sharedSurfaceResponse)
+    }
+
+    // Khala Sync proxy (#8413): same-origin bootstrap/push/connect bridge to
+    // the production Khala Sync API. A successful WebSocket upgrade (status
+    // 101) carries a Workers-runtime `webSocket` pairing that a
+    // `new Response(response.body, ...)` reconstruction (what
+    // `applySecurityHeaders` does) would silently drop, so it is returned
+    // directly rather than wrapped.
+    const khalaSyncProxyResponse = await routeKhalaSyncProxyRequest(request)
+    if (khalaSyncProxyResponse !== undefined) {
+      return khalaSyncProxyResponse.status === 101
+        ? khalaSyncProxyResponse
+        : applySecurityHeaders(khalaSyncProxyResponse)
     }
 
     const response = await handler.fetch(request, {

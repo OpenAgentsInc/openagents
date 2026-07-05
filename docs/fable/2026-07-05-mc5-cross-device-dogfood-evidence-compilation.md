@@ -145,3 +145,28 @@ bun test scripts/validate-khala-sync-cross-device-evidence.test.ts
 
 Both pass. No app code changed in this pass — this is a docs/evidence-only
 compilation.
+
+## Update (issue #8413): the "web" gap in item 2 above is now closed
+
+`/khala/chat-sync` (`apps/openagents.com/apps/start/src/routes/khala/chat-sync.tsx`)
+is a real Khala Sync client now, not the fixture demo described above. It
+does real `POST /api/khala-sync/bootstrap`, `GET /api/khala-sync/connect`
+(WebSocket live-tail), and `POST /api/khala-sync/push` calls — proxied
+same-origin through this app's own Worker
+(`apps/openagents.com/apps/start/src/khala-sync-proxy.ts`) to production
+`openagents.com`'s real `/api/sync/bootstrap` `/api/sync/connect`
+`/api/sync/push` routes, with the bearer token held only in an httpOnly
+cookie server-side (never in browser JS). Full design rationale, and real
+production verification transcripts (real bootstrap read, real
+`chat.createThread`/`chat.appendMessage` pushes, and a real live `DeltaFrame`
+delivered over the local dev Worker's own WebSocket proxy), are recorded in
+`docs/khala-code/2026-07-04-mobile-tailnet-handshake.md`.
+
+This closes the specific gap named in item 2 and item 4 of "What the owner
+still needs to do" above — the web leg is now a real sync consumer, so
+"phone <-> desktop <-> web" has a real web leg to test. It does NOT by
+itself satisfy #8354's remaining physical-device requirements (items 1 and 3
+in "What is honestly NOT proven yet" are unrelated to the web leg and remain
+open); it only removes "web has no real sync wiring" as a reason to treat
+that leg as an explicit known gap.
+compilation.
