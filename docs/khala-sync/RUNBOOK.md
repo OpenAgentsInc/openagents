@@ -110,6 +110,60 @@ to find the drift, restore the exact landed file content (the ledger's
 `NNNN_*.sql` instead. Editing `khala_sync_migrations` by hand is a
 last-resort owner decision and must be recorded on an issue.
 
+**Incident (KS-6.4 migration-ledger audit, 2026-07-05): never-committed
+migration file `0036_drop_treasury_mpp_replay_tables.sql`.** A sibling
+KS-6.4 agent flagged that `check:pending-migrations` was refusing to run
+(`MigrationFileMissingError`) because both `khala_sync_staging` and
+`khala_sync_prod`'s `khala_sync_migrations` ledgers recorded a row for
+`0036_drop_treasury_mpp_replay_tables.sql` that had never existed in this
+repo's git history (`git log --all` and `git log --all -S` across every
+local and remote ref found nothing — filename or content).
+
+Root cause, established with high confidence from direct evidence, not
+guesswork:
+
+- Wave 1 cleanup #8387 (commit `87e6992d1e`) removed the standalone Khala
+  MPP/x402 chat route, its only production writers for `mpp_lightning_replay`
+  and `mpp_spt_replay`, and both tables' entries from the treasury mirror
+  registry/contract-test fixtures. That commit added the D1-side drop
+  migration (`apps/openagents.com/workers/api/migrations/0303_drop_mpp_replay_tables.sql`)
+  but no Khala Sync (Postgres) migration.
+- Both `khala_sync_staging` and `khala_sync_prod` ledgers held an
+  `0036_drop_treasury_mpp_replay_tables.sql` row with the **identical**
+  sha256, applied one second apart (staging 12:17:03 UTC, prod 12:17:04 UTC
+  on 2026-07-05) — exactly the "staging first, then prod" shape the normal
+  `scripts/migrate.ts` runner produces, immediately following `0035` in
+  sequence. This is not a hand-inserted or corrupted row; the runner only
+  ever writes a ledger row inside the same transaction as executing the
+  file's real SQL, using the file's real content hash.
+- Direct read-only queries against both databases confirmed
+  `to_regclass('mpp_lightning_replay')` and `to_regclass('mpp_spt_replay')`
+  are both `NULL` — the tables are genuinely gone, on both staging and
+  prod, consistent with a real, successful `DROP TABLE IF EXISTS` having
+  run and matching the zero-writer state #8387 already established.
+- Conclusion: someone (very likely working the KS-8.19 D1-retirement wave,
+  #8330/#8387) wrote the natural Khala Sync counterpart to `0303` following
+  the established `0030`/`0031`/`0032` "drop the dead Postgres twin" pattern,
+  ran it against staging then prod via the normal migrate runner, but never
+  `git add`/committed the file — most likely lost to an uncommitted worktree
+  cleanup or an abandoned branch, since no ref (local or remote) ever
+  contained it.
+
+Fix applied: added `packages/khala-sync-server/migrations/0036_drop_treasury_mpp_replay_tables.sql`
+as a functionally-idempotent reconstruction (`DROP TABLE IF EXISTS
+mpp_lightning_replay; DROP TABLE IF EXISTS mpp_spt_replay;` — safe to
+replay anywhere, matches the verified already-happened effect exactly).
+Because the original file's bytes are unrecoverable, its sha256 will never
+match the ledger's recorded hash byte-for-byte; the `khala_sync_migrations.sha256`
+for this filename was updated, on both `khala_sync_staging` and
+`khala_sync_prod`, to this reconstructed file's actual hash (`UPDATE
+khala_sync_migrations SET sha256 = '<new hash>' WHERE filename =
+'0036_drop_treasury_mpp_replay_tables.sql' AND sha256 = '<old hash>'`, guarded
+on the exact prior value so it could not silently clobber an unrelated row).
+Verified `bun run --cwd packages/khala-sync-server check:pending-migrations`
+returns exit 0 against both direct URLs after the reconciliation. Recorded on
+issue #8330.
+
 ## Compaction scheduling
 
 Mechanics and semantics: `packages/khala-sync-server/README.md`
