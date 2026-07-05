@@ -44,6 +44,7 @@ import { Route as ArtanisTracesRouteImport } from './routes/artanis/traces'
 import { Route as ArtanisAccountsRouteImport } from './routes/artanis/accounts'
 import { Route as AgentsAgentRefRouteImport } from './routes/agents/$agentRef'
 import { Route as TrainingRunsIndexRouteImport } from './routes/training/runs/index'
+import { Route as TrainingRunsRunIdRouteImport } from './routes/training/runs/$runId'
 import { Route as SitesDemoCheckoutReturnActionRouteImport } from './routes/sites/demo-checkout/$returnAction'
 import { Route as BusinessKpiEngagementRefRouteImport } from './routes/business/kpi/$engagementRef'
 import { Route as PylonCodexAssignmentsAssignmentRefRouteImport } from './routes/pylon/codex/assignments/$assignmentRef'
@@ -223,6 +224,11 @@ const TrainingRunsIndexRoute = TrainingRunsIndexRouteImport.update({
   path: '/training/runs/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TrainingRunsRunIdRoute = TrainingRunsRunIdRouteImport.update({
+  id: '/training/runs/$runId',
+  path: '/training/runs/$runId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SitesDemoCheckoutReturnActionRoute =
   SitesDemoCheckoutReturnActionRouteImport.update({
     id: '/$returnAction',
@@ -279,6 +285,7 @@ export interface FileRoutesByFullPath {
   '/khala/': typeof KhalaIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
   '/sites/demo-checkout/$returnAction': typeof SitesDemoCheckoutReturnActionRoute
+  '/training/runs/$runId': typeof TrainingRunsRunIdRoute
   '/training/runs/': typeof TrainingRunsIndexRoute
   '/pylon/codex/assignments/$assignmentRef': typeof PylonCodexAssignmentsAssignmentRefRoute
 }
@@ -319,6 +326,7 @@ export interface FileRoutesByTo {
   '/khala': typeof KhalaIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
   '/sites/demo-checkout/$returnAction': typeof SitesDemoCheckoutReturnActionRoute
+  '/training/runs/$runId': typeof TrainingRunsRunIdRoute
   '/training/runs': typeof TrainingRunsIndexRoute
   '/pylon/codex/assignments/$assignmentRef': typeof PylonCodexAssignmentsAssignmentRefRoute
 }
@@ -360,6 +368,7 @@ export interface FileRoutesById {
   '/khala/': typeof KhalaIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
   '/sites/demo-checkout/$returnAction': typeof SitesDemoCheckoutReturnActionRoute
+  '/training/runs/$runId': typeof TrainingRunsRunIdRoute
   '/training/runs/': typeof TrainingRunsIndexRoute
   '/pylon/codex/assignments/$assignmentRef': typeof PylonCodexAssignmentsAssignmentRefRoute
 }
@@ -402,6 +411,7 @@ export interface FileRouteTypes {
     | '/khala/'
     | '/business/kpi/$engagementRef'
     | '/sites/demo-checkout/$returnAction'
+    | '/training/runs/$runId'
     | '/training/runs/'
     | '/pylon/codex/assignments/$assignmentRef'
   fileRoutesByTo: FileRoutesByTo
@@ -442,6 +452,7 @@ export interface FileRouteTypes {
     | '/khala'
     | '/business/kpi/$engagementRef'
     | '/sites/demo-checkout/$returnAction'
+    | '/training/runs/$runId'
     | '/training/runs'
     | '/pylon/codex/assignments/$assignmentRef'
   id:
@@ -482,6 +493,7 @@ export interface FileRouteTypes {
     | '/khala/'
     | '/business/kpi/$engagementRef'
     | '/sites/demo-checkout/$returnAction'
+    | '/training/runs/$runId'
     | '/training/runs/'
     | '/pylon/codex/assignments/$assignmentRef'
   fileRoutesById: FileRoutesById
@@ -522,6 +534,7 @@ export interface RootRouteChildren {
   DocsIndexRoute: typeof DocsIndexRoute
   KhalaIndexRoute: typeof KhalaIndexRoute
   BusinessKpiEngagementRefRoute: typeof BusinessKpiEngagementRefRoute
+  TrainingRunsRunIdRoute: typeof TrainingRunsRunIdRoute
   TrainingRunsIndexRoute: typeof TrainingRunsIndexRoute
   PylonCodexAssignmentsAssignmentRefRoute: typeof PylonCodexAssignmentsAssignmentRefRoute
 }
@@ -773,6 +786,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TrainingRunsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/training/runs/$runId': {
+      id: '/training/runs/$runId'
+      path: '/training/runs/$runId'
+      fullPath: '/training/runs/$runId'
+      preLoaderRoute: typeof TrainingRunsRunIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sites/demo-checkout/$returnAction': {
       id: '/sites/demo-checkout/$returnAction'
       path: '/$returnAction'
@@ -844,6 +864,7 @@ const rootRouteChildren: RootRouteChildren = {
   DocsIndexRoute: DocsIndexRoute,
   KhalaIndexRoute: KhalaIndexRoute,
   BusinessKpiEngagementRefRoute: BusinessKpiEngagementRefRoute,
+  TrainingRunsRunIdRoute: TrainingRunsRunIdRoute,
   TrainingRunsIndexRoute: TrainingRunsIndexRoute,
   PylonCodexAssignmentsAssignmentRefRoute:
     PylonCodexAssignmentsAssignmentRefRoute,

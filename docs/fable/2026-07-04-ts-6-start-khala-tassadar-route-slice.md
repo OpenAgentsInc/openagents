@@ -546,6 +546,66 @@ Autopilot deployed-Sites/milestone rows) — all of it requires a live client
 fetch this app does not wire yet, same as `/mirrorcode`, `/promises`, and
 `/training/runs`.
 
+## Landed Slice 20: Training Run Detail
+
+The Start staging app now owns `/training/runs/$runId`, the per-run detail
+alias of the already-migrated `/training/runs` list route, ported from the
+same `apps/web/src/page/loggedOut/page/trainingRuns.ts` this slice's
+predecessor used.
+
+- The Foldkit `publicTrainingRunRouter` (`apps/web/src/route.ts`) parses
+  `training/runs/{runId}` into `PublicTrainingRunRoute({ runId })`, and
+  `loggedOut/view.ts` renders both this route and the list route with the
+  exact same `TrainingRuns.view(model.publicTrainingRuns, runId)` function —
+  the list route passes `runId: null`, this route passes the requested
+  `runId`. In the Idle first-paint state (the only state any prior TS-6 route
+  has rendered, since none wire a live fetch yet), the Foldkit
+  `selectedSummary(model, runId)` always returns `null` regardless of `runId`
+  — there are no loaded summaries to search yet — so the two routes produce
+  byte-identical panel markup honestly: the same "No Worker-authoritative
+  training runs are recorded yet." / "No run projection is available for this
+  route." empty copy, rather than fabricating a runId-specific message the
+  Foldkit view does not produce.
+- `training/runs/$runId.tsx` lives as a sibling of the existing
+  `training/runs/index.tsx` inside the `training/runs/` folder (no bare
+  `runs.tsx` file exists, so there is no nested-layout-footgun risk — the same
+  pattern as `artanis/traces.tsx` and `artanis/accounts.tsx` sitting alongside
+  `artanis/index.tsx`). `TrainingRunsPage` (the shared component in
+  `-training-runs-page.tsx`) now takes an optional `runId` prop; when present
+  it renders a `data-run-id` attribute (mirroring the `data-agent` attribute
+  on the `/agents/$agentRef` port from the prior slice) so the two routes stay
+  distinguishable in tests and markup without fabricating divergent content.
+  The detail route also gets its own document title,
+  `Training run {runId} - OpenAgents` — the Foldkit `title()` switch in
+  `view.ts` has no case for either `PublicTrainingRun` or
+  `PublicTrainingRuns`, so both fall back to the generic `OpenAgents` title
+  there; this is a reasonable improvement over that fallback rather than a
+  fidelity regression.
+- Added `/training/runs/run.cs336.a1.demo` (the real example run ref named in
+  this repo's own `route-table.ts`) to the Start budget list; total client JS
+  moved to 697.6 KiB (still under the 760 KiB budget), with the new route's
+  own chunk at well under 1 KiB since it reuses the existing
+  `-training-runs-page` chunk.
+- Re-verified with a local `vite preview` + `curl` pass: `/training/runs`
+  renders `data-route="training-runs"` with no `data-run-id` attribute;
+  `/training/runs/run.cs336.a1.demo` renders the same `data-route` plus
+  `data-run-id="run.cs336.a1.demo"`, the title
+  `Training run run.cs336.a1.demo - OpenAgents`, and the identical honest
+  empty-state copy; and `/artanis`, `/artanis/traces`, `/artanis/accounts`,
+  `/agents/artanis`, `/adjutant`, `/code`, `/mirrorcode`, `/promises`, and
+  `/onboarding` are all unaffected.
+
+While scoping this slice, confirmed (rather than assumed) that the `stats.ts`
+public/anonymous variant remains genuinely out of reach for a quick pass: none
+of the ~9 shared panel functions it composes from `home.ts`
+(`khalaTokensServedHeaderCounter`, `khalaTokensServedHistoryChart` (a real
+chart, ~200 lines), `khalaTokensServedModelMixPanel`,
+`khalaTokensServedChannelMixPanel`, `pylonStatsPanel`, `forumStatsPanel`,
+`accountingPanel`, `copyBoundaryPanel`, `endpointManifestPanel`,
+`nostrRelayPanel`) exist yet as React ports anywhere in the Start app or in
+`@openagentsinc/ui`. It stays backlogged for its own dedicated pass, same
+posture as `pylon.ts` and `share.ts`.
+
 ## Boundary
 
 This is not the final TS-6 closure. The live `openagents.com` Worker still
@@ -562,14 +622,19 @@ Remaining TS-6 work:
   `share.ts` (a full shared-workroom-timeline viewer — bigger lift, needs the
   workroom timeline/file-panel component set ported to React first), and
   `stats.ts` (public/anonymous variant only — the same `/stats` URL also has
-  a distinct authenticated `loggedIn/page/stats.ts` view, and the public
-  variant composes ~9 shared panel components from `home.ts`
-  (`khalaTokensServedHeaderCounter`, `pylonStatsPanel`, `forumStatsPanel`,
-  `accountingPanel`, etc.) that would need React ports of their own first, so
-  this needs the same "public-safe default until Start has real session auth"
-  treatment as `/artanis/accounts` plus that shared-panel porting work);
-  `/training/runs/$runId` (the per-run detail route: metrics, Real Gradient
-  status, windows, receipts, leaderboard links) also remains unmigrated;
+  a distinct authenticated `loggedIn/page/stats.ts` view; confirmed in Slice
+  20 that the public variant's ~9 shared panel components from `home.ts`
+  (`khalaTokensServedHeaderCounter`, `khalaTokensServedHistoryChart`,
+  `khalaTokensServedModelMixPanel`, `khalaTokensServedChannelMixPanel`,
+  `pylonStatsPanel`, `forumStatsPanel`, `accountingPanel`,
+  `copyBoundaryPanel`, `endpointManifestPanel`, `nostrRelayPanel`) have none of
+  them ported to React/`@openagentsinc/ui` yet, so this still needs that
+  porting work first plus the same "public-safe default until Start has real
+  session auth" treatment as `/artanis/accounts`);
+  `/training/runs/$runId` is now migrated (Slice 20) — the still-unmigrated
+  live-data content for that route (real metrics, Real Gradient status,
+  windows, receipts, leaderboard rows) needs the same live client fetch every
+  other data-backed route in this app is still waiting on;
 - migrate logged-in app-shell panels route-by-route (this is the large
   authenticated `loggedIn/` tree behind `Ui.workroomShell` — dozens of
   interconnected panels including chat, dashboard, billing, settings, admin,
@@ -584,7 +649,7 @@ Remaining TS-6 work:
 ## Verification
 
 ```sh
-bun run --cwd apps/openagents.com/apps/start test -- src/routes/-code.test.tsx src/routes/-app-shell.test.tsx src/routes/-components.test.tsx src/routes/-gym.test.tsx src/routes/-index.test.tsx src/routes/-artanis-accounts.test.tsx src/routes/-workspace-invite.test.tsx src/routes/-mirrorcode.test.tsx src/routes/-promises.test.tsx src/routes/-artanis-console.test.tsx src/routes/-public-agent.test.tsx
+bun run --cwd apps/openagents.com/apps/start test -- src/routes/-code.test.tsx src/routes/-app-shell.test.tsx src/routes/-components.test.tsx src/routes/-gym.test.tsx src/routes/-index.test.tsx src/routes/-artanis-accounts.test.tsx src/routes/-workspace-invite.test.tsx src/routes/-mirrorcode.test.tsx src/routes/-promises.test.tsx src/routes/-artanis-console.test.tsx src/routes/-public-agent.test.tsx src/routes/-training-runs.test.tsx
 bun run --cwd apps/openagents.com/apps/start test
 bun run --cwd apps/openagents.com/apps/start typecheck
 bun run --cwd apps/openagents.com/apps/start build

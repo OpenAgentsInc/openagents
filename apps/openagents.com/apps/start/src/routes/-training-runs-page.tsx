@@ -23,21 +23,36 @@ function PanelHeader({
   )
 }
 
-// `openagents.com/training/runs` — the public CS336 run-state listing. The
-// Foldkit original (apps/web/src/page/loggedOut/page/trainingRuns.ts) drives
-// a `PublicTrainingRunsModel` union (`Idle` / `Loading` / `Loaded` / `Failed`)
-// fed by a client fetch against `/api/training/runs`. Every prior TS-6 Start
-// route has stayed static/SSR-only, so this port keeps that posture and
-// renders the model's own `PublicTrainingRunsIdle` state honestly — the same
-// "No Worker-authoritative training runs are recorded yet" empty copy the
-// Foldkit view already shows before its fetch resolves — rather than
-// fabricating run rows or being first to wire live fetch on a standalone
-// page. The `/training/runs/$runId` run-detail route (and each run's Real
-// Gradient / windows / receipts panels) stays on the existing Foldkit page
-// until this route carries live data.
-export function TrainingRunsPage() {
+// `openagents.com/training/runs` (and the `$runId` detail alias at
+// `openagents.com/training/runs/{runId}`) — the public CS336 run-state
+// listing and per-run detail. The Foldkit original
+// (apps/web/src/page/loggedOut/page/trainingRuns.ts) drives a single
+// `view(model: PublicTrainingRunsModel, runId: string | null)` function for
+// both routes — the list route calls it with `runId: null`, the detail route
+// calls it with the requested `runId` — fed by a client fetch against
+// `/api/training/runs`. Every prior TS-6 Start route has stayed
+// static/SSR-only, so this port keeps that posture and renders the model's
+// own `PublicTrainingRunsIdle` state honestly for both routes. In that Idle
+// state the Foldkit `selectedSummary(model, runId)` always returns `null`
+// regardless of `runId` (there are no loaded summaries to match against yet),
+// so the two routes render byte-identical panel content — the same "No
+// Worker-authoritative training runs are recorded yet" / "No run projection
+// is available for this route" empty copy the Foldkit view already shows
+// before its fetch resolves — rather than fabricating run rows, a
+// runId-specific message the Foldkit view does not produce, or being first to
+// wire live fetch on a standalone page. The requested `runId` is still
+// surfaced honestly via a `data-run-id` attribute (mirroring the `data-agent`
+// attribute on the `/agents/$agentRef` port) so the two routes stay
+// distinguishable without fabricating divergent content.
+export function TrainingRunsPage({
+  runId,
+}: Readonly<{ runId?: string }> = {}) {
   return (
-    <main className="min-h-dvh bg-black text-khala-text" data-route="training-runs">
+    <main
+      className="min-h-dvh bg-black text-khala-text"
+      data-route="training-runs"
+      {...(runId === undefined ? {} : { 'data-run-id': runId })}
+    >
       <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-5 lg:px-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>

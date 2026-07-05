@@ -45,6 +45,7 @@ const routeBudgets = [
   { path: '/terms', marker: 'Terms of Service' },
   { path: '/privacy', marker: 'Privacy Policy' },
   { path: '/training/runs', marker: 'Training Runs' },
+  { path: '/training/runs/run.cs336.a1.demo', marker: 'Training Runs' },
 ] as const
 
 const assetDir = join(import.meta.dir, '../../dist/client/assets')
