@@ -473,6 +473,9 @@ untouched).
   removed from the workspace, root dev/test/typecheck wiring, and Bun lockfile.
   Current operator docs now point live desktop work at
   `clients/khala-code-desktop`.
+- #8368 complete — retired `scripts/vertex-fleet` and `scripts/gemini-fleet`
+  runnable lanes were removed. `scripts/codex-fleet` is now the only active
+  script lane in that family and no longer references the deleted runner paths.
 
 ---
 

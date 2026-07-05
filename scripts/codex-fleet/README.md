@@ -5,10 +5,9 @@ A small, dependency-light runner that turns **one non-green product promise** in
 subscription**, working in **one isolated git worktree**, on **one branch**, that
 opens **one PR** for human review.
 
-It is the direct successor to `scripts/vertex-fleet/` (now **retired** — see
-`scripts/vertex-fleet/DEPRECATED.md`). It produces the **same shape of PRs**
-(branch `codex-fleet/<promise>` instead of `vertex-fleet/<promise>`) so the
-existing merge gate `/tmp/fleet-merge.sh` still gates it unchanged.
+It is the active subscription-backed fleet lane. Workers produce
+`codex-fleet/<promise>` PR branches, so the existing merge gate
+`/tmp/fleet-merge.sh` still gates it unchanged.
 
 The reason for the swap: Anthropic-Claude-on-Vertex is a third-party SKU **not
 covered by the GFS credit**, so every Vertex batch was direct card spend. Codex

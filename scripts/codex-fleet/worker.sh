@@ -3,8 +3,8 @@
 # worktree, runs check:deploy, commits to a BRANCH, pushes the branch, opens a PR.
 #
 # PR-PER-AGENT: this script NEVER pushes to main. It pushes codex-fleet/<promise>
-# and opens a PR for human review. Same PR shape as the (retired) vertex-fleet so
-# the existing gate /tmp/fleet-merge.sh still gates it (branch prefix only differs).
+# and opens a PR for human review. The existing gate /tmp/fleet-merge.sh still
+# gates those branches.
 #
 # Auth: Codex rides OUR ChatGPT/Codex SUBSCRIPTION. There is NO per-machine
 # interactive `codex login`. Instead, scripts/codex-fleet/fetch-codex-auth.mjs
@@ -117,9 +117,8 @@ log "worktree: $WORKTREE  branch: $BRANCH"
 # Fresh worktree from origin/main on a new branch.
 # Serialize git-worktree setup: concurrent `git worktree add` on one repo races
 # on git's index/worktree locks. Agent runs stay parallel; only this fast setup
-# is mutually exclusive (mkdir = atomic, macOS-safe). Same lock file name as the
-# retired vertex-fleet so the two never run a concurrent worktree add together.
-CF_GIT_LOCK="${SRC_REPO}/.git/vf-worktree.lock"
+# is mutually exclusive (mkdir = atomic, macOS-safe).
+CF_GIT_LOCK="${SRC_REPO}/.git/codex-fleet-worktree.lock"
 _cf_n=0
 while ! mkdir "$CF_GIT_LOCK" 2>/dev/null; do sleep 0.5; _cf_n=$((_cf_n+1)); [ "$_cf_n" -gt 600 ] && { log "WARN: worktree lock wait timeout; proceeding"; break; }; done
 git -C "$SRC_REPO" fetch origin main --quiet 2>>"$AGENT_LOG" || true

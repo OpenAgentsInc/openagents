@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run.sh — orchestrator for the CODEX fleet (replaces the retired vertex-fleet).
+# run.sh — orchestrator for the CODEX fleet.
 #
 # 1. assign: pick N non-green promises with buildable, non-owner-gated blockers.
 # 2. fan out: run one worker.sh per promise (each = one `codex exec` agent on the
@@ -8,8 +8,8 @@
 # 3. report: print resulting PR URLs + per-worker check:deploy status + tokens.
 #
 # PR-PER-AGENT only. NO green flips. Workers push BRANCHES and open PRs; nothing
-# touches main. Same PR shape as the retired vertex-fleet (branch prefix only
-# differs: codex-fleet/<promise>), so the existing gate /tmp/fleet-merge.sh works.
+# touches main. Workers use codex-fleet/<promise> branches, so the existing gate
+# /tmp/fleet-merge.sh works.
 #
 # Auth note: this fleet uses OUR Codex subscription via the CENTRAL device-flow
 # provider-account store. Workers do NOT spend pay-per-token Vertex money. They

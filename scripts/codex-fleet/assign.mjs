@@ -2,11 +2,11 @@
 import { execSync } from 'node:child_process'
 // assign.mjs — promise -> assignment selector for the CODEX fleet runner.
 //
-// Adapted from scripts/vertex-fleet/assign.mjs. Same promise-registry source,
-// same buildable/owner-gated classification, same open-PR dedup. Differences:
-//   - the brief is framed for a Codex (gpt-5.5) agent run by `codex exec`;
-//   - open-PR dedup matches the `codex-fleet/<promise>` branch prefix;
-//   - --priority business prefers business-fulfillment promises first.
+// Same promise-registry source, buildable/owner-gated classification, and
+// open-PR dedup as the earlier fleet selectors. The brief is framed for a Codex
+// (gpt-5.5) agent run by `codex exec`; open-PR dedup matches the
+// `codex-fleet/<promise>` branch prefix; --priority business prefers
+// business-fulfillment promises first.
 //
 // Fetches the live public product-promise registry, selects N non-green promises
 // that still have *buildable* (non-owner-gated) blockers, and emits one task
