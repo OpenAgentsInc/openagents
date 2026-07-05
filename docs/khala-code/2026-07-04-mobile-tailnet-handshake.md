@@ -1009,3 +1009,176 @@ Opened as a new tracking issue (see the closing comment on #8388):
    of its own database migration (as happened live this session).
 5. **`turn.continue` / `turn.retry`** remain honestly unimplemented
    (`skipped_stale`).
+
+## #8404: a real Claude Agent SDK thread runner, alongside the Codex one
+
+The dispatch consumer above was Codex-only: `target.lane: "claude_pylon"` was
+a valid `KhalaRuntimeLane` literal but nothing consumed it — a `turn.start`
+intent naming that lane would just fail with "no dispatch-ready account"
+forever, since `candidateAccountsFromRegistry` excluded every `claude_agent`
+registry entry before `selectDispatchAccount` ever saw them. This section
+closes that gap by adding a second, parallel real provider path.
+
+### What's new in `runtime-intent-enforcement.ts`
+
+- **`RuntimeClaudeThreadRunner` / `runWithRealClaudeAgentSdk`** — the direct
+  analogue of `RuntimeCodexThreadRunner`/`runWithRealCodexSdk`: one real
+  `@anthropic-ai/claude-agent-sdk` `query()` session against the turn's
+  working directory, `permissionMode: "bypassPermissions"` +
+  `settingSources: ["project"]` (the same owner-local-danger posture
+  `claude-composer.ts`'s `permissionModeForClaudeComposerExecutionMode
+  ("local_supervised_danger")` already uses for real production Claude
+  execution in this codebase — the SDK's permission system standing in for
+  Codex's OS sandbox + approval policy). The caller's plain `AbortSignal` is
+  bridged into the SDK's own `AbortController` option (a small shape
+  mismatch versus Codex's `runStreamed(prompt, {signal})`, which takes a
+  signal directly).
+- **`claudeRawMessageToRuntimeEvents`** — the raw-message translator, mirroring
+  `codexRawEventToRuntimeEvents`'s shape and per-turn mutable-context seams
+  (`turnStarted`, `allocateSequence`, `nowIso`), plus one Claude-specific
+  addition: a `pendingToolCalls: Map<toolUseId, toolName>` context field,
+  because the SDK delivers a `tool_use` block inside an `assistant` message
+  and its `tool_result` LATER inside a separate `user` message (the CLI
+  executes tools out-of-band and injects the result), unlike Codex's single
+  paired `item.completed`. Handles `system`/`init` (→ `turn.started`,
+  captures `session_id`), `assistant` content blocks (`text` →
+  `text.delta`+`text.completed`, `thinking` → `reasoning.delta`+
+  `reasoning.completed`, `tool_use` → `tool.call`), `user` content blocks
+  (`tool_result` → `tool.result`/`tool.error` by `is_error`), and `result`
+  (→ `usage.recorded` + `turn.finished`, mapping `subtype: "success"` to
+  `"stop"`, `error_max_turns`/`error_max_budget_usd` to `"length"`, and
+  everything else to `"error"`). Claude's usage shape has no separate
+  reasoning-token count (thinking tokens are already folded into
+  `output_tokens`), so `KhalaRuntimeUsage.reasoningTokens` is left unset
+  rather than fabricated as a meaningful zero — an honest gap versus Codex's
+  `reasoning_output_tokens`.
+- **Lane-aware routing.** `handleTurnStart` now reads the intent's
+  `target.lane`: `codex_app_server` dispatches the Codex path exactly as
+  before; `claude_pylon` dispatches the new Claude path, scoping
+  `selectDispatchAccount`'s `options.provider` to `"codex"` or
+  `"claude_agent"` respectively. Any OTHER `target.lane` (e.g.
+  `ai_sdk_core`) is an explicit `failed` outcome naming the unsupported lane
+  — never a silent fallback to Codex. `candidateAccountsFromRegistry` now
+  projects BOTH `codex` and `claude_agent` registry entries into candidates
+  (previously `claude_agent` was filtered out entirely).
+- **Lane-consistent follow-ups and interrupts.** `ActiveRuntimeTurn` now
+  carries the turn's `lane`. A queued `message.append` follow-up
+  (`dispatchQueuedFollowUps`) now reuses that SAME lane for its synthesized
+  `runtime.startTurn` mutation's `origin`/`target`, instead of always
+  hardcoding `codex_app_server` — a Claude-lane turn's queued append becomes
+  a Claude-lane follow-up. `turn.interrupt`'s `turn.interrupted` event now
+  reports the correct `source.lane`/`adapterKind` for whichever provider was
+  actually running.
+- **Cross-turn continuity.** `PylonOrchestrationStore` gained
+  `getRuntimeClaudeSessionId`/`setRuntimeClaudeSessionId`, the Claude analogue
+  of the existing Codex thread-id pair: the SDK's own `session_id` (present
+  on every message) is captured on first sight and passed back as
+  `options.resume` on a later turn in the same Khala thread, exactly
+  mirroring `Codex#resumeThread`'s best-effort semantics (a mismatched
+  account fails cleanly into a normal `turn.finished(error)`, never a crash).
+
+### Investigated: does the Claude Agent SDK support real mid-turn steering? Yes — but it isn't wired in this pass
+
+The Codex-only pass above documented mid-turn steering as flatly impossible:
+`@openai/codex-sdk`'s `Thread` only exposes `run`/`runStreamed`, no
+`send`/`interject`. For Claude, the answer is different. Reading
+`@anthropic-ai/claude-agent-sdk`'s `sdk.d.ts` directly:
+
+- `query({ prompt, options })` accepts `prompt: string | AsyncIterable<SDKUserMessage>`
+  — a STREAMING INPUT mode, not just a single string.
+- The `Query` object `query()` returns (an `AsyncGenerator<SDKMessage>`) also
+  exposes `streamInput(stream: AsyncIterable<SDKUserMessage>)`,
+  `interrupt()`, and `setPermissionMode()` — explicitly documented as
+  "Control Requests ... only supported when streaming input/output is used."
+
+So a genuinely live Claude session — one where a later `message.append` could
+be injected into an ALREADY-RUNNING turn's stream via `streamInput()`, rather
+than queued for a follow-up turn — is a real, SDK-supported capability that
+Codex simply does not have.
+
+**This pass does not use it.** `runWithRealClaudeAgentSdk` invokes `query()`
+with a single string `prompt`, matching the proven invocation shape already
+used for real production Claude execution elsewhere in this codebase
+(`claude-composer.ts`, `claude-agent-executor.ts`) — deliberately, to keep
+this change's blast radius bounded to "add a second provider path using an
+already-proven SDK invocation shape" rather than also introducing a
+long-lived bidirectional stream, a live `Query` handle that has to survive
+across `ActiveRuntimeTurn`'s fire-and-forget dispatch lifecycle, and the
+concurrency/cleanup semantics that come with it. So today, for BOTH
+providers, `message.append` against an in-flight turn is queued and
+dispatched as a real follow-up `runtime.startTurn` once the turn settles —
+never literal injection. Wiring genuine live Claude steering via streaming
+input mode is a concrete, scoped follow-up (tracked as unfinished work
+below), not a "we didn't check" gap.
+
+### Verified end-to-end, with a REAL (not scripted/faked) Claude Agent SDK call
+
+The Codex-only pass's proof (above) faked the Codex SDK invocation itself
+(no live ChatGPT/Codex account was available in that sandbox) while every
+other layer — storage, mutators, readers, the push engine, and the event
+translator — was real production code. This Claude proof goes one step
+further: the SDK call itself is real too, because a real, already-linked
+local Claude Code CLI session credential was available (`pylon accounts
+list --json` showed `claude-pylon-2` — an isolated pooled account under
+`~/.claude-pylon-2` with its own real OAuth token file — as `ready`,
+`credentialSourceRef: credential.source.claude_agent.local_claude_session`,
+distinct from this session's own interactive `~/.claude` home).
+
+A one-off local script (not committed) against a throwaway local Postgres
+(`startLocalPostgres()`, the same helper `runtime-intents.test.ts` uses):
+
+1. Pushed a real `chat.createThread` + `chat.appendMessage` + a
+   `runtime.startTurn` control intent with `target: {lane: "claude_pylon"}`
+   through the REAL `executePush` mutator pipeline.
+2. The real `readPendingRuntimeControlIntents` reader observed it
+   (`seq: 1`, `kind: "turn.start"`, `target.lane: "claude_pylon"`).
+3. Ran the real `enforcePendingRuntimeIntents` tick — real prompt
+   resolution, real `selectDispatchAccount` scoped to `provider:
+   "claude_agent"`, real event translator — with `claudeThreadRunner` left
+   at its DEFAULT (`runWithRealClaudeAgentSdk`, no override), so the actual
+   local Claude Agent SDK call ran against the real `claude-pylon-2`
+   account.
+4. Confirmed all 5 translated events landed via the REAL `runtime.recordEvent`
+   mutator, all `applied`, sequence 1-5:
+   - `turn.started`
+   - `text.delta` — **real Claude-generated text**: `"Hello! I'm Claude,
+     ready to help you today."` (prompt was: "Reply with exactly one short
+     plain-text sentence saying hello. Do not call any tools.")
+   - `text.completed`
+   - `usage.recorded` (real token counts from the SDK's own `result.usage`)
+   - `turn.finished` (`finishReason: "stop"`)
+5. `khala_sync_runtime_turns.status` reached `"completed"` with
+   `event_count: 5`.
+
+Thread id: `thread.claude-e2e-proof.1`. Turn id: `turn.claude-e2e-proof.1`.
+Account: `claude-pylon-2` (`accountRefHash:
+account.pylon.claude_agent.ba8894450b3f9e52c5bbca01` as constructed by
+`candidateAccountsFromRegistry`/`hashPylonAccountRef`).
+
+### Honest gaps left after this pass
+
+1. **Mid-turn steering is not wired for Claude**, even though the SDK
+   supports it (see above) — `message.append` against a live Claude turn is
+   queued for a follow-up turn, not injected live.
+2. **Account-selection nuance**: like the Codex path, every registered
+   `claude_agent` account still reports a placeholder `capacityAvailable: 1`
+   regardless of real per-account health (`ready` / `credentials_missing` /
+   rate-limited) — the ranking algorithm is real, its capacity/health input
+   is not.
+3. **This pass's proof is a local-Postgres run with a real SDK call, not (yet)
+   a live production dispatch** the way the Codex path's follow-up work
+   proved against deployed `openagents.com` + Cloud SQL. The code paths are
+   identical either way (this module has no environment-specific branching),
+   but a live-production proof for the Claude lane specifically has not been
+   run in this pass.
+4. **The mobile/desktop composer still always sends `target: {lane:
+   "codex_app_server"}`** (`khala-runtime-compose-core.ts`'s `RUNTIME_TARGET`
+   constant) — this pass makes `claude_pylon` dispatch actually WORK once
+   selected, but does not add the composer-side lane-picker UI; that is a
+   separate, sibling issue.
+5. **Cross-turn Claude session-id affinity has the same limitation as
+   Codex's thread-id affinity** (follow-up item 2 above): `resumeSessionId`
+   is captured per Khala thread, not per (thread, account) pair, so
+   round-robin moving to a different `claude_agent` account than the one
+   that created a session loses context on resume (fails cleanly, not a
+   crash, but loses continuity for that turn).
