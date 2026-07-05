@@ -15,6 +15,7 @@
 //   const omniBundleRoutes = makeOmniBundleRoutes<Env>({
 //     db: env => env.DB,
 //     compareProofBundleRead: env => makeOmniPublicProofBundleCompareReader(env),
+//     serveProofBundleFromPostgres: env => makeOmniPublicProofBundlePostgresServerForEnv(env),
 //     requireOperator: (request, env) => requireAdminApiToken(request, env),
 //     // createOmniEvidenceBundle / createOmniPublicProofBundle are imported
 //     // EXISTING services; the read* helpers below are thin id lookups that the
@@ -99,6 +100,22 @@ export type OmniBundleRoutesDependencies<Bindings> = Readonly<{
   compareProofBundleRead?: (
     env: Bindings,
   ) => ((id: string) => Promise<void>) | undefined
+  // KS-8.17 read-cutover follow-up (#8361): optional, fail-soft bounded
+  // real-Postgres-serve reader for the public proof-bundle read — pass
+  // `serveProofBundleFromPostgres: env => makeOmniPublicProofBundlePostgresServerForEnv(env)`.
+  // Undefined (the default), a non-`postgres` reads mode, or a Postgres
+  // query error all resolve to `undefined`, and the route reads D1 exactly
+  // as before (`readProofBundle`). A DEFINED result (even `{ record: null }`
+  // — a genuine "not found") is trusted and served directly with no D1
+  // fallback; that is the entire point of real serving.
+  serveProofBundleFromPostgres?: (
+    env: Bindings,
+  ) => (
+    | ((
+        id: string,
+      ) => Promise<Readonly<{ record: OmniPublicProofBundleRecord | null }> | undefined>)
+    | undefined
+  )
   readEvidenceBundle: OmniEvidenceBundleReader<D1Database>
   readProofBundle: OmniPublicProofBundleReader<D1Database>
   requireOperator: (request: Request, env: Bindings) => Promise<boolean>
@@ -552,6 +569,36 @@ const runProofBundleCompare = async <Bindings extends OmniBundleRouteEnv>(
   }
 }
 
+/**
+ * KS-8.17 read-cutover follow-up (#8361): the bounded real-Postgres-serve
+ * path, tried before the normal D1 read. `serveProofBundleFromPostgres` is
+ * `undefined` unless `KHALA_SYNC_SUPERVISION_READS=postgres`; the returned
+ * reader is itself fail-soft (never throws), and this wrapper also swallows
+ * any unexpected throw so a broken wiring can never break the served
+ * response. ANY defined result (even `{ record: null }` — a genuine "not
+ * found" from Postgres) is trusted and returned with no D1 fallback; only
+ * `undefined` (ineligible or a caught Postgres error) falls back to the
+ * unchanged D1-served `readProofBundle` path.
+ */
+const resolveProofBundle = async <Bindings extends OmniBundleRouteEnv>(
+  dependencies: OmniBundleRoutesDependencies<Bindings>,
+  env: Bindings,
+  id: string,
+): Promise<OmniPublicProofBundleRecord | null> => {
+  let served:
+    | Readonly<{ record: OmniPublicProofBundleRecord | null }>
+    | undefined
+  try {
+    served = await dependencies.serveProofBundleFromPostgres?.(env)?.(id)
+  } catch {
+    served = undefined
+  }
+  if (served !== undefined) {
+    return served.record
+  }
+  return dependencies.readProofBundle(dependencies.db(env), id)
+}
+
 const readProofBundle = <Bindings extends OmniBundleRouteEnv>(
   dependencies: OmniBundleRoutesDependencies<Bindings>,
   request: Request,
@@ -568,7 +615,7 @@ const readProofBundle = <Bindings extends OmniBundleRouteEnv>(
     yield* Effect.promise(() => runProofBundleCompare(dependencies, env, id))
 
     const record = yield* Effect.promise(() =>
-      dependencies.readProofBundle(dependencies.db(env), id),
+      resolveProofBundle(dependencies, env, id),
     )
 
     if (record === null) {
@@ -603,7 +650,7 @@ const readProofBundleHandoffPage = <Bindings extends OmniBundleRouteEnv>(
     yield* Effect.promise(() => runProofBundleCompare(dependencies, env, id))
 
     const record = yield* Effect.tryPromise(() =>
-      dependencies.readProofBundle(dependencies.db(env), id),
+      resolveProofBundle(dependencies, env, id),
     )
 
     if (record === null) {

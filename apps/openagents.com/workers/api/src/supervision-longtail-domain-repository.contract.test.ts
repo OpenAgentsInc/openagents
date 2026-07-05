@@ -41,6 +41,7 @@ import {
   makeD1SupervisionLongtailWriteStore,
   makeHygieneDebtReceiptStoreForEnv,
   makeOmniPublicProofBundleCompareReader,
+  makeOmniPublicProofBundlePostgresServerForEnv,
   makePostgresSupervisionLongtailStore,
   makeSupervisionLongtailMirror,
   makeSupervisionLongtailMirrorForEnv,
@@ -701,6 +702,167 @@ describe.skipIf(!hasLocalPostgres())(
           readKind: 'omni_public_proof_bundles:readById',
         },
       ])
+    })
+  },
+)
+
+// ---------------------------------------------------------------------------
+// makeOmniPublicProofBundlePostgresServerForEnv (KS-8.17 read-cutover
+// follow-up, #8361) — the bounded real-Postgres-serve reader, distinct from
+// the shadow-compare reader above (which never serves).
+// ---------------------------------------------------------------------------
+
+describe('makeOmniPublicProofBundlePostgresServerForEnv — flag gate (no Postgres binding needed)', () => {
+  test('no KHALA_SYNC_DB binding → undefined even when reads=postgres', () => {
+    const sqlite = makeSqliteD1()
+    sqlite.exec(SUPERVISION_LONGTAIL_D1_SCHEMA)
+    const server = makeOmniPublicProofBundlePostgresServerForEnv(
+      { KHALA_SYNC_SUPERVISION_READS: 'postgres' },
+      { db: sqlite.db },
+    )
+    expect(server).toBeUndefined()
+    sqlite.close()
+  })
+
+  test('reads=d1 (default) → undefined even with a Postgres binding', () => {
+    const sqlite = makeSqliteD1()
+    sqlite.exec(SUPERVISION_LONGTAIL_D1_SCHEMA)
+    const server = makeOmniPublicProofBundlePostgresServerForEnv(
+      { KHALA_SYNC_DB: { connectionString: 'postgres://contract' } },
+      {
+        db: sqlite.db,
+        makeSqlClient: () => Promise.reject(new Error('unused')),
+      },
+    )
+    expect(server).toBeUndefined()
+    sqlite.close()
+  })
+
+  test('reads=compare → undefined (compare mode never serves — see makeOmniPublicProofBundleCompareReader)', () => {
+    const sqlite = makeSqliteD1()
+    sqlite.exec(SUPERVISION_LONGTAIL_D1_SCHEMA)
+    const server = makeOmniPublicProofBundlePostgresServerForEnv(
+      {
+        KHALA_SYNC_DB: { connectionString: 'postgres://contract' },
+        KHALA_SYNC_SUPERVISION_READS: 'compare',
+      },
+      {
+        db: sqlite.db,
+        makeSqlClient: () => Promise.reject(new Error('unused')),
+      },
+    )
+    expect(server).toBeUndefined()
+    sqlite.close()
+  })
+})
+
+describe.skipIf(!hasLocalPostgres())(
+  'makeOmniPublicProofBundlePostgresServerForEnv — real serving against the Postgres twin',
+  () => {
+    let pg: Awaited<ReturnType<typeof startLocalPostgres>>
+    let client: PgClient | undefined
+    let sqlite: ReturnType<typeof makeSqliteD1> | undefined
+
+    beforeAll(async () => {
+      pg = await startLocalPostgres()
+      const postgres = (await import('postgres')).default
+      const admin = postgres(pg.url, { max: 1, prepare: false })
+      await admin.unsafe('CREATE DATABASE supervision_postgres_serve')
+      await admin.end({ timeout: 5 })
+      const raw = postgres(pg.urlFor('supervision_postgres_serve'), {
+        max: 4,
+        prepare: false,
+      })
+      client = raw as unknown as PgClient
+      await raw.unsafe(readFileSync(MIGRATION_0024, 'utf8'))
+      sqlite = makeSqliteD1()
+      sqlite.exec(SUPERVISION_LONGTAIL_D1_SCHEMA)
+    }, 120_000)
+
+    afterAll(async () => {
+      await client?.end({ timeout: 5 })
+      await pg?.stop()
+      sqlite?.close()
+    }, 60_000)
+
+    const postgresStore = () =>
+      makePostgresSupervisionLongtailStore({
+        acquireSql: () =>
+          Promise.resolve({
+            end: () => Promise.resolve(),
+            sql: (client as unknown as { unsafe: unknown }) as never,
+          }),
+      })
+
+    const makeServer = (
+      diagnostics: Array<{
+        event: SupervisionLongtailDiagnosticEvent
+        fields: SupervisionLongtailDiagnostic
+      }>,
+    ) =>
+      makeOmniPublicProofBundlePostgresServerForEnv(
+        {
+          KHALA_SYNC_DB: { connectionString: 'postgres://contract' },
+          KHALA_SYNC_SUPERVISION_READS: 'postgres',
+        },
+        {
+          db: sqlite!.db,
+          log: (event, fields) => diagnostics.push({ event, fields }),
+          makeSqlClient: () =>
+            Promise.resolve({
+              end: () => Promise.resolve(),
+              sql: (client as unknown as { unsafe: unknown }) as never,
+            }),
+        },
+      )
+
+    test('row present in Postgres → serves the record, converted the same way the D1 path does', async () => {
+      const diagnostics: Array<{
+        event: SupervisionLongtailDiagnosticEvent
+        fields: SupervisionLongtailDiagnostic
+      }> = []
+      await postgresStore().upsertRows('omni_public_proof_bundles', [
+        proofBundleRow('serve.present', { status: 'ready' }),
+      ])
+
+      const server = makeServer(diagnostics)
+      expect(server).toBeDefined()
+      const result = await server!('serve.present')
+      expect(result).toBeDefined()
+      expect(result?.record?.id).toBe('serve.present')
+      expect(result?.record?.status).toBe('ready')
+      expect(result?.record?.workroomId).toBe('workroom.1')
+      expect(diagnostics).toEqual([])
+    })
+
+    test('row absent from Postgres → a genuine final "not found" (record: null), not a fallback signal', async () => {
+      const server = makeServer([])
+      const result = await server!('serve.nowhere')
+      expect(result).toEqual({ record: null })
+    })
+
+    test('a broken Postgres twin never throws — returns undefined (fall back to D1) and logs the serve-failed diagnostic', async () => {
+      const diagnostics: Array<{
+        event: SupervisionLongtailDiagnosticEvent
+        fields: SupervisionLongtailDiagnostic
+      }> = []
+      const server = makeOmniPublicProofBundlePostgresServerForEnv(
+        {
+          KHALA_SYNC_DB: { connectionString: 'postgres://contract' },
+          KHALA_SYNC_SUPERVISION_READS: 'postgres',
+        },
+        {
+          db: sqlite!.db,
+          log: (event, fields) => diagnostics.push({ event, fields }),
+          makeSqlClient: () => Promise.reject(new Error('postgres is down')),
+        },
+      )
+      expect(server).toBeDefined()
+      await expect(server!('serve.broken')).resolves.toBeUndefined()
+      expect(diagnostics.map(d => d.event)).toContain(
+        'khala_sync_supervision_postgres_read_serve_failed',
+      )
+      expect(diagnostics[0]?.fields.refs).toEqual(['serve.broken'])
     })
   },
 )

@@ -2243,6 +2243,31 @@ converge upsert, or schema-changed; no `KHALA_SYNC_*_READS` /
 
 ### 3.14 KS-8.17 — Supervision long tail (Adjutant, Omni, Autopilot, ops)
 
+**KS-8.17 read-cutover follow-up status (2026-07-05, #8361):** write-wiring +
+backfill + verify + shadow-compare are DONE and re-confirmed fresh (a repeat
+`--verify` after real organic writes landed in `relay_health_probes` since the
+first pass — 2024 → 2028 rows — still matched exactly across all 29 tables).
+`omni_public_proof_bundles`, the domain's one public projection surface, is
+genuinely zero-traffic (0 rows in D1 AND Postgres, prod AND staging,
+re-confirmed this pass) — the Analytics Engine soak-observability query
+script (`query-compare-soak.ts`) also remains blocked on a Cloudflare API
+token permission gap (`NEEDS_OWNER.md`, "Account Analytics: Read", still
+unresolved as of this pass). A live-traffic soak is therefore structurally
+unavailable for this surface and would stay vacuous indefinitely if waited
+on, so this pass built the bounded real-Postgres-serve reader
+(`makeOmniPublicProofBundlePostgresServerForEnv` in
+`supervision-longtail-domain-store.ts`, wired via the new
+`serveProofBundleFromPostgres` dependency in `omni-bundle-routes.ts`) and
+flipped `KHALA_SYNC_SUPERVISION_READS=postgres` in prod + staging — matching
+the KS-8.14 business-domain precedent (#8360) of accepting a bounded,
+single-table, already-shadow-compared allowlist backed by contract-suite +
+row-for-row `--verify` evidence instead of a traffic-based soak. Every other
+comparable read in this domain stays D1-only by construction (no reader
+wired for anything else). D1 table drop stays consolidated in the epic's
+KS-8.19 sweep (#8330), per the same convention as #8358/#8360/#8362. See the
+RUNBOOK "Supervision long-tail cutover" section for the full flag-flip
+history.
+
 - **What:** Adjutant assignment enrichment/research, Omni workrooms +
   outcome contracts + evidence bundles, Autopilot work orders /
   continuation policies / onboarding / legacy token usage, relay health

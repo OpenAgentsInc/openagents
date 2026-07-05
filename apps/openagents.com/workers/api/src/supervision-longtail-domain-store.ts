@@ -37,17 +37,27 @@
 // Flags (per KS-8 convention):
 //   KHALA_SYNC_SUPERVISION_DUAL_WRITE (default ON; '0'|'off'|'false'|'disabled'|'no')
 //   KHALA_SYNC_SUPERVISION_READS      (default 'd1'; 'd1'|'compare'|'postgres')
-// With no KHALA_SYNC_DB binding everything degrades to plain D1. Real
-// `postgres` read SERVING is still DEFERRED to a further read-cutover
-// follow-up (#8361): D1 remains the ONLY store this domain ever serves a
-// response from, at every flag value. What `reads !== 'd1'` DOES turn on is
-// the shadow-compare wiring below (`makeOmniPublicProofBundleCompareReader`)
-// — a fail-soft, non-blocking read-back diff against the Postgres twin for
-// the one public projection surface in this domain
-// (`omni_public_proof_bundles`, read by both the redacted public handoff page
-// and the operator JSON view). `postgres` additionally logs
-// `khala_sync_supervision_postgres_reads_deferred` once, so a premature flag
-// flip can never silently believe it is being served.
+// With no KHALA_SYNC_DB binding everything degrades to plain D1. What
+// `reads !== 'd1'` turns on is the shadow-compare wiring below
+// (`makeOmniPublicProofBundleCompareReader`) — a fail-soft, non-blocking
+// read-back diff against the Postgres twin for the one public projection
+// surface in this domain (`omni_public_proof_bundles`, read by both the
+// redacted public handoff page and the operator JSON view). That reader
+// itself NEVER serves Postgres, at any flag value — it still logs
+// `khala_sync_supervision_postgres_reads_deferred` once under `postgres` so a
+// premature flag flip can never silently believe IT is serving.
+//
+// KS-8.17 read-cutover follow-up (#8361, matching the KS-8.14 business-domain
+// precedent, #8360): `KHALA_SYNC_SUPERVISION_READS=postgres` DOES unlock real
+// serving through a SEPARATE reader, `makeOmniPublicProofBundlePostgresServerForEnv`
+// — the bounded allowlist is this one table alone (the domain's only public,
+// write-decision-free, already-shadow-compared read surface; every other
+// comparable read in this domain has no reader wired at all). Fail-soft: a
+// Postgres error (or `reads !== 'postgres'`, or no Postgres binding) returns
+// `undefined` and the caller falls back to the normal D1-served
+// `readOmniPublicProofBundleById` path. A genuine "not found" result from
+// Postgres IS trusted and served directly (no D1 re-check) — that is the
+// entire point of real serving; only a thrown error defers to D1.
 //
 // Cutover order (docs/khala-sync/RUNBOOK.md "Supervision long-tail cutover"):
 // dual-write on → backfill
@@ -88,6 +98,11 @@ import {
   type MakeKhalaSyncPushSqlClient,
 } from './khala-sync-push-routes'
 import { logWorkerRouteWarning } from './observability'
+import {
+  rowToRecord as omniPublicProofBundleRowToRecord,
+  type OmniPublicProofBundleRecord,
+  type ProofBundleRow as OmniPublicProofBundleRow,
+} from './omni-public-proof-bundles'
 import {
   makeD1RelayHealthStore,
   type RelayHealthStore,
@@ -144,6 +159,7 @@ export type SupervisionLongtailDiagnosticEvent =
   | 'khala_sync_supervision_read_compare_mismatch'
   | 'khala_sync_supervision_read_compare_failed'
   | 'khala_sync_supervision_postgres_reads_deferred'
+  | 'khala_sync_supervision_postgres_read_serve_failed'
 
 export type SupervisionLongtailDiagnostic = Readonly<{
   /** The mirrored table or read operation, e.g. 'mirror:relay_health_probes'. */
@@ -782,6 +798,69 @@ export const makeOmniPublicProofBundleCompareReader = (
         refs: [id],
       })
       metrics.record({ domain: 'supervision', outcome: 'error', readKind: op })
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Real Postgres read serving (KS-8.17 read-cutover follow-up, #8361) — the
+// bounded, single-table allowlist analog of the KS-8.14 business-domain
+// precedent (#8360, `BUSINESS_DOMAIN_POSTGRES_SERVED_READ_TABLES`). This
+// domain has exactly one public, write-decision-free, already-shadow-compared
+// read surface (`omni_public_proof_bundles`), so the "allowlist" is simply:
+// this reader exists, every other comparable read in this domain has none.
+// ---------------------------------------------------------------------------
+
+/** The genuinely-final answer from Postgres: `null` IS a real "not found". */
+export type OmniPublicProofBundlePostgresServeResult = Readonly<{
+  record: OmniPublicProofBundleRecord | null
+}>
+
+/**
+ * The `omni_public_proof_bundles` real-serve reader — `undefined` unless a
+ * Postgres binding exists AND `KHALA_SYNC_SUPERVISION_READS=postgres`.
+ * Distinct from `makeOmniPublicProofBundleCompareReader` (the shadow-compare
+ * diagnostic above, which never serves and keeps its own well-tested
+ * behavior untouched by this addition). Fail-soft: a Postgres query error
+ * returns `undefined` so the caller falls back to the normal
+ * `readOmniPublicProofBundleById` (D1) path — serving can never fail a
+ * request, it can only fail to happen. A successful Postgres query that
+ * finds no row is NOT a failure: it returns `{ record: null }`, a genuine,
+ * final "not found" the caller should serve directly (no D1 re-check) —
+ * that is the entire point of real serving.
+ */
+export const makeOmniPublicProofBundlePostgresServerForEnv = (
+  env: SupervisionLongtailStoreEnv,
+  options: MakeSupervisionLongtailStoreOptions = {},
+): ((id: string) => Promise<OmniPublicProofBundlePostgresServeResult | undefined>) | undefined => {
+  const runtime = runtimeForEnv(env, options)
+  const { compareStore, flags, log } = runtime
+  if (flags.reads !== 'postgres' || compareStore === undefined) {
+    return undefined
+  }
+  const op = 'omni_public_proof_bundles:readById'
+  return async (
+    id: string,
+  ): Promise<OmniPublicProofBundlePostgresServeResult | undefined> => {
+    try {
+      const rows = await compareStore.queryRows(
+        `SELECT * FROM omni_public_proof_bundles WHERE id = $1 AND archived_at IS NULL LIMIT 1`,
+        [id],
+      )
+      const row = rows[0]
+      return {
+        record:
+          row === undefined
+            ? null
+            : omniPublicProofBundleRowToRecord(row as OmniPublicProofBundleRow),
+      }
+    } catch (error) {
+      log('khala_sync_supervision_postgres_read_serve_failed', {
+        messageSafe: safeMessage(error),
+        op,
+        refs: [id],
+      })
+      return undefined
     }
   }
 }

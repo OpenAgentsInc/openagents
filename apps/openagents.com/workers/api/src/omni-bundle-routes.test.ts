@@ -284,9 +284,13 @@ const makeRoutes = (
   store: BundleStore,
   operatorAllowed: boolean,
   compareProofBundleRead?: OmniBundleRoutesDependencies<TestEnv>['compareProofBundleRead'],
+  serveProofBundleFromPostgres?: OmniBundleRoutesDependencies<TestEnv>['serveProofBundleFromPostgres'],
 ): ReturnType<typeof makeOmniBundleRoutes<TestEnv>> => {
   const dependencies: OmniBundleRoutesDependencies<TestEnv> = {
     ...(compareProofBundleRead === undefined ? {} : { compareProofBundleRead }),
+    ...(serveProofBundleFromPostgres === undefined
+      ? {}
+      : { serveProofBundleFromPostgres }),
     db: () => bundleDb(store),
     readEvidenceBundle: evidenceReader(store),
     readProofBundle: proofReader(store),
@@ -636,6 +640,132 @@ describe('Omni bundle routes', () => {
     )
     expect(handoffResponse.status).toBe(200)
     expect(handoffCalls).toEqual(['omni_public_proof_bundle_1'])
+  })
+
+  const postgresServedRecord: OmniPublicProofBundleRecord = {
+    acceptanceStateRef: 'acceptance_state_ready_1',
+    archivedAt: null,
+    artifactRefs: ['artifact_deploy_url_1'],
+    createdAt: '2026-01-01T00:00:00.000Z',
+    economicsCaveatRef: 'economics_caveat_estimate_only_1',
+    id: 'omni_public_proof_bundle_1',
+    idempotencyKey: 'omni-public-proof-bundle:site-1',
+    legalCaveatRef: null,
+    legalSensitive: false,
+    metadata: {},
+    noSettlementImplication: true,
+    privacyCaveatRef: 'privacy_caveat_redacted_1',
+    publicReceiptRef: 'receipt_public_1',
+    receiptRefs: ['receipt_public_1'],
+    reviewStateRef: 'review_state_recorded_1',
+    sourceRefs: ['source_card_1'],
+    // Deliberately different from the D1-stored `proofBody.status` ('ready')
+    // so the assertions below prove WHICH store actually served the response.
+    status: 'blocked',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    workKind: 'site',
+    workroomId: 'omni_workroom_site_1',
+  }
+
+  test('KS-8.17 read-cutover (#8361): a defined Postgres-serve result is served directly, bypassing D1', async () => {
+    const store = new BundleStore()
+    const routes = makeRoutes(store, true)
+
+    await run(
+      routes.routeOmniBundleRequest(
+        jsonPost('/api/omni/public-proof-bundles', proofBody),
+        { store },
+        ctx,
+      ),
+    )
+
+    const servedRoutes = makeRoutes(store, true, undefined, () => async () => ({
+      record: postgresServedRecord,
+    }))
+
+    const response = await run(
+      servedRoutes.routeOmniBundleRequest(
+        get('/api/omni/public-proof-bundles/omni_public_proof_bundle_1'),
+        { store },
+        ctx,
+      ),
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { bundle: { status: string } }
+    // proofBody.status is 'ready' in D1; a real read would never see 'blocked'.
+    expect(body.bundle.status).toBe('blocked')
+  })
+
+  test('KS-8.17 read-cutover (#8361): a genuine Postgres "not found" (record: null) serves 404 with no D1 fallback', async () => {
+    const store = new BundleStore()
+    const routes = makeRoutes(store, true)
+
+    await run(
+      routes.routeOmniBundleRequest(
+        jsonPost('/api/omni/public-proof-bundles', proofBody),
+        { store },
+        ctx,
+      ),
+    )
+
+    // The record DOES exist in D1 — Postgres saying "not found" must still win.
+    const servedRoutes = makeRoutes(store, true, undefined, () => async () => ({
+      record: null,
+    }))
+
+    const response = await run(
+      servedRoutes.routeOmniBundleRequest(
+        get('/api/omni/public-proof-bundles/omni_public_proof_bundle_1'),
+        { store },
+        ctx,
+      ),
+    )
+    expect(response.status).toBe(404)
+  })
+
+  test('KS-8.17 read-cutover (#8361): an undefined or throwing Postgres-serve hook falls back to D1, unchanged', async () => {
+    const store = new BundleStore()
+    const routes = makeRoutes(store, true)
+
+    await run(
+      routes.routeOmniBundleRequest(
+        jsonPost('/api/omni/public-proof-bundles', proofBody),
+        { store },
+        ctx,
+      ),
+    )
+
+    const throwingRoutes = makeRoutes(store, true, undefined, () => () => {
+      throw new Error('postgres-serve hook must never break the response')
+    })
+    const throwingResponse = await run(
+      throwingRoutes.routeOmniBundleRequest(
+        get('/api/omni/public-proof-bundles/omni_public_proof_bundle_1'),
+        { store },
+        ctx,
+      ),
+    )
+    expect(throwingResponse.status).toBe(200)
+    const throwingBody = (await throwingResponse.json()) as {
+      bundle: { status: string }
+    }
+    expect(throwingBody.bundle.status).toBe('ready')
+
+    const undefinedRoutes = makeRoutes(store, true, undefined, () => async () =>
+      undefined,
+    )
+    const undefinedResponse = await run(
+      undefinedRoutes.routeOmniBundleRequest(
+        get('/api/omni/public-proof-bundles/omni_public_proof_bundle_1'),
+        { store },
+        ctx,
+      ),
+    )
+    expect(undefinedResponse.status).toBe(200)
+    const undefinedBody = (await undefinedResponse.json()) as {
+      bundle: { status: string }
+    }
+    expect(undefinedBody.bundle.status).toBe('ready')
   })
 
   test('returns 405 for unsupported methods on bundle collections', async () => {

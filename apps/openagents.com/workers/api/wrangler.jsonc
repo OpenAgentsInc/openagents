@@ -121,18 +121,21 @@
     // this read never decides an allow/deny/lease/dedupe outcome. Roll back
     // to `d1` at any time; this can never affect an auth decision.
     "KHALA_SYNC_IDENTITY_NON_GATE_READS": "postgres",
-    // KS-8.17 follow-up supervision long-tail read cutover (#8361, TEMPORARY
-    // compare soak): dual-write has been live since 4acd3704c2; production
-    // backfill/second-sweep/--verify are green across all 29 tables. This
-    // shadow-runs the one public projection surface in this domain
-    // (`omni_public_proof_bundles`, read by both the redacted public handoff
-    // page and the operator JSON view) against Postgres, SERVES D1, and logs
-    // `khala_sync_supervision_read_compare_mismatch` on any drift. Roll back
-    // to `d1` at any time — the real read/write cutover stays gated on a
-    // genuinely silent soak over a representative window (this domain is
-    // near-zero-traffic today, so a short soak is thin evidence by design;
-    // do not force-flip on it).
-    "KHALA_SYNC_SUPERVISION_READS": "compare",
+    // KS-8.17 follow-up supervision long-tail read cutover (#8361): dual-write
+    // has been live since 4acd3704c2; production backfill/second-sweep/
+    // --verify are green across all 29 tables, re-confirmed fresh after real
+    // organic writes landed in a sibling table since the first pass. `postgres`
+    // now REALLY serves the one bounded public projection surface in this
+    // domain — `omni_public_proof_bundles` (read by both the redacted public
+    // handoff page and the operator JSON view) — through
+    // `makeOmniPublicProofBundlePostgresServerForEnv`, fail-soft to D1 on any
+    // Postgres error. This table is genuinely zero-traffic (0 rows in D1 AND
+    // Postgres, both environments) so a live soak is structurally
+    // unavailable; the accepted evidence instead is the contract suite +
+    // repeated clean `--verify`, matching the KS-8.14 business-domain
+    // allowlist precedent (#8360). Every other read in this domain stays
+    // D1-only. Roll back to `d1` or `compare` at any time.
+    "KHALA_SYNC_SUPERVISION_READS": "postgres",
     // #6408 "fleet never silently stalls" watchdog (1-min cron). Detection is
     // default-ON so a live stall is flagged immediately. Recovery is also ON but
     // is a no-op unless FLEET_WATCHDOG_OWNER_PYLON_REFS lists the owner pylon(s)
@@ -603,10 +606,10 @@
         // #8362 follow-up, staging parity for the production bounded
         // identity/auth non-gate read allowlist Postgres-serving soak.
         "KHALA_SYNC_IDENTITY_NON_GATE_READS": "postgres",
-        // KS-8.17 follow-up supervision long-tail read cutover (#8361,
-        // TEMPORARY compare soak), staging parity for the production
-        // compare-mode soak.
-        "KHALA_SYNC_SUPERVISION_READS": "compare",
+        // KS-8.17 follow-up supervision long-tail read cutover (#8361),
+        // staging parity for the production bounded proof-bundle Postgres
+        // read serving.
+        "KHALA_SYNC_SUPERVISION_READS": "postgres",
         // Internal/ops account allowlist (#6298 demand + #6232 quota exemption) —
         // staging too, so dogfood classifies `demand_kind=internal` consistently
         // and internal testing accounts (ops/heartbeat/canary, Artanis, Raynor)

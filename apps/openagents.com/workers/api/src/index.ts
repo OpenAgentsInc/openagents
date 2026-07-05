@@ -487,6 +487,7 @@ import {
   makeAutopilotWorkStoreForEnv,
   makeHygieneDebtReceiptStoreForEnv,
   makeOmniPublicProofBundleCompareReader,
+  makeOmniPublicProofBundlePostgresServerForEnv,
   makeRelayHealthStoreForEnv,
   makeSupervisionLongtailMirrorForEnv,
 } from './supervision-longtail-domain-store'
@@ -8502,6 +8503,8 @@ const omniBundleRoutes = makeOmniBundleRoutes<WorkerBindings>({
   db: env => openAgentsDatabase(env),
   mirror: env => makeSupervisionLongtailMirrorForEnv(env),
   compareProofBundleRead: env => makeOmniPublicProofBundleCompareReader(env),
+  serveProofBundleFromPostgres: env =>
+    makeOmniPublicProofBundlePostgresServerForEnv(env),
   requireOperator: (request, env) => requireAdminApiToken(request, env),
   readEvidenceBundle: (db, id) => readOmniEvidenceBundleById(db, id),
   readProofBundle: (db, id) => readOmniPublicProofBundleById(db, id),

@@ -2684,19 +2684,26 @@ Flags (Worker vars):
 
 - `KHALA_SYNC_SUPERVISION_DUAL_WRITE` — default **on** wherever
   `KHALA_SYNC_DB` exists; `off|0|false|disabled|no` disables the mirror.
-- `KHALA_SYNC_SUPERVISION_READS` — default `d1`; current value **`compare`**
-  (prod + staging, set #8361). D1 is the ONLY store this domain ever serves
-  a response from at ANY flag value — `compare`/`postgres` only arm the
+- `KHALA_SYNC_SUPERVISION_READS` — default `d1`; current value **`postgres`**
+  (prod + staging, set #8361 follow-up, 2026-07-05). `compare` arms the
   fail-soft, inline-awaited shadow-compare reader (never fire-and-forget — a
   Worker can cancel an un-awaited async tail once the response is sent)
   (`makeOmniPublicProofBundleCompareReader` in
-  `supervision-longtail-domain-store.ts`) for the one public projection
-  surface here, `omni_public_proof_bundles` (read by both the redacted
-  public handoff page and the operator JSON view in
-  `omni-bundle-routes.ts`). `postgres` additionally logs
-  `khala_sync_supervision_postgres_reads_deferred` once — real Postgres
-  SERVING for this domain is not built; a flag flip alone can never widen
-  what is served.
+  `supervision-longtail-domain-store.ts`), which itself NEVER serves
+  Postgres at any flag value. `postgres` ADDITIONALLY unlocks a SEPARATE,
+  bounded real-serve reader — `makeOmniPublicProofBundlePostgresServerForEnv`
+  — for the ONE public projection surface in this domain,
+  `omni_public_proof_bundles` (read by both the redacted public handoff page
+  and the operator JSON view in `omni-bundle-routes.ts`; wired via the new
+  `serveProofBundleFromPostgres` dependency in `omni-bundle-routes.ts`).
+  Fail-soft: any Postgres query error (or `reads !== 'postgres'`, or no
+  Postgres binding) falls back to the unchanged D1-served
+  `readOmniPublicProofBundleById` path; a genuine Postgres "not found" IS
+  trusted and served directly (no D1 re-check). Every OTHER comparable read
+  in this domain has no reader wired at all, so this bounded allowlist is
+  simply "this one table, nothing else" — the same shape as the KS-8.14
+  business-domain precedent (#8360,
+  `BUSINESS_DOMAIN_POSTGRES_SERVED_READ_TABLES`).
 
 Flag-flip order — never skip a step, each soaks before the next:
 
@@ -2717,25 +2724,46 @@ Flag-flip order — never skip a step, each soaks before the next:
    surface), newest-50 row hashes. Post the output on the migration issue
    (secret-safe by construction). Exact or explain; no cutover on a red
    verify. **DONE (#8361, 2026-07-05):** `verify: CLEAN — every check
-   matches` across all 29 tables, zero mismatches of any kind.
+   matches` across all 29 tables, zero mismatches of any kind. **RE-RUN
+   CLEAN (#8361 follow-up, 2026-07-05):** re-verified fresh against
+   production a second time after real organic production writes landed in
+   sibling domain tables since the first verify (`relay_health_probes` grew
+   2024 → 2028 rows) — every table still matched exactly, proving the mirror
+   keeps converging genuinely-new organic writes, not just the original
+   backfilled history.
 4. **Shadow-compare the public proof-bundle endpoint**: diff the servable
    `omni_public_proof_bundles` projection against BOTH stores until silent.
-   **IN PROGRESS (#8361):** `KHALA_SYNC_SUPERVISION_READS=compare` deployed
-   to prod + staging 2026-07-05; the reader is wired but this domain is
-   near-zero-traffic (the proof-bundles table itself is 0 rows in both
-   stores today), so a short soak window is thin-by-vacuity evidence — keep
-   watching `khala_sync_supervision_read_compare_mismatch` over a genuinely
-   representative window before treating step 5 as unblocked.
-5. **Read/write cutover LATER** (a further follow-up beyond #8361): serve
-   real Postgres reads (bounded allowlist, per the KS-8.14 business-domain
-   pattern in #8360, or the full-domain approach per KS-8.16 Forge in
-   #8358 — whichever the traffic profile supports), re-add the uniques left
-   off the twins, move write authority, and drop the D1 tables. Until then
-   rollback is one flag flip back.
+   **DONE (#8361):** `KHALA_SYNC_SUPERVISION_READS=compare` deployed to prod
+   + staging 2026-07-05; live-tailed with zero
+   `khala_sync_supervision_read_compare_mismatch`.
+5. **Read cutover — DONE for the one bounded allowlist table (#8361
+   follow-up, 2026-07-05)**: `KHALA_SYNC_SUPERVISION_READS=postgres` deployed
+   to prod + staging. `makeOmniPublicProofBundlePostgresServerForEnv` now
+   serves `omni_public_proof_bundles` reads for real, matching the KS-8.14
+   business-domain precedent (#8360) rather than waiting on a traffic-based
+   soak: this table is genuinely zero-traffic (0 rows in D1 AND Postgres, in
+   BOTH prod and staging, confirmed fresh 2026-07-05 — no organic write has
+   ever landed here since the domain was wired), so a live-traffic soak is
+   structurally unavailable and would stay vacuous forever if waited on. The
+   accepted evidence instead is: (a) the contract suite proving present/
+   absent/broken-Postgres behavior against a real local Postgres twin
+   (`supervision-longtail-domain-repository.contract.test.ts`), (b) the
+   row-for-row `--verify` clean across all 29 tables (re-confirmed fresh,
+   above), and (c) every OTHER comparable read in this domain staying
+   D1-only by construction (no reader wired), so the blast radius of a
+   Postgres bug here is bounded to this one already-shadow-compared,
+   write-decision-free, public-safe surface. Every other write path in this
+   domain (`adjutant_*`, other `omni_*` tables, `autopilot_*`,
+   `relay_health_*`, `backend_incident_events`, `hygiene_debt_receipts`)
+   stays D1-served permanently under this flag, by design — widening the
+   allowlist to any of those is a deliberate, individually-reviewed
+   follow-up, never a blanket flip.
+6. **D1 drop**: NOT done here — consolidated into the epic's KS-8.19 sweep
+   (#8330), consistent with #8358/#8360/#8362.
 
 Rollback at ANY step: `KHALA_SYNC_SUPERVISION_DUAL_WRITE=off` (writes) and/or
-`KHALA_SYNC_SUPERVISION_READS=d1` (shadow-compare reader). D1 authority is
-never behind.
+`KHALA_SYNC_SUPERVISION_READS=d1` (real serve + shadow-compare readers both
+go inert; D1 authority is never behind).
 
 ## Identity/auth domain cutover (KS-8.18 #8329 + follow-up #8362)
 
@@ -3190,7 +3218,7 @@ existing per-call diagnostic events:
 | --- | --- | --- | --- |
 | `entitlements_gate` | `inference-entitlements-store.ts`, `makeRoutedEntitlementsGateReads` | `KHALA_SYNC_ENTITLEMENTS_READS` | No (default `d1`; this was the #8336 explicitly-blocked lane) |
 | `entitlements_non_gate` | `inference-entitlements-store.ts`, `makeRoutedEntitlementsNonGateReads` | `KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS` | No (prod runs `postgres`, not `compare`, today) |
-| `supervision` | `supervision-longtail-domain-store.ts`, `makeOmniPublicProofBundleCompareReader` | `KHALA_SYNC_SUPERVISION_READS` | **Yes** (`compare` in prod — the #8361 zero-traffic case) |
+| `supervision` | `supervision-longtail-domain-store.ts`, `makeOmniPublicProofBundleCompareReader` | `KHALA_SYNC_SUPERVISION_READS` | No (prod runs `postgres` as of the #8361 follow-up, 2026-07-05 — real-served through the SEPARATE `makeOmniPublicProofBundlePostgresServerForEnv` reader for the one bounded `omni_public_proof_bundles` allowlist; the shadow-compare reader in this row keeps running unconditionally regardless, so soak metrics keep accumulating past cutover too) |
 | `artanis` | `artanis-domain-store.ts`, `artanisRead` | `KHALA_SYNC_ARTANIS_READS` | **Yes** (`compare` in prod) |
 | `billing` | `billing-store.ts`, `makeRoutedBillingBalanceRead` / `makeRoutedBillingRecentEntriesRead` / `makeRoutedBillingAutoTopUpStateRead` | `KHALA_SYNC_BILLING_READS` | No (default `d1`) |
 | `forge` | `forge-domain-store.ts`, `compareListRefs` (inside `makeForgeGitCanonicalStoreForEnv`) | `KHALA_SYNC_FORGE_READS` | No (prod runs `postgres`, not `compare`, today) |

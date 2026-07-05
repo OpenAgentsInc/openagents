@@ -80,7 +80,7 @@ type WorkroomRefRow = Readonly<{
   work_kind: OmniAcceptedOutcomeWorkKind
 }>
 
-type ProofBundleRow = Readonly<{
+export type ProofBundleRow = Readonly<{
   acceptance_state_ref: string
   archived_at: string | null
   artifact_refs_json: string
@@ -229,7 +229,14 @@ const d1Effect = <A>(
     try: run,
   })
 
-const rowToRecord = (row: ProofBundleRow): OmniPublicProofBundleRecord => ({
+/**
+ * KS-8.17 read-cutover follow-up (#8361): exported (not just module-private)
+ * so `supervision-longtail-domain-store.ts`'s bounded real-Postgres-serve
+ * reader can map a Postgres row (same-named twin, byte-identical column
+ * shapes — see khala-sync migration `0024_supervision_longtail.sql`) through
+ * the SAME conversion the D1-served path uses, rather than duplicating it.
+ */
+export const rowToRecord = (row: ProofBundleRow): OmniPublicProofBundleRecord => ({
   acceptanceStateRef: row.acceptance_state_ref,
   archivedAt: row.archived_at,
   artifactRefs: parseJsonStringArray(row.artifact_refs_json),
