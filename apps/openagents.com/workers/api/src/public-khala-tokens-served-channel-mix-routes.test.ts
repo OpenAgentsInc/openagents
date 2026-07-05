@@ -1,3 +1,4 @@
+import type { SyncSql } from '@openagentsinc/khala-sync-server'
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
@@ -81,9 +82,9 @@ describe('GET /api/public/khala-tokens-served/channel-mix', () => {
     expect(body.totalTokens).toBe(2_000)
     expect(body.generatedAt).toBe(nowIso)
     expect(body.staleness).toMatchObject({
-      composition: 'rebuilt_on_transition',
+      composition: 'live_at_read',
       maxStalenessSeconds: 0,
-      rebuildsOn: ['token_usage_events_insert'],
+      rebuildsOn: ['token_usage_events'],
     })
     expect(body.groups).toEqual([
       {
@@ -128,6 +129,55 @@ describe('GET /api/public/khala-tokens-served/channel-mix', () => {
         tokens: 42,
       },
     ])
+  })
+
+  test('KS-6.7 (#8417): a projected snapshot is served FIRST — the ledger is never called', async () => {
+    const postImage = {
+      generatedAt: '2026-07-05T00:00:00.000Z',
+      groups: [
+        { channel: 'khala_api', label: 'Khala API', pct: 100, reqs: 4, tokens: 400 },
+      ],
+      totalTokens: 400,
+      window: '30d',
+    }
+    const fakeSql = (async (strings: TemplateStringsArray) => {
+      const text = strings.join('?')
+      if (text.includes('SELECT post_image_json')) {
+        return [{ post_image_json: JSON.stringify(postImage) }]
+      }
+      throw new Error(`unscripted: ${text.slice(0, 80)}`)
+    }) as unknown as SyncSql
+
+    const throwingLedger = new Proxy(
+      {},
+      {
+        get: () => () => {
+          throw new Error('ledger must not be called when the projection hits')
+        },
+      },
+    ) as TokenUsageLedgerShape
+
+    const response = await Effect.runPromise(
+      handlePublicKhalaTokensServedChannelMixApi(getRequest('?window=30d'), {
+        KHALA_SYNC_DB: { connectionString: 'postgres://hyperdrive-fake' },
+        ledger: throwingLedger,
+        nowIso: () => nowIso,
+        projectionReadDeps: {
+          makeSqlClient: async () => ({ end: async () => undefined, sql: fakeSql }),
+        },
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as Record<string, unknown>
+    expect(body.window).toBe('30d')
+    expect(body.totalTokens).toBe(400)
+    expect(body.generatedAt).toBe(postImage.generatedAt)
+    expect(body.staleness).toMatchObject({
+      composition: 'stored_snapshot',
+      maxStalenessSeconds: 2,
+      rebuildsOn: ['scope.public.tokens-served-aggregates'],
+    })
   })
 
   test('rejects non-GET methods', async () => {

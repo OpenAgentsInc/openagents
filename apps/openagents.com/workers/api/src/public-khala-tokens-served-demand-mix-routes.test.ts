@@ -1,3 +1,4 @@
+import type { SyncSql } from '@openagentsinc/khala-sync-server'
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
@@ -147,6 +148,62 @@ describe('GET /api/public/khala-tokens-served/demand-mix', () => {
         tokens: 42,
       },
     ])
+  })
+
+  test('KS-6.7 (#8417): a projected snapshot is served FIRST — the ledger is never called', async () => {
+    const postImage = {
+      generatedAt: '2026-07-05T00:00:00.000Z',
+      groups: [
+        {
+          client: 'khala-code',
+          kind: 'external',
+          pct: 100,
+          reqs: 5,
+          source: 'chat',
+          tokens: 500,
+        },
+      ],
+      totalTokens: 500,
+      window: '30d',
+    }
+    const fakeSql = (async (strings: TemplateStringsArray) => {
+      const text = strings.join('?')
+      if (text.includes('SELECT post_image_json')) {
+        return [{ post_image_json: JSON.stringify(postImage) }]
+      }
+      throw new Error(`unscripted: ${text.slice(0, 80)}`)
+    }) as unknown as SyncSql
+
+    const throwingLedger = new Proxy(
+      {},
+      {
+        get: () => () => {
+          throw new Error('ledger must not be called when the projection hits')
+        },
+      },
+    ) as TokenUsageLedgerShape
+
+    const response = await Effect.runPromise(
+      handlePublicKhalaTokensServedDemandMixApi(getRequest('?window=30d'), {
+        KHALA_SYNC_DB: { connectionString: 'postgres://hyperdrive-fake' },
+        ledger: throwingLedger,
+        nowIso: () => nowIso,
+        projectionReadDeps: {
+          makeSqlClient: async () => ({ end: async () => undefined, sql: fakeSql }),
+        },
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as Record<string, unknown>
+    expect(body.window).toBe('30d')
+    expect(body.totalTokens).toBe(500)
+    expect(body.generatedAt).toBe(postImage.generatedAt)
+    expect(body.staleness).toMatchObject({
+      composition: 'stored_snapshot',
+      maxStalenessSeconds: 2,
+      rebuildsOn: ['scope.public.tokens-served-aggregates'],
+    })
   })
 
   test('rejects non-GET methods', async () => {

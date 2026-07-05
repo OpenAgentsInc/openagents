@@ -3268,6 +3268,92 @@ The literal acceptance criteria ("migrate onto khala-sync push, same
 transport as #8383") is not honestly achievable because the underlying data
 is same-process live state, not a server-observable, multi-device entity.
 
+## Public tokens-served aggregates projection — model/demand/channel-mix + history (KS-6.7, #8417)
+
+The public tokens-served model-mix, demand-mix, channel-mix, and per-day
+history reads
+(`GET /api/public/khala-tokens-served/{model-mix,demand-mix,channel-mix,history}`)
+now serve a `scope.public.tokens-served-aggregates` STORED-SNAPSHOT
+projection first, with a fail-open fallback to the previous live-at-read
+KS-8.2 (#8308) rollup-backed ledger call when the projection has not been
+refreshed yet for the requested window. This is a **full cutover** (not a
+dual-write-only posture like KS-6.4/KS-6.5): all four routes are plain
+unauthenticated Worker routes registered directly in `index.ts` and are
+POLLED on a timer from `apps/web/src/subscriptions.ts`
+(`KHALA_TOKENS_SERVED_HISTORY_POLL_INTERVAL_SECONDS`) — none of them ride
+the `/api/sync/connect`/`/log`/`/bootstrap` engine surface, so the
+anonymous-actor-required wall that forced KS-6.4/KS-6.5 into a dual-write
+posture does not apply here.
+
+**Design — no separate shaping logic, no new Postgres table:**
+
+- Contract: `packages/khala-sync/src/tokens-served-mix.ts` — one entity per
+  snapshot kind (`tokens_served_model_mix_snapshot`,
+  `..._demand_mix_snapshot`, `..._channel_mix_snapshot`,
+  `..._history_snapshot`), each carrying the EXACT shape the corresponding
+  ledger read already returns (`window`/`totalTokens`/`groups` for the
+  mixes, `window`/`bucket`/`timezone`/`series` for history) plus
+  `generatedAt`. Mix snapshots are keyed `entityId = window` (one of
+  `today`/`7d`/`30d`/`all`); the history snapshot is additionally keyed by
+  timezone (`entityId = "<window>:<timezone>"`, bucket is currently always
+  `"day"`).
+- Projector + reader: `packages/khala-sync-server/src/
+  tokens-served-mix-projection.ts` — same "no bespoke table, ride the
+  generic `khala_sync_changelog` directly" shape as settled-feed/gym
+  run-progress (**no new migration required**). Each refresh is a plain
+  upsert of the snapshot's post-image; the read is the latest row for one
+  `(entityType, entityId)` pair.
+- Worker glue: `workers/api/src/khala-sync-public-tokens-served-mix.ts` —
+  `refreshTokensServedAggregatesBestEffort` recomputes ALL FOUR bounded
+  windows for all four snapshot kinds using the SAME ledger reads the
+  routes already call (`readPublicTokensServedModelMix`/`...DemandMix`/
+  `...ChannelMix`/`...History`), then upserts each result. Because the
+  post-image IS the ledger's own shaped output, the projection and the
+  exact ledger read are byte-for-byte comparable by construction — the
+  KS-6.x/KS-8.x reconcile discipline reduces to "does the stored snapshot
+  match a fresh ledger read for the same window," which is exactly what
+  `packages/khala-sync-server/src/
+  tokens-served-mix-projection.test.ts`'s local-Postgres integration block
+  verifies (write via the projector, read back, assert equality against
+  the exact input).
+- **Refresh trigger:** piggybacks on the SAME shared `onIngestedEvent`
+  observer factory (`makeTokensServedProjectionObserver` in `index.ts`)
+  that already wires the KS-6.3 tokens-served counter into all seven ledger
+  ingest call sites — one factory edit, no per-call-site changes. **Debounced
+  in-isolate** (`TOKENS_SERVED_AGGREGATES_REFRESH_MIN_INTERVAL_MS = 30_000`):
+  a refresh attempt within 30s of the previous one is a pure in-memory
+  no-op (no Postgres round trip at all), so ingest volume never drives
+  Postgres read/write cost beyond that bound.
+- **Reader:** each route reads its snapshot through a small in-isolate cache
+  (`TOKENS_SERVED_AGGREGATES_CACHE_TTL_MS = 2_000`, same TTL as KS-6.3's
+  counter) with a `stored_snapshot` staleness contract
+  (`maxStalenessSeconds: 2`, `rebuildsOn: ["scope.public.tokens-served-aggregates"]`).
+  FAIL OPEN to the previous live-at-read ledger call (`live_at_read` /
+  `token_usage_events`) on any miss: binding absent, Postgres unreachable,
+  or the window/timezone not yet projected.
+- **Staleness-label fix:** the model-mix and history routes previously
+  claimed `rebuilt_on_transition` / `maxStalenessSeconds: 0` while actually
+  computing live at read on every request — an honesty bug this change also
+  fixes. The channel-mix route had the same mislabeling; the demand-mix
+  route already correctly declared `live_at_read`. All four routes now
+  declare the accurate composition for whichever path actually served the
+  response.
+- **Scope:** the tokens-served-mix machinery covers model-mix, demand-mix,
+  channel-mix (opportunistic — cheap once the shared mechanism existed, not
+  originally named in #8417), and history (default `America/Chicago`
+  timezone + `day` bucket only; other timezones always fail open to the
+  live ledger read, since only the default is refreshed today).
+- **Deferred:** `public-activity-timeline(-routes).ts` is NOT covered by
+  this change. Unlike the tokens-served group, it has no KS-8.2 rollup
+  twin — it live-merges five separate source domains (forum topics/posts,
+  Artanis ticks, Pylon capacity funnel snapshots, inference receipts, Pylon
+  API events, training-run-window authority) with no single clean
+  event-sourced write hook. Building a `scope.public.activity-timeline`
+  projection is a materially larger, unprecedented design problem (a new
+  five-domain event-sourced projector or a periodic rebuild-on-cron
+  approach) that was deliberately left for a follow-up rather than shipped
+  shallow. See #8417's tracking comment for the split rationale.
+
 ## Gym run-progress public projection — dual-write only, NOT a cutover (KS-6.5, #8415)
 
 `/gym`'s live follow-along panel (`publishGymRunProgressSnapshot` in

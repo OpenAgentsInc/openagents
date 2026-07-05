@@ -452,6 +452,19 @@ and the D1 `sync_*` tables have zero remaining users and drop cleanly**
      and has not been repointed to `/api/sync/connect`. #8416 stays open on
      that client-repoint follow-up.
 5. **Public aggregates** (demand-mix, model-mix, tokens-history, public activity timeline): project off live-at-read D1 onto `scope.public.*` counters — the Postgres rollup twins already exist from KS-8.2. (M, low)
+   - **2026-07-05 update (KS-6.7, #8417):** shipped model-mix, demand-mix,
+     channel-mix, and tokens-history as a `scope.public.tokens-served-aggregates`
+     stored-snapshot projection with a FULL cutover (not dual-write-only —
+     none of these four routes ride the `/api/sync/connect` anonymous-actor
+     wall that blocked settled-feed/gym run-progress, since they are plain
+     unauthenticated polled Worker routes). No new migration needed (rides
+     the generic `khala_sync_changelog`, same shape as settled-feed/gym
+     run-progress). See `docs/khala-sync/RUNBOOK.md`'s "Public tokens-served
+     aggregates projection" section. **Public activity timeline is
+     deliberately deferred** — unlike the tokens-served group it has no
+     KS-8.2 rollup twin and live-merges five separate source domains with no
+     single clean write hook; a real projection there is a materially larger
+     unprecedented design problem, left open rather than shipped shallow.
 6. **Desktop hot polls**: 1s Claude-approval poll, 2s thread-token-summary poll, 5s inbox poll — ~~all map cleanly to `scope.agent_run`/`scope.thread`/`scope.user`~~. (M, med — the 1s approval poll is latency-sensitive, migrate carefully)
    - **2026-07-05 correction (KS-6.8, #8418):** this blanket claim was WRONG
      for the 2s thread-token-summary poll and the 5s inbox poll — verified
@@ -683,6 +696,20 @@ untouched).
   the stale high-frequency `public-khala-tokens-served:*` SyncRoom throttle. The
   #8304 `scope.public.tokens-served` projection/reconcile path remains the live
   public counter producer.
+- #8417 (KS-6.7) — SHIPPED for model-mix, demand-mix, channel-mix, and
+  tokens-history: a `scope.public.tokens-served-aggregates` stored-snapshot
+  projection replaces the live-at-read read on all four routes, with a full
+  cutover (no dual-write-only posture needed — none of these routes ride the
+  `/api/sync/connect` anonymous-actor wall). No new migration (rides the
+  generic `khala_sync_changelog`). Also fixes the model-mix/channel-mix/
+  history routes' previously-mislabeled `rebuilt_on_transition` staleness
+  contract to the honest `live_at_read` (fallback path) /
+  `stored_snapshot` (projection-hit path) split. DEFERRED: the public
+  activity timeline (4th endpoint named in #8417) — it has no KS-8.2 rollup
+  twin and live-merges five separate source domains with no single clean
+  write hook, so a real projection there needs its own larger design effort
+  rather than a shallow/misleading version shipped under time pressure.
+  Issue left OPEN pending that follow-up (or a split-off tracking issue).
 
 ---
 

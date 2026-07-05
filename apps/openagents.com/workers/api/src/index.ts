@@ -836,6 +836,7 @@ import {
   reconcileTokensServedProjection,
   recordTokensServedProjectionBestEffort,
 } from './khala-sync-public-tokens-served'
+import { refreshTokensServedAggregatesBestEffort } from './khala-sync-public-tokens-served-mix'
 import {
   defaultMakeKhalaSyncSqlClient,
   handleKhalaSyncPush,
@@ -1239,6 +1240,8 @@ import {
   makeTokenLedgerWriteStoreForEnv,
   makeTokenUsageLedgerForEnv,
   mirrorTokenLedgerDirectInsertBestEffort,
+  tokenUsageLedgerFromRouteInput,
+  type TokenLedgerRouteEnvSlice,
 } from './token-ledger-store'
 import {
   makeD1TokenUsageLedger,
@@ -7621,8 +7624,18 @@ const traceStoreRoutes = makeTraceStoreRoutes({
 // insert in the projection transaction). Fail-soft by contract: it can
 // never fail or slow the D1 business write, and a pre-backfill
 // counter_not_initialized refusal is expected and quiet.
+//
+// KS-6.7 (#8417): the SAME observer also best-effort refreshes the public
+// tokens-served model-mix/demand-mix/channel-mix/history aggregate
+// snapshots (scope.public.tokens-served-aggregates). This piggybacks on
+// every ingest path that already wires `onIngestedEvent` (one shared
+// factory, seven call sites — see makeTokensServedProjectionObserver's
+// usages) rather than touching each ingest call site individually. The
+// refresh is in-isolate debounced (see
+// TOKENS_SERVED_AGGREGATES_REFRESH_MIN_INTERVAL_MS), so it adds no
+// Postgres round trip on the vast majority of ingest calls.
 const makeTokensServedProjectionObserver =
-  (env: Readonly<{ KHALA_SYNC_DB?: Readonly<{ connectionString: string }> }>) =>
+  (env: TokenLedgerRouteEnvSlice) =>
   (
     event: Readonly<{
       idempotencyKey: string
@@ -7630,17 +7643,24 @@ const makeTokensServedProjectionObserver =
       tokensServed: number
     }>,
   ) =>
-    recordTokensServedProjectionBestEffort(
-      {
+    Promise.all([
+      recordTokensServedProjectionBestEffort(
+        {
+          binding: env.KHALA_SYNC_DB,
+          log: (logEvent, fields) => logWorkerRouteWarning(logEvent, fields),
+        },
+        {
+          idempotencyKey: event.idempotencyKey,
+          observedAt: event.observedAt,
+          tokensServedDelta: event.tokensServed,
+        },
+      ),
+      refreshTokensServedAggregatesBestEffort({
         binding: env.KHALA_SYNC_DB,
+        ledger: tokenUsageLedgerFromRouteInput(env),
         log: (logEvent, fields) => logWorkerRouteWarning(logEvent, fields),
-      },
-      {
-        idempotencyKey: event.idempotencyKey,
-        observedAt: event.observedAt,
-        tokensServedDelta: event.tokensServed,
-      },
-    )
+      }),
+    ])
 
 // KS-8.2 (#8308): the token ledger dual-write store for one env — D1
 // authority + flag-gated fail-soft Postgres mirror. Spread into

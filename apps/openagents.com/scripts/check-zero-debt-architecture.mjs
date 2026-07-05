@@ -624,6 +624,13 @@ const runPromiseAllowlist = new Map([
   // reader and the tool are Promise-shaped while the ledger reads are Effects.
   // Named bridge; ratchet down if these move to an Effect program.
   ['workers/api/src/artanis-network-stats-d1.ts', 1],
+  // Added 2026-07-05 (KS-6.7, #8417): the tokens-served aggregates refresh
+  // bridges the Effect-returning ledger reads (readPublicTokensServedModelMix
+  // / ...DemandMix / ...ChannelMix / ...History) into the Promise-shaped
+  // khala-sync projection refresh sweep, via ONE shared named helper
+  // (`runEffect`) reused for all four ledger calls per window. Named bridge;
+  // ratchet down if the refresh sweep becomes an Effect program end-to-end.
+  ['workers/api/src/khala-sync-public-tokens-served-mix.ts', 1],
 ])
 
 const runPromiseDetails = countByFile(sourceFiles, /Effect\.runPromise\(/g)

@@ -57,6 +57,12 @@ export * from "./gym.js"
 // cycle).
 export * from "./agent-run.js"
 
+// Public tokens-served aggregate snapshot entity contracts (KS-6.7, #8417):
+// post-image shapes for scope.public.tokens-served-aggregates (model-mix,
+// demand-mix, channel-mix, and per-day history snapshots, one entity per
+// window). Self-contained module (no cycle).
+export * from "./tokens-served-mix.js"
+
 // ---------------------------------------------------------------------------
 // Branded primitives
 // ---------------------------------------------------------------------------

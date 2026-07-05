@@ -49,6 +49,7 @@ export * from "./settled-feed-projection.js"
 export * from "./sites-content-tables.js"
 export * from "./sql.js"
 export * from "./supervision-longtail-domain-tables.js"
+export * from "./tokens-served-mix-projection.js"
 export * from "./training-domain-tables.js"
 
 /**
