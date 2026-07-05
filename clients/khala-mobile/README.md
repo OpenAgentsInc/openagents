@@ -206,6 +206,20 @@ The script computes the Expo runtime fingerprint, runs `expo export`, seeds
 `apps/oa-updates`, signs the manifest when the local signing key is present, and
 deploys the OpenAgents server. It does not call Expo hosted update commands.
 
+## Assets
+
+Regenerate local app icon/adaptive icon/splash assets from the checked-in
+source icon:
+
+```sh
+bun run --cwd clients/khala-mobile assets:generate
+```
+
+The script uses macOS `sips` locally and writes
+`assets/images/icon.png`, `assets/images/adaptive-icon.png`, and
+`assets/images/splash-icon.png`. It does not use EAS or cloud asset
+generation.
+
 ## Native Modules
 
 - `modules/khala-push-to-talk-stt` ports the Swift Speech push-to-talk seam

@@ -75,6 +75,11 @@ Any Ignite pattern that conflicts with those rules is explicitly out of scope.
   dev-only fixture/devtools commands. Implemented:
   `src/devtools/khala-devtools.ts` defines a small `__DEV__`-gated command
   registry with public-safe navigation, fixture, and connectivity helpers.
+- [#8453](https://github.com/OpenAgentsInc/openagents/issues/8453) - add
+  local icon and splash asset generation. Implemented:
+  `scripts/generate-assets.sh` uses local macOS `sips` to derive icon,
+  adaptive icon, and splash assets from checked-in source material; app config
+  now points at the generated local assets without EAS.
 
 ## One-Line Verdict
 
@@ -414,12 +419,20 @@ public-safe route/fixture/connectivity summaries.
 
 ### Asset Generators
 
+Tracking: [#8453](https://github.com/OpenAgentsInc/openagents/issues/8453)
+
 Ignite has app-icon and splash-screen generators that handle platform-specific
 asset sizes. Khala currently has only `assets/images/icon.png`. This is useful
 later when the app needs a polished launch image/adaptive icon set.
 
 Recommended trigger: before production store polish. Keep generation local and
 do not adopt EAS cloud lanes.
+
+Implementation note: #8453 added `bun run --cwd clients/khala-mobile
+assets:generate`, backed by `scripts/generate-assets.sh`. The command derives
+`icon.png` (1024), `adaptive-icon.png` (1024), and `splash-icon.png` (512)
+locally with `sips`; `app.json` references those assets for Expo prebuild and
+native tooling. No EAS build/submit/update command was introduced.
 
 ## Do Not Borrow
 

@@ -5,6 +5,11 @@
     "scheme": "khala",
     "version": "0.1.0",
     "icon": "./assets/images/icon.png",
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#02060d"
+    },
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
@@ -30,6 +35,10 @@
     "android": {
       "package": "com.openagents.khala.mobile",
       "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#02060d"
+      },
       "permissions": [
         "RECORD_AUDIO"
       ]

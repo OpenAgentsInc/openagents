@@ -14,6 +14,7 @@
     "export:ota:ios": "expo export --platform ios --output-dir ../../apps/oa-updates/dist",
     "export:ota:android": "expo export --platform android --output-dir ../../apps/oa-updates/dist",
     "publish:ota": "bash ../../apps/oa-updates/scripts/publish-ota.sh",
+    "assets:generate": "bash scripts/generate-assets.sh",
     "architecture:check": "depcruise index.tsx src tests --config .dependency-cruiser.cjs",
     "test": "bun test",
     "typecheck": "tsc -p tsconfig.json --noEmit"
