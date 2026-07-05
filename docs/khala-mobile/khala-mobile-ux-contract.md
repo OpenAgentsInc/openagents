@@ -48,15 +48,25 @@ Identical to the desktop contract's rules (owner mandate, 2026-07-03/07-04):
 
 Khala Code desktop's registry has ~35 enforced contracts built up over weeks
 of dogfooding, with real DOM-mounted oracles (`happy-dom`) exercising actual
-UI components. Khala Mobile's registry is a first pass: every enforced
-contract here is a **pure-logic unit-test oracle** (auth discovery ordering,
-composer intent-builder targeting, security validators, sort/format helpers,
-a Kotlin source-string pin). None of them mount and assert on an actual
-rendered React Native component tree yet — `react-test-renderer` is a listed
-devDependency, but no test currently uses it. That gap is itself recorded as
-`khala_mobile.composer.rn_component_mount_coverage.v1` (pending) rather than
-silently accepted. Closing it is the top follow-up item for whoever picks this
-up next.
+UI components. Khala Mobile's registry started as a pure-logic-only first
+pass (auth discovery ordering, composer intent-builder targeting, security
+validators, sort/format helpers, a Kotlin source-string pin) — none of those
+oracles mounted an actual rendered React Native component tree.
+
+That specific gap has now been closed for `ChatComposer`:
+`khala_mobile.composer.rn_component_mount_coverage.v1` moved from `pending` to
+`enforced` on 2026-07-05, backed by real `react-test-renderer` mounts in
+`tests/chat-composer.test.tsx` — see `tests/support/rn-test-environment.ts`
+for the `bun test` React Native harness that makes mounting a real production
+component possible at all under `bun test` (Flow-stripping `react-native` on
+the fly, stubbing the handful of native-bridge-touching leaves that have no
+meaning without a device/simulator host). Still **not** covered by this: real
+native rendering, gesture/touch physics, Skia canvas drawing, or Reanimated
+worklet execution on an actual device/simulator — that stays under
+`khala_mobile.platform.launched_app_interaction_smoke.v1` (pending), and other
+screens/components beyond `ChatComposer` have not yet been given the same
+component-mount treatment. Extending this harness to the next screen is the
+top follow-up item for whoever picks this up next.
 
 ## How this runs in the normal sweep
 
@@ -76,7 +86,7 @@ up next.
 
 ## Registry
 
-Registry version: `2026-07-05.1` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-05.2` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — ENFORCED
 
@@ -108,7 +118,7 @@ Registry version: `2026-07-05.1` (schema `openagents.behavior_contracts.v1`)
 - **Enforcement tier:** test-sweep
 - **Oracle** `steer_and_queue_use_active_turn_lane.unit` (bun-test, unit): Steering a follow-up while a turn is active builds a runtime.appendUserMessage intent targeting the ACTIVE turn's own lane, and queuing a new turn behind an active one inherits that same lane — never the idle lane picker's current (possibly stale) selection. — `clients/khala-mobile/tests/ux-contracts.test.ts`
 - **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
-- **Authority boundary:** Binds the pure intent-builder layer only (the payload a Steer/Queue/Stop tap constructs). It does not cover the composer's own React state wiring that selects which builder to call — see khala_mobile.composer.rn_component_mount_coverage.v1 for that gap.
+- **Authority boundary:** Binds the pure intent-builder layer only (the payload a Steer/Queue/Stop tap constructs). The composer's own React state wiring that selects which builder to call is now covered separately by khala_mobile.composer.rn_component_mount_coverage.v1.
 
 ### `khala_mobile.security.delegation_prompt_rejects_secrets_and_local_paths.v1` — ENFORCED
 
@@ -190,15 +200,20 @@ Registry version: `2026-07-05.1` (schema `openagents.behavior_contracts.v1`)
 - **Blockers:** `blocker.khala_mobile.needs_physical_ios_device_with_apple_intelligence`, `blocker.khala_mobile.needs_local_fm_helper_proof`
 - **Authority boundary:** Blocked on hardware and the local helper referenced in the mobile README's 'Owner-Gated Proof Still Needed' section.
 
-### `khala_mobile.composer.rn_component_mount_coverage.v1` — PENDING
+### `khala_mobile.composer.rn_component_mount_coverage.v1` — ENFORCED
 
 - **Surface:** khala-mobile (chat composer)
 - **Stated by:** operator-agent via khala-code-session on 2026-07-05
 - **Statement:** ChatComposer's Steer/Queue picker, Stop button, and idle lane picker actually render the correct visible state and respond to real presses when mounted as a live React Native component tree, not just via their pure intent-builder functions.
-- **Enforcement tier:** unenforced
-- **Verification:** No automated oracle yet. react-test-renderer is a devDependency but no test in this package currently mounts ChatComposer or any routed screen; needs a component-render test harness (react-test-renderer or an RN Testing Library equivalent wired into `bun test`) before this can move to enforced.
-- **Blockers:** `blocker.khala_mobile.no_rn_component_render_harness_in_bun_test`
-- **Authority boundary:** This is a test-infrastructure gap, not a product defect: the underlying pure builder functions ARE unit-tested (see the enforced contracts above). The gap is specifically that no test mounts the actual React Native component tree.
+- **Enforcement tier:** test-sweep
+- **Oracle** `composer_mounts_idle_shows_send.unit` (bun-test, unit): The real ChatComposer component mounts without crashing via react-test-renderer, and the idle (no active turn) state shows exactly one Send button and zero Stop buttons. — `clients/khala-mobile/tests/chat-composer.test.tsx`
+- **Oracle** `composer_active_turn_shows_stop_hides_lane_picker.unit` (bun-test, unit): With an active turn, the composer shows exactly one Stop button and zero Send buttons, and the idle-only lane picker (accessibilityLabel="Provider") does not render. — `clients/khala-mobile/tests/chat-composer.test.tsx`
+- **Oracle** `composer_typing_updates_input_value.unit` (bun-test, unit): Calling the real TextInput's onChangeText prop updates the controlled input's value on next render, proving the component's own text state wiring, not just the pure text-merge helpers. — `clients/khala-mobile/tests/chat-composer.test.tsx`
+- **Oracle** `composer_press_send_calls_push_start_turn.unit` (bun-test, unit): Pressing the real Send button's onPress after typing idle text calls the injected push() exactly once with a [chat.appendMessage, runtime.startTurn] mutation pair, proving the component's own send-dispatch wiring end to end. — `clients/khala-mobile/tests/chat-composer.test.tsx`
+- **Oracle** `composer_press_stop_calls_push_interrupt_turn.unit` (bun-test, unit): Pressing the real Stop button's onPress while a turn is active calls the injected push() exactly once with a [runtime.interruptTurn] mutation. — `clients/khala-mobile/tests/chat-composer.test.tsx`
+- **Oracle** `composer_turn_status_labels_render_per_status.unit` (bun-test, unit): For each real turn-status value (queued, running, waiting_for_input), the mounted component renders the correct human status label and still shows a reachable Stop button. — `clients/khala-mobile/tests/chat-composer.test.tsx`
+- **Verification:** bun test tests/chat-composer.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. Real component mounting is enabled by the bun test React Native harness in tests/support/rn-test-environment.ts (see that file's header for how react-native itself becomes importable, and which native-bridge-touching leaves are stubbed).
+- **Authority boundary:** Binds ChatComposer's own React state/render/effect wiring (button swap, lane-picker visibility, controlled-input value, push() call shape) as proven by a REAL mounted component tree via `tests/support/rn-test-environment.ts`. It does not cover real native rendering, gesture/touch physics, Skia drawing, or Reanimated worklet execution on an actual device/simulator — those stay under khala_mobile.platform.launched_app_interaction_smoke.v1, which remains pending. The Skia-drawn ArwesButton/BackgroundGradient/ActivityIndicator leaves and react-native-reanimated are test-doubled (documented in tests/chat-composer.test.tsx's header comment) because they have no meaningful non-native equivalent; everything else in the real import graph (react-native core primitives, push-to-talk-core, khala-runtime-compose-core, khala-sync-push-core, swipe-quote-core, theme/tokens) is the real, unmocked module.
 
 ### `khala_mobile.platform.launched_app_interaction_smoke.v1` — PENDING
 

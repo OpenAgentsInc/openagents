@@ -65,10 +65,17 @@ same machine that built the app. Mobile is structurally harder:
   Android SDK tooling and is slow to boot) or a physical device.
   Maestro/Detox/XCUITest/Espresso are the standard tools for that layer, and
   none is wired into this repo yet.
-  This is exactly why `khala_mobile.composer.rn_component_mount_coverage.v1`
-  and `khala_mobile.platform.launched_app_interaction_smoke.v1` in the new
-  contract registry are `pending`, not `enforced` — there is no dishonest way
-  to claim device-level coverage without the harness to back it.
+  This is exactly why `khala_mobile.platform.launched_app_interaction_smoke.v1`
+  in the contract registry stays `pending` — there is no dishonest way to
+  claim device-level coverage without the harness to back it. (A narrower,
+  real gap in the SAME family — mounting `ChatComposer` itself as a live
+  React component tree, as opposed to only its pure intent-builder functions
+  — was closed on 2026-07-05 without a device/simulator at all, via a `bun
+  test`-only React Native harness; see
+  `khala_mobile.composer.rn_component_mount_coverage.v1`, now `enforced`.
+  That proves real component STATE/RENDER/EFFECT logic, not real native
+  rendering, gesture physics, or Skia/Reanimated execution — the device-level
+  claim above is unaffected.)
   It is also why the audit distinguishes "build succeeded" from "app launched
   and was interacted with" as two different, separately-tracked claims.
 - Native modules (STT, Apple FM) genuinely cannot be exercised without real
@@ -89,7 +96,7 @@ explicitly as the next investment rather than faked.
 
 | Kind | Desktop today | Mobile today | Mobile next |
 | --- | --- | --- | --- |
-| Scripted scenarios | DOM-mounted `happy-dom` oracle tests + QA-harness RPC scenarios | The 21-file `bun test` suite plus the new `tests/ux-contracts.test.ts` contract oracles — deterministic, human-designed, real | A Maestro (or Detox) scripted flow per platform: sign-in resolves, open a thread, send a message, see the lane picker — this is exactly what `khala_mobile.platform.launched_app_interaction_smoke.v1` is waiting on |
+| Scripted scenarios | DOM-mounted `happy-dom` oracle tests + QA-harness RPC scenarios | The 22-file `bun test` suite, including `tests/ux-contracts.test.ts`'s contract oracles AND (as of 2026-07-05) `tests/chat-composer.test.tsx`'s real `react-test-renderer` mounts of the production `ChatComposer` — deterministic, human-designed, real, and now includes actual component-tree assertions, not just pure-function ones | Extend the same `bun test` React Native harness (`tests/support/rn-test-environment.ts`) to the next screen/component; separately, a Maestro (or Detox) scripted flow per platform: sign-in resolves, open a thread, send a message, see the lane picker — this is exactly what `khala_mobile.platform.launched_app_interaction_smoke.v1` is waiting on |
 | Seeded monkeys | fuzz/regression corpus (`khala-code-mechanical-corpus.md`) | none yet | A bounded input-fuzz pass over the pure builder functions (e.g. `validateDelegationPrompt`, `mergeTranscriptIntoDraft`) is cheap to add now with property-based generation; a real on-device monkey (random taps) needs the same device harness as scripted scenarios |
 | LLM explorers | an agent freely driving Khala Code desktop looking for UX breakage (this is literally how the desktop registry was seeded — see episode 246's "conversation history mining pass") | this audit itself is one instance of an LLM explorer pass — reading every real source file and test, and recording exactly what's proven vs. assumed | a recurring version of this exact audit process, re-run periodically as the app grows, feeding new pending/enforced contracts the same way |
 | Perf probes | `docs/qa/khala-code-latency-budgets.md`, perf-trend regressions | none yet | cold-launch time, thread-switch latency, and OTA-check overhead are the natural first mobile perf budgets, but all need a real device/emulator to measure meaningfully — not simulator-only |
@@ -103,12 +110,12 @@ pass:
 | Finding | Lifecycle state | Evidence |
 | --- | --- | --- |
 | Android Kotlin STT module `AsyncFunction` reified-generic build failure | fixed, distilled | `khala_mobile.android.stt_module_typed_asyncfunction_signature.v1` (enforced regression oracle) + `clients/khala-mobile/README.md` real-build receipt |
-| No React Native component-mount test harness in this package | filed | `khala_mobile.composer.rn_component_mount_coverage.v1` (pending contract) |
+| No React Native component-mount test harness in this package | fixed, distilled | `khala_mobile.composer.rn_component_mount_coverage.v1` moved `pending` -> `enforced` on 2026-07-05: `clients/khala-mobile/tests/support/rn-test-environment.ts` (a `bun test` React Native harness — Flow-strips `react-native` on the fly and stubs the handful of native-bridge-touching leaves) plus `clients/khala-mobile/tests/chat-composer.test.tsx` (6 real `react-test-renderer` mounts of the production `ChatComposer`, asserting idle/active button state, controlled-input typing, and real `push()` call shapes on Send/Stop). Scoped to `ChatComposer` only — see the follow-up list below for extending it to other screens/components. |
 | No device/emulator launch-and-interact proof for either platform | filed | `khala_mobile.platform.launched_app_interaction_smoke.v1` (pending contract) |
 | Push-to-talk STT never actually captures audio (both platforms, by design) | filed (known, not a regression — pre-existing scoped limitation) | `khala_mobile.stt.real_device_capture_proof.v1` (pending contract) |
 | Apple Foundation Models bridge never actually calls the FM API (by design) | filed (known, not a regression) | `khala_mobile.applefm.real_device_bridge_proof.v1` (pending contract) |
 
-Counted honestly: **1 fixed+distilled, 4 filed, 0 caught-but-unfiled.** This
+Counted honestly: **2 fixed+distilled, 3 filed, 0 caught-but-unfiled.** This
 ledger is intentionally conservative — a finding only advances when a real
 receipt (a passing oracle, a real build log, a dated manual-check) backs the
 next state, exactly like the desktop ledger's rule.
@@ -156,19 +163,32 @@ copy gate):
 
 In priority order:
 
-1. **Wire a real RN component-mount test harness into `bun test`.**
-   `react-test-renderer` is already a devDependency; the missing piece is one
-   working example (mount `ChatComposer` with a fake `push` and assert the
-   Steer/Queue picker appears only when `activeTurn` is set and text is
-   non-empty) that the rest of the registry's `pending` component contracts
-   can then build on.
+1. ~~**Wire a real RN component-mount test harness into `bun test`.**~~ **Done
+   2026-07-05.** `clients/khala-mobile/tests/support/rn-test-environment.ts`
+   is the harness (Flow-strips `react-native` via a Bun `onLoad` plugin using
+   `@react-native/babel-preset`, and stubs the small set of native-bridge-
+   touching leaves — `View`, `Text`, `TextInput`, `Pressable`, `Platform` —
+   that have no meaning without a device/simulator host); the working
+   example is `clients/khala-mobile/tests/chat-composer.test.tsx`, which
+   mounts the REAL `ChatComposer` and asserts the Steer/Queue/Stop button
+   swap, the idle-only lane picker's visibility, controlled-input typing,
+   and the real `push()` call shape for Send and Stop. This closed
+   `khala_mobile.composer.rn_component_mount_coverage.v1` (now `enforced`).
+   Scoped to `ChatComposer` only — extending the SAME harness to other
+   screens/components is the next highest-leverage step here, since the hard
+   part (making `react-native` importable at all under `bun test`) is done;
+   each new component only needs its own leaf-component mocks (Skia/gesture-
+   handler/native-module boundaries), not new harness work.
 2. **Stand up Maestro (or Detox) flows for both platforms** covering the
    scenario in `khala_mobile.platform.launched_app_interaction_smoke.v1`:
    launch, sign-in resolves, open a thread, send a message, see the lane
    picker. This is the mobile equivalent of desktop's DOM-mounted scenarios
    and is the single highest-leverage next investment, since it unblocks
    BOTH the "launched app" contract and gives a real harness for future
-   scripted scenarios.
+   scripted scenarios. Real device/simulator rendering, gesture/touch
+   physics, Skia drawing, and Reanimated worklets remain fully out of scope
+   for the `bun test` harness above — it exercises React
+   state/render/effect logic only, never real native rendering.
 3. **A dated physical-device manual-check pass** for push-to-talk capture and
    the Apple FM bridge, once the underlying native implementations move past
    their current always-reject/always-unavailable shells. Until then those
@@ -177,7 +197,7 @@ In priority order:
 4. **Close the iOS/Android evidence gap** named in the audit: get Android to
    at least TestFlight-equivalent evidence (an installed, launched APK on a
    real device or emulator), not just a clean Gradle assemble.
-5. **A nightly matrix analog for mobile**, once (1) and (2) exist, mirroring
+5. **A nightly matrix analog for mobile**, once (2) exists, mirroring
    `docs/qa/khala-code-nightly-matrix.md`'s shape: run the unit suite +
    Maestro flows + the behavior-contract coverage check on a schedule, write
    a `qa-status-surface.json`-equivalent artifact, and stand up a stable

@@ -1,0 +1,2 @@
+[test]
+preload = ["./tests/support/rn-test-environment.ts"]

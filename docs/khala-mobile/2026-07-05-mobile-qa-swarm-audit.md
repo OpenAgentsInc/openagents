@@ -184,6 +184,19 @@ What's only manually-verified-once or not verified at all:
   when tapped" is not. This is now the explicit pending contract
   `khala_mobile.composer.rn_component_mount_coverage.v1`, not a silently
   accepted hole.
+
+  **Update, later on 2026-07-05:** this gap is closed for the button-swap,
+  lane-picker-visibility, controlled-input-typing, and real-`push()`-call
+  behavior — `khala_mobile.composer.rn_component_mount_coverage.v1` moved to
+  `enforced`, backed by real `react-test-renderer` mounts of the production
+  `ChatComposer` in `clients/khala-mobile/tests/chat-composer.test.tsx`, via
+  a new `bun test` React Native harness
+  (`clients/khala-mobile/tests/support/rn-test-environment.ts`; see
+  `docs/khala-mobile/2026-07-05-qa-swarm-mobile-adaptation.md`'s findings
+  ledger for the full evidence). The animated height transition and the
+  swipe-gesture caveat below are still not covered — Reanimated and
+  Skia/gesture-handler leaves are test-doubled in that harness, not
+  exercised for real.
 - Swipe-to-quote (`buildComposerTextWithQuote` in `swipe-quote-core.ts`) has
   real unit coverage for the pure merge function
   (`tests/swipe-quote-core.test.ts`), but the same "never mounted as a
