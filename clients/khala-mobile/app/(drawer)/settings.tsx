@@ -106,16 +106,27 @@ const FleetSection = () => {
         ) : (
           accounts.map((account: FleetAccountEntity) => (
             <View
-              className="flex-row items-center justify-between rounded-xl border border-border bg-surfaceRaised px-3 py-2"
+              className="rounded-xl border border-border bg-surfaceRaised px-3 py-2"
               key={account.accountRefHash}
             >
-              <Text className="font-mono text-sm text-text">
-                {formatAccountRefHash(account.accountRefHash)}
-              </Text>
-              <Text className={`font-mono text-xs ${READINESS_COLOR[account.readiness]}`}>
-                {account.readiness}
-                {account.rateLimitClass === undefined ? "" : ` · ${account.rateLimitClass}`}
-              </Text>
+              <View className="flex-row items-center justify-between">
+                <Text className="font-mono text-sm text-text">
+                  {formatAccountRefHash(account.accountRefHash)}
+                  {account.provider === undefined ? "" : ` · ${account.provider}`}
+                </Text>
+                <Text className={`font-mono text-xs ${READINESS_COLOR[account.readiness]}`}>
+                  {account.readiness}
+                  {account.rateLimitClass === undefined ? "" : ` · ${account.rateLimitClass}`}
+                </Text>
+              </View>
+              {account.capacityAvailable === undefined &&
+              account.capacityBusy === undefined &&
+              account.capacityQueued === undefined ? null : (
+                <Text className="mt-1 font-mono text-xs text-textFaint">
+                  {account.capacityAvailable ?? 0} available ·{" "}
+                  {account.capacityBusy ?? 0} busy · {account.capacityQueued ?? 0} queued
+                </Text>
+              )}
             </View>
           ))
         )}
@@ -141,8 +152,9 @@ const FleetSection = () => {
       </View>
 
       <Text className="font-mono text-xs text-textFaint">
-        Account identity here is a public-safe hashed ref only (no provider
-        name, email, or capacity — that detail stays desktop-local).
+        Account identity is a public-safe hashed ref only — no email or raw
+        credential ever leaves the desktop, just readiness, provider, and
+        dispatch-slot capacity.
       </Text>
     </View>
   )

@@ -329,3 +329,62 @@ RPC, `set_desired_slots` (`runId: "khala-mobile-fleet-demo"`, `desiredSlots:
 on the iOS Simulator: the Settings screen's Fleet section renders the real
 run card, the real worker card, and the honest "no connected accounts"
 empty state — via the drawer (☰ → Settings), all through Khala Sync.
+
+### Follow-up: `fleet.reportAccountState` closes the account-visibility gap
+
+Added the missing write path — `fleet.reportAccountState` (MC-2,
+`packages/khala-sync-server/src/fleet-mutators.ts`) — extending
+`FleetAccountEntity` with optional `provider`/`capacityAvailable`/
+`capacityBusy`/`capacityQueued` fields (bounded non-identifying scalars,
+no schema-invariant conflict). Unlike the operator-intent mutators, this
+is a status report of already-true fact from the desktop, so it skips
+the `khala_sync_fleet_intents` durable-intent table entirely (no
+migration needed) and goes straight to the scope-owner gate + entity
+append every fleet mutator uses. 2 new integration tests against real
+local Postgres (merge-across-reports, foreign-user rejection); full
+khala-sync-server suite (350 tests) and khala-sync suite (90 tests)
+stayed green. Desktop got the matching client mutator + a new
+`khalaSyncFleetReportAccountState` RPC
+(`shared/rpc.ts`/`khala-sync-service.ts`/`rpc-handlers.ts`/`ui/main.ts`).
+
+Deployed, then verified with the REAL local Codex account roster (queried
+live via the desktop's existing `codexFleetStatus` RPC — 4 connected
+accounts, not the 1 assumed earlier): pushed all 4 through
+`khalaSyncFleetReportAccountState` on the running desktop, confirmed via a
+prod bootstrap read, then confirmed live on the iOS Simulator — Settings >
+Fleet now shows all 4 real accounts with real provider (`codex`) and real
+capacity (`5 available · 0 busy · 0 queued` each), not a demo/config
+placeholder.
+
+### Explicitly NOT done here: mobile/desktop-initiated dispatch + round-robin
+
+The user's actual end goal is to kick off new chats from either device and
+have the work round-robin to whichever connected account has the most
+capacity. Now that account capacity is genuinely visible via Khala Sync,
+that goal has two remaining pieces, neither built yet:
+
+1. **A real dispatch consumer.** A separate concurrent session landed
+   `runtime.startTurn`/`appendUserMessage`/`interruptTurn`/`continueTurn`/
+   `retryTurn`/`closeTurn`/`recordEvent` mutators (#8370,
+   `packages/khala-sync-server/src/runtime-mutators.ts`) that write
+   `runtime_turn`/`runtime_control_intent`/`runtime_event` rows into
+   `scope.user.<owner>` + `scope.thread.<threadId>` — exactly the shape
+   you'd want a mobile-initiated "start this chat" command to ride. But
+   it's 100% declarative today: no Worker route, Durable Object, queue, or
+   Pylon poller consumes these intents to actually dispatch real Codex/
+   Claude execution (confirmed by grepping `apps/pylon/`, the Worker, and
+   the desktop for any consumer — zero hits outside the mutator/registry
+   files). Making it real needs a Pylon-side poller analogous to the
+   already-working `fleet-intents.ts` + `fleet-intent-enforcement.ts`
+   pattern, reading `khala_sync_runtime_control_intents` and actually
+   starting a local Codex/Claude session.
+2. **Capacity-aware account selection.** Neither the fleet schema nor the
+   new runtime-control schema has an account-selection concept
+   (`target.lane` picks an execution lane type, not a specific account).
+   The consumer above would need to read the `fleet_account` capacity data
+   this session just added and pick the account with the most
+   `capacityAvailable` when dispatching a queued `runtime_turn`.
+
+Both are real, scoped, buildable next phases — not done in this pass to
+avoid rushing a cross-device dispatch/execution path (security and
+correctness sensitive) without proper design and testing time.
