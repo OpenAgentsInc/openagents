@@ -4461,6 +4461,106 @@ Repointing the actual anonymous client surfaces
 deliberately NOT done as part of this change; it is follow-up work for
 #8414 (settled feed, KS-6.4) and #8415 (gym run-progress, KS-6.5).
 
+## KS-6.10 capstone assessment — re-scoped, one legacy kind retired (#8420)
+
+`#8420` ("repoint web `subscriptions.ts` to `/api/sync/connect` and retire
+legacy sync spine") is explicitly gated on KS-6.4 through KS-6.9
+(#8414-#8419) all merged. This pass checked each against current `main`:
+
+- #8414 (KS-6.4, settled feed) — CLOSED, full cutover both ends.
+- #8415 (KS-6.5, gym run-progress) — CLOSED as not-applicable: the gym/
+  training-runs feature was deprecated by the owner on 2026-07-05, so the
+  dual-write from that section above stays forever; no client repoint is
+  coming.
+- #8416 (KS-6.6, the three `syncScopeForAgentRun` call sites) — code-complete
+  on `main` per the "legacy poke deleted" section above; the GitHub issue
+  had not actually been closed despite its own last comment claiming
+  closure, so this pass closed it after re-verifying the deletion is real
+  in the current diff.
+- #8417 (KS-6.7, public aggregates) + #8421 (KS-6.7b, activity-timeline) —
+  both shipped; #8417 was left open pending #8421, which has since shipped
+  and closed, so this pass closed #8417 too.
+- #8418/#8419 (KS-6.8/KS-6.9, desktop hot polls) — both CLOSED, correctly
+  not sync-migration candidates.
+
+**All six are now functionally resolved, but the capstone still cannot
+proceed**, for a reason none of KS-6.4-6.9 ever addressed: those six issues
+never covered team chat, thread files, or the broader agent-goal CRUD /
+ongoing agent-run-status-notify producer paths, even though the Wave 3 plan
+in the cleanup audit always named them. Confirmed live on `main` today —
+`grep -rL notifySyncScopes` (outside `sync-notifier.ts` itself) still
+returns:
+
+- `workers/api/src/index.ts` — three `publishTeamChatMessageSync` call sites
+  (team chat message post, autopilot-answer message, run-summary update).
+- `workers/api/src/thread-file-routes.ts` — `publishTeamThreadFileSync`.
+- `workers/api/src/omni-handlers.ts` — `publishAgentGoalSync` /
+  `publishAgentGoalEventSync` (goal CRUD; a different pair of call sites
+  from the three KS-6.6 already handled) and `notifyAgentRunSyncScopes`
+  (fired on every agent-run status transition, notifying the personal-
+  workroom/team/thread scopes — i.e. the scopes the main web socket below
+  still rides).
+- `workers/api/src/inference/gym/run-progress-sync.ts` — the gym dual-write,
+  deliberately permanent per #8415.
+
+And `apps/web/src/subscriptions.ts`'s `syncScopesForModel`/
+`syncStreamDependenciesForModel` — the workspace/team/thread multi-scope
+socket that is the actual live transport for team chat, thread files, and
+agent goals in the product UI — still opens the legacy `syncStreamHref`
+(`/api/sync/${kind}/${id}/stream`), never repointed. This is almost
+certainly the single largest remaining migration in the whole Wave 3
+effort, and it has never had its own tracked KS-6.x issue.
+
+**Two smaller loose ends, for whoever picks up that migration:**
+
+- `KHALA_TOKENS_SERVED_SCOPE` in `subscriptions.ts` still opens the legacy
+  `syncStreamHref`, even though its legacy producer was deleted in #8372
+  (Wave 0). The connection is a harmless no-op (nothing publishes to that
+  legacy scope), but it was never repointed to the new engine's
+  `scope.public.tokens-served` — which is already anonymous-readable (it's
+  the KS-8.x anonymous-connect fix's own evidence scope) and already emits
+  a live per-increment changelog entry (`applyPublicCounterIncrement` in
+  `packages/khala-sync-server/src/public-counter-projection.ts` appends a
+  `{counterId, total, lastEventAt}` post-image on every increment). A real
+  repoint would map that post-image onto the client's existing
+  `KHALA_TOKENS_SERVED_SUMMARY_COLLECTION` monotonic-raise reducer (not the
+  delta reducer, since the new engine posts authoritative totals, not
+  deltas) and would need the same snapshot-seed treatment KS-6.4 gave
+  settled-feed. Real, bounded, doable — just not attempted this pass, since
+  it does not retire any spine infrastructure by itself (the client is
+  already the only thing keeping that one legacy kind's route reachable).
+- The legacy D1 `sync_scopes`/`sync_changes`/`sync_mutations` tables cannot
+  drop even for the ONE genuinely fully-migrated consumer (settled feed):
+  `publishSettledFeedEvents` still writes the D1 outbox on every settlement
+  (unrelated to the retired `notifySyncScopes` poke), because
+  `GET /api/public/settled-feed` (`public-settled-feed-routes.ts`) reads
+  that same D1 outbox directly as its own fail-open fallback source,
+  bypassing `sync-routes.ts`/`SyncRoomDurableObject` entirely. Retiring the
+  D1 tables needs that fallback rehomed first, independent of any
+  DO-room/kind retirement.
+
+**What WAS safe to retire this pass:** the `'public-settled-feed'` kind in
+`workers/api/src/sync-routes.ts` (`SyncScopeKind`, `syncScopeForPath`,
+`optionalSyncScopeKind`, `isPublicSyncPath`) — the one legacy sync kind with
+zero remaining producers (deleted in #8414) AND zero remaining consumers
+(both its stream and its snapshot action were repointed to the new engine
+in #8414; confirmed via repo-wide grep that nothing outside tests
+references `/api/sync/public-settled-feed/*`, and that the D1-fallback read
+route above bypasses this route entirely). `GET/WS
+/api/sync/public-settled-feed/<id>/{snapshot,stream}` now 404 through the
+existing generic unknown-kind fallthrough — satisfying the capstone's own
+"confirm 404/gone rather than silently double-serving" bullet for this one
+kind. `sync-routes.test.ts` was updated to assert 404 (and that the DO room
+is never touched) instead of the old 200/204 success path. Every other
+legacy kind (`workspace`, `team`, `thread`, `agent-run`,
+`public-gym-run-progress`, `public-khala-tokens-served`) is untouched —
+each still has at least one live legacy producer or consumer.
+
+**Net:** #8420 stays open. Full spine retirement needs a new, explicitly
+tracked migration for team chat + thread files + agent-goal CRUD + the
+ongoing agent-run-status legacy producer (recommend KS-6.11 or similar)
+before this issue can advance further.
+
 ## What this runbook does NOT cover
 
 - Deploying the Worker/hub DO: `docs/DEPLOYMENT.md` (deploy:safe gate).

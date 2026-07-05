@@ -371,7 +371,19 @@ describe('sync routes', () => {
     expect(mutationResponse.status).toBe(404)
   })
 
-  test('allows anonymous public settled-feed snapshots and streams', async () => {
+  test('public-settled-feed is a retired legacy kind (KS-6.10, #8420): snapshot and stream return 404, not a double-served room', async () => {
+    // KS-6.4 (#8414) fully cut the settled feed over to the khala-sync engine
+    // on BOTH ends: the legacy `notifySyncScopes` producer was deleted
+    // (`tassadar-settled-feed-sync.ts`) and the web client now opens
+    // `WS /api/sync/connect?scope=scope.public.settled-feed` instead of this
+    // legacy DO-room path (`apps/web/src/subscriptions.ts`). With zero
+    // remaining producers AND zero remaining consumers, `'public-settled-feed'`
+    // was removed from `SyncScopeKind` entirely (KS-6.10, #8420) — this is
+    // the acceptance criteria's own "confirm 404/gone rather than silently
+    // double-serving" check, scoped to the one legacy kind that is provably
+    // dead today (unlike team chat, thread files, agent goals, gym
+    // run-progress, or the workspace/team/thread socket, which are all still
+    // live legacy consumers/producers and must NOT be retired yet).
     const db = makeMemoryD1()
     db.changes.push({
       actor_id: 'system',
@@ -398,18 +410,7 @@ describe('sync routes', () => {
       undefined,
     )
 
-    await expect(snapshotResponse.json()).resolves.toMatchObject({
-      collections: {
-        settled_events: {
-          'settled.window.0': {
-            amountSats: 5,
-            totalSettledSats: 5,
-          },
-        },
-      },
-      scope: 'public-settled-feed:tassadar',
-    })
-    expect(snapshotResponse.status).toBe(200)
+    expect(snapshotResponse.status).toBe(404)
 
     const capturedScopes: Array<string> = []
     const streamResponse = await runRoute(
@@ -420,8 +421,10 @@ describe('sync routes', () => {
       undefined,
     )
 
-    expect(streamResponse.status).toBe(204)
-    expect(capturedScopes).toEqual(['public-settled-feed:tassadar'])
+    expect(streamResponse.status).toBe(404)
+    // The retired kind must never reach the DO room at all — not merely
+    // return a not-found status while still poking the room underneath.
+    expect(capturedScopes).toEqual([])
   })
 
   test('allows anonymous public gym run-progress snapshots and streams (#6261)', async () => {

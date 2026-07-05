@@ -404,6 +404,18 @@ and the D1 `sync_*` tables have zero remaining users and drop cleanly**
 (explicitly called out as a non-migration, no-Postgres-twin item in
 `MIGRATION_PLAN.md` §3.16).
 
+- **2026-07-05 correction (KS-6.10, #8420):** "six live consumers" undercounts
+  the real remaining surface — team chat and thread files were never given
+  their own KS-6.x issue and are still fully live on this spine today (see
+  the Wave 3 KS-6.10 entry below for the full breakdown). One kind, though,
+  IS now provably dead on both ends: `'public-settled-feed'` (producer
+  deleted in #8414, client repointed in #8414) was removed from
+  `sync-routes.ts`'s `SyncScopeKind` this pass — the first (and so far only)
+  legacy kind actually retired. The D1 `sync_*` tables themselves still
+  cannot drop even for that one kind: `public-settled-feed-routes.ts` reads
+  the same D1 outbox directly as a fail-open fallback, independent of the
+  `SyncRoomDurableObject`/`notifySyncScopes` path this section describes.
+
 ### 6.2 Concrete ADOPT-SYNC list, ranked by effort/risk
 
 1. **Tokens-served**: complete in #8372 — the *legacy* producer
@@ -768,6 +780,113 @@ sync scope candidate — converted to a proven local IPC push, same
 fallback — see §6.2 item 6/§6.3 above); then retire `SyncRoomDurableObject`
 and drop the legacy `sync_*` D1 tables — the clean capstone of this whole
 consolidation effort.
+
+- **2026-07-05 KS-6.10 capstone assessment (#8420) — re-scoped, NOT
+  ready for full retirement; one genuinely dead legacy kind retired now.**
+  #8420 is explicitly gated on KS-6.4 through KS-6.9 (#8414-#8419) all
+  merged. Checked each against current `main`, not memory:
+  - #8414 (KS-6.4, settled feed) — **CLOSED**, full cutover both ends
+    (producer deleted, client repointed to `/api/sync/connect`).
+  - #8415 (KS-6.5, gym run-progress) — **CLOSED as not-applicable**: the
+    owner deprecated the gym/training-runs feature on 2026-07-05, so the
+    already-landed dual-write (legacy producer + new-engine producer both
+    live) stays as-is permanently; no client repoint is coming.
+  - #8416 (KS-6.6, the three `syncScopeForAgentRun` call sites in
+    `omni-handlers.ts`) — code-complete on `main` (client repoint
+    `6ff849527f`, legacy-poke deletion `f6ebc76a7a`'s follow-up commit) but
+    the GitHub issue itself had never been closed despite its own last
+    comment declaring closure; closed it during this pass once the deletion
+    was re-verified live in the diff (`syncScopeForAgentRun` no longer
+    exists as an active call anywhere).
+  - #8417 (KS-6.7, public aggregates) — shipped tokens-served
+    model-mix/demand-mix/channel-mix/history as a full cutover, deferred
+    activity-timeline to #8421 (KS-6.7b), which has since shipped and
+    closed too. #8417 itself was left open pending that follow-up; closed
+    it during this pass now that both halves are done.
+  - #8418/#8419 (KS-6.8/KS-6.9, desktop hot polls) — both **CLOSED**,
+    correctly not sync-migration candidates (device-local/same-process
+    telemetry); real local-push mitigations shipped instead.
+
+  **So all six ARE now functionally resolved — but that does not unblock
+  the capstone**, because of a premise gap in how Wave 3 was originally
+  scoped: KS-6.4 through KS-6.9 never actually covered team chat, thread
+  files, or the broader agent-goal CRUD / ongoing agent-run status notify
+  paths this same Wave 3 paragraph (above) always intended to migrate.
+  #8416's own acceptance criteria were narrowly the three run-creation call
+  sites in `omni-handlers.ts`; nothing in the KS-6.x issue set ever touched:
+  - `publishTeamChatMessageSync` (team chat messages; 3 live call sites in
+    `workers/api/src/index.ts`),
+  - `publishTeamThreadFileSync` (thread files; `thread-file-routes.ts`),
+  - `publishAgentGoalSync` / `publishAgentGoalEventSync` (agent-goal CRUD;
+    `omni-handlers.ts` — a DIFFERENT, still-fully-legacy pair of call sites
+    from the ones #8416 touched),
+  - `notifyAgentRunSyncScopes` (ongoing agent-run status transitions
+    pushed to the personal-workroom/team/thread scopes; `omni-handlers.ts`
+    + `index.ts`).
+
+  All four are still live, currently-firing legacy `notifySyncScopes`
+  producers today, and the web client's own main multi-scope socket
+  (`syncScopesForModel`/`syncStreamDependenciesForModel` in
+  `apps/web/src/subscriptions.ts` — the workspace/team/thread consumer,
+  i.e. THE live chat/thread-files/goal UI) still opens the legacy
+  `syncStreamHref` (`/api/sync/${kind}/${id}/stream`), never repointed to
+  `/api/sync/connect`. This is almost certainly the single largest
+  remaining migration in the whole capstone, and it has never had its own
+  KS-6.x issue number — it needs one (or several) before #8420 can advance
+  further. `grep -rL notifySyncScopes` today still returns
+  `omni-handlers.ts`, `thread-file-routes.ts`, `index.ts`, and
+  `inference/gym/run-progress-sync.ts` as active callers outside
+  `sync-notifier.ts` — the capstone's own acceptance-criteria grep fails
+  as expected.
+
+  **Two smaller items also remain, tracked here for whoever picks up the
+  team-chat/thread-files/goals migration:**
+  - `KHALA_TOKENS_SERVED_SCOPE` (`page/loggedOut/khala-tokens-served-feed.ts`)
+    still opens the legacy `syncStreamHref` in `subscriptions.ts`, even
+    though its legacy producer was already deleted in #8372 (Wave 0) — the
+    socket is a harmless no-op today (nothing publishes to it), but it was
+    never repointed to the new engine's already-anonymous-readable
+    `scope.public.tokens-served` (confirmed unblocked: this exact scope
+    name is the KS-8.x anonymous-connect fix's own evidence string). A real
+    repoint here would need the same snapshot-seed + live-adapter pattern
+    KS-6.4 used for settled-feed (the new engine's changelog post-image is
+    `{counterId, total, lastEventAt}`, not the legacy delta shape, so it
+    maps onto the existing `KHALA_TOKENS_SERVED_SUMMARY_COLLECTION`
+    monotonic-raise reducer, not the delta reducer) — real, bounded,
+    doable work, just not attempted in this pass since it does not retire
+    any spine infrastructure by itself.
+  - The legacy D1 `sync_scopes`/`sync_changes`/`sync_mutations` tables
+    cannot be dropped even for settled-feed alone: `publishSettledFeedEvents`
+    (`tassadar-settled-feed-sync.ts`) still writes the D1 outbox on every
+    settlement (unrelated to the retired `notifySyncScopes` poke) because
+    `GET /api/public/settled-feed` (`public-settled-feed-routes.ts`) reads
+    that same D1 outbox directly as its fail-open fallback source. The D1
+    tables stay live infrastructure regardless of DO-room/`sync-routes.ts`
+    kind retirement.
+
+  **What WAS safe to retire now, and was done in this pass:** the
+  `'public-settled-feed'` kind in `workers/api/src/sync-routes.ts` — the
+  ONE legacy sync kind with zero remaining producers (deleted in #8414)
+  AND zero remaining consumers (both the live stream and the cold-read
+  snapshot fetch were repointed to the new engine in #8414; confirmed by
+  grep that nothing outside tests references `/api/sync/public-settled-feed/*`
+  anywhere in the repo, and that `public-settled-feed-routes.ts` reads the
+  D1 outbox directly, never through this route). Removed from
+  `SyncScopeKind`, `syncScopeForPath`, `optionalSyncScopeKind`, and
+  `isPublicSyncPath`; `GET/WS /api/sync/public-settled-feed/<id>/{snapshot,stream}`
+  now 404 via the existing generic "unknown kind" fallthrough, satisfying
+  the capstone's own "confirm 404/gone rather than silently double-serving"
+  acceptance bullet for this one kind. Every other legacy kind (`workspace`,
+  `team`, `thread`, `agent-run`, `public-gym-run-progress`,
+  `public-khala-tokens-served`) is untouched — each still has at least one
+  live legacy producer or consumer per the analysis above.
+
+  **Net: #8420 stays open.** The real remaining blocker is a genuinely new
+  scope of work (team chat + thread files + agent-goal CRUD + ongoing
+  agent-run-status legacy producer/consumer repoint) that was always
+  implied by this Wave 3 paragraph but never broken into a tracked KS-6.x
+  issue. Recommend opening KS-6.11 (or similar) for that migration before
+  attempting the capstone's full spine deletion again.
 
 **Wave 4 — big, deliberate, needs an owner call before starting:**
 Consolidate `probe-runtime` and `pylon-runtime` (~48K LOC of duplicated

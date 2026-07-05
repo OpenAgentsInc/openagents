@@ -13,7 +13,6 @@ import {
   publicGoalScope,
   publicGymRunProgressScope,
   publicKhalaTokensServedScope,
-  publicSettledFeedScope,
   threadScope as syncThreadScope,
   teamScope,
 } from '@openagentsinc/sync-worker'
@@ -31,6 +30,14 @@ import { RouteAccessError } from './thread-access'
 
 type HttpResponse = globalThis.Response
 
+// NOTE (KS-6.10, #8420): `'public-settled-feed'` was deliberately retired
+// from this union (KS-6.4/#8414's full cutover left it with zero remaining
+// producers AND zero remaining consumers — see the removed branches below
+// this comment's sibling edits). It is the ONE legacy sync kind provably
+// dead on both ends today; every other kind here still has at least one
+// live legacy producer or consumer (team chat, thread files, agent goals,
+// gym run-progress, the workspace/team/thread socket, or the tokens-served
+// scope's still-legacy client connection) and must not be removed yet.
 type SyncScopeKind =
   | 'agent-run'
   | 'public-agent'
@@ -38,7 +45,6 @@ type SyncScopeKind =
   | 'public-goal'
   | 'public-gym-run-progress'
   | 'public-khala-tokens-served'
-  | 'public-settled-feed'
   | 'team'
   | 'thread'
   | 'workspace'
@@ -150,10 +156,6 @@ const syncScopeForPath = (
     return publicAgentRunScope(id)
   }
 
-  if (kind === 'public-settled-feed') {
-    return publicSettledFeedScope(id)
-  }
-
   if (kind === 'public-khala-tokens-served') {
     return publicKhalaTokensServedScope(id)
   }
@@ -174,8 +176,7 @@ const optionalSyncScopeKind = (value: string): SyncScopeKind | undefined =>
   value === 'public-goal' ||
   value === 'public-agent-run' ||
   value === 'public-gym-run-progress' ||
-  value === 'public-khala-tokens-served' ||
-  value === 'public-settled-feed'
+  value === 'public-khala-tokens-served'
     ? value
     : undefined
 
@@ -319,8 +320,7 @@ const isPublicSyncPath = (syncPath: ParsedSyncPath): boolean =>
   syncPath.kind === 'public-goal' ||
   syncPath.kind === 'public-agent-run' ||
   syncPath.kind === 'public-gym-run-progress' ||
-  syncPath.kind === 'public-khala-tokens-served' ||
-  syncPath.kind === 'public-settled-feed'
+  syncPath.kind === 'public-khala-tokens-served'
 
 const handlePublicSyncRequest = (
   request: Request,
