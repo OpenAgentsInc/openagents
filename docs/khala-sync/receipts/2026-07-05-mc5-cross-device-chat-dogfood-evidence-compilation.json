@@ -1,0 +1,141 @@
+{
+  "schema": "openagents.khala_sync.cross_device_chat_dogfood.v1",
+  "status": "pending_owner_signoff",
+  "issueRef": "OpenAgentsInc/openagents#8354",
+  "epicRef": "OpenAgentsInc/openagents#8339",
+  "generatedAt": "2026-07-05T00:00:00.000Z",
+  "note": "Compilation pass over this session's ALREADY-real Khala Sync production activity, prepared so the owner's remaining device-run + sign-off step is fast. This does NOT replace or claim the owner-run acceptance test in #8354; it documents what independent evidence already exists and what honestly does not yet exist. See docs/fable/2026-07-05-mc5-cross-device-dogfood-evidence-compilation.md for the full write-up.",
+  "routeRefs": [
+    "route.khala_sync.push.v0_1",
+    "route.khala_sync.bootstrap.v0_1",
+    "route.khala_sync.connect.v0_1"
+  ],
+  "scopeRefs": [
+    "scope.user.user_ccf97bf1-ad33-4c55-b9c7-41eeeb9e0c93",
+    "scope.thread.019f309c-d9b1-70f2-9228-e3992ca1fa5a"
+  ],
+  "blockerRefs": [
+    "blocker.owner_device_signoff_required",
+    "blocker.testflight_refresh_owner_gated",
+    "blocker.web_leg_not_wired_to_real_sync",
+    "blocker.cross_device_verification_simulator_only"
+  ],
+  "buildRefs": [
+    "build.khala_mobile.expo.testflight.3bb487cf-73b6-470f-a2ee-867ee924426e",
+    "build.khala_mobile.expo.testflight.bb16234d-0cb0-4049-90c5-be9c65ac07e2",
+    "build.khala_ios.swiftui.testflight.v1_0_0.pre_mc5_bridge"
+  ],
+  "flows": [
+    {
+      "flowRef": "flow.khala_sync.chat.desktop_write_mobile_simulator_live_pickup.v1",
+      "sourceSurface": "khala_code_desktop_local_preview",
+      "observedSurfaces": [
+        "khala_mobile_expo_ios_simulator"
+      ],
+      "counts": {
+        "threadsCreated": 0,
+        "messagesAppended": 1,
+        "threadsObserved": 1,
+        "messagesObserved": 1
+      },
+      "latencyMs": {},
+      "scopeRefs": [],
+      "receiptRefs": [
+        "receipt.khala_sync.chat_append_message.desktop_rpc.mobile_bootstrap_pickup"
+      ],
+      "routeRefs": [
+        "route.khala_sync.push.v0_1",
+        "route.khala_sync.bootstrap.v0_1",
+        "route.khala_sync.connect.v0_1"
+      ]
+    },
+    {
+      "flowRef": "flow.khala_sync.runtime.production_codex_dispatch_thread_shared_with_mobile.v1",
+      "sourceSurface": "pylon_runtime_supervisor_production",
+      "observedSurfaces": [
+        "khala_sync_production_postgres",
+        "khala_code_desktop_sidebar",
+        "khala_mobile_expo_ios_simulator"
+      ],
+      "counts": {
+        "threadsCreated": 0,
+        "messagesAppended": 1,
+        "threadsObserved": 1,
+        "messagesObserved": 1
+      },
+      "latencyMs": {},
+      "scopeRefs": [
+        "scope.thread.019f309c-d9b1-70f2-9228-e3992ca1fa5a",
+        "scope.user.user_ccf97bf1-ad33-4c55-b9c7-41eeeb9e0c93"
+      ],
+      "receiptRefs": [
+        "turn.rrfinal2.1783235990379882000"
+      ],
+      "routeRefs": [
+        "route.khala_sync.push.v0_1",
+        "route.khala_sync.bootstrap.v0_1",
+        "route.khala_sync.connect.v0_1"
+      ]
+    },
+    {
+      "flowRef": "flow.khala_sync.cross_agent_handoff.production_mutation_applied.v1",
+      "sourceSurface": "khala_mobile_expo_ios_simulator",
+      "observedSurfaces": [
+        "khala_sync_production_postgres",
+        "pylon_runtime_supervisor_production"
+      ],
+      "counts": {
+        "threadsCreated": 0,
+        "messagesAppended": 1,
+        "threadsObserved": 1,
+        "messagesObserved": 1
+      },
+      "latencyMs": {},
+      "scopeRefs": [
+        "scope.thread.019f309c-d9b1-70f2-9228-e3992ca1fa5a",
+        "scope.user.user_ccf97bf1-ad33-4c55-b9c7-41eeeb9e0c93"
+      ],
+      "receiptRefs": [
+        "khala_sync.push.mutationId=1.status=applied.issue_8407",
+        "khala_sync.push.mutationId=2.status=applied.issue_8407"
+      ],
+      "routeRefs": [
+        "route.khala_sync.push.v0_1",
+        "route.khala_sync.bootstrap.v0_1"
+      ]
+    }
+  ],
+  "gaps": [
+    {
+      "gapRef": "gap.khala_sync.cross_device.physical_device_owner_run_not_attached",
+      "status": "open",
+      "summaryRef": "summary.public_safe.physical_device_owner_run_not_attached"
+    },
+    {
+      "gapRef": "gap.khala_sync.cross_device.web_leg_not_wired_to_real_sync",
+      "status": "open",
+      "summaryRef": "summary.public_safe.web_leg_is_client_only_fixture_demo"
+    },
+    {
+      "gapRef": "gap.khala_sync.cross_device.testflight_refresh_pending_for_swiftui_bridge",
+      "status": "open",
+      "summaryRef": "summary.public_safe.swiftui_bridge_not_yet_uploaded_to_testflight"
+    },
+    {
+      "gapRef": "gap.khala_sync.cross_device.latency_not_instrumented",
+      "status": "open",
+      "summaryRef": "summary.public_safe.no_measured_cross_device_latency_this_session"
+    }
+  ],
+  "safeguards": {
+    "containsChatContent": false,
+    "containsSecrets": false,
+    "contentFieldsRedacted": true,
+    "ownerSignedTransitionsOnly": true,
+    "promiseFlips": false
+  },
+  "khalaCodeEvidenceRefs": [
+    "khala_code.chat.sync_remote_thread_appears_without_restart.v1",
+    "khala_code.chat.cross_device_dogfood.pending.v1"
+  ]
+}
