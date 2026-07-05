@@ -460,6 +460,18 @@ untouched).
 
 ---
 
+## 8. Wave 0 execution ledger
+
+2026-07-05:
+
+- #8366 complete — the local ignored Pylon RC build cache at
+  `apps/pylon/dist/rc` was removed from the active dirty checkout after
+  verification with `du -sh` and `git status --ignored`. Both the root
+  `.gitignore` and `apps/pylon/.gitignore` already ignore `dist/`, so no
+  ignore-rule change was needed.
+
+---
+
 ## Appendix: revision note
 
 2026-07-05: corrected against a fresh `origin/main` fetch — the Khala Sync
