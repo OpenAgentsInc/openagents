@@ -268,8 +268,11 @@ Implementation note: #8428 added a no-credential `LaunchFallback.yaml` that can
 prove app launch and the Tailnet/manual sign-in fallback, plus
 `SignedInThreadSmoke.yaml` for a public-safe seeded account/thread. The latter
 uses environment-provided credentials and a seeded thread title because Khala
-Mobile does not yet expose a create-thread control. The UX contract remains
-pending until a dated device/emulator run receipt is recorded.
+Mobile does not yet expose a create-thread control. Follow-up #8456 recorded a
+2026-07-05 passing `LaunchFallback.yaml` receipt on the iPhone 17 Pro iOS 26.5
+simulator in `docs/khala-mobile/2026-07-05-maestro-launched-app-smoke-receipt.md`.
+The full UX contract remains pending for signed-in thread open/send coverage
+and Android launched APK coverage.
 
 ### 6. Dependency-Cruiser Architecture Rules
 

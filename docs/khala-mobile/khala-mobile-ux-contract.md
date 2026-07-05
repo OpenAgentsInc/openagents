@@ -86,7 +86,7 @@ top follow-up item for whoever picks this up next.
 
 ## Registry
 
-Registry version: `2026-07-05.3` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-05.4` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — ENFORCED
 
@@ -221,6 +221,6 @@ Registry version: `2026-07-05.3` (schema `openagents.behavior_contracts.v1`)
 - **Stated by:** operator-agent via khala-code-session on 2026-07-05
 - **Statement:** The built app actually launches and is interactable end to end on a real Android device/emulator and a real iOS device (beyond simulator/local-build success), for at least: sign-in resolves, a thread opens, a message sends, and the composer's lane picker is visible.
 - **Enforcement tier:** unenforced
-- **Verification:** No completed device/emulator oracle yet. Current evidence is source-level scaffold, unit tests, local typecheck, iOS simulator build success, Android clean Gradle assemble, two TestFlight uploads confirmed VALID via the App Store Connect API, and staged local Maestro flows under clients/khala-mobile/.maestro. None of that is a recorded launched-and-interacted device pass yet. Needs an owner/device manual-check receipt per platform, or a completed Maestro/Detox run receipt, before this can move to enforced.
+- **Verification:** Partial launched-app receipt recorded: `docs/khala-mobile/2026-07-05-maestro-launched-app-smoke-receipt.md` proves `LaunchFallback.yaml` passed on the iPhone 17 Pro iOS 26.5 simulator for app id `com.openagents.khala.mobile`, app version `0.1.0`, iOS build `6`, with local Metro serving the debug build. The broader contract remains pending because no public-safe seeded owner/token/thread precondition was available for `SignedInThreadSmoke.yaml`, and Android launched APK coverage is still unrecorded.
 - **Blockers:** `blocker.khala_mobile.needs_physical_android_device_or_emulator_launch`, `blocker.khala_mobile.needs_ios_testflight_install_and_interact_pass`
 - **Authority boundary:** iOS has stronger automated/proof-adjacent evidence today (two independently-confirmed VALID TestFlight uploads) than Android (clean local Gradle assemble only, no launched APK). This contract exists specifically to keep that asymmetry visible rather than implying platform parity.

@@ -104,6 +104,13 @@ interaction. `SignedInThreadSmoke.yaml` is the path toward closing
 `khala_mobile.platform.launched_app_interaction_smoke.v1`, but that contract
 stays pending until a dated device/emulator run receipt is recorded.
 
+2026-07-05 receipt: `LaunchFallback.yaml` passed on the iPhone 17 Pro iOS 26.5
+simulator with app id `com.openagents.khala.mobile`, app version `0.1.0`, and
+iOS build number `6`, with local Metro serving the debug build. See
+`docs/khala-mobile/2026-07-05-maestro-launched-app-smoke-receipt.md`. The
+signed-in thread smoke remains pending because this environment did not have a
+public-safe seeded owner/token/thread precondition.
+
 ## Local Builds
 
 Build and submit locally only.
