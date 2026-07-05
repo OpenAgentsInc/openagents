@@ -296,6 +296,22 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["khalaSyncChatRenameThread"]>>
       >("khalaSyncChatRenameThread", request),
+    editorProviderList: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["editorProviderList"]>>
+      >("editorProviderList"),
+    editorWorkspaceRead: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["editorWorkspaceRead"]>>
+      >("editorWorkspaceRead"),
+    editorDirectoryRead: (request?: Parameters<DesktopRpcRequests["editorDirectoryRead"]>[0]) =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["editorDirectoryRead"]>>
+      >("editorDirectoryRead", request),
+    editorFileRead: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["editorFileRead"]>>
+      >("editorFileRead", request),
     forumRequest: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["forumRequest"]>>
@@ -4016,6 +4032,12 @@ const controls = {
     rpc.request.khalaSyncChatAppendMessage(request),
   khalaSyncChatRenameThread: (request: Parameters<DesktopRpcRequests["khalaSyncChatRenameThread"]>[0]) =>
     rpc.request.khalaSyncChatRenameThread(request),
+  editorProviderList: () => rpc.request.editorProviderList(),
+  editorWorkspaceRead: () => rpc.request.editorWorkspaceRead(),
+  editorDirectoryRead: (request?: Parameters<DesktopRpcRequests["editorDirectoryRead"]>[0]) =>
+    rpc.request.editorDirectoryRead(request),
+  editorFileRead: (request: Parameters<DesktopRpcRequests["editorFileRead"]>[0]) =>
+    rpc.request.editorFileRead(request),
   forumRequest: (request: Parameters<DesktopRpcRequests["forumRequest"]>[0]) =>
     rpc.request.forumRequest(request),
   khalaCodePlanCatalog: () => rpc.request.khalaCodePlanCatalog(),

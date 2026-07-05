@@ -33,6 +33,10 @@ import {
   khalaSyncChatMessagesDisabledState,
   type KhalaCodeDesktopKhalaSyncRpc,
 } from "./khala-sync-service.js"
+import {
+  createKhalaCodeEditorFileService,
+  type KhalaCodeEditorFileService,
+} from "./editor-file-service.js"
 import type { KhalaAppleFmReadiness } from "../shared/apple-fm-readiness.js"
 import type { OnDeviceDeciderSelection } from "../shared/on-device-decider.js"
 import {
@@ -296,6 +300,7 @@ export type KhalaCodeDesktopRpcHandlersInput = {
    * disabled state.
    */
   readonly khalaSync?: KhalaCodeDesktopKhalaSyncRpc
+  readonly editorFileService?: KhalaCodeEditorFileService
   readonly env: ChatEnv
   // Test seam for network-backed handlers (Khala Code plan routes). Defaults to
   // the global fetch in production.
@@ -1150,6 +1155,8 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       : { onRequestQueued: input.emitClaudeApprovalRequested }),
   })
   const architectPlanStore = createArchitectPlanStore({ env: input.env })
+  const editorFileService = input.editorFileService ??
+    createKhalaCodeEditorFileService({ workingDirectory: input.workingDirectory })
   const requireCodexChatRuntime = (): CodexAppServerChatRuntime => {
     if (codexChatRuntime === null) {
       throw new Error("Codex app-server chat runtime is not configured.")
@@ -2633,6 +2640,18 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         return { ok: false, error: "khala_sync_chat_disabled", threadId: request.threadId }
       }
       return input.khalaSync.chatRenameThread(request)
+    },
+    async editorProviderList() {
+      return editorFileService.providerList()
+    },
+    async editorWorkspaceRead() {
+      return editorFileService.workspaceRead()
+    },
+    async editorDirectoryRead(request = {}) {
+      return editorFileService.directoryRead(request)
+    },
+    async editorFileRead(request) {
+      return editorFileService.fileRead(request)
     },
     async forumRequest(request): Promise<KhalaCodeDesktopForumResponse> {
       return fetchOpenAgentsForum(request)

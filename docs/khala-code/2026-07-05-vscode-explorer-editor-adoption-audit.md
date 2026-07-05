@@ -343,6 +343,14 @@ Work:
 Do not include editing, save, rename, delete, drag/drop, file watchers, or
 multi-tab dirty state.
 
+Phase 1 implementation log:
+
+- #8431 added the provider-neutral editor file service foundation:
+  `src/shared/editor.ts`, `src/bun/editor-file-service.ts`, and the
+  `editorProviderList`, `editorWorkspaceRead`, `editorDirectoryRead`, and
+  `editorFileRead` RPC methods. The first provider is a Khala-owned local
+  workspace adapter; Codex app-server is not part of the editor file authority.
+
 ### Phase 2: workspace ergonomics
 
 Goal: make browsing feel like a real coding tool.

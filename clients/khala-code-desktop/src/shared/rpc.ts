@@ -19,6 +19,14 @@ import {
   KHALA_CODE_DESKTOP_TRACE_CAPTURE_OWNER_GATE_ENV,
   KHALA_CODE_DESKTOP_TRACE_CAPTURE_PROMISE_ID,
 } from "./trace-capture.js"
+import {
+  KhalaCodeEditorDirectoryReadRequest,
+  KhalaCodeEditorDirectoryReadResult,
+  KhalaCodeEditorFileReadRequest,
+  KhalaCodeEditorFileReadResult,
+  KhalaCodeEditorProviderListResult,
+  KhalaCodeEditorWorkspaceReadResult,
+} from "./editor.js"
 
 // Electrobun treats Infinity as no local request timeout; chat turns stream progress
 // over events while hosted model calls and local tools can legitimately exceed 30s.
@@ -160,6 +168,12 @@ export type KhalaCodeDesktopCodexConfigValueWriteResult = typeof RpcCodexConfigV
 export type KhalaCodeDesktopCodexEcosystemReadRequest = typeof RpcCodexEcosystemReadRequest.Type
 export type KhalaCodeDesktopCodexEcosystemReadResult = typeof RpcCodexEcosystemProjection.Type
 export type KhalaCodeDesktopCodexAppServerActionResult = typeof RpcCodexAppServerActionResult.Type
+export type KhalaCodeDesktopEditorProviderListResult = typeof KhalaCodeEditorProviderListResult.Type
+export type KhalaCodeDesktopEditorWorkspaceReadResult = typeof KhalaCodeEditorWorkspaceReadResult.Type
+export type KhalaCodeDesktopEditorDirectoryReadRequest = typeof KhalaCodeEditorDirectoryReadRequest.Type
+export type KhalaCodeDesktopEditorDirectoryReadResult = typeof KhalaCodeEditorDirectoryReadResult.Type
+export type KhalaCodeDesktopEditorFileReadRequest = typeof KhalaCodeEditorFileReadRequest.Type
+export type KhalaCodeDesktopEditorFileReadResult = typeof KhalaCodeEditorFileReadResult.Type
 export type KhalaCodeDesktopCodexBackgroundTerminalsListRequest = typeof RpcBackgroundTerminalsListRequest.Type
 export type KhalaCodeDesktopCodexBackgroundTerminalsCleanRequest = typeof RpcBackgroundTerminalsCleanRequest.Type
 export type KhalaCodeDesktopCodexBackgroundTerminalsTerminateRequest = typeof RpcBackgroundTerminalsTerminateRequest.Type
@@ -2416,6 +2430,10 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   khalaSyncChatCreateThread: { parameters: [param(RpcKhalaSyncChatCreateThreadRequest)], result: RpcKhalaSyncChatMutationResult },
   khalaSyncChatAppendMessage: { parameters: [param(RpcKhalaSyncChatAppendMessageRequest)], result: RpcKhalaSyncChatMutationResult },
   khalaSyncChatRenameThread: { parameters: [param(RpcKhalaSyncChatRenameThreadRequest)], result: RpcKhalaSyncChatMutationResult },
+  editorProviderList: { parameters: noParams(), result: KhalaCodeEditorProviderListResult },
+  editorWorkspaceRead: { parameters: noParams(), result: KhalaCodeEditorWorkspaceReadResult },
+  editorDirectoryRead: { parameters: [optionalParam(KhalaCodeEditorDirectoryReadRequest)], result: KhalaCodeEditorDirectoryReadResult },
+  editorFileRead: { parameters: [param(KhalaCodeEditorFileReadRequest)], result: KhalaCodeEditorFileReadResult },
   forumRequest: { parameters: [param(RpcForumRequest)], result: RpcForumResponse },
   khalaCodePlanCatalog: { parameters: noParams(), result: RpcKhalaCodePlanCatalogResult },
   khalaCodePlanStatus: { parameters: noParams(), result: RpcKhalaCodePlanStatusResult },
@@ -2590,6 +2608,10 @@ export type KhalaCodeDesktopRPCSchema = {
     khalaSyncChatCreateThread(request: KhalaCodeDesktopKhalaSyncChatCreateThreadRequest): Promise<KhalaCodeDesktopKhalaSyncChatMutationResult>
     khalaSyncChatAppendMessage(request: KhalaCodeDesktopKhalaSyncChatAppendMessageRequest): Promise<KhalaCodeDesktopKhalaSyncChatMutationResult>
     khalaSyncChatRenameThread(request: KhalaCodeDesktopKhalaSyncChatRenameThreadRequest): Promise<KhalaCodeDesktopKhalaSyncChatMutationResult>
+    editorProviderList(): Promise<KhalaCodeDesktopEditorProviderListResult>
+    editorWorkspaceRead(): Promise<KhalaCodeDesktopEditorWorkspaceReadResult>
+    editorDirectoryRead(request?: KhalaCodeDesktopEditorDirectoryReadRequest): Promise<KhalaCodeDesktopEditorDirectoryReadResult>
+    editorFileRead(request: KhalaCodeDesktopEditorFileReadRequest): Promise<KhalaCodeDesktopEditorFileReadResult>
     forumRequest(request: KhalaCodeDesktopForumRequest): Promise<KhalaCodeDesktopForumResponse>
     khalaCodePlanCatalog(): Promise<KhalaCodeDesktopPlanCatalogResult>
     khalaCodePlanStatus(): Promise<KhalaCodeDesktopPlanStatusResult>
