@@ -17,8 +17,9 @@ from the desktop app remains **Khala Code Desktop** in
 - `codex_fleet_status`
 - `codex_spawn`
 
-The older `clients/openagents-desktop` controls below remain useful source
-material for the broader fanout manager, but the current working path is Khala
+The older `clients/openagents-desktop` Electrobun stub was removed in Wave 0
+cleanup on 2026-07-05 (#8367). Treat any remaining references to it in older
+evidence as historical source material only; the current working path is Khala
 Code Desktop Codex-wrapper UI → local Pylon fleet delegation → hosted Khala
 assignment envelope → local Codex runner → no-spend closeout.
 
@@ -818,26 +819,21 @@ the default `~/.codex`. Use isolated Pylon account homes only.
 
 ## Hard Truth Of The Current Build
 
-OpenAgents Desktop already owns the visible control surface under
-`clients/openagents-desktop`, package `@openagentsinc/desktop`.
+Khala Code Desktop owns the visible control surface under
+`clients/khala-code-desktop`.
 
-The Desktop webview calls its Bun side through Electrobun RPC. The important
-methods are:
+The Desktop UI calls its Bun side through the Khala Code RPC layer. The
+important fleet-facing controls remain:
 
-- `codingStatus()`
-- `createPylon()`
-- `khalaDispatchPlan(input)`
-- `khalaFleetSnapshot()`
-- `pylonStatus()`
-- `replayTokenFailures()`
-- `tokenAccountingStatus()`
-- `verifyAssignmentTokenUsage(assignmentRef)`
+- `pylon_ensure`
+- `codex_fleet_status`
+- `codex_spawn`
 
-Those are real in-process Desktop controls. They are not yet exposed as a
-stable external HTTP or JSON-RPC endpoint. Until that endpoint exists, external
-manager agents should drive the same underlying Pylon and Codex commands that
-Desktop uses, keep Desktop running for visibility/reconciliation, and treat the
-Desktop event store as the durable resume surface.
+Those are real in-process Desktop controls. External manager agents should
+still drive the same underlying Pylon and Codex commands when they need a
+scriptable fallback, keep Khala Code Desktop running for
+visibility/reconciliation, and treat the Desktop event store as the durable
+resume surface.
 
 Codex itself has two programmatic modes that matter:
 
@@ -942,7 +938,7 @@ Start the app from the repo root:
 
 ```sh
 OPENAGENTS_REPO_ROOT="$OPENAGENTS_REPO_ROOT" \
-bun run --cwd clients/openagents-desktop dev
+bun run --cwd clients/khala-code-desktop dev
 ```
 
 The app window should show:
@@ -1325,8 +1321,8 @@ The runbook was validated from a clean detached worktree at:
 The following checks were performed:
 
 1. Installed dependencies with `bun install --frozen-lockfile`.
-2. Confirmed `@openagentsinc/desktop` exposes the Desktop RPC methods listed
-   above.
+2. Confirmed the retired `@openagentsinc/desktop` Electrobun stub exposed the
+   Desktop RPC methods listed in the historical version of this runbook.
 3. Confirmed missing `--base-url` fails fast for `khala dispatch`.
 4. Confirmed account listing works without printing sensitive auth.
 5. Confirmed a non-mutating dispatch plan with ready account `codex-2`,
@@ -1337,7 +1333,7 @@ The following checks were performed:
 Run these final verification commands after editing this runbook:
 
 ```sh
-bun run --cwd clients/openagents-desktop verify
+bun run --cwd clients/khala-code-desktop verify
 
 COMMIT="$(git rev-parse origin/main)"
 bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" khala dispatch \

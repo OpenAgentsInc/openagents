@@ -11,7 +11,7 @@ const bytes = (value: string): Uint8Array => new TextEncoder().encode(value)
 
 describe("desktop release seeding", () => {
   test("loads baked desktop releases and serves the feed plus delta bytes", async () => {
-    const distDir = "/tmp/openagents-desktop-releases"
+    const distDir = "/tmp/khala-code-desktop-releases"
     const artifactBytes = bytes("desktop archive")
     const bsdiffBytes = bytes("BSDIFF patch")
     const files = new Map<string, Uint8Array>([

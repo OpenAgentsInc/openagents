@@ -469,6 +469,10 @@ untouched).
   verification with `du -sh` and `git status --ignored`. Both the root
   `.gitignore` and `apps/pylon/.gitignore` already ignore `dist/`, so no
   ignore-rule change was needed.
+- #8367 complete — the retired `clients/openagents-desktop` Electrobun stub was
+  removed from the workspace, root dev/test/typecheck wiring, and Bun lockfile.
+  Current operator docs now point live desktop work at
+  `clients/khala-code-desktop`.
 
 ---
 

@@ -66,8 +66,8 @@ that earlier conclusion was wrong.
 
 **Do NOT:** reflex-restart the supervisor (stale 5-min leases poison the gate);
 fire large one-off dispatch batches (herd fills the gate with unrun leases);
-run unbounded Vertex burns (D1 overload). Watch `clients/openagents-desktop`
-(the live fleet dashboard) for ground truth.
+run unbounded Vertex burns (D1 overload). Watch the active Khala Code Desktop
+fleet dashboard under `clients/khala-code-desktop` for ground truth.
 
 ---
 
@@ -741,9 +741,11 @@ the fixes landed, and how to unfuck it durably.
 
 ## What I learned
 
-- **The dashboard (`clients/openagents-desktop`, #6932 + #6958) is ground truth.**
-  It surfaced "presence 401", "No dispatch", "Claims 25 > Desired 12", idle burns
-  — exactly the diagnosis. Build/trust observability before theorizing.
+- **The dashboard was ground truth.** The retired
+  `clients/openagents-desktop` stub (#6932 + #6958) surfaced "presence 401",
+  "No dispatch", "Claims 25 > Desired 12", and idle burns before its controls
+  moved into Khala Code Desktop.
+  Build/trust observability before theorizing.
 - **Codex dispatch and the Khala chat/Vertex burns share one D1/Khala backend.**
   Hammering one starves the other. Burn budget must be bounded so it never
   degrades codex dispatch.
@@ -892,7 +894,7 @@ P0, review and merge first:
   PR for [#6958](https://github.com/OpenAgentsInc/openagents/issues/6958). It
   adds `/api/operator/fleet/state`, active assignment progress, supervisor slot
   state, and Codex account health/rate-limit details. After it lands, wire
-  `clients/openagents-desktop` to this endpoint so the desktop shows both local
+  `clients/khala-code-desktop` to this endpoint so the desktop shows both local
   process truth and server fleet truth.
 - [#6994](https://github.com/OpenAgentsInc/openagents/pull/6994)
   `fix(operator): accept accountRefHash for account resets`. This unblocks part
@@ -940,7 +942,7 @@ top-screen counters:
 
 When #6995 lands, desktop should blend:
 
-- local process truth from `clients/openagents-desktop/src/shared/coding-status.ts`
+- local process truth from `clients/khala-code-desktop`
 - server fleet truth from `/api/operator/fleet/state`
 - Codex session messages from local rollout JSONL, clickable by active session
 
