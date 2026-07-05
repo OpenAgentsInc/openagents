@@ -437,6 +437,15 @@ export const SyncErrorCode = S.Literals([
   "schema_version_unsupported",
   "cursor_behind_retained_window",
   "storage_unavailable",
+  /**
+   * Anonymous-read abuse guard (KS-7.1 anonymous `scope.public.*` exception,
+   * docs/khala-sync/RUNBOOK.md "Anonymous read scopes"): the best-effort
+   * per-IP window limiter on log/bootstrap/connect rejected an
+   * UNAUTHENTICATED request. Authenticated requests never see this code —
+   * they carry no rate limit at this seam. Always `retryable: true`
+   * (HTTP 429); back off and retry.
+   */
+  "rate_limited",
   "internal",
 ])
 export type SyncErrorCode = typeof SyncErrorCode.Type

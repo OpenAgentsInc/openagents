@@ -6,6 +6,17 @@
 // (browser session or programmatic agent bearer — same seam as
 // POST /api/sync/push).
 //
+// AUTH (KS-8.x anonymous-read exception; docs/khala-sync/RUNBOOK.md
+// "Anonymous read scopes"): `scope.public.*` is the ONE exception —
+// readable WITHOUT an authenticated actor. `isAnonymousReadableScope` (the
+// exact-match parse `resolveScopeRead` itself uses; single source of
+// truth) decides this BEFORE `authenticate()` is required to succeed.
+// Every other scope kind still 401s on a missing/invalid session.
+// `authenticate()` is still attempted for a public scope too, so a
+// signed-in caller's userId still reaches `resolveScopeRead` unchanged.
+// Anonymous reads additionally pass a best-effort per-IP window rate limit
+// (`khala-sync-anonymous-rate-limit.ts`); authenticated reads never see it.
+//
 // SERVING ORDER (hub is cache, Postgres is authoritative):
 //   1. The per-scope KhalaSyncHubDO (`env.KHALA_SYNC_HUB`) serves the page
 //      from its DO SQLite window when the requested range is inside it.
@@ -40,8 +51,9 @@
 //
 // HTTP-level failures are typed `SyncError` bodies (same taxonomy as push):
 // 401 unauthenticated, 400 invalid_request, 403 unauthorized_scope, 410
-// cursor_behind_retained_window, 503 storage_unavailable (retryable), 500
-// internal. Error responses are always no-store.
+// cursor_behind_retained_window, 429 rate_limited (anonymous reads only),
+// 503 storage_unavailable (retryable), 500 internal. Error responses are
+// always no-store.
 //
 // The real postgres.js client is dynamically imported ONLY when no
 // `makeSqlClient` is injected (deployed Worker with `nodejs_compat`); tests
@@ -58,6 +70,7 @@ import {
 } from '@openagentsinc/khala-sync'
 import {
   DEFAULT_LOG_PAGE_LIMIT,
+  isAnonymousReadableScope,
   KhalaSyncCursorBehindRetainedWindowError,
   KhalaSyncStorageError,
   logPage as logPageFromPostgres,
@@ -68,6 +81,10 @@ import {
 
 import { scopeReadDecisionResponse } from './http/khala-sync-scope-read-response'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import {
+  makeKhalaSyncAnonymousReadRateLimiter,
+  type KhalaSyncAnonymousRateLimiter,
+} from './khala-sync-anonymous-rate-limit'
 import type { KhalaSyncHubNamespaceLike } from './khala-sync-hub-do'
 import type {
   KhalaSyncHyperdriveBinding,
@@ -99,7 +116,10 @@ export type KhalaSyncLogDependencies = Readonly<{
   /**
    * Resolve the authenticated caller via the Worker's standard actor auth
    * (`authenticateRequestActor`: browser session or agent bearer token).
-   * `undefined` ⇒ 401.
+   * `undefined` ⇒ no actor. ALWAYS attempted, even for a public scope (so a
+   * signed-in caller's userId still reaches `resolveScopeRead`); only fatal
+   * (401) when the requested scope is NOT anonymous-readable (see
+   * `isAnonymousReadableScope`).
    */
   authenticate: () => Promise<{ readonly userId: string } | undefined>
   /**
@@ -113,6 +133,14 @@ export type KhalaSyncLogDependencies = Readonly<{
   hubNamespace: KhalaSyncHubNamespaceLike | undefined
   /** `env.KHALA_SYNC_DB` — absent until the binding is deployed. */
   binding: KhalaSyncHyperdriveBinding | undefined
+  /**
+   * Best-effort per-IP window rate limit applied ONLY to anonymous reads
+   * (KS-8.x); authenticated reads never consult this. Defaults to a
+   * module-level `makeKhalaSyncAnonymousReadRateLimiter()` instance so a
+   * real deployment is protected with zero wiring; tests inject a
+   * deterministic fake.
+   */
+  anonymousRateLimit?: KhalaSyncAnonymousRateLimiter | undefined
   /**
    * Injectable client factory. Default: dynamic import of `postgres`
    * (postgres.js), Worker-runtime only. Tests inject a fake — no network,
@@ -273,10 +301,15 @@ const tryHubLogPage = async (
 // Route handler
 // ---------------------------------------------------------------------------
 
+/** Module-level default so a real deployment gets rate limiting with zero wiring. */
+const defaultAnonymousReadRateLimit = makeKhalaSyncAnonymousReadRateLimiter()
+
 /**
  * `GET /api/sync/log?scope=&cursor=&limit=` — authenticated (session or
- * agent bearer). Success: 200 (or 304) with the encoded `LogPage`; failures
- * are typed `SyncError` bodies (see the module doc for the status map).
+ * agent bearer) for every scope except `scope.public.*` (KS-8.x
+ * anonymous-read exception — see the module doc). Success: 200 (or 304)
+ * with the encoded `LogPage`; failures are typed `SyncError` bodies (see
+ * the module doc for the status map).
  */
 export const handleKhalaSyncLog = (
   request: Request,
@@ -287,23 +320,39 @@ export const handleKhalaSyncLog = (
       return methodNotAllowed(['GET'])
     }
 
-    const actor = await deps.authenticate()
-    if (actor === undefined) {
-      return syncErrorResponse(
-        401,
-        'unauthenticated',
-        'Khala Sync log reads require an authenticated session or agent token.',
-        false,
-      )
-    }
-
     const query = parseLogQuery(new URL(request.url))
     if (query instanceof Response) {
       return query
     }
 
+    // Auth: `scope.public.*` is the ONLY kind readable without an actor.
+    // `authenticate()` is still attempted so a signed-in caller's userId
+    // reaches `resolveScopeRead` even on a public scope.
+    const anonymousAllowed = isAnonymousReadableScope(query.scope)
+    const actor = await deps.authenticate()
+    if (actor === undefined) {
+      if (!anonymousAllowed) {
+        return syncErrorResponse(
+          401,
+          'unauthenticated',
+          'Khala Sync log reads require an authenticated session or agent token.',
+          false,
+        )
+      }
+      const rateLimit =
+        deps.anonymousRateLimit ?? defaultAnonymousReadRateLimit
+      if (!rateLimit(request)) {
+        return syncErrorResponse(
+          429,
+          'rate_limited',
+          'Too many anonymous Khala Sync log reads from this address; retry later.',
+          true,
+        )
+      }
+    }
+
     const authDenied = scopeReadDecisionResponse(
-      await deps.resolveScopeRead(actor.userId, query.scope),
+      await deps.resolveScopeRead(actor?.userId, query.scope),
     )
     if (authDenied !== undefined) {
       return authDenied

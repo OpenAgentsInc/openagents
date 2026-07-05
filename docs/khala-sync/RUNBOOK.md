@@ -3262,6 +3262,170 @@ stream via `subscriptions.ts`, unchanged). Contract:
 `workers/api/src/khala-sync-public-settled-feed.ts`. Public route:
 `workers/api/src/public-settled-feed-routes.ts`.
 
+**UPDATE (KS-8.x): the anonymous-actor-required wall above is now closed** —
+see "Anonymous read scopes" immediately below. This section's dual-write
+framing (legacy producer + `subscriptions.ts` href unchanged) still
+describes today's LIVE client wiring accurately; the anonymous-read
+blocker that justified keeping it that way is resolved, so #8414's own
+follow-up work can now repoint the client and retire the legacy producer.
+
+## Anonymous read scopes (KS-8.x, scope.public.* only)
+
+**Status: LIVE.** The gap described in the previous section ("Gym
+run-progress public projection — dual-write only, NOT a cutover") is closed:
+`GET/WS /api/sync/connect`, `GET /api/sync/log`, and `POST
+/api/sync/bootstrap` now accept an anonymous (no session cookie, no agent
+bearer token) caller for `scope.public.*` reads. Every other scope kind
+(`scope.user.*`, `scope.team.*`, `scope.agent_run.*`, `scope.thread.*`,
+`scope.fleet_run.*`) is unaffected — a missing/invalid session there is
+still a 401, exactly as before this change.
+
+### The security invariant
+
+**`scope.public.*` is the ONLY taxonomy kind ever readable without an
+authenticated actor.** This is enforced at TWO independent layers, both
+sourced from the same single regex (`SCOPE_ID_PATTERN` in
+`packages/khala-sync-server/src/scope-auth.ts`) so there is exactly one
+place that decides what "public" means — no separate `startsWith`/
+`includes` heuristic anywhere in the anonymous-read path:
+
+1. **The resolver itself (`resolveScopeRead`, the authoritative gate).**
+   `kind === "public"` is checked FIRST, unconditionally, before any other
+   branch — so `SCOPE_READ_ALLOWED` is reachable for an anonymous caller
+   (`userId === undefined`) in exactly one place in the function. Immediately
+   after that check, `if (userId === undefined) return denied(...)` turns
+   away an anonymous caller for every other kind, BEFORE the kind switch and
+   BEFORE any capability callback (`isTeamMember`, `canReadAgentRun`,
+   `canReadThread`, `readFleetScopeOwner`) is ever invoked. Structurally: no
+   kind other than `public` can ever produce `allowed` for an anonymous
+   caller, and no non-public capability is ever called with an anonymous
+   actor.
+2. **The route handlers (defense in depth, not "trust the resolver
+   alone").** Each of the three routes calls `isAnonymousReadableScope`
+   (exported from `packages/khala-sync-server`, same exact-match parse as
+   `resolveScopeRead`) BEFORE deciding whether a missing/failed
+   `authenticate()` is fatal. Only when the scope is anonymous-readable does
+   a missing actor skip the 401; `resolveScopeRead` is then still called
+   (with `userId: undefined`) as the second, authoritative check — so even
+   a hypothetical bug in a route's own `isAnonymousReadableScope` call site
+   could not itself cause a grant, because the resolver re-derives the same
+   verdict independently.
+
+The kind is captured by `[a-z_]+` up to the FIRST literal `.` after
+`scope.`, so a crafted scope id can never be mistaken for the `public` kind:
+`scope.public_evil.x` parses to kind `public_evil` (not `public` — exact
+string equality, never a prefix check), and `scope.team.public.evil` parses
+to kind `team` (the id portion after the second dot is never re-examined
+for a nested "public" substring). Both are covered by dedicated negative
+tests (see below).
+
+### What changed, concretely
+
+- `packages/khala-sync-server/src/scope-auth.ts`: `resolveScopeRead`'s
+  `userId` parameter is now `string | undefined`; added the anonymous-safe
+  branch described above; added the exported `isAnonymousReadableScope`
+  helper.
+- `apps/openagents.com/workers/api/src/khala-sync-scope-auth.ts`: the
+  `KhalaSyncScopeReadResolver` type widened to match.
+- `apps/openagents.com/workers/api/src/khala-sync-{connect,log,bootstrap}-routes.ts`:
+  each route now calls `isAnonymousReadableScope` on the requested scope
+  BEFORE requiring `authenticate()` to succeed. `authenticate()` is still
+  ALWAYS attempted (even for a public scope) so a signed-in caller's userId
+  still reaches `resolveScopeRead` and the hub unchanged — only a caller
+  with NO actor at all AND a public scope skips the 401.
+  - The bootstrap route's scope lives inside the POST body, not a query
+    param, so its auth gate is now deferred until AFTER the body is decoded
+    (JSON parse, protocol/schema version gates, full `BootstrapRequest`
+    decode) rather than before, as it was previously. This means an
+    anonymous caller with a malformed/unsupported-version body now gets 400
+    before 401 (previously always 401 first). This is a deliberate, reviewed
+    ordering change: input-shape validity is not itself sensitive (the wire
+    schema is public), so it carries no confidentiality cost. The connect
+    and log routes parse their scope from query params, so no equivalent
+    reordering was needed there — scope is known before authentication is
+    required either way.
+- New file `apps/openagents.com/workers/api/src/khala-sync-anonymous-rate-limit.ts`:
+  a best-effort per-IP fixed-window limiter (same shape as
+  `business-intake-chat-routes.ts`'s "per-IP window rate limiting
+  (best-effort, per isolate)"), applied ONLY when a request actually
+  proceeds anonymously. Authenticated requests — including authenticated
+  reads of `scope.public.*`, which were already unrestricted for any
+  signed-in user before this change — are NEVER subject to it, so there is
+  zero behavior change for every previously-existing caller. Limits: reads
+  (log/bootstrap) 120/minute + 20,000/day per IP; connect 20/minute +
+  2,000/day per IP (tighter because an admitted connect holds a live
+  per-scope `KhalaSyncHubDO` socket for the connection's lifetime, unlike a
+  one-shot read). A denied anonymous request gets a new typed `SyncError`
+  code, `rate_limited` (429, `retryable: true`) — added to
+  `packages/khala-sync/src/index.ts`'s `SyncErrorCode`. This is a
+  best-effort, per-isolate limiter (not durable, not cross-colo) — the same
+  reviewed tradeoff this repo already makes for its other anonymous public
+  surfaces, not a new abuse-protection primitive. Neither the legacy
+  `sync-routes.ts`/`SyncRoomDurableObject` spine nor the new engine had ANY
+  rate limiting or connection caps before this change (for authenticated OR
+  anonymous callers) — this limiter is a net-new addition bounding the
+  newly-opened anonymous surface specifically, not a preservation of a
+  pre-existing protection.
+
+### Test evidence
+
+- `packages/khala-sync-server/src/scope-auth.test.ts`: pure-resolver matrix
+  — anonymous caller allowed for `scope.public.*` (capabilities never
+  consulted, proven with throwing fakes), anonymous caller denied for
+  every other kind (`scope.user`, `scope.team`, `scope.agent_run`,
+  `scope.thread`, `scope.fleet_run`, unknown), plus a dedicated
+  `isAnonymousReadableScope` suite including the crafted-scope negative
+  cases above.
+- `apps/openagents.com/workers/api/src/khala-sync-scope-auth.test.ts`: same
+  matrix at the Worker wiring seam, with throwing D1 AND a fleet-owner
+  Postgres lookup that would actually GRANT the scope to a real user if
+  ever reached with a userId — proving the anonymous caller is turned away
+  before that capability is even consulted.
+- `apps/openagents.com/workers/api/src/khala-sync-{connect,log,bootstrap}-routes.test.ts`:
+  per route — anonymous read of a public scope succeeds; anonymous read of
+  every other scope kind (including the crafted `scope.public_evil.x`) is
+  still 401; an authenticated caller's userId still reaches
+  `resolveScopeRead` unchanged on a public scope; an anonymous
+  rate-limit-denied request is 429 `rate_limited`; the rate limiter is
+  NEVER consulted for an authenticated request.
+- `apps/openagents.com/workers/api/src/khala-sync-anonymous-rate-limit.test.ts`:
+  window admission/expiry, independent per-IP counters, and independent
+  counters between the connect and read limiter instances.
+
+### Production verification (evidence, no auth header used)
+
+```sh
+# Anonymous connect to a scope.public.* channel succeeds (no 401):
+curl -sS -D - -o /dev/null \
+  -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+  -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+  'https://openagents.com/api/sync/connect?scope=scope.public.tokens-served&cursor=0'
+
+# Anonymous read of a scope.public.* channel succeeds (no 401):
+curl -sS -D - -o /dev/null \
+  'https://openagents.com/api/sync/log?scope=scope.public.tokens-served&cursor=0'
+
+# Anonymous read of a NON-public scope is still correctly rejected (401):
+curl -sS -D - -o /dev/null \
+  'https://openagents.com/api/sync/log?scope=scope.user.some-real-user-id&cursor=0'
+```
+
+### Cutover unblock (out of scope here — for #8414/#8415's own follow-up work)
+
+This closes the exact gap the "Gym run-progress public projection" and
+"Settled-feed public projection" sections above, and the 2026-07-04 cleanup
+audit's Wave 3, flagged as the blocker for retiring
+`SyncRoomDurableObject`/`notifySyncScopes` for anonymous-consumed public
+scopes. Both projections (`scope.public.gym-run-progress`,
+`scope.public.settled-feed`) already exist and are dual-writing today.
+Repointing the actual anonymous client surfaces
+(`apps/web/src/subscriptions.ts`'s `GYM_RUN_PROGRESS_SCOPE` and
+`SETTLED_FEED_SCOPE` hrefs) from the legacy
+`syncStreamHref`/`/api/sync/${kind}/${id}/stream` path onto
+`/api/sync/connect?scope=` — and then deleting the legacy producers — is
+deliberately NOT done as part of this change; it is follow-up work for
+#8414 (settled feed, KS-6.4) and #8415 (gym run-progress, KS-6.5).
+
 ## What this runbook does NOT cover
 
 - Deploying the Worker/hub DO: `docs/DEPLOYMENT.md` (deploy:safe gate).

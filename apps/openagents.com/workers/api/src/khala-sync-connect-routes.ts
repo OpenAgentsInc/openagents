@@ -1,20 +1,36 @@
 // Khala Sync live-tail connect route (KS-4.4, #8297): GET /api/sync/connect.
 //
 // `WS /api/sync/connect?scope=…&cursor=…` (docs/khala-sync/SPEC.md §3): the
-// authenticated live-tail channel. The route authenticates and scope-gates
-// BEFORE the upgrade — via the Worker's standard actor auth (browser session
-// or programmatic agent bearer; same closure as push/log/bootstrap) and the
-// same KS-7.1 `resolveScopeRead` seam as GET /api/sync/log (full taxonomy,
+// live-tail channel. The route scope-gates BEFORE the upgrade via the same
+// KS-7.1 `resolveScopeRead` seam as GET /api/sync/log (full taxonomy,
 // fail-closed; sockets re-run this gate on every reconnect, so a revoked
 // user whose socket was closed by the hub's access_changed broadcast can
-// never re-attach) — then PROXIES the
-// WebSocket upgrade to the per-scope `KhalaSyncHubDO`
-// (`env.KHALA_SYNC_HUB.idFromName(scope)`), the standard DO WebSocket-proxy
-// pattern: forwarding `new Request(target, request)` preserves the method,
-// the `Upgrade: websocket` header, and the client socket end, and the hub's
-// own `/connect` handler performs the Hibernation-API accept + catch-up
-// (DeltaFrames from the socket cursor out of the DO window, or MustRefetch
-// when the cursor is behind the retained window — SPEC §5).
+// never re-attach), then PROXIES the WebSocket upgrade to the per-scope
+// `KhalaSyncHubDO` (`env.KHALA_SYNC_HUB.idFromName(scope)`), the standard DO
+// WebSocket-proxy pattern: forwarding `new Request(target, request)`
+// preserves the method, the `Upgrade: websocket` header, and the client
+// socket end, and the hub's own `/connect` handler performs the
+// Hibernation-API accept + catch-up (DeltaFrames from the socket cursor out
+// of the DO window, or MustRefetch when the cursor is behind the retained
+// window — SPEC §5).
+//
+// AUTH (KS-8.x anonymous-read exception; docs/khala-sync/RUNBOOK.md
+// "Anonymous read scopes"): `scope.public.*` is readable WITHOUT an
+// authenticated actor — `isAnonymousReadableScope` (the exact-match parse
+// `resolveScopeRead` itself uses; single source of truth, never a separate
+// `startsWith`/`includes` heuristic) decides this BEFORE `authenticate()` is
+// required to succeed. Every other scope kind (`scope.user.*`,
+// `scope.team.*`, `scope.agent_run.*`, `scope.thread.*`,
+// `scope.fleet_run.*`) still requires the Worker's standard actor auth
+// (browser session or programmatic agent bearer; same closure as
+// push/log/bootstrap) — a missing/invalid session there is still a 401.
+// `authenticate()` is still ATTEMPTED even for a public scope (so a
+// signed-in caller's userId still reaches `resolveScopeRead` and the hub,
+// unchanged from before this exception existed); only a caller who has NO
+// actor at all AND is reading a public scope skips the 401 requirement. An
+// anonymous connect additionally passes a best-effort per-IP window rate
+// limit (`khala-sync-anonymous-rate-limit.ts`) — authenticated connects are
+// NEVER subject to it.
 //
 // The ADMIN-GUARDED internal route (`/api/internal/khala-sync/hub/connect`,
 // KS-4.2) stays in place for capture/operator use only; THIS route is the
@@ -24,8 +40,9 @@
 // push/log/bootstrap), always no-store: 401 unauthenticated, 400
 // invalid_request (bad scope/cursor), 403 unauthorized_scope, 426
 // invalid_request when the Upgrade header is missing (connect is
-// WebSocket-only), 503 storage_unavailable while the KHALA_SYNC_HUB binding
-// is absent, 500 internal if the hub upgrade itself fails unexpectedly.
+// WebSocket-only), 429 rate_limited (anonymous connects only), 503
+// storage_unavailable while the KHALA_SYNC_HUB binding is absent, 500
+// internal if the hub upgrade itself fails unexpectedly.
 
 import { Effect, Schema as S } from 'effect'
 
@@ -34,9 +51,14 @@ import {
   type SyncErrorCode,
   SyncScope,
 } from '@openagentsinc/khala-sync'
+import { isAnonymousReadableScope } from '@openagentsinc/khala-sync-server'
 
 import { scopeReadDecisionResponse } from './http/khala-sync-scope-read-response'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import {
+  makeKhalaSyncAnonymousConnectRateLimiter,
+  type KhalaSyncAnonymousRateLimiter,
+} from './khala-sync-anonymous-rate-limit'
 import type { KhalaSyncHubNamespaceLike } from './khala-sync-hub-do'
 import type { KhalaSyncScopeReadResolver } from './khala-sync-scope-auth'
 
@@ -52,7 +74,10 @@ export type KhalaSyncConnectDependencies = Readonly<{
   /**
    * Resolve the authenticated caller via the Worker's standard actor auth
    * (`authenticateRequestActor`: browser session or agent bearer token).
-   * `undefined` ⇒ 401. Runs BEFORE the upgrade is forwarded.
+   * `undefined` ⇒ no actor. ALWAYS attempted, even for a public scope (so an
+   * authenticated caller's userId still reaches `resolveScopeRead`); only
+   * fatal (401) when the requested scope is NOT anonymous-readable (see
+   * `isAnonymousReadableScope`). Runs BEFORE the upgrade is forwarded.
    */
   authenticate: () => Promise<{ readonly userId: string } | undefined>
   /**
@@ -63,6 +88,14 @@ export type KhalaSyncConnectDependencies = Readonly<{
   resolveScopeRead: KhalaSyncScopeReadResolver
   /** `env.KHALA_SYNC_HUB` — absent until the DO binding is deployed. */
   hubNamespace: KhalaSyncHubNamespaceLike | undefined
+  /**
+   * Best-effort per-IP window rate limit applied ONLY to anonymous connect
+   * attempts (KS-8.x); authenticated connects never consult this. Defaults
+   * to a module-level `makeKhalaSyncAnonymousConnectRateLimiter()` instance
+   * so a real deployment is protected with zero wiring; tests inject a
+   * deterministic fake.
+   */
+  anonymousRateLimit?: KhalaSyncAnonymousRateLimiter | undefined
 }>
 
 const syncErrorResponse = (
@@ -82,11 +115,16 @@ const parseNonNegativeInt = (raw: string): number | undefined => {
   return Number.isSafeInteger(value) ? value : undefined
 }
 
+/** Module-level default so a real deployment gets rate limiting with zero wiring. */
+const defaultAnonymousConnectRateLimit = makeKhalaSyncAnonymousConnectRateLimiter()
+
 /**
- * `GET /api/sync/connect?scope=&cursor=` — authenticated WebSocket upgrade,
- * proxied to the per-scope hub DO. Success is the hub's own 101 upgrade
- * response (the `webSocket` end rides it back to the runtime); pre-upgrade
- * failures are typed `SyncError` bodies (see the module doc).
+ * `GET /api/sync/connect?scope=&cursor=` — WebSocket upgrade proxied to the
+ * per-scope hub DO; authenticated for every scope except `scope.public.*`
+ * (KS-8.x anonymous-read exception — see the module doc). Success is the
+ * hub's own 101 upgrade response (the `webSocket` end rides it back to the
+ * runtime); pre-upgrade failures are typed `SyncError` bodies (see the
+ * module doc).
  */
 export const handleKhalaSyncConnect = (
   request: Request,
@@ -95,18 +133,6 @@ export const handleKhalaSyncConnect = (
   Effect.promise(async () => {
     if (request.method !== 'GET') {
       return methodNotAllowed(['GET'])
-    }
-
-    // Auth BEFORE the upgrade: an unauthenticated caller never reaches the
-    // hub, and the socket is only ever accepted for a gated scope.
-    const actor = await deps.authenticate()
-    if (actor === undefined) {
-      return syncErrorResponse(
-        401,
-        'unauthenticated',
-        'Khala Sync connect requires an authenticated session or agent token.',
-        false,
-      )
     }
 
     const url = new URL(request.url)
@@ -132,8 +158,35 @@ export const handleKhalaSyncConnect = (
       )
     }
 
+    // Auth BEFORE the upgrade: `scope.public.*` is the ONLY kind readable
+    // without an actor (KS-8.x anonymous-read exception; module doc).
+    // `authenticate()` is still attempted so a signed-in caller's userId
+    // reaches `resolveScopeRead` and the hub even on a public scope.
+    const anonymousAllowed = isAnonymousReadableScope(scope)
+    const actor = await deps.authenticate()
+    if (actor === undefined) {
+      if (!anonymousAllowed) {
+        return syncErrorResponse(
+          401,
+          'unauthenticated',
+          'Khala Sync connect requires an authenticated session or agent token.',
+          false,
+        )
+      }
+      const rateLimit =
+        deps.anonymousRateLimit ?? defaultAnonymousConnectRateLimit
+      if (!rateLimit(request)) {
+        return syncErrorResponse(
+          429,
+          'rate_limited',
+          'Too many anonymous Khala Sync connect attempts from this address; retry later.',
+          true,
+        )
+      }
+    }
+
     const authDenied = scopeReadDecisionResponse(
-      await deps.resolveScopeRead(actor.userId, scope),
+      await deps.resolveScopeRead(actor?.userId, scope),
     )
     if (authDenied !== undefined) {
       return authDenied

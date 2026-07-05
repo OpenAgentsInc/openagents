@@ -88,9 +88,11 @@ const run = (
     userId?: string | undefined
     hubNamespace?: KhalaSyncHubNamespaceLike | undefined
     resolveScopeRead?: KhalaSyncScopeReadResolver
+    anonymousRateLimit?: (request: Request) => boolean
   }> = {},
 ) => {
   const deps: KhalaSyncConnectDependencies = {
+    anonymousRateLimit: input.anonymousRateLimit,
     authenticate: async () =>
       'userId' in input
         ? input.userId === undefined
@@ -275,6 +277,110 @@ describe('handleKhalaSyncConnect', () => {
       request: get({ scope: PUBLIC_SCOPE }),
     })
     expect(response.status).toBe(204)
+  })
+
+  // ---------------------------------------------------------------------
+  // KS-8.x anonymous-read exception: scope.public.* is connectable WITHOUT
+  // an authenticated actor; every other scope kind still 401s.
+  // ---------------------------------------------------------------------
+
+  test('POSITIVE: an ANONYMOUS caller (no session/token) can connect to a public scope', async () => {
+    const hub = fakeHub(() => new Response(null, { status: 204 }))
+    const response = await run({
+      hubNamespace: hub.namespace,
+      request: get({ scope: PUBLIC_SCOPE }),
+      userId: undefined,
+    })
+    expect(response.status).toBe(204)
+    expect(hub.requests).toHaveLength(1)
+    const forwardedUrl = new URL(hub.requests[0]!.url)
+    expect(forwardedUrl.searchParams.get('scope')).toBe(PUBLIC_SCOPE)
+  })
+
+  test.each<Record<string, string>>([
+    { scope: OWN_SCOPE },
+    { scope: personalScope('user-2') },
+    { scope: 'scope.team.t-1' },
+    { scope: 'scope.agent_run.run-1' },
+    { scope: 'scope.thread.thread-1' },
+    { scope: 'scope.fleet_run.fleet-1' },
+    { scope: 'scope.workspace.w-1' },
+  ])(
+    'SECURITY NEGATIVE: an ANONYMOUS caller reading a NON-public scope %j is still 401, hub never contacted',
+    async params => {
+      const hub = fakeHub(() => {
+        throw new Error('hub must not be reached for an anonymous non-public read')
+      })
+      const response = await run({
+        hubNamespace: hub.namespace,
+        request: get(params),
+        userId: undefined,
+      })
+      expect(response.status).toBe(401)
+      const body = await syncErrorBody(response)
+      expect(body.code).toBe('unauthenticated')
+      expect(hub.requests).toHaveLength(0)
+    },
+  )
+
+  test('SECURITY: a scope kind crafted to LOOK public ("scope.public_evil.x") does NOT grant anonymous access', async () => {
+    const hub = fakeHub(() => {
+      throw new Error('hub must not be reached for a non-public scope kind')
+    })
+    const response = await run({
+      hubNamespace: hub.namespace,
+      request: get({ scope: 'scope.public_evil.x' }),
+      userId: undefined,
+    })
+    expect(response.status).toBe(401)
+    expect(hub.requests).toHaveLength(0)
+  })
+
+  test('an authenticated caller connecting to a public scope still passes their OWN userId through to resolveScopeRead (unchanged by the anonymous exception)', async () => {
+    const hub = fakeHub(() => new Response(null, { status: 204 }))
+    const seen: Array<string | undefined> = []
+    const response = await run({
+      hubNamespace: hub.namespace,
+      request: get({ scope: PUBLIC_SCOPE }),
+      resolveScopeRead: async (userId, scope) => {
+        seen.push(userId)
+        return defaultResolveScopeRead(userId, scope)
+      },
+    })
+    expect(response.status).toBe(204)
+    expect(seen).toEqual([USER_ID])
+  })
+
+  test('an anonymous connect that fails the rate limiter is 429 rate_limited, hub never contacted', async () => {
+    const hub = fakeHub(() => {
+      throw new Error('hub must not be reached when the anonymous rate limit denies')
+    })
+    const response = await run({
+      anonymousRateLimit: () => false,
+      hubNamespace: hub.namespace,
+      request: get({ scope: PUBLIC_SCOPE }),
+      userId: undefined,
+    })
+    expect(response.status).toBe(429)
+    const body = await syncErrorBody(response)
+    expect(body.code).toBe('rate_limited')
+    expect(body.retryable).toBe(true)
+    expect(hub.requests).toHaveLength(0)
+  })
+
+  test('the anonymous rate limiter is NEVER consulted for an authenticated connect, even to a public scope', async () => {
+    const hub = fakeHub(() => new Response(null, { status: 204 }))
+    let calls = 0
+    const response = await run({
+      anonymousRateLimit: () => {
+        calls += 1
+        return false
+      },
+      hubNamespace: hub.namespace,
+      request: get({ scope: PUBLIC_SCOPE }),
+    })
+    expect(response.status).toBe(204)
+    expect(calls).toBe(0)
   })
 
   test('a throwing hub stub is 500 internal (never an unhandled rejection)', async () => {

@@ -50,9 +50,17 @@ import {
   resolveAgentRunIdForAutopilotThreadAsync,
 } from './thread-access'
 
-/** The injected route seam: one decision per (userId, scope) read attempt. */
+/**
+ * The injected route seam: one decision per (userId, scope) read attempt.
+ * `userId === undefined` models an anonymous caller (KS-8.x anonymous-read
+ * exception) — `resolveScopeRead` grants that ONLY for `scope.public.*`;
+ * every other kind denies an anonymous caller before any capability
+ * callback runs. Route handlers decide whether to pass `undefined` here by
+ * calling `isAnonymousReadableScope` (from `@openagentsinc/khala-sync-server`)
+ * BEFORE requiring `authenticate()` to succeed.
+ */
 export type KhalaSyncScopeReadResolver = (
-  userId: string,
+  userId: string | undefined,
   scope: SyncScope,
 ) => Promise<ScopeReadDecision>
 

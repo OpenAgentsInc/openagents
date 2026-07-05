@@ -155,6 +155,35 @@ describe('makeKhalaSyncScopeReadResolver (Worker auth matrix)', () => {
     })
   })
 
+  test('public: an ANONYMOUS caller (userId undefined) is also allowed — D1 never consulted (KS-8.x)', async () => {
+    const { resolver } = makeResolver({ db: throwingD1() })
+    expect(await resolver(undefined, publicScope('tokens-served'))).toEqual({
+      kind: 'allowed',
+    })
+  })
+
+  test.each([
+    ['personal', personalScope(USER)],
+    ['team', teamScope(TEAM)],
+    ['agent_run', agentRunScope('run-1')],
+    ['thread', threadScope('thread-1')],
+    ['fleet_run', fleetRunScope('fleet-1')],
+  ] as const)(
+    'SECURITY: an ANONYMOUS caller is denied %s at the Worker seam — never a grant',
+    async (_label, scope) => {
+      // D1 throws if ever consulted (personal/team/agent_run/thread run
+      // through D1); the fleet-owner Postgres lookup would grant `fleet-1`
+      // to USER if it were ever reached with a userId. Either way, the
+      // anonymous caller must see a plain denial, never `allowed`.
+      const { resolver } = makeResolver({
+        db: throwingD1(),
+        fleetOwners: { [String(fleetRunScope('fleet-1'))]: USER },
+      })
+      const decision = await resolver(undefined, scope)
+      expect(decision.kind).not.toBe('allowed')
+    },
+  )
+
   test('team: LIVE D1 membership grants; non-member and removed-member deny', async () => {
     const memberships = new Map([[`${TEAM}:${USER}`, 'member']])
     const { resolver } = makeResolver({ state: { memberships } })

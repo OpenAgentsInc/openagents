@@ -9,6 +9,7 @@ import {
 } from "@openagentsinc/khala-sync"
 import { describe, expect, test } from "bun:test"
 import {
+  isAnonymousReadableScope,
   type KhalaSyncScopeAuthCapabilities,
   resolveScopeRead,
   type ScopeReadDecision,
@@ -86,6 +87,44 @@ describe("resolveScopeRead auth matrix", () => {
       kind: "allowed",
     })
   })
+
+  test("scope.public: an ANONYMOUS caller (userId undefined) is allowed — consults NO capability", async () => {
+    const decision = await resolveScopeRead(
+      {
+        isTeamMember: unusable("isTeamMember"),
+        canReadAgentRun: unusable("canReadAgentRun"),
+        canReadThread: unusable("canReadThread"),
+        readFleetScopeOwner: unusable("readFleetScopeOwner"),
+      },
+      undefined,
+      publicScope("tokens-served"),
+    )
+    expect(decision).toEqual({ kind: "allowed" })
+  })
+
+  test.each([
+    ["scope.user", personalScope(USER)],
+    ["scope.team", teamScope(TEAM)],
+    ["scope.agent_run", agentRunScope(RUN)],
+    ["scope.thread", threadScope(THREAD)],
+    ["scope.fleet_run", fleetRunScope(FLEET)],
+    ["an unknown taxonomy kind", SyncScope.make("scope.workspace.w-1")],
+  ] as const)(
+    "SECURITY: an ANONYMOUS caller is denied %s — the ONLY anonymous-readable kind is scope.public (never a grant, never a capability call)",
+    async (_label, scope) => {
+      const decision = await resolveScopeRead(
+        {
+          isTeamMember: unusable("isTeamMember"),
+          canReadAgentRun: unusable("canReadAgentRun"),
+          canReadThread: unusable("canReadThread"),
+          readFleetScopeOwner: unusable("readFleetScopeOwner"),
+        },
+        undefined,
+        scope,
+      )
+      expect(decision.kind).not.toBe("allowed")
+    },
+  )
 
   test("scope.team: LIVE member is allowed, non-member is denied", async () => {
     expect(await decide(USER, teamScope(TEAM))).toEqual({ kind: "allowed" })
@@ -169,4 +208,39 @@ describe("resolveScopeRead auth matrix", () => {
       }
     },
   )
+})
+
+describe("isAnonymousReadableScope (KS-8.x anonymous-read exception)", () => {
+  test("true for every scope.public.* channel", () => {
+    expect(isAnonymousReadableScope(publicScope("tokens-served"))).toBe(true)
+    expect(isAnonymousReadableScope(publicScope("gym-run-progress"))).toBe(
+      true,
+    )
+    expect(isAnonymousReadableScope(publicScope("settled-feed"))).toBe(true)
+  })
+
+  test("false for every other taxonomy kind", () => {
+    expect(isAnonymousReadableScope(personalScope(USER))).toBe(false)
+    expect(isAnonymousReadableScope(teamScope(TEAM))).toBe(false)
+    expect(isAnonymousReadableScope(agentRunScope(RUN))).toBe(false)
+    expect(isAnonymousReadableScope(threadScope(THREAD))).toBe(false)
+    expect(isAnonymousReadableScope(fleetRunScope(FLEET))).toBe(false)
+    expect(
+      isAnonymousReadableScope(SyncScope.make("scope.workspace.w-1")),
+    ).toBe(false)
+  })
+
+  test("SECURITY: a crafted id segment can never be mistaken for the public kind — kind is captured up to the FIRST dot only", () => {
+    // "public_evil" is a DIFFERENT kind than "public" (exact match, not a
+    // prefix/startsWith/includes check).
+    expect(
+      isAnonymousReadableScope(SyncScope.make("scope.public_evil.x")),
+    ).toBe(false)
+    // A "public" SEGMENT nested inside a non-public kind's id must not leak
+    // through: the kind is "team", not "public", regardless of what the id
+    // portion (after the second dot) contains.
+    expect(
+      isAnonymousReadableScope(SyncScope.make("scope.team.public.evil")),
+    ).toBe(false)
+  })
 })

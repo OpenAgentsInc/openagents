@@ -19,6 +19,24 @@
 // live team membership, agent_run/thread ownership, fleet_run scope owner;
 // unknown kinds and failed lookups fail CLOSED).
 //
+// AUTH (KS-8.x anonymous-read exception; docs/khala-sync/RUNBOOK.md
+// "Anonymous read scopes"): `scope.public.*` is the ONE exception —
+// bootstrappable WITHOUT an authenticated actor. Because the scope lives
+// INSIDE the POST body (not a query param), this route decodes the body
+// FIRST (JSON parse, protocol/schema version gates, full `BootstrapRequest`
+// decode) and only THEN decides whether a missing actor is fatal, via
+// `isAnonymousReadableScope` (the exact-match parse `resolveScopeRead`
+// itself uses). This deliberately moves the 401 check after body/version
+// validation (previously first): a malformed or unsupported-version body
+// now fails 400 before 401 even when the caller has no session at all —
+// input-shape validation is not itself sensitive (the wire schema is
+// public), so this ordering change carries no confidentiality cost.
+// `authenticate()` is still attempted for a public scope too, so a
+// signed-in caller's userId still reaches `resolveScopeRead` unchanged.
+// Anonymous bootstraps additionally pass a best-effort per-IP window rate
+// limit (`khala-sync-anonymous-rate-limit.ts`); authenticated bootstraps
+// never see it.
+//
 // CACHING (deliberate: always `Cache-Control: no-store`): a bootstrap page
 // is specific to the CALLER'S PAGING POSITION, not just its URL — the same
 // (scope, pageSize) body yields different pages as `pageToken` advances, the
@@ -39,8 +57,9 @@
 // undecodable/foreign-scope page token — restart the bootstrap without a
 // token), 403 unauthorized_scope, 410 cursor_behind_retained_window
 // (compaction passed the pinned snapshot cursor mid-drain: the stitch can
-// no longer succeed — re-bootstrap from scratch), 503 storage_unavailable
-// (retryable), 500 internal.
+// no longer succeed — re-bootstrap from scratch), 429 rate_limited
+// (anonymous bootstraps only), 503 storage_unavailable (retryable), 500
+// internal.
 //
 // The real postgres.js client is dynamically imported ONLY when no
 // `makeSqlClient` is injected (deployed Worker with `nodejs_compat`); tests
@@ -59,6 +78,7 @@ import {
 import {
   bootstrap as bootstrapFromPostgresReal,
   type BootstrapInput,
+  isAnonymousReadableScope,
   KhalaSyncCursorBehindRetainedWindowError,
   KhalaSyncInvalidPageTokenError,
   KhalaSyncStorageError,
@@ -68,6 +88,10 @@ import {
 
 import { scopeReadDecisionResponse } from './http/khala-sync-scope-read-response'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import {
+  makeKhalaSyncAnonymousReadRateLimiter,
+  type KhalaSyncAnonymousRateLimiter,
+} from './khala-sync-anonymous-rate-limit'
 import type {
   KhalaSyncHyperdriveBinding,
   KhalaSyncPushSqlClient,
@@ -101,7 +125,10 @@ export type KhalaSyncBootstrapDependencies = Readonly<{
   /**
    * Resolve the authenticated caller via the Worker's standard actor auth
    * (`authenticateRequestActor`: browser session or agent bearer token).
-   * `undefined` ⇒ 401.
+   * `undefined` ⇒ no actor. ALWAYS attempted, even for a public scope (so a
+   * signed-in caller's userId still reaches `resolveScopeRead`); only fatal
+   * (401) when the requested scope is NOT anonymous-readable (see
+   * `isAnonymousReadableScope`).
    */
   authenticate: () => Promise<{ readonly userId: string } | undefined>
   /**
@@ -111,6 +138,14 @@ export type KhalaSyncBootstrapDependencies = Readonly<{
   resolveScopeRead: KhalaSyncScopeReadResolver
   /** `env.KHALA_SYNC_DB` — absent until the binding is deployed. */
   binding: KhalaSyncHyperdriveBinding | undefined
+  /**
+   * Best-effort per-IP window rate limit applied ONLY to anonymous
+   * bootstraps (KS-8.x); authenticated bootstraps never consult this.
+   * Defaults to a module-level `makeKhalaSyncAnonymousReadRateLimiter()`
+   * instance so a real deployment is protected with zero wiring; tests
+   * inject a deterministic fake.
+   */
+  anonymousRateLimit?: KhalaSyncAnonymousRateLimiter | undefined
   /**
    * Injectable client factory. Default: dynamic import of `postgres`
    * (postgres.js), Worker-runtime only. Tests inject a fake — no network,
@@ -162,12 +197,16 @@ const defaultMakeSqlClient: MakeKhalaSyncPushSqlClient = async (
 // Route handler
 // ---------------------------------------------------------------------------
 
+/** Module-level default so a real deployment gets rate limiting with zero wiring. */
+const defaultAnonymousReadRateLimit = makeKhalaSyncAnonymousReadRateLimiter()
+
 /**
- * `POST /api/sync/bootstrap` — authenticated (session or agent bearer).
- * Success: 200 with one encoded `BootstrapResponse` page (drain via
- * `nextPageToken`; the final page carries `cursor`). Failures are typed
- * `SyncError` bodies (see the module doc for the status map). Every
- * response — success and failure — is `Cache-Control: no-store`.
+ * `POST /api/sync/bootstrap` — authenticated (session or agent bearer) for
+ * every scope except `scope.public.*` (KS-8.x anonymous-read exception —
+ * see the module doc). Success: 200 with one encoded `BootstrapResponse`
+ * page (drain via `nextPageToken`; the final page carries `cursor`).
+ * Failures are typed `SyncError` bodies (see the module doc for the status
+ * map). Every response — success and failure — is `Cache-Control: no-store`.
  */
 export const handleKhalaSyncBootstrap = (
   request: Request,
@@ -176,16 +215,6 @@ export const handleKhalaSyncBootstrap = (
   Effect.promise(async () => {
     if (request.method !== 'POST') {
       return methodNotAllowed(['POST'])
-    }
-
-    const actor = await deps.authenticate()
-    if (actor === undefined) {
-      return syncErrorResponse(
-        401,
-        'unauthenticated',
-        'Khala Sync bootstrap requires an authenticated session or agent token.',
-        false,
-      )
     }
 
     let raw: unknown
@@ -243,8 +272,36 @@ export const handleKhalaSyncBootstrap = (
       )
     }
 
+    // Auth: `scope.public.*` is the ONLY kind bootstrappable without an
+    // actor. Deferred until here (rather than before the body decode)
+    // because the scope lives inside the body — see the module doc.
+    // `authenticate()` is still attempted so a signed-in caller's userId
+    // reaches `resolveScopeRead` even on a public scope.
+    const anonymousAllowed = isAnonymousReadableScope(bootstrapRequest.scope)
+    const actor = await deps.authenticate()
+    if (actor === undefined) {
+      if (!anonymousAllowed) {
+        return syncErrorResponse(
+          401,
+          'unauthenticated',
+          'Khala Sync bootstrap requires an authenticated session or agent token.',
+          false,
+        )
+      }
+      const rateLimit =
+        deps.anonymousRateLimit ?? defaultAnonymousReadRateLimit
+      if (!rateLimit(request)) {
+        return syncErrorResponse(
+          429,
+          'rate_limited',
+          'Too many anonymous Khala Sync bootstrap requests from this address; retry later.',
+          true,
+        )
+      }
+    }
+
     const authDenied = scopeReadDecisionResponse(
-      await deps.resolveScopeRead(actor.userId, bootstrapRequest.scope),
+      await deps.resolveScopeRead(actor?.userId, bootstrapRequest.scope),
     )
     if (authDenied !== undefined) {
       return authDenied

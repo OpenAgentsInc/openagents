@@ -176,9 +176,11 @@ const run = (
     client?: KhalaSyncPushSqlClient
     logPage?: LogPageFromPostgresFn
     resolveScopeRead?: KhalaSyncScopeReadResolver
+    anonymousRateLimit?: (request: Request) => boolean
   }> = {},
 ) => {
   const deps: KhalaSyncLogDependencies = {
+    anonymousRateLimit: input.anonymousRateLimit,
     authenticate: async () =>
       'userId' in input
         ? input.userId === undefined
@@ -598,6 +600,89 @@ describe('handleKhalaSyncLog', () => {
       request: get({ scope: PUBLIC_SCOPE }),
     })
     expect(response.status).toBe(200)
+  })
+
+  // ---------------------------------------------------------------------
+  // KS-8.x anonymous-read exception: scope.public.* is readable WITHOUT an
+  // authenticated actor; every other scope kind still 401s.
+  // ---------------------------------------------------------------------
+
+  test('POSITIVE: an ANONYMOUS caller (no session/token) can read a public scope', async () => {
+    const served = page({ nextCursor: 1, scope: PUBLIC_SCOPE, upToDate: true })
+    const response = await run({
+      hubNamespace: hubServing(served).namespace,
+      request: get({ scope: PUBLIC_SCOPE }),
+      userId: undefined,
+    })
+    expect(response.status).toBe(200)
+  })
+
+  test.each<Record<string, string>>([
+    { scope: OWN_SCOPE },
+    { scope: personalScope('user-2') },
+    { scope: 'scope.team.t-1' },
+    { scope: 'scope.agent_run.run-1' },
+    { scope: 'scope.thread.thread-1' },
+    { scope: 'scope.fleet_run.fleet-1' },
+    { scope: 'scope.workspace.w-1' },
+  ])(
+    'SECURITY NEGATIVE: an ANONYMOUS caller reading a NON-public scope %j is still 401',
+    async params => {
+      const response = await run({ request: get(params), userId: undefined })
+      expect(response.status).toBe(401)
+      const body = await syncErrorBody(response)
+      expect(body.code).toBe('unauthenticated')
+    },
+  )
+
+  test('SECURITY: a scope kind crafted to LOOK public ("scope.public_evil.x") does NOT grant anonymous access', async () => {
+    const response = await run({
+      request: get({ scope: 'scope.public_evil.x' }),
+      userId: undefined,
+    })
+    expect(response.status).toBe(401)
+  })
+
+  test('an authenticated caller reading a public scope still passes their OWN userId through to resolveScopeRead', async () => {
+    const served = page({ nextCursor: 1, scope: PUBLIC_SCOPE, upToDate: true })
+    const seen: Array<string | undefined> = []
+    const response = await run({
+      hubNamespace: hubServing(served).namespace,
+      request: get({ scope: PUBLIC_SCOPE }),
+      resolveScopeRead: async (userId, scope) => {
+        seen.push(userId)
+        return defaultResolveScopeRead(userId, scope)
+      },
+    })
+    expect(response.status).toBe(200)
+    expect(seen).toEqual([USER_ID])
+  })
+
+  test('an anonymous read that fails the rate limiter is 429 rate_limited', async () => {
+    const response = await run({
+      anonymousRateLimit: () => false,
+      request: get({ scope: PUBLIC_SCOPE }),
+      userId: undefined,
+    })
+    expect(response.status).toBe(429)
+    const body = await syncErrorBody(response)
+    expect(body.code).toBe('rate_limited')
+    expect(body.retryable).toBe(true)
+  })
+
+  test('the anonymous rate limiter is NEVER consulted for an authenticated read, even of a public scope', async () => {
+    const served = page({ nextCursor: 1, scope: PUBLIC_SCOPE, upToDate: true })
+    let calls = 0
+    const response = await run({
+      anonymousRateLimit: () => {
+        calls += 1
+        return false
+      },
+      hubNamespace: hubServing(served).namespace,
+      request: get({ scope: PUBLIC_SCOPE }),
+    })
+    expect(response.status).toBe(200)
+    expect(calls).toBe(0)
   })
 })
 

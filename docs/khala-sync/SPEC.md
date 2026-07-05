@@ -125,14 +125,22 @@ All frames are Effect Schema types in `packages/khala-sync`
 Auth: requests carry the normal OpenAgents auth; the server resolves scope
 access on every bootstrap/connect and re-checks on membership change
 (revocation ⇒ hub sends `MustRefetch(reason: access_changed)` and the
-re-bootstrap returns nothing). Gatekeeper-style scope tokens (JWT embedding
-the authorized scope) are the v2 fast path.
+re-bootstrap returns nothing). The ONE exception is `scope.public.*`
+(KS-8.x): those reads are authorized for an anonymous caller too, so a
+missing/absent session or agent bearer token is not itself fatal for that
+one scope kind — every other kind still 401s exactly as before. Gatekeeper-
+style scope tokens (JWT embedding the authorized scope) are the v2 fast
+path.
 
 Scope-read resolution (KS-7.1, #8305) is one taxonomy-complete resolver
 (`resolveScopeRead` in `packages/khala-sync-server/src/scope-auth.ts`,
 wired Worker-side in `khala-sync-scope-auth.ts`) consulted by log,
-bootstrap, AND connect: `scope.user.*` self-only; `scope.public.*` any
-authenticated caller; `scope.team.*` live D1 team membership;
+bootstrap, AND connect: `scope.user.*` self-only; `scope.public.*` ANY
+caller, including one with NO authenticated actor at all (KS-8.x
+anonymous-read exception, `userId === undefined` — the ONLY taxonomy
+member ever readable anonymously; see
+`docs/khala-sync/RUNBOOK.md` "Anonymous read scopes"); `scope.team.*` live
+D1 team membership;
 `scope.agent_run.*` run owner or active member of the run's team;
 `scope.thread.*` either that legacy `agent_runs` / autopilot-thread mapping
 or the owner-private chat thread's `khala_sync_scope_owners` row;
