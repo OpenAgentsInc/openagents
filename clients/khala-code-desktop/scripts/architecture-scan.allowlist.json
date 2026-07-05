@@ -2,7 +2,7 @@
   "schema": "khala-code-architecture-scan-allowlist.v1",
   "description": "Grandfathered Khala Code architecture scan findings. Run `bun run --cwd clients/khala-code-desktop scan:architecture -- --update-allowlist` after removing a finding, review the count decrease, and keep verify green.",
   "counts": {
-    "date-now-in-logic": 47,
+    "date-now-in-logic": 48,
     "direct-env-read": 30,
     "effect-run-promise": 67,
     "json-parse-cast": 32,
@@ -195,35 +195,42 @@
       "id": "7ce449e0dcc56ef1",
       "category": "date-now-in-logic",
       "path": "clients/khala-code-desktop/src/bun/rpc-handlers.ts",
-      "line": 1548,
+      "line": 1558,
       "snippet": "Date.now()"
     },
     {
       "id": "2818a410b2b14d61",
       "category": "date-now-in-logic",
       "path": "clients/khala-code-desktop/src/bun/rpc-handlers.ts",
-      "line": 1566,
+      "line": 1576,
       "snippet": "Date.now()"
     },
     {
       "id": "403a42556293a70d",
       "category": "date-now-in-logic",
       "path": "clients/khala-code-desktop/src/bun/rpc-handlers.ts",
-      "line": 1888,
+      "line": 1898,
       "snippet": "Date.now()"
     },
     {
       "id": "f85686bda84e0a99",
       "category": "date-now-in-logic",
       "path": "clients/khala-code-desktop/src/bun/rpc-handlers.ts",
-      "line": 1908,
+      "line": 1918,
       "snippet": "Date.now()"
     },
     {
       "id": "856e1ebe159c84de",
       "category": "date-now-in-logic",
       "path": "clients/khala-code-desktop/src/bun/rpc-handlers.ts",
-      "line": 2578,
+      "line": 2588,
+      "snippet": "Date.now()"
+    },
+    {
+      "id": "2a6ec055dd882b71",
+      "category": "date-now-in-logic",
+      "path": "clients/khala-code-desktop/src/shared/unresponsive-watchdog.ts",
+      "line": 50,
       "snippet": "Date.now()"
     },
     {
@@ -237,56 +244,56 @@
       "id": "95a7c1b15b0de9ae",
       "category": "date-now-in-logic",
       "path": "clients/khala-code-desktop/src/ui/main.ts",
-      "line": 985,
+      "line": 1085,
       "snippet": "Date.now()"
     },
     {
       "id": "2e13514c65392f7a",
       "category": "date-now-in-logic",
       "path": "clients/khala-code-desktop/src/ui/main.ts",
-      "line": 2609,
+      "line": 2709,
       "snippet": "Date.now()"
     },
     {
       "id": "8a585f57a635c459",
       "category": "date-now-in-logic",
       "path": "clients/khala-code-desktop/src/ui/main.ts",
-      "line": 3039,
+      "line": 3128,
       "snippet": "Date.now()"
     },
     {
       "id": "c49f42e86fb7e5d9",
       "category": "date-now-in-logic",
       "path": "clients/khala-code-desktop/src/ui/main.ts",
-      "line": 3754,
+      "line": 3843,
       "snippet": "Date.now()"
     },
     {
       "id": "79be1e2c237dd679",
       "category": "date-now-in-logic",
       "path": "clients/khala-code-desktop/src/ui/main.ts",
-      "line": 3757,
+      "line": 3846,
       "snippet": "Date.now()"
     },
     {
       "id": "8a734bcc2f9a156c",
       "category": "date-now-in-logic",
       "path": "clients/khala-code-desktop/src/ui/main.ts",
-      "line": 3760,
+      "line": 3849,
       "snippet": "Date.now()"
     },
     {
       "id": "2856ae56a01cd452",
       "category": "date-now-in-logic",
       "path": "clients/khala-code-desktop/src/ui/main.ts",
-      "line": 3912,
+      "line": 4001,
       "snippet": "Date.now()"
     },
     {
       "id": "a14c9202bd30cedc",
       "category": "date-now-in-logic",
       "path": "clients/khala-code-desktop/src/ui/main.ts",
-      "line": 3919,
+      "line": 4008,
       "snippet": "Date.now()"
     },
     {
@@ -748,7 +755,7 @@
       "id": "f20d7181e7034e03",
       "category": "effect-run-promise",
       "path": "clients/khala-code-desktop/src/bun/rpc-handlers.ts",
-      "line": 1058,
+      "line": 1068,
       "snippet": "Effect.runPromise("
     },
     {
@@ -1203,35 +1210,35 @@
       "id": "3ff115dd3cf11b74",
       "category": "json-parse-cast",
       "path": "clients/khala-code-desktop/src/ui/main.ts",
-      "line": 249,
+      "line": 245,
       "snippet": "JSON.parse(text) as"
     },
     {
       "id": "f0b8124f2b26bfcb",
       "category": "json-parse-cast",
       "path": "clients/khala-code-desktop/src/ui/main.ts",
-      "line": 789,
+      "line": 806,
       "snippet": "JSON.parse((event as MessageEvent<string>).data) as"
     },
     {
       "id": "372a920b70aa27fd",
       "category": "json-parse-cast",
       "path": "clients/khala-code-desktop/src/ui/main.ts",
-      "line": 799,
+      "line": 816,
       "snippet": "JSON.parse((event as MessageEvent<string>).data) as"
     },
     {
       "id": "5325ad77b94c227b",
       "category": "json-parse-cast",
       "path": "clients/khala-code-desktop/src/ui/main.ts",
-      "line": 3870,
+      "line": 3959,
       "snippet": "JSON.parse(value) as"
     },
     {
       "id": "b1513a0f8211b04a",
       "category": "json-parse-cast",
       "path": "clients/khala-code-desktop/src/ui/main.ts",
-      "line": 5155,
+      "line": 5236,
       "snippet": "JSON.parse(input) as"
     },
     {

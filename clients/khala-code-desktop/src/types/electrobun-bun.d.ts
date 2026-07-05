@@ -30,6 +30,22 @@ declare module "electrobun/bun" {
     ): RpcDefinition<Schema["requests"], NonNullable<Schema["messages"]>>
   }
 
+  export class BrowserWindowWebview {
+    on(
+      name:
+        | "will-navigate"
+        | "did-navigate"
+        | "did-navigate-in-page"
+        | "did-commit-navigation"
+        | "dom-ready"
+        | "download-started"
+        | "download-progress"
+        | "download-completed"
+        | "download-failed",
+      handler: (event: unknown) => void,
+    ): void
+  }
+
   export class BrowserWindow {
     constructor(options: {
       readonly title: string
@@ -44,6 +60,7 @@ declare module "electrobun/bun" {
       readonly titleBarStyle?: "hidden" | "hiddenInset" | "default"
       readonly trafficLightOffset?: Readonly<{ x: number; y: number }>
     })
+    readonly webview: BrowserWindowWebview
   }
 
   export type Rectangle = {
@@ -92,5 +109,23 @@ declare module "electrobun/bun" {
     applyUpdate: () => Promise<void>
     downloadUpdate: () => Promise<void>
     getLocalInfo: () => Promise<UpdaterLocalInfo>
+  }>
+
+  export type MessageBoxOptions = {
+    readonly type?: "info" | "warning" | "error" | "question"
+    readonly title?: string
+    readonly message?: string
+    readonly detail?: string
+    readonly buttons?: readonly string[]
+    readonly defaultId?: number
+    readonly cancelId?: number
+  }
+
+  export type MessageBoxResponse = {
+    readonly response: number
+  }
+
+  export const Utils: Readonly<{
+    showMessageBox: (options?: MessageBoxOptions) => Promise<MessageBoxResponse>
   }>
 }

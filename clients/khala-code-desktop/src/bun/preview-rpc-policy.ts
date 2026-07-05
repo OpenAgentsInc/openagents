@@ -73,6 +73,10 @@ export const mutatingPreviewRpcMethods = new Set<KhalaCodeDesktopRpcMethodName>(
   "updaterCheck",
   "updaterDownload",
   "updaterInstall",
+  // Diagnostics (issue #8441): relaunch/quit terminate or respawn the whole
+  // app process, which is squarely a mutation of app/process state.
+  "diagnosticsRelaunch",
+  "diagnosticsQuit",
 ])
 
 export const readOnlySafePreviewRpcMethods = new Set<KhalaCodeDesktopRpcMethodName>([
@@ -123,4 +127,12 @@ export const readOnlySafePreviewRpcMethods = new Set<KhalaCodeDesktopRpcMethodNa
   "toolCatalog",
   // #8440 in-app updater plumbing: read-only status snapshot, no side effects.
   "updaterStatus",
+  // Diagnostics (issue #8441): these read/append to the local diagnostics
+  // log store and (for export) write a debug-log archive to disk, but never
+  // touch product/app state (threads, fleet, accounts, ...), so they are
+  // safe for a read-only preview session.
+  "diagnosticsSnapshot",
+  "diagnosticsExport",
+  "diagnosticsRendererHeartbeat",
+  "diagnosticsReportRendererFatalError",
 ])

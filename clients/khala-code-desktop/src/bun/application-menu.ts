@@ -11,6 +11,17 @@ type MenuItem =
       submenu?: Array<MenuItem>
     }
 
+/**
+ * Diagnostics/debug-log export menu actions (issue #8441). Native menu
+ * commands give the user a recovery path that does not depend on the
+ * (possibly unresponsive) webview content — see src/bun/index.ts's
+ * `application-menu-clicked` handler, which routes these through the same
+ * diagnostics service used by the in-window recovery overlay and the native
+ * unresponsive dialog.
+ */
+export const KHALA_CODE_DESKTOP_MENU_ACTION_RESTART = "khala.diagnostics.relaunch"
+export const KHALA_CODE_DESKTOP_MENU_ACTION_EXPORT_DEBUG_LOGS = "khala.diagnostics.export"
+
 export const khalaCodeDesktopApplicationMenu: Array<MenuItem> = [
   {
     label: "Khala Code",
@@ -56,6 +67,15 @@ export const khalaCodeDesktopApplicationMenu: Array<MenuItem> = [
     submenu: [
       { label: "Check for Updates…", action: KHALA_CODE_UPDATER_MENU_ACTION_CHECK_FOR_UPDATES },
       { label: "Release Notes", action: KHALA_CODE_UPDATER_MENU_ACTION_RELEASE_NOTES },
+      { type: "divider" },
+      {
+        label: "Restart Khala Code",
+        action: KHALA_CODE_DESKTOP_MENU_ACTION_RESTART,
+      },
+      {
+        label: "Export Debug Logs…",
+        action: KHALA_CODE_DESKTOP_MENU_ACTION_EXPORT_DEBUG_LOGS,
+      },
     ],
   },
 ]

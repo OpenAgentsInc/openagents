@@ -1759,7 +1759,65 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
       verification:
         "bun test tests/khala-code-updater-controller.test.ts tests/khala-code-updater-settings-section.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.",
     },
+    {
+      authorityBoundary:
+        "Binds the desktop diagnostics/debug-log export surface only (issue #8441). It does not certify remote telemetry or crash upload — that is explicitly out of scope for #8441 — and it does not claim Electrobun exposes native did-fail-load/render-process-gone hooks; the load-failure and unresponsive signals here are the honest substitutes documented in src/bun/index.ts and src/shared/unresponsive-watchdog.ts given that framework gap.",
+      blockerRefs: [],
+      contractId: "khala_code.diagnostics.debug_log_export_public_safe_and_recovery_visible.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8441",
+        "clients/khala-code-desktop/src/shared/diagnostics-redaction.ts",
+        "clients/khala-code-desktop/src/shared/diagnostics-log-store.ts",
+        "clients/khala-code-desktop/src/shared/diagnostics-bundle.ts",
+        "clients/khala-code-desktop/src/shared/diagnostics-zip.ts",
+        "clients/khala-code-desktop/src/shared/unresponsive-watchdog.ts",
+        "clients/khala-code-desktop/src/shared/recovery-state.ts",
+        "clients/khala-code-desktop/src/bun/diagnostics-service.ts",
+        "clients/khala-code-desktop/src/ui/recovery-overlay-react.tsx",
+        "clients/khala-code-desktop/scripts/diagnostics-recovery-visual-smoke.ts",
+        "docs/khala-code/2026-07-05-opencode-desktop-parity-gap-audit.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Builds a diagnostics bundle from log entries that include a secret-shaped provider token and asserts the serialized bundle (manifest + every category .log file) never contains the raw secret anywhere, only the redaction marker.",
+          id: "debug_log_export_redacted.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-code-desktop/tests/diagnostics-bundle.test.ts",
+        },
+        {
+          description:
+            "Proves relaunch/quit always await disposeRuntime() (which stops every local Codex/Pylon/Khala Sync subprocess) to completion before spawning a replacement process or exiting, including when disposeRuntime rejects, so a recovery action can never leave a duplicate local service process running.",
+          id: "recovery_action_no_duplicate_processes.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-code-desktop/tests/diagnostics-service.test.ts",
+        },
+        {
+          description:
+            "Mounts the real recovery overlay in a DOM and proves both the load_failure and unresponsive states render a visible alertdialog with their correct action-button set, and that keep_waiting/export_logs/relaunch/quit each dispatch to the right action without dismissing on export.",
+          id: "recovery_overlay_states_visible.dom",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "clients/khala-code-desktop/tests/recovery-overlay.test.ts",
+        },
+      ],
+      productArea: "native shell diagnostics",
+      source: {
+        channel: "github-issue",
+        statedBy: "owner",
+        statedOn: "2026-07-05",
+      },
+      state: "enforced",
+      statement:
+        "Khala Code desktop's debug-log export is public-safe by default: it redacts local secrets, provider payloads, tokens, and raw prompts before anything is written to the exported archive. Load-failure and unresponsive recovery states render a visible recovery affordance (relaunch, export debug logs, keep waiting where applicable, quit), and none of those recovery actions may leave a duplicate local Codex/Pylon/Khala Sync process running behind them.",
+      surface: "khala-code-desktop",
+      verification:
+        "bun test tests/diagnostics-redaction.test.ts tests/diagnostics-zip.test.ts tests/diagnostics-log-store.test.ts tests/diagnostics-bundle.test.ts tests/unresponsive-watchdog.test.ts tests/recovery-state.test.ts tests/diagnostics-service.test.ts tests/recovery-overlay.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main. bun run smoke:diagnostics-recovery-visual additionally captures a real headless-browser visual smoke of both recovery states.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-05.2",
+  version: "2026-07-05.3",
 }

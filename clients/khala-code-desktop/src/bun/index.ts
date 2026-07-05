@@ -25,7 +25,11 @@ import {
   khalaCodeQaMetricDefinitions,
 } from "../shared/qa-metrics.js"
 import { buildKhalaAppleFmDisabledReadiness } from "../shared/apple-fm-readiness.js"
-import { khalaCodeDesktopApplicationMenu } from "./application-menu.js"
+import {
+  khalaCodeDesktopApplicationMenu,
+  KHALA_CODE_DESKTOP_MENU_ACTION_EXPORT_DEBUG_LOGS,
+  KHALA_CODE_DESKTOP_MENU_ACTION_RESTART,
+} from "./application-menu.js"
 import {
   parseKhalaCodeHeadlessArgs,
   readKhalaCodeHeadlessPrompt,
@@ -67,6 +71,13 @@ import {
   KHALA_CODE_DESKTOP_UPDATER_DEV_CHANNEL,
   khalaCodeDesktopUpdaterDisabledLocalInfo,
 } from "../shared/updater.js"
+import { createKhalaCodeDesktopDiagnosticsService } from "./diagnostics-service.js"
+import {
+  dispatchKhalaCodeDesktopRecoveryAction,
+  khalaCodeDesktopRecoveryActionsFor,
+  KHALA_CODE_DESKTOP_RECOVERY_ACTION_LABELS,
+  type KhalaCodeDesktopRecoveryState,
+} from "../shared/recovery-state.js"
 
 const khalaCodeConfig = khalaCodeConfigFromRuntimeEnv()
 const khalaCodeEnv = khalaCodeConfig.env
@@ -632,7 +643,7 @@ if (argv.includes("--json")) {
   process.exit(exitCode)
 }
 
-const { ApplicationMenu, BrowserView, BrowserWindow, Screen, Updater } = await import("electrobun/bun")
+const { ApplicationMenu, BrowserView, BrowserWindow, Screen, Updater, Utils } = await import("electrobun/bun")
 
 // #8440 in-app updater plumbing. Electrobun's Updater.getLocalInfo() reads
 // the packaged `Resources/version.json`; it resolves to empty strings (never
@@ -751,9 +762,62 @@ const fleetAccountStateReporter = khalaSyncService === null
     },
   })
 
+// Diagnostics/debug-log export (issue #8441). Forward-declared so the
+// watchdog's state-change callback (registered below, before `rpc` exists)
+// can be reassigned once the native BrowserWindow/rpc/Utils bridge is ready
+// — mirrors the emitChatTurnEvent/emitFleetLifecycleEvent forward-reference
+// pattern already used in this file.
+let handleUnresponsiveWatchdogStateChange = (
+  _state: "responsive" | "unresponsive",
+): void => {}
+
+let unresponsiveCheckInterval: ReturnType<typeof setInterval> | null = null
+
+// Relaunch spawns a fresh copy of this same process (same binary, same argv)
+// detached from the current one. Called only after diagnosticsService has
+// fully disposed every local service/subprocess, so a relaunch never leaves
+// a duplicate Codex/Pylon/Khala Sync process behind.
+const spawnRelaunchProcess = (): void => {
+  try {
+    // No explicit `env` — Bun.spawn inherits the parent process's full
+    // environment by default, which is what a relaunch needs (unlike
+    // khalaCodeEnv, a curated allowlist of specific keys this app reads).
+    const child = Bun.spawn([process.execPath, ...process.argv.slice(1)], {
+      cwd: process.cwd(),
+      stdio: ["ignore", "ignore", "ignore"],
+    })
+    child.unref()
+  } catch (error) {
+    console.warn(
+      `Khala Code relaunch spawn failed: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+}
+
+const disposeRuntime = (): void => {
+  if (unresponsiveCheckInterval !== null) clearInterval(unresponsiveCheckInterval)
+  tokenUsageBackgroundSync.dispose()
+  codexAppServerHost.dispose()
+  fleetAccountStateReporter?.dispose()
+  stopKhalaCodeUpdaterPeriodicChecks()
+  void khalaSyncService?.close()
+}
+
+const diagnosticsService = createKhalaCodeDesktopDiagnosticsService({
+  disposeRuntime,
+  env: khalaCodeEnv,
+  onWatchdogStateChange: state => handleUnresponsiveWatchdogStateChange(state),
+  spawnRelaunchProcess,
+})
+
+unresponsiveCheckInterval = setInterval(() => {
+  diagnosticsService.checkUnresponsiveNow()
+}, 5_000)
+
 rpcRequestHandlers = createKhalaCodeDesktopRpcRequestHandlers({
   appleFmReadiness,
   codexAppServerHost,
+  diagnosticsService,
   enableFleetMcpBridge: true,
   emitChatTurnEvent: event => emitChatTurnEvent(event),
   emitClaudeApprovalRequested: request => emitClaudeApprovalRequested(request),
@@ -773,14 +837,6 @@ rpcRequestHandlers = createKhalaCodeDesktopRpcRequestHandlers({
   updaterController: khalaCodeUpdaterController,
   workingDirectory: resolveToolWorkingDirectory(khalaCodeEnv),
 })
-
-const disposeRuntime = (): void => {
-  tokenUsageBackgroundSync.dispose()
-  codexAppServerHost.dispose()
-  fleetAccountStateReporter?.dispose()
-  stopKhalaCodeUpdaterPeriodicChecks()
-  void khalaSyncService?.close()
-}
 
 process.once("exit", disposeRuntime)
 process.once("SIGINT", () => {
@@ -840,6 +896,60 @@ emitClaudeApprovalRequested = request => {
   })
 }
 
+// Diagnostics/recovery surface (issue #8441): the unresponsive watchdog was
+// created above before `rpc`/`Utils` existed, so its state-change handler was
+// a no-op placeholder. Wire the real behavior now: push the recovery state
+// to the renderer (best-effort — a truly frozen renderer cannot render it,
+// which is exactly why the native message-box dialog below is the reliable
+// fallback), and show a native OS dialog with the relaunch/export/keep
+// waiting/quit choices, independent of the (possibly unresponsive) webview.
+const showUnresponsiveNativeDialog = async (): Promise<void> => {
+  const actions = khalaCodeDesktopRecoveryActionsFor("unresponsive")
+  const buttons = actions.map(action => KHALA_CODE_DESKTOP_RECOVERY_ACTION_LABELS[action])
+  const keepWaitingIndex = actions.indexOf("keep_waiting")
+  const { response } = await Utils.showMessageBox({
+    buttons,
+    cancelId: keepWaitingIndex === -1 ? 0 : keepWaitingIndex,
+    defaultId: keepWaitingIndex === -1 ? 0 : keepWaitingIndex,
+    detail: "Choose an action, or keep waiting if it's just working on something heavy.",
+    message: "Khala Code hasn't responded recently.",
+    title: "Khala Code isn't responding",
+    type: "warning",
+  })
+  const action = actions[response]
+  if (action === undefined) return
+  const outcome = await dispatchKhalaCodeDesktopRecoveryAction(action, {
+    exportDebugLogs: () => diagnosticsService.exportDebugLogArchive(),
+    quit: () => diagnosticsService.quit(),
+    relaunch: () => diagnosticsService.relaunch(),
+  })
+  if (outcome.kind === "export") {
+    console.info(`Khala Code debug logs exported to ${outcome.path}`)
+  }
+}
+
+handleUnresponsiveWatchdogStateChange = state => {
+  const recoveryMessage: KhalaCodeDesktopRecoveryState = state === "unresponsive"
+    ? {
+      detail: "Khala Code hasn't responded recently.",
+      kind: "unresponsive",
+      since: new Date().toISOString(),
+    }
+    : { kind: "none" }
+  try {
+    rpc.send.diagnosticsRecoveryStateChanged(recoveryMessage)
+  } catch {
+    // Headless preview runs have no native window transport.
+  }
+  if (state === "unresponsive") {
+    void showUnresponsiveNativeDialog().catch(error => {
+      console.warn(
+        `Khala Code unresponsive dialog failed: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    })
+  }
+}
+
 const originalConsole = {
   debug: console.debug.bind(console),
   error: console.error.bind(console),
@@ -856,14 +966,19 @@ for (const level of ["debug", "info", "warn", "error"] as const) {
       observedAt: new Date().toISOString(),
       type: "consoleDiagnostic",
     })
+    diagnosticsService.recordMainLog(args.map(String).join(" "), level)
   }
 }
 
 const publishCrashDiagnostic = (error: unknown): void => {
+  const message = error instanceof Error ? error.message : String(error)
   publishPreviewBridgeEvent({
-    message: error instanceof Error ? error.message : String(error),
+    message,
     observedAt: new Date().toISOString(),
     type: "crashDiagnostic",
+  })
+  diagnosticsService.recordFatalError("main", message, {
+    ...(error instanceof Error && error.stack !== undefined ? { stack: error.stack } : {}),
   })
 }
 
@@ -885,14 +1000,70 @@ const resolveMainViewUrl = async (): Promise<string> => {
   return "views://khala-code-desktop/index.html"
 }
 
+// Native menu recovery commands (issue #8441): "Restart Khala Code" and
+// "Export Debug Logs" work even if the webview content is unresponsive,
+// since they route through the diagnostics service directly rather than
+// through the (possibly frozen) renderer.
+ApplicationMenu.on("application-menu-clicked", event => {
+  const data = (event as { data?: { action?: string } }).data
+  if (data?.action === KHALA_CODE_DESKTOP_MENU_ACTION_RESTART) {
+    void diagnosticsService.relaunch()
+    return
+  }
+  if (data?.action === KHALA_CODE_DESKTOP_MENU_ACTION_EXPORT_DEBUG_LOGS) {
+    void diagnosticsService.exportDebugLogArchive()
+      .then(result => console.info(`Khala Code debug logs exported to ${result.path}`))
+      .catch(error => console.warn(
+        `Khala Code debug log export failed: ${error instanceof Error ? error.message : String(error)}`,
+      ))
+  }
+})
+
+// Native-shell load-failure detection (issue #8441): Electrobun does not
+// currently expose an Electron-style did-fail-load/render-process-gone
+// event (see docs/khala-code/2026-07-05-opencode-desktop-parity-gap-audit.md
+// and upstream packages/bun/src/events/webviewEvents.ts, whose event list
+// stops at navigation/download events). "dom-ready" is the closest signal
+// available: if it never fires within this timeout after window creation,
+// the bundled view failed to load.
+const MAIN_WINDOW_LOAD_TIMEOUT_MS = 20_000
+
 if (khalaCodeEnv.KHALA_CODE_DESKTOP_OPEN_WINDOW !== "0") {
   ApplicationMenu.setApplicationMenu(khalaCodeDesktopApplicationMenu)
 
-  new BrowserWindow({
+  const mainWindow = new BrowserWindow({
     title: "Khala Code",
     url: await resolveMainViewUrl(),
     frame: resolveMainWindowFrame(),
     titleBarStyle: "hiddenInset",
     rpc,
   })
+  diagnosticsService.recordNativeShellEvent("main window created")
+
+  let mainWindowLoaded = false
+  mainWindow.webview.on("dom-ready", () => {
+    mainWindowLoaded = true
+    diagnosticsService.recordNativeShellEvent("main window dom ready")
+    try {
+      rpc.send.diagnosticsRecoveryStateChanged({ kind: "none" })
+    } catch {
+      // Headless preview runs have no native window transport.
+    }
+  })
+  setTimeout(() => {
+    if (mainWindowLoaded) return
+    diagnosticsService.recordFatalError(
+      "native-shell",
+      `main window did not reach dom-ready within ${MAIN_WINDOW_LOAD_TIMEOUT_MS}ms`,
+    )
+    try {
+      rpc.send.diagnosticsRecoveryStateChanged({
+        detail: "Khala Code's window failed to finish loading.",
+        kind: "load_failure",
+        since: new Date().toISOString(),
+      })
+    } catch {
+      // Headless preview runs have no native window transport.
+    }
+  }, MAIN_WINDOW_LOAD_TIMEOUT_MS)
 }

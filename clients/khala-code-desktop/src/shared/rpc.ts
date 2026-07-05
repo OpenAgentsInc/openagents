@@ -2578,6 +2578,72 @@ const RpcUpdaterActionResult = S.Struct({
   status: RpcUpdaterStatus,
 })
 
+// Diagnostics/debug-log export surface (issue #8441). See
+// src/bun/diagnostics-service.ts and src/shared/diagnostics-*.ts for the
+// public-safe redaction, log-store, bundle/zip, and watchdog logic these
+// schemas front.
+const RpcDiagnosticsCounts = S.Struct({
+  main: S.Number,
+  "native-shell": S.Number,
+  renderer: S.Number,
+  service: S.Number,
+})
+export type KhalaCodeDesktopDiagnosticsCounts = typeof RpcDiagnosticsCounts.Type
+
+const RpcDiagnosticsUnresponsiveState = S.Literals(["responsive", "unresponsive"])
+
+const RpcDiagnosticsSnapshotResult = S.Struct({
+  counts: RpcDiagnosticsCounts,
+  ok: S.Literal(true),
+  unresponsiveState: RpcDiagnosticsUnresponsiveState,
+})
+export type KhalaCodeDesktopDiagnosticsSnapshotResult = typeof RpcDiagnosticsSnapshotResult.Type
+
+const RpcDiagnosticsManifest = S.Struct({
+  appVersion: S.String,
+  arch: S.String,
+  fatalCount: S.Number,
+  generatedAt: S.String,
+  platform: S.String,
+  publicSafe: S.Literal(true),
+  redactionApplied: S.Literal(true),
+  schema: S.Literal("openagents.khala_code_desktop.diagnostics_bundle.v1"),
+  totalsByCategory: RpcDiagnosticsCounts,
+})
+export type KhalaCodeDesktopDiagnosticsManifest = typeof RpcDiagnosticsManifest.Type
+
+const RpcDiagnosticsExportResult = S.Union([
+  S.Struct({
+    archiveBytes: S.Number,
+    manifest: RpcDiagnosticsManifest,
+    ok: S.Literal(true),
+    path: S.String,
+  }),
+  S.Struct({
+    error: S.String,
+    ok: S.Literal(false),
+  }),
+])
+export type KhalaCodeDesktopDiagnosticsExportResult = typeof RpcDiagnosticsExportResult.Type
+
+const RpcDiagnosticsAckResult = S.Struct({ ok: S.Literal(true) })
+export type KhalaCodeDesktopDiagnosticsAckResult = typeof RpcDiagnosticsAckResult.Type
+
+const RpcDiagnosticsRendererFatalErrorRequest = S.Struct({
+  kind: S.Literals(["error", "unhandledrejection"]),
+  message: S.String,
+  stack: S.optional(S.String),
+})
+export type KhalaCodeDesktopDiagnosticsRendererFatalErrorRequest =
+  typeof RpcDiagnosticsRendererFatalErrorRequest.Type
+
+const RpcRecoveryState = S.Union([
+  S.Struct({ kind: S.Literal("none") }),
+  S.Struct({ detail: S.String, kind: S.Literal("load_failure"), since: S.String }),
+  S.Struct({ detail: S.String, kind: S.Literal("unresponsive"), since: S.String }),
+])
+export type KhalaCodeDesktopRecoveryStateMessage = typeof RpcRecoveryState.Type
+
 const noParams = () => [] as const
 const param = <A>(schema: S.Schema<A>) => ({ optional: false, schema }) as const
 const optionalParam = <A>(schema: S.Schema<A>) =>
@@ -2706,6 +2772,12 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   updaterDownload: { parameters: noParams(), result: RpcUpdaterActionResult },
   updaterInstall: { parameters: noParams(), result: RpcUpdaterActionResult },
   updaterStatus: { parameters: noParams(), result: RpcUpdaterStatus },
+  diagnosticsSnapshot: { parameters: noParams(), result: RpcDiagnosticsSnapshotResult },
+  diagnosticsExport: { parameters: noParams(), result: RpcDiagnosticsExportResult },
+  diagnosticsRendererHeartbeat: { parameters: noParams(), result: RpcDiagnosticsAckResult },
+  diagnosticsReportRendererFatalError: { parameters: [param(RpcDiagnosticsRendererFatalErrorRequest)], result: RpcDiagnosticsAckResult },
+  diagnosticsRelaunch: { parameters: noParams(), result: RpcDiagnosticsAckResult },
+  diagnosticsQuit: { parameters: noParams(), result: RpcDiagnosticsAckResult },
 } as const satisfies Record<
   keyof KhalaCodeDesktopRPCSchema["requests"],
   KhalaCodeDesktopRpcMethodSchemaSpec
@@ -2895,6 +2967,12 @@ export type KhalaCodeDesktopRPCSchema = {
     updaterDownload(): Promise<KhalaCodeDesktopUpdaterActionResult>
     updaterInstall(): Promise<KhalaCodeDesktopUpdaterActionResult>
     updaterStatus(): Promise<KhalaCodeDesktopUpdaterStatus>
+    diagnosticsSnapshot(): Promise<KhalaCodeDesktopDiagnosticsSnapshotResult>
+    diagnosticsExport(): Promise<KhalaCodeDesktopDiagnosticsExportResult>
+    diagnosticsRendererHeartbeat(): Promise<KhalaCodeDesktopDiagnosticsAckResult>
+    diagnosticsReportRendererFatalError(request: KhalaCodeDesktopDiagnosticsRendererFatalErrorRequest): Promise<KhalaCodeDesktopDiagnosticsAckResult>
+    diagnosticsRelaunch(): Promise<KhalaCodeDesktopDiagnosticsAckResult>
+    diagnosticsQuit(): Promise<KhalaCodeDesktopDiagnosticsAckResult>
   }
   messages: {
     chatTurnEvent(event: KhalaCodeDesktopChatTurnEvent): void
@@ -2907,5 +2985,12 @@ export type KhalaCodeDesktopRPCSchema = {
      * detection latency.
      */
     claudeApprovalRequested(request: KhalaCodeDesktopClaudeApprovalRequestProjection): void
+    /**
+     * Diagnostics/recovery surface (issue #8441): pushed whenever the main
+     * process's load-failure detector or unresponsive watchdog changes
+     * state, so the renderer's recovery overlay can show/hide without
+     * polling. See src/ui/recovery-overlay-react.tsx.
+     */
+    diagnosticsRecoveryStateChanged(state: KhalaCodeDesktopRecoveryStateMessage): void
   }
 }

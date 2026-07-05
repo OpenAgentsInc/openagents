@@ -87,6 +87,7 @@ import {
   type KhalaCodeReviewPanelHandle,
 } from "./review-panel"
 import { mountKhalaCodeForumPanel } from "./forum-panel"
+import { mountKhalaCodeRecoveryOverlay } from "./recovery-overlay-react"
 import { mountKhalaCodePlansPanel } from "./plans-panel"
 import { mountKhalaCodeRunEvidencePanel } from "./run-evidence-panel"
 import { mountCodexSettingsPanel } from "./codex-settings-panel"
@@ -727,11 +728,36 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["updaterStatus"]>>>(
         "updaterStatus",
       ),
+    diagnosticsSnapshot: () =>
+      postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["diagnosticsSnapshot"]>>>(
+        "diagnosticsSnapshot",
+      ),
+    diagnosticsExport: () =>
+      postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["diagnosticsExport"]>>>(
+        "diagnosticsExport",
+      ),
+    diagnosticsRendererHeartbeat: () =>
+      postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["diagnosticsRendererHeartbeat"]>>>(
+        "diagnosticsRendererHeartbeat",
+      ),
+    diagnosticsReportRendererFatalError: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["diagnosticsReportRendererFatalError"]>>
+      >("diagnosticsReportRendererFatalError", request),
+    diagnosticsRelaunch: () =>
+      postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["diagnosticsRelaunch"]>>>(
+        "diagnosticsRelaunch",
+      ),
+    diagnosticsQuit: () =>
+      postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["diagnosticsQuit"]>>>(
+        "diagnosticsQuit",
+      ),
   },
   send: {
     chatTurnEvent: () => undefined,
     fleetLifecycleEvent: () => undefined,
     claudeApprovalRequested: () => undefined,
+    diagnosticsRecoveryStateChanged: () => undefined,
   },
 })
 
@@ -818,6 +844,13 @@ const startPreviewBridgeEvents = (): void => {
   })
 }
 
+// Diagnostics/recovery surface (issue #8441). Forward-declared: the RPC
+// message handler below needs to call this before `rpc` (and the mounted
+// recovery overlay that owns the real implementation) exist.
+let handleRecoveryStateChanged: (
+  state: Parameters<KhalaCodeDesktopRPCSchema["messages"]["diagnosticsRecoveryStateChanged"]>[0],
+) => void = () => {}
+
 const nativeRpc = Electroview.defineRPC<KhalaCodeDesktopRPCSchema>({
   maxRequestTime: KHALA_CODE_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
   handlers: {
@@ -834,6 +867,9 @@ const nativeRpc = Electroview.defineRPC<KhalaCodeDesktopRPCSchema>({
         // for the next 1s claudeApprovalPending poll tick. The poll stays
         // registered below as a fallback safety net.
         void pollClaudeApprovals()
+      },
+      diagnosticsRecoveryStateChanged(state) {
+        handleRecoveryStateChanged(state)
       },
     },
   },
@@ -853,6 +889,79 @@ const rpc = isKhalaPreviewWindow ? previewRpc() : nativeRpc
 startPreviewBridgeEvents()
 if (!isKhalaPreviewWindow) {
   new Electroview({ rpc: nativeRpc })
+}
+
+// Diagnostics/debug-log export and native-shell recovery UX (issue #8441):
+// mount the recovery overlay, wire its three actions to the real RPCs, wire
+// a renderer heartbeat so the main-process unresponsive watchdog has a
+// signal to key off of, and forward fatal renderer errors into the local
+// diagnostics log store so they show up in an exported debug-log archive.
+const recoveryOverlayRoot = document.getElementById("recovery-overlay-root")
+if (recoveryOverlayRoot !== null) {
+  const recoveryOverlay = mountKhalaCodeRecoveryOverlay(recoveryOverlayRoot, {
+    dispatch: {
+      exportDebugLogs: async () => {
+        const result = await rpc.request.diagnosticsExport()
+        if (!result.ok) throw new Error(result.error)
+        return { path: result.path }
+      },
+      quit: async () => {
+        await rpc.request.diagnosticsQuit()
+      },
+      relaunch: async () => {
+        await rpc.request.diagnosticsRelaunch()
+      },
+    },
+  })
+  handleRecoveryStateChanged = state => {
+    if (state.kind === "none") {
+      recoveryOverlay.hide()
+      return
+    }
+    recoveryOverlay.show(state)
+  }
+  // Visual-smoke/test hook only: lets the diagnostics recovery visual smoke
+  // (scripts/diagnostics-recovery-visual-smoke.ts) force each recovery state
+  // without a real native watchdog/load-failure signal. Calls the same
+  // `.show`/`.hide` handle a real push message would use.
+  ;(globalThis as unknown as {
+    __khalaCodeRecoveryOverlayTestHook?: typeof recoveryOverlay
+  }).__khalaCodeRecoveryOverlayTestHook = recoveryOverlay
+
+  const RENDERER_HEARTBEAT_INTERVAL_MS = 5_000
+  setInterval(() => {
+    void rpc.request.diagnosticsRendererHeartbeat().catch(() => {
+      // Best-effort — a failed heartbeat call just means the next interval
+      // tick retries; it must never throw into a global handler.
+    })
+  }, RENDERER_HEARTBEAT_INTERVAL_MS)
+
+  const reportRendererFatalError = (
+    kind: "error" | "unhandledrejection",
+    message: string,
+    stack?: string,
+  ): void => {
+    void rpc.request.diagnosticsReportRendererFatalError({
+      kind,
+      message,
+      ...(stack === undefined ? {} : { stack }),
+    }).catch(() => {
+      // Best-effort — must never throw from an error handler.
+    })
+  }
+  globalThis.addEventListener("error", (event: ErrorEvent) => {
+    const error = event.error as unknown
+    reportRendererFatalError(
+      "error",
+      event.message,
+      error instanceof Error ? error.stack : undefined,
+    )
+  })
+  globalThis.addEventListener("unhandledrejection", (event: PromiseRejectionEvent) => {
+    const reason = event.reason as unknown
+    const message = reason instanceof Error ? reason.message : String(reason)
+    reportRendererFatalError("unhandledrejection", message, reason instanceof Error ? reason.stack : undefined)
+  })
 }
 
 const composerClasses = {

@@ -24,6 +24,7 @@
     "smoke:cockpit-visual": "bun scripts/cockpit-visual-smoke.ts",
     "smoke:part2-fleet-gym-visual": "bun scripts/part2-fleet-gym-visual-smoke.ts",
     "smoke:part2-ui": "bun scripts/part2-ui-recording-smoke.ts",
+    "smoke:diagnostics-recovery-visual": "bun scripts/diagnostics-recovery-visual-smoke.ts",
     "bench:thread-switch": "bun scripts/thread-switch-benchmark.ts",
     "backfill:message-token-audit": "bun scripts/backfill-codex-message-token-audit.ts",
     "verify": "bun run scan:architecture && bun run typecheck && bun test tests/*.test.ts && bun run build:ui && bun build src/bun/index.ts --outdir /tmp/khala-code-desktop-bun-build --target bun",

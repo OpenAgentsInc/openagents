@@ -137,6 +137,10 @@ import {
   type KhalaCodeDesktopThreadTokenSummaryRequest,
   type KhalaCodeDesktopUpdaterActionResult,
   type KhalaCodeDesktopUpdaterStatus,
+  type KhalaCodeDesktopDiagnosticsAckResult,
+  type KhalaCodeDesktopDiagnosticsExportResult,
+  type KhalaCodeDesktopDiagnosticsRendererFatalErrorRequest,
+  type KhalaCodeDesktopDiagnosticsSnapshotResult,
 } from "../shared/rpc.js"
 import {
   khalaCodeDesktopUpdaterActionResult,
@@ -146,6 +150,7 @@ import {
   emptyKhalaCodeQaMetricsSnapshot,
   khalaCodeQaMetricUnitFor,
 } from "../shared/qa-metrics.js"
+import type { KhalaCodeDesktopDiagnosticsService } from "./diagnostics-service.js"
 import {
   khalaCodeDesktopCodexApprovalResponsePayload,
   type KhalaCodeDesktopCodexApprovalResponseInput,
@@ -377,6 +382,12 @@ export type KhalaCodeDesktopRpcHandlersInput = {
   readonly qaMetrics?: () => MaybePromise<KhalaCodeDesktopQaMetricsSnapshot>
   /** #8440 in-app updater plumbing. Absent only in fixture/test wiring that never boots a real controller. */
   readonly updaterController?: KhalaCodeDesktopUpdaterController
+  /**
+   * Diagnostics/debug-log export service (issue #8441). Absent only in
+   * legacy/test call sites that have not wired it yet; those RPCs then
+   * answer with an honest disabled/no-op response rather than throwing.
+   */
+  readonly diagnosticsService?: KhalaCodeDesktopDiagnosticsService
   readonly workingDirectory: string
 }
 
@@ -4117,6 +4128,60 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
           status: input.updaterController.status(),
         }
       }
+    },
+    async diagnosticsSnapshot(): Promise<KhalaCodeDesktopDiagnosticsSnapshotResult> {
+      const service = input.diagnosticsService
+      if (service === undefined) {
+        return {
+          counts: { main: 0, "native-shell": 0, renderer: 0, service: 0 },
+          ok: true,
+          unresponsiveState: "responsive",
+        }
+      }
+      return {
+        counts: service.snapshotCounts(),
+        ok: true,
+        unresponsiveState: service.watchdog.state(),
+      }
+    },
+    async diagnosticsExport(): Promise<KhalaCodeDesktopDiagnosticsExportResult> {
+      const service = input.diagnosticsService
+      if (service === undefined) {
+        return { error: "Diagnostics service is not configured.", ok: false }
+      }
+      try {
+        const result = await service.exportDebugLogArchive()
+        return {
+          archiveBytes: result.archiveBytes,
+          manifest: result.manifest,
+          ok: true,
+          path: result.path,
+        }
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : String(error), ok: false }
+      }
+    },
+    async diagnosticsRendererHeartbeat(): Promise<KhalaCodeDesktopDiagnosticsAckResult> {
+      input.diagnosticsService?.handleRendererHeartbeat()
+      return { ok: true }
+    },
+    async diagnosticsReportRendererFatalError(
+      request: KhalaCodeDesktopDiagnosticsRendererFatalErrorRequest,
+    ): Promise<KhalaCodeDesktopDiagnosticsAckResult> {
+      input.diagnosticsService?.recordFatalError(
+        "renderer",
+        request.message,
+        { kind: request.kind, ...(request.stack === undefined ? {} : { stack: request.stack }) },
+      )
+      return { ok: true }
+    },
+    async diagnosticsRelaunch(): Promise<KhalaCodeDesktopDiagnosticsAckResult> {
+      await input.diagnosticsService?.relaunch()
+      return { ok: true }
+    },
+    async diagnosticsQuit(): Promise<KhalaCodeDesktopDiagnosticsAckResult> {
+      await input.diagnosticsService?.quit()
+      return { ok: true }
     },
   }
 }
