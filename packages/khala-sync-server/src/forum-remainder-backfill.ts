@@ -6,7 +6,7 @@
  * parent content lane (`forum-content-backfill.ts`, #8321). Takes raw D1
  * rows (snake_case objects, exactly as `wrangler d1 execute --json`
  * returns them) and converges them into the Postgres twins from migration
- * `0026_forum_remainder.sql` via the SHARED registry in
+ * `0027_forum_remainder.sql` via the SHARED registry in
  * `./forum-remainder-tables.ts` (the same `upsertForumRemainderRows` the
  * Worker's dual-write mirror uses — backfill and mirror can never fight
  * because they write identical converge upserts keyed on the PK).

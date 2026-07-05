@@ -3,7 +3,7 @@
 // the KS-8.10 family behind the parent content lane
 // (`forum-content-store.ts`, #8321). Same seam, same mirror recipe.
 //
-// Domain tables (khala-sync migration `0026_forum_remainder.sql`):
+// Domain tables (khala-sync migration `0027_forum_remainder.sql`):
 // `forum_private_message_threads`, `forum_private_messages` (PRIVATE),
 // `forum_acl_grants`, `forum_trust_edges`, `forum_actor_forum_trust`
 // (DERIVED), `forum_score_snapshots` (DERIVED), `forum_notification_reads`,

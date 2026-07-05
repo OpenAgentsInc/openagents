@@ -825,7 +825,7 @@ evidence + D1 drop tracked on epic
 
 **KS-8.10 REMAINDER machinery status (2026-07-04, #8338):** LANDED for the
 thirteen remainder tables — Postgres schema (`khala-sync-server` migration
-`0026_forum_remainder.sql`: `forum_private_message_threads`,
+`0027_forum_remainder.sql`: `forum_private_message_threads`,
 `forum_private_messages`, `forum_acl_grants`, `forum_trust_edges`,
 `forum_actor_forum_trust`, `forum_score_snapshots`,
 `forum_notification_reads`, and the work-request lifecycle family (6)

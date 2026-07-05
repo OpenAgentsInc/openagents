@@ -911,7 +911,7 @@ ride this SAME sequence and the SAME flags (`KHALA_SYNC_FORUM_DUAL_WRITE` /
 `wrapForumRemainderMirroring`) is composed around
 `forumContentDatabaseForEnv`, so dual-write turning on for the content lane
 turns it on for the remainder tables too — no separate flag. Postgres
-schema is `0026_forum_remainder.sql` (apply with the same migration
+schema is `0027_forum_remainder.sql` (apply with the same migration
 runner). Backfill + verify is the sibling CLI
 `packages/khala-sync-server/scripts/backfill-forum-remainder.ts` (same
 `--verify` / `--restart` / rowid-cursor semantics; state file

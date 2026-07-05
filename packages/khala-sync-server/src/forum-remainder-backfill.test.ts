@@ -226,7 +226,7 @@ describe.skipIf(!hasLocalPostgres())(
       await admin.end()
       const url = pg.urlFor("khala_forum_remainder_backfill")
       const result = await runMigrations({ databaseUrl: url })
-      expect(result.applied).toContain("0026_forum_remainder.sql")
+      expect(result.applied).toContain("0027_forum_remainder.sql")
       rawSql = new SQL({ url, max: 4 })
       sql = rawSql as unknown as SyncSql
     })

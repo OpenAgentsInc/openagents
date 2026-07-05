@@ -4,7 +4,7 @@
  * forum tables that finish the KS-8.10 family behind the parent content
  * lane (#8321, `forum-content-tables.ts`, migration `0014_forum_content.sql`).
  *
- * Tables (khala-sync migration `0026_forum_remainder.sql`):
+ * Tables (khala-sync migration `0027_forum_remainder.sql`):
  *   - private content: `forum_private_message_threads`,
  *     `forum_private_messages` (bodies are refs; diagnostics stay keys-only);
  *   - `forum_acl_grants`;

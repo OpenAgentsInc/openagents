@@ -5,7 +5,7 @@
  * Reads D1 rows through `wrangler d1 execute <db> --remote --json` (the
  * KS-8 pattern: reuses the repo's existing wrangler auth — no new admin-API
  * surface) in bounded rowid-keyset pages, and converges them into the
- * Postgres twins from khala-sync migration `0026_forum_remainder.sql` over
+ * Postgres twins from khala-sync migration `0027_forum_remainder.sql` over
  * a DIRECT connection (never Hyperdrive). Every table converges on its PK
  * to the D1 snapshot value — idempotent; a re-run converges to the same
  * state, and the runbook's sequence runs the backfill TWICE (the second

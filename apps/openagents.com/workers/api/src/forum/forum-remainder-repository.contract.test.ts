@@ -164,7 +164,7 @@ describe('forum remainder write-store contract — D1 (real SQLite)', () => {
 
 const MIGRATION_0024 = path.resolve(
   __dirname,
-  '../../../../../../packages/khala-sync-server/migrations/0026_forum_remainder.sql',
+  '../../../../../../packages/khala-sync-server/migrations/0027_forum_remainder.sql',
 )
 
 type PgClient = Readonly<{

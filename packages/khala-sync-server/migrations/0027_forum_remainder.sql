@@ -16,9 +16,9 @@
 -- Plan: docs/khala-sync/MIGRATION_PLAN.md §3.7 (universal porting rules in
 -- §1); template: 0014_forum_content.sql (the parent content lane).
 --
--- MIGRATION-NUMBER NOTE: renumbered 0024 -> 0026 on rebase after sibling
+-- MIGRATION-NUMBER NOTE: renumbered 0024 -> 0027 on rebase after sibling
 -- KS-8 lanes landed 0024_supervision_longtail.sql and
--- 0025_sites_remainder.sql. The KS-8 waves collide on numbers; the file is
+-- 0025_sites_remainder.sql (and 0026_gym_evals_domain.sql). The KS-8 waves collide on numbers; the file is
 -- order-only with no cross-references, so renumbering is safe.
 --
 -- PRIVACY: `forum_private_message_threads` / `forum_private_messages` are
