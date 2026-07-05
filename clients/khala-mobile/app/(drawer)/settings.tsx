@@ -10,10 +10,11 @@ import {
   type FleetRunEntity,
   type FleetWorkerEntity
 } from "@openagentsinc/khala-sync"
-import { ScrollView, Text, View } from "react-native"
+import { Pressable, ScrollView, Text, View } from "react-native"
 import Animated, { FadeIn } from "react-native-reanimated"
 import { SafeAreaView } from "react-native-safe-area-context"
 
+import { useKhalaAuth } from "../../src/auth/khala-auth-context"
 import { AppHeader } from "../../src/components/app-header"
 import { KHALA_SYNC_DEMO_FLEET_RUN_ID } from "../../src/config/khala-sync-demo"
 import {
@@ -167,12 +168,32 @@ const FleetSection = () => {
   )
 }
 
+const AccountSection = () => {
+  const { ownerUserId, signOut } = useKhalaAuth()
+  return (
+    <View className="gap-2">
+      <SectionLabel>Account</SectionLabel>
+      <Text className="font-mono text-xs text-textFaint" numberOfLines={1}>
+        {ownerUserId}
+      </Text>
+      <Pressable
+        accessibilityRole="button"
+        className="items-center rounded-xl border border-border bg-surfaceRaised py-3"
+        onPress={() => void signOut()}
+      >
+        <Text className="font-sans text-sm text-danger">Sign out</Text>
+      </Pressable>
+    </View>
+  )
+}
+
 export default function SettingsScreen() {
   return (
     <SafeAreaView className="flex-1 bg-bg" edges={["top", "bottom", "left", "right"]}>
       <AppHeader showMenu title="Settings" />
       <ScrollView contentContainerClassName="gap-6 px-4 py-4">
         <FleetSection />
+        <AccountSection />
       </ScrollView>
     </SafeAreaView>
   )

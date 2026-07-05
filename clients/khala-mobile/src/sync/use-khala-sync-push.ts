@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef } from "react"
 import { decodePushResponse, type PushResponse } from "@openagentsinc/khala-sync"
 
-import { KHALA_SYNC_DEMO_BASE_URL, KHALA_SYNC_DEMO_TOKEN } from "../config/khala-sync-demo"
+import { useKhalaAuth } from "../auth/khala-auth-context"
 import { buildPushRequestBody, buildPushUrl, makeSafeRef, stableArgsJson } from "./khala-sync-push-core"
 
 export type PendingMutation = Readonly<{
@@ -14,6 +14,7 @@ export type PendingMutation = Readonly<{
  * relaunches) so the mutationId counter can always start at 1 without
  * colliding with a stale server-side ledger watermark from a prior session. */
 export function useKhalaSyncPush(): (mutations: ReadonlyArray<PendingMutation>) => Promise<PushResponse> {
+  const { baseUrl, token } = useKhalaAuth()
   const clientIdRef = useRef<string | undefined>(undefined)
   if (clientIdRef.current === undefined) clientIdRef.current = makeSafeRef("mobile-composer")
   const nextMutationIdRef = useRef(1)
@@ -31,10 +32,10 @@ export function useKhalaSyncPush(): (mutations: ReadonlyArray<PendingMutation>) 
         clientId: clientIdRef.current as string,
         mutations: envelopes
       })
-      const response = await fetch(buildPushUrl(KHALA_SYNC_DEMO_BASE_URL), {
+      const response = await fetch(buildPushUrl(baseUrl), {
         body: JSON.stringify(body),
         headers: {
-          authorization: `Bearer ${KHALA_SYNC_DEMO_TOKEN}`,
+          authorization: `Bearer ${token}`,
           "content-type": "application/json"
         },
         method: "POST"
@@ -54,6 +55,6 @@ export function useKhalaSyncPush(): (mutations: ReadonlyArray<PendingMutation>) 
       }
       return decoded
     },
-    [clientGroupId]
+    [clientGroupId, baseUrl, token]
   )
 }

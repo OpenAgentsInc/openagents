@@ -123,7 +123,7 @@ export default function ThreadMessagesScreen() {
           {status === "missing_token" ? (
             <View className="flex-1 items-center justify-center px-8">
               <Text className="text-center font-mono text-sm text-textFaint">
-                Set EXPO_PUBLIC_KHALA_SYNC_DEMO_TOKEN before starting the app.
+                Not signed in. Restart the app to sign in again.
               </Text>
             </View>
           ) : status === "error" ? (

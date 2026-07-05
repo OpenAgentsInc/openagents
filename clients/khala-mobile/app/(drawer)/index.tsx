@@ -9,9 +9,9 @@ import { FlatList, Text, View } from "react-native"
 import Animated, { FadeIn } from "react-native-reanimated"
 import { SafeAreaView } from "react-native-safe-area-context"
 
+import { useKhalaAuth } from "../../src/auth/khala-auth-context"
 import { AppHeader } from "../../src/components/app-header"
 import { TouchableFeedback } from "../../src/components/touchable-feedback"
-import { KHALA_SYNC_DEMO_OWNER_USER_ID } from "../../src/config/khala-sync-demo"
 import { formatRelativeTime } from "../../src/sync/relative-time-core"
 import { sortByKeyDesc } from "../../src/sync/khala-sync-entities-core"
 import { useKhalaSyncCollection } from "../../src/sync/use-khala-sync-collection"
@@ -23,8 +23,9 @@ const recencyOf = (thread: ChatThreadEntity): string =>
 
 export default function ThreadListScreen() {
   const router = useRouter()
+  const { ownerUserId } = useKhalaAuth()
   const state = useKhalaSyncCollection(
-    KHALA_SYNC_DEMO_OWNER_USER_ID === "" ? "" : String(personalScope(KHALA_SYNC_DEMO_OWNER_USER_ID)),
+    ownerUserId === "" ? "" : String(personalScope(ownerUserId)),
     CHAT_THREAD_ENTITY_TYPE,
     decodeChatThreadEntity,
     threadIdOf
@@ -35,16 +36,10 @@ export default function ThreadListScreen() {
   return (
     <SafeAreaView className="flex-1 bg-bg" edges={["top", "bottom", "left", "right"]}>
       <AppHeader showMenu title="Khala" />
-      {KHALA_SYNC_DEMO_OWNER_USER_ID === "" ? (
+      {state.status === "missing_token" ? (
         <View className="flex-1 items-center justify-center px-8">
           <Text className="text-center font-mono text-sm text-textFaint">
-            Set EXPO_PUBLIC_KHALA_SYNC_DEMO_OWNER_USER_ID before starting the app.
-          </Text>
-        </View>
-      ) : state.status === "missing_token" ? (
-        <View className="flex-1 items-center justify-center px-8">
-          <Text className="text-center font-mono text-sm text-textFaint">
-            Set EXPO_PUBLIC_KHALA_SYNC_DEMO_TOKEN before starting the app.
+            Not signed in. Restart the app to sign in again.
           </Text>
         </View>
       ) : state.status === "error" ? (

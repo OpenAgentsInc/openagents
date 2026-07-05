@@ -1,11 +1,8 @@
 import { useEffect, useRef, useState } from "react"
 import { decodeBootstrapResponse, decodeLiveFrame } from "@openagentsinc/khala-sync"
 
-import {
-  KHALA_SYNC_DEMO_BASE_URL,
-  KHALA_SYNC_DEMO_CLIENT_GROUP_ID,
-  KHALA_SYNC_DEMO_TOKEN
-} from "../config/khala-sync-demo"
+import { useKhalaAuth } from "../auth/khala-auth-context"
+import { KHALA_SYNC_DEMO_CLIENT_GROUP_ID } from "../config/khala-sync-demo"
 import {
   applyDeltaFrameOfType,
   buildBootstrapRequestBody,
@@ -47,15 +44,16 @@ export function useKhalaSyncCollection<T>(
   decode: EntityDecoder<T>,
   idOf: (item: T) => string
 ): KhalaSyncCollectionState<T> {
+  const { baseUrl, token } = useKhalaAuth()
   const [state, setState] = useState<KhalaSyncCollectionState<T>>({
     error: null,
     items: [],
-    status: KHALA_SYNC_DEMO_TOKEN === "" || scope === "" ? "missing_token" : "loading"
+    status: token === "" || scope === "" ? "missing_token" : "loading"
   })
   const itemsRef = useRef<ReadonlyArray<T>>([])
 
   useEffect(() => {
-    if (KHALA_SYNC_DEMO_TOKEN === "" || scope === "") return undefined
+    if (token === "" || scope === "") return undefined
     let cancelled = false
     let socket: WebSocket | null = null
     itemsRef.current = []
@@ -64,10 +62,10 @@ export function useKhalaSyncCollection<T>(
     const run = async () => {
       let cursor = 0
       try {
-        const response = await fetch(buildBootstrapUrl(KHALA_SYNC_DEMO_BASE_URL), {
+        const response = await fetch(buildBootstrapUrl(baseUrl), {
           body: JSON.stringify(buildBootstrapRequestBody(scope, KHALA_SYNC_DEMO_CLIENT_GROUP_ID)),
           headers: {
-            authorization: `Bearer ${KHALA_SYNC_DEMO_TOKEN}`,
+            authorization: `Bearer ${token}`,
             "content-type": "application/json"
           },
           method: "POST"
@@ -94,8 +92,8 @@ export function useKhalaSyncCollection<T>(
 
       if (cancelled) return
 
-      socket = new RNWebSocket(buildConnectUrl(KHALA_SYNC_DEMO_BASE_URL, scope, cursor), [], {
-        headers: { authorization: `Bearer ${KHALA_SYNC_DEMO_TOKEN}` }
+      socket = new RNWebSocket(buildConnectUrl(baseUrl, scope, cursor), [], {
+        headers: { authorization: `Bearer ${token}` }
       })
       socket.onmessage = event => {
         try {
@@ -116,7 +114,7 @@ export function useKhalaSyncCollection<T>(
       cancelled = true
       socket?.close()
     }
-  }, [scope, entityType])
+  }, [scope, entityType, baseUrl, token])
 
   return state
 }
