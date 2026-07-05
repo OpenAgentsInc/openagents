@@ -12,9 +12,7 @@ export default function RootLayout() {
       <Stack
         screenOptions={{
           contentStyle: { backgroundColor: khalaMobileTheme.background },
-          headerStyle: { backgroundColor: khalaMobileTheme.background },
-          headerTintColor: khalaMobileTheme.text,
-          headerTitleStyle: { fontWeight: "600" }
+          headerShown: false
         }}
       />
     </>
