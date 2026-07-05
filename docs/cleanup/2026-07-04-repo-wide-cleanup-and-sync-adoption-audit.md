@@ -432,6 +432,27 @@ stress-scheduler remnants and the agentcl Vertex runner; consolidate the
 the desktop fleet poll; decide arm-or-remove on the four inert flags
 (remove voice-ingest and durable-stream if truly unconsumed).
 
+2026-07-05 Wave 1 issue index:
+
+- #8377 - Retrofit the 16 legacy public-projection staleness contracts and
+  ratchet the zero-debt legacy-missing-staleness count to zero.
+- #8378 - Script the repo-wide D1 zero-reference table sweep across the 438
+  declared tables, feeding the KS-8.19 retirement tracker (#8330).
+- #8379 - Drop the confirmed write-dead forum trust D1 tables after a final
+  zero-reference verification.
+- #8380 - Remove the AgentCL Vertex runner and retire the `gym_agentcl_eval_*`
+  D1 tables.
+- #8381 - Remove the GLM stress-scheduler remnants and adaptive-stress
+  benchmark paths.
+- #8382 - Consolidate the 66-file Worker auth-helper sprawl into the canonical
+  auth module.
+- #8383 - Flip `KHALA_SYNC_FLEET` default-on and delete the desktop fleet
+  cockpit poll.
+- #8384 - Decide arm-or-remove for `INFERENCE_BATCH_JOBS_ENABLED`.
+- #8385 - Decide/remove `INFERENCE_DURABLE_STREAM_ENABLED`.
+- #8386 - Remove the unarmed `VOICE_PROGRAM_INGEST_ENABLED` voice ingest path.
+- #8387 - Decide arm-or-remove for `KHALA_MPP_ENABLED`.
+
 **Wave 2 — structural refactors, medium risk, biggest long-term payoff:**
 Split `index.ts`'s route registry into per-domain bundles (collapses three
 debt-ledger ceilings at once); extract the `scheduled()` cron block into a
