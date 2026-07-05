@@ -15603,7 +15603,23 @@ export default {
       })
     }
 
-    await Promise.all([
+    // 2026-07-05 incident (#8409): this array runs ~25 independent
+    // per-minute scheduled tasks (Artanis responder scan/compose dual-write
+    // among them) side by side. It used to be `Promise.all`, which rejects
+    // the WHOLE cron invocation as soon as ANY single entry rejects — and
+    // Cloudflare then tears down the invocation, silently abandoning every
+    // OTHER still-in-flight task's work. Confirmed live via wrangler tail
+    // as the actual root cause of artanis_responder_ticks losing ~77-79%/
+    // hour of its Postgres mirror writes: a standing
+    // TipsBufferBackingViolation (now separately contained below) fired on
+    // effectively every tick, and a distinct, already-known, recurring
+    // "D1 DB is overloaded" error from `sweepActiveAgentRunBilling` (the
+    // very first entry) was also observed killing the batch after that fix
+    // landed. `Promise.allSettled` never rejects, so one task's failure can
+    // never again silently truncate its ~24 unrelated siblings; each
+    // rejection is still logged (with its array index) instead of going
+    // silent, and every already-fail-soft entry here is unaffected.
+    const scheduledTaskResults = await Promise.allSettled([
       sweepActiveAgentRunBilling(env, ctx),
       sendPendingReviewReadyArtifactNotifications(env),
       sendPendingReviewReadySiteNotifications(env),
@@ -16094,5 +16110,12 @@ export default {
         ),
       ),
     ])
+    for (const [index, result] of scheduledTaskResults.entries()) {
+      if (result.status === 'rejected') {
+        logWorkerRouteError('scheduled_task_failed', result.reason, {
+          taskIndex: String(index),
+        })
+      }
+    }
   },
 } satisfies ExportedHandler<Env>
