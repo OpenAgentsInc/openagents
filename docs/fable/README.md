@@ -96,16 +96,17 @@ each source doc.
 
 ## Analysis Docs
 
-- `2026-07-04-repo-wide-cleanup-and-sync-adoption-audit.md` — aggressive
-  repo-wide cleanup audit (five parallel Explore agents across the Worker
-  monolith, UI/sibling apps, packages/, pylon+clients+scripts, and Khala
-  Sync adoption gaps): reads `check-zero-debt-architecture.mjs` as the
-  authoritative tech-debt ledger, finds the single largest dedupe in the
-  repo (probe-runtime vs pylon-runtime, ~48K LOC of duplicated coding-agent
-  runtime), a ~15-20K LOC + 5.5MB-asset immediate `apps/web` route-deletion
-  list with zero migration dependency, the index.ts router-monolith split
-  that collapses three debt-ledger ceilings at once, and — the owner's
-  stated priority — every legacy sync-worker/D1-outbox/polling/live-at-read
+- **`docs/cleanup/2026-07-04-repo-wide-cleanup-and-sync-adoption-audit.md`**
+  (moved to its own top-level folder) — aggressive repo-wide cleanup audit
+  (five parallel Explore agents across the Worker monolith, UI/sibling
+  apps, packages/, pylon+clients+scripts, and Khala Sync adoption gaps):
+  reads `check-zero-debt-architecture.mjs` as the authoritative tech-debt
+  ledger, finds the single largest dedupe in the repo (probe-runtime vs
+  pylon-runtime, ~48K LOC of duplicated coding-agent runtime), a
+  ~15-20K LOC + 5.5MB-asset immediate `apps/web` route-deletion list with
+  zero migration dependency, the index.ts router-monolith split that
+  collapses three debt-ledger ceilings at once, and — the owner's stated
+  priority — every legacy sync-worker/D1-outbox/polling/live-at-read
   surface mapped to its Khala Sync scope target or an explicit deprecation
   verdict. Ends with a four-wave sequenced cleanup plan.
 - `2026-07-04-khala-sync-implementation-status.md` — end-of-run status for
