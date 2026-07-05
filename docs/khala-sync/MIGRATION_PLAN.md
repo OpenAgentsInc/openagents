@@ -411,6 +411,61 @@ the FOR UPDATE lock-protocol port, read/write cutover, and the D1 drop
 are tracked in the follow-up
 [#8358](https://github.com/OpenAgentsInc/openagents/issues/8358).
 
+**KS-8.16 follow-up status (2026-07-05, #8358):** production cutover
+EVIDENCE landed. Migration `0021_forge_domain.sql` confirmed already
+applied (`bun scripts/migrate.ts --dry-run` against the direct Cloud SQL
+URL: 34/34 files already applied, `0021` among them). Ran the backfill
+TWICE (`bun scripts/backfill-forge.ts --restart`, then a third
+convergence sweep after an out-of-band verification write below) —
+production Forge traffic is genuinely tiny today (one live tenant,
+single-digit rows per table), and `--verify --verify-newest 50` is
+CLEAN: exact row counts, all newest-hash checks match, the per-(tenant,
+repository) ref-set digest matches (1 repository), and the
+per-(tenant, queue) merge-queue replay digest matches (0 queues). THE
+GIT-PROTOCOL GROUND-TRUTH CROSS-CHECK (§3.13's actual acceptance
+authority): the live Forge intake surface is push-only (it implements
+`GET .../info/refs?service=git-receive-pack` — the receive-pack
+advertisement — but there is no `git-upload-pack` route, so plain
+`git ls-remote <url>` cannot run against it as a black-box CLI
+invocation). Minted a bounded 15-minute `git:receive-pack`-scoped
+verification token for the one live tenant/repository
+(`tenant.openagents` / `repo.openagents.issue6771.live.20260628190038-48007`),
+called the real advertisement endpoint with it, and parsed the pkt-line
+response by hand: it advertised `refs/heads/main` at
+`a909337789007a12fa1dd48d5acf2cdfa44fe165` — an EXACT match against both
+stores' `forge_git_refs` row for that ref. The token was revoked
+immediately after use and the resulting D1 rows (mint + revoke) were
+converged into Postgres by a follow-up backfill sweep, re-verified clean.
+COMPARE-MODE SOAK: `KHALA_SYNC_FORGE_READS=compare` shipped to
+production + staging (see `RUNBOOK.md` for the exact soak window and
+observations) — always serves D1, only cross-checks Postgres and logs
+`khala_sync_forge_read_compare_mismatch` on drift. REF-LOCK PROTOCOL
+PORT: implemented and tested, NOT wired to production authority.
+`forge-git-canonical-postgres-store.ts`
+(`makePostgresForgeGitCanonicalStore`) replaces the D1
+held/applied/rejected lock-row dance with a real
+`pg_advisory_xact_lock` (keyed per `tenant_ref`/`repository_ref`/
+`ref_name`, transaction-scoped, released automatically at
+COMMIT/ROLLBACK — needed because a 'create' target ref has no row yet
+for a plain row lock to hold) PLUS a real
+`SELECT ... FOR UPDATE` on the ref row when one already exists (the
+literal §3.13 mechanism, re-validating the CAS precondition under lock).
+No lock-row bookkeeping of any kind. `forge-git-canonical-postgres-store.test.ts`
+proves it against a real ephemeral Postgres, including two genuine
+concurrency races (two simultaneous CREATEs of the same brand-new ref;
+two simultaneous UPDATEs racing the same `old_object_id`) — in both
+cases exactly one transaction wins, the other is rejected with the same
+typed `forge_git_unsafe_ref_update`/`ForgeGitCanonicalStoreError` the D1
+lane raises, and the final ref state is never corrupted. REMAINING WORK
+(left honestly undone): the read/write cutover itself (flipping
+`KHALA_SYNC_FORGE_READS=postgres`, wiring the new Postgres canonical
+store as write authority, re-adding the six deliberately-unported
+uniques) needs a genuinely silent compare-mode soak over a much longer,
+more representative window than one session can observe for a
+near-zero-traffic domain — tracked on #8358, left OPEN rather than
+force-flipped on thin evidence. The D1 drop is confirmed consolidated
+into the epic-wide KS-8.19 sweep (#8330), not attempted here.
+
 **KS-8.17 status (2026-07-04):** core machinery LANDED — Postgres schema
 (`khala-sync-server` migration `0024_supervision_longtail.sql`: all 29
 supervision long-tail twins — `adjutant_*` (10), `omni_*` (9),

@@ -162,10 +162,14 @@ const sha256Pattern = /^[0-9a-f]{64}$/i
 const sha1Zero = '0'.repeat(40)
 const sha256Zero = '0'.repeat(64)
 
-const jsonArray = (values: ReadonlyArray<unknown>): string =>
+// Exported: reused verbatim by the Postgres FOR-UPDATE ref-lock port
+// (`forge-git-canonical-postgres-store.ts`, MIGRATION_PLAN §3.13) so the
+// same pure validation/normalization logic runs identically on both
+// engines — only the storage/locking primitives differ.
+export const jsonArray = (values: ReadonlyArray<unknown>): string =>
   JSON.stringify([...values])
 
-const boundedLimit = (limit: number | undefined): number =>
+export const boundedLimit = (limit: number | undefined): number =>
   Math.min(Math.max(Math.floor(limit ?? 100), 1), 500)
 
 const safeRefSegment = (value: string): string => {
@@ -331,10 +335,10 @@ const decodeIntakeRow = (row: unknown): ForgeGitReceivePackIntakeRow => {
   }
 }
 
-const isZeroObjectId = (value: string): boolean =>
+export const isZeroObjectId = (value: string): boolean =>
   value === sha1Zero || value === sha256Zero
 
-const objectFormatForObjectId = (
+export const objectFormatForObjectId = (
   value: string,
 ): Exclude<ForgeGitPackfileObjectFormat, 'unknown'> => {
   if (sha1Pattern.test(value)) {
@@ -350,7 +354,7 @@ const objectFormatForObjectId = (
   )
 }
 
-const validateSha256 = (value: string): string => {
+export const validateSha256 = (value: string): string => {
   if (!sha256Pattern.test(value)) {
     throw new ForgeGitCanonicalStoreError(
       'forge_git_invalid_packfile',
@@ -361,12 +365,12 @@ const validateSha256 = (value: string): string => {
   return value.toLowerCase()
 }
 
-const normalizeObjectId = (value: string): string =>
+export const normalizeObjectId = (value: string): string =>
   objectFormatForObjectId(value) === 'sha1'
     ? value.toLowerCase()
     : value.toLowerCase()
 
-const resolveObjectFormat = (
+export const resolveObjectFormat = (
   declaredFormat: ForgeGitPackfileObjectFormat,
   refUpdates: ReadonlyArray<ForgeGitPackfileRefUpdate>,
 ): Exclude<ForgeGitPackfileObjectFormat, 'unknown'> => {
@@ -394,10 +398,10 @@ const resolveObjectFormat = (
   return inferred
 }
 
-const safeRefUpdateTarget = (refName: string): boolean =>
+export const safeRefUpdateTarget = (refName: string): boolean =>
   refName.startsWith('refs/heads/') || refName.startsWith('refs/tags/')
 
-const zeroObjectIdForFormat = (
+export const zeroObjectIdForFormat = (
   format: Exclude<ForgeGitPackfileObjectFormat, 'unknown'>,
 ): string => (format === 'sha1' ? sha1Zero : sha256Zero)
 
@@ -431,7 +435,7 @@ const validatePackfile = (input: ForgeGitCanonicalPreflightInput): void => {
   }
 }
 
-const validateReceivePackShape = (
+export const validateReceivePackShape = (
   input: ForgeGitCanonicalPreflightInput,
 ): Exclude<ForgeGitPackfileObjectFormat, 'unknown'> => {
   if (input.refUpdates.length === 0) {

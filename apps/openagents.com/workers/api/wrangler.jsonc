@@ -56,6 +56,14 @@
     // remaining five cron ticks' own decision-making reads stay D1-direct
     // regardless of this flag (no Postgres reader wired for them yet).
     "KHALA_SYNC_ARTANIS_READS": "compare",
+    // KS-8.16 follow-up Forge read cutover (#8358, TEMPORARY compare soak):
+    // dual-write has been live since KS-8.16 (#8327); this shadow-runs the
+    // canonical `listRefs` ref advertisement (the §3.13 git-ls-remote-twin
+    // surface) against Postgres, SERVES D1, and logs
+    // `khala_sync_forge_read_compare_mismatch` on any drift. Roll back to
+    // `d1` at any time — the read/write cutover (real FOR UPDATE ref locks)
+    // stays gated on a silent soak over a representative window.
+    "KHALA_SYNC_FORGE_READS": "compare",
     // #6408 "fleet never silently stalls" watchdog (1-min cron). Detection is
     // default-ON so a live stall is flagged immediately. Recovery is also ON but
     // is a no-op unless FLEET_WATCHDOG_OWNER_PYLON_REFS lists the owner pylon(s)
@@ -499,6 +507,9 @@
         // mainly exercises operator-console/public-report reads here; the
         // production var is the one under live soak observation.
         "KHALA_SYNC_ARTANIS_READS": "compare",
+        // KS-8.16 follow-up Forge read cutover (#8358, TEMPORARY compare
+        // soak), staging parity for the production compare-mode soak.
+        "KHALA_SYNC_FORGE_READS": "compare",
         // Internal/ops account allowlist (#6298 demand + #6232 quota exemption) —
         // staging too, so dogfood classifies `demand_kind=internal` consistently
         // and internal testing accounts (ops/heartbeat/canary, Artanis, Raynor)

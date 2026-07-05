@@ -1610,6 +1610,79 @@ Rollback at ANY step: set `KHALA_SYNC_FORGE_READS=d1` (reads) and/or
 `KHALA_SYNC_FORGE_DUAL_WRITE=off` (writes). D1 authority is never
 behind.
 
+### 2026-07-05 cutover evidence + ref-lock port status (#8358)
+
+- **Migration check:** `bun scripts/migrate.ts --dry-run` against the
+  direct Cloud SQL URL reported 34/34 migration files already applied
+  (`0021_forge_domain.sql` among them) — nothing to apply.
+- **Backfill x2 + verify:** production Forge traffic is genuinely tiny
+  today — one live tenant (`tenant.openagents`), single-digit rows per
+  table. Sweep 1 (`bun scripts/backfill-forge.ts --restart`) and sweep 2
+  converged the same rows (no drift between sweeps — dual-write is
+  keeping pace). `bun scripts/backfill-forge.ts --verify --verify-newest 50`
+  came back **CLEAN**: exact row counts on all sixteen tables, every
+  newest-hash check matched, the per-(tenant, repository) ref-set digest
+  matched (1 repository), the per-(tenant, queue) merge-queue replay
+  digest matched (0 queues, vacuously clean).
+- **Ground-truth git cross-check (the actual §3.13 acceptance
+  authority):** the live Forge intake surface only implements the
+  receive-pack advertisement (`GET .../info/refs?service=git-receive-pack`)
+  — there is no `git-upload-pack` route, so a plain `git ls-remote <url>`
+  CLI invocation 404s. Minted a bounded 15-minute `git:receive-pack`
+  verification token for the one live tenant/repository
+  (`tenant.openagents` / `repo.openagents.issue6771.live.20260628190038-48007`,
+  inserted directly with the same schema/hash/prefix convention
+  `mintGitAccessToken` uses, `source_refs_json` tagged
+  `ks8-16-cutover-ls-remote-crosscheck`), called the real advertisement
+  endpoint with `curl` + a bearer header, and hand-parsed the pkt-line
+  response: it advertised `refs/heads/main` at
+  `a909337789007a12fa1dd48d5acf2cdfa44fe165` — an EXACT match against
+  both stores' `forge_git_refs` row. The token was revoked immediately
+  after (`state='revoked'`), and a follow-up backfill sweep converged the
+  mint/revoke rows into Postgres, re-verified CLEAN.
+- **Compare-mode soak:** `KHALA_SYNC_FORGE_READS=compare` shipped to
+  production + staging via `deploy:safe` (commit noted in the PR/issue
+  evidence). This domain has effectively no organic traffic, so the soak
+  observation is honestly thin — see the deploy report on #8358 for the
+  exact window and `wrangler tail` observations (silence on
+  `khala_sync_forge_read_compare_mismatch` is necessary but, given how
+  little real traffic exists, not sufficient to justify a `postgres`
+  flip on its own).
+- **Ref-lock protocol port — IMPLEMENTED, NOT WIRED:**
+  `apps/openagents.com/workers/api/src/forge-git-canonical-postgres-store.ts`
+  (`makePostgresForgeGitCanonicalStore`) ports the D1
+  held/applied/rejected lock-row dance onto real Postgres primitives: a
+  `pg_advisory_xact_lock` per `(tenant_ref, repository_ref, ref_name)`
+  (transaction-scoped, auto-released at COMMIT/ROLLBACK — needed because
+  a brand-new ref's 'create' has no row yet for a plain row lock to
+  hold) taken BEFORE the precondition check, plus a real
+  `SELECT ... FOR UPDATE` on the ref row when one already exists (the
+  literal §3.13 mechanism, re-validating the CAS precondition under
+  lock). There is no lock-row bookkeeping at all in this path — nothing
+  writes `forge_git_ref_locks`. `forge-git-canonical-postgres-store.test.ts`
+  proves it against a real ephemeral Postgres, including the two races
+  that actually matter: two simultaneous CREATEs of the same brand-new
+  ref, and two simultaneous UPDATEs racing the same `old_object_id` —
+  both cases resolve to exactly one winner, the loser gets the same
+  typed `forge_git_unsafe_ref_update` the D1 lane raises, and the final
+  ref state is never corrupted. **This store has no production call
+  site yet** — it is deliberately landed in isolation so the locking
+  design can be reviewed and proven before it is ever on the write path
+  for a real git ref. Wiring it as write authority is the read/write
+  cutover step, still pending genuine soak evidence.
+- **D1 drop:** confirmed out of scope for this lane — per the current
+  KS-8.1/KS-8.2-established policy (also applied to KS-8.6/#8335 and
+  KS-8.9/#8336 this same day), per-domain D1 drops are consolidated into
+  the epic-closing KS-8.19 sweep (#8330). Not attempted here.
+- **What's left before this issue can close:** a genuinely long,
+  representative compare-mode soak (this domain's near-zero organic
+  traffic makes that slow to accumulate passively); the read/write
+  cutover flip itself (wiring the Postgres canonical store as write
+  authority, re-adding the six deliberately-unported uniques, moving
+  `KHALA_SYNC_FORGE_READS` to `postgres`); and the D1 drop, which stays
+  with #8330. Left OPEN on #8358 with this status rather than force-
+  flipping on thin traffic.
+
 ## Billing/Stripe/pay-ins domain cutover (KS-8.7, #8318)
 
 The FIRST money domain in the KS-8 sequence: the 22 live
