@@ -10,13 +10,15 @@ import {
   type FleetRunEntity,
   type FleetWorkerEntity,
 } from "@openagentsinc/khala-sync"
-import { Pressable, ScrollView, Text, View } from "react-native"
+import { ScrollView, View } from "react-native"
 import Animated, { FadeIn } from "react-native-reanimated"
-import { SafeAreaView } from "react-native-safe-area-context"
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
 import { AppHeader } from "../components/app-header"
 import { Frame, usePowerOnVisible } from "../components/frame"
+import { KhalaButton } from "../components/khala-button"
+import { KhalaScreen } from "../components/khala-screen"
+import { KhalaText } from "../components/khala-text"
 import { KHALA_SYNC_DEMO_FLEET_RUN_ID } from "../config/khala-sync-demo"
 import type { OnDeviceReadinessRow } from "../native/on-device-readiness-core"
 import { useOnDeviceReadiness } from "../native/use-on-device-readiness"
@@ -39,9 +41,9 @@ const READINESS_COLOR: Record<FleetAccountEntity["readiness"], string> = {
 }
 
 const SectionLabel = ({ children }: { children: string }) => (
-  <Text className="mb-2 font-mono text-xs uppercase tracking-wide text-textFaint">
+  <KhalaText className="mb-2" variant="label">
     {children}
-  </Text>
+  </KhalaText>
 )
 
 const FleetRunCard = ({ run }: { run: FleetRunEntity }) => {
@@ -50,14 +52,14 @@ const FleetRunCard = ({ run }: { run: FleetRunEntity }) => {
     <Frame alwaysShowBorder visible={visible}>
       <View className="p-3">
         <View className="flex-row items-center justify-between">
-          <Text className="font-sans text-base font-semibold text-text">{run.status}</Text>
-          <Text className="font-mono text-xs text-textFaint">{run.workerKind}</Text>
+          <KhalaText className="font-semibold" text={run.status} />
+          <KhalaText text={run.workerKind} variant="faint" />
         </View>
-        <Text className="mt-1 font-mono text-xs text-textMuted">
+        <KhalaText className="mt-1 text-textMuted" variant="faint">
           {run.desiredSlots} desired slots · {run.counters.activeAssignments} active ·{" "}
           {run.counters.completedAssignments} completed · {run.counters.failedAssignments} failed ·{" "}
           {run.counters.blockedAssignments} blocked
-        </Text>
+        </KhalaText>
       </View>
     </Frame>
   )
@@ -69,22 +71,22 @@ const AccountCard = ({ account, index }: { account: FleetAccountEntity; index: n
     <Frame alwaysShowBorder visible={visible}>
       <View className="px-3 py-2">
         <View className="flex-row items-center justify-between">
-          <Text className="font-mono text-sm text-text">
+          <KhalaText variant="mono">
             {formatAccountRefHash(account.accountRefHash)}
             {account.provider === undefined ? "" : ` · ${account.provider}`}
-          </Text>
-          <Text className={`font-mono text-xs ${READINESS_COLOR[account.readiness]}`}>
+          </KhalaText>
+          <KhalaText className={READINESS_COLOR[account.readiness]} variant="faint">
             {account.readiness}
             {account.rateLimitClass === undefined ? "" : ` · ${account.rateLimitClass}`}
-          </Text>
+          </KhalaText>
         </View>
         {account.capacityAvailable === undefined &&
         account.capacityBusy === undefined &&
         account.capacityQueued === undefined ? null : (
-          <Text className="mt-1 font-mono text-xs text-textFaint">
+          <KhalaText className="mt-1" variant="faint">
             {account.capacityAvailable ?? 0} available ·{" "}
             {account.capacityBusy ?? 0} busy · {account.capacityQueued ?? 0} queued
-          </Text>
+          </KhalaText>
         )}
       </View>
     </Frame>
@@ -112,11 +114,11 @@ const FleetSection = () => {
     return (
       <View className="gap-2">
         <SectionLabel>Fleet</SectionLabel>
-        <Text className="font-sans text-sm text-textMuted">
+        <KhalaText variant="muted">
           No fleet run configured. Set
           EXPO_PUBLIC_KHALA_SYNC_DEMO_FLEET_RUN_ID to the active Khala Code
           fleet run id to see it here.
-        </Text>
+        </KhalaText>
       </View>
     )
   }
@@ -130,11 +132,11 @@ const FleetSection = () => {
       <View className="gap-2">
         <SectionLabel>Fleet run</SectionLabel>
         {runState.status === "error" ? (
-          <Text className="font-sans text-sm text-danger">{runState.error}</Text>
+          <KhalaText text={runState.error ?? "Could not load fleet run."} variant="danger" />
         ) : run === undefined ? (
-          <Text className="font-sans text-sm text-textMuted">
+          <KhalaText variant="muted">
             {runState.status === "loading" ? "loading…" : "No run data for this id yet"}
-          </Text>
+          </KhalaText>
         ) : (
           <FleetRunCard run={run} />
         )}
@@ -143,9 +145,9 @@ const FleetSection = () => {
       <View className="gap-2">
         <SectionLabel>Connected accounts</SectionLabel>
         {accounts.length === 0 ? (
-          <Text className="font-sans text-sm text-textMuted">
+          <KhalaText variant="muted">
             {accountState.status === "loading" ? "loading…" : "No connected accounts synced yet"}
-          </Text>
+          </KhalaText>
         ) : (
           accounts.map((account: FleetAccountEntity, index) => (
             <AccountCard account={account} index={index} key={account.accountRefHash} />
@@ -156,9 +158,9 @@ const FleetSection = () => {
       <View className="gap-2">
         <SectionLabel>Workers</SectionLabel>
         {workers.length === 0 ? (
-          <Text className="font-sans text-sm text-textMuted">
+          <KhalaText variant="muted">
             {workerState.status === "loading" ? "loading…" : "No worker slots synced yet"}
-          </Text>
+          </KhalaText>
         ) : (
           workers.map((worker: FleetWorkerEntity, index) => (
             <Animated.View
@@ -166,18 +168,18 @@ const FleetSection = () => {
               entering={FadeIn.delay(MOTION_STAGGER_MS * index).duration(MOTION_MEDIUM)}
               key={worker.workerId}
             >
-              <Text className="font-mono text-sm text-text">{worker.workerId}</Text>
-              <Text className="font-mono text-xs text-textFaint">{worker.phase}</Text>
+              <KhalaText text={worker.workerId} variant="mono" />
+              <KhalaText text={worker.phase} variant="faint" />
             </Animated.View>
           ))
         )}
       </View>
 
-      <Text className="font-mono text-xs text-textFaint">
+      <KhalaText variant="faint">
         Account identity is a public-safe hashed ref only — no email or raw
         credential ever leaves the desktop, just readiness, provider, and
         dispatch-slot capacity.
-      </Text>
+      </KhalaText>
     </View>
   )
 }
@@ -187,16 +189,10 @@ const AccountSection = () => {
   return (
     <View className="gap-2">
       <SectionLabel>Account</SectionLabel>
-      <Text className="font-mono text-xs text-textFaint" numberOfLines={1}>
+      <KhalaText numberOfLines={1} variant="faint">
         {ownerUserId}
-      </Text>
-      <Pressable
-        accessibilityRole="button"
-        className="items-center rounded-xl border border-border bg-surfaceRaised py-3"
-        onPress={() => void signOut()}
-      >
-        <Text className="font-sans text-sm text-danger">Sign out</Text>
-      </Pressable>
+      </KhalaText>
+      <KhalaButton onPress={() => void signOut()} text="Sign out" variant="danger" />
     </View>
   )
 }
@@ -214,11 +210,11 @@ const OnDeviceCard = ({ row, index }: { row: OnDeviceReadinessRow; index: number
     <Frame alwaysShowBorder visible={visible}>
       <View className="px-3 py-2">
         <View className="flex-row items-center justify-between">
-          <Text className="font-sans text-sm text-text">{row.label}</Text>
-          <Text className={`font-mono text-xs ${ON_DEVICE_TONE_COLOR[row.tone]}`}>{row.status}</Text>
+          <KhalaText text={row.label} variant="caption" />
+          <KhalaText className={ON_DEVICE_TONE_COLOR[row.tone]} text={row.status} variant="faint" />
         </View>
         {row.detail === undefined ? null : (
-          <Text className="mt-1 font-mono text-xs text-textFaint">{row.detail}</Text>
+          <KhalaText className="mt-1" text={row.detail} variant="faint" />
         )}
       </View>
     </Frame>
@@ -231,9 +227,9 @@ const OnDeviceSection = () => {
     <View className="gap-2">
       <SectionLabel>On-device</SectionLabel>
       {readiness.status === "loading" ? (
-        <Text className="font-sans text-sm text-textMuted">checking…</Text>
+        <KhalaText text="checking…" variant="muted" />
       ) : readiness.status === "error" ? (
-        <Text className="font-sans text-sm text-danger">Could not read native module readiness.</Text>
+        <KhalaText text="Could not read native module readiness." variant="danger" />
       ) : (
         readiness.rows.map((row, index) => <OnDeviceCard index={index} key={row.key} row={row} />)
       )}
@@ -242,12 +238,12 @@ const OnDeviceSection = () => {
 }
 
 export const SettingsScreen = () => (
-  <SafeAreaView className="flex-1 bg-bg" edges={["top", "bottom", "left", "right"]}>
+  <KhalaScreen preset="fixed">
     <AppHeader showMenu title="Settings" />
     <ScrollView contentContainerClassName="gap-6 px-4 py-4">
       <FleetSection />
       <OnDeviceSection />
       <AccountSection />
     </ScrollView>
-  </SafeAreaView>
+  </KhalaScreen>
 )

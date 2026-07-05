@@ -20,6 +20,13 @@ live in typed React Navigation stacks/drawers under `src/navigators`, with
 screens under `src/screens`. Keep new navigation work in that Ignite-style
 navigator structure.
 
+The app root also follows an Ignite-inspired provider spine:
+`GestureHandlerRootView`, `SafeAreaProvider`, `KhalaThemeProvider`,
+`StatusBar`, `KhalaAuthProvider`, then the signed-in navigator inside a
+public-safe `KhalaErrorBoundary`. New ordinary screens and plain actions should
+use `KhalaScreen`, `KhalaText`, and `KhalaButton`; keep `ArwesButton` and
+Skia-heavy controls for intentional product moments.
+
 The native SwiftUI app at `clients/khala-ios/Khala` remains the interim
 shipping companion and native-reference source until this app proves parity on
 device.

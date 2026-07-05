@@ -4,11 +4,14 @@ import "./native/animated-view-css-interop"
 import { StatusBar } from "expo-status-bar"
 import { ActivityIndicator, LogBox, View } from "react-native"
 import { GestureHandlerRootView } from "react-native-gesture-handler"
+import { initialWindowMetrics, SafeAreaProvider } from "react-native-safe-area-context"
 
 import { KhalaAuthProvider, useKhalaAuth } from "./auth/khala-auth-context"
 import { BlurredPopupProvider } from "./components/blurred-popup"
+import { KhalaErrorBoundary } from "./components/khala-error-boundary"
 import { SignInScreen } from "./components/sign-in-screen"
 import { AppNavigator } from "./navigators/AppNavigator"
+import { KhalaThemeProvider } from "./theme/khala-theme-provider"
 
 // React Native's own dev-only LogBox notification pill renders with broken
 // (unreadable/invisible) text styling on this setup. It's dev chrome, not
@@ -35,17 +38,23 @@ const AuthGate = () => {
     // Mounted once around the whole signed-in app so a long-press screenshot
     // (`BlurredPopupProvider`, issue #8395) captures the real rendered screen
     // behind it regardless of which route is active.
-    <BlurredPopupProvider>
-      <AppNavigator />
-    </BlurredPopupProvider>
+    <KhalaErrorBoundary>
+      <BlurredPopupProvider>
+        <AppNavigator />
+      </BlurredPopupProvider>
+    </KhalaErrorBoundary>
   )
 }
 
 export const App = () => (
   <GestureHandlerRootView style={{ flex: 1 }}>
-    <StatusBar style="light" />
-    <KhalaAuthProvider>
-      <AuthGate />
-    </KhalaAuthProvider>
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+      <KhalaThemeProvider>
+        <StatusBar style="light" />
+        <KhalaAuthProvider>
+          <AuthGate />
+        </KhalaAuthProvider>
+      </KhalaThemeProvider>
+    </SafeAreaProvider>
   </GestureHandlerRootView>
 )
