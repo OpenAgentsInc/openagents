@@ -48,6 +48,7 @@ import {
   type KhalaCodeDesktopChatTurnEvent,
   type KhalaCodeDesktopFleetLifecycleEvent,
   type KhalaCodeDesktopChatTurnRequest,
+  type KhalaCodeDesktopComposerNativeFileGrant,
   type KhalaCodeDesktopFleetRunListResult,
   type KhalaCodeDesktopFleetStatus,
   type KhalaCodeDesktopKhalaSyncChatThread,
@@ -76,7 +77,10 @@ import {
   summarizeTurnSteerOutcomes,
 } from "./turn-steer-outcomes"
 import { mountFleetPanel } from "./fleet-status"
-import { mountKhalaCodeEditorPanel } from "./editor-panel"
+import {
+  mountKhalaCodeEditorPanel,
+  type KhalaCodeEditorComposerContext,
+} from "./editor-panel"
 import { mountKhalaCodeForumPanel } from "./forum-panel"
 import { mountKhalaCodePlansPanel } from "./plans-panel"
 import { mountKhalaCodeRunEvidencePanel } from "./run-evidence-panel"
@@ -134,6 +138,7 @@ import {
   khalaCodeDiffReviewComment,
   khalaCodeDiffReviewLineLabel,
   khalaCodeDiffReviewSteeringNote,
+  type KhalaCodeDiffReviewComment,
 } from "../shared/diff-review"
 import {
   KHALA_CODE_SOURCE_CONTROL_ACTION_SUBMIT_EVENT,
@@ -179,6 +184,16 @@ type ComposerProviderState =
   | "ready"
   | "saving"
   | "unavailable"
+
+type ComposerContextChip = Readonly<{
+  body?: string
+  displayPath: string
+  id: string
+  kind: "comment" | "file" | "selection"
+  lineEnd?: number
+  lineStart?: number
+  title: string
+}>
 
 const rpcFailureDetail = (payload: unknown): string => {
   if (payload !== null && typeof payload === "object") {
@@ -342,6 +357,18 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["editorFileRead"]>>
       >("editorFileRead", request),
+    composerNativeFilePickerOpen: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["composerNativeFilePickerOpen"]>>
+      >("composerNativeFilePickerOpen", request),
+    composerNativeFileGrantRead: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["composerNativeFileGrantRead"]>>
+      >("composerNativeFileGrantRead", request),
+    composerNativeFileGrantRelease: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["composerNativeFileGrantRelease"]>>
+      >("composerNativeFileGrantRelease", request),
     forumRequest: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["forumRequest"]>>
@@ -887,6 +914,9 @@ const turnFirstVisibleEventRecorded = new Set<string>()
 const objectUrls = new Set<string>()
 const localTextAttachments = new Map<string, string>()
 const localAttachmentFiles = new Map<string, File>()
+const localNativeAttachmentGrantIds = new Map<string, string>()
+const localNativeAttachmentGrantLabels = new Map<string, KhalaCodeDesktopComposerNativeFileGrant>()
+let composerContextChips: ComposerContextChip[] = []
 const sessionIdStorageKey = "khala-code-desktop.session-id.v1"
 const activeThreadIdStorageKey = "khala-code-desktop.active-thread-id.v1"
 const storedSessionId = localStorage.getItem(sessionIdStorageKey)
@@ -2338,6 +2368,7 @@ const stageComposerText = (value: string): void => {
 const canSubmitComposer = (): boolean =>
   composerDraftTrimmed() !== "" ||
   shellModel().composerState.doc.attachments.length > 0 ||
+  composerContextChips.length > 0 ||
   (shellModel().lastTurnFailed && shellModel().lastSubmittedDraft.trim() !== "")
 
 const renderMessages = (): void => {
@@ -2509,6 +2540,250 @@ const renderFollowUpQueue = (): void => {
   composerFollowUpQueue.replaceChildren(...drafts.map(renderFollowUpDraft))
 }
 
+const nextComposerContextChipId = (kind: ComposerContextChip["kind"]): string =>
+  `composer-context-${kind}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
+const composerContextLineLabel = (
+  context: Pick<ComposerContextChip, "lineEnd" | "lineStart">,
+): string => {
+  if (context.lineStart === undefined) return ""
+  if (context.lineEnd === undefined || context.lineEnd === context.lineStart) {
+    return `:${context.lineStart}`
+  }
+  return `:${context.lineStart}-${context.lineEnd}`
+}
+
+const addComposerContextChip = (chip: ComposerContextChip): void => {
+  const key = `${chip.kind}:${chip.displayPath}:${chip.lineStart ?? ""}:${chip.lineEnd ?? ""}:${chip.body ?? ""}`
+  composerContextChips = [
+    ...composerContextChips.filter(existing =>
+      `${existing.kind}:${existing.displayPath}:${existing.lineStart ?? ""}:${existing.lineEnd ?? ""}:${existing.body ?? ""}` !== key
+    ),
+    chip,
+  ].slice(-8)
+  shellModel().lastTurnFailed = false
+  renderComposer()
+  requestAnimationFrame(focusComposerInput)
+}
+
+const removeComposerContextChip = (chipId: string): void => {
+  composerContextChips = composerContextChips.filter(chip => chip.id !== chipId)
+  renderComposer()
+  requestAnimationFrame(focusComposerInput)
+}
+
+const addEditorComposerContext = (
+  context: KhalaCodeEditorComposerContext,
+): void => {
+  addComposerContextChip({
+    displayPath: context.displayPath,
+    id: nextComposerContextChipId(context.kind),
+    kind: context.kind,
+    ...(context.lineEnd === undefined ? {} : { lineEnd: context.lineEnd }),
+    ...(context.lineStart === undefined ? {} : { lineStart: context.lineStart }),
+    title: context.displayPath,
+  })
+}
+
+const addDiffReviewComposerContext = (
+  comment: KhalaCodeDiffReviewComment,
+): void => {
+  addComposerContextChip({
+    body: comment.body,
+    displayPath: comment.filePath,
+    id: comment.commentRef,
+    kind: "comment",
+    lineEnd: comment.lineNo,
+    lineStart: comment.lineNo,
+    title: khalaCodeDiffReviewLineLabel(comment),
+  })
+}
+
+const renderComposerContextChip = (chip: ComposerContextChip): HTMLElement => {
+  const row = document.createElement("div")
+  row.className = "khala-code-composer-context-chip"
+  row.dataset.composerContextId = chip.id
+  row.dataset.kind = chip.kind
+  row.setAttribute("role", "listitem")
+
+  const icon = document.createElement("span")
+  icon.className = "khala-code-composer-context-icon"
+  icon.setAttribute("aria-hidden", "true")
+  icon.append(composerIconElement(chip.kind === "comment" ? "steer" : "file"))
+
+  const text = document.createElement("span")
+  text.className = "khala-code-composer-context-text"
+  text.textContent = `${chip.title}${composerContextLineLabel(chip)}`
+
+  const remove = document.createElement("button")
+  remove.type = "button"
+  remove.className = "khala-code-composer-context-remove"
+  remove.title = "Remove context"
+  remove.setAttribute("aria-label", `Remove context: ${chip.title}`)
+  remove.replaceChildren(composerIconElement("remove"))
+  remove.addEventListener("click", () => removeComposerContextChip(chip.id))
+
+  row.replaceChildren(icon, text, remove)
+  return row
+}
+
+const renderComposerContextDock = (): void => {
+  const existing = composerForm.querySelector<HTMLElement>("[data-khala-composer-context-dock]")
+  if (composerContextChips.length === 0) {
+    existing?.remove()
+    return
+  }
+  const dock = existing ?? document.createElement("div")
+  dock.className = "khala-code-composer-context-dock"
+  dock.dataset.khalaComposerContextDock = ""
+  dock.setAttribute("role", "list")
+  dock.setAttribute("aria-label", "Selected composer context")
+  dock.replaceChildren(...composerContextChips.map(renderComposerContextChip))
+  if (existing === null) {
+    composerFrame.before(dock)
+  }
+}
+
+type ComposerWorkDockItem = Readonly<{
+  count: number
+  icon: ComposerIconName
+  id: "follow-up" | "permission" | "question" | "request-tree" | "revert" | "todo"
+  label: string
+  state: "active" | "blocked" | "idle" | "pending"
+  title: string
+}>
+
+const failedCodexItemCount = (): number =>
+  shellModel().messages.filter(message => {
+    const status = message.codexItem?.status?.toLowerCase()
+    return status === "failed" || status === "denied" || status === "interrupted" || status === "expired"
+  }).length
+
+const pendingApprovalCount = (): number =>
+  shellModel().messages.filter(message =>
+    message.codexItem?.approval !== undefined && message.codexItem.status === "pending"
+  ).length
+
+const blockedApprovalCount = (): number =>
+  shellModel().messages.filter(message => {
+    const status = message.codexItem?.status?.toLowerCase()
+    return message.codexItem?.approval !== undefined &&
+      (status === "denied" || status === "failed" || status === "expired" || status === "interrupted")
+  }).length
+
+const composerWorkDockItems = (): readonly ComposerWorkDockItem[] => {
+  const followUps = shellModel().followUpDrafts.length
+  const pendingApprovals = pendingApprovalCount()
+  const blockedApprovals = blockedApprovalCount()
+  const failedItems = failedCodexItemCount()
+  const plan = shellModel().architectPlanArtifact
+  const planState = shellModel().architectPlanPending || plan?.status === "pending_approval"
+    ? "pending"
+    : plan?.status === "rejected"
+      ? "blocked"
+      : plan === null
+        ? "idle"
+        : "active"
+  return [
+    {
+      count: followUps,
+      icon: "steer",
+      id: "follow-up",
+      label: followUps > 0 ? `${followUps} follow-up` : "Follow-up",
+      state: followUps > 0 ? "active" : "idle",
+      title: followUps > 0 ? "Queued follow-ups" : "No queued follow-ups",
+    },
+    {
+      count: pendingApprovals + blockedApprovals,
+      icon: "settings",
+      id: "permission",
+      label: pendingApprovals > 0 ? `${pendingApprovals} permission` : "Permission",
+      state: pendingApprovals > 0 ? "pending" : blockedApprovals > 0 ? "blocked" : "idle",
+      title: pendingApprovals > 0
+        ? "Permission approval pending"
+        : blockedApprovals > 0
+          ? "Permission approval blocked or denied"
+          : "No permission approval pending",
+    },
+    {
+      count: shellModel().claudeApprovalDialogOpen ? 1 : 0,
+      icon: "menu",
+      id: "question",
+      label: shellModel().claudeApprovalDialogOpen ? "Question" : "Questions",
+      state: shellModel().claudeApprovalDialogOpen ? "pending" : "idle",
+      title: shellModel().claudeApprovalDialogOpen ? "Operator question pending" : "No operator question pending",
+    },
+    {
+      count: failedItems,
+      icon: "retry",
+      id: "revert",
+      label: failedItems > 0 || shellModel().lastTurnFailed ? "Review" : "Revert",
+      state: failedItems > 0 || shellModel().lastTurnFailed ? "blocked" : "idle",
+      title: failedItems > 0 || shellModel().lastTurnFailed
+        ? "Failed or interrupted work needs review"
+        : "No failed work to revert",
+    },
+    {
+      count: plan === null ? 0 : plan.dag.nodes.length,
+      icon: "code",
+      id: "todo",
+      label: plan === null ? "Todo" : `${plan.dag.nodes.length} todos`,
+      state: planState,
+      title: plan === null ? "No architect todo plan" : `Architect plan ${plan.status}`,
+    },
+    {
+      count: activeTurnIds.size,
+      icon: "model",
+      id: "request-tree",
+      label: activeTurnIds.size > 0 ? `${activeTurnIds.size} request` : "Request tree",
+      state: shellModel().pendingTurn ? "active" : shellModel().activeCodexThreadId === null ? "idle" : "pending",
+      title: shellModel().pendingTurn
+        ? "Request tree active"
+        : shellModel().activeCodexThreadId === null
+          ? "No active request tree"
+          : "Thread request tree ready",
+    },
+  ]
+}
+
+const renderComposerWorkDock = (): void => {
+  const existing = composerForm.querySelector<HTMLElement>("[data-khala-composer-work-dock]")
+  const dock = existing ?? document.createElement("div")
+  dock.className = "khala-code-composer-work-dock"
+  dock.dataset.khalaComposerWorkDock = ""
+  dock.setAttribute("aria-label", "Composer work states")
+  dock.replaceChildren(...composerWorkDockItems().map(item => {
+    const button = document.createElement("button")
+    button.type = "button"
+    button.className = "khala-code-composer-work-dock-item"
+    button.dataset.workDockId = item.id
+    button.dataset.state = item.state
+    button.dataset.count = String(item.count)
+    button.title = item.title
+    button.setAttribute("aria-label", item.title)
+    button.addEventListener("click", () => {
+      if (item.id === "permission") {
+        messageList.querySelector<HTMLButtonElement>(".codex-approval-button")?.focus()
+        return
+      }
+      if (item.id === "follow-up") {
+        composerFollowUpQueue.querySelector<HTMLButtonElement>("button")?.focus()
+        return
+      }
+      focusComposerInput()
+    })
+    button.replaceChildren(
+      composerIconElement(item.icon),
+      document.createTextNode(item.label),
+    )
+    return button
+  }))
+  if (existing === null) {
+    const contextDock = composerForm.querySelector<HTMLElement>("[data-khala-composer-context-dock]")
+    ;(contextDock ?? composerFrame).before(dock)
+  }
+}
+
 const openAttachmentPreview = (attachment: CommandComposerAttachmentProps): void => {
   if (attachment.previewUrl !== undefined) {
     window.open(attachment.previewUrl, "_blank", "noopener,noreferrer")
@@ -2565,6 +2840,15 @@ const base64FromArrayBuffer = (bytes: ArrayBuffer): string => {
     binary += String.fromCharCode(...view.subarray(offset, offset + chunkSize))
   }
   return btoa(binary)
+}
+
+const arrayBufferFromBase64 = (value: string): ArrayBuffer => {
+  const binary = atob(value)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+  return bytes.buffer
 }
 
 const pushAttachmentReceipt = (
@@ -2661,6 +2945,7 @@ const removeAttachment = (attachmentId: string): void => {
     localTextAttachments.delete(attachment.contentRef)
   }
   localAttachmentFiles.delete(attachmentId)
+  releaseNativeAttachmentGrant(attachmentId)
   if (attachment !== undefined) {
     pushAttachmentReceipt(projectComposerAttachmentUploadReceipt({
       attachment,
@@ -2772,7 +3057,12 @@ const renderAttachment = (
   name.textContent = attachment.name
   const meta = document.createElement("span")
   meta.className = "oa-ai-command-composer-attachment-meta"
-  meta.textContent = `${attachment.mime} - ${attachment.sizeLabel ?? formatBytes(attachment.sizeBytes)}`
+  const nativeGrant = localNativeAttachmentGrantLabels.get(attachment.id)
+  meta.textContent = [
+    attachment.mime,
+    attachment.sizeLabel ?? formatBytes(attachment.sizeBytes),
+    nativeGrant?.displayPath,
+  ].filter((value): value is string => value !== undefined && value.length > 0).join(" - ")
   const status = document.createElement("span")
   status.className = "oa-ai-command-composer-attachment-status"
   status.textContent = statusTextForAttachment(attachment.status)
@@ -3292,6 +3582,7 @@ function renderComposer(): void {
   const status = statusForComposer()
   const sendLabel = buttonLabel(status)
   const attachmentCount = shellModel().composerState.doc.attachments.length
+  const contextCount = composerContextChips.length
   const followUpCount = shellModel().followUpDrafts.length
 
   syncComposerDraftState()
@@ -3328,6 +3619,7 @@ function renderComposer(): void {
   )
   composerA11y.textContent =
     `${statusLabelFor(status)}. ${attachmentCount} attachments. ` +
+    `${contextCount} context chips. ` +
     `${followUpCount} queued follow-ups. ` +
     `${composerModeLabel(composerMode)} composer mode. ` +
     `Agent ${formatComposerControlLabel(composerAgentRole)}. ` +
@@ -3340,6 +3632,8 @@ function renderComposer(): void {
     `${composerDraftText().length} characters.`
 
   renderFollowUpQueue()
+  renderComposerWorkDock()
+  renderComposerContextDock()
   renderAttachmentRail()
   renderComposerPreview()
   renderSlashCommandPalette()
@@ -3575,6 +3869,7 @@ const handleDiffReviewSubmit = async (event: Event): Promise<void> => {
   const note = khalaCodeDiffReviewSteeringNote(comment)
 
   if (!shellModel().pendingTurn) {
+    addDiffReviewComposerContext(comment)
     stageDiffReviewNoteInComposer(note)
     appendMessages([{
       body: `Staged diff review comment for ${khalaCodeDiffReviewLineLabel(comment)} in the composer.`,
@@ -3744,11 +4039,31 @@ const attachmentSummaryForSubmit = (
   ].join("\n")
 }
 
+const contextSummaryForSubmit = (
+  contexts: readonly ComposerContextChip[],
+): string => {
+  if (contexts.length === 0) return ""
+  return [
+    "Selected context:",
+    ...contexts.map(context => {
+      const location = `${context.displayPath}${composerContextLineLabel(context)}`
+      if (context.kind === "comment" && context.body !== undefined) {
+        return `- comment ${location}: ${context.body}`
+      }
+      return `- ${context.kind} ${location}`
+    }),
+  ].join("\n")
+}
+
 const submittedBody = (
   text: string,
   attachments: readonly ComposerAttachment[],
+  contexts: readonly ComposerContextChip[] = composerContextChips,
 ): string => {
-  const summary = attachmentSummaryForSubmit(attachments)
+  const summary = [
+    contextSummaryForSubmit(contexts),
+    attachmentSummaryForSubmit(attachments),
+  ].filter(item => item.trim().length > 0).join("\n\n")
   if (summary === "") return text
   if (text.trim() === "") return summary
   return `${text}\n\n${summary}`
@@ -3765,25 +4080,37 @@ const imageAttachmentsForSubmit = (
     async (attachment): Promise<KhalaCodeDesktopChatTurnAttachment | null> => {
       if (attachment.kind !== "image" || attachment.status !== "ready") return null
       const file = localAttachmentFiles.get(attachment.id)
-      if (file === undefined || !file.type.startsWith("image/")) return null
-      const bytes = await file.arrayBuffer()
+      const grant = localNativeAttachmentGrantLabels.get(attachment.id)
+      if (file === undefined && grant === undefined) return null
+      const mime = file?.type ?? grant?.mime ?? attachment.mime
+      if (!mime.startsWith("image/")) return null
+      const bytes = file === undefined
+        ? await bytesForNativeAttachmentGrant(attachment.id)
+        : await file.arrayBuffer()
       return {
         dataBase64: base64FromArrayBuffer(bytes),
         id: attachment.id,
         kind: "image",
-        mime: attachment.mime || file.type,
-        name: attachment.name || file.name,
-        sizeBytes: attachment.sizeBytes || file.size,
+        mime: attachment.mime || mime,
+        name: attachment.name || file?.name || grant?.name || "image",
+        sizeBytes: attachment.sizeBytes || file?.size || grant?.sizeBytes || 0,
       }
     },
     attachment => attachment.name || attachment.id,
   )
 
 const resetComposerDraft = (): void => {
+  const grantIds = [...localNativeAttachmentGrantIds.values()]
+  if (grantIds.length > 0) {
+    void controls.composerNativeFileGrantRelease({ grantIds }).catch(() => undefined)
+  }
   for (const url of objectUrls) URL.revokeObjectURL(url)
   objectUrls.clear()
   localAttachmentFiles.clear()
+  localNativeAttachmentGrantIds.clear()
+  localNativeAttachmentGrantLabels.clear()
   localTextAttachments.clear()
+  composerContextChips = []
   setComposerDraftText("")
   setShellComposerState(emptyComposerState())
   renderComposer()
@@ -3967,7 +4294,12 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
   if (shellModel().pendingTurn) {
     const draftRaw = composerDraftText()
     const draftText = draftRaw.trim()
-    if (draftText === "" && shellModel().composerState.doc.attachments.length === 0) return null
+    const pendingContexts = [...composerContextChips]
+    if (
+      draftText === "" &&
+      shellModel().composerState.doc.attachments.length === 0 &&
+      pendingContexts.length === 0
+    ) return null
     if (shellModel().composerState.doc.attachments.length > 0) {
       appendMessages([{
         body: "Finish the active turn before sending attachments. Text follow-ups can be queued now.",
@@ -3983,7 +4315,7 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
       }
       return submitSlashCommand(draftText, draftText)
     }
-    queueFollowUpDraft(draftText)
+    queueFollowUpDraft(submittedBody(draftText, [], pendingContexts))
     return null
   }
   const draftRaw = composerDraftText()
@@ -3991,10 +4323,15 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
     draftRaw.trim() === "" && shellModel().lastTurnFailed
       ? shellModel().lastSubmittedDraft
       : draftRaw.trim()
-  if (draftText === "" && shellModel().composerState.doc.attachments.length === 0) return null
+  if (
+    draftText === "" &&
+    shellModel().composerState.doc.attachments.length === 0 &&
+    composerContextChips.length === 0
+  ) return null
 
   const attachments = [...shellModel().composerState.doc.attachments]
-  const body = submittedBody(draftText, attachments)
+  const contexts = [...composerContextChips]
+  const body = submittedBody(draftText, attachments, contexts)
   composerPromptHistory.push(composerMode, draftRaw)
   if (draftText.startsWith("/")) {
     if (draftText === "/architect" || draftText.startsWith("/architect ")) {
@@ -4129,6 +4466,32 @@ const fileLikeFor = (file: File): ComposerFileLike => {
   }
 }
 
+const fileLikeForNativeGrant = (
+  grant: KhalaCodeDesktopComposerNativeFileGrant,
+): ComposerFileLike => ({
+  name: grant.name,
+  size: grant.sizeBytes,
+  type: grant.mime,
+})
+
+const releaseNativeAttachmentGrant = (attachmentId: string): void => {
+  const grantId = localNativeAttachmentGrantIds.get(attachmentId)
+  if (grantId === undefined) return
+  localNativeAttachmentGrantIds.delete(attachmentId)
+  localNativeAttachmentGrantLabels.delete(attachmentId)
+  void controls.composerNativeFileGrantRelease({ grantIds: [grantId] }).catch(() => undefined)
+}
+
+const bytesForNativeAttachmentGrant = async (
+  attachmentId: string,
+): Promise<ArrayBuffer> => {
+  const grantId = localNativeAttachmentGrantIds.get(attachmentId)
+  if (grantId === undefined) throw new Error("Native file grant is missing.")
+  const result = await controls.composerNativeFileGrantRead({ grantId })
+  if (!result.ok) throw new Error(result.error)
+  return arrayBufferFromBase64(result.dataBase64)
+}
+
 const stageFiles = (
   files: readonly File[],
   source: ComposerAttachmentSource,
@@ -4147,6 +4510,29 @@ const stageFiles = (
     if (file === undefined) return
     localAttachmentFiles.set(attachment.id, file)
     void runDesktopLocalAttachmentUpload(attachment.id, () => file.arrayBuffer())
+  })
+}
+
+const stageNativeFileGrants = (
+  grants: readonly KhalaCodeDesktopComposerNativeFileGrant[],
+): void => {
+  if (grants.length === 0) return
+  const staged = stageComposerAttachmentFiles(grants.map(fileLikeForNativeGrant), {
+    source: "manual",
+  })
+  if (!applyComposerStateTransaction(staged.transaction)) {
+    void controls.composerNativeFileGrantRelease({
+      grantIds: grants.map(grant => grant.grantId),
+    }).catch(() => undefined)
+    return
+  }
+  staged.attachments.forEach((attachment, index) => {
+    const grant = grants[index]
+    if (grant === undefined) return
+    localNativeAttachmentGrantIds.set(attachment.id, grant.grantId)
+    localNativeAttachmentGrantLabels.set(attachment.id, grant)
+    void runDesktopLocalAttachmentUpload(attachment.id, () =>
+      bytesForNativeAttachmentGrant(attachment.id))
   })
 }
 
@@ -4259,6 +4645,27 @@ const mountComposerHud = (): ComposerHudRuntime | null => {
   }
 }
 
+const openComposerAttachmentPicker = async (): Promise<void> => {
+  try {
+    const result = await controls.composerNativeFilePickerOpen({
+      maxFiles: 16,
+      multiple: true,
+    })
+    if (result.ok && result.files.length > 0) {
+      stageNativeFileGrants(result.files)
+      requestAnimationFrame(focusComposerInput)
+      return
+    }
+    if (result.ok && result.cancelled) {
+      requestAnimationFrame(focusComposerInput)
+      return
+    }
+  } catch {
+    // Browser preview and older native shells fall back to the hidden input.
+  }
+  fileInput.click()
+}
+
 composerForm.addEventListener("submit", event => {
   event.preventDefault()
   void submitComposer()
@@ -4273,7 +4680,7 @@ sendButton.addEventListener("click", event => {
 })
 
 attachButton.addEventListener("click", () => {
-  fileInput.click()
+  void openComposerAttachmentPicker()
 })
 
 fileInput.addEventListener("change", () => {
@@ -4440,6 +4847,10 @@ window.addEventListener("keydown", event => {
 // refresh the moment a turn stops — see `recomputePendingTurnForActiveThread`
 // and the direct `pendingTurn` assignment sites that call it.
 window.addEventListener("beforeunload", () => {
+  const grantIds = [...localNativeAttachmentGrantIds.values()]
+  if (grantIds.length > 0) {
+    void controls.composerNativeFileGrantRelease({ grantIds }).catch(() => undefined)
+  }
   for (const url of objectUrls) URL.revokeObjectURL(url)
   composerHudRuntime?.dispose()
 })
@@ -4450,6 +4861,8 @@ const controls = {
   attachments: () => shellModel().composerState.doc.attachments.map(attachment => ({ ...attachment })),
   attachmentReceipts: () => shellModel().composerAttachmentReceipts.map(receipt => ({ ...receipt })),
   bootDegradedStates: () => shellModel().bootDegradedStates.map(state => ({ ...state })),
+  composerContextChips: () => composerContextChips.map(chip => ({ ...chip })),
+  composerWorkDockItems: () => composerWorkDockItems().map(item => ({ ...item })),
   clearGymProof: (): GymPaneState => {
     const state = gymPaneStateFromBridgeProof(null)
     gymPanel?.setState(state)
@@ -4501,6 +4914,12 @@ const controls = {
     rpc.request.editorDirectoryRead(request),
   editorFileRead: (request: Parameters<DesktopRpcRequests["editorFileRead"]>[0]) =>
     rpc.request.editorFileRead(request),
+  composerNativeFilePickerOpen: (request?: Parameters<DesktopRpcRequests["composerNativeFilePickerOpen"]>[0]) =>
+    rpc.request.composerNativeFilePickerOpen(request),
+  composerNativeFileGrantRead: (request: Parameters<DesktopRpcRequests["composerNativeFileGrantRead"]>[0]) =>
+    rpc.request.composerNativeFileGrantRead(request),
+  composerNativeFileGrantRelease: (request: Parameters<DesktopRpcRequests["composerNativeFileGrantRelease"]>[0]) =>
+    rpc.request.composerNativeFileGrantRelease(request),
   forumRequest: (request: Parameters<DesktopRpcRequests["forumRequest"]>[0]) =>
     rpc.request.forumRequest(request),
   khalaCodePlanCatalog: () => rpc.request.khalaCodePlanCatalog(),
@@ -4680,6 +5099,25 @@ const controls = {
       { source: input.source ?? "manual" },
     )
     applyComposerStateTransaction(staged.transaction)
+  },
+  addComposerContextForSmoke: (input: {
+    body?: string
+    displayPath: string
+    kind?: ComposerContextChip["kind"]
+    lineEnd?: number
+    lineStart?: number
+    title?: string
+  }) => {
+    const kind = input.kind ?? "file"
+    addComposerContextChip({
+      displayPath: input.displayPath,
+      id: nextComposerContextChipId(kind),
+      kind,
+      ...(input.body === undefined ? {} : { body: input.body }),
+      ...(input.lineEnd === undefined ? {} : { lineEnd: input.lineEnd }),
+      ...(input.lineStart === undefined ? {} : { lineStart: input.lineStart }),
+      title: input.title ?? input.displayPath,
+    })
   },
   stopTurn: stopActiveTurn,
   submitComposer,
@@ -4933,6 +5371,7 @@ const editorPanel =
         editorDirectoryRead: request => controls.editorDirectoryRead(request),
         editorFileRead: request => controls.editorFileRead(request),
         editorWorkspaceRead: () => controls.editorWorkspaceRead(),
+        onComposerContextSelected: addEditorComposerContext,
       })
 
 const gymPanel =

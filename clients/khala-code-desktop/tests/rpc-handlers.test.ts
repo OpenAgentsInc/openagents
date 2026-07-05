@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import { Buffer } from "node:buffer"
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -268,6 +269,92 @@ function throwingClaudeChatRuntime(
 }
 
 describe("Khala Code desktop RPC handlers", () => {
+  test("grants native composer picker files without leaking outside paths", async () => {
+    const root = await mkdtemp(join(tmpdir(), "khala-code-native-composer-grants-"))
+    tempDirs.push(root)
+    const workspace = join(root, "workspace")
+    const insideDir = join(workspace, "src")
+    const outsideDir = join(root, "outside")
+    await mkdir(insideDir, { recursive: true })
+    await mkdir(outsideDir, { recursive: true })
+    const insidePath = join(insideDir, "inside.md")
+    const outsidePath = join(outsideDir, "private-image.png")
+    await writeFile(insidePath, "workspace context")
+    await writeFile(outsidePath, "outside image bytes")
+
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      env: {},
+      nativeFilePicker: async request => {
+        expect(request.maxFiles).toBe(2)
+        expect(request.multiple).toBe(true)
+        return {
+          cancelled: false,
+          paths: [insidePath, outsidePath],
+        }
+      },
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: workspace,
+    })
+
+    const picked = await handlers.composerNativeFilePickerOpen({
+      maxFiles: 2,
+      multiple: true,
+    })
+
+    expect(picked.ok).toBe(true)
+    if (!picked.ok) throw new Error(picked.error)
+    expect(picked.cancelled).toBe(false)
+    expect(picked.files).toHaveLength(2)
+
+    const inside = picked.files.find(file => file.name === "inside.md")
+    const outside = picked.files.find(file => file.name === "private-image.png")
+    expect(inside).toMatchObject({
+      displayPath: "src/inside.md",
+      mime: "text/markdown",
+      source: "native_picker",
+      workspaceRelativePath: "src/inside.md",
+    })
+    expect(outside).toMatchObject({
+      displayPath: "private-image.png",
+      mime: "image/png",
+      source: "native_picker",
+    })
+    expect(outside?.workspaceRelativePath).toBeUndefined()
+    expect(JSON.stringify(picked)).not.toContain(outsideDir)
+    expect(JSON.stringify(picked)).not.toContain(outsidePath)
+
+    if (outside === undefined) throw new Error("missing outside grant")
+    const read = await handlers.composerNativeFileGrantRead({ grantId: outside.grantId })
+    expect(read.ok).toBe(true)
+    if (!read.ok) throw new Error(read.error)
+    expect(Buffer.from(read.dataBase64, "base64").toString("utf8")).toBe("outside image bytes")
+    expect(read).toMatchObject({
+      grantId: outside.grantId,
+      mime: "image/png",
+      name: "private-image.png",
+      sizeBytes: "outside image bytes".length,
+    })
+
+    const release = await handlers.composerNativeFileGrantRelease({
+      grantIds: picked.files.map(file => file.grantId),
+    })
+    expect(release).toEqual({
+      missing: [],
+      ok: true,
+      released: 2,
+    })
+    await expect(handlers.composerNativeFileGrantRead({ grantId: outside.grantId }))
+      .resolves.toMatchObject({
+        grantId: outside.grantId,
+        ok: false,
+      })
+  })
+
   test("starts fleet runs through the supervisor RPC port", async () => {
     const calls: KhalaCodeDesktopFleetRunStartRequest[] = []
     const run = fleetRunProjection()

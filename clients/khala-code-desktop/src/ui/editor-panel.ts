@@ -34,6 +34,16 @@ export type KhalaCodeEditorPanelHandle = Readonly<{
   setVisible: (visible: boolean) => void
 }>
 
+export type KhalaCodeEditorComposerContext = Readonly<{
+  displayPath: string
+  kind: "file" | "selection"
+  lineEnd?: number
+  lineStart?: number
+  path: string
+  providerId: string
+  rootPath: string
+}>
+
 export type KhalaCodeEditorPanelServices = Readonly<{
   editorDirectoryRead: (
     request?: KhalaCodeDesktopEditorDirectoryReadRequest,
@@ -48,6 +58,7 @@ export type KhalaCodeEditorMonacoLoader = () => Promise<MonacoApi>
 
 export type KhalaCodeEditorPanelOptions = KhalaCodeEditorPanelServices & Readonly<{
   loadMonaco?: KhalaCodeEditorMonacoLoader
+  onComposerContextSelected?: (context: KhalaCodeEditorComposerContext) => void
 }>
 
 type EditorTreeItem = {
@@ -336,6 +347,8 @@ export const mountKhalaCodeEditorPanel = (
   let destroyed = false
   let monacoEditor: MonacoEditor | null = null
   let monacoModel: MonacoModel | null = null
+  let activeFileContext: Omit<KhalaCodeEditorComposerContext, "kind" | "lineEnd" | "lineStart"> | null = null
+  let selectionChangeDisposable: { dispose: () => void } | null = null
 
   const panel = el("div", "khala-code-editor-panel")
   panel.dataset.khalaCodeEditorPanel = ""
@@ -371,7 +384,19 @@ export const mountKhalaCodeEditorPanel = (
   const sourceHeader = el("div", "khala-code-editor-source-header")
   const fileTitle = el("h2", "khala-code-editor-source-title", "No file selected")
   const fileMeta = el("span", "khala-code-editor-source-meta", "Source")
-  sourceHeader.append(fileTitle, fileMeta)
+  const sourceContextButton = document.createElement("button")
+  sourceContextButton.type = "button"
+  sourceContextButton.className = "khala-code-editor-source-context-button"
+  sourceContextButton.disabled = true
+  sourceContextButton.title = "Add selected source context"
+  sourceContextButton.setAttribute("aria-label", "Add selected source context")
+  sourceContextButton.append(iconElement("Plus", {
+    className: "khala-code-editor-source-context-icon",
+    dataIcon: "editor-add-context",
+  }))
+  const sourceHeaderMeta = el("div", "khala-code-editor-header-meta")
+  sourceHeaderMeta.append(fileMeta, sourceContextButton)
+  sourceHeader.append(fileTitle, sourceHeaderMeta)
 
   const sourceBody = el("div", "khala-code-editor-source-body")
   const sourceState = el("div", "khala-code-editor-source-state", "No source open")
@@ -435,6 +460,10 @@ export const mountKhalaCodeEditorPanel = (
     message: string,
     state: "empty" | "error" | "loading" | "unsupported",
   ): void => {
+    activeFileContext = null
+    sourceContextButton.disabled = true
+    selectionChangeDisposable?.dispose()
+    selectionChangeDisposable = null
     fileTitle.textContent = title
     fileMeta.textContent = meta
     sourceBody.dataset.state = state
@@ -445,6 +474,28 @@ export const mountKhalaCodeEditorPanel = (
     monacoModel?.dispose()
     monacoModel = null
   }
+
+  const selectedLineRange = (): Pick<KhalaCodeEditorComposerContext, "kind" | "lineEnd" | "lineStart"> => {
+    const selection = monacoEditor?.getSelection()
+    if (selection === null || selection === undefined || activeFileContext === null) return { kind: "file" }
+    const lineStart = Math.max(1, Math.min(selection.startLineNumber, selection.endLineNumber))
+    const lineEnd = Math.max(lineStart, Math.max(selection.startLineNumber, selection.endLineNumber))
+    return { kind: "selection", lineStart, lineEnd }
+  }
+
+  const getSelectedComposerContext = (): KhalaCodeEditorComposerContext | null => {
+    if (activeFileContext === null) return null
+    return {
+      ...activeFileContext,
+      ...selectedLineRange(),
+    }
+  }
+
+  sourceContextButton.addEventListener("click", () => {
+    const context = getSelectedComposerContext()
+    if (context === null) return
+    options.onComposerContextSelected?.(context)
+  })
 
   const renderTreeState = (message: string, state: "empty" | "error" | "loading"): void => {
     treeBody.replaceChildren()
@@ -579,6 +630,18 @@ export const mountKhalaCodeEditorPanel = (
     const language = languageForPath(result.path)
     const meta = `${languageLabel(language)} - ${formatBytes(result.sizeBytes)}`
     showSourceState(node.name, meta, "Loading editor", "loading")
+    activeFileContext = {
+      displayPath: relativeDisplayPath({
+        name: node.name,
+        path: result.path,
+        rootPath: result.rootPath,
+      }),
+      path: result.path,
+      providerId: result.providerId,
+      rootPath: result.rootPath,
+    }
+    sourceContextButton.disabled = options.onComposerContextSelected === undefined
+    sourceContextButton.title = "Add selected file context"
     try {
       const monaco = await (options.loadMonaco ?? defaultLoadMonaco)()
       if (destroyed || requestSeq !== fileRequestSeq) return
@@ -603,6 +666,13 @@ export const mountKhalaCodeEditorPanel = (
       monacoModel?.dispose()
       monacoModel = monaco.editor.createModel(result.content, language, monaco.Uri.file(result.path))
       monacoEditor.setModel(monacoModel)
+      selectionChangeDisposable?.dispose()
+      selectionChangeDisposable = monacoEditor.onDidChangeCursorSelection(() => {
+        sourceContextButton.title = selectedLineRange().kind === "selection"
+          ? "Add selected line context"
+          : "Add selected file context"
+      })
+      sourceContextButton.title = "Add selected line context"
       monacoEditor.layout()
     } catch (error) {
       if (destroyed || requestSeq !== fileRequestSeq) return
@@ -736,6 +806,7 @@ export const mountKhalaCodeEditorPanel = (
     destroy() {
       destroyed = true
       treeBody.removeEventListener("keydown", handleTreeKeydown)
+      selectionChangeDisposable?.dispose()
       monacoEditor?.dispose()
       monacoModel?.dispose()
       container.replaceChildren()

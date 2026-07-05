@@ -1780,7 +1780,7 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("sendButton.disabled = !shellModel().pendingTurn && !canSubmitComposer()")
     expect(main).toContain('sendButton.type = shellModel().pendingTurn ? "button" : "submit"')
     expect(main).toContain("stopActiveTurn")
-    expect(main).toContain("queueFollowUpDraft(draftText)")
+    expect(main).toContain("queueFollowUpDraft(submittedBody(draftText, [], pendingContexts))")
     expect(main).not.toContain("composerInput.disabled = pendingTurn")
     expect(main).toContain("requestAnimationFrame(focusComposerInput)")
     expect(css).not.toContain("#composer-input:disabled")
@@ -1935,6 +1935,63 @@ describe("khala code desktop app shell", () => {
     expect(main).not.toContain("local-file:/private")
     expect(pkg.dependencies["@openagentsinc/composer-state"]).toBe("workspace:*")
     expect(pkg.dependencies["@openagentsinc/three-effect"]).toContain("fa84064796")
+  })
+
+  test("wires native attachments, selected context, and composer work docks", async () => {
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const rpc = await Bun.file(new URL("../src/shared/rpc.ts", import.meta.url)).text()
+    const handlers = await Bun.file(new URL("../src/bun/rpc-handlers.ts", import.meta.url)).text()
+    const previewPolicy = await Bun.file(new URL("../src/bun/preview-rpc-policy.ts", import.meta.url)).text()
+    const editor = await Bun.file(new URL("../src/ui/editor-panel.ts", import.meta.url)).text()
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+
+    for (const method of [
+      "composerNativeFilePickerOpen",
+      "composerNativeFileGrantRead",
+      "composerNativeFileGrantRelease",
+    ]) {
+      expect(rpc).toContain(method)
+      expect(handlers).toContain(method)
+      expect(main).toContain(method)
+      expect(previewPolicy).toContain(`"${method}"`)
+    }
+
+    expect(handlers).toContain("workspaceRelativeFilePath")
+    expect(handlers).toContain("nativeGrantDisplayPath")
+    expect(handlers).toContain("displayPath: basename(path)")
+    expect(main).toContain("openComposerAttachmentPicker")
+    expect(main).toContain("stageNativeFileGrants")
+    expect(main).toContain("bytesForNativeAttachmentGrant")
+    expect(main).toContain("localNativeAttachmentGrantIds")
+    expect(main).toContain("runDesktopLocalAttachmentUpload")
+
+    expect(editor).toContain("KhalaCodeEditorComposerContext")
+    expect(editor).toContain("onComposerContextSelected")
+    expect(editor).toContain("sourceContextButton")
+    expect(editor).toContain("selectionChangeDisposable")
+    expect(main).toContain("onComposerContextSelected: addEditorComposerContext")
+    expect(main).toContain("title: context.displayPath")
+    expect(main).toContain("contextSummaryForSubmit")
+    expect(main).toContain("composerContextChips")
+    expect(main).toContain("addDiffReviewComposerContext(comment)")
+    expect(main).toContain("composerContextChips.length > 0")
+    expect(main).not.toContain("body: context.path")
+
+    expect(main).toContain("renderComposerWorkDock()")
+    expect(main).toContain("composerWorkDockItems")
+    expect(main).toContain('id: "permission"')
+    expect(main).toContain('id: "request-tree"')
+    expect(main).toContain('id: "revert"')
+    expect(main).toContain('status === "expired"')
+    expect(main).toContain('button.type = "button"')
+    expect(main).toContain('button.setAttribute("aria-label", item.title)')
+    expect(main).toContain("composerWorkDockItems: () =>")
+
+    expect(css).toContain(".khala-code-composer-work-dock")
+    expect(css).toContain(".khala-code-composer-work-dock-item[data-state=\"blocked\"]")
+    expect(css).toContain(".khala-code-composer-context-dock")
+    expect(css).toContain(".khala-code-composer-context-chip")
+    expect(css).toContain(".khala-code-editor-source-context-button")
   })
 
   test("splits code and diff fixtures for the initial transcript renderer", () => {

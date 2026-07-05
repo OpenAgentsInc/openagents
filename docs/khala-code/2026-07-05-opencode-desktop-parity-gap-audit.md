@@ -1,7 +1,7 @@
 # Khala Code Desktop / OpenCode Desktop Parity Gap Audit
 
 Date: 2026-07-05
-Status: audit / implementation roadmap. First #8435 implementation pass complete.
+Status: audit / implementation roadmap. First #8435-#8437 implementation passes complete.
 Scope: `projects/repos/opencode/packages/desktop`, `projects/repos/opencode/packages/app`, and `clients/khala-code-desktop`.
 
 ## Executive Decision
@@ -593,6 +593,14 @@ Issue: add model, agent, provider, and variant controls in the composer
 Issue: add attachment parity
 ([#8437](https://github.com/OpenAgentsInc/openagents/issues/8437)).
 
+- Status: first implementation pass complete on 2026-07-05. Khala Code desktop
+  now has native picker grant/read/release RPCs, private-path grants held only
+  in the Bun handler, public grant labels for workspace-relative files, native
+  grant release on attachment removal/reset/window unload, and native image
+  grants routed through the existing local attachment uploader. Browser file
+  input, paste/drop attachments, image previews, oversized paste refusal, and
+  public-safe transcript projection stay on the shared composer-state path.
+  Native clipboard-image IPC and save-dialog parity remain follow-up work.
 - Scope: native file picker bridge, drag/drop files, paste files/images,
   clipboard image import, image thumbnails, preview/open, removal, source-path
   metadata, attachment budgets, and release of native file grants.
@@ -603,6 +611,13 @@ Issue: add attachment parity
 Issue: add composer context and docks
 ([#8437](https://github.com/OpenAgentsInc/openagents/issues/8437)).
 
+- Status: first implementation pass complete on 2026-07-05. The editor source
+  pane can add selected file/line context chips, diff-review comments stage as
+  selected composer context, submitted prompts include an explicit selected
+  context summary, and the composer renders keyboard-reachable follow-up,
+  permission, question, revert, todo, and request-tree work-state buttons. The
+  read-only preview bridge now classifies local native grant RPCs as mutating
+  so preview mode cannot use them to inspect local files.
 - Scope: selected file/line/comment context, follow-up dock, permission dock,
   question dock, revert dock, todo dock, and request tree.
 - Acceptance gates: context survives thread switching, docks are keyboard

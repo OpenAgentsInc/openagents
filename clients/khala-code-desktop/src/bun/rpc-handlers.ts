@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto"
 import { Buffer } from "node:buffer"
-import { mkdir, rm, writeFile } from "node:fs/promises"
+import { mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { basename, join } from "node:path"
+import { basename, extname, isAbsolute, join, relative } from "node:path"
 import { Effect, Schema as S } from "effect"
 
 import type { KhalaFleetDelegateStep } from "@openagentsinc/khala-tools"
@@ -49,6 +49,8 @@ import {
   type KhalaCodeDesktopChatTurnEvent,
   type KhalaCodeDesktopChatTurnRequest,
   type KhalaCodeDesktopChatTurnResponse,
+  type KhalaCodeDesktopComposerNativeFileGrant,
+  type KhalaCodeDesktopComposerNativeFilePickerRequest,
   type KhalaCodeDesktopCodexConfigValueWriteRequest,
   type KhalaCodeDesktopCodexBackgroundTerminalsCleanRequest,
   type KhalaCodeDesktopCodexBackgroundTerminalsListRequest,
@@ -147,6 +149,7 @@ import {
   KHALA_CODE_MODEL_ROLE_REGISTRY_KEY_PATH,
   makeKhalaCodeArchitectCoderJudgeRegistry,
 } from "../shared/model-role-preset.js"
+import { displayPathForKhalaCode } from "../shared/display-paths.js"
 import {
   evaluateKhalaCodeDesktopSlashCommandAvailability,
   khalaCodeDesktopSlashCommandsWithAvailability,
@@ -230,6 +233,16 @@ import {
 type ChatEnv = Readonly<Record<string, string | undefined>>
 type MaybePromise<T> = T | Promise<T>
 type ChatRuntime = CodexAppServerChatRuntime
+type ComposerNativeFilePicker = (
+  request: KhalaCodeDesktopComposerNativeFilePickerRequest,
+) => MaybePromise<{
+  readonly cancelled: boolean
+  readonly paths?: readonly string[]
+  readonly unavailableReason?: string
+}>
+type NativeFileGrantRecord = KhalaCodeDesktopComposerNativeFileGrant & Readonly<{
+  path: string
+}>
 
 type ChatRuntimeSelection =
   | {
@@ -302,6 +315,7 @@ export type KhalaCodeDesktopRpcHandlersInput = {
    */
   readonly khalaSync?: KhalaCodeDesktopKhalaSyncRpc
   readonly editorFileService?: KhalaCodeEditorFileService
+  readonly nativeFilePicker?: ComposerNativeFilePicker
   readonly env: ChatEnv
   // Test seam for network-backed handlers (Khala Code plan routes). Defaults to
   // the global fetch in production.
@@ -354,6 +368,7 @@ const MAX_MENTION_CANDIDATES = 20
 const MAX_DIRECTORY_CANDIDATES = 20
 const MAX_DIFF_DISPLAY_CHARS = 80_000
 const CHAT_ATTACHMENT_TMP_ROOT = join(tmpdir(), "khala-code-chat-attachments")
+const MAX_NATIVE_COMPOSER_PICKER_FILES = 16
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null
@@ -363,6 +378,140 @@ const stringValue = (value: unknown): string | null =>
 
 const numberValue = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isFinite(value) ? value : undefined
+
+const mimeTypeForPath = (path: string): string => {
+  switch (extname(path).toLowerCase()) {
+    case ".gif":
+      return "image/gif"
+    case ".heic":
+    case ".heif":
+      return "image/heic"
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg"
+    case ".png":
+      return "image/png"
+    case ".webp":
+      return "image/webp"
+    case ".css":
+      return "text/css"
+    case ".csv":
+      return "text/csv"
+    case ".htm":
+    case ".html":
+      return "text/html"
+    case ".md":
+    case ".markdown":
+      return "text/markdown"
+    case ".txt":
+      return "text/plain"
+    case ".js":
+    case ".mjs":
+    case ".cjs":
+      return "text/javascript"
+    case ".json":
+    case ".jsonc":
+      return "application/json"
+    case ".pdf":
+      return "application/pdf"
+    case ".ts":
+    case ".tsx":
+      return "text/typescript"
+    case ".zip":
+      return "application/zip"
+    default:
+      return "application/octet-stream"
+  }
+}
+
+const boundedNativePickerFileLimit = (
+  request: KhalaCodeDesktopComposerNativeFilePickerRequest,
+): number => {
+  const raw = request.maxFiles
+  if (raw === undefined || !Number.isFinite(raw)) return MAX_NATIVE_COMPOSER_PICKER_FILES
+  return Math.max(1, Math.min(MAX_NATIVE_COMPOSER_PICKER_FILES, Math.trunc(raw)))
+}
+
+const workspaceRelativeFilePath = (
+  path: string,
+  workspaceRoot: string,
+): string | null => {
+  const candidate = relative(workspaceRoot, path)
+  if (
+    candidate.length === 0 ||
+    candidate.startsWith("..") ||
+    isAbsolute(candidate)
+  ) {
+    return null
+  }
+  return candidate.replace(/\\/g, "/")
+}
+
+const nativeGrantDisplayPath = (
+  path: string,
+  workspaceRoot: string,
+): {
+  readonly displayPath: string
+  readonly workspaceRelativePath?: string
+} => {
+  const workspaceRelativePath = workspaceRelativeFilePath(path, workspaceRoot)
+  if (workspaceRelativePath !== null) {
+    return {
+      displayPath: workspaceRelativePath,
+      workspaceRelativePath,
+    }
+  }
+  return { displayPath: basename(path) || displayPathForKhalaCode(path, workspaceRoot) }
+}
+
+const runMacOsNativeFilePicker = async (
+  request: KhalaCodeDesktopComposerNativeFilePickerRequest,
+): Promise<{
+  readonly cancelled: boolean
+  readonly paths?: readonly string[]
+  readonly unavailableReason?: string
+}> => {
+  if (process.platform !== "darwin") {
+    return {
+      cancelled: false,
+      paths: [],
+      unavailableReason: "Native file picker is only implemented on macOS in this build.",
+    }
+  }
+  const multiple = request.multiple ?? true
+  const script = multiple
+    ? [
+        'set pickedFiles to choose file with prompt "Attach files to Khala Code" with multiple selections allowed',
+        'set output to ""',
+        'repeat with pickedFile in pickedFiles',
+        'set output to output & POSIX path of pickedFile & linefeed',
+        'end repeat',
+        "return output",
+      ].join("\n")
+    : 'POSIX path of (choose file with prompt "Attach a file to Khala Code")'
+  const proc = Bun.spawn(["osascript", "-e", script], {
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  if (exitCode !== 0) {
+    return /cancel/iu.test(stderr)
+      ? { cancelled: true, paths: [] }
+      : {
+          cancelled: false,
+          paths: [],
+          unavailableReason: stderr.trim() || `Native file picker exited with ${exitCode}.`,
+        }
+  }
+  return {
+    cancelled: false,
+    paths: stdout.split(/\r?\n/u).map(line => line.trim()).filter(Boolean),
+  }
+}
 
 const forumFailureReason = (payload: unknown, fallback: string): string => {
   if (isRecord(payload)) {
@@ -1158,6 +1307,37 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
   const architectPlanStore = createArchitectPlanStore({ env: input.env })
   const editorFileService = input.editorFileService ??
     createKhalaCodeEditorFileService({ workingDirectory: input.workingDirectory })
+  const nativeFilePicker = input.nativeFilePicker ?? runMacOsNativeFilePicker
+  const nativeFileGrants = new Map<string, NativeFileGrantRecord>()
+  let nativeWorkspaceRootPromise: Promise<string> | null = null
+  const nativeWorkspaceRoot = (): Promise<string> => {
+    nativeWorkspaceRootPromise ??= realpath(input.workingDirectory).catch(() => input.workingDirectory)
+    return nativeWorkspaceRootPromise
+  }
+  const nativeFileGrantForPath = async (
+    path: string,
+  ): Promise<KhalaCodeDesktopComposerNativeFileGrant | null> => {
+    const resolved = await realpath(path)
+    const fileStat = await stat(resolved)
+    if (!fileStat.isFile()) return null
+    const workspaceRoot = await nativeWorkspaceRoot()
+    const labels = nativeGrantDisplayPath(resolved, workspaceRoot)
+    const grant: NativeFileGrantRecord = {
+      displayPath: labels.displayPath,
+      grantId: `native-file-grant-${randomUUID()}`,
+      mime: mimeTypeForPath(resolved),
+      name: basename(resolved) || "attachment",
+      path: resolved,
+      sizeBytes: fileStat.size,
+      source: "native_picker",
+      ...(labels.workspaceRelativePath === undefined
+        ? {}
+        : { workspaceRelativePath: labels.workspaceRelativePath }),
+    }
+    nativeFileGrants.set(grant.grantId, grant)
+    const { path: _privatePath, ...publicGrant } = grant
+    return publicGrant
+  }
   const requireCodexChatRuntime = (): CodexAppServerChatRuntime => {
     if (codexChatRuntime === null) {
       throw new Error("Codex app-server chat runtime is not configured.")
@@ -2680,6 +2860,74 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     },
     async editorFileRead(request) {
       return editorFileService.fileRead(request)
+    },
+    async composerNativeFilePickerOpen(request = {}) {
+      const limit = boundedNativePickerFileLimit(request)
+      try {
+        const picked = await nativeFilePicker({
+          ...request,
+          maxFiles: limit,
+          multiple: request.multiple ?? true,
+        })
+        const rawPaths = [...(picked.paths ?? [])].slice(0, limit)
+        const files = (await Promise.all(rawPaths.map(path =>
+          nativeFileGrantForPath(path).catch(() => null)
+        ))).filter((grant): grant is KhalaCodeDesktopComposerNativeFileGrant => grant !== null)
+        return {
+          cancelled: picked.cancelled,
+          files,
+          ok: true as const,
+          ...(picked.unavailableReason === undefined ? {} : { unavailableReason: picked.unavailableReason }),
+        }
+      } catch (error) {
+        return {
+          error: error instanceof Error ? error.message : String(error),
+          ok: false as const,
+        }
+      }
+    },
+    async composerNativeFileGrantRead(request) {
+      const grant = nativeFileGrants.get(request.grantId)
+      if (grant === undefined) {
+        return {
+          error: "Native file grant is missing or has already been released.",
+          grantId: request.grantId,
+          ok: false as const,
+        }
+      }
+      try {
+        const bytes = await readFile(grant.path)
+        return {
+          dataBase64: bytes.toString("base64"),
+          grantId: grant.grantId,
+          mime: grant.mime,
+          name: grant.name,
+          ok: true as const,
+          sizeBytes: bytes.byteLength,
+        }
+      } catch (error) {
+        return {
+          error: error instanceof Error ? error.message : String(error),
+          grantId: request.grantId,
+          ok: false as const,
+        }
+      }
+    },
+    async composerNativeFileGrantRelease(request) {
+      const missing: string[] = []
+      let released = 0
+      for (const grantId of request.grantIds) {
+        if (nativeFileGrants.delete(grantId)) {
+          released += 1
+        } else {
+          missing.push(grantId)
+        }
+      }
+      return {
+        missing,
+        ok: true,
+        released,
+      }
     },
     async forumRequest(request): Promise<KhalaCodeDesktopForumResponse> {
       return fetchOpenAgentsForum(request)
