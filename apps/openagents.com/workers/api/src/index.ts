@@ -16045,6 +16045,25 @@ export default {
       ),
       observedEffect(
         'TipsBuffer.backingInvariant',
+        // 2026-07-05 incident (#8409): this check intentionally THROWS on a
+        // real invariant violation ("Checked every tick; a violation raises
+        // ... instead of passing silently" — see tips-sweep.ts), but it
+        // shares this per-minute cron tick's single giant Promise.all with
+        // ~24 unrelated scheduled tasks, including the Artanis responder
+        // scan/compose Postgres dual-write. Promise.all rejects as soon as
+        // ANY entry rejects, tearing down the whole scheduled() invocation
+        // and silently abandoning every sibling's still-in-flight work —
+        // confirmed live via wrangler tail: a standing
+        // TipsBufferBackingViolation (agent balances 263 sat exceeding a 15
+        // sat buffer) fired on effectively every tick and killed the
+        // invocation mid-flight, which is the actual root cause of
+        // artanis_responder_ticks losing ~77-79%/hour of its Postgres
+        // mirror writes outright (not a Hyperdrive/connection-pool problem
+        // — two independent Hyperdrive-side fixes, raising
+        // origin_connection_limit and recreating the config, had zero
+        // effect on the loss rate). Keep the violation loud (still logged,
+        // still distinguishable from a healthy tick) but never let it kill
+        // unrelated sibling work again.
         Effect.promise(() =>
           checkTipsBufferBackingInvariant(
             makeTreasuryDatabaseForEnv(env),
@@ -16063,7 +16082,15 @@ export default {
             } catch {
               return null
             }
-          }),
+          }).then(
+            () => undefined,
+            error => {
+              logWorkerRouteError(
+                'khala_sync_tips_buffer_backing_invariant_violated',
+                error,
+              )
+            },
+          ),
         ),
       ),
     ])
