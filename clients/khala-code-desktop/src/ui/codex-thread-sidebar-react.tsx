@@ -223,18 +223,36 @@ const ThreadTimeContent = ({
   )
 }
 
+/**
+ * Defensive hygiene against duplicate sidebar rows (khala_code #owner
+ * 2026-07-05): the same thread id must never render twice, whether that
+ * would come from an upstream data-layer duplicate (two distinct rows
+ * feeding the same id) or from a thread id being listed in more than one
+ * group. Dedup by id here, keeping only the first (highest-priority group)
+ * occurrence, regardless of how the underlying list/groups were built.
+ */
 const groupThreads = (
   data: KhalaCodeDesktopCodexThreadListResult,
 ): readonly ThreadGroup[] => {
   const threads = data.threads ?? []
   const threadById = new Map(threads.map(thread => [thread.id, thread]))
   const groups = data.groups ?? []
-  if (groups.length === 0) return [{ label: "Threads", threads }]
+  const renderedIds = new Set<string>()
+  const dedupedThreadsForGroup = (threadIds: readonly string[]): KhalaCodeDesktopCodexThreadSummary[] => {
+    const result: KhalaCodeDesktopCodexThreadSummary[] = []
+    for (const id of threadIds) {
+      if (renderedIds.has(id)) continue
+      const thread = threadById.get(id)
+      if (thread === undefined) continue
+      renderedIds.add(id)
+      result.push(thread)
+    }
+    return result
+  }
+  if (groups.length === 0) return [{ label: "Threads", threads: dedupedThreadsForGroup(threads.map(thread => thread.id)) }]
   return groups.map(group => ({
     label: group.label,
-    threads: group.threadIds
-      .map(id => threadById.get(id))
-      .filter((thread): thread is KhalaCodeDesktopCodexThreadSummary => thread !== undefined),
+    threads: dedupedThreadsForGroup(group.threadIds),
   }))
 }
 

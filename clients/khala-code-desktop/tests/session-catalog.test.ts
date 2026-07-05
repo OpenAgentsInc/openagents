@@ -420,6 +420,81 @@ describe("Khala Code cross-harness session catalog", () => {
     })
   })
 
+  test("khala_code.chat.claude_stored_session_records_not_resumed.v1: marks a stored Claude session with no live-confirmed thread as non-resumable, never 'Claude session couldn't be opened' bait", async () => {
+    // Regression for the 2026-07-05 owner-reported bug: a generic
+    // "Claude session" sidebar row that failed to open with "This chat
+    // couldn't be opened. Its session may be missing or unavailable" the
+    // moment it was clicked. Root cause: unlike Codex, every Claude catalog
+    // entry was unconditionally marked resumable regardless of whether the
+    // Claude Agent SDK's own listSessions() ever confirmed the thread still
+    // exists. A stored-only entry (from claude-sessions.json bookkeeping,
+    // with no matching claudeRuntime.listThreads() result and a non-UUID
+    // session id) must now be surfaced as a clearly-labeled, non-clickable
+    // "Stored Claude session" row instead of a live-looking dead end.
+    const root = await tempRoot()
+    const claudeStatePath = join(root, "claude-sessions.json")
+    await writeFile(claudeStatePath, JSON.stringify({
+      schema: "khala-code-desktop.claude-sessions.v1",
+      sessions: {
+        "desktop-claude": {
+          sessionId: "claude-desktop-not-a-real-rollout",
+          updatedAt: "2026-07-05T10:00:00.000Z",
+        },
+      },
+    }))
+    const claudeRuntime = {
+      listThreads: async () => ({ ok: true as const, data: [], threads: [] }),
+    } as Partial<ClaudeAppSdkChatRuntime> as ClaudeAppSdkChatRuntime
+
+    const catalog = await readKhalaCodeDesktopSessionCatalog({}, {
+      claudeRuntime,
+      codexRuntime: null,
+      env: {
+        KHALA_CODE_DESKTOP_CLAUDE_STATE_PATH: claudeStatePath,
+        KHALA_CODE_DESKTOP_CODEX_STATE_PATH: join(root, "missing-codex.json"),
+      },
+    })
+
+    expect(catalog.entries).toHaveLength(1)
+    expect(sessionCatalogEntryToThreadSummary(catalog.entries[0]!)).toMatchObject({
+      id: "claude:claude-desktop-not-a-real-rollout",
+      resumable: false,
+      statusLabel: "stored local record",
+      title: "Stored Claude session",
+      unavailableReason:
+        "Stored local Claude session metadata does not include a current app-server UUID thread id.",
+    })
+  })
+
+  test("khala_code.chat.claude_stored_session_records_not_resumed.v1: keeps a stored Claude session resumable when its id is UUID-shaped even without a live listThreads confirmation", async () => {
+    const root = await tempRoot()
+    const claudeStatePath = join(root, "claude-sessions.json")
+    const uuidSessionId = "019f334c-56ad-7e82-b833-5e60fda88a8a"
+    await writeFile(claudeStatePath, JSON.stringify({
+      schema: "khala-code-desktop.claude-sessions.v1",
+      sessions: {
+        "desktop-claude": {
+          sessionId: uuidSessionId,
+          updatedAt: "2026-07-05T10:00:00.000Z",
+        },
+      },
+    }))
+
+    const catalog = await readKhalaCodeDesktopSessionCatalog({}, {
+      codexRuntime: null,
+      env: {
+        KHALA_CODE_DESKTOP_CLAUDE_STATE_PATH: claudeStatePath,
+        KHALA_CODE_DESKTOP_CODEX_STATE_PATH: join(root, "missing-codex.json"),
+      },
+    })
+
+    expect(sessionCatalogEntryToThreadSummary(catalog.entries[0]!)).toMatchObject({
+      id: uuidSessionId,
+      resumable: true,
+      title: "Claude session",
+    })
+  })
+
   test("queries Codex and Claude thread sources concurrently", async () => {
     const root = await tempRoot()
     const codexStatePath = join(root, "codex-sessions.json")

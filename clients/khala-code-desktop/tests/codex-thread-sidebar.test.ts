@@ -717,4 +717,81 @@ describe("Khala Code thread sidebar", () => {
       window.close()
     }
   })
+
+  test("khala_code.history.no_duplicate_thread_rows.v1: never renders the same thread id twice even if it appears in more than one group", async () => {
+    // Regression for the 2026-07-05 owner-reported bug: the same chat title
+    // showed up twice as distinguishable sidebar entries. Whatever produced
+    // that upstream (a data-layer duplicate or a thread id listed in two
+    // groups), the sidebar itself must never render two rows for one
+    // thread id. This proves the render-layer dedup holds even when the
+    // listThreads() result names the same id from two different groups.
+    const window = new Window()
+    const previousWindow = globalThis.window
+    const previousDocument = globalThis.document
+    const previousNavigator = globalThis.navigator
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: window,
+      writable: true,
+    })
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: window.document,
+    })
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: window.navigator,
+    })
+    try {
+      const container = document.createElement("aside")
+      document.body.append(container)
+      const data: KhalaCodeDesktopCodexThreadListResult = {
+        ok: true,
+        data: [],
+        groups: [
+          { key: "khala-sync-chat", label: "Khala Sync", threadIds: ["thread-dup"] },
+          { key: "all-harnesses", label: "All sessions", threadIds: ["thread-dup"] },
+        ],
+        threads: [thread("thread-dup", "hello from a real Khala Code chat session")],
+      }
+      const sidebar = mountCodexThreadSidebar(container, {
+        activeThreadId: () => null,
+        archiveThread: async threadId => ({ action: "archive", ok: true, threadId }),
+        deleteThread: async threadId => ({ action: "delete", ok: true, threadId }),
+        forkThread: async threadId => ({ action: "fork", ok: true, threadId }),
+        listThreads: async () => data,
+        renameThread: async threadId => ({ action: "rename", ok: true, threadId }),
+        resumeThread: async threadId => ({ ok: true, thread: {}, threadId, messages: [] }),
+        sessionId: "desktop-session",
+        unarchiveThread: async threadId => ({ action: "unarchive", ok: true, threadId }),
+        onNewThreadRequested: () => undefined,
+        onThreadSelected: () => undefined,
+      })
+      sidebar.setVisible(true)
+      await sidebar.refresh()
+
+      expect(container.querySelectorAll('[data-thread-id="thread-dup"]')).toHaveLength(1)
+      expect(
+        [...container.querySelectorAll(".khala-thread-sidebar-item-title")]
+          .map(el => el.textContent)
+          .filter(text => text === "hello from a real Khala Code chat session"),
+      ).toHaveLength(1)
+    } finally {
+      await new Promise(resolve => setTimeout(resolve, 0))
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: previousWindow,
+        writable: true,
+      })
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: previousDocument,
+      })
+      Object.defineProperty(globalThis, "navigator", {
+        configurable: true,
+        value: previousNavigator,
+      })
+      window.close()
+    }
+  })
 })

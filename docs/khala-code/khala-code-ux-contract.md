@@ -53,7 +53,7 @@ sweep if this doc, the registry, or the oracle tests drift apart.
 
 ## Registry
 
-Registry version: `2026-07-04.6` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-05.1` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_code.chat.sidebar_spinner_streaming_only.v1` — ENFORCED
 
@@ -117,6 +117,16 @@ Registry version: `2026-07-04.6` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `stored_codex_sidebar.dom` (bun-test, dom): Mounts the real thread sidebar in a DOM: a stored-only Codex record remains visible, is disabled, never displays a raw parser error, and recent-chat selection skips it. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
 - **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
 - **Authority boundary:** This contract only governs sidebar behavior for stored/local Codex metadata that lacks a current app-server UUID thread id. It does not define the upstream Codex thread-store retention policy, subagent semantics, or whether historical rollouts can be recovered through a separate import flow.
+
+### `khala_code.chat.claude_stored_session_records_not_resumed.v1` — ENFORCED
+
+- **Surface:** khala-code-desktop (chat thread sidebar)
+- **Stated by:** owner via khala-code-session on 2026-07-05
+- **Statement:** A sidebar row labeled generically 'Claude session' must never be offered as a normal clickable chat and then fail with 'This chat couldn't be opened. Its session may be missing or unavailable' the moment it is clicked. Unlike Codex, every Claude catalog entry was previously marked resumable unconditionally regardless of whether the Claude Agent SDK's own listSessions() ever confirmed the thread still exists; a stored-only record with no live confirmation and no UUID-shaped id must be surfaced as a disabled, clearly-labeled local record instead.
+- **Enforcement tier:** test-sweep
+- **Oracle** `stored_claude_catalog_projection.unit` (bun-test, unit): Projects a stored-only Claude catalog record (from claude-sessions.json bookkeeping, with no live claudeRuntime.listThreads() confirmation and a non-UUID session id) into a disabled 'Stored Claude session' summary instead of a clickable chat that fails with 'couldn't be opened' the moment it is selected. Also proves a stored-only record with a genuine UUID-shaped session id stays resumable even without a live confirmation. — `clients/khala-code-desktop/tests/session-catalog.test.ts`
+- **Verification:** bun test tests/session-catalog.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
+- **Authority boundary:** This contract only governs sidebar behavior for stored/local Claude metadata that lacks a current SDK-listable session. It does not define Claude Agent SDK rollout retention, nor promise that a historical rollout can be recovered through a separate import flow.
 
 ### `khala_code.transcript.claude_assistant_turn_once.v1` — ENFORCED
 
@@ -252,6 +262,17 @@ Registry version: `2026-07-04.6` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `chat_sync_two_client_collection.integration` (bun-test, unit): Runs the two-client TanStack DB collection integration test: client A creates a chat_thread, client B observes it through the live collection without restart, and recency ordering stays newest-first. — `packages/khala-sync-db-collection/src/index.test.ts`
 - **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop plus bun test packages/khala-sync-db-collection/src/index.test.ts from the repo root.
 - **Authority boundary:** Binds the desktop sidebar's source selection and freshness semantics for chat_thread sync rows. It does not promise offline recovery, message-body sync, or cross-device identity beyond the owner chat scope.
+
+### `khala_code.history.no_duplicate_thread_rows.v1` — ENFORCED
+
+- **Surface:** khala-code-desktop (chat thread sidebar)
+- **Stated by:** owner via khala-code-session on 2026-07-05
+- **Statement:** The chat sidebar must never show the same session as two separate distinguishable entries. Reported live: the same chat title appeared twice in the sidebar as two distinguishable list items.
+- **Enforcement tier:** test-sweep
+- **Oracle** `chat_thread_dedupe_by_id.unit` (bun-test, unit): Collapses two chat_thread entities that share a threadId (simulating a data-layer duplicate, e.g. a retried create that produced a second entity id) down to the single most recently updated row before the sidebar ever sees them. — `packages/khala-sync-db-collection/src/index.test.ts`
+- **Oracle** `sidebar_render_dedupe_by_id.dom` (bun-test, dom): Mounts the real thread sidebar in a DOM with a listThreads() result that lists the same thread id from two different groups and proves exactly one row (and one title) renders for that id. — `clients/khala-code-desktop/tests/codex-thread-sidebar.test.ts`
+- **Verification:** bun test tests/codex-thread-sidebar.test.ts inside clients/khala-code-desktop plus bun test packages/khala-sync-db-collection/src/index.test.ts from the repo root.
+- **Authority boundary:** This binds row-identity rendering only: one thread id must never produce two sidebar rows, whether the duplication comes from an upstream data-layer artifact (two entity ids sharing one threadId) or from a threadId appearing in more than one group. It does not define or fix whatever process created a data-layer duplicate in the first place, and it does not merge two genuinely distinct thread ids that merely share a similar or identical title.
 
 ### `khala_code.chat.rename_applies_immediately.v1` — ENFORCED
 

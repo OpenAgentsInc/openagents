@@ -693,12 +693,34 @@ export const compareChatThreadsForSidebar = (
   return right.threadId.localeCompare(left.threadId)
 }
 
+/**
+ * Defensive hygiene against duplicate sidebar rows: collapse any entities
+ * that share a `threadId` down to one, keeping the most recently updated
+ * copy. The overlay/store below this function keys rows by `entityId`, not
+ * by `threadId`, so a caller that ever inserts two distinct entity ids
+ * carrying the same `threadId` (e.g. a retried mutation that didn't reuse
+ * the original entity id) would otherwise surface as two indistinguishable
+ * rows with the same title in the desktop/mobile sidebar.
+ */
+const dedupeChatThreadsByThreadId = (
+  threads: Iterable<ChatThreadEntity>,
+): Array<ChatThreadEntity> => {
+  const byThreadId = new Map<string, ChatThreadEntity>()
+  for (const thread of threads) {
+    const existing = byThreadId.get(thread.threadId)
+    if (existing === undefined || chatTimestampMs(thread.updatedAt) >= chatTimestampMs(existing.updatedAt)) {
+      byThreadId.set(thread.threadId, thread)
+    }
+  }
+  return [...byThreadId.values()]
+}
+
 export const chatThreadsForSidebar = (
   threads: Iterable<ChatThreadEntity>,
   options: { readonly searchTerm?: string | null } = {},
 ): Array<ChatThreadEntity> => {
   const searchTerm = options.searchTerm?.trim().toLowerCase() ?? ""
-  return [...threads]
+  return dedupeChatThreadsByThreadId(threads)
     .filter(thread => {
       if (searchTerm.length === 0) return true
       return (

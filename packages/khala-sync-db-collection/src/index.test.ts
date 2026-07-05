@@ -902,6 +902,58 @@ describe("khalaSyncCollectionOptions / fleet_run", () => {
   })
 })
 
+describe("chatThreadsForSidebar dedup", () => {
+  test("khala_code.history.no_duplicate_thread_rows.v1: collapses two entities sharing a threadId down to the freshest one", () => {
+    // Regression for the 2026-07-05 owner-reported bug: the same session
+    // title appeared twice as distinguishable sidebar rows. The overlay
+    // below this function keys rows by entityId, not threadId, so two
+    // distinct entity ids that both carry the same threadId (e.g. a retried
+    // create that produced a duplicate row instead of reusing the original
+    // entity id) previously rendered as two rows. chatThreadsForSidebar must
+    // collapse those to one, keeping the most recently updated copy.
+    const older = decodeChatThreadEntity({
+      createdAt: "2026-07-05T09:00:00.000Z",
+      lastMessageAt: "2026-07-05T09:00:05.000Z",
+      messageCount: 1,
+      ownerUserId: "user-dup-owner",
+      status: "active",
+      threadId: "thread.duplicate-case",
+      title: "hello from a real Khala Code chat session",
+      updatedAt: "2026-07-05T09:00:05.000Z",
+    })
+    const newer = decodeChatThreadEntity({
+      createdAt: "2026-07-05T09:00:10.000Z",
+      lastMessageAt: "2026-07-05T09:00:15.000Z",
+      messageCount: 1,
+      ownerUserId: "user-dup-owner",
+      status: "active",
+      threadId: "thread.duplicate-case",
+      title: "hello from a real Khala Code chat session",
+      updatedAt: "2026-07-05T09:00:15.000Z",
+    })
+    const distinctThread = decodeChatThreadEntity({
+      createdAt: "2026-07-05T08:00:00.000Z",
+      lastMessageAt: null,
+      messageCount: 0,
+      ownerUserId: "user-dup-owner",
+      status: "active",
+      threadId: "thread.unrelated",
+      title: "A different real conversation",
+      updatedAt: "2026-07-05T08:00:00.000Z",
+    })
+
+    const sidebar = chatThreadsForSidebar([older, distinctThread, newer])
+
+    expect(sidebar.map(thread => thread.threadId)).toEqual([
+      "thread.duplicate-case",
+      "thread.unrelated",
+    ])
+    expect(
+      sidebar.find(thread => thread.threadId === "thread.duplicate-case")?.updatedAt,
+    ).toBe("2026-07-05T09:00:15.000Z")
+  })
+})
+
 describe("chatThreadKhalaSyncCollectionOptions / chat_thread", () => {
   test("khala_code.chat.sync_remote_thread_appears_without_restart.v1: client A creates a thread and client B sees it without restart", async () => {
     const ownerUserId = "user-chat-owner"

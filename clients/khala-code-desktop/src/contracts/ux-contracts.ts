@@ -251,6 +251,41 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
+        "This contract only governs sidebar behavior for stored/local Claude metadata that lacks a current SDK-listable session. It does not define Claude Agent SDK rollout retention, nor promise that a historical rollout can be recovered through a separate import flow.",
+      blockerRefs: [],
+      contractId: "khala_code.chat.claude_stored_session_records_not_resumed.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-code-desktop/src/shared/session-catalog.ts",
+        "clients/khala-code-desktop/tests/session-catalog.test.ts",
+        "docs/khala-code/2026-07-04-mobile-tailnet-handshake.md",
+        "docs/khala-code/khala-code-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Projects a stored-only Claude catalog record (from claude-sessions.json bookkeeping, with no live claudeRuntime.listThreads() confirmation and a non-UUID session id) into a disabled 'Stored Claude session' summary instead of a clickable chat that fails with 'couldn't be opened' the moment it is selected. Also proves a stored-only record with a genuine UUID-shaped session id stays resumable even without a live confirmation.",
+          id: "stored_claude_catalog_projection.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-code-desktop/tests/session-catalog.test.ts",
+        },
+      ],
+      productArea: "chat thread sidebar",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-05",
+      },
+      state: "enforced",
+      statement:
+        "A sidebar row labeled generically 'Claude session' must never be offered as a normal clickable chat and then fail with 'This chat couldn't be opened. Its session may be missing or unavailable' the moment it is clicked. Unlike Codex, every Claude catalog entry was previously marked resumable unconditionally regardless of whether the Claude Agent SDK's own listSessions() ever confirmed the thread still exists; a stored-only record with no live confirmation and no UUID-shaped id must be surfaced as a disabled, clearly-labeled local record instead.",
+      surface: "khala-code-desktop",
+      verification:
+        "bun test tests/session-catalog.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.",
+    },
+    {
+      authorityBoundary:
         "Binds duplicate visible assistant text for one Claude turn only. It does not change Claude SDK event ordering, token accounting, or the Codex lane projector.",
       blockerRefs: [],
       contractId: "khala_code.transcript.claude_assistant_turn_once.v1",
@@ -734,6 +769,51 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
       surface: "khala-code-desktop",
       verification:
         "bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop plus bun test packages/khala-sync-db-collection/src/index.test.ts from the repo root.",
+    },
+    {
+      authorityBoundary:
+        "This binds row-identity rendering only: one thread id must never produce two sidebar rows, whether the duplication comes from an upstream data-layer artifact (two entity ids sharing one threadId) or from a threadId appearing in more than one group. It does not define or fix whatever process created a data-layer duplicate in the first place, and it does not merge two genuinely distinct thread ids that merely share a similar or identical title.",
+      blockerRefs: [],
+      contractId: "khala_code.history.no_duplicate_thread_rows.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-code-desktop/src/ui/codex-thread-sidebar-react.tsx",
+        "clients/khala-code-desktop/tests/codex-thread-sidebar.test.ts",
+        "packages/khala-sync-db-collection/src/index.ts",
+        "packages/khala-sync-db-collection/src/index.test.ts",
+        "docs/khala-code/2026-07-04-mobile-tailnet-handshake.md",
+        "docs/khala-code/khala-code-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Collapses two chat_thread entities that share a threadId (simulating a data-layer duplicate, e.g. a retried create that produced a second entity id) down to the single most recently updated row before the sidebar ever sees them.",
+          id: "chat_thread_dedupe_by_id.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "packages/khala-sync-db-collection/src/index.test.ts",
+        },
+        {
+          description:
+            "Mounts the real thread sidebar in a DOM with a listThreads() result that lists the same thread id from two different groups and proves exactly one row (and one title) renders for that id.",
+          id: "sidebar_render_dedupe_by_id.dom",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "clients/khala-code-desktop/tests/codex-thread-sidebar.test.ts",
+        },
+      ],
+      productArea: "chat thread sidebar",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-05",
+      },
+      state: "enforced",
+      statement:
+        "The chat sidebar must never show the same session as two separate distinguishable entries. Reported live: the same chat title appeared twice in the sidebar as two distinguishable list items.",
+      surface: "khala-code-desktop",
+      verification:
+        "bun test tests/codex-thread-sidebar.test.ts inside clients/khala-code-desktop plus bun test packages/khala-sync-db-collection/src/index.test.ts from the repo root.",
     },
     {
       authorityBoundary:
@@ -1598,5 +1678,5 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-04.6",
+  version: "2026-07-05.1",
 }
