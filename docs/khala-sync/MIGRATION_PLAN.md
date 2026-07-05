@@ -85,12 +85,57 @@ all twenty tables, tick double-fire idempotency, mutation convergence,
 D1-vs-Postgres persistence read equivalence). Analytics-style JOIN reads
 (`artanis-tick-streak.ts`, `artanis-distillation-dataset-receipt.ts`
 cross-table joins) and dashboard aggregations stay D1-only and move at
-read cutover. Health/runtime snapshot retention (Analytics Engine vs
-row-porting history) is a cutover-time decision: the backfill ports rows
-as-is today; bounding retention before cutover shrinks the port. Prod
-cutover procedure: [`RUNBOOK.md`](./RUNBOOK.md) "Artanis supervision
-domain cutover"; cutover evidence + D1 drop tracked in the decommission
-follow-up filed off [#8317](https://github.com/OpenAgentsInc/openagents/issues/8317).
+read cutover.
+
+**KS-8.6 read-cutover evidence (2026-07-05, #8335):** retention decision
+made — `artanis_health_snapshots` / `artanis_runtime_snapshots` are 125
+rows each in production; porting as-is (no bounding) is cheap enough that
+no pre-sweep retention change is needed. Backfill ran twice (sweep 1:
+first full port; sweep 2 `--restart`: 0 newly-inserted rows across all 20
+tables — dual-write was already fully caught up) then `--verify
+--verify-newest 50`: **19 of 20 tables exact** (rows, per-state tallies,
+newest-50 row hashes all match). `artanis_responder_ticks` came back
+non-exact: row COUNT matches (7940=7940) but 20 rows have a stale
+`scan_state`/`compose_state` in Postgres — root-caused to a genuine
+concurrent-writer race in `mirrorArtanisRows` (full-row read-D1-then-
+upsert, no ordering guard) between the two independent ticks
+(`ArtanisResponder.scan`, `ArtanisResponder.compose`) that both write the
+same `scheduled_at` row; filed as
+[#8409](https://github.com/OpenAgentsInc/openagents/issues/8409). This
+table is NOT one of the eight `ArtanisPersistenceRecordKind`s routed
+through `artanisRead` (only `approval_gate`, `forum_publication_intent`,
+`health_snapshot`, `loop_record`, `loop_tick`,
+`nexus_pylon_adapter_dispatch`, `runtime_snapshot`, and
+`work_routing_proposal` are), so the drift does not block the read
+cutover below, but it DOES block ever safely reading
+`artanis_responder_ticks` from Postgres (the "responder scan/composer
+joins" item) and blocks KS-8.19 D1 retirement for that table until fixed.
+
+Of the six every-minute cron ticks, only `ArtanisScheduledRunner.runTick`
+currently issues a flag-routed read (an idempotency check via
+`readArtanisPersistedRecord('loop_record', ...)`, unconditional on every
+invocation); `ArtanisResponder.scan/.compose`, `ArtanisAdmin.tick`,
+`ArtanisAdmin.closeoutVerifier`, and `ArtanisFleet.tick` only mirror
+writes today — their own decision-making reads (spend/grant aggregation
+in `artanis-spend.ts`, responder scan/composer joins in
+`artanis-responder-ticks.ts`/`artanis-responder-provenance.ts`, the labor
+receipt ordered list in `artanis-labor-receipt-store.ts`) are still bare
+D1 SQL with no Postgres reader wired, so `KHALA_SYNC_ARTANIS_READS` is a
+no-op for them regardless of value. `KHALA_SYNC_ARTANIS_READS=compare`
+shipped to production and staging in commit `07ada9d32b` (Worker version
+`473b6c53-8a65-40d2-b238-2e1d5c21c449`) for a live soak; see the
+issue/RUNBOOK for the soak window and flip decision. "Move remaining
+D1-direct read paths" (analytics joins, dashboard/console aggregations,
+spend/grant aggregation, responder scan/composer joins, labor receipt
+ordered list) is real follow-up implementation work, not yet started —
+each needs its own re-derived Postgres index/query and its own compare
+evidence before it can be flag-routed. Prod cutover procedure:
+[`RUNBOOK.md`](./RUNBOOK.md) "Artanis supervision domain cutover";
+cutover evidence tracked on
+[#8335](https://github.com/OpenAgentsInc/openagents/issues/8335); D1 drop
+consolidated into KS-8.19
+([#8330](https://github.com/OpenAgentsInc/openagents/issues/8330)) per
+the 2026-07-04 owner direction.
 
 **KS-8.8 status (2026-07-04):** machinery LIVE — Postgres schema
 (`khala-sync-server` migration `0016_treasury_domain.sql`: all 27 live

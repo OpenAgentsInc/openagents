@@ -1,6 +1,7 @@
 import type { RuntimeTurnEntity } from "@openagentsinc/khala-sync"
 import { useState } from "react"
 import { ActivityIndicator, Platform, Pressable, Text, TextInput, View } from "react-native"
+import Animated, { useAnimatedStyle, useDerivedValue, withTiming } from "react-native-reanimated"
 
 import {
   buildAppendUserMessageIntentArgs,
@@ -40,6 +41,17 @@ export const ChatComposer = ({ activeTurn, push, threadId }: ChatComposerProps) 
   const trimmed = text.trim()
   const hasActiveTurn = activeTurn !== undefined
   const canSend = trimmed.length > 0 && !sending
+  const showPicker = hasActiveTurn && trimmed.length > 0
+  const [pickerContentHeight, setPickerContentHeight] = useState(0)
+  // One `progress` value drives both height and opacity together, so the
+  // picker row opens/closes as one coherent motion instead of separately
+  // timed properties drifting out of sync (ported technique from Arcade's
+  // `DirectMessageReply`).
+  const pickerProgress = useDerivedValue(() => withTiming(showPicker ? 1 : 0, { duration: 180 }))
+  const pickerAnimatedStyle = useAnimatedStyle(() => ({
+    height: pickerProgress.value * pickerContentHeight,
+    opacity: pickerProgress.value
+  }))
 
   const sendMessage = async (sendMode: SendMode) => {
     if (!canSend) return
@@ -106,6 +118,38 @@ export const ChatComposer = ({ activeTurn, push, threadId }: ChatComposerProps) 
     }
   }
 
+  const pickerRow = (
+    <>
+      <Pressable
+        accessibilityRole="button"
+        className={`flex-1 items-center rounded-lg border py-2 ${
+          mode === "steer" ? "border-accent bg-surfaceActive" : "border-borderMuted bg-surface"
+        }`}
+        onPress={() => setMode("steer")}
+      >
+        <Text className="font-mono text-xs text-text">Steer (send now)</Text>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        className={`flex-1 items-center rounded-lg border py-2 ${
+          mode === "queue" ? "border-accent bg-surfaceActive" : "border-borderMuted bg-surface"
+        }`}
+        onPress={() => setMode("queue")}
+      >
+        <Text className="font-mono text-xs text-text">Queue (after this turn)</Text>
+      </Pressable>
+      <Pressable
+        accessibilityLabel="Send follow-up"
+        accessibilityRole="button"
+        className="items-center justify-center rounded-lg bg-accent px-4 py-2"
+        disabled={sending}
+        onPress={() => sendMessage(mode)}
+      >
+        <Text className="font-mono text-xs text-bg">Send</Text>
+      </Pressable>
+    </>
+  )
+
   return (
     <View className="border-t border-borderMuted bg-bg px-3 pb-2 pt-2">
       {errorMessage === null ? null : (
@@ -151,37 +195,28 @@ export const ChatComposer = ({ activeTurn, push, threadId }: ChatComposerProps) 
           </Pressable>
         )}
       </View>
-      {hasActiveTurn && trimmed.length > 0 ? (
-        <View className="mt-2 flex-row gap-2">
-          <Pressable
-            accessibilityRole="button"
-            className={`flex-1 items-center rounded-lg border py-2 ${
-              mode === "steer" ? "border-accent bg-surfaceActive" : "border-borderMuted bg-surface"
-            }`}
-            onPress={() => setMode("steer")}
-          >
-            <Text className="font-mono text-xs text-text">Steer (send now)</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            className={`flex-1 items-center rounded-lg border py-2 ${
-              mode === "queue" ? "border-accent bg-surfaceActive" : "border-borderMuted bg-surface"
-            }`}
-            onPress={() => setMode("queue")}
-          >
-            <Text className="font-mono text-xs text-text">Queue (after this turn)</Text>
-          </Pressable>
-          <Pressable
-            accessibilityLabel="Send follow-up"
-            accessibilityRole="button"
-            className="items-center justify-center rounded-lg bg-accent px-4 py-2"
-            disabled={sending}
-            onPress={() => sendMessage(mode)}
-          >
-            <Text className="font-mono text-xs text-bg">Send</Text>
-          </Pressable>
+      <View>
+        <Animated.View className="mt-2 overflow-hidden" style={pickerAnimatedStyle}>
+          <View className="flex-row gap-2">{pickerRow}</View>
+        </Animated.View>
+        {/* Invisible, always-mounted twin of the row above, used only to
+         * measure its natural height via onLayout. The visible copy above
+         * starts animated to height 0, so it can never self-measure — RN
+         * doesn't lay out (and thus never fires onLayout for) children of a
+         * zero-height `overflow: hidden` container. This clone is never
+         * height-constrained, so its onLayout always fires with the row's
+         * real height, independent of the open/close animation. */}
+        <View
+          className="absolute left-0 right-0 top-0 flex-row gap-2 opacity-0"
+          onLayout={event => {
+            const measured = event.nativeEvent.layout.height
+            if (measured > 0 && measured !== pickerContentHeight) setPickerContentHeight(measured)
+          }}
+          pointerEvents="none"
+        >
+          {pickerRow}
         </View>
-      ) : null}
+      </View>
     </View>
   )
 }
