@@ -28,8 +28,10 @@
 //     (typed diagnostic only), and the one token_hash-keyed mirror path
 //     redacts its diagnostic refs — no custody value ever reaches a log
 //     line. Compare-mode `listRefs` serves D1 and flags ref-set drift;
-//     KHALA_SYNC_FORGE_READS=postgres defers (never serves an unproven
-//     read path).
+//     KHALA_SYNC_FORGE_READS=postgres (KS-8.16 follow-up #8358 read
+//     cutover) SERVES the ref advertisement from the Postgres twin and is
+//     fail-soft — a dead twin falls back to the D1 authority so the
+//     advertisement can never break.
 
 import {
   FORGE_DOMAIN_TABLE_SPECS,
@@ -678,7 +680,7 @@ describe.skipIf(!hasLocalPostgres())(
       }
     }, 120_000)
 
-    test('compare-mode listRefs serves D1 and flags ref-set drift; postgres reads defer', async () => {
+    test('compare-mode listRefs serves D1 and flags ref-set drift', async () => {
       const compareEnv: ForgeDomainStoreEnv = {
         ...env,
         KHALA_SYNC_FORGE_READS: 'compare',
@@ -691,37 +693,99 @@ describe.skipIf(!hasLocalPostgres())(
       expect(diagnostics).toEqual([])
 
       // Drift the Postgres twin: the shadow compare flags it, D1 is
-      // still served unchanged.
+      // still served unchanged (compare mode SERVES D1).
       await (client as PgClient).unsafe(
         `UPDATE forge_git_refs SET object_id = '${'f'.repeat(40)}' WHERE tenant_ref = $1 AND repository_ref = $2 AND ref_name = 'refs/heads/main'`,
         [TENANT, REPO],
       )
       const served = await canonical.listRefs(TENANT, REPO)
       expect(served.length).toBe(clean.length)
+      // Compare mode serves the D1 value, not the drifted Postgres value.
+      expect(
+        served.find(ref => ref.ref_name === 'refs/heads/main')?.object_id,
+      ).toBe(OID_A)
       expect(
         diagnostics.map(d => d.event),
       ).toContain('khala_sync_forge_read_compare_mismatch')
 
-      // Heal the twin for any later assertions.
+      // Heal the twin for the later assertions.
       await (client as PgClient).unsafe(
         `UPDATE forge_git_refs SET object_id = '${OID_A}' WHERE tenant_ref = $1 AND repository_ref = $2 AND ref_name = 'refs/heads/main'`,
         [TENANT, REPO],
       )
+    })
 
-      // postgres mode: DEFERRED — logs once, still shadow-compares, D1 served.
-      diagnostics.length = 0
+    test('postgres-mode listRefs SERVES the ref advertisement from Postgres (KS-8.16 read cutover)', async () => {
       const postgresEnv: ForgeDomainStoreEnv = {
         ...env,
         KHALA_SYNC_FORGE_READS: 'postgres',
       }
-      const deferred = makeForgeGitCanonicalStoreForEnv(postgresEnv, options)
-      await deferred.listRefs(TENANT, REPO)
-      await deferred.listRefs(TENANT, REPO)
+      const canonical = makeForgeGitCanonicalStoreForEnv(postgresEnv, options)
+
+      // Sentinel: set ONLY the Postgres twin's main tip to a value D1 does
+      // NOT hold. A postgres-served read must return the Postgres value,
+      // proving the read is genuinely served from the twin (not D1).
+      const sentinel = 'e'.repeat(40)
+      await (client as PgClient).unsafe(
+        `UPDATE forge_git_refs SET object_id = '${sentinel}' WHERE tenant_ref = $1 AND repository_ref = $2 AND ref_name = 'refs/heads/main'`,
+        [TENANT, REPO],
+      )
+
+      diagnostics.length = 0
+      const served = await canonical.listRefs(TENANT, REPO)
       expect(
-        diagnostics.filter(
-          d => d.event === 'khala_sync_forge_postgres_reads_deferred',
-        ).length,
-      ).toBe(1)
+        served.find(ref => ref.ref_name === 'refs/heads/main')?.object_id,
+      ).toBe(sentinel)
+      // No serve failure, no compare shadow in postgres serve mode.
+      expect(diagnostics).toEqual([])
+
+      // A state-filtered advertisement (the live `state:'active'` path)
+      // is also served from Postgres.
+      const activeServed = await canonical.listRefs(TENANT, REPO, {
+        limit: 500,
+        state: 'active',
+      })
+      expect(
+        activeServed.find(ref => ref.ref_name === 'refs/heads/main')
+          ?.object_id,
+      ).toBe(sentinel)
+
+      // Heal the twin back to the D1 value.
+      await (client as PgClient).unsafe(
+        `UPDATE forge_git_refs SET object_id = '${OID_A}' WHERE tenant_ref = $1 AND repository_ref = $2 AND ref_name = 'refs/heads/main'`,
+        [TENANT, REPO],
+      )
+    })
+
+    test('postgres-mode listRefs is FAIL-SOFT: a dead twin falls back to the D1 authority', async () => {
+      const failSoft: Array<{
+        event: ForgeDomainDiagnosticEvent
+        fields: ForgeDomainDiagnostic
+      }> = []
+      const brokenOptions: MakeForgeDomainStoreOptions = {
+        log: (event, fields) => {
+          failSoft.push({ event, fields })
+        },
+        makeSqlClient: () => Promise.reject(new Error('postgres is down')),
+      }
+      const postgresEnv: ForgeDomainStoreEnv = {
+        ...env,
+        KHALA_SYNC_FORGE_READS: 'postgres',
+      }
+      const canonical = makeForgeGitCanonicalStoreForEnv(
+        postgresEnv,
+        brokenOptions,
+      )
+
+      // The ref advertisement is STILL answered — from D1 — and the serve
+      // failure is logged. The advertisement can never break.
+      const served = await canonical.listRefs(TENANT, REPO)
+      expect(
+        served.find(ref => ref.ref_name === 'refs/heads/main')?.object_id,
+      ).toBe(OID_A)
+      expect(failSoft.map(d => d.event)).toContain(
+        'khala_sync_forge_postgres_read_serve_failed',
+      )
     })
 
     test('a broken Postgres twin never fails a write, and token_hash mirror refs are redacted', async () => {

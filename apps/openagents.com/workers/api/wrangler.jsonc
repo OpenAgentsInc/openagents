@@ -56,14 +56,18 @@
     // remaining five cron ticks' own decision-making reads stay D1-direct
     // regardless of this flag (no Postgres reader wired for them yet).
     "KHALA_SYNC_ARTANIS_READS": "compare",
-    // KS-8.16 follow-up Forge read cutover (#8358, TEMPORARY compare soak):
-    // dual-write has been live since KS-8.16 (#8327); this shadow-runs the
+    // KS-8.16 follow-up Forge READ cutover (#8358): `postgres` SERVES the
     // canonical `listRefs` ref advertisement (the §3.13 git-ls-remote-twin
-    // surface) against Postgres, SERVES D1, and logs
-    // `khala_sync_forge_read_compare_mismatch` on any drift. Roll back to
-    // `d1` at any time — the read/write cutover (real FOR UPDATE ref locks)
-    // stays gated on a silent soak over a representative window.
-    "KHALA_SYNC_FORGE_READS": "compare",
+    // surface) from the Postgres twin, and is FAIL-SOFT — any Postgres
+    // error falls back to the D1 authority for that one call and logs
+    // `khala_sync_forge_postgres_read_serve_failed`, so the advertisement
+    // can never break. Gated on a fresh full backfill --verify (exact
+    // ref-set digest match) + a live ground-truth `git`-advertisement
+    // cross-check + zero compare-mode drift. Roll back to `d1` at any time.
+    // WRITE authority stays on D1 (the `makePostgresForgeGitCanonicalStore`
+    // FOR-UPDATE ref-lock port is built + tested but NOT wired as write
+    // authority — that domain-wide write cutover is separate follow-up).
+    "KHALA_SYNC_FORGE_READS": "postgres",
     // KS-8.14 business funnel read cutover (#8360): production
     // backfill/--restart/--verify are green across all 32 tables; the
     // compare-mode soak (2026-07-05) showed zero
@@ -540,9 +544,9 @@
         // mainly exercises operator-console/public-report reads here; the
         // production var is the one under live soak observation.
         "KHALA_SYNC_ARTANIS_READS": "compare",
-        // KS-8.16 follow-up Forge read cutover (#8358, TEMPORARY compare
-        // soak), staging parity for the production compare-mode soak.
-        "KHALA_SYNC_FORGE_READS": "compare",
+        // KS-8.16 follow-up Forge READ cutover (#8358), staging parity for
+        // the production Postgres-served, fail-soft ref advertisement.
+        "KHALA_SYNC_FORGE_READS": "postgres",
         // KS-8.14 business funnel read cutover (#8360), staging parity for
         // the production bounded postgres read serving.
         "KHALA_SYNC_BUSINESS_READS": "postgres",

@@ -478,9 +478,11 @@ diagnostics (the one token_hash-keyed mirror path redacts its refs) or
 in backfill/verify output. Flags `KHALA_SYNC_FORGE_DUAL_WRITE` (default
 on) / `KHALA_SYNC_FORGE_READS` (d1|compare|postgres, default d1;
 `compare` shadow-compares the canonical `listRefs` ref advertisement —
-the §3.13 ref-set surface; `postgres` serving is deferred to the cutover
-follow-up and behaves as compare with a one-time
-`khala_sync_forge_postgres_reads_deferred`). Resumable backfill +
+the §3.13 ref-set surface; `postgres` SERVES that ref advertisement from
+the Postgres twin via `makePostgresForgeGitCanonicalStore.listRefs` and is
+FAIL-SOFT — any Postgres error falls back to the D1 authority for that one
+call and logs `khala_sync_forge_postgres_read_serve_failed`, so the
+advertisement can never break). Resumable backfill +
 exact-verify CLI (`packages/khala-sync-server/scripts/backfill-forge.ts`:
 exact counts, per-state tallies, per-(tenant, repository) REF-SET
 digests — the storage twin of `git ls-remote`; the live ls-remote
@@ -522,17 +524,28 @@ response by hand: it advertised `refs/heads/main` at
 stores' `forge_git_refs` row for that ref. The token was revoked
 immediately after use and the resulting D1 rows (mint + revoke) were
 converged into Postgres by a follow-up backfill sweep, re-verified clean.
-COMPARE-MODE SOAK: `KHALA_SYNC_FORGE_READS=compare` shipped to
-production + staging (Worker version
-`75c8132b-9994-4a59-a17a-751e185b011d`) — always serves D1, only
-cross-checks Postgres and logs `khala_sync_forge_read_compare_mismatch`
-on drift. Observed live via `wrangler tail` for ~7 minutes
-(2026-07-05 08:47-08:54 UTC) plus 6 real advertisement reads against the
-one live tenant/repository: zero compare-mismatch/failed/dual-write-failed
-diagnostics. Honestly short, not representative — see `RUNBOOK.md` for
-the full readout; the flag stays live so the soak keeps accumulating.
-REF-LOCK PROTOCOL PORT: implemented and tested, NOT wired to production
-authority.
+READ CUTOVER — DONE (`KHALA_SYNC_FORGE_READS=postgres`, second pass
+2026-07-05): the canonical `listRefs` ref advertisement now SERVES from
+the Postgres twin (fail-soft; any Postgres error falls back to the D1
+authority for that call and logs `khala_sync_forge_postgres_read_serve_failed`,
+so the advertisement can never break). Gated on this-session evidence:
+(1) a FRESH full backfill `--verify --verify-newest 50` against the
+direct prod Cloud SQL URL — CLEAN across all 16 tables (exact row counts,
+all newest-50 row hashes match, the per-(tenant, repository) REF-SET
+DIGEST — the §3.13 ls-remote twin — matches for the 1 repository,
+merge-queue replay digests match); (2) the prior live git-advertisement
+ground-truth cross-check (exact `refs/heads/main` object-id match); (3)
+~20 minutes of `wrangler tail` on production with ZERO forge
+advertisement requests and ZERO forge diagnostics (this domain has
+effectively no organic traffic, so a passive soak yields no comparisons —
+the fresh full `--verify` is the stronger, higher-signal evidence and was
+used instead of minting further live tokens for synthetic traffic). The
+serving change is unit-tested in `forge-domain-repository.contract.test.ts`
+(postgres mode returns the Postgres value, not D1; a dead twin falls back
+to D1 and logs the serve-failed diagnostic). Earlier compare-mode soak
+(first pass): Worker `75c8132b-9994-4a59-a17a-751e185b011d`, ~7 minutes +
+6 advertisement reads, zero drift. REF-LOCK PROTOCOL PORT: implemented and
+tested, still NOT wired to production write authority (see REMAINING WORK).
 `forge-git-canonical-postgres-store.ts`
 (`makePostgresForgeGitCanonicalStore`) replaces the D1
 held/applied/rejected lock-row dance with a real
@@ -549,13 +562,19 @@ two simultaneous UPDATEs racing the same `old_object_id`) — in both
 cases exactly one transaction wins, the other is rejected with the same
 typed `forge_git_unsafe_ref_update`/`ForgeGitCanonicalStoreError` the D1
 lane raises, and the final ref state is never corrupted. REMAINING WORK
-(left honestly undone): the read/write cutover itself (flipping
-`KHALA_SYNC_FORGE_READS=postgres`, wiring the new Postgres canonical
-store as write authority, re-adding the six deliberately-unported
-uniques) needs a genuinely silent compare-mode soak over a much longer,
-more representative window than one session can observe for a
-near-zero-traffic domain — tracked on #8358, left OPEN rather than
-force-flipped on thin evidence. The D1 drop is confirmed consolidated
+(left honestly undone — the WRITE cutover): wiring
+`makePostgresForgeGitCanonicalStore` as write authority is NOT a one-store
+swap. The canonical git store is one of FIVE forge stores that all write
+D1-first then mirror to Postgres; flipping only it to Postgres write
+authority would split authority incoherently (canonical refs on Postgres,
+the other 15 tables on D1, mirror running the wrong direction). It also
+requires re-adding the six deliberately-unported Postgres uniques
+(active-lease-per-work, token-hash, packfile digest, mirror-destination
+tuple, github-issue-number/change_ref; held-lock-per-ref is moot under the
+new locking) so the Postgres write authority enforces the same integrity
+D1 does. This is a coordinated, domain-wide write cutover, deliberately
+left unwired this pass rather than risk a tenant's git-ref integrity on a
+piecemeal flip — tracked on #8358. The D1 drop is confirmed consolidated
 into the epic-wide KS-8.19 sweep (#8330), not attempted here.
 
 **KS-8.17 status (2026-07-04):** core machinery LANDED — Postgres schema

@@ -50,11 +50,20 @@
 // routing in this lane covers the canonical `listRefs` scan (the ref
 // advertisement — the §3.13 "ref-set equality against git ls-remote"
 // surface): `compare` shadow-runs it against Postgres, SERVES D1, and
-// logs `khala_sync_forge_read_compare_mismatch`. `postgres` read serving
-// is DEFERRED to the cutover follow-up (the forge read surface is
-// protocol-wide): the flag behaves as `compare` and logs
-// `khala_sync_forge_postgres_reads_deferred` once, so a premature flag
-// flip can never serve an unproven read path.
+// logs `khala_sync_forge_read_compare_mismatch`. `postgres` (KS-8.16
+// follow-up #8358 read cutover) SERVES the `listRefs` ref advertisement
+// from the Postgres twin via the already-tested
+// `makePostgresForgeGitCanonicalStore.listRefs`, and is FAIL-SOFT: any
+// Postgres error (acquire, query, decode) falls back to the D1 authority
+// for that one call and logs `khala_sync_forge_postgres_read_serve_failed`
+// — the ref advertisement can never break, it can only fail over to D1.
+// The read serve was gated on a silent compare-mode soak + a live
+// ground-truth `git`-advertisement cross-check + exact backfill --verify
+// ref-set digests (RUNBOOK "Forge domain cutover"). WRITE authority stays
+// on D1 in this lane — the `makePostgresForgeGitCanonicalStore` ref-lock
+// port is NOT yet wired as write authority (that is the separate,
+// domain-wide write cutover; see the file header of
+// `forge-git-canonical-postgres-store.ts`).
 //
 // Cutover order (docs/khala-sync/RUNBOOK.md "Forge domain cutover"):
 // dual-write on → backfill (khala-sync-server scripts/backfill-forge.ts)
@@ -79,8 +88,11 @@ import {
 } from './forge-coordination-store'
 import {
   makeD1ForgeGitCanonicalStore,
+  type ForgeGitCanonicalRefRow,
+  type ForgeGitCanonicalRefState,
   type ForgeGitCanonicalStore,
 } from './forge-git-canonical-store'
+import { makePostgresForgeGitCanonicalStore } from './forge-git-canonical-postgres-store'
 import {
   makeD1R2ForgeGitPackfileArchiveStore,
   type ForgeGitPackfileArchiveStore,
@@ -152,7 +164,7 @@ export type ForgeDomainDiagnosticEvent =
   | 'khala_sync_forge_dual_write_failed'
   | 'khala_sync_forge_read_compare_mismatch'
   | 'khala_sync_forge_read_compare_failed'
-  | 'khala_sync_forge_postgres_reads_deferred'
+  | 'khala_sync_forge_postgres_read_serve_failed'
 
 export type ForgeDomainDiagnostic = Readonly<{
   /** The mirrored table or read operation, e.g. 'mirror:forge_git_refs'. */
@@ -478,19 +490,33 @@ const defaultLog: ForgeDomainLog = (event, fields) => {
   })
 }
 
-const postgresStoreForEnv = (
+/**
+ * The raw SQL-client acquirer for the Postgres twin, or undefined when no
+ * KHALA_SYNC_DB binding. One client per operation; the caller always ends
+ * it. Both the row-level compare/mirror store and the canonical
+ * Postgres-read-serving path (`makePostgresForgeGitCanonicalStore`) source
+ * their clients here, so they can never diverge on connection wiring.
+ */
+type AcquireForgeSql = () => Promise<KhalaSyncPushSqlClient>
+
+const acquireSqlForEnv = (
   env: ForgeDomainStoreEnv,
   options: MakeForgeDomainStoreOptions,
-): PostgresForgeDomainStore | undefined => {
+): AcquireForgeSql | undefined => {
   const connectionString = env.KHALA_SYNC_DB?.connectionString
   if (connectionString === undefined || connectionString.length === 0) {
     return undefined
   }
   const makeSqlClient = options.makeSqlClient ?? defaultMakeKhalaSyncSqlClient
-  return makePostgresForgeDomainStore({
-    acquireSql: () => makeSqlClient(connectionString),
-  })
+  return () => makeSqlClient(connectionString)
 }
+
+const postgresStoreForEnv = (
+  acquireSql: AcquireForgeSql | undefined,
+): PostgresForgeDomainStore | undefined =>
+  acquireSql === undefined
+    ? undefined
+    : makePostgresForgeDomainStore({ acquireSql })
 
 type ForgeDomainRuntime = Readonly<{
   db: D1Database
@@ -498,6 +524,13 @@ type ForgeDomainRuntime = Readonly<{
   log: ForgeDomainLog
   mirror: ForgeDomainMirror | undefined
   compareStore: PostgresForgeDomainStore | undefined
+  /**
+   * Acquire a raw Postgres SQL client for canonical read serving, or
+   * undefined when there is no Postgres twin. Present regardless of read
+   * mode; the canonical factory only USES it when `flags.reads` selects
+   * Postgres read serving.
+   */
+  acquireSql: AcquireForgeSql | undefined
 }>
 
 const runtimeForEnv = (
@@ -508,8 +541,10 @@ const runtimeForEnv = (
     options.db ?? openAgentsDatabase(env as { OPENAGENTS_DB: D1Database })
   const flags = forgeDomainFlagsFromEnv(env)
   const log = options.log ?? defaultLog
-  const postgres = postgresStoreForEnv(env, options)
+  const acquireSql = acquireSqlForEnv(env, options)
+  const postgres = postgresStoreForEnv(acquireSql)
   return {
+    acquireSql,
     compareStore:
       postgres !== undefined && flags.reads !== 'd1' ? postgres : undefined,
     db,
@@ -629,9 +664,49 @@ export const makeForgeGitCanonicalStoreForEnv = (
 ): ForgeGitCanonicalStore => {
   const runtime = runtimeForEnv(env, options)
   const base = makeD1ForgeGitCanonicalStore(runtime.db)
-  const { compareStore, flags, log, mirror } = runtime
+  const { acquireSql, compareStore, flags, log, mirror } = runtime
 
-  let deferredLogged = false
+  // KS-8.16 follow-up (#8358) read cutover: in `postgres` mode SERVE the
+  // `listRefs` ref advertisement from the Postgres twin, reusing the
+  // already-tested `makePostgresForgeGitCanonicalStore.listRefs` (same
+  // ORDER BY / bounded-limit / state-filter semantics as the D1 lane).
+  // FAIL-SOFT: any Postgres error returns undefined so the caller falls
+  // back to D1 authority — the ref advertisement can never break. WRITE
+  // authority stays on D1; this only moves the read of the ref set.
+  const servePostgresListRefs =
+    flags.reads === 'postgres' && acquireSql !== undefined
+      ? async (
+          tenantRef: string,
+          repositoryRef: string,
+          input:
+            | Readonly<{ state?: ForgeGitCanonicalRefState; limit?: number }>
+            | undefined,
+        ): Promise<ReadonlyArray<ForgeGitCanonicalRefRow> | undefined> => {
+          let client: KhalaSyncPushSqlClient | undefined
+          try {
+            client = await acquireSql()
+            return await makePostgresForgeGitCanonicalStore(
+              client.sql,
+            ).listRefs(tenantRef, repositoryRef, input)
+          } catch (error) {
+            log('khala_sync_forge_postgres_read_serve_failed', {
+              messageSafe: safeMessage(error),
+              op: 'listRefs',
+              refs: [tenantRef, repositoryRef],
+            })
+            return undefined
+          } finally {
+            if (client !== undefined) {
+              try {
+                await client.end()
+              } catch {
+                // best-effort teardown, same discipline as the push route.
+              }
+            }
+          }
+        }
+      : undefined
+
   const compareListRefs =
     compareStore === undefined
       ? undefined
@@ -642,15 +717,6 @@ export const makeForgeGitCanonicalStoreForEnv = (
           limit: number,
           d1Rows: ReadonlyArray<Record<string, unknown>>,
         ): Promise<void> => {
-          if (flags.reads === 'postgres' && !deferredLogged) {
-            deferredLogged = true
-            log('khala_sync_forge_postgres_reads_deferred', {
-              messageSafe:
-                'KHALA_SYNC_FORGE_READS=postgres is deferred to the read-cutover follow-up; serving d1 with compare shadow reads',
-              op: 'listRefs',
-              refs: [tenantRef, repositoryRef],
-            })
-          }
           try {
             const postgresRows =
               state === undefined
@@ -751,19 +817,32 @@ export const makeForgeGitCanonicalStoreForEnv = (
             return result
           },
     listRefs:
-      compareListRefs === undefined
-        ? base.listRefs
-        : async (tenantRef, repositoryRef, input) => {
-            const rows = await base.listRefs(tenantRef, repositoryRef, input)
-            await compareListRefs(
+      servePostgresListRefs !== undefined
+        ? async (tenantRef, repositoryRef, input) => {
+            const served = await servePostgresListRefs(
               tenantRef,
               repositoryRef,
-              input?.state,
-              Math.min(Math.max(Math.floor(input?.limit ?? 100), 1), 500),
-              rows as unknown as ReadonlyArray<Record<string, unknown>>,
+              input,
             )
-            return rows
-          },
+            // Fail-soft: a Postgres serve failure falls back to the D1
+            // authority so the ref advertisement is always answered.
+            return (
+              served ?? (await base.listRefs(tenantRef, repositoryRef, input))
+            )
+          }
+        : compareListRefs === undefined
+          ? base.listRefs
+          : async (tenantRef, repositoryRef, input) => {
+              const rows = await base.listRefs(tenantRef, repositoryRef, input)
+              await compareListRefs(
+                tenantRef,
+                repositoryRef,
+                input?.state,
+                Math.min(Math.max(Math.floor(input?.limit ?? 100), 1), 500),
+                rows as unknown as ReadonlyArray<Record<string, unknown>>,
+              )
+              return rows
+            },
   }
 }
 
