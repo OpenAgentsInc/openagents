@@ -147,6 +147,10 @@ import {
   mountKhalaCodeStatusUsageSettingsSection,
   type KhalaCodeStatusUsageSettingsSectionHandle,
 } from "./status-usage-settings-section"
+import {
+  mountKhalaCodeSessionActionsSettingsSection,
+  type KhalaCodeSessionActionsSettingsSectionHandle,
+} from "./session-actions-settings-section"
 import { mountUnifiedInboxPanel } from "./inbox"
 import {
   normalizeThreadTimestampSeconds,
@@ -201,6 +205,16 @@ import {
   writeKhalaCodeAppPreferences,
 } from "../shared/app-preferences"
 import { projectKhalaCodeStatusUsage } from "../shared/status-usage"
+import {
+  khalaCodeSessionActionIntentFor,
+  khalaCodeSessionNavigationTarget,
+  projectKhalaCodeSessionActionIntents,
+  readKhalaCodeClosedSessionTabs,
+  recordKhalaCodeClosedSessionTab,
+  removeKhalaCodeClosedSessionTab,
+  type KhalaCodeSessionActionKind,
+  type KhalaCodeSessionActionProjection,
+} from "../shared/session-actions"
 import {
   initialKhalaCodeMainShellModel,
   shouldPollThreadTokenSummary,
@@ -5668,6 +5682,7 @@ let providerCatalogSection: KhalaCodeProviderCatalogSettingsSectionHandle | null
 let modelMcpPermissionSection: KhalaCodeModelMcpPermissionSettingsSectionHandle | null = null
 let appPreferencesSection: KhalaCodeAppPreferencesSettingsSectionHandle | null = null
 let statusUsageSection: KhalaCodeStatusUsageSettingsSectionHandle | null = null
+let sessionActionsSection: KhalaCodeSessionActionsSettingsSectionHandle | null = null
 let plansSection: ReturnType<typeof mountKhalaCodePlansPanel> | null = null
 let runEvidenceSection: ReturnType<typeof mountKhalaCodeRunEvidencePanel> | null = null
 let commandRegistry: KhalaCodeCommandRegistry | null = null
@@ -5692,6 +5707,7 @@ const settingsPanel =
           void modelMcpPermissionSection?.refresh()
           appPreferencesSection?.refresh()
           void statusUsageSection?.refresh()
+          void sessionActionsSection?.refresh()
           void plansSection?.refresh()
           void runEvidenceSection?.refresh()
           void updaterSection?.refresh()
@@ -5703,6 +5719,7 @@ const settingsPanel =
             ...(modelMcpPermissionSection === null ? [] : [modelMcpPermissionSection.render()]),
             ...(appPreferencesSection === null ? [] : [appPreferencesSection.render()]),
             ...(statusUsageSection === null ? [] : [statusUsageSection.render()]),
+            ...(sessionActionsSection === null ? [] : [sessionActionsSection.render()]),
           ],
         fetchModelRoles: () => controls.modelRoleRegistryRead(),
         writeModelRole: request => controls.modelRoleRegistryWrite(request),
@@ -5787,6 +5804,12 @@ statusUsageSection = settingsPanelEl === null
           turnErrors: errors,
         })
       },
+    })
+sessionActionsSection = settingsPanelEl === null
+  ? null
+  : mountKhalaCodeSessionActionsSettingsSection({
+      fetch: () => projectCurrentSessionActions(),
+      runAction: action => runSessionAction(action),
     })
 claudeSettingsSection = settingsPanelEl === null
   ? null
@@ -5947,6 +5970,108 @@ const listProjectHomeSessions = async (): Promise<readonly KhalaCodeDesktopCodex
   } catch (error) {
     const degraded = degradedSessionCatalog(recordBootRpcDegradedState("sessionCatalog", error))
     return degraded.entries.map(sessionCatalogEntryToThreadSummary)
+  }
+}
+
+const projectCurrentSessionActions = async (): Promise<KhalaCodeSessionActionProjection> =>
+  projectKhalaCodeSessionActionIntents({
+    activeThreadId: shellModel().activeCodexThreadId,
+    closedTabs: readKhalaCodeClosedSessionTabs(localStorage),
+    messages: shellModel().messages,
+    sessions: await listProjectHomeSessions(),
+  })
+
+const openSessionActionTarget = async (
+  threadId: string,
+  input: Readonly<{ focusChat: boolean }>,
+): Promise<void> => {
+  const sessions = await listProjectHomeSessions()
+  const session = sessions.find(candidate => candidate.id === threadId)
+  if (session === undefined) return
+  removeKhalaCodeClosedSessionTab(localStorage, threadId)
+  await openProjectHomeSession(session, input)
+}
+
+const scrollTranscriptMessage = (direction: "next" | "previous"): boolean => {
+  const nodes = [...messageList.querySelectorAll<HTMLElement>("[data-message-id]")]
+  if (nodes.length < 2) return false
+  const listRect = messageList.getBoundingClientRect()
+  const currentIndex = nodes.findIndex(node => node.getBoundingClientRect().top >= listRect.top + 8)
+  const fallbackIndex = direction === "next" ? 0 : nodes.length - 1
+  const baseIndex = currentIndex < 0 ? fallbackIndex : currentIndex
+  const targetIndex = Math.max(0, Math.min(
+    nodes.length - 1,
+    baseIndex + (direction === "next" ? 1 : -1),
+  ))
+  nodes[targetIndex]?.scrollIntoView({ behavior: "smooth", block: "start" })
+  return true
+}
+
+const runSessionAction = async (
+  action: KhalaCodeSessionActionKind,
+): Promise<{ readonly ok: boolean; readonly message?: string }> => {
+  const projection = await projectCurrentSessionActions()
+  const intent = khalaCodeSessionActionIntentFor(projection, action)
+  if (intent === null) return { ok: false, message: "Unknown session action." }
+  if (!intent.enabled) return { ok: false, message: intent.reason }
+  const threadId = projection.activeThreadId
+
+  switch (action) {
+    case "fork": {
+      if (threadId === null) return { ok: false, message: "No active session." }
+      clearThreadListCache()
+      const result = await controls.codexThreadFork({ sessionId, threadId })
+      const newThreadId = result.newThreadId ?? result.threadId
+      if (!result.ok) return { ok: false, message: result.error ?? "Session fork failed." }
+      await openSessionActionTarget(newThreadId, { focusChat: true })
+      void threadSidebar?.refresh()
+      return { ok: true, message: "Session forked." }
+    }
+    case "archive":
+      if (threadId === null) return { ok: false, message: "No active session." }
+      clearThreadListCache()
+      recordKhalaCodeClosedSessionTab(localStorage, threadId)
+      {
+        const result = await controls.codexThreadArchive({ threadId })
+        void threadSidebar?.refresh()
+        return result.ok
+          ? { ok: true, message: "Session archived." }
+          : { ok: false, message: result.error ?? "Session archive failed." }
+      }
+    case "unarchive":
+      if (threadId === null) return { ok: false, message: "No active session." }
+      clearThreadListCache()
+      {
+        const result = await controls.codexThreadUnarchive({ threadId })
+        void threadSidebar?.refresh()
+        return result.ok
+          ? { ok: true, message: "Session unarchived." }
+          : { ok: false, message: result.error ?? "Session unarchive failed." }
+      }
+    case "restore_closed_tab": {
+      const targetThreadId = khalaCodeSessionNavigationTarget(projection, "restore_closed_tab")
+      if (targetThreadId === null) return { ok: false, message: "No closed sessions recorded." }
+      await openSessionActionTarget(targetThreadId, { focusChat: true })
+      return { ok: true, message: "Closed session restored." }
+    }
+    case "previous_session":
+    case "next_session": {
+      const targetThreadId = khalaCodeSessionNavigationTarget(projection, action)
+      if (targetThreadId === null) return { ok: false, message: intent.reason }
+      await openSessionActionTarget(targetThreadId, { focusChat: true })
+      return { ok: true, message: action === "previous_session" ? "Previous session opened." : "Next session opened." }
+    }
+    case "previous_message":
+      return scrollTranscriptMessage("previous")
+        ? { ok: true, message: "Previous message focused." }
+        : { ok: false, message: intent.reason }
+    case "next_message":
+      return scrollTranscriptMessage("next")
+        ? { ok: true, message: "Next message focused." }
+        : { ok: false, message: intent.reason }
+    case "share":
+    case "unshare":
+      return { ok: false, message: intent.reason }
   }
 }
 
@@ -6433,6 +6558,126 @@ commandRegistry = createKhalaCodeCommandRegistry([
     id: "session.refresh",
     keywords: ["reload threads"],
     title: "Refresh Sessions",
+  },
+  {
+    analyticsRef: "khala_code.command.session.fork",
+    available: () => shellModel().activeCodexThreadId !== null,
+    category: "session",
+    disabledReason: () => "No active session",
+    execute: () => {
+      void runSessionAction("fork")
+    },
+    id: "session.fork",
+    keywords: ["duplicate", "branch", "thread"],
+    title: "Fork Session",
+  },
+  {
+    analyticsRef: "khala_code.command.session.share",
+    available: () => false,
+    category: "session",
+    disabledReason: () => "Sharing requires an explicit safe backing path; private local transcripts and files stay local.",
+    execute: () => {
+      void runSessionAction("share")
+    },
+    id: "session.share",
+    keywords: ["publish", "link"],
+    title: "Share Session",
+  },
+  {
+    analyticsRef: "khala_code.command.session.unshare",
+    available: () => false,
+    category: "session",
+    disabledReason: () => "No Khala/Pylon share record is attached to this local session.",
+    execute: () => {
+      void runSessionAction("unshare")
+    },
+    id: "session.unshare",
+    keywords: ["private", "link"],
+    title: "Unshare Session",
+  },
+  {
+    analyticsRef: "khala_code.command.session.archive",
+    available: () => shellModel().activeCodexThreadId !== null,
+    category: "session",
+    disabledReason: () => "No active session",
+    execute: () => {
+      void runSessionAction("archive")
+    },
+    id: "session.archive",
+    keywords: ["close", "hide"],
+    title: "Archive Session",
+  },
+  {
+    analyticsRef: "khala_code.command.session.unarchive",
+    available: () => shellModel().activeCodexThreadId !== null,
+    category: "session",
+    disabledReason: () => "No active session",
+    execute: () => {
+      void runSessionAction("unarchive")
+    },
+    id: "session.unarchive",
+    keywords: ["restore", "archive"],
+    title: "Unarchive Session",
+  },
+  {
+    analyticsRef: "khala_code.command.session.restore_closed",
+    available: () => readKhalaCodeClosedSessionTabs(localStorage).length > 0,
+    category: "session",
+    disabledReason: () => "No closed sessions recorded",
+    execute: () => {
+      void runSessionAction("restore_closed_tab")
+    },
+    id: "session.restore_closed",
+    keywords: ["reopen", "restore tab"],
+    title: "Restore Closed Session",
+  },
+  {
+    analyticsRef: "khala_code.command.session.previous",
+    category: "session",
+    defaultKeybindings: [{ alt: true, key: "arrowleft" }],
+    execute: () => {
+      void runSessionAction("previous_session")
+    },
+    id: "session.previous",
+    keywords: ["back", "thread"],
+    title: "Previous Session",
+  },
+  {
+    analyticsRef: "khala_code.command.session.next",
+    category: "session",
+    defaultKeybindings: [{ alt: true, key: "arrowright" }],
+    execute: () => {
+      void runSessionAction("next_session")
+    },
+    id: "session.next",
+    keywords: ["forward", "thread"],
+    title: "Next Session",
+  },
+  {
+    analyticsRef: "khala_code.command.message.previous",
+    available: () => shellModel().messages.length > 1,
+    category: "navigation",
+    defaultKeybindings: [{ alt: true, key: "arrowup" }],
+    disabledReason: () => "Need at least two visible messages",
+    execute: () => {
+      void runSessionAction("previous_message")
+    },
+    id: "message.previous",
+    keywords: ["transcript", "scroll"],
+    title: "Previous Message",
+  },
+  {
+    analyticsRef: "khala_code.command.message.next",
+    available: () => shellModel().messages.length > 1,
+    category: "navigation",
+    defaultKeybindings: [{ alt: true, key: "arrowdown" }],
+    disabledReason: () => "Need at least two visible messages",
+    execute: () => {
+      void runSessionAction("next_message")
+    },
+    id: "message.next",
+    keywords: ["transcript", "scroll"],
+    title: "Next Message",
   },
   {
     analyticsRef: "khala_code.command.composer.focus",

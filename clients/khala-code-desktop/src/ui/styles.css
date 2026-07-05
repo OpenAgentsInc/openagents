@@ -6488,6 +6488,81 @@ button {
   font-size: 0.7rem;
 }
 
+.khala-session-actions-section {
+  gap: 0.65rem;
+}
+.khala-session-actions-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  color: color-mix(in srgb, var(--oa-color-component-text) 56%, transparent);
+  font-size: 0.72rem;
+}
+.khala-session-actions-meta span {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.22rem 0.42rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 58%, transparent);
+  border-radius: 0.34rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.khala-session-actions-list {
+  display: grid;
+  gap: 0.25rem;
+}
+.khala-session-actions-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  padding: 0.46rem 0;
+  border-top: 1px solid color-mix(in srgb, var(--oa-color-component-border) 52%, transparent);
+}
+.khala-session-actions-label {
+  display: grid;
+  min-width: 0;
+  gap: 0.12rem;
+}
+.khala-session-actions-title,
+.khala-session-actions-command,
+.khala-session-actions-reason {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.khala-session-actions-title {
+  color: var(--oa-color-component-text);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+.khala-session-actions-command {
+  color: color-mix(in srgb, var(--oa-color-component-text) 46%, transparent);
+  font-family: var(--oa-font-mono);
+  font-size: 0.68rem;
+}
+.khala-session-actions-reason {
+  color: color-mix(in srgb, var(--oa-color-component-text) 58%, transparent);
+  font-size: 0.7rem;
+}
+.khala-session-actions-button {
+  min-width: 6rem;
+  padding: 0.36rem 0.58rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 68%, transparent);
+  border-radius: 0.36rem;
+  background: color-mix(in srgb, var(--oa-color-component-surface) 78%, var(--oa-color-khala-accent) 8%);
+  color: var(--oa-color-component-text);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+.khala-session-actions-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
 @media (max-width: 760px) {
   .khala-settings-header {
     align-items: stretch;
@@ -6508,6 +6583,7 @@ button {
   .khala-mcp-manager-row,
   .khala-status-usage-grid,
   .khala-status-usage-row,
+  .khala-session-actions-row,
   .khala-provider-custom-form,
   .khala-preferences-group {
     grid-template-columns: minmax(0, 1fr);
@@ -6516,7 +6592,8 @@ button {
   .khala-keybindings-action,
   .khala-provider-catalog-action,
   .khala-model-manager-action,
-  .khala-mcp-manager-action {
+  .khala-mcp-manager-action,
+  .khala-session-actions-button {
     justify-self: start;
   }
 }

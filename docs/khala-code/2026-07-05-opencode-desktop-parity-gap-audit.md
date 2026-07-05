@@ -494,8 +494,32 @@ OpenCode includes several session-management affordances not observed in Khala:
 - Background-open tab behavior from the home screen.
 - Session ownership helpers.
 
-Khala has Codex thread history and OpenAgents sync surfaces, but no matching
-OpenCode session fork/share/archive/tab-recovery feature set.
+Issue: add session fork, share, archive, tab recovery, and navigation extras
+([#8465](https://github.com/OpenAgentsInc/openagents/issues/8465)).
+
+- Status: first implementation pass complete on 2026-07-05. Khala Code now has
+  a shared session-action projection, a Settings > Session Actions section, and
+  central command-registry entries for fork, share/unshare, archive/unarchive,
+  restore closed session, previous/next session, and previous/next message.
+  Fork/archive/unarchive call the existing Codex-compatible thread RPCs;
+  previous/next session and closed-tab restore reuse the Project Home resume
+  path; previous/next message scrolls existing transcript message anchors.
+  Share/unshare are intentionally registered but disabled until a Khala-owned
+  server/Pylon share record provides an explicit safe backing path. The
+  projection never includes transcript bodies or local file content in sharing
+  intent metadata.
+- Runtime boundary: Codex app-server is only the current fork/archive carrier.
+  Khala still wants its own OpenCode-style local server surface, potentially
+  folded into Pylon, so share ownership, public links, and cross-runtime
+  archive semantics remain server-roadmap work rather than app-server-only
+  assumptions.
+- Remaining gaps: a true fork dialog, archive list filters from every home and
+  project context, previous/next project commands, multi-window closed-tab
+  restoration, native menu labels for these commands, and runtime-backed
+  share/unshare records.
+- Acceptance gates: unit and DOM tests cover fork/share/archive/navigation
+  intent, unsupported-runtime disabled states, central command IDs, and safe
+  sharing refusal.
 
 ### 16. Release Notes, Help, Feedback, And Support Entrypoints
 
