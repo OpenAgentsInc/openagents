@@ -285,7 +285,10 @@ Fleet/Gym source-level tests also assert the delegation-optimization UI hooks,
 active-parameter readout, and public-safe proof-loading path. The Part 2
 Fleet/Gym visual smoke clicks Fleet, starts **Optimize delegation policy** into
 Gym, captures desktop/mobile screenshots, and checks the proof graph plus
-active-parameter cards for visible, non-overlapping geometry. Each Mode D
+active-parameter cards for visible, non-overlapping geometry. The Editor visual
+smoke opens a synthetic fixture workspace, proves Chat is usable before Editor
+opens, checks Monaco is not eagerly loaded, opens a TypeScript fixture, and
+captures a nonblank tree/source screenshot. Each Mode D
 fixture visual smoke installs the shared console/pageerror oracle and uses the
 seed-backed RPC mock bridge so boot-time preview RPCs do not surface as 500
 console noise.
@@ -302,6 +305,7 @@ write delta PNGs, and `--bless-baselines` updates the committed baseline store.
 ```sh
 bun run smoke:composer-visual
 bun run smoke:composer-visual-preview
+bun run smoke:editor-visual
 bun run smoke:part2-fleet-gym-visual
 bun run smoke:part2-ui
 ```

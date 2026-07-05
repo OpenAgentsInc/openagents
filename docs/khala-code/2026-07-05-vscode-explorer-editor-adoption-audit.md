@@ -357,6 +357,10 @@ Phase 1 implementation log:
   Monaco source pane. Monaco, workers, and editor CSS load only from the editor
   panel path, the tree supports keyboard navigation, and binary/oversized
   reads stay in a safe unsupported state.
+- #8434 added deterministic Phase 1 editor verification, including the
+  `smoke:editor-visual` Playwright lane that opens a fixture workspace, checks
+  Chat before Editor, verifies Monaco lazy loading, and captures a nonblank
+  tree/source pane.
 
 ### Phase 2: workspace ergonomics
 
