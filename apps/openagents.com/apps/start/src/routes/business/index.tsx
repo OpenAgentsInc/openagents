@@ -1,8 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import { BusinessPage } from './-funnel-components'
+import { BusinessPage } from '../-funnel-components'
 
-export const Route = createFileRoute('/business')({
+export const Route = createFileRoute('/business/')({
   component: BusinessPage,
   head: () => ({
     meta: [

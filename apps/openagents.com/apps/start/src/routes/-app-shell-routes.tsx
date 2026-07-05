@@ -36,7 +36,7 @@ const bodyClass = 'm-0 max-w-[72ch] text-pretty text-base/7 text-khala-text-mute
 const cardClass =
   'grid gap-3 border border-khala-border/70 bg-khala-surface-muted p-4'
 
-function SceneLayer({ pose }: Readonly<{ pose: 'khala' | 'tassadar' }>) {
+export function SceneLayer({ pose }: Readonly<{ pose: 'khala' | 'tassadar' }>) {
   const nodeClass =
     pose === 'khala'
       ? 'left-[24%] top-[28%] size-2 opacity-70'

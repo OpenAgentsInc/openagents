@@ -20,6 +20,7 @@ const routeBudgets = [
   { path: '/blog/introducing-khala-code', marker: 'Introducing Khala Code' },
   { path: '/clients-preview', marker: 'Autopilot control surface' },
   { path: '/components', marker: 'Component library' },
+  { path: '/code', marker: 'Code, on your own capacity' },
   { path: '/code/download', marker: 'Install paths, with the Codex requirement kept visible' },
   { path: '/download', marker: 'Download Autopilot for Mac' },
   { path: '/sites/demo-checkout', marker: 'Demo checkout' },

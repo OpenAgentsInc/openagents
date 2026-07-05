@@ -1,8 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import { BlogIndexPage } from './-funnel-components'
+import { BlogIndexPage } from '../-funnel-components'
 
-export const Route = createFileRoute('/blog')({
+export const Route = createFileRoute('/blog/')({
   component: BlogIndexPage,
   head: () => ({
     meta: [

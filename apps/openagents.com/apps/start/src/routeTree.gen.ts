@@ -14,16 +14,17 @@ import { Route as TassadarRouteImport } from './routes/tassadar'
 import { Route as RunRouteImport } from './routes/run'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as KhalaRouteImport } from './routes/khala'
 import { Route as GymRouteImport } from './routes/gym'
 import { Route as DownloadRouteImport } from './routes/download'
-import { Route as DocsRouteImport } from './routes/docs'
-import { Route as ComponentsRouteImport } from './routes/components'
 import { Route as ClientsPreviewRouteImport } from './routes/clients-preview'
-import { Route as BusinessRouteImport } from './routes/business'
-import { Route as BlogRouteImport } from './routes/blog'
 import { Route as ActivityRouteImport } from './routes/activity'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as KhalaIndexRouteImport } from './routes/khala/index'
+import { Route as DocsIndexRouteImport } from './routes/docs/index'
+import { Route as ComponentsIndexRouteImport } from './routes/components/index'
+import { Route as CodeIndexRouteImport } from './routes/code/index'
+import { Route as BusinessIndexRouteImport } from './routes/business/index'
+import { Route as BlogIndexRouteImport } from './routes/blog/index'
 import { Route as AutopilotIndexRouteImport } from './routes/autopilot/index'
 import { Route as SitesDemoCheckoutRouteImport } from './routes/sites/demo-checkout'
 import { Route as PreviewLandingRouteImport } from './routes/preview/landing'
@@ -63,11 +64,6 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const KhalaRoute = KhalaRouteImport.update({
-  id: '/khala',
-  path: '/khala',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const GymRoute = GymRouteImport.update({
   id: '/gym',
   path: '/gym',
@@ -78,29 +74,9 @@ const DownloadRoute = DownloadRouteImport.update({
   path: '/download',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DocsRoute = DocsRouteImport.update({
-  id: '/docs',
-  path: '/docs',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ComponentsRoute = ComponentsRouteImport.update({
-  id: '/components',
-  path: '/components',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ClientsPreviewRoute = ClientsPreviewRouteImport.update({
   id: '/clients-preview',
   path: '/clients-preview',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const BusinessRoute = BusinessRouteImport.update({
-  id: '/business',
-  path: '/business',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const BlogRoute = BlogRouteImport.update({
-  id: '/blog',
-  path: '/blog',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ActivityRoute = ActivityRouteImport.update({
@@ -111,6 +87,36 @@ const ActivityRoute = ActivityRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const KhalaIndexRoute = KhalaIndexRouteImport.update({
+  id: '/khala/',
+  path: '/khala/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DocsIndexRoute = DocsIndexRouteImport.update({
+  id: '/docs/',
+  path: '/docs/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ComponentsIndexRoute = ComponentsIndexRouteImport.update({
+  id: '/components/',
+  path: '/components/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CodeIndexRoute = CodeIndexRouteImport.update({
+  id: '/code/',
+  path: '/code/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BusinessIndexRoute = BusinessIndexRouteImport.update({
+  id: '/business/',
+  path: '/business/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BlogIndexRoute = BlogIndexRouteImport.update({
+  id: '/blog/',
+  path: '/blog/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AutopilotIndexRoute = AutopilotIndexRouteImport.update({
@@ -129,19 +135,19 @@ const PreviewLandingRoute = PreviewLandingRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const KhalaChatSyncRoute = KhalaChatSyncRouteImport.update({
-  id: '/chat-sync',
-  path: '/chat-sync',
-  getParentRoute: () => KhalaRoute,
+  id: '/khala/chat-sync',
+  path: '/khala/chat-sync',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const DocsSlugRoute = DocsSlugRouteImport.update({
-  id: '/$slug',
-  path: '/$slug',
-  getParentRoute: () => DocsRoute,
+  id: '/docs/$slug',
+  path: '/docs/$slug',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ComponentsFamilyRoute = ComponentsFamilyRouteImport.update({
-  id: '/$family',
-  path: '/$family',
-  getParentRoute: () => ComponentsRoute,
+  id: '/components/$family',
+  path: '/components/$family',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const CodeDownloadRoute = CodeDownloadRouteImport.update({
   id: '/code/download',
@@ -149,9 +155,9 @@ const CodeDownloadRoute = CodeDownloadRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const BlogSlugRoute = BlogSlugRouteImport.update({
-  id: '/$slug',
-  path: '/$slug',
-  getParentRoute: () => BlogRoute,
+  id: '/blog/$slug',
+  path: '/blog/$slug',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AutopilotLegalRoute = AutopilotLegalRouteImport.update({
   id: '/autopilot/legal',
@@ -171,9 +177,9 @@ const SitesDemoCheckoutReturnActionRoute =
   } as any)
 const BusinessKpiEngagementRefRoute =
   BusinessKpiEngagementRefRouteImport.update({
-    id: '/kpi/$engagementRef',
-    path: '/kpi/$engagementRef',
-    getParentRoute: () => BusinessRoute,
+    id: '/business/kpi/$engagementRef',
+    path: '/business/kpi/$engagementRef',
+    getParentRoute: () => rootRouteImport,
   } as any)
 const PylonCodexAssignmentsAssignmentRefRoute =
   PylonCodexAssignmentsAssignmentRefRouteImport.update({
@@ -185,14 +191,9 @@ const PylonCodexAssignmentsAssignmentRefRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
-  '/blog': typeof BlogRouteWithChildren
-  '/business': typeof BusinessRouteWithChildren
   '/clients-preview': typeof ClientsPreviewRoute
-  '/components': typeof ComponentsRouteWithChildren
-  '/docs': typeof DocsRouteWithChildren
   '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
-  '/khala': typeof KhalaRouteWithChildren
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/run': typeof RunRoute
@@ -208,6 +209,12 @@ export interface FileRoutesByFullPath {
   '/preview/landing': typeof PreviewLandingRoute
   '/sites/demo-checkout': typeof SitesDemoCheckoutRouteWithChildren
   '/autopilot/': typeof AutopilotIndexRoute
+  '/blog/': typeof BlogIndexRoute
+  '/business/': typeof BusinessIndexRoute
+  '/code/': typeof CodeIndexRoute
+  '/components/': typeof ComponentsIndexRoute
+  '/docs/': typeof DocsIndexRoute
+  '/khala/': typeof KhalaIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
   '/sites/demo-checkout/$returnAction': typeof SitesDemoCheckoutReturnActionRoute
   '/pylon/codex/assignments/$assignmentRef': typeof PylonCodexAssignmentsAssignmentRefRoute
@@ -215,14 +222,9 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
-  '/blog': typeof BlogRouteWithChildren
-  '/business': typeof BusinessRouteWithChildren
   '/clients-preview': typeof ClientsPreviewRoute
-  '/components': typeof ComponentsRouteWithChildren
-  '/docs': typeof DocsRouteWithChildren
   '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
-  '/khala': typeof KhalaRouteWithChildren
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/run': typeof RunRoute
@@ -238,6 +240,12 @@ export interface FileRoutesByTo {
   '/preview/landing': typeof PreviewLandingRoute
   '/sites/demo-checkout': typeof SitesDemoCheckoutRouteWithChildren
   '/autopilot': typeof AutopilotIndexRoute
+  '/blog': typeof BlogIndexRoute
+  '/business': typeof BusinessIndexRoute
+  '/code': typeof CodeIndexRoute
+  '/components': typeof ComponentsIndexRoute
+  '/docs': typeof DocsIndexRoute
+  '/khala': typeof KhalaIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
   '/sites/demo-checkout/$returnAction': typeof SitesDemoCheckoutReturnActionRoute
   '/pylon/codex/assignments/$assignmentRef': typeof PylonCodexAssignmentsAssignmentRefRoute
@@ -246,14 +254,9 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
-  '/blog': typeof BlogRouteWithChildren
-  '/business': typeof BusinessRouteWithChildren
   '/clients-preview': typeof ClientsPreviewRoute
-  '/components': typeof ComponentsRouteWithChildren
-  '/docs': typeof DocsRouteWithChildren
   '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
-  '/khala': typeof KhalaRouteWithChildren
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/run': typeof RunRoute
@@ -269,6 +272,12 @@ export interface FileRoutesById {
   '/preview/landing': typeof PreviewLandingRoute
   '/sites/demo-checkout': typeof SitesDemoCheckoutRouteWithChildren
   '/autopilot/': typeof AutopilotIndexRoute
+  '/blog/': typeof BlogIndexRoute
+  '/business/': typeof BusinessIndexRoute
+  '/code/': typeof CodeIndexRoute
+  '/components/': typeof ComponentsIndexRoute
+  '/docs/': typeof DocsIndexRoute
+  '/khala/': typeof KhalaIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
   '/sites/demo-checkout/$returnAction': typeof SitesDemoCheckoutReturnActionRoute
   '/pylon/codex/assignments/$assignmentRef': typeof PylonCodexAssignmentsAssignmentRefRoute
@@ -278,14 +287,9 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/activity'
-    | '/blog'
-    | '/business'
     | '/clients-preview'
-    | '/components'
-    | '/docs'
     | '/download'
     | '/gym'
-    | '/khala'
     | '/login'
     | '/privacy'
     | '/run'
@@ -301,6 +305,12 @@ export interface FileRouteTypes {
     | '/preview/landing'
     | '/sites/demo-checkout'
     | '/autopilot/'
+    | '/blog/'
+    | '/business/'
+    | '/code/'
+    | '/components/'
+    | '/docs/'
+    | '/khala/'
     | '/business/kpi/$engagementRef'
     | '/sites/demo-checkout/$returnAction'
     | '/pylon/codex/assignments/$assignmentRef'
@@ -308,14 +318,9 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/activity'
-    | '/blog'
-    | '/business'
     | '/clients-preview'
-    | '/components'
-    | '/docs'
     | '/download'
     | '/gym'
-    | '/khala'
     | '/login'
     | '/privacy'
     | '/run'
@@ -331,6 +336,12 @@ export interface FileRouteTypes {
     | '/preview/landing'
     | '/sites/demo-checkout'
     | '/autopilot'
+    | '/blog'
+    | '/business'
+    | '/code'
+    | '/components'
+    | '/docs'
+    | '/khala'
     | '/business/kpi/$engagementRef'
     | '/sites/demo-checkout/$returnAction'
     | '/pylon/codex/assignments/$assignmentRef'
@@ -338,14 +349,9 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/activity'
-    | '/blog'
-    | '/business'
     | '/clients-preview'
-    | '/components'
-    | '/docs'
     | '/download'
     | '/gym'
-    | '/khala'
     | '/login'
     | '/privacy'
     | '/run'
@@ -361,6 +367,12 @@ export interface FileRouteTypes {
     | '/preview/landing'
     | '/sites/demo-checkout'
     | '/autopilot/'
+    | '/blog/'
+    | '/business/'
+    | '/code/'
+    | '/components/'
+    | '/docs/'
+    | '/khala/'
     | '/business/kpi/$engagementRef'
     | '/sites/demo-checkout/$returnAction'
     | '/pylon/codex/assignments/$assignmentRef'
@@ -369,14 +381,9 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ActivityRoute: typeof ActivityRoute
-  BlogRoute: typeof BlogRouteWithChildren
-  BusinessRoute: typeof BusinessRouteWithChildren
   ClientsPreviewRoute: typeof ClientsPreviewRoute
-  ComponentsRoute: typeof ComponentsRouteWithChildren
-  DocsRoute: typeof DocsRouteWithChildren
   DownloadRoute: typeof DownloadRoute
   GymRoute: typeof GymRoute
-  KhalaRoute: typeof KhalaRouteWithChildren
   LoginRoute: typeof LoginRoute
   PrivacyRoute: typeof PrivacyRoute
   RunRoute: typeof RunRoute
@@ -384,10 +391,21 @@ export interface RootRouteChildren {
   TermsRoute: typeof TermsRoute
   ArtanisTracesRoute: typeof ArtanisTracesRoute
   AutopilotLegalRoute: typeof AutopilotLegalRoute
+  BlogSlugRoute: typeof BlogSlugRoute
   CodeDownloadRoute: typeof CodeDownloadRoute
+  ComponentsFamilyRoute: typeof ComponentsFamilyRoute
+  DocsSlugRoute: typeof DocsSlugRoute
+  KhalaChatSyncRoute: typeof KhalaChatSyncRoute
   PreviewLandingRoute: typeof PreviewLandingRoute
   SitesDemoCheckoutRoute: typeof SitesDemoCheckoutRouteWithChildren
   AutopilotIndexRoute: typeof AutopilotIndexRoute
+  BlogIndexRoute: typeof BlogIndexRoute
+  BusinessIndexRoute: typeof BusinessIndexRoute
+  CodeIndexRoute: typeof CodeIndexRoute
+  ComponentsIndexRoute: typeof ComponentsIndexRoute
+  DocsIndexRoute: typeof DocsIndexRoute
+  KhalaIndexRoute: typeof KhalaIndexRoute
+  BusinessKpiEngagementRefRoute: typeof BusinessKpiEngagementRefRoute
   PylonCodexAssignmentsAssignmentRefRoute: typeof PylonCodexAssignmentsAssignmentRefRoute
 }
 
@@ -428,13 +446,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/khala': {
-      id: '/khala'
-      path: '/khala'
-      fullPath: '/khala'
-      preLoaderRoute: typeof KhalaRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/gym': {
       id: '/gym'
       path: '/gym'
@@ -449,39 +460,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DownloadRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/docs': {
-      id: '/docs'
-      path: '/docs'
-      fullPath: '/docs'
-      preLoaderRoute: typeof DocsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/components': {
-      id: '/components'
-      path: '/components'
-      fullPath: '/components'
-      preLoaderRoute: typeof ComponentsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/clients-preview': {
       id: '/clients-preview'
       path: '/clients-preview'
       fullPath: '/clients-preview'
       preLoaderRoute: typeof ClientsPreviewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/business': {
-      id: '/business'
-      path: '/business'
-      fullPath: '/business'
-      preLoaderRoute: typeof BusinessRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/blog': {
-      id: '/blog'
-      path: '/blog'
-      fullPath: '/blog'
-      preLoaderRoute: typeof BlogRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/activity': {
@@ -496,6 +479,48 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/khala/': {
+      id: '/khala/'
+      path: '/khala'
+      fullPath: '/khala/'
+      preLoaderRoute: typeof KhalaIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/docs/': {
+      id: '/docs/'
+      path: '/docs'
+      fullPath: '/docs/'
+      preLoaderRoute: typeof DocsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/components/': {
+      id: '/components/'
+      path: '/components'
+      fullPath: '/components/'
+      preLoaderRoute: typeof ComponentsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/code/': {
+      id: '/code/'
+      path: '/code'
+      fullPath: '/code/'
+      preLoaderRoute: typeof CodeIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/business/': {
+      id: '/business/'
+      path: '/business'
+      fullPath: '/business/'
+      preLoaderRoute: typeof BusinessIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/blog/': {
+      id: '/blog/'
+      path: '/blog'
+      fullPath: '/blog/'
+      preLoaderRoute: typeof BlogIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/autopilot/': {
@@ -521,24 +546,24 @@ declare module '@tanstack/react-router' {
     }
     '/khala/chat-sync': {
       id: '/khala/chat-sync'
-      path: '/chat-sync'
+      path: '/khala/chat-sync'
       fullPath: '/khala/chat-sync'
       preLoaderRoute: typeof KhalaChatSyncRouteImport
-      parentRoute: typeof KhalaRoute
+      parentRoute: typeof rootRouteImport
     }
     '/docs/$slug': {
       id: '/docs/$slug'
-      path: '/$slug'
+      path: '/docs/$slug'
       fullPath: '/docs/$slug'
       preLoaderRoute: typeof DocsSlugRouteImport
-      parentRoute: typeof DocsRoute
+      parentRoute: typeof rootRouteImport
     }
     '/components/$family': {
       id: '/components/$family'
-      path: '/$family'
+      path: '/components/$family'
       fullPath: '/components/$family'
       preLoaderRoute: typeof ComponentsFamilyRouteImport
-      parentRoute: typeof ComponentsRoute
+      parentRoute: typeof rootRouteImport
     }
     '/code/download': {
       id: '/code/download'
@@ -549,10 +574,10 @@ declare module '@tanstack/react-router' {
     }
     '/blog/$slug': {
       id: '/blog/$slug'
-      path: '/$slug'
+      path: '/blog/$slug'
       fullPath: '/blog/$slug'
       preLoaderRoute: typeof BlogSlugRouteImport
-      parentRoute: typeof BlogRoute
+      parentRoute: typeof rootRouteImport
     }
     '/autopilot/legal': {
       id: '/autopilot/legal'
@@ -577,10 +602,10 @@ declare module '@tanstack/react-router' {
     }
     '/business/kpi/$engagementRef': {
       id: '/business/kpi/$engagementRef'
-      path: '/kpi/$engagementRef'
+      path: '/business/kpi/$engagementRef'
       fullPath: '/business/kpi/$engagementRef'
       preLoaderRoute: typeof BusinessKpiEngagementRefRouteImport
-      parentRoute: typeof BusinessRoute
+      parentRoute: typeof rootRouteImport
     }
     '/pylon/codex/assignments/$assignmentRef': {
       id: '/pylon/codex/assignments/$assignmentRef'
@@ -591,60 +616,6 @@ declare module '@tanstack/react-router' {
     }
   }
 }
-
-interface BlogRouteChildren {
-  BlogSlugRoute: typeof BlogSlugRoute
-}
-
-const BlogRouteChildren: BlogRouteChildren = {
-  BlogSlugRoute: BlogSlugRoute,
-}
-
-const BlogRouteWithChildren = BlogRoute._addFileChildren(BlogRouteChildren)
-
-interface BusinessRouteChildren {
-  BusinessKpiEngagementRefRoute: typeof BusinessKpiEngagementRefRoute
-}
-
-const BusinessRouteChildren: BusinessRouteChildren = {
-  BusinessKpiEngagementRefRoute: BusinessKpiEngagementRefRoute,
-}
-
-const BusinessRouteWithChildren = BusinessRoute._addFileChildren(
-  BusinessRouteChildren,
-)
-
-interface ComponentsRouteChildren {
-  ComponentsFamilyRoute: typeof ComponentsFamilyRoute
-}
-
-const ComponentsRouteChildren: ComponentsRouteChildren = {
-  ComponentsFamilyRoute: ComponentsFamilyRoute,
-}
-
-const ComponentsRouteWithChildren = ComponentsRoute._addFileChildren(
-  ComponentsRouteChildren,
-)
-
-interface DocsRouteChildren {
-  DocsSlugRoute: typeof DocsSlugRoute
-}
-
-const DocsRouteChildren: DocsRouteChildren = {
-  DocsSlugRoute: DocsSlugRoute,
-}
-
-const DocsRouteWithChildren = DocsRoute._addFileChildren(DocsRouteChildren)
-
-interface KhalaRouteChildren {
-  KhalaChatSyncRoute: typeof KhalaChatSyncRoute
-}
-
-const KhalaRouteChildren: KhalaRouteChildren = {
-  KhalaChatSyncRoute: KhalaChatSyncRoute,
-}
-
-const KhalaRouteWithChildren = KhalaRoute._addFileChildren(KhalaRouteChildren)
 
 interface SitesDemoCheckoutRouteChildren {
   SitesDemoCheckoutReturnActionRoute: typeof SitesDemoCheckoutReturnActionRoute
@@ -660,14 +631,9 @@ const SitesDemoCheckoutRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ActivityRoute: ActivityRoute,
-  BlogRoute: BlogRouteWithChildren,
-  BusinessRoute: BusinessRouteWithChildren,
   ClientsPreviewRoute: ClientsPreviewRoute,
-  ComponentsRoute: ComponentsRouteWithChildren,
-  DocsRoute: DocsRouteWithChildren,
   DownloadRoute: DownloadRoute,
   GymRoute: GymRoute,
-  KhalaRoute: KhalaRouteWithChildren,
   LoginRoute: LoginRoute,
   PrivacyRoute: PrivacyRoute,
   RunRoute: RunRoute,
@@ -675,10 +641,21 @@ const rootRouteChildren: RootRouteChildren = {
   TermsRoute: TermsRoute,
   ArtanisTracesRoute: ArtanisTracesRoute,
   AutopilotLegalRoute: AutopilotLegalRoute,
+  BlogSlugRoute: BlogSlugRoute,
   CodeDownloadRoute: CodeDownloadRoute,
+  ComponentsFamilyRoute: ComponentsFamilyRoute,
+  DocsSlugRoute: DocsSlugRoute,
+  KhalaChatSyncRoute: KhalaChatSyncRoute,
   PreviewLandingRoute: PreviewLandingRoute,
   SitesDemoCheckoutRoute: SitesDemoCheckoutRouteWithChildren,
   AutopilotIndexRoute: AutopilotIndexRoute,
+  BlogIndexRoute: BlogIndexRoute,
+  BusinessIndexRoute: BusinessIndexRoute,
+  CodeIndexRoute: CodeIndexRoute,
+  ComponentsIndexRoute: ComponentsIndexRoute,
+  DocsIndexRoute: DocsIndexRoute,
+  KhalaIndexRoute: KhalaIndexRoute,
+  BusinessKpiEngagementRefRoute: BusinessKpiEngagementRefRoute,
   PylonCodexAssignmentsAssignmentRefRoute:
     PylonCodexAssignmentsAssignmentRefRoute,
 }

@@ -250,6 +250,60 @@ content pages, ported from the Foldkit `apps/web/src/page/terms.ts` and
   Worker still serves `apps/web/dist`, so deleting the Foldkit counterpart
   now would remove the live page from production before any cutover.
 
+## Landed Slice 15: Khala Code Landing
+
+The Start staging app now owns `/code` — the Khala Code marketing/demo
+landing, the sibling public page next to the already-migrated
+`/code/download` install-paths route.
+
+- `/code` preserves `data-route="code"`, the `data-pose="khala"` scene layer
+  (reusing the shared `SceneLayer` from the Khala/Tassadar slice instead of
+  duplicating the glow background), the `Khala Code` eyebrow, the `Code, on
+  your own capacity` headline, the `model: openagents/khala` badge, and the
+  intro paragraph copy verbatim.
+- The representative simulated coding-agent conversation is preserved turn by
+  turn: both user turns, both assistant turns' reasoning/response text, the
+  `Plan` task checklist, the `read_file` and `cargo test` tool calls, both
+  diffs, and the `src/greet.ts` code block with its `bun test · 6 passed`
+  result — using plain Tailwind markup plus the shared `Badge` component
+  rather than a new AiElements port (the retired Foldkit `AiElements` kit in
+  `packages/ui` is still Foldkit-`Html`-based, not React, so this slice does
+  not depend on it).
+- The composer keeps its `data-chat-composer="khala-code"` anchor and
+  `Ask Khala to change your code…` placeholder; it stays decorative (no wired
+  submit), same posture as the retired page.
+- **Routing-nesting bug found and fixed across the whole app in the same
+  change.** Adding a plain `code.tsx` alongside the existing
+  `code/download.tsx` would make `code.tsx` an implicit TanStack Router
+  layout for everything under `/code/*` — and since none of this app's page
+  components render `<Outlet />`, that silently breaks the child route (the
+  parent's full page renders in the body instead of the child's, though the
+  child's `head()` meta still applies, so the `<title>` looks right while the
+  content is wrong). Verified concretely with a local `vite preview` + `curl`
+  before/after.
+  Checking for the same shape (`X.tsx` with a sibling `X/` folder) found four
+  more already-shipped instances of this exact bug, all from earlier TS-6/TS-2
+  slices: **`/blog/$slug` served the blog index**, **`/docs/$slug` served the
+  docs index**, **`/khala/chat-sync` served the Khala info page**, and
+  **`/business/kpi/$engagementRef` served the business funnel page** — every
+  case silently discarding the deep-linked content while the tab title still
+  matched. (`/components/$family` was not affected: it deliberately reuses the
+  same `ComponentsPage` component with a `selectedFamily` prop rather than a
+  distinct child page, so its shared `data-route="components"` marker across
+  both `/components` and `/components/$family` is by design, not a bug.)
+  Fixed all five (`blog`, `business`, `components` for consistency, `docs`,
+  `khala`, plus the new `code`) the same way, following the existing
+  `autopilot/index.tsx` + `autopilot/legal.tsx` convention already in this
+  codebase: move `X.tsx` to `X/index.tsx` and change
+  `createFileRoute('/X')` to `createFileRoute('/X/')`, so each parent and
+  child are independent sibling leaf routes with no shared layout dependency.
+  Re-verified all previously-broken paths render their own content after the
+  fix (`/blog/introducing-khala-code` → `data-route="blog-post"`,
+  `/docs/api` → `data-route="docs-page"`, `/khala/chat-sync` →
+  `data-route="khala-chat-sync"`, `/business/kpi/...` →
+  `data-route="business-kpi"`), and the full Start test/typecheck/build/budget
+  sweep stayed green.
+
 ## Boundary
 
 This is not the final TS-6 closure. The live `openagents.com` Worker still
@@ -269,9 +323,12 @@ Remaining TS-6 work:
 ## Verification
 
 ```sh
-bun run --cwd apps/openagents.com/apps/start test -- src/routes/-app-shell.test.tsx src/routes/-components.test.tsx src/routes/-gym.test.tsx src/routes/-index.test.tsx
+bun run --cwd apps/openagents.com/apps/start test -- src/routes/-code.test.tsx src/routes/-app-shell.test.tsx src/routes/-components.test.tsx src/routes/-gym.test.tsx src/routes/-index.test.tsx
+bun run --cwd apps/openagents.com/apps/start test
 bun run --cwd apps/openagents.com/apps/start typecheck
 bun run --cwd apps/openagents.com/apps/start build
+bun run --cwd apps/openagents.com/apps/start budget
+bun run test:qa-pre-push-smoke
 ```
 
 The route tests are the parity guard for this slice; the full final TS-6

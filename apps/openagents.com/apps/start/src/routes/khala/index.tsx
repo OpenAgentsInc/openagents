@@ -1,8 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import { KhalaInfoPage } from './-app-shell-routes'
+import { KhalaInfoPage } from '../-app-shell-routes'
 
-export const Route = createFileRoute('/khala')({
+export const Route = createFileRoute('/khala/')({
   component: KhalaInfoPage,
   head: () => ({
     meta: [

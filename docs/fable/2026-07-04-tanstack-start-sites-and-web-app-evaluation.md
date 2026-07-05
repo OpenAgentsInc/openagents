@@ -619,9 +619,17 @@ LG-4 claim safety, and bundle budget before deploy review. See
 `/gym`, `/activity`, `/business/kpi/$engagementRef`, `/clients-preview`,
 `/components`, `/components/$family`, `/download`, `/login`, `/preview/landing`,
 `/run`, `/sites/demo-checkout`, `/pylon/codex/assignments/$assignmentRef`,
-`/artanis/traces`, `/terms`, and `/privacy` with route parity tests, keeping
-the existing Foldkit counterparts until a real production route cutover
-allows delete-as-you-go. See
+`/artanis/traces`, `/terms`, `/privacy`, and now `/code` with route parity
+tests, keeping the existing Foldkit counterparts until a real production
+route cutover allows delete-as-you-go. The `/code` slice also found and fixed
+a latent TanStack Router nesting bug: any `X.tsx` file with a sibling `X/`
+folder becomes an implicit layout route, and since no page component here
+renders `<Outlet />`, the child route's content silently failed to render
+(only its `<title>` was correct) — this had already shipped for
+`/blog/$slug`, `/docs/$slug`, `/khala/chat-sync`, and
+`/business/kpi/$engagementRef`. Fixed all of them (plus `/components` for
+consistency) by moving each to `X/index.tsx` with `createFileRoute('/X/')`,
+matching the existing `autopilot/index.tsx` convention. See
 `docs/fable/2026-07-04-ts-6-start-khala-tassadar-route-slice.md`.
 
 2026-07-04 TS-8 scaffold note: `clients/khala-mobile` now holds the Expo SDK 57
