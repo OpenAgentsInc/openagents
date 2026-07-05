@@ -93,6 +93,10 @@ import { mountCodexSettingsPanel } from "./codex-settings-panel"
 import { mountClaudeSettingsSection } from "./claude-settings-panel"
 import { mountKhalaCodeUpdaterSettingsSection } from "./khala-code-updater-settings-section"
 import {
+  mountKhalaCodeProviderCatalogSettingsSection,
+  type KhalaCodeProviderCatalogSettingsSectionHandle,
+} from "./provider-catalog-settings-section"
+import {
   mountCodexThreadSidebar,
   type CodexThreadSelectionSource,
 } from "./codex-thread-sidebar"
@@ -5528,6 +5532,7 @@ const gymPanel =
 
 let claudeSettingsSection: ReturnType<typeof mountClaudeSettingsSection> | null = null
 let updaterSection: ReturnType<typeof mountKhalaCodeUpdaterSettingsSection> | null = null
+let providerCatalogSection: KhalaCodeProviderCatalogSettingsSectionHandle | null = null
 let plansSection: ReturnType<typeof mountKhalaCodePlansPanel> | null = null
 let runEvidenceSection: ReturnType<typeof mountKhalaCodeRunEvidencePanel> | null = null
 let commandRegistry: KhalaCodeCommandRegistry | null = null
@@ -5548,12 +5553,16 @@ const settingsPanel =
         fetch: () => controls.codexSettingsRead({ includeHiddenModels: true }),
         onRender: () => {
           void claudeSettingsSection?.refresh()
+          void providerCatalogSection?.refresh()
           void plansSection?.refresh()
           void runEvidenceSection?.refresh()
           void updaterSection?.refresh()
         },
         renderAdditionalSections: () =>
-          commandKeybindingsSection === null ? [] : [commandKeybindingsSection.render()],
+          [
+            ...(commandKeybindingsSection === null ? [] : [commandKeybindingsSection.render()]),
+            ...(providerCatalogSection === null ? [] : [providerCatalogSection.render()]),
+          ],
         fetchModelRoles: () => controls.modelRoleRegistryRead(),
         writeModelRole: request => controls.modelRoleRegistryWrite(request),
         write: async request => {
@@ -5565,6 +5574,22 @@ const settingsPanel =
           }
         },
       })
+providerCatalogSection = settingsPanelEl === null
+  ? null
+  : mountKhalaCodeProviderCatalogSettingsSection({
+      fetch: () => controls.codexSettingsRead({ includeHiddenModels: true }),
+      writeModelProvider: async providerId => {
+        const result = await controls.codexConfigValueWrite({
+          keyPath: "model_provider",
+          value: providerId,
+        })
+        return {
+          ok: result.ok,
+          ...(result.settings === undefined ? {} : { settings: result.settings }),
+          ...(result.error === undefined ? {} : { error: result.error }),
+        }
+      },
+    })
 claudeSettingsSection = settingsPanelEl === null
   ? null
   : mountClaudeSettingsSection(settingsPanelEl, {

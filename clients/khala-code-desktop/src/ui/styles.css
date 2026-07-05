@@ -6155,6 +6155,100 @@ button {
 .khala-keybindings-action:disabled {
   opacity: 0.45;
 }
+.khala-provider-catalog-section {
+  gap: 0.65rem;
+}
+.khala-provider-catalog-list {
+  display: grid;
+  gap: 0.25rem;
+}
+.khala-provider-catalog-row {
+  display: grid;
+  grid-template-columns: minmax(11rem, 1fr) minmax(5.8rem, auto) minmax(12rem, 1fr) auto auto;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  padding: 0.45rem 0;
+  border-top: 1px solid color-mix(in srgb, var(--oa-color-component-border) 52%, transparent);
+}
+.khala-provider-catalog-row[data-selected="true"] {
+  background: color-mix(in srgb, var(--oa-color-khala-success) 7%, transparent);
+}
+.khala-provider-catalog-label {
+  display: grid;
+  min-width: 0;
+  gap: 0.12rem;
+}
+.khala-provider-catalog-name,
+.khala-provider-catalog-meta,
+.khala-provider-catalog-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.khala-provider-catalog-name {
+  color: var(--oa-color-component-text);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.khala-provider-catalog-meta,
+.khala-provider-catalog-detail {
+  color: color-mix(in srgb, var(--oa-color-component-text) 50%, transparent);
+  font-size: 0.68rem;
+}
+.khala-provider-catalog-state {
+  color: color-mix(in srgb, var(--oa-color-component-text) 72%, transparent);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+.khala-provider-catalog-row[data-state="connected"] .khala-provider-catalog-state,
+.khala-provider-catalog-row[data-state="env_configured"] .khala-provider-catalog-state,
+.khala-provider-catalog-row[data-state="custom"] .khala-provider-catalog-state {
+  color: color-mix(in srgb, var(--oa-color-khala-success) 82%, var(--oa-color-component-text));
+}
+.khala-provider-catalog-row[data-state="paid"] .khala-provider-catalog-state {
+  color: color-mix(in srgb, var(--oa-color-khala-warning) 82%, var(--oa-color-component-text));
+}
+.khala-provider-catalog-action {
+  font: inherit;
+  font-size: 0.74rem;
+  padding: 0.34rem 0.55rem;
+  border-radius: 0.36rem;
+  border: 1px solid var(--oa-color-component-border);
+  background: var(--oa-color-component-surface);
+  color: var(--oa-color-component-text);
+}
+.khala-provider-catalog-action:hover {
+  background: var(--oa-color-component-surface-active);
+}
+.khala-provider-catalog-action:disabled {
+  opacity: 0.45;
+}
+.khala-provider-custom-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem 0.75rem;
+  padding-top: 0.35rem;
+}
+.khala-provider-custom-field {
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+}
+.khala-provider-custom-label {
+  color: color-mix(in srgb, var(--oa-color-component-text) 54%, transparent);
+  font-size: 0.72rem;
+}
+.khala-provider-custom-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: color-mix(in srgb, var(--oa-color-component-text) 70%, transparent);
+  font-size: 0.75rem;
+}
 
 @media (max-width: 760px) {
   .khala-settings-header {
@@ -6170,11 +6264,14 @@ button {
     gap: 0.25rem;
   }
   .khala-keybindings-toolbar,
-  .khala-keybindings-row {
+  .khala-keybindings-row,
+  .khala-provider-catalog-row,
+  .khala-provider-custom-form {
     grid-template-columns: minmax(0, 1fr);
   }
   .khala-keybindings-capture,
-  .khala-keybindings-action {
+  .khala-keybindings-action,
+  .khala-provider-catalog-action {
     justify-self: start;
   }
 }

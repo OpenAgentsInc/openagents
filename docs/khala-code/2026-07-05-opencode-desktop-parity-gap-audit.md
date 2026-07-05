@@ -423,9 +423,10 @@ OpenCode has provider/model/MCP management surfaces that Khala does not mirror:
 
 Khala has Codex settings projection, model/provider configuration reads and
 writes, Codex MCP/plugin/skill marketplace pass-through, and an Inbox for
-operator attention. It does not yet have OpenCode's provider catalog/connect
-flows, model visibility manager, MCP status picker, or per-session permission
-auto-accept UI.
+operator attention. The first provider-catalog slice landed in
+[#8461](https://github.com/OpenAgentsInc/openagents/issues/8461), but Khala
+still needs runtime-backed connect/disconnect authority, a model visibility
+manager, MCP status picker, and per-session permission auto-accept UI.
 
 ### 13. Settings, Themes, Locales, Notifications, And Sounds
 
@@ -656,6 +657,28 @@ Issue: add native file, directory, save, and clipboard-image bridges
   directory picker, save cancellation, clipboard unavailable, and clipboard
   image grant/read states. App-shell and preview tests cover renderer wiring and
   mutating RPC classification.
+
+Issue: add provider catalog, connection, and custom OpenAI-compatible provider
+UI ([#8461](https://github.com/OpenAgentsInc/openagents/issues/8461)).
+
+- Status: first implementation pass complete on 2026-07-05. Khala Code desktop
+  now has a provider catalog settings section projected from the existing Codex
+  settings/model-list surface, with connected, missing-auth, env-configured,
+  paid, disabled, and custom states. The section can select/disconnect through
+  the current `model_provider` config write path, validates custom
+  OpenAI-compatible provider metadata locally, and keeps API-key/secret values
+  out of renderer text and provider projections. This is intentionally aligned
+  with the AI SDK-shaped runtime direction: the renderer owns provider UX and
+  sanitized intent; Codex, Pylon, Fleet, and the Khala-owned runtime/server own
+  execution authority and credential handling.
+- Scope: provider catalog projection, connection/disconnection intent display,
+  custom OpenAI-compatible provider metadata validation, renderer settings
+  section, composer/provider selection continuity, and secret-blind tests.
+- Acceptance gates: tests cover provider list projection, connection next-step
+  intents, custom provider validation with URL credential scrubbing, settings
+  UI selection writes, and app-shell wiring. Remaining work is runtime-backed
+  provider registration, durable custom-provider storage, richer billing/auth
+  status, model visibility management, and MCP picker parity.
 
 Issue: add composer context and docks
 ([#8437](https://github.com/OpenAgentsInc/openagents/issues/8437)).
