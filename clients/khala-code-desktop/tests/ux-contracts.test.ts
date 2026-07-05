@@ -845,6 +845,7 @@ describe("contract khala_code.chat.sync_remote_thread_appears_without_restart.v1
 
     expect(listThreadsBody).toContain("controls.khalaSyncChatThreads")
     expect(listThreadsBody).toContain("khalaSyncChatCanDriveSidebar")
+    expect(listThreadsBody).toContain("khalaSyncChatThreadIds.add(thread.threadId)")
     expect(listThreadsBody).toContain("chat.threads.map(chatThreadToSidebarSummary)")
     expect(listThreadsBody).toContain("khala-sync-chat")
     expect(listThreadsBody).toContain("cachedSessionCatalog")
@@ -854,7 +855,11 @@ describe("contract khala_code.chat.sync_remote_thread_appears_without_restart.v1
 
     expect(main).toContain("const khalaSyncThreadCreateRequests = new Set<string>()")
     expect(main).toContain("controls.khalaSyncChatCreateThread")
+    expect(main).toContain("controls.khalaSyncChatMessages")
+    expect(main).toContain("controls.khalaSyncChatAppendMessage")
     expect(main).toContain("enqueueKhalaSyncChatThreadCreate({")
+    expect(main).toContain("khalaSyncThreadResult(threadId)")
+    expect(main).toContain("submitKhalaSyncChatMessage(submittedThreadId, message)")
     expect(main).toContain("khalaSyncChatRenameThread")
     expect(main).toContain("source: \"khala_sync_chat_thread\"")
   })

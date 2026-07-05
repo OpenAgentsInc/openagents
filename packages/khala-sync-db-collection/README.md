@@ -43,9 +43,10 @@ const collection = createCollection(
 ```
 
 `awaitMutation(session, mutationId, { tracker })` waits for the Khala Sync
-pending queue to ack the mutation id. If the tracker saw an in-band rejection
-for that same id, it rejects with `KhalaSyncDbCollectionError` instead of
-silently treating the optimistic row as confirmed.
+pending queue to ack the mutation id returned by `session.mutate`. If the
+tracker saw an in-band rejection for that same id, it rejects with
+`KhalaSyncDbCollectionError` instead of silently treating the optimistic row as
+confirmed.
 
 `loadSubset` delegates to the Khala Sync session catch-up path. TanStack's
 offset/cursor request is therefore answered by the session's durable scope
@@ -68,6 +69,18 @@ server supplies authoritative timestamps, so it defaults `awaitServerSync` to
 `chatThreadsForSidebar` is the shared sidebar projection for desktop and Start
 web consumers. It filters by title/thread id and sorts newest-first by
 `updatedAt`, with a stable `threadId` tie-breaker.
+
+## Chat message helper
+
+`chatMessageKhalaSyncCollectionOptions` binds a thread scope
+(`scope.thread.<threadId>`) to the `chat_message` entity type. Inserts map to
+`chat.appendMessage` and require a caller-supplied `messageId`, so mobile and
+desktop can submit idempotent control intents without leaking message bodies
+into the owner personal thread-list scope.
+
+`chatMessagesForTranscript` is the shared transcript projection. It removes
+soft-deleted messages and sorts by `createdAt`, with `messageId` as the stable
+tie-breaker.
 
 ## Verification
 

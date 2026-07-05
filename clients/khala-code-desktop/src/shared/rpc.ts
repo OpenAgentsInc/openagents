@@ -237,15 +237,20 @@ export type KhalaCodeDesktopKhalaSyncFleetStateResult = typeof RpcKhalaSyncFleet
 export type KhalaCodeDesktopKhalaSyncFleetMutateRequest = typeof RpcKhalaSyncFleetMutateRequest.Type
 export type KhalaCodeDesktopKhalaSyncFleetMutateResult = typeof RpcKhalaSyncFleetMutateResult.Type
 export type KhalaCodeDesktopKhalaSyncChatThread = typeof RpcKhalaSyncChatThread.Type
+export type KhalaCodeDesktopKhalaSyncChatMessage = typeof RpcKhalaSyncChatMessage.Type
 export type KhalaCodeDesktopKhalaSyncChatRejection = typeof RpcKhalaSyncChatRejection.Type
 export type KhalaCodeDesktopKhalaSyncChatThreadsRequest = typeof RpcKhalaSyncChatThreadsRequest.Type
 export type KhalaCodeDesktopKhalaSyncChatThreadsResult = typeof RpcKhalaSyncChatThreadsResult.Type
+export type KhalaCodeDesktopKhalaSyncChatMessagesRequest =
+  typeof RpcKhalaSyncChatMessagesRequest.Type
+export type KhalaCodeDesktopKhalaSyncChatMessagesResult =
+  typeof RpcKhalaSyncChatMessagesResult.Type
 export type KhalaCodeDesktopKhalaSyncChatCreateThreadRequest =
   typeof RpcKhalaSyncChatCreateThreadRequest.Type
-export type KhalaCodeDesktopKhalaSyncChatRenameThreadRequest =
-  typeof RpcKhalaSyncChatRenameThreadRequest.Type
 export type KhalaCodeDesktopKhalaSyncChatAppendMessageRequest =
   typeof RpcKhalaSyncChatAppendMessageRequest.Type
+export type KhalaCodeDesktopKhalaSyncChatRenameThreadRequest =
+  typeof RpcKhalaSyncChatRenameThreadRequest.Type
 export type KhalaCodeDesktopKhalaSyncChatMutationResult =
   typeof RpcKhalaSyncChatMutationResult.Type
 export type KhalaCodeDesktopForumRequest = typeof RpcForumRequest.Type
@@ -1870,6 +1875,15 @@ const RpcKhalaSyncChatThread = S.Struct({
   title: S.String,
   updatedAt: S.String,
 })
+const RpcKhalaSyncChatMessage = S.Struct({
+  authorUserId: S.String,
+  body: S.String,
+  createdAt: S.String,
+  deletedAt: RpcStringNull,
+  messageId: S.String,
+  threadId: S.String,
+  updatedAt: S.String,
+})
 const RpcKhalaSyncChatRejection = S.Struct({
   errorCode: S.String,
   messageSafe: S.String,
@@ -1895,21 +1909,40 @@ const RpcKhalaSyncChatThreadsResult = S.Struct({
   rejections: S.Array(RpcKhalaSyncChatRejection),
   threads: S.Array(RpcKhalaSyncChatThread),
 })
+const RpcKhalaSyncChatMessagesRequest = S.Struct({
+  limit: S.optional(S.Number),
+  threadId: S.String,
+})
+const RpcKhalaSyncChatMessagesResult = S.Struct({
+  authState: S.Literals(["connected", "missing"]),
+  cursor: S.NullOr(S.Number),
+  enabled: S.Boolean,
+  error: S.optional(S.String),
+  messages: S.Array(RpcKhalaSyncChatMessage),
+  ok: S.Boolean,
+  ownerUserId: RpcStringNull,
+  pendingMutations: S.Number,
+  phase: RpcKhalaSyncFleetPhase,
+  reason: RpcStringNull,
+  rejections: S.Array(RpcKhalaSyncChatRejection),
+  threadId: S.String,
+})
 const RpcKhalaSyncChatCreateThreadRequest = S.Struct({
   threadId: S.String,
   title: S.String,
+})
+const RpcKhalaSyncChatAppendMessageRequest = S.Struct({
+  body: S.String,
+  messageId: S.String,
+  threadId: S.String,
 })
 const RpcKhalaSyncChatRenameThreadRequest = S.Struct({
   threadId: S.String,
   title: S.String,
 })
-const RpcKhalaSyncChatAppendMessageRequest = S.Struct({
-  threadId: S.String,
-  messageId: S.String,
-  body: S.String,
-})
 const RpcKhalaSyncChatMutationResult = S.Struct({
   error: S.optional(S.String),
+  messageId: S.optional(S.String),
   ok: S.Boolean,
   threadId: S.String,
 })
@@ -2337,9 +2370,10 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   khalaSyncFleetState: { parameters: [param(RpcKhalaSyncFleetStateRequest)], result: RpcKhalaSyncFleetStateResult },
   khalaSyncFleetMutate: { parameters: [param(RpcKhalaSyncFleetMutateRequest)], result: RpcKhalaSyncFleetMutateResult },
   khalaSyncChatThreads: { parameters: [optionalParam(RpcKhalaSyncChatThreadsRequest)], result: RpcKhalaSyncChatThreadsResult },
+  khalaSyncChatMessages: { parameters: [param(RpcKhalaSyncChatMessagesRequest)], result: RpcKhalaSyncChatMessagesResult },
   khalaSyncChatCreateThread: { parameters: [param(RpcKhalaSyncChatCreateThreadRequest)], result: RpcKhalaSyncChatMutationResult },
-  khalaSyncChatRenameThread: { parameters: [param(RpcKhalaSyncChatRenameThreadRequest)], result: RpcKhalaSyncChatMutationResult },
   khalaSyncChatAppendMessage: { parameters: [param(RpcKhalaSyncChatAppendMessageRequest)], result: RpcKhalaSyncChatMutationResult },
+  khalaSyncChatRenameThread: { parameters: [param(RpcKhalaSyncChatRenameThreadRequest)], result: RpcKhalaSyncChatMutationResult },
   forumRequest: { parameters: [param(RpcForumRequest)], result: RpcForumResponse },
   khalaCodePlanCatalog: { parameters: noParams(), result: RpcKhalaCodePlanCatalogResult },
   khalaCodePlanStatus: { parameters: noParams(), result: RpcKhalaCodePlanStatusResult },
@@ -2509,9 +2543,10 @@ export type KhalaCodeDesktopRPCSchema = {
     khalaSyncFleetState(request: KhalaCodeDesktopKhalaSyncFleetStateRequest): Promise<KhalaCodeDesktopKhalaSyncFleetStateResult>
     khalaSyncFleetMutate(request: KhalaCodeDesktopKhalaSyncFleetMutateRequest): Promise<KhalaCodeDesktopKhalaSyncFleetMutateResult>
     khalaSyncChatThreads(request?: KhalaCodeDesktopKhalaSyncChatThreadsRequest): Promise<KhalaCodeDesktopKhalaSyncChatThreadsResult>
+    khalaSyncChatMessages(request: KhalaCodeDesktopKhalaSyncChatMessagesRequest): Promise<KhalaCodeDesktopKhalaSyncChatMessagesResult>
     khalaSyncChatCreateThread(request: KhalaCodeDesktopKhalaSyncChatCreateThreadRequest): Promise<KhalaCodeDesktopKhalaSyncChatMutationResult>
-    khalaSyncChatRenameThread(request: KhalaCodeDesktopKhalaSyncChatRenameThreadRequest): Promise<KhalaCodeDesktopKhalaSyncChatMutationResult>
     khalaSyncChatAppendMessage(request: KhalaCodeDesktopKhalaSyncChatAppendMessageRequest): Promise<KhalaCodeDesktopKhalaSyncChatMutationResult>
+    khalaSyncChatRenameThread(request: KhalaCodeDesktopKhalaSyncChatRenameThreadRequest): Promise<KhalaCodeDesktopKhalaSyncChatMutationResult>
     forumRequest(request: KhalaCodeDesktopForumRequest): Promise<KhalaCodeDesktopForumResponse>
     khalaCodePlanCatalog(): Promise<KhalaCodeDesktopPlanCatalogResult>
     khalaCodePlanStatus(): Promise<KhalaCodeDesktopPlanStatusResult>

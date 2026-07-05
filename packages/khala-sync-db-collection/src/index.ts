@@ -9,15 +9,19 @@ import type {
 } from "@tanstack/db"
 import {
   canonicalJson,
+  CHAT_MESSAGE_ENTITY_TYPE,
   CHAT_THREAD_ENTITY_TYPE,
+  decodeChatMessageEntity,
   decodeChatThreadEntity,
   decodeFleetRunEntity,
+  encodeChatMessageEntity,
   encodeChatThreadEntity,
   encodeFleetRunEntity,
   FLEET_RUN_ENTITY_TYPE,
   fleetRunScope,
   personalScope,
   threadScope,
+  type ChatMessageEntity,
   type ChatThreadEntity,
   type FleetRunEntity,
   MutationId,
@@ -153,6 +157,22 @@ export const awaitMutation = async (
     }
 
     if (!mutationStillPending(session, mutationId)) {
+      await sleep(0)
+      const lateRejection = options.tracker?.getRejection(mutationId)
+      if (lateRejection !== undefined) {
+        throw new KhalaSyncDbCollectionError(
+          "khala_sync_db_collection.mutation_rejected",
+          {
+            collection: options.collection ?? "unknown",
+            messageSafe:
+              lateRejection.result.errorMessageSafe ??
+              lateRejection.result.errorCode ??
+              "Khala Sync mutation was rejected",
+            mutationId: Number(mutationId),
+            scope: options.scope ?? "unknown",
+          },
+        )
+      }
       return new MutationResult({
         mutationId,
         status: "applied",
@@ -265,25 +285,6 @@ const hasExpectedPatch = <T extends object>(
     valuesMatch((row as Record<string, unknown>)[key], value),
   )
 
-const captureNewMutationId = (
-  beforeIds: ReadonlySet<number>,
-  session: KhalaSyncSession,
-  fallbackMutationId: number,
-): MutationId => {
-  const created = session
-    .pending()
-    .filter(pending => !beforeIds.has(Number(pending.mutationId)))
-    .sort((a, b) => Number(a.mutationId) - Number(b.mutationId))
-
-  const first = created[0]
-  if (first !== undefined) return first.mutationId
-
-  return MutationId.make(fallbackMutationId)
-}
-
-const pendingIds = (session: KhalaSyncSession): ReadonlySet<number> =>
-  new Set(session.pending().map(pending => Number(pending.mutationId)))
-
 export const khalaSyncCollectionOptions = <
   T extends object,
   TKey extends string | number = string,
@@ -299,7 +300,6 @@ export const khalaSyncCollectionOptions = <
   let disposed = false
   let publishQueue: Promise<void> = Promise.resolve()
   let mutationQueue: Promise<unknown> = Promise.resolve()
-  let lastObservedMutationId = Math.max(0, ...pendingIds(options.session))
 
   const recordError = (error: KhalaSyncDbCollectionError): void => {
     lastError = error
@@ -534,9 +534,7 @@ export const khalaSyncCollectionOptions = <
     }
 
     const command = await mapper(mutation)
-    const before = pendingIds(options.session)
-    const fallbackMutationId = Math.max(lastObservedMutationId, ...before) + 1
-    await runEffect(options.session.mutate(command.mutator, command.args)).catch(
+    const mutationId = await runEffect(options.session.mutate(command.mutator, command.args)).catch(
       cause => {
         throw makeError(
           "khala_sync_db_collection.session_failure",
@@ -545,8 +543,6 @@ export const khalaSyncCollectionOptions = <
         )
       },
     )
-    const mutationId = captureNewMutationId(before, options.session, fallbackMutationId)
-    lastObservedMutationId = Math.max(lastObservedMutationId, Number(mutationId))
     await awaitMutationForCollection(mutationId)
     await waitForMutationRow(mutation)
     await schedulePublish("mutation")
@@ -707,6 +703,27 @@ export const chatThreadsForSidebar = (
     .sort(compareChatThreadsForSidebar)
 }
 
+const chatMessageTimestampMs = (value: string): number => {
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+export const compareChatMessagesForTranscript = (
+  left: ChatMessageEntity,
+  right: ChatMessageEntity,
+): number => {
+  const created = chatMessageTimestampMs(left.createdAt) - chatMessageTimestampMs(right.createdAt)
+  if (created !== 0) return created
+  return left.messageId.localeCompare(right.messageId)
+}
+
+export const chatMessagesForTranscript = (
+  messages: Iterable<ChatMessageEntity>,
+): Array<ChatMessageEntity> =>
+  [...messages]
+    .filter(message => message.deletedAt === null)
+    .sort(compareChatMessagesForTranscript)
+
 const baselineChatThread = (
   args: ChatCreateThreadArgs,
   options: ChatClientMutatorOptions,
@@ -742,6 +759,16 @@ const chatThreadOverlayEffects = (
     scope: threadScope(entity.threadId),
   },
 ]
+
+const chatMessageOverlayEffect = (
+  entity: ChatMessageEntity,
+): ReturnType<ClientMutator<ChatAppendMessageArgs>["apply"]>[number] => ({
+  entityId: entity.messageId,
+  entityType: CHAT_MESSAGE_ENTITY_TYPE,
+  kind: "upsert",
+  postImageJson: canonicalJson(encodeChatMessageEntity(entity)),
+  scope: threadScope(entity.threadId),
+})
 
 export const chatCreateThreadClientMutator = (
   options: ChatClientMutatorOptions,
@@ -779,19 +806,32 @@ export const chatAppendMessageClientMutator = (
   options: ChatClientMutatorOptions,
 ): ClientMutator<ChatAppendMessageArgs> => ({
   apply: (args, view) => {
-    const scope = personalScope(options.ownerUserId)
-    const currentJson = view.get(scope, CHAT_THREAD_ENTITY_TYPE, args.threadId)
+    const currentJson =
+      view.get(personalScope(options.ownerUserId), CHAT_THREAD_ENTITY_TYPE, args.threadId) ??
+      view.get(threadScope(args.threadId), CHAT_THREAD_ENTITY_TYPE, args.threadId)
     if (currentJson === undefined) return []
     const current = decodeChatThreadEntity(JSON.parse(currentJson) as unknown)
     const now = (options.now ?? defaultNowIso)()
-    return chatThreadOverlayEffects(
-      decodeChatThreadEntity({
-        ...current,
-        lastMessageAt: now,
-        messageCount: current.messageCount + 1,
-        updatedAt: now,
-      }),
-    )
+    const message = decodeChatMessageEntity({
+      authorUserId: options.ownerUserId,
+      body: args.body,
+      createdAt: now,
+      deletedAt: null,
+      messageId: args.messageId,
+      threadId: args.threadId,
+      updatedAt: now,
+    })
+    return [
+      ...chatThreadOverlayEffects(
+        decodeChatThreadEntity({
+          ...current,
+          lastMessageAt: now,
+          messageCount: current.messageCount + 1,
+          updatedAt: now,
+        }),
+      ),
+      chatMessageOverlayEffect(message),
+    ]
   },
   name: MutatorName.make(CHAT_APPEND_MESSAGE_MUTATOR_NAME),
 })
@@ -950,6 +990,53 @@ export const chatThreadKhalaSyncCollectionOptions = (
             title,
           },
           mutator: renameThreadMutator,
+        }
+      },
+    },
+  })
+}
+
+export type ChatMessageCollectionOptions = Omit<
+  KhalaSyncCollectionOptions<ChatMessageEntity, string>,
+  "collection" | "decode" | "entityIdFromKey" | "getKey" | "mutators"
+> &
+  Readonly<{
+    appendMessageMutator?: ClientMutator<ChatAppendMessageArgs>
+  }>
+
+export const chatMessageKhalaSyncCollectionOptions = (
+  options: ChatMessageCollectionOptions,
+): CollectionConfig<ChatMessageEntity, string, never, KhalaSyncCollectionUtils> => {
+  const appendMessageMutator = options.appendMessageMutator
+
+  return khalaSyncCollectionOptions<ChatMessageEntity, string>({
+    ...options,
+    awaitServerSync: options.awaitServerSync ?? false,
+    collection: CHAT_MESSAGE_ENTITY_TYPE,
+    decode: entity =>
+      decodeChatMessageEntity(JSON.parse(entity.postImageJson) as unknown),
+    entityIdFromKey: key => key,
+    getKey: row => row.messageId,
+    mutators: {
+      insert: mutation => {
+        if (appendMessageMutator === undefined) {
+          throw new KhalaSyncDbCollectionError(
+            "khala_sync_db_collection.missing_mutator",
+            {
+              collection: CHAT_MESSAGE_ENTITY_TYPE,
+              messageSafe:
+                "chat_message inserts require a chat.appendMessage mutator",
+              scope: options.scope,
+            },
+          )
+        }
+        return {
+          args: {
+            body: mutation.modified.body,
+            messageId: mutation.modified.messageId,
+            threadId: mutation.modified.threadId,
+          },
+          mutator: appendMessageMutator,
         }
       },
     },

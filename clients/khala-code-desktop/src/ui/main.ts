@@ -50,6 +50,7 @@ import {
   type KhalaCodeDesktopChatTurnRequest,
   type KhalaCodeDesktopFleetRunListResult,
   type KhalaCodeDesktopFleetStatus,
+  type KhalaCodeDesktopKhalaSyncChatMessage,
   type KhalaCodeDesktopKhalaSyncChatThread,
   type KhalaCodeDesktopMessage,
   type KhalaCodeDesktopMessageRole,
@@ -274,18 +275,22 @@ const previewRpc = (): DesktopRpc => ({
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["khalaSyncChatThreads"]>>
       >("khalaSyncChatThreads", request),
+    khalaSyncChatMessages: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["khalaSyncChatMessages"]>>
+      >("khalaSyncChatMessages", request),
     khalaSyncChatCreateThread: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["khalaSyncChatCreateThread"]>>
       >("khalaSyncChatCreateThread", request),
-    khalaSyncChatRenameThread: request =>
-      postPreviewRpc<
-        Awaited<ReturnType<DesktopRpcRequests["khalaSyncChatRenameThread"]>>
-      >("khalaSyncChatRenameThread", request),
     khalaSyncChatAppendMessage: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["khalaSyncChatAppendMessage"]>>
       >("khalaSyncChatAppendMessage", request),
+    khalaSyncChatRenameThread: request =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["khalaSyncChatRenameThread"]>>
+      >("khalaSyncChatRenameThread", request),
     forumRequest: request =>
       postPreviewRpc<
         Awaited<ReturnType<DesktopRpcRequests["forumRequest"]>>
@@ -857,6 +862,7 @@ const QA_METRIC_SAMPLE_LIMIT = 240
 const TRANSCRIPT_SCROLL_SAMPLE_FRAME_COUNT = 12
 const threadMessageCache = new Map<string, readonly KhalaCodeDesktopMessage[]>()
 const threadPrefetches = new Map<string, Promise<void>>()
+const khalaSyncChatThreadIds = new Set<string>()
 const threadListCache = new Map<string, {
   readonly cachedAt: number
   readonly result: Awaited<ReturnType<DesktopRpcRequests["sessionCatalog"]>>
@@ -3470,6 +3476,28 @@ const queueFollowUpDraft = (text: string): void => {
   requestAnimationFrame(focusComposerInput)
 }
 
+const submitKhalaSyncChatMessage = async (
+  threadId: string,
+  message: KhalaCodeDesktopMessage,
+): Promise<void> => {
+  const result = await controls.khalaSyncChatAppendMessage({
+    body: message.body,
+    messageId: message.id,
+    threadId,
+  })
+  if (!result.ok) {
+    shellModel().lastTurnFailed = true
+    appendMessages([{
+      body: `Khala Sync append failed: ${result.error ?? "unknown error"}`,
+      id: nextMessageId("system"),
+      role: "system",
+    }])
+    return
+  }
+  cacheVisibleThreadMessages()
+  void threadSidebar?.refresh()
+}
+
 const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
   if (shellModel().pendingTurn) {
     const draftText = composerInput.value.trim()
@@ -3520,9 +3548,14 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
   shellModel().lastSubmittedDraft = draftText
   shellModel().lastTurnFailed = false
   resetComposerDraft()
-  const message = addMessage("user", body)
-  const turnId = nextTurnId()
   const submittedThreadId = shellModel().activeCodexThreadId
+  const message = addMessage("user", body)
+  if (submittedThreadId !== null && khalaSyncChatThreadIds.has(submittedThreadId)) {
+    await submitKhalaSyncChatMessage(submittedThreadId, message)
+    requestAnimationFrame(focusComposerInput)
+    return message
+  }
+  const turnId = nextTurnId()
   activeTurnIds.add(turnId)
   streamingThreadIds.set(turnId, submittedThreadId)
   recomputePendingTurnForActiveThread()
@@ -3913,12 +3946,14 @@ const controls = {
     rpc.request.khalaSyncFleetMutate(request),
   khalaSyncChatThreads: (request?: Parameters<DesktopRpcRequests["khalaSyncChatThreads"]>[0]) =>
     rpc.request.khalaSyncChatThreads(request),
+  khalaSyncChatMessages: (request: Parameters<DesktopRpcRequests["khalaSyncChatMessages"]>[0]) =>
+    rpc.request.khalaSyncChatMessages(request),
   khalaSyncChatCreateThread: (request: Parameters<DesktopRpcRequests["khalaSyncChatCreateThread"]>[0]) =>
     rpc.request.khalaSyncChatCreateThread(request),
-  khalaSyncChatRenameThread: (request: Parameters<DesktopRpcRequests["khalaSyncChatRenameThread"]>[0]) =>
-    rpc.request.khalaSyncChatRenameThread(request),
   khalaSyncChatAppendMessage: (request: Parameters<DesktopRpcRequests["khalaSyncChatAppendMessage"]>[0]) =>
     rpc.request.khalaSyncChatAppendMessage(request),
+  khalaSyncChatRenameThread: (request: Parameters<DesktopRpcRequests["khalaSyncChatRenameThread"]>[0]) =>
+    rpc.request.khalaSyncChatRenameThread(request),
   forumRequest: (request: Parameters<DesktopRpcRequests["forumRequest"]>[0]) =>
     rpc.request.forumRequest(request),
   khalaCodePlanCatalog: () => rpc.request.khalaCodePlanCatalog(),
@@ -4467,6 +4502,35 @@ const chatThreadToSidebarSummary = (
   }
 }
 
+const khalaSyncChatMessageToDesktopMessage = (
+  message: KhalaCodeDesktopKhalaSyncChatMessage,
+): KhalaCodeDesktopMessage => ({
+  body: message.body,
+  id: message.messageId,
+  role: "user",
+})
+
+const khalaSyncThreadResult = async (
+  threadId: string,
+): Promise<Awaited<ReturnType<DesktopRpcRequests["codexThreadResume"]>>> => {
+  const result = await controls.khalaSyncChatMessages({
+    limit: 500,
+    threadId,
+  })
+  if (!result.ok) {
+    throw new Error(result.error ?? "Khala Sync chat messages unavailable")
+  }
+  return {
+    ok: true as const,
+    messages: result.messages.map(khalaSyncChatMessageToDesktopMessage),
+    thread: {
+      source: "khala_sync_chat_thread",
+      threadId,
+    },
+    threadId,
+  }
+}
+
 const khalaSyncChatCanDriveSidebar = (
   result: Awaited<ReturnType<DesktopRpcRequests["khalaSyncChatThreads"]>>,
 ): boolean =>
@@ -4549,6 +4613,8 @@ const threadSidebar =
               searchTerm: request.searchTerm,
             })
             if (khalaSyncChatCanDriveSidebar(chat)) {
+              khalaSyncChatThreadIds.clear()
+              for (const thread of chat.threads) khalaSyncChatThreadIds.add(thread.threadId)
               const threads = chat.threads.map(chatThreadToSidebarSummary)
               return {
                 ok: true as const,
@@ -4567,6 +4633,7 @@ const threadSidebar =
             // Fall back to the local catalog when the sync bridge is absent or
             // rejected before it can report its explicit disabled state.
           }
+          khalaSyncChatThreadIds.clear()
           let catalog: Awaited<ReturnType<DesktopRpcRequests["sessionCatalog"]>>
           try {
             catalog = await cachedSessionCatalog({
@@ -4603,7 +4670,10 @@ const threadSidebar =
           if (synced?.ok === true) return { action: "rename" as const, ok: true, threadId }
           return controls.codexThreadRename({ name, threadId })
         },
-        resumeThread: threadId => controls.codexThreadResume({ sessionId, threadId }),
+        resumeThread: threadId =>
+          khalaSyncChatThreadIds.has(threadId)
+            ? khalaSyncThreadResult(threadId)
+            : controls.codexThreadResume({ sessionId, threadId }),
         sessionId,
         unarchiveThread: async threadId => {
           clearThreadListCache()

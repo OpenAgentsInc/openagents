@@ -3,6 +3,7 @@ import {
   BootstrapEntity,
   type BootstrapRequest,
   BootstrapResponse,
+  CHAT_MESSAGE_ENTITY_TYPE,
   CHAT_THREAD_ENTITY_TYPE,
   canonicalJson,
   ChangelogEntry,
@@ -22,13 +23,17 @@ import {
   type SyncScope,
   SyncVersion,
   SyncVersionWatermark,
+  decodeChatMessageEntity,
   decodeChatThreadEntity,
   decodeFleetRunEntity,
+  encodeChatMessageEntity,
   encodeChatThreadEntity,
   encodeFleetRunEntity,
   FLEET_RUN_ENTITY_TYPE,
   fleetRunScope,
   personalScope,
+  threadScope,
+  type ChatMessageEntity,
   type ChatThreadEntity,
   type FleetRunEntity,
 } from "@openagentsinc/khala-sync"
@@ -44,11 +49,16 @@ import {
 import { afterEach, describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import {
+  CHAT_APPEND_MESSAGE_MUTATOR_NAME,
   CHAT_CREATE_THREAD_MUTATOR_NAME,
   CHAT_RENAME_THREAD_MUTATOR_NAME,
+  chatAppendMessageClientMutator,
   chatCreateThreadClientMutator,
+  chatMessageKhalaSyncCollectionOptions,
+  chatMessagesForTranscript,
   chatRenameThreadClientMutator,
   chatThreadKhalaSyncCollectionOptions,
+  type ChatAppendMessageArgs,
   type ChatCreateThreadArgs,
   type ChatRenameThreadArgs,
   chatThreadsForSidebar,
@@ -209,8 +219,25 @@ class FleetFakeServer {
       : decodeChatThreadEntity(JSON.parse(row.postImageJson) as unknown)
   }
 
-  commitChatThread(row: ChatThreadEntity, mutationRef?: string): number {
-    const scope = personalScope(row.ownerUserId)
+  currentChatMessage(threadId: string, messageId: string): ChatMessageEntity | null {
+    const scope = threadScope(threadId)
+    const row = this
+      .fold(scope, this.lastVersion(scope))
+      .find(
+        entity =>
+          entity.entityType === CHAT_MESSAGE_ENTITY_TYPE &&
+          entity.entityId === messageId,
+      )
+    return row === undefined
+      ? null
+      : decodeChatMessageEntity(JSON.parse(row.postImageJson) as unknown)
+  }
+
+  commitChatThreadToScope(
+    scope: SyncScope,
+    row: ChatThreadEntity,
+    mutationRef?: string,
+  ): number {
     const version = this.lastVersion(scope) + 1
     const entry = new ChangelogEntry({
       committedAt: FIXED_TIME,
@@ -219,6 +246,41 @@ class FleetFakeServer {
       ...(mutationRef !== undefined ? { mutationRef } : {}),
       op: "upsert",
       postImageJson: canonicalJson(encodeChatThreadEntity(row)),
+      scope,
+      version: SyncVersion.make(version),
+    })
+    this.logOf(scope).push(entry)
+    this.emitFrame(
+      scope,
+      new DeltaFrame({
+        cursor: SyncVersion.make(version),
+        entries: [entry],
+        scope,
+      }),
+    )
+    return version
+  }
+
+  commitChatThread(row: ChatThreadEntity, mutationRef?: string): number {
+    const ownerVersion = this.commitChatThreadToScope(
+      personalScope(row.ownerUserId),
+      row,
+      mutationRef,
+    )
+    this.commitChatThreadToScope(threadScope(row.threadId), row, mutationRef)
+    return ownerVersion
+  }
+
+  commitChatMessage(row: ChatMessageEntity, mutationRef?: string): number {
+    const scope = threadScope(row.threadId)
+    const version = this.lastVersion(scope) + 1
+    const entry = new ChangelogEntry({
+      committedAt: FIXED_TIME,
+      entityId: EntityId.make(row.messageId),
+      entityType: EntityType.make(CHAT_MESSAGE_ENTITY_TYPE),
+      ...(mutationRef !== undefined ? { mutationRef } : {}),
+      op: "upsert",
+      postImageJson: canonicalJson(encodeChatMessageEntity(row)),
       scope,
       version: SyncVersion.make(version),
     })
@@ -375,6 +437,63 @@ class FleetFakeServer {
           }),
           `mut.${clientKey}.${mutation.mutationId}`,
         )
+        last = mutation.mutationId
+        results.push(
+          new MutationResult({
+            mutationId: mutation.mutationId,
+            status: "applied",
+          }),
+        )
+        continue
+      }
+
+      if (mutation.name === CHAT_APPEND_MESSAGE_MUTATOR_NAME) {
+        const args = JSON.parse(mutation.argsJson) as ChatAppendMessageArgs
+        const ownerUserId = "user-chat-owner"
+        const current = this.currentChatThread(ownerUserId, args.threadId)
+        if (current === null) {
+          last = mutation.mutationId
+          results.push(
+            new MutationResult({
+              errorCode: "thread_not_found",
+              errorMessageSafe: "this chat thread does not exist",
+              mutationId: mutation.mutationId,
+              status: "rejected",
+            }),
+          )
+          continue
+        }
+        if (this.currentChatMessage(args.threadId, args.messageId) !== null) {
+          last = mutation.mutationId
+          results.push(
+            new MutationResult({
+              errorCode: "message_exists",
+              errorMessageSafe: "this chat message already exists",
+              mutationId: mutation.mutationId,
+              status: "rejected",
+            }),
+          )
+          continue
+        }
+        const message = decodeChatMessageEntity({
+          authorUserId: ownerUserId,
+          body: args.body,
+          createdAt: UPDATED_TIME,
+          deletedAt: null,
+          messageId: args.messageId,
+          threadId: args.threadId,
+          updatedAt: UPDATED_TIME,
+        })
+        this.commitChatThread(
+          decodeChatThreadEntity({
+            ...current,
+            lastMessageAt: UPDATED_TIME,
+            messageCount: current.messageCount + 1,
+            updatedAt: UPDATED_TIME,
+          }),
+          `mut.${clientKey}.${mutation.mutationId}`,
+        )
+        this.commitChatMessage(message, `mut.${clientKey}.${mutation.mutationId}`)
         last = mutation.mutationId
         results.push(
           new MutationResult({
@@ -554,6 +673,7 @@ const createChatThreadCollection = (
   harness: Awaited<ReturnType<typeof makeHarness>>,
   ownerUserId: string,
   mutators?: {
+    readonly appendMessage?: ClientMutator<ChatAppendMessageArgs>
     readonly createThread: ClientMutator<ChatCreateThreadArgs>
     readonly renameThread: ClientMutator<ChatRenameThreadArgs>
   },
@@ -573,6 +693,29 @@ const createChatThreadCollection = (
       overlay: harness.overlay,
       ownerUserId,
       scope: personalScope(ownerUserId),
+      session: harness.session,
+      sleep: () => tick(),
+      startSync: true,
+    }),
+  )
+
+const createChatMessageCollection = (
+  harness: Awaited<ReturnType<typeof makeHarness>>,
+  threadId: string,
+  mutators?: {
+    readonly appendMessage: ClientMutator<ChatAppendMessageArgs>
+  },
+) =>
+  createCollection(
+    chatMessageKhalaSyncCollectionOptions({
+      awaitMutationPollIntervalMs: 0,
+      awaitMutationTimeoutMs: 1_000,
+      ...(mutators === undefined
+        ? {}
+        : { appendMessageMutator: mutators.appendMessage }),
+      mutationTracker: harness.tracker,
+      overlay: harness.overlay,
+      scope: threadScope(threadId),
       session: harness.session,
       sleep: () => tick(),
       startSync: true,
@@ -682,11 +825,15 @@ describe("chatThreadKhalaSyncCollectionOptions / chat_thread", () => {
       now: () => FIXED_TIME,
       ownerUserId,
     })
+    const appendMessage = chatAppendMessageClientMutator({
+      now: () => UPDATED_TIME,
+      ownerUserId,
+    })
     const renameThread = chatRenameThreadClientMutator({
       now: () => UPDATED_TIME,
       ownerUserId,
     })
-    const mutators = [createThread, renameThread]
+    const mutators = [createThread, appendMessage, renameThread]
     const clientA = await makeHarness(server, {
       clientGroupId: "cg_chat_a",
       clientId: "c_chat_a",
@@ -702,13 +849,24 @@ describe("chatThreadKhalaSyncCollectionOptions / chat_thread", () => {
       renameThread,
     })
     const collectionB = createChatThreadCollection(clientB, ownerUserId, {
+      appendMessage,
       createThread,
       renameThread,
     })
+    const messagesA = createChatMessageCollection(clientA, "thread.remote.a", {
+      appendMessage,
+    })
+    const messagesB = createChatMessageCollection(clientB, "thread.remote.a", {
+      appendMessage,
+    })
 
     await waitFor(
-      () => collectionA.isReady() && collectionB.isReady(),
-      "both chat collections ready",
+      () =>
+        collectionA.isReady() &&
+        collectionB.isReady() &&
+        messagesA.isReady() &&
+        messagesB.isReady(),
+      "both chat thread/message collections ready",
     )
 
     const createTx = collectionA.insert(
@@ -737,6 +895,34 @@ describe("chatThreadKhalaSyncCollectionOptions / chat_thread", () => {
     )
     expect(clientA.session.pending()).toEqual([])
     expect(clientB.session.pending()).toEqual([])
+
+    const appendTx = messagesA.insert(
+      decodeChatMessageEntity({
+        authorUserId: ownerUserId,
+        body: "hello from client A",
+        createdAt: UPDATED_TIME,
+        deletedAt: null,
+        messageId: "chat-message.remote.a.1",
+        threadId: "thread.remote.a",
+        updatedAt: UPDATED_TIME,
+      }),
+    )
+    expect(messagesA.get("chat-message.remote.a.1")?.body).toBe(
+      "hello from client A",
+    )
+    await appendTx.isPersisted.promise
+
+    await waitFor(
+      () => messagesB.get("chat-message.remote.a.1")?.body === "hello from client A",
+      "client B observed appended message through thread scope",
+    )
+    expect(
+      chatMessagesForTranscript(messagesB.values()).map(message => message.messageId),
+    ).toEqual(["chat-message.remote.a.1"])
+    await waitFor(
+      () => collectionB.get("thread.remote.a")?.messageCount === 1,
+      "client B observed thread metadata update after append",
+    )
 
     const renameTx = collectionA.update("thread.remote.a", draft => {
       draft.title = "Renamed from client A"
@@ -770,6 +956,7 @@ describe("chatThreadKhalaSyncCollectionOptions / chat_thread", () => {
     ).toEqual(["thread.remote.a", "thread.older"])
     expect(server.pushCalls.flat().map(call => call.name)).toEqual([
       CHAT_CREATE_THREAD_MUTATOR_NAME,
+      CHAT_APPEND_MESSAGE_MUTATOR_NAME,
       CHAT_RENAME_THREAD_MUTATOR_NAME,
     ])
   })

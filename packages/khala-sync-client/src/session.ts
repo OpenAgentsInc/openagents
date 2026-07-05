@@ -186,7 +186,7 @@ export interface KhalaSyncSession {
   readonly mutate: <Args>(
     mutator: ClientMutator<Args>,
     args: Args,
-  ) => Effect.Effect<void, OverlayError>
+  ) => Effect.Effect<MutationId, OverlayError>
   /** Stop all loops and sockets. The session cannot be restarted. */
   readonly close: () => Effect.Effect<void>
 }
@@ -965,13 +965,13 @@ export const createKhalaSyncSession = (
   const mutate = <Args>(
     mutator: ClientMutator<Args>,
     args: Args,
-  ): Effect.Effect<void, OverlayError> =>
-    Effect.asVoid(
-      Effect.tap(overlay.mutate(mutator, args), () =>
+  ): Effect.Effect<MutationId, OverlayError> =>
+    Effect.tap(
+      overlay.mutate(mutator, args),
+      () =>
         Effect.sync(() => {
           kickPush()
         }),
-      ),
     )
 
   const close = (): Effect.Effect<void> =>

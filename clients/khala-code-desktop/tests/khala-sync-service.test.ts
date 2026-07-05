@@ -3,10 +3,16 @@ import {
   BootstrapEntity,
   BootstrapResponse,
   type BootstrapRequest,
+  CHAT_MESSAGE_ENTITY_TYPE,
+  CHAT_THREAD_ENTITY_TYPE,
   canonicalJson,
   ChangelogEntry,
   EntityId,
   EntityType,
+  decodeChatMessageEntity,
+  decodeChatThreadEntity,
+  encodeChatMessageEntity,
+  encodeChatThreadEntity,
   fleetRunScope,
   LogPage,
   MustRefetchFrame,
@@ -16,6 +22,10 @@ import {
   SyncVersionWatermark,
   type MutationEnvelope,
   type SyncScope,
+  personalScope,
+  threadScope,
+  type ChatMessageEntity,
+  type ChatThreadEntity,
 } from "@openagentsinc/khala-sync"
 import {
   KhalaSyncTransportError,
@@ -23,6 +33,11 @@ import {
   type LiveSocketHandlers,
 } from "@openagentsinc/khala-sync-client"
 import { Effect } from "effect"
+import {
+  CHAT_APPEND_MESSAGE_MUTATOR_NAME,
+  CHAT_CREATE_THREAD_MUTATOR_NAME,
+  CHAT_RENAME_THREAD_MUTATOR_NAME,
+} from "@openagentsinc/khala-sync-db-collection"
 import {
   createKhalaCodeDesktopKhalaSyncService,
   FLEET_ACKNOWLEDGE_INBOX_FLAG_MUTATOR_NAME,
@@ -358,6 +373,306 @@ const makeHarness = (
   return { server, service, env }
 }
 
+const CHAT_OWNER_ID = "user-chat-owner"
+const CHAT_THREAD_ID = "thread.remote.test"
+const CHAT_MESSAGE_ID = "chat-message.remote.test.1"
+
+class FakeChatSyncServer {
+  readonly logs = new Map<SyncScope, Array<ChangelogEntry>>()
+  readonly sockets = new Map<SyncScope, { handlers: LiveSocketHandlers; open: boolean }>()
+  readonly seenAuthTokens: Array<string> = []
+  readonly seenScopes: Array<SyncScope> = []
+  readonly pushedMutations: Array<MutationEnvelope> = []
+  clientLastMutationId = 0
+  holdPushes = false
+  rejectPushes = false
+
+  logOf(scope: SyncScope): Array<ChangelogEntry> {
+    let log = this.logs.get(scope)
+    if (log === undefined) {
+      log = []
+      this.logs.set(scope, log)
+    }
+    return log
+  }
+
+  lastVersion(scope: SyncScope): number {
+    const log = this.logOf(scope)
+    return log.length === 0 ? 0 : log[log.length - 1]!.version
+  }
+
+  fold(scope: SyncScope): Array<FakeEntry> {
+    const state = new Map<string, FakeEntry>()
+    for (const entry of this.logOf(scope)) {
+      const key = `${entry.entityType}/${entry.entityId}`
+      if (entry.op === "delete") state.delete(key)
+      else {
+        state.set(key, {
+          entityId: entry.entityId,
+          entityType: entry.entityType,
+          postImageJson: entry.postImageJson!,
+        })
+      }
+    }
+    return [...state.values()]
+  }
+
+  currentThread(threadId: string): ChatThreadEntity | null {
+    const row = this
+      .fold(personalScope(CHAT_OWNER_ID))
+      .find(entity =>
+        entity.entityType === CHAT_THREAD_ENTITY_TYPE &&
+        entity.entityId === threadId
+      )
+    return row === undefined
+      ? null
+      : decodeChatThreadEntity(JSON.parse(row.postImageJson) as unknown)
+  }
+
+  currentMessage(threadId: string, messageId: string): ChatMessageEntity | null {
+    const row = this
+      .fold(threadScope(threadId))
+      .find(entity =>
+        entity.entityType === CHAT_MESSAGE_ENTITY_TYPE &&
+        entity.entityId === messageId
+      )
+    return row === undefined
+      ? null
+      : decodeChatMessageEntity(JSON.parse(row.postImageJson) as unknown)
+  }
+
+  commit(scope: SyncScope, entries: ReadonlyArray<FakeEntry>): void {
+    const version = SyncVersion.make(this.lastVersion(scope) + 1)
+    const rows = entries.map(
+      entry =>
+        new ChangelogEntry({
+          scope,
+          version,
+          entityType: EntityType.make(entry.entityType),
+          entityId: EntityId.make(entry.entityId),
+          op: "upsert",
+          postImageJson: entry.postImageJson,
+          committedAt: FIXED_TIME,
+        }),
+    )
+    this.logOf(scope).push(...rows)
+    const socket = this.sockets.get(scope)
+    if (socket !== undefined && socket.open) {
+      socket.handlers.onFrame({
+        _tag: "DeltaFrame",
+        scope,
+        entries: rows,
+        cursor: version,
+      } as never)
+    }
+  }
+
+  commitThread(thread: ChatThreadEntity): void {
+    const entry = {
+      entityType: CHAT_THREAD_ENTITY_TYPE,
+      entityId: thread.threadId,
+      postImageJson: canonicalJson(encodeChatThreadEntity(thread)),
+    }
+    this.commit(personalScope(thread.ownerUserId), [entry])
+    this.commit(threadScope(thread.threadId), [entry])
+  }
+
+  commitMessage(message: ChatMessageEntity): void {
+    this.commit(threadScope(message.threadId), [
+      {
+        entityType: CHAT_MESSAGE_ENTITY_TYPE,
+        entityId: message.messageId,
+        postImageJson: canonicalJson(encodeChatMessageEntity(message)),
+      },
+    ])
+  }
+
+  bootstrap(request: BootstrapRequest): BootstrapResponse {
+    this.seenScopes.push(request.scope)
+    const cursor = this.lastVersion(request.scope)
+    return new BootstrapResponse({
+      protocolVersion: 1,
+      scope: request.scope,
+      entities: this.fold(request.scope).map(entity =>
+        new BootstrapEntity({
+          entityType: EntityType.make(entity.entityType),
+          entityId: EntityId.make(entity.entityId),
+          postImageJson: entity.postImageJson,
+        })
+      ),
+      cursor: SyncVersionWatermark.make(cursor),
+    })
+  }
+
+  logPage(scope: SyncScope, cursor: number): LogPage {
+    this.seenScopes.push(scope)
+    const entries = this.logOf(scope).filter(entry => entry.version > cursor)
+    const last = entries[entries.length - 1]
+    const next = last === undefined ? cursor : last.version
+    return new LogPage({
+      protocolVersion: 1,
+      scope,
+      entries,
+      nextCursor: SyncVersionWatermark.make(next),
+      upToDate: true,
+    })
+  }
+
+  push(request: { readonly mutations: readonly MutationEnvelope[] }): PushResponse {
+    if (this.holdPushes) {
+      throw new KhalaSyncTransportError("network", true, "fake offline push")
+    }
+    const results: Array<MutationResult> = []
+    let last = this.clientLastMutationId
+    for (const mutation of request.mutations) {
+      this.pushedMutations.push(mutation)
+      if (mutation.mutationId <= last) {
+        results.push(new MutationResult({ mutationId: mutation.mutationId, status: "duplicate" }))
+        continue
+      }
+      last = mutation.mutationId
+      if (this.rejectPushes) {
+        results.push(new MutationResult({
+          errorCode: "unauthorized_scope",
+          errorMessageSafe: "this chat thread scope belongs to a different user",
+          mutationId: mutation.mutationId,
+          status: "rejected",
+        }))
+        continue
+      }
+      if (mutation.name === CHAT_CREATE_THREAD_MUTATOR_NAME) {
+        const args = JSON.parse(mutation.argsJson) as { threadId: string; title: string }
+        this.commitThread(decodeChatThreadEntity({
+          createdAt: FIXED_TIME,
+          lastMessageAt: null,
+          messageCount: 0,
+          ownerUserId: CHAT_OWNER_ID,
+          status: "active",
+          threadId: args.threadId,
+          title: args.title.trim(),
+          updatedAt: FIXED_TIME,
+        }))
+      } else if (mutation.name === CHAT_APPEND_MESSAGE_MUTATOR_NAME) {
+        const args = JSON.parse(mutation.argsJson) as {
+          body: string
+          messageId: string
+          threadId: string
+        }
+        const current = this.currentThread(args.threadId)
+        if (current === null) {
+          results.push(new MutationResult({
+            errorCode: "thread_not_found",
+            errorMessageSafe: "this chat thread does not exist",
+            mutationId: mutation.mutationId,
+            status: "rejected",
+          }))
+          continue
+        }
+        if (this.currentMessage(args.threadId, args.messageId) !== null) {
+          results.push(new MutationResult({
+            errorCode: "message_exists",
+            errorMessageSafe: "this chat message already exists",
+            mutationId: mutation.mutationId,
+            status: "rejected",
+          }))
+          continue
+        }
+        this.commitThread(decodeChatThreadEntity({
+          ...current,
+          lastMessageAt: FIXED_TIME,
+          messageCount: current.messageCount + 1,
+          updatedAt: FIXED_TIME,
+        }))
+        this.commitMessage(decodeChatMessageEntity({
+          authorUserId: CHAT_OWNER_ID,
+          body: args.body,
+          createdAt: FIXED_TIME,
+          deletedAt: null,
+          messageId: args.messageId,
+          threadId: args.threadId,
+          updatedAt: FIXED_TIME,
+        }))
+      } else if (mutation.name === CHAT_RENAME_THREAD_MUTATOR_NAME) {
+        const args = JSON.parse(mutation.argsJson) as { threadId: string; title: string }
+        const current = this.currentThread(args.threadId)
+        if (current !== null) {
+          this.commitThread(decodeChatThreadEntity({
+            ...current,
+            title: args.title.trim(),
+            updatedAt: FIXED_TIME,
+          }))
+        }
+      }
+      results.push(new MutationResult({ mutationId: mutation.mutationId, status: "applied" }))
+    }
+    this.clientLastMutationId = last
+    return new PushResponse({ protocolVersion: 1, results, lastMutationId: last })
+  }
+
+  connect(scope: SyncScope, _cursor: number, handlers: LiveSocketHandlers) {
+    this.seenScopes.push(scope)
+    const record = { handlers, open: true }
+    this.sockets.set(scope, record)
+    return {
+      close: () => {
+        record.open = false
+      },
+    }
+  }
+}
+
+const fakeChatTransport = (
+  server: FakeChatSyncServer,
+  authToken: () => string,
+): KhalaSyncTransport => {
+  const attempt = <A>(run: () => A): Effect.Effect<A, KhalaSyncTransportError> =>
+    Effect.suspend(() => {
+      server.seenAuthTokens.push(authToken())
+      try {
+        return Effect.succeed(run())
+      } catch (error) {
+        return Effect.fail(
+          error instanceof KhalaSyncTransportError
+            ? error
+            : new KhalaSyncTransportError("network", true, String(error), {
+                cause: error,
+              }),
+        )
+      }
+    })
+
+  return {
+    bootstrap: request => attempt(() => server.bootstrap(request)),
+    logPage: (scope, cursor) => attempt(() => server.logPage(scope, cursor)),
+    push: request => attempt(() => server.push(request)),
+    connectLive: (scope, cursor, handlers) =>
+      attempt(() => server.connect(scope, cursor, handlers)),
+  }
+}
+
+const makeChatHarness = (
+  envOverrides: Record<string, string | undefined> = {},
+) => {
+  const server = new FakeChatSyncServer()
+  const env: Record<string, string | undefined> = {
+    KHALA_SYNC_CHAT: "1",
+    KHALA_SYNC_CHAT_OWNER_USER_ID: CHAT_OWNER_ID,
+    OPENAGENTS_AGENT_TOKEN: "oa_agent_chat_token_1",
+    OPENAGENTS_BASE_URL: "https://openagents.test",
+    KHALA_CODE_DESKTOP_HARNESS_SETTING_PATH: "/tmp/khala-sync-chat-service-test-missing-settings.json",
+    ...envOverrides,
+  }
+  const service = createKhalaCodeDesktopKhalaSyncService({
+    env,
+    storePath: ":memory:",
+    sleep: () => tick(),
+    random: () => 0.5,
+    now: () => new Date(FIXED_TIME),
+    transport: config => fakeChatTransport(server, config.authToken),
+  })
+  return { env, server, service }
+}
+
 describe("khala-sync-service flag gating", () => {
   test("flag parsing accepts 1/true only", () => {
     expect(khalaCodeDesktopKhalaSyncFleetEnabled({ KHALA_SYNC_FLEET: "1" })).toBe(true)
@@ -388,6 +703,182 @@ describe("khala-sync-service flag gating", () => {
       error: "missing_openagents_auth",
     })
     await service.close()
+  })
+})
+
+describe("khala-sync-service chat control bridge", () => {
+  test("create, append, rename, and read messages through authenticated chat scopes", async () => {
+    const { server, service } = makeChatHarness()
+
+    await expect(service.chatCreateThread({
+      threadId: CHAT_THREAD_ID,
+      title: "Remote thread",
+    })).resolves.toEqual({ ok: true, threadId: CHAT_THREAD_ID })
+
+    await expect(service.chatAppendMessage({
+      body: "hello from mobile",
+      messageId: CHAT_MESSAGE_ID,
+      threadId: CHAT_THREAD_ID,
+    })).resolves.toEqual({
+      ok: true,
+      messageId: CHAT_MESSAGE_ID,
+      threadId: CHAT_THREAD_ID,
+    })
+
+    await expect(service.chatRenameThread({
+      threadId: CHAT_THREAD_ID,
+      title: "Renamed remote thread",
+    })).resolves.toEqual({ ok: true, threadId: CHAT_THREAD_ID })
+
+    const messages = await service.chatMessages({ threadId: CHAT_THREAD_ID })
+    expect(messages).toMatchObject({
+      authState: "connected",
+      enabled: true,
+      ok: true,
+      ownerUserId: CHAT_OWNER_ID,
+      phase: "live",
+      threadId: CHAT_THREAD_ID,
+    })
+    expect(messages.messages.map(message => [message.messageId, message.body])).toEqual([
+      [CHAT_MESSAGE_ID, "hello from mobile"],
+    ])
+
+    await waitFor(async () => {
+      const state = await service.chatThreads({})
+      const first = state.threads[0]
+      return first?.messageCount === 1 && first.title === "Renamed remote thread"
+    }, "chat sidebar projection includes appended message metadata")
+    const threads = await service.chatThreads({})
+    expect(threads.threads[0]).toMatchObject({
+      messageCount: 1,
+      threadId: CHAT_THREAD_ID,
+      title: "Renamed remote thread",
+    })
+    expect(server.seenScopes).toContain(threadScope(CHAT_THREAD_ID))
+    expect(server.pushedMutations.map(mutation => String(mutation.name))).toEqual([
+      CHAT_CREATE_THREAD_MUTATOR_NAME,
+      CHAT_APPEND_MESSAGE_MUTATOR_NAME,
+      CHAT_RENAME_THREAD_MUTATOR_NAME,
+    ])
+
+    const personalScopePayload = server
+      .fold(personalScope(CHAT_OWNER_ID))
+      .map(entry => entry.postImageJson)
+      .join("\n")
+    expect(personalScopePayload).not.toContain("hello from mobile")
+    expect(personalScopePayload).not.toContain(CHAT_MESSAGE_ENTITY_TYPE)
+    await service.close()
+  })
+
+  test("append exposes pending mutation state while the push is retrying", async () => {
+    const { server, service } = makeChatHarness()
+    await service.chatCreateThread({
+      threadId: CHAT_THREAD_ID,
+      title: "Remote thread",
+    })
+
+    server.holdPushes = true
+    const append = service.chatAppendMessage({
+      body: "pending mobile message",
+      messageId: "chat-message.remote.test.pending",
+      threadId: CHAT_THREAD_ID,
+    })
+
+    await waitFor(async () => {
+      const state = await service.chatMessages({ threadId: CHAT_THREAD_ID })
+      return (
+        state.pendingMutations === 1 &&
+        state.messages.some(message => message.body === "pending mobile message")
+      )
+    }, "pending chat append visible")
+
+    server.holdPushes = false
+    await expect(append).resolves.toMatchObject({
+      ok: true,
+      messageId: "chat-message.remote.test.pending",
+    })
+    await waitFor(async () => {
+      const state = await service.chatMessages({ threadId: CHAT_THREAD_ID })
+      return state.pendingMutations === 0
+    }, "pending chat append confirmed")
+    await service.close()
+  })
+
+  test("server rejection is returned safely and retained in chat state", async () => {
+    const { server, service } = makeChatHarness()
+    await service.chatCreateThread({
+      threadId: CHAT_THREAD_ID,
+      title: "Remote thread",
+    })
+
+    server.rejectPushes = true
+    const rejected = await service.chatAppendMessage({
+      body: "should be rejected",
+      messageId: "chat-message.remote.test.rejected",
+      threadId: CHAT_THREAD_ID,
+    })
+    expect(rejected).toMatchObject({
+      ok: false,
+      messageId: "chat-message.remote.test.rejected",
+      threadId: CHAT_THREAD_ID,
+    })
+    expect(rejected.error).toContain("different user")
+
+    const state = await service.chatMessages({ threadId: CHAT_THREAD_ID })
+    expect(state.rejections[0]).toMatchObject({
+      errorCode: "unauthorized_scope",
+      mutatorName: CHAT_APPEND_MESSAGE_MUTATOR_NAME,
+      threadId: CHAT_THREAD_ID,
+    })
+    expect(state.messages.some(message => message.body === "should be rejected")).toBe(false)
+    await service.close()
+  })
+
+  test("missing chat owner or auth returns typed public-safe errors", async () => {
+    const missingOwner = makeChatHarness({
+      KHALA_SYNC_CHAT_OWNER_USER_ID: undefined,
+    })
+    await expect(missingOwner.service.chatAppendMessage({
+      body: "hello",
+      messageId: CHAT_MESSAGE_ID,
+      threadId: CHAT_THREAD_ID,
+    })).resolves.toEqual({
+      ok: false,
+      error: "missing_chat_owner_user_id",
+      messageId: CHAT_MESSAGE_ID,
+      threadId: CHAT_THREAD_ID,
+    })
+    await missingOwner.service.close()
+
+    const missingAuth = makeChatHarness({
+      OPENAGENTS_AGENT_TOKEN: undefined,
+    })
+    await expect(missingAuth.service.chatAppendMessage({
+      body: "hello",
+      messageId: CHAT_MESSAGE_ID,
+      threadId: CHAT_THREAD_ID,
+    })).resolves.toEqual({
+      ok: false,
+      error: "missing_openagents_auth",
+      messageId: CHAT_MESSAGE_ID,
+      threadId: CHAT_THREAD_ID,
+    })
+    await missingAuth.service.close()
+
+    const disabled = makeChatHarness({
+      KHALA_SYNC_CHAT: undefined,
+    })
+    await expect(disabled.service.chatAppendMessage({
+      body: "hello",
+      messageId: CHAT_MESSAGE_ID,
+      threadId: CHAT_THREAD_ID,
+    })).resolves.toEqual({
+      ok: false,
+      error: "khala_sync_chat_disabled",
+      messageId: CHAT_MESSAGE_ID,
+      threadId: CHAT_THREAD_ID,
+    })
+    await disabled.service.close()
   })
 })
 

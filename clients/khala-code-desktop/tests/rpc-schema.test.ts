@@ -406,10 +406,45 @@ describe("Khala Code desktop schema-first RPC contract", () => {
       ],
     })).toMatchObject({ enabled: true, phase: "live" })
 
+    expect(decodeKhalaCodeDesktopRpcParameters("khalaSyncChatMessages", [{
+      limit: 100,
+      threadId: "thread.remote.test",
+    }])[0]).toMatchObject({ threadId: "thread.remote.test" })
+
+    expect(decodeKhalaCodeDesktopRpcResult("khalaSyncChatMessages", {
+      authState: "connected",
+      cursor: 34,
+      enabled: true,
+      messages: [
+        {
+          authorUserId: "user-chat-owner",
+          body: "hello from mobile",
+          createdAt: "2026-07-04T00:00:00.000Z",
+          deletedAt: null,
+          messageId: "chat-message.remote.test.1",
+          threadId: "thread.remote.test",
+          updatedAt: "2026-07-04T00:00:00.000Z",
+        },
+      ],
+      ok: true,
+      ownerUserId: "user-chat-owner",
+      pendingMutations: 0,
+      phase: "live",
+      reason: null,
+      rejections: [],
+      threadId: "thread.remote.test",
+    })).toMatchObject({ enabled: true, messages: [{ body: "hello from mobile" }] })
+
     expect(decodeKhalaCodeDesktopRpcParameters("khalaSyncChatCreateThread", [{
       threadId: "thread.remote.test",
       title: "Remote thread",
     }])[0]).toMatchObject({ threadId: "thread.remote.test" })
+
+    expect(decodeKhalaCodeDesktopRpcParameters("khalaSyncChatAppendMessage", [{
+      body: "hello from mobile",
+      messageId: "chat-message.remote.test.1",
+      threadId: "thread.remote.test",
+    }])[0]).toMatchObject({ messageId: "chat-message.remote.test.1" })
 
     expect(decodeKhalaCodeDesktopRpcParameters("khalaSyncChatRenameThread", [{
       threadId: "thread.remote.test",
@@ -440,6 +475,14 @@ describe("Khala Code desktop schema-first RPC contract", () => {
       enabled: false,
       phase: "disabled",
     })
+    await expect(handlers.khalaSyncChatMessages({
+      threadId: "thread.remote.test",
+    })).resolves.toMatchObject({
+      enabled: false,
+      messages: [],
+      phase: "disabled",
+      threadId: "thread.remote.test",
+    })
     await expect(handlers.khalaSyncChatCreateThread({
       threadId: "thread.remote.test",
       title: "Remote thread",
@@ -448,6 +491,31 @@ describe("Khala Code desktop schema-first RPC contract", () => {
       error: "khala_sync_chat_disabled",
       threadId: "thread.remote.test",
     })
+    await expect(handlers.khalaSyncChatAppendMessage({
+      body: "hello",
+      messageId: "chat-message.remote.test.1",
+      threadId: "thread.remote.test",
+    })).resolves.toEqual({
+      ok: false,
+      error: "khala_sync_chat_disabled",
+      messageId: "chat-message.remote.test.1",
+      threadId: "thread.remote.test",
+    })
+    await expect(handlers.khalaSyncChatAppendMessage({
+      body: "hello",
+      messageId: "chat-message.remote.test.1",
+      threadId: "",
+    })).rejects.toThrow("khalaSyncChatAppendMessage requires threadId")
+    await expect(handlers.khalaSyncChatAppendMessage({
+      body: "hello",
+      messageId: "",
+      threadId: "thread.remote.test",
+    })).rejects.toThrow("khalaSyncChatAppendMessage requires messageId")
+    await expect(handlers.khalaSyncChatAppendMessage({
+      body: "",
+      messageId: "chat-message.remote.test.1",
+      threadId: "thread.remote.test",
+    })).rejects.toThrow("khalaSyncChatAppendMessage requires body")
   })
 
   test("models handler failures as distinct tagged bridge errors", () => {

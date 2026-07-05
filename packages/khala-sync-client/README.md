@@ -38,9 +38,12 @@ Components (KS-5 workstream):
   exponential backoff, forever, until `unsubscribe`/`close`. The push loop
   drains the durable FIFO queue in batches; rejections ACK in-band
   (surfaced through `onRejection`) and never block the queue; a terminal
-  fault parks the queue until the next mutate/subscribe re-kick. All
-  timing is injected (`sleep`/`random`) — no wall-clock reads in tested
-  logic; the suite runs against a deterministic fake transport.
+  fault parks the queue until the next mutate/subscribe re-kick.
+  `session.mutate` returns the exact assigned `MutationId`, so collection
+  adapters can match in-band rejections without guessing from the current
+  pending list. All timing is injected (`sleep`/`random`) — no wall-clock
+  reads in tested logic; the suite runs against a deterministic fake
+  transport.
 - **v1 offline contract** — online-optimistic: reads work offline, pushes
   wait for connectivity (bounded queue, honest expiry).
 

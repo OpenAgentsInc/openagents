@@ -30,6 +30,7 @@ import {
 import {
   khalaSyncFleetDisabledState,
   khalaSyncChatDisabledState,
+  khalaSyncChatMessagesDisabledState,
   type KhalaCodeDesktopKhalaSyncRpc,
 } from "./khala-sync-service.js"
 import type { KhalaAppleFmReadiness } from "../shared/apple-fm-readiness.js"
@@ -92,6 +93,8 @@ import {
   type KhalaCodeDesktopKhalaSyncFleetStateResult,
   type KhalaCodeDesktopKhalaSyncChatAppendMessageRequest,
   type KhalaCodeDesktopKhalaSyncChatCreateThreadRequest,
+  type KhalaCodeDesktopKhalaSyncChatMessagesRequest,
+  type KhalaCodeDesktopKhalaSyncChatMessagesResult,
   type KhalaCodeDesktopKhalaSyncChatMutationResult,
   type KhalaCodeDesktopKhalaSyncChatRenameThreadRequest,
   type KhalaCodeDesktopKhalaSyncChatThreadsRequest,
@@ -2557,6 +2560,15 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       if (input.khalaSync === undefined) return khalaSyncChatDisabledState()
       return input.khalaSync.chatThreads(request)
     },
+    async khalaSyncChatMessages(
+      request: KhalaCodeDesktopKhalaSyncChatMessagesRequest,
+    ): Promise<KhalaCodeDesktopKhalaSyncChatMessagesResult> {
+      requireNonEmpty("khalaSyncChatMessages", "threadId", request.threadId)
+      if (input.khalaSync === undefined) {
+        return khalaSyncChatMessagesDisabledState(request.threadId)
+      }
+      return input.khalaSync.chatMessages(request)
+    },
     async khalaSyncChatCreateThread(
       request: KhalaCodeDesktopKhalaSyncChatCreateThreadRequest,
     ): Promise<KhalaCodeDesktopKhalaSyncChatMutationResult> {
@@ -2567,6 +2579,22 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       }
       return input.khalaSync.chatCreateThread(request)
     },
+    async khalaSyncChatAppendMessage(
+      request: KhalaCodeDesktopKhalaSyncChatAppendMessageRequest,
+    ): Promise<KhalaCodeDesktopKhalaSyncChatMutationResult> {
+      requireNonEmpty("khalaSyncChatAppendMessage", "threadId", request.threadId)
+      requireNonEmpty("khalaSyncChatAppendMessage", "messageId", request.messageId)
+      requireNonEmpty("khalaSyncChatAppendMessage", "body", request.body)
+      if (input.khalaSync === undefined) {
+        return {
+          ok: false,
+          error: "khala_sync_chat_disabled",
+          messageId: request.messageId,
+          threadId: request.threadId,
+        }
+      }
+      return input.khalaSync.chatAppendMessage(request)
+    },
     async khalaSyncChatRenameThread(
       request: KhalaCodeDesktopKhalaSyncChatRenameThreadRequest,
     ): Promise<KhalaCodeDesktopKhalaSyncChatMutationResult> {
@@ -2576,17 +2604,6 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         return { ok: false, error: "khala_sync_chat_disabled", threadId: request.threadId }
       }
       return input.khalaSync.chatRenameThread(request)
-    },
-    async khalaSyncChatAppendMessage(
-      request: KhalaCodeDesktopKhalaSyncChatAppendMessageRequest,
-    ): Promise<KhalaCodeDesktopKhalaSyncChatMutationResult> {
-      requireNonEmpty("khalaSyncChatAppendMessage", "threadId", request.threadId)
-      requireNonEmpty("khalaSyncChatAppendMessage", "messageId", request.messageId)
-      requireNonEmpty("khalaSyncChatAppendMessage", "body", request.body)
-      if (input.khalaSync === undefined) {
-        return { ok: false, error: "khala_sync_chat_disabled", threadId: request.threadId }
-      }
-      return input.khalaSync.chatAppendMessage(request)
     },
     async forumRequest(request): Promise<KhalaCodeDesktopForumResponse> {
       return fetchOpenAgentsForum(request)

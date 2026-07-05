@@ -335,6 +335,19 @@ raw sidecar privacy and required tool authority. The remaining roadmap items
 should consume this package instead of defining their own message/turn/tool
 contract.
 
+Issue #8364 implementation status: the desktop bridge now has typed
+`khalaSyncChatMessages` and `khalaSyncChatAppendMessage` RPCs, per-thread
+`chat_message` TanStack collections over `scope.thread.<threadId>`, and a
+renderer path that hydrates Khala Sync chat rows into the existing transcript
+instead of starting a Codex turn. The bridge uses client-generated message IDs,
+returns public-safe disabled/auth/rejection states, keeps message bodies out of
+the owner personal scope, and reads sidebar thread metadata from the Khala Sync
+overlay so cross-scope append updates stay visible. The shared Sync session now
+returns the exact `MutationId` assigned by `mutate`, which lets collection
+adapters match in-band server rejections without guessing from a per-collection
+pending queue. Remaining runtime controls should build on this as additional
+typed control intents rather than as ad hoc desktop RPCs.
+
 ### Sequenced implementation path
 
 P0 should be the event/control schema (#8363). Without this, each bridge will
@@ -344,11 +357,12 @@ reasoning, tool input/call/result/error, usage, provider metadata, finish
 reasons, file changes, compaction, interruption, private raw-event refs, and
 stable IDs for turns/messages/control intents/tool calls.
 
-P1 should land the desktop control bridge (#8364) and treat the active append
-work as one control intent in a growing vocabulary. Create/rename/append are
-the chat subset; start-turn, interrupt, continue/resume, retry, and close are
-the runtime subset. The bridge should return typed public-safe results and
-surface rejections as state, matching Khala Sync's queue-never-blocks model.
+P1 is now landed for the chat subset (#8364): create/rename/append/read cover
+the first desktop/mobile control bridge. Treat append as the first control
+intent in a growing vocabulary. Start-turn, interrupt, continue/resume, retry,
+and close remain the runtime subset. Those controls should return typed
+public-safe results and surface rejections as state, matching Khala Sync's
+queue-never-blocks model.
 
 P2 should make mobile a real Sync client (#8365). The health dot should become
 connection discovery/pairing/auth status, then the app should open a durable
@@ -389,8 +403,9 @@ secrets.
 
 Yes, we can get this working locally in increments:
 
-1. Fake or local Khala Sync transport proves desktop/mobile chat create,
-   append, rename, and thread-scope read convergence.
+1. Fake or local Khala Sync transport now proves desktop chat create, append,
+   rename, thread-scope read convergence, pending retry visibility, and
+   public-safe rejection handling.
 2. The existing Tailnet health beacon proves mobile can locate a desktop over
    simulator localhost or physical-device Tailnet hostnames.
 3. AI SDK Core can be proven with a fixture provider and one low-risk model
