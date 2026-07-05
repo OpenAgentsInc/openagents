@@ -3,6 +3,7 @@ import { decodeBootstrapResponse, decodeLiveFrame } from "@openagentsinc/khala-s
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
 import { KHALA_SYNC_DEMO_CLIENT_GROUP_ID } from "../config/khala-sync-demo"
+import { mobileProblemMessageSafe, readOkMobileJsonResponse } from "../network/mobile-problem"
 import {
   applyDeltaFrameOfType,
   buildBootstrapRequestBody,
@@ -70,14 +71,7 @@ export function useKhalaSyncCollection<T>(
           },
           method: "POST"
         })
-        const body: unknown = await response.json()
-        if (!response.ok) {
-          const messageSafe =
-            typeof body === "object" && body !== null && "messageSafe" in body
-              ? String((body as { messageSafe: unknown }).messageSafe)
-              : `bootstrap failed (${response.status})`
-          throw new Error(messageSafe)
-        }
+        const body = await readOkMobileJsonResponse(response, "sync bootstrap")
         const decoded = decodeBootstrapResponse(body)
         cursor = decoded.cursor ?? 0
         const items = entitiesOfType(decoded.entities, entityType, decode)
@@ -85,7 +79,7 @@ export function useKhalaSyncCollection<T>(
         if (!cancelled) setState({ error: null, items, status: "ready" })
       } catch (error) {
         if (!cancelled) {
-          setState({ error: error instanceof Error ? error.message : String(error), items: [], status: "error" })
+          setState({ error: mobileProblemMessageSafe(error, "sync bootstrap"), items: [], status: "error" })
         }
         return
       }

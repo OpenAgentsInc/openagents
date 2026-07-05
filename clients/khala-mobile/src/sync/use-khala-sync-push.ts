@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef } from "react"
 import { decodePushResponse, type PushResponse } from "@openagentsinc/khala-sync"
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
+import { readOkMobileJsonResponse } from "../network/mobile-problem"
 import { buildPushRequestBody, buildPushUrl, makeSafeRef, stableArgsJson } from "./khala-sync-push-core"
 
 export type PendingMutation = Readonly<{
@@ -58,14 +59,7 @@ export function useKhalaSyncPush(): (mutations: ReadonlyArray<PendingMutation>) 
         },
         method: "POST"
       })
-      const json: unknown = await response.json()
-      if (!response.ok) {
-        const messageSafe =
-          typeof json === "object" && json !== null && "messageSafe" in json
-            ? String((json as { messageSafe: unknown }).messageSafe)
-            : `push failed (${response.status})`
-        throw new Error(messageSafe)
-      }
+      const json = await readOkMobileJsonResponse(response, "sync push")
       const decoded = decodePushResponse(json)
       const rejected = decoded.results.find(result => result.status === "rejected")
       if (rejected !== undefined) {

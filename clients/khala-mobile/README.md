@@ -218,6 +218,10 @@ deploys the OpenAgents server. It does not call Expo hosted update commands.
   metadata and endpoints (`app.json` / `extra.khala`). Bundled config is public:
   never place API keys, bearer tokens, private endpoints, customer data, or
   other credential material there.
+- `src/network/mobile-problem.ts` is the public-safe HTTP/sync problem
+  classifier. Mobile request boundaries should map status, transport, timeout,
+  and malformed-response failures through this seam instead of surfacing raw
+  response bodies, provider payloads, tokens, or chat content.
 - API keys are stored through `expo-secure-store` with the Khala keychain
   service. SQLite stores durable Khala Sync cursors/checkpoints, confirmed
   projection rows, client identity, and pending mutation intents; it does not

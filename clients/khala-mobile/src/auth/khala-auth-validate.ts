@@ -1,5 +1,6 @@
 import { personalScope } from "@openagentsinc/khala-sync"
 
+import { mobileProblemMessageSafe, readOkMobileJsonResponse } from "../network/mobile-problem"
 import { buildBootstrapRequestBody, buildBootstrapUrl } from "../sync/khala-sync-entities-core"
 
 export type KhalaAuthValidation = Readonly<{ ok: true } | { ok: false; messageSafe: string }>
@@ -23,14 +24,10 @@ export const validateKhalaCredentials = async (input: {
       },
       method: "POST"
     })
-    if (response.ok) return { ok: true }
-    const body: unknown = await response.json().catch(() => null)
-    const messageSafe =
-      typeof body === "object" && body !== null && "messageSafe" in body
-        ? String((body as { messageSafe: unknown }).messageSafe)
-        : `sign-in check failed (${response.status})`
-    return { ok: false, messageSafe }
+    await readOkMobileJsonResponse(response, "sign-in check")
+    return { ok: true }
   } catch (error) {
-    return { ok: false, messageSafe: error instanceof Error ? error.message : "sign-in check failed" }
+    const messageSafe = mobileProblemMessageSafe(error, "sign-in check")
+    return { ok: false, messageSafe }
   }
 }

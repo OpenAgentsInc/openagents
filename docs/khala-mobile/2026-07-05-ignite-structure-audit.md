@@ -52,6 +52,11 @@ Any Ignite pattern that conflicts with those rules is explicitly out of scope.
   validates Expo-bundled public endpoints/build metadata and rejects
   secret-shaped `extra.khala` keys; README security docs now point secrets back
   to SecureStore/keychain.
+- [#8448](https://github.com/OpenAgentsInc/openagents/issues/8448) - add
+  typed mobile problem classification. Implemented:
+  `src/network/mobile-problem.ts` classifies transport/status/auth/sync
+  failures into public-safe problem kinds, and the auth validation plus Khala
+  Sync bootstrap/push call sites now use it.
 
 ## One-Line Verdict
 
