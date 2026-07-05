@@ -1054,6 +1054,56 @@ column-scoping fix addressed.
   behavior change is expected for them beyond fewer redundant
   `dual_write_failed` diagnostics on transient blips.
 
+### 2026-07-05 extended post-retry-fix soak — clobber mechanism fixed, but a NEW write-loss regression found live (#8409, still OPEN)
+
+Ran the requested longer soak several hours after `d6595dc9a4` (the retry
+fix) landed and was deployed. Two distinct findings, one good and one bad:
+
+- **The original cross-writer clobber mechanism looks resolved.** Over the
+  5.98h window from the guaranteed-fresh `06ee7de4c7` deploy
+  (`2026-07-05T10:00:48Z`) to the check time (`2026-07-05T15:59:35Z`), the
+  historical ~2/hour clobber rate would predict ~12 clobber-shaped
+  mismatches (row present in both engines, `scan_state`/`compose_state`
+  differ); only **2** were observed (`11:42:24Z`, `15:13:26Z`), an ~83%
+  reduction, and neither shows the original full-row-snapshot-revert
+  signature.
+- **A NEW, more severe problem is live right now**: full-row write loss
+  (row entirely absent from Postgres, not just stale) started
+  `2026-07-05T11:43:24Z` and is ongoing at the time of this check. Hourly
+  breakdown of the D1-vs-Postgres diff: `08:00`-`10:00` UTC 0% missing,
+  `11:00` 13% missing, `12:00`-`15:00` a sustained **77-79%/hour** missing.
+  Table-wide: `d1=8486 postgres=8300` (186 rows missing). Confirmed NOT a
+  propagation-lag artifact — re-queried five specific timestamps spanning
+  `11:43:24Z`-`15:53:26Z` several minutes after the initial diff; all still
+  absent, despite 4+ hours of every-minute ticks that should have
+  self-healed them via either writer's INSERT-side full-row self-heal.
+  Ruled out: schema drift (Postgres columns match the
+  `ARTANIS_DOMAIN_TABLES` spec exactly), Postgres-side connection
+  exhaustion (`pg_stat_activity`: 59/600 connections in use), and a fully
+  disabled dual-write flag (would show ~0% success, not the observed
+  ~21-23% ongoing success rate). A 75-second unfiltered `wrangler tail`
+  sample did not catch a `khala_sync_artanis_dual_write_failed`/`_retry`
+  diagnostic — inconclusive, not a rule-out. Onset loosely correlates with
+  a burst of unrelated Khala Sync read-cutover changes landing on `main` in
+  the same ~90-minute window (KS-8.9 entitlements, KS-8.14 business funnel,
+  KS-8.17/8.18 identity/auth + supervision long-tail, a Forge read
+  cutover) — all adding new Postgres/Hyperdrive read load from other
+  domains — but this is not confirmed as the cause.
+- **Decision: issue stays OPEN, not closed.** The mechanism #8409 was
+  originally filed for looks fixed by `06ee7de4c7` + `d6595dc9a4`
+  together, but the SAME `mirrorArtanisRows` dual-write path is currently
+  losing the majority of its writes outright — worse than the bug this
+  issue opened with. Evidence posted on the issue
+  (`https://github.com/OpenAgentsInc/openagents/issues/8409#issuecomment-4886665158`).
+  No code change made this pass (root cause of the new write-loss is not
+  confirmed, so a fix would be a guess) and no corrective re-converge sweep
+  (would be pointless while the table is still actively losing writes).
+  Next step: a dedicated follow-up pass to identify why 2 retries over
+  `[100,400]ms` aren't covering this, whether it's isolated to Artanis or a
+  broader Postgres/Hyperdrive capacity signal affecting other domains'
+  fail-soft mirrors too, and Hyperdrive-side connection-pool metrics (not
+  visible from a `psql`-level session).
+
 ## Treasury settlement domain cutover (KS-8.8, #8319)
 
 All 27 live money tables (treasury_transactions, the six `nexus_*`
