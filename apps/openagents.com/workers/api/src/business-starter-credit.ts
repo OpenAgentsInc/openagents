@@ -9,6 +9,7 @@ import {
   BusinessPipelineValidationError,
   systemBusinessPipelineRuntime,
 } from './business-pipeline-queue'
+import type { BillingDomainMirror } from './billing'
 import { parseJsonStringArray } from './json-boundary'
 import { runLedgerStatements, type LedgerStatement } from './payments-ledger'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
@@ -92,6 +93,15 @@ export class BusinessStarterCreditStoreError extends S.TaggedErrorClass<Business
 export type BusinessStarterCreditRuntime = BusinessPipelineRuntime &
   Readonly<{
     usdCentsToMsat: (amountUsdCents: number) => number
+    /**
+     * KS-8.7 (#8318/#8337): optional fail-soft Postgres mirror
+     * (`billingDomainMirrorFromEnv`) for the `pay_ins`/`pay_in_legs` rows
+     * `usdCreditGrantStatements` creates inside `createGrant`'s ledger
+     * batch — otherwise D1-only until the next backfill sweep converges
+     * them. `business_starter_credit_grants` itself is a business-funnel
+     * (KS-8.14) table mirrored separately; this hook is billing-domain only.
+     */
+    mirror?: BillingDomainMirror | undefined
   }>
 
 export const systemBusinessStarterCreditRuntime: BusinessStarterCreditRuntime = {
@@ -255,6 +265,12 @@ export type BusinessStarterCreditStore = Readonly<{
 export const makeD1BusinessStarterCreditStore = (
   db: D1Database,
   pipelineStore: BusinessPipelineStore,
+  /**
+   * KS-8.7 (#8318/#8337): default runtime for callers (route handlers) that
+   * do not thread one through per-call — carries the billing mirror so the
+   * env-scoped Worker binding only needs wiring once, at store construction.
+   */
+  defaultRuntime: BusinessStarterCreditRuntime = systemBusinessStarterCreditRuntime,
 ): BusinessStarterCreditStore => {
   const readGrant = async (
     grantRef: string,
@@ -271,7 +287,7 @@ export const makeD1BusinessStarterCreditStore = (
   const createGrant = async (
     pipelineRefInput: string,
     input: BusinessStarterCreditGrantInput,
-    runtime: BusinessStarterCreditRuntime = systemBusinessStarterCreditRuntime,
+    runtime: BusinessStarterCreditRuntime = defaultRuntime,
   ): Promise<BusinessStarterCreditGrantOutcome> => {
     try {
       const pipelineRef = pipelineRefInput.trim()
@@ -418,7 +434,7 @@ export const makeD1BusinessStarterCreditStore = (
           nowIso,
         ),
         pipelineReceiptUpdateStatement(pipelineRef, pipelineReceiptRefs, nowIso),
-      ])
+      ], runtime.mirror)
 
       const grant = await readGrant(grantRef)
       if (grant === null) {

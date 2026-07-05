@@ -299,7 +299,10 @@ import { makeD1BusinessOutreachStore } from './business-outreach'
 import { makeOperatorBusinessOutreachRoutes } from './business-outreach-routes'
 import { makeD1BusinessPipelineStore } from './business-pipeline-queue'
 import { makeOperatorBusinessPipelineRoutes } from './business-pipeline-routes'
-import { makeD1BusinessStarterCreditStore } from './business-starter-credit'
+import {
+  makeD1BusinessStarterCreditStore,
+  systemBusinessStarterCreditRuntime,
+} from './business-starter-credit'
 import { makeOperatorBusinessStarterCreditRoutes } from './business-starter-credit-routes'
 import { recordBusinessFunnelEvent } from './business-funnel-dashboard'
 import { handlePublicBusinessFunnelDashboardApi } from './business-funnel-dashboard-routes'
@@ -9611,7 +9614,14 @@ const operatorBusinessOutreachRoutes = makeOperatorBusinessOutreachRoutes({
 const operatorBusinessStarterCreditRoutes = makeOperatorBusinessStarterCreditRoutes({
   makeStore: env => {
     const db = businessDomainDatabaseForEnv(env)
-    return makeD1BusinessStarterCreditStore(db, makeD1BusinessPipelineStore(db))
+    // KS-8.7 (#8318/#8337): mirror the pay_ins/pay_in_legs rows the USD
+    // credit grant creates fail-soft (absent when KHALA_SYNC_DB/dual-write
+    // is unavailable — degrades to D1-only, converged by the next backfill
+    // sweep).
+    return makeD1BusinessStarterCreditStore(db, makeD1BusinessPipelineStore(db), {
+      ...systemBusinessStarterCreditRuntime,
+      mirror: billingDomainMirrorFromEnv(env),
+    })
   },
   requireAdminApiToken,
 })
@@ -13760,7 +13770,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
                   })
                 : innerHook)(
               withReferralAccrual(
-                makeLedgerMeteringHook({ db: openAgentsDatabase(env) }),
+                makeLedgerMeteringHook({
+                  db: openAgentsDatabase(env),
+                  mirror: billingDomainMirrorFromEnv(env),
+                }),
                 {
                   db: openAgentsDatabase(env),
                   mirror: entitlementsRouting?.mirror,
@@ -14361,6 +14374,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         enabled: isFineTuningServiceEnabled(env.CLOUD_FINE_TUNING_ENABLED),
         meteringHook: makeLedgerFineTuningMeteringHook({
           db: openAgentsDatabase(env),
+          mirror: billingDomainMirrorFromEnv(env),
           priceUsd: () => 0,
           usdToMsat: usd => Math.ceil(usd * 1000),
         }),
@@ -14398,6 +14412,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         ),
         meteringHook: makeLedgerSandboxMeteringHook({
           db: openAgentsDatabase(env),
+          mirror: billingDomainMirrorFromEnv(env),
           priceUsd: () => 0,
           usdToMsat: usd => Math.ceil(usd * 1000),
         }),

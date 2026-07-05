@@ -25,6 +25,7 @@
 // or payment material — only public-safe refs and token counts (observability).
 import { Effect } from 'effect'
 
+import type { BillingDomainMirror } from '../billing'
 import {
   type MdkPayoutModeGateProjection,
   hostedMdkDirectPayoutDisabledGate,
@@ -165,6 +166,11 @@ export type LedgerMeteringDeps = Readonly<{
   db: D1Database
   // ISO timestamp source for the ledger rows. Defaults to the runtime clock.
   nowIso?: () => string
+  // KS-8.7 (#8318/#8337): optional fail-soft Postgres mirror
+  // (`billingDomainMirrorFromEnv`) for the `pay_ins`/`pay_in_legs` rows this
+  // charge creates — otherwise D1-only until the next backfill sweep
+  // converges them.
+  mirror?: BillingDomainMirror | undefined
   // USD -> msat conversion. Defaults to `usdToMsatCeil` at `DEFAULT_BTC_USD`.
   // Tests inject a fixed conversion; a live oracle injects a real one.
   usdToMsat?: (chargeUsd: number, fundingKind: FundingKind) => number
@@ -391,7 +397,7 @@ export const makeLedgerMeteringHook = (
               { balancePayoutLegs: [], payInId: plan.payInId },
               settledAt,
             ),
-          ]),
+          ], deps.mirror),
       }).pipe(
         Effect.map(() => ({ ok: true as const })),
         Effect.catch(() => Effect.succeed({ ok: false as const })),

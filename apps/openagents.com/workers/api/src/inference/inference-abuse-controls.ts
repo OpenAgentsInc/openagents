@@ -31,6 +31,7 @@
 
 import { Effect, Schema as S } from 'effect'
 
+import type { BillingDomainMirror } from '../billing'
 import { workerLogEntry } from '../observability'
 import {
   createPayInStatements,
@@ -586,6 +587,11 @@ export type ClawbackOutcome = Readonly<{
 export type ClawbackDeps = Readonly<{
   db: D1Database
   nowIso?: () => string
+  // KS-8.7 (#8318/#8337): optional fail-soft Postgres mirror
+  // (`billingDomainMirrorFromEnv`) for the `pay_ins`/`pay_in_legs` rows this
+  // clawback creates — otherwise D1-only until the next backfill sweep
+  // converges them.
+  mirror?: BillingDomainMirror | undefined
 }>
 
 // Effect-returning clawback hook (the ONE money-moving surface here). Decrements
@@ -627,7 +633,11 @@ export const clawbackInferenceCredits = (
     const settle = yield* Effect.tryPromise({
       catch: inferenceClawbackPersistenceError,
       try: () =>
-        runLedgerStatements(deps.db, createPayInStatements(plan, nowIso())),
+        runLedgerStatements(
+          deps.db,
+          createPayInStatements(plan, nowIso()),
+          deps.mirror,
+        ),
     }).pipe(
       Effect.map(() => ({ ok: true as const })),
       Effect.catch(() => Effect.succeed({ ok: false as const })),

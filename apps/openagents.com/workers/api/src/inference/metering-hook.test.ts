@@ -257,6 +257,35 @@ describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
     })
   })
 
+  // KS-8.7 (#8318/#8337): a wired `mirror` must see the pay_ins/pay_in_legs
+  // rows this charge just created — the RUNBOOK coverage list called out
+  // `inference/metering-hook.ts` as D1-only pending this decommission pass
+  // (converged only by periodic backfill sweeps, never in real time).
+  test('a settled charge mirrors its pay_ins + pay_in_legs refs when a mirror is wired', async () => {
+    const db = makeDb()
+    await seedBalance(db, FUNDED)
+    const calls: Array<ReadonlyArray<{ table: string; key: unknown }>> = []
+    const mirror = async (
+      _db: unknown,
+      refs: ReadonlyArray<{ table: string; key: unknown }>,
+    ) => {
+      calls.push(refs)
+    }
+    const hook = makeLedgerMeteringHook({ db, mirror, nowIso: () => NOW })
+
+    const outcome = await run(hook(context()))
+
+    expect(outcome.metered).toBe(true)
+    const mirroredTables = calls.flat().map(ref => ref.table)
+    expect(mirroredTables).toContain('pay_ins')
+    expect(mirroredTables).toContain('pay_in_legs')
+    const payInRefs = calls
+      .flat()
+      .filter(ref => ref.table === 'pay_ins')
+      .map(ref => ref.key)
+    expect(payInRefs).toContainEqual({ id: 'inference:payin:req-1' })
+  })
+
   test('is idempotent per request: a replayed settle never double-charges', async () => {
     const db = makeDb()
     await seedBalance(db, FUNDED)

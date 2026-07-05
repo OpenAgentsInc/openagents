@@ -1,6 +1,7 @@
 import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { Effect, Schema as S } from 'effect'
 
+import type { BillingDomainMirror } from './billing'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 
 export const FirstBatchPaymentPolicyMode = S.Literals([
@@ -33,6 +34,12 @@ export type FirstBatchPaymentPolicyGate = Readonly<{
 export type FirstBatchPaymentPolicyRuntime = Readonly<{
   makePolicyId: () => string
   nowIso: () => string
+  /**
+   * KS-8.7 (#8318/#8337): optional fail-soft Postgres dual-write mirror
+   * (`billingDomainMirrorFromEnv`) for the `first_batch_payment_policies`
+   * table — otherwise D1-only until the next backfill sweep converges it.
+   */
+  mirror?: BillingDomainMirror | undefined
 }>
 
 export const systemFirstBatchPaymentPolicyRuntime: FirstBatchPaymentPolicyRuntime =
@@ -334,6 +341,23 @@ export const upsertFirstBatchPaymentPolicy = (
         error: 'First-batch payment policy insert did not return a row.',
         operation: 'firstBatchPaymentPolicies.upsert.readback',
       })
+    }
+
+    // KS-8.7 (#8318/#8337): fail-soft mirror of the converged row. Per the
+    // `BillingDomainMirror` contract this implementation never throws (a
+    // mirror failure logs `khala_sync_billing_dual_write_failed` and
+    // returns), so — exactly like every other billing-domain mirror call
+    // site (e.g. `usd-credit-bridge.ts`) — this never fails the operator
+    // write and needs no additional catch here.
+    if (runtime.mirror !== undefined) {
+      yield* Effect.promise(() =>
+        runtime.mirror!(db, [
+          {
+            key: { id: policy.id },
+            table: 'first_batch_payment_policies',
+          },
+        ]),
+      )
     }
 
     return policy

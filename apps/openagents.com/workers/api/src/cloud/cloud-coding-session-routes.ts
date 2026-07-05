@@ -603,6 +603,7 @@ export const makeLedgerCloudCodingMeteringHook = (
         {
           db: deps.db,
           ...(deps.nowIso === undefined ? {} : { nowIso: deps.nowIso }),
+          ...(deps.mirror === undefined ? {} : { mirror: deps.mirror }),
         },
         {
           accountRef: context.accountRef,

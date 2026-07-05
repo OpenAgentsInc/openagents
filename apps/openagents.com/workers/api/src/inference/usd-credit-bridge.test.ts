@@ -271,6 +271,25 @@ describe('fundInferenceFromCredit (#5497)', () => {
       .first()) as Row | null
     expect(payIn?.pay_in_type).toBe('usd_credit_grant')
     expect(payIn?.state).toBe('paid')
+
+    // KS-8.7 (#8318/#8337) FOUND + FIXED: the audit leg's `party_ref` and
+    // `amount_msat` were bound in the WRONG order (party_ref got the msat
+    // amount, amount_msat got the account ref string) — a real production
+    // data bug that D1/SQLite's weak typing silently accepted for years.
+    // Assert the actual column values so a param-order regression here is
+    // caught in CI, not just by a strict-Postgres backfill sweep.
+    const leg = (await db
+      .prepare(
+        `SELECT party_ref, amount_msat, direction, kind, external_ref
+           FROM pay_in_legs WHERE pay_in_id = ?`,
+      )
+      .bind('inference:usd-credit:g1')
+      .first()) as Row | null
+    expect(leg?.party_ref).toBe(ACCOUNT)
+    expect(leg?.amount_msat).toBe(usdCentsToMsatFloor(300))
+    expect(leg?.direction).toBe('in')
+    expect(leg?.kind).toBe('balance')
+    expect(leg?.external_ref).toBe('usd_credit_grant')
   })
 
   test('stamps the funding Stripe session onto the grant context_ref when provided', async () => {

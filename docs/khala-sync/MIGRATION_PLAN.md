@@ -952,6 +952,34 @@ per-domain soak/drop follow-up. Prod cutover procedure:
   request-path today); webhook consumers repoint.
 - **Depends:** KS-8.2 (usage cursors correlate with the token ledger via
   `billing_usage_cursors`).
+- **KS-8.7 follow-up status (#8337, 2026-07-05):** the RUNBOOK-listed
+  "still D1-only" writers are now rehomed — `first_batch_payment_policies`
+  (operator-order-triage `OrderTriageRuntime.firstBatchPaymentPolicyMirror`),
+  `business-starter-credit.ts` `createGrant`'s `usdCreditGrantStatements`
+  pay-in, `cloud/cloud-metering.ts` `settleCloudPrimitiveCharge` (covers
+  fine-tuning + sandbox-compute charges), `inference/metering-hook.ts`
+  `makeLedgerMeteringHook`, and `inference/inference-abuse-controls.ts`
+  `clawbackInferenceCredits` (this last one has no production call site
+  yet — the wiring is forward-compatible). `labor-escrow.ts`'s
+  `runLedgerStatements` calls were AUDITED and found to touch only
+  treasury-domain (`agent_balances`/`labor_escrows`, KS-8.8) tables via
+  their own always-on annotated mirror — not a billing-domain gap, so no
+  change was needed there. A full production `--restart` sweep +
+  `--verify` ran clean on 20/21 tables (exact row counts, the full
+  per-user `billing_ledger_entries` balance map, Stripe event-id set
+  equality, grouped msat/cents sums) — see the RUNBOOK for the exact
+  output. `pay_in_legs` came back 2 rows short (321/323 mirrored) because
+  of a genuine pre-existing production data bug found during this sweep
+  (swapped `party_ref`/`amount_msat` params in
+  `usd-credit-bridge.ts`'s `usdCreditGrantStatements` audit-leg INSERT —
+  fixed in this pass; the 2 already-corrupted historical rows are tracked
+  in [#8412](https://github.com/OpenAgentsInc/openagents/issues/8412) for
+  an owner-gated historical-correction decision, not silently patched).
+  `billing_ledger_entries_next` confirmed ABSENT in both D1 and Postgres.
+  The epic-gated `KHALA_SYNC_BILLING_READS=postgres` decision on #8282 has
+  NOT been made — reads stay `d1`; dual-write stays on; no D1 table was
+  dropped (per the #8330 KS-8.19 consolidation policy: bulk domain drops
+  wait for that closing sweep, not per-domain follow-ups).
 
 ### 3.5 KS-8.8 — Treasury, payouts, tips settlement
 

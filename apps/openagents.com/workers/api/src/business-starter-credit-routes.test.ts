@@ -8,6 +8,7 @@ import { makeD1BusinessPipelineStore } from './business-pipeline-queue'
 import {
   SALES_STARTER_CREDIT_ATTRIBUTION_KIND,
   makeD1BusinessStarterCreditStore,
+  systemBusinessStarterCreditRuntime,
 } from './business-starter-credit'
 import { makeOperatorBusinessStarterCreditRoutes } from './business-starter-credit-routes'
 import { readAgentBalance } from './payments-ledger'
@@ -265,6 +266,43 @@ describe('business starter credit routes', () => {
       public_receipt_ref: body.grant.creditReceiptRef,
     })
     expect(payIn?.context_ref).toContain(SALES_STARTER_CREDIT_ATTRIBUTION_KIND)
+  })
+
+  // KS-8.7 (#8318/#8337): a wired `mirror` must see the pay_ins/pay_in_legs
+  // rows the USD-credit grant's `usdCreditGrantStatements` creates — the
+  // RUNBOOK coverage list called out `business-starter-credit.ts` as
+  // D1-only pending this decommission pass (converged only by periodic
+  // backfill sweeps, never in real time).
+  test('createGrant mirrors its pay_ins + pay_in_legs refs when a mirror is wired', async () => {
+    const db = makeDb()
+    await seedPipeline(db)
+    const pipelineStore = makeD1BusinessPipelineStore(db)
+    const calls: Array<ReadonlyArray<{ table: string; key: unknown }>> = []
+    const mirror = async (
+      _db: unknown,
+      refs: ReadonlyArray<{ table: string; key: unknown }>,
+    ) => {
+      calls.push(refs)
+    }
+    const store = makeD1BusinessStarterCreditStore(db, pipelineStore, {
+      ...systemBusinessStarterCreditRuntime,
+      mirror,
+    })
+
+    const outcome = await store.createGrant(PIPELINE_REF, {
+      accountRef: ACCOUNT_REF,
+      amountUsdCents: 10_000,
+      grantRef: 'sales-starter-grant-mirror-001',
+      windowRef: 'sales_starter_credit.2026-07-mirror',
+    })
+
+    expect(outcome.ok).toBe(true)
+    const mirroredTables = calls.flat().map(ref => ref.table)
+    expect(mirroredTables).toContain('pay_ins')
+    expect(mirroredTables).toContain('pay_in_legs')
+    // business_starter_credit_grants is a business-funnel (KS-8.14) table,
+    // mirrored by a separate seam — this hook is billing-domain only.
+    expect(mirroredTables).not.toContain('business_starter_credit_grants')
   })
 
   test('refuses amount and window cap exceedance without minting credit', async () => {

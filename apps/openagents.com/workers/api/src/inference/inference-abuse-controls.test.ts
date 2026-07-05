@@ -376,6 +376,40 @@ describe('clawbackInferenceCredits (live ledger)', () => {
     expect(balance?.availableMsat).toBe(600_000)
   })
 
+  // KS-8.7 (#8318/#8337): a wired `mirror` must see the pay_ins/pay_in_legs
+  // rows this clawback just created — the RUNBOOK coverage list called out
+  // `inference/inference-abuse-controls.ts` as D1-only pending this
+  // decommission pass (converged only by periodic backfill sweeps).
+  test('a clawback mirrors its pay_ins + pay_in_legs refs when a mirror is wired', async () => {
+    const db = makeDb()
+    await seedBalance(db, 1_000_000)
+    const calls: Array<ReadonlyArray<{ table: string; key: unknown }>> = []
+    const mirror = async (
+      _db: unknown,
+      refs: ReadonlyArray<{ table: string; key: unknown }>,
+    ) => {
+      calls.push(refs)
+    }
+
+    const outcome = await run(
+      clawbackInferenceCredits(
+        { accountRef: ACCOUNT, sourceRef: 'dispute-mirror-1', clawbackMsat: 400_000 },
+        { db, mirror, nowIso: () => NOW },
+      ),
+    )
+    expect(outcome.clawedBack).toBe(true)
+    const mirroredTables = calls.flat().map(ref => ref.table)
+    expect(mirroredTables).toContain('pay_ins')
+    expect(mirroredTables).toContain('pay_in_legs')
+    const payInRefs = calls
+      .flat()
+      .filter(ref => ref.table === 'pay_ins')
+      .map(ref => ref.key)
+    expect(payInRefs).toContainEqual({
+      id: 'inference:clawback:dispute-mirror-1',
+    })
+  })
+
   test('is idempotent per source event (webhook replay never double-claws)', async () => {
     const db = makeDb()
     await seedBalance(db, 1_000_000)

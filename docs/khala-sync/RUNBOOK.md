@@ -1777,18 +1777,77 @@ index.ts cron/policy sites, omni-runs metering), the FULL Stripe webhook
 ingest (`stripe_webhook_events` insert + status updates, checkout
 fulfillment, customers, sessions, saved payment methods, auto-top-up),
 Khala Code paid-plan intents (both rails), the buyer-payment ledger store
-(all six create paths + site-checkout challenges), and annotated pay-in
+(all six create paths + site-checkout challenges), annotated pay-in
 plans through `runLedgerStatements` on the tip-ladder (forum + pylon
 tips), tips-sweep + forwarding reconcile, USD-credit bridge, and MPP/
-Lightning mints. **Still D1-only pending the decommission follow-up**
-(converged by every backfill sweep until then):
-`first_batch_payment_policies` (operator triage), codex-usage debits from
-`OmniRunStore` constructors that do not pass `billingRuntime`, and the
-low-volume `runLedgerStatements` consumers (labor-escrow, metering-hook,
-inference-abuse-controls, serving-node-payout, cloud-metering,
-product-promises, business-starter-credit). A final
-`--restart` sweep + `--verify` immediately before any read cutover is
-therefore MANDATORY, not optional.
+Lightning mints, **plus, as of the KS-8.7 follow-up (#8337, 2026-07-05):**
+`first_batch_payment_policies` (operator-order-triage —
+`OrderTriageRuntime.firstBatchPaymentPolicyMirror`, wired at
+`OrderTriageService.layer`), `business-starter-credit.ts` `createGrant`'s
+USD-credit pay-in leg, `cloud/cloud-metering.ts`
+`settleCloudPrimitiveCharge` (fine-tuning + sandbox-compute charges via
+their route-level deps), `inference/metering-hook.ts`
+`makeLedgerMeteringHook` (the live inference charge path), and
+`inference/inference-abuse-controls.ts` `clawbackInferenceCredits` (typed
+and wired but has no production call site yet). `labor-escrow.ts` was
+audited and found to only ever write treasury-domain
+(`agent_balances`/`labor_escrows`) rows through its OWN always-on
+annotated mirror (KS-8.8, #8319) — it never carries a `payInId`
+annotation, so there was no billing-domain gap to close there; the
+original RUNBOOK listing of it was a miscategorization.
+
+**2026-07-05 production `--restart` + `--verify` evidence (#8337):** ran
+against `khala_sync_prod` as `khala_app` (the same role the live mirror
+uses). 20 of 21 tables came back exact — row counts, the FULL per-user
+`billing_ledger_entries` balance map (SUM(amount_cents) to the cent),
+grouped (currency, source)/(pay_in_type, state)/(direction, kind) msat and
+cents sums, the `stripe_webhook_events` key-set digest, and newest-50 row
+hashes all matched. `pay_ins` (301/301), `billing_ledger_entries`
+(2264/2264), `billing_accounts` (44/44), `first_batch_payment_policies`
+(3/3, the newly-wired writer) all converged and verified exact.
+`billing_ledger_entries_next` confirmed ABSENT in both D1 and Postgres
+(no live twin).
+
+**One non-exact table, root-caused and explained:** `pay_in_legs` came
+back `d1=323 postgres=321` (2 rows short), with grouped sums still exact
+(`in:balance` and `in:lightning` msat sums matched d1=pg despite the
+2-row gap, because SQLite's `SUM()` coerces the corrupted text values to
+0 rather than erroring). Root cause: a genuine, real, pre-existing
+production data bug in `inference/usd-credit-bridge.ts`'s
+`usdCreditGrantStatements` — the audit-leg INSERT bound `party_ref` and
+`amount_msat` in the WRONG param order (D1/SQLite's weak typing silently
+accepted a text value in the `amount_msat` slot for years; Postgres's
+strict `amount_msat bigint NOT NULL CHECK (amount_msat > 0)` column
+rejected it on the first real converge attempt). This does **not** affect
+any actual balance or credited amount — the balance credit itself is a
+separate, correctly-parameterized `UPDATE agent_balances` statement in the
+same atomic batch; the bug only corrupted that ONE audit leg row's own
+`party_ref`/`amount_msat` columns. Exactly two historical rows in all of
+production carry this corruption (one from the still-live
+`usd-credit-bridge.ts` path, now fixed in this pass; one from the
+already-removed MPP/x402 chat endpoint, #8387). The code bug is fixed
+(`inference/usd-credit-bridge.ts`, with a regression test asserting the
+audit leg's actual column values); the two already-corrupted D1 rows were
+deliberately left untouched and unmirrored — mirroring the corrupted bytes
+would violate the Postgres schema, and "correcting" them without owner
+sign-off would rewrite historical financial audit-trail data. Tracked in
+[#8412](https://github.com/OpenAgentsInc/openagents/issues/8412) for an
+owner-gated historical-correction decision. Money reads never cut on a
+red verify — see below, unaffected either way since the epic-gated read
+flip has not happened yet.
+
+**Not done in this pass (deliberately, per money discipline):** the
+epic-gated `KHALA_SYNC_BILLING_READS=postgres` production decision on
+#8282 (reads stay `d1`; the compare-mode soak hasn't even started for
+this domain yet); moving the remaining D1-direct reads (recent-ledger-
+entries projection, auto-top-up state reads, checkout receipt reads,
+buyer-payment pipeline reads, pay-in receipt/tip-earnings reads) onto the
+routed-read machinery — this is real, separate implementation work (new
+Postgres-routed queries + re-derived indexes + their own compare evidence
+per surface), matching the KS-8.6/Artanis precedent (#8335) of leaving
+this to a later pass; stopping dual-write; snapshotting to R2; and
+dropping any of the 22 D1 tables (per the #8330 KS-8.19 consolidation
+policy, bulk domain drops wait for that closing sweep).
 
 ## Business funnel domain cutover (KS-8.14, #8325)
 

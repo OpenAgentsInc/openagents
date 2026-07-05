@@ -21,6 +21,8 @@ import { parseJsonRecord } from './json-boundary'
 // mirroring database is a passthrough for non-scoped statements and
 // degrades to the raw D1 handle when no KHALA_SYNC_DB binding exists.
 import { businessDomainDatabaseForEnv } from './business-domain-store'
+import type { BillingDomainMirror } from './billing'
+import { type BillingSyncEnv, billingDomainMirrorFromEnv } from './billing-store'
 import { sitesContentDatabaseForEnv } from './sites-content-store'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 import {
@@ -29,9 +31,10 @@ import {
   AutopilotSitesService,
 } from './sites'
 
-type OperatorOrderTriageEnv = Readonly<{
-  OPENAGENTS_DB: D1Database
-}>
+type OperatorOrderTriageEnv = BillingSyncEnv &
+  Readonly<{
+    OPENAGENTS_DB: D1Database
+  }>
 
 // KS-8.14 (#8359): this file's writes hit the business-domain
 // software_orders / order_triage_* tables; its reads shadow the sites
@@ -198,6 +201,14 @@ export type OrderTriageRuntime = Readonly<{
   makeEventId: () => string
   makeRecordId: () => string
   nowIso: () => string
+  /**
+   * KS-8.7 (#8318/#8337): optional fail-soft Postgres mirror for
+   * `first_batch_payment_policies` (`billingDomainMirrorFromEnv`).
+   * `OrderTriageService.layer` wires this from the route env; the bare
+   * `systemOrderTriageRuntime` default leaves it undefined (D1-only,
+   * converged by the next backfill sweep).
+   */
+  firstBatchPaymentPolicyMirror?: BillingDomainMirror | undefined
 }>
 
 export const systemOrderTriageRuntime: OrderTriageRuntime = {
@@ -1821,7 +1832,10 @@ const applyFirstBatchPaymentPolicies = (
       const assignment = yield* readMonitorAssignment(db, record)
       const policy = yield* upsertFirstBatchPaymentPolicy(
         db,
-        systemFirstBatchPaymentPolicyRuntime,
+        {
+          ...systemFirstBatchPaymentPolicyRuntime,
+          mirror: runtime.firstBatchPaymentPolicyMirror,
+        },
         {
           appliedByUserId: actorUserId,
           assignmentId: assignment?.id ?? record.order.latestAssignmentId,
@@ -2465,7 +2479,14 @@ export class OrderTriageService extends Context.Service<
 >()('@openagentsinc/autopilot-omega/OrderTriageService') {
   static readonly layer = (
     env: OperatorOrderTriageEnv,
-    runtime: OrderTriageRuntime = systemOrderTriageRuntime,
+    runtime: OrderTriageRuntime = {
+      ...systemOrderTriageRuntime,
+      // KS-8.7 (#8318/#8337): mirror the operator-triage-applied
+      // `first_batch_payment_policies` row fail-soft (absent when
+      // KHALA_SYNC_DB/dual-write is unavailable — degrades to D1-only,
+      // converged by the next backfill sweep).
+      firstBatchPaymentPolicyMirror: billingDomainMirrorFromEnv(env),
+    },
   ) =>
     Layer.succeed(OrderTriageService, {
       assignFirstBatch: Effect.fn('OrderTriageService.assignFirstBatch')(

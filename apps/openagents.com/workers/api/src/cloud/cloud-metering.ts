@@ -26,6 +26,7 @@
 
 import { Effect } from 'effect'
 
+import type { BillingDomainMirror } from '../billing'
 import { workerLogEntry } from '../observability'
 import {
   createPayInStatements,
@@ -122,6 +123,13 @@ export type CloudMeteringOutcome = Readonly<{
 export type CloudMeteringDeps = Readonly<{
   db: D1Database
   nowIso?: () => string
+  /**
+   * KS-8.7 (#8318/#8337): optional fail-soft Postgres mirror
+   * (`billingDomainMirrorFromEnv`) for the `pay_ins`/`pay_in_legs` rows this
+   * charge creates — otherwise D1-only until the next backfill sweep
+   * converges them.
+   */
+  mirror?: BillingDomainMirror | undefined
 }>
 
 // Settle a single cloud-primitive charge against the credit ledger. Receipt-
@@ -173,7 +181,7 @@ export const settleCloudPrimitiveCharge = (
             { balancePayoutLegs: [], payInId: plan.payInId },
             settledAt,
           ),
-        ]),
+        ], deps.mirror),
     }).pipe(
       Effect.map(() => ({ ok: true as const })),
       Effect.catch(() => Effect.succeed({ ok: false as const })),

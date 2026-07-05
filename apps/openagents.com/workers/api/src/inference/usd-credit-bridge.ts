@@ -155,11 +155,26 @@ export const usdCreditGrantStatements = (
     {
       // The audit leg. INSERT OR IGNORE so a replay (same legId) is a no-op,
       // pairing with the guarded credit above for exactly-once semantics.
+      //
+      // KS-8.7 (#8318/#8337) FOUND + FIXED: `party_ref` and `amount_msat`
+      // were bound in the WRONG order here (party_ref got `grantMsat`,
+      // amount_msat got `input.accountRef`) — a real, live production data
+      // bug. D1/SQLite is dynamically typed so it silently accepted the
+      // swapped values for years; the KS-8.7 Postgres mirror's strict
+      // `amount_msat bigint` column caught it during the first real
+      // backfill `--verify` sweep (2026-07-05). It does NOT affect the
+      // actual balance credit — the UPDATE above already applies the
+      // correct `grantMsat`/`accountRef` — it only corrupted this audit
+      // leg row's own `party_ref`/`amount_msat` columns. Exactly two
+      // historical rows in production carry the swapped values (one from
+      // this path, one from the removed MPP/x402 lightning-charge path);
+      // see the KS-8.7 decommission follow-up (#8337) for the historical
+      // finding.
       params: [
         legId,
         payInId,
-        grantMsat,
         input.accountRef,
+        grantMsat,
         input.accountRef,
         nowIso,
       ],
