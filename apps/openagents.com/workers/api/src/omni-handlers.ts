@@ -106,6 +106,7 @@ import {
   runnerWorkloadTrustFromSelector,
 } from './runner-backend-readiness'
 import { openAgentsDatabase, scheduleBackgroundWork } from './runtime'
+import { businessDomainDatabaseForEnv } from './business-domain-store'
 import { sitesContentDatabaseForEnv } from './sites-content-store'
 import {
   notifyAgentRunSyncScopes,
@@ -2901,15 +2902,23 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
           'OmniRunnerCallback.applyAdjutantRunLifecycleEvents',
           // KS-8.12 (#8323): lifecycle events write site_deployments /
           // site_events — ride the sites dual-write mirror seam.
-          applyAdjutantRunLifecycleEvents(sitesContentDatabaseForEnv(env), {
-            actorUserId: 'openagents:runner-ingest',
-            appOrigin: dependencies.getAppOrigin(env),
-            artifacts: env.ARTIFACTS,
-            emailConfig: dependencies.getResendEmailConfig(env),
-            events: ingestResult.value.records,
-            runId,
-            status: ingestResult.value.status,
-          }),
+          // KS-8.14 (#8359): the same events also flip software_orders
+          // status; compose the business funnel mirror OVER the sites
+          // proxy so order writes mirror to the business Postgres twin.
+          applyAdjutantRunLifecycleEvents(
+            businessDomainDatabaseForEnv(env, {
+              d1: sitesContentDatabaseForEnv(env),
+            }),
+            {
+              actorUserId: 'openagents:runner-ingest',
+              appOrigin: dependencies.getAppOrigin(env),
+              artifacts: env.ARTIFACTS,
+              emailConfig: dependencies.getResendEmailConfig(env),
+              events: ingestResult.value.records,
+              runId,
+              status: ingestResult.value.status,
+            },
+          ),
         )
       } catch (error) {
         postIngestFailures.push({

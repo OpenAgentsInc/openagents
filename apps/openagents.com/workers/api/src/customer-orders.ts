@@ -18,12 +18,21 @@ import {
 // KS-8.12 (#8323): sites writes ride the dual-write mirror seam — the
 // mirroring database is a passthrough for non-scoped statements and
 // degrades to the raw D1 handle when no KHALA_SYNC_DB binding exists.
-import { sitesContentDatabaseForEnv as openAgentsDatabase } from './sites-content-store'
+import { businessDomainDatabaseForEnv } from './business-domain-store'
+import { sitesContentDatabaseForEnv } from './sites-content-store'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 
 type CustomerOrderEnv = Readonly<{
   OPENAGENTS_DB: D1Database
 }>
+
+// KS-8.14 (#8359): this file writes both site_* content tables and the
+// business-domain software_orders / order_* tables. Compose the business
+// funnel mirror OVER the sites proxy so each domain's scoped writes
+// read-back mirror to its own Postgres twin; non-scoped statements pass
+// through both layers, and both degrade to raw D1 with no KHALA_SYNC_DB.
+const openAgentsDatabase = (env: CustomerOrderEnv): D1Database =>
+  businessDomainDatabaseForEnv(env, { d1: sitesContentDatabaseForEnv(env) })
 
 export type CustomerOrderRuntime = Readonly<{
   makeAdjutantAdjustmentId: () => string

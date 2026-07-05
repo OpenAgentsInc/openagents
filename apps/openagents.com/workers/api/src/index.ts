@@ -11436,7 +11436,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/operator/qa-swarm/first-engagements',
     handler: (request, env) =>
       handleOperatorQaSwarmFirstEngagementsApi(request, {
-        OPENAGENTS_DB: openAgentsDatabase(env),
+        // KS-8.14 (#8359): the operator first-engagement path writes
+        // qa_swarm_first_engagements + business_commitment_ledger — ride
+        // the business funnel dual-write mirror seam, matching the public
+        // routes path (makeD1QaSwarmFirstEngagementStore above).
+        OPENAGENTS_DB: businessDomainDatabaseForEnv(env),
         requireAdminApiToken: authRequest =>
           requireAdminApiToken(authRequest, env),
       }),

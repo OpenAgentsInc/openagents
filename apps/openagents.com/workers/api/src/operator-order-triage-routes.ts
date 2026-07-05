@@ -20,7 +20,8 @@ import { parseJsonRecord } from './json-boundary'
 // KS-8.12 (#8323): sites writes ride the dual-write mirror seam — the
 // mirroring database is a passthrough for non-scoped statements and
 // degrades to the raw D1 handle when no KHALA_SYNC_DB binding exists.
-import { sitesContentDatabaseForEnv as openAgentsDatabase } from './sites-content-store'
+import { businessDomainDatabaseForEnv } from './business-domain-store'
+import { sitesContentDatabaseForEnv } from './sites-content-store'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 import {
   type AutopilotSiteError,
@@ -31,6 +32,16 @@ import {
 type OperatorOrderTriageEnv = Readonly<{
   OPENAGENTS_DB: D1Database
 }>
+
+// KS-8.14 (#8359): this file's writes hit the business-domain
+// software_orders / order_triage_* tables; its reads shadow the sites
+// proxy. Compose the business funnel mirror OVER the sites proxy so
+// order writes read-back mirror to the business Postgres twin while
+// non-scoped statements pass through both layers. Degrades to raw D1
+// with no KHALA_SYNC_DB binding.
+const openAgentsDatabase = (env: OperatorOrderTriageEnv): D1Database =>
+  businessDomainDatabaseForEnv(env, { d1: sitesContentDatabaseForEnv(env) })
+
 type HttpResponse = globalThis.Response
 
 type OperatorOrderTriageSession = Readonly<{

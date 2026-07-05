@@ -877,6 +877,16 @@ export type MakeBusinessDomainStoreOptions = Readonly<{
   /** Injectable client factory (tests). Default: postgres.js/Hyperdrive. */
   makeSqlClient?: MakeKhalaSyncPushSqlClient | undefined
   log?: BusinessDomainLog | undefined
+  /**
+   * Authority D1 override — compose this seam OVER another domain's
+   * mirroring D1Database (e.g. the KS-8.12 sites proxy
+   * `sitesContentDatabaseForEnv`) when one route file writes both
+   * domains: non-business statements pass through to (and mirror via)
+   * the wrapped database, while business/order tables ride this seam.
+   * Read-back still runs on this handle — SELECTs on business tables are
+   * a passthrough for the wrapped domain, so composition is safe.
+   */
+  d1?: D1Database | undefined
 }>
 
 const defaultLog: BusinessDomainLog = (event, fields) => {
@@ -912,7 +922,8 @@ export const businessDomainDatabaseForEnv = (
   env: BusinessDomainStoreEnv,
   options: MakeBusinessDomainStoreOptions = {},
 ): D1Database => {
-  const db = openAgentsDatabase(env as { OPENAGENTS_DB: D1Database })
+  const db =
+    options.d1 ?? openAgentsDatabase(env as { OPENAGENTS_DB: D1Database })
   const flags = businessDomainFlagsFromEnv(env)
   const log = options.log ?? defaultLog
   const postgres = postgresStoreForEnv(env, options)

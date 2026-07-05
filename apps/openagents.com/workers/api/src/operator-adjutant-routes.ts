@@ -126,6 +126,7 @@ import { githubIdentityTokenKey } from './onboarding/github'
 // KS-8.12 (#8323): sites writes ride the dual-write mirror seam — the
 // mirroring database is a passthrough for non-scoped statements and
 // degrades to the raw D1 handle when no KHALA_SYNC_DB binding exists.
+import { businessDomainDatabaseForEnv } from './business-domain-store'
 import { sitesContentDatabaseForEnv as openAgentsDatabase } from './sites-content-store'
 import {
   compactRandomId,
@@ -5846,7 +5847,12 @@ export const makeOperatorAdjutantRoutes = <
               targetUser,
             ),
         })
-        const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
+        // KS-8.14 (#8359): this handler flips software_orders launch
+        // state; compose the business funnel mirror UNDER the CRM seam and
+        // OVER the sites proxy so order writes mirror to the business twin.
+        const db = makeCrmEmailDatabaseForEnv(env, {
+          d1: businessDomainDatabaseForEnv(env, { d1: openAgentsDatabase(env) }),
+        })
         const config = getOpenAgentsWorkerConfig(env)
         const sourceChecks = yield* assignmentSourceChecks(
           db,
@@ -6118,7 +6124,12 @@ export const makeOperatorAdjutantRoutes = <
           })
         }
 
-        const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
+        // KS-8.14 (#8359): this handler flips software_orders launch
+        // state; compose the business funnel mirror UNDER the CRM seam and
+        // OVER the sites proxy so order writes mirror to the business twin.
+        const db = makeCrmEmailDatabaseForEnv(env, {
+          d1: businessDomainDatabaseForEnv(env, { d1: openAgentsDatabase(env) }),
+        })
         const order =
           assignment.softwareOrderId === null
             ? null

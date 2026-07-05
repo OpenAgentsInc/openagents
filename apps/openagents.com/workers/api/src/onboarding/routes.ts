@@ -21,6 +21,7 @@ import {
   CustomerOrderStore,
   SubmitCustomerSiteFeedbackRequest,
 } from '../customer-orders'
+import { businessDomainDatabaseForEnv } from '../business-domain-store'
 import { methodNotAllowed, noStoreJsonResponse } from '../http/responses'
 import { logWorkerRouteError } from '../observability'
 import { openAgentsDatabase, scheduleBackgroundWork } from '../runtime'
@@ -574,8 +575,11 @@ export const makeOnboardingRoutes = <
                         operation: 'siteReferralConsumption.userRoute.consume',
                       }),
                 try: () =>
+                  // KS-8.14 (#8359): referral consumption UPDATEs
+                  // referral_attributions + INSERTs user_referral_attributions
+                  // — ride the business funnel dual-write mirror seam.
                   consumePendingReferralForUser(
-                    openAgentsDatabase(env),
+                    businessDomainDatabaseForEnv(env),
                     {
                       nowIso:
                         dependencies.customerOrderRuntime?.nowIso ??
@@ -596,8 +600,11 @@ export const makeOnboardingRoutes = <
                         operation: 'siteReferralConsumption.orderRoute.link',
                       }),
                 try: () =>
+                  // KS-8.14 (#8359): order referral linkage writes the
+                  // business-domain order_referral_attributions table —
+                  // ride the business funnel dual-write mirror seam.
                   linkPendingReferralToOrder(
-                    openAgentsDatabase(env),
+                    businessDomainDatabaseForEnv(env),
                     {
                       nowIso:
                         dependencies.customerOrderRuntime?.nowIso ??
@@ -736,8 +743,11 @@ export const makeOnboardingRoutes = <
                   operation: 'siteReferralConsumption.orderCreate.link',
                 }),
           try: () =>
+            // KS-8.14 (#8359): order referral linkage writes the
+            // business-domain order_referral_attributions table — ride the
+            // business funnel dual-write mirror seam.
             linkPendingReferralToOrder(
-              openAgentsDatabase(env),
+              businessDomainDatabaseForEnv(env),
               {
                 nowIso:
                   dependencies.customerOrderRuntime?.nowIso ??

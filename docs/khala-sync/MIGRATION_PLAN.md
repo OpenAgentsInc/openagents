@@ -1165,17 +1165,58 @@ money sums for checkout/starter-credit/buy-mode/workflow-event/order/QA
 amounts, newest-N row hashes), and a contract suite run against BOTH
 stores incl. consume-once replay, fail-soft, and compare-read proofs.
 Funnel-event volume stays relational in this lane; the Analytics Engine
-split is a post-cutover follow-up decision. Writers still D1-only
-pending the remainder lane (backfill-converged until then): the
-`software_orders`/`order_*` boundaries inside customer-orders,
-operator-order-triage, operator-adjutant, adjutant-run-lifecycle
-(omni-handlers), github-writeback-authority/github-pr-fulfillment, the
-stripe-billing–fed `business_checkout_kickoffs` +
-`business-referral-engagement-feed` funnel writes, `business-new-routes`
-capture, site-referral-onboarding consumption, and
-`referral_workflow_events` via site-referral-policy. Prod cutover
-procedure: [`RUNBOOK.md`](./RUNBOOK.md) "Business funnel domain
-cutover"; remainder wiring + cutover evidence + D1 drop tracked on epic
+split is a post-cutover follow-up decision.
+
+**KS-8.14 remainder status (2026-07-04, #8359):** FULL WRITER COVERAGE —
+the `software_orders`/`order_*`/checkout/referral boundaries that #8325
+left D1-only are now wired into the same mirror seam. Because the domain
+has no single store object (D1 itself is the repository interface), the
+wiring drops `businessDomainDatabaseForEnv` in at the db-construction
+boundary that feeds each writer, COMPOSING over the domain a route file
+already rides via the new `options.d1` override (the KS-8.12/8.13
+pattern): business/order statements read-back mirror to the business
+Postgres twin while the wrapped domain's statements pass through to (and
+mirror via) their own seam. Live boundaries wired: customer-orders and
+operator-order-triage (business OVER the sites proxy, file-local
+`openAgentsDatabase` helper); operator-adjutant launch-state UPDATE
+(business UNDER the CRM seam and OVER the sites proxy at the two
+`makeCrmEmailDatabaseForEnv` sites feeding it); adjutant-run-lifecycle
+via `omni-handlers` (business OVER the sites proxy at the single
+`applyAdjutantRunLifecycleEvents` call); the stripe-billing–fed
+`business_checkout_kickoffs` + `business-referral-engagement-feed` funnel
+writes (billing-routes webhook + return-URL fulfillment boundaries — the
+1c323deac3 sourceRef hardening is untouched, only the db handle is
+wrapped); onboarding referral consumption (`consumePendingReferralForUser`
+/ `linkPendingReferralToOrder` in `onboarding/routes.ts`); and the
+operator QA-swarm first-engagement path
+(`business_commitment_ledger`/`qa_swarm_first_engagements`) which #8325
+had left on raw D1 while the public routes path already rode the factory.
+Already-wired-in-8325 and confirmed still covered: `handleBusinessSignupApi`
+referral capture/consume (`referral-source-capture`,
+`business_signup_referral_attributions`), `site-referral-routes` capture,
+session-bootstrap consumption, and the pipeline/QA-swarm public stores.
+`business-new-routes` itself writes nothing — it only renders and
+validates referral codes (`isSafeReferralSourceRef`); the capture write it
+implies happens in `business-signup-routes`, already on the factory.
+
+**Decommission audit (write-dead / dormant boundaries).** These have NO
+live worker write statement, so there is nothing to wire — they take a
+`db` param but are reached only by their own unit tests:
+`github-writeback-authority` (`order_github_write_authority_receipts`,
+`order_fulfillment_artifacts`, `software_orders` UPDATE) and
+`github-pr-fulfillment` (`order_fulfillment_artifacts`, `software_orders`
+delivered flip), whose only callers are their tests; and
+`site-referral-workflow-events.recordReferralWorkflowEvent`
+(`referral_workflow_events`) via `site-referral-policy`, both test-only.
+`order_fulfillment_feedback` and `referral_invites` likewise have no live
+write statement (already noted in #8325). Their exact SQL shapes are still
+pinned in the classifier contract suite so that IF a production caller is
+added later it classifies as a mirrored write (never a silent
+`khala_sync_business_write_unclassified` drift); they take the
+snapshot-and-drop short path at cutover unless a live writer lands first.
+
+Prod cutover procedure: [`RUNBOOK.md`](./RUNBOOK.md) "Business funnel
+domain cutover"; cutover evidence + D1 drop tracked on epic
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
 
 ### 3.12 KS-8.15 — Training, gym, evals

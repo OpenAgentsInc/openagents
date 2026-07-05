@@ -15,6 +15,7 @@ import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { fundInferenceFromCredit } from './inference/usd-credit-bridge'
 import { readJsonObject } from './json-boundary'
 import { firstText } from './omni-runs'
+import { businessDomainDatabaseForEnv } from './business-domain-store'
 import { openAgentsDatabase } from './runtime'
 import { compactRandomId } from './runtime-primitives'
 import {
@@ -776,7 +777,11 @@ export const makeBillingApiHandlers = <
       const stripe =
         dependencies.stripe ?? makeStripeCheckoutServiceForRoutes(environment)
       const result = await stripe.processWebhook({
-        db: openAgentsDatabase(environment),
+        // KS-8.14 (#8359): checkout fulfillment writes the business-domain
+        // business_checkout_kickoffs + referral engagement tables — ride
+        // the business funnel dual-write mirror seam (passthrough + raw D1
+        // for every non-business statement in the webhook path).
+        db: businessDomainDatabaseForEnv(environment),
         payload: await request.text(),
         signature: request.headers.get('Stripe-Signature'),
       })
@@ -807,7 +812,10 @@ export const makeBillingApiHandlers = <
             makeStripeCheckoutServiceForRoutes(environment)
 
           return stripe.fulfillCheckoutSession({
-            db: openAgentsDatabase(environment),
+            // KS-8.14 (#8359): the return-URL fulfill path provisions the
+            // business_checkout_kickoffs row and referral engagement —
+            // ride the business funnel dual-write mirror seam.
+            db: businessDomainDatabaseForEnv(environment),
             sessionId,
           })
         })

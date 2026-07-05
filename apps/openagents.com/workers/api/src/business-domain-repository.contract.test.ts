@@ -58,6 +58,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
 import { recordBusinessFunnelEvent } from './business-funnel-dashboard'
 import {
+  businessDomainDatabaseForEnv,
   businessDomainFlagsFromEnv,
   classifyBusinessDomainStatement,
   makeBusinessDomainMirror,
@@ -331,6 +332,236 @@ const LIVE_STATEMENTS: ReadonlyArray<
     sql: `UPDATE business_service_promises SET last_motion_receipt_ref = ?, next_motion_due_at = ?, updated_at = ? WHERE id = ?`,
     table: 'business_service_promises',
   },
+  // KS-8.14 remainder (#8359): the order / checkout / referral writer
+  // boundaries wired into the mirror seam this lane. Each statement is
+  // copied VERBATIM from its writer module so the classifier pins the
+  // exact addressed key the mirror will read back by.
+  {
+    bindIndex: 0,
+    keyColumn: 'id',
+    name: 'customer-orders: create software_order insert',
+    sql: `INSERT INTO software_orders
+             (id,
+              user_id,
+              status,
+              visibility,
+              request,
+              repository_provider,
+              repository_owner,
+              repository_name,
+              repository_full_name,
+              repository_private,
+              repository_default_branch,
+              repository_html_url,
+              public_work_acknowledged_at,
+              data_use_acknowledged_at,
+              compute_payment_acknowledged_at,
+              provider_account_required,
+              free_slice_cents,
+              quote_cents,
+              current_run_id,
+              agent_started_at,
+              agent_idempotency_key,
+              created_at,
+              updated_at)
+           VALUES (?, ?, 'submitted', 'public', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 5000, NULL, NULL, NULL, ?, ?, ?)`,
+    table: 'software_orders',
+  },
+  {
+    bindIndex: 2,
+    keyColumn: 'id',
+    name: 'operator-triage: software_order status update',
+    sql: `UPDATE software_orders
+                SET status = ?,
+                    updated_at = ?
+              WHERE id = ?
+                AND archived_at IS NULL`,
+    table: 'software_orders',
+  },
+  {
+    bindIndex: 4,
+    keyColumn: 'id',
+    name: 'operator-adjutant: software_order launch-state update',
+    sql: `UPDATE software_orders
+                SET current_run_id = ?,
+                    status = ?,
+                    agent_started_at = COALESCE(agent_started_at, ?),
+                    updated_at = ?
+              WHERE id = ?
+                AND archived_at IS NULL`,
+    table: 'software_orders',
+  },
+  {
+    bindIndex: 1,
+    keyColumn: 'id',
+    name: 'github-pr-fulfillment: mark order delivered',
+    sql: `UPDATE software_orders
+       SET status = 'delivered',
+           updated_at = ?
+       WHERE id = ?
+         AND archived_at IS NULL`,
+    table: 'software_orders',
+  },
+  {
+    bindIndex: 0,
+    keyColumn: 'id',
+    name: 'operator-triage: triage event insert',
+    sql: `INSERT INTO order_triage_events
+             (id,
+              triage_record_id,
+              software_order_id,
+              site_id,
+              assignment_id,
+              event_type,
+              visibility,
+              summary,
+              actor_user_id,
+              payload_json,
+              created_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'team', ?, ?, ?, ?)`,
+    table: 'order_triage_events',
+  },
+  {
+    bindIndex: 0,
+    keyColumn: 'id',
+    name: 'operator-triage: triage record insert',
+    sql: `INSERT INTO order_triage_records
+               (id,
+                software_order_id,
+                classification,
+                operator_priority,
+                first_batch_eligible,
+                hold_reason,
+                next_action,
+                customer_safe_status,
+                customer_safe_summary,
+                reviewer_user_id,
+                reviewed_at,
+                created_at,
+                updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    table: 'order_triage_records',
+  },
+  {
+    bindIndex: 0,
+    keyColumn: 'id',
+    name: 'github-writeback: authority receipt insert',
+    sql: `INSERT INTO order_github_write_authority_receipts
+        (id, software_order_id, assignment_id, user_id, repository_full_name,
+         repository_private, requested_operation, decision, authority_mode,
+         blocked_reason, connection_ref, grant_ref, approval_source,
+         approved_at, customer_message, metadata_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    table: 'order_github_write_authority_receipts',
+  },
+  {
+    bindIndex: 0,
+    keyColumn: 'id',
+    name: 'github-pr-fulfillment: fulfillment artifact insert',
+    sql: `INSERT INTO order_fulfillment_artifacts
+        (id, software_order_id, assignment_id, run_id, kind, title, summary,
+         url, repository_full_name, source_branch, target_branch, commit_sha,
+         status, visibility, metadata_json, created_by_user_id, created_at,
+         updated_at, archived_at)
+       VALUES (?, ?, ?, NULL, 'pull_request', ?, ?, ?, ?, ?, ?, ?,
+         'customer_review_ready', 'public', ?, NULL, ?, ?, NULL)`,
+    table: 'order_fulfillment_artifacts',
+  },
+  {
+    bindIndex: 0,
+    keyColumn: 'checkout_session_id',
+    name: 'stripe-billing: checkout kickoff insert-or-ignore',
+    sql: `INSERT OR IGNORE INTO business_checkout_kickoffs
+        (checkout_session_id,
+         business_signup_request_id,
+         user_id,
+         total_amount_cents,
+         setup_fee_cents,
+         credit_grant_cents,
+         workspace_id,
+         service_promise_contract_id,
+         public_receipt_ref,
+         created_at,
+         updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    table: 'business_checkout_kickoffs',
+  },
+  {
+    bindIndex: 0,
+    keyColumn: 'id',
+    name: 'referral-source-capture: pending attribution insert',
+    sql: `INSERT INTO referral_attributions (
+         id,
+         referral_source_id,
+         referral_invite_id,
+         public_source_ref,
+         public_invite_ref,
+         capture_path,
+         target,
+         policy_state,
+         first_verified_at,
+         claimed_user_id,
+         expires_at,
+         created_at,
+         updated_at,
+         archived_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    table: 'referral_attributions',
+  },
+  {
+    bindIndex: 0,
+    keyColumn: 'software_order_id',
+    name: 'onboarding consumption: order referral linkage insert-or-ignore',
+    sql: `INSERT OR IGNORE INTO order_referral_attributions
+           (software_order_id,
+            user_id,
+            referral_attribution_id,
+            referral_source_id,
+            referral_invite_id,
+            capture_path,
+            target,
+            linked_at,
+            policy_state,
+            created_at,
+            updated_at,
+            archived_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NULL)`,
+    table: 'order_referral_attributions',
+  },
+  {
+    bindIndex: 0,
+    keyColumn: 'id',
+    name: 'site-referral workflow: workflow event insert-or-ignore',
+    sql: `INSERT OR IGNORE INTO referral_workflow_events (
+         id,
+         idempotency_key,
+         event_kind,
+         referral_attribution_id,
+         referral_source_id,
+         referral_invite_id,
+         public_source_ref,
+         public_invite_ref,
+         software_order_id,
+         site_id,
+         site_version_id,
+         product_id,
+         paid_action_id,
+         payment_event_id,
+         payment_evidence_ref,
+         entitlement_ref,
+         accepted_work_ref,
+         related_event_id,
+         public_receipt_ref,
+         policy_state,
+         amount,
+         asset,
+         metadata_json,
+         occurred_at,
+         created_at,
+         archived_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    table: 'referral_workflow_events',
+  },
 ]
 
 describe('business domain statement classifier', () => {
@@ -395,6 +626,104 @@ describe('business domain statement classifier', () => {
         `SELECT o.id FROM software_orders o JOIN users u ON u.id = o.user_id`,
       ).kind,
     ).toBe('passthrough')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Composition seam (options.d1) — the KS-8.14 remainder (#8359) layers the
+// business mirror OVER another domain's proxy (sites / CRM) at route files
+// that write BOTH domains. These run WITHOUT local Postgres: the mirror's
+// Postgres twin is a fake in-memory upsert recorder, so the wiring contract
+// is pinned on every CI run.
+// ---------------------------------------------------------------------------
+
+describe('business domain composition (options.d1)', () => {
+  test('no KHALA_SYNC_DB binding returns the provided inner handle unchanged', () => {
+    const inner = makeSqliteD1()
+    inner.exec(BUSINESS_DOMAIN_D1_SCHEMA)
+    // OPENAGENTS_DB is intentionally absent: with options.d1 the factory
+    // never falls back to openAgentsDatabase(env), so the composed inner
+    // handle is returned verbatim (zero overhead when the binding is off).
+    const handle = businessDomainDatabaseForEnv({}, { d1: inner.db })
+    expect(handle).toBe(inner.db)
+  })
+
+  test('composed over an inner handle: business writes mirror; non-business writes pass through only', async () => {
+    const inner = makeSqliteD1()
+    inner.exec(BUSINESS_DOMAIN_D1_SCHEMA)
+    inner.exec('CREATE TABLE scratch_passthrough (id TEXT PRIMARY KEY, v TEXT)')
+    const sink = makeLogSink()
+
+    const upserts: Array<{ params: ReadonlyArray<unknown>; text: string }> = []
+    const fakeSql = {
+      unsafe: async (text: string, params: ReadonlyArray<unknown>) => {
+        upserts.push({ params, text })
+        return []
+      },
+    }
+    const handle = businessDomainDatabaseForEnv(
+      { KHALA_SYNC_DB: { connectionString: 'postgres://fake/x' } },
+      {
+        d1: inner.db,
+        log: sink.log,
+        makeSqlClient: async () => ({
+          end: async () => {},
+          sql: fakeSql as never,
+        }),
+      },
+    )
+
+    // A newly-wired business/order write: lands in the inner D1 authority
+    // AND read-back mirrors to the Postgres twin.
+    await handle
+      .prepare(
+        `INSERT OR IGNORE INTO business_checkout_kickoffs
+          (checkout_session_id, business_signup_request_id, user_id,
+           total_amount_cents, setup_fee_cents, credit_grant_cents,
+           workspace_id, service_promise_contract_id, public_receipt_ref,
+           created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        'checkout_compose_1',
+        'signup_1',
+        'user_1',
+        500000,
+        100000,
+        400000,
+        'workspace_1',
+        'contract_1',
+        'receipt.compose.1',
+        '2026-07-04T00:00:00.000Z',
+        '2026-07-04T00:00:00.000Z',
+      )
+      .run()
+
+    const inD1 = await inner.db
+      .prepare(
+        'SELECT checkout_session_id FROM business_checkout_kickoffs WHERE checkout_session_id = ?',
+      )
+      .bind('checkout_compose_1')
+      .first<{ checkout_session_id: string }>()
+    expect(inD1?.checkout_session_id).toBe('checkout_compose_1')
+    expect(upserts).toHaveLength(1)
+    expect(upserts[0]!.text).toContain('business_checkout_kickoffs')
+
+    // A non-business statement on the same composed handle executes on the
+    // inner D1 only, never touches the Postgres twin, and never logs an
+    // unclassified-write drift diagnostic.
+    await handle
+      .prepare('INSERT INTO scratch_passthrough (id, v) VALUES (?, ?)')
+      .bind('p1', 'v1')
+      .run()
+
+    const passthrough = await inner.db
+      .prepare('SELECT v FROM scratch_passthrough WHERE id = ?')
+      .bind('p1')
+      .first<{ v: string }>()
+    expect(passthrough?.v).toBe('v1')
+    expect(upserts).toHaveLength(1)
+    expect(sink.entries).toHaveLength(0)
   })
 })
 
