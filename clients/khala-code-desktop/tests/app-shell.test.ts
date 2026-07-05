@@ -1672,7 +1672,7 @@ describe("khala code desktop app shell", () => {
     const reviewPanel = await Bun.file(new URL("../src/ui/review-panel.ts", import.meta.url)).text()
     const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
 
-    expect(sidebar).toContain('hotkey: "7"')
+    expect(sidebar).toContain('hotkey: "8"')
     expect(sidebar).toContain('label: "Review"')
     expect(sidebar).toContain('icon: "Compare"')
     expect(sidebar).toContain('value: "review"')
