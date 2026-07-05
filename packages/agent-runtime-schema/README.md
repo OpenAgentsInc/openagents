@@ -9,6 +9,23 @@ dependency. Adapter-specific loops project into this contract at the boundary;
 worker and UI surfaces consume event logs and projections derived from this
 contract.
 
+For Khala Code's AI SDK-shaped runtime work, the package also defines:
+
+- `openagents.khala_runtime_event.v1` for canonical text, reasoning, step,
+  tool, usage, provider metadata, file change, compaction, interruption, and
+  raw-sidecar events.
+- `openagents.khala_runtime_control_intent.v1` for mobile/desktop/server
+  control intents such as append message, start/interrupt/continue turn, close
+  turn, and tool approve/deny.
+- Structural mappers from existing `AgentRuntimeEvent` records and dependency
+  free AI SDK `TextStreamPart`-shaped objects into Khala runtime events.
+
+Raw provider chunks, local paths, tool inputs/results, and raw prompts should
+stay behind private refs. Tool events require an explicit authority record
+before execution, so Codex, Claude/Pylon, AI SDK Core, AI SDK harness sandbox,
+and Khala Sync mobile-control lanes can share one transcript/control contract
+without giving any adapter permission by implication.
+
 RK5 also adds a small shared surface presenter:
 `projectAgentRuntimeSurfaceStatus`. Workroom and TUI views use it to render the
 same public-safe run truth from kernel projections without reading raw adapter

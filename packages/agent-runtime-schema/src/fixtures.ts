@@ -6,6 +6,9 @@ import type {
   AgentRuntimeEventLog,
   AgentRuntimeLoopKind,
   AgentRuntimeRun,
+  KhalaRuntimeControlIntent,
+  KhalaRuntimeEvent,
+  KhalaRuntimeToolAuthority,
 } from "./index.js"
 
 const at = "2026-06-11T00:00:00.000Z"
@@ -295,4 +298,113 @@ export const agentRuntimeFixtureEventLogs: ReadonlyArray<AgentRuntimeEventLog> =
   nativeModelLoopEventLog,
   externalAgentLoopEventLog,
   hostedLoopEventLog,
+]
+
+export const khalaRuntimeToolAuthorityFixture: KhalaRuntimeToolAuthority = {
+  authorityRef: "authority.public.fixture.allow_read",
+  policyRef: "policy.public.fixture.tool_read",
+  decisionRef: "decision.public.fixture.tool_read",
+  toolRef: "tool.openagents.workspace.read",
+  status: "allowed",
+  allowed: true,
+  blockerRefs: [],
+}
+
+export const khalaRuntimeAiSdkTextDeltaEventFixture: KhalaRuntimeEvent = {
+  schema: "openagents.khala_runtime_event.v1",
+  eventId: "event.public.fixture.ai_sdk.text_delta.1",
+  turnId: "turn.public.fixture.ai_sdk.1",
+  threadId: "thread.public.fixture.ai_sdk",
+  sequence: 1,
+  observedAt: at,
+  source: {
+    lane: "ai_sdk_core",
+    surface: "server",
+    providerRef: "provider.public.fixture",
+    modelRef: "model.public.fixture",
+  },
+  visibility: "public",
+  redactionClass: "public_ref",
+  causalityRefs: [],
+  kind: "text.delta",
+  messageId: "message.public.fixture.ai_sdk.1",
+  chunkId: "chunk.public.fixture.ai_sdk.1",
+  text: "public-safe delta",
+}
+
+export const khalaRuntimeCodexToolCallEventFixture: KhalaRuntimeEvent = {
+  schema: "openagents.khala_runtime_event.v1",
+  eventId: "event.public.fixture.codex.tool_call.1",
+  turnId: "turn.public.fixture.codex.1",
+  threadId: "thread.public.fixture.codex",
+  sequence: 2,
+  observedAt: at,
+  source: {
+    lane: "codex_app_server",
+    adapterKind: "codex",
+    surface: "desktop",
+    adapterSessionRef: "session.public.fixture.codex.1",
+  },
+  visibility: "public",
+  redactionClass: "public_ref",
+  causalityRefs: ["event.public.fixture.codex.text.1"],
+  kind: "tool.call",
+  toolCallId: "tool_call.public.fixture.codex.1",
+  toolName: "workspaceRead",
+  inputRef: "input.private.fixture.codex.tool_call.1",
+  authority: khalaRuntimeToolAuthorityFixture,
+}
+
+export const khalaRuntimeRawSidecarEventFixture: KhalaRuntimeEvent = {
+  schema: "openagents.khala_runtime_event.v1",
+  eventId: "event.private.fixture.ai_sdk.raw.1",
+  turnId: "turn.public.fixture.ai_sdk.1",
+  threadId: "thread.public.fixture.ai_sdk",
+  sequence: 3,
+  observedAt: at,
+  source: {
+    lane: "ai_sdk_core",
+    surface: "server",
+  },
+  visibility: "private",
+  redactionClass: "private_ref",
+  causalityRefs: [],
+  kind: "raw.sidecar_ref",
+  rawEventRef: "raw.private.fixture.ai_sdk.1",
+  rawEventKind: "ai_sdk_stream_part",
+}
+
+export const khalaRuntimeMobileMessageAppendIntentFixture: KhalaRuntimeControlIntent = {
+  schema: "openagents.khala_runtime_control_intent.v1",
+  intentId: "intent.private.fixture.mobile.message_append.1",
+  kind: "message.append",
+  threadId: "thread.public.fixture.ai_sdk",
+  messageId: "message.private.fixture.mobile.1",
+  createdAt: at,
+  origin: {
+    surface: "mobile",
+    lane: "khala_sync_mobile_control",
+    deviceRef: "device.private.fixture.mobile.1",
+    userRef: "user.private.fixture.operator.1",
+  },
+  target: {
+    lane: "codex_app_server",
+    adapterKind: "codex",
+  },
+  visibility: "private",
+  redactionClass: "private_ref",
+  idempotencyKey: "idem.private.fixture.mobile.message_append.1",
+  causalityRefs: [],
+  bodyRef: "message_body.private.fixture.mobile.1",
+  promptRef: "prompt.private.fixture.mobile.1",
+}
+
+export const khalaRuntimeEventFixtures: ReadonlyArray<KhalaRuntimeEvent> = [
+  khalaRuntimeAiSdkTextDeltaEventFixture,
+  khalaRuntimeCodexToolCallEventFixture,
+  khalaRuntimeRawSidecarEventFixture,
+]
+
+export const khalaRuntimeControlIntentFixtures: ReadonlyArray<KhalaRuntimeControlIntent> = [
+  khalaRuntimeMobileMessageAppendIntentFixture,
 ]

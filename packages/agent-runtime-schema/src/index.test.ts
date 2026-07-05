@@ -15,6 +15,8 @@ import {
   assertAgentRuntimeEventLogSafe,
   assertAgentRuntimePublicEventSafe,
   assertAgentRuntimeRunStateTransition,
+  assertKhalaRuntimeControlIntentSafe,
+  assertKhalaRuntimePublicEventSafe,
   agentRuntimeSurfaceStatusHasUnsafeMaterial,
   compileAgentDefinitionToolRuntimePolicy,
   decideAgentDefinitionCompiledToolAuthority,
@@ -24,6 +26,13 @@ import {
   decodeAgentRuntimeEvent,
   decodeAgentRuntimeEventLog,
   decodeAgentRuntimeRun,
+  decodeKhalaRuntimeControlIntent,
+  decodeKhalaRuntimeEvent,
+  khalaRuntimeControlIntentKinds,
+  khalaRuntimeEventFromAgentRuntimeEvent,
+  khalaRuntimeEventFromAiSdkTextStreamPart,
+  khalaRuntimeEventKinds,
+  khalaRuntimeLanes,
   projectAgentRuntimeSurfaceStatus,
 } from "./index.js"
 import {
@@ -31,6 +40,9 @@ import {
   allTriggerTypesAgentDefinitionFixture,
   agentRuntimeFixtureEventLogs,
   fulfillmentLoopAgentDefinitionFixture,
+  khalaRuntimeControlIntentFixtures,
+  khalaRuntimeEventFixtures,
+  khalaRuntimeToolAuthorityFixture,
 } from "./fixtures.js"
 
 // Behavior contract oracle: background_agents.toolset.compiled_policy_enforced.v1
@@ -70,6 +82,22 @@ const baseEvent = {
   redactionClass: "public_ref",
   refs: [],
   blockerRefs: [],
+}
+
+const baseKhalaRuntimeEvent = {
+  schema: "openagents.khala_runtime_event.v1",
+  eventId: "event.public.schema_test.khala.1",
+  turnId: "turn.public.schema_test.khala.1",
+  threadId: "thread.public.schema_test.khala",
+  sequence: 1,
+  observedAt: "2026-06-11T00:00:00.000Z",
+  source: {
+    lane: "test_fixture",
+    surface: "test_fixture",
+  },
+  visibility: "public",
+  redactionClass: "public_ref",
+  causalityRefs: [],
 }
 
 describe("@openagentsinc/agent-runtime-schema", () => {
@@ -415,6 +443,245 @@ describe("@openagentsinc/agent-runtime-schema", () => {
     expect(schemas).not.toContain("ai-sdk")
     expect(schemas).not.toContain("providerEvent")
     expect(schemas).not.toContain("sdkMessage")
+  })
+
+  test("decodes Khala runtime lanes, event kinds, control kinds, and golden fixtures", () => {
+    expect(khalaRuntimeLanes).toEqual([
+      "codex_app_server",
+      "claude_pylon",
+      "ai_sdk_core",
+      "ai_sdk_harness_sandbox",
+      "khala_sync_mobile_control",
+      "hosted_khala",
+      "test_fixture",
+    ])
+    expect(khalaRuntimeEventKinds).toHaveLength(19)
+    expect(khalaRuntimeControlIntentKinds).toHaveLength(10)
+
+    const decodedEvents = khalaRuntimeEventFixtures.map((event) => decodeKhalaRuntimeEvent(event))
+    expect(decodedEvents.map((event) => event.kind)).toEqual([
+      "text.delta",
+      "tool.call",
+      "raw.sidecar_ref",
+    ])
+    for (const event of decodedEvents) {
+      expect(assertKhalaRuntimePublicEventSafe(event)).toBe(event)
+    }
+
+    const decodedIntents = khalaRuntimeControlIntentFixtures.map((intent) =>
+      decodeKhalaRuntimeControlIntent(intent)
+    )
+    expect(decodedIntents.map((intent) => intent.kind)).toEqual(["message.append"])
+    for (const intent of decodedIntents) {
+      expect(assertKhalaRuntimeControlIntentSafe(intent)).toBe(intent)
+    }
+  })
+
+  test("maps existing AgentRuntime events and AI SDK TextStreamPart fixtures into the Khala event schema", () => {
+    const agentTextEvent = decodeAgentRuntimeEvent({
+      ...baseEvent,
+      tag: "model.text_delta",
+      eventId: "event.public.schema_test.agent_text.1",
+      sequence: 4,
+      part: {
+        kind: "text",
+        text: "public-safe delta",
+      },
+    })
+
+    const fromAgentRuntime = khalaRuntimeEventFromAgentRuntimeEvent({
+      event: agentTextEvent,
+      threadId: "thread.public.schema_test.shared",
+      turnId: "turn.public.schema_test.shared.1",
+      source: {
+        lane: "codex_app_server",
+        adapterKind: "codex",
+        surface: "desktop",
+      },
+    })
+
+    const fromAiSdk = khalaRuntimeEventFromAiSdkTextStreamPart({
+      part: {
+        type: "text-delta",
+        id: "message.public.schema_test.shared.1",
+        text: "public-safe delta",
+      },
+      eventId: "event.public.schema_test.ai_sdk_text.1",
+      threadId: "thread.public.schema_test.shared",
+      turnId: "turn.public.schema_test.shared.1",
+      sequence: 4,
+      observedAt: "2026-06-11T00:00:00.000Z",
+      source: {
+        lane: "ai_sdk_core",
+        surface: "server",
+      },
+    })
+
+    expect(fromAgentRuntime).toMatchObject({
+      schema: "openagents.khala_runtime_event.v1",
+      kind: "text.delta",
+      text: "public-safe delta",
+      threadId: "thread.public.schema_test.shared",
+      turnId: "turn.public.schema_test.shared.1",
+    })
+    expect(fromAiSdk).toMatchObject({
+      schema: "openagents.khala_runtime_event.v1",
+      kind: "text.delta",
+      text: "public-safe delta",
+      threadId: "thread.public.schema_test.shared",
+      turnId: "turn.public.schema_test.shared.1",
+    })
+
+    const raw = khalaRuntimeEventFromAiSdkTextStreamPart({
+      part: {
+        type: "raw",
+        rawValue: {
+          provider_payload: "never copied into public evidence",
+        },
+      },
+      eventId: "event.private.schema_test.ai_sdk_raw.1",
+      threadId: "thread.public.schema_test.shared",
+      turnId: "turn.public.schema_test.shared.1",
+      sequence: 5,
+      observedAt: "2026-06-11T00:00:00.000Z",
+      rawEventRef: "raw.private.schema_test.ai_sdk_raw.1",
+    })
+
+    expect(raw).toMatchObject({
+      kind: "raw.sidecar_ref",
+      visibility: "private",
+      redactionClass: "private_ref",
+      rawEventRef: "raw.private.schema_test.ai_sdk_raw.1",
+    })
+    expect(JSON.stringify(raw)).not.toContain("provider_payload")
+  })
+
+  test("requires authority on Khala runtime tool events before execution", () => {
+    const toolEvent = decodeAgentRuntimeEvent({
+      ...baseEvent,
+      tag: "tool.started",
+      eventId: "event.public.schema_test.tool.1",
+      toolInvocation: {
+        invocationId: "tool_call.public.schema_test.1",
+        toolName: "workspaceRead",
+        toolRef: "tool.openagents.workspace.read",
+        inputRef: "input.private.schema_test.tool.1",
+        status: "started",
+        blockerRefs: [],
+      },
+    })
+
+    expect(() =>
+      khalaRuntimeEventFromAgentRuntimeEvent({
+        event: toolEvent,
+        threadId: "thread.public.schema_test.tools",
+        turnId: "turn.public.schema_test.tools.1",
+        source: {
+          lane: "codex_app_server",
+          adapterKind: "codex",
+          surface: "desktop",
+        },
+      })
+    ).toThrow("Khala runtime tool event requires authority")
+
+    expect(khalaRuntimeEventFromAgentRuntimeEvent({
+      event: toolEvent,
+      threadId: "thread.public.schema_test.tools",
+      turnId: "turn.public.schema_test.tools.1",
+      source: {
+        lane: "codex_app_server",
+        adapterKind: "codex",
+        surface: "desktop",
+      },
+      authority: khalaRuntimeToolAuthorityFixture,
+    })).toMatchObject({
+      kind: "tool.call",
+      authority: khalaRuntimeToolAuthorityFixture,
+    })
+
+    expect(() =>
+      decodeKhalaRuntimeEvent({
+        ...baseKhalaRuntimeEvent,
+        kind: "tool.call",
+        toolCallId: "tool_call.public.schema_test.2",
+        toolName: "workspaceRead",
+      })
+    ).toThrow()
+
+    expect(() =>
+      khalaRuntimeEventFromAiSdkTextStreamPart({
+        part: {
+          type: "tool-call",
+          toolCallId: "tool_call.public.schema_test.3",
+          toolName: "workspaceRead",
+          input: {},
+        },
+        eventId: "event.public.schema_test.ai_sdk_tool.1",
+        threadId: "thread.public.schema_test.tools",
+        turnId: "turn.public.schema_test.tools.1",
+        sequence: 2,
+        observedAt: "2026-06-11T00:00:00.000Z",
+      })
+    ).toThrow("Khala runtime tool event requires authority")
+  })
+
+  test("keeps Khala runtime public events and operator controls free of raw private material", () => {
+    const unsafePublicEvent = decodeKhalaRuntimeEvent({
+      ...baseKhalaRuntimeEvent,
+      kind: "text.delta",
+      messageId: "message.public.schema_test.unsafe.1",
+      chunkId: "chunk.public.schema_test.unsafe.1",
+      text: "raw_prompt /Users/example/private-source",
+    })
+    expect(() => assertKhalaRuntimePublicEventSafe(unsafePublicEvent)).toThrow(
+      "Khala runtime public event contains raw/private material",
+    )
+
+    expect(() =>
+      decodeKhalaRuntimeControlIntent({
+        schema: "openagents.khala_runtime_control_intent.v1",
+        intentId: "intent.public.schema_test.invalid.1",
+        kind: "message.append",
+        threadId: "thread.public.schema_test.khala",
+        createdAt: "2026-06-11T00:00:00.000Z",
+        origin: {
+          surface: "mobile",
+          lane: "khala_sync_mobile_control",
+        },
+        target: {
+          lane: "codex_app_server",
+          adapterKind: "codex",
+        },
+        visibility: "public",
+        redactionClass: "public_ref",
+        idempotencyKey: "idem.public.schema_test.invalid.1",
+        causalityRefs: [],
+      })
+    ).toThrow()
+
+    const unsafeOperatorIntent = decodeKhalaRuntimeControlIntent({
+      schema: "openagents.khala_runtime_control_intent.v1",
+      intentId: "intent.operator.schema_test.unsafe.1",
+      kind: "message.append",
+      threadId: "thread.public.schema_test.khala",
+      createdAt: "2026-06-11T00:00:00.000Z",
+      origin: {
+        surface: "mobile",
+        lane: "khala_sync_mobile_control",
+      },
+      target: {
+        lane: "codex_app_server",
+        adapterKind: "codex",
+      },
+      visibility: "operator",
+      redactionClass: "operator_summary",
+      idempotencyKey: "idem.operator.schema_test.unsafe.1",
+      causalityRefs: [],
+      body: "raw_prompt should live behind promptRef",
+    })
+    expect(() => assertKhalaRuntimeControlIntentSafe(unsafeOperatorIntent)).toThrow(
+      "Khala runtime operator control intent contains raw/private material",
+    )
   })
 
   test("projects one public-safe status row for workroom and TUI surfaces", () => {

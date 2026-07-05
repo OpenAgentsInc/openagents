@@ -509,6 +509,1078 @@ export const AgentRuntimeEventLog = S.Struct({
 })
 export type AgentRuntimeEventLog = typeof AgentRuntimeEventLog.Type
 
+export const KhalaRuntimeEventSchemaLiteral =
+  "openagents.khala_runtime_event.v1" as const
+export const KhalaRuntimeControlIntentSchemaLiteral =
+  "openagents.khala_runtime_control_intent.v1" as const
+
+const khalaRuntimeSafeRefPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/
+
+export const KhalaRuntimeSafeRef = S.String.check(
+  S.isMinLength(1),
+  S.isMaxLength(256),
+  S.isPattern(khalaRuntimeSafeRefPattern),
+)
+export type KhalaRuntimeSafeRef = typeof KhalaRuntimeSafeRef.Type
+
+export const KhalaRuntimeThreadId = KhalaRuntimeSafeRef
+export type KhalaRuntimeThreadId = typeof KhalaRuntimeThreadId.Type
+
+export const KhalaRuntimeTurnId = KhalaRuntimeSafeRef
+export type KhalaRuntimeTurnId = typeof KhalaRuntimeTurnId.Type
+
+export const KhalaRuntimeMessageId = KhalaRuntimeSafeRef
+export type KhalaRuntimeMessageId = typeof KhalaRuntimeMessageId.Type
+
+export const KhalaRuntimeEventId = KhalaRuntimeSafeRef
+export type KhalaRuntimeEventId = typeof KhalaRuntimeEventId.Type
+
+export const KhalaRuntimeControlIntentId = KhalaRuntimeSafeRef
+export type KhalaRuntimeControlIntentId =
+  typeof KhalaRuntimeControlIntentId.Type
+
+export const KhalaRuntimeToolCallId = KhalaRuntimeSafeRef
+export type KhalaRuntimeToolCallId = typeof KhalaRuntimeToolCallId.Type
+
+export const KhalaRuntimeStreamChunkId = KhalaRuntimeSafeRef
+export type KhalaRuntimeStreamChunkId =
+  typeof KhalaRuntimeStreamChunkId.Type
+
+export const KhalaRuntimeCausalityRef = KhalaRuntimeSafeRef
+export type KhalaRuntimeCausalityRef = typeof KhalaRuntimeCausalityRef.Type
+
+export const KhalaRuntimeLane = S.Literals([
+  "codex_app_server",
+  "claude_pylon",
+  "ai_sdk_core",
+  "ai_sdk_harness_sandbox",
+  "khala_sync_mobile_control",
+  "hosted_khala",
+  "test_fixture",
+])
+export type KhalaRuntimeLane = typeof KhalaRuntimeLane.Type
+
+export const khalaRuntimeLanes: ReadonlyArray<KhalaRuntimeLane> = [
+  "codex_app_server",
+  "claude_pylon",
+  "ai_sdk_core",
+  "ai_sdk_harness_sandbox",
+  "khala_sync_mobile_control",
+  "hosted_khala",
+  "test_fixture",
+]
+
+export const KhalaRuntimeClientSurface = S.Literals([
+  "desktop",
+  "mobile",
+  "web",
+  "server",
+  "cli",
+  "test_fixture",
+])
+export type KhalaRuntimeClientSurface =
+  typeof KhalaRuntimeClientSurface.Type
+
+export const KhalaRuntimeFinishReason = S.Literals([
+  "stop",
+  "length",
+  "tool-calls",
+  "content-filter",
+  "error",
+  "cancelled",
+  "interrupted",
+  "unknown",
+])
+export type KhalaRuntimeFinishReason = typeof KhalaRuntimeFinishReason.Type
+
+export const KhalaRuntimeSource = S.Struct({
+  lane: KhalaRuntimeLane,
+  adapterKind: S.optional(AgentRuntimeAdapterKind),
+  surface: S.optional(KhalaRuntimeClientSurface),
+  providerRef: S.optional(KhalaRuntimeSafeRef),
+  modelRef: S.optional(KhalaRuntimeSafeRef),
+  adapterSessionRef: S.optional(KhalaRuntimeSafeRef),
+})
+export type KhalaRuntimeSource = typeof KhalaRuntimeSource.Type
+
+export const KhalaRuntimeProviderMetadata = S.Struct({
+  providerRef: S.optional(KhalaRuntimeSafeRef),
+  modelRef: S.optional(KhalaRuntimeSafeRef),
+  metadataRefs: S.Array(KhalaRuntimeSafeRef),
+})
+export type KhalaRuntimeProviderMetadata =
+  typeof KhalaRuntimeProviderMetadata.Type
+
+export const KhalaRuntimeUsage = S.Struct({
+  usageRef: KhalaRuntimeSafeRef,
+  inputTokens: S.optional(S.Number),
+  outputTokens: S.optional(S.Number),
+  reasoningTokens: S.optional(S.Number),
+  cacheReadInputTokens: S.optional(S.Number),
+  cacheWriteInputTokens: S.optional(S.Number),
+  totalTokens: S.optional(S.Number),
+  costRef: S.optional(KhalaRuntimeSafeRef),
+})
+export type KhalaRuntimeUsage = typeof KhalaRuntimeUsage.Type
+
+export const KhalaRuntimeToolAuthority = S.Struct({
+  authorityRef: KhalaRuntimeSafeRef,
+  policyRef: KhalaRuntimeSafeRef,
+  decisionRef: KhalaRuntimeSafeRef,
+  toolRef: AgentDefinitionToolRef,
+  status: AgentDefinitionToolAuthorityStatus,
+  allowed: S.Boolean,
+  blockerRefs: S.Array(KhalaRuntimeSafeRef),
+})
+export type KhalaRuntimeToolAuthority = typeof KhalaRuntimeToolAuthority.Type
+
+export const KhalaRuntimeFileChange = S.Struct({
+  fileChangeRef: KhalaRuntimeSafeRef,
+  pathRef: KhalaRuntimeSafeRef,
+  op: S.Literals(["created", "modified", "deleted", "renamed"]),
+  digestRef: S.optional(KhalaRuntimeSafeRef),
+  previousPathRef: S.optional(KhalaRuntimeSafeRef),
+})
+export type KhalaRuntimeFileChange = typeof KhalaRuntimeFileChange.Type
+
+const KhalaRuntimeEventBase = {
+  schema: S.Literal(KhalaRuntimeEventSchemaLiteral),
+  eventId: KhalaRuntimeEventId,
+  turnId: KhalaRuntimeTurnId,
+  threadId: KhalaRuntimeThreadId,
+  sequence: S.Number,
+  observedAt: S.String,
+  source: KhalaRuntimeSource,
+  visibility: AgentRuntimeVisibility,
+  redactionClass: AgentRuntimeRedactionClass,
+  causalityRefs: S.Array(KhalaRuntimeCausalityRef),
+  syncScopeRef: S.optional(KhalaRuntimeSafeRef),
+} as const
+
+export const KhalaRuntimeEventKind = S.Literals([
+  "turn.started",
+  "turn.finished",
+  "turn.interrupted",
+  "step.started",
+  "step.finished",
+  "text.delta",
+  "text.completed",
+  "reasoning.delta",
+  "reasoning.completed",
+  "tool.input.delta",
+  "tool.input.completed",
+  "tool.call",
+  "tool.result",
+  "tool.error",
+  "usage.recorded",
+  "provider.metadata",
+  "file.change",
+  "compaction.recorded",
+  "raw.sidecar_ref",
+])
+export type KhalaRuntimeEventKind = typeof KhalaRuntimeEventKind.Type
+
+export const khalaRuntimeEventKinds: ReadonlyArray<KhalaRuntimeEventKind> = [
+  "turn.started",
+  "turn.finished",
+  "turn.interrupted",
+  "step.started",
+  "step.finished",
+  "text.delta",
+  "text.completed",
+  "reasoning.delta",
+  "reasoning.completed",
+  "tool.input.delta",
+  "tool.input.completed",
+  "tool.call",
+  "tool.result",
+  "tool.error",
+  "usage.recorded",
+  "provider.metadata",
+  "file.change",
+  "compaction.recorded",
+  "raw.sidecar_ref",
+]
+
+export const KhalaRuntimeEvent = S.Union([
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("turn.started"),
+    controlIntentId: S.optional(KhalaRuntimeControlIntentId),
+    userMessageId: S.optional(KhalaRuntimeMessageId),
+    promptRef: S.optional(KhalaRuntimeSafeRef),
+  }),
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("turn.finished"),
+    finishReason: KhalaRuntimeFinishReason,
+    usage: S.optional(KhalaRuntimeUsage),
+    providerMetadata: S.optional(KhalaRuntimeProviderMetadata),
+  }),
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("turn.interrupted"),
+    controlIntentId: S.optional(KhalaRuntimeControlIntentId),
+    reasonRef: S.optional(KhalaRuntimeSafeRef),
+  }),
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("step.started"),
+    stepId: KhalaRuntimeSafeRef,
+  }),
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("step.finished"),
+    stepId: KhalaRuntimeSafeRef,
+    finishReason: KhalaRuntimeFinishReason,
+    usage: S.optional(KhalaRuntimeUsage),
+    providerMetadata: S.optional(KhalaRuntimeProviderMetadata),
+  }),
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("text.delta"),
+    messageId: KhalaRuntimeMessageId,
+    chunkId: KhalaRuntimeStreamChunkId,
+    text: S.String,
+    providerMetadata: S.optional(KhalaRuntimeProviderMetadata),
+  }),
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("text.completed"),
+    messageId: KhalaRuntimeMessageId,
+    finalTextRef: S.optional(KhalaRuntimeSafeRef),
+    providerMetadata: S.optional(KhalaRuntimeProviderMetadata),
+  }),
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("reasoning.delta"),
+    messageId: KhalaRuntimeMessageId,
+    chunkId: KhalaRuntimeStreamChunkId,
+    text: S.String,
+    providerMetadata: S.optional(KhalaRuntimeProviderMetadata),
+  }),
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("reasoning.completed"),
+    messageId: KhalaRuntimeMessageId,
+    summaryRef: S.optional(KhalaRuntimeSafeRef),
+    providerMetadata: S.optional(KhalaRuntimeProviderMetadata),
+  }),
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("tool.input.delta"),
+    toolCallId: KhalaRuntimeToolCallId,
+    toolName: S.String,
+    chunkId: KhalaRuntimeStreamChunkId,
+    inputDelta: S.String,
+    authority: KhalaRuntimeToolAuthority,
+  }),
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("tool.input.completed"),
+    toolCallId: KhalaRuntimeToolCallId,
+    toolName: S.String,
+    inputRef: S.optional(KhalaRuntimeSafeRef),
+    authority: KhalaRuntimeToolAuthority,
+  }),
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("tool.call"),
+    toolCallId: KhalaRuntimeToolCallId,
+    toolName: S.String,
+    inputRef: S.optional(KhalaRuntimeSafeRef),
+    authority: KhalaRuntimeToolAuthority,
+  }),
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("tool.result"),
+    toolCallId: KhalaRuntimeToolCallId,
+    toolName: S.String,
+    resultRef: KhalaRuntimeSafeRef,
+    authority: KhalaRuntimeToolAuthority,
+    providerExecuted: S.optional(S.Boolean),
+  }),
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("tool.error"),
+    toolCallId: KhalaRuntimeToolCallId,
+    toolName: S.String,
+    errorRef: KhalaRuntimeSafeRef,
+    messageSafe: S.String,
+    authority: KhalaRuntimeToolAuthority,
+    providerExecuted: S.optional(S.Boolean),
+  }),
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("usage.recorded"),
+    usage: KhalaRuntimeUsage,
+    providerMetadata: S.optional(KhalaRuntimeProviderMetadata),
+  }),
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("provider.metadata"),
+    providerMetadata: KhalaRuntimeProviderMetadata,
+  }),
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("file.change"),
+    fileChange: KhalaRuntimeFileChange,
+  }),
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("compaction.recorded"),
+    beforeContextRef: KhalaRuntimeSafeRef,
+    afterContextRef: KhalaRuntimeSafeRef,
+    reasonRef: S.optional(KhalaRuntimeSafeRef),
+  }),
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("raw.sidecar_ref"),
+    rawEventRef: KhalaRuntimeSafeRef,
+    rawEventKind: S.Literals([
+      "ai_sdk_stream_part",
+      "codex_sdk_event",
+      "claude_sdk_event",
+      "provider_chunk",
+      "other",
+    ]),
+  }),
+])
+export type KhalaRuntimeEvent = typeof KhalaRuntimeEvent.Type
+
+export const KhalaRuntimeControlIntentKind = S.Literals([
+  "thread.create",
+  "thread.rename",
+  "message.append",
+  "turn.start",
+  "turn.interrupt",
+  "turn.continue",
+  "turn.retry",
+  "turn.close",
+  "tool.approve",
+  "tool.deny",
+])
+export type KhalaRuntimeControlIntentKind =
+  typeof KhalaRuntimeControlIntentKind.Type
+
+export const khalaRuntimeControlIntentKinds: ReadonlyArray<KhalaRuntimeControlIntentKind> = [
+  "thread.create",
+  "thread.rename",
+  "message.append",
+  "turn.start",
+  "turn.interrupt",
+  "turn.continue",
+  "turn.retry",
+  "turn.close",
+  "tool.approve",
+  "tool.deny",
+]
+
+export const KhalaRuntimeControlIntent = S.Struct({
+  schema: S.Literal(KhalaRuntimeControlIntentSchemaLiteral),
+  intentId: KhalaRuntimeControlIntentId,
+  kind: KhalaRuntimeControlIntentKind,
+  threadId: KhalaRuntimeThreadId,
+  turnId: S.optional(KhalaRuntimeTurnId),
+  messageId: S.optional(KhalaRuntimeMessageId),
+  toolCallId: S.optional(KhalaRuntimeToolCallId),
+  createdAt: S.String,
+  origin: S.Struct({
+    surface: KhalaRuntimeClientSurface,
+    lane: KhalaRuntimeLane,
+    deviceRef: S.optional(KhalaRuntimeSafeRef),
+    userRef: S.optional(KhalaRuntimeSafeRef),
+  }),
+  target: S.Struct({
+    lane: KhalaRuntimeLane,
+    adapterKind: S.optional(AgentRuntimeAdapterKind),
+  }),
+  visibility: S.Literals(["operator", "private"]),
+  redactionClass: AgentRuntimeRedactionClass,
+  idempotencyKey: KhalaRuntimeSafeRef,
+  causalityRefs: S.Array(KhalaRuntimeCausalityRef),
+  title: S.optional(S.String),
+  body: S.optional(S.String),
+  bodyRef: S.optional(KhalaRuntimeSafeRef),
+  promptRef: S.optional(KhalaRuntimeSafeRef),
+  reasonRef: S.optional(KhalaRuntimeSafeRef),
+  authority: S.optional(KhalaRuntimeToolAuthority),
+})
+export type KhalaRuntimeControlIntent =
+  typeof KhalaRuntimeControlIntent.Type
+
+export const decodeKhalaRuntimeEvent = S.decodeUnknownSync(KhalaRuntimeEvent)
+export const decodeKhalaRuntimeControlIntent =
+  S.decodeUnknownSync(KhalaRuntimeControlIntent)
+
+export type KhalaRuntimeAiSdkUsage = {
+  readonly inputTokens?: number | undefined
+  readonly outputTokens?: number | undefined
+  readonly totalTokens?: number | undefined
+  readonly inputTokenDetails?: {
+    readonly cacheReadTokens?: number | undefined
+    readonly cacheWriteTokens?: number | undefined
+  } | undefined
+  readonly outputTokenDetails?: {
+    readonly reasoningTokens?: number | undefined
+  } | undefined
+}
+
+export type KhalaRuntimeAiSdkTextStreamPart =
+  | { readonly type: "start" }
+  | { readonly type: "start-step"; readonly request?: unknown; readonly warnings?: ReadonlyArray<unknown> }
+  | { readonly type: "text-start"; readonly id: string; readonly providerMetadata?: unknown }
+  | { readonly type: "text-delta"; readonly id: string; readonly text: string; readonly providerMetadata?: unknown }
+  | { readonly type: "text-end"; readonly id: string; readonly providerMetadata?: unknown }
+  | { readonly type: "reasoning-start"; readonly id: string; readonly providerMetadata?: unknown }
+  | { readonly type: "reasoning-delta"; readonly id: string; readonly text: string; readonly providerMetadata?: unknown }
+  | { readonly type: "reasoning-end"; readonly id: string; readonly providerMetadata?: unknown }
+  | { readonly type: "tool-input-start"; readonly id: string; readonly toolName: string; readonly providerMetadata?: unknown }
+  | { readonly type: "tool-input-delta"; readonly id: string; readonly delta: string; readonly providerMetadata?: unknown }
+  | { readonly type: "tool-input-end"; readonly id: string; readonly providerMetadata?: unknown }
+  | {
+    readonly type: "tool-call"
+    readonly toolCallId: string
+    readonly toolName: string
+    readonly input?: unknown
+    readonly providerExecuted?: boolean | undefined
+    readonly providerMetadata?: unknown
+  }
+  | {
+    readonly type: "tool-result"
+    readonly toolCallId: string
+    readonly toolName: string
+    readonly output?: unknown
+    readonly providerExecuted?: boolean | undefined
+    readonly providerMetadata?: unknown
+  }
+  | {
+    readonly type: "tool-error"
+    readonly toolCallId: string
+    readonly toolName: string
+    readonly error?: unknown
+    readonly providerExecuted?: boolean | undefined
+    readonly providerMetadata?: unknown
+  }
+  | { readonly type: "tool-output-denied"; readonly toolCallId: string; readonly toolName: string }
+  | { readonly type: "tool-approval-request"; readonly toolCallId: string; readonly toolName: string }
+  | { readonly type: "tool-approval-response"; readonly toolCallId: string; readonly toolName: string }
+  | {
+    readonly type: "finish-step"
+    readonly finishReason: string
+    readonly usage?: KhalaRuntimeAiSdkUsage | undefined
+    readonly providerMetadata?: unknown
+  }
+  | {
+    readonly type: "finish"
+    readonly finishReason: string
+    readonly totalUsage?: KhalaRuntimeAiSdkUsage | undefined
+  }
+  | { readonly type: "abort"; readonly reason?: string | undefined }
+  | { readonly type: "error"; readonly error?: unknown }
+  | { readonly type: "raw"; readonly rawValue: unknown }
+  | { readonly type: "custom"; readonly kind: string; readonly providerMetadata?: unknown }
+  | { readonly type: "source"; readonly [key: string]: unknown }
+  | { readonly type: "file"; readonly [key: string]: unknown }
+  | { readonly type: "reasoning-file"; readonly [key: string]: unknown }
+
+export function khalaRuntimeEventFromAgentRuntimeEvent(input: {
+  readonly event: AgentRuntimeEvent
+  readonly threadId: string
+  readonly turnId: string
+  readonly source: KhalaRuntimeSource
+  readonly authority?: KhalaRuntimeToolAuthority
+}): KhalaRuntimeEvent {
+  const event = input.event
+  const base = khalaRuntimeBaseFromAgentRuntimeEvent(input)
+
+  switch (event.tag) {
+    case "run.started":
+    case "run.input_accepted":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "turn.started",
+        ...(event.refs[0] === undefined ? {} : { promptRef: khalaRuntimeSafeRef(event.refs[0], "prompt.private.agent_runtime") }),
+      })
+
+    case "run.completed":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "turn.finished",
+        finishReason: "stop",
+        ...(event.usage === undefined ? {} : { usage: khalaRuntimeUsageFromAgentRuntimeUsage(event.usage) }),
+      })
+
+    case "run.failed":
+      return decodeKhalaRuntimeEvent({ ...base, kind: "turn.finished", finishReason: "error" })
+
+    case "run.cancelled":
+      return decodeKhalaRuntimeEvent({ ...base, kind: "turn.finished", finishReason: "cancelled" })
+
+    case "run.interrupted":
+    case "run.paused":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "turn.interrupted",
+        ...(event.blockerRefs[0] === undefined
+          ? {}
+          : { reasonRef: khalaRuntimeSafeRef(event.blockerRefs[0], "reason.private.agent_runtime") }),
+      })
+
+    case "step.started":
+    case "model.stream_started":
+    case "external_agent.started":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "step.started",
+        stepId: khalaRuntimeStepIdFromAgentEvent(event),
+      })
+
+    case "step.completed":
+    case "external_agent.completed":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "step.finished",
+        stepId: khalaRuntimeStepIdFromAgentEvent(event),
+        finishReason: "stop",
+      })
+
+    case "step.failed":
+    case "external_agent.failed":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "step.finished",
+        stepId: khalaRuntimeStepIdFromAgentEvent(event),
+        finishReason: "error",
+      })
+
+    case "model.text_delta":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "text.delta",
+        messageId: khalaRuntimeMessageIdFromAgentEvent(event),
+        chunkId: khalaRuntimeChunkIdFromAgentEvent(event),
+        text: event.part?.kind === "text" ? event.part.text : event.summary ?? "",
+      })
+
+    case "model.text_completed":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "text.completed",
+        messageId: khalaRuntimeMessageIdFromAgentEvent(event),
+        ...(event.refs[0] === undefined
+          ? {}
+          : { finalTextRef: khalaRuntimeSafeRef(event.refs[0], "text.private.agent_runtime") }),
+      })
+
+    case "model.reasoning_delta":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "reasoning.delta",
+        messageId: khalaRuntimeMessageIdFromAgentEvent(event),
+        chunkId: khalaRuntimeChunkIdFromAgentEvent(event),
+        text: event.part?.kind === "reasoning" ? event.part.summary : event.summary ?? "",
+      })
+
+    case "model.reasoning_completed":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "reasoning.completed",
+        messageId: khalaRuntimeMessageIdFromAgentEvent(event),
+        ...(event.refs[0] === undefined
+          ? {}
+          : { summaryRef: khalaRuntimeSafeRef(event.refs[0], "reasoning.private.agent_runtime") }),
+      })
+
+    case "tool.input_delta":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "tool.input.delta",
+        toolCallId: khalaRuntimeToolCallIdFromAgentEvent(event),
+        toolName: event.toolInvocation?.toolName ?? "unknown",
+        chunkId: khalaRuntimeChunkIdFromAgentEvent(event),
+        inputDelta: event.part?.kind === "text" ? event.part.text : event.summary ?? "",
+        authority: khalaRuntimeRequireToolAuthority(input.authority),
+      })
+
+    case "tool.input_completed":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "tool.input.completed",
+        toolCallId: khalaRuntimeToolCallIdFromAgentEvent(event),
+        toolName: event.toolInvocation?.toolName ?? "unknown",
+        ...(event.toolInvocation?.inputRef === undefined
+          ? {}
+          : { inputRef: khalaRuntimeSafeRef(event.toolInvocation.inputRef, "input.private.agent_runtime") }),
+        authority: khalaRuntimeRequireToolAuthority(input.authority),
+      })
+
+    case "tool.completed":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "tool.result",
+        toolCallId: khalaRuntimeToolCallIdFromAgentEvent(event),
+        toolName: event.toolInvocation?.toolName ?? "unknown",
+        resultRef: khalaRuntimeSafeRef(
+          event.toolInvocation?.outputRef ?? event.refs[0] ?? `result.private.${event.eventId}`,
+          "result.private.agent_runtime",
+        ),
+        authority: khalaRuntimeRequireToolAuthority(input.authority),
+      })
+
+    case "tool.failed":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "tool.error",
+        toolCallId: khalaRuntimeToolCallIdFromAgentEvent(event),
+        toolName: event.toolInvocation?.toolName ?? "unknown",
+        errorRef: khalaRuntimeSafeRef(
+          event.blockerRefs[0] ?? event.refs[0] ?? `error.private.${event.eventId}`,
+          "error.private.agent_runtime",
+        ),
+        messageSafe: event.summary ?? "tool failed",
+        authority: khalaRuntimeRequireToolAuthority(input.authority),
+      })
+
+    case "tool.call_proposed":
+    case "tool.approval_requested":
+    case "tool.approved":
+    case "tool.denied":
+    case "tool.started":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "tool.call",
+        toolCallId: khalaRuntimeToolCallIdFromAgentEvent(event),
+        toolName: event.toolInvocation?.toolName ?? "unknown",
+        ...(event.toolInvocation?.inputRef === undefined
+          ? {}
+          : { inputRef: khalaRuntimeSafeRef(event.toolInvocation.inputRef, "input.private.agent_runtime") }),
+        authority: khalaRuntimeRequireToolAuthority(input.authority),
+      })
+
+    case "usage.recorded":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "usage.recorded",
+        usage: khalaRuntimeUsageFromAgentRuntimeUsage(event.usage),
+        ...(event.usage === undefined ? {} : { providerMetadata: khalaRuntimeProviderMetadataFromAgentUsage(event.usage) }),
+      })
+
+    case "artifact.recorded":
+      return event.artifact?.artifactKind === "file_change"
+        ? decodeKhalaRuntimeEvent({
+          ...base,
+          kind: "file.change",
+          fileChange: {
+            fileChangeRef: khalaRuntimeSafeRef(event.artifact.artifactRef, "file_change.private.agent_runtime"),
+            pathRef: khalaRuntimeSafeRef(event.artifact.digestRef ?? event.artifact.artifactRef, "path.private.agent_runtime"),
+            op: "modified",
+            ...(event.artifact.digestRef === undefined
+              ? {}
+              : { digestRef: khalaRuntimeSafeRef(event.artifact.digestRef, "digest.private.agent_runtime") }),
+          },
+        })
+        : khalaRuntimeRawSidecarEvent(base, event, "other")
+
+    case "context.snapshot_created":
+    case "external_agent.event":
+    case "external_agent.artifact_recorded":
+      return khalaRuntimeRawSidecarEvent(base, event, event.tag.startsWith("external_agent") ? "codex_sdk_event" : "other")
+  }
+}
+
+export function khalaRuntimeEventFromAiSdkTextStreamPart(input: {
+  readonly part: KhalaRuntimeAiSdkTextStreamPart
+  readonly eventId: string
+  readonly threadId: string
+  readonly turnId: string
+  readonly sequence: number
+  readonly observedAt: string
+  readonly source?: KhalaRuntimeSource
+  readonly messageId?: string
+  readonly stepId?: string
+  readonly authority?: KhalaRuntimeToolAuthority
+  readonly rawEventRef?: string
+}): KhalaRuntimeEvent {
+  const base = {
+    schema: KhalaRuntimeEventSchemaLiteral,
+    eventId: khalaRuntimeSafeRef(input.eventId, "event.private.ai_sdk"),
+    turnId: khalaRuntimeSafeRef(input.turnId, "turn.private.ai_sdk"),
+    threadId: khalaRuntimeSafeRef(input.threadId, "thread.private.ai_sdk"),
+    sequence: input.sequence,
+    observedAt: input.observedAt,
+    source: input.source ?? { lane: "ai_sdk_core", surface: "server" },
+    visibility: "public",
+    redactionClass: "public_ref",
+    causalityRefs: [],
+  }
+
+  switch (input.part.type) {
+    case "start":
+      return decodeKhalaRuntimeEvent({ ...base, kind: "turn.started" })
+
+    case "start-step":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "step.started",
+        stepId: khalaRuntimeSafeRef(input.stepId ?? `step.${input.eventId}`, "step.private.ai_sdk"),
+      })
+
+    case "finish-step":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "step.finished",
+        stepId: khalaRuntimeSafeRef(input.stepId ?? `step.${input.eventId}`, "step.private.ai_sdk"),
+        finishReason: khalaRuntimeFinishReason(input.part.finishReason),
+        ...(input.part.usage === undefined ? {} : { usage: khalaRuntimeUsageFromAiSdkUsage(input.part.usage, input.eventId) }),
+        ...(input.part.providerMetadata === undefined
+          ? {}
+          : { providerMetadata: khalaRuntimeSidecarProviderMetadata(input.eventId, input.source) }),
+      })
+
+    case "finish":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "turn.finished",
+        finishReason: khalaRuntimeFinishReason(input.part.finishReason),
+        ...(input.part.totalUsage === undefined
+          ? {}
+          : { usage: khalaRuntimeUsageFromAiSdkUsage(input.part.totalUsage, input.eventId) }),
+      })
+
+    case "abort":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "turn.interrupted",
+        ...(input.part.reason === undefined
+          ? {}
+          : { reasonRef: khalaRuntimeSafeRef(input.part.reason, "reason.private.ai_sdk") }),
+      })
+
+    case "text-delta":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "text.delta",
+        messageId: khalaRuntimeSafeRef(input.messageId ?? input.part.id, "message.private.ai_sdk"),
+        chunkId: khalaRuntimeSafeRef(`chunk.${input.eventId}`, "chunk.private.ai_sdk"),
+        text: input.part.text,
+        ...(input.part.providerMetadata === undefined
+          ? {}
+          : { providerMetadata: khalaRuntimeSidecarProviderMetadata(input.eventId, input.source) }),
+      })
+
+    case "text-end":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "text.completed",
+        messageId: khalaRuntimeSafeRef(input.messageId ?? input.part.id, "message.private.ai_sdk"),
+        ...(input.part.providerMetadata === undefined
+          ? {}
+          : { providerMetadata: khalaRuntimeSidecarProviderMetadata(input.eventId, input.source) }),
+      })
+
+    case "reasoning-delta":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "reasoning.delta",
+        messageId: khalaRuntimeSafeRef(input.messageId ?? input.part.id, "message.private.ai_sdk"),
+        chunkId: khalaRuntimeSafeRef(`chunk.${input.eventId}`, "chunk.private.ai_sdk"),
+        text: input.part.text,
+        ...(input.part.providerMetadata === undefined
+          ? {}
+          : { providerMetadata: khalaRuntimeSidecarProviderMetadata(input.eventId, input.source) }),
+      })
+
+    case "reasoning-end":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "reasoning.completed",
+        messageId: khalaRuntimeSafeRef(input.messageId ?? input.part.id, "message.private.ai_sdk"),
+        ...(input.part.providerMetadata === undefined
+          ? {}
+          : { providerMetadata: khalaRuntimeSidecarProviderMetadata(input.eventId, input.source) }),
+      })
+
+    case "tool-input-delta":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "tool.input.delta",
+        toolCallId: khalaRuntimeSafeRef(input.part.id, "tool_call.private.ai_sdk"),
+        toolName: "unknown",
+        chunkId: khalaRuntimeSafeRef(`chunk.${input.eventId}`, "chunk.private.ai_sdk"),
+        inputDelta: input.part.delta,
+        authority: khalaRuntimeRequireToolAuthority(input.authority),
+      })
+
+    case "tool-input-end":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "tool.input.completed",
+        toolCallId: khalaRuntimeSafeRef(input.part.id, "tool_call.private.ai_sdk"),
+        toolName: "unknown",
+        authority: khalaRuntimeRequireToolAuthority(input.authority),
+      })
+
+    case "tool-input-start":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "tool.call",
+        toolCallId: khalaRuntimeSafeRef(input.part.id, "tool_call.private.ai_sdk"),
+        toolName: input.part.toolName,
+        authority: khalaRuntimeRequireToolAuthority(input.authority),
+      })
+
+    case "tool-call":
+    case "tool-approval-request":
+    case "tool-approval-response":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "tool.call",
+        toolCallId: khalaRuntimeSafeRef(input.part.toolCallId, "tool_call.private.ai_sdk"),
+        toolName: input.part.toolName,
+        inputRef: khalaRuntimeSafeRef(`input.${input.eventId}`, "input.private.ai_sdk"),
+        authority: khalaRuntimeRequireToolAuthority(input.authority),
+        ...(input.part.type === "tool-call" && input.part.providerExecuted !== undefined
+          ? { providerExecuted: input.part.providerExecuted }
+          : {}),
+      })
+
+    case "tool-result":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "tool.result",
+        toolCallId: khalaRuntimeSafeRef(input.part.toolCallId, "tool_call.private.ai_sdk"),
+        toolName: input.part.toolName,
+        resultRef: khalaRuntimeSafeRef(`result.${input.eventId}`, "result.private.ai_sdk"),
+        authority: khalaRuntimeRequireToolAuthority(input.authority),
+        ...(input.part.providerExecuted === undefined ? {} : { providerExecuted: input.part.providerExecuted }),
+      })
+
+    case "tool-error":
+    case "tool-output-denied":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "tool.error",
+        toolCallId: khalaRuntimeSafeRef(input.part.toolCallId, "tool_call.private.ai_sdk"),
+        toolName: input.part.toolName,
+        errorRef: khalaRuntimeSafeRef(`error.${input.eventId}`, "error.private.ai_sdk"),
+        messageSafe: input.part.type === "tool-output-denied" ? "tool output denied" : "tool error",
+        authority: khalaRuntimeRequireToolAuthority(input.authority),
+        ...(input.part.type === "tool-error" && input.part.providerExecuted !== undefined
+          ? { providerExecuted: input.part.providerExecuted }
+          : {}),
+      })
+
+    case "error":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "turn.finished",
+        finishReason: "error",
+      })
+
+    case "text-start":
+    case "reasoning-start":
+    case "custom":
+    case "source":
+    case "file":
+    case "reasoning-file":
+    case "raw":
+      return decodeKhalaRuntimeEvent({
+        ...base,
+        kind: "raw.sidecar_ref",
+        rawEventRef: khalaRuntimeSafeRef(
+          input.rawEventRef ?? `raw.${input.eventId}`,
+          input.part.type === "raw" ? "raw.private.ai_sdk" : "event.private.ai_sdk",
+        ),
+        rawEventKind: "ai_sdk_stream_part",
+        visibility: "private",
+        redactionClass: "private_ref",
+      })
+  }
+}
+
+export function khalaRuntimePublicEventHasUnsafeMaterial(event: KhalaRuntimeEvent): boolean {
+  return event.visibility === "public" && unsafePublicMaterialPattern.test(JSON.stringify(event))
+}
+
+export function assertKhalaRuntimePublicEventSafe(event: KhalaRuntimeEvent): KhalaRuntimeEvent {
+  if (khalaRuntimePublicEventHasUnsafeMaterial(event)) {
+    throw new Error("Khala runtime public event contains raw/private material")
+  }
+  return event
+}
+
+export function assertKhalaRuntimeControlIntentSafe(
+  intent: KhalaRuntimeControlIntent,
+): KhalaRuntimeControlIntent {
+  if (intent.visibility === "operator" && unsafePublicMaterialPattern.test(JSON.stringify(intent))) {
+    throw new Error("Khala runtime operator control intent contains raw/private material")
+  }
+  return intent
+}
+
+function khalaRuntimeBaseFromAgentRuntimeEvent(input: {
+  readonly event: AgentRuntimeEvent
+  readonly threadId: string
+  readonly turnId: string
+  readonly source: KhalaRuntimeSource
+}): Record<string, unknown> {
+  return {
+    schema: KhalaRuntimeEventSchemaLiteral,
+    eventId: khalaRuntimeSafeRef(input.event.eventId, "event.private.agent_runtime"),
+    turnId: khalaRuntimeSafeRef(input.turnId, "turn.private.agent_runtime"),
+    threadId: khalaRuntimeSafeRef(input.threadId, "thread.private.agent_runtime"),
+    sequence: input.event.sequence,
+    observedAt: input.event.generatedAt,
+    source: input.source,
+    visibility: input.event.visibility,
+    redactionClass: input.event.redactionClass,
+    causalityRefs: input.event.refs.map((ref, index) =>
+      khalaRuntimeSafeRef(ref, `cause.private.agent_runtime.${index}`),
+    ),
+  }
+}
+
+function khalaRuntimeUsageFromAgentRuntimeUsage(
+  usage: AgentRuntimeUsageRecord | undefined,
+): Record<string, unknown> {
+  if (usage === undefined) {
+    return {
+      usageRef: "usage.private.agent_runtime.missing",
+    }
+  }
+
+  return {
+    usageRef: khalaRuntimeSafeRef(usage.usageRef, "usage.private.agent_runtime"),
+    ...(usage.inputTokens === undefined ? {} : { inputTokens: usage.inputTokens }),
+    ...(usage.outputTokens === undefined ? {} : { outputTokens: usage.outputTokens }),
+    ...(usage.totalTokens === undefined ? {} : { totalTokens: usage.totalTokens }),
+    ...(usage.costRef === undefined ? {} : { costRef: khalaRuntimeSafeRef(usage.costRef, "cost.private.agent_runtime") }),
+  }
+}
+
+function khalaRuntimeProviderMetadataFromAgentUsage(
+  usage: AgentRuntimeUsageRecord,
+): Record<string, unknown> {
+  return {
+    ...(usage.providerRef === undefined
+      ? {}
+      : { providerRef: khalaRuntimeSafeRef(usage.providerRef, "provider.private.agent_runtime") }),
+    ...(usage.modelRef === undefined
+      ? {}
+      : { modelRef: khalaRuntimeSafeRef(usage.modelRef, "model.private.agent_runtime") }),
+    metadataRefs: [],
+  }
+}
+
+function khalaRuntimeUsageFromAiSdkUsage(
+  usage: KhalaRuntimeAiSdkUsage,
+  eventId: string,
+): Record<string, unknown> {
+  return {
+    usageRef: khalaRuntimeSafeRef(`usage.${eventId}`, "usage.private.ai_sdk"),
+    ...(usage.inputTokens === undefined ? {} : { inputTokens: usage.inputTokens }),
+    ...(usage.outputTokens === undefined ? {} : { outputTokens: usage.outputTokens }),
+    ...(usage.outputTokenDetails?.reasoningTokens === undefined
+      ? {}
+      : { reasoningTokens: usage.outputTokenDetails.reasoningTokens }),
+    ...(usage.inputTokenDetails?.cacheReadTokens === undefined
+      ? {}
+      : { cacheReadInputTokens: usage.inputTokenDetails.cacheReadTokens }),
+    ...(usage.inputTokenDetails?.cacheWriteTokens === undefined
+      ? {}
+      : { cacheWriteInputTokens: usage.inputTokenDetails.cacheWriteTokens }),
+    ...(usage.totalTokens === undefined ? {} : { totalTokens: usage.totalTokens }),
+  }
+}
+
+function khalaRuntimeSidecarProviderMetadata(
+  eventId: string,
+  source: KhalaRuntimeSource | undefined,
+): Record<string, unknown> {
+  return {
+    ...(source?.providerRef === undefined ? {} : { providerRef: source.providerRef }),
+    ...(source?.modelRef === undefined ? {} : { modelRef: source.modelRef }),
+    metadataRefs: [khalaRuntimeSafeRef(`metadata.${eventId}`, "metadata.private.ai_sdk")],
+  }
+}
+
+function khalaRuntimeStepIdFromAgentEvent(event: AgentRuntimeEvent): string {
+  return khalaRuntimeSafeRef(
+    event.stepRef ?? event.externalInvocation?.invocationId ?? `step.${event.eventId}`,
+    "step.private.agent_runtime",
+  )
+}
+
+function khalaRuntimeMessageIdFromAgentEvent(event: AgentRuntimeEvent): string {
+  return khalaRuntimeSafeRef(
+    event.stepRef ?? `message.${event.runId}`,
+    "message.private.agent_runtime",
+  )
+}
+
+function khalaRuntimeChunkIdFromAgentEvent(event: AgentRuntimeEvent): string {
+  return khalaRuntimeSafeRef(`chunk.${event.eventId}`, "chunk.private.agent_runtime")
+}
+
+function khalaRuntimeToolCallIdFromAgentEvent(event: AgentRuntimeEvent): string {
+  return khalaRuntimeSafeRef(
+    event.toolInvocation?.invocationId ?? `tool_call.${event.eventId}`,
+    "tool_call.private.agent_runtime",
+  )
+}
+
+function khalaRuntimeRequireToolAuthority(
+  authority: KhalaRuntimeToolAuthority | undefined,
+): KhalaRuntimeToolAuthority {
+  if (authority === undefined) {
+    throw new Error("Khala runtime tool event requires authority")
+  }
+  return authority
+}
+
+function khalaRuntimeRawSidecarEvent(
+  base: Record<string, unknown>,
+  event: AgentRuntimeEvent,
+  rawEventKind: "ai_sdk_stream_part" | "codex_sdk_event" | "claude_sdk_event" | "provider_chunk" | "other",
+): KhalaRuntimeEvent {
+  return decodeKhalaRuntimeEvent({
+    ...base,
+    kind: "raw.sidecar_ref",
+    rawEventRef: khalaRuntimeSafeRef(
+      event.externalInvocation?.sessionRef ?? event.refs[0] ?? `raw.${event.eventId}`,
+      "raw.private.agent_runtime",
+    ),
+    rawEventKind,
+    visibility: "private",
+    redactionClass: "private_ref",
+  })
+}
+
+function khalaRuntimeFinishReason(reason: string | undefined): KhalaRuntimeFinishReason {
+  switch (reason) {
+    case "stop":
+    case "length":
+    case "tool-calls":
+    case "content-filter":
+    case "error":
+    case "cancelled":
+    case "interrupted":
+      return reason
+    case "abort":
+      return "cancelled"
+    default:
+      return "unknown"
+  }
+}
+
+function khalaRuntimeSafeRef(value: string, fallbackPrefix: string): string {
+  if (value.length <= 256 && khalaRuntimeSafeRefPattern.test(value)) {
+    return value
+  }
+  return stableAgentDefinitionRef(fallbackPrefix, [value])
+}
+
 export type AgentRuntimeSurfaceProjection = {
   readonly runId: AgentRuntimeRunId
   readonly state: Exclude<AgentRuntimeRunState, "pending">

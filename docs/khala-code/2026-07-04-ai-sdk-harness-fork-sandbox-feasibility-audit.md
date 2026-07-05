@@ -324,6 +324,17 @@ The whole process is now filed as GitHub issues:
 | [#8374](https://github.com/OpenAgentsInc/openagents/issues/8374) | Implement local and OpenAgents AI SDK sandbox providers. |
 | [#8375](https://github.com/OpenAgentsInc/openagents/issues/8375) | Prove the mobile-to-desktop AI SDK-shaped runtime dogfood flow. |
 
+Issue #8363 implementation status: the canonical contract now lives in
+`@openagentsinc/agent-runtime-schema` as
+`openagents.khala_runtime_event.v1` and
+`openagents.khala_runtime_control_intent.v1`. The schema includes the runtime
+lanes named in this audit, stable turn/message/control/tool/chunk IDs,
+structural mappers from existing `AgentRuntimeEvent` records and AI SDK
+`TextStreamPart`-shaped objects, golden fixtures, and conformance tests for
+raw sidecar privacy and required tool authority. The remaining roadmap items
+should consume this package instead of defining their own message/turn/tool
+contract.
+
 ### Sequenced implementation path
 
 P0 should be the event/control schema (#8363). Without this, each bridge will
