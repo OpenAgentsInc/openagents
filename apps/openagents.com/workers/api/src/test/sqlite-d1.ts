@@ -958,3 +958,147 @@ CREATE TABLE khala_code_paid_plan_payment_intents (
   fulfilled_at TEXT
 );
 `
+
+/**
+ * KS-8.15 (#8326): the seven training-domain D1 tables, condensed from
+ * worker migrations 0156/0157/0174/0175/0185/0188 (current live shape,
+ * post-ALTER columns inlined). Used by the training domain repository
+ * contract suite.
+ */
+export const TRAINING_DOMAIN_D1_SCHEMA = `
+CREATE TABLE training_runs (
+  id TEXT PRIMARY KEY,
+  training_run_ref TEXT NOT NULL UNIQUE,
+  promise_ref TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('planned', 'active', 'sealed', 'reconciled')),
+  max_allowed_stale INTEGER NOT NULL DEFAULT 5,
+  seal_publication_cadence_windows INTEGER NOT NULL DEFAULT 1,
+  seal_in_flight_at TEXT,
+  manifest_json TEXT,
+  source_refs_json TEXT NOT NULL,
+  receipt_refs_json TEXT NOT NULL,
+  public_projection_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE training_windows (
+  id TEXT PRIMARY KEY,
+  window_ref TEXT NOT NULL UNIQUE,
+  training_run_ref TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('planned', 'active', 'sealed', 'reconciled')),
+  homework_kind TEXT NOT NULL CHECK (homework_kind IN ('admin_dispatched_homework', 'operator_planned_homework', 'auto_starter')),
+  priority INTEGER NOT NULL,
+  dataset_refs_json TEXT NOT NULL,
+  source_refs_json TEXT NOT NULL,
+  receipt_refs_json TEXT NOT NULL,
+  seal_metadata_json TEXT,
+  public_projection_json TEXT NOT NULL,
+  planned_at TEXT NOT NULL,
+  activated_at TEXT,
+  sealed_at TEXT,
+  reconciled_at TEXT,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE training_window_events (
+  id TEXT PRIMARY KEY,
+  window_ref TEXT NOT NULL,
+  transition_kind TEXT NOT NULL,
+  state_from TEXT,
+  state_to TEXT NOT NULL,
+  actor_ref TEXT NOT NULL,
+  receipt_ref TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE training_window_leases (
+  id TEXT PRIMARY KEY,
+  lease_ref TEXT NOT NULL UNIQUE,
+  window_ref TEXT NOT NULL,
+  training_run_ref TEXT NOT NULL,
+  pylon_ref TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('active', 'released')),
+  receipt_refs_json TEXT NOT NULL,
+  public_projection_json TEXT NOT NULL,
+  claimed_at TEXT NOT NULL,
+  lease_expires_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE training_verification_challenges (
+  id TEXT PRIMARY KEY,
+  challenge_ref TEXT NOT NULL UNIQUE,
+  training_run_ref TEXT NOT NULL,
+  window_ref TEXT,
+  contribution_ref TEXT,
+  homework_kind TEXT NOT NULL,
+  verification_class TEXT NOT NULL CHECK (verification_class IN (
+    'deterministic_recompute',
+    'exact_trace_replay',
+    'freivalds_merkle',
+    'seeded_replication',
+    'statistical_cross_check'
+  )),
+  sampling_policy TEXT NOT NULL CHECK (sampling_policy IN ('aggregate', 'per_contribution')),
+  state TEXT NOT NULL CHECK (state IN ('Queued', 'Leased', 'Retrying', 'Verified', 'Rejected', 'TimedOut')),
+  attempt_count INTEGER NOT NULL,
+  max_attempts INTEGER NOT NULL,
+  lease_ref TEXT,
+  leased_to_ref TEXT,
+  lease_expires_at TEXT,
+  payload_json TEXT NOT NULL,
+  commitment_refs_json TEXT NOT NULL,
+  failure_codes_json TEXT NOT NULL,
+  verdict_refs_json TEXT NOT NULL,
+  public_projection_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  verified_at TEXT,
+  rejected_at TEXT,
+  timed_out_at TEXT,
+  archived_at TEXT
+);
+
+CREATE TABLE training_verification_events (
+  id TEXT PRIMARY KEY,
+  challenge_ref TEXT NOT NULL,
+  transition_kind TEXT NOT NULL,
+  state_from TEXT,
+  state_to TEXT NOT NULL,
+  validator_ref TEXT,
+  failure_codes_json TEXT NOT NULL,
+  receipt_refs_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE TABLE training_trace_contributions (
+  id TEXT PRIMARY KEY,
+  contribution_ref TEXT NOT NULL UNIQUE,
+  lease_ref TEXT NOT NULL,
+  window_ref TEXT NOT NULL,
+  training_run_ref TEXT NOT NULL,
+  pylon_ref TEXT NOT NULL,
+  workload_family TEXT NOT NULL,
+  assignment_ref TEXT NOT NULL,
+  pylon_device_ref TEXT NOT NULL,
+  trace_commitment_digest_ref TEXT NOT NULL,
+  sampled_window_ref TEXT NOT NULL,
+  sampled_window_start_step INTEGER NOT NULL,
+  sampled_window_end_step INTEGER NOT NULL,
+  worker_receipt_ref TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('pending', 'paired')),
+  validator_device_ref TEXT,
+  replay_digest_ref TEXT,
+  verification_challenge_ref TEXT,
+  public_projection_json TEXT NOT NULL,
+  submitted_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT,
+  UNIQUE (lease_ref, workload_family)
+);
+`

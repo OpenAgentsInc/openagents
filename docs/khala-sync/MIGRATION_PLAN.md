@@ -883,6 +883,34 @@ using the wrapped D1 handle.
 
 ### 3.12 KS-8.15 — Training, gym, evals
 
+**KS-8.15 source status (2026-07-04):** training CORE machinery LANDED —
+Postgres schema (`khala-sync-server` migration
+`0019_training_domain.sql`) covers the seven `training_*` tables (runs,
+windows, window events, window leases, verification challenges/events,
+trace contributions) with indexes re-derived from the live reads and
+the lease/contribution idempotency keys ported exactly. The shared
+registry `packages/khala-sync-server/src/training-domain-tables.ts`
+owns column/key order for both the Worker mirror and the backfill
+verifier; the Worker seam
+`apps/openagents.com/workers/api/src/training-domain-store.ts` wraps
+the three existing D1 stores (authority / verification / trace
+contribution) with fail-soft read-back mirroring at every write call
+site, behind `KHALA_SYNC_TRAINING_DUAL_WRITE` (default ON) /
+`KHALA_SYNC_TRAINING_READS` (default `d1`; routes the
+`listClaimableWindows` scan behind the re-homed
+`SelfServeWindowProducer.topUp` cron). Backfill + exact verify lives at
+`packages/khala-sync-server/scripts/backfill-training.ts` (counts,
+newest-N row hashes, window/verification event-chain fingerprints,
+per-window lease-set fingerprint, state tallies). Lease claiming stays
+D1-authoritative until cutover, where it becomes a real Postgres
+row-lock transaction (RUNBOOK "Training domain cutover"). The gym /
+mullet / blueprint / replay-clip / mirrorcode remainder (~22 tables,
+incl. the `gym_harbor_full_trace_archives` R2-split check and
+leaderboard recomputation) moves in the follow-up remainder lane
+[#8355](https://github.com/OpenAgentsInc/openagents/issues/8355);
+destructive D1 retirement stays in KS-8.19
+[#8330](https://github.com/OpenAgentsInc/openagents/issues/8330).
+
 - **What:** training runs/windows/leases/verification, trace
   contributions, gym eval runs + delegation + leaderboards, mullet
   simulations, blueprint program runs, replay clips, mirrorcode runs.

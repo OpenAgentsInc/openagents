@@ -1175,7 +1175,6 @@ import {
   buildSettledFeedEvents,
   publishSettledFeedEvents,
 } from './tassadar-settled-feed-sync'
-import { makeD1TrainingTraceContributionStore } from './tassadar-trace-contribution-authority'
 import { makeTassadarTraceContributionRoutes } from './tassadar-trace-contribution-routes'
 import { runTassadarTracePairingScheduled } from './tassadar-trace-pairing'
 import {
@@ -1282,8 +1281,12 @@ import {
 } from './training-public-gradient-windows-routes'
 import { handleVerifiedOutcomeReputationApi } from './verified-outcome-reputation-routes'
 import {
+  makeTrainingAuthorityStoreForEnv,
+  makeTrainingTraceContributionStoreForEnv,
+  makeTrainingVerificationStoreForEnv,
+} from './training-domain-store'
+import {
   buildTrainingWindowRecord,
-  makeD1TrainingAuthorityStore,
   transitionTrainingWindowRecord,
 } from './training-run-window-authority'
 import {
@@ -1294,7 +1297,6 @@ import {
   buildTrainingVerificationChallengeRecord,
   finalizeTrainingVerificationChallengeRecord,
   leaseTrainingVerificationChallengeRecord,
-  makeD1TrainingVerificationStore,
   runTrainingVerificationClass,
 } from './training-verification'
 import { makeTrainingVerificationRoutes } from './training-verification-routes'
@@ -1630,12 +1632,11 @@ const makeAcceptedOutcomeSettlementSink = (
     return undefined
   }
 
-  const db = openAgentsDatabase(env)
   const ledger = makeD1NexusTreasuryPayoutLedgerStore(
     makeTreasuryDatabaseForEnv(env),
   )
   const sparkTargetStore = makePylonSparkPayoutTargetStoreForEnv(env)
-  const contributionStore = makeD1TrainingTraceContributionStore(db)
+  const contributionStore = makeTrainingTraceContributionStoreForEnv(env)
 
   // Owner resolver for a contributor's Spark payout destination — same shape as the
   // Tassadar autostream: direct registered-pylon lookup, then the owner-scoped fallback
@@ -6639,7 +6640,7 @@ const runSelfServeWindowProducerScheduled = (
   Effect.tryPromise({
     catch: () => 'self_serve_window_producer_failed' as const,
     try: async () => {
-      const store = makeD1TrainingAuthorityStore(openAgentsDatabase(env))
+      const store = makeTrainingAuthorityStoreForEnv(env)
       const nowIso = epochMillisToIsoTimestamp(scheduledTime)
       const claimable = await store.listClaimableWindows(nowIso, 50)
       const openSelfServe = claimable.filter(
@@ -9740,9 +9741,10 @@ const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({
       request,
     })
 
-    return makeD1TrainingVerificationStore(
-      openAgentsDatabase(env),
-    ).createChallenge(built.challenge, built.event)
+    return makeTrainingVerificationStoreForEnv(env).createChallenge(
+      built.challenge,
+      built.event,
+    )
   },
   makePayoutLedgerStore: env =>
     makeD1NexusTreasuryPayoutLedgerStore(makeTreasuryDatabaseForEnv(env)),
@@ -9803,7 +9805,7 @@ const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({
           .readRegistration(pylonRef)
           .then(registration => registration?.ownerAgentUserId),
     ),
-  makeStore: env => makeD1TrainingAuthorityStore(openAgentsDatabase(env)),
+  makeStore: env => makeTrainingAuthorityStoreForEnv(env),
   requireAdminApiToken,
 })
 
@@ -9959,7 +9961,7 @@ const tassadarTraceContributionRoutes =
   makeTassadarTraceContributionRoutes<WorkerBindings>({
     agentStore: env => makeAgentRegistrationStoreForEnv(env),
     createVerificationChallenge: async (env, input) => {
-      const store = makeD1TrainingVerificationStore(openAgentsDatabase(env))
+      const store = makeTrainingVerificationStoreForEnv(env)
       const built = buildTrainingVerificationChallengeRecord({
         makeId: randomUuid,
         nowIso: currentIsoTimestamp(),
@@ -9994,8 +9996,8 @@ const tassadarTraceContributionRoutes =
       return store.transitionChallenge(finalized.challenge, finalized.event)
     },
     makeContributionStore: env =>
-      makeD1TrainingTraceContributionStore(openAgentsDatabase(env)),
-    makeStore: env => makeD1TrainingAuthorityStore(openAgentsDatabase(env)),
+      makeTrainingTraceContributionStoreForEnv(env),
+    makeStore: env => makeTrainingAuthorityStoreForEnv(env),
     // Hands-off auto-stream of the real per-window reward on each Verified
     // exact_trace_replay pair (openagents #5309 + #5310): worker 5 sats AND
     // validator 5 sats, NO operator POST. INERT until the owner arms
@@ -10004,14 +10006,13 @@ const tassadarTraceContributionRoutes =
     // this in catchAll so a blocked/failed settlement never breaks the verdict.
     onVerifiedExactTraceReplayPair: (env, input) =>
       Effect.gen(function* () {
-        const db = openAgentsDatabase(env)
         const ledger = makeD1NexusTreasuryPayoutLedgerStore(
           makeTreasuryDatabaseForEnv(env),
         )
         const sparkTargetStore = makePylonSparkPayoutTargetStoreForEnv(env)
-        const contributionStore = makeD1TrainingTraceContributionStore(db)
+        const contributionStore = makeTrainingTraceContributionStoreForEnv(env)
         const run = yield* Effect.promise(() =>
-          makeD1TrainingAuthorityStore(db).readRun(input.lease.trainingRunRef),
+          makeTrainingAuthorityStoreForEnv(env).readRun(input.lease.trainingRunRef),
         )
 
         if (run === undefined) {
@@ -10171,7 +10172,7 @@ const tassadarTraceContributionRoutes =
 
 const trainingVerificationRoutes =
   makeTrainingVerificationRoutes<WorkerBindings>({
-    makeStore: env => makeD1TrainingVerificationStore(openAgentsDatabase(env)),
+    makeStore: env => makeTrainingVerificationStoreForEnv(env),
     requireAdminApiToken,
   })
 
@@ -16171,9 +16172,10 @@ export default {
               request,
             })
 
-            return makeD1TrainingVerificationStore(
-              openAgentsDatabase(env),
-            ).createChallenge(built.challenge, built.event)
+            return makeTrainingVerificationStoreForEnv(env).createChallenge(
+              built.challenge,
+              built.event,
+            )
           },
           enabled:
             (env as { TASSADAR_TRACE_PAIRING?: string })
@@ -16190,7 +16192,7 @@ export default {
           // challenge). This scheduled tick stays a no-op pairer by design; do not
           // wire it to a digest source.
           resolveValidatorCandidates: async () => [],
-          store: makeD1TrainingTraceContributionStore(openAgentsDatabase(env)),
+          store: makeTrainingTraceContributionStoreForEnv(env),
         }),
       ),
       observedEffect(

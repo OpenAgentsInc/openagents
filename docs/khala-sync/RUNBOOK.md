@@ -967,6 +967,77 @@ Rollback at ANY step: set `KHALA_SYNC_KHALA_CODE_STATE_DUAL_WRITE=off`.
 Read authority is still D1, and the sync changelog can be repaired by
 rerunning the backfill plus catch-up sweep after the bug is fixed.
 
+## Training domain cutover (KS-8.15 core, #8326)
+
+The Wave D training CORE: the seven `training_*` tables —
+`training_runs` / `training_windows` / `training_window_events` /
+`training_window_leases` / `training_verification_challenges` /
+`training_verification_events` / `training_trace_contributions` (D1) →
+same-named Postgres twins (khala-sync migration
+`0019_training_domain.sql`). Machinery:
+`apps/openagents.com/workers/api/src/training-domain-store.ts`
+(row-level seam over the shared registry, fail-soft read-back mirror
+wrapped around the three existing D1 stores at every write call site)
+and `packages/khala-sync-server/scripts/backfill-training.ts`
+(cursor-resumable backfill + verify). The gym/mullet/blueprint/replay/
+mirrorcode remainder (~22 tables) moves in the follow-up lane #8355.
+
+CORRECTNESS NOTE (window leases): double-lease = double-payout risk
+upstream. In this lane the lease claim stays a D1-authoritative write
+and Postgres is a byte-exact mirror. At full write cutover the claim
+becomes a real `SELECT ... FOR UPDATE` row-lock transaction — port the
+lock protocol deliberately then; never emulate the D1 dance in
+Postgres mid-migration. Training receipts feed PUBLIC claims: verify
+must be hash-exact, and the public run-summary / proof-replay /
+activity-timeline reads stay on D1 authority until cutover so public
+projections never regress mid-cutover.
+
+Flags (Worker vars):
+
+- `KHALA_SYNC_TRAINING_DUAL_WRITE` — default **on** wherever
+  `KHALA_SYNC_DB` exists; `off|0|false|disabled` disables the mirror.
+- `KHALA_SYNC_TRAINING_READS` — default `d1`; routes ONE scan:
+  `listClaimableWindows` (the SelfServeWindowProducer.topUp cron this
+  domain re-homes). `compare` reads both, serves D1, logs
+  `khala_sync_training_read_compare_mismatch`; `postgres` serves
+  Postgres with bounded retry (50/150ms) and D1 fallback. All other
+  domain reads stay on D1 until the decommission follow-up.
+
+Flag-flip order — never skip a step, each step soaks before the next:
+
+1. **Dual-write on** (default after #8326 lands + `0019` applied via the
+   migration runner). Watch `khala_sync_training_dual_write_failed` in
+   Worker logs — that event IS the drift metric; a nonzero steady rate
+   blocks progression.
+2. **Backfill**: from `packages/khala-sync-server/`,
+   `KHALA_SYNC_DATABASE_URL=<direct-url> bun scripts/backfill-training.ts`
+   (wrangler-auth'd; rowid-cursor resumable via
+   `.training-backfill-state.json`). Run it a SECOND time (`--restart`)
+   as the catch-up sweep once dual-write has covered the whole window.
+3. **Verify**: `bun scripts/backfill-training.ts --verify` — exact row
+   counts, newest-50 full-row hashes, per-window window-event chain
+   fingerprints + per-window lease-set fingerprint (the double-lease
+   guard), per-challenge verification-event chain fingerprints (the
+   contiguity acceptance), and challenge/contribution state tallies.
+   Post the output on the migration issue. Exact or explain; no cutover
+   on a red verify.
+4. **Compare reads**: set `KHALA_SYNC_TRAINING_READS=compare`; soak
+   until the mismatch log is silent over a window that includes real
+   SelfServeWindowProducer ticks (the cron fires every minute).
+5. **Postgres reads**: set `KHALA_SYNC_TRAINING_READS=postgres`. The
+   claimable-window scan now reads Postgres with retry headroom; D1
+   remains the write authority and the fallback.
+6. **Remainder separately, retire later**: gym/mullet/blueprint/replay/
+   mirrorcode move in #8355 (with the `gym_harbor_full_trace_archives`
+   R2-split check and leaderboard recomputation). Dropping D1 tables,
+   deleting flags, and the row-lock lease-claim port are deferred to
+   KS-8.19 (#8330), not a per-domain soak/drop gate. Until then rollback
+   is one flag flip back to `d1`.
+
+Rollback at ANY step: set `KHALA_SYNC_TRAINING_READS=d1` (reads) and/or
+`KHALA_SYNC_TRAINING_DUAL_WRITE=off` (writes). D1 authority is never
+behind.
+
 ## Billing/Stripe/pay-ins domain cutover (KS-8.7, #8318)
 
 The FIRST money domain in the KS-8 sequence: the 22 live

@@ -35,6 +35,7 @@ export * from "./push-engine.js"
 export * from "./read-service.js"
 export * from "./scope-auth.js"
 export * from "./sql.js"
+export * from "./training-domain-tables.js"
 
 /**
  * @openagentsinc/khala-sync-server — server substrate for Khala Sync:
