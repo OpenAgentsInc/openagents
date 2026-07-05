@@ -3108,6 +3108,63 @@ gain real volume. Persistent RE-GROWING drift after a repair means a hot
 ingest path lost its producer wiring; check the
 `khala_sync_tokens_served_projection_failed` diagnostics first.
 
+## Gym run-progress public projection — dual-write only, NOT a cutover (KS-6.5, #8415)
+
+`/gym`'s live follow-along panel (`publishGymRunProgressSnapshot` in
+`workers/api/src/inference/gym/run-progress-sync.ts`) now ALSO best-effort
+projects every ingested snapshot into `scope.public.gym-run-progress`
+(`@openagentsinc/khala-sync-server`'s `projectGymRunProgressBestEffort`, via
+the Worker's `khala-sync-gym-run-progress-projection.ts`), keyed by
+`entityId = runRef` — one shared public scope holding many concurrently
+running jobs, mirroring the KS-6.1 fleet cockpit's multi-entity-per-scope
+shape but with NO scope-owner check (public scope; `resolveScopeRead`'s
+`public` arm) and NO aggregate state (every publish is a full post-image, so
+no migration was needed — it rides the generic `khala_sync_changelog` +
+`khala_sync_scopes` tables directly).
+
+**This is a dual-write ADDITION, not a cutover, and the legacy producer was
+deliberately NOT deleted.** The real blocker, found while implementing this
+issue: `GET/WS /api/sync/connect` (and `/api/sync/log`,
+`/api/sync/bootstrap` — the NEW khala-sync engine's own read surfaces)
+require an AUTHENTICATED actor (`authenticateRequestActor` — browser session
+or agent bearer) before even consulting `resolveScopeRead`, including for
+`scope.public.*` reads. The `/gym` panel is read by ANONYMOUS/logged-out
+visitors. The OLD legacy spine (`sync-routes.ts`'s
+`/api/sync/:kind/:id/stream`) DOES have an anonymous-safe bypass for public
+kinds (`isPublicSyncPath`, covering `public-gym-run-progress`,
+`public-khala-tokens-served`, `public-settled-feed`, `public-agent`,
+`public-goal`, `public-agent-run`) — but the NEW engine's connect/log/
+bootstrap routes have not grown the equivalent exception. So repointing
+`apps/web/src/subscriptions.ts`'s `GYM_RUN_PROGRESS_SCOPE`
+(`public-gym-run-progress:network`, built via the legacy `syncStreamHref` →
+`/api/sync/${kind}/${id}/stream`) to `/api/sync/connect?scope=` would 401
+every anonymous viewer today. The legacy `sync-worker` outbox +
+`SyncRoomDurableObject` poke in `run-progress-sync.ts` therefore remains the
+ONLY delivery path for anonymous `/gym` visitors.
+
+This same gap almost certainly applies to every other `scope.public.*`
+producer that feeds an anonymous/logged-out surface — tokens-served
+(KS-6.3, #8304) and the still-open settled-feed cutover (KS-6.4, #8414) both
+kept their legacy anonymous producer live for the same reason. The
+2026-07-04 cleanup/sync-adoption audit's Wave 3 language ("repointing
+[subscriptions.ts] to `/api/sync/connect?scope=` is the one change that
+unblocks retiring the entire legacy spine") is optimistic for any PUBLIC,
+anonymous-consumed scope until an anonymous-safe read path exists on
+connect/log/bootstrap. Closing that gap (e.g. a `scope.public.*`-only
+anonymous exception, or a bounded read-only public token) is a prerequisite
+for actually retiring `SyncRoomDurableObject` for tokens-served,
+settled-feed, and gym run-progress — track it before attempting any of those
+producer deletions or client repoints.
+
+**What IS live today:** the Postgres changelog for
+`scope.public.gym-run-progress` exists and is populated in parity with the
+legacy outbox (same `runRef`-keyed upsert-by-entity shape), fail-soft (a
+Postgres failure never blocks or fails the `/gym` ingest — see
+`khala_sync_gym_run_progress_projection_failed` diagnostics). Contract:
+`packages/khala-sync/src/gym.ts`. Projector:
+`packages/khala-sync-server/src/gym-run-progress-projection.ts`. Worker
+glue: `workers/api/src/khala-sync-gym-run-progress-projection.ts`.
+
 ## What this runbook does NOT cover
 
 - Deploying the Worker/hub DO: `docs/DEPLOYMENT.md` (deploy:safe gate).

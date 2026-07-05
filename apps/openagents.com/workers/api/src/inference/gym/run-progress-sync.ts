@@ -5,10 +5,12 @@ import {
   publicGymRunProgressScope,
 } from '@openagentsinc/sync-worker'
 
-import { observedPromise } from '../../observability'
+import { defaultMakeKhalaSyncSqlClient } from '../../khala-sync-push-routes'
+import { logWorkerRouteWarning, observedPromise } from '../../observability'
 import { openAgentsDatabase, scheduleBackgroundWork } from '../../runtime'
 import type { SyncNotificationContext } from '../../sync-notifier'
 import { notifySyncScopes } from '../../sync-notifier'
+import { projectGymRunProgress } from '../../khala-sync-gym-run-progress-projection'
 
 import {
   type GymRunProgress,
@@ -48,11 +50,31 @@ import {
  * latest projection in the snapshot, and the client replaces just that card.
  * Other runs' cards are untouched, so the panel never shows stale or duplicate
  * runs.
+ *
+ * KHALA SYNC DUAL-WRITE (KS-6.5, #8415): every snapshot ALSO best-effort
+ * projects into the new engine's `scope.public.gym-run-progress`
+ * (`@openagentsinc/khala-sync-server`'s `projectGymRunProgressBestEffort`,
+ * via this Worker's `khala-sync-gym-run-progress-projection.ts`), the same
+ * fail-soft dual-write shape KS-6.1 (fleet cockpit) and KS-6.3
+ * (tokens-served) already proved. This is a DUAL-WRITE ADDITION, not a
+ * cutover: `GET/WS /api/sync/connect` (+ /log, /bootstrap) require an
+ * authenticated actor even for `scope.public.*` reads, and the `/gym` panel
+ * is read by ANONYMOUS/logged-out visitors — there is no anonymous read
+ * path on the khala-sync connect surface yet. So the legacy outbox +
+ * `notifySyncScopes` broadcast above remains the ONLY delivery path for
+ * anonymous visitors; do NOT delete it or repoint
+ * `apps/web/src/subscriptions.ts`'s `GYM_RUN_PROGRESS_SCOPE` until that gap
+ * is closed (see docs/khala-sync/RUNBOOK.md). The Khala Sync write is
+ * fire-and-forget alongside the legacy path and never blocks or fails the
+ * ingest — same discipline as the poke below.
  */
 
 export const GYM_RUN_PROGRESS_SYNC_COLLECTION = 'gym_run_progress'
 
-type GymRunProgressSyncEnv = Pick<WorkerBindings, 'OPENAGENTS_DB' | 'SYNC_ROOM'>
+type GymRunProgressSyncEnv = Pick<
+  WorkerBindings,
+  'OPENAGENTS_DB' | 'SYNC_ROOM' | 'KHALA_SYNC_DB'
+>
 
 /**
  * Publish ONE public-safe run-progress projection to the public gym run-progress
@@ -101,10 +123,28 @@ export const publishGymRunProgressSnapshot = async (
 
     const notify = notifySyncScopes(env, [scope])
 
+    // KS-6.5 (#8415): best-effort dual-write into the new engine's
+    // `scope.public.gym-run-progress` (see this module's docstring for why
+    // the legacy outbox + notify above remains the ONLY delivery path for
+    // anonymous `/gym` visitors). Never throws; always resolves to a typed
+    // outcome, so it is always safe to race alongside the legacy notify.
+    const khalaSyncProjection = projectGymRunProgress(
+      {
+        binding: env.KHALA_SYNC_DB,
+        log: (event, fields) => logWorkerRouteWarning(event, fields),
+        makeSqlClient: defaultMakeKhalaSyncSqlClient,
+      },
+      projection,
+    )
+
     if (options.ctx === undefined) {
-      await notify
+      await Promise.all([notify, khalaSyncProjection])
     } else {
       scheduleBackgroundWork(options.ctx, notify)
+      scheduleBackgroundWork(
+        options.ctx,
+        khalaSyncProjection.then(() => undefined),
+      )
     }
   })
 }

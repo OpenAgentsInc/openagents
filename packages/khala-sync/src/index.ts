@@ -42,6 +42,11 @@ export * from "./khala-code.js"
 // body-free control intents, and private thread-scoped event streams.
 export * from "./runtime.js"
 
+// Gym / Harbor live run-progress entity contract (KS-6.5, #8415): post-image
+// shape for scope.public.gym-run-progress changelog entries (one entity per
+// runRef). Self-contained module (no cycle).
+export * from "./gym.js"
+
 // ---------------------------------------------------------------------------
 // Branded primitives
 // ---------------------------------------------------------------------------

@@ -412,6 +412,19 @@ and the D1 `sync_*` tables have zero remaining users and drop cleanly**
    projection was re-verified as the live producer path. (S, low)
 2. **Desktop fleet cockpit**: complete in #8383 — `KHALA_SYNC_FLEET` is default-on, `0`/`false`/`off` are explicit opt-out values, and the Fleet panel no longer schedules the old visible 5s `fleet-status.ts` poll. Projection already proven at load (9,909 pushes, zero failures). (S, low)
 3. **Settled feed** (`tassadar-settled-feed-sync.ts`): new `scope.public.settled-feed` projection, same #8304 pattern, then delete the legacy producer. (M, med)
+   - **2026-07-05 correction (KS-6.5, #8415):** repointing an anonymous
+     public consumer's `subscriptions.ts` entry to `/api/sync/connect?scope=`
+     is NOT yet safe for ANY `scope.public.*` surface — `/api/sync/connect`
+     (and `/log`, `/bootstrap`) require an authenticated actor before
+     `resolveScopeRead` even runs, unlike the legacy `sync-routes.ts`
+     `/api/sync/:kind/:id/stream`'s explicit anonymous-safe
+     `isPublicSyncPath` bypass. Gym run-progress (KS-6.5) landed its
+     `scope.public.gym-run-progress` Postgres projection as a dual-write
+     ONLY, keeping the legacy anonymous producer live, for exactly this
+     reason — see `docs/khala-sync/RUNBOOK.md`'s "Gym run-progress public
+     projection" section. Settled feed will hit the identical wall; add the
+     anonymous-safe exception to the new engine's connect/log/bootstrap
+     routes BEFORE attempting its client repoint or legacy-producer deletion.
 4. **Team chat + thread files + agent goals**: the flagship "migration = sync adoption" case per KS-8.13/#8324 — land on `scope.team.<id>` / `scope.thread.<id>` / `scope.agent_run.<id>` / `scope.user.<id>`, replacing both the notifier fan-out and the desktop/web polling in one move. (L, med)
 5. **Public aggregates** (demand-mix, model-mix, tokens-history, public activity timeline): project off live-at-read D1 onto `scope.public.*` counters — the Postgres rollup twins already exist from KS-8.2. (M, low)
 6. **Desktop hot polls**: 1s Claude-approval poll, 2s thread-token-summary poll, 5s inbox poll — all map cleanly to `scope.agent_run`/`scope.thread`/`scope.user`. (M, med — the 1s approval poll is latency-sensitive, migrate carefully)
