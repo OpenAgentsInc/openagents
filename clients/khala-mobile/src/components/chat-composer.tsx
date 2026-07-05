@@ -1,5 +1,5 @@
 import type { KhalaRuntimeLane, RuntimeTurnEntity } from "@openagentsinc/khala-sync"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Platform, Pressable, Text, TextInput, View } from "react-native"
 import Animated, { useAnimatedStyle, useDerivedValue, withTiming } from "react-native-reanimated"
 
@@ -15,6 +15,7 @@ import {
   DEFAULT_RUNTIME_LANE
 } from "../sync/khala-runtime-compose-core"
 import { makeSafeRef } from "../sync/khala-sync-push-core"
+import { buildComposerTextWithQuote } from "../sync/swipe-quote-core"
 import type { PendingMutation } from "../sync/use-khala-sync-push"
 import { khalaMobileTheme } from "../theme/tokens"
 
@@ -46,6 +47,13 @@ type ChatComposerProps = Readonly<{
    * its own already-fixed lane governs steer/queue/stop, not this prop. */
   defaultLane?: KhalaRuntimeLane
   push: (mutations: ReadonlyArray<PendingMutation>) => Promise<unknown>
+  /** Swipe-to-quote request from the thread's transcript list (`SwipeableItem`
+   * in `app/thread/[threadId].tsx`, see issue #8393). `id` is the swiped
+   * transcript part's own id, so quoting it merges the snippet into the
+   * draft exactly once even if this component re-renders before the parent
+   * clears its pending-request state. `onQuoteConsumed` clears that state. */
+  quoteRequest?: { id: string; snippet: string }
+  onQuoteConsumed?: () => void
 }>
 
 /** Bottom input bar for a thread. Idle: plain send starts a new turn, using
@@ -57,13 +65,21 @@ type ChatComposerProps = Readonly<{
  * stay on the ACTIVE turn's own lane (never the idle picker's current
  * value) — a running turn's provider can't be changed mid-flight from here;
  * that's cross-agent delegation, #8407. */
-export const ChatComposer = ({ activeTurn, defaultLane, push, threadId }: ChatComposerProps) => {
+export const ChatComposer = ({
+  activeTurn,
+  defaultLane,
+  onQuoteConsumed,
+  push,
+  quoteRequest,
+  threadId
+}: ChatComposerProps) => {
   const [text, setText] = useState("")
   const [sending, setSending] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [mode, setMode] = useState<SendMode>("steer")
   const [selectedLane, setSelectedLane] = useState<KhalaRuntimeLane>(defaultLane ?? DEFAULT_RUNTIME_LANE)
   const [laneTouched, setLaneTouched] = useState(false)
+  const lastQuoteRequestId = useRef<string | undefined>(undefined)
 
   // `defaultLane` often arrives after first render (the runtime_turn
   // collection is still loading), so keep syncing to it until the user
@@ -72,6 +88,18 @@ export const ChatComposer = ({ activeTurn, defaultLane, push, threadId }: ChatCo
   useEffect(() => {
     if (!laneTouched && defaultLane !== undefined) setSelectedLane(defaultLane)
   }, [defaultLane, laneTouched])
+
+  // Merges a swipe-to-quote request into the draft exactly once per request
+  // id (see `ChatComposerProps.quoteRequest` above), then tells the parent to
+  // clear it. Guarding on the id (not just definedness) means a re-render
+  // between "merge" and "parent clears its state" can't double-prepend the
+  // same quote.
+  useEffect(() => {
+    if (quoteRequest === undefined || lastQuoteRequestId.current === quoteRequest.id) return
+    lastQuoteRequestId.current = quoteRequest.id
+    setText(current => buildComposerTextWithQuote(current, quoteRequest.snippet))
+    onQuoteConsumed?.()
+  }, [onQuoteConsumed, quoteRequest])
 
   const trimmed = text.trim()
   const hasActiveTurn = activeTurn !== undefined

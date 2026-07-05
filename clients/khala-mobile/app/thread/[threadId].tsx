@@ -11,13 +11,14 @@ import {
   type RuntimeTurnEntity
 } from "@openagentsinc/khala-sync"
 import { useLocalSearchParams } from "expo-router"
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { FlatList, KeyboardAvoidingView, Text, View } from "react-native"
 import Animated, { FadeIn } from "react-native-reanimated"
 import { SafeAreaView } from "react-native-safe-area-context"
 
 import { AppHeader } from "../../src/components/app-header"
 import { ChatComposer, chatComposerKeyboardVerticalOffset } from "../../src/components/chat-composer"
+import { SwipeableItem } from "../../src/components/swipeable-item"
 import { TranscriptPartRow } from "../../src/components/transcript-part-row"
 import { findActiveTurn, mostRecentTurnLane } from "../../src/sync/khala-runtime-compose-core"
 import { sortByKeyAsc } from "../../src/sync/khala-sync-entities-core"
@@ -26,9 +27,15 @@ import {
   sortEventsBySequence,
   type TranscriptPart
 } from "../../src/sync/khala-runtime-transcript-core"
+import { buildQuoteSnippet } from "../../src/sync/swipe-quote-core"
 import { useKhalaSyncCollection } from "../../src/sync/use-khala-sync-collection"
 import { useKhalaSyncPush } from "../../src/sync/use-khala-sync-push"
 import { MOTION_MEDIUM, MOTION_STAGGER_MS } from "../../src/theme/motion"
+
+/** One pending swipe-to-quote request, handed to `ChatComposer` (see issue
+ * #8393). `id` is the swiped transcript part's own id — reused as the
+ * composer's dedupe key so re-renders here can never cause a double-merge. */
+type QuoteRequest = Readonly<{ id: string; snippet: string }>
 
 // `reduceRuntimeTranscript` re-folds the FULL event list on every render, but
 // it's a deterministic left-to-right fold over an append-only event log, so
@@ -90,6 +97,7 @@ export default function ThreadMessagesScreen() {
   const activeTurn = useMemo(() => findActiveTurn(turnState.items), [turnState.items])
   const defaultLane = useMemo(() => mostRecentTurnLane(turnState.items), [turnState.items])
   const push = useKhalaSyncPush()
+  const [quoteRequest, setQuoteRequest] = useState<QuoteRequest | undefined>(undefined)
 
   const messages = sortByKeyAsc(
     chatState.items.filter(message => message.deletedAt === null),
@@ -143,11 +151,24 @@ export default function ThreadMessagesScreen() {
               data={transcriptParts}
               keyExtractor={part => part.id}
               ref={listRef}
-              renderItem={({ index, item: part }) => (
-                <Animated.View entering={FadeIn.delay(transcriptEntranceDelay(index)).duration(MOTION_MEDIUM)}>
-                  <TranscriptPartRow part={part} />
-                </Animated.View>
-              )}
+              renderItem={({ index, item: part }) => {
+                const row = (
+                  <Animated.View entering={FadeIn.delay(transcriptEntranceDelay(index)).duration(MOTION_MEDIUM)}>
+                    <TranscriptPartRow part={part} />
+                  </Animated.View>
+                )
+                // Only wrap parts with meaningful quotable content (text,
+                // reasoning, tool calls) in the swipe-to-quote gesture —
+                // `usage`/`turn-status` rows are plain centered divider
+                // text with nothing to quote (see `buildQuoteSnippet`).
+                const quoteSnippet = buildQuoteSnippet(part)
+                if (quoteSnippet === undefined) return row
+                return (
+                  <SwipeableItem onSwipeComplete={() => setQuoteRequest({ id: part.id, snippet: quoteSnippet })}>
+                    {row}
+                  </SwipeableItem>
+                )
+              }}
             />
           ) : messages.length === 0 ? (
             <View className="flex-1 items-center justify-center">
@@ -171,7 +192,14 @@ export default function ThreadMessagesScreen() {
           )}
         </View>
         {threadId === undefined || status === "missing_token" ? null : (
-          <ChatComposer activeTurn={activeTurn} defaultLane={defaultLane} push={push} threadId={threadId} />
+          <ChatComposer
+            activeTurn={activeTurn}
+            defaultLane={defaultLane}
+            onQuoteConsumed={() => setQuoteRequest(undefined)}
+            push={push}
+            quoteRequest={quoteRequest}
+            threadId={threadId}
+          />
         )}
       </KeyboardAvoidingView>
     </SafeAreaView>
