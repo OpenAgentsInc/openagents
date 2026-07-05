@@ -3187,12 +3187,6 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     grants no checkout, spend, refund, payout, settlement, provider,
     public-claim, or registry authority. Regression coverage:
     `workers/api/src/public-card-credit-spend-receipt-routes.test.ts`.
-  - `GET /api/public/inference/batch-job-receipts/{receiptRef}` — live at read
-    over batch job closeout rows and the matching inference charge receipt —
-    compliant (`generatedAt`, top-level `projection_staleness.v1`
-    `live_at_read` contract, batch closeout telemetry, public refs, and no
-    prompt/result payloads). Read-only; grants no execution, spend, refund,
-    payout, settlement, provider, public-claim, or registry authority.
   - `GET /api/public/inference/privacy-receipts/{receiptRef}` — live at read
     over paid-privacy entitlement receipts, the opt-out entitlement row, and
     confidential-compute execution receipts — compliant (`generatedAt`,

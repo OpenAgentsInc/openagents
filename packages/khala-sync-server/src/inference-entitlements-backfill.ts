@@ -105,17 +105,6 @@ export const INFERENCE_ENTITLEMENTS_TABLES: Readonly<
     orderColumn: "created_at",
     groupColumn: "accrual_kind",
   },
-  inference_batch_jobs: {
-    columns: [
-      "job_id", "account_ref", "status", "charge_receipt_ref",
-      "dataset_size", "processed_items", "failed_items", "results_r2_key",
-      "created_at", "updated_at", "enqueued_at", "started_at",
-    ],
-    conflict: { mode: "converge", keyColumns: ["job_id"] },
-    keyColumns: ["job_id"],
-    orderColumn: "created_at",
-    groupColumn: "status",
-  },
   inference_operator_exemption: {
     columns: [
       "owner_key", "scope", "granted_by", "note", "created_at", "updated_at",

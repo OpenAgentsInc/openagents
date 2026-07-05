@@ -16,7 +16,7 @@
 // WHAT THIS MODULE OWNS (Worker-safe; no Playwright, no chromium ever):
 //   (1) `AcceptanceJobMessage` — the typed `openagents.inference.acceptance_job.v1`
 //       payload the gateway enqueues when khala-code produces an executable
-//       artifact (mirrors `BatchJobQueueMessage`). It carries the request id, an
+//       artifact. It carries the request id, an
 //       artifact REF (not raw bytes on the hot path — bytes live in R2/the store),
 //       and the derived `AcceptanceSpec`.
 //   (2) `enqueueAcceptanceJob` — the producer over a pluggable `AcceptanceJobQueue`

@@ -1275,11 +1275,6 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
-    module: 'workers/api/src/inference/batch-job-routes.ts',
-    route: '/api/public/inference/batch-job-receipts',
-    status: 'staleness_declared',
-  },
-  {
     module: 'workers/api/src/inference/inference-privacy-receipt-routes.ts',
     route: '/api/public/inference/privacy-receipts',
     status: 'staleness_declared',

@@ -142,21 +142,6 @@ describe('public inference receipt routes', () => {
     )
   })
 
-  test('serves paid inference batch-job-charge receipts', async () => {
-    const response = await route(
-      storeFor([
-        receiptRecord({
-          receiptRef: 'receipt.inference.batch_job_charge.batch_123',
-        }),
-      ]),
-      'receipt.inference.batch_job_charge.batch_123',
-    )
-    const body = (await response.json()) as Record<string, any>
-
-    expect(response.status).toBe(200)
-    expect(body.receipt.kind).toBe('batch_job_charge')
-  })
-
   test('does not expose pending, mismatched, or unsafe receipt projections', async () => {
     const pending = await route(
       storeFor([

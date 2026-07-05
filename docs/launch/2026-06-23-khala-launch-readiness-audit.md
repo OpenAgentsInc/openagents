@@ -153,7 +153,8 @@ Relevant files:
 
 - `apps/openagents.com/workers/api/src/inference/khala-telemetry.ts`
 - `apps/openagents.com/workers/api/src/inference/chat-completions-routes.ts`
-- `apps/openagents.com/workers/api/src/inference/batch-job-closeout-receipts.ts`
+- Batch-job closeout receipts: retired in #8384 when the default-off batch-job
+  route/queue/store surface was removed before owner arming.
 - `docs/khala/2026-06-23-khala-telemetry-scorecard-book-p0-1.md`
 
 Done:
@@ -161,7 +162,9 @@ Done:
 - Canonical `openagents.khala.telemetry.v1` record exists.
 - Immediate response block stays small; dereferenceable receipt carries depth.
 - Numeric fields distinguish measured values from `not_measured`.
-- Streaming/async request classes and batch wait fields are modeled.
+- Streaming request classes remain modeled; detached batch wait fields are
+  retired with the old batch-job lane until a fresh owner-approved async design
+  lands.
 
 Launch gap:
 

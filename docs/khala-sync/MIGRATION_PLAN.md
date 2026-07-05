@@ -237,8 +237,8 @@ follow-up (backfill-converged until then): `first_batch_payment_policies`
 (operator triage), codex-usage debits from callers that build their own
 `OmniRunStore` without `billingRuntime`, and the remaining low-volume
 `runLedgerStatements` consumers (labor-escrow, metering-hook,
-batch-job-metering, inference-abuse-controls, serving-node-payout,
-cloud-metering, product-promises, business-starter-credit). Prod cutover
+inference-abuse-controls, serving-node-payout, cloud-metering,
+product-promises, business-starter-credit). Prod cutover
 procedure: [`RUNBOOK.md`](./RUNBOOK.md) "Billing/Stripe/pay-ins domain
 cutover"; cutover evidence + D1 drop tracked on epic
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).

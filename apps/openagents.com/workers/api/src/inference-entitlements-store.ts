@@ -292,13 +292,6 @@ const ENTITLEMENTS_WRITE_TABLES = {
       'created_at',
     ],
   },
-  inference_batch_jobs: {
-    columns: [
-      'job_id', 'account_ref', 'status', 'charge_receipt_ref',
-      'dataset_size', 'processed_items', 'failed_items', 'results_r2_key',
-      'created_at', 'updated_at', 'enqueued_at', 'started_at',
-    ],
-  },
   inference_confidential_compute_execution_receipts: {
     columns: [
       'receipt_ref', 'execution_ref', 'account_ref', 'request_ref',
@@ -433,16 +426,6 @@ export type InferenceEntitlementsMirrorOp =
       consumedAt: string
     }>
   | Readonly<{
-      kind: 'update_batch_job'
-      jobId: string
-      status: string
-      updatedAt: string
-      processedItems?: number | undefined
-      failedItems?: number | undefined
-      resultsR2Key?: string | undefined
-      startedAt?: string | undefined
-    }>
-  | Readonly<{
       kind: 'store_agent_search_cache'
       /** The previous active entry is archived at this timestamp. */
       archivedAt: string
@@ -480,8 +463,6 @@ export const mirrorOpRefs = (
       return [`inference_free_key_mints:${op.ipHash}:${op.mintDay}`]
     case 'consume_entitlement':
       return [`${op.table}:${op.entitlementRef}`]
-    case 'update_batch_job':
-      return [`inference_batch_jobs:${op.jobId}`]
     case 'store_agent_search_cache':
       return [`agent_search_cache_entries:${op.cacheKey}`]
   }
@@ -863,20 +844,6 @@ export const makePostgresInferenceEntitlementsStore = (
                SET status = 'consumed', consumed_at = ${op.consumedAt}
              WHERE entitlement_ref = ${op.entitlementRef}`
         }
-        return
-      }
-      case 'update_batch_job': {
-        // Same partial update as the D1 store (a missing pre-backfill row
-        // no-ops; the backfill converges the full row).
-        await sql`
-          UPDATE inference_batch_jobs
-             SET status = ${op.status},
-                 updated_at = ${op.updatedAt},
-                 processed_items = COALESCE(${op.processedItems ?? null}, processed_items),
-                 failed_items = COALESCE(${op.failedItems ?? null}, failed_items),
-                 results_r2_key = COALESCE(${op.resultsR2Key ?? null}, results_r2_key),
-                 started_at = COALESCE(${op.startedAt ?? null}, started_at)
-           WHERE job_id = ${op.jobId}`
         return
       }
       case 'store_agent_search_cache': {

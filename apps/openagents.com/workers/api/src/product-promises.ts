@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-07-04.19'
+export const PublicProductPromisesVersion = '2026-07-05.1'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -205,7 +205,7 @@ export const publicProductPromisesDocument = () => {
     generatedAt: currentIsoTimestamp(),
     maxStalenessSeconds: staleness.maxStalenessSeconds,
     staleness,
-    lastUpdated: '2026-07-04',
+    lastUpdated: '2026-07-05',
     canonicalDocsUrl:
       'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
     sourceRefs,
@@ -4385,7 +4385,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'A business customer can hand OpenAgents a batch of items (summaries, classifications, extractions) and get the processed results back as a buyable, metered inference job.',
         safeCopy:
-          'Batch inference processing as a buyable business offering is planned roadmap scope. The underlying single-request gateway is live, and a receipt-first batch-job surface now has tested submit, detached processing, authenticated result retrieval, and closeout receipt plumbing. The promise is not green until a real paid batch receipt and owner-approved claim transition prove the billable offering.',
+          'Batch inference processing as a buyable business offering is planned roadmap scope. The underlying single-request gateway is live, but the old default-off batch-job API and queue surface was removed in Wave 1 cleanup because it had no owner-approved arming evidence and no Khala Code dependency. A future batch offering needs a fresh owner-approved, receipt-first design before any public claim.',
         unsafeCopy:
           'Do not say OpenAgents has a live batch-processing product, that customers can submit datasets for metered batch inference today, or that batch jobs return billed receipts.',
         evidenceRefs: [
@@ -4401,7 +4401,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.inference_batch_job_surface_unbuilt',
         ],
         verification:
-          'Planned: the per-request gateway (POST /v1/chat/completions) and free taste are live, and route tests now cover the batch job submit/status/results/receipt path. This remains planned because green requires a dereferenceable first real paid batch-job receipt, billing evidence tied to inference.gateway_credits_business.v1, and a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Planned: the per-request gateway (POST /v1/chat/completions) and free taste are live. The prior default-off batch-job route/queue implementation was removed in #8384 rather than armed, so green requires a new owner-approved batch design, a dereferenceable first real paid batch-job receipt, billing evidence tied to inference.gateway_credits_business.v1, and a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           "A batch inference job, when built, grants no spend authority beyond the customer's funded balance, no payout, and no settlement authority, and processing results never asserts an outcome the underlying model run did not produce.",
       },
@@ -5258,6 +5258,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-05.1 is an inference.batch_processing_jobs.v1 Wave 1 cleanup pass and flips NO promise state (stays planned). Issue #8384 removed the default-off INFERENCE_BATCH_JOBS_ENABLED route, queue, D1 mirror, OpenAPI, and test surface instead of arming it, because it had no owner-approved production authority and no Khala Code dependency. The promise remains planned and future batch inference must be rebuilt from a fresh owner-approved, receipt-first design before any public claim. No route is armed, no batch job is accepted, no spend or settlement is created, and no green transition is created.',
       'Registry 2026-07-04.19 is the KS-6.3 public tokens-served projection pass (#8304) and flips NO promise state - green count unchanged. GET /api/public/khala-tokens-served no longer executes the unbounded full-table SUM on the hot path: it serves the Khala Sync scope.public.tokens-served counter projection (khala_sync_public_counters through the KHALA_SYNC_DB Hyperdrive binding, small in-isolate cache) with an honestly declared rebuilt_on_transition maxStalenessSeconds 2 contract (the 2026-06-29 after-action 2-second public-stats precedent), and fails OPEN to the previous live_at_read D1 SUM whenever the binding, Postgres, or backfill is unavailable - counter availability never regresses. Every ledger ingest path bumps the projection exact-once per token_usage_events row (idempotency-key guard in the same Postgres transaction) and appends the public_counter post-image to scope.public.tokens-served; the admin reconcile route plus a scheduled detect-only sweep prove projection == SUM(exact rows) (SPEC invariant 8) and repairs are explicit audited actions, never silent overwrites. The SYNC_ROOM live homepage push is unchanged. metrics.khala_tokens_served_public.v1 stays green with its verification copy updated to the declared staleness; no revenue, demand, payout, or settlement claim changes.',
       'Registry 2026-07-04.18 is the RX-8 model-custody Lead Gen segment pass (#8281) and flips NO promise state - green stays exactly 34. @openagentsinc/agent-readiness now exports openagents.model_custody_analyzer_config.v1 and openagents.model_custody_report.v1 for the Own Your AI analyzer: public URLs only, no raw page bodies stored, no speculation, and findings limited to reproducible subprocessors/DPA, AI-feature/privacy, and careers/tech-stack signals. openagents.com now accepts sourceRef=apollo_model_custody, registers the model-custody customer config in the LG-7 run payload shape, ships a claim-lint-clean regulated Reactor Assessment template variant, and tests quoted Reactor Assessment rows in the LG-2 pipeline. This clears only the RX-8 config/template/pipeline blocker. Live customer runs, Apollo sends, customer-result receipts, public pricing, compliance/custody claims, payout, settlement, and promise-green authority remain blocked.',
       'Registry 2026-07-04.17 is the RX-11 Reactor improvement-ladder pass (#8279) and flips NO promise state - green stays exactly 34. The @openagentsinc/reactor-contracts package now exports openagents.reactor.improvement_ladder_plan_receipt.v1, openagents.reactor.harness_evolution_dogfood_receipt.v1, openagents.reactor.distill_to_fit_dogfood_receipt.v1, and openagents.reactor.improvement_ladder_dogfood_receipt.v1. The design doc orders the ladder as harness evolution -> distill-to-fit -> customer flywheel, with consent, customer boundary, dataset snapshot, run, eval delta, and customer-owned weights required before customer data can be used. The internal dogfood receipts record a Psionic/Mutalisk deliverable-landing harness delta (+16.70 points, no weight changes) and a distill-to-fit shrink delta (quality -1.20 points, cost -58.10%, policy revalidated, RX-3 router gate passed, route swap still unauthorized). The normal deploy sweep now runs apps/openagents.com/workers/api/src/reactor-improvement-ladder.test.ts. This clears only the design/internal-dogfood receipt blocker. Customer flywheel training, customer datasets, customer-owned weights, public capability copy, route swaps, pricing, external pilots, compliance, payout, and settlement claims remain blocked.',

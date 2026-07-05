@@ -348,14 +348,6 @@
         "binding": "ADJUTANT_ENRICHMENT_QUEUE",
         "queue": "openagents-adjutant-enrichment-jobs",
       },
-      // Async Khala batch-job queue (#6028 / EPIC #6017). The submit route is the
-      // producer (flag-gated via INFERENCE_BATCH_JOBS_ENABLED); the queue
-      // consumer below runs the job OFF the request path so detached/minutes-long
-      // inference never touches the edge timeout. INERT until the flag is armed.
-      {
-        "binding": "INFERENCE_BATCH_JOBS_QUEUE",
-        "queue": "openagents-inference-batch-jobs",
-      },
       {
         "binding": "EVENT_LEDGER_INGEST_QUEUE",
         "queue": "openagents-event-ledger-ingest",
@@ -370,11 +362,6 @@
     "consumers": [
       {
         "queue": "openagents-adjutant-enrichment-jobs",
-        "max_batch_size": 1,
-        "max_retries": 3,
-      },
-      {
-        "queue": "openagents-inference-batch-jobs",
         "max_batch_size": 1,
         "max_retries": 3,
       },
@@ -591,12 +578,6 @@
             "binding": "ADJUTANT_ENRICHMENT_QUEUE",
             "queue": "openagents-adjutant-enrichment-jobs-staging",
           },
-          // Async Khala batch-job queue (#6028 / EPIC #6017), staging. INERT
-          // until INFERENCE_BATCH_JOBS_ENABLED is armed.
-          {
-            "binding": "INFERENCE_BATCH_JOBS_QUEUE",
-            "queue": "openagents-inference-batch-jobs-staging",
-          },
           {
             "binding": "EVENT_LEDGER_INGEST_QUEUE",
             "queue": "openagents-event-ledger-ingest-staging",
@@ -610,11 +591,6 @@
         "consumers": [
           {
             "queue": "openagents-adjutant-enrichment-jobs-staging",
-            "max_batch_size": 1,
-            "max_retries": 3,
-          },
-          {
-            "queue": "openagents-inference-batch-jobs-staging",
             "max_batch_size": 1,
             "max_retries": 3,
           },

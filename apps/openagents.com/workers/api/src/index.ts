@@ -504,18 +504,6 @@ import {
   type AcceptedOutcomeSettlementSink,
   handleAcceptanceVerdictCallback,
 } from './inference/acceptance-verdict-callback-routes'
-import {
-  BatchJobQueueMessage,
-  executeBatchJob,
-} from './inference/batch-job-consumer'
-import {
-  handleBatchJobReceiptRead,
-  handleBatchJobResultsRead,
-  handleBatchJobStatusRead,
-  handleBatchJobsSubmit,
-} from './inference/batch-job-routes'
-import { makeR2BatchJobResultsStore } from './inference/batch-job-results-store'
-import { makeD1BatchJobStore } from './inference/batch-job-store'
 import { makeD1CardCreditSpendReceiptStore } from './inference/card-credit-spend-receipt-store'
 import {
   handleChatCompletions,
@@ -10657,49 +10645,6 @@ const setInferenceAdapterEnv = (env: OpenAgentsWorkerConfigEnv): void => {
   inferenceAdapterEnv = env
 }
 
-// Async batch-job consumer wiring (Khala, EPIC #6017 / #6028). Assembles the
-// consumer deps from the live env using the SAME seams the interactive
-// /v1/chat/completions handler uses: the module-level provider-adapter registry
-// (with partner/fabric adapters + the per-request env captured first), the live
-// ledger metering hook (so each batch item decrements credits exactly as an
-// interactive completion would), and the cheapest-viable lane plan with
-// bounded-backoff overflow. INERT by default — the queue handler only calls
-// `executeBatchJob` with these deps when INFERENCE_BATCH_JOBS_ENABLED is on, so
-// nothing here changes prod behaviour until the path is explicitly armed.
-//
-// Reads only the narrow slices it needs — the D1 binding plus the inference
-// config/secret fields (`OpenAgentsWorkerConfigEnv` already carries the
-// passthrough/Vertex secrets) — rather than a raw Cloudflare `Env`, keeping the
-// worker off the raw-Env ratchet.
-type BatchJobConsumerEnv = OpenAgentsWorkerConfigEnv &
-  Pick<WorkerBindings, 'ARTIFACTS' | 'OPENAGENTS_DB'>
-const makeBatchJobConsumerDeps = (env: BatchJobConsumerEnv) => {
-  registerPassthroughAdapters(inferenceProviderRegistry, env)
-  registerHydraliskAdapter(inferenceProviderRegistry, env)
-  registerOpenRouterAdapter(inferenceProviderRegistry, env)
-  registerFabricServeAdapter(inferenceProviderRegistry, env)
-  setInferenceAdapterEnv(env)
-  const laneArming = resolveSupplyLaneArming(env)
-  return {
-    dispatch: {
-      plan: makeKhalaBackedAdapterPlan(laneArming.khalaBacking),
-      registry: inferenceProviderRegistry,
-    },
-    meteringHook: makeLedgerMeteringHook({ db: openAgentsDatabase(env) }),
-    // Book P0-3 (#6086): the consumer stamps the start-of-processing time (the
-    // END of the batch wait) with this clock so the closeout receipt can disclose
-    // an honest `batchWaitMs`.
-    nowIso: currentIsoTimestamp,
-    resultsStore: makeR2BatchJobResultsStore(env.ARTIFACTS),
-    store: makeD1BatchJobStore(
-      openAgentsDatabase(env),
-      currentIsoTimestamp,
-      // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
-      inferenceEntitlementsMirrorForEnv(env),
-    ),
-  }
-}
-
 // Onboarding program inference client (EPIC #6123, #6126). Builds an
 // `OnboardingInferenceClient` that calls the Khala orchestrator
 // (`openagents/khala-mini`) through the SAME provider-adapter registry +
@@ -10974,21 +10919,6 @@ const khalaChatRoutes = makeKhalaChatRoutes({
   recordServedTokens: recordPublicKhalaChatServedTokens,
 })
 
-// PRODUCER seam for the async batch-job submit route (Khala, #6028 / EPIC
-// #6017). Returns an `enqueueBatchJob` that sends the executable
-// `BatchJobQueueMessage` onto the batch-job queue so the consumer (the `queue`
-// handler below) runs it OFF the request path. INERT BY DEFAULT and FAIL-SAFE:
-//   - when `INFERENCE_BATCH_JOBS_ENABLED` is off, returns `undefined` so the
-//     submit route persists the pending row + returns the receipt exactly as
-//     before, with nothing queued (no behaviour change to the existing route);
-//   - when the queue binding is absent (not provisioned), also returns
-//     `undefined` rather than throwing, so arming the flag without the binding
-//     degrades to accept-only instead of erroring the request.
-// The job id is the idempotency unit (the consumer no-ops a redelivered/dup
-// message), so a duplicate enqueue is always safe.
-type BatchJobProducerEnv = OpenAgentsWorkerConfigEnv &
-  Readonly<{ INFERENCE_BATCH_JOBS_QUEUE?: Queue | undefined }>
-
 type EventLedgerProducerEnv = Readonly<{
   EVENT_LEDGER_INGEST_QUEUE?: Queue | undefined
 }>
@@ -11003,20 +10933,6 @@ const makeEventLedgerIngestEnqueue = (
     : async message => {
         await queue.send(message)
       }
-}
-
-const makeBatchJobEnqueue = (
-  env: BatchJobProducerEnv,
-): ((message: BatchJobQueueMessage) => Effect.Effect<void>) | undefined => {
-  if (!isInferenceGatewayEnabled(env.INFERENCE_BATCH_JOBS_ENABLED)) {
-    return undefined
-  }
-  const queue = env.INFERENCE_BATCH_JOBS_QUEUE
-  if (queue === undefined) {
-    return undefined
-  }
-  return message =>
-    Effect.tryPromise(() => queue.send(message)).pipe(Effect.orDie)
 }
 
 // #5480 Vertex Anthropic (Claude lane) — registered exactly once. INERT until
@@ -13563,16 +13479,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       ),
   },
   {
-    path: '/api/public/inference/batch-job-receipts/:receiptRef',
-    handler: (request, env) =>
-      handleBatchJobReceiptRead(request, {
-        authenticate: async () => undefined,
-        db: openAgentsDatabase(env),
-        enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
-        nowIso: currentIsoTimestamp,
-      }),
-  },
-  {
     path: '/api/public/inference/privacy-receipts/:receiptRef',
     handler: (request, env) =>
       handlePublicPrivacyReceiptRead(request, {
@@ -13717,78 +13623,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         db: openAgentsDatabase(env),
         // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
         mirror: inferenceEntitlementsMirrorForEnv(env),
-        nowIso: currentIsoTimestamp,
-      }),
-  },
-  {
-    path: '/v1/inference/batches',
-    handler: (request, env) =>
-      handleBatchJobsSubmit(request, {
-        authenticate: async authRequest => {
-          const token = readBearerToken(authRequest)
-          if (token === undefined) {
-            return undefined
-          }
-          const session = await authenticateProgrammaticAgent(
-            makeAgentRegistrationStoreForEnv(env),
-            token,
-          )
-          return session === undefined
-            ? undefined
-            : { accountRef: `agent:${session.user.id}` }
-        },
-        db: openAgentsDatabase(env),
-        enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
-        // Inert producer by default: undefined unless the batch-jobs flag is on
-        // AND the queue binding is provisioned (see makeBatchJobEnqueue).
-        enqueueBatchJob: makeBatchJobEnqueue(env),
-        // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
-        mirror: inferenceEntitlementsMirrorForEnv(env),
-        nowIso: currentIsoTimestamp,
-      }),
-  },
-  {
-    path: '/v1/inference/batches/:jobId/results',
-    handler: (request, env) =>
-      handleBatchJobResultsRead(request, {
-        authenticate: async authRequest => {
-          const token = readBearerToken(authRequest)
-          if (token === undefined) {
-            return undefined
-          }
-          const session = await authenticateProgrammaticAgent(
-            makeAgentRegistrationStoreForEnv(env),
-            token,
-          )
-          return session === undefined
-            ? undefined
-            : { accountRef: `agent:${session.user.id}` }
-        },
-        db: openAgentsDatabase(env),
-        enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
-        nowIso: currentIsoTimestamp,
-        resultsStore: makeR2BatchJobResultsStore(env.ARTIFACTS),
-      }),
-  },
-  {
-    path: '/v1/inference/batches/:jobId',
-    handler: (request, env) =>
-      handleBatchJobStatusRead(request, {
-        authenticate: async authRequest => {
-          const token = readBearerToken(authRequest)
-          if (token === undefined) {
-            return undefined
-          }
-          const session = await authenticateProgrammaticAgent(
-            makeAgentRegistrationStoreForEnv(env),
-            token,
-          )
-          return session === undefined
-            ? undefined
-            : { accountRef: `agent:${session.user.id}` }
-        },
-        db: openAgentsDatabase(env),
-        enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
         nowIso: currentIsoTimestamp,
       }),
   },
@@ -15638,19 +15472,10 @@ const runWorkerFetch = (
 export default {
   fetch: runWorkerFetch,
   queue: async (batch, env, ctx): Promise<void> => {
-    // Whether the async batch-job consumer is armed. Default OFF: batch-job
-    // messages are routed to `executeBatchJob` ONLY when this flag is on, so the
-    // queue handler's behaviour for every existing message type is unchanged in
-    // prod until the path is explicitly armed.
-    const batchJobsEnabled = isInferenceGatewayEnabled(
-      env.INFERENCE_BATCH_JOBS_ENABLED,
-    )
-
     for (const message of batch.messages) {
-      // Discriminate by the message's stable schema version so a batch-job
-      // payload (Khala, EPIC #6017 / #6028) is routed to the inference batch
-      // consumer OFF the request path, while every other payload keeps flowing
-      // to the adjutant-enrichment executor exactly as before.
+      // Discriminate by the message's stable schema version so known queue
+      // payloads route to their typed consumers while the default branch keeps
+      // flowing to the adjutant-enrichment executor.
       const body = message.body
       const schemaVersion =
         typeof body === 'object' && body !== null && 'schemaVersion' in body
@@ -15682,25 +15507,6 @@ export default {
 
         const decoded = S.decodeUnknownSync(EventLedgerIngestQueueMessage)(body)
         await recordEventLedgerMessageWithOwnerObject(namespace, decoded)
-        message.ack()
-        continue
-      }
-
-      if (schemaVersion === 'openagents.inference.batch_job.v1') {
-        // Inert unless armed: a batch-job message that arrives while the flag is
-        // off is acked without execution (the submitted job stays pending, no
-        // credit decrement, no behaviour change). When armed, the consumer runs
-        // the job to completion against the gateway and writes the
-        // dereferenceable closeout receipt.
-        if (batchJobsEnabled) {
-          const decoded = S.decodeUnknownSync(BatchJobQueueMessage)(body)
-          const exit = await Effect.runPromiseExit(
-            executeBatchJob(makeBatchJobConsumerDeps(env), decoded),
-          )
-          if (Exit.isFailure(exit)) {
-            throw exit.cause
-          }
-        }
         message.ack()
         continue
       }

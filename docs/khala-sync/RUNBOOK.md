@@ -1568,8 +1568,8 @@ Lightning mints. **Still D1-only pending the decommission follow-up**
 `first_batch_payment_policies` (operator triage), codex-usage debits from
 `OmniRunStore` constructors that do not pass `billingRuntime`, and the
 low-volume `runLedgerStatements` consumers (labor-escrow, metering-hook,
-batch-job-metering, inference-abuse-controls, serving-node-payout,
-cloud-metering, product-promises, business-starter-credit). A final
+inference-abuse-controls, serving-node-payout, cloud-metering,
+product-promises, business-starter-credit). A final
 `--restart` sweep + `--verify` immediately before any read cutover is
 therefore MANDATORY, not optional.
 

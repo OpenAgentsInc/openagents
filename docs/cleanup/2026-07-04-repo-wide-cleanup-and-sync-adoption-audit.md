@@ -118,12 +118,15 @@ migrations and the matching Khala Sync mirror/twin cleanup.
 
 ### 2.3 Inert flag-gated features (never armed, still taxed by the debt ledger)
 
-`INFERENCE_BATCH_JOBS_ENABLED`, `INFERENCE_DURABLE_STREAM_ENABLED`,
-`VOICE_PROGRAM_INGEST_ENABLED`, `KHALA_MPP_ENABLED` — all default-OFF,
-full code surface present, disproportionately responsible for
-Response-surface and runPromise-bridge budget consumption. Estimated
-combined **3,000–5,000 LOC**. **Decide arm-or-remove per flag**; voice
-ingest and the agentcl runner are the clear REMOVE candidates.
+`INFERENCE_DURABLE_STREAM_ENABLED`, `VOICE_PROGRAM_INGEST_ENABLED`,
+`KHALA_MPP_ENABLED` — still default-OFF with full code surfaces present,
+disproportionately responsible for Response-surface and runPromise-bridge
+budget consumption. `INFERENCE_BATCH_JOBS_ENABLED` was removed in #8384
+after the owner-preferred remove decision: the route/queue/store/OpenAPI
+surface had no Khala Code dependency and no owner-approved arming evidence.
+Estimated remaining combined **2,000–4,000 LOC**. **Decide
+arm-or-remove per remaining flag**; voice ingest remains the clear REMOVE
+candidate.
 
 ### 2.4 Dual-store layering (23 domain stores, 3-4 seam patterns)
 
@@ -463,7 +466,9 @@ voice-ingest and durable-stream if truly unconsumed).
   route-specific parser exceptions.
 - #8383 - Complete: flipped `KHALA_SYNC_FLEET` default-on with explicit
   opt-out values and deleted the desktop Fleet panel's visible 5s poll.
-- #8384 - Decide arm-or-remove for `INFERENCE_BATCH_JOBS_ENABLED`.
+- #8384 - Complete: removed the default-off `INFERENCE_BATCH_JOBS_ENABLED`
+  batch-job route/queue/store/OpenAPI surface and added forward D1/Postgres
+  drop migrations for `inference_batch_jobs`.
 - #8385 - Decide/remove `INFERENCE_DURABLE_STREAM_ENABLED`.
 - #8386 - Remove the unarmed `VOICE_PROGRAM_INGEST_ENABLED` voice ingest path.
 - #8387 - Decide arm-or-remove for `KHALA_MPP_ENABLED`.

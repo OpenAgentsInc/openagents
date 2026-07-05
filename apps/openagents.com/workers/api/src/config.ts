@@ -227,13 +227,6 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // in integer sats. Absent/invalid => the Spark/MPP Lightning purchase rail
   // returns a typed 503 and grants no entitlement.
   KHALA_CODE_PAID_PLAN_PRICE_SATS?: string | undefined
-  // Async batch-job consumer feature flag (Khala, EPIC #6017 / #6028). Default
-  // OFF: the queue handler does NOT route batch-job messages to the consumer
-  // (`batch-job-consumer.ts executeBatchJob`) on the live Worker until the
-  // submit→queue→consume path is proven. Set "true"/"1"/"on" to arm the
-  // detached/long-running inference execution path. The submit/status/receipt
-  // routes stay gated by INFERENCE_GATEWAY_ENABLED independently.
-  INFERENCE_BATCH_JOBS_ENABLED?: string | undefined
   // Async acceptance-verification DISPATCH feature flag (Khala, EPIC #6017).
   // Default OFF: the gateway does NOT enqueue out-of-Worker verification jobs for
   // executable khala-code artifacts until a node-side runner host (Pylon /

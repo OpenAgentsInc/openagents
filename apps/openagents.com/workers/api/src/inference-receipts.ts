@@ -8,7 +8,6 @@ export type InferenceReceiptKind =
   | 'charge'
   | 'free_allowance'
   | 'usd_credit_grant'
-  | 'batch_job_charge'
 
 export type InferenceReceiptRecord = Readonly<{
   contextRef: string | null
@@ -110,13 +109,6 @@ const kindForRecord = (
   }
 
   if (
-    record.receiptRef.startsWith('receipt.inference.batch_job_charge.') &&
-    record.payInType === 'adjustment'
-  ) {
-    return 'batch_job_charge'
-  }
-
-  if (
     record.receiptRef.startsWith('receipt.inference.free.') &&
     record.payInType === 'free_allowance'
   ) {
@@ -148,9 +140,7 @@ export const publicInferenceReceiptFromRecord = (
   }
 
   const modelEvidence =
-    kind === 'charge' || kind === 'batch_job_charge'
-      ? modelEvidenceFromContextRef(record.contextRef)
-      : undefined
+    kind === 'charge' ? modelEvidenceFromContextRef(record.contextRef) : undefined
 
   const receipt: PublicInferenceReceiptProjection = {
     authorityBoundary:

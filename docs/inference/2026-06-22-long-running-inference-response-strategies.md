@@ -4,6 +4,12 @@
 completions that take tens of seconds to minutes, so we never hit edge timeouts.
 Written after a `524` postmortem (below).*
 
+**2026-07-05 update (#8384):** the old default-off batch-job route/queue/store
+surface has been removed because it was never owner-armed and was not directly
+needed by Khala Code. Detached/minutes-long work remains a valid product need,
+but future batch processing should be designed fresh around an owner-approved,
+receipt-first workflow.
+
 ## The 524 postmortem
 
 A `POST /v1/chat/completions` for `openagents/khala-code` with the full
@@ -19,7 +25,7 @@ receipt; only the long single-shot generation timed out.
 ## Rule of thumb
 
 - **Interactive call → stream (SSE).** Default for anything a human/agent waits on.
-- **Detached / minutes-long / agentic → async batch job (Queue/DO).** Never a
+- **Detached / minutes-long / agentic → async job (Queue/DO/Workflow).** Never a
   single blocking request.
 - **Live UI (cockpit, Verse) → Durable Object + WebSocket.**
 - Never hold a single synchronous HTTP request open for work that can exceed
@@ -60,7 +66,7 @@ Caveat: the `openagents` receipt block + verification verdict are emitted at the
 output. Clients render tokens live, then attach the receipt/verdict on stream
 close.
 
-## Strategy 2 — Async batch jobs (detached / long / agentic)
+## Strategy 2 — Async jobs (detached / long / agentic)
 
 Submit → get a job id (`202`) → a **Queue** consumer or **Durable Object** runs
 the work *off the request path* (no edge timeout exists there) → persist a
@@ -68,15 +74,11 @@ the work *off the request path* (no edge timeout exists there) → persist a
 webhook). Right for Autopilot coding runs and any work that legitimately takes
 minutes, or that should survive client disconnects.
 
-**Rails we already have:** `src/inference/batch-job-routes.ts`
-(`handleBatchJobsSubmit` / `handleBatchJobStatusRead` / `handleBatchJobReceiptRead`),
-the `inference_batch_jobs` D1 table (migration `0217`), the public receipt route
-`/api/public/inference/batch-job-receipts/:receiptRef`, and Cloudflare **Queues**
-(`openagents-autopilot-runner-events`, `openagents-adjutant-enrichment-jobs`) +
-**Durable Objects** already bound in `wrangler.jsonc`. **Gap:** the Queue/DO
-consumer that actually executes a submitted batch job against the gateway +
-writes the receipt. Cloudflare **Workflows** (durable, multi-step, retried) is
-the purpose-built primitive if a job has stages.
+**Retired rails:** #8384 removed the previous `src/inference/batch-job-*`
+implementation, `inference_batch_jobs` runtime surface, and public
+batch-job receipt route rather than arming it. The design shape remains sound,
+but the next implementation should be a new owner-approved route, queue or
+Workflow consumer, receipt projection, and product-promise transition.
 
 ## Strategy 3 — Durable Object + hibernatable WebSocket (live UIs)
 
@@ -91,12 +93,13 @@ This is the engine the Verse already runs on (`apps/openagents-world` Region DO,
 1. **Stream interactive khala calls.** Rewire the M8 head-to-head runner and the
    Autopilot cockpit to `stream:true` + SSE; make streaming the default for
    interactive paths. (Immediate 524 fix.)
-2. **Batch-job consumer.** Wire a Queue (or DO/Workflow) consumer that executes
-   submitted `inference_batch_jobs` against the gateway and writes the
-   dereferenceable receipt, so detached/minutes-long runs never touch the edge
-   timeout. Surface submit + poll on the OpenAI-compatible surface.
+2. **Detached job design.** Design and wire a fresh Queue, DO, or Workflow
+   consumer plus receipt projection for detached inference, so minutes-long
+   runs never touch the edge timeout. Surface submit and poll only after owner
+   approval and receipt-first billing evidence are in place.
 
 ## One line
 
-Interactive → stream; detached/long → batch job (Queue/DO); live UI → DO +
-WebSocket. The pieces exist in-repo; the 524 was using none of them.
+Interactive → stream; detached/long → async job (Queue/DO/Workflow); live UI →
+DO + WebSocket. The retired batch-job route should not be treated as a live
+rail.

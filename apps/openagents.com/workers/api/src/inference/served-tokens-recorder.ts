@@ -61,7 +61,7 @@ export type ServedTokensRequestAttribution = Readonly<{
 
 export type ServedTokensRequestMetrics = Readonly<{
   supplyLane?: string | undefined
-  requestClass?: 'async_job' | 'interactive_stream' | 'batch_job' | undefined
+  requestClass?: 'async_job' | 'interactive_stream' | undefined
   fallbackReason?: string | null | undefined
   selectedReplicaId?: string | undefined
   selectedReplicaRef?: string | undefined

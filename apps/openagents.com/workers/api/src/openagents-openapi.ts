@@ -122,15 +122,6 @@ const okJson = (description: string, schemaRef: string): JsonSchema => ({
   ...jsonContent(schemaRef),
 })
 
-const okNdjson = (description: string, schemaRef: string): JsonSchema => ({
-  description,
-  content: {
-    'application/x-ndjson': {
-      schema: { $ref: schemaRef },
-    },
-  },
-})
-
 const okEventStream = (
   description: string,
   messageSchemaRef: string,
@@ -1693,20 +1684,8 @@ const schemaComponents = (): JsonSchema => ({
   PublicInferenceReceiptEnvelope: objectSummary(
     'Public-safe inference ledger receipt envelope with a receipt projection, generatedAt, and a declared live_at_read staleness contract (maxStalenessSeconds 0, rebuildsOn pay_ins.public_receipt_ref). It proves that a paid `receipt.inference.charge.*` or `receipt.inference.usd_credit_grant.*` ledger row exists without exposing account ids, amounts, idempotency keys, Stripe session ids, invoices, preimages, wallet material, provider payloads, or raw prompts. Read-only; grants no spend, refund, payout, checkout, settlement, provider, or registry authority.',
   ),
-  PublicInferenceBatchJobCloseoutReceiptEnvelope: objectSummary(
-    'Public-safe inference batch-job closeout receipt envelope for `receipt.inference.batch_job.closeout.*`. It carries generatedAt and a live_at_read staleness contract, resolves only completed jobs, exposes the projected closeout receipt and public-safe refs, and excludes account ids, raw datasets, R2 payloads, provider payloads, wallet material, invoices, preimages, and private job bodies. Read-only; grants no job execution, spend, refund, settlement, provider, or registry authority.',
-  ),
   PublicCloudPrimitiveReceiptEnvelope: objectSummary(
     'Public-safe OpenAgents Cloud primitive ledger receipt envelope with a receipt projection, generatedAt, and a declared live_at_read staleness contract (rebuildsOn pay_ins.public_receipt_ref). It proves a PAID metered-charge `pay_ins` row exists for a sellable Cloud primitive (`receipt.cloud.sandbox_compute.rental.charge.*` or `receipt.cloud.fine_tuning.job.charge.*`) without exposing account ids, amounts, idempotency keys, invoices, preimages, wallet material, provider payloads, or raw job/sandbox bodies. The projection carries caveats noting demand provenance and owner sign-off are still pending, so it asserts no product-promise is green. Read-only; grants no spend, refund, payout, provisioning, settlement, provider, public-claim, or registry authority.',
-  ),
-  InferenceBatchJobSubmitRequest: objectSummary(
-    'Programmatic-agent batch inference request. Carries a bounded dataset of model plus prompt/completion token counts for cost estimation and optional executable messages for detached processing. Do not send raw private datasets or provider payloads.',
-  ),
-  InferenceBatchJobSubmitResponse: objectSummary(
-    'Batch inference job acceptance response with jobId, charge receipt ref, accepted status, and estimated charge. Completion, result retrieval, and closeout receipt dereference remain separate status/result reads.',
-  ),
-  InferenceBatchJobResultsResponse: objectSummary(
-    'Authenticated NDJSON batch inference results for the submitting agent. Available only for completed jobs with a persisted result artifact; excludes other accounts and incomplete jobs.',
   ),
   PublicStripeCheckoutReceiptEnvelope: objectSummary(
     'Public-safe Stripe checkout credit receipt envelope with generatedAt and a declared live_at_read staleness contract. It resolves `receipt.billing.stripe_checkout.*` as pending, invalid, or ok from the stored checkout session and positive Stripe checkout credit ledger row without exposing customer ids, checkout URLs, email, raw Stripe payloads, secrets, ledger ids, invoices, payment material, or wallet material. Read-only; grants no checkout, spend, refund, payout, settlement, provider, public-claim, or registry authority.',
@@ -5836,44 +5815,6 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
-  '/api/v1/inference/batches': {
-    post: operation({
-      operationId: 'createInferenceBatchJob',
-      summary: 'Create an inference batch job',
-      description:
-        'Accepts a programmatic-agent batch inference job request, estimates and charges the initial job cost, persists the pending job, and queues executable message rows when the batch worker is armed. Green product-promise status remains receipt-first and separately gated on real paid evidence. The OpenAI-compatible inference gateway and MPP are canonical under the /api base (POST /api/v1/chat/completions, GET /api/v1/models, POST /api/mpp/v1/chat/completions); the legacy bare /v1 and /mpp/v1 paths remain non-breaking aliases that resolve to the same handlers.',
-      tags: ['Inference', 'Billing'],
-      security: agentBearer,
-      requestBody: jsonContent(
-        '#/components/schemas/InferenceBatchJobSubmitRequest',
-      ),
-      responses: {
-        '200': okJson(
-          'Inference batch job accepted.',
-          '#/components/schemas/InferenceBatchJobSubmitResponse',
-        ),
-        ...errorResponses(),
-      },
-    }),
-  },
-  '/api/v1/inference/batches/{jobId}/results': {
-    get: operation({
-      operationId: 'getInferenceBatchJobResults',
-      summary: 'Read inference batch job results',
-      description:
-        'Returns the completed batch job result artifact as NDJSON for the submitting agent only. Pending, failed, missing-result, or cross-account jobs return not_found. This route exposes model outputs to the authenticated owner and is never a public proof surface.',
-      tags: ['Inference'],
-      security: agentBearer,
-      parameters: [pathParam('jobId', 'Inference batch job id.')],
-      responses: {
-        '200': okNdjson(
-          'Inference batch job results.',
-          '#/components/schemas/InferenceBatchJobResultsResponse',
-        ),
-        ...errorResponses(),
-      },
-    }),
-  },
   '/api/public/adjutant/activity': {
     get: operation({
       operationId: 'listPublicAdjutantActivity',
@@ -6772,26 +6713,6 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public Cloud primitive metered-charge receipt.',
           '#/components/schemas/PublicCloudPrimitiveReceiptEnvelope',
-        ),
-        ...errorResponses(),
-      },
-    }),
-  },
-  '/api/public/inference/batch-job-receipts/{receiptRef}': {
-    get: operation({
-      operationId: 'getPublicInferenceBatchJobReceipt',
-      summary: 'Read public inference batch-job closeout receipt',
-      description:
-        'Returns a public-safe closeout receipt projection for completed `receipt.inference.batch_job.closeout.*` jobs. Pending or incomplete jobs return not_found. The route exposes refs and closeout state only; it does not expose raw datasets, result payloads, provider payloads, account ids, wallet material, or private job bodies, and grants no execution, spend, settlement, or green-claim authority.',
-      tags: ['Public Proof', 'Inference'],
-      security: publicRead,
-      parameters: [
-        pathParam('receiptRef', 'Inference batch job closeout receipt ref.'),
-      ],
-      responses: {
-        '200': okJson(
-          'Public inference batch job closeout receipt.',
-          '#/components/schemas/PublicInferenceBatchJobCloseoutReceiptEnvelope',
         ),
         ...errorResponses(),
       },

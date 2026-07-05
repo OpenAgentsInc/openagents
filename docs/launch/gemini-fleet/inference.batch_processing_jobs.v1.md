@@ -1,5 +1,11 @@
 # inference.batch_processing_jobs.v1
 
+**Retired implementation note (2026-07-05, #8384):** the default-off
+`INFERENCE_BATCH_JOBS_ENABLED` route/queue/store/OpenAPI surface described below
+has been removed. Batch inference remains planned roadmap scope; a future
+implementation must start from a fresh owner-approved, receipt-first design
+instead of reviving this inert surface.
+
 This launch builds the paid receipt surface for `inference.batch_processing_jobs.v1`, clearing `blocker.product_promises.inference_batch_job_paid_receipt_missing`.
 
 The single-request gateway exists and free allowance is synergized, but batch-job capabilities required a way to meter the payload correctly and provide a receipt for the processed items upon closeout.

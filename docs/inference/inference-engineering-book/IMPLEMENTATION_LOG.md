@@ -13,6 +13,12 @@ Conventions:
 - "DONE" means merged to `main` and (where noted) deployed. Branch-only work is
   "in progress", never DONE.
 
+Retirement note: #8384 removed the default-off batch-job route/queue/store
+surface on 2026-07-05 because it was never owner-armed and was not directly
+needed by Khala Code. Older entries below that mention
+`INFERENCE_BATCH_JOBS_ENABLED`, `inference_batch_jobs`, or batch-job receipt
+routes are historical implementation notes, not current live rails.
+
 ---
 
 ## P0-1 — Make the Khala scorecard production-complete — DONE, deployed `9b0c9b56`
