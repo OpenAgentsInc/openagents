@@ -535,6 +535,32 @@
         "typescript": "catalog:",
       },
     },
+    "packages/ai-sdk-sandbox-local": {
+      "name": "@openagentsinc/ai-sdk-sandbox-local",
+      "version": "0.1.0",
+      "dependencies": {
+        "@ai-sdk/harness": "1.0.18",
+        "@ai-sdk/provider-utils": "5.0.5",
+        "zod": "^3.25.76",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/ai-sdk-sandbox-openagents": {
+      "name": "@openagentsinc/ai-sdk-sandbox-openagents",
+      "version": "0.1.0",
+      "dependencies": {
+        "@ai-sdk/harness": "1.0.18",
+        "@ai-sdk/provider-utils": "5.0.5",
+        "zod": "^3.25.76",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
     "packages/arbiter-effect": {
       "name": "@openagentsinc/arbiter-effect",
       "version": "0.1.0",
@@ -952,6 +978,8 @@
     "@adobe/css-tools": ["@adobe/css-tools@4.5.0", "", {}, "sha512-6OzddxPio9UiWTCemp4N8cYLV2ZN1ncRnV1cVGtve7dhPOtRkleRyx32GQCYSwDYgaHU3USMm84tNsvKzRCa1Q=="],
 
     "@ai-sdk/gateway": ["@ai-sdk/gateway@4.0.12", "", { "dependencies": { "@ai-sdk/provider": "4.0.2", "@ai-sdk/provider-utils": "5.0.5", "@vercel/oidc": "3.2.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-Y7Fy8xJwPz7ZC0DhSQG3HIVk+drup42hrIj6yqKlib3CxwiR0F7nYyUI8+kPrEtbZEoyKoRstvT4/o0HEyFBHA=="],
+
+    "@ai-sdk/harness": ["@ai-sdk/harness@1.0.18", "", { "dependencies": { "@ai-sdk/provider": "4.0.2", "@ai-sdk/provider-utils": "5.0.5", "ai": "7.0.15" }, "peerDependencies": { "ws": "^8.21.0", "zod": "^3.25.76 || ^4.1.8" }, "optionalPeers": ["ws"] }, "sha512-zJCufxLWZAg8Nmucive5CT6wb4OAELycrwbF1FviRM7M+NSHSqU56HgAhMMcSVPvles0ZzkIsYomqiZ6e0PQYQ=="],
 
     "@ai-sdk/provider": ["@ai-sdk/provider@4.0.2", "", { "dependencies": { "json-schema": "^0.4.0" } }, "sha512-pfPoy9J1B1xV7cqJ8MYHOsDYrMv5tR3+EMNfI249OhkD2uRakvav3Fo7XpD2luuN/YNCBY7KfEQc7vEV7KEtyw=="],
 
@@ -1490,6 +1518,10 @@
     "@openagentsinc/agent-readiness": ["@openagentsinc/agent-readiness@workspace:packages/agent-readiness"],
 
     "@openagentsinc/agent-runtime-schema": ["@openagentsinc/agent-runtime-schema@workspace:packages/agent-runtime-schema"],
+
+    "@openagentsinc/ai-sdk-sandbox-local": ["@openagentsinc/ai-sdk-sandbox-local@workspace:packages/ai-sdk-sandbox-local"],
+
+    "@openagentsinc/ai-sdk-sandbox-openagents": ["@openagentsinc/ai-sdk-sandbox-openagents@workspace:packages/ai-sdk-sandbox-openagents"],
 
     "@openagentsinc/api-worker": ["@openagentsinc/api-worker@workspace:apps/openagents.com/workers/api"],
 

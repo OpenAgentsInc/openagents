@@ -434,12 +434,16 @@ OpenAgents policy, and emit OpenAgents runtime events rather than AI SDK
 stream parts. Production provider catalogs, real provider auth routing, and
 surface wiring are follow-up work for the dogfood path.
 
-P5 should implement the sandbox provider path (#8374). Start with a clearly
-unsafe local provider for owner-local fixtures, then move to
-`@openagentsinc/ai-sdk-sandbox-openagents` over the real OpenAgents
-sandbox/workroom API. Claude should go first because its AI SDK adapter
-already supports approvals/filtering; Codex should wait until the OpenAgents
-sandbox enforces policy under the adapter's full-access posture.
+P5 is now landed for the sandbox provider contract path (#8374):
+`@openagentsinc/ai-sdk-sandbox-local` proves a non-Vercel `HarnessAgent.stream()`
+fixture in a temp owner-local workspace, and
+`@openagentsinc/ai-sdk-sandbox-openagents` maps the AI SDK provider contract to
+an `openagents.sandbox.v1` client boundary. The local package remains unsafe
+and owner-only; the OpenAgents package is a contract adapter until the real
+sandbox/workroom service binding and bridge dogfood land. Claude should still
+go first because its AI SDK adapter already supports approvals/filtering; Codex
+should wait until the OpenAgents sandbox enforces policy under the adapter's
+full-access posture.
 
 P6 should close with a public-safe dogfood receipt (#8375). The proof should
 show a mobile-created control intent appearing in desktop without restart, a
@@ -466,9 +470,11 @@ Yes, we can get this working locally in increments:
    and shared Khala runtime transcript reduction.
 5. A real low-risk provider/model can now plug into that package without any
    harness sandbox provider.
-6. The local unsafe harness provider can prove Codex/Claude bridge mechanics
-   without Vercel, but it must remain owner-local until the OpenAgents sandbox
-   provider is real.
+6. The local unsafe harness provider now proves the non-Vercel AI SDK harness
+   path with a real `HarnessAgent.stream()` fixture, scoped file I/O, explicit
+   `CODEX_HOME` / `CLAUDE_CONFIG_DIR`, and localhost bridge port URLs. It must
+   remain owner-local until Codex/Claude bridges run inside the real
+   OpenAgents sandbox/workroom provider.
 7. The real dogfood proof ties them together: mobile control intent -> Khala
    Sync -> desktop/runtime lane -> OpenAgents runtime events -> Khala Sync ->
    mobile/desktop/web projections.
@@ -639,7 +645,8 @@ Yes. There are now two different "working locally" targets:
 - AI SDK Harnesses can work locally next, through a deliberately unsafe local
   sandbox-provider spike, before moving into real OpenAgents sandboxes.
 
-For harnesses, the local path still has two stages.
+For harnesses, the provider contract path now has two landed packages and one
+remaining service-binding step.
 
 ### Stage 1: unsafe local provider for proof only
 
@@ -649,20 +656,26 @@ fixed localhost port, and implementing `run`, `spawn`, read/write, stop, and
 destroy. On macOS it can optionally wrap commands with the existing
 `packages/khala-tools/src/process-sandbox-macos.ts` Seatbelt service.
 
-This is enough to prove:
+This stage is now implemented in `@openagentsinc/ai-sdk-sandbox-local` for the
+provider-contract subset. It proves:
 
-- `HarnessAgent` can run Codex and Claude without Vercel.
-- Khala Code can consume AI SDK stream parts.
-- We can run a public sum-repair fixture and verify file changes.
+- `HarnessAgent.stream()` can run a public fixture without Vercel.
+- file APIs reject paths outside the temp workspace.
+- run/spawn use explicit `HOME`, `CODEX_HOME`, and `CLAUDE_CONFIG_DIR`.
+- localhost bridge port URLs and stop/destroy lifecycle are available.
 - We understand the package bootstrap and port behavior.
 
-This stage must be owner-local only. macOS Seatbelt writes-limited-to-workspace
-is useful, but it still is not the production security boundary for Codex full
-access, network egress, package installs, or hostile repositories.
+This package is still owner-local only. It launches host child processes and
+does not enforce production network or kernel isolation. macOS Seatbelt
+writes-limited-to-workspace can still be layered later for local experiments,
+but it is not the production security boundary for Codex full access, network
+egress, package installs, or hostile repositories.
 
 ### Stage 2: real OpenAgents sandbox provider
 
-Build an OpenAgents sandbox/workroom provider over the OpenAgents sandbox plan:
+`@openagentsinc/ai-sdk-sandbox-openagents` is now implemented as a thin
+contract adapter over an `OpenAgentsSandboxV1Client`. It maps the AI SDK
+surface to the OpenAgents sandbox plan:
 
 | AI SDK requirement | OpenAgents mapping |
 | --- | --- |
@@ -677,6 +690,12 @@ Build an OpenAgents sandbox/workroom provider over the OpenAgents sandbox plan:
 | `stop()` | Pause/stop workroom and stop metering. |
 | `destroy()` | Closeout/archive/destroy with artifact and receipt checks. |
 | `resumeSession()` | Reattach to the same workroom by session id. |
+
+The package contract tests cover create/resume/stop/destroy, file I/O, bridge
+port ingress, restricted tool views, explicit account homes, public-lane
+network policy rejection, and snapshot identity inputs. The remaining work is
+to bind the client to the real workroom/sandbox service and run Claude before
+Codex through that live path.
 
 This is a strong fit with the sandbox-inspiration doc:
 
@@ -782,16 +801,22 @@ Required tests:
 
 ### P1: local AI SDK sandbox provider spike
 
-Implement a local provider sufficient for a public sum-repair fixture. It can
-use a temp directory, local child processes, a reserved localhost WebSocket
-port, and optional macOS Seatbelt.
+Status: implemented for the provider-contract subset in
+`@openagentsinc/ai-sdk-sandbox-local`.
+
+The local provider uses a temp directory or caller-owned root directory, local
+child processes, localhost bridge port URLs, scoped file APIs, explicit agent
+account homes, and stop/destroy lifecycle. Optional macOS Seatbelt wrapping is
+still a local-hardening follow-up, not a promotion gate.
 
 Gates:
 
-- Codex and Claude `HarnessAgent.stream()` both run without Vercel.
+- A public `HarnessAgent.stream()` fixture runs without Vercel.
 - No read/write outside the temp workspace in the fixture.
-- Stream parts render through the Khala Code transcript adapter.
+- Explicit `CODEX_HOME` and `CLAUDE_CONFIG_DIR` are used for commands.
 - The proof is clearly labeled owner-local and unsafe for untrusted work.
+- Remaining: run the actual Claude/Codex bridge adapters through this provider
+  and render stream parts through the Khala Code transcript adapter.
 
 ### P2: Claude first, Codex second
 
@@ -808,16 +833,24 @@ Gates:
 
 ### P3: OpenAgents sandbox provider over the sandbox runtime
 
-Build `@openagentsinc/ai-sdk-sandbox-openagents` against the real or fixture-backed
-`openagents.sandbox.v1` surface.
+Status: implemented for the fixture-backed contract adapter in
+`@openagentsinc/ai-sdk-sandbox-openagents`.
+
+The package exposes an `OpenAgentsSandboxV1Client` boundary and maps AI SDK
+session lifecycle, file I/O, process execution, bridge port ingress, network
+policy, restricted views, snapshot identity, and explicit agent homes onto that
+client. The remaining work is to bind the client to the real
+`openagents.sandbox.v1` / workroom APIs.
 
 Gates:
 
-- create/resume/stop/destroy contract tests,
-- WebSocket bridge port through managed preview ingress,
-- `.agents/setup` snapshot key proves cache hit/miss behavior,
-- network policy and capability-gateway tests,
-- public-safe receipt refs only.
+- create/resume/stop/destroy contract tests are present,
+- WebSocket bridge port ingress is covered by the fixture client,
+- snapshot identity includes bridge bootstrap recipe, `.agents/setup`, repo
+  ref, lockfiles, base image/profile, and toolchain version,
+- public/untrusted lanes reject missing or `allow-all` egress policy,
+- remaining: real managed preview ingress, real network/capability-gateway
+  enforcement, real cache hit/miss receipts, and public-safe receipt refs.
 
 ### P4: Codex fork with raw/private event side-channel
 
