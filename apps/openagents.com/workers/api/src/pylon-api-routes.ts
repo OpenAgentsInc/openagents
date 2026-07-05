@@ -9,6 +9,9 @@ import {
   authenticateProgrammaticAgent,
   sha256Hex,
 } from './agent-registration'
+import {
+  readAgentBearerToken as bearerTokenFromRequest,
+} from './auth/bearer-token'
 import type { AutopilotWorkerCloseoutIngestionInput } from './autopilot-work-routes'
 import {
   methodNotAllowed,
@@ -190,22 +193,6 @@ const routeErrorResponse = (error: PylonApiRouteError): HttpResponse =>
     }),
     M.exhaustive,
   )
-
-const bearerTokenFromRequest = (request: Request): string | undefined => {
-  const authorization = request.headers.get('authorization')
-
-  if (authorization === null) {
-    return undefined
-  }
-
-  const [scheme, token] = authorization.split(' ')
-
-  return scheme?.toLowerCase() === 'bearer' &&
-    token !== undefined &&
-    token.startsWith(AGENT_TOKEN_PREFIX)
-    ? token
-    : undefined
-}
 
 // A NIP-98 self-signed request uses the `Nostr` authorization scheme
 // (see apps/pylon `encodeNip98Authorization`). Detecting it lets the

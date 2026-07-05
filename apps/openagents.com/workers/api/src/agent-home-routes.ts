@@ -10,7 +10,6 @@ import {
   agentRateLimitRecoveryGrantsFromSession,
 } from './agent-rate-limit-recovery'
 import {
-  AGENT_TOKEN_PREFIX,
   AgentDisplayName,
   type AgentRegistrationStore,
   type AgentUserRecord,
@@ -19,6 +18,9 @@ import {
   makeD1AgentRegistrationStore,
   sha256Hex,
 } from './agent-registration'
+import {
+  readAgentBearerToken as bearerTokenFromRequest,
+} from './auth/bearer-token'
 import {
   AGENT_SEARCH_ENDPOINT,
   AGENT_SEARCH_PAYMENT_PREVIEW_ENDPOINT,
@@ -319,22 +321,6 @@ const AgentSiteGrant = S.Struct({
 })
 
 const decodeAgentSiteGrant = S.decodeUnknownOption(AgentSiteGrant)
-
-const bearerTokenFromRequest = (request: Request): string | undefined => {
-  const authorization = request.headers.get('authorization')
-
-  if (authorization === null) {
-    return undefined
-  }
-
-  const [scheme, token] = authorization.split(' ')
-
-  return scheme?.toLowerCase() === 'bearer' &&
-    token !== undefined &&
-    token.startsWith(AGENT_TOKEN_PREFIX)
-    ? token
-    : undefined
-}
 
 const customerOrderGrantsFromSession = (
   session: ProgrammaticAgentSession,

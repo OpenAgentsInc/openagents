@@ -7,6 +7,7 @@ import { type Event as NostrEvent, verifyEvent } from 'nostr-effect/pure'
 
 import type { VerifiedPublicIdentityClaim } from './agent-owner-claim-routes'
 import type { AgentRegistrationStore } from './agent-registration'
+import { readBearerToken } from './auth/bearer-token'
 import {
   type ForumHumanSessionActor,
   ForumMethod,
@@ -712,20 +713,6 @@ const publicListResponse = <A>(effect: Effect.Effect<A, ForumStorageError>) =>
     Effect.map(value => noStoreJsonResponse(value)),
     Effect.catchTag('ForumStorageError', () => Effect.succeed(serverError())),
   )
-
-const readBearerToken = (request: Request): string | undefined => {
-  const authorization = request.headers.get('authorization')
-
-  if (authorization === null) {
-    return undefined
-  }
-
-  const [scheme, token] = authorization.split(' ')
-
-  return scheme?.toLowerCase() === 'bearer' && token !== undefined
-    ? token
-    : undefined
-}
 
 const idempotencyKeyFromRequest = (request: Request): string | undefined => {
   const value = request.headers.get('Idempotency-Key')?.trim()

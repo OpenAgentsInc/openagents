@@ -18,11 +18,13 @@ import {
 } from './agent-rate-limit-recovery'
 import { sha256Hex } from './agent-registration'
 import {
-  AGENT_TOKEN_PREFIX,
   type AgentRegistrationStore,
   type ProgrammaticAgentSession,
   authenticateProgrammaticAgent,
 } from './agent-registration'
+import {
+  readAgentBearerToken as bearerTokenFromRequest,
+} from './auth/bearer-token'
 import {
   makeAgentRuntimeRemainderMirrorForEnv,
   type AgentRuntimeRemainderMirror,
@@ -329,22 +331,6 @@ const idempotencyKeyFromValue = (value: unknown): string | undefined => {
   }
 
   return key
-}
-
-const bearerTokenFromRequest = (request: Request): string | undefined => {
-  const authorization = request.headers.get('authorization')
-
-  if (authorization === null) {
-    return undefined
-  }
-
-  const [scheme, token] = authorization.split(' ')
-
-  return scheme?.toLowerCase() === 'bearer' &&
-    token !== undefined &&
-    token.startsWith(AGENT_TOKEN_PREFIX)
-    ? token
-    : undefined
 }
 
 const paidEntitlementRefFromRequest = (request: Request): string | undefined => {

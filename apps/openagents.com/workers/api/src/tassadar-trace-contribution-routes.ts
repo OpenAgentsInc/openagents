@@ -1,11 +1,13 @@
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import {
-  AGENT_TOKEN_PREFIX,
   type AgentRegistrationStore,
   type ProgrammaticAgentSession,
   authenticateProgrammaticAgent,
 } from './agent-registration'
+import {
+  readAgentBearerToken as bearerTokenFromRequest,
+} from './auth/bearer-token'
 import {
   methodNotAllowed,
   noStoreJsonResponse,
@@ -150,22 +152,6 @@ const routeErrorResponse = (
     }),
     M.exhaustive,
   )
-
-const bearerTokenFromRequest = (request: Request): string | undefined => {
-  const authorization = request.headers.get('authorization')
-
-  if (authorization === null) {
-    return undefined
-  }
-
-  const [scheme, token] = authorization.split(' ')
-
-  return scheme?.toLowerCase() === 'bearer' &&
-    token !== undefined &&
-    token.startsWith(AGENT_TOKEN_PREFIX)
-    ? token
-    : undefined
-}
 
 const routeNowIso = <Bindings>(
   dependencies: TassadarTraceContributionRouteDependencies<Bindings>,

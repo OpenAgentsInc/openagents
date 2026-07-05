@@ -152,6 +152,16 @@ Postgres cutover, leaving the Worker cron for edge-only heartbeats/probes.
 66 non-test files independently reference admin/agent-token auth helpers.
 **CONSOLIDATE into one `auth/` module** — ~500–1,000 LOC dedupe, low risk.
 
+2026-07-05 #8382: common Worker Authorization parsing now lives in
+`workers/api/src/auth/bearer-token.ts`. The first pass removed the strict
+split-parser copies from `index.ts`, Forum, Forge, onboarding,
+customer-order, Pylon, agent-definition, trace, Tassadar, agent-home,
+agent-site, and agent-proposal routes, including the `oa_agent_` prefixed
+programmatic-agent helper. Remaining local parser exceptions are deliberate:
+`agent-owner-claim-routes.ts` keeps its regex/claim-header fallback semantics,
+and `agent-search-routes.ts` keeps its whitespace-trimming parser. Do not
+collapse those without an explicit auth behavior review.
+
 ---
 
 ## 3. UI surfaces + sibling apps
@@ -448,8 +458,9 @@ if truly unconsumed).
 - #8381 - Complete: removed the GLM stress-scheduler remnants, appended
   Durable Object delete migrations, and deleted the adaptive-stress benchmark
   paths.
-- #8382 - Consolidate the 66-file Worker auth-helper sprawl into the canonical
-  auth module.
+- #8382 - Complete: consolidated the shared Worker bearer-token parsers into
+  `workers/api/src/auth/bearer-token.ts`, leaving only documented
+  route-specific parser exceptions.
 - #8383 - Flip `KHALA_SYNC_FLEET` default-on and delete the desktop fleet
   cockpit poll.
 - #8384 - Decide arm-or-remove for `INFERENCE_BATCH_JOBS_ENABLED`.

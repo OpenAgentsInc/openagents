@@ -7,6 +7,9 @@ import {
   authenticateProgrammaticAgent,
   sha256Hex,
 } from './agent-registration'
+import {
+  readAgentBearerToken as bearerTokenFromRequest,
+} from './auth/bearer-token'
 import { withAgentRateLimitHeaders } from './agent-rate-limit-policy'
 import {
   ATIF_PINNED_SCHEMA_VERSION,
@@ -319,19 +322,6 @@ const routeErrorResponse = (error: TraceRouteError): HttpResponse =>
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const bearerTokenFromRequest = (request: Request): string | undefined => {
-  const authorization = request.headers.get('authorization')
-  if (authorization === null) {
-    return undefined
-  }
-  const [scheme, token] = authorization.split(' ')
-  return scheme?.toLowerCase() === 'bearer' &&
-    token !== undefined &&
-    token.startsWith(AGENT_TOKEN_PREFIX)
-    ? token
-    : undefined
-}
 
 const idempotencyKeyFromRequest = (request: Request): string | undefined => {
   const value = request.headers.get('idempotency-key')?.trim()

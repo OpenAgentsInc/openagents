@@ -4,6 +4,7 @@ import {
   expiredCookie,
   parseCookies,
 } from '../auth-cookies'
+import { readBearerToken } from '../auth/bearer-token'
 import {
   type AgentRegistrationStore,
   makeD1AgentRegistrationStore,
@@ -272,20 +273,6 @@ const requireSession = <
 
     return session
   })
-
-const readBearerToken = (request: Request): string | undefined => {
-  const authorization = request.headers.get('authorization')
-
-  if (authorization === null) {
-    return undefined
-  }
-
-  const [scheme, token] = authorization.split(' ')
-
-  return scheme?.toLowerCase() === 'bearer' && token !== undefined
-    ? token
-    : undefined
-}
 
 const idempotencyKeyFromRequest = (request: Request): string | undefined => {
   const value = request.headers.get('Idempotency-Key')?.trim()

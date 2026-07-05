@@ -13,6 +13,7 @@ import {
 import { Effect, Schema as S } from 'effect'
 
 import { timingSafeEqual } from './agent-registration'
+import { readBearerToken } from './auth/bearer-token'
 import {
   type ForgeCoordinationStore,
 } from './forge-coordination-store'
@@ -146,22 +147,6 @@ const ForgeOpenAgentsImportRequest = S.Struct({
   tenantRef: S.String,
   repositoryRef: S.String,
 })
-
-const readBearerToken = (request: Request): string | undefined => {
-  const authorization = request.headers.get('authorization')
-
-  if (authorization === null) {
-    return undefined
-  }
-
-  const [scheme, token] = authorization.split(' ')
-
-  if (scheme?.toLowerCase() !== 'bearer' || token === undefined) {
-    return undefined
-  }
-
-  return token
-}
 
 const readForgeScopeHeader = (
   request: Request,

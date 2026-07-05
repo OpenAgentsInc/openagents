@@ -2,12 +2,12 @@ import { Effect, Schema as S } from 'effect'
 import { Option } from 'effect'
 
 import {
-  AGENT_TOKEN_PREFIX,
   type AgentRegistrationStore,
   type ProgrammaticAgentSession,
   authenticateProgrammaticAgent,
   makeD1AgentRegistrationStore,
 } from './agent-registration'
+import { readAgentBearerToken as readBearerToken } from './auth/bearer-token'
 import { withAgentRateLimitHeaders } from './agent-rate-limit-policy'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import {
@@ -373,22 +373,6 @@ const contractResponse = (
       { status: input.responseStatus ?? 202 },
     ),
   )
-
-const readBearerToken = (request: Request): string | undefined => {
-  const authorization = request.headers.get('authorization')
-
-  if (authorization === null) {
-    return undefined
-  }
-
-  const [scheme, token] = authorization.split(' ')
-
-  return scheme?.toLowerCase() === 'bearer' &&
-    token !== undefined &&
-    token.startsWith(AGENT_TOKEN_PREFIX)
-    ? token
-    : undefined
-}
 
 const agentSiteGrantsFromSession = (
   session: ProgrammaticAgentSession,

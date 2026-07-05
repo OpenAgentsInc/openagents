@@ -1,10 +1,12 @@
 import {
-  AGENT_TOKEN_PREFIX,
   type AgentRegistrationStore,
   type OpenAuthAgentLinkRecord,
   authenticateProgrammaticAgent,
   sha256Hex,
 } from './agent-registration'
+import {
+  readAgentBearerToken as bearerTokenFromRequest,
+} from './auth/bearer-token'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { type RouteEffect, routeEffect } from './http/route-effects'
 import {
@@ -61,20 +63,6 @@ const ATTEMPT_TTL_SECONDS = 10 * 60
 const POLL_INTERVAL_SECONDS = 2
 const attemptKey = (attemptId: string) =>
   `pylon:openauth-agent-link-attempt:${attemptId}`
-
-const bearerTokenFromRequest = (request: Request): string | undefined => {
-  const authorization = request.headers.get('authorization')
-  if (authorization === null) {
-    return undefined
-  }
-
-  const [scheme, token] = authorization.split(' ')
-  return scheme?.toLowerCase() === 'bearer' &&
-    token !== undefined &&
-    token.startsWith(AGENT_TOKEN_PREFIX)
-    ? token
-    : undefined
-}
 
 const makeUserCode = (seed: string): string => {
   // Derive the code from the RANDOM part of the attempt id. The attempt id is

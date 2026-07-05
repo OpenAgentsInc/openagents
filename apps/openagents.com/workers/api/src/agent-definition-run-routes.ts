@@ -15,12 +15,14 @@ import {
 } from './agent-definition-routes'
 import { withAgentRateLimitHeaders } from './agent-rate-limit-policy'
 import {
-  AGENT_TOKEN_PREFIX,
   type AgentRegistrationStore,
   type LinkedAgentOwnerRecord,
   type ProgrammaticAgentSession,
   authenticateProgrammaticAgent,
 } from './agent-registration'
+import {
+  readAgentBearerToken as bearerTokenFromRequest,
+} from './auth/bearer-token'
 import {
   type ForgeCoordinationStore,
 } from './forge-coordination-store'
@@ -434,22 +436,6 @@ const boundedRunHistoryLimitFromRequest = (request: Request): number => {
   return Number.isFinite(parsed)
     ? Math.max(1, Math.min(100, Math.trunc(parsed)))
     : 50
-}
-
-const bearerTokenFromRequest = (request: Request): string | undefined => {
-  const authorization = request.headers.get('authorization')
-
-  if (authorization === null) {
-    return undefined
-  }
-
-  const [scheme, token] = authorization.split(' ')
-
-  return scheme?.toLowerCase() === 'bearer' &&
-    token !== undefined &&
-    token.startsWith(AGENT_TOKEN_PREFIX)
-    ? token
-    : undefined
 }
 
 const requireAgentSession = async (

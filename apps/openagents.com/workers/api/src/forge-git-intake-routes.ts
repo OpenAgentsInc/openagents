@@ -5,6 +5,7 @@ import {
 } from '../../../../pylon/src/git-receive-pack'
 import { Effect } from 'effect'
 
+import { readBearerToken } from './auth/bearer-token'
 import type { ForgeCoordinationStore } from './forge-coordination-store'
 import {
   type ForgeGitCanonicalStore,
@@ -56,18 +57,6 @@ class ForgeGitHttpError extends Error {
     super(reason ?? errorCode)
     this.name = 'ForgeGitHttpError'
   }
-}
-
-const readBearerToken = (request: Request): string | undefined => {
-  const authorization = request.headers.get('authorization')
-  if (authorization === null) {
-    return undefined
-  }
-
-  const [scheme, token] = authorization.split(' ')
-  return scheme?.toLowerCase() === 'bearer' && token !== undefined
-    ? token
-    : undefined
 }
 
 const safeDecodePathSegment = (value: string): string | undefined => {

@@ -6,6 +6,7 @@ import {
   type ProgrammaticAgentSession,
   authenticateProgrammaticAgent,
 } from './agent-registration'
+import { readBearerToken as bearerTokenFromRequest } from './auth/bearer-token'
 import { parseJsonRecord } from './json-boundary'
 
 export const CustomerOrderAgentScope = S.Literals([
@@ -50,20 +51,6 @@ export class CustomerOrderAgentAuthFailure extends S.TaggedErrorClass<CustomerOr
 ) {}
 
 const decodeGrant = S.decodeUnknownOption(CustomerOrderAgentGrant)
-
-const bearerTokenFromRequest = (request: Request): string | undefined => {
-  const authorization = request.headers.get('authorization')
-
-  if (authorization === null) {
-    return undefined
-  }
-
-  const [scheme, token] = authorization.split(' ')
-
-  return scheme?.toLowerCase() === 'bearer' && token !== undefined
-    ? token
-    : undefined
-}
 
 const customerOrderGrantsFromSession = (
   session: ProgrammaticAgentSession,
