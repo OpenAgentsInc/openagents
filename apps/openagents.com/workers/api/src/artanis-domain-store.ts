@@ -15,13 +15,15 @@
 //     way. `makeArtanisDatabaseForEnv(env)` is the index.ts drop-in that
 //     upgrades the six cron ticks and the artanis routes to the seam.
 //
-//  2. `mirrorArtanisRows(db, table, keyColumn, keys)` — the dual-write.
+//  2. `mirrorArtanisRows(db, table, keyColumn, keys, updateColumns?)` — the
+//     dual-write.
 //     After the authoritative D1 write, the RESOLVED row(s) are read back
-//     from D1 by key and converged into Postgres as full-row upserts
-//     (`ON CONFLICT (natural key) DO UPDATE`), so a row touched by
-//     dual-write self-heals even before the backfill reaches it, and
-//     re-mirroring is idempotent by construction. A Postgres failure NEVER
-//     fails the request — it logs the typed
+//     from D1 by key and converged into Postgres as full-row upserts by
+//     default (`ON CONFLICT (natural key) DO UPDATE`), or as column-scoped
+//     conflict updates when a concurrent-writer caller supplies
+//     `updateColumns`. A row touched by dual-write self-heals even before
+//     the backfill reaches it, and re-mirroring is idempotent by
+//     construction. A Postgres failure NEVER fails the request — it logs the typed
 //     `khala_sync_artanis_dual_write_failed` diagnostic (the drift metric)
 //     and moves on. This deliberately preserves the Artanis operator-chat
 //     fail-soft precedent (2d46d808): persistence degradation must never
@@ -43,14 +45,13 @@
 // dual-write on → backfill (khala-sync-server scripts/backfill-artanis.ts)
 // → second sweep → --verify → compare reads → postgres reads → re-home the
 // six cron ticks → drop the D1 tables in the follow-up decommission issue.
-
 import type { SyncSql } from '@openagentsinc/khala-sync-server'
 
 import {
-  defaultMakeKhalaSyncSqlClient,
   type KhalaSyncHyperdriveBinding,
   type KhalaSyncPushSqlClient,
   type MakeKhalaSyncPushSqlClient,
+  defaultMakeKhalaSyncSqlClient,
 } from './khala-sync-push-routes'
 import { logWorkerRouteWarning } from './observability'
 import { openAgentsDatabase } from './runtime'
@@ -87,10 +88,8 @@ export const artanisDomainFlagsFromEnv = (
   const readsRaw = env.KHALA_SYNC_ARTANIS_READS?.trim().toLowerCase()
 
   return {
-    dualWrite:
-      dualWriteRaw === undefined || !FLAG_OFF_VALUES.has(dualWriteRaw),
-    reads:
-      readsRaw === 'postgres' || readsRaw === 'compare' ? readsRaw : 'd1',
+    dualWrite: dualWriteRaw === undefined || !FLAG_OFF_VALUES.has(dualWriteRaw),
+    reads: readsRaw === 'postgres' || readsRaw === 'compare' ? readsRaw : 'd1',
   }
 }
 
@@ -390,6 +389,8 @@ class ArtanisDomainKeyColumnError extends TypeError {}
 
 class ArtanisDomainSqlCapabilityError extends TypeError {}
 
+class ArtanisDomainUpdateColumnError extends TypeError {}
+
 const requireKeyColumn = (
   table: ArtanisDomainTable,
   keyColumn: string,
@@ -400,6 +401,45 @@ const requireKeyColumn = (
     )
   }
   return keyColumn
+}
+
+const resolveUpsertUpdateColumns = (
+  table: ArtanisDomainTable,
+  updateColumns: ReadonlyArray<string> | undefined,
+): ReadonlyArray<string> => {
+  const spec = ARTANIS_DOMAIN_TABLES[table]
+  const requested =
+    updateColumns ?? spec.columns.filter(column => column !== spec.conflictKey)
+
+  if (requested.length === 0) {
+    throw new ArtanisDomainUpdateColumnError(
+      `artanis domain store: at least one update column is required for ${table}`,
+    )
+  }
+
+  const seen = new Set<string>()
+  return requested.map(column => {
+    const registeredColumn = spec.columns.find(
+      candidate => candidate === column,
+    )
+    if (registeredColumn === undefined) {
+      throw new ArtanisDomainUpdateColumnError(
+        `artanis domain store: ${column} is not a registered column of ${table}`,
+      )
+    }
+    if (registeredColumn === spec.conflictKey) {
+      throw new ArtanisDomainUpdateColumnError(
+        `artanis domain store: ${column} is the conflict key of ${table} and cannot be an update column`,
+      )
+    }
+    if (seen.has(registeredColumn)) {
+      throw new ArtanisDomainUpdateColumnError(
+        `artanis domain store: ${column} is duplicated in the update columns for ${table}`,
+      )
+    }
+    seen.add(registeredColumn)
+    return registeredColumn
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -440,13 +480,14 @@ const normalizeValue = (value: unknown): string | number | null => {
 export type PostgresArtanisDomainStore = Readonly<{
   /**
    * Converge Postgres to the RESOLVED rows the authoritative D1 write
-   * produced — full-row `ON CONFLICT (natural key) DO UPDATE` upserts, so
-   * a row touched by dual-write self-heals even before the backfill
-   * reaches it, and re-mirroring the same row is a no-op.
+   * produced. The INSERT always carries all registry columns; the conflict
+   * UPDATE touches either all non-key columns or the caller-provided,
+   * registry-validated subset for concurrent-writer tables.
    */
   upsertRows: (
     table: ArtanisDomainTable,
     rows: ReadonlyArray<ArtanisDomainRow>,
+    updateColumns?: ReadonlyArray<string>,
   ) => Promise<void>
   /** Registry-validated key lookup (read cutover + compare mode). */
   selectRowsByKey: (
@@ -513,29 +554,29 @@ export const makePostgresArtanisDomainStore = (
             )
           }),
 
-    upsertRows: (table, rows) =>
-      rows.length === 0
-        ? Promise.resolve()
-        : withSql(async unsafe => {
-            const spec = ARTANIS_DOMAIN_TABLES[table]
-            const columnsSql = spec.columns.join(', ')
-            const updates = spec.columns
-              .filter(column => column !== spec.conflictKey)
-              .map(column => `${column} = EXCLUDED.${column}`)
-              .join(', ')
-            for (const row of rows) {
-              const values = spec.columns.map(column =>
-                normalizeValue(row[column]),
-              )
-              const placeholders = values
-                .map((_, index) => `$${index + 1}`)
-                .join(', ')
-              await unsafe(
-                `INSERT INTO ${table} (${columnsSql}) VALUES (${placeholders}) ON CONFLICT (${spec.conflictKey}) DO UPDATE SET ${updates}`,
-                values as Array<unknown>,
-              )
-            }
-          }),
+    upsertRows: async (table, rows, updateColumns) => {
+      const spec = ARTANIS_DOMAIN_TABLES[table]
+      const updateColumnList = resolveUpsertUpdateColumns(table, updateColumns)
+      if (rows.length === 0) return
+
+      const columnsSql = spec.columns.join(', ')
+      const updates = updateColumnList
+        .map(column => `${column} = EXCLUDED.${column}`)
+        .join(', ')
+
+      await withSql(async unsafe => {
+        for (const row of rows) {
+          const values = spec.columns.map(column => normalizeValue(row[column]))
+          const placeholders = values
+            .map((_, index) => `$${index + 1}`)
+            .join(', ')
+          await unsafe(
+            `INSERT INTO ${table} (${columnsSql}) VALUES (${placeholders}) ON CONFLICT (${spec.conflictKey}) DO UPDATE SET ${updates}`,
+            values as Array<unknown>,
+          )
+        }
+      })
+    },
   }
 }
 
@@ -614,6 +655,7 @@ export const mirrorArtanisRows = async (
   table: ArtanisDomainTable,
   keyColumn: string,
   keys: ReadonlyArray<string | number>,
+  updateColumns?: ReadonlyArray<string>,
 ): Promise<void> => {
   if (!isArtanisDomainHandle(db)) return
   const { d1, flags, log, postgres } = db
@@ -623,6 +665,9 @@ export const mirrorArtanisRows = async (
   try {
     const spec = ARTANIS_DOMAIN_TABLES[table]
     const column = requireKeyColumn(table, keyColumn)
+    if (updateColumns !== undefined) {
+      resolveUpsertUpdateColumns(table, updateColumns)
+    }
     const placeholders = keys.map(() => '?').join(', ')
     const result = await d1
       .prepare(
@@ -632,7 +677,7 @@ export const mirrorArtanisRows = async (
       .all<ArtanisDomainRow>()
     const rows = result.results ?? []
     if (rows.length === 0) return
-    await postgres.upsertRows(table, rows)
+    await postgres.upsertRows(table, rows, updateColumns)
   } catch (error) {
     log('khala_sync_artanis_dual_write_failed', {
       messageSafe: safeMessage(error),

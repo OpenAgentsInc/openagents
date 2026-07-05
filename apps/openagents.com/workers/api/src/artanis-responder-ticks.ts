@@ -1,7 +1,7 @@
 import {
+  type ArtanisDatabase,
   artanisAuthorityDb,
   mirrorArtanisRows,
-  type ArtanisDatabase,
 } from './artanis-domain-store'
 import {
   type PublicProjectionStalenessContract,
@@ -117,6 +117,26 @@ const outcomeState = (
   return skippedReason.includes('error') ? 'error' : 'skipped'
 }
 
+const ARTANIS_RESPONDER_SCAN_TICK_MIRROR_COLUMNS = [
+  'scan_state',
+  'scan_scanned',
+  'scan_proposed',
+  'scan_blocked',
+  'scan_skipped',
+  'scan_skipped_reason',
+  'updated_at',
+] as const
+
+const ARTANIS_RESPONDER_COMPOSE_TICK_MIRROR_COLUMNS = [
+  'compose_state',
+  'compose_considered',
+  'compose_responded',
+  'compose_blocked',
+  'compose_tipped',
+  'compose_skipped_reason',
+  'updated_at',
+] as const
+
 export const recordArtanisResponderScanTick = async (
   db: ArtanisDatabase,
   input: Readonly<{ nowIso: string; outcome: ArtanisResponderScanTickOutcome }>,
@@ -151,9 +171,13 @@ export const recordArtanisResponderScanTick = async (
     )
     .run()
   // KS-8.6 dual-write: converge the tick receipt into Postgres (fail-soft).
-  await mirrorArtanisRows(db, 'artanis_responder_ticks', 'scheduled_at', [
-    input.nowIso,
-  ])
+  await mirrorArtanisRows(
+    db,
+    'artanis_responder_ticks',
+    'scheduled_at',
+    [input.nowIso],
+    ARTANIS_RESPONDER_SCAN_TICK_MIRROR_COLUMNS,
+  )
 }
 
 export const recordArtanisResponderComposeTick = async (
@@ -194,9 +218,13 @@ export const recordArtanisResponderComposeTick = async (
     )
     .run()
   // KS-8.6 dual-write: converge the tick receipt into Postgres (fail-soft).
-  await mirrorArtanisRows(db, 'artanis_responder_ticks', 'scheduled_at', [
-    input.nowIso,
-  ])
+  await mirrorArtanisRows(
+    db,
+    'artanis_responder_ticks',
+    'scheduled_at',
+    [input.nowIso],
+    ARTANIS_RESPONDER_COMPOSE_TICK_MIRROR_COLUMNS,
+  )
 }
 
 export const projectArtanisResponderTickReadiness = (
@@ -350,7 +378,9 @@ export const readArtanisResponderTickReadiness = async (
     .all()
 
   return projectArtanisResponderTickReadiness(
-    (tickResult.results ?? []) as unknown as ReadonlyArray<ArtanisResponderTickRow>,
-    (actionResult.results ?? []) as unknown as ReadonlyArray<ArtanisResponderTickActionRow>,
+    (tickResult.results ??
+      []) as unknown as ReadonlyArray<ArtanisResponderTickRow>,
+    (actionResult.results ??
+      []) as unknown as ReadonlyArray<ArtanisResponderTickActionRow>,
   )
 }

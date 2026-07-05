@@ -1,23 +1,28 @@
 // KS-8.6 (#8317): artanis domain seam — flags, fail-soft dual-write, and
 // flag-routed reads (unit level; the cross-engine convergence proof lives in
 // artanis-domain-repository.contract.test.ts).
-
 import { describe, expect, test } from 'vitest'
 
 import {
   ARTANIS_DOMAIN_TABLES,
+  type ArtanisDomainDiagnostic,
+  type ArtanisDomainDiagnosticEvent,
+  type ArtanisDomainRow,
+  type PostgresArtanisDomainStore,
   artanisAuthorityDb,
   artanisDomainFlagsFromEnv,
   artanisRead,
   isArtanisDomainHandle,
   makeArtanisDatabaseForEnv,
   makeArtanisDomainHandle,
+  makePostgresArtanisDomainStore,
   mirrorArtanisRows,
-  type ArtanisDomainDiagnostic,
-  type ArtanisDomainDiagnosticEvent,
-  type ArtanisDomainRow,
-  type PostgresArtanisDomainStore,
 } from './artanis-domain-store'
+import {
+  recordArtanisResponderComposeTick,
+  recordArtanisResponderScanTick,
+} from './artanis-responder-ticks'
+import type { KhalaSyncPushSqlClient } from './khala-sync-push-routes'
 import { makeSqliteD1 } from './test/sqlite-d1'
 
 type Logged = readonly [ArtanisDomainDiagnosticEvent, ArtanisDomainDiagnostic]
@@ -25,21 +30,152 @@ type Logged = readonly [ArtanisDomainDiagnosticEvent, ArtanisDomainDiagnostic]
 const fakePostgres = (
   overrides: Partial<PostgresArtanisDomainStore> = {},
 ): PostgresArtanisDomainStore & {
-  upserts: Array<{ table: string; rows: ReadonlyArray<ArtanisDomainRow> }>
+  upserts: Array<{
+    table: string
+    rows: ReadonlyArray<ArtanisDomainRow>
+    updateColumns: ReadonlyArray<string> | undefined
+  }>
 } => {
   const upserts: Array<{
     table: string
     rows: ReadonlyArray<ArtanisDomainRow>
+    updateColumns: ReadonlyArray<string> | undefined
   }> = []
   return {
     selectLatestRows: () => Promise.resolve([]),
     selectRowsByKey: () => Promise.resolve([]),
-    upsertRows: (table, rows) => {
-      upserts.push({ rows, table })
+    upsertRows: (table, rows, updateColumns) => {
+      upserts.push({ rows, table, updateColumns })
       return Promise.resolve()
     },
     upserts,
     ...overrides,
+  }
+}
+
+const capturePostgresStatements = () => {
+  const statements: Array<{
+    params: Array<unknown>
+    text: string
+  }> = []
+  const client: KhalaSyncPushSqlClient = {
+    end: () => Promise.resolve(),
+    sql: {
+      unsafe: (text: string, params: Array<unknown>) => {
+        statements.push({ params, text })
+        return Promise.resolve([])
+      },
+    } as unknown as KhalaSyncPushSqlClient['sql'],
+  }
+  return {
+    statements,
+    store: makePostgresArtanisDomainStore({
+      acquireSql: () => Promise.resolve(client),
+    }),
+  }
+}
+
+const responderTickRow = (
+  overrides: ArtanisDomainRow = {},
+): ArtanisDomainRow => ({
+  compose_blocked: 0,
+  compose_considered: 3,
+  compose_responded: 2,
+  compose_skipped_reason: null,
+  compose_state: 'ran',
+  compose_tipped: 1,
+  created_at: '2026-07-05T00:00:00.000Z',
+  scan_blocked: 0,
+  scan_proposed: 2,
+  scan_scanned: 4,
+  scan_skipped: 0,
+  scan_skipped_reason: null,
+  scan_state: 'ran',
+  scheduled_at: '2026-07-05T00:00:00.000Z',
+  tick_ref: 'receipt.artanis_responder.tick.20260705000000000Z',
+  updated_at: '2026-07-05T00:00:00.000Z',
+  ...overrides,
+})
+
+const createResponderTicksSqlite = () => {
+  const sqlite = makeSqliteD1()
+  sqlite.exec(`
+    CREATE TABLE artanis_responder_ticks (
+      tick_ref TEXT PRIMARY KEY,
+      scheduled_at TEXT NOT NULL UNIQUE,
+      scan_state TEXT NOT NULL DEFAULT 'pending',
+      scan_scanned INTEGER NOT NULL DEFAULT 0,
+      scan_proposed INTEGER NOT NULL DEFAULT 0,
+      scan_blocked INTEGER NOT NULL DEFAULT 0,
+      scan_skipped INTEGER NOT NULL DEFAULT 0,
+      scan_skipped_reason TEXT,
+      compose_state TEXT NOT NULL DEFAULT 'pending',
+      compose_considered INTEGER NOT NULL DEFAULT 0,
+      compose_responded INTEGER NOT NULL DEFAULT 0,
+      compose_blocked INTEGER NOT NULL DEFAULT 0,
+      compose_tipped INTEGER NOT NULL DEFAULT 0,
+      compose_skipped_reason TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `)
+  return sqlite
+}
+
+const selectResponderTickRow = async (
+  db: D1Database,
+  scheduledAt: string,
+): Promise<ArtanisDomainRow> => {
+  const row = await db
+    .prepare(
+      `SELECT ${ARTANIS_DOMAIN_TABLES.artanis_responder_ticks.columns.join(', ')}
+         FROM artanis_responder_ticks
+        WHERE scheduled_at = ?`,
+    )
+    .bind(scheduledAt)
+    .first<ArtanisDomainRow>()
+  if (row === null) {
+    throw new Error(`expected artanis_responder_ticks row ${scheduledAt}`)
+  }
+  return row
+}
+
+const statefulResponderTickPostgres = (): PostgresArtanisDomainStore & {
+  row: (scheduledAt: string) => ArtanisDomainRow | undefined
+} => {
+  const rows = new Map<string, ArtanisDomainRow>()
+  const spec = ARTANIS_DOMAIN_TABLES.artanis_responder_ticks
+  const completeRow = (row: ArtanisDomainRow): ArtanisDomainRow =>
+    Object.fromEntries(
+      spec.columns.map(column => [column, row[column] ?? null]),
+    )
+
+  return {
+    row: scheduledAt => rows.get(scheduledAt),
+    selectLatestRows: () => Promise.resolve([]),
+    selectRowsByKey: () => Promise.resolve([]),
+    upsertRows: (table, upsertRows, updateColumns) => {
+      if (table !== 'artanis_responder_ticks') {
+        return Promise.reject(new Error(`unexpected table ${table}`))
+      }
+      const updateColumnList =
+        updateColumns ??
+        spec.columns.filter(column => column !== spec.conflictKey)
+      for (const row of upsertRows) {
+        const key = String(row[spec.conflictKey] ?? '')
+        const current = rows.get(key)
+        if (current === undefined) {
+          rows.set(key, completeRow(row))
+          continue
+        }
+        const next = { ...current }
+        for (const column of updateColumnList) {
+          next[column] = row[column] ?? null
+        }
+        rows.set(key, next)
+      }
+      return Promise.resolve()
+    },
   }
 }
 
@@ -73,8 +209,7 @@ describe('artanisDomainFlagsFromEnv', () => {
         .reads,
     ).toBe('compare')
     expect(
-      artanisDomainFlagsFromEnv({ KHALA_SYNC_ARTANIS_READS: 'postgrse' })
-        .reads,
+      artanisDomainFlagsFromEnv({ KHALA_SYNC_ARTANIS_READS: 'postgrse' }).reads,
     ).toBe('d1')
   })
 })
@@ -155,6 +290,7 @@ describe('mirrorArtanisRows (fail-soft dual-write)', () => {
     expect(postgres.upserts[0]?.rows.map(row => row['memory_ref'])).toEqual([
       'mem-1',
     ])
+    expect(postgres.upserts[0]?.updateColumns).toBeUndefined()
     expect(logged).toEqual([])
     sqlite.close()
   })
@@ -213,6 +349,161 @@ describe('mirrorArtanisRows (fail-soft dual-write)', () => {
       mirrorArtanisRows(handle, 'artanis_owner_memory', 'body', ['x']),
     ).resolves.toBeUndefined()
     expect(logged[0]?.[0]).toBe('khala_sync_artanis_dual_write_failed')
+    sqlite.close()
+  })
+
+  test('an unregistered scoped update column is refused through the fail-soft mirror', async () => {
+    const sqlite = seededSqlite()
+    const logged: Array<Logged> = []
+    const postgres = fakePostgres()
+    const handle = makeArtanisDomainHandle({
+      d1: sqlite.db,
+      flags: { dualWrite: true, reads: 'd1' },
+      log: (event, fields) => logged.push([event, fields]),
+      postgres,
+    })
+    await expect(
+      mirrorArtanisRows(
+        handle,
+        'artanis_owner_memory',
+        'memory_ref',
+        ['mem-1'],
+        ['owner_id', 'not_a_column'],
+      ),
+    ).resolves.toBeUndefined()
+    expect(logged[0]?.[0]).toBe('khala_sync_artanis_dual_write_failed')
+    expect(postgres.upserts).toEqual([])
+    sqlite.close()
+  })
+
+  test('scoped Postgres upserts insert all registry columns but only update the requested subset', async () => {
+    const { statements, store } = capturePostgresStatements()
+    await store.upsertRows(
+      'artanis_responder_ticks',
+      [responderTickRow()],
+      ['scan_state', 'scan_scanned', 'updated_at'],
+    )
+
+    const statement = statements[0]
+    expect(statement).toBeDefined()
+    expect(statement?.params).toHaveLength(
+      ARTANIS_DOMAIN_TABLES.artanis_responder_ticks.columns.length,
+    )
+    expect(statement?.text).toContain(
+      `INSERT INTO artanis_responder_ticks (${ARTANIS_DOMAIN_TABLES.artanis_responder_ticks.columns.join(', ')})`,
+    )
+    expect(statement?.text).toContain(
+      'ON CONFLICT (scheduled_at) DO UPDATE SET scan_state = EXCLUDED.scan_state, scan_scanned = EXCLUDED.scan_scanned, updated_at = EXCLUDED.updated_at',
+    )
+    expect(statement?.text).not.toContain(
+      'compose_state = EXCLUDED.compose_state',
+    )
+  })
+
+  test('scoped Postgres upserts reject unknown update columns before SQL text is emitted', async () => {
+    const { statements, store } = capturePostgresStatements()
+    await expect(
+      store.upsertRows(
+        'artanis_responder_ticks',
+        [responderTickRow()],
+        ['scan_state', 'scan_state; DROP TABLE artanis_responder_ticks'],
+      ),
+    ).rejects.toThrow(TypeError)
+    expect(statements).toEqual([])
+  })
+
+  test('Postgres upserts without scoped columns still update all non-key columns', async () => {
+    const { statements, store } = capturePostgresStatements()
+    await store.upsertRows('artanis_owner_memory', [
+      {
+        body: 'body v2',
+        created_at: '2026-07-04T00:00:00.000Z',
+        kind: 'note',
+        memory_ref: 'mem-1',
+        note_category: 'fact',
+        owner_id: 'owner-1',
+        role: null,
+      },
+    ])
+
+    const expectedUpdates = ARTANIS_DOMAIN_TABLES.artanis_owner_memory.columns
+      .filter(
+        column =>
+          column !== ARTANIS_DOMAIN_TABLES.artanis_owner_memory.conflictKey,
+      )
+      .map(column => `${column} = EXCLUDED.${column}`)
+      .join(', ')
+    expect(statements[0]?.text).toContain(`DO UPDATE SET ${expectedUpdates}`)
+  })
+
+  test('responder tick scoped mirrors keep scan and compose columns through a delayed stale snapshot replay', async () => {
+    const sqlite = createResponderTicksSqlite()
+    const postgres = statefulResponderTickPostgres()
+    const handle = makeArtanisDomainHandle({
+      d1: sqlite.db,
+      flags: { dualWrite: true, reads: 'd1' },
+      postgres,
+    })
+    const nowIso = '2026-07-05T00:01:00.000Z'
+    const composeUpdateColumns = [
+      'compose_state',
+      'compose_considered',
+      'compose_responded',
+      'compose_blocked',
+      'compose_tipped',
+      'compose_skipped_reason',
+      'updated_at',
+    ] as const
+
+    await recordArtanisResponderComposeTick(handle, {
+      nowIso,
+      outcome: {
+        blocked: 0,
+        considered: 3,
+        responded: 2,
+        skippedReason: null,
+        tipped: 1,
+      },
+    })
+    const staleComposeSnapshot = await selectResponderTickRow(sqlite.db, nowIso)
+    const afterComposeInsert = postgres.row(nowIso)
+    if (afterComposeInsert === undefined) {
+      throw new Error('expected responder tick Postgres row after compose')
+    }
+    for (const column of ARTANIS_DOMAIN_TABLES.artanis_responder_ticks
+      .columns) {
+      expect(Object.hasOwn(afterComposeInsert, column)).toBe(true)
+    }
+    expect(afterComposeInsert['scan_state']).toBe('pending')
+    expect(afterComposeInsert['compose_state']).toBe('ran')
+
+    await postgres.upsertRows(
+      'artanis_responder_ticks',
+      [staleComposeSnapshot],
+      composeUpdateColumns,
+    )
+    expect(postgres.row(nowIso)).toEqual(afterComposeInsert)
+
+    await recordArtanisResponderScanTick(handle, {
+      nowIso,
+      outcome: {
+        blocked: 0,
+        proposed: 2,
+        scanned: 4,
+        skipped: 0,
+        skippedReason: null,
+      },
+    })
+    expect(postgres.row(nowIso)?.['scan_state']).toBe('ran')
+    expect(postgres.row(nowIso)?.['compose_state']).toBe('ran')
+
+    await postgres.upsertRows(
+      'artanis_responder_ticks',
+      [staleComposeSnapshot],
+      composeUpdateColumns,
+    )
+    expect(postgres.row(nowIso)?.['scan_state']).toBe('ran')
+    expect(postgres.row(nowIso)?.['compose_state']).toBe('ran')
     sqlite.close()
   })
 })
@@ -362,14 +653,13 @@ describe('registry', () => {
   })
 
   test('stays in lock-step with the khala-sync-server backfill registry', async () => {
-    const backfill = (await import(
-      '../../../../../packages/khala-sync-server/src/artanis-backfill.js'
-    )) as {
-      ARTANIS_TABLE_SPECS: Record<
-        string,
-        { columns: ReadonlyArray<string>; conflictKey: string }
-      >
-    }
+    const backfill =
+      (await import('../../../../../packages/khala-sync-server/src/artanis-backfill.js')) as {
+        ARTANIS_TABLE_SPECS: Record<
+          string,
+          { columns: ReadonlyArray<string>; conflictKey: string }
+        >
+      }
     expect(Object.keys(backfill.ARTANIS_TABLE_SPECS).sort()).toEqual(
       Object.keys(ARTANIS_DOMAIN_TABLES).sort(),
     )
