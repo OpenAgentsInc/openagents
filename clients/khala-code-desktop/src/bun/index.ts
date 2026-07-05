@@ -51,6 +51,7 @@ import {
   createKhalaCodeDesktopKhalaSyncService,
   khalaCodeDesktopKhalaSyncFleetEnabled,
 } from "./khala-sync-service.js"
+import { startKhalaCodeDesktopFleetAccountStateReporter } from "./fleet-account-state-reporter.js"
 import { createKhalaCodeDesktopFleetRunSupervisorRpcAdapter } from "./fleet-run-supervisor-rpc-adapter.js"
 import { createKhalaCodeDesktopRpcRequestHandlers } from "./rpc-handlers.js"
 import { mutatingPreviewRpcMethods } from "./preview-rpc-policy.js"
@@ -648,6 +649,26 @@ const khalaSyncService = khalaCodeDesktopKhalaSyncFleetEnabled(khalaCodeEnv)
   ? createKhalaCodeDesktopKhalaSyncService({ env: khalaCodeEnv })
   : null
 
+// Recurring Khala Sync `fleet_account` state reporter (#8406): enumerates
+// BOTH local Codex and Claude Pylon accounts (`inspectCodexFleet({ workerKind:
+// "auto" })`) and pushes each into the configured `fleet_run` scope(s) via
+// `fleet.reportAccountState` on a fixed interval. A no-op (never guesses a
+// run id) when KHALA_SYNC_FLEET_ACCOUNT_REPORT_RUN_ID is unset; see
+// fleet-account-state-reporter.ts for the full honesty contract.
+const fleetAccountStateReporter = khalaSyncService === null
+  ? null
+  : startKhalaCodeDesktopFleetAccountStateReporter({
+    env: khalaCodeEnv,
+    khalaSync: khalaSyncService,
+    onError: error => {
+      console.warn(
+        `Khala Sync fleet account state report failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+    },
+  })
+
 rpcRequestHandlers = createKhalaCodeDesktopRpcRequestHandlers({
   appleFmReadiness,
   codexAppServerHost,
@@ -672,6 +693,7 @@ rpcRequestHandlers = createKhalaCodeDesktopRpcRequestHandlers({
 const disposeRuntime = (): void => {
   tokenUsageBackgroundSync.dispose()
   codexAppServerHost.dispose()
+  fleetAccountStateReporter?.dispose()
   void khalaSyncService?.close()
 }
 
