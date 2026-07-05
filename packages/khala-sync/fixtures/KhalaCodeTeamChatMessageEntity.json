@@ -1,0 +1,14 @@
+{
+  "messageId": "msg_01hzy8",
+  "teamId": "team_9f2a1c",
+  "projectId": "project_4a1e",
+  "authorUserId": "user_01hzx4",
+  "kind": "message",
+  "body": "Deploy is green — cutover window opens at 18:30 UTC.",
+  "autopilotThreadId": "thread_2e9c",
+  "agentRunId": "run_66d1",
+  "createdAt": "2026-07-04T18:04:00.000Z",
+  "updatedAt": "2026-07-04T18:04:00.000Z",
+  "deletedAt": null,
+  "archivedAt": null
+}

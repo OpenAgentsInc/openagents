@@ -1,0 +1,17 @@
+{
+  "shareId": "share_2f8e",
+  "sourceKind": "team-thread",
+  "sourceId": "thread_2e9c",
+  "ownerUserId": "user_01hzx4",
+  "teamId": "team_9f2a1c",
+  "projectId": null,
+  "title": "Migration plan review",
+  "summary": "Shared read-only view of the migration thread.",
+  "status": "active",
+  "projectionVersion": 2,
+  "redactionPolicyId": "default",
+  "createdAt": "2026-07-04T18:09:00.000Z",
+  "updatedAt": "2026-07-04T18:09:30.000Z",
+  "revokedAt": null,
+  "expiresAt": null
+}

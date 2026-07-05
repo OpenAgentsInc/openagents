@@ -85,10 +85,20 @@ issues.
 ## Khala Code product-state migration (KS-8.13, #8324)
 
 `src/khala-code-product-state-tables.ts` is the shared registry for the
-Khala Code product-state D1 -> Cloud SQL lane: column order, converge keys,
-and `scope.team.<id>` / `scope.thread.<id>` routing for thread/team rows
-that produce Khala Sync changelog entries during the shadow phase. The
-matching schema is `migrations/0017_khala_code_product_state.sql`.
+Khala Code product-state D1 -> Cloud SQL lane: column order and converge
+keys. The matching schema is
+`migrations/0017_khala_code_product_state.sql`.
+
+`src/khala-code-product-state-projection.ts` owns the
+`scope.team.<id>` / `scope.thread.<id>` routing and allowlist-maps each
+mirrored row into the typed public-safe entity contracts from
+`@openagentsinc/khala-sync` (`khala-code.ts`, golden fixtures at
+`packages/khala-sync/fixtures/KhalaCode*.json`). Raw D1 rows never ride a
+changelog post-image: secret/email/storage-key/money-bearing columns are
+structurally absent from the contracts and a forbidden-material scan over
+the structural fields backstops the allowlist. Unmappable rows skip their
+scope change fail-soft (the Postgres twin still converges) and surface as
+`khala_sync_khala_code_state_projection_skipped` in the Worker.
 
 `scripts/backfill-khala-code-product-state.ts` copies the authoritative D1
 rows into the Postgres twins and verifies exact parity with counts,

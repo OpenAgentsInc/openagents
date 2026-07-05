@@ -1,0 +1,12 @@
+{
+  "teamId": "team_9f2a1c",
+  "name": "Acme Robotics",
+  "slug": "acme-robotics",
+  "kind": "organization",
+  "plan": "pro",
+  "status": "active",
+  "ownerUserId": "user_01hzx4",
+  "createdAt": "2026-07-04T18:00:00.000Z",
+  "updatedAt": "2026-07-04T18:05:00.000Z",
+  "archivedAt": null
+}

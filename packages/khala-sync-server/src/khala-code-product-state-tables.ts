@@ -1,10 +1,3 @@
-import {
-  EntityId,
-  EntityType,
-  teamScope,
-  threadScope,
-  type SyncScope,
-} from "@openagentsinc/khala-sync"
 import type { SyncSql, SyncTransactionSql } from "./sql.js"
 
 /**
@@ -632,83 +625,6 @@ export const deleteKhalaCodeProductStateRows = async (
   return result.length
 }
 
-export type KhalaCodeProductStateScopeChange = Readonly<{
-  scope: SyncScope
-  entityType: EntityType
-  entityId: EntityId
-  postImage: KhalaCodeProductStateRow
-}>
-
-const stringValue = (row: KhalaCodeProductStateRow, column: string): string | undefined => {
-  const value = row[column]
-  return value === undefined || value === null || String(value).length === 0
-    ? undefined
-    : String(value)
-}
-
-const entityIdForRow = (
-  table: KhalaCodeProductStateTable,
-  row: KhalaCodeProductStateRow,
-): EntityId => {
-  const spec = KHALA_CODE_PRODUCT_STATE_TABLE_SPECS[table]
-  const raw = spec.keyColumns.map((column) => stringValue(row, column) ?? "").join(":")
-  return EntityId.make(raw.length === 0 ? table : raw)
-}
-
-const entityTypeForTable = (table: KhalaCodeProductStateTable): EntityType =>
-  EntityType.make(table.endsWith("s") ? table.slice(0, -1) : table)
-
-/**
- * Route a mirrored row into the Khala Sync scopes that clients subscribe to.
- * The full post-image is the row copied from D1, keeping the client store
- * self-healing and avoiding a second projection format during migration.
- */
-export const scopeChangesForKhalaCodeProductStateRow = (
-  table: KhalaCodeProductStateTable,
-  row: KhalaCodeProductStateRow,
-): ReadonlyArray<KhalaCodeProductStateScopeChange> => {
-  const changes: Array<KhalaCodeProductStateScopeChange> = []
-  const push = (scope: SyncScope, entityType = entityTypeForTable(table), entityId = entityIdForRow(table, row)) => {
-    changes.push({ entityId, entityType, postImage: row, scope })
-  }
-  const teamId = stringValue(row, "team_id")
-  const threadId = stringValue(row, "thread_id")
-  const autopilotThreadId = stringValue(row, "autopilot_thread_id")
-
-  switch (table) {
-    case "teams": {
-      const id = stringValue(row, "id")
-      if (id !== undefined) push(teamScope(id))
-      break
-    }
-    case "team_memberships":
-    case "team_projects":
-    case "team_workspace_invites":
-      if (teamId !== undefined) push(teamScope(teamId))
-      break
-    case "team_chat_messages":
-      if (teamId !== undefined) push(teamScope(teamId))
-      if (autopilotThreadId !== undefined) push(threadScope(autopilotThreadId))
-      break
-    case "thread_messages":
-      if (threadId !== undefined) push(threadScope(threadId))
-      break
-    case "thread_files":
-    case "thread_file_message_refs":
-      if (teamId !== undefined) push(teamScope(teamId))
-      if (threadId !== undefined) push(threadScope(threadId))
-      break
-    case "prefilled_workspaces": {
-      const privateTeamId = stringValue(row, "private_team_id")
-      if (privateTeamId !== undefined) push(teamScope(privateTeamId))
-      break
-    }
-    case "share_projections":
-      if (teamId !== undefined) push(teamScope(teamId))
-      break
-    default:
-      break
-  }
-
-  return changes
-}
+// Scope routing + typed public-safe post-image projection moved to
+// ./khala-code-product-state-projection.ts (KS-8.13: raw D1 rows no longer
+// ride changelog post-images; see @openagentsinc/khala-sync khala-code.ts).

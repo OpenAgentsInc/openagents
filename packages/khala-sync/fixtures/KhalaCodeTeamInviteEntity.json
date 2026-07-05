@@ -1,0 +1,15 @@
+{
+  "inviteId": "team_workspace_invite_5c8d",
+  "teamId": "team_9f2a1c",
+  "projectId": "project_4a1e",
+  "role": "member",
+  "status": "pending",
+  "acceptedByUserId": null,
+  "sendCount": 1,
+  "createdAt": "2026-07-04T18:03:00.000Z",
+  "updatedAt": "2026-07-04T18:03:00.000Z",
+  "expiresAt": "2026-07-11T18:03:00.000Z",
+  "acceptedAt": null,
+  "revokedAt": null,
+  "lastSentAt": "2026-07-04T18:03:05.000Z"
+}

@@ -921,7 +921,22 @@ Machinery:
   `scope.thread.<id>`.
 - Shared registry:
   `packages/khala-sync-server/src/khala-code-product-state-tables.ts`
-  owns column order, natural keys, and scope routing.
+  owns column order and natural keys.
+- Typed post-image projection:
+  `packages/khala-sync-server/src/khala-code-product-state-projection.ts`
+  owns scope routing and allowlist-maps each mirrored row into the
+  PUBLIC-SAFE entity contracts in `@openagentsinc/khala-sync`
+  (`khala-code.ts`: `KhalaCodeTeamEntity`,
+  `KhalaCodeTeamMembershipEntity`, `KhalaCodeTeamChatMessageEntity`,
+  `KhalaCodeThreadMessageEntity`, `KhalaCodeThreadFileEntity`, invites,
+  projects, prefilled workspaces, share projections, file↔message refs).
+  Raw D1 rows never ride a changelog post-image: invite `token_hash` and
+  invitee emails, R2 `object_key`s, `metadata_json` blobs, team `credits`,
+  and share `projection_json` payloads are structurally absent from the
+  contracts, and a forbidden-material scan over the structural fields
+  backstops the allowlist. The golden fixtures in
+  `packages/khala-sync/fixtures/KhalaCode*.json` are the
+  cross-implementation conformance contract for these shapes.
 - Backfill/verifier:
   `packages/khala-sync-server/scripts/backfill-khala-code-product-state.ts`.
   The verifier also covers product-state tables that are currently
@@ -932,6 +947,10 @@ Diagnostics are row-key only: `khala_sync_khala_code_state_dual_write_failed`
 is the drift metric; `khala_sync_khala_code_state_write_unclassified`
 means a D1 write touched a product-state table but the classifier could
 not prove the row key. A nonzero steady rate blocks read/sync cutover.
+`khala_sync_khala_code_state_projection_skipped` means a mirrored row
+could not be allowlist-mapped into its contract entity (schema drift or
+redaction-guard match) — the Cloud SQL twin still converged, only the
+scope changelog entry was withheld; investigate before shadow evidence.
 
 Flags:
 

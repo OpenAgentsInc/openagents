@@ -53,6 +53,7 @@ export const khalaCodeProductStateFlagsFromEnv = (
 export type KhalaCodeProductStateDiagnosticEvent =
   | 'khala_sync_khala_code_state_dual_write_failed'
   | 'khala_sync_khala_code_state_write_unclassified'
+  | 'khala_sync_khala_code_state_projection_skipped'
 
 export type KhalaCodeProductStateDiagnostic = Readonly<{
   op: string
@@ -91,6 +92,15 @@ export type KhalaCodeProductStateMirror = Readonly<{
 
 export type MakeKhalaCodeProductStateMirrorDependencies = Readonly<{
   acquireSql: () => Promise<KhalaSyncPushSqlClient>
+  /**
+   * Fail-soft projection-skip diagnostic: called when a mirrored row cannot
+   * be allowlist-mapped into its public-safe contract entity (or trips the
+   * redaction guard). The Postgres row still converges; only the scope
+   * changelog entry is withheld.
+   */
+  onProjectionSkip?:
+    | ((table: KhalaCodeProductStateTable, reasonSafe: string) => void)
+    | undefined
 }>
 
 export const makePostgresKhalaCodeProductStateMirror = (
@@ -127,6 +137,7 @@ export const makePostgresKhalaCodeProductStateMirror = (
             for (const change of scopeChangesForKhalaCodeProductStateRow(
               table,
               row,
+              deps.onProjectionSkip,
             )) {
               await writer.appendChange({
                 entityId: change.entityId,
@@ -672,8 +683,16 @@ const postgresMirrorForEnv = (
     return undefined
   }
   const makeSqlClient = options.makeSqlClient ?? defaultMakeKhalaSyncSqlClient
+  const log = options.log ?? defaultLog
   return makePostgresKhalaCodeProductStateMirror({
     acquireSql: () => makeSqlClient(connectionString),
+    onProjectionSkip: (table, reasonSafe) => {
+      log('khala_sync_khala_code_state_projection_skipped', {
+        messageSafe: reasonSafe,
+        op: `project:${table}`,
+        refs: [table],
+      })
+    },
   })
 }
 

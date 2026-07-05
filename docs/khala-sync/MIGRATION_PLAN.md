@@ -829,6 +829,37 @@ template rows and Khala Code download events, are still covered by the
 schema/backfill verifier and move when their owning route/factory starts
 using the wrapped D1 handle.
 
+**KS-8.13 entity-contract status (2026-07-04, second pass):** scope
+post-images are now TYPED PUBLIC-SAFE CONTRACT ENTITIES, not raw D1 rows.
+`@openagentsinc/khala-sync` (`src/khala-code.ts`) defines the ten
+thread/team/workspace entity contracts (team, membership, project,
+invite, team chat message, thread message, thread file, file↔message
+ref, prefilled workspace, share projection) with golden wire fixtures
+(`fixtures/KhalaCode*.json`) registered in the conformance suite;
+`packages/khala-sync-server/src/khala-code-product-state-projection.ts`
+owns the allowlist row→entity mappings, scope routing, and a
+forbidden-material scan over structural fields (invite `token_hash` /
+invitee emails, R2 `object_key`s, `metadata_json`, team `credits`, and
+share `projection_json` payloads never ride a post-image; bounded chat
+bodies/filenames are product content for the authorized scope).
+Projection failures are fail-soft
+(`khala_sync_khala_code_state_projection_skipped`): the Cloud SQL twin
+still converges and D1 authority is untouched. Money-bearing receipt
+tables (trace-plugin revenue-share precedents, outside-user-run
+receipts) and cloud/feedback/workroom rows remain Postgres-mirror-only
+with NO scope fan-out; their public surfaces stay on the continuously
+servable Worker read paths, and any future scope-native consumption is a
+follow-up contract lane, not a raw-row projection. Scope-read auth for
+the produced scopes is the existing KS-7.1 resolver seam: `scope.team.*`
+gates on LIVE D1 team membership and `scope.thread.*` on the Worker's
+thread-capability callback (`khala-sync-scope-auth.ts`), both
+matrix-tested; `khala_sync_scope_owners` remains fleet/owner-scope
+machinery and is deliberately NOT used for team scopes while D1
+membership is authoritative. Deletion tombstones for the few hard-delete
+paths (e.g. `share_projection_recipients`) are a named follow-up; the
+interactive surfaces soft-delete via `deleted_at`, which projects as a
+normal upsert.
+
 - **What:** the product-surface state that Khala Sync exists to serve:
   threads/messages/files, teams + memberships + chat + invites, prefilled
   workspaces, workroom templates, cloud sandbox/fine-tuning sessions,

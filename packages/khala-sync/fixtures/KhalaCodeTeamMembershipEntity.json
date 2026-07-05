@@ -1,0 +1,12 @@
+{
+  "membershipId": "membership_7d3b",
+  "teamId": "team_9f2a1c",
+  "userId": "user_01hzx4",
+  "role": "member",
+  "status": "active",
+  "invitedByUserId": "user_owner1",
+  "joinedAt": "2026-07-04T18:01:00.000Z",
+  "createdAt": "2026-07-04T18:00:30.000Z",
+  "updatedAt": "2026-07-04T18:01:00.000Z",
+  "removedAt": null
+}

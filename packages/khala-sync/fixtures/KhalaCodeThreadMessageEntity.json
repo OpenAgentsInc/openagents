@@ -1,0 +1,11 @@
+{
+  "messageId": "tmsg_01hzz1",
+  "threadId": "thread_2e9c",
+  "orgId": "org_openagents",
+  "authorId": "user_01hzx4",
+  "bodyJson": "{\"role\":\"assistant\",\"content\":\"Here is the migration plan.\"}",
+  "version": 1,
+  "createdAt": "2026-07-04T18:05:00.000Z",
+  "updatedAt": "2026-07-04T18:05:00.000Z",
+  "deletedAt": null
+}
