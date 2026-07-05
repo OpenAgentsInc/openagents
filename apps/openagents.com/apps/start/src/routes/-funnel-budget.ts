@@ -43,6 +43,13 @@ const routeBudgets = [
   { path: '/promises', marker: 'Product promises' },
   { path: '/pylons', marker: 'Run a Pylon node' },
   { path: '/run', marker: 'Tassadar lives in the Verse' },
+  // Live-fetch route (same posture as `/pylons`): the marker is the honest
+  // pre-fetch idle state, since the fixture id below has no real backing
+  // share in an isolated preview without the `workers/api` Worker attached.
+  {
+    path: '/share/123e4567-e89b-42d3-a456-426614174000',
+    marker: 'Loading share',
+  },
   { path: '/stats', marker: 'Network Stats' },
   { path: '/terms', marker: 'Terms of Service' },
   { path: '/privacy', marker: 'Privacy Policy' },

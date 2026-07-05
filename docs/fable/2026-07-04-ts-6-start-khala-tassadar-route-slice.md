@@ -902,6 +902,137 @@ workroom timeline/file-panel component set ported to React first. `pylon.ts`
 is now migrated for every layer except the literal WebGL scene, which needs
 an explicit bundle-budget decision (see above) before it can follow.
 
+## Landed Slice 23: Share (Shared Workroom Timeline Viewer)
+
+The Start staging app now owns `/share/$shareId` — the shared
+workroom-timeline viewer, ported from
+`apps/web/src/page/loggedOut/page/share.ts`. This was the last fully-
+unmigrated standalone public/`loggedOut` page in the TS-6 sweep.
+
+- **The "needs the workroom timeline/file-panel component set ported to
+  React first" premise from every prior slice was real, but re-checking it
+  (not just re-quoting it) found the actual surface tractable rather than a
+  multi-thousand-line project.** `share.ts` itself only reimplements one of
+  the two message renderers inline (`shareUserTimelineMessage`, the
+  user-message layout) and calls the shared `@openagentsinc/ui` Foldkit-`Html`
+  `workroomTimelineMessage` / `workroomTimelinePart` / `workroomFilePanel`
+  functions (`packages/ui/src/workroom.ts`) for everything else. Reading those
+  functions end to end (not assuming their line count implied irreducible
+  complexity) found they compose down to four timeline-part kinds
+  (text/tool/diff/file), a metadata key-value list, and a review-file list —
+  all straightforward Tailwind ports once isolated from the retired
+  `oa-ui-workroom-*` CSS-in-JS classes those functions style with. No
+  interactive client JS drives the tool-call "collapsible" chrome within that
+  render tree either (it never toggles in the ported source), so this port
+  renders tool detail as always-visible rather than reproducing an inert
+  expand/collapse affordance — a decorative simplification, not a content
+  change, same posture as the digit-roll-animation skip on `/pylons`.
+- New `-share-timeline.tsx` is the first React port of that shared component
+  set: `ShareTimelinePart` (text/tool/diff/file), `ShareTimelineMessage`
+  (dispatches to the user-message layout or the generic assistant/system
+  layout), and `shareMessagePreview` for the message-navigation sidebar.
+  `-share-fetch.ts` holds the live-fetch logic and a direct port of
+  `apps/web/src/display-copy.ts`'s `userFacingCopy` (rewrites the internal
+  "Adjutant" codename to "Autopilot" before anything user-facing renders).
+  `-share-page.tsx` composes the full page: header (logo, audience/title,
+  status pill, review-item count, copy-link button, "Open source run/thread"
+  link), the session title block (audience/source/status badges, title,
+  subtitle, event/tool/token metrics), the message timeline with its sticky
+  message-navigation sidebar (only rendered past one user message, matching
+  the legacy threshold), the review side panel (metadata rows + file/artifact/
+  approval/receipt list + a "Share" dock action), a `<details>`-based mobile
+  review panel, and the 401/403/410/404 failed-state branches
+  (`ShareFailedView`, exported separately for direct testing) plus the
+  pre-fetch loading state.
+- **Type reuse, not reinvention.** This route imports the canonical
+  `ShareProjectionV1` / `WorkroomTimelineMessage` / `WorkroomTimelinePart` /
+  `WorkroomFileItem` types directly from `@openagentsinc/sync-schema` (added
+  as a new Start dependency) via `import type` — zero runtime bundle cost,
+  and the wire shape stays the single source of truth shared with
+  `workers/api` and the legacy Foldkit page, instead of a second hand-rolled
+  copy of the same types.
+- **Live-fetch exception, same reasoning as `/pylons`.** A share link's whole
+  purpose is showing one specific shared conversation, so freezing at the
+  pre-fetch idle placeholder (the posture used for `/mirrorcode`, `/promises`,
+  `/stats`, `/training/runs`) would not be a faithful port of what this page
+  is for. This route fetches the real, existing
+  `GET /api/share/{shareId}/v1/data` endpoint once on mount — same request
+  shape as the legacy page (`cache: 'no-store'`, `credentials: 'include'`, so
+  team/user-audience shares still resolve for a signed-in visitor), no new
+  endpoint, no mutation. Fail-soft is preserved exactly: any fetch/parse
+  error (including a malformed response) falls through to the same honest
+  "Share not found" fallback the legacy `failedBody` renders for an
+  unrecognized status, never fabricated transcript content.
+- Raw-hex Foldkit styling was swapped for `khala-*` design tokens throughout,
+  using the same mapping already established in the Terms/Privacy slice
+  (`#ffb400` -> `khala-warning`, `#000`/`#010102` -> `khala-void`/
+  `khala-surface`, `#f1efe8` -> `khala-text`) plus the tone-dot mapping already
+  used by `/stats`' warn-tone rows extended to tool status
+  (`#00c853` -> `khala-success`, `#d32f2f` -> `khala-danger`, the
+  `#2979ff`-ish info blue -> `khala-energy`). `Copy` / `ExternalLink` /
+  `Terminal` icons come from `lucide-react` (already a Start dependency),
+  matching the icon names the legacy `iconView('Copy' | 'ExternalLink' |
+  'Terminal', ...)` calls used.
+- `share/$shareId.tsx` has no sibling `share.tsx`, so this is a single leaf
+  route with no nested-route-layout risk (the footgun fixed across five
+  routes in Slice 15).
+- Added `/share/123e4567-e89b-42d3-a456-426614174000` (the canonical example
+  share UUID already used as a fixture in `apps/web/src/main.test.ts`) to the
+  Start budget list, with the honest pre-fetch "Loading share" marker (same
+  posture as the deprecated training-runs entries' "temporarily unavailable"
+  marker) since an isolated preview has no real backing share to resolve.
+  Total client JS moved to 736.6 KiB (still well under the 760 KiB budget),
+  with the new route's own chunk at 20 KiB (under the 120 KiB per-route cap).
+- New test file `-share.test.tsx` (9 tests) covers: the honest pre-fetch
+  loading state; the full loaded view (header, title block, metrics, copy
+  link, "Open source run" link); every timeline-part kind rendering correctly
+  (text, tool with its shell-output block, diff with `+N -M` counts, file
+  write with its excerpt) plus the Adjutant -> Autopilot copy rewrite; the
+  side panel and mobile review panel appearing when review items exist; the
+  honest "No messages" empty state for a share with no transcript messages;
+  and all four failed-state branches (401 sign-in gate with the `returnTo`
+  redirect, 403 forbidden, 410 expired vs. revoked, and the generic 404-style
+  not-found fallback).
+- Verified with a local `vite preview` + `curl` + headless-browser
+  (Playwright/Chromium) pass: the route renders `data-route="share"` with its
+  own title (`Shared conversation - OpenAgents`); SSR renders the honest
+  "Loading share" state (no browser fetch runs during static rendering); the
+  client-hydrated pass shows zero `pageerror`s and degrades to the honest
+  "Share not found" state on the expected same-origin 500 (no `workers/api`
+  Worker attached in this isolated preview, same caveat as `/pylons`); and
+  `/pylons`, `/stats`, `/code`, `/mirrorcode`, `/promises`, `/training/runs`,
+  and `/artanis` are all confirmed unaffected by the new sibling route files.
+
+**This closes out the standalone `loggedOut` public-page backlog.** Every
+fully-unmigrated standalone public page named across this document
+(`share.ts`, `pylon.ts`, `stats.ts`, and the rest of the Slice-1-through-22
+list) now has a Start route. The two genuinely open follow-ups are: (1) an
+explicit owner decision on the `pylon.ts` WebGL diamond-scene bundle-budget
+exemption (see Slice 22), and (2) the large authenticated `loggedIn/`
+app-shell tree, which needs real Start session/auth before it can start.
+
+Verification:
+
+```sh
+bun run --cwd apps/openagents.com/apps/start test -- src/routes/-share.test.tsx
+bun run --cwd apps/openagents.com/apps/start test
+bun run --cwd apps/openagents.com/apps/start typecheck
+bun run --cwd apps/openagents.com/apps/start build
+bun run --cwd apps/openagents.com/apps/start budget
+bun run --cwd apps/openagents.com check:architecture
+bun run --cwd apps/openagents.com check:deploy
+bun run test:qa-pre-push-smoke
+```
+
+- `bun run --cwd apps/openagents.com/apps/start test` ✅ (35 files, 119 tests)
+- `bun run --cwd apps/openagents.com/apps/start typecheck` ✅
+- `bun run --cwd apps/openagents.com/apps/start build` ✅
+- `bun run --cwd apps/openagents.com/apps/start budget` ✅ 736.6 KiB (under
+  760 KiB budget), new route chunk 20 KiB (under 120 KiB per-route cap)
+- `bun run --cwd apps/openagents.com check:architecture` ✅ zero-debt clean
+- `bun run --cwd apps/openagents.com check:deploy` ✅ full sweep clean
+- `bun run test:qa-pre-push-smoke` ✅ (7 pass)
+
 ## Boundary
 
 This is not the final TS-6 closure. The live `openagents.com` Worker still

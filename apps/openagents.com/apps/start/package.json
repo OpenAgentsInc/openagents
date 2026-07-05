@@ -19,6 +19,7 @@
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/khala-sync-client": "workspace:*",
     "@openagentsinc/khala-sync-db-collection": "workspace:*",
+    "@openagentsinc/sync-schema": "workspace:*",
     "@openagentsinc/sync-worker": "workspace:*",
     "@radix-ui/react-slot": "^1.2.5",
     "@tanstack/db": "0.6.14",

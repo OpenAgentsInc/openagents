@@ -35,6 +35,7 @@ import { Route as AutopilotIndexRouteImport } from './routes/autopilot/index'
 import { Route as ArtanisIndexRouteImport } from './routes/artanis/index'
 import { Route as WorkspacesWorkspaceIdRouteImport } from './routes/workspaces/$workspaceId'
 import { Route as SitesDemoCheckoutRouteImport } from './routes/sites/demo-checkout'
+import { Route as ShareShareIdRouteImport } from './routes/share/$shareId'
 import { Route as PreviewLandingRouteImport } from './routes/preview/landing'
 import { Route as KhalaChatSyncRouteImport } from './routes/khala/chat-sync'
 import { Route as DocsSlugRouteImport } from './routes/docs/$slug'
@@ -181,6 +182,11 @@ const SitesDemoCheckoutRoute = SitesDemoCheckoutRouteImport.update({
   path: '/sites/demo-checkout',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ShareShareIdRoute = ShareShareIdRouteImport.update({
+  id: '/share/$shareId',
+  path: '/share/$shareId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PreviewLandingRoute = PreviewLandingRouteImport.update({
   id: '/preview/landing',
   path: '/preview/landing',
@@ -287,6 +293,7 @@ export interface FileRoutesByFullPath {
   '/docs/$slug': typeof DocsSlugRoute
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
+  '/share/$shareId': typeof ShareShareIdRoute
   '/sites/demo-checkout': typeof SitesDemoCheckoutRouteWithChildren
   '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
   '/artanis/': typeof ArtanisIndexRoute
@@ -330,6 +337,7 @@ export interface FileRoutesByTo {
   '/docs/$slug': typeof DocsSlugRoute
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
+  '/share/$shareId': typeof ShareShareIdRoute
   '/sites/demo-checkout': typeof SitesDemoCheckoutRouteWithChildren
   '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
   '/artanis': typeof ArtanisIndexRoute
@@ -374,6 +382,7 @@ export interface FileRoutesById {
   '/docs/$slug': typeof DocsSlugRoute
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
+  '/share/$shareId': typeof ShareShareIdRoute
   '/sites/demo-checkout': typeof SitesDemoCheckoutRouteWithChildren
   '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
   '/artanis/': typeof ArtanisIndexRoute
@@ -419,6 +428,7 @@ export interface FileRouteTypes {
     | '/docs/$slug'
     | '/khala/chat-sync'
     | '/preview/landing'
+    | '/share/$shareId'
     | '/sites/demo-checkout'
     | '/workspaces/$workspaceId'
     | '/artanis/'
@@ -462,6 +472,7 @@ export interface FileRouteTypes {
     | '/docs/$slug'
     | '/khala/chat-sync'
     | '/preview/landing'
+    | '/share/$shareId'
     | '/sites/demo-checkout'
     | '/workspaces/$workspaceId'
     | '/artanis'
@@ -505,6 +516,7 @@ export interface FileRouteTypes {
     | '/docs/$slug'
     | '/khala/chat-sync'
     | '/preview/landing'
+    | '/share/$shareId'
     | '/sites/demo-checkout'
     | '/workspaces/$workspaceId'
     | '/artanis/'
@@ -549,6 +561,7 @@ export interface RootRouteChildren {
   DocsSlugRoute: typeof DocsSlugRoute
   KhalaChatSyncRoute: typeof KhalaChatSyncRoute
   PreviewLandingRoute: typeof PreviewLandingRoute
+  ShareShareIdRoute: typeof ShareShareIdRoute
   SitesDemoCheckoutRoute: typeof SitesDemoCheckoutRouteWithChildren
   WorkspacesWorkspaceIdRoute: typeof WorkspacesWorkspaceIdRoute
   ArtanisIndexRoute: typeof ArtanisIndexRoute
@@ -749,6 +762,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SitesDemoCheckoutRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/share/$shareId': {
+      id: '/share/$shareId'
+      path: '/share/$shareId'
+      fullPath: '/share/$shareId'
+      preLoaderRoute: typeof ShareShareIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/preview/landing': {
       id: '/preview/landing'
       path: '/preview/landing'
@@ -895,6 +915,7 @@ const rootRouteChildren: RootRouteChildren = {
   DocsSlugRoute: DocsSlugRoute,
   KhalaChatSyncRoute: KhalaChatSyncRoute,
   PreviewLandingRoute: PreviewLandingRoute,
+  ShareShareIdRoute: ShareShareIdRoute,
   SitesDemoCheckoutRoute: SitesDemoCheckoutRouteWithChildren,
   WorkspacesWorkspaceIdRoute: WorkspacesWorkspaceIdRoute,
   ArtanisIndexRoute: ArtanisIndexRoute,
