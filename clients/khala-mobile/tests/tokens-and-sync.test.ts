@@ -9,13 +9,20 @@ import { khalaMobileTokens } from "../src/theme/tokens"
 const require = createRequire(import.meta.url)
 const tailwindConfig = require("../tailwind.config.cjs") as {
   presets: ReadonlyArray<unknown>
-  theme: { extend: typeof openAgentsNativeWindTokens }
+  theme: {
+    extend: {
+      borderRadius: { xl: string }
+      colors: { bg: string }
+    }
+  }
 }
 
 describe("Khala mobile tokens and TS-3 read models", () => {
   test("uses the shared NativeWind token export", () => {
     expect(khalaMobileTokens.colors.accent).toBe(openAgentsNativeWindTokens.colors.accent)
-    expect(tailwindConfig.theme.extend.colors.bg).toBe("#000")
+    expect(openAgentsNativeWindTokens.colors.bg).toBe("#000")
+    expect(khalaMobileTokens.colors.bg).toBe("#02060d")
+    expect(tailwindConfig.theme.extend.colors.bg).toBe(khalaMobileTokens.colors.bg)
     expect(tailwindConfig.theme.extend.borderRadius.xl).toBe("8px")
     expect(tailwindConfig.presets).toHaveLength(1)
   })

@@ -7,7 +7,10 @@ and self-hosted OTA through OpenAgents Updates. NativeWind 4 currently requires
 Tailwind 3 plus a CommonJS-readable Tailwind config at Metro build time, so this
 mobile package pins a local Tailwind 3 compiler and reads the TS-9 parity-tested
 `@openagentsinc/ui/nativewind-tokens.cjs` bridge. The React/Tailwind web
-surfaces keep Tailwind 4.
+surfaces keep Tailwind 4. Mobile deliberately overrides only the shared
+`bg` token from pure black to `#02060d`, matching the Arcade/StarCraft
+direction's tinted void while leaving the web brand surfaces' black canvas
+unchanged.
 
 Metro also carries a local resolver shim for this monorepo's TypeScript
 packages: shared packages use NodeNext `.js` import specifiers while source
@@ -26,6 +29,11 @@ The app root also follows an Ignite-inspired provider spine:
 public-safe `KhalaErrorBoundary`. New ordinary screens and plain actions should
 use `KhalaScreen`, `KhalaText`, and `KhalaButton`; keep `ArwesButton` and
 Skia-heavy controls for intentional product moments.
+
+The signed-in thread list is one of those intentional product moments: it uses
+the Arcade-harvested Skia `Frame`, breathing `BackgroundGradient`, Reanimated
+stagger, custom `ActivityIndicator`, and `TouchableFeedback` primitives so the
+first screen reads as Khala chrome instead of a raw debug `FlatList`.
 
 The native SwiftUI app at `clients/khala-ios/Khala` remains the interim
 shipping companion and native-reference source until this app proves parity on
