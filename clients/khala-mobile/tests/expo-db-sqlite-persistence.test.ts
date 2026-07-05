@@ -58,6 +58,8 @@ const expoSqliteFromBun = (): {
   }
 }
 
+const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
+
 describe("Khala mobile Expo SQLite persistence", () => {
   test("initializes the checkpoint and projection cache tables", async () => {
     const sqlite = expoSqliteFromBun()
@@ -176,5 +178,77 @@ describe("Khala mobile Expo SQLite Khala Sync store", () => {
       sqliteLoader: async () => sqlite.module
     })
     expect(await Effect.runPromise(reopened.cursor(scope))).toBe(SyncVersion.make(9))
+  })
+
+  test("serializes concurrent write transactions and prefers Expo exclusive transactions", async () => {
+    const db = new Database(":memory:")
+    let activeTransactions = 0
+    let maxActiveTransactions = 0
+    let exclusiveTransactions = 0
+    let legacyTransactions = 0
+    const sqlite: ExpoSqliteModule = {
+      openDatabaseAsync: async () => ({
+        execAsync: async statement => {
+          db.exec(statement)
+        },
+        getAllAsync: async <T>(statement: string, ...params: ReadonlyArray<unknown>) =>
+          db.query(statement).all(...(params as ReadonlyArray<SQLQueryBindings>)) as ReadonlyArray<T>,
+        getFirstAsync: async <T>(statement: string, ...params: ReadonlyArray<unknown>) =>
+          (db.query(statement).get(...(params as ReadonlyArray<SQLQueryBindings>)) as T | null) ?? null,
+        runAsync: async (statement, ...params) => {
+          db.query(statement).run(...(params as ReadonlyArray<SQLQueryBindings>))
+        },
+        withExclusiveTransactionAsync: async task => {
+          exclusiveTransactions += 1
+          activeTransactions += 1
+          maxActiveTransactions = Math.max(maxActiveTransactions, activeTransactions)
+          await sleep(5)
+          try {
+            return await task()
+          } finally {
+            activeTransactions -= 1
+          }
+        },
+        withTransactionAsync: async task => {
+          legacyTransactions += 1
+          return task()
+        }
+      })
+    }
+    const store = await openKhalaMobileSyncStore({
+      databaseName: "sync-store",
+      sqliteLoader: async () => sqlite
+    })
+    const firstScope = personalScope("owner.a")
+    const secondScope = personalScope("owner.b")
+    const firstEntry = new ChangelogEntry({
+      committedAt: "2026-07-04T20:00:00.000Z",
+      entityId: EntityId.make("thread.a"),
+      entityType: EntityType.make("chat_thread"),
+      op: "upsert",
+      postImageJson: "{\"threadId\":\"thread.a\"}",
+      scope: firstScope,
+      version: SyncVersion.make(1)
+    })
+    const secondEntry = new ChangelogEntry({
+      committedAt: "2026-07-04T20:00:01.000Z",
+      entityId: EntityId.make("thread.b"),
+      entityType: EntityType.make("chat_thread"),
+      op: "upsert",
+      postImageJson: "{\"threadId\":\"thread.b\"}",
+      scope: secondScope,
+      version: SyncVersion.make(1)
+    })
+
+    await Promise.all([
+      Effect.runPromise(store.applyConfirmed(firstScope, [firstEntry], SyncVersion.make(1))),
+      Effect.runPromise(store.applyConfirmed(secondScope, [secondEntry], SyncVersion.make(1)))
+    ])
+
+    expect(maxActiveTransactions).toBe(1)
+    expect(exclusiveTransactions).toBe(2)
+    expect(legacyTransactions).toBe(0)
+    expect(await Effect.runPromise(store.readEntities(firstScope))).toHaveLength(1)
+    expect(await Effect.runPromise(store.readEntities(secondScope))).toHaveLength(1)
   })
 })

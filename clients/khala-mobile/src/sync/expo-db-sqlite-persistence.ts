@@ -25,6 +25,7 @@ export type ExpoSqliteDatabase = Readonly<{
   getAllAsync: <T>(statement: string, ...params: ReadonlyArray<unknown>) => Promise<ReadonlyArray<T>>
   getFirstAsync: <T>(statement: string, ...params: ReadonlyArray<unknown>) => Promise<T | null>
   runAsync: (statement: string, ...params: ReadonlyArray<unknown>) => Promise<unknown>
+  withExclusiveTransactionAsync?: <A>(task: () => Promise<A>) => Promise<A>
   withTransactionAsync?: <A>(task: () => Promise<A>) => Promise<A>
   closeAsync?: () => Promise<void>
 }>
@@ -105,13 +106,31 @@ const tryStore = <A>(
 ): Effect.Effect<A, KhalaSyncClientStoreError> =>
   Effect.tryPromise({ try: run, catch: toStoreError })
 
+const transactionQueues = new WeakMap<ExpoSqliteDatabase, Promise<unknown>>()
+
+const enqueueDatabaseTask = async <A>(
+  db: ExpoSqliteDatabase,
+  run: () => Promise<A>,
+): Promise<A> => {
+  const previous = transactionQueues.get(db) ?? Promise.resolve()
+  const next = previous.catch(() => undefined).then(run)
+  transactionQueues.set(db, next.catch(() => undefined))
+  return next
+}
+
 const runInTransaction = async <A>(
   db: ExpoSqliteDatabase,
   run: () => Promise<A>,
 ): Promise<A> =>
-  db.withTransactionAsync === undefined
-    ? run()
-    : db.withTransactionAsync(run)
+  enqueueDatabaseTask(db, async () => {
+    if (db.withExclusiveTransactionAsync !== undefined) {
+      return db.withExclusiveTransactionAsync(run)
+    }
+    if (db.withTransactionAsync !== undefined) {
+      return db.withTransactionAsync(run)
+    }
+    return run()
+  })
 
 const one = async <T>(
   db: ExpoSqliteDatabase,
