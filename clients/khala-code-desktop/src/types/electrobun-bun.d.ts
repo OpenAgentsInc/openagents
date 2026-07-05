@@ -63,6 +63,10 @@ declare module "electrobun/bun" {
 
   export const ApplicationMenu: Readonly<{
     setApplicationMenu: (menu: unknown) => void
+    on: (
+      name: "application-menu-clicked",
+      handler: (event: { readonly data?: { readonly action?: string; readonly data?: unknown; readonly id?: number } }) => void,
+    ) => void
   }>
 
   export const Screen: Readonly<{
@@ -70,5 +74,23 @@ declare module "electrobun/bun" {
     getAllDisplays: () => readonly Display[]
     getCursorScreenPoint: () => Readonly<{ x: number; y: number }>
     getMouseButtons: () => bigint
+  }>
+
+  export type UpdaterLocalInfo = {
+    readonly baseUrl: string
+    readonly channel: string
+    readonly hash: string
+    readonly identifier: string
+    readonly name: string
+    readonly version: string
+  }
+
+  // Only the subset of Electrobun's real `Updater` namespace
+  // (`electrobun/bun`'s `src/bun/core/Updater.ts`) that #8440's in-app
+  // updater plumbing calls is declared here.
+  export const Updater: Readonly<{
+    applyUpdate: () => Promise<void>
+    downloadUpdate: () => Promise<void>
+    getLocalInfo: () => Promise<UpdaterLocalInfo>
   }>
 }

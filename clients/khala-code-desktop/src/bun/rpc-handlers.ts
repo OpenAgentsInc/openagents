@@ -132,7 +132,13 @@ import {
   type KhalaCodeDesktopRPCSchema,
   type KhalaCodeDesktopRuntimeStatus,
   type KhalaCodeDesktopThreadTokenSummaryRequest,
+  type KhalaCodeDesktopUpdaterActionResult,
+  type KhalaCodeDesktopUpdaterStatus,
 } from "../shared/rpc.js"
+import {
+  khalaCodeDesktopUpdaterActionResult,
+  type KhalaCodeDesktopUpdaterController,
+} from "./khala-code-updater-controller.js"
 import {
   emptyKhalaCodeQaMetricsSnapshot,
   khalaCodeQaMetricUnitFor,
@@ -333,8 +339,22 @@ export type KhalaCodeDesktopRpcHandlersInput = {
   readonly onDeviceDeciderStatus: () => MaybePromise<OnDeviceDeciderSelection>
   readonly recordQaMetricSample?: (sample: KhalaCodeDesktopQaMetricSample) => MaybePromise<void>
   readonly qaMetrics?: () => MaybePromise<KhalaCodeDesktopQaMetricsSnapshot>
+  /** #8440 in-app updater plumbing. Absent only in fixture/test wiring that never boots a real controller. */
+  readonly updaterController?: KhalaCodeDesktopUpdaterController
   readonly workingDirectory: string
 }
+
+const disabledUpdaterStatus = (): KhalaCodeDesktopUpdaterStatus => ({
+  app: "Khala Code Desktop",
+  capability: "in_app_updater",
+  channel: "dev",
+  currentVersion: "",
+  enabled: false,
+  observedAt: new Date().toISOString(),
+  ok: true,
+  releaseNotesUrl: "",
+  state: { status: "idle" },
+})
 
 const appInfo = (): KhalaCodeDesktopAppInfo => ({
   ok: true,
@@ -3684,6 +3704,38 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       return khalaCodeDesktopToolCatalog({
         runtimeMode,
       })
+    },
+    async updaterStatus(): Promise<KhalaCodeDesktopUpdaterStatus> {
+      return input.updaterController?.status() ?? disabledUpdaterStatus()
+    },
+    async updaterCheck(): Promise<KhalaCodeDesktopUpdaterActionResult> {
+      if (input.updaterController === undefined) {
+        return { ok: false, error: "Updater is not configured.", status: disabledUpdaterStatus() }
+      }
+      await input.updaterController.check()
+      return khalaCodeDesktopUpdaterActionResult(input.updaterController.status())
+    },
+    async updaterDownload(): Promise<KhalaCodeDesktopUpdaterActionResult> {
+      if (input.updaterController === undefined) {
+        return { ok: false, error: "Updater is not configured.", status: disabledUpdaterStatus() }
+      }
+      await input.updaterController.download()
+      return khalaCodeDesktopUpdaterActionResult(input.updaterController.status())
+    },
+    async updaterInstall(): Promise<KhalaCodeDesktopUpdaterActionResult> {
+      if (input.updaterController === undefined) {
+        return { ok: false, error: "Updater is not configured.", status: disabledUpdaterStatus() }
+      }
+      try {
+        await input.updaterController.install()
+        return khalaCodeDesktopUpdaterActionResult(input.updaterController.status())
+      } catch (error) {
+        return {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+          status: input.updaterController.status(),
+        }
+      }
     },
   }
 }

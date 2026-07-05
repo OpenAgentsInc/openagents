@@ -1676,7 +1676,90 @@ export const khalaCodeUxContractRegistry: BehaviorContractRegistryDocument = {
       verification:
         "bun test tests/ux-contracts.test.ts tests/khala-sync-service.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main. Live end-to-end verification against the deployed sync routes is tracked on epic #8282.",
     },
+    {
+      authorityBoundary:
+        "Binds the desktop in-app updater controller and Updates settings row only (#8440). It does not authorize a background/auto-update mode, does not bind the native app-menu 'Check for Updates…' item to anything beyond a check, and makes no claim about release-pipeline signing/upload correctness (owned by apps/oa-updates release-signing-runbook.md and the macOS release scripts).",
+      blockerRefs: [],
+      contractId: "khala_code.desktop.updater_never_silently_installs.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-code-desktop/src/bun/khala-code-updater-controller.ts",
+        "clients/khala-code-desktop/src/ui/khala-code-updater-settings-section.ts",
+        "docs/khala-code/khala-code-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Drives the real (backend-injected) updater controller: install() throws 'not ready to install' from idle/available and only ever succeeds after an explicit download() has reached the ready state; periodic startPeriodicChecks() only ever calls the backend's checkForUpdates(), never downloadUpdate() or install().",
+          id: "updater_install_requires_ready_state.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-code-desktop/tests/khala-code-updater-controller.test.ts",
+        },
+        {
+          description:
+            "Mounts the real Updates settings section in a DOM: the ready state renders a 'Restart to Install' button that never fires install() until clicked, and the downloading state disables the action button so a download and an install can never overlap.",
+          id: "updater_settings_no_auto_install.dom",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "clients/khala-code-desktop/tests/khala-code-updater-settings-section.test.ts",
+        },
+      ],
+      productArea: "in-app updater",
+      source: {
+        channel: "issue",
+        statedBy: "owner",
+        statedOn: "2026-07-05",
+      },
+      state: "enforced",
+      statement:
+        "The UI never silently installs an update. Downloading and installing an update are both explicit, user-triggered actions; periodic/background update checks only ever check for updates.",
+      surface: "khala-code-desktop",
+      verification:
+        "bun test tests/khala-code-updater-controller.test.ts tests/khala-code-updater-settings-section.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.",
+    },
+    {
+      authorityBoundary:
+        "Binds legibility/retryability of in-app updater error states only (#8440). It does not claim every possible network/OS failure is retryable, only that the controller/UI classify and surface failures honestly rather than silently succeeding or hanging.",
+      blockerRefs: [],
+      contractId: "khala_code.desktop.updater_error_states_legible_and_retryable.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-code-desktop/src/bun/khala-code-updater-controller.ts",
+        "clients/khala-code-desktop/src/ui/khala-code-updater-settings-section.ts",
+      ],
+      oracles: [
+        {
+          description:
+            "Drives the real updater controller with a backend that returns and throws check errors: both surface as a `status: 'error'` state carrying a human-readable message and `retryable: true`, and the RPC action-result helper reports `ok: false` with that same message.",
+          id: "updater_error_state_retryable.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-code-desktop/tests/khala-code-updater-controller.test.ts",
+        },
+        {
+          description:
+            "Mounts the real Updates settings section in a DOM with an error status: the error message renders as a plain-language metric value and the action button reads 'Retry' and stays enabled, never a silent or stuck state.",
+          id: "updater_settings_error_legible.dom",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "clients/khala-code-desktop/tests/khala-code-updater-settings-section.test.ts",
+        },
+      ],
+      productArea: "in-app updater",
+      source: {
+        channel: "issue",
+        statedBy: "owner",
+        statedOn: "2026-07-05",
+      },
+      state: "enforced",
+      statement:
+        "In-app updater failure states are legible and retryable: a failed check or download renders a human-readable message in the Updates settings row and offers a Retry action, and never looks like a successful or silently-hung state.",
+      surface: "khala-code-desktop",
+      verification:
+        "bun test tests/khala-code-updater-controller.test.ts tests/khala-code-updater-settings-section.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-05.1",
+  version: "2026-07-05.2",
 }

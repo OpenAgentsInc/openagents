@@ -1,9 +1,12 @@
+import { KHALA_CODE_UPDATER_MENU_ACTION_CHECK_FOR_UPDATES, KHALA_CODE_UPDATER_MENU_ACTION_RELEASE_NOTES } from "./khala-code-updater-menu-actions.js"
+
 type MenuItem =
   | { type: "divider" | "separator" }
   | {
       type?: "normal"
       label?: string
       role?: string
+      action?: string
       accelerator?: string
       submenu?: Array<MenuItem>
     }
@@ -46,6 +49,13 @@ export const khalaCodeDesktopApplicationMenu: Array<MenuItem> = [
       { role: "zoom" },
       { type: "divider" },
       { role: "bringAllToFront" },
+    ],
+  },
+  {
+    label: "Help",
+    submenu: [
+      { label: "Check for Updates…", action: KHALA_CODE_UPDATER_MENU_ACTION_CHECK_FOR_UPDATES },
+      { label: "Release Notes", action: KHALA_CODE_UPDATER_MENU_ACTION_RELEASE_NOTES },
     ],
   },
 ]

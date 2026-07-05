@@ -53,7 +53,7 @@ sweep if this doc, the registry, or the oracle tests drift apart.
 
 ## Registry
 
-Registry version: `2026-07-05.1` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-05.2` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_code.chat.sidebar_spinner_streaming_only.v1` — ENFORCED
 
@@ -512,3 +512,25 @@ Registry version: `2026-07-05.1` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `khala_sync_must_refetch_visible.dom` (bun-test, dom): Mounts the real Fleet panel in a DOM with the sync source in must_refetch and proves the screen stays populated (polling fallback data still renders) with a visible 'Resyncing' indicator instead of a stranded or empty state. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
 - **Verification:** bun test tests/ux-contracts.test.ts tests/khala-sync-service.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main. Live end-to-end verification against the deployed sync routes is tracked on epic #8282.
 - **Authority boundary:** Binds the Fleet screen's recovery behavior on a MustRefetch signal (KS-6.2, #8303): automatic re-bootstrap with a visible re-sync state. It does not bind bootstrap retry budgets or server compaction policy, which stay owned by the khala-sync client/server packages and docs/khala-sync/SPEC.md.
+
+### `khala_code.desktop.updater_never_silently_installs.v1` — ENFORCED
+
+- **Surface:** khala-code-desktop (in-app updater)
+- **Stated by:** owner via issue on 2026-07-05
+- **Statement:** The UI never silently installs an update. Downloading and installing an update are both explicit, user-triggered actions; periodic/background update checks only ever check for updates.
+- **Enforcement tier:** test-sweep
+- **Oracle** `updater_install_requires_ready_state.unit` (bun-test, unit): Drives the real (backend-injected) updater controller: install() throws 'not ready to install' from idle/available and only ever succeeds after an explicit download() has reached the ready state; periodic startPeriodicChecks() only ever calls the backend's checkForUpdates(), never downloadUpdate() or install(). — `clients/khala-code-desktop/tests/khala-code-updater-controller.test.ts`
+- **Oracle** `updater_settings_no_auto_install.dom` (bun-test, dom): Mounts the real Updates settings section in a DOM: the ready state renders a 'Restart to Install' button that never fires install() until clicked, and the downloading state disables the action button so a download and an install can never overlap. — `clients/khala-code-desktop/tests/khala-code-updater-settings-section.test.ts`
+- **Verification:** bun test tests/khala-code-updater-controller.test.ts tests/khala-code-updater-settings-section.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
+- **Authority boundary:** Binds the desktop in-app updater controller and Updates settings row only (#8440). It does not authorize a background/auto-update mode, does not bind the native app-menu 'Check for Updates…' item to anything beyond a check, and makes no claim about release-pipeline signing/upload correctness (owned by apps/oa-updates release-signing-runbook.md and the macOS release scripts).
+
+### `khala_code.desktop.updater_error_states_legible_and_retryable.v1` — ENFORCED
+
+- **Surface:** khala-code-desktop (in-app updater)
+- **Stated by:** owner via issue on 2026-07-05
+- **Statement:** In-app updater failure states are legible and retryable: a failed check or download renders a human-readable message in the Updates settings row and offers a Retry action, and never looks like a successful or silently-hung state.
+- **Enforcement tier:** test-sweep
+- **Oracle** `updater_error_state_retryable.unit` (bun-test, unit): Drives the real updater controller with a backend that returns and throws check errors: both surface as a `status: 'error'` state carrying a human-readable message and `retryable: true`, and the RPC action-result helper reports `ok: false` with that same message. — `clients/khala-code-desktop/tests/khala-code-updater-controller.test.ts`
+- **Oracle** `updater_settings_error_legible.dom` (bun-test, dom): Mounts the real Updates settings section in a DOM with an error status: the error message renders as a plain-language metric value and the action button reads 'Retry' and stays enabled, never a silent or stuck state. — `clients/khala-code-desktop/tests/khala-code-updater-settings-section.test.ts`
+- **Verification:** bun test tests/khala-code-updater-controller.test.ts tests/khala-code-updater-settings-section.test.ts inside clients/khala-code-desktop; runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
+- **Authority boundary:** Binds legibility/retryability of in-app updater error states only (#8440). It does not claim every possible network/OS failure is retryable, only that the controller/UI classify and surface failures honestly rather than silently succeeding or hanging.

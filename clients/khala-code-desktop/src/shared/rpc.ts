@@ -141,6 +141,9 @@ export type KhalaCodeDesktopQaMetricSample = KhalaCodeQaMetricSample
 export type KhalaCodeDesktopQaMetricsSnapshot = KhalaCodeQaMetricsSnapshot
 export type KhalaCodeDesktopQaMetricSampleResult =
   typeof RpcQaMetricSampleResult.Type
+export type KhalaCodeDesktopUpdaterState = typeof RpcUpdaterState.Type
+export type KhalaCodeDesktopUpdaterStatus = typeof RpcUpdaterStatus.Type
+export type KhalaCodeDesktopUpdaterActionResult = typeof RpcUpdaterActionResult.Type
 export type KhalaCodeDesktopThreadTokenSummaryRequest = typeof RpcThreadTokenSummaryRequest.Type
 export type KhalaCodeDesktopThreadTokenSummary = typeof RpcThreadTokenSummary.Type
 export type KhalaCodeDesktopCodexHarnessStatus = typeof RpcCodexHarnessStatus.Type
@@ -2473,6 +2476,39 @@ const RpcOnDeviceDeciderSelection = S.Struct({
   })),
 })
 
+const RpcUpdaterState = S.Union([
+  S.Struct({ status: S.Literal("idle") }),
+  S.Struct({ status: S.Literal("checking") }),
+  S.Struct({ status: S.Literal("up_to_date"), checkedAt: S.String, version: S.String }),
+  S.Struct({ status: S.Literal("available"), checkedAt: S.String, version: S.String }),
+  S.Struct({
+    status: S.Literal("downloading"),
+    progressPercent: S.NullOr(S.Number),
+    version: S.String,
+  }),
+  S.Struct({ status: S.Literal("ready"), version: S.String }),
+  S.Struct({ status: S.Literal("installing"), version: S.String }),
+  S.Struct({ status: S.Literal("error"), message: S.String, retryable: S.Boolean }),
+])
+
+const RpcUpdaterStatus = S.Struct({
+  app: S.Literal("Khala Code Desktop"),
+  capability: S.Literal("in_app_updater"),
+  channel: S.String,
+  currentVersion: S.String,
+  enabled: S.Boolean,
+  observedAt: S.String,
+  ok: S.Literal(true),
+  releaseNotesUrl: S.String,
+  state: RpcUpdaterState,
+})
+
+const RpcUpdaterActionResult = S.Struct({
+  error: S.optional(S.String),
+  ok: S.Boolean,
+  status: RpcUpdaterStatus,
+})
+
 const noParams = () => [] as const
 const param = <A>(schema: S.Schema<A>) => ({ optional: false, schema }) as const
 const optionalParam = <A>(schema: S.Schema<A>) =>
@@ -2593,6 +2629,10 @@ export const KhalaCodeDesktopRpcMethodSchemas = {
   tokenAccountingStatus: { parameters: noParams(), result: RpcRuntimeStatus },
   threadTokenSummary: { parameters: [optionalParam(RpcThreadTokenSummaryRequest)], result: RpcThreadTokenSummary },
   toolCatalog: { parameters: noParams(), result: RpcToolCatalogResponse },
+  updaterCheck: { parameters: noParams(), result: RpcUpdaterActionResult },
+  updaterDownload: { parameters: noParams(), result: RpcUpdaterActionResult },
+  updaterInstall: { parameters: noParams(), result: RpcUpdaterActionResult },
+  updaterStatus: { parameters: noParams(), result: RpcUpdaterStatus },
 } as const satisfies Record<
   keyof KhalaCodeDesktopRPCSchema["requests"],
   KhalaCodeDesktopRpcMethodSchemaSpec
@@ -2774,6 +2814,10 @@ export type KhalaCodeDesktopRPCSchema = {
     tokenAccountingStatus(): Promise<KhalaCodeDesktopRuntimeStatus>
     threadTokenSummary(request?: KhalaCodeDesktopThreadTokenSummaryRequest): Promise<KhalaCodeDesktopThreadTokenSummary>
     toolCatalog(): Promise<KhalaCodeDesktopToolCatalogResponse>
+    updaterCheck(): Promise<KhalaCodeDesktopUpdaterActionResult>
+    updaterDownload(): Promise<KhalaCodeDesktopUpdaterActionResult>
+    updaterInstall(): Promise<KhalaCodeDesktopUpdaterActionResult>
+    updaterStatus(): Promise<KhalaCodeDesktopUpdaterStatus>
   }
   messages: {
     chatTurnEvent(event: KhalaCodeDesktopChatTurnEvent): void

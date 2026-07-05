@@ -65,6 +65,11 @@ export const mutatingPreviewRpcMethods = new Set<KhalaCodeDesktopRpcMethodName>(
   "setCodexAccountPaused",
   "slashCommandDispatch",
   "submitChatMessage",
+  // #8440 in-app updater plumbing: check/download/install each cause a real
+  // network fetch, disk write, or app quit-and-relaunch side effect.
+  "updaterCheck",
+  "updaterDownload",
+  "updaterInstall",
 ])
 
 export const readOnlySafePreviewRpcMethods = new Set<KhalaCodeDesktopRpcMethodName>([
@@ -112,4 +117,6 @@ export const readOnlySafePreviewRpcMethods = new Set<KhalaCodeDesktopRpcMethodNa
   "threadTokenSummary",
   "tokenAccountingStatus",
   "toolCatalog",
+  // #8440 in-app updater plumbing: read-only status snapshot, no side effects.
+  "updaterStatus",
 ])

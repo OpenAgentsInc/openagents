@@ -86,6 +86,7 @@ import { mountKhalaCodePlansPanel } from "./plans-panel"
 import { mountKhalaCodeRunEvidencePanel } from "./run-evidence-panel"
 import { mountCodexSettingsPanel } from "./codex-settings-panel"
 import { mountClaudeSettingsSection } from "./claude-settings-panel"
+import { mountKhalaCodeUpdaterSettingsSection } from "./khala-code-updater-settings-section"
 import {
   mountCodexThreadSidebar,
   type CodexThreadSelectionSource,
@@ -683,6 +684,22 @@ const previewRpc = (): DesktopRpc => ({
     toolCatalog: () =>
       postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["toolCatalog"]>>>(
         "toolCatalog",
+      ),
+    updaterCheck: () =>
+      postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["updaterCheck"]>>>(
+        "updaterCheck",
+      ),
+    updaterDownload: () =>
+      postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["updaterDownload"]>>>(
+        "updaterDownload",
+      ),
+    updaterInstall: () =>
+      postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["updaterInstall"]>>>(
+        "updaterInstall",
+      ),
+    updaterStatus: () =>
+      postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["updaterStatus"]>>>(
+        "updaterStatus",
       ),
   },
   send: {
@@ -5162,6 +5179,10 @@ const controls = {
     qaMetricSamples.splice(0)
   },
   toolCatalog: () => rpc.request.toolCatalog(),
+  updaterCheck: () => rpc.request.updaterCheck(),
+  updaterDownload: () => rpc.request.updaterDownload(),
+  updaterInstall: () => rpc.request.updaterInstall(),
+  updaterStatus: () => rpc.request.updaterStatus(),
 }
 
 Object.assign(globalThis, {
@@ -5404,6 +5425,7 @@ const gymPanel =
   gymPanelEl === null ? null : mountGymPane(gymPanelEl, initialGymState)
 
 let claudeSettingsSection: ReturnType<typeof mountClaudeSettingsSection> | null = null
+let updaterSection: ReturnType<typeof mountKhalaCodeUpdaterSettingsSection> | null = null
 let plansSection: ReturnType<typeof mountKhalaCodePlansPanel> | null = null
 let runEvidenceSection: ReturnType<typeof mountKhalaCodeRunEvidencePanel> | null = null
 let commandRegistry: KhalaCodeCommandRegistry | null = null
@@ -5426,6 +5448,7 @@ const settingsPanel =
           void claudeSettingsSection?.refresh()
           void plansSection?.refresh()
           void runEvidenceSection?.refresh()
+          void updaterSection?.refresh()
         },
         renderAdditionalSections: () =>
           commandKeybindingsSection === null ? [] : [commandKeybindingsSection.render()],
@@ -5459,6 +5482,15 @@ runEvidenceSection = settingsPanelEl === null
   ? null
   : mountKhalaCodeRunEvidencePanel(settingsPanelEl, {
       report: request => controls.khalaCodeOutsideUserRunReport(request),
+    })
+updaterSection = settingsPanelEl === null
+  ? null
+  : mountKhalaCodeUpdaterSettingsSection(settingsPanelEl, {
+      check: () => controls.updaterCheck(),
+      download: () => controls.updaterDownload(),
+      install: () => controls.updaterInstall(),
+      openReleaseNotes: url => controls.openExternalUrl(url),
+      status: () => controls.updaterStatus(),
     })
 
 const threadListCacheKey = (

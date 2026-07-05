@@ -57,6 +57,16 @@ import { startKhalaCodeDesktopFleetAccountStateReporter } from "./fleet-account-
 import { createKhalaCodeDesktopFleetRunSupervisorRpcAdapter } from "./fleet-run-supervisor-rpc-adapter.js"
 import { createKhalaCodeDesktopRpcRequestHandlers } from "./rpc-handlers.js"
 import { mutatingPreviewRpcMethods } from "./preview-rpc-policy.js"
+import { openExternalUrl } from "./khala-fleet-tools.js"
+import { createKhalaCodeDesktopUpdaterController } from "./khala-code-updater-controller.js"
+import { createKhalaCodeDesktopElectrobunUpdaterBackend } from "./khala-code-updater-electrobun-backend.js"
+import {
+  handleKhalaCodeApplicationMenuAction,
+} from "./khala-code-updater-menu-actions.js"
+import {
+  KHALA_CODE_DESKTOP_UPDATER_DEV_CHANNEL,
+  khalaCodeDesktopUpdaterDisabledLocalInfo,
+} from "../shared/updater.js"
 
 const khalaCodeConfig = khalaCodeConfigFromRuntimeEnv()
 const khalaCodeEnv = khalaCodeConfig.env
@@ -622,7 +632,40 @@ if (argv.includes("--json")) {
   process.exit(exitCode)
 }
 
-const { ApplicationMenu, BrowserView, BrowserWindow, Screen } = await import("electrobun/bun")
+const { ApplicationMenu, BrowserView, BrowserWindow, Screen, Updater } = await import("electrobun/bun")
+
+// #8440 in-app updater plumbing. Electrobun's Updater.getLocalInfo() reads
+// the packaged `Resources/version.json`; it resolves to empty strings (never
+// rejects) when unpackaged/dev, which the disabled local-info fallback below
+// treats as the honest "updater disabled" state rather than a real channel.
+const rawKhalaCodeUpdaterLocalInfo = await Updater.getLocalInfo()
+const khalaCodeUpdaterLocalInfo = rawKhalaCodeUpdaterLocalInfo.baseUrl.length === 0
+  ? khalaCodeDesktopUpdaterDisabledLocalInfo(rawKhalaCodeUpdaterLocalInfo.version || "0.0.0-dev")
+  : rawKhalaCodeUpdaterLocalInfo
+const khalaCodeUpdaterEnabled =
+  khalaCodeUpdaterLocalInfo.channel !== KHALA_CODE_DESKTOP_UPDATER_DEV_CHANNEL
+const khalaCodeUpdaterController = createKhalaCodeDesktopUpdaterController({
+  backend: createKhalaCodeDesktopElectrobunUpdaterBackend({
+    currentVersion: khalaCodeUpdaterLocalInfo.version,
+    updater: Updater,
+  }),
+  channel: khalaCodeUpdaterLocalInfo.channel,
+  currentVersion: khalaCodeUpdaterLocalInfo.version,
+  enabled: khalaCodeUpdaterEnabled,
+  log: (message, data) => {
+    process.stderr.write(`[khala-code-updater] ${message} ${JSON.stringify(data ?? {})}\n`)
+  },
+})
+const stopKhalaCodeUpdaterPeriodicChecks = khalaCodeUpdaterController.startPeriodicChecks(
+  Number(khalaCodeEnv.KHALA_CODE_DESKTOP_UPDATE_CHECK_INTERVAL_MS ?? String(4 * 60 * 60 * 1000)),
+)
+ApplicationMenu.on("application-menu-clicked", event => {
+  const action = event.data?.action
+  handleKhalaCodeApplicationMenuAction(action, {
+    checkForUpdates: () => khalaCodeUpdaterController.check(),
+    openReleaseNotes: () => openExternalUrl(khalaCodeUpdaterController.status().releaseNotesUrl),
+  })
+})
 
 type KhalaCodeDesktopWindowFrame = {
   readonly x: number
@@ -727,6 +770,7 @@ rpcRequestHandlers = createKhalaCodeDesktopRpcRequestHandlers({
   onDeviceDeciderStatus: () => onDeviceDecider.select(),
   qaMetrics: qaMetricsSnapshot,
   recordQaMetricSample,
+  updaterController: khalaCodeUpdaterController,
   workingDirectory: resolveToolWorkingDirectory(khalaCodeEnv),
 })
 
@@ -734,6 +778,7 @@ const disposeRuntime = (): void => {
   tokenUsageBackgroundSync.dispose()
   codexAppServerHost.dispose()
   fleetAccountStateReporter?.dispose()
+  stopKhalaCodeUpdaterPeriodicChecks()
   void khalaSyncService?.close()
 }
 

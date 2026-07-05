@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { createKhalaCodeDesktopRpcRequestHandlers } from "../src/bun/rpc-handlers"
+import { createKhalaCodeDesktopUpdaterController } from "../src/bun/khala-code-updater-controller"
 import type { ClaudeAppSdkChatRuntime } from "../src/bun/claude-app-sdk-chat-runtime"
 import type { CodexAppServerChatRuntime } from "../src/bun/codex-app-server-chat-runtime"
 import type {
@@ -4663,5 +4664,69 @@ describe("khala code plan RPC handlers", () => {
         },
       },
     })
+  })
+})
+
+describe("Khala Code desktop updater RPC handlers (#8440)", () => {
+  test("updaterStatus/updaterCheck/updaterDownload/updaterInstall report an honest disabled state without a configured controller", async () => {
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: process.cwd(),
+    })
+
+    const status = await handlers.updaterStatus()
+    expect(status).toMatchObject({ enabled: false, ok: true })
+
+    const check = await handlers.updaterCheck()
+    expect(check).toMatchObject({ ok: false, error: "Updater is not configured." })
+  })
+
+  test("delegates to the configured updater controller and never installs without an explicit updaterInstall call", async () => {
+    let installCalls = 0
+    const controller = createKhalaCodeDesktopUpdaterController({
+      backend: {
+        checkForUpdates: async () => ({ error: "", updateAvailable: true, version: "0.2.0" }),
+        downloadUpdate: async () => ({ ok: true }),
+        install: async () => {
+          installCalls += 1
+        },
+      },
+      channel: "stable",
+      currentVersion: "0.1.0",
+      enabled: true,
+    })
+
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      env: {},
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      updaterController: controller,
+      workingDirectory: process.cwd(),
+    })
+
+    const checkResult = await handlers.updaterCheck()
+    expect(checkResult).toMatchObject({ ok: true, status: { state: { status: "available", version: "0.2.0" } } })
+    expect(installCalls).toBe(0)
+
+    const downloadResult = await handlers.updaterDownload()
+    expect(downloadResult).toMatchObject({ ok: true, status: { state: { status: "ready", version: "0.2.0" } } })
+    expect(installCalls).toBe(0)
+
+    const installResult = await handlers.updaterInstall()
+    expect(installCalls).toBe(1)
+    expect(installResult).toMatchObject({ ok: true, status: { state: { status: "ready", version: "0.2.0" } } })
+
+    const statusResult = await handlers.updaterStatus()
+    expect(statusResult).toMatchObject({ channel: "stable", currentVersion: "0.1.0", enabled: true })
   })
 })
