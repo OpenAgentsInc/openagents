@@ -2031,7 +2031,7 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("imageAttachmentFailures.length > 0")
     expect(main).toContain("reportSubmitComposerFailure")
     expect(main).toContain(
-      'void submitComposer()\n    .catch(error => reportSubmitComposerFailure(error))\n    .finally(() => composerInput.focus())',
+      'void submitComposer()\n    .catch(error => reportSubmitComposerFailure(error))\n    .finally(focusComposerInput)',
     )
     expect(main).toContain('void submitComposer().catch(error => reportSubmitComposerFailure(error))')
     // The pre-fix shape (a Promise.all over attachment reads that could
