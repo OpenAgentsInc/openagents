@@ -137,6 +137,10 @@ import {
   khalaCodeSourceControlActionPromptText,
 } from "../shared/source-control-action"
 import {
+  KHALA_CODE_MODEL_ROLE_ORDER,
+  type KhalaCodeModelRole,
+} from "../shared/model-roles"
+import {
   initialKhalaCodeMainShellModel,
   shouldPollThreadTokenSummary,
   updateKhalaCodeMainShellModel,
@@ -161,6 +165,14 @@ type ComposerReasoningModeState = {
   saving: boolean
   settings: KhalaCodeDesktopCodexSettingsProjection | null
 }
+
+type ComposerProviderState =
+  | "error"
+  | "loading"
+  | "managed"
+  | "ready"
+  | "saving"
+  | "unavailable"
 
 const rpcFailureDetail = (payload: unknown): string => {
   if (payload !== null && typeof payload === "object") {
@@ -1241,6 +1253,7 @@ const composerReasoningModeState: ComposerReasoningModeState = {
   saving: false,
   settings: null,
 }
+let composerAgentRole: KhalaCodeModelRole = "coder"
 
 const formatReasoningModeLabel = (value: string): string =>
   value.length === 0
@@ -1249,6 +1262,104 @@ const formatReasoningModeLabel = (value: string): string =>
       .split(/[-_]/u)
       .map(part => part.length === 0 ? part : `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`)
       .join(" ")
+
+const formatComposerControlLabel = (value: string): string =>
+  formatReasoningModeLabel(value).replace(/\bGpt\b/gu, "GPT")
+
+const composerSettings = (): KhalaCodeDesktopCodexSettingsProjection | null =>
+  composerReasoningModeState.settings
+
+const composerProviderState = (): ComposerProviderState => {
+  const settings = composerSettings()
+  if (composerReasoningModeState.loading) return "loading"
+  if (composerReasoningModeState.saving) return "saving"
+  if (composerReasoningModeState.error !== null || (settings?.errors.length ?? 0) > 0) return "error"
+  if (settings === null || settings.providers.options.length === 0) return "unavailable"
+  if (settings.requirements.managed && settings.config.originKeys.includes("model")) return "managed"
+  return "ready"
+}
+
+const composerSelectedProvider = ():
+  KhalaCodeDesktopCodexSettingsProjection["providers"]["selected"] => {
+  const settings = composerSettings()
+  if (settings === null) return null
+  return settings.providers.selected ??
+    (settings.models.selected?.providerId === null || settings.models.selected?.providerId === undefined
+      ? null
+      : settings.providers.options.find(provider => provider.id === settings.models.selected?.providerId) ?? null)
+}
+
+const composerProviderValue = (): string =>
+  composerSelectedProvider()?.id ?? composerSettings()?.config.modelProvider ?? ""
+
+const composerModelOptions = ():
+  readonly KhalaCodeDesktopCodexSettingsProjection["models"]["options"][number][] => {
+  const settings = composerSettings()
+  if (settings === null) return []
+  const provider = composerProviderValue()
+  if (provider.length === 0) return settings.models.options
+  const matching = settings.models.options.filter(model => model.providerId === provider)
+  return matching.length > 0 ? matching : settings.models.options
+}
+
+const composerSelectedModel = ():
+  KhalaCodeDesktopCodexSettingsProjection["models"]["selected"] => {
+  const settings = composerSettings()
+  if (settings === null) return null
+  const modelValue = settings.config.model ?? settings.models.selected?.model ?? ""
+  return composerModelOptions().find(model => model.model === modelValue || model.id === modelValue) ??
+    settings.models.selected ??
+    composerModelOptions()[0] ??
+    null
+}
+
+const composerModelValue = (): string =>
+  composerSelectedModel()?.model ?? composerSettings()?.config.model ?? ""
+
+const composerVariantOptions = (): readonly {
+  readonly description: string | null
+  readonly id: string
+  readonly name: string
+}[] => composerSelectedModel()?.serviceTiers ?? []
+
+const composerVariantValue = (): string => {
+  const settings = composerSettings()
+  const selected = composerSelectedModel()
+  return settings?.config.serviceTier ??
+    selected?.defaultServiceTier ??
+    composerVariantOptions()[0]?.id ??
+    ""
+}
+
+const composerVariantLabel = (): string => {
+  const value = composerVariantValue()
+  const option = composerVariantOptions().find(item => item.id === value)
+  return option?.name ?? (value.length === 0 ? "Default" : formatComposerControlLabel(value))
+}
+
+const composerUsageA11yText = (): string => {
+  const settings = composerSettings()
+  if (settings === null) return "Provider usage unavailable."
+  if (!settings.usage.available) return "Provider usage unavailable."
+  return "Provider usage available."
+}
+
+const composerTurnSelection = (): KhalaCodeDesktopChatTurnRequest["composerSelection"] => {
+  const provider = composerSelectedProvider()
+  const model = composerSelectedModel()
+  const reasoningEffort = composerReasoningModeValue()
+  const variant = composerVariantValue()
+  return {
+    agentRole: composerAgentRole,
+    model: model?.model ?? null,
+    modelProvider: provider?.id ?? model?.providerId ?? composerSettings()?.config.modelProvider ?? null,
+    providerDisplayName: provider?.displayName ?? model?.providerDisplayName ?? null,
+    reasoningEffort: reasoningEffort.length === 0 ? null : reasoningEffort,
+    serviceTier: variant.length === 0 ? null : variant,
+    variant: variant.length === 0 ? null : variant,
+    runtimeAdapter: "codex_app_server",
+  }
+}
 
 const composerReasoningModeValue = (): string => {
   const settings = composerReasoningModeState.settings
@@ -1287,6 +1398,7 @@ const composerReasoningModeOptions = (): readonly ComposerReasoningModeOption[] 
 const composerReasoningModeDisabled = (): boolean => {
   const settings = composerReasoningModeState.settings
   if (composerReasoningModeState.loading || composerReasoningModeState.saving || settings === null) return true
+  if (composerProviderState() === "managed") return true
   return composerReasoningModeOptions().length === 0
 }
 
@@ -1330,14 +1442,18 @@ const ensureComposerReasoningModesLoaded = (): void => {
   void loadComposerReasoningModes()
 }
 
-const writeComposerReasoningMode = async (value: string): Promise<void> => {
+const writeComposerConfigValue = async (
+  keyPath: string,
+  value: null | string,
+  errorText: string,
+): Promise<void> => {
   composerReasoningModeState.saving = true
   composerReasoningModeState.error = null
   renderComposer()
   try {
     const result = await controls.codexConfigValueWrite({
-      keyPath: "model_reasoning_effort",
-      value: value.length === 0 ? null : value,
+      keyPath,
+      value,
     })
     if (result.ok) {
       if (result.settings !== undefined) {
@@ -1347,7 +1463,7 @@ const writeComposerReasoningMode = async (value: string): Promise<void> => {
       }
       return
     }
-    composerReasoningModeState.error = result.error ?? "Failed to save reasoning mode"
+    composerReasoningModeState.error = result.error ?? errorText
   } catch (error) {
     composerReasoningModeState.error = error instanceof Error ? error.message : String(error)
   } finally {
@@ -1355,6 +1471,39 @@ const writeComposerReasoningMode = async (value: string): Promise<void> => {
     renderComposer()
     requestAnimationFrame(focusComposerInput)
   }
+}
+
+const writeComposerReasoningMode = async (value: string): Promise<void> =>
+  writeComposerConfigValue(
+    "model_reasoning_effort",
+    value.length === 0 ? null : value,
+    "Failed to save reasoning mode",
+  )
+
+const writeComposerModel = async (value: string): Promise<void> =>
+  writeComposerConfigValue("model", value.length === 0 ? null : value, "Failed to save model")
+
+const writeComposerProvider = async (value: string): Promise<void> =>
+  writeComposerConfigValue(
+    "model_provider",
+    value.length === 0 ? null : value,
+    "Failed to save provider",
+  )
+
+const cycleComposerVariant = async (): Promise<void> => {
+  const variants = composerVariantOptions()
+  if (variants.length <= 1) return
+  const current = composerVariantValue()
+  const index = Math.max(0, variants.findIndex(variant => variant.id === current))
+  const next = variants[(index + 1) % variants.length]
+  if (next === undefined) return
+  await writeComposerConfigValue("service_tier", next.id, "Failed to save model variant")
+}
+
+const setComposerAgentRole = (role: KhalaCodeModelRole): void => {
+  composerAgentRole = role
+  renderComposer()
+  requestAnimationFrame(focusComposerInput)
 }
 
 const bootFailureDetail = (error: unknown): string =>
@@ -2974,6 +3123,163 @@ const renderComposerModeButton = (): HTMLButtonElement => {
   return button
 }
 
+const renderComposerProviderState = (): HTMLElement => {
+  const state = composerProviderState()
+  const label = document.createElement("span")
+  label.className = "khala-composer-provider-state"
+  label.dataset.state = state
+  label.dataset.oaCommandComposerProviderState = state
+  label.title = composerReasoningModeState.error ??
+    composerSettings()?.errors.join("\n") ??
+    composerUsageA11yText()
+  label.textContent = state === "ready"
+    ? "Ready"
+    : state === "managed"
+      ? "Managed"
+      : state === "saving"
+        ? "Saving"
+        : state === "loading"
+          ? "Loading"
+          : state === "error"
+            ? "Error"
+            : "Unavailable"
+  return label
+}
+
+const renderComposerSelectControl = (input: {
+  readonly className: string
+  readonly dataControl: string
+  readonly disabled: boolean
+  readonly label: string
+  readonly name: string
+  readonly onChange: (value: string) => void
+  readonly options: readonly { readonly label: string; readonly value: string }[]
+  readonly title: string
+  readonly value: string
+}): HTMLElement => {
+  const control = document.createElement("label")
+  control.className = `khala-composer-select-control ${input.className}`
+  control.dataset.oaCommandComposerControl = input.dataControl
+  control.title = input.title
+  const label = document.createElement("span")
+  label.className = "khala-composer-select-label"
+  label.textContent = input.label
+
+  const select = document.createElement("select")
+  select.className = "khala-composer-select"
+  select.name = input.name
+  select.disabled = input.disabled
+  select.setAttribute("aria-label", input.label)
+  select.append(...input.options.map(option => {
+    const item = document.createElement("option")
+    item.value = option.value
+    item.textContent = option.label
+    item.selected = option.value === input.value
+    return item
+  }))
+  select.addEventListener("change", () => input.onChange(select.value))
+
+  control.replaceChildren(label, select)
+  return control
+}
+
+const renderComposerAgentSelect = (): HTMLElement =>
+  renderComposerSelectControl({
+    className: "khala-composer-agent-control",
+    dataControl: "agent",
+    disabled: shellModel().pendingTurn,
+    label: "Agent",
+    name: "khala-code-agent-role",
+    onChange: value => {
+      if ((KHALA_CODE_MODEL_ROLE_ORDER as readonly string[]).includes(value)) {
+        setComposerAgentRole(value as KhalaCodeModelRole)
+      }
+    },
+    options: KHALA_CODE_MODEL_ROLE_ORDER.map(role => ({
+      label: formatComposerControlLabel(role),
+      value: role,
+    })),
+    title: shellModel().pendingTurn
+      ? "Agent can change after the active turn finishes"
+      : "Agent role",
+    value: composerAgentRole,
+  })
+
+const renderComposerProviderSelect = (): HTMLElement => {
+  ensureComposerReasoningModesLoaded()
+  const settings = composerSettings()
+  const options = settings === null || settings.providers.options.length === 0
+    ? [{
+        label: composerReasoningModeState.loading ? "Loading" : "Unavailable",
+        value: "",
+      }]
+    : settings.providers.options.map(provider => ({
+        label: provider.displayName,
+        value: provider.id,
+      }))
+  return renderComposerSelectControl({
+    className: "khala-composer-provider-control",
+    dataControl: "provider",
+    disabled: composerProviderState() !== "ready",
+    label: "Provider",
+    name: "khala-code-model-provider",
+    onChange: value => void writeComposerProvider(value),
+    options,
+    title: composerReasoningModeState.error ?? "Provider",
+    value: composerProviderValue(),
+  })
+}
+
+const renderComposerModelSelect = (): HTMLElement => {
+  ensureComposerReasoningModesLoaded()
+  const options = composerModelOptions()
+  return renderComposerSelectControl({
+    className: "khala-composer-model-control",
+    dataControl: "model",
+    disabled: composerReasoningModeState.loading ||
+      composerReasoningModeState.saving ||
+      composerProviderState() === "managed" ||
+      options.length === 0,
+    label: "Model",
+    name: "khala-code-model",
+    onChange: value => void writeComposerModel(value),
+    options: options.length === 0
+      ? [{
+          label: composerReasoningModeState.loading ? "Loading" : "Unavailable",
+          value: "",
+        }]
+      : options.map(model => ({
+          label: model.displayName,
+          value: model.model,
+        })),
+    title: composerReasoningModeState.error ?? "Model",
+    value: composerModelValue(),
+  })
+}
+
+const renderComposerVariantButton = (): HTMLButtonElement => {
+  const variants = composerVariantOptions()
+  const button = document.createElement("button")
+  button.type = "button"
+  button.className = "khala-composer-variant-button"
+  button.dataset.oaCommandComposerControl = "variant"
+  button.dataset.variant = composerVariantValue()
+  button.disabled = composerReasoningModeState.loading ||
+    composerReasoningModeState.saving ||
+    composerProviderState() === "managed" ||
+    variants.length <= 1
+  button.title = variants.length <= 1
+    ? "No variants for this model"
+    : "Cycle model variant"
+  button.setAttribute("aria-label", `Variant: ${composerVariantLabel()}`)
+  button.replaceChildren(
+    composerIconElement("model"),
+    document.createTextNode(composerVariantLabel()),
+  )
+  button.addEventListener("click", () => void cycleComposerVariant())
+  return button
+}
+
 function renderComposer(): void {
   const status = statusForComposer()
   const sendLabel = buttonLabel(status)
@@ -2982,6 +3288,7 @@ function renderComposer(): void {
 
   syncComposerDraftState()
   composerForm.dataset.oaCommandComposerStatus = status
+  composerForm.dataset.oaCommandComposerProviderState = composerProviderState()
   composerFrame.dataset.oaCommandComposerFrame = ""
   sendButton.disabled = !shellModel().pendingTurn && !canSubmitComposer()
   sendButton.type = shellModel().pendingTurn ? "button" : "submit"
@@ -2996,7 +3303,12 @@ function renderComposer(): void {
   composerControls.replaceChildren(
     attachButton,
     renderComposerModeButton(),
+    renderComposerAgentSelect(),
+    renderComposerProviderSelect(),
+    renderComposerModelSelect(),
+    renderComposerVariantButton(),
     renderReasoningModeSelect(),
+    renderComposerProviderState(),
     // renderHarnessPill(),
   )
 
@@ -3010,6 +3322,11 @@ function renderComposer(): void {
     `${statusLabelFor(status)}. ${attachmentCount} attachments. ` +
     `${followUpCount} queued follow-ups. ` +
     `${composerModeLabel(composerMode)} composer mode. ` +
+    `Agent ${formatComposerControlLabel(composerAgentRole)}. ` +
+    `Provider ${composerSelectedProvider()?.displayName ?? "unavailable"}. ` +
+    `Model ${composerSelectedModel()?.displayName ?? "unavailable"}. ` +
+    `Variant ${composerVariantLabel()}. ` +
+    `${composerUsageA11yText()} ` +
     `${composerReasoningModeA11yText()} ` +
     `${shellModel().architectPlanPending ? "Architect plan pending. " : ""}` +
     `${composerDraftText().length} characters.`
@@ -3711,6 +4028,7 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
   try {
     const request: KhalaCodeDesktopChatTurnRequest = {
       ...(imageAttachments.length === 0 ? {} : { attachments: imageAttachments }),
+      composerSelection: composerTurnSelection(),
       messages: shellModel().messages,
       sessionId,
       ...(submittedThreadId === null ? { startNewThread: true } : { threadId: submittedThreadId }),

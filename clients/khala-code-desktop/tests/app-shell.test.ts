@@ -1348,7 +1348,7 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("const recomputePendingTurnForActiveThread = ()")
     expect(main).toContain("threadSidebar?.setActiveThreadId(shellModel().activeCodexThreadId)")
     expect(main).toContain(
-      "const request: KhalaCodeDesktopChatTurnRequest = {\n      ...(imageAttachments.length === 0 ? {} : { attachments: imageAttachments }),\n      messages: shellModel().messages,\n      sessionId,\n      ...(submittedThreadId === null ? { startNewThread: true } : { threadId: submittedThreadId }),\n      turnId,\n    }",
+      "const request: KhalaCodeDesktopChatTurnRequest = {\n      ...(imageAttachments.length === 0 ? {} : { attachments: imageAttachments }),\n      composerSelection: composerTurnSelection(),\n      messages: shellModel().messages,\n      sessionId,\n      ...(submittedThreadId === null ? { startNewThread: true } : { threadId: submittedThreadId }),\n      turnId,\n    }",
     )
     expect(main).toContain("const imageAttachments = await imageAttachmentsForSubmit(attachments)")
     expect(panel).toContain("Search Codex threads")
@@ -1804,6 +1804,30 @@ describe("khala code desktop app shell", () => {
     expect(main).not.toContain("composerInput.value")
     expect(css).toContain("#composer-input[data-empty=\"true\"]::before")
     expect(css).toContain(".khala-composer-mode-button")
+  })
+
+  test("wires composer model, provider, agent, and variant controls without raw provider payloads", async () => {
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+    const css = await Bun.file(new URL("../src/ui/styles.css", import.meta.url)).text()
+    const rpc = await Bun.file(new URL("../src/shared/rpc.ts", import.meta.url)).text()
+
+    expect(main).toContain("renderComposerAgentSelect")
+    expect(main).toContain("renderComposerProviderSelect")
+    expect(main).toContain("renderComposerModelSelect")
+    expect(main).toContain("renderComposerVariantButton")
+    expect(main).toContain("composerTurnSelection")
+    expect(main).toContain("composerSelection: composerTurnSelection()")
+    expect(main).toContain('writeComposerConfigValue("model"')
+    expect(main).toContain('"model_provider"')
+    expect(main).toContain('"service_tier"')
+    expect(main).toContain("KHALA_CODE_MODEL_ROLE_ORDER")
+    expect(css).toContain(".khala-composer-model-control")
+    expect(css).toContain(".khala-composer-provider-state")
+    expect(rpc).toContain("RpcComposerSelection")
+    expect(rpc).toContain("runtimeAdapter")
+    expect(`${main}\n${rpc}`).not.toContain("private-provider-payload")
+    expect(`${main}\n${rpc}`).not.toContain("api_key")
+    expect(`${main}\n${rpc}`).not.toContain("Authorization")
   })
 
   test("clears the active thread before composing a new chat from the sidebar", async () => {

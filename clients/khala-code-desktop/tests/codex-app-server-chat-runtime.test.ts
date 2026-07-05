@@ -177,6 +177,16 @@ describe("Codex app-server chat runtime", () => {
     })
 
     const response = await runtime.startTurn({
+      composerSelection: {
+        agentRole: "coder",
+        model: "gpt-5.1-codex-mini",
+        modelProvider: "openai",
+        providerDisplayName: "OpenAI",
+        reasoningEffort: "medium",
+        serviceTier: "priority",
+        variant: "priority",
+        runtimeAdapter: "codex_app_server",
+      },
       messages: [{ id: "user-1", role: "user", body: "Say hello" }],
       sessionId: "desktop-session-1",
       turnId: "desktop-turn-1",
@@ -187,6 +197,18 @@ describe("Codex app-server chat runtime", () => {
       threadId: "thread-codex-1",
       clientUserMessageId: "user-1",
       input: [{ type: "text", text: "Say hello", textElements: [] }],
+      responsesapiClientMetadata: {
+        khalaComposerSelection: {
+          agentRole: "coder",
+          model: "gpt-5.1-codex-mini",
+          modelProvider: "openai",
+          providerDisplayName: "OpenAI",
+          reasoningEffort: "medium",
+          serviceTier: "priority",
+          variant: "priority",
+          runtimeAdapter: "codex_app_server",
+        },
+      },
     })
     expect(response).toMatchObject({
       backend: {

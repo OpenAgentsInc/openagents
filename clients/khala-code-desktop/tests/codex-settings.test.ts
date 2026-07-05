@@ -144,6 +144,8 @@ describe("Codex settings projection", () => {
         selected: {
           id: "gpt-5.1-codex",
           displayName: "GPT-5.1 Codex",
+          providerId: "openai",
+          providerDisplayName: "OpenAI",
         },
         serviceTierCommands: ["priority"],
       },
@@ -229,6 +231,8 @@ describe("Codex settings projection", () => {
       model: "fixture-codex",
       displayName: "Fixture Codex",
       description: null,
+      providerId: "fixture-openai",
+      providerDisplayName: "fixture-openai",
       hidden: false,
       isDefault: false,
       supportsPersonality: false,

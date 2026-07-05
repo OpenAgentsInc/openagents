@@ -1300,6 +1300,88 @@ describe("Khala Code desktop RPC handlers", () => {
     })
   })
 
+  test("passes sanitized composer model, agent, provider, and variant selection into chat turns", async () => {
+    const root = await mkdtemp(join(tmpdir(), "khala-code-composer-selection-"))
+    tempDirs.push(root)
+    const settingPath = join(root, "desktop-settings.json")
+    await writeFile(settingPath, JSON.stringify({
+      schema: "khala-code-desktop.harness-setting.v1",
+      harnessMode: "codex_harness",
+      modelRoleRegistry: defaultKhalaCodeModelRoleRegistry(),
+    }))
+    let capturedRequest: unknown
+    const handlers = createKhalaCodeDesktopRpcRequestHandlers({
+      appleFmReadiness: () => {
+        throw new Error("not used")
+      },
+      codexChatRuntime: throwingCodexChatRuntime({
+        startTurn: async request => {
+          capturedRequest = request
+          return {
+            backend: {
+              kind: "codex_app_server",
+              model: "gpt-5.1-codex-mini",
+              runtimeMode: "codex_harness",
+              threadId: "thread-composer-selection",
+              turnId: request.turnId,
+            },
+            messages: [{ id: "agent-composer-selection", role: "assistant", body: "selected" }],
+            ok: true,
+            toolNames: [],
+            usedTools: [],
+          }
+        },
+      }),
+      env: { KHALA_CODE_DESKTOP_HARNESS_SETTING_PATH: settingPath },
+      onDeviceDeciderStatus: () => {
+        throw new Error("not used")
+      },
+      workingDirectory: "/repo",
+    })
+
+    const response = await handlers.submitChatMessage({
+      composerSelection: {
+        agentRole: "judge",
+        model: "gpt-5.1-codex-mini",
+        modelProvider: "openai",
+        providerDisplayName: "OpenAI",
+        reasoningEffort: "high",
+        serviceTier: "priority",
+        variant: "priority",
+        runtimeAdapter: "codex_app_server",
+      },
+      messages: [{ id: "user-composer-selection", role: "user", body: "Use composer selection" }],
+      sessionId: "desktop-session-composer-selection",
+      turnId: "desktop-turn-composer-selection",
+    })
+
+    expect(response).toMatchObject({
+      backend: { model: "gpt-5.1-codex-mini" },
+      ok: true,
+    })
+
+    expect(capturedRequest).toMatchObject({
+      composerSelection: {
+        agentRole: "judge",
+        model: "gpt-5.1-codex-mini",
+        modelProvider: "openai",
+        providerDisplayName: "OpenAI",
+        reasoningEffort: "high",
+        serviceTier: "priority",
+        variant: "priority",
+        runtimeAdapter: "codex_app_server",
+      },
+      modelRole: {
+        role: "judge",
+        harness: "codex",
+        model: "gpt-5.1-codex-mini",
+        effort: "high",
+      },
+    })
+    expect(JSON.stringify(capturedRequest)).not.toContain("sk-")
+    expect(JSON.stringify(capturedRequest)).not.toContain("private-provider-payload")
+  })
+
   test("routes explicit Codex turn starts through the selected Codex chat runtime", async () => {
     let codexTurnStarted = false
     const handlers = createKhalaCodeDesktopRpcRequestHandlers({

@@ -196,6 +196,7 @@ import {
 } from "./harness-setting.js"
 import type {
   KhalaCodeModelRole,
+  KhalaCodeModelRoleEffort,
   KhalaCodeModelRoleEntry,
 } from "../shared/model-roles.js"
 import {
@@ -1188,6 +1189,33 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
   const selectedRuntimeMode = async () =>
     khalaCodeDesktopRuntimeEnvOverride(input.env) ??
       await readKhalaCodeDesktopPersistedHarnessMode(input.env)
+
+  const composerEffortValues = new Set<KhalaCodeModelRoleEffort>([
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+  ])
+
+  const modelRoleWithComposerSelection = (
+    role: KhalaCodeModelRole,
+    modelRole: KhalaCodeModelRoleEntry | undefined,
+    composerSelection: KhalaCodeDesktopChatTurnRequest["composerSelection"],
+  ): KhalaCodeModelRoleEntry | undefined => {
+    if (composerSelection === undefined) return modelRole
+    const model = composerSelection.model?.trim()
+    const reasoningEffort = composerSelection.reasoningEffort?.trim()
+    const effort = reasoningEffort !== undefined && composerEffortValues.has(reasoningEffort as KhalaCodeModelRoleEffort)
+      ? reasoningEffort as KhalaCodeModelRoleEffort
+      : undefined
+    if ((model === undefined || model.length === 0) && effort === undefined) return modelRole
+    return {
+      ...(modelRole ?? { role, harness: "codex" as const }),
+      ...(model === undefined || model.length === 0 ? {} : { model }),
+      ...(effort === undefined ? {} : { effort }),
+    }
+  }
 
   const roleRuntimeMode = async (
     role: KhalaCodeModelRole,
@@ -3310,20 +3338,26 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       return withMaterializedChatAttachments(
         request,
         async materializedRequest => {
-          const selection = await selectChatRuntime()
+          const agentRole = materializedRequest.composerSelection?.agentRole ?? "coder"
+          const selection = await selectRoleRuntime(agentRole)
+          const selectedModelRole = modelRoleWithComposerSelection(
+            agentRole,
+            selection.kind === "legacy" ? undefined : selection.modelRole,
+            materializedRequest.composerSelection,
+          )
           if (selection.kind === "codex") {
             const bridge = await maybeEnsureFleetMcpBridge()
             return withFleetMcpBridgeNote(await labelCodexHarnessResponse(await selection.runtime.startTurn({
               ...materializedRequest,
               cwd: input.workingDirectory,
-              ...(selection.modelRole === undefined ? {} : { modelRole: selection.modelRole }),
+              ...(selectedModelRole === undefined ? {} : { modelRole: selectedModelRole }),
             })), bridge)
           }
           if (selection.kind === "claude") {
             return selection.runtime.startTurn({
               ...materializedRequest,
               cwd: input.workingDirectory,
-              ...(selection.modelRole === undefined ? {} : { modelRole: selection.modelRole }),
+              ...(selectedModelRole === undefined ? {} : { modelRole: selectedModelRole }),
             })
           }
           return labelLegacyRuntimeResponse(await legacyChatTurn({

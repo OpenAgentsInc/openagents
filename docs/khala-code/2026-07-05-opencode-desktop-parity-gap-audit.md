@@ -576,6 +576,13 @@ Issue: build the rich contenteditable composer foundation
 Issue: add model, agent, provider, and variant controls in the composer
 ([#8436](https://github.com/OpenAgentsInc/openagents/issues/8436)).
 
+- Status: first implementation pass complete on 2026-07-05. The composer now
+  renders model, provider, agent-role, reasoning, and variant/service-tier
+  controls from the existing Codex settings projection; selector changes write
+  the current Codex config keys, and submitted turns carry a sanitized
+  `composerSelection` object for runtime routing and the AI SDK Core lane.
+  Provider secrets and raw provider payloads remain outside renderer state and
+  support-safe projections.
 - Scope: OpenCode-style model selector, agent selector/cycle, provider-aware
   display, variant cycling, usage/quota/error hints, and direct integration with
   Khala's AI SDK Core/provider direction.

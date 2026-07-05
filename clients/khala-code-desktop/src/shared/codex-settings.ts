@@ -18,6 +18,8 @@ export type KhalaCodeDesktopCodexSettingsModelOption = {
   readonly model: string
   readonly displayName: string
   readonly description: string | null
+  readonly providerId: string | null
+  readonly providerDisplayName: string | null
   readonly hidden: boolean
   readonly isDefault: boolean
   readonly supportsPersonality: boolean
@@ -226,11 +228,14 @@ const modelOptionsFrom = (
       }))
       .filter(tier => tier.id.length > 0)
     const id = optionalString(model.id) ?? optionalString(model.model) ?? ""
+    const providerId = providerIdFromModel(model)
     return {
       id,
       model: optionalString(model.model) ?? id,
       displayName: optionalString(model.displayName) ?? optionalString(model.name) ?? id,
       description: optionalString(model.description),
+      providerId,
+      providerDisplayName: providerId === null ? null : providerDisplayNameFromModel(model, providerId),
       hidden: optionalBoolean(model.hidden) ?? false,
       isDefault: optionalBoolean(model.isDefault) ?? false,
       supportsPersonality: optionalBoolean(model.supportsPersonality) ?? false,
@@ -385,7 +390,10 @@ export const projectKhalaCodeDesktopCodexSettings = (
   const models = modelOptionsFrom(input.modelList)
   const selectedModel = selectedModelFrom(optionalString(config.model), models)
   const providers = providerOptionsFrom(input.modelList)
-  const selectedProvider = selectedProviderFrom(optionalString(config.model_provider), providers)
+  const selectedProvider = selectedProviderFrom(
+    optionalString(config.model_provider) ?? selectedModel?.providerId ?? null,
+    providers,
+  )
   const selectedProfile = optionalString(config.default_permissions) ??
     optionalString(requirements.defaultPermissions)
   const profiles = permissionProfilesFrom(input.permissionProfileList, selectedProfile)

@@ -10,6 +10,7 @@ import type {
   KhalaCodeQaMetricsSnapshot,
 } from "./qa-metrics.js"
 import {
+  KhalaCodeModelRoleSchema,
   KhalaCodeModelRoleEntrySchema,
   KhalaCodeModelRoleRegistrySchema,
 } from "./model-roles.js"
@@ -468,8 +469,20 @@ const RpcChatAttachment = S.Struct({
   sizeBytes: S.Number,
 })
 
+const RpcComposerSelection = S.Struct({
+  agentRole: KhalaCodeModelRoleSchema,
+  model: RpcStringNull,
+  modelProvider: RpcStringNull,
+  providerDisplayName: RpcStringNull,
+  reasoningEffort: RpcStringNull,
+  serviceTier: RpcStringNull,
+  variant: RpcStringNull,
+  runtimeAdapter: S.Literals(["codex_app_server", "khala_ai_sdk_core"]),
+})
+
 const RpcChatTurnRequest = S.Struct({
   attachments: S.optional(S.Array(RpcChatAttachment)),
+  composerSelection: S.optional(RpcComposerSelection),
   messages: S.Array(KhalaCodeDesktopMessageSchema),
   sessionId: S.String,
   startNewThread: S.optional(S.Boolean),
@@ -966,6 +979,8 @@ const RpcCodexSettingsModelOption = S.Struct({
   model: S.String,
   displayName: S.String,
   description: RpcStringNull,
+  providerId: RpcStringNull,
+  providerDisplayName: RpcStringNull,
   hidden: S.Boolean,
   isDefault: S.Boolean,
   supportsPersonality: S.Boolean,

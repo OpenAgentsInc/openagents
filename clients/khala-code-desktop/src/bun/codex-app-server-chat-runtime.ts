@@ -1081,6 +1081,9 @@ export function createCodexAppServerChatRuntime(
           responsesapiClientMetadata: {
             khalaDesktopSessionId: request.sessionId,
             khalaDesktopTurnId: desktopTurnId,
+            ...(request.composerSelection === undefined
+              ? {}
+              : { khalaComposerSelection: request.composerSelection }),
           },
         })
       }

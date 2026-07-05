@@ -1092,6 +1092,101 @@ button {
   text-align: left;
 }
 
+.khala-composer-select-control,
+.khala-composer-variant-button,
+.khala-composer-provider-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 32px;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--oa-color-khala-energy-blue) 34%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--oa-color-khala-surface-active) 50%, transparent);
+  color: color-mix(in srgb, var(--oa-color-khala-text-body) 88%, transparent);
+  font-family: var(--oa-font-code);
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.khala-composer-select-control {
+  max-width: min(15rem, 42vw);
+  padding: 0 6px;
+}
+
+.khala-composer-model-control {
+  max-width: min(18rem, 48vw);
+}
+
+.khala-composer-select-label {
+  color: color-mix(in srgb, var(--oa-color-khala-text-muted) 74%, transparent);
+  white-space: nowrap;
+}
+
+.khala-composer-select {
+  max-width: 9.5rem;
+  min-width: 3.5rem;
+  border: 0;
+  appearance: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+  outline: none;
+  padding: 0;
+  text-overflow: ellipsis;
+}
+
+.khala-composer-model-control .khala-composer-select {
+  max-width: 12rem;
+}
+
+.khala-composer-select:disabled,
+.khala-composer-variant-button:disabled {
+  cursor: not-allowed;
+}
+
+.khala-composer-select-control:has(.khala-composer-select:disabled),
+.khala-composer-variant-button:disabled {
+  opacity: 0.52;
+}
+
+.khala-composer-select-control:hover,
+.khala-composer-select-control:focus-within,
+.khala-composer-variant-button:hover,
+.khala-composer-variant-button:focus-visible {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 70%, transparent);
+  color: var(--oa-color-khala-text-bright);
+  outline: none;
+}
+
+.khala-composer-variant-button {
+  max-width: 8.5rem;
+  cursor: pointer;
+  padding: 0 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.khala-composer-provider-state {
+  min-width: 4.75rem;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+.khala-composer-provider-state[data-state="ready"] {
+  border-color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 50%, transparent);
+  color: color-mix(in srgb, var(--oa-color-khala-energy-cyan) 88%, white 12%);
+}
+
+.khala-composer-provider-state[data-state="error"],
+.khala-composer-provider-state[data-state="unavailable"] {
+  border-color: color-mix(in srgb, var(--oa-color-khala-danger) 62%, transparent);
+  color: color-mix(in srgb, var(--oa-color-khala-danger) 84%, white 16%);
+}
+
 .khala-code-slash-command-palette {
   display: grid;
   gap: 2px;
