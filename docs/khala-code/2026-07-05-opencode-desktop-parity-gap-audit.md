@@ -1,0 +1,511 @@
+# Khala Code Desktop / OpenCode Desktop Parity Gap Audit
+
+Date: 2026-07-05
+Status: audit / implementation direction. No code changed by this doc.
+Scope: `projects/repos/opencode/packages/desktop`, `projects/repos/opencode/packages/app`, and `clients/khala-code-desktop`.
+
+## Executive Decision
+
+OpenCode desktop is a mature Electron desktop workbench wrapped around the
+OpenCode server. Khala Code desktop is a Khala/Codex/Pylon/Fleet shell wrapped
+around the Codex app-server and local Khala services. Khala has stronger
+OpenAgents-specific surfaces, but OpenCode has a much broader generic desktop
+coding app surface.
+
+The largest OpenCode capabilities not present in Khala Code desktop are:
+
+- A native Electron app lifecycle: in-app updater, crash/network logs,
+  debug-log export, deep links, single-instance handling, window recovery,
+  custom renderer protocol, native permission gates, and rich native menus.
+- A multi-window, multi-server workbench: persisted windows/routes, default
+  server selection, remote server rows, connection health gate, and Windows WSL
+  server lifecycle.
+- A full project/session IDE shell: home dashboard, project/workspace sidebar,
+  session tabs, file tree, file tabs, diff/review panels, comments, and
+  workspace-scoped terminal tabs.
+- A richer interactive composer: contenteditable editor, shell mode, model and
+  agent selectors, provider-aware controls, image attachments with previews,
+  drag/drop/paste attachments, selected-file/line context, prompt history, and
+  command/search popovers.
+- User-configurable application settings: keybind editor, providers, models,
+  themes, language, shell, fonts, notifications, sounds, server management, WSL
+  management, update controls, and layout feature toggles.
+
+This audit does not argue that Khala should copy OpenCode wholesale. Khala's
+primary product surface is still Codex plus OpenAgents Fleet/Pylon/Gym. The
+useful reading is: if Khala Code wants to feel like a complete desktop coding
+app instead of a specialized Khala control room, these are the missing pieces.
+
+## Comparison Baseline
+
+OpenCode evidence:
+
+- Native shell: `packages/desktop/src/main/index.ts`,
+  `packages/desktop/src/main/windows.ts`,
+  `packages/desktop/src/main/ipc.ts`,
+  `packages/desktop/src/main/menu.ts`,
+  `packages/desktop/src/main/updater.ts`,
+  `packages/desktop/src/main/logging.ts`,
+  `packages/desktop/src/main/server.ts`,
+  `packages/desktop/src/main/sidecar.ts`, and
+  `packages/desktop/src/main/wsl/*`.
+- Renderer bridge: `packages/desktop/src/preload/index.ts` and
+  `packages/desktop/src/renderer/index.tsx`.
+- Workbench: `packages/app/src/pages/home.tsx`,
+  `packages/app/src/pages/layout.tsx`,
+  `packages/app/src/pages/session.tsx`,
+  `packages/app/src/context/*`,
+  `packages/app/src/components/*`,
+  `packages/app/src/pages/session/*`, and `packages/app/src/wsl/*`.
+
+Khala Code evidence:
+
+- Product boundary and release lane: `clients/khala-code-desktop/README.md`,
+  `clients/khala-code-desktop/package.json`, and
+  `clients/khala-code-desktop/electrobun.config.ts`.
+- Native shell and local services:
+  `clients/khala-code-desktop/src/bun/index.ts`,
+  `clients/khala-code-desktop/src/bun/application-menu.ts`,
+  `clients/khala-code-desktop/src/bun/rpc-handlers.ts`, and
+  `clients/khala-code-desktop/src/shared/rpc.ts`.
+- UI shell:
+  `clients/khala-code-desktop/src/ui/index.html`,
+  `clients/khala-code-desktop/src/ui/main.ts`,
+  `clients/khala-code-desktop/src/ui/sidebar.ts`,
+  `clients/khala-code-desktop/src/ui/codex-thread-sidebar*.ts*`,
+  `clients/khala-code-desktop/src/ui/transcript-render.ts`,
+  `clients/khala-code-desktop/src/ui/codex-settings-panel.ts`,
+  `clients/khala-code-desktop/src/ui/fleet-*`,
+  `clients/khala-code-desktop/src/ui/inbox.ts`, and
+  `clients/khala-code-desktop/src/ui/gym-*`.
+
+## Non-Gaps
+
+The following are not counted as OpenCode gaps because Khala intentionally has
+different, stronger OpenAgents-specific surfaces:
+
+- Fleet/Pylon controls, own-capacity worker accounting, assignment lifecycle,
+  and Khala Sync are Khala-only lanes.
+- Gym/proof/evidence panes are Khala-only lanes.
+- Codex app-server pass-through is Khala's core execution boundary; Khala does
+  not need OpenCode's SDK/server APIs to execute Codex work.
+- Khala already has extensive tests and smokes for its own product contracts.
+  Test gaps below mean "no corresponding OpenCode-style feature tests because
+  the feature does not exist", not "Khala has no tests".
+
+## Gap Inventory
+
+### 1. Native App Lifecycle And Distribution
+
+OpenCode has an Electron desktop lifecycle that Khala Code desktop does not
+currently match:
+
+- Electron builder packaging with per-channel app IDs/names and desktop
+  protocol registration. Khala uses Electrobun and a macOS-oriented release
+  lane, but no comparable in-app Electron channel/update substrate.
+- `opencode://` deep links, initial deep-link buffering, second-instance
+  deep-link handling, and route resolution into the renderer. Khala has no
+  observed app URL protocol or deep-link router.
+- Single-instance lock and second-instance focus behavior. Khala does not show
+  an equivalent desktop instance coordinator.
+- In-app updater state machine: check, download, install, manual dialogs,
+  renderer subscription, settings action, app-menu action, error surfacing, and
+  periodic update checks. Khala has release planning/signing/upload scripts but
+  no in-app updater UI/RPC/menu path.
+- Native crash reporter, Electron netLog capture, fatal renderer error
+  reporting, and user-facing debug log export as a zip. Khala has smokes,
+  traces, and logs in product lanes, but no comparable native desktop log
+  export/recovery package.
+- Renderer unresponsive detection and recovery modals with relaunch/export
+  logs/keep waiting/quit choices. Khala does not show an equivalent native
+  unresponsive-window recovery workflow.
+- Renderer load-failure and render-process-gone recovery paths. Khala does not
+  show equivalent native crash/reload affordances.
+- System certificate loading, shell environment loading, proxy environment
+  handling, and loopback `no_proxy` setup before sidecar start. Khala starts
+  Bun/Codex/Pylon services, but does not expose an equivalent general desktop
+  environment bootstrap layer.
+- Native context menu integration. Khala has custom overlay menus in the web
+  UI, not Electron-style system context menus.
+- Custom renderer protocol (`oc://renderer`) with path traversal checks and
+  a document policy for JavaScript call stacks. Khala uses the Electrobun view
+  pipeline and does not show an equivalent custom renderer protocol gate.
+- Native permission gating for renderer clipboard and notification requests.
+  Khala does not show the same main-process permission request policy.
+- Electron-store based scoped renderer storage and cleanup of stale store
+  files. Khala has its own JSON/config stores, but not a general renderer
+  storage API mirroring OpenCode's `window.api.store`.
+- Temporary onboarding test mode that rewires XDG paths and database state.
+  Khala has fixture servers and visual smokes, but no matching native desktop
+  onboarding isolation mode.
+
+### 2. Native Windows, Menus, And Desktop Controls
+
+OpenCode has a larger desktop window and menu system:
+
+- Persisted multi-window registry and per-window route restoration. Khala
+  appears to operate as one primary Electrobun app view.
+- Per-window `electron-window-state` geometry persistence. Khala does not show
+  an equivalent window-state registry.
+- New window, close window, restore all previous windows, and focused-window
+  lookup/focus/show IPC. Khala does not expose comparable window management to
+  the renderer.
+- macOS hidden titlebar and Windows titlebar overlay integration with runtime
+  theme/height updates. Khala has a custom web shell, but no equivalent native
+  titlebar overlay controls.
+- Native app menu categories for File, Edit, View, Go, Window, and Help.
+  Khala's menu is currently minimal: app, edit, and window roles.
+- Native menu commands for new session, open project, new window, close,
+  toggle sidebar, toggle terminal, toggle file tree, reload webview, restart,
+  export logs, developer tools, zoom, fullscreen, back/forward, previous/next
+  session, previous/next project, docs, support, feedback, bug report, and
+  update checks. Khala lacks these system-menu commands.
+- Renderer-triggerable desktop menu actions. Khala's native menu is not wired
+  into a general command registry.
+- Keyboard/webview zoom, pinch zoom preference, and zoom factor persistence.
+  Khala does not show comparable user-facing webview zoom controls beyond
+  ordinary window role behavior.
+- Native notifications with click-to-focus behavior and focused-window gating.
+  Khala has product status/inbox indicators, but no equivalent native
+  notification bridge was observed.
+- Open external URL, open local path, open app, relaunch, and app-exists/path
+  resolution APIs. Khala does not expose the same broad native helper API to
+  the UI.
+
+### 3. Native File, Directory, Clipboard, And Markdown Bridges
+
+OpenCode exposes desktop-native affordances through preload IPC:
+
+- Native directory picker and directory authorization model. Khala has local
+  workspace concepts and Codex filesystem pass-through, but no equivalent
+  native directory picker flow.
+- Native file picker with attachment authorization budget, `readPickedFile`,
+  and release of picked-file grants. Khala has composer file input support, but
+  not OpenCode's grant-based native picker/read/release bridge.
+- Native save dialog. Khala does not expose a matching save picker.
+- Clipboard image reading for prompt attachments. Khala has attachment UI, but
+  no observed native clipboard-image IPC.
+- Main-process markdown parsing bridge. Khala renders transcript Markdown in
+  its UI, but does not have a comparable native markdown IPC API.
+
+### 4. Embedded Local Server And Server Switching
+
+OpenCode desktop owns a local OpenCode server sidecar and makes server choice a
+first-class product concept:
+
+- Bundled local server spawned in an Electron utility process with random
+  loopback port, generated password, Basic auth, CORS limited to the renderer,
+  startup stall timeout, health polling, and controlled shutdown. Khala starts
+  Codex app-server/Pylon/Khala Bun services, but not an OpenCode-style
+  selectable local HTTP server with renderer Basic-auth connection metadata.
+- Automatic sidecar shutdown on quit and process signals. Khala manages local
+  services, but does not expose the same server lifecycle as a selectable app
+  backend.
+- Local sidecar health gate before renderer initialization. Khala has service
+  readiness and fixture app-server paths, but no equivalent OpenCode server
+  selection gate.
+- Default server URL persisted in native storage. Khala is oriented around the
+  local Codex app-server and Khala services rather than arbitrary OpenCode
+  server URLs.
+- Remote HTTP server add/edit/remove UI. Khala has no observed server manager
+  for arbitrary coding backends.
+- ConnectionGate UX that retries health checks and lets the user choose another
+  configured server. Khala does not show this alternate-server recovery UI.
+
+### 5. Windows WSL Server Lifecycle
+
+OpenCode has a full Windows WSL integration that Khala Code desktop does not
+show:
+
+- Probe whether WSL is available/installed.
+- Install WSL from the desktop UI.
+- Discover installed distros and online installable distros.
+- Install a distro.
+- Probe whether a distro can be added as a server.
+- Install/update OpenCode inside the distro.
+- Start, stop, add, remove, and default WSL servers.
+- Open a WSL terminal.
+- Subscribe renderer UI to WSL server events.
+- WSL settings rows and an Add WSL Server dialog with runtime-missing,
+  distro-install, and server-add states.
+
+Khala has local Pylon/Codex worker concepts and a TUI mode, but no comparable
+Windows WSL coding-backend lifecycle.
+
+### 6. Home Dashboard, Projects, Workspaces, And Session Routing
+
+OpenCode has a broad project/session home that Khala does not currently match:
+
+- Home dashboard with project navigation, recent session groups, session search,
+  background-open session tabs, and archive support. Khala opens into the
+  Khala/Codex shell with a thread sidebar, not a project dashboard.
+- Project sidebar and workspace sidebar, including project rows, avatars,
+  status badges, unread/permission/error indicators, ordering, and active
+  project navigation. Khala's sidebar is a hotbar for chat, fleet, forum,
+  inbox, and settings.
+- Open Project and New Session commands as first-class app actions. Khala has
+  new chat/thread affordances, not OpenCode's project/session command model.
+- Project edit dialog. Khala does not show an equivalent project metadata UI.
+- Route model for `/`, `/:dir/session/:id?`, `/new-session`, and
+  `/server/:serverKey/session/:id`, with last active URL persisted per window.
+  Khala has Codex thread selection and panel state, but no equivalent
+  multi-server/project route grammar.
+- Titlebar history, tab strip, tab gestures, closed tabs, session sortable
+  tabs, and tab memory. Khala has thread sidebar/hotkeys, but not a full
+  browser-like session tab system.
+- Session lineage/root/child navigation and fork dialog. Khala has Codex thread
+  projections, but no observed session lineage/fork UI matching OpenCode's.
+
+### 7. File Tree, File Tabs, Search, And Workspace Context
+
+OpenCode's session workbench includes file-system UI that Khala does not have:
+
+- Lazy file tree provider backed by SDK file listing.
+- File content cache with eviction accounting.
+- File watcher invalidation and directory sync.
+- File tree UI with collapsible folders, file icons, draggable items, and
+  changes/all views.
+- Diff-kind markers for added/deleted/modified files in the file tree.
+- File tabs for opened files.
+- File tab scroll persistence and selected-line persistence.
+- File search/select dialog integrated with the command palette.
+- Add selected file/line context into the prompt.
+- View cache for file scroll/selection state.
+- Directory picker policy/domain helpers.
+
+Khala exposes Codex filesystem-related RPCs and mention candidates, and it has
+source-control/diff steering helpers, but it does not yet provide OpenCode's
+file explorer plus editor/tab surface.
+
+### 8. Diff Review, Comments, And Side Panels
+
+OpenCode has a review-oriented side panel stack that Khala only partially
+approximates:
+
+- Session side panel with file, context, review, and terminal regions.
+- Review tab and review panel v2 with diff kind modeling.
+- Comments provider and comment-note utilities.
+- Active review toggle and keyboard command.
+- Session context metrics/breakdown tabs.
+- File/context/review side-panel layout persistence.
+- Revert dock tied into the composer region.
+
+Khala has source-control action modeling and diff-review contract tests, but no
+observed complete file/review side panel with comments, review tabs, and
+integrated file tree.
+
+### 9. Integrated Terminal Workbench
+
+OpenCode has a real workspace terminal surface:
+
+- `ghostty-web` terminal component.
+- Workspace-scoped PTY sessions.
+- Terminal provider with persisted terminal tabs.
+- Terminal websocket URL building and terminal writer helpers.
+- Auto-created terminal when the terminal panel opens.
+- New terminal command and terminal toggle command.
+- Drag/drop reorderable terminal tabs.
+- Terminal clone/recover behavior after connect errors.
+- Serialized buffer restore.
+- Copy, paste, clickable links, theme/font integration, and focus recovery.
+- Terminal panel resizing/collapse and v2 panel layout.
+- Shell selection setting and terminal font setting.
+
+Khala has Codex background-terminal RPC support and a terminal/TUI mode
+contract, but no user-facing OpenCode-style embedded PTY panel with tabbed
+interactive terminals.
+
+### 10. Composer And Prompt Input
+
+OpenCode's prompt composer is more like an IDE input surface:
+
+- Contenteditable rich prompt editor with DOM normalization.
+- Normal prompt mode and shell prompt mode.
+- Prompt history for normal and shell modes.
+- Slash popover integrated with command registry.
+- `@`/file/context style insertion through context items.
+- Model selector in the composer.
+- Agent selector/cycle controls.
+- Model variant cycling.
+- Provider-aware composer controls.
+- Image attachments with thumbnails, preview/open, removal, and native source
+  path handling.
+- Drag/drop attachment overlay.
+- Paste handling for rich text and files.
+- Native file picker attachment fallback.
+- Context items for selected files/lines/comments.
+- Request-part builder tests and submission-state modeling.
+- Composer docks for follow-up, permission, question, revert, and todo state.
+
+Khala has a command composer, slash commands, attachments, transcript
+projection, follow-up handling, and Fleet/Gym controls. It does not have the
+same contenteditable editor, model/agent/provider controls in-composer, image
+attachment previews, native attachment picker, selected-line context, or full
+composer dock stack.
+
+### 11. Command Registry, Palette, And Keybind Editing
+
+OpenCode has a central command system:
+
+- Command registry with categories and keybind metadata.
+- Searchable command/file/session selection dialogs.
+- Global layout commands for sidebar, settings, project open, tab navigation,
+  provider connect, project/session switching, and more.
+- Session commands for new, undo, redo, compact, fork, share/unshare, file
+  open, close tab, add selection, terminal toggle/new, review toggle, file tree
+  toggle, focus input, previous/next message, MCP toggle, and auto-accept.
+- Composer commands for model, agent, and prompt variants.
+- Keybind rendering components and tooltips.
+- User-facing keybind settings with search, capture, assign, clear, conflict
+  detection, grouped commands, and reset-all.
+
+Khala has thread hotkeys, hotbar shortcuts, slash commands, and app-specific
+controls, but no comparable central command registry plus editable keybind UI.
+
+### 12. Providers, Models, MCP, And Permissions UX
+
+OpenCode has provider/model/MCP management surfaces that Khala does not mirror:
+
+- Provider connection dialog for popular providers.
+- Custom OpenAI-compatible provider dialog.
+- Provider disconnect UI.
+- Provider catalog and connected/paid/env/config/custom state.
+- Model picker with search, provider grouping, unpaid/usage-exceeded handling,
+  and model tooltips.
+- Manage models dialog with per-model and per-provider visibility toggles.
+- MCP selection dialog with connected/failed/needs-auth/needs-client-registration
+  statuses and enable/disable controls.
+- Permission provider UI with per-session/directory auto-accept behavior and
+  command to toggle auto-accept.
+- Permission, question, revert, and todo docks tied to active session work.
+
+Khala has Codex settings projection, model/provider configuration reads and
+writes, Codex MCP/plugin/skill marketplace pass-through, and an Inbox for
+operator attention. It does not yet have OpenCode's provider catalog/connect
+flows, model visibility manager, MCP status picker, or per-session permission
+auto-accept UI.
+
+### 13. Settings, Themes, Locales, Notifications, And Sounds
+
+OpenCode has a much wider application preferences surface:
+
+- Settings v2 tabs for General, Shortcuts, Servers, Providers, and Models.
+- Language picker and i18n dictionaries for Arabic, Bosnian, Brazilian
+  Portuguese, Chinese, Traditional Chinese, Danish, German, English, Spanish,
+  French, Japanese, Korean, Norwegian, Polish, Russian, Thai, Turkish, and
+  Ukrainian.
+- Theme/color-scheme selection, theme preload, and custom theme support.
+- UI font, code font, and terminal font settings.
+- Shell setting and terminal/default shell handling.
+- Reasoning summaries setting.
+- Shell/edit tool-parts expanded settings.
+- Feature toggles for new layout designs, file tree, search, status, and
+  custom agents.
+- Notification settings for agent events, permission events, and errors.
+- Sound settings.
+- Update and release-notes settings.
+- Pinch-zoom and display backend/Wayland settings.
+- Server settings and WSL settings embedded in the same preferences model.
+
+Khala has Codex and Claude settings panels, role/model configuration, release
+lane data, and product-specific feature flags/contracts. It does not show the
+same broad end-user preferences system, i18n layer, theme/font configurator,
+sound/notification settings, update settings, or server/WSL settings UI.
+
+### 14. Timeline, Status, Error, And Usage UX
+
+OpenCode has app-wide UI models around status and errors:
+
+- Virtualized message timeline model and measurement tests.
+- Timeline row reconciliation and hash-scroll behavior.
+- Session context usage, metrics, and breakdown UI.
+- Status popover body.
+- Error page with provider-auth/model-not-found/provider-init-specific
+  descriptions and update retry controls.
+- Usage exceeded dialogs tied to provider/model state.
+- Notification click routing.
+- Debug bar.
+
+Khala has transcript rendering, status indicators, rate-limit/capacity panels,
+and public-safety projection rules, but not this exact OpenCode timeline,
+status, provider-error, usage-exceeded, and context-usage UI stack.
+
+### 15. Sharing, Forking, Archive, And Session Management Extras
+
+OpenCode includes several session-management affordances not observed in Khala:
+
+- Fork dialog and session fork command.
+- Share/unshare session commands.
+- Session archive model on home.
+- Closed-tabs restoration.
+- Previous/next message navigation.
+- Previous/next session and previous/next project navigation.
+- Background-open tab behavior from the home screen.
+- Session ownership helpers.
+
+Khala has Codex thread history and OpenAgents sync surfaces, but no matching
+OpenCode session fork/share/archive/tab-recovery feature set.
+
+### 16. Release Notes, Help, Feedback, And Support Entrypoints
+
+OpenCode surfaces product support from inside the desktop app:
+
+- Release notes dialog.
+- Help menu links for docs, support, feedback, and bug reports.
+- Updater action components in settings and error surfaces.
+- Native menu item for exporting debug logs before support handoff.
+
+Khala has README/runbooks/docs and product panels, but no comparable in-app Help
+menu, release-notes dialog, or support-oriented native diagnostics action.
+
+### 17. Test Coverage For The Missing Surfaces
+
+OpenCode's desktop app has tests around many of the above surfaces:
+
+- Native desktop tests for updater controller/subscriptions, shell env, store
+  cleanup, window registry, attachment picker, onboarding initialization, WSL
+  servers, and renderer initialization.
+- App tests for command/keybind registry, file tree, file watcher/cache,
+  terminal provider/panel, timeline projection/measurement, settings/provider
+  dialogs, theme preload, titlebar tabs/history/gestures, server health/scope,
+  global sync, permission auto-respond, prompt input, attachment building, and
+  many i18n/parity helpers.
+
+Khala has its own strong contract, unit, live-smoke, visual-smoke, Fleet, Gym,
+Codex, Claude, and safety test suites. It lacks corresponding tests for the
+OpenCode-style native lifecycle, file tree/editor/review workbench, terminal
+panel, keybind editor, provider catalog, WSL servers, server manager, and
+in-app updater because those features are absent.
+
+## Adoption Order If Khala Wants Desktop Parity
+
+The most valuable OpenCode gaps to close first are not the broadest. They are
+the ones that reduce support cost and make Khala feel reliable as a desktop
+app:
+
+1. Native lifecycle basics: in-app updater, debug-log export, crash/load
+   recovery, deep links, single-instance handling, and a fuller native menu.
+2. Workbench basics: project/home dashboard, file tree, file tabs, diff/review
+   panel, and embedded terminal.
+3. Power-user controls: command palette, editable keybinds, native file picker,
+   clipboard image attachments, and richer prompt context.
+4. Backend breadth: server manager, remote server health gate, and WSL server
+   management if Windows support becomes a first-class target.
+5. Preference breadth: i18n, themes/fonts, notification/sound controls,
+   provider catalog, model manager, and MCP picker.
+
+## Boundary Notes
+
+- Do not weaken Khala's public-safety, own-capacity, token-accounting, or
+  projection invariants to copy OpenCode UI speed. Khala's Fleet/Gym surfaces
+  are higher-trust than OpenCode's generic coding UI and must keep their stricter
+  constraints.
+- Do not rebuild Codex core execution in Khala just because OpenCode embeds its
+  own server. Khala's current boundary is correct: Codex owns coding execution,
+  approvals, sandboxing, MCP/plugins/skills/session state, and app-server
+  protocol.
+- Prefer adopting OpenCode-style user affordances around the existing Codex
+  app-server when possible: file explorer via Codex filesystem APIs, terminal
+  via Codex background-terminal APIs or a deliberate PTY contract, provider
+  selection via Codex config/model APIs, and deep links into Khala's thread and
+  panel model.
