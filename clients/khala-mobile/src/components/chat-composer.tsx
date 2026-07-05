@@ -3,6 +3,7 @@ import { useState } from "react"
 import { ActivityIndicator, Platform, Pressable, Text, TextInput, View } from "react-native"
 import Animated, { useAnimatedStyle, useDerivedValue, withTiming } from "react-native-reanimated"
 
+import { ArwesButton } from "./arwes-button"
 import {
   buildAppendUserMessageIntentArgs,
   buildChatAppendMessageArgs,
@@ -12,6 +13,7 @@ import {
 } from "../sync/khala-runtime-compose-core"
 import { makeSafeRef } from "../sync/khala-sync-push-core"
 import type { PendingMutation } from "../sync/use-khala-sync-push"
+import { khalaMobileTheme } from "../theme/tokens"
 
 type SendMode = "steer" | "queue"
 
@@ -172,27 +174,45 @@ export const ChatComposer = ({ activeTurn, push, threadId }: ChatComposerProps) 
           value={text}
         />
         {hasActiveTurn ? (
-          <Pressable
+          // `ArwesButton` (ported from Arcade, see
+          // `docs/design/2026-07-05-arcade-ui-harvest-audit.md` §2.2) pairs
+          // the Skia `Frame`'s press-glow with the primary composer CTA,
+          // replacing the old instant `bg-danger` className swap with no
+          // press feedback.
+          <ArwesButton
             accessibilityLabel="Stop"
-            accessibilityRole="button"
-            className="h-10 w-10 items-center justify-center rounded-full bg-danger"
+            alwaysShowBorder
+            borderColor={khalaMobileTheme.danger}
+            color={khalaMobileTheme.danger}
             disabled={sending}
-            hitSlop={8}
             onPress={stopActiveTurn}
+            style={{ height: 44, width: 44 }}
           >
-            {sending ? <ActivityIndicator color="#fff" size="small" /> : <Text className="text-base text-text">■</Text>}
-          </Pressable>
+            <View className="h-11 w-11 items-center justify-center">
+              {sending ? (
+                <ActivityIndicator color={khalaMobileTheme.danger} size="small" />
+              ) : (
+                <Text className="text-base text-danger">■</Text>
+              )}
+            </View>
+          </ArwesButton>
         ) : (
-          <Pressable
+          <ArwesButton
             accessibilityLabel="Send"
-            accessibilityRole="button"
-            className={`h-10 w-10 items-center justify-center rounded-full ${canSend ? "bg-accent" : "bg-surfaceMuted"}`}
+            alwaysShowBackground={canSend}
+            alwaysShowBorder
             disabled={!canSend}
-            hitSlop={8}
             onPress={() => sendMessage("queue")}
+            style={{ height: 44, width: 44 }}
           >
-            {sending ? <ActivityIndicator color="#000" size="small" /> : <Text className="text-lg text-bg">↑</Text>}
-          </Pressable>
+            <View className="h-11 w-11 items-center justify-center">
+              {sending ? (
+                <ActivityIndicator color={khalaMobileTheme.accent} size="small" />
+              ) : (
+                <Text className={`text-lg ${canSend ? "text-accent" : "text-textFaint"}`}>↑</Text>
+              )}
+            </View>
+          </ArwesButton>
         )}
       </View>
       <View>

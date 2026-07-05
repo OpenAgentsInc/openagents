@@ -16,6 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context"
 
 import { useKhalaAuth } from "../../src/auth/khala-auth-context"
 import { AppHeader } from "../../src/components/app-header"
+import { Frame, usePowerOnVisible } from "../../src/components/frame"
 import { KHALA_SYNC_DEMO_FLEET_RUN_ID } from "../../src/config/khala-sync-demo"
 import {
   fleetAccountIdOf,
@@ -40,6 +41,60 @@ const SectionLabel = ({ children }: { children: string }) => (
     {children}
   </Text>
 )
+
+/** Fleet run status card, framed with the ported Arwes `Frame` chrome (see
+ * `docs/design/2026-07-05-arcade-ui-harvest-audit.md` §2.1) so it visually
+ * "powers on" once real fleet-run data lands, per the harvest issue's own
+ * guidance to reserve `Frame` for primary/active surfaces. */
+const FleetRunCard = ({ run }: { run: FleetRunEntity }) => {
+  const visible = usePowerOnVisible()
+  return (
+    <Frame alwaysShowBorder visible={visible}>
+      <View className="p-3">
+        <View className="flex-row items-center justify-between">
+          <Text className="font-sans text-base font-semibold text-text">{run.status}</Text>
+          <Text className="font-mono text-xs text-textFaint">{run.workerKind}</Text>
+        </View>
+        <Text className="mt-1 font-mono text-xs text-textMuted">
+          {run.desiredSlots} desired slots · {run.counters.activeAssignments} active ·{" "}
+          {run.counters.completedAssignments} completed · {run.counters.failedAssignments} failed ·{" "}
+          {run.counters.blockedAssignments} blocked
+        </Text>
+      </View>
+    </Frame>
+  )
+}
+
+/** Connected fleet-account card, same "power on" `Frame` treatment as
+ * `FleetRunCard`, staggered per row via `MOTION_STAGGER_MS * index` to match
+ * the existing entrance-stagger convention used elsewhere on this screen. */
+const AccountCard = ({ account, index }: { account: FleetAccountEntity; index: number }) => {
+  const visible = usePowerOnVisible(MOTION_STAGGER_MS * index)
+  return (
+    <Frame alwaysShowBorder visible={visible}>
+      <View className="px-3 py-2">
+        <View className="flex-row items-center justify-between">
+          <Text className="font-mono text-sm text-text">
+            {formatAccountRefHash(account.accountRefHash)}
+            {account.provider === undefined ? "" : ` · ${account.provider}`}
+          </Text>
+          <Text className={`font-mono text-xs ${READINESS_COLOR[account.readiness]}`}>
+            {account.readiness}
+            {account.rateLimitClass === undefined ? "" : ` · ${account.rateLimitClass}`}
+          </Text>
+        </View>
+        {account.capacityAvailable === undefined &&
+        account.capacityBusy === undefined &&
+        account.capacityQueued === undefined ? null : (
+          <Text className="mt-1 font-mono text-xs text-textFaint">
+            {account.capacityAvailable ?? 0} available ·{" "}
+            {account.capacityBusy ?? 0} busy · {account.capacityQueued ?? 0} queued
+          </Text>
+        )}
+      </View>
+    </Frame>
+  )
+}
 
 const FleetSection = () => {
   const scope = KHALA_SYNC_DEMO_FLEET_RUN_ID === "" ? "" : String(fleetRunScope(KHALA_SYNC_DEMO_FLEET_RUN_ID))
@@ -86,20 +141,7 @@ const FleetSection = () => {
             {runState.status === "loading" ? "loading…" : "No run data for this id yet"}
           </Text>
         ) : (
-          <Animated.View
-            className="rounded-xl border border-border bg-surfaceRaised p-3"
-            entering={FadeIn.duration(MOTION_MEDIUM)}
-          >
-            <View className="flex-row items-center justify-between">
-              <Text className="font-sans text-base font-semibold text-text">{run.status}</Text>
-              <Text className="font-mono text-xs text-textFaint">{run.workerKind}</Text>
-            </View>
-            <Text className="mt-1 font-mono text-xs text-textMuted">
-              {run.desiredSlots} desired slots · {run.counters.activeAssignments} active ·{" "}
-              {run.counters.completedAssignments} completed · {run.counters.failedAssignments} failed ·{" "}
-              {run.counters.blockedAssignments} blocked
-            </Text>
-          </Animated.View>
+          <FleetRunCard run={run} />
         )}
       </View>
 
@@ -111,30 +153,7 @@ const FleetSection = () => {
           </Text>
         ) : (
           accounts.map((account: FleetAccountEntity, index) => (
-            <Animated.View
-              className="rounded-xl border border-border bg-surfaceRaised px-3 py-2"
-              entering={FadeIn.delay(MOTION_STAGGER_MS * index).duration(MOTION_MEDIUM)}
-              key={account.accountRefHash}
-            >
-              <View className="flex-row items-center justify-between">
-                <Text className="font-mono text-sm text-text">
-                  {formatAccountRefHash(account.accountRefHash)}
-                  {account.provider === undefined ? "" : ` · ${account.provider}`}
-                </Text>
-                <Text className={`font-mono text-xs ${READINESS_COLOR[account.readiness]}`}>
-                  {account.readiness}
-                  {account.rateLimitClass === undefined ? "" : ` · ${account.rateLimitClass}`}
-                </Text>
-              </View>
-              {account.capacityAvailable === undefined &&
-              account.capacityBusy === undefined &&
-              account.capacityQueued === undefined ? null : (
-                <Text className="mt-1 font-mono text-xs text-textFaint">
-                  {account.capacityAvailable ?? 0} available ·{" "}
-                  {account.capacityBusy ?? 0} busy · {account.capacityQueued ?? 0} queued
-                </Text>
-              )}
-            </Animated.View>
+            <AccountCard account={account} index={index} key={account.accountRefHash} />
           ))
         )}
       </View>
