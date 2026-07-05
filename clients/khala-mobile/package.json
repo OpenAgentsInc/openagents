@@ -18,6 +18,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@react-navigation/drawer": "^7.6.2",
+    "@react-navigation/native": "^7.3.1",
     "@expo/metro-config": "57.0.3",
     "@expo/metro-runtime": "57.0.3",
     "@openagentsinc/khala-sync": "workspace:*",

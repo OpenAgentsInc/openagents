@@ -250,3 +250,82 @@ path when no local session file exists) — not done here.
   with correctly formatted, chronologically ordered, timestamped messages;
   the header dot renders as a plain small circle (not native button chrome)
   on both screens, confirmed via simulator screenshots.
+
+## Drawer navigation + Settings > Fleet section
+
+The mobile app now has a hamburger (☰) button on the left of the header
+(`showMenu` on `AppHeader`) that opens a drawer via
+`navigation.dispatch(DrawerActions.openDrawer())` (`@react-navigation/native`
+`DrawerActions`, since the header is fully custom, not native — see above).
+The route tree moved to a group:
+
+- `app/(drawer)/_layout.tsx` — an `expo-router/drawer` `Drawer` navigator
+  with two screens: `index` (the thread list, unchanged) and `settings`
+  (new). `app/thread/[threadId].tsx` stays a sibling of the group, outside
+  the drawer, so it still pushes over it as a normal stack screen.
+- `app/(drawer)/settings.tsx` — a Fleet section reading Khala Sync's
+  `fleet_run` / `fleet_worker` / `fleet_account` entities from
+  `fleetRunScope(runId)` via the same generic `useKhalaSyncCollection` hook
+  used by the chat screens (called three times against the same scope, once
+  per entity type — simplicity over one extra WebSocket connection for a
+  low-traffic settings screen).
+
+### Fleet runs are scoped per session, not per owner — a real gap, not papered over
+
+Desktop's fleet cockpit "connected account" cards (`fleet-status.ts`) show
+rich local data — provider name, email, quota state, live capacity numbers —
+sourced from `codexFleetStatus` (local Pylon filesystem/process inspection,
+`khala-fleet-tools.ts`), **not from Khala Sync**. The Khala Sync
+`FleetAccountEntity` (`packages/khala-sync/src/fleet.ts`) is a deliberately
+public-safe, minimal shadow: only a hashed `accountRefHash`
+(`account.<lane>.<hex-digest>`), `readiness`
+(`ready`/`cooldown`/`unavailable`/`unknown`), and an optional
+`rateLimitClass` — by design, no provider, email, or raw ref can even decode
+into that shape (SPEC §7 invariant 9). Mobile's Fleet section is wired to
+this synced-but-sparse projection, per the explicit ask to use Khala Sync —
+it will show real ready/cooldown/unavailable state per account, but never
+the provider/email/capacity detail desktop's local view has, unless that
+schema is deliberately extended later.
+
+Separately, `fleet_run`/`fleet_worker`/`fleet_account` all live inside
+`scope.fleet_run.<runId>`, and that `runId` is an ephemeral per-launch
+session id assigned by the desktop's local fleet cockpit (`local.runRef` in
+`fleet-sync-projection.ts`) — there is no stable "list all my fleet runs"
+scope to discover it from. `EXPO_PUBLIC_KHALA_SYNC_DEMO_FLEET_RUN_ID` points
+mobile at one specific run id for now (empty by default, showing a
+"no fleet run configured" state); a stable per-owner fleet-roster scope
+would be the real fix, and is a separate follow-up, not done here.
+
+### No production writer creates `fleet_run`/`fleet_worker`/`fleet_account` today — verified, then seeded for real
+
+Tracing the actual write paths (not guessing): none of the seven fleet
+operator mutators (`fleet.setDesiredSlots`, `pauseRun`, `resumeRun`,
+`pauseWorker`, `resumeWorker`, `acknowledgeInboxFlag`, `stopRun`,
+`packages/khala-sync-server/src/fleet-mutators.ts`) can CREATE a run from
+nothing by design intent — but each falls back to a `baselineRun`/minimal
+baseline worker when none exists yet, and `ensureScopeOwner` auto-claims an
+unclaimed `scope.fleet_run.<runId>` for the first caller. So calling
+`fleet.setDesiredSlots` with a brand new `runId` genuinely creates a real
+`fleet_run` row (status starts `"draft"`), and `fleet.pause_worker` /
+`fleet.resume_worker` genuinely creates a real `fleet_worker` row — both
+through the actual production mutator/transaction path, not fake data.
+There is, separately, no mutator or Pylon-lifecycle hook that writes
+`fleet_account` at all — the only real production dual-write
+(`projectFleetAssignmentTransition`,
+`apps/openagents.com/workers/api/src/khala-sync-fleet-projection.ts`)
+projects `fleet_assignment` only, and only when the assignment already
+carries a `fleetRunRef` (nothing sets one today). So "no connected accounts
+synced yet" is not a mobile bug — it is the honest, currently-correct state
+of the entire system, verified by reading the mutator set and the one real
+projection hook, not assumed.
+
+Seeded a real run for verification: via the desktop's `khalaSyncFleetMutate`
+RPC, `set_desired_slots` (`runId: "khala-mobile-fleet-demo"`, `desiredSlots:
+2`) then `resume_worker` (`workerId: "worker-1"`) then `resume`. Confirmed via
+`POST /api/sync/bootstrap` against production: a real `fleet_run` entity
+(`status: "running"`, `desiredSlots: 2`) and a real `fleet_worker` entity
+(`worker-1`, `phase: "idle"`). Pointed
+`EXPO_PUBLIC_KHALA_SYNC_DEMO_FLEET_RUN_ID` at that run id and confirmed live
+on the iOS Simulator: the Settings screen's Fleet section renders the real
+run card, the real worker card, and the honest "no connected accounts"
+empty state — via the drawer (☰ → Settings), all through Khala Sync.

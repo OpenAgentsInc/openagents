@@ -8,11 +8,11 @@ import { useRouter } from "expo-router"
 import { FlatList, Pressable, Text, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 
-import { AppHeader } from "../src/components/app-header"
-import { KHALA_SYNC_DEMO_OWNER_USER_ID } from "../src/config/khala-sync-demo"
-import { formatRelativeTime } from "../src/sync/relative-time-core"
-import { sortByKeyDesc } from "../src/sync/khala-sync-entities-core"
-import { useKhalaSyncCollection } from "../src/sync/use-khala-sync-collection"
+import { AppHeader } from "../../src/components/app-header"
+import { KHALA_SYNC_DEMO_OWNER_USER_ID } from "../../src/config/khala-sync-demo"
+import { formatRelativeTime } from "../../src/sync/relative-time-core"
+import { sortByKeyDesc } from "../../src/sync/khala-sync-entities-core"
+import { useKhalaSyncCollection } from "../../src/sync/use-khala-sync-collection"
 
 const threadIdOf = (thread: ChatThreadEntity): string => thread.threadId
 const recencyOf = (thread: ChatThreadEntity): string =>
@@ -31,7 +31,7 @@ export default function ThreadListScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-bg" edges={["top", "bottom", "left", "right"]}>
-      <AppHeader title="Khala" />
+      <AppHeader showMenu title="Khala" />
       {KHALA_SYNC_DEMO_OWNER_USER_ID === "" ? (
         <View className="flex-1 items-center justify-center px-8">
           <Text className="text-center font-mono text-sm text-textFaint">
