@@ -468,6 +468,44 @@ export const loadKhalaCodeLagProfilingSnapshotInputs = async (
   throw new Error(`Unsupported lag profiling snapshot file: ${path}`)
 }
 
+export type KhalaCodeLagProfilingSnapshotFileFailure = {
+  readonly path: string
+  readonly error: string
+}
+
+export type KhalaCodeLagProfilingSnapshotLoadResult = {
+  readonly snapshots: readonly KhalaCodeLagProfilingSnapshotInput[]
+  readonly failures: readonly KhalaCodeLagProfilingSnapshotFileFailure[]
+}
+
+/**
+ * Loads every snapshot file, isolating each file's load (Promise.all
+ * cron-landmine audit finding #6): one bad or missing file (ENOENT, invalid
+ * JSON, an unsupported shape) must not kill visibility into every OTHER
+ * file's already-loaded snapshots. Never throws — each failure is reported in
+ * `failures` alongside the snapshots successfully loaded from the rest.
+ */
+export const loadKhalaCodeLagProfilingSnapshotFiles = async (
+  snapshotPaths: readonly string[],
+  loadOne: (path: string) => Promise<readonly KhalaCodeLagProfilingSnapshotInput[]> = loadKhalaCodeLagProfilingSnapshotInputs,
+): Promise<KhalaCodeLagProfilingSnapshotLoadResult> => {
+  const outcomes = await Promise.allSettled(snapshotPaths.map((path) => loadOne(path)))
+  const snapshots: KhalaCodeLagProfilingSnapshotInput[] = []
+  const failures: KhalaCodeLagProfilingSnapshotFileFailure[] = []
+  outcomes.forEach((outcome, index) => {
+    const path = snapshotPaths[index]!
+    if (outcome.status === "fulfilled") {
+      snapshots.push(...outcome.value)
+    } else {
+      failures.push({
+        error: outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason),
+        path,
+      })
+    }
+  })
+  return { failures, snapshots }
+}
+
 const parseArgs = (argv: readonly string[]): {
   readonly fileIssues: boolean
   readonly fixture: boolean
@@ -553,9 +591,10 @@ const runGhIssueCreate = async (input: {
 
 const main = async (): Promise<void> => {
   const args = parseArgs(process.argv.slice(2))
-  const loadedSnapshots = (await Promise.all(
-    args.snapshotPaths.map(loadKhalaCodeLagProfilingSnapshotInputs),
-  )).flat()
+  const { failures, snapshots: loadedSnapshots } = await loadKhalaCodeLagProfilingSnapshotFiles(args.snapshotPaths)
+  for (const failure of failures) {
+    console.error(`Failed to load lag profiling snapshot file ${failure.path}: ${failure.error}`)
+  }
   const snapshots = args.fixture || loadedSnapshots.length === 0
     ? [...loadedSnapshots, ...buildKhalaCodeLagProfilingFixtureSnapshots()]
     : loadedSnapshots
@@ -576,6 +615,11 @@ const main = async (): Promise<void> => {
     }
   }
   console.log(written.markdownPath)
+  // The sweep itself completed against every snapshot file that loaded, but a
+  // bad/missing file is still a real problem in an unattended CI run — signal
+  // it via a non-zero exit code without throwing, so it never masks (or is
+  // masked by) the report already written from the good files.
+  if (failures.length > 0) process.exitCode = 1
 }
 
 if (import.meta.main) {

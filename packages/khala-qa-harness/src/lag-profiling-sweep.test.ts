@@ -12,6 +12,7 @@ import {
   collectKhalaCodeLagProfilingSnapshot,
   createKhalaCodeLagProfilingIssueRequests,
   fileKhalaCodeLagProfilingOffenderIssues,
+  loadKhalaCodeLagProfilingSnapshotFiles,
   loadKhalaCodeLagProfilingSnapshotInputs,
   writeKhalaCodeLagProfilingSweepReport,
 } from "./index.js"
@@ -134,5 +135,60 @@ describe("Khala Code lag profiling sweep", () => {
     } finally {
       await rm(outDir, { force: true, recursive: true })
     }
+  })
+
+  test("loadKhalaCodeLagProfilingSnapshotFiles isolates one bad file: the others still load", async () => {
+    // Regression for the Promise.all cron-landmine audit (finding #6): the
+    // sweep used to load every `--snapshot` file with a single Promise.all,
+    // so one bad or missing file (ENOENT, invalid JSON, unsupported shape)
+    // rejected the whole load and discarded every OTHER file's already-loaded
+    // snapshots, killing the whole sweep instead of just flagging the one
+    // bad file.
+    const outDir = await mkdtemp(join(tmpdir(), "khala-lag-sweep-isolate-"))
+    try {
+      const [fixtureInput] = buildKhalaCodeLagProfilingFixtureSnapshots()
+      expect(fixtureInput).toBeDefined()
+      const goodPathA = join(outDir, "good-a.json")
+      const goodPathB = join(outDir, "good-b.json")
+      const missingPath = join(outDir, "does-not-exist.json")
+      const malformedPath = join(outDir, "malformed.json")
+      await Bun.write(goodPathA, `${JSON.stringify(fixtureInput, null, 2)}\n`)
+      await Bun.write(goodPathB, `${JSON.stringify(fixtureInput!.snapshot, null, 2)}\n`)
+      await Bun.write(malformedPath, `${JSON.stringify({ nonsense: true }, null, 2)}\n`)
+
+      const result = await loadKhalaCodeLagProfilingSnapshotFiles([
+        goodPathA,
+        missingPath,
+        malformedPath,
+        goodPathB,
+      ])
+
+      // Both good files' real snapshots came back even though two sibling
+      // files failed to load.
+      expect(result.snapshots).toHaveLength(2)
+      expect(result.snapshots[0]?.mode).toBe("fixture")
+      expect(result.snapshots[1]?.mode).toBe("mode_p_preview_bridge")
+
+      expect(result.failures).toHaveLength(2)
+      const failuresByPath = new Map(result.failures.map((failure) => [failure.path, failure.error]))
+      expect(failuresByPath.get(missingPath)).toMatch(/ENOENT|no such file/i)
+      expect(failuresByPath.get(malformedPath)).toContain("Unsupported lag profiling snapshot file")
+    } finally {
+      await rm(outDir, { force: true, recursive: true })
+    }
+  })
+
+  test("loadKhalaCodeLagProfilingSnapshotFiles never throws, even when every file fails", async () => {
+    const result = await loadKhalaCodeLagProfilingSnapshotFiles(
+      ["a.json", "b.json"],
+      async () => {
+        throw new Error("boom")
+      },
+    )
+    expect(result.snapshots).toEqual([])
+    expect(result.failures).toEqual([
+      { error: "boom", path: "a.json" },
+      { error: "boom", path: "b.json" },
+    ])
   })
 })

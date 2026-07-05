@@ -828,6 +828,123 @@ describe("FleetRunSupervisor", () => {
     expect(store.listTasks("completed")).toHaveLength(1)
   })
 
+  test("post-dispatch bookkeeping failure for one item is logged and does not discard sibling results (#8409-class)", async () => {
+    const { store, run } = createStoreWithRun({
+      runRef: "fleet_run.acceptance.bookkeeping_failure",
+      targetConcurrency: 2,
+      workUnits: 2,
+    })
+    const originalRecordWorkerDone = store.recordWorkerDone.bind(store)
+    let explodedTaskId: string | undefined
+    store.recordWorkerDone = ((input: Parameters<typeof store.recordWorkerDone>[0]) => {
+      if (explodedTaskId === undefined) {
+        explodedTaskId = input.taskId
+        throw new Error("bookkeeping exploded")
+      }
+      return originalRecordWorkerDone(input)
+    }) as typeof store.recordWorkerDone
+
+    const originalConsoleError = console.error
+    const errors: unknown[][] = []
+    console.error = (...args: unknown[]) => {
+      errors.push(args)
+    }
+
+    let result: Awaited<ReturnType<typeof tickFleetRunSupervisor>>
+    try {
+      result = await tickFleetRunSupervisor({
+        store,
+        pylonRef: "pylon.owner.bookkeeping_failure",
+        runRef: run.runRef,
+        planner: fixturePlannerWithClaims(store, 2),
+        runner: {
+          dispatch: async (input: FleetRunSupervisorDispatchInput) => ({
+            assignmentRef: `assignment.${input.claim.claimRef}`,
+            lifecycle: [lifecycleEvent("assignment_run.completed", { status: "closed" })],
+            status: "completed" as const,
+          }),
+        },
+        capacity: capacity([{ accountRef: "codex", advertisedCapacity: 2 }]),
+        clock: { now: () => fixedNow },
+      })
+    } finally {
+      console.error = originalConsoleError
+    }
+
+    // Both dispatches were attempted; the tick promise itself must resolve (not
+    // reject) even though one item's post-dispatch bookkeeping threw.
+    expect(result.dispatched).toBe(2)
+    expect(explodedTaskId).toBeDefined()
+
+    // The sibling item's bookkeeping ran to completion and is not discarded.
+    expect(store.listTasks("completed")).toHaveLength(1)
+    expect(store.listWorkClaims({ runRef: run.runRef, state: "closeout" })).toHaveLength(1)
+
+    // The failure was logged with enough context to diagnose, not silently swallowed.
+    const loggedBookkeepingFailure = errors.some(
+      args => typeof args[0] === "string" && args[0].includes("post-dispatch bookkeeping failed"),
+    )
+    expect(loggedBookkeepingFailure).toBe(true)
+  })
+
+  test("fire-and-forget dispatches (awaitDispatches: false) log a swallowed failure instead of discarding it silently", async () => {
+    const { store, run } = createStoreWithRun({
+      runRef: "fleet_run.acceptance.fire_and_forget_failure",
+      targetConcurrency: 2,
+      workUnits: 2,
+    })
+    const originalReleaseWorkClaim = store.releaseWorkClaim.bind(store)
+    let explodedClaimRef: string | undefined
+    store.releaseWorkClaim = ((claimRef: string, now?: Date) => {
+      if (explodedClaimRef === undefined) {
+        explodedClaimRef = claimRef
+        throw new Error("release exploded")
+      }
+      return originalReleaseWorkClaim(claimRef, now)
+    }) as typeof store.releaseWorkClaim
+
+    const originalConsoleError = console.error
+    const errors: unknown[][] = []
+    console.error = (...args: unknown[]) => {
+      errors.push(args)
+    }
+
+    let calls = 0
+    try {
+      await tickFleetRunSupervisor({
+        store,
+        pylonRef: "pylon.owner.fire_and_forget_failure",
+        runRef: run.runRef,
+        planner: fixturePlannerWithClaims(store, 2),
+        runner: {
+          dispatch: async (input: FleetRunSupervisorDispatchInput) => {
+            calls += 1
+            if (calls === 1) throw new Error("dispatch exploded")
+            return {
+              assignmentRef: `assignment.${input.claim.claimRef}`,
+              lifecycle: [lifecycleEvent("assignment_run.completed", { status: "closed" })],
+              status: "completed" as const,
+            }
+          },
+        },
+        capacity: capacity([{ accountRef: "codex", advertisedCapacity: 2 }]),
+        clock: { now: () => fixedNow },
+        awaitDispatches: false,
+      })
+      // Give the detached dispatch promises a turn to settle.
+      await waitFor(() => explodedClaimRef !== undefined)
+      await Bun.sleep(5)
+    } finally {
+      console.error = originalConsoleError
+    }
+
+    expect(explodedClaimRef).toBeDefined()
+    const loggedFireAndForgetFailure = errors.some(
+      args => typeof args[0] === "string" && args[0].includes("fire-and-forget dispatch failed"),
+    )
+    expect(loggedFireAndForgetFailure).toBe(true)
+  })
+
   test("refuses a second active supervisor for the same Pylon", async () => {
     const first = createStoreWithRun({ runRef: "fleet_run.one", targetConcurrency: 1 })
     const second = createStoreWithRun({ runRef: "fleet_run.two", targetConcurrency: 1 })

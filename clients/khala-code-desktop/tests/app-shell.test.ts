@@ -1350,7 +1350,9 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain(
       "const request: KhalaCodeDesktopChatTurnRequest = {\n      ...(imageAttachments.length === 0 ? {} : { attachments: imageAttachments }),\n      composerSelection: composerTurnSelection(),\n      messages: shellModel().messages,\n      sessionId,\n      ...(submittedThreadId === null ? { startNewThread: true } : { threadId: submittedThreadId }),\n      turnId,\n    }",
     )
-    expect(main).toContain("const imageAttachments = await imageAttachmentsForSubmit(attachments)")
+    expect(main).toContain(
+      "const { resolved: imageAttachments, failures: imageAttachmentFailures } =\n    await imageAttachmentsForSubmit(attachments)",
+    )
     expect(panel).toContain("Search Codex threads")
     expect(panel).toContain("let searchOpen = false")
     expect(panel).toContain("const toggleSearch = (): void =>")
@@ -1990,6 +1992,51 @@ describe("khala code desktop app shell", () => {
     expect(main).toContain("stageSourceControlActionPromptInComposer")
     expect(main).toContain("handleSourceControlActionSubmit")
     expect(css).toContain(".cb-diff-source-action-button")
+  })
+
+  // Oracle for the Promise.all landmine class documented in
+  // docs/2026-07-05-promise-all-cron-landmine-audit.md: steering the same
+  // text into multiple concurrently active Codex turns (follow-up drafts,
+  // diff review comments, source-control action prompts) must isolate each
+  // turn's RPC call so one turn rejecting never erases a sibling turn's
+  // outcome. Confirms all three call sites route through the shared
+  // isolated fanout helper instead of a bare `Promise.all` whose `.find`
+  // reporting logic would never run once one turn's steer call rejects.
+  test("isolates per-turn steering outcomes so one turn's failure never hides a sibling's outcome", async () => {
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+
+    expect(main).toContain('import { resolveAttachments } from "./attachment-resolution"')
+    expect(main).toContain("./turn-steer-outcomes")
+    expect(main).toContain("steerEachTurn")
+    expect(main).toContain("summarizeTurnSteerOutcomes")
+    expect(main).toContain("allTurnSteerOutcomesOk")
+    // The pre-fix shape (`Promise.all(targets.map(...))` + `results.find`)
+    // must be gone from all three steering call sites.
+    expect(main).not.toContain("const results = await Promise.all(targets.map(turnId =>")
+    expect(main).not.toContain("results.find(result => !result.ok)")
+  })
+
+  // Oracle for the same landmine class applied to composer attachments: one
+  // stale/revoked attachment URL rejecting during arrayBuffer() must not
+  // discard the other attachments that already resolved, and submitComposer
+  // must not become an unhandled rejection when invoked bare.
+  test("isolates per-attachment resolution and catches submitComposer's bare call sites", async () => {
+    const main = await Bun.file(new URL("../src/ui/main.ts", import.meta.url)).text()
+
+    expect(main).toContain("resolveAttachments(")
+    expect(main).toContain("failures: readonly { readonly name: string; readonly error: string }[]")
+    expect(main).toContain(
+      "const { resolved: imageAttachments, failures: imageAttachmentFailures } =\n    await imageAttachmentsForSubmit(attachments)",
+    )
+    expect(main).toContain("imageAttachmentFailures.length > 0")
+    expect(main).toContain("reportSubmitComposerFailure")
+    expect(main).toContain(
+      'void submitComposer()\n    .catch(error => reportSubmitComposerFailure(error))\n    .finally(() => composerInput.focus())',
+    )
+    expect(main).toContain('void submitComposer().catch(error => reportSubmitComposerFailure(error))')
+    // The pre-fix shape (a Promise.all over attachment reads that could
+    // reject the whole batch) must be gone.
+    expect(main).not.toContain("const payloads = await Promise.all(attachments.map(")
   })
 
   test("parses assistant prose as markdown instead of literal asterisks", () => {

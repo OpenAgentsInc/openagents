@@ -688,28 +688,51 @@ export const mountCodexSettingsPanel = (
     options.onRender?.()
   }
 
+  // Three independent IPC fetches (settings, ecosystem, model roles). A bare
+  // `Promise.all` here means one fetch rejecting hides the OTHER fetches'
+  // already-succeeded data behind one generic error banner, leaving the
+  // panel showing stale data for groups that actually refreshed fine. Each
+  // fetch is isolated via `Promise.allSettled` so a failing group only
+  // scopes its own error, and every successfully-fetched group still merges
+  // into fresh panel state.
   async function refreshSettings(): Promise<void> {
     loading = true
     render()
-    try {
-      const [nextSettings, nextEcosystem, nextModelRoles] = await Promise.all([
-        options.fetch(),
-        options.fetchEcosystem?.() ?? Promise.resolve(null),
-        options.fetchModelRoles?.() ?? Promise.resolve(null),
-      ])
-      settings = nextSettings
-      ecosystem = nextEcosystem
-      modelRoles = nextModelRoles?.registry ?? null
-      status = [
-        ...(nextSettings.ok ? [] : nextSettings.errors),
-        ...(nextEcosystem === null || nextEcosystem.ok ? [] : nextEcosystem.errors),
-      ].join("\n")
-    } catch (error) {
-      status = error instanceof Error ? error.message : String(error)
-    } finally {
-      loading = false
-      render()
+    const describeError = (reason: unknown): string =>
+      reason instanceof Error ? reason.message : String(reason)
+    const failures: string[] = []
+
+    const [settingsResult, ecosystemResult, modelRolesResult] = await Promise.allSettled([
+      options.fetch(),
+      options.fetchEcosystem?.() ?? Promise.resolve(null),
+      options.fetchModelRoles?.() ?? Promise.resolve(null),
+    ])
+
+    if (settingsResult.status === "fulfilled") {
+      settings = settingsResult.value
+      if (!settingsResult.value.ok) failures.push(...settingsResult.value.errors)
+    } else {
+      failures.push(`Settings refresh failed: ${describeError(settingsResult.reason)}`)
     }
+
+    if (ecosystemResult.status === "fulfilled") {
+      if (ecosystemResult.value !== null) {
+        ecosystem = ecosystemResult.value
+        if (!ecosystemResult.value.ok) failures.push(...ecosystemResult.value.errors)
+      }
+    } else {
+      failures.push(`Ecosystem refresh failed: ${describeError(ecosystemResult.reason)}`)
+    }
+
+    if (modelRolesResult.status === "fulfilled") {
+      if (modelRolesResult.value !== null) modelRoles = modelRolesResult.value.registry
+    } else {
+      failures.push(`Model roles refresh failed: ${describeError(modelRolesResult.reason)}`)
+    }
+
+    status = failures.join("\n")
+    loading = false
+    render()
   }
 
   render()

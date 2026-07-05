@@ -6,6 +6,7 @@ import {
   MULTI_SESSION_SUMMARY_SCHEMA,
   parsePlanJson,
   runMultiSessionPlan,
+  runOneSession,
   type ProofChildInput,
 } from "../scripts/multi-session-run"
 import { parseProofRunArgs } from "../scripts/dev-proof-run"
@@ -261,6 +262,61 @@ describe("runMultiSessionPlan", () => {
       expect(retainedFailure).not.toContain("raw public stderr")
       expect(JSON.stringify(summary)).not.toContain(root)
       assertPublicProjectionSafe(summary)
+    })
+  })
+
+  test("a heartbeat-append failure on the session's first heartbeat produces a failed outcome instead of throwing", async () => {
+    // Regression for the Promise.all cron-landmine audit: runOneSession's very
+    // first appendHeartbeat call used to run before its own try block, so a
+    // disk/permission failure there would reject the session's promise
+    // uncaught. Under runBounded's Promise.all-based worker pool, that
+    // uncaught rejection would abort the ENTIRE multi-session run and discard
+    // every OTHER session's outcome, not just this one's.
+    await withTempRoot(async (root) => {
+      const pylonHome = join(root, "pylon-home")
+      const proofsDir = join(root, "proofs")
+      const worktree = join(root, "worktree")
+      await mkdir(pylonHome, { recursive: true })
+      await mkdir(worktree, { recursive: true })
+      await mkdir(proofsDir, { recursive: true })
+
+      // A heartbeat path inside a nonexistent parent directory: appendFile
+      // throws ENOENT rather than silently succeeding, forcing runOneSession's
+      // very first appendHeartbeat call to reject.
+      const brokenHeartbeatPath = join(proofsDir, "does-not-exist", "heartbeats.jsonl")
+
+      const entry = parsePlanJson([
+        {
+          id: "broken-heartbeat",
+          adapter: "codex",
+          worktreePath: worktree,
+          objective: "should still produce a failed outcome",
+          verify: ["bun", "--version"],
+        },
+      ])[0]!
+
+      const outcome = await runOneSession({
+        args: {
+          concurrency: 1,
+          proofsDir,
+          pylonHome,
+          runId: "run.multi-session.heartbeat-failure-test",
+          plan: [entry],
+        },
+        entry,
+        index: 0,
+        heartbeatPath: brokenHeartbeatPath,
+        ambientPool: [],
+        proofRunner: async () => ({ exitCode: 0, stdout: "ok", stderr: "" }),
+      })
+
+      expect(outcome.state).toBe("failed")
+      expect(outcome.errorClass).not.toBeNull()
+      expect(outcome.sessionIndex).toBe(0)
+      // The catch/writeFailure path ran, proving control returned normally
+      // through runOneSession's own error handling rather than rejecting.
+      const retainedFailure = await readFile(join(proofsDir, "broken-heartbeat-failure.json"), "utf8")
+      expect(JSON.parse(retainedFailure).sessionRef).toBe(outcome.sessionRef)
     })
   })
 })

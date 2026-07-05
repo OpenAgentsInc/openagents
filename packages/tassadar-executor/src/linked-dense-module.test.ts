@@ -13,6 +13,8 @@ import {
   verifyTassadarLinkedDenseComposition,
   type TassadarLinkedDenseProgramFixture,
 } from "./linked-dense-module.js"
+import { executeTassadarDenseWeightModule } from "./dense-weight-module-runtime.js"
+import { digestTassadarNumericTraceRows } from "./numeric-executor.js"
 
 const fixtureFile = JSON.parse(
   readFileSync(
@@ -197,6 +199,48 @@ describe("Tassadar linked dense module", () => {
     })
     expect(listing.purchaseSettlementAllowed).toBe(false)
     expect(listing.settlementClaimAllowed).toBe(false)
+  })
+
+  test("isolates a per-bank verdict-construction crash so sibling banks' verdicts are not discarded", async () => {
+    const memoryRoundtripBank = tassadarLinkedDenseProgramFixture.linkedModule.banks[1]
+    if (memoryRoundtripBank === undefined) {
+      throw new Error("fixture is missing its second bank")
+    }
+    const memoryRoundtripTrace = await executeTassadarDenseWeightModule(
+      memoryRoundtripBank.denseModule,
+      tassadarLinkedDenseProgramFixture.steps,
+    )
+
+    const verification = await verifyTassadarLinkedDenseComposition(
+      tassadarLinkedDenseProgramFixture,
+      {
+        digestRows: async (graphDigest, rows) => {
+          if (graphDigest === memoryRoundtripTrace.graphDigest) {
+            throw new Error(
+              "simulated verdict-construction crash for one bank",
+            )
+          }
+          return digestTassadarNumericTraceRows(graphDigest, rows)
+        },
+      },
+    )
+
+    expect(verification.conformanceCases).toHaveLength(2)
+    const [bank0Verdict, bank1Verdict] = verification.conformanceCases
+    expect(bank0Verdict?.bankId).toBe("bank.0.tassadar_corpus.mul_add_v1")
+    expect(bank0Verdict?.verified).toBe(true)
+    expect(bank0Verdict?.blockerRefs).toEqual([])
+    expect(bank1Verdict?.bankId).toBe(
+      "bank.1.tassadar_corpus.memory_roundtrip_v1",
+    )
+    expect(bank1Verdict?.verified).toBe(false)
+    expect(bank1Verdict?.blockerRefs).toContain(
+      "blocker.public.tassadar_compiled_module.verdict_construction_failed",
+    )
+    expect(verification.compositionVerificationCleared).toBe(false)
+    expect(verification.blockerRefs).toContain(
+      "blocker.public.tassadar_compiled_module.verdict_construction_failed",
+    )
   })
 
   test("rejects raw private refs before listing projection", async () => {

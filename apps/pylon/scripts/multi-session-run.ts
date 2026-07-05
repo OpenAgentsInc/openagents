@@ -524,7 +524,7 @@ async function writeFailure(path: string, payload: unknown) {
   await writeFile(path, `${serialized}\n`)
 }
 
-async function runOneSession(input: {
+export async function runOneSession(input: {
   args: MultiSessionArgs
   entry: MultiSessionPlanEntry
   index: number
@@ -557,15 +557,6 @@ async function runOneSession(input: {
       retryAtIso,
     })
 
-  await appendHeartbeat(input.heartbeatPath, {
-    schema: MULTI_SESSION_HEARTBEAT_SCHEMA,
-    runRef,
-    sessionRef,
-    observedAt: startedAt,
-    phase: "started",
-    sessionIndex: input.index,
-  })
-
   // Ordered failover pool: the session's own primary account(s) first, then
   // every other applicable account known to the run. A quota-blocked or
   // ledger-unavailable primary is therefore replaced instantly within this same
@@ -573,6 +564,20 @@ async function runOneSession(input: {
   const pool: MultiSessionAccountSelector[] = effectiveSessionPool(input.entry, input.ambientPool)
 
   try {
+    // Moved inside the try block (was previously the first uncaught call in
+    // this function): a disk-full/permission failure appending the "started"
+    // heartbeat must produce a proper failed-outcome object for THIS session,
+    // not throw out of the per-session promise and abort `runBounded`'s whole
+    // worker loop for every OTHER session (Promise.all isolation audit).
+    await appendHeartbeat(input.heartbeatPath, {
+      schema: MULTI_SESSION_HEARTBEAT_SCHEMA,
+      runRef,
+      sessionRef,
+      observedAt: startedAt,
+      phase: "started",
+      sessionIndex: input.index,
+    })
+
     const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
       ...Bun.env,
       PYLON_HOME: input.args.pylonHome,
@@ -784,14 +789,23 @@ async function runOneSession(input: {
       retryAtIso: null,
     }
   } finally {
-    await appendHeartbeat(input.heartbeatPath, {
-      schema: MULTI_SESSION_HEARTBEAT_SCHEMA,
-      runRef,
-      sessionRef,
-      observedAt: nowIso(),
-      phase: "completed",
-      sessionIndex: input.index,
-    })
+    // Best-effort telemetry: a throw from this final heartbeat append would
+    // otherwise override the outcome already produced above (a `finally`
+    // throw replaces the try/catch block's return value), reintroducing the
+    // exact same per-session-abort hazard this fix is closing. Swallow it.
+    try {
+      await appendHeartbeat(input.heartbeatPath, {
+        schema: MULTI_SESSION_HEARTBEAT_SCHEMA,
+        runRef,
+        sessionRef,
+        observedAt: nowIso(),
+        phase: "completed",
+        sessionIndex: input.index,
+      })
+    } catch {
+      // Heartbeat is diagnostic only; losing the final tick must not discard
+      // the session outcome already computed in the try/catch above.
+    }
   }
 }
 

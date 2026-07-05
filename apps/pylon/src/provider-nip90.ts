@@ -1065,6 +1065,34 @@ function positiveIntEnv(value: string | undefined, fallback: number) {
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback
 }
 
+/**
+ * Closes every transport, isolating each `close()` call so one relay's
+ * rejection never hides whether the others closed cleanly (Promise.all
+ * cron-landmine audit). `Promise.all` starts every close concurrently, so
+ * they are all initiated regardless of ordering, but it also rejects the
+ * instant any ONE of them rejects without waiting for the rest to settle —
+ * called from a `finally` block, that rejection would replace whatever
+ * result the caller's `try` block already computed. This never throws:
+ * failures are logged per-transport and the function always resolves once
+ * every close has settled.
+ */
+export async function closeProviderRelayTransports(
+  transports: readonly ProviderRelayTransport[],
+  log?: (message: string) => void,
+): Promise<void> {
+  const results = await Promise.allSettled(transports.map((transport) => transport.close?.()))
+  for (const [index, result] of results.entries()) {
+    if (result.status === "rejected") {
+      const relayUrl = transports[index]?.relayUrl ?? `#${index}`
+      log?.(
+        `[NIP-90] Failed to close relay transport ${relayUrl}: ${
+          result.reason instanceof Error ? result.reason.message : String(result.reason)
+        }`,
+      )
+    }
+  }
+}
+
 export async function startNip90ProviderLoop(summary: BootstrapSummary, options: ProviderLoopOptions = {}) {
   const state = await ensurePylonLocalState(summary)
   const loopOptions: ProviderLoopRuntime = {
@@ -1151,7 +1179,7 @@ export async function startNip90ProviderLoop(summary: BootstrapSummary, options:
 
     return { started: true as const, handled }
   } finally {
-    await Promise.all(transports.map((transport) => transport.close?.()))
+    await closeProviderRelayTransports(transports, loopOptions.log)
   }
 }
 

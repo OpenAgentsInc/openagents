@@ -54,6 +54,7 @@ export type AgentReadinessGrade = typeof AgentReadinessGrade.Type
 
 export const AgentReadinessFindingCode = S.Literals([
   "disallowed_target_url",
+  "scan_failed",
   "fetch_failed",
   "missing_mcp_discovery",
   "missing_ai_catalog",
@@ -1547,12 +1548,74 @@ export const agentReadinessTaskForDomain = (
     sourceRefs: options.sourceRefs ?? ["github:OpenAgentsInc/openagents#8262"],
   })
 
+/**
+ * A domain scan crashed after `scanAgentReadinessDomain`'s own
+ * target-validation try/catch (e.g. an unexpected error while computing
+ * findings/score or decoding the final report). Rather than letting that
+ * throw propagate out of the worker-pool loop in `runAgentReadinessBatch`
+ * (which would abort every OTHER domain's already-computed report too, per
+ * docs/2026-07-05-promise-all-cron-landmine-audit.md), build a schema-valid
+ * "blocked" placeholder report so the batch stays complete and the failure
+ * is still visible per-domain.
+ */
+const buildScanFailureReport = (
+  domain: string,
+  generatedAt: string,
+  error: unknown,
+  sourceRefs: ReadonlyArray<string> | undefined,
+): AgentReadinessReport => {
+  const message = error instanceof Error ? error.message : String(error)
+  const probe = defaultAgentReadinessProbeSet[0]
+  if (probe === undefined) throw new Error("Default probe set is empty.")
+  const safeDomain = safeRefPart(domain) || "unknown"
+  const finding = makeFinding({
+    domain: safeDomain,
+    probe,
+    code: "scan_failed",
+    severity: "critical",
+    title: "Agent-readiness scan crashed before completion",
+    impact: "The analyzer could not finish scoring this domain; treat the result as missing rather than a real pass/fail signal.",
+    observedAt: generatedAt,
+    evidence: [
+      {
+        ref: "agent_readiness.scan.crashed",
+        url: domain,
+        status: null,
+        contentType: null,
+      },
+    ],
+  })
+  return S.decodeUnknownSync(AgentReadinessReport)({
+    schemaVersion: AGENT_READINESS_REPORT_SCHEMA_VERSION,
+    domain: safeDomain,
+    baseUrl: domain,
+    generatedAt,
+    status: "blocked",
+    score: 0,
+    grade: "F",
+    layerScores: orderedLayers.map((layer) => ({
+      layer,
+      score: 0,
+      earned: 0,
+      possible: 0,
+      status: "not_applicable",
+    })),
+    summary: `${finding.title}: ${message}`,
+    topFindings: topFindings([finding]),
+    findingCounts: countFindings([finding]),
+    findings: [finding],
+    sourceRefs: sourceRefs ?? ["github:OpenAgentsInc/openagents#8262"],
+  })
+}
+
 export const runAgentReadinessBatch = async (
   domains: ReadonlyArray<string>,
   options: AgentReadinessScanOptions & Readonly<{ concurrency?: number }> = {},
+  dependencies: Readonly<{ scanDomain?: typeof scanAgentReadinessDomain }> = {},
 ): Promise<AgentReadinessBatchResult> => {
   const generatedAt = options.generatedAt ?? new Date().toISOString()
   const concurrency = Math.max(1, Math.min(options.concurrency ?? 4, domains.length || 1))
+  const scanDomain = dependencies.scanDomain ?? scanAgentReadinessDomain
   const reports = new Array<AgentReadinessReport>(domains.length)
   let next = 0
   await Promise.all(
@@ -1561,11 +1624,19 @@ export const runAgentReadinessBatch = async (
         const index = next
         next += 1
         const domain = domains[index]
-        if (domain !== undefined) {
-          reports[index] = await scanAgentReadinessDomain(domain, {
+        if (domain === undefined) continue
+        try {
+          reports[index] = await scanDomain(domain, {
             ...options,
             generatedAt,
           })
+        } catch (error) {
+          // Isolate this domain's crash so it does not abort the whole
+          // `Promise.all` (and therefore the whole batch, discarding every
+          // other worker's already-computed reports) — see
+          // docs/2026-07-05-promise-all-cron-landmine-audit.md.
+          console.error(`agent-readiness: scan crashed for domain "${domain}"`, error)
+          reports[index] = buildScanFailureReport(domain, generatedAt, error, options.sourceRefs)
         }
       }
     }),

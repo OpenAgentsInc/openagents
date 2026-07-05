@@ -224,6 +224,49 @@ describe("typed work planner", () => {
     ).rejects.toThrow(/non-array JSON/)
   })
 
+  test("github_backlog isolates one gh call's failure: a crashing PR list still returns the successful issue candidates", async () => {
+    // Regression for the Promise.all cron-landmine audit: the issue-list and
+    // PR-list `gh` calls are independent and unrelated. Before the fix, one
+    // rejecting (e.g. `gh` crashing on the PR call) discarded the other's
+    // already-fetched, real candidates via Promise.all's fail-fast semantics.
+    const gh: GithubBacklogGhRunner = async (args) => {
+      if (args[0] === "issue") {
+        return JSON.stringify([
+          { number: 300, title: "Still discoverable", state: "OPEN", labels: [], url: "https://github.test/300" },
+        ])
+      }
+      throw new Error("gh pr list: exit status 1 (rate limited)")
+    }
+
+    const result = await githubBacklogCandidates({ kind: "github_backlog", repo }, gh)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]?.workUnitRef).toBe("github:OpenAgentsInc/openagents:issue:300")
+  })
+
+  test("github_backlog isolates one gh call's failure: a crashing issue list still returns the successful PR candidates", async () => {
+    const gh: GithubBacklogGhRunner = async (args) => {
+      if (args[0] === "pr") {
+        return JSON.stringify([
+          {
+            number: 901,
+            title: "Still discoverable PR",
+            state: "OPEN",
+            labels: [],
+            body: "",
+            mergedAt: null,
+          },
+        ])
+      }
+      throw new Error("gh issue list: exit status 1 (rate limited)")
+    }
+
+    const result = await githubBacklogCandidates({ kind: "github_backlog", repo }, gh)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]?.workUnitRef).toBe("github:OpenAgentsInc/openagents:pr:901")
+  })
+
   test("issue_list skips an issue when external PR inventory already closes it", () => {
     const result = planIssueListWork(
       {

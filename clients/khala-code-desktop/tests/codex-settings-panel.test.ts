@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test"
 import { Window } from "happy-dom"
 
 import { projectKhalaCodeDesktopCodexSettings } from "../src/shared/codex-settings"
+import { projectKhalaCodeDesktopCodexEcosystem } from "../src/shared/codex-ecosystem"
+import { defaultKhalaCodeModelRoleRegistry } from "../src/shared/model-roles"
 import { mountCodexSettingsPanel } from "../src/ui/codex-settings-panel"
 
 const setGlobal = (key: string, value: unknown): void => {
@@ -286,6 +288,86 @@ describe("Codex settings panel", () => {
         { keyPath: "model_provider", value: "openrouter" },
         { keyPath: "model_provider", value: null },
       ])
+    } finally {
+      cleanup()
+    }
+  })
+
+  // Oracle for the Promise.all landmine class documented in
+  // docs/2026-07-05-promise-all-cron-landmine-audit.md: refreshSettings runs
+  // three independent IPC fetches (settings, ecosystem, model roles). One
+  // fetch rejecting must not hide the OTHER fetches' already-succeeded fresh
+  // data behind a generic all-or-nothing error banner with stale state.
+  test("keeps a sibling fetch's fresh data when one of the three settings-refresh IPC calls rejects", async () => {
+    const { cleanup, container } = installDom()
+
+    const settingsV1 = projectKhalaCodeDesktopCodexSettings({
+      configRead: { config: { model: "gpt-5.5-codex" } },
+      modelList: {
+        data: [
+          { id: "gpt-5.5-codex", model: "gpt-5.5-codex", displayName: "GPT-5.5", hidden: false },
+        ],
+      },
+    })
+    const settingsV2 = projectKhalaCodeDesktopCodexSettings({
+      configRead: { config: { model: "gpt-5.4-mini" } },
+      modelList: {
+        data: [
+          { id: "gpt-5.5-codex", model: "gpt-5.5-codex", displayName: "GPT-5.5", hidden: false },
+          { id: "gpt-5.4-mini", model: "gpt-5.4-mini", displayName: "GPT-5.4-Mini", hidden: false },
+        ],
+      },
+    })
+    const ecosystemV1 = projectKhalaCodeDesktopCodexEcosystem({})
+    const modelRolesV1 = defaultKhalaCodeModelRoleRegistry()
+
+    let fetchCount = 0
+    let ecosystemCount = 0
+    let modelRolesCount = 0
+
+    try {
+      const panel = mountCodexSettingsPanel(container, {
+        fetch: async () => {
+          fetchCount += 1
+          return fetchCount === 1 ? settingsV1 : settingsV2
+        },
+        fetchEcosystem: async () => {
+          ecosystemCount += 1
+          if (ecosystemCount === 1) return ecosystemV1
+          throw new Error("ecosystem IPC channel closed")
+        },
+        fetchModelRoles: async () => {
+          modelRolesCount += 1
+          return { ok: true as const, path: "/tmp/model-roles.json", registry: modelRolesV1 }
+        },
+        write: async () => ({ ok: true, settings: settingsV1 }),
+      })
+
+      // First refresh: all three fetches succeed and establish a baseline.
+      await panel.refresh()
+      expect(selectForLabel(container, "Model").value).toBe("gpt-5.5-codex")
+      expect(container.querySelector(".khala-settings-status")).toBeNull()
+
+      // Second refresh: settings and model roles resolve with FRESH data,
+      // but the ecosystem fetch rejects. The fresh settings data must still
+      // render (not get discarded/hidden behind a generic error), and the
+      // status banner must scope the error to the ecosystem group only.
+      await panel.refresh()
+
+      expect(selectForLabel(container, "Model").value).toBe("gpt-5.4-mini")
+      expect(Array.from(selectForLabel(container, "Model").options).map(option => option.textContent))
+        .toEqual(["GPT-5.5", "GPT-5.4-Mini"])
+
+      const status = container.querySelector(".khala-settings-status")
+      expect(status).not.toBeNull()
+      expect(status?.textContent).toContain("Ecosystem refresh failed")
+      expect(status?.textContent).toContain("ecosystem IPC channel closed")
+      expect(status?.textContent).not.toContain("Settings refresh failed")
+      expect(status?.textContent).not.toContain("Model roles refresh failed")
+
+      // The ecosystem section keeps rendering the last successfully-fetched
+      // ecosystem snapshot instead of blanking to "has not been loaded yet".
+      expect(container.textContent).not.toContain("Ecosystem state has not been loaded yet.")
     } finally {
       cleanup()
     }

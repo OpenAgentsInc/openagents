@@ -110,6 +110,58 @@ async function runWorker(): Promise<void> {
   }
 }
 
+export interface WorkerResult {
+  index: number
+  exitCode: number
+  stdout: string
+  stderr: string
+}
+
+export interface SpawnedWorkerProcess {
+  stdout: ReadableStream<Uint8Array> | null
+  stderr: ReadableStream<Uint8Array> | null
+  exited: Promise<number>
+}
+
+function spawnWorkerProcess(env: Record<string, string>): SpawnedWorkerProcess {
+  return Bun.spawn(["bun", selfPath, "--worker"], { env, stderr: "pipe", stdout: "pipe" })
+}
+
+/**
+ * Runs a single worker OS process and normalizes its outcome into a
+ * `WorkerResult`, including the failure case: if spawning the worker throws
+ * or awaiting the worker's stdio/exit code rejects, that is captured here as
+ * a failed result rather than left to reject the caller's `Promise.all`. One
+ * worker's harness-level crash must never discard visibility into the other
+ * concurrently-running workers' results (see #6434 concurrent-checkout proof
+ * and the repo-wide Promise.all isolation audit).
+ *
+ * `spawnWorker` is injectable so tests can force a harness-level failure for
+ * one worker without needing a real child process.
+ */
+export async function runOneWorker(
+  index: number,
+  baseEnv: Record<string, string>,
+  spawnWorker: (env: Record<string, string>) => SpawnedWorkerProcess = spawnWorkerProcess,
+): Promise<WorkerResult> {
+  try {
+    const proc = spawnWorker({ ...baseEnv, PROOF_LEASE_REF: `lease.public.proof.${index}` })
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    return { index, exitCode, stdout: stdout.trim(), stderr: stderr.trim() }
+  } catch (error) {
+    return {
+      index,
+      exitCode: 1,
+      stdout: "",
+      stderr: `harness_spawn_failed: ${String(error instanceof Error ? error.message : error)}`,
+    }
+  }
+}
+
 async function runOrchestrator(): Promise<void> {
   const workers = Number.parseInt(arg("--workers", "12") as string, 10)
   const repoArg = arg("--repo")
@@ -149,19 +201,7 @@ async function runOrchestrator(): Promise<void> {
 
     const startedAt = Date.now()
     const results = await Promise.all(
-      Array.from({ length: workers }, async (_value, index) => {
-        const proc = Bun.spawn(["bun", selfPath, "--worker"], {
-          env: { ...baseEnv, PROOF_LEASE_REF: `lease.public.proof.${index}` },
-          stderr: "pipe",
-          stdout: "pipe",
-        })
-        const [stdout, stderr, exitCode] = await Promise.all([
-          new Response(proc.stdout).text(),
-          new Response(proc.stderr).text(),
-          proc.exited,
-        ])
-        return { index, exitCode, stdout: stdout.trim(), stderr: stderr.trim() }
-      }),
+      Array.from({ length: workers }, (_value, index) => runOneWorker(index, baseEnv)),
     )
     const elapsedMs = Date.now() - startedAt
 
@@ -190,8 +230,10 @@ async function runOrchestrator(): Promise<void> {
   }
 }
 
-if (process.env.PROOF_WORKER === "1" || process.argv.includes("--worker")) {
-  await runWorker()
-} else {
-  await runOrchestrator()
+if (import.meta.main) {
+  if (process.env.PROOF_WORKER === "1" || process.argv.includes("--worker")) {
+    await runWorker()
+  } else {
+    await runOrchestrator()
+  }
 }

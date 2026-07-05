@@ -245,6 +245,39 @@ describe("@openagentsinc/agent-readiness", () => {
       .toBe("domains.txt")
   })
 
+  test("isolates a per-domain scan crash so sibling domains' reports are not discarded", async () => {
+    const batch = await runAgentReadinessBatch(
+      ["good-one.example", "crashes.example", "good-two.example"],
+      {
+        generatedAt: "2026-07-04T06:30:00.000Z",
+        minRequestIntervalMs: 0,
+        concurrency: 3,
+      },
+      {
+        scanDomain: async (domain, scanOptions) => {
+          if (domain === "crashes.example") {
+            throw new Error("simulated tail crash after fetch/observations")
+          }
+          return scanAgentReadinessDomain(domain, {
+            ...scanOptions,
+            fetch: fixtureFetch("openagents"),
+          })
+        },
+      },
+    )
+
+    expect(batch.reports).toHaveLength(3)
+    const [good1, crashed, good2] = batch.reports
+    expect(good1?.domain).toBe("good-one.example")
+    expect(good1?.status).toBe("passed")
+    expect(good2?.domain).toBe("good-two.example")
+    expect(good2?.status).toBe("passed")
+    expect(crashed?.status).toBe("blocked")
+    expect(crashed?.findings.map((finding) => finding.code)).toContain("scan_failed")
+    expect(crashed?.summary).toContain("simulated tail crash after fetch/observations")
+    expect(decodeAgentReadinessReport(crashed!)).toEqual(crashed)
+  })
+
   test("renders our own public-safe report as the case-study snapshot artifact", async () => {
     const report = await openAgentsReportFixture()
     const rendered = renderAgentReadinessCaseStudyArtifact(report, {

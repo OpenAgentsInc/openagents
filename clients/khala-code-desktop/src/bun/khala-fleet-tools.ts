@@ -3348,49 +3348,75 @@ async function runDelegatedNoRunRequests(input: {
     verify: input.input.fixture ? undefined : input.input.verify,
   }, input.parameters)
   const results = await Promise.all(input.plannedAccounts.map(async (selectedAccount, index): Promise<SpawnSlotResult> => {
-    const selectedCommandAccount = commandAccountRef(selectedAccount.accountRef)
-    const result = await runPylonCommand([
-      "khala",
-      "request",
-      "--workflow",
-      concreteWorkflowForWorkerKind(input.workerKind),
-      "--prompt",
-      objective,
-      "--pylon-ref",
-      input.targetPylonRef,
-      ...(selectedCommandAccount === undefined ? [] : ["--account-ref", selectedCommandAccount]),
-      ...(input.input.fixture ? ["--fixture"] : workspacePinArgs(input.input)),
-      "--base-url",
-      input.baseUrl,
-      "--no-run",
-      "--json",
-    ], {
-      env: input.env,
-      paths: input.paths,
-      runner: input.runner,
-      timeoutMs: input.input.timeoutMs,
-    })
-    const json = parseJsonObject(result.stdout)
-    const assignmentRef = stringField(json, "assignmentRef")
-    const autoRunOk = booleanField(recordField(json, "autoRun"), "ok")
-    const accepted = result.exitCode === 0 && assignmentRef !== null && autoRunOk !== false
-    const hasAssignmentProjection = result.exitCode === 0 && assignmentRef !== null
-    return {
-      accountRef: selectedAccount.accountRef,
-      assignmentRef,
-      autoRunOk,
-      blockerRefs: hasAssignmentProjection ? blockerRefsFromSpawnPayload(json) : ["blocker.public.khala_fleet_delegate.dispatch_failed"],
-      closeoutStatus: hasAssignmentProjection ? closeoutStatusFromSpawnPayload(json) : null,
-      exitCode: result.exitCode,
-      slot: index + 1,
-      status: accepted ? "accepted" : "failed",
-      summary: hasAssignmentProjection
-        ? acceptedSpawnSummary(assignmentRef, json)
-        : safeFailureReason(result),
-      tokensVerified: hasAssignmentProjection
-        ? numberField(recordField(json, "proof"), "totalTokens")
-        : null,
-      transcriptRef: hasAssignmentProjection ? transcriptRefFromSpawnPayload(assignmentRef, json) : null,
+    try {
+      const selectedCommandAccount = commandAccountRef(selectedAccount.accountRef)
+      const result = await runPylonCommand([
+        "khala",
+        "request",
+        "--workflow",
+        concreteWorkflowForWorkerKind(input.workerKind),
+        "--prompt",
+        objective,
+        "--pylon-ref",
+        input.targetPylonRef,
+        ...(selectedCommandAccount === undefined ? [] : ["--account-ref", selectedCommandAccount]),
+        ...(input.input.fixture ? ["--fixture"] : workspacePinArgs(input.input)),
+        "--base-url",
+        input.baseUrl,
+        "--no-run",
+        "--json",
+      ], {
+        env: input.env,
+        paths: input.paths,
+        runner: input.runner,
+        timeoutMs: input.input.timeoutMs,
+      })
+      const json = parseJsonObject(result.stdout)
+      const assignmentRef = stringField(json, "assignmentRef")
+      const autoRunOk = booleanField(recordField(json, "autoRun"), "ok")
+      const accepted = result.exitCode === 0 && assignmentRef !== null && autoRunOk !== false
+      const hasAssignmentProjection = result.exitCode === 0 && assignmentRef !== null
+      return {
+        accountRef: selectedAccount.accountRef,
+        assignmentRef,
+        autoRunOk,
+        blockerRefs: hasAssignmentProjection ? blockerRefsFromSpawnPayload(json) : ["blocker.public.khala_fleet_delegate.dispatch_failed"],
+        closeoutStatus: hasAssignmentProjection ? closeoutStatusFromSpawnPayload(json) : null,
+        exitCode: result.exitCode,
+        slot: index + 1,
+        status: accepted ? "accepted" : "failed",
+        summary: hasAssignmentProjection
+          ? acceptedSpawnSummary(assignmentRef, json)
+          : safeFailureReason(result),
+        tokensVerified: hasAssignmentProjection
+          ? numberField(recordField(json, "proof"), "totalTokens")
+          : null,
+        transcriptRef: hasAssignmentProjection ? transcriptRefFromSpawnPayload(assignmentRef, json) : null,
+      }
+    } catch (error) {
+      // A throw here (from `runPylonCommand` or the subsequent response-parsing calls)
+      // must not reject the shared `Promise.all` and discard every OTHER account's
+      // already-computed `SpawnSlotResult`. Report this one account as a typed failure
+      // instead, matching the same failure shape used above for a non-zero exit / missing
+      // assignment projection.
+      console.error("[khala-fleet-tools] runDelegatedNoRunRequests dispatch failed", {
+        accountRef: selectedAccount.accountRef,
+        error: error instanceof Error ? error.message : String(error),
+        targetPylonRef: input.targetPylonRef,
+      })
+      return {
+        accountRef: selectedAccount.accountRef,
+        assignmentRef: null,
+        autoRunOk: null,
+        blockerRefs: ["blocker.public.khala_fleet_delegate.dispatch_failed"],
+        closeoutStatus: null,
+        exitCode: null,
+        slot: index + 1,
+        status: "failed",
+        summary: truncateForModel(error instanceof Error ? error.message : String(error)),
+        tokensVerified: null,
+        transcriptRef: null,
+      }
     }
   }))
 

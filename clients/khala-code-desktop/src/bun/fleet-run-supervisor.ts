@@ -551,22 +551,57 @@ export async function tickFleetRunSupervisor(
         return
       }
 
-      for (const event of result.lifecycle) {
-        await emit(options.onLifecycle, {
-          kind: "lifecycle",
-          runRef: run.runRef,
-          taskId,
-          claimRef: claim.claimRef,
-          accountRef: account.accountRef,
-          event,
-        })
-      }
-      if (result.assignmentRef !== null) {
-        store.updateWorkClaimAssignmentRef(claim.claimRef, result.assignmentRef, now)
-      }
+      // The dispatch call above already succeeded, so the underlying work likely
+      // completed; everything from here on is local bookkeeping (store updates and
+      // lifecycle emits). Wrap it separately so a throw here can never reject this
+      // item's promise in the shared `Promise.all(dispatches)` and discard visibility
+      // into every OTHER in-flight or already-succeeded dispatch in the same batch.
+      try {
+        for (const event of result.lifecycle) {
+          await emit(options.onLifecycle, {
+            kind: "lifecycle",
+            runRef: run.runRef,
+            taskId,
+            claimRef: claim.claimRef,
+            accountRef: account.accountRef,
+            event,
+          })
+        }
+        if (result.assignmentRef !== null) {
+          store.updateWorkClaimAssignmentRef(claim.claimRef, result.assignmentRef, now)
+        }
 
-      const terminalStatus = terminalStatusForDispatch(result)
-      if (terminalStatus === null) {
+        const terminalStatus = terminalStatusForDispatch(result)
+        if (terminalStatus === null) {
+          await emit(options.onLifecycle, {
+            kind: "dispatch",
+            runRef: run.runRef,
+            taskId,
+            claimRef: claim.claimRef,
+            workUnitRef: workUnit.workUnitRef,
+            accountRef: account.accountRef,
+            assignmentRef: result.assignmentRef,
+            status: result.status,
+            summary: result.summary ?? null,
+          })
+          return
+        }
+
+        store.recordWorkerDone({
+          contextId,
+          taskId,
+          status: terminalStatus,
+          result: JSON.stringify({
+            assignmentRef: result.assignmentRef,
+            summary: result.summary ?? null,
+          }),
+          now,
+        })
+        store.updateWorkClaimState(
+          claim.claimRef,
+          terminalStatus === "completed" ? "closeout" : "released",
+          now,
+        )
         await emit(options.onLifecycle, {
           kind: "dispatch",
           runRef: run.runRef,
@@ -578,41 +613,23 @@ export async function tickFleetRunSupervisor(
           status: result.status,
           summary: result.summary ?? null,
         })
-        return
+      } catch (error) {
+        console.error("[fleet-run-supervisor] post-dispatch bookkeeping failed", {
+          runRef: run.runRef,
+          taskId,
+          claimRef: claim.claimRef,
+          accountRef: account.accountRef,
+          error: error instanceof Error ? error.message : String(error),
+        })
       }
-
-      store.recordWorkerDone({
-        contextId,
-        taskId,
-        status: terminalStatus,
-        result: JSON.stringify({
-          assignmentRef: result.assignmentRef,
-          summary: result.summary ?? null,
-        }),
-        now,
-      })
-      store.updateWorkClaimState(
-        claim.claimRef,
-        terminalStatus === "completed" ? "closeout" : "released",
-        now,
-      )
-      await emit(options.onLifecycle, {
-        kind: "dispatch",
-        runRef: run.runRef,
-        taskId,
-        claimRef: claim.claimRef,
-        workUnitRef: workUnit.workUnitRef,
-        accountRef: account.accountRef,
-        assignmentRef: result.assignmentRef,
-        status: result.status,
-        summary: result.summary ?? null,
-      })
     })())
   }
 
   if (options.awaitDispatches === false) {
     for (const dispatch of dispatches) {
-      void dispatch.catch(() => undefined)
+      void dispatch.catch(error => {
+        console.error("[fleet-run-supervisor] fire-and-forget dispatch failed", error)
+      })
     }
   } else {
     await Promise.all(dispatches)

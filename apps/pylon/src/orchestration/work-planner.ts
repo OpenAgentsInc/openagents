@@ -412,13 +412,47 @@ export const githubBacklogCandidates = async (
     "--json",
     "number,title,state,labels,body,url",
   ]
-  const [issuesRaw, prs] = await Promise.all([
-    gh(issueArgs),
+
+  const fetchIssues = async (): Promise<WorkPlannerCandidate[]> => {
+    const issuesRaw = await gh(issueArgs)
+    return parseGhJsonArray(issuesRaw, "issue list")
+      .map((record) => ghIssueRecordToCandidate(source.repo, record as GhIssueRecord))
+      .filter((candidate): candidate is WorkPlannerCandidate => candidate !== null)
+  }
+
+  // The issue list and PR list are two independent, unrelated `gh` CLI calls.
+  // One failing (crash, timeout, malformed JSON) must not discard the other's
+  // already-fetched candidates (Promise.all cron-landmine audit). Each side is
+  // isolated via Promise.allSettled; a lone failure falls back to an empty
+  // list with a logged warning while the successful side's real data still
+  // comes back. If BOTH sides fail there is nothing usable to return, so the
+  // original error is surfaced exactly as before.
+  const [issuesOutcome, prsOutcome] = await Promise.allSettled([
+    fetchIssues(),
     githubPullRequestCandidates(source, gh),
   ])
-  const issues = parseGhJsonArray(issuesRaw, "issue list")
-    .map((record) => ghIssueRecordToCandidate(source.repo, record as GhIssueRecord))
-    .filter((candidate): candidate is WorkPlannerCandidate => candidate !== null)
+
+  if (issuesOutcome.status === "rejected" && prsOutcome.status === "rejected") {
+    throw issuesOutcome.reason
+  }
+
+  if (issuesOutcome.status === "rejected") {
+    console.error(
+      `github_backlog issue list fetch failed for ${source.repo}: ${
+        String(issuesOutcome.reason instanceof Error ? issuesOutcome.reason.message : issuesOutcome.reason)
+      }`,
+    )
+  }
+  if (prsOutcome.status === "rejected") {
+    console.error(
+      `github_backlog PR list fetch failed for ${source.repo}: ${
+        String(prsOutcome.reason instanceof Error ? prsOutcome.reason.message : prsOutcome.reason)
+      }`,
+    )
+  }
+
+  const issues = issuesOutcome.status === "fulfilled" ? issuesOutcome.value : []
+  const prs = prsOutcome.status === "fulfilled" ? prsOutcome.value : []
   return [...issues, ...prs]
 }
 

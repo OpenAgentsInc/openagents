@@ -564,7 +564,11 @@ const verifyTassadarLinkedDenseLinkCompatibility = async (
 
 export const verifyTassadarLinkedDenseComposition = async (
   fixture: TassadarLinkedDenseProgramFixture,
+  dependencies: Readonly<{
+    digestRows?: typeof digestTassadarNumericTraceRows
+  }> = {},
 ): Promise<TassadarLinkedDenseReplayVerification> => {
+  const digestRows = dependencies.digestRows ?? digestTassadarNumericTraceRows
   const structureBlockers = structureBlockerRefs(fixture)
   const linkCompatibility =
     await verifyTassadarLinkedDenseLinkCompatibility(fixture)
@@ -648,70 +652,104 @@ export const verifyTassadarLinkedDenseComposition = async (
           verified: false,
         } satisfies TassadarLinkedDenseConformanceVerdict
       }
-      const projection = projectedRows(
-        composedTrace,
-        bank.projectedOutputStart,
-        bank.projectedOutputEnd,
-      )
-      const projectedTraceDigest = await digestTassadarNumericTraceRows(
-        sourceTrace.graphDigest,
-        projection,
-      )
-      const projectedRowsMatchSource = rowsEqual(
-        projection,
-        sourceTrace.stepOutputs,
-      )
-      const blockerRefs = [
-        ...(expectedCase === undefined
-          ? ["blocker.public.tassadar_compiled_module.conformance_case_missing"]
-          : []),
-        ...(sourceTrace.traceDigest !== bank.expectedTraceDigest
-          ? ["blocker.public.tassadar_compiled_module.source_trace_mismatch"]
-          : []),
-        ...(expectedCase !== undefined &&
-        sourceTrace.traceDigest !== expectedCase.sourceTraceDigest
-          ? [
-              "blocker.public.tassadar_compiled_module.fixture_source_trace_mismatch",
-            ]
-          : []),
-        ...(expectedCase !== undefined &&
-        projectedTraceDigest !== expectedCase.projectedTraceDigest
-          ? [
-              "blocker.public.tassadar_compiled_module.fixture_projected_trace_mismatch",
-            ]
-          : []),
-        ...(!projectedRowsMatchSource
-          ? [
-              "blocker.public.tassadar_compiled_module.projected_rows_diverged",
-            ]
-          : []),
-        ...(projectedTraceDigest !== sourceTrace.traceDigest
-          ? [
-              "blocker.public.tassadar_compiled_module.projected_trace_diverged",
-            ]
-          : []),
-        ...(expectedCase !== undefined && !expectedCase.projectedRowsMatchSource
-          ? [
-              "blocker.public.tassadar_compiled_module.fixture_projection_not_verified",
-            ]
-          : []),
-      ]
+      // The execution call above is try/caught (returns a valid "refused"
+      // verdict on failure), but verdict *construction* below it
+      // (projection, digest, row comparison, final object) was not: an
+      // uncaught throw here for one bank discarded verdicts for every OTHER
+      // bank in the same `Promise.all`, collapsing a multi-bank conformance
+      // report into one opaque failure with zero verdicts. Isolate it the
+      // same way, with its own typed "refused" verdict — see
+      // docs/2026-07-05-promise-all-cron-landmine-audit.md.
+      try {
+        const projection = projectedRows(
+          composedTrace,
+          bank.projectedOutputStart,
+          bank.projectedOutputEnd,
+        )
+        const projectedTraceDigest = await digestRows(
+          sourceTrace.graphDigest,
+          projection,
+        )
+        const projectedRowsMatchSource = rowsEqual(
+          projection,
+          sourceTrace.stepOutputs,
+        )
+        const blockerRefs = [
+          ...(expectedCase === undefined
+            ? ["blocker.public.tassadar_compiled_module.conformance_case_missing"]
+            : []),
+          ...(sourceTrace.traceDigest !== bank.expectedTraceDigest
+            ? ["blocker.public.tassadar_compiled_module.source_trace_mismatch"]
+            : []),
+          ...(expectedCase !== undefined &&
+          sourceTrace.traceDigest !== expectedCase.sourceTraceDigest
+            ? [
+                "blocker.public.tassadar_compiled_module.fixture_source_trace_mismatch",
+              ]
+            : []),
+          ...(expectedCase !== undefined &&
+          projectedTraceDigest !== expectedCase.projectedTraceDigest
+            ? [
+                "blocker.public.tassadar_compiled_module.fixture_projected_trace_mismatch",
+              ]
+            : []),
+          ...(!projectedRowsMatchSource
+            ? [
+                "blocker.public.tassadar_compiled_module.projected_rows_diverged",
+              ]
+            : []),
+          ...(projectedTraceDigest !== sourceTrace.traceDigest
+            ? [
+                "blocker.public.tassadar_compiled_module.projected_trace_diverged",
+              ]
+            : []),
+          ...(expectedCase !== undefined && !expectedCase.projectedRowsMatchSource
+            ? [
+                "blocker.public.tassadar_compiled_module.fixture_projection_not_verified",
+              ]
+            : []),
+        ]
 
-      return {
-        bankId: bank.bankId,
-        blockerRefs,
-        caseId:
-          expectedCase?.caseId ??
-          `conformance.linked_dense.${bank.programId}.missing`,
-        denseModuleDigest: bank.denseModuleDigest,
-        expectedTraceDigest: bank.expectedTraceDigest,
-        moduleRef: publicModuleRef(bank.moduleRef),
-        programId: bank.programId,
-        projectedRowsMatchSource,
-        projectedTraceDigest,
-        sourceTraceDigest: sourceTrace.traceDigest,
-        verified: blockerRefs.length === 0,
-      } satisfies TassadarLinkedDenseConformanceVerdict
+        return {
+          bankId: bank.bankId,
+          blockerRefs,
+          caseId:
+            expectedCase?.caseId ??
+            `conformance.linked_dense.${bank.programId}.missing`,
+          denseModuleDigest: bank.denseModuleDigest,
+          expectedTraceDigest: bank.expectedTraceDigest,
+          moduleRef: publicModuleRef(bank.moduleRef),
+          programId: bank.programId,
+          projectedRowsMatchSource,
+          projectedTraceDigest,
+          sourceTraceDigest: sourceTrace.traceDigest,
+          verified: blockerRefs.length === 0,
+        } satisfies TassadarLinkedDenseConformanceVerdict
+      } catch {
+        const blockerRefs = [
+          ...(expectedCase === undefined
+            ? [
+                "blocker.public.tassadar_compiled_module.conformance_case_missing",
+              ]
+            : []),
+          "blocker.public.tassadar_compiled_module.verdict_construction_failed",
+        ]
+        return {
+          bankId: bank.bankId,
+          blockerRefs,
+          caseId:
+            expectedCase?.caseId ??
+            `conformance.linked_dense.${bank.programId}.missing`,
+          denseModuleDigest: bank.denseModuleDigest,
+          expectedTraceDigest: bank.expectedTraceDigest,
+          moduleRef: publicModuleRef(bank.moduleRef),
+          programId: bank.programId,
+          projectedRowsMatchSource: false,
+          projectedTraceDigest: null,
+          sourceTraceDigest: sourceTrace.traceDigest,
+          verified: false,
+        } satisfies TassadarLinkedDenseConformanceVerdict
+      }
     }),
   )
 

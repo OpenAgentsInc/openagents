@@ -69,6 +69,12 @@ import {
 } from "../shared/qa-metrics"
 import { iconForCodexItem, renderMessageBody } from "./transcript-render"
 import { mergeKhalaSyncChatAndRuntimeMessages } from "./khala-sync-thread-messages-core"
+import { resolveAttachments } from "./attachment-resolution"
+import {
+  allTurnSteerOutcomesOk,
+  steerEachTurn,
+  summarizeTurnSteerOutcomes,
+} from "./turn-steer-outcomes"
 import { mountFleetPanel } from "./fleet-status"
 import { mountKhalaCodeEditorPanel } from "./editor-panel"
 import { mountKhalaCodeForumPanel } from "./forum-panel"
@@ -2423,17 +2429,19 @@ const steerFollowUpDraft = async (draft: KhalaCodeFollowUpDraft): Promise<void> 
   const turnIds = [...activeTurnIds]
   const targets = turnIds.length === 0 ? [undefined] : turnIds
   try {
-    const results = await Promise.all(targets.map(turnId =>
+    const outcomes = await steerEachTurn(targets, turnId =>
       rpc.request.codexTurnSteer({
         clientUserMessageId: draft.id,
         sessionId,
         text: draft.text,
         ...(turnId === undefined ? {} : { turnId }),
-      })))
-    const failed = results.find(result => !result.ok)
-    if (failed !== undefined) {
+      }))
+    if (!allTurnSteerOutcomesOk(outcomes)) {
       appendMessages([{
-        body: `Follow-up steering failed: ${failed.error ?? "unknown error"}`,
+        body: summarizeTurnSteerOutcomes(outcomes, {
+          success: "Follow-up steering succeeded.",
+          failurePrefix: "Follow-up steering failed",
+        }),
         id: nextMessageId("system"),
         role: "system",
       }])
@@ -3579,18 +3587,18 @@ const handleDiffReviewSubmit = async (event: Event): Promise<void> => {
   const turnIds = [...activeTurnIds]
   const targets = turnIds.length === 0 ? [undefined] : turnIds
   try {
-    const results = await Promise.all(targets.map(turnId =>
+    const outcomes = await steerEachTurn(targets, turnId =>
       rpc.request.codexTurnSteer({
         clientUserMessageId: comment.commentRef,
         sessionId,
         text: note,
         ...(turnId === undefined ? {} : { turnId }),
-      })))
-    const failed = results.find(result => !result.ok)
+      }))
     appendMessages([{
-      body: failed === undefined
-        ? `Sent diff review comment to the active Codex turn: ${khalaCodeDiffReviewLineLabel(comment)}.`
-        : `Diff review steering failed: ${failed.error ?? "unknown error"}`,
+      body: summarizeTurnSteerOutcomes(outcomes, {
+        success: `Sent diff review comment to the active Codex turn: ${khalaCodeDiffReviewLineLabel(comment)}.`,
+        failurePrefix: "Diff review steering failed",
+      }),
       id: nextMessageId("system"),
       role: "system",
     }])
@@ -3639,18 +3647,18 @@ const handleSourceControlActionSubmit = async (event: Event): Promise<void> => {
   const turnIds = [...activeTurnIds]
   const targets = turnIds.length === 0 ? [undefined] : turnIds
   try {
-    const results = await Promise.all(targets.map(turnId =>
+    const outcomes = await steerEachTurn(targets, turnId =>
       rpc.request.codexTurnSteer({
         clientUserMessageId: prompt.actionRef,
         sessionId,
         text: promptText,
         ...(turnId === undefined ? {} : { turnId }),
-      })))
-    const failed = results.find(result => !result.ok)
+      }))
     appendMessages([{
-      body: failed === undefined
-        ? `Sent source-control ${label} prompt to the active Codex turn.`
-        : `Source-control ${label} steering failed: ${failed.error ?? "unknown error"}`,
+      body: summarizeTurnSteerOutcomes(outcomes, {
+        success: `Sent source-control ${label} prompt to the active Codex turn.`,
+        failurePrefix: `Source-control ${label} steering failed`,
+      }),
       id: nextMessageId("system"),
       role: "system",
     }])
@@ -3746,10 +3754,14 @@ const submittedBody = (
   return `${text}\n\n${summary}`
 }
 
-const imageAttachmentsForSubmit = async (
+const imageAttachmentsForSubmit = (
   attachments: readonly ComposerAttachment[],
-): Promise<readonly KhalaCodeDesktopChatTurnAttachment[]> => {
-  const payloads = await Promise.all(attachments.map(
+): Promise<{
+  readonly resolved: readonly KhalaCodeDesktopChatTurnAttachment[]
+  readonly failures: readonly { readonly name: string; readonly error: string }[]
+}> =>
+  resolveAttachments(
+    attachments,
     async (attachment): Promise<KhalaCodeDesktopChatTurnAttachment | null> => {
       if (attachment.kind !== "image" || attachment.status !== "ready") return null
       const file = localAttachmentFiles.get(attachment.id)
@@ -3764,11 +3776,8 @@ const imageAttachmentsForSubmit = async (
         sizeBytes: attachment.sizeBytes || file.size,
       }
     },
-  ))
-  return payloads.filter(
-    (payload): payload is KhalaCodeDesktopChatTurnAttachment => payload !== null,
+    attachment => attachment.name || attachment.id,
   )
-}
 
 const resetComposerDraft = (): void => {
   for (const url of objectUrls) URL.revokeObjectURL(url)
@@ -4004,7 +4013,15 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
     }
     return submitArchitectPlan(draftText)
   }
-  const imageAttachments = await imageAttachmentsForSubmit(attachments)
+  const { resolved: imageAttachments, failures: imageAttachmentFailures } =
+    await imageAttachmentsForSubmit(attachments)
+  if (imageAttachmentFailures.length > 0) {
+    appendMessages([{
+      body: `Skipped ${imageAttachmentFailures.length} attachment${imageAttachmentFailures.length === 1 ? "" : "s"} that could not be read: ${imageAttachmentFailures.map(failure => failure.name).join(", ")}.`,
+      id: nextMessageId("system"),
+      role: "system",
+    }])
+  }
   shellModel().lastSubmittedDraft = draftText
   shellModel().lastTurnFailed = false
   resetComposerDraft()
@@ -4081,6 +4098,22 @@ const submitComposer = async (): Promise<KhalaCodeDesktopMessage | null> => {
     requestAnimationFrame(focusComposerInput)
   }
   return message
+}
+
+/**
+ * `submitComposer()` is invoked as a bare `void submitComposer()` at some
+ * call sites with no `.catch`. Its own internal turn-submission try/catch
+ * reports turn failures, but anything that throws before or around that
+ * (e.g. an unexpected attachment-resolution error) would otherwise become an
+ * unhandled promise rejection with zero user feedback. This reporter backs
+ * every `void submitComposer()` call site with a system-message fallback.
+ */
+const reportSubmitComposerFailure = (error: unknown): void => {
+  appendMessages([{
+    body: `Failed to send message: ${error instanceof Error ? error.message : String(error)}`,
+    id: nextMessageId("system"),
+    role: "system",
+  }])
 }
 
 const fileLikeFor = (file: File): ComposerFileLike => {
@@ -4228,7 +4261,9 @@ const mountComposerHud = (): ComposerHudRuntime | null => {
 
 composerForm.addEventListener("submit", event => {
   event.preventDefault()
-  void submitComposer().finally(focusComposerInput)
+  void submitComposer()
+    .catch(error => reportSubmitComposerFailure(error))
+    .finally(focusComposerInput)
 })
 
 sendButton.addEventListener("click", event => {
@@ -4283,7 +4318,7 @@ composerInput.addEventListener("keydown", event => {
   )
   if (command === "submit" && canSubmitComposer()) {
     event.preventDefault()
-    void submitComposer()
+    void submitComposer().catch(error => reportSubmitComposerFailure(error))
     return
   }
   if (command === "history-previous") {

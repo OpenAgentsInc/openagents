@@ -2284,6 +2284,121 @@ describe("Khala Code fleet tools", () => {
     expect(maxInFlightRequests).toBe(2)
   })
 
+  test("one account's no-run request throwing does not discard the sibling account's result (#8409-class)", async () => {
+    const fixture = await tempPylonFixture()
+    let requestCount = 0
+    const originalConsoleError = console.error
+    const errors: unknown[][] = []
+    console.error = (...args: unknown[]) => {
+      errors.push(args)
+    }
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      const args = pylonArgs(input)
+      const joined = args.join(" ")
+      if (joined === "provider go-online --json") {
+        return ok({
+          ok: true,
+          ownCapacityDispatch: {
+            availableCodexAssignments: 2,
+            codexAccounts: [
+              {
+                accountKey: "4db4cc18ebc55f39fb4da894",
+                available: 2,
+                busy: 0,
+                queued: 0,
+                ready: 2,
+              },
+            ],
+            maxCodexAssignments: 2,
+          },
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (joined === "codex accounts list --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: "status",
+              accountRefHash: "account.pylon.codex.4db4cc18ebc55f39fb4da894",
+              homeState: "present",
+              provider: "codex",
+              readiness: { state: "ready" },
+            },
+          ],
+          schema: "openagents.pylon.accounts_list.v0.3",
+        })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({
+          accounts: [],
+          schema: "openagents.pylon.accounts_status.v0.1",
+        })
+      }
+      if (joined === "presence heartbeat --base-url https://openagents.com --json") {
+        return ok({
+          heartbeatRef: "heartbeat.pylon.local.test.1",
+          pylonRef: "pylon.local.test",
+        })
+      }
+      if (args[0] === "khala" && args[1] === "request") {
+        requestCount += 1
+        if (requestCount === 1) {
+          // Simulate a runner/transport failure for exactly one of the two planned
+          // dispatches (per the audit: "a future runner change... would drop every
+          // other account's spawn result silently").
+          throw new Error("runner exploded for slot 1")
+        }
+        return ok({
+          assignmentRef: `assignment.public.codex_agent_task.sibling_ok.${requestCount}`,
+          autoRun: {
+            attempted: false,
+            reason: "disabled_by_no_run",
+          },
+        })
+      }
+      return failed(`unexpected command: ${joined}`)
+    }
+
+    let result: Awaited<ReturnType<typeof spawnCodexInstances>>
+    try {
+      result = await spawnCodexInstances({
+        count: 2,
+        noRun: true,
+        prompt: "Run the public fixture.",
+      }, {
+        env: fixture.env,
+        runner,
+      })
+    } finally {
+      console.error = originalConsoleError
+    }
+
+    // Both slots are represented; the throwing slot did not reject the shared
+    // Promise.all and discard the sibling's already-computed result.
+    expect(result.results).toHaveLength(2)
+    expect(result.requestedCount).toBe(2)
+    expect(result.acceptedCount).toBe(1)
+
+    const [failedSlot, acceptedSlot] = result.results
+    expect(failedSlot).toMatchObject({
+      accountRef: "status",
+      assignmentRef: null,
+      status: "failed",
+    })
+    expect(failedSlot?.blockerRefs).toContain("blocker.public.khala_fleet_delegate.dispatch_failed")
+    expect(failedSlot?.summary).toContain("runner exploded for slot 1")
+    expect(acceptedSlot).toMatchObject({
+      accountRef: "status",
+      assignmentRef: "assignment.public.codex_agent_task.sibling_ok.2",
+      status: "accepted",
+    })
+
+    const loggedDispatchFailure = errors.some(
+      args => typeof args[0] === "string" && args[0].includes("runDelegatedNoRunRequests dispatch failed"),
+    )
+    expect(loggedDispatchFailure).toBe(true)
+  })
+
   test("spawnCodexInstances refuses when requested count exceeds advertised slots", async () => {
     const fixture = await tempPylonFixture()
     const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {

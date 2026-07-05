@@ -310,6 +310,42 @@ const verifyTable = async (
   )
 }
 
+export type AgentRuntimeRemainderTableVerifyOutcome =
+  | { table: AgentRuntimeRemainderTable; status: "ok"; clean: boolean }
+  | { table: AgentRuntimeRemainderTable; status: "error"; error: string }
+
+/**
+ * Runs `verifyOne` across every table, isolating each table's own D1-vs-Postgres
+ * tally comparison (Promise.all cron-landmine audit finding #5): one table's
+ * query failure — including a rejection from `verifyTable`'s own internal
+ * `Promise.all` over scalar tallies — must not abort visibility into every
+ * OTHER table's tally result. A failing table is reported as an `"error"`
+ * outcome and counted as not-clean; every other table still runs and reports
+ * its own real pass/fail.
+ */
+export const runVerifyAcrossTables = async (
+  tables: ReadonlyArray<AgentRuntimeRemainderTable>,
+  verifyOne: (table: AgentRuntimeRemainderTable) => Promise<boolean>,
+): Promise<{ outcomes: AgentRuntimeRemainderTableVerifyOutcome[]; clean: boolean }> => {
+  const outcomes: AgentRuntimeRemainderTableVerifyOutcome[] = []
+  let clean = true
+  for (const table of tables) {
+    try {
+      const tableClean = await verifyOne(table)
+      outcomes.push({ clean: tableClean, status: "ok", table })
+      clean = clean && tableClean
+    } catch (error) {
+      outcomes.push({
+        error: error instanceof Error ? error.message : String(error),
+        status: "error",
+        table,
+      })
+      clean = false
+    }
+  }
+  return { clean, outcomes }
+}
+
 const main = async (): Promise<void> => {
   const options = parseArgs(process.argv.slice(2))
   if (options === undefined) process.exit(2)
@@ -322,8 +358,16 @@ const main = async (): Promise<void> => {
     const tables =
       options.table === undefined ? AGENT_RUNTIME_REMAINDER_TABLES : [options.table]
     if (options.verify) {
-      let clean = true
-      for (const table of tables) clean = (await verifyTable(sql, options, table)) && clean
+      const { clean: tablesClean, outcomes } = await runVerifyAcrossTables(tables, (table) =>
+        verifyTable(sql, options, table),
+      )
+      let clean = tablesClean
+      for (const outcome of outcomes) {
+        if (outcome.status === "error") {
+          console.log(`\n== ${outcome.table} ==`)
+          console.log(`  status: ERROR — ${outcome.error}`)
+        }
+      }
       const artifactRows = artifactNextRows(options)
       if (artifactRows > 0) {
         console.log(
@@ -345,4 +389,6 @@ const main = async (): Promise<void> => {
   }
 }
 
-await main()
+if (import.meta.main) {
+  await main()
+}

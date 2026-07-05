@@ -588,8 +588,7 @@ check, that the same test genuinely fails without the change):
   isolated. Test: `tassadar-settled-feed-sync.test.ts` ("one event failing
   to append does not prevent sibling events from being written").
 
-### Tier 2 — 4 of ~7 findings fixed in this pass (remaining findings listed
-below, precisely tracked for a follow-up pass):
+### Tier 2 — 4 of ~7 findings fixed in the first pass:
 
 - `relay-health.ts:642` — fixed; the two retention prunes are isolated. Test:
   `relay-health.test.ts` ("one prune table failing does not abort the tick
@@ -618,26 +617,172 @@ below, precisely tracked for a follow-up pass):
   stays green, and the fix reuses the exact same proven
   `Effect.forEach`/`Effect.result` pattern verified elsewhere in this pass.
 
-**Not yet fixed (remaining Tier 2, tracked for a follow-up pass):**
-`packages/agent-readiness/src/index.ts:1558`,
-`packages/tassadar-executor/src/linked-dense-module-runtime.ts:617`,
-`clients/khala-code-desktop/src/bun/fleet-run-supervisor.ts:618`,
-`khala-fleet-tools.ts:3350`, the `main.ts`/`codex-settings-panel.ts` UI
-clusters, `clients/khala-mobile/src/native/modules.ts:10`.
+### Tier 2 — remaining 6 findings, and all 6 Tier 3 findings, fixed in a
+follow-up pass (2026-07-05, second session)
 
-### Tier 3 — not fixed in this pass (cosmetic/CLI-script/foreground-only,
-tracked for a follow-up pass): `concurrent-checkout-proof.ts`,
-`multi-session-run.ts`, `work-planner.ts`, `provider-nip90.ts`,
-`backfill-agent-runtime-remainder.ts`, `lag-profiling-sweep.ts`.
+All of the following are outside `apps/openagents.com`, so none use the
+Worker's `logWorkerRouteError`/`unwrapEffectTryPromiseCause` helpers; each
+uses its own file's existing logging convention (`console.error`/`console.warn`)
+plus, where a throw can only be isolated by returning a typed placeholder
+result, a schema-valid "failed/refused" outcome object matching that file's
+existing failure-shape conventions. Every fix below was verified red against
+the pre-fix code (reverted, test run, confirmed failing) before being
+restored and confirmed green, per house discipline.
+
+**Tier 2:**
+
+- `packages/agent-readiness/src/index.ts` (`runAgentReadinessBatch`,
+  `buildScanFailureReport`) — fixed; the worker-pool loop now isolates each
+  domain's `scanAgentReadinessDomain` crash so it no longer aborts the whole
+  `Promise.all` and discards every other domain's already-computed report. A
+  crashed domain gets a schema-valid `status: "blocked"` placeholder report
+  with a new `scan_failed` finding code, and the crash is logged via
+  `console.error`. Test: `index.test.ts` ("isolates a per-domain scan crash
+  so sibling domains' reports are not discarded").
+- `packages/tassadar-executor/src/linked-dense-module-runtime.ts`
+  (`verifyTassadarLinkedDenseComposition`'s per-bank verdict construction) —
+  fixed; the previously-uncaught tail (projection, digest, row comparison,
+  final verdict object) is now wrapped in its own try/catch, mirroring the
+  existing execution-catch branch above it, returning a typed "refused"
+  verdict (new blocker ref
+  `blocker.public.tassadar_compiled_module.verdict_construction_failed`)
+  instead of discarding every other bank's verdict. Test:
+  `linked-dense-module.test.ts` ("isolates a per-bank verdict-construction
+  crash so sibling banks' verdicts are not discarded").
+- `clients/khala-code-desktop/src/bun/fleet-run-supervisor.ts` (per-dispatch
+  IIFE) — fixed; the post-dispatch bookkeeping (lifecycle emits,
+  `updateWorkClaimAssignmentRef`, `recordWorkerDone`, `updateWorkClaimState`)
+  is now wrapped in its own try/catch (logged via `console.error`) so a
+  throw there resolves the item instead of rejecting it and aborting
+  `Promise.all(dispatches)` for every sibling dispatch; the
+  `awaitDispatches: false` fire-and-forget branch's silent
+  `.catch(() => undefined)` now logs the swallowed error instead of
+  discarding it. Tests: `fleet-run-supervisor.test.ts` ("post-dispatch
+  bookkeeping failure for one item is logged and does not discard sibling
+  results (#8409-class)", "fire-and-forget dispatches (awaitDispatches:
+  false) log a swallowed failure instead of discarding it silently").
+- `clients/khala-code-desktop/src/bun/khala-fleet-tools.ts`
+  (`runDelegatedNoRunRequests`) — fixed; each per-account callback is now
+  wrapped in try/catch, producing a typed `SpawnSlotResult` with
+  `status: "failed"` and the existing `blocker.public.khala_fleet_delegate.dispatch_failed`
+  ref instead of letting a custom/future `runner` throw discard every other
+  account's already-computed result. Test: `khala-fleet-tools.test.ts` ("one
+  account's no-run request throwing does not discard the sibling account's
+  result (#8409-class)").
+- `clients/khala-code-desktop/src/ui/main.ts` (`steerFollowUpDraft`,
+  `handleDiffReviewSubmit`, `handleSourceControlActionSubmit`,
+  `imageAttachmentsForSubmit`/`submitComposer`) and
+  `clients/khala-code-desktop/src/ui/codex-settings-panel.ts`
+  (`refreshSettings`) — fixed; new pure/testable helpers
+  `src/ui/isolated-fanout.ts` (`settleFanout`), `src/ui/turn-steer-outcomes.ts`
+  (`steerEachTurn`/`summarizeTurnSteerOutcomes`), and
+  `src/ui/attachment-resolution.ts` (`resolveAttachments`) isolate each
+  per-turn steer RPC and each attachment resolution so one turn/attachment
+  failing no longer collapses the whole batch's outcome into one opaque
+  generic error — the user now sees e.g. "Follow-up steering failed for 1 of
+  3 turns: `<reason>`" instead of losing which turns actually succeeded.
+  `refreshSettings` now uses `Promise.allSettled` across its three IPC
+  fetches, merging each successfully-fetched group independently instead of
+  hiding all three behind one generic stale-data error banner when only one
+  group fails. Tests: `tests/isolated-fanout.test.ts` (11 tests, including a
+  direct comparison against raw `Promise.all` proving the fix is
+  load-bearing), `tests/app-shell.test.ts` (extended — confirms `main.ts` is
+  wired to the new helpers and the old unsafe pattern is gone),
+  `tests/codex-settings-panel.test.ts` (new test — mounts the real panel,
+  one of three refreshes rejects, asserts the other two groups still render
+  fresh data with a scoped error for only the failed group).
+- `clients/khala-mobile/src/native/modules.ts` (`readNativeReadiness`) —
+  fixed; each of the two native-bridge probes now has its own rejection
+  handler that turns a bridge rejection into the module's own existing
+  `"unavailable"` status variant (already a legitimate value in both
+  availability unions — no new type needed) with a descriptive reason,
+  instead of letting one bridge rejection blank the sibling probe's real
+  result via a bare `Promise.all`. Test (new file):
+  `tests/native-modules-readiness.test.ts` ("isolates one probe's bridge
+  rejection from the sibling probe's real readiness").
+
+**Tier 3 (all 6 fixed):**
+
+- `apps/pylon/scripts/concurrent-checkout-proof.ts` — fixed; extracted
+  exported `runOneWorker()` wrapping the per-worker spawn+await in try/catch,
+  returning a failed `WorkerResult` (`harness_spawn_failed: ...`) instead of
+  rejecting, so the harness can report per-worker pass/fail across all N
+  workers instead of aborting on the first crash. Test (new file):
+  `concurrent-checkout-proof.test.ts` (3 tests).
+- `apps/pylon/scripts/multi-session-run.ts` (`runOneSession`) — fixed; moved
+  the per-session's first `appendHeartbeat` call inside the existing try
+  block, and also wrapped the `finally` block's completion heartbeat in its
+  own try/catch (a throw there would have overridden the try/catch's return
+  value — the same failure class, found while writing the test). Test:
+  `tests/multi-session-run.test.ts` (extended — a heartbeat path pointing
+  into a nonexistent directory now resolves with `state: "failed"` instead
+  of rejecting).
+- `apps/pylon/src/orchestration/work-planner.ts` (`githubBacklogCandidates`)
+  — fixed; confirmed dead code (no production caller — only self-references
+  within the file; `supervisor-state.ts` uses `"github_backlog"` only as a
+  metadata label string). Replaced `Promise.all([gh(...), githubPullRequestCandidates(...)])`
+  with `Promise.allSettled`; a lone failure logs via `console.error` and
+  falls back to an empty array while the successful side's real data still
+  returns (both failing still rethrows, preserving the existing "rejects
+  non-array gh JSON" test). Tests: `work-planner.test.ts` (2 new tests — PR-list
+  crash keeps issue data, issue-list crash keeps PR data).
+- `apps/pylon/src/provider-nip90.ts` (`startNip90ProviderLoop`'s `finally`
+  shutdown) — fixed; extracted exported `closeProviderRelayTransports()`
+  using `Promise.allSettled` + per-transport failure logging via
+  `loopOptions.log`. Confirmed this was a real (not purely cosmetic) risk:
+  since the original `Promise.all` sat in a `finally` block, one rejecting
+  close would have silently replaced the function's already-computed
+  `{ started, handled }` return value with a rejection. Test:
+  `tests/provider-nip90.test.ts` (extended — new `closeProviderRelayTransports`
+  describe block, 3 tests).
+- `packages/khala-sync-server/scripts/backfill-agent-runtime-remainder.ts`
+  (`verifyTable`'s scalar tallies) — fixed; new exported
+  `runVerifyAcrossTables()` wraps each table's `verifyTable(...)` call in
+  try/catch, reporting per-table `"ok"`/`"error"` outcomes and printing
+  `ERROR — <message>` for a failed table while still verifying/reporting
+  every other table. Added the missing `import.meta.main` guard (matching
+  the sibling `check-pending-migrations.ts` pattern) so the module is
+  safely testable. Test (new file):
+  `backfill-agent-runtime-remainder.test.ts` (4 tests, pure decision-core,
+  no real D1/Postgres).
+- `packages/khala-qa-harness/src/lag-profiling-sweep.ts` (`main`'s snapshot
+  file loading) — fixed; new exported
+  `loadKhalaCodeLagProfilingSnapshotFiles()` uses `Promise.allSettled` over
+  per-file loads, returning `{ snapshots, failures }`; `main()` now logs
+  each failure and still builds/writes the report from whatever loaded,
+  setting `process.exitCode = 1` (without throwing) if any file failed so
+  CI still surfaces the problem without losing the good files' report.
+  Tests: `lag-profiling-sweep.test.ts` (2 new tests — missing + malformed
+  files isolated from two good files; all-fail case never throws).
+
+**Follow-up-pass verification:** combined test runs across all touched files
+(`bun test` scoped to each package/directory) are green — 83 + 195 + 22 (etc.)
+pass, 0 fail across the 4 parallel fix lanes; `bun run typecheck` is clean
+for every touched package (`packages/agent-readiness`,
+`packages/tassadar-executor`, `packages/khala-qa-harness`,
+`packages/khala-sync-server`, `clients/khala-mobile`,
+`clients/khala-code-desktop`, `apps/pylon`); `check:architecture`,
+`check:effect-topology`, and `check:contract-drift` (run from
+`apps/openagents.com`) are all green with no allowlist changes required —
+none of these 12 findings touch `apps/openagents.com`'s `Effect.runPromise`
+budget-gated `sourceFiles` scan (the `khalaArchitectureScanFiles` checks that
+DO cover `clients/khala-code-desktop` are report-only, not gating).
+
+**Audit now fully closed:** all 29 genuine landmines found by this audit
+(8 main-Worker + 9 Pylon/backend + 12 client) are fixed, each with a
+regression test verified to fail against the pre-fix code.
 
 ### Zero-debt architecture ledger updates
 
-Each new named `Effect.runPromise` bridge introduced by this pass (one per
-fixed call site, at the existing Promise-shaped boundary) is registered in
+Each new named `Effect.runPromise` bridge introduced by the first (Tier 1 /
+partial Tier 2) pass (one per fixed call site, at the existing Promise-shaped
+boundary) is registered in
 `apps/openagents.com/scripts/check-zero-debt-architecture.mjs`'s
 `runPromiseAllowlist`, and `index.ts`'s raw `env: Env` parameter budget was
 raised 166 -> 167 for the new `notifyCanceledAgentRunSyncScopesEffect`
-helper. `check:architecture` is green with these ledger updates.
+helper. `check:architecture` is green with these ledger updates. The
+follow-up pass's 12 fixes are all outside `apps/openagents.com` and required
+no allowlist changes (see verification note above).
 
 ### Pre-existing, unrelated test failures observed (not touched by this pass)
 

@@ -22,6 +22,7 @@ import {
   buildNip89HandlerInfoEvent,
   buildProviderReqFilters,
   classifyProviderRequestEvent,
+  closeProviderRelayTransports,
   defaultProviderAdmissionPolicy,
   emptyProviderAdmissionStore,
   evaluateProviderAdmission,
@@ -760,5 +761,93 @@ describe("Pylon NIP-90 provider loop persistence", () => {
         server.stop(true)
       }
     })
+  })
+})
+
+describe("closeProviderRelayTransports", () => {
+  function transportThatResolves(relayUrl: string): ProviderRelayTransport {
+    return {
+      relayUrl,
+      async publish() {
+        return { relayUrl, accepted: true, message: "" }
+      },
+      async *subscribe() {
+        return
+      },
+      close: async () => {},
+    }
+  }
+
+  function transportThatRejects(relayUrl: string, reason: string): ProviderRelayTransport {
+    return {
+      relayUrl,
+      async publish() {
+        return { relayUrl, accepted: true, message: "" }
+      },
+      async *subscribe() {
+        return
+      },
+      close: async () => {
+        throw new Error(reason)
+      },
+    }
+  }
+
+  test("never throws, and closes every transport even when one rejects", async () => {
+    // Regression for the Promise.all cron-landmine audit: the old
+    // `Promise.all(transports.map(t => t.close?.()))` in the NIP-90 loop's
+    // `finally` block would reject the instant any single relay's close()
+    // rejected, hiding whether the OTHER transports closed cleanly. Called
+    // from a `finally`, that rejection would also silently replace whatever
+    // result the loop's own try block had already computed.
+    let closedA = false
+    let closedC = false
+    const a: ProviderRelayTransport = {
+      ...transportThatResolves("wss://a.test/"),
+      close: async () => {
+        closedA = true
+      },
+    }
+    const b = transportThatRejects("wss://b.test/", "socket already destroyed")
+    const c: ProviderRelayTransport = {
+      ...transportThatResolves("wss://c.test/"),
+      close: async () => {
+        closedC = true
+      },
+    }
+
+    const logs: string[] = []
+    await expect(closeProviderRelayTransports([a, b, c], (message) => logs.push(message))).resolves.toBeUndefined()
+
+    expect(closedA).toBe(true)
+    expect(closedC).toBe(true)
+    expect(logs.some((line) => line.includes("wss://b.test/") && line.includes("socket already destroyed"))).toBe(
+      true,
+    )
+    // Only the failing transport is reported; the successful closes are not
+    // misreported as failures.
+    expect(logs.filter((line) => line.includes("Failed to close"))).toHaveLength(1)
+  })
+
+  test("resolves cleanly with no log calls when every transport closes without error", async () => {
+    const logs: string[] = []
+    await closeProviderRelayTransports(
+      [transportThatResolves("wss://a.test/"), transportThatResolves("wss://b.test/")],
+      (message) => logs.push(message),
+    )
+    expect(logs).toEqual([])
+  })
+
+  test("tolerates a missing close() (optional per the transport interface)", async () => {
+    const noCloseTransport: ProviderRelayTransport = {
+      relayUrl: "wss://no-close.test/",
+      async publish() {
+        return { relayUrl: "wss://no-close.test/", accepted: true, message: "" }
+      },
+      async *subscribe() {
+        return
+      },
+    }
+    await expect(closeProviderRelayTransports([noCloseTransport])).resolves.toBeUndefined()
   })
 })
