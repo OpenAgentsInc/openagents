@@ -76,7 +76,20 @@ const requestOptionsFrom = (
   }
 }
 
-export const createClaudeApprovalService = (): ClaudeApprovalService => {
+export type ClaudeApprovalServiceOptions = {
+  /**
+   * Fired synchronously the moment a new approval request is queued, before
+   * any consumer polls `pending()`. KS-6.9 (#8419): the desktop UI uses this
+   * to push an immediate IPC notification instead of waiting on the 1s poll
+   * tick, so approval-to-execution latency is bounded by IPC dispatch, not
+   * by the polling interval.
+   */
+  readonly onRequestQueued?: (request: ClaudeApprovalRequest) => void
+}
+
+export const createClaudeApprovalService = (
+  serviceOptions: ClaudeApprovalServiceOptions = {},
+): ClaudeApprovalService => {
   const pending = new Map<string, ClaudeApprovalPending>()
   const queue = Effect.runSync(Queue.unbounded<ClaudeApprovalPending>())
   let sequence = 0
@@ -109,6 +122,7 @@ export const createClaudeApprovalService = (): ClaudeApprovalService => {
       }
       const item = { deferred, request }
       pending.set(id, item)
+      serviceOptions.onRequestQueued?.(request)
       const onAbort = (): void => {
         void respond(id, {
           behavior: "deny",

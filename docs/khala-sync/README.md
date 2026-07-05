@@ -74,6 +74,34 @@ clients with server-authoritative mutators and rebase.
   turn-streaming windows, `clients/khala-code-desktop/src/ui/main-shell-model.ts`'s
   `shouldPollThreadTokenSummary`); the inbox poll is unchanged pending a
   real local event-bus follow-up.
+  **The 1s Claude-approval poll is the SAME class, even more so (KS-6.9,
+  #8419, 2026-07-05):** `pollClaudeApprovals()`'s `claudeApprovalPending()`
+  RPC (`src/bun/rpc-handlers.ts`) reads `ClaudeApprovalService.pending()`
+  (`src/bun/claude-approvals.ts`), an in-memory `Map`/Effect `Deferred` that
+  lives inside the SAME Bun process running the local Claude Agent SDK's
+  blocking `canUseTool` callback. It never touches a server, has no
+  multi-device concept, and resolving it means resolving the exact in-memory
+  `Deferred` blocking that specific live SDK call — there is no khala-sync
+  scope to invent this onto, unlike genuine server-observable state (e.g.
+  `fleet_run`, #8383). What shipped instead: a local IPC push, mirroring how
+  Codex tool-approval requests already arrive via the `chatTurnEvent` push
+  stream instead of a poll. `createClaudeApprovalService` now accepts an
+  `onRequestQueued` callback fired synchronously the moment a request is
+  queued; the desktop wires it to a new `claudeApprovalRequested` Electrobun
+  RPC message (same `rpc.send` transport already proven for `chatTurnEvent`/
+  `fleetLifecycleEvent`), and the UI reacts to the push immediately instead
+  of waiting on the next 1s tick. The 1s `window.setInterval` poll remains
+  registered as a fallback safety net (kept, not removed — an IPC message
+  delivered before the UI finishes booting its listener would otherwise be
+  silently lost with no other detection path). Measured: push-triggered
+  detection latency across 500 samples was mean 0.0038ms / p50 0.0018ms /
+  p99 0.03ms / max 0.31ms (same-process request-creation-to-callback timing;
+  the additional Electrobun IPC hop to the webview is the same transport
+  already live for `chatTurnEvent`/`fleetLifecycleEvent` and could not be
+  measured further without a running GUI window), versus the old poll's
+  structural 0–1000ms detection window (mean ~500ms, worst case ~999ms,
+  fixed by the 1000ms interval regardless of push). Tests:
+  `clients/khala-code-desktop/tests/claude-approvals.test.ts`.
 
 ## Worker routes (SPEC §3 — complete)
 

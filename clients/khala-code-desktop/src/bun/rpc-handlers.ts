@@ -164,6 +164,7 @@ import { readKhalaCodeDesktopSessionCatalog } from "./session-catalog.js"
 import { inspectClaudeHarnessStatus } from "./claude-harness-status.js"
 import {
   createClaudeApprovalService,
+  type ClaudeApprovalRequest,
   type ClaudeApprovalService,
 } from "./claude-approvals.js"
 import {
@@ -300,6 +301,14 @@ export type KhalaCodeDesktopRpcHandlersInput = {
   // the global fetch in production.
   readonly fetch?: typeof fetch
   readonly emitChatTurnEvent?: (event: KhalaCodeDesktopChatTurnEvent) => void
+  /**
+   * KS-6.9 (#8419): pushed the instant a Claude Agent SDK tool call needs
+   * approval, so the desktop poll can be a fallback safety net instead of
+   * the primary detection path. Only wired when the default
+   * `claudeApprovalService` is created here; a caller-supplied
+   * `claudeApprovalService` controls its own push behavior.
+   */
+  readonly emitClaudeApprovalRequested?: (request: ClaudeApprovalRequest) => void
   readonly legacyChatTurn?: typeof runKhalaCodeDesktopChatTurn
   readonly onDeviceDeciderStatus: () => MaybePromise<OnDeviceDeciderSelection>
   readonly recordQaMetricSample?: (sample: KhalaCodeDesktopQaMetricSample) => MaybePromise<void>
@@ -1135,7 +1144,11 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
         workingDirectory: input.workingDirectory,
       }))
   const legacyChatTurn = input.legacyChatTurn ?? runKhalaCodeDesktopChatTurn
-  const claudeApprovalService = input.claudeApprovalService ?? createClaudeApprovalService()
+  const claudeApprovalService = input.claudeApprovalService ?? createClaudeApprovalService({
+    ...(input.emitClaudeApprovalRequested === undefined
+      ? {}
+      : { onRequestQueued: input.emitClaudeApprovalRequested }),
+  })
   const architectPlanStore = createArchitectPlanStore({ env: input.env })
   const requireCodexChatRuntime = (): CodexAppServerChatRuntime => {
     if (codexChatRuntime === null) {

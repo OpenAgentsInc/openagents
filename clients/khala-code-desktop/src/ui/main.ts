@@ -596,6 +596,7 @@ const previewRpc = (): DesktopRpc => ({
   send: {
     chatTurnEvent: () => undefined,
     fleetLifecycleEvent: () => undefined,
+    claudeApprovalRequested: () => undefined,
   },
 })
 
@@ -674,6 +675,12 @@ const startPreviewBridgeEvents = (): void => {
       // Ignore malformed preview diagnostics; lifecycle decoding is lossy-safe.
     }
   })
+  eventSource.addEventListener("claudeApprovalRequested", () => {
+    // KS-6.9 (#8419): preview windows share the same push signal as native
+    // windows; the underlying claudeApprovalPending poll below is the
+    // fallback that still applies if this event is missed.
+    void pollClaudeApprovals()
+  })
 }
 
 const nativeRpc = Electroview.defineRPC<KhalaCodeDesktopRPCSchema>({
@@ -686,6 +693,12 @@ const nativeRpc = Electroview.defineRPC<KhalaCodeDesktopRPCSchema>({
       },
       fleetLifecycleEvent(event) {
         applyFleetLifecycleEvent(event)
+      },
+      claudeApprovalRequested() {
+        // KS-6.9 (#8419): react to the push immediately instead of waiting
+        // for the next 1s claudeApprovalPending poll tick. The poll stays
+        // registered below as a fallback safety net.
+        void pollClaudeApprovals()
       },
     },
   },

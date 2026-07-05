@@ -12,6 +12,7 @@ import {
   khalaCodeDesktopRpcHandlerFailure,
   khalaCodeDesktopRpcMethodSchema,
   type KhalaCodeDesktopChatTurnEvent,
+  type KhalaCodeDesktopClaudeApprovalRequestProjection,
   type KhalaCodeDesktopFleetLifecycleEvent,
   type KhalaCodeDesktopQaMetricSample,
   type KhalaCodeDesktopQaMetricsSnapshot,
@@ -205,7 +206,7 @@ type PreviewBridgeEvent =
   | Readonly<{
       detail: unknown
       observedAt: string
-      type: "fleetLifecycleEvent" | "runCounterEvent"
+      type: "fleetLifecycleEvent" | "runCounterEvent" | "claudeApprovalRequested"
     }>
   | Readonly<{
       args: readonly unknown[]
@@ -284,6 +285,7 @@ const previewEventsResponse = (request: Request): Response => {
 
 let emitChatTurnEvent = (_event: KhalaCodeDesktopChatTurnEvent): void => {}
 let emitFleetLifecycleEvent = (_event: KhalaCodeDesktopFleetLifecycleEvent): void => {}
+let emitClaudeApprovalRequested = (_request: KhalaCodeDesktopClaudeApprovalRequestProjection): void => {}
 let rpcRequestHandlers: KhalaCodeDesktopRPCSchema["requests"]
 const QA_METRIC_SAMPLE_LIMIT = 240
 const qaMetricSamples: KhalaCodeDesktopQaMetricSample[] = []
@@ -674,6 +676,7 @@ rpcRequestHandlers = createKhalaCodeDesktopRpcRequestHandlers({
   codexAppServerHost,
   enableFleetMcpBridge: true,
   emitChatTurnEvent: event => emitChatTurnEvent(event),
+  emitClaudeApprovalRequested: request => emitClaudeApprovalRequested(request),
   env: khalaCodeEnv,
   fleetRunSupervisor: createKhalaCodeDesktopFleetRunSupervisorRpcAdapter({
     env: khalaCodeEnv,
@@ -738,6 +741,20 @@ emitFleetLifecycleEvent = event => {
     detail: event,
     observedAt: event.observedAt,
     type: "fleetLifecycleEvent",
+  })
+}
+
+emitClaudeApprovalRequested = request => {
+  try {
+    rpc.send.claudeApprovalRequested(request)
+  } catch {
+    // Headless preview runs have no native window transport; the 1s
+    // claudeApprovalPending poll remains the fallback for those runs.
+  }
+  publishPreviewBridgeEvent({
+    detail: request,
+    observedAt: new Date().toISOString(),
+    type: "claudeApprovalRequested",
   })
 }
 

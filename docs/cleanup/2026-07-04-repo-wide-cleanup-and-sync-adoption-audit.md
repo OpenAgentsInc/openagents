@@ -489,6 +489,39 @@ and the D1 `sync_*` tables have zero remaining users and drop cleanly**
      first. **#8418 stays open**, retitled in spirit from "migrate to sync
      push" to "verified not a sync candidate; converted to activity-gated
      local refresh where safe."
+   - **2026-07-05 follow-up (KS-6.9, #8419):** the 1s Claude-approval poll
+     flagged as unverified above has now been investigated independently.
+     Verified against the actual code: `pollClaudeApprovals()`'s
+     `claudeApprovalPending` RPC reads `ClaudeApprovalService.pending()`
+     (`clients/khala-code-desktop/src/bun/claude-approvals.ts`), an in-memory
+     `Map`/Effect `Deferred` created inside the desktop's OWN Bun process the
+     instant the local Claude Agent SDK's `canUseTool` callback needs
+     permission mid-turn. Responding resolves that exact in-memory
+     `Deferred`, unblocking the SDK call still synchronously waiting on it in
+     the same process. This is the SAME "device-local" class as the other two
+     polls, arguably more so — it is live same-process state tied to one
+     in-flight SDK call, not even persisted to disk, with no multi-device
+     concept and no khala-sync scope to invent this onto without building a
+     distributed synchronization bridge for a blocking SDK callback (out of
+     scope). **Also not a khala-sync migration candidate.** Unlike the other
+     two polls, though, a genuine low-risk fix was available: Codex tool
+     approvals already arrive via the `chatTurnEvent` push message over the
+     existing Electrobun `rpc.send` IPC transport instead of polling, so the
+     same pattern was applied to Claude approvals — `createClaudeApprovalService`
+     now fires an `onRequestQueued` callback synchronously when a request is
+     queued, wired through `rpc-handlers.ts`/`bun/index.ts` to a new
+     `claudeApprovalRequested` push message, with the UI reacting immediately
+     instead of waiting on the next 1s tick. The 1000ms poll was deliberately
+     KEPT as a fallback safety net (a missed same-process IPC message with no
+     other detection path would hang an SDK turn indefinitely). Measured
+     detection latency (500 samples, `tests/claude-approvals.test.ts`): mean
+     0.0038ms / p50 0.0018ms / p99 0.03ms / max 0.31ms, versus the old poll's
+     structural 0–1000ms window (mean ~500ms, worst case ~999ms). See
+     `docs/khala-sync/RUNBOOK.md`'s "Claude-approval poll" section and
+     `docs/khala-sync/README.md`. **#8419 stays open**, retitled in spirit
+     from "migrate to sync push" to "verified not a sync candidate;
+     converted to a proven local IPC push with the poll kept as fallback" —
+     the same honest-partial-mitigation pattern as #8418.
 
 ### 6.3 Explicitly do NOT consolidate
 
@@ -500,7 +533,9 @@ leaderboards/analytics (D1-until-KS-8.19 by design), device-local codex
 telemetry — confirmed by code inspection to include the desktop
 thread-token-summary and unified-inbox hot polls (KS-6.8, #8418; this
 section was right, §6.2 item 6's contrary claim was wrong and has been
-corrected there).
+corrected there) — and the 1s Claude-approval poll, which is same-process
+live SDK-callback state rather than even persisted device-local telemetry
+(KS-6.9, #8419).
 
 ### 6.4 Adjacent substrate — note, don't merge yet
 
@@ -591,9 +626,13 @@ remaining desktop hot polls (2026-07-05 correction, KS-6.8/#8418: the 2s
 thread-token-summary and 5s inbox polls are device-local telemetry with no
 matching sync scope — see §6.2 item 6/§6.3 above — so this item is now
 "converted to activity-gated local refresh where safe, not migrated to
-sync" for those two; the 1s Claude-approval poll is unverified and remains
-open); then retire `SyncRoomDurableObject` and drop the legacy `sync_*` D1
-tables — the clean capstone of this whole consolidation effort.
+sync" for those two; 2026-07-05 follow-up, KS-6.9/#8419: the 1s
+Claude-approval poll is same-process live SDK-callback state, also not a
+sync scope candidate — converted to a proven local IPC push, same
+`chatTurnEvent`/`fleetLifecycleEvent` transport, with the poll kept as
+fallback — see §6.2 item 6/§6.3 above); then retire `SyncRoomDurableObject`
+and drop the legacy `sync_*` D1 tables — the clean capstone of this whole
+consolidation effort.
 
 **Wave 4 — big, deliberate, needs an owner call before starting:**
 Consolidate `probe-runtime` and `pylon-runtime` (~48K LOC of duplicated

@@ -3162,6 +3162,112 @@ gain real volume. Persistent RE-GROWING drift after a repair means a hot
 ingest path lost its producer wiring; check the
 `khala_sync_tokens_served_projection_failed` diagnostics first.
 
+## Claude-approval poll — verified NOT a khala-sync candidate; converted to local IPC push (KS-6.9, #8419)
+
+Desktop's Claude-approval poll ran `window.setInterval(() => void
+pollClaudeApprovals(), 1000)` in `clients/khala-code-desktop/src/ui/main.ts`,
+flagged by the 2026-07-04 cleanup audit (§6.2 item 6) as latency-sensitive
+because it gates the approval-to-execution round trip for the local Claude
+Agent SDK. It was explicitly sequenced after KS-6.8 (#8418), which found the
+audit's blanket "all three desktop hot polls map cleanly onto khala-sync
+scopes" claim was WRONG for the other two polls (2s thread-token-summary, 5s
+inbox) — both read exclusively device-local state with no matching sync
+scope. #8418 explicitly flagged that the 1s approval poll was NOT
+investigated in that pass and its data source needed independent
+verification. This entry is that verification.
+
+**Investigated independently, verified against the actual code — same
+conclusion as KS-6.8, for an even stronger reason.**
+`pollClaudeApprovals()` calls the `claudeApprovalPending` RPC
+(`src/bun/rpc-handlers.ts`), which reads `ClaudeApprovalService.pending()`
+(`src/bun/claude-approvals.ts`). That service holds an in-memory
+`Map<string, ClaudeApprovalPending>` and Effect `Deferred`s created inside
+the desktop app's OWN Bun main process, the instant the local Claude Agent
+SDK invokes its `canUseTool` callback mid-turn to ask permission for a tool
+call. Responding (`respond()`) resolves that EXACT in-memory `Deferred`,
+unblocking the SDK call that is still synchronously waiting on it in the
+same process. This state:
+
+- never leaves the process (unlike thread-token-summary's local JSONL/SQLite
+  files or the inbox's six local RPC reads, which at least persist to disk);
+- has no multi-device concept — it is tied to one specific in-flight SDK
+  tool call in one specific running app instance;
+- cannot be "pushed via a khala-sync scope" without inventing a distributed
+  synchronization bridge for a live, blocking SDK callback — categorically
+  out of scope for a "mirror #8383" cutover, and not what a scope entity is
+  for.
+
+This is squarely the §6.3 "device-local codex telemetry" exclusion class
+KS-6.8 already confirmed for the other two polls — if anything more clearly
+local, since it is same-process live state rather than persisted
+device-local data. **Not a khala-sync migration candidate.**
+
+**What shipped instead — the honest, real improvement, not just "leave it
+as-is":** unlike thread-token-summary/inbox, this poll had a genuine
+low-risk fix available, because the exact same problem was already solved
+elsewhere in this codebase. Codex tool-approval requests do NOT poll — they
+arrive inline via the `chatTurnEvent` push message the desktop already sends
+over Electrobun's `rpc.send` IPC transport (proven live in production for
+streaming turn/token updates and the KS-6.2/#8383 fleet lifecycle feed).
+Claude approvals used a side-channel poll only because the Claude Agent
+SDK's `canUseTool` callback sits outside the normal turn-event stream — nothing
+technical requires it to stay poll-only.
+
+Changes:
+
+- `createClaudeApprovalService` (`src/bun/claude-approvals.ts`) accepts an
+  optional `onRequestQueued` callback, fired synchronously the moment a
+  request is queued (before any consumer would poll `pending()`).
+- `createKhalaCodeDesktopRpcRequestHandlers` (`src/bun/rpc-handlers.ts`)
+  gained an `emitClaudeApprovalRequested` input, wired to the default
+  service's `onRequestQueued` only when the caller doesn't supply its own
+  `claudeApprovalService` (test seams keep full control).
+- `src/bun/index.ts` wires `emitClaudeApprovalRequested` the same way as the
+  existing `emitChatTurnEvent`/`emitFleetLifecycleEvent` module-level
+  bindings: a no-op until the native `BrowserView` RPC exists, then
+  `rpc.send.claudeApprovalRequested(request)` plus the matching preview-mode
+  SSE event for headless/preview windows.
+- New RPC message `claudeApprovalRequested` in the shared
+  `KhalaCodeDesktopRPCSchema` (`src/shared/rpc.ts`).
+- UI (`src/ui/main.ts`) reacts to the message by immediately calling
+  `pollClaudeApprovals()` instead of waiting for the next 1s tick, for both
+  the native Electrobun transport and the preview-window SSE path.
+- **The 1000ms `window.setInterval` poll was deliberately KEPT as a fallback
+  safety net**, not removed. Unlike a proven server-mediated sync channel, a
+  raw same-process IPC push has no delivery guarantee if the webview hasn't
+  finished registering its message listener yet (e.g. very early boot); an
+  approval request silently missed would hang the SDK turn indefinitely with
+  no other detection path. The poll now only matters for that narrow
+  fallback window instead of being the primary detection path.
+
+**Latency evidence (measured, not just claimed):** the poll's structural
+detection-latency bound is fixed by its interval — up to 1000ms worst case,
+~500ms mean for a uniformly arriving request, regardless of anything else.
+The push path's detection latency was measured directly
+(`clients/khala-code-desktop/tests/claude-approvals.test.ts`, 500 samples,
+request-creation timestamp to `onRequestQueued` firing, same process): mean
+0.0038ms, p50 0.0018ms, p99 0.03ms, max 0.31ms — four to five orders of
+magnitude below the old poll's structural bound. The remaining Electrobun IPC
+hop from Bun main process to the webview (needed to actually show the
+approval dialog) uses the identical transport already proven live for
+`chatTurnEvent`/`fleetLifecycleEvent` in production; it could not be measured
+further in this environment without driving a real GUI window, but it
+structurally cannot exceed a single IPC round trip, nowhere near the
+polling interval it replaces as the primary path.
+
+**Evidence:** `bun run scan:architecture` (175 grandfathered findings, zero
+new violations), `bun run typecheck` (clean), `bun test tests/*.test.ts` (696
+pass / 0 fail, up from 693 baseline — 3 new tests in
+`claude-approvals.test.ts`), `bun run build:ui` + Bun bundle both succeed —
+full `bun run verify` chain green from `clients/khala-code-desktop`.
+
+**Issue status:** #8419 stays open, retitled in spirit from "migrate to sync
+push" to "verified not a sync candidate; converted to a proven local IPC
+push with the poll kept as fallback" — matching the KS-6.8/#8418 precedent.
+The literal acceptance criteria ("migrate onto khala-sync push, same
+transport as #8383") is not honestly achievable because the underlying data
+is same-process live state, not a server-observable, multi-device entity.
+
 ## Gym run-progress public projection — dual-write only, NOT a cutover (KS-6.5, #8415)
 
 `/gym`'s live follow-along panel (`publishGymRunProgressSnapshot` in

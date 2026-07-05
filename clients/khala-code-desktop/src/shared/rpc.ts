@@ -143,6 +143,7 @@ export type KhalaCodeDesktopCodexThreadCompactRequest = typeof RpcThreadCompactR
 export type KhalaCodeDesktopCodexApprovalRespondRequest = typeof RpcApprovalRespondRequest.Type
 export type KhalaCodeDesktopCodexApprovalRespondResult = typeof RpcApprovalRespondResult.Type
 export type KhalaCodeDesktopClaudeApprovalPendingResult = typeof RpcClaudeApprovalPendingResult.Type
+export type KhalaCodeDesktopClaudeApprovalRequestProjection = typeof RpcClaudeApprovalRequestProjection.Type
 export type KhalaCodeDesktopClaudeApprovalRespondRequest = typeof RpcClaudeApprovalRespondRequest.Type
 export type KhalaCodeDesktopClaudeApprovalRespondResult = typeof RpcClaudeApprovalRespondResult.Type
 export type KhalaCodeDesktopClaudeSettingsReadResult = typeof RpcClaudeSettingsProjection.Type
@@ -2646,5 +2647,13 @@ export type KhalaCodeDesktopRPCSchema = {
   messages: {
     chatTurnEvent(event: KhalaCodeDesktopChatTurnEvent): void
     fleetLifecycleEvent(event: KhalaCodeDesktopFleetLifecycleEvent): void
+    /**
+     * KS-6.9 (#8419): pushed the instant a Claude Agent SDK tool call needs
+     * approval, so the desktop UI can react immediately instead of waiting
+     * on the 1s `claudeApprovalPending` poll tick. The poll remains as a
+     * fallback safety net; this message only shortens the common-case
+     * detection latency.
+     */
+    claudeApprovalRequested(request: KhalaCodeDesktopClaudeApprovalRequestProjection): void
   }
 }
