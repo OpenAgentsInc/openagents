@@ -1064,12 +1064,22 @@ Remaining TS-6 work:
   now **deprecated-for-now** per the owner decision recorded above — do not
   pick this back up (live-data wiring, nav restoration, or otherwise) until
   the owner reinstates it;
-- migrate logged-in app-shell panels route-by-route (this is the large
-  authenticated `loggedIn/` tree behind `Ui.workroomShell` — dozens of
-  interconnected panels including chat, dashboard, billing, settings, admin,
-  and workroom — and genuinely needs a real Start session/auth mechanism
-  before any panel beyond the standalone `Ui.pageShell` surfaces like
-  Onboarding/Pro/Order can be ported honestly; still fully unstarted);
+- build the Start auth prerequisite, then migrate `loggedIn/` app-shell panels
+  route-by-route. Slice 24 (scoping only, see above) inventoried the real
+  size: ~105,700 lines across 220 files (~73,100 non-test), ~19 page routes
+  behind one shared `Model`/`Message`/`update` triad (`model.ts` alone is
+  7,731 lines) plus ~22 feature subsystems, with the single
+  `autopilot-work.ts` page + its `autopilot-work/` subsystem accounting for
+  ~34,900 lines on its own. Confirmed (not assumed) that Start has zero
+  session/auth infrastructure today (`workers/api/src/auth/session.ts` is the
+  only session-verification code, and it lives in a different Worker), that
+  every `loggedIn/` page — even the smallest `Ui.pageShell` ones
+  (Onboarding/Pro/Order) — reads real session data with no honest anonymous
+  branch, and that at least one page (`gymOss.ts`, an hourly-billed live
+  inference playground) has no gate of its own and would become a public,
+  unbilled-trigger safety exposure if ported without auth. Still fully
+  unstarted; the auth prerequisite is real infrastructure work deserving its
+  own slice, not a corner cut inside a scoping pass;
 - migrate or explicitly retire the Forum web shell from `apps/web`;
 - cut production routes over from the Start Worker;
 - delete each Foldkit counterpart after its production route cutover;
@@ -1091,3 +1101,165 @@ bun run test:qa-pre-push-smoke
 The route tests are the parity guard for this slice; the full final TS-6
 closure still needs the per-route visual smokes and delete evidence named in
 #8348.
+
+## Slice 24 (Scoping Only): `loggedIn/` App-Shell Tree Inventory
+
+Every standalone public `loggedOut` page is now migrated (Slices 1-23). This
+pass reads the whole `apps/web/src/page/loggedIn/` tree end to end (rather than
+re-quoting the prior "dozens of interconnected panels" summary) to produce a
+real, file-level scope breakdown, checks whether Start has any session/auth
+mechanism yet, and scopes the smallest tractable first slice. Conclusion:
+**no `loggedIn/` code was migrated in this batch.** Every page in the tree
+depends on real authenticated-session data with no honest anonymous/idle
+branch, and Start has zero auth infrastructure today. Forcing a port would mean
+either fabricating session data (against every established TS-6 no-fabrication
+rule) or exposing an owner-gated/billed surface with no gate — both worse than
+shipping nothing. The auth prerequisite is the real next slice; the rest of
+this section is the scoping deliverable.
+
+### Real size
+
+`apps/web/src/page/loggedIn/` is **~105,700 lines across 220 files** (~73,100
+non-test lines across 140 files, ~32,600 test lines across 80 files) — an
+order of magnitude larger than any single standalone page tackled in
+Slices 1-23 (the largest of which, `publicAgent.ts`, was ~2,700 lines).
+
+Breakdown:
+
+- **Core app-shell** (`model.ts`, `view.ts`, `message.ts`, `update.ts` +
+  `update-dispatch.ts`, `chatState.ts`, `initial-commands.ts`,
+  `forge-automations.ts`, `thread-route.ts`, `transition.ts`, `index.ts`,
+  `site-code-context.ts`, `site-element-context.ts`,
+  `site-preview-bridge.ts`): ~11,600 non-test lines across ~15 files. This is
+  one giant Elm-style (Foldkit `Submodel`) triad — a single `Model` union
+  (`model.ts` alone is **7,731 lines**), a single `Message` union
+  (`message.ts`, 1,565 lines), and a single `update`/`view` dispatch
+  (`view.ts` 756 lines, `update-dispatch.ts` 376 lines) that every one of the
+  ~19 pages below plugs into. Unlike the standalone `loggedOut` pages (each
+  independently portable), this tree has no natural per-page seam: every page
+  view function takes the *same* shared `Model` and is switched on by the
+  *same* `model.route._tag` union in `view.ts`.
+- **~19 page routes** (`page/*.ts`, ~20,200 non-test lines): `admin.ts`
+  (2,276), `artanisGym.ts` (253), `billing.ts` (152), `chat.ts` (605),
+  `dashboard.ts` (169), `decisions.ts` (372), `files.ts` (501), `gymOss.ts`
+  (47), `images.ts` (366), `invite.ts` (52), `onboarding.ts` (657),
+  `order.ts` (2,627), `pro.ts` (91), `settings.ts` (971), `stats.ts` (921),
+  `usage.ts` (68), `workroom.ts` (1,348), `workspace.ts` (432), and
+  **`autopilot-work.ts` alone at 8,282 lines** — nearly as large as the
+  entire `loggedOut` backlog this doc just closed out.
+- **`autopilot-work/` feature subsystem**: **26,587 non-test lines across 62
+  files** (`accessibility-non-interactive-evidence.ts`,
+  `mcp-capability-catalog.ts`, `terminal-ui-shell.ts`,
+  `security-review-evidence.ts`, and 58 more like it) — this is the
+  Autopilot-coder product-promise evidence-gate content backing the single
+  `autopilot-work.ts` page above. Combined, the Autopilot Work surface
+  (page + subsystem) is **~34,900 lines**, roughly a third of the whole
+  `loggedIn/` tree by itself.
+- **~22 other feature subsystems** backing the remaining pages (`admin`,
+  `artanis-console`, `artanis-dashboard`, `billing`, `customer-order`,
+  `decisions`, `goals`, `gymOss`, `images`, `mullet`, `notifications`,
+  `onboarding`, `pro`, `providers`, `run-timeline`, `runs`, `session`,
+  `stats`, `sync`, `team-chat`, `thread-files`, `workroom`, `workspace`):
+  ~14,600 non-test lines across ~40 files, ranging from `session/transitions.ts`
+  (55 lines) up to `mullet/` (2,538 lines across 4 files) and
+  `run-timeline/projection.ts` (1,594 lines).
+
+All of this sits behind one shared-sidebar app shell
+(`Ui.workroomShell`/`Ui.workroomRail`, `packages/ui/src/workroom.ts`, 2,038
+lines) that renders a 280px nav rail + main content CSS grid, populated by
+live session/notification/nav-item data carried on the shared `Model`. Three
+pages (`Onboarding`, `Pro`, `Order`/`OrderDetail`) bypass that shared shell and
+render through the simpler standalone `Ui.pageShell` (a bare full-height div,
+`packages/ui/src/layout.ts`) instead — these looked like the most promising
+"smallest first slice" candidates going in, per the closing note on Slice 23.
+
+### Auth-prerequisite finding (this is the real blocker, confirmed not assumed)
+
+**Start (`apps/start`) has no session or auth mechanism at all today.**
+Confirmed by direct search: the only session-verification code in the whole
+`apps/openagents.com` app is `workers/api/src/auth/session.ts`
+(`makeBrowserSessionBoundary`/`requireBrowserSession`, built on
+`@openauthjs/openauth`), which lives in the separate `workers/api` Worker, not
+`apps/start`. Grepping `apps/start/src` for `auth`/`session` finds only the
+unrelated `-khala-sync-session.ts` (Khala Sync's own concept, not user auth).
+`apps/start/src/server.ts` wires exactly two request-routing concerns today
+(shared public agent-surface routes and the Khala Sync WebSocket proxy) —
+nothing reads or verifies a session cookie. The already-migrated `/login`
+route (Slice 8) explicitly documented this: "Auth callback, OAuth/email
+handlers, downstream entitlement checks, and account gating remain owned by
+the existing Worker/API surfaces" — confirmed still true.
+
+**Every `loggedIn/` page depends on real session data with no honest
+anonymous state, unlike every `loggedOut` page ported so far.** Checked the
+smallest candidate first: `page/pro.ts` (91 lines, the smallest of the three
+`Ui.pageShell` pages) reads `model.session.email` directly in its top-strip
+view with no branch for a missing/anonymous session — unlike `loggedOut`
+pages (which either need no session or have an explicit `Idle` union case
+this migration wave has been rendering honestly for `/artanis/accounts`,
+`/mirrorcode`, `/promises`, `/stats`, `/training/runs`). There is no
+"idle/pre-fetch" analog to fall back to here: the whole `Model` this tree
+renders from is already-resolved, already-authenticated state, not a
+client-fetched projection with a natural pre-load placeholder.
+
+**At least one page is actively dangerous to port without a gate, not just
+lower-fidelity.** `page/gymOss.ts` (47 lines) is an "owner-gated... hourly
+billed" live-inference latency playground with **no idle/unauthorized render
+branch of its own** — its `view()` unconditionally renders the full
+interactive playground regardless of model state (unlike `artanisAccounts.ts`,
+which explicitly has an `Unauthorized` case this migration rendered honestly
+in Slice 16). Porting it verbatim to a Start route with no auth would make a
+billed, owner-only compute-trigger surface publicly reachable — a real
+safety/billing exposure, not merely a content gap.
+
+**Routing itself is auth-gated, not just page content.** Read
+`apps/web/src/routing/startup.ts` end to end:
+`startupRouteForLoggedIn`/`startupRouteForCompleteOnboarding` decide which
+route a visitor even lands on based on a resolved `AuthBootstrap` (permission
+gate, onboarding-complete flag, invite-required flag) — e.g. a signed-in user
+without full permission gets redirected to `/invite` instead of their
+requested route. This dispatch logic has no meaning without a real resolved
+auth state to switch on.
+
+### What this rules in/out for "smallest tractable slice"
+
+- The three `Ui.pageShell` pages (`Onboarding`/`Pro`/`Order`) looked like the
+  natural first candidates precisely because they skip the big shared
+  `workroomShell`/sidebar — but skipping the shell does not skip the
+  session dependency: all three still read real session/order/dashboard state
+  with no anonymous branch (`Order` is 2,627 lines of real order/billing
+  detail, not a simple form).
+- `page/invite.ts` (52 lines) is the one page in the tree that reads *no*
+  session-derived data — its body is entirely static copy ("Open beta is
+  live... Continue to order"). It is not, however, reachable by a real
+  anonymous visitor in production (it only exists behind the "signed in but
+  not yet invited" gate branch in `startup.ts`), so porting it now would be
+  speculative prep for a routing state the real Worker still owns, not an
+  honest rendering of what an anonymous visitor at that URL sees today —
+  a different situation from `/workspaces/$workspaceId` or `/artanis/accounts`
+  (both of which *are* real, currently-reachable anonymous states). Left
+  unmigrated this batch rather than shipped as decorative-only prep.
+- The `Ui.workroomShell`/`Ui.workroomRail` grid layout itself is genuinely
+  trivial (a CSS grid + a few Tailwind classes, no session dependency) and
+  could be ported as a Start UI primitive at any time — but a shell with no
+  route behind it is not a testable route slice, so it is left as documented
+  prep rather than manufactured busywork this batch.
+
+### Recommended next slice
+
+Build the auth prerequisite first, as its own dedicated slice/issue (not
+improvised inside a scoping batch): wire real session verification into
+`apps/start` — mirroring `workers/api/src/auth/session.ts`'s
+`@openauthjs/openauth`-based `requireBrowserSession`/`AuthBootstrap`
+resolution, reachable from the Start Worker's `server.ts` fetch handler, plus
+the `/login/github` and `/login/email` callback handling the existing
+`/login` page shell already points at. This is a routing/authority-boundary
+change (`Read INVARIANTS.md before changing authority, routing, payment,
+projection, or public-claim surfaces` per this repo's `CLAUDE.md`), so it
+deserves its own focused review rather than a corner cut inside this pass.
+Once a real `AuthBootstrap` can be resolved server-side in Start, the
+honest-anonymous-state technique already proven on `/artanis/accounts` and
+`/workspaces/$workspaceId` (render the real "not signed in" gate rather than
+fabricated dashboard content) becomes available for the `loggedIn/` tree too,
+and the smallest genuinely tractable slice becomes porting one bounded page
+(`page/gymOss.ts`, `page/invite.ts` in its real routing position, or
+`page/pro.ts`) with a real signed-out gate plus its real signed-in content.
