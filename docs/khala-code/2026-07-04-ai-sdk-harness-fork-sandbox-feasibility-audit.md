@@ -382,6 +382,19 @@ ledger replay, duplicate event rejection, unauthorized foreign mutation,
 body-rejection without prompt retention, Worker registry wiring, and live
 thread-scope revocation.
 
+Issue #8373 implementation status: the new
+`@openagentsinc/khala-ai-sdk-core` package provides the narrow OpenCode-style
+adapter lane. It calls an AI SDK `streamText`-compatible function, lowers a
+small provider profile into headers/providerOptions, bridges Khala tools into
+AI SDK `tool()` definitions while executing through the Khala tool dispatcher,
+maps `result.stream` parts into `openagents.khala_runtime_event.v1`, and keeps
+raw provider chunks as private sidecar refs or discards them. The package also
+exports a tiny Khala runtime transcript reducer and proves that AI SDK-mapped
+events and existing `AgentRuntimeEvent`-mapped Pylon/Codex events feed the
+same consumer. This is not yet the production model-provider catalog; it is
+the local, testable adapter seam that lets the next issue dogfood the lane
+without forking AI SDK Core.
+
 ### Sequenced implementation path
 
 P0 should be the event/control schema (#8363). Without this, each bridge will
@@ -414,11 +427,12 @@ unauthorized tests, and Worker registry coverage. Message bodies and runtime
 content stay in authenticated owner/thread scopes; public evidence gets only
 refs, counts, route names, latency buckets, and issue/build refs.
 
-P4 should add the AI SDK Core lane (#8373). This can work locally before the
-harness sandbox work: one model fixture, one tool fixture, one providerOptions
-fixture, and one raw privacy fixture. Its output must be OpenAgents runtime
-events, not AI SDK stream parts. This is the fastest way to get "AI SDK-like"
-runtime shape into Khala Code without waiting for the harness provider.
+P4 is now landed for the narrow AI SDK Core lane (#8373):
+`@openagentsinc/khala-ai-sdk-core` can call `streamText`, consume
+`result.stream`, lower provider options, bridge Khala tools through
+OpenAgents policy, and emit OpenAgents runtime events rather than AI SDK
+stream parts. Production provider catalogs, real provider auth routing, and
+surface wiring are follow-up work for the dogfood path.
 
 P5 should implement the sandbox provider path (#8374). Start with a clearly
 unsafe local provider for owner-local fixtures, then move to
@@ -447,12 +461,15 @@ Yes, we can get this working locally in increments:
    restart.
 3. The Sync server now proves runtime control/event mutators locally against
    Postgres, including owner/thread projection and private-event containment.
-4. AI SDK Core can be proven with a fixture provider and one low-risk model
-   without any harness sandbox provider.
-5. The local unsafe harness provider can prove Codex/Claude bridge mechanics
+4. AI SDK Core is now proven locally with a fixture `streamText` provider,
+   providerOptions lowering, dispatcher-backed tools, raw privacy handling,
+   and shared Khala runtime transcript reduction.
+5. A real low-risk provider/model can now plug into that package without any
+   harness sandbox provider.
+6. The local unsafe harness provider can prove Codex/Claude bridge mechanics
    without Vercel, but it must remain owner-local until the OpenAgents sandbox
    provider is real.
-6. The real dogfood proof ties them together: mobile control intent -> Khala
+7. The real dogfood proof ties them together: mobile control intent -> Khala
    Sync -> desktop/runtime lane -> OpenAgents runtime events -> Khala Sync ->
    mobile/desktop/web projections.
 
@@ -729,9 +746,9 @@ Gate:
 
 ### P0a: opencode-style AI SDK Core runtime
 
-Build a narrow `ai_sdk_core` runtime for Khala before the harness work. It
-should call `streamText`, consume `result.stream`, and convert AI SDK
-`TextStreamPart`s into a canonical OpenAgents event stream.
+The narrow `ai_sdk_core` runtime package now exists. It calls `streamText`
+through an injectable seam, consumes `result.stream`, and converts AI SDK
+`TextStreamPart`-compatible values into canonical OpenAgents events.
 
 Required tests:
 
@@ -744,10 +761,11 @@ Required tests:
 - one transcript fixture proving Khala UI consumes OpenAgents events rather
   than AI SDK parts directly.
 
-Gate:
+Gate status:
 
 - the existing Codex/Pylon transcript path and the new AI SDK Core model path
-  render through the same Khala event consumer.
+  render through the same Khala event consumer at the package level; a
+  product-surface dogfood wiring remains #8375.
 
 ### P0b: mirror and test the published package code
 
