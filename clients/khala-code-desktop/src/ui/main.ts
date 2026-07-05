@@ -95,10 +95,11 @@ import {
   gymPaneStateFromBridgeProof,
   gymOptimizationRunFromBridgeProof,
   gymPaneStateFromLocation,
-  initialKhalaCodeViewFromLocation,
+  restoredKhalaCodeViewFromLocationAndStorage,
   khalaCodeGymDemoBridgeProof,
   type KhalaGymProofLoadRequest,
 } from "./gym-proof-loader"
+import { mountKhalaCodeProjectHomePanel } from "./project-home-panel"
 import type { KhalaGymBridgeProofLike } from "./gym-graph-projection"
 import { mountGymPane, type GymPaneState } from "./gym-pane"
 import {
@@ -5197,13 +5198,22 @@ const threadSidebarEl = document.getElementById("thread-sidebar")
 const fleetPanelEl = document.getElementById("fleet-panel")
 const forumPanelEl = document.getElementById("forum-panel")
 const inboxPanelEl = document.getElementById("inbox-panel")
+const projectHomePanelEl = document.getElementById("project-home-panel")
 const editorPanelEl = document.getElementById("editor-panel")
 const gymPanelEl = document.getElementById("gym-panel")
 const settingsPanelEl = document.getElementById("settings-panel")
 const threadShell = document.querySelector<HTMLElement>(".khala-code-thread-shell")
 const composerDock = document.querySelector<HTMLElement>(".composer-dock")
 const initialGymState = gymPaneStateFromLocation(globalThis.location)
-const initialView = initialKhalaCodeViewFromLocation(globalThis.location)
+/**
+ * Route/window state survives a desktop restart
+ * (khala_code.project_home route-persistence gate, #8443): an explicit
+ * `?view=` query param still wins (deep links, visual smokes), otherwise the
+ * view active when the app last quit is restored from local storage.
+ */
+const activeViewStorageKey = "khala-code-desktop.active-view.v1"
+const storedActiveView = localStorage.getItem(activeViewStorageKey)
+const initialView = restoredKhalaCodeViewFromLocationAndStorage(globalThis.location, storedActiveView)
 
 const setActiveCodexThreadId = (threadId: string | null): void => {
   const changed = shellModel().activeCodexThreadId !== threadId
@@ -5421,6 +5431,23 @@ const editorPanel =
         onComposerContextSelected: addEditorComposerContext,
       })
 
+const projectHomePanel =
+  projectHomePanelEl === null
+    ? null
+    : mountKhalaCodeProjectHomePanel(projectHomePanelEl, {
+        listSessions: () => listProjectHomeSessions(),
+        onNewSession: () => {
+          beginNewCodexThread()
+          setActiveView("chat")
+        },
+        onOpenSession: session => {
+          void openProjectHomeSession(session, { focusChat: true })
+        },
+        onOpenSessionInBackground: session => {
+          void openProjectHomeSession(session, { focusChat: false })
+        },
+      })
+
 const gymPanel =
   gymPanelEl === null ? null : mountGymPane(gymPanelEl, initialGymState)
 
@@ -5579,6 +5606,49 @@ const khalaSyncThreadResult = async (
       threadId,
     },
     threadId,
+  }
+}
+
+let projectHomeSessionSelectionCounter = 0
+
+/**
+ * Opens a session picked from the Project Home dashboard (#8443). Mirrors
+ * the same resume path the Codex thread sidebar uses (`resumeThread` in its
+ * mount options below) so a session opened from either surface behaves
+ * identically. When `focusChat` is false the session becomes the active
+ * thread but the view stays on Project Home -- the dashboard's
+ * "Open in Background" action.
+ */
+const openProjectHomeSession = async (
+  session: KhalaCodeDesktopCodexThreadSummary,
+  input: Readonly<{ focusChat: boolean }>,
+): Promise<void> => {
+  if (session.resumable === false) return
+  const threadId = session.id
+  if (input.focusChat) setActiveView("chat")
+  const selectionId = (projectHomeSessionSelectionCounter += 1)
+  beginCodexThreadSwitch({ selectionId, source: "sidebar", threadId })
+  try {
+    const result = khalaSyncChatThreadIds.has(threadId)
+      ? await khalaSyncThreadResult(threadId)
+      : await controls.codexThreadResume({ sessionId, threadId })
+    if (!result.ok) throw new Error("Session could not be resumed.")
+    activateCodexThread({ messages: result.messages ?? [], selectionId, threadId: result.threadId ?? threadId })
+  } catch {
+    if (threadSwitchLoadingSelectionId === selectionId) threadSwitchLoadingSelectionId = null
+    shellModel().lastTurnFailed = true
+    render()
+  }
+}
+
+const listProjectHomeSessions = async (): Promise<readonly KhalaCodeDesktopCodexThreadSummary[]> => {
+  try {
+    const catalog = await cachedSessionCatalog({ limit: 200, scope: "app" })
+    clearBootRpcDegradedState("sessionCatalog")
+    return catalog.entries.map(sessionCatalogEntryToThreadSummary)
+  } catch (error) {
+    const degraded = degradedSessionCatalog(recordBootRpcDegradedState("sessionCatalog", error))
+    return degraded.entries.map(sessionCatalogEntryToThreadSummary)
   }
 }
 
@@ -5768,9 +5838,11 @@ let sidebar: KhalaCodeSidebarHandle | null = null
 const setActiveView = (value: string): void => {
   const panelOpenStartedAt = performance.now()
   const activeValue =
-    value === "fleet" || value === "forum" || value === "inbox" || value === "settings" || value === "editor"
+    value === "fleet" || value === "forum" || value === "inbox" || value === "settings" ||
+      value === "editor" || value === "home"
       ? value
       : "chat"
+  localStorage.setItem(activeViewStorageKey, activeValue)
   sidebar?.setSelectedValue(activeValue)
   const showChat = activeValue === "chat"
   const showFleet = activeValue === "fleet"
@@ -5778,18 +5850,22 @@ const setActiveView = (value: string): void => {
   const showInbox = activeValue === "inbox"
   const showSettings = activeValue === "settings"
   const showEditor = activeValue === "editor"
+  const showHome = activeValue === "home"
   if (threadSidebarEl !== null) threadSidebarEl.hidden = !showChat
   if (fleetPanelEl !== null) fleetPanelEl.hidden = !showFleet
   if (forumPanelEl !== null) forumPanelEl.hidden = !showForum
   if (inboxPanelEl !== null) inboxPanelEl.hidden = !showInbox
+  if (projectHomePanelEl !== null) projectHomePanelEl.hidden = !showHome
   if (editorPanelEl !== null) editorPanelEl.hidden = !showEditor
   if (settingsPanelEl !== null) settingsPanelEl.hidden = !showSettings
   gymPanel?.setVisible(false)
-  if (threadShell !== null) threadShell.hidden = showFleet || showForum || showInbox || showSettings || showEditor
-  if (composerDock !== null) composerDock.hidden = showFleet || showForum || showInbox || showSettings || showEditor
+  const showsFullPanel = showFleet || showForum || showInbox || showSettings || showEditor || showHome
+  if (threadShell !== null) threadShell.hidden = showsFullPanel
+  if (composerDock !== null) composerDock.hidden = showsFullPanel
   fleetPanel?.setVisible(showFleet)
   forumPanel?.setVisible(showForum)
   inboxPanel?.setVisible(showInbox)
+  projectHomePanel?.setVisible(showHome)
   settingsPanel?.setVisible(showSettings)
   editorPanel?.setVisible(showEditor)
   if (showSettings) {
@@ -5808,6 +5884,7 @@ function showGymProofPane(): void {
   if (fleetPanelEl !== null) fleetPanelEl.hidden = true
   if (forumPanelEl !== null) forumPanelEl.hidden = true
   if (inboxPanelEl !== null) inboxPanelEl.hidden = true
+  if (projectHomePanelEl !== null) projectHomePanelEl.hidden = true
   if (editorPanelEl !== null) editorPanelEl.hidden = true
   if (settingsPanelEl !== null) settingsPanelEl.hidden = true
   if (threadShell !== null) threadShell.hidden = true
@@ -5816,6 +5893,7 @@ function showGymProofPane(): void {
   fleetPanel?.setVisible(false)
   forumPanel?.setVisible(false)
   inboxPanel?.setVisible(false)
+  projectHomePanel?.setVisible(false)
   settingsPanel?.setVisible(false)
   editorPanel?.setVisible(false)
   threadSidebar?.setVisible(false)
@@ -5831,6 +5909,8 @@ const hotbarCommandIdForValue = (value: KhalaCodeHotbarValue): KhalaCodeCommandI
       return "view.fleet"
     case "forum":
       return "view.forum"
+    case "home":
+      return "view.home"
     case "inbox":
       return "view.inbox"
     case "settings":
@@ -6001,6 +6081,15 @@ commandRegistry = createKhalaCodeCommandRegistry([
     id: "view.editor",
     keywords: ["files", "source"],
     title: "Open Editor",
+  },
+  {
+    analyticsRef: "khala_code.command.view.home",
+    category: "navigation",
+    defaultKeybindings: [{ alt: true, key: "7" }],
+    execute: () => setActiveView("home"),
+    id: "view.home",
+    keywords: ["projects", "dashboard", "sessions"],
+    title: "Open Project Home",
   },
   {
     analyticsRef: "khala_code.command.session.new_chat",

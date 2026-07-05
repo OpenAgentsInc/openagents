@@ -4104,7 +4104,15 @@ describe("khala code plan RPC handlers", () => {
 
   test("khalaCodePlanStatus returns unauthenticated without a token and never calls the network", async () => {
     const { fetch: fetchStub, requests } = planFetchStub(() => json(200, {}))
-    const handlers = planHandlers({ fetch: fetchStub })
+    // Isolate the harness settings path from the real machine's persisted
+    // desktop settings (`~/.khala-code/desktop-settings.json`); without this
+    // override the handler falls back to the developer's actual home
+    // directory, which may carry a real persisted agent token and turn this
+    // "no token" scenario into a false "unavailable" result.
+    const handlers = planHandlers({
+      env: { KHALA_CODE_DESKTOP_HARNESS_SETTING_PATH: join(tmpdir(), "khala-code-plan-status-no-settings.json") },
+      fetch: fetchStub,
+    })
 
     expect(await handlers.khalaCodePlanStatus()).toEqual({ state: "unauthenticated" })
     expect(requests).toHaveLength(0)
@@ -4451,7 +4459,11 @@ describe("khala code plan RPC handlers", () => {
 
   test("khalaCodePlanPurchase requires a token and maps 401/network failures honestly", async () => {
     const untouched = planFetchStub(() => json(201, {}))
-    expect(await planHandlers({ fetch: untouched.fetch }).khalaCodePlanPurchase())
+    // Same real-homedir isolation concern as the plan status test above.
+    expect(await planHandlers({
+      env: { KHALA_CODE_DESKTOP_HARNESS_SETTING_PATH: join(tmpdir(), "khala-code-plan-purchase-no-settings.json") },
+      fetch: untouched.fetch,
+    }).khalaCodePlanPurchase())
       .toEqual({ ok: false, error: "unauthenticated" })
     expect(untouched.requests).toHaveLength(0)
 

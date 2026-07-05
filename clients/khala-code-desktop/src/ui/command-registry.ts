@@ -25,6 +25,7 @@ export type KhalaCodeCommandId =
   | "view.editor"
   | "view.fleet"
   | "view.forum"
+  | "view.home"
   | "view.inbox"
   | "view.settings"
 

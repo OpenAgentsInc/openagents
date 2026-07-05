@@ -543,17 +543,49 @@ export const gymPaneStateFromLocation = (
   }
 }
 
+export type KhalaCodeDesktopView =
+  | "chat"
+  | "fleet"
+  | "forum"
+  | "inbox"
+  | "settings"
+  | "editor"
+  | "home"
+
+const KHALA_CODE_VIEW_VALUES: ReadonlySet<string> = new Set<KhalaCodeDesktopView>([
+  "chat",
+  "fleet",
+  "forum",
+  "inbox",
+  "settings",
+  "editor",
+  "home",
+])
+
+const isKhalaCodeDesktopView = (value: string | null): value is KhalaCodeDesktopView =>
+  value !== null && KHALA_CODE_VIEW_VALUES.has(value)
+
 export const initialKhalaCodeViewFromLocation = (
   location: Pick<Location, "search" | "hash">,
-): "chat" | "fleet" | "forum" | "inbox" | "settings" | "editor" => {
+): KhalaCodeDesktopView => {
   const params = paramsForLocation(location)
   const view = params.get("view")
-  if (
-    view === "fleet" ||
-    view === "forum" ||
-    view === "inbox" ||
-    view === "settings" ||
-    view === "editor"
-  ) return view
-  return "chat"
+  return isKhalaCodeDesktopView(view) ? view : "chat"
+}
+
+/**
+ * Restores the last active desktop view across an app restart
+ * (khala_code.project_home route-persistence gate, #8443): an explicit
+ * `?view=` query param always wins (back/forward-compatible with existing
+ * deep-link and visual-smoke usage), otherwise the last view persisted to
+ * local storage before quit is restored, otherwise "chat".
+ */
+export const restoredKhalaCodeViewFromLocationAndStorage = (
+  location: Pick<Location, "search" | "hash">,
+  storedView: string | null,
+): KhalaCodeDesktopView => {
+  const params = paramsForLocation(location)
+  const explicitView = params.get("view")
+  if (isKhalaCodeDesktopView(explicitView)) return explicitView
+  return isKhalaCodeDesktopView(storedView) ? storedView : "chat"
 }

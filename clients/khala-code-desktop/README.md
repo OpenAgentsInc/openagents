@@ -255,6 +255,26 @@ legacy session catalog only when the chat sync source is disabled or
 unavailable. The behavior contract is
 `khala_code.chat.sync_remote_thread_appears_without_restart.v1`.
 
+## Project Home (OpenCode desktop parity, #8443)
+
+`Alt+7` (`⌥7` on macOS) opens **Project Home**, an OpenCode-style
+project/session dashboard alongside Chat, Fleet, Forum, Inbox, Editor, and
+Settings. It groups the same session catalog the Codex thread sidebar already
+shows (`src/shared/session-catalog.ts`) into project rows with session counts
+and a "not resumable" badge, lists recent sessions with search, and exposes
+**New Session**, **Open**, and **Open in Background** actions. Opening a
+session from Project Home reuses the exact resume path the thread sidebar
+uses, so state stays consistent across both surfaces. The command registry
+exposes it as `view.home` ("Open Project Home"), reachable from the hotbar,
+the `Cmd/Ctrl+K` command palette, and the `Alt+7` keybinding.
+
+The active view (Chat, Fleet, Project Home, etc.) persists to local storage
+(`khala-code-desktop.active-view.v1`) and is restored on the next launch, so
+route/window state survives a desktop restart; an explicit `?view=` query
+param (used by deep links and visual smokes) still always wins. See
+`src/ui/project-home-panel.ts`, `tests/project-home-panel.test.ts`, and the
+restore-priority coverage in `tests/gym-proof-loader.test.ts`.
+
 ## Local Checks
 
 ```sh

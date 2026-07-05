@@ -9,6 +9,7 @@ import {
   gymPaneStateFromOptimizationRun,
   initialKhalaCodeViewFromLocation,
   khalaCodeGymDemoBridgeProof,
+  restoredKhalaCodeViewFromLocationAndStorage,
 } from "../src/ui/gym-proof-loader"
 import type { KhalaGymBridgeProofLike } from "../src/ui/gym-graph-projection"
 
@@ -154,6 +155,10 @@ describe("Khala Code Gym proof loader", () => {
       search: "?view=editor",
       hash: "",
     })
+    const homeView = initialKhalaCodeViewFromLocation({
+      search: "?view=home",
+      hash: "",
+    })
 
     expect(empty).toEqual({
       activeParameters: defaultKhalaFleetDelegationActiveParameters,
@@ -165,6 +170,33 @@ describe("Khala Code Gym proof loader", () => {
     expect(legacyGymView).toBe("chat")
     expect(legacyInboxView).toBe("inbox")
     expect(editorView).toBe("editor")
+    expect(homeView).toBe("home")
+  })
+
+  // Oracle for khala_code project-home route/window-state persistence (#8443):
+  // an explicit `?view=` query param still wins over any persisted view, and
+  // a persisted view restores the dashboard across a desktop restart.
+  test("restores the last active view from storage across a restart, with the URL always taking priority", () => {
+    const noQueryNoStorage = restoredKhalaCodeViewFromLocationAndStorage({ search: "", hash: "" }, null)
+    const noQueryWithStorage = restoredKhalaCodeViewFromLocationAndStorage({ search: "", hash: "" }, "home")
+    const queryOverridesStorage = restoredKhalaCodeViewFromLocationAndStorage(
+      { search: "?view=fleet", hash: "" },
+      "home",
+    )
+    const invalidStorageFallsBackToChat = restoredKhalaCodeViewFromLocationAndStorage(
+      { search: "", hash: "" },
+      "not-a-real-view",
+    )
+    const invalidQueryFallsBackToStorage = restoredKhalaCodeViewFromLocationAndStorage(
+      { search: "?view=gym", hash: "" },
+      "editor",
+    )
+
+    expect(noQueryNoStorage).toBe("chat")
+    expect(noQueryWithStorage).toBe("home")
+    expect(queryOverridesStorage).toBe("fleet")
+    expect(invalidStorageFallsBackToChat).toBe("chat")
+    expect(invalidQueryFallsBackToStorage).toBe("editor")
   })
 
   test("Worker optimization projection maps into the same Gym pane state", () => {
