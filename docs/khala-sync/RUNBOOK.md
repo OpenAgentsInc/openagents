@@ -2392,26 +2392,36 @@ mirrored as column values but NEVER printed in a diagnostic or in
 backfill/verify output: row KEYS and sha256 hashes only. Any log line
 showing a custody JSON value is an incident, not drift.
 
-LIVE WIRING IN THIS LANE (the acceptance-critical seams): the three re-homed
-crons + the funded-hygiene store, wired as store-factory drop-ins:
-`RelayHealth.probeTick` (`makeRelayHealthStoreForEnv` — probes/transitions
-mirror on insert, the retention prunes converge onto the twin),
-`AutopilotContinuationPolicy.sweep` (`makeAutopilotContinuationStoreForEnv`),
+LIVE WIRING: the three re-homed crons + the funded-hygiene store, wired as
+store-factory drop-ins: `RelayHealth.probeTick` (`makeRelayHealthStoreForEnv`
+— probes/transitions mirror on insert, the retention prunes converge onto
+the twin), `AutopilotContinuationPolicy.sweep`
+(`makeAutopilotContinuationStoreForEnv`),
 `AutopilotScheduledLaunches.dispatchDue` (`makeAutopilotWorkStoreForEnv` —
 every work-order write mirrors by `work_order_ref`, closeout receipts by
-`closeout_ref`), and `makeHygieneDebtReceiptStoreForEnv`. The scattered
-`adjutant_*` / `omni_*` writers, the Effect onboarding store,
-`autopilot_token_usage`, and `backend_incident_events` have their twins +
-backfill + verify here but plug their per-site live mirror into
-`makeSupervisionLongtailMirrorForEnv` in the decommission follow-up #8361.
+`closeout_ref`), and `makeHygieneDebtReceiptStoreForEnv`. **CONFIRMED LIVE
+(#8361, 2026-07-05):** the remaining scattered `adjutant_*` / `omni_*`
+writers, the Effect onboarding store, `autopilot_token_usage`, and
+`backend_incident_events` (34 call sites, commit `4acd3704c2`) now also
+mirror through `makeSupervisionLongtailMirrorForEnv` — every writer in this
+domain is dual-writing.
 
 Flags (Worker vars):
 
 - `KHALA_SYNC_SUPERVISION_DUAL_WRITE` — default **on** wherever
   `KHALA_SYNC_DB` exists; `off|0|false|disabled|no` disables the mirror.
-- `KHALA_SYNC_SUPERVISION_READS` — default `d1`. `compare`/`postgres`
-  serving is DEFERRED to the read-cutover follow-up (reads stay on D1 in
-  this lane); a premature flip can never serve an unproven read path.
+- `KHALA_SYNC_SUPERVISION_READS` — default `d1`; current value **`compare`**
+  (prod + staging, set #8361). D1 is the ONLY store this domain ever serves
+  a response from at ANY flag value — `compare`/`postgres` only arm the
+  fail-soft, non-blocking shadow-compare reader
+  (`makeOmniPublicProofBundleCompareReader` in
+  `supervision-longtail-domain-store.ts`) for the one public projection
+  surface here, `omni_public_proof_bundles` (read by both the redacted
+  public handoff page and the operator JSON view in
+  `omni-bundle-routes.ts`). `postgres` additionally logs
+  `khala_sync_supervision_postgres_reads_deferred` once — real Postgres
+  SERVING for this domain is not built; a flag flip alone can never widen
+  what is served.
 
 Flag-flip order — never skip a step, each soaks before the next:
 
@@ -2423,23 +2433,34 @@ Flag-flip order — never skip a step, each soaks before the next:
    (wrangler-auth'd; rowid-cursor resumable via
    `.supervision-longtail-backfill-state.json`). Run a SECOND time
    (`--restart`) as the catch-up sweep once dual-write has covered the whole
-   window.
+   window. **DONE (#8361, 2026-07-05):** both sweeps ran clean against
+   production across all 29 tables.
 3. **Verify**: `bun scripts/backfill-supervision-longtail.ts --verify` —
    exact row counts, per-state/sum tallies, **idempotency-key-set equality**
    (`omni_idempotency_keys`), **public proof-bundle digests**
    (`omni_public_proof_bundles`, the §3.14 shadow-compared projection
    surface), newest-50 row hashes. Post the output on the migration issue
    (secret-safe by construction). Exact or explain; no cutover on a red
-   verify.
-4. **Shadow-compare the public proof-bundle endpoints**: diff the servable
+   verify. **DONE (#8361, 2026-07-05):** `verify: CLEAN — every check
+   matches` across all 29 tables, zero mismatches of any kind.
+4. **Shadow-compare the public proof-bundle endpoint**: diff the servable
    `omni_public_proof_bundles` projection against BOTH stores until silent.
-5. **Read/write cutover LATER** (follow-up #8361): wire the remaining
-   scattered writers' live mirror, serve reads from Postgres, re-add the
-   uniques left off the twins, move write authority, and drop the D1 tables.
-   Until then rollback is one flag flip back.
+   **IN PROGRESS (#8361):** `KHALA_SYNC_SUPERVISION_READS=compare` deployed
+   to prod + staging 2026-07-05; the reader is wired but this domain is
+   near-zero-traffic (the proof-bundles table itself is 0 rows in both
+   stores today), so a short soak window is thin-by-vacuity evidence — keep
+   watching `khala_sync_supervision_read_compare_mismatch` over a genuinely
+   representative window before treating step 5 as unblocked.
+5. **Read/write cutover LATER** (a further follow-up beyond #8361): serve
+   real Postgres reads (bounded allowlist, per the KS-8.14 business-domain
+   pattern in #8360, or the full-domain approach per KS-8.16 Forge in
+   #8358 — whichever the traffic profile supports), re-add the uniques left
+   off the twins, move write authority, and drop the D1 tables. Until then
+   rollback is one flag flip back.
 
-Rollback at ANY step: `KHALA_SYNC_SUPERVISION_DUAL_WRITE=off`. D1 authority
-is never behind.
+Rollback at ANY step: `KHALA_SYNC_SUPERVISION_DUAL_WRITE=off` (writes) and/or
+`KHALA_SYNC_SUPERVISION_READS=d1` (shadow-compare reader). D1 authority is
+never behind.
 
 ## Identity/auth domain cutover (KS-8.18 #8329 + follow-up #8362)
 

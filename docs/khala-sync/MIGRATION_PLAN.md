@@ -673,6 +673,35 @@ proof-bundle endpoint serving, and the D1 drop. Prod cutover procedure:
 [`RUNBOOK.md`](./RUNBOOK.md) "Supervision long-tail cutover"; cutover
 evidence is tracked on epic
 [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
+
+**KS-8.17 follow-up status (2026-07-05, #8361):** scattered writer wiring
+CONFIRMED live and green (commit `4acd3704c2`, deployed) — all 34 previously
+unwired `adjutant_*`/`omni_*`/`autopilot_*`/`relay_health_*`/
+`hygiene_debt_receipts` call sites mirror through
+`makeSupervisionLongtailMirrorForEnv`. Backfill CATCH-UP SWEEP (second pass)
+completed across all 29 tables + a full `--verify`: exact row counts,
+idempotency-key-set equality (`omni_idempotency_keys`), public proof-bundle
+digests (`omni_public_proof_bundles`), and newest-50 row hashes ALL MATCH —
+zero drift, confirming dual-write has been converging cleanly since the
+writer-wiring deploy. READ-COMPARE MACHINERY BUILT (the piece the parent
+lane deferred): `makeOmniPublicProofBundleCompareReader` — a fail-soft,
+non-blocking shadow-compare reader wired into the one public projection
+surface this domain serves (`omni_public_proof_bundles`, read by both the
+redacted public handoff page and the operator JSON view in
+`omni-bundle-routes.ts`). D1 remains the ONLY store that ever serves a
+response, at every flag value; `compare`/`postgres` only widen when the
+shadow diff fires, logging
+`khala_sync_supervision_read_compare_mismatch`/`_failed`/
+`_postgres_reads_deferred`. `KHALA_SYNC_SUPERVISION_READS=compare` is set in
+prod + staging `wrangler.jsonc` to start a genuine soak. HONEST CAVEAT: this
+is a cold, near-zero-traffic domain today (`omni_public_proof_bundles` is 0
+rows in both D1 and Postgres as of this backfill; most other tables are
+single/double-digit rows) — a short soak window is thin-by-vacuity evidence,
+matching the Forge (#8358) precedent, so the real read/write cutover (and
+any bounded postgres-serving allowlist, per the #8360 business-domain
+pattern) stays a further follow-up gated on a genuinely representative
+soak window, not force-flipped here. D1 drop stays consolidated in the
+epic-wide KS-8.19 sweep (#8330), not attempted here.
 **KS-8.18 status (2026-07-04, #8329):** machinery LANDED (CORE) — the
 LAST and most sensitive domain. Postgres schema (`khala-sync-server`
 migration `0028_identity_auth_domain.sql`: the SEVENTEEN canonical
