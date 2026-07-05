@@ -214,6 +214,37 @@ export type FleetIntentOutcomeRecord = {
   recordedAt: string
 }
 
+/**
+ * Runtime control-intent dispatch outcome (#8388) — the exactly-once guard
+ * for the Pylon-side `runtime.*` dispatch consumer
+ * (`./runtime-intent-enforcement.ts`), mirroring
+ * `FleetIntentOutcomeStatus` above. `intentId` is the client-minted
+ * `KhalaRuntimeControlIntent.intentId` (a text ref, not a numeric id —
+ * unlike fleet intents, the resumable ordering key is the separate `seq`
+ * watermark).
+ */
+export type RuntimeIntentOutcomeStatus = "applied" | "skipped_stale" | "failed"
+
+export type RuntimeIntentOutcomeRecord = {
+  intentId: string
+  threadId: string
+  turnId: string | null
+  kind: string
+  outcome: RuntimeIntentOutcomeStatus
+  detail: string | null
+  recordedAt: string
+}
+
+export type RecordRuntimeIntentOutcomeInput = {
+  intentId: string
+  threadId: string
+  turnId?: string | null
+  kind: string
+  outcome: RuntimeIntentOutcomeStatus
+  detail?: string | null
+  now?: Date
+}
+
 export type RecordFleetIntentOutcomeInput = {
   intentId: number
   scope: string
@@ -730,6 +761,26 @@ const fleetIntentOutcomeFromRow = (row: FleetIntentOutcomeRow): FleetIntentOutco
   recordedAt: row.recorded_at,
 })
 
+type RuntimeIntentOutcomeRow = {
+  intent_id: string
+  thread_id: string
+  turn_id: string | null
+  kind: string
+  outcome: RuntimeIntentOutcomeStatus
+  detail: string | null
+  recorded_at: string
+}
+
+const runtimeIntentOutcomeFromRow = (row: RuntimeIntentOutcomeRow): RuntimeIntentOutcomeRecord => ({
+  intentId: row.intent_id,
+  threadId: row.thread_id,
+  turnId: row.turn_id,
+  kind: row.kind,
+  outcome: row.outcome,
+  detail: row.detail,
+  recordedAt: row.recorded_at,
+})
+
 const taskFromRow = (row: TaskRow): OrchestrationTask => ({
   id: row.id,
   parentId: row.parent_id,
@@ -1097,6 +1148,17 @@ export class PylonOrchestrationStore {
       );
       CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_fleet_intent_outcomes_run
         ON pylon_orchestration_fleet_intent_outcomes(run_ref, intent_id);
+      CREATE TABLE IF NOT EXISTS pylon_orchestration_runtime_intent_outcomes (
+        intent_id TEXT PRIMARY KEY,
+        thread_id TEXT NOT NULL,
+        turn_id TEXT,
+        kind TEXT NOT NULL,
+        outcome TEXT NOT NULL CHECK (outcome IN ('applied', 'skipped_stale', 'failed')),
+        detail TEXT,
+        recorded_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_runtime_intent_outcomes_thread
+        ON pylon_orchestration_runtime_intent_outcomes(thread_id, intent_id);
     `)
     this.ensureDispatchContextBreakerColumns()
     this.ensureDispatchContextPausedColumn()
@@ -1409,6 +1471,85 @@ export class PylonOrchestrationStore {
       })
     const stored = this.getFleetIntentOutcome(input.intentId)
     if (stored === null) throw new Error(`failed to record fleet intent outcome ${input.intentId}`)
+    return { outcome: stored, recorded: true }
+  }
+
+  /**
+   * Persisted runtime control-intent consumption watermark (#8388): the
+   * highest `khala_sync_runtime_control_intents.seq` this Pylon's runtime
+   * dispatch consumer has consumed, resumed across restarts. Mirrors
+   * `getFleetIntentWatermark`/`setFleetIntentWatermark` above.
+   */
+  getRuntimeIntentWatermark(scope?: string): number {
+    const raw = this.getMeta(this.runtimeIntentWatermarkKey(scope))
+    if (raw === null) return 0
+    const value = Number(raw)
+    return Number.isInteger(value) && value >= 0 ? value : 0
+  }
+
+  setRuntimeIntentWatermark(after: number, scope?: string): void {
+    if (!Number.isInteger(after) || after < 0) {
+      throw new Error("runtime intent watermark must be a non-negative integer")
+    }
+    this.setMeta(this.runtimeIntentWatermarkKey(scope), String(after))
+  }
+
+  private runtimeIntentWatermarkKey(scope?: string): string {
+    return scope === undefined ? "runtime_intents_watermark" : `runtime_intents_watermark.${scope}`
+  }
+
+  getRuntimeIntentOutcome(intentId: string): RuntimeIntentOutcomeRecord | null {
+    const row = this.db
+      .query("SELECT * FROM pylon_orchestration_runtime_intent_outcomes WHERE intent_id = $intentId")
+      .get({ $intentId: intentId }) as RuntimeIntentOutcomeRow | null
+    return row === null ? null : runtimeIntentOutcomeFromRow(row)
+  }
+
+  listRuntimeIntentOutcomes(input: { threadId?: string } = {}): RuntimeIntentOutcomeRecord[] {
+    const rows = input.threadId === undefined
+      ? this.db
+        .query("SELECT * FROM pylon_orchestration_runtime_intent_outcomes ORDER BY recorded_at ASC")
+        .all()
+      : this.db
+        .query(`
+          SELECT * FROM pylon_orchestration_runtime_intent_outcomes
+           WHERE thread_id = $threadId
+           ORDER BY recorded_at ASC
+        `)
+        .all({ $threadId: input.threadId })
+    return (rows as RuntimeIntentOutcomeRow[]).map(runtimeIntentOutcomeFromRow)
+  }
+
+  /**
+   * Record one runtime control-intent dispatch outcome exactly once. A
+   * second record for the same `intentId` (route redelivery, restart
+   * replay) is refused and the FIRST recorded outcome is returned with
+   * `recorded: false` — callers must treat that as "already dispatched, do
+   * not re-dispatch" (mirrors `recordFleetIntentOutcome`).
+   */
+  recordRuntimeIntentOutcome(
+    input: RecordRuntimeIntentOutcomeInput,
+  ): { recorded: boolean; outcome: RuntimeIntentOutcomeRecord } {
+    const existing = this.getRuntimeIntentOutcome(input.intentId)
+    if (existing !== null) return { outcome: existing, recorded: false }
+    this.db
+      .query(`
+        INSERT OR IGNORE INTO pylon_orchestration_runtime_intent_outcomes
+          (intent_id, thread_id, turn_id, kind, outcome, detail, recorded_at)
+        VALUES
+          ($intentId, $threadId, $turnId, $kind, $outcome, $detail, $recordedAt)
+      `)
+      .run({
+        $intentId: input.intentId,
+        $threadId: input.threadId,
+        $turnId: input.turnId ?? null,
+        $kind: input.kind,
+        $outcome: input.outcome,
+        $detail: input.detail ?? null,
+        $recordedAt: iso(input.now),
+      })
+    const stored = this.getRuntimeIntentOutcome(input.intentId)
+    if (stored === null) throw new Error(`failed to record runtime intent outcome ${input.intentId}`)
     return { outcome: stored, recorded: true }
   }
 

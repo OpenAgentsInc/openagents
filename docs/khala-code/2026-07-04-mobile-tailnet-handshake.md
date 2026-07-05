@@ -395,6 +395,106 @@ consumer) and
 [#8389](https://github.com/OpenAgentsInc/openagents/issues/8389) (capacity-
 aware account selection, depends on #8388).
 
+### #8388 closed the dispatch-consumer gap: `runtime.startTurn` now runs a real local Codex turn
+
+The gap above (#8388) is closed. A real Pylon-side consumer exists and
+was proven end-to-end against real Postgres (see below), though it is not
+yet wired into production process supervision (that's the deploy/ops
+follow-up, not a code gap).
+
+**New consumption seam (mirrors the fleet-intents pattern exactly):**
+
+- `packages/khala-sync-server/migrations/0032_khala_sync_runtime_control_intents_seq.sql`
+  adds a `bigint GENERATED ALWAYS AS IDENTITY` `seq` column to
+  `khala_sync_runtime_control_intents` (the table had a client-minted text
+  primary key and no resumable ordering column before this).
+- `packages/khala-sync-server/src/runtime-intents.ts` —
+  `readPendingRuntimeControlIntents` (paged, `seq`-watermarked, optionally
+  owner-scoped) and `readChatMessageById` (resolves the `bodyRef` convention
+  below).
+- `apps/openagents.com/workers/api/src/khala-sync-runtime-intents-routes.ts`
+  — two new admin-bearer-gated internal routes:
+  `GET /api/internal/khala-sync/runtime-intents?ownerUserId=&after=&limit=`
+  and `GET /api/internal/khala-sync/chat-message?threadId=&messageId=`.
+- `apps/pylon/src/orchestration/runtime-intents.ts` (poller HTTP client),
+  `runtime-sync-push.ts` (minimal `/api/sync/push` client for
+  `runtime.recordEvent`, with a fresh synthetic `(clientGroupId, clientId)`
+  per turn so the push engine's dense-ordering ledger always starts clean),
+  and `runtime-intent-enforcement.ts` (the actual dispatch orchestration:
+  `selectDispatchAccountNaive`, `codexRawEventToRuntimeEvents`, and
+  `enforcePendingRuntimeIntents`).
+- `apps/pylon/src/orchestration/store.ts` gained a parallel watermark +
+  exactly-once outcome table (`pylon_orchestration_runtime_intent_outcomes`)
+  alongside the existing fleet-intent one.
+- `apps/pylon/src/orchestration/runtime-intent-supervisor.ts` — a NEW
+  standalone long-running process (not a `supervisor-state.ts` one-shot CLI
+  command run in a shell loop like fleet's `enforce-intents`): a `turn.start`
+  dispatch runs a real Codex turn in the BACKGROUND (fire-and-forget) so the
+  same process's next tick can act on a `turn.interrupt` for an
+  already-running turn. A one-shot CLI re-exec'd per tick would kill that
+  in-flight work when the process exited.
+
+**What's real:** `runtime.startTurn` resolves its `bodyRef`
+(`chat_message.<messageId>` convention) to the real message body via
+`chat.appendMessage`'s stored row, picks a local Codex account, runs one
+real Codex SDK thread (same sandbox/approval invariants as the proven
+`codex-agent-executor.ts` fleet path — owner-local full access, network
+on), and translates every Codex thread event
+(`turn.started`/`item.completed`/`turn.completed`/`turn.failed`) into real
+`runtime.recordEvent` pushes: `turn.started`, `text.delta`+`text.completed`
+for agent messages, `reasoning.delta`+`reasoning.completed`, `tool.call`
+paired with `tool.result`/`tool.error` for command execution / file change /
+MCP tool / web search items, `usage.recorded` (with a required `usageRef`),
+and a terminal `turn.finished` with the right `finishReason`.
+`turn.interrupt` aborts the real local Codex SDK call (via `AbortSignal`)
+when the targeted turn is running in the SAME process and records
+`turn.interrupted`.
+
+**Verified end-to-end, real components throughout** (documented here since
+this proof runs against local Postgres, not deployed production — the code
+paths are identical either way): a one-off verification run pushed a real
+`chat.createThread` + `chat.appendMessage` + `runtime.startTurn` through the
+REAL `executePush` mutator pipeline against a real local Postgres, confirmed
+the real `readPendingRuntimeControlIntents` reader observed it
+(`seq: 1, kind: "turn.start"`), ran the real `enforcePendingRuntimeIntents`
+tick (real prompt resolution, real account-selection helper, real event
+translator), and — using a scripted fake Codex SDK event stream in place of
+a live ChatGPT/Codex account (unavailable in that sandbox) — confirmed all 7
+translated events landed via the REAL `runtime.recordEvent` mutator
+(`turn.started`, `text.delta`, `text.completed`, `tool.call`, `tool.result`,
+`usage.recorded`, `turn.finished`, sequence 1-7, all `applied`) and that
+`khala_sync_runtime_turns.status` correctly reached `"completed"` with
+`event_count: 7`. Only the Codex SDK invocation and the local account
+registry were faked; storage, mutators, readers, the push engine, and the
+event translator were all real production code.
+
+**Known gaps, kept honest, not silently papered over:**
+
+- **Account selection is a placeholder.** `selectDispatchAccountNaive`
+  picks the first account with positive `capacityAvailable`, else the
+  first `readiness: "ready"` account — explicitly marked
+  `// naive placeholder for #8389` in the source. #8389 (capacity-aware
+  selection) is a parallel, still-open follow-up.
+- **`message.append` for an in-flight turn is explicitly rejected, not
+  silently dropped or faked.** The Codex SDK's `runStreamed(prompt)` call
+  has no mid-turn steering API, so there is no real way to inject the
+  message into an already-running turn; the control-intent outcome records
+  `failed` with a clear detail saying so.
+- **`turn.continue` / `turn.retry` / `turn.close` are recorded
+  `skipped_stale`** with an explicit "not implemented in this pass" detail
+  — no pylon-local action is taken for them yet.
+- **Only `codex`-provider accounts are dispatched.** `claude_agent` accounts
+  are visible to the naive selector but there is no Claude thread runner
+  wired into this consumer.
+- **Not yet wired into standing process supervision.** The new
+  `runtime-intent-supervisor.ts` is a real, runnable, tested standalone
+  process (smoke-verified: it ticks on its own interval, handles a real
+  network failure honestly, and shuts down cleanly on SIGINT) — it is not
+  yet started automatically alongside the existing `codex-supervisor.sh`/
+  `claude-supervisor.sh` loops or any deployment tooling. Wiring that up
+  (and deciding the production `--owner-user-id`/`--pylon-ref` values) is an
+  operational follow-up, not a code gap.
+
 ### Follow-up: rich AI-SDK-shaped transcript rendering on mobile
 
 Reviewed #8375 (closed by another agent — simulator-only proof,

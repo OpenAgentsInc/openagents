@@ -806,6 +806,12 @@ import {
   handleKhalaSyncFleetIntents,
 } from './khala-sync-fleet-intents-routes'
 import {
+  KHALA_SYNC_CHAT_MESSAGE_READ_PATH,
+  KHALA_SYNC_RUNTIME_INTENTS_PATH,
+  handleKhalaSyncChatMessageRead,
+  handleKhalaSyncRuntimeIntents,
+} from './khala-sync-runtime-intents-routes'
+import {
   KHALA_SYNC_HUB_ACCESS_CHANGED_PATH,
   KHALA_SYNC_HUB_APPEND_PATH,
   KHALA_SYNC_HUB_CONNECT_PATH,
@@ -12195,6 +12201,31 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: KHALA_SYNC_FLEET_INTENTS_PATH,
     handler: (request, env) =>
       handleKhalaSyncFleetIntents(request, {
+        binding: env.KHALA_SYNC_DB,
+        requireOperator: () => requireAdminApiToken(request, env),
+      }),
+  },
+  {
+    // Khala Sync runtime control-intent dispatch-consumer seam (#8388).
+    // Admin bearer only — the Pylon-side runtime dispatch consumer polls
+    // this to observe durable runtime.* control intents
+    // (?ownerUserId=&after=&limit=, oldest-first, nextAfter watermark) and
+    // dispatch real local Codex/Claude turns for them. Mirrors the
+    // fleet-intents route above.
+    path: KHALA_SYNC_RUNTIME_INTENTS_PATH,
+    handler: (request, env) =>
+      handleKhalaSyncRuntimeIntents(request, {
+        binding: env.KHALA_SYNC_DB,
+        requireOperator: () => requireAdminApiToken(request, env),
+      }),
+  },
+  {
+    // Companion to the runtime-intents route above (#8388): resolves a
+    // `turn.start` intent's `bodyRef` (`chat_message.<messageId>`) into the
+    // real prompt text recorded by `chat.appendMessage`. Admin bearer only.
+    path: KHALA_SYNC_CHAT_MESSAGE_READ_PATH,
+    handler: (request, env) =>
+      handleKhalaSyncChatMessageRead(request, {
         binding: env.KHALA_SYNC_DB,
         requireOperator: () => requireAdminApiToken(request, env),
       }),

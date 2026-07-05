@@ -116,6 +116,39 @@ export const encodeRuntimeControlIntentEntity = S.encodeSync(
 )
 export const encodeRuntimeEventEntity = S.encodeSync(RuntimeEventEntity)
 
+/**
+ * One durable runtime control-intent row as served by the dispatch-consumer
+ * polling seam (#8388): `readPendingRuntimeControlIntents` in
+ * `@openagentsinc/khala-sync-server` and the Worker's admin-guarded
+ * `GET /api/internal/khala-sync/runtime-intents` route. Mirrors
+ * `FleetIntentRow` from ./fleet.ts — NOT a sync-protocol message, the
+ * polling contract for the Pylon-side runtime dispatch consumer. `seq` is
+ * the monotonic identity column added by khala-sync-server migration 0032
+ * (the control-intents table's own primary key, `intentId`, is a
+ * client-minted text id, not a resumable watermark).
+ */
+export class RuntimeControlIntentRow extends S.Class<RuntimeControlIntentRow>(
+  "RuntimeControlIntentRow",
+)({
+  seq: S.Number.check(S.isInt(), S.isGreaterThan(0)),
+  intentId: KhalaRuntimeControlIntentId,
+  threadId: KhalaRuntimeThreadId,
+  turnId: S.NullOr(KhalaRuntimeTurnId),
+  ownerUserId: RuntimeOwnerUserId,
+  kind: KhalaRuntimeControlIntentKind,
+  status: RuntimeControlIntentStatus,
+  intent: KhalaRuntimeControlIntent,
+  createdAt: RuntimeIsoTimestamp,
+  updatedAt: RuntimeIsoTimestamp,
+}) {}
+
+export const decodeRuntimeControlIntentRow = S.decodeUnknownSync(
+  RuntimeControlIntentRow,
+)
+export const encodeRuntimeControlIntentRow = S.encodeSync(
+  RuntimeControlIntentRow,
+)
+
 export {
   decodeKhalaRuntimeControlIntent,
   decodeKhalaRuntimeEvent,

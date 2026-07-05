@@ -117,6 +117,12 @@ const approvedExactRoutePaths = [
   // Pylon supervisor enforcement loop. (Approved here as a rebase-hygiene
   // fix: the route landed in the manifest without its approved-list entry.)
   '/api/internal/khala-sync/fleet-intents',
+  // Khala Sync runtime control-intent dispatch-consumer seam (#8388): admin
+  // bearer only; the Pylon-side runtime dispatch consumer polls durable
+  // runtime.* control intents and resolves chat_message bodies through
+  // these two routes.
+  '/api/internal/khala-sync/runtime-intents',
+  '/api/internal/khala-sync/chat-message',
   // Khala Sync hub internal surface (KS-4.2, #8295): admin bearer only;
   // per-scope KhalaSyncHubDO append / log / connect. Public /api/sync/*
   // catch-up/connect arrives with KS-4.3/4.4.
