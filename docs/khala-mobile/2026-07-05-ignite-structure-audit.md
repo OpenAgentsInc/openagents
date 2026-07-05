@@ -272,9 +272,16 @@ Implementation note: #8429 added
 imports from tests, missing or undeclared package imports, production imports
 from devDependencies, domain modules importing navigators/screens, and runtime
 native package imports outside `src/native/modules.ts`. Circular dependencies
-start as warnings while the React Navigation migration settles. The only
+started as warnings while the React Navigation migration settled. The only
 documented first-pass exceptions are Bun's runtime-provided `bun` test module
 and type-only native DTO imports in pure native helpers.
+
+Update (#8454): re-ran `architecture:check` against `index.tsx`, `src`, and
+`tests` with `no-circular` forced to error severity and found zero circular
+dependencies (189 modules, 507 dependencies cruised) — the React Navigation
+graph settled clean. `no-circular` is now `severity: "error"` in
+`.dependency-cruiser.cjs`; no exception pattern was added because no cycle
+needed one.
 
 ### 7. Typed Public Config With a Secrets Warning
 

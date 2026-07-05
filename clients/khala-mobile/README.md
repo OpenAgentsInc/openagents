@@ -62,7 +62,10 @@ The config lives at `clients/khala-mobile/.dependency-cruiser.cjs`. It checks
 for production imports from tests, unknown/missing package dependencies,
 production imports from devDependencies, domain modules importing route owners,
 and native module runtime imports outside `src/native/modules.ts`. Circular
-dependencies currently warn while the React Navigation migration settles.
+dependencies are an error: the React Navigation migration settled with a clean
+graph (zero cycles across `index.tsx`, `src`, and `tests`), so `no-circular`
+was tightened from warn to error in #8454 and any new cycle now fails
+`architecture:check`.
 
 Documented exceptions are intentionally narrow: Bun's built-in test/plugin
 module is allowed for test support, and type-only native package imports are

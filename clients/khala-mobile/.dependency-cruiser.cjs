@@ -18,9 +18,9 @@ module.exports = {
   forbidden: [
     {
       name: "no-circular",
-      severity: "warn",
+      severity: "error",
       comment:
-        "Warn first while the React Navigation migration settles; tighten to error once the first false-positive pass is clean.",
+        "The React Navigation migration settled with zero circular imports across index.tsx, src, and tests. Tightened from warn to error in #8454 so new cycles fail architecture:check instead of accumulating as warnings.",
       from: {},
       to: { circular: true },
     },
