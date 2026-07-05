@@ -18,6 +18,7 @@ import {
   recordRevenueEventProvenance,
 } from './revenue-event-provenance'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
 
 type HttpResponse = globalThis.Response
 
@@ -178,6 +179,11 @@ export type QaSwarmFirstEngagementRuntime = Readonly<{
 
 type RouteInput = Readonly<{
   OPENAGENTS_DB?: D1Database
+  // KS-8.17 (#8361): optional read-back mirror for the
+  // omni_accepted_outcome_contracts row this route's service-promise write
+  // creates. Undefined is a safe no-op (no Postgres binding / dual-write
+  // off, or the caller has not threaded a mirror through yet).
+  mirror?: SupervisionLongtailMirror | undefined
   nowIso?: (() => string) | undefined
   store?: QaSwarmFirstEngagementStore | undefined
 }>
@@ -407,6 +413,7 @@ const createWorkspace = async (
 const createServicePromise = async (
   db: D1Database,
   draft: QaSwarmFirstEngagementDraft,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Promise<{ id: string }> => {
   const idempotencyKey = `qa_swarm_first_engagement:${draft.idempotencyKey}`
   const existing = await db
@@ -524,6 +531,10 @@ const createServicePromise = async (
     )
     .run()
 
+  if (mirror !== undefined) {
+    await mirror.mirrorRowsByKey('omni_accepted_outcome_contracts', [[id]])
+  }
+
   const inserted = await db
     .prepare(
       `SELECT id
@@ -640,6 +651,7 @@ const recordQaSwarmRevenueEventProvenance = async (
 export const makeD1QaSwarmFirstEngagementStore = (
   db: D1Database | undefined,
   runtime: QaSwarmFirstEngagementRuntime = runtimeDefaults,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): QaSwarmFirstEngagementStore => ({
   recordFirstEngagement: draft =>
     Effect.tryPromise({
@@ -658,7 +670,7 @@ export const makeD1QaSwarmFirstEngagementStore = (
 
         const workspace = await createWorkspace(db, draft, runtime)
         const withWorkspace = { ...draft, workspaceId: workspace.id }
-        const contract = await createServicePromise(db, withWorkspace)
+        const contract = await createServicePromise(db, withWorkspace, mirror)
         const fullDraft = {
           ...withWorkspace,
           servicePromiseContractId: contract.id,
@@ -1084,7 +1096,12 @@ export const handleOperatorQaSwarmFirstEngagementsApi = (
       ].join(':')
     }`
     const store =
-      input.store ?? makeD1QaSwarmFirstEngagementStore(input.OPENAGENTS_DB)
+      input.store ??
+      makeD1QaSwarmFirstEngagementStore(
+        input.OPENAGENTS_DB,
+        undefined,
+        input.mirror,
+      )
     const recorded = yield* store
       .recordFirstEngagement({
         ...normalized,

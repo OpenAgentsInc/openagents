@@ -52,6 +52,7 @@ import {
   systemOmniWorkroomLifecycleRuntime,
 } from './omni-workroom-lifecycle'
 import { OmniAcceptedOutcomeWorkKind } from './omni-accepted-outcome-contracts'
+import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
 
 type HttpResponse = globalThis.Response
 
@@ -61,6 +62,12 @@ export type OmniWorkroomLifecycleAudience = 'public' | 'customer' | 'operator'
 
 export type OmniWorkroomLifecycleRoutesDependencies<Bindings> = Readonly<{
   makeDb: (env: Bindings) => D1Database
+  // KS-8.17 (#8361): optional read-back mirror factory for the
+  // omni_workroom_lifecycle_decisions row this route writes. Coordinator
+  // wiring should pass
+  // `mirror: env => makeSupervisionLongtailMirrorForEnv(env, { db: dependencies.makeDb(env) })`
+  // alongside `makeDb`; undefined stays a safe no-op.
+  mirror?: (env: Bindings) => SupervisionLongtailMirror | undefined
   requireBrowserSession?: (
     request: Request,
     env: Bindings,
@@ -327,6 +334,7 @@ const postLifecycleDecision = <
         workroomId,
       },
       dependencies.runtime ?? systemOmniWorkroomLifecycleRuntime,
+      dependencies.mirror?.(env),
     )
 
     return noStoreJsonResponse({

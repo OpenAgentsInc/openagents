@@ -7,6 +7,7 @@ import {
   OmniAcceptedOutcomeWorkKind as OmniAcceptedOutcomeWorkKindSchema,
 } from './omni-accepted-outcome-contracts'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
 
 export const OmniWorkroomLifecycleActorKind = S.Literals([
   'customer',
@@ -319,6 +320,7 @@ export const recordOmniWorkroomLifecycleDecision = (
   db: D1Database,
   input: RecordOmniWorkroomLifecycleDecisionInput,
   runtime: OmniWorkroomLifecycleRuntime = systemOmniWorkroomLifecycleRuntime,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<OmniWorkroomLifecycleDecisionRecord, OmniWorkroomLifecycleError> =>
   Effect.gen(function* () {
     assertValidInput(input)
@@ -405,6 +407,14 @@ export const recordOmniWorkroomLifecycleDecision = (
         .run()
         .then(() => undefined),
     )
+
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror.mirrorRowsByKey('omni_workroom_lifecycle_decisions', [
+          [record.id],
+        ]),
+      )
+    }
 
     return (yield* readByIdempotencyKey(db, record.idempotencyKey)) ?? record
   })

@@ -486,6 +486,7 @@ import {
   makeAutopilotWorkStoreForEnv,
   makeHygieneDebtReceiptStoreForEnv,
   makeRelayHealthStoreForEnv,
+  makeSupervisionLongtailMirrorForEnv,
 } from './supervision-longtail-domain-store'
 import { makeHygieneLaneSettlementRoutes } from './hygiene-lane-settlement-routes'
 import { makeHostedGeminiPromiseReadinessRoutes } from './hosted-gemini-promise-readiness-routes'
@@ -5640,6 +5641,9 @@ const notifyCustomerSiteDeployed = async (
 ): Promise<SiteCustomerNotificationOutcome> => {
   // KS-8.12 (#8323): writes site_events — sites dual-write mirror seam.
   const db = sitesContentDatabaseForEnv(env)
+  // KS-8.17 (#8361): the adjutant_assignment_events / adjutant_usage_receipts
+  // writes below ride the SEPARATE supervision long-tail mirror.
+  const supervisionMirror = makeSupervisionLongtailMirrorForEnv(env)
   const existingSiteEvent = await db
     .prepare(
       `SELECT id
@@ -5819,36 +5823,42 @@ const notifyCustomerSiteDeployed = async (
   if (assignment !== null) {
     await observedEffect(
       'AdjutantUsageReceipts.recordHosting',
-      recordAdjutantUsageReceipt(db, {
-        assignmentId: assignment.id,
-        billingMode: 'public_beta_free',
-        category: 'hosting',
-        idempotencyKey: [
-          'adjutant_usage',
-          assignment.id,
-          input.deploymentId,
-          'hosting',
-        ].join(':'),
-        publicDetails: {
-          billingNote: 'Public beta Site hosting is free.',
-          siteUrl: input.siteUrl,
-        },
-        quantity: 1,
-        runId: assignment.current_run_id,
-        siteId: input.siteId,
-        softwareOrderId: assignment.software_order_id,
-        summary: 'Autopilot activated public Site hosting.',
-        teamDetails: {
-          billingPolicy: 'public_beta_free',
-          deploymentId: input.deploymentId,
+      recordAdjutantUsageReceipt(
+        db,
+        {
+          assignmentId: assignment.id,
+          billingMode: 'public_beta_free',
+          category: 'hosting',
+          idempotencyKey: [
+            'adjutant_usage',
+            assignment.id,
+            input.deploymentId,
+            'hosting',
+          ].join(':'),
+          publicDetails: {
+            billingNote: 'Public beta Site hosting is free.',
+            siteUrl: input.siteUrl,
+          },
+          quantity: 1,
+          runId: assignment.current_run_id,
           siteId: input.siteId,
-          siteUrl: input.siteUrl,
+          softwareOrderId: assignment.software_order_id,
+          summary: 'Autopilot activated public Site hosting.',
+          teamDetails: {
+            billingPolicy: 'public_beta_free',
+            deploymentId: input.deploymentId,
+            siteId: input.siteId,
+            siteUrl: input.siteUrl,
+          },
+          unit: 'deployment',
+          visibility: assignment.visibility,
         },
-        unit: 'deployment',
-        visibility: assignment.visibility,
-      }),
+        undefined,
+        supervisionMirror,
+      ),
     )
 
+    const assignmentEventId = compactRandomId('adjutant_assignment_event')
     await db
       .prepare(
         `INSERT INTO adjutant_assignment_events
@@ -5868,7 +5878,7 @@ const notifyCustomerSiteDeployed = async (
          VALUES (?, ?, ?, ?, ?, ?, 'adjutant.notification.deployed', ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
-        compactRandomId('adjutant_assignment_event'),
+        assignmentEventId,
         assignment.id,
         assignment.software_order_id,
         input.siteId,
@@ -5882,6 +5892,9 @@ const notifyCustomerSiteDeployed = async (
         now,
       )
       .run()
+    await supervisionMirror?.mirrorRowsByKey('adjutant_assignment_events', [
+      [assignmentEventId],
+    ])
   }
 
   await db
@@ -5981,6 +5994,9 @@ const sendReviewReadySiteNotification = async (
 ): Promise<SiteCustomerNotificationOutcome> => {
   // KS-8.12 (#8323): writes site_events — sites dual-write mirror seam.
   const db = sitesContentDatabaseForEnv(env)
+  // KS-8.17 (#8361): the adjutant_assignment_events write below rides the
+  // SEPARATE supervision long-tail mirror.
+  const supervisionMirror = makeSupervisionLongtailMirrorForEnv(env)
   const email = row.primary_email?.trim()
   const resend = getResendEmailConfig(env)
   const notification =
@@ -6106,6 +6122,7 @@ const sendReviewReadySiteNotification = async (
         : 'Autopilot customer review-ready email notification is needed.'
 
   if (row.assignment_id !== null) {
+    const assignmentEventId = compactRandomId('adjutant_assignment_event')
     await db
       .prepare(
         `INSERT INTO adjutant_assignment_events
@@ -6125,7 +6142,7 @@ const sendReviewReadySiteNotification = async (
          VALUES (?, ?, ?, ?, ?, ?, 'adjutant.notification.review_ready', ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
-        compactRandomId('adjutant_assignment_event'),
+        assignmentEventId,
         row.assignment_id,
         row.order_id,
         row.site_id,
@@ -6139,6 +6156,9 @@ const sendReviewReadySiteNotification = async (
         now,
       )
       .run()
+    await supervisionMirror?.mirrorRowsByKey('adjutant_assignment_events', [
+      [assignmentEventId],
+    ])
   }
 
   await db
@@ -6257,6 +6277,9 @@ const sendReviewReadyArtifactNotification = async (
   row: ReviewReadyArtifactNotificationRow,
 ): Promise<SiteCustomerNotificationOutcome> => {
   const db = openAgentsDatabase(env)
+  // KS-8.17 (#8361): the adjutant_assignment_events write below rides the
+  // supervision long-tail mirror.
+  const supervisionMirror = makeSupervisionLongtailMirrorForEnv(env)
   const email = row.primary_email?.trim()
   const resend = getResendEmailConfig(env)
   const notification =
@@ -6388,6 +6411,7 @@ const sendReviewReadyArtifactNotification = async (
         ? 'Autopilot customer artifact review-ready email notification failed.'
         : 'Autopilot customer artifact review-ready email notification is needed.'
 
+  const assignmentEventId = compactRandomId('adjutant_assignment_event')
   await db
     .prepare(
       `INSERT INTO adjutant_assignment_events
@@ -6407,7 +6431,7 @@ const sendReviewReadyArtifactNotification = async (
        VALUES (?, ?, ?, NULL, ?, ?, 'adjutant.notification.review_ready_artifact', ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
-      compactRandomId('adjutant_assignment_event'),
+      assignmentEventId,
       row.assignment_id,
       row.order_id,
       row.assignment_goal_id,
@@ -6420,6 +6444,9 @@ const sendReviewReadyArtifactNotification = async (
       now,
     )
     .run()
+  await supervisionMirror?.mirrorRowsByKey('adjutant_assignment_events', [
+    [assignmentEventId],
+  ])
 
   return notification
 }
@@ -8352,18 +8379,21 @@ const autopilotDecisionRoutes = makeAutopilotDecisionRoutes<WorkerBindings>({
 
 const omniWorkroomRoutes = makeOmniWorkroomRoutes<WorkerBindings>({
   db: env => openAgentsDatabase(env),
+  mirror: env => makeSupervisionLongtailMirrorForEnv(env),
   requireBrowserSession,
 })
 
 const omniWorkroomLifecycleRoutes =
   makeOmniWorkroomLifecycleRoutes<WorkerBindings>({
     makeDb: env => openAgentsDatabase(env),
+    mirror: env => makeSupervisionLongtailMirrorForEnv(env),
     requireBrowserSession,
     requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   })
 
 const omniBundleRoutes = makeOmniBundleRoutes<WorkerBindings>({
   db: env => openAgentsDatabase(env),
+  mirror: env => makeSupervisionLongtailMirrorForEnv(env),
   requireOperator: (request, env) => requireAdminApiToken(request, env),
   readEvidenceBundle: (db, id) => readOmniEvidenceBundleById(db, id),
   readProofBundle: (db, id) => readOmniPublicProofBundleById(db, id),
@@ -8371,6 +8401,7 @@ const omniBundleRoutes = makeOmniBundleRoutes<WorkerBindings>({
 
 const omniHandoffRoutes = makeOmniHandoffRoutes<WorkerBindings>({
   db: env => openAgentsDatabase(env),
+  mirror: env => makeSupervisionLongtailMirrorForEnv(env),
   requireOperator: (request, env) => requireAdminApiToken(request, env),
 })
 
@@ -11312,6 +11343,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // the business funnel dual-write mirror seam, matching the public
         // routes path (makeD1QaSwarmFirstEngagementStore above).
         OPENAGENTS_DB: businessDomainDatabaseForEnv(env),
+        // KS-8.17 (#8361): the omni_accepted_outcome_contracts row this
+        // route's service-promise write creates rides the SEPARATE
+        // supervision long-tail mirror.
+        mirror: makeSupervisionLongtailMirrorForEnv(env),
         requireAdminApiToken: authRequest =>
           requireAdminApiToken(authRequest, env),
       }),
@@ -15289,18 +15324,23 @@ const workerFetchProgram = Effect.gen(function* () {
         logWorkerRouteError('worker_unhandled_exception', prettyCause)
         scheduleBackgroundWork(
           ctx,
-          recordBackendIncidentEvent(openAgentsDatabase(env), {
-            errorName: 'EffectCause',
-            kind: 'unhandled_exception',
-            method: request.method,
-            routePattern: routePatternFromRequest(request),
-            safeMetadata: {
-              host: url.hostname,
+          recordBackendIncidentEvent(
+            openAgentsDatabase(env),
+            {
+              errorName: 'EffectCause',
+              kind: 'unhandled_exception',
+              method: request.method,
+              routePattern: routePatternFromRequest(request),
+              safeMetadata: {
+                host: url.hostname,
+              },
+              severity: 'critical',
+              source: 'worker_fetch',
+              statusCode: 500,
             },
-            severity: 'critical',
-            source: 'worker_fetch',
-            statusCode: 500,
-          }).catch(error =>
+            undefined,
+            makeSupervisionLongtailMirrorForEnv(env),
+          ).catch(error =>
             logWorkerRouteError('backend_incident_record_failed', error),
           ),
         )

@@ -10,6 +10,7 @@ import { makeAdjutantEnrichmentLedger } from './adjutant-enrichment-ledger'
 import { makeAdjutantPublicSourceRefService } from './adjutant-public-source-refs'
 import { parseJsonRecord } from './json-boundary'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
 
 export const AdjutantEnrichmentJobStatus = S.Literals([
   'queued',
@@ -307,6 +308,7 @@ const enqueueJob = (
   db: D1Database,
   runtime: AdjutantEnrichmentJobRuntime,
   input: EnqueueAdjutantEnrichmentJobInput,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<
   Readonly<{
     duplicate: boolean
@@ -342,7 +344,7 @@ const enqueueJob = (
       0,
       Math.trunc(input.requestBudget ?? Math.min(6, allTasks.length)),
     )
-    const run = yield* makeAdjutantEnrichmentLedger(db)
+    const run = yield* makeAdjutantEnrichmentLedger(db, undefined, mirror)
       .createRun({
         assignmentId: input.assignment.id,
         planId: plan.planId,
@@ -361,7 +363,7 @@ const enqueueJob = (
             }),
         ),
       )
-    yield* makeAdjutantEnrichmentLedger(db)
+    yield* makeAdjutantEnrichmentLedger(db, undefined, mirror)
       .linkAssignmentRun({
         assignmentId: input.assignment.id,
         enrichmentRunId: run.id,
@@ -411,6 +413,12 @@ const enqueueJob = (
         .run(),
     )
 
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror.mirrorRowsByKey('adjutant_enrichment_jobs', [[jobId]]),
+      )
+    }
+
     const job = yield* readLatestJobForAssignment(db, input.assignment.id)
 
     if (job === null) {
@@ -434,6 +442,7 @@ const updateJobStatus = (
     started?: boolean | undefined
     status: AdjutantEnrichmentJobStatus
   }>,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<AdjutantEnrichmentJob, AdjutantEnrichmentJobError> =>
   Effect.gen(function* () {
     const now = runtime.nowIso()
@@ -505,16 +514,23 @@ const updateJobStatus = (
       return yield* new AdjutantEnrichmentJobNotFound({ jobId: input.jobId })
     }
 
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror.mirrorRowsByKey('adjutant_enrichment_jobs', [[input.jobId]]),
+      )
+    }
+
     return jobFromRow(row)
   })
 
 export const makeAdjutantEnrichmentJobService = (
   db: D1Database,
   runtime: AdjutantEnrichmentJobRuntime = systemAdjutantEnrichmentJobRuntime,
+  mirror?: SupervisionLongtailMirror | undefined,
 ) => ({
   enqueueJob: Effect.fn('AdjutantEnrichmentJobService.enqueueJob')(
     (input: EnqueueAdjutantEnrichmentJobInput) =>
-      enqueueJob(db, runtime, input),
+      enqueueJob(db, runtime, input, mirror),
   ),
   latestJobForAssignment: Effect.fn(
     'AdjutantEnrichmentJobService.latestJobForAssignment',
@@ -524,6 +540,6 @@ export const makeAdjutantEnrichmentJobService = (
   ),
   updateJobStatus: Effect.fn('AdjutantEnrichmentJobService.updateJobStatus')(
     (input: Parameters<typeof updateJobStatus>[2]) =>
-      updateJobStatus(db, runtime, input),
+      updateJobStatus(db, runtime, input, mirror),
   ),
 })

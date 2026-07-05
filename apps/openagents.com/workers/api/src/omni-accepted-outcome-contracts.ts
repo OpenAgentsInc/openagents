@@ -3,6 +3,7 @@ import { Effect, Schema as S } from 'effect'
 
 import { parseJsonWithSchema } from './json-boundary'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
 
 export const OmniAcceptedOutcomeWorkKind = S.Literals([
   'site',
@@ -576,6 +577,7 @@ export const createOmniAcceptedOutcomeContract = (
   input: CreateOmniAcceptedOutcomeContractInput,
   runtime: OmniAcceptedOutcomeContractsRuntime =
     systemOmniAcceptedOutcomeContractsRuntime,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<
   OmniAcceptedOutcomeContractRecord,
   OmniAcceptedOutcomeContractError
@@ -676,6 +678,14 @@ export const createOmniAcceptedOutcomeContract = (
         .run()
         .then(() => undefined),
     )
+
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror.mirrorRowsByKey('omni_accepted_outcome_contracts', [
+          [record.id],
+        ]),
+      )
+    }
 
     return (
       (yield* readContractByIdempotencyKey(db, record.idempotencyKey)) ??

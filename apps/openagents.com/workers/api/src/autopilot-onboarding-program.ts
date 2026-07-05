@@ -33,6 +33,7 @@ import {
   OUTPUT_SPEC_FIELDS as CONCIERGE_OUTPUT_SPEC_FIELDS,
 } from './inference/autopilot-concierge-model'
 import { parseJsonUnknown, parseJsonWithSchema } from './json-boundary'
+import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
 
 export const KHALA_ONBOARDING_MODEL = 'khala'
 
@@ -391,6 +392,7 @@ const rowToSession = (row: OnboardingSessionRow): OnboardingSession => ({
 
 export const makeD1OnboardingSessionStore = (
   db: D1Database,
+  mirror?: SupervisionLongtailMirror,
 ): OnboardingSessionStore => ({
   read: sessionId =>
     Effect.tryPromise({
@@ -441,6 +443,10 @@ export const makeD1OnboardingSessionStore = (
             session.updatedAt,
           )
           .run()
+
+        await mirror?.mirrorRowsByKey('autopilot_onboarding_sessions', [
+          [session.id],
+        ])
       },
       catch: error =>
         new OnboardingStorageError({

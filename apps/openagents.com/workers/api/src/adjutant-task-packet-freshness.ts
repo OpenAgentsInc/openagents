@@ -4,6 +4,7 @@ import { Effect, Schema as S } from 'effect'
 import type { AdjutantAssignment } from './adjutant-assignments'
 import type { AdjutantResearchBrief } from './adjutant-research-briefs'
 import { currentIsoTimestamp } from './runtime-primitives'
+import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
 
 export const AdjutantTaskPacketFreshnessStatus = S.Literals([
   'missing',
@@ -236,6 +237,7 @@ const recordGenerated = (
     assignment: AdjutantAssignment
     researchBrief: AdjutantResearchBrief | null
   }>,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<AdjutantTaskPacketFreshness, AdjutantTaskPacketFreshnessError> =>
   Effect.gen(function* () {
     if (input.assignment.taskSpecPath === null) {
@@ -294,6 +296,14 @@ const recordGenerated = (
         .run(),
     )
 
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror.mirrorRowsByKey('adjutant_task_packet_freshness', [
+          [input.assignment.id],
+        ]),
+      )
+    }
+
     return yield* readFreshness(db, input.assignment, input.researchBrief)
   })
 
@@ -304,6 +314,7 @@ const markStaleForApprovedResearch = (
     assignment: AdjutantAssignment
     researchBrief: AdjutantResearchBrief
   }>,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<AdjutantTaskPacketFreshness, AdjutantTaskPacketFreshnessError> =>
   Effect.gen(function* () {
     if (input.assignment.taskSpecPath === null) {
@@ -359,6 +370,14 @@ const markStaleForApprovedResearch = (
         .run(),
     )
 
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror.mirrorRowsByKey('adjutant_task_packet_freshness', [
+          [input.assignment.id],
+        ]),
+      )
+    }
+
     return yield* readFreshness(db, input.assignment, input.researchBrief)
   })
 
@@ -372,6 +391,7 @@ const keepCurrent = (
     latestApprovedBrief: AdjutantResearchBrief | null
     reason: string
   }>,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<AdjutantTaskPacketFreshness, AdjutantTaskPacketFreshnessError> =>
   Effect.gen(function* () {
     if (input.assignment.taskSpecPath === null) {
@@ -437,6 +457,14 @@ const keepCurrent = (
         .run(),
     )
 
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror.mirrorRowsByKey('adjutant_task_packet_freshness', [
+          [input.assignment.id],
+        ]),
+      )
+    }
+
     return yield* readFreshness(db, input.assignment, input.latestApprovedBrief)
   })
 
@@ -444,15 +472,16 @@ export const makeAdjutantTaskPacketFreshnessService = (
   db: D1Database,
   runtime: AdjutantTaskPacketFreshnessRuntime =
     systemAdjutantTaskPacketFreshnessRuntime,
+  mirror?: SupervisionLongtailMirror | undefined,
 ) => ({
   keepCurrent: Effect.fn('AdjutantTaskPacketFreshness.keepCurrent')(
     (input: Parameters<typeof keepCurrent>[2]) =>
-      keepCurrent(db, runtime, input),
+      keepCurrent(db, runtime, input, mirror),
   ),
   markStaleForApprovedResearch: Effect.fn(
     'AdjutantTaskPacketFreshness.markStaleForApprovedResearch',
   )((input: Parameters<typeof markStaleForApprovedResearch>[2]) =>
-    markStaleForApprovedResearch(db, runtime, input),
+    markStaleForApprovedResearch(db, runtime, input, mirror),
   ),
   readFreshness: Effect.fn('AdjutantTaskPacketFreshness.readFreshness')(
     (assignment: AdjutantAssignment, latestApprovedBrief: AdjutantResearchBrief | null) =>
@@ -460,6 +489,6 @@ export const makeAdjutantTaskPacketFreshnessService = (
   ),
   recordGenerated: Effect.fn('AdjutantTaskPacketFreshness.recordGenerated')(
     (input: Parameters<typeof recordGenerated>[2]) =>
-      recordGenerated(db, runtime, input),
+      recordGenerated(db, runtime, input, mirror),
   ),
 })

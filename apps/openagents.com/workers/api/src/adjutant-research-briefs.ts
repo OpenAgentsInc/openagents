@@ -6,6 +6,10 @@ import type { ExaEnrichmentSourceCard } from './adjutant-enrichment-ledger'
 import { parseJsonStringArray, parseJsonWithSchema } from './json-boundary'
 import { openAgentsDatabase } from './runtime'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import {
+  makeSupervisionLongtailMirrorForEnv,
+  type SupervisionLongtailMirror,
+} from './supervision-longtail-domain-store'
 
 type AdjutantResearchBriefEnv = Readonly<{
   OPENAGENTS_DB: D1Database
@@ -323,6 +327,7 @@ const createBrief = (
   db: D1Database,
   runtime: AdjutantResearchBriefRuntime,
   input: CreateAdjutantResearchBriefInput,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<AdjutantResearchBrief, AdjutantResearchBriefError> =>
   Effect.gen(function* () {
     const approvedSources = defaultSourceCards(input.sourceCards)
@@ -420,6 +425,12 @@ const createBrief = (
         .run(),
     )
 
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror.mirrorRowsByKey('adjutant_research_briefs', [[briefId]]),
+      )
+    }
+
     return {
       id: briefId,
       assignmentId: input.assignmentId,
@@ -446,6 +457,7 @@ const reviewBrief = (
   db: D1Database,
   runtime: AdjutantResearchBriefRuntime,
   input: ReviewAdjutantResearchBriefInput,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<void, AdjutantResearchBriefError> =>
   Effect.gen(function* () {
     const reason = yield* optionalBoundedText(
@@ -479,6 +491,12 @@ const reviewBrief = (
         )
         .run(),
     )
+
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror.mirrorRowsByKey('adjutant_research_briefs', [[input.briefId]]),
+      )
+    }
   })
 
 const readLatestBriefForAssignment = (
@@ -525,10 +543,11 @@ export const makeAdjutantResearchBriefService = (
   db: D1Database,
   runtime: AdjutantResearchBriefRuntime =
     systemAdjutantResearchBriefRuntime,
+  mirror?: SupervisionLongtailMirror | undefined,
 ) => ({
   createBrief: Effect.fn('AdjutantResearchBriefService.createBrief')(
     (input: CreateAdjutantResearchBriefInput) =>
-      createBrief(db, runtime, input),
+      createBrief(db, runtime, input, mirror),
   ),
   latestApprovedBriefForAssignment: Effect.fn(
     'AdjutantResearchBriefService.latestApprovedBriefForAssignment',
@@ -540,7 +559,7 @@ export const makeAdjutantResearchBriefService = (
   )((assignmentId: string) => readLatestBriefForAssignment(db, assignmentId)),
   reviewBrief: Effect.fn('AdjutantResearchBriefService.reviewBrief')(
     (input: ReviewAdjutantResearchBriefInput) =>
-      reviewBrief(db, runtime, input),
+      reviewBrief(db, runtime, input, mirror),
   ),
 })
 
@@ -555,6 +574,12 @@ export class AdjutantResearchBriefService extends Context.Service<
   ) =>
     Layer.succeed(
       AdjutantResearchBriefService,
-      makeAdjutantResearchBriefService(openAgentsDatabase(env), runtime),
+      makeAdjutantResearchBriefService(
+        openAgentsDatabase(env),
+        runtime,
+        // KS-8.17 (#8361): adjutant_research_briefs rides the supervision
+        // long-tail read-back mirror.
+        makeSupervisionLongtailMirrorForEnv(env),
+      ),
     )
 }

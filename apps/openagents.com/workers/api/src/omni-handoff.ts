@@ -20,6 +20,7 @@ import {
   publicOmniProofBundleProjection,
   systemOmniPublicProofBundlesRuntime,
 } from './omni-public-proof-bundles'
+import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
 
 // On workroom completion/acceptance the handoff orchestration chains the
 // internal evidence bundle into the customer-facing public proof bundle. The
@@ -215,6 +216,7 @@ export const runOmniWorkroomHandoff = (
   db: D1Database,
   input: OmniHandoffInput,
   runtime: OmniHandoffRuntime = systemOmniHandoffRuntime,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<OmniHandoffResult, OmniHandoffError> =>
   Effect.gen(function* () {
     assertWorkroomReadyForHandoff(input.workroom)
@@ -223,12 +225,14 @@ export const runOmniWorkroomHandoff = (
       db,
       evidenceCreateInput(input),
       runtime.evidenceRuntime,
+      mirror,
     )
 
     const proofBundle = yield* createOmniPublicProofBundle(
       db,
       proofCreateInput(input, evidenceBundle),
       runtime.proofRuntime,
+      mirror,
     )
 
     return {

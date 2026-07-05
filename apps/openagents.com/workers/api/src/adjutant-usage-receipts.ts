@@ -4,6 +4,7 @@ import { Effect, Schema as S } from 'effect'
 import { BILLING_CURRENCY, formatUsdCents } from './billing'
 import { parseJsonRecord } from './json-boundary'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
 
 export const ADJUTANT_USAGE_CATEGORIES = [
   'generation',
@@ -338,6 +339,7 @@ export const recordAdjutantUsageReceipt = (
   db: D1Database,
   input: RecordAdjutantUsageReceiptInput,
   runtime: AdjutantUsageReceiptRuntime = systemAdjutantUsageReceiptRuntime,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<AdjutantUsageReceipt, AdjutantUsageReceiptError> =>
   Effect.gen(function* () {
     const unit = yield* compactSummary(input.unit)
@@ -404,6 +406,12 @@ export const recordAdjutantUsageReceipt = (
         error: 'Usage receipt insert did not return a row.',
         operation: 'adjutantUsageReceipts.insert.readback',
       })
+    }
+
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror.mirrorRowsByKey('adjutant_usage_receipts', [[receipt.id]]),
+      )
     }
 
     return receipt

@@ -26,6 +26,10 @@ import {
 // degrades to the raw D1 handle when no KHALA_SYNC_DB binding exists.
 import { sitesContentDatabaseForEnv as openAgentsDatabase } from './sites-content-store'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import {
+  makeSupervisionLongtailMirrorForEnv,
+  type SupervisionLongtailMirror,
+} from './supervision-longtail-domain-store'
 
 type OperatorEmailInspectionEnv = Readonly<{
   OPENAGENTS_DB: D1Database
@@ -455,12 +459,14 @@ const recordReviewReadySmokeEvents = (
     summary: string
     versionId: string | null
   }>,
+  mirror?: SupervisionLongtailMirror,
 ) =>
   Effect.gen(function* () {
     const now = currentIsoTimestamp()
     const assignment = input.assignment
 
     if (assignment !== null) {
+      const eventId = compactRandomId('adjutant_assignment_event')
       yield* Effect.tryPromise({
         catch: error =>
           new OperatorEmailInspectionBadRequest({
@@ -487,7 +493,7 @@ const recordReviewReadySmokeEvents = (
                VALUES (?, ?, ?, ?, ?, ?, 'adjutant.notification.review_ready', ?, ?, ?, ?, ?, ?)`,
             )
             .bind(
-              compactRandomId('adjutant_assignment_event'),
+              eventId,
               assignment.id,
               assignment.software_order_id,
               input.siteId,
@@ -502,6 +508,11 @@ const recordReviewReadySmokeEvents = (
             )
             .run(),
       })
+      yield* Effect.promise(
+        () =>
+          mirror?.mirrorRowsByKey('adjutant_assignment_events', [[eventId]]) ??
+          Promise.resolve(),
+      )
     }
 
     yield* Effect.tryPromise({
@@ -550,8 +561,10 @@ const recordReviewReadyArtifactSmokeEvent = (
     summary: string
     target: ReviewReadyArtifactSmokeTargetRow
   }>,
-) =>
-  Effect.tryPromise({
+  mirror?: SupervisionLongtailMirror,
+) => {
+  const eventId = compactRandomId('adjutant_assignment_event')
+  return Effect.tryPromise({
     catch: error =>
       new OperatorEmailInspectionBadRequest({
         reason:
@@ -577,7 +590,7 @@ const recordReviewReadyArtifactSmokeEvent = (
            VALUES (?, ?, ?, NULL, ?, ?, 'adjutant.notification.review_ready_artifact', ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
-          compactRandomId('adjutant_assignment_event'),
+          eventId,
           input.target.assignment_id,
           input.target.software_order_id,
           input.target.assignment_goal_id,
@@ -590,7 +603,16 @@ const recordReviewReadyArtifactSmokeEvent = (
           currentIsoTimestamp(),
         )
         .run(),
-  })
+  }).pipe(
+    Effect.tap(() =>
+      Effect.promise(
+        () =>
+          mirror?.mirrorRowsByKey('adjutant_assignment_events', [[eventId]]) ??
+          Promise.resolve(),
+      ),
+    ),
+  )
+}
 
 export const makeOperatorEmailInspectionRoutes = <
   Session extends OperatorEmailInspectionSession,
@@ -619,6 +641,7 @@ export const makeOperatorEmailInspectionRoutes = <
         )
         const body = yield* decodeReviewReadySmokeRequest(request)
         const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
+        const supervisionMirror = makeSupervisionLongtailMirrorForEnv(env)
 
         if (body.artifactId !== undefined) {
           const target = yield* readReviewReadyArtifactSmokeTarget(
@@ -790,13 +813,17 @@ export const makeOperatorEmailInspectionRoutes = <
               ? 'Autopilot customer artifact review-ready email notification was accepted.'
               : 'Autopilot customer artifact review-ready email notification failed.'
 
-          yield* recordReviewReadyArtifactSmokeEvent(db, {
-            actorUserId: session.user.userId,
-            emailMessageId: result.emailMessageId,
-            payload,
-            summary,
-            target,
-          })
+          yield* recordReviewReadyArtifactSmokeEvent(
+            db,
+            {
+              actorUserId: session.user.userId,
+              emailMessageId: result.emailMessageId,
+              payload,
+              summary,
+              target,
+            },
+            supervisionMirror,
+          )
 
           return dependencies.appendRefreshedSessionCookies(
             noStoreJsonResponse({
@@ -991,16 +1018,20 @@ export const makeOperatorEmailInspectionRoutes = <
             ? 'Autopilot customer review-ready email notification was accepted.'
             : 'Autopilot customer review-ready email notification failed.'
 
-        yield* recordReviewReadySmokeEvents(db, {
-          actorRunId: assignment?.current_run_id ?? null,
-          actorUserId: session.user.userId,
-          assignment,
-          emailMessageId: result.emailMessageId,
-          payload,
-          siteId: target.site_id,
-          summary,
-          versionId: target.version_id,
-        })
+        yield* recordReviewReadySmokeEvents(
+          db,
+          {
+            actorRunId: assignment?.current_run_id ?? null,
+            actorUserId: session.user.userId,
+            assignment,
+            emailMessageId: result.emailMessageId,
+            payload,
+            siteId: target.site_id,
+            summary,
+            versionId: target.version_id,
+          },
+          supervisionMirror,
+        )
 
         return dependencies.appendRefreshedSessionCookies(
           noStoreJsonResponse({

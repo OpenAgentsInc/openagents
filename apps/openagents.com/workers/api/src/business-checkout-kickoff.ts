@@ -6,6 +6,7 @@ import {
 } from './prefilled-workspace'
 import { readBusinessSignupRequest } from './business-signup-routes'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
 
 export type BusinessCheckoutKickoffInput = Readonly<{
   checkoutSessionId: string
@@ -162,6 +163,7 @@ const createServicePromise = (
   db: D1Database,
   input: BusinessCheckoutKickoffInput,
   workspace: PrefilledWorkspaceRecord,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Promise<{ id: string }> =>
   Promise.resolve().then(async () => {
     const idempotencyKey = `business_checkout:${input.checkoutSessionId}`
@@ -246,6 +248,10 @@ const createServicePromise = (
       )
       .run()
 
+    if (mirror !== undefined) {
+      await mirror.mirrorRowsByKey('omni_accepted_outcome_contracts', [[id]])
+    }
+
     const inserted = await db
       .prepare(
         `SELECT id
@@ -269,6 +275,7 @@ const createServicePromise = (
 export const provisionBusinessCheckoutKickoff = async (
   db: D1Database,
   rawInput: BusinessCheckoutKickoffInput,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Promise<BusinessCheckoutKickoffRecord> => {
   const input: BusinessCheckoutKickoffInput = {
     checkoutSessionId: safeRef(
@@ -301,7 +308,7 @@ export const provisionBusinessCheckoutKickoff = async (
   }
 
   const workspace = await createWorkspace(db, input)
-  const contract = await createServicePromise(db, input, workspace)
+  const contract = await createServicePromise(db, input, workspace, mirror)
   const now = currentIsoTimestamp()
   const publicReceiptRef = `receipt.business.checkout_kickoff.${input.checkoutSessionId}`
 

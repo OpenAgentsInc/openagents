@@ -12,6 +12,10 @@ import {
 } from './adjutant-enrichment-planner'
 import { openAgentsDatabase } from './runtime'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import {
+  makeSupervisionLongtailMirrorForEnv,
+  type SupervisionLongtailMirror,
+} from './supervision-longtail-domain-store'
 
 type AdjutantPublicSourceRefEnv = Readonly<{
   OPENAGENTS_DB: D1Database
@@ -330,6 +334,7 @@ const createSourceRef = (
   db: D1Database,
   runtime: AdjutantPublicSourceRefRuntime,
   input: CreateAdjutantPublicSourceRefInput,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<AdjutantPublicSourceRef, AdjutantPublicSourceRefError> =>
   Effect.gen(function* () {
     yield* assertSafeInput(input)
@@ -402,6 +407,12 @@ const createSourceRef = (
         .run(),
     )
 
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror.mirrorRowsByKey('adjutant_public_source_refs', [[sourceRefId]]),
+      )
+    }
+
     return {
       id: sourceRefId,
       assignmentId: input.assignmentId,
@@ -428,6 +439,7 @@ const reviewSourceRef = (
   db: D1Database,
   runtime: AdjutantPublicSourceRefRuntime,
   input: ReviewAdjutantPublicSourceRefInput,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<void, AdjutantPublicSourceRefError> =>
   Effect.gen(function* () {
     const reason = yield* boundedOptionalText(
@@ -467,6 +479,14 @@ const reviewSourceRef = (
         )
         .run(),
     )
+
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror.mirrorRowsByKey('adjutant_public_source_refs', [
+          [input.sourceRefId],
+        ]),
+      )
+    }
   })
 
 const listForAssignment = (
@@ -536,10 +556,11 @@ export const makeAdjutantPublicSourceRefService = (
   db: D1Database,
   runtime: AdjutantPublicSourceRefRuntime =
     systemAdjutantPublicSourceRefRuntime,
+  mirror?: SupervisionLongtailMirror | undefined,
 ) => ({
   createSourceRef: Effect.fn('AdjutantPublicSourceRefService.createSourceRef')(
     (input: CreateAdjutantPublicSourceRefInput) =>
-      createSourceRef(db, runtime, input),
+      createSourceRef(db, runtime, input, mirror),
   ),
   listForAssignment: Effect.fn(
     'AdjutantPublicSourceRefService.listForAssignment',
@@ -550,7 +571,7 @@ export const makeAdjutantPublicSourceRefService = (
   reviewSourceRef: Effect.fn(
     'AdjutantPublicSourceRefService.reviewSourceRef',
   )((input: ReviewAdjutantPublicSourceRefInput) =>
-    reviewSourceRef(db, runtime, input),
+    reviewSourceRef(db, runtime, input, mirror),
   ),
 })
 
@@ -565,6 +586,12 @@ export class AdjutantPublicSourceRefService extends Context.Service<
   ) =>
     Layer.succeed(
       AdjutantPublicSourceRefService,
-      makeAdjutantPublicSourceRefService(openAgentsDatabase(env), runtime),
+      makeAdjutantPublicSourceRefService(
+        openAgentsDatabase(env),
+        runtime,
+        // KS-8.17 (#8361): adjutant_public_source_refs rides the
+        // supervision long-tail read-back mirror.
+        makeSupervisionLongtailMirrorForEnv(env),
+      ),
     )
 }

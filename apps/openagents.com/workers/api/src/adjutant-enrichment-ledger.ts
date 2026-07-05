@@ -12,6 +12,10 @@ import {
 } from './crm-email-domain-store'
 import { openAgentsDatabase } from './runtime'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import {
+  makeSupervisionLongtailMirrorForEnv,
+  type SupervisionLongtailMirror,
+} from './supervision-longtail-domain-store'
 
 type AdjutantEnrichmentLedgerEnv = Readonly<{
   OPENAGENTS_DB: D1Database
@@ -982,6 +986,7 @@ const linkAssignmentRun = (
   db: CrmEmailDatabase,
   runtime: AdjutantEnrichmentLedgerRuntime,
   input: LinkAssignmentEnrichmentInput,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<void, AdjutantEnrichmentLedgerError> => {
   const now = runtime.nowIso()
 
@@ -1016,7 +1021,18 @@ const linkAssignmentRun = (
         now,
       )
       .run(),
-  ).pipe(Effect.asVoid)
+  ).pipe(
+    Effect.flatMap(() =>
+      mirror === undefined
+        ? Effect.void
+        : Effect.promise(() =>
+            mirror.mirrorRowsByKey('adjutant_assignment_enrichments', [
+              [input.assignmentId, input.enrichmentRunId],
+            ]),
+          ),
+    ),
+    Effect.asVoid,
+  )
 }
 
 const updateRunStatus = (
@@ -1203,6 +1219,7 @@ export const makeAdjutantEnrichmentLedger = (
   db: CrmEmailDatabase,
   runtime: AdjutantEnrichmentLedgerRuntime =
     systemAdjutantEnrichmentLedgerRuntime,
+  mirror?: SupervisionLongtailMirror | undefined,
 ) => ({
   createRun: Effect.fn('AdjutantEnrichmentLedger.createRun')(
     (input: CreateExaEnrichmentRunInput) => createRun(db, runtime, input),
@@ -1216,7 +1233,7 @@ export const makeAdjutantEnrichmentLedger = (
   linkAssignmentRun: Effect.fn(
     'AdjutantEnrichmentLedger.linkAssignmentRun',
   )((input: LinkAssignmentEnrichmentInput) =>
-    linkAssignmentRun(db, runtime, input),
+    linkAssignmentRun(db, runtime, input, mirror),
   ),
   publicSafeSourceCardsForAssignment: Effect.fn(
     'AdjutantEnrichmentLedger.publicSafeSourceCardsForAssignment',
@@ -1251,6 +1268,13 @@ export class AdjutantEnrichmentLedger extends Context.Service<
   ) =>
     Layer.succeed(
       AdjutantEnrichmentLedger,
-      makeAdjutantEnrichmentLedger(openAgentsDatabase(env), runtime),
+      makeAdjutantEnrichmentLedger(
+        openAgentsDatabase(env),
+        runtime,
+        // KS-8.17 (#8361): adjutant_assignment_enrichments rides the
+        // supervision long-tail read-back mirror (exa_enrichment_* rows
+        // keep the existing crm-email dual-write above — unrelated).
+        makeSupervisionLongtailMirrorForEnv(env),
+      ),
     )
 }

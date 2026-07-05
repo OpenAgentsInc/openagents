@@ -13,6 +13,10 @@ import {
 } from './agent-runtime-store'
 import { openAgentsDatabase } from './runtime'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import {
+  makeSupervisionLongtailMirrorForEnv,
+  type SupervisionLongtailMirror,
+} from './supervision-longtail-domain-store'
 
 type AdjutantAssignmentEnv = Readonly<{
   OPENAGENTS_DB: D1Database
@@ -514,12 +518,14 @@ const recordAssignmentEvent = (
     runId?: string | null | undefined
     summary: string
   }>,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<
   void,
   AdjutantAssignmentStorageError | AdjutantAssignmentUnsafePayload
 > =>
   Effect.gen(function* () {
     const payloadJson = yield* eventPayloadJson(input.payload)
+    const eventId = runtime.makeEventId()
 
     yield* d1Effect('adjutantAssignments.events.insert', () =>
       db
@@ -540,7 +546,7 @@ const recordAssignmentEvent = (
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
-          runtime.makeEventId(),
+          eventId,
           assignment.id,
           assignment.softwareOrderId,
           assignment.siteId,
@@ -555,12 +561,19 @@ const recordAssignmentEvent = (
         )
         .run(),
     )
+
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror.mirrorRowsByKey('adjutant_assignment_events', [[eventId]]),
+      )
+    }
   })
 
 const recordAssignmentEventById = (
   db: D1Database,
   runtime: AdjutantAssignmentRuntime,
   input: RecordAdjutantAssignmentEventInput,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<void, AdjutantAssignmentError> =>
   Effect.gen(function* () {
     const assignment = yield* readAssignmentById(db, input.assignmentId)
@@ -571,13 +584,19 @@ const recordAssignmentEventById = (
       })
     }
 
-    yield* recordAssignmentEvent(db, runtime, assignment, {
-      actorUserId: input.actorUserId,
-      eventType: input.eventType,
-      payload: input.payload,
-      runId: input.runId,
-      summary: input.summary,
-    })
+    yield* recordAssignmentEvent(
+      db,
+      runtime,
+      assignment,
+      {
+        actorUserId: input.actorUserId,
+        eventType: input.eventType,
+        payload: input.payload,
+        runId: input.runId,
+        summary: input.summary,
+      },
+      mirror,
+    )
   })
 
 const resolveSource = (
@@ -701,6 +720,7 @@ const createAssignment = (
   goals: AgentGoalRepositoryShape,
   runtime: AdjutantAssignmentRuntime,
   input: CreateAdjutantAssignmentInput,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<AdjutantAssignment, AdjutantAssignmentError> =>
   Effect.gen(function* () {
     yield* assertPayloadSafe(input)
@@ -808,15 +828,27 @@ const createAssignment = (
         .run(),
     )
 
-    yield* recordAssignmentEvent(db, runtime, assignment, {
-      eventType: 'adjutant.assignment_created',
-      payload: {
-        assignmentKind: assignment.assignmentKind,
-        status: assignment.status,
-        visibility: assignment.visibility,
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror.mirrorRowsByKey('adjutant_assignments', [[assignment.id]]),
+      )
+    }
+
+    yield* recordAssignmentEvent(
+      db,
+      runtime,
+      assignment,
+      {
+        eventType: 'adjutant.assignment_created',
+        payload: {
+          assignmentKind: assignment.assignmentKind,
+          status: assignment.status,
+          visibility: assignment.visibility,
+        },
+        summary: 'Autopilot assignment created.',
       },
-      summary: 'Autopilot assignment created.',
-    })
+      mirror,
+    )
 
     return assignment
   })
@@ -825,6 +857,7 @@ const updateAssignment = (
   db: D1Database,
   runtime: AdjutantAssignmentRuntime,
   input: UpdateAdjutantAssignmentInput,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<AdjutantAssignment, AdjutantAssignmentError> =>
   Effect.gen(function* () {
     yield* assertPayloadSafe(input)
@@ -907,6 +940,12 @@ const updateAssignment = (
         .run(),
     )
 
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror.mirrorRowsByKey('adjutant_assignments', [[input.assignmentId]]),
+      )
+    }
+
     const updated = yield* readAssignmentById(db, input.assignmentId)
 
     if (updated === null) {
@@ -922,10 +961,11 @@ export const makeAdjutantAssignmentService = (
   db: D1Database,
   runtime: AdjutantAssignmentRuntime = systemAdjutantAssignmentRuntime,
   goals: AgentGoalRepositoryShape = makeD1AgentGoalRepository(db),
+  mirror?: SupervisionLongtailMirror | undefined,
 ) => ({
   createAssignment: Effect.fn('AdjutantAssignmentService.createAssignment')(
     (input: CreateAdjutantAssignmentInput) =>
-      createAssignment(db, goals, runtime, input),
+      createAssignment(db, goals, runtime, input, mirror),
   ),
   listAssignments: Effect.fn('AdjutantAssignmentService.listAssignments')(
     (limit: number) => listAssignments(db, limit),
@@ -935,11 +975,11 @@ export const makeAdjutantAssignmentService = (
   ),
   recordEvent: Effect.fn('AdjutantAssignmentService.recordEvent')(
     (input: RecordAdjutantAssignmentEventInput) =>
-      recordAssignmentEventById(db, runtime, input),
+      recordAssignmentEventById(db, runtime, input, mirror),
   ),
   updateAssignment: Effect.fn('AdjutantAssignmentService.updateAssignment')(
     (input: UpdateAdjutantAssignmentInput) =>
-      updateAssignment(db, runtime, input),
+      updateAssignment(db, runtime, input, mirror),
   ),
 })
 
@@ -959,6 +999,9 @@ export class AdjutantAssignmentService extends Context.Service<
         // KS-8.5 (#8316): goal mutations ride the agent-runtime
         // dual-write seam.
         makeAgentGoalRepositoryForEnv(env),
+        // KS-8.17 (#8361): adjutant_assignments/adjutant_assignment_events
+        // ride the supervision long-tail read-back mirror.
+        makeSupervisionLongtailMirrorForEnv(env),
       ),
     )
 }

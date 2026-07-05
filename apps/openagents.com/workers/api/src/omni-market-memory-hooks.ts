@@ -8,6 +8,7 @@ import {
 } from './omni-accepted-outcome-contracts'
 import type { OmniWorkroomLifecycleState } from './omni-workroom-lifecycle'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
 
 export const OmniMarketMemoryOutcomeState = S.Literals(['accepted', 'rejected'])
 export type OmniMarketMemoryOutcomeState =
@@ -397,6 +398,7 @@ export const recordOmniMarketMemoryHook = (
   db: D1Database,
   input: RecordOmniMarketMemoryHookInput,
   runtime: OmniMarketMemoryHooksRuntime = systemOmniMarketMemoryHooksRuntime,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<OmniMarketMemoryHookRecord, OmniMarketMemoryHookError> =>
   Effect.gen(function* () {
     assertValidInput(input)
@@ -474,6 +476,12 @@ export const recordOmniMarketMemoryHook = (
         )
         .run(),
     )
+
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror.mirrorRowsByKey('omni_market_memory_hooks', [[id]]),
+      )
+    }
 
     const inserted = yield* readHookByIdempotencyKey(db, input.idempotencyKey)
 

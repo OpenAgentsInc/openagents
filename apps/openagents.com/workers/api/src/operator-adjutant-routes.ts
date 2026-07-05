@@ -134,6 +134,10 @@ import {
   currentIsoTimestamp,
 } from './runtime-primitives'
 import { AutopilotSiteLaunchChecklist } from './sites'
+import {
+  makeSupervisionLongtailMirrorForEnv,
+  type SupervisionLongtailMirror,
+} from './supervision-longtail-domain-store'
 
 type OperatorAdjutantAuthStorage = Readonly<{
   get: (key: string) => Promise<string | null>
@@ -2420,10 +2424,15 @@ const failQueuedEnrichmentJob = (
   runId: string | null,
   errorCode: string,
   errorSummary: string,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<void, OperatorAdjutantRouteError> =>
   Effect.gen(function* () {
-    const jobs = makeAdjutantEnrichmentJobService(crmEmailAuthorityDb(db))
-    const ledger = makeAdjutantEnrichmentLedger(db)
+    const jobs = makeAdjutantEnrichmentJobService(
+      crmEmailAuthorityDb(db),
+      undefined,
+      mirror,
+    )
+    const ledger = makeAdjutantEnrichmentLedger(db, undefined, mirror)
 
     if (runId !== null) {
       yield* ledger.updateRunStatus({
@@ -2450,16 +2459,26 @@ export const executeQueuedAdjutantEnrichmentJob = (
 ): Effect.Effect<void, OperatorAdjutantRouteError> =>
   Effect.gen(function* () {
     const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
+    const supervisionMirror = makeSupervisionLongtailMirrorForEnv(env)
     const assignments = makeAdjutantAssignmentService(
       crmEmailAuthorityDb(db),
       systemAdjutantAssignmentRuntime,
       // KS-8.5 (#8316): goal mutations ride the agent-runtime dual-write
       // seam.
       makeAgentGoalRepositoryForEnv(env),
+      supervisionMirror,
     )
-    const jobs = makeAdjutantEnrichmentJobService(crmEmailAuthorityDb(db))
-    const ledger = makeAdjutantEnrichmentLedger(db)
-    const briefService = makeAdjutantResearchBriefService(crmEmailAuthorityDb(db))
+    const jobs = makeAdjutantEnrichmentJobService(
+      crmEmailAuthorityDb(db),
+      undefined,
+      supervisionMirror,
+    )
+    const ledger = makeAdjutantEnrichmentLedger(db, undefined, supervisionMirror)
+    const briefService = makeAdjutantResearchBriefService(
+      crmEmailAuthorityDb(db),
+      undefined,
+      supervisionMirror,
+    )
     const operations = makeAdjutantEnrichmentOperationsService(db)
     const job = yield* jobs.readJobById(message.jobId)
 
@@ -2476,6 +2495,7 @@ export const executeQueuedAdjutantEnrichmentJob = (
         job.enrichmentRunId,
         'assignment_not_found',
         'Queued enrichment assignment was not found.',
+        supervisionMirror,
       )
 
       return
@@ -2490,6 +2510,7 @@ export const executeQueuedAdjutantEnrichmentJob = (
         job.enrichmentRunId,
         'exa_unconfigured',
         'EXA_API_KEY is not configured.',
+        supervisionMirror,
       )
 
       return
@@ -2514,6 +2535,7 @@ export const executeQueuedAdjutantEnrichmentJob = (
         job.enrichmentRunId,
         'queued_run_not_found',
         'Queued enrichment run was not found or is no longer queued.',
+        supervisionMirror,
       )
 
       return
@@ -2803,42 +2825,50 @@ const recordGenerationLaunchUsageReceipt = (
     runId: string
     site: PreflightSiteRow | null
   }>,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<void, AdjutantUsageReceiptError> =>
   generationReceiptEligible(input.assignment)
-    ? recordAdjutantUsageReceipt(crmEmailAuthorityDb(db), {
-        assignmentId: input.assignment.id,
-        billingMode: 'public_beta_free',
-        category: 'generation',
-        idempotencyKey: [
-          'adjutant_usage',
-          input.assignment.id,
-          input.runId,
-          'generation',
-        ].join(':'),
-        publicDetails: {
-          billingNote:
-            input.paymentPolicy?.customerSafeSummary ??
-            'Public beta Site generation is free.',
-          firstBatchPaymentPolicyMode: input.paymentPolicy?.policyMode ?? null,
-          siteTitle: input.site?.title ?? null,
-        },
-        quantity: 1,
-        runId: input.runId,
-        siteId: input.assignment.siteId,
-        softwareOrderId: input.assignment.softwareOrderId,
-        summary: 'Autopilot Site generation run was queued.',
-        teamDetails: {
-          assignmentKind: input.assignment.assignmentKind,
-          billingPolicy: 'public_beta_free',
-          firstBatchPaymentPolicyId: input.paymentPolicy?.id ?? null,
-          firstBatchPaymentPolicyMode: input.paymentPolicy?.policyMode ?? null,
+    ? recordAdjutantUsageReceipt(
+        crmEmailAuthorityDb(db),
+        {
+          assignmentId: input.assignment.id,
+          billingMode: 'public_beta_free',
+          category: 'generation',
+          idempotencyKey: [
+            'adjutant_usage',
+            input.assignment.id,
+            input.runId,
+            'generation',
+          ].join(':'),
+          publicDetails: {
+            billingNote:
+              input.paymentPolicy?.customerSafeSummary ??
+              'Public beta Site generation is free.',
+            firstBatchPaymentPolicyMode:
+              input.paymentPolicy?.policyMode ?? null,
+            siteTitle: input.site?.title ?? null,
+          },
+          quantity: 1,
           runId: input.runId,
           siteId: input.assignment.siteId,
           softwareOrderId: input.assignment.softwareOrderId,
+          summary: 'Autopilot Site generation run was queued.',
+          teamDetails: {
+            assignmentKind: input.assignment.assignmentKind,
+            billingPolicy: 'public_beta_free',
+            firstBatchPaymentPolicyId: input.paymentPolicy?.id ?? null,
+            firstBatchPaymentPolicyMode:
+              input.paymentPolicy?.policyMode ?? null,
+            runId: input.runId,
+            siteId: input.assignment.siteId,
+            softwareOrderId: input.assignment.softwareOrderId,
+          },
+          unit: 'run',
+          visibility: input.assignment.visibility,
         },
-        unit: 'run',
-        visibility: input.assignment.visibility,
-      }).pipe(Effect.asVoid)
+        undefined,
+        mirror,
+      ).pipe(Effect.asVoid)
     : Effect.void
 
 const recordAdjustmentLaunchUsageReceipt = (
@@ -2849,38 +2879,44 @@ const recordAdjustmentLaunchUsageReceipt = (
     mode: AdjutantAdjustmentContinuationMode
     runId: string
   }>,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<void, AdjutantUsageReceiptError> =>
-  recordAdjutantUsageReceipt(crmEmailAuthorityDb(db), {
-    adjustmentId: input.adjustment.id,
-    assignmentId: input.assignment.id,
-    billingMode: 'public_beta_free',
-    category: 'adjustment',
-    idempotencyKey: [
-      'adjutant_usage',
-      input.assignment.id,
-      input.adjustment.id,
-      input.runId,
-      'adjustment',
-    ].join(':'),
-    publicDetails: {
-      billingNote: 'Public beta Site adjustments are free.',
-    },
-    quantity: 1,
-    runId: input.runId,
-    siteId: input.assignment.siteId,
-    softwareOrderId: input.assignment.softwareOrderId,
-    summary: 'Autopilot Site adjustment was accepted for runner work.',
-    teamDetails: {
+  recordAdjutantUsageReceipt(
+    crmEmailAuthorityDb(db),
+    {
       adjustmentId: input.adjustment.id,
-      billingPolicy: 'public_beta_free',
-      mode: input.mode,
+      assignmentId: input.assignment.id,
+      billingMode: 'public_beta_free',
+      category: 'adjustment',
+      idempotencyKey: [
+        'adjutant_usage',
+        input.assignment.id,
+        input.adjustment.id,
+        input.runId,
+        'adjustment',
+      ].join(':'),
+      publicDetails: {
+        billingNote: 'Public beta Site adjustments are free.',
+      },
+      quantity: 1,
       runId: input.runId,
       siteId: input.assignment.siteId,
       softwareOrderId: input.assignment.softwareOrderId,
+      summary: 'Autopilot Site adjustment was accepted for runner work.',
+      teamDetails: {
+        adjustmentId: input.adjustment.id,
+        billingPolicy: 'public_beta_free',
+        mode: input.mode,
+        runId: input.runId,
+        siteId: input.assignment.siteId,
+        softwareOrderId: input.assignment.softwareOrderId,
+      },
+      unit: 'adjustment',
+      visibility: input.assignment.visibility,
     },
-    unit: 'adjustment',
-    visibility: input.assignment.visibility,
-  }).pipe(Effect.asVoid)
+    undefined,
+    mirror,
+  ).pipe(Effect.asVoid)
 
 const operatorCheck = (
   name: string,
@@ -4701,7 +4737,12 @@ export const makeOperatorAdjutantRoutes = <
         const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
-        const jobs = makeAdjutantEnrichmentJobService(crmEmailAuthorityDb(db))
+        const supervisionMirror = makeSupervisionLongtailMirrorForEnv(env)
+        const jobs = makeAdjutantEnrichmentJobService(
+          crmEmailAuthorityDb(db),
+          undefined,
+          supervisionMirror,
+        )
         const triggerKind =
           body.triggerKind ??
           (body.refresh === true ? 'operator_refresh' : 'operator_requested')
@@ -4787,7 +4828,12 @@ export const makeOperatorAdjutantRoutes = <
         const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
-        const service = makeAdjutantResearchPolicyService(crmEmailAuthorityDb(db))
+        const supervisionMirror = makeSupervisionLongtailMirrorForEnv(env)
+        const service = makeAdjutantResearchPolicyService(
+          crmEmailAuthorityDb(db),
+          undefined,
+          supervisionMirror,
+        )
 
         if (request.method === 'GET') {
           const policy = yield* service.readEffectivePolicy(assignment)
@@ -4910,8 +4956,13 @@ export const makeOperatorAdjutantRoutes = <
         }
 
         const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
-        const briefService = makeAdjutantResearchBriefService(crmEmailAuthorityDb(db))
-        const ledger = makeAdjutantEnrichmentLedger(db)
+        const supervisionMirror = makeSupervisionLongtailMirrorForEnv(env)
+        const briefService = makeAdjutantResearchBriefService(
+          crmEmailAuthorityDb(db),
+          undefined,
+          supervisionMirror,
+        )
+        const ledger = makeAdjutantEnrichmentLedger(db, undefined, supervisionMirror)
         const operations = makeAdjutantEnrichmentOperationsService(db)
         const policy = exaEnrichmentOperationsPolicyFromConfig(config.exa)
         const latestRun = yield* ledger.latestRunForAssignment(assignment.id)
@@ -5099,11 +5150,16 @@ export const makeOperatorAdjutantRoutes = <
         const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
+        const supervisionMirror = makeSupervisionLongtailMirrorForEnv(env)
         const order =
           assignment.softwareOrderId === null
             ? null
             : yield* readEnrichmentSoftwareOrder(db, assignment.softwareOrderId)
-        const service = makeAdjutantPublicSourceRefService(crmEmailAuthorityDb(db))
+        const service = makeAdjutantPublicSourceRefService(
+          crmEmailAuthorityDb(db),
+          undefined,
+          supervisionMirror,
+        )
         const sourceRef = yield* service.createSourceRef({
           assignmentId: assignment.id,
           kind: body.kind,
@@ -5154,8 +5210,13 @@ export const makeOperatorAdjutantRoutes = <
         const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
+        const supervisionMirror = makeSupervisionLongtailMirrorForEnv(env)
 
-        yield* makeAdjutantPublicSourceRefService(crmEmailAuthorityDb(db)).reviewSourceRef({
+        yield* makeAdjutantPublicSourceRefService(
+          crmEmailAuthorityDb(db),
+          undefined,
+          supervisionMirror,
+        ).reviewSourceRef({
           reviewedByUserId: session.user.userId,
           sourceRefId,
           status: body.status,
@@ -5206,8 +5267,13 @@ export const makeOperatorAdjutantRoutes = <
         const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
-        const ledger = makeAdjutantEnrichmentLedger(db)
-        const briefService = makeAdjutantResearchBriefService(crmEmailAuthorityDb(db))
+        const supervisionMirror = makeSupervisionLongtailMirrorForEnv(env)
+        const ledger = makeAdjutantEnrichmentLedger(db, undefined, supervisionMirror)
+        const briefService = makeAdjutantResearchBriefService(
+          crmEmailAuthorityDb(db),
+          undefined,
+          supervisionMirror,
+        )
 
         yield* ledger.reviewSourceCard({
           reviewStatus: body.reviewStatus,
@@ -5292,8 +5358,13 @@ export const makeOperatorAdjutantRoutes = <
         const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
-        const briefService = makeAdjutantResearchBriefService(crmEmailAuthorityDb(db))
-        const ledger = makeAdjutantEnrichmentLedger(db)
+        const supervisionMirror = makeSupervisionLongtailMirrorForEnv(env)
+        const briefService = makeAdjutantResearchBriefService(
+          crmEmailAuthorityDb(db),
+          undefined,
+          supervisionMirror,
+        )
+        const ledger = makeAdjutantEnrichmentLedger(db, undefined, supervisionMirror)
 
         yield* briefService.reviewBrief({
           briefId,
@@ -5350,6 +5421,8 @@ export const makeOperatorAdjutantRoutes = <
           body.status === 'approved'
             ? yield* makeAdjutantTaskPacketFreshnessService(
                 crmEmailAuthorityDb(db),
+                undefined,
+                supervisionMirror,
               ).markStaleForApprovedResearch({
                 assignment,
                 researchBrief: latestBrief,
@@ -5593,6 +5666,8 @@ export const makeOperatorAdjutantRoutes = <
         const taskPacketFreshness =
           yield* makeAdjutantTaskPacketFreshnessService(
             openAgentsDatabase(env),
+            undefined,
+            makeSupervisionLongtailMirrorForEnv(env),
           ).recordGenerated({
             assignment: updatedAssignment,
             researchBrief,
@@ -5645,12 +5720,17 @@ export const makeOperatorAdjutantRoutes = <
         const assignment = yield* readRequiredAdjutantAssignment(assignments, assignmentId)
 
         const db = makeCrmEmailDatabaseForEnv(env, { d1: openAgentsDatabase(env) })
+        const supervisionMirror = makeSupervisionLongtailMirrorForEnv(env)
         const latestApprovedBrief = yield* latestApprovedResearchBrief(
           db,
           assignment.id,
         )
         const taskPacketFreshness =
-          yield* makeAdjutantTaskPacketFreshnessService(crmEmailAuthorityDb(db)).keepCurrent({
+          yield* makeAdjutantTaskPacketFreshnessService(
+            crmEmailAuthorityDb(db),
+            undefined,
+            supervisionMirror,
+          ).keepCurrent({
             actorUserId: session.user.userId,
             assignment,
             customerSafeSummary: body.customerSafeSummary,
@@ -5853,6 +5933,7 @@ export const makeOperatorAdjutantRoutes = <
         const db = makeCrmEmailDatabaseForEnv(env, {
           d1: businessDomainDatabaseForEnv(env, { d1: openAgentsDatabase(env) }),
         })
+        const supervisionMirror = makeSupervisionLongtailMirrorForEnv(env)
         const config = getOpenAgentsWorkerConfig(env)
         const sourceChecks = yield* assignmentSourceChecks(
           db,
@@ -6042,12 +6123,16 @@ export const makeOperatorAdjutantRoutes = <
             : 'Autopilot launched a Site run.',
         })
         if (!dispatchFailed) {
-          yield* recordGenerationLaunchUsageReceipt(db, {
-            assignment,
-            paymentPolicy: paymentGate.policy,
-            runId: launch.launch.runId,
-            site,
-          })
+          yield* recordGenerationLaunchUsageReceipt(
+            db,
+            {
+              assignment,
+              paymentPolicy: paymentGate.policy,
+              runId: launch.launch.runId,
+              site,
+            },
+            supervisionMirror,
+          )
         }
         yield* assignments.recordEvent({
           actorUserId: session.user.userId,
@@ -6130,6 +6215,7 @@ export const makeOperatorAdjutantRoutes = <
         const db = makeCrmEmailDatabaseForEnv(env, {
           d1: businessDomainDatabaseForEnv(env, { d1: openAgentsDatabase(env) }),
         })
+        const supervisionMirror = makeSupervisionLongtailMirrorForEnv(env)
         const order =
           assignment.softwareOrderId === null
             ? null
@@ -6142,7 +6228,11 @@ export const makeOperatorAdjutantRoutes = <
           })
         }
 
-        const adjustments = makeAdjutantAdjustmentService(crmEmailAuthorityDb(db))
+        const adjustments = makeAdjutantAdjustmentService(
+          crmEmailAuthorityDb(db),
+          undefined,
+          supervisionMirror,
+        )
         const adjustment = yield* adjustments.createAdjustment({
           assignmentId: assignment.id,
           goalId: assignment.goalId,
@@ -6246,12 +6336,16 @@ export const makeOperatorAdjutantRoutes = <
             status: 'generating',
             updatedAt: updatedAssignment.updatedAt,
           })
-          yield* recordAdjustmentLaunchUsageReceipt(db, {
-            adjustment: updatedAdjustment,
-            assignment,
-            mode: 'follow_up_turn',
-            runId: continuation.continuation.runId,
-          })
+          yield* recordAdjustmentLaunchUsageReceipt(
+            db,
+            {
+              adjustment: updatedAdjustment,
+              assignment,
+              mode: 'follow_up_turn',
+              runId: continuation.continuation.runId,
+            },
+            supervisionMirror,
+          )
           yield* assignments.recordEvent({
             actorUserId: session.user.userId,
             assignmentId: assignment.id,
@@ -6366,12 +6460,16 @@ export const makeOperatorAdjutantRoutes = <
             status: 'generating',
             updatedAt: updatedAssignment.updatedAt,
           })
-          yield* recordAdjustmentLaunchUsageReceipt(db, {
-            adjustment: updatedAdjustment,
-            assignment,
-            mode: continuationMode,
-            runId: launch.launch.runId,
-          })
+          yield* recordAdjustmentLaunchUsageReceipt(
+            db,
+            {
+              adjustment: updatedAdjustment,
+              assignment,
+              mode: continuationMode,
+              runId: launch.launch.runId,
+            },
+            supervisionMirror,
+          )
         }
 
         yield* assignments.recordEvent({

@@ -7,6 +7,7 @@ import {
   OmniAcceptedOutcomeWorkKind as OmniAcceptedOutcomeWorkKindSchema,
 } from './omni-accepted-outcome-contracts'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
 
 export const OmniAcceptedOutcomeFundingMode = S.Literals([
   'free_beta',
@@ -439,6 +440,7 @@ export const recordOmniAcceptedOutcomeEconomics = (
   input: RecordOmniAcceptedOutcomeEconomicsInput,
   runtime: OmniAcceptedOutcomeEconomicsRuntime =
     systemOmniAcceptedOutcomeEconomicsRuntime,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<
   OmniAcceptedOutcomeEconomicsRecord,
   OmniAcceptedOutcomeEconomicsError
@@ -576,6 +578,14 @@ export const recordOmniAcceptedOutcomeEconomics = (
         .run()
         .then(() => undefined),
     )
+
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror.mirrorRowsByKey('omni_accepted_outcome_economics', [
+          [record.id],
+        ]),
+      )
+    }
 
     return (yield* readByIdempotencyKey(db, record.idempotencyKey)) ?? record
   })

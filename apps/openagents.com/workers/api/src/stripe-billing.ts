@@ -24,6 +24,10 @@ import { recordPartnerPayoutForPaidEvent } from './partner-payout-feed'
 import { provisionBusinessCheckoutKickoff } from './business-checkout-kickoff'
 import { recordBusinessReferralEngagement } from './business-referral-engagement-feed'
 import {
+  makeSupervisionLongtailMirrorForEnv,
+  type SupervisionLongtailMirror,
+} from './supervision-longtail-domain-store'
+import {
   KHALA_CODE_PAID_PLAN_STRIPE_PRODUCT,
   fulfillKhalaCodePaidPlanPaymentIntent,
   markKhalaCodePaidPlanStripeIntentUnpaid,
@@ -973,6 +977,7 @@ const fulfillCheckoutSession = async (
   stripeClient: StripeClientShape,
   input: Readonly<{
     db: D1Database
+    mirror?: SupervisionLongtailMirror | undefined
     runtime?: BillingRuntime | undefined
     sessionId: string
   }>,
@@ -1047,14 +1052,18 @@ const fulfillCheckoutSession = async (
   const businessSignupId = businessSignupIdFromSession(session)
 
   if (businessSignupId !== undefined) {
-    await provisionBusinessCheckoutKickoff(input.db, {
-      checkoutSessionId: input.sessionId,
-      creditGrantCents,
-      setupFeeCents,
-      signupId: businessSignupId,
-      totalAmountCents: pack.amountCents,
-      userId,
-    })
+    await provisionBusinessCheckoutKickoff(
+      input.db,
+      {
+        checkoutSessionId: input.sessionId,
+        creditGrantCents,
+        setupFeeCents,
+        signupId: businessSignupId,
+        totalAmountCents: pack.amountCents,
+        userId,
+      },
+      input.mirror,
+    )
 
     try {
       await recordBusinessReferralEngagement(input.db, {
@@ -1587,6 +1596,7 @@ const processStripeWebhook = async (
   stripeClient: StripeClientShape,
   input: Readonly<{
     db: D1Database
+    mirror?: SupervisionLongtailMirror | undefined
     payload: string
     runtime?: BillingRuntime | undefined
     signature: string | null
@@ -1667,6 +1677,7 @@ const processStripeWebhook = async (
   } else {
     await fulfillCheckoutSession(config, stripeClient, {
       db: input.db,
+      mirror: input.mirror,
       runtime: input.runtime,
       sessionId: maybeSessionId,
     })
@@ -1751,6 +1762,9 @@ export const makeStripeCheckoutServiceForRoutes = (
     fulfillCheckoutSession: (input: { db: D1Database; sessionId: string }) =>
       fulfillCheckoutSession(config, stripeClient, {
         ...input,
+        // KS-8.17 (#8361): read-back mirror for the omni_accepted_outcome_
+        // contracts row a business-checkout kickoff may create.
+        mirror: makeSupervisionLongtailMirrorForEnv(env, { db: input.db }),
         runtime: billingRuntime,
       }),
     fulfillKhalaCodePaidPlanCheckoutSession: (input: {
@@ -1838,6 +1852,9 @@ export const makeStripeCheckoutServiceForRoutes = (
 
       return processStripeWebhook(config, checkout, stripeClient, {
         ...input,
+        // KS-8.17 (#8361): read-back mirror for the omni_accepted_outcome_
+        // contracts row a business-checkout kickoff may create.
+        mirror: makeSupervisionLongtailMirrorForEnv(env, { db: input.db }),
         runtime: billingRuntime,
       })
     },

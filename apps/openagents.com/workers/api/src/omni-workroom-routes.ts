@@ -41,6 +41,7 @@ import {
 import { buildOmniWorkroomSourceAuthorityDeliveryPlan } from './omni-workroom-business-object-delivery'
 import type { OmniProjectionAudience } from './omni-data-classification'
 import { currentIsoTimestamp } from './runtime-primitives'
+import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
 
 type HttpResponse = globalThis.Response
 
@@ -48,6 +49,13 @@ type OmniWorkroomRouteEnv = Readonly<Record<string, unknown>>
 
 export type OmniWorkroomRoutesDependencies<Bindings> = Readonly<{
   db: (env: Bindings) => D1Database
+  // KS-8.17 (#8361): optional read-back mirror factory for the
+  // omni_workrooms row this route's create path writes. Coordinator wiring
+  // (see the header comment) should pass
+  // `mirror: env => makeSupervisionLongtailMirrorForEnv(env, { db: dependencies.db(env) })`
+  // alongside `db` when it registers these routes; undefined stays a safe
+  // no-op (no Postgres binding / dual-write off).
+  mirror?: (env: Bindings) => SupervisionLongtailMirror | undefined
   nowIso?: () => string
   requireBrowserSession?: (
     request: Request,
@@ -241,6 +249,8 @@ const createWorkroom = <Bindings extends OmniWorkroomRouteEnv>(
     const record: OmniWorkroomRecord = yield* promoteOmniWorkroom(
       db,
       createInputFromRequest(body),
+      undefined,
+      dependencies.mirror?.(env),
     )
     const idempotent = existing !== null
 

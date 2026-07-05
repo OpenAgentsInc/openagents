@@ -7,6 +7,7 @@ import {
   OmniAcceptedOutcomeWorkKind as OmniAcceptedOutcomeWorkKindSchema,
 } from './omni-accepted-outcome-contracts'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
 
 export const OmniEvidenceBundleStatus = S.Literals([
   'draft',
@@ -391,6 +392,7 @@ export const createOmniEvidenceBundle = (
   db: D1Database,
   input: CreateOmniEvidenceBundleInput,
   runtime: OmniEvidenceBundlesRuntime = systemOmniEvidenceBundlesRuntime,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<OmniEvidenceBundleRecord, OmniEvidenceBundleError> =>
   Effect.gen(function* () {
     assertValidInput(input)
@@ -475,6 +477,12 @@ export const createOmniEvidenceBundle = (
         .run()
         .then(() => undefined),
     )
+
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror.mirrorRowsByKey('omni_evidence_bundles', [[record.id]]),
+      )
+    }
 
     return (yield* readByIdempotencyKey(db, record.idempotencyKey)) ?? record
   })

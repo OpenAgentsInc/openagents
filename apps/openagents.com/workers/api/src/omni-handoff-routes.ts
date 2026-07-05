@@ -34,6 +34,7 @@ import {
   customerOmniHandoffProjection,
   runOmniWorkroomHandoff,
 } from './omni-handoff'
+import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
 
 type HttpResponse = globalThis.Response
 
@@ -41,6 +42,12 @@ type OmniHandoffRouteEnv = Readonly<Record<string, unknown>>
 
 export type OmniHandoffRoutesDependencies<Bindings> = Readonly<{
   db: (env: Bindings) => D1Database
+  // KS-8.17 (#8361): optional read-back mirror factory for the
+  // omni_evidence_bundles / omni_public_proof_bundles rows this handoff
+  // writes. Coordinator wiring (see the header comment) should pass
+  // `mirror: env => makeSupervisionLongtailMirrorForEnv(env, { db: dependencies.db(env) })`
+  // alongside `db`; undefined stays a safe no-op.
+  mirror?: (env: Bindings) => SupervisionLongtailMirror | undefined
   requireOperator: (request: Request, env: Bindings) => Promise<boolean>
   nowIso?: () => string
 }>
@@ -272,6 +279,8 @@ const performHandoff = <Bindings extends OmniHandoffRouteEnv>(
     const result = yield* runOmniWorkroomHandoff(
       dependencies.db(env),
       handoffInput(body, workroomId),
+      undefined,
+      dependencies.mirror?.(env),
     )
 
     return noStoreJsonResponse(

@@ -26,6 +26,7 @@ import {
   inferSiteVisualAssetRequirements,
 } from './sites-build-validations'
 import type { SiteCompatibilityProjectFile } from './sites-compatibility'
+import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
 
 type AdjutantRunAssignmentRow = Readonly<{
   assigned_by_user_id: string | null
@@ -619,6 +620,7 @@ const updateAssignmentStatus = (
   assignment: AdjutantRunAssignmentRow,
   mapping: LifecycleMapping,
   now: string,
+  mirror?: SupervisionLongtailMirror,
 ): Effect.Effect<void, AdjutantRunLifecycleStorageError> =>
   d1Effect('adjutantRunLifecycle.assignment.updateStatus', () =>
     db
@@ -641,7 +643,16 @@ const updateAssignmentStatus = (
         assignment.id,
       )
       .run(),
-  ).pipe(Effect.asVoid)
+  ).pipe(
+    Effect.asVoid,
+    Effect.tap(() =>
+      Effect.promise(
+        () =>
+          mirror?.mirrorRowsByKey('adjutant_assignments', [[assignment.id]]) ??
+          Promise.resolve(),
+      ),
+    ),
+  )
 
 const updateSoftwareOrderStatus = (
   db: D1Database,
@@ -685,8 +696,10 @@ const recordAssignmentLifecycleEvent = (
     summary: string
     now: string
   }>,
-): Effect.Effect<void, AdjutantRunLifecycleStorageError> =>
-  d1Effect('adjutantRunLifecycle.assignmentEvent.insert', () =>
+  mirror?: SupervisionLongtailMirror,
+): Effect.Effect<void, AdjutantRunLifecycleStorageError> => {
+  const eventId = compactRandomId('adjutant_assignment_event')
+  return d1Effect('adjutantRunLifecycle.assignmentEvent.insert', () =>
     db
       .prepare(
         `INSERT INTO adjutant_assignment_events
@@ -706,7 +719,7 @@ const recordAssignmentLifecycleEvent = (
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
-        compactRandomId('adjutant_assignment_event'),
+        eventId,
         input.assignment.id,
         input.assignment.software_order_id,
         input.assignment.site_id,
@@ -721,7 +734,17 @@ const recordAssignmentLifecycleEvent = (
         input.now,
       )
       .run(),
-  ).pipe(Effect.asVoid)
+  ).pipe(
+    Effect.asVoid,
+    Effect.tap(() =>
+      Effect.promise(
+        () =>
+          mirror?.mirrorRowsByKey('adjutant_assignment_events', [[eventId]]) ??
+          Promise.resolve(),
+      ),
+    ),
+  )
+}
 
 const recordSiteLifecycleEvent = (
   db: D1Database,
@@ -776,6 +799,7 @@ const recordCustomerNotificationEvents = (
   stage: LifecycleStage,
   outcome: CustomerNotificationOutcome,
   now: string,
+  mirror?: SupervisionLongtailMirror,
 ): Effect.Effect<void, AdjutantRunLifecycleStorageError> =>
   Effect.gen(function* () {
     const notificationStage = notificationStageForLifecycleStage(stage)
@@ -813,16 +837,20 @@ const recordCustomerNotificationEvents = (
     )
 
     if (!assignmentEventExists) {
-      yield* recordAssignmentLifecycleEvent(db, {
-        actorUserId: input.actorUserId,
-        assignment,
-        emailMessageId: outcome.emailMessageId,
-        eventType,
-        now,
-        payload,
-        runId: input.runId,
-        summary,
-      })
+      yield* recordAssignmentLifecycleEvent(
+        db,
+        {
+          actorUserId: input.actorUserId,
+          assignment,
+          emailMessageId: outcome.emailMessageId,
+          eventType,
+          now,
+          payload,
+          runId: input.runId,
+          summary,
+        },
+        mirror,
+      )
     }
 
     const siteEventExists = yield* lifecycleEventExists(db, 'site_events', {
@@ -1382,6 +1410,7 @@ const updateAdjustmentForSavedVersion = (
   input: AdjutantRunLifecycleInput,
   assignment: AdjutantRunAssignmentRow,
   version: SavedSiteVersionPointer,
+  mirror?: SupervisionLongtailMirror,
 ): Effect.Effect<void, AdjutantRunLifecycleStorageError> => {
   const now = currentIsoTimestamp()
   const adjustmentStatus =
@@ -1419,6 +1448,17 @@ const updateAdjustmentForSavedVersion = (
         )
         .run(),
     )
+    // No single row id is returned by the subquery UPDATE above, so mirror
+    // by a bounded scan over this assignment's adjustment requests (small,
+    // well under the mirror's 500-row scan limit) rather than by PK.
+    yield* Effect.promise(
+      () =>
+        mirror?.mirrorRowsWhere(
+          'adjutant_adjustment_requests',
+          ['assignment_id'],
+          [assignment.id],
+        ) ?? Promise.resolve(),
+    )
 
     if (version.build_status === 'saved') {
       yield* markSiteNeedsReviewForAdjustment(db, {
@@ -1448,8 +1488,9 @@ const storageArtifactQuantity = (
 const recordUsageReceipt = (
   db: D1Database,
   input: RecordAdjutantUsageReceiptInput,
+  mirror?: SupervisionLongtailMirror,
 ): Effect.Effect<void, AdjutantRunLifecycleStorageError> =>
-  recordAdjutantUsageReceipt(db, input).pipe(
+  recordAdjutantUsageReceipt(db, input, undefined, mirror).pipe(
     Effect.asVoid,
     Effect.mapError(
       error =>
@@ -1466,6 +1507,7 @@ const recordArtifactUsageReceipts = (
   assignment: AdjutantRunAssignmentRow,
   receipt: AdjutantSiteArtifactReceipt,
   version: SavedSiteVersionPointer,
+  mirror?: SupervisionLongtailMirror,
 ): Effect.Effect<void, AdjutantRunLifecycleStorageError> =>
   Effect.gen(function* () {
     const buildStatus =
@@ -1475,74 +1517,83 @@ const recordArtifactUsageReceipts = (
     ).length
     const artifactQuantity = storageArtifactQuantity(receipt)
 
-    yield* recordUsageReceipt(db, {
-      assignmentId: assignment.id,
-      billingMode: 'public_beta_free',
-      category: 'build',
-      idempotencyKey: [
-        'adjutant_usage',
-        assignment.id,
-        input.runId,
-        version.id,
-        'build',
-      ].join(':'),
-      publicDetails: {
-        billingNote: 'Public beta Site builds are free.',
-        buildStatus,
+    yield* recordUsageReceipt(
+      db,
+      {
+        assignmentId: assignment.id,
+        billingMode: 'public_beta_free',
+        category: 'build',
+        idempotencyKey: [
+          'adjutant_usage',
+          assignment.id,
+          input.runId,
+          version.id,
+          'build',
+        ].join(':'),
+        publicDetails: {
+          billingNote: 'Public beta Site builds are free.',
+          buildStatus,
+        },
+        quantity: 1,
+        runId: input.runId,
+        siteId: assignment.site_id,
+        softwareOrderId: assignment.software_order_id,
+        summary:
+          receipt.buildStatus === 'saved'
+            ? 'Autopilot saved a generated Site build for review.'
+            : 'Autopilot recorded a failed generated Site build.',
+        teamDetails: {
+          buildCommand: receipt.buildCommand ?? null,
+          buildStatus,
+          sourceCommitSha: receipt.sourceCommitSha ?? null,
+          versionId: version.id,
+        },
+        unit: 'build',
+        visibility: assignment.visibility,
       },
-      quantity: 1,
-      runId: input.runId,
-      siteId: assignment.site_id,
-      softwareOrderId: assignment.software_order_id,
-      summary:
-        receipt.buildStatus === 'saved'
-          ? 'Autopilot saved a generated Site build for review.'
-          : 'Autopilot recorded a failed generated Site build.',
-      teamDetails: {
-        buildCommand: receipt.buildCommand ?? null,
-        buildStatus,
-        sourceCommitSha: receipt.sourceCommitSha ?? null,
-        versionId: version.id,
-      },
-      unit: 'build',
-      visibility: assignment.visibility,
-    })
+      mirror,
+    )
 
-    yield* recordUsageReceipt(db, {
-      assignmentId: assignment.id,
-      billingMode: 'public_beta_free',
-      category: 'storage',
-      idempotencyKey: [
-        'adjutant_usage',
-        assignment.id,
-        input.runId,
-        version.id,
-        'storage',
-      ].join(':'),
-      publicDetails: {
-        artifactCount: artifactQuantity,
-        billingNote: 'Public beta Site artifact storage is free.',
+    yield* recordUsageReceipt(
+      db,
+      {
+        assignmentId: assignment.id,
+        billingMode: 'public_beta_free',
+        category: 'storage',
+        idempotencyKey: [
+          'adjutant_usage',
+          assignment.id,
+          input.runId,
+          version.id,
+          'storage',
+        ].join(':'),
+        publicDetails: {
+          artifactCount: artifactQuantity,
+          billingNote: 'Public beta Site artifact storage is free.',
+        },
+        quantity: artifactQuantity,
+        runId: input.runId,
+        siteId: assignment.site_id,
+        softwareOrderId: assignment.software_order_id,
+        summary: 'Autopilot stored Site artifacts for review.',
+        teamDetails: {
+          artifactCount: artifactQuantity,
+          hasD1Binding: receipt.d1BindingName !== undefined,
+          hasR2Binding: receipt.r2BindingName !== undefined,
+          staticAssetCount,
+          versionId: version.id,
+        },
+        unit: 'artifact',
+        visibility: assignment.visibility,
       },
-      quantity: artifactQuantity,
-      runId: input.runId,
-      siteId: assignment.site_id,
-      softwareOrderId: assignment.software_order_id,
-      summary: 'Autopilot stored Site artifacts for review.',
-      teamDetails: {
-        artifactCount: artifactQuantity,
-        hasD1Binding: receipt.d1BindingName !== undefined,
-        hasR2Binding: receipt.r2BindingName !== undefined,
-        staticAssetCount,
-        versionId: version.id,
-      },
-      unit: 'artifact',
-      visibility: assignment.visibility,
-    })
+      mirror,
+    )
   })
 
 export const applyAdjutantRunLifecycleEvents = (
   db: D1Database,
   input: AdjutantRunLifecycleInput,
+  mirror?: SupervisionLongtailMirror,
 ): Effect.Effect<void, AdjutantRunLifecycleStorageError> =>
   Effect.gen(function* () {
     const stage = lifecycleStage(input)
@@ -1573,7 +1624,7 @@ export const applyAdjutantRunLifecycleEvents = (
         lifecyclePayload(input, mapping, assignment),
       )
 
-      yield* updateAssignmentStatus(db, assignment, mapping, now)
+      yield* updateAssignmentStatus(db, assignment, mapping, now, mirror)
       yield* updateSoftwareOrderStatus(db, assignment, mapping, now)
 
       const assignmentEventExists = yield* lifecycleEventExists(
@@ -1588,15 +1639,19 @@ export const applyAdjutantRunLifecycleEvents = (
       )
 
       if (!assignmentEventExists) {
-        yield* recordAssignmentLifecycleEvent(db, {
-          actorUserId: input.actorUserId,
-          assignment,
-          eventType: mapping.eventType,
-          now,
-          payload,
-          runId: input.runId,
-          summary: mapping.summary,
-        })
+        yield* recordAssignmentLifecycleEvent(
+          db,
+          {
+            actorUserId: input.actorUserId,
+            assignment,
+            eventType: mapping.eventType,
+            now,
+            payload,
+            runId: input.runId,
+            summary: mapping.summary,
+          },
+          mirror,
+        )
       }
 
       const siteEventExists = yield* lifecycleEventExists(db, 'site_events', {
@@ -1627,6 +1682,7 @@ export const applyAdjutantRunLifecycleEvents = (
         stage,
         outcome,
         now,
+        mirror,
       )
     }
 
@@ -1634,7 +1690,13 @@ export const applyAdjutantRunLifecycleEvents = (
       const version = yield* saveReceiptVersion(db, input, assignment, receipt)
 
       yield* assertVisualAssetRequirementsForReceipt(db, assignment, receipt)
-      yield* updateAdjustmentForSavedVersion(db, input, assignment, version)
+      yield* updateAdjustmentForSavedVersion(
+        db,
+        input,
+        assignment,
+        version,
+        mirror,
+      )
       yield* activateSavedRevisionForStableSlug(
         db,
         input,
@@ -1648,6 +1710,7 @@ export const applyAdjutantRunLifecycleEvents = (
         assignment,
         receipt,
         version,
+        mirror,
       )
     }
   })

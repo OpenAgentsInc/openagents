@@ -41,6 +41,7 @@ import {
 } from './autopilot-onboarding-program'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { openAgentsDatabase } from './runtime'
+import { makeSupervisionLongtailMirrorForEnv } from './supervision-longtail-domain-store'
 import { currentIsoTimestamp } from './runtime-primitives'
 
 type OnboardingRouteEnv = Readonly<{
@@ -369,7 +370,10 @@ export const makeAutopilotOnboardingRoutes = <Env extends OnboardingRouteEnv>(
 
   const resolveStore = (env: WorkerEnv<Env>): OnboardingSessionStore =>
     dependencies.makeStore?.(env) ??
-    makeD1OnboardingSessionStore(openAgentsDatabase(env))
+    makeD1OnboardingSessionStore(
+      openAgentsDatabase(env),
+      makeSupervisionLongtailMirrorForEnv(env),
+    )
 
   const turnResponse = (
     request: Request,

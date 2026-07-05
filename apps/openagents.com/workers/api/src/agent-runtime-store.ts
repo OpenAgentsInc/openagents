@@ -106,6 +106,10 @@ import {
   type OmniRunStoreHooks,
 } from './omni-runs'
 import { openAgentsDatabase } from './runtime'
+import {
+  makeSupervisionLongtailMirrorForEnv,
+  type SupervisionLongtailStoreEnv,
+} from './supervision-longtail-domain-store'
 import { makeD1TraceStore, type TraceStore } from './trace-store-d1'
 
 // ---------------------------------------------------------------------------
@@ -1396,29 +1400,46 @@ export const makeOmniRunStoreForEnv = (
     hooks,
   )
   const mirror = mirrorForEnv(env, options)
-  if (mirror === undefined) {
+  // KS-8.17 (#8361): `autopilot_token_usage` (supervision long-tail registry)
+  // has its one live writer inside `appendAgentRunEvents`'s batch (the
+  // generated row id is never returned to this caller), so it mirrors by a
+  // bounded `run_id` scan rather than by its own key — a different Postgres
+  // twin/flag lane than the `agent_runs`/`agent_run_events` mirror above.
+  const supervisionMirror = makeSupervisionLongtailMirrorForEnv(
+    env as SupervisionLongtailStoreEnv,
+  )
+  if (mirror === undefined && supervisionMirror === undefined) {
     return base
   }
   return {
     ...base,
     appendAgentRunEvents: async (runId, events, status, externalRunId) => {
       await base.appendAgentRunEvents(runId, events, status, externalRunId)
-      await mirror.mirrorRowsByPk('agent_runs', [runId])
-      if (events.length > 0) {
-        await mirror.mirrorAgentRunEventsSince(
-          runId,
-          Math.min(...events.map(event => event.sequence)),
-        )
+      if (mirror !== undefined) {
+        await mirror.mirrorRowsByPk('agent_runs', [runId])
+        if (events.length > 0) {
+          await mirror.mirrorAgentRunEventsSince(
+            runId,
+            Math.min(...events.map(event => event.sequence)),
+          )
+        }
       }
+      await supervisionMirror?.mirrorRowsWhere(
+        'autopilot_token_usage',
+        ['run_id'],
+        [runId],
+      )
     },
     saveAgentRun: async (run, events) => {
       await base.saveAgentRun(run, events)
-      await mirror.mirrorRowsByPk('agent_runs', [run.id])
-      if (events.length > 0) {
-        await mirror.mirrorAgentRunEventsSince(
-          run.id,
-          Math.min(...events.map(event => event.sequence)),
-        )
+      if (mirror !== undefined) {
+        await mirror.mirrorRowsByPk('agent_runs', [run.id])
+        if (events.length > 0) {
+          await mirror.mirrorAgentRunEventsSince(
+            run.id,
+            Math.min(...events.map(event => event.sequence)),
+          )
+        }
       }
     },
   }

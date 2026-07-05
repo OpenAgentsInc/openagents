@@ -21,6 +21,10 @@ import {
 import { businessDomainDatabaseForEnv } from './business-domain-store'
 import { sitesContentDatabaseForEnv } from './sites-content-store'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import {
+  makeSupervisionLongtailMirrorForEnv,
+  type SupervisionLongtailMirror,
+} from './supervision-longtail-domain-store'
 
 type CustomerOrderEnv = Readonly<{
   OPENAGENTS_DB: D1Database
@@ -1645,6 +1649,7 @@ const createCustomerFeedbackAssignment = (
     siteId: string
     userId: string
   }>,
+  mirror?: SupervisionLongtailMirror,
 ): Effect.Effect<CustomerOrderAdjutantAssignmentRow, CustomerOrderStorageError> =>
   Effect.gen(function* () {
     const now = runtime.nowIso()
@@ -1685,6 +1690,10 @@ const createCustomerFeedbackAssignment = (
         .bind(id, input.orderId, input.siteId, input.userId, objective, now, now)
         .run(),
     )
+    yield* Effect.promise(() =>
+      mirror?.mirrorRowsByKey('adjutant_assignments', [[id]]) ??
+        Promise.resolve(),
+    )
 
     const assignment = yield* readActiveCustomerAdjutantAssignment(db, {
       orderId: input.orderId,
@@ -1717,8 +1726,10 @@ const recordCustomerAssignmentEvent = (
     summary: string
     userId: string
   }>,
-): Effect.Effect<void, CustomerOrderStorageError> =>
-  d1Effect('customerOrders.adjutantAssignmentEvent.insert', () =>
+  mirror?: SupervisionLongtailMirror,
+): Effect.Effect<void, CustomerOrderStorageError> => {
+  const eventId = runtime.makeAdjutantAssignmentEventId()
+  return d1Effect('customerOrders.adjutantAssignmentEvent.insert', () =>
     db
       .prepare(
         `INSERT INTO adjutant_assignment_events
@@ -1737,7 +1748,7 @@ const recordCustomerAssignmentEvent = (
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
-        runtime.makeAdjutantAssignmentEventId(),
+        eventId,
         input.assignment.id,
         input.assignment.software_order_id,
         input.assignment.site_id,
@@ -1751,7 +1762,17 @@ const recordCustomerAssignmentEvent = (
         runtime.nowIso(),
       )
       .run(),
-  ).pipe(Effect.asVoid)
+  ).pipe(
+    Effect.asVoid,
+    Effect.tap(() =>
+      Effect.promise(
+        () =>
+          mirror?.mirrorRowsByKey('adjutant_assignment_events', [[eventId]]) ??
+          Promise.resolve(),
+      ),
+    ),
+  )
+}
 
 const recordCustomerSiteEvent = (
   db: D1Database,
@@ -1810,6 +1831,7 @@ const queueCustomerSiteFeedbackAdjustment = (
     userId: string
     versionId: string | null
   }>,
+  mirror?: SupervisionLongtailMirror,
 ): Effect.Effect<CustomerSiteFeedbackStatus, CustomerOrderStorageError> =>
   Effect.gen(function* () {
     if (
@@ -1825,12 +1847,17 @@ const queueCustomerSiteFeedbackAdjustment = (
     })
     const assignment =
       activeAssignment ??
-      (yield* createCustomerFeedbackAssignment(db, runtime, {
-        feedbackBody: input.body,
-        orderId: input.orderId,
-        siteId: input.siteId,
-        userId: input.userId,
-      }))
+      (yield* createCustomerFeedbackAssignment(
+        db,
+        runtime,
+        {
+          feedbackBody: input.body,
+          orderId: input.orderId,
+          siteId: input.siteId,
+          userId: input.userId,
+        },
+        mirror,
+      ))
     const now = runtime.nowIso()
     const adjustmentId = runtime.makeAdjutantAdjustmentId()
     const instruction = customerFeedbackAdjustmentInstruction({
@@ -1881,6 +1908,12 @@ const queueCustomerSiteFeedbackAdjustment = (
         )
         .run(),
     )
+    yield* Effect.promise(
+      () =>
+        mirror?.mirrorRowsByKey('adjutant_adjustment_requests', [
+          [adjustmentId],
+        ]) ?? Promise.resolve(),
+    )
 
     yield* d1Effect('customerOrders.siteFeedback.queue.update', () =>
       db
@@ -1908,13 +1941,18 @@ const queueCustomerSiteFeedbackAdjustment = (
         .bind(now, input.orderId)
         .run(),
     )
-    yield* recordCustomerAssignmentEvent(db, runtime, {
-      assignment,
-      eventType: 'adjutant.customer_feedback_queued',
-      feedbackId: input.feedbackId,
-      summary: 'Customer Site feedback was queued for Autopilot adjustment.',
-      userId: input.userId,
-    })
+    yield* recordCustomerAssignmentEvent(
+      db,
+      runtime,
+      {
+        assignment,
+        eventType: 'adjutant.customer_feedback_queued',
+        feedbackId: input.feedbackId,
+        summary: 'Customer Site feedback was queued for Autopilot adjustment.',
+        userId: input.userId,
+      },
+      mirror,
+    )
     yield* recordCustomerSiteEvent(db, runtime, {
       adjustmentId,
       assignmentId: assignment.id,
@@ -1934,6 +1972,7 @@ const submitSiteFeedback = (
   userId: string,
   orderId: string,
   body: string,
+  mirror?: SupervisionLongtailMirror,
 ): Effect.Effect<CustomerSiteFeedback | null, CustomerOrderStorageError> =>
   Effect.gen(function* () {
     const trimmedBody = body.trim()
@@ -1995,15 +2034,20 @@ const submitSiteFeedback = (
         )
         .run(),
     )
-    const status = yield* queueCustomerSiteFeedbackAdjustment(db, runtime, {
-      body: trimmedBody,
-      deploymentId: context.active_deployment_id,
-      feedbackId: id,
-      orderId: context.order_id,
-      siteId: context.site_id,
-      userId,
-      versionId: context.active_version_id,
-    })
+    const status = yield* queueCustomerSiteFeedbackAdjustment(
+      db,
+      runtime,
+      {
+        body: trimmedBody,
+        deploymentId: context.active_deployment_id,
+        feedbackId: id,
+        orderId: context.order_id,
+        siteId: context.site_id,
+        userId,
+        versionId: context.active_version_id,
+      },
+      mirror,
+    )
 
     return {
       id,
@@ -2071,8 +2115,13 @@ export class CustomerOrderStore extends Context.Service<
   static readonly layer = (
     env: CustomerOrderEnv,
     runtime: CustomerOrderRuntime = systemCustomerOrderRuntime,
-  ) =>
-    Layer.succeed(CustomerOrderStore, {
+  ) => {
+    // KS-8.17 (#8361): the adjutant_* rows this file writes raw (assignment,
+    // assignment event, adjustment request) mirror to the supervision
+    // long-tail Postgres twin — a different lane than the sites/business
+    // domain mirrors composed into `openAgentsDatabase` above.
+    const supervisionMirror = makeSupervisionLongtailMirrorForEnv(env)
+    return Layer.succeed(CustomerOrderStore, {
       readOrderById: Effect.fn('CustomerOrderStore.readOrderById')(
         (userId, orderId) =>
           readOrderById(openAgentsDatabase(env), userId, orderId),
@@ -2125,7 +2174,9 @@ export class CustomerOrderStore extends Context.Service<
             userId,
             orderId,
             body,
+            supervisionMirror,
           ),
       ),
     })
+  }
 }

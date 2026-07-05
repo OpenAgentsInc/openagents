@@ -64,6 +64,7 @@ import {
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { readJsonObject } from './json-boundary'
 import { OmniAcceptedOutcomeWorkKind } from './omni-accepted-outcome-contracts'
+import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
 
 type HttpResponse = globalThis.Response
 
@@ -81,6 +82,12 @@ export type OmniPublicProofBundleReader<Db> = (
 
 export type OmniBundleRoutesDependencies<Bindings> = Readonly<{
   db: (env: Bindings) => D1Database
+  // KS-8.17 (#8361): optional read-back mirror factory for the
+  // omni_evidence_bundles / omni_public_proof_bundles rows these routes
+  // write. Coordinator wiring (see the header comment) should pass
+  // `mirror: env => makeSupervisionLongtailMirrorForEnv(env, { db: dependencies.db(env) })`
+  // alongside `db`; undefined stays a safe no-op.
+  mirror?: (env: Bindings) => SupervisionLongtailMirror | undefined
   readEvidenceBundle: OmniEvidenceBundleReader<D1Database>
   readProofBundle: OmniPublicProofBundleReader<D1Database>
   requireOperator: (request: Request, env: Bindings) => Promise<boolean>
@@ -427,6 +434,8 @@ const createEvidenceBundle = <Bindings extends OmniBundleRouteEnv>(
     const record = yield* createOmniEvidenceBundle(
       dependencies.db(env),
       evidenceBundleCreateInput(body),
+      undefined,
+      dependencies.mirror?.(env),
     )
 
     return noStoreJsonResponse(
@@ -457,6 +466,8 @@ const createProofBundle = <Bindings extends OmniBundleRouteEnv>(
     const record = yield* createOmniPublicProofBundle(
       dependencies.db(env),
       proofBundleCreateInput(body),
+      undefined,
+      dependencies.mirror?.(env),
     )
 
     return noStoreJsonResponse(

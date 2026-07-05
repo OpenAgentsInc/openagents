@@ -3,6 +3,7 @@ import { Effect, Schema as S } from 'effect'
 
 import type { AdjutantAssignment } from './adjutant-assignments'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
 
 export const AdjutantResearchPolicyMode = S.Literals([
   'research_required',
@@ -264,6 +265,7 @@ const setPolicyOverride = (
   runtime: AdjutantResearchPolicyRuntime,
   assignment: AdjutantAssignment,
   input: SetAdjutantResearchPolicyInput,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<AdjutantResearchPolicy, AdjutantResearchPolicyError> =>
   Effect.gen(function* () {
     const reason = yield* nonEmptyBoundedText('reason', input.reason, 1000)
@@ -328,6 +330,14 @@ const setPolicyOverride = (
         .run(),
     )
 
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror.mirrorRowsByKey('adjutant_assignment_research_policies', [
+          [input.assignmentId],
+        ]),
+      )
+    }
+
     const row = yield* readPolicyOverride(db, input.assignmentId)
 
     if (row === null) {
@@ -343,6 +353,7 @@ const setPolicyOverride = (
 export const makeAdjutantResearchPolicyService = (
   db: D1Database,
   runtime: AdjutantResearchPolicyRuntime = systemAdjutantResearchPolicyRuntime,
+  mirror?: SupervisionLongtailMirror | undefined,
 ) => ({
   readEffectivePolicy: Effect.fn(
     'AdjutantResearchPolicyService.readEffectivePolicy',
@@ -350,7 +361,7 @@ export const makeAdjutantResearchPolicyService = (
   setPolicyOverride: Effect.fn(
     'AdjutantResearchPolicyService.setPolicyOverride',
   )((assignment: AdjutantAssignment, input: SetAdjutantResearchPolicyInput) =>
-    setPolicyOverride(db, runtime, assignment, input),
+    setPolicyOverride(db, runtime, assignment, input, mirror),
   ),
 })
 

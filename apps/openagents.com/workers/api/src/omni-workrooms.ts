@@ -15,6 +15,7 @@ import {
   OmniAcceptedOutcomeWorkKind as OmniAcceptedOutcomeWorkKindSchema,
 } from './omni-accepted-outcome-contracts'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
 
 export const OmniWorkroomStatus = S.Literals([
   'queued',
@@ -351,6 +352,7 @@ export const promoteOmniWorkroom = (
   db: D1Database,
   input: PromoteOmniWorkroomInput,
   runtime: OmniWorkroomsRuntime = systemOmniWorkroomsRuntime,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<OmniWorkroomRecord, OmniWorkroomError> =>
   Effect.gen(function* () {
     assertValidInput(input)
@@ -506,6 +508,12 @@ export const promoteOmniWorkroom = (
         .run()
         .then(() => undefined),
     )
+
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror.mirrorRowsByKey('omni_workrooms', [[record.id]]),
+      )
+    }
 
     return (yield* readByIdempotencyKey(db, record.idempotencyKey)) ?? record
   })

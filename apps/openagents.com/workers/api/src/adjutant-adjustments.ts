@@ -2,6 +2,7 @@ import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-
 import { Effect, Schema as S } from 'effect'
 
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
 
 export type AdjutantAdjustmentRuntime = Readonly<{
   makeAdjustmentId: () => string
@@ -240,6 +241,7 @@ const createAdjustment = (
   db: D1Database,
   runtime: AdjutantAdjustmentRuntime,
   input: CreateAdjutantAdjustmentInput,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<AdjutantAdjustmentRequest, AdjutantAdjustmentError> =>
   Effect.gen(function* () {
     const instruction = yield* assertInstructionSafe(input.instruction)
@@ -285,6 +287,12 @@ const createAdjustment = (
         .run(),
     )
 
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror.mirrorRowsByKey('adjutant_adjustment_requests', [[id]]),
+      )
+    }
+
     const adjustment = yield* readAdjustmentById(db, id)
 
     if (adjustment === null) {
@@ -322,6 +330,7 @@ const updateAdjustment = (
   db: D1Database,
   runtime: AdjutantAdjustmentRuntime,
   input: UpdateAdjutantAdjustmentInput,
+  mirror?: SupervisionLongtailMirror | undefined,
 ): Effect.Effect<AdjutantAdjustmentRequest, AdjutantAdjustmentError> =>
   Effect.gen(function* () {
     const current = yield* readAdjustmentById(db, input.adjustmentId)
@@ -379,6 +388,14 @@ const updateAdjustment = (
         .run(),
     )
 
+    if (mirror !== undefined) {
+      yield* Effect.promise(() =>
+        mirror.mirrorRowsByKey('adjutant_adjustment_requests', [
+          [input.adjustmentId],
+        ]),
+      )
+    }
+
     const updated = yield* readAdjustmentById(db, input.adjustmentId)
 
     if (updated === null) {
@@ -393,10 +410,11 @@ const updateAdjustment = (
 export const makeAdjutantAdjustmentService = (
   db: D1Database,
   runtime: AdjutantAdjustmentRuntime = systemAdjutantAdjustmentRuntime,
+  mirror?: SupervisionLongtailMirror | undefined,
 ) => ({
   createAdjustment: Effect.fn('AdjutantAdjustmentService.createAdjustment')(
     (input: CreateAdjutantAdjustmentInput) =>
-      createAdjustment(db, runtime, input),
+      createAdjustment(db, runtime, input, mirror),
   ),
   listAdjustmentsForAssignment: Effect.fn(
     'AdjutantAdjustmentService.listAdjustmentsForAssignment',
@@ -405,6 +423,6 @@ export const makeAdjutantAdjustmentService = (
   ),
   updateAdjustment: Effect.fn('AdjutantAdjustmentService.updateAdjustment')(
     (input: UpdateAdjutantAdjustmentInput) =>
-      updateAdjustment(db, runtime, input),
+      updateAdjustment(db, runtime, input, mirror),
   ),
 })

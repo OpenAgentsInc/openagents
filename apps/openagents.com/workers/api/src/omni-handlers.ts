@@ -108,6 +108,7 @@ import {
 import { openAgentsDatabase, scheduleBackgroundWork } from './runtime'
 import { businessDomainDatabaseForEnv } from './business-domain-store'
 import { sitesContentDatabaseForEnv } from './sites-content-store'
+import { makeSupervisionLongtailMirrorForEnv } from './supervision-longtail-domain-store'
 import {
   notifyAgentRunSyncScopes,
   notifySyncScopes,
@@ -2905,6 +2906,9 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
           // KS-8.14 (#8359): the same events also flip software_orders
           // status; compose the business funnel mirror OVER the sites
           // proxy so order writes mirror to the business Postgres twin.
+          // KS-8.17 (#8361): the adjutant_assignments / assignment_events /
+          // adjustment_requests writes in this same call chain are a THIRD,
+          // separate supervision long-tail Postgres twin/flag lane.
           applyAdjutantRunLifecycleEvents(
             businessDomainDatabaseForEnv(env, {
               d1: sitesContentDatabaseForEnv(env),
@@ -2918,6 +2922,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
               runId,
               status: ingestResult.value.status,
             },
+            makeSupervisionLongtailMirrorForEnv(env),
           ),
         )
       } catch (error) {

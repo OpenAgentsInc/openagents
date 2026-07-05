@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { redactProviderAccountLogValue } from '@openagentsinc/provider-account-schema'
 
 import { currentIsoTimestamp } from './runtime-primitives'
+import type { SupervisionLongtailMirror } from './supervision-longtail-domain-store'
 
 export type BackendIncidentKind =
   | 'unhandled_exception'
@@ -86,6 +87,7 @@ export const recordBackendIncidentEvent = async (
   db: D1Database,
   input: BackendIncidentEventInput,
   nowIso: () => string = currentIsoTimestamp,
+  mirror?: SupervisionLongtailMirror,
 ): Promise<void> => {
   const observedAt = input.observedAt ?? nowIso()
   const routePattern = bounded(input.routePattern ?? 'unknown', 'unknown', 240)
@@ -148,4 +150,6 @@ export const recordBackendIncidentEvent = async (
       createdAt,
     )
     .run()
+
+  await mirror?.mirrorRowsByKey('backend_incident_events', [[id]])
 }
