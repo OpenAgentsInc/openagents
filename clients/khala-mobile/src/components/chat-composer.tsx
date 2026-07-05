@@ -6,6 +6,8 @@ import Animated, { useAnimatedStyle, useDerivedValue, withTiming } from "react-n
 import { ActivityIndicator } from "./activity-indicator"
 import { ArwesButton } from "./arwes-button"
 import { BackgroundGradient } from "./background-gradient"
+import { mergeTranscriptIntoDraft } from "../native/push-to-talk-core"
+import { usePushToTalk } from "../native/use-push-to-talk"
 import {
   buildAppendUserMessageIntentArgs,
   buildChatAppendMessageArgs,
@@ -80,6 +82,15 @@ export const ChatComposer = ({
   const [selectedLane, setSelectedLane] = useState<KhalaRuntimeLane>(defaultLane ?? DEFAULT_RUNTIME_LANE)
   const [laneTouched, setLaneTouched] = useState(false)
   const lastQuoteRequestId = useRef<string | undefined>(undefined)
+  // Push-to-talk dictation (#8350) — ported from the never-routed
+  // `legacy-screens/settings.tsx`'s availability probe, extended with the
+  // actual press/transcribe state machine neither legacy screen had (see
+  // `../native/use-push-to-talk.ts`'s doc comment for why both platforms'
+  // native calls currently always reject).
+  const pushToTalk = usePushToTalk({
+    onError: message => setErrorMessage(message),
+    onTranscript: transcript => setText(current => mergeTranscriptIntoDraft(current, transcript))
+  })
 
   // `defaultLane` often arrives after first render (the runtime_turn
   // collection is still loading), so keep syncing to it until the user
@@ -280,6 +291,35 @@ export const ChatComposer = ({
           placeholderTextColor="#7e8a98"
           value={text}
         />
+        {/* Push-to-talk mic (#8350): tap to start dictation, tap again to
+         * stop and merge the transcript into the draft above. Disabled
+         * (dimmed, non-interactive) while the availability probe is still
+         * checking or reports denied/unavailable, so a doomed native call
+         * never fires just from a stray tap. */}
+        <ArwesButton
+          accessibilityLabel={pushToTalk.accessibilityLabel}
+          alwaysShowBorder
+          borderColor={
+            pushToTalk.phase === "recording"
+              ? khalaMobileTheme.danger
+              : pushToTalk.pressable
+                ? undefined
+                : khalaMobileTheme.textMuted
+          }
+          disabled={!pushToTalk.pressable}
+          onPress={pushToTalk.press}
+          style={{ height: 44, width: 44 }}
+        >
+          <View className="h-11 w-11 items-center justify-center">
+            {pushToTalk.phase === "checking" ? (
+              <ActivityIndicator color={khalaMobileTheme.textMuted} size={20} />
+            ) : pushToTalk.phase === "recording" ? (
+              <Text className="text-lg text-danger">●</Text>
+            ) : (
+              <Text className={`text-lg ${pushToTalk.pressable ? "text-accent" : "text-textFaint"}`}>◉</Text>
+            )}
+          </View>
+        </ArwesButton>
         {hasActiveTurn ? (
           // `ArwesButton` (ported from Arcade, see
           // `docs/design/2026-07-05-arcade-ui-harvest-audit.md` §2.2) pairs

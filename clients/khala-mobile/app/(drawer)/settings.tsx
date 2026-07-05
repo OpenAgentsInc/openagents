@@ -18,6 +18,8 @@ import { useKhalaAuth } from "../../src/auth/khala-auth-context"
 import { AppHeader } from "../../src/components/app-header"
 import { Frame, usePowerOnVisible } from "../../src/components/frame"
 import { KHALA_SYNC_DEMO_FLEET_RUN_ID } from "../../src/config/khala-sync-demo"
+import type { OnDeviceReadinessRow } from "../../src/native/on-device-readiness-core"
+import { useOnDeviceReadiness } from "../../src/native/use-on-device-readiness"
 import {
   fleetAccountIdOf,
   fleetRunIdOf,
@@ -206,12 +208,61 @@ const AccountSection = () => {
   )
 }
 
+const ON_DEVICE_TONE_COLOR: Record<OnDeviceReadinessRow["tone"], string> = {
+  danger: "text-danger",
+  faint: "text-textFaint",
+  success: "text-success",
+  warning: "text-warning"
+}
+
+/** Speech (push-to-talk) + Apple Foundation Models readiness, ported from
+ * `src/legacy-screens/settings.tsx` (issue #8350's TS-8 gap: those two Expo
+ * native modules were real and tested but only ever rendered on a screen
+ * `app/` never routed to). Same "power on" `Frame` treatment as the fleet
+ * section above. Read-only status, same as the legacy screen — the speech
+ * module's actual dictation call is wired into the chat composer's mic
+ * button (`src/components/chat-composer.tsx`), not here; this section is
+ * purely the availability probe both modules already exposed. */
+const OnDeviceCard = ({ row, index }: { row: OnDeviceReadinessRow; index: number }) => {
+  const visible = usePowerOnVisible(MOTION_STAGGER_MS * index)
+  return (
+    <Frame alwaysShowBorder visible={visible}>
+      <View className="px-3 py-2">
+        <View className="flex-row items-center justify-between">
+          <Text className="font-sans text-sm text-text">{row.label}</Text>
+          <Text className={`font-mono text-xs ${ON_DEVICE_TONE_COLOR[row.tone]}`}>{row.status}</Text>
+        </View>
+        {row.detail === undefined ? null : (
+          <Text className="mt-1 font-mono text-xs text-textFaint">{row.detail}</Text>
+        )}
+      </View>
+    </Frame>
+  )
+}
+
+const OnDeviceSection = () => {
+  const readiness = useOnDeviceReadiness()
+  return (
+    <View className="gap-2">
+      <SectionLabel>On-device</SectionLabel>
+      {readiness.status === "loading" ? (
+        <Text className="font-sans text-sm text-textMuted">checking…</Text>
+      ) : readiness.status === "error" ? (
+        <Text className="font-sans text-sm text-danger">Could not read native module readiness.</Text>
+      ) : (
+        readiness.rows.map((row, index) => <OnDeviceCard index={index} key={row.key} row={row} />)
+      )}
+    </View>
+  )
+}
+
 export default function SettingsScreen() {
   return (
     <SafeAreaView className="flex-1 bg-bg" edges={["top", "bottom", "left", "right"]}>
       <AppHeader showMenu title="Settings" />
       <ScrollView contentContainerClassName="gap-6 px-4 py-4">
         <FleetSection />
+        <OnDeviceSection />
         <AccountSection />
       </ScrollView>
     </SafeAreaView>
