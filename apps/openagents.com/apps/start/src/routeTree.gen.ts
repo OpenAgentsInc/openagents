@@ -13,6 +13,7 @@ import { Route as TermsRouteImport } from './routes/terms'
 import { Route as TassadarRouteImport } from './routes/tassadar'
 import { Route as RunRouteImport } from './routes/run'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as GymRouteImport } from './routes/gym'
 import { Route as DownloadRouteImport } from './routes/download'
@@ -37,6 +38,7 @@ import { Route as BlogSlugRouteImport } from './routes/blog/$slug'
 import { Route as AutopilotLegalRouteImport } from './routes/autopilot/legal'
 import { Route as ArtanisTracesRouteImport } from './routes/artanis/traces'
 import { Route as ArtanisAccountsRouteImport } from './routes/artanis/accounts'
+import { Route as TrainingRunsIndexRouteImport } from './routes/training/runs/index'
 import { Route as SitesDemoCheckoutReturnActionRouteImport } from './routes/sites/demo-checkout/$returnAction'
 import { Route as BusinessKpiEngagementRefRouteImport } from './routes/business/kpi/$engagementRef'
 import { Route as PylonCodexAssignmentsAssignmentRefRouteImport } from './routes/pylon/codex/assignments/$assignmentRef'
@@ -59,6 +61,11 @@ const RunRoute = RunRouteImport.update({
 const PrivacyRoute = PrivacyRouteImport.update({
   id: '/privacy',
   path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -181,6 +188,11 @@ const ArtanisAccountsRoute = ArtanisAccountsRouteImport.update({
   path: '/artanis/accounts',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TrainingRunsIndexRoute = TrainingRunsIndexRouteImport.update({
+  id: '/training/runs/',
+  path: '/training/runs/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SitesDemoCheckoutReturnActionRoute =
   SitesDemoCheckoutReturnActionRouteImport.update({
     id: '/$returnAction',
@@ -207,6 +219,7 @@ export interface FileRoutesByFullPath {
   '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
   '/login': typeof LoginRoute
+  '/onboarding': typeof OnboardingRoute
   '/privacy': typeof PrivacyRoute
   '/run': typeof RunRoute
   '/tassadar': typeof TassadarRoute
@@ -231,6 +244,7 @@ export interface FileRoutesByFullPath {
   '/khala/': typeof KhalaIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
   '/sites/demo-checkout/$returnAction': typeof SitesDemoCheckoutReturnActionRoute
+  '/training/runs/': typeof TrainingRunsIndexRoute
   '/pylon/codex/assignments/$assignmentRef': typeof PylonCodexAssignmentsAssignmentRefRoute
 }
 export interface FileRoutesByTo {
@@ -240,6 +254,7 @@ export interface FileRoutesByTo {
   '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
   '/login': typeof LoginRoute
+  '/onboarding': typeof OnboardingRoute
   '/privacy': typeof PrivacyRoute
   '/run': typeof RunRoute
   '/tassadar': typeof TassadarRoute
@@ -264,6 +279,7 @@ export interface FileRoutesByTo {
   '/khala': typeof KhalaIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
   '/sites/demo-checkout/$returnAction': typeof SitesDemoCheckoutReturnActionRoute
+  '/training/runs': typeof TrainingRunsIndexRoute
   '/pylon/codex/assignments/$assignmentRef': typeof PylonCodexAssignmentsAssignmentRefRoute
 }
 export interface FileRoutesById {
@@ -274,6 +290,7 @@ export interface FileRoutesById {
   '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
   '/login': typeof LoginRoute
+  '/onboarding': typeof OnboardingRoute
   '/privacy': typeof PrivacyRoute
   '/run': typeof RunRoute
   '/tassadar': typeof TassadarRoute
@@ -298,6 +315,7 @@ export interface FileRoutesById {
   '/khala/': typeof KhalaIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
   '/sites/demo-checkout/$returnAction': typeof SitesDemoCheckoutReturnActionRoute
+  '/training/runs/': typeof TrainingRunsIndexRoute
   '/pylon/codex/assignments/$assignmentRef': typeof PylonCodexAssignmentsAssignmentRefRoute
 }
 export interface FileRouteTypes {
@@ -309,6 +327,7 @@ export interface FileRouteTypes {
     | '/download'
     | '/gym'
     | '/login'
+    | '/onboarding'
     | '/privacy'
     | '/run'
     | '/tassadar'
@@ -333,6 +352,7 @@ export interface FileRouteTypes {
     | '/khala/'
     | '/business/kpi/$engagementRef'
     | '/sites/demo-checkout/$returnAction'
+    | '/training/runs/'
     | '/pylon/codex/assignments/$assignmentRef'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -342,6 +362,7 @@ export interface FileRouteTypes {
     | '/download'
     | '/gym'
     | '/login'
+    | '/onboarding'
     | '/privacy'
     | '/run'
     | '/tassadar'
@@ -366,6 +387,7 @@ export interface FileRouteTypes {
     | '/khala'
     | '/business/kpi/$engagementRef'
     | '/sites/demo-checkout/$returnAction'
+    | '/training/runs'
     | '/pylon/codex/assignments/$assignmentRef'
   id:
     | '__root__'
@@ -375,6 +397,7 @@ export interface FileRouteTypes {
     | '/download'
     | '/gym'
     | '/login'
+    | '/onboarding'
     | '/privacy'
     | '/run'
     | '/tassadar'
@@ -399,6 +422,7 @@ export interface FileRouteTypes {
     | '/khala/'
     | '/business/kpi/$engagementRef'
     | '/sites/demo-checkout/$returnAction'
+    | '/training/runs/'
     | '/pylon/codex/assignments/$assignmentRef'
   fileRoutesById: FileRoutesById
 }
@@ -409,6 +433,7 @@ export interface RootRouteChildren {
   DownloadRoute: typeof DownloadRoute
   GymRoute: typeof GymRoute
   LoginRoute: typeof LoginRoute
+  OnboardingRoute: typeof OnboardingRoute
   PrivacyRoute: typeof PrivacyRoute
   RunRoute: typeof RunRoute
   TassadarRoute: typeof TassadarRoute
@@ -432,6 +457,7 @@ export interface RootRouteChildren {
   DocsIndexRoute: typeof DocsIndexRoute
   KhalaIndexRoute: typeof KhalaIndexRoute
   BusinessKpiEngagementRefRoute: typeof BusinessKpiEngagementRefRoute
+  TrainingRunsIndexRoute: typeof TrainingRunsIndexRoute
   PylonCodexAssignmentsAssignmentRefRoute: typeof PylonCodexAssignmentsAssignmentRefRoute
 }
 
@@ -463,6 +489,13 @@ declare module '@tanstack/react-router' {
       path: '/privacy'
       fullPath: '/privacy'
       preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -633,6 +666,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ArtanisAccountsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/training/runs/': {
+      id: '/training/runs/'
+      path: '/training/runs'
+      fullPath: '/training/runs/'
+      preLoaderRoute: typeof TrainingRunsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sites/demo-checkout/$returnAction': {
       id: '/sites/demo-checkout/$returnAction'
       path: '/$returnAction'
@@ -675,6 +715,7 @@ const rootRouteChildren: RootRouteChildren = {
   DownloadRoute: DownloadRoute,
   GymRoute: GymRoute,
   LoginRoute: LoginRoute,
+  OnboardingRoute: OnboardingRoute,
   PrivacyRoute: PrivacyRoute,
   RunRoute: RunRoute,
   TassadarRoute: TassadarRoute,
@@ -698,6 +739,7 @@ const rootRouteChildren: RootRouteChildren = {
   DocsIndexRoute: DocsIndexRoute,
   KhalaIndexRoute: KhalaIndexRoute,
   BusinessKpiEngagementRefRoute: BusinessKpiEngagementRefRoute,
+  TrainingRunsIndexRoute: TrainingRunsIndexRoute,
   PylonCodexAssignmentsAssignmentRefRoute:
     PylonCodexAssignmentsAssignmentRefRoute,
 }

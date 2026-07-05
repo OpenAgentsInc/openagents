@@ -363,6 +363,59 @@ The Start staging app now owns two more standalone public routes ported from
   so deleting them now would remove the live pages before any production
   cutover.
 
+## Landed Slice 17: Onboarding And Training Runs
+
+The Start staging app now owns `/onboarding` and `/training/runs`, ported from
+`apps/web/src/page/loggedOut/page/onboarding.ts` and `trainingRuns.ts`.
+
+- `/onboarding` preserves `data-route="onboarding"`, the `OpenAgents
+  Autopilot` header/eyebrow, the `Stop Babysitting Your AI` headline, the
+  `Launch coding agents. Close your laptop. Stay in the loop from anywhere.`
+  body copy, the `Start work. Walk away.` / `Your agents keep going.` block,
+  and both `Log in with GitHub` links to `/login/github` (header + hero CTA).
+  - **Scoped-down by design, not by shortcut.** The Foldkit view also defines
+    a `funding` step with an interactive credit-amount slider and coupon
+    toggle, but `initOnboardingModel()` always starts at `step: 'github'`,
+    and nothing in this standalone `loggedOut` view ever dispatches
+    `ClickedOnboardingStep({ step: 'funding' })` — that message is only fired
+    from a *different*, already-authenticated `loggedIn/page/onboarding.ts`
+    flow and from unit tests. So a real anonymous visitor at `/onboarding`
+    today only ever sees the GitHub-login landing; this port covers exactly
+    that reachable state and does not fabricate a funding-demo entry point
+    that does not exist in production. The funding-demo branch stays
+    back-logged with the rest of the unmigrated `loggedOut` pages.
+- `/training/runs` preserves `data-route="training-runs"`, the `Training Runs`
+  heading, and the `Public CS336 run state, verification, and settlement
+  projection.` subtitle.
+  - The Foldkit original drives a `PublicTrainingRunsModel` union (`Idle` /
+    `Loading` / `Loaded` / `Failed`) fed by a client fetch against
+    `/api/training/runs`. Following the same posture as `/artanis/accounts`
+    in Slice 16, this port renders the model's own `PublicTrainingRunsIdle`
+    state honestly — the exact `No Worker-authoritative training runs are
+    recorded yet.` / `No run projection is available for this route.` empty
+    copy the Foldkit view already shows before its fetch resolves — rather
+    than fabricating run rows or wiring a first live fetch on a standalone
+    page. The `/api/training/runs` and `/api/training/leaderboards` endpoint
+    refs stay visible.
+  - Lives at `training/runs/index.tsx` (`createFileRoute('/training/runs/')`)
+    rather than a bare `training/runs.tsx`, because the Foldkit route also
+    has a `/training/runs/$runId` detail child
+    (`publicTrainingRunRouter`) — using the folder+index convention from
+    Slice 15 avoids ever creating the `X.tsx` next to `X/` nested-layout
+    footgun when that detail route is migrated later. The `$runId` detail
+    route (per-run metrics, Real Gradient status, windows, receipts,
+    leaderboard links) is out of scope for this slice and stays unmigrated.
+- Both routes were added to the Start budget list (`/onboarding`,
+  `/training/runs`) and `routeTree.gen.ts` was regenerated; total client JS
+  moved to 659.1 KiB (still well under the 760 KiB budget).
+- Re-verified with a local `vite preview` + `curl` pass: `/onboarding` renders
+  `data-route="onboarding"` with its own title and copy, `/training/runs`
+  renders `data-route="training-runs"` with its own title and the idle empty
+  state, and the existing `/artanis/traces`, `/artanis/accounts`,
+  `/workspaces/$workspaceId`, and `/code` routes are all unaffected.
+- Kept both Foldkit `apps/web` counterparts in place, same as every prior
+  TS-6 slice.
+
 ## Boundary
 
 This is not the final TS-6 closure. The live `openagents.com` Worker still
@@ -376,12 +429,18 @@ Remaining TS-6 work:
 - migrate the remaining standalone public/`loggedOut` pages that are not yet
   in Start: `apps/web/src/page/loggedOut/page/pylon.ts` (depends on the
   three.js/scene custom elements — bigger lift than a plain static port),
-  `share.ts`, `mirrorcode.ts`, `promises.ts` (the product-promises page),
-  `publicAgent.ts`, `stats.ts` (public/anonymous variant only — the same
-  `/stats` URL also has a distinct authenticated `loggedIn/page/stats.ts`
-  view, so this needs the same "public-safe default until Start has real
-  session auth" treatment as `/artanis/accounts` above), `trainingRuns.ts`,
-  and `onboarding.ts`;
+  `share.ts` (a full shared-workroom-timeline viewer — bigger lift, needs the
+  workroom timeline/file-panel component set ported to React first),
+  `mirrorcode.ts`, `promises.ts` (the product-promises page), `publicAgent.ts`,
+  and `stats.ts` (public/anonymous variant only — the same `/stats` URL also
+  has a distinct authenticated `loggedIn/page/stats.ts` view, and the public
+  variant composes ~9 shared panel components from `home.ts`
+  (`khalaTokensServedHeaderCounter`, `pylonStatsPanel`, `forumStatsPanel`,
+  `accountingPanel`, etc.) that would need React ports of their own first, so
+  this needs the same "public-safe default until Start has real session auth"
+  treatment as `/artanis/accounts` plus that shared-panel porting work);
+  `/training/runs/$runId` (the per-run detail route: metrics, Real Gradient
+  status, windows, receipts, leaderboard links) also remains unmigrated;
 - migrate logged-in app-shell panels route-by-route (this is the large
   authenticated `loggedIn/` tree behind `Ui.workroomShell` — dozens of
   interconnected panels including chat, dashboard, billing, settings, admin,

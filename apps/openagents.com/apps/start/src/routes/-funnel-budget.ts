@@ -34,10 +34,12 @@ const routeBudgets = [
   { path: '/autopilot/legal', marker: 'For legal teams' },
   { path: '/gym', marker: 'OpenAgents Gym' },
   { path: '/login', marker: 'Log in to OpenAgents' },
+  { path: '/onboarding', marker: 'Stop Babysitting Your AI' },
   { path: '/preview/landing', marker: 'Software, built by agents.' },
   { path: '/run', marker: 'Tassadar lives in the Verse' },
   { path: '/terms', marker: 'Terms of Service' },
   { path: '/privacy', marker: 'Privacy Policy' },
+  { path: '/training/runs', marker: 'Training Runs' },
 ] as const
 
 const assetDir = join(import.meta.dir, '../../dist/client/assets')
