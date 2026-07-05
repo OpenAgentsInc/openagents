@@ -23,6 +23,7 @@
     "@shopify/react-native-skia": "2.6.2",
     "@expo/metro-config": "57.0.3",
     "@expo/metro-runtime": "57.0.3",
+    "@openagentsinc/behavior-contracts": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/khala-sync-client": "workspace:*",
     "@openagentsinc/khala-sync-db-collection": "workspace:*",
