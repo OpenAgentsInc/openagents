@@ -82,6 +82,10 @@ import {
   agentRunLiveMessagesFromLiveFramePayload,
   agentRunLiveWireScope,
 } from './page/loggedIn/sync/agent-run-live'
+import {
+  teamLiveMessagesFromLiveFramePayload,
+  teamLiveWireScope,
+} from './page/loggedIn/sync/team-live'
 import { authorizedThreadRouteScope } from './page/loggedIn/thread-route'
 import { chatRunIsBusy } from './page/loggedIn/update'
 import { loggedInWorkroomAllowed } from './product-policy'
@@ -165,9 +169,9 @@ const uniqueScopes = (scopes: ReadonlyArray<string>): ReadonlyArray<string> => [
   ...new Set(scopes),
 ]
 
-const teamSyncScopeForRoute = (
+const teamForRoute = (
   model: Extract<Model, { _tag: 'LoggedIn' }>,
-): string | undefined => {
+): Readonly<{ id: string; ref: string }> | undefined => {
   if (
     model.route._tag !== 'TeamChat' &&
     model.route._tag !== 'TeamProjectChat' &&
@@ -178,11 +182,17 @@ const teamSyncScopeForRoute = (
   }
 
   const { teamRef } = model.route
-  const teamId = model.auth.teams.find(
-    team => teamRouteRef(team) === teamRef,
-  )?.id
+  const team = model.auth.teams.find(team => teamRouteRef(team) === teamRef)
 
-  return teamId === undefined ? undefined : syncTeamScope(teamId)
+  return team === undefined ? undefined : { id: team.id, ref: teamRouteRef(team) }
+}
+
+const teamSyncScopeForRoute = (
+  model: Extract<Model, { _tag: 'LoggedIn' }>,
+): string | undefined => {
+  const team = teamForRoute(model)
+
+  return team === undefined ? undefined : syncTeamScope(team.id)
 }
 
 const syncScopesForModel = (model: Extract<Model, { _tag: 'LoggedIn' }>) => {
@@ -195,6 +205,19 @@ const syncScopesForModel = (model: Extract<Model, { _tag: 'LoggedIn' }>) => {
   // stream (`agentRunLiveStreamDependenciesForModel` below), which emits
   // patches under the SAME `syncAgentRunScope` key so every existing
   // `patch.scope`-matching consumer keeps working unchanged.
+  //
+  // `routeTeamScope` (`team:<teamId>`) is DELIBERATELY KEPT here, unlike
+  // agent-run/settled-feed (KS-6.11a client repoint, #8423): this legacy
+  // DO-room socket is multiplexed across THREE collections —
+  // `team_chat_messages`, `thread_files`, AND `missions` (team-owned
+  // agent-run sidebar cards, written by `omni-runs.ts`'s
+  // `agentRunSyncChanges` — a producer this repoint does not touch and the
+  // new engine does not cover). Team chat and thread files now ALSO connect
+  // via `teamLiveStreamDependenciesForModel` below
+  // (`page/loggedIn/sync/team-live.ts`), but dropping this legacy
+  // subscription entirely would silently stop live-updating team-owned
+  // mission cards in the sidebar. See `team-live.ts`'s module doc for the
+  // full reasoning.
   return uniqueScopes([
     model.sync.workspaceScope,
     ...(routeTeamScope === undefined ? [] : [routeTeamScope]),
@@ -1030,6 +1053,129 @@ const agentRunLiveStream = (
   )
 }
 
+// Live team chat + thread files stream (KS-6.11a client repoint, #8423): the
+// current team route's `team_chat_message`/`thread_file` collections now
+// ALSO connect to the khala-sync engine (`WS /api/sync/connect?scope=
+// scope.team.<teamId>`) — see `page/loggedIn/sync/team-live.ts`'s module doc
+// for why the legacy `team:<teamId>` DO-room socket (`syncScopesForModel`
+// above) stays open in parallel: it still carries the `missions` sidebar
+// collection, a producer this repoint does not touch and the new engine does
+// not cover. Always connects at cursor 0 for the same reason
+// `agentRunLiveStream` does: `scope.team.<teamId>` only started producing
+// `team_chat_message`/`thread_file` changelog entries once KS-8.13 (#8324)
+// shipped, so a full replay from version 1 on every (re)connect is cheap and
+// correct; the still-legacy `LoadSyncSnapshot` REST fetch stays the cold-load
+// seed (per #8423's own guardrail — KS-8.13 never backfilled changelog
+// history for this scope).
+const inactiveTeamLiveStream: {
+  readonly isActive: boolean
+  readonly legacyScope: string
+  readonly streamHref: string
+  readonly teamRouteRefValue: string
+} = {
+  isActive: false,
+  legacyScope: '',
+  streamHref: '',
+  teamRouteRefValue: '',
+}
+
+type TeamLiveStreamDependencies = typeof inactiveTeamLiveStream
+
+export const teamLiveStreamDependenciesForModel = (
+  model: Model,
+): TeamLiveStreamDependencies => {
+  if (model._tag !== 'LoggedIn' || !loggedInWorkroomAllowed(model.auth)) {
+    return inactiveTeamLiveStream
+  }
+
+  const team = teamForRoute(model)
+
+  if (team === undefined) {
+    return inactiveTeamLiveStream
+  }
+
+  return {
+    isActive: true,
+    legacyScope: syncTeamScope(team.id),
+    streamHref: khalaSyncConnectHref(teamLiveWireScope(team.id), 0),
+    teamRouteRefValue: team.ref,
+  }
+}
+
+const teamLiveStream = (
+  dependencies: TeamLiveStreamDependencies,
+): Stream.Stream<Message> => {
+  if (!dependencies.isActive) {
+    return Stream.empty
+  }
+
+  const { legacyScope, streamHref, teamRouteRefValue } = dependencies
+
+  return Stream.callback<Message>(queue =>
+    Effect.acquireRelease(
+      Effect.sync(() => {
+        const socket = new WebSocket(webSocketUrl(streamHref))
+        const resource = { released: false, socket }
+        socket.addEventListener('open', () => {
+          if (resource.released) {
+            socket.close()
+            return
+          }
+
+          Queue.offerUnsafe(
+            queue,
+            GotLoggedInMessage({ message: OpenedSyncStream({ scope: legacyScope }) }),
+          )
+        })
+        socket.addEventListener('message', event => {
+          for (const message of teamLiveMessagesFromLiveFramePayload(
+            String(event.data),
+            legacyScope,
+            teamRouteRefValue,
+          )) {
+            Queue.offerUnsafe(queue, GotLoggedInMessage({ message }))
+          }
+        })
+        socket.addEventListener('close', () => {
+          if (resource.released) {
+            return
+          }
+
+          Queue.offerUnsafe(
+            queue,
+            GotLoggedInMessage({ message: ClosedSyncStream({ scope: legacyScope }) }),
+          )
+        })
+        socket.addEventListener('error', () => {
+          if (resource.released) {
+            return
+          }
+
+          Queue.offerUnsafe(
+            queue,
+            GotLoggedInMessage({
+              message: FailedSyncStream({
+                error: 'Team live-tail stream connection failed.',
+                scope: legacyScope,
+              }),
+            }),
+          )
+        })
+
+        return resource
+      }),
+      resource =>
+        Effect.sync(() => {
+          resource.released = true
+
+          if (resource.socket.readyState === WebSocket.OPEN) {
+            resource.socket.close()
+          }
+        }),
+    ).pipe(Effect.flatMap(() => Effect.never)),
+  )
+}
+
 // Live /autopilot onboarding turn stream (issue #6123 UI follow-up). When a turn
 // is pending (set on submit), open the SSE stream and dispatch prose deltas as
 // they arrive, then the terminal success/failure. Keyed by the turn id so the
@@ -1658,6 +1804,26 @@ export const subscriptions = Subscription.make<Model, Message>()(entry => ({
         left.isActive === right.isActive &&
         left.legacyScope === right.legacyScope,
       dependenciesToStream: agentRunLiveStream,
+    },
+  ),
+  // Live team chat + thread files stream (KS-6.11a client repoint, #8423):
+  // the current team route's khala-sync `/api/sync/connect` socket. Reopens
+  // whenever the active team changes, and tears down when no team route is
+  // active. Runs ALONGSIDE the legacy `team:<teamId>` socket in
+  // `workspaceSync` above (see `team-live.ts`'s module doc for why).
+  teamLiveStream: entry(
+    {
+      isActive: S.Boolean,
+      legacyScope: S.String,
+      streamHref: S.String,
+      teamRouteRefValue: S.String,
+    },
+    {
+      modelToDependencies: teamLiveStreamDependenciesForModel,
+      keepAliveEquivalence: (left, right) =>
+        left.isActive === right.isActive &&
+        left.legacyScope === right.legacyScope,
+      dependenciesToStream: teamLiveStream,
     },
   ),
   settledFeed: entry(

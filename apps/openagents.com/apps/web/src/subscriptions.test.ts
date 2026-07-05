@@ -56,6 +56,7 @@ import {
   settledFeedMessagesFromLiveFramePayload,
   syncMessageFromPayload,
   syncStreamDependenciesForModel,
+  teamLiveStreamDependenciesForModel,
   workspaceSyncDependenciesForModel,
 } from './subscriptions'
 
@@ -604,6 +605,103 @@ describe('agent-run live-tail subscription (KS-6.6 client repoint, #8416)', () =
       streamHref:
         '/api/sync/connect?scope=scope.agent_run.agent_run_1&cursor=0',
     })
+  })
+})
+
+describe('team chat + thread files live-tail subscription (KS-6.11a client repoint, #8423)', () => {
+  test('does not subscribe when the route is not a team route', () => {
+    expect(
+      teamLiveStreamDependenciesForModel(
+        LoggedIn.init(ChatRoute(), authWithTeam),
+      ),
+    ).toEqual({
+      isActive: false,
+      legacyScope: '',
+      streamHref: '',
+      teamRouteRefValue: '',
+    })
+  })
+
+  test('does not subscribe incomplete-onboarding models even on a team route', () => {
+    expect(
+      teamLiveStreamDependenciesForModel(
+        LoggedIn.init(
+          TeamChatRoute({ teamRef: 'openagents-core-team' }),
+          authWithIncompleteOnboarding,
+        ),
+      ),
+    ).toEqual({
+      isActive: false,
+      legacyScope: '',
+      streamHref: '',
+      teamRouteRefValue: '',
+    })
+  })
+
+  test('does not subscribe when the route team ref does not resolve to a known team', () => {
+    expect(
+      teamLiveStreamDependenciesForModel(
+        LoggedIn.init(
+          TeamChatRoute({ teamRef: 'some-other-team' }),
+          authWithTeam,
+        ),
+      ),
+    ).toEqual({
+      isActive: false,
+      legacyScope: '',
+      streamHref: '',
+      teamRouteRefValue: '',
+    })
+  })
+
+  test('subscribes team chat routes to the khala-sync connect endpoint under the legacy team scope key', () => {
+    expect(
+      teamLiveStreamDependenciesForModel(
+        LoggedIn.init(
+          TeamChatRoute({ teamRef: 'openagents-core-team' }),
+          authWithTeam,
+        ),
+      ),
+    ).toEqual({
+      isActive: true,
+      legacyScope: 'team:team_openagents_core',
+      streamHref:
+        '/api/sync/connect?scope=scope.team.team_openagents_core&cursor=0',
+      teamRouteRefValue: 'openagents-core-team',
+    })
+  })
+
+  test('subscribes team files routes to the khala-sync connect endpoint under the legacy team scope key', () => {
+    expect(
+      teamLiveStreamDependenciesForModel(
+        LoggedIn.init(
+          TeamFilesRoute({ teamRef: 'openagents-core-team' }),
+          authWithTeam,
+        ),
+      ),
+    ).toEqual({
+      isActive: true,
+      legacyScope: 'team:team_openagents_core',
+      streamHref:
+        '/api/sync/connect?scope=scope.team.team_openagents_core&cursor=0',
+      teamRouteRefValue: 'openagents-core-team',
+    })
+  })
+
+  // KS-6.11a (#8423): unlike the agent-run cutover, the legacy `team:<teamId>`
+  // multi-scope socket (`syncStreamDependenciesForModel`) stays subscribed
+  // ALONGSIDE this new stream — see `team-live.ts`'s module doc. Both streams
+  // are active at once for a team route.
+  test('the legacy multi-scope socket keeps carrying team:<teamId> for the sidebar missions collection', () => {
+    const model = LoggedIn.init(
+      TeamChatRoute({ teamRef: 'openagents-core-team' }),
+      authWithTeam,
+    )
+
+    expect(teamLiveStreamDependenciesForModel(model).isActive).toBe(true)
+    expect(
+      syncStreamDependenciesForModel(model).targets.map(target => target.scope),
+    ).toContain('team:team_openagents_core')
   })
 })
 
