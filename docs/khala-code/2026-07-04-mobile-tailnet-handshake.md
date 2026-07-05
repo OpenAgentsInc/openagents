@@ -1427,3 +1427,107 @@ issue covering BOTH providers together (e.g. a `turn.finished` /
 branches, which the transcript reducer and turn-status rendering added in
 this pass would already render correctly with zero further UI work), rather
 than a Claude-specific patch that would leave Codex still silently stuck.
+
+## #8410 follow-up: real per-account readiness, thread-resume account pinning, and a Khala Sync migration deploy gate (2026-07-05)
+
+Follow-up to the "Follow-up work not completed in this pass" list above.
+Addressed items 1, 2, and 4 with real end-to-end verification (not just unit
+mocks); items 3 and 5 are still open and re-scoped below.
+
+### Item 1: real per-account readiness in `candidateAccountsFromRegistry`
+
+`readinessForTarget` (`apps/pylon/src/account-usage.ts` — the exact check
+`pylon accounts list`/`pylon codex accounts list`/`pylon accounts status`
+already use, honoring the codex-account-health ledger and the quota ledger)
+is now exported and wired into `candidateAccountsFromRegistry`
+(`apps/pylon/src/orchestration/runtime-intent-enforcement.ts`) via a new
+optional `{ summary, env }` option. When given a bootstrap-shaped `paths`
+summary, every registered Codex/Claude account gets a REAL readiness probe
+instead of a hardcoded `"ready"`; the result is mapped onto
+`FleetAccountEntity`'s bounded `readiness` (`"ready" | "cooldown" |
+"unavailable" | "unknown"`) — `usage_limited`/`rate_limited` become
+`"cooldown"` (self-clearing), everything else non-ready becomes
+`"unavailable"`. `capacityAvailable` is `0` for a non-ready account instead of
+the old unconditional `1`.
+
+`runtime-intent-supervisor.ts` now builds a full `{ paths: { home, config,
+cache, releases } }` summary (`readinessSummary`, reusing the SAME
+`<pylon home>` the fleet-assignment executor already writes real
+health/quota records into) and passes it through, so production dispatch now
+genuinely skips accounts with revoked/missing credentials or an active
+rate-limit/quota cooldown, rather than round-robining into them and burning a
+guaranteed `401`.
+
+Verified for real (not just mocked): a new test in
+`runtime-intent-enforcement.test.ts` builds a real temp directory with NO
+Codex login present and asserts the real `readinessForTarget` probe returns
+`readiness !== "ready"` / `capacityAvailable: 0` for that account — this
+exercises the actual filesystem probe, not a stub.
+
+### Item 2: Codex/Claude thread-resume account affinity via a per-thread account pin
+
+Rather than per-(thread, account) resume-id tracking, took the issue's other
+sanctioned option: **pin one account per Khala thread until it's demonstrably
+unhealthy**. `PylonOrchestrationStore` gained
+`getRuntimeDispatchAccountRefHash`/`setRuntimeDispatchAccountRefHash`
+(`apps/pylon/src/orchestration/store.ts`), and `handleTurnStart` now checks
+the thread's pinned account FIRST: if it's still in the real dispatch-ready
+set (item 1) for the intent's lane/provider, it's used directly, bypassing
+`selectDispatchAccount`'s round-robin tie-break entirely for that thread.
+After a dispatch, the thread is (re-)pinned to whichever account was
+actually used. Only when the pinned account goes unhealthy does the thread
+fall through to ordinary round-robin selection and get re-pinned to the new
+pick — a deliberate, logged trade-off of round-robin fairness for ONE thread
+in exchange for reliable `Codex#resumeThread`/Claude `options.resume`
+continuity, which is what actually matters once an owner has 2+ ready
+accounts for the same provider.
+
+Verified with two real end-to-end tests (`runtime-intent-enforcement.test.ts`,
+"thread-resume account affinity (#8410 follow-up)"), driving TWO real
+`turn.start` dispatches through the real `enforcePendingRuntimeIntents` loop,
+a real in-memory `PylonOrchestrationStore`, and two fully-tied ready Codex
+`FleetAccountEntity` candidates (so plain round-robin would otherwise cycle
+between them):
+
+1. The second dispatch for the SAME Khala thread lands on the SAME account as
+   the first, even though `lastDispatchedAccountByThread` (persisted exactly
+   like production) would have made plain round-robin pick the OTHER tied
+   account.
+2. Once the pinned account is marked unhealthy between the two dispatches,
+   the second dispatch correctly falls back to the other (healthy) account
+   and the store's pin updates to it.
+
+### Item 4: a real Khala Sync (Postgres) migration deploy gate
+
+New `packages/khala-sync-server/scripts/check-pending-migrations.ts`: runs
+the SAME dry-run plan `scripts/migrate.ts --dry-run` uses
+(`runMigrations({ dryRun: true })`) against `KHALA_SYNC_DATABASE_URL` (or
+`--database-url`) and exits non-zero, naming every pending file, if the
+Postgres schema is behind — the exact gap the 2026-07-04/05 hardening
+session hit live with migration `0032_khala_sync_runtime_control_intents_seq.sql`.
+Wired into `apps/openagents.com/workers/api/package.json`'s `deploy:safe`
+right after the existing D1 `check:pending-migrations` step and before the
+final production `wrangler deploy`; the pure decision core
+(`decidePendingKhalaSyncMigrations`) also has a `test:pending-migrations-guard`
+unit test wired into `apps/openagents.com`'s `check:deploy` sweep (no live DB
+needed there — mirrors the D1 guard/live-check split).
+
+Verified for real against a real local Postgres instance (this repo's
+`hasLocalPostgres`/`startLocalPostgres` test harness): applied all but the
+LAST real migration file from `packages/khala-sync-server/migrations/`
+(withholding the real `0032_khala_sync_runtime_control_intents_seq.sql`),
+then ran the actual `check-pending-migrations.ts` CLI against that database —
+it correctly reported `0032_...sql` as pending and exited non-zero. Applying
+the withheld migration and re-running the CLI then reported `0 pending` and
+exited zero.
+
+### Items 3 and 5: re-scoped, not completed in this pass
+
+- **Item 3 (agent-scope delegation into an arbitrary linked owner's scope)**
+  and **item 5 (`turn.continue`/`turn.retry`)** are both a comparable-or-larger
+  lift than items 1/2/4 above (item 3 touches Khala Sync's scope-ownership
+  model directly; item 5 needs a correct "resume a stale/failed turn under
+  its EXISTING id" state-machine, not just a fresh dispatch). Neither was
+  attempted in this pass to keep the shipped diff reviewable and each part
+  independently verified. Tracked as remaining scope on the tracking issue
+  rather than force-fit into this change.

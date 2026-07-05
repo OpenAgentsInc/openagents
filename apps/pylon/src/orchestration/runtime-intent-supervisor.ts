@@ -100,6 +100,25 @@ const activeTurns: ActiveRuntimeTurns = new Map()
  * the same deterministic lowest-`accountRefHash` account every time. */
 const lastDispatchedAccountByThread = new Map<string, string>()
 const registrySummary = { paths: { config: configPath } }
+/**
+ * The fuller `BootstrapSummary`-shaped `paths` object real per-account
+ * readiness checking needs (#8410 follow-up — see
+ * `candidateAccountsFromRegistry`'s `summary` option): unlike
+ * `registrySummary` above (only `config`, enough for
+ * `loadPylonAccountRegistry`/`resolvePylonAccountSelection`),
+ * `readinessForTarget` also reads the codex-account-health and quota ledgers
+ * under `paths.home` — the SAME `<pylon home>` this supervisor and the
+ * fleet-assignment executor both already write real health/quota records
+ * into, so this reuses that history rather than starting a second one.
+ */
+const readinessSummary = {
+  paths: {
+    cache: join(pylonHome, "cache"),
+    config: configPath,
+    home: pylonHome,
+    releases: join(pylonHome, "releases"),
+  },
+}
 
 let stopping = false
 const requestStop = (signal: string) => {
@@ -132,7 +151,10 @@ try {
         lastDispatchedAccountByThread,
         limit,
         listCandidateAccounts: async () =>
-          candidateAccountsFromRegistry(await loadPylonAccountRegistry(registrySummary)),
+          candidateAccountsFromRegistry(await loadPylonAccountRegistry(registrySummary), {
+            env: Bun.env as Record<string, string | undefined>,
+            summary: readinessSummary,
+          }),
         log: (line) => console.error(`runtime-intent-supervisor: ${line}`),
         ...(ownerUserId === undefined ? {} : { ownerUserId }),
         pylonRef,

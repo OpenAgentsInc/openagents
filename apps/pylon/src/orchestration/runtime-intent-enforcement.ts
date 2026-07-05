@@ -24,6 +24,8 @@ import {
   type PylonAccountRegistryEntry,
   type ResolvedPylonAccountSelection,
 } from "../account-registry.js"
+import { readinessForTarget, type AccountDiscoveryTarget } from "../account-usage.js"
+import type { BootstrapSummary } from "../bootstrap.js"
 import {
   RUNTIME_RECORD_EVENT_MUTATOR_NAME,
   RUNTIME_START_TURN_MUTATOR_NAME,
@@ -87,12 +89,29 @@ import type {
  *   `selectDispatchAccount` (#8389, `@openagentsinc/khala-sync`), scoped to
  *   `provider: "codex"` or `provider: "claude_agent"` depending on the
  *   intent's `target.lane` and round-robin-tie-broken per thread — see
- *   `handleTurnStart`. The remaining honest limitation is one layer below
- *   the algorithm: `candidateAccountsFromRegistry` still projects a
- *   placeholder `capacityAvailable: 1` for every ready registry account (a
- *   real live-capacity signal is not wired yet), so with today's inputs the
- *   real ranking mostly reduces to readiness + the round-robin tie-break —
- *   the selection algorithm itself is no longer naive, only its inputs are.
+ *   `handleTurnStart`. `candidateAccountsFromRegistry` (#8410 follow-up) now
+ *   computes REAL per-account readiness via `readinessForTarget`
+ *   (`../account-usage.js`, the same check `pylon accounts list` uses) when
+ *   given a bootstrap `summary` — a registered account with revoked/missing
+ *   credentials, or in a rate-limit/usage-quota cooldown, is excluded from
+ *   dispatch instead of being treated as unconditionally `ready`.
+ *   `capacityAvailable` remains a real, one-slot-per-account placeholder (a
+ *   real live-capacity SIGNAL, as opposed to readiness, is not wired yet), so
+ *   the ranking among READY accounts still mostly reduces to the
+ *   round-robin tie-break.
+ * - Cross-turn account continuity (`resumeThreadId`/`resumeSessionId`, see
+ *   below) is reinforced by an explicit per-thread account PIN
+ *   (`store.getRuntimeDispatchAccountRefHash`/
+ *   `setRuntimeDispatchAccountRefHash`, #8410 follow-up): once a Khala
+ *   thread's first `turn.start` dispatch picks an account, `handleTurnStart`
+ *   keeps dispatching that SAME thread to that SAME account (bypassing the
+ *   round-robin tie-break entirely for that thread) as long as it stays in
+ *   the real dispatch-ready set above. Only when the pinned account goes
+ *   unhealthy does the thread fall back to ordinary round-robin selection
+ *   (and re-pin to whatever gets picked) — a deliberate trade-off of
+ *   round-robin fairness FOR ONE THREAD in exchange for reliable Codex/Claude
+ *   session-resume continuity, which is what actually matters once an owner
+ *   has 2+ ready accounts for the same provider.
  * - `message.append` for an in-flight turn is still honestly NOT literal
  *   mid-turn steering, for EITHER provider today. For Codex: the SDK's
  *   `runStreamed(prompt)` call has no API to inject into an already-running
@@ -134,12 +153,13 @@ import type {
  *   `ai_sdk_core`) is recorded `failed` with an explicit "not wired" detail
  *   rather than silently falling back to one provider.
  * - Cross-turn context continuity (`resumeThreadId` for Codex,
- *   `resumeSessionId` for Claude) is best-effort for both providers: if the
+ *   `resumeSessionId` for Claude) is reinforced, but still not GUARANTEED,
+ *   for both providers by the per-thread account pin described above: if the
  *   account that resumes a thread/session differs from the one that created
- *   it (isolated per-account homes), the resume fails cleanly into a normal
- *   `turn.finished(error)` — never a crash — but the user does lose context
- *   for that turn. This mostly matters once an owner has 2+ ready accounts
- *   for the same provider feeding the same round-robin tie-break.
+ *   it (isolated per-account homes) — which the pin only allows once the
+ *   previously-pinned account has gone unhealthy — the resume fails cleanly
+ *   into a normal `turn.finished(error)` — never a crash — but the user does
+ *   lose context for that turn.
  */
 
 export type CandidateAccount = {
@@ -147,36 +167,114 @@ export type CandidateAccount = {
   readonly registryEntry: PylonAccountRegistryEntry
 }
 
+export type CandidateAccountsFromRegistryOptions = {
+  readonly now?: Date
+  /**
+   * When given, computes REAL per-account dispatch readiness (#8410
+   * follow-up) via `readinessForTarget` (`../account-usage.js`) — the same
+   * check `pylon accounts list`/`pylon codex accounts list`/
+   * `pylon accounts status` already use, which honors the codex-account
+   * health ledger (`credentials_revoked`/`usage_limited`/`rate_limited`,
+   * recorded by real dispatch failures elsewhere in Pylon, e.g.
+   * `codex-agent-executor.ts`'s fleet-assignment path) and the quota ledger.
+   * Omitted, every registered account is projected `readiness: "ready"` (the
+   * historical naive behavior) — kept as the default ONLY so pure unit tests
+   * of this function don't need real filesystem/SDK I/O; production wiring
+   * (`runtime-intent-supervisor.ts`) always provides this.
+   */
+  readonly summary?: Pick<BootstrapSummary, "paths">
+  readonly env?: Record<string, string | undefined>
+}
+
+const READINESS_COOLDOWN_STATES = new Set(["usage_limited", "rate_limited"])
+
+/**
+ * Maps a Codex/Claude readiness state (`CodexAgentReadinessState` /
+ * `ClaudeAgentReadinessState`, both plain string unions) onto the bounded
+ * `FleetAccountReadiness` `selectDispatchAccount` understands
+ * (`"ready" | "cooldown" | "unavailable" | "unknown"`). `usage_limited` and
+ * `rate_limited` are temporary/self-clearing (a cooldown window or quota
+ * reset), everything else non-`"ready"` (missing credentials, revoked
+ * credentials, SDK missing, network/timeout, disabled, unsupported platform)
+ * is `"unavailable"` — none of those clear on their own without owner action.
+ */
+const fleetAccountReadinessFromState = (state: string): FleetAccountEntity["readiness"] =>
+  state === "ready" ? "ready" : READINESS_COOLDOWN_STATES.has(state) ? "cooldown" : "unavailable"
+
+const accountDiscoveryTargetForRegistryEntry = (
+  entry: PylonAccountRegistryEntry,
+  accountRefHash: string,
+): AccountDiscoveryTarget => ({
+  account: {
+    accountRef: entry.ref,
+    accountRefHash,
+    home: entry.home,
+    openAgentsProviderAccountRef: entry.openAgentsProviderAccountRef,
+    provider: entry.provider,
+    selector: "registry_ref",
+  },
+  accountRef: entry.ref,
+  accountRefHash,
+  home: entry.home,
+  // Never surfaced by `readinessForTarget` (only used by the accounts-list/
+  // status CLI projections this consumer does not build) — the hash is a
+  // safe, stable placeholder.
+  homeRef: accountRefHash,
+  provider: entry.provider,
+  selector: "registry_ref",
+})
+
 /**
  * Projects this Pylon's OWN local account registry (`loadPylonAccountRegistry`)
  * into the same `FleetAccountEntity` shape `selectDispatchAccount` (#8389,
- * `@openagentsinc/khala-sync`) consumes — every registered `codex` OR
- * `claude_agent` account reports `readiness: "ready"` and
- * `capacityAvailable: 1` (a real, one-slot-per-account placeholder; a real
- * live-capacity signal is not wired yet). Both providers are included here
- * (#8404): `handleTurnStart` is what actually restricts eligibility to the
- * provider matching the intent's `target.lane`, via
+ * `@openagentsinc/khala-sync`) consumes. Both `codex` and `claude_agent`
+ * accounts are included (#8404): `handleTurnStart` is what actually restricts
+ * eligibility to the provider matching the intent's `target.lane`, via
  * `selectDispatchAccount`'s `options.provider` filter — this function stays a
  * provider-agnostic projection so a single registry load serves both lanes.
+ *
+ * `capacityAvailable` stays a real, one-slot-per-account placeholder (a real
+ * live-capacity signal is not wired yet) — `1` for a ready account, `0`
+ * otherwise (an unready account claiming leftover capacity would be
+ * misleading, even though `selectDispatchAccount` already excludes
+ * non-`"ready"` accounts regardless of capacity).
  */
-export const candidateAccountsFromRegistry = (
+export const candidateAccountsFromRegistry = async (
   registry: ReadonlyArray<PylonAccountRegistryEntry>,
-  now: Date = new Date(),
-): ReadonlyArray<CandidateAccount> =>
-  registry
-    .filter((entry) => entry.provider === "codex" || entry.provider === "claude_agent")
-    .map((entry) => ({
+  options: CandidateAccountsFromRegistryOptions = {},
+): Promise<ReadonlyArray<CandidateAccount>> => {
+  const now = options.now ?? new Date()
+  const entries = registry.filter((entry) => entry.provider === "codex" || entry.provider === "claude_agent")
+  const out: CandidateAccount[] = []
+  for (const entry of entries) {
+    const accountRefHash = hashPylonAccountRef(entry.provider, entry.ref)
+    const readiness =
+      options.summary === undefined
+        ? ("ready" as const)
+        : fleetAccountReadinessFromState(
+            (
+              await readinessForTarget(
+                options.summary,
+                accountDiscoveryTargetForRegistryEntry(entry, accountRefHash),
+                options.env ?? (Bun.env as Record<string, string | undefined>),
+              )
+            ).readiness.state,
+          )
+    out.push({
       fleetAccount: decodeFleetAccountEntity({
-        accountRefHash: hashPylonAccountRef(entry.provider, entry.ref),
-        capacityAvailable: 1,
+        accountRefHash,
+        capacityAvailable: readiness === "ready" ? 1 : 0,
         capacityBusy: 0,
         capacityQueued: 0,
         provider: entry.provider,
-        readiness: "ready" as const,
+        readiness,
         updatedAt: now.toISOString(),
       }),
       registryEntry: entry,
-    }))
+    })
+  }
+  return out
+}
 
 // ---------------------------------------------------------------------------
 // Prompt resolution (chat_message.<messageId> bodyRef convention)
@@ -1092,11 +1190,27 @@ const handleTurnStart = async (
 
   const provider = providerForLane(lane)
   const candidates = await options.listCandidateAccounts()
+
+  // Thread-resume account affinity (#8410 follow-up): prefer the account
+  // already PINNED to this Khala thread (see `store.getRuntimeDispatchAccountRefHash`'s
+  // doc) over the ordinary round-robin pick, as long as it is STILL in the
+  // real dispatch-ready set for this lane's provider — Codex/Claude sessions
+  // are account-specific, so staying on the same account is what actually
+  // lets `resumeThreadId`/`resumeSessionId` keep working across turns.
+  const pinnedAccountRefHash = store.getRuntimeDispatchAccountRefHash(row.threadId)
+  const pinnedCandidate = candidates.find(
+    (c) =>
+      c.fleetAccount.accountRefHash === pinnedAccountRefHash &&
+      c.fleetAccount.provider === provider &&
+      c.fleetAccount.readiness === "ready",
+  )
   const lastUsedAccountRefHash = options.lastDispatchedAccountByThread?.get(row.threadId)
-  const selected = selectDispatchAccount(candidates.map((c) => c.fleetAccount), {
-    provider,
-    ...(lastUsedAccountRefHash === undefined ? {} : { lastUsedAccountRefHash }),
-  })
+  const selected =
+    pinnedCandidate?.fleetAccount ??
+    selectDispatchAccount(candidates.map((c) => c.fleetAccount), {
+      provider,
+      ...(lastUsedAccountRefHash === undefined ? {} : { lastUsedAccountRefHash }),
+    })
   if (selected === undefined) {
     return {
       detail: `no dispatch-ready local ${provider === "claude_agent" ? "Claude" : "Codex"} account available`,
@@ -1115,6 +1229,20 @@ const handleTurnStart = async (
     }
   }
   options.lastDispatchedAccountByThread?.set(row.threadId, selected.accountRefHash)
+  try {
+    // Pin (or re-pin) this thread to the account just selected, whether that
+    // was the existing pin, a fresh round-robin pick, or a re-pin after the
+    // previous pin went unhealthy — see `getRuntimeDispatchAccountRefHash`'s
+    // doc. Best-effort: a failure to persist this is a lost continuity
+    // opportunity for the NEXT dispatch, never a reason to fail this one.
+    store.setRuntimeDispatchAccountRefHash(row.threadId, selected.accountRefHash)
+  } catch (error) {
+    options.log?.(
+      `runtime-intent thread=${row.threadId} failed to persist dispatch account pin: ${boundedDetail(
+        error instanceof Error ? error.message : "unknown",
+      )}`,
+    )
+  }
 
   const clientIdentity = runtimeSyncClientForTurn({ pylonRef: options.pylonRef, turnId })
   const turn: ActiveRuntimeTurn = {

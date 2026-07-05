@@ -268,7 +268,15 @@ type PlatformTruthProjection = {
   blockerRefs: string[]
 }
 
-type AccountDiscoveryTarget = {
+/**
+ * Exported (#8410 follow-up) so the runtime dispatch consumer
+ * (`apps/pylon/src/orchestration/runtime-intent-enforcement.ts`) can build one
+ * of these per registered account and reuse `readinessForTarget` below — the
+ * SAME real per-account health check `pylon accounts list`/
+ * `pylon codex accounts list` already use — instead of assuming every
+ * registered account is dispatch-ready.
+ */
+export type AccountDiscoveryTarget = {
   provider: PylonAccountProvider
   selector: "registry_ref" | "default_home"
   accountRef: string | null
@@ -733,7 +741,17 @@ export function parsePylonAccountsStatusArgs(args: string[]): PylonAccountsStatu
   return parsed
 }
 
-async function readinessForTarget(
+/**
+ * Exported (#8410 follow-up): the real per-account dispatch readiness check
+ * (Codex SDK/credential probe + the codex-account-health ledger + the quota
+ * ledger, for Codex; the Claude Agent SDK/credential probe for Claude) — the
+ * same check `pylon accounts list`/`pylon codex accounts list`/
+ * `pylon accounts status` already use. `runtime-intent-enforcement.ts`'s
+ * `candidateAccountsFromRegistry` calls this per registered account so the
+ * runtime dispatch consumer stops treating every registered account as
+ * unconditionally `ready`.
+ */
+export async function readinessForTarget(
   summary: Pick<BootstrapSummary, "paths">,
   target: AccountDiscoveryTarget,
   env: Record<string, string | undefined>,

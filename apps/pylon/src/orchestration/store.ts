@@ -1547,6 +1547,36 @@ export class PylonOrchestrationStore {
     return `runtime_claude_session_id.${threadId}`
   }
 
+  /**
+   * Pinned dispatch account for a Khala Sync thread (#8410 follow-up:
+   * thread-resume account affinity). Codex (`Codex#resumeThread`) and Claude
+   * (`options.resume`) sessions are account-specific — resuming under a
+   * DIFFERENT account than the one that created the thread/session fails
+   * cleanly (never a crash, but loses conversation context). Once a Khala
+   * thread's first `turn.start` dispatch picks an account,
+   * `handleTurnStart` pins that SAME account for every later dispatch to the
+   * thread, as long as the pinned account is still in the real dispatch-ready
+   * set (see `candidateAccountsFromRegistry`'s real per-account readiness
+   * check) — round-robin fairness ACROSS different threads is unaffected;
+   * only a single thread's account choice becomes sticky. If the pinned
+   * account becomes unhealthy (revoked/rate-limited/quota-exhausted),
+   * `handleTurnStart` falls through to ordinary `selectDispatchAccount`
+   * round-robin and RE-PINS to whichever account gets picked next — a thread
+   * is never wedged on a dead account, it just loses continuity for that one
+   * turn (an honest, logged trade-off, not a crash).
+   */
+  getRuntimeDispatchAccountRefHash(threadId: string): string | null {
+    return this.getMeta(this.runtimeDispatchAccountRefHashKey(threadId))
+  }
+
+  setRuntimeDispatchAccountRefHash(threadId: string, accountRefHash: string): void {
+    this.setMeta(this.runtimeDispatchAccountRefHashKey(threadId), accountRefHash)
+  }
+
+  private runtimeDispatchAccountRefHashKey(threadId: string): string {
+    return `runtime_dispatch_account_ref_hash.${threadId}`
+  }
+
   getRuntimeIntentOutcome(intentId: string): RuntimeIntentOutcomeRecord | null {
     const row = this.db
       .query("SELECT * FROM pylon_orchestration_runtime_intent_outcomes WHERE intent_id = $intentId")
