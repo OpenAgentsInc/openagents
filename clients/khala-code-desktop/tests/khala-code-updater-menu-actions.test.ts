@@ -5,6 +5,13 @@ import {
   KHALA_CODE_UPDATER_MENU_ACTION_RELEASE_NOTES,
   handleKhalaCodeApplicationMenuAction,
 } from "../src/bun/khala-code-updater-menu-actions"
+import {
+  KHALA_CODE_SUPPORT_MENU_ACTION_BUG_REPORT,
+  KHALA_CODE_SUPPORT_MENU_ACTION_DOCS,
+  KHALA_CODE_SUPPORT_MENU_ACTION_FEEDBACK,
+  KHALA_CODE_SUPPORT_MENU_ACTION_SUPPORT,
+  handleKhalaCodeSupportMenuAction,
+} from "../src/bun/khala-code-support-menu-actions"
 import { khalaCodeDesktopApplicationMenu } from "../src/bun/application-menu"
 
 describe("Khala Code application menu updater actions (#8440)", () => {
@@ -16,6 +23,10 @@ describe("Khala Code application menu updater actions (#8440)", () => {
     const actions = (help?.submenu ?? []).map(item => item.action)
     expect(actions).toContain(KHALA_CODE_UPDATER_MENU_ACTION_CHECK_FOR_UPDATES)
     expect(actions).toContain(KHALA_CODE_UPDATER_MENU_ACTION_RELEASE_NOTES)
+    expect(actions).toContain(KHALA_CODE_SUPPORT_MENU_ACTION_DOCS)
+    expect(actions).toContain(KHALA_CODE_SUPPORT_MENU_ACTION_SUPPORT)
+    expect(actions).toContain(KHALA_CODE_SUPPORT_MENU_ACTION_FEEDBACK)
+    expect(actions).toContain(KHALA_CODE_SUPPORT_MENU_ACTION_BUG_REPORT)
   })
 
   test("dispatches the check-for-updates action", () => {
@@ -60,5 +71,22 @@ describe("Khala Code application menu updater actions (#8440)", () => {
     expect(handleKhalaCodeApplicationMenuAction(undefined, deps)).toBe(false)
     expect(handleKhalaCodeApplicationMenuAction(null, deps)).toBe(false)
     expect(calls).toBe(0)
+  })
+
+  test("dispatches support menu actions", () => {
+    const opened: string[] = []
+    const deps = {
+      openBugReport: () => opened.push("bug"),
+      openDocs: () => opened.push("docs"),
+      openFeedback: () => opened.push("feedback"),
+      openSupport: () => opened.push("support"),
+    }
+
+    expect(handleKhalaCodeSupportMenuAction(KHALA_CODE_SUPPORT_MENU_ACTION_DOCS, deps)).toBe(true)
+    expect(handleKhalaCodeSupportMenuAction(KHALA_CODE_SUPPORT_MENU_ACTION_SUPPORT, deps)).toBe(true)
+    expect(handleKhalaCodeSupportMenuAction(KHALA_CODE_SUPPORT_MENU_ACTION_FEEDBACK, deps)).toBe(true)
+    expect(handleKhalaCodeSupportMenuAction(KHALA_CODE_SUPPORT_MENU_ACTION_BUG_REPORT, deps)).toBe(true)
+    expect(handleKhalaCodeSupportMenuAction("other", deps)).toBe(false)
+    expect(opened).toEqual(["docs", "support", "feedback", "bug"])
   })
 })

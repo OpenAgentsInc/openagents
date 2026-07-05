@@ -6562,6 +6562,43 @@ button {
   cursor: not-allowed;
   opacity: 0.52;
 }
+.khala-support-section {
+  gap: 0.7rem;
+}
+.khala-support-links,
+.khala-support-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+.khala-support-link,
+.khala-support-action {
+  padding: 0.38rem 0.58rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 68%, transparent);
+  border-radius: 0.36rem;
+  background: color-mix(in srgb, var(--oa-color-component-surface) 80%, var(--oa-color-khala-accent) 7%);
+  color: var(--oa-color-component-text);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+.khala-support-link:hover,
+.khala-support-action:hover {
+  border-color: color-mix(in srgb, var(--oa-color-khala-accent) 48%, var(--oa-color-component-border));
+}
+.khala-support-metadata {
+  max-height: 10rem;
+  margin: 0;
+  overflow: auto;
+  padding: 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--oa-color-component-border) 58%, transparent);
+  border-radius: 0.36rem;
+  background: color-mix(in srgb, var(--oa-color-component-surface) 82%, black 7%);
+  color: color-mix(in srgb, var(--oa-color-component-text) 70%, transparent);
+  font-family: var(--oa-font-mono);
+  font-size: 0.68rem;
+  white-space: pre-wrap;
+}
 
 @media (max-width: 760px) {
   .khala-settings-header {

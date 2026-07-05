@@ -1,4 +1,10 @@
 import { KHALA_CODE_UPDATER_MENU_ACTION_CHECK_FOR_UPDATES, KHALA_CODE_UPDATER_MENU_ACTION_RELEASE_NOTES } from "./khala-code-updater-menu-actions.js"
+import {
+  KHALA_CODE_SUPPORT_MENU_ACTION_BUG_REPORT,
+  KHALA_CODE_SUPPORT_MENU_ACTION_DOCS,
+  KHALA_CODE_SUPPORT_MENU_ACTION_FEEDBACK,
+  KHALA_CODE_SUPPORT_MENU_ACTION_SUPPORT,
+} from "./khala-code-support-menu-actions.js"
 
 type MenuItem =
   | { type: "divider" | "separator" }
@@ -67,6 +73,11 @@ export const khalaCodeDesktopApplicationMenu: Array<MenuItem> = [
     submenu: [
       { label: "Check for Updates…", action: KHALA_CODE_UPDATER_MENU_ACTION_CHECK_FOR_UPDATES },
       { label: "Release Notes", action: KHALA_CODE_UPDATER_MENU_ACTION_RELEASE_NOTES },
+      { type: "divider" },
+      { label: "Documentation", action: KHALA_CODE_SUPPORT_MENU_ACTION_DOCS },
+      { label: "Support", action: KHALA_CODE_SUPPORT_MENU_ACTION_SUPPORT },
+      { label: "Send Feedback", action: KHALA_CODE_SUPPORT_MENU_ACTION_FEEDBACK },
+      { label: "Report Bug", action: KHALA_CODE_SUPPORT_MENU_ACTION_BUG_REPORT },
       { type: "divider" },
       {
         label: "Restart Khala Code",

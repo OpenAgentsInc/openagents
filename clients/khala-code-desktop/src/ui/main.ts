@@ -151,6 +151,10 @@ import {
   mountKhalaCodeSessionActionsSettingsSection,
   type KhalaCodeSessionActionsSettingsSectionHandle,
 } from "./session-actions-settings-section"
+import {
+  mountKhalaCodeSupportSettingsSection,
+  type KhalaCodeSupportSettingsSectionHandle,
+} from "./support-settings-section"
 import { mountUnifiedInboxPanel } from "./inbox"
 import {
   normalizeThreadTimestampSeconds,
@@ -215,6 +219,12 @@ import {
   type KhalaCodeSessionActionKind,
   type KhalaCodeSessionActionProjection,
 } from "../shared/session-actions"
+import {
+  isKhalaCodeSupportUrlAllowed,
+  projectKhalaCodeSupportEntrypoints,
+  type KhalaCodeSupportEntrypointId,
+  type KhalaCodeSupportProjection,
+} from "../shared/support-entrypoints"
 import {
   initialKhalaCodeMainShellModel,
   shouldPollThreadTokenSummary,
@@ -5397,6 +5407,8 @@ const controls = {
   updaterDownload: () => rpc.request.updaterDownload(),
   updaterInstall: () => rpc.request.updaterInstall(),
   updaterStatus: () => rpc.request.updaterStatus(),
+  diagnosticsSnapshot: () => rpc.request.diagnosticsSnapshot(),
+  diagnosticsExport: () => rpc.request.diagnosticsExport(),
 }
 
 Object.assign(globalThis, {
@@ -5683,6 +5695,7 @@ let modelMcpPermissionSection: KhalaCodeModelMcpPermissionSettingsSectionHandle 
 let appPreferencesSection: KhalaCodeAppPreferencesSettingsSectionHandle | null = null
 let statusUsageSection: KhalaCodeStatusUsageSettingsSectionHandle | null = null
 let sessionActionsSection: KhalaCodeSessionActionsSettingsSectionHandle | null = null
+let supportSection: KhalaCodeSupportSettingsSectionHandle | null = null
 let plansSection: ReturnType<typeof mountKhalaCodePlansPanel> | null = null
 let runEvidenceSection: ReturnType<typeof mountKhalaCodeRunEvidencePanel> | null = null
 let commandRegistry: KhalaCodeCommandRegistry | null = null
@@ -5708,6 +5721,7 @@ const settingsPanel =
           appPreferencesSection?.refresh()
           void statusUsageSection?.refresh()
           void sessionActionsSection?.refresh()
+          void supportSection?.refresh()
           void plansSection?.refresh()
           void runEvidenceSection?.refresh()
           void updaterSection?.refresh()
@@ -5720,6 +5734,7 @@ const settingsPanel =
             ...(appPreferencesSection === null ? [] : [appPreferencesSection.render()]),
             ...(statusUsageSection === null ? [] : [statusUsageSection.render()]),
             ...(sessionActionsSection === null ? [] : [sessionActionsSection.render()]),
+            ...(supportSection === null ? [] : [supportSection.render()]),
           ],
         fetchModelRoles: () => controls.modelRoleRegistryRead(),
         writeModelRole: request => controls.modelRoleRegistryWrite(request),
@@ -5810,6 +5825,17 @@ sessionActionsSection = settingsPanelEl === null
   : mountKhalaCodeSessionActionsSettingsSection({
       fetch: () => projectCurrentSessionActions(),
       runAction: action => runSessionAction(action),
+    })
+supportSection = settingsPanelEl === null
+  ? null
+  : mountKhalaCodeSupportSettingsSection({
+      copyIssueMetadata: async metadata => {
+        if (navigator.clipboard === undefined) throw new Error("Clipboard is unavailable.")
+        await navigator.clipboard.writeText(metadata)
+      },
+      exportDiagnostics: () => exportSupportDiagnostics(),
+      fetch: () => projectCurrentSupportEntrypoints(),
+      open: (_id, url) => openSupportUrl(url),
     })
 claudeSettingsSection = settingsPanelEl === null
   ? null
@@ -5971,6 +5997,54 @@ const listProjectHomeSessions = async (): Promise<readonly KhalaCodeDesktopCodex
     const degraded = degradedSessionCatalog(recordBootRpcDegradedState("sessionCatalog", error))
     return degraded.entries.map(sessionCatalogEntryToThreadSummary)
   }
+}
+
+const currentActiveView = (): string => localStorage.getItem(activeViewStorageKey) ?? "chat"
+
+const projectCurrentSupportEntrypoints = async (): Promise<KhalaCodeSupportProjection> => {
+  const [updater, diagnostics] = await Promise.all([
+    controls.updaterStatus(),
+    controls.diagnosticsSnapshot().catch(() => null),
+  ])
+  return projectKhalaCodeSupportEntrypoints({
+    activeThreadPresent: shellModel().activeCodexThreadId !== null,
+    activeView: currentActiveView(),
+    diagnostics,
+    messageCount: shellModel().messages.length,
+    updater,
+  })
+}
+
+const openSupportUrl = async (url: string): Promise<boolean> => {
+  if (!isKhalaCodeSupportUrlAllowed(url)) return false
+  return controls.openExternalUrl(url)
+}
+
+const exportSupportDiagnostics = async (): Promise<{ readonly ok: boolean; readonly message: string }> => {
+  const result = await controls.diagnosticsExport()
+  if (!result.ok) return { ok: false, message: result.error }
+  return {
+    ok: true,
+    message: `Diagnostics exported (${result.archiveBytes} bytes).`,
+  }
+}
+
+const runSupportAction = async (
+  action: KhalaCodeSupportEntrypointId | "copy_issue_metadata" | "export_diagnostics",
+): Promise<void> => {
+  if (action === "export_diagnostics") {
+    await exportSupportDiagnostics()
+    void supportSection?.refresh()
+    return
+  }
+  const projection = await projectCurrentSupportEntrypoints()
+  if (action === "copy_issue_metadata") {
+    if (navigator.clipboard === undefined) return
+    await navigator.clipboard.writeText(projection.issueMetadata)
+    return
+  }
+  const entry = projection.entries.find(entry => entry.id === action)
+  if (entry !== undefined) await openSupportUrl(entry.url)
 }
 
 const projectCurrentSessionActions = async (): Promise<KhalaCodeSessionActionProjection> =>
@@ -6465,6 +6539,76 @@ commandRegistry = createKhalaCodeCommandRegistry([
     id: "palette.open",
     keywords: ["search", "commands", "actions"],
     title: "Open Command Palette",
+  },
+  {
+    analyticsRef: "khala_code.command.help.release_notes",
+    category: "help",
+    execute: () => {
+      void runSupportAction("release_notes")
+    },
+    id: "help.release_notes",
+    keywords: ["updates", "changelog"],
+    title: "Open Release Notes",
+  },
+  {
+    analyticsRef: "khala_code.command.help.docs",
+    category: "help",
+    execute: () => {
+      void runSupportAction("docs")
+    },
+    id: "help.docs",
+    keywords: ["documentation", "guide"],
+    title: "Open Docs",
+  },
+  {
+    analyticsRef: "khala_code.command.help.support",
+    category: "help",
+    execute: () => {
+      void runSupportAction("support")
+    },
+    id: "help.support",
+    keywords: ["discussion", "help"],
+    title: "Open Support",
+  },
+  {
+    analyticsRef: "khala_code.command.help.feedback",
+    category: "help",
+    execute: () => {
+      void runSupportAction("feedback")
+    },
+    id: "help.feedback",
+    keywords: ["request", "suggestion"],
+    title: "Send Feedback",
+  },
+  {
+    analyticsRef: "khala_code.command.help.bug_report",
+    category: "help",
+    execute: () => {
+      void runSupportAction("bug_report")
+    },
+    id: "help.bug_report",
+    keywords: ["issue", "error"],
+    title: "Report Bug",
+  },
+  {
+    analyticsRef: "khala_code.command.help.export_diagnostics",
+    category: "help",
+    execute: () => {
+      void runSupportAction("export_diagnostics")
+    },
+    id: "help.export_diagnostics",
+    keywords: ["logs", "debug"],
+    title: "Export Diagnostics",
+  },
+  {
+    analyticsRef: "khala_code.command.help.copy_issue_metadata",
+    category: "help",
+    execute: () => {
+      void runSupportAction("copy_issue_metadata")
+    },
+    id: "help.copy_issue_metadata",
+    keywords: ["bug report", "metadata"],
+    title: "Copy Issue Metadata",
   },
   {
     analyticsRef: "khala_code.command.view.chat",

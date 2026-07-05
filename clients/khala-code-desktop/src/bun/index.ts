@@ -68,6 +68,16 @@ import {
   handleKhalaCodeApplicationMenuAction,
 } from "./khala-code-updater-menu-actions.js"
 import {
+  handleKhalaCodeSupportMenuAction,
+} from "./khala-code-support-menu-actions.js"
+import {
+  KHALA_CODE_BUG_REPORT_URL,
+  KHALA_CODE_FEEDBACK_URL,
+  KHALA_CODE_SUPPORT_DOCS_URL,
+  KHALA_CODE_SUPPORT_URL,
+  isKhalaCodeSupportUrlAllowed,
+} from "../shared/support-entrypoints.js"
+import {
   KHALA_CODE_DESKTOP_UPDATER_DEV_CHANNEL,
   khalaCodeDesktopUpdaterDisabledLocalInfo,
 } from "../shared/updater.js"
@@ -672,9 +682,19 @@ const stopKhalaCodeUpdaterPeriodicChecks = khalaCodeUpdaterController.startPerio
 )
 ApplicationMenu.on("application-menu-clicked", event => {
   const action = event.data?.action
-  handleKhalaCodeApplicationMenuAction(action, {
+  const handledUpdater = handleKhalaCodeApplicationMenuAction(action, {
     checkForUpdates: () => khalaCodeUpdaterController.check(),
-    openReleaseNotes: () => openExternalUrl(khalaCodeUpdaterController.status().releaseNotesUrl),
+    openReleaseNotes: () => {
+      const url = khalaCodeUpdaterController.status().releaseNotesUrl
+      if (isKhalaCodeSupportUrlAllowed(url)) openExternalUrl(url)
+    },
+  })
+  if (handledUpdater) return
+  handleKhalaCodeSupportMenuAction(action, {
+    openBugReport: () => openExternalUrl(KHALA_CODE_BUG_REPORT_URL),
+    openDocs: () => openExternalUrl(KHALA_CODE_SUPPORT_DOCS_URL),
+    openFeedback: () => openExternalUrl(KHALA_CODE_FEEDBACK_URL),
+    openSupport: () => openExternalUrl(KHALA_CODE_SUPPORT_URL),
   })
 })
 

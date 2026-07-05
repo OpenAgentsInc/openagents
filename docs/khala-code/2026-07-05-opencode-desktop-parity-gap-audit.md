@@ -530,8 +530,24 @@ OpenCode surfaces product support from inside the desktop app:
 - Updater action components in settings and error surfaces.
 - Native menu item for exporting debug logs before support handoff.
 
-Khala has README/runbooks/docs and product panels, but no comparable in-app Help
-menu, release-notes dialog, or support-oriented native diagnostics action.
+Issue: add in-app release notes, help, feedback, support, and bug-report
+entrypoints ([#8466](https://github.com/OpenAgentsInc/openagents/issues/8466)).
+
+- Status: first implementation pass complete on 2026-07-05. Khala Code now has
+  a shared support-entrypoint policy, Settings > Help And Support links,
+  command-registry actions for release notes, docs, support, feedback, bug
+  report, diagnostics export, and copying issue metadata, plus native Help menu
+  entries for docs/support/feedback/bug report. Release notes reuse the #8440
+  updater status/build metadata; diagnostics export hands off to the #8441
+  debug-log service; native Help menu routing extends the #8442 menu surface.
+- Safety boundary: support URLs are allowlisted to `openagents.com` and the
+  `OpenAgentsInc/openagents` GitHub repository before opening through the
+  desktop bridge. Copied issue metadata is public-safe by construction: it
+  records version/channel/state/counts and explicitly excludes transcripts,
+  raw logs, tokens, and private local paths.
+- Remaining gaps: a richer release-notes dialog, customer-support backend,
+  automatic attachment of exported diagnostics to a support flow, and complete
+  native menu parity for every command-registry label.
 
 ### 17. Test Coverage For The Missing Surfaces
 
@@ -1021,6 +1037,10 @@ Issue: broaden settings.
 
 Issue: add help/support/release notes.
 
+- Status: first pass landed through
+  [#8466](https://github.com/OpenAgentsInc/openagents/issues/8466): allowlisted
+  support links, command-registry actions, native Help menu entries, exported
+  diagnostics handoff, and public-safe issue metadata.
 - Scope: release notes dialog, docs/support/feedback/bug links, exported logs
   entrypoint, and public-safe support metadata.
 - Acceptance gates: support flow can be used without exposing secrets, release
