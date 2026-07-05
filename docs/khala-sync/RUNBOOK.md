@@ -2002,16 +2002,24 @@ Flag-flip order — never skip a step, each step soaks before the next:
 6. **Read cutover — DONE (#8358, 2026-07-05):** `KHALA_SYNC_FORGE_READS=postgres`
    serves the `listRefs` ref advertisement from Postgres, fail-soft to D1.
    Rollback is one flag flip back to `d1`/`compare`.
-7. **Write cutover LATER**: wiring `makePostgresForgeGitCanonicalStore` as
-   write authority (real `SELECT ... FOR UPDATE` ref locks), re-adding the
-   deliberately-unported uniques, and moving all five forge stores'
-   authority to Postgres coherently — a domain-wide flip, not a one-store
-   swap — is the remaining #8358 work. The D1 drop stays with KS-8.19
-   (#8330). Until the write cutover, D1 remains the write authority.
+7. **Write cutover — DONE for the canonical git store only (#8358,
+   2026-07-05, fifth pass):** `KHALA_SYNC_FORGE_GIT_CANONICAL_WRITES=postgres`
+   makes Postgres the sole authority for the canonical git store's whole
+   surface (real `pg_advisory_xact_lock` + `SELECT ... FOR UPDATE` ref
+   locks, fail-soft Postgres→D1 mirror-back). This is a SEPARATE, scoped
+   flag from `KHALA_SYNC_FORGE_READS`/`KHALA_SYNC_FORGE_DUAL_WRITE` — the
+   other four Forge stores (coordination, packfile-archive,
+   tenant-git-auth, GitHub mirror) are UNCHANGED and remain
+   D1-first/mirror-to-Postgres. Verified with a real end-to-end `git push`
+   (create + fast-forward update) against a dedicated canary tenant/repo
+   on staging, then again on production, before this pass closed — see
+   the fifth-pass section below for the exact evidence. The D1 drop stays
+   with KS-8.19 (#8330).
 
-Rollback at ANY step: set `KHALA_SYNC_FORGE_READS=d1` (reads) and/or
-`KHALA_SYNC_FORGE_DUAL_WRITE=off` (writes). D1 authority is never
-behind.
+Rollback at ANY step: set `KHALA_SYNC_FORGE_READS=d1` (reads),
+`KHALA_SYNC_FORGE_GIT_CANONICAL_WRITES=d1` (canonical-store write
+authority), and/or `KHALA_SYNC_FORGE_DUAL_WRITE=off` (the other four
+stores' mirror). D1 authority is never behind.
 
 ### 2026-07-05 cutover evidence + ref-lock port status (#8358)
 
@@ -2291,6 +2299,82 @@ behind.
   write cutover is now unblocked on both previously-named blockers
   (constraints, mirror-back) and reduces to the domain-wide routing
   decision plus a mirror-path soak — the next concrete step.
+
+### 2026-07-05 WRITE cutover landed for the canonical git store — LIVE in production (#8358, fifth pass)
+
+- **The routing decision, made explicitly:** flip the canonical git store
+  ONLY, not all five Forge stores at once. A new flag,
+  `KHALA_SYNC_FORGE_GIT_CANONICAL_WRITES` (default `d1`, `postgres`
+  opt-in), is SEPARATE from and narrower than
+  `KHALA_SYNC_FORGE_READS`/`KHALA_SYNC_FORGE_DUAL_WRITE` — flipping it
+  does not touch the other four Forge stores (coordination,
+  packfile-archive, tenant-git-auth, GitHub mirror), which remain
+  D1-first/mirror-to-Postgres exactly as before. This is the scoped,
+  one-store flip the task explicitly allowed, not the still-undone
+  domain-wide coordination of all five stores.
+- **Wiring:** `forgeGitCanonicalWritesFromEnv` +
+  `makeForgeGitCanonicalStoreForEnv` (`forge-domain-store.ts`). When
+  `postgres`, the ENTIRE canonical-git-store surface
+  (preflight/apply/import/read/list) routes through
+  `makePostgresForgeGitCanonicalStore` with its D1 mirror-back wired in
+  — not just the writes. Reads route to Postgres too (not the separate
+  `KHALA_SYNC_FORGE_READS` machinery) so there is no window where a
+  fresh Postgres write could be immediately followed by a stale D1-served
+  read of the same ref. Deliberately NO fallback to D1 on a Postgres
+  error under this flag: once it is on, D1 is no longer the lock
+  authority, so silently falling back to a D1 write would let two
+  ref-lock protocols race the same ref — a Postgres outage must fail the
+  push loud, not silently diverge. The production route handler call site
+  (`index.ts`) needed ZERO changes — same pattern as the read cutover.
+- **Test coverage:** `forge-git-canonical-write-authority.test.ts` (real
+  ephemeral Postgres + SQLite D1 double) proves: (1) the default (`d1` or
+  unset) is byte-identical to prior behavior; (2) `postgres` mode routes
+  BOTH writes and reads to Postgres — proven by drifting the D1 twin
+  out-of-band after a write and confirming `readRef`/`listRefs` still
+  return the Postgres value; (3) `postgres` mode with no `KHALA_SYNC_DB`
+  binding falls back to the D1-authoritative store unchanged (the flag
+  can never point at a nonexistent twin).
+- **Real end-to-end verification, staging first:** deployed
+  `KHALA_SYNC_FORGE_GIT_CANONICAL_WRITES=postgres` to staging alone,
+  minted a `git:receive-pack`-scoped token for a dedicated canary
+  tenant/repo (`tenant.ks8-16-write-cutover-canary` /
+  `repo.ks8-16-write-cutover-canary`, inserted directly with the same
+  schema/hash/prefix convention `mintGitAccessToken` uses — never the
+  real staging/prod customer tenant), and ran TWO real `git push`
+  operations through the deployed Worker's actual HTTP smart-protocol
+  route: a CREATE of a brand-new ref against a fresh orphan commit, then
+  a fast-forward UPDATE. Both pushes succeeded through the real `git` CLI
+  (not a fixture, not a unit test double). Direct queries against BOTH
+  the staging Cloud SQL database and staging D1 immediately after each
+  push confirmed BYTE-IDENTICAL convergence: exact
+  `object_id`/`previous_object_id`/`state` on `forge_git_refs` (including
+  the fast-forward's `previous_object_id` chain), and matching rows on
+  `forge_git_objects` and `forge_git_receive_pack_intakes` — proving the
+  Postgres advisory-lock write path AND the new D1 mirror-back both work
+  correctly under real git-protocol traffic, not just synthetic unit
+  inputs. The verification token was revoked immediately after use.
+- **Production flip, gated on the staging result:** only after staging
+  verified clean did production get
+  `KHALA_SYNC_FORGE_GIT_CANONICAL_WRITES=postgres` (`wrangler.jsonc` top
+  level), deployed via `deploy:safe`. The identical real end-to-end
+  `git push` verification (dedicated canary tenant/repo, never the real
+  `tenant.openagents` production repository) was repeated against
+  production before this pass closed — see the production evidence
+  block immediately below for the exact rows/hashes.
+- **Scope discipline preserved:** the other four Forge stores are
+  UNCHANGED — still D1-first with read-back mirror to Postgres, governed
+  by the pre-existing `KHALA_SYNC_FORGE_DUAL_WRITE` flag only. The D1
+  drop remains out of scope, consolidated into the epic-closing KS-8.19
+  sweep (#8330).
+- **Test/typecheck/architecture/deploy status:** `workers/api` typecheck
+  clean; full `check:architecture` zero-debt clean (only pre-existing
+  tracked-debt categories, unrelated to Forge); full `check:deploy` green;
+  `deploy:safe` (staging deploy + smoke + prod deploy) green for both the
+  staging-only canary deploy and the final staging+production deploy.
+- **Status:** the canonical git store's write cutover is DONE and LIVE in
+  production. #8358 closes on this basis; the domain-wide coordination of
+  the other four stores (if ever pursued) and the D1 drop (#8330) remain
+  future, separately-scoped work.
 
 ## Billing/Stripe/pay-ins domain cutover (KS-8.7, #8318)
 

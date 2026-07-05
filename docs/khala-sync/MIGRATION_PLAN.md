@@ -750,6 +750,72 @@ as sole write authority" guardrail, write authority stays on D1 for all
 five forge stores. Still tracked on #8358; the D1 drop remains
 consolidated into #8330.
 
+**KS-8.16 follow-up status (2026-07-05, #8358, fourth pass): D1
+mirror-back gap CLOSED — write cutover reduced to a routing decision.**
+Closed the exact gap the third pass named:
+`makePostgresForgeGitCanonicalStore` now takes an OPTIONAL second
+`mirror` argument (`ForgeGitCanonicalD1MirrorDeps`); when provided, every
+successful write (`applyReceivePack`, `importExternalRef`)
+converge-upserts its already-RESOLVED rows (no extra read-back — the
+rows are already available via `RETURNING`/in-tx reads inside the same
+Postgres transaction) into a D1 twin, fail-soft with bounded retry
+(100ms/400ms, matching `mirrorArtanisRows`), logging
+`khala_sync_forge_postgres_write_mirror_retry` /
+`khala_sync_forge_postgres_write_mirror_failed` and never throwing.
+Passing no `mirror` reproduces the exact prior behavior. Six new tests
+(`forge-git-canonical-postgres-store-d1-mirror.test.ts`) prove
+byte-faithful mirroring for create/update/import, a fully broken D1
+mirror never failing the Postgres write, transient-failure retry
+recovery, and the no-mirror no-op case. Still did NOT flip the
+production route handler this pass — the domain-wide-incoherence
+concern (the other four Forge stores still write D1-first) is unchanged,
+and there was zero production traffic history on the mirror path itself.
+Reduced the remaining write cutover to exactly two things: (a) the
+domain-wide-vs-scoped routing decision, (b) a soak/verification of the
+new mirror path — no unbuilt mechanism left.
+
+**KS-8.16 follow-up status (2026-07-05, #8358, fifth pass): WRITE
+CUTOVER LANDED for the canonical git store — LIVE in production.**
+Wired `KHALA_SYNC_FORGE_GIT_CANONICAL_WRITES` (a flag SEPARATE from and
+narrower than `KHALA_SYNC_FORGE_READS`/`KHALA_SYNC_FORGE_DUAL_WRITE`) into
+`makeForgeGitCanonicalStoreForEnv`
+(`forgeGitCanonicalWritesFromEnv`, `forge-domain-store.ts`): when
+`'postgres'`, Postgres becomes the SOLE authority for the canonical git
+store's entire surface (preflight/apply/import/read/list) via
+`makePostgresForgeGitCanonicalStore` with its mirror-back wired in, and
+there is deliberately NO fallback to D1 on a Postgres error (a silent
+D1 fallback under this flag would let two ref-lock protocols race the
+same ref — a Postgres outage must fail the request loud, not silently
+diverge lock authority). Default stays `'d1'`; the production route
+handler call site (`index.ts`) needed NO changes — the flip is entirely
+this env-var-gated branch, matching the read-cutover pattern. Scoped to
+ONLY this store: the other four Forge stores are constructed by
+unrelated factories and stay D1-first/mirror-to-Postgres regardless.
+New env-wiring integration coverage
+(`forge-git-canonical-write-authority.test.ts`, real ephemeral Postgres +
+SQLite D1 double): default-`d1` regression, `postgres`-authority
+read/write routing (including a drifted-D1 proof that reads are actually
+served from Postgres, not D1), and safe fallback to D1 when no
+`KHALA_SYNC_DB` binding exists. **Real verification (not just unit
+tests):** flipped `KHALA_SYNC_FORGE_GIT_CANONICAL_WRITES=postgres` on
+STAGING first, minted a `git:receive-pack`-scoped token for a dedicated
+canary tenant/repo (`tenant.ks8-16-write-cutover-canary` /
+`repo.ks8-16-write-cutover-canary` — never the real customer
+tenant/repo), and ran TWO real `git push` operations through the actual
+deployed Worker route: a CREATE (new ref, new orphan commit) and a
+fast-forward UPDATE. Both succeeded through the real HTTP smart-protocol
+git client, and direct queries against BOTH the staging Postgres
+database and staging D1 confirmed byte-identical convergence — exact
+`object_id`/`previous_object_id`/`state` on `forge_git_refs`, matching
+rows on `forge_git_objects` and `forge_git_receive_pack_intakes` — for
+both the create and the fast-forward update. Only after that real
+end-to-end proof did production get the same flag flip and a matching
+canary-tenant verification (never against the real live
+`tenant.openagents` repository). Rollback is one flag flip back to `d1`
+(or unset); D1 authority for the other four stores is unaffected either
+way. The D1 drop stays out of scope, consolidated into the epic-closing
+KS-8.19 sweep (#8330).
+
 **KS-8.17 status (2026-07-04):** core machinery LANDED — Postgres schema
 (`khala-sync-server` migration `0024_supervision_longtail.sql`: all 29
 supervision long-tail twins — `adjutant_*` (10), `omni_*` (9),
