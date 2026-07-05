@@ -951,6 +951,40 @@ inventoried (see MIGRATION_PLAN.md §3.6 KS-8.9 decommission follow-up
 status) but not implemented — the call sites need env/flag threading
 through several existing Effect-based modules and stay a follow-up.
 
+**#8336 status, part 2 (2026-07-05): bounded non-gate read allowlist,
+following the KS-8.14 business-domain precedent (#8360).** A per-call-site
+review found most of the inventoried "non-gate reads" were actually
+enforcement/idempotency hazards (agent-search rate-limit/dedupe reads,
+agent-rate-limit-recovery redemption-validity reads, read-your-own-write
+grant read-backs) — those stay D1-only PERMANENTLY, same discipline as
+`KHALA_SYNC_ENTITLEMENTS_READS` itself. The genuinely safe subset — three
+public-projection reads that decide nothing — is now bounded-served for
+real, through a brand-new, FULLY INDEPENDENT flag:
+
+- `KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS` (d1|compare|postgres, default
+  d1) governs ONLY `countActiveOrangeChecks`, `readActiveOrangeCheckByActorRef`
+  (`orange-check-entitlements.ts`), and `readPublicPrivacyReceipt`
+  (`inference-privacy-receipt-routes.ts`). It is independent of
+  `KHALA_SYNC_ENTITLEMENTS_READS`, which stays at its default `d1` — this
+  pass does NOT flip the enforcement-gate flag.
+- `postgres` mode REALLY serves these three from Postgres (single-attempt
+  D1 fallback + diagnostic on error) — safe here, unlike the gate reads,
+  because none of the three decides an allow/deny/consume outcome.
+- Production evidence (2026-07-05): fresh backfill sweep + `--restart`
+  catch-up + `--verify` — VERIFY OK, all 28 tables exact
+  (`orange_check_entitlements` d1=2/postgres=2). Contract-suite coverage
+  proves real D1-vs-Postgres answer parity for the orange-check reads and
+  BOTH privacy-receipt kinds (entitlement + confidential-compute).
+- Flag-flip sequence (mirrors the business-funnel precedent): deploy with
+  the flag unset (default `d1`) → flip `compare` → brief soak (watch
+  `khala_sync_entitlements_non_gate_read_compare_mismatch`) → flip
+  `postgres` → brief soak (watch
+  `khala_sync_entitlements_non_gate_postgres_read_fallback`) → live smokes
+  on `/api/forum/launch-status` and an agent profile page. Recorded on
+  epic #8282 with the exact commits/Worker versions.
+- Rollback at any point: `KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS=d1`. This
+  can NEVER affect enforcement — the flag only touches display reads.
+
 Rollback at ANY step: set `KHALA_SYNC_ENTITLEMENTS_READS=d1` (reads)
 and/or `KHALA_SYNC_ENTITLEMENTS_DUAL_WRITE=off` (writes). D1 authority is
 never behind.

@@ -319,6 +319,92 @@ explicitly DEFERRED to KS-8.19
 than done per-domain here, superseding the #8336 issue text's original
 "drop the D1 tables" ask. #8336 stays open with this status.
 
+**KS-8.9 decommission follow-up, part 2 (2026-07-05, #8336): bounded
+non-gate read allowlist, following the KS-8.14 business-domain precedent
+(#8360).** On closer per-call-site review, the "route the non-gate reads to
+Postgres" item above turned out to be mostly enforcement/idempotency
+hazards in disguise, not display reads:
+
+- `countProviderRequestsSince` / `countQuotaEventsSince` /
+  `readRequestByIdempotencyKeyHash` / `consumeEntitlement`
+  (`agent-search.ts`) all decide a rate-limit, dedupe, or consume outcome —
+  a lagging Postgres read could allow a double provider call or a double
+  charge. `readFreshCache` is lower-risk but still a
+  serve-vs-re-query-provider decision. All stay D1-only permanently.
+- `readChallengeById` / `readChallengeByIdempotencyKeyHash` /
+  `readEntitlementByRef` / `readReceiptByRef` / `readRedemptionByChallengeId`
+  (`agent-rate-limit-recovery.ts`) validate redemption/entitlement legitimacy
+  before a consume — same hazard class. Stay D1-only permanently.
+- The two reads sometimes shorthanded as "admin/list reads for premium
+  allowlist + operator exemption" turned out to BE the two existing
+  enforcement gate reads (`premiumAllowlisted` / `operatorExempt`) — no
+  separate admin/list route exists in source today. Already governed by
+  `KHALA_SYNC_ENTITLEMENTS_READS`, unchanged.
+- `khala-code-paid-plan-payments.ts`'s reads are against
+  `khala_code_paid_plan_payment_intents`, a KS-8.7 BILLING-domain table
+  (imports `BillingDomainMirror`, not this domain's mirror) — out of scope
+  for KS-8.9 entirely; it does call this domain's
+  `grantPaidPrivacyEntitlement` for the write-side fulfillment step, but
+  that is a write, not a read.
+- `grantPaidPrivacyEntitlement`'s and
+  `recordConfidentialComputeExecutionReceipt`'s own read-backs
+  (`inference-privacy-receipt-routes.ts`) read the row the SAME request just
+  wrote to D1, before the async mirror could possibly have landed it in
+  Postgres — read-your-own-write hazard, stays D1-only permanently.
+
+What remained after that filter was genuinely safe: THREE public-projection
+reads that decide nothing —
+`orange-check-entitlements.ts`'s `countActiveOrangeChecks` (public stat) and
+`readActiveOrangeCheckByActorRef` (public badge lookup), and
+`inference-privacy-receipt-routes.ts`'s `readPublicPrivacyReceipt` (the
+public `/api/public/inference/privacy-receipts/{receiptRef}` GET
+projection). Landed in
+`apps/openagents.com/workers/api/src/inference-entitlements-store.ts`:
+
+- A brand-new, FULLY INDEPENDENT flag,
+  `KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS` (d1|compare|postgres, default
+  d1) — flipping it can never move `KHALA_SYNC_ENTITLEMENTS_READS` (the six
+  enforcement gate reads), and vice versa. The enforcement flag is left
+  UNTOUCHED at its default `d1` — this pass does not attempt the multi-hour
+  representative soak that changing the ALLOW/DENY authority would need.
+- `InferenceEntitlementsNonGateReads` + `makeD1InferenceEntitlementsNonGateReads`
+  + the Postgres side in `makePostgresInferenceEntitlementsStore` + the
+  three-mode router `makeRoutedEntitlementsNonGateReads` (d1 — untouched
+  inline reads; compare — D1-serve + off-path Postgres shadow-compare,
+  logging `khala_sync_entitlements_non_gate_read_compare_mismatch`;
+  postgres — REAL Postgres serve with single-attempt D1 fallback + the
+  `khala_sync_entitlements_non_gate_postgres_read_fallback` diagnostic —
+  safe to actually serve here because none of the three decides an
+  allow/deny/consume outcome).
+- Wired at all 5 call sites (`orange-check-entitlements.ts`'s two functions
+  gained an optional `nonGateReads` param; `forum-routes.ts`'s
+  `ForumRouteDependencies` gained `entitlementsNonGateReads`, threaded
+  through `orangeCheckNostrExportResponse`, `agentProfileResponse`,
+  `agentProfilePageResponse`, the post-detail author-badge read, and the
+  `/api/forum/launch-status` count; `inference-privacy-receipt-routes.ts`'s
+  `PrivacyReceiptRoutesDeps` gained `nonGateReads`, threaded through
+  `handlePublicPrivacyReceiptRead`); `index.ts` constructs it from
+  `makeInferenceEntitlementsRoutingForEnv(env)?.nonGateReads` at both call
+  sites. Absent/`'d1'` ⇒ byte-identical inline D1 behavior everywhere.
+- Contract-suite coverage
+  (`inference-entitlements-repository.contract.test.ts`): a NEW test proves
+  real D1-vs-Postgres ANSWER parity (not just decision parity) for the
+  orange-check count/lookup and BOTH privacy-receipt kinds (entitlement +
+  confidential-compute), including the not-found case on each side. Unit
+  coverage (`inference-entitlements-store.test.ts`) pins the flag's
+  independence from `reads`, the router's own (distinct) diagnostic event
+  names, and real-serve-with-fallback behavior.
+- Production evidence (2026-07-05): fresh backfill sweep + `--restart`
+  catch-up sweep + `--verify` against `khala_sync_prod` — VERIFY OK, exact
+  counts on all 28 tables (`orange_check_entitlements` d1=2/postgres=2,
+  `inference_privacy_entitlement_receipts` and
+  `inference_confidential_compute_execution_receipts` d1=0/postgres=0 — the
+  privacy-receipt endpoint carries zero production traffic today, so its
+  real-serve path is proven by the contract suite, not live volume),
+  newest-50 hashes match, all three tally=SUM(events) invariants exact.
+- Deploy + flag-flip decision recorded on epic
+  [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
+
 **KS-8.7 status (2026-07-04):** machinery LANDED — Postgres schema
 (`khala-sync-server` migration `0015_billing_pay_ins.sql`: the 22 live
 billing/Stripe/pay-ins/buyer-payment tables; the
