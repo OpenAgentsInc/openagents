@@ -63,6 +63,12 @@ export * from "./agent-run.js"
 // window). Self-contained module (no cycle).
 export * from "./tokens-served-mix.js"
 
+// Public activity-timeline stored-snapshot entity contract (KS-6.7b, #8421):
+// post-image shape for scope.public.activity-timeline (one whole-window
+// snapshot entity refreshed on a cron tick, not event-sourced — see the
+// module doc for why). Self-contained module (no cycle).
+export * from "./activity-timeline-snapshot.js"
+
 // ---------------------------------------------------------------------------
 // Branded primitives
 // ---------------------------------------------------------------------------

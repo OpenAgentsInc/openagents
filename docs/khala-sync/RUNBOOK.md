@@ -3343,16 +3343,105 @@ posture does not apply here.
   originally named in #8417), and history (default `America/Chicago`
   timezone + `day` bucket only; other timezones always fail open to the
   live ledger read, since only the default is refreshed today).
-- **Deferred:** `public-activity-timeline(-routes).ts` is NOT covered by
-  this change. Unlike the tokens-served group, it has no KS-8.2 rollup
-  twin — it live-merges five separate source domains (forum topics/posts,
-  Artanis ticks, Pylon capacity funnel snapshots, inference receipts, Pylon
-  API events, training-run-window authority) with no single clean
-  event-sourced write hook. Building a `scope.public.activity-timeline`
-  projection is a materially larger, unprecedented design problem (a new
-  five-domain event-sourced projector or a periodic rebuild-on-cron
-  approach) that was deliberately left for a follow-up rather than shipped
-  shallow. See #8417's tracking comment for the split rationale.
+- **Deferred (resolved by KS-6.7b, #8421):** `public-activity-timeline(-routes).ts`
+  was NOT covered by this change — see the "Public activity-timeline
+  projection" section below for how that follow-up was actually resolved
+  (a rebuild-on-cron snapshot, not an event-sourced projector).
+
+## Public activity-timeline projection — rebuild-on-cron, full coverage (KS-6.7b, #8421)
+
+The public activity timeline (`GET /api/public/activity-timeline`) now
+serves a `scope.public.activity-timeline` STORED-SNAPSHOT projection first,
+with a fail-open fallback to the previous live-at-read merge when no
+snapshot has been projected yet (or the stored one is too old — see below).
+This is the deferred follow-up to KS-6.7 (#8417): unlike the tokens-served
+group, this endpoint has no KS-8.2 rollup twin — it live-merges SEVEN
+separate source stores (Pylon registrations/presence, training run/window/
+lease/verification authority, settlement receipts, inference receipts,
+forum topics/posts, Artanis admin ticks, Pylon capacity funnel snapshots)
+with no single shared write-site hook an event-driven producer could tap.
+
+**Design decision: REBUILD-ON-CRON, not event-sourced.** #8417/#8421 named
+three acceptable outcomes: (a) a partial event-sourced projection over
+whichever domains have clean write hooks, (b) a periodic rebuild-on-cron
+snapshot, or (c) staying live-at-read with documented reasoning. After
+inspecting all seven source stores' write sites, NONE has a single clean
+"one function writes this row" hook comparable to settled-feed's
+`publishSettledFeedEvents` or gym-run-progress's per-run snapshot call —
+Pylon registrations, training windows/leases/challenges, and forum
+posts/topics are each written from several call sites across several
+modules. Building seven separate event-driven hooks (or accepting a
+partial-coverage subset and flagging the gap) was worse than option (b):
+this Worker already runs a `* * * * *` (per-minute) `scheduled()` cron, so
+periodically re-running the EXACT SAME merge function the live route calls
+and storing its full output is simpler, has ZERO partial-coverage caveat to
+carry (every request against the projection gets ALL seven domains, not a
+subset), and stays byte-for-byte comparable to a fresh live call by
+construction.
+
+**Design — no separate shaping logic, no new Postgres table:**
+
+- Contract: `packages/khala-sync/src/activity-timeline-snapshot.ts` — ONE
+  entity (`activity_timeline_snapshot`, `entityId = "current"`) holding the
+  whole bounded recent-event window (`events` + `sourceLag` + `generatedAt`).
+  Self-contained (does not import `@openagentsinc/public-activity-timeline`;
+  it re-declares the same bounded event/source-lag shape, same "no cross-
+  feature-package dependency" discipline as every other khala-sync entity
+  module).
+- Projector + reader: `packages/khala-sync-server/src/
+  activity-timeline-projection.ts` — same "no bespoke table, ride the
+  generic `khala_sync_changelog` directly" shape as settled-feed/gym
+  run-progress/tokens-served-mix (**no new migration required**). One
+  upsert per refresh; the read is the latest row for the single entity.
+- Worker glue: `workers/api/src/khala-sync-public-activity-timeline.ts` —
+  `refreshActivityTimelineSnapshotBestEffort` calls
+  `buildPublicActivityTimelineRawSnapshot` (the SAME merge function the live
+  route calls, refactored out of `public-activity-timeline.ts` so the live
+  path and the cron refresh share ONE implementation — see that module's
+  `buildPublicActivityTimelineRawSnapshot` / `paginatePublicActivityTimelineEnvelope`
+  split) against the real D1-backed source stores, then upserts the whole
+  result. Because the post-image IS the live merge's own output, the
+  projection and a fresh live call stay byte-for-byte comparable by
+  construction — verified by
+  `packages/khala-sync-server/src/activity-timeline-projection.test.ts`'s
+  local-Postgres integration block (write via the projector, read back,
+  assert equality against the exact input).
+- **Refresh trigger:** the Worker's existing per-minute `scheduled()` cron
+  tick (`index.ts`), NOT a per-ingest write hook — see the design-decision
+  note above for why. Debounced in-isolate
+  (`ACTIVITY_TIMELINE_SNAPSHOT_REFRESH_MIN_INTERVAL_MS = 45_000`) as a
+  defensive guard against duplicate/concurrent cron dispatch on the same
+  tick, not the primary cadence driver (the cron period itself is).
+- **Reader:** the route reads its snapshot through a small in-isolate cache
+  (`ACTIVITY_TIMELINE_SNAPSHOT_CACHE_TTL_MS = 2_000`) with a `stored_snapshot`
+  staleness contract declaring
+  `ACTIVITY_TIMELINE_SNAPSHOT_MAX_STALENESS_SECONDS = 90` (a 60s cron period
+  + margin) — **not** just the 2s read-cache TTL. This is a deliberate
+  correction versus how KS-6.7's tokens-served-mix labeled its contract:
+  that projection is event-driven (refreshed on every real ingest, debounced
+  only as a ceiling), so its 2s label described cache-vs-store skew, not true
+  data age. This projection's true staleness driver IS the cron period, so
+  the label reflects that honestly. A second, harder ceiling
+  (`ACTIVITY_TIMELINE_SNAPSHOT_HARD_STALE_SECONDS = 300`) fails the read open
+  to the live merge if the stored snapshot is older than 5 minutes (cron
+  broken, binding removed, bad deploy) rather than silently serving stale
+  data as current. FAIL OPEN (to the previous live-at-read merge,
+  `live_at_read` / all seven source stores) on any miss: binding absent,
+  Postgres unreachable, no snapshot projected yet, or the hard-stale ceiling
+  exceeded.
+- **Coverage:** FULL — every request served from the projection carries ALL
+  SEVEN source domains (no partial/shallow subset), because the stored
+  snapshot's post-image is the exact same envelope the live route would
+  compute at that instant. There is no `coverage`/`sourcesIncluded` response
+  field to add, since there is no partial-coverage case to flag.
+- **Scope:** covers the plain polled JSON `GET /api/public/activity-timeline`
+  route only. `GET /api/public/activity-timeline/stream` (the SSE tail) is
+  DELIBERATELY left live-at-read: a periodic snapshot with ~90s staleness is
+  the wrong fit for a live-tail stream whose whole purpose is per-event
+  freshness; only the plain polled JSON GET benefits from the stored-
+  snapshot cutover. Neither route rides `/api/sync/connect`, so the
+  anonymous-actor-required wall that forced KS-6.4/KS-6.5 into a dual-write
+  posture does not apply to either.
 
 ## Gym run-progress public projection — dual-write only, NOT a cutover (KS-6.5, #8415)
 

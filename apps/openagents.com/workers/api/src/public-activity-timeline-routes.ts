@@ -8,17 +8,28 @@ import { readArtanisTickMonitor } from './artanis-tick-monitor'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { makeD1InferenceReceiptStore } from './inference-receipts'
 import { parseJsonRecord, parseJsonStringArray } from './json-boundary'
+import type { KhalaSyncHyperdriveBinding } from './khala-sync-push-routes'
+import {
+  ACTIVITY_TIMELINE_SNAPSHOT_MAX_STALENESS_SECONDS,
+  ACTIVITY_TIMELINE_SNAPSHOT_REBUILDS_ON,
+  activityTimelineRawSnapshotFromEntity,
+  readActivityTimelineSnapshotCached,
+  type ActivityTimelineReadDeps,
+} from './khala-sync-public-activity-timeline'
 import { makeD1NexusTreasuryPayoutLedgerStore } from './nexus-treasury-payout-ledger'
 import {
   buildPublicActivityTimelineEnvelope,
+  paginatePublicActivityTimelineEnvelope,
   publicActivityTimelineQueryFromUrl,
   type PublicActivityTimelineArtanisStore,
   type PublicActivityTimelineCapacityStore,
   type PublicActivityTimelineForumRecord,
   type PublicActivityTimelineForumStore,
   type PublicActivityTimelineInferenceReceiptStore,
+  type PublicActivityTimelineRawSourceInput,
   type PublicActivityTimelineSourceInput,
 } from './public-activity-timeline'
+import { storedSnapshotStaleness } from './public-projection-staleness'
 import { makeD1PylonApiStore } from './pylon-api'
 import {
   makeD1PylonCapacityFunnelSnapshotStore,
@@ -30,6 +41,10 @@ import { makeD1TrainingAuthorityStore } from './training-run-window-authority'
 type PublicActivityTimelineRouteInput = Readonly<
   PublicActivityTimelineSourceInput & {
     OPENAGENTS_DB?: D1Database
+    /** `env.KHALA_SYNC_DB` — absent until the binding is deployed. */
+    KHALA_SYNC_DB?: KhalaSyncHyperdriveBinding
+    /** Injectable projection-read seam (tests). */
+    projectionReadDeps?: Omit<ActivityTimelineReadDeps, 'binding'>
   }
 >
 
@@ -177,12 +192,17 @@ export const makeD1PublicActivityTimelineCapacityStore = (
   }
 }
 
-const buildPublicActivityTimelineEnvelopeForRequest = async (
-  request: Request,
+/**
+ * Build the real D1-backed source-store bundle (KS-6.7b, #8421) shared by:
+ *  - the live per-request path below (adds the request's `query`), and
+ *  - the cron-rebuild projection glue
+ *    (`khala-sync-public-activity-timeline.ts`'s `refreshActivityTimelineSnapshotBestEffort`),
+ *    which needs the EXACT same store construction (no drift between what
+ *    the live route reads and what the periodic snapshot rebuild reads).
+ */
+export const publicActivityTimelineRawSourceInputForRequest = (
   input: PublicActivityTimelineRouteInput,
-  query: Exclude<ReturnType<typeof publicActivityTimelineQueryFromUrl>, Response>,
-): Promise<PublicActivityTimelineEnvelope> => {
-  void request
+): PublicActivityTimelineRawSourceInput => {
   const db = input.OPENAGENTS_DB ?? undefined
   const nowIso = input.nowIso?.() ?? currentIsoTimestamp()
   const artanisStore =
@@ -209,16 +229,28 @@ const buildPublicActivityTimelineEnvelopeForRequest = async (
   const trainingStore =
     input.trainingStore ??
     (db === undefined ? undefined : makeD1TrainingAuthorityStore(db))
-  const sourceInput: PublicActivityTimelineSourceInput = {
+
+  return {
     ...(artanisStore === undefined ? {} : { artanisStore }),
     ...(capacityStore === undefined ? {} : { capacityStore }),
     ...(forumStore === undefined ? {} : { forumStore }),
     ...(inferenceReceiptStore === undefined ? {} : { inferenceReceiptStore }),
     nowIso: () => nowIso,
     ...(pylonStore === undefined ? {} : { pylonStore }),
-    query,
     ...(receiptStore === undefined ? {} : { receiptStore }),
     ...(trainingStore === undefined ? {} : { trainingStore }),
+  }
+}
+
+const buildPublicActivityTimelineEnvelopeForRequest = async (
+  request: Request,
+  input: PublicActivityTimelineRouteInput,
+  query: Exclude<ReturnType<typeof publicActivityTimelineQueryFromUrl>, Response>,
+): Promise<PublicActivityTimelineEnvelope> => {
+  void request
+  const sourceInput: PublicActivityTimelineSourceInput = {
+    ...publicActivityTimelineRawSourceInputForRequest(input),
+    query,
   }
 
   return buildPublicActivityTimelineEnvelope(sourceInput)
@@ -238,6 +270,32 @@ export const handlePublicActivityTimelineApi = (
   }
 
   return Effect.promise(async () => {
+    // KS-6.7b (#8421): projection FIRST, fail-open fallback to the existing
+    // live-at-read merge on any miss (binding absent, Postgres unreachable,
+    // no snapshot projected yet, or the stored snapshot exceeds the hard
+    // stale ceiling) — same discipline as KS-6.7's tokens-served-aggregates
+    // routes. The SSE stream route below intentionally stays live-at-read
+    // (see its own comment): a periodic snapshot is the wrong fit for a
+    // live-tail stream, only for the plain polled JSON GET here.
+    const snapshot = await readActivityTimelineSnapshotCached({
+      binding: input.KHALA_SYNC_DB,
+      ...input.projectionReadDeps,
+    })
+
+    if (snapshot !== undefined) {
+      const envelope = paginatePublicActivityTimelineEnvelope(
+        activityTimelineRawSnapshotFromEntity(snapshot),
+        query,
+        {
+          staleness: storedSnapshotStaleness(
+            ACTIVITY_TIMELINE_SNAPSHOT_MAX_STALENESS_SECONDS,
+            ACTIVITY_TIMELINE_SNAPSHOT_REBUILDS_ON,
+          ),
+        },
+      )
+      return noStoreJsonResponse(envelope)
+    }
+
     const envelope = await buildPublicActivityTimelineEnvelopeForRequest(
       request,
       input,

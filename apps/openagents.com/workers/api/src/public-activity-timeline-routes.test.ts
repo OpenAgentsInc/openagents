@@ -5,8 +5,13 @@ import {
   publicActivityTimelineSourceKinds,
   type PublicActivityTimelineEnvelope,
 } from '@openagentsinc/public-activity-timeline'
+import type { SyncSql, SyncTransactionSql } from '@openagentsinc/khala-sync-server'
+import { projectActivityTimelineSnapshotBestEffort } from '@openagentsinc/khala-sync-server'
 import { Effect } from 'effect'
-import { describe, expect, test } from 'vitest'
+import { beforeEach, describe, expect, test } from 'vitest'
+
+import { invalidateActivityTimelineSnapshotCacheForTests } from './khala-sync-public-activity-timeline'
+import type { KhalaSyncPushSqlClient } from './khala-sync-push-routes'
 
 import type {
   InferenceReceiptRecord,
@@ -904,5 +909,167 @@ describe('public activity timeline route', () => {
     expect(invalidKind.status).toBe(400)
     expect(invalidSource.status).toBe(400)
     expect(method.status).toBe(405)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// KS-6.7b (#8421): scope.public.activity-timeline stored-snapshot projection
+// read path — projection-hit serves a stored_snapshot-labeled envelope from
+// ONE cached Postgres row; any miss (no binding, unprojected, broken client)
+// fails open to the exact same live merge exercised by the tests above.
+// ---------------------------------------------------------------------------
+
+type ChangelogRow = {
+  scope: string
+  entityType: string
+  entityId: string
+  version: number
+  postImageJson: string | null
+}
+
+const makeFakePg = (): { sql: SyncSql; rows: Array<ChangelogRow> } => {
+  const rows: Array<ChangelogRow> = []
+  let lastVersion = 0
+
+  const run = async (
+    strings: TemplateStringsArray,
+    ...values: ReadonlyArray<unknown>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ): Promise<any> => {
+    const text = strings.join('?')
+    if (text.includes('INSERT INTO khala_sync_scopes')) {
+      lastVersion += 1
+      return [{ last_version: lastVersion }]
+    }
+    if (text.includes('INSERT INTO khala_sync_changelog')) {
+      rows.push({
+        entityId: String(values[3]),
+        entityType: String(values[2]),
+        postImageJson: values[5] === null ? null : String(values[5]),
+        scope: String(values[0]),
+        version: Number(values[1]),
+      })
+      return [{ committed_at: nowIso }]
+    }
+    if (text.includes('SELECT post_image_json')) {
+      const entityType = String(values[1])
+      const entityId = String(values[2])
+      const matches = rows
+        .filter(r => r.entityType === entityType && r.entityId === entityId)
+        .sort((a, b) => b.version - a.version)
+      const top = matches[0]
+      return top === undefined ? [] : [{ post_image_json: top.postImageJson }]
+    }
+    throw new Error(`fake pg: unscripted statement: ${text.slice(0, 120)}`)
+  }
+
+  const sql = run as unknown as SyncSql & {
+    begin: <A>(fn: (tx: SyncTransactionSql) => Promise<A>) => Promise<A>
+  }
+  ;(sql as { begin: unknown }).begin = async <A>(
+    fn: (tx: SyncTransactionSql) => Promise<A>,
+  ): Promise<A> => fn(run as unknown as SyncTransactionSql)
+
+  return { rows, sql: sql as SyncSql }
+}
+
+const clientFor = (sql: SyncSql): KhalaSyncPushSqlClient => ({
+  end: async () => undefined,
+  sql,
+})
+
+const binding = { connectionString: 'postgres://hyperdrive-fake' }
+
+describe('public activity timeline route — projection read path', () => {
+  beforeEach(() => {
+    invalidateActivityTimelineSnapshotCacheForTests()
+  })
+
+  test('serves the stored snapshot with a stored_snapshot staleness label on a projection hit', async () => {
+    const { sql } = makeFakePg()
+    const seeded = await projectActivityTimelineSnapshotBestEffort(sql, {
+      events: [
+        {
+          blockerRefs: [],
+          caveatRefs: [],
+          cursor: `${nowIso}:forum:event.public.forum_topic.projected`,
+          eventRef: 'event.public.forum_topic.projected',
+          kind: 'forum_topic_created',
+          refs: ['topic:projected'],
+          sourceKind: 'forum',
+          sourceRefs: ['topic:projected', 'route:/api/forum'],
+          text: 'Public Forum topic created.',
+          ts: nowIso,
+        },
+      ],
+      generatedAt: nowIso,
+      sourceLag: [
+        {
+          blockerRefs: [],
+          caveatRefs: [],
+          lagSeconds: 0,
+          latestSourceEventAt: nowIso,
+          maxStalenessSeconds: 600,
+          observedAt: nowIso,
+          sourceKind: 'forum',
+          sourceRefs: ['route:/api/forum'],
+          status: 'current',
+        },
+      ],
+    })
+    expect(seeded.ok).toBe(true)
+
+    const response = await route('/api/public/activity-timeline', {
+      KHALA_SYNC_DB: binding,
+      projectionReadDeps: {
+        makeSqlClient: async () => clientFor(sql),
+        nowIso: () => nowIso,
+      },
+    })
+    const body = await decode(response)
+
+    expect(response.status).toBe(200)
+    expect(body.staleness.composition).toBe('stored_snapshot')
+    expect(body.staleness.maxStalenessSeconds).toBe(90)
+    expect(
+      body.events.some(
+        event => event.eventRef === 'event.public.forum_topic.projected',
+      ),
+    ).toBe(true)
+    // A projection-served envelope carries ONLY the stored events — none of
+    // the live-merge projection-gap noise from the missing D1 stores.
+    expect(
+      body.events.some(event => event.sourceKind === 'projection_gap'),
+    ).toBe(false)
+  })
+
+  test('fails open to the live merge (with all its own store coverage) when nothing has been projected yet', async () => {
+    const { sql } = makeFakePg()
+
+    const response = await route('/api/public/activity-timeline?limit=20', {
+      ...fullInput(),
+      KHALA_SYNC_DB: binding,
+      projectionReadDeps: { makeSqlClient: async () => clientFor(sql) },
+    })
+    const body = await decode(response)
+
+    expect(response.status).toBe(200)
+    expect(body.staleness.composition).toBe('live_at_read')
+  })
+
+  test('fails open to the live merge when the Postgres client itself is broken', async () => {
+    const response = await route('/api/public/activity-timeline?limit=20', {
+      ...fullInput(),
+      KHALA_SYNC_DB: binding,
+      projectionReadDeps: {
+        makeSqlClient: async () => {
+          throw new Error('connection refused')
+        },
+      },
+    })
+    const body = await decode(response)
+
+    expect(response.status).toBe(200)
+    expect(body.staleness.composition).toBe('live_at_read')
   })
 })

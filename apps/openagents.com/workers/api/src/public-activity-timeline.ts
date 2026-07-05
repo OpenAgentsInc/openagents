@@ -12,6 +12,7 @@ import {
   type PublicActivityTimelineRange,
   type PublicActivityTimelineSourceKind,
   type PublicActivityTimelineSourceLag,
+  type PublicActivityTimelineStaleness,
 } from '@openagentsinc/public-activity-timeline'
 
 import { parseJsonRecord } from './json-boundary'
@@ -893,11 +894,38 @@ const loadOrGap = async <T>(input: {
   }
 }
 
-export const buildPublicActivityTimelineEnvelope = async (
-  input: PublicActivityTimelineSourceInput,
-): Promise<PublicActivityTimelineEnvelope> => {
+/**
+ * The source-store shape without the per-request `query` field — used by
+ * `buildPublicActivityTimelineRawSnapshot` (KS-6.7b, #8421), which always
+ * computes the FULL unfiltered/unpaged merge so its output can be stored as
+ * one projection snapshot and paginated per-request afterwards by
+ * `paginatePublicActivityTimelineEnvelope`.
+ */
+export type PublicActivityTimelineRawSourceInput = Omit<
+  PublicActivityTimelineSourceInput,
+  'query'
+>
+
+/**
+ * The full merged, safety-filtered, recency-ordered event set plus source
+ * lag — everything `buildPublicActivityTimelineEnvelope` computes BEFORE
+ * per-request query filtering/pagination. This is the exact shape stored by
+ * the `scope.public.activity-timeline` cron-rebuild projection (see
+ * `khala-sync-public-activity-timeline.ts`): the projection's post-image is
+ * this function's own output, so the projection and a fresh live call stay
+ * byte-for-byte comparable by construction (same discipline as KS-6.7's
+ * tokens-served-mix snapshots).
+ */
+export type PublicActivityTimelineRawSnapshot = Readonly<{
+  events: ReadonlyArray<PublicActivityTimelineEvent>
+  generatedAt: string
+  sourceLag: ReadonlyArray<PublicActivityTimelineSourceLag>
+}>
+
+export const buildPublicActivityTimelineRawSnapshot = async (
+  input: PublicActivityTimelineRawSourceInput,
+): Promise<PublicActivityTimelineRawSnapshot> => {
   const observedAt = input.nowIso?.() ?? currentIsoTimestamp()
-  const query = normalizeQuery(input.query)
   const allEvents: PublicActivityTimelineEvent[] = []
   const sourceLagItems: PublicActivityTimelineSourceLag[] = []
 
@@ -1309,15 +1337,19 @@ export const buildPublicActivityTimelineEnvelope = async (
   }
 
   const ordered = orderPublicActivityTimelineEvents(allEvents)
-  const queryFiltered = applyQuery(ordered, query)
   // Final per-event safety net: a single event that slips past the per-source
   // sanitizers (residual unsafe material, missing source/blocker refs, a
   // receipt-source requirement, or a cursor mismatch) must NEVER 500 the whole
   // public feed. Drop the offending event(s) and keep serving the rest of the
   // timeline. Dropping can only make the projection safer, and it preserves the
   // "honest, public-safe envelope, never a hard failure" contract for this
-  // surface. The envelope-level assert below remains as a cross-event backstop.
-  const filtered = queryFiltered.filter(event => {
+  // surface. The envelope-level assert (in `paginatePublicActivityTimelineEnvelope`)
+  // remains as a cross-event backstop. Filtering here (before query filtering,
+  // which is applied later per-request/per-read) rather than after is
+  // equivalent by construction (independent predicates over disjoint event
+  // fields) and lets this safety-filtered, fully-ordered set be stored as one
+  // projection snapshot.
+  const safeEvents = ordered.filter(event => {
     try {
       assertPublicActivityTimelineEventSafe(event)
       return true
@@ -1325,16 +1357,37 @@ export const buildPublicActivityTimelineEnvelope = async (
       return false
     }
   })
-  const page = filtered.slice(0, query.limit)
+
+  return { events: safeEvents, generatedAt: observedAt, sourceLag: sourceLagItems }
+}
+
+/**
+ * Apply per-request query filtering/pagination to a raw snapshot (live-
+ * computed or a stored `scope.public.activity-timeline` projection) and
+ * assemble the final wire envelope. Shared by the live path
+ * (`buildPublicActivityTimelineEnvelope`) and the projection read path
+ * (`khala-sync-public-activity-timeline.ts`) so both stay byte-for-byte
+ * comparable for the same underlying event set.
+ */
+export const paginatePublicActivityTimelineEnvelope = (
+  raw: PublicActivityTimelineRawSnapshot,
+  rawQuery: Partial<PublicActivityTimelineQuery> | undefined,
+  options?: Readonly<{ staleness?: PublicActivityTimelineStaleness }>,
+): PublicActivityTimelineEnvelope => {
+  const query = normalizeQuery(rawQuery)
+  const queryFiltered = applyQuery(raw.events, query)
+  const page = queryFiltered.slice(0, query.limit)
   const envelope: PublicActivityTimelineEnvelope = {
     events: page,
-    generatedAt: observedAt,
+    generatedAt: raw.generatedAt,
     nextCursor:
-      filtered.length > page.length ? page[page.length - 1]?.cursor ?? null : null,
-    range: rangeForQuery(query, observedAt),
+      queryFiltered.length > page.length
+        ? page[page.length - 1]?.cursor ?? null
+        : null,
+    range: rangeForQuery(query, raw.generatedAt),
     schemaVersion: PUBLIC_ACTIVITY_TIMELINE_SCHEMA_VERSION,
-    sourceLag: sourceLagItems,
-    staleness: liveAtReadStaleness(timelineRebuildRefs),
+    sourceLag: raw.sourceLag,
+    staleness: options?.staleness ?? liveAtReadStaleness(timelineRebuildRefs),
   }
 
   try {
@@ -1346,6 +1399,14 @@ export const buildPublicActivityTimelineEnvelope = async (
         : 'Public activity timeline projection failed safety validation.',
     )
   }
+}
+
+export const buildPublicActivityTimelineEnvelope = async (
+  input: PublicActivityTimelineSourceInput,
+): Promise<PublicActivityTimelineEnvelope> => {
+  const { query, ...rawInput } = input
+  const raw = await buildPublicActivityTimelineRawSnapshot(rawInput)
+  return paginatePublicActivityTimelineEnvelope(raw, query)
 }
 
 const valuesFromParams = (

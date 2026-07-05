@@ -837,6 +837,7 @@ import {
   recordTokensServedProjectionBestEffort,
 } from './khala-sync-public-tokens-served'
 import { refreshTokensServedAggregatesBestEffort } from './khala-sync-public-tokens-served-mix'
+import { refreshActivityTimelineSnapshotBestEffort } from './khala-sync-public-activity-timeline'
 import {
   defaultMakeKhalaSyncSqlClient,
   handleKhalaSyncPush,
@@ -996,6 +997,7 @@ import {
 import {
   handlePublicActivityTimelineApiForEnv,
   handlePublicActivityTimelineStreamApiForEnv,
+  publicActivityTimelineRawSourceInputForRequest,
 } from './public-activity-timeline-routes'
 import { handlePublicAdjutantActivityApi } from './public-adjutant-activity-routes'
 import { makePublicCardCreditSpendReceiptRoutes } from './public-card-credit-spend-receipt-routes'
@@ -15667,6 +15669,26 @@ export default {
             store: makePylonApiStoreForEnv(env),
           },
           event.scheduledTime,
+        ),
+      ),
+      // KS-6.7b (#8421): scope.public.activity-timeline REBUILD-ON-CRON —
+      // the public activity timeline live-merges seven source stores with
+      // no single shared write-site hook, so (unlike KS-6.3/KS-6.7's
+      // ingest-triggered projections) this snapshot is refreshed on this
+      // Worker's own per-minute cron tick using the EXACT SAME merge the
+      // live route calls (`buildPublicActivityTimelineRawSnapshot`). Fail-
+      // soft: a refresh failure never fails the cron tick or any other
+      // scheduled work in this Promise.all.
+      observedEffect(
+        'PublicActivityTimeline.refreshSnapshot',
+        Effect.promise(() =>
+          refreshActivityTimelineSnapshotBestEffort({
+            binding: env.KHALA_SYNC_DB,
+            log: (logEvent, fields) => logWorkerRouteWarning(logEvent, fields),
+            sources: publicActivityTimelineRawSourceInputForRequest({
+              OPENAGENTS_DB: openAgentsDatabase(env),
+            }),
+          }),
         ),
       ),
       observedEffect(

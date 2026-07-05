@@ -506,11 +506,30 @@ and the D1 `sync_*` tables have zero remaining users and drop cleanly**
      unauthenticated polled Worker routes). No new migration needed (rides
      the generic `khala_sync_changelog`, same shape as settled-feed/gym
      run-progress). See `docs/khala-sync/RUNBOOK.md`'s "Public tokens-served
-     aggregates projection" section. **Public activity timeline is
-     deliberately deferred** — unlike the tokens-served group it has no
-     KS-8.2 rollup twin and live-merges five separate source domains with no
-     single clean write hook; a real projection there is a materially larger
-     unprecedented design problem, left open rather than shipped shallow.
+     aggregates projection" section. **Public activity timeline was
+     deliberately deferred** to its own follow-up (#8421) — unlike the
+     tokens-served group it has no KS-8.2 rollup twin and live-merges seven
+     separate source domains with no single clean write hook.
+   - **2026-07-05 resolution (KS-6.7b, #8421):** shipped
+     `scope.public.activity-timeline` as a REBUILD-ON-CRON stored-snapshot
+     projection (not event-sourced, and not a partial/shallow subset) — the
+     Worker's existing per-minute `scheduled()` cron periodically re-runs the
+     EXACT SAME merge function the live route calls
+     (`buildPublicActivityTimelineRawSnapshot`) and stores its full output as
+     ONE snapshot, so every projection-served request carries ALL SEVEN
+     source domains identically to a fresh live call, with a fail-open
+     fallback to the previous live-at-read merge on any miss (no snapshot
+     yet, Postgres unreachable, or the snapshot exceeds a 5-minute hard-stale
+     ceiling). Declared `stored_snapshot` staleness is 90s (a 60s cron period
+     + margin) — a deliberate honesty correction versus how KS-6.7 labeled
+     its own event-driven tokens-served-mix contract (see
+     `docs/khala-sync/RUNBOOK.md`'s "Public activity-timeline projection"
+     section for the full design-decision reasoning). Only the plain polled
+     JSON `GET /api/public/activity-timeline` route was repointed; the SSE
+     `GET /api/public/activity-timeline/stream` tail deliberately stays
+     live-at-read (a periodic snapshot is the wrong fit for a live-tail
+     stream). No new migration (rides the generic `khala_sync_changelog`,
+     same shape as settled-feed/gym run-progress/tokens-served-mix).
 6. **Desktop hot polls**: 1s Claude-approval poll, 2s thread-token-summary poll, 5s inbox poll — ~~all map cleanly to `scope.agent_run`/`scope.thread`/`scope.user`~~. (M, med — the 1s approval poll is latency-sensitive, migrate carefully)
    - **2026-07-05 correction (KS-6.8, #8418):** this blanket claim was WRONG
      for the 2s thread-token-summary poll and the 5s inbox poll — verified
