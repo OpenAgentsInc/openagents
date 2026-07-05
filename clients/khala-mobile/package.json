@@ -9,7 +9,7 @@
     "prebuild": "expo prebuild",
     "prebuild:ios": "expo prebuild --platform ios",
     "prebuild:android": "expo prebuild --platform android",
-    "build:ios:local": "xcodebuild -workspace ios/Khala.xcworkspace -scheme Khala -configuration Debug -destination 'generic/platform=iOS Simulator' build",
+    "build:ios:local": "xcodebuild -workspace ios/KhalaCode.xcworkspace -scheme KhalaCode -configuration Debug -destination 'generic/platform=iOS Simulator' build",
     "build:android:local": "./android/gradlew -p android :app:assembleDebug",
     "export:ota:ios": "expo export --platform ios --output-dir ../../apps/oa-updates/dist",
     "export:ota:android": "expo export --platform android --output-dir ../../apps/oa-updates/dist",
@@ -20,6 +20,7 @@
   "dependencies": {
     "@react-navigation/drawer": "^7.6.2",
     "@react-navigation/native": "^7.3.1",
+    "@shopify/react-native-skia": "2.6.2",
     "@expo/metro-config": "57.0.3",
     "@expo/metro-runtime": "57.0.3",
     "@openagentsinc/khala-sync": "workspace:*",
