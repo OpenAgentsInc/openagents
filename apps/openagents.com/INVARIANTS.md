@@ -3507,7 +3507,10 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
 ## Khala Sync (SPEC §7 invariant set)
 
 Khala Sync is the owned replication substrate (Cloud SQL Postgres →
-per-scope `KhalaSyncHubDO` hubs in this Worker → SQLite clients). The
+per-scope live hubs → SQLite clients; the hub layer is the LiveHub Cloud
+Run service `apps/khala-live-hub` when `KHALA_SYNC_LIVE_HUB_URL`/`_TOKEN`
+are configured — CFG-5, #8520 — with the legacy `KhalaSyncHubDO` in this
+Worker serving unconfigured deployments until CFG-9 deletes it). The
 normative spec is `docs/khala-sync/SPEC.md`; §7 defines nine invariants and
 this section registers them (KS-9.3, #8312). This Worker owns the sync
 routes (`POST /api/sync/push`, `GET /api/sync/log`,
@@ -3528,8 +3531,9 @@ name the blocking issue instead of claiming enforcement.
    duplicates", "rollback discards the allocated version — the next commit
    stays dense", "multiple scopes in ONE transaction get independent
    versions"). The hub's window edge backstops it at delivery:
-   `workers/api/src/khala-sync-hub-do.test.ts` ("rejects a gapped append
-   against a non-empty window (dense-version invariant)").
+   `workers/api/src/khala-sync-hub-do.test.ts` and the LiveHub port
+   `apps/khala-live-hub/src/scope-hub.test.ts` (both: "rejects a gapped
+   append against a non-empty window (dense-version invariant)").
 2. **No optimistic effects in the durable client store (enforced).** A
    client never persists optimistic mutation effects; the durable SQLite
    store holds server-confirmed state only and optimism lives in the

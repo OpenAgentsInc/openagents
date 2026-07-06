@@ -1,8 +1,13 @@
 # Khala Sync — Ops Runbook (KS-9.3, #8312)
 
 Operational procedures for the Khala Sync replication substrate: Cloud SQL
-Postgres (authoritative) → per-scope `KhalaSyncHubDO` hubs in the
-`openagents.com` Worker → SQLite clients.
+Postgres (authoritative) → per-scope live hubs → SQLite clients. The hub
+layer is the owned **LiveHub** Cloud Run service (`apps/khala-live-hub`,
+CFG-5 [#8520](https://github.com/OpenAgentsInc/openagents/issues/8520))
+when `KHALA_SYNC_LIVE_HUB_URL` + `KHALA_SYNC_LIVE_HUB_TOKEN` are configured
+on the Worker; the legacy `KhalaSyncHubDO` Durable Object serves
+deployments without that config until its deletion lands with the CFG-9
+monolith cutover.
 
 - **Spec:** [`SPEC.md`](./SPEC.md) (invariants: §7, registered in
   `apps/openagents.com/INVARIANTS.md` "Khala Sync (SPEC §7 invariant set)").
@@ -26,7 +31,7 @@ Postgres (authoritative) → per-scope `KhalaSyncHubDO` hubs in the
 | Migrations | `packages/khala-sync-server/scripts/migrate.ts` | DIRECT connection, role `khala_migrate` — never Hyperdrive |
 | Capture daemon | `packages/khala-sync-server/scripts/capture.ts` (launchd, owner Mac first) | DIRECT connection, role `khala_capture` — never Hyperdrive (LISTEN needs a session) |
 | Compaction | `packages/khala-sync-server/scripts/compact.ts` (cron) | DIRECT connection — never Hyperdrive |
-| Hub delivery | `KhalaSyncHubDO` (one per scope, DO SQLite window) | in-Worker |
+| Hub delivery | LiveHub Cloud Run service `khala-live-hub` / `khala-live-hub-staging` (per-scope in-memory windows, Postgres rebuild on first touch); legacy `KhalaSyncHubDO` where LiveHub is unconfigured | HTTPS/WSS, shared bearer (Secret Manager `khala-live-hub-token`); LiveHub itself uses a DIRECT connection (role `khala_capture`) for window rebuilds |
 
 ## Secrets (names only — NEVER echo values)
 
@@ -205,8 +210,12 @@ bootstrap gui/$(id -u) …`; `KeepAlive` restarts on crash).
 Env (token env-only, never a flag): `KHALA_SYNC_DATABASE_URL` (direct URL
 as `khala_capture` — NEVER the Hyperdrive string),
 `KHALA_SYNC_HUB_APPEND_URL` (prod
-`https://openagents.com/api/internal/khala-sync/hub/append`),
-`OPENAGENTS_ADMIN_API_TOKEN`, `KHALA_SYNC_CAPTURE_POLL_INTERVAL_MS`
+`https://openagents.com/api/internal/khala-sync/hub/append`, or the LiveHub
+`https://<service>/append` after the CFG-5 cutover),
+`OPENAGENTS_ADMIN_API_TOKEN`, optional `KHALA_SYNC_HUB_TOKEN` (bearer for a
+non-Worker hub such as LiveHub; defaults to the admin token), optional
+`KHALA_SYNC_HUB_MIRROR_APPEND_URL` / `KHALA_SYNC_HUB_MIRROR_TOKEN`
+(fail-soft second hub — CFG-5 transition), `KHALA_SYNC_CAPTURE_POLL_INTERVAL_MS`
 (default 5000), `KHALA_SYNC_CAPTURE_BATCH_VERSIONS` (default 200).
 
 Liveness check (the checkpoints table is the truth):
@@ -244,6 +253,51 @@ Recovery:
   scope's hub window and retained window for a mismatch.
 - **One scope failing is isolated**: other scopes keep advancing; fix the
   failing scope without stopping the daemon.
+
+## LiveHub service operation (CFG-5, #8520)
+
+The hub is the Bun Cloud Run service `apps/khala-live-hub` (project
+`openagentsgemini`, `us-central1`): `khala-live-hub` (prod, rebuilds from
+`khala_sync_prod`) and `khala-live-hub-staging` (staging DB). Deploy with
+`bash apps/khala-live-hub/scripts/deploy-cloudrun.sh [staging|prod]`; the
+deliberate flags (single instance, session affinity, 3600s timeout, no CPU
+throttling) and the sharding-by-scope-hash extension point are documented
+in the script and `apps/khala-live-hub/src/service.ts`.
+
+- **Auth:** one shared bearer for every route except `/health` — Secret
+  Manager `khala-live-hub-token`, mounted as `KHALA_LIVE_HUB_TOKEN` on the
+  service, `KHALA_SYNC_LIVE_HUB_TOKEN` Worker secret on the consumer side,
+  and `~/work/.secrets/khala-live-hub.env` locally for capture. Never echo
+  it.
+- **Worker cutover flag:** `KHALA_SYNC_LIVE_HUB_URL` (wrangler var) +
+  `KHALA_SYNC_LIVE_HUB_TOKEN` (Worker secret) — both set ⇒ every hub
+  consumer (connect WS proxy, log hub-first read, the four internal hub
+  routes, access-changed) targets LiveHub
+  (`workers/api/src/khala-sync-live-hub-client.ts`). Rollback = remove the
+  var; the DO binding takes over while it still exists.
+- **Capture:** point `KHALA_SYNC_HUB_APPEND_URL` at
+  `https://<service>/append` with `KHALA_SYNC_HUB_TOKEN` (the shared
+  bearer). During the transition the daemon instead mirrors: primary stays
+  the Worker DO append route and `KHALA_SYNC_HUB_MIRROR_APPEND_URL` /
+  `KHALA_SYNC_HUB_MIRROR_TOKEN` send every acknowledged batch fail-soft to
+  LiveHub (never gates the checkpoint).
+- **Access-changed trigger against LiveHub directly:**
+  `curl -X POST https://<service>/access-changed -H "authorization: Bearer $KHALA_LIVE_HUB_TOKEN" -d '{"scope":"…"}'`
+  (the Worker internal route keeps working and proxies wherever the flag
+  points).
+- **Restart/reset semantics:** windows and sockets are in-memory; a
+  restart loses them BY DESIGN. On first touch of a scope the service
+  rebuilds the newest window from Postgres (`src/rebuild.ts`,
+  `KHALA_LIVE_HUB_REBUILD_VERSIONS`, default 1000 version groups,
+  single-flight); if Postgres is unreachable it starts empty and capture's
+  next append hydrates mid-stream (the DO's own reset path). Clients
+  reconnect and resume from their durable cursor.
+- **Health:** `GET /health` → `{ ok, scopes, sockets }`. Logs:
+  `gcloud run services logs read khala-live-hub --region us-central1`.
+- **STALENESS RULE:** LiveHub must be an append (or mirror) target
+  whenever it is a configured read path — a rebuilt-but-never-appended
+  window would serve stale `upToDate` pages. Keep the capture mirror on
+  until the full capture repoint lands with the Worker flip.
 
 ## Hub DO reset procedure
 
