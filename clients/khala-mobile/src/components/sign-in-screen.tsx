@@ -3,9 +3,10 @@ import { Image, StyleSheet, View } from "react-native"
 import { useKhalaAuth } from "../auth/khala-auth-context"
 import { tx } from "../i18n/copy"
 import { khalaMobileTheme } from "../theme/tokens"
+import { khalaMobileTypography } from "../theme/typography"
+import { KhalaButton } from "./khala-button"
 import { KhalaScreen } from "./khala-screen"
 import { KhalaText } from "./khala-text"
-import { NexusSignInButton } from "./nexus-beam"
 
 /** First screen a signed-out user sees — deliberately plain, matching the
  * owned `OpenAgentsInc/arcade` app's `HomeScreen`/`CityBackground` (a
@@ -17,7 +18,10 @@ import { NexusSignInButton } from "./nexus-beam"
  * the user hasn't even signed into yet, and the owner asked for the simple
  * arcade look instead of another composed widget. Auth wiring
  * (`githubSignInReady`, `signInErrorMessage`, `signInWithGitHub`, `status`)
- * is unchanged; only the visual shell is. */
+ * is unchanged; only the visual shell is. The CTA is the shared
+ * `KhalaButton` (arcade-fidelity audit, 2026-07-06) instead of a fourth
+ * bespoke button component — arcade's own `HomeScreen` title uses its
+ * `heading` preset (Protomolecule), matched here via `khalaMobileTypography.display`. */
 export const SignInScreen = () => {
   const {
     githubSignInReady,
@@ -45,11 +49,12 @@ export const SignInScreen = () => {
           </KhalaText>
 
           <View className="gap-4">
-            <NexusSignInButton
+            <KhalaButton
               disabled={!githubSignInReady}
               loading={signingIn}
               onPress={signInWithGitHub}
               text={tx("signIn.github.primary")}
+              variant="primary"
             />
 
             {signInErrorMessage === null ? null : (
@@ -74,6 +79,7 @@ const styles = StyleSheet.create({
   },
   title: {
     color: "white",
+    fontFamily: khalaMobileTypography.display,
     fontSize: 56,
     letterSpacing: 4,
     lineHeight: 68,

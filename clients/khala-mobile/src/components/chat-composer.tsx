@@ -4,6 +4,7 @@ import { Platform, Pressable, TextInput, View } from "react-native"
 
 import { ActivityIndicator } from "./activity-indicator"
 import { KhalaText } from "./khala-text"
+import { TouchableFeedback } from "./touchable-feedback"
 import { useKhalaAuth } from "../auth/khala-auth-context"
 import { mergeTranscriptIntoDraft } from "../native/push-to-talk-core"
 import { usePushToTalk } from "../native/use-push-to-talk"
@@ -315,11 +316,12 @@ export const ChatComposer = ({
           )}
         </Pressable>
         {hasActiveTurn ? (
-          <Pressable
+          <TouchableFeedback
             accessibilityLabel="Stop"
             accessibilityRole="button"
             className="h-12 w-12 items-center justify-center rounded-full bg-text"
             disabled={sending}
+            highlightColor="rgba(0, 0, 0, 0.14)"
             onPress={stopActiveTurn}
           >
             {sending ? (
@@ -329,13 +331,14 @@ export const ChatComposer = ({
                 ■
               </KhalaText>
             )}
-          </Pressable>
+          </TouchableFeedback>
         ) : (
-          <Pressable
+          <TouchableFeedback
             accessibilityLabel="Send"
             accessibilityRole="button"
             className={`h-12 w-12 items-center justify-center rounded-full ${canSend ? "bg-text" : "bg-surfaceMuted"}`}
             disabled={!canSend}
+            highlightColor="rgba(0, 0, 0, 0.14)"
             onPress={() => sendMessage("queue")}
           >
             {sending ? (
@@ -345,7 +348,7 @@ export const ChatComposer = ({
                 ↑
               </KhalaText>
             )}
-          </Pressable>
+          </TouchableFeedback>
         )}
       </View>
     </View>

@@ -27,10 +27,15 @@ type TouchableFeedbackProps = Readonly<{
   disabled?: boolean
   testID?: string
   /** Translucent highlight color shown while pressed. Defaults to the
-   * app's `accent/10` opacity-modifier convention (see `Pill` in
-   * `src/components/shell.tsx`). */
+   * app's `accent/10` opacity-modifier convention. */
   highlightColor?: string
   defaultColor?: string
+  /** Expands the tap-recognition area beyond the rendered bounds — the
+   * `Gesture.Tap()` equivalent of `Pressable`'s `hitSlop`. Not part of
+   * arcade's original `TouchableFeedback`; added when swapping this in as
+   * a drop-in `Pressable` replacement for small icon buttons that relied on
+   * `hitSlop` to meet a comfortable touch-target size. */
+  hitSlop?: number | Readonly<{ top?: number; bottom?: number; left?: number; right?: number }>
 }>
 
 const DEFAULT_HIGHLIGHT_COLOR = "rgba(79, 208, 255, 0.1)" // accent/10 (accent = #4fd0ff)
@@ -45,15 +50,20 @@ export const TouchableFeedback = ({
   defaultColor = DEFAULT_COLOR,
   disabled = false,
   highlightColor = DEFAULT_HIGHLIGHT_COLOR,
+  hitSlop,
   onPress,
   style,
   testID
 }: TouchableFeedbackProps) => {
   const active = useSharedValue(false)
 
-  const gesture = Gesture.Tap()
+  let gesture = Gesture.Tap()
     .enabled(!disabled)
     .maxDuration(4000)
+
+  if (hitSlop !== undefined) gesture = gesture.hitSlop(hitSlop)
+
+  gesture = gesture
     .onBegin(() => {
       active.value = true
     })

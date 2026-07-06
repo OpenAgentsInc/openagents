@@ -6,6 +6,7 @@ import {
 } from "@openagentsinc/khala-sync"
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
 import { FlatList, StyleSheet, View } from "react-native"
+import Animated, { FadeIn } from "react-native-reanimated"
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
 import { ActivityIndicator } from "../components/activity-indicator"
@@ -21,7 +22,16 @@ import { formatRelativeTime } from "../sync/relative-time-core"
 import { sortByKeyDesc } from "../sync/khala-sync-entities-core"
 import { useKhalaMobileSyncPrimitives } from "../sync/khala-mobile-sync-runtime-context"
 import { useKhalaSyncScopeEntities } from "../sync/use-khala-sync-scope-entities"
+import { MOTION_MEDIUM, MOTION_STAGGER_MS } from "../theme/motion"
 import { khalaMobileTheme } from "../theme/tokens"
+
+// Matches thread-messages-screen.tsx's transcript stagger — arcade-fidelity
+// audit (2026-07-06) §4: the app's staggered-entrance technique was wired
+// into the transcript list but not this one, an inconsistency the owner
+// asked to close.
+const THREAD_LIST_STAGGER_CAP = 8
+const threadEntranceDelay = (index: number): number =>
+  MOTION_STAGGER_MS * Math.min(index, THREAD_LIST_STAGGER_CAP)
 
 const recencyOf = (thread: ChatThreadEntity): string =>
   thread.lastMessageAt ?? thread.updatedAt ?? thread.createdAt
@@ -216,17 +226,19 @@ export const ThreadListScreen = ({ navigation }: ThreadListScreenProps) => {
           }
           data={threads}
           keyExtractor={thread => thread.threadId}
-          renderItem={({ item: thread }) => (
-            <ThreadRow
-              now={now}
-              onPress={() =>
-                stackNavigation?.navigate("ThreadMessages", {
-                  threadId: thread.threadId,
-                  title: thread.title,
-                })
-              }
-              thread={thread}
-            />
+          renderItem={({ index, item: thread }) => (
+            <Animated.View entering={FadeIn.delay(threadEntranceDelay(index)).duration(MOTION_MEDIUM)}>
+              <ThreadRow
+                now={now}
+                onPress={() =>
+                  stackNavigation?.navigate("ThreadMessages", {
+                    threadId: thread.threadId,
+                    title: thread.title,
+                  })
+                }
+                thread={thread}
+              />
+            </Animated.View>
           )}
         />
       )}

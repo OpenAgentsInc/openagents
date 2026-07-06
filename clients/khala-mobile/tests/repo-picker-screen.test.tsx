@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import * as React from "react"
+import { View as RNView } from "react-native"
 import { act, create as createTestRenderer } from "react-test-renderer"
 
 /**
@@ -84,6 +85,24 @@ mock.module("../src/components/app-header", () => ({
   AppHeader: ({ title }: { title: string; showBack?: boolean }) =>
     React.createElement("AppHeader", null, title),
 }))
+
+// Arcade-fidelity audit (2026-07-06) added a real `react-native-reanimated`
+// `Animated.View`/`FadeIn` stagger directly to `RepoPickerScreen` (matching
+// thread-messages-screen.tsx's existing pattern). Real Reanimated needs a
+// native worklet runtime with no meaning under `bun test`. This is a
+// separate, minimal mock rather than reusing `chat-composer.test.tsx`'s
+// (that one's factory calls `require("react-native")` at invocation time,
+// which throws "Requested module is already fetched" if Bun's global
+// mock.module registry re-invokes it from a different file's context —
+// confirmed empirically while fixing this). Only the two APIs this screen
+// actually uses are stood in.
+mock.module("react-native-reanimated", () => {
+  const chainable = () => ({ duration: () => chainable() })
+  return {
+    default: { View: RNView },
+    FadeIn: { delay: () => chainable() },
+  }
+})
 
 // Same shape as tests/khala-ui-primitives.test.tsx's mock — kept in sync so
 // both files' mocks are compatible, not conflicting, in a shared process.

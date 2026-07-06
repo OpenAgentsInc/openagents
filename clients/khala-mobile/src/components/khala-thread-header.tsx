@@ -1,6 +1,7 @@
-import { Pressable, View } from "react-native"
+import { View } from "react-native"
 
 import { KhalaText } from "./khala-text"
+import { TouchableFeedback } from "./touchable-feedback"
 
 export type KhalaThreadHeaderProps = Readonly<{
   onBack: () => void
@@ -19,7 +20,7 @@ export const KhalaThreadHeader = ({
 }: KhalaThreadHeaderProps) => (
   <View className="px-4 pb-3 pt-2">
     <View className="flex-row items-center gap-3">
-      <Pressable
+      <TouchableFeedback
         accessibilityLabel="Back"
         accessibilityRole="button"
         className="h-14 w-14 items-center justify-center rounded-full border border-borderMuted bg-surfaceRaised"
@@ -29,7 +30,7 @@ export const KhalaThreadHeader = ({
         <KhalaText className="text-[36px] leading-10 text-text" variant="body">
           ‹
         </KhalaText>
-      </Pressable>
+      </TouchableFeedback>
 
       <View className="min-w-0 flex-1">
         <KhalaText className="text-[19px] font-semibold leading-6" numberOfLines={1} variant="body">
@@ -41,7 +42,7 @@ export const KhalaThreadHeader = ({
       </View>
 
       <View className="flex-row items-center gap-2 rounded-full border border-borderMuted bg-surfaceRaised px-3 py-2">
-        <Pressable
+        <TouchableFeedback
           accessibilityLabel="New note"
           accessibilityRole="button"
           className="h-9 w-9 items-center justify-center rounded-full"
@@ -52,8 +53,8 @@ export const KhalaThreadHeader = ({
           <KhalaText className="text-[26px] leading-8 text-text" variant="body">
             ✎
           </KhalaText>
-        </Pressable>
-        <Pressable
+        </TouchableFeedback>
+        <TouchableFeedback
           accessibilityLabel="More"
           accessibilityRole="button"
           className="h-9 w-9 items-center justify-center rounded-full"
@@ -64,7 +65,7 @@ export const KhalaThreadHeader = ({
           <KhalaText className="text-[24px] leading-7 text-text" variant="body">
             ⋯
           </KhalaText>
-        </Pressable>
+        </TouchableFeedback>
       </View>
     </View>
   </View>

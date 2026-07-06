@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test"
 import * as React from "react"
+import { View as RNView } from "react-native"
 import { act, create as createTestRenderer } from "react-test-renderer"
 
 import type { RuntimeTurnEntity } from "@openagentsinc/khala-sync"
@@ -63,19 +64,23 @@ import type { RuntimeTurnEntity } from "@openagentsinc/khala-sync"
  * `theme/tokens` — is the REAL, unmocked module.
  */
 
-const reanimatedMock = () => {
-  const ReactNative = require("react-native")
-  return {
-    default: {
-      View: ReactNative.View,
-      createAnimatedComponent: (Component: unknown) => Component
-    },
-    useAnimatedStyle: (factory: () => unknown) => factory(),
-    useDerivedValue: (factory: () => unknown) => ({ value: factory() }),
-    useSharedValue: (initial: unknown) => ({ value: initial }),
-    withTiming: (toValue: unknown) => toValue
-  }
-}
+// Uses the statically-imported `RNView`, not a `require("react-native")`
+// call inside the factory — a lazy require here throws "Requested module is
+// already fetched" if Bun's global mock.module registry ever re-invokes
+// this factory from a different test file's context (confirmed empirically
+// while adding a second, separate reanimated mock in
+// tests/repo-picker-screen.test.tsx for the arcade-fidelity audit's list
+// stagger — see that file for the twin fix).
+const reanimatedMock = () => ({
+  default: {
+    View: RNView,
+    createAnimatedComponent: (Component: unknown) => Component
+  },
+  useAnimatedStyle: (factory: () => unknown) => factory(),
+  useDerivedValue: (factory: () => unknown) => ({ value: factory() }),
+  useSharedValue: (initial: unknown) => ({ value: initial }),
+  withTiming: (toValue: unknown) => toValue
+})
 mock.module("react-native-reanimated", reanimatedMock)
 
 mock.module("../src/components/arwes-button", () => ({
@@ -104,6 +109,76 @@ mock.module("../src/components/background-gradient", () => ({
 
 mock.module("../src/components/activity-indicator", () => ({
   ActivityIndicator: () => React.createElement("ActivityIndicator", null)
+}))
+
+// Arcade-fidelity audit (2026-07-06): the Send/Stop buttons now render
+// through `TouchableFeedback` (a `react-native-gesture-handler` + Reanimated
+// press cross-fade) instead of a plain `Pressable`. Real gesture-handler
+// needs a native host with no meaning under `bun test`, same class of
+// problem as Reanimated above. Same mock shape as
+// `tests/khala-ui-primitives.test.tsx` / `tests/repo-picker-screen.test.tsx`
+// — kept in sync so all three files' mocks are compatible, not conflicting.
+mock.module("../src/components/touchable-feedback", () => ({
+  TouchableFeedback: ({
+    accessibilityLabel,
+    accessibilityRole,
+    accessibilityState,
+    children,
+    disabled,
+    onPress,
+    testID
+  }: {
+    accessibilityLabel?: string
+    accessibilityRole?: "button" | "link" | "none"
+    accessibilityState?: Record<string, unknown>
+    children?: React.ReactNode
+    disabled?: boolean
+    onPress?: () => void
+    testID?: string
+  }) =>
+    React.createElement(
+      "TouchableFeedback",
+      {
+        accessibilityLabel,
+        accessibilityRole,
+        accessibilityState: { ...accessibilityState, disabled },
+        onPress: disabled ? undefined : onPress,
+        testID
+      },
+      children
+    )
+}))
+
+// `../src/theme/typography` (pulled in transitively by `KhalaText`, which
+// `ChatComposer` renders for real) imports `@expo-google-fonts/*`, whose own
+// barrel re-exports a `useFonts` helper that reaches real `expo-font` ->
+// `expo-modules-core` — the latter dereferences `globalThis.expo.EventEmitter`
+// at MODULE-EVALUATION time (not lazily), which has no meaning outside a
+// real Expo native host. No real device/simulator equivalent is needed for
+// THIS test's purpose (composer state/render/effect logic, not font
+// rendering), so the font-name lookup is stood in with plain strings.
+mock.module("../src/theme/typography", () => ({
+  khalaMobileFontsToLoad: {},
+  khalaMobileTextSizes: {
+    lg: { fontSize: 20, lineHeight: 32 },
+    md: { fontSize: 18, lineHeight: 26 },
+    sm: { fontSize: 16, lineHeight: 24 },
+    xl: { fontSize: 24, lineHeight: 34 },
+    xs: { fontSize: 14, lineHeight: 21 },
+    xxl: { fontSize: 36, lineHeight: 44 },
+    xxs: { fontSize: 12, lineHeight: 18 }
+  },
+  khalaMobileTypography: {
+    code: { bold: "test-mono-bold", normal: "test-mono" },
+    display: "test-display",
+    primary: {
+      bold: "test-sans-bold",
+      light: "test-sans-light",
+      medium: "test-sans-medium",
+      normal: "test-sans",
+      semiBold: "test-sans-semibold"
+    }
+  }
 }))
 
 const pushToTalkAvailability: { status: "available" | "denied" | "unavailable"; reason?: string } = {

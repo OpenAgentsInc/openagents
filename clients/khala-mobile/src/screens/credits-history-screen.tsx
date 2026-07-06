@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react"
 import { FlatList, View } from "react-native"
+import Animated, { FadeIn } from "react-native-reanimated"
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
 import { AppHeader } from "../components/app-header"
 import { KhalaEmptyState } from "../components/khala-empty-state"
 import { KhalaListItem } from "../components/khala-list-item"
 import { KhalaScreen } from "../components/khala-screen"
+import { MOTION_MEDIUM, MOTION_STAGGER_MS } from "../theme/motion"
 import {
   fetchKhalaMobileCreditsTransactions,
   type KhalaMobileCreditsTransaction,
@@ -17,6 +19,12 @@ type LoadState =
   | Readonly<{ status: "unavailable" }>
   | Readonly<{ status: "error" }>
   | Readonly<{ status: "ready"; nextCursor: string | null; transactions: ReadonlyArray<KhalaMobileCreditsTransaction> }>
+
+// Matches thread-messages-screen.tsx / thread-list-screen.tsx's stagger —
+// arcade-fidelity audit (2026-07-06) §4.
+const HISTORY_STAGGER_CAP = 8
+const historyEntranceDelay = (index: number): number =>
+  MOTION_STAGGER_MS * Math.min(index, HISTORY_STAGGER_CAP)
 
 const formatOccurredAt = (iso: string): string => {
   const parsed = new Date(iso)
@@ -106,7 +114,11 @@ export const CreditsHistoryScreen = () => {
           }
           data={state.transactions}
           keyExtractor={transaction => transaction.id}
-          renderItem={({ item: transaction }) => <TransactionRow transaction={transaction} />}
+          renderItem={({ index, item: transaction }) => (
+            <Animated.View entering={FadeIn.delay(historyEntranceDelay(index)).duration(MOTION_MEDIUM)}>
+              <TransactionRow transaction={transaction} />
+            </Animated.View>
+          )}
         />
       )}
     </KhalaScreen>

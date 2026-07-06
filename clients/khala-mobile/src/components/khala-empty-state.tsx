@@ -1,6 +1,7 @@
-import { ActivityIndicator, View } from "react-native"
+import { View } from "react-native"
 
 import { khalaMobileTheme } from "../theme/tokens"
+import { ActivityIndicator } from "./activity-indicator"
 import { KhalaText } from "./khala-text"
 
 export type KhalaEmptyStateTone = "accent" | "danger" | "muted"

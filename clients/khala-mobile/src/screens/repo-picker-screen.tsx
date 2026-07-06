@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { FlatList, View } from "react-native"
+import Animated, { FadeIn } from "react-native-reanimated"
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
 import { AppHeader } from "../components/app-header"
@@ -10,6 +11,7 @@ import { KhalaText } from "../components/khala-text"
 import { KhalaTextField } from "../components/khala-text-field"
 import type { AppStackScreenProps } from "../navigators/navigationTypes"
 import { useKhalaMobileSyncRuntime } from "../sync/khala-mobile-sync-runtime-context"
+import { MOTION_MEDIUM, MOTION_STAGGER_MS } from "../theme/motion"
 import {
   dedupeKhalaMobileRepositoriesById,
   filterKhalaMobileRepositories,
@@ -20,6 +22,12 @@ import { fetchKhalaMobileRepositories, type KhalaMobileRepository } from "../syn
 type RepoPickerScreenProps = AppStackScreenProps<"RepoPicker">
 
 const REPOS_PER_PAGE = 100
+
+// Matches thread-messages-screen.tsx / thread-list-screen.tsx's stagger —
+// arcade-fidelity audit (2026-07-06) §4.
+const REPO_STAGGER_CAP = 8
+const repoEntranceDelay = (index: number): number =>
+  MOTION_STAGGER_MS * Math.min(index, REPO_STAGGER_CAP)
 
 type LoadState =
   | Readonly<{ status: "loading" }>
@@ -153,12 +161,14 @@ export const RepoPickerScreen = ({ navigation, route }: RepoPickerScreenProps) =
           }
           data={visibleRepos}
           keyExtractor={repo => repo.id}
-          renderItem={({ item: repo }) => (
-            <RepoRow
-              binding={bindingRepoId === repo.id ? "pending" : null}
-              onPress={() => void handleSelectRepo(repo)}
-              repo={repo}
-            />
+          renderItem={({ index, item: repo }) => (
+            <Animated.View entering={FadeIn.delay(repoEntranceDelay(index)).duration(MOTION_MEDIUM)}>
+              <RepoRow
+                binding={bindingRepoId === repo.id ? "pending" : null}
+                onPress={() => void handleSelectRepo(repo)}
+                repo={repo}
+              />
+            </Animated.View>
           )}
         />
       )}
