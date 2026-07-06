@@ -14,6 +14,7 @@ import { SettingsScreen } from "../screens/settings-screen"
 import { ThreadListScreen } from "../screens/thread-list-screen"
 import { ThreadMessagesScreen } from "../screens/thread-messages-screen"
 import { tx } from "../i18n/copy"
+import { usePushNotificationDeepLink } from "../push/use-push-notification-deep-link"
 import { khalaMobileTheme } from "../theme/tokens"
 import { navigationRef, useBackButtonHandler } from "./navigationUtilities"
 import type { AppDrawerParamList, AppStackParamList } from "./navigationTypes"
@@ -68,6 +69,11 @@ const AppDrawerNavigator = () => (
 
 export const AppNavigator = () => {
   useBackButtonHandler(routeName => routeName === "Threads")
+  // MM-H3 (#8489): a tapped "task finished / needs you" push (MM-G2, #8486)
+  // opens the exact thread it's about via the server's own `data.deepLink`,
+  // reusing the SAME `khala://thread/:threadId` scheme this navigator's
+  // `linking` config already parses.
+  usePushNotificationDeepLink()
 
   return (
     <NavigationContainer linking={linking} ref={navigationRef} theme={navigationTheme}>

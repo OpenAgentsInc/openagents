@@ -366,38 +366,31 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
-        "Binds probe concurrency/latency shape only; does not itself prove any particular Tailnet host is reachable from any given real device network.",
+        "Retired 2026-07-05 by MM-H3 (#8489, mobile-only MVP pivot): the desktop-connectivity status dot this contract governed has been removed from `AppHeader` entirely (it reported whether a paired DESKTOP Khala Code instance was reachable — a permanently-red, actively-misleading signal for the post-pivot normal case of a phone-only user with no desktop at all). The underlying probe logic (`khala-code-connectivity-core.ts`) and its unit test are untouched and still pass; only its status as a rendered UI element is retired. Desktop pairing is postponed, not deleted (launch audit §6), so this stays a candidate for a future desktop-pairing return rather than dead code to delete outright.",
       blockerRefs: [],
       contractId: "khala_mobile.connectivity.tailnet_health_probe_concurrent_not_serial.v1",
-      enforcementTier: "test-sweep",
+      enforcementTier: "unenforced",
       evidenceRefs: [
         "clients/khala-mobile/src/status/khala-code-connectivity-core.ts",
         "clients/khala-mobile/src/status/khala-code-connectivity.ts",
+        "clients/khala-mobile/src/components/app-header.tsx",
         "clients/khala-mobile/tests/khala-code-connectivity.test.ts",
+        "docs/fable/2026-07-05-khala-code-mobile-only-mvp-launch-audit.md",
         "docs/khala-mobile/khala-mobile-ux-contract.md",
       ],
-      oracles: [
-        {
-          description:
-            "Resolving Khala Code connectivity against multiple Tailnet candidate hosts returns the first reachable host's profile without waiting a full serial multiple of the per-host timeout, and simulator/device target selection (loopback vs tailnet) matches the caller's isDevice flag.",
-          id: "connectivity_profile_resolution.unit",
-          kind: "bun-test",
-          mode: "unit",
-          ref: "clients/khala-mobile/tests/ux-contracts.test.ts",
-        },
-      ],
+      oracles: [],
       productArea: "connectivity",
       source: {
         channel: "khala-code-session",
         statedBy: "operator-agent",
         statedOn: "2026-07-05",
       },
-      state: "enforced",
+      state: "retired",
       statement:
         "The desktop-connectivity status dot must resolve promptly on both simulator and device, without the wait time growing linearly with the number of candidate Tailnet hosts.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "RETIRED 2026-07-05 (#8489): the status dot is no longer rendered in AppHeader. Historical verification: bun test tests/ux-contracts.test.ts; the underlying probe function itself remains covered by tests/khala-code-connectivity.test.ts.",
     },
     {
       authorityBoundary:
@@ -680,7 +673,109 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
       verification:
         "bun test tests/onboarding-core.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
+    {
+      authorityBoundary:
+        "Binds only the extraction/validation of the deep-link string from a notification's data payload, and that a well-formed one is handed to Linking.openURL — it does not prove the OS actually delivers the notification, that the resulting navigation lands on the exact right screen state (that's the broader real-device claim under khala_mobile.platform.launched_app_interaction_smoke.v1, pending), or that the server always includes a threadId (MM-G2, #8486, is outside this lane's scope).",
+      blockerRefs: [],
+      contractId: "khala_mobile.push.notification_tap_opens_thread.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/src/push/push-notify-deep-link-core.ts",
+        "clients/khala-mobile/src/push/use-push-notification-deep-link.ts",
+        "clients/khala-mobile/src/navigators/AppNavigator.tsx",
+        "clients/khala-mobile/tests/push-notify-deep-link-core.test.ts",
+        "docs/fable/2026-07-05-khala-code-mobile-only-mvp-launch-audit.md",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Extracts the server-emitted khala://thread/<threadId> deep link from a notification's data payload when well-formed, and rejects a missing/non-string/wrong-scheme value — so Linking.openURL is never handed an arbitrary or malformed URL from a push payload.",
+          id: "notification_tap_opens_thread_deep_link.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/push-notify-deep-link-core.test.ts",
+        },
+      ],
+      productArea: "push notifications",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-05",
+      },
+      state: "enforced",
+      statement:
+        "Push-on-completion is not just a notification that fires (MM-G2, #8486) — tapping it must take the user straight to the thread it's about, reusing the app's own khala://thread/:threadId deep-link scheme.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/push-notify-deep-link-core.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+    },
+    {
+      authorityBoundary:
+        "This is an honest 'not yet true' record, not a claim about broken code: the onboarding welcome step already renders a CreditsBalanceChip and would show the real $10 grant the instant the balance endpoint exists. It documents exactly what's missing (the server route) so this contract can move to enforced the moment #8480's proposed contract lands, rather than the expectation living only in conversation.",
+      blockerRefs: ["blocker.khala_mobile.needs_credits_balance_endpoint"],
+      contractId: "khala_mobile.credits.ten_dollar_grant_visible_post_signin.v1",
+      enforcementTier: "unenforced",
+      evidenceRefs: [
+        "clients/khala-mobile/src/screens/onboarding-flow.tsx",
+        "clients/khala-mobile/src/components/credits-balance-chip.tsx",
+        "clients/khala-mobile/src/sync/khala-mobile-credits-api.ts",
+        "docs/fable/2026-07-05-khala-code-mobile-only-mvp-launch-audit.md",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [],
+      productArea: "onboarding",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-05",
+      },
+      state: "pending",
+      statement:
+        "Land with the $10 grant visible: a new user signing in with GitHub sees their $10 free credit balance on the onboarding welcome step, not just a promise that it was granted.",
+      surface: "khala-mobile",
+      verification:
+        "No automated oracle yet — genuinely blocked on the server-side balance endpoint proposed in #8480 (GET /api/mobile/credits/balance does not exist on main). The client wiring (CreditsBalanceChip in onboarding-flow.tsx's WelcomeStep) is already built and will render the real figure automatically once that route lands; today it renders nothing (honest, not fabricated) because the endpoint is unavailable. Move to enforced with a real fetched-balance-renders oracle once #8480's server half ships.",
+    },
+    {
+      authorityBoundary:
+        "Source-string stopgap (explicitly labeled, same allowance as khala_mobile.android.stt_module_typed_asyncfunction_signature.v1 and khala_mobile.settings.no_desktop_dependent_sections.v1): scans a fixed, deliberately bounded set of user-facing copy files for a small forbidden-phrase list. It cannot catch every possible free-execution implication in prose, and does not itself enforce that the SERVER actually gates every turn on a credit balance (that invariant is MM-D2/#8479's, still open) — it only binds this app's own copy to never CLAIM a free/unlimited path exists.",
+      blockerRefs: [],
+      contractId: "khala_mobile.credits.no_free_execution_path_claims.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/src/i18n/copy.ts",
+        "clients/khala-mobile/src/screens/onboarding-flow.tsx",
+        "clients/khala-mobile/src/screens/onboarding-core.ts",
+        "clients/khala-mobile/src/screens/settings-screen.tsx",
+        "clients/khala-mobile/tests/ux-contracts.test.ts",
+        "docs/fable/2026-07-05-khala-code-mobile-only-mvp-launch-audit.md",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "None of the onboarding, settings, or i18n copy files claim unlimited, free-forever, or no-cost-ever usage — everything-uses-credits means the mobile app's own copy never implies a free execution path exists, even informally.",
+          id: "mobile_copy_never_claims_free_execution.source",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/ux-contracts.test.ts",
+        },
+      ],
+      productArea: "credits",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-05",
+      },
+      state: "enforced",
+      statement:
+        "Everything uses credits — there is no free execution path. The app's own copy must never imply otherwise (no \"unlimited\", \"free forever\", or \"no cost\" language), even informally.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-05.8",
+  version: "2026-07-05.9",
 }

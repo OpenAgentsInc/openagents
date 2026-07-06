@@ -3,7 +3,6 @@ import { useNavigation } from "@react-navigation/native"
 import { useDrawerStatus } from "@react-navigation/drawer"
 import { Pressable, Text, View } from "react-native"
 
-import { ConnectivityDot } from "../status/connectivity-dot"
 import { DrawerIconButton } from "./drawer-icon-button"
 
 type AppHeaderProps = Readonly<{
@@ -34,9 +33,20 @@ const DrawerMenuButton = () => {
 }
 
 /** Fully custom header bar (native headers wrap headerRight/headerLeft in
- * their own circular button chrome on newer iOS, which looked wrong here) -
- * this gives exact control over layout, so the connectivity dot is just a
- * small, properly centered circle, not a native button. */
+ * their own circular button chrome on newer iOS, which looked wrong here).
+ *
+ * MM-H3 (#8489, mobile-only MVP pivot): the trailing slot used to hold a
+ * `ConnectivityDot` reporting whether a paired *desktop* Khala Code instance
+ * was reachable — a permanently-red, actively-misleading signal for the
+ * post-pivot normal case of a phone-only user with no desktop at all. Kept
+ * as an empty, width-matched spacer (not deleted outright) so the header
+ * stays visually centered without a placeholder — see the retired contract
+ * `khala_mobile.connectivity.tailnet_health_probe_concurrent_not_serial.v1`
+ * in `src/contracts/ux-contracts.ts`. The underlying connectivity probe
+ * (`status/connectivity-dot.tsx`, `status/use-khala-code-connectivity.ts`)
+ * is untouched and still real/tested — it's a candidate for a future
+ * desktop-pairing return (postponed, not deleted, per the launch audit §6),
+ * not something this pivot throws away. */
 export const AppHeader = ({ showBack = false, showMenu = false, title }: AppHeaderProps) => {
   const navigation = useNavigation()
 
@@ -63,9 +73,7 @@ export const AppHeader = ({ showBack = false, showMenu = false, title }: AppHead
       >
         {title}
       </Text>
-      <View className="w-14 items-end">
-        <ConnectivityDot />
-      </View>
+      <View className="w-14" />
     </View>
   )
 }

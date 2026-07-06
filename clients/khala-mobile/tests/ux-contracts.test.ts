@@ -230,7 +230,11 @@ describe("contract khala_mobile.updates.ota_manifest_points_at_openagents_update
   })
 })
 
-// Oracle for khala_mobile.connectivity.tailnet_health_probe_concurrent_not_serial.v1
+// RETIRED 2026-07-05 by khala_mobile.connectivity.tailnet_health_probe_concurrent_not_serial.v1's
+// own retirement (MM-H3, #8489) — the desktop-connectivity status dot this
+// contract governed is no longer rendered (see src/contracts/ux-contracts.ts).
+// Its oracles array is now empty (no longer coverage-required), but the pure
+// probe-resolution logic below is still real and stays as regression coverage.
 describe("contract khala_mobile.connectivity.tailnet_health_probe_concurrent_not_serial.v1", () => {
   test("connectivity_profile_resolution.unit — resolves against the first reachable candidate quickly", async () => {
     const targets = candidateTargets(true, 50099, ["host-a", "host-b"])
@@ -303,5 +307,32 @@ describe("contract khala_mobile.security.api_key_only_via_secure_store.v1", () =
     await expect(saveKhalaApiKey("   ", async () => fake.store)).rejects.toThrow(
       "Khala API key is required.",
     )
+  })
+})
+
+// Oracle for khala_mobile.credits.no_free_execution_path_claims.v1
+describe("contract khala_mobile.credits.no_free_execution_path_claims.v1", () => {
+  const FORBIDDEN_FREE_CLAIM_PATTERNS: ReadonlyArray<RegExp> = [
+    /free\s+forever/i,
+    /unlimited/i,
+    /no\s+cost\s+ever/i,
+    /always\s+free/i,
+  ]
+
+  const COPY_BEARING_FILES: ReadonlyArray<string> = [
+    "clients/khala-mobile/src/i18n/copy.ts",
+    "clients/khala-mobile/src/screens/onboarding-flow.tsx",
+    "clients/khala-mobile/src/screens/onboarding-core.ts",
+    "clients/khala-mobile/src/screens/settings-screen.tsx",
+    "clients/khala-mobile/src/components/sign-in-screen.tsx",
+  ]
+
+  test("mobile_copy_never_claims_free_execution.source — no unlimited/free-forever/no-cost-ever language anywhere in user-facing copy", async () => {
+    for (const ref of COPY_BEARING_FILES) {
+      const source = await Bun.file(repoPath(ref)).text()
+      for (const pattern of FORBIDDEN_FREE_CLAIM_PATTERNS) {
+        expect(source).not.toMatch(pattern)
+      }
+    }
   })
 })
