@@ -1203,6 +1203,70 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
     })
   })
 
+  test("branch-only writeback preference flows to the publisher and records branch refs (#8477)", async () => {
+    await withState(async (state) => {
+      const checkoutRunner = async (workspace: string) => {
+        const { mkdir } = await import("node:fs/promises")
+        await mkdir(workspace, { recursive: true })
+        await writeFile(
+          join(workspace, "package.json"),
+          `${JSON.stringify({ private: true, type: "module" })}\n`,
+        )
+        await writeFile(
+          join(workspace, "sum.ts"),
+          "export const sum = (left: number, right: number) => left - right\n",
+        )
+        await writeFile(
+          join(workspace, "sum.test.ts"),
+          [
+            'import { describe, expect, test } from "bun:test"',
+            'import { sum } from "./sum"',
+            'describe("sum", () => { test("adds", () => { expect(sum(2, 3)).toBe(5) }) })',
+            "",
+          ].join("\n"),
+        )
+      }
+      const branchOnlyAssignment = {
+        ...checkoutAssignment,
+        workspace: { ...checkoutAssignment.workspace, writeback: { mode: "branch_only" } },
+      }
+      const observed: Array<{ openPullRequest: boolean | undefined }> = []
+      const record = await executeCodexAgentAssignment(
+        state,
+        { ...lease, codingAssignment: branchOnlyAssignment },
+        now,
+        {
+          checkoutRunner,
+          codexAgentRunner: fixingRunner,
+          codexAgentProbe: readyProbe,
+          pullRequestPublisher: async (input) => {
+            observed.push({ openPullRequest: input.openPullRequest })
+            return {
+              state: "branch_pushed",
+              branch: "pylon/assignment-issue-8477",
+              branchUrl: "https://github.com/OpenAgentsInc/openagents/tree/pylon/assignment-issue-8477",
+              changedCount: 1,
+            }
+          },
+        },
+      )
+      expect(record?.status).toBe("accepted")
+      expect(observed.length).toBe(1)
+      expect(observed[0]?.openPullRequest).toBe(false)
+      expect(record?.resultRefs).toContain("result.public.pylon.codex_agent_task.branch_pushed")
+      expect(record?.resultRefs).toContain(
+        "result.public.pylon.codex_agent_task.pull_request_changed_files.1",
+      )
+      expect(record?.previewRefs).toContain(
+        "https://github.com/OpenAgentsInc/openagents/tree/pylon/assignment-issue-8477",
+      )
+      expect(
+        (record?.resultRefs ?? []).some((ref) => ref.includes("pull_request_opened")),
+      ).toBe(false)
+      assertPublicProjectionSafe(record)
+    })
+  })
+
   test("records the opened PR refs in the closeout for a verified diff (#6439)", async () => {
     await withState(async (state) => {
       const checkoutRunner = async (workspace: string) => {
@@ -1226,7 +1290,7 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
           ].join("\n"),
         )
       }
-      const seen: Array<{ assignmentRef: string; passed: boolean }> = []
+      const seen: Array<{ assignmentRef: string; passed: boolean; openPullRequest: boolean | undefined }> = []
       const record = await executeCodexAgentAssignment(
         state,
         { ...lease, codingAssignment: checkoutAssignment },
@@ -1236,7 +1300,11 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
           codexAgentRunner: fixingRunner,
           codexAgentProbe: readyProbe,
           pullRequestPublisher: async (input) => {
-            seen.push({ assignmentRef: input.assignmentRef, passed: input.verification.passed })
+            seen.push({
+              assignmentRef: input.assignmentRef,
+              passed: input.verification.passed,
+              openPullRequest: input.openPullRequest,
+            })
             return {
               state: "opened",
               prUrl: "https://github.com/OpenAgentsInc/openagents/pull/99001",
@@ -1252,6 +1320,8 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
       expect(record?.status).toBe("accepted")
       expect(seen.length).toBe(1)
       expect(seen[0]?.passed).toBe(true)
+      // Default writeback preference (no `writeback` field) opens a PR.
+      expect(seen[0]?.openPullRequest).toBe(true)
       expect(record?.resultRefs).toContain(
         "result.public.pylon.codex_agent_task.pull_request_opened",
       )

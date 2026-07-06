@@ -520,7 +520,10 @@ This is the invariant ledger for `openagents`.
   authorization. Scoped task branches may be pushed, but never force-pushed and
   never over the base branch; permission and authorization failures must remain
   typed public-safe outcomes. Branch/PR links belong in thread-scoped runtime
-  event metadata and closeout refs only.
+  event metadata and closeout refs only. Opening the pull request is a
+  user-controlled preference (default `pull_request`; `branch_only` pushes the
+  branch and opens no PR) — both modes hold the no-force-push and no-base-branch
+  rules and surface the same thread-scoped `writeback.recorded` runtime event.
 - Agent Computer compute charging is receipt-first and exact-only. Charges draw
   from the same user credit balance as token charges, but the nonzero compute
   rate remains owner-gated until the owner sets it from real GCE host cost,

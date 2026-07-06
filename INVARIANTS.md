@@ -113,7 +113,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   force-push, must not push to the base branch, and must surface permission
   failures as typed public-safe refs. Branch and pull-request URLs may be
   projected only as thread-scoped runtime event metadata or public-safe closeout
-  refs, never with raw credentials or diff payloads.
+  refs, never with raw credentials or diff payloads. Whether writeback opens a
+  pull request is a user-controlled preference: the default pushes the branch
+  and opens a PR, while a `branch_only` preference pushes the same scoped branch
+  and opens no PR. Both modes obey the no-force-push and no-base-branch rules and
+  emit the same `writeback.recorded` thread-scoped runtime event (with a
+  `branch_pushed` status and no pull-request fields for branch-only).
 - Agent Computer placement is bound to a single work-context ref. The public
   Worker must fail closed when the control plane omits or mismatches that ref,
   and it may treat cleanup as reclaimed only when receipt refs prove scratch

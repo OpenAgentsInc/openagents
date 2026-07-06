@@ -41,6 +41,16 @@ export type GitCheckoutWorkspace = {
     commandRef: string
   }
   scmAuthBroker?: ScmAuthBrokerConfig
+  /**
+   * User-controlled branch/PR writeback preference (#8477). Absent means the
+   * default `pull_request` behavior (push the branch and open a PR). Set
+   * `branch_only` to push the scoped branch without opening a pull request.
+   * Never widens authority; the same brokered credential and no-force-push
+   * guardrails apply to both modes.
+   */
+  writeback?: {
+    mode: "branch_only" | "pull_request"
+  }
 }
 
 export const SCM_AUTH_BROKER_SCHEMA = "openagents.pylon.scm_auth_broker.v1"
@@ -554,6 +564,7 @@ export function gitCheckoutWorkspaceFrom(codingAssignment: unknown): GitCheckout
   if (!gitCommitShaPattern.test(payload.repository.commitSha)) return null
   if (typeof payload.repository.branch !== "string" || !gitBranchNamePattern.test(payload.repository.branch)) return null
   if (!virtualBranchIsValid(payload.virtualBranch)) return null
+  if (!writebackPreferenceIsValid(payload.writeback)) return null
   if (!Array.isArray(payload.verificationCommand?.args) || payload.verificationCommand.args.length === 0) return null
   if (typeof payload.verificationCommand.commandRef !== "string") return null
   const safeArgs = payload.verificationCommand.args.every((arg) =>
@@ -571,6 +582,12 @@ export function gitCheckoutWorkspaceFrom(codingAssignment: unknown): GitCheckout
         ...(scmAuthBroker === undefined ? {} : { scmAuthBroker }),
       }
     : null
+}
+
+function writebackPreferenceIsValid(writeback: GitCheckoutWorkspace["writeback"] | undefined): boolean {
+  if (writeback === undefined) return true
+  if (writeback === null || typeof writeback !== "object") return false
+  return writeback.mode === "branch_only" || writeback.mode === "pull_request"
 }
 
 function virtualBranchIsValid(virtualBranch: GitCheckoutWorkspace["virtualBranch"] | undefined): boolean {

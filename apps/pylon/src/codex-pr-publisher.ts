@@ -113,6 +113,14 @@ export type PublishAssignmentPullRequestInput = {
   runner?: AssignmentPrCommandRunner
   /** Own-capacity title/body generator; deterministic fallback when omitted. */
   generateTitleBody?: AssignmentPrTitleBodyGenerator
+  /**
+   * User-controlled writeback preference (#8477). Defaults to `true`: push the
+   * scoped branch and open a pull request. When `false` the publisher still
+   * pushes the branch (never force-pushing) but does not open a PR, returning a
+   * `branch_pushed` outcome. The user chooses whether results land as a bare
+   * branch or a PR on their own repository.
+   */
+  openPullRequest?: boolean
 }
 
 export type PublishAssignmentPullRequestResult =
@@ -128,10 +136,21 @@ export type PublishAssignmentPullRequestResult =
       changedCount: number
       reused: boolean
     }
+  | {
+      state: "branch_pushed"
+      branch: string
+      branchUrl: string
+      changedCount: number
+    }
 
 export type OpenedAssignmentPullRequestResult = Extract<
   PublishAssignmentPullRequestResult,
   { state: "opened" }
+>
+
+export type BranchPushedAssignmentPullRequestResult = Extract<
+  PublishAssignmentPullRequestResult,
+  { state: "branch_pushed" }
 >
 
 const GIT_TIMEOUT_MS = 60 * 1000
@@ -205,7 +224,7 @@ export function issueBranchName(issueNumber: number): string {
 }
 
 export function assignmentPullRequestWritebackRuntimeEvent(input: {
-  result: OpenedAssignmentPullRequestResult
+  result: OpenedAssignmentPullRequestResult | BranchPushedAssignmentPullRequestResult
   repositoryFullName: string
   threadId: string
   turnId: string
@@ -213,15 +232,22 @@ export function assignmentPullRequestWritebackRuntimeEvent(input: {
   observedAt: string
   source: KhalaRuntimeEvent["source"]
 }): KhalaRuntimeEvent {
+  const prUrl = input.result.state === "opened" ? input.result.prUrl : ""
   const seed = [
     input.turnId,
     String(input.sequence),
     input.repositoryFullName,
     input.result.branch,
-    input.result.prUrl,
+    prUrl,
   ].join("\0")
   const eventId = `event.private.pylon.writeback.${createHash("sha256").update(seed).digest("hex").slice(0, 24)}`
   const writebackRef = `writeback.public.pylon.${createHash("sha256").update(seed).digest("hex").slice(0, 24)}`
+  const status =
+    input.result.state === "branch_pushed"
+      ? "branch_pushed"
+      : input.result.reused
+        ? "pull_request_reused"
+        : "pull_request_opened"
   return decodeKhalaRuntimeEvent({
     branch: input.result.branch,
     branchUrl: input.result.branchUrl,
@@ -230,14 +256,15 @@ export function assignmentPullRequestWritebackRuntimeEvent(input: {
     eventId,
     kind: "writeback.recorded",
     observedAt: input.observedAt,
-    pullRequestNumber: input.result.prNumber,
-    pullRequestUrl: input.result.prUrl,
+    ...(input.result.state === "opened"
+      ? { pullRequestNumber: input.result.prNumber, pullRequestUrl: input.result.prUrl }
+      : {}),
     redactionClass: "private_ref",
     repositoryFullName: input.repositoryFullName,
     schema: "openagents.khala_runtime_event.v1",
     sequence: input.sequence,
     source: input.source,
-    status: input.result.reused ? "pull_request_reused" : "pull_request_opened",
+    status,
     threadId: input.threadId,
     turnId: input.turnId,
     visibility: "private",
@@ -723,6 +750,10 @@ export async function publishAssignmentPullRequest(
 ): Promise<PublishAssignmentPullRequestResult> {
   const runner = input.runner ?? defaultRunner
   const workingDirectory = input.workingDirectory
+  // User-controlled writeback preference (#8477): default opens a PR; when the
+  // user chose `branch_only` we still push the scoped branch (never forcing)
+  // but stop short of opening a pull request.
+  const openPullRequest = input.openPullRequest ?? true
 
   // Precondition guards: only a Pylon-owned, real git worktree for a public
   // GitHub repo with a pinned base commit is eligible.
@@ -782,8 +813,9 @@ export async function publishAssignmentPullRequest(
 
   // ONE PR PER ISSUE (the core dedup fix). Before doing any branch/push/create
   // work, reuse an existing open fleet PR for this issue instead of opening a
-  // duplicate. Keyed on the issue number, not the per-run assignment ref.
-  if (issueNumber !== null) {
+  // duplicate. Keyed on the issue number, not the per-run assignment ref. This
+  // dedup is a pull-request concern only; branch-only writeback skips it.
+  if (openPullRequest && issueNumber !== null) {
     const existing = await findOpenPullRequestForIssue({
       runner,
       cwd: workingDirectory,
@@ -812,57 +844,62 @@ export async function publishAssignmentPullRequest(
 
   // Reuse an existing open PR for this exact head branch before attempting any
   // push. That keeps retries and assignment-ref keyed work from relying on a
-  // force push to update an already-published branch.
-  const existingForBranchBeforePush = await runner({
-    args: [
-      "gh",
-      "pr",
-      "list",
-      "--repo",
-      input.repository.fullName,
-      "--head",
-      branch,
-      "--state",
-      "open",
-      "--json",
-      "url,number",
-      "--limit",
-      "1",
-    ],
-    cwd: workingDirectory,
-    ...(githubCliEnv === undefined ? {} : { env: githubCliEnv }),
-    timeoutMs: GH_TIMEOUT_MS,
-  })
-  if (existingForBranchBeforePush.exitCode === 0 && !existingForBranchBeforePush.timedOut) {
-    try {
-      const rows = JSON.parse(existingForBranchBeforePush.stdout) as Array<{ url?: string; number?: number }>
-      const row = rows[0]
-      if (row !== undefined && typeof row.url === "string" && typeof row.number === "number") {
-        return {
-          state: "opened",
-          prUrl: row.url,
-          prNumber: row.number,
-          branch,
-          branchUrl,
-          changedCount: capture.changedCount,
-          reused: true,
+  // force push to update an already-published branch. Pull-request concern
+  // only; branch-only writeback surfaces permission errors from the push.
+  if (openPullRequest) {
+    const existingForBranchBeforePush = await runner({
+      args: [
+        "gh",
+        "pr",
+        "list",
+        "--repo",
+        input.repository.fullName,
+        "--head",
+        branch,
+        "--state",
+        "open",
+        "--json",
+        "url,number",
+        "--limit",
+        "1",
+      ],
+      cwd: workingDirectory,
+      ...(githubCliEnv === undefined ? {} : { env: githubCliEnv }),
+      timeoutMs: GH_TIMEOUT_MS,
+    })
+    if (existingForBranchBeforePush.exitCode === 0 && !existingForBranchBeforePush.timedOut) {
+      try {
+        const rows = JSON.parse(existingForBranchBeforePush.stdout) as Array<{ url?: string; number?: number }>
+        const row = rows[0]
+        if (row !== undefined && typeof row.url === "string" && typeof row.number === "number") {
+          return {
+            state: "opened",
+            prUrl: row.url,
+            prNumber: row.number,
+            branch,
+            branchUrl,
+            changedCount: capture.changedCount,
+            reused: true,
+          }
         }
+      } catch {
+        // fall through to publication
       }
-    } catch {
-      // fall through to publication
-    }
-  } else if (permissionFailurePattern.test(commandText(existingForBranchBeforePush))) {
-    return {
-      state: "failed",
-      reasonRef: "pull_request.permission_denied",
-      branch,
-      changedCount: capture.changedCount,
+    } else if (permissionFailurePattern.test(commandText(existingForBranchBeforePush))) {
+      return {
+        state: "failed",
+        reasonRef: "pull_request.permission_denied",
+        branch,
+        changedCount: capture.changedCount,
+      }
     }
   }
 
-  // Gather diff context for title/body generation (best-effort).
+  // Gather diff context for title/body generation (best-effort). Branch-only
+  // writeback stays gh-free: it derives the commit title deterministically
+  // rather than fetching the issue title over the GitHub API.
   const issueTitle =
-    issueNumber === null
+    issueNumber === null || !openPullRequest
       ? null
       : await fetchIssueTitle({
           runner,
@@ -975,6 +1012,17 @@ export async function publishAssignmentPullRequest(
       state: "failed",
       reasonRef: failedReasonRef("pull_request.push_failed", push),
       branch,
+      changedCount: capture.changedCount,
+    }
+  }
+
+  // User chose branch-only writeback (#8477): the scoped branch is now on the
+  // user's repo (never force-pushed) and no PR is opened.
+  if (!openPullRequest) {
+    return {
+      state: "branch_pushed",
+      branch,
+      branchUrl,
       changedCount: capture.changedCount,
     }
   }

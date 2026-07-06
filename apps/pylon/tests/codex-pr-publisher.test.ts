@@ -180,6 +180,106 @@ describe("publishAssignmentPullRequest", () => {
     })
   })
 
+  test("branch-only writeback pushes the branch and opens no PR (#8477)", async () => {
+    await withGitWorkspace(async ({ cacheRoot, workingDirectory, baseSha }) => {
+      await writeFile(join(workingDirectory, "fix.txt"), "the codex change\n")
+      const commands: string[][] = []
+      const runner = async (input: { args: string[] }): Promise<AssignmentPrCommandResult> => {
+        commands.push(input.args)
+        const [bin, sub] = input.args
+        if (bin === "git") {
+          if (sub === "push") return { exitCode: 0, stdout: "", stderr: "", timedOut: false }
+          const proc = Bun.spawn(["git", ...input.args.slice(1)], {
+            cwd: workingDirectory,
+            stderr: "pipe",
+            stdout: "pipe",
+          })
+          const [out, err, code] = await Promise.all([
+            new Response(proc.stdout).text(),
+            new Response(proc.stderr).text(),
+            proc.exited,
+          ])
+          return { exitCode: code, stdout: out, stderr: err, timedOut: false }
+        }
+        // No gh call should ever be made in branch-only mode.
+        return { exitCode: 1, stdout: "", stderr: "unexpected gh call in branch-only mode", timedOut: false }
+      }
+      const result = await publishAssignmentPullRequest({
+        cacheRoot,
+        workingDirectory,
+        workspaceRef: "workspace.pylon.codex_agent_task.branch_only",
+        sourceRef: `OpenAgentsInc/openagents:${baseSha}`,
+        repository: { branch: "main", commitSha: baseSha, fullName: "OpenAgentsInc/openagents" },
+        assignmentRef: "assignment.public.codex.branch_only",
+        objectiveSummary: "Implement public issue #8477 and run the verification.",
+        verification: { args: ["bun", "test"], exitCode: 0, passed: true },
+        openPullRequest: false,
+        runner,
+      })
+      expect(result.state).toBe("branch_pushed")
+      if (result.state === "branch_pushed") {
+        expect(result.branch).toBe(issueBranchName(8477))
+        expect(result.branchUrl).toBe(
+          "https://github.com/OpenAgentsInc/openagents/tree/pylon/assignment-issue-8477",
+        )
+        expect(result.changedCount).toBe(1)
+      }
+      // Never opens or lists a PR, and pushes exactly once without a force refspec.
+      expect(commands.some((c) => c[0] === "gh")).toBe(false)
+      const pushes = commands.filter((c) => c[0] === "git" && c[1] === "push")
+      expect(pushes).toHaveLength(1)
+      expect(pushes[0].some((arg) => arg.includes(":refs/heads/main"))).toBe(false)
+      expect(pushes[0].some((arg) => arg.startsWith("+"))).toBe(false)
+    })
+  })
+
+  test("branch-only writeback surfaces a typed permission failure from the push (#8477)", async () => {
+    await withGitWorkspace(async ({ cacheRoot, workingDirectory, baseSha }) => {
+      await writeFile(join(workingDirectory, "fix.txt"), "the codex change\n")
+      const runner = async (input: { args: string[] }): Promise<AssignmentPrCommandResult> => {
+        const [bin, sub] = input.args
+        if (bin === "git") {
+          if (sub === "push") {
+            return {
+              exitCode: 1,
+              stdout: "",
+              stderr: "remote: Permission to OpenAgentsInc/openagents.git denied to user.",
+              timedOut: false,
+            }
+          }
+          const proc = Bun.spawn(["git", ...input.args.slice(1)], {
+            cwd: workingDirectory,
+            stderr: "pipe",
+            stdout: "pipe",
+          })
+          const [out, err, code] = await Promise.all([
+            new Response(proc.stdout).text(),
+            new Response(proc.stderr).text(),
+            proc.exited,
+          ])
+          return { exitCode: code, stdout: out, stderr: err, timedOut: false }
+        }
+        return { exitCode: 1, stdout: "", stderr: "unexpected", timedOut: false }
+      }
+      const result = await publishAssignmentPullRequest({
+        cacheRoot,
+        workingDirectory,
+        workspaceRef: "workspace.pylon.codex_agent_task.branch_only_denied",
+        sourceRef: `OpenAgentsInc/openagents:${baseSha}`,
+        repository: { branch: "main", commitSha: baseSha, fullName: "OpenAgentsInc/openagents" },
+        assignmentRef: "assignment.public.codex.branch_only_denied",
+        objectiveSummary: "Implement public issue #8477 and run the verification.",
+        verification: { args: ["bun", "test"], exitCode: 0, passed: true },
+        openPullRequest: false,
+        runner,
+      })
+      expect(result.state).toBe("failed")
+      if (result.state === "failed") {
+        expect(result.reasonRef).toBe("pull_request.permission_denied")
+      }
+    })
+  })
+
   test("uses the brokered GitHub credential for gh API calls without force-pushing (#8477)", async () => {
     await withGitWorkspace(async ({ cacheRoot, workingDirectory, baseSha }) => {
       await writeFile(join(workingDirectory, "fix.txt"), "the codex change\n")
@@ -488,6 +588,34 @@ describe("assignmentPullRequestWritebackRuntimeEvent", () => {
       status: "pull_request_opened",
     })
     expect(JSON.stringify(event)).not.toContain("gho_")
+  })
+
+  test("builds a branch-only writeback event with no PR fields (#8477)", () => {
+    const event = assignmentPullRequestWritebackRuntimeEvent({
+      result: {
+        state: "branch_pushed",
+        branch: "pylon/assignment-issue-8477",
+        branchUrl: "https://github.com/OpenAgentsInc/openagents/tree/pylon/assignment-issue-8477",
+        changedCount: 2,
+      },
+      repositoryFullName: "OpenAgentsInc/openagents",
+      threadId: "thread.private.khala.8477",
+      turnId: "turn.private.khala.8477",
+      sequence: 9,
+      observedAt: "2026-07-06T12:00:00.000Z",
+      source: { adapterKind: "codex", lane: "codex_app_server", surface: "server" },
+    })
+    expect(event).toMatchObject({
+      kind: "writeback.recorded",
+      visibility: "private",
+      repositoryFullName: "OpenAgentsInc/openagents",
+      branch: "pylon/assignment-issue-8477",
+      branchUrl: "https://github.com/OpenAgentsInc/openagents/tree/pylon/assignment-issue-8477",
+      changedFileCount: 2,
+      status: "branch_pushed",
+    })
+    expect(event).not.toHaveProperty("pullRequestUrl")
+    expect(event).not.toHaveProperty("pullRequestNumber")
   })
 })
 

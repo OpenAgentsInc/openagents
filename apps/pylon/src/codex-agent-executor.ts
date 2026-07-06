@@ -2049,6 +2049,9 @@ async function maybePublishAssignmentPullRequest(input: {
         passed: input.passed,
       },
       now: input.now,
+      // User-controlled writeback preference (#8477): default opens a PR;
+      // `branch_only` pushes the scoped branch without a pull request.
+      openPullRequest: workspace.writeback?.mode !== "branch_only",
       ...(generateTitleBody === undefined ? {} : { generateTitleBody }),
     })
   } catch {
@@ -2069,6 +2072,16 @@ async function maybePublishAssignmentPullRequest(input: {
       ],
       previewRefs: [result.prUrl, result.branchUrl],
       messageSuffix: ` Opened PR ${result.prUrl} (branch ${result.branch}, ${result.changedCount} file(s) changed).`,
+    }
+  }
+  if (result.state === "branch_pushed") {
+    return {
+      resultRefs: [
+        "result.public.pylon.codex_agent_task.branch_pushed",
+        `result.public.pylon.codex_agent_task.pull_request_changed_files.${result.changedCount}`,
+      ],
+      previewRefs: [result.branchUrl],
+      messageSuffix: ` Pushed branch ${result.branch} (${result.changedCount} file(s) changed); no PR opened by request.`,
     }
   }
   if (result.state === "no_change") {

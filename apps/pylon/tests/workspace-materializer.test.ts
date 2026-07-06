@@ -273,6 +273,30 @@ describe("gitCheckoutWorkspaceFrom", () => {
     }
   })
 
+  test("accepts a user-controlled writeback preference (#8477)", () => {
+    const base = checkoutWith({}) as GitCheckoutWorkspace
+    const branchOnly = gitCheckoutWorkspaceFrom(
+      assignmentWith({ ...base, writeback: { mode: "branch_only" } }),
+    )
+    expect(branchOnly?.writeback?.mode).toBe("branch_only")
+    const pullRequest = gitCheckoutWorkspaceFrom(
+      assignmentWith({ ...base, writeback: { mode: "pull_request" } }),
+    )
+    expect(pullRequest?.writeback?.mode).toBe("pull_request")
+    // Absent preference is valid and decodes without a writeback field.
+    expect(gitCheckoutWorkspaceFrom(assignmentWith(base))?.writeback).toBeUndefined()
+  })
+
+  test("rejects an unknown writeback preference shape (#8477)", () => {
+    const base = checkoutWith({}) as GitCheckoutWorkspace
+    for (const writeback of [{ mode: "force_push" }, { mode: 1 }, "branch_only", { }]) {
+      expect(
+        gitCheckoutWorkspaceFrom(assignmentWith({ ...base, writeback })),
+        JSON.stringify(writeback),
+      ).toBeNull()
+    }
+  })
+
   test("rejects absolute verification paths and traversal in args", () => {
     expect(
       gitCheckoutWorkspaceFrom(
