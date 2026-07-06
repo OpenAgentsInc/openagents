@@ -643,6 +643,15 @@ export const KhalaRuntimeFileChange = S.Struct({
 })
 export type KhalaRuntimeFileChange = typeof KhalaRuntimeFileChange.Type
 
+export const KhalaRuntimeWritebackStatus = S.Literals([
+  "branch_pushed",
+  "pull_request_opened",
+  "pull_request_reused",
+  "failed",
+])
+export type KhalaRuntimeWritebackStatus =
+  typeof KhalaRuntimeWritebackStatus.Type
+
 const KhalaRuntimeEventBase = {
   schema: S.Literal(KhalaRuntimeEventSchemaLiteral),
   eventId: KhalaRuntimeEventId,
@@ -675,6 +684,7 @@ export const KhalaRuntimeEventKind = S.Literals([
   "usage.recorded",
   "provider.metadata",
   "file.change",
+  "writeback.recorded",
   "compaction.recorded",
   "raw.sidecar_ref",
 ])
@@ -698,6 +708,7 @@ export const khalaRuntimeEventKinds: ReadonlyArray<KhalaRuntimeEventKind> = [
   "usage.recorded",
   "provider.metadata",
   "file.change",
+  "writeback.recorded",
   "compaction.recorded",
   "raw.sidecar_ref",
 ]
@@ -825,6 +836,19 @@ export const KhalaRuntimeEvent = S.Union([
     ...KhalaRuntimeEventBase,
     kind: S.Literal("file.change"),
     fileChange: KhalaRuntimeFileChange,
+  }),
+  S.Struct({
+    ...KhalaRuntimeEventBase,
+    kind: S.Literal("writeback.recorded"),
+    writebackRef: KhalaRuntimeSafeRef,
+    repositoryFullName: S.String,
+    branch: S.String,
+    branchUrl: S.String,
+    status: KhalaRuntimeWritebackStatus,
+    changedFileCount: S.optional(S.Number),
+    pullRequestUrl: S.optional(S.String),
+    pullRequestNumber: S.optional(S.Number),
+    reasonRef: S.optional(KhalaRuntimeSafeRef),
   }),
   S.Struct({
     ...KhalaRuntimeEventBase,

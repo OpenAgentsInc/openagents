@@ -374,6 +374,32 @@ export const khalaRuntimeRawSidecarEventFixture: KhalaRuntimeEvent = {
   rawEventKind: "ai_sdk_stream_part",
 }
 
+export const khalaRuntimeWritebackRecordedEventFixture: KhalaRuntimeEvent = {
+  schema: "openagents.khala_runtime_event.v1",
+  eventId: "event.public.fixture.writeback.1",
+  turnId: "turn.public.fixture.ai_sdk.1",
+  threadId: "thread.public.fixture.ai_sdk",
+  sequence: 4,
+  observedAt: at,
+  source: {
+    lane: "codex_app_server",
+    adapterKind: "codex",
+    surface: "server",
+  },
+  visibility: "private",
+  redactionClass: "private_ref",
+  causalityRefs: ["event.public.fixture.codex.tool_call.1"],
+  kind: "writeback.recorded",
+  writebackRef: "writeback.public.fixture.pr_8477",
+  repositoryFullName: "OpenAgentsInc/openagents",
+  branch: "pylon/assignment-issue-8477",
+  branchUrl: "https://github.com/OpenAgentsInc/openagents/tree/pylon/assignment-issue-8477",
+  pullRequestUrl: "https://github.com/OpenAgentsInc/openagents/pull/8477",
+  pullRequestNumber: 8477,
+  changedFileCount: 3,
+  status: "pull_request_opened",
+}
+
 export const khalaRuntimeMobileMessageAppendIntentFixture: KhalaRuntimeControlIntent = {
   schema: "openagents.khala_runtime_control_intent.v1",
   intentId: "intent.private.fixture.mobile.message_append.1",
@@ -402,6 +428,7 @@ export const khalaRuntimeMobileMessageAppendIntentFixture: KhalaRuntimeControlIn
 export const khalaRuntimeEventFixtures: ReadonlyArray<KhalaRuntimeEvent> = [
   khalaRuntimeAiSdkTextDeltaEventFixture,
   khalaRuntimeCodexToolCallEventFixture,
+  khalaRuntimeWritebackRecordedEventFixture,
   khalaRuntimeRawSidecarEventFixture,
 ]
 

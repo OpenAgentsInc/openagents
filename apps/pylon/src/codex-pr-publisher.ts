@@ -1,8 +1,10 @@
 import { existsSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { join, resolve } from "node:path"
+import { decodeKhalaRuntimeEvent, type KhalaRuntimeEvent } from "@openagentsinc/agent-runtime-schema"
 import {
   captureWorkspaceChanges,
+  type ScmAuthBrokerConfig,
   type WorkspaceChangeCapture,
 } from "./workspace-materializer.js"
 import {
@@ -59,6 +61,8 @@ export type AssignmentPrCommandResult = {
 export type AssignmentPrCommandRunner = (input: {
   args: string[]
   cwd: string
+  env?: Record<string, string | undefined>
+  stdin?: string
   timeoutMs?: number
 }) => Promise<AssignmentPrCommandResult>
 
@@ -97,6 +101,7 @@ export type PublishAssignmentPullRequestInput = {
     commitSha: string
     fullName: string
   }
+  scmAuthBroker?: ScmAuthBrokerConfig
   assignmentRef: string
   objectiveSummary?: string
   verification: {
@@ -119,9 +124,15 @@ export type PublishAssignmentPullRequestResult =
       prUrl: string
       prNumber: number
       branch: string
+      branchUrl: string
       changedCount: number
       reused: boolean
     }
+
+export type OpenedAssignmentPullRequestResult = Extract<
+  PublishAssignmentPullRequestResult,
+  { state: "opened" }
+>
 
 const GIT_TIMEOUT_MS = 60 * 1000
 const PUSH_TIMEOUT_MS = 5 * 60 * 1000
@@ -132,6 +143,9 @@ const MAX_DIFF_TEXT_CHARS = 12000
 
 const githubFullNamePattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
 const gitCommitShaPattern = /^[a-f0-9]{40}$/i
+const permissionFailurePattern =
+  /\b(?:authentication failed|bad credentials|could not read username|forbidden|not authorized|permission (?:to|denied)|resource not accessible|requires authentication|repository not found|write access to repository not granted)\b|(?:^|\s)(?:401|403)(?:\s|$)/i
+const nonFastForwardPattern = /\b(?:non-fast-forward|fetch first|stale info|tip of your current branch is behind)\b/i
 const conventionalTitlePattern =
   /^(feat|fix|docs|test|chore|refactor|perf|build|ci|style|revert)(\([A-Za-z0-9_.\-/]+\))?!?: .+/
 const closingKeywordForIssue = (issueNumber: number): RegExp =>
@@ -142,9 +156,19 @@ const issueReferencePattern = (issueNumber: number): RegExp =>
 async function defaultRunner(input: {
   args: string[]
   cwd: string
+  env?: Record<string, string | undefined>
+  stdin?: string
   timeoutMs?: number
 }): Promise<AssignmentPrCommandResult> {
-  const proc = Bun.spawn(input.args, { cwd: input.cwd, stderr: "pipe", stdout: "pipe" })
+  const proc = Bun.spawn(input.args, {
+    cwd: input.cwd,
+    env: input.env === undefined ? process.env : { ...process.env, ...input.env },
+    stderr: "pipe",
+    stdin: "pipe",
+    stdout: "pipe",
+  })
+  if (input.stdin !== undefined) proc.stdin.write(input.stdin)
+  proc.stdin.end()
   let timedOut = false
   const timer =
     input.timeoutMs === undefined
@@ -178,6 +202,47 @@ export function assignmentBranchName(assignmentRef: string): string {
  */
 export function issueBranchName(issueNumber: number): string {
   return `${ASSIGNMENT_PR_BRANCH_PREFIX}issue-${issueNumber}`
+}
+
+export function assignmentPullRequestWritebackRuntimeEvent(input: {
+  result: OpenedAssignmentPullRequestResult
+  repositoryFullName: string
+  threadId: string
+  turnId: string
+  sequence: number
+  observedAt: string
+  source: KhalaRuntimeEvent["source"]
+}): KhalaRuntimeEvent {
+  const seed = [
+    input.turnId,
+    String(input.sequence),
+    input.repositoryFullName,
+    input.result.branch,
+    input.result.prUrl,
+  ].join("\0")
+  const eventId = `event.private.pylon.writeback.${createHash("sha256").update(seed).digest("hex").slice(0, 24)}`
+  const writebackRef = `writeback.public.pylon.${createHash("sha256").update(seed).digest("hex").slice(0, 24)}`
+  return decodeKhalaRuntimeEvent({
+    branch: input.result.branch,
+    branchUrl: input.result.branchUrl,
+    causalityRefs: [],
+    changedFileCount: input.result.changedCount,
+    eventId,
+    kind: "writeback.recorded",
+    observedAt: input.observedAt,
+    pullRequestNumber: input.result.prNumber,
+    pullRequestUrl: input.result.prUrl,
+    redactionClass: "private_ref",
+    repositoryFullName: input.repositoryFullName,
+    schema: "openagents.khala_runtime_event.v1",
+    sequence: input.sequence,
+    source: input.source,
+    status: input.result.reused ? "pull_request_reused" : "pull_request_opened",
+    threadId: input.threadId,
+    turnId: input.turnId,
+    visibility: "private",
+    writebackRef,
+  })
 }
 
 /** Extracts the first `#NNNN` issue reference from a public objective summary. */
@@ -375,6 +440,10 @@ function githubRemoteUrl(fullName: string): string {
   return `https://github.com/${fullName}.git`
 }
 
+function githubBranchUrl(fullName: string, branch: string): string {
+  return `https://github.com/${fullName}/tree/${branch.split("/").map(encodeURIComponent).join("/")}`
+}
+
 function parsePullRequestNumber(url: string): number | null {
   const match = url.match(/\/pull\/(\d+)/)
   if (match === null) return null
@@ -383,6 +452,82 @@ function parsePullRequestNumber(url: string): number | null {
 }
 
 type ExistingPullRequest = { number: number; url: string; headRefName: string }
+
+function commandText(res: AssignmentPrCommandResult): string {
+  return `${res.stdout}\n${res.stderr}`.trim()
+}
+
+function failedReasonRef(
+  defaultReasonRef: string,
+  result: AssignmentPrCommandResult,
+): string {
+  const text = commandText(result)
+  if (permissionFailurePattern.test(text)) return "pull_request.permission_denied"
+  if (nonFastForwardPattern.test(text)) return "pull_request.branch_update_rejected"
+  return defaultReasonRef
+}
+
+function githubUserOAuthBrokerMatchesRepository(
+  broker: ScmAuthBrokerConfig | undefined,
+  fullName: string,
+): boolean {
+  if (broker === undefined) return false
+  if (broker.kind !== "github_user_oauth") return false
+  if (broker.fallback !== "fail_closed") return false
+  if (broker.allowed.protocol !== "https") return false
+  if (broker.allowed.host !== "github.com") return false
+  if (broker.allowed.pathPrefix.toLowerCase() !== `/${fullName}.git`.toLowerCase()) return false
+  return broker.repositoryRef.toLowerCase() === `repo.github/${fullName}`.toLowerCase()
+}
+
+function parseCredentialHelperPassword(output: string): string | null {
+  for (const line of output.split(/\r?\n/)) {
+    const index = line.indexOf("=")
+    if (index <= 0) continue
+    if (line.slice(0, index) !== "password") continue
+    const password = line.slice(index + 1).trim()
+    return password.length === 0 ? null : password
+  }
+  return null
+}
+
+async function githubCliEnvForBroker(input: {
+  broker: ScmAuthBrokerConfig | undefined
+  cwd: string
+  fullName: string
+  runner: AssignmentPrCommandRunner
+}): Promise<
+  | { ok: true; env?: Record<string, string | undefined> }
+  | { ok: false; reasonRef: string }
+> {
+  if (input.broker === undefined) return { ok: true }
+  if (!githubUserOAuthBrokerMatchesRepository(input.broker, input.fullName)) {
+    return { ok: false, reasonRef: "pull_request.github_authorization_scope_mismatch" }
+  }
+  const credential = await input.runner({
+    args: ["git", "credential", "fill"],
+    cwd: input.cwd,
+    stdin: `protocol=https\nhost=github.com\npath=${input.fullName}.git\n\n`,
+    timeoutMs: GIT_TIMEOUT_MS,
+  })
+  if (credential.exitCode !== 0 || credential.timedOut) {
+    return {
+      ok: false,
+      reasonRef: failedReasonRef("pull_request.github_authorization_unavailable", credential),
+    }
+  }
+  const token = parseCredentialHelperPassword(credential.stdout)
+  if (token === null) {
+    return { ok: false, reasonRef: "pull_request.github_authorization_unavailable" }
+  }
+  return {
+    env: {
+      GH_TOKEN: token,
+      GITHUB_TOKEN: token,
+    },
+    ok: true,
+  }
+}
 
 /**
  * Finds an existing OPEN fleet PR (`pylon/assignment-*` head branch) that
@@ -394,6 +539,7 @@ export async function findOpenPullRequestForIssue(input: {
   cwd: string
   fullName: string
   issueNumber: number
+  env?: Record<string, string | undefined>
 }): Promise<ExistingPullRequest | null> {
   const res = await input.runner({
     args: [
@@ -412,6 +558,7 @@ export async function findOpenPullRequestForIssue(input: {
       "50",
     ],
     cwd: input.cwd,
+    ...(input.env === undefined ? {} : { env: input.env }),
     timeoutMs: GH_TIMEOUT_MS,
   })
   if (res.exitCode !== 0 || res.timedOut) return null
@@ -441,6 +588,7 @@ async function fetchIssueTitle(input: {
   cwd: string
   fullName: string
   issueNumber: number
+  env?: Record<string, string | undefined>
 }): Promise<string | null> {
   try {
     const res = await input.runner({
@@ -457,6 +605,7 @@ async function fetchIssueTitle(input: {
         ".title",
       ],
       cwd: input.cwd,
+      ...(input.env === undefined ? {} : { env: input.env }),
       timeoutMs: GH_TIMEOUT_MS,
     })
     if (res.exitCode !== 0 || res.timedOut) return null
@@ -472,6 +621,7 @@ async function fetchIssueLabels(input: {
   cwd: string
   fullName: string
   issueNumber: number
+  env?: Record<string, string | undefined>
 }): Promise<ReadonlyArray<string> | null> {
   try {
     const res = await input.runner({
@@ -486,6 +636,7 @@ async function fetchIssueLabels(input: {
         "labels",
       ],
       cwd: input.cwd,
+      ...(input.env === undefined ? {} : { env: input.env }),
       timeoutMs: GH_TIMEOUT_MS,
     })
     if (res.exitCode !== 0 || res.timedOut) return null
@@ -614,6 +765,20 @@ export async function publishAssignmentPullRequest(
   const baseBranch = input.repository.branch
   const remoteUrl = githubRemoteUrl(input.repository.fullName)
   const changedPaths = capture.local.changedPaths
+  const githubCliAuth = await githubCliEnvForBroker({
+    broker: input.scmAuthBroker,
+    cwd: workingDirectory,
+    fullName: input.repository.fullName,
+    runner,
+  })
+  if (!githubCliAuth.ok) {
+    return {
+      state: "failed",
+      reasonRef: githubCliAuth.reasonRef,
+      changedCount: capture.changedCount,
+    }
+  }
+  const githubCliEnv = githubCliAuth.env
 
   // ONE PR PER ISSUE (the core dedup fix). Before doing any branch/push/create
   // work, reuse an existing open fleet PR for this issue instead of opening a
@@ -622,6 +787,7 @@ export async function publishAssignmentPullRequest(
     const existing = await findOpenPullRequestForIssue({
       runner,
       cwd: workingDirectory,
+      ...(githubCliEnv === undefined ? {} : { env: githubCliEnv }),
       fullName: input.repository.fullName,
       issueNumber,
     })
@@ -634,6 +800,7 @@ export async function publishAssignmentPullRequest(
         prUrl: existing.url,
         prNumber: existing.number,
         branch: existing.headRefName,
+        branchUrl: githubBranchUrl(input.repository.fullName, existing.headRefName),
         changedCount: capture.changedCount,
         reused: true,
       }
@@ -641,12 +808,69 @@ export async function publishAssignmentPullRequest(
   }
 
   const branch = issueNumber !== null ? issueBranchName(issueNumber) : assignmentBranchName(input.assignmentRef)
+  const branchUrl = githubBranchUrl(input.repository.fullName, branch)
+
+  // Reuse an existing open PR for this exact head branch before attempting any
+  // push. That keeps retries and assignment-ref keyed work from relying on a
+  // force push to update an already-published branch.
+  const existingForBranchBeforePush = await runner({
+    args: [
+      "gh",
+      "pr",
+      "list",
+      "--repo",
+      input.repository.fullName,
+      "--head",
+      branch,
+      "--state",
+      "open",
+      "--json",
+      "url,number",
+      "--limit",
+      "1",
+    ],
+    cwd: workingDirectory,
+    ...(githubCliEnv === undefined ? {} : { env: githubCliEnv }),
+    timeoutMs: GH_TIMEOUT_MS,
+  })
+  if (existingForBranchBeforePush.exitCode === 0 && !existingForBranchBeforePush.timedOut) {
+    try {
+      const rows = JSON.parse(existingForBranchBeforePush.stdout) as Array<{ url?: string; number?: number }>
+      const row = rows[0]
+      if (row !== undefined && typeof row.url === "string" && typeof row.number === "number") {
+        return {
+          state: "opened",
+          prUrl: row.url,
+          prNumber: row.number,
+          branch,
+          branchUrl,
+          changedCount: capture.changedCount,
+          reused: true,
+        }
+      }
+    } catch {
+      // fall through to publication
+    }
+  } else if (permissionFailurePattern.test(commandText(existingForBranchBeforePush))) {
+    return {
+      state: "failed",
+      reasonRef: "pull_request.permission_denied",
+      branch,
+      changedCount: capture.changedCount,
+    }
+  }
 
   // Gather diff context for title/body generation (best-effort).
   const issueTitle =
     issueNumber === null
       ? null
-      : await fetchIssueTitle({ runner, cwd: workingDirectory, fullName: input.repository.fullName, issueNumber })
+      : await fetchIssueTitle({
+          runner,
+          cwd: workingDirectory,
+          ...(githubCliEnv === undefined ? {} : { env: githubCliEnv }),
+          fullName: input.repository.fullName,
+          issueNumber,
+        })
   const diffStat = await gitDiffStat({ runner, cwd: workingDirectory })
   const verifyCommand = input.verification.args.join(" ")
 
@@ -739,15 +963,20 @@ export async function publishAssignmentPullRequest(
     return { state: "failed", reasonRef: "pull_request.commit_failed", branch, changedCount: capture.changedCount }
   }
 
-  // Push only the assignment/issue branch. The `+` allows re-pushing the same
-  // branch on a retry; it can never touch the base branch.
+  // Push only the assignment/issue branch. No leading `+`: #8477 forbids
+  // force-pushes even to scoped task branches.
   const push = await runner({
-    args: ["git", "push", remoteUrl, `+HEAD:refs/heads/${branch}`],
+    args: ["git", "push", remoteUrl, `HEAD:refs/heads/${branch}`],
     cwd: workingDirectory,
     timeoutMs: PUSH_TIMEOUT_MS,
   })
   if (push.exitCode !== 0 || push.timedOut) {
-    return { state: "failed", reasonRef: "pull_request.push_failed", branch, changedCount: capture.changedCount }
+    return {
+      state: "failed",
+      reasonRef: failedReasonRef("pull_request.push_failed", push),
+      branch,
+      changedCount: capture.changedCount,
+    }
   }
 
   // Second-guard dedup: reuse an existing open PR for this exact head branch
@@ -769,6 +998,7 @@ export async function publishAssignmentPullRequest(
       "1",
     ],
     cwd: workingDirectory,
+    ...(githubCliEnv === undefined ? {} : { env: githubCliEnv }),
     timeoutMs: GH_TIMEOUT_MS,
   })
   if (existingForBranch.exitCode === 0 && !existingForBranch.timedOut) {
@@ -781,6 +1011,7 @@ export async function publishAssignmentPullRequest(
           prUrl: row.url,
           prNumber: row.number,
           branch,
+          branchUrl,
           changedCount: capture.changedCount,
           reused: true,
         }
@@ -807,10 +1038,16 @@ export async function publishAssignmentPullRequest(
       body,
     ],
     cwd: workingDirectory,
+    ...(githubCliEnv === undefined ? {} : { env: githubCliEnv }),
     timeoutMs: GH_TIMEOUT_MS,
   })
   if (create.exitCode !== 0 || create.timedOut) {
-    return { state: "failed", reasonRef: "pull_request.gh_create_failed", branch, changedCount: capture.changedCount }
+    return {
+      state: "failed",
+      reasonRef: failedReasonRef("pull_request.gh_create_failed", create),
+      branch,
+      changedCount: capture.changedCount,
+    }
   }
   const urlMatch = create.stdout.match(/https:\/\/github\.com\/\S+\/pull\/\d+/)
   if (urlMatch === null) {
@@ -822,6 +1059,7 @@ export async function publishAssignmentPullRequest(
     const issueLabels = await fetchIssueLabels({
       runner,
       cwd: workingDirectory,
+      ...(githubCliEnv === undefined ? {} : { env: githubCliEnv }),
       fullName: input.repository.fullName,
       issueNumber,
     })
@@ -844,6 +1082,7 @@ export async function publishAssignmentPullRequest(
           authorized.body,
         ],
         cwd: workingDirectory,
+        ...(githubCliEnv === undefined ? {} : { env: githubCliEnv }),
         timeoutMs: GH_TIMEOUT_MS,
       })
     }
@@ -853,6 +1092,7 @@ export async function publishAssignmentPullRequest(
     prUrl,
     prNumber,
     branch,
+    branchUrl,
     changedCount: capture.changedCount,
     reused: false,
   }

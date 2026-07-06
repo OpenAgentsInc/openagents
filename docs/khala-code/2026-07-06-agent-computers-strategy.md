@@ -219,8 +219,15 @@ microVM-destroy receipt refs. The committed posture doc is
    #8484), and streams `runtime_event`/`runtime_turn` entities into the
    thread scope — the mobile app renders them live, push notifies on
    completion (#8485/#8486).
-5. Results write back as a branch/PR under the user's GitHub authorization
-   (#8477); the link lands in the thread and the push notification.
+5. Results write back as a scoped branch/PR under the user's GitHub
+   authorization (#8477). The Pylon publisher now passes the SCM broker's
+   short-lived user OAuth credential into `gh`, pushes only
+   `HEAD:refs/heads/pylon/assignment-*` (no force refspec), and maps GitHub
+   authorization failures to typed public-safe refs. Opened/reused writebacks
+   have a `writeback.recorded` Khala `runtime_event` shape carrying branch and
+   PR links for the thread scope. The server-side `chat.bindThreadRepo`
+   mutator has landed in `khala-sync-server`; the remaining end-to-end proof
+   is #8503's owner-gated real mobile turn inside Firecracker.
 6. Exact token receipts post to `/api/khala/cloud/runtime-turn-usage`
    (landed); lifecycle receipts record compute time; #8479 charges both
    against the balance; #8480's UI and Aiur (#8500/#8501) show the
@@ -268,7 +275,12 @@ microVM-destroy receipt refs. The committed posture doc is
   placement requests carry the isolation policy, placement responses must echo
   the same work context, cleanup requires scratch-wipe and microVM-destroy
   receipt refs, and the posture doc names the remaining owner-gated live proof.
-- **#8477** (writeback) — unchanged; exe.dev `--act-as-user` notes moot.
+- **#8477** (writeback) — public Pylon/schema seam landed: broker-aware GitHub
+  PR publishing, no force-pushes, typed permission failures, branch URL
+  closeout refs, and `writeback.recorded` runtime-event metadata. The
+  `chat.bindThreadRepo` server mutator has landed after #8472's original
+  closeout; the remaining end-to-end proof is #8503 running a real mobile
+  turn inside Firecracker.
 - **#8479** (metering) — expanded: charges **both** meters (tokens +
   agent-computer time), owns the mid-run exhaustion policy, and surfaces
   the pre-dispatch cost line. The compute rate itself is NEEDS_OWNER.

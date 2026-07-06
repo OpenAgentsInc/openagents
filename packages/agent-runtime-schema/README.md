@@ -13,7 +13,8 @@ For Khala Code's AI SDK-shaped runtime work, the package also defines:
 
 - `openagents.khala_runtime_event.v1` for canonical text, reasoning, step,
   tool, usage, provider metadata, file change, compaction, interruption, and
-  raw-sidecar events.
+  raw-sidecar events, plus thread-scoped `writeback.recorded` metadata when a
+  coding turn publishes a branch or pull request.
 - `openagents.khala_runtime_control_intent.v1` for mobile/desktop/server
   control intents such as append message, start/interrupt/continue turn, close
   turn, and tool approve/deny.

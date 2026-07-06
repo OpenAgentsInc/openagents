@@ -64,6 +64,7 @@ Registry version: `2026-07-04.5` (schema `openagents.behavior_contracts.v1`)
 - **Enforcement tier:** test-sweep
 - **Oracle** `background_agents.credentials.dispatch_broker_refs` (bun-test, unit): Definition dispatch attaches scmAuthBroker metadata with Forge token refs to Pylon git_checkout assignments and never includes raw oa_forge_git_ token material. — `apps/openagents.com/workers/api/src/agent-definition-run-routes.test.ts`
 - **Oracle** `background_agents.credentials.pylon_helper_install` (bun-test, unit): The Pylon workspace materializer validates broker metadata, rejects raw/malformed broker shapes, writes helper config under Git admin state, configures credential.useHttpPath, fails closed, and stores no raw SCM token in the generated config/script. — `apps/pylon/tests/workspace-materializer.test.ts`
+- **Oracle** `background_agents.credentials.brokered_writeback` (bun-test, unit): The Pylon PR publisher resolves the brokered Git credential for GitHub API calls, never puts the token in command args, pushes scoped assignment branches without a force refspec, and maps GitHub permission failures to typed refs. — `apps/pylon/tests/codex-pr-publisher.test.ts`
 - **Verification:** BA-D2 is enforced by the agent-definition run route test plus the Pylon workspace materializer test in their normal sweeps.
 - **Authority boundary:** This contract proves the brokered helper shape and ref-only dispatch boundary. The broader no-long-lived-token runtime sweep is enforced by background_agents.credentials.no_long_lived_tokens_in_workspaces.v1.
 

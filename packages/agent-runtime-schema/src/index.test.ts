@@ -455,13 +455,14 @@ describe("@openagentsinc/agent-runtime-schema", () => {
       "hosted_khala",
       "test_fixture",
     ])
-    expect(khalaRuntimeEventKinds).toHaveLength(19)
+    expect(khalaRuntimeEventKinds).toHaveLength(20)
     expect(khalaRuntimeControlIntentKinds).toHaveLength(10)
 
     const decodedEvents = khalaRuntimeEventFixtures.map((event) => decodeKhalaRuntimeEvent(event))
     expect(decodedEvents.map((event) => event.kind)).toEqual([
       "text.delta",
       "tool.call",
+      "writeback.recorded",
       "raw.sidecar_ref",
     ])
     for (const event of decodedEvents) {

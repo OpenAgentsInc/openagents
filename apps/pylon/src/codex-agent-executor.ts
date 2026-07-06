@@ -2040,6 +2040,7 @@ async function maybePublishAssignmentPullRequest(input: {
         commitSha: workspace.repository.commitSha,
         fullName: workspace.repository.fullName,
       },
+      ...(workspace.scmAuthBroker === undefined ? {} : { scmAuthBroker: workspace.scmAuthBroker }),
       assignmentRef: input.lease.assignmentRef,
       ...(input.task.objectiveSummary === undefined ? {} : { objectiveSummary: input.task.objectiveSummary }),
       verification: {
@@ -2066,7 +2067,7 @@ async function maybePublishAssignmentPullRequest(input: {
           : "result.public.pylon.codex_agent_task.pull_request_opened",
         `result.public.pylon.codex_agent_task.pull_request_changed_files.${result.changedCount}`,
       ],
-      previewRefs: [result.prUrl],
+      previewRefs: [result.prUrl, result.branchUrl],
       messageSuffix: ` Opened PR ${result.prUrl} (branch ${result.branch}, ${result.changedCount} file(s) changed).`,
     }
   }

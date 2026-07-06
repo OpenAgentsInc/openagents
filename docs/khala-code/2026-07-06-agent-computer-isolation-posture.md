@@ -31,6 +31,10 @@ Agent Computer.
   Assignment payloads, placement requests, public projections, issue comments,
   and traces carry refs only. Pylon's `scanLongLivedScmCredentials` remains the
   closeout/writeback gate for workspaces and isolated account homes.
+- **Writeback:** branch/PR publication uses the brokered user GitHub
+  authorization and may push only scoped task branches. Force-push refspecs are
+  disallowed; permission failures surface as typed refs rather than leaking Git
+  output or falling back to ambient credentials.
 - **Network/projection:** Agent Computers serve no inbound traffic. Progress
   flows out over authenticated OpenAgents connections. Public data may include
   placement refs, work-context refs, Agent Computer refs, lifecycle receipt refs,

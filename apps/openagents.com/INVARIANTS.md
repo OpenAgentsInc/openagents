@@ -516,6 +516,11 @@ This is the invariant ledger for `openagents`.
   payloads, placement requests, public projections, issue comments, docs, and
   traces must carry only refs, never embedded GitHub OAuth tokens, PATs,
   credentialed URLs, or credential helper output.
+- Agent Computer branch/PR writeback uses that same brokered GitHub user
+  authorization. Scoped task branches may be pushed, but never force-pushed and
+  never over the base branch; permission and authorization failures must remain
+  typed public-safe outcomes. Branch/PR links belong in thread-scoped runtime
+  event metadata and closeout refs only.
 - Agent Computer compute charging is receipt-first and exact-only. Charges draw
   from the same user credit balance as token charges, but the compute rate is
   owner-gated until #8479 records it. Do not infer or hard-code a compute price

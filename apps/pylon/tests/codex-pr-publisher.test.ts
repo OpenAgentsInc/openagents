@@ -9,9 +9,24 @@ import {
   issueBranchName,
   issueNumberFromSummary,
   issueRefFromSummary,
+  assignmentPullRequestWritebackRuntimeEvent,
   publishAssignmentPullRequest,
   type AssignmentPrCommandResult,
 } from "../src/codex-pr-publisher"
+
+const validGithubBroker = {
+  schema: "openagents.pylon.scm_auth_broker.v1" as const,
+  kind: "github_user_oauth" as const,
+  brokerUrl: "https://openagents.com/api/pylon/github/git-credentials",
+  authRefs: ["github-identity:token:user_123"],
+  repositoryRef: "repo.github/OpenAgentsInc/openagents",
+  allowed: {
+    protocol: "https" as const,
+    host: "github.com",
+    pathPrefix: "/OpenAgentsInc/openagents.git",
+  },
+  fallback: "fail_closed" as const,
+}
 
 async function git(args: string[], cwd: string): Promise<void> {
   const proc = Bun.spawn(["git", ...args], { cwd, stderr: "pipe", stdout: "pipe" })
@@ -103,7 +118,7 @@ describe("publishAssignmentPullRequest", () => {
     await withGitWorkspace(async ({ cacheRoot, workingDirectory, baseSha }) => {
       await writeFile(join(workingDirectory, "fix.txt"), "the codex change\n")
       const commands: string[][] = []
-      const runner = async (input: { args: string[] }): Promise<AssignmentPrCommandResult> => {
+      const runner = async (input: { args: string[]; env?: Record<string, string | undefined> }): Promise<AssignmentPrCommandResult> => {
         commands.push(input.args)
         const [bin, sub] = input.args
         if (bin === "git") {
@@ -161,6 +176,137 @@ describe("publishAssignmentPullRequest", () => {
       const pushes = commands.filter((c) => c[0] === "git" && c[1] === "push")
       expect(pushes.length).toBe(1)
       expect(pushes[0].some((arg) => arg.includes(":refs/heads/main"))).toBe(false)
+      expect(pushes[0].some((arg) => arg.startsWith("+"))).toBe(false)
+    })
+  })
+
+  test("uses the brokered GitHub credential for gh API calls without force-pushing (#8477)", async () => {
+    await withGitWorkspace(async ({ cacheRoot, workingDirectory, baseSha }) => {
+      await writeFile(join(workingDirectory, "fix.txt"), "the codex change\n")
+      const ghTokens: Array<string | undefined> = []
+      const commands: string[][] = []
+      const runner = async (input: {
+        args: string[]
+        env?: Record<string, string | undefined>
+        stdin?: string
+      }): Promise<AssignmentPrCommandResult> => {
+        commands.push(input.args)
+        const [bin, sub] = input.args
+        if (bin === "git" && sub === "credential") {
+          expect(input.stdin).toContain("path=OpenAgentsInc/openagents.git")
+          return {
+            exitCode: 0,
+          stdout: "username=x-access-token\npassword=unit_test_user_oauth_token\n\n",
+            stderr: "",
+            timedOut: false,
+          }
+        }
+        if (bin === "git") {
+          if (sub === "push") return { exitCode: 0, stdout: "", stderr: "", timedOut: false }
+          const proc = Bun.spawn(["git", ...input.args.slice(1)], {
+            cwd: workingDirectory,
+            stderr: "pipe",
+            stdout: "pipe",
+          })
+          const [out, err, code] = await Promise.all([
+            new Response(proc.stdout).text(),
+            new Response(proc.stderr).text(),
+            proc.exited,
+          ])
+          return { exitCode: code, stdout: out, stderr: err, timedOut: false }
+        }
+        if (bin === "gh") {
+          ghTokens.push(input.env?.GH_TOKEN)
+          if (input.args[2] === "list") return { exitCode: 0, stdout: "[]", stderr: "", timedOut: false }
+          if (input.args[2] === "view") return { exitCode: 0, stdout: "Brokered writeback\n", stderr: "", timedOut: false }
+          if (input.args[2] === "create") {
+            return {
+              exitCode: 0,
+              stdout: "https://github.com/OpenAgentsInc/openagents/pull/8477\n",
+              stderr: "",
+              timedOut: false,
+            }
+          }
+        }
+        return { exitCode: 1, stdout: "", stderr: "unexpected", timedOut: false }
+      }
+      const result = await publishAssignmentPullRequest({
+        cacheRoot,
+        workingDirectory,
+        workspaceRef: "workspace.pylon.codex_agent_task.brokered",
+        sourceRef: `OpenAgentsInc/openagents:${baseSha}`,
+        repository: { branch: "main", commitSha: baseSha, fullName: "OpenAgentsInc/openagents" },
+        scmAuthBroker: validGithubBroker,
+        assignmentRef: "assignment.public.codex.brokered",
+        objectiveSummary: "Implement public issue #8477 and run the verification.",
+        verification: { args: ["bun", "test"], exitCode: 0, passed: true },
+        runner,
+      })
+      expect(result.state).toBe("opened")
+      if (result.state === "opened") {
+        expect(result.prUrl).toBe("https://github.com/OpenAgentsInc/openagents/pull/8477")
+        expect(result.branchUrl).toBe("https://github.com/OpenAgentsInc/openagents/tree/pylon/assignment-issue-8477")
+      }
+      expect(ghTokens.length).toBeGreaterThan(0)
+      expect(ghTokens.every((token) => token === "unit_test_user_oauth_token")).toBe(true)
+      const pushes = commands.filter((c) => c[0] === "git" && c[1] === "push")
+      expect(pushes).toHaveLength(1)
+      expect(pushes[0].some((arg) => arg.startsWith("+"))).toBe(false)
+    })
+  })
+
+  test("returns a typed permission failure when branch push is denied (#8477)", async () => {
+    await withGitWorkspace(async ({ cacheRoot, workingDirectory, baseSha }) => {
+      await writeFile(join(workingDirectory, "fix.txt"), "the codex change\n")
+      let createCalls = 0
+      const runner = async (input: { args: string[] }): Promise<AssignmentPrCommandResult> => {
+        const [bin, sub] = input.args
+        if (bin === "git") {
+          if (sub === "push") {
+            return {
+              exitCode: 1,
+              stdout: "",
+              stderr: "remote: Permission to OpenAgentsInc/openagents.git denied to user.",
+              timedOut: false,
+            }
+          }
+          const proc = Bun.spawn(["git", ...input.args.slice(1)], {
+            cwd: workingDirectory,
+            stderr: "pipe",
+            stdout: "pipe",
+          })
+          const [out, err, code] = await Promise.all([
+            new Response(proc.stdout).text(),
+            new Response(proc.stderr).text(),
+            proc.exited,
+          ])
+          return { exitCode: code, stdout: out, stderr: err, timedOut: false }
+        }
+        if (bin === "gh" && input.args[2] === "list") {
+          return { exitCode: 0, stdout: "[]", stderr: "", timedOut: false }
+        }
+        if (bin === "gh" && input.args[2] === "create") {
+          createCalls += 1
+        }
+        return { exitCode: 1, stdout: "", stderr: "unexpected", timedOut: false }
+      }
+      const result = await publishAssignmentPullRequest({
+        cacheRoot,
+        workingDirectory,
+        workspaceRef: "workspace.pylon.codex_agent_task.permission",
+        sourceRef: `OpenAgentsInc/openagents:${baseSha}`,
+        repository: { branch: "main", commitSha: baseSha, fullName: "OpenAgentsInc/openagents" },
+        assignmentRef: "assignment.public.codex.permission",
+        objectiveSummary: "Implement public issue #8477 and run the verification.",
+        verification: { args: ["bun", "test"], exitCode: 0, passed: true },
+        runner,
+      })
+      expect(result).toMatchObject({
+        state: "failed",
+        reasonRef: "pull_request.permission_denied",
+        branch: issueBranchName(8477),
+      })
+      expect(createCalls).toBe(0)
     })
   })
 
@@ -307,6 +453,41 @@ describe("issueBranchName", () => {
     expect(issueBranchName(6439)).toBe(issueBranchName(6439))
     expect(issueBranchName(6439).startsWith("pylon/assignment-")).toBe(true)
     expect(issueBranchName(6440)).not.toBe(issueBranchName(6439))
+  })
+})
+
+describe("assignmentPullRequestWritebackRuntimeEvent", () => {
+  test("builds a thread-scoped runtime event with branch and PR links (#8477)", () => {
+    const event = assignmentPullRequestWritebackRuntimeEvent({
+      result: {
+        state: "opened",
+        prUrl: "https://github.com/OpenAgentsInc/openagents/pull/8477",
+        prNumber: 8477,
+        branch: "pylon/assignment-issue-8477",
+        branchUrl: "https://github.com/OpenAgentsInc/openagents/tree/pylon/assignment-issue-8477",
+        changedCount: 3,
+        reused: false,
+      },
+      repositoryFullName: "OpenAgentsInc/openagents",
+      threadId: "thread.private.khala.8477",
+      turnId: "turn.private.khala.8477",
+      sequence: 8,
+      observedAt: "2026-07-06T12:00:00.000Z",
+      source: { adapterKind: "codex", lane: "codex_app_server", surface: "server" },
+    })
+    expect(event).toMatchObject({
+      kind: "writeback.recorded",
+      visibility: "private",
+      redactionClass: "private_ref",
+      repositoryFullName: "OpenAgentsInc/openagents",
+      branch: "pylon/assignment-issue-8477",
+      branchUrl: "https://github.com/OpenAgentsInc/openagents/tree/pylon/assignment-issue-8477",
+      pullRequestUrl: "https://github.com/OpenAgentsInc/openagents/pull/8477",
+      pullRequestNumber: 8477,
+      changedFileCount: 3,
+      status: "pull_request_opened",
+    })
+    expect(JSON.stringify(event)).not.toContain("gho_")
   })
 })
 

@@ -1187,6 +1187,7 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
             prUrl: "https://github.com/OpenAgentsInc/openagents/pull/99002",
             prNumber: 99002,
             branch: "pylon/assignment-cafecafe",
+            branchUrl: "https://github.com/OpenAgentsInc/openagents/tree/pylon/assignment-cafecafe",
             changedCount: 2,
             reused: false,
           }),
@@ -1241,6 +1242,7 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
               prUrl: "https://github.com/OpenAgentsInc/openagents/pull/99001",
               prNumber: 99001,
               branch: "pylon/assignment-deadbeefdeadbeef",
+              branchUrl: "https://github.com/OpenAgentsInc/openagents/tree/pylon/assignment-deadbeefdeadbeef",
               changedCount: 1,
               reused: false,
             }
@@ -1258,6 +1260,9 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
       )
       expect(record?.previewRefs).toContain(
         "https://github.com/OpenAgentsInc/openagents/pull/99001",
+      )
+      expect(record?.previewRefs).toContain(
+        "https://github.com/OpenAgentsInc/openagents/tree/pylon/assignment-deadbeefdeadbeef",
       )
       assertPublicProjectionSafe(record)
     })

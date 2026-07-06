@@ -108,6 +108,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   helper output. Raw user OAuth tokens, provider master keys, wallet material,
   raw GCE topology, guest IPs, prompts, repo content, and private traces must
   not enter public projections, docs, issue comments, tests, fixtures, or logs.
+- Agent Computer result writeback must use the same user-authorized SCM broker
+  path. Git operations may create/push only scoped task branches; they must not
+  force-push, must not push to the base branch, and must surface permission
+  failures as typed public-safe refs. Branch and pull-request URLs may be
+  projected only as thread-scoped runtime event metadata or public-safe closeout
+  refs, never with raw credentials or diff payloads.
 - Agent Computer placement is bound to a single work-context ref. The public
   Worker must fail closed when the control plane omits or mismatches that ref,
   and it may treat cleanup as reclaimed only when receipt refs prove scratch
