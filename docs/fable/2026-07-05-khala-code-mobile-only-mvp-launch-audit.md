@@ -225,6 +225,16 @@ notifications** (zero APNs/FCM/Expo-push code anywhere, client or server).
   `vertex-gemini`. Mobile sync entities and the mobile wire contract remain
   unchanged. Ops details live in
   `docs/khala-mobile/2026-07-06-org-cloud-executor-runbook.md`.
+- **2026-07-06 exe.dev substrate update:** the first hosted-Pylon substrate to
+  spike should be exe.dev before more bespoke GCE control-plane work. The audit
+  in `docs/khala-code/2026-07-06-exe-dev-cloud-delegation-audit.md` finds that
+  exe.dev's SSH/HTTPS API, setup scripts/custom images, tags, VM metrics, and
+  GitHub integrations are enough to try an OpenAgents-owned hosted-Pylon pool.
+  Treat the Personal plan's 50 VMs as VM slots over a shared resource pool, not
+  50 dedicated heavy workers. exe.dev simplifies provisioning only: OpenAgents
+  still owns mobile admission, exact usage receipts, credit charging, sync
+  projection, and the invariant that org-cloud execution never routes through
+  another user's Pylon.
 - Repo access: cloud checkout today is **public pinned SHA only**
   (`apps/pylon/src/workspace-materializer.ts` rejects private repos). The
   SCM auth-broker seam exists (`openagents.pylon.scm_auth_broker.v1`,
@@ -390,9 +400,12 @@ dependency map in its first comment):
 - **WS-B Repos**: #8471 (mobile-bearer repo API), #8472 (repo picker UI +
   thread↔repo binding).
 - **WS-C Cloud execution**: #8473 (closed: org cloud executor pool), #8474
-  (credit-gated org-lane dispatch policy), #8475 (private-repo checkout via
-  user OAuth through the SCM broker), #8476 (isolation posture doc +
-  enforcement), #8477 (branch/PR writeback via user GitHub authorization).
+  (credit-gated org-lane dispatch policy, now exe.dev-hosted-Pylon-aware),
+  #8475 (private-repo checkout via user OAuth through the SCM broker; evaluate
+  exe.dev GitHub Integration only as an explicit launch-trust option), #8476
+  (isolation posture doc + enforcement, including the exe.dev persistent-VM
+  trust model), #8477 (branch/PR writeback via user GitHub authorization;
+  exe.dev `--act-as-user` limitations are a constraint to test).
 - **WS-D Credits**: #8478 ($10 GitHub-keyed signup grant), #8479 (coding-run
   metering + balance gate), #8480 (balance + history UI).
 - **WS-E IAP**: #8481 (RevenueCat client integration), #8482 (server
@@ -539,6 +552,12 @@ this section is the operative plan. Two new owner decisions are folded in:
    console — the manual-grant surface that replaces IAP at launch), #8501
    (ops views: users/runs/executor health). #8500 is on the MVP critical
    path: it is how users get credits at launch.
+3. **exe.dev-first hosted-Pylon substrate** — after the
+   `docs/khala-code/2026-07-06-exe-dev-cloud-delegation-audit.md` review, S1
+   should try exe.dev as the first org-cloud VM substrate before investing more
+   in bespoke GCE provisioning. This changes provisioning strategy, not product
+   authority: OpenAgents still owns admission, accounting, sync, and owner-scope
+   invariants.
 
 ### 12.1 What landed (17 of 27 original workstream issues closed + shipped)
 
@@ -594,8 +613,8 @@ All merged to `main`, each closed with evidence on its issue:
 
 | Issue | State | Why it's open |
 |---|---|---|
-| #8474–#8477 (C2–C5) | Not started | Were serialized behind C1 in the Codex lane. |
-| #8479 (D2 metering) | Not started | Serialized behind #8474–#8477; it charges from #8473's landed usage receipts plus the remaining dispatch/admission contracts. |
+| #8474–#8477 (C2–C5) | Not started | Were serialized behind C1 in the Codex lane. Their issue threads now carry the exe.dev plan update: #8474 admits against exe.dev-hosted-Pylon org capacity first, #8475/#8477 evaluate exe.dev GitHub Integration without silently replacing user OAuth authority, and #8476 records/enforces the exe.dev persistent-VM isolation posture. |
+| #8479 (D2 metering) | Not started | Serialized behind #8474–#8477; it charges from #8473's landed usage receipts plus the remaining dispatch/admission contracts. exe.dev `stat`/VM metrics are operational telemetry only, never billing truth. |
 | #8490 (I1 Android/Play) | Not started | Convergence tier; emulator-smoke half is agent-doable now, Play Console half owner-gated. |
 | #8491 (I2 App Store pack) | Not started | Convergence tier; metadata/labels prep agent-doable, ASC actions owner-gated. |
 | #8492 (I3 E2E QA) | Not started | Convergence tier; sign-in→repo-pick flows testable now, full straight line needs C-lane. |
@@ -613,9 +632,12 @@ comment+close, no `--no-verify`, NEEDS_OWNER routing). Three lanes:
 
 - **Lane S1 — cloud execution spine (the critical path)**:
   #8473 is landed; continue with #8474 → #8475 → #8476 → #8477 → #8479
-  in order. Owns
-  `apps/pylon` org-executor surfaces + the dispatch/admission and
-  cloud/usage route seams in `workers/api`.
+  in order. Use exe.dev as the first hosted-Pylon substrate to spike: one
+  active run per VM initially, capacity surfaced as a small hosted-Pylon pool
+  ledger, and Personal-plan "50 VMs" treated as shared-pool VM slots rather
+  than guaranteed parallel heavy workers. S1 owns `apps/pylon` org-executor
+  surfaces + the dispatch/admission and cloud/usage route seams in
+  `workers/api`.
 - **Lane S2 — Aiur**: #8499 → #8500 → #8501 in order. Owns the new
   `apps/aiur/` tree end-to-end plus the owner-gated admin credit routes it
   adds to the main Worker (`/api/admin/credits/*` seam only). #8500 lands
