@@ -8,6 +8,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { fetchCreditsUsers, type CreditsUserSummary } from '@/credits/credits-api-client'
+import { formatRelativeTimeWords } from '@/lib/relative-time-core'
 
 const usdCentsToDisplay = (cents: number): string => `$${(cents / 100).toFixed(2)}`
 
@@ -68,6 +69,9 @@ export function RecentUsersPanel() {
                 <span>
                   {user.displayName}
                   {user.githubLogin !== null ? ` (@${user.githubLogin})` : ''}
+                  <span className="ml-2 text-xs text-khala-text-faint">
+                    {formatRelativeTimeWords(user.createdAt, Date.now())}
+                  </span>
                   <span className="ml-2 text-xs text-khala-text-faint">
                     {user.hasSignupCreditGrant ? 'signup credit granted' : 'no signup credit'}
                   </span>
