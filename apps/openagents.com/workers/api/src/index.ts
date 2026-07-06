@@ -247,6 +247,10 @@ import {
   PUSH_NOTIFY_EVENTS_PATH,
 } from './push/push-notify-routes'
 import {
+  handleIapRevenueCatWebhookRequest,
+  IAP_REVENUECAT_WEBHOOK_PATH,
+} from './iap-webhook-routes'
+import {
   AutopilotComposedRunEndpoint,
   handleAutopilotComposedRunApi,
   isAutopilotComposedRunEnabled,
@@ -12663,6 +12667,24 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           requireAdminApiToken,
           requireUserBearerSession,
           userIdFromSession: session => session.user.userId,
+        },
+        request,
+        env,
+      ),
+  },
+  {
+    // MM-E2 (#8482): RevenueCat IAP webhook ingestion. Auth PIN: #8481
+    // (RevenueCat account/client) is HELD, so no live webhook secret exists
+    // yet — this reads REVENUECAT_WEBHOOK_SECRET and fails closed
+    // (401 unauthenticated) until an owner configures one.
+    path: IAP_REVENUECAT_WEBHOOK_PATH,
+    handler: (request, env) =>
+      handleIapRevenueCatWebhookRequest(
+        {
+          db: openAgentsDatabase,
+          webhookSecret: e =>
+            (e as Env & { REVENUECAT_WEBHOOK_SECRET?: string })
+              .REVENUECAT_WEBHOOK_SECRET,
         },
         request,
         env,

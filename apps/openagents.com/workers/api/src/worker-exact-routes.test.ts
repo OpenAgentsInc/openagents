@@ -108,6 +108,7 @@ const approvedExactRoutePaths = [
   '/api/mobile/push-tokens',
   '/api/mobile/notifications/preferences',
   '/api/internal/push/notify-events',
+  '/api/webhooks/revenuecat',
   '/api/auth/totals',
   '/api/mdk',
   '/api/admin/overview',

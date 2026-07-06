@@ -1713,6 +1713,7 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   // Provider webhooks and internal callbacks:
   '/api/mdk',
   '/api/webhooks/resend',
+  '/api/webhooks/revenuecat',
   // Documented-alias and dispatcher patterns (concrete documented routes cover them):
   '/api/agent/sites/{param}/{param}',
   '/api/public/agents/{param}/current-goal',
