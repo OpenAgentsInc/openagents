@@ -887,11 +887,11 @@ import {
   KHALA_SYNC_HUB_APPEND_PATH,
   KHALA_SYNC_HUB_CONNECT_PATH,
   KHALA_SYNC_HUB_LOG_PATH,
-  type KhalaSyncHubNamespaceLike,
   handleKhalaSyncHubAccessChangedRoute,
   handleKhalaSyncHubInternalRoute,
 } from './khala-sync-hub-do'
 export { KhalaSyncHubDO } from './khala-sync-hub-do'
+import { resolveKhalaSyncHubNamespace } from './khala-sync-live-hub-client'
 import { projectFleetAssignmentTransition } from './khala-sync-fleet-projection'
 import { handleKhalaSyncLog } from './khala-sync-log-routes'
 import { makeKhalaSyncRouteWiring } from './khala-sync-route-wiring'
@@ -12829,18 +12829,17 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // Khala Sync hub internal surface (KS-4.2, #8295). Admin bearer only —
     // the public /api/sync/* catch-up/connect routes land with KS-4.3/4.4.
     // Proxies to the
-    // per-scope KhalaSyncHubDO (`idFromName(scope)`): capture/post-commit
-    // appends, offset-resumable log pages served from the DO window, and the
-    // hibernating-WebSocket live tail. Honest 503 while the KHALA_SYNC_HUB
-    // binding is absent.
+    // per-scope hub — the LiveHub Cloud Run service when
+    // KHALA_SYNC_LIVE_HUB_URL/_TOKEN are set (CFG-5, #8520), else the
+    // legacy KhalaSyncHubDO binding: capture/post-commit appends,
+    // offset-resumable log pages served from the hub window, and the live
+    // WebSocket tail. Honest 503 while neither hub is configured.
     path: KHALA_SYNC_HUB_APPEND_PATH,
     handler: (request, env) =>
       Effect.promise(() =>
         handleKhalaSyncHubInternalRoute(request, {
           doPath: '/append',
-          namespace: env.KHALA_SYNC_HUB as
-            | KhalaSyncHubNamespaceLike
-            | undefined,
+          namespace: resolveKhalaSyncHubNamespace(env),
           requireOperator: () => requireAdminApiToken(request, env),
         }),
       ),
@@ -12851,9 +12850,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       Effect.promise(() =>
         handleKhalaSyncHubInternalRoute(request, {
           doPath: '/log',
-          namespace: env.KHALA_SYNC_HUB as
-            | KhalaSyncHubNamespaceLike
-            | undefined,
+          namespace: resolveKhalaSyncHubNamespace(env),
           requireOperator: () => requireAdminApiToken(request, env),
         }),
       ),
@@ -12864,9 +12861,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       Effect.promise(() =>
         handleKhalaSyncHubInternalRoute(request, {
           doPath: '/connect',
-          namespace: env.KHALA_SYNC_HUB as
-            | KhalaSyncHubNamespaceLike
-            | undefined,
+          namespace: resolveKhalaSyncHubNamespace(env),
           requireOperator: () => requireAdminApiToken(request, env),
         }),
       ),
@@ -12882,9 +12877,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       Effect.promise(() =>
         handleKhalaSyncHubAccessChangedRoute(request, {
-          namespace: env.KHALA_SYNC_HUB as
-            | KhalaSyncHubNamespaceLike
-            | undefined,
+          namespace: resolveKhalaSyncHubNamespace(env),
           requireOperator: () => requireAdminApiToken(request, env),
         }),
       ),

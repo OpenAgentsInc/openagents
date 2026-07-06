@@ -71,6 +71,14 @@ export type WorkerBindings = Readonly<{
   // window + hibernating WebSockets (docs/khala-sync/SPEC.md §5). Absent
   // until the wrangler binding + migration are deployed.
   KHALA_SYNC_HUB?: DurableObjectNamespace
+  // LiveHub cutover (CFG-5, #8520; epic #8515): when BOTH are set, Khala
+  // Sync hub traffic (connect WS proxy, log hub-first read, internal hub
+  // routes, access-changed) goes to the owned Cloud Run `khala-live-hub`
+  // service over HTTPS instead of the KhalaSyncHubDO binding. URL is a
+  // plain var; the token is a Worker secret (Secret Manager
+  // `khala-live-hub-token` is the source of truth).
+  KHALA_SYNC_LIVE_HUB_URL?: string
+  KHALA_SYNC_LIVE_HUB_TOKEN?: string
   MARKET_RELAY_SERVICE?: Fetcher
   // Optional since #8516: the account-level Cloudflare R2 feature was
   // disabled (Cloudflare→GCP consolidation, #8515), so the `r2_buckets`

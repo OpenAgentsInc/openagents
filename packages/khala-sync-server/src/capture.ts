@@ -95,6 +95,22 @@ export interface CaptureConfig {
   readonly hubAppendUrl: string
   /** Admin bearer for the internal route (OPENAGENTS_ADMIN_API_TOKEN). */
   readonly adminToken: string
+  /**
+   * Bearer for `hubAppendUrl` when it is NOT the Worker's admin-guarded
+   * internal route — e.g. the LiveHub Cloud Run service's shared service
+   * token (CFG-5, #8520). Defaults to `adminToken`.
+   */
+  readonly hubToken?: string | undefined
+  /**
+   * OPTIONAL fail-soft mirror hub (CFG-5 cutover aid): after every batch
+   * the PRIMARY hub acknowledged, the same batch is pushed best-effort to
+   * this second append URL. Mirror failures are logged and NEVER gate the
+   * checkpoint or fail the pass — the mirror (LiveHub) also rebuilds its
+   * window from Postgres on demand, so a missed mirror append only delays
+   * its live fan-out, never its correctness.
+   */
+  readonly mirrorAppendUrl?: string | undefined
+  readonly mirrorToken?: string | undefined
   readonly pollIntervalMs?: number | undefined
   readonly batchVersions?: number | undefined
   readonly maxPushAttempts?: number | undefined
@@ -106,6 +122,9 @@ interface ResolvedCaptureConfig {
   readonly databaseUrl: string
   readonly hubAppendUrl: string
   readonly adminToken: string
+  readonly hubToken: string
+  readonly mirrorAppendUrl: string | undefined
+  readonly mirrorToken: string
   readonly pollIntervalMs: number
   readonly batchVersions: number
   readonly maxPushAttempts: number
@@ -130,6 +149,18 @@ const resolveConfig = (config: CaptureConfig): ResolvedCaptureConfig => {
     databaseUrl: config.databaseUrl,
     hubAppendUrl: config.hubAppendUrl,
     adminToken: config.adminToken,
+    hubToken:
+      config.hubToken !== undefined && config.hubToken !== ""
+        ? config.hubToken
+        : config.adminToken,
+    mirrorAppendUrl:
+      config.mirrorAppendUrl !== undefined && config.mirrorAppendUrl !== ""
+        ? config.mirrorAppendUrl
+        : undefined,
+    mirrorToken:
+      config.mirrorToken !== undefined && config.mirrorToken !== ""
+        ? config.mirrorToken
+        : config.adminToken,
     pollIntervalMs: positiveOrDefault(
       config.pollIntervalMs,
       DEFAULT_CAPTURE_POLL_INTERVAL_MS,
@@ -156,7 +187,10 @@ const envInt = (raw: string | undefined): number | undefined => {
 /**
  * Build a {@link CaptureConfig} from the environment:
  * `KHALA_SYNC_DATABASE_URL`, `KHALA_SYNC_HUB_APPEND_URL`,
- * `OPENAGENTS_ADMIN_API_TOKEN`, and optional
+ * `OPENAGENTS_ADMIN_API_TOKEN`, and optional `KHALA_SYNC_HUB_TOKEN`
+ * (bearer for a non-Worker hub such as LiveHub; defaults to the admin
+ * token), `KHALA_SYNC_HUB_MIRROR_APPEND_URL` / `KHALA_SYNC_HUB_MIRROR_TOKEN`
+ * (fail-soft second hub, CFG-5 cutover aid), and
  * `KHALA_SYNC_CAPTURE_POLL_INTERVAL_MS` / `KHALA_SYNC_CAPTURE_BATCH_VERSIONS`.
  * Throws with the missing variable NAMES only — never echoes values.
  */
@@ -183,6 +217,9 @@ export const captureConfigFromEnv = (
     databaseUrl: databaseUrl!,
     hubAppendUrl: hubAppendUrl!,
     adminToken: adminToken!,
+    hubToken: env["KHALA_SYNC_HUB_TOKEN"],
+    mirrorAppendUrl: env["KHALA_SYNC_HUB_MIRROR_APPEND_URL"],
+    mirrorToken: env["KHALA_SYNC_HUB_MIRROR_TOKEN"],
     pollIntervalMs: envInt(env["KHALA_SYNC_CAPTURE_POLL_INTERVAL_MS"]),
     batchVersions: envInt(env["KHALA_SYNC_CAPTURE_BATCH_VERSIONS"]),
   }
@@ -295,18 +332,18 @@ export type HubAppendOutcome =
  * policy in {@link captureScopePass} treats them like 5xx.
  */
 export const pushBatchToHub = async (
-  config: Pick<ResolvedCaptureConfig, "adminToken" | "hubAppendUrl">,
+  target: Readonly<{ appendUrl: string; token: string }>,
   scope: SyncScope,
   entries: ReadonlyArray<ChangelogEntry>,
 ): Promise<HubAppendOutcome> => {
-  const url = new URL(config.hubAppendUrl)
+  const url = new URL(target.appendUrl)
   url.searchParams.set("scope", scope)
   let response: Response
   try {
     response = await fetch(url, {
       method: "POST",
       headers: {
-        authorization: `Bearer ${config.adminToken}`,
+        authorization: `Bearer ${target.token}`,
         "content-type": "application/json",
       },
       body: JSON.stringify({
@@ -448,7 +485,11 @@ export const captureScopePass = async (
 
     let outcome: HubAppendOutcome | undefined
     for (let attempt = 1; attempt <= config.maxPushAttempts; attempt++) {
-      outcome = await pushBatchToHub(config, scope, page.entries)
+      outcome = await pushBatchToHub(
+        { appendUrl: config.hubAppendUrl, token: config.hubToken },
+        scope,
+        page.entries,
+      )
       if (outcome.kind !== "failed") break
       config.log(
         `capture ${scope}: push attempt ${attempt}/${config.maxPushAttempts} ` +
@@ -492,6 +533,27 @@ export const captureScopePass = async (
     after = pushedThrough
     entriesPushed += page.entries.length
     batchesPushed += 1
+
+    // Fail-soft mirror (CFG-5): one best-effort push of the SAME batch to
+    // the second hub. Never retried, never gates the checkpoint; a mirror
+    // gap/failure is logged and heals through the mirror's own
+    // Postgres-window rebuild.
+    if (config.mirrorAppendUrl !== undefined) {
+      const mirror = await pushBatchToHub(
+        { appendUrl: config.mirrorAppendUrl, token: config.mirrorToken },
+        scope,
+        page.entries,
+      )
+      if (mirror.kind !== "ok") {
+        config.log(
+          `capture ${scope}: mirror push ${
+            mirror.kind === "gap"
+              ? `gap (expectedFirstVersion ${mirror.expectedFirstVersion})`
+              : `failed (${mirror.detail})`
+          } — primary checkpoint unaffected`,
+        )
+      }
+    }
 
     if (page.upToDate) {
       return finish(true)

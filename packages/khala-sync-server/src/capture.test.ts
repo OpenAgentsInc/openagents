@@ -11,6 +11,7 @@ import {
   runCapturePass,
   startCaptureDaemon,
   type CaptureConfig,
+  runCaptureOnce,
 } from "./capture.js"
 import { runMigrations } from "./migrate.js"
 import { withSyncTransaction } from "./outbox-writer.js"
@@ -501,5 +502,40 @@ describe.skipIf(!hasLocalPostgres())("capture against local Postgres", () => {
     await upsert(scope, "after-stop", { id: "after-stop" })
     await new Promise((resolve) => setTimeout(resolve, 600))
     expect(hub.scopes.get(scope)?.lastVersion ?? 0).toBe(0)
+  })
+
+  test("mirror hub receives every acknowledged batch; a failing mirror never gates the checkpoint (CFG-5)", async () => {
+    const mirror = makeFakeHub()
+    try {
+      const scope = freshScope()
+      await upsert(scope, "m1", { id: "m1" })
+      await upsert(scope, "m2", { id: "m2" })
+
+      const config: CaptureConfig = {
+        ...baseConfig(),
+        mirrorAppendUrl: mirror.appendUrl,
+        mirrorToken: mirror.token,
+      }
+      const first = await runCaptureOnce(config)
+      const firstScope = first.scopes.find((r) => r.scope === scope)!
+      expect(firstScope.upToDate).toBe(true)
+      expect(await checkpointOf(scope)).toBe(2)
+      // The mirror saw the same acknowledged batch.
+      expect(mirror.state(scope).lastVersion).toBe(2)
+
+      // Break ONLY the mirror: the primary still acks, the checkpoint
+      // still advances, the pass reports no error.
+      mirror.failing.add(scope)
+      await upsert(scope, "m3", { id: "m3" })
+      const second = await runCaptureOnce(config)
+      const secondScope = second.scopes.find((r) => r.scope === scope)!
+      expect(secondScope.upToDate).toBe(true)
+      expect(secondScope.error).toBeUndefined()
+      expect(await checkpointOf(scope)).toBe(3)
+      expect(hub.state(scope).lastVersion).toBe(3)
+      expect(mirror.state(scope).lastVersion).toBe(2)
+    } finally {
+      mirror.stop()
+    }
   })
 })

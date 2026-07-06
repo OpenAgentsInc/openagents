@@ -45,7 +45,7 @@ import {
   isKhalaSyncCvrEnabled,
   type KhalaSyncCvrPullDependencies,
 } from './khala-sync-cvr-routes'
-import type { KhalaSyncHubNamespaceLike } from './khala-sync-hub-do'
+import { resolveKhalaSyncHubNamespace } from './khala-sync-live-hub-client'
 import type { KhalaSyncLogDependencies } from './khala-sync-log-routes'
 import type { KhalaSyncPushDependencies } from './khala-sync-push-routes'
 import { makeKhalaSyncScopeReadResolver } from './khala-sync-scope-auth'
@@ -61,6 +61,10 @@ export type KhalaSyncRouteWiringEnv = Readonly<{
   OPENAGENTS_DB: D1Database
   KHALA_SYNC_DB?: Readonly<{ connectionString: string }> | undefined
   KHALA_SYNC_HUB?: unknown
+  /** LiveHub cutover (CFG-5, #8520): both set ⇒ hub traffic goes to the
+   * owned Cloud Run service instead of the DO binding. */
+  KHALA_SYNC_LIVE_HUB_URL?: string | undefined
+  KHALA_SYNC_LIVE_HUB_TOKEN?: string | undefined
   KHALA_SYNC_CVR?: string | undefined
 }>
 
@@ -139,8 +143,10 @@ export const makeKhalaSyncRouteWiring = <
       db: openAgentsDatabase(env),
     })
 
-  const hubNamespace = (env: WorkerEnv) =>
-    env.KHALA_SYNC_HUB as KhalaSyncHubNamespaceLike | undefined
+  // LiveHub-or-DO selection is config-driven (CFG-5, #8520): the HTTP
+  // adapter when KHALA_SYNC_LIVE_HUB_URL/_TOKEN are set, else the DO
+  // binding (absent ⇒ undefined, the routes' hub-unconfigured path).
+  const hubNamespace = (env: WorkerEnv) => resolveKhalaSyncHubNamespace(env)
 
   return {
     makeConnectDeps: (env, ctx) => ({

@@ -630,6 +630,14 @@
         "ARTIFACTS_GCS_BUCKET": "openagentsgemini-oa-artifacts-staging",
         "INFERENCE_GATEWAY_ENABLED": "true",
         "INFERENCE_FREE_TIER_ENABLED": "true",
+        // CFG-5 (#8520): Khala Sync hub traffic (connect WS proxy, log
+        // hub-first read, internal hub routes, access-changed) goes to the
+        // owned Cloud Run LiveHub service instead of the KhalaSyncHubDO
+        // binding when this AND the KHALA_SYNC_LIVE_HUB_TOKEN secret are
+        // both present. STAGING FIRST: verify the live-seam smoke against
+        // this before setting the production var. Roll back by removing
+        // this var (the DO binding takes over again while it exists).
+        "KHALA_SYNC_LIVE_HUB_URL": "https://khala-live-hub-staging-ezxz4mgdsq-uc.a.run.app",
         // KS-8 Pylon read cutover (#8315), staging parity for the production
         // Cloud SQL read path. Roll back by setting this to `d1`.
         "KHALA_SYNC_PYLON_READS": "postgres",
