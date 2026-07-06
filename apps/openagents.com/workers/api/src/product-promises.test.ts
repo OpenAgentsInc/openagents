@@ -111,16 +111,47 @@ describe('public product promises document', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
     )
-    const newestRegistryNote = decoded.notes.find(note =>
-      note.startsWith('Registry '),
+    const registryVersions = decoded.notes.flatMap(note => {
+      const match = /^Registry (\d{4}-\d{2}-\d{2})\.(\d+)/.exec(note)
+      const date = match?.[1]
+      const sequenceText = match?.[2]
+
+      if (date === undefined || sequenceText === undefined) {
+        return []
+      }
+
+      return [
+        {
+          date,
+          sequence: Number.parseInt(sequenceText, 10),
+          version: `${date}.${sequenceText}`,
+        },
+      ]
+    })
+    const [firstRegistryVersion, ...remainingRegistryVersions] =
+      registryVersions
+
+    expect(firstRegistryVersion).toBeDefined()
+
+    const newestRegistryVersion = remainingRegistryVersions.reduce(
+      (latest, candidate) => {
+        if (candidate.date > latest.date) {
+          return candidate
+        }
+        if (
+          candidate.date === latest.date &&
+          candidate.sequence > latest.sequence
+        ) {
+          return candidate
+        }
+        return latest
+      },
+      firstRegistryVersion!,
     )
-    const newestRegistryVersion = /^Registry (?<version>\d{4}-\d{2}-\d{2}\.\d+)/.exec(
-      newestRegistryNote ?? '',
-    )?.groups?.version
 
     expect(decoded.registryVersion).toBe(PublicProductPromisesVersion)
     expect(decoded.version).toBe(PublicProductPromisesVersion)
-    expect(newestRegistryVersion).toBe(PublicProductPromisesVersion)
+    expect(newestRegistryVersion.version).toBe(PublicProductPromisesVersion)
   })
 
   test('keeps business quick-win paid receipt blockers exact for issue 7025', () => {
