@@ -16,8 +16,8 @@ describe("Khala mobile Maestro flows", () => {
     expect(startup).toContain("clearState: true")
     expect(startup).toContain("clearKeychain: true")
 
-    expect(fallback).toContain("Sign in manually instead")
-    expect(fallback).toContain("Back to Tailnet auto-discovery")
+    expect(fallback).toContain("Sign in with GitHub")
+    expect(fallback).toContain("No desktop, Tailnet, or manual token is required.")
 
     expect(signedIn).toContain("${KHALA_MAESTRO_OWNER_USER_ID}")
     expect(signedIn).toContain("${KHALA_MAESTRO_TOKEN}")
@@ -36,6 +36,5 @@ describe("Khala mobile Maestro flows", () => {
     expect(allFlowText).not.toMatch(/oa_agent_[A-Za-z0-9_-]{8,}/)
     expect(allFlowText).not.toMatch(/Bearer\s+[A-Za-z0-9._-]+/)
     expect(allFlowText).not.toContain("eas ")
-    expect(allFlowText).not.toContain("github")
   })
 })

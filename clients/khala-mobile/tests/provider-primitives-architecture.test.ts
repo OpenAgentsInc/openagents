@@ -79,13 +79,16 @@ describe("Khala mobile provider spine and primitives", () => {
     expect(threadList).not.toContain('className="border-b border-borderMuted px-4 py-4"')
   })
 
-  test("uses text field primitives on the manual sign-in fallback", async () => {
+  test("uses button primitives on the GitHub-only sign-in fallback", async () => {
     const signIn = await readSource("src/components/sign-in-screen.tsx")
 
-    expect(signIn).toContain("KhalaTextField")
     expect(signIn).toContain("KhalaButton")
-    expect(signIn).toContain("KhalaEmptyState")
+    expect(signIn).toContain("signInWithGitHub")
+    expect(signIn).toContain("signIn.github.primary")
+    expect(signIn).not.toContain("KhalaTextField")
+    expect(signIn).not.toContain("KhalaEmptyState")
     expect(signIn).not.toContain("<TextInput")
     expect(signIn).not.toContain("<Pressable")
+    expect(signIn).not.toContain("retryDiscovery")
   })
 })

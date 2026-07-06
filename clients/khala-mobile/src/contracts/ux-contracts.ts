@@ -31,30 +31,60 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
   contracts: [
     {
       authorityBoundary:
-        "Binds discovery ordering and priority only. It does not authorize a second auth layer beyond Tailscale's own network ACL (the desktop pairing endpoint trusts reachability on the tailnet), and it does not promise discovery succeeds off-tailnet.",
+        "Retired by owner-directed mobile-only pivot audit §0 on 2026-07-05. Kept as history only; it no longer binds the MVP launch auth path.",
       blockerRefs: [],
       contractId: "khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1",
-      enforcementTier: "test-sweep",
+      enforcementTier: "unenforced",
       evidenceRefs: [
-        "clients/khala-mobile/src/auth/khala-auth-context.tsx",
         "clients/khala-mobile/src/auth/khala-mobile-pairing-core.ts",
         "clients/khala-mobile/src/auth/khala-mobile-pairing.ts",
         "clients/khala-mobile/tests/khala-mobile-pairing.test.ts",
+        "docs/fable/2026-07-05-khala-code-mobile-only-mvp-launch-audit.md",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [],
+      productArea: "auth",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-04",
+      },
+      state: "retired",
+      statement:
+        "IF THERES A DEVICE ON TAILNET THATS AUTHED, USE THAT AUTOMATICALLY - NO LOGIN SCREEN. Before ever showing a manual sign-in screen, the app must look for an already-signed-in desktop Khala Code instance reachable on the same Tailnet and pull working credentials from it.",
+      surface: "khala-mobile",
+      verification:
+        "Retired by docs/fable/2026-07-05-khala-code-mobile-only-mvp-launch-audit.md §0; the diagnostic pairing core remains unit-tested in clients/khala-mobile/tests/khala-mobile-pairing.test.ts but is not the default auth path.",
+    },
+    {
+      authorityBoundary:
+        "Binds the signed-out mobile MVP auth surface and auth state machine only. It does not grant repo writeback, spend, payout, or admin authority; the server-side OpenAuth and Khala Sync scope checks remain authoritative.",
+      blockerRefs: [],
+      contractId: "khala_mobile.auth.github_sign_in_primary_action.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/src/auth/khala-auth-context.tsx",
+        "clients/khala-mobile/src/auth/khala-auth-state-machine.ts",
+        "clients/khala-mobile/src/auth/mobile-openauth.ts",
+        "clients/khala-mobile/src/components/sign-in-screen.tsx",
+        "clients/khala-mobile/tests/khala-auth-state-machine.test.ts",
+        "clients/khala-mobile/tests/mobile-openauth.test.ts",
+        "clients/khala-mobile/tests/ux-contracts.test.ts",
         "docs/khala-mobile/khala-mobile-ux-contract.md",
       ],
       oracles: [
         {
           description:
-            "Probes multiple Tailnet candidate hosts concurrently (not serially) and returns a real credential pair when any host reports a signed-in desktop, so the app never blocks on a per-host timeout multiplied by candidate count.",
-          id: "tailnet_discovery_concurrent_priority.unit",
+            "A fresh install with no stored/dev credentials enters signed_out and exposes exactly one primary action: GitHub sign-in.",
+          id: "github_primary_action_only.unit",
           kind: "bun-test",
           mode: "unit",
           ref: "clients/khala-mobile/tests/ux-contracts.test.ts",
         },
         {
           description:
-            "A paired outcome always wins over a merely-reachable-but-signed-out host, which always wins over unreachable; ties resolve to the first candidate in the documented host-priority list.",
-          id: "tailnet_discovery_outcome_priority.unit",
+            "The mobile-only auth machine has no Tailnet discovery status, so a cold start cannot default into desktop probing before login.",
+          id: "no_tailnet_discovery_status.unit",
           kind: "bun-test",
           mode: "unit",
           ref: "clients/khala-mobile/tests/ux-contracts.test.ts",
@@ -64,14 +94,14 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
       source: {
         channel: "khala-code-session",
         statedBy: "owner",
-        statedOn: "2026-07-04",
+        statedOn: "2026-07-05",
       },
       state: "enforced",
       statement:
-        "IF THERES A DEVICE ON TAILNET THATS AUTHED, USE THAT AUTOMATICALLY - NO LOGIN SCREEN. Before ever showing a manual sign-in screen, the app must look for an already-signed-in desktop Khala Code instance reachable on the same Tailnet and pull working credentials from it.",
+        "Signed-out Khala Mobile users see exactly one primary action: Sign in with GitHub. The app must not probe Tailnet or require a desktop before showing that action.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "bun test tests/ux-contracts.test.ts tests/khala-auth-state-machine.test.ts tests/mobile-openauth.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -527,5 +557,5 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-05.4",
+  version: "2026-07-05.5",
 }

@@ -15,12 +15,9 @@ export {
 } from "./khala-mobile-pairing-core"
 
 /**
- * On the iOS Simulator (same machine as the desktop app), localhost is
- * reachable directly. On a physical device, the desktop is only reachable
- * over the Tailnet — via its MagicDNS hostname, on the same health-beacon
- * port the desktop app's connectivity dot already probes (see
- * clients/khala-code-desktop/src/bun/index.ts startTailnetHealthBeacon /
- * tailnetMobilePairingFetch).
+ * Diagnostic wrapper for the retired Tailnet pairing path. The mobile-only MVP
+ * auth provider does not call this on cold start; GitHub PKCE is the default
+ * signed-out path.
  */
 export const discoverKhalaMobilePairing = async (): Promise<KhalaMobilePairingProbeOutcome> =>
   discoverKhalaMobilePairingCredentials(

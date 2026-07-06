@@ -1,57 +1,86 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
+import {
+  exchangeCodeAsync,
+  makeRedirectUri,
+  useAuthRequest,
+} from "expo-auth-session"
+import type { AuthRequestConfig } from "expo-auth-session"
+import * as WebBrowser from "expo-web-browser"
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+} from "react"
 import type { ReactNode } from "react"
 
-import { KHALA_SYNC_DEMO_BASE_URL, KHALA_SYNC_DEMO_OWNER_USER_ID, KHALA_SYNC_DEMO_TOKEN } from "../config/khala-sync-demo"
-import { discoverKhalaMobilePairing } from "./khala-mobile-pairing"
-import type { KhalaMobilePairingProbeOutcome } from "./khala-mobile-pairing-core"
+import {
+  KHALA_OPENAGENTS_API_BASE_URL,
+  KHALA_OPENAUTH_BASE_URL,
+  KHALA_SYNC_DEMO_BASE_URL,
+  KHALA_SYNC_DEMO_OWNER_USER_ID,
+  KHALA_SYNC_DEMO_TOKEN,
+} from "../config/khala-sync-demo"
+import { mobileProblemMessageSafe } from "../network/mobile-problem"
 import { clearStoredCredentials, loadStoredCredentials, saveStoredCredentials } from "./khala-auth-store"
+import {
+  initialKhalaAuthMachineState,
+  reduceKhalaAuthMachine,
+  type KhalaAuthMachineStatus,
+} from "./khala-auth-state-machine"
 import { validateKhalaCredentials } from "./khala-auth-validate"
+import {
+  deleteMobileOpenAuthSession,
+  fetchMobileSyncSession,
+  mobileOpenAuthDiscovery,
+  mobileOpenAuthRequestConfig,
+  mobileOpenAuthTokenExchangeConfig,
+  KHALA_MOBILE_OPENAUTH_REDIRECT_PATH,
+  KHALA_MOBILE_OPENAUTH_REDIRECT_SCHEME,
+} from "./mobile-openauth"
 
-/**
- * - "loading": reading on-device secure storage; near-instant.
- * - "discovering": no stored credentials yet — probing the Tailnet for a
- *   signed-in desktop (MC-6) before ever showing manual sign-in UI.
- * - "signed_out": discovery finished without a usable pairing; the fallback
- *   screen (Tailnet retry, with manual entry as a secondary/advanced option)
- *   is shown.
- * - "signed_in": credentials resolved (stored, dev env, or auto-paired) and
- *   validated against Khala Sync.
- */
-export type KhalaAuthStatus = "loading" | "discovering" | "signed_out" | "signed_in"
+WebBrowser.maybeCompleteAuthSession()
+
+export type KhalaAuthStatus = KhalaAuthMachineStatus
 
 export type KhalaAuthState = Readonly<{
   status: KhalaAuthStatus
   baseUrl: string
+  githubSignInReady: boolean
   ownerUserId: string
-  token: string
-  /** Why auto-discovery didn't produce a signed-in session, for the fallback
-   * screen's messaging. `null` before the first discovery attempt finishes. */
-  discoveryOutcome: KhalaMobilePairingProbeOutcome | null
-  signIn: (input: { ownerUserId: string; token: string }) => Promise<{ ok: true } | { ok: false; messageSafe: string }>
+  signInErrorMessage: string | null
+  signInWithGitHub: () => Promise<void>
   signOut: () => Promise<void>
-  /** Re-runs Tailnet auto-discovery on demand (e.g. a "Retry" button after
-   * the user turns on Tailscale or signs in on their Mac). */
-  retryDiscovery: () => Promise<void>
+  token: string
 }>
 
 const KhalaAuthContext = createContext<KhalaAuthState | null>(null)
 
-/** The env-var pair only seeds a dev session when BOTH are present — this
- * keeps `expo start`/`expo run:ios` with exported env vars working exactly
- * as before, with no behavior change for local development. A real
- * distributed build (TestFlight, production) never has these baked in, so
- * it always falls through to Tailnet auto-discovery instead of a blank,
- * unrecoverable "Set EXPO_PUBLIC_..." screen. */
+/** The env-var pair only seeds a dev session when BOTH are present. A real
+ * distributed build never bakes these in, so a fresh install lands on the
+ * GitHub sign-in screen rather than a desktop/Tailnet pairing probe. */
 const devEnvCredentials =
   KHALA_SYNC_DEMO_OWNER_USER_ID !== "" && KHALA_SYNC_DEMO_TOKEN !== ""
     ? { ownerUserId: KHALA_SYNC_DEMO_OWNER_USER_ID, token: KHALA_SYNC_DEMO_TOKEN }
     : null
 
+const redirectUri = makeRedirectUri({
+  path: KHALA_MOBILE_OPENAUTH_REDIRECT_PATH,
+  scheme: KHALA_MOBILE_OPENAUTH_REDIRECT_SCHEME,
+})
+const discovery = mobileOpenAuthDiscovery(KHALA_OPENAUTH_BASE_URL)
+
 export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
-  const [status, setStatus] = useState<KhalaAuthStatus>("loading")
-  const [ownerUserId, setOwnerUserId] = useState("")
-  const [token, setToken] = useState("")
-  const [discoveryOutcome, setDiscoveryOutcome] = useState<KhalaMobilePairingProbeOutcome | null>(null)
+  const [machine, dispatch] = useReducer(
+    reduceKhalaAuthMachine,
+    initialKhalaAuthMachineState,
+  )
+  const [request, , promptAsync] = useAuthRequest(
+    mobileOpenAuthRequestConfig(redirectUri) as AuthRequestConfig,
+    discovery,
+  )
   const mountedRef = useRef(true)
 
   useEffect(() => () => {
@@ -62,97 +91,124 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
     async (credentials: { ownerUserId: string; token: string }, persist: boolean) => {
       if (persist) await saveStoredCredentials(credentials)
       if (!mountedRef.current) return
-      setOwnerUserId(credentials.ownerUserId)
-      setToken(credentials.token)
-      setStatus("signed_in")
+      dispatch({ credentials, type: "github_sign_in_succeeded" })
     },
-    []
+    [],
   )
-
-  /** Tailnet auto-auth handoff (MC-6, owner mandate 2026-07-04): before ever
-   * showing a login screen, look for an already-signed-in desktop reachable
-   * on the same Tailnet and pull its credentials. Only reached when no
-   * stored/dev credentials already resolved the session. */
-  const runDiscovery = useCallback(async () => {
-    if (mountedRef.current) setStatus("discovering")
-    const outcome = await discoverKhalaMobilePairing()
-    if (outcome.state === "paired") {
-      const validation = await validateKhalaCredentials({
-        baseUrl: KHALA_SYNC_DEMO_BASE_URL,
-        ownerUserId: outcome.credentials.ownerUserId,
-        token: outcome.credentials.token
-      })
-      if (validation.ok) {
-        await applyCredentials(outcome.credentials, true)
-        return
-      }
-    }
-    if (!mountedRef.current) return
-    setDiscoveryOutcome(outcome)
-    setStatus("signed_out")
-  }, [applyCredentials])
 
   useEffect(() => {
     let cancelled = false
     const run = async () => {
-      const stored = await loadStoredCredentials()
-      if (cancelled) return
-      const resolved = stored ?? devEnvCredentials
-      if (resolved !== null) {
-        await applyCredentials(resolved, false)
-        return
-      }
-      await runDiscovery()
+      const storedCredentials = await loadStoredCredentials()
+      if (cancelled || !mountedRef.current) return
+      dispatch({
+        devCredentials: devEnvCredentials,
+        storedCredentials,
+        type: "stored_credentials_loaded",
+      })
     }
     void run()
     return () => {
       cancelled = true
     }
-    // Auto-discovery is intentionally only wired up once at mount via
-    // `runDiscovery` (stable identity below); re-running belongs to the
-    // explicit `retryDiscovery` action, not this effect.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const signIn = useCallback(
-    async (input: { ownerUserId: string; token: string }) => {
-      const trimmedOwnerUserId = input.ownerUserId.trim()
-      const trimmedToken = input.token.trim()
-      if (trimmedOwnerUserId === "" || trimmedToken === "") {
-        return { messageSafe: "Owner user id and token are both required.", ok: false as const }
+  const signInWithGitHub = useCallback(async () => {
+    if (request === null || machine.status === "signing_in") return
+    dispatch({ type: "github_sign_in_started" })
+
+    try {
+      const result = await promptAsync()
+
+      if (result.type !== "success") {
+        if (!mountedRef.current) return
+        dispatch({ type: "github_sign_in_cancelled" })
+        return
       }
+
+      const code = result.params.code
+      const codeVerifier = request.codeVerifier
+
+      if (typeof code !== "string" || code.trim() === "" || codeVerifier === undefined) {
+        throw new Error("GitHub sign-in did not return a usable authorization code.")
+      }
+
+      const tokenResponse = await exchangeCodeAsync(
+        mobileOpenAuthTokenExchangeConfig({
+          code,
+          codeVerifier,
+          redirectUri,
+        }),
+        discovery,
+      )
+      const mobileSession = await fetchMobileSyncSession({
+        accessToken: tokenResponse.accessToken,
+        apiBaseUrl: KHALA_OPENAGENTS_API_BASE_URL,
+      })
       const validation = await validateKhalaCredentials({
         baseUrl: KHALA_SYNC_DEMO_BASE_URL,
-        ownerUserId: trimmedOwnerUserId,
-        token: trimmedToken
+        ownerUserId: mobileSession.ownerUserId,
+        token: mobileSession.syncToken,
       })
-      if (!validation.ok) return validation
-      await applyCredentials({ ownerUserId: trimmedOwnerUserId, token: trimmedToken }, true)
-      return { ok: true as const }
-    },
-    [applyCredentials]
-  )
+
+      if (!validation.ok) {
+        if (!mountedRef.current) return
+        dispatch({
+          messageSafe: validation.messageSafe,
+          type: "github_sign_in_failed",
+        })
+        return
+      }
+
+      await applyCredentials(
+        {
+          ownerUserId: mobileSession.ownerUserId,
+          token: mobileSession.syncToken,
+        },
+        true,
+      )
+    } catch (error) {
+      if (!mountedRef.current) return
+      dispatch({
+        messageSafe: mobileProblemMessageSafe(error, "GitHub sign-in"),
+        type: "github_sign_in_failed",
+      })
+    }
+  }, [applyCredentials, machine.status, promptAsync, request])
 
   const signOut = useCallback(async () => {
+    const token = machine.credentials?.token
+
     await clearStoredCredentials()
-    setOwnerUserId("")
-    setToken("")
-    setDiscoveryOutcome(null)
-    setStatus("signed_out")
-  }, [])
+
+    if (token !== undefined && token.trim().length > 0) {
+      try {
+        await deleteMobileOpenAuthSession({
+          accessToken: token,
+          apiBaseUrl: KHALA_OPENAGENTS_API_BASE_URL,
+        })
+      } catch {
+        // Local sign-out must complete even if the network revocation attempt
+        // fails; the next server call still has to pass bearer validation.
+      }
+    }
+
+    if (!mountedRef.current) return
+    dispatch({ type: "signed_out" })
+  }, [machine.credentials?.token])
 
   const value = useMemo<KhalaAuthState>(
     () => ({
       baseUrl: KHALA_SYNC_DEMO_BASE_URL,
-      discoveryOutcome,
-      ownerUserId,
-      retryDiscovery: runDiscovery,
-      signIn,
+      githubSignInReady: request !== null && machine.status !== "signing_in",
+      ownerUserId: machine.credentials?.ownerUserId ?? "",
+      signInErrorMessage: machine.messageSafe,
+      signInWithGitHub,
       signOut,
-      status,
-      token
+      status: machine.status,
+      token: machine.credentials?.token ?? "",
     }),
-    [discoveryOutcome, ownerUserId, runDiscovery, signIn, signOut, status, token]
+    [machine, request, signInWithGitHub, signOut],
   )
 
   return <KhalaAuthContext.Provider value={value}>{children}</KhalaAuthContext.Provider>

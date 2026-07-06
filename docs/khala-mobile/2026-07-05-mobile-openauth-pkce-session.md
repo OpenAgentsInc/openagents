@@ -1,7 +1,8 @@
 # Khala Mobile OpenAuth PKCE Session Contract
 
 Status: server-side auth and sync credential bridge implemented for #8468 and
-#8469 on 2026-07-05. #8470 owns the Expo UI plus Tailnet contract retirement.
+#8469 on 2026-07-05; Expo UI plus Tailnet contract retirement implemented for
+#8470 the same day.
 
 ## Native Client
 
@@ -24,14 +25,14 @@ material.
 
 ## Token And Session Flow
 
-1. Mobile opens the OpenAuth issuer authorization URL in the system browser or
+1. Signed-out mobile users see exactly one primary action: `Sign in with
+   GitHub`.
+2. Mobile opens the OpenAuth issuer authorization URL in the system browser or
    in-app browser using the fields above.
-2. OpenAuth completes GitHub login and redirects to `khala://auth?code=...`.
-3. Mobile exchanges the code at the issuer token endpoint with the original
+3. OpenAuth completes GitHub login and redirects to `khala://auth?code=...`.
+4. Mobile exchanges the code at the issuer token endpoint with the original
    PKCE verifier.
-4. Mobile stores the returned access and refresh tokens in the platform secure
-   credential store.
-5. Mobile verifies the user session with:
+5. Mobile may verify the user session with:
 
 ```http
 GET /api/mobile/auth/session
@@ -63,11 +64,11 @@ actor and then apply the normal Khala Sync scope-read/write gates:
 `scope.user.<ownerUserId>` for the owner, plus owned thread scopes via the
 existing resolver. A foreign `scope.user.*` remains denied before storage reads.
 
-7. Mobile refreshes with the OpenAuth token endpoint when the access token
-   expires.
-8. After refresh, mobile should call `POST /api/mobile/session` again and
-   replace its stored `syncToken` with the refreshed access token.
-9. Mobile signs out with:
+7. Mobile stores `{ ownerUserId, token: syncToken }` in SecureStore using the
+   existing `khala-auth-store.ts` shape. The current #8470 client does not
+   persist the OpenAuth refresh token; the server refresh path from #8468/#8469
+   remains available when refresh persistence is added.
+8. Mobile signs out with:
 
 ```http
 DELETE /api/mobile/auth/session
@@ -87,7 +88,15 @@ writeback grant, and not a separate Khala Sync authority. `/api/sync/*` accepts
 the current access token only through the standard human actor path, and then
 still checks exact Khala Sync scopes.
 
+The old Tailnet auto-auth behavior contract is retired for the mobile-only MVP
+launch. Pairing helpers remain diagnostic/reference code, but fresh installs
+must not probe Tailnet before login and must not show a manual token form as the
+primary path.
+
 Regression coverage:
 
 - `apps/openagents.com/workers/api/src/auth/mobile-session.test.ts`
 - `apps/openagents.com/workers/api/src/openagents-openapi-routes.test.ts`
+- `clients/khala-mobile/tests/mobile-openauth.test.ts`
+- `clients/khala-mobile/tests/khala-auth-state-machine.test.ts`
+- `clients/khala-mobile/tests/ux-contracts.test.ts`

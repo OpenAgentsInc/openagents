@@ -86,18 +86,27 @@ top follow-up item for whoever picks this up next.
 
 ## Registry
 
-Registry version: `2026-07-05.4` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-05.5` (schema `openagents.behavior_contracts.v1`)
 
-### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — ENFORCED
+### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — RETIRED
 
 - **Surface:** khala-mobile (auth)
 - **Stated by:** owner via khala-code-session on 2026-07-04
 - **Statement:** IF THERES A DEVICE ON TAILNET THATS AUTHED, USE THAT AUTOMATICALLY - NO LOGIN SCREEN. Before ever showing a manual sign-in screen, the app must look for an already-signed-in desktop Khala Code instance reachable on the same Tailnet and pull working credentials from it.
+- **Enforcement tier:** unenforced
+- **Verification:** Retired by docs/fable/2026-07-05-khala-code-mobile-only-mvp-launch-audit.md §0; the diagnostic pairing core remains unit-tested in clients/khala-mobile/tests/khala-mobile-pairing.test.ts but is not the default auth path.
+- **Authority boundary:** Retired by owner-directed mobile-only pivot audit §0 on 2026-07-05. Kept as history only; it no longer binds the MVP launch auth path.
+
+### `khala_mobile.auth.github_sign_in_primary_action.v1` — ENFORCED
+
+- **Surface:** khala-mobile (auth)
+- **Stated by:** owner via khala-code-session on 2026-07-05
+- **Statement:** Signed-out Khala Mobile users see exactly one primary action: Sign in with GitHub. The app must not probe Tailnet or require a desktop before showing that action.
 - **Enforcement tier:** test-sweep
-- **Oracle** `tailnet_discovery_concurrent_priority.unit` (bun-test, unit): Probes multiple Tailnet candidate hosts concurrently (not serially) and returns a real credential pair when any host reports a signed-in desktop, so the app never blocks on a per-host timeout multiplied by candidate count. — `clients/khala-mobile/tests/ux-contracts.test.ts`
-- **Oracle** `tailnet_discovery_outcome_priority.unit` (bun-test, unit): A paired outcome always wins over a merely-reachable-but-signed-out host, which always wins over unreachable; ties resolve to the first candidate in the documented host-priority list. — `clients/khala-mobile/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
-- **Authority boundary:** Binds discovery ordering and priority only. It does not authorize a second auth layer beyond Tailscale's own network ACL (the desktop pairing endpoint trusts reachability on the tailnet), and it does not promise discovery succeeds off-tailnet.
+- **Oracle** `github_primary_action_only.unit` (bun-test, unit): A fresh install with no stored/dev credentials enters signed_out and exposes exactly one primary action: GitHub sign-in. — `clients/khala-mobile/tests/ux-contracts.test.ts`
+- **Oracle** `no_tailnet_discovery_status.unit` (bun-test, unit): The mobile-only auth machine has no Tailnet discovery status, so a cold start cannot default into desktop probing before login. — `clients/khala-mobile/tests/ux-contracts.test.ts`
+- **Verification:** bun test tests/ux-contracts.test.ts tests/khala-auth-state-machine.test.ts tests/mobile-openauth.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
+- **Authority boundary:** Binds the signed-out mobile MVP auth surface and auth state machine only. It does not grant repo writeback, spend, payout, or admin authority; the server-side OpenAuth and Khala Sync scope checks remain authoritative.
 
 ### `khala_mobile.composer.pushtotalk_disabled_when_unavailable.v1` — ENFORCED
 

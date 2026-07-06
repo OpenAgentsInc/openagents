@@ -5,18 +5,9 @@ export const khalaCopyKeys = [
   "errorBoundary.retry",
   "nav.settings",
   "nav.threads",
-  "signIn.discovery.help",
-  "signIn.discovery.looking",
-  "signIn.discovery.noSignedInMac",
-  "signIn.discovery.reachableNotSignedIn",
-  "signIn.discovery.reachableNotSignedInOnHost",
-  "signIn.manual.backToDiscovery",
-  "signIn.manual.ownerUserId",
-  "signIn.manual.submit",
-  "signIn.manual.subtitle",
-  "signIn.manual.token",
-  "signIn.manualInstead",
-  "signIn.retry",
+  "signIn.github.note",
+  "signIn.github.primary",
+  "signIn.github.subtitle",
 ] as const
 
 export type KhalaCopyKey = (typeof khalaCopyKeys)[number]
@@ -28,21 +19,9 @@ export const enCopy = {
   "errorBoundary.retry": "Try again",
   "nav.settings": "Settings",
   "nav.threads": "Khala",
-  "signIn.discovery.help":
-    "Make sure Tailscale is connected on both this phone and your Mac, and Khala Code is running and signed in there.",
-  "signIn.discovery.looking": "Looking for a signed-in Mac on your Tailnet...",
-  "signIn.discovery.noSignedInMac": "No signed-in Mac found on your Tailnet.",
-  "signIn.discovery.reachableNotSignedIn":
-    "Found Khala Code, but it has not completed Connect OpenAgents yet. Open Khala Code on your Mac, finish Connect, then retry.",
-  "signIn.discovery.reachableNotSignedInOnHost":
-    "Found Khala Code on {hostname}, but it has not completed Connect OpenAgents yet. Open Khala Code on your Mac, finish Connect, then retry.",
-  "signIn.manual.backToDiscovery": "Back to Tailnet auto-discovery",
-  "signIn.manual.ownerUserId": "Owner user id",
-  "signIn.manual.submit": "Sign in",
-  "signIn.manual.subtitle": "Sign in with your OpenAgents account to sync chats and your fleet.",
-  "signIn.manual.token": "OpenAgents token",
-  "signIn.manualInstead": "Sign in manually instead",
-  "signIn.retry": "Retry",
+  "signIn.github.note": "No desktop, Tailnet, or manual token is required.",
+  "signIn.github.primary": "Sign in with GitHub",
+  "signIn.github.subtitle": "Connect GitHub to pick a repo and run Khala Code from this phone.",
 } satisfies Record<KhalaCopyKey, string>
 
 export const copyLocale = "en" as const

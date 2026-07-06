@@ -109,13 +109,30 @@ notifications** (zero APNs/FCM/Expo-push code anywhere, client or server).
   the OpenAuth access-token refresh path; sign-out revokes the same access token
   and optional refresh token through #8468's revocation endpoint. Remaining
   WS-A gap is #8470 (mobile UI + Tailnet contract retirement).
+- **2026-07-05 #8470 update:** `clients/khala-mobile` now has the native
+  GitHub PKCE sign-in path through Expo AuthSession/WebBrowser. Fresh installs
+  no longer run Tailnet auto-discovery before login; signed-out users see one
+  primary action, `Sign in with GitHub`. The app exchanges the OpenAuth access
+  token for the existing `{ ownerUserId, token }` SecureStore credential shape
+  via `POST /api/mobile/session`, then validates the returned bearer against
+  Khala Sync before entering the signed-in app. The Tailnet pairing code remains
+  only as diagnostic/reference code with its own unit tests; the behavior
+  contract `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` is
+  retired and replaced by `khala_mobile.auth.github_sign_in_primary_action.v1`.
+  Verification covered full mobile tests, mobile typecheck, architecture guard,
+  iOS local prebuild/build (`** BUILD SUCCEEDED **`), Android local
+  prebuild/build (`BUILD SUCCESSFUL` with Homebrew OpenJDK 17 and the installed
+  Android command-line SDK), repo `check:deploy`, and an iPhone 17 simulator
+  fresh-install smoke showing the GitHub-only signed-out screen with no Tailnet
+  or manual-token controls.
 - There is **no GitHub App** (no installation tokens, no fine-grained
   per-repo permissions) — all repo access rides the user OAuth token.
 
 ### 2.2 Mobile app: data plane cloud-clean, three desktop couplings
 
 - `clients/khala-mobile` (Expo RN, `com.openagents.khala.mobile`, iOS build
-  7 / Android versionCode 1) syncs exclusively against
+  8 / Android versionCode 2 after the AuthSession/WebBrowser runtime bump)
+  syncs exclusively against
   `https://openagents.com/api/sync/*` with a bearer token; local-first
   SQLite durable store + optimistic overlay + durable cursors
   (`src/sync/khala-mobile-sync-runtime.ts`). Scopes: `scope.user.<id>`
@@ -127,18 +144,18 @@ notifications** (zero APNs/FCM/Expo-push code anywhere, client or server).
   target lane (`codex_app_server` | `claude_pylon`). **The mobile wire
   contract does not need to change for cloud execution** — only who
   consumes the intent does.
-- The three desktop couplings:
-  1. **Auth**: Tailnet auto-discovery pulls `{ownerUserId, token}` from a
-     signed-in desktop's `/khala-mobile-pairing` endpoint
-     (`src/auth/khala-mobile-pairing-core.ts`); manual token paste is the
-     only desktop-free path and requires possessing a token out-of-band.
+- The remaining desktop couplings after #8470:
+  1. **Auth retired for MVP default path**: Tailnet auto-discovery and manual
+     token paste no longer gate fresh installs. The old pairing endpoint/core
+     remains as diagnostic/reference code, but the signed-out app defaults to
+     GitHub PKCE + `/api/mobile/session`.
   2. **Execution**: both lanes are consumed by
      `apps/pylon/src/orchestration/runtime-intent-enforcement.ts` running
      on the *user's* machine.
   3. **Settings → Fleet**: env-var fleet-run id, desktop-oriented copy.
 - **No push notifications** (no expo-notifications, no token registration),
-  **no IAP code**, **no GitHub/OpenAuth code** in the app — all confirmed
-  absent by grep.
+  **no IAP code** — all confirmed absent by grep in the original audit. GitHub
+  OpenAuth code landed in #8470.
 - Distribution is proven: TestFlight uploads confirmed VALID via the ASC
   API; local `expo prebuild` + Xcode/Gradle builds; the owned OTA server
   (`apps/oa-updates`, `updates.openagents.com`) has a **proven end-to-end
@@ -349,8 +366,8 @@ Filed 2026-07-05 under the epic **#8467** (the epic carries the live
 dependency map in its first comment):
 
 - **WS-A Mobile auth**: #8468 (closed: PKCE/mobile session on the issuer), #8469
-  (closed: session→Khala Sync credential bridge), #8470 (mobile GitHub sign-in
-  UI + Tailnet contract retirement).
+  (closed: session→Khala Sync credential bridge), #8470 (closed: mobile GitHub
+  sign-in UI + Tailnet contract retirement).
 - **WS-B Repos**: #8471 (mobile-bearer repo API), #8472 (repo picker UI +
   thread↔repo binding).
 - **WS-C Cloud execution**: #8473 (org cloud executor pool), #8474

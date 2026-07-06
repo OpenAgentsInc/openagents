@@ -12,10 +12,10 @@ import {
   khalaMobileUxContractRegistry,
 } from "../src/contracts/ux-contracts"
 import {
-  discoverKhalaMobilePairingCredentials,
-  khalaMobilePairingTargets,
-  type PairingFetchLike,
-} from "../src/auth/khala-mobile-pairing-core"
+  initialKhalaAuthMachineState,
+  reduceKhalaAuthMachine,
+  signedOutPrimaryActions,
+} from "../src/auth/khala-auth-state-machine"
 import {
   isPushToTalkPressable,
   mergeTranscriptIntoDraft,
@@ -79,57 +79,32 @@ describe("khala mobile ux contract registry", () => {
   })
 })
 
-// Oracle for khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1
-describe("contract khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1", () => {
-  type FakeResponse = { ok: boolean; body?: unknown }
-  const fakeFetch = (responses: Record<string, FakeResponse>): PairingFetchLike => async url => {
-    const response = responses[url]
-    if (response === undefined) throw new Error(`unexpected fetch: ${url}`)
-    return { json: async () => response.body ?? {}, ok: response.ok }
-  }
-
-  test("tailnet_discovery_concurrent_priority.unit — probes every candidate host, not just the first", async () => {
-    // Localhost is always probed first (own-Mac simulator/dogfood case —
-    // e.g. the iOS Simulator sharing its host Mac's network stack with an
-    // already-running Khala Code desktop — must never require Tailnet
-    // routing), then every configured Tailnet host.
-    const targets = khalaMobilePairingTargets(true, 50099, ["host-a", "host-b", "host-c"])
-    expect(targets).toHaveLength(4)
-    const outcome = await discoverKhalaMobilePairingCredentials(
-      targets,
-      fakeFetch({
-        [targets[0]!]: { ok: false }, // localhost: unreachable (no desktop on the phone itself)
-        [targets[1]!]: { body: { ok: false }, ok: true },
-        [targets[2]!]: {
-          body: { hostname: "bertha", ok: true, ownerUserId: "user_1", token: "oa_agent_1" },
-          ok: true,
-        },
-        [targets[3]!]: { ok: false },
-      }),
-    )
-    expect(outcome).toEqual({
-      credentials: { ownerUserId: "user_1", token: "oa_agent_1" },
-      hostname: "bertha",
-      state: "paired",
+// Oracle for khala_mobile.auth.github_sign_in_primary_action.v1
+describe("contract khala_mobile.auth.github_sign_in_primary_action.v1", () => {
+  test("github_primary_action_only.unit — signed-out users get exactly one primary action", () => {
+    const state = reduceKhalaAuthMachine(initialKhalaAuthMachineState, {
+      devCredentials: null,
+      storedCredentials: null,
+      type: "stored_credentials_loaded",
     })
+
+    expect(state.status).toBe("signed_out")
+    expect(signedOutPrimaryActions(state)).toEqual(["github"])
   })
 
-  test("tailnet_discovery_outcome_priority.unit — paired beats reachable-signed-out beats unreachable", async () => {
-    const targets = ["http://host-a/khala-mobile-pairing", "http://host-b/khala-mobile-pairing"]
-    const reachableOnly = await discoverKhalaMobilePairingCredentials(
-      targets,
-      fakeFetch({
-        "http://host-a/khala-mobile-pairing": { body: { ok: false }, ok: true },
-        "http://host-b/khala-mobile-pairing": { ok: false },
-      }),
-    )
-    expect(reachableOnly.state).toBe("reachable_not_signed_in")
+  test("no_tailnet_discovery_status.unit — the mobile-only auth provider has no discovery path", async () => {
+    const state = reduceKhalaAuthMachine(initialKhalaAuthMachineState, {
+      devCredentials: null,
+      storedCredentials: null,
+      type: "stored_credentials_loaded",
+    })
+    const authProviderSource = await Bun.file(
+      repoPath("clients/khala-mobile/src/auth/khala-auth-context.tsx"),
+    ).text()
 
-    const allUnreachable = await discoverKhalaMobilePairingCredentials(
-      targets,
-      fakeFetch({}),
-    )
-    expect(allUnreachable).toEqual({ state: "unreachable" })
+    expect(state.status).not.toBe("discovering")
+    expect(authProviderSource).not.toContain("discoverKhalaMobilePairing")
+    expect(authProviderSource).not.toContain("retryDiscovery")
   })
 })
 

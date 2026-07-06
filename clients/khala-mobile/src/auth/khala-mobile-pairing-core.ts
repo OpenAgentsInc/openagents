@@ -1,18 +1,17 @@
 /**
- * MC-6: Tailnet auto-auth handoff, pure discovery logic.
+ * Retired MC-6 Tailnet pairing diagnostic, pure discovery logic.
  *
- * Owner mandate (2026-07-04): "IF THERES A DEVICE ON TAILNET THATS AUTHED,
- * USE THAT AUTOMATICALLY - NO LOGIN SCREEN." When a desktop Khala Code
- * instance is signed in and reachable on the same Tailnet, the mobile app
- * should discover it and pull working Khala Sync credentials from it — zero
- * manual typing in the common case.
+ * The 2026-07-05 mobile-only MVP pivot retired Tailnet auto-auth as the default
+ * sign-in path. This module remains as a diagnostic/reference helper for the
+ * old desktop pairing endpoint; `KhalaAuthProvider` must not call it on fresh
+ * install before GitHub sign-in.
  *
  * This mirrors the shape of `../status/khala-code-connectivity-core.ts`
  * (MC-5): pure, dependency-injected, free of any native/expo import so it
  * stays unit-testable under `bun test`. The native-touching wrapper is
  * `./khala-mobile-pairing.ts`.
  *
- * The desktop endpoint this probes is
+ * The desktop endpoint this probes, when a diagnostic harness calls it, is
  * `clients/khala-code-desktop/src/bun/index.ts` `tailnetMobilePairingFetch`,
  * served on the SAME 0.0.0.0-bound Tailnet health beacon as `/health`
  * (`KHALA_CODE_TAILNET_HEALTH_PORT`) — Tailscale's own network ACL is the

@@ -30,10 +30,7 @@ const AuthGate = () => {
     )
   }
 
-  // "discovering" also renders SignInScreen — it owns the Tailnet
-  // auto-discovery status UI so the phone never flashes a bare spinner while
-  // quietly trying every candidate desktop host.
-  if (status === "signed_out" || status === "discovering") return <SignInScreen />
+  if (status === "signed_out" || status === "signing_in") return <SignInScreen />
 
   return (
     // Mounted once around the whole signed-in app so a long-press screenshot

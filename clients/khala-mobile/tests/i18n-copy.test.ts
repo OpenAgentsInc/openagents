@@ -11,13 +11,9 @@ describe("Khala mobile i18n copy keys", () => {
     expect(() => tx("missing.key" as KhalaCopyKey)).toThrow("Missing Khala mobile copy key")
   })
 
-  test("interpolates required public-safe params and rejects missing params", () => {
-    expect(tx("signIn.discovery.reachableNotSignedInOnHost", { hostname: "macbook-pro-m5" })).toContain(
-      "macbook-pro-m5",
-    )
-    expect(() => tx("signIn.discovery.reachableNotSignedInOnHost")).toThrow(
-      "Missing Khala mobile copy param",
-    )
+  test("returns the GitHub sign-in copy through typed keys", () => {
+    expect(tx("signIn.github.primary")).toBe("Sign in with GitHub")
+    expect(tx("signIn.github.note")).toContain("No desktop")
   })
 
   test("copy table does not contain private examples or raw sync payload placeholders", () => {

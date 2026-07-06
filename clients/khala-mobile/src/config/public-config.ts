@@ -5,6 +5,7 @@ export type KhalaPublicConfig = Readonly<{
   iosBuildNumber: string | null
   androidVersionCode: number | null
   apiBaseUrl: string
+  authBaseUrl: string
   syncBaseUrl: string
   updatesOwner: string
   updatesUrl: string
@@ -125,6 +126,7 @@ export const parseKhalaPublicConfig = (
   if (updatesOwner === null) issues.push("extra.khala.updatesOwner must be a non-empty string")
 
   const apiBaseUrl = httpsUrl(khala.apiBaseUrl, "extra.khala.apiBaseUrl", issues)
+  const authBaseUrl = httpsUrl(khala.authBaseUrl, "extra.khala.authBaseUrl", issues)
   const syncBaseUrl = httpsUrl(khala.syncBaseUrl, "extra.khala.syncBaseUrl", issues)
   const updatesUrl = httpsUrl(updates.url, "updates.url", issues)
 
@@ -138,6 +140,7 @@ export const parseKhalaPublicConfig = (
     appName: appName ?? "",
     appSlug: appSlug ?? "",
     appVersion: appVersion ?? "",
+    authBaseUrl,
     iosBuildNumber,
     syncBaseUrl,
     updatesOwner: updatesOwner ?? "",

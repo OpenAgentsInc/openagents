@@ -103,7 +103,8 @@ KHALA_MAESTRO_THREAD_TITLE="<public-safe-thread-title>" \
 ```
 
 `LaunchFallback.yaml` proves launch plus a real no-credential fallback
-interaction. `SignedInThreadSmoke.yaml` is the path toward closing
+interaction: fresh installs render the mobile-only GitHub sign-in screen with
+one primary action. `SignedInThreadSmoke.yaml` is the path toward closing
 `khala_mobile.platform.launched_app_interaction_smoke.v1`, but that contract
 stays pending until a dated device/emulator run receipt is recorded.
 
@@ -175,6 +176,29 @@ screen ("No signed-in Mac found on your Tailnet" / Retry / Sign in manually),
 matching the documented auth-provider behavior exactly. This is the first
 session to get a `khala-mobile` build past install+launch+render on any
 simulator or device.
+
+2026-07-05 #8470 update — the Tailnet fallback above is historical. The
+mobile-only MVP auth path now uses `expo-auth-session`/`expo-web-browser` for
+GitHub PKCE against OpenAuth, then `POST /api/mobile/session` to store the
+existing `{ ownerUserId, token }` SecureStore credential shape. Fresh installs
+must render exactly one primary signed-out action: `Sign in with GitHub`.
+Because `expo-web-browser` adds native config, `app.json` now carries iOS
+build number `8` and Android versionCode `2`; run local prebuild/build again
+and publish a fresh self-hosted OTA baseline for this runtime fingerprint after
+installing the native build.
+
+2026-07-05 #8470 verification receipt: iOS `bun run --cwd
+clients/khala-mobile prebuild:ios` then `bun run --cwd clients/khala-mobile
+build:ios:local` completed with `** BUILD SUCCEEDED **`. Android `bun run
+--cwd clients/khala-mobile prebuild:android` then
+`JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+ANDROID_HOME=/opt/homebrew/share/android-commandlinetools bun run --cwd
+clients/khala-mobile build:android:local` completed with `BUILD SUCCESSFUL`.
+Runtime smoke on the iPhone 17 iOS 26.5 simulator used a fresh uninstall +
+install of the local Debug build, then plain `expo start`/Metro on
+`localhost:8081`; the rendered signed-out screen showed `Khala Code`, one
+`Sign in with GitHub` primary button, and the no-desktop/no-Tailnet/no-manual
+token note.
 
 Real STT/Apple FM capture parity remains unproven, but not because of
 simulator/device access — it is unproven because **neither platform's native

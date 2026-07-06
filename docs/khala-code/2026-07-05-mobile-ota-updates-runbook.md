@@ -171,6 +171,19 @@ verification. A green `publish-ota.sh` run only proves the server side.
   after any native change, and a fresh native build (TestFlight/local
   install) to pick up the new fingerprint baseline.
 
+2026-07-05 #8470 note: Khala Mobile GitHub sign-in added
+`expo-auth-session`, `expo-crypto`, and the `expo-web-browser` config plugin.
+That is native-affecting. The native build metadata was bumped to iOS build
+`8` and Android versionCode `2`; after the local prebuild/build/install pass,
+publish a fresh self-hosted OTA seed for the new fingerprint through this
+runbook, never through EAS Update. The local build pass is complete for this
+change: iOS prebuild/build finished with `** BUILD SUCCEEDED **`; Android
+prebuild/build finished with `BUILD SUCCESSFUL` when run with
+`JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home` and
+`ANDROID_HOME=/opt/homebrew/share/android-commandlinetools`. The Cloud Run OTA
+publish still belongs after the #8470 commit is on clean `origin/main`, per the
+deployment rule above.
+
 ## Where the OTA server itself lives
 
 `apps/oa-updates/` is a small Bun app deployed to Cloud Run

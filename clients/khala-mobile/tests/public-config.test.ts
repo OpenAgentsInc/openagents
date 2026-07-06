@@ -8,17 +8,18 @@ import {
 
 const validSource = (): KhalaPublicConfigSource => ({
   android: {
-    versionCode: 1,
+    versionCode: 2,
   },
   extra: {
     khala: {
       apiBaseUrl: "https://openagents.com",
+      authBaseUrl: "https://auth.openagents.com/",
       syncBaseUrl: "https://openagents.com/",
       updatesOwner: "khala-mobile",
     },
   },
   ios: {
-    buildNumber: "7",
+    buildNumber: "8",
   },
   name: "Khala Code",
   slug: "khala-mobile",
@@ -31,12 +32,13 @@ const validSource = (): KhalaPublicConfigSource => ({
 describe("Khala public config", () => {
   test("parses only public Expo app metadata and endpoints", () => {
     expect(parseKhalaPublicConfig(validSource())).toEqual({
-      androidVersionCode: 1,
+      androidVersionCode: 2,
       apiBaseUrl: "https://openagents.com",
       appName: "Khala Code",
       appSlug: "khala-mobile",
       appVersion: "0.1.0",
-      iosBuildNumber: "7",
+      authBaseUrl: "https://auth.openagents.com",
+      iosBuildNumber: "8",
       syncBaseUrl: "https://openagents.com",
       updatesOwner: "khala-mobile",
       updatesUrl: "https://updates.openagents.com/khala-mobile/manifest",
@@ -47,11 +49,12 @@ describe("Khala public config", () => {
     const source: KhalaPublicConfigSource = {
       ...validSource(),
       extra: {
-      khala: {
-        apiBaseUrl: "http://openagents.com",
-        syncBaseUrl: "",
-        updatesOwner: "khala-mobile",
-      },
+        khala: {
+          apiBaseUrl: "http://openagents.com",
+          authBaseUrl: "https://auth.openagents.com",
+          syncBaseUrl: "",
+          updatesOwner: "khala-mobile",
+        },
       },
     }
 
@@ -64,6 +67,9 @@ describe("Khala public config", () => {
       expect((error as KhalaPublicConfigError).issues).toContain(
         "extra.khala.apiBaseUrl must use https",
       )
+      expect((error as KhalaPublicConfigError).issues).not.toContain(
+        "extra.khala.authBaseUrl must be a non-empty HTTPS URL",
+      )
       expect((error as KhalaPublicConfigError).issues).toContain(
         "extra.khala.syncBaseUrl must be a non-empty HTTPS URL",
       )
@@ -74,14 +80,15 @@ describe("Khala public config", () => {
     const source: KhalaPublicConfigSource = {
       ...validSource(),
       extra: {
-      khala: {
-        apiBaseUrl: "https://openagents.com",
-        nested: {
-          bearerToken: "must-not-be-bundled",
+        khala: {
+          apiBaseUrl: "https://openagents.com",
+          authBaseUrl: "https://auth.openagents.com",
+          nested: {
+            bearerToken: "must-not-be-bundled",
+          },
+          syncBaseUrl: "https://openagents.com",
+          updatesOwner: "khala-mobile",
         },
-        syncBaseUrl: "https://openagents.com",
-        updatesOwner: "khala-mobile",
-      },
       },
     }
 

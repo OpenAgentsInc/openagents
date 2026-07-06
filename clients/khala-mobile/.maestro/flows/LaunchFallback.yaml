@@ -1,21 +1,14 @@
 # flow: Khala Mobile launch and public-safe sign-in fallback
 # intent:
-# Prove the installed app launches, renders the Tailnet auto-discovery
-# fallback, and supports a real no-credential interaction path. Run this on a
-# simulator/emulator or device with no stored Khala Mobile credentials and no
-# reachable signed-in desktop pairing endpoint.
+# Prove the installed app launches and renders the mobile-only GitHub sign-in
+# fallback. Run this on a simulator/emulator or device with no stored Khala
+# Mobile credentials.
 #
 appId: ${MAESTRO_APP_ID}
 onFlowStart:
   - runFlow: ../shared/_OnFlowStart.yaml
 ---
 - assertVisible: "Khala Code"
-- assertVisible:
-    text: "Looking for a signed-in Mac on your Tailnet.*|No signed-in Mac found on your Tailnet.|Found Khala Code.*"
-- tapOn: "Sign in manually instead"
-- assertVisible: "Owner user id"
-- assertVisible: "OpenAgents token"
-- tapOn: "Back to Tailnet auto-discovery"
-- assertVisible: "Khala Code"
-- tapOn: "Retry"
+- assertVisible: "Sign in with GitHub"
+- assertVisible: "No desktop, Tailnet, or manual token is required."
 - assertVisible: "Khala Code"
