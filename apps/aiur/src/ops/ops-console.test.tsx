@@ -10,7 +10,7 @@ describe('OpsConsole (initial render smoke)', () => {
     expect(html).toContain('Health strip')
     expect(html).toContain('Recent signups')
     expect(html).toContain('Recent org-cloud runs')
-    expect(html).toContain('data-testid="ops-users-list"')
+    expect(html).toContain('data-testid="recent-users-list"')
     expect(html).toContain('data-testid="ops-runs-list"')
   })
 })
