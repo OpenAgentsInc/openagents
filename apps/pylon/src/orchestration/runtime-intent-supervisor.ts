@@ -13,8 +13,11 @@ import { resolvePylonHome } from "../bootstrap.js"
 import {
   candidateAccountsFromRegistry,
   enforcePendingRuntimeIntents,
+  runWithHostedKhalaGateway,
+  DEFAULT_HOSTED_KHALA_RUNTIME_MODEL,
   type ActiveRuntimeTurns,
 } from "./runtime-intent-enforcement.js"
+import { recordRuntimeTurnUsageReceipt } from "./runtime-turn-usage-receipts.js"
 import { createPylonOrchestrationStore } from "./store.js"
 
 /**
@@ -96,6 +99,22 @@ const ownerUserId = option("--owner-user-id") ?? Bun.env.OPENAGENTS_RUNTIME_OWNE
 const pylonRef = option("--pylon-ref") ?? stableRef("pylon.runtime_supervisor", pylonHome)
 const pollIntervalMs = intOption("--poll-interval-ms", 3_000)
 const limit = intOption("--limit", 20)
+const executorMode =
+  option("--executor-mode") ??
+  Bun.env.OPENAGENTS_RUNTIME_EXECUTOR_MODE ??
+  (ownerUserId === undefined ? "org_cloud" : "owner_local")
+const usageReceiptsEnabled =
+  (option("--usage-receipts-enabled") ??
+    Bun.env.OPENAGENTS_RUNTIME_USAGE_RECEIPTS_ENABLED ??
+    (executorMode === "org_cloud" ? "1" : "0")) !== "0"
+const hostedKhalaEnabled =
+  (option("--hosted-khala-enabled") ??
+    Bun.env.OPENAGENTS_RUNTIME_HOSTED_KHALA_ENABLED ??
+    (executorMode === "org_cloud" ? "1" : "0")) !== "0"
+const hostedKhalaModel =
+  option("--hosted-khala-model") ??
+  Bun.env.OPENAGENTS_RUNTIME_HOSTED_KHALA_MODEL ??
+  DEFAULT_HOSTED_KHALA_RUNTIME_MODEL
 
 await mkdir(pylonHome, { recursive: true })
 await mkdir(workspaceRoot, { recursive: true })
@@ -179,7 +198,8 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 
 console.error(
   `runtime-intent-supervisor: starting (pylonRef=${pylonRef} owner=${ownerUserId ?? "ALL"} ` +
-    `baseUrl=${baseUrl} pollIntervalMs=${pollIntervalMs})`,
+    `baseUrl=${baseUrl} pollIntervalMs=${pollIntervalMs} executorMode=${executorMode} ` +
+    `usageReceipts=${usageReceiptsEnabled ? "on" : "off"} hostedKhala=${hostedKhalaEnabled ? hostedKhalaModel : "off"})`,
 )
 
 try {
@@ -203,8 +223,36 @@ try {
             summary: readinessSummary,
           }),
         log: (line) => console.error(`runtime-intent-supervisor: ${line}`),
+        ...(hostedKhalaEnabled
+          ? {
+              hostedKhalaModel,
+              hostedKhalaThreadRunner: runWithHostedKhalaGateway,
+            }
+          : {}),
         ...(ownerUserId === undefined ? {} : { ownerUserId }),
         pylonRef,
+        ...(usageReceiptsEnabled
+          ? {
+              recordUsageReceiptImpl: async input => {
+                const receipt = await recordRuntimeTurnUsageReceipt({
+                  agentToken,
+                  baseUrl,
+                  event: input.event,
+                  lane: input.lane,
+                  ownerUserId: input.ownerUserId,
+                  provider: input.provider,
+                  pylonRef,
+                  threadId: input.threadId,
+                  turnId: input.turnId,
+                })
+                if (!receipt.ok) {
+                  throw new Error(
+                    `usage receipt failed (${receipt.error}${receipt.status === null ? "" : `/${receipt.status}`}): ${receipt.reason ?? "no detail"}`,
+                  )
+                }
+              },
+            }
+          : {}),
         resolveAccountSelection: (entry) =>
           resolvePylonAccountSelection(registrySummary, { accountRef: entry.ref, provider: entry.provider }),
         workspaceRoot,

@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
+import { stableExternalSessionRef } from "../src/node/external-sessions"
 import { buildCodexSession, normalizeCodexLine, scanCodexSessions } from "../src/node/codex-sessions"
 
 const ev = (o: any) => normalizeCodexLine(o)
@@ -59,13 +60,14 @@ describe("external Codex session normalization (#4951)", () => {
       JSON.stringify({ timestamp: "t2", type: "response_item", payload: { type: "function_call", name: "apply_patch", input: "*** Begin Patch\n" } }),
     ]
     const s = buildCodexSession({ sessionId: "abc123", lines, mtimeMs: 1000, nowMs: 1000, parentRef: "codex:parent" })
-    expect(s.sessionRef).toBe("codex:abc123")
+    expect(s.sessionRef).toBe(stableExternalSessionRef("session.pylon.codex_external", "abc123"))
     expect(s.aliasSessionRefs).toEqual([
+      "codex:abc123",
       "session.pylon.codex_composer.be4d2b8c1eb3512e70bf59be",
     ])
     expect(s.agentKind).toBe("codex")
     expect(s.parentRef).toBe("codex:parent")
-    expect(s.title).toBe("abc123")
+    expect(s.title).toBe("Codex session abc123")
     expect(s.latestActivity).toBe("apply_patch: *** Begin Patch")
     expect(s.events).toHaveLength(2)
   })
@@ -83,6 +85,7 @@ describe("external Codex session normalization (#4951)", () => {
       nowMs: 1000,
     })
     expect(s.aliasSessionRefs).toEqual([
+      "codex:rollout-2026-06-19T21-47-03-019ee2ec-b15d-7442-8bfe-2fd3f63d57ac",
       "session.pylon.codex_composer.be4d2b8c1eb3512e70bf59be",
     ])
   })
@@ -98,7 +101,13 @@ describe("external Codex session normalization (#4951)", () => {
 
     const sessions = scanCodexSessions({ sessionsRoot: root, nowMs: Date.now(), maxAgeMs: 60_000, maxSessions: 10 })
     expect(sessions).toHaveLength(1)
-    expect(sessions[0]?.sessionRef).toBe("codex:rollout-2026-06-13T12-00-00-test")
+    expect(sessions[0]?.sessionRef).toBe(
+      stableExternalSessionRef(
+        "session.pylon.codex_external",
+        join(day, "rollout-2026-06-13T12-00-00-test.jsonl"),
+      ),
+    )
+    expect(sessions[0]?.aliasSessionRefs).toContain("codex:rollout-2026-06-13T12-00-00-test")
     expect(sessions[0]?.latestActivity).toBe("agent: hello")
   })
 })

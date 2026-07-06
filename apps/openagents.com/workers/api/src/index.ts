@@ -1078,6 +1078,10 @@ import {
   recordPylonCapacityFunnelSnapshots,
 } from './pylon-capacity-funnel-live-routes'
 import {
+  KHALA_CLOUD_RUNTIME_USAGE_INGEST_PATH,
+  makeKhalaCloudRuntimeUsageRoutes,
+} from './khala-cloud-runtime-usage-routes'
+import {
   PYLON_CLAUDE_TURN_INGEST_PATH,
   PYLON_CODEX_ASSIGNMENT_PROOF_PATH,
   PYLON_CODEX_ASSIGNMENT_TRACE_STATUS_PATH,
@@ -8070,6 +8074,15 @@ const pylonCodexTurnIngestRoutes = makePylonCodexTurnIngestRoutes<Env>({
   traceStore: env => makeTraceStoreForEnv(env),
 })
 
+const khalaCloudRuntimeUsageRoutes = makeKhalaCloudRuntimeUsageRoutes<Env>({
+  agentStore: env => makeAgentRegistrationStoreForEnv(env),
+  ledger: env =>
+    makeD1TokenUsageLedger(openAgentsDatabase(env), undefined, {
+      onIngestedEvent: makeTokensServedProjectionObserver(env),
+      ...tokenLedgerWriteStoreOptionForEnv(env),
+    }),
+})
+
 const hostedMdkClientForEnv = (
   env: WorkerBindings & OpenAgentsWorkerConfigEnv,
 ) => {
@@ -13092,6 +13105,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // unauthenticated read route (see public-settled-feed-routes.ts doc).
     path: '/api/public/settled-feed',
     handler: (request, env) => handlePublicSettledFeedApi(request, env),
+  },
+  {
+    path: KHALA_CLOUD_RUNTIME_USAGE_INGEST_PATH,
+    handler: (request, env) =>
+      khalaCloudRuntimeUsageRoutes.handleKhalaCloudRuntimeUsageIngestApi(
+        request,
+        env,
+      ),
   },
   {
     path: PYLON_CODEX_TURN_INGEST_PATH,

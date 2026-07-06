@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
-import { decodeFleetAccountEntity, decodeRuntimeControlIntentRow } from "@openagentsinc/khala-sync"
+import { decodeFleetAccountEntity, decodeKhalaRuntimeEvent, decodeRuntimeControlIntentRow } from "@openagentsinc/khala-sync"
 import type { KhalaRuntimeEvent, RuntimeControlIntentRow } from "@openagentsinc/khala-sync"
 
 import { hashPylonAccountRef } from "../account-registry.js"
@@ -18,6 +18,7 @@ import {
   type ClaudeRawMessage,
   type CodexRawEvent,
   type EnforceRuntimeIntentsOptions,
+  type RuntimeUsageReceiptRecorder,
 } from "./runtime-intent-enforcement.js"
 import type {
   ChatMessageBody,
@@ -294,7 +295,7 @@ const controlIntentRow = (input: {
   kind: "turn.start" | "turn.interrupt" | "message.append" | "turn.continue" | "turn.retry" | "turn.close"
   bodyRef?: string
   ownerUserId?: string
-  targetLane?: "codex_app_server" | "claude_pylon" | "ai_sdk_core"
+  targetLane?: "codex_app_server" | "claude_pylon" | "ai_sdk_core" | "hosted_khala"
 }): RuntimeControlIntentRow =>
   decodeRuntimeControlIntentRow({
     createdAt: iso,
@@ -634,6 +635,129 @@ describe("enforcePendingRuntimeIntents", () => {
       expect(pushedEvents.every((e) => e.source.adapterKind === "claude_code")).toBe(true)
       expect((pushedEvents[pushedEvents.length - 1]! as Extract<KhalaRuntimeEvent, { kind: "turn.finished" }>).finishReason).toBe("stop")
       expect(store.getRuntimeClaudeSessionId("thread-1")).toBe("claude-sess-1")
+    } finally {
+      await cleanup()
+    }
+  })
+
+  test("a hosted_khala turn.start dispatch runs without a local account and records an exact usage receipt (#8473)", async () => {
+    const store = memoryStore()
+    const message: ChatMessageBody = {
+      authorUserId: "user-1",
+      body: "please use hosted Khala",
+      createdAt: iso,
+      deletedAt: null,
+      messageId: "msg-hosted",
+      threadId: "thread-1",
+      updatedAt: iso,
+    }
+    let finishSeen: (() => void) | undefined
+    const finished = new Promise<void>((resolve) => {
+      finishSeen = resolve
+    })
+    const receipts: Parameters<RuntimeUsageReceiptRecorder>[0][] = []
+    const pushedEvents: Array<KhalaRuntimeEvent> = []
+    const { options, cleanup } = await baseOptions({
+      fetchChatMessageImpl: async () => ({ message, ok: true }),
+      hostedKhalaModel: "gemini-3.5-flash",
+      hostedKhalaThreadRunner: async (input) => ({
+        events: (async function* () {
+          yield decodeKhalaRuntimeEvent({
+            causalityRefs: [],
+            eventId: "event.hosted.started",
+            kind: "turn.started",
+            observedAt: iso,
+            redactionClass: "private_ref",
+            schema: "openagents.khala_runtime_event.v1",
+            sequence: input.allocateSequence(),
+            source: input.source,
+            threadId: input.threadId,
+            turnId: input.turnId,
+            visibility: "private",
+          })
+          yield decodeKhalaRuntimeEvent({
+            causalityRefs: [],
+            eventId: "event.hosted.usage",
+            kind: "usage.recorded",
+            observedAt: iso,
+            redactionClass: "private_ref",
+            schema: "openagents.khala_runtime_event.v1",
+            sequence: input.allocateSequence(),
+            source: input.source,
+            threadId: input.threadId,
+            turnId: input.turnId,
+            usage: {
+              inputTokens: 7,
+              outputTokens: 4,
+              totalTokens: 11,
+              usageRef: "usage.hosted.fixture",
+            },
+            visibility: "private",
+          })
+          yield decodeKhalaRuntimeEvent({
+            causalityRefs: [],
+            eventId: "event.hosted.finished",
+            finishReason: "stop",
+            kind: "turn.finished",
+            observedAt: iso,
+            redactionClass: "private_ref",
+            schema: "openagents.khala_runtime_event.v1",
+            sequence: input.allocateSequence(),
+            source: input.source,
+            threadId: input.threadId,
+            turnId: input.turnId,
+            visibility: "private",
+          })
+        })(),
+      }),
+      listCandidateAccounts: async () => [],
+      pushEventImpl: async (input) => {
+        pushedEvents.push(input.event)
+        if (input.event.kind === "turn.finished") finishSeen?.()
+      },
+      readImpl: pageReader([
+        controlIntentRow({
+          bodyRef: "chat_message.msg-hosted",
+          intentId: "intent-hosted",
+          kind: "turn.start",
+          seq: 1,
+          targetLane: "hosted_khala",
+          threadId: "thread-1",
+          turnId: "turn-hosted",
+        }),
+      ]),
+      recordUsageReceiptImpl: async input => {
+        receipts.push(input)
+      },
+    })
+    try {
+      const result = await enforcePendingRuntimeIntents(store, options)
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.outcomes[0]!.outcome).toBe("applied")
+        expect(result.outcomes[0]!.detail).toContain("hosted Khala dispatch started")
+      }
+      await finished
+      expect(pushedEvents.map((e) => e.kind)).toEqual([
+        "turn.started",
+        "usage.recorded",
+        "turn.finished",
+      ])
+      expect(pushedEvents.every((e) => e.source.lane === "hosted_khala")).toBe(true)
+      expect(receipts).toHaveLength(1)
+      expect(receipts[0]).toMatchObject({
+        lane: "hosted_khala",
+        ownerUserId: "user-1",
+        provider: {
+          backendProfile: "vertex-gemini",
+          model: "gemini-3.5-flash",
+          provider: "vertex-gemini",
+        },
+        pylonRef: "pylon.fixture.1",
+        threadId: "thread-1",
+        turnId: "turn-hosted",
+      })
+      expect(receipts[0]!.event.usage.usageRef).toBe("usage.hosted.fixture")
     } finally {
       await cleanup()
     }

@@ -90,7 +90,7 @@ describe("assignment runtime progress", () => {
         harness.retained.some(line =>
           line.includes("/progress") &&
           line.includes('"status":"running"') &&
-          line.includes('"phase":"runtime_active"')
+          line.includes('"phase":"running"')
         ),
       )
     } finally {

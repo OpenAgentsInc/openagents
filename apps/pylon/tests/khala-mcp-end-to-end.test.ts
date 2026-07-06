@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { plugin } from "bun"
 import { MemoryStreamStore } from "@openagentsinc/durable-stream"
 import { afterEach, describe, expect, test } from "bun:test"
 
@@ -19,26 +20,49 @@ import type {
   AgentRegistrationStore,
   ProgrammaticAgentSession,
 } from "../../openagents.com/workers/api/src/agent-registration"
-import {
-  khalaDurableRequestIsLinkedToPrincipal,
-  khalaMcpAgentPrincipal,
-  makeKhalaMcpCatalog,
-} from "../../openagents.com/workers/api/src/khala-mcp"
-import {
-  routeDurableInferenceReadRequest,
-} from "../../openagents.com/workers/api/src/inference/durable-inference-read-routes"
-import {
-  seedDurableInferenceStream,
-} from "../../openagents.com/workers/api/src/inference/durable-inference-proxy"
 import type {
   PylonApiAssignmentRecord,
   PylonApiEventRecord,
   PylonApiRegistrationRecord,
   PylonApiStore,
 } from "../../openagents.com/workers/api/src/pylon-api"
-import {
-  publicPylonApiAssignmentProjection,
-} from "../../openagents.com/workers/api/src/pylon-api"
+
+// The Worker modules pulled into this E2E test transitively import
+// `effect-cf`, which imports Cloudflare's virtual `cloudflare:workers` module.
+// Bun's local test runtime does not provide that module, so keep the same
+// test-only stub pattern used by `security-adversarial-harness.test.ts` and
+// load Worker modules dynamically after the stub is registered.
+plugin({
+  name: "cloudflare-workers-test-stub",
+  setup(build) {
+    build.module("cloudflare:workers", () => ({
+      exports: {
+        DurableObject: class {},
+        RpcStub: class {},
+        RpcTarget: class {},
+        WorkerEntrypoint: class {},
+        WorkflowEntrypoint: class {},
+        env: {},
+      },
+      loader: "object",
+    }))
+  },
+})
+
+const {
+  khalaDurableRequestIsLinkedToPrincipal,
+  khalaMcpAgentPrincipal,
+  makeKhalaMcpCatalog,
+} = await import("../../openagents.com/workers/api/src/khala-mcp")
+const { routeDurableInferenceReadRequest } = await import(
+  "../../openagents.com/workers/api/src/inference/durable-inference-read-routes"
+)
+const { seedDurableInferenceStream } = await import(
+  "../../openagents.com/workers/api/src/inference/durable-inference-proxy"
+)
+const { publicPylonApiAssignmentProjection } = await import(
+  "../../openagents.com/workers/api/src/pylon-api"
+)
 
 const NOW_ISO = "2026-06-25T12:00:00.000Z"
 const NOW_MS = Date.parse(NOW_ISO)
@@ -441,18 +465,20 @@ const makeOpenAgentsFixtureServer = (input: {
       }
 
       if (url.pathname.endsWith("/closeout")) {
+        const assignmentRef = decodeURIComponent(
+          url.pathname.split("/").at(-2) ?? "",
+        )
         const closeout = body as {
-          leaseRef: string
           resultRefs: string[]
           status: string
         }
-        expect(closeout.status).toBe("accepted")
+        expect(closeout.status).toBe("closeout_submitted")
         expect(closeout.resultRefs).toContain(
           "result.public.pylon.codex_agent_task.fixture_repair_passed",
         )
         const assignment = input.pylonStore
           .assignments()
-          .find(item => item.assignmentRef === closeout.leaseRef)
+          .find(item => item.assignmentRef === assignmentRef)
         expect(assignment).toBeDefined()
         const durableRequestRef = assignment?.taskRefs.find(ref =>
           ref.startsWith("request.public.khala_coding."),

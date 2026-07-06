@@ -745,6 +745,168 @@ export type RuntimeClaudeThreadRunner = (input: {
   readonly resumeSessionId?: string
 }) => Promise<{ readonly messages: AsyncIterable<ClaudeRawMessage> }>
 
+export const DEFAULT_HOSTED_KHALA_RUNTIME_MODEL = "gemini-3.5-flash"
+export const HOSTED_KHALA_RUNTIME_PROVIDER = "vertex-gemini"
+
+export type RuntimeHostedKhalaThreadRunner = (input: {
+  readonly instructions: string
+  readonly signal: AbortSignal
+  readonly baseUrl: string
+  readonly agentToken: string
+  readonly model: string
+  readonly source: KhalaRuntimeSource
+  readonly threadId: string
+  readonly turnId: string
+  readonly allocateSequence: () => number
+  readonly nowIso: () => string
+  readonly fetchImpl?: typeof globalThis.fetch
+}) => Promise<{ readonly events: AsyncIterable<KhalaRuntimeEvent> }>
+
+export type RuntimeUsageReceiptProvider = Readonly<{
+  backendProfile: string
+  model: string
+  provider: string
+}>
+
+export type RuntimeUsageReceiptRecorder = (input: {
+  readonly event: Extract<KhalaRuntimeEvent, { kind: "usage.recorded" }>
+  readonly lane: KhalaRuntimeLane
+  readonly ownerUserId: string
+  readonly provider: RuntimeUsageReceiptProvider
+  readonly pylonRef: string
+  readonly threadId: string
+  readonly turnId: string
+}) => Promise<void>
+
+const openAiChatCompletionText = (body: unknown): string => {
+  const choices = (body as { choices?: unknown } | undefined)?.choices
+  if (!Array.isArray(choices)) return ""
+  const first = choices[0] as { message?: unknown; text?: unknown } | undefined
+  const message = first?.message as { content?: unknown } | undefined
+  const content = message?.content
+  if (typeof content === "string") return content
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => ((part as { text?: unknown } | undefined)?.text))
+      .filter((text): text is string => typeof text === "string")
+      .join("")
+  }
+  return typeof first?.text === "string" ? first.text : ""
+}
+
+const openAiChatCompletionUsage = (
+  body: unknown,
+): Readonly<{
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+}> => {
+  const usage = (body as { usage?: unknown } | undefined)?.usage as
+    | Record<string, unknown>
+    | undefined
+  const integer = (value: unknown): number =>
+    typeof value === "number" && Number.isFinite(value)
+      ? Math.max(0, Math.trunc(value))
+      : 0
+  const inputTokens = integer(usage?.prompt_tokens ?? usage?.input_tokens)
+  const outputTokens = integer(usage?.completion_tokens ?? usage?.output_tokens)
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens: Math.max(
+      inputTokens + outputTokens,
+      integer(usage?.total_tokens),
+    ),
+  }
+}
+
+const hostedKhalaRuntimeEventBase = (
+  input: Pick<
+    Parameters<RuntimeHostedKhalaThreadRunner>[0],
+    "allocateSequence" | "nowIso" | "source" | "threadId" | "turnId"
+  >,
+  kind: KhalaRuntimeEvent["kind"],
+  extra: Record<string, unknown>,
+): KhalaRuntimeEvent =>
+  decodeKhalaRuntimeEvent({
+    causalityRefs: [],
+    eventId: randomUUID(),
+    kind,
+    observedAt: input.nowIso(),
+    redactionClass: "private_ref",
+    schema: "openagents.khala_runtime_event.v1",
+    sequence: input.allocateSequence(),
+    source: input.source,
+    threadId: input.threadId,
+    turnId: input.turnId,
+    visibility: "private",
+    ...extra,
+  })
+
+export const runWithHostedKhalaGateway: RuntimeHostedKhalaThreadRunner = async (
+  input,
+) => {
+  const fetchImpl = input.fetchImpl ?? globalThis.fetch
+  const url = new URL("/v1/chat/completions", input.baseUrl)
+  const response = await fetchImpl(url.toString(), {
+    body: JSON.stringify({
+      messages: [{ content: input.instructions, role: "user" }],
+      model: input.model,
+      stream: false,
+    }),
+    headers: {
+      Authorization: `Bearer ${input.agentToken}`,
+      "content-type": "application/json",
+      "x-openagents-client": "khala-code-mobile",
+      "x-openagents-demand-kind": "external",
+      "x-openagents-demand-source": "khala_mobile_org_cloud_runtime",
+    },
+    method: "POST",
+    signal: input.signal,
+  })
+  if (!response.ok) {
+    throw new Error(`hosted Khala gateway returned HTTP ${response.status}`)
+  }
+  const body = await response.json()
+  const text = openAiChatCompletionText(body)
+  const usage = openAiChatCompletionUsage(body)
+  if (usage.inputTokens + usage.outputTokens <= 0) {
+    throw new Error("hosted Khala gateway response did not include exact token usage")
+  }
+  return {
+    events: (async function* () {
+      yield hostedKhalaRuntimeEventBase(input, "turn.started", {})
+      if (text.length > 0) {
+        const messageId = randomUUID()
+        yield hostedKhalaRuntimeEventBase(input, "text.delta", {
+          chunkId: randomUUID(),
+          messageId,
+          text,
+        })
+        yield hostedKhalaRuntimeEventBase(input, "text.completed", {
+          messageId,
+        })
+      }
+      yield hostedKhalaRuntimeEventBase(input, "usage.recorded", {
+        providerMetadata: {
+          metadataRefs: [],
+          modelRef: input.model,
+          providerRef: HOSTED_KHALA_RUNTIME_PROVIDER,
+        },
+        usage: {
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          totalTokens: usage.totalTokens,
+          usageRef: `usage.hosted_khala.${randomUUID()}`,
+        },
+      })
+      yield hostedKhalaRuntimeEventBase(input, "turn.finished", {
+        finishReason: "stop" satisfies KhalaRuntimeFinishReason,
+      })
+    })(),
+  }
+}
+
 /**
  * Owner-local full-access posture for the Claude Agent SDK, the direct
  * analogue of Codex's `CODEX_AGENT_OWNER_LOCAL_APPROVAL_POLICY` /
@@ -906,6 +1068,20 @@ export interface EnforceRuntimeIntentsOptions {
   readonly codexThreadRunner?: RuntimeCodexThreadRunner
   /** Test/override seam for the Claude Agent SDK thread runner (#8404). */
   readonly claudeThreadRunner?: RuntimeClaudeThreadRunner
+  /**
+   * Test/override seam for the hosted Khala/Gemini lane (#8473). Production
+   * org-cloud supervisors wire `runWithHostedKhalaGateway`; owner-local
+   * Pylons leave it unset, so `hosted_khala` stays fail-closed there.
+   */
+  readonly hostedKhalaThreadRunner?: RuntimeHostedKhalaThreadRunner
+  readonly hostedKhalaModel?: string
+  readonly hostedKhalaFetchImpl?: typeof globalThis.fetch
+  /**
+   * Optional exact usage receipt sink (#8473). Org-cloud supervisors wire this
+   * to `/api/khala/cloud/runtime-turn-usage`; legacy owner-local Pylons leave
+   * it unset so their existing own-capacity ledger path is untouched.
+   */
+  readonly recordUsageReceiptImpl?: RuntimeUsageReceiptRecorder
   readonly log?: (line: string) => void
 }
 
@@ -1012,7 +1188,7 @@ const dispatchTurnStart = async (input: {
   readonly intent: RuntimeControlIntentRow
   readonly turnId: string
   readonly prompt: string
-  readonly account: ResolvedPylonAccountSelection
+  readonly account?: ResolvedPylonAccountSelection
   readonly turn: ActiveRuntimeTurn
   readonly source: KhalaRuntimeSource
   readonly lane: KhalaRuntimeLane
@@ -1030,6 +1206,25 @@ const dispatchTurnStart = async (input: {
       event,
       mutationId: turn.nextMutationId(),
     })
+    if (event.kind === "usage.recorded" && options.recordUsageReceiptImpl !== undefined) {
+      try {
+        await options.recordUsageReceiptImpl({
+          event,
+          lane,
+          ownerUserId: intent.ownerUserId,
+          provider: usageReceiptProviderForLane(lane, options),
+          pylonRef: options.pylonRef,
+          threadId: intent.threadId,
+          turnId,
+        })
+      } catch (error) {
+        options.log?.(
+          `runtime-intent turn=${turnId} thread=${intent.threadId} failed to record exact usage receipt: ${boundedDetail(
+            error instanceof Error ? error.message : "unknown",
+          )}`,
+        )
+      }
+    }
   }
 
   /** Best-effort: capture the Codex SDK's own thread id (from its
@@ -1071,8 +1266,11 @@ const dispatchTurnStart = async (input: {
   let finishedPushed = false
   try {
     const cwd = await options.ensureWorkspace(intent.threadId)
-    const env = pylonAccountEnvironment(process.env as Record<string, string | undefined>, account)
     if (lane === "claude_pylon") {
+      if (account === undefined) {
+        throw new Error("Claude runtime dispatch requires a resolved account")
+      }
+      const env = pylonAccountEnvironment(process.env as Record<string, string | undefined>, account)
       const runClaudeThread = options.claudeThreadRunner ?? runWithRealClaudeAgentSdk
       const { messages } = await runClaudeThread({
         cwd,
@@ -1098,7 +1296,11 @@ const dispatchTurnStart = async (input: {
           await pushOne(event)
         }
       }
-    } else {
+    } else if (lane === "codex_app_server") {
+      if (account === undefined) {
+        throw new Error("Codex runtime dispatch requires a resolved account")
+      }
+      const env = pylonAccountEnvironment(process.env as Record<string, string | undefined>, account)
       const runCodexThread = options.codexThreadRunner ?? runWithRealCodexSdk
       const { events } = await runCodexThread({
         cwd,
@@ -1122,6 +1324,28 @@ const dispatchTurnStart = async (input: {
           if (event.kind === "turn.finished") finishedPushed = true
           await pushOne(event)
         }
+      }
+    } else if (lane === "hosted_khala") {
+      const runHostedKhala = options.hostedKhalaThreadRunner
+      if (runHostedKhala === undefined) {
+        throw new Error("hosted_khala runtime dispatch is not configured")
+      }
+      const { events } = await runHostedKhala({
+        agentToken: options.agentToken,
+        allocateSequence: turn.nextEventSequence,
+        baseUrl: options.baseUrl,
+        fetchImpl: options.hostedKhalaFetchImpl,
+        instructions: prompt,
+        model: hostedKhalaModelForOptions(options),
+        nowIso: () => new Date().toISOString(),
+        signal: turn.abortController.signal,
+        source,
+        threadId: intent.threadId,
+        turnId,
+      })
+      for await (const event of events) {
+        if (event.kind === "turn.finished") finishedPushed = true
+        await pushOne(event)
       }
     }
   } catch (error) {
@@ -1153,15 +1377,62 @@ const dispatchTurnStart = async (input: {
  * explicit `failed` outcome in `handleTurnStart`, never a silent fallback to
  * Codex.
  */
-const SUPPORTED_DISPATCH_LANES: ReadonlyArray<KhalaRuntimeLane> = ["codex_app_server", "claude_pylon"]
+const SUPPORTED_DISPATCH_LANES: ReadonlyArray<KhalaRuntimeLane> = [
+  "codex_app_server",
+  "claude_pylon",
+  "hosted_khala",
+]
 
 const providerForLane = (lane: KhalaRuntimeLane): "codex" | "claude_agent" =>
   lane === "claude_pylon" ? "claude_agent" : "codex"
 
-const sourceForLane = (lane: KhalaRuntimeLane): KhalaRuntimeSource =>
-  lane === "claude_pylon"
-    ? { adapterKind: "claude_code", lane: "claude_pylon", surface: "server" }
-    : { adapterKind: "codex", lane: "codex_app_server", surface: "server" }
+const hostedKhalaModelForOptions = (
+  options: Pick<EnforceRuntimeIntentsOptions, "hostedKhalaModel">,
+): string => options.hostedKhalaModel ?? DEFAULT_HOSTED_KHALA_RUNTIME_MODEL
+
+const sourceForLane = (
+  lane: KhalaRuntimeLane,
+  options?: Pick<EnforceRuntimeIntentsOptions, "hostedKhalaModel">,
+): KhalaRuntimeSource => {
+  if (lane === "claude_pylon") {
+    return { adapterKind: "claude_code", lane: "claude_pylon", surface: "server" }
+  }
+  if (lane === "hosted_khala") {
+    return {
+      adapterKind: "openagents_native",
+      lane: "hosted_khala",
+      modelRef: hostedKhalaModelForOptions(options ?? {}),
+      providerRef: HOSTED_KHALA_RUNTIME_PROVIDER,
+      surface: "server",
+    }
+  }
+  return { adapterKind: "codex", lane: "codex_app_server", surface: "server" }
+}
+
+const usageReceiptProviderForLane = (
+  lane: KhalaRuntimeLane,
+  options: Pick<EnforceRuntimeIntentsOptions, "hostedKhalaModel">,
+): RuntimeUsageReceiptProvider => {
+  if (lane === "claude_pylon") {
+    return {
+      backendProfile: "pylon-claude-org-capacity",
+      model: "openagents/pylon-claude",
+      provider: "pylon-claude-org-capacity",
+    }
+  }
+  if (lane === "hosted_khala") {
+    return {
+      backendProfile: HOSTED_KHALA_RUNTIME_PROVIDER,
+      model: hostedKhalaModelForOptions(options),
+      provider: HOSTED_KHALA_RUNTIME_PROVIDER,
+    }
+  }
+  return {
+    backendProfile: "pylon-codex-org-capacity",
+    model: "openagents/pylon-codex",
+    provider: "pylon-codex-org-capacity",
+  }
+}
 
 type SelectDispatchAccountResult =
   | {
@@ -1272,7 +1543,7 @@ const handleTurnStart = async (
     }
   }
   const lane = targetLane
-  const source = sourceForLane(lane)
+  const source = sourceForLane(lane, options)
 
   const messageId = chatMessageIdFromBodyRef(
     row.intent.kind === "turn.start" ? row.intent.bodyRef : undefined,
@@ -1305,9 +1576,17 @@ const handleTurnStart = async (
     }
   }
 
-  const selection = await selectAndPinDispatchAccount(options, store, row.threadId, lane)
-  if (!selection.ok) {
-    return { detail: selection.detail, outcome: "failed" }
+  let dispatchAccount: ResolvedPylonAccountSelection | undefined
+  let dispatchResumeRef: string | undefined
+  let dispatchDetail = `hosted Khala dispatch started on model ${hostedKhalaModelForOptions(options)}`
+  if (lane !== "hosted_khala") {
+    const selection = await selectAndPinDispatchAccount(options, store, row.threadId, lane)
+    if (!selection.ok) {
+      return { detail: selection.detail, outcome: "failed" }
+    }
+    dispatchAccount = selection.account
+    dispatchResumeRef = selection.resumeRef
+    dispatchDetail = `dispatch started against account ${selection.accountRefHash}`
   }
 
   const clientIdentity = runtimeSyncClientForTurn({ pylonRef: options.pylonRef, turnId })
@@ -1324,16 +1603,16 @@ const handleTurnStart = async (
   }
   options.activeTurns.set(turnId, turn)
   void dispatchTurnStart({
-    account: selection.account,
     intent: row,
     lane,
     options,
     prompt: message.body,
-    ...(selection.resumeRef === undefined ? {} : { resumeRef: selection.resumeRef }),
     source,
     store,
     turn,
     turnId,
+    ...(dispatchAccount === undefined ? {} : { account: dispatchAccount }),
+    ...(dispatchResumeRef === undefined ? {} : { resumeRef: dispatchResumeRef }),
   }).finally(() => {
     if (options.activeTurns.get(turnId) === turn) options.activeTurns.delete(turnId)
     if (turn.pendingAppendMessageIds.length > 0) {
@@ -1347,7 +1626,7 @@ const handleTurnStart = async (
   })
 
   return {
-    detail: `dispatch started against account ${selection.accountRefHash}`,
+    detail: dispatchDetail,
     outcome: "applied",
   }
 }
@@ -1536,7 +1815,12 @@ const handleMessageAppend = async (
 
   if (activeTurn !== undefined) {
     activeTurn.pendingAppendMessageIds.push(messageId)
-    const sdkLabel = activeTurn.lane === "claude_pylon" ? "Claude Agent SDK's single-prompt query call" : "Codex SDK's single-prompt runStreamed call"
+    const sdkLabel =
+      activeTurn.lane === "claude_pylon"
+        ? "Claude Agent SDK's single-prompt query call"
+        : activeTurn.lane === "hosted_khala"
+          ? "hosted Khala gateway request"
+          : "Codex SDK's single-prompt runStreamed call"
     return {
       detail:
         `mid-turn steering is not wired against the local ${sdkLabel}; ` +
@@ -1695,7 +1979,7 @@ const handleTurnContinueOrRetry = async (
     }
   }
   const lane = targetLane
-  const source = sourceForLane(lane)
+  const source = sourceForLane(lane, options)
 
   const fetchRuntimeTurnImpl = options.fetchRuntimeTurnImpl ?? fetchRuntimeTurnFromWorker
   const turnResult = await fetchRuntimeTurnImpl({ adminToken: options.adminToken, baseUrl: options.baseUrl, turnId })
@@ -1718,9 +2002,21 @@ const handleTurnContinueOrRetry = async (
     return { detail: promptResult.detail, outcome: "failed" }
   }
 
-  const selection = await selectAndPinDispatchAccount(options, store, row.threadId, lane)
-  if (!selection.ok) {
-    return { detail: selection.detail, outcome: "failed" }
+  let dispatchAccount: ResolvedPylonAccountSelection | undefined
+  let dispatchResumeRef: string | undefined
+  let dispatchDetail =
+    `${row.intent.kind} redispatch started on hosted Khala model ${hostedKhalaModelForOptions(options)}, ` +
+    `resuming event sequence after ${turnState.eventCount}`
+  if (lane !== "hosted_khala") {
+    const selection = await selectAndPinDispatchAccount(options, store, row.threadId, lane)
+    if (!selection.ok) {
+      return { detail: selection.detail, outcome: "failed" }
+    }
+    dispatchAccount = selection.account
+    dispatchResumeRef = selection.resumeRef
+    dispatchDetail =
+      `${row.intent.kind} redispatch started against account ${selection.accountRefHash}, ` +
+      `resuming event sequence after ${turnState.eventCount}`
   }
 
   const clientIdentity = runtimeSyncClientForTurn({ pylonRef: options.pylonRef, turnId })
@@ -1739,16 +2035,16 @@ const handleTurnContinueOrRetry = async (
   }
   options.activeTurns.set(turnId, turn)
   void dispatchTurnStart({
-    account: selection.account,
     intent: row,
     lane,
     options,
     prompt: promptResult.prompt,
-    ...(selection.resumeRef === undefined ? {} : { resumeRef: selection.resumeRef }),
     source,
     store,
     turn,
     turnId,
+    ...(dispatchAccount === undefined ? {} : { account: dispatchAccount }),
+    ...(dispatchResumeRef === undefined ? {} : { resumeRef: dispatchResumeRef }),
   }).finally(() => {
     if (options.activeTurns.get(turnId) === turn) options.activeTurns.delete(turnId)
     if (turn.pendingAppendMessageIds.length > 0) {
@@ -1762,7 +2058,7 @@ const handleTurnContinueOrRetry = async (
   })
 
   return {
-    detail: `${row.intent.kind} redispatch started against account ${selection.accountRefHash}, resuming event sequence after ${turnState.eventCount}`,
+    detail: dispatchDetail,
     outcome: "applied",
   }
 }
