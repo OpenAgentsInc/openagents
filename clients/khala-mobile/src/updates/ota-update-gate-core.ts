@@ -29,14 +29,17 @@ export const decideOtaGateAction = (snapshot: OtaGateSnapshot): OtaGateAction =>
   return "none"
 }
 
-export type OtaGateVisibleState = "hidden" | "checking" | "downloading" | "reloading"
+export type OtaGateVisibleState = "hidden" | "downloading" | "reloading"
 
-/** What the small status indicator should show. Hidden when idle/up-to-date
- * so it's never permanent chrome — only appears while something is actually
- * happening, which is itself the answer to "is this checking for updates". */
+/** What the small status indicator should show. Routine "checking" is
+ * silent by design — a permanent/frequent "checking for updates" indicator
+ * reads as bad app-review chrome and is noisy for something that happens on
+ * every foreground. The indicator only ever appears once there is a real
+ * update actually being fetched or applied, which is itself the answer to
+ * "is this checking for updates" without being visible chrome the rest of
+ * the time. */
 export const otaGateVisibleState = (snapshot: OtaGateSnapshot): OtaGateVisibleState => {
   if (snapshot.isRestarting) return "reloading"
   if (snapshot.isDownloading) return "downloading"
-  if (snapshot.isChecking) return "checking"
   return "hidden"
 }

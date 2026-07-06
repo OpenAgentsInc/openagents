@@ -13,9 +13,11 @@ import { decideOtaGateAction, otaGateVisibleState } from "./ota-update-gate-core
  * the foreground, auto-downloads the moment one is found, and auto-reloads
  * the moment it's downloaded — no button, no prompt, matching the retired
  * AutopilotRemoteControl app's proven "download_and_reload" policy. Renders
- * nothing when idle; a small themed pill while checking/downloading/
- * reloading, so "is this thing even checking for updates" always has a
- * visible answer. A no-op in dev/Expo-Go where `expo-updates` is disabled. */
+ * nothing when idle or merely checking (routine checks are silent by
+ * design — permanent "checking for updates" chrome is not something a
+ * shipped app should show); a small themed pill appears only once an
+ * update is actually downloading or being applied. A no-op in dev/Expo-Go
+ * where `expo-updates` is disabled. */
 export const OtaUpdateGate = () => {
   const { isChecking, isDownloading, isUpdateAvailable, isUpdatePending, isRestarting } =
     Updates.useUpdates()
@@ -75,12 +77,7 @@ export const OtaUpdateGate = () => {
 
   if (visible === "hidden") return null
 
-  const label =
-    visible === "checking"
-      ? "Checking for updates…"
-      : visible === "downloading"
-        ? "Downloading update…"
-        : "Reloading…"
+  const label = visible === "downloading" ? "Downloading update…" : "Reloading…"
 
   return (
     <View pointerEvents="none" style={styles.container}>

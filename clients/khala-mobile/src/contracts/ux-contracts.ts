@@ -139,6 +139,39 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
+        "This binds only the local credential store's own trust decision (whether a stored token is even considered before/independent of server validation). It exists because khala_mobile.auth.stored_credential_revalidated_on_launch.v1's server re-validation was not sufficient on its own: a leftover token from a retired auth model (e.g. the old Tailnet-pairing flow) can still validate successfully server-side, which is exactly the wrong outcome — server validity is not the same as \"issued by the current auth model\".",
+      blockerRefs: [],
+      contractId: "khala_mobile.auth.stored_credential_epoch_purged_on_model_change.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/src/auth/khala-auth-store.ts",
+        "clients/khala-mobile/tests/khala-auth-store.test.ts",
+      ],
+      oracles: [
+        {
+          description:
+            "A stored ownerUserId/token pair written without a matching current credential-epoch marker (e.g. a leftover Tailnet-pairing or pre-GitHub-OpenAuth write) is unconditionally purged on load and never returned — independent of whether that token would still pass server-side validation.",
+          id: "khala_auth_store.credential_epoch_purge.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/khala-auth-store.test.ts",
+        },
+      ],
+      productArea: "auth",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-06",
+      },
+      state: "enforced",
+      statement:
+        "A credential predating the current auth model is force-cleared on the next launch, regardless of whether it would still authenticate against the server. Filed after a TestFlight build shipping the server-revalidation fix still skipped the GitHub sign-in screen and landed on a stale identity's UI — the leftover token was technically still valid server-side, so revalidation alone let it through.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/khala-auth-store.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+    },
+    {
+      authorityBoundary:
         "This binds only the mic button's own gating logic (whether a tap is allowed to attempt native recognition) and draft-merge semantics. It does not cover whether the underlying native call actually captures audio on a device — see khala_mobile.stt.real_device_capture_proof.v1 for that.",
       blockerRefs: [],
       contractId: "khala_mobile.composer.pushtotalk_disabled_when_unavailable.v1",
@@ -873,5 +906,5 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-06.2",
+  version: "2026-07-06.3",
 }

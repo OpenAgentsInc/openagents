@@ -86,7 +86,7 @@ top follow-up item for whoever picks this up next.
 
 ## Registry
 
-Registry version: `2026-07-06.2` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-06.3` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — RETIRED
 
@@ -117,6 +117,16 @@ Registry version: `2026-07-06.2` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `resolve_verified_stored_credentials.unit` (bun-test, unit): A stored credential that fails server-side validation is cleared and treated as signed-out; a stored credential that validates is trusted unchanged; no stored credential never triggers a validation call. — `clients/khala-mobile/tests/khala-auth-resume-verify-core.test.ts`
 - **Verification:** bun test tests/khala-auth-resume-verify-core.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
 - **Authority boundary:** Binds only whether the app trusts a locally stored credential before showing itself as signed in. It does not change server-side session/token validation itself (Khala Sync's own bootstrap check remains authoritative), and it does not cover the initial sign-in flow (already exercised fresh at sign-in time).
+
+### `khala_mobile.auth.stored_credential_epoch_purged_on_model_change.v1` — ENFORCED
+
+- **Surface:** khala-mobile (auth)
+- **Stated by:** owner via khala-code-session on 2026-07-06
+- **Statement:** A credential predating the current auth model is force-cleared on the next launch, regardless of whether it would still authenticate against the server. Filed after a TestFlight build shipping the server-revalidation fix still skipped the GitHub sign-in screen and landed on a stale identity's UI — the leftover token was technically still valid server-side, so revalidation alone let it through.
+- **Enforcement tier:** test-sweep
+- **Oracle** `khala_auth_store.credential_epoch_purge.unit` (bun-test, unit): A stored ownerUserId/token pair written without a matching current credential-epoch marker (e.g. a leftover Tailnet-pairing or pre-GitHub-OpenAuth write) is unconditionally purged on load and never returned — independent of whether that token would still pass server-side validation. — `clients/khala-mobile/tests/khala-auth-store.test.ts`
+- **Verification:** bun test tests/khala-auth-store.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
+- **Authority boundary:** This binds only the local credential store's own trust decision (whether a stored token is even considered before/independent of server validation). It exists because khala_mobile.auth.stored_credential_revalidated_on_launch.v1's server re-validation was not sufficient on its own: a leftover token from a retired auth model (e.g. the old Tailnet-pairing flow) can still validate successfully server-side, which is exactly the wrong outcome — server validity is not the same as "issued by the current auth model".
 
 ### `khala_mobile.composer.pushtotalk_disabled_when_unavailable.v1` — ENFORCED
 

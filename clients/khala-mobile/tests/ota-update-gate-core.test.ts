@@ -48,8 +48,8 @@ describe("otaGateVisibleState", () => {
     expect(otaGateVisibleState(idle)).toBe("hidden")
   })
 
-  test("checking: checking", () => {
-    expect(otaGateVisibleState({ ...idle, isChecking: true })).toBe("checking")
+  test("checking: hidden — routine checks must never show visible chrome", () => {
+    expect(otaGateVisibleState({ ...idle, isChecking: true })).toBe("hidden")
   })
 
   test("downloading: downloading (even if isChecking is also still true)", () => {
