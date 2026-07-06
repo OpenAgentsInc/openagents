@@ -24,6 +24,7 @@
 import { Effect } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { isRecord, parseJsonUnknown } from './json-boundary'
 import {
   backfillUserCreditBalancesBatch,
   type UserCreditBalanceBackfillDeps,
@@ -66,7 +67,8 @@ export const handleKhalaSyncUserCreditBalanceBackfill = (
     try {
       const text = await request.text()
       if (text.trim().length > 0) {
-        body = JSON.parse(text) as Record<string, unknown>
+        const parsed = parseJsonUnknown(text)
+        body = isRecord(parsed) ? parsed : {}
       }
     } catch {
       return noStoreJsonResponse(
