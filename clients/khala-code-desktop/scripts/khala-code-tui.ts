@@ -16,6 +16,7 @@
 // activity, token usage, and status go to stderr, so `... | tui` pipes cleanly.
 
 import { homedir } from "node:os"
+import { rename } from "node:fs/promises"
 import { createInterface } from "node:readline/promises"
 
 import { createCodexAppServerChatRuntime } from "../src/bun/codex-app-server-chat-runtime.js"
@@ -56,18 +57,33 @@ const PROMPT_STORE = `${homedir()}/.khala-code/tui-prompts.json`
 const RESERVED = new Set(["new", "status", "help", "exit", "quit", "save", "prompts", "run", "del"])
 
 const loadPrompts = async (): Promise<Record<string, string>> => {
+  const file = Bun.file(PROMPT_STORE)
+  if (!(await file.exists())) return {}
   try {
-    const parsed: unknown = JSON.parse(await Bun.file(PROMPT_STORE).text())
+    const parsed: unknown = JSON.parse(await file.text())
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       return parsed as Record<string, string>
     }
+    process.stderr.write(
+      `[warning: ${PROMPT_STORE} does not contain a saved-prompt object — starting empty, not overwriting until you /save again]\n`,
+    )
   } catch {
-    // no store yet, or unreadable/corrupt — treat as empty
+    // The file exists but failed to parse — likely truncated by a crash
+    // mid-write. Warn instead of silently discarding it: the library starts
+    // empty for this session, but the corrupt file is left on disk (not
+    // overwritten) so its contents aren't lost before someone can inspect it.
+    process.stderr.write(
+      `[warning: ${PROMPT_STORE} exists but failed to parse (corrupt?) — starting empty for this session; the file is left untouched]\n`,
+    )
   }
   return {}
 }
 const savePrompts = async (prompts: Record<string, string>): Promise<void> => {
-  await Bun.write(PROMPT_STORE, `${JSON.stringify(prompts, null, 2)}\n`)
+  // Write to a temp file and rename over the real path so a crash mid-write
+  // can never leave a truncated/corrupt tui-prompts.json behind.
+  const tmpPath = `${PROMPT_STORE}.tmp-${process.pid}-${Date.now().toString(36)}`
+  await Bun.write(tmpPath, `${JSON.stringify(prompts, null, 2)}\n`)
+  await rename(tmpPath, PROMPT_STORE)
 }
 
 const HELP = `khala-code tui — terminal chat over the local Codex app-server harness
@@ -329,7 +345,7 @@ const handleLine = async (line: string): Promise<"continue" | "exit"> => {
     }
     return "continue"
   }
-  if (trimmed.startsWith("/save")) {
+  if (trimmed === "/save" || trimmed.startsWith("/save ")) {
     const rest = trimmed.slice("/save".length).trim()
     const sep = rest.indexOf(" ")
     const name = sep === -1 ? rest : rest.slice(0, sep)
