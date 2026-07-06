@@ -143,3 +143,27 @@ export const deleteMobileOpenAuthSession = async (input: {
     throw new Error(mobileProblemMessageSafe(error, "mobile sign-out"))
   }
 }
+
+export const KHALA_ACCOUNT_DELETION_POLICY_COPY =
+  "Deleting your Khala account permanently removes your GitHub sign-in link, your chat threads and turn history, and your device's push notification registration. Any remaining credit balance is forfeited and is not refunded — credits are non-transferable and have no cash value."
+
+export const deleteMobileAccount = async (input: {
+  accessToken: string
+  apiBaseUrl: string
+  fetchImpl?: FetchLike
+}): Promise<void> => {
+  const base = normalizeHttpsBaseUrl(input.apiBaseUrl, "OpenAgents API base URL")
+
+  try {
+    const response = await (input.fetchImpl ?? fetch)(
+      `${base}/api/mobile/account`,
+      {
+        headers: { authorization: `Bearer ${input.accessToken}` },
+        method: "DELETE",
+      },
+    )
+    await readOkMobileJsonResponse(response, "account deletion")
+  } catch (error) {
+    throw new Error(mobileProblemMessageSafe(error, "account deletion"))
+  }
+}

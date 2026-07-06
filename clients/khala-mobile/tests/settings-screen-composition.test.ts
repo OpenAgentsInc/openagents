@@ -32,6 +32,8 @@ describe("contract khala_mobile.settings.no_desktop_dependent_sections.v1", () =
     for (const label of ["Account", "Credits", "Models", "Notifications", "About"]) {
       expect(source).toContain(label)
     }
+    expect(source).toContain("Delete account")
+    expect(source).toContain("KHALA_ACCOUNT_DELETION_POLICY_COPY")
   })
 
   test("settings_screen_stubs_are_honest.source — Credits/Models sections state what's real without fabricating live data", async () => {

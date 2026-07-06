@@ -235,6 +235,7 @@ import {
   revokeMobileAccessToken,
   revokeOpenAuthRefreshToken,
 } from './auth/mobile-session'
+import { makeD1Storage } from './auth/openauth-storage'
 import {
   type VerifiedSession as VerifiedAuthSession,
   makeBrowserSessionBoundary,
@@ -273,6 +274,10 @@ import {
   ADMIN_OPS_RUNS_PATH,
   makeAdminOpsRoutes,
 } from './admin-ops-routes'
+import {
+  handleMobileAccountDeletionRequest,
+  MOBILE_ACCOUNT_PATH,
+} from './mobile-account-deletion-routes'
 import {
   AutopilotComposedRunEndpoint,
   handleAutopilotComposedRunApi,
@@ -12744,6 +12749,28 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleMobileCreditsTransactionsRequest(
         {
           db: openAgentsDatabase,
+          requireUserBearerSession,
+          userIdFromSession: session => session.user.userId,
+        },
+        request,
+        env,
+        ctx,
+      ),
+  },
+  {
+    // MM-I2b (#8502): in-app account deletion for Khala Mobile App Review
+    // 5.1.1(v). Same mobile bearer boundary as the session/push routes;
+    // deletes owner-scoped Khala Sync rows, push registrations, GitHub/OpenAuth
+    // links, and forfeits Pool B credit balance before revoking the bearer.
+    path: MOBILE_ACCOUNT_PATH,
+    handler: (request, env, ctx) =>
+      handleMobileAccountDeletionRequest(
+        {
+          authStorage: e => e.AUTH_STORAGE,
+          db: openAgentsDatabase,
+          khalaSyncBinding: e => e.KHALA_SYNC_DB,
+          openAuthStorage: e => makeD1Storage(openAgentsDatabase(e)),
+          readBearerToken,
           requireUserBearerSession,
           userIdFromSession: session => session.user.userId,
         },

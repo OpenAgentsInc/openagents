@@ -109,6 +109,14 @@ export const mobileRevokedAccessKey = async (accessToken: string): Promise<strin
   return `khala-mobile:openauth:revoked-access:${hash}`
 }
 
+export const mobileAccountDeletedKey = async (
+  accessToken: string,
+): Promise<string> =>
+  (await mobileRevokedAccessKey(accessToken)).replace(
+    ':revoked-access:',
+    ':account-deleted:',
+  )
+
 const accessTokenTtlSeconds = (accessToken: string): number => {
   const [, claims] = accessToken.split('.')
   const exp =
@@ -136,6 +144,24 @@ export const revokeMobileAccessToken = async (
   await store.put(await mobileRevokedAccessKey(accessToken), '1', {
     expirationTtl: accessTokenTtlSeconds(accessToken),
   })
+}
+
+export const hasMobileAccountDeletionReceipt = async (
+  store: MobileAccessRevocationStore,
+  accessToken: string,
+): Promise<boolean> =>
+  (await store.get(await mobileAccountDeletedKey(accessToken))) !== null
+
+export const recordMobileAccountDeletionReceipt = async (
+  store: MobileAccessRevocationStore,
+  accessToken: string,
+  userId: string,
+): Promise<void> => {
+  await store.put(
+    await mobileAccountDeletedKey(accessToken),
+    JSON.stringify({ deleted: true, userId }),
+    { expirationTtl: accessTokenTtlSeconds(accessToken) },
+  )
 }
 
 export const openAuthRefreshStorageKeyFromToken = (

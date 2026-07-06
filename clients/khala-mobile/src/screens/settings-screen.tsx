@@ -2,9 +2,10 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
 import Constants from "expo-constants"
 import { useEffect, useState } from "react"
 import * as Notifications from "expo-notifications"
-import { Linking, ScrollView, View } from "react-native"
+import { Linking, Modal, ScrollView, View } from "react-native"
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
+import { KHALA_ACCOUNT_DELETION_POLICY_COPY } from "../auth/mobile-openauth"
 import { AppHeader } from "../components/app-header"
 import { Frame, usePowerOnVisible } from "../components/frame"
 import { KhalaButton } from "../components/khala-button"
@@ -43,7 +44,31 @@ const SectionLabel = ({ children }: { children: string }) => (
  * if that endpoint isn't built yet, never fabricating a number.
  */
 const AccountSection = () => {
-  const { ownerUserId, signOut } = useKhalaAuth()
+  const { deleteAccount, ownerUserId, signOut } = useKhalaAuth()
+  const [confirmingDeletion, setConfirmingDeletion] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  const closeConfirmation = () => {
+    if (deleting) return
+    setConfirmingDeletion(false)
+    setDeleteError(null)
+  }
+
+  const handleDeleteAccount = async () => {
+    if (deleting) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await deleteAccount()
+      setConfirmingDeletion(false)
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "Account deletion failed. Please retry.")
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <View className="gap-2">
       <SectionLabel>Account</SectionLabel>
@@ -52,6 +77,37 @@ const AccountSection = () => {
       </KhalaText>
       <KhalaText variant="muted">Signed in with GitHub.</KhalaText>
       <KhalaButton onPress={() => void signOut()} text="Sign out" variant="danger" />
+      <KhalaButton onPress={() => setConfirmingDeletion(true)} text="Delete account" variant="danger" />
+      <Modal
+        animationType="fade"
+        onRequestClose={closeConfirmation}
+        transparent
+        visible={confirmingDeletion}
+      >
+        <View className="flex-1 justify-end bg-black/70 px-4 py-6">
+          <View className="gap-4 rounded-lg border border-border bg-surface p-4">
+            <View className="gap-2">
+              <KhalaText variant="heading">Delete account</KhalaText>
+              <KhalaText variant="muted">{KHALA_ACCOUNT_DELETION_POLICY_COPY}</KhalaText>
+              {deleteError === null ? null : <KhalaText variant="danger">{deleteError}</KhalaText>}
+            </View>
+            <View className="gap-2">
+              <KhalaButton
+                loading={deleting}
+                onPress={() => void handleDeleteAccount()}
+                text="Delete account"
+                variant="danger"
+              />
+              <KhalaButton
+                disabled={deleting}
+                onPress={closeConfirmation}
+                text="Cancel"
+                variant="secondary"
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   )
 }

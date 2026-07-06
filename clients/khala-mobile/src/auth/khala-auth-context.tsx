@@ -34,6 +34,7 @@ import {
 } from "./khala-auth-state-machine"
 import { validateKhalaCredentials } from "./khala-auth-validate"
 import {
+  deleteMobileAccount,
   deleteMobileOpenAuthSession,
   fetchMobileSyncSession,
   mobileOpenAuthDiscovery,
@@ -52,6 +53,7 @@ export type KhalaAuthState = Readonly<{
   baseUrl: string
   githubSignInReady: boolean
   ownerUserId: string
+  deleteAccount: () => Promise<void>
   signInErrorMessage: string | null
   signInWithGitHub: () => Promise<void>
   signOut: () => Promise<void>
@@ -229,9 +231,34 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
     dispatch({ type: "signed_out" })
   }, [machine.credentials?.token])
 
+  const deleteAccount = useCallback(async () => {
+    const token = machine.credentials?.token
+
+    if (token === undefined || token.trim().length === 0) {
+      await clearStoredCredentials()
+      if (!mountedRef.current) return
+      dispatch({ type: "signed_out" })
+      return
+    }
+
+    await deleteMobileAccount({
+      accessToken: token,
+      apiBaseUrl: KHALA_OPENAGENTS_API_BASE_URL,
+    })
+    await clearStoredCredentials()
+    await unregisterPushNotificationsAsync({
+      apiBaseUrl: KHALA_OPENAGENTS_API_BASE_URL,
+      bearerToken: token,
+    })
+
+    if (!mountedRef.current) return
+    dispatch({ type: "signed_out" })
+  }, [machine.credentials?.token])
+
   const value = useMemo<KhalaAuthState>(
     () => ({
       baseUrl: KHALA_SYNC_DEMO_BASE_URL,
+      deleteAccount,
       githubSignInReady: request !== null && machine.status !== "signing_in",
       ownerUserId: machine.credentials?.ownerUserId ?? "",
       signInErrorMessage: machine.messageSafe,
@@ -240,7 +267,7 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
       status: machine.status,
       token: machine.credentials?.token ?? "",
     }),
-    [machine, request, signInWithGitHub, signOut],
+    [deleteAccount, machine, request, signInWithGitHub, signOut],
   )
 
   return <KhalaAuthContext.Provider value={value}>{children}</KhalaAuthContext.Provider>

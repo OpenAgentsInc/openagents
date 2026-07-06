@@ -102,19 +102,18 @@ near the purchase sheet is the natural placement, matching
 **Rule (Apple Guideline 5.1.1(v)):** an app that supports account creation
 must also let the user initiate account deletion from within the app.
 
-**Audit finding (compliance gap, not fixed here — out of this issue's
-scope, which asks for the POLICY to be written, not the deletion mechanism
-to be built):** `clients/khala-mobile/src/screens/settings-screen.tsx`'s
-`AccountSection` offers only **Sign out**, no account-deletion action.
-Grepping the Worker API (`apps/openagents.com/workers/api/src`) for a
-user-initiated account-deletion route found none. **This is a real,
-outstanding App Review blocker for the mobile-only launch — it is not
-solved by this issue and needs its own tracked follow-up** (a new WS item:
-a `DELETE /api/mobile/account` route + a confirmation screen in Settings).
-Flagged here explicitly rather than assumed away.
+**Implementation status:** fixed in #8502. `AccountSection` in
+`clients/khala-mobile/src/screens/settings-screen.tsx` now exposes
+**Delete account** beside Sign out and presents the policy copy below before
+calling the main Worker route `DELETE /api/mobile/account`. The server route
+(`apps/openagents.com/workers/api/src/mobile-account-deletion-routes.ts`)
+uses the mobile bearer session, deletes owner-scoped Khala Sync chat/runtime
+data, removes push registrations, disconnects GitHub write links, removes
+OpenAuth subject storage, marks the user/identity deleted, forfeits remaining
+Pool B credit balance, records a retry-safe deletion receipt, and revokes the
+presented bearer token.
 
-**Policy (plain language, to govern that future implementation and to
-publish wherever the app's account-deletion confirmation eventually lives):**
+**Policy (plain language, shown in the confirmation modal):**
 
 > Deleting your Khala account permanently removes your GitHub sign-in
 > link, your chat threads and turn history, and your device's push

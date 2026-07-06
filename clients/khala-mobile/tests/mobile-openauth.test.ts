@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  deleteMobileAccount,
   fetchMobileSyncSession,
   mobileOpenAuthDiscovery,
   mobileOpenAuthRequestConfig,
   mobileOpenAuthTokenExchangeConfig,
   normalizeHttpsBaseUrl,
+  KHALA_ACCOUNT_DELETION_POLICY_COPY,
   KHALA_MOBILE_OPENAUTH_CLIENT_ID,
 } from "../src/auth/mobile-openauth"
 
@@ -93,5 +95,37 @@ describe("mobile OpenAuth boundary", () => {
         }),
       }),
     ).rejects.toThrow("mobile session: sign-in required")
+  })
+
+  test("deletes the mobile account through the account-deletion route", async () => {
+    const calls: Array<{ init: RequestInit; url: string }> = []
+
+    await deleteMobileAccount({
+      accessToken: "access-token",
+      apiBaseUrl: "https://openagents.com/",
+      fetchImpl: async (url, init) => {
+        calls.push({ init, url })
+
+        return {
+          json: async () => ({ deleted: true, ok: true }),
+          ok: true,
+          status: 200,
+          statusText: "OK",
+        }
+      },
+    })
+
+    expect(calls).toEqual([
+      {
+        init: {
+          headers: { authorization: "Bearer access-token" },
+          method: "DELETE",
+        },
+        url: "https://openagents.com/api/mobile/account",
+      },
+    ])
+    expect(KHALA_ACCOUNT_DELETION_POLICY_COPY).toBe(
+      "Deleting your Khala account permanently removes your GitHub sign-in link, your chat threads and turn history, and your device's push notification registration. Any remaining credit balance is forfeited and is not refunded — credits are non-transferable and have no cash value.",
+    )
   })
 })

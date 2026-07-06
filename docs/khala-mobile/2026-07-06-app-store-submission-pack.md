@@ -187,32 +187,37 @@ rejection.
 
 ## 7. Account deletion path
 
-**Not yet built — an explicit, tracked compliance gap**, not something this
-pass invents a shortcut for. Per Apple Guideline 5.1.1(v), an app that
-supports account creation must let the user initiate deletion in-app. Current
-state (verified 2026-07-06, unchanged since the #8483 audit): `AccountSection`
-in `clients/khala-mobile/src/screens/settings-screen.tsx` offers only "Sign
-out"; no `DELETE /api/mobile/account`-shaped route exists anywhere in
-`apps/openagents.com/workers/api/src`. The plain-language policy this future
-mechanism should honor was already drafted in #8483
-(`docs/khala-code/2026-07-06-mobile-iap-store-compliance-checklist.md` §3) —
-reproduced here for submission-pack completeness:
+**Built 2026-07-06 in #8502.** Per Apple Guideline 5.1.1(v), an app that
+supports account creation must let the user initiate deletion in-app. Khala
+Mobile now exposes this through `AccountSection` in
+`clients/khala-mobile/src/screens/settings-screen.tsx`: the user taps
+**Delete account**, sees a confirmation modal with the policy copy below, and
+the app calls `DELETE /api/mobile/account` on the main Worker.
+
+The Worker route lives in
+`apps/openagents.com/workers/api/src/mobile-account-deletion-routes.ts` and is
+mobile-bearer-authorized. It removes owner-scoped Khala Sync chat/runtime rows,
+removes push device-token registrations, disconnects GitHub write links,
+removes OpenAuth subject storage, marks the user/identity deleted, forfeits
+the Pool B credit balance by zeroing the server-owned balance row, records a
+short-lived deletion receipt for safe retry, and revokes the presented bearer
+token. The route is tested in
+`apps/openagents.com/workers/api/src/mobile-account-deletion-routes.test.ts`;
+the mobile request helper and exact policy copy are tested in
+`clients/khala-mobile/tests/mobile-openauth.test.ts`.
+
+Policy copy shown in the confirmation modal:
 
 > Deleting your Khala account permanently removes your GitHub sign-in link,
 > your chat threads and turn history, and your device's push notification
 > registration. Any remaining credit balance is forfeited and is not
 > refunded — credits are non-transferable and have no cash value.
 
-**This must be built before a real App Store submission can pass review** —
-recommend a follow-up implementation issue (new WS item: a
-`DELETE /api/mobile/account` route in the main Worker plus a confirmation
-screen in `AccountSection`) filed against the Worker/API-owning lane, since
-it is out of this launch-ops lane's scope (`clients/khala-mobile` test/QA
-surfaces + docs only) and touches auth/credits/sync data across the Worker.
-Do not file a first real ASC submission until this lands, or file only to
-**TestFlight internal testing** (Apple does not enforce 5.1.1(v) for internal
-TestFlight builds the same way it does for App Review) as the interim rung —
-see §8.
+This App Review blocker can be marked account-deletion-complete once the
+commit containing #8502 is deployed to the Worker and included in the mobile
+build submitted for review. Internal TestFlight remains usable before that
+deploy; external TestFlight/App Review should use a build whose Settings
+screen contains the confirmed deletion path.
 
 ## 8. TestFlight external-testing group (staging rung)
 

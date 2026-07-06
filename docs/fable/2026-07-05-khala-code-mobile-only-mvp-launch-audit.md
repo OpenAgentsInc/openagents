@@ -634,7 +634,7 @@ All merged to `main`, each closed with evidence on its issue:
 | #8491 (I2 App Store pack) | **Closed 2026-07-06** (Lane S3) | Agent-doable submission-readiness doc shipped (listing copy, screenshot shot-list, privacy nutrition label, required-reason API notes, age rating, App Review notes, TestFlight staging plan). Found a real, previously-undocumented-as-launch-blocking gap: account deletion (Apple 5.1.1(v)) is unbuilt — filed #8502 as a tracked follow-up. ASC account actions remain owner-gated. |
 | #8492 (I3 E2E QA) | **Closed 2026-07-06** (Lane S3) | Confirmed both platforms' Maestro flows (from #8490) run the SAME `.yaml` unmodified; added real RN component-mount coverage for RepoPickerScreen (new enforced contract, extends the ChatComposer harness with a FlatList leaf stub). Full straight-line E2E (through a completed cloud-executed turn) stays honestly deferred — needs a seeded test GitHub account (`~/work/NEEDS_OWNER.md`) AND the remaining C-lane issues below. |
 | #8493 (I4 promise gates) | **Closed 2026-07-06** (Lane S3) | Evidence-accrual pass on `khala_code.mobile_mvp.v1` (registry 2026-07-06.1, no state flip) + launch-copy audit — see §12.4. |
-| #8502 (account deletion, App Review 5.1.1(v)) | **New**, open | Filed by Lane S3 from #8491's audit; Worker/API + mobile scope, blocks a real external-facing App Store/external-TestFlight submission (internal TestFlight is not blocked by it). |
+| #8502 (account deletion, App Review 5.1.1(v)) | **Closed 2026-07-06** | `DELETE /api/mobile/account` plus the Settings confirmation flow now ship the App Review account-deletion mechanism. The route deletes owner-scoped Khala Sync data, push registrations, GitHub/OpenAuth links, and forfeits remaining Pool B credits before revoking the mobile bearer; retry-safe deletion receipt and focused Worker/mobile tests landed with the change. |
 | #8499–#8501 (Aiur) | #8499 closed, #8500/#8501 open | Owner-directed 2026-07-06; #8500 is MVP-critical (manual credits). |
 | #8481 (E1 RevenueCat) | **Closed postponed** | Owner decision: no IAP in first MVP; server rail stays dormant. |
 | #8494 (J1 post-to-earn) | Open, post-MVP-gated | Unchanged. |
@@ -690,8 +690,8 @@ All four Lane S3 issues (#8490-#8493) are closed. Summary, in order:
   nutrition label grounded in a real grep pass — no third-party analytics/
   crash SDK exists, IAP doesn't apply since postponed — required-reason API
   notes, age rating, App Review notes, TestFlight staging plan). Found and
-  filed a real gap: account deletion (Apple 5.1.1(v)) is unbuilt — **#8502**,
-  new tracked follow-up (Worker/API + mobile scope).
+  filed the account-deletion gap (Apple 5.1.1(v)); **#8502 is now closed** with
+  the Worker/mobile deletion path and tests.
 - **#8492 (I3)**: confirmed cross-platform Maestro flow reuse; added real RN
   component-mount coverage for `RepoPickerScreen` (new enforced contract
   `khala_mobile.repo_picker.rn_component_mount_coverage.v1`, extends the
