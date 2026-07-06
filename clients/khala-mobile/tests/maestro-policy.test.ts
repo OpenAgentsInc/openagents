@@ -18,7 +18,7 @@ describe("Khala mobile Maestro flows", () => {
     expect(startup).toContain("clearKeychain: true")
 
     expect(fallback).toContain("Sign in with GitHub")
-    expect(fallback).toContain("No desktop, Tailnet, or manual token is required.")
+    expect(fallback).toContain("One key. Your whole fleet.")
 
     expect(signInInteraction).toContain("Sign in with GitHub")
     expect(signInInteraction).toContain("tapOn")

@@ -10,5 +10,5 @@ onFlowStart:
 ---
 - assertVisible: "Khala Code"
 - assertVisible: "Sign in with GitHub"
-- assertVisible: "No desktop, Tailnet, or manual token is required."
+- assertVisible: "One key. Your whole fleet."
 - assertVisible: "Khala Code"
