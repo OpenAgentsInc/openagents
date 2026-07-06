@@ -501,6 +501,15 @@ This is the invariant ledger for `openagents`.
   GCE instance names, guest IPs, tap devices, host paths, SSH keys, control
   tokens, raw SCM tokens, prompts, repo content, wallet material, provider
   master keys, or private traces.
+- Private GitHub checkout for Agent Computers must go through the Worker-owned
+  SCM broker route `/api/pylon/github/git-credentials`. That route is
+  executor-agent-bearer-only, derives the GitHub identity token storage key from
+  the authenticated owner, requires matching public-safe `authRefs` and
+  `repo.github/<owner>/<repo>` refs, verifies the exact repo through GitHub, and
+  returns credentials only as a no-store broker response to Git. Assignment
+  payloads, placement requests, public projections, issue comments, docs, and
+  traces must carry only refs, never embedded GitHub OAuth tokens, PATs,
+  credentialed URLs, or credential helper output.
 - Agent Computer compute charging is receipt-first and exact-only. Charges draw
   from the same user credit balance as token charges, but the compute rate is
   owner-gated until #8479 records it. Do not infer or hard-code a compute price

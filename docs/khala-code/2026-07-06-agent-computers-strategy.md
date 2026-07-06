@@ -242,9 +242,16 @@ executor overhead amortized into token margin" never will be.
   and rejects caller-supplied Pylon/user-capacity selectors. Capacity now means
   Agent Computer capacity from the control-plane readiness/ledger path; exe.dev
   pool framing is dropped.
-- **#8475** (repo checkout) — unchanged in substance; the SCM-broker
-  credential is delivered into the agent computer. exe.dev GitHub
-  Integration option dropped — our broker is the only path.
+- **#8475** (repo checkout) — public repo-checkout seam landed in
+  `apps/pylon/src/workspace-materializer.ts` and
+  `apps/openagents.com/workers/api/src/github-scm-auth-broker-routes.ts`.
+  Private GitHub checkouts are now admitted only with a `github_user_oauth`
+  SCM broker scoped to the exact repo, and the Worker broker authenticates the
+  executor, derives the user's stored GitHub token ref from the authenticated
+  owner, verifies repo access through GitHub, and returns a cache-bounded Git
+  credential response. exe.dev GitHub Integration option dropped — our broker
+  is the only path. GitHub App installation tokens remain the least-privilege
+  follow-up once owner-approved.
 - **#8476** (isolation posture) — rescoped to §4 of this doc: document and
   enforce the Firecracker per-work-context posture; the exe.dev
   persistent-VM trust model is out.

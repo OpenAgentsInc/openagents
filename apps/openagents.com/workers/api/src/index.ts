@@ -223,7 +223,10 @@ import {
   reserveAuthEmailOtpSend,
   stampAuthEmailOtpClaims,
 } from './auth/email-otp-hardening'
-import { readBearerToken } from './auth/bearer-token'
+import {
+  readAgentBearerToken,
+  readBearerToken,
+} from './auth/bearer-token'
 import {
   authIssuerAllowsRedirect,
   authIssuerAllowsWebRedirectHostname,
@@ -370,6 +373,10 @@ import {
   makeD1CloudCodingAdmissionGate,
   routeCloudCodingSessionRequest as routeCloudCodingSessionRequestImpl,
 } from './cloud/cloud-coding-session-routes'
+import {
+  GitHubScmAuthBrokerDependencyFailed,
+  routeGitHubScmAuthBrokerRequest,
+} from './github-scm-auth-broker-routes'
 import { makeD1CloudPrimitiveReceiptStore } from './cloud/cloud-primitive-receipts'
 // Cloud primitive SCAFFOLDS (EPIC #5510). Both flag-gated INERT by default; the
 // promises `cloud.fine_tuning_service.v1` / `cloud.sandbox_compute_service.v1`
@@ -956,7 +963,10 @@ import {
 } from './omni-runs'
 import { makeOmniWorkroomLifecycleRoutes } from './omni-workroom-lifecycle-routes'
 import { makeOmniWorkroomRoutes } from './omni-workroom-routes'
-import { githubIdentityTokenKey } from './onboarding/github'
+import {
+  GitHubRepositoryService,
+  githubIdentityTokenKey,
+} from './onboarding/github'
 import { readOnboardingStatusForUser } from './onboarding/repository'
 import { makeOnboardingRoutes } from './onboarding/routes'
 import {
@@ -15561,6 +15571,73 @@ const routeRequest = makeWorkerRouteRequest({
     handleVerticalFunnelRequest(request, {
       db: openAgentsDatabase(env),
       resend: getResendEmailConfig(env),
+    }),
+  routeGithubScmAuthBrokerRequest: (request, env) =>
+    routeGitHubScmAuthBrokerRequest(request, {
+      authenticate: authRequest =>
+        Effect.tryPromise({
+          try: async () => {
+            const token = readAgentBearerToken(authRequest)
+            if (token === undefined) {
+              return undefined
+            }
+            const session = await authenticateProgrammaticAgent(
+              makeAgentRegistrationStoreForEnv(env),
+              token,
+            )
+            return session === undefined
+              ? undefined
+              : { userId: session.user.id }
+          },
+          catch: () =>
+            new GitHubScmAuthBrokerDependencyFailed({
+              reason: 'agent_auth_failed',
+            }),
+        }).pipe(
+          Effect.catch(() =>
+            Effect.sync((): { userId: string } | undefined => undefined),
+          ),
+        ),
+      readGithubAccessToken: userId =>
+        Effect.tryPromise({
+          try: async () =>
+            (await env.AUTH_STORAGE.get(githubIdentityTokenKey(userId))) ??
+            undefined,
+          catch: () =>
+            new GitHubScmAuthBrokerDependencyFailed({
+              reason: 'github_identity_token_read_failed',
+            }),
+        }).pipe(
+          Effect.catch(() => Effect.sync((): string | undefined => undefined)),
+        ),
+      verifyRepositoryAccess: ({ accessToken, owner, name }) =>
+        Effect.gen(function* () {
+          const github = yield* GitHubRepositoryService
+          const repository = yield* github.getRepository(
+            accessToken,
+            owner,
+            name,
+          )
+          return {
+            ok: true as const,
+            fullName: repository.fullName,
+            private: repository.private,
+          }
+        }).pipe(
+          Effect.provide(GitHubRepositoryService.layer),
+          Effect.catch(error =>
+            Effect.succeed({
+              ok: false as const,
+              status:
+                typeof error === 'object' &&
+                error !== null &&
+                'status' in error &&
+                typeof error.status === 'number'
+                  ? error.status
+                  : 0,
+            }),
+          ),
+        ),
     }),
   routePylonApiRequest: pylonApiRoutes.routePylonApiRequest,
   routeForgeGitIntakeRequest: (request, env) =>

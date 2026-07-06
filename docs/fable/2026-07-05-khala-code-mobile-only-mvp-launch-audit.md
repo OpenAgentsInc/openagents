@@ -234,13 +234,18 @@ notifications** (zero APNs/FCM/Expo-push code anywhere, client or server).
   product language — the Pylon runtime remains the internal executor
   inside the agent-computer image, but the provisioned/metered/billed unit
   is the agent computer.
-- Repo access: cloud checkout today is **public pinned SHA only**
-  (`apps/pylon/src/workspace-materializer.ts` rejects private repos). The
-  SCM auth-broker seam exists (`openagents.pylon.scm_auth_broker.v1`,
-  credential-helper pattern, fail-closed, on-disk credential scanner) but
-  currently brokers **Forge** repos, not github.com. Wiring the stored user
-  GitHub OAuth token through that broker + relaxing the visibility contract
-  is the private-repo path.
+- Repo access: #8475 adds the private GitHub checkout path for Agent
+  Computers. `apps/pylon/src/workspace-materializer.ts` still rejects
+  unbrokered private repos, but now admits private GitHub checkouts only when
+  the assignment carries a `github_user_oauth` SCM broker scoped to the exact
+  `github.com/<owner>/<repo>.git` path and `repo.github/<owner>/<repo>` ref.
+  `apps/openagents.com/workers/api/src/github-scm-auth-broker-routes.ts`
+  authenticates the executor, derives the GitHub identity token ref from the
+  authenticated owner, verifies repo access through GitHub, and returns a
+  cache-bounded Git credential response. The scanner remains enforced; raw
+  tokens are not embedded in assignments, placement, public projections, or
+  error bodies. A GitHub App installation-token broker remains the
+  least-privilege follow-up.
 
 ### 2.5 Credits and payments: three pools, strong primitives, wrong keying
 
@@ -621,7 +626,8 @@ All merged to `main`, each closed with evidence on its issue:
 |---|---|---|
 | #8503 (AC-1 Agent Computers) | **In progress, public seam landed; live proof owner-gated** | Arms the existing Firecracker/GCE provisioning path (`cloud-coding-session-routes.ts` + the private `cloud/` provisioner) and proves the first real mobile turn inside a microVM, with lifecycle receipts. Public repo now projects Agent Computer work-context/lifecycle/resource receipt refs from `cloud.gce.*` events and documents/tests the nested-virt GCE host bootstrap under `apps/pylon/deploy/agent-computer/`. Remaining proof requires owner-gated live host/image/control-plane receipts. Strategy: `docs/khala-code/2026-07-06-agent-computers-strategy.md`. |
 | #8474 (C2 admission) | **Public Worker gate landed** | `/v1/cloud-coding-sessions` now admits only a valid mobile bearer user with positive Pool B credit balance, per-user admission rate/concurrency allowance, and OpenAgents-owned Agent Computer capacity before placement. Typed refusals are `insufficient_credit`, `rate_limited`, and `org_capacity_unavailable`; caller-supplied Pylon/user-capacity selectors are rejected before admission. Live turn admission still depends on #8503 arming real Firecracker capacity. |
-| #8475–#8477 (C3–C5) | Not started | Continue against the Agent Computers strategy (redirect comments on each issue): #8475 delivers scoped credentials into the microVM via OUR SCM broker only, #8476 documents/enforces the strategy §4 Firecracker posture, #8477 unchanged. All exe.dev framing withdrawn. |
+| #8475 (C3 private checkout) | **Public SCM broker path landed** | Private GitHub checkouts now require the `github_user_oauth` SCM broker, executor-agent-bearer auth, owner-derived `github-identity:token:<userId>` ref, exact `repo.github/<owner>/<repo>` scope, and GitHub repo-access verification before Git receives a bounded credential response. Unbrokered private repos, wrong broker scope, and anonymous fallback are rejected by the Pylon materializer; scanner coverage remains enforced. |
+| #8476–#8477 (C4–C5) | Not started | Continue against the Agent Computers strategy (redirect comments on each issue): #8476 documents/enforces the strategy §4 Firecracker posture, #8477 branch/PR writeback remains unchanged. All exe.dev framing withdrawn. |
 | #8479 (D2 metering) | Not started | Expanded: charges BOTH meters — exact token receipts (landed) and agent-computer compute-time from lifecycle receipts (`resource_usage_receipt.v1`). Owns the mid-run exhaustion policy + pre-dispatch cost line. Compute rate is NEEDS_OWNER. Host/VM metrics are ops telemetry only, never billing truth. |
 | #8490 (I1 Android/Play) | **Closed 2026-07-06** (Lane S3) | Agent-doable half shipped: real Android SDK/emulator bring-up, real Gradle debug build, launch+interaction Maestro pass (both a reused iOS flow AND a new sign-in-tap flow), Android build+upload runbook. Play Console app record/signing/upload remains owner-gated (`~/work/NEEDS_OWNER.md`). |
 | #8491 (I2 App Store pack) | **Closed 2026-07-06** (Lane S3) | Agent-doable submission-readiness doc shipped (listing copy, screenshot shot-list, privacy nutrition label, required-reason API notes, age rating, App Review notes, TestFlight staging plan). Found a real, previously-undocumented-as-launch-blocking gap: account deletion (Apple 5.1.1(v)) is unbuilt — filed #8502 as a tracked follow-up. ASC account actions remain owner-gated. |

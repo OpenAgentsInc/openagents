@@ -103,10 +103,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   work context and metered with refs-only lifecycle/resource receipts. Agent
   Computers are not user Pylons, are not another user's capacity, and are not
   wallet or payout authority. They may receive only scoped runtime credentials
-  and SCM broker-issued repo credentials; raw user OAuth tokens, provider master
-  keys, wallet material, raw GCE topology, guest IPs, prompts, repo content,
-  and private traces must not enter public projections, docs, issue comments,
-  tests, fixtures, or logs.
+  and SCM broker-issued repo credentials; assignment payloads must carry only
+  broker refs, never embedded tokens, PATs, credentialed URLs, or credential
+  helper output. Raw user OAuth tokens, provider master keys, wallet material,
+  raw GCE topology, guest IPs, prompts, repo content, and private traces must
+  not enter public projections, docs, issue comments, tests, fixtures, or logs.
 - Agent Computer admission is an additive mobile org-cloud gate. It must require
   a mobile user bearer session, positive user credit balance, per-user
   rate/concurrency allowance, and OpenAgents-owned Agent Computer capacity

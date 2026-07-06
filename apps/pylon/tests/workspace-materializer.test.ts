@@ -56,6 +56,21 @@ const validBroker: ScmAuthBrokerConfig = {
   fallback: "fail_closed",
 }
 
+const validGithubBroker: ScmAuthBrokerConfig = {
+  schema: "openagents.pylon.scm_auth_broker.v1",
+  kind: "github_user_oauth",
+  brokerUrl: "https://openagents.com/api/pylon/github/git-credentials",
+  authRefs: ["github-identity:token:user_123"],
+  repositoryRef: "repo.github/OpenAgentsInc/private-sum-fixture",
+  allowed: {
+    protocol: "https",
+    host: "github.com",
+    pathPrefix: "/OpenAgentsInc/private-sum-fixture.git",
+  },
+  cacheTtlSeconds: 60,
+  fallback: "fail_closed",
+}
+
 function assignmentWith(workspace: unknown) {
   return { workspace }
 }
@@ -132,6 +147,35 @@ describe("gitCheckoutWorkspaceFrom", () => {
     })
   })
 
+  test("accepts a private GitHub checkout only with the scoped GitHub broker", () => {
+    const decoded = gitCheckoutWorkspaceFrom(
+      assignmentWith(
+        checkoutWith({
+          repository: {
+            fullName: "OpenAgentsInc/private-sum-fixture",
+            visibility: "private",
+          },
+          scmAuthBroker: validGithubBroker,
+        }),
+      ),
+    )
+
+    expect(decoded).not.toBeNull()
+    expect(decoded?.repository.visibility).toBe("private")
+    expect(decoded?.scmAuthBroker).toMatchObject({
+      kind: "github_user_oauth",
+      brokerUrl: "https://openagents.com/api/pylon/github/git-credentials",
+      authRefs: ["github-identity:token:user_123"],
+      repositoryRef: "repo.github/OpenAgentsInc/private-sum-fixture",
+      allowed: {
+        protocol: "https",
+        host: "github.com",
+        pathPrefix: "/OpenAgentsInc/private-sum-fixture.git",
+      },
+      fallback: "fail_closed",
+    })
+  })
+
   test("rejects assignments without a workspace payload", () => {
     expect(gitCheckoutWorkspaceFrom({})).toBeNull()
     expect(gitCheckoutWorkspaceFrom(null)).toBeNull()
@@ -142,13 +186,38 @@ describe("gitCheckoutWorkspaceFrom", () => {
     expect(gitCheckoutWorkspaceFrom(assignmentWith(checkoutWith({ kind: "local_path" })))).toBeNull()
   })
 
-  test("rejects private repositories and non-github providers", () => {
+  test("rejects private repositories without the GitHub broker and non-github providers", () => {
     expect(
       gitCheckoutWorkspaceFrom(assignmentWith(checkoutWith({ repository: { visibility: "private" as never } }))),
     ).toBeNull()
     expect(
       gitCheckoutWorkspaceFrom(assignmentWith(checkoutWith({ repository: { provider: "gitlab" as never } }))),
     ).toBeNull()
+  })
+
+  test("rejects private GitHub checkout broker scope drift", () => {
+    for (const scmAuthBroker of [
+      validBroker,
+      { ...validGithubBroker, allowed: { ...validGithubBroker.allowed, host: "gitlab.com" } },
+      { ...validGithubBroker, allowed: { ...validGithubBroker.allowed, pathPrefix: "/OpenAgentsInc/other.git" } },
+      { ...validGithubBroker, repositoryRef: "repo.github/OpenAgentsInc/other" },
+      { ...validGithubBroker, fallback: "anonymous_read_only" },
+    ]) {
+      expect(
+        gitCheckoutWorkspaceFrom(
+          assignmentWith(
+            checkoutWith({
+              repository: {
+                fullName: "OpenAgentsInc/private-sum-fixture",
+                visibility: "private",
+              },
+              scmAuthBroker,
+            }),
+          ),
+        ),
+        JSON.stringify(scmAuthBroker),
+      ).toBeNull()
+    }
   })
 
   test("rejects unsafe repository names", () => {
@@ -233,6 +302,7 @@ describe("gitCheckoutWorkspaceFrom", () => {
     for (const scmAuthBroker of [
       { ...validBroker, brokerUrl: "http://openagents.com/api/pylon/forge/git-credentials" },
       { ...validBroker, brokerUrl: "https://user:secret@openagents.com/api/pylon/forge/git-credentials" },
+      { ...validBroker, kind: "github_installation_token" },
       { ...validBroker, authRefs: ["oa_forge_git_secret_material"] },
       { ...validBroker, allowed: { ...validBroker.allowed, protocol: "ssh" } },
       { ...validBroker, allowed: { ...validBroker.allowed, pathPrefix: "../escape" } },

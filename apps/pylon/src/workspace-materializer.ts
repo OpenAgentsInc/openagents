@@ -28,7 +28,7 @@ export type GitCheckoutWorkspace = {
     commitSha: string
     fullName: string
     provider: "github"
-    visibility: "public"
+    visibility: "public" | "private"
   }
   virtualBranch?: {
     kind: "pylon_virtual_merge_queue"
@@ -52,7 +52,7 @@ export type ScmAuthBrokerFallback = "anonymous_read_only" | "fail_closed"
 
 export type ScmAuthBrokerConfig = {
   schema: typeof SCM_AUTH_BROKER_SCHEMA
-  kind: "forge_git_access"
+  kind: "forge_git_access" | "github_user_oauth"
   brokerUrl: string
   authRefs: string[]
   repositoryRef: string
@@ -471,7 +471,12 @@ function scmAuthBrokerFrom(value: unknown): ScmAuthBrokerConfig | null | undefin
   if (value === undefined) return undefined
   if (value === null || typeof value !== "object") return null
   const payload = value as ScmAuthBrokerConfig
-  if (payload.schema !== SCM_AUTH_BROKER_SCHEMA || payload.kind !== "forge_git_access") return null
+  if (
+    payload.schema !== SCM_AUTH_BROKER_SCHEMA ||
+    (payload.kind !== "forge_git_access" && payload.kind !== "github_user_oauth")
+  ) {
+    return null
+  }
   if (typeof payload.brokerUrl !== "string" || rawCredentialMaterialPattern.test(payload.brokerUrl)) return null
   let brokerUrl: URL
   try {
@@ -498,7 +503,7 @@ function scmAuthBrokerFrom(value: unknown): ScmAuthBrokerConfig | null | undefin
   if (payload.username !== undefined && !scmBrokerUsernamePattern.test(payload.username)) return null
   return {
     schema: SCM_AUTH_BROKER_SCHEMA,
-    kind: "forge_git_access",
+    kind: payload.kind,
     brokerUrl: brokerUrl.toString(),
     authRefs: [...payload.authRefs],
     repositoryRef: payload.repositoryRef,
@@ -513,11 +518,29 @@ function scmAuthBrokerFrom(value: unknown): ScmAuthBrokerConfig | null | undefin
   }
 }
 
+const githubUserOAuthBrokerRepositoryRef = (fullName: string): string =>
+  `repo.github/${fullName}`
+
+const githubUserOAuthBrokerMatchesCheckout = (
+  checkout: GitCheckoutWorkspace,
+  broker: ScmAuthBrokerConfig | undefined,
+): boolean => {
+  if (checkout.repository.visibility !== "private") return true
+  if (broker?.kind !== "github_user_oauth") return false
+  if (broker.fallback !== "fail_closed") return false
+  if (broker.allowed.protocol !== "https") return false
+  if (broker.allowed.host !== "github.com") return false
+  const expectedPath = `/${checkout.repository.fullName}.git`
+  if (broker.allowed.pathPrefix.toLowerCase() !== expectedPath.toLowerCase()) return false
+  return broker.repositoryRef.toLowerCase() ===
+    githubUserOAuthBrokerRepositoryRef(checkout.repository.fullName).toLowerCase()
+}
+
 /**
  * Decodes and validates the shared git_checkout workspace payload from a
- * normalized coding assignment. Rejects private repositories, unsafe
- * repository names, unpinned commits, absolute verification paths, `..`
- * traversal, and shell-shaped command strings — foreign or malformed
+ * normalized coding assignment. Rejects unbrokered private repositories,
+ * unsafe repository names, unpinned commits, absolute verification paths,
+ * `..` traversal, and shell-shaped command strings — foreign or malformed
  * shapes never reach filesystem work.
  */
 export function gitCheckoutWorkspaceFrom(codingAssignment: unknown): GitCheckoutWorkspace | null {
@@ -525,7 +548,8 @@ export function gitCheckoutWorkspaceFrom(codingAssignment: unknown): GitCheckout
   if (workspace === null || typeof workspace !== "object") return null
   const payload = workspace as GitCheckoutWorkspace
   if (payload.kind !== "git_checkout") return null
-  if (payload.repository?.provider !== "github" || payload.repository.visibility !== "public") return null
+  if (payload.repository?.provider !== "github") return null
+  if (payload.repository.visibility !== "public" && payload.repository.visibility !== "private") return null
   if (!githubFullNamePattern.test(payload.repository.fullName)) return null
   if (!gitCommitShaPattern.test(payload.repository.commitSha)) return null
   if (typeof payload.repository.branch !== "string" || !gitBranchNamePattern.test(payload.repository.branch)) return null
@@ -540,6 +564,7 @@ export function gitCheckoutWorkspaceFrom(codingAssignment: unknown): GitCheckout
   )
   const scmAuthBroker = scmAuthBrokerFrom(payload.scmAuthBroker)
   if (scmAuthBroker === null) return null
+  if (!githubUserOAuthBrokerMatchesCheckout(payload, scmAuthBroker)) return null
   return safeArgs
     ? {
         ...payload,

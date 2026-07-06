@@ -100,6 +100,7 @@ type WorkerRouteDependencies = Readonly<{
   routeMarketingAgencyReceiptRequest: OptionalEffectRoute
   routeMarketingAgencySelfServeRequest: OptionalEffectRoute
   routeVerticalFunnelRequest: OptionalEffectRoute
+  routeGithubScmAuthBrokerRequest: OptionalEffectRoute
   routePylonApiRequest: OptionalEffectRoute
   routeSiteCommerceRequest: OptionalEffectRoute
   routeSiteReferralInspectionRequest: OptionalEffectRoute
@@ -541,6 +542,13 @@ export const makeWorkerRouteRequest =
 
       if (inferenceReferralResponse !== undefined) {
         return yield* inferenceReferralResponse
+      }
+
+      const githubScmAuthBrokerResponse =
+        dependencies.routeGithubScmAuthBrokerRequest(request, env, ctx)
+
+      if (githubScmAuthBrokerResponse !== undefined) {
+        return yield* githubScmAuthBrokerResponse
       }
 
       const pylonApiResponse = dependencies.routePylonApiRequest(

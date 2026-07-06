@@ -382,6 +382,7 @@ describe('Worker route dual-serve resolution (#6148)', () => {
       routeMarketingAgencyReceiptRequest: noRoute,
       routeMarketingAgencySelfServeRequest: noRoute,
       routeVerticalFunnelRequest: noRoute,
+      routeGithubScmAuthBrokerRequest: noRoute,
       routePylonApiRequest: noRoute,
       routeSiteCommerceRequest: noRoute,
       routeSiteReferralInspectionRequest: noRoute,

@@ -18,15 +18,19 @@ never changes.
 ## The contract
 
 `gitCheckoutWorkspaceFrom` decodes the shared payload and rejects, before
-any filesystem work: private repositories, non-GitHub providers, unsafe
-repository names, unpinned or malformed commits (a 40-character SHA is
+any filesystem work: unbrokered private repositories, non-GitHub providers,
+unsafe repository names, unpinned or malformed commits (a 40-character SHA is
 required), branch values carrying traversal, absolute verification paths,
 `..` in arguments, and shell-shaped verification commands. Verification is
-argv-only and runs without a shell.
+argv-only and runs without a shell. Private GitHub checkouts are admitted only
+when the assignment carries a `github_user_oauth` SCM broker whose
+`repositoryRef`, `github.com` host, and exact `/<owner>/<repo>.git` path
+match the checkout; anonymous fallback is refused for private repos.
 
 Optional `scmAuthBroker` metadata is ref-only. The materializer accepts only
 the `openagents.pylon.scm_auth_broker.v1` shape, HTTPS broker URLs without
-embedded credentials, public-safe auth refs, a repository ref, and an allowed
+embedded credentials, one of the known broker kinds (`forge_git_access` or
+`github_user_oauth`), public-safe auth refs, a repository ref, and an allowed
 `https` protocol + host + path prefix. Raw Forge tokens, GitHub PATs,
 credentialed URLs, secret-looking values, unsafe fallbacks, and cache TTLs
 outside the bounded limit are rejected before checkout.
@@ -53,6 +57,15 @@ stdout. The helper keeps a protocol+host+path-scoped cache bounded by the
 assignment TTL setting (default 60s, max 1h) and the broker response expiry.
 It never reads an embedded SCM token from the workspace payload, helper
 config, repository config, or remote URL.
+
+For Khala Code Agent Computers (#8475), the GitHub broker URL is
+`/api/pylon/github/git-credentials`. The Worker authenticates the executor's
+agent bearer, derives the expected `github-identity:token:<userId>` storage ref
+from that owner, verifies the requested repository through GitHub before
+returning a credential, and emits no token material in public responses or error
+bodies. The MVP GitHub OAuth path is intentionally cache-bounded and scanner-
+guarded; a GitHub App installation-token broker is the least-privilege upgrade
+path once app installation is owner-approved.
 
 BA-D3 adds the runtime enforcement sweep. `scanLongLivedScmCredentials` scans
 bounded worker roots for GitHub PATs, raw Forge git tokens, credentialed Git
