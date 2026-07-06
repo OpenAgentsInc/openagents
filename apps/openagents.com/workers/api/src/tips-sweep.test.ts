@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
+import type { PaymentsLedgerDb } from './payments-ledger-db'
 import {
   TIPS_SWEEP_MIN_SAT,
   runTipsSweepTick,
@@ -55,9 +56,22 @@ describe('sweep statements', () => {
   })
 })
 
+// A fake D1 serving only the forum_tip_recipient_wallets registry read
+// (the credits tables are on the ledger handle after CFG-4 #8519).
+const fakeWalletDb = (walletRows: ReadonlyArray<Record<string, unknown>>) =>
+  ({
+    prepare: (_sql: string) => ({
+      bind: (..._params: unknown[]) => ({
+        all: async () => ({ results: walletRows }),
+        first: async () => null,
+      }),
+    }),
+  }) as never
+
 describe('sweep tick', () => {
   test('unconfigured buffer is a typed skip, not an error', async () => {
     const outcome = await runTipsSweepTick(null as never, {
+      ledgerDb: null as never,
       makeId: () => 'id',
       nowIso: '2026-06-10T21:00:00.000Z',
       payFromBuffer: null,
@@ -73,42 +87,43 @@ describe('sweep tick', () => {
 
   test('settle and fail paths drive the ledger correctly', async () => {
     const executed: string[] = []
-    const candidateRows = [
+    const balanceRows = [
+      {
+        actor_ref: 'agent:bob',
+        available_balance_msat: 1_210_000,
+        sweep_threshold_sat: 210,
+      },
       {
         actor_ref: 'agent:alice',
-        balance_msat: 510_000,
+        available_balance_msat: 510_000,
+        sweep_threshold_sat: 210,
+      },
+    ]
+    const walletRows = [
+      {
+        actor_ref: 'agent:alice',
         bolt12_offer: null,
         lightning_address: 'alice@spark.money',
-        sweep_threshold_sat: 210,
         wallet_ref: 'wallet.public.alice.redacted',
       },
       {
         actor_ref: 'agent:bob',
-        balance_msat: 1_210_000,
         bolt12_offer: 'lno1other',
         lightning_address: null,
-        sweep_threshold_sat: 210,
         wallet_ref: 'wallet.public.bob.redacted',
       },
     ]
 
-    const fakeDb = {
-      batch: async (statements: unknown[]) => {
+    const ledgerDb: PaymentsLedgerDb = {
+      batch: async statements => {
         executed.push(`batch:${statements.length}`)
-        return []
       },
-      prepare: (sql: string) => ({
-        bind: (..._params: unknown[]) => ({
-          all: async () => ({ results: candidateRows }),
-          first: async () => null,
-        }),
-        // direct statements inside batches
-        toString: () => sql,
-      }),
-    } as never
+      query: async () => balanceRows,
+    }
 
     let calls = 0
-    const outcome = await runTipsSweepTick(fakeDb, {
+    const outcome = await runTipsSweepTick(fakeWalletDb(walletRows), {
+      ledgerDb,
       makeId: () => `id_${++calls}_${Math.floor(calls / 100)}`,
       nowIso: '2026-06-10T21:00:00.000Z',
       payFromBuffer: async input =>
@@ -128,31 +143,34 @@ describe('sweep tick', () => {
 
   test('candidate selection excludes escrow-held balance from sweepable amount', async () => {
     let capturedSql = ''
-    const fakeDb = {
-      prepare: (sql: string) => {
-        capturedSql = sql
-        return {
-          bind: (..._params: unknown[]) => ({
-            all: async () => ({
-              results: [
-                {
-                  actor_ref: 'agent:alice',
-                  available_balance_msat: 510_000,
-                  balance_msat: 710_000,
-                  bolt12_offer: 'lno1test',
-                  lightning_address: 'alice@spark.money',
-                  sweep_threshold_sat: 210,
-                  wallet_ref: 'wallet.public.alice.redacted',
-                },
-              ],
-            }),
-          }),
-        }
+    const ledgerDb: PaymentsLedgerDb = {
+      batch: async () => {
+        throw new Error('ledger batch should not run during selection')
       },
-    } as never
+      query: async sql => {
+        capturedSql = sql
+        return [
+          {
+            actor_ref: 'agent:alice',
+            // Postgres returns bigint msat columns as strings.
+            available_balance_msat: '510000',
+            sweep_threshold_sat: 210,
+          },
+        ]
+      },
+    }
+    const walletDb = fakeWalletDb([
+      {
+        actor_ref: 'agent:alice',
+        bolt12_offer: 'lno1test',
+        lightning_address: 'alice@spark.money',
+        wallet_ref: 'wallet.public.alice.redacted',
+      },
+    ])
 
     const candidates = await selectSweepCandidates(
-      fakeDb,
+      walletDb,
+      ledgerDb,
       '2026-06-10T21:00:00.000Z',
       1,
     )

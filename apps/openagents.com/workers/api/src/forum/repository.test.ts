@@ -1,6 +1,7 @@
 import { Effect, Schema as S } from 'effect'
 import { describe, expect, test } from 'vitest'
 
+import { makeLedgerSqliteDb } from '../test/payments-ledger-sqlite'
 import {
   type ForumPublicProjection,
   ForumPublicProjection as ForumPublicProjectionSchema,
@@ -1107,6 +1108,11 @@ const forumRepositoryDb = (store: ForumRepositoryStore): D1Database => ({
   },
 })
 
+// CFG-4 (#8519): credited tip totals read the Postgres-authoritative
+// PaymentsLedgerDb seam. These repository tests never write pay_ins, so an
+// empty in-memory credits ledger reproduces the zero-credited-total case.
+const ledgerDb = makeLedgerSqliteDb()
+
 const runtime: ForumRepositoryRuntime = {
   makeId: () => 'generated-forum-row-id',
   nowIso: () => '2026-06-05T20:00:00.000Z',
@@ -1250,15 +1256,15 @@ describe('Forum repository foundation', () => {
       readForumTopicList(forumRepositoryDb(store), topic.forumId),
     )
     const topicDetail = await Effect.runPromise(
-      readForumTopicDetail(forumRepositoryDb(store), topic.topicId),
+      readForumTopicDetail(forumRepositoryDb(store), ledgerDb, topic.topicId),
     )
     const newestFirstTopicDetail = await Effect.runPromise(
-      readForumTopicDetail(forumRepositoryDb(store), topic.topicId, {
+      readForumTopicDetail(forumRepositoryDb(store), ledgerDb, topic.topicId, {
         postSortDirection: 'desc',
       }),
     )
     const postDetail = await Effect.runPromise(
-      readForumPostDetail(forumRepositoryDb(store), reply.postId),
+      readForumPostDetail(forumRepositoryDb(store), ledgerDb, reply.postId),
     )
 
     expect(topicList?.topics).toHaveLength(1)
@@ -1320,7 +1326,7 @@ describe('Forum repository foundation', () => {
     }
 
     const topicDetail = await Effect.runPromise(
-      readForumTopicDetail(forumRepositoryDb(store), topic.topicId),
+      readForumTopicDetail(forumRepositoryDb(store), ledgerDb, topic.topicId),
     )
 
     // The deleted parent is absent from the thread; only the live child shows.
@@ -1427,10 +1433,10 @@ describe('Forum repository foundation', () => {
       ),
     )
     const topicDetail = await Effect.runPromise(
-      readForumTopicDetail(forumRepositoryDb(store), firstPost.topicId),
+      readForumTopicDetail(forumRepositoryDb(store), ledgerDb, firstPost.topicId),
     )
     const postDetail = await Effect.runPromise(
-      readForumPostDetail(forumRepositoryDb(store), firstPost.postId),
+      readForumPostDetail(forumRepositoryDb(store), ledgerDb, firstPost.postId),
     )
     const replyAfterReadinessClaim = await Effect.runPromise(
       createForumReplyPost(
@@ -1746,7 +1752,7 @@ describe('Forum repository foundation', () => {
     store.topics[topicIndex] = { ...topicRow, state: 'hidden' }
     await expect(
       Effect.runPromise(
-        readForumTopicDetail(forumRepositoryDb(store), topic.topicId),
+        readForumTopicDetail(forumRepositoryDb(store), ledgerDb, topic.topicId),
       ),
     ).rejects.toMatchObject({
       _tag: 'ForumReadAccessDenied',
@@ -1757,7 +1763,7 @@ describe('Forum repository foundation', () => {
     store.posts[postIndex] = { ...postRow, state: 'hidden' }
     await expect(
       Effect.runPromise(
-        readForumPostDetail(forumRepositoryDb(store), firstPost.postId),
+        readForumPostDetail(forumRepositoryDb(store), ledgerDb, firstPost.postId),
       ),
     ).rejects.toMatchObject({
       _tag: 'ForumReadAccessDenied',

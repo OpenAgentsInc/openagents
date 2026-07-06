@@ -4,6 +4,8 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import { readAgentBalance } from '../payments-ledger'
+import type { PaymentsLedgerDb } from '../payments-ledger-db'
+import { paymentsLedgerDbFromD1 } from '../test/payments-ledger-sqlite'
 import { AgentRateLimitPolicy } from '../agent-rate-limit-policy'
 import {
   clawbackInferenceCredits,
@@ -125,6 +127,9 @@ CREATE TABLE pay_in_legs (
 
 const NOW = '2026-06-19T12:00:00.000Z'
 const ACCOUNT = 'agent:abuse-test'
+
+const makeLedgerDb = (db: D1Database): PaymentsLedgerDb =>
+  paymentsLedgerDbFromD1(db as never)
 
 const makeDb = (): D1Database => {
   const raw = new DatabaseSync(':memory:')
@@ -366,49 +371,19 @@ describe('clawbackInferenceCredits (live ledger)', () => {
     const outcome = await run(
       clawbackInferenceCredits(
         { accountRef: ACCOUNT, sourceRef: 'dispute-1', clawbackMsat: 400_000 },
-        { db, nowIso: () => NOW },
+        { ledgerDb: makeLedgerDb(db), nowIso: () => NOW },
       ),
     )
     expect(outcome.clawedBack).toBe(true)
     expect(outcome.insufficientBalance).toBe(false)
 
-    const balance = await readAgentBalance(db, ACCOUNT)
+    const balance = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     expect(balance?.availableMsat).toBe(600_000)
   })
 
-  // KS-8.7 (#8318/#8337): a wired `mirror` must see the pay_ins/pay_in_legs
-  // rows this clawback just created — the RUNBOOK coverage list called out
-  // `inference/inference-abuse-controls.ts` as D1-only pending this
-  // decommission pass (converged only by periodic backfill sweeps).
-  test('a clawback mirrors its pay_ins + pay_in_legs refs when a mirror is wired', async () => {
-    const db = makeDb()
-    await seedBalance(db, 1_000_000)
-    const calls: Array<ReadonlyArray<{ table: string; key: unknown }>> = []
-    const mirror = async (
-      _db: unknown,
-      refs: ReadonlyArray<{ table: string; key: unknown }>,
-    ) => {
-      calls.push(refs)
-    }
-
-    const outcome = await run(
-      clawbackInferenceCredits(
-        { accountRef: ACCOUNT, sourceRef: 'dispute-mirror-1', clawbackMsat: 400_000 },
-        { db, mirror, nowIso: () => NOW },
-      ),
-    )
-    expect(outcome.clawedBack).toBe(true)
-    const mirroredTables = calls.flat().map(ref => ref.table)
-    expect(mirroredTables).toContain('pay_ins')
-    expect(mirroredTables).toContain('pay_in_legs')
-    const payInRefs = calls
-      .flat()
-      .filter(ref => ref.table === 'pay_ins')
-      .map(ref => ref.key)
-    expect(payInRefs).toContainEqual({
-      id: 'inference:clawback:dispute-mirror-1',
-    })
-  })
+  // CFG-4 (#8519): the KS-8.7 mirror test that lived here was DELETED — the
+  // D1->Postgres dual-write mirror for pay_ins/pay_in_legs no longer exists;
+  // the ledger write above IS the Postgres write.
 
   test('is idempotent per source event (webhook replay never double-claws)', async () => {
     const db = makeDb()
@@ -417,19 +392,19 @@ describe('clawbackInferenceCredits (live ledger)', () => {
     const first = await run(
       clawbackInferenceCredits(
         { accountRef: ACCOUNT, sourceRef: 'dispute-2', clawbackMsat: 300_000 },
-        { db, nowIso: () => NOW },
+        { ledgerDb: makeLedgerDb(db), nowIso: () => NOW },
       ),
     )
     const second = await run(
       clawbackInferenceCredits(
         { accountRef: ACCOUNT, sourceRef: 'dispute-2', clawbackMsat: 300_000 },
-        { db, nowIso: () => NOW },
+        { ledgerDb: makeLedgerDb(db), nowIso: () => NOW },
       ),
     )
     expect(first.clawedBack).toBe(true)
     expect(second.clawedBack).toBe(true) // idempotent no-op, not a re-charge
 
-    const balance = await readAgentBalance(db, ACCOUNT)
+    const balance = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     expect(balance?.availableMsat).toBe(700_000) // decremented exactly once
 
     // The idempotency key is stable per source event.
@@ -445,13 +420,13 @@ describe('clawbackInferenceCredits (live ledger)', () => {
     const outcome = await run(
       clawbackInferenceCredits(
         { accountRef: ACCOUNT, sourceRef: 'dispute-3', clawbackMsat: 500_000 },
-        { db, nowIso: () => NOW },
+        { ledgerDb: makeLedgerDb(db), nowIso: () => NOW },
       ),
     )
     expect(outcome.clawedBack).toBe(false)
     expect(outcome.insufficientBalance).toBe(true)
 
-    const balance = await readAgentBalance(db, ACCOUNT)
+    const balance = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     expect(balance?.availableMsat).toBe(100_000) // untouched
   })
 
@@ -462,13 +437,13 @@ describe('clawbackInferenceCredits (live ledger)', () => {
     const outcome = await run(
       clawbackInferenceCredits(
         { accountRef: ACCOUNT, sourceRef: 'dispute-4', clawbackMsat: 0 },
-        { db, nowIso: () => NOW },
+        { ledgerDb: makeLedgerDb(db), nowIso: () => NOW },
       ),
     )
     expect(outcome.clawedBack).toBe(false)
     expect(outcome.insufficientBalance).toBe(false)
 
-    const balance = await readAgentBalance(db, ACCOUNT)
+    const balance = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     expect(balance?.availableMsat).toBe(100_000)
   })
 })

@@ -1001,7 +1001,7 @@ describe('routeCloudCodingSessionRequest dispatcher', () => {
 describe('makeLedgerCloudCodingMeteringHook', () => {
   test('reports metered:false at launch time (no metered usage yet)', async () => {
     const hook = makeLedgerCloudCodingMeteringHook({
-      db: {} as never,
+      ledgerDb: {} as never,
       priceUsd: () => 1,
       usdToMsat: usd => Math.ceil(usd * 1000),
     })
@@ -1014,7 +1014,7 @@ describe('makeLedgerCloudCodingMeteringHook', () => {
 
   test('a zero-usd charge is metered with a receipt ref and no debit', async () => {
     const hook = makeLedgerCloudCodingMeteringHook({
-      db: {} as never,
+      ledgerDb: {} as never,
       priceUsd: () => 0,
       usdToMsat: usd => Math.ceil(usd * 1000),
     })

@@ -33,6 +33,8 @@ export const IAP_REVENUECAT_WEBHOOK_PATH = '/api/webhooks/revenuecat'
 
 export type IapWebhookRouteDependencies<Bindings> = Readonly<{
   db: (env: Bindings) => D1Database
+  /** CFG-4 (#8519): the Postgres-only credits ledger for the pack grant/refund. */
+  ledgerDb: (env: Bindings) => import('./payments-ledger-db').PaymentsLedgerDb
   webhookSecret: (env: Bindings) => string | undefined
 }>
 
@@ -86,7 +88,7 @@ const routeRevenueCatWebhook = <Bindings>(
         return noStoreJsonResponse({ action: 'ignored', ok: true, reason: 'sku_not_in_catalog' })
       }
 
-      const outcome = yield* fulfillIapCreditPackPurchase(db, {
+      const outcome = yield* fulfillIapCreditPackPurchase({ db, ledgerDb: dependencies.ledgerDb(env) }, {
         amountUsdCents: pack.amountUsdCents,
         eventId: event.eventId,
         sku: event.productId,
@@ -107,7 +109,7 @@ const routeRevenueCatWebhook = <Bindings>(
     }
 
     // event.kind === 'refund'
-    const outcome = yield* refundIapCreditPackPurchase(db, event.originalTransactionId)
+    const outcome = yield* refundIapCreditPackPurchase({ db, ledgerDb: dependencies.ledgerDb(env) }, event.originalTransactionId)
 
     if (!outcome.ok) {
       // The refunded purchase was never seen (e.g. it wasn't a credit-pack SKU

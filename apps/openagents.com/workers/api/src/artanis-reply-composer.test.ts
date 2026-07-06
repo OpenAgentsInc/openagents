@@ -9,6 +9,10 @@ import {
   type ComposerTip,
   runArtanisComposerTick,
 } from './artanis-reply-composer'
+import {
+  type D1LikeDatabase,
+  paymentsLedgerDbFromD1,
+} from './test/payments-ledger-sqlite'
 import { isTipLadderReceiptRef } from './tip-ladder'
 
 // Real-SQL D1 adapter backed by node:sqlite so the responder lifecycle
@@ -262,10 +266,17 @@ const stubMindFetch = (text: string) => {
   )
 }
 
-const baseDeps = (overrides: Partial<Parameters<typeof runArtanisComposerTick>[1]>) => ({
+const baseDeps = (
+  db: D1Database,
+  overrides: Partial<Parameters<typeof runArtanisComposerTick>[1]> = {},
+) => ({
   artanisActorRef: ARTANIS_ACTOR,
   forumPost: makeCapturingForumPost().fn,
   geminiApiKey: 'k',
+  // CFG-4 (#8519): pay_ins reads (tip budget, receipt dereference) ride the
+  // PaymentsLedgerDb seam, backed by the SAME SQLite database as the D1 shim
+  // so seeded pay-ins stay visible to both handles.
+  ledgerDb: paymentsLedgerDbFromD1(db as unknown as D1LikeDatabase),
   nowIso: '2026-06-19T01:00:00.000Z',
   tip: (async () => ({ error: 'unused' })) as ComposerTip,
   ...overrides,
@@ -285,7 +296,7 @@ describe('artanis reply composer - receipt honesty (#5540 defect 1)', () => {
 
     const outcome = await runArtanisComposerTick(
       db,
-      baseDeps({ forumPost: capture.fn, tip: failingTip }),
+      baseDeps(db, { forumPost: capture.fn, tip: failingTip }),
     )
 
     expect(outcome.responded).toBe(1)
@@ -324,7 +335,7 @@ describe('artanis reply composer - receipt honesty (#5540 defect 1)', () => {
 
     const outcome = await runArtanisComposerTick(
       db,
-      baseDeps({ forumPost: capture.fn, tip: settlingTip }),
+      baseDeps(db, { forumPost: capture.fn, tip: settlingTip }),
     )
 
     expect(outcome.responded).toBe(1)
@@ -361,7 +372,7 @@ describe('artanis reply composer - receipt honesty (#5540 defect 1)', () => {
 
     await runArtanisComposerTick(
       db,
-      baseDeps({ forumPost: capture.fn, tip: malformedTip }),
+      baseDeps(db, { forumPost: capture.fn, tip: malformedTip }),
     )
 
     expect(capture.posts[0]!.bodyText).not.toContain('Responder tip receipt')
@@ -380,7 +391,7 @@ describe('artanis reply composer - receipt honesty (#5540 defect 1)', () => {
 
     const outcome = await runArtanisComposerTick(
       db,
-      baseDeps({ forumPost: capture.fn, tip: danglingTip }),
+      baseDeps(db, { forumPost: capture.fn, tip: danglingTip }),
     )
 
     expect(outcome.responded).toBe(1)
@@ -414,7 +425,7 @@ describe('artanis reply composer - operational grounding (#5540 defect 2)', () =
       )
     })
 
-    await runArtanisComposerTick(db, baseDeps({}))
+    await runArtanisComposerTick(db, baseDeps(db))
 
     // The grounding payload must include the operational runbook facts.
     expect(capturedBody).toContain('operationalDocs')
@@ -452,7 +463,7 @@ describe('artanis reply composer - truncation (#5540 defect 3)', () => {
 
     const outcome = await runArtanisComposerTick(
       db,
-      baseDeps({ forumPost: capture.fn }),
+      baseDeps(db, { forumPost: capture.fn }),
     )
 
     // No truncated reply is ever posted; the action is blocked honestly.

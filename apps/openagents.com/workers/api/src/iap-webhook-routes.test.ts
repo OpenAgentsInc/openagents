@@ -10,15 +10,18 @@ import {
   type IapWebhookRouteDependencies,
 } from './iap-webhook-routes'
 import { readAgentBalance, type AgentBalanceRow } from './payments-ledger'
+import type { PaymentsLedgerDb } from './payments-ledger-db'
+import { paymentsLedgerDbFromD1, type D1LikeDatabase } from './test/payments-ledger-sqlite'
 
-const requireAgentBalance = async (db: D1Database, actorRef: string): Promise<AgentBalanceRow> => {
+const requireAgentBalance = async (db: PaymentsLedgerDb, actorRef: string): Promise<AgentBalanceRow> => {
   const balance = await readAgentBalance(db, actorRef)
   expect(balance).not.toBeNull()
   return balance!
 }
 
 type Row = Record<string, unknown>
-type FakeEnv = Readonly<{ db: D1Database; secret: string | undefined }>
+type FakeEnv = Readonly<{ db: D1Database
+  ledgerDb: PaymentsLedgerDb; secret: string | undefined }>
 
 class SqliteD1Statement {
   private bound: ReadonlyArray<unknown> = []
@@ -119,14 +122,17 @@ const makeEnv = (input: Readonly<{ noSecret?: true }> = {}): FakeEnv => {
   const db = new DatabaseSync(':memory:')
   db.exec(ledgerSchema)
   db.exec(migration('0306_iap_credit_pack_purchase_intents.sql'))
+  const d1 = new SqliteD1(db) as unknown as D1Database
   return {
-    db: new SqliteD1(db) as unknown as D1Database,
+    db: d1,
+    ledgerDb: paymentsLedgerDbFromD1(d1 as unknown as D1LikeDatabase),
     secret: input.noSecret === true ? undefined : DEFAULT_TEST_SECRET,
   }
 }
 
 const dependencies: IapWebhookRouteDependencies<FakeEnv> = {
   db: env => env.db,
+  ledgerDb: env => env.ledgerDb,
   webhookSecret: env => env.secret,
 }
 
@@ -196,7 +202,7 @@ describe('handleIapRevenueCatWebhookRequest — purchase fulfillment', () => {
     const body = (await response.json()) as { ok: boolean; action: string }
     expect(body).toEqual({ action: 'fulfilled', ok: true, purchaseRef: expect.any(String) })
 
-    const balance = await requireAgentBalance(env.db, 'agent:user-1')
+    const balance = await requireAgentBalance(env.ledgerDb, 'agent:user-1')
     expect(balance.balanceMsat).toBeGreaterThan(0)
     expect(balance.usdCreditMsat).toBe(balance.balanceMsat)
   })
@@ -204,7 +210,7 @@ describe('handleIapRevenueCatWebhookRequest — purchase fulfillment', () => {
   test('the SAME webhook event delivered twice is a no-op the SECOND time (replay resistance)', async () => {
     const env = makeEnv()
     await Effect.runPromise(handleIapRevenueCatWebhookRequest(dependencies, post(purchaseEvent()), env))
-    const balanceAfterFirst = await requireAgentBalance(env.db, 'agent:user-1')
+    const balanceAfterFirst = await requireAgentBalance(env.ledgerDb, 'agent:user-1')
 
     const secondResponse = await Effect.runPromise(
       handleIapRevenueCatWebhookRequest(dependencies, post(purchaseEvent()), env),
@@ -212,7 +218,7 @@ describe('handleIapRevenueCatWebhookRequest — purchase fulfillment', () => {
     const secondBody = (await secondResponse.json()) as { ok: boolean; reason: string }
     expect(secondBody).toEqual({ action: 'ignored', ok: true, reason: 'duplicate_event_id' })
 
-    const balanceAfterSecond = await requireAgentBalance(env.db, 'agent:user-1')
+    const balanceAfterSecond = await requireAgentBalance(env.ledgerDb, 'agent:user-1')
     expect(balanceAfterSecond.balanceMsat).toBe(balanceAfterFirst.balanceMsat)
   })
 
@@ -230,7 +236,7 @@ describe('handleIapRevenueCatWebhookRequest — purchase fulfillment', () => {
     expect(body.action).toBe('ignored')
 
     // No balance row was ever created for this user — nothing was granted.
-    expect(await readAgentBalance(env.db, 'agent:user-1')).toBeNull()
+    expect(await readAgentBalance(env.ledgerDb, 'agent:user-1')).toBeNull()
   })
 
   test('an unhandled lifecycle event type is acknowledged as ignored', async () => {
@@ -256,7 +262,7 @@ describe('handleIapRevenueCatWebhookRequest — refund clawback', () => {
   test('a REFUND webhook claws back a previously-fulfilled purchase', async () => {
     const env = makeEnv()
     await Effect.runPromise(handleIapRevenueCatWebhookRequest(dependencies, post(purchaseEvent()), env))
-    const balanceBeforeRefund = await requireAgentBalance(env.db, 'agent:user-1')
+    const balanceBeforeRefund = await requireAgentBalance(env.ledgerDb, 'agent:user-1')
     expect(balanceBeforeRefund.balanceMsat).toBeGreaterThan(0)
 
     const response = await Effect.runPromise(
@@ -270,7 +276,7 @@ describe('handleIapRevenueCatWebhookRequest — refund clawback', () => {
     const body = (await response.json()) as { action: string; clawedBack: boolean }
     expect(body).toEqual({ action: 'refunded', clawedBack: true, insufficientBalance: false, ok: true })
 
-    const balanceAfterRefund = await requireAgentBalance(env.db, 'agent:user-1')
+    const balanceAfterRefund = await requireAgentBalance(env.ledgerDb, 'agent:user-1')
     expect(balanceAfterRefund.balanceMsat).toBe(0)
   })
 

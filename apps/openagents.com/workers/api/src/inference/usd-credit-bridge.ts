@@ -15,8 +15,12 @@
 // auto-move the user's whole balance on purchase; the user (or their agent)
 // chooses how much credit to make inference-spendable. The conversion is the
 // SINGLE source of truth in `usd-msat-conversion.ts` (the same rate the metering
-// hook charges at). Both sides land in ONE D1 batch (atomic), idempotent per
-// grant ref (UNIQUE), bounded by the available USD balance, and never negative.
+// hook charges at). CFG-4 (#8519): the two sides now live in two stores — the
+// USD debit stays a D1 `billing_ledger_entries` write; the msat grant is ONE
+// atomic Postgres transaction on the credits ledger (`PaymentsLedgerDb`). Each
+// side is idempotent per grant ref (UNIQUE), bounded by the available USD
+// balance, and never negative; see the non-atomic-seam note in
+// `fundInferenceFromCredit`.
 //
 // RL-3 ASSET BOUNDARY (openagents #5460, INVARIANTS "Credit<->Bitcoin Asset
 // Boundary"): a card dollar is a USD liability, NOT Bitcoin. The granted msat is
@@ -41,6 +45,7 @@ import {
 } from '../billing'
 import { workerLogEntry } from '../observability'
 import { type LedgerStatement, runLedgerStatements } from '../payments-ledger'
+import type { PaymentsLedgerDb } from '../payments-ledger-db'
 import { cardCreditGrantContextRef } from './card-credit-provenance'
 import { usdCentsToMsatFloor } from './usd-msat-conversion'
 
@@ -83,7 +88,9 @@ export const usdCreditDebitIdempotencyKey = (grantRef: string): string =>
 //   3. bumps `usd_credit_msat` by the same amount (USD-origin tag, RL-3),
 // then records an `in`/`balance` leg with the resulting balance for audit.
 // Reuses the same one-batch-is-one-transaction discipline as the rest of the
-// ledger; the credit + the USD-origin tag move together or not at all.
+// ledger; the credit + the USD-origin tag move together or not at all. The SQL
+// is dialect-portable (Postgres production, SQLite test adapter): idempotent
+// inserts use `ON CONFLICT DO NOTHING`, never `INSERT OR IGNORE`.
 export const usdCreditGrantStatements = (
   input: Readonly<{
     grantRef: string
@@ -115,19 +122,16 @@ export const usdCreditGrantStatements = (
         nowIso,
         nowIso,
       ],
-      payInId,
-      sql: `INSERT OR IGNORE INTO pay_ins
+      // Targetless ON CONFLICT DO NOTHING: a replay conflicts on BOTH the id
+      // primary key and the idempotency_key UNIQUE; suppress either.
+      sql: `INSERT INTO pay_ins
             (id, pay_in_type, payer_ref, cost_msat, state, rung, context_ref,
              idempotency_key, public_receipt_ref, genesis_id, created_at,
              state_changed_at)
-            VALUES (?, 'usd_credit_grant', ?, ?, 'paid', NULL, ?, ?, ?, NULL, ?, ?)`,
+            VALUES (?, 'usd_credit_grant', ?, ?, 'paid', NULL, ?, ?, ?, NULL, ?, ?)
+            ON CONFLICT DO NOTHING`,
     },
     {
-      mirror: {
-        keyColumn: 'actor_ref',
-        keys: [input.accountRef],
-        table: 'agent_balances',
-      },
       params: [input.accountRef, nowIso, nowIso],
       sql: `INSERT INTO agent_balances (actor_ref, balance_msat, created_at, updated_at)
             VALUES (?, 0, ?, ?)
@@ -137,13 +141,8 @@ export const usdCreditGrantStatements = (
       // Credit the spendable balance AND tag the USD-origin portion in one UPDATE
       // so the two can never diverge (RL-3: usd_credit_msat <= balance_msat).
       // GUARDED on the leg not already existing: on an idempotent replay the
-      // pay_in INSERT OR IGNOREd, so the leg row already exists and this credit
-      // is a no-op — never double-credits.
-      mirror: {
-        keyColumn: 'actor_ref',
-        keys: [input.accountRef],
-        table: 'agent_balances',
-      },
+      // pay_in insert conflicted away, so the leg row already exists and this
+      // credit is a no-op — never double-credits.
       params: [grantMsat, grantMsat, nowIso, input.accountRef, legId],
       sql: `UPDATE agent_balances
             SET balance_msat = balance_msat + ?,
@@ -153,8 +152,9 @@ export const usdCreditGrantStatements = (
               AND NOT EXISTS (SELECT 1 FROM pay_in_legs WHERE id = ?)`,
     },
     {
-      // The audit leg. INSERT OR IGNORE so a replay (same legId) is a no-op,
-      // pairing with the guarded credit above for exactly-once semantics.
+      // The audit leg. ON CONFLICT DO NOTHING so a replay (same legId) is a
+      // no-op, pairing with the guarded credit above for exactly-once
+      // semantics.
       //
       // KS-8.7 (#8318/#8337) FOUND + FIXED: `party_ref` and `amount_msat`
       // were bound in the WRONG order here (party_ref got `grantMsat`,
@@ -178,20 +178,22 @@ export const usdCreditGrantStatements = (
         input.accountRef,
         nowIso,
       ],
-      payInId,
-      sql: `INSERT OR IGNORE INTO pay_in_legs
+      sql: `INSERT INTO pay_in_legs
             (id, pay_in_id, direction, kind, party_ref, amount_msat,
              resulting_balance_msat, external_ref, refund_of_leg_id, created_at)
             VALUES (?, ?, 'in', 'balance', ?, ?,
                     (SELECT balance_msat FROM agent_balances WHERE actor_ref = ?),
-                    'usd_credit_grant', NULL, ?)`,
+                    'usd_credit_grant', NULL, ?)
+            ON CONFLICT (id) DO NOTHING`,
     },
   ]
 }
 
 // The USD-debit insert (negative cents) for the billing side of the grant. The
 // USD ledger balance is SUM(amount_cents), so a negative row debits it. Idempotent
-// per grant ref via the UNIQUE idempotency_key (INSERT OR IGNORE).
+// per grant ref via the UNIQUE idempotency_key (INSERT OR IGNORE). This is a
+// BILLING-domain D1 statement (CFG-4: billing_ledger_entries stays on D1); it
+// is executed on the D1 handle, never on the credits ledger.
 const usdCreditDebitStatement = (
   input: Readonly<{
     grantRef: string
@@ -252,7 +254,11 @@ export type FundInferenceFromCreditOutcome =
     }>
 
 export type FundInferenceFromCreditDeps = Readonly<{
+  // The billing-domain D1 database (`billing_ledger_entries` — the USD side).
   db: D1Database
+  // The credits-domain ledger (CFG-4: `pay_ins`/`pay_in_legs`/`agent_balances`
+  // are Postgres-authoritative) — the msat side of the grant.
+  ledgerDb: PaymentsLedgerDb
   // ISO timestamp source. Defaults to the runtime clock through the billing
   // runtime, but injectable for deterministic tests.
   nowIso?: () => string
@@ -372,39 +378,36 @@ export const fundInferenceFromCredit = (
         ? cardCreditGrantContextRef(input.sourceCheckoutSessionId)
         : undefined) ?? `inference:usd-credit:${input.userId}`
 
-    // Atomic: USD debit + msat grant in ONE D1 batch. The USD debit uses
-    // INSERT OR IGNORE on a UNIQUE idempotency key and the msat grant uses the
-    // UNIQUE pay_ins idempotency key, so a replayed fund (same grantRef) is a
-    // no-op on both sides — the grant is exactly-once.
-    const mirror = runtime.mirror
+    // CFG-4 NON-ATOMIC SEAM: the USD debit (D1 `billing_ledger_entries`,
+    // billing domain) and the msat grant (Postgres credits ledger) can no
+    // longer share one transaction. Order: debit FIRST (fail-closed — value is
+    // never minted before it is paid for), then grant. If the grant write
+    // fails after the debit committed, a retry with the SAME grantRef heals
+    // idempotently: the debit's UNIQUE idempotency key makes the re-debit a
+    // no-op and the grant's UNIQUE pay_ins idempotency key + guarded balance
+    // UPDATE land the missing credit exactly once.
+    const debit = usdCreditDebitStatement(
+      {
+        amountCents: grantCents,
+        grantMsat,
+        grantRef: input.grantRef,
+        userId: input.userId,
+      },
+      now,
+      runtime,
+    )
     yield* Effect.tryPromise({
       catch: (cause: unknown) => new UsdCreditBridgeError({ cause }),
       try: () =>
-        runLedgerStatements(deps.db, [
-          usdCreditDebitStatement(
-            {
-              amountCents: grantCents,
-              grantMsat,
-              grantRef: input.grantRef,
-              userId: input.userId,
-            },
-            now,
-            runtime,
-          ),
-          ...usdCreditGrantStatements(
-            {
-              accountRef,
-              contextRef,
-              grantMsat,
-              grantRef: input.grantRef,
-            },
-            now,
-          ),
-        ], mirror),
+        deps.db
+          .prepare(debit.sql)
+          .bind(...debit.params)
+          .run(),
     })
 
-    // KS-8.7: mirror the USD-debit ledger row too (the pay-in + legs were
-    // mirrored by runLedgerStatements via their annotations).
+    // KS-8.7: mirror the USD-debit ledger row (billing-domain machinery; the
+    // credits-domain rows have no mirror anymore — Postgres is authoritative).
+    const mirror = runtime.mirror
     if (mirror !== undefined) {
       yield* Effect.promise(() =>
         mirror(deps.db, [
@@ -417,6 +420,25 @@ export const fundInferenceFromCredit = (
         ]),
       )
     }
+
+    // The msat grant: ONE atomic Postgres transaction on the credits ledger,
+    // idempotent per grantRef.
+    yield* Effect.tryPromise({
+      catch: (cause: unknown) => new UsdCreditBridgeError({ cause }),
+      try: () =>
+        runLedgerStatements(
+          deps.ledgerDb,
+          usdCreditGrantStatements(
+            {
+              accountRef,
+              contextRef,
+              grantMsat,
+              grantRef: input.grantRef,
+            },
+            now,
+          ),
+        ),
+    })
 
     const remainingCreditCents = yield* Effect.tryPromise({
       catch: (cause: unknown) => new UsdCreditBridgeError({ cause }),

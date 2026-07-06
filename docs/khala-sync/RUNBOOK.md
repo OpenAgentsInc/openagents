@@ -5094,6 +5094,87 @@ verification" bullet was evidently satisfied by an owner running the flow
 live, not by an agent). Track this as a same-scope follow-up on #8423 rather
 than opening a new issue.
 
+## Credits domain HARD cutover — Postgres-only, no flags (CFG-4, #8519)
+
+**2026-07-06 (epic #8515): the credits domain is the FIRST hard cutover —
+Postgres is the SOLE authority, the D1 code path is DELETED, and there is
+no flag to flip back.** This supersedes the dual-write/read-flag posture
+described in the KS-8.7 (pay_ins/pay_in_legs) and KS-8.8
+(agent_balances/labor_escrows/labor_escrow_receipts) sections above for
+exactly these five tables; every OTHER table in those domains keeps its
+existing D1-authority + mirror + flag machinery unchanged.
+
+What changed:
+
+- **Executor**: `runLedgerStatements` (`workers/api/src/payments-ledger.ts`)
+  now executes every ledger batch as ONE Postgres transaction through
+  `PaymentsLedgerDb` (`workers/api/src/payments-ledger-db.ts`, wired from
+  `env.KHALA_SYNC_DB` via `paymentsLedgerDbForEnv` — the same
+  postgres.js/Hyperdrive driver discipline as `POST /api/sync/push`).
+  The `LedgerStatement.payInId`/`mirror` annotations, the
+  `billingDomainMirrorFromEnv` pay-in mirror arm, and the treasury-mirror
+  annotations for these tables are deleted. FAIL-HARD: a Postgres outage
+  fails the money write loudly; there is no D1 fallback.
+- **Reads**: every reader of the five tables (mobile credits routes,
+  registered-agent self-view, admin credits console, receipts, tip
+  ladder/sweep scans, labor escrow, admission gates, credit-balance
+  projection seeding, tip-earnings JOINs) reads Postgres through the same
+  handle. The `KHALA_SYNC_BILLING_READS` pay-in receipt arm and the
+  treasury-seam routing for these tables are gone.
+- **Atomicity seams**: batches that previously mixed credits statements
+  with OTHER domains' D1 statements (business starter credit, grant-marker
+  tables) are split into one Postgres transaction + one D1 batch, ordered
+  so the existing idempotency keys heal a crash between the two. Each such
+  seam carries an in-code comment.
+- **Schema**: twins were already column-exact (0015/0016); migration
+  `0039_credits_hard_cut_indexes.sql` adds the read accelerators for the
+  newly Postgres-served scans (payer history keyset, payout-leg party
+  lookups, sweep/reconcile state scans).
+- **Dialect proof**: `payments-ledger-postgres.contract.test.ts` proves the
+  executor semantics on real local Postgres (atomic CHECK abort on
+  insufficient funds, UNIQUE idempotency replay abort, resulting-balance
+  subquery capture, retry successor-lock race, `?`→`$n` translation).
+  Fast behavioral tests ride `test/payments-ledger-sqlite.ts`, which
+  REJECTS SQLite-only SQL so ledger statements stay Postgres-portable.
+
+Cutover data procedure (verify → converge → deploy):
+
+1. Pre-deploy converge + verify (2026-07-06, production, recorded on
+   #8519): `backfill-billing.ts --restart --table pay_ins` /
+   `--table pay_in_legs` and `backfill-treasury.ts --restart --table
+   agent_balances`, then `--verify` per table. Result: pay_ins 302/302,
+   pay_in_legs 324/324, agent_balances 8/8 (balance_msat sum 10,262,615
+   msat exact), labor_escrows 3/3, labor_escrow_receipts 0/0 — exact
+   counts, money sums, and newest-50 hashes. The sweep converged one
+   GitHub signup-credit grant (`github:14167547`) the fail-soft mirror had
+   missed — direct evidence the old mirror path was not loss-free and the
+   hard cut is the correct posture.
+2. **Final catch-up sweep immediately BEFORE the cutover deploy** (while
+   the old D1-writing Worker is still serving): re-run the same three
+   `--restart --table …` sweeps + `--verify`. `backfill-billing.ts`'s
+   default all-tables sweep now EXCLUDES pay_ins/pay_in_legs (explicit
+   `--table` required) so a routine post-cutover billing sweep can never
+   clobber newer Postgres rows with stale D1 state.
+3. Deploy. NOTE (2026-07-06): Worker deploys are IMPOSSIBLE — the
+   Cloudflare Workers Paid plan was cancelled and the bundle exceeds the
+   free-plan 3 MiB cap (error 10027), so this code ships with the CFG-9
+   Cloud Run monolith cutover (#8515), not `deploy:safe`. From the first
+   new-code request onward, D1's five credits tables are dead weight
+   (dropped later in the KS-8.19 #8330 consolidation sweep — never in
+   this change).
+4. **NEVER run the pay_ins/pay_in_legs/agent_balances converge sweeps
+   after the cutover deploy.** Postgres is authoritative; D1 is a stale
+   snapshot.
+
+Accepted risk (owner-approved, #8519): rows written to D1 in the window
+between the final catch-up sweep and the deploy becoming live are lost
+unless the fail-soft mirror also copied them; keep that window to minutes
+and re-run `--verify` afterwards (read-only) to confirm zero drift at the
+moment authority moved. Until the CFG-9 cutover ships, the still-running
+old Worker keeps writing D1 (with its fail-soft mirror converging
+Postgres), so step 2's final sweep must run as part of the CFG-9 cutover
+runbook itself.
+
 ## What this runbook does NOT cover
 
 - Deploying the Worker/hub DO: `docs/DEPLOYMENT.md` (deploy:safe gate).

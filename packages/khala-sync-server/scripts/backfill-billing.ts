@@ -370,8 +370,24 @@ const main = async (): Promise<number> => {
   }
 
   const sql = new SQL(options.databaseUrl) as unknown as SyncSql
+  // CFG-4 (#8519) HARD CUTOVER GUARD: `pay_ins` / `pay_in_legs` are
+  // Postgres-AUTHORITATIVE once the credits cutover deploy is live. This
+  // script's converge upsert copies D1 -> Postgres and would CLOBBER newer
+  // Postgres rows with stale D1 state after that deploy. They are therefore
+  // excluded from the default all-tables sweep; converging them requires an
+  // explicit `--table pay_ins` / `--table pay_in_legs`, which is ONLY valid
+  // as the final pre-deploy catch-up sweep while the old D1-writing Worker
+  // is still serving. NEVER run it after the cutover deploy.
+  const creditsCutoverTables: ReadonlyArray<BillingDomainTable> = [
+    "pay_ins",
+    "pay_in_legs",
+  ]
   const tables =
-    options.table === undefined ? BILLING_DOMAIN_TABLES : [options.table]
+    options.table === undefined
+      ? BILLING_DOMAIN_TABLES.filter(
+          table => !creditsCutoverTables.includes(table),
+        )
+      : [options.table]
   try {
     if (options.verify) {
       let allGood = true

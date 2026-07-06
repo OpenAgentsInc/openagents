@@ -20,6 +20,8 @@ import {
   userIdFromAgentRef,
   type UserCreditBalanceProjectionLog,
 } from './khala-sync-user-credit-balance'
+import type { PaymentsLedgerDb } from './payments-ledger-db'
+import { paymentsLedgerDbFromD1 } from './test/payments-ledger-sqlite'
 
 const observedAt = '2026-07-04T12:00:00.000Z'
 
@@ -325,13 +327,16 @@ class SqliteD1 {
   }
 }
 
-const makeD1 = (): D1Database => {
+// CFG-4 (#8519): `users` stays on D1; `agent_balances` reads go through the
+// credits ledger handle. In tests both share one underlying SQLite database.
+const makeD1 = (): { db: D1Database; ledger: PaymentsLedgerDb } => {
   const raw = new DatabaseSync(':memory:')
   raw.exec(`
     CREATE TABLE users (id TEXT PRIMARY KEY, kind TEXT NOT NULL, deleted_at TEXT);
     CREATE TABLE agent_balances (actor_ref TEXT PRIMARY KEY, balance_msat INTEGER NOT NULL);
   `)
-  return new SqliteD1(raw) as unknown as D1Database
+  const db = new SqliteD1(raw) as unknown as D1Database
+  return { db, ledger: paymentsLedgerDbFromD1(db as never) }
 }
 
 const insertUser = (db: D1Database, userId: string): void => {
@@ -347,12 +352,12 @@ const insertBalance = (db: D1Database, userId: string, balanceMsat: number): voi
 
 describe('listUsersForCreditBalanceBackfill', () => {
   test('lists human users with a default $0 for one who has never been charged or granted', async () => {
-    const db = makeD1()
+    const { db, ledger } = makeD1()
     insertUser(db, 'user-a')
     insertUser(db, 'user-b')
     insertBalance(db, 'user-b', 5_000_000)
 
-    const rows = await listUsersForCreditBalanceBackfill(db, { limit: 10 })
+    const rows = await listUsersForCreditBalanceBackfill(db, ledger, { limit: 10 })
     expect(rows).toEqual([
       { balanceMsat: 0, userId: 'user-a' },
       { balanceMsat: 5_000_000, userId: 'user-b' },
@@ -360,14 +365,14 @@ describe('listUsersForCreditBalanceBackfill', () => {
   })
 
   test('paginates by a keyset user-id cursor', async () => {
-    const db = makeD1()
+    const { db, ledger } = makeD1()
     insertUser(db, 'user-a')
     insertUser(db, 'user-b')
     insertUser(db, 'user-c')
 
-    const firstPage = await listUsersForCreditBalanceBackfill(db, { limit: 2 })
+    const firstPage = await listUsersForCreditBalanceBackfill(db, ledger, { limit: 2 })
     expect(firstPage.map(row => row.userId)).toEqual(['user-a', 'user-b'])
-    const secondPage = await listUsersForCreditBalanceBackfill(db, {
+    const secondPage = await listUsersForCreditBalanceBackfill(db, ledger, {
       cursor: firstPage[firstPage.length - 1]?.userId,
       limit: 2,
     })
@@ -377,13 +382,13 @@ describe('listUsersForCreditBalanceBackfill', () => {
 
 describe('backfillUserCreditBalancesBatch', () => {
   test('backfills a never-initialized user to the exact D1 balance', async () => {
-    const db = makeD1()
+    const { db, ledger } = makeD1()
     insertUser(db, 'user-a')
     insertBalance(db, 'user-a', 5_000_000) // $5.00 at DEFAULT_BTC_USD
 
     const { sql, state } = makeFakePg()
     const result = await backfillUserCreditBalancesBatch(
-      { binding, db, makeSqlClient: async () => clientFor(sql) },
+      { binding, db, ledgerDb: ledger, makeSqlClient: async () => clientFor(sql) },
       { limit: 10 },
     )
     expect(result.ok).toBe(true)
@@ -404,7 +409,7 @@ describe('backfillUserCreditBalancesBatch', () => {
   })
 
   test('reconciles a drifted already-initialized user and leaves an exact match unchanged', async () => {
-    const db = makeD1()
+    const { db, ledger } = makeD1()
     insertUser(db, 'drifted-user')
     insertBalance(db, 'drifted-user', 5_000_000) // exact D1 balance now: $5.00 == 500 cents
     insertUser(db, 'exact-user')
@@ -417,7 +422,7 @@ describe('backfillUserCreditBalancesBatch', () => {
     state.balances.set('exact-user', { balanceUsdCents: 100, lastEventAt: null })
 
     const result = await backfillUserCreditBalancesBatch(
-      { binding, db, makeSqlClient: async () => clientFor(sql) },
+      { binding, db, ledgerDb: ledger, makeSqlClient: async () => clientFor(sql) },
       { limit: 10 },
     )
     expect(result.ok).toBe(true)
@@ -439,12 +444,13 @@ describe('backfillUserCreditBalancesBatch', () => {
   })
 
   test('reports no_binding without touching D1 or constructing a client', async () => {
-    const db = makeD1()
+    const { db, ledger } = makeD1()
     insertUser(db, 'user-a')
     const result = await backfillUserCreditBalancesBatch(
       {
         binding: undefined,
         db,
+        ledgerDb: ledger,
         makeSqlClient: async () => {
           throw new Error('must not be constructed')
         },
@@ -461,7 +467,7 @@ describe('backfillUserCreditBalancesBatch', () => {
   })
 
   test('a per-user repair failure is fail-soft: other users in the page still get backfilled', async () => {
-    const db = makeD1()
+    const { db, ledger } = makeD1()
     insertUser(db, 'poison-user')
     insertBalance(db, 'poison-user', 1_000_000)
     insertUser(db, 'user-b')
@@ -470,7 +476,7 @@ describe('backfillUserCreditBalancesBatch', () => {
     const { sql, state } = makeFakePg()
     const { calls, log } = makeLog()
     const result = await backfillUserCreditBalancesBatch(
-      { binding, db, log, makeSqlClient: async () => clientFor(sql) },
+      { binding, db, ledgerDb: ledger, log, makeSqlClient: async () => clientFor(sql) },
       { limit: 10 },
     )
     expect(result.ok).toBe(true)

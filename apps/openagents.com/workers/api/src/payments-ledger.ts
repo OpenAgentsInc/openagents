@@ -1,21 +1,20 @@
 import { Schema as S } from 'effect'
-import type { BillingDomainMirror } from './billing'
 
-import {
-  mirrorTreasuryRows,
-  treasuryAuthorityDb,
-  type TreasuryDatabase,
-  type TreasuryDomainTable,
-} from './treasury-domain-store'
+import type { PaymentsLedgerDb } from './payments-ledger-db'
 
 // Agent credit ledger (issue #4705).
 // Design contract: docs/payments/reliable-tips.md. Every paid attempt is
-// one pay_ins row created atomically (one D1 batch = one transaction)
-// with the legs that fund it and the legs that say where value goes.
-// Balances move only by increment/decrement; balance-touching legs store
-// the resulting balance via a sequential-statement subquery inside the
-// same batch; FAILED refunds funding debits atomically; retries chain
+// one pay_ins row created atomically (one Postgres transaction) with the
+// legs that fund it and the legs that say where value goes. Balances move
+// only by increment/decrement; balance-touching legs store the resulting
+// balance via a sequential-statement subquery inside the same
+// transaction; FAILED refunds funding debits atomically; retries chain
 // through genesis/successor with a set-if-null optimistic lock.
+//
+// CFG-4 (#8519): this domain is Cloud SQL Postgres-authoritative. The
+// D1 batch executor, the fail-soft dual-write mirrors, and the
+// `KHALA_SYNC_*` read flags for these tables are GONE — `PaymentsLedgerDb`
+// (`payments-ledger-db.ts`) is the only store.
 
 export const PayInType = S.Literals([
   'tip',
@@ -68,26 +67,6 @@ export const payInTransitionAllowed = (
 export type LedgerStatement = Readonly<{
   sql: string
   params: ReadonlyArray<string | number | null>
-  /**
-   * KS-8.7 (#8318): the pay-in this statement touches, when it touches one.
-   * `runLedgerStatements` uses these annotations to drive the fail-soft
-   * Postgres mirror (pay_ins row + its legs, read back from D1 after the
-   * batch).
-   */
-  payInId?: string | undefined
-  /**
-   * KS-8.8 (#8319): rows this statement touches in a treasury-domain
-   * table, for the fail-soft Postgres dual-write mirror. Populated by the
-   * statement BUILDERS (which know the row keys); consumed by
-   * `runLedgerStatements` AFTER the authoritative D1 batch commits. Keys
-   * only — the mirror reads the resolved rows back from D1, so it can
-   * never invent an amount or a state.
-   */
-  mirror?: Readonly<{
-    table: TreasuryDomainTable
-    keyColumn: string
-    keys: ReadonlyArray<string>
-  }>
 }>
 
 export type PayInLegPlan = Readonly<{
@@ -144,18 +123,10 @@ const assertPlanInvariants = (plan: PayInPlan): void => {
   }
 }
 
-const balanceMirror = (partyRef: string) =>
-  ({
-    keyColumn: 'actor_ref',
-    keys: [partyRef],
-    table: 'agent_balances',
-  }) as const
-
 const ensureBalanceRowStatement = (
   partyRef: string,
   nowIso: string,
 ): LedgerStatement => ({
-  mirror: balanceMirror(partyRef),
   params: [partyRef, nowIso, nowIso],
   sql: `INSERT INTO agent_balances (actor_ref, balance_msat, created_at, updated_at)
         VALUES (?, 0, ?, ?)
@@ -169,7 +140,6 @@ const balanceDebitStatement = (
 ): LedgerStatement => ({
   // The CHECK (balance_msat >= 0) constraint aborts the whole batch on
   // insufficient funds - atomic insufficient-balance failure by design.
-  mirror: balanceMirror(partyRef),
   params: [amountMsat, nowIso, partyRef],
   sql: `UPDATE agent_balances
         SET balance_msat = balance_msat - ?, updated_at = ?
@@ -181,7 +151,6 @@ const balanceCreditStatement = (
   amountMsat: number,
   nowIso: string,
 ): LedgerStatement => ({
-  mirror: balanceMirror(partyRef),
   params: [amountMsat, nowIso, partyRef],
   sql: `UPDATE agent_balances
         SET balance_msat = balance_msat + ?, updated_at = ?
@@ -212,7 +181,6 @@ const insertLegStatement = (
           options?.refundOfLegId ?? null,
           nowIso,
         ],
-        payInId,
         sql: `INSERT INTO pay_in_legs
               (id, pay_in_id, direction, kind, party_ref, amount_msat,
                resulting_balance_msat, external_ref, refund_of_leg_id, created_at)
@@ -232,7 +200,6 @@ const insertLegStatement = (
           options?.refundOfLegId ?? null,
           nowIso,
         ],
-        payInId,
         sql: `INSERT INTO pay_in_legs
               (id, pay_in_id, direction, kind, party_ref, amount_msat,
                resulting_balance_msat, external_ref, refund_of_leg_id, created_at)
@@ -264,7 +231,6 @@ export const createPayInStatements = (
         nowIso,
         nowIso,
       ],
-      payInId: plan.payInId,
       sql: `INSERT INTO pay_ins
             (id, pay_in_type, payer_ref, cost_msat, state, rung, context_ref,
              idempotency_key, public_receipt_ref, genesis_id, created_at,
@@ -294,7 +260,6 @@ export const createPayInStatements = (
           leg.externalRef,
           nowIso,
         ],
-        payInId: plan.payInId,
         sql: `INSERT INTO pay_in_legs
               (id, pay_in_id, direction, kind, party_ref, amount_msat,
                resulting_balance_msat, external_ref, refund_of_leg_id, created_at)
@@ -324,7 +289,6 @@ export const markPayInPaidStatements = (
   const statements: LedgerStatement[] = [
     {
       params: [nowIso, input.rung ?? null, input.payInId],
-      payInId: input.payInId,
       sql: `UPDATE pay_ins
             SET state = 'paid', state_changed_at = ?, rung = COALESCE(?, rung)
             WHERE id = ? AND state IN ('pending', 'forwarding')`,
@@ -338,7 +302,6 @@ export const markPayInPaidStatements = (
     )
     statements.push({
       params: [leg.partyRef, leg.legId],
-      payInId: input.payInId,
       sql: `UPDATE pay_in_legs
             SET resulting_balance_msat =
               (SELECT balance_msat FROM agent_balances WHERE actor_ref = ?)
@@ -370,7 +333,6 @@ export const markPayInFailedStatements = (
   const statements: LedgerStatement[] = [
     {
       params: [input.failureReason, nowIso, input.payInId],
-      payInId: input.payInId,
       sql: `UPDATE pay_ins
             SET state = 'failed', failure_reason = ?, state_changed_at = ?
             WHERE id = ? AND state IN ('pending', 'forwarding')`,
@@ -407,7 +369,6 @@ export const markPayInForwardingStatements = (
 ): ReadonlyArray<LedgerStatement> => [
   {
     params: [nowIso, payInId],
-    payInId,
     sql: `UPDATE pay_ins
           SET state = 'forwarding', state_changed_at = ?
           WHERE id = ? AND state = 'pending'`,
@@ -429,7 +390,6 @@ export const retryPayInStatements = (
 
   const lock: LedgerStatement = {
     params: [input.newPlan.payInId, input.previousPayInId],
-    payInId: input.previousPayInId,
     sql: `UPDATE pay_ins
           SET successor_id = ?
           WHERE id = ? AND successor_id IS NULL AND state = 'failed'`,
@@ -451,7 +411,6 @@ export const retryPayInStatements = (
       input.previousPayInId,
       input.newPlan.payInId,
     ],
-    payInId: input.newPlan.payInId,
     sql: `INSERT INTO pay_ins
           (id, pay_in_type, payer_ref, cost_msat, state, rung, context_ref,
            idempotency_key, public_receipt_ref, genesis_id, created_at,
@@ -468,7 +427,6 @@ export const retryPayInStatements = (
     if (leg.kind === 'balance' && leg.direction === 'in') {
       statements.push(ensureBalanceRowStatement(leg.partyRef, nowIso))
       statements.push({
-        mirror: balanceMirror(leg.partyRef),
         params: [leg.amountMsat, nowIso, leg.partyRef, input.newPlan.payInId],
         sql: `UPDATE agent_balances
               SET balance_msat = balance_msat - ?, updated_at = ?
@@ -488,7 +446,6 @@ export const retryPayInStatements = (
           nowIso,
           input.newPlan.payInId,
         ],
-        payInId: input.newPlan.payInId,
         sql: `INSERT INTO pay_in_legs
               (id, pay_in_id, direction, kind, party_ref, amount_msat,
                resulting_balance_msat, external_ref, refund_of_leg_id, created_at)
@@ -510,7 +467,6 @@ export const retryPayInStatements = (
           nowIso,
           input.newPlan.payInId,
         ],
-        payInId: input.newPlan.payInId,
         sql: `INSERT INTO pay_in_legs
               (id, pay_in_id, direction, kind, party_ref, amount_msat,
                resulting_balance_msat, external_ref, refund_of_leg_id, created_at)
@@ -573,101 +529,41 @@ export const decodeAgentBalanceRow = (row: {
 }
 
 export const readAgentBalance = async (
-  db: D1Database,
+  db: PaymentsLedgerDb,
   actorRef: string,
 ): Promise<AgentBalanceRow | null> => {
-  const row = await db
-    .prepare(
-      `SELECT actor_ref, balance_msat, held_msat, usd_credit_msat,
-              sweep_enabled, sweep_threshold_sat,
-              send_credits_below_sat, receive_credits_below_sat
-       FROM agent_balances WHERE actor_ref = ?`,
-    )
-    .bind(actorRef)
-    .first()
+  const rows = await db.query(
+    `SELECT actor_ref, balance_msat, held_msat, usd_credit_msat,
+            sweep_enabled, sweep_threshold_sat,
+            send_credits_below_sat, receive_credits_below_sat
+     FROM agent_balances WHERE actor_ref = ?`,
+    [actorRef],
+  )
 
-  return row === null ? null : decodeAgentBalanceRow(row as never)
+  const row = rows[0]
+  return row === undefined ? null : decodeAgentBalanceRow(row as never)
 }
 
 /**
- * Execute ledger statements as ONE atomic D1 batch (the authority), then
- * mirror every builder-annotated treasury-domain row to Postgres
- * fail-soft (KS-8.8 #8319). The mirror runs only AFTER the batch commits
- * and reads the resolved rows back from D1 — a Postgres outage never
- * fails the ledger write, and the mirror can never invent an amount.
- * Call sites passing a bare D1Database behave exactly as before.
+ * Execute ledger statements as ONE atomic Postgres transaction (CFG-4,
+ * #8519). All-or-nothing: a CHECK violation (insufficient balance) or a
+ * UNIQUE violation (idempotency replay) aborts the whole transaction,
+ * exactly the semantics the D1 batch had. There is no mirror and no D1
+ * branch — Postgres is the sole authority for this domain.
  */
 export const runLedgerStatements = async (
-  db: TreasuryDatabase,
+  db: PaymentsLedgerDb,
   statements: ReadonlyArray<LedgerStatement>,
-  /**
-   * KS-8.7 (#8318): optional fail-soft Postgres mirror
-   * (`billingDomainMirrorFromEnv`). After the D1 batch commits, every
-   * annotated pay-in (row + its legs) is read back and converge-copied to
-   * Cloud SQL. Callers without the env in reach omit it — those writes are
-   * converged by the backfill sweeps (documented in the RUNBOOK coverage
-   * list) until the decommission lane rehomes them.
-   */
-  mirror?: BillingDomainMirror | undefined,
 ): Promise<void> => {
-  const authority = treasuryAuthorityDb(db)
-  await authority.batch(
-    statements.map(statement =>
-      authority.prepare(statement.sql).bind(...statement.params),
-    ),
-  )
-
-  if (mirror !== undefined) {
-    const payInIds = [
-      ...new Set(
-        statements
-          .map(statement => statement.payInId)
-          .filter((id): id is string => id !== undefined),
-      ),
-    ]
-    if (payInIds.length > 0) {
-      await mirror(
-        authority,
-        payInIds.flatMap(payInId => [
-          { key: { id: payInId }, table: 'pay_ins' as const },
-          { key: { pay_in_id: payInId }, table: 'pay_in_legs' as const },
-        ]),
-      )
-    }
-  }
-
-  // Group annotated mirrors by (table, keyColumn); dedupe keys so one
-  // batch touching the same balance row many times mirrors it once.
-  const groups = new Map<
-    string,
-    {
-      table: TreasuryDomainTable
-      keyColumn: string
-      keys: Set<string>
-    }
-  >()
-  for (const statement of statements) {
-    if (statement.mirror === undefined) continue
-    const groupKey = `${statement.mirror.table}:${statement.mirror.keyColumn}`
-    const group = groups.get(groupKey) ?? {
-      keyColumn: statement.mirror.keyColumn,
-      keys: new Set<string>(),
-      table: statement.mirror.table,
-    }
-    for (const key of statement.mirror.keys) group.keys.add(key)
-    groups.set(groupKey, group)
-  }
-  for (const group of groups.values()) {
-    await mirrorTreasuryRows(db, group.table, group.keyColumn, [...group.keys])
-  }
+  await db.batch(statements)
 }
 
-export const sumAgentBalancesMsat = async (db: D1Database): Promise<number> => {
-  const row = await db
-    .prepare(
-      'SELECT COALESCE(SUM(balance_msat), 0) AS total FROM agent_balances',
-    )
-    .first()
+export const sumAgentBalancesMsat = async (
+  db: PaymentsLedgerDb,
+): Promise<number> => {
+  const rows = await db.query(
+    'SELECT COALESCE(SUM(balance_msat), 0) AS total FROM agent_balances',
+  )
 
-  return Number((row as { total?: unknown } | null)?.total ?? 0)
+  return Number((rows[0] as { total?: unknown } | undefined)?.total ?? 0)
 }

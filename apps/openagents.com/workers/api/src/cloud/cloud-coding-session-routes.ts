@@ -41,6 +41,7 @@ import { noStoreJsonResponse } from '../http/responses'
 import { parseJsonRecord } from '../json-boundary'
 import { workerLogEntry } from '../observability'
 import { readAgentBalance } from '../payments-ledger'
+import type { PaymentsLedgerDb } from '../payments-ledger-db'
 import {
   compactRandomId,
   currentEpochMillis,
@@ -443,7 +444,12 @@ export const configuredAgentComputerCapacitySnapshot = (
 
 export type CloudCodingAdmissionLedgerDeps = Readonly<{
   capacity: () => Promise<AgentComputerCapacitySnapshot>
+  // Admission events/reservations stay on D1 (their tables are not part of
+  // the CFG-4 credits cut) …
   db: D1Database
+  // … while the `agent_balances` admission-gate read goes through the
+  // Postgres-authoritative credits ledger (CFG-4, #8519).
+  ledgerDb: PaymentsLedgerDb
   limits?: CloudCodingAdmissionLimits
   nowMs?: () => number
 }>
@@ -548,7 +554,7 @@ export const makeD1CloudCodingAdmissionGate = (
       try {
         const nowMs = deps.nowMs?.() ?? currentEpochMillis()
         const [balance, capacity, counts] = await Promise.all([
-          readAgentBalance(deps.db, context.accountRef),
+          readAgentBalance(deps.ledgerDb, context.accountRef),
           deps.capacity(),
           readAdmissionCounts(deps.db, {
             accountRef: context.accountRef,
@@ -1302,9 +1308,8 @@ export const makeLedgerCloudCodingMeteringHook = (
       )
       const outcome: CloudMeteringOutcome = yield* settleCloudPrimitiveCharge(
         {
-          db: deps.db,
+          ledgerDb: deps.ledgerDb,
           ...(deps.nowIso === undefined ? {} : { nowIso: deps.nowIso }),
-          ...(deps.mirror === undefined ? {} : { mirror: deps.mirror }),
           ...(deps.recordCreditBalanceProjection === undefined
             ? {}
             : { recordCreditBalanceProjection: deps.recordCreditBalanceProjection }),

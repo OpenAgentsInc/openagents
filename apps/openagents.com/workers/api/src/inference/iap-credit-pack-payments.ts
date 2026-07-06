@@ -12,6 +12,7 @@
 import { Effect } from 'effect'
 
 import { runLedgerStatements } from '../payments-ledger'
+import type { PaymentsLedgerDb } from '../payments-ledger-db'
 import { compactRandomId, currentIsoTimestamp } from '../runtime-primitives'
 import {
   agentRefForUser,
@@ -36,6 +37,15 @@ export class IapCreditPackPaymentError extends Error {
 }
 
 export const IAP_REVENUECAT_RAIL = 'iap_revenuecat' as const
+
+/** CFG-4 (#8519): the IAP fulfillment writes two stores — the intent/replay
+ * tables (`iap_credit_pack_purchase_intents`, `iap_webhook_events_processed`)
+ * stay on D1, while the credit grant/clawback moves through the
+ * Postgres-authoritative credits ledger. */
+export type IapCreditPackPaymentDeps = Readonly<{
+  db: D1Database
+  ledgerDb: PaymentsLedgerDb
+}>
 
 export type IapCreditPackPurchaseStatus = 'fulfilled' | 'refunded'
 
@@ -137,7 +147,7 @@ export type IapFulfillOutcome =
  * own price field.
  */
 export const fulfillIapCreditPackPurchase = (
-  db: D1Database,
+  deps: IapCreditPackPaymentDeps,
   input: Readonly<{
     userId: string
     sku: string
@@ -152,7 +162,7 @@ export const fulfillIapCreditPackPurchase = (
 ): Effect.Effect<IapFulfillOutcome> =>
   Effect.gen(function* () {
     const existing = yield* Effect.promise(() =>
-      readIapPurchaseByStoreTransactionId(db, input.storeTransactionId),
+      readIapPurchaseByStoreTransactionId(deps.db, input.storeTransactionId),
     )
     if (existing !== null) {
       return { alreadyFulfilled: true, ok: true, purchase: existing } satisfies IapFulfillOutcome
@@ -169,14 +179,23 @@ export const fulfillIapCreditPackPurchase = (
     const grantRef = `iap:${input.storeTransactionId}`
     const contextRef = `iap:revenuecat:${input.storeTransactionId}`
 
+    // CFG-4 NON-ATOMIC SEAM: the credit grant (Postgres credits ledger) and
+    // the intent row (`iap_credit_pack_purchase_intents`, D1) no longer share
+    // one transaction. Order: LEDGER FIRST, intent second — if the intent
+    // insert fails after the grant landed, a replayed webhook re-enters here
+    // (the intent read above still misses), the ledger grant replays as an
+    // idempotent no-op (UNIQUE pay_ins idempotency key + guarded balance
+    // UPDATE), and the intent row lands. Intent-first would be WRONG: a
+    // stranded intent row would answer `alreadyFulfilled` without the credit
+    // ever existing.
     yield* Effect.promise(() =>
-      runLedgerStatements(db, [
+      runLedgerStatements(deps.ledgerDb, [
         ...usdCreditGrantStatements({ accountRef, contextRef, grantMsat: amountMsat, grantRef }, nowIso),
       ]),
     )
 
     yield* Effect.promise(() =>
-      db
+      deps.db
         .prepare(
           `INSERT OR IGNORE INTO iap_credit_pack_purchase_intents
             (purchase_ref, account_ref, user_id, idempotency_key, rail, store, sku,
@@ -203,7 +222,7 @@ export const fulfillIapCreditPackPurchase = (
     )
 
     const row = yield* Effect.promise(() =>
-      readIapPurchaseByStoreTransactionId(db, input.storeTransactionId),
+      readIapPurchaseByStoreTransactionId(deps.db, input.storeTransactionId),
     )
     if (row === null) {
       throw new IapCreditPackPaymentError('iap credit pack purchase intent not recorded after fulfillment')
@@ -220,12 +239,12 @@ export type IapRefundOutcome =
  * Idempotent: refunding an already-refunded purchase is a no-op (reports
  * `alreadyRefunded: true` without re-clawing). */
 export const refundIapCreditPackPurchase = (
-  db: D1Database,
+  deps: IapCreditPackPaymentDeps,
   storeTransactionId: string,
 ): Effect.Effect<IapRefundOutcome> =>
   Effect.gen(function* () {
     const purchase = yield* Effect.promise(() =>
-      readIapPurchaseByStoreTransactionId(db, storeTransactionId),
+      readIapPurchaseByStoreTransactionId(deps.db, storeTransactionId),
     )
     if (purchase === null) {
       return { ok: false, reason: 'purchase_not_found' } satisfies IapRefundOutcome
@@ -243,6 +262,13 @@ export const refundIapCreditPackPurchase = (
       } satisfies IapRefundOutcome
     }
 
+    // CFG-4 NON-ATOMIC SEAM: the clawback (Postgres credits ledger) and the
+    // status flip (`iap_credit_pack_purchase_intents`, D1) no longer share one
+    // transaction. Order: CLAWBACK FIRST, status second — if the status update
+    // fails after the clawback landed, a replayed refund webhook re-enters
+    // (status still 'fulfilled'), the clawback replays as an idempotent no-op
+    // (UNIQUE clawback idempotency key reports clawedBack), and the status
+    // flip lands.
     const clawback = yield* clawbackInferenceCredits(
       {
         accountRef: purchase.accountRef,
@@ -250,12 +276,12 @@ export const refundIapCreditPackPurchase = (
         contextRef: `iap:refund:${storeTransactionId}`,
         sourceRef: purchase.purchaseRef,
       },
-      { db },
+      { ledgerDb: deps.ledgerDb },
     )
 
     const nowIso = currentIsoTimestamp()
     yield* Effect.promise(() =>
-      db
+      deps.db
         .prepare(
           `UPDATE iap_credit_pack_purchase_intents
            SET status = 'refunded', refund_receipt_ref = ?, updated_at = ?, refunded_at = COALESCE(refunded_at, ?)

@@ -7,6 +7,7 @@ import {
 } from './billing-store'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { fundInferenceFromCredit } from './inference/usd-credit-bridge'
+import { paymentsLedgerDbForEnv, type PaymentsLedgerDb, type PaymentsLedgerEnv } from './payments-ledger-db'
 import {
   optionalInteger,
   optionalString,
@@ -19,7 +20,8 @@ import { openAgentsDatabase } from './runtime'
 type OperatorBillingEnv = Readonly<{
   OPENAGENTS_DB: D1Database
 }> &
-  BillingSyncEnv
+  BillingSyncEnv &
+  PaymentsLedgerEnv
 
 type OperatorBillingDependencies<RouteEnv extends OperatorBillingEnv> = Readonly<{
   readSelectedOperatorTargetUser: (
@@ -36,6 +38,9 @@ type OperatorBillingDependencies<RouteEnv extends OperatorBillingEnv> = Readonly
     selector: Record<string, unknown>,
   ) => Promise<OperatorTargetUser | undefined>
   requireAdminApiToken: (request: Request, env: RouteEnv) => Promise<boolean>
+  /** CFG-4 (#8519): injectable credits-ledger accessor (tests). Default:
+   * `paymentsLedgerDbForEnv` — the Postgres-only production path. */
+  ledgerDb?: (env: RouteEnv) => PaymentsLedgerDb
 }>
 
 export const makeOperatorBillingHandlers = <RouteEnv extends OperatorBillingEnv>(
@@ -180,7 +185,7 @@ export const makeOperatorBillingHandlers = <RouteEnv extends OperatorBillingEnv>
     const outcome = await Effect.runPromise(
       fundInferenceFromCredit(
         { amountCents, grantRef, userId: targetUser.userId },
-        { billingRuntime: billingRuntimeForEnv(env), db },
+        { billingRuntime: billingRuntimeForEnv(env), db, ledgerDb: (dependencies.ledgerDb ?? paymentsLedgerDbForEnv)(env) },
       ),
     )
 

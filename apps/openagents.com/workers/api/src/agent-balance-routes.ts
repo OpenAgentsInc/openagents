@@ -1,18 +1,20 @@
 import { Effect, Schema as S } from 'effect'
 
 import { noStoreJsonResponse } from './http/responses'
-import { readAgentBalance } from './payments-ledger'
+import { readAgentBalance, runLedgerStatements } from './payments-ledger'
+import type { PaymentsLedgerDb } from './payments-ledger-db'
 import { currentIsoTimestamp } from './runtime-primitives'
-import {
-  mirrorTreasuryRows,
-  treasuryAuthorityDb,
-  type TreasuryDatabase,
-} from './treasury-domain-store'
 
 // Agent-scoped balance surface (issue #4712): a registered agent reads
 // its own sweepable balance, thresholds, and recent ledger activity, and
 // tunes its preferences. Public-safe fields only - amounts, states,
 // rungs, refs - never destinations, offers, or payment material.
+//
+// CFG-4 (#8519): every table this surface touches (`agent_balances`,
+// `pay_ins`, `pay_in_legs`) is credits-domain and therefore Cloud SQL
+// Postgres-authoritative — the routes take the `PaymentsLedgerDb` handle
+// directly. The old D1/treasury-authority/mirror routing for these tables is
+// deleted.
 
 export type AgentBalanceAuth = (
   request: Request,
@@ -30,7 +32,7 @@ const boundedPref = (value: number, min: number, max: number): number =>
 
 export const handleAgentBalanceApi = (
   request: Request,
-  deps: Readonly<{ db: D1Database; authenticate: AgentBalanceAuth }>,
+  deps: Readonly<{ ledgerDb: PaymentsLedgerDb; authenticate: AgentBalanceAuth }>,
 ) =>
   Effect.gen(function* () {
     if (request.method !== 'GET') {
@@ -47,27 +49,24 @@ export const handleAgentBalanceApi = (
     }
 
     const balance = yield* Effect.promise(() =>
-      readAgentBalance(deps.db, session.actorRef),
+      readAgentBalance(deps.ledgerDb, session.actorRef),
     )
 
     const recent = yield* Effect.promise(async () => {
       try {
-        const result = await deps.db
-          .prepare(
-            `SELECT id, pay_in_type, state, rung, cost_msat, context_ref,
-                    failure_reason, state_changed_at
-               FROM pay_ins
-              WHERE payer_ref = ?1
-                 OR id IN (
-                   SELECT pay_in_id FROM pay_in_legs
-                    WHERE party_ref = ?1 AND direction = 'out'
-                 )
-              ORDER BY created_at DESC
-              LIMIT 20`,
-          )
-          .bind(session.actorRef)
-          .all()
-        return (result.results ?? []) as Array<Record<string, unknown>>
+        return await deps.ledgerDb.query(
+          `SELECT id, pay_in_type, state, rung, cost_msat, context_ref,
+                  failure_reason, state_changed_at
+             FROM pay_ins
+            WHERE payer_ref = ?
+               OR id IN (
+                 SELECT pay_in_id FROM pay_in_legs
+                  WHERE party_ref = ? AND direction = 'out'
+               )
+            ORDER BY created_at DESC
+            LIMIT 20`,
+          [session.actorRef, session.actorRef],
+        )
       } catch {
         return []
       }
@@ -96,6 +95,7 @@ export const handleAgentBalanceApi = (
             },
       recentActivity: recent.map(row => ({
         contextRef: row.context_ref,
+        // Postgres returns bigint columns as strings; decode explicitly.
         costMsat: Number(row.cost_msat),
         failureReason: row.failure_reason,
         payInId: row.id,
@@ -109,7 +109,7 @@ export const handleAgentBalanceApi = (
 
 export const handleAgentBalancePreferencesApi = (
   request: Request,
-  deps: Readonly<{ db: TreasuryDatabase; authenticate: AgentBalanceAuth }>,
+  deps: Readonly<{ ledgerDb: PaymentsLedgerDb; authenticate: AgentBalanceAuth }>,
 ) =>
   Effect.gen(function* () {
     if (request.method !== 'POST') {
@@ -164,31 +164,27 @@ export const handleAgentBalancePreferencesApi = (
       return noStoreJsonResponse({ error: 'no_preferences' }, { status: 400 })
     }
 
-    yield* Effect.promise(async () => {
-      const authority = treasuryAuthorityDb(deps.db)
-      await authority.batch([
-        authority
-          .prepare(
-            `INSERT INTO agent_balances (actor_ref, balance_msat, created_at, updated_at)
+    // CFG-4 (#8519): one atomic Postgres transaction on the credits ledger.
+    // The old KS-8.8 fail-soft Postgres mirror is gone — Postgres IS the
+    // authority now.
+    yield* Effect.promise(() =>
+      runLedgerStatements(deps.ledgerDb, [
+        {
+          params: [session.actorRef, nowIso, nowIso],
+          sql: `INSERT INTO agent_balances (actor_ref, balance_msat, created_at, updated_at)
              VALUES (?, 0, ?, ?)
              ON CONFLICT (actor_ref) DO NOTHING`,
-          )
-          .bind(session.actorRef, nowIso, nowIso),
-        authority
-          .prepare(
-            `UPDATE agent_balances SET ${updates.join(', ')}, updated_at = ?
+        },
+        {
+          params: [...params, nowIso, session.actorRef],
+          sql: `UPDATE agent_balances SET ${updates.join(', ')}, updated_at = ?
              WHERE actor_ref = ?`,
-          )
-          .bind(...params, nowIso, session.actorRef),
-      ])
-      // KS-8.8 (#8319): fail-soft Postgres mirror of the preference row.
-      await mirrorTreasuryRows(deps.db, 'agent_balances', 'actor_ref', [
-        session.actorRef,
-      ])
-    })
+        },
+      ]),
+    )
 
     const balance = yield* Effect.promise(() =>
-      readAgentBalance(treasuryAuthorityDb(deps.db), session.actorRef),
+      readAgentBalance(deps.ledgerDb, session.actorRef),
     )
 
     return noStoreJsonResponse({ preferences: balance })

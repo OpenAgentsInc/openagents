@@ -11,6 +11,7 @@ import {
 } from './artanis-domain-store'
 import { artanisDiagnosisGroundingPolicy } from './artanis-diagnosis-grounding-gate'
 import { artanisOperationalGrounding } from './artanis-operational-grounding'
+import type { PaymentsLedgerDb } from './payments-ledger-db'
 import { recordArtanisResponderComposeTick } from './artanis-responder-ticks'
 import { publicProductPromisesDocument } from './product-promises'
 import {
@@ -78,15 +79,17 @@ export type ComposerTickOutcome = Readonly<{
 }>
 
 const tipReceiptRefIsDereferenceable = async (
-  db: D1Database,
+  // CFG-4 (#8519): pay_ins/pay_in_legs are Cloud SQL Postgres-authoritative;
+  // the receipt dereference check reads the ledger handle.
+  ledgerDb: PaymentsLedgerDb,
   receiptRef: string,
 ): Promise<boolean> => {
   if (!isTipLadderReceiptRef(receiptRef)) {
     return false
   }
 
-  const row = await db
-    .prepare(
+  const rows = await ledgerDb
+    .query(
       `SELECT COALESCE(
                 p.public_receipt_ref,
                 ? || 'payin.' || p.id
@@ -105,15 +108,15 @@ const tipReceiptRefIsDereferenceable = async (
                  p.created_at DESC,
                  p.id DESC
         LIMIT 1`,
+      [
+        TIP_LADDER_RECEIPT_REF_PREFIX,
+        receiptRef,
+        TIP_LADDER_RECEIPT_REF_PREFIX,
+        receiptRef,
+      ],
     )
-    .bind(
-      TIP_LADDER_RECEIPT_REF_PREFIX,
-      receiptRef,
-      TIP_LADDER_RECEIPT_REF_PREFIX,
-      receiptRef,
-    )
-    .first<{ receipt_ref: string | null }>()
-    .catch(() => null)
+    .catch(() => [])
+  const row = (rows[0] as { receipt_ref: string | null } | undefined) ?? null
 
   return row?.receipt_ref === receiptRef
 }
@@ -138,6 +141,9 @@ const groundingPromises = () => {
 export const runArtanisComposerTick = async (
   database: ArtanisDatabase,
   deps: Readonly<{
+    /** CFG-4 (#8519): pay_ins reads (tip budget, receipt dereference)
+     * ride the Postgres-authoritative credits ledger handle. */
+    ledgerDb: PaymentsLedgerDb
     geminiApiKey: string | null
     gatewayToken?: string | undefined
     forumPost: ComposerForumPost
@@ -190,16 +196,19 @@ export const runArtanisComposerTick = async (
   // The budget gates the RESPONDER's spend specifically (its own
   // idempotency namespace), not every tip the Artanis identity has ever
   // sent - operator-driven smoke tips must not starve the responder.
-  const tipBudgetRow = (await db
-    .prepare(
-      `SELECT COALESCE(SUM(cost_msat), 0) AS spent
-         FROM pay_ins
-        WHERE payer_ref = ? AND pay_in_type = 'tip' AND state = 'paid'
-          AND idempotency_key LIKE 'artanis-responder-tip:%'
-          AND created_at >= ?`,
-    )
-    .bind(deps.artanisActorRef, `${deps.nowIso.slice(0, 10)}T00:00:00.000Z`)
-    .first()) as { spent: number } | null
+  // CFG-4 (#8519): pay_ins is Postgres-authoritative — budget from the
+  // ledger handle. Postgres returns the bigint SUM as a string; the
+  // Number(...) below decodes it.
+  const tipBudgetRows = await deps.ledgerDb.query(
+    `SELECT COALESCE(SUM(cost_msat), 0) AS spent
+       FROM pay_ins
+      WHERE payer_ref = ? AND pay_in_type = 'tip' AND state = 'paid'
+        AND idempotency_key LIKE 'artanis-responder-tip:%'
+        AND created_at >= ?`,
+    [deps.artanisActorRef, `${deps.nowIso.slice(0, 10)}T00:00:00.000Z`],
+  )
+  const tipBudgetRow =
+    (tipBudgetRows[0] as { spent: number | string } | undefined) ?? null
   let tipBudgetLeftSat =
     ARTANIS_TIP_BUDGET_PER_DAY_SAT -
     Math.floor(Number(tipBudgetRow?.spent ?? 0) / 1000)
@@ -289,7 +298,10 @@ export const runArtanisComposerTick = async (
       // public ref.
       if (
         !('error' in tipResult) &&
-        (await tipReceiptRefIsDereferenceable(db, tipResult.receiptRef))
+        (await tipReceiptRefIsDereferenceable(
+          deps.ledgerDb,
+          tipResult.receiptRef,
+        ))
       ) {
         settledTip = tipResult
       }
@@ -407,6 +419,8 @@ export const runArtanisComposerScheduled = (
   db: ArtanisDatabase,
   deps: Readonly<{
     enabled: boolean
+    /** CFG-4 (#8519): the Postgres-authoritative credits ledger handle. */
+    ledgerDb: PaymentsLedgerDb
     geminiApiKey: string | null
     gatewayToken?: string | undefined
     forumPost: ComposerForumPost

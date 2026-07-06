@@ -5,24 +5,25 @@
 // `khala-sync-public-tokens-served.ts` (KS-6.3, #8304), just per-user instead
 // of global. See
 // docs/khala-code/2026-07-06-credits-ledger-vs-khala-sync-architecture-audit.md
-// for why the D1 `agent_balances` ledger stays the sole authority for
+// for why the `agent_balances` credits ledger (CFG-4 #8519: Cloud SQL
+// Postgres-authoritative via `PaymentsLedgerDb`) stays the sole authority for
 // balance-gating/charge decisions — this module only mirrors the RESULT of an
-// already-committed D1 write into Khala Sync so subscribed mobile clients see
-// it update live, without a REST poll.
+// already-committed ledger write into Khala Sync so subscribed mobile clients
+// see it update live, without a REST poll.
 //
-//   PRODUCER (fail-soft, exact-once per D1 ledger event): every known D1
+//   PRODUCER (fail-soft, exact-once per ledger event): every known credits
 //   ledger write site (inference charges, cloud/agent-computer charges, the
 //   $10 signup grant, Aiur admin grants/clawbacks) calls
 //   `recordUserCreditBalanceDeltaBestEffort` with the SAME idempotency key
-//   the D1 write already used. A projection failure NEVER fails, retries, or
-//   reverses the real D1 write — it is a typed diagnostic only.
+//   the ledger write already used. A projection failure NEVER fails, retries,
+//   or reverses the real ledger write — it is a typed diagnostic only.
 //
 //   BACKFILL: before a user's projection row exists, deltas refuse
 //   (`credit_balance_not_initialized`) rather than serve a fabricated zero.
 //   `backfillUserCreditBalancesBatch` pages through EVERY human user (not
 //   just ones with an existing `agent_balances` row — a user who has never
 //   been charged or granted still needs an initialized $0 projection row) and
-//   seeds each to their exact current D1 balance.
+//   seeds each to their exact current ledger balance.
 
 import {
   applyUserCreditBalanceDeltaBestEffort,
@@ -38,6 +39,7 @@ import {
   type KhalaSyncPushSqlClient,
   type MakeKhalaSyncPushSqlClient,
 } from './khala-sync-push-routes'
+import type { PaymentsLedgerDb } from './payments-ledger-db'
 import { currentIsoTimestamp } from './runtime-primitives'
 
 export type { UserCreditBalanceProjectionDiagnostic }
@@ -209,18 +211,21 @@ export type UserCreditBalanceBackfillCandidate = Readonly<{
  * defaulting to 0 for a user who has never been charged or granted — that
  * user still needs an initialized $0 projection row, not a permanent
  * "not initialized" refusal.
+ *
+ * CFG-4 (#8519): the old single-query `users LEFT JOIN agent_balances` is
+ * gone — `agent_balances` is Cloud SQL Postgres-authoritative now, so the
+ * user page comes from D1 and the exact balances for that page come from one
+ * IN-list read on the credits ledger handle.
  */
 export const listUsersForCreditBalanceBackfill = async (
   db: D1Database,
+  ledgerDb: PaymentsLedgerDb,
   input: Readonly<{ cursor?: string | undefined; limit: number }>,
 ): Promise<ReadonlyArray<UserCreditBalanceBackfillCandidate>> => {
   const result = await db
     .prepare(
-      `SELECT users.id AS user_id,
-              COALESCE(agent_balances.balance_msat, 0) AS balance_msat
+      `SELECT users.id AS user_id
          FROM users
-         LEFT JOIN agent_balances
-           ON agent_balances.actor_ref = 'agent:' || users.id
         WHERE users.kind = 'human'
           AND users.deleted_at IS NULL
           AND (? IS NULL OR users.id > ?)
@@ -228,17 +233,35 @@ export const listUsersForCreditBalanceBackfill = async (
         LIMIT ?`,
     )
     .bind(input.cursor ?? null, input.cursor ?? null, input.limit)
-    .all<{ user_id: string; balance_msat: number | string }>()
+    .all<{ user_id: string }>()
 
-  return (result.results ?? []).map(row => ({
-    balanceMsat: Number(row.balance_msat),
-    userId: String(row.user_id),
+  const userIds = (result.results ?? []).map(row => String(row.user_id))
+  if (userIds.length === 0) return []
+
+  const actorRefs = userIds.map(userId => `agent:${userId}`)
+  const placeholders = actorRefs.map(() => '?').join(', ')
+  const balanceRows = await ledgerDb.query(
+    `SELECT actor_ref, balance_msat
+       FROM agent_balances
+      WHERE actor_ref IN (${placeholders})`,
+    actorRefs,
+  )
+  const balancesByActorRef = new Map(
+    balanceRows.map(row => [String(row.actor_ref), Number(row.balance_msat)]),
+  )
+
+  return userIds.map(userId => ({
+    balanceMsat: balancesByActorRef.get(`agent:${userId}`) ?? 0,
+    userId,
   }))
 }
 
 export type UserCreditBalanceBackfillDeps = UserCreditBalanceProjectionDeps &
   Readonly<{
     db: D1Database
+    /** CFG-4 (#8519): the Postgres-authoritative credits ledger — the exact
+     * `agent_balances` reads the backfill reconciles against run here. */
+    ledgerDb: PaymentsLedgerDb
     nowIso?: (() => string) | undefined
   }>
 
@@ -257,10 +280,10 @@ export type UserCreditBalanceBackfillResult =
 
 /**
  * Backfill/reconcile one bounded page of human users' credit-balance
- * projections against their exact current D1 `agent_balances` balance.
+ * projections against their exact current ledger `agent_balances` balance (Postgres, CFG-4).
  * Per-user work is fail-soft (one failure never aborts the page); the
  * caller repeats with `nextCursor` until it is `null`. Idempotent: a user
- * already at the exact D1 balance is a no-op read (`unchangedCount`); one
+ * already at the exact ledger balance is a no-op read (`unchangedCount`); one
  * with real drift is an audited `reconcile_repair`; a never-initialized user
  * is the first-deploy `backfill`.
  */
@@ -279,7 +302,11 @@ export const backfillUserCreditBalancesBatch = async (
     }
   }
 
-  const candidates = await listUsersForCreditBalanceBackfill(deps.db, input)
+  const candidates = await listUsersForCreditBalanceBackfill(
+    deps.db,
+    deps.ledgerDb,
+    input,
+  )
   const nowIso = deps.nowIso ?? currentIsoTimestamp
 
   let backfilledCount = 0
@@ -300,9 +327,9 @@ export const backfillUserCreditBalancesBatch = async (
         await repairUserCreditBalance(client.sql, {
           auditNote:
             source === 'backfill'
-              ? `backfill: seed projection to exact D1 balance ${exactBalanceUsdCents} cents (${nowIso()})`
+              ? `backfill: seed projection to exact ledger balance ${exactBalanceUsdCents} cents (${nowIso()})`
               : `reconcile_repair: realign projection from ${existing?.balanceUsdCents ?? 'none'} ` +
-                `to exact D1 balance ${exactBalanceUsdCents} cents (${nowIso()})`,
+                `to exact ledger balance ${exactBalanceUsdCents} cents (${nowIso()})`,
           exactBalanceUsdCents,
           source,
           userId: candidate.userId,

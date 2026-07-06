@@ -28,7 +28,8 @@ import {
 import { methodNotAllowed, noStoreJsonResponse, unauthorized } from './http/responses'
 import { optionalString, readJsonObject } from './json-boundary'
 import { agentRefForUser } from './inference/usd-credit-bridge'
-import { readAgentBalance } from './payments-ledger'
+import { readAgentBalance, runLedgerStatements } from './payments-ledger'
+import type { PaymentsLedgerDb } from './payments-ledger-db'
 import { currentIsoTimestamp } from './runtime-primitives'
 
 type HttpResponse = globalThis.Response
@@ -64,6 +65,9 @@ export type KhalaSyncAccountDeletionOutcome = Readonly<{
 export type MobileAccountDeletionDependencies<Bindings, User = unknown> = Readonly<{
   authStorage: (env: Bindings) => MobileAccessRevocationStore
   db: (env: Bindings) => D1Database
+  /** CFG-4 (#8519): the Postgres-authoritative credits ledger — the
+   * `agent_balances` forfeiture read + zeroing run here, never on D1. */
+  ledgerDb: (env: Bindings) => PaymentsLedgerDb
   khalaSyncBinding: (env: Bindings) => KhalaSyncHyperdriveBinding | undefined
   makeSqlClient?: MakeKhalaSyncPushSqlClient | undefined
   nowIso?: () => string
@@ -106,11 +110,33 @@ const deleteOpenAuthSubjectEntries = async (
 
 export const deleteMobileAccountD1Data = async (
   db: D1Database,
+  ledgerDb: PaymentsLedgerDb,
   input: Readonly<{ nowIso: string; userId: string }>,
 ): Promise<MobileAccountDeletionD1Outcome> => {
   const accountRef = agentRefForUser(input.userId)
-  const balance = await readAgentBalance(db, accountRef)
+  const balance = await readAgentBalance(ledgerDb, accountRef)
   const forfeitedBalanceMsat = balance?.balanceMsat ?? 0
+
+  // CFG-4 (#8519) NON-ATOMIC SEAM: the credits forfeiture (`agent_balances`,
+  // Postgres) and the identity/push/GitHub anonymization (D1) can no longer
+  // share one atomic batch — they live in different stores now. Both sides
+  // are idempotent zero-outs/UPDATEs, and the mobile deletion receipt (the
+  // thing that makes a retry a no-op) is only recorded by the route AFTER
+  // both sides succeed, so a crash between the two heals on retry: the
+  // caller re-runs the whole deletion with the same bearer. The credits
+  // zeroing runs FIRST, while the caller's session is guaranteed still
+  // verifiable — the D1 side is what disables the user row.
+  await runLedgerStatements(ledgerDb, [
+    {
+      params: [input.nowIso, accountRef],
+      sql: `UPDATE agent_balances
+            SET balance_msat = 0,
+                held_msat = 0,
+                usd_credit_msat = 0,
+                updated_at = ?
+          WHERE actor_ref = ?`,
+    },
+  ])
 
   const results = await db.batch([
     db
@@ -139,16 +165,6 @@ export const deleteMobileAccountD1Data = async (
       .bind(input.nowIso, input.nowIso, input.nowIso, input.userId),
     db
       .prepare(
-        `UPDATE agent_balances
-            SET balance_msat = 0,
-                held_msat = 0,
-                usd_credit_msat = 0,
-                updated_at = ?
-          WHERE actor_ref = ?`,
-      )
-      .bind(input.nowIso, accountRef),
-    db
-      .prepare(
         `UPDATE auth_identities
             SET deleted_at = COALESCE(deleted_at, ?),
                 updated_at = ?
@@ -172,9 +188,7 @@ export const deleteMobileAccountD1Data = async (
     githubWriteGrantsRevoked: resultChanges(results[1]!),
     pushDeviceTokensRemoved: resultChanges(results[0]!),
     userRowsMarkedDeleted:
-      resultChanges(results[4]!) +
-      resultChanges(results[5]!) +
-      resultChanges(results[3]!),
+      resultChanges(results[3]!) + resultChanges(results[4]!),
   }
 }
 
@@ -347,10 +361,14 @@ export const handleMobileAccountDeletionRequest = <Bindings, User>(
       return noStoreJsonResponse({ error: 'internal_server_error' }, { status: 500 })
     }
 
-    const d1Outcome = await deleteMobileAccountD1Data(dependencies.db(env), {
-      nowIso,
-      userId,
-    })
+    const d1Outcome = await deleteMobileAccountD1Data(
+      dependencies.db(env),
+      dependencies.ledgerDb(env),
+      {
+        nowIso,
+        userId,
+      },
+    )
     const openAuthRowsRemoved = await deleteOpenAuthSubjectEntries(
       dependencies.openAuthStorage(env),
       userId,

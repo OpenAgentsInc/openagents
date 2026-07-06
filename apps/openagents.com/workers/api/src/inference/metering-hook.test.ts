@@ -5,6 +5,8 @@ import { describe, expect, test } from 'vitest'
 
 import { projectMdkPayoutModeGate } from '../mdk-payout-mode-gate'
 import { readAgentBalance } from '../payments-ledger'
+import type { PaymentsLedgerDb } from '../payments-ledger-db'
+import { paymentsLedgerDbFromD1 } from '../test/payments-ledger-sqlite'
 import {
   DEFAULT_BTC_USD,
   inferenceChargeContextRef,
@@ -139,6 +141,12 @@ const makeDb = (): D1Database => {
   return new SqliteD1(raw) as unknown as D1Database
 }
 
+// CFG-4 (#8519): the metering hook writes through the Postgres-authoritative
+// `PaymentsLedgerDb` seam; tests back it with the same SQLite-D1 shim via the
+// portability-checked adapter.
+const makeLedgerDb = (db: D1Database): PaymentsLedgerDb =>
+  paymentsLedgerDbFromD1(db as never)
+
 const seedBalance = async (db: D1Database, msat: number): Promise<void> => {
   await db
     .prepare(
@@ -217,7 +225,7 @@ describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
   test('computes the charge from usage via priceRequest and decrements the balance', async () => {
     const db = makeDb()
     await seedBalance(db, FUNDED)
-    const hook = makeLedgerMeteringHook({ db, nowIso: () => NOW })
+    const hook = makeLedgerMeteringHook({ ledgerDb: makeLedgerDb(db), nowIso: () => NOW })
 
     const outcome = await run(hook(context()))
 
@@ -233,7 +241,7 @@ describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
     const expectedMsat = usdToMsatCeil(expectedUsd)
     expect(expectedMsat).toBeGreaterThan(0)
 
-    const balance = await readAgentBalance(db, ACCOUNT)
+    const balance = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     expect(balance?.balanceMsat).toBe(FUNDED - expectedMsat)
 
     // The pay-in is a debit-only adjustment with the public receipt ref.
@@ -257,34 +265,9 @@ describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
     })
   })
 
-  // KS-8.7 (#8318/#8337): a wired `mirror` must see the pay_ins/pay_in_legs
-  // rows this charge just created — the RUNBOOK coverage list called out
-  // `inference/metering-hook.ts` as D1-only pending this decommission pass
-  // (converged only by periodic backfill sweeps, never in real time).
-  test('a settled charge mirrors its pay_ins + pay_in_legs refs when a mirror is wired', async () => {
-    const db = makeDb()
-    await seedBalance(db, FUNDED)
-    const calls: Array<ReadonlyArray<{ table: string; key: unknown }>> = []
-    const mirror = async (
-      _db: unknown,
-      refs: ReadonlyArray<{ table: string; key: unknown }>,
-    ) => {
-      calls.push(refs)
-    }
-    const hook = makeLedgerMeteringHook({ db, mirror, nowIso: () => NOW })
-
-    const outcome = await run(hook(context()))
-
-    expect(outcome.metered).toBe(true)
-    const mirroredTables = calls.flat().map(ref => ref.table)
-    expect(mirroredTables).toContain('pay_ins')
-    expect(mirroredTables).toContain('pay_in_legs')
-    const payInRefs = calls
-      .flat()
-      .filter(ref => ref.table === 'pay_ins')
-      .map(ref => ref.key)
-    expect(payInRefs).toContainEqual({ id: 'inference:payin:req-1' })
-  })
+  // CFG-4 (#8519): the KS-8.7 mirror test that lived here was DELETED — the
+  // D1->Postgres dual-write mirror for pay_ins/pay_in_legs no longer exists;
+  // the ledger write above IS the Postgres write.
 
   // Issue #8505 (Part 2): the fail-soft Khala Sync credit-balance projection
   // seam. Fires exactly once per FRESH charge with a negative delta and the
@@ -310,7 +293,7 @@ describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
       await seedBalance(db, FUNDED)
       const { calls, recorder } = makeRecorder()
       const hook = makeLedgerMeteringHook({
-        db,
+        ledgerDb: makeLedgerDb(db),
         nowIso: () => NOW,
         recordCreditBalanceProjection: recorder,
       })
@@ -330,7 +313,7 @@ describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
       await seedBalance(db, FUNDED)
       const { calls, recorder } = makeRecorder()
       const hook = makeLedgerMeteringHook({
-        db,
+        ledgerDb: makeLedgerDb(db),
         nowIso: () => NOW,
         recordCreditBalanceProjection: recorder,
       })
@@ -345,7 +328,7 @@ describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
       const db = makeDb()
       await seedBalance(db, FUNDED)
       const hook = makeLedgerMeteringHook({
-        db,
+        ledgerDb: makeLedgerDb(db),
         nowIso: () => NOW,
         recordCreditBalanceProjection: async () => {
           throw new Error('simulated Khala Sync projection failure')
@@ -354,7 +337,7 @@ describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
 
       const outcome = await run(hook(context()))
       expect(outcome.metered).toBe(true)
-      const balance = await readAgentBalance(db, ACCOUNT)
+      const balance = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
       expect(balance?.balanceMsat).toBeLessThan(FUNDED)
     })
   })
@@ -362,14 +345,14 @@ describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
   test('is idempotent per request: a replayed settle never double-charges', async () => {
     const db = makeDb()
     await seedBalance(db, FUNDED)
-    const hook = makeLedgerMeteringHook({ db, nowIso: () => NOW })
+    const hook = makeLedgerMeteringHook({ ledgerDb: makeLedgerDb(db), nowIso: () => NOW })
 
     const first = await run(hook(context()))
-    const afterFirst = await readAgentBalance(db, ACCOUNT)
+    const afterFirst = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
 
     // Same request id => same idempotency key => second settle is a no-op.
     const second = await run(hook(context()))
-    const afterSecond = await readAgentBalance(db, ACCOUNT)
+    const afterSecond = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
 
     expect(first.metered).toBe(true)
     expect(second.metered).toBe(true)
@@ -387,7 +370,7 @@ describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
   test('a distinct request id charges a separate ledger row', async () => {
     const db = makeDb()
     await seedBalance(db, FUNDED)
-    const hook = makeLedgerMeteringHook({ db, nowIso: () => NOW })
+    const hook = makeLedgerMeteringHook({ ledgerDb: makeLedgerDb(db), nowIso: () => NOW })
 
     await run(hook(context({ requestId: 'req-a' })))
     await run(hook(context({ requestId: 'req-b' })))
@@ -408,7 +391,7 @@ describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
     const db = makeDb()
     // Fund with 1 msat — far below any real charge — so the CHECK aborts.
     await seedBalance(db, 1)
-    const hook = makeLedgerMeteringHook({ db, nowIso: () => NOW })
+    const hook = makeLedgerMeteringHook({ ledgerDb: makeLedgerDb(db), nowIso: () => NOW })
 
     const outcome = await run(hook(context()))
 
@@ -416,7 +399,7 @@ describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
     expect(outcome.receiptRef).toBe(null)
 
     // Balance untouched (never negative); no charge row written.
-    const balance = await readAgentBalance(db, ACCOUNT)
+    const balance = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     expect(balance?.balanceMsat).toBe(1)
     const payIn = await db
       .prepare('SELECT id FROM pay_ins WHERE idempotency_key = ?')
@@ -432,18 +415,18 @@ describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
     await seedBalance(btcDb, FUNDED)
 
     await run(
-      makeLedgerMeteringHook({ db: cardDb, nowIso: () => NOW })(
+      makeLedgerMeteringHook({ ledgerDb: makeLedgerDb(cardDb), nowIso: () => NOW })(
         context({ fundingKind: 'card' }),
       ),
     )
     await run(
-      makeLedgerMeteringHook({ db: btcDb, nowIso: () => NOW })(
+      makeLedgerMeteringHook({ ledgerDb: makeLedgerDb(btcDb), nowIso: () => NOW })(
         context({ fundingKind: 'bitcoin' }),
       ),
     )
 
-    const cardBalance = await readAgentBalance(cardDb, ACCOUNT)
-    const btcBalance = await readAgentBalance(btcDb, ACCOUNT)
+    const cardBalance = await readAgentBalance(makeLedgerDb(cardDb), ACCOUNT)
+    const btcBalance = await readAgentBalance(makeLedgerDb(btcDb), ACCOUNT)
     const cardCharge = FUNDED - (cardBalance?.balanceMsat ?? 0)
     const btcCharge = FUNDED - (btcBalance?.balanceMsat ?? 0)
 
@@ -455,7 +438,7 @@ describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
   test('zero-token usage is metered but writes no ledger row', async () => {
     const db = makeDb()
     await seedBalance(db, FUNDED)
-    const hook = makeLedgerMeteringHook({ db, nowIso: () => NOW })
+    const hook = makeLedgerMeteringHook({ ledgerDb: makeLedgerDb(db), nowIso: () => NOW })
 
     const outcome = await run(
       hook(
@@ -467,7 +450,7 @@ describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
 
     expect(outcome.metered).toBe(true)
     expect(outcome.zeroCharge).toBe(true)
-    const balance = await readAgentBalance(db, ACCOUNT)
+    const balance = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     expect(balance?.balanceMsat).toBe(FUNDED)
     const payIn = await db
       .prepare('SELECT id FROM pay_ins WHERE idempotency_key = ?')
@@ -480,7 +463,7 @@ describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
     const db = makeDb()
     await seedBalance(db, FUNDED)
     const hook = makeLedgerMeteringHook({
-      db,
+      ledgerDb: makeLedgerDb(db),
       nowIso: () => NOW,
       // Fixed, deterministic conversion independent of the default rate.
       usdToMsat: () => 12_345,
@@ -488,7 +471,7 @@ describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
 
     await run(hook(context()))
 
-    const balance = await readAgentBalance(db, ACCOUNT)
+    const balance = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     expect(balance?.balanceMsat).toBe(FUNDED - 12_345)
   })
 
@@ -522,7 +505,7 @@ describe('serving-node payout seam in the metering hook (#5484)', () => {
     await seedBalance(db, FUNDED)
     let sinkCalls = 0
     const hook = makeLedgerMeteringHook({
-      db,
+      ledgerDb: makeLedgerDb(db),
       nowIso: () => NOW,
       recordServingPayout: () =>
         Effect.sync(() => {
@@ -542,7 +525,7 @@ describe('serving-node payout seam in the metering hook (#5484)', () => {
     let sinkCalls = 0
     // Default gate (no servingPayoutGate supplied) is DISABLED => no live payout.
     const hook = makeLedgerMeteringHook({
-      db,
+      ledgerDb: makeLedgerDb(db),
       nowIso: () => NOW,
       recordServingPayout: () =>
         Effect.sync(() => {
@@ -569,7 +552,7 @@ describe('serving-node payout seam in the metering hook (#5484)', () => {
     await seedBalance(db, FUNDED)
     let dispatched: ServingNodePayoutDecision | undefined
     const hook = makeLedgerMeteringHook({
-      db,
+      ledgerDb: makeLedgerDb(db),
       nowIso: () => NOW,
       recordServingPayout: decision =>
         Effect.sync(() => {

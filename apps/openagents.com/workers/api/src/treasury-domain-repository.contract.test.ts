@@ -1113,64 +1113,6 @@ const sampleRow = (table: TreasuryDomainTable): TreasuryDomainRow => {
         updated_at: ISO,
         x_account_ref: 'x.account.contract.1',
       }
-    case 'agent_balances':
-      return {
-        actor_ref: 'actor.balance-contract-1',
-        balance_msat: 21_000_000,
-        created_at: ISO,
-        held_msat: 1_000_000,
-        receive_credits_below_sat: 10,
-        send_credits_below_sat: 10,
-        sweep_enabled: 1,
-        sweep_threshold_sat: 210,
-        updated_at: ISO,
-        usd_credit_msat: 0,
-      }
-    case 'labor_escrows':
-      return {
-        acceptance_event_ref: null,
-        amount_msat: 5_000_000,
-        archived_at: null,
-        created_at: ISO,
-        forfeit_condition_ref: null,
-        forfeit_destination: null,
-        forfeit_destination_actor_ref: null,
-        forfeit_receipt_ref: null,
-        forfeited_at: null,
-        funding_source: 'ledger_balance',
-        id: 'escrow-contract-1',
-        idempotency_key: 'escrow-idem-contract-1',
-        job_event_id: 'job-event-contract-1',
-        provider_actor_ref: null,
-        public_projection_json: '{}',
-        refund_receipt_ref: null,
-        refunded_at: null,
-        release_receipt_ref: null,
-        released_at: null,
-        requester_actor_ref: 'actor.forum.requester',
-        reserve_receipt_ref: 'receipt.escrow.reserve.contract.1',
-        state: 'reserved',
-        updated_at: ISO,
-        work_request_id: 'work-request-contract-1',
-      }
-    case 'labor_escrow_receipts':
-      return {
-        amount_msat: 5_000_000,
-        created_at: ISO,
-        escrow_id: 'escrow-contract-1',
-        evidence_ref: null,
-        forfeit_destination: null,
-        forfeit_destination_actor_ref: null,
-        id: 'escrow-receipt-contract-1',
-        idempotency_key: 'escrow-receipt-idem-contract-1',
-        provider_actor_ref: null,
-        public_projection_json: '{}',
-        receipt_ref: 'receipt.escrow.reserve.contract.1',
-        requester_actor_ref: 'actor.forum.requester',
-        state_after: 'reserved',
-        transition_kind: 'reserve',
-        work_request_id: 'work-request-contract-1',
-      }
     case 'partner_payout_ledger_entries':
       return {
         amount: 2500,

@@ -6,6 +6,7 @@ import {
   LaborSelfServePayoutInput,
 } from './labor-self-serve-earning-payout'
 import { readAgentBalance } from './payments-ledger'
+import type { PaymentsLedgerDb } from './payments-ledger-db'
 import { currentIsoTimestamp } from './runtime-primitives'
 
 export type LaborSelfServePayoutAuth = (
@@ -13,7 +14,10 @@ export type LaborSelfServePayoutAuth = (
 ) => Promise<Readonly<{ actorRef: string }> | undefined>
 
 export type LaborSelfServePayoutDeps = Readonly<{
-  db: D1Database
+  // CFG-4 (#8519): `agent_balances` is Postgres-authoritative; the balance
+  // read goes through the credits-domain PaymentsLedgerDb (the old D1 `db`
+  // dep had no other use here and is gone).
+  ledgerDb: PaymentsLedgerDb
   authenticate: LaborSelfServePayoutAuth
   enabled: boolean
 }>
@@ -52,7 +56,7 @@ export const handleSelfServeLaborPayoutApi = (
       return noStoreJsonResponse({ error: 'forbidden' }, { status: 403 })
     }
 
-    const balance = yield* Effect.promise(() => readAgentBalance(deps.db, session.actorRef))
+    const balance = yield* Effect.promise(() => readAgentBalance(deps.ledgerDb, session.actorRef))
     const bitcoinWithdrawableMsat = balance?.bitcoinWithdrawableMsat ?? 0
 
     const planResult = buildSelfServeLaborPayoutPlan(body, {

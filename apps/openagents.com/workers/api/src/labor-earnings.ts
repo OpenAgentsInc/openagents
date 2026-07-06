@@ -1,6 +1,6 @@
 import { Schema as S } from 'effect'
-import type { D1Database } from '@cloudflare/workers-types'
 import { assertLaborEscrowPublicSafe } from './labor-escrow'
+import type { PaymentsLedgerDb } from './payments-ledger-db'
 import {
   PublicProjectionStalenessContract,
   liveAtReadStaleness,
@@ -66,27 +66,28 @@ export const buildLaborEarningsProjection = (
   }
 }
 
+/** CFG-4 (#8519): `labor_escrows` is Cloud SQL Postgres-authoritative — this
+ * public earnings read runs on the credits-domain `PaymentsLedgerDb`, never
+ * on D1. */
 export const readLaborEarnings = async (
-  db: D1Database,
+  ledgerDb: PaymentsLedgerDb,
   providerActorRef: string,
   generatedAt: string,
   limit: number = 50,
 ): Promise<LaborEarningsResponse> => {
-  const result = await db
-    .prepare(
-      `SELECT e.amount_msat, e.id AS escrow_id, e.job_event_id,
-              e.release_receipt_ref, e.requester_actor_ref, e.work_request_id,
-              e.released_at
-         FROM labor_escrows e
-        WHERE e.provider_actor_ref = ?
-          AND e.state = 'released_to_provider'
-        ORDER BY e.released_at DESC
-        LIMIT ?`
-    )
-    .bind(providerActorRef, limit)
-    .all()
+  const results = await ledgerDb.query(
+    `SELECT e.amount_msat, e.id AS escrow_id, e.job_event_id,
+            e.release_receipt_ref, e.requester_actor_ref, e.work_request_id,
+            e.released_at
+       FROM labor_escrows e
+      WHERE e.provider_actor_ref = ?
+        AND e.state = 'released_to_provider'
+      ORDER BY e.released_at DESC
+      LIMIT ?`,
+    [providerActorRef, limit],
+  )
 
-  const rows = ((result.results ?? []) as Array<Record<string, unknown>>).map(
+  const rows = results.map(
     (row) => ({
       amountMsat: Number(row.amount_msat),
       escrowRef: `labor_escrow.public.${String(row.escrow_id)}`,

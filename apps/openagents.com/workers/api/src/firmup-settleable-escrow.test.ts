@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
 
 import { readFirmupSettleableEscrow } from './firmup-settleable-escrow'
+import { paymentsLedgerDbFromD1, type D1LikeDatabase } from './test/payments-ledger-sqlite'
 import { reserveLaborEscrowStatements } from './labor-escrow'
 import { runLedgerStatements } from './payments-ledger'
 
@@ -143,6 +144,7 @@ const makeDb = (): D1Database => {
 }
 
 const seedReservedEscrow = async (db: D1Database): Promise<void> => {
+  const ledgerDb = paymentsLedgerDbFromD1(db as unknown as D1LikeDatabase)
   await db
     .prepare(
       `INSERT INTO agent_balances (actor_ref, balance_msat, held_msat, created_at, updated_at)
@@ -152,7 +154,7 @@ const seedReservedEscrow = async (db: D1Database): Promise<void> => {
     .run()
 
   await runLedgerStatements(
-    db,
+    ledgerDb,
     reserveLaborEscrowStatements({
       amountMsat: 50_000,
       escrowId: ESCROW_ID,
@@ -192,7 +194,7 @@ describe('readFirmupSettleableEscrow (#5459, real SQL)', () => {
     await seedAcceptance(db)
 
     const projection = await readFirmupSettleableEscrow(
-      db,
+      { db, ledgerDb: paymentsLedgerDbFromD1(db as unknown as D1LikeDatabase) },
       `labor_escrow.public.${ESCROW_ID}`,
     )
 
@@ -212,7 +214,7 @@ describe('readFirmupSettleableEscrow (#5459, real SQL)', () => {
     // No acceptance row.
 
     const projection = await readFirmupSettleableEscrow(
-      db,
+      { db, ledgerDb: paymentsLedgerDbFromD1(db as unknown as D1LikeDatabase) },
       `labor_escrow.public.${ESCROW_ID}`,
     )
 
@@ -223,7 +225,7 @@ describe('readFirmupSettleableEscrow (#5459, real SQL)', () => {
     const db = makeDb()
 
     const projection = await readFirmupSettleableEscrow(
-      db,
+      { db, ledgerDb: paymentsLedgerDbFromD1(db as unknown as D1LikeDatabase) },
       'labor_escrow.public.does_not_exist',
     )
 

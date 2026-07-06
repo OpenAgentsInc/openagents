@@ -353,7 +353,6 @@ import { makeD1BusinessPipelineStore } from './business-pipeline-queue'
 import { makeOperatorBusinessPipelineRoutes } from './business-pipeline-routes'
 import {
   makeD1BusinessStarterCreditStore,
-  systemBusinessStarterCreditRuntime,
 } from './business-starter-credit'
 import { makeOperatorBusinessStarterCreditRoutes } from './business-starter-credit-routes'
 import { recordBusinessFunnelEvent } from './business-funnel-dashboard'
@@ -392,7 +391,7 @@ import {
   GitHubScmAuthBrokerDependencyFailed,
   routeGitHubScmAuthBrokerRequest,
 } from './github-scm-auth-broker-routes'
-import { makeD1CloudPrimitiveReceiptStore } from './cloud/cloud-primitive-receipts'
+import { makeLedgerCloudPrimitiveReceiptStore } from './cloud/cloud-primitive-receipts'
 // Cloud primitive SCAFFOLDS (EPIC #5510). Both flag-gated INERT by default; the
 // promises `cloud.fine_tuning_service.v1` / `cloud.sandbox_compute_service.v1`
 // STAY red until a dereferenceable paid receipt lands. No green flip here.
@@ -553,10 +552,7 @@ import {
 import { makeHygieneLaneSettlementRoutes } from './hygiene-lane-settlement-routes'
 import { makeHostedGeminiPromiseReadinessRoutes } from './hosted-gemini-promise-readiness-routes'
 import { makeImageGenerationRoutes } from './image-generation-routes'
-import {
-  inferenceReceiptStoreForEnv,
-  makeD1InferenceReceiptStore,
-} from './inference-receipts'
+import { makeInferenceReceiptStore } from './inference-receipts'
 import {
   isAcceptanceDispatchEnabled,
   makeKhalaVerificationStoreForEnv,
@@ -570,7 +566,7 @@ import {
   type AcceptedOutcomeSettlementSink,
   handleAcceptanceVerdictCallback,
 } from './inference/acceptance-verdict-callback-routes'
-import { makeD1CardCreditSpendReceiptStore } from './inference/card-credit-spend-receipt-store'
+import { makeCardCreditSpendReceiptStore } from './inference/card-credit-spend-receipt-store'
 import {
   handleChatCompletions,
   isInferenceDurableStreamEnabled,
@@ -1037,6 +1033,7 @@ import { makePartnerPayoutLedgerRoutes } from './partner-payout-ledger-routes'
 import { handlePartnerPayoutsPublicApi } from './partner-payout-public-routes'
 import { makeD1PartnerPayoutReceiptStore } from './partner-payout-receipts'
 import { readAgentBalance } from './payments-ledger'
+import { paymentsLedgerDbForEnv } from './payments-ledger-db'
 import { makePrefilledWorkspaceService } from './prefilled-workspace'
 import { makePrefilledWorkspaceRoutes } from './prefilled-workspace-routes'
 import {
@@ -2058,7 +2055,7 @@ const artanisComposerTipForEnv =
           forumContentDatabaseForEnv(environment),
           {
             agentStore: makeAgentRegistrationStoreForEnv(environment),
-            billingMirror: billingDomainMirrorFromEnv(environment),
+            ledgerDb: paymentsLedgerDbForEnv(environment),
             tipsBufferPay: tipsBufferPayFnForEnv(environment),
           },
         ),
@@ -3913,6 +3910,7 @@ const makeAuthIssuer = (env: OpenAgentsWorkerEnv) => {
             },
             {
               db: openAgentsDatabase(env),
+              ledgerDb: paymentsLedgerDbForEnv(env),
               recordCreditBalanceProjection: creditBalanceProjectionRecorderForEnv(env),
             },
           ),
@@ -4087,6 +4085,7 @@ const { requireUserBearerSession } =
 // its own.
 const adminCreditsRoutes = makeAdminCreditsRoutes<Env>({
   db: openAgentsDatabase,
+  ledgerDb: env => paymentsLedgerDbForEnv(env),
   recordCreditBalanceProjection: env => creditBalanceProjectionRecorderForEnv(env),
   requireAdminCaller: async (request, env, ctx) => {
     const session = await requireUserBearerSession(request, env, ctx)
@@ -7936,8 +7935,7 @@ const khalaCloudRuntimeUsageRoutes = makeKhalaCloudRuntimeUsageRoutes<Env>({
     }),
   meteringHook: env =>
     makeLedgerMeteringHook({
-      db: openAgentsDatabase(env),
-      mirror: billingDomainMirrorFromEnv(env),
+      ledgerDb: paymentsLedgerDbForEnv(env),
       recordCreditBalanceProjection: creditBalanceProjectionRecorderForEnv(env),
     }),
   publishInsufficientCreditEvent: (env, input) =>
@@ -9267,10 +9265,10 @@ const publicNip90MarketReceiptRoutes = makePublicNip90MarketReceiptRoutes<Env>({
 
 const publicInferenceReceiptRoutes = makePublicInferenceReceiptRoutes<Env>({
   makeStore: env =>
-    inferenceReceiptStoreForEnv(
-      env,
-      makeD1InferenceReceiptStore(openAgentsDatabase(env)),
-    ),
+    makeInferenceReceiptStore({
+      db: openAgentsDatabase(env),
+      ledgerDb: paymentsLedgerDbForEnv(env),
+    }),
   nowIso: currentIsoTimestamp,
 })
 
@@ -9302,10 +9300,10 @@ const qaSwarmFirstEngagementRoutes =
 const hostedGeminiPromiseReadinessRoutes =
   makeHostedGeminiPromiseReadinessRoutes<Env>({
     makeInferenceReceiptStore: env =>
-      inferenceReceiptStoreForEnv(
-        env,
-        makeD1InferenceReceiptStore(openAgentsDatabase(env)),
-      ),
+      makeInferenceReceiptStore({
+        db: openAgentsDatabase(env),
+        ledgerDb: paymentsLedgerDbForEnv(env),
+      }),
     makeTransitionReceiptStore: env =>
       makeD1PromiseTransitionReceiptStore(businessDomainDatabaseForEnv(env)),
     nowIso: currentIsoTimestamp,
@@ -9317,7 +9315,7 @@ const hostedGeminiPromiseReadinessRoutes =
 // no authority and asserts no promise is green.
 const publicCloudPrimitiveReceiptRoutes =
   makePublicCloudPrimitiveReceiptRoutes<Env>({
-    makeStore: env => makeD1CloudPrimitiveReceiptStore(openAgentsDatabase(env)),
+    makeStore: env => makeLedgerCloudPrimitiveReceiptStore(paymentsLedgerDbForEnv(env)),
     nowIso: currentIsoTimestamp,
   })
 
@@ -9350,7 +9348,10 @@ const marketingAgencySelfServePublicRoutes =
 const publicCardCreditSpendReceiptRoutes =
   makePublicCardCreditSpendReceiptRoutes<Env>({
     makeStore: env =>
-      makeD1CardCreditSpendReceiptStore(openAgentsDatabase(env)),
+      makeCardCreditSpendReceiptStore({
+        db: openAgentsDatabase(env),
+        ledgerDb: paymentsLedgerDbForEnv(env),
+      }),
     nowIso: currentIsoTimestamp,
   })
 
@@ -9946,10 +9947,13 @@ const operatorBusinessStarterCreditRoutes = makeOperatorBusinessStarterCreditRou
     // credit grant creates fail-soft (absent when KHALA_SYNC_DB/dual-write
     // is unavailable — degrades to D1-only, converged by the next backfill
     // sweep).
-    return makeD1BusinessStarterCreditStore(db, makeD1BusinessPipelineStore(db), {
-      ...systemBusinessStarterCreditRuntime,
-      mirror: billingDomainMirrorFromEnv(env),
-    })
+    // CFG-4 (#8519): grant ledger rows run on the Postgres credits ledger;
+    // business_starter_credit_grants / business_pipeline_rows stay on D1.
+    return makeD1BusinessStarterCreditStore(
+      db,
+      paymentsLedgerDbForEnv(env),
+      makeD1BusinessPipelineStore(db),
+    )
   },
   requireAdminApiToken,
 })
@@ -10264,7 +10268,10 @@ const firmupBitcoinSettlementRoutes =
     makePayoutLedgerStore: env =>
       makeD1NexusTreasuryPayoutLedgerStore(makeTreasuryDatabaseForEnv(env)),
     resolveSettleableEscrow: (env, escrowRef) =>
-      readFirmupSettleableEscrow(openAgentsDatabase(env), escrowRef),
+      readFirmupSettleableEscrow(
+        { db: openAgentsDatabase(env), ledgerDb: paymentsLedgerDbForEnv(env) },
+        escrowRef,
+      ),
     // REAL Bitcoin settlement wiring (openagents #5232): the SAME proven Spark
     // treasury rail. INERT unless the gate is armed.
     makeSettlementPaymentAuthority: (env, context) =>
@@ -12518,7 +12525,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env, ctx) =>
       handleMobileCreditsBalanceRequest(
         {
-          db: openAgentsDatabase,
+          ledgerDb: paymentsLedgerDbForEnv,
           requireUserBearerSession,
           userIdFromSession: session => session.user.userId,
         },
@@ -12534,7 +12541,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env, ctx) =>
       handleMobileCreditsTransactionsRequest(
         {
-          db: openAgentsDatabase,
+          ledgerDb: paymentsLedgerDbForEnv,
           requireUserBearerSession,
           userIdFromSession: session => session.user.userId,
         },
@@ -12554,6 +12561,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         {
           authStorage: e => authKvStoreForEnv(e),
           db: openAgentsDatabase,
+          ledgerDb: paymentsLedgerDbForEnv,
           khalaSyncBinding: e => e.KHALA_SYNC_DB,
           openAuthStorage: e => makeOpenAuthStorageForEnv(e),
           readBearerToken,
@@ -12631,6 +12639,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleIapRevenueCatWebhookRequest(
         {
           db: openAgentsDatabase,
+          ledgerDb: paymentsLedgerDbForEnv,
           webhookSecret: e =>
             (e as Env & { REVENUECAT_WEBHOOK_SECRET?: string })
               .REVENUECAT_WEBHOOK_SECRET,
@@ -12763,6 +12772,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         backfillDeps: {
           binding: env.KHALA_SYNC_DB,
           db: openAgentsDatabase(env),
+          ledgerDb: paymentsLedgerDbForEnv(env),
           log: (event, fields) => logWorkerRouteWarning(event, fields),
         },
         requireOperator: () => requireAdminApiToken(request, env),
@@ -13463,14 +13473,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/labor-earnings',
     handler: (request, env) =>
       handlePublicLaborEarningsApi(request, {
-        db: openAgentsDatabase(env),
+        ledgerDb: paymentsLedgerDbForEnv(env),
       }),
   },
   {
     path: '/api/public/labor-earnings/payout',
     handler: (request, env) =>
       handleSelfServeLaborPayoutApi(request, {
-        db: openAgentsDatabase(env),
+        ledgerDb: paymentsLedgerDbForEnv(env),
         authenticate: agentBalanceAuthForStore(
           makeAgentRegistrationStoreForEnv(env),
         ),
@@ -13935,7 +13945,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       // KS-8.10 (#8321): bot completion reply posts ride the forum content
       // dual-write seam.
       const db = forumContentDatabaseForEnv(env)
-      const forum = makeD1AgentDefinitionForumCompletionForumStore(db)
+      const forum = makeD1AgentDefinitionForumCompletionForumStore(db, paymentsLedgerDbForEnv(env))
 
       return handleAgentDefinitionForumWebhookRequest(request, {
         definitionStore: makeAgentDefinitionStoreForEnv(env),
@@ -13969,7 +13979,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       const db = forumContentDatabaseForEnv(env)
 
       return handleAgentDefinitionForumCompletionRequest(request, {
-        forum: makeD1AgentDefinitionForumCompletionForumStore(db),
+        forum: makeD1AgentDefinitionForumCompletionForumStore(db, paymentsLedgerDbForEnv(env)),
         forumSecret: (
           env as Env & {
             AGENT_DEFINITION_FORUM_WEBHOOK_SECRET?: string
@@ -13986,7 +13996,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         authenticate: agentBalanceAuthForStore(
           makeAgentRegistrationStoreForEnv(env),
         ),
-        db: openAgentsDatabase(env),
+        ledgerDb: paymentsLedgerDbForEnv(env),
       }),
   },
   {
@@ -13996,7 +14006,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         authenticate: agentBalanceAuthForStore(
           makeAgentRegistrationStoreForEnv(env),
         ),
-        db: openAgentsDatabase(env),
+        ledgerDb: paymentsLedgerDbForEnv(env),
       }),
   },
   {
@@ -14299,8 +14309,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
                 : innerHook)(
               withReferralAccrual(
                 makeLedgerMeteringHook({
-                  db: openAgentsDatabase(env),
-                  mirror: billingDomainMirrorFromEnv(env),
+                  ledgerDb: paymentsLedgerDbForEnv(env),
                   recordCreditBalanceProjection:
                     creditBalanceProjectionRecorderForEnv(env),
                 }),
@@ -14449,7 +14458,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         },
         readAvailableMsat: async accountRef => {
           const balance = await readAgentBalance(
-            openAgentsDatabase(env),
+            paymentsLedgerDbForEnv(env),
             accountRef,
           )
           return balance === null ? 0 : balance.availableMsat
@@ -14905,8 +14914,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         ),
         enabled: isFineTuningServiceEnabled(env.CLOUD_FINE_TUNING_ENABLED),
         meteringHook: makeLedgerFineTuningMeteringHook({
-          db: openAgentsDatabase(env),
-          mirror: billingDomainMirrorFromEnv(env),
+          ledgerDb: paymentsLedgerDbForEnv(env),
           priceUsd: () => 0,
           recordCreditBalanceProjection: creditBalanceProjectionRecorderForEnv(env),
           usdToMsat: usd => Math.ceil(usd * 1000),
@@ -14944,8 +14952,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           khalaCodeProductStateDatabaseForEnv(env),
         ),
         meteringHook: makeLedgerSandboxMeteringHook({
-          db: openAgentsDatabase(env),
-          mirror: billingDomainMirrorFromEnv(env),
+          ledgerDb: paymentsLedgerDbForEnv(env),
           priceUsd: () => 0,
           recordCreditBalanceProjection: creditBalanceProjectionRecorderForEnv(env),
           usdToMsat: usd => Math.ceil(usd * 1000),
@@ -14982,6 +14989,7 @@ const routeRequest = makeWorkerRouteRequest({
     routeEffect('handle_forum_thread_page', () =>
       handleForumThreadDocument({
         db: openAgentsDatabase(env),
+        ledgerDb: paymentsLedgerDbForEnv(env),
         fetchAppShell: () => handleAppShellPage(request, env, ctx),
         topicId,
       }),
@@ -15014,6 +15022,7 @@ const routeRequest = makeWorkerRouteRequest({
             ),
           }),
         db: openAgentsDatabase(env),
+        ledgerDb: paymentsLedgerDbForEnv(env),
       }),
       adapter: makeCloudControlCloudCodingAdapter({
         baseUrl: env.OA_CLOUD_CONTROL_URL ?? '',
@@ -15090,8 +15099,9 @@ const routeRequest = makeWorkerRouteRequest({
     // KS-8.10 (#8321): the forum content dual-write seam — scoped forum
     // table writes read-back-mirror into Postgres (fail-soft).
     forumRoutes.routeForumRequest(request, forumContentDatabaseForEnv(env), {
-      // KS-8.7 (#8318): fail-soft billing/pay-in mirror for forum tips.
-      billingMirror: billingDomainMirrorFromEnv(env),
+      // CFG-4 (#8519): the Postgres-only credits/escrow ledger for forum
+      // tips + labor escrow paths (no D1 fallback).
+      ledgerDb: paymentsLedgerDbForEnv(env),
       // KS-8.8 (#8319): activates the fail-soft Postgres mirror on the forum
       // MONEY half; content paths stay on the forum content dual-write seam.
       treasuryDb: makeTreasuryDatabaseForEnv(env),
@@ -16268,8 +16278,8 @@ export default {
       observedEffect(
         'TipsSweep.runTick',
         runTipsSweepScheduled(makeTreasuryDatabaseForEnv(env), {
+          ledgerDb: paymentsLedgerDbForEnv(env),
           makeId: randomUuid,
-          mirror: billingDomainMirrorFromEnv(env),
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
           payFromBuffer: tipsBufferPayFnForEnv(env),
         }),
@@ -16453,6 +16463,7 @@ export default {
         'ArtanisResponder.compose',
         runArtanisComposerScheduled(makeArtanisDatabaseForEnv(env), {
           artanisActorRef: ARTANIS_REGISTERED_ACTOR_REF,
+          ledgerDb: paymentsLedgerDbForEnv(env),
           enabled:
             (env as { ARTANIS_FORUM_RESPONDER_ENABLED?: string })
               .ARTANIS_FORUM_RESPONDER_ENABLED === 'true',
@@ -16467,8 +16478,7 @@ export default {
       observedEffect(
         'TipsBuffer.reconcileForwarding',
         Effect.promise(() =>
-          reconcileForwardingBufferPayments(makeTreasuryDatabaseForEnv(env), {
-            mirror: billingDomainMirrorFromEnv(env),
+          reconcileForwardingBufferPayments(paymentsLedgerDbForEnv(env), {
             fetchBufferPaymentStatus: async paymentId => {
               const fetchBuffer = fetchMdkTipsBufferPath(env)
               if (fetchBuffer === undefined) {
@@ -16538,7 +16548,7 @@ export default {
         // unrelated sibling work again.
         Effect.promise(() =>
           checkTipsBufferBackingInvariant(
-            makeTreasuryDatabaseForEnv(env),
+            paymentsLedgerDbForEnv(env),
             async () => {
             const fetchBuffer = fetchMdkTipsBufferPath(env)
             if (fetchBuffer === undefined) {

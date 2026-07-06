@@ -19,6 +19,7 @@ import {
 } from '../l402-credential-service'
 import { formatOpenAgentsL402WwwAuthenticate } from '../l402-payment-headers'
 import type { OpenAgentsPaidEndpointProductRecord } from '../paid-endpoint-product-catalog'
+import type { PaymentsLedgerDb } from '../payments-ledger-db'
 import {
   currentEpochMillis,
   currentIsoTimestamp,
@@ -1573,18 +1574,22 @@ const readReceiptLookupRowByRef = (
   )
 
 const readTipLadderReceiptLookupRowByRef = (
-  db: D1Database,
+  // CFG-4 (#8519): pay_ins/pay_in_legs are Cloud SQL Postgres-authoritative,
+  // so this WHOLE lookup (including its `forum_posts` join) runs on the
+  // ledger handle. `forum_posts` has a Postgres twin in the same database,
+  // converged by the always-on KS-8.10 dual-write — this cross-domain read
+  // therefore reads the forum_posts Postgres twin, not the D1 authority.
+  ledgerDb: PaymentsLedgerDb,
   receiptRef: string,
 ): Effect.Effect<TipLadderReceiptLookupRow | null, ForumPaidActionError> =>
   isTipLadderReceiptRef(receiptRef)
     ? d1Effect('forumPaidActions.readTipLadderReceiptLookupRowByRef', () =>
-        db
-          .prepare(
-            // The ref resolves either as the stored public receipt ref
-            // or as the deterministic receipt-equivalent ref
-            // 'receipt.forum.tip_ladder.payin.<payInId>' projected for
-            // ladder rows that predate the stored column (#4753).
-            `SELECT p.id AS pay_in_id,
+        ledgerDb.query(
+          // The ref resolves either as the stored public receipt ref
+          // or as the deterministic receipt-equivalent ref
+          // 'receipt.forum.tip_ladder.payin.<payInId>' projected for
+          // ladder rows that predate the stored column (#4753).
+          `SELECT p.id AS pay_in_id,
                     COALESCE(
                       p.public_receipt_ref,
                       'receipt.forum.tip_ladder.payin.' || p.id
@@ -1641,9 +1646,14 @@ const readTipLadderReceiptLookupRowByRef = (
                        p.created_at DESC,
                        p.id DESC
               LIMIT 1`,
-          )
-          .bind(receiptRef, receiptRef)
-          .first<TipLadderReceiptLookupRow>(),
+          [receiptRef, receiptRef],
+        ),
+      ).pipe(
+        Effect.map(
+          rows =>
+            (rows[0] as unknown as TipLadderReceiptLookupRow | undefined) ??
+            null,
+        ),
       )
     : Effect.succeed(null)
 
@@ -2795,11 +2805,12 @@ export const redeemForumPaidAction = (
 
 const directTipReceiptForAttempt = (
   db: D1Database,
+  ledgerDb: PaymentsLedgerDb,
   attempt: DirectTipAttemptRow,
 ): Effect.Effect<ForumReceiptLookupResponse | null, ForumPaidActionError> =>
   attempt.receipt_ref === null
     ? Effect.succeed(null)
-    : lookupForumPaidActionReceipt(db, attempt.receipt_ref)
+    : lookupForumPaidActionReceipt(db, ledgerDb, attempt.receipt_ref)
 
 const directTipAttemptMatchesInput = (
   attempt: DirectTipAttemptRow,
@@ -2887,6 +2898,9 @@ export const archiveStaleDirectTipRecoveries = async (
 
 export const submitForumDirectTip = (
   database: TreasuryDatabase,
+  // CFG-4 (#8519): only the tip-ladder receipt lookup reads this handle;
+  // the direct-tip tables themselves stay on the D1 treasury authority.
+  ledgerDb: PaymentsLedgerDb,
   input: ForumDirectTipSubmitInput,
   runtime: ForumPaidActionRuntime = systemForumPaidActionRuntime,
 ): Effect.Effect<
@@ -2914,6 +2928,7 @@ export const submitForumDirectTip = (
 
       const receipt = yield* directTipReceiptForAttempt(
         db,
+        ledgerDb,
         existingByIdempotency,
       )
 
@@ -3017,13 +3032,15 @@ export const submitForumDirectTip = (
       ])
     })
 
-    const receipt = yield* directTipReceiptForAttempt(db, storedAttempt)
+    const receipt = yield* directTipReceiptForAttempt(db, ledgerDb, storedAttempt)
 
     return directTipResponse(storedAttempt, receipt, false)
   })
 
 export const lookupForumDirectTip = (
   database: TreasuryDatabase,
+  // CFG-4 (#8519): tip-ladder receipt rows live on the Postgres ledger.
+  ledgerDb: PaymentsLedgerDb,
   attemptId: string,
 ): Effect.Effect<ForumDirectTipResponse | null, ForumPaidActionError> =>
   Effect.gen(function* () {
@@ -3034,13 +3051,15 @@ export const lookupForumDirectTip = (
       return null
     }
 
-    const receipt = yield* directTipReceiptForAttempt(db, attempt)
+    const receipt = yield* directTipReceiptForAttempt(db, ledgerDb, attempt)
 
     return directTipResponse(attempt, receipt, true)
   })
 
 export const reconcileForumDirectTipWebhook = (
   database: TreasuryDatabase,
+  // CFG-4 (#8519): tip-ladder receipt rows live on the Postgres ledger.
+  ledgerDb: PaymentsLedgerDb,
   input: ForumDirectTipWebhookReconciliationInput,
   runtime: ForumPaidActionRuntime = systemForumPaidActionRuntime,
 ): Effect.Effect<ForumDirectTipWebhookReconciliation, ForumPaidActionError> =>
@@ -3117,7 +3136,7 @@ export const reconcileForumDirectTipWebhook = (
 
       const refreshedAttempt =
         (yield* readDirectTipAttemptById(db, input.attemptId)) ?? attempt
-      const receipt = yield* directTipReceiptForAttempt(db, refreshedAttempt)
+      const receipt = yield* directTipReceiptForAttempt(db, ledgerDb, refreshedAttempt)
 
       return decodeDirectTipWebhookReconciliation({
         amount: input.amount,
@@ -3248,7 +3267,7 @@ export const reconcileForumDirectTipWebhook = (
 
     const storedAttempt =
       (yield* readDirectTipAttemptById(db, attempt.id)) ?? attempt
-    const receipt = yield* directTipReceiptForAttempt(db, storedAttempt)
+    const receipt = yield* directTipReceiptForAttempt(db, ledgerDb, storedAttempt)
     const webhook = yield* readDirectTipWebhookEventByProviderEventRef(
       db,
       input.providerEventRef,
@@ -3288,6 +3307,8 @@ const settlementClaimResponse = (
 
 export const claimForumTipSettlement = (
   database: TreasuryDatabase,
+  // CFG-4 (#8519): tip-ladder receipt rows live on the Postgres ledger.
+  ledgerDb: PaymentsLedgerDb,
   input: ForumTipSettlementClaimInput,
   runtime: ForumPaidActionRuntime = systemForumPaidActionRuntime,
 ): Effect.Effect<ForumTipSettlementClaimResponse, ForumPaidActionError> =>
@@ -3312,6 +3333,7 @@ export const claimForumTipSettlement = (
 
       const existingReceipt = yield* lookupForumPaidActionReceipt(
         db,
+        ledgerDb,
         input.receiptRef,
       )
 
@@ -3379,6 +3401,7 @@ export const claimForumTipSettlement = (
 
     const updatedReceipt = yield* lookupForumPaidActionReceipt(
       db,
+      ledgerDb,
       input.receiptRef,
     )
 
@@ -3406,6 +3429,8 @@ export const lookupForumPaidActionChallenge = (
 
 export const lookupForumPaidActionReceipt = (
   database: TreasuryDatabase,
+  // CFG-4 (#8519): tip-ladder receipt rows live on the Postgres ledger.
+  ledgerDb: PaymentsLedgerDb,
   receiptRef: string,
 ): Effect.Effect<ForumReceiptLookupResponse | null, ForumPaidActionError> =>
   Effect.gen(function* () {
@@ -3416,7 +3441,10 @@ export const lookupForumPaidActionReceipt = (
       return receiptLookupFromRow(receiptRow)
     }
 
-    const ladderRow = yield* readTipLadderReceiptLookupRowByRef(db, receiptRef)
+    const ladderRow = yield* readTipLadderReceiptLookupRowByRef(
+      ledgerDb,
+      receiptRef,
+    )
 
     return ladderRow === null ? null : tipLadderReceiptLookupFromRow(ladderRow)
   })

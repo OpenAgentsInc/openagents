@@ -6,7 +6,8 @@ import type {
 
 import { readArtanisTickMonitor } from './artanis-tick-monitor'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
-import { makeD1InferenceReceiptStore } from './inference-receipts'
+import { makeInferenceReceiptStore } from './inference-receipts'
+import { paymentsLedgerDbForEnv } from './payments-ledger-db'
 import { parseJsonRecord, parseJsonStringArray } from './json-boundary'
 import type { KhalaSyncHyperdriveBinding } from './khala-sync-push-routes'
 import {
@@ -218,9 +219,18 @@ export const publicActivityTimelineRawSourceInputForRequest = (
   const forumStore =
     input.forumStore ??
     (db === undefined ? undefined : makeD1PublicActivityTimelineForumStore(db))
+  // CFG-4 (#8519): the pay_ins receipt branch is Postgres-authoritative, so
+  // the receipt store needs BOTH the D1 handle (free-allowance branch) and
+  // the credits ledger. Without the KHALA_SYNC_DB binding there is no
+  // credits store to read — leave the source absent rather than a broken one.
   const inferenceReceiptStore: PublicActivityTimelineInferenceReceiptStore | undefined =
     input.inferenceReceiptStore ??
-    (db === undefined ? undefined : makeD1InferenceReceiptStore(db))
+    (db === undefined || input.KHALA_SYNC_DB === undefined
+      ? undefined
+      : makeInferenceReceiptStore({
+          db,
+          ledgerDb: paymentsLedgerDbForEnv({ KHALA_SYNC_DB: input.KHALA_SYNC_DB }),
+        }))
   const pylonStore =
     input.pylonStore ?? (db === undefined ? undefined : makeD1PylonApiStore(db))
   const receiptStore =

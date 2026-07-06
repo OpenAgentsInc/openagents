@@ -364,7 +364,7 @@ export const settleLaborProductOrder = (
   }
 
   return settleCloudPrimitiveCharge(
-    { db: deps.db, ...(deps.nowIso !== undefined ? { nowIso: deps.nowIso } : {}) },
+    { ledgerDb: deps.ledgerDb, ...(deps.nowIso !== undefined ? { nowIso: deps.nowIso } : {}) },
     {
       accountRef: input.plan.settlement.accountRef,
       chargeId: input.plan.orderId,

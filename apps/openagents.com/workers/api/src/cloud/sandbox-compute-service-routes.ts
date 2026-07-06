@@ -394,9 +394,8 @@ export const makeLedgerSandboxMeteringHook = (
       const chargeMsat = Math.max(0, Math.ceil(deps.usdToMsat(deps.priceUsd(context))))
       const outcome: CloudMeteringOutcome = yield* settleCloudPrimitiveCharge(
         {
-          db: deps.db,
+          ledgerDb: deps.ledgerDb,
           ...(deps.nowIso === undefined ? {} : { nowIso: deps.nowIso }),
-          ...(deps.mirror === undefined ? {} : { mirror: deps.mirror }),
           ...(deps.recordCreditBalanceProjection === undefined
             ? {}
             : { recordCreditBalanceProjection: deps.recordCreditBalanceProjection }),

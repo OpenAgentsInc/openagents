@@ -10,6 +10,8 @@ import {
   forfeitLaborEscrow,
   forfeitLaborEscrowStatements,
   makeCreditLedgerBondSettlementAdapter,
+  readLaborEscrowByIdempotencyKey,
+  refundLaborEscrow,
   refundLaborEscrowStatements,
   releaseLaborEscrow,
   releaseLaborEscrowStatements,
@@ -17,6 +19,9 @@ import {
   reserveLaborEscrowStatements,
 } from './labor-escrow'
 import type { LedgerStatement } from './payments-ledger'
+import { readAgentBalance } from './payments-ledger'
+import type { PaymentsLedgerDb } from './payments-ledger-db'
+import { makeLedgerSqliteDb } from './test/payments-ledger-sqlite'
 
 const nowIso = '2026-06-10T23:00:00.000Z'
 const jobEventId = 'a'.repeat(64)
@@ -683,7 +688,109 @@ describe('credit-ledger bond settlement adapter', () => {
   })
 })
 
-describe('labor escrow D1 guards and projections', () => {
+// CFG-4 (#8519): the escrow functions now run over the Postgres-authoritative
+// `PaymentsLedgerDb` seam. These tests back it with the in-memory ledger
+// SQLite adapter (real CHECK/UNIQUE constraints and a transactional batch);
+// the Postgres contract suite proves the production dialect.
+describe('labor escrow over the payments ledger (CFG-4)', () => {
+  const seedBalance = async (
+    db: PaymentsLedgerDb,
+    actorRef: string,
+    balanceMsat: number,
+  ): Promise<void> => {
+    await db.batch([
+      {
+        params: [actorRef, balanceMsat, nowIso, nowIso],
+        sql: `INSERT INTO agent_balances (actor_ref, balance_msat, created_at, updated_at)
+              VALUES (?, ?, ?, ?)`,
+      },
+    ])
+  }
+
+  test('reserve holds the balance atomically and is idempotent per key', async () => {
+    const db = makeLedgerSqliteDb()
+    await seedBalance(db, 'agent:requester', 100_000)
+
+    const first = await reserveLaborEscrow(db, reserveInput)
+    expect(first.kind).toBe('ok')
+    if (first.kind === 'ok') {
+      expect(first.idempotent).toBe(false)
+      expect(first.escrow.state).toBe('reserved')
+      expect(first.escrow.amountMsat).toBe(50_000)
+    }
+
+    const balance = await readAgentBalance(db, 'agent:requester')
+    expect(balance?.balanceMsat).toBe(100_000)
+    expect(balance?.heldMsat).toBe(50_000)
+    expect(balance?.availableMsat).toBe(50_000)
+
+    const replay = await reserveLaborEscrow(db, reserveInput)
+    expect(replay).toMatchObject({ idempotent: true, kind: 'ok' })
+    const afterReplay = await readAgentBalance(db, 'agent:requester')
+    expect(afterReplay?.heldMsat).toBe(50_000)
+  })
+
+  test('reserve refuses insufficient available balance with the typed reason', async () => {
+    const db = makeLedgerSqliteDb()
+    await seedBalance(db, 'agent:requester', 10_000)
+
+    await expect(reserveLaborEscrow(db, reserveInput)).resolves.toEqual({
+      availableMsat: 10_000,
+      kind: 'refused',
+      reason: 'insufficient_available_balance',
+    })
+    expect(
+      await readLaborEscrowByIdempotencyKey(db, reserveInput.idempotencyKey),
+    ).toBeNull()
+  })
+
+  test('release moves the held claim to the provider and refund releases the hold', async () => {
+    const db = makeLedgerSqliteDb()
+    await seedBalance(db, 'agent:requester', 100_000)
+    await reserveLaborEscrow(db, reserveInput)
+
+    const released = await releaseLaborEscrow(db, {
+      acceptanceEventRef: 'nostr.event.' + 'b'.repeat(64),
+      authority: {
+        actorRef: 'agent:requester',
+        kind: 'requester_acceptance',
+      },
+      escrowId: reserveInput.escrowId,
+      nowIso,
+      providerActorRef: 'agent:provider',
+      releaseReceiptId: 'receipt_row_release_ledger_1',
+      releaseReceiptRef: 'receipt.labor_escrow.release.ledger_1',
+    })
+    expect(released.kind).toBe('ok')
+    if (released.kind === 'ok') {
+      expect(released.escrow.state).toBe('released_to_provider')
+      expect(released.escrow.providerActorRef).toBe('agent:provider')
+    }
+
+    const requester = await readAgentBalance(db, 'agent:requester')
+    expect(requester?.balanceMsat).toBe(50_000)
+    expect(requester?.heldMsat).toBe(0)
+    const provider = await readAgentBalance(db, 'agent:provider')
+    expect(provider?.balanceMsat).toBe(50_000)
+
+    // A refund after release is refused with the current state.
+    await expect(
+      refundLaborEscrow(db, {
+        escrowId: reserveInput.escrowId,
+        nowIso,
+        refundReasonRef: 'reason.public.too_late',
+        refundReceiptId: 'receipt_row_refund_ledger_after_release',
+        refundReceiptRef: 'receipt.labor_escrow.refund.ledger.after_release',
+      }),
+    ).resolves.toEqual({
+      currentState: 'released_to_provider',
+      kind: 'refused',
+      reason: 'escrow_not_reserved',
+    })
+  })
+})
+
+describe('labor escrow guards and projections', () => {
   test('provider and worker authority cannot release escrow', async () => {
     await expect(
       releaseLaborEscrow(null as never, {

@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest'
 
 import { agentRefForUser } from './inference/usd-credit-bridge'
 import { readAgentBalance } from './payments-ledger'
+import { paymentsLedgerDbFromD1, type D1LikeDatabase } from './test/payments-ledger-sqlite'
 import { makeOperatorBillingHandlers } from './operator-billing-routes'
 import type { OperatorTargetUser } from './operator-targets'
 
@@ -196,6 +197,8 @@ const makeHandlers = (
   }> = {},
 ) =>
   makeOperatorBillingHandlers<TestEnv>({
+    ledgerDb: env =>
+      paymentsLedgerDbFromD1(env.OPENAGENTS_DB as unknown as D1LikeDatabase),
     readSelectedOperatorTargetUser: async () =>
       'target' in over ? over.target : targetUser,
     requireAdminApiToken: async () => over.admin ?? true,
@@ -270,7 +273,7 @@ describe('handleOmniOperatorInferenceCreditApi', () => {
     // The granted msat is spendable AND carries the USD-origin tag (so the
     // Bitcoin sweep will exclude it). availableMsat includes usd_credit_msat.
     const balance = await readAgentBalance(
-      env.OPENAGENTS_DB,
+      paymentsLedgerDbFromD1(env.OPENAGENTS_DB as unknown as D1LikeDatabase),
       agentRefForUser(USER),
     )
     expect(balance).not.toBeNull()
@@ -288,7 +291,7 @@ describe('handleOmniOperatorInferenceCreditApi', () => {
     )
     expect(once.status).toBe(200)
     const firstMsat = (await readAgentBalance(
-      env.OPENAGENTS_DB,
+      paymentsLedgerDbFromD1(env.OPENAGENTS_DB as unknown as D1LikeDatabase),
       agentRefForUser(USER),
     ))?.usdCreditMsat
     // Replay the SAME grantRef: the USD adjustment + msat grant are both keyed
@@ -298,7 +301,7 @@ describe('handleOmniOperatorInferenceCreditApi', () => {
       env,
     )
     const secondMsat = (await readAgentBalance(
-      env.OPENAGENTS_DB,
+      paymentsLedgerDbFromD1(env.OPENAGENTS_DB as unknown as D1LikeDatabase),
       agentRefForUser(USER),
     ))?.usdCreditMsat
     expect(secondMsat).toBe(firstMsat)

@@ -989,6 +989,8 @@ export const makeGitHubRestAgentDefinitionCompletionGitHubStore = (
 
 export const makeD1AgentDefinitionForumCompletionForumStore = (
   db: D1Database,
+  // CFG-4 (#8519): post-detail credited tip totals read the Postgres ledger.
+  ledgerDb: import('./payments-ledger-db').PaymentsLedgerDb,
   runtime: Readonly<{
     makeId?: (() => string) | undefined
     nowIso?: (() => string) | undefined
@@ -1031,7 +1033,7 @@ export const makeD1AgentDefinitionForumCompletionForumStore = (
     }),
   readPostByIdempotencyKey: idempotencyKey =>
     readForumPostByIdempotencyKey(db, idempotencyKey),
-  readPostDetail: postId => readForumPostDetail(db, postId),
+  readPostDetail: postId => readForumPostDetail(db, ledgerDb, postId),
   readSummaryByRef: forumRef =>
     readForumSummaryByRef(db, forumRef, { allowUnlisted: true }),
   readTopicById: topicId => readForumTopicById(db, topicId),

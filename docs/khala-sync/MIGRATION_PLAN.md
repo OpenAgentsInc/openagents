@@ -1399,6 +1399,13 @@ per-domain soak/drop follow-up. Prod cutover procedure:
 
 ### 3.4 KS-8.7 — Billing, credits, Stripe, pay-ins
 
+- **CFG-4 HARD CUTOVER (2026-07-06, #8519):** `pay_ins` and `pay_in_legs`
+  left this lane's dual-write posture entirely — they are Cloud SQL
+  Postgres-AUTHORITATIVE with the D1 code path deleted (executor:
+  `payments-ledger-db.ts`; see the RUNBOOK "Credits domain HARD cutover"
+  section). The rest of the ~23 billing tables keep the flag/dual-write
+  machinery described below unchanged.
+
 - **What:** customer-facing money-in: the credits ledger, auto-top-up,
   coupons, Stripe integration, pay-ins, buyer payment
   challenges/receipts/limits.
@@ -1509,6 +1516,12 @@ per-domain soak/drop follow-up. Prod cutover procedure:
   decision on #8282, same epic-gated discipline as the balance read.
 
 ### 3.5 KS-8.8 — Treasury, payouts, tips settlement
+
+- **CFG-4 HARD CUTOVER (2026-07-06, #8519):** `agent_balances`,
+  `labor_escrows`, and `labor_escrow_receipts` left this lane's dual-write
+  posture entirely — Postgres-AUTHORITATIVE, D1 code path deleted (see the
+  RUNBOOK "Credits domain HARD cutover" section). The other treasury
+  tables keep the flag/dual-write machinery unchanged.
 
 - **What:** money-out and settlement: treasury transactions, Nexus payout
   intents/attempts/reconciliation, forum tip settlement (the money half of

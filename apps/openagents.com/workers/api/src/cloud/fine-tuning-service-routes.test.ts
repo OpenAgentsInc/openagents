@@ -437,7 +437,7 @@ describe('D1 fine-tuning runtime adapter', () => {
 describe('makeLedgerFineTuningMeteringHook', () => {
   test('reports metered:false at intake (no runtime usage yet)', async () => {
     const hook = makeLedgerFineTuningMeteringHook({
-      db: {} as D1Database,
+      ledgerDb: {} as import('../payments-ledger-db').PaymentsLedgerDb,
       priceUsd: () => 1,
       usdToMsat: usd => Math.ceil(usd * 1000),
     })
@@ -451,7 +451,7 @@ describe('makeLedgerFineTuningMeteringHook', () => {
   test('a zero-usd charge is metered with a zeroCharge receipt and no debit', async () => {
     // db is never touched because the charge rounds to 0 msat.
     const hook = makeLedgerFineTuningMeteringHook({
-      db: {} as D1Database,
+      ledgerDb: {} as import('../payments-ledger-db').PaymentsLedgerDb,
       priceUsd: () => 0,
       usdToMsat: usd => Math.ceil(usd * 1000),
     })

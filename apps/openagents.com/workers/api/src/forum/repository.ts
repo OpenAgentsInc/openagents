@@ -1,6 +1,7 @@
 import { Effect, Schema as S } from 'effect'
 
 import { parseJsonRecord, parseJsonStringArray } from '../json-boundary'
+import type { PaymentsLedgerDb } from '../payments-ledger-db'
 import {
   type PublicProjectionStalenessContract,
   liveAtReadStaleness,
@@ -1545,6 +1546,9 @@ const chunkForD1Params = <T>(items: ReadonlyArray<T>): T[][] => {
 
 const readForumPostTipStats = (
   db: D1Database,
+  // CFG-4 (#8519): credited tip totals read the Postgres-authoritative
+  // payments ledger; the receipt-backed stats stay on the forum D1 tables.
+  ledgerDb: PaymentsLedgerDb,
   postIds: ReadonlyArray<string>,
 ): Effect.Effect<ReadonlyMap<string, ForumPostTipStats>, ForumStorageError> => {
   const uniquePostIds = [...new Set(postIds)].filter(postId => postId !== '')
@@ -1616,7 +1620,7 @@ const readForumPostTipStats = (
       return new Map(entries)
     }),
     Effect.flatMap(stats =>
-      readCreditedPostTipTotals(db, uniquePostIds).pipe(
+      readCreditedPostTipTotals(ledgerDb, uniquePostIds).pipe(
         Effect.map(creditedTotals => {
           if (creditedTotals.size === 0) {
             return stats
@@ -1639,12 +1643,14 @@ const readForumPostTipStats = (
   )
 }
 
-// Credited-rung tips from the payments ledger (issue #4706). The query
-// is failure-tolerant: environments without migration 0160 simply show
-// no credited totals rather than breaking tip stats. Chunked for the D1
-// 100-bound-parameter limit so large threads stay correct.
+// Credited-rung tips from the payments ledger (issue #4706). CFG-4
+// (#8519): `pay_ins` is Cloud SQL Postgres-authoritative, so this read
+// rides the ledger handle. The query stays failure-tolerant: a ledger
+// read failure shows no credited totals rather than breaking tip stats.
+// The parameter chunking (a D1-era bound-parameter habit) is kept — it is
+// harmless on Postgres and keeps very large threads bounded per query.
 const readCreditedPostTipTotals = (
-  db: D1Database,
+  ledgerDb: PaymentsLedgerDb,
   postIds: ReadonlyArray<string>,
 ): Effect.Effect<ReadonlyMap<string, number>, never> => {
   if (postIds.length === 0) {
@@ -1656,21 +1662,20 @@ const readCreditedPostTipTotals = (
     try {
       for (const batch of chunkForD1Params(postIds)) {
         const contextRefs = batch.map(postId => `forum.post.${postId}`)
-        const result = await db
-          .prepare(
-            `SELECT context_ref, COALESCE(SUM(cost_msat), 0) AS credited_msat
+        const rows = await ledgerDb.query(
+          `SELECT context_ref, COALESCE(SUM(cost_msat), 0) AS credited_msat
              FROM pay_ins
             WHERE pay_in_type = 'tip'
               AND rung = 'credited'
               AND state = 'paid'
               AND context_ref IN (${batch.map(() => '?').join(', ')})
             GROUP BY context_ref`,
-          )
-          .bind(...contextRefs)
-          .all()
+          contextRefs,
+        )
 
-        for (const row of (result.results ?? []) as Array<{
+        for (const row of rows as Array<{
           context_ref: unknown
+          // Postgres returns bigint SUMs as strings; Number(...) decodes.
           credited_msat: unknown
         }>) {
           totals.set(
@@ -2711,6 +2716,8 @@ export const readForumTopicList = (
 
 export const readForumTopicDetail = (
   db: D1Database,
+  // CFG-4 (#8519): credited tip totals read the Postgres payments ledger.
+  ledgerDb: PaymentsLedgerDb,
   topicRef: string,
   options: Readonly<{
     limit?: number
@@ -2802,6 +2809,7 @@ export const readForumTopicDetail = (
     )
     const tipStats = yield* readForumPostTipStats(
       db,
+      ledgerDb,
       topicPosts.map(post => post.postId),
     )
     const lastPost = yield* readPublicLastPostSummary(db, {
@@ -2851,6 +2859,8 @@ export const readForumTopicDetail = (
 
 export const readForumPostDetail = (
   db: D1Database,
+  // CFG-4 (#8519): credited tip totals read the Postgres payments ledger.
+  ledgerDb: PaymentsLedgerDb,
   postId: string,
 ): Effect.Effect<
   ForumPostDetailResponse | null,
@@ -2884,7 +2894,7 @@ export const readForumPostDetail = (
       post.author.actorRef,
     )
 
-    const tipStats = yield* readForumPostTipStats(db, [post.postId])
+    const tipStats = yield* readForumPostTipStats(db, ledgerDb, [post.postId])
     const projectedPost = postWithSubject(post, topic.title)
 
     return decodeForumPostDetailResponse({
@@ -2898,6 +2908,8 @@ export const readForumPostDetail = (
 
 export const readForumPostList = (
   db: D1Database,
+  // CFG-4 (#8519): credited tip totals read the Postgres payments ledger.
+  ledgerDb: PaymentsLedgerDb,
   input: Readonly<{
     cursor?: ForumPostListCursor | null
     cursorRef?: string | null
@@ -3047,6 +3059,7 @@ export const readForumPostList = (
     )
     const tipStats = yield* readForumPostTipStats(
       db,
+      ledgerDb,
       posts.map(post => post.postId),
     )
     const topics = uniqueBy(

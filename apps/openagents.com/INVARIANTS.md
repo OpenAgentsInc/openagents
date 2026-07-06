@@ -1365,6 +1365,41 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/forum-routes.test.ts`, and
   `workers/api/src/forum/paid-actions.test.ts`.
 
+## Credits Domain Storage Authority (CFG-4 hard cutover, #8519)
+
+- `pay_ins`, `pay_in_legs`, `agent_balances`, `labor_escrows`, and
+  `labor_escrow_receipts` are Cloud SQL Postgres-AUTHORITATIVE. There is no
+  D1 code path, no dual-write mirror, and no `KHALA_SYNC_*` read flag for
+  these five tables; the only store is `PaymentsLedgerDb`
+  (`workers/api/src/payments-ledger-db.ts`, wired from the `KHALA_SYNC_DB`
+  Hyperdrive binding).
+- Every ledger batch executes as ONE Postgres transaction
+  (`runLedgerStatements`). Atomic-abort semantics are constraint-carried:
+  `CHECK (balance_msat >= 0)` aborts an over-debit, the pay-in UNIQUE
+  idempotency key aborts a replay, and either abort rolls back the whole
+  transaction. Constraint classification is dialect-neutral
+  (`isLedgerCheckConstraintError` / `isLedgerUniqueConstraintError`), never
+  driver message text.
+- Money writes are FAIL-HARD: a Postgres outage fails the write loudly. No
+  code path may silently fall back to another store for these tables.
+- Ledger SQL must stay Postgres-portable. The test adapter
+  (`workers/api/src/test/payments-ledger-sqlite.ts`) structurally rejects
+  SQLite-only constructs, and the executor semantics are proven on real
+  Postgres by `workers/api/src/payments-ledger-postgres.contract.test.ts`.
+- Batches that previously co-committed credits rows with OTHER domains' D1
+  rows are split into one Postgres transaction plus one D1 batch; each such
+  seam must keep an idempotency key that heals a crash between the two and
+  an in-code comment naming the seam.
+- The D1 twins of these five tables are frozen legacy data pending the
+  KS-8.19 (#8330) drop; no new code may read or write them, and the
+  khala-sync-server converge/backfill sweeps must never copy them D1 →
+  Postgres after the cutover deploy (`backfill-billing.ts` excludes them
+  from its default sweep for exactly this reason).
+- Regression coverage:
+  `workers/api/src/payments-ledger-postgres.contract.test.ts`,
+  `workers/api/src/payments-ledger.test.ts`, and the per-surface suites
+  listed in the sections below.
+
 ## Labor Escrow Credit Ledger
 
 - Labor escrow is a held claim on the existing 1:1 buffer-backed
@@ -1556,9 +1591,12 @@ This is the invariant ledger for `openagents`.
   read `balance_msat`/`availableMsat`) but is NOT Bitcoin-withdrawable: the
   Lightning sweep (`tips-sweep.ts`, the live Bitcoin-withdrawal path) subtracts
   `usd_credit_msat` from the sweepable amount, so a card dollar can never leave
-  as real Bitcoin. The bridge debits the USD `billing_ledger_entries` and grants
-  the equivalent msat atomically (one D1 batch), idempotent per grant ref, and
-  bounded by the available USD balance; the conversion is the single-source rate
+  as real Bitcoin. The bridge debits the USD `billing_ledger_entries` (D1) and grants
+  the equivalent msat on the Postgres credits ledger — since the CFG-4
+  (#8519) hard cutover these are two stores, debit-first with the grant ref
+  as the idempotency key healing a crash between them (see the
+  non-atomic-seam note in `usd-credit-bridge.ts`) — idempotent per grant
+  ref, and bounded by the available USD balance; the conversion is the single-source rate
   in `workers/api/src/inference/usd-msat-conversion.ts`. Regression coverage:
   `workers/api/src/inference/usd-credit-bridge.test.ts`.
 - GitHub-account-keyed signup credit grant (MM-D1, #8478, epic #8467 mobile-only
@@ -1574,10 +1612,14 @@ This is the invariant ledger for `openagents`.
   boundary applies unchanged: the granted msat is inference-spendable but NEVER
   Bitcoin-withdrawable (the Lightning sweep excludes `usd_credit_msat`).
   Idempotency is double-guarded: the pay_ins UNIQUE idempotency key
-  (`signup:github:<githubUserId>`) AND a UNIQUE `github_user_id` column on the
-  dedicated `github_signup_credit_grants` metadata table (migration 0304),
-  both in the SAME atomic D1 batch, so a race between two concurrent logins for
-  the same GitHub account still credits exactly once. Anti-abuse floor: a
+  (`signup:github:<githubUserId>`) on the Postgres credits ledger AND a
+  UNIQUE `github_user_id` column on the dedicated D1
+  `github_signup_credit_grants` metadata table (migration 0304). Since the
+  CFG-4 (#8519) hard cutover the two guards live in different stores
+  (ledger transaction first, metadata insert after — the ledger key alone
+  already prevents a double credit; see the non-atomic-seam note in
+  `github-signup-credit-grant.ts`), so a race between two concurrent logins
+  for the same GitHub account still credits exactly once. Anti-abuse floor: a
   GitHub-account-age heuristic (env-tunable, defers brand-new accounts with a
   typed `account_too_new` outcome rather than a silent denial) and a per-IP-
   hash/per-UTC-day cap on distinct GitHub accounts granted

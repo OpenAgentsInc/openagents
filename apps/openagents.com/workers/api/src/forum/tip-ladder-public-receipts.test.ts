@@ -1,6 +1,7 @@
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
+import { paymentsLedgerDbFromD1 } from '../test/payments-ledger-sqlite'
 import { lookupForumPaidActionReceipt, readForumCreatorEarnings } from './index'
 
 const receiptRef =
@@ -76,9 +77,24 @@ class TipLadderReceiptStatement implements D1PreparedStatement {
       return Promise.resolve({ results: [] } as unknown as D1Result<T>)
     }
 
+    // CFG-4 (#8519): pay_ins reads arrive through the ledger handle's
+    // query(...) (row arrays), so the receipt lookup and the ladder count
+    // land here instead of first().
+    if (
+      this.query.includes('COUNT(*) AS count') &&
+      this.query.includes('FROM pay_ins p')
+    ) {
+      return Promise.resolve({
+        results: [{ count: this.values[0] === 'agent:orrery' ? 1 : 0 }],
+      } as unknown as D1Result<T>)
+    }
+
     if (this.query.includes('FROM pay_ins p')) {
       return Promise.resolve({
-        results: this.values[0] === 'agent:orrery' ? [ladderRow] : [],
+        results:
+          this.values[0] === 'agent:orrery' || this.values[0] === receiptRef
+            ? [ladderRow]
+            : [],
       } as D1Result<T>)
     }
 
@@ -108,10 +124,17 @@ const db: D1Database = {
   },
 }
 
+// The ledger handle wraps the SAME fake — the pay_ins rows live in one
+// database in tests, exactly as production shares one Postgres database.
+const ledgerDb = paymentsLedgerDbFromD1({
+  prepare: (sql: string) =>
+    new TipLadderReceiptStatement(sql) as never,
+})
+
 describe('tip ladder public receipts', () => {
   test('resolves ladder pay-ins through the public Forum receipt API shape', async () => {
     const receipt = await Effect.runPromise(
-      lookupForumPaidActionReceipt(db, receiptRef),
+      lookupForumPaidActionReceipt(db, ledgerDb, receiptRef),
     )
 
     expect(receipt).toMatchObject({
@@ -143,6 +166,7 @@ describe('tip ladder public receipts', () => {
     const earnings = await Effect.runPromise(
       readForumCreatorEarnings(
         db,
+        ledgerDb,
         { actorRef: 'agent:orrery', limit: 10 },
         { nowIso: () => '2026-06-11T01:41:00.000Z' },
       ),

@@ -6,6 +6,7 @@
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
+import { paymentsLedgerDbFromD1 } from '../test/payments-ledger-sqlite'
 import {
   readForumTipLeaderboards,
   readForumTipReconciliation,
@@ -77,6 +78,17 @@ class LeaderboardStatement implements D1PreparedStatement {
       } as unknown as D1Result<T>)
     }
 
+    // CFG-4 (#8519): the ladder count reads arrive through the ledger
+    // handle's query(...) (row arrays) instead of first().
+    if (
+      this.query.includes('COUNT(*) AS count') &&
+      this.query.includes('FROM pay_ins p')
+    ) {
+      return Promise.resolve({
+        results: [{ count: 0 }],
+      } as unknown as D1Result<T>)
+    }
+
     if (this.query.includes('FROM pay_ins p')) {
       return Promise.resolve({ results: [] } as unknown as D1Result<T>)
     }
@@ -123,12 +135,21 @@ const db: D1Database = {
   },
 }
 
+// CFG-4 (#8519): the ladder reads (pay_ins/pay_in_legs) arrive through the
+// PaymentsLedgerDb seam; back it with the same fake statement router.
+const ledgerDb = paymentsLedgerDbFromD1(db as never)
+
 const nowIso = '2026-06-11T02:00:00.000Z'
 
 describe('tip leaderboards staleness declaration (#4751)', () => {
   test('declares generatedAt, the staleness contract, and honesty caveats', async () => {
     const leaderboards = await Effect.runPromise(
-      readForumTipLeaderboards(db, { limit: 10 }, { nowIso: () => nowIso }),
+      readForumTipLeaderboards(
+        db,
+        ledgerDb,
+        { limit: 10 },
+        { nowIso: () => nowIso },
+      ),
     )
 
     expect(leaderboards.generatedAt).toBe(nowIso)
@@ -150,7 +171,12 @@ describe('tip leaderboards staleness declaration (#4751)', () => {
 
   test('lists ladder credited and swept sats for ranked creators', async () => {
     const leaderboards = await Effect.runPromise(
-      readForumTipLeaderboards(db, { limit: 10 }, { nowIso: () => nowIso }),
+      readForumTipLeaderboards(
+        db,
+        ledgerDb,
+        { limit: 10 },
+        { nowIso: () => nowIso },
+      ),
     )
 
     expect(leaderboards.creators).toHaveLength(1)
@@ -172,6 +198,7 @@ describe('tip leaderboards staleness declaration (#4751)', () => {
     const reconciliation = await Effect.runPromise(
       readForumTipReconciliation(
         db,
+        ledgerDb,
         { actorRef: null, limit: 10 },
         { nowIso: () => nowIso },
       ),

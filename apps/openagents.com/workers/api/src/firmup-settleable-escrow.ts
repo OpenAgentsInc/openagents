@@ -1,5 +1,6 @@
 import { type FirmupSettleableEscrowProjection } from './firmup-bitcoin-settlement-routes'
 import { laborEscrowRef, readLaborEscrowById } from './labor-escrow'
+import type { PaymentsLedgerDb } from './payments-ledger-db'
 
 /**
  * Server-side SOURCE OF TRUTH for whether a firm-up escrow may settle to Bitcoin
@@ -20,15 +21,21 @@ import { laborEscrowRef, readLaborEscrowById } from './labor-escrow'
  * `Effect.runPromise` bridges.
  */
 export const readFirmupSettleableEscrow = async (
-  db: D1Database,
+  deps: Readonly<{
+    /** Credits/escrow authority (CFG-4 #8519: Postgres-only). */
+    ledgerDb: PaymentsLedgerDb
+    /** Forum work-request/acceptance rows (their own D1 domain). */
+    db: D1Database
+  }>,
   escrowRef: string,
 ): Promise<FirmupSettleableEscrowProjection | undefined> => {
+  const { ledgerDb, db } = deps
   // The escrow public ref is `labor_escrow.public.<escrowId>`; recover the id.
   const prefix = laborEscrowRef('')
   const escrowId = escrowRef.startsWith(prefix)
     ? escrowRef.slice(prefix.length)
     : escrowRef
-  const escrow = await readLaborEscrowById(db, escrowId)
+  const escrow = await readLaborEscrowById(ledgerDb, escrowId)
 
   // Fail-closed: only a real, still-reserved firm-up escrow is settleable.
   if (escrow === null || escrow.state !== 'reserved') {

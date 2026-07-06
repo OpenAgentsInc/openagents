@@ -1,3 +1,4 @@
+import type { PaymentsLedgerDb } from '../payments-ledger-db'
 import {
   type PublicProjectionStalenessContract,
   liveAtReadStaleness,
@@ -167,9 +168,20 @@ const requestIdFromChargeReceiptRef = (
     : null
 }
 
-export const makeD1CardCreditSpendReceiptStore = (
-  db: D1Database,
-): CardCreditSpendReceiptStore => ({
+export type CardCreditSpendReceiptStoreDeps = Readonly<{
+  // The billing-domain D1 database (`billing_ledger_entries` — the purchase +
+  // USD-debit legs).
+  db: D1Database
+  // The credits-domain ledger (CFG-4, #8519): the `pay_ins` grant/spend legs
+  // are Cloud SQL Postgres-authoritative and read here through the ledger
+  // handle, never D1.
+  ledgerDb: PaymentsLedgerDb
+}>
+
+export const makeCardCreditSpendReceiptStore = ({
+  db,
+  ledgerDb,
+}: CardCreditSpendReceiptStoreDeps): CardCreditSpendReceiptStore => ({
   readCardCreditSpendReceipt: async (receiptRef, generatedAt) => {
     const sessionId = sessionIdFromReceiptRef(receiptRef)
     if (
@@ -211,19 +223,37 @@ export const makeD1CardCreditSpendReceiptStore = (
           return undefined
         }
 
-        const row = await db
-          .prepare(
-            `SELECT payer_ref, cost_msat, context_ref, public_receipt_ref, created_at
-               FROM pay_ins
-              WHERE pay_in_type = 'usd_credit_grant'
-                AND state = 'paid'
-                AND context_ref = ?
-                AND payer_ref = ?
-              ORDER BY created_at ASC
-              LIMIT 1`,
-          )
-          .bind(contextRef, `agent:${purchaseUserId}`)
-          .first<GrantRow>()
+        // CFG-4: `pay_ins` is Postgres-authoritative — read through the
+        // credits-ledger handle. Postgres returns bigint columns
+        // (`cost_msat`) as STRINGS; decode with Number().
+        const grantRows = await ledgerDb.query(
+          `SELECT payer_ref, cost_msat, context_ref, public_receipt_ref, created_at
+             FROM pay_ins
+            WHERE pay_in_type = 'usd_credit_grant'
+              AND state = 'paid'
+              AND context_ref = ?
+              AND payer_ref = ?
+            ORDER BY created_at ASC
+            LIMIT 1`,
+          [contextRef, `agent:${purchaseUserId}`],
+        )
+        const rawRow = grantRows[0]
+        const row: GrantRow | null =
+          rawRow === undefined
+            ? null
+            : {
+                context_ref:
+                  rawRow['context_ref'] === null
+                    ? null
+                    : String(rawRow['context_ref']),
+                cost_msat: Number(rawRow['cost_msat']),
+                created_at: String(rawRow['created_at']),
+                payer_ref: String(rawRow['payer_ref']),
+                public_receipt_ref:
+                  rawRow['public_receipt_ref'] === null
+                    ? null
+                    : String(rawRow['public_receipt_ref']),
+              }
 
         const grantRef = grantRefFromReceiptRef(row?.public_receipt_ref ?? null)
         if (row === null || grantRef === null) {
@@ -264,23 +294,30 @@ export const makeD1CardCreditSpendReceiptStore = (
           return undefined
         }
 
-        const rows = await db
-          .prepare(
-            `SELECT public_receipt_ref, cost_msat, context_ref
-               FROM pay_ins
-              WHERE pay_in_type = 'adjustment'
-                AND state = 'paid'
-                AND payer_ref = ?
-                AND public_receipt_ref LIKE 'receipt.inference.charge.%'
-                AND created_at >= ?
-                AND cost_msat <= ?
-              ORDER BY created_at ASC
-              LIMIT 20`,
-          )
-          .bind(grantAccountRef, grantCreatedAt, grantMsat)
-          .all<SpendRow>()
+        const spendRowsRaw = await ledgerDb.query(
+          `SELECT public_receipt_ref, cost_msat, context_ref
+             FROM pay_ins
+            WHERE pay_in_type = 'adjustment'
+              AND state = 'paid'
+              AND payer_ref = ?
+              AND public_receipt_ref LIKE 'receipt.inference.charge.%'
+              AND created_at >= ?
+              AND cost_msat <= ?
+            ORDER BY created_at ASC
+            LIMIT 20`,
+          [grantAccountRef, grantCreatedAt, grantMsat],
+        )
+        const results: Array<SpendRow> = spendRowsRaw.map(raw => ({
+          context_ref:
+            raw['context_ref'] === null ? null : String(raw['context_ref']),
+          cost_msat: Number(raw['cost_msat']),
+          public_receipt_ref:
+            raw['public_receipt_ref'] === null
+              ? null
+              : String(raw['public_receipt_ref']),
+        }))
 
-        const spendRow = rows.results.find(row => {
+        const spendRow = results.find(row => {
           const requestId = requestIdFromChargeReceiptRef(
             row.public_receipt_ref,
           )

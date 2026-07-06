@@ -333,21 +333,22 @@ describe('advanceLaborProductFlow (forward-only, PURE/INERT)', () => {
 })
 
 describe('settleLaborProductOrder (FLAG-GATED INERT)', () => {
-  // A D1 stub that THROWS on any IO. The disabled/not_authorized paths must
-  // never touch it; reaching it would throw and fail the test.
-  const throwingDb = {
-    prepare: () => {
-      throw new Error('settlement seam touched the ledger while inert')
-    },
-    batch: () => {
-      throw new Error('settlement seam touched the ledger while inert')
-    },
-  } as unknown as D1Database
+  // CFG-4 (#8519): a ledger stub that THROWS on any IO. The
+  // disabled/not_authorized paths must never touch it; reaching it would
+  // throw and fail the test.
+  const throwingLedgerDb = {
+  batch: () => {
+    throw new Error('ledger must not be touched')
+  },
+  query: () => {
+    throw new Error('ledger must not be touched')
+  },
+} as unknown as import('./payments-ledger-db').PaymentsLedgerDb
 
   test('disabled (default): plans only, never touches the ledger', async () => {
     const result = await Effect.runPromise(
       settleLaborProductOrder(
-        { db: throwingDb, enabled: false },
+        { ledgerDb: throwingLedgerDb, enabled: false },
         { plan: okPlan(), adapterId: 'labor-runtime', ownerSignOffRef: 'owner.sig.1' },
       ),
     )
@@ -358,7 +359,7 @@ describe('settleLaborProductOrder (FLAG-GATED INERT)', () => {
   test('armed but no owner sign-off: not_authorized, no ledger IO', async () => {
     const result = await Effect.runPromise(
       settleLaborProductOrder(
-        { db: throwingDb, enabled: true },
+        { ledgerDb: throwingLedgerDb, enabled: true },
         { plan: okPlan(), adapterId: 'labor-runtime' },
       ),
     )
@@ -376,7 +377,7 @@ describe('settleLaborProductOrder (FLAG-GATED INERT)', () => {
     })
     const result = await Effect.runPromise(
       settleLaborProductOrder(
-        { db: throwingDb, enabled: true },
+        { ledgerDb: throwingLedgerDb, enabled: true },
         {
           plan: orderedPlan,
           adapterId: 'labor-runtime',

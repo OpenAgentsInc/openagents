@@ -6,6 +6,9 @@
 
 import { DatabaseSync } from 'node:sqlite'
 
+import type { PaymentsLedgerDb } from './payments-ledger-db'
+import { paymentsLedgerDbFromD1 } from './test/payments-ledger-sqlite'
+
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
@@ -151,20 +154,24 @@ const deliveredPlan = (orderId = 'order-1') => {
   return result.plan
 }
 
-const makeDb = (): D1Database => {
+// CFG-4 (#8519): the credits ledger is Postgres-authoritative in production;
+// tests back the same `PaymentsLedgerDb` seam with this file's SQLite shim.
+const makeDb = (): PaymentsLedgerDb => {
   const raw = new DatabaseSync(':memory:')
   raw.exec(SCHEMA)
-  return new SqliteD1(raw) as unknown as D1Database
+  return paymentsLedgerDbFromD1(
+    new SqliteD1(raw) as unknown as import('./test/payments-ledger-sqlite').D1LikeDatabase,
+  )
 }
 
-const seedBalance = async (db: D1Database, msat: number): Promise<void> => {
-  await db
-    .prepare(
-      `INSERT INTO agent_balances (actor_ref, balance_msat, created_at, updated_at)
+const seedBalance = async (db: PaymentsLedgerDb, msat: number): Promise<void> => {
+  await db.batch([
+    {
+      params: [BUYER, msat, NOW, NOW],
+      sql: `INSERT INTO agent_balances (actor_ref, balance_msat, created_at, updated_at)
        VALUES (?, ?, ?, ?)`,
-    )
-    .bind(BUYER, msat, NOW, NOW)
-    .run()
+    },
+  ])
 }
 
 describe('settleLaborProductOrder armed against real SQL', () => {
@@ -174,7 +181,7 @@ describe('settleLaborProductOrder armed against real SQL', () => {
     await seedBalance(db, 250_000)
     const result = await run(
       settleLaborProductOrder(
-        { db, enabled: true, nowIso: () => NOW },
+        { ledgerDb: db, enabled: true, nowIso: () => NOW },
         {
           plan: deliveredPlan(),
           adapterId: 'labor-runtime',
@@ -198,7 +205,7 @@ describe('settleLaborProductOrder armed against real SQL', () => {
     await seedBalance(db, 10_000)
     const result = await run(
       settleLaborProductOrder(
-        { db, enabled: true, nowIso: () => NOW },
+        { ledgerDb: db, enabled: true, nowIso: () => NOW },
         {
           plan: deliveredPlan(),
           adapterId: 'labor-runtime',
@@ -220,7 +227,7 @@ describe('settleLaborProductOrder armed against real SQL', () => {
     const settleOnce = () =>
       run(
         settleLaborProductOrder(
-          { db, enabled: true, nowIso: () => NOW },
+          { ledgerDb: db, enabled: true, nowIso: () => NOW },
           {
             plan: deliveredPlan(),
             adapterId: 'labor-runtime',
@@ -261,7 +268,7 @@ describe('carryLaborProductOrderToSettlement end-to-end against real SQL', () =>
     await seedBalance(db, 250_000)
     const result = await run(
       carryLaborProductOrderToSettlement(
-        { db, enabled: true, nowIso: () => NOW },
+        { ledgerDb: db, enabled: true, nowIso: () => NOW },
         { ...baseInput, ownerSignOffRef: 'owner.sig.labor.e2e' },
       ),
     )
@@ -294,7 +301,7 @@ describe('carryLaborProductOrderToSettlement end-to-end against real SQL', () =>
     await seedBalance(db, 250_000)
     const result = await run(
       carryLaborProductOrderToSettlement(
-        { db, enabled: false, nowIso: () => NOW },
+        { ledgerDb: db, enabled: false, nowIso: () => NOW },
         { ...baseInput, ownerSignOffRef: 'owner.sig.labor.e2e' },
       ),
     )
@@ -309,7 +316,7 @@ describe('carryLaborProductOrderToSettlement end-to-end against real SQL', () =>
     await seedBalance(db, 250_000)
     const result = await run(
       carryLaborProductOrderToSettlement(
-        { db, enabled: true, nowIso: () => NOW },
+        { ledgerDb: db, enabled: true, nowIso: () => NOW },
         baseInput,
       ),
     )
@@ -323,7 +330,7 @@ describe('carryLaborProductOrderToSettlement end-to-end against real SQL', () =>
     await seedBalance(db, 10_000)
     const result = await run(
       carryLaborProductOrderToSettlement(
-        { db, enabled: true, nowIso: () => NOW },
+        { ledgerDb: db, enabled: true, nowIso: () => NOW },
         { ...baseInput, ownerSignOffRef: 'owner.sig.labor.e2e' },
       ),
     )
@@ -338,7 +345,7 @@ describe('carryLaborProductOrderToSettlement end-to-end against real SQL', () =>
     await seedBalance(db, 250_000)
     const result = await run(
       carryLaborProductOrderToSettlement(
-        { db, enabled: true, nowIso: () => NOW },
+        { ledgerDb: db, enabled: true, nowIso: () => NOW },
         {
           ...baseInput,
           request: { ...orderRequest, orderId: '   ' },
@@ -360,7 +367,7 @@ describe('carryLaborProductOrderToSettlement end-to-end against real SQL', () =>
     const carry = () =>
       run(
         carryLaborProductOrderToSettlement(
-          { db, enabled: true, nowIso: () => NOW },
+          { ledgerDb: db, enabled: true, nowIso: () => NOW },
           { ...baseInput, ownerSignOffRef: 'owner.sig.labor.e2e' },
         ),
       )

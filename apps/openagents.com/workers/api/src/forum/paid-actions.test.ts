@@ -4,6 +4,7 @@ import { Effect, Schema as S } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import { makeFakeOpenAgentsHostedMdkClient } from '../hosted-mdk-client'
+import { makeLedgerSqliteDb } from '../test/payments-ledger-sqlite'
 import {
   ForumPaidActionError,
   type ForumPaidActionKindType,
@@ -769,6 +770,12 @@ const paidActionDb = (store: ForumPaidActionStore): D1Database => ({
   },
 })
 
+// CFG-4 (#8519): the tip-ladder receipt fallback reads pay_ins through the
+// Postgres-authoritative PaymentsLedgerDb seam. These tests never create
+// ladder pay-ins, so an empty in-memory credits ledger reproduces the
+// no-ladder-receipt case the old D1 shim answered with empty results.
+const ledgerDb = makeLedgerSqliteDb()
+
 const runtime: ForumPaidActionRuntime = {
   challengeTtlMs: 10 * 60_000,
   makeChallengeId: () => '77777777-7777-4777-8777-777777777777',
@@ -895,8 +902,8 @@ const verifiedPaymentEvent = (
 })
 
 const directTipInput = (
-  overrides: Partial<Parameters<typeof submitForumDirectTip>[1]> = {},
-): Parameters<typeof submitForumDirectTip>[1] => ({
+  overrides: Partial<Parameters<typeof submitForumDirectTip>[2]> = {},
+): Parameters<typeof submitForumDirectTip>[2] => ({
   amount: { amount: 15, asset: 'sats' },
   idempotencyKey: 'forum:direct-tip:post:1:actor.alice',
   payerActorRef: 'actor.alice',
@@ -1048,7 +1055,7 @@ describe('Forum paid actions', () => {
   test('records a confirmed BOLT 12 direct tip as settled recipient-wallet evidence', async () => {
     const store = new ForumPaidActionStore()
     const response = await Effect.runPromise(
-      submitForumDirectTip(paidActionDb(store), directTipInput(), runtime),
+      submitForumDirectTip(paidActionDb(store), ledgerDb, directTipInput(), runtime),
     )
 
     expect(response.status).toBe('settled')
@@ -1077,10 +1084,10 @@ describe('Forum paid actions', () => {
   test('returns direct tips idempotently for the same payer, post, amount, and provider ref', async () => {
     const store = new ForumPaidActionStore()
     const first = await Effect.runPromise(
-      submitForumDirectTip(paidActionDb(store), directTipInput(), runtime),
+      submitForumDirectTip(paidActionDb(store), ledgerDb, directTipInput(), runtime),
     )
     const second = await Effect.runPromise(
-      submitForumDirectTip(paidActionDb(store), directTipInput(), runtime),
+      submitForumDirectTip(paidActionDb(store), ledgerDb, directTipInput(), runtime),
     )
 
     expect(second.idempotent).toBe(true)
@@ -1095,6 +1102,7 @@ describe('Forum paid actions', () => {
     const response = await Effect.runPromise(
       submitForumDirectTip(
         paidActionDb(store),
+        ledgerDb,
         directTipInput({
           paymentEvidence: {
             externalRef: 'external.payment.redacted.direct_tip_failed',
@@ -1121,6 +1129,7 @@ describe('Forum paid actions', () => {
     const response = await Effect.runPromise(
       submitForumDirectTip(
         paidActionDb(store),
+        ledgerDb,
         directTipInput({
           paymentEvidence: {
             externalRef: 'external.payment.redacted.direct_tip_observed',
@@ -1135,7 +1144,7 @@ describe('Forum paid actions', () => {
       ),
     )
     const lookup = await Effect.runPromise(
-      lookupForumDirectTip(paidActionDb(store), response.attemptId),
+      lookupForumDirectTip(paidActionDb(store), ledgerDb, response.attemptId),
     )
 
     expect(lookup).toMatchObject({
@@ -1150,6 +1159,7 @@ describe('Forum paid actions', () => {
     const pending = await Effect.runPromise(
       submitForumDirectTip(
         paidActionDb(store),
+        ledgerDb,
         directTipInput({
           paymentEvidence: {
             externalRef: 'external.payment.redacted.direct_tip_observed',
@@ -1166,6 +1176,7 @@ describe('Forum paid actions', () => {
     const reconciled = await Effect.runPromise(
       reconcileForumDirectTipWebhook(
         paidActionDb(store),
+        ledgerDb,
         {
           amount: { amount: 15, asset: 'sats' },
           attemptId: pending.attemptId,
@@ -1216,6 +1227,7 @@ describe('Forum paid actions', () => {
     const pending = await Effect.runPromise(
       submitForumDirectTip(
         paidActionDb(store),
+        ledgerDb,
         directTipInput({
           paymentEvidence: {
             externalRef: 'external.payment.redacted.direct_tip_observed',
@@ -1244,10 +1256,10 @@ describe('Forum paid actions', () => {
       signatureBindingRef: 'binding.forum.mdk.test',
     }
     const first = await Effect.runPromise(
-      reconcileForumDirectTipWebhook(paidActionDb(store), input, runtime),
+      reconcileForumDirectTipWebhook(paidActionDb(store), ledgerDb, input, runtime),
     )
     const second = await Effect.runPromise(
-      reconcileForumDirectTipWebhook(paidActionDb(store), input, runtime),
+      reconcileForumDirectTipWebhook(paidActionDb(store), ledgerDb, input, runtime),
     )
 
     expect(first.idempotent).toBe(false)
@@ -1269,12 +1281,13 @@ describe('Forum paid actions', () => {
       },
     })
     const pending = await Effect.runPromise(
-      submitForumDirectTip(paidActionDb(store), originalInput, runtime),
+      submitForumDirectTip(paidActionDb(store), ledgerDb, originalInput, runtime),
     )
 
     await Effect.runPromise(
       reconcileForumDirectTipWebhook(
         paidActionDb(store),
+        ledgerDb,
         {
           amount: { amount: 15, asset: 'sats' },
           attemptId: pending.attemptId,
@@ -1294,7 +1307,7 @@ describe('Forum paid actions', () => {
     )
 
     const retry = await Effect.runPromise(
-      submitForumDirectTip(paidActionDb(store), originalInput, runtime),
+      submitForumDirectTip(paidActionDb(store), ledgerDb, originalInput, runtime),
     )
 
     expect(retry).toMatchObject({
@@ -1318,6 +1331,7 @@ describe('Forum paid actions', () => {
     const pending = await Effect.runPromise(
       submitForumDirectTip(
         paidActionDb(store),
+        ledgerDb,
         directTipInput({
           paymentEvidence: {
             externalRef: 'external.payment.redacted.direct_tip_observed',
@@ -1336,6 +1350,7 @@ describe('Forum paid actions', () => {
       Effect.runPromise(
         reconcileForumDirectTipWebhook(
           paidActionDb(store),
+          ledgerDb,
           {
             amount: { amount: 16, asset: 'sats' },
             attemptId: pending.attemptId,
@@ -1361,12 +1376,13 @@ describe('Forum paid actions', () => {
     const store = new ForumPaidActionStore()
 
     await Effect.runPromise(
-      submitForumDirectTip(paidActionDb(store), directTipInput(), runtime),
+      submitForumDirectTip(paidActionDb(store), ledgerDb, directTipInput(), runtime),
     )
     await expect(
       Effect.runPromise(
         submitForumDirectTip(
           paidActionDb(store),
+          ledgerDb,
           directTipInput({
             idempotencyKey: 'forum:direct-tip:post:1:actor.alice:duplicate',
           }),
@@ -1378,6 +1394,7 @@ describe('Forum paid actions', () => {
       Effect.runPromise(
         submitForumDirectTip(
           paidActionDb(new ForumPaidActionStore()),
+          ledgerDb,
           directTipInput({
             payerActorRef: 'actor.ben',
           }),
@@ -1468,7 +1485,7 @@ describe('Forum paid actions', () => {
       ),
     )
     const lookup = await Effect.runPromise(
-      lookupForumPaidActionReceipt(paidActionDb(store), redemption.receiptRef),
+      lookupForumPaidActionReceipt(paidActionDb(store), ledgerDb, redemption.receiptRef),
     )
 
     expect(redemption).toStrictEqual({
@@ -1526,7 +1543,7 @@ describe('Forum paid actions', () => {
       ),
     )
     const lookup = await Effect.runPromise(
-      lookupForumPaidActionReceipt(paidActionDb(store), redemption.receiptRef),
+      lookupForumPaidActionReceipt(paidActionDb(store), ledgerDb, redemption.receiptRef),
     )
 
     expect(store.paymentEvents).toStrictEqual([

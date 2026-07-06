@@ -35,7 +35,6 @@
 
 import { Effect, Schema as S } from 'effect'
 
-import type { BillingDomainMirror } from '../billing'
 import {
   type AssetBoundaryAsset,
   validateAssetBoundary,
@@ -46,7 +45,8 @@ import {
   type ClawbackOutcome,
 } from './inference-abuse-controls'
 import { workerLogEntry } from '../observability'
-import { type LedgerStatement, runLedgerStatements } from '../payments-ledger'
+import { runLedgerStatements } from '../payments-ledger'
+import type { PaymentsLedgerDb } from '../payments-ledger-db'
 import { currentIsoTimestamp } from '../runtime-primitives'
 import {
   agentRefForUser,
@@ -59,7 +59,7 @@ import { usdCentsToMsatFloor } from './usd-msat-conversion'
 // Issue #8505 (Part 2): fail-soft, best-effort per-user credit-balance
 // projection into Khala Sync (`scope.user.<userId>`) — same seam as the
 // inference/cloud metering hooks and the signup-grant path. Called AFTER a
-// FRESH grant/clawback commits, with the SAME idempotency key the D1 write
+// FRESH grant/clawback commits, with the SAME idempotency key the ledger write
 // used. Optional; a deployment without the Khala Sync binding (or a test)
 // grants/claws back exactly as before.
 export type CreditBalanceProjectionRecorder = (
@@ -193,9 +193,11 @@ export const readRecentAdminCreditGrants = async (
   }))
 }
 
-// The metadata-table insert, folded into the SAME atomic batch as the ledger
-// statements so the UNIQUE grant_ref primary key is a second, independent
-// idempotency guard alongside the pay_ins UNIQUE idempotency key.
+// The grant-tracking metadata insert (`admin_credit_grants`, a D1 admin-domain
+// table — CFG-4: NOT part of the Postgres credits ledger). Its UNIQUE
+// grant_ref primary key is a second, independent idempotency guard alongside
+// the pay_ins UNIQUE idempotency key; since the hard cutover the two no longer
+// share one transaction (see the non-atomic-seam note in `grantAdminCredit`).
 const adminCreditGrantMetadataStatement = (
   input: Readonly<{
     grantRef: string
@@ -208,7 +210,10 @@ const adminCreditGrantMetadataStatement = (
     creditReceiptRef: string
   }>,
   nowIso: string,
-): LedgerStatement => ({
+): Readonly<{
+  sql: string
+  params: ReadonlyArray<string | number | null>
+}> => ({
   params: [
     input.grantRef,
     input.userId,
@@ -262,9 +267,12 @@ export type AdminCreditGrantOutcome =
     }>
 
 export type AdminCreditGrantDeps = Readonly<{
+  // The D1 database for the grant-tracking table (`admin_credit_grants`).
   db: D1Database
+  // The credits-domain ledger (CFG-4, #8519: `pay_ins`/`pay_in_legs`/
+  // `agent_balances` are Cloud SQL Postgres-authoritative).
+  ledgerDb: PaymentsLedgerDb
   nowIso?: (() => string) | undefined
-  mirror?: BillingDomainMirror | undefined
   recordCreditBalanceProjection?: CreditBalanceProjectionRecorder | undefined
 }>
 
@@ -355,32 +363,44 @@ export const grantAdminCredit = (
 
     const creditReceiptRef = usdCreditGrantReceiptRef(input.grantRef)
 
+    // CFG-4 NON-ATOMIC SEAM: the msat grant (Postgres credits ledger) and the
+    // grant-tracking metadata row (`admin_credit_grants`, D1) can no longer
+    // share one transaction. Order: LEDGER FIRST, metadata second — if the
+    // metadata write fails after the credit landed, a retry with the SAME
+    // grantRef re-enters (the existing-grant read above still misses), the
+    // ledger grant replays as an idempotent no-op (UNIQUE pay_ins idempotency
+    // key + the guarded balance UPDATE), and the metadata insert lands.
+    // Metadata-first would be WRONG: a stranded metadata row would answer
+    // `alreadyGranted` forever without the credit ever existing.
     yield* Effect.tryPromise({
       catch: (cause: unknown) => new AdminCreditGrantError({ cause }),
       try: () =>
         runLedgerStatements(
-          deps.db,
-          [
-            ...usdCreditGrantStatements(
-              { accountRef, contextRef, grantMsat, grantRef: input.grantRef },
-              nowIso,
-            ),
-            adminCreditGrantMetadataStatement(
-              {
-                accountRef,
-                amountMsat: grantMsat,
-                amountUsdCents: input.amountUsdCents,
-                creditReceiptRef,
-                grantedByUserId: input.grantedByUserId,
-                grantRef: input.grantRef,
-                reason,
-                userId: input.userId,
-              },
-              nowIso,
-            ),
-          ],
-          deps.mirror,
+          deps.ledgerDb,
+          usdCreditGrantStatements(
+            { accountRef, contextRef, grantMsat, grantRef: input.grantRef },
+            nowIso,
+          ),
         ),
+    })
+
+    const metadata = adminCreditGrantMetadataStatement(
+      {
+        accountRef,
+        amountMsat: grantMsat,
+        amountUsdCents: input.amountUsdCents,
+        creditReceiptRef,
+        grantedByUserId: input.grantedByUserId,
+        grantRef: input.grantRef,
+        reason,
+        userId: input.userId,
+      },
+      nowIso,
+    )
+    yield* Effect.tryPromise({
+      catch: (cause: unknown) => new AdminCreditGrantError({ cause }),
+      try: () =>
+        deps.db.prepare(metadata.sql).bind(...metadata.params).run(),
     })
 
     yield* Effect.logInfo(
@@ -395,8 +415,8 @@ export const grantAdminCredit = (
 
     // Issue #8505 (Part 2): best-effort live projection of the FRESH admin
     // grant into scope.user.<userId>, reusing the SAME idempotency key the
-    // D1 grant just used. Fail-soft by contract and never blocks/reverses
-    // the D1 grant above, which already committed.
+    // ledger grant just used. Fail-soft by contract and never blocks/reverses
+    // the ledger grant above, which already committed.
     if (deps.recordCreditBalanceProjection !== undefined) {
       yield* Effect.promise(() =>
         deps
@@ -428,9 +448,10 @@ export const adminCreditClawbackSourceRef = (clawbackRef: string): string =>
   `admin:credit-clawback:${clawbackRef}`
 
 export type AdminCreditClawbackDeps = Readonly<{
-  db: D1Database
+  // The credits-domain ledger (CFG-4) — the clawback debits `agent_balances`
+  // through `pay_ins`/`pay_in_legs` only; no D1 table is touched here.
+  ledgerDb: PaymentsLedgerDb
   nowIso?: () => string
-  mirror?: BillingDomainMirror | undefined
   recordCreditBalanceProjection?: CreditBalanceProjectionRecorder | undefined
 }>
 
@@ -458,11 +479,11 @@ export const clawbackAdminCredit = (
         contextRef: `admin-credit-clawback:${input.userId}:${input.reason.trim().slice(0, 200)}`,
         sourceRef,
       },
-      { db: deps.db, mirror: deps.mirror, ...(deps.nowIso === undefined ? {} : { nowIso: deps.nowIso }) },
+      { ledgerDb: deps.ledgerDb, ...(deps.nowIso === undefined ? {} : { nowIso: deps.nowIso }) },
     )
 
     // Issue #8505 (Part 2): best-effort live projection of the clawback into
-    // scope.user.<userId>, reusing the SAME idempotency key the D1 clawback
+    // scope.user.<userId>, reusing the SAME idempotency key the ledger clawback
     // used (`inferenceClawbackIdempotencyKey`). `clawedBack` covers BOTH a
     // fresh clawback AND an idempotent replay — safe either way, since the
     // projection's own exact-once guard (keyed on the SAME idempotency key)

@@ -1,4 +1,3 @@
-import { DatabaseSync } from 'node:sqlite'
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
@@ -11,109 +10,33 @@ import {
   MOBILE_CREDITS_TRANSACTIONS_PATH,
   type MobileCreditsRouteDependencies,
 } from './mobile-credits-routes'
+import type { PaymentsLedgerDb } from './payments-ledger-db'
+import { makeLedgerSqliteDb } from './test/payments-ledger-sqlite'
 
-type Row = Record<string, unknown>
-type FakeEnv = Readonly<{ db: D1Database }>
+// CFG-4 (#8519): the routes read the Postgres-authoritative credits ledger
+// through `PaymentsLedgerDb`; tests back it with the shared SQLite ledger
+// adapter (same credits-domain schema, portable-SQL guarded).
+type FakeEnv = Readonly<{ ledger: PaymentsLedgerDb }>
 type FakeUser = Readonly<{ userId: string }>
 
-class SqliteD1Statement {
-  private bound: ReadonlyArray<unknown> = []
+const makeEnv = (): FakeEnv => ({ ledger: makeLedgerSqliteDb() })
 
-  constructor(
-    private readonly db: DatabaseSync,
-    private readonly sql: string,
-  ) {}
-
-  bind(...values: ReadonlyArray<unknown>): SqliteD1Statement {
-    this.bound = values.map(value => (value === undefined ? null : value))
-    return this
-  }
-
-  async first<T = Row>(): Promise<T | null> {
-    const row = this.db.prepare(this.sql).get(...(this.bound as never[]))
-    return (row ?? null) as T | null
-  }
-
-  async all<T = Row>(): Promise<{ results: Array<T> }> {
-    return { results: this.db.prepare(this.sql).all(...(this.bound as never[])) as Array<T> }
-  }
-
-  async run(): Promise<{ meta: { changes: number }; success: true }> {
-    const result = this.db.prepare(this.sql).run(...(this.bound as never[]))
-    return { meta: { changes: Number(result.changes) }, success: true }
-  }
-}
-
-class SqliteD1 {
-  constructor(private readonly db: DatabaseSync) {}
-
-  prepare(sql: string): SqliteD1Statement {
-    return new SqliteD1Statement(this.db, sql)
-  }
-}
-
-const schema = `
-CREATE TABLE agent_balances (
-  actor_ref TEXT PRIMARY KEY,
-  balance_msat INTEGER NOT NULL DEFAULT 0 CHECK (balance_msat >= 0),
-  held_msat INTEGER NOT NULL DEFAULT 0,
-  usd_credit_msat INTEGER NOT NULL DEFAULT 0,
-  sweep_enabled INTEGER NOT NULL DEFAULT 1,
-  sweep_threshold_sat INTEGER NOT NULL DEFAULT 210,
-  send_credits_below_sat INTEGER NOT NULL DEFAULT 10,
-  receive_credits_below_sat INTEGER NOT NULL DEFAULT 10,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
-CREATE TABLE pay_ins (
-  id TEXT PRIMARY KEY,
-  pay_in_type TEXT NOT NULL,
-  payer_ref TEXT NOT NULL,
-  cost_msat INTEGER NOT NULL CHECK (cost_msat > 0),
-  state TEXT NOT NULL,
-  failure_reason TEXT,
-  rung TEXT,
-  context_ref TEXT,
-  idempotency_key TEXT NOT NULL UNIQUE,
-  genesis_id TEXT,
-  successor_id TEXT,
-  created_at TEXT NOT NULL,
-  state_changed_at TEXT NOT NULL
-);
-
-CREATE TABLE pay_in_legs (
-  id TEXT PRIMARY KEY,
-  pay_in_id TEXT NOT NULL REFERENCES pay_ins (id),
-  direction TEXT NOT NULL CHECK (direction IN ('in', 'out')),
-  kind TEXT NOT NULL CHECK (kind IN ('balance', 'lightning')),
-  party_ref TEXT NOT NULL,
-  amount_msat INTEGER NOT NULL CHECK (amount_msat > 0),
-  resulting_balance_msat INTEGER,
-  external_ref TEXT,
-  refund_of_leg_id TEXT,
-  created_at TEXT NOT NULL
-);
-
-CREATE INDEX idx_pay_ins_payer ON pay_ins (payer_ref);
-CREATE INDEX idx_pay_in_legs_party ON pay_in_legs (party_ref);
-`
-
-const makeEnv = (): FakeEnv => {
-  const raw = new DatabaseSync(':memory:')
-  raw.exec(schema)
-  return { db: new SqliteD1(raw) as unknown as D1Database }
-}
-
-const insertBalance = (env: FakeEnv, actorRef: string, balanceMsat: number, heldMsat = 0): void => {
-  const stmt = (env.db as unknown as SqliteD1).prepare(
-    `INSERT INTO agent_balances (actor_ref, balance_msat, held_msat, created_at, updated_at)
+const insertBalance = async (
+  env: FakeEnv,
+  actorRef: string,
+  balanceMsat: number,
+  heldMsat = 0,
+): Promise<void> => {
+  await env.ledger.batch([
+    {
+      params: [actorRef, balanceMsat, heldMsat],
+      sql: `INSERT INTO agent_balances (actor_ref, balance_msat, held_msat, created_at, updated_at)
      VALUES (?, ?, ?, '2026-07-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z')`,
-  )
-  void stmt.bind(actorRef, balanceMsat, heldMsat).run()
+    },
+  ])
 }
 
-const insertPayIn = (
+const insertPayIn = async (
   env: FakeEnv,
   row: Readonly<{
     id: string
@@ -123,30 +46,30 @@ const insertPayIn = (
     contextRef?: string | null
     createdAt: string
   }>,
-): void => {
-  const stmt = (env.db as unknown as SqliteD1).prepare(
-    `INSERT INTO pay_ins
+): Promise<void> => {
+  await env.ledger.batch([
+    {
+      params: [
+        row.id,
+        row.payInType,
+        row.payerRef,
+        row.costMsat,
+        row.contextRef ?? null,
+        `idem:${row.id}`,
+        row.createdAt,
+        row.createdAt,
+      ],
+      sql: `INSERT INTO pay_ins
        (id, pay_in_type, payer_ref, cost_msat, state, context_ref, idempotency_key, created_at, state_changed_at)
      VALUES (?, ?, ?, ?, 'paid', ?, ?, ?, ?)`,
-  )
-  void stmt
-    .bind(
-      row.id,
-      row.payInType,
-      row.payerRef,
-      row.costMsat,
-      row.contextRef ?? null,
-      `idem:${row.id}`,
-      row.createdAt,
-      row.createdAt,
-    )
-    .run()
+    },
+  ])
 }
 
 const makeDependencies = (
   sessionUserId: string | undefined,
 ): MobileCreditsRouteDependencies<FakeEnv, FakeUser> => ({
-  db: env => env.db,
+  ledgerDb: env => env.ledger,
   requireUserBearerSession: async () =>
     sessionUserId === undefined ? undefined : { user: { userId: sessionUserId } },
   userIdFromSession: session => session.user.userId,
@@ -205,7 +128,7 @@ describe('handleMobileCreditsBalanceRequest', () => {
   test('reads the real D1 agent_balances row, converted to USD cents at the shared rate', async () => {
     const env = makeEnv()
     // $100,000/BTC reference rate (DEFAULT_BTC_USD): 1_000_000 msat == $1.00.
-    insertBalance(env, 'agent:user-1', 5_000_000)
+    await insertBalance(env, 'agent:user-1', 5_000_000)
     const response = await runBalance(
       makeDependencies('user-1'),
       new Request(`https://openagents.com${MOBILE_CREDITS_BALANCE_PATH}`),
@@ -218,7 +141,7 @@ describe('handleMobileCreditsBalanceRequest', () => {
 
   test('reports the available balance (minus escrow-held), matching the coding-admission gate', async () => {
     const env = makeEnv()
-    insertBalance(env, 'agent:user-1', 5_000_000, 2_000_000)
+    await insertBalance(env, 'agent:user-1', 5_000_000, 2_000_000)
     const response = await runBalance(
       makeDependencies('user-1'),
       new Request(`https://openagents.com${MOBILE_CREDITS_BALANCE_PATH}`),
@@ -230,8 +153,8 @@ describe('handleMobileCreditsBalanceRequest', () => {
 
   test('one user never sees another user\'s balance', async () => {
     const env = makeEnv()
-    insertBalance(env, 'agent:user-1', 5_000_000)
-    insertBalance(env, 'agent:user-2', 9_000_000)
+    await insertBalance(env, 'agent:user-1', 5_000_000)
+    await insertBalance(env, 'agent:user-2', 9_000_000)
     const response = await runBalance(
       makeDependencies('user-1'),
       new Request(`https://openagents.com${MOBILE_CREDITS_BALANCE_PATH}`),
@@ -314,7 +237,7 @@ describe('handleMobileCreditsTransactionsRequest', () => {
 
   test('lists a real signup grant and inference charge, newest first, in USD cents', async () => {
     const env = makeEnv()
-    insertPayIn(env, {
+    await insertPayIn(env, {
       contextRef: 'github-signup:12345',
       costMsat: 10_000_000, // $10.00 grant
       createdAt: '2026-07-01T00:00:00.000Z',
@@ -322,7 +245,7 @@ describe('handleMobileCreditsTransactionsRequest', () => {
       payInType: 'usd_credit_grant',
       payerRef: 'agent:user-1',
     })
-    insertPayIn(env, {
+    await insertPayIn(env, {
       contextRef: 'inference:vertex:served:gemini-2.5-pro:tokens:500',
       costMsat: 50_000, // $0.05 charge
       createdAt: '2026-07-02T00:00:00.000Z',
@@ -360,7 +283,7 @@ describe('handleMobileCreditsTransactionsRequest', () => {
 
   test('never leaks another user\'s transactions', async () => {
     const env = makeEnv()
-    insertPayIn(env, {
+    await insertPayIn(env, {
       costMsat: 10_000_000,
       createdAt: '2026-07-01T00:00:00.000Z',
       id: 'grant-user-2',
@@ -378,21 +301,21 @@ describe('handleMobileCreditsTransactionsRequest', () => {
 
   test('paginates with a keyset cursor: limit=1 then Load more resumes correctly', async () => {
     const env = makeEnv()
-    insertPayIn(env, {
+    await insertPayIn(env, {
       costMsat: 10_000_000,
       createdAt: '2026-07-01T00:00:00.000Z',
       id: 'row-a',
       payInType: 'usd_credit_grant',
       payerRef: 'agent:user-1',
     })
-    insertPayIn(env, {
+    await insertPayIn(env, {
       costMsat: 20_000,
       createdAt: '2026-07-02T00:00:00.000Z',
       id: 'row-b',
       payInType: 'adjustment',
       payerRef: 'agent:user-1',
     })
-    insertPayIn(env, {
+    await insertPayIn(env, {
       costMsat: 30_000,
       createdAt: '2026-07-03T00:00:00.000Z',
       id: 'row-c',

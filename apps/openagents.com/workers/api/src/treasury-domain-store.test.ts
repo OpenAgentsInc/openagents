@@ -5,7 +5,6 @@
 
 import { describe, expect, test } from 'vitest'
 
-import { runLedgerStatements, type LedgerStatement } from './payments-ledger'
 import {
   TREASURY_DOMAIN_TABLES,
   isTreasuryDomainHandle,
@@ -36,7 +35,6 @@ const fakePostgres = (
   return {
     selectLatestRows: () => Promise.resolve([]),
     selectRowsByKey: () => Promise.resolve([]),
-    sumAgentBalancesMsat: () => Promise.resolve('0'),
     upsertRows: (table, rows) => {
       upserts.push({ rows, table })
       return Promise.resolve()
@@ -113,18 +111,24 @@ describe('makeTreasuryDatabaseForEnv', () => {
 
 const seededSqlite = () => {
   const sqlite = makeSqliteD1()
+  // CFG-4 (#8519): the mirror fixture uses forum_receipts — the credits
+  // tables (agent_balances & co.) left this registry for the Postgres-only
+  // payments ledger.
   sqlite.exec(`
-    CREATE TABLE agent_balances (
-      actor_ref TEXT PRIMARY KEY,
-      balance_msat INTEGER NOT NULL DEFAULT 0 CHECK (balance_msat >= 0),
-      sweep_enabled INTEGER NOT NULL DEFAULT 1,
-      sweep_threshold_sat INTEGER NOT NULL DEFAULT 210,
-      send_credits_below_sat INTEGER NOT NULL DEFAULT 10,
-      receive_credits_below_sat INTEGER NOT NULL DEFAULT 10,
+    CREATE TABLE forum_receipts (
+      id TEXT PRIMARY KEY,
+      receipt_ref TEXT NOT NULL,
+      action_kind TEXT NOT NULL DEFAULT 'tip',
+      target_forum_id TEXT,
+      target_topic_id TEXT,
+      target_post_id TEXT,
+      amount_asset TEXT NOT NULL DEFAULT 'credits',
+      amount_value INTEGER NOT NULL DEFAULT 0,
+      recipient_actor_ref TEXT,
+      redacted_payment_ref TEXT,
+      public_projection_json TEXT NOT NULL DEFAULT '{}',
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      held_msat INTEGER NOT NULL DEFAULT 0,
-      usd_credit_msat INTEGER NOT NULL DEFAULT 0
+      archived_at TEXT
     );
   `)
   return sqlite
@@ -134,7 +138,7 @@ describe('mirrorTreasuryRows (fail-soft dual-write)', () => {
   test('a bare D1Database is a no-op (fail-safe degradation)', async () => {
     const sqlite = seededSqlite()
     await expect(
-      mirrorTreasuryRows(sqlite.db, 'agent_balances', 'actor_ref', ['a']),
+      mirrorTreasuryRows(sqlite.db, 'forum_receipts', 'id', ['a']),
     ).resolves.toBeUndefined()
     sqlite.close()
   })
@@ -142,8 +146,8 @@ describe('mirrorTreasuryRows (fail-soft dual-write)', () => {
   test('mirrors the resolved D1 row (never the caller intent)', async () => {
     const sqlite = seededSqlite()
     sqlite.exec(`
-      INSERT INTO agent_balances (actor_ref, balance_msat, created_at, updated_at)
-      VALUES ('actor.a', 21000, 't0', 't0');
+      INSERT INTO forum_receipts (id, receipt_ref, amount_value, created_at)
+      VALUES ('receipt.a', 'receipt.public.a', 21000, 't0');
     `)
     const postgres = fakePostgres()
     const handle = makeTreasuryDomainHandle({
@@ -152,12 +156,12 @@ describe('mirrorTreasuryRows (fail-soft dual-write)', () => {
       postgres,
       wait: () => Promise.resolve(),
     })
-    await mirrorTreasuryRows(handle, 'agent_balances', 'actor_ref', [
-      'actor.a',
+    await mirrorTreasuryRows(handle, 'forum_receipts', 'id', [
+      'receipt.a',
     ])
     expect(postgres.upserts).toHaveLength(1)
-    expect(postgres.upserts[0]?.table).toBe('agent_balances')
-    expect(postgres.upserts[0]?.rows[0]?.['balance_msat']).toBe(21000)
+    expect(postgres.upserts[0]?.table).toBe('forum_receipts')
+    expect(postgres.upserts[0]?.rows[0]?.['amount_value']).toBe(21000)
     sqlite.close()
   })
 
@@ -172,7 +176,7 @@ describe('mirrorTreasuryRows (fail-soft dual-write)', () => {
       wait: () => Promise.resolve(),
     })
     await expect(
-      mirrorTreasuryRows(handle, 'agent_balances', 'balance_msat', [1]),
+      mirrorTreasuryRows(handle, 'forum_receipts', 'amount_value', [1]),
     ).resolves.toBeUndefined()
     expect(logged[0]?.[0]).toBe('khala_sync_treasury_dual_write_failed')
     sqlite.close()
@@ -187,7 +191,7 @@ describe('mirrorTreasuryRows (fail-soft dual-write)', () => {
       postgres,
       wait: () => Promise.resolve(),
     })
-    await mirrorTreasuryRows(handle, 'agent_balances', 'actor_ref', ['a'])
+    await mirrorTreasuryRows(handle, 'forum_receipts', 'id', ['a'])
     expect(postgres.upserts).toHaveLength(0)
     sqlite.close()
   })
@@ -285,97 +289,22 @@ describe('treasuryRead (flag routing)', () => {
   })
 })
 
-describe('runLedgerStatements (annotated mirror)', () => {
-  const balanceStatement = (
-    actorRef: string,
-    amountMsat: number,
-  ): LedgerStatement => ({
-    mirror: {
-      keyColumn: 'actor_ref',
-      keys: [actorRef],
-      table: 'agent_balances',
-    },
-    params: [actorRef, amountMsat, 't0', 't0'],
-    sql: `INSERT INTO agent_balances (actor_ref, balance_msat, created_at, updated_at)
-          VALUES (?, ?, ?, ?)
-          ON CONFLICT (actor_ref) DO UPDATE SET balance_msat = excluded.balance_msat`,
-  })
-
-  test('bare D1: batch runs, no mirror machinery involved', async () => {
-    const sqlite = seededSqlite()
-    await runLedgerStatements(sqlite.db, [balanceStatement('actor.a', 1000)])
-    const row = await sqlite.db
-      .prepare(`SELECT balance_msat FROM agent_balances WHERE actor_ref = ?`)
-      .bind('actor.a')
-      .first<{ balance_msat: number }>()
-    expect(row?.balance_msat).toBe(1000)
-    sqlite.close()
-  })
-
-  test('seam handle: annotated rows mirror ONCE per key after the batch', async () => {
-    const sqlite = seededSqlite()
-    const postgres = fakePostgres()
-    const handle = makeTreasuryDomainHandle({
-      d1: sqlite.db,
-      flags: { dualWrite: true, reads: 'd1' },
-      postgres,
-      wait: () => Promise.resolve(),
-    })
-    await runLedgerStatements(handle, [
-      balanceStatement('actor.a', 1000),
-      balanceStatement('actor.a', 2000),
-      balanceStatement('actor.b', 3000),
-      // Unannotated statements never mirror.
-      { params: [], sql: 'SELECT 1' },
-    ])
-    expect(postgres.upserts).toHaveLength(1)
-    expect(postgres.upserts[0]?.table).toBe('agent_balances')
-    const mirrored = postgres.upserts[0]?.rows.map(row => [
-      row['actor_ref'],
-      row['balance_msat'],
-    ])
-    // The RESOLVED balances (post-batch), one row per deduped key.
-    expect(mirrored).toEqual([
-      ['actor.a', 2000],
-      ['actor.b', 3000],
-    ])
-    sqlite.close()
-  })
-
-  test('mirror failure never fails the ledger batch (fail-soft)', async () => {
-    const sqlite = seededSqlite()
-    const logged: Array<Logged> = []
-    const handle = makeTreasuryDomainHandle({
-      d1: sqlite.db,
-      flags: { dualWrite: true, reads: 'd1' },
-      log: (event, fields) => logged.push([event, fields]),
-      postgres: fakePostgres({
-        upsertRows: () => Promise.reject(new Error('postgres down')),
-      }),
-      wait: () => Promise.resolve(),
-    })
-    await expect(
-      runLedgerStatements(handle, [balanceStatement('actor.a', 1000)]),
-    ).resolves.toBeUndefined()
-    const row = await sqlite.db
-      .prepare(`SELECT balance_msat FROM agent_balances WHERE actor_ref = ?`)
-      .bind('actor.a')
-      .first<{ balance_msat: number }>()
-    expect(row?.balance_msat).toBe(1000)
-    expect(logged[0]?.[0]).toBe('khala_sync_treasury_dual_write_failed')
-    sqlite.close()
-  })
-})
+// CFG-4 (#8519): the 'runLedgerStatements (annotated mirror)' suite was
+// DELETED with the machinery it tested — ledger statements no longer carry
+// mirror annotations and `runLedgerStatements` executes on the Postgres-only
+// `PaymentsLedgerDb` (see payments-ledger-postgres.contract.test.ts).
 
 describe('registry discipline', () => {
   // Was 27 until commit 87e6992d1e ("refactor(cleanup): remove unarmed MPP
   // chat endpoint") intentionally dropped `mpp_lightning_replay` and
-  // `mpp_spt_replay` along with the endpoint they backed, bringing the
-  // registry to 25. The "stays in lock-step with the khala-sync-server
-  // backfill registry" test below confirms both registries still agree.
-  test('covers all 25 domain tables with conflict keys inside key columns', () => {
+  // `mpp_spt_replay`; 25 until CFG-4 (#8519) removed `agent_balances`,
+  // `labor_escrows`, and `labor_escrow_receipts` — those are
+  // Postgres-AUTHORITATIVE via the payments ledger and must never be
+  // mirrored from D1 again. The lock-step test below pins the exact
+  // relationship with the khala-sync-server backfill registry.
+  test('covers all 22 domain tables with conflict keys inside key columns', () => {
     const tables = Object.keys(TREASURY_DOMAIN_TABLES)
-    expect(tables).toHaveLength(25)
+    expect(tables).toHaveLength(22)
     for (const [table, spec] of Object.entries(TREASURY_DOMAIN_TABLES)) {
       expect(spec.keyColumns, table).toContain(spec.conflictKey)
       for (const keyColumn of spec.keyColumns) {
@@ -393,8 +322,17 @@ describe('registry discipline', () => {
         { columns: ReadonlyArray<string>; conflictKey: string }
       >
     }
+    // CFG-4 (#8519): the backfill registry deliberately KEEPS the three
+    // hard-cut credits tables — they are needed for the one-time pre-cutover
+    // converge sweep (and are excluded from routine sweeps in the script) —
+    // so the relationship is worker registry + credits trio = backfill set.
+    const cfg4HardCutTables = [
+      'agent_balances',
+      'labor_escrow_receipts',
+      'labor_escrows',
+    ]
     expect(Object.keys(backfill.TREASURY_TABLE_SPECS).sort()).toEqual(
-      Object.keys(TREASURY_DOMAIN_TABLES).sort(),
+      [...Object.keys(TREASURY_DOMAIN_TABLES), ...cfg4HardCutTables].sort(),
     )
     for (const [table, spec] of Object.entries(TREASURY_DOMAIN_TABLES)) {
       const twin = backfill.TREASURY_TABLE_SPECS[table]!

@@ -11,6 +11,8 @@ import { Effect } from 'effect'
 import { finalizeEvent, getPublicKey } from 'nostr-effect/pure'
 import { beforeEach, describe, expect, test } from 'vitest'
 
+import { paymentsLedgerDbFromD1, type D1LikeDatabase } from './test/payments-ledger-sqlite'
+
 import type { AgentRegistrationStore } from './agent-registration'
 import { makeForumRoutes } from './forum-routes'
 import type {
@@ -426,6 +428,10 @@ const makeHarness = (
     const effect = makeForumRoutes({
       agentStore: liveAgentStore(options.agentUserId ?? 'requester-live'),
       forumWorkRequestRelayPublisher: acceptanceCapturingPublisher(captured),
+      // CFG-4 (#8519): the credits/escrow ledger rides the SAME SQLite
+      // database as the forum D1 shim, so seeded balances and escrow
+      // assertions observe one consistent store.
+      ledgerDb: paymentsLedgerDbFromD1(d1 as unknown as D1LikeDatabase),
       makeId,
       nowIso: () => NOW,
     }).routeForumRequest(request, d1)

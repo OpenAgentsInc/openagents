@@ -21,6 +21,8 @@ import {
   markPayInPaidStatements,
   runLedgerStatements,
 } from '../payments-ledger'
+import type { PaymentsLedgerDb } from '../payments-ledger-db'
+import { paymentsLedgerDbFromD1 } from '../test/payments-ledger-sqlite'
 import { lookupForumPaidActionReceipt } from './paid-actions'
 import {
   readForumCreatorEarnings,
@@ -142,14 +144,18 @@ class SqliteBackedStatement implements D1PreparedStatement {
   }
 }
 
-const makeLedgerDb = (): D1Database => {
+// CFG-4 (#8519): the credits tables ride the PaymentsLedgerDb seam while
+// the forum fixture tables stay D1-shaped — both wrap the SAME SQLite
+// database, mirroring production where forum_posts has a Postgres twin
+// (KS-8.10) in the same database as the ledger.
+const makeLedgerDb = (): { db: D1Database; ledgerDb: PaymentsLedgerDb } => {
   const sqlite = new DatabaseSync(':memory:')
   sqlite.exec(ledgerMigrationSql)
   // Migration 0169 adds the stored public receipt ref column.
   sqlite.exec('ALTER TABLE pay_ins ADD COLUMN public_receipt_ref TEXT;')
   sqlite.exec(forumFixtureSql)
 
-  return {
+  const db = {
     batch: (statements: ReadonlyArray<D1PreparedStatement>) => {
       sqlite.exec('BEGIN')
       const results: Array<D1Result<unknown>> = []
@@ -175,6 +181,8 @@ const makeLedgerDb = (): D1Database => {
       throw new Error('D1 session should not be used')
     },
   } as unknown as D1Database
+
+  return { db, ledgerDb: paymentsLedgerDbFromD1(db as never) }
 }
 
 const POST_ID = 'post_orrery_probe'
@@ -204,7 +212,7 @@ const seedPost = (db: D1Database): Promise<unknown> =>
     .run()
 
 const writeCreditedTip = (
-  db: D1Database,
+  ledgerDb: PaymentsLedgerDb,
   input: Readonly<{
     payInId: string
     amountSat: number
@@ -213,7 +221,7 @@ const writeCreditedTip = (
   }>,
 ): Promise<void> =>
   runLedgerStatements(
-    db,
+    ledgerDb,
     creditedTipStatements(
       {
         amountSat: input.amountSat,
@@ -232,11 +240,11 @@ const writeCreditedTip = (
   )
 
 const writeSettledSweep = async (
-  db: D1Database,
+  ledgerDb: PaymentsLedgerDb,
   input: Readonly<{ payInId: string; amountSat: number; atSecond: number }>,
 ): Promise<void> => {
   const amountMsat = input.amountSat * 1000
-  await runLedgerStatements(db, [
+  await runLedgerStatements(ledgerDb, [
     ...createPayInStatements(
       {
         contextRef: `sweep.${RECIPIENT}`,
@@ -277,10 +285,11 @@ const writeSettledSweep = async (
   ])
 }
 
-const earningsFor = (db: D1Database) =>
+const earningsFor = (db: D1Database, ledgerDb: PaymentsLedgerDb) =>
   Effect.runPromise(
     readForumCreatorEarnings(
       db,
+      ledgerDb,
       { actorRef: RECIPIENT, limit: 20 },
       { nowIso: () => nowAt(59) },
     ),
@@ -288,17 +297,17 @@ const earningsFor = (db: D1Database) =>
 
 describe('credited-rung tip read path (#4753)', () => {
   test('a credited tip is a visible earnings row with a citable receipt ref in the credited bucket, never paid/settled', async () => {
-    const db = makeLedgerDb()
+    const { db, ledgerDb } = makeLedgerDb()
     await seedSenderBalance(db, 1_000_000)
     await seedPost(db)
-    await writeCreditedTip(db, {
+    await writeCreditedTip(ledgerDb, {
       amountSat: 50,
       atSecond: 1,
       payInId: 'payin_tip_one',
       publicReceiptRef: STORED_RECEIPT_REF,
     })
 
-    const earnings = await earningsFor(db)
+    const earnings = await earningsFor(db, ledgerDb)
 
     expect(earnings.earnings).toHaveLength(1)
     expect(earnings.earnings[0]).toMatchObject({
@@ -328,17 +337,17 @@ describe('credited-rung tip read path (#4753)', () => {
   })
 
   test('a ladder row without a stored receipt ref projects the deterministic receipt-equivalent ref and resolves through the public receipt API', async () => {
-    const db = makeLedgerDb()
+    const { db, ledgerDb } = makeLedgerDb()
     await seedSenderBalance(db, 1_000_000)
     await seedPost(db)
-    await writeCreditedTip(db, {
+    await writeCreditedTip(ledgerDb, {
       amountSat: 30,
       atSecond: 1,
       payInId: 'payin_tip_legacy',
       publicReceiptRef: null,
     })
 
-    const earnings = await earningsFor(db)
+    const earnings = await earningsFor(db, ledgerDb)
     const derivedRef = 'receipt.forum.tip_ladder.payin.payin_tip_legacy'
 
     expect(earnings.earnings).toHaveLength(1)
@@ -348,7 +357,7 @@ describe('credited-rung tip read path (#4753)', () => {
     })
 
     const receipt = await Effect.runPromise(
-      lookupForumPaidActionReceipt(db, derivedRef),
+      lookupForumPaidActionReceipt(db, ledgerDb, derivedRef),
     )
 
     expect(receipt).toMatchObject({
@@ -361,16 +370,16 @@ describe('credited-rung tip read path (#4753)', () => {
   })
 
   test('sweep completion transitions the bucket oldest-credited-first: partial sweep covers the older tip only, full coverage sweeps both', async () => {
-    const db = makeLedgerDb()
+    const { db, ledgerDb } = makeLedgerDb()
     await seedSenderBalance(db, 1_000_000)
     await seedPost(db)
-    await writeCreditedTip(db, {
+    await writeCreditedTip(ledgerDb, {
       amountSat: 50,
       atSecond: 1,
       payInId: 'payin_tip_one',
       publicReceiptRef: STORED_RECEIPT_REF,
     })
-    await writeCreditedTip(db, {
+    await writeCreditedTip(ledgerDb, {
       amountSat: 30,
       atSecond: 2,
       payInId: 'payin_tip_two',
@@ -378,13 +387,13 @@ describe('credited-rung tip read path (#4753)', () => {
     })
 
     // A settled 50-sat sweep covers exactly the older tip.
-    await writeSettledSweep(db, {
+    await writeSettledSweep(ledgerDb, {
       amountSat: 50,
       atSecond: 10,
       payInId: 'payin_sweep_one',
     })
 
-    const partiallySwept = await earningsFor(db)
+    const partiallySwept = await earningsFor(db, ledgerDb)
     const byPayIn = new Map(
       partiallySwept.earnings.map(earning => [
         earning.moneyActionRef,
@@ -413,18 +422,18 @@ describe('credited-rung tip read path (#4753)', () => {
 
     // The receipt lookup reads the same transition.
     const sweptReceipt = await Effect.runPromise(
-      lookupForumPaidActionReceipt(db, STORED_RECEIPT_REF),
+      lookupForumPaidActionReceipt(db, ledgerDb, STORED_RECEIPT_REF),
     )
     expect(sweptReceipt?.tipSettlement).toMatchObject({ state: 'swept' })
 
     // A second settled sweep covers the rest.
-    await writeSettledSweep(db, {
+    await writeSettledSweep(ledgerDb, {
       amountSat: 30,
       atSecond: 20,
       payInId: 'payin_sweep_two',
     })
 
-    const fullySwept = await earningsFor(db)
+    const fullySwept = await earningsFor(db, ledgerDb)
     expect(fullySwept.summary).toMatchObject({
       creditedCount: 0,
       sweptCount: 2,
@@ -434,21 +443,21 @@ describe('credited-rung tip read path (#4753)', () => {
   })
 
   test('credited, swept, and settled-direct buckets stay distinguishable on one earnings surface', async () => {
-    const db = makeLedgerDb()
+    const { db, ledgerDb } = makeLedgerDb()
     await seedSenderBalance(db, 1_000_000)
     await seedPost(db)
-    await writeCreditedTip(db, {
+    await writeCreditedTip(ledgerDb, {
       amountSat: 50,
       atSecond: 1,
       payInId: 'payin_tip_one',
       publicReceiptRef: STORED_RECEIPT_REF,
     })
-    await writeSettledSweep(db, {
+    await writeSettledSweep(ledgerDb, {
       amountSat: 50,
       atSecond: 5,
       payInId: 'payin_sweep_one',
     })
-    await writeCreditedTip(db, {
+    await writeCreditedTip(ledgerDb, {
       amountSat: 21,
       atSecond: 10,
       payInId: 'payin_tip_three',
@@ -457,7 +466,7 @@ describe('credited-rung tip read path (#4753)', () => {
 
     // A direct BOLT 12 ladder tip that settled.
     const directMsat = 40 * 1000
-    await runLedgerStatements(db, [
+    await runLedgerStatements(ledgerDb, [
       ...createPayInStatements(
         {
           contextRef: `forum.post.${POST_ID}`,
@@ -497,7 +506,7 @@ describe('credited-rung tip read path (#4753)', () => {
       ),
     ])
 
-    const earnings = await earningsFor(db)
+    const earnings = await earningsFor(db, ledgerDb)
     const states = new Map(
       earnings.earnings.map(earning => [
         earning.moneyActionRef,
@@ -519,38 +528,38 @@ describe('credited-rung tip read path (#4753)', () => {
   })
 
   test('credited and swept totals reconcile with the post tipStats credited totals at every stage', async () => {
-    const db = makeLedgerDb()
+    const { db, ledgerDb } = makeLedgerDb()
     await seedSenderBalance(db, 1_000_000)
     await seedPost(db)
-    await writeCreditedTip(db, {
+    await writeCreditedTip(ledgerDb, {
       amountSat: 50,
       atSecond: 1,
       payInId: 'payin_tip_one',
       publicReceiptRef: STORED_RECEIPT_REF,
     })
-    await writeCreditedTip(db, {
+    await writeCreditedTip(ledgerDb, {
       amountSat: 30,
       atSecond: 2,
       payInId: 'payin_tip_two',
       publicReceiptRef: null,
     })
 
-    const beforeSweep = await earningsFor(db)
-    const tipStatsBefore = await readCreditedTipTotals(db, [POST_ID])
+    const beforeSweep = await earningsFor(db, ledgerDb)
+    const tipStatsBefore = await readCreditedTipTotals(ledgerDb, [POST_ID])
 
     expect(
       beforeSweep.summary.totalCreditedSats +
         beforeSweep.summary.totalSweptSats,
     ).toBe(tipStatsBefore.get(POST_ID))
 
-    await writeSettledSweep(db, {
+    await writeSettledSweep(ledgerDb, {
       amountSat: 80,
       atSecond: 10,
       payInId: 'payin_sweep_all',
     })
 
-    const afterSweep = await earningsFor(db)
-    const tipStatsAfter = await readCreditedTipTotals(db, [POST_ID])
+    const afterSweep = await earningsFor(db, ledgerDb)
+    const tipStatsAfter = await readCreditedTipTotals(ledgerDb, [POST_ID])
 
     expect(tipStatsAfter.get(POST_ID)).toBe(80)
     expect(
@@ -561,12 +570,12 @@ describe('credited-rung tip read path (#4753)', () => {
   })
 
   test('forwarding ladder pay-ins never project as paid, credited, or settled earnings', async () => {
-    const db = makeLedgerDb()
+    const { db, ledgerDb } = makeLedgerDb()
     await seedSenderBalance(db, 1_000_000)
     await seedPost(db)
 
     const pendingMsat = 25 * 1000
-    await runLedgerStatements(db, [
+    await runLedgerStatements(ledgerDb, [
       ...createPayInStatements(
         {
           contextRef: `forum.post.${POST_ID}`,
@@ -602,7 +611,7 @@ describe('credited-rung tip read path (#4753)', () => {
       ...markPayInForwardingStatements('payin_tip_pending', nowAt(1)),
     ])
 
-    const earnings = await earningsFor(db)
+    const earnings = await earningsFor(db, ledgerDb)
     expect(earnings.earnings).toHaveLength(0)
     expect(earnings.summary.totalCount).toBe(0)
 
@@ -611,6 +620,7 @@ describe('credited-rung tip read path (#4753)', () => {
     const receipt = await Effect.runPromise(
       lookupForumPaidActionReceipt(
         db,
+        ledgerDb,
         'receipt.forum.tip_ladder.sha256.beefbeefbeefbeef',
       ),
     )
@@ -622,10 +632,10 @@ describe('credited-rung tip read path (#4753)', () => {
   })
 
   test('the auditor reconciliation surface carries the credited bucket with generatedAt honesty', async () => {
-    const db = makeLedgerDb()
+    const { db, ledgerDb } = makeLedgerDb()
     await seedSenderBalance(db, 1_000_000)
     await seedPost(db)
-    await writeCreditedTip(db, {
+    await writeCreditedTip(ledgerDb, {
       amountSat: 50,
       atSecond: 1,
       payInId: 'payin_tip_one',
@@ -635,6 +645,7 @@ describe('credited-rung tip read path (#4753)', () => {
     const reconciliation = await Effect.runPromise(
       readForumTipReconciliation(
         db,
+        ledgerDb,
         { actorRef: null, limit: 20 },
         { nowIso: () => nowAt(59) },
       ),

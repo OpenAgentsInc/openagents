@@ -5,6 +5,8 @@ import { describe, expect, test } from 'vitest'
 
 import { validateAssetBoundary } from '../asset-bitcoin-boundary'
 import { readAgentBalance } from '../payments-ledger'
+import type { PaymentsLedgerDb } from '../payments-ledger-db'
+import { paymentsLedgerDbFromD1 } from '../test/payments-ledger-sqlite'
 import {
   agentRefForUser,
   usdCreditGrantIdempotencyKey,
@@ -159,7 +161,17 @@ const makeDb = (): D1Database => {
   return new SqliteD1(raw) as unknown as D1Database
 }
 
-const deps = (db: D1Database) => ({ db, nowIso: () => NOW })
+// CFG-4 (#8519): grants/clawbacks write through the Postgres-authoritative
+// `PaymentsLedgerDb` seam; tests back it with the same SQLite-D1 shim (one
+// underlying database, two typed handles).
+const makeLedgerDb = (db: D1Database): PaymentsLedgerDb =>
+  paymentsLedgerDbFromD1(db as never)
+
+const deps = (db: D1Database) => ({
+  db,
+  ledgerDb: makeLedgerDb(db),
+  nowIso: () => NOW,
+})
 
 // Issue #8505 (Part 2): a spy for the fail-soft Khala Sync credit-balance
 // projection seam.
@@ -203,7 +215,7 @@ describe('grantAdminCredit (AIUR-2, #8500)', () => {
       usdCreditGrantReceiptRef(adminCreditGrantRef('grant-1')),
     )
 
-    const balance = await readAgentBalance(db, ACCOUNT)
+    const balance = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     expect(balance?.balanceMsat).toBe(usdCentsToMsatFloor(500))
     expect(balance?.usdCreditMsat).toBe(usdCentsToMsatFloor(500))
     expect(balance?.bitcoinWithdrawableMsat).toBe(0)
@@ -226,7 +238,7 @@ describe('grantAdminCredit (AIUR-2, #8500)', () => {
     expect(first.ok && !first.alreadyGranted).toBe(true)
     expect(second.ok && second.alreadyGranted).toBe(true)
 
-    const balance = await readAgentBalance(db, ACCOUNT)
+    const balance = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     expect(balance?.balanceMsat).toBe(usdCentsToMsatFloor(1000)) // NOT doubled
   })
 
@@ -248,7 +260,7 @@ describe('grantAdminCredit (AIUR-2, #8500)', () => {
     expect(a.ok).toBe(true)
     expect(b.ok).toBe(true)
 
-    const balance = await readAgentBalance(db, ACCOUNT)
+    const balance = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     expect(balance?.balanceMsat).toBe(usdCentsToMsatFloor(250))
   })
 
@@ -342,7 +354,7 @@ describe('grantAdminCredit (AIUR-2, #8500)', () => {
             reason: 'Projection test',
             userId: USER,
           },
-          { db, nowIso: () => NOW, recordCreditBalanceProjection: recorder },
+          { db, ledgerDb: makeLedgerDb(db), nowIso: () => NOW, recordCreditBalanceProjection: recorder },
         ),
       )
       expect(outcome.ok).toBe(true)
@@ -363,7 +375,7 @@ describe('grantAdminCredit (AIUR-2, #8500)', () => {
         reason: 'Projection replay test',
         userId: USER,
       }
-      const withRecorder = { db, nowIso: () => NOW, recordCreditBalanceProjection: recorder }
+      const withRecorder = { db, ledgerDb: makeLedgerDb(db), nowIso: () => NOW, recordCreditBalanceProjection: recorder }
       await run(grantAdminCredit(input, withRecorder))
       await run(grantAdminCredit(input, withRecorder))
       expect(calls).toHaveLength(1)
@@ -401,7 +413,7 @@ describe('clawbackAdminCredit (AIUR-2, #8500)', () => {
     expect(outcome.clawedBack).toBe(true)
     expect(outcome.insufficientBalance).toBe(false)
 
-    const balance = await readAgentBalance(db, ACCOUNT)
+    const balance = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     expect(balance?.balanceMsat).toBe(
       usdCentsToMsatFloor(1000) - usdCentsToMsatFloor(400),
     )
@@ -432,7 +444,7 @@ describe('clawbackAdminCredit (AIUR-2, #8500)', () => {
     expect(first.clawedBack).toBe(true)
     expect(second.clawedBack).toBe(true)
 
-    const balance = await readAgentBalance(db, ACCOUNT)
+    const balance = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     // Only clawed back ONCE, not twice.
     expect(balance?.balanceMsat).toBe(
       usdCentsToMsatFloor(1000) - usdCentsToMsatFloor(400),
@@ -468,7 +480,7 @@ describe('clawbackAdminCredit (AIUR-2, #8500)', () => {
     expect(outcome.clawedBack).toBe(false)
     expect(outcome.insufficientBalance).toBe(true)
 
-    const balance = await readAgentBalance(db, ACCOUNT)
+    const balance = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     expect(balance?.balanceMsat).toBe(usdCentsToMsatFloor(100)) // unchanged
   })
 
@@ -497,7 +509,7 @@ describe('clawbackAdminCredit (AIUR-2, #8500)', () => {
       const outcome = await run(
         clawbackAdminCredit(
           { amountUsdCents: 400, clawbackRef, reason: 'Refund adjustment', userId: USER },
-          { db, nowIso: () => NOW, recordCreditBalanceProjection: recorder },
+          { ledgerDb: makeLedgerDb(db), nowIso: () => NOW, recordCreditBalanceProjection: recorder },
         ),
       )
       expect(outcome.clawedBack).toBe(true)
@@ -532,7 +544,7 @@ describe('clawbackAdminCredit (AIUR-2, #8500)', () => {
             reason: 'Over-clawback attempt',
             userId: USER,
           },
-          { db, nowIso: () => NOW, recordCreditBalanceProjection: recorder },
+          { ledgerDb: makeLedgerDb(db), nowIso: () => NOW, recordCreditBalanceProjection: recorder },
         ),
       )
       expect(outcome.clawedBack).toBe(false)

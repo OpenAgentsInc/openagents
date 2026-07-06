@@ -10782,7 +10782,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getMobileCreditsBalance',
       summary: 'Read the mobile user\'s credit balance',
       description:
-        'Fixes #8480\'s shipped-but-dead REST route (issue #8505, Part 1): reads the authenticated Khala mobile user\'s current spendable credit balance directly from the authoritative D1 agent_balances ledger (payments-ledger.ts), converted to USD cents at the single shared BTC/USD rate. Same mobile OpenAuth user bearer session as /api/mobile/auth/session; never a browser session or agent token. Read-only; never mutates the ledger.',
+        'Fixes #8480\'s shipped-but-dead REST route (issue #8505, Part 1): reads the authenticated Khala mobile user\'s current spendable credit balance directly from the authoritative Cloud SQL Postgres agent_balances ledger (payments-ledger.ts; Postgres-only since the CFG-4 #8519 hard cutover), converted to USD cents at the single shared BTC/USD rate. Same mobile OpenAuth user bearer session as /api/mobile/auth/session; never a browser session or agent token. Read-only; never mutates the ledger.',
       tags: ['Agents'],
       security: mobileUserBearer,
       responses: {
@@ -10799,7 +10799,7 @@ const paths = (): JsonSchema => ({
       operationId: 'listMobileCreditsTransactions',
       summary: 'List the mobile user\'s credit transaction history',
       description:
-        'Fixes #8480\'s shipped-but-dead REST route (issue #8505, Part 1): lists the authenticated Khala mobile user\'s credit ledger history (grants, charges, clawbacks) directly from the authoritative D1 pay_ins ledger, newest first, keyset-paginated. Same mobile OpenAuth user bearer session as /api/mobile/auth/session. Read-only; never mutates the ledger.',
+        'Fixes #8480\'s shipped-but-dead REST route (issue #8505, Part 1): lists the authenticated Khala mobile user\'s credit ledger history (grants, charges, clawbacks) directly from the authoritative Cloud SQL Postgres pay_ins ledger (Postgres-only since the CFG-4 #8519 hard cutover), newest first, keyset-paginated. Same mobile OpenAuth user bearer session as /api/mobile/auth/session. Read-only; never mutates the ledger.',
       tags: ['Agents'],
       security: mobileUserBearer,
       parameters: [

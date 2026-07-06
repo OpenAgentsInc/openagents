@@ -8,10 +8,10 @@ import { makeD1BusinessPipelineStore } from './business-pipeline-queue'
 import {
   SALES_STARTER_CREDIT_ATTRIBUTION_KIND,
   makeD1BusinessStarterCreditStore,
-  systemBusinessStarterCreditRuntime,
 } from './business-starter-credit'
 import { makeOperatorBusinessStarterCreditRoutes } from './business-starter-credit-routes'
 import { readAgentBalance } from './payments-ledger'
+import { paymentsLedgerDbFromD1 } from './test/payments-ledger-sqlite'
 
 type Row = Record<string, unknown>
 
@@ -137,8 +137,15 @@ const makeDb = (): D1Database => {
 const makeStores = (db: D1Database) => {
   const pipelineStore = makeD1BusinessPipelineStore(db)
   return {
+    // CFG-4 (#8519): the credits ledger handle shares the same underlying
+    // SQLite database as the D1 shim in tests.
+    ledger: paymentsLedgerDbFromD1(db as never),
     pipelineStore,
-    starterCreditStore: makeD1BusinessStarterCreditStore(db, pipelineStore),
+    starterCreditStore: makeD1BusinessStarterCreditStore(
+      db,
+      paymentsLedgerDbFromD1(db as never),
+      pipelineStore,
+    ),
   }
 }
 
@@ -195,11 +202,13 @@ const runRoute = async (db: D1Database, request: Request): Promise<Response> => 
   return Effect.runPromise(routed)
 }
 
+// CFG-4 (#8519): pay_ins is credits-domain — read it through the ledger
+// handle, exactly as production does.
 const payInCount = async (db: D1Database): Promise<number> => {
-  const row = await db
-    .prepare(`SELECT COUNT(*) AS count FROM pay_ins`)
-    .first<{ count: number }>()
-  return Number(row?.count ?? 0)
+  const rows = await paymentsLedgerDbFromD1(db as never).query(
+    `SELECT COUNT(*) AS count FROM pay_ins`,
+  )
+  return Number(rows[0]?.count ?? 0)
 }
 
 describe('business starter credit routes', () => {
@@ -241,69 +250,31 @@ describe('business starter credit routes', () => {
     })
     expect(body.pipelineReceiptRefs).toContain(body.grant.creditReceiptRef)
 
-    const balance = await readAgentBalance(db, ACCOUNT_REF)
+    const balance = await readAgentBalance(makeStores(db).ledger, ACCOUNT_REF)
     expect(balance?.balanceMsat).toBe(body.grant.amountMsat)
     expect(balance?.usdCreditMsat).toBe(body.grant.amountMsat)
     expect(balance?.bitcoinWithdrawableMsat).toBe(0)
 
-    const payIn = await db
-      .prepare(
-        `SELECT pay_in_type, payer_ref, context_ref, public_receipt_ref
+    const payInRows = await makeStores(db).ledger.query(
+      `SELECT pay_in_type, payer_ref, context_ref, public_receipt_ref
            FROM pay_ins
           WHERE public_receipt_ref = ?`,
-      )
-      .bind(body.grant.creditReceiptRef)
-      .first<{
-        context_ref: string
-        pay_in_type: string
-        payer_ref: string
-        public_receipt_ref: string
-      }>()
+      [body.grant.creditReceiptRef],
+    )
+    const payIn = payInRows[0]
 
     expect(payIn).toMatchObject({
       pay_in_type: 'usd_credit_grant',
       payer_ref: ACCOUNT_REF,
       public_receipt_ref: body.grant.creditReceiptRef,
     })
-    expect(payIn?.context_ref).toContain(SALES_STARTER_CREDIT_ATTRIBUTION_KIND)
+    expect(String(payIn?.context_ref)).toContain(SALES_STARTER_CREDIT_ATTRIBUTION_KIND)
   })
 
-  // KS-8.7 (#8318/#8337): a wired `mirror` must see the pay_ins/pay_in_legs
-  // rows the USD-credit grant's `usdCreditGrantStatements` creates — the
-  // RUNBOOK coverage list called out `business-starter-credit.ts` as
-  // D1-only pending this decommission pass (converged only by periodic
-  // backfill sweeps, never in real time).
-  test('createGrant mirrors its pay_ins + pay_in_legs refs when a mirror is wired', async () => {
-    const db = makeDb()
-    await seedPipeline(db)
-    const pipelineStore = makeD1BusinessPipelineStore(db)
-    const calls: Array<ReadonlyArray<{ table: string; key: unknown }>> = []
-    const mirror = async (
-      _db: unknown,
-      refs: ReadonlyArray<{ table: string; key: unknown }>,
-    ) => {
-      calls.push(refs)
-    }
-    const store = makeD1BusinessStarterCreditStore(db, pipelineStore, {
-      ...systemBusinessStarterCreditRuntime,
-      mirror,
-    })
-
-    const outcome = await store.createGrant(PIPELINE_REF, {
-      accountRef: ACCOUNT_REF,
-      amountUsdCents: 10_000,
-      grantRef: 'sales-starter-grant-mirror-001',
-      windowRef: 'sales_starter_credit.2026-07-mirror',
-    })
-
-    expect(outcome.ok).toBe(true)
-    const mirroredTables = calls.flat().map(ref => ref.table)
-    expect(mirroredTables).toContain('pay_ins')
-    expect(mirroredTables).toContain('pay_in_legs')
-    // business_starter_credit_grants is a business-funnel (KS-8.14) table,
-    // mirrored by a separate seam — this hook is billing-domain only.
-    expect(mirroredTables).not.toContain('business_starter_credit_grants')
-  })
+  // CFG-4 (#8519): the old KS-8.7 test asserting that a wired `mirror` saw
+  // the pay_ins/pay_in_legs refs from `createGrant` was DELETED here — the
+  // fail-soft D1→Postgres mirror machinery for the credits tables is gone;
+  // Postgres (the ledger handle) is the sole authority the grant writes to.
 
   test('refuses amount and window cap exceedance without minting credit', async () => {
     const db = makeDb()

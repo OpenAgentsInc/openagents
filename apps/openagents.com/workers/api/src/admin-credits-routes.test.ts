@@ -12,6 +12,7 @@ import {
   type AdminCaller,
   makeAdminCreditsRoutes,
 } from './admin-credits-routes'
+import { paymentsLedgerDbFromD1 } from './test/payments-ledger-sqlite'
 
 type Row = Record<string, unknown>
 
@@ -187,6 +188,9 @@ type Env = Readonly<{ OPENAGENTS_DB: D1Database }>
 const makeRoutes = (db: D1Database, adminUserId: string | undefined) =>
   makeAdminCreditsRoutes<Env>({
     db: env => env.OPENAGENTS_DB,
+    // CFG-4 (#8519): the credits ledger handle shares the same underlying
+    // SQLite database as the D1 shim in tests.
+    ledgerDb: env => paymentsLedgerDbFromD1(env.OPENAGENTS_DB as never),
     nowIso: () => NOW,
     requireAdminCaller: async (): Promise<AdminCaller | undefined> =>
       adminUserId === undefined ? undefined : { userId: adminUserId },
@@ -399,6 +403,7 @@ describe('Aiur admin credits routes — auth matrix (fail closed)', () => {
     const calls: Array<{ accountRef: string; deltaUsdCents: number }> = []
     const routes = makeAdminCreditsRoutes<Env>({
       db: e => e.OPENAGENTS_DB,
+      ledgerDb: e => paymentsLedgerDbFromD1(e.OPENAGENTS_DB as never),
       nowIso: () => NOW,
       recordCreditBalanceProjection: () => async event => {
         calls.push({ accountRef: event.accountRef, deltaUsdCents: event.deltaUsdCents })

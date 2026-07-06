@@ -9,14 +9,16 @@ import {
   fulfillIapCreditPackPurchase,
   readIapPurchaseByStoreTransactionId,
   refundIapCreditPackPurchase,
+  type IapCreditPackPaymentDeps,
 } from './iap-credit-pack-payments'
 import { readAgentBalance, type AgentBalanceRow } from '../payments-ledger'
+import { paymentsLedgerDbFromD1 } from '../test/payments-ledger-sqlite'
 
 const requireAgentBalance = async (
-  db: D1Database,
+  deps: IapCreditPackPaymentDeps,
   actorRef: string,
 ): Promise<AgentBalanceRow> => {
-  const balance = await readAgentBalance(db, actorRef)
+  const balance = await readAgentBalance(deps.ledgerDb, actorRef)
   expect(balance).not.toBeNull()
   return balance!
 }
@@ -116,18 +118,22 @@ CREATE TABLE pay_in_legs (
 const migration = (name: string): string =>
   readFileSync(join(__dirname, '..', '..', 'migrations', name), 'utf8')
 
-const makeDb = (): D1Database => {
-  const db = new DatabaseSync(':memory:')
-  db.exec(ledgerSchema)
-  db.exec(migration('0306_iap_credit_pack_purchase_intents.sql'))
-  return new SqliteD1(db) as unknown as D1Database
+// CFG-4 (#8519): fulfillment/refund now take a deps pair — the intent tables
+// stay on D1, the credit grant/clawback goes through the Postgres-authoritative
+// `PaymentsLedgerDb` seam (backed by the same SQLite-D1 shim in tests).
+const makeDeps = (): IapCreditPackPaymentDeps => {
+  const raw = new DatabaseSync(':memory:')
+  raw.exec(ledgerSchema)
+  raw.exec(migration('0306_iap_credit_pack_purchase_intents.sql'))
+  const db = new SqliteD1(raw) as unknown as D1Database
+  return { db, ledgerDb: paymentsLedgerDbFromD1(db as never) }
 }
 
 describe('fulfillIapCreditPackPurchase', () => {
   test('grants the catalog amount into Pool B, USD-origin', async () => {
-    const db = makeDb()
+    const deps = makeDeps()
     const outcome = await Effect.runPromise(
-      fulfillIapCreditPackPurchase(db, {
+      fulfillIapCreditPackPurchase(deps, {
         amountUsdCents: 999,
         eventId: 'event-1',
         sku: 'credits_999',
@@ -142,13 +148,13 @@ describe('fulfillIapCreditPackPurchase', () => {
     expect(outcome.purchase.status).toBe('fulfilled')
     expect(outcome.purchase.amountUsdCents).toBe(999)
 
-    const balance = await requireAgentBalance(db, 'agent:user-1')
+    const balance = await requireAgentBalance(deps, 'agent:user-1')
     expect(balance.usdCreditMsat).toBeGreaterThan(0)
     expect(balance.balanceMsat).toBe(balance.usdCreditMsat)
   })
 
   test('a replayed purchase for the SAME store_transaction_id is a no-op (never double-grants)', async () => {
-    const db = makeDb()
+    const deps = makeDeps()
     const input = {
       amountUsdCents: 999,
       eventId: 'event-1',
@@ -157,21 +163,21 @@ describe('fulfillIapCreditPackPurchase', () => {
       storeTransactionId: 'txn-1',
       userId: 'user-1',
     }
-    await Effect.runPromise(fulfillIapCreditPackPurchase(db, input))
-    const balanceAfterFirst = await requireAgentBalance(db, 'agent:user-1')
+    await Effect.runPromise(fulfillIapCreditPackPurchase(deps, input))
+    const balanceAfterFirst = await requireAgentBalance(deps, 'agent:user-1')
 
-    const second = await Effect.runPromise(fulfillIapCreditPackPurchase(db, input))
+    const second = await Effect.runPromise(fulfillIapCreditPackPurchase(deps, input))
     expect(second.ok).toBe(true)
     if (second.ok) expect(second.alreadyFulfilled).toBe(true)
 
-    const balanceAfterSecond = await requireAgentBalance(db, 'agent:user-1')
+    const balanceAfterSecond = await requireAgentBalance(deps, 'agent:user-1')
     expect(balanceAfterSecond.balanceMsat).toBe(balanceAfterFirst.balanceMsat)
   })
 
   test('two DIFFERENT users each get their own grant', async () => {
-    const db = makeDb()
+    const deps = makeDeps()
     await Effect.runPromise(
-      fulfillIapCreditPackPurchase(db, {
+      fulfillIapCreditPackPurchase(deps, {
         amountUsdCents: 499,
         eventId: 'event-1',
         sku: 'credits_499',
@@ -181,7 +187,7 @@ describe('fulfillIapCreditPackPurchase', () => {
       }),
     )
     await Effect.runPromise(
-      fulfillIapCreditPackPurchase(db, {
+      fulfillIapCreditPackPurchase(deps, {
         amountUsdCents: 1999,
         eventId: 'event-2',
         sku: 'credits_1999',
@@ -191,8 +197,8 @@ describe('fulfillIapCreditPackPurchase', () => {
       }),
     )
 
-    const balanceA = await requireAgentBalance(db, 'agent:user-a')
-    const balanceB = await requireAgentBalance(db, 'agent:user-b')
+    const balanceA = await requireAgentBalance(deps, 'agent:user-a')
+    const balanceB = await requireAgentBalance(deps, 'agent:user-b')
     expect(balanceA.balanceMsat).toBeGreaterThan(0)
     expect(balanceB.balanceMsat).toBeGreaterThan(balanceA.balanceMsat)
   })
@@ -200,9 +206,9 @@ describe('fulfillIapCreditPackPurchase', () => {
 
 describe('refundIapCreditPackPurchase', () => {
   test('claws back the full granted amount and marks the purchase refunded', async () => {
-    const db = makeDb()
+    const deps = makeDeps()
     await Effect.runPromise(
-      fulfillIapCreditPackPurchase(db, {
+      fulfillIapCreditPackPurchase(deps, {
         amountUsdCents: 999,
         eventId: 'event-1',
         sku: 'credits_999',
@@ -211,26 +217,26 @@ describe('refundIapCreditPackPurchase', () => {
         userId: 'user-1',
       }),
     )
-    const balanceBeforeRefund = await requireAgentBalance(db, 'agent:user-1')
+    const balanceBeforeRefund = await requireAgentBalance(deps, 'agent:user-1')
     expect(balanceBeforeRefund.balanceMsat).toBeGreaterThan(0)
 
-    const outcome = await Effect.runPromise(refundIapCreditPackPurchase(db, 'txn-1'))
+    const outcome = await Effect.runPromise(refundIapCreditPackPurchase(deps, 'txn-1'))
     expect(outcome.ok).toBe(true)
     if (!outcome.ok) return
     expect(outcome.alreadyRefunded).toBe(false)
     expect(outcome.clawback.clawedBack).toBe(true)
 
-    const balanceAfterRefund = await requireAgentBalance(db, 'agent:user-1')
+    const balanceAfterRefund = await requireAgentBalance(deps, 'agent:user-1')
     expect(balanceAfterRefund.balanceMsat).toBe(0)
 
-    const purchase = await readIapPurchaseByStoreTransactionId(db, 'txn-1')
+    const purchase = await readIapPurchaseByStoreTransactionId(deps.db, 'txn-1')
     expect(purchase?.status).toBe('refunded')
   })
 
   test('refunding an already-refunded purchase is a no-op (never double-claws)', async () => {
-    const db = makeDb()
+    const deps = makeDeps()
     await Effect.runPromise(
-      fulfillIapCreditPackPurchase(db, {
+      fulfillIapCreditPackPurchase(deps, {
         amountUsdCents: 999,
         eventId: 'event-1',
         sku: 'credits_999',
@@ -239,35 +245,35 @@ describe('refundIapCreditPackPurchase', () => {
         userId: 'user-1',
       }),
     )
-    await Effect.runPromise(refundIapCreditPackPurchase(db, 'txn-1'))
-    const balanceAfterFirstRefund = await requireAgentBalance(db, 'agent:user-1')
+    await Effect.runPromise(refundIapCreditPackPurchase(deps, 'txn-1'))
+    const balanceAfterFirstRefund = await requireAgentBalance(deps, 'agent:user-1')
 
-    const second = await Effect.runPromise(refundIapCreditPackPurchase(db, 'txn-1'))
+    const second = await Effect.runPromise(refundIapCreditPackPurchase(deps, 'txn-1'))
     expect(second.ok).toBe(true)
     if (second.ok) expect(second.alreadyRefunded).toBe(true)
 
-    const balanceAfterSecondRefund = await requireAgentBalance(db, 'agent:user-1')
+    const balanceAfterSecondRefund = await requireAgentBalance(deps, 'agent:user-1')
     expect(balanceAfterSecondRefund.balanceMsat).toBe(balanceAfterFirstRefund.balanceMsat)
   })
 
   test('refunding a transaction that was never fulfilled reports purchase_not_found', async () => {
-    const db = makeDb()
-    const outcome = await Effect.runPromise(refundIapCreditPackPurchase(db, 'never-existed'))
+    const deps = makeDeps()
+    const outcome = await Effect.runPromise(refundIapCreditPackPurchase(deps, 'never-existed'))
     expect(outcome).toEqual({ ok: false, reason: 'purchase_not_found' })
   })
 })
 
 describe('claimIapWebhookEvent — replay resistance', () => {
   test('the FIRST claim of an event id reports firstDelivery: true; a replay reports false', async () => {
-    const db = makeDb()
-    const first = await claimIapWebhookEvent(db, {
+    const deps = makeDeps()
+    const first = await claimIapWebhookEvent(deps.db, {
       eventId: 'event-1',
       eventType: 'NON_RENEWING_PURCHASE',
       nowIso: '2026-07-06T00:00:00.000Z',
     })
     expect(first.firstDelivery).toBe(true)
 
-    const replay = await claimIapWebhookEvent(db, {
+    const replay = await claimIapWebhookEvent(deps.db, {
       eventId: 'event-1',
       eventType: 'NON_RENEWING_PURCHASE',
       nowIso: '2026-07-06T00:00:01.000Z',

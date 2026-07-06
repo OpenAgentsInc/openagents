@@ -155,6 +155,10 @@ const safeMessage = (error: unknown): string => {
 // packages/khala-sync-server/src/treasury-backfill.ts. The contract test
 // proves the registry against BOTH engines' real SQL.
 
+// CFG-4 (#8519): `agent_balances`, `labor_escrows`, and
+// `labor_escrow_receipts` were REMOVED from this registry — they are
+// Postgres-AUTHORITATIVE via `payments-ledger-db.ts` (no D1 twin, no
+// mirror). Mirroring them from D1 would clobber the live ledger.
 export type TreasuryDomainTable =
   | 'treasury_transactions'
   | 'nexus_payout_target_approvals'
@@ -174,9 +178,6 @@ export type TreasuryDomainTable =
   | 'forum_tip_settlement_claims'
   | 'x_claim_reward_ledger'
   | 'agent_claim_reward_ledger'
-  | 'agent_balances'
-  | 'labor_escrows'
-  | 'labor_escrow_receipts'
   | 'partner_payout_ledger_entries'
   | 'partner_agreements'
   | 'site_referral_payout_ledger_entries'
@@ -202,16 +203,6 @@ type TreasuryDomainTableSpec = Readonly<{
 export const TREASURY_DOMAIN_TABLES: Readonly<
   Record<TreasuryDomainTable, TreasuryDomainTableSpec>
 > = {
-  agent_balances: {
-    columns: [
-      'actor_ref', 'balance_msat', 'sweep_enabled', 'sweep_threshold_sat',
-      'send_credits_below_sat', 'receive_credits_below_sat', 'created_at',
-      'updated_at', 'held_msat', 'usd_credit_msat',
-    ],
-    conflictKey: 'actor_ref',
-    keyColumns: ['actor_ref'],
-    orderColumn: 'updated_at',
-  },
   agent_claim_reward_ledger: {
     columns: [
       'id', 'idempotency_key', 'campaign_ref', 'agent_claim_ref', 'owner_ref',
@@ -332,33 +323,6 @@ export const TREASURY_DOMAIN_TABLES: Readonly<
     conflictKey: 'id',
     keyColumns: ['id', 'receipt_id', 'idempotency_key'],
     orderColumn: 'created_at',
-  },
-  labor_escrow_receipts: {
-    columns: [
-      'id', 'escrow_id', 'idempotency_key', 'transition_kind',
-      'work_request_id', 'requester_actor_ref', 'provider_actor_ref',
-      'amount_msat', 'receipt_ref', 'evidence_ref', 'state_after',
-      'forfeit_destination', 'forfeit_destination_actor_ref',
-      'public_projection_json', 'created_at',
-    ],
-    conflictKey: 'id',
-    keyColumns: ['id', 'escrow_id', 'receipt_ref', 'idempotency_key'],
-    orderColumn: 'created_at',
-  },
-  labor_escrows: {
-    columns: [
-      'id', 'idempotency_key', 'work_request_id', 'requester_actor_ref',
-      'provider_actor_ref', 'amount_msat', 'state', 'funding_source',
-      'job_event_id', 'acceptance_event_ref', 'reserve_receipt_ref',
-      'release_receipt_ref', 'refund_receipt_ref', 'forfeit_receipt_ref',
-      'forfeit_destination', 'forfeit_destination_actor_ref',
-      'forfeit_condition_ref', 'public_projection_json', 'created_at',
-      'updated_at', 'released_at', 'refunded_at', 'forfeited_at',
-      'archived_at',
-    ],
-    conflictKey: 'id',
-    keyColumns: ['id', 'work_request_id', 'idempotency_key'],
-    orderColumn: 'updated_at',
   },
   nexus_payment_authority_receipts: {
     columns: [
@@ -588,12 +552,6 @@ export type PostgresTreasuryDomainStore = Readonly<{
     table: TreasuryDomainTable,
     limit: number,
   ) => Promise<Array<TreasuryDomainRow>>
-  /**
-   * The TipsBuffer.backingInvariant twin: exact msat SUM over
-   * agent_balances, returned as a decimal string (bigint-safe). Used by
-   * compare mode as a continuously-running money reconciliation probe.
-   */
-  sumAgentBalancesMsat: () => Promise<string>
 }>
 
 export type MakePostgresTreasuryDomainStoreDependencies = Readonly<{
@@ -647,15 +605,6 @@ export const makePostgresTreasuryDomainStore = (
               [...keys],
             )
           }),
-
-    sumAgentBalancesMsat: () =>
-      withSql(async unsafe => {
-        const rows = await unsafe(
-          `SELECT COALESCE(SUM(balance_msat), 0)::text AS total FROM agent_balances`,
-          [],
-        )
-        return String(rows[0]?.['total'] ?? '0')
-      }),
 
     upsertRows: (table, rows) =>
       rows.length === 0

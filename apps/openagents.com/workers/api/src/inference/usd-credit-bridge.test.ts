@@ -5,6 +5,8 @@ import { describe, expect, test } from 'vitest'
 
 import { validateAssetBoundary } from '../asset-bitcoin-boundary'
 import { readAgentBalance } from '../payments-ledger'
+import type { PaymentsLedgerDb } from '../payments-ledger-db'
+import { paymentsLedgerDbFromD1 } from '../test/payments-ledger-sqlite'
 import { selectSweepCandidates, sweepAmountSat } from '../tips-sweep'
 import { makeLedgerMeteringHook, type MeteringContext } from './metering-hook'
 import { priceRequest } from './pricing'
@@ -177,6 +179,12 @@ const makeDb = (): D1Database => {
   return new SqliteD1(raw) as unknown as D1Database
 }
 
+// CFG-4 (#8519): the msat grant side writes through the Postgres-authoritative
+// `PaymentsLedgerDb` seam; tests back it with the same SQLite-D1 shim via the
+// portability-checked adapter (one underlying database, two typed handles).
+const makeLedgerDb = (db: D1Database): PaymentsLedgerDb =>
+  paymentsLedgerDbFromD1(db as never)
+
 // Seed a USD credit balance via a positive billing_ledger_entries row (mirrors a
 // Stripe purchase: balance = SUM(amount_cents)).
 const seedUsdCents = async (db: D1Database, cents: number): Promise<void> => {
@@ -207,7 +215,7 @@ const usdBalanceCents = async (db: D1Database): Promise<number> => {
   return Number(row?.c ?? 0)
 }
 
-const deps = (db: D1Database) => ({ db, nowIso: () => NOW })
+const deps = (db: D1Database) => ({ db, ledgerDb: makeLedgerDb(db), nowIso: () => NOW })
 
 // ---------------------------------------------------------------------------
 // 1. Conversion is the single source of truth
@@ -258,7 +266,7 @@ describe('fundInferenceFromCredit (#5497)', () => {
 
     // The agent balance gained the msat AND it is tagged USD-origin
     // (inference-spendable, NOT Bitcoin-withdrawable).
-    const balance = await readAgentBalance(db, ACCOUNT)
+    const balance = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     expect(balance?.balanceMsat).toBe(usdCentsToMsatFloor(300))
     expect(balance?.availableMsat).toBe(usdCentsToMsatFloor(300))
     expect(balance?.usdCreditMsat).toBe(usdCentsToMsatFloor(300))
@@ -364,7 +372,7 @@ describe('fundInferenceFromCredit (#5497)', () => {
     )
 
     expect(await usdBalanceCents(db)).toBe(200)
-    const balance = await readAgentBalance(db, ACCOUNT)
+    const balance = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     expect(balance?.balanceMsat).toBe(usdCentsToMsatFloor(300))
     expect(balance?.usdCreditMsat).toBe(usdCentsToMsatFloor(300))
     // Exactly one grant pay-in and one USD debit exist.
@@ -412,7 +420,7 @@ describe('fundInferenceFromCredit (#5497)', () => {
     if (outcome.ok) return
     expect(outcome.reason).toBe('insufficient_credit')
     // No grant, no balance row.
-    expect(await readAgentBalance(db, ACCOUNT)).toBe(null)
+    expect(await readAgentBalance(makeLedgerDb(db), ACCOUNT)).toBe(null)
   })
 
   test('rejects a non-positive amount without touching either ledger', async () => {
@@ -462,10 +470,10 @@ describe('RL-3 asset boundary: usd_credit_grant (#5497, #5460)', () => {
         deps(db),
       ),
     )
-    const before = await readAgentBalance(db, ACCOUNT)
+    const before = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     expect(before?.balanceMsat).toBeGreaterThan(0)
 
-    const hook = makeLedgerMeteringHook({ db, nowIso: () => NOW })
+    const hook = makeLedgerMeteringHook({ ledgerDb: makeLedgerDb(db), nowIso: () => NOW })
     const outcome = await run(hook(meteringContext()))
     expect(outcome.metered).toBe(true)
 
@@ -473,7 +481,7 @@ describe('RL-3 asset boundary: usd_credit_grant (#5497, #5460)', () => {
       priceRequest({ fundingKind: 'card', model: 'sonnet', usage }).chargeUsd,
     )
     expect(expectedMsat).toBeGreaterThan(0)
-    const after = await readAgentBalance(db, ACCOUNT)
+    const after = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     // The USD-funded balance was spent on inference.
     expect(after?.balanceMsat).toBe((before?.balanceMsat ?? 0) - expectedMsat)
   })
@@ -498,14 +506,14 @@ describe('RL-3 asset boundary: usd_credit_grant (#5497, #5460)', () => {
       .bind('w1', ACCOUNT, 'wallet.public.user.redacted', 'user@spark.money')
       .run()
 
-    const balance = await readAgentBalance(db, ACCOUNT)
+    const balance = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     // The whole balance is USD-origin => zero Bitcoin-withdrawable.
     expect(balance?.balanceMsat).toBeGreaterThan(210_000)
     expect(balance?.bitcoinWithdrawableMsat).toBe(0)
 
     // The sweep (the live Bitcoin-withdrawal path) selects NO candidate, because
     // it subtracts usd_credit_msat. A USD purchase can never leak into Bitcoin.
-    const candidates = await selectSweepCandidates(db, NOW)
+    const candidates = await selectSweepCandidates(db, makeLedgerDb(db), NOW)
     expect(candidates.length).toBe(0)
   })
 
@@ -535,11 +543,11 @@ describe('RL-3 asset boundary: usd_credit_grant (#5497, #5460)', () => {
       .bind('w2', ACCOUNT, 'wallet.public.user.redacted', 'user@spark.money')
       .run()
 
-    const balance = await readAgentBalance(db, ACCOUNT)
+    const balance = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     // Only the Bitcoin-funded 5_000_000 msat is withdrawable; the USD portion is not.
     expect(balance?.bitcoinWithdrawableMsat).toBe(5_000_000)
 
-    const candidates = await selectSweepCandidates(db, NOW)
+    const candidates = await selectSweepCandidates(db, makeLedgerDb(db), NOW)
     expect(candidates.length).toBe(1)
     // The sweepable amount is exactly the Bitcoin-funded portion (5000 sat),
     // never the USD-funded portion.

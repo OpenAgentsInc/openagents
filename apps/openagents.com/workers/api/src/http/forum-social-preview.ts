@@ -324,10 +324,12 @@ export const withForumThreadSocialPreview = async (
 // any read failure resolves to null so the caller serves the default card.
 export const readForumThreadPreview = async (
   db: D1Database,
+  // CFG-4 (#8519): credited tip totals in the detail read the Postgres ledger.
+  ledgerDb: import('../payments-ledger-db').PaymentsLedgerDb,
   topicId: string,
 ): Promise<ForumThreadSocialPreview> => {
   const detail = await Effect.runPromise(
-    readForumTopicDetail(db, topicId).pipe(
+    readForumTopicDetail(db, ledgerDb, topicId).pipe(
       Effect.catch(() => Effect.succeed(null)),
     ),
   )
@@ -342,13 +344,14 @@ export const readForumThreadPreview = async (
 export const handleForumThreadDocument = async (
   options: Readonly<{
     db: D1Database
+    ledgerDb: import('../payments-ledger-db').PaymentsLedgerDb
     topicId: string
     fetchAppShell: () => Promise<Response>
   }>,
 ): Promise<Response> => {
   const [shellResponse, preview] = await Promise.all([
     options.fetchAppShell(),
-    readForumThreadPreview(options.db, options.topicId),
+    readForumThreadPreview(options.db, options.ledgerDb, options.topicId),
   ])
 
   return withForumThreadSocialPreview(shellResponse, preview)

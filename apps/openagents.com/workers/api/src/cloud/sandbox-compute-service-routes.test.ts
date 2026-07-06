@@ -414,7 +414,7 @@ describe('D1 sandbox runtime adapter', () => {
 describe('makeLedgerSandboxMeteringHook', () => {
   test('reports metered:false at provision time (no metered usage yet)', async () => {
     const hook = makeLedgerSandboxMeteringHook({
-      db: {} as D1Database,
+      ledgerDb: {} as import('../payments-ledger-db').PaymentsLedgerDb,
       priceUsd: () => 1,
       usdToMsat: usd => Math.ceil(usd * 1000),
     })
@@ -427,7 +427,7 @@ describe('makeLedgerSandboxMeteringHook', () => {
 
   test('a zero-usd charge is metered with a receipt ref and no debit', async () => {
     const hook = makeLedgerSandboxMeteringHook({
-      db: {} as D1Database,
+      ledgerDb: {} as import('../payments-ledger-db').PaymentsLedgerDb,
       priceUsd: () => 0,
       usdToMsat: usd => Math.ceil(usd * 1000),
     })

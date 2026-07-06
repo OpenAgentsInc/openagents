@@ -13,11 +13,14 @@
 // streams, after the terminal usage frame arrives). It computes the charge with
 // the pure pricing engine (`priceRequest`, #5478) and decrements the account's
 // credit balance through the existing PayIn-shaped credit ledger
-// (`payments-ledger.ts`, `agent_balances`). It moves money ONLY through that
-// ledger: balances change by atomic increment/decrement, the
-// `CHECK (balance_msat >= 0)` constraint makes an over-charge fail the whole D1
-// batch (never goes negative), and the `idempotency_key UNIQUE` constraint makes
-// the decrement idempotent per request (never double-charges on retry/replay).
+// (`payments-ledger.ts`, `agent_balances`). CFG-4 (#8519): that ledger is
+// Cloud SQL Postgres-authoritative — the hook writes through `PaymentsLedgerDb`
+// as ONE atomic Postgres transaction. It moves money ONLY through that ledger:
+// balances change by atomic increment/decrement, the
+// `CHECK (balance_msat >= 0)` constraint makes an over-charge fail the whole
+// transaction (never goes negative), and the `idempotency_key UNIQUE`
+// constraint makes the decrement idempotent per request (never double-charges
+// on retry/replay).
 //
 // Returning a typed receipt-ref keeps the route's response honest about whether
 // metering is live (stub => `metered: false`; live => `metered: true` + a
@@ -25,7 +28,6 @@
 // or payment material — only public-safe refs and token counts (observability).
 import { Effect } from 'effect'
 
-import type { BillingDomainMirror } from '../billing'
 import {
   type MdkPayoutModeGateProjection,
   hostedMdkDirectPayoutDisabledGate,
@@ -35,9 +37,13 @@ import {
   type PayInPlan,
   createPayInStatements,
   markPayInPaidStatements,
-  readAgentBalance,
   runLedgerStatements,
 } from '../payments-ledger'
+import {
+  type PaymentsLedgerDb,
+  isLedgerCheckConstraintError,
+  isLedgerUniqueConstraintError,
+} from '../payments-ledger-db'
 import { currentIsoTimestamp } from '../runtime-primitives'
 import { type ServingReceipt } from './openagents-network-adapter'
 import { inferenceChargeContextRef } from './inference-charge-context'
@@ -55,9 +61,15 @@ import { usdToMsatCeil } from './usd-msat-conversion'
 class InferenceMeteringPersistenceError extends Error {
   readonly _tag = 'InferenceMeteringPersistenceError'
 
+  // The raw driver error, preserved so the CFG-4 constraint classifiers
+  // (`isLedgerUniqueConstraintError` / `isLedgerCheckConstraintError`) can
+  // read the Postgres SQLSTATE `code` off it.
+  override readonly cause: unknown
+
   constructor(cause: unknown) {
     super(cause instanceof Error ? cause.message : String(cause))
     this.name = 'InferenceMeteringPersistenceError'
+    this.cause = cause
   }
 }
 
@@ -167,16 +179,12 @@ export { DEFAULT_BTC_USD, usdToMsatCeil } from './usd-msat-conversion'
 
 // Deps for the live ledger metering hook.
 export type LedgerMeteringDeps = Readonly<{
-  // The openagents.com Worker D1 database (carries `agent_balances`, `pay_ins`,
-  // `pay_in_legs`). The Worker passes `openAgentsDatabase(env)`.
-  db: D1Database
+  // The credits-domain ledger (CFG-4, #8519: `agent_balances`, `pay_ins`,
+  // `pay_in_legs` are Cloud SQL Postgres-authoritative). The Worker passes
+  // `paymentsLedgerDbForEnv(env)`.
+  ledgerDb: PaymentsLedgerDb
   // ISO timestamp source for the ledger rows. Defaults to the runtime clock.
   nowIso?: () => string
-  // KS-8.7 (#8318/#8337): optional fail-soft Postgres mirror
-  // (`billingDomainMirrorFromEnv`) for the `pay_ins`/`pay_in_legs` rows this
-  // charge creates — otherwise D1-only until the next backfill sweep
-  // converges them.
-  mirror?: BillingDomainMirror | undefined
   // USD -> msat conversion. Defaults to `usdToMsatCeil` at `DEFAULT_BTC_USD`.
   // Tests inject a fixed conversion; a live oracle injects a real one.
   usdToMsat?: (chargeUsd: number, fundingKind: FundingKind) => number
@@ -209,9 +217,9 @@ export type LedgerMeteringDeps = Readonly<{
   servingRevenueAsset?: (fundingKind: FundingKind) => ServingRevenueAsset
   // Issue #8505 (Part 2): fail-soft, best-effort per-user credit-balance
   // projection into Khala Sync (`scope.user.<userId>`), so the mobile balance
-  // chip can update live instead of polling. Called AFTER a FRESH D1 charge
+  // chip can update live instead of polling. Called AFTER a FRESH ledger charge
   // commits (never for an idempotent-duplicate replay), with the SAME
-  // idempotency key the D1 charge used. This function itself must never
+  // idempotency key the ledger charge used. This function itself must never
   // throw (the injected implementation, `khala-sync-user-credit-balance.ts`'s
   // `recordUserCreditBalanceDeltaBestEffort`, is already fail-soft); optional
   // so tests and any deployment without the Khala Sync binding are unaffected
@@ -248,7 +256,7 @@ export {
 // pay-in funded by one `in` balance leg from the account (which debits the
 // account's `agent_balances` row, constraint-guarded), with no payout legs. This
 // reuses the exact atomic credit-ledger discipline the rest of the Worker uses
-// (one D1 batch = one transaction; balance moves by decrement; resulting balance
+// (one ledger transaction; balance moves by decrement; resulting balance
 // captured on the leg for audit).
 export const inferenceChargePayInPlan = (
   input: Readonly<{
@@ -401,19 +409,21 @@ export const makeLedgerMeteringHook = (
         requestId: context.requestId,
       })
 
-      // Decrement through the existing ledger. Two guarded outcomes are EXPECTED
-      // and not errors:
-      //   - duplicate idempotency key (UNIQUE) => the same request already
-      //     settled; treat as already-metered (idempotent no-op, no re-charge).
-      //   - balance CHECK abort => the account lacked funds at settle time; the
-      //     pre-gate should have caught it, but we never silently go negative.
-      // Both surface as a caught batch failure; we classify by re-reading whether
-      // the charge row already exists.
+      // Decrement through the credits ledger (ONE atomic Postgres
+      // transaction). Two guarded outcomes are EXPECTED and not errors:
+      //   - duplicate idempotency key (UNIQUE, SQLSTATE 23505) => the same
+      //     request already settled; treat as already-metered (idempotent
+      //     no-op, no re-charge).
+      //   - balance CHECK abort (SQLSTATE 23514) => the account lacked funds
+      //     at settle time; the pre-gate should have caught it, but we never
+      //     silently go negative.
+      // Both surface as a caught transaction failure, classified by the
+      // dialect-neutral constraint helpers (never driver message text alone).
       const settledAt = nowIso()
       const settle = yield* Effect.tryPromise({
         catch: inferenceMeteringPersistenceError,
         try: () =>
-          runLedgerStatements(deps.db, [
+          runLedgerStatements(deps.ledgerDb, [
             ...createPayInStatements(plan, settledAt),
             // Inference charges have no external forwarding leg; a successful
             // balance debit is the settlement event the public receipt proves.
@@ -421,10 +431,12 @@ export const makeLedgerMeteringHook = (
               { balancePayoutLegs: [], payInId: plan.payInId },
               settledAt,
             ),
-          ], deps.mirror),
+          ]),
       }).pipe(
-        Effect.map(() => ({ ok: true as const })),
-        Effect.catch(() => Effect.succeed({ ok: false as const })),
+        Effect.map(() => ({ error: undefined, ok: true as const })),
+        Effect.catch(error =>
+          Effect.succeed({ error: error.cause as unknown, ok: false as const }),
+        ),
       )
 
       if (settle.ok) {
@@ -445,9 +457,9 @@ export const makeLedgerMeteringHook = (
         // served this request AND the owner has armed live payout.
         yield* settleServingPayout(context, priced)
         // Issue #8505 (Part 2): best-effort live projection of the FRESH charge
-        // into scope.user.<userId>. Reuses the SAME idempotency key the D1
-        // charge just used — never a new key scheme. Fail-soft by contract
-        // (never throws) and never blocks/reverses the D1 charge above, which
+        // into scope.user.<userId>. Reuses the SAME idempotency key the
+        // ledger charge just used — never a new key scheme. Fail-soft by contract
+        // (never throws) and never blocks/reverses the ledger charge above, which
         // already committed.
         if (deps.recordCreditBalanceProjection !== undefined) {
           yield* Effect.promise(() =>
@@ -464,32 +476,40 @@ export const makeLedgerMeteringHook = (
         return { metered: true, receiptRef } satisfies MeteringOutcome
       }
 
-      // The batch failed. Re-read: if the charge row already exists, this was an
-      // idempotent duplicate (already charged) — report metered, no re-charge.
-      const already = yield* Effect.tryPromise({
-        catch: inferenceMeteringPersistenceError,
-        try: () =>
-          deps.db
-            .prepare('SELECT id FROM pay_ins WHERE idempotency_key = ? LIMIT 1')
-            .bind(inferenceChargeIdempotencyKey(context.requestId))
-            .first(),
-      }).pipe(Effect.catch(() => Effect.succeed(null)))
-
-      if (already !== null) {
+      // The transaction failed. Classify with the dialect-neutral constraint
+      // helpers (CFG-4): a UNIQUE violation is an idempotent duplicate — the
+      // same request already settled — so report metered without re-charging.
+      if (isLedgerUniqueConstraintError(settle.error)) {
         return { metered: true, receiptRef } satisfies MeteringOutcome
       }
 
-      // Otherwise the decrement genuinely failed (e.g. balance CHECK abort: the
-      // account could not cover the charge). We never go negative; report not
-      // metered (public-safe diagnostic, no amount/destination/payment material).
-      const balance = yield* Effect.tryPromise({
-        catch: inferenceMeteringPersistenceError,
-        try: () => readAgentBalance(deps.db, context.accountRef),
-      }).pipe(Effect.catch(() => Effect.succeed(null)))
-      const failureReason =
-        (balance?.availableMsat ?? 0) < costMsat
-          ? 'insufficient_credit'
-          : 'metering_storage_failed'
+      // Conservative fallback for an unclassified failure: re-read whether the
+      // charge row already exists (e.g. a raced replay whose error shape the
+      // classifier could not see).
+      if (!isLedgerCheckConstraintError(settle.error)) {
+        const already = yield* Effect.tryPromise({
+          catch: inferenceMeteringPersistenceError,
+          try: async () => {
+            const rows = await deps.ledgerDb.query(
+              'SELECT id FROM pay_ins WHERE idempotency_key = ? LIMIT 1',
+              [inferenceChargeIdempotencyKey(context.requestId)],
+            )
+            return rows[0] ?? null
+          },
+        }).pipe(Effect.catch(() => Effect.succeed(null)))
+
+        if (already !== null) {
+          return { metered: true, receiptRef } satisfies MeteringOutcome
+        }
+      }
+
+      // Otherwise the decrement genuinely failed. A balance CHECK abort
+      // (SQLSTATE 23514) means the account could not cover the charge; we
+      // never go negative. Anything else is a storage failure. Public-safe
+      // diagnostic only (no amount/destination/payment material).
+      const failureReason = isLedgerCheckConstraintError(settle.error)
+        ? 'insufficient_credit'
+        : 'metering_storage_failed'
       yield* Effect.logInfo(
         workerLogEntry('inference.metering.failed', {
           accountRef: context.accountRef,

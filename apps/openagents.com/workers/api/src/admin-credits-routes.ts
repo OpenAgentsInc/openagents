@@ -40,6 +40,7 @@ import { msatToUsdCentsRound } from './inference/usd-msat-conversion'
 import { methodNotAllowed, noStoreJsonResponse, unauthorized } from './http/responses'
 import { optionalInteger, optionalString, readJsonObject } from './json-boundary'
 import { readAgentBalance } from './payments-ledger'
+import type { PaymentsLedgerDb } from './payments-ledger-db'
 
 type HttpResponse = globalThis.Response
 
@@ -55,6 +56,11 @@ export type AdminCaller = Readonly<{ userId: string }>
 
 export type AdminCreditsRouteDependencies<Bindings> = Readonly<{
   db: (env: Bindings) => D1Database
+  /** CFG-4 (#8519): the Postgres-authoritative credits ledger — every
+   * `agent_balances`/`pay_ins` read on this surface goes through it. The D1
+   * handle above keeps the non-credits tables (users, auth_identities,
+   * admin_credit_grants, github_signup_credit_grants). */
+  ledgerDb: (env: Bindings) => PaymentsLedgerDb
   nowIso?: () => string
   requireAdminCaller: (
     request: Request,
@@ -159,8 +165,27 @@ type RecentSignupRow = Readonly<{
   created_at: string
   has_signup_credit_grant: number
   has_admin_credit_grant: number
-  balance_msat: number | null
 }>
+
+/** CFG-4 (#8519): batch-read the credits balances for one page of users from
+ * the Postgres ledger (`agent:<userId>` actor-ref convention,
+ * `agentRefForUser`). One IN-list query for the whole page — no N+1. */
+const readBalancesMsatByActorRef = async (
+  ledgerDb: PaymentsLedgerDb,
+  actorRefs: ReadonlyArray<string>,
+): Promise<ReadonlyMap<string, number>> => {
+  if (actorRefs.length === 0) return new Map()
+  const placeholders = actorRefs.map(() => '?').join(', ')
+  const rows = await ledgerDb.query(
+    `SELECT actor_ref, balance_msat
+       FROM agent_balances
+      WHERE actor_ref IN (${placeholders})`,
+    [...actorRefs],
+  )
+  return new Map(
+    rows.map(row => [String(row.actor_ref), Number(row.balance_msat)]),
+  )
+}
 
 const routeListUsers = async <Bindings>(
   dependencies: AdminCreditsRouteDependencies<Bindings>,
@@ -175,8 +200,9 @@ const routeListUsers = async <Bindings>(
 
   const like = query === undefined || query.length === 0 ? null : `%${query}%`
 
-  // Single query, no N+1: the balance join reads agent_balances directly by
-  // the same `agent:<userId>` actor-ref convention `agentRefForUser` uses.
+  // CFG-4 (#8519): the old `LEFT JOIN agent_balances` is gone — the credits
+  // table lives in Postgres now, so this D1 query lists the user page and a
+  // second ledger read (below) fills in the balances for exactly that page.
   const result = await db
     .prepare(
       `SELECT users.id AS user_id,
@@ -196,11 +222,8 @@ const routeListUsers = async <Bindings>(
               EXISTS (
                 SELECT 1 FROM admin_credit_grants
                  WHERE admin_credit_grants.user_id = users.id
-              ) AS has_admin_credit_grant,
-              agent_balances.balance_msat AS balance_msat
+              ) AS has_admin_credit_grant
          FROM users
-         LEFT JOIN agent_balances
-           ON agent_balances.actor_ref = 'agent:' || users.id
         WHERE users.kind = 'human'
           AND users.deleted_at IS NULL
           AND (
@@ -220,10 +243,17 @@ const routeListUsers = async <Bindings>(
     .bind(like, like, like, like, limit)
     .all<RecentSignupRow>()
 
+  const balancesByActorRef = await readBalancesMsatByActorRef(
+    dependencies.ledgerDb(env),
+    result.results.map(row => agentRefForUser(row.user_id)),
+  )
+
   return noStoreJsonResponse({
     ok: true,
     users: result.results.map(row => ({
-      balanceUsdCents: msatToUsdCentsRound(row.balance_msat ?? 0),
+      balanceUsdCents: msatToUsdCentsRound(
+        balancesByActorRef.get(agentRefForUser(row.user_id)) ?? 0,
+      ),
       createdAt: row.created_at,
       displayName: row.display_name,
       githubLogin: row.github_username,
@@ -253,7 +283,10 @@ const routeBalance = async <Bindings>(
   })
   if (target === null) return targetUserNotFound()
 
-  const balance = await readAgentBalance(db, agentRefForUser(target.user_id))
+  const balance = await readAgentBalance(
+    dependencies.ledgerDb(env),
+    agentRefForUser(target.user_id),
+  )
 
   return noStoreJsonResponse({
     ok: true,
@@ -428,8 +461,11 @@ const routeGrant = async <Bindings>(
     )
   }
 
+  // CFG-4 (#8519): D1 keeps the `admin_credit_grants` tracking table; the
+  // credits statements run on the Postgres ledger handle.
   const deps: AdminCreditGrantDeps = {
     db,
+    ledgerDb: dependencies.ledgerDb(env),
     ...(dependencies.nowIso === undefined ? {} : { nowIso: dependencies.nowIso }),
     ...(dependencies.recordCreditBalanceProjection === undefined
       ? {}
@@ -518,8 +554,10 @@ const routeClawback = async <Bindings>(
     )
   }
 
+  // CFG-4 (#8519): the clawback touches credits tables only — ledger handle,
+  // no D1.
   const deps: AdminCreditClawbackDeps = {
-    db,
+    ledgerDb: dependencies.ledgerDb(env),
     ...(dependencies.nowIso === undefined ? {} : { nowIso: dependencies.nowIso }),
     ...(dependencies.recordCreditBalanceProjection === undefined
       ? {}

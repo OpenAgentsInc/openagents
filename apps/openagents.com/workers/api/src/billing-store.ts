@@ -202,7 +202,9 @@ export const BILLING_DOMAIN_POSTGRES_SERVED_READ_TABLES: ReadonlySet<BillingDoma
     'billing_auto_top_up_events',
     'stripe_saved_payment_methods',
     'stripe_checkout_sessions',
-    'pay_ins',
+    // CFG-4 (#8519): `pay_ins` was REMOVED from this allowlist — the
+    // receipt reads now go DIRECTLY to the Postgres-authoritative credits
+    // ledger (`payments-ledger-db.ts`), no flag routing and no D1 twin.
   ])
 
 /** True when `table` is in the #8337 bounded Postgres-served read allowlist. */

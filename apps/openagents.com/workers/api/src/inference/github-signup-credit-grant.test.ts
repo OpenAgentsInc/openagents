@@ -5,6 +5,8 @@ import { describe, expect, test } from 'vitest'
 
 import { validateAssetBoundary } from '../asset-bitcoin-boundary'
 import { readAgentBalance } from '../payments-ledger'
+import type { PaymentsLedgerDb } from '../payments-ledger-db'
+import { paymentsLedgerDbFromD1 } from '../test/payments-ledger-sqlite'
 import { selectSweepCandidates } from '../tips-sweep'
 import {
   agentRefForUser,
@@ -186,7 +188,14 @@ const makeDb = (): D1Database => {
   return new SqliteD1(raw) as unknown as D1Database
 }
 
-const deps = (db: D1Database) => ({ db, nowIso: () => NOW })
+// CFG-4 (#8519): the credit grant writes through the Postgres-authoritative
+// `PaymentsLedgerDb` seam; tests back it with the same SQLite-D1 shim (one
+// underlying database, two typed handles) so cross-store assertions still
+// read one truth.
+const makeLedgerDb = (db: D1Database): PaymentsLedgerDb =>
+  paymentsLedgerDbFromD1(db as never)
+
+const deps = (db: D1Database) => ({ db, ledgerDb: makeLedgerDb(db), nowIso: () => NOW })
 
 describe('decideGithubAccountAge (MM-D1, #8478)', () => {
   test('is eligible when the account is older than the floor', () => {
@@ -259,7 +268,7 @@ describe('grantGithubSignupCredit (MM-D1, #8478)', () => {
       usdCreditGrantReceiptRef(githubSignupCreditGrantRef(GITHUB_USER_ID)),
     )
 
-    const balance = await readAgentBalance(db, ACCOUNT)
+    const balance = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     expect(balance?.balanceMsat).toBe(usdCentsToMsatFloor(1000))
     expect(balance?.usdCreditMsat).toBe(usdCentsToMsatFloor(1000))
     // RL-3: never Bitcoin-withdrawable.
@@ -295,7 +304,7 @@ describe('grantGithubSignupCredit (MM-D1, #8478)', () => {
       const outcome = await run(
         grantGithubSignupCredit(
           { githubAccountCreatedAtIso: OLD_GITHUB_ACCOUNT_CREATED_AT, githubUserId: GITHUB_USER_ID, userId: USER },
-          { db, nowIso: () => NOW, recordCreditBalanceProjection: recorder },
+          { db, ledgerDb: makeLedgerDb(db), nowIso: () => NOW, recordCreditBalanceProjection: recorder },
         ),
       )
       expect(outcome.ok).toBe(true)
@@ -310,7 +319,7 @@ describe('grantGithubSignupCredit (MM-D1, #8478)', () => {
     test('never fires on a replay (already granted)', async () => {
       const db = makeDb()
       const { calls, recorder } = makeRecorder()
-      const withRecorder = { db, nowIso: () => NOW, recordCreditBalanceProjection: recorder }
+      const withRecorder = { db, ledgerDb: makeLedgerDb(db), nowIso: () => NOW, recordCreditBalanceProjection: recorder }
       await run(
         grantGithubSignupCredit(
           { githubAccountCreatedAtIso: OLD_GITHUB_ACCOUNT_CREATED_AT, githubUserId: GITHUB_USER_ID, userId: USER },
@@ -347,7 +356,7 @@ describe('grantGithubSignupCredit (MM-D1, #8478)', () => {
     if (!second.ok) return
     expect(second.alreadyGranted).toBe(true)
 
-    const balance = await readAgentBalance(db, ACCOUNT)
+    const balance = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     expect(balance?.balanceMsat).toBe(usdCentsToMsatFloor(1000))
     const history = await readGithubSignupCreditGrantsForUser(db, USER)
     expect(history).toHaveLength(1)
@@ -381,7 +390,7 @@ describe('grantGithubSignupCredit (MM-D1, #8478)', () => {
     expect(second.ok).toBe(true)
 
     // Whichever call "won", the account was credited EXACTLY ONCE.
-    const balance = await readAgentBalance(db, ACCOUNT)
+    const balance = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     expect(balance?.balanceMsat).toBe(usdCentsToMsatFloor(1000))
     const history = await readGithubSignupCreditGrantsForUser(db, USER)
     expect(history).toHaveLength(1)
@@ -407,7 +416,7 @@ describe('grantGithubSignupCredit (MM-D1, #8478)', () => {
 
     // No credit was granted and no grant row exists (so a later retry can
     // still succeed once the account ages past the floor).
-    expect(await readAgentBalance(db, ACCOUNT)).toBe(null)
+    expect(await readAgentBalance(makeLedgerDb(db), ACCOUNT)).toBe(null)
     expect(await readGithubSignupCreditGrantsForUser(db, USER)).toHaveLength(0)
   })
 
@@ -432,7 +441,7 @@ describe('grantGithubSignupCredit (MM-D1, #8478)', () => {
           githubUserId: GITHUB_USER_ID,
           userId: USER,
         },
-        { db, minAccountAgeSeconds: 3600, nowIso: () => '2026-07-05T13:00:00.000Z' },
+        { db, ledgerDb: makeLedgerDb(db), minAccountAgeSeconds: 3600, nowIso: () => '2026-07-05T13:00:00.000Z' },
       ),
     )
     expect(later.ok).toBe(true)
@@ -469,7 +478,7 @@ describe('grantGithubSignupCredit (MM-D1, #8478)', () => {
     expect(second.ok).toBe(false)
     if (second.ok) return
     expect(second.reason).toBe('ip_mint_cap_exceeded')
-    expect(await readAgentBalance(db, agentRefForUser('github:over-cap-2'))).toBe(
+    expect(await readAgentBalance(makeLedgerDb(db), agentRefForUser('github:over-cap-2'))).toBe(
       null,
     )
   })
@@ -495,7 +504,7 @@ describe('grantGithubSignupCredit (MM-D1, #8478)', () => {
       .bind('w1', ACCOUNT, 'wallet.public.user.redacted', 'user@spark.money')
       .run()
 
-    const candidates = await selectSweepCandidates(db, NOW)
+    const candidates = await selectSweepCandidates(db, makeLedgerDb(db), NOW)
     expect(candidates.length).toBe(0)
   })
 

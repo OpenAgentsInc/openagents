@@ -13,6 +13,7 @@ import {
 } from './billing-store'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { fundInferenceFromCredit } from './inference/usd-credit-bridge'
+import { paymentsLedgerDbForEnv, type PaymentsLedgerDb, type PaymentsLedgerEnv } from './payments-ledger-db'
 import { readJsonObject } from './json-boundary'
 import { firstText } from './omni-runs'
 import { businessDomainDatabaseForEnv } from './business-domain-store'
@@ -32,7 +33,8 @@ type BillingEnv = Readonly<{
   OPENAGENTS_DB: D1Database
 }> &
   StripeBillingEnv &
-  BillingSyncEnv
+  BillingSyncEnv &
+  PaymentsLedgerEnv
 
 // Read the billing summary AND attach the purchasable credit catalog projected
 // from the server Stripe config. Every browser-facing billing response goes
@@ -169,6 +171,9 @@ type BillingApiDependencies<
     environment: Env,
     ctx: ExecutionContext,
   ) => Promise<Session | undefined>
+  /** CFG-4 (#8519): injectable credits-ledger accessor (tests). Default:
+   * `paymentsLedgerDbForEnv` — the Postgres-only production path. */
+  ledgerDb?: (environment: Env) => PaymentsLedgerDb
   stripe?: Readonly<{
     createCreditCheckout: (input: {
       businessKickoff?: Readonly<{ signupId: string }> | undefined
@@ -493,6 +498,7 @@ export const makeBillingApiHandlers = <
         {
           billingRuntime: billingRuntimeForEnv(environment),
           db: openAgentsDatabase(environment),
+          ledgerDb: (dependencies.ledgerDb ?? paymentsLedgerDbForEnv)(environment),
         },
       ),
     )

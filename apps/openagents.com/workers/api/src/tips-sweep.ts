@@ -7,12 +7,12 @@ import {
   markPayInForwardingStatements,
   markPayInPaidStatements,
   runLedgerStatements,
+  sumAgentBalancesMsat,
 } from './payments-ledger'
-import type { BillingDomainMirror } from './billing'
+import type { PaymentsLedgerDb } from './payments-ledger-db'
 import { epochMillisToIsoTimestamp } from './runtime-primitives'
 import {
   treasuryAuthorityDb,
-  treasuryRead,
   type TreasuryDatabase,
 } from './treasury-domain-store'
 
@@ -128,77 +128,125 @@ export type SweepTickOutcome = Readonly<{
 
 export const selectSweepCandidates = async (
   database: TreasuryDatabase,
+  ledgerDb: PaymentsLedgerDb,
   nowIso: string,
   limit: number = TIPS_SWEEP_MAX_PER_TICK,
 ): Promise<ReadonlyArray<SweepCandidate>> => {
-  // KS-8.8 (#8319): this scan DRIVES live Bitcoin payouts, so it reads
-  // exactly ONE store — the D1 authority — regardless of any read flag
-  // (MIGRATION_PLAN §3.5: the dispatcher reads exactly one store during
-  // dual-write). It carries no Postgres twin in this lane on purpose.
-  const db = treasuryAuthorityDb(database)
   const backoffCutoff = epochMillisToIsoTimestamp(
     Date.parse(nowIso) - TIPS_SWEEP_FAILURE_BACKOFF_MINUTES * 60_000,
   )
 
+  // CFG-4 (#8519): `agent_balances`/`pay_ins` are Cloud SQL
+  // Postgres-authoritative, while the recipient wallet registry
+  // (`forum_tip_recipient_wallets`) stays on the D1 treasury authority. The
+  // old single D1 JOIN is therefore split into two single-store reads (a
+  // NON-ATOMIC cross-store seam): the ledger scan below picks the sweepable
+  // balances, then the D1 wallet lookup filters to ready destinations. Both
+  // sides are read-only and the sweep itself re-verifies funds atomically
+  // (the funding debit is CHECK-guarded inside the ledger transaction), so
+  // a row changing between the two reads costs nothing.
+  //
   // RL-3 asset boundary (#5497): the sweep is the live Bitcoin-withdrawal path,
   // so it pays out only the Bitcoin-WITHDRAWABLE balance:
   //   balance_msat - held_msat - usd_credit_msat
   // USD-purchased credit (`usd_credit_msat`) is inference-spendable but NEVER a
   // Bitcoin liability, so it is subtracted from the sweepable amount here and
   // from the threshold gate below. A USD credit can never leak into a sweep.
-  const result = await db
-    .prepare(
-      `SELECT b.actor_ref,
-              b.balance_msat - COALESCE(b.held_msat, 0)
-                - COALESCE(b.usd_credit_msat, 0) AS available_balance_msat,
-              b.sweep_threshold_sat,
-              w.wallet_ref, w.lightning_address, w.bolt12_offer
-         FROM agent_balances b
-         JOIN forum_tip_recipient_wallets w
-           ON w.actor_ref = b.actor_ref
-          AND w.state = 'ready'
-          AND w.archived_at IS NULL
-          AND (w.lightning_address IS NOT NULL OR w.bolt12_offer IS NOT NULL)
-        WHERE b.sweep_enabled = 1
-          AND b.balance_msat - COALESCE(b.held_msat, 0)
-                - COALESCE(b.usd_credit_msat, 0)
-                >= (b.sweep_threshold_sat + ?) * 1000
-          AND NOT EXISTS (
-            SELECT 1 FROM pay_ins p
-             WHERE p.pay_in_type = 'sweep'
-               AND p.payer_ref = b.actor_ref
-               AND (
-                 p.state IN ('pending', 'forwarding')
-                 OR (p.state = 'failed' AND p.state_changed_at > ?)
-               )
-          )
-        ORDER BY available_balance_msat DESC
-        LIMIT ?`,
-    )
-    .bind(TIPS_SWEEP_MIN_SAT, backoffCutoff, limit)
-    .all()
+  //
+  // The balance scan is unbounded by design: the WHERE clause already
+  // restricts it to sweep-enabled agents above threshold without pending
+  // sweeps — a naturally small set. The per-tick `limit` applies after the
+  // wallet-readiness filter, exactly as the old JOIN's LIMIT did.
+  const balanceRows = await ledgerDb.query(
+    `SELECT b.actor_ref,
+            b.balance_msat - COALESCE(b.held_msat, 0)
+              - COALESCE(b.usd_credit_msat, 0) AS available_balance_msat,
+            b.sweep_threshold_sat
+       FROM agent_balances b
+      WHERE b.sweep_enabled = 1
+        AND b.balance_msat - COALESCE(b.held_msat, 0)
+              - COALESCE(b.usd_credit_msat, 0)
+              >= (b.sweep_threshold_sat + ?) * 1000
+        AND NOT EXISTS (
+          SELECT 1 FROM pay_ins p
+           WHERE p.pay_in_type = 'sweep'
+             AND p.payer_ref = b.actor_ref
+             AND (
+               p.state IN ('pending', 'forwarding')
+               OR (p.state = 'failed' AND p.state_changed_at > ?)
+             )
+        )
+      ORDER BY available_balance_msat DESC`,
+    [TIPS_SWEEP_MIN_SAT, backoffCutoff],
+  )
 
-  return ((result.results ?? []) as Array<Record<string, unknown>>).map(row => {
-    const lightningAddress =
-      typeof row.lightning_address === 'string' &&
-      row.lightning_address.trim() !== ''
-        ? row.lightning_address.trim()
-        : null
-    return {
-      actorRef: String(row.actor_ref),
-      balanceMsat: Number(row.available_balance_msat ?? row.balance_msat),
-      payoutDestination: lightningAddress ?? String(row.bolt12_offer),
-      sweepThresholdSat: Number(row.sweep_threshold_sat),
-      walletClaimRef: String(row.wallet_ref),
+  if (balanceRows.length === 0) {
+    return []
+  }
+
+  // Ready payout destinations from the D1 treasury authority, chunked for
+  // the D1 bound-parameter limit.
+  const db = treasuryAuthorityDb(database)
+  const actorRefs = balanceRows.map(row => String(row.actor_ref))
+  const walletsByActorRef = new Map<string, Record<string, unknown>>()
+  const WALLET_PARAM_CHUNK = 90
+  for (let index = 0; index < actorRefs.length; index += WALLET_PARAM_CHUNK) {
+    const chunk = actorRefs.slice(index, index + WALLET_PARAM_CHUNK)
+    const walletResult = await db
+      .prepare(
+        `SELECT w.actor_ref, w.wallet_ref, w.lightning_address, w.bolt12_offer
+           FROM forum_tip_recipient_wallets w
+          WHERE w.actor_ref IN (${chunk.map(() => '?').join(', ')})
+            AND w.state = 'ready'
+            AND w.archived_at IS NULL
+            AND (w.lightning_address IS NOT NULL OR w.bolt12_offer IS NOT NULL)`,
+      )
+      .bind(...chunk)
+      .all()
+
+    for (const row of (walletResult.results ?? []) as Array<
+      Record<string, unknown>
+    >) {
+      if (!walletsByActorRef.has(String(row.actor_ref))) {
+        walletsByActorRef.set(String(row.actor_ref), row)
+      }
     }
-  })
+  }
+
+  const candidates: SweepCandidate[] = []
+  for (const row of balanceRows) {
+    if (candidates.length >= limit) {
+      break
+    }
+    const wallet = walletsByActorRef.get(String(row.actor_ref))
+    if (wallet === undefined) {
+      continue
+    }
+    const lightningAddress =
+      typeof wallet.lightning_address === 'string' &&
+      wallet.lightning_address.trim() !== ''
+        ? wallet.lightning_address.trim()
+        : null
+    candidates.push({
+      actorRef: String(row.actor_ref),
+      // Postgres returns bigint msat columns as strings; Number(...) decodes.
+      balanceMsat: Number(row.available_balance_msat),
+      payoutDestination: lightningAddress ?? String(wallet.bolt12_offer),
+      sweepThresholdSat: Number(row.sweep_threshold_sat),
+      walletClaimRef: String(wallet.wallet_ref),
+    })
+  }
+
+  return candidates
 }
 
 export const runTipsSweepTick = async (
+  // Wallet-registry reads (forum_tip_recipient_wallets) stay on the D1
+  // treasury seam; all credits-table reads/writes ride `deps.ledgerDb`.
   db: TreasuryDatabase,
   deps: Readonly<{
-    /** KS-8.7 (#8318) fail-soft Postgres mirror (billing-store.ts). */
-    mirror?: BillingDomainMirror | undefined
+    /** CFG-4 (#8519): the Postgres-authoritative credits ledger handle. */
+    ledgerDb: PaymentsLedgerDb
     payFromBuffer: BufferPayFn | null
     makeId: () => string
     nowIso: string
@@ -216,6 +264,7 @@ export const runTipsSweepTick = async (
 
   const candidates = await selectSweepCandidates(
     db,
+    deps.ledgerDb,
     deps.nowIso,
     deps.maxPerTick ?? TIPS_SWEEP_MAX_PER_TICK,
   )
@@ -239,14 +288,10 @@ export const runTipsSweepTick = async (
       walletClaimRef: candidate.walletClaimRef,
     }
 
-    await runLedgerStatements(
-      db,
-      [
-        ...sweepCreateStatements(plan, deps.nowIso),
-        ...markPayInForwardingStatements(plan.payInId, deps.nowIso),
-      ],
-      deps.mirror,
-    )
+    await runLedgerStatements(deps.ledgerDb, [
+      ...sweepCreateStatements(plan, deps.nowIso),
+      ...markPayInForwardingStatements(plan.payInId, deps.nowIso),
+    ])
 
     const payResult = await deps.payFromBuffer({
       amountSat,
@@ -254,44 +299,34 @@ export const runTipsSweepTick = async (
     })
 
     if (payResult.ok) {
-      await runLedgerStatements(
-        db,
-        [
-          ...markPayInPaidStatements(
-            { balancePayoutLegs: [], payInId: plan.payInId },
-            deps.nowIso,
-          ),
-          {
-            params: [payResult.paymentRef, plan.payoutLegId],
-            payInId: plan.payInId,
-            sql: `UPDATE pay_in_legs
+      await runLedgerStatements(deps.ledgerDb, [
+        ...markPayInPaidStatements(
+          { balancePayoutLegs: [], payInId: plan.payInId },
+          deps.nowIso,
+        ),
+        {
+          params: [payResult.paymentRef, plan.payoutLegId],
+          sql: `UPDATE pay_in_legs
                 SET external_ref = external_ref || '|' || ?
                 WHERE id = ?`,
-          },
-        ],
-        deps.mirror,
-      )
+        },
+      ])
       settled += 1
     } else if (payResult.pending === true) {
       // #4710: a pending buffer payment HOLDS the debit in forwarding.
       // The reconciliation pass polls the buffer until the outcome is
       // known; refunding now risks paying the recipient twice.
-      await runLedgerStatements(
-        db,
-        [
-          {
-            params: [`pending:${payResult.paymentId}`, plan.payoutLegId],
-            payInId: plan.payInId,
-            sql: `UPDATE pay_in_legs
+      await runLedgerStatements(deps.ledgerDb, [
+        {
+          params: [`pending:${payResult.paymentId}`, plan.payoutLegId],
+          sql: `UPDATE pay_in_legs
                 SET external_ref = external_ref || '|' || ?
                 WHERE id = ?`,
-          },
-        ],
-        deps.mirror,
-      )
+        },
+      ])
     } else {
       await runLedgerStatements(
-        db,
+        deps.ledgerDb,
         markPayInFailedStatements(
           {
             balanceFundingLegs: [
@@ -310,7 +345,6 @@ export const runTipsSweepTick = async (
           },
           deps.nowIso,
         ),
-        deps.mirror,
       )
       failed += 1
     }
@@ -329,7 +363,10 @@ export const runTipsSweepTick = async (
 // raises (captured by the scheduled observer) instead of passing
 // silently.
 export const checkTipsBufferBackingInvariant = async (
-  db: TreasuryDatabase,
+  // CFG-4 (#8519): `agent_balances` is Postgres-authoritative; the SUM
+  // reads the ledger handle directly. The old KS-8.8 flag-routed
+  // treasuryRead (D1 authority + compare probe) is gone with the D1 rows.
+  ledgerDb: PaymentsLedgerDb,
   fetchBufferBalance: () => Promise<number | null>,
 ): Promise<
   Readonly<{
@@ -338,24 +375,7 @@ export const checkTipsBufferBackingInvariant = async (
     bufferBalanceSat: number | null
   }>
 > => {
-  // KS-8.8 (#8319): flag-routed read. Default d1; compare mode turns this
-  // every-tick SUM into a continuously-running msat reconciliation probe
-  // (serving D1, logging any drift); postgres mode is the epic-gated
-  // cutover with bounded retry + D1 fallback.
-  const totalMsat = await treasuryRead(
-    db,
-    'agent_balances:sum_msat',
-    [],
-    async () => {
-      const row = await treasuryAuthorityDb(db)
-        .prepare(
-          'SELECT COALESCE(SUM(balance_msat), 0) AS total FROM agent_balances',
-        )
-        .first()
-      return Number((row as { total?: unknown } | null)?.total ?? 0)
-    },
-    postgres => postgres.sumAgentBalancesMsat().then(Number),
-  )
+  const totalMsat = await sumAgentBalancesMsat(ledgerDb)
   const agentBalancesSat = Math.ceil(totalMsat / 1000)
   const bufferBalanceSat = await fetchBufferBalance()
 
@@ -380,10 +400,12 @@ export const checkTipsBufferBackingInvariant = async (
 // refund, and for ladder tips also pay the credited fallback so the tip
 // still never fails; still-pending -> wait for the next tick.
 export const reconcileForwardingBufferPayments = async (
-  db: TreasuryDatabase,
+  // CFG-4 (#8519): every table this reconcile touches (pay_ins,
+  // pay_in_legs, agent_balances) is a credits table, so the whole pass
+  // runs on the Postgres-authoritative ledger handle — no treasury/D1
+  // seam remains here.
+  ledgerDb: PaymentsLedgerDb,
   deps: Readonly<{
-    /** KS-8.7 (#8318) fail-soft Postgres mirror (billing-store.ts). */
-    mirror?: BillingDomainMirror | undefined
     fetchBufferPaymentStatus: (
       paymentId: string,
     ) => Promise<'succeeded' | 'failed' | 'pending'>
@@ -393,26 +415,21 @@ export const reconcileForwardingBufferPayments = async (
 ): Promise<
   Readonly<{ settled: number; refunded: number; waiting: number }>
 > => {
-  const authority = treasuryAuthorityDb(db)
-  const rows = ((
-    await authority
-      .prepare(
-        `SELECT p.id AS pay_in_id, p.pay_in_type, p.payer_ref, p.cost_msat,
-                  p.context_ref, p.idempotency_key, p.public_receipt_ref,
-                  l.id AS leg_id, l.external_ref,
-                  fin.id AS funding_leg_id, fin.party_ref AS funding_party_ref
-             FROM pay_ins p
-             JOIN pay_in_legs l
-               ON l.pay_in_id = p.id AND l.kind = 'lightning'
-              AND l.direction = 'out' AND l.external_ref LIKE '%|pending:%'
-        LEFT JOIN pay_in_legs fin
-               ON fin.pay_in_id = p.id AND fin.kind = 'balance'
-              AND fin.direction = 'in' AND fin.refund_of_leg_id IS NULL
-            WHERE p.state = 'forwarding'
-            LIMIT 10`,
-      )
-      .all()
-  ).results ?? []) as Array<Record<string, unknown>>
+  const rows = (await ledgerDb.query(
+    `SELECT p.id AS pay_in_id, p.pay_in_type, p.payer_ref, p.cost_msat,
+              p.context_ref, p.idempotency_key, p.public_receipt_ref,
+              l.id AS leg_id, l.external_ref,
+              fin.id AS funding_leg_id, fin.party_ref AS funding_party_ref
+         FROM pay_ins p
+         JOIN pay_in_legs l
+           ON l.pay_in_id = p.id AND l.kind = 'lightning'
+          AND l.direction = 'out' AND l.external_ref LIKE '%|pending:%'
+    LEFT JOIN pay_in_legs fin
+           ON fin.pay_in_id = p.id AND fin.kind = 'balance'
+          AND fin.direction = 'in' AND fin.refund_of_leg_id IS NULL
+        WHERE p.state = 'forwarding'
+        LIMIT 10`,
+  )) as Array<Record<string, unknown>>
 
   let settled = 0
   let refunded = 0
@@ -432,26 +449,21 @@ export const reconcileForwardingBufferPayments = async (
 
     const payInId = String(row.pay_in_id)
     if (status === 'succeeded') {
-      await runLedgerStatements(
-        db,
-        [
-          ...markPayInPaidStatements(
-            { balancePayoutLegs: [], payInId },
-            deps.nowIso,
-          ),
-          {
-            params: [
-              `payment.tips_buffer.${paymentId.slice(0, 12)}`,
-              String(row.leg_id),
-            ],
-            payInId,
-            sql: `UPDATE pay_in_legs
+      await runLedgerStatements(ledgerDb, [
+        ...markPayInPaidStatements(
+          { balancePayoutLegs: [], payInId },
+          deps.nowIso,
+        ),
+        {
+          params: [
+            `payment.tips_buffer.${paymentId.slice(0, 12)}`,
+            String(row.leg_id),
+          ],
+          sql: `UPDATE pay_in_legs
                 SET external_ref = external_ref || '|' || ?
                 WHERE id = ?`,
-          },
-        ],
-        deps.mirror,
-      )
+        },
+      ])
       settled += 1
       continue
     }
@@ -461,7 +473,7 @@ export const reconcileForwardingBufferPayments = async (
     const fundingPartyRef = row.funding_party_ref
     if (fundingLegId !== null && fundingPartyRef !== null) {
       await runLedgerStatements(
-        db,
+        ledgerDb,
         markPayInFailedStatements(
           {
             balanceFundingLegs: [
@@ -477,7 +489,6 @@ export const reconcileForwardingBufferPayments = async (
           },
           deps.nowIso,
         ),
-        deps.mirror,
       )
       refunded += 1
 
@@ -487,13 +498,13 @@ export const reconcileForwardingBufferPayments = async (
         String(row.pay_in_type) === 'tip' &&
         String(row.context_ref ?? '').startsWith('forum.post.')
       ) {
-        const recipientRow = (await authority
-          .prepare(
-            `SELECT party_ref FROM pay_in_legs
-              WHERE pay_in_id = ? AND kind = 'lightning' AND direction = 'out'`,
-          )
-          .bind(payInId)
-          .first()) as { party_ref: string } | null
+        const recipientRows = await ledgerDb.query(
+          `SELECT party_ref FROM pay_in_legs
+            WHERE pay_in_id = ? AND kind = 'lightning' AND direction = 'out'`,
+          [payInId],
+        )
+        const recipientRow =
+          (recipientRows[0] as { party_ref: string } | undefined) ?? null
         if (recipientRow !== null) {
           const fallbackPayInId = deps.makeId()
           const fundingLeg = deps.makeId()
@@ -502,7 +513,7 @@ export const reconcileForwardingBufferPayments = async (
           const postId = String(row.context_ref).replace('forum.post.', '')
           const { creditedTipStatements } = await import('./tip-ladder')
           await runLedgerStatements(
-            db,
+            ledgerDb,
             creditedTipStatements(
               {
                 amountSat: Math.floor(amountMsat / 1000),
@@ -521,7 +532,6 @@ export const reconcileForwardingBufferPayments = async (
               },
               deps.nowIso,
             ),
-            deps.mirror,
           )
         }
       }
@@ -534,10 +544,10 @@ export const reconcileForwardingBufferPayments = async (
 export const runTipsSweepScheduled = (
   db: TreasuryDatabase,
   deps: Readonly<{
+    /** CFG-4 (#8519): the Postgres-authoritative credits ledger handle. */
+    ledgerDb: PaymentsLedgerDb
     payFromBuffer: BufferPayFn | null
     makeId: () => string
-    /** KS-8.7 (#8318) fail-soft Postgres mirror (billing-store.ts). */
-    mirror?: BillingDomainMirror | undefined
     nowIso: string
   }>,
 ): Effect.Effect<SweepTickOutcome, never> =>

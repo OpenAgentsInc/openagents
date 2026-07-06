@@ -31,22 +31,32 @@
 
 import { Effect, Schema as S } from 'effect'
 
-import type { BillingDomainMirror } from '../billing'
 import { workerLogEntry } from '../observability'
 import {
   createPayInStatements,
   type PayInPlan,
   runLedgerStatements,
 } from '../payments-ledger'
+import {
+  type PaymentsLedgerDb,
+  isLedgerCheckConstraintError,
+  isLedgerUniqueConstraintError,
+} from '../payments-ledger-db'
 import { currentIsoTimestamp } from '../runtime-primitives'
 import { AgentRateLimitPolicy } from '../agent-rate-limit-policy'
 
 class InferenceClawbackPersistenceError extends Error {
   readonly _tag = 'InferenceClawbackPersistenceError'
 
+  // The raw driver error, preserved so the CFG-4 constraint classifiers
+  // (`isLedgerUniqueConstraintError` / `isLedgerCheckConstraintError`) can
+  // read the Postgres SQLSTATE `code` off it.
+  override readonly cause: unknown
+
   constructor(cause: unknown) {
     super(cause instanceof Error ? cause.message : String(cause))
     this.name = 'InferenceClawbackPersistenceError'
+    this.cause = cause
   }
 }
 
@@ -538,8 +548,8 @@ export const inferenceClawbackReceiptRef = (sourceRef: string): string =>
 // Build the debit-only PayIn plan for a credit clawback: a single `adjustment`
 // pay-in funded by one `in` balance leg from the account (debiting its
 // `agent_balances` row, constraint-guarded). This is the SAME atomic ledger
-// discipline the inference CHARGE uses (`inferenceChargePayInPlan`): one D1 batch
-// = one transaction; balance moves by decrement; the `CHECK (balance_msat >= 0)`
+// discipline the inference CHARGE uses (`inferenceChargePayInPlan`): one ledger
+// batch = one Postgres transaction; balance moves by decrement; the `CHECK (balance_msat >= 0)`
 // constraint makes an over-clawback fail the whole batch (never goes negative),
 // and the `idempotency_key UNIQUE` constraint makes the clawback idempotent per
 // source event (never double-claws on webhook replay).
@@ -585,13 +595,11 @@ export type ClawbackOutcome = Readonly<{
 }>
 
 export type ClawbackDeps = Readonly<{
-  db: D1Database
+  // The credits-domain ledger (CFG-4, #8519: `pay_ins`/`pay_in_legs`/
+  // `agent_balances` are Cloud SQL Postgres-authoritative). The Worker passes
+  // `paymentsLedgerDbForEnv(env)`.
+  ledgerDb: PaymentsLedgerDb
   nowIso?: () => string
-  // KS-8.7 (#8318/#8337): optional fail-soft Postgres mirror
-  // (`billingDomainMirrorFromEnv`) for the `pay_ins`/`pay_in_legs` rows this
-  // clawback creates — otherwise D1-only until the next backfill sweep
-  // converges them.
-  mirror?: BillingDomainMirror | undefined
 }>
 
 // Effect-returning clawback hook (the ONE money-moving surface here). Decrements
@@ -633,14 +641,12 @@ export const clawbackInferenceCredits = (
     const settle = yield* Effect.tryPromise({
       catch: inferenceClawbackPersistenceError,
       try: () =>
-        runLedgerStatements(
-          deps.db,
-          createPayInStatements(plan, nowIso()),
-          deps.mirror,
-        ),
+        runLedgerStatements(deps.ledgerDb, createPayInStatements(plan, nowIso())),
     }).pipe(
-      Effect.map(() => ({ ok: true as const })),
-      Effect.catch(() => Effect.succeed({ ok: false as const })),
+      Effect.map(() => ({ error: undefined, ok: true as const })),
+      Effect.catch(error =>
+        Effect.succeed({ error: error.cause as unknown, ok: false as const }),
+      ),
     )
 
     if (settle.ok) {
@@ -658,23 +664,39 @@ export const clawbackInferenceCredits = (
       } satisfies ClawbackOutcome
     }
 
-    // Batch failed. Re-read: an existing clawback row means an idempotent replay
-    // (already clawed back) — report success, no re-claw.
-    const already = yield* Effect.tryPromise({
-      catch: inferenceClawbackPersistenceError,
-      try: () =>
-        deps.db
-          .prepare('SELECT id FROM pay_ins WHERE idempotency_key = ? LIMIT 1')
-          .bind(inferenceClawbackIdempotencyKey(input.sourceRef))
-          .first(),
-    }).pipe(Effect.catch(() => Effect.succeed(null)))
-
-    if (already !== null) {
+    // The transaction failed. Classify with the dialect-neutral constraint
+    // helpers (CFG-4): a UNIQUE violation means an idempotent replay (already
+    // clawed back) — report success, no re-claw.
+    if (isLedgerUniqueConstraintError(settle.error)) {
       return {
         clawedBack: true,
         insufficientBalance: false,
         receiptRef,
       } satisfies ClawbackOutcome
+    }
+
+    // Conservative fallback for an unclassified failure: re-read whether the
+    // clawback row already exists (a raced replay whose error shape the
+    // classifier could not see).
+    if (!isLedgerCheckConstraintError(settle.error)) {
+      const already = yield* Effect.tryPromise({
+        catch: inferenceClawbackPersistenceError,
+        try: async () => {
+          const rows = await deps.ledgerDb.query(
+            'SELECT id FROM pay_ins WHERE idempotency_key = ? LIMIT 1',
+            [inferenceClawbackIdempotencyKey(input.sourceRef)],
+          )
+          return rows[0] ?? null
+        },
+      }).pipe(Effect.catch(() => Effect.succeed(null)))
+
+      if (already !== null) {
+        return {
+          clawedBack: true,
+          insufficientBalance: false,
+          receiptRef,
+        } satisfies ClawbackOutcome
+      }
     }
 
     // Genuine failure: the balance CHECK aborted (account lacked the credits to

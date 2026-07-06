@@ -14,7 +14,8 @@
 // shape, this calls the SAME low-level `usdCreditGrantStatements` builder the
 // card-funded USD->msat bridge uses (usd-credit-bridge.ts): one
 // `pay_in_type = 'usd_credit_grant'` row, a guarded `balance_msat` +
-// `usd_credit_msat` credit, and an audit leg — all in ONE atomic D1 batch. The
+// `usd_credit_msat` credit, and an audit leg — all in ONE atomic Postgres
+// transaction on the credits ledger (CFG-4, #8519). The
 // difference from `fundInferenceFromCredit` is what funds the grant: that
 // function DEBITS an existing USD `billing_ledger_entries` balance (a card
 // purchase converting into spendable credit); this one MINTS new promotional
@@ -36,11 +37,12 @@
 //      grant ref is `signup:github:<githubUserId>`, which becomes BOTH the
 //      pay_ins UNIQUE idempotency key (via usdCreditGrantIdempotencyKey) AND
 //      the UNIQUE `github_user_id` column on the dedicated metadata table
-//      inserted in the SAME batch. A retried/raced call for the same GitHub
-//      id can insert at most once on either surface — the guarded balance
-//      UPDATE (WHERE NOT EXISTS the audit leg) makes a losing racer's credit
-//      a true no-op, so the account is credited exactly once no matter how
-//      many concurrent callers ask.
+//      (written right after the ledger transaction — see the non-atomic-seam
+//      note in `grantGithubSignupCredit`). A retried/raced call for the same
+//      GitHub id can insert at most once on either surface — the guarded
+//      balance UPDATE (WHERE NOT EXISTS the audit leg) makes a losing racer's
+//      credit a true no-op, so the account is credited exactly once no matter
+//      how many concurrent callers ask.
 //   2. A GitHub-account-age heuristic gate: an account created within
 //      `MIN_GITHUB_ACCOUNT_AGE_SECONDS` of "now" is too new to trust (the
 //      cheap-to-script farm-account case) and gets a typed `grant_deferred`
@@ -76,8 +78,8 @@ import {
 } from '../asset-bitcoin-boundary'
 import { currentIsoTimestamp } from '../runtime-primitives'
 import { workerLogEntry } from '../observability'
-import { type LedgerStatement, runLedgerStatements } from '../payments-ledger'
-import type { BillingDomainMirror } from '../billing'
+import { runLedgerStatements } from '../payments-ledger'
+import type { PaymentsLedgerDb } from '../payments-ledger-db'
 import {
   agentRefForUser,
   usdCreditGrantIdempotencyKey,
@@ -349,9 +351,12 @@ const recordIpMint = async (
   }
 }
 
-// The metadata-table insert, folded into the SAME atomic batch as the ledger
-// statements so the UNIQUE github_user_id constraint is a second, independent
-// idempotency guard alongside the pay_ins UNIQUE idempotency key.
+// The grant-tracking metadata insert (`github_signup_credit_grants`, a D1
+// admin-domain table — CFG-4: NOT part of the Postgres credits ledger). Its
+// UNIQUE github_user_id constraint is a second, independent idempotency guard
+// alongside the pay_ins UNIQUE idempotency key; since the hard cutover the two
+// no longer share one transaction (see the non-atomic-seam note in
+// `grantGithubSignupCredit`).
 const githubSignupCreditGrantMetadataStatement = (
   input: Readonly<{
     grantRef: string
@@ -365,7 +370,10 @@ const githubSignupCreditGrantMetadataStatement = (
     ipHash: string | undefined
   }>,
   nowIso: string,
-): LedgerStatement => ({
+): Readonly<{
+  sql: string
+  params: ReadonlyArray<string | number | null>
+}> => ({
   params: [
     input.grantRef,
     input.githubUserId,
@@ -422,16 +430,20 @@ export type GithubSignupCreditGrantOutcome =
     }>
 
 export type GithubSignupCreditGrantDeps = Readonly<{
+  // The D1 database for the grant-tracking tables
+  // (`github_signup_credit_grants`, `github_signup_credit_ip_mints`).
   db: D1Database
+  // The credits-domain ledger (CFG-4, #8519: `pay_ins`/`pay_in_legs`/
+  // `agent_balances` are Cloud SQL Postgres-authoritative).
+  ledgerDb: PaymentsLedgerDb
   nowIso?: (() => string) | undefined
   minAccountAgeSeconds?: number | undefined
   maxMintsPerIpPerDay?: number | undefined
-  mirror?: BillingDomainMirror | undefined
   // Issue #8505 (Part 2): fail-soft, best-effort per-user credit-balance
   // projection into Khala Sync (`scope.user.<userId>`) — same seam as the
   // inference/cloud metering hooks' `recordCreditBalanceProjection`. Called
   // AFTER a FRESH grant commits (never for an idempotent-duplicate replay),
-  // with the SAME idempotency key the D1 grant used
+  // with the SAME idempotency key the ledger grant used
   // (`usdCreditGrantIdempotencyKey`). Optional; a deployment without the
   // Khala Sync binding (or a test) grants exactly as before.
   recordCreditBalanceProjection?: (
@@ -552,33 +564,45 @@ export const grantGithubSignupCredit = (
     const contextRef = githubSignupCreditContextRef(input.githubUserId)
     const grantMsat = usdCentsToMsatFloor(GITHUB_SIGNUP_CREDIT_GRANT_CENTS)
 
+    // CFG-4 NON-ATOMIC SEAM: the msat grant (Postgres credits ledger) and the
+    // grant-tracking metadata row (`github_signup_credit_grants`, D1) can no
+    // longer share one transaction. Order: LEDGER FIRST, metadata second — if
+    // the metadata write fails after the credit landed, a retry re-enters here
+    // (the existing-grant read above still misses), the ledger grant replays
+    // as an idempotent no-op (UNIQUE pay_ins idempotency key + the guarded
+    // balance UPDATE), and the metadata insert lands. Metadata-first would be
+    // WRONG: a stranded metadata row would answer `alreadyGranted` forever
+    // without the credit ever existing.
     yield* Effect.tryPromise({
       catch: (cause: unknown) => new GithubSignupCreditGrantError({ cause }),
       try: () =>
         runLedgerStatements(
-          deps.db,
-          [
-            ...usdCreditGrantStatements(
-              { accountRef, contextRef, grantMsat, grantRef },
-              nowIso,
-            ),
-            githubSignupCreditGrantMetadataStatement(
-              {
-                accountRef,
-                amountMsat: grantMsat,
-                amountUsdCents: GITHUB_SIGNUP_CREDIT_GRANT_CENTS,
-                creditReceiptRef: usdCreditGrantReceiptRef(grantRef),
-                githubAccountCreatedAtIso: input.githubAccountCreatedAtIso,
-                githubUserId: input.githubUserId,
-                grantRef,
-                ipHash: input.ipHash,
-                userId: input.userId,
-              },
-              nowIso,
-            ),
-          ],
-          deps.mirror,
+          deps.ledgerDb,
+          usdCreditGrantStatements(
+            { accountRef, contextRef, grantMsat, grantRef },
+            nowIso,
+          ),
         ),
+    })
+
+    const metadata = githubSignupCreditGrantMetadataStatement(
+      {
+        accountRef,
+        amountMsat: grantMsat,
+        amountUsdCents: GITHUB_SIGNUP_CREDIT_GRANT_CENTS,
+        creditReceiptRef: usdCreditGrantReceiptRef(grantRef),
+        githubAccountCreatedAtIso: input.githubAccountCreatedAtIso,
+        githubUserId: input.githubUserId,
+        grantRef,
+        ipHash: input.ipHash,
+        userId: input.userId,
+      },
+      nowIso,
+    )
+    yield* Effect.tryPromise({
+      catch: (cause: unknown) => new GithubSignupCreditGrantError({ cause }),
+      try: () =>
+        deps.db.prepare(metadata.sql).bind(...metadata.params).run(),
     })
 
     if (input.ipHash !== undefined) {
@@ -599,8 +623,8 @@ export const grantGithubSignupCredit = (
 
     // Issue #8505 (Part 2): best-effort live projection of the FRESH signup
     // grant into scope.user.<userId>, reusing the SAME idempotency key the
-    // D1 grant just used. Fail-soft by contract and never blocks/reverses
-    // the D1 grant above, which already committed.
+    // ledger grant just used. Fail-soft by contract and never blocks/reverses
+    // the ledger grant above, which already committed.
     if (deps.recordCreditBalanceProjection !== undefined) {
       yield* Effect.promise(() =>
         deps

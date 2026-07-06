@@ -20,6 +20,7 @@
 // owner sign-off per `proof.claim_upgrade_receipts.v1` and
 // `proof.demand_provenance.v1`. This resolver never asserts a promise is green.
 
+import type { PaymentsLedgerDb } from '../payments-ledger-db'
 import {
   type PublicProjectionStalenessContract,
   liveAtReadStaleness,
@@ -159,21 +160,25 @@ const rowToCloudPrimitiveReceiptRecord = (
         stateChangedAt: row.state_changed_at,
       }
 
-export const makeD1CloudPrimitiveReceiptStore = (
-  db: D1Database,
+// CFG-4 (#8519): `pay_ins` is Postgres-authoritative — the receipt read goes
+// through the credits-domain `PaymentsLedgerDb` (formerly
+// `makeD1CloudPrimitiveReceiptStore` over D1, which is gone for this table).
+export const makeLedgerCloudPrimitiveReceiptStore = (
+  db: PaymentsLedgerDb,
 ): CloudPrimitiveReceiptReadStore => ({
   readCloudPrimitiveReceiptByRef: async receiptRef => {
-    const row = await db
-      .prepare(
-        `SELECT pay_in_type, state, public_receipt_ref, context_ref, created_at, state_changed_at
-           FROM pay_ins
-          WHERE public_receipt_ref = ?
-            AND pay_in_type = 'adjustment'
-          LIMIT 1`,
-      )
-      .bind(receiptRef)
-      .first<CloudPrimitiveReceiptRow>()
+    const rows = await db.query(
+      `SELECT pay_in_type, state, public_receipt_ref, context_ref, created_at, state_changed_at
+         FROM pay_ins
+        WHERE public_receipt_ref = ?
+          AND pay_in_type = 'adjustment'
+        LIMIT 1`,
+      [receiptRef],
+    )
 
-    return row === null ? null : rowToCloudPrimitiveReceiptRecord(row)
+    const row = rows[0]
+    return row === undefined
+      ? null
+      : rowToCloudPrimitiveReceiptRecord(row as unknown as CloudPrimitiveReceiptRow)
   },
 })

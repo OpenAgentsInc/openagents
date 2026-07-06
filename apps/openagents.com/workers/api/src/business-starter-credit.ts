@@ -9,9 +9,9 @@ import {
   BusinessPipelineValidationError,
   systemBusinessPipelineRuntime,
 } from './business-pipeline-queue'
-import type { BillingDomainMirror } from './billing'
 import { parseJsonStringArray } from './json-boundary'
-import { runLedgerStatements, type LedgerStatement } from './payments-ledger'
+import { runLedgerStatements } from './payments-ledger'
+import type { PaymentsLedgerDb } from './payments-ledger-db'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 import {
   usdCreditGrantReceiptRef,
@@ -93,15 +93,6 @@ export class BusinessStarterCreditStoreError extends S.TaggedErrorClass<Business
 export type BusinessStarterCreditRuntime = BusinessPipelineRuntime &
   Readonly<{
     usdCentsToMsat: (amountUsdCents: number) => number
-    /**
-     * KS-8.7 (#8318/#8337): optional fail-soft Postgres mirror
-     * (`billingDomainMirrorFromEnv`) for the `pay_ins`/`pay_in_legs` rows
-     * `usdCreditGrantStatements` creates inside `createGrant`'s ledger
-     * batch — otherwise D1-only until the next backfill sweep converges
-     * them. `business_starter_credit_grants` itself is a business-funnel
-     * (KS-8.14) table mirrored separately; this hook is billing-domain only.
-     */
-    mirror?: BillingDomainMirror | undefined
   }>
 
 export const systemBusinessStarterCreditRuntime: BusinessStarterCreditRuntime = {
@@ -236,17 +227,21 @@ const storageError = (error: unknown): BusinessStarterCreditStoreError =>
         reason: error instanceof Error ? error.message : String(error),
       })
 
+// Business-funnel table update (D1) — never part of the credits ledger batch.
 const pipelineReceiptUpdateStatement = (
+  db: D1Database,
   pipelineRef: string,
   receiptRefs: ReadonlyArray<string>,
   nowIso: string,
-): LedgerStatement => ({
-  params: [JSON.stringify(receiptRefs), nowIso, pipelineRef],
-  sql: `UPDATE business_pipeline_rows
+): D1PreparedStatement =>
+  db
+    .prepare(
+      `UPDATE business_pipeline_rows
         SET receipt_refs_json = ?,
             updated_at = ?
         WHERE pipeline_ref = ?`,
-})
+    )
+    .bind(JSON.stringify(receiptRefs), nowIso, pipelineRef)
 
 export type BusinessStarterCreditStore = Readonly<{
   createGrant: (
@@ -264,12 +259,12 @@ export type BusinessStarterCreditStore = Readonly<{
 
 export const makeD1BusinessStarterCreditStore = (
   db: D1Database,
+  /** CFG-4 (#8519): the Postgres-authoritative credits ledger — the
+   * `pay_ins`/`pay_in_legs`/`agent_balances` rows `usdCreditGrantStatements`
+   * creates run here; `business_starter_credit_grants` and
+   * `business_pipeline_rows` stay on D1 (business-funnel domain). */
+  ledgerDb: PaymentsLedgerDb,
   pipelineStore: BusinessPipelineStore,
-  /**
-   * KS-8.7 (#8318/#8337): default runtime for callers (route handlers) that
-   * do not thread one through per-call — carries the billing mirror so the
-   * env-scoped Worker binding only needs wiring once, at store construction.
-   */
   defaultRuntime: BusinessStarterCreditRuntime = systemBusinessStarterCreditRuntime,
 ): BusinessStarterCreditStore => {
   const readGrant = async (
@@ -338,6 +333,24 @@ export const makeD1BusinessStarterCreditStore = (
             reason: `starter credit grant belongs to another pipeline: ${grantRef}`,
           })
         }
+        // CFG-4 (#8519): the grants row (D1) commits before the credits
+        // transaction (Postgres) — see the seam comment below. If an earlier
+        // attempt crashed between the two, this replay heals it by re-running
+        // the idempotent credits statements (pay_ins UNIQUE idempotency key +
+        // replay-guarded balance credit make an already-granted credit a
+        // no-op — never a double grant).
+        await runLedgerStatements(
+          ledgerDb,
+          usdCreditGrantStatements(
+            {
+              accountRef: existing.accountRef,
+              contextRef: `${SALES_STARTER_CREDIT_ATTRIBUTION_KIND}:${pipelineRef}:${grantRef}`,
+              grantMsat: existing.amountMsat,
+              grantRef,
+            },
+            nowIso,
+          ),
+        )
         return {
           grant: existing,
           ok: true,
@@ -385,27 +398,21 @@ export const makeD1BusinessStarterCreditStore = (
         ...new Set([...pipeline.receiptRefs, creditReceiptRef]),
       ]
 
-      await runLedgerStatements(db, [
-        {
-          params: [
-            grantRef,
-            pipelineRef,
-            accountRef,
-            engagementRef,
-            SALES_STARTER_CREDIT_ATTRIBUTION_KIND,
-            'non_transferable',
-            amountUsdCents,
-            amountMsat,
-            amountCapUsdCents,
-            windowRef,
-            windowGrantCap,
-            creditReceiptRef,
-            JSON.stringify([]),
-            JSON.stringify(sourceRefs),
-            nowIso,
-            nowIso,
-          ],
-          sql: `INSERT INTO business_starter_credit_grants (
+      // CFG-4 (#8519) NON-ATOMIC SEAM: the credits side (`pay_ins`/
+      // `pay_in_legs`/`agent_balances`, Postgres) and the business-funnel
+      // side (`business_starter_credit_grants` + `business_pipeline_rows`,
+      // D1) no longer share one atomic batch — the credits domain is
+      // Postgres-authoritative now. Ordering: the D1 grants row commits
+      // FIRST, so the `business_starter_credit_window_cap` trigger
+      // (migration 0295) can still refuse a raced over-cap grant BEFORE any
+      // credit is minted (credits-first would let a raced cap refusal orphan
+      // an already-minted credit). A crash between the two heals on retry:
+      // the replayed call hits the existing-grant early return above, which
+      // re-runs the idempotent credits statements and never double-grants.
+      await db.batch([
+        db
+          .prepare(
+            `INSERT INTO business_starter_credit_grants (
                   grant_ref,
                   pipeline_ref,
                   account_ref,
@@ -423,8 +430,32 @@ export const makeD1BusinessStarterCreditStore = (
                   created_at,
                   updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        },
-        ...usdCreditGrantStatements(
+          )
+          .bind(
+            grantRef,
+            pipelineRef,
+            accountRef,
+            engagementRef,
+            SALES_STARTER_CREDIT_ATTRIBUTION_KIND,
+            'non_transferable',
+            amountUsdCents,
+            amountMsat,
+            amountCapUsdCents,
+            windowRef,
+            windowGrantCap,
+            creditReceiptRef,
+            JSON.stringify([]),
+            JSON.stringify(sourceRefs),
+            nowIso,
+            nowIso,
+          ),
+        pipelineReceiptUpdateStatement(db, pipelineRef, pipelineReceiptRefs, nowIso),
+      ])
+
+      // Second half of the seam: the idempotent credits transaction.
+      await runLedgerStatements(
+        ledgerDb,
+        usdCreditGrantStatements(
           {
             accountRef,
             contextRef: `${SALES_STARTER_CREDIT_ATTRIBUTION_KIND}:${pipelineRef}:${grantRef}`,
@@ -433,8 +464,7 @@ export const makeD1BusinessStarterCreditStore = (
           },
           nowIso,
         ),
-        pipelineReceiptUpdateStatement(pipelineRef, pipelineReceiptRefs, nowIso),
-      ], runtime.mirror)
+      )
 
       const grant = await readGrant(grantRef)
       if (grant === null) {
@@ -497,15 +527,17 @@ export const makeD1BusinessStarterCreditStore = (
         ...new Set([...pipeline.receiptRefs, grant.creditReceiptRef, redemptionReceiptRef]),
       ]
 
-      await runLedgerStatements(db, [
-        {
-          params: [JSON.stringify(redemptionReceiptRefs), nowIso, grantRef],
-          sql: `UPDATE business_starter_credit_grants
+      // Business-funnel tables only (no credits rows) — a plain D1 batch.
+      await db.batch([
+        db
+          .prepare(
+            `UPDATE business_starter_credit_grants
                 SET redemption_receipt_refs_json = ?,
                     updated_at = ?
                 WHERE grant_ref = ?`,
-        },
-        pipelineReceiptUpdateStatement(pipelineRef, pipelineReceiptRefs, nowIso),
+          )
+          .bind(JSON.stringify(redemptionReceiptRefs), nowIso, grantRef),
+        pipelineReceiptUpdateStatement(db, pipelineRef, pipelineReceiptRefs, nowIso),
       ])
 
       const updated = await readGrant(grantRef)

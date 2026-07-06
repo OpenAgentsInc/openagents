@@ -3,8 +3,10 @@ import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, test } from 'vitest'
 
 import { readAgentBalance } from '../payments-ledger'
+import type { PaymentsLedgerDb } from '../payments-ledger-db'
+import { paymentsLedgerDbFromD1 } from '../test/payments-ledger-sqlite'
 import { cardCreditSpendReceiptRef } from './card-credit-spend-receipt'
-import { makeD1CardCreditSpendReceiptStore } from './card-credit-spend-receipt-store'
+import { makeCardCreditSpendReceiptStore } from './card-credit-spend-receipt-store'
 import { makeLedgerMeteringHook } from './metering-hook'
 import {
   fundInferenceFromCredit,
@@ -146,6 +148,12 @@ const makeDb = (): D1Database => {
   return new SqliteD1(raw) as unknown as D1Database
 }
 
+// CFG-4 (#8519): the pay_ins legs read/write through the Postgres-authoritative
+// `PaymentsLedgerDb` seam; tests back it with the same SQLite-D1 shim (one
+// underlying database, two typed handles).
+const makeLedgerDb = (db: D1Database): PaymentsLedgerDb =>
+  paymentsLedgerDbFromD1(db as never)
+
 const seedStripeCheckoutCredit = async (db: D1Database): Promise<void> => {
   await db
     .prepare(
@@ -179,9 +187,10 @@ describe('D1 card-credit-spend receipt store', () => {
   test('pending projection names the purchase ledger key when checkout is missing', async () => {
     const db = makeDb()
 
-    const projection = await makeD1CardCreditSpendReceiptStore(
+    const projection = await makeCardCreditSpendReceiptStore({
       db,
-    ).readCardCreditSpendReceipt(
+      ledgerDb: makeLedgerDb(db),
+    }).readCardCreditSpendReceipt(
       cardCreditSpendReceiptRef(SESSION),
       '2026-06-28T12:01:00.000Z',
     )
@@ -197,9 +206,10 @@ describe('D1 card-credit-spend receipt store', () => {
     const db = makeDb()
     await seedStripeCheckoutCredit(db)
 
-    const projection = await makeD1CardCreditSpendReceiptStore(
+    const projection = await makeCardCreditSpendReceiptStore({
       db,
-    ).readCardCreditSpendReceipt(
+      ledgerDb: makeLedgerDb(db),
+    }).readCardCreditSpendReceipt(
       cardCreditSpendReceiptRef(SESSION),
       '2026-06-28T12:01:00.000Z',
     )
@@ -223,14 +233,15 @@ describe('D1 card-credit-spend receipt store', () => {
           sourceCheckoutSessionId: SESSION,
           userId: USER,
         },
-        { db, nowIso: () => NOW },
+        { db, ledgerDb: makeLedgerDb(db), nowIso: () => NOW },
       ),
     )
     expect(grant.ok).toBe(true)
 
-    const projection = await makeD1CardCreditSpendReceiptStore(
+    const projection = await makeCardCreditSpendReceiptStore({
       db,
-    ).readCardCreditSpendReceipt(
+      ledgerDb: makeLedgerDb(db),
+    }).readCardCreditSpendReceipt(
       cardCreditSpendReceiptRef(SESSION),
       '2026-06-28T12:01:00.000Z',
     )
@@ -254,7 +265,7 @@ describe('D1 card-credit-spend receipt store', () => {
           sourceCheckoutSessionId: SESSION,
           userId: USER,
         },
-        { db, nowIso: () => NOW },
+        { db, ledgerDb: makeLedgerDb(db), nowIso: () => NOW },
       ),
     )
     expect(grant.ok).toBe(true)
@@ -262,9 +273,9 @@ describe('D1 card-credit-spend receipt store', () => {
       throw new Error('expected credit grant')
     }
 
-    const beforeSpend = await readAgentBalance(db, ACCOUNT)
+    const beforeSpend = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     const metering = await run(
-      makeLedgerMeteringHook({ db, nowIso: () => NOW })({
+      makeLedgerMeteringHook({ ledgerDb: makeLedgerDb(db), nowIso: () => NOW })({
         accountRef: ACCOUNT,
         adapterId: 'fireworks',
         fundingKind: 'card',
@@ -284,12 +295,13 @@ describe('D1 card-credit-spend receipt store', () => {
       'receipt.inference.charge.chatcmpl_card_credit_spend',
     )
 
-    const afterSpend = await readAgentBalance(db, ACCOUNT)
+    const afterSpend = await readAgentBalance(makeLedgerDb(db), ACCOUNT)
     expect(afterSpend?.balanceMsat).toBeLessThan(beforeSpend?.balanceMsat ?? 0)
 
-    const projection = await makeD1CardCreditSpendReceiptStore(
+    const projection = await makeCardCreditSpendReceiptStore({
       db,
-    ).readCardCreditSpendReceipt(
+      ledgerDb: makeLedgerDb(db),
+    }).readCardCreditSpendReceipt(
       cardCreditSpendReceiptRef(SESSION),
       '2026-06-28T12:01:00.000Z',
     )

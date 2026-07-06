@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 
-import type { BillingDomainMirror } from './billing'
+import type { PaymentsLedgerDb } from './payments-ledger-db'
 import { sha256Hex } from './agent-registration'
 import {
   type LedgerStatement,
@@ -229,7 +229,11 @@ export class TipLadderError extends Error {
 }
 
 export const executeTipLadder = (
-  db: D1Database,
+  // CFG-4 (#8519): the credits domain (pay_ins/pay_in_legs/agent_balances)
+  // is Cloud SQL Postgres-authoritative; every ladder read/write goes
+  // through the PaymentsLedgerDb handle. There is no D1 branch and no
+  // mirror for these tables anymore.
+  ledgerDb: PaymentsLedgerDb,
   input: Readonly<{
     amountSat: number
     senderRef: string
@@ -242,8 +246,6 @@ export const executeTipLadder = (
     idempotencyKey: string
     publicReceiptRef: string
     makeId: () => string
-    /** KS-8.7 (#8318) fail-soft Postgres mirror (billing-store.ts). */
-    mirror?: BillingDomainMirror | undefined
     nowIso: string
     contextRef?: string
     directPayoutExternalRef?: string
@@ -260,10 +262,10 @@ export const executeTipLadder = (
     }
 
     const senderBalance = yield* Effect.promise(() =>
-      readAgentBalance(db, input.senderRef),
+      readAgentBalance(ledgerDb, input.senderRef),
     )
     const recipientBalance = yield* Effect.promise(() =>
-      readAgentBalance(db, input.recipientRef),
+      readAgentBalance(ledgerDb, input.recipientRef),
     )
 
     const senderBalanceMsat = senderBalance?.availableMsat ?? 0
@@ -311,7 +313,7 @@ export const executeTipLadder = (
             error instanceof Error ? error.message : String(error),
           ),
         try: () =>
-          runLedgerStatements(db, [
+          runLedgerStatements(ledgerDb, [
             ...createPayInStatements(
               {
                 contextRef: input.contextRef ?? `forum.post.${input.postId}`,
@@ -347,7 +349,7 @@ export const executeTipLadder = (
               input.nowIso,
             ),
             ...markPayInForwardingStatements(directPayInId, input.nowIso),
-          ], input.mirror),
+          ]),
       })
 
       const payResult = yield* Effect.promise(() =>
@@ -367,19 +369,14 @@ export const executeTipLadder = (
               error instanceof Error ? error.message : String(error),
             ),
           try: () =>
-            runLedgerStatements(
-              db,
-              [
-                {
-                  params: [`pending:${payResult.paymentId}`, directPayoutLegId],
-                  payInId: directPayInId,
-                  sql: `UPDATE pay_in_legs
+            runLedgerStatements(ledgerDb, [
+              {
+                params: [`pending:${payResult.paymentId}`, directPayoutLegId],
+                sql: `UPDATE pay_in_legs
                       SET external_ref = external_ref || '|' || ?
                       WHERE id = ?`,
-                },
-              ],
-              input.mirror,
-            ),
+              },
+            ]),
         })
 
         return {
@@ -401,23 +398,18 @@ export const executeTipLadder = (
               error instanceof Error ? error.message : String(error),
             ),
           try: () =>
-            runLedgerStatements(
-              db,
-              [
-                ...markPayInPaidStatements(
-                  { balancePayoutLegs: [], payInId: directPayInId },
-                  input.nowIso,
-                ),
-                {
-                  params: [payResult.paymentRef, directPayoutLegId],
-                  payInId: directPayInId,
-                  sql: `UPDATE pay_in_legs
+            runLedgerStatements(ledgerDb, [
+              ...markPayInPaidStatements(
+                { balancePayoutLegs: [], payInId: directPayInId },
+                input.nowIso,
+              ),
+              {
+                params: [payResult.paymentRef, directPayoutLegId],
+                sql: `UPDATE pay_in_legs
                       SET external_ref = external_ref || '|' || ?
                       WHERE id = ?`,
-                },
-              ],
-              input.mirror,
-            ),
+              },
+            ]),
         })
 
         return {
@@ -439,7 +431,7 @@ export const executeTipLadder = (
           ),
         try: () =>
           runLedgerStatements(
-            db,
+            ledgerDb,
             markPayInFailedStatements(
               {
                 balanceFundingLegs: [
@@ -458,7 +450,6 @@ export const executeTipLadder = (
               },
               input.nowIso,
             ),
-            input.mirror,
           ),
       })
     }
@@ -495,7 +486,7 @@ export const executeTipLadder = (
           'ledger_batch_failed',
           error instanceof Error ? error.message : String(error),
         ),
-      try: () => runLedgerStatements(db, statements, input.mirror),
+      try: () => runLedgerStatements(ledgerDb, statements),
     })
 
     return {
@@ -512,7 +503,7 @@ export const executeTipLadder = (
 // Credited tip totals for post tipStats (the settled-vs-credited split
 // the design requires): sums paid credited-tip pay-ins by post context.
 export const readCreditedTipTotals = async (
-  db: D1Database,
+  ledgerDb: PaymentsLedgerDb,
   postIds: ReadonlyArray<string>,
 ): Promise<ReadonlyMap<string, number>> => {
   const uniquePostIds = [...new Set(postIds)].filter(postId => postId !== '')
@@ -524,23 +515,22 @@ export const readCreditedTipTotals = async (
   const placeholders = uniquePostIds.map(() => '?').join(', ')
   const contextRefs = uniquePostIds.map(postId => `forum.post.${postId}`)
 
-  const result = await db
-    .prepare(
-      `SELECT context_ref, COALESCE(SUM(cost_msat), 0) AS credited_msat
-         FROM pay_ins
-        WHERE pay_in_type = 'tip'
-          AND rung = 'credited'
-          AND state = 'paid'
-          AND context_ref IN (${placeholders})
-        GROUP BY context_ref`,
-    )
-    .bind(...contextRefs)
-    .all()
+  const rows = await ledgerDb.query(
+    `SELECT context_ref, COALESCE(SUM(cost_msat), 0) AS credited_msat
+       FROM pay_ins
+      WHERE pay_in_type = 'tip'
+        AND rung = 'credited'
+        AND state = 'paid'
+        AND context_ref IN (${placeholders})
+      GROUP BY context_ref`,
+    contextRefs,
+  )
 
   const totals = new Map<string, number>()
-  for (const row of (result.results ?? []) as Array<{
+  for (const row of rows as Array<{
     context_ref: string
-    credited_msat: number
+    // Postgres returns bigint SUMs as strings; Number(...) below decodes.
+    credited_msat: number | string
   }>) {
     const postId = row.context_ref.replace('forum.post.', '')
     totals.set(postId, Math.floor(Number(row.credited_msat) / 1000))

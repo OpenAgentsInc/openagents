@@ -70,11 +70,16 @@ import {
   markPayInPaidStatements,
   runLedgerStatements,
 } from './payments-ledger'
+import { makePostgresPaymentsLedgerDb } from './payments-ledger-db'
 import { BILLING_DOMAIN_D1_SCHEMA, makeSqliteD1 } from './test/sqlite-d1'
 
 const MIGRATION_0015 = path.resolve(
   import.meta.dirname,
   '../../../../../packages/khala-sync-server/migrations/0015_billing_pay_ins.sql',
+)
+const MIGRATION_0016 = path.resolve(
+  import.meta.dirname,
+  '../../../../../packages/khala-sync-server/migrations/0016_treasury_domain.sql',
 )
 const MIGRATION_0034 = path.resolve(
   import.meta.dirname,
@@ -185,17 +190,19 @@ describe('billing sync flags', () => {
 // ---------------------------------------------------------------------------
 
 describe('#8337 BILLING_DOMAIN_POSTGRES_SERVED_READ_TABLES', () => {
-  test('names exactly the four allowlisted display surfaces, never a decision-critical table', () => {
+  test('names exactly the allowlisted display surfaces, never a decision-critical table', () => {
+    // CFG-4 (#8519): `pay_ins` left this allowlist — the receipt reads go
+    // DIRECTLY to the Postgres-authoritative credits ledger with no flag
+    // routing, so the flag-gated served-read registry no longer names it.
     expect([...BILLING_DOMAIN_POSTGRES_SERVED_READ_TABLES].sort()).toEqual([
       'billing_auto_top_up_events',
       'billing_auto_top_up_policies',
       'billing_ledger_entries',
-      'pay_ins',
       'stripe_checkout_sessions',
       'stripe_saved_payment_methods',
     ])
     expect(billingPostgresServesTable('billing_ledger_entries')).toBe(true)
-    expect(billingPostgresServesTable('pay_ins')).toBe(true)
+    expect(billingPostgresServesTable('pay_ins')).toBe(false)
     // Decision-critical / idempotency-dedupe tables must NEVER be allowlisted.
     expect(billingPostgresServesTable('buyer_payment_challenges')).toBe(false)
     expect(billingPostgresServesTable('buyer_payment_receipts')).toBe(false)
@@ -546,6 +553,8 @@ describe.skipIf(!hasLocalPostgres())(
       })
       client = raw as unknown as PgClient
       await raw.unsafe(readFileSync(MIGRATION_0015, 'utf8'))
+      // CFG-4 (#8519): agent_balances lives in the treasury twin set.
+      await raw.unsafe(readFileSync(MIGRATION_0016, 'utf8'))
       await raw.unsafe(readFileSync(MIGRATION_0034, 'utf8'))
 
       sqlite = makeSqliteD1()
@@ -767,22 +776,34 @@ describe.skipIf(!hasLocalPostgres())(
       await expectRowParity('billing_auto_top_up_policies', 'user_id', userId)
     })
 
-    test('pay-in lifecycle: create + paid transition mirror rows and legs byte-exactly', async () => {
+    test('pay-in lifecycle (CFG-4 #8519): create + paid transition land DIRECTLY on Postgres', async () => {
+      // The credits tables left the dual-write/mirror posture entirely —
+      // `runLedgerStatements` executes ONE Postgres transaction and D1 is
+      // not involved. This proves the lifecycle lands on the Postgres twins
+      // this contract suite provisions (full executor semantics live in
+      // payments-ledger-postgres.contract.test.ts).
       const payInId = nextRef('payin')
       const actorRef = `agent:${nextRef('actor')}`
       const now = '2026-07-04T02:00:00.000Z'
+      const ledgerDb = makePostgresPaymentsLedgerDb({
+        acquireSql: () =>
+          Promise.resolve({
+            end: () => Promise.resolve(),
+            sql: client as never,
+          }),
+      })
 
       // Fund the payer balance so the funding debit clears its CHECK.
-      await sqlite.db
-        .prepare(
-          `INSERT INTO agent_balances (actor_ref, balance_msat, created_at, updated_at)
-           VALUES (?, 10000, ?, ?)`,
-        )
-        .bind(actorRef, now, now)
-        .run()
+      await ledgerDb.batch([
+        {
+          params: [actorRef, now, now],
+          sql: `INSERT INTO agent_balances (actor_ref, balance_msat, created_at, updated_at)
+                VALUES (?, 10000, ?, ?)`,
+        },
+      ])
 
       await runLedgerStatements(
-        sqlite.db,
+        ledgerDb,
         createPayInStatements(
           {
             contextRef: `forum.post.${payInId}`,
@@ -815,15 +836,21 @@ describe.skipIf(!hasLocalPostgres())(
           },
           now,
         ),
-        runtime.mirror,
       )
 
-      await expectRowParity('pay_ins', 'id', payInId)
-      await expectRowParity('pay_in_legs', 'pay_in_id', payInId)
+      const pgLegs = await client!.unsafe(
+        `SELECT COUNT(*) AS n FROM pay_in_legs WHERE pay_in_id = $1`,
+        [payInId],
+      )
+      expect(Number(pgLegs[0]?.n)).toBe(2)
+      const pgBalance = await client!.unsafe(
+        `SELECT balance_msat FROM agent_balances WHERE actor_ref = $1`,
+        [actorRef],
+      )
+      expect(Number(pgBalance[0]?.balance_msat)).toBe(5_000)
 
-      // State machine advances on D1; the mirror converges the same bytes.
       await runLedgerStatements(
-        sqlite.db,
+        ledgerDb,
         markPayInPaidStatements(
           {
             balancePayoutLegs: [],
@@ -831,15 +858,12 @@ describe.skipIf(!hasLocalPostgres())(
           },
           '2026-07-04T02:00:05.000Z',
         ),
-        runtime.mirror,
       )
       const pgState = await client!.unsafe(
         `SELECT state FROM pay_ins WHERE id = $1`,
         [payInId],
       )
       expect(String(pgState[0]?.state)).toBe('paid')
-      await expectRowParity('pay_ins', 'id', payInId)
-      await expectRowParity('pay_in_legs', 'pay_in_id', payInId)
       expect(logs).toHaveLength(0)
     })
 

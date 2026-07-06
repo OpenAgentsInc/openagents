@@ -539,6 +539,8 @@ export const projectArtanisForumListener = (
 
 export const runArtanisForumListenerStep = (
   db: D1Database,
+  // CFG-4 (#8519): post-list credited tip totals read the Postgres ledger.
+  ledgerDb: import('./payments-ledger-db').PaymentsLedgerDb,
   input: Readonly<{
     limit?: number | undefined
     nowIso?: string | undefined
@@ -556,7 +558,7 @@ export const runArtanisForumListenerStep = (
       generatedAt: nowIso,
       limit,
     })
-    const recentPosts = yield* readForumPostList(db, {
+    const recentPosts = yield* readForumPostList(db, ledgerDb, {
       forumRef: 'artanis',
       includeUnlisted: true,
       limit,

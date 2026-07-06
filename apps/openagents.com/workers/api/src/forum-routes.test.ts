@@ -11,6 +11,8 @@ import { makeFakeOpenAgentsHostedMdkClient } from './hosted-mdk-client'
 import {
   makeOpenAgentsL402HmacSigningBoundary,
 } from './l402-credential-service'
+import type { PaymentsLedgerDb } from './payments-ledger-db'
+import { makeLedgerSqliteDb } from './test/payments-ledger-sqlite'
 
 type BoardRow = Readonly<{
   archived_at: string | null
@@ -4040,6 +4042,25 @@ const verifiedPublicIdentityClaim: VerifiedPublicIdentityClaim = {
   xAccountRef: 'x:routeowner',
 }
 
+// CFG-4 (#8519): the credits tables (pay_ins, pay_in_legs, agent_balances,
+// labor_escrows, labor_escrow_receipts) are Postgres-authoritative and the
+// route handlers run REAL SQL against `dependencies.ledgerDb`. Tip-ladder
+// ledger queries also join the `forum_posts` Postgres twin (converged by the
+// KS-8.10 dual-write in production), so the per-test sqlite ledger carries an
+// empty twin of that table alongside the credits schema.
+const forumLedgerTwinSchema = `
+CREATE TABLE IF NOT EXISTS forum_posts (
+  id TEXT PRIMARY KEY,
+  topic_id TEXT NOT NULL,
+  forum_id TEXT NOT NULL,
+  actor_json TEXT,
+  state TEXT NOT NULL DEFAULT 'visible',
+  archived_at TEXT
+);
+`
+
+const makeForumLedgerDb = () => makeLedgerSqliteDb(forumLedgerTwinSchema)
+
 const route = async (
   store: ForumRouteStore,
   path: string,
@@ -4049,6 +4070,7 @@ const route = async (
     agentMetadata?: Record<string, unknown>
     body?: unknown
     headers?: HeadersInit
+    ledgerDb?: PaymentsLedgerDb
     moderator?: 'admin' | 'non_admin'
     method?: string
     productPromisesUnsupportedRequestIngest?: NonNullable<
@@ -4089,6 +4111,7 @@ const route = async (
       : { forumWorkRequestRelayUrl: options.workRequestRelayUrl }),
     hostedMdkClient: options.hostedMdkClient ?? forumHostedMdkClient(),
     l402SigningBoundary: forumL402SigningBoundary,
+    ledgerDb: options.ledgerDb ?? makeForumLedgerDb(),
     makeId: () => store.nextId(),
     mdkWebhookConfig: {
       bindingRef: 'binding.forum.route.mdk.webhook',

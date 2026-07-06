@@ -2,7 +2,8 @@
 //
 // Admin-bearer-gated internal route: pages through every human user and
 // seeds/reconciles their `scope.user.<userId>` `credit_balance` projection
-// against the exact current D1 `agent_balances` balance. Same discipline as
+// against the exact current `agent_balances` balance on the CFG-4 (#8519)
+// Postgres-authoritative credits ledger (`PaymentsLedgerDb`). Same discipline as
 // `khala-sync-public-counter-reconcile-routes.ts` (KS-6.3): a repair is never
 // implicit — this route only runs on an explicit admin-bearer POST — and
 // every overwrite is audited (`khala_sync_user_credit_balance_repairs`).

@@ -16,6 +16,7 @@ import {
   IDENTITY_AUTH_DOMAIN_D1_SCHEMA,
   makeSqliteD1,
 } from './test/sqlite-d1'
+import { paymentsLedgerDbFromD1 } from './test/payments-ledger-sqlite'
 import type { SyncSql, SyncTransactionSql } from '@openagentsinc/khala-sync-server'
 
 type StoredValue = Readonly<{ expirationTtl?: number; value: string }>
@@ -170,6 +171,9 @@ describe('Khala mobile account deletion route', () => {
       const dependencies = {
         authStorage: () => kv,
         db: () => sqlite.db,
+        // CFG-4 (#8519): the credits ledger handle shares the same underlying
+        // SQLite database as the D1 shim in tests.
+        ledgerDb: () => paymentsLedgerDbFromD1(sqlite.db as never),
         deleteKhalaSyncAccountData: async (binding: unknown, userId: string) => {
           syncCalls.push({ binding, userId })
           return { clientGroupsRemoved: 1, scopesRemoved: 2, threadScopesRemoved: 1 }
@@ -291,6 +295,7 @@ describe('Khala mobile account deletion route', () => {
           {
             authStorage: () => kv,
             db: () => sqlite.db,
+            ledgerDb: () => paymentsLedgerDbFromD1(sqlite.db as never),
             khalaSyncBinding: () => undefined,
             makeSqlClient: async () => {
               throw new Error('must not connect without a binding')

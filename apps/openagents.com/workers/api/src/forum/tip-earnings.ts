@@ -2,6 +2,7 @@ import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-
 import { Effect, Schema as S } from 'effect'
 
 import { parseJsonUnknown } from '../json-boundary'
+import type { PaymentsLedgerDb } from '../payments-ledger-db'
 import { liveAtReadStaleness } from '../public-projection-staleness'
 import { ForumStorageError } from './repository'
 import {
@@ -464,9 +465,15 @@ const countEarningRows = (
 }
 
 const readTipLadderEarningRows = (
-  db: D1Database,
+  ledgerDb: PaymentsLedgerDb,
   input: Readonly<{ actorRef: string | null; limit: number }>,
 ): Effect.Effect<ReadonlyArray<TipLadderEarningRow>, ForumStorageError> => {
+  // CFG-4 (#8519): pay_ins/pay_in_legs are Cloud SQL Postgres-authoritative,
+  // so this WHOLE query (including its `forum_posts` join) runs on the
+  // ledger handle. `forum_posts` has a Postgres twin in the same database,
+  // converged by the always-on KS-8.10 dual-write — this cross-domain read
+  // therefore reads the forum_posts Postgres twin, not the D1 authority.
+  //
   // Every paid ladder tip projects a receipt ref the recipient can cite
   // (#4753): rows written before the public-receipt column (or by the
   // credited reconciliation fallback) get the deterministic
@@ -531,15 +538,15 @@ const readTipLadderEarningRows = (
                      LIMIT ?`
 
   return d1Effect('forumTipEarnings.readTipLadderRows', () =>
-    (input.actorRef === null
-      ? db.prepare(scopedQuery).bind(input.limit)
-      : db.prepare(scopedQuery).bind(input.actorRef, input.limit)
-    ).all<TipLadderEarningRow>(),
-  ).pipe(Effect.map(result => result.results ?? []))
+    input.actorRef === null
+      ? ledgerDb.query(scopedQuery, [input.limit])
+      : ledgerDb.query(scopedQuery, [input.actorRef, input.limit]),
+  ).pipe(Effect.map(rows => rows as unknown as Array<TipLadderEarningRow>))
 }
 
 const countTipLadderEarningRows = (
-  db: D1Database,
+  // CFG-4 (#8519): pay_ins/pay_in_legs live on the Postgres ledger handle.
+  ledgerDb: PaymentsLedgerDb,
   actorRef: string | null,
 ): Effect.Effect<number, ForumStorageError> => {
   const baseQuery = `SELECT COUNT(*) AS count
@@ -555,11 +562,14 @@ const countTipLadderEarningRows = (
     actorRef === null ? baseQuery : `${baseQuery} AND payout.party_ref = ?`
 
   return d1Effect('forumTipEarnings.countTipLadderRows', () =>
-    (actorRef === null
-      ? db.prepare(scopedQuery)
-      : db.prepare(scopedQuery).bind(actorRef)
-    ).first<CountRow>(),
-  ).pipe(Effect.map(row => Math.max(0, Number(row?.count ?? 0))))
+    actorRef === null
+      ? ledgerDb.query(scopedQuery)
+      : ledgerDb.query(scopedQuery, [actorRef]),
+  ).pipe(
+    Effect.map(rows =>
+      Math.max(0, Number((rows[0] as CountRow | undefined)?.count ?? 0)),
+    ),
+  )
 }
 
 const sortEarningsNewestFirst = (
@@ -748,7 +758,8 @@ type ForumTipLadderCreatorTotalsRow = Readonly<{
 // sweep payouts cover credited value in aggregate, so the swept
 // portion is min(sweptMsat, creditedMsat) and the rest stays credited.
 const readLadderCreatorTotals = (
-  db: D1Database,
+  // CFG-4 (#8519): pay_ins/pay_in_legs live on the Postgres ledger handle.
+  ledgerDb: PaymentsLedgerDb,
   actorRefs: ReadonlyArray<string>,
 ): Effect.Effect<
   ReadonlyMap<string, ForumTipLadderCreatorTotals>,
@@ -763,35 +774,33 @@ const readLadderCreatorTotals = (
   const placeholders = uniqueActorRefs.map(() => '?').join(', ')
 
   return d1Effect('forumTipLeaderboards.readLadderCreatorTotals', () =>
-    db
-      .prepare(
-        `SELECT payout.party_ref AS recipient_actor_ref,
-                COALESCE(SUM(CASE
-                  WHEN p.rung = 'credited' THEN p.cost_msat
-                  ELSE 0
-                END), 0) AS credited_msat,
-                (SELECT COALESCE(SUM(s.cost_msat), 0)
-                   FROM pay_ins s
-                  WHERE s.pay_in_type = 'sweep'
-                    AND s.state = 'paid'
-                    AND s.payer_ref = payout.party_ref) AS swept_msat
-           FROM pay_ins p
-           JOIN pay_in_legs payout
-             ON payout.pay_in_id = p.id
-            AND payout.direction = 'out'
-          WHERE p.pay_in_type = 'tip'
-            AND p.state = 'paid'
-            AND p.context_ref LIKE 'forum.post.%'
-            AND payout.party_ref IN (${placeholders})
-          GROUP BY payout.party_ref`,
-      )
-      .bind(...uniqueActorRefs)
-      .all<ForumTipLadderCreatorTotalsRow>(),
+    ledgerDb.query(
+      `SELECT payout.party_ref AS recipient_actor_ref,
+              COALESCE(SUM(CASE
+                WHEN p.rung = 'credited' THEN p.cost_msat
+                ELSE 0
+              END), 0) AS credited_msat,
+              (SELECT COALESCE(SUM(s.cost_msat), 0)
+                 FROM pay_ins s
+                WHERE s.pay_in_type = 'sweep'
+                  AND s.state = 'paid'
+                  AND s.payer_ref = payout.party_ref) AS swept_msat
+         FROM pay_ins p
+         JOIN pay_in_legs payout
+           ON payout.pay_in_id = p.id
+          AND payout.direction = 'out'
+        WHERE p.pay_in_type = 'tip'
+          AND p.state = 'paid'
+          AND p.context_ref LIKE 'forum.post.%'
+          AND payout.party_ref IN (${placeholders})
+        GROUP BY payout.party_ref`,
+      uniqueActorRefs,
+    ),
   ).pipe(
     Effect.map(
-      result =>
+      rows =>
         new Map(
-          (result.results ?? []).map(row => {
+          (rows as unknown as Array<ForumTipLadderCreatorTotalsRow>).map(row => {
             const creditedMsat = Math.max(0, Number(row.credited_msat ?? 0))
             const sweptCoverageMsat = Math.min(
               creditedMsat,
@@ -865,6 +874,8 @@ export const forumTipEarningsProjectionHasPrivateMaterial = (
 
 export const readForumTipLeaderboards = (
   db: D1Database,
+  // CFG-4 (#8519): ladder totals read the Postgres-authoritative ledger.
+  ledgerDb: PaymentsLedgerDb,
   input: Readonly<{ limit?: number }>,
   runtime: ForumTipEarningsRuntime,
 ): Effect.Effect<ForumTipLeaderboardsResponse, ForumStorageError> =>
@@ -875,7 +886,7 @@ export const readForumTipLeaderboards = (
       readCreatorLeaderboardRows(db, limit),
     ])
     const ladderTotals = yield* readLadderCreatorTotals(
-      db,
+      ledgerDb,
       creatorRows.map(row => row.earning_actor_ref),
     )
     const projection = decodeTipLeaderboardsResponse({
@@ -898,6 +909,8 @@ export const readForumTipLeaderboards = (
 
 export const readForumCreatorEarnings = (
   db: D1Database,
+  // CFG-4 (#8519): ladder earnings read the Postgres-authoritative ledger.
+  ledgerDb: PaymentsLedgerDb,
   input: Readonly<{ actorRef: string; limit?: number }>,
   runtime: ForumTipEarningsRuntime,
 ): Effect.Effect<ForumCreatorEarningsResponse, ForumStorageError> =>
@@ -905,9 +918,9 @@ export const readForumCreatorEarnings = (
     const limit = Math.min(Math.max(input.limit ?? 50, 1), 100)
     const [rows, ladderRows, receiptCount, ladderCount] = yield* Effect.all([
       readEarningRows(db, { actorRef: input.actorRef, limit }),
-      readTipLadderEarningRows(db, { actorRef: input.actorRef, limit }),
+      readTipLadderEarningRows(ledgerDb, { actorRef: input.actorRef, limit }),
       countEarningRows(db, input.actorRef),
-      countTipLadderEarningRows(db, input.actorRef),
+      countTipLadderEarningRows(ledgerDb, input.actorRef),
     ])
     const totalCount = receiptCount + ladderCount
     const earnings = sortEarningsNewestFirst([
@@ -935,6 +948,8 @@ export const readForumCreatorEarnings = (
 
 export const readForumTipReconciliation = (
   db: D1Database,
+  // CFG-4 (#8519): ladder earnings read the Postgres-authoritative ledger.
+  ledgerDb: PaymentsLedgerDb,
   input: Readonly<{ actorRef: string | null; limit?: number }>,
   runtime: ForumTipEarningsRuntime,
 ): Effect.Effect<ForumTipReconciliationResponse, ForumStorageError> =>
@@ -942,9 +957,9 @@ export const readForumTipReconciliation = (
     const limit = Math.min(Math.max(input.limit ?? 50, 1), 100)
     const [rows, ladderRows, receiptCount, ladderCount] = yield* Effect.all([
       readEarningRows(db, { actorRef: input.actorRef, limit }),
-      readTipLadderEarningRows(db, { actorRef: input.actorRef, limit }),
+      readTipLadderEarningRows(ledgerDb, { actorRef: input.actorRef, limit }),
       countEarningRows(db, input.actorRef),
-      countTipLadderEarningRows(db, input.actorRef),
+      countTipLadderEarningRows(ledgerDb, input.actorRef),
     ])
     const totalCount = receiptCount + ladderCount
     const earnings = sortEarningsNewestFirst([

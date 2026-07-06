@@ -16,6 +16,7 @@ import {
   makeKhalaCloudRuntimeUsageRoutes,
 } from './khala-cloud-runtime-usage-routes'
 import { readAgentBalance } from './payments-ledger'
+import { paymentsLedgerDbFromD1, type D1LikeDatabase } from './test/payments-ledger-sqlite'
 import type {
   TokenUsageIngestResult,
   TokenUsageLedgerShape,
@@ -341,7 +342,7 @@ describe('khala cloud runtime usage routes', () => {
       ledger: () => ledger,
       meteringHook: () =>
         makeLedgerMeteringHook({
-          db: billingDb,
+          ledgerDb: paymentsLedgerDbFromD1(billingDb as unknown as D1LikeDatabase),
           nowIso: () => nowIso,
           usdToMsat: () => 4_000,
         }),
@@ -382,7 +383,7 @@ describe('khala cloud runtime usage routes', () => {
     expect(firstJson.tokenChargeMetered).toBe(true)
     expect(secondJson.tokenChargeMetered).toBe(true)
     expect(secondJson.tokenChargeReceiptRef).toBe(firstJson.tokenChargeReceiptRef)
-    const balance = await readAgentBalance(billingDb, ownerAccountRef)
+    const balance = await readAgentBalance(paymentsLedgerDbFromD1(billingDb as unknown as D1LikeDatabase), ownerAccountRef)
     expect(balance?.availableMsat).toBe(6_000)
   })
 
@@ -397,7 +398,7 @@ describe('khala cloud runtime usage routes', () => {
       ledger: () => ledger,
       meteringHook: () =>
         makeLedgerMeteringHook({
-          db: billingDb,
+          ledgerDb: paymentsLedgerDbFromD1(billingDb as unknown as D1LikeDatabase),
           nowIso: () => nowIso,
           usdToMsat: () => 4_000,
         }),
@@ -425,7 +426,7 @@ describe('khala cloud runtime usage routes', () => {
     expect(json.tokenChargeFailureReason).toBe('insufficient_credit')
     expect(json.insufficientCreditEventPublished).toBe(true)
     expect(publishedEvents).toHaveLength(1)
-    const balance = await readAgentBalance(billingDb, ownerAccountRef)
+    const balance = await readAgentBalance(paymentsLedgerDbFromD1(billingDb as unknown as D1LikeDatabase), ownerAccountRef)
     expect(balance?.availableMsat).toBe(1_000)
   })
 
