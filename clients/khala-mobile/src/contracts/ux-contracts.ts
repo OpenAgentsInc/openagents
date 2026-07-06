@@ -555,7 +555,54 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
       verification:
         "Partial launched-app receipt recorded: docs/khala-mobile/2026-07-05-maestro-launched-app-smoke-receipt.md proves LaunchFallback.yaml passed on the iPhone 17 Pro iOS 26.5 simulator for app id com.openagents.khala.mobile, app version 0.1.0, iOS build 6, with local Metro serving the debug build. The broader contract remains pending because no public-safe seeded owner/token/thread precondition was available for SignedInThreadSmoke.yaml, and Android launched APK coverage is still unrecorded.",
     },
+    {
+      authorityBoundary:
+        "Binds only WHEN the OS permission prompt is allowed to fire and how many times the app may trigger it automatically. It does not cover push delivery, payload content (see the server-side `push_payload_safety` oracle in apps/openagents.com/workers/api), or notification preference UI (owned by the mobile Settings lane, #8487).",
+      blockerRefs: [],
+      contractId: "khala_mobile.push.permission_prompt_on_first_task_dispatch.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/src/push/push-registration-core.ts",
+        "clients/khala-mobile/src/push/push-device-store.ts",
+        "clients/khala-mobile/src/push/push-notifications-client.ts",
+        "clients/khala-mobile/src/components/chat-composer.tsx",
+        "clients/khala-mobile/tests/push-registration-core.test.ts",
+        "clients/khala-mobile/tests/push-device-store.test.ts",
+        "docs/fable/2026-07-05-khala-code-mobile-only-mvp-launch-audit.md",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "The push permission prompt is only allowed to fire on a `task_dispatched` event that has never prompted before; an `app_launch` event, or any event once `hasEverPrompted` is true, must never trigger it.",
+          id: "push_permission_prompt_gating.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/push-registration-core.test.ts",
+        },
+        {
+          description:
+            "The device id persisted for push registration is generated exactly once and reused thereafter, and the has-ever-prompted flag survives sign-out (clearPushDeviceId) since OS permission is a device-level fact, not an account-level one.",
+          id: "push_device_id_and_prompt_flag_persistence.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/push-device-store.test.ts",
+        },
+      ],
+      productArea: "push notifications",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-05",
+      },
+      state: "enforced",
+      statement:
+        "Permission prompt at the right moment (first task dispatched, not first launch): the OS push-notification permission prompt only ever fires the first time a user dispatches a task (starts a brand-new turn), never on app launch, and never more than once automatically.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/push-registration-core.test.ts tests/push-device-store.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-05.5",
+  version: "2026-07-05.6",
 }

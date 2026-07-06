@@ -45,6 +45,18 @@ import type { RuntimeTurnEntity } from "@openagentsinc/khala-sync"
  *   (`phaseFromAvailability`, `isPushToTalkPressable`, etc.) is already
  *   covered by `tests/push-to-talk-core.test.ts`; this fake just answers
  *   `getAvailabilityAsync` so `usePushToTalk`'s real mount-effect runs.
+ * - `../src/auth/khala-auth-context`: `ChatComposer` reads `baseUrl`/`token`
+ *   from `useKhalaAuth()` (MM-G1, #8485) to fire the push-registration call
+ *   below; the real provider needs a mounted `<KhalaAuthProvider>` plus
+ *   SecureStore/expo-auth-session, which are out of scope for this
+ *   composer-only test. This fake returns static values.
+ * - `../src/push/push-notifications-client`: the real module imports
+ *   `expo-notifications`, which calls into `expo-modules-core`'s
+ *   `globalThis.expo.EventEmitter` at import time — dead outside a native
+ *   host, same class of problem as the native modules above. The push
+ *   registration DECISION/PERSISTENCE logic itself is already covered by
+ *   `tests/push-registration-core.test.ts` and `tests/push-device-store.test.ts`;
+ *   this fake just proves `ChatComposer` calls it once per new-turn send.
  *
  * Everything else `ChatComposer` imports — `push-to-talk-core`,
  * `khala-runtime-compose-core`, `khala-sync-push-core`, `swipe-quote-core`,
@@ -105,6 +117,20 @@ mock.module("../src/native/modules", () => ({
       stopRecognitionAsync: () => Promise.reject(new Error("not implemented in test"))
     }
   }
+}))
+
+mock.module("../src/auth/khala-auth-context", () => ({
+  useKhalaAuth: () => ({
+    baseUrl: "https://openagents.test",
+    ownerUserId: "user_test",
+    status: "signed_in",
+    token: "token_test"
+  })
+}))
+
+export const registerForPushNotificationsAsyncMock = mock(() => Promise.resolve({ ok: true, deviceId: "device_test" }))
+mock.module("../src/push/push-notifications-client", () => ({
+  registerForPushNotificationsAsync: registerForPushNotificationsAsyncMock
 }))
 
 // Imported AFTER the `mock.module` calls above (Bun resolves module mocks by

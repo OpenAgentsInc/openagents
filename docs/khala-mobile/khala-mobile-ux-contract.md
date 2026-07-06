@@ -86,7 +86,7 @@ top follow-up item for whoever picks this up next.
 
 ## Registry
 
-Registry version: `2026-07-05.5` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-05.6` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — RETIRED
 
@@ -233,3 +233,14 @@ Registry version: `2026-07-05.5` (schema `openagents.behavior_contracts.v1`)
 - **Verification:** Partial launched-app receipt recorded: `docs/khala-mobile/2026-07-05-maestro-launched-app-smoke-receipt.md` proves `LaunchFallback.yaml` passed on the iPhone 17 Pro iOS 26.5 simulator for app id `com.openagents.khala.mobile`, app version `0.1.0`, iOS build `6`, with local Metro serving the debug build. The broader contract remains pending because no public-safe seeded owner/token/thread precondition was available for `SignedInThreadSmoke.yaml`, and Android launched APK coverage is still unrecorded.
 - **Blockers:** `blocker.khala_mobile.needs_physical_android_device_or_emulator_launch`, `blocker.khala_mobile.needs_ios_testflight_install_and_interact_pass`
 - **Authority boundary:** iOS has stronger automated/proof-adjacent evidence today (two independently-confirmed VALID TestFlight uploads) than Android (clean local Gradle assemble only, no launched APK). This contract exists specifically to keep that asymmetry visible rather than implying platform parity.
+
+### `khala_mobile.push.permission_prompt_on_first_task_dispatch.v1` — ENFORCED
+
+- **Surface:** khala-mobile (push notifications)
+- **Stated by:** owner via khala-code-session on 2026-07-05
+- **Statement:** Permission prompt at the right moment (first task dispatched, not first launch): the OS push-notification permission prompt only ever fires the first time a user dispatches a task (starts a brand-new turn), never on app launch, and never more than once automatically.
+- **Enforcement tier:** test-sweep
+- **Oracle** `push_permission_prompt_gating.unit` (bun-test, unit): The push permission prompt is only allowed to fire on a `task_dispatched` event that has never prompted before; an `app_launch` event, or any event once `hasEverPrompted` is true, must never trigger it. — `clients/khala-mobile/tests/push-registration-core.test.ts`
+- **Oracle** `push_device_id_and_prompt_flag_persistence.unit` (bun-test, unit): The device id persisted for push registration is generated exactly once and reused thereafter, and the has-ever-prompted flag survives sign-out (clearPushDeviceId) since OS permission is a device-level fact, not an account-level one. — `clients/khala-mobile/tests/push-device-store.test.ts`
+- **Verification:** bun test tests/push-registration-core.test.ts tests/push-device-store.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
+- **Authority boundary:** Binds only WHEN the OS permission prompt is allowed to fire and how many times the app may trigger it automatically. It does not cover push delivery, payload content (see the server-side `push_payload_safety` oracle in apps/openagents.com/workers/api), or notification preference UI (owned by the mobile Settings lane, #8487).

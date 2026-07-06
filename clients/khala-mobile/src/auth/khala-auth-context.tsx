@@ -24,6 +24,7 @@ import {
   KHALA_SYNC_DEMO_TOKEN,
 } from "../config/khala-sync-demo"
 import { mobileProblemMessageSafe } from "../network/mobile-problem"
+import { unregisterPushNotificationsAsync } from "../push/push-notifications-client"
 import { clearStoredCredentials, loadStoredCredentials, saveStoredCredentials } from "./khala-auth-store"
 import {
   initialKhalaAuthMachineState,
@@ -182,6 +183,14 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
     await clearStoredCredentials()
 
     if (token !== undefined && token.trim().length > 0) {
+      // Best-effort: unregister this device's push token BEFORE the server
+      // revokes the access token below, so the unregister call still
+      // authenticates (MM-G1, #8485). Never blocks/fails sign-out.
+      await unregisterPushNotificationsAsync({
+        apiBaseUrl: KHALA_OPENAGENTS_API_BASE_URL,
+        bearerToken: token,
+      })
+
       try {
         await deleteMobileOpenAuthSession({
           accessToken: token,

@@ -4,8 +4,10 @@ import { Platform, Pressable, TextInput, View } from "react-native"
 
 import { ActivityIndicator } from "./activity-indicator"
 import { KhalaText } from "./khala-text"
+import { useKhalaAuth } from "../auth/khala-auth-context"
 import { mergeTranscriptIntoDraft } from "../native/push-to-talk-core"
 import { usePushToTalk } from "../native/use-push-to-talk"
+import { registerForPushNotificationsAsync } from "../push/push-notifications-client"
 import {
   buildAppendUserMessageIntentArgs,
   buildChatAppendMessageArgs,
@@ -90,6 +92,7 @@ export const ChatComposer = ({
     onError: message => setErrorMessage(message),
     onTranscript: transcript => setText(current => mergeTranscriptIntoDraft(current, transcript))
   })
+  const { baseUrl, token } = useKhalaAuth()
 
   // `defaultLane` often arrives after first render (the runtime_turn
   // collection is still loading), so keep syncing to it until the user
@@ -157,6 +160,15 @@ export const ChatComposer = ({
           chatMutation,
           { args: buildStartTurnIntentArgs({ bodyRef, nowIso, target, threadId, turnId }), name: "runtime.startTurn" }
         ])
+        // Push notification permission prompt fires exactly here — the first
+        // time the user ever dispatches a task, never on app launch (MM-G1,
+        // #8485; khala_mobile.push.permission_prompt_on_first_task_dispatch.v1).
+        // Fire-and-forget: never blocks or fails the send.
+        void registerForPushNotificationsAsync({
+          apiBaseUrl: baseUrl,
+          bearerToken: token,
+          event: "task_dispatched"
+        })
       }
       setText("")
       setShowOptions(false)

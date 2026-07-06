@@ -27,7 +27,7 @@
     },
     "ios": {
       "bundleIdentifier": "com.openagents.khala.mobile",
-      "buildNumber": "8",
+      "buildNumber": "9",
       "supportsTablet": true,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Khala uses the microphone for push-to-talk transcription.",
@@ -37,7 +37,7 @@
     },
     "android": {
       "package": "com.openagents.khala.mobile",
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#02060d"
@@ -52,7 +52,14 @@
       "expo-updates",
       "./modules/khala-push-to-talk-stt/app.plugin.js",
       "./modules/khala-apple-foundation-models/app.plugin.js",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/adaptive-icon.png",
+          "color": "#4fd0ff"
+        }
+      ]
     ],
     "extra": {
       "khala": {

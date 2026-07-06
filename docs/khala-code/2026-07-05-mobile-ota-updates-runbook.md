@@ -193,6 +193,20 @@ baseline was then published from clean pushed `main` by
 multipart with an `expo-signature` manifest part, the same runtime, 20 assets,
 and `extra.expoClient.name = "Khala Code"`.
 
+2026-07-06 #8485 note (MM-G1, push notification device registration): added
+the `expo-notifications` config plugin (native module). Native-affecting;
+bumped iOS build to `9` and Android versionCode to `3`. `expo prebuild
+--platform ios` + `bun run build:ios:local` were run locally as part of
+this change (see the issue's closing comment for the exact result); run the
+Android equivalent and publish a fresh self-hosted OTA seed for the new
+fingerprint through this runbook before this native shape reaches a real
+device, exactly like the #8470 note above. Getting a LIVE Expo push token
+(not just registering the endpoint) additionally needs an Expo account
+project id (`extra.eas.projectId` in `app.json`) — none exists yet; see
+`NEEDS_OWNER.md`. Until that's set, `registerForPushNotificationsAsync`
+cleanly no-ops with `{ ok: false, reason: "project_id_missing" }` rather than
+crashing, so this native/OTA shape is safe to ship ahead of that owner step.
+
 ## Where the OTA server itself lives
 
 `apps/oa-updates/` is a small Bun app deployed to Cloud Run
