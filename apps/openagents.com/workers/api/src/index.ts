@@ -241,6 +241,12 @@ import {
   PUSH_DEVICE_TOKENS_PATH,
 } from './push/push-device-token-routes'
 import {
+  handlePushNotificationPreferencesRequest,
+  handlePushNotifyEventsRequest,
+  PUSH_NOTIFICATION_PREFERENCES_PATH,
+  PUSH_NOTIFY_EVENTS_PATH,
+} from './push/push-notify-routes'
+import {
   AutopilotComposedRunEndpoint,
   handleAutopilotComposedRunApi,
   isAutopilotComposedRunEnabled,
@@ -12538,6 +12544,43 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         request,
         env,
         ctx,
+      ),
+  },
+  {
+    // MM-G2 (#8486): mobile-bearer per-user push notification preference
+    // (global on/off toggle). Same boundary as the push-tokens route above.
+    path: PUSH_NOTIFICATION_PREFERENCES_PATH,
+    handler: (request, env, ctx) =>
+      handlePushNotificationPreferencesRequest(
+        {
+          authStorage: e => e.AUTH_STORAGE,
+          db: openAgentsDatabase,
+          requireAdminApiToken,
+          requireUserBearerSession,
+          userIdFromSession: session => session.user.userId,
+        },
+        request,
+        env,
+        ctx,
+      ),
+  },
+  {
+    // MM-G2 (#8486): internal notify-event ingest the org cloud executor
+    // (#8473-#8477) and metering (#8479) will call once merged — see the
+    // route module's doc comment for the auth pin (admin bearer as the
+    // interim default caller credential).
+    path: PUSH_NOTIFY_EVENTS_PATH,
+    handler: (request, env) =>
+      handlePushNotifyEventsRequest(
+        {
+          authStorage: e => e.AUTH_STORAGE,
+          db: openAgentsDatabase,
+          requireAdminApiToken,
+          requireUserBearerSession,
+          userIdFromSession: session => session.user.userId,
+        },
+        request,
+        env,
       ),
   },
   {

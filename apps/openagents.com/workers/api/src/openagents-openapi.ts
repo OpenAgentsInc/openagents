@@ -2749,6 +2749,124 @@ const schemaComponents = (): JsonSchema => ({
     description:
       'Khala mobile credential shape compatible with khala-auth-store: ownerUserId plus the current cookie-free mobile user bearer token. It grants no agent, admin, GitHub writeback, spend, payout, or settlement authority.',
   },
+  PushDeviceTokenRegistrationRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['deviceId', 'expoPushToken', 'platform'],
+    properties: {
+      deviceId: {
+        type: 'string',
+        minLength: 1,
+        description:
+          'Stable per-install device id the mobile app persists in SecureStore. Re-registering the SAME device id upserts rather than duplicating.',
+      },
+      expoPushToken: {
+        type: 'string',
+        minLength: 1,
+        description: 'Expo push token from Notifications.getExpoPushTokenAsync().',
+      },
+      platform: { type: 'string', enum: ['ios', 'android'] },
+    },
+  },
+  PushDeviceTokenRegistrationResponse: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['ok', 'registration'],
+    properties: {
+      ok: { const: true },
+      registration: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['deviceId', 'platform', 'updatedAt'],
+        properties: {
+          deviceId: { type: 'string' },
+          platform: { type: 'string', enum: ['ios', 'android'] },
+          updatedAt: { type: 'string' },
+        },
+      },
+    },
+  },
+  PushDeviceTokenUnregisterResponse: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['ok', 'removed'],
+    properties: {
+      ok: { const: true },
+      removed: {
+        type: 'boolean',
+        description:
+          'True if a registration for this deviceId existed for the authenticated user and was deleted.',
+      },
+    },
+  },
+  PushNotificationPreference: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['ok', 'preference'],
+    properties: {
+      ok: { const: true },
+      preference: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['pushEnabled'],
+        properties: {
+          pushEnabled: {
+            type: 'boolean',
+            description: 'Global push-notification toggle. Defaults to true when never set.',
+          },
+        },
+      },
+    },
+  },
+  PushNotificationPreferenceUpdateRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['pushEnabled'],
+    properties: {
+      pushEnabled: { type: 'boolean' },
+    },
+  },
+  PushNotifyEventRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['kind', 'ownerUserId', 'threadId'],
+    properties: {
+      kind: {
+        type: 'string',
+        enum: ['turn_completed', 'turn_needs_input', 'turn_failed', 'credit_low'],
+      },
+      ownerUserId: { type: 'string' },
+      threadId: { type: 'string' },
+      turnId: { type: 'string' },
+      branchUrl: {
+        type: 'string',
+        description: 'turn_completed only: a public branch URL from #8477 writeback.',
+      },
+      prUrl: {
+        type: 'string',
+        description: 'turn_completed only: a public pull-request URL from #8477 writeback.',
+      },
+      exhausted: {
+        type: 'boolean',
+        description: 'credit_low only: true once the balance is fully exhausted, not just low.',
+      },
+    },
+  },
+  PushNotifyEventResponse: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['ok', 'sent', 'suppressedByPreference', 'invalidatedTokens'],
+    properties: {
+      ok: { const: true },
+      sent: { type: 'integer', minimum: 0 },
+      suppressedByPreference: { type: 'boolean' },
+      invalidatedTokens: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Expo push tokens pruned from the registry because Expo reported DeviceNotRegistered.',
+      },
+    },
+  },
   OnboardingStatus: objectSummary(
     'Signed-in customer onboarding state projection.',
   ),
@@ -10561,6 +10679,99 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Mobile Khala Sync session credentials.',
           '#/components/schemas/MobileSyncSession',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/mobile/push-tokens': {
+    post: operation({
+      operationId: 'registerPushDeviceToken',
+      summary: 'Register a mobile push device token',
+      description:
+        'Registers (or re-registers/upserts) this device\'s Expo push token for the authenticated Khala mobile user. Requires the same mobile OpenAuth user bearer session as /api/mobile/auth/session; never a browser session or agent token.',
+      tags: ['Agents'],
+      security: mobileUserBearer,
+      requestBody: jsonContent(
+        '#/components/schemas/PushDeviceTokenRegistrationRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Push device token registration result.',
+          '#/components/schemas/PushDeviceTokenRegistrationResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+    delete: operation({
+      operationId: 'unregisterPushDeviceToken',
+      summary: 'Unregister a mobile push device token',
+      description:
+        'Removes a previously-registered device push token for the authenticated user, keyed by the deviceId query parameter. A device belonging to a different user is never removed.',
+      tags: ['Agents'],
+      security: mobileUserBearer,
+      parameters: [
+        queryParam('deviceId', 'The device id to unregister (required).'),
+      ],
+      responses: {
+        '200': okJson(
+          'Push device token unregistration result.',
+          '#/components/schemas/PushDeviceTokenUnregisterResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/mobile/notifications/preferences': {
+    get: operation({
+      operationId: 'getPushNotificationPreference',
+      summary: 'Read the mobile push notification preference',
+      description:
+        'Reads the authenticated user\'s global push-notification on/off toggle. Defaults to enabled when never set (opt-out, not opt-in).',
+      tags: ['Agents'],
+      security: mobileUserBearer,
+      responses: {
+        '200': okJson(
+          'Push notification preference.',
+          '#/components/schemas/PushNotificationPreference',
+        ),
+        ...errorResponses(),
+      },
+    }),
+    put: operation({
+      operationId: 'putPushNotificationPreference',
+      summary: 'Set the mobile push notification preference',
+      description:
+        'Sets the authenticated user\'s global push-notification on/off toggle.',
+      tags: ['Agents'],
+      security: mobileUserBearer,
+      requestBody: jsonContent(
+        '#/components/schemas/PushNotificationPreferenceUpdateRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Push notification preference.',
+          '#/components/schemas/PushNotificationPreference',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/internal/push/notify-events': {
+    post: operation({
+      operationId: 'postPushNotifyEvent',
+      summary: 'Ingest a runtime notify event and send push notifications',
+      description:
+        'Admin-bearer-gated internal ingest point for a typed runtime notify event (turn completed/needs input/failed, credit low/exhausted). Looks up the owner\'s active push device tokens and notification preference, then sends via the Expo push service. Public-safe payloads only — titles/bodies are drawn from a small fixed template set, never interpolated from thread/turn ids or prompt content. PIN: the real caller (the org cloud executor, #8473-#8477, and metering, #8479) is not yet merged as of this writing; admin bearer is the interim default credential for this route, not a final design decision.',
+      tags: ['Agents'],
+      security: adminBearer,
+      requestBody: jsonContent(
+        '#/components/schemas/PushNotifyEventRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Push notify-event dispatch result.',
+          '#/components/schemas/PushNotifyEventResponse',
         ),
         ...errorResponses(),
       },
