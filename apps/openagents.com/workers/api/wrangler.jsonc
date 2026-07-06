@@ -30,10 +30,6 @@
       "pattern": "auth.openagents.com",
       "custom_domain": true,
     },
-    {
-      "pattern": "sites.openagents.com",
-      "custom_domain": true,
-    },
   ],
   "send_email": [
     {
@@ -407,12 +403,6 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": true,
   },
-  "dispatch_namespaces": [
-    {
-      "binding": "SITES_DISPATCH",
-      "namespace": "openagents-sites-production",
-    },
-  ],
   // Direct worker-to-worker binding for the relay-health NIP-11 probe leg
   // (#4865): same-zone plain-GET subrequests to the relay's custom domain
   // fail from inside this worker, while service bindings always invoke
@@ -711,12 +701,6 @@
         "not_found_handling": "single-page-application",
         "run_worker_first": true,
       },
-      "dispatch_namespaces": [
-        {
-          "binding": "SITES_DISPATCH",
-          "namespace": "openagents-sites-production",
-        },
-      ],
       "d1_databases": [
         {
           "binding": "OPENAGENTS_DB",

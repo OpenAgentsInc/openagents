@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'vitest'
 
-import { createAutopilotStartSiteTemplate } from './sites-start-template'
 import {
   SITES_TANSTACK_RULES,
   SITES_TANSTACK_RULES_METADATA_KEY,
@@ -80,35 +79,6 @@ describe('Sites TanStack rules and generated-site behavior contracts', () => {
           contract.oracles[0]?.ref ===
             'apps/openagents.com/workers/api/src/sites-tanstack-rules.test.ts',
       ),
-    ).toBe(true)
-  })
-
-  test('passes the TS-4 Start template through the starter contract sweep', () => {
-    const template = createAutopilotStartSiteTemplate(siteInput)
-    const receipt = runGeneratedSiteBehaviorContractSweep({
-      bundleBudgetBytes: 80_000,
-      files: template.files,
-      knownRoutes: [
-        '/',
-        '/business',
-        '/llms.txt',
-        '/robots.txt',
-        '/sitemap.xml',
-        '/.well-known/openagents.json',
-      ],
-      marketingCopy: `${siteInput.title}\n${siteInput.description}`,
-      previewUrl: 'https://preview.openagents.com/sites/openagents-funnel',
-      siteId: siteInput.siteId,
-    })
-
-    expect(receipt).toMatchObject({
-      blockerRefs: [],
-      readyForDeployReview: true,
-      registryValid: true,
-      status: 'pass',
-    })
-    expect(
-      receipt.results.every(result => result.status === 'pass'),
     ).toBe(true)
   })
 

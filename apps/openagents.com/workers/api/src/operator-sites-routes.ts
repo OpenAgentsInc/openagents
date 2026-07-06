@@ -13,18 +13,14 @@ import {
   type AutopilotSiteError,
   AutopilotSiteLaunchChecklist,
   AutopilotSiteProjectNotFound,
-  AutopilotSiteRuntimeKind,
   AutopilotSiteStaticAssetsManifest,
   AutopilotSiteSourceRepository,
   AutopilotSiteVersionSourceKind,
   AutopilotSiteVisibility,
   AutopilotSitesService,
   type CreateAutopilotSiteFromOrderInput,
-  type DeployAutopilotSiteVersionInput,
-  type DisableAutopilotSiteDeploymentInput,
   type GrantAutopilotSiteAccessInput,
   type RequestAutopilotSiteGenerationInput,
-  type RollbackAutopilotSiteDeploymentInput,
   type SaveAutopilotSiteVersionInput,
   type UpdateAutopilotSiteAccessInput,
   type UpsertAutopilotSiteEnvironmentValueInput,
@@ -40,10 +36,6 @@ import {
   SiteBuildValidationCompatibilityHint,
   makeSiteBuildValidationService,
 } from './sites-build-validations'
-import {
-  SiteProvisioningManifest,
-  recordSiteProvisioningPlan,
-} from './sites-provisioning'
 import {
   SiteSourceExportDestination,
   type SiteSourceExportError,
@@ -65,13 +57,6 @@ type OperatorSitesSession = Readonly<{
   }>
 }>
 
-type OperatorSitesCustomerNotification = Readonly<{
-  emailMessageId: string | null
-  emailStatus: 'accepted' | 'failed' | 'skipped'
-  providerMessageId?: string | null | undefined
-  skipReason?: string | undefined
-}>
-
 type OperatorSitesRouteDependencies<
   Session extends OperatorSitesSession,
   Bindings extends OperatorSitesEnv,
@@ -81,15 +66,6 @@ type OperatorSitesRouteDependencies<
     session: Session,
   ) => HttpResponse
   isOpenAgentsAdminEmail: (email: string) => boolean
-  notifyCustomerSiteDeployed?: (
-    env: Bindings,
-    input: Readonly<{
-      actorUserId: string
-      deploymentId: string
-      siteId: string
-      siteUrl: string
-    }>,
-  ) => Promise<OperatorSitesCustomerNotification>
   requireBrowserSession: (
     request: Request,
     env: Bindings,
@@ -169,30 +145,6 @@ export class SaveOperatorSiteVersionRequest extends S.Class<SaveOperatorSiteVers
   workerModuleR2Key: S.optionalKey(S.String),
 }) {}
 
-export class DeployOperatorSiteVersionRequest extends S.Class<DeployOperatorSiteVersionRequest>(
-  'DeployOperatorSiteVersionRequest',
-)({
-  confirm: S.optionalKey(S.Boolean),
-  dispatchNamespace: S.optionalKey(S.String),
-  externalDeploymentId: S.optionalKey(S.String),
-  healthCheck: S.optionalKey(
-    S.Struct({
-      status: S.Literals(['passed', 'failed']),
-      checkedAt: S.optionalKey(S.String),
-      healthRef: S.optionalKey(S.String),
-      summary: S.optionalKey(S.String),
-      url: S.optionalKey(S.String),
-    }),
-  ),
-  launchChecklist: S.optionalKey(AutopilotSiteLaunchChecklist),
-  observabilityRef: S.optionalKey(S.String),
-  rollbackRef: S.optionalKey(S.String),
-  runtimeKind: S.optionalKey(AutopilotSiteRuntimeKind),
-  runtimeScriptName: S.optionalKey(S.String),
-  tags: S.optionalKey(S.Array(S.String)),
-  uploadReceiptRef: S.optionalKey(S.String),
-}) {}
-
 export class UpsertOperatorSiteEnvironmentValueRequest extends S.Class<UpsertOperatorSiteEnvironmentValueRequest>(
   'UpsertOperatorSiteEnvironmentValueRequest',
 )({
@@ -210,31 +162,11 @@ export class GrantOperatorSiteAccessRequest extends S.Class<GrantOperatorSiteAcc
   role: AutopilotSiteAccessRole,
 }) {}
 
-export class DisableOperatorSiteDeploymentRequest extends S.Class<DisableOperatorSiteDeploymentRequest>(
-  'DisableOperatorSiteDeploymentRequest',
-)({
-  confirm: S.optionalKey(S.Boolean),
-}) {}
-
-export class RollbackOperatorSiteDeploymentRequest extends S.Class<RollbackOperatorSiteDeploymentRequest>(
-  'RollbackOperatorSiteDeploymentRequest',
-)({
-  confirm: S.optionalKey(S.Boolean),
-}) {}
-
 export class GenerateOperatorSiteRequest extends S.Class<GenerateOperatorSiteRequest>(
   'GenerateOperatorSiteRequest',
 )({
   actorRunId: S.optionalKey(S.String),
   operatorNotes: S.optionalKey(S.String),
-}) {}
-
-export class CreateOperatorSiteProvisioningPlanRequest extends S.Class<CreateOperatorSiteProvisioningPlanRequest>(
-  'CreateOperatorSiteProvisioningPlanRequest',
-)({
-  resourceManifest: SiteProvisioningManifest,
-  approve: S.optionalKey(S.Boolean),
-  receipt: S.optionalKey(S.Record(S.String, S.Unknown)),
 }) {}
 
 export class CreateOperatorSiteSourceExportRequest extends S.Class<CreateOperatorSiteSourceExportRequest>(
@@ -498,39 +430,6 @@ const saveVersionInput = (
     : { workerModuleText: body.workerModuleText }),
 })
 
-const deployVersionInput = (
-  session: OperatorSitesSession,
-  siteId: string,
-  versionId: string,
-  body: DeployOperatorSiteVersionRequest,
-): DeployAutopilotSiteVersionInput => ({
-  actorUserId: session.user.userId,
-  siteId,
-  versionId,
-  ...(body.dispatchNamespace === undefined
-    ? {}
-    : { dispatchNamespace: body.dispatchNamespace }),
-  ...(body.externalDeploymentId === undefined
-    ? {}
-    : { externalDeploymentId: body.externalDeploymentId }),
-  ...(body.healthCheck === undefined ? {} : { healthCheck: body.healthCheck }),
-  ...(body.launchChecklist === undefined
-    ? {}
-    : { launchChecklist: body.launchChecklist }),
-  ...(body.observabilityRef === undefined
-    ? {}
-    : { observabilityRef: body.observabilityRef }),
-  ...(body.rollbackRef === undefined ? {} : { rollbackRef: body.rollbackRef }),
-  ...(body.runtimeKind === undefined ? {} : { runtimeKind: body.runtimeKind }),
-  ...(body.runtimeScriptName === undefined
-    ? {}
-    : { runtimeScriptName: body.runtimeScriptName }),
-  ...(body.tags === undefined ? {} : { tags: body.tags }),
-  ...(body.uploadReceiptRef === undefined
-    ? {}
-    : { uploadReceiptRef: body.uploadReceiptRef }),
-})
-
 const upsertEnvironmentValueInput = (
   session: OperatorSitesSession,
   siteId: string,
@@ -553,26 +452,6 @@ const grantAccessInput = (
   principalKind: body.principalKind,
   principalRef: body.principalRef,
   role: body.role,
-  siteId,
-})
-
-const disableDeploymentInput = (
-  session: OperatorSitesSession,
-  siteId: string,
-  deploymentId: string,
-): DisableAutopilotSiteDeploymentInput => ({
-  actorUserId: session.user.userId,
-  deploymentId,
-  siteId,
-})
-
-const rollbackDeploymentInput = (
-  session: OperatorSitesSession,
-  siteId: string,
-  deploymentId: string,
-): RollbackAutopilotSiteDeploymentInput => ({
-  actorUserId: session.user.userId,
-  deploymentId,
   siteId,
 })
 
@@ -745,69 +624,6 @@ export const makeOperatorSitesRoutes = <
       }),
     )
 
-  const deploySiteVersion = (
-    siteId: string,
-    versionId: string,
-    request: Request,
-    env: Bindings,
-    ctx: ExecutionContext,
-  ) =>
-    runRoute(
-      env,
-      Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return methodNotAllowed(['POST'])
-        }
-
-        const session = yield* requireAdminSession(
-          dependencies,
-          request,
-          env,
-          ctx,
-        )
-        const body = yield* decodeJsonBody(
-          request,
-          DeployOperatorSiteVersionRequest,
-        )
-        const sites = yield* AutopilotSitesService
-        const deployment = yield* sites.deployVersion(
-          deployVersionInput(session, siteId, versionId, body),
-        )
-        const notification =
-          dependencies.notifyCustomerSiteDeployed === undefined
-            ? undefined
-            : yield* Effect.tryPromise({
-                catch: error =>
-                  new OperatorSitesSessionError({
-                    error,
-                  }),
-                try: () =>
-                  dependencies.notifyCustomerSiteDeployed?.(env, {
-                    actorUserId: session.user.userId,
-                    deploymentId: deployment.id,
-                    siteId,
-                    siteUrl: deployment.url,
-                  }) ??
-                  Promise.resolve({
-                    emailMessageId: null,
-                    emailStatus: 'skipped' as const,
-                    skipReason: 'notification_hook_missing',
-                  }),
-              })
-
-        return dependencies.appendRefreshedSessionCookies(
-          noStoreJsonResponse(
-            {
-              deployment,
-              ...(notification === undefined ? {} : { notification }),
-            },
-            { status: 201 },
-          ),
-          session,
-        )
-      }),
-    )
-
   const generateSite = (
     siteId: string,
     request: Request,
@@ -835,57 +651,6 @@ export const makeOperatorSitesRoutes = <
 
         return dependencies.appendRefreshedSessionCookies(
           noStoreJsonResponse({ generation }, { status: 202 }),
-          session,
-        )
-      }),
-    )
-
-  const createProvisioningPlan = (
-    siteId: string,
-    request: Request,
-    env: Bindings,
-    ctx: ExecutionContext,
-  ) =>
-    runRoute(
-      env,
-      Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return methodNotAllowed(['POST'])
-        }
-
-        const session = yield* requireAdminSession(
-          dependencies,
-          request,
-          env,
-          ctx,
-        )
-        const idempotencyKey = idempotencyKeyFromRequest(request)
-
-        if (idempotencyKey === undefined) {
-          return yield* new OperatorSitesBadRequest({
-            reason: 'idempotency key is required',
-          })
-        }
-
-        const body = yield* decodeJsonBody(
-          request,
-          CreateOperatorSiteProvisioningPlanRequest,
-        )
-        const plan = yield* recordSiteProvisioningPlan(
-          openAgentsDatabase(env),
-          {
-            idempotencyKey,
-            receipt: body.receipt,
-            requestedByUserId: session.user.userId,
-            resourceManifest: body.resourceManifest,
-            reviewedByUserId:
-              body.approve === true ? session.user.userId : undefined,
-            siteId,
-          },
-        )
-
-        return dependencies.appendRefreshedSessionCookies(
-          noStoreJsonResponse({ provisioningPlan: plan }, { status: 201 }),
           session,
         )
       }),
@@ -1238,72 +1003,6 @@ export const makeOperatorSitesRoutes = <
       }),
     )
 
-  const disableDeployment = (
-    siteId: string,
-    deploymentId: string,
-    request: Request,
-    env: Bindings,
-    ctx: ExecutionContext,
-  ) =>
-    runRoute(
-      env,
-      Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return methodNotAllowed(['POST'])
-        }
-
-        const session = yield* requireAdminSession(
-          dependencies,
-          request,
-          env,
-          ctx,
-        )
-        yield* decodeJsonBody(request, DisableOperatorSiteDeploymentRequest)
-        const sites = yield* AutopilotSitesService
-        const deployment = yield* sites.disableDeployment(
-          disableDeploymentInput(session, siteId, deploymentId),
-        )
-
-        return dependencies.appendRefreshedSessionCookies(
-          noStoreJsonResponse({ deployment }),
-          session,
-        )
-      }),
-    )
-
-  const rollbackDeployment = (
-    siteId: string,
-    deploymentId: string,
-    request: Request,
-    env: Bindings,
-    ctx: ExecutionContext,
-  ) =>
-    runRoute(
-      env,
-      Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return methodNotAllowed(['POST'])
-        }
-
-        const session = yield* requireAdminSession(
-          dependencies,
-          request,
-          env,
-          ctx,
-        )
-        yield* decodeJsonBody(request, RollbackOperatorSiteDeploymentRequest)
-        const sites = yield* AutopilotSitesService
-        const deployment = yield* sites.rollbackDeployment(
-          rollbackDeploymentInput(session, siteId, deploymentId),
-        )
-
-        return dependencies.appendRefreshedSessionCookies(
-          noStoreJsonResponse({ deployment }),
-          session,
-        )
-      }),
-    )
-
   return {
     routeOperatorSitesRequest: (
       request: Request,
@@ -1400,20 +1099,6 @@ export const makeOperatorSitesRoutes = <
         )
       }
 
-      const provisioningPlansMatch =
-        /^\/api\/operator\/sites\/([^/]+)\/provisioning-plans$/.exec(
-          url.pathname,
-        )
-
-      if (provisioningPlansMatch !== null) {
-        return createProvisioningPlan(
-          provisioningPlansMatch[1] ?? '',
-          request,
-          env,
-          ctx,
-        )
-      }
-
       const accessGrantsMatch =
         /^\/api\/operator\/sites\/([^/]+)\/access-grants$/.exec(url.pathname)
 
@@ -1437,51 +1122,6 @@ export const makeOperatorSitesRoutes = <
         return createSourceExport(
           sourceExportMatch[1] ?? '',
           sourceExportMatch[2] ?? '',
-          request,
-          env,
-          ctx,
-        )
-      }
-
-      const deployVersionMatch =
-        /^\/api\/operator\/sites\/([^/]+)\/versions\/([^/]+)\/deploy$/.exec(
-          url.pathname,
-        )
-
-      if (deployVersionMatch !== null) {
-        return deploySiteVersion(
-          deployVersionMatch[1] ?? '',
-          deployVersionMatch[2] ?? '',
-          request,
-          env,
-          ctx,
-        )
-      }
-
-      const disableDeploymentMatch =
-        /^\/api\/operator\/sites\/([^/]+)\/deployments\/([^/]+)\/disable$/.exec(
-          url.pathname,
-        )
-
-      if (disableDeploymentMatch !== null) {
-        return disableDeployment(
-          disableDeploymentMatch[1] ?? '',
-          disableDeploymentMatch[2] ?? '',
-          request,
-          env,
-          ctx,
-        )
-      }
-
-      const rollbackDeploymentMatch =
-        /^\/api\/operator\/sites\/([^/]+)\/deployments\/([^/]+)\/rollback$/.exec(
-          url.pathname,
-        )
-
-      if (rollbackDeploymentMatch !== null) {
-        return rollbackDeployment(
-          rollbackDeploymentMatch[1] ?? '',
-          rollbackDeploymentMatch[2] ?? '',
           request,
           env,
           ctx,

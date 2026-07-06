@@ -30,7 +30,6 @@ import { EnergyFlexibleLoadProofEndpoint } from './energy-flexible-load-proof'
 import { handleEnergyFlexibleLoadProofApi } from './energy-flexible-load-proof-routes'
 import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
 import type { AdjutantTaskPacketRefValidationInput } from './adjutant-task-packets'
-import { recordAdjutantUsageReceipt } from './adjutant-usage-receipts'
 import { makeAdminOverviewHandlers } from './admin-overview-routes'
 import {
   handleAgentBalanceApi,
@@ -1227,7 +1226,6 @@ import { handleSiteReferralPayoutsPublicApi } from './site-referral-payout-publi
 import { makeD1SiteReferralPayoutReceiptStore } from './site-referral-payout-receipts'
 import { makeSiteReferralRoutes } from './site-referral-routes'
 import { PENDING_REFERRAL_COOKIE } from './site-referrals'
-import { makeSiteRuntimeRoutes } from './site-runtime-routes'
 import { sitesContentDatabaseForEnv } from './sites-content-store'
 import { makeSitesOrchestrationRoutes } from './sites-orchestration-routes'
 import {
@@ -1298,7 +1296,6 @@ import {
 import { makeTeamWorkspaceInviteRoutes } from './team-workspace-invite-routes'
 import { makeD1TeamWorkspaceInviteStore } from './team-workspace-invites'
 import { makeTenantClientRoutes } from './tenant-client-routes'
-import { makeTenantHostnameSelfServeRoutes } from './tenant-custom-hostname-self-serve-routes'
 import { makeTenantCustomHostnames } from './tenant-custom-hostnames'
 import {
   type RouteAccessError,
@@ -5972,14 +5969,6 @@ const handleEmailResendWebhookApi = async (
   }
 }
 
-type SiteCustomerNotificationRow = Readonly<{
-  display_name: string | null
-  order_id: string | null
-  primary_email: string | null
-  site_title: string | null
-  target_user_id: string | null
-}>
-
 type SiteCustomerNotificationOutcome = Readonly<{
   emailMessageId: string | null
   emailStatus: 'accepted' | 'failed' | 'skipped'
@@ -6018,39 +6007,6 @@ type ReviewReadyArtifactNotificationRow = Readonly<{
   repository_full_name: string | null
   target_user_id: string | null
 }>
-
-type AdjutantNotificationAssignmentRow = Readonly<{
-  current_run_id: string | null
-  goal_id: string | null
-  id: string
-  software_order_id: string | null
-  visibility: 'private' | 'team' | 'public'
-}>
-
-const notificationPayloadJson = (
-  input: Readonly<{
-    deploymentId: string
-    emailMessageId: string | null
-    emailStatus: string
-    providerMessageId?: string | null | undefined
-    siteId: string
-    siteUrl: string
-    skipReason?: string | undefined
-    softwareOrderId: string | null
-    stage: 'deployed'
-  }>,
-): string =>
-  JSON.stringify({
-    deploymentId: input.deploymentId,
-    emailMessageId: input.emailMessageId,
-    emailStatus: input.emailStatus,
-    providerMessageId: input.providerMessageId ?? null,
-    siteId: input.siteId,
-    siteUrl: input.siteUrl,
-    skipReason: input.skipReason ?? null,
-    softwareOrderId: input.softwareOrderId,
-    stage: input.stage,
-  })
 
 const reviewReadyNotificationPayloadJson = (
   input: Readonly<{
@@ -6109,305 +6065,6 @@ const siteRevisionUrl = (
   siteUrl === null || versionId === null
     ? null
     : `${siteUrl.replace(/\/+$/, '')}/versions/${encodeURIComponent(versionId)}`
-
-const notifyCustomerSiteDeployed = async (
-  env: OpenAgentsWorkerEnv,
-  input: Readonly<{
-    actorUserId: string
-    deploymentId: string
-    siteId: string
-    siteUrl: string
-  }>,
-): Promise<SiteCustomerNotificationOutcome> => {
-  // KS-8.12 (#8323): writes site_events — sites dual-write mirror seam.
-  const db = sitesContentDatabaseForEnv(env)
-  // KS-8.17 (#8361): the adjutant_assignment_events / adjutant_usage_receipts
-  // writes below ride the SEPARATE supervision long-tail mirror.
-  const supervisionMirror = makeSupervisionLongtailMirrorForEnv(env)
-  const existingSiteEvent = await db
-    .prepare(
-      `SELECT id
-         FROM site_events
-        WHERE site_id = ?
-          AND deployment_id = ?
-          AND type = 'adjutant.notification.deployed'
-        LIMIT 1`,
-    )
-    .bind(input.siteId, input.deploymentId)
-    .first<Readonly<{ id: string }>>()
-
-  if (existingSiteEvent !== null) {
-    return {
-      emailMessageId: null,
-      emailStatus: 'skipped',
-      skipReason: 'notification_event_already_recorded',
-    }
-  }
-
-  const target = await db
-    .prepare(
-      `SELECT software_orders.id AS order_id,
-              users.id AS target_user_id,
-              users.display_name,
-              users.primary_email,
-              site_projects.title AS site_title
-         FROM site_projects
-         LEFT JOIN software_orders
-           ON software_orders.id = site_projects.software_order_id
-          AND software_orders.archived_at IS NULL
-         LEFT JOIN users
-           ON users.id = software_orders.user_id
-          AND users.deleted_at IS NULL
-        WHERE site_projects.id = ?
-          AND site_projects.archived_at IS NULL
-        LIMIT 1`,
-    )
-    .bind(input.siteId)
-    .first<SiteCustomerNotificationRow>()
-  const assignment = await db
-    .prepare(
-      `SELECT id,
-              software_order_id,
-              goal_id,
-              current_run_id,
-              visibility
-         FROM adjutant_assignments
-        WHERE site_id = ?
-          AND archived_at IS NULL
-        ORDER BY updated_at DESC
-        LIMIT 1`,
-    )
-    .bind(input.siteId)
-    .first<AdjutantNotificationAssignmentRow>()
-  const email = target?.primary_email?.trim()
-  const resend = getResendEmailConfig(env)
-  const notification =
-    await (async (): Promise<SiteCustomerNotificationOutcome> => {
-      if (
-        target === null ||
-        target.order_id === null ||
-        target.target_user_id === null
-      ) {
-        return {
-          emailMessageId: null,
-          emailStatus: 'skipped',
-          skipReason: 'missing_order_notification_target',
-        }
-      }
-
-      if (email === undefined || email === '') {
-        return {
-          emailMessageId: null,
-          emailStatus: 'skipped',
-          skipReason: 'missing_customer_email',
-        }
-      }
-
-      if (resend === undefined) {
-        return {
-          emailMessageId: null,
-          emailStatus: 'skipped',
-          skipReason: 'email_config_missing',
-        }
-      }
-
-      const notificationInput = new OrderSitesTransactionalEmailInput({
-        appOrigin: getAppOrigin(env),
-        ...(assignment === null ? {} : { assignmentId: assignment.id }),
-        artifactLabel: null,
-        artifactUrl: null,
-        customerSafeStatus: 'deployed',
-        displayName: target.display_name ?? email,
-        eventRef: input.deploymentId,
-        lifecycleKind: 'site_deployed',
-        nextAction:
-          'Review the deployed Site and reply with any requested adjustment.',
-        orderId: target.order_id,
-        revisionUrl: null,
-        safeReason: null,
-        siteId: input.siteId,
-        siteTitle: target.site_title,
-        siteUrl: input.siteUrl,
-        sourceAuthorityRefs: [
-          'docs/2026-06-05-adjutant-sites-supervisor-audit.md#16',
-        ],
-        targetRefs: [
-          target.order_id,
-          input.siteId,
-          input.deploymentId,
-          ...(assignment === null ? [] : [assignment.id]),
-        ],
-        to: email,
-      })
-
-      const result = await observedEffect(
-        'Email.sendOrderSitesTransactionalEmailWithLedger',
-        sendOrderSitesTransactionalEmailWithLedger(
-          db,
-          resend,
-          new OrderSitesTransactionalEmailInput({
-            ...notificationInput,
-            idempotencyKey:
-              buildOrderSitesTransactionalEmailIdempotencyKey(
-                notificationInput,
-              ),
-          }),
-          {
-            actorUserId: input.actorUserId,
-            metadata: {
-              assignmentId: assignment?.id ?? null,
-              deploymentId: input.deploymentId,
-              eventSource: 'operator_sites_deploy',
-              lifecycleKind: 'site_deployed',
-              siteId: input.siteId,
-              softwareOrderId: target.order_id,
-              stage: 'deployed',
-            },
-            sourceAuthorityRef: 'system.order_sites_lifecycle_email.v1',
-            targetUserId: target.target_user_id,
-          },
-        ),
-      )
-
-      return result.ok
-        ? {
-            emailMessageId: result.emailMessageId,
-            emailStatus: 'accepted',
-            providerMessageId: result.providerMessageId,
-          }
-        : {
-            emailMessageId: result.emailMessageId,
-            emailStatus: 'failed',
-            skipReason: result.errorMessage,
-          }
-    })()
-  const now = currentIsoTimestamp()
-  const payload = notificationPayloadJson({
-    deploymentId: input.deploymentId,
-    emailMessageId: notification.emailMessageId,
-    emailStatus: notification.emailStatus,
-    providerMessageId: notification.providerMessageId,
-    siteId: input.siteId,
-    siteUrl: input.siteUrl,
-    skipReason: notification.skipReason,
-    softwareOrderId: assignment?.software_order_id ?? target?.order_id ?? null,
-    stage: 'deployed',
-  })
-  const summary =
-    notification.emailStatus === 'accepted'
-      ? 'Autopilot customer deployed email notification was accepted.'
-      : notification.emailStatus === 'failed'
-        ? 'Autopilot customer deployed email notification failed.'
-        : 'Autopilot customer deployed email notification is needed.'
-
-  if (assignment !== null) {
-    await observedEffect(
-      'AdjutantUsageReceipts.recordHosting',
-      recordAdjutantUsageReceipt(
-        db,
-        {
-          assignmentId: assignment.id,
-          billingMode: 'public_beta_free',
-          category: 'hosting',
-          idempotencyKey: [
-            'adjutant_usage',
-            assignment.id,
-            input.deploymentId,
-            'hosting',
-          ].join(':'),
-          publicDetails: {
-            billingNote: 'Public beta Site hosting is free.',
-            siteUrl: input.siteUrl,
-          },
-          quantity: 1,
-          runId: assignment.current_run_id,
-          siteId: input.siteId,
-          softwareOrderId: assignment.software_order_id,
-          summary: 'Autopilot activated public Site hosting.',
-          teamDetails: {
-            billingPolicy: 'public_beta_free',
-            deploymentId: input.deploymentId,
-            siteId: input.siteId,
-            siteUrl: input.siteUrl,
-          },
-          unit: 'deployment',
-          visibility: assignment.visibility,
-        },
-        undefined,
-        supervisionMirror,
-      ),
-    )
-
-    const assignmentEventId = compactRandomId('adjutant_assignment_event')
-    await db
-      .prepare(
-        `INSERT INTO adjutant_assignment_events
-           (id,
-            assignment_id,
-            software_order_id,
-            site_id,
-            goal_id,
-            run_id,
-            event_type,
-            visibility,
-            summary,
-            actor_user_id,
-            payload_json,
-            email_message_id,
-            created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'adjutant.notification.deployed', ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        assignmentEventId,
-        assignment.id,
-        assignment.software_order_id,
-        input.siteId,
-        assignment.goal_id,
-        assignment.current_run_id,
-        assignment.visibility,
-        summary,
-        input.actorUserId,
-        payload,
-        notification.emailMessageId,
-        now,
-      )
-      .run()
-    await supervisionMirror?.mirrorRowsByKey('adjutant_assignment_events', [
-      [assignmentEventId],
-    ])
-  }
-
-  await db
-    .prepare(
-      `INSERT INTO site_events
-         (id,
-          site_id,
-          version_id,
-          deployment_id,
-          type,
-          summary,
-          actor_user_id,
-          actor_run_id,
-          payload_json,
-          email_message_id,
-          created_at)
-       VALUES (?, ?, NULL, ?, 'adjutant.notification.deployed', ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
-      compactRandomId('site_event'),
-      input.siteId,
-      input.deploymentId,
-      summary,
-      input.actorUserId,
-      assignment?.current_run_id ?? null,
-      payload,
-      notification.emailMessageId,
-      now,
-    )
-    .run()
-
-  return notification
-}
 
 const readPendingReviewReadyNotifications = async (
   db: D1Database,
@@ -9177,18 +8834,6 @@ const tenantClientRoutes = makeTenantClientRoutes({
   },
 })
 
-// CUSTOMER self-serve custom-hostname routes (#4988 follow-up). Browser-session
-// + team-role gated; writes only the tenant_custom_hostnames table (pending
-// rows), never live DNS/SSL/origin binding/spend. Live provisioning to `active`
-// stays the owner-gated provisioning core's job (default-OFF Cloudflare
-// secrets), so config stays INERT here (servingLive=false, no live DNS check).
-const tenantHostnameSelfServeRoutes = makeTenantHostnameSelfServeRoutes({
-  database: (env: WorkerBindings) => openAgentsDatabase(env),
-  requireBrowserSession,
-  readTeamRole: (db, teamId, userId) =>
-    readActiveTeamMembershipRole(db, teamId, userId),
-})
-
 const emailSequenceAuthoringRoutes = makeEmailSequenceAuthoringRoutes({
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
@@ -9708,7 +9353,6 @@ const blueprintProbeContributionRoutes =
 const operatorSitesRoutes = makeOperatorSitesRoutes({
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
-  notifyCustomerSiteDeployed,
   requireBrowserSession,
 })
 
@@ -10959,21 +10603,6 @@ const imageGenerationRoutes = makeImageGenerationRoutes({
       session.user.userId,
     )) !== undefined,
   requireBrowserSession,
-})
-
-const siteRuntimeRoutes = makeSiteRuntimeRoutes({
-  reservedHosts: new Set([
-    'auth.openagents.com',
-    'localhost',
-    'openagents-staging.openagents.workers.dev',
-    'openagents.com',
-    '127.0.0.1',
-  ]),
-  resolveCustomHostname: (hostname, env) =>
-    makeTenantCustomHostnames(openAgentsDatabase(env)).resolveTenantByHostname(
-      hostname,
-    ),
-  sitesHost: 'sites.openagents.com',
 })
 
 const recordPublicAgentFunnelRead = (
@@ -15684,11 +15313,6 @@ const routeRequest = makeWorkerRouteRequest({
       ctx,
     ) ??
     tenantClientRoutes.routeTenantClientRequest(request, env, ctx) ??
-    tenantHostnameSelfServeRoutes.routeTenantHostnameSelfServeRequest(
-      request,
-      env,
-      ctx,
-    ) ??
     emailSequenceAuthoringRoutes.routeEmailSequenceAuthoringRequest(
       request,
       env,
@@ -16252,15 +15876,6 @@ const workerFetchProgram = Effect.gen(function* () {
   const { ctx, env, request, url } = yield* OpenAgentsWorkerRequest
 
   return yield* Effect.gen(function* () {
-    const siteRuntimeResponse = siteRuntimeRoutes.routeSiteRuntimeRequest(
-      request,
-      env,
-    )
-
-    if (siteRuntimeResponse !== undefined) {
-      return yield* siteRuntimeResponse
-    }
-
     if (url.hostname === 'auth.openagents.com') {
       return yield* Effect.promise(() =>
         routeAuthHostRequest(request, env, ctx),

@@ -186,23 +186,6 @@ type StoredSiteSourceExport = Readonly<{
   worker_module_r2_key: string | null
 }>
 
-type TestCustomerNotification = Readonly<{
-  emailMessageId: string | null
-  emailStatus: 'accepted' | 'failed' | 'skipped'
-  providerMessageId?: string | null | undefined
-  skipReason?: string | undefined
-}>
-
-type TestNotificationHook = (
-  env: Readonly<{ OPENAGENTS_DB: D1Database }>,
-  input: Readonly<{
-    actorUserId: string
-    deploymentId: string
-    siteId: string
-    siteUrl: string
-  }>,
-) => Promise<TestCustomerNotification>
-
 const executionContext = (): ExecutionContext => ({
   passThroughOnException: () => undefined,
   props: undefined,
@@ -865,10 +848,7 @@ const operatorSitesDb = (store: OperatorSitesDbStore): D1Database => ({
   },
 })
 
-const makeRoutes = (
-  session: TestSession | null,
-  notifyCustomerSiteDeployed?: TestNotificationHook,
-) =>
+const makeRoutes = (session: TestSession | null) =>
   makeOperatorSitesRoutes({
     appendRefreshedSessionCookies: response => {
       response.headers.set('x-session-refreshed', 'true')
@@ -876,9 +856,6 @@ const makeRoutes = (
       return response
     },
     isOpenAgentsAdminEmail: email => email === 'chris@openagents.com',
-    ...(notifyCustomerSiteDeployed === undefined
-      ? {}
-      : { notifyCustomerSiteDeployed }),
     requireBrowserSession: () => Promise.resolve(session ?? undefined),
   })
 
@@ -886,12 +863,8 @@ const runRoute = (
   session: TestSession | null,
   store: OperatorSitesDbStore,
   request: Request,
-  notifyCustomerSiteDeployed?: TestNotificationHook,
 ): Promise<Response> => {
-  const route = makeRoutes(
-    session,
-    notifyCustomerSiteDeployed,
-  ).routeOperatorSitesRequest(
+  const route = makeRoutes(session).routeOperatorSitesRequest(
     request,
     { OPENAGENTS_DB: operatorSitesDb(store) },
     executionContext(),
@@ -1321,57 +1294,6 @@ describe('operator Sites API routes', () => {
     })
   })
 
-  test('records reviewed provisioning plans for generated app resources', async () => {
-    const store = new OperatorSitesDbStore()
-    await runRoute(adminSession, store, createOtecSiteRequest())
-    const siteId = store.projects[0]?.id ?? ''
-    const response = await runRoute(
-      adminSession,
-      store,
-      new Request(
-        `https://openagents.com/api/operator/sites/${siteId}/provisioning-plans`,
-        {
-          body: JSON.stringify({
-            approve: true,
-            receipt: {
-              d1: [{ bindingName: 'SITE_DB', migrationRef: 'migration:001' }],
-            },
-            resourceManifest: {
-              d1: [{ bindingName: 'SITE_DB', retentionPolicy: 'standard' }],
-              env: [
-                {
-                  key: 'PAYMENT_WEBHOOK_SECRET',
-                  kind: 'secret',
-                  secretRef: 'cf-secret:sites/otec/payment-webhook',
-                },
-              ],
-              kv: [{ bindingName: 'SITE_CACHE' }],
-              r2: [{ bindingName: 'SITE_UPLOADS' }],
-            },
-          }),
-          headers: {
-            'idempotency-key': 'operator-provisioning:otec',
-          },
-          method: 'POST',
-        },
-      ),
-    )
-
-    expect(response.status).toBe(201)
-    await expect(response.json()).resolves.toEqual({
-      provisioningPlan: expect.objectContaining({
-        reviewedByUserId: 'github:operator',
-        siteId,
-        status: 'approved',
-      }),
-    })
-    expect(store.provisioningPlans[0]).toMatchObject({
-      idempotency_key: 'operator-provisioning:otec',
-      reviewed_by_user_id: 'github:operator',
-      status: 'approved',
-    })
-  })
-
   test('records reviewed source export receipts without exposing token hashes', async () => {
     const store = new OperatorSitesDbStore()
     await runRoute(adminSession, store, createOtecSiteRequest())
@@ -1537,102 +1459,6 @@ describe('operator Sites API routes', () => {
     })
   })
 
-  test('returns customer notification status after deploying a Site version', async () => {
-    const store = new OperatorSitesDbStore()
-    await runRoute(adminSession, store, createOtecSiteRequest())
-    const siteId = store.projects[0]?.id ?? ''
-    const versionId = 'site_version_ready'
-    store.versions = [
-      {
-        artifact_manifest_r2_key:
-          'sites/site_project_otec/versions/site_version_ready/static-assets-manifest.json',
-        build_command: null,
-        build_log_r2_key: null,
-        build_status: 'saved',
-        created_at: '2026-06-05T00:00:00.000Z',
-        created_by_run_id: 'agent_run_adjutant',
-        created_by_user_id: 'github:operator',
-        d1_binding_name: null,
-        id: versionId,
-        metadata_json: '{}',
-        r2_binding_name: null,
-        rejected_at: null,
-        saved_at: '2026-06-05T00:00:00.000Z',
-        site_id: siteId,
-        source_archive_r2_key: null,
-        source_commit_sha: '2e8a3875',
-        source_kind: 'operator_static',
-        static_assets_manifest_json: JSON.stringify({ assets: {} }),
-        worker_module_r2_key: null,
-      },
-    ]
-    const notifications: Array<Parameters<TestNotificationHook>[1]> = []
-    const notifyCustomerSiteDeployed: TestNotificationHook = async (
-      _env,
-      input,
-    ) => {
-      notifications.push(input)
-
-      return {
-        emailMessageId: 'email_msg_deployed',
-        emailStatus: 'accepted',
-        providerMessageId: 'email_deployed_provider',
-      }
-    }
-    const response = await runRoute(
-      adminSession,
-      store,
-      new Request(
-        `https://openagents.com/api/operator/sites/${siteId}/versions/${versionId}/deploy`,
-        {
-          body: JSON.stringify({
-            confirm: true,
-            launchChecklist: {
-              audienceReviewed: true,
-              buildReviewed: true,
-              secretsReviewed: true,
-              sourceReviewed: true,
-              urlReviewed: true,
-            },
-          }),
-          method: 'POST',
-        },
-      ),
-      notifyCustomerSiteDeployed,
-    )
-
-    expect(response.status).toBe(201)
-    await expect(response.json()).resolves.toEqual({
-      deployment: expect.objectContaining({
-        id: expect.stringMatching(/^site_deployment_/),
-        siteId,
-        status: 'active',
-        url: 'https://sites.openagents.com/otec',
-        versionId,
-      }),
-      notification: {
-        emailMessageId: 'email_msg_deployed',
-        emailStatus: 'accepted',
-        providerMessageId: 'email_deployed_provider',
-      },
-    })
-    expect(notifications).toEqual([
-      expect.objectContaining({
-        actorUserId: 'github:operator',
-        siteId,
-        siteUrl: 'https://sites.openagents.com/otec',
-      }),
-    ])
-    expect(store.projects[0]).toMatchObject({
-      active_version_id: versionId,
-      status: 'approved',
-    })
-    expect(store.events.map(event => event.type)).toEqual([
-      'site_project.created',
-      'site_deployment.activated',
-    ])
-  })
-
   test('returns order and slug conflicts through operator route errors', async () => {
     const store = new OperatorSitesDbStore()
     await runRoute(adminSession, store, createOtecSiteRequest())
@@ -1696,7 +1522,7 @@ describe('operator Sites API routes', () => {
     })
   })
 
-  test('matches version save and deploy routes through typed request decoding', async () => {
+  test('matches version save routes through typed request decoding', async () => {
     const saveResponse = await runRoute(
       adminSession,
       new OperatorSitesDbStore(),
@@ -1711,25 +1537,9 @@ describe('operator Sites API routes', () => {
         },
       ),
     )
-    const deployResponse = await runRoute(
-      adminSession,
-      new OperatorSitesDbStore(),
-      new Request(
-        'https://openagents.com/api/operator/sites/site_project_1/versions/site_version_1/deploy',
-        {
-          body: JSON.stringify({ confirm: 'yes' }),
-          method: 'POST',
-        },
-      ),
-    )
 
     expect(saveResponse.status).toBe(400)
     await expect(saveResponse.json()).resolves.toEqual({
-      error: 'bad_request',
-      reason: 'invalid request body',
-    })
-    expect(deployResponse.status).toBe(400)
-    await expect(deployResponse.json()).resolves.toEqual({
       error: 'bad_request',
       reason: 'invalid request body',
     })

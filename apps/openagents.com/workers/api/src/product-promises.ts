@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-07-06.1'
+export const PublicProductPromisesVersion = '2026-07-06.2'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -205,7 +205,7 @@ export const publicProductPromisesDocument = () => {
     generatedAt: currentIsoTimestamp(),
     maxStalenessSeconds: staleness.maxStalenessSeconds,
     staleness,
-    lastUpdated: '2026-07-05',
+    lastUpdated: '2026-07-06',
     canonicalDocsUrl:
       'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
     sourceRefs,
@@ -3076,31 +3076,26 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'autopilot_sites.custom_tenant_hostnames.v1',
         productArea: 'Sites',
         audience: ['customer', 'operator'],
-        state: 'yellow',
+        state: 'red',
         claim:
           'Autopilot Sites customers can serve their sites under custom branded hostnames.',
         safeCopy:
-          'Tenant custom-hostname registration, DNS-token verification, hostname→tenant mapping, request-time resolution, and a live Cloudflare custom-hostname client shipped in wave-3 (#4988/#4989). A CUSTOMER self-serve path is now mounted and live: a signed-in team owner/admin can claim a custom hostname for their own team and any team member can list their team’s claimed hostnames with the exact DNS TXT record to publish (GET/POST /api/tenant/hostnames, browser-session + team-role gated). The self-serve path is INERT by design: a claimed hostname is stored `pending` and never resolves or serves; it touches no live DNS, no SSL issuance, no origin binding, and no spend. Request-time rendering now resolves an already-active custom hostname to the mapped tenant team’s public active Site runtime, so live serving is blocked on owner-gated provisioning to `active`, not on the rendering context switch. Driving a hostname to `active` stays the owner-gated Cloudflare provisioning core’s job, which is itself default-OFF until CLOUDFLARE_API_TOKEN and CLOUDFLARE_ZONE_ID are set. Automated SSL issuance is still not fully wired into a mounted owner-gated route.',
+          'RETIRED SURFACE (2026-07-06, CFG-13 #8528, Cloudflare→Google consolidation epic #8515): the Sites/Workers-for-Platforms program was removed from the active code path. The customer self-serve hostname claim/list routes (GET/POST /api/tenant/hostnames), the sites.openagents.com serving route, the Workers-for-Platforms dispatch binding, the Cloudflare custom-hostname (Cloudflare for SaaS) client, and the owner-gated hostname provisioning core were all deleted; no custom hostname was ever provisioned to active (the tenant_custom_hostnames table held zero live rows at removal). The hostname→tenant resolver and tenant_custom_hostnames table remain only for the Omni tenant workroom client surface. Sites returns later redesigned on owned primitives (docs/cloud/2026-07-06-cloudflare-to-google-consolidation-audit.md, Phase 4).',
         unsafeCopy:
-          'Do not claim that claiming a hostname makes a site live, that DNS/SSL/branding switching works end to end, or that a claimed hostname serves anything; self-serve claiming writes a pending row only, and live provisioning (Cloudflare for SaaS) stays owner-gated and default-OFF.',
+          'Do not claim customers can claim, verify, or serve custom hostnames, and do not describe custom-hostname serving as gated or pending; the surface is retired and no claim path exists until the Phase 4 Sites redesign ships.',
         evidenceRefs: [
           'apps/openagents.com/workers/api/src/tenant-custom-hostnames.ts',
-          'apps/openagents.com/workers/api/src/tenant-custom-hostname-self-serve.ts',
-          'apps/openagents.com/workers/api/src/tenant-custom-hostname-self-serve.test.ts',
-          'apps/openagents.com/workers/api/src/tenant-custom-hostname-self-serve-routes.ts',
-          'apps/openagents.com/workers/api/src/tenant-custom-hostname-self-serve-routes.test.ts',
-          'apps/openagents.com/workers/api/src/site-runtime-routes.ts',
-          'apps/openagents.com/workers/api/src/site-runtime-routes.test.ts',
-          'apps/openagents.com/workers/api/src/cloudflare-custom-hostname-client.ts',
-          'route:/api/tenant/hostnames',
+          'docs/cloud/2026-07-06-cloudflare-to-google-consolidation-audit.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/8528',
+          'https://github.com/OpenAgentsInc/openagents/issues/8515',
           'https://github.com/OpenAgentsInc/openagents/issues/4988',
           'https://github.com/OpenAgentsInc/openagents/issues/4989',
         ],
         blockerRefs: [
-          'blocker.product_promises.hostname_ssl_issuance_not_wired',
+          'blocker.product_promises.sites_wfp_program_retired',
         ],
         verification:
-          'The customer self-serve claim/list path is mounted and gated (browser session + active team membership; only owner/admin may claim) and is covered by unit tests over the core and the routes; it writes only pending tenant_custom_hostnames rows and reports servingLive=false while provisioning is unarmed. Operator registration/verification still works and passes type checks. Site runtime route tests cover active custom-host request-time rendering: a custom hostname resolves to its tenant team and serves that team’s active public Site without a slug prefix while first-party hosts are not intercepted. Green still requires automated DNS verification + SSL provisioning (live Cloudflare for SaaS, owner-gated, default-OFF today) to advance claimed hostnames to active serving.',
+          'Registry 2026-07-06.2 records the CFG-13 retirement: the /api/tenant/hostnames self-serve routes, site-runtime serving pipeline, Cloudflare custom-hostname client, and hostname provisioning core are deleted from the worker; the sites.openagents.com route and SITES_DISPATCH dispatch-namespace binding are removed from wrangler.jsonc. Re-verification happens when the redesigned Sites program lands (consolidation audit Phase 4).',
         authorityBoundary:
           'Hostname registration is not DNS authority, SSL certificate authority, or site-content publication authority.',
       },
@@ -5291,6 +5286,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-06.2 is the CFG-13 (#8528) Sites/Workers-for-Platforms retirement pass under the Cloudflare→Google consolidation epic (#8515) and flips autopilot_sites.custom_tenant_hostnames.v1 from yellow to red — green stays exactly 34. The Sites/WfP program was hard-removed from the active code path by owner decision: the sites.openagents.com serving route and SITES_DISPATCH dispatch-namespace binding are gone from wrangler.jsonc, the site-runtime serving pipeline, /api/tenant/hostnames self-serve hostname routes, Cloudflare custom-hostname (Cloudflare for SaaS) client, hostname provisioning core, sites provisioning-plan route, and operator deploy/disable/rollback routes are deleted, and the openagents-sites-production dispatch namespace is being deleted on the Cloudflare side. Trial-site D1 rows were archived first. No custom hostname was ever provisioned to active and the WfP namespace held zero scripts, so no customer-serving capability is lost. Sites returns later redesigned on owned primitives (docs/cloud/2026-07-06-cloudflare-to-google-consolidation-audit.md, Phase 4). No other promise changes state.',
       'Registry 2026-07-06.1 is an MM-I4 (#8493) evidence-accrual pass on khala_code.mobile_mvp.v1 and flips NO promise state — green stays exactly 34, and the record stays planned (not yellow: the full straight line is not yet proven as one continuous device-level run). Since the 2026-07-05.4 pivot pass, real committed evidence landed for mobile GitHub sign-in (#8468-#8470), the repo picker (#8471-#8472), the $10 signup grant plus balance/history UI (#8478, #8480), per-user model configuration (#8484), push device registration (#8485-#8486), the Settings/onboarding/contracts surface rework (#8487-#8489), the first slice of the org-cloud execution spine (#8473), Android emulator launch/interaction proof (#8490), an App Store submission-pack draft (#8491), and repo-picker component-mount E2E coverage (#8492) — the evidenceRefs and safeCopy/unsafeCopy text are updated to reflect this honestly, replacing the stale "five unbuilt pillars" framing with the current, more granular blocker set: the credit-gated dispatch/private-repo-checkout/isolation/writeback work around the landed executor (#8474-#8477), coding-run metering against it (#8479), unproven push delivery (the Expo project id remains unset), IAP staying postponed by owner decision (credits now granted manually via the in-progress Aiur admin app instead), a newly-filed account-deletion gap required for a real store submission (#8502), and any store release. No revenue, payout, settlement, availability, or green claim is created; the record explicitly does not claim the straight line works end to end on a real device yet.',
       'Registry 2026-07-05.4 is the owner-directed Khala Code mobile-only MVP pivot pass (2026-07-05; audit docs/fable/2026-07-05-khala-code-mobile-only-mvp-launch-audit.md, epic #8467) and flips NO promise state — green stays exactly 34. It adds the planned record khala_code.mobile_mvp.v1: the mobile-only launch claim (GitHub sign-in through the OpenAgents auth server, repo picker over the user’s own GitHub authorization, coding turns executed on OpenAgents Cloud with per-user model configuration, exact-usage credit metering with a one-per-GitHub-account $10 starter grant, in-app credit purchases, push notifications, iOS + Android), blockered on the five unbuilt pillars (mobile GitHub login, cloud execution lane, credit grant + IAP, push, store release). It rescopes mobile.fleet_companion.v1 (stays planned): the desktop-pairing companion model is postponed by owner direction until the mobile-only MVP ships, its copy now routes the active mobile path to khala_code.mobile_mvp.v1, and the stale native-SwiftUI/no-Expo framing is dropped as superseded by the 2026-07-04 Expo React Native owner decision. The same pass closed all 15 remaining pre-pivot open issues as postponed with a reopen ledger (audit §8) and filed the launch backlog #8468-#8494. The org-cloud execution lane described by the new record is additive and never widens access to any user’s own Pylon; no revenue, payout, settlement, availability, or green claim is created.',
       'Registry 2026-07-05.3 is an inference.gateway_credits_business.v1 Wave 1 cleanup pass and flips NO promise state (stays red). Issue #8387 removed the default-off standalone MPP/x402 chat endpoint, MPP discovery document, Stripe MPP profile config, route tests, smokes, and replay-cache mirror tables because the surface was not armed in committed config and is not directly needed by Khala Code. The keyed /v1/chat/completions gateway and Khala Code paid-plan Lightning helper remain. Future no-account machine-payable inference needs a fresh owner-approved, receipt-first design before any public claim or green evidence. No paid inference collection, MPP availability, spend, payout, settlement, or green transition is created.',

@@ -82,7 +82,6 @@ export type WorkerBindings = Readonly<{
   RUNNER_EVENTS: Queue
   ADJUTANT_ENRICHMENT_QUEUE: Queue
   ASSETS: Fetcher
-  SITES_DISPATCH: DispatchNamespace
   AUTH_STORAGE: KVNamespace
   GITHUB_CLIENT_ID: string
   GITHUB_CLIENT_SECRET: string

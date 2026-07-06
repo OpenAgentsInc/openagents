@@ -1372,6 +1372,10 @@ const srcRoot = import.meta.dirname
 // Removing a route from the OpenAPI document requires adding it here, which
 // keeps undocumented surface an explicit decision instead of silent drift.
 const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
+  // TEMP-DIAG-8467: unauthenticated mobile sign-in debug beacon sink in
+  // index.ts. Remove together with the route once the sign-in
+  // state_mismatch diagnosis is closed.
+  '/api/mobile/signin-debug',
   // Khala app aliases and operator feedback surfaces. Public stats use the
   // documented `/api/public/...` routes; feedback is app/operator-internal.
   '/api/khala/feedback',
@@ -1589,12 +1593,9 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/operator/sites/{param}/access',
   '/api/operator/sites/{param}/access-grants',
   '/api/operator/sites/{param}/build-validations/latest',
-  '/api/operator/sites/{param}/deployments/{param}/disable',
-  '/api/operator/sites/{param}/deployments/{param}/rollback',
   '/api/operator/sites/{param}/environment-values',
   '/api/operator/sites/{param}/events',
   '/api/operator/sites/{param}/generate',
-  '/api/operator/sites/{param}/provisioning-plans',
   '/api/operator/sites/{param}/versions/{param}/source-exports',
   '/api/operator/tassadar/replay',
   '/api/operator/tips-buffer/funding-destination',

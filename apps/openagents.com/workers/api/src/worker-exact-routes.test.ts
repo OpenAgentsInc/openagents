@@ -105,6 +105,7 @@ const approvedExactRoutePaths = [
   '/api/mobile/auth/session',
   '/api/mobile/session',
   '/api/mobile/model-preference',
+  '/api/mobile/signin-debug',
   // #8505 Part 1: mobile-bearer credit balance/transaction-history reads,
   // fixing #8480's shipped-but-dead REST routes. Backed by the authoritative
   // D1 agent_balances/pay_ins ledger.

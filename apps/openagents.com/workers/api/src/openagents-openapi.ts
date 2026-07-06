@@ -4227,13 +4227,6 @@ const schemaComponents = (): JsonSchema => ({
     'version',
     '#/components/schemas/OperatorSiteVersion',
   ),
-  OperatorSiteDeployment: objectSummary(
-    'Site deployment projection with URL, runtime, status, and version refs.',
-  ),
-  OperatorSiteDeploymentEnvelope: envelope(
-    'deployment',
-    '#/components/schemas/OperatorSiteDeployment',
-  ),
   OperatorSiteCompatibility: objectSummary(
     'Existing-project compatibility receipt with blockers, warnings, and evidence refs.',
   ),
@@ -4320,9 +4313,6 @@ const requestSchemas = (): JsonSchema => ({
   ),
   SaveOperatorSiteVersionRequest: objectSummary(
     'Operator request for saving a reviewable Site version.',
-  ),
-  DeployOperatorSiteVersionRequest: objectSummary(
-    'Operator request for deploying an approved saved Site version.',
   ),
   CreateOperatorAdjutantAssignmentRequest: objectSummary(
     'Operator request for creating an Adjutant assignment.',
@@ -14708,30 +14698,6 @@ const paths = (): JsonSchema => ({
         '201': okJson(
           'Site version envelope.',
           '#/components/schemas/OperatorSiteVersionEnvelope',
-        ),
-        ...errorResponses(),
-      },
-    }),
-  },
-  '/api/operator/sites/{siteId}/versions/{versionId}/deploy': {
-    post: operation({
-      operationId: 'deployOperatorSiteVersion',
-      summary: 'Deploy saved Site version',
-      description:
-        'Promotes an approved saved Site version to production deployment.',
-      tags: ['Sites'],
-      security: adminSession,
-      parameters: [
-        pathParam('siteId', 'Site project identifier.'),
-        pathParam('versionId', 'Saved Site version identifier.'),
-      ],
-      requestBody: jsonContent(
-        '#/components/schemas/DeployOperatorSiteVersionRequest',
-      ),
-      responses: {
-        '201': okJson(
-          'Site deployment envelope.',
-          '#/components/schemas/OperatorSiteDeploymentEnvelope',
         ),
         ...errorResponses(),
       },

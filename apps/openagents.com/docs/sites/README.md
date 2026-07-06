@@ -1,5 +1,18 @@
 # OpenAgents Sites Work Traces
 
+> **RETIRED (2026-07-06, CFG-13 #8528).** The Sites/Workers-for-Platforms
+> program was removed from the active code path as part of the
+> Cloudflare→Google consolidation epic (#8515): the `sites.openagents.com`
+> serving route, the `SITES_DISPATCH` dispatch-namespace binding, the
+> site-runtime serving pipeline, the Cloudflare custom-hostname client, the
+> hostname provisioning core, the `/api/tenant/hostnames` self-serve routes,
+> and the operator deploy/provisioning routes were deleted, and the
+> `openagents-sites-production` dispatch namespace is deleted on the
+> Cloudflare side. Trial-site D1 rows were archived before removal. Sites
+> returns later redesigned on owned primitives — see
+> `docs/cloud/2026-07-06-cloudflare-to-google-consolidation-audit.md`
+> (Phase 4). Everything below is a historical record of the retired program.
+
 This folder records public-safe implementation traces and source artifacts for
 Sites work that needs to be inspectable from OpenAgents proof surfaces.
 
