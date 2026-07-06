@@ -20,7 +20,7 @@ import { Effect, Match as M, Schema as S } from 'effect'
 
 import { routeAccessResponse } from './http/route-access-response'
 import { noStoreJsonResponse } from './http/responses'
-import type { Env } from './index'
+import type { OpenAgentsWorkerEnv } from './bindings'
 import {
   syncOutboxStoreLayer,
   syncRoomNotifications,
@@ -113,13 +113,13 @@ type SyncRouteDependencies<Session extends BrowserSessionShape> = Readonly<{
     session: Session,
   ) => HttpResponse
   authorizeSyncPath: (
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     session: Session,
     syncPath: ParsedSyncPath,
   ) => Effect.Effect<RouteAccessError | undefined, unknown>
   requireBrowserSession: (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
   ) => Effect.Effect<Session | undefined, unknown>
 }>
@@ -290,7 +290,7 @@ const handleSnapshot = (scope: string) =>
     return jsonResponse(snapshot)
   })
 
-const handleStream = (request: Request, env: Env, scope: string) =>
+const handleStream = (request: Request, env: OpenAgentsWorkerEnv, scope: string) =>
   Effect.tryPromise({
     catch: error => new SyncStreamDispatchError({ error, scope }),
     try: () => {
@@ -342,7 +342,7 @@ const handlePublicSyncRequest = (
 const handleAuthorizedSyncRequest = <Session extends BrowserSessionShape>(
   dependencies: SyncRouteDependencies<Session>,
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
   syncPath: ParsedSyncPath,
 ) =>
@@ -397,7 +397,7 @@ const handleAuthorizedSyncRequest = <Session extends BrowserSessionShape>(
 export const makeSyncRoutes = <Session extends BrowserSessionShape>(
   dependencies: SyncRouteDependencies<Session>,
 ) => ({
-  routeSyncRequest: (request: Request, env: Env, ctx: ExecutionContext) => {
+  routeSyncRequest: (request: Request, env: OpenAgentsWorkerEnv, ctx: ExecutionContext) => {
     const url = new URL(request.url)
 
     if (url.pathname === '/api/health') {

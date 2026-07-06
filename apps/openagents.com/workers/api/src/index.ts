@@ -297,7 +297,11 @@ import {
   recordBackendIncidentEvent,
   routePatternFromRequest,
 } from './backend-incident-events'
-import { OpenAgentsDatabase, ThreadFileArtifacts } from './bindings'
+import {
+  OpenAgentsDatabase,
+  type OpenAgentsWorkerEnv,
+  ThreadFileArtifacts,
+} from './bindings'
 import { makeBlueprintProbeContributionRoutes } from './blueprint-probe-contribution-routes'
 import { makeBlueprintRoutes } from './blueprint-routes'
 import {
@@ -1382,7 +1386,7 @@ import {
   xClaimRewardDispatchDayStartIso,
 } from './x-claim-reward-treasury-dispatcher'
 
-export type Env = WorkerBindings & OpenAgentsWorkerConfigEnv
+export type Env = OpenAgentsWorkerEnv
 
 type MobileAuthSessionBindings = WorkerBindings & OpenAgentsWorkerConfigEnv
 
@@ -1670,7 +1674,7 @@ const fetchMdkTreasuryPath = (
 // gate; with either OFF no sats move. The serving-run ref is derived from the
 // verification receipt ref so the gate allowlist enrolls a specific accepted outcome.
 const makeAcceptedOutcomeSettlementSink = (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
 ): AcceptedOutcomeSettlementSink | undefined => {
   // FIRST gate: the loop-arming flag. OFF (default) => no sink => no settlement.
   if (
@@ -2349,10 +2353,10 @@ const getResendEmailConfig = (env: EmailCampaignDispatcherBindings) =>
 const getRunnerBackendConfig = (env: OpenAgentsWorkerConfigEnv) =>
   getOpenAgentsWorkerConfig(env).runnerBackends
 
-const getIssuerOrigin = (env: Env): string =>
+const getIssuerOrigin = (env: OpenAgentsWorkerEnv): string =>
   getOpenAgentsWorkerConfig(env).openauth.issuerOrigin
 
-const getAdminApiToken = (env: Env): string | undefined => {
+const getAdminApiToken = (env: OpenAgentsWorkerEnv): string | undefined => {
   const token = redactedValue(getOpenAgentsWorkerConfig(env).adminApiToken)
 
   if (token === undefined || token.trim() === '') {
@@ -2436,11 +2440,11 @@ const parseGitHubScopeHeader = (
         .map(scope => scope.trim())
         .filter(scope => scope !== '')
 
-const gitHubWriteRedirectUri = (env: Env): string =>
+const gitHubWriteRedirectUri = (env: OpenAgentsWorkerEnv): string =>
   `${getIssuerOrigin(env)}/github/callback`
 
 const gitHubWriteAuthorizeUrl = (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   state: string,
   scopes: ReadonlyArray<string>,
 ): string => {
@@ -2456,7 +2460,7 @@ const gitHubWriteAuthorizeUrl = (
 }
 
 const exchangeGitHubOAuthCode = async (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   code: string,
 ): Promise<GitHubOAuthToken> => {
   const config = getOpenAgentsWorkerConfig(env)
@@ -2706,7 +2710,7 @@ const upsertUser = async (
 // from the CRM/marketing email-intent machinery). The auth OTP guard owns the
 // separate abuse/cost throttle for this path.
 const sendSignInCodeEmail = async (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   rawEmail: string,
   code: string,
 ): Promise<void> => {
@@ -2831,7 +2835,7 @@ const authEmailOtpRateLimitResponse = (
     status: 429,
   })
 
-const maybeAuthEmailOtpGuardResponse = async (request: Request, env: Env) => {
+const maybeAuthEmailOtpGuardResponse = async (request: Request, env: OpenAgentsWorkerEnv) => {
   const url = new URL(request.url)
 
   if (request.method !== 'POST' || url.pathname !== '/code/authorize') {
@@ -3471,7 +3475,7 @@ const selectedFileIdsFromTeamMessageMetadata = (
 }
 
 const appendTeamAutopilotAnswerBack = async (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx: SyncNotificationContext,
   runId: string,
 ): Promise<void> => {
@@ -3609,7 +3613,7 @@ const threadFileLooksTextLike = (row: ThreadFileRow): boolean => {
 }
 
 const teamAutopilotFileExcerpt = async (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   row: ThreadFileRow,
 ): Promise<string | undefined> => {
   if (
@@ -3646,7 +3650,7 @@ const teamAutopilotFileExcerpt = async (
 }
 
 const hydrateTeamAutopilotContextFileExcerpts = async (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   bundle: TeamAutopilotContextBundle,
 ): Promise<TeamAutopilotContextBundle> => {
   const selectedFiles = await Promise.all(
@@ -3667,7 +3671,7 @@ const hydrateTeamAutopilotContextFileExcerpts = async (
 export const authIssuerAllowsRedirectHostname =
   authIssuerAllowsWebRedirectHostname
 
-const makeAuthIssuer = (env: Env) => {
+const makeAuthIssuer = (env: OpenAgentsWorkerEnv) => {
   const config = getOpenAgentsWorkerConfig(env)
   const emailCodeUi = CodeUI({
     copy: {
@@ -3824,7 +3828,7 @@ const makeAuthIssuer = (env: Env) => {
 }
 
 const makeIssuerAwareFetch =
-  (env: Env, ctx: ExecutionContext) =>
+  (env: OpenAgentsWorkerEnv, ctx: ExecutionContext) =>
   async (
     input: Parameters<typeof fetch>[0],
     init?: Parameters<typeof fetch>[1],
@@ -3840,7 +3844,7 @@ const makeIssuerAwareFetch =
     return fetch(request)
   }
 
-const makeAuthClient = (env: Env, ctx: ExecutionContext) => {
+const makeAuthClient = (env: OpenAgentsWorkerEnv, ctx: ExecutionContext) => {
   const config = getOpenAgentsWorkerConfig(env)
 
   return createClient({
@@ -3889,7 +3893,7 @@ const verifyOpenAuthUserTokens = async (
 
 const verifySession = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<VerifiedSession | undefined> => {
   const cookies = parseCookies(request)
@@ -3961,7 +3965,7 @@ const { requireUserBearerSession } =
 
 const authenticateRequestActor = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<AuthenticatedActor | undefined> => {
   const bearerToken = readBearerToken(request)
@@ -4090,7 +4094,7 @@ const cloneResponseWithHeaders = (
 
 const handleAppShellPage = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<Response> => {
   const cookies = parseCookies(request)
@@ -4119,7 +4123,7 @@ const handleAppShellPage = async (
 }
 
 const readAuthenticatedPageContext = async (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   session: VerifiedSession,
 ): Promise<
   Readonly<{
@@ -4175,7 +4179,7 @@ const readAuthenticatedPageContext = async (
 
 const handleHomePage = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<Response> => {
   const shellResponse = await handleAppShellPage(request, env, ctx)
@@ -4300,7 +4304,7 @@ const handlePublicProductPromisesApi = (request: Request, db: D1Database) =>
 
 const handleThreadPage = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
   threadId: string,
 ): Promise<Response> => {
@@ -4437,7 +4441,7 @@ const cleanLoginReturnPath = (value: string | null): string | undefined => {
 
 const handleLoginStart = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   provider: 'github' | 'code',
 ) => {
   const config = getOpenAgentsWorkerConfig(env)
@@ -4479,18 +4483,18 @@ const handleLoginStart = async (
   return redirectResponse(url, cookies)
 }
 
-const handleGitHubStart = (request: Request, env: Env) =>
+const handleGitHubStart = (request: Request, env: OpenAgentsWorkerEnv) =>
   handleLoginStart(request, env, 'github')
 
-const handleEmailStart = (request: Request, env: Env) =>
+const handleEmailStart = (request: Request, env: OpenAgentsWorkerEnv) =>
   handleLoginStart(request, env, 'code')
 
-const githubWriteResultRedirect = (env: Env): Response =>
+const githubWriteResultRedirect = (env: OpenAgentsWorkerEnv): Response =>
   redirectResponse(githubWriteResultRedirectLocation(getAppOrigin(env)))
 
 const handleGitHubWriteStart = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<Response> => {
   if (request.method !== 'GET') {
@@ -4527,7 +4531,7 @@ const handleGitHubWriteStart = async (
 
 const handleGitHubWriteCallback = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   attempt: GitHubWriteConnectionAttemptRecord | undefined,
 ): Promise<Response> => {
   if (attempt === undefined) {
@@ -4630,7 +4634,7 @@ const handleGitHubWriteCallback = async (
 
 const handleGitHubWriteConnectionsApi = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<Response> => {
   if (request.method !== 'GET') {
@@ -4656,7 +4660,7 @@ const handleGitHubWriteConnectionsApi = async (
 
 const handleGitHubWriteDisconnectApi = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
   connectionRef: string,
 ): Promise<Response> => {
@@ -4760,7 +4764,7 @@ const grantResolveErrorStatus = (error: unknown): number => {
 
 const handleGitHubWriteGrantResolveApi = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
 ): Promise<Response> => {
   if (request.method !== 'POST') {
     return methodNotAllowed(['POST'])
@@ -4837,7 +4841,7 @@ const handleGitHubWriteGrantResolveApi = async (
 
 const handleAuthCallback = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<Response> => {
   const url = new URL(request.url)
@@ -4912,7 +4916,7 @@ const handleLogout = (request: Request): Response => {
 
 const handleSessionApi = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<Response> => {
   if (request.method !== 'GET') {
@@ -5185,7 +5189,7 @@ const handleMobileModelPreferenceApi = async (
 
 const handleAuthTotalsApi = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<Response> => {
   if (request.method !== 'GET') {
@@ -5217,7 +5221,7 @@ const handleAuthTotalsApi = async (
 
 const handleAuthTeamsApi = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<Response> => {
   if (request.method !== 'GET') {
@@ -5294,7 +5298,7 @@ const adjutantIntentHasContext = (intent: TeamAdjutantIntent): boolean =>
   intent.taskSpecPath !== undefined
 
 const postTeamChatMessageForUser = async (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
   input: Readonly<{
     body: Record<string, unknown>
@@ -5529,7 +5533,7 @@ const postTeamChatMessageForUser = async (
 
 const handleTeamChatMessagesApi = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
   teamId: string,
   projectId?: string,
@@ -5619,7 +5623,7 @@ const optionalUserWritableTeamChatKind = (
 
 const requireProviderServiceActor = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
 ): Promise<ProgrammaticAgentSession | undefined> => {
   const bearerToken = readBearerToken(request)
 
@@ -5635,7 +5639,7 @@ const requireProviderServiceActor = async (
 
 const requireRunnerCallbackAuth = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
 ): Promise<boolean> => {
   const expected = redactedValue(
     getOpenAgentsWorkerConfig(env).shc.runnerCallbackToken,
@@ -5655,7 +5659,7 @@ const requireRunnerCallbackAuth = async (
 
 const requireAdminApiToken = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
 ): Promise<boolean> => {
   const expected = getAdminApiToken(env)
   const actual = readBearerToken(request)
@@ -5667,7 +5671,7 @@ const requireAdminApiToken = async (
   return timingSafeEqual(actual, expected)
 }
 
-const shcDispatchConfig = (env: Env) => {
+const shcDispatchConfig = (env: OpenAgentsWorkerEnv) => {
   const config = getOpenAgentsWorkerConfig(env)
 
   return {
@@ -5678,7 +5682,7 @@ const shcDispatchConfig = (env: Env) => {
 }
 
 const cleanupCanceledAgentRunOnShc = async (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   run: AgentRunRecord,
 ): Promise<void> => {
   try {
@@ -5704,7 +5708,7 @@ const cleanupCanceledAgentRunOnShc = async (
 }
 
 const sendAutopilotDecisionRequiredEmailOnce = async (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   record: AutopilotWorkOrderRecord,
 ): Promise<void> => {
   const resend = getOpenAgentsWorkerConfig(env).email.resend
@@ -5764,7 +5768,7 @@ const sendAutopilotDecisionRequiredEmailOnce = async (
 }
 
 const sendOutOfCreditsNotificationOnce = async (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   input: Readonly<{
     balanceCents: number
     balanceFormatted: string
@@ -6018,7 +6022,7 @@ const siteRevisionUrl = (
     : `${siteUrl.replace(/\/+$/, '')}/versions/${encodeURIComponent(versionId)}`
 
 const notifyCustomerSiteDeployed = async (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   input: Readonly<{
     actorUserId: string
     deploymentId: string
@@ -6863,7 +6867,7 @@ const sendPendingReviewReadyArtifactNotifications = async (
 }
 
 const notifyCanceledAgentRunSyncScopesEffect = (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   runId: string,
 ): Effect.Effect<void> =>
   Effect.tryPromise(() => notifyAgentRunSyncScopes(env, runId)).pipe(
@@ -6878,7 +6882,7 @@ const notifyCanceledAgentRunSyncScopesEffect = (
   )
 
 const enforceOutOfCreditsPolicy = async (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext | undefined,
   userId: string,
 ): Promise<void> => {
@@ -6935,14 +6939,14 @@ const enforceOutOfCreditsPolicy = async (
   scheduleBackgroundWork(ctx, notify)
 }
 
-const makeBillingAwareOmniRunStore = (env: Env, ctx?: ExecutionContext) =>
+const makeBillingAwareOmniRunStore = (env: OpenAgentsWorkerEnv, ctx?: ExecutionContext) =>
   makeOmniRunStoreForEnv(env, {
     afterAgentRunMetered: run =>
       enforceOutOfCreditsPolicy(env, ctx, run.userId),
     billingRuntime: billingRuntimeForEnv(env),
   })
 
-const tokenUsageLeaderboardsLayer = (env: Env) =>
+const tokenUsageLeaderboardsLayer = (env: OpenAgentsWorkerEnv) =>
   TokenUsageLeaderboards.effectCfLayer().pipe(
     Layer.provide(OpenAgentsDatabase.layer),
     Layer.provide(Layer.succeed(WorkerEnvironment, env)),
@@ -7037,7 +7041,7 @@ const recordPylonCapacityFunnelSnapshotsScheduled = (
 // 5-minute cadence internally because the worker cron fires every minute,
 // and the probe timestamp authority is the scheduled controller time.
 const runRelayHealthProbeScheduled = (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   scheduledTime: number,
 ): Effect.Effect<void, never> =>
   Effect.tryPromise({
@@ -7075,7 +7079,7 @@ const SELF_SERVE_WINDOW_RUN_REF = 'run.tassadar.executor.20260615'
 const SELF_SERVE_WINDOW_TARGET = 2
 
 const runSelfServeWindowProducerScheduled = (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   scheduledTime: number,
 ): Effect.Effect<void, never> =>
   Effect.tryPromise({
@@ -7129,7 +7133,7 @@ const runSelfServeWindowProducerScheduled = (
   )
 
 const readTokenUsageLeaderboardsForUser = (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   userId: string,
 ): Promise<AutopilotTokenLeaderboards> =>
   Effect.runPromise(
@@ -7162,7 +7166,7 @@ const readSelectedInferenceCreditTargetUser = (
   )
 
 const sweepActiveAgentRunBilling = async (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx?: ExecutionContext,
 ): Promise<void> => {
   const billUntil = workerRuntime.nowIso()
@@ -7186,7 +7190,7 @@ const sweepActiveAgentRunBilling = async (
 
 const handleAdminSyncNotifyApi = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
 ): Promise<Response> => {
   if (request.method !== 'POST') {
     return methodNotAllowed(['POST'])
@@ -7405,7 +7409,7 @@ const readConnectedOpenRouterApiKey = async (
 
 export const handleProgrammaticAgentRegistration = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   agentRegistrationStore?: AgentRegistrationStore,
 ): Promise<Response> => {
   if (request.method !== 'POST') {
@@ -7539,13 +7543,13 @@ export const handleProgrammaticAgentRegistration = async (
 // the admin caller once and is never logged.
 export const handleAdminReissueAgentToken = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
   options?: Readonly<{
     agentRegistrationStore?: AgentReissueStore
     authorize?: (
       request: Request,
-      env: Env,
+      env: OpenAgentsWorkerEnv,
       ctx: ExecutionContext,
     ) => Promise<boolean>
   }>,
@@ -7639,7 +7643,7 @@ export const handleAdminReissueAgentToken = async (
 // surface is honestly absent until free mode is armed.
 export const handleFreeKeyMint = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   agentRegistrationStore?: AgentRegistrationStore,
 ): Promise<Response> => {
   if (request.method !== 'POST') {
@@ -7760,7 +7764,7 @@ const agentBalanceAuthForStore =
 
 const handleProgrammaticAgentMe = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
 ): Promise<Response> => {
   // #5333: self-serve agent displayName rename lives on PATCH /api/agents/me,
   // the same agent-self surface that GET reads from. GET keeps returning the
@@ -7800,7 +7804,7 @@ const handleProgrammaticAgentMe = async (
 
 const routeAuthHostRequest = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<Response> => {
   const url = new URL(request.url)
@@ -7828,7 +7832,7 @@ const routeAuthHostRequest = async (
 
 const routeAuthIssuerRequest = async (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ) => {
   const maybeGuardResponse = await maybeAuthEmailOtpGuardResponse(request, env)
@@ -7844,7 +7848,7 @@ const isRouteAccessError = (
   value instanceof RouteAccessForbidden || value instanceof RouteAccessNotFound
 
 const threadRouteAccessBundle = (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   userId: string,
   routeId: string,
 ): Promise<AgentRunBundle | RouteAccessError> =>
@@ -7862,7 +7866,7 @@ const threadRouteAccessBundle = (
   )
 
 const threadRouteAccessError = async (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   userId: string,
   routeId: string,
 ): Promise<RouteAccessError | undefined> => {
@@ -7872,7 +7876,7 @@ const threadRouteAccessError = async (
 }
 
 const authorizeSyncPath = async (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   session: VerifiedSession,
   syncPath: ParsedSyncPath,
 ): Promise<RouteAccessError | undefined> => {
@@ -15650,7 +15654,7 @@ export class DurableInferenceStreamObject {
 export class SyncRoomDurableObject {
   constructor(
     private readonly state: DurableObjectState,
-    private readonly env: Env,
+    private readonly env: OpenAgentsWorkerEnv,
   ) {}
 
   private async replaySocket(
@@ -15804,7 +15808,7 @@ const readAgentDefinitionSchedulerScheduledAt = async (
 export class AgentDefinitionSchedulerDurableObject {
   constructor(
     private readonly state: DurableObjectState,
-    private readonly env: Env,
+    private readonly env: OpenAgentsWorkerEnv,
   ) {}
 
   async fetch(request: Request) {
@@ -15852,7 +15856,7 @@ export class AgentDefinitionSchedulerDurableObject {
 }
 
 const pokeAgentDefinitionScheduler = async (
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   scheduledTimeMs: number,
 ) => {
   const namespace = (
@@ -15941,7 +15945,7 @@ const workerFetchProgram = Effect.gen(function* () {
 
 const runWorkerFetch = (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<Response> =>
   Effect.runPromise(

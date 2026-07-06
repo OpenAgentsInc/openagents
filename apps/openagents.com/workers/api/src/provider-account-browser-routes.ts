@@ -52,7 +52,7 @@ type ProviderAccountBrowserSession = Readonly<{
 
 type ProviderAccountBrowserDependencies<
   Session extends ProviderAccountBrowserSession,
-  Env extends ProviderAccountBrowserEnv,
+  RouteEnv extends ProviderAccountBrowserEnv,
 > = Readonly<{
   appendRefreshedSessionCookies: (
     response: Response,
@@ -66,10 +66,10 @@ type ProviderAccountBrowserDependencies<
   probeProviderApiKey: ProviderApiKeyProbe
   requireBrowserSession: (
     request: Request,
-    env: Env,
+    env: RouteEnv,
     ctx: ExecutionContext,
   ) => Promise<Session | undefined>
-  storeConnectedCodexAuth: (env: Env) => StoreConnectedCodexAuth
+  storeConnectedCodexAuth: (env: RouteEnv) => StoreConnectedCodexAuth
   storeConnectedProviderApiKey: (
     kv: KVNamespace,
   ) => StoreConnectedProviderApiKey
@@ -77,16 +77,16 @@ type ProviderAccountBrowserDependencies<
     kv: KVNamespace,
   ) => StoreStartedCodexDeviceLogin
   providerAccountLifecycleLayer?: (
-    env: Env,
+    env: RouteEnv,
   ) => Layer.Layer<ProviderAccountLifecycleService> | undefined
 }>
 
 const providerAccountLifecycleLayerForEnv = <
   Session extends ProviderAccountBrowserSession,
-  Env extends ProviderAccountBrowserEnv,
+  RouteEnv extends ProviderAccountBrowserEnv,
 >(
-  dependencies: ProviderAccountBrowserDependencies<Session, Env>,
-  env: Env,
+  dependencies: ProviderAccountBrowserDependencies<Session, RouteEnv>,
+  env: RouteEnv,
 ) =>
   dependencies.providerAccountLifecycleLayer?.(env) ??
   makeProviderAccountLifecycleLayer({
@@ -107,12 +107,12 @@ const providerAccountLifecycleLayerForEnv = <
 
 export const handleProviderAccountsListEffect = <
   Session extends ProviderAccountBrowserSession,
-  Env extends ProviderAccountBrowserEnv,
+  RouteEnv extends ProviderAccountBrowserEnv,
 >(
   request: Request,
-  env: Env,
+  env: RouteEnv,
   ctx: ExecutionContext,
-  dependencies: ProviderAccountBrowserDependencies<Session, Env>,
+  dependencies: ProviderAccountBrowserDependencies<Session, RouteEnv>,
 ): Effect.Effect<Response, never, ProviderAccountLifecycleService> => {
   if (request.method !== 'GET') {
     return Effect.succeed(methodNotAllowed(['GET']))
@@ -155,13 +155,13 @@ export const handleProviderAccountsListEffect = <
 
 export const makeProviderAccountBrowserHandlers = <
   Session extends ProviderAccountBrowserSession,
-  Env extends ProviderAccountBrowserEnv,
+  RouteEnv extends ProviderAccountBrowserEnv,
 >(
-  dependencies: ProviderAccountBrowserDependencies<Session, Env>,
+  dependencies: ProviderAccountBrowserDependencies<Session, RouteEnv>,
 ) => ({
   handleProviderAccountsListApi: (
     request: Request,
-    env: Env,
+    env: RouteEnv,
     ctx: ExecutionContext,
   ): RouteEffect =>
     handleProviderAccountsListEffect(request, env, ctx, dependencies).pipe(
@@ -170,7 +170,7 @@ export const makeProviderAccountBrowserHandlers = <
 
   handleProviderAccountDisconnectApi: async (
     request: Request,
-    env: Env,
+    env: RouteEnv,
     ctx: ExecutionContext,
     providerAccountRef: string,
   ): Promise<Response> => {
@@ -206,7 +206,7 @@ export const makeProviderAccountBrowserHandlers = <
 
   handleProviderAccountGrantIssueApi: async (
     request: Request,
-    env: Env,
+    env: RouteEnv,
     ctx: ExecutionContext,
     providerAccountRef: string,
   ): Promise<Response> => {
@@ -274,7 +274,7 @@ export const makeProviderAccountBrowserHandlers = <
 
   handleProviderApiKeyConnectApi: async (
     request: Request,
-    env: Env,
+    env: RouteEnv,
     ctx: ExecutionContext,
     providerRouteSegment: string,
   ) => {
@@ -355,7 +355,7 @@ export const makeProviderAccountBrowserHandlers = <
 
   handleProviderDeviceLoginStartApi: async (
     request: Request,
-    env: Env,
+    env: RouteEnv,
     ctx: ExecutionContext,
   ): Promise<Response> => {
     if (request.method !== 'POST') {
@@ -420,7 +420,7 @@ export const makeProviderAccountBrowserHandlers = <
 
   handleProviderDeviceLoginStatusApi: async (
     request: Request,
-    env: Env,
+    env: RouteEnv,
     ctx: ExecutionContext,
     attemptId: string,
   ): Promise<Response> => {

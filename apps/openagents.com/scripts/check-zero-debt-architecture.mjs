@@ -240,7 +240,10 @@ const budgetChecks = [
     // Ratcheted 171 -> 169 on 2026-07-06 (#8498) after moving
     // team-chat-routes.ts to the existing OpenAgentsWorkerRequest Effect
     // service boundary instead of accepting raw route env parameters.
-    budget: 169,
+    // Ratcheted 169 -> 0 on 2026-07-06 (#8498) after moving the remaining
+    // tracked Worker route/domain modules to the central OpenAgentsWorkerEnv
+    // binding/config boundary type instead of importing Env from index.ts.
+    budget: 0,
     description:
       'Worker modules may not add raw Cloudflare Env parameters outside the future config/binding boundary.',
     details: countByFile(

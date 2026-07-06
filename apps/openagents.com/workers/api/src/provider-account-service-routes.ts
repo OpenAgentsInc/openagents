@@ -59,16 +59,16 @@ class ProviderAccountGrantSerializationError extends S.TaggedErrorClass<Provider
   },
 ) {}
 
-type ProviderAccountServiceDependencies<Env extends ProviderAccountServiceEnv> =
+type ProviderAccountServiceDependencies<RouteEnv extends ProviderAccountServiceEnv> =
   Readonly<{
     readConnectedCodexAuthMaterial: (
-      bindings: Env,
+      bindings: RouteEnv,
       ownerUserId: string,
       providerAccountRef: string,
     ) => Promise<ConnectedCodexAuthMaterial | undefined>
     requireProviderServiceActor: (
       request: Request,
-      env: Env,
+      env: RouteEnv,
     ) => Promise<ProviderServiceActor | undefined>
   }>
 
@@ -232,12 +232,12 @@ const googleGeminiTokenUsageFromText = (
     .find((usage): usage is AutopilotTokenUsage => usage !== undefined)
 
 const insertGeminiTokenUsageEvent = async <
-  Env extends ProviderAccountServiceEnv,
+  RouteEnv extends ProviderAccountServiceEnv,
 >(
   input: Readonly<{
     actor: ProviderServiceActor
     bodyHash: string
-    env: Env
+    env: RouteEnv
     model: string
     request: Request
     response: ProviderUsageResponse
@@ -334,12 +334,12 @@ const insertGeminiTokenUsageEvent = async <
 }
 
 const recordGoogleGeminiTokenUsage = async <
-  Env extends ProviderAccountServiceEnv,
+  RouteEnv extends ProviderAccountServiceEnv,
 >(
   input: Readonly<{
     actor: ProviderServiceActor
     body: string
-    env: Env
+    env: RouteEnv
     model: string
     request: Request
     response: ProviderUsageResponse
@@ -364,13 +364,13 @@ const recordGoogleGeminiTokenUsage = async <
 }
 
 export const makeProviderAccountServiceHandlers = <
-  Env extends ProviderAccountServiceEnv,
+  RouteEnv extends ProviderAccountServiceEnv,
 >(
-  dependencies: ProviderAccountServiceDependencies<Env>,
+  dependencies: ProviderAccountServiceDependencies<RouteEnv>,
 ) => ({
   handleProviderDeviceLoginConnectedApi: async (
     request: Request,
-    env: Env,
+    env: RouteEnv,
     attemptId: string,
   ): Promise<Response> => {
     if (request.method !== 'POST') {
@@ -434,7 +434,7 @@ export const makeProviderAccountServiceHandlers = <
 
   handleProviderDeviceLoginFailedApi: async (
     request: Request,
-    env: Env,
+    env: RouteEnv,
     attemptId: string,
   ): Promise<Response> => {
     if (request.method !== 'POST') {
@@ -500,7 +500,7 @@ export const makeProviderAccountServiceHandlers = <
 
   handleProviderAccountHealthApi: async (
     request: Request,
-    env: Env,
+    env: RouteEnv,
     providerAccountRef: string,
   ): Promise<Response> => {
     if (request.method !== 'POST') {
@@ -564,7 +564,7 @@ export const makeProviderAccountServiceHandlers = <
 
   handleProviderAccountGrantResolveApi: async (
     request: Request,
-    env: Env,
+    env: RouteEnv,
   ): Promise<Response> => {
     if (request.method !== 'POST') {
       return methodNotAllowed(['POST'])
@@ -662,7 +662,7 @@ export const makeProviderAccountServiceHandlers = <
     }
   },
 
-  handleGoogleGeminiGrantResolveApi: async (request: Request, env: Env) => {
+  handleGoogleGeminiGrantResolveApi: async (request: Request, env: RouteEnv) => {
     if (request.method !== 'POST') {
       return methodNotAllowed(['POST'])
     }
@@ -722,7 +722,7 @@ export const makeProviderAccountServiceHandlers = <
   //   (429) with remaining/reset info; grants nothing.
   // - The response carries only the redacted secret-ref materialization, never
   //   the raw key.
-  handleGoogleGeminiBuiltinGrantApi: async (request: Request, env: Env) => {
+  handleGoogleGeminiBuiltinGrantApi: async (request: Request, env: RouteEnv) => {
     if (request.method !== 'POST') {
       return methodNotAllowed(['POST'])
     }
@@ -785,7 +785,7 @@ export const makeProviderAccountServiceHandlers = <
 
   handleGoogleGeminiGenerateContentApi: async (
     request: Request,
-    env: Env,
+    env: RouteEnv,
     ctx: ExecutionContext,
     model: string,
   ) => {

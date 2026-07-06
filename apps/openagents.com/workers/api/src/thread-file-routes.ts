@@ -2,14 +2,13 @@ import { notFound } from '@openagentsinc/sync-worker'
 import { Effect, Layer, Option } from 'effect'
 import { WorkerEnvironment } from 'effect-cf'
 
-import { ThreadFileArtifacts } from './bindings'
+import { type OpenAgentsWorkerEnv, ThreadFileArtifacts } from './bindings'
 import {
   forbidden,
   methodNotAllowed,
   noStoreJsonResponse,
   unauthorized,
 } from './http/responses'
-import type { Env } from './index'
 import {
   optionalBoolean,
   optionalString,
@@ -47,7 +46,7 @@ type ThreadFileRouteDependencies<Session extends BrowserSessionShape> =
       session: Session,
     ) => Response
     publishTeamThreadFileSync: (
-      env: Pick<Env, 'OPENAGENTS_DB' | 'SYNC_ROOM'>,
+      env: Pick<OpenAgentsWorkerEnv, 'OPENAGENTS_DB' | 'SYNC_ROOM'>,
       ctx: SyncNotificationContext,
       file: PublicThreadFile,
       actorId: string,
@@ -56,7 +55,7 @@ type ThreadFileRouteDependencies<Session extends BrowserSessionShape> =
     readActiveTeamMembershipRole: ReadActiveTeamMembershipRole
     requireBrowserSession: (
       request: Request,
-      env: Env,
+      env: OpenAgentsWorkerEnv,
       ctx: ExecutionContext,
     ) => Promise<Session | undefined>
   }>
@@ -66,7 +65,7 @@ export const makeThreadFileRoutes = <Session extends BrowserSessionShape>(
 ) => {
   const makeThreadFileId = dependencies.makeThreadFileId ?? randomUuid
 
-  const threadFileStorageLayer = (env: Env) => {
+  const threadFileStorageLayer = (env: OpenAgentsWorkerEnv) => {
     const workerEnvironmentLayer = Layer.succeed(WorkerEnvironment, env)
     const repositoryLayer = ThreadFileRepository.layer(
       khalaCodeProductStateDatabaseForEnv(env),
@@ -91,7 +90,7 @@ export const makeThreadFileRoutes = <Session extends BrowserSessionShape>(
 
   const handleThreadFilesApi = (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
   ): Effect.Effect<Response> =>
     Effect.gen(function* () {
@@ -279,7 +278,7 @@ export const makeThreadFileRoutes = <Session extends BrowserSessionShape>(
 
   const handleTeamFilesApi = (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
     teamId: string,
   ): Effect.Effect<Response> =>
@@ -328,7 +327,7 @@ export const makeThreadFileRoutes = <Session extends BrowserSessionShape>(
 
   const handleThreadFileApi = (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
     fileId: string,
   ): Effect.Effect<Response> =>
@@ -430,7 +429,7 @@ export const makeThreadFileRoutes = <Session extends BrowserSessionShape>(
 
   const handleThreadFileDownloadApi = (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
     fileId: string,
   ): Effect.Effect<Response> =>
@@ -512,7 +511,7 @@ export const makeThreadFileRoutes = <Session extends BrowserSessionShape>(
 
   const routeThreadFileRequest = (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
   ): Effect.Effect<Response> | undefined => {
     const url = new URL(request.url)

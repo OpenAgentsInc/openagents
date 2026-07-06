@@ -15,12 +15,12 @@ import { knownDocumentPathPatterns } from '../../../apps/web/src/route-table'
 import { redirectResponse } from './http/responses'
 import { type RouteEffect, routeEffectOrResponse } from './http/route-effects'
 import { type ExactRoute, routeExact } from './http/router'
-import type { Env } from './index'
+import type { OpenAgentsWorkerEnv } from './bindings'
 import { OpenAgentsWorkerRequest } from './runtime'
 
 type OptionalEffectRoute = (
   request: Request,
-  env: Env,
+  env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ) => Effect.Effect<Response> | undefined
 
@@ -28,22 +28,22 @@ type WorkerRouteEnv = Parameters<OptionalEffectRoute>[1]
 
 type WorkerRouteDependencies = Readonly<{
   cleanProductRouteRedirectLocation: (url: URL) => string | undefined
-  exactRoutes: ReadonlyArray<ExactRoute<Env>>
+  exactRoutes: ReadonlyArray<ExactRoute<OpenAgentsWorkerEnv>>
   handleAssetRequest: (request: Request, env: WorkerRouteEnv) => RouteEffect
   handleAppShellPage: (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
   ) => RouteEffect
   handleThreadPage: (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
     threadId: string,
   ) => RouteEffect
   handleForumThreadPage: (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
     topicId: string,
   ) => RouteEffect
@@ -122,7 +122,7 @@ type WorkerRouteDependencies = Readonly<{
   routeShareRequest: OptionalEffectRoute
   routeSyncRequest: (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
   ) => Effect.Effect<Response>
   routeHygieneLaneSettlementRequest: OptionalEffectRoute

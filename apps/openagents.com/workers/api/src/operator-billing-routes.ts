@@ -21,7 +21,7 @@ type OperatorBillingEnv = Readonly<{
 }> &
   BillingSyncEnv
 
-type OperatorBillingDependencies<Env extends OperatorBillingEnv> = Readonly<{
+type OperatorBillingDependencies<RouteEnv extends OperatorBillingEnv> = Readonly<{
   readSelectedOperatorTargetUser: (
     db: D1Database,
     selector: Record<string, unknown>,
@@ -35,15 +35,15 @@ type OperatorBillingDependencies<Env extends OperatorBillingEnv> = Readonly<{
     db: D1Database,
     selector: Record<string, unknown>,
   ) => Promise<OperatorTargetUser | undefined>
-  requireAdminApiToken: (request: Request, env: Env) => Promise<boolean>
+  requireAdminApiToken: (request: Request, env: RouteEnv) => Promise<boolean>
 }>
 
-export const makeOperatorBillingHandlers = <Env extends OperatorBillingEnv>(
-  dependencies: OperatorBillingDependencies<Env>,
+export const makeOperatorBillingHandlers = <RouteEnv extends OperatorBillingEnv>(
+  dependencies: OperatorBillingDependencies<RouteEnv>,
 ) => ({
   handleOmniOperatorBillingCreditsApi: async (
     request: Request,
-    env: Env,
+    env: RouteEnv,
   ): Promise<Response> => {
     if (request.method !== 'POST') {
       return methodNotAllowed(['POST'])
@@ -118,7 +118,7 @@ export const makeOperatorBillingHandlers = <Env extends OperatorBillingEnv>(
   // admin-token auth and target-selector shape as the credits route above.
   handleOmniOperatorInferenceCreditApi: async (
     request: Request,
-    env: Env,
+    env: RouteEnv,
   ): Promise<Response> => {
     if (request.method !== 'POST') {
       return methodNotAllowed(['POST'])

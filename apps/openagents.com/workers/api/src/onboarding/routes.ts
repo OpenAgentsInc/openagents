@@ -83,7 +83,7 @@ type CustomerOrderRouteActor<Session extends OnboardingSession> =
 
 type OnboardingRouteDependencies<
   Session extends OnboardingSession,
-  Env extends OnboardingEnv,
+  RouteEnv extends OnboardingEnv,
 > = Readonly<{
   appendRefreshedSessionCookies: (
     response: Response,
@@ -91,7 +91,7 @@ type OnboardingRouteDependencies<
   ) => Response
   requireBrowserSession: (
     request: Request,
-    env: Env,
+    env: RouteEnv,
     ctx: ExecutionContext,
   ) => Promise<Session | undefined>
   // Mobile-bearer session boundary (MM-B1, issue #8471) — the OpenAuth mobile
@@ -102,7 +102,7 @@ type OnboardingRouteDependencies<
   // bearer header, not a cookie.
   requireUserBearerSession: (
     request: Request,
-    env: Env,
+    env: RouteEnv,
     ctx: ExecutionContext,
   ) => Promise<Session | undefined>
   customerOrderRuntime?: CustomerOrderRuntime
@@ -115,7 +115,7 @@ type OnboardingRouteDependencies<
   githubRepositoryServiceLayer?: Layer.Layer<GitHubRepositoryService>
   siteReferralOnboarding?: (
     input: Readonly<{
-      env: Env
+      env: RouteEnv
       orderId: string | null
       orderState: OnboardingDripOrderState
       referralResult: ReferralConsumptionResult
@@ -286,11 +286,11 @@ const decodeJsonBody = <Schema extends S.Top>(
 
 const requireSession = <
   Session extends OnboardingSession,
-  Env extends OnboardingEnv,
+  RouteEnv extends OnboardingEnv,
 >(
-  dependencies: OnboardingRouteDependencies<Session, Env>,
+  dependencies: OnboardingRouteDependencies<Session, RouteEnv>,
   request: Request,
-  env: Env,
+  env: RouteEnv,
   ctx: ExecutionContext,
 ) =>
   Effect.gen(function* () {
@@ -308,11 +308,11 @@ const requireSession = <
 
 const requireMobileBearerSession = <
   Session extends OnboardingSession,
-  Env extends OnboardingEnv,
+  RouteEnv extends OnboardingEnv,
 >(
-  dependencies: OnboardingRouteDependencies<Session, Env>,
+  dependencies: OnboardingRouteDependencies<Session, RouteEnv>,
   request: Request,
-  env: Env,
+  env: RouteEnv,
   ctx: ExecutionContext,
 ) =>
   Effect.gen(function* () {
@@ -344,11 +344,11 @@ const customerOrderAgentStore = (
 
 const requireCustomerOrderActor = <
   Session extends OnboardingSession,
-  Env extends OnboardingEnv,
+  RouteEnv extends OnboardingEnv,
 >(
-  dependencies: OnboardingRouteDependencies<Session, Env>,
+  dependencies: OnboardingRouteDependencies<Session, RouteEnv>,
   request: Request,
-  env: Env,
+  env: RouteEnv,
   ctx: ExecutionContext,
   requiredScope: CustomerOrderAgentScope,
 ): Effect.Effect<
@@ -548,12 +548,12 @@ const shouldClearPendingReferralCookie = (
 
 const scheduleReferralOnboarding = <
   Session extends OnboardingSession,
-  Env extends OnboardingEnv,
+  RouteEnv extends OnboardingEnv,
 >(
-  dependencies: OnboardingRouteDependencies<Session, Env>,
+  dependencies: OnboardingRouteDependencies<Session, RouteEnv>,
   input: Readonly<{
     ctx: ExecutionContext
-    env: Env
+    env: RouteEnv
     orderId: string | null
     orderState: OnboardingDripOrderState
     referralResult: ReferralConsumptionResult
@@ -590,15 +590,15 @@ const scheduleReferralOnboarding = <
 
 export const makeOnboardingRoutes = <
   Session extends OnboardingSession,
-  Env extends OnboardingEnv,
+  RouteEnv extends OnboardingEnv,
 >(
-  dependencies: OnboardingRouteDependencies<Session, Env>,
+  dependencies: OnboardingRouteDependencies<Session, RouteEnv>,
 ) => {
   const runtime = dependencies.runtime ?? systemOnboardingRuntime
-  type RouteRuntimeEnv = Env
+  type RouteRuntimeEnv = RouteEnv
 
   const runRoute = (
-    env: Env,
+    env: RouteEnv,
     effect: Effect.Effect<
       Response,
       OnboardingRouteError,
@@ -618,7 +618,7 @@ export const makeOnboardingRoutes = <
       Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
     )
 
-  const statusResponse = (request: Request, env: Env, ctx: ExecutionContext) =>
+  const statusResponse = (request: Request, env: RouteEnv, ctx: ExecutionContext) =>
     runRoute(
       env,
       Effect.gen(function* () {
@@ -635,7 +635,7 @@ export const makeOnboardingRoutes = <
 
   const activeCustomerOrderResponse = (
     request: Request,
-    env: Env,
+    env: RouteEnv,
     ctx: ExecutionContext,
   ) =>
     runRoute(
@@ -1097,7 +1097,7 @@ export const makeOnboardingRoutes = <
 
   const repositoriesResponse = (
     request: Request,
-    env: Env,
+    env: RouteEnv,
     ctx: ExecutionContext,
   ) =>
     runRoute(
@@ -1144,7 +1144,7 @@ export const makeOnboardingRoutes = <
   // carry the OpenAuth bearer token, not a browser cookie.
   const mobileRepositoriesResponse = (
     request: Request,
-    env: Env,
+    env: RouteEnv,
     ctx: ExecutionContext,
   ) =>
     runRoute(
@@ -1209,7 +1209,7 @@ export const makeOnboardingRoutes = <
     owner: string,
     name: string,
     request: Request,
-    env: Env,
+    env: RouteEnv,
     ctx: ExecutionContext,
   ) =>
     runRoute(
@@ -1254,7 +1254,7 @@ export const makeOnboardingRoutes = <
   const saveRepositoryResponse = (
     mode: 'select' | 'update',
     request: Request,
-    env: Env,
+    env: RouteEnv,
     ctx: ExecutionContext,
   ) =>
     runRoute(
@@ -1310,7 +1310,7 @@ export const makeOnboardingRoutes = <
 
   const skipRepositoryResponse = (
     request: Request,
-    env: Env,
+    env: RouteEnv,
     ctx: ExecutionContext,
   ) =>
     runRoute(
@@ -1329,7 +1329,7 @@ export const makeOnboardingRoutes = <
 
   const skipBillingResponse = (
     request: Request,
-    env: Env,
+    env: RouteEnv,
     ctx: ExecutionContext,
   ) =>
     runRoute(
@@ -1348,7 +1348,7 @@ export const makeOnboardingRoutes = <
 
   const submitGoalResponse = (
     request: Request,
-    env: Env,
+    env: RouteEnv,
     ctx: ExecutionContext,
   ) =>
     runRoute(
@@ -1372,7 +1372,7 @@ export const makeOnboardingRoutes = <
   return {
     routeOnboardingRequest: (
       request: Request,
-      env: Env,
+      env: RouteEnv,
       ctx: ExecutionContext,
     ): Effect.Effect<Response> | undefined => {
       const url = new URL(request.url)

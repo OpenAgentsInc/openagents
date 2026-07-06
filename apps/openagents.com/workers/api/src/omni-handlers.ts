@@ -39,7 +39,7 @@ import {
   noStoreJsonResponse,
 } from './http/responses'
 import { routeAccessResponse } from './http/route-access-response'
-import type { Env } from './index'
+import type { OpenAgentsWorkerEnv } from './bindings'
 import {
   isRecord,
   nestedUnknown,
@@ -206,29 +206,29 @@ type OmniHandlerDependencies = Readonly<{
     session: BrowserSession,
   ) => Response
   appendTeamAutopilotAnswerBack: (
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
     runId: string,
   ) => Promise<void>
   authenticateRequestActor: (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
   ) => Promise<AuthenticatedActor | undefined>
   actorJson: (actor: AuthenticatedActor) => unknown
-  getAppOrigin: (env: Env) => string
-  getResendEmailConfig: (env: Env) => ResendEmailConfig | undefined
+  getAppOrigin: (env: OpenAgentsWorkerEnv) => string
+  getResendEmailConfig: (env: OpenAgentsWorkerEnv) => ResendEmailConfig | undefined
   getRunnerBackendConfig: (env: OpenAgentsWorkerConfigEnv) => RunnerBackendConfig
   isOpenAgentsAdminEmail: (email: string) => boolean
   isRouteAccessError: (
     value: AgentRunBundle | RouteAccessError,
   ) => value is RouteAccessError
   makeBillingAwareOmniRunStore: (
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx?: ExecutionContext,
   ) => BillingAwareOmniRunStore
   postTeamChatMessageForUser: (
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
     input: {
       body: Record<string, unknown>
@@ -243,22 +243,22 @@ type OmniHandlerDependencies = Readonly<{
     selector: Record<string, unknown>,
   ) => Promise<OperatorTargetUser | undefined>
   readTokenUsageLeaderboardsForUser: (
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     userId: string,
   ) => Promise<AutopilotTokenLeaderboards>
-  requireAdminApiToken: (request: Request, env: Env) => Promise<boolean>
+  requireAdminApiToken: (request: Request, env: OpenAgentsWorkerEnv) => Promise<boolean>
   requireBrowserSession: (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
   ) => Promise<BrowserSession | undefined>
-  requireRunnerCallbackAuth: (request: Request, env: Env) => Promise<boolean>
+  requireRunnerCallbackAuth: (request: Request, env: OpenAgentsWorkerEnv) => Promise<boolean>
   threadRouteAccessBundle: (
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     userId: string,
     runIdOrLegacyThreadId: string,
   ) => Promise<AgentRunBundle | RouteAccessError>
-  shcDispatchConfig: (env: Env) => ShcDispatchConfig
+  shcDispatchConfig: (env: OpenAgentsWorkerEnv) => ShcDispatchConfig
 }>
 
 type OmniHandlerEnv = Parameters<
@@ -1258,7 +1258,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
 
   const handleAutopilotFleetApi = async (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
   ): Promise<Response> => {
     if (request.method !== 'GET') {
@@ -1327,7 +1327,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
 
   const handleAutopilotTokenLeaderboardsApi = async (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
   ): Promise<Response> => {
     if (request.method !== 'GET') {
@@ -1362,7 +1362,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
 
   const handleOmniOperatorFleetApi = async (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
   ): Promise<Response> => {
     if (request.method !== 'GET') {
       return methodNotAllowed(['GET'])
@@ -1431,7 +1431,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
 
   const handleOmniOperatorTeamChatMessagesApi = async (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
   ): Promise<Response> => {
     if (request.method !== 'GET' && request.method !== 'POST') {
@@ -1553,7 +1553,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
 
   const handleOmniOperatorAgentRunsApi = async (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
   ): Promise<Response> => {
     if (!(await dependencies.requireAdminApiToken(request, env))) {
       return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
@@ -2062,7 +2062,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
     | Readonly<{ ok: false; response: Response }>
 
   const dispatchQueuedAgentRun = async (
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     run: AgentRunRecord,
   ): Promise<void> => {
     const store = dependencies.makeBillingAwareOmniRunStore(env)
@@ -2367,7 +2367,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
   }
 
   const continueUserAutopilotRun = async (
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
     input: Readonly<{
       prompt: string
@@ -2456,7 +2456,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
   }
 
   const launchUserAutopilotMission = async (
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
     input: Readonly<{
       selector: Record<string, unknown>
@@ -2701,7 +2701,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
 
   const handleOmniAgentRunsApi = async (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
   ): Promise<Response> => {
     const session = await dependencies.requireBrowserSession(request, env, ctx)
@@ -2748,7 +2748,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
 
   const handleOmniAgentRunDetailApi = async (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
     runId: string,
   ): Promise<Response> => {
@@ -2781,7 +2781,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
   }>
 
   const markRunProviderAccountRequiresReauth = async (
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     runId: string,
     reason: string,
   ): Promise<void> => {
@@ -2837,7 +2837,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
 
   const handleOmniAgentRunEventsApi = async (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
     runId: string,
   ): Promise<Response> => {
@@ -3017,7 +3017,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
 
   const handleOmniDeploymentsApi = async (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
   ): Promise<Response> => {
     const session = await dependencies.requireBrowserSession(request, env, ctx)
@@ -3083,7 +3083,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
 
   const handleOmniOperatorDeploymentsApi = async (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
   ): Promise<Response> => {
     if (!(await dependencies.requireAdminApiToken(request, env))) {
       return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
@@ -3149,7 +3149,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
 
   const handleOmniDeploymentDetailApi = async (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
     deployId: string,
   ): Promise<Response> => {
@@ -3177,7 +3177,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
 
   const handleOmniDeploymentEventsApi = async (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
     deployId: string,
   ): Promise<Response> => {

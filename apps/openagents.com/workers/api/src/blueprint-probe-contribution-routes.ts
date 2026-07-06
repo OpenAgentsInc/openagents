@@ -124,22 +124,22 @@ export const BlueprintProbeContributionIntakeResponse = S.Struct({
 export type BlueprintProbeContributionIntakeResponse =
   typeof BlueprintProbeContributionIntakeResponse.Type
 
-type BlueprintProbeContributionRoutesDependencies<Env> = Readonly<{
+type BlueprintProbeContributionRoutesDependencies<RouteEnv> = Readonly<{
   listContributions: (
-    env: Env,
+    env: RouteEnv,
   ) => Effect.Effect<
     ReadonlyArray<BlueprintProbeContributionRecordType>,
     BlueprintProbeContributionError
   >
   recordContribution: (
-    env: Env,
+    env: RouteEnv,
     input: RecordBlueprintProbeContributionInput,
   ) => Effect.Effect<
     BlueprintProbeContributionRecordType,
     BlueprintProbeContributionError
   >
-  requireAdminApiToken: (request: Request, env: Env) => Promise<boolean>
-  requireContributionIntake: (request: Request, env: Env) => Promise<boolean>
+  requireAdminApiToken: (request: Request, env: RouteEnv) => Promise<boolean>
+  requireContributionIntake: (request: Request, env: RouteEnv) => Promise<boolean>
 }>
 
 class BlueprintProbeContributionRouteDependencyError extends S.TaggedErrorClass<BlueprintProbeContributionRouteDependencyError>()(
@@ -474,10 +474,10 @@ const readProbeContribution = (
     )
   })
 
-const requireOperatorRead = <Env>(
-  dependencies: BlueprintProbeContributionRoutesDependencies<Env>,
+const requireOperatorRead = <RouteEnv>(
+  dependencies: BlueprintProbeContributionRoutesDependencies<RouteEnv>,
   request: Request,
-  env: Env,
+  env: RouteEnv,
 ) =>
   Effect.tryPromise({
     catch: error =>
@@ -485,10 +485,10 @@ const requireOperatorRead = <Env>(
     try: () => dependencies.requireAdminApiToken(request, env),
   })
 
-const requireContributionIntake = <Env>(
-  dependencies: BlueprintProbeContributionRoutesDependencies<Env>,
+const requireContributionIntake = <RouteEnv>(
+  dependencies: BlueprintProbeContributionRoutesDependencies<RouteEnv>,
   request: Request,
-  env: Env,
+  env: RouteEnv,
 ) =>
   Effect.tryPromise({
     catch: error =>
@@ -517,10 +517,10 @@ const routeErrorResponse = (
   return dependencyErrorResponse()
 }
 
-const routeContributions = <Env>(
-  dependencies: BlueprintProbeContributionRoutesDependencies<Env>,
+const routeContributions = <RouteEnv>(
+  dependencies: BlueprintProbeContributionRoutesDependencies<RouteEnv>,
   request: Request,
-  env: Env,
+  env: RouteEnv,
 ) => {
   if (request.method !== 'GET' && request.method !== 'POST') {
     return Effect.succeed(methodNotAllowed(['GET', 'POST']))
@@ -569,11 +569,11 @@ const routeContributions = <Env>(
   }).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
 }
 
-export const makeBlueprintProbeContributionRoutes = <Env>(
-  dependencies: BlueprintProbeContributionRoutesDependencies<Env>,
+export const makeBlueprintProbeContributionRoutes = <RouteEnv>(
+  dependencies: BlueprintProbeContributionRoutesDependencies<RouteEnv>,
 ) => ({
   handleBlueprintProbeContributionsApi: (
     request: Request,
-    env: Env,
+    env: RouteEnv,
   ): Effect.Effect<Response> => routeContributions(dependencies, request, env),
 })

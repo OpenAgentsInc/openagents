@@ -1,9 +1,9 @@
 import { Effect } from 'effect'
 
 import { type RouteEffect, routeEffectOrResponse } from './http/route-effects'
-import type { Env } from './index'
+import type { OpenAgentsWorkerEnv } from './bindings'
 
-type OmniEnvironment = Env
+type OmniEnvironment = OpenAgentsWorkerEnv
 type OmniSessionRouteHandler = (
   request: Request,
   env: OmniEnvironment,
@@ -42,23 +42,23 @@ type OmniRouteDependencies = Readonly<{
   handleOmniDeploymentsApi: OmniSessionRouteHandler
   handleOmniOperatorAgentRunDetailApi: (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     runId: string,
   ) => RouteEffect
-  handleOmniOperatorAgentRunsApi: (request: Request, env: Env) => RouteEffect
+  handleOmniOperatorAgentRunsApi: (request: Request, env: OpenAgentsWorkerEnv) => RouteEffect
   handleOmniOperatorBillingCreditsApi: (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
   ) => RouteEffect
   handleOmniOperatorInferenceCreditApi: (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
   ) => RouteEffect
-  handleOmniOperatorDeploymentsApi: (request: Request, env: Env) => RouteEffect
-  handleOmniOperatorFleetApi: (request: Request, env: Env) => RouteEffect
+  handleOmniOperatorDeploymentsApi: (request: Request, env: OpenAgentsWorkerEnv) => RouteEffect
+  handleOmniOperatorFleetApi: (request: Request, env: OpenAgentsWorkerEnv) => RouteEffect
   handleOmniOperatorTeamChatMessagesApi: (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
   ) => RouteEffect
 }>
@@ -66,7 +66,7 @@ type OmniRouteDependencies = Readonly<{
 export const makeOmniRoutes = (dependencies: OmniRouteDependencies) => ({
   routeOmniRequest: (
     request: Request,
-    env: Env,
+    env: OpenAgentsWorkerEnv,
     ctx: ExecutionContext,
   ): Effect.Effect<Response> | undefined => {
     const url = new URL(request.url)
