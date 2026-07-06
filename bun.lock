@@ -141,6 +141,18 @@
         "wrangler": "^4.51.0",
       },
     },
+    "apps/oa-queue-worker": {
+      "name": "@openagentsinc/oa-queue-worker",
+      "version": "0.1.0",
+      "dependencies": {
+        "@openagentsinc/oa-infra": "workspace:*",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
     "apps/oa-updates": {
       "name": "@openagentsinc/oa-updates",
       "version": "0.1.0",
@@ -1743,6 +1755,8 @@
     "@openagentsinc/nostr-relay": ["@openagentsinc/nostr-relay@workspace:apps/nostr-relay"],
 
     "@openagentsinc/oa-infra": ["@openagentsinc/oa-infra@workspace:packages/oa-infra"],
+
+    "@openagentsinc/oa-queue-worker": ["@openagentsinc/oa-queue-worker@workspace:apps/oa-queue-worker"],
 
     "@openagentsinc/oa-updates": ["@openagentsinc/oa-updates@workspace:apps/oa-updates"],
 
