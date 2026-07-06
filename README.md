@@ -210,6 +210,13 @@ Use the per-package scripts when working inside an app; the root scripts are
 delegates for cross-workspace orientation, not a replacement for app-specific
 deploy and release commands (`docs/DEPLOYMENT.md` is the deploy/release hub).
 
+After switching to a newer `main` (or any commit reset) in an existing
+checkout, run `bun install` before trusting `bun run typecheck`. Stale
+workspace-package links from before the switch can produce spurious
+`TS2339`/`TS2307` errors (properties "missing" from a type, or a workspace
+package "not found") that a `bun install` immediately clears at the same
+commit — CI and fresh clones always install from scratch and are unaffected.
+
 Contributors and agents should read [`AGENTS.md`](AGENTS.md) for the repo
 contract, the docs map, and working rules, and
 [`INVARIANTS.md`](INVARIANTS.md) before touching authority, routing, payment,
