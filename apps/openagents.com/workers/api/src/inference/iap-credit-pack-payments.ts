@@ -25,6 +25,16 @@ import {
 } from './inference-abuse-controls'
 import type { RevenueCatStore } from './iap-revenuecat-webhook'
 
+/** Typed invariant-violation error (never a generic `throw new Error` — this
+ * repo's zero-debt architecture check requires typed errors at the source,
+ * matching the sibling `KhalaCodePaidPlanPaymentError` pattern this module
+ * extends the shape of). Only ever thrown if the ledger write itself
+ * succeeded but the immediate re-read somehow returns nothing — an
+ * infrastructure anomaly, not a domain outcome. */
+export class IapCreditPackPaymentError extends Error {
+  override readonly name = 'IapCreditPackPaymentError'
+}
+
 export const IAP_REVENUECAT_RAIL = 'iap_revenuecat' as const
 
 export type IapCreditPackPurchaseStatus = 'fulfilled' | 'refunded'
@@ -196,7 +206,7 @@ export const fulfillIapCreditPackPurchase = (
       readIapPurchaseByStoreTransactionId(db, input.storeTransactionId),
     )
     if (row === null) {
-      throw new Error('iap credit pack purchase intent not recorded after fulfillment')
+      throw new IapCreditPackPaymentError('iap credit pack purchase intent not recorded after fulfillment')
     }
 
     return { alreadyFulfilled: false, ok: true, purchase: row } satisfies IapFulfillOutcome

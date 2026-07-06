@@ -10,6 +10,7 @@ import { Effect } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse, unauthorized } from '../http/responses'
 import { optionalString, readJsonObject } from '../json-boundary'
+import { currentIsoTimestamp } from '../runtime-primitives'
 import type { VerifiedSession } from '../auth/session'
 import {
   registerPushDeviceToken,
@@ -77,7 +78,7 @@ const routeRegister = async <Bindings, User>(
     )
   }
 
-  const nowIso = (dependencies.nowIso ?? (() => new Date().toISOString()))()
+  const nowIso = (dependencies.nowIso ?? currentIsoTimestamp)()
   const row = await registerPushDeviceToken(dependencies.db(env), {
     accessToken,
     deviceId,

@@ -15,6 +15,15 @@
 
 import { mobileRevokedAccessKey, type MobileAccessRevocationStore } from '../auth/mobile-session'
 
+/** Typed invariant-violation error (never a generic `throw new Error` — this
+ * repo's zero-debt architecture check requires typed errors at the source,
+ * matching the sibling `KhalaCodePaidPlanPaymentError` pattern). Only ever
+ * thrown if the D1 write itself succeeded but the immediate re-read somehow
+ * returns nothing — an infrastructure anomaly, not a domain outcome. */
+export class PushDeviceTokenStoreError extends Error {
+  override readonly name = 'PushDeviceTokenStoreError'
+}
+
 export type PushPlatform = 'ios' | 'android'
 
 export type PushDeviceTokenRow = Readonly<{
@@ -94,7 +103,7 @@ export const registerPushDeviceToken = async (
     .first<PushDeviceTokenSqlRow>()
 
   if (row === null) {
-    throw new Error('push device token row not found after registration')
+    throw new PushDeviceTokenStoreError('push device token row not found after registration')
   }
 
   return mapRow(row)

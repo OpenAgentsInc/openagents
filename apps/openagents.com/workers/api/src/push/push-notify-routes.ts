@@ -19,6 +19,7 @@ import { Effect } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse, unauthorized } from '../http/responses'
 import { optionalBoolean, readJsonObject } from '../json-boundary'
+import { currentIsoTimestamp } from '../runtime-primitives'
 import type { VerifiedSession } from '../auth/session'
 import {
   listActivePushDeviceTokensForUser,
@@ -208,7 +209,7 @@ const routeWritePreference = async <Bindings, User>(
     )
   }
 
-  const nowIso = (dependencies.nowIso ?? (() => new Date().toISOString()))()
+  const nowIso = (dependencies.nowIso ?? currentIsoTimestamp)()
   const preference = await writePushNotificationPreference(dependencies.db(env), {
     nowIso,
     pushEnabled,

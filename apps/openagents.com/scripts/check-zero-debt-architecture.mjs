@@ -493,7 +493,15 @@ const budgetChecks = [
     // (`handlePublicSettledFeedApi`) — one Effect-returning handler, same
     // shape as the sibling public-projection routes already counted here.
     // Mints no spend/settlement/payout/public-claim authority.
-    budget: 130,
+    // +2 (130 -> 132) on 2026-07-06 for the Khala Code mobile-only MVP push
+    // notification lane (#8485/#8486): `push/push-sender.ts`'s
+    // `FetchLike = (url, init) => Promise<Response>` injectable-fetch type
+    // (a dependency-injection seam for tests, matching this codebase's
+    // existing injectable-fetch convention, not a route handler) and one
+    // index.ts route-table handler added by a concurrent lane in the same
+    // parallel dispatch. Neither mints spend/settlement/payout/public-claim
+    // authority. Ratchet back down when route mappers are extracted.
+    budget: 132,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -577,7 +585,16 @@ const runPromiseAllowlist = new Map([
   // again block the SHC compute-cleanup dispatch or the out-of-credits
   // email for the rest of the batch. Named bridge; ratchet down if
   // `enforceOutOfCreditsPolicy` becomes an Effect program end-to-end.
-  ['workers/api/src/index.ts', 8],
+  // Raised 8 -> 9 on 2026-07-06 for the Khala Code mobile-only MVP $10
+  // GitHub-account-keyed signup credit grant (#8478): the GitHub
+  // sign-in callback bridges the Effect-returning idempotent grant call
+  // (`grantGithubSignupCredit`) once from the Promise-shaped OAuth
+  // callback body, the same named-bridge shape as the sibling grant
+  // above. Never blocks or fails sign-in on error (fail-soft, logged).
+  // This lane never bumped the ratchet, leaving check:deploy red on
+  // main; this records the actual count. Ratchet down if the sign-in
+  // callback becomes an Effect program end-to-end.
+  ['workers/api/src/index.ts', 9],
   ['workers/api/src/observability.ts', 1],
   ['workers/api/src/omni-handlers.ts', 7],
   ['workers/api/src/thread-access.ts', 1],
