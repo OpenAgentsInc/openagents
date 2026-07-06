@@ -8,6 +8,7 @@ import {
 import { createNativeStackNavigator } from "@react-navigation/native-stack"
 import * as Linking from "expo-linking"
 
+import { RepoPickerScreen } from "../screens/repo-picker-screen"
 import { SettingsScreen } from "../screens/settings-screen"
 import { ThreadListScreen } from "../screens/thread-list-screen"
 import { ThreadMessagesScreen } from "../screens/thread-messages-screen"
@@ -42,6 +43,7 @@ const linking: LinkingOptions<AppStackParamList> = {
         },
       },
       ThreadMessages: "thread/:threadId",
+      RepoPicker: "thread/:threadId/repo",
     },
   },
   prefixes: [Linking.createURL("/")],
@@ -75,6 +77,7 @@ export const AppNavigator = () => {
       >
         <Stack.Screen name="Home" component={AppDrawerNavigator} />
         <Stack.Screen name="ThreadMessages" component={ThreadMessagesScreen} />
+        <Stack.Screen name="RepoPicker" component={RepoPickerScreen} options={{ presentation: "modal" }} />
       </Stack.Navigator>
     </NavigationContainer>
   )

@@ -48,6 +48,10 @@ import {
   type ExpoSqliteModule,
   type KhalaMobileSyncStore
 } from "./expo-db-sqlite-persistence"
+import {
+  chatBindThreadRepoClientMutator,
+  type ChatBindThreadRepoArgs
+} from "./khala-thread-repo-binding-core"
 
 const KHALA_MOBILE_SYNC_SCHEMA_VERSION = SyncSchemaVersion.make(1)
 const DEFAULT_CHAT_LIMIT = 500
@@ -107,6 +111,19 @@ export type KhalaMobileChatRuntime = Readonly<{
   appendMessage: (
     input: Readonly<{ body: string; messageId?: string; threadId: string }>,
   ) => Promise<KhalaMobileChatMutationResult>
+  /** MM-B2 (#8472): binds (or clears, when `repo: null`) the repo pinned to
+   * a thread. Pushed through the overlay directly (`overlay.mutate`, not a
+   * TanStack DB collection) since `chatThreadKhalaSyncCollectionOptions`'s
+   * `update` handler currently only supports title changes. KNOWN GAP: the
+   * server does not yet recognize `chat.bindThreadRepo` as a mutator, so
+   * this mutation applies optimistically to the local durable store/overlay
+   * (immediately visible on-device) but is expected to be rejected by the
+   * sync session's push loop until a server-side counterpart lands — see
+   * `khala-thread-repo-binding-core.ts`'s header comment and the #8472
+   * issue comment documenting the exact server contract needed. */
+  bindThreadRepo: (
+    input: ChatBindThreadRepoArgs,
+  ) => Promise<KhalaMobileChatMutationResult>
   chatMessages: (
     input: Readonly<{ limit?: number; threadId: string }>,
   ) => Promise<KhalaMobileChatMessagesState>
@@ -127,6 +144,7 @@ export type KhalaMobileSyncRuntime = KhalaMobileChatRuntime & Readonly<{
 
 type ChatMutators = Readonly<{
   appendMessage: ClientMutator<ChatAppendMessageArgs>
+  bindThreadRepo: ClientMutator<ChatBindThreadRepoArgs>
   createThread: ClientMutator<ChatCreateThreadArgs>
   renameThread: ClientMutator<ChatRenameThreadArgs>
 }>
@@ -352,6 +370,14 @@ export const createKhalaMobileChatRuntime = (
   }
 
   return {
+    bindThreadRepo: async request => {
+      try {
+        await runEffect(input.overlay.mutate(input.mutators.bindThreadRepo, request))
+        return { ok: true, threadId: request.threadId }
+      } catch (error) {
+        return { error: errorText(error), ok: false, threadId: request.threadId }
+      }
+    },
     appendMessage: async request => {
       const messageId = request.messageId ?? makeKhalaMobileMessageId({ now: input.now })
       const collection = ensureChatMessageCollection(request.threadId)
@@ -504,6 +530,9 @@ export const openKhalaMobileSyncRuntime = async (
     appendMessage: chatAppendMessageClientMutator({
       ownerUserId: input.ownerUserId
     }),
+    bindThreadRepo: chatBindThreadRepoClientMutator({
+      ownerUserId: input.ownerUserId
+    }),
     createThread: chatCreateThreadClientMutator({
       ownerUserId: input.ownerUserId
     }),
@@ -515,6 +544,7 @@ export const openKhalaMobileSyncRuntime = async (
   const chatRejections: Array<KhalaMobileChatRejection> = []
   const overlay: KhalaSyncOverlay = await runEffect(createOverlay(store, [
     mutators.appendMessage,
+    mutators.bindThreadRepo,
     mutators.createThread,
     mutators.renameThread
   ]))

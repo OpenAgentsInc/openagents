@@ -1,6 +1,8 @@
 import {
   CHAT_MESSAGE_ENTITY_TYPE,
+  CHAT_THREAD_ENTITY_TYPE,
   decodeChatMessageEntity,
+  decodeChatThreadEntity,
   decodeRuntimeEventEntity,
   decodeRuntimeTurnEntity,
   RUNTIME_EVENT_ENTITY_TYPE,
@@ -14,6 +16,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import {
   FlatList,
   KeyboardAvoidingView,
+  Pressable,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   View,
@@ -130,6 +133,19 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
     session,
     store
   })
+  // MM-B2 (#8472): the thread entity itself (title, status, repoBinding) is
+  // replicated into this same thread-local scope alongside messages/events
+  // (see `chatThreadOverlayEffects` in `packages/khala-sync-db-collection`),
+  // so reading it here needs no extra owner-scope round trip.
+  const threadEntityState = useKhalaSyncScopeEntities({
+    decode: decodeChatThreadEntity,
+    entityType: CHAT_THREAD_ENTITY_TYPE,
+    overlay,
+    scope,
+    session,
+    store
+  })
+  const boundRepo = threadEntityState.items[0]?.repoBinding
   const activeTurn = useMemo(() => findActiveTurn(turnState.items), [turnState.items])
   const defaultLane = useMemo(() => mostRecentTurnLane(turnState.items), [turnState.items])
   const push = useKhalaSyncPush()
@@ -207,6 +223,23 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
         subtitle="work · Khala Mobile"
         title={title ?? "Thread"}
       />
+      <Pressable
+        accessibilityLabel={
+          boundRepo === undefined || boundRepo === null
+            ? "No repo bound — tap to pick a repo"
+            : `Repo bound: ${boundRepo.owner}/${boundRepo.name}`
+        }
+        accessibilityRole="button"
+        className="mx-4 mb-2 flex-row items-center justify-between rounded-lg border border-borderMuted bg-surfaceRaised px-3 py-2"
+        onPress={() => navigation.navigate("RepoPicker", { threadId })}
+      >
+        <KhalaText numberOfLines={1} variant="muted">
+          {boundRepo === undefined || boundRepo === null
+            ? "No repo — tap to pick one"
+            : `Repo: ${boundRepo.owner}/${boundRepo.name}`}
+        </KhalaText>
+        <KhalaText variant="faint">›</KhalaText>
+      </Pressable>
       <KeyboardAvoidingView
         behavior={chatComposerKeyboardVerticalOffset === 0 ? "height" : "padding"}
         className="flex-1"
