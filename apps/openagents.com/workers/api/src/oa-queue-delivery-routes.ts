@@ -22,6 +22,7 @@
 import { Effect, Schema as S } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { parseJsonUnknown } from './json-boundary'
 
 type HttpResponse = globalThis.Response
 
@@ -80,7 +81,7 @@ export const handleOaQueueDeliver = (
 
     let body: unknown
     try {
-      body = JSON.parse(delivery.payload)
+      body = parseJsonUnknown(delivery.payload)
     } catch (error) {
       // An unparseable payload can never succeed on retry; report it as a
       // permanent 422 so the operator sees it in dead letters quickly (the

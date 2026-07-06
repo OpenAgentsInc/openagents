@@ -92,7 +92,7 @@ export const makeOaJobEnqueueForEnv = (
       `) as unknown as ReadonlyArray<{ id: string }>
       const row = rows[0]
       if (row === undefined) {
-        throw new Error('oa_infra_jobs INSERT ... RETURNING produced no row')
+        throw { error: 'oa_infra_jobs_insert_returned_no_row' }
       }
       return row.id
     } finally {
