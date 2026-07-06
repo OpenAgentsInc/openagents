@@ -1,6 +1,10 @@
 # MDK Treasury / Sidecar / Tips-Buffer → Cloud Run Cutover Runbook (CFG-15)
 
-**Status:** PREPARED, staged, NOT executed. The live cutover is OWNER-GATED.
+**Status:** EXECUTION ATTEMPTED 2026-07-06 after owner GO — **flip blocked**:
+the deployed production Worker predates the endpoint seam and no code deploy
+can ship (free-plan 3 MiB cap, error 10027). CF containers left RUNNING (live
+payments intact); the live flip is now COUPLED to the CFG-9 monolith cutover.
+See §8 for the execution-attempt record and §9 for the revised sequencing.
 **Epic:** #8515 (Cloudflare → GCP migration). Cutover issue: CFG-15.
 **Audit context:** `docs/cloud/2026-07-06-cloudflare-to-google-consolidation-audit.md`.
 
@@ -282,3 +286,127 @@ in reverse:
 - **The flip vars are owner-gated.** `MDK_TREASURY_SERVICE_URL` /
   `MDK_TIPS_BUFFER_SERVICE_URL` / `MDK_SIDECAR_SERVICE_URL` in production
   change only inside this procedure.
+
+---
+
+## 8. Execution attempt record (2026-07-06, after owner GO)
+
+Owner sign-off was recorded on the CFG-15 issue and the live cutover was
+attempted the same day. Outcome: **the flip is impossible against the current
+Cloudflare Worker deployment**, and the safe result is CF containers left
+RUNNING with the live flip re-sequenced onto the CFG-9 monolith cutover.
+
+### Why the flip is blocked (verified, not inferred)
+
+1. **The deployed Worker does not contain the endpoint seam.** The last
+   successful production code upload was `2026-07-06T12:26:53Z` (source:
+   `wrangler deployments list` for `openagents-autopilot`). The seam commit
+   `89898be350` was authored at `2026-07-06T19:18:34Z` — seven hours later.
+   Confirmed directly: the deployed script bundle (fetched via the Workers
+   API) contains **zero** references to `MDK_TREASURY_SERVICE_URL` /
+   `MDK_TIPS_BUFFER_SERVICE_URL` / `MDK_SIDECAR_SERVICE_URL` or the
+   `x-mdk-sidecar-service-token` header (it does contain the pre-existing
+   `x-treasury-service-token` DO-path header). Deployed code that never reads
+   the flip vars cannot be re-pointed by any config change.
+2. **No code deploy can ship the seam.** The Workers Paid plan on the account
+   is cancelled; deploys fail with API error `10027` ("Worker exceeded the
+   size limit of 3 MiB") — the bundle is ~3.79 MiB gzipped. Verified on both
+   staging and production by the CFG-1 lane (#8516) after the 12:26Z upload.
+
+### What WAS proven (mechanics for the eventual flip)
+
+- **Secret-only updates work on the free plan with no code upload.**
+  `wrangler secret put` succeeded against both `openagents-staging` and
+  `openagents-autopilot` (probe secret `CFG15_SECRET_INJECTION_PROBE`, set
+  and then deleted; each appears as a `Source: Secret Change` deployment).
+  Once a Worker build containing the seam is deployable again, the flip vars
+  can be injected as secrets without a code upload.
+- **The CF containers can be stopped WITHOUT a Worker deploy.**
+  `wrangler containers list` shows the three live MDK container applications
+  (`openagents-autopilot-mdktreasurycontainer` — 1 instance,
+  `openagents-autopilot-mdktipsbuffercontainer` — 1 instance,
+  `openagents-autopilot-mdksidecarcontainer` — 2 instances), and
+  `wrangler containers delete <ID>` is available. This replaces Phase A
+  step 3 (which assumed a `wrangler.jsonc` deploy) while the deploy freeze
+  holds. **Caution: while the freeze holds, a containers delete is
+  one-way** — re-creating a container class requires a Worker deploy, so
+  rollback path §6 step 3 is unavailable. Delete the container apps only at
+  the moment the replacement path is verified ready to take traffic.
+
+### Decisions taken (single-writer invariant preserved)
+
+- **CF containers left RUNNING.** Stopping them without a way to re-point the
+  Worker would take live Spark/MDK payments down with no replacement path.
+- **Production mnemonics NOT loaded into Secret Manager**, and **no
+  production-named Cloud Run services created** (per precondition 3: never
+  load the production treasury mnemonic while the CF container class exists
+  in the deployed Worker). Standby remains the staging stack
+  (`oa-mdk-*-staging`, throwaway mnemonics), re-verified healthy on
+  2026-07-06 (`/health` OK on all three).
+- **Baseline snapshot recorded** (public-safe): live CF treasury via
+  `GET /api/operator/treasury/status` — MDK `balanceSat: 8622`,
+  `maxSendableSat: 8536`, reward dispatch `enabled: false` (payout gates
+  OFF), `pendingPaymentCount: 0`, all configured flags true. The deployed
+  Worker exposes no operator route for the Spark-rail balance number; the
+  Spark balance is re-snapshotted from the daemon directly during the actual
+  flip window.
+- **Considered and rejected:** a small route-scoped proxy Worker (under the
+  free cap) intercepting money paths. It could only intercept the public
+  `/api/mdk` checkout route; the treasury and tips-buffer calls are internal
+  Worker→DO calls that never cross a routable URL, and it would add a new
+  custody-adjacent surface without owner review.
+
+## 9. Revised sequencing: the live flip is coupled to CFG-9/CFG-10
+
+The CFG-9 Cloud Run monolith (#8524) consumes the same seam from plain env
+vars — no Worker deploy needed. The MDK cutover therefore executes as part of
+the monolith cutover, preserving stop-CF-first:
+
+1. **Prepare (any time before the flip):** monolith staging acceptance green
+   (#8524); staging MDK stack re-verified within 7 days (§3).
+2. **Freeze + snapshot:** payout gates confirmed OFF; snapshot MDK + Spark
+   balances and pending transactions via `/api/operator/treasury/status`
+   (post public-safe numbers to the CFG-15 issue).
+3. **Stop CF FIRST — via the containers API, not a deploy:**
+   `wrangler containers delete` each of the three MDK container application
+   IDs; verify `wrangler containers list` shows them gone (LIVE INSTANCES 0 /
+   absent); wait 10 minutes. The still-deployed old Worker now fails closed
+   (503) on money paths. **This is a point of limited return while the deploy
+   freeze holds** (no Worker deploy = no container re-create), so do it only
+   when step 1 is green and the owner has acknowledged the flip window.
+4. **Start GCP on production material:** load production mnemonics/tokens
+   into Secret Manager (`gcloud secrets versions add --data-file`, from
+   `.secrets/openagents-mdk-treasury.env`, `.secrets/openagents-mdk-tips-buffer.env`,
+   and the sidecar backup env); deploy `oa-mdk-sidecar`, `oa-mdk-tips-buffer`,
+   `oa-mdk-treasury` with `ALLOW_PRODUCTION_MONEY_PATH_DEPLOY=yes`;
+   **balance parity** against the step-2 snapshot before any traffic.
+5. **Flip traffic:** the monolith deploys/starts with
+   `MDK_TREASURY_SERVICE_URL` / `MDK_TIPS_BUFFER_SERVICE_URL` /
+   `MDK_SIDECAR_SERVICE_URL` (+ `MDK_SIDECAR_SERVICE_TOKEN`,
+   `MDK_TREASURY_SERVICE_TOKEN`, `MDK_TIPS_BUFFER_SERVICE_TOKEN`) set; CFG-10
+   DNS moves `openagents.com` to the monolith. Residual DNS-propagation
+   traffic hitting the old Worker 503s on money paths only (bounded,
+   accepted); it can never double-drive a wallet because the CF daemons no
+   longer exist.
+6. **Verify:** §5 Phase C step 9 unchanged (status API healthy, small MPP
+   funding invoice end-to-end, pending reconcile, one small real payout
+   before payout gates re-arm).
+
+**Rollback inside the window** (before DNS flip): delete the production Cloud
+Run services (§6 step 2). Note the CF side cannot be re-armed while the deploy
+freeze holds — rollback means money paths stay 503 until the monolith or a
+Worker deploy is available. This asymmetry is why step 3 waits for monolith
+staging acceptance.
+
+**If Cloudflare disables the containers before CFG-9** (live risk — the paid
+plan is cancelled): payments are down regardless of what we do, and the
+single-writer constraint is then trivially satisfied on the CF side. Verify
+the container apps are actually gone (`wrangler containers list`), then
+execute steps 4-6 as soon as the monolith can take traffic. Do not start
+production-mnemonic daemons early with no caller; that adds custody exposure
+for zero traffic.
+
+**If the owner re-enables Workers Paid instead** (fast unfreeze per #8516):
+deploy current `main` (which contains the seam) via `deploy:safe`, then run
+this runbook §5 exactly as originally written — the secret-injection path
+proven above can carry the flip vars without further code deploys.
