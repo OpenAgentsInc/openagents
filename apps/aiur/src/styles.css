@@ -1,0 +1,100 @@
+@import 'tailwindcss';
+@import '@openagentsinc/design-tokens/theme.css';
+
+/*
+ * Protoss-blue theme (owner decision 2026-07-04: one UI ecosystem, no light
+ * mode). Tailwind's @theme layer maps onto the shared `--oa-color-khala-*`
+ * custom properties from @openagentsinc/design-tokens rather than
+ * hand-rolled hex values, so Aiur stays visually consistent with the rest
+ * of the OpenAgents surface by construction. Variable names mirror
+ * apps/openagents.com/apps/start/src/styles.css so the shared
+ * `components/ui/*` primitives (copied from that app) resolve the same
+ * utility classes unchanged.
+ */
+@theme {
+  --font-sans:
+    Inter, ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+    'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-mono:
+    'SFMono-Regular', 'Cascadia Code', 'Roboto Mono', Menlo, Monaco,
+    Consolas, 'Liberation Mono', monospace;
+
+  --color-khala-void: var(--oa-color-khala-void);
+  --color-khala-surface: var(--oa-color-khala-surface);
+  --color-khala-surface-muted: var(--oa-color-khala-surface-muted);
+  --color-khala-surface-raised: var(--oa-color-khala-surface-raised);
+  --color-khala-border: var(--oa-color-khala-border);
+  --color-khala-border-strong: var(--oa-color-khala-border-strong);
+  --color-khala-energy: var(--oa-color-khala-energy-blue);
+  --color-khala-energy-cyan: var(--oa-color-khala-energy-cyan);
+  --color-khala-energy-soft: var(--oa-color-khala-energy-soft);
+  --color-khala-text: var(--oa-color-khala-text-primary);
+  --color-khala-text-muted: var(--oa-color-khala-text-muted);
+  --color-khala-text-faint: var(--oa-color-khala-text-faint);
+  --color-khala-success: var(--oa-color-khala-success);
+  --color-khala-warning: var(--oa-color-khala-warning);
+  --color-khala-danger: var(--oa-color-khala-danger);
+
+  --radius: 0.25rem;
+  --color-background: var(--color-khala-void);
+  --color-foreground: var(--color-khala-text);
+  --color-card: var(--color-khala-surface);
+  --color-card-foreground: var(--color-khala-text);
+  --color-popover: var(--color-khala-surface);
+  --color-popover-foreground: var(--color-khala-text);
+  --color-primary: var(--color-khala-text);
+  --color-primary-foreground: #000000;
+  --color-secondary: var(--color-khala-surface-raised);
+  --color-secondary-foreground: var(--color-khala-text);
+  --color-muted: var(--color-khala-surface-muted);
+  --color-muted-foreground: var(--color-khala-text-muted);
+  --color-accent: var(--color-khala-energy);
+  --color-accent-foreground: var(--color-khala-text);
+  --color-destructive: var(--color-khala-danger);
+  --color-border: var(--color-khala-border);
+  --color-input: var(--color-khala-border);
+  --color-ring: var(--color-khala-energy);
+}
+
+@layer base {
+  html {
+    background: var(--color-khala-void);
+    color-scheme: dark;
+  }
+
+  body {
+    min-width: 320px;
+    margin: 0;
+    background: var(--color-khala-void);
+    color: var(--color-khala-text);
+    font-family: var(--font-sans);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+}
+
+@utility khala-glow {
+  box-shadow: 0 0 24px -6px rgba(58, 123, 255, 0.45);
+}
+
+@utility khala-focus {
+  &:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 2px rgba(58, 123, 255, 0.75),
+      0 0 22px -4px rgba(58, 123, 255, 0.7);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

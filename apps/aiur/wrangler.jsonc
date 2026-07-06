@@ -1,0 +1,38 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "openagents-aiur",
+  "main": "src/server.ts",
+  "compatibility_date": "2026-06-19",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "aiur.openagents.com", "custom_domain": true },
+  ],
+  "observability": {
+    "enabled": true,
+  },
+  "assets": {
+    "binding": "ASSETS",
+  },
+  "vars": {
+    // Public (non-secret) OpenAuth client id — reuses the same downstream
+    // client id already registered with the shared auth.openagents.com
+    // issuer (see apps/openagents.com/workers/api/wrangler.jsonc
+    // OPENAUTH_CLIENT_ID). Aiur is a NEW redirect hostname for that same
+    // client, allow-listed in
+    // apps/openagents.com/workers/api/src/auth/mobile-session.ts
+    // (authIssuerAllowsWebRedirectHostname).
+    "OPENAUTH_CLIENT_ID": "openagents-web",
+    "OPENAUTH_ISSUER_URL": "https://auth.openagents.com",
+    // Upstream Khala Sync API this Worker proxies to (same-origin browser
+    // calls only ever reach THIS Worker; the proxy attaches the owner's
+    // verified bearer server-side before forwarding).
+    "KHALA_SYNC_UPSTREAM_BASE_URL": "https://openagents.com",
+    // Comma-separated allowlist of verified OpenAuth user ids permitted to
+    // use Aiur. FAIL-CLOSED: unset or empty denies every request. Set via
+    // `wrangler secret put AIUR_OWNER_USER_IDS` or a per-environment
+    // override below once the owner's real user id is known (see
+    // NEEDS_OWNER.md).
+    "AIUR_OWNER_USER_IDS": "",
+  },
+}

@@ -183,6 +183,8 @@ describe('auth email OTP hardening', () => {
     ).toBe(true)
     expect(authIssuerAllowsRedirectHostname('localhost')).toBe(true)
     expect(authIssuerAllowsRedirectHostname('127.0.0.1')).toBe(true)
+    // Aiur (#8499): separate Worker, same downstream web client id.
+    expect(authIssuerAllowsRedirectHostname('aiur.openagents.com')).toBe(true)
 
     expect(authIssuerAllowsRedirectHostname('openagents.example.com')).toBe(
       false,

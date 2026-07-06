@@ -281,3 +281,38 @@ claim, paid-plan availability claim, or "first paid delivery" copy cites this
 route, review a concrete production bundle and the backing payment/delivery
 evidence, confirm the label is truly external, and explicitly approve the
 public copy boundary.
+
+## Aiur Admin Panel — Owner Allowlist and DNS
+
+Source issue: OpenAgentsInc/openagents#8499 (epic #8467, Khala Code
+mobile-only MVP)
+
+Aiur (`apps/aiur/`) is the new owner-only admin panel for manually granting
+mobile-app credits (replacing IAP for the first MVP build) and viewing
+ops/health data. It is a separate Cloudflare Worker deployed at
+`aiur.openagents.com`, gated by a hard, fail-closed allowlist
+(`AIUR_OWNER_USER_IDS`) checked on every request — unset or empty denies
+everyone, including a legitimately signed-in GitHub user. See
+`docs/khala-code/2026-07-06-aiur-admin-deploy-runbook.md` for the full
+deploy/verify steps.
+
+NEEDS-OWNER:
+
+1. Sign in to `https://aiur.openagents.com/` once with GitHub (this will
+   correctly show "Access denied" the first time — the allowlist starts
+   empty). Note the verified OpenAuth user id shown in the denied state
+   (or read it from the `access_route` response / D1 `users` table by
+   GitHub login) and set it as `AIUR_OWNER_USER_IDS` in
+   `apps/aiur/wrangler.jsonc` (or via `wrangler secret put` for
+   production), then redeploy.
+2. Confirm `aiur.openagents.com` resolves and is proxied on the same
+   Cloudflare zone as `openagents.com`. `wrangler deploy` normally
+   provisions the custom-domain route automatically the first time it
+   runs against an authenticated account with zone access; if the domain
+   does not resolve after deploying, check the Cloudflare dashboard's
+   Workers Routes / Custom Domains page for the zone and add the route
+   manually.
+
+Until step 1 is complete, Aiur is deployed but denies every identity by
+design — this is the intended fail-closed default, not a launch blocker to
+"fix" by relaxing the gate.

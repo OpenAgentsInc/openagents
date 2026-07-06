@@ -34,6 +34,14 @@ export const authIssuerAllowsWebRedirectHostname = (
   // prod issuer (OPENAUTH_ISSUER_URL=auth.openagents.com), so the allowlist must
   // live here. Prod hosts above are unchanged.
   hostname === 'openagents-staging.openagents.workers.dev' ||
+  // Aiur (#8499): a SEPARATE Cloudflare Worker at aiur.openagents.com, the
+  // owner-only admin panel for the Khala Code mobile MVP. It reuses this
+  // same downstream web client id (never a new registration), so its
+  // callback hostname must be allow-listed here too. WIDEN-ONLY — every
+  // route on that Worker independently re-checks a hard owner allowlist
+  // (apps/aiur/src/auth/owner-gate.ts) before trusting the resulting
+  // session for anything.
+  hostname === 'aiur.openagents.com' ||
   hostname === 'localhost' ||
   hostname === '127.0.0.1'
 
