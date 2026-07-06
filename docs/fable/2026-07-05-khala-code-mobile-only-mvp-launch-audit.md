@@ -388,3 +388,101 @@ same version):
   mobile path and drops the stale "native SwiftUI / no Expo" framing
   (superseded by the 2026-07-04 Expo decision).
 - No green flips; the green-count pin (34) is untouched.
+
+## 11. Execution parallelization (added 2026-07-05, after MM-A1/MM-A2 landed)
+
+Status at time of writing: #8468 (MM-A1 PKCE/mobile session) and #8469
+(MM-A2 session→sync token) are closed by the main Codex agent. The
+remaining issues split into concurrent lanes chosen to avoid seam
+collisions. **Ownership rule: each lane exclusively owns its named
+surfaces.** Cross-lane contracts land as small contract-first commits on
+`main` before consumers build on them; if a lane needs a contract another
+lane hasn't landed yet, it posts the needed shape as a comment on that
+issue and continues with unblocked work.
+
+### Lane 0 — main Codex agent (serial; the critical path)
+
+**Cloud execution spine + metering**, in order:
+`#8473 (C1) → #8474 (C2) → #8475 (C3) → #8476 (C4) → #8477 (C5) → #8479
+(D2, once #8478 lands in Lane 2)`.
+
+Owns exclusively: the org-executor infrastructure (`apps/pylon` runtime
+consumer + deploy), the dispatch/admission seams in `workers/api`
+(`coding-workflow-delegation.ts`, cloud session routes, the new admission
+gate), and the `INVARIANTS.md` updates that come with #8474. This is the
+deepest-risk authority work, inherently sequential, and Codex has the
+freshest context on these seams from A1/A2.
+
+### Lane 1 — Sonnet: mobile app surface (exclusive owner of `clients/khala-mobile`)
+
+Serial within the lane:
+`#8470 (A3 sign-in UI + Tailnet retirement) → #8472 (B2 repo picker) →
+#8487 (H1 Settings rework) → #8480 (D3 balance UI) → #8488 (H2
+onboarding) → #8489 (H3 contracts pivot final pass)`.
+
+Seam notes: #8472's **first commit must be the typed thread↔repo binding
+contract in `packages/khala-sync`** — Lane 0's C1/C3 consume it. Build the
+picker against #8471's route shape (Lane 2); agree the shape in issue
+comments if B1 hasn't merged yet.
+
+### Lane 2 — Sonnet: Worker API billing/repos/models
+
+Serial within the lane: `#8471 (B1 repo API) → #8478 (D1 $10 grant) →
+#8484 (F1 per-user model config)`.
+
+Owns: the repo-listing, grant, balance/history, and model-preference route
+seams in `workers/api`. Seam notes: F1's server side (preference store +
+read API) is the bulk; Lane 0's C1 consumes the preference read. F1's
+Settings-row UI goes in as a follow-up after Lane 1's #8487 merges — this
+lane does not edit `clients/khala-mobile` screens while Lane 1 is active.
+
+### Lane 3 — Sonnet: push + IAP server (greenfield surfaces)
+
+Serial within the lane: `#8485 (G1 device registration) → #8486 (G2 push
+sender) → #8482 (E2 server IAP rail) → #8483 (E3 compliance pass)`.
+
+Seam notes: G1's client half adds `expo-notifications` (native module →
+runtime-fingerprint bump per the OTA runbook) — land the
+`clients/khala-mobile` native/app.json change as one small coordinated
+commit between Lane 1 issues, not concurrently with them. E2 builds
+against the RevenueCat webhook contract with fixtures; live sandbox
+verification waits for E1.
+
+### Held / gated — do not start yet
+
+- **#8481 (E1 RevenueCat client)**: needs owner-created RevenueCat account
+  + store products first — file the NEEDS_OWNER entry, then it joins
+  Lane 3.
+- **#8490–#8493 (I1–I4)**: convergence tier — start after Lanes 0–3 land
+  their cores. Exception: #8490's emulator-smoke half can start whenever a
+  Sonnet slot frees (Play Console steps stay owner-gated).
+- **#8494 (J1)**: post-MVP-gated.
+
+### Conflict rules (all lanes)
+
+- `clients/khala-mobile` belongs to Lane 1. `packages/khala-sync` changes
+  are contract-first mini-commits announced on the epic. `workers/api`
+  splits by route seam: Lane 0 dispatch/cloud, Lane 2
+  billing/repos/models, Lane 3 push/IAP.
+- Merge to `main` early and often; rebase before push; never touch another
+  lane's files; clean worktree per issue; tests + `check:deploy` green;
+  comment + close each issue; NEEDS_OWNER routing for gated steps; no
+  `--no-verify`.
+
+### Instruction block for the main Codex agent (copy-paste)
+
+> Change of plan for parallelization: other agents are taking the mobile
+> UI lane (#8470, #8472, #8487, #8480, #8488, #8489), the
+> billing/repos/models API lane (#8471, #8478, #8484), and the push/IAP
+> server lane (#8485, #8486, #8482, #8483). You focus exclusively on the
+> cloud execution spine, in order: #8473 → #8474 → #8475 → #8476 → #8477,
+> then #8479 once #8478 has landed. Do not modify `clients/khala-mobile`
+> or the billing/push/IAP route seams — if you need a contract from
+> another lane (the thread↔repo binding from #8472, the model-preference
+> read from #8484, the grant/balance from #8478), consume the merged
+> contract from main, or post the shape you need as a comment on that
+> issue and continue with what's unblocked. Same per-issue loop as before
+> (clean worktree, tests + check:deploy green, comment/close, push to
+> main, cleanup). All other rules from the original delegation stand. The
+> full lane map is §11 of
+> docs/fable/2026-07-05-khala-code-mobile-only-mvp-launch-audit.md.
