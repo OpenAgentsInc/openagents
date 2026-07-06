@@ -1,6 +1,6 @@
 /**
  * CFG-9 (#8524): unit coverage for the Cloud Run adapter layer — the typed
- * unavailable-binding degrade, the D1 REST bridge, queue delivery semantics,
+ * unavailable-binding degrade, the D1 REST bridge, the assets fetcher,
  * request helpers, and background task tracking. (OpenAuth/auth-KV storage
  * is CFG-3's KvStore surface — covered by its own suites.) No network, no database: every backend is a fake.
  */
@@ -9,7 +9,6 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { Effect } from 'effect'
 
 import { makeAssetsFetcher, resolveAssetPath } from './assets'
 import {
@@ -22,7 +21,6 @@ import { d1FromProcessEnv, makeD1HttpDatabase } from './d1-http'
 import { makeUnavailableDurableObjectNamespace } from './do-shims'
 import { makeBackgroundTasks, makeExecutionContext } from './execution-context'
 import { cronAuthorized, withForwardedProto } from './http-utils'
-import { deliverLeasedBatch } from './queue-postgres'
 
 describe('binding-unavailable', () => {
   it('rejects per-call with a typed error and maps to a 503', async () => {
@@ -157,74 +155,6 @@ describe('d1-http bridge', () => {
     await expect(db.prepare('SELECT 1').all()).rejects.toMatchObject({
       binding: 'OPENAGENTS_DB',
     })
-  })
-})
-
-describe('queue delivery', () => {
-  type Op = readonly [op: string, id: string]
-
-  const fakeJobQueue = (ops: Array<Op>) =>
-    ({
-      ack: (jobId: string) =>
-        Effect.sync(() => {
-          ops.push(['ack', jobId])
-        }),
-      deadLetters: () => Effect.succeed([]),
-      enqueue: () => Effect.succeed('job'),
-      lease: () => Effect.succeed([]),
-      nack: (jobId: string) =>
-        Effect.sync(() => {
-          ops.push(['nack', jobId])
-        }),
-    }) as never
-
-  const ctx = makeExecutionContext(makeBackgroundTasks(() => undefined))
-
-  it('acks handler-acked messages and nacks the rest', async () => {
-    const ops: Array<Op> = []
-    const outcome = await deliverLeasedBatch({
-      ctx,
-      env: {},
-      handler: async batch => {
-        batch.messages[0]?.ack()
-        // second message neither acked nor retried => nack (redeliver)
-      },
-      jobQueue: fakeJobQueue(ops),
-      jobs: [
-        { attempts: 1, id: 'j1', payload: '{"a":1}', topic: 't' },
-        { attempts: 1, id: 'j2', payload: '{"a":2}', topic: 't' },
-      ],
-      log: () => undefined,
-      topic: 't',
-    })
-
-    expect(outcome).toEqual({ processed: 1, retried: 1 })
-    expect(ops).toEqual([
-      ['ack', 'j1'],
-      ['nack', 'j2'],
-    ])
-  })
-
-  it('a thrown batch nacks every message (Workers retry semantics)', async () => {
-    const ops: Array<Op> = []
-    const outcome = await deliverLeasedBatch({
-      ctx,
-      env: {},
-      handler: async batch => {
-        batch.messages[0]?.ack()
-        throw new Error('boom')
-      },
-      jobQueue: fakeJobQueue(ops),
-      jobs: [
-        { attempts: 1, id: 'j1', payload: '{}', topic: 't' },
-        { attempts: 1, id: 'j2', payload: '{}', topic: 't' },
-      ],
-      log: () => undefined,
-      topic: 't',
-    })
-
-    expect(outcome).toEqual({ processed: 0, retried: 2 })
-    expect(ops.map(([op]) => op)).toEqual(['nack', 'nack'])
   })
 })
 

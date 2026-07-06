@@ -1,0 +1,5 @@
+# CFG-9 (#8524): the Cloud Run build context is ONLY the prebuilt bundle —
+# everything is built on the deploy machine (scripts/deploy-cloudrun.sh).
+*
+!Dockerfile
+!dist-cloudrun/**

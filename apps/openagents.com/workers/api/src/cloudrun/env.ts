@@ -11,7 +11,7 @@
  * - auth KV + OpenAuth issuer storage: CFG-3's KvStore over KHALA_SYNC_DB
  *   (auth/auth-kv.ts, auth/openauth-storage.ts) — config-driven, no shim
  * - KHALA_SYNC_DB:   DIRECT Cloud SQL connection string (kills Hyperdrive)
- * - queues:          Postgres JobQueue producers (CFG-7 seam)
+ * - queues: CFG-7's producer seam + oa-queue-worker pump (config-driven)
  * - durable inference streams + Khala Sync hub: config-driven Postgres /
  *   LiveHub seams landed by CFG-6/CFG-5 (KHALA_SYNC_DB,
  *   KHALA_SYNC_LIVE_HUB_URL/_TOKEN) — nothing to shim here
@@ -19,26 +19,17 @@
  * - EMAIL/BROWSER/ARTIFACTS: absent — each has an existing absence degrade
  */
 
-import { SQL } from 'bun'
 import path from 'node:path'
 
 import type { OpenAgentsWorkerEnv } from '../bindings'
 import { makeAssetsFetcher } from './assets'
-import { unavailableBinding } from './binding-unavailable'
 import { d1FromProcessEnv } from './d1-http'
 import { makeUnavailableDurableObjectNamespace } from './do-shims'
-import { QUEUE_TOPICS, makePostgresQueue } from './queue-postgres'
-import type { JobQueueShape } from '@openagentsinc/oa-infra/job-queue'
-import { makePostgresJobQueue } from '@openagentsinc/oa-infra/job-queue-postgres'
 
 export type ProcessEnv = Readonly<Record<string, string | undefined>>
 
 export type CloudRunRuntime = Readonly<{
   env: OpenAgentsWorkerEnv
-  /** Shared Bun SQL pool over OA_INFRA_DATABASE_URL (undefined when unset). */
-  infraSql: SQL | undefined
-  /** Postgres JobQueue over infraSql (undefined when unset). */
-  jobQueue: JobQueueShape | undefined
   webDistDir: string
   close: () => Promise<void>
 }>
@@ -60,22 +51,6 @@ export const buildCloudRunRuntime = (
       path.resolve(import.meta.dir, '..', '..', '..', '..', 'apps/web/dist'),
   )
 
-  const infraDatabaseUrl = processEnv['OA_INFRA_DATABASE_URL']
-  const infraSql =
-    infraDatabaseUrl === undefined || infraDatabaseUrl.length === 0
-      ? undefined
-      : new SQL({
-          max: Number(processEnv['OA_INFRA_DATABASE_POOL_MAX'] ?? 10),
-          url: infraDatabaseUrl,
-        })
-
-  const jobQueue = infraSql === undefined ? undefined : makePostgresJobQueue(infraSql)
-
-  const queueBinding = (bindingName: string, topic: string): Queue =>
-    jobQueue === undefined
-      ? unavailableBinding<Queue>(bindingName)
-      : makePostgresQueue(jobQueue, topic)
-
   const khalaSyncUrl = processEnv['KHALA_SYNC_DATABASE_URL']
 
   const bindings = {
@@ -85,20 +60,10 @@ export const buildCloudRunRuntime = (
       ? {}
       : { KHALA_SYNC_DB: { connectionString: khalaSyncUrl } }),
 
-    // ---- queues (CFG-7 Postgres JobQueue) --------------------------------
-    RUNNER_EVENTS: queueBinding('RUNNER_EVENTS', QUEUE_TOPICS.RUNNER_EVENTS),
-    ADJUTANT_ENRICHMENT_QUEUE: queueBinding(
-      'ADJUTANT_ENRICHMENT_QUEUE',
-      QUEUE_TOPICS.ADJUTANT_ENRICHMENT_QUEUE,
-    ),
-    EVENT_LEDGER_INGEST_QUEUE: queueBinding(
-      'EVENT_LEDGER_INGEST_QUEUE',
-      QUEUE_TOPICS.EVENT_LEDGER_INGEST_QUEUE,
-    ),
-    PYLON_CODEX_RAW_EVENT_METADATA_QUEUE: queueBinding(
-      'PYLON_CODEX_RAW_EVENT_METADATA_QUEUE',
-      QUEUE_TOPICS.PYLON_CODEX_RAW_EVENT_METADATA_QUEUE,
-    ),
+    // Queues: CFG-7 deleted the Queue bindings — producers enqueue via
+    // makeOaJobEnqueueForEnv over KHALA_SYNC_DB, and the separate
+    // apps/oa-queue-worker Cloud Run pump delivers leased jobs back to
+    // /api/internal/queue/deliver on this app. Nothing to shim here.
 
     // ---- durable objects ---------------------------------------------------
     // Durable inference streams are config-driven Postgres now (CFG-6,
@@ -132,12 +97,8 @@ export const buildCloudRunRuntime = (
   } as unknown as OpenAgentsWorkerEnv
 
   return {
-    close: async () => {
-      await infraSql?.end()
-    },
+    close: async () => undefined,
     env,
-    infraSql,
-    jobQueue,
     webDistDir,
   }
 }

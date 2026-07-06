@@ -9,7 +9,7 @@
  * - `POST /internal/cron` (bearer-protected) invokes the Worker's
  *   `scheduled()` task table — driven by Cloud Scheduler every minute
  * - `GET /internal/healthz` liveness probe
- * - a Postgres queue-consumer loop drives the Worker's `queue()` handler
+ * - queue delivery arrives over HTTP from the oa-queue-worker pump (CFG-7)
  * - `ctx.waitUntil` work is tracked and drained on SIGTERM
  *
  * Run with the cloudflare:workers stub preloaded:
@@ -27,8 +27,11 @@ import {
   makeBackgroundTasks,
   makeExecutionContext,
 } from './execution-context'
-import { cronAuthorized, withForwardedProto } from './http-utils'
-import { runQueueConsumerLoop } from './queue-postgres'
+import {
+  cronAuthorized,
+  withForwardedHost,
+  withForwardedProto,
+} from './http-utils'
 import {
   type SyncBridgeData,
   isSyncConnectUpgrade,
@@ -54,19 +57,12 @@ const main = async (): Promise<void> => {
   const ctx = makeExecutionContext(tasks)
   const cronToken = process.env['CLOUD_RUN_CRON_TOKEN']
   const port = Number(process.env['PORT'] ?? 8080)
+  const trustForwardedHost =
+    process.env['OPENAGENTS_TRUST_FORWARDED_HOST'] === '1'
 
-  // The Worker queue() consumer, driven from the Postgres JobQueue.
-  const consumer =
-    runtime.jobQueue === undefined
-      ? undefined
-      : runQueueConsumerLoop({
-          ctx,
-          env: runtime.env,
-          handler: (batch, env, executionCtx) =>
-            worker.queue!(batch, env as never, executionCtx),
-          jobQueue: runtime.jobQueue,
-          log: (event, detail) => log(event, detail),
-        })
+  // Queue consumption is the separate apps/oa-queue-worker Cloud Run pump
+  // (CFG-7): it leases oa_infra_jobs and POSTs to this app's
+  // /api/internal/queue/deliver route — no in-process consumer here.
 
   const runScheduled = async (source: string): Promise<void> => {
     const scheduledTime = Date.now()
@@ -96,7 +92,10 @@ const main = async (): Promise<void> => {
 
   const server = Bun.serve<SyncBridgeData, never>({
     fetch: async (incoming, bunServer): Promise<Response | undefined> => {
-      const request = withForwardedProto(incoming)
+      const request = withForwardedHost(
+        withForwardedProto(incoming),
+        trustForwardedHost,
+      )
       const url = new URL(request.url)
 
       if (url.pathname === '/internal/healthz') {
@@ -193,7 +192,6 @@ const main = async (): Promise<void> => {
       : undefined
 
   log('listening', {
-    infraSql: runtime.infraSql !== undefined,
     port: server.port,
     webDist: runtime.webDistDir,
   })
@@ -205,7 +203,6 @@ const main = async (): Promise<void> => {
     log('shutdown_start', { pendingBackgroundTasks: tasks.size(), signal })
     if (cronTimer !== undefined) clearInterval(cronTimer)
     server.stop()
-    await consumer?.stop()
     await tasks.drain()
     await runtime.close()
     log('shutdown_done', {})
