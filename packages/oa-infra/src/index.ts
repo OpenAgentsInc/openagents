@@ -43,6 +43,11 @@ export * as KvStoreMemory from "./kv-store-memory.ts"
 export * as KvStorePostgres from "./kv-store-postgres.ts"
 export * as BlobStoreMemory from "./blob-store-memory.ts"
 export * as BlobStoreGcs from "./blob-store-gcs.ts"
+// Workerd/Bun-portable HMAC-interop backend (no SDK). Also importable via
+// the SIDE-EFFECT-FREE subpath `@openagentsinc/oa-infra/blob-store-gcs-hmac`
+// — use the subpath from Workers bundles so the SDK-backed sibling above
+// never enters the graph.
+export * as BlobStoreGcsHmac from "./blob-store-gcs-hmac.ts"
 export * as JobQueueMemory from "./job-queue-memory.ts"
 export * as JobQueuePostgres from "./job-queue-postgres.ts"
 export * as DurableStreamMemory from "./durable-stream-memory.ts"
