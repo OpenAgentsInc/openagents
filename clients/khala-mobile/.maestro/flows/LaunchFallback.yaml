@@ -9,6 +9,5 @@ onFlowStart:
   - runFlow: ../shared/_OnFlowStart.yaml
 ---
 - assertVisible: "Khala Code"
-- assertVisible: "Sign in with GitHub"
-- assertVisible: "One key. Your whole fleet."
+- assertVisible: "Log in with GitHub"
 - assertVisible: "Khala Code"

@@ -59,7 +59,8 @@
           "icon": "./assets/images/adaptive-icon.png",
           "color": "#4fd0ff"
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
       "khala": {

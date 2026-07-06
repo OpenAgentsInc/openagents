@@ -506,6 +506,7 @@
       "name": "@openagentsinc/khala-mobile",
       "version": "0.1.0",
       "dependencies": {
+        "@expo-google-fonts/jetbrains-mono": "^0.4.1",
         "@expo/metro-config": "57.0.3",
         "@expo/metro-runtime": "57.0.3",
         "@openagentsinc/behavior-contracts": "workspace:*",
@@ -525,6 +526,7 @@
         "expo-constants": "57.0.3",
         "expo-crypto": "~57.0.0",
         "expo-device": "^57.0.0",
+        "expo-font": "~57.0.0",
         "expo-haptics": "57.0.0",
         "expo-linking": "57.0.1",
         "expo-modules-core": "57.0.2",
@@ -1347,6 +1349,8 @@
     "@eslint/object-schema": ["@eslint/object-schema@3.0.5", "", {}, "sha512-vqTaUEgxzm+YDSdElad6PiRoX4t8VGDjCtt05zn4nU810UIx/uNEV7/lZJ6KwFThKZOzOxzXy48da+No7HZaMw=="],
 
     "@eslint/plugin-kit": ["@eslint/plugin-kit@0.7.2", "", { "dependencies": { "@eslint/core": "^1.2.1", "levn": "^0.4.1" } }, "sha512-+CNAzxglkrpNf/kKywqQfk74QjtceuOE7Qm+AF8miRvPF/wmmK5+OJOgVh3AVTT3RP2mH3+FOaxlE5v72owk0A=="],
+
+    "@expo-google-fonts/jetbrains-mono": ["@expo-google-fonts/jetbrains-mono@0.4.1", "", {}, "sha512-CslACrtMOcRwoWXCO7OMEI+9w3fukWSoBtvNz46OqPoogEuuoY0tkDY1O8sFumk8t0pC6Cx0Xr95O0TOQhpkug=="],
 
     "@expo-google-fonts/material-symbols": ["@expo-google-fonts/material-symbols@0.4.38", "", {}, "sha512-IJkBtN1o8u9BW5fvSii1MyHPQ7Q0HxbWcVBvOrOzgMLpVtZw7R2w94wBTVR7kZwv3w1JNTESMmLA5Sqn1+Z36A=="],
 

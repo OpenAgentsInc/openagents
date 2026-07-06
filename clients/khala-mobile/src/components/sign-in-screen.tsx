@@ -1,3 +1,4 @@
+import { useFonts, JetBrainsMono_700Bold } from "@expo-google-fonts/jetbrains-mono"
 import { View } from "react-native"
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
@@ -13,7 +14,16 @@ import { NexusBeamBackdrop, NexusSignInButton, WarpAperture } from "./nexus-beam
  * materializing code glyphs, a rotated-diamond "warp aperture" behind the
  * hero title, and a bordered cyan CTA bar. See `./nexus-beam/` for the
  * decorative pieces. Visual-only change — auth wiring (`githubSignInReady`,
- * `signInErrorMessage`, `signInWithGitHub`, `status`) is unchanged. */
+ * `signInErrorMessage`, `signInWithGitHub`, `status`) is unchanged.
+ *
+ * The "Khala Code" title uses JetBrains Mono (loaded via
+ * @expo-google-fonts/jetbrains-mono) rather than the system sans — the
+ * source wireframe's own CSS (`Khala Mobile Landing Wireframes.dc.html`)
+ * imports JetBrains Mono for this exact hero across all four directions, so
+ * this matches the original design intent rather than introducing a new
+ * typeface. Falls back to the default heading font until the font asset
+ * loads (typically within a frame or two — no splash-screen gating needed
+ * for one title string). */
 export const SignInScreen = () => {
   const {
     githubSignInReady,
@@ -22,6 +32,7 @@ export const SignInScreen = () => {
     status,
   } = useKhalaAuth()
   const signingIn = status === "signing_in"
+  const [monoTitleFontLoaded] = useFonts({ JetBrainsMono_700Bold })
 
   return (
     <KhalaScreen contentClassName="px-7">
@@ -31,16 +42,12 @@ export const SignInScreen = () => {
         <View className="flex-1 items-center justify-center gap-3">
           <WarpAperture />
 
-          <KhalaText className="mt-4 text-center text-4xl" variant="heading">
+          <KhalaText
+            className="mt-4 text-center text-4xl"
+            style={monoTitleFontLoaded ? { fontFamily: "JetBrainsMono_700Bold" } : undefined}
+            variant="heading"
+          >
             {tx("app.title")}
-          </KhalaText>
-
-          <KhalaText className="text-[11px] uppercase tracking-widest text-textFaint" variant="faint">
-            One key. Your whole fleet.
-          </KhalaText>
-
-          <KhalaText className="mt-2 max-w-[280px] text-center leading-6 text-textBody" variant="body">
-            {tx("signIn.github.subtitle")}
           </KhalaText>
         </View>
 

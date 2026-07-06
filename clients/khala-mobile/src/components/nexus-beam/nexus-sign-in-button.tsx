@@ -52,7 +52,7 @@ export const NexusSignInButton = ({
       )}
       <KhalaText
         className="text-center font-semibold tracking-wide"
-        style={{ color: khalaMobileTheme.accentText }}
+        style={{ color: khalaMobileTheme.accentText, fontSize: 19 }}
         variant="body"
       >
         {text}

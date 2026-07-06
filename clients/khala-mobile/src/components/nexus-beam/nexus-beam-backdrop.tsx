@@ -55,6 +55,8 @@ const glyphs: ReadonlyArray<{ color: string; text: string }> = [
   { color: khalaMobileTheme.borderMuted, text: "10011" },
   { color: khalaMobileTheme.borderStrong, text: "{ intent }" },
   { color: khalaMobileTheme.accentSoft, text: "fn resolve()" },
+  { color: khalaMobileTheme.borderMuted, text: "await khala" },
+  { color: khalaMobileTheme.borderStrong, text: "=> merge" },
 ]
 
 const PulsingDiamondGlyph = () => {

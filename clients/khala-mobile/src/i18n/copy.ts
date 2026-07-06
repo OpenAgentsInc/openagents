@@ -6,7 +6,6 @@ export const khalaCopyKeys = [
   "nav.settings",
   "nav.threads",
   "signIn.github.primary",
-  "signIn.github.subtitle",
 ] as const
 
 export type KhalaCopyKey = (typeof khalaCopyKeys)[number]
@@ -18,8 +17,7 @@ export const enCopy = {
   "errorBoundary.retry": "Try again",
   "nav.settings": "Settings",
   "nav.threads": "Khala",
-  "signIn.github.primary": "Sign in with GitHub",
-  "signIn.github.subtitle": "Connect GitHub to pick a repo and run Khala Code from this phone.",
+  "signIn.github.primary": "Log in with GitHub",
 } satisfies Record<KhalaCopyKey, string>
 
 export const copyLocale = "en" as const
