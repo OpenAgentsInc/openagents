@@ -1,0 +1,53 @@
+{
+  "name": "@openagentsinc/oa-infra",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./kv-store": "./src/kv-store.ts",
+    "./kv-store-memory": "./src/kv-store-memory.ts",
+    "./kv-store-postgres": "./src/kv-store-postgres.ts",
+    "./blob-store": "./src/blob-store.ts",
+    "./blob-store-memory": "./src/blob-store-memory.ts",
+    "./blob-store-gcs": "./src/blob-store-gcs.ts",
+    "./job-queue": "./src/job-queue.ts",
+    "./job-queue-memory": "./src/job-queue-memory.ts",
+    "./job-queue-postgres": "./src/job-queue-postgres.ts",
+    "./durable-stream": "./src/durable-stream.ts",
+    "./durable-stream-memory": "./src/durable-stream-memory.ts",
+    "./durable-stream-postgres": "./src/durable-stream-postgres.ts",
+    "./mutex": "./src/mutex.ts",
+    "./mutex-memory": "./src/mutex-memory.ts",
+    "./mutex-postgres": "./src/mutex-postgres.ts",
+    "./scheduler": "./src/scheduler.ts",
+    "./cron": "./src/cron.ts",
+    "./sql": "./src/sql.ts",
+    "./migrate": "./src/migrate.ts",
+    "./conformance/kv-store": "./src/conformance/kv-store.ts",
+    "./conformance/blob-store": "./src/conformance/blob-store.ts",
+    "./conformance/job-queue": "./src/conformance/job-queue.ts",
+    "./conformance/durable-stream": "./src/conformance/durable-stream.ts",
+    "./conformance/mutex": "./src/conformance/mutex.ts"
+  },
+  "files": [
+    "src",
+    "scripts",
+    "migrations"
+  ],
+  "scripts": {
+    "migrate": "bun scripts/migrate.ts",
+    "test": "bun test src",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@google-cloud/storage": "^7.16.0",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@openagentsinc/khala-sync-server": "workspace:*",
+    "bun-types": "^1.0.0",
+    "typescript": "catalog:"
+  }
+}
