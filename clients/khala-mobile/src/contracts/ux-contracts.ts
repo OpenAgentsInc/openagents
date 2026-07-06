@@ -559,9 +559,9 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
-        "iOS has stronger automated/proof-adjacent evidence today (two independently-confirmed VALID TestFlight uploads) than Android (clean local Gradle assemble only, no launched APK). This contract exists specifically to keep that asymmetry visible rather than implying platform parity.",
+        "As of 2026-07-06 both platforms have a real launched-app receipt (iOS: two independently-confirmed VALID TestFlight uploads plus a simulator Maestro pass; Android: a real emulator boot, install, launch, and Maestro pass). Neither platform yet has a signed-in thread-open/message-send receipt — that remains the shared gap, not an iOS/Android asymmetry.",
       blockerRefs: [
-        "blocker.khala_mobile.needs_physical_android_device_or_emulator_launch",
+        "blocker.khala_mobile.needs_seeded_public_safe_test_github_account",
         "blocker.khala_mobile.needs_ios_testflight_install_and_interact_pass",
       ],
       contractId: "khala_mobile.platform.launched_app_interaction_smoke.v1",
@@ -569,11 +569,14 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
       evidenceRefs: [
         "clients/khala-mobile/.maestro/shared/_OnFlowStart.yaml",
         "clients/khala-mobile/.maestro/flows/LaunchFallback.yaml",
+        "clients/khala-mobile/.maestro/flows/LaunchGitHubSignInInteraction.yaml",
         "clients/khala-mobile/.maestro/flows/SignedInThreadSmoke.yaml",
         "clients/khala-mobile/README.md",
         "clients/khala-mobile/tests/maestro-policy.test.ts",
         "docs/khala-mobile/2026-07-05-maestro-launched-app-smoke-receipt.md",
         "docs/khala-mobile/2026-07-05-mobile-qa-swarm-audit.md",
+        "docs/khala-mobile/2026-07-06-android-emulator-launch-smoke-receipt.md",
+        "docs/khala-mobile/2026-07-06-android-build-and-upload-runbook.md",
       ],
       oracles: [],
       productArea: "app lifecycle",
@@ -587,7 +590,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "The built app actually launches and is interactable end to end on a real Android device/emulator and a real iOS device (beyond simulator/local-build success), for at least: sign-in resolves, a thread opens, a message sends, and the composer's lane picker is visible.",
       surface: "khala-mobile",
       verification:
-        "Partial launched-app receipt recorded: docs/khala-mobile/2026-07-05-maestro-launched-app-smoke-receipt.md proves LaunchFallback.yaml passed on the iPhone 17 Pro iOS 26.5 simulator for app id com.openagents.khala.mobile, app version 0.1.0, iOS build 6, with local Metro serving the debug build. The broader contract remains pending because no public-safe seeded owner/token/thread precondition was available for SignedInThreadSmoke.yaml, and Android launched APK coverage is still unrecorded.",
+        "Launched-app receipts now exist for both platforms: docs/khala-mobile/2026-07-05-maestro-launched-app-smoke-receipt.md proves LaunchFallback.yaml passed on the iPhone 17 Pro iOS 26.5 simulator; docs/khala-mobile/2026-07-06-android-emulator-launch-smoke-receipt.md proves the same LaunchFallback.yaml flow AND the new LaunchGitHubSignInInteraction.yaml flow (real tap -> real external-browser handoff) passed on a real Android 15 (API 35) emulator against a locally built, locally installed debug APK. The broader contract remains pending on both platforms because no public-safe seeded owner/token/thread precondition was available for SignedInThreadSmoke.yaml.",
     },
     {
       authorityBoundary:

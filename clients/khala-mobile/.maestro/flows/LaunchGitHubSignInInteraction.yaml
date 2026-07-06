@@ -1,0 +1,26 @@
+# flow: Khala Mobile launch + GitHub sign-in tap interaction (Android + iOS)
+# intent:
+# The Android analog of LaunchFallback.yaml, extended one step further: prove
+# the primary "Sign in with GitHub" action is a REAL interactive control, not
+# just visible text. Tapping it must hand off to the platform's external
+# authorization surface (Chrome Custom Tabs on Android, ASWebAuthenticationSession
+# on iOS) via expo-auth-session/expo-web-browser — this is the honest interaction
+# boundary reachable without a seeded GitHub test account and a live OAuth
+# round trip. It does not complete a real GitHub login and does not open a
+# thread or send a message; see SignedInThreadSmoke.yaml for the
+# seeded-credential continuation, which remains the pending half of
+# khala_mobile.platform.launched_app_interaction_smoke.v1 on both platforms.
+#
+appId: ${MAESTRO_APP_ID}
+onFlowStart:
+  - runFlow: ../shared/_OnFlowStart.yaml
+---
+- assertVisible: "Khala Code"
+- assertVisible: "Sign in with GitHub"
+- tapOn: "Sign in with GitHub"
+- waitForAnimationToEnd
+# The tap must leave the app's own process (an external browser/custom-tab
+# surface takes focus) rather than no-op or crash back to the sign-in screen.
+- assertNotVisible:
+    text: "Sign in with GitHub"
+    optional: false

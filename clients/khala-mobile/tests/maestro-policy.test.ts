@@ -6,9 +6,10 @@ const read = (path: string) => Bun.file(new URL(path, mobileRoot)).text()
 
 describe("Khala mobile Maestro flows", () => {
   test("define local-only startup and smoke flows", async () => {
-    const [startup, fallback, signedIn] = await Promise.all([
+    const [startup, fallback, signInInteraction, signedIn] = await Promise.all([
       read(".maestro/shared/_OnFlowStart.yaml"),
       read(".maestro/flows/LaunchFallback.yaml"),
+      read(".maestro/flows/LaunchGitHubSignInInteraction.yaml"),
       read(".maestro/flows/SignedInThreadSmoke.yaml"),
     ])
 
@@ -18,6 +19,10 @@ describe("Khala mobile Maestro flows", () => {
 
     expect(fallback).toContain("Sign in with GitHub")
     expect(fallback).toContain("No desktop, Tailnet, or manual token is required.")
+
+    expect(signInInteraction).toContain("Sign in with GitHub")
+    expect(signInInteraction).toContain("tapOn")
+    expect(signInInteraction).toContain("assertNotVisible")
 
     expect(signedIn).toContain("${KHALA_MAESTRO_OWNER_USER_ID}")
     expect(signedIn).toContain("${KHALA_MAESTRO_TOKEN}")
@@ -29,6 +34,7 @@ describe("Khala mobile Maestro flows", () => {
     const files = await Promise.all([
       read(".maestro/shared/_OnFlowStart.yaml"),
       read(".maestro/flows/LaunchFallback.yaml"),
+      read(".maestro/flows/LaunchGitHubSignInInteraction.yaml"),
       read(".maestro/flows/SignedInThreadSmoke.yaml"),
     ])
     const allFlowText = files.join("\n")
