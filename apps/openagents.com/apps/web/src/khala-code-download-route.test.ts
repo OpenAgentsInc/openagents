@@ -3,6 +3,7 @@ import type { Html } from 'foldkit/html'
 import { describe, expect, test } from 'vitest'
 
 import { Flags, init } from './main'
+import * as Code from './page/code'
 import * as KhalaCodeDownload from './page/khalaCodeDownload'
 import { KhalaCodeDownloadRoute, urlToAppRoute } from './route'
 
@@ -108,6 +109,19 @@ describe('khala code download route', () => {
       KhalaCodeDownload.KHALA_CODE_DOWNLOAD_COUNTER_ENDPOINT,
     )
     expect(rendered).toContain('empty counts array')
+  })
+
+  test('renders the Khala Code landing with the glass control preview and install CTA', () => {
+    const rendered = renderHtml(Code.view({ _tag: 'LoggedOut' }))
+
+    expect(rendered).toContain('data-route="code"')
+    expect(rendered).toContain('Khala Code control preview')
+    expect(rendered).toContain('Install paths')
+    expect(rendered).toContain('/code/download')
+    expect(rendered).toContain('/docs/openagents')
+    expect(rendered).toContain('Codex required')
+    expect(rendered).toContain('Local Codex')
+    expect(rendered).toContain('chat-composer="khala-code"')
   })
 
   test('keeps public copy inside the khala_code desktop wrapper promise gate', () => {
