@@ -1,6 +1,7 @@
 import {
   CHAT_MESSAGE_ENTITY_TYPE,
   CHAT_THREAD_ENTITY_TYPE,
+  ChatThreadRepoBinding,
   decodeChatMessageEntity,
   decodeChatThreadEntity,
   EntityId,
@@ -34,6 +35,7 @@ import { defineMutator } from "./push-engine.js"
 export const CHAT_CREATE_THREAD_MUTATOR_NAME = "chat.createThread"
 export const CHAT_APPEND_MESSAGE_MUTATOR_NAME = "chat.appendMessage"
 export const CHAT_RENAME_THREAD_MUTATOR_NAME = "chat.renameThread"
+export const CHAT_BIND_THREAD_REPO_MUTATOR_NAME = "chat.bindThreadRepo"
 
 export const CHAT_SCOPE_REJECTION = "unauthorized_scope"
 export const CHAT_THREAD_EXISTS_REJECTION = "thread_exists"
@@ -71,6 +73,12 @@ const RenameThreadArgs = S.Struct({
 })
 type RenameThreadArgs = typeof RenameThreadArgs.Type
 
+const BindThreadRepoArgs = S.Struct({
+  threadId: ChatRefField,
+  repo: S.NullOr(ChatThreadRepoBinding),
+})
+type BindThreadRepoArgs = typeof BindThreadRepoArgs.Type
+
 export const decodeChatCreateThreadArgs = (
   argsJson: string,
 ): CreateThreadArgs =>
@@ -86,6 +94,11 @@ export const decodeChatRenameThreadArgs = (
 ): RenameThreadArgs =>
   S.decodeUnknownSync(RenameThreadArgs)(JSON.parse(argsJson) as unknown)
 
+export const decodeChatBindThreadRepoArgs = (
+  argsJson: string,
+): BindThreadRepoArgs =>
+  S.decodeUnknownSync(BindThreadRepoArgs)(JSON.parse(argsJson) as unknown)
+
 type ChatThreadRow = Readonly<{
   thread_id: string
   owner_user_id: string
@@ -95,6 +108,9 @@ type ChatThreadRow = Readonly<{
   last_message_at: string | null
   created_at: string
   updated_at: string
+  repo_binding_owner: string | null
+  repo_binding_name: string | null
+  repo_binding_default_branch: string | null
 }>
 
 type ChatMessageRow = Readonly<{
@@ -115,12 +131,40 @@ const transactionNowIso = async (ctx: MutatorContext): Promise<string> => {
 
 const normalizeTitle = (title: string): string => title.trim()
 
+/** `null` whenever any repo column is unset — covers both "never bound"
+ * (all three columns NULL from row creation) and "explicitly cleared" via
+ * `chat.bindThreadRepo` with `repo: null` (same result). This server
+ * function always returns a decodable value (never the `undefined`/absent
+ * case `ChatThreadEntity.repoBinding`'s `S.optional` also allows) since
+ * every row read through here has all three columns; `undefined` only
+ * matters for decoding pre-#8472 entities from elsewhere (e.g. an
+ * on-device cache written before this field existed), not server reads.
+ * All three columns are written together by `chat.bindThreadRepo`, so a
+ * partial set (one column set, others null) is not an expected state;
+ * treat it as "no binding" rather than throwing, since a decode failure
+ * here would break every other read of an unrelated thread. */
+const repoBindingFromRow = (row: ChatThreadRow): ChatThreadRepoBinding | null => {
+  if (
+    row.repo_binding_owner === null ||
+    row.repo_binding_name === null ||
+    row.repo_binding_default_branch === null
+  ) {
+    return null
+  }
+  return new ChatThreadRepoBinding({
+    defaultBranch: row.repo_binding_default_branch,
+    name: row.repo_binding_name,
+    owner: row.repo_binding_owner,
+  })
+}
+
 const threadEntityFromRow = (row: ChatThreadRow): ChatThreadEntity =>
   decodeChatThreadEntity({
     createdAt: row.created_at,
     lastMessageAt: row.last_message_at,
     messageCount: Number(row.message_count),
     ownerUserId: row.owner_user_id,
+    repoBinding: repoBindingFromRow(row),
     status: row.status,
     threadId: row.thread_id,
     title: row.title,
@@ -133,7 +177,8 @@ const readThreadForUpdate = async (
 ): Promise<ChatThreadRow | null> => {
   const rows: Array<ChatThreadRow> = await ctx.writer.sql`
     SELECT thread_id, owner_user_id, title, status, message_count,
-           last_message_at, created_at, updated_at
+           last_message_at, created_at, updated_at,
+           repo_binding_owner, repo_binding_name, repo_binding_default_branch
     FROM khala_sync_chat_threads
     WHERE thread_id = ${threadId}
     FOR UPDATE
@@ -245,7 +290,8 @@ export const chatCreateThreadMutator: MutatorDefinition =
            ${null}, ${nowIso}, ${nowIso})
         ON CONFLICT (thread_id) DO NOTHING
         RETURNING thread_id, owner_user_id, title, status, message_count,
-                  last_message_at, created_at, updated_at
+                  last_message_at, created_at, updated_at,
+                  repo_binding_owner, repo_binding_name, repo_binding_default_branch
       `
       const row = inserted[0]
       if (row === undefined) {
@@ -319,7 +365,8 @@ export const chatAppendMessageMutator: MutatorDefinition =
             updated_at = ${nowIso}
         WHERE thread_id = ${args.threadId}
         RETURNING thread_id, owner_user_id, title, status, message_count,
-                  last_message_at, created_at, updated_at
+                  last_message_at, created_at, updated_at,
+                  repo_binding_owner, repo_binding_name, repo_binding_default_branch
       `
       const updatedThread = updatedThreads[0]
       if (updatedThread === undefined) {
@@ -361,7 +408,8 @@ export const chatRenameThreadMutator: MutatorDefinition =
             updated_at = ${nowIso}
         WHERE thread_id = ${args.threadId}
         RETURNING thread_id, owner_user_id, title, status, message_count,
-                  last_message_at, created_at, updated_at
+                  last_message_at, created_at, updated_at,
+                  repo_binding_owner, repo_binding_name, repo_binding_default_branch
       `
       const updatedThread = updatedThreads[0]
       if (updatedThread === undefined) {
@@ -377,8 +425,58 @@ export const chatRenameThreadMutator: MutatorDefinition =
     name: MutatorName.make(CHAT_RENAME_THREAD_MUTATOR_NAME),
   })
 
+/** Server side of MM-B2 (#8472)'s mobile repo picker. The mobile client has
+ * applied this optimistically on-device since #8472 landed; this mutator is
+ * what makes the binding durable server-side so it survives across
+ * devices/sessions and reaches the org-cloud executor (#8473+). `repo: null`
+ * explicitly clears a binding (distinct from a thread that was never bound,
+ * which reads the same way — see `repoBindingFromRow`). */
+export const chatBindThreadRepoMutator: MutatorDefinition =
+  defineMutator<BindThreadRepoArgs>({
+    decodeArgs: decodeChatBindThreadRepoArgs,
+    execute: async (args, ctx) => {
+      const thread = await readThreadForUpdate(ctx, args.threadId)
+      if (thread === null) {
+        return reject(
+          ctx,
+          CHAT_THREAD_NOT_FOUND_REJECTION,
+          "this chat thread does not exist",
+        )
+      }
+      if (thread.owner_user_id !== ctx.userId) return rejectForeignScope(ctx)
+
+      const ownerRejection = await ensureThreadScopeOwner(ctx, args.threadId)
+      if (ownerRejection !== null) return ownerRejection
+
+      const nowIso = await transactionNowIso(ctx)
+      const updatedThreads: Array<ChatThreadRow> = await ctx.writer.sql`
+        UPDATE khala_sync_chat_threads
+        SET repo_binding_owner = ${args.repo?.owner ?? null},
+            repo_binding_name = ${args.repo?.name ?? null},
+            repo_binding_default_branch = ${args.repo?.defaultBranch ?? null},
+            updated_at = ${nowIso}
+        WHERE thread_id = ${args.threadId}
+        RETURNING thread_id, owner_user_id, title, status, message_count,
+                  last_message_at, created_at, updated_at,
+                  repo_binding_owner, repo_binding_name, repo_binding_default_branch
+      `
+      const updatedThread = updatedThreads[0]
+      if (updatedThread === undefined) {
+        throw new Error("chat thread disappeared during bindThreadRepo")
+      }
+
+      await appendThreadEntityChanges(ctx, threadEntityFromRow(updatedThread))
+      return new MutationResult({
+        mutationId: ctx.mutationId,
+        status: "applied",
+      })
+    },
+    name: MutatorName.make(CHAT_BIND_THREAD_REPO_MUTATOR_NAME),
+  })
+
 export const chatMutators: ReadonlyArray<MutatorDefinition> = [
   chatCreateThreadMutator,
   chatAppendMessageMutator,
   chatRenameThreadMutator,
+  chatBindThreadRepoMutator,
 ]

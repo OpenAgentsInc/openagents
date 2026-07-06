@@ -24,6 +24,7 @@ import {
 } from "bun:test"
 import {
   CHAT_APPEND_MESSAGE_MUTATOR_NAME,
+  CHAT_BIND_THREAD_REPO_MUTATOR_NAME,
   CHAT_CREATE_THREAD_MUTATOR_NAME,
   CHAT_MESSAGE_EXISTS_REJECTION,
   CHAT_RENAME_THREAD_MUTATOR_NAME,
@@ -190,6 +191,119 @@ describe.skipIf(!hasLocalPostgres())(
       expect(threadRows[0]!.title).toBe("Renamed thread")
       expect(Number(threadRows[0]!.message_count)).toBe(1)
       expect(threadRows[0]!.last_message_at).not.toBeNull()
+    })
+
+    test("bindThreadRepo durably binds/clears a repo and rejects for a foreign owner or missing thread (#8472 follow-up)", async () => {
+      const owner = freshClient()
+      const intruder = freshClient()
+      const threadId = "chat-thread.repo-binding.1"
+
+      await executePush({
+        registry,
+        request: pushRequest(owner, [
+          envelope(1, CHAT_CREATE_THREAD_MUTATOR_NAME, {
+            threadId,
+            title: "Repo-bound thread",
+          }),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: owner.userId,
+      })
+
+      const bound = await executePush({
+        registry,
+        request: pushRequest(owner, [
+          envelope(2, CHAT_BIND_THREAD_REPO_MUTATOR_NAME, {
+            repo: { defaultBranch: "main", name: "openagents", owner: "OpenAgentsInc" },
+            threadId,
+          }),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: owner.userId,
+      })
+      expect(bound.results[0]!.status).toBe("applied")
+
+      const boundRows: Array<{
+        repo_binding_owner: string | null
+        repo_binding_name: string | null
+        repo_binding_default_branch: string | null
+      }> = await sql`
+        SELECT repo_binding_owner, repo_binding_name, repo_binding_default_branch
+        FROM khala_sync_chat_threads WHERE thread_id = ${threadId}
+      `
+      expect(boundRows[0]).toEqual({
+        repo_binding_default_branch: "main",
+        repo_binding_name: "openagents",
+        repo_binding_owner: "OpenAgentsInc",
+      })
+
+      const chatScope = threadScope(threadId)
+      const threadLogAfterBind = await logPage(sql as unknown as SyncSql, {
+        afterVersion: null,
+        limit: 10,
+        scope: chatScope,
+      })
+      expect(JSON.stringify(threadLogAfterBind.entries)).toContain("OpenAgentsInc")
+
+      // A foreign user may not bind a repo onto someone else's thread.
+      const foreignAttempt = await executePush({
+        registry,
+        request: pushRequest(intruder, [
+          envelope(1, CHAT_BIND_THREAD_REPO_MUTATOR_NAME, {
+            repo: { defaultBranch: "main", name: "other-repo", owner: "someone-else" },
+            threadId,
+          }),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: intruder.userId,
+      })
+      expect(foreignAttempt.results[0]!.status).toBe("rejected")
+      expect(foreignAttempt.results[0]!.errorCode).toBe(CHAT_SCOPE_REJECTION)
+
+      // Binding onto a thread that does not exist rejects in-band.
+      const missingThreadAttempt = await executePush({
+        registry,
+        request: pushRequest(owner, [
+          envelope(3, CHAT_BIND_THREAD_REPO_MUTATOR_NAME, {
+            repo: { defaultBranch: "main", name: "n", owner: "o" },
+            threadId: "chat-thread.repo-binding.does-not-exist",
+          }),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: owner.userId,
+      })
+      expect(missingThreadAttempt.results[0]!.status).toBe("rejected")
+      expect(missingThreadAttempt.results[0]!.errorCode).toBe(
+        CHAT_THREAD_NOT_FOUND_REJECTION,
+      )
+
+      // repo: null clears an existing binding back to "no repo".
+      const cleared = await executePush({
+        registry,
+        request: pushRequest(owner, [
+          envelope(4, CHAT_BIND_THREAD_REPO_MUTATOR_NAME, {
+            repo: null,
+            threadId,
+          }),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: owner.userId,
+      })
+      expect(cleared.results[0]!.status).toBe("applied")
+
+      const clearedRows: Array<{
+        repo_binding_owner: string | null
+        repo_binding_name: string | null
+        repo_binding_default_branch: string | null
+      }> = await sql`
+        SELECT repo_binding_owner, repo_binding_name, repo_binding_default_branch
+        FROM khala_sync_chat_threads WHERE thread_id = ${threadId}
+      `
+      expect(clearedRows[0]).toEqual({
+        repo_binding_default_branch: null,
+        repo_binding_name: null,
+        repo_binding_owner: null,
+      })
     })
 
     test("foreign append rejects in-band and the following owner-private mutation still applies", async () => {
