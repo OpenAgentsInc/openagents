@@ -181,3 +181,51 @@ module "terraform_state_bucket" {
   location   = "US-CENTRAL1"
   versioning = true
 }
+
+# ---------------------------------------------------------------------------
+# Artifact/blob storage (CFG-8, #8523) — replaces the Cloudflare R2
+# `ARTIFACTS` buckets (`openagents-autopilot-artifacts` /
+# `openagents-autopilot-artifacts-staging`) that were account-disabled
+# during the Cloudflare→GCP consolidation (#8515). The old R2 usage had no
+# object TTL/lifecycle in code, so none is configured here.
+# ---------------------------------------------------------------------------
+
+module "oa_artifacts_bucket" {
+  source = "../modules/gcs-bucket"
+
+  project  = var.project_id
+  name     = "${var.project_id}-oa-artifacts"
+  location = "US-CENTRAL1"
+}
+
+module "oa_artifacts_staging_bucket" {
+  source = "../modules/gcs-bucket"
+
+  project  = var.project_id
+  name     = "${var.project_id}-oa-artifacts-staging"
+  location = "US-CENTRAL1"
+}
+
+# Dedicated service account whose HMAC key backs the workerd/Bun-compatible
+# GCS BlobStore (oa-infra `blob-store-gcs-hmac`). Bucket-scoped grants only —
+# no project-level roles.
+module "oa_artifacts_rw_sa" {
+  source = "../modules/service-account"
+
+  project      = var.project_id
+  account_id   = "oa-artifacts-rw"
+  display_name = "OpenAgents artifacts BlobStore (CFG-8)"
+  description  = "HMAC-key identity for the oa-infra GCS BlobStore backing the former R2 ARTIFACTS surface (#8523)."
+}
+
+resource "google_storage_bucket_iam_member" "oa_artifacts_rw" {
+  bucket = module.oa_artifacts_bucket.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${module.oa_artifacts_rw_sa.email}"
+}
+
+resource "google_storage_bucket_iam_member" "oa_artifacts_staging_rw" {
+  bucket = module.oa_artifacts_staging_bucket.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${module.oa_artifacts_rw_sa.email}"
+}

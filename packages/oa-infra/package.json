@@ -12,6 +12,7 @@
     "./blob-store": "./src/blob-store.ts",
     "./blob-store-memory": "./src/blob-store-memory.ts",
     "./blob-store-gcs": "./src/blob-store-gcs.ts",
+    "./blob-store-gcs-hmac": "./src/blob-store-gcs-hmac.ts",
     "./job-queue": "./src/job-queue.ts",
     "./job-queue-memory": "./src/job-queue-memory.ts",
     "./job-queue-postgres": "./src/job-queue-postgres.ts",
@@ -43,7 +44,8 @@
   },
   "dependencies": {
     "@google-cloud/storage": "^7.16.0",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "aws4fetch": "^1.0.20"
   },
   "devDependencies": {
     "@openagentsinc/khala-sync-server": "workspace:*",
