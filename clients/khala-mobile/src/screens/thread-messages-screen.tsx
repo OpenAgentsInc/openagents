@@ -26,6 +26,7 @@ import { SafeAreaView } from "react-native-safe-area-context"
 
 import { type PopupOptionType, TouchablePopupHandler } from "../components/blurred-popup"
 import { ChatComposer, chatComposerKeyboardVerticalOffset } from "../components/chat-composer"
+import { CreditsBalanceChip } from "../components/credits-balance-chip"
 import { KhalaEmptyState } from "../components/khala-empty-state"
 import { KhalaScrollToLatestButton } from "../components/khala-scroll-to-latest-button"
 import { KhalaText } from "../components/khala-text"
@@ -240,6 +241,9 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
         </KhalaText>
         <KhalaText variant="faint">›</KhalaText>
       </Pressable>
+      <View className="mx-4 mb-2">
+        <CreditsBalanceChip />
+      </View>
       <KeyboardAvoidingView
         behavior={chatComposerKeyboardVerticalOffset === 0 ? "height" : "padding"}
         className="flex-1"

@@ -1,3 +1,4 @@
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
 import Constants from "expo-constants"
 import { useEffect, useState } from "react"
 import * as Notifications from "expo-notifications"
@@ -9,9 +10,12 @@ import { Frame, usePowerOnVisible } from "../components/frame"
 import { KhalaButton } from "../components/khala-button"
 import { KhalaScreen } from "../components/khala-screen"
 import { KhalaText } from "../components/khala-text"
+import type { AppDrawerScreenProps, AppStackParamList } from "../navigators/navigationTypes"
 import type { OnDeviceReadinessRow } from "../native/on-device-readiness-core"
 import { useOnDeviceReadiness } from "../native/use-on-device-readiness"
 import { registerForPushNotificationsAsync } from "../push/push-notifications-client"
+import { fetchKhalaMobileCreditsBalance } from "../sync/khala-mobile-credits-api"
+import { formatUsdCents, isLowBalance } from "../sync/khala-mobile-credits-format-core"
 import { MOTION_STAGGER_MS } from "../theme/motion"
 
 const SectionLabel = ({ children }: { children: string }) => (
@@ -24,12 +28,13 @@ const SectionLabel = ({ children }: { children: string }) => (
  * MM-H1 (#8487): the mobile-only MVP pivot's Settings rework. The prior
  * desktop-oriented Fleet section (env-var fleet-run id, "credential never
  * leaves the desktop" copy) is removed entirely — Settings must contain
- * nothing that requires a desktop (acceptance criterion). Credits and
- * Models are honest "not yet available" stubs: MM-D3 (#8480, balance/history
- * UI) and MM-F1 (#8484, per-user model config) have not merged yet, and this
- * screen must never fabricate a balance or a model list ahead of those
- * landing. Notifications is real (backed by the merged MM-G1 push
- * infrastructure, #8485/#8486), not a stub.
+ * nothing that requires a desktop (acceptance criterion). Models remains an
+ * honest "not yet available" stub (MM-F1, #8484, per-user model config, not
+ * merged yet). Notifications is real (backed by the merged MM-G1 push
+ * infrastructure, #8485/#8486). Credits (MM-D3, #8480) is now live-attempting:
+ * it queries the proposed `/api/mobile/credits/balance` contract
+ * (`khala-mobile-credits-api.ts`) and degrades to the same honest stub copy
+ * if that endpoint isn't built yet, never fabricating a number.
  */
 const AccountSection = () => {
   const { ownerUserId, signOut } = useKhalaAuth()
@@ -45,21 +50,57 @@ const AccountSection = () => {
   )
 }
 
-/** MM-D3 (#8480) owns the real balance/history endpoint and UI. Until that
- * lands, this section states the one thing that IS true and shipped
- * (#8478's $10 GitHub-account-keyed signup grant) without claiming a live
- * balance query works. */
-const CreditsSection = () => (
-  <View className="gap-2">
-    <SectionLabel>Credits</SectionLabel>
-    <KhalaText variant="muted">
-      You received $10 in free credit when you signed in with GitHub.
-    </KhalaText>
-    <KhalaText variant="faint">
-      Balance and usage history are coming soon.
-    </KhalaText>
-  </View>
-)
+type CreditsBalanceState =
+  | Readonly<{ status: "loading" }>
+  | Readonly<{ status: "unavailable" }>
+  | Readonly<{ status: "ready"; balanceUsdCents: number }>
+
+/** MM-D3 (#8480): live-attempting balance, honest fallback. Neither the
+ * balance nor the transaction-history route exists on the server yet (see
+ * `khala-mobile-credits-api.ts`'s header comment for the proposed contract),
+ * so `status === "unavailable"` is the expected state today — the section
+ * still states the one thing that IS true and shipped (#8478's $10
+ * GitHub-account-keyed signup grant) rather than showing nothing. */
+const CreditsSection = ({ onViewHistory }: { onViewHistory: () => void }) => {
+  const { baseUrl, token } = useKhalaAuth()
+  const [state, setState] = useState<CreditsBalanceState>({ status: "loading" })
+
+  useEffect(() => {
+    let cancelled = false
+    void fetchKhalaMobileCreditsBalance(baseUrl, token).then(result => {
+      if (cancelled) return
+      setState(result.ok ? { balanceUsdCents: result.value, status: "ready" } : { status: "unavailable" })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [baseUrl, token])
+
+  return (
+    <View className="gap-2">
+      <SectionLabel>Credits</SectionLabel>
+      {state.status === "loading" ? (
+        <KhalaText variant="muted">Checking your balance…</KhalaText>
+      ) : state.status === "ready" ? (
+        <View className="gap-2">
+          <KhalaText variant="muted">Balance: {formatUsdCents(state.balanceUsdCents)}</KhalaText>
+          {isLowBalance(state.balanceUsdCents) ? (
+            <KhalaText variant="danger">Your balance is low.</KhalaText>
+          ) : null}
+          <KhalaButton onPress={onViewHistory} text="View history" variant="secondary" />
+          <KhalaButton disabled text="Buy more credits (coming soon)" variant="secondary" />
+        </View>
+      ) : (
+        <View className="gap-2">
+          <KhalaText variant="muted">
+            You received $10 in free credit when you signed in with GitHub.
+          </KhalaText>
+          <KhalaText variant="faint">Balance and usage history are coming soon.</KhalaText>
+        </View>
+      )}
+    </View>
+  )
+}
 
 /** MM-F1 (#8484) owns per-user model preference end to end (server storage +
  * executor honor). Until that lands, Khala Code always runs the operator
@@ -194,15 +235,21 @@ const AboutSection = () => {
   )
 }
 
-export const SettingsScreen = () => (
-  <KhalaScreen preset="fixed">
-    <AppHeader showMenu title="Settings" />
-    <ScrollView contentContainerClassName="gap-6 px-4 py-4">
-      <AccountSection />
-      <CreditsSection />
-      <ModelsSection />
-      <NotificationsSection />
-      <AboutSection />
-    </ScrollView>
-  </KhalaScreen>
-)
+type SettingsScreenProps = AppDrawerScreenProps<"Settings">
+
+export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
+  const stackNavigation = navigation.getParent<NativeStackNavigationProp<AppStackParamList>>()
+
+  return (
+    <KhalaScreen preset="fixed">
+      <AppHeader showMenu title="Settings" />
+      <ScrollView contentContainerClassName="gap-6 px-4 py-4">
+        <AccountSection />
+        <CreditsSection onViewHistory={() => stackNavigation?.navigate("CreditsHistory")} />
+        <ModelsSection />
+        <NotificationsSection />
+        <AboutSection />
+      </ScrollView>
+    </KhalaScreen>
+  )
+}

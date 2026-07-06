@@ -9,6 +9,7 @@ export type AppDrawerParamList = {
 
 export type AppStackParamList = {
   Home: NavigatorScreenParams<AppDrawerParamList> | undefined
+  CreditsHistory: undefined
   RepoPicker: {
     threadId: string
   }
