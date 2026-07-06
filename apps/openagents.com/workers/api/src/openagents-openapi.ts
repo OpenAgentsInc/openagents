@@ -206,6 +206,15 @@ const openAgentsL402Header = (): JsonSchema => ({
   schema: { type: 'string', minLength: 8, maxLength: 1200 },
 })
 
+const mobileRefreshTokenHeader = (): JsonSchema => ({
+  name: 'X-OpenAgents-Refresh-Token',
+  in: 'header',
+  required: false,
+  description:
+    'Optional native-app OpenAuth refresh token to revoke during mobile sign-out. Never send browser cookies or agent tokens here.',
+  schema: { type: 'string', minLength: 8, maxLength: 2000 },
+})
+
 const publicRead: ReadonlyArray<
   Readonly<Record<string, ReadonlyArray<string>>>
 > = []
@@ -214,6 +223,7 @@ const forgeControlPlaneBearer = [{ forgeControlPlaneBearer: [] }, { adminBearer:
 const adminSession = [{ adminSession: [] }]
 const agentBearer = [{ agentBearer: [] }]
 const agentClaimToken = [{ agentClaimToken: [] }, { agentBearer: [] }]
+const mobileUserBearer = [{ mobileUserBearer: [] }]
 const optionalAgentBearer = [{}, { agentBearer: [] }]
 const browserSessionOrAgentBearer = [
   { browserSession: [] },
@@ -2679,6 +2689,47 @@ const schemaComponents = (): JsonSchema => ({
   AuthSession: objectSummary(
     'Signed-in OpenAgents browser session projection.',
   ),
+  MobileAuthSession: {
+    type: 'object',
+    additionalProperties: true,
+    required: ['authenticated', 'user'],
+    properties: {
+      authenticated: { const: true },
+      user: {
+        type: 'object',
+        additionalProperties: true,
+        description:
+          'OpenAuth user subject projection verified from the native bearer token.',
+      },
+    },
+    description:
+      'Native Khala mobile OpenAuth bearer-session projection. It is cookie-free and never returns refresh tokens.',
+  },
+  MobileAuthSignOutRequest: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      refreshToken: {
+        type: 'string',
+        minLength: 8,
+        maxLength: 2000,
+        description:
+          'Optional native-app OpenAuth refresh token to revoke. The same value may be sent with X-OpenAgents-Refresh-Token.',
+      },
+    },
+  },
+  MobileAuthSignOutResponse: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['accessRevoked', 'refreshRevoked', 'signedOut'],
+    properties: {
+      accessRevoked: { const: true },
+      refreshRevoked: { type: 'boolean' },
+      signedOut: { const: true },
+    },
+    description:
+      'Native Khala mobile sign-out result. Access-token revocation is server-side and refresh-token revocation is true only when a valid refresh token was supplied.',
+  },
   OnboardingStatus: objectSummary(
     'Signed-in customer onboarding state projection.',
   ),
@@ -5559,6 +5610,13 @@ const components = (): JsonSchema => ({
       bearerFormat: 'OpenAgents agent token',
       description:
         'Programmatic OpenAgents agent token. Only send to https://openagents.com/api/*. Active registered agent tokens can write open Forum topics/replies and register owned Pylons; customer-order and Site actions still require owner-bound server-side grants.',
+    },
+    mobileUserBearer: {
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'OpenAuth native user access token',
+      description:
+        'Khala mobile user access token issued by the OpenAuth PKCE public-client flow. It authenticates the signed-in human account for cookie-free native APIs and is not an OpenAgents agent token.',
     },
     agentClaimToken: {
       type: 'apiKey',
@@ -10426,6 +10484,42 @@ const paths = (): JsonSchema => ({
       security: publicRead,
       responses: {
         '200': okJson('Auth session.', '#/components/schemas/AuthSession'),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/mobile/auth/session': {
+    get: operation({
+      operationId: 'getMobileAuthSession',
+      summary: 'Read native mobile session',
+      description:
+        'Verifies a Khala mobile OpenAuth user access token from Authorization: Bearer and returns the user projection without relying on browser cookies. Tokens must come from the mobile PKCE public-client flow; agent bearer tokens are not accepted as mobile user sessions.',
+      tags: ['Agents'],
+      security: mobileUserBearer,
+      responses: {
+        '200': okJson(
+          'Mobile auth session.',
+          '#/components/schemas/MobileAuthSession',
+        ),
+        ...errorResponses(),
+      },
+    }),
+    delete: operation({
+      operationId: 'deleteMobileAuthSession',
+      summary: 'Sign out native mobile session',
+      description:
+        'Revokes the presented Khala mobile OpenAuth user access token server-side and optionally removes the matching OpenAuth refresh token when supplied in the request body or X-OpenAgents-Refresh-Token. Browser cookies, agent tokens, prompts, code, and private material are never accepted or returned.',
+      tags: ['Agents'],
+      security: mobileUserBearer,
+      parameters: [mobileRefreshTokenHeader()],
+      requestBody: jsonContent(
+        '#/components/schemas/MobileAuthSignOutRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Mobile sign-out result.',
+          '#/components/schemas/MobileAuthSignOutResponse',
+        ),
         ...errorResponses(),
       },
     }),

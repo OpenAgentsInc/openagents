@@ -1223,6 +1223,7 @@ describe('OpenAgents OpenAPI route', () => {
       'adminSession',
       'adminBearer',
       'agentBearer',
+      'mobileUserBearer',
       'agentClaimToken',
       'forgeControlPlaneBearer',
     ])

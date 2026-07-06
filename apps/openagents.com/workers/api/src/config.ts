@@ -409,6 +409,7 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   OPENAGENTS_APP_URL?: string | undefined
   OPENAUTH_CLIENT_ID?: string | undefined
   OPENAUTH_ISSUER_URL?: string | undefined
+  OPENAUTH_MOBILE_CLIENT_ID?: string | undefined
   RESEND_API_KEY?: string | undefined
   RESEND_FROM_EMAIL?: string | undefined
   RESEND_REPLY_TO_EMAIL?: string | undefined
@@ -604,6 +605,7 @@ export type OpenAgentsWorkerConfigShape = Readonly<{
     clientId: OpenAuthClientId
     issuerOrigin: OpenAuthIssuerOrigin
     issuerUrl: OpenAuthIssuerUrl
+    mobileClientId: OpenAuthClientId
   }>
   runnerBackends: RunnerBackendConfig
   shc: Readonly<{
@@ -1337,6 +1339,11 @@ export const decodeOpenAgentsWorkerConfig = (
         ),
         issuerOrigin: OpenAuthIssuerOrigin.make(issuer.origin),
         issuerUrl: OpenAuthIssuerUrl.make(issuer.url),
+        mobileClientId: OpenAuthClientId.make(
+          env.OPENAUTH_MOBILE_CLIENT_ID?.trim() === ''
+            ? 'openagents-khala-mobile'
+            : (env.OPENAUTH_MOBILE_CLIENT_ID ?? 'openagents-khala-mobile'),
+        ),
       },
       runnerBackends: yield* runnerBackendConfig(env),
       shc: {

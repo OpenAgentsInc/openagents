@@ -225,6 +225,14 @@ import {
 } from './auth/email-otp-hardening'
 import { readBearerToken } from './auth/bearer-token'
 import {
+  authIssuerAllowsRedirect,
+  authIssuerAllowsWebRedirectHostname,
+  isMobileAccessTokenRevoked,
+  makeUserBearerSessionBoundary,
+  revokeMobileAccessToken,
+  revokeOpenAuthRefreshToken,
+} from './auth/mobile-session'
+import {
   type VerifiedSession as VerifiedAuthSession,
   makeBrowserSessionBoundary,
 } from './auth/session'
@@ -1348,6 +1356,8 @@ import {
 } from './x-claim-reward-treasury-dispatcher'
 
 export type Env = WorkerBindings & OpenAgentsWorkerConfigEnv
+
+type MobileAuthSessionBindings = WorkerBindings & OpenAgentsWorkerConfigEnv
 
 type EmailCampaignDispatcherBindings = WorkerBindings &
   OpenAgentsWorkerConfigEnv &
@@ -3623,17 +3633,8 @@ const hydrateTeamAutopilotContextFileExcerpts = async (
   return { ...bundle, selectedFiles }
 }
 
-export const authIssuerAllowsRedirectHostname = (hostname: string): boolean =>
-  hostname === 'openagents.com' ||
-  hostname === 'auth.openagents.com' ||
-  // Isolated staging Worker. WIDEN-ONLY: this lets the prod issuer accept the
-  // staging-origin auth callback so a human can sign in on staging and exercise
-  // the billing/credit flow. The staging Worker delegates auth to this same
-  // prod issuer (OPENAUTH_ISSUER_URL=auth.openagents.com), so the allowlist must
-  // live here. Prod hosts above are unchanged.
-  hostname === 'openagents-staging.openagents.workers.dev' ||
-  hostname === 'localhost' ||
-  hostname === '127.0.0.1'
+export const authIssuerAllowsRedirectHostname =
+  authIssuerAllowsWebRedirectHostname
 
 const makeAuthIssuer = (env: Env) => {
   const config = getOpenAgentsWorkerConfig(env)
@@ -3698,11 +3699,11 @@ const makeAuthIssuer = (env: Env) => {
     },
     storage: makeOpenAuthStorageForEnv(env),
     subjects,
-    allow: async ({ redirectURI }) => {
-      const hostname = new URL(redirectURI).hostname
-
-      return authIssuerAllowsRedirectHostname(hostname)
-    },
+    allow: async (input, request) =>
+      authIssuerAllowsRedirect(input, request, {
+        mobileClientId: config.openauth.mobileClientId,
+        webClientId: config.openauth.clientId,
+      }),
     success: async (ctx, response) => {
       if (response.provider === 'code') {
         const claimedEmail =
@@ -3789,19 +3790,12 @@ const makeAuthClient = (env: Env, ctx: ExecutionContext) => {
 
 type VerifiedSession = VerifiedAuthSession<UserSubject>
 
-const verifySession = async (
-  request: Request,
-  env: Env,
+const verifyOpenAuthUserTokens = async (
+  access: string,
+  refresh: string | undefined,
+  env: MobileAuthSessionBindings,
   ctx: ExecutionContext,
 ): Promise<VerifiedSession | undefined> => {
-  const cookies = parseCookies(request)
-  const access = cookies.get(ACCESS_COOKIE)
-
-  if (access === undefined) {
-    return undefined
-  }
-
-  const refresh = cookies.get(REFRESH_COOKIE)
   const verified = await observedPromise('Auth.verifySession', () =>
     refresh === undefined
       ? makeAuthClient(env, ctx).verify(subjects, access)
@@ -3829,6 +3823,26 @@ const verifySession = async (
   }
 
   return { user: verified.subject.properties, tokens: verified.tokens }
+}
+
+const verifySession = async (
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<VerifiedSession | undefined> => {
+  const cookies = parseCookies(request)
+  const access = cookies.get(ACCESS_COOKIE)
+
+  if (access === undefined) {
+    return undefined
+  }
+
+  return verifyOpenAuthUserTokens(
+    access,
+    cookies.get(REFRESH_COOKIE),
+    env,
+    ctx,
+  )
 }
 
 const scheduleSiteReferralOnboardingEmail = (
@@ -3866,6 +3880,23 @@ const { appendRefreshedSessionCookies, requireBrowserSession } =
     verifySession,
   })
 
+const { requireUserBearerSession } =
+  makeUserBearerSessionBoundary<UserSubject, Env>({
+    isAccessTokenRevoked: async (env, accessToken) => {
+      try {
+        return await isMobileAccessTokenRevoked(env.AUTH_STORAGE, accessToken)
+      } catch (error) {
+        logWorkerRouteError('mobile_auth_revocation_check_failed', error)
+
+        return true
+      }
+    },
+    persistUser: (env, user) =>
+      upsertUser(openAgentsDatabase(env), user, identityAuthMirrorFromEnv(env)),
+    verifyTokens: (accessToken, refreshToken, _request, env, ctx) =>
+      verifyOpenAuthUserTokens(accessToken, refreshToken, env, ctx),
+  })
+
 const authenticateRequestActor = async (
   request: Request,
   env: Env,
@@ -3881,6 +3912,18 @@ const authenticateRequestActor = async (
 
     if (agent !== undefined) {
       return { kind: 'agent', agent }
+    }
+
+    const bearerSession = await requireUserBearerSession(request, env, ctx)
+
+    if (bearerSession !== undefined) {
+      return {
+        kind: 'human',
+        user: bearerSession.user,
+        ...(bearerSession.tokens === undefined
+          ? {}
+          : { tokens: bearerSession.tokens }),
+      }
     }
   }
 
@@ -4881,6 +4924,102 @@ const handleSessionApi = async (
   }
 
   return response
+}
+
+const MobileAuthSignOutRequest = S.Struct({
+  refreshToken: S.optionalKey(S.String),
+})
+
+const readMobileAuthSignOutRefreshToken = async (
+  request: Request,
+): Promise<string | undefined> => {
+  const headerRefresh = request.headers
+    .get('x-openagents-refresh-token')
+    ?.trim()
+
+  if (headerRefresh !== undefined && headerRefresh !== '') {
+    return headerRefresh
+  }
+
+  const contentType = request.headers.get('content-type') ?? ''
+
+  if (!contentType.includes('application/json')) {
+    return undefined
+  }
+
+  const body = await request.json().catch(() => undefined)
+
+  if (body === undefined) {
+    return undefined
+  }
+
+  const decoded = S.decodeUnknownOption(MobileAuthSignOutRequest)(body)
+  const value = decoded._tag === 'Some' ? decoded.value.refreshToken : undefined
+  const trimmed = value?.trim()
+
+  return trimmed === undefined || trimmed === '' ? undefined : trimmed
+}
+
+const handleMobileAuthSessionApi = async (
+  request: Request,
+  env: MobileAuthSessionBindings,
+  ctx: ExecutionContext,
+) => {
+  if (request.method !== 'GET' && request.method !== 'DELETE') {
+    return methodNotAllowed(['GET', 'DELETE'])
+  }
+
+  const accessToken = readBearerToken(request)
+
+  if (accessToken === undefined) {
+    return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+  }
+
+  if (request.method === 'GET') {
+    const session = await requireUserBearerSession(request, env, ctx)
+
+    if (session === undefined) {
+      return noStoreJsonResponse({ authenticated: false }, { status: 401 })
+    }
+
+    return noStoreJsonResponse({
+      authenticated: true,
+      ...(session.tokens === undefined ? {} : { tokens: session.tokens }),
+      user: {
+        userId: session.user.userId,
+        email: session.user.email,
+        name: session.user.name,
+        login: session.user.login,
+        avatarUrl: session.user.avatarUrl,
+        provider: session.user.provider,
+        githubId: session.user.githubId,
+      },
+    })
+  }
+
+  const refreshToken = await readMobileAuthSignOutRefreshToken(request)
+  let refreshRevoked = false
+
+  try {
+    await revokeMobileAccessToken(env.AUTH_STORAGE, accessToken)
+    refreshRevoked = await revokeOpenAuthRefreshToken(
+      makeOpenAuthStorageForEnv(env),
+      refreshToken,
+    )
+  } catch (error) {
+    logWorkerRouteError('mobile_auth_sign_out_failed', error)
+
+    return noStoreJsonResponse(
+      { error: 'mobile_auth_sign_out_failed' },
+      { status: 503 },
+    )
+  }
+
+  return noStoreJsonResponse({
+    signedOut: true,
+    accessRevoked: true,
+    refreshRevoked,
+  })
 }
 
 const handleAuthTotalsApi = async (
@@ -12303,6 +12442,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/auth/session',
     handler: (request, env, ctx) =>
       Effect.promise(() => handleSessionApi(request, env, ctx)),
+  },
+  {
+    path: '/api/mobile/auth/session',
+    handler: (request, env, ctx) =>
+      Effect.promise(() => handleMobileAuthSessionApi(request, env, ctx)),
   },
   {
     path: '/api/auth/totals',

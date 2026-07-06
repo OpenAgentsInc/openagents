@@ -84,13 +84,22 @@ notifications** (zero APNs/FCM/Expo-push code anywhere, client or server).
 - A separate GitHub **write** connection flow exists
   (`github-write-connections.ts`, scopes `repo`+`workflow`, tokens in KV,
   grants in D1) — the writeback seam for branches/PRs.
-- Web sessions are **HttpOnly cookies only** (`auth-cookies.ts`,
-  `oa_access`/`oa_refresh`); there is **no PKCE public client, no OAuth
-  device grant, and no user bearer-token session** a native app can use.
-  The existing device-pairing flows (`pylon-openagents-auth-routes.ts`,
-  `khala-code-openagents-auth-routes.ts`) mint `oa_agent_` tokens and
-  require a signed-in browser to approve — desktop/CLI patterns, not a
-  self-contained mobile login.
+- Original audit finding: web sessions were **HttpOnly cookies only**
+  (`auth-cookies.ts`, `oa_access`/`oa_refresh`); there was **no PKCE public
+  client, no OAuth device grant, and no user bearer-token session** a native app
+  could use. The existing device-pairing flows
+  (`pylon-openagents-auth-routes.ts`, `khala-code-openagents-auth-routes.ts`)
+  mint `oa_agent_` tokens and require a signed-in browser to approve —
+  desktop/CLI patterns, not a self-contained mobile login.
+- **2026-07-05 #8468 update:** the issuer now admits the public mobile client
+  (`OPENAUTH_MOBILE_CLIENT_ID`, default `openagents-khala-mobile`) only for
+  GitHub authorization-code + PKCE S256 requests redirecting to `khala://auth`.
+  Native clients can exchange the code, refresh tokens, verify a cookie-free
+  user bearer session at `GET /api/mobile/auth/session`, and sign out with
+  server-side access-token revocation plus optional refresh-token removal via
+  `DELETE /api/mobile/auth/session`. Remaining WS-A gaps are #8469
+  (session→Khala Sync token issuance) and #8470 (mobile UI + Tailnet contract
+  retirement).
 - There is **no GitHub App** (no installation tokens, no fine-grained
   per-repo permissions) — all repo access rides the user OAuth token.
 
@@ -330,7 +339,7 @@ Prior closure analysis for these (what each needs when reopened):
 Filed 2026-07-05 under the epic **#8467** (the epic carries the live
 dependency map in its first comment):
 
-- **WS-A Mobile auth**: #8468 (PKCE/mobile session on the issuer), #8469
+- **WS-A Mobile auth**: #8468 (closed: PKCE/mobile session on the issuer), #8469
   (session→Khala Sync token issuance), #8470 (mobile GitHub sign-in UI +
   Tailnet contract retirement).
 - **WS-B Repos**: #8471 (mobile-bearer repo API), #8472 (repo picker UI +
