@@ -8464,6 +8464,7 @@ const billingApiHandlers = makeBillingApiHandlers({
 const onboardingRoutes = makeOnboardingRoutes({
   appendRefreshedSessionCookies,
   requireBrowserSession,
+  requireUserBearerSession,
   siteReferralOnboarding: ({ env, orderState, referralResult, session }) =>
     sendSiteReferralOnboardingForConsumption(openAgentsDatabase(env), {
       appOrigin: getAppOrigin(env),

@@ -102,6 +102,8 @@ const approvedExactRoutePaths = [
   '/auth/logout',
   '/logout',
   '/api/auth/session',
+  '/api/mobile/auth/session',
+  '/api/mobile/session',
   '/api/auth/totals',
   '/api/mdk',
   '/api/admin/overview',

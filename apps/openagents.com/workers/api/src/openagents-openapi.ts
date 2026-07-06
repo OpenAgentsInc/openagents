@@ -2755,6 +2755,12 @@ const schemaComponents = (): JsonSchema => ({
   OnboardingRepositories: objectSummary(
     'Signed-in customer repository choice projection.',
   ),
+  MobileRepositoryList: objectSummary(
+    'Paginated GitHub repository list for the signed-in mobile user, using the stored per-user GitHub OAuth token (MM-B1, #8471). Distinct from OnboardingRepositories: paginated via GitHub-native page/perPage query params and hasNextPage, and returns a typed 401 (github_token_expired) or 409 (github_token_missing) error instead of a soft tokenStatus field when the stored GitHub token is absent or revoked.',
+  ),
+  MobileRepositoryDetail: objectSummary(
+    'A single GitHub repository the signed-in mobile user can reach with their stored OAuth token, keyed by owner/name (MM-B1, #8471). Returns a typed 404 (repository_not_found) when GitHub reports the repo does not exist or is not visible to the token, and 401 (github_token_expired) / 409 (github_token_missing) for token failures.',
+  ),
   AgentSiteActionContractResult: objectSummary(
     'Scoped agent Site action receipt. The live API can create order-backed projects, create builder sessions, queue preview records/events, save reviewable versions when evidence gates are complete, and create deploy-review requests. Production deployment remains owner/operator gated.',
   ),
@@ -11304,6 +11310,54 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Onboarding repositories.',
           '#/components/schemas/OnboardingRepositories',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/mobile/repos': {
+    get: operation({
+      operationId: 'listMobileRepositories',
+      summary: 'List mobile GitHub repositories',
+      description:
+        'Lists the signed-in mobile user’s GitHub repositories (owner, collaborator, and organization-member affiliations) using their stored per-user GitHub OAuth token (MM-B1, #8471). Paginated with GitHub-native page/perPage query params; hasNextPage reflects the upstream Link header. Returns a typed 409 (github_token_missing) when no GitHub token is stored, or 401 (github_token_expired) when GitHub has revoked/expired the stored token — either should prompt the client to re-run GitHub sign-in.',
+      tags: ['Agents'],
+      security: mobileUserBearer,
+      parameters: [
+        queryParam(
+          'page',
+          'GitHub result page, 1-indexed. Defaults to 1.',
+        ),
+        queryParam(
+          'perPage',
+          'Repositories per page, 1-100. Defaults to 100.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Mobile GitHub repository page.',
+          '#/components/schemas/MobileRepositoryList',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/mobile/repos/{owner}/{name}': {
+    get: operation({
+      operationId: 'getMobileRepository',
+      summary: 'Read one mobile GitHub repository',
+      description:
+        'Fetches a single GitHub repository by owner/name using the signed-in mobile user’s stored GitHub OAuth token (MM-B1, #8471), e.g. to validate a repo before binding a thread to it. Returns a typed 404 (repository_not_found) when GitHub reports the repo does not exist or is not visible to the token, 409 (github_token_missing) when no GitHub token is stored, or 401 (github_token_expired) when GitHub has revoked/expired the stored token.',
+      tags: ['Agents'],
+      security: mobileUserBearer,
+      parameters: [
+        pathParam('owner', 'GitHub repository owner (user or organization) login.'),
+        pathParam('name', 'GitHub repository name.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Mobile GitHub repository detail.',
+          '#/components/schemas/MobileRepositoryDetail',
         ),
         ...errorResponses(),
       },

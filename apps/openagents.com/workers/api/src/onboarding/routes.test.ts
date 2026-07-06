@@ -1,7 +1,13 @@
-import { Effect } from 'effect'
+import { Effect, Layer } from 'effect'
 import { describe, expect, test } from 'vitest'
 
+import {
+  GitHubRepositoryListFailed,
+  GitHubRepositoryReadFailed,
+  GitHubRepositoryService,
+} from './github'
 import { makeOnboardingRoutes } from './routes'
+import type { OnboardingGitHubRepository } from './schema'
 
 type TestSession = Readonly<{ user: Readonly<{ userId: string }> }>
 
@@ -296,7 +302,11 @@ const makeEnv = (
   OPENAGENTS_DB: accessDb(hasCoreTeamAccess),
 })
 
-const makeRoutes = (session: TestSession | null) =>
+const makeRoutes = (
+  session: TestSession | null,
+  mobileSession: TestSession | null = null,
+  githubRepositoryServiceLayer?: Layer.Layer<GitHubRepositoryService>,
+) =>
   makeOnboardingRoutes({
     appendRefreshedSessionCookies: response => {
       response.headers.set('x-session-refreshed', 'true')
@@ -304,6 +314,10 @@ const makeRoutes = (session: TestSession | null) =>
       return response
     },
     requireBrowserSession: () => Promise.resolve(session ?? undefined),
+    requireUserBearerSession: () => Promise.resolve(mobileSession ?? undefined),
+    ...(githubRepositoryServiceLayer === undefined
+      ? {}
+      : { githubRepositoryServiceLayer }),
   })
 
 const runRoute = (
@@ -317,6 +331,80 @@ const runRoute = (
     makeEnv(hasCoreTeamAccess, githubToken),
     executionContext(),
   )
+
+  if (route === undefined) {
+    throw new Error('route did not match')
+  }
+
+  return Effect.runPromise(route)
+}
+
+const fakeRepository = (owner: string, name: string): OnboardingGitHubRepository => ({
+  id: `${owner}/${name}`,
+  provider: 'github',
+  owner,
+  name,
+  fullName: `${owner}/${name}`,
+  private: false,
+  defaultBranch: 'main',
+  htmlUrl: `https://github.com/${owner}/${name}`,
+  description: null,
+})
+
+type FakeGitHubServiceOptions = Readonly<{
+  repositories?: ReadonlyArray<OnboardingGitHubRepository>
+  hasNextPage?: boolean
+  unauthorized?: boolean
+  notFound?: boolean
+}>
+
+const fakeGitHubRepositoryServiceLayer = (
+  options: FakeGitHubServiceOptions = {},
+): Layer.Layer<GitHubRepositoryService> =>
+  Layer.succeed(GitHubRepositoryService, {
+    getRepository: (_accessToken, owner, name) => {
+      if (options.unauthorized) {
+        return Effect.fail(
+          new GitHubRepositoryReadFailed({ reason: 'unauthorized', status: 401 }),
+        )
+      }
+
+      if (options.notFound) {
+        return Effect.fail(
+          new GitHubRepositoryReadFailed({ reason: 'not found', status: 404 }),
+        )
+      }
+
+      return Effect.succeed(fakeRepository(owner, name))
+    },
+    listRepositories: () => Effect.succeed(options.repositories ?? []),
+    listRepositoriesPage: (_accessToken, { page, perPage }) => {
+      if (options.unauthorized) {
+        return Effect.fail(
+          new GitHubRepositoryListFailed({ reason: 'unauthorized', status: 401 }),
+        )
+      }
+
+      return Effect.succeed({
+        repositories: options.repositories ?? [],
+        page,
+        perPage,
+        hasNextPage: options.hasNextPage ?? false,
+      })
+    },
+  })
+
+const runMobileRoute = (
+  mobileSession: TestSession | null,
+  request: Request,
+  githubToken: string | null = null,
+  githubOptions?: FakeGitHubServiceOptions,
+): Promise<Response> => {
+  const route = makeRoutes(
+    null,
+    mobileSession,
+    fakeGitHubRepositoryServiceLayer(githubOptions),
+  ).routeOnboardingRequest(request, makeEnv(true, githubToken), executionContext())
 
   if (route === undefined) {
     throw new Error('route did not match')
@@ -403,6 +491,169 @@ describe('onboarding API routes', () => {
         },
         step: 'goal',
       },
+    })
+  })
+})
+
+describe('mobile-bearer repo API (MM-B1, #8471)', () => {
+  test('GET /api/mobile/repos rejects a request with no mobile bearer session', async () => {
+    const response = await runMobileRoute(
+      null,
+      new Request('https://openagents.com/api/mobile/repos'),
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toEqual({ error: 'unauthorized' })
+  })
+
+  test('GET /api/mobile/repos/{owner}/{name} rejects a request with no mobile bearer session', async () => {
+    const response = await runMobileRoute(
+      null,
+      new Request(
+        'https://openagents.com/api/mobile/repos/OpenAgentsInc/openagents',
+      ),
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toEqual({ error: 'unauthorized' })
+  })
+
+  test('GET /api/mobile/repos returns a typed failure when the GitHub token is missing', async () => {
+    const response = await runMobileRoute(
+      { user: { userId: 'github:1' } },
+      new Request('https://openagents.com/api/mobile/repos'),
+      null,
+    )
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toEqual({
+      error: 'github_token_missing',
+    })
+  })
+
+  test('GET /api/mobile/repos/{owner}/{name} returns a typed failure when the GitHub token is missing', async () => {
+    const response = await runMobileRoute(
+      { user: { userId: 'github:1' } },
+      new Request(
+        'https://openagents.com/api/mobile/repos/OpenAgentsInc/openagents',
+      ),
+      null,
+    )
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toEqual({
+      error: 'github_token_missing',
+    })
+  })
+
+  test('GET /api/mobile/repos returns a typed failure when GitHub rejects the stored token', async () => {
+    const response = await runMobileRoute(
+      { user: { userId: 'github:1' } },
+      new Request('https://openagents.com/api/mobile/repos'),
+      'expired-token',
+      { unauthorized: true },
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toEqual({
+      error: 'github_token_expired',
+    })
+  })
+
+  test('GET /api/mobile/repos/{owner}/{name} returns a typed failure when GitHub rejects the stored token', async () => {
+    const response = await runMobileRoute(
+      { user: { userId: 'github:1' } },
+      new Request(
+        'https://openagents.com/api/mobile/repos/OpenAgentsInc/openagents',
+      ),
+      'expired-token',
+      { unauthorized: true },
+    )
+
+    expect(response.status).toBe(401)
+    await expect(response.json()).resolves.toEqual({
+      error: 'github_token_expired',
+    })
+  })
+
+  test('GET /api/mobile/repos/{owner}/{name} returns 404 when GitHub reports the repo is not found', async () => {
+    const response = await runMobileRoute(
+      { user: { userId: 'github:1' } },
+      new Request(
+        'https://openagents.com/api/mobile/repos/OpenAgentsInc/does-not-exist',
+      ),
+      'valid-token',
+      { notFound: true },
+    )
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toEqual({
+      error: 'repository_not_found',
+      repositoryId: 'OpenAgentsInc/does-not-exist',
+    })
+  })
+
+  test('GET /api/mobile/repos lists repositories with default paging when the token is available', async () => {
+    const repositories = [fakeRepository('OpenAgentsInc', 'openagents')]
+    const response = await runMobileRoute(
+      { user: { userId: 'github:1' } },
+      new Request('https://openagents.com/api/mobile/repos'),
+      'valid-token',
+      { repositories, hasNextPage: true },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      repositories,
+      page: 1,
+      perPage: 100,
+      hasNextPage: true,
+    })
+  })
+
+  test('GET /api/mobile/repos forwards page/perPage query params to the GitHub page fetch', async () => {
+    const repositories = [fakeRepository('OpenAgentsInc', 'openagents')]
+    const response = await runMobileRoute(
+      { user: { userId: 'github:1' } },
+      new Request('https://openagents.com/api/mobile/repos?page=2&perPage=10'),
+      'valid-token',
+      { repositories, hasNextPage: false },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      repositories,
+      page: 2,
+      perPage: 10,
+      hasNextPage: false,
+    })
+  })
+
+  test('GET /api/mobile/repos rejects an out-of-range perPage', async () => {
+    const response = await runMobileRoute(
+      { user: { userId: 'github:1' } },
+      new Request('https://openagents.com/api/mobile/repos?perPage=500'),
+      'valid-token',
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'bad_request',
+    })
+  })
+
+  test('GET /api/mobile/repos/{owner}/{name} fetches a single repository when the token is available', async () => {
+    const response = await runMobileRoute(
+      { user: { userId: 'github:1' } },
+      new Request(
+        'https://openagents.com/api/mobile/repos/OpenAgentsInc/openagents',
+      ),
+      'valid-token',
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      repository: fakeRepository('OpenAgentsInc', 'openagents'),
     })
   })
 })

@@ -958,6 +958,7 @@ const makeRoutes = (
       return response
     },
     requireBrowserSession: () => Promise.resolve(session ?? undefined),
+    requireUserBearerSession: () => Promise.resolve(undefined),
     ...(agentRegistrationStore === undefined ? {} : { agentRegistrationStore }),
     customerOrderRuntime: {
       makeAdjutantAdjustmentId: () => 'adjutant_adjustment_test',

@@ -75,6 +75,25 @@ export const OnboardingRepositoriesResponse = S.Struct({
 export type OnboardingRepositoriesResponse =
   typeof OnboardingRepositoriesResponse.Type
 
+// Mobile-bearer repo list/select API (MM-B1, issue #8471). Paginated —
+// distinct from the cookie-gated `OnboardingRepositoriesResponse` above,
+// which returns the whole first page unpaginated for the web onboarding
+// wizard.
+export const MobileRepositoryListResponse = S.Struct({
+  repositories: S.Array(OnboardingGitHubRepository),
+  page: S.Number,
+  perPage: S.Number,
+  hasNextPage: S.Boolean,
+})
+export type MobileRepositoryListResponse =
+  typeof MobileRepositoryListResponse.Type
+
+export const MobileRepositoryDetailResponse = S.Struct({
+  repository: OnboardingGitHubRepository,
+})
+export type MobileRepositoryDetailResponse =
+  typeof MobileRepositoryDetailResponse.Type
+
 export const SelectOnboardingRepositoryByIdRequest = S.Struct({
   repositoryId: S.String,
 })

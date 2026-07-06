@@ -37,6 +37,8 @@ import {
 } from '../site-referral-attribution-consumption'
 import type { OnboardingDripOrderState } from '../email-onboarding-drip'
 import {
+  GITHUB_REPOSITORY_DEFAULT_PER_PAGE,
+  GITHUB_REPOSITORY_MAX_PER_PAGE,
   GitHubRepositoryListFailed,
   GitHubRepositoryReadFailed,
   GitHubRepositoryService,
@@ -92,8 +94,25 @@ type OnboardingRouteDependencies<
     env: Env,
     ctx: ExecutionContext,
   ) => Promise<Session | undefined>
+  // Mobile-bearer session boundary (MM-B1, issue #8471) — the OpenAuth mobile
+  // user bearer session verified the same way as `GET /api/mobile/auth/session`
+  // (see `auth/mobile-session.ts`'s `makeUserBearerSessionBoundary`). Distinct
+  // from `requireBrowserSession` above: no cookies are read or refreshed for
+  // this boundary, since mobile clients carry the OpenAuth access token as a
+  // bearer header, not a cookie.
+  requireUserBearerSession: (
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ) => Promise<Session | undefined>
   customerOrderRuntime?: CustomerOrderRuntime
   runtime?: OnboardingRuntime
+  // Test-only override of the real (network-calling) GitHub repository
+  // service layer. Defaults to `GitHubRepositoryService.layer` (real GitHub
+  // API calls) in production; tests inject a fake layer to exercise the
+  // available/paginated/expired-token mobile-repo paths without a live
+  // network call.
+  githubRepositoryServiceLayer?: Layer.Layer<GitHubRepositoryService>
   siteReferralOnboarding?: (
     input: Readonly<{
       env: Env
@@ -131,6 +150,16 @@ class OnboardingGitHubTokenMissing extends S.TaggedErrorClass<OnboardingGitHubTo
   {},
 ) {}
 
+// A stored GitHub token that GitHub itself now rejects (revoked, expired, or
+// the user pulled the OAuth grant). Distinct from `OnboardingGitHubTokenMissing`
+// (no token stored at all) so a mobile client can tell "never connected" apart
+// from "connected once, needs to re-auth" — both still resolve to the same
+// client action (prompt GitHub re-auth), which is why both map to 401 below.
+class OnboardingGitHubTokenExpired extends S.TaggedErrorClass<OnboardingGitHubTokenExpired>()(
+  'OnboardingGitHubTokenExpired',
+  {},
+) {}
+
 class OnboardingRepositoryNotFound extends S.TaggedErrorClass<OnboardingRepositoryNotFound>()(
   'OnboardingRepositoryNotFound',
   {
@@ -144,6 +173,7 @@ type OnboardingRouteError =
   | CustomerOrderStorageError
   | CustomerOrderAgentAuthFailure
   | OnboardingBadRequest
+  | OnboardingGitHubTokenExpired
   | OnboardingGitHubTokenMissing
   | OnboardingInvalidStep
   | OnboardingRepositoryNotFound
@@ -200,6 +230,8 @@ const routeErrorResponse = (error: OnboardingRouteError): Response => {
         ),
       OnboardingBadRequest: ({ reason }) =>
         noStoreJsonResponse({ error: 'bad_request', reason }, { status: 400 }),
+      OnboardingGitHubTokenExpired: () =>
+        noStoreJsonResponse({ error: 'github_token_expired' }, { status: 401 }),
       OnboardingGitHubTokenMissing: () =>
         noStoreJsonResponse({ error: 'github_token_missing' }, { status: 409 }),
       OnboardingInvalidStep: ({ step }) =>
@@ -264,6 +296,28 @@ const requireSession = <
   Effect.gen(function* () {
     const session = yield* Effect.tryPromise({
       try: () => dependencies.requireBrowserSession(request, env, ctx),
+      catch: error => new OnboardingSessionError({ error }),
+    })
+
+    if (session === undefined) {
+      return yield* new OnboardingUnauthorized({})
+    }
+
+    return session
+  })
+
+const requireMobileBearerSession = <
+  Session extends OnboardingSession,
+  Env extends OnboardingEnv,
+>(
+  dependencies: OnboardingRouteDependencies<Session, Env>,
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+) =>
+  Effect.gen(function* () {
+    const session = yield* Effect.tryPromise({
+      try: () => dependencies.requireUserBearerSession(request, env, ctx),
       catch: error => new OnboardingSessionError({ error }),
     })
 
@@ -393,6 +447,59 @@ const availableRepositories = (
     )
   })
 
+// The mobile-bearer GitHub token lookup (MM-B1, #8471). Unlike
+// `availableRepositories` above (which the cookie-gated onboarding wizard
+// uses and silently degrades to an empty list), the mobile routes surface a
+// TYPED failure when the token is missing or GitHub has revoked/expired it —
+// the mobile client needs to distinguish "nothing to show yet" from "please
+// sign in with GitHub again" so it can prompt re-auth.
+const requireMobileGitHubToken = (
+  env: OnboardingEnv,
+  userId: string,
+): Effect.Effect<
+  string,
+  OnboardingGitHubTokenMissing | OnboardingStorageError
+> =>
+  Effect.gen(function* () {
+    const token = yield* readGitHubIdentityToken(env, userId)
+
+    if (token === null) {
+      return yield* new OnboardingGitHubTokenMissing({})
+    }
+
+    return token
+  })
+
+const asMobileTokenExpiredWhenUnauthorized = <A, E>(
+  effect: Effect.Effect<A, E, GitHubRepositoryService>,
+  isUnauthorized: (error: E) => boolean,
+): Effect.Effect<
+  A,
+  E | OnboardingGitHubTokenExpired,
+  GitHubRepositoryService
+> =>
+  effect.pipe(
+    Effect.mapError(error =>
+      isUnauthorized(error) ? new OnboardingGitHubTokenExpired({}) : error,
+    ),
+  )
+
+const parsePositiveIntQueryParam = (
+  url: URL,
+  name: string,
+  fallback: number,
+): number | undefined => {
+  const raw = url.searchParams.get(name)
+
+  if (raw === null || raw.trim() === '') {
+    return fallback
+  }
+
+  const parsed = Number.parseInt(raw, 10)
+
+  return Number.isFinite(parsed) && parsed >= 1 ? parsed : undefined
+}
+
 const manualRepository = (
   owner: string,
   name: string,
@@ -416,13 +523,14 @@ const routeLayer = (
   env: OnboardingEnv,
   runtime: OnboardingRuntime,
   customerOrderRuntime: CustomerOrderRuntime | undefined,
+  githubRepositoryServiceLayer: Layer.Layer<GitHubRepositoryService>,
 ) =>
   Layer.merge(
     Layer.merge(
       OnboardingStateStore.layer(env, runtime),
       CustomerOrderStore.layer(env, customerOrderRuntime),
     ),
-    GitHubRepositoryService.layer,
+    githubRepositoryServiceLayer,
   )
 
 const pendingReferralId = (request: Request): string | undefined =>
@@ -499,7 +607,13 @@ export const makeOnboardingRoutes = <
   ): Effect.Effect<Response> =>
     effect.pipe(
       Effect.provide(
-        routeLayer(env, runtime, dependencies.customerOrderRuntime),
+        routeLayer(
+          env,
+          runtime,
+          dependencies.customerOrderRuntime,
+          dependencies.githubRepositoryServiceLayer ??
+            GitHubRepositoryService.layer,
+        ),
       ),
       Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
     )
@@ -1024,6 +1138,119 @@ export const makeOnboardingRoutes = <
       }),
     )
 
+  // Mobile-bearer repo list API (MM-B1, #8471). GET /api/mobile/repos.
+  // Paginated: ?page=&perPage= (GitHub-native paging via the Link header, see
+  // github.ts's `listRepositoriesPage`). No cookies are set — mobile sessions
+  // carry the OpenAuth bearer token, not a browser cookie.
+  const mobileRepositoriesResponse = (
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ) =>
+    runRoute(
+      env,
+      Effect.gen(function* () {
+        const session = yield* requireMobileBearerSession(
+          dependencies,
+          request,
+          env,
+          ctx,
+        )
+        const url = new URL(request.url)
+        const page = parsePositiveIntQueryParam(url, 'page', 1)
+        const perPage = parsePositiveIntQueryParam(
+          url,
+          'perPage',
+          GITHUB_REPOSITORY_DEFAULT_PER_PAGE,
+        )
+
+        if (page === undefined) {
+          return yield* new OnboardingBadRequest({
+            reason: 'page must be a positive integer',
+          })
+        }
+
+        if (perPage === undefined || perPage > GITHUB_REPOSITORY_MAX_PER_PAGE) {
+          return yield* new OnboardingBadRequest({
+            reason: `perPage must be an integer between 1 and ${GITHUB_REPOSITORY_MAX_PER_PAGE}`,
+          })
+        }
+
+        const token = yield* requireMobileGitHubToken(env, session.user.userId)
+        const github = yield* GitHubRepositoryService
+        const result = yield* asMobileTokenExpiredWhenUnauthorized(
+          github.listRepositoriesPage(token, { page, perPage }).pipe(
+            Effect.mapError(error =>
+              error instanceof GitHubRepositoryListFailed
+                ? error
+                : new GitHubRepositoryListFailed({
+                    reason: 'GitHub repository response was invalid.',
+                    status: 502,
+                  }),
+            ),
+          ),
+          error => error.status === 401,
+        )
+
+        return noStoreJsonResponse({
+          repositories: result.repositories,
+          page: result.page,
+          perPage: result.perPage,
+          hasNextPage: result.hasNextPage,
+        })
+      }),
+    )
+
+  // Mobile-bearer repo detail API (MM-B1, #8471). GET
+  // /api/mobile/repos/{owner}/{name} — validates a specific repo is
+  // reachable with the caller's stored GitHub token (e.g. before binding a
+  // thread to it).
+  const mobileRepositoryDetailResponse = (
+    owner: string,
+    name: string,
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ) =>
+    runRoute(
+      env,
+      Effect.gen(function* () {
+        const session = yield* requireMobileBearerSession(
+          dependencies,
+          request,
+          env,
+          ctx,
+        )
+        const token = yield* requireMobileGitHubToken(env, session.user.userId)
+        const github = yield* GitHubRepositoryService
+        const repository = yield* github.getRepository(token, owner, name).pipe(
+          Effect.mapError(error => {
+            const readFailed =
+              error instanceof GitHubRepositoryReadFailed
+                ? error
+                : new GitHubRepositoryReadFailed({
+                    reason: 'GitHub repository response was invalid.',
+                    status: 502,
+                  })
+
+            if (readFailed.status === 401) {
+              return new OnboardingGitHubTokenExpired({})
+            }
+
+            if (readFailed.status === 404) {
+              return new OnboardingRepositoryNotFound({
+                repositoryId: `${owner}/${name}`,
+              })
+            }
+
+            return readFailed
+          }),
+        )
+
+        return noStoreJsonResponse({ repository })
+      }),
+    )
+
   const saveRepositoryResponse = (
     mode: 'select' | 'update',
     request: Request,
@@ -1159,6 +1386,27 @@ export const makeOnboardingRoutes = <
       if (url.pathname === '/api/onboarding/repositories') {
         return request.method === 'GET'
           ? repositoriesResponse(request, env, ctx)
+          : Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      if (url.pathname === '/api/mobile/repos') {
+        return request.method === 'GET'
+          ? mobileRepositoriesResponse(request, env, ctx)
+          : Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      const mobileRepositoryDetailMatch =
+        /^\/api\/mobile\/repos\/([^/]+)\/([^/]+)$/.exec(url.pathname)
+
+      if (mobileRepositoryDetailMatch !== null) {
+        return request.method === 'GET'
+          ? mobileRepositoryDetailResponse(
+              decodeURIComponent(mobileRepositoryDetailMatch[1] ?? ''),
+              decodeURIComponent(mobileRepositoryDetailMatch[2] ?? ''),
+              request,
+              env,
+              ctx,
+            )
           : Effect.succeed(methodNotAllowed(['GET']))
       }
 

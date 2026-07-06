@@ -62,17 +62,44 @@ const repositoryFromApi = (
   description: repository.description,
 })
 
-const listRepositories = (
+export const GITHUB_REPOSITORY_DEFAULT_PER_PAGE = 100
+export const GITHUB_REPOSITORY_MAX_PER_PAGE = 100
+
+export type GitHubRepositoryPage = Readonly<{
+  repositories: ReadonlyArray<OnboardingGitHubRepository>
+  page: number
+  perPage: number
+  hasNextPage: boolean
+}>
+
+/**
+ * GitHub's `Link` response header carries `rel="next"` when another page
+ * exists (RFC 8288). Parsing it (rather than guessing from result count) is
+ * the correct signal: a short final page can still equal `perPage` when the
+ * account happens to have exactly that many repositories.
+ */
+const hasNextPageLink = (linkHeader: string | null): boolean =>
+  linkHeader !== null &&
+  linkHeader.split(',').some(part => part.includes('rel="next"'))
+
+const listRepositoriesPage = (
   accessToken: string,
+  input: Readonly<{ page: number; perPage: number }>,
 ): Effect.Effect<
-  ReadonlyArray<OnboardingGitHubRepository>,
+  GitHubRepositoryPage,
   GitHubRepositoryListFailed | S.SchemaError
 > =>
   Effect.gen(function* () {
+    const page = Math.max(1, Math.trunc(input.page))
+    const perPage = Math.min(
+      GITHUB_REPOSITORY_MAX_PER_PAGE,
+      Math.max(1, Math.trunc(input.perPage)),
+    )
+
     const response = yield* Effect.tryPromise({
       try: () =>
         fetch(
-          'https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member',
+          `https://api.github.com/user/repos?per_page=${perPage}&page=${page}&sort=updated&affiliation=owner,collaborator,organization_member`,
           {
             headers: githubHeaders(accessToken),
           },
@@ -91,6 +118,7 @@ const listRepositories = (
       })
     }
 
+    const hasNextPage = hasNextPageLink(response.headers.get('link'))
     const payload = yield* Effect.tryPromise({
       try: () => response.json(),
       catch: error =>
@@ -103,8 +131,24 @@ const listRepositories = (
       payload,
     )
 
-    return repositories.map(repositoryFromApi)
+    return {
+      repositories: repositories.map(repositoryFromApi),
+      page,
+      perPage,
+      hasNextPage,
+    }
   })
+
+const listRepositories = (
+  accessToken: string,
+): Effect.Effect<
+  ReadonlyArray<OnboardingGitHubRepository>,
+  GitHubRepositoryListFailed | S.SchemaError
+> =>
+  listRepositoriesPage(accessToken, {
+    page: 1,
+    perPage: GITHUB_REPOSITORY_DEFAULT_PER_PAGE,
+  }).pipe(Effect.map(result => result.repositories))
 
 const getRepository = (
   accessToken: string,
@@ -169,6 +213,13 @@ export class GitHubRepositoryService extends Context.Service<
       ReadonlyArray<OnboardingGitHubRepository>,
       GitHubRepositoryListFailed | S.SchemaError
     >
+    readonly listRepositoriesPage: (
+      accessToken: string,
+      input: Readonly<{ page: number; perPage: number }>,
+    ) => Effect.Effect<
+      GitHubRepositoryPage,
+      GitHubRepositoryListFailed | S.SchemaError
+    >
   }
 >()('@openagentsinc/autopilot-omega/GitHubRepositoryService') {
   static readonly layer = Layer.succeed(GitHubRepositoryService, {
@@ -178,5 +229,8 @@ export class GitHubRepositoryService extends Context.Service<
     listRepositories: Effect.fn('GitHubRepositoryService.listRepositories')(
       listRepositories,
     ),
+    listRepositoriesPage: Effect.fn(
+      'GitHubRepositoryService.listRepositoriesPage',
+    )(listRepositoriesPage),
   })
 }
