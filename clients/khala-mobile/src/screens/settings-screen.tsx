@@ -16,6 +16,12 @@ import { useOnDeviceReadiness } from "../native/use-on-device-readiness"
 import { registerForPushNotificationsAsync } from "../push/push-notifications-client"
 import { fetchKhalaMobileCreditsBalance } from "../sync/khala-mobile-credits-api"
 import { formatUsdCents, isLowBalance } from "../sync/khala-mobile-credits-format-core"
+import {
+  fetchKhalaMobileModelPreference,
+  putKhalaMobileModelPreference,
+  type KhalaModelPreference,
+} from "../sync/khala-mobile-model-preference-api"
+import { modelDisplayLabel, modelPreferenceFallbackMessage } from "../sync/khala-mobile-model-preference-format-core"
 import { MOTION_STAGGER_MS } from "../theme/motion"
 
 const SectionLabel = ({ children }: { children: string }) => (
@@ -102,21 +108,72 @@ const CreditsSection = ({ onViewHistory }: { onViewHistory: () => void }) => {
   )
 }
 
-/** MM-F1 (#8484) owns per-user model preference end to end (server storage +
- * executor honor). Until that lands, Khala Code always runs the operator
- * default model — this section says so honestly rather than showing a
- * picker with no effect. */
-const ModelsSection = () => (
-  <View className="gap-2">
-    <SectionLabel>Models</SectionLabel>
-    <KhalaText variant="muted">
-      Khala Code currently runs the default model for every task.
-    </KhalaText>
-    <KhalaText variant="faint">
-      Choosing your own model is coming soon.
-    </KhalaText>
-  </View>
-)
+type ModelsState =
+  | Readonly<{ status: "loading" }>
+  | Readonly<{ status: "unavailable" }>
+  | Readonly<{ status: "ready"; preference: KhalaModelPreference }>
+
+/** MM-F1 (#8484, merged 8f38922fc4 while this lane was mid-flight) shipped
+ * the real `GET/PUT /api/mobile/model-preference` route — this section now
+ * wires directly against it rather than stubbing. The coding executor's own
+ * honor of this preference (per #8484's scoping note) is Lane 0's follow-up,
+ * separate from this store/read/write UI. */
+const ModelsSection = () => {
+  const { baseUrl, token } = useKhalaAuth()
+  const [state, setState] = useState<ModelsState>({ status: "loading" })
+  const [selecting, setSelecting] = useState<string | null>(null)
+
+  const refresh = async () => {
+    const result = await fetchKhalaMobileModelPreference(baseUrl, token)
+    setState(result.ok ? { preference: result.value, status: "ready" } : { status: "unavailable" })
+  }
+
+  useEffect(() => {
+    void refresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleSelect = async (modelId: string) => {
+    if (selecting !== null) return
+    setSelecting(modelId)
+    const result = await putKhalaMobileModelPreference(baseUrl, token, modelId)
+    setSelecting(null)
+    if (result.ok) setState({ preference: result.value, status: "ready" })
+  }
+
+  return (
+    <View className="gap-2">
+      <SectionLabel>Models</SectionLabel>
+      {state.status === "loading" ? (
+        <KhalaText variant="muted">Loading models…</KhalaText>
+      ) : state.status === "unavailable" ? (
+        <View className="gap-1">
+          <KhalaText variant="muted">Khala Code currently runs the default model for every task.</KhalaText>
+          <KhalaText variant="faint">Choosing your own model isn't available right now.</KhalaText>
+        </View>
+      ) : (
+        <View className="gap-2">
+          {modelPreferenceFallbackMessage(state.preference.fallback) === null ? null : (
+            <KhalaText variant="warning">{modelPreferenceFallbackMessage(state.preference.fallback)}</KhalaText>
+          )}
+          {state.preference.availableModelIds.map(modelId => {
+            const active = state.preference.effectiveModelId === modelId
+            return (
+              <KhalaButton
+                disabled={selecting !== null}
+                key={modelId}
+                loading={selecting === modelId}
+                onPress={() => void handleSelect(modelId)}
+                text={active ? `${modelDisplayLabel(modelId)} (active)` : modelDisplayLabel(modelId)}
+                variant={active ? "primary" : "secondary"}
+              />
+            )
+          })}
+        </View>
+      )}
+    </View>
+  )
+}
 
 type PushPermissionStatus = "loading" | "granted" | "denied" | "undetermined"
 
