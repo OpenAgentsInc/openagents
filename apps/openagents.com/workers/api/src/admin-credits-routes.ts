@@ -151,6 +151,7 @@ type RecentSignupRow = Readonly<{
   created_at: string
   has_signup_credit_grant: number
   has_admin_credit_grant: number
+  balance_msat: number | null
 }>
 
 const routeListUsers = async <Bindings>(
@@ -166,6 +167,8 @@ const routeListUsers = async <Bindings>(
 
   const like = query === undefined || query.length === 0 ? null : `%${query}%`
 
+  // Single query, no N+1: the balance join reads agent_balances directly by
+  // the same `agent:<userId>` actor-ref convention `agentRefForUser` uses.
   const result = await db
     .prepare(
       `SELECT users.id AS user_id,
@@ -185,8 +188,11 @@ const routeListUsers = async <Bindings>(
               EXISTS (
                 SELECT 1 FROM admin_credit_grants
                  WHERE admin_credit_grants.user_id = users.id
-              ) AS has_admin_credit_grant
+              ) AS has_admin_credit_grant,
+              agent_balances.balance_msat AS balance_msat
          FROM users
+         LEFT JOIN agent_balances
+           ON agent_balances.actor_ref = 'agent:' || users.id
         WHERE users.kind = 'human'
           AND users.deleted_at IS NULL
           AND (
@@ -209,6 +215,7 @@ const routeListUsers = async <Bindings>(
   return noStoreJsonResponse({
     ok: true,
     users: result.results.map(row => ({
+      balanceUsdCents: msatToUsdCentsRound(row.balance_msat ?? 0),
       createdAt: row.created_at,
       displayName: row.display_name,
       githubLogin: row.github_username,

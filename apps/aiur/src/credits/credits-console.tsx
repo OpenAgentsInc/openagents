@@ -26,7 +26,11 @@ import {
 
 const usdCentsToDisplay = (cents: number): string => `$${(cents / 100).toFixed(2)}`
 
-type SelectedTarget = Readonly<{ userId: string; githubLogin: string | null; displayName: string }>
+export type SelectedTarget = Readonly<{
+  userId: string
+  githubLogin: string | null
+  displayName: string
+}>
 
 function UserSearch({
   onSelect,
@@ -465,9 +469,37 @@ function RecentGrantsLedger({ refreshKey }: { refreshKey: number }) {
   )
 }
 
-export function CreditsConsole() {
+export function CreditsConsole({
+  initialUserId,
+}: {
+  /** Pre-selects a user by id on mount (e.g. deep-linked from the AIUR-3
+   * ops views' "recent signups" list, `/credits?userId=<id>`). Resolved via
+   * a real balance lookup, not a fabricated display name. */
+  initialUserId?: string | undefined
+} = {}) {
   const [target, setTarget] = useState<SelectedTarget | undefined>(undefined)
   const [refreshKey, setRefreshKey] = useState(0)
+
+  useEffect(() => {
+    if (initialUserId === undefined || initialUserId.trim() === '') return
+    let cancelled = false
+    void (async () => {
+      const result = await fetchCreditsBalance({ userId: initialUserId })
+      if (!cancelled && result.ok) {
+        setTarget({
+          displayName: result.value.user.displayName,
+          githubLogin: result.value.user.githubLogin,
+          userId: result.value.user.userId,
+        })
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // Intentionally runs once on mount only — this is a deep-link seed, not
+    // a live binding to a changing prop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className="grid gap-6">

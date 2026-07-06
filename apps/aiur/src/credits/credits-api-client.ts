@@ -21,6 +21,7 @@ export type CreditsUserSummary = Readonly<{
   createdAt: string
   hasSignupCreditGrant: boolean
   hasAdminCreditGrant: boolean
+  balanceUsdCents: number
 }>
 
 export type CreditsBalance = Readonly<{

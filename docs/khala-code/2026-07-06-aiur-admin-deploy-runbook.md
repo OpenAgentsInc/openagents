@@ -91,7 +91,7 @@ The credit ledger, its migration, and the `/api/admin/credits/*` routes
 live in the MAIN `openagents.com` Worker
 (`apps/openagents.com/workers/api/src/admin-credits-routes.ts` +
 `inference/admin-credit-grant.ts` + migration
-`migrations/0307_admin_credit_grants.sql`), not in Aiur. Deploying Aiur
+`migrations/0308_admin_credit_grants.sql`), not in Aiur. Deploying Aiur
 alone is not sufficient for the credits console to work — the main
 Worker's normal deploy path (`docs/DEPLOYMENT.md`'s `openagents.com
 Worker` row, `bun run --cwd apps/openagents.com/workers/api deploy:safe`)

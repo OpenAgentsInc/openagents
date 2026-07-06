@@ -263,6 +263,11 @@ import {
   makeAdminCreditsRoutes,
 } from './admin-credits-routes'
 import {
+  ADMIN_OPS_HEALTH_PATH,
+  ADMIN_OPS_RUNS_PATH,
+  makeAdminOpsRoutes,
+} from './admin-ops-routes'
+import {
   AutopilotComposedRunEndpoint,
   handleAutopilotComposedRunApi,
   isAutopilotComposedRunEnabled,
@@ -4001,6 +4006,20 @@ const { requireUserBearerSession } =
 // parameter annotations (#8498) and this composition does not need one of
 // its own.
 const adminCreditsRoutes = makeAdminCreditsRoutes<Env>({
+  db: openAgentsDatabase,
+  requireAdminCaller: async (request, env, ctx) => {
+    const session = await requireUserBearerSession(request, env, ctx)
+    if (session === undefined) return undefined
+    if (!isOpenAgentsAdminEmail(session.user.email)) return undefined
+    return { userId: session.user.userId }
+  },
+})
+
+// AIUR-3 (#8501): the ops views (users/runs/executor health) reuse the
+// EXACT SAME owner-gate composition as the credits console above — see
+// the comment there. Duplicated inline (not factored into a shared named
+// function) for the same raw-Env-parameter-annotation reason.
+const adminOpsRoutes = makeAdminOpsRoutes<Env>({
   db: openAgentsDatabase,
   requireAdminCaller: async (request, env, ctx) => {
     const session = await requireUserBearerSession(request, env, ctx)
@@ -12816,6 +12835,21 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       Effect.promise(() =>
         adminCreditsRoutes.handleAdminCreditsClawbackApi(request, env, ctx),
       ),
+  },
+  {
+    // AIUR-3 (#8501): recent org-cloud coding turns with exact usage
+    // receipts (reads token_usage_events directly — see admin-ops-routes.ts
+    // for the honest scope pin on live cross-user Khala Sync feeds).
+    path: ADMIN_OPS_RUNS_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() => adminOpsRoutes.handleAdminOpsRunsApi(request, env, ctx)),
+  },
+  {
+    // AIUR-3 (#8501): the ops health strip (last org-cloud turn, push
+    // device-token readiness, live Khala public-stats reachability).
+    path: ADMIN_OPS_HEALTH_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() => adminOpsRoutes.handleAdminOpsHealthApi(request, env, ctx)),
   },
   {
     // Admin-gated Cloudflare Browser Rendering smoke (#6205). Proves the real

@@ -3,25 +3,19 @@ import { createFileRoute } from '@tanstack/react-router'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { AIUR_LOGIN_START_PATH, AIUR_LOGOUT_PATH } from '@/auth/routes'
-import { CreditsConsole } from '@/credits/credits-console'
+import { OpsConsole } from '@/ops/ops-console'
 
 import { useAiurAccess } from './-use-aiur-access'
 
-type CreditsSearch = Readonly<{ userId: string | undefined }>
-
-export const Route = createFileRoute('/credits')({
-  component: CreditsPage,
+export const Route = createFileRoute('/ops')({
+  component: OpsPage,
   head: () => ({
-    meta: [{ title: 'Aiur — Credits' }],
-  }),
-  validateSearch: (search: Record<string, unknown>): CreditsSearch => ({
-    userId: typeof search.userId === 'string' ? search.userId : undefined,
+    meta: [{ title: 'Aiur — Ops' }],
   }),
 })
 
-function CreditsPage() {
+function OpsPage() {
   const access = useAiurAccess()
-  const { userId } = Route.useSearch()
 
   if (access.kind === 'loading') {
     return (
@@ -34,13 +28,13 @@ function CreditsPage() {
   if (access.kind === 'signed_out') {
     return (
       <section
-        data-route="aiur-credits-sign-in"
+        data-route="aiur-ops-sign-in"
         className="flex min-h-dvh w-full items-center justify-center bg-khala-void px-6 text-khala-text"
       >
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle>Aiur</CardTitle>
-            <CardDescription>Sign in to use the credits console.</CardDescription>
+            <CardDescription>Sign in to view ops.</CardDescription>
           </CardHeader>
           <CardContent>
             <Button asChild>
@@ -55,7 +49,7 @@ function CreditsPage() {
   if (access.kind === 'denied') {
     return (
       <section
-        data-route="aiur-credits-denied"
+        data-route="aiur-ops-denied"
         className="flex min-h-dvh w-full items-center justify-center bg-khala-void px-6 text-khala-text"
       >
         <Card className="w-full max-w-md">
@@ -75,14 +69,14 @@ function CreditsPage() {
 
   return (
     <section
-      data-route="aiur-credits"
+      data-route="aiur-ops"
       className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col gap-6 bg-khala-void px-6 py-10 text-khala-text"
     >
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="m-0 font-mono text-2xl font-semibold text-white">Credits console</h1>
+          <h1 className="m-0 font-mono text-2xl font-semibold text-white">Ops</h1>
           <p className="m-0 text-sm text-khala-text-muted">
-            Manual credit grants — replaces IAP for the first MVP build.
+            Who signed up, what did they run, and is the stack up.
           </p>
         </div>
         <div className="flex gap-2">
@@ -90,14 +84,11 @@ function CreditsPage() {
             <a href="/">Dashboard</a>
           </Button>
           <Button asChild size="sm" variant="ghost">
-            <a href="/ops">Ops</a>
-          </Button>
-          <Button asChild size="sm" variant="ghost">
             <a href={AIUR_LOGOUT_PATH}>Sign out</a>
           </Button>
         </div>
       </header>
-      <CreditsConsole initialUserId={userId} />
+      <OpsConsole />
     </section>
   )
 }

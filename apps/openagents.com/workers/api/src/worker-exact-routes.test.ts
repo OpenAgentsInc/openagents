@@ -118,6 +118,8 @@ const approvedExactRoutePaths = [
   '/api/admin/credits/recent-grants',
   '/api/admin/credits/grant',
   '/api/admin/credits/clawback',
+  '/api/admin/ops/runs',
+  '/api/admin/ops/health',
   '/api/admin/cf-browser-smoke',
   '/api/internal/khala-sync/db-smoke',
   // Khala Sync public tokens-served reconcile/repair (KS-6.3, #8304):

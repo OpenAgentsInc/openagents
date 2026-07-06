@@ -79,7 +79,7 @@ for the first build. The D1 credit ledger is owned by the MAIN
   `apps/openagents.com/workers/api/src/inference/admin-credit-grant.ts`:
   `usdCreditGrantStatements` (RL-3 `revenueAsset: 'free'`) for grants,
   `clawbackInferenceCredits` for clawbacks, both idempotent on a
-  caller-supplied ref (`admin_credit_grants` D1 table, migration `0307`).
+  caller-supplied ref (`admin_credit_grants` D1 table, migration `0308`).
 - **Aiur side**: `src/admin-credits-proxy.ts` is the same-origin,
   owner-gated forwarding proxy (identical shape to `khala-sync-proxy.ts`) —
   the browser only ever talks to Aiur's own origin; Aiur attaches the
@@ -113,7 +113,7 @@ bun run --cwd apps/openagents.com check:architecture
 domain route `aiur.openagents.com`. Deploy runbook:
 `docs/khala-code/2026-07-06-aiur-admin-deploy-runbook.md` (linked from
 `docs/DEPLOYMENT.md`). The credit ledger migration
-(`apps/openagents.com/workers/api/migrations/0307_admin_credit_grants.sql`)
+(`apps/openagents.com/workers/api/migrations/0308_admin_credit_grants.sql`)
 ships with the main Worker's normal `deploy:safe` migration-apply step —
 Aiur itself has no D1 of its own.
 
@@ -128,6 +128,49 @@ Aiur itself has no D1 of its own.
   `LIMIT`-capped reads, not true cursor-paginated — acceptable at MVP scale,
   flagged for AIUR-3 if it needs more.
 
+## Scope (AIUR-3, #8501) — ops views
+
+Read-only v1: "who signed up, what did they run, did it charge correctly,
+and is the executor/push/inference stack up" — without shelling into D1.
+Reachable at `/ops`, linked from the dashboard and the credits console.
+
+- **Server (main Worker)**: `apps/openagents.com/workers/api/src/
+  admin-ops-routes.ts` exposes `GET /api/admin/ops/{runs,health}`, gated by
+  the exact same owner-caller composition as the credits routes. Users are
+  served by the ALREADY-EXISTING `/api/admin/credits/users` route (extended
+  in this change to also return `balanceUsdCents` per row via a single
+  `LEFT JOIN agent_balances` — no N+1).
+  - **Runs**: reads `token_usage_events` directly, filtered to the exact
+    `demand_source` tag the org-cloud runtime-usage ingest route (#8473)
+    already writes — real exact usage receipts, not a mock.
+  - **Health**: last org-cloud turn completed (real, from the same table),
+    push device-token registration count (real, readiness signal — no
+    delivery-log table exists yet to measure send success honestly), and a
+    live no-spend reachability check against the public Khala stats
+    endpoint.
+- **Aiur side**: the SAME `admin-credits-proxy.ts` from AIUR-2 now also
+  forwards `/api/admin/ops/*` (same owner gate, same upstream). `src/ops/`
+  holds the UI: `ops-api-client.ts` (typed fetch wrappers) and
+  `ops-console.tsx` (health strip, recent-signups panel, recent-runs
+  panel). Clicking a user row deep-links to `/credits?userId=<id>`
+  (`CreditsConsole` gained an `initialUserId` prop, resolved via a real
+  balance lookup, never a fabricated display name).
+
+### Honest gap / documented pin (AIUR-3)
+
+The issue asks for the runs view to also be "live via the same Khala Sync
+scopes the mobile app renders (`runtime_turn`/`runtime_event`)". Today's
+Khala Sync scope taxonomy is owner-scoped (`scope.user.<id>`) or
+thread-scoped (`scope.thread.<id>`) — there is no cross-user "admin sees
+every user's threads" scope, and adding one is a sync-engine authorization
+change or its own reviewed decision outside this lane's safe scope (it
+would widen what a caller can read across owner boundaries). This v1
+instead reads the same underlying exact ledger the mobile app's turns are
+billed from (`token_usage_events`), polled rather than pushed live — real
+data, not a fabricated placeholder, just not (yet) a live push. The
+response is explicit about this: `liveViaKhalaSync: false`.
+
 ## Explicitly out of scope here
 
-The ops views (AIUR-3, #8501) build on this scaffold in a follow-up change.
+Nothing further is planned for this Aiur scaffold beyond AIUR-1/2/3 unless
+the owner directs new scope.

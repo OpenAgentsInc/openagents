@@ -77,6 +77,9 @@ function OwnerDashboard({ login }: { login: string | undefined }) {
         </div>
         <div className="flex gap-2">
           <Button asChild size="sm" variant="secondary">
+            <a href="/ops">Ops</a>
+          </Button>
+          <Button asChild size="sm" variant="secondary">
             <a href="/credits">Credits console</a>
           </Button>
           <Button asChild size="sm" variant="ghost">

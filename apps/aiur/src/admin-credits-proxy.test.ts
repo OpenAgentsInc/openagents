@@ -3,6 +3,8 @@ import { describe, expect, test } from 'vitest'
 import {
   AIUR_ADMIN_CREDITS_BALANCE_PATH,
   AIUR_ADMIN_CREDITS_GRANT_PATH,
+  AIUR_ADMIN_OPS_HEALTH_PATH,
+  AIUR_ADMIN_OPS_RUNS_PATH,
   routeAiurAdminCreditsProxyRequest,
 } from './admin-credits-proxy'
 import { AIUR_ACCESS_COOKIE } from './auth/cookies'
@@ -132,5 +134,34 @@ describe('routeAiurAdminCreditsProxyRequest — fail closed', () => {
       amountUsdCents: 500,
       reason: 'x',
     })
+  })
+
+  test('AIUR-3: ops runs/health paths are also proxied, owner-gated the same way', async () => {
+    const runsRequest = new Request(`https://aiur.openagents.com${AIUR_ADMIN_OPS_RUNS_PATH}`)
+    const denied = await routeAiurAdminCreditsProxyRequest(
+      runsRequest,
+      {},
+      { client: fakeDeniedClient() },
+    )
+    expect(denied?.status).toBe(401)
+
+    const healthRequest = new Request(
+      `https://aiur.openagents.com${AIUR_ADMIN_OPS_HEALTH_PATH}`,
+      { headers: { cookie: `${AIUR_ACCESS_COOKIE}=validtoken` } },
+    )
+    let forwardedUrl: string | undefined
+    const response = await routeAiurAdminCreditsProxyRequest(
+      healthRequest,
+      { AIUR_OWNER_USER_IDS: 'user_owner' },
+      {
+        client: fakeOwnerClient('user_owner'),
+        fetch: async input => {
+          forwardedUrl = input
+          return new Response(JSON.stringify({ ok: true }))
+        },
+      },
+    )
+    expect(response?.status).toBe(200)
+    expect(forwardedUrl).toBe('https://openagents.com/api/admin/ops/health')
   })
 })
