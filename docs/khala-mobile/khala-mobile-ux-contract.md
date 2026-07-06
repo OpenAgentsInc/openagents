@@ -86,7 +86,7 @@ top follow-up item for whoever picks this up next.
 
 ## Registry
 
-Registry version: `2026-07-05.6` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-05.7` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — RETIRED
 
@@ -149,15 +149,26 @@ Registry version: `2026-07-05.6` (schema `openagents.behavior_contracts.v1`)
 - **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. Real build evidence: `bun run build:android:local` -> BUILD SUCCESSFUL, recorded in clients/khala-mobile/README.md and the 2026-07-05 audit doc.
 - **Authority boundary:** Source-string assertion, explicitly labeled per the coverage-checker's allowance for stopgap oracles (packages/behavior-contracts docs). Confirms the FIX is present in source; the accompanying real-build evidence (docs/khala-mobile/2026-07-05-mobile-qa-swarm-audit.md) is what proves it actually compiles clean on Android today. A follow-up should replace this with an automated Gradle-build CI oracle.
 
-### `khala_mobile.fleet.account_rows_sorted_readiness_then_ref.v1` — ENFORCED
+### `khala_mobile.fleet.account_rows_sorted_readiness_then_ref.v1` — RETIRED
 
 - **Surface:** khala-mobile (fleet/settings)
 - **Stated by:** operator-agent via khala-code-session on 2026-07-05
 - **Statement:** Fleet account rows in Settings are always ordered by readiness (ready first) rather than raw feed/insertion order, so the most actionable accounts are never buried.
+- **Enforcement tier:** unenforced
+- **Verification:** RETIRED 2026-07-05 (#8487): Settings no longer renders a Fleet section at all. Historical verification: bun test tests/ux-contracts.test.ts.
+- **Authority boundary:** Retired 2026-07-05 by MM-H1 (#8487, Settings rework): the desktop-oriented Fleet section this contract described has been removed from Settings entirely (acceptance criterion: "Settings contains nothing that requires a desktop"), so the statement no longer describes any rendered UI. The underlying sort helper (`sortAccountsByReadinessThenRef`) and its own unit test in `tests/khala-fleet-collections-core.test.ts` remain real, unmodified, and still pass — only this contract's claim about Settings surfacing fleet rows is retired. See `khala_mobile.settings.no_desktop_dependent_sections.v1` for the new Settings-composition contract.
+
+### `khala_mobile.settings.no_desktop_dependent_sections.v1` — ENFORCED
+
+- **Surface:** khala-mobile (settings)
+- **Stated by:** owner via khala-code-session on 2026-07-05
+- **Statement:** Settings contains nothing that requires a desktop. Credits and model selection are shown honestly as coming soon until their own issues land, never as fabricated live data.
 - **Enforcement tier:** test-sweep
-- **Oracle** `fleet_account_readiness_sort.unit` (bun-test, unit): Fleet account rows sort ready before cooldown before unavailable before unknown, tie-broken by account ref hash, so a user always sees actionable (ready) accounts first regardless of feed order. — `clients/khala-mobile/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
-- **Authority boundary:** Binds display sort/format helpers only; does not claim the underlying Khala Sync fleet collection itself is verified live-correct on device (that is a broader claim tracked separately).
+- **Oracle** `settings_screen_excludes_fleet_desktop_copy.source` (bun-test, unit): Settings never references the old Fleet section, its entities, or desktop-only copy ("never leaves the desktop"), so a fresh mobile-only install has nothing in Settings that assumes a paired desktop. — `clients/khala-mobile/tests/settings-screen-composition.test.ts`
+- **Oracle** `settings_screen_has_mobile_only_sections.source` (bun-test, unit): Settings contains the mobile-only MVP sections: Account, Credits, Models, Notifications, and About/diagnostics. — `clients/khala-mobile/tests/settings-screen-composition.test.ts`
+- **Oracle** `settings_screen_stubs_are_honest.source` (bun-test, unit): The Credits and Models sections (stubbed pending #8480/#8484) state what is real (the $10 signup grant; the single default model) and say "coming soon" for the rest, never fabricating a live balance figure or a working model picker. — `clients/khala-mobile/tests/settings-screen-composition.test.ts`
+- **Verification:** bun test tests/settings-screen-composition.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
+- **Authority boundary:** Source-string stopgap (explicitly labeled, same allowance as khala_mobile.android.stt_module_typed_asyncfunction_signature.v1): proves the exact shipped source text, not a mounted component tree. A real RN-mount oracle for Settings is future work under khala_mobile.platform.launched_app_interaction_smoke.v1.
 
 ### `khala_mobile.updates.ota_manifest_points_at_openagents_updates_only.v1` — ENFORCED
 
@@ -230,7 +241,7 @@ Registry version: `2026-07-05.6` (schema `openagents.behavior_contracts.v1`)
 - **Stated by:** operator-agent via khala-code-session on 2026-07-05
 - **Statement:** The built app actually launches and is interactable end to end on a real Android device/emulator and a real iOS device (beyond simulator/local-build success), for at least: sign-in resolves, a thread opens, a message sends, and the composer's lane picker is visible.
 - **Enforcement tier:** unenforced
-- **Verification:** Partial launched-app receipt recorded: `docs/khala-mobile/2026-07-05-maestro-launched-app-smoke-receipt.md` proves `LaunchFallback.yaml` passed on the iPhone 17 Pro iOS 26.5 simulator for app id `com.openagents.khala.mobile`, app version `0.1.0`, iOS build `6`, with local Metro serving the debug build. The broader contract remains pending because no public-safe seeded owner/token/thread precondition was available for `SignedInThreadSmoke.yaml`, and Android launched APK coverage is still unrecorded.
+- **Verification:** Partial launched-app receipt recorded: docs/khala-mobile/2026-07-05-maestro-launched-app-smoke-receipt.md proves LaunchFallback.yaml passed on the iPhone 17 Pro iOS 26.5 simulator for app id com.openagents.khala.mobile, app version 0.1.0, iOS build 6, with local Metro serving the debug build. The broader contract remains pending because no public-safe seeded owner/token/thread precondition was available for SignedInThreadSmoke.yaml, and Android launched APK coverage is still unrecorded.
 - **Blockers:** `blocker.khala_mobile.needs_physical_android_device_or_emulator_launch`, `blocker.khala_mobile.needs_ios_testflight_install_and_interact_pass`
 - **Authority boundary:** iOS has stronger automated/proof-adjacent evidence today (two independently-confirmed VALID TestFlight uploads) than Android (clean local Gradle assemble only, no launched APK). This contract exists specifically to keep that asymmetry visible rather than implying platform parity.
 

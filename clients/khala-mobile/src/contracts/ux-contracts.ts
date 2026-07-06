@@ -255,37 +255,78 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
-        "Binds display sort/format helpers only; does not claim the underlying Khala Sync fleet collection itself is verified live-correct on device (that is a broader claim tracked separately).",
+        "Retired 2026-07-05 by MM-H1 (#8487, Settings rework): the desktop-oriented Fleet section this contract described has been removed from Settings entirely (acceptance criterion: \"Settings contains nothing that requires a desktop\"), so the statement no longer describes any rendered UI. The underlying sort helper (`sortAccountsByReadinessThenRef`) and its own unit test in `tests/khala-fleet-collections-core.test.ts` remain real, unmodified, and still pass — only this contract's claim about Settings surfacing fleet rows is retired. See `khala_mobile.settings.no_desktop_dependent_sections.v1` for the new Settings-composition contract.",
       blockerRefs: [],
       contractId: "khala_mobile.fleet.account_rows_sorted_readiness_then_ref.v1",
-      enforcementTier: "test-sweep",
+      enforcementTier: "unenforced",
       evidenceRefs: [
         "clients/khala-mobile/src/sync/khala-fleet-collections-core.ts",
         "clients/khala-mobile/tests/khala-fleet-collections-core.test.ts",
         "docs/khala-mobile/khala-mobile-ux-contract.md",
       ],
-      oracles: [
-        {
-          description:
-            "Fleet account rows sort ready before cooldown before unavailable before unknown, tie-broken by account ref hash, so a user always sees actionable (ready) accounts first regardless of feed order.",
-          id: "fleet_account_readiness_sort.unit",
-          kind: "bun-test",
-          mode: "unit",
-          ref: "clients/khala-mobile/tests/ux-contracts.test.ts",
-        },
-      ],
+      oracles: [],
       productArea: "fleet/settings",
       source: {
         channel: "khala-code-session",
         statedBy: "operator-agent",
         statedOn: "2026-07-05",
       },
-      state: "enforced",
+      state: "retired",
       statement:
         "Fleet account rows in Settings are always ordered by readiness (ready first) rather than raw feed/insertion order, so the most actionable accounts are never buried.",
       surface: "khala-mobile",
       verification:
-        "bun test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+        "RETIRED 2026-07-05 (#8487): Settings no longer renders a Fleet section at all. Historical verification: bun test tests/ux-contracts.test.ts.",
+    },
+    {
+      authorityBoundary:
+        "Source-string stopgap (explicitly labeled, same allowance as khala_mobile.android.stt_module_typed_asyncfunction_signature.v1): proves the exact shipped source text, not a mounted component tree. A real RN-mount oracle for Settings is future work under khala_mobile.platform.launched_app_interaction_smoke.v1.",
+      blockerRefs: [],
+      contractId: "khala_mobile.settings.no_desktop_dependent_sections.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/src/screens/settings-screen.tsx",
+        "clients/khala-mobile/tests/settings-screen-composition.test.ts",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Settings never references the old Fleet section, its entities, or desktop-only copy (\"never leaves the desktop\"), so a fresh mobile-only install has nothing in Settings that assumes a paired desktop.",
+          id: "settings_screen_excludes_fleet_desktop_copy.source",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/settings-screen-composition.test.ts",
+        },
+        {
+          description:
+            "Settings contains the mobile-only MVP sections: Account, Credits, Models, Notifications, and About/diagnostics.",
+          id: "settings_screen_has_mobile_only_sections.source",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/settings-screen-composition.test.ts",
+        },
+        {
+          description:
+            "The Credits and Models sections (stubbed pending #8480/#8484) state what is real (the $10 signup grant; the single default model) and say \"coming soon\" for the rest, never fabricating a live balance figure or a working model picker.",
+          id: "settings_screen_stubs_are_honest.source",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/settings-screen-composition.test.ts",
+        },
+      ],
+      productArea: "settings",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-05",
+      },
+      state: "enforced",
+      statement:
+        "Settings contains nothing that requires a desktop. Credits and model selection are shown honestly as coming soon until their own issues land, never as fabricated live data.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/settings-screen-composition.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -604,5 +645,5 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-05.6",
+  version: "2026-07-05.7",
 }

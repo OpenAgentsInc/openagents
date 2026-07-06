@@ -1,17 +1,7 @@
-import {
-  decodeFleetAccountEntity,
-  decodeFleetRunEntity,
-  decodeFleetWorkerEntity,
-  fleetRunScope,
-  FLEET_ACCOUNT_ENTITY_TYPE,
-  FLEET_RUN_ENTITY_TYPE,
-  FLEET_WORKER_ENTITY_TYPE,
-  type FleetAccountEntity,
-  type FleetRunEntity,
-  type FleetWorkerEntity,
-} from "@openagentsinc/khala-sync"
-import { ScrollView, View } from "react-native"
-import Animated, { FadeIn } from "react-native-reanimated"
+import Constants from "expo-constants"
+import { useEffect, useState } from "react"
+import * as Notifications from "expo-notifications"
+import { Linking, ScrollView, View } from "react-native"
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
 import { AppHeader } from "../components/app-header"
@@ -19,26 +9,10 @@ import { Frame, usePowerOnVisible } from "../components/frame"
 import { KhalaButton } from "../components/khala-button"
 import { KhalaScreen } from "../components/khala-screen"
 import { KhalaText } from "../components/khala-text"
-import { KHALA_SYNC_DEMO_FLEET_RUN_ID } from "../config/khala-sync-demo"
 import type { OnDeviceReadinessRow } from "../native/on-device-readiness-core"
 import { useOnDeviceReadiness } from "../native/use-on-device-readiness"
-import {
-  fleetAccountIdOf,
-  fleetRunIdOf,
-  fleetWorkerIdOf,
-  formatAccountRefHash,
-  sortAccountsByReadinessThenRef,
-  sortWorkersByIdAsc,
-} from "../sync/khala-fleet-collections-core"
-import { useKhalaSyncCollection } from "../sync/use-khala-sync-collection"
-import { MOTION_MEDIUM, MOTION_STAGGER_MS } from "../theme/motion"
-
-const READINESS_COLOR: Record<FleetAccountEntity["readiness"], string> = {
-  cooldown: "text-warning",
-  ready: "text-success",
-  unavailable: "text-danger",
-  unknown: "text-textFaint",
-}
+import { registerForPushNotificationsAsync } from "../push/push-notifications-client"
+import { MOTION_STAGGER_MS } from "../theme/motion"
 
 const SectionLabel = ({ children }: { children: string }) => (
   <KhalaText className="mb-2" variant="label">
@@ -46,144 +20,17 @@ const SectionLabel = ({ children }: { children: string }) => (
   </KhalaText>
 )
 
-const FleetRunCard = ({ run }: { run: FleetRunEntity }) => {
-  const visible = usePowerOnVisible()
-  return (
-    <Frame alwaysShowBorder visible={visible}>
-      <View className="p-3">
-        <View className="flex-row items-center justify-between">
-          <KhalaText className="font-semibold" text={run.status} />
-          <KhalaText text={run.workerKind} variant="faint" />
-        </View>
-        <KhalaText className="mt-1 text-textMuted" variant="faint">
-          {run.desiredSlots} desired slots · {run.counters.activeAssignments} active ·{" "}
-          {run.counters.completedAssignments} completed · {run.counters.failedAssignments} failed ·{" "}
-          {run.counters.blockedAssignments} blocked
-        </KhalaText>
-      </View>
-    </Frame>
-  )
-}
-
-const AccountCard = ({ account, index }: { account: FleetAccountEntity; index: number }) => {
-  const visible = usePowerOnVisible(MOTION_STAGGER_MS * index)
-  return (
-    <Frame alwaysShowBorder visible={visible}>
-      <View className="px-3 py-2">
-        <View className="flex-row items-center justify-between">
-          <KhalaText variant="mono">
-            {formatAccountRefHash(account.accountRefHash)}
-            {account.provider === undefined ? "" : ` · ${account.provider}`}
-          </KhalaText>
-          <KhalaText className={READINESS_COLOR[account.readiness]} variant="faint">
-            {account.readiness}
-            {account.rateLimitClass === undefined ? "" : ` · ${account.rateLimitClass}`}
-          </KhalaText>
-        </View>
-        {account.capacityAvailable === undefined &&
-        account.capacityBusy === undefined &&
-        account.capacityQueued === undefined ? null : (
-          <KhalaText className="mt-1" variant="faint">
-            {account.capacityAvailable ?? 0} available ·{" "}
-            {account.capacityBusy ?? 0} busy · {account.capacityQueued ?? 0} queued
-          </KhalaText>
-        )}
-      </View>
-    </Frame>
-  )
-}
-
-const FleetSection = () => {
-  const scope = KHALA_SYNC_DEMO_FLEET_RUN_ID === "" ? "" : String(fleetRunScope(KHALA_SYNC_DEMO_FLEET_RUN_ID))
-
-  const runState = useKhalaSyncCollection(scope, FLEET_RUN_ENTITY_TYPE, decodeFleetRunEntity, fleetRunIdOf)
-  const workerState = useKhalaSyncCollection(
-    scope,
-    FLEET_WORKER_ENTITY_TYPE,
-    decodeFleetWorkerEntity,
-    fleetWorkerIdOf,
-  )
-  const accountState = useKhalaSyncCollection(
-    scope,
-    FLEET_ACCOUNT_ENTITY_TYPE,
-    decodeFleetAccountEntity,
-    fleetAccountIdOf,
-  )
-
-  if (KHALA_SYNC_DEMO_FLEET_RUN_ID === "") {
-    return (
-      <View className="gap-2">
-        <SectionLabel>Fleet</SectionLabel>
-        <KhalaText variant="muted">
-          No fleet run configured. Set
-          EXPO_PUBLIC_KHALA_SYNC_DEMO_FLEET_RUN_ID to the active Khala Code
-          fleet run id to see it here.
-        </KhalaText>
-      </View>
-    )
-  }
-
-  const run: FleetRunEntity | undefined = runState.items[0]
-  const workers = sortWorkersByIdAsc(workerState.items)
-  const accounts = sortAccountsByReadinessThenRef(accountState.items)
-
-  return (
-    <View className="gap-4">
-      <View className="gap-2">
-        <SectionLabel>Fleet run</SectionLabel>
-        {runState.status === "error" ? (
-          <KhalaText text={runState.error ?? "Could not load fleet run."} variant="danger" />
-        ) : run === undefined ? (
-          <KhalaText variant="muted">
-            {runState.status === "loading" ? "loading…" : "No run data for this id yet"}
-          </KhalaText>
-        ) : (
-          <FleetRunCard run={run} />
-        )}
-      </View>
-
-      <View className="gap-2">
-        <SectionLabel>Connected accounts</SectionLabel>
-        {accounts.length === 0 ? (
-          <KhalaText variant="muted">
-            {accountState.status === "loading" ? "loading…" : "No connected accounts synced yet"}
-          </KhalaText>
-        ) : (
-          accounts.map((account: FleetAccountEntity, index) => (
-            <AccountCard account={account} index={index} key={account.accountRefHash} />
-          ))
-        )}
-      </View>
-
-      <View className="gap-2">
-        <SectionLabel>Workers</SectionLabel>
-        {workers.length === 0 ? (
-          <KhalaText variant="muted">
-            {workerState.status === "loading" ? "loading…" : "No worker slots synced yet"}
-          </KhalaText>
-        ) : (
-          workers.map((worker: FleetWorkerEntity, index) => (
-            <Animated.View
-              className="flex-row items-center justify-between rounded-xl border border-border bg-surfaceRaised px-3 py-2"
-              entering={FadeIn.delay(MOTION_STAGGER_MS * index).duration(MOTION_MEDIUM)}
-              key={worker.workerId}
-            >
-              <KhalaText text={worker.workerId} variant="mono" />
-              <KhalaText text={worker.phase} variant="faint" />
-            </Animated.View>
-          ))
-        )}
-      </View>
-
-      <KhalaText variant="faint">
-        Account identity is a public-safe hashed ref only — no email or raw
-        credential ever leaves the desktop, just readiness, provider, and
-        dispatch-slot capacity.
-      </KhalaText>
-    </View>
-  )
-}
-
+/**
+ * MM-H1 (#8487): the mobile-only MVP pivot's Settings rework. The prior
+ * desktop-oriented Fleet section (env-var fleet-run id, "credential never
+ * leaves the desktop" copy) is removed entirely — Settings must contain
+ * nothing that requires a desktop (acceptance criterion). Credits and
+ * Models are honest "not yet available" stubs: MM-D3 (#8480, balance/history
+ * UI) and MM-F1 (#8484, per-user model config) have not merged yet, and this
+ * screen must never fabricate a balance or a model list ahead of those
+ * landing. Notifications is real (backed by the merged MM-G1 push
+ * infrastructure, #8485/#8486), not a stub.
+ */
 const AccountSection = () => {
   const { ownerUserId, signOut } = useKhalaAuth()
   return (
@@ -192,7 +39,103 @@ const AccountSection = () => {
       <KhalaText numberOfLines={1} variant="faint">
         {ownerUserId}
       </KhalaText>
+      <KhalaText variant="muted">Signed in with GitHub.</KhalaText>
       <KhalaButton onPress={() => void signOut()} text="Sign out" variant="danger" />
+    </View>
+  )
+}
+
+/** MM-D3 (#8480) owns the real balance/history endpoint and UI. Until that
+ * lands, this section states the one thing that IS true and shipped
+ * (#8478's $10 GitHub-account-keyed signup grant) without claiming a live
+ * balance query works. */
+const CreditsSection = () => (
+  <View className="gap-2">
+    <SectionLabel>Credits</SectionLabel>
+    <KhalaText variant="muted">
+      You received $10 in free credit when you signed in with GitHub.
+    </KhalaText>
+    <KhalaText variant="faint">
+      Balance and usage history are coming soon.
+    </KhalaText>
+  </View>
+)
+
+/** MM-F1 (#8484) owns per-user model preference end to end (server storage +
+ * executor honor). Until that lands, Khala Code always runs the operator
+ * default model — this section says so honestly rather than showing a
+ * picker with no effect. */
+const ModelsSection = () => (
+  <View className="gap-2">
+    <SectionLabel>Models</SectionLabel>
+    <KhalaText variant="muted">
+      Khala Code currently runs the default model for every task.
+    </KhalaText>
+    <KhalaText variant="faint">
+      Choosing your own model is coming soon.
+    </KhalaText>
+  </View>
+)
+
+type PushPermissionStatus = "loading" | "granted" | "denied" | "undetermined"
+
+const NotificationsSection = () => {
+  const { baseUrl, token } = useKhalaAuth()
+  const [status, setStatus] = useState<PushPermissionStatus>("loading")
+  const [requesting, setRequesting] = useState(false)
+
+  const refreshStatus = async () => {
+    try {
+      const permissions = await Notifications.getPermissionsAsync()
+      setStatus(permissions.granted ? "granted" : permissions.canAskAgain ? "undetermined" : "denied")
+    } catch {
+      setStatus("undetermined")
+    }
+  }
+
+  useEffect(() => {
+    void refreshStatus()
+  }, [])
+
+  const handleEnable = async () => {
+    if (requesting || token === "") return
+    setRequesting(true)
+    try {
+      await registerForPushNotificationsAsync({ apiBaseUrl: baseUrl, bearerToken: token, event: "task_dispatched" })
+    } finally {
+      setRequesting(false)
+      await refreshStatus()
+    }
+  }
+
+  return (
+    <View className="gap-2">
+      <SectionLabel>Notifications</SectionLabel>
+      {status === "loading" ? (
+        <KhalaText variant="muted">checking…</KhalaText>
+      ) : status === "granted" ? (
+        <KhalaText variant="muted">Enabled — you'll get a push when a task finishes or needs you.</KhalaText>
+      ) : status === "denied" ? (
+        <View className="gap-2">
+          <KhalaText variant="muted">
+            Notifications are turned off for Khala Code in your device Settings.
+          </KhalaText>
+          <KhalaButton onPress={() => void Linking.openSettings()} text="Open device settings" variant="secondary" />
+        </View>
+      ) : (
+        <View className="gap-2">
+          <KhalaText variant="muted">
+            Get notified when a task finishes or needs your input.
+          </KhalaText>
+          <KhalaButton
+            disabled={requesting}
+            loading={requesting}
+            onPress={() => void handleEnable()}
+            text="Enable notifications"
+            variant="secondary"
+          />
+        </View>
+      )}
     </View>
   )
 }
@@ -221,11 +164,25 @@ const OnDeviceCard = ({ row, index }: { row: OnDeviceReadinessRow; index: number
   )
 }
 
-const OnDeviceSection = () => {
+const appVersionLabel = (): string => {
+  const version = Constants.expoConfig?.version ?? "0.0.0"
+  const iosBuildNumber = (Constants.expoConfig?.ios as { buildNumber?: unknown } | undefined)?.buildNumber
+  const androidVersionCode = (Constants.expoConfig?.android as { versionCode?: unknown } | undefined)?.versionCode
+  const build =
+    typeof iosBuildNumber === "string"
+      ? ` (ios ${iosBuildNumber})`
+      : typeof androidVersionCode === "number"
+        ? ` (android ${androidVersionCode})`
+        : ""
+  return `Khala Code ${version}${build}`
+}
+
+const AboutSection = () => {
   const readiness = useOnDeviceReadiness()
   return (
     <View className="gap-2">
-      <SectionLabel>On-device</SectionLabel>
+      <SectionLabel>About &amp; diagnostics</SectionLabel>
+      <KhalaText variant="faint">{appVersionLabel()}</KhalaText>
       {readiness.status === "loading" ? (
         <KhalaText text="checking…" variant="muted" />
       ) : readiness.status === "error" ? (
@@ -241,9 +198,11 @@ export const SettingsScreen = () => (
   <KhalaScreen preset="fixed">
     <AppHeader showMenu title="Settings" />
     <ScrollView contentContainerClassName="gap-6 px-4 py-4">
-      <FleetSection />
-      <OnDeviceSection />
       <AccountSection />
+      <CreditsSection />
+      <ModelsSection />
+      <NotificationsSection />
+      <AboutSection />
     </ScrollView>
   </KhalaScreen>
 )
