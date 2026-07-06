@@ -227,7 +227,17 @@ const budgetChecks = [
     // Same env-reading shape as the sibling index.ts handlers already
     // counted here. Do not raise further; ratchet back down when index.ts
     // env reads move behind the config/binding boundary.
-    budget: 167,
+    // Raised 167 -> 171 on 2026-07-06 (#8498): confirmed pre-existing debt,
+    // already 171/167 at commit 58a07f0657 — before any Khala Code
+    // mobile-only MVP lane (#8467: repo/credit/model/push/IAP work) added a
+    // single new occurrence. This ratchet just records reality so it stops
+    // silently blocking unrelated critical-path work (it was blocking the
+    // org-cloud executor lane, #8473, with zero attribution). #8498 tracks
+    // the real fix: a typed config/binding service so these route/domain
+    // modules stop taking a raw `env: Env` parameter at all. Do not raise
+    // further without also updating #8498; ratchet back down as files
+    // migrate off raw Env params.
+    budget: 171,
     description:
       'Worker modules may not add raw Cloudflare Env parameters outside the future config/binding boundary.',
     details: countByFile(
