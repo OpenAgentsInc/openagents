@@ -82,7 +82,12 @@ describe("Khala mobile provider spine and primitives", () => {
   test("uses button primitives on the GitHub-only sign-in fallback", async () => {
     const signIn = await readSource("src/components/sign-in-screen.tsx")
 
-    expect(signIn).toContain("KhalaButton")
+    // Restyled to the "Nexus Beam" wireframe direction (2026-07-06): the
+    // shared `KhalaButton` pill doesn't match the bordered bar CTA the owner
+    // picked, so this screen uses its own `NexusSignInButton` (still wired to
+    // the same disabled/loading/onPress contract) instead. See
+    // `../src/components/nexus-beam/nexus-sign-in-button.tsx`.
+    expect(signIn).toContain("NexusSignInButton")
     expect(signIn).toContain("signInWithGitHub")
     expect(signIn).toContain("signIn.github.primary")
     expect(signIn).not.toContain("KhalaTextField")

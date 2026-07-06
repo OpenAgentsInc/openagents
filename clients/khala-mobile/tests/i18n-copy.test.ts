@@ -13,7 +13,6 @@ describe("Khala mobile i18n copy keys", () => {
 
   test("returns the GitHub sign-in copy through typed keys", () => {
     expect(tx("signIn.github.primary")).toBe("Sign in with GitHub")
-    expect(tx("signIn.github.note")).toContain("No desktop")
   })
 
   test("copy table does not contain private examples or raw sync payload placeholders", () => {

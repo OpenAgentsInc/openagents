@@ -5,7 +5,6 @@ export const khalaCopyKeys = [
   "errorBoundary.retry",
   "nav.settings",
   "nav.threads",
-  "signIn.github.note",
   "signIn.github.primary",
   "signIn.github.subtitle",
 ] as const
@@ -19,7 +18,6 @@ export const enCopy = {
   "errorBoundary.retry": "Try again",
   "nav.settings": "Settings",
   "nav.threads": "Khala",
-  "signIn.github.note": "No desktop, Tailnet, or manual token is required.",
   "signIn.github.primary": "Sign in with GitHub",
   "signIn.github.subtitle": "Connect GitHub to pick a repo and run Khala Code from this phone.",
 } satisfies Record<KhalaCopyKey, string>
