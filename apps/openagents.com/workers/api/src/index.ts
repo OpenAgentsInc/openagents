@@ -611,6 +611,7 @@ import {
   sanitizeFreeKeyLabel,
   withFreeTierKhala,
 } from './inference/inference-free-tier-key'
+import { grantGithubSignupCredit } from './inference/github-signup-credit-grant'
 import { parseInternalAccountRefs } from './inference/inference-internal-account'
 import {
   isOperatorExemptionEnabled,
@@ -2105,6 +2106,10 @@ const GitHubUser = S.Struct({
   login: NonEmptyTrimmedString,
   name: S.optionalKey(S.NullOr(S.String)),
   avatar_url: S.optionalKey(S.NullOr(S.String)),
+  // GitHub account creation timestamp (ISO 8601), used only as a
+  // defense-in-depth account-age heuristic for the signup credit grant
+  // (MM-D1, #8478) — never stored, never surfaced to the user.
+  created_at: S.optionalKey(S.String),
 })
 
 const GitHubEmail = S.Struct({
@@ -3708,7 +3713,7 @@ const makeAuthIssuer = (env: Env) => {
         mobileClientId: config.openauth.mobileClientId,
         webClientId: config.openauth.clientId,
       }),
-    success: async (ctx, response) => {
+    success: async (ctx, response, req) => {
       if (response.provider === 'code') {
         const claimedEmail =
           typeof response.claims.email === 'string' ? response.claims.email : ''
@@ -3753,6 +3758,37 @@ const makeAuthIssuer = (env: Env) => {
         response.tokenset.access,
         { expirationTtl: SESSION_MAX_AGE_SECONDS },
       )
+
+      // MM-D1 (#8478): grant the $10 GitHub-account-keyed signup credit.
+      // Idempotent forever on the GitHub account id (safe to call on every
+      // login, not just "the first" — see github-signup-credit-grant.ts).
+      // Never blocks or fails sign-in: a grant-path error is logged
+      // public-safe and the user still gets a session; the idempotent grant
+      // call will simply retry itself on their next login.
+      try {
+        const clientIp =
+          req.headers.get('cf-connecting-ip') ??
+          req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+        await Effect.runPromise(
+          grantGithubSignupCredit(
+            {
+              githubUserId: subject.githubId ?? subject.userId,
+              userId: subject.userId,
+              ...(user.created_at === undefined
+                ? {}
+                : { githubAccountCreatedAtIso: user.created_at }),
+              ...(clientIp === undefined
+                ? {}
+                : { ipHash: await sha256Hex(clientIp) }),
+            },
+            { db: openAgentsDatabase(env) },
+          ),
+        )
+      } catch (error) {
+        logWorkerRouteError('github_signup_credit_grant_failed', error, {
+          userId: subject.userId,
+        })
+      }
 
       return ctx.subject('user', subject, {
         subject: subject.userId,

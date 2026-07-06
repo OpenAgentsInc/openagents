@@ -1445,6 +1445,33 @@ This is the invariant ledger for `openagents`.
   bounded by the available USD balance; the conversion is the single-source rate
   in `workers/api/src/inference/usd-msat-conversion.ts`. Regression coverage:
   `workers/api/src/inference/usd-credit-bridge.test.ts`.
+- GitHub-account-keyed signup credit grant (MM-D1, #8478, epic #8467 mobile-only
+  MVP): every GitHub sign-in (web or mobile) mints exactly $10 of
+  inference-spendable msat credit into `agent_balances.balance_msat`, ONCE per
+  GitHub account id, forever — `workers/api/src/inference/github-signup-credit-grant.ts`,
+  wired from the OpenAuth issuer's `success` callback
+  (`workers/api/src/index.ts`, `makeAuthIssuer`). Unlike the USD->msat bridge
+  above, this MINTS new credit rather than converting an existing USD balance
+  (there is nothing to convert on a brand-new signup), but reuses the exact
+  same `usd_credit_grant` pay-in + `usd_credit_msat` tagging primitive
+  (`usd-credit-bridge.ts`'s `usdCreditGrantStatements`), so the same RL-3
+  boundary applies unchanged: the granted msat is inference-spendable but NEVER
+  Bitcoin-withdrawable (the Lightning sweep excludes `usd_credit_msat`).
+  Idempotency is double-guarded: the pay_ins UNIQUE idempotency key
+  (`signup:github:<githubUserId>`) AND a UNIQUE `github_user_id` column on the
+  dedicated `github_signup_credit_grants` metadata table (migration 0304),
+  both in the SAME atomic D1 batch, so a race between two concurrent logins for
+  the same GitHub account still credits exactly once. Anti-abuse floor: a
+  GitHub-account-age heuristic (env-tunable, defers brand-new accounts with a
+  typed `account_too_new` outcome rather than a silent denial) and a per-IP-
+  hash/per-UTC-day cap on distinct GitHub accounts granted
+  (`github_signup_credit_ip_mints`, mirroring the existing
+  `inference_free_key_mints` shape). Device attestation is an explicit
+  fast-follow, not implemented. `clawbackInferenceCredits`
+  (`inference-abuse-controls.ts`) already works against this balance
+  unmodified (it debits any `agent_balances.balance_msat` by account ref
+  regardless of funding path). Regression coverage:
+  `workers/api/src/inference/github-signup-credit-grant.test.ts`.
 - Retired MPP rail asset origin (EPIC #6049 historical): #8387 removed the
   standalone MPP/x402 Khala completion route, the USD/card MPP credit-grant code,
   and the MPP replay caches. No current Worker route accepts a no-account MPP
