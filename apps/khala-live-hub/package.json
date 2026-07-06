@@ -1,0 +1,23 @@
+{
+  "name": "@openagentsinc/khala-live-hub",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun src/server.ts",
+    "dev": "bun --watch src/server.ts",
+    "test": "bun test",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build:cloudrun": "bun build src/server.ts --target=bun --outdir dist --entry-naming server.js",
+    "deploy:cloudrun": "bash scripts/deploy-cloudrun.sh"
+  },
+  "dependencies": {
+    "@openagentsinc/khala-sync": "workspace:*",
+    "@openagentsinc/khala-sync-server": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "bun-types": "^1.0.0",
+    "typescript": "catalog:"
+  }
+}

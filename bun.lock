@@ -116,6 +116,19 @@
         "bun-types": "^1.0.0",
       },
     },
+    "apps/khala-live-hub": {
+      "name": "@openagentsinc/khala-live-hub",
+      "version": "0.1.0",
+      "dependencies": {
+        "@openagentsinc/khala-sync": "workspace:*",
+        "@openagentsinc/khala-sync-server": "workspace:*",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
     "apps/nostr-relay": {
       "name": "@openagentsinc/nostr-relay",
       "version": "0.1.0",
@@ -1693,6 +1706,8 @@
     "@openagentsinc/khala-ai-sdk-core": ["@openagentsinc/khala-ai-sdk-core@workspace:packages/khala-ai-sdk-core"],
 
     "@openagentsinc/khala-code-desktop": ["@openagentsinc/khala-code-desktop@workspace:clients/khala-code-desktop"],
+
+    "@openagentsinc/khala-live-hub": ["@openagentsinc/khala-live-hub@workspace:apps/khala-live-hub"],
 
     "@openagentsinc/khala-mobile": ["@openagentsinc/khala-mobile@workspace:clients/khala-mobile"],
 

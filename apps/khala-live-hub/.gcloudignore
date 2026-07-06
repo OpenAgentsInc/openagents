@@ -1,0 +1,10 @@
+# Upload only what the Dockerfile needs (dist/ is gitignored, so without
+# this file `gcloud run deploy --source` would copy .gitignore semantics
+# and drop the prebuilt output).
+node_modules/
+.git/
+src/
+scripts/
+*.log
+tsconfig.json
+README.md
