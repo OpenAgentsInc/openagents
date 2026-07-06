@@ -3,10 +3,12 @@ import { Database } from "bun:sqlite"
 import { afterEach, describe, expect, test } from "bun:test"
 import { bunSqlDriver } from "../sqlite-store.js"
 import { createKhalaSyncStoreCore } from "../store-core.js"
-import type {
-  StoreRequest,
-  StoreRequestBody,
-  StoreResponse,
+import {
+  isStoreRequest,
+  isStoreResponse,
+  type StoreRequest,
+  type StoreRequestBody,
+  type StoreResponse,
 } from "./protocol.js"
 import {
   createKhalaSyncStoreWorkerServer,
@@ -38,6 +40,15 @@ const scope = SyncScope.make("scope.team.alpha")
 
 const request = (body: StoreRequestBody, id = 1): StoreRequest =>
   ({ ...body, id }) as StoreRequest
+
+describe("khala-sync storage worker protocol guards", () => {
+  test("classifies store request/response envelopes", () => {
+    expect(isStoreRequest(request({ op: "cursor", scope }))).toBe(true)
+    expect(isStoreRequest({ id: 1, op: "not-real", scope })).toBe(false)
+    expect(isStoreResponse({ id: 1, ok: true })).toBe(true)
+    expect(isStoreResponse({ ok: false, reason: "x" })).toBe(false)
+  })
+})
 
 describe("createKhalaSyncStoreWorkerServer", () => {
   test("applies wire entries and reads them back as wire entities", () => {

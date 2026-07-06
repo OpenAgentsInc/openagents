@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test"
+import * as rootSurface from "./index.js"
+import * as webSurface from "./web/index.js"
 
 const packageRoot = new URL("../", import.meta.url)
 const read = (path: string): Promise<string> =>
@@ -18,5 +20,7 @@ describe("@openagentsinc/khala-sync-client package surface", () => {
     expect(packageJson.exports?.["./sqlite-store"]).toBe("./src/sqlite-store.ts")
     expect(rootEntry).not.toContain('from "./sqlite-store.js"')
     expect(rootEntry).not.toContain("openKhalaSyncStore")
+    expect(rootSurface.createHttpKhalaSyncTransport).toBeFunction()
+    expect(webSurface.openKhalaSyncWasmStore).toBeFunction()
   })
 })
