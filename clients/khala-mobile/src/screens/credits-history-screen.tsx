@@ -34,10 +34,10 @@ const TransactionRow = ({ transaction }: { transaction: KhalaMobileCreditsTransa
 
 /**
  * MM-D3 (#8480): transaction history for the mobile credits balance. Reads
- * against the endpoint contract proposed in `khala-mobile-credits-api.ts`'s
- * header comment, which does not exist server-side yet — a 404/network
- * failure degrades to an honest "not yet available" screen rather than an
- * empty or fabricated list.
+ * against the endpoint contract in `khala-mobile-credits-api.ts`'s header
+ * comment, now live server-side (#8505 Part 1) — a 404/network failure still
+ * degrades to an honest "not yet available" screen rather than an empty or
+ * fabricated list, as defense in depth.
  */
 export const CreditsHistoryScreen = () => {
   const { baseUrl, token } = useKhalaAuth()

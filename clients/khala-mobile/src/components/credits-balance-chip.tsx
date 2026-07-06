@@ -10,11 +10,11 @@ import { KhalaText } from "./khala-text"
  * MM-D3 (#8480): the "glanceable near the composer" half of the acceptance
  * criterion — a small, non-interactive balance readout. Renders NOTHING
  * while the balance endpoint is unavailable (rather than a permanent "not
- * available" banner on every thread screen) so this stays purely additive
- * once the proposed `/api/mobile/credits/balance` route
- * (`khala-mobile-credits-api.ts`) exists; the Settings screen's Credits
- * section is the one place that always explains the honest "coming soon"
- * state.
+ * available" banner on every thread screen); the `/api/mobile/credits/balance`
+ * route (`khala-mobile-credits-api.ts`) is now live server-side (#8505 Part 1),
+ * so this degrade path is defense in depth rather than the steady state. The
+ * Settings screen's Credits section is the one place that always explains the
+ * honest "coming soon" state for an unavailable read.
  */
 export const CreditsBalanceChip = () => {
   const { baseUrl, token } = useKhalaAuth()

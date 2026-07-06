@@ -2,18 +2,16 @@
  * MM-D3 (#8480): client for the mobile-bearer-authorized credits/balance and
  * transaction-history endpoints.
  *
- * KNOWN GAP (honest, tracked): neither route exists on the server yet — MM-D1
- * (#8478, the $10 GitHub-keyed signup grant) shipped only the grant-writing
- * logic and a queryable-but-unexposed primitive
- * (`readGithubSignupCreditGrantsForUser`); MM-D2 (#8479, coding-run metering)
- * is still open. This module defines the CONTRACT this issue proposes for
- * whoever builds those routes (posted as a comment on #8480), and the mobile
- * UI (`settings-screen.tsx`, `credits-history-screen.tsx`) is built to
- * activate automatically the moment the routes exist — a 404/unimplemented
- * response degrades to an honest "not yet available" UI state, never a
- * fabricated balance.
+ * SHIPPED (#8505 Part 1): both routes are now live on the server —
+ * `apps/openagents.com/workers/api/src/mobile-credits-routes.ts`, backed
+ * directly by the authoritative D1 `agent_balances` / `pay_ins` ledger
+ * (`payments-ledger.ts`). The 404/unimplemented degrade path below is kept
+ * intentionally (defense in depth against a future route regression, and so
+ * an older client build against a rolled-back server still shows an honest
+ * "not yet available" state instead of a fabricated balance) but is no
+ * longer the expected steady-state response.
  *
- * Proposed contract:
+ * Contract:
  *
  * `GET /api/mobile/credits/balance`
  *   200 `{ balanceUsdCents: number }`

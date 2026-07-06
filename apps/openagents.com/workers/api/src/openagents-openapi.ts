@@ -2749,6 +2749,53 @@ const schemaComponents = (): JsonSchema => ({
     description:
       'Khala mobile credential shape compatible with khala-auth-store: ownerUserId plus the current cookie-free mobile user bearer token. It grants no agent, admin, GitHub writeback, spend, payout, or settlement authority.',
   },
+  MobileCreditsBalance: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['balanceUsdCents'],
+    properties: {
+      balanceUsdCents: {
+        type: 'integer',
+        description:
+          'Available (spendable, minus any escrow-held amount) credit balance for the authenticated user, converted to USD cents at the single shared BTC/USD reference rate every other credits surface uses (see usd-msat-conversion.ts). The internal msat ledger unit is never exposed to mobile clients.',
+      },
+    },
+  },
+  MobileCreditsTransaction: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['id', 'kind', 'amountUsdCents', 'description', 'occurredAt'],
+    properties: {
+      id: { type: 'string', description: 'The underlying pay_ins row id.' },
+      kind: { type: 'string', enum: ['grant', 'purchase', 'charge', 'other'] },
+      amountUsdCents: {
+        type: 'integer',
+        description: 'Non-negative magnitude in USD cents; sign is a display-only convention keyed on kind.',
+      },
+      description: {
+        type: 'string',
+        description:
+          'Best-effort human label; empty when the underlying context_ref is not recognized (the client falls back to a label for kind).',
+      },
+      occurredAt: { type: 'string', description: 'ISO-8601 timestamp (pay_ins.created_at).' },
+    },
+  },
+  MobileCreditsTransactionsPage: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['transactions', 'nextCursor'],
+    properties: {
+      transactions: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/MobileCreditsTransaction' },
+      },
+      nextCursor: {
+        type: 'string',
+        nullable: true,
+        description: 'Opaque keyset-pagination cursor; null when there is no further page.',
+      },
+    },
+  },
   PushDeviceTokenRegistrationRequest: {
     type: 'object',
     additionalProperties: false,
@@ -10735,6 +10782,44 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Mobile Khala Sync session credentials.',
           '#/components/schemas/MobileSyncSession',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/mobile/credits/balance': {
+    get: operation({
+      operationId: 'getMobileCreditsBalance',
+      summary: 'Read the mobile user\'s credit balance',
+      description:
+        'Fixes #8480\'s shipped-but-dead REST route (issue #8505, Part 1): reads the authenticated Khala mobile user\'s current spendable credit balance directly from the authoritative D1 agent_balances ledger (payments-ledger.ts), converted to USD cents at the single shared BTC/USD rate. Same mobile OpenAuth user bearer session as /api/mobile/auth/session; never a browser session or agent token. Read-only; never mutates the ledger.',
+      tags: ['Agents'],
+      security: mobileUserBearer,
+      responses: {
+        '200': okJson(
+          'Mobile credit balance.',
+          '#/components/schemas/MobileCreditsBalance',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/mobile/credits/transactions': {
+    get: operation({
+      operationId: 'listMobileCreditsTransactions',
+      summary: 'List the mobile user\'s credit transaction history',
+      description:
+        'Fixes #8480\'s shipped-but-dead REST route (issue #8505, Part 1): lists the authenticated Khala mobile user\'s credit ledger history (grants, charges, clawbacks) directly from the authoritative D1 pay_ins ledger, newest first, keyset-paginated. Same mobile OpenAuth user bearer session as /api/mobile/auth/session. Read-only; never mutates the ledger.',
+      tags: ['Agents'],
+      security: mobileUserBearer,
+      parameters: [
+        queryParam('limit', 'Page size, 1-200. Defaults to 50.'),
+        queryParam('cursor', 'Opaque keyset-pagination cursor from a prior page\'s nextCursor.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Mobile credit transaction history page.',
+          '#/components/schemas/MobileCreditsTransactionsPage',
         ),
         ...errorResponses(),
       },

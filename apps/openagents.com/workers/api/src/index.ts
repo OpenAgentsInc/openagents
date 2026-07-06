@@ -240,6 +240,12 @@ import {
   makeBrowserSessionBoundary,
 } from './auth/session'
 import {
+  handleMobileCreditsBalanceRequest,
+  handleMobileCreditsTransactionsRequest,
+  MOBILE_CREDITS_BALANCE_PATH,
+  MOBILE_CREDITS_TRANSACTIONS_PATH,
+} from './mobile-credits-routes'
+import {
   handlePushDeviceTokensRequest,
   PUSH_DEVICE_TOKENS_PATH,
 } from './push/push-device-token-routes'
@@ -12712,6 +12718,39 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/mobile/model-preference',
     handler: (request, env, ctx) =>
       Effect.promise(() => handleMobileModelPreferenceApi(request, env, ctx)),
+  },
+  {
+    // #8505 Part 1 (fixes #8480's shipped-but-dead REST routes): mobile-bearer
+    // credit balance read, backed directly by the authoritative D1
+    // `agent_balances` ledger. Same boundary as the routes above.
+    path: MOBILE_CREDITS_BALANCE_PATH,
+    handler: (request, env, ctx) =>
+      handleMobileCreditsBalanceRequest(
+        {
+          db: openAgentsDatabase,
+          requireUserBearerSession,
+          userIdFromSession: session => session.user.userId,
+        },
+        request,
+        env,
+        ctx,
+      ),
+  },
+  {
+    // #8505 Part 1: mobile-bearer credit transaction history, backed directly
+    // by the authoritative D1 `pay_ins` ledger. Same boundary as above.
+    path: MOBILE_CREDITS_TRANSACTIONS_PATH,
+    handler: (request, env, ctx) =>
+      handleMobileCreditsTransactionsRequest(
+        {
+          db: openAgentsDatabase,
+          requireUserBearerSession,
+          userIdFromSession: session => session.user.userId,
+        },
+        request,
+        env,
+        ctx,
+      ),
   },
   {
     // MM-G1 (#8485): mobile-bearer-authorized push device-token
