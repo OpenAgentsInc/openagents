@@ -43,7 +43,7 @@ clients with server-authoritative mutators and rebase.
   the KS-6.1 fleet cockpit entity contracts (`src/fleet.ts`) and MC-1
   owner-private chat entity contracts (`src/chat.ts`). Landed.
 - `packages/khala-sync-server` — Postgres substrate + mutator engine +
-  capture + compaction + `KhalaSyncHubDO` + the KS-6.1 fleet scope
+  capture + compaction + hub window constants + the KS-6.1 fleet scope
   projection/mutators (`fleet-projection.ts`, `fleet-mutators.ts`,
   `khala_sync_scope_owners` / `khala_sync_fleet_intents` in
   `migrations/0004`) + MC-1 chat mutators (`chat-mutators.ts`,
@@ -120,7 +120,7 @@ lookups fail CLOSED — SPEC §3):
 | `POST /api/sync/push` | KS-3.1 #8291 | transactional mutator batches over the `KHALA_SYNC_DB` Hyperdrive binding |
 | `GET /api/sync/log` | KS-4.3 #8296 | offset-resumable `LogPage` catch-up, hub-window-first with authoritative Postgres fallthrough; ETag on non-`upToDate` pages |
 | `POST /api/sync/bootstrap` | KS-4.4 #8297 | consistent snapshot pages (self-contained page tokens), final page carries the stitch `cursor`; always no-store |
-| `GET /api/sync/connect` | KS-4.4 #8297 | WebSocket upgrade proxied to the per-scope `KhalaSyncHubDO` `/connect` (auth + scope gate BEFORE the upgrade) |
+| `GET /api/sync/connect` | KS-4.4 #8297 | WebSocket upgrade proxied to the per-scope hub `/connect` — the LiveHub Cloud Run service (`apps/khala-live-hub`, CFG-5 #8520) when `KHALA_SYNC_LIVE_HUB_URL`/`_TOKEN` are configured, else the legacy `KhalaSyncHubDO` (auth + scope gate BEFORE the upgrade) |
 | `POST /api/sync/cvr-pull` | KS-7.2 #8306 | **flag-gated (`KHALA_SYNC_CVR=1`; 404 unflagged)** CVR read-set diff pull — the v2 `must_refetch` recovery path (puts/dels vs the stored per-(clientGroup, scope) CVR; permission-driven retraction is structural). Design: [`CVR_DESIGN.md`](./CVR_DESIGN.md) |
 
 The admin-bearer internal hub surface

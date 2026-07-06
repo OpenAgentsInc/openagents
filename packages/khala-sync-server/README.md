@@ -483,6 +483,9 @@ never appears in process listings):
 |---|---|
 | `KHALA_SYNC_DATABASE_URL` | direct Postgres URL as `khala_capture` (Cloud SQL Auth Proxy or authorized-network IP — never the Hyperdrive string) |
 | `KHALA_SYNC_HUB_APPEND_URL` | Worker internal append route: prod `https://openagents.com/api/internal/khala-sync/hub/append`, staging the staging host's same path |
+| `KHALA_SYNC_HUB_TOKEN` | optional bearer for a non-Worker hub (the CFG-5 LiveHub Cloud Run service's shared token); defaults to `OPENAGENTS_ADMIN_API_TOKEN` |
+| `KHALA_SYNC_HUB_MIRROR_APPEND_URL` | optional fail-soft SECOND hub append URL (CFG-5 DO→LiveHub transition): every primary-acknowledged batch is mirrored best-effort; mirror failures never gate the checkpoint |
+| `KHALA_SYNC_HUB_MIRROR_TOKEN` | bearer for the mirror hub; defaults to `OPENAGENTS_ADMIN_API_TOKEN` |
 | `OPENAGENTS_ADMIN_API_TOKEN` | admin bearer for the internal route |
 | `KHALA_SYNC_CAPTURE_POLL_INTERVAL_MS` | poll fallback interval (default 5000) |
 | `KHALA_SYNC_CAPTURE_BATCH_VERSIONS` | distinct versions per append batch (default 200) |
