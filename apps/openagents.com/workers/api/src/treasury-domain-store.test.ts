@@ -368,9 +368,14 @@ describe('runLedgerStatements (annotated mirror)', () => {
 })
 
 describe('registry discipline', () => {
-  test('covers all 27 domain tables with conflict keys inside key columns', () => {
+  // Was 27 until commit 87e6992d1e ("refactor(cleanup): remove unarmed MPP
+  // chat endpoint") intentionally dropped `mpp_lightning_replay` and
+  // `mpp_spt_replay` along with the endpoint they backed, bringing the
+  // registry to 25. The "stays in lock-step with the khala-sync-server
+  // backfill registry" test below confirms both registries still agree.
+  test('covers all 25 domain tables with conflict keys inside key columns', () => {
     const tables = Object.keys(TREASURY_DOMAIN_TABLES)
-    expect(tables).toHaveLength(27)
+    expect(tables).toHaveLength(25)
     for (const [table, spec] of Object.entries(TREASURY_DOMAIN_TABLES)) {
       expect(spec.keyColumns, table).toContain(spec.conflictKey)
       for (const keyColumn of spec.keyColumns) {

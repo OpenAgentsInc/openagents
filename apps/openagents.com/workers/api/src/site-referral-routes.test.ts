@@ -155,6 +155,16 @@ const db = (store: Store): D1Database =>
 
 const now = '2026-06-05T20:00:00.000Z'
 
+// The route under test compares `expires_at` against the REAL wall-clock
+// time (`currentIsoTimestamp()` in site-referral-routes.ts), not the fixed
+// `now` fixture above. A hardcoded future literal here silently rots into a
+// "genuinely expired" fixture once the calendar catches up (root cause of a
+// prior 302→410 regression), so compute a far-future timestamp at test-run
+// time instead of hardcoding one.
+const farFutureIso = new Date(
+  Date.now() + 1000 * 60 * 60 * 24 * 365 * 5,
+).toISOString()
+
 const source = (overrides: Partial<SourceRow> = {}): SourceRow => ({
   archived_at: null,
   campaign_ref: 'first-sites',
@@ -175,7 +185,7 @@ const invite = (overrides: Partial<InviteRow> = {}): InviteRow => ({
   archived_at: null,
   audience_path: 'agent',
   created_at: now,
-  expires_at: '2026-07-05T20:00:00.000Z',
+  expires_at: farFutureIso,
   id: 'referral_invite_otec_agent',
   policy_state: 'active',
   public_invite_ref: 'invite_otec_agent',
@@ -268,7 +278,7 @@ describe('Site referral capture routes', () => {
           capture_path: 'human',
           claimed_user_id: null,
           created_at: now,
-          expires_at: '2026-07-05T20:00:00.000Z',
+          expires_at: farFutureIso,
           first_verified_at: null,
           id: 'referral_attribution_existing',
           policy_state: 'pending',

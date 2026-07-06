@@ -663,6 +663,31 @@ const runRoute = async (
   return Effect.runPromise(matched)
 }
 
+// `generatedAt` is a deliberate, public-safe exact-ISO field declared by the
+// projection-staleness contract (see `PublicProjectionStalenessContract` /
+// `feat(public): declare legacy projection staleness`): clients need an exact
+// machine-readable timestamp to compute staleness against
+// `staleness.maxStalenessSeconds`. It is not leaked private material, so the
+// "no raw timestamp" privacy scan below strips it before matching and still
+// catches any OTHER unexpected raw timestamp (which would indicate a real
+// private-material leak).
+const withoutPublicGeneratedAt = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(withoutPublicGeneratedAt)
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([key]) => key !== 'generatedAt')
+        .map(([key, entry]) => [key, withoutPublicGeneratedAt(entry)]),
+    )
+  }
+  return value
+}
+
+const serializedWithoutPublicTimestamps = (body: unknown): string =>
+  JSON.stringify(withoutPublicGeneratedAt(body))
+
 const fixtureReceiptRef = (): string => {
   const receiptRef =
     exampleNexusPylonVisibilityFixture(nowIso).receipts.at(-1)?.receiptRef
@@ -704,7 +729,9 @@ describe('Nexus/Pylon visibility routes', () => {
     expect(serialized).not.toMatch(
       /lnbc|lntb|mnemonic|preimage|secret|wallet_(config|key|material|mnemonic|secret|seed|state)/i,
     )
-    expect(serialized).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+    expect(serializedWithoutPublicTimestamps(body)).not.toMatch(
+      /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+    )
   })
 
   test('serves a public receipt page without private fields', async () => {
@@ -765,7 +792,9 @@ describe('Nexus/Pylon visibility routes', () => {
     expect(serialized).not.toMatch(
       /lnbc|lntb|mnemonic|preimage|secret|wallet_(config|key|material|mnemonic|secret|seed|state)/i,
     )
-    expect(serialized).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+    expect(serializedWithoutPublicTimestamps(body)).not.toMatch(
+      /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+    )
   })
 
   test('serves Artanis admin closeout receipts by assignment ref', async () => {
@@ -845,7 +874,9 @@ describe('Nexus/Pylon visibility routes', () => {
     expect(serialized).not.toMatch(
       /lnbc|lntb|mnemonic|preimage|secret|wallet_(config|key|material|mnemonic|secret|seed|state)/i,
     )
-    expect(serialized).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+    expect(serializedWithoutPublicTimestamps(body)).not.toMatch(
+      /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+    )
   })
 
   test('requires operator authority for dashboard and exposes redacted operational state', async () => {
@@ -960,7 +991,9 @@ describe('Nexus/Pylon visibility routes', () => {
     expect(serialized).not.toMatch(
       /lnbc|lntb|mnemonic|preimage|secret|wallet_(config|key|material|mnemonic|secret|seed|state)/i,
     )
-    expect(serialized).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+    expect(serializedWithoutPublicTimestamps(body)).not.toMatch(
+      /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+    )
   })
 
   test('settles accepted Pylon work through payment authority with a public receipt', async () => {
@@ -1020,7 +1053,9 @@ describe('Nexus/Pylon visibility routes', () => {
     expect(serialized).not.toMatch(
       /lnbc|lntb|mnemonic|preimage|secret|wallet_(config|key|material|mnemonic|secret|seed|state)/i,
     )
-    expect(serialized).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+    expect(serializedWithoutPublicTimestamps(body)).not.toMatch(
+      /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+    )
   })
 
   test('resolves accepted-work payout destination from the agent Spark Lightning Address', async () => {
@@ -1342,7 +1377,9 @@ describe('Nexus/Pylon visibility routes', () => {
     expect(serialized).not.toMatch(
       /lnbc|lntb|mnemonic|preimage|secret|wallet_(config|key|material|mnemonic|secret|seed|state)/i,
     )
-    expect(serialized).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+    expect(serializedWithoutPublicTimestamps(body)).not.toMatch(
+      /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+    )
   })
 
   test('requires admin auth and idempotency for proof-runs', async () => {
