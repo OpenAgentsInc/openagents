@@ -239,6 +239,39 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
+        "Binds only the client-side status the scope-entities hook reports when nothing else has resolved by the timeout. It does not diagnose or fix WHY a scope hangs (network, server, or session bug) — it only guarantees the user is never left staring at a silent, unexplained spinner forever, regardless of the cause.",
+      blockerRefs: [],
+      contractId: "khala_mobile.sync.stuck_loading_watchdog.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/src/sync/use-khala-sync-scope-entities.ts",
+        "clients/khala-mobile/tests/use-khala-sync-scope-entities-watchdog.test.ts",
+      ],
+      oracles: [
+        {
+          description:
+            "A scope stuck in a non-terminal sync phase (e.g. bootstrapping/catching_up) with zero items force-errors with a restart hint after watchdogMs, even though it never rejects and never reaches the session's own must_refetch give-up phase. A scope that resolves to ready before the watchdog fires is never force-errored afterward.",
+          id: "use_khala_sync_scope_entities.watchdog.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/use-khala-sync-scope-entities-watchdog.test.ts",
+        },
+      ],
+      productArea: "sync",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-06",
+      },
+      state: "enforced",
+      statement:
+        "Loading threads (or any scope-entities read) never spins forever, even when the underlying sync phase genuinely hangs rather than rejecting or reaching the session's must_refetch give-up phase. Filed after build 13 still landed on a permanent 'Loading threads' spinner despite the earlier must_refetch fix — that fix only covers the session's own bounded-retries-exhausted phase, not a request that never settles at all.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/use-khala-sync-scope-entities-watchdog.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+    },
+    {
+      authorityBoundary:
         "This binds only the mic button's own gating logic (whether a tap is allowed to attempt native recognition) and draft-merge semantics. It does not cover whether the underlying native call actually captures audio on a device — see khala_mobile.stt.real_device_capture_proof.v1 for that.",
       blockerRefs: [],
       contractId: "khala_mobile.composer.pushtotalk_disabled_when_unavailable.v1",
@@ -973,5 +1006,5 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-06.5",
+  version: "2026-07-06.6",
 }

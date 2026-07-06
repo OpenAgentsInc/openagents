@@ -42,6 +42,15 @@ export type KhalaSyncScopeEntitiesInput<T> = Readonly<{
   scope: string
   session: KhalaSyncSession | null
   store: KhalaSyncLocalStore | null
+  /** Milliseconds before a still-"loading" scope is force-surfaced as an
+   * error instead of spinning forever. Real production bug (2026-07-06): a
+   * scope can sit in "bootstrapping"/"catching_up" indefinitely — never
+   * reaching "live" (success) NOR "must_refetch" (the session's own
+   * give-up phase, already handled below) — if the underlying network
+   * call itself hangs rather than rejecting. `must_refetch` alone doesn't
+   * cover a genuine hang; a hard client-side watchdog does, regardless of
+   * the exact root cause. Defaults to 15s. */
+  watchdogMs?: number
 }>
 
 const runEffect = <A, E>(effect: Effect.Effect<A, E>): Promise<A> => Effect.runPromise(effect)
@@ -79,10 +88,12 @@ const decodeConfirmed = <T>(
 ): ReadonlyArray<T> =>
   entities.map(entity => decode(JSON.parse(entity.postImageJson) as unknown))
 
+const DEFAULT_WATCHDOG_MS = 15_000
+
 export function useKhalaSyncScopeEntities<T>(
   input: KhalaSyncScopeEntitiesInput<T>
 ): KhalaSyncScopeEntitiesState<T> {
-  const { decode, entityType, overlay, scope, session, store } = input
+  const { decode, entityType, overlay, scope, session, store, watchdogMs = DEFAULT_WATCHDOG_MS } = input
   const [state, setState] = useState<KhalaSyncScopeEntitiesState<T>>({
     error: null,
     items: [],
@@ -98,6 +109,7 @@ export function useKhalaSyncScopeEntities<T>(
     }
     let cancelled = false
     let retriedMustRefetch = false
+    let resolved = false
     const syncScope = SyncScope.make(scope)
 
     const refresh = async () => {
@@ -122,9 +134,11 @@ export function useKhalaSyncScopeEntities<T>(
           })
         }
         const { error, status } = resolveScopeEntitiesStatusAndError(phase, items.length)
+        if (status !== "loading") resolved = true
         setState({ error, items, status })
       } catch (error) {
         if (cancelled) return
+        resolved = true
         setState({
           error: error instanceof Error ? error.message : String(error),
           items: [],
@@ -136,6 +150,7 @@ export function useKhalaSyncScopeEntities<T>(
     void refresh()
     void runEffect(session.subscribe(syncScope)).catch(error => {
       if (cancelled) return
+      resolved = true
       setState({
         error: error instanceof Error ? error.message : String(error),
         items: [],
@@ -152,13 +167,34 @@ export function useKhalaSyncScopeEntities<T>(
       void refresh()
     })
 
+    // Hard watchdog: a real production bug (2026-07-06) left scopes stuck
+    // in "bootstrapping"/"catching_up" indefinitely with items.length === 0
+    // — never reaching "live" NOR the session's own "must_refetch" give-up
+    // phase, i.e. a genuine hang, not a rejection `must_refetch` already
+    // covers. This is the backstop regardless of root cause: force an
+    // error (with a restart hint) if nothing has resolved by `watchdogMs`.
+    const watchdog = setTimeout(() => {
+      if (cancelled || resolved) return
+      resolved = true
+      setState(current =>
+        current.status === "loading"
+          ? {
+              error: "Khala Sync is taking too long to load. Restart the app to retry.",
+              items: current.items,
+              status: "error"
+            }
+          : current
+      )
+    }, watchdogMs)
+
     return () => {
       cancelled = true
+      clearTimeout(watchdog)
       unsubscribeState()
       unsubscribeOverlay()
       void runEffect(session.unsubscribe(syncScope))
     }
-  }, [session, overlay, store, scope, entityType])
+  }, [session, overlay, store, scope, entityType, watchdogMs])
 
   return state
 }

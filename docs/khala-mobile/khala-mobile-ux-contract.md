@@ -86,7 +86,7 @@ top follow-up item for whoever picks this up next.
 
 ## Registry
 
-Registry version: `2026-07-06.5` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-06.6` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — RETIRED
 
@@ -147,6 +147,16 @@ Registry version: `2026-07-06.5` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `khala_mobile_sync_runtime_registry.drain_before_reload.unit` (bun-test, unit): The OTA reload path drains the active sync runtime's close() before calling Updates.reloadAsync(); a hung close() is bounded by a timeout rather than blocking the reload forever, and a missing runtime (signed out) is an instant no-op. — `clients/khala-mobile/tests/khala-mobile-sync-runtime-registry.test.ts`
 - **Verification:** bun test tests/khala-mobile-sync-runtime-registry.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
 - **Authority boundary:** Binds only the ORDERING of our own reload trigger relative to closing our own sync runtime. It does not (and cannot) fix expo-sqlite's own native concurrency bug (github.com/expo/expo #33754, #38168) — it only avoids one known way to hit it from our own reload path. A close() that hangs is bounded by a timeout so this can never turn into a stuck/unresponsive reload.
+
+### `khala_mobile.sync.stuck_loading_watchdog.v1` — ENFORCED
+
+- **Surface:** khala-mobile (sync)
+- **Stated by:** owner via khala-code-session on 2026-07-06
+- **Statement:** Loading threads (or any scope-entities read) never spins forever, even when the underlying sync phase genuinely hangs rather than rejecting or reaching the session's must_refetch give-up phase. Filed after build 13 still landed on a permanent 'Loading threads' spinner despite the earlier must_refetch fix — that fix only covers the session's own bounded-retries-exhausted phase, not a request that never settles at all.
+- **Enforcement tier:** test-sweep
+- **Oracle** `use_khala_sync_scope_entities.watchdog.unit` (bun-test, unit): A scope stuck in a non-terminal sync phase (e.g. bootstrapping/catching_up) with zero items force-errors with a restart hint after watchdogMs, even though it never rejects and never reaches the session's own must_refetch give-up phase. A scope that resolves to ready before the watchdog fires is never force-errored afterward. — `clients/khala-mobile/tests/use-khala-sync-scope-entities-watchdog.test.ts`
+- **Verification:** bun test tests/use-khala-sync-scope-entities-watchdog.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
+- **Authority boundary:** Binds only the client-side status the scope-entities hook reports when nothing else has resolved by the timeout. It does not diagnose or fix WHY a scope hangs (network, server, or session bug) — it only guarantees the user is never left staring at a silent, unexplained spinner forever, regardless of the cause.
 
 ### `khala_mobile.composer.pushtotalk_disabled_when_unavailable.v1` — ENFORCED
 
