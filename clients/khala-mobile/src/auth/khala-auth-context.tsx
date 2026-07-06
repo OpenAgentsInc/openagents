@@ -82,33 +82,45 @@ const discovery = mobileOpenAuthDiscovery(KHALA_OPENAUTH_BASE_URL)
  * `wrangler tail`. Redacts the authorization code + any token before sending.
  * Never throws (fire-and-forget). */
 const SIGNIN_DEBUG_BUILD_MARKER = "dbg3"
-const beaconSignInDebug = async (
+
+/** TEMP-DIAG-8467: build a public-safe snapshot of the exact auth-session
+ * outcome. Redacts the authorization code + any token. Returned so it can be
+ * shown on-screen (the reliable channel — the account's Worker deploys are
+ * currently blocked) and best-effort beaconed. */
+const buildSignInDebug = (
   authRequest: { state?: string; codeVerifier?: string; url?: string | null },
   result: { type: string; url?: string; error?: { description?: string | null } | null },
   params: Record<string, string>,
-): Promise<void> => {
+): { line: string; json: string } => {
+  const redactUrl = (raw: string | undefined): string =>
+    typeof raw === "string"
+      ? raw.replace(/(code=)[^&]+/, "$1REDACTED").replace(/(access_token=)[^&]+/, "$1REDACTED")
+      : "(none)"
+  const snapshot = {
+    marker: SIGNIN_DEBUG_BUILD_MARKER,
+    resultType: result.type,
+    expectedState: authRequest.state ?? "(none)",
+    returnedState: params.state ?? "(none)",
+    stateMatches: (authRequest.state ?? null) === (params.state ?? null),
+    hasCode: typeof params.code === "string" && params.code.length > 0,
+    hasCodeVerifier: authRequest.codeVerifier !== undefined,
+    oauthError: params.error ?? "(none)",
+    expoError: result.error?.description ?? "(none)",
+    paramKeys: Object.keys(params).sort().join(","),
+    returnedUrl: redactUrl(result.url),
+  }
+  const line =
+    `[${SIGNIN_DEBUG_BUILD_MARKER}] type=${snapshot.resultType} ` +
+    `code=${snapshot.hasCode ? "Y" : "N"} verifier=${snapshot.hasCodeVerifier ? "Y" : "N"} ` +
+    `stateOK=${snapshot.stateMatches ? "Y" : "N"} exp=${snapshot.expectedState} got=${snapshot.returnedState} ` +
+    `keys=${snapshot.paramKeys || "(none)"} url=${snapshot.returnedUrl}`
+  return { line, json: JSON.stringify(snapshot) }
+}
+
+const beaconSignInDebug = async (json: string): Promise<void> => {
   try {
-    const redactUrl = (raw: string | undefined): string =>
-      typeof raw === "string"
-        ? raw.replace(/(code=)[^&]+/, "$1REDACTED").replace(/(access_token=)[^&]+/, "$1REDACTED")
-        : "(none)"
-    const snapshot = {
-      marker: SIGNIN_DEBUG_BUILD_MARKER,
-      buildNumber: "15+",
-      resultType: result.type,
-      expectedState: authRequest.state ?? "(none)",
-      returnedState: params.state ?? "(none)",
-      stateMatches: (authRequest.state ?? null) === (params.state ?? null),
-      hasCode: typeof params.code === "string" && params.code.length > 0,
-      hasCodeVerifier: authRequest.codeVerifier !== undefined,
-      oauthError: params.error ?? "(none)",
-      expoError: result.error?.description ?? "(none)",
-      paramKeys: Object.keys(params).sort().join(","),
-      authorizeUrl: redactUrl(authRequest.url ?? undefined),
-      returnedUrl: redactUrl(result.url),
-    }
     await fetch(`${KHALA_OPENAGENTS_API_BASE_URL}/api/mobile/signin-debug`, {
-      body: JSON.stringify(snapshot),
+      body: json,
       headers: { "content-type": "application/json" },
       method: "POST",
     })
@@ -201,6 +213,10 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
     if (machine.status === "signing_in") return
     dispatch({ type: "github_sign_in_started" })
 
+    // TEMP-DIAG-8467: captured after promptAsync, appended to every failure
+    // message (incl. the token-exchange catch below) so we always see the
+    // exact outcome on-screen.
+    let debugLine = `[${SIGNIN_DEBUG_BUILD_MARKER}] (no auth-session result)`
     try {
       // Build ONE AuthRequest here, imperatively, and use that exact instance
       // to open the browser AND parse the callback. This is the fix for the
@@ -223,19 +239,19 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
       const code = params.code
       const oauthError = params.error
 
-      // TEMP-DIAG-8467: beacon the EXACT outcome so we can read ground truth
-      // from the device (result type, expected vs returned state, whether a
-      // code came back, the callback URL shape) via `wrangler tail`. The code
-      // value is redacted before sending. Fire-and-forget; never blocks or
-      // fails sign-in.
-      void beaconSignInDebug(authRequest, result, params)
+      // TEMP-DIAG-8467: capture the EXACT outcome. Shown on-screen for the
+      // failure paths (the reliable channel) and best-effort beaconed. The
+      // code value is redacted. Never blocks sign-in.
+      const debug = buildSignInDebug(authRequest, result, params)
+      debugLine = debug.line
+      void beaconSignInDebug(debug.json)
 
       // A real OAuth error redirected back by the issuer (?error=...) is a
       // genuine failure — never try to exchange a non-existent code.
       if (typeof oauthError === "string" && oauthError.trim() !== "") {
         if (!mountedRef.current) return
         dispatch({
-          messageSafe: describeAuthSessionFailure(result),
+          messageSafe: `${describeAuthSessionFailure(result)}\n${debug.line}`,
           type: "github_sign_in_failed",
         })
         return
@@ -251,7 +267,7 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
           return
         }
         dispatch({
-          messageSafe: describeAuthSessionFailure(result),
+          messageSafe: `${describeAuthSessionFailure(result)}\n${debug.line}`,
           type: "github_sign_in_failed",
         })
         return
@@ -295,7 +311,7 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
       if (!validation.ok) {
         if (!mountedRef.current) return
         dispatch({
-          messageSafe: validation.messageSafe,
+          messageSafe: `${validation.messageSafe}\n${debugLine}`,
           type: "github_sign_in_failed",
         })
         return
@@ -311,7 +327,7 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       if (!mountedRef.current) return
       dispatch({
-        messageSafe: mobileProblemMessageSafe(error, "GitHub sign-in"),
+        messageSafe: `${mobileProblemMessageSafe(error, "GitHub sign-in")}\n${debugLine}`,
         type: "github_sign_in_failed",
       })
     }
