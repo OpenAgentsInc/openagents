@@ -7,3 +7,6 @@ in Austin, TX.
   ([event page](https://agenticsociety.com/events/mastermind/2026-07-03))
 - [2026-07-03-analysis.md](./2026-07-03-analysis.md) — deep analysis of that
   transcript: themes, build taxonomy, economics, security doctrine, tensions
+- [2026-07-03-integration.md](./2026-07-03-integration.md) — integration ideas:
+  bottling the room's agentic patterns into OpenAgents products (Khala Code +
+  Autopilot) and a level-2/3 catch-up campaign for nontechnical owners
