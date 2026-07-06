@@ -101,7 +101,6 @@
 // the same discipline, not merely deferred.
 
 import {
-  makeCompareSoakMetrics,
   noopCompareSoakMetrics,
   type CompareSoakMetrics,
   type SyncSql,
@@ -1249,11 +1248,11 @@ export type MakeRoutedEntitlementsGateReadsDependencies = Readonly<{
    */
   schedule?: ((work: Promise<void>) => void) | undefined
   /**
-   * Compare-mode soak observability (#8282 shared follow-up): a durable
-   * Analytics Engine data point per compare-mode read, additive to the
-   * `khala_sync_entitlements_read_compare_mismatch` diagnostic above.
-   * Defaults to the no-op recorder when absent (tests, or an env without
-   * the ANALYTICS binding yet) — never required for correctness.
+   * Compare-mode soak metrics recorder (#8282 shared follow-up), additive
+   * to the `khala_sync_entitlements_read_compare_mismatch` diagnostic
+   * above. Defaults to the no-op recorder — the durable Analytics Engine
+   * sink was removed with the account-level feature (#8516); tests inject
+   * a collector. Never required for correctness.
    */
   metrics?: CompareSoakMetrics | undefined
 }>
@@ -1539,13 +1538,6 @@ export type InferenceEntitlementsStoreEnv = InferenceEntitlementsFlagEnv &
   Readonly<{
     OPENAGENTS_DB: D1Database
     KHALA_SYNC_DB?: KhalaSyncHyperdriveBinding | undefined
-    /**
-     * Compare-mode soak observability (#8282 shared follow-up). Optional:
-     * absent until the `analytics_engine_datasets` wrangler binding is
-     * deployed, in which case compare-mode reads simply skip the durable
-     * metric (the existing per-call diagnostics are unaffected).
-     */
-    ANALYTICS?: AnalyticsEngineDataset | undefined
   }>
 
 export type MakeInferenceEntitlementsRoutingOptions = Readonly<{
@@ -1609,7 +1601,10 @@ export const makeInferenceEntitlementsRoutingForEnv = (
     return undefined
   }
   const log = options.log ?? defaultLog
-  const metrics = options.metrics ?? makeCompareSoakMetrics(env.ANALYTICS)
+  // The durable Analytics Engine soak sink was removed with the account-level
+  // Analytics Engine feature (#8516); the default recorder is a no-op and the
+  // per-call compare-mismatch diagnostics are unaffected.
+  const metrics = options.metrics ?? noopCompareSoakMetrics
 
   return {
     flags,

@@ -50,7 +50,6 @@
 // six cron ticks → drop the D1 tables in the follow-up decommission issue.
 
 import {
-  makeCompareSoakMetrics,
   noopCompareSoakMetrics,
   type CompareSoakMetrics,
   type SyncSql,
@@ -862,13 +861,6 @@ export type ArtanisDomainStoreEnv = ArtanisDomainFlagEnv &
   Readonly<{
     OPENAGENTS_DB: D1Database
     KHALA_SYNC_DB?: KhalaSyncHyperdriveBinding | undefined
-    /**
-     * Compare-mode soak observability (#8282 shared follow-up). Optional:
-     * absent until the `analytics_engine_datasets` wrangler binding is
-     * deployed, in which case `artanisRead`'s compare branch simply skips
-     * the durable metric (existing diagnostics unaffected).
-     */
-    ANALYTICS?: AnalyticsEngineDataset | undefined
   }>
 
 export type MakeArtanisDatabaseForEnvOptions = Readonly<{
@@ -927,7 +919,11 @@ export const makeArtanisDatabaseForEnv = (
     d1,
     flags,
     log: options.log ?? defaultLog,
-    metrics: options.metrics ?? makeCompareSoakMetrics(env.ANALYTICS),
+    // The durable Analytics Engine soak sink was removed with the
+    // account-level Analytics Engine feature (#8516); the default recorder
+    // is a no-op and the per-call compare-mismatch diagnostics are
+    // unaffected.
+    metrics: options.metrics ?? noopCompareSoakMetrics,
     postgres,
   })
 }

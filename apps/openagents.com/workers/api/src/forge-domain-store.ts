@@ -74,7 +74,7 @@
 
 import {
   FORGE_DOMAIN_TABLE_SPECS,
-  makeCompareSoakMetrics,
+  noopCompareSoakMetrics,
   normalizeForgeDomainValue,
   requireForgeDomainUnsafe,
   upsertForgeDomainRows,
@@ -467,13 +467,6 @@ export type ForgeDomainStoreEnv = ForgeDomainFlagEnv &
      * authority on a typo.
      */
     KHALA_SYNC_FORGE_GIT_CANONICAL_WRITES?: string | undefined
-    /**
-     * Compare-mode soak observability (#8282 shared follow-up). Optional:
-     * absent until the `analytics_engine_datasets` wrangler binding is
-     * deployed, in which case the `listRefs` shadow compare simply skips
-     * the durable metric (existing diagnostics unaffected).
-     */
-    ANALYTICS?: AnalyticsEngineDataset | undefined
   }>
 
 export type MakeForgeDomainStoreOptions = Readonly<{
@@ -553,7 +546,10 @@ const runtimeForEnv = (
   const log = options.log ?? defaultLog
   const acquireSql = acquireSqlForEnv(env, options)
   const postgres = postgresStoreForEnv(acquireSql)
-  const metrics = options.metrics ?? makeCompareSoakMetrics(env.ANALYTICS)
+  // The durable Analytics Engine soak sink was removed with the account-level
+  // Analytics Engine feature (#8516); the default recorder is a no-op and the
+  // per-call compare-mismatch diagnostics are unaffected.
+  const metrics = options.metrics ?? noopCompareSoakMetrics
   return {
     acquireSql,
     compareStore:

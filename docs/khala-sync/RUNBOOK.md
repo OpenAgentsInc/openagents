@@ -3376,6 +3376,21 @@ per the shared multi-agent git-hygiene policy) — 1060/1062 files,
 
 ## Compare-mode soak observability (#8282 shared follow-up)
 
+> **STATUS 2026-07-06 (#8516): the Analytics Engine sink is DECOMMISSIONED.**
+> The account-level Cloudflare Analytics Engine feature was disabled, which
+> made every `wrangler deploy` carrying the `analytics_engine_datasets`
+> binding fail with API error 10089 and froze all production deploys. The
+> `ANALYTICS` binding was removed from `wrangler.jsonc` (prod + staging) and
+> every KS-8 domain store now defaults to `noopCompareSoakMetrics`. The
+> per-call `khala_sync_*_compare_mismatch` /
+> `khala_sync_*_read_compare_failed` diagnostics (the primary safety signal)
+> are unaffected, and the `CompareSoakMetrics` recorder interface remains
+> injectable, so a future durable sink (e.g. a khala-sync Postgres table)
+> can be rewired without touching the read paths. `query-compare-soak.ts`
+> no longer has live data to query. Do not re-add an Analytics Engine
+> binding. The section below is retained as the historical record of what
+> the tool was.
+
 **Problem this closes.** Proving a `compare`-mode read (D1 serves, Postgres
 shadow-read compared, mismatches logged via the existing
 `khala_sync_*_compare_mismatch` / `khala_sync_*_read_compare_failed`

@@ -66,7 +66,6 @@
 
 import {
   BILLING_DOMAIN_TABLE_SPECS,
-  makeCompareSoakMetrics,
   noopCompareSoakMetrics,
   normalizeBillingValue,
   type BillingDomainTable,
@@ -826,13 +825,6 @@ export const makeRoutedBillingAutoTopUpStateRead = (
 export type BillingSyncEnv = BillingSyncFlagEnv &
   Readonly<{
     KHALA_SYNC_DB?: KhalaSyncHyperdriveBinding | undefined
-    /**
-     * Compare-mode soak observability (#8282 shared follow-up). Optional:
-     * absent until the `analytics_engine_datasets` wrangler binding is
-     * deployed, in which case the routed reads' compare branch simply
-     * skips the durable metric (existing diagnostics unaffected).
-     */
-    ANALYTICS?: AnalyticsEngineDataset | undefined
   }>
 
 export type MakeBillingStoreOptions = Readonly<{
@@ -952,7 +944,10 @@ export const billingRuntimeForEnv = (
     return systemBillingRuntime
   }
   const log = options.log ?? defaultLog
-  const metrics = options.metrics ?? makeCompareSoakMetrics(env.ANALYTICS)
+  // The durable Analytics Engine soak sink was removed with the account-level
+  // Analytics Engine feature (#8516); the default recorder is a no-op and the
+  // per-call compare-mismatch diagnostics are unaffected.
+  const metrics = options.metrics ?? noopCompareSoakMetrics
 
   const mirror = flags.dualWrite
     ? makeBillingDomainMirror({ log, postgres })

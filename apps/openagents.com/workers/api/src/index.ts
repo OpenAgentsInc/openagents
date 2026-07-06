@@ -12806,9 +12806,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       Effect.promise(async () => {
         try {
           const body = await request.text()
-          console.log('MOBILE_SIGNIN_DEBUG', body.slice(0, 4000))
+          logWorkerRouteInfo('mobile_signin_debug', {
+            body: body.slice(0, 4000),
+          })
         } catch (error) {
-          console.log('MOBILE_SIGNIN_DEBUG_ERR', String(error))
+          logWorkerRouteError('mobile_signin_debug_read_failed', error)
         }
         return new Response(null, { status: 204 })
       }),

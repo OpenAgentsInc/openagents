@@ -68,7 +68,7 @@
 // D1 drop in a further follow-up.
 
 import {
-  makeCompareSoakMetrics,
+  noopCompareSoakMetrics,
   normalizeSupervisionLongtailValue,
   requireSupervisionLongtailUnsafe,
   SUPERVISION_LONGTAIL_TABLE_SPECS,
@@ -403,13 +403,6 @@ export type SupervisionLongtailStoreEnv = SupervisionLongtailFlagEnv &
   Readonly<{
     OPENAGENTS_DB?: D1Database
     KHALA_SYNC_DB?: KhalaSyncHyperdriveBinding | undefined
-    /**
-     * Compare-mode soak observability (#8282 shared follow-up, #8361).
-     * Optional: absent until the `analytics_engine_datasets` wrangler
-     * binding is deployed, in which case the shadow-compare reader below
-     * simply skips the durable metric (existing diagnostics unaffected).
-     */
-    ANALYTICS?: AnalyticsEngineDataset | undefined
   }>
 
 export type MakeSupervisionLongtailStoreOptions = Readonly<{
@@ -469,7 +462,10 @@ const runtimeForEnv = (
   const flags = supervisionLongtailFlagsFromEnv(env)
   const log = options.log ?? defaultLog
   const postgres = postgresStoreForEnv(env, options)
-  const metrics = options.metrics ?? makeCompareSoakMetrics(env.ANALYTICS)
+  // The durable Analytics Engine soak sink was removed with the account-level
+  // Analytics Engine feature (#8516); the default recorder is a no-op and the
+  // per-call `khala_sync_*_compare_mismatch` diagnostics are unaffected.
+  const metrics = options.metrics ?? noopCompareSoakMetrics
   return {
     compareStore:
       postgres !== undefined && flags.reads !== 'd1' ? postgres : undefined,
