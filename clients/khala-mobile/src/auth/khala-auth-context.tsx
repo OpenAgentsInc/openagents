@@ -102,6 +102,7 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     let cancelled = false
+    let resolved = false
     const run = async () => {
       const storedCredentials = await loadStoredCredentials()
 
@@ -127,6 +128,7 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
       )
 
       if (cancelled || !mountedRef.current) return
+      resolved = true
       dispatch({
         devCredentials: devEnvCredentials,
         storedCredentials: verifiedStoredCredentials,
@@ -134,8 +136,27 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
       })
     }
     void run()
+
+    // Defense-in-depth watchdog: the auth status must NEVER stay "loading"
+    // on a bare spinner forever. `validateKhalaCredentials` is already
+    // bounded (12s), but SecureStore reads or any future addition to `run`
+    // could hang too — if nothing has resolved shortly after that bound,
+    // force a decision (treat as no verified stored credential, so the app
+    // lands on sign-in or the env dev creds rather than an infinite
+    // spinner). Real 2026-07-06 bug: launch stuck on a blank spinner.
+    const watchdog = setTimeout(() => {
+      if (cancelled || resolved || !mountedRef.current) return
+      resolved = true
+      dispatch({
+        devCredentials: devEnvCredentials,
+        storedCredentials: null,
+        type: "stored_credentials_loaded",
+      })
+    }, 15_000)
+
     return () => {
       cancelled = true
+      clearTimeout(watchdog)
     }
   }, [])
 

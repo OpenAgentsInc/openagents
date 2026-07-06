@@ -3,6 +3,7 @@ import "./native/animated-view-css-interop"
 
 import { useFonts } from "expo-font"
 import { StatusBar } from "expo-status-bar"
+import { useEffect, useState } from "react"
 import { LogBox, View } from "react-native"
 import { GestureHandlerRootView } from "react-native-gesture-handler"
 import { initialWindowMetrics, SafeAreaProvider } from "react-native-safe-area-context"
@@ -55,18 +56,38 @@ const AuthGate = () => {
   )
 }
 
+// Hard cap on how long the app will wait for custom fonts before rendering
+// anyway. Fonts are a nice-to-have (crisp arcade typography from frame 1);
+// they must NEVER be able to hang the entire app pre-auth. If a font asset
+// is slow, corrupt, or fails to register, `useFonts` leaves `fontsLoaded`
+// false and `fontError` may or may not be set — so we ALSO time out. When
+// the fonts finish loading later, `useFonts` flips `fontsLoaded` and the
+// tree re-renders, upgrading system-font text to the real face. This was a
+// real self-inflicted hang (2026-07-06): the original gate was
+// `if (!fontsLoaded) return spinner` with no timeout and no error path,
+// which stuck the whole app on a blank spinner before auth ever ran.
+const FONT_GATE_TIMEOUT_MS = 2500
+
 export const App = () => {
   // Space Grotesk (arcade's primary font), Protomolecule (arcade's display
-  // font, `heading` variant only), and JetBrains Mono (code/mono content)
-  // must be loaded before ANYTHING renders — every `KhalaText` variant
-  // references one of these family names directly, and an unloaded native
-  // font name silently falls back to the OS default with no error, which
-  // is exactly how this app's typography drifted from arcade's in the
-  // first place. Blocks on a plain themed spinner, matching Ignite's own
-  // font-gate pattern.
-  const [fontsLoaded] = useFonts(khalaMobileFontsToLoad)
+  // font, `heading` variant only), and JetBrains Mono (code/mono content).
+  // Every `KhalaText` variant references one of these family names; an
+  // unloaded native font name falls back to the OS default (fine — a brief
+  // system-font flash is vastly better than hanging the app).
+  const [fontsLoaded, fontError] = useFonts(khalaMobileFontsToLoad)
+  const [fontGateTimedOut, setFontGateTimedOut] = useState(false)
 
-  if (!fontsLoaded) {
+  useEffect(() => {
+    const timer = setTimeout(() => setFontGateTimedOut(true), FONT_GATE_TIMEOUT_MS)
+    return () => clearTimeout(timer)
+  }, [])
+
+  // Proceed as soon as fonts load, OR a font errors (fall back to system
+  // fonts), OR the timeout elapses (fall back, upgrade later). Never block
+  // indefinitely.
+  const fontGateReady = fontsLoaded || fontError !== null || fontGateTimedOut
+
+  if (!fontGateReady) {
     return (
       <View className="flex-1 items-center justify-center bg-bg">
         <ActivityIndicator color={khalaMobileTheme.accent} />
