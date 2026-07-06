@@ -844,6 +844,13 @@ This is the invariant ledger for `openagents`.
   authority for ledger ingest. D1 uniqueness is defense-in-depth; routes,
   request isolates, and generic queue consumers must not assign cross-owner
   ordering directly.
+- Transport note (CFG-7, #8522): ledger queue messages ride the oa-infra
+  Postgres JobQueue (`oa_infra_jobs`, topic
+  `openagents-event-ledger-ingest`) instead of a Cloudflare Queue. The
+  bounded-refs payload rule above applies to the Postgres `payload` column
+  unchanged, and consumption still lands on the EVENT_LEDGER_OWNER Durable
+  Object via the admin-bearer `/api/internal/queue/deliver` route — the pump
+  (`apps/oa-queue-worker`) never assigns ordering itself.
 - Handled state is private owner-scoped ledger state, not a public projection.
   Rows may be `open`, `handled`, `responded`, or `ignored`; any state change
   must record the definition run and definition that touched the entry. The
