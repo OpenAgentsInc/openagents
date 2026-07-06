@@ -32,8 +32,11 @@
 import {
   GcsHmacClient,
   gcsHmacMetadataFromHeaders,
+  type GcsHmacClientOptions,
   type GcsHmacObjectMetadata,
 } from '@openagentsinc/oa-infra/blob-store-gcs-hmac'
+
+import { currentDate } from './runtime-primitives'
 
 /** Typed rejection for R2Bucket surface the GCS adapter does not implement. */
 export class ArtifactsGcsUnsupportedOperationError extends Error {
@@ -54,8 +57,8 @@ export interface GcsArtifactsBucketOptions {
   readonly bucket: string
   /** Default `https://storage.googleapis.com`. */
   readonly endpoint?: string | undefined
-  /** Injection point for tests. */
-  readonly fetch?: ((request: Request) => Promise<Response>) | undefined
+  /** Injection point for tests (same seam as the oa-infra client). */
+  readonly fetch?: GcsHmacClientOptions['fetch'] | undefined
 }
 
 const writeHttpMetadataInto = (
@@ -119,9 +122,13 @@ const r2ObjectFrom = (key: string, metadata: GcsHmacObjectMetadata): R2Object =>
       writeHttpMetadataInto(metadata, headers),
   }) as R2Object
 
+type GcsObjectResponse = NonNullable<
+  Awaited<ReturnType<GcsHmacClient['getObject']>>
+>
+
 const r2ObjectBodyFrom = (
   key: string,
-  response: Response,
+  response: GcsObjectResponse,
 ): R2ObjectBody => {
   const metadata = gcsHmacMetadataFromHeaders(response.headers)
   const base = r2ObjectFrom(key, metadata)
@@ -226,7 +233,7 @@ export const makeGcsArtifactsBucket = (
       etag: result.etag,
       httpEtag: `"${result.etag}"`,
       size: result.size,
-      uploaded: new Date(),
+      uploaded: currentDate(),
     })
   }
 
