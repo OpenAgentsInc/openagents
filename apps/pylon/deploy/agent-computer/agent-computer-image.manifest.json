@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "openagents.agent_computer_image_manifest.v1",
+  "status": "planned_owner_gated_until_signed_image_receipt",
+  "strategyDoc": "docs/khala-code/2026-07-06-agent-computers-strategy.md",
+  "contracts": [
+    "openagents.codex_placement_assignment.v1",
+    "openagents.resource_usage_receipt.v1",
+    "openagents.workroom.v1"
+  ],
+  "hostRequirements": {
+    "gcpProject": "openagentsgemini",
+    "nestedVirtualization": true,
+    "kvmDeviceRequired": true,
+    "allowedMachineFamilies": ["n2", "n1-haswell-or-newer"],
+    "inboundNetwork": "none",
+    "defaultAccess": "iap-ssh-only"
+  },
+  "guestImage": {
+    "kernelDigest": "NEEDS_OWNER_AFTER_PRIVATE_IMAGE_BUILD",
+    "rootfsDigest": "NEEDS_OWNER_AFTER_PRIVATE_IMAGE_BUILD",
+    "rootfsSource": "private cloud/ image build output",
+    "scratchPolicy": "per-work-context-disposable"
+  },
+  "runtime": {
+    "pylonRuntime": "apps/pylon",
+    "executor": "agent-computer-executor-from-issue-8473",
+    "agents": ["codex", "claude_agent", "hosted_khala"],
+    "scmCredentialPath": "openagents-scm-broker-only"
+  },
+  "isolation": {
+    "unit": "one-firecracker-microvm-per-work-context",
+    "noWalletMaterial": true,
+    "noRawUserOAuthTokens": true,
+    "noProviderMasterKeys": true,
+    "noInboundGuestServices": true,
+    "egressPolicy": "restricted-to-scm-package-provider-and-openagents-control-plane"
+  },
+  "metering": {
+    "tokenUsage": "exact-token-usage-receipts",
+    "computeUsage": "agent-computer-lifecycle-resource-usage-receipts",
+    "creditBalance": "single-user-credit-balance",
+    "pricingRate": "NEEDS_OWNER"
+  }
+}

@@ -1,10 +1,10 @@
-// Cloud coding-session surface — the "our cloud" autonomous-execution lane
+// Agent Computer launch surface — the "our cloud" autonomous-execution lane
 // SCAFFOLD behind `autopilot.cloud_coding_sessions.v1` (red).
 //
 // This is the typed Worker-side request/lifecycle surface for LAUNCHING a managed
-// OpenAgents Cloud coding session — the thing that lets a coding session run in
-// OUR cloud (OpenAgents GCE / managed-node execution lane) instead of on the
-// owner's laptop. It mirrors the flag-gated INERT pattern proven by the inference
+// OpenAgents Agent Computer — the isolated Firecracker microVM that lets a
+// coding turn run in OUR cloud (OpenAgents-owned GCE capacity) instead of on the
+// user's laptop. It mirrors the flag-gated INERT pattern proven by the inference
 // gateway (`inference/chat-completions-routes.ts`) and the sibling Cloud-primitive
 // scaffolds (`cloud/sandbox-compute-service-routes.ts`,
 // `cloud/fine-tuning-service-routes.ts`):
@@ -14,28 +14,30 @@
 //   - typed launch request (lane + repo trust tier + objective -> typed session)
 //   - a MANAGED-RUNTIME ADAPTER seam (`CloudCodingRuntimeAdapter`) where the real
 //     OpenAgents Cloud control plane plugs in (the cloud repo's POST /v1/placement
-//     + per-session GCE VM lease, cloud #86/#87/#88/#90); the production default
-//     fails closed until that real provisioner is explicitly armed
+//     + per-context Firecracker microVM lease); the production default fails
+//     closed until that real provisioner is explicitly armed
 //   - a placement policy that honors repo trust tiers BEFORE any dispatch
 //     (regulated -> SHC-only, private -> own/verified, public -> any), an
 //     authority boundary the promise already commits to
 //   - a usage/receipt seam (`CloudCodingMeteringHook`) for the
-//     `openagents.resource_usage_receipt.v1` round-trip; ships a no-op/log stub,
-//     with a real receipt-first ledger hook available
+//     `openagents.resource_usage_receipt.v1` round-trip; lifecycle/resource
+//     receipt refs come from the control-plane `cloud.gce.*` events; ships a
+//     no-op/log stub, with a real receipt-first ledger hook available
 //     (`makeLedgerCloudCodingMeteringHook`) the way fine-tuning does
 //   - a lifecycle read (GET by id) that resolves a session for the AUTHENTICATED
 //     account only (cross-account isolation), like the fine-tuning job read
 //
 // HONEST SCOPE: `autopilot.cloud_coding_sessions.v1` STAYS red until a
-// desktop-originated session running a real repo-edit on Google GCE streams to
-// the timeline and produces a content-addressed artifact PLUS a dereferenceable
-// `openagents.resource_usage_receipt.v1` with owner sign-off per
-// `proof.claim_upgrade_receipts.v1`. This route now fails closed when live GCE
-// provisioning is unarmed instead of faking a cloud session.
+// mobile-dispatched turn runs inside a real Firecracker microVM on OpenAgents
+// GCE, streams to the timeline, and produces content-addressed artifacts plus
+// dereferenceable lifecycle + resource usage receipts with owner sign-off per
+// `proof.claim_upgrade_receipts.v1`. This route fails closed when live GCE
+// provisioning is unarmed instead of faking an Agent Computer.
 
 import { Effect, Schema as S } from 'effect'
 
 import { noStoreJsonResponse } from '../http/responses'
+import { parseJsonRecord } from '../json-boundary'
 import { workerLogEntry } from '../observability'
 import {
   compactRandomId,
@@ -98,6 +100,12 @@ const CloudCodingSessionRequestBody = S.Struct({
   lane: S.optionalKey(CloudCodingLane),
   repoTrustTier: S.optionalKey(RepoTrustTier),
   adapter: S.optionalKey(CloudCodingAdapter),
+  // Public-safe work context refs. The mobile thread<->repo binding from #8472
+  // is the stable work context; until it is supplied, this route derives a
+  // session-scoped fallback so the projection stays honest.
+  workContextRef: S.optionalKey(S.String),
+  threadRef: S.optionalKey(S.String),
+  repoBindingRef: S.optionalKey(S.String),
   verify: S.optionalKey(S.Array(S.String)),
   // Bounds the session wall-clock (cost/abuse control). Optional; a default +
   // hard ceiling apply below.
@@ -118,6 +126,9 @@ export type CloudCodingSessionRequest = Readonly<{
   adapter: CloudCodingAdapter
   verify: ReadonlyArray<string>
   timeoutSeconds: number
+  workContextRef?: string | undefined
+  threadRef?: string | undefined
+  repoBindingRef?: string | undefined
   // Extra placement/launch options forwarded verbatim to the runtime adapter.
   options: Readonly<Record<string, unknown>>
 }>
@@ -136,6 +147,21 @@ export const CloudCodingSessionState = S.Literals([
 ])
 export type CloudCodingSessionState = typeof CloudCodingSessionState.Type
 
+export const AgentComputerLifecycleState = S.Literals([
+  'requested',
+  'provisioning',
+  'ready',
+  'active',
+  'idle',
+  'reclaiming',
+  'reclaimed',
+  'quarantined',
+  'failed',
+  'cancelled',
+])
+export type AgentComputerLifecycleState =
+  typeof AgentComputerLifecycleState.Type
+
 export type CloudCodingSession = Readonly<{
   sessionId: string
   accountRef: string
@@ -150,6 +176,13 @@ export type CloudCodingSession = Readonly<{
   placementRef: string | null
   // Refs returned by the cloud placement/lease path. Public-safe only.
   leaseRefs: ReadonlyArray<string>
+  // Agent Computer projection. Refs only: no raw GCE instance names, host paths,
+  // guest IPs, SSH keys, provider tokens, repo content, or wallet material.
+  workContextRef: string
+  agentComputerRef: string | null
+  agentComputerState: AgentComputerLifecycleState
+  lifecycleReceiptRefs: ReadonlyArray<string>
+  resourceUsageReceiptRefs: ReadonlyArray<string>
   // Content-addressed artifact ref produced by a completed session. Null until a
   // real repo-edit produces one. NEVER raw diff/secret material.
   artifactRef: string | null
@@ -256,13 +289,18 @@ export const stubCloudCodingAdapter: CloudCodingRuntimeAdapter = {
         artifactRef: null,
         createdAt: currentIsoTimestamp(),
         lane,
+        lifecycleReceiptRefs: [],
         leaseRefs: [],
+        agentComputerRef: null,
+        agentComputerState: 'requested',
         placementRef: null,
         repoRef: request.repoRef,
         repoTrustTier: request.repoTrustTier,
+        resourceUsageReceiptRefs: [],
         sessionId,
         state: 'queued',
         timeoutSeconds: request.timeoutSeconds,
+        workContextRef: workContextRefForSession(request, sessionId),
       }),
     ),
 }
@@ -284,23 +322,18 @@ export const isCloudGceProvisioningArmed = (
 const publicRefFromUnknown = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim().length > 0 ? value : undefined
 
-const publicRefsFromCaps = (
-  caps: Record<string, unknown> | undefined,
-): ReadonlyArray<string> => {
-  if (caps === undefined) {
-    return []
-  }
-  return [caps.leaseRef, caps.gceLeaseRef, caps.vmLeaseRef, caps.resourceUsageReceiptRef].flatMap(
-    value => {
-      const ref = publicRefFromUnknown(value)
-      return ref === undefined ? [] : [ref]
-    },
-  )
-}
-
 const uniqueRefs = (refs: ReadonlyArray<string>): ReadonlyArray<string> => [
   ...new Set(refs.filter(ref => ref.trim().length > 0)),
 ]
+
+const refPart = (value: string): string =>
+  value.replace(/[^a-zA-Z0-9_.:-]/g, '_')
+
+const workContextRefForSession = (
+  request: CloudCodingSessionRequest,
+  sessionId: string,
+): string =>
+  request.workContextRef ?? `work-context.agent-computer.${refPart(sessionId)}`
 
 const sessionStateFromCloudStatus = (status: string): CloudCodingSessionState => {
   if (status === 'completed') {
@@ -318,6 +351,35 @@ const sessionStateFromCloudStatus = (status: string): CloudCodingSessionState =>
   return 'queued'
 }
 
+const agentComputerStateFromCloudStatus = (
+  status: string,
+  events: ReadonlyArray<CloudPlacementEvent>,
+): AgentComputerLifecycleState => {
+  const eventKinds = new Set(events.map(event => event.kind))
+  if (eventKinds.has('cloud.gce.cleanup')) {
+    return 'reclaimed'
+  }
+  if (eventKinds.has('cloud.gce.degraded')) {
+    return 'quarantined'
+  }
+  if (status === 'completed') {
+    return 'idle'
+  }
+  if (status === 'failed' || status === 'timeout') {
+    return 'failed'
+  }
+  if (status === 'cancelled') {
+    return 'cancelled'
+  }
+  if (status === 'running' || status === 'started') {
+    return 'active'
+  }
+  if (status === 'ready') {
+    return 'ready'
+  }
+  return 'provisioning'
+}
+
 const stringOption = (
   options: Readonly<Record<string, unknown>>,
   key: string,
@@ -329,9 +391,141 @@ const defaultProviderAccountRef = (accountRef: string): string =>
 const defaultAuthGrantRef = (sessionId: string): string =>
   `grant.cloud-coding-session.${sessionId}`
 
+type CloudPlacementEvent = Readonly<{
+  kind: string
+  receiptRefs: ReadonlyArray<string>
+  artifactRefs: ReadonlyArray<string>
+  data: Readonly<Record<string, unknown>>
+  digest: string | null
+}>
+
+const recordFromUnknown = (
+  value: unknown,
+): Record<string, unknown> | undefined =>
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined
+
+const publicRefsFromUnknownArray = (
+  value: unknown,
+): ReadonlyArray<string> =>
+  Array.isArray(value)
+    ? value.flatMap(item => {
+        const ref = publicRefFromUnknown(item)
+        return ref === undefined ? [] : [ref]
+      })
+    : []
+
+const parseEventData = (value: unknown): Readonly<Record<string, unknown>> => {
+  const direct = recordFromUnknown(value)
+  if (direct !== undefined) {
+    return direct
+  }
+  if (typeof value !== 'string' || value.trim() === '') {
+    return {}
+  }
+  return parseJsonRecord(value) ?? {}
+}
+
+const cloudPlacementEventKind = (
+  record: Record<string, unknown>,
+): string | undefined => {
+  const candidates = [record.type, record.kind, record.eventType].flatMap(
+    value => {
+      const ref = publicRefFromUnknown(value)
+      return ref === undefined ? [] : [ref]
+    },
+  )
+  return (
+    candidates.find(candidate => candidate.startsWith('cloud.gce.')) ??
+    candidates[0]
+  )
+}
+
+const normalizeCloudPlacementEvent = (
+  value: unknown,
+): CloudPlacementEvent | undefined => {
+  const record = recordFromUnknown(value)
+  if (record === undefined) {
+    return undefined
+  }
+  const kind = cloudPlacementEventKind(record)
+  if (kind === undefined) {
+    return undefined
+  }
+  return {
+    artifactRefs: uniqueRefs([
+      ...publicRefsFromUnknownArray(record.artifactRefs),
+      ...publicRefsFromUnknownArray(record.artifact_refs),
+    ]),
+    data: parseEventData(record.dataJson ?? record.data_json ?? record.data),
+    digest: publicRefFromUnknown(record.digest) ?? null,
+    kind,
+    receiptRefs: uniqueRefs([
+      ...publicRefsFromUnknownArray(record.receiptRefs),
+      ...publicRefsFromUnknownArray(record.receipt_refs),
+    ]),
+  }
+}
+
+const publicRefFromEventData = (
+  event: CloudPlacementEvent,
+  key: string,
+): string | undefined => publicRefFromUnknown(event.data[key])
+
+const lifecycleReceiptRefsFromEvents = (
+  events: ReadonlyArray<CloudPlacementEvent>,
+): ReadonlyArray<string> =>
+  uniqueRefs(
+    events.flatMap(event => {
+      if (
+        event.kind !== 'cloud.gce.provisioned' &&
+        event.kind !== 'cloud.gce.cleanup' &&
+        event.kind !== 'cloud.gce.degraded'
+      ) {
+        return []
+      }
+      return [
+        ...event.receiptRefs,
+        publicRefFromEventData(event, 'provisionReceiptRef'),
+        publicRefFromEventData(event, 'cleanupReceiptRef'),
+        publicRefFromEventData(event, 'quarantineReceiptRef'),
+      ].flatMap(ref => (ref === undefined ? [] : [ref]))
+    }),
+  )
+
+const resourceUsageReceiptRefsFromEvents = (
+  events: ReadonlyArray<CloudPlacementEvent>,
+): ReadonlyArray<string> =>
+  uniqueRefs(
+    events.flatMap(event => {
+      if (
+        event.kind !== 'cloud.gce.resource_usage_receipt' &&
+        event.kind !== 'cloud.gce.resource'
+      ) {
+        return []
+      }
+      return [
+        ...event.receiptRefs,
+        publicRefFromEventData(event, 'resourceUsageReceiptRef'),
+      ].flatMap(ref => (ref === undefined ? [] : [ref]))
+    }),
+  )
+
+const leaseRefsFromEvents = (
+  events: ReadonlyArray<CloudPlacementEvent>,
+): ReadonlyArray<string> =>
+  uniqueRefs(
+    events.flatMap(event => {
+      const leaseRef = publicRefFromEventData(event, 'leaseRef')
+      return leaseRef === undefined ? [] : [leaseRef]
+    }),
+  )
+
 type CloudPlacementResponse = Readonly<{
   externalRunId: string
   status: string
+  events: ReadonlyArray<CloudPlacementEvent>
   binding: Readonly<{
     contractVersion: string
     runId: string
@@ -366,6 +560,12 @@ const normalizeCloudPlacementResponse = (
     rawBinding.caps !== null && typeof rawBinding.caps === 'object'
       ? (rawBinding.caps as Record<string, unknown>)
       : undefined
+  const events = Array.isArray(record.events)
+    ? record.events.flatMap(event => {
+        const normalized = normalizeCloudPlacementEvent(event)
+        return normalized === undefined ? [] : [normalized]
+      })
+    : []
   return {
     binding: {
       capacityClassId: publicRefFromUnknown(rawBinding.capacityClassId) ?? null,
@@ -385,6 +585,7 @@ const normalizeCloudPlacementResponse = (
         publicRefFromUnknown(rawBinding.sandboxMode) ?? 'danger_full_access',
       ...(caps === undefined ? {} : { caps }),
     },
+    events,
     externalRunId,
     status: publicRefFromUnknown(record.status) ?? 'queued',
   }
@@ -478,16 +679,32 @@ export const makeCloudControlCloudCodingAdapter = (
           )
         }
         const placement = placementResult.placement
+        const lifecycleReceiptRefs = lifecycleReceiptRefsFromEvents(
+          placement.events,
+        )
+        const resourceUsageReceiptRefs = resourceUsageReceiptRefsFromEvents(
+          placement.events,
+        )
         const placementRef =
           placement.externalRunId !== ''
             ? `placement.cloud-coding.${placement.externalRunId}`
             : `placement.cloud-coding.${sessionId}`
+        const agentComputerRef =
+          placement.externalRunId !== ''
+            ? `agent-computer.${refPart(placement.externalRunId)}`
+            : `agent-computer.${refPart(sessionId)}`
         return {
           accountRef,
           adapter: request.adapter,
+          agentComputerRef,
+          agentComputerState: agentComputerStateFromCloudStatus(
+            placement.status,
+            placement.events,
+          ),
           artifactRef: null,
           createdAt: currentIsoTimestamp(),
           lane: placement.binding.lane,
+          lifecycleReceiptRefs,
           leaseRefs: uniqueRefs([
             placementRef,
             ...(placement.externalRunId === ''
@@ -499,14 +716,16 @@ export const makeCloudControlCloudCodingAdapter = (
             ...(placement.binding.capacityClassId === null
               ? []
               : [`cloud-capacity-class.${placement.binding.capacityClassId}`]),
-            ...publicRefsFromCaps(placement.binding.caps),
+            ...leaseRefsFromEvents(placement.events),
           ]),
           placementRef,
           repoRef: request.repoRef,
           repoTrustTier: request.repoTrustTier,
+          resourceUsageReceiptRefs,
           sessionId,
           state: sessionStateFromCloudStatus(placement.status),
           timeoutSeconds: request.timeoutSeconds,
+          workContextRef: workContextRefForSession(request, sessionId),
         } satisfies CloudCodingSession
       }),
   }
@@ -663,10 +882,16 @@ const toSessionRequest = (
     objective: _o,
     repoRef: _r,
     repoTrustTier: _t,
+    workContextRef: _wc,
+    threadRef: _tr,
+    repoBindingRef: _rb,
     timeoutSeconds: _ts,
     verify: _v,
     ...rest
   } = raw
+  const workContextRef = publicRefFromUnknown(body.workContextRef)
+  const threadRef = publicRefFromUnknown(body.threadRef)
+  const repoBindingRef = publicRefFromUnknown(body.repoBindingRef)
   return {
     adapter: body.adapter ?? DEFAULT_CLOUD_CODING_ADAPTER,
     lane: body.lane ?? DEFAULT_CLOUD_CODING_LANE,
@@ -676,12 +901,16 @@ const toSessionRequest = (
     repoTrustTier: body.repoTrustTier ?? DEFAULT_REPO_TRUST_TIER,
     timeoutSeconds: body.timeoutSeconds ?? DEFAULT_CLOUD_CODING_TIMEOUT_SECONDS,
     verify: body.verify ?? [],
+    ...(workContextRef === undefined ? {} : { workContextRef }),
+    ...(threadRef === undefined ? {} : { threadRef }),
+    ...(repoBindingRef === undefined ? {} : { repoBindingRef }),
   }
 }
 
 // Public-safe JSON projection of a session. NEVER raw creds/diff material.
 const projectSession = (session: CloudCodingSession) => ({
   object: 'cloud.coding_session',
+  product_object: 'agent.computer_session',
   id: session.sessionId,
   lane: session.lane,
   adapter: session.adapter,
@@ -691,6 +920,18 @@ const projectSession = (session: CloudCodingSession) => ({
   state: session.state,
   placement_ref: session.placementRef,
   lease_refs: session.leaseRefs,
+  work_context_ref: session.workContextRef,
+  agent_computer_ref: session.agentComputerRef,
+  agent_computer_state: session.agentComputerState,
+  lifecycle_receipt_refs: session.lifecycleReceiptRefs,
+  resource_usage_receipt_refs: session.resourceUsageReceiptRefs,
+  agent_computer: {
+    ref: session.agentComputerRef,
+    state: session.agentComputerState,
+    work_context_ref: session.workContextRef,
+    lifecycle_receipt_refs: session.lifecycleReceiptRefs,
+    resource_usage_receipt_refs: session.resourceUsageReceiptRefs,
+  },
   artifact_ref: session.artifactRef,
   created_at: session.createdAt,
 })

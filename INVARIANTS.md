@@ -98,6 +98,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   concurrency. Regression coverage lives in
   `clients/khala-code-desktop/tests/fleet-run-supervisor.test.ts` and
   `clients/khala-code-desktop/tests/khala-fleet-tools.test.ts`.
+- Khala Code mobile-only MVP cloud execution uses OpenAgents-owned Agent
+  Computers: Firecracker microVMs on our GCE capacity, assigned per admitted
+  work context and metered with refs-only lifecycle/resource receipts. Agent
+  Computers are not user Pylons, are not another user's capacity, and are not
+  wallet or payout authority. They may receive only scoped runtime credentials
+  and SCM broker-issued repo credentials; raw user OAuth tokens, provider master
+  keys, wallet material, raw GCE topology, guest IPs, prompts, repo content,
+  and private traces must not enter public projections, docs, issue comments,
+  tests, fixtures, or logs.
 - Secrets, wallet material, raw prompts, private repo content, provider
   payloads, and private customer data must not be committed or written into
   docs, tests, fixtures, logs, or public projections.

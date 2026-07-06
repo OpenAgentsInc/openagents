@@ -1,145 +1,151 @@
-# Khala Mobile Org-Cloud Executor Runbook
+# Khala Mobile Agent Computer Executor Runbook
 
 Date: 2026-07-06
-Issue: #8473 / MM-C1
-Status: initial org-cloud executor spine landed; #8474 owns admission policy,
-#8475 owns private repo checkout, #8476 owns isolation hardening, #8477 owns
-branch/PR writeback, and #8479 owns charging.
+Issues: #8473, #8503, #8474-#8477, #8479
+Status: #8473 executor spine landed; #8503 arms the Firecracker/GCE Agent
+Computer path; #8474 owns admission, #8475 owns SCM credentials, #8476 owns
+isolation enforcement, #8477 owns writeback, and #8479 owns charging.
 
 ## Purpose
 
-The mobile-only MVP runs coding turns on OpenAgents Cloud, not on a user's
-desktop Pylon. This runbook describes the #8473 executor shape:
+The mobile-only MVP runs coding turns on OpenAgents-owned Agent Computers, not
+on a user's desktop Pylon and not on a hosted Pylon pool. An Agent Computer is
+an isolated Firecracker microVM on our GCE capacity, assigned to one admitted
+work context (`user + thread + repo binding`) and reclaimed after the lifecycle
+policy says the context is idle or expired.
 
-- an org-owned hosted Pylon pool consumes existing
-  `khala_runtime_control_intent.v1` rows from Khala Sync;
-- Codex and Claude lanes use org-owned local account homes on those hosts;
-- the `hosted_khala` lane uses the OpenAgents gateway with Vertex/Gemini as
-  the default model;
-- all lanes emit the same `runtime_event` / `runtime_turn` sync entities the
-  mobile app already renders;
-- every `usage.recorded` runtime event is mirrored into an exact
-  `token_usage_events` receipt through
-  `POST /api/khala/cloud/runtime-turn-usage`.
+The Pylon runtime and coding agents remain implementation details inside the
+image. The provisioned, metered, and user-facing unit is the Agent Computer.
 
-The mobile wire contract does not change.
+The mobile wire contract remains the same:
+
+- runtime events and turns continue to sync as `runtime_event` /
+  `runtime_turn` entities;
+- one-line tool summaries and assistant updates are still mobile surface data;
+- exact token usage receipts are mirrored from runtime `usage.recorded` events;
+- compute-time lifecycle receipts are emitted by the Agent Computer provisioner
+  as `openagents.resource_usage_receipt.v1` refs.
 
 ## Deployment Shape
 
-Use the existing hosted-Pylon GCE pattern under `apps/pylon/deploy/gcloud/`.
-Each VM runs the runtime-intent supervisor against an org-owned `PYLON_HOME`
-that contains only org executor account homes.
+Public repo responsibilities:
 
-Required runtime environment:
+- `apps/openagents.com/workers/api/src/cloud/cloud-coding-session-routes.ts`
+  exposes the flag-gated `/v1/cloud-coding-sessions` launch/read seam;
+- `apps/pylon/deploy/agent-computer/` documents and tests the public GCE
+  nested-virt host shape;
+- the Worker remains inert unless `CLOUD_CODING_SESSIONS_ENABLED=true`,
+  `OA_CODEX_GCE_PROVISIONER=live`, and `OA_CLOUD_CONTROL_URL` plus the
+  Worker-secret control token are configured.
 
-```sh
-OPENAGENTS_BASE_URL=https://openagents.com
-OPENAGENTS_ADMIN_API_TOKEN=<from secret manager>
-OPENAGENTS_AGENT_TOKEN=<org executor agent token from secret manager>
-OPENAGENTS_RUNTIME_EXECUTOR_MODE=org_cloud
-OPENAGENTS_RUNTIME_USAGE_RECEIPTS_ENABLED=1
-OPENAGENTS_RUNTIME_HOSTED_KHALA_ENABLED=1
-OPENAGENTS_RUNTIME_HOSTED_KHALA_MODEL=gemini-3.5-flash
-PYLON_HOME=/var/lib/openagents/org-cloud-pylon
-```
+Private `cloud/` responsibilities:
 
-Start command:
+- `oa-codex-control` accepts placement assignments from the Worker;
+- `oa-node` provisions Firecracker microVMs on the nested-virt host;
+- lifecycle transitions emit refs-only public receipts;
+- scratch disks are wiped and failed/quarantined microVMs are reclaimed.
 
-```sh
-bun apps/pylon/src/orchestration/runtime-intent-supervisor.ts \
-  --executor-mode org_cloud \
-  --workspace-root /var/lib/openagents/runtime-turns \
-  --poll-interval-ms 3000 \
-  --limit 20
-```
+Do not put control tokens, SCM credentials, provider keys, wallet material,
+guest IPs, raw GCE instance names, prompts, repo content, or private traces in
+public docs, issue comments, tests, logs, or Worker projections.
 
-Do not pass `--owner-user-id` for the org-cloud pool. Leaving it unset lets the
-pool consume admitted mobile org-cloud work across owners. #8474 adds the
-credit/session admission gate; until that lands, operators should run the pool
-only behind the existing internal controls.
+## Launch Flow
+
+1. Mobile dispatch creates or resumes a thread with a repo binding.
+2. Admission (#8474) checks mobile session, positive credit balance,
+   concurrency, and capacity before any Agent Computer assignment.
+3. The Worker posts a refs-only `openagents.codex_placement_assignment.v1`
+   payload to the private control plane.
+4. The control plane provisions or reuses the work-context Agent Computer.
+5. The runtime inside the microVM consumes the `khala_runtime_control_intent.v1`
+   turn and emits normal Khala Sync runtime events.
+6. Token usage is mirrored through
+   `POST /api/khala/cloud/runtime-turn-usage`.
+7. Compute lifecycle receipts are projected from `cloud.gce.*` control-plane
+   events and later charged by #8479.
+8. Idle or expired Agent Computers are reclaimed; scratch storage is wiped.
 
 ## Execution Lanes
 
 `codex_app_server`
-: Uses an org-owned Codex account home from the hosted Pylon registry.
-  Usage receipts are attributed to provider `pylon-codex-org-capacity`.
+: Runs Codex inside the Agent Computer image with an OpenAgents-owned runtime
+  credential. The microVM never receives raw user OAuth tokens or wallet
+  material.
 
 `claude_pylon`
-: Uses an org-owned Claude Agent SDK account home from the hosted Pylon
-  registry. Usage receipts are attributed to provider
-  `pylon-claude-org-capacity`.
+: Runs Claude Agent SDK inside the same Agent Computer isolation envelope.
+  Account credentials are org-owned runtime credentials, not another user's
+  Pylon or account home.
 
 `hosted_khala`
-: Skips local account selection and calls `/v1/chat/completions` with the
-  configured model. Default model is `gemini-3.5-flash`; #8484 owns replacing
-  the default with the user's model preference once that contract lands.
-  Usage receipts are attributed to provider `vertex-gemini`.
+: Calls the OpenAgents gateway from inside the same admitted work context.
+  Default model choice remains temporary until #8484's merged model-preference
+  read contract is consumed by the executor path.
 
 ## Scaling
 
-Scale horizontally by adding more hosted-Pylon VMs with distinct `PYLON_HOME`
-directories and distinct org executor account homes. The supervisor stores its
-watermark in its local orchestration SQLite DB, so each VM should use its own
-database path and account set. Capacity fairness remains per host/account; the
-#8474 admission gate is responsible for user-level concurrency and rate limits.
+Scale by adding nested-virtualization GCE hosts and letting the private
+provisioner place one Firecracker microVM per admitted work context. Do not
+scale by sharing one persistent hosted-Pylon OS across users or repos.
 
-Recommended first pool:
+Recommended first host:
 
-- one small VM for hosted Khala/Gemini-only turns;
-- one VM with one Codex org account home;
-- one VM with one Claude org account home;
-- expand by adding account homes rather than sharing one home across hosts.
+- one `n2-standard-4` GCE VM in `openagentsgemini`;
+- IAP/private egress only, no external IP by default;
+- `/dev/kvm` verified before live arming;
+- private `oa-node` provisioner configured from Secret Manager;
+- no secrets in instance metadata or startup scripts.
 
-## Draining
+Use `apps/pylon/deploy/agent-computer/setup-gce-host.sh --dry-run` to verify
+the public command shape before live host creation.
 
-1. Remove the VM from new-work admission at the deployment layer.
-2. Send `SIGTERM` to the supervisor.
-3. The supervisor stops after the current poll tick. Existing background turns
-   may still be running; watch logs for `runtime-intent-supervisor: stopped`.
-4. If active turns remain, leave the VM online until they emit terminal
-   `turn.finished` or `turn.interrupted` events, then stop the process.
-5. Do not delete the workspace root until #8476's retention/isolation policy
-   says it is safe.
+## Draining And Reclaim
 
-## Account Rotation
-
-Rotate org Codex/Claude capacity by adding a fresh account home, verifying it
-appears ready through the Pylon account readiness checks, then disabling the
-old home. Do not move user-owned homes into the org pool. The org-cloud lane
-is additive and must never dispatch to another user's Pylon or account home.
-
-For the hosted Khala/Gemini lane, rotate the programmatic
-`OPENAGENTS_AGENT_TOKEN` through GCP Secret Manager and restart supervisors.
-Never print agent tokens, provider credentials, or OAuth tokens in logs, issue
-comments, or docs.
+1. Remove the host from new-work admission at the control-plane layer.
+2. Let active turns reach terminal `turn.finished` or `turn.interrupted`.
+3. Reclaim each Agent Computer through the private provisioner, not by manually
+   deleting guest files from the host OS.
+4. Confirm lifecycle receipts include reclaim and scratch-wipe evidence refs.
+5. Stop or delete the host only after the provisioner reports no active guest.
 
 ## Receipts
 
-The supervisor posts one exact receipt for each `usage.recorded` runtime event:
+Token receipts:
 
 ```text
 POST /api/khala/cloud/runtime-turn-usage
 schemaVersion: openagents.khala_cloud_runtime_turn_usage.v1
 ```
 
+Compute receipts:
+
+```text
+openagents.resource_usage_receipt.v1
+event kinds: cloud.gce.provisioned, cloud.gce.resource_usage_receipt, cloud.gce.cleanup
+```
+
 The Worker route:
 
-- requires an `oa_agent_` bearer;
+- requires an `oa_agent_` bearer for token usage mirroring;
 - rejects linked user-Pylon agents posting for a different owner;
 - requires nonzero exact input/output token counts;
 - writes `openagents.token_usage_event.v1` with
   `demandKind=external`, `demandSource=khala_mobile_org_cloud_runtime`,
-  `demandClient=khala-code-mobile`, `usageTruth=exact`;
-- records org-capacity provider attribution without charging credits yet.
+  `demandClient=khala-code-mobile`, and `usageTruth=exact`;
+- projects Agent Computer lifecycle/resource receipt refs from the control
+  plane without exposing private host topology.
 
-#8479 consumes these exact receipts for credit charging. Do not charge from
-estimates or client-supplied amounts.
+#8479 consumes exact token receipts and exact compute lifecycle receipts for
+credit charging. Do not charge from estimates or client-supplied amounts.
 
 ## Still Gated
 
+- #8503: live nested-virt host, signed/digest-pinned image, Worker arming, and
+  one real mobile-dispatched Firecracker turn receipt.
 - #8474: mobile-session + positive-credit admission, rate/concurrency limits,
   typed refusals, and INVARIANTS update.
-- #8475: private GitHub checkout through the SCM auth broker.
-- #8476: isolation enforcement and retention policy.
+- #8475: private GitHub checkout through the SCM auth broker only.
+- #8476: isolation enforcement and retention policy from the Agent Computers
+  strategy.
 - #8477: branch/PR writeback with user GitHub authorization.
-- #8479: credit metering and balance gate from exact receipts.
+- #8479: credit metering and balance gate from exact token + compute receipts.

@@ -227,6 +227,13 @@ executor overhead amortized into token margin" never will be.
   `gceProvisioningArmed` + `OA_CLOUD_CONTROL_URL` against the real control
   plane, work-context↔agent-computer assignment, lifecycle receipts
   flowing, and the first real mobile turn executed inside a microVM.
+  Public-repo seam work now lives in
+  `apps/openagents.com/workers/api/src/cloud/cloud-coding-session-routes.ts`
+  and `apps/pylon/deploy/agent-computer/`: the Worker projects Agent Computer
+  work-context/lifecycle/resource receipt refs from `cloud.gce.*` events, and
+  the public GCE host script enforces nested virtualization and `/dev/kvm`
+  verification. The issue remains open until the owner-gated live host/image
+  receipts and first real mobile-dispatched microVM turn are recorded.
 - **#8474** (admission) — unchanged in substance; capacity now means
   agent-computer capacity from the control-plane ledger. exe.dev pool
   framing dropped.

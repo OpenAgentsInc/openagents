@@ -246,6 +246,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
     expect(response.status).toBe(200)
     const body = (await response.json()) as Record<string, unknown>
     expect(body.object).toBe('cloud.coding_session')
+    expect(body.product_object).toBe('agent.computer_session')
     expect(body.id).toBe('ccs_fixed')
     expect(body.lane).toBe('cloud-gcp')
     expect(body.adapter).toBe('codex')
@@ -254,6 +255,18 @@ describe('POST /v1/cloud-coding-sessions', () => {
     // Honest: the stub provisions no VM and runs no edit.
     expect(body.placement_ref).toBeNull()
     expect(body.lease_refs).toEqual([])
+    expect(body.work_context_ref).toBe('work-context.agent-computer.ccs_fixed')
+    expect(body.agent_computer_ref).toBeNull()
+    expect(body.agent_computer_state).toBe('requested')
+    expect(body.lifecycle_receipt_refs).toEqual([])
+    expect(body.resource_usage_receipt_refs).toEqual([])
+    expect(body.agent_computer).toEqual({
+      lifecycle_receipt_refs: [],
+      ref: null,
+      resource_usage_receipt_refs: [],
+      state: 'requested',
+      work_context_ref: 'work-context.agent-computer.ccs_fixed',
+    })
     expect(body.artifact_ref).toBeNull()
     // Honest: the stub meters nothing.
     expect(body.metered).toBe(false)
@@ -275,6 +288,47 @@ describe('POST /v1/cloud-coding-sessions', () => {
     const body = (await response.json()) as Record<string, unknown>
     expect(body.lane).toBe('cloud-shc')
     expect(body.repo_trust_tier).toBe('regulated')
+  })
+
+  test('projects an explicit mobile work-context ref without forwarding it to placement', async () => {
+    let placementBody: Record<string, unknown> | undefined
+    const adapter = makeCloudControlCloudCodingAdapter({
+      baseUrl: 'https://cloud.openagents.test',
+      bearerToken: 'secret-test-token',
+      fetch: async (_url, init) => {
+        placementBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+        return Response.json({
+          binding: {
+            capacityClassId: 'gce-standard',
+            externalRunId: 'run_gce_1',
+            lane: 'cloud-gcp',
+            providerLane: 'gcp',
+            runnerId: 'runner_gce_1',
+          },
+          externalRunId: 'run_gce_1',
+          status: 'running',
+        })
+      },
+      gceProvisioningArmed: true,
+    })
+    const response = await run(
+      handleCloudCodingSessionLaunch(
+        launchRequest({
+          ...validBody,
+          repoBindingRef: 'repo-binding.mobile.thread-1',
+          threadRef: 'thread.mobile.1',
+          workContextRef: 'work-context.mobile.thread-1.repo-1',
+        }),
+        baseDeps({ adapter }),
+      ),
+    )
+    expect(response.status).toBe(200)
+    expect(placementBody).not.toHaveProperty('work_context_ref')
+    expect(placementBody).not.toHaveProperty('thread_ref')
+    expect(placementBody).not.toHaveProperty('repo_binding_ref')
+    const body = (await response.json()) as Record<string, unknown>
+    expect(body.work_context_ref).toBe('work-context.mobile.thread-1.repo-1')
+    expect(body.agent_computer_ref).toBe('agent-computer.run_gce_1')
   })
 
   test('maps a runtime adapter failure to 502', async () => {
@@ -300,7 +354,41 @@ describe('POST /v1/cloud-coding-sessions', () => {
     expect(body.reason).toBe('lease_unavailable')
   })
 
-  test('with live provisioning armed, posts to cloud placement and returns lease refs', async () => {
+  test('fails closed when live provisioning is armed but the control URL is absent', async () => {
+    const adapter = makeCloudControlCloudCodingAdapter({
+      baseUrl: '',
+      bearerToken: 'secret-test-token',
+      gceProvisioningArmed: true,
+    })
+    const response = await run(
+      handleCloudCodingSessionLaunch(
+        launchRequest(validBody),
+        baseDeps({ adapter }),
+      ),
+    )
+    expect(response.status).toBe(502)
+    const body = (await response.json()) as { reason: string }
+    expect(body.reason).toBe('cloud_control_url_not_configured')
+  })
+
+  test('fails closed when live provisioning is armed but the control token is absent', async () => {
+    const adapter = makeCloudControlCloudCodingAdapter({
+      baseUrl: 'https://cloud.openagents.test',
+      bearerToken: '',
+      gceProvisioningArmed: true,
+    })
+    const response = await run(
+      handleCloudCodingSessionLaunch(
+        launchRequest(validBody),
+        baseDeps({ adapter }),
+      ),
+    )
+    expect(response.status).toBe(502)
+    const body = (await response.json()) as { reason: string }
+    expect(body.reason).toBe('cloud_control_token_not_configured')
+  })
+
+  test('with live provisioning armed, posts to cloud placement and projects agent computer receipts', async () => {
     let placementBody: Record<string, unknown> | undefined
     const adapter = makeCloudControlCloudCodingAdapter({
       baseUrl: 'https://cloud.openagents.test',
@@ -315,12 +403,40 @@ describe('POST /v1/cloud-coding-sessions', () => {
         return Response.json({
           binding: {
             capacityClassId: 'gce-standard',
-            caps: { gceLeaseRef: 'lease.gce.vm.ccs_fixed' },
             externalRunId: 'run_gce_1',
             lane: 'cloud-gcp',
             providerLane: 'gcp',
             runnerId: 'runner_gce_1',
           },
+          events: [
+            {
+              dataJson: JSON.stringify({
+                instanceRef: 'gce-raw-instance-name',
+                leaseRef: 'lease.gce.vm.ccs_fixed',
+                provisionReceiptRef: 'sha256:provision',
+              }),
+              kind: 'placement',
+              receiptRefs: ['sha256:provision'],
+              type: 'cloud.gce.provisioned',
+            },
+            {
+              dataJson: JSON.stringify({
+                resourceUsageReceiptRef: 'sha256:usage',
+              }),
+              kind: 'receipt',
+              receiptRefs: ['sha256:usage'],
+              type: 'cloud.gce.resource_usage_receipt',
+            },
+            {
+              dataJson: JSON.stringify({
+                cleanupReceiptRef: 'sha256:cleanup',
+                leaseRef: 'lease.gce.vm.ccs_fixed',
+              }),
+              kind: 'cleanup',
+              receiptRefs: ['sha256:cleanup'],
+              type: 'cloud.gce.cleanup',
+            },
+          ],
           externalRunId: 'run_gce_1',
           status: 'running',
         })
@@ -351,6 +467,13 @@ describe('POST /v1/cloud-coding-sessions', () => {
     const body = (await response.json()) as Record<string, unknown>
     expect(body.state).toBe('running')
     expect(body.placement_ref).toBe('placement.cloud-coding.run_gce_1')
+    expect(body.agent_computer_ref).toBe('agent-computer.run_gce_1')
+    expect(body.agent_computer_state).toBe('reclaimed')
+    expect(body.lifecycle_receipt_refs).toEqual([
+      'sha256:provision',
+      'sha256:cleanup',
+    ])
+    expect(body.resource_usage_receipt_refs).toEqual(['sha256:usage'])
     expect(body.lease_refs).toEqual([
       'placement.cloud-coding.run_gce_1',
       'cloud-run.run_gce_1',
@@ -358,6 +481,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
       'cloud-capacity-class.gce-standard',
       'lease.gce.vm.ccs_fixed',
     ])
+    expect(JSON.stringify(body)).not.toContain('gce-raw-instance-name')
   })
 
   test('surfaces a live metering receipt ref when the hook reports metered', async () => {
@@ -399,13 +523,18 @@ describe('GET /v1/cloud-coding-sessions/:id', () => {
     artifactRef: null,
     createdAt: '2026-06-19T00:00:00.000Z',
     lane: 'cloud-gcp',
+    lifecycleReceiptRefs: ['sha256:provision'],
     leaseRefs: ['placement:abc'],
+    agentComputerRef: 'agent-computer.run_gce_1',
+    agentComputerState: 'active',
     placementRef: 'placement:abc',
     repoRef: 'repo:openagents/openagents',
     repoTrustTier: 'private',
+    resourceUsageReceiptRefs: ['sha256:usage'],
     sessionId: 'ccs_fixed',
     state: 'running',
     timeoutSeconds: 1800,
+    workContextRef: 'work-context.mobile.thread-1.repo-1',
   }
 
   test('is inert (404) when the flag is disabled', async () => {
@@ -457,6 +586,8 @@ describe('GET /v1/cloud-coding-sessions/:id', () => {
     expect(body.id).toBe('ccs_fixed')
     expect(body.state).toBe('running')
     expect(body.placement_ref).toBe('placement:abc')
+    expect(body.agent_computer_ref).toBe('agent-computer.run_gce_1')
+    expect(body.work_context_ref).toBe('work-context.mobile.thread-1.repo-1')
   })
 
   test('cross-account isolation: another account gets 404, not the session', async () => {

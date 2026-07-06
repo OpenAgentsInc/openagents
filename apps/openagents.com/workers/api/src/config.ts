@@ -244,14 +244,14 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // related promises stay red until a dereferenceable paid receipt exists.
   CLOUD_FINE_TUNING_ENABLED?: string | undefined
   CLOUD_SANDBOX_COMPUTE_ENABLED?: string | undefined
-  // Cloud coding-session surface flag (autopilot.cloud_coding_sessions.v1, red).
+  // Agent Computer launch surface flag (autopilot.cloud_coding_sessions.v1, red).
   // Default OFF: the `/v1/cloud-coding-sessions` launch + lifecycle routes are
-  // inert on the live Worker until the managed GCE runtime is wired. Set
+  // inert on the live Worker until the Firecracker/GCE runtime is wired. Set
   // "true"/"1"/"on" to enable. Launch still fails closed unless
   // OA_CODEX_GCE_PROVISIONER=live and OA_CLOUD_CONTROL_URL/TOKEN are configured.
-  // The promise stays red until a desktop-originated cloud session runs a real
-  // repo-edit on GCE and produces a content-addressed artifact plus a
-  // dereferenceable resource_usage_receipt with owner sign-off.
+  // The promise stays red until a mobile-dispatched turn runs in an isolated
+  // Firecracker microVM and produces content-addressed artifacts plus
+  // dereferenceable lifecycle/resource_usage_receipts with owner sign-off.
   CLOUD_CODING_SESSIONS_ENABLED?: string | undefined
   OA_CODEX_GCE_PROVISIONER?: string | undefined
   OA_CLOUD_CONTROL_URL?: string | undefined

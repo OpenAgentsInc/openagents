@@ -3,6 +3,11 @@
 This directory contains the GCE setup path for the always-on Pylon fleet rung
 described in `docs/2026-06-10-always-on-fleet-plan.md`.
 
+For Khala Code mobile-only MVP Agent Computers, use
+`apps/pylon/deploy/agent-computer/` instead. Agent Computers are isolated
+Firecracker microVMs on OpenAgents-owned GCE capacity; the Pylon runtime is only
+software inside the image, not the provisioned or billed unit.
+
 The script creates or starts a Google Compute Engine VM, copies a local env file
 over IAP/SSH, and runs the existing Linux installer:
 

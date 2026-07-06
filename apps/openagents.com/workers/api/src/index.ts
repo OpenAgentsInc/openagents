@@ -15013,11 +15013,11 @@ const routeRequest = makeWorkerRouteRequest({
   routeAutopilotWorkRequest: (request, env, ctx) =>
     autopilotDecisionRoutes.routeAutopilotDecisionRequest(request, env, ctx) ??
     autopilotWorkRoutes.routeAutopilotWorkRequest(request, env, ctx),
-  // Cloud coding-session surface (autopilot.cloud_coding_sessions.v1, red).
+  // Agent Computer launch surface (autopilot.cloud_coding_sessions.v1, red).
   // INERT behind CLOUD_CODING_SESSIONS_ENABLED (default off). When enabled, it
-  // tries the real cloud placement/GCE lease path and fails closed with typed
-  // not-armed errors until OA_CODEX_GCE_PROVISIONER=live plus cloud control
-  // endpoint/token are configured.
+  // tries the real cloud placement/GCE/Firecracker path and fails closed with
+  // typed not-armed errors until OA_CODEX_GCE_PROVISIONER=live plus cloud
+  // control endpoint/token are configured.
   routeCloudCodingSessionRequest: (request, env) =>
     routeCloudCodingSessionRequestImpl(request, {
       authenticate: async authRequest => {

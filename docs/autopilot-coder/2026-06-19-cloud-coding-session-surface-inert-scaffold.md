@@ -4,6 +4,14 @@ Date: 2026-06-19
 Promise: `autopilot.cloud_coding_sessions.v1` (stays **red**)
 Branch: `wave2-cloud-coding-sessions`
 
+> 2026-07-06 update: Khala Code mobile-only MVP now uses the **Agent
+> Computer** framing from
+> `docs/khala-code/2026-07-06-agent-computers-strategy.md`. The route names
+> remain `/v1/cloud-coding-sessions` for compatibility, but the provisioned,
+> isolated, metered unit is an Agent Computer: a Firecracker microVM on
+> OpenAgents-owned GCE capacity. "Hosted Pylon" language in older notes is
+> historical only.
+
 ## What this is
 
 The typed Worker-side request/lifecycle surface for **launching a managed

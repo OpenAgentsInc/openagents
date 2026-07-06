@@ -5,6 +5,13 @@ import { join } from "node:path"
 import { spawnSync } from "node:child_process"
 
 const script = join(import.meta.dir, "..", "deploy", "gcloud", "setup-pylon.sh")
+const agentComputerScript = join(
+  import.meta.dir,
+  "..",
+  "deploy",
+  "agent-computer",
+  "setup-gce-host.sh",
+)
 
 describe("GCloud Pylon setup script", () => {
   test("dry-run does not print env-file secrets", () => {
@@ -79,5 +86,74 @@ describe("GCloud Pylon setup script", () => {
     expect(output).toContain("--tags psion-swarm-contributor-host\\,pylon-hosted\\,openagents-pylon")
     expect(output).toContain("gcloud compute ssh existing-l4-host")
     expect(output).not.toContain("oa_agent_repurpose_secret")
+  })
+})
+
+describe("Agent Computer GCE host setup script", () => {
+  test("dry-run creates a nested-virtualization host and verifies /dev/kvm", () => {
+    const result = spawnSync(
+      "bash",
+      [
+        agentComputerScript,
+        "--dry-run",
+        "--instance",
+        "agent-computer-test",
+        "--project",
+        "openagentsgemini",
+        "--zone",
+        "us-central1-a",
+        "--machine-type",
+        "n2-standard-4",
+      ],
+      { encoding: "utf8" },
+    )
+
+    expect(result.status).toBe(0)
+    const output = `${result.stdout}\n${result.stderr}`
+    expect(output).toContain("gcloud compute instances create agent-computer-test")
+    expect(output).toContain("--enable-nested-virtualization")
+    expect(output).toContain("--no-address")
+    expect(output).toContain("gcloud compute ssh agent-computer-test")
+    expect(output).toContain("test\\ -c\\ /dev/kvm")
+    expect(output).toContain("/var/lib/openagents/agent-computers")
+    expect(output).not.toContain("OA_CLOUD_CONTROL_TOKEN")
+    expect(output).not.toContain("OPENAGENTS_AGENT_TOKEN")
+  })
+
+  test("rejects machine families that do not support the planned nested-virt lane", () => {
+    const result = spawnSync(
+      "bash",
+      [
+        agentComputerScript,
+        "--dry-run",
+        "--instance",
+        "agent-computer-test",
+        "--machine-type",
+        "e2-standard-4",
+      ],
+      { encoding: "utf8" },
+    )
+
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain("machine type must be n2-* or n1-*")
+  })
+
+  test("uses Haswell minimum CPU platform when n1 hosts are requested", () => {
+    const result = spawnSync(
+      "bash",
+      [
+        agentComputerScript,
+        "--dry-run",
+        "--instance",
+        "agent-computer-n1-test",
+        "--machine-type",
+        "n1-standard-4",
+      ],
+      { encoding: "utf8" },
+    )
+
+    expect(result.status).toBe(0)
+    const output = `${result.stdout}\n${result.stderr}`
+    expect(output).toContain("--min-cpu-platform Intel\\ Haswell")
   })
 })

@@ -205,20 +205,17 @@ notifications** (zero APNs/FCM/Expo-push code anywhere, client or server).
   - `apps/pylon/src/cloud-control-client.ts` — the Pylon→cloud offload
     client with GCE lease lifecycle events, tested against a fake control
     plane.
-  - GCE hosting of Pylons is proven (`apps/pylon/deploy/gcloud/`) — an
-    **org-owned hosted-Pylon pool** consuming runtime intents is the
-    shortest credible path to cloud execution, since
-    `runtime-intent-enforcement.ts` already implements both lanes
-    end-to-end (workspace materialization, Codex/Claude SDK runs, sync
-    event emission).
-- **2026-07-06 #8473 update:** the org-cloud executor spine now exists in
-  `apps/pylon`. `runtime-intent-supervisor.ts` has an explicit
-  `OPENAGENTS_RUNTIME_EXECUTOR_MODE=org_cloud` mode for hosted-Pylon pools,
-  opt-in exact usage receipts, and an opt-in `hosted_khala` lane backed by
-  the OpenAgents gateway/Vertex Gemini default (`gemini-3.5-flash`). The
-  runtime consumer now accepts `hosted_khala` without local account
-  selection, while `codex_app_server` and `claude_pylon` continue to select
-  org-owned local account homes when run in the hosted pool. The Worker route
+  - GCE VM setup for Pylon is proven (`apps/pylon/deploy/gcloud/`) and is
+    retained as historical/operator infrastructure. The mobile MVP substrate
+    is now the Agent Computer path: nested-virt GCE hosts plus the private
+    `cloud/` Firecracker provisioner, with the Pylon runtime only as
+    software inside the microVM image.
+- **2026-07-06 #8473 update:** the executor spine now exists in
+  `apps/pylon`: `runtime-intent-supervisor.ts`, opt-in exact usage receipts,
+  and an opt-in `hosted_khala` lane backed by the OpenAgents gateway/Vertex
+  Gemini default (`gemini-3.5-flash`). Under the owner-decided Agent Computer
+  strategy, those lanes become runtime behavior inside the microVM image rather
+  than a shared OS pool. The Worker route
   `POST /api/khala/cloud/runtime-turn-usage` writes exact external
   `token_usage_events` receipts with provider attribution for
   `pylon-codex-org-capacity`, `pylon-claude-org-capacity`, or
@@ -294,7 +291,7 @@ the provider.
 |---|---|---|---|
 | A | Mobile GitHub sign-in | Issuer + GithubProvider + repo scope + stored tokens; SecureStore credential shape on mobile | PKCE public client (or device grant) on the issuer; mobile redirect allowlist; **user bearer session** for non-browser clients; session→Khala Sync token issuance; mobile sign-in UI; retire the Tailnet contract |
 | B | Repo picker | `GitHubRepositoryService` lists repos server-side | Mobile-bearer-authorized repo endpoints; repo picker UI; thread↔repo binding in sync entities |
-| C | Cloud execution | Both lanes fully implemented in `runtime-intent-enforcement.ts` (pylon-local); cloud-session scaffold; runner gateway; GCE pylon hosting; private `cloud/` Firecracker plane; #8473 org-cloud hosted-Pylon supervisor mode + `hosted_khala`/Gemini runner + exact runtime usage receipts | Dispatch-policy change (credit-gated org lane for mobile); private-repo checkout via user OAuth token through the SCM broker; per-run isolation posture; result writeback (branch/PR) via user token; credit charging from exact receipts |
+| C | Cloud execution | Both lanes fully implemented in `runtime-intent-enforcement.ts` (pylon-local); cloud-session scaffold; runner gateway; historical GCE Pylon hosting; private `cloud/` Firecracker plane; #8473 executor spine + `hosted_khala`/Gemini runner + exact runtime usage receipts; #8503 Agent Computer public seam and nested-virt host docs/tests | Dispatch-policy change (credit-gated Agent Computer lane for mobile); private-repo checkout via user OAuth token through the SCM broker; per-work-context Firecracker isolation enforcement; result writeback (branch/PR) via user token; credit charging from exact receipts |
 | D | Credits | Pools A/B/C, metering hook, pricing, USD→msat bridge, grant patterns, `token_usage_events` | $10 grant keyed per GitHub account (idempotent on GitHub user id) landing spendably in Pool B; coding-run metering wired to balance gate; balance UI + insufficient-credit UX; abuse hardening (account-age heuristics, attestation) |
 | E | IAP | Payment-intent→fulfillment pattern; asset boundary | Entire IAP rail: RevenueCat (or StoreKit2/Play Billing) client; server receipt validation + webhook; SKU catalog; fulfillment→credits; Apple 3.1.1 compliance (credits consumed in-app are digital goods — **must** use IAP on iOS); restore/refund/clawback |
 | F | Model config | Model catalog + lanes incl. Gemini; operator-level backing knob | Per-USER model preference honored by chat + coding executor; mobile settings UI |
@@ -619,7 +616,7 @@ All merged to `main`, each closed with evidence on its issue:
 
 | Issue | State | Why it's open |
 |---|---|---|
-| #8503 (AC-1 Agent Computers) | **New, S1's first item** | Arms the existing Firecracker/GCE provisioning path (`cloud-coding-session-routes.ts` + the private `cloud/` provisioner) and proves the first real mobile turn inside a microVM, with lifecycle receipts. Strategy: `docs/khala-code/2026-07-06-agent-computers-strategy.md`. |
+| #8503 (AC-1 Agent Computers) | **In progress, public seam landed; live proof owner-gated** | Arms the existing Firecracker/GCE provisioning path (`cloud-coding-session-routes.ts` + the private `cloud/` provisioner) and proves the first real mobile turn inside a microVM, with lifecycle receipts. Public repo now projects Agent Computer work-context/lifecycle/resource receipt refs from `cloud.gce.*` events and documents/tests the nested-virt GCE host bootstrap under `apps/pylon/deploy/agent-computer/`. Remaining proof requires owner-gated live host/image/control-plane receipts. Strategy: `docs/khala-code/2026-07-06-agent-computers-strategy.md`. |
 | #8474–#8477 (C2–C5) | Not started | Were serialized behind C1; now build against the Agent Computers strategy (redirect comments on each issue): #8474 admits against agent-computer capacity from the control-plane ledger, #8475 delivers scoped credentials into the microVM via OUR SCM broker only, #8476 documents/enforces the strategy §4 Firecracker posture, #8477 unchanged. All exe.dev framing withdrawn. |
 | #8479 (D2 metering) | Not started | Expanded: charges BOTH meters — exact token receipts (landed) and agent-computer compute-time from lifecycle receipts (`resource_usage_receipt.v1`). Owns the mid-run exhaustion policy + pre-dispatch cost line. Compute rate is NEEDS_OWNER. Host/VM metrics are ops telemetry only, never billing truth. |
 | #8490 (I1 Android/Play) | Not started | Convergence tier; emulator-smoke half is agent-doable now, Play Console half owner-gated. |

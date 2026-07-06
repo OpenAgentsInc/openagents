@@ -458,7 +458,7 @@ This is the invariant ledger for `openagents`.
   it stays untouched. Per-user model choice among Gemini/Claude/etc. is a
   NEW, intentionally more expansive mobile capability that must be threaded
   through a privileged, mobile/coding-turn-specific dispatch path (the
-  org-cloud coding executor, #8473/#8474), which is the intended consumer of
+  Agent Computer executor path, #8473/#8474/#8503), which is the intended consumer of
   the READ side. If a future change wires per-user preference into the public
   gateway's model resolution directly, that is itself an invariant relaxation
   requiring its own explicit owner sign-off and INVARIANTS.md update — do not
@@ -471,6 +471,29 @@ This is the invariant ledger for `openagents`.
   default, or nothing at all (`effectiveModelId: null` only when neither the
   preference nor the default is currently servable). Regression coverage:
   `workers/api/src/inference/model-preference-store.test.ts`.
+
+## Khala Mobile Agent Computers
+
+- The `/v1/cloud-coding-sessions` route is the compatibility-named public seam
+  for Khala Code mobile Agent Computers. It must remain default-off behind
+  `CLOUD_CODING_SESSIONS_ENABLED` and must fail closed unless
+  `OA_CODEX_GCE_PROVISIONER=live`, `OA_CLOUD_CONTROL_URL`, and the Worker-secret
+  control token are configured.
+- The provisioned unit is an Agent Computer: a Firecracker microVM on
+  OpenAgents-owned GCE capacity assigned to one admitted work context
+  (`user + thread + repo binding`). The Pylon runtime and coding agents are
+  implementation details inside the image, not the public product or metering
+  unit.
+- Public Worker projections may expose only refs: placement refs, Agent
+  Computer refs, work-context refs, lifecycle receipt refs, resource usage
+  receipt refs, and content-addressed artifact refs. They must never expose raw
+  GCE instance names, guest IPs, tap devices, host paths, SSH keys, control
+  tokens, raw SCM tokens, prompts, repo content, wallet material, provider
+  master keys, or private traces.
+- Agent Computer compute charging is receipt-first and exact-only. Charges draw
+  from the same user credit balance as token charges, but the compute rate is
+  owner-gated until #8479 records it. Do not infer or hard-code a compute price
+  in the Worker, docs, or tests.
 
 ## Khala Response Discipline And Reasoning Channel
 
