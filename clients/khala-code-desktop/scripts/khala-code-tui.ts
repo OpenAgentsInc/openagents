@@ -9,11 +9,13 @@
 //   echo "prompt" | bun scripts/khala-code-tui.ts    # piped: whole stdin is ONE prompt
 //   printf 'a\nb\n' | bun scripts/khala-code-tui.ts --lines   # one turn per line (scripting)
 //   bun scripts/khala-code-tui.ts --resume <threadId>          # continue an existing thread
+//   bun scripts/khala-code-tui.ts --run <name>                 # one-shot: run a saved prompt
 //
-// Slash commands (interactive/--lines): /new /status /help /exit
-// stdout carries assistant text only; tool activity, token usage, and status
-// go to stderr, so `... | tui` pipes cleanly.
+// Slash commands (interactive/--lines): /new /status /help /exit and the saved-prompt
+// library /save /prompts /run /del /<name>. stdout carries assistant text only; tool
+// activity, token usage, and status go to stderr, so `... | tui` pipes cleanly.
 
+import { homedir } from "node:os"
 import { createInterface } from "node:readline/promises"
 
 import { createCodexAppServerChatRuntime } from "../src/bun/codex-app-server-chat-runtime.js"
@@ -27,6 +29,7 @@ const rawArgs = process.argv.slice(2)
 const wantHelp = rawArgs.includes("-h") || rawArgs.includes("--help")
 const perLine = rawArgs.includes("--lines")
 let resumeThreadId: string | undefined
+let runSavedName: string | undefined
 const positional: string[] = []
 for (let i = 0; i < rawArgs.length; i += 1) {
   const arg = rawArgs[i]
@@ -35,10 +38,37 @@ for (let i = 0; i < rawArgs.length; i += 1) {
     i += 1
     continue
   }
+  if (arg === "--run") {
+    runSavedName = rawArgs[i + 1]
+    i += 1
+    continue
+  }
   if (arg.startsWith("-")) continue
   positional.push(arg)
 }
 const oneShotPrompt = positional.length > 0 ? positional.join(" ") : undefined
+
+// ---- saved-prompt library (persists across launches) -----------------------
+// A named, reusable prompt store — the terminal analog of a saved-command
+// library. Lives in the app home so a prompt saved once is available every
+// session. stdout stays clean; all library chatter goes to stderr.
+const PROMPT_STORE = `${homedir()}/.khala-code/tui-prompts.json`
+const RESERVED = new Set(["new", "status", "help", "exit", "quit", "save", "prompts", "run", "del"])
+
+const loadPrompts = async (): Promise<Record<string, string>> => {
+  try {
+    const parsed: unknown = JSON.parse(await Bun.file(PROMPT_STORE).text())
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, string>
+    }
+  } catch {
+    // no store yet, or unreadable/corrupt — treat as empty
+  }
+  return {}
+}
+const savePrompts = async (prompts: Record<string, string>): Promise<void> => {
+  await Bun.write(PROMPT_STORE, `${JSON.stringify(prompts, null, 2)}\n`)
+}
 
 const HELP = `khala-code tui — terminal chat over the local Codex app-server harness
 
@@ -47,8 +77,14 @@ const HELP = `khala-code tui — terminal chat over the local Codex app-server h
   echo "<prompt>" | bun scripts/khala-code-tui.ts   piped: whole stdin is one prompt
   printf 'a\\nb\\n' | ... --lines               one turn per line (scripting)
   ... --resume <threadId>                       continue an existing app-server thread
+  ... --run <name>                              one-shot: run a saved prompt and exit
 
 Slash commands: /new  /status  /help  /exit
+Saved prompts:  /save <name> [text]   (text omitted = save your last prompt)
+                /prompts              list saved prompts
+                /run <name>  or  /<name>   run a saved prompt
+                /del <name>           delete a saved prompt
+Saved prompts persist in ~/.khala-code/tui-prompts.json.
 stdout = assistant text only; tool activity, token usage and status print to stderr.`
 
 const interactive = process.stdin.isTTY === true && process.stdout.isTTY === true
@@ -60,6 +96,7 @@ let threadId: string | undefined = resumeThreadId
 let activeTurnId: string | undefined
 let messageCounter = 0
 let interruptArmed = false
+let lastPrompt = ""
 
 // ---- thinking spinner (interactive only; stderr, no ANSI escapes) ----------
 const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
@@ -171,6 +208,7 @@ const ensureThread = async (): Promise<void> => {
 }
 
 const runTurn = async (prompt: string): Promise<void> => {
+  lastPrompt = prompt
   await ensureThread()
   const turnId = `turn-${Date.now().toString(36)}`
   activeTurnId = turnId
@@ -248,6 +286,17 @@ if (oneShotPrompt !== undefined) {
   shutdown(0)
 }
 
+// One-shot: run a saved prompt by name and exit.
+if (runSavedName !== undefined) {
+  const body = (await loadPrompts())[runSavedName]
+  if (body === undefined) {
+    process.stderr.write(`no saved prompt '${runSavedName}' (see /prompts)\n`)
+    shutdown(2)
+  }
+  await runTurn(body)
+  shutdown(0)
+}
+
 const handleLine = async (line: string): Promise<"continue" | "exit"> => {
   const trimmed = line.trim()
   if (trimmed.length === 0) return "continue"
@@ -266,12 +315,84 @@ const handleLine = async (line: string): Promise<"continue" | "exit"> => {
     await printStatus()
     return "continue"
   }
+  if (trimmed === "/prompts") {
+    const prompts = await loadPrompts()
+    const names = Object.keys(prompts).sort()
+    if (names.length === 0) {
+      process.stderr.write("[no saved prompts — /save <name> to add one]\n")
+    } else {
+      process.stderr.write(
+        `${names
+          .map(n => `  /${n}  — ${prompts[n].replace(/\s+/gu, " ").slice(0, 60)}`)
+          .join("\n")}\n`,
+      )
+    }
+    return "continue"
+  }
+  if (trimmed.startsWith("/save")) {
+    const rest = trimmed.slice("/save".length).trim()
+    const sep = rest.indexOf(" ")
+    const name = sep === -1 ? rest : rest.slice(0, sep)
+    const inline = sep === -1 ? "" : rest.slice(sep + 1).trim()
+    if (name.length === 0) {
+      process.stderr.write("usage: /save <name> [prompt text]  (omit text to save your last prompt)\n")
+      return "continue"
+    }
+    if (RESERVED.has(name)) {
+      process.stderr.write(`'${name}' is a reserved command name — pick another\n`)
+      return "continue"
+    }
+    const body = inline.length > 0 ? inline : lastPrompt
+    if (body.length === 0) {
+      process.stderr.write("nothing to save yet — send a prompt first, or /save <name> <text>\n")
+      return "continue"
+    }
+    const prompts = await loadPrompts()
+    prompts[name] = body
+    await savePrompts(prompts)
+    process.stderr.write(`[saved '/${name}' → ${body.length} chars]\n`)
+    return "continue"
+  }
+  if (trimmed.startsWith("/run ")) {
+    const name = trimmed.slice("/run ".length).trim()
+    const body = (await loadPrompts())[name]
+    if (body === undefined) {
+      process.stderr.write(`[no saved prompt '${name}' — /prompts to list]\n`)
+      return "continue"
+    }
+    await runTurn(body)
+    return "continue"
+  }
+  if (trimmed.startsWith("/del ")) {
+    const name = trimmed.slice("/del ".length).trim()
+    const prompts = await loadPrompts()
+    if (prompts[name] === undefined) {
+      process.stderr.write(`[no saved prompt '${name}']\n`)
+      return "continue"
+    }
+    delete prompts[name]
+    await savePrompts(prompts)
+    process.stderr.write(`[deleted '${name}']\n`)
+    return "continue"
+  }
+  // Shorthand: /<name> runs a saved prompt when one exists; otherwise the line
+  // falls through and is sent to the model verbatim (unchanged prior behavior).
+  if (trimmed.startsWith("/") && !/\s/u.test(trimmed)) {
+    const name = trimmed.slice(1)
+    if (!RESERVED.has(name)) {
+      const body = (await loadPrompts())[name]
+      if (body !== undefined) {
+        await runTurn(body)
+        return "continue"
+      }
+    }
+  }
   await runTurn(trimmed)
   return "continue"
 }
 
 if (interactive) {
-  process.stderr.write("multi-turn thread; /new /status /help /exit; Ctrl-C interrupts a turn\n\n")
+  process.stderr.write("multi-turn thread; /new /status /help /save /prompts /exit; Ctrl-C interrupts a turn\n\n")
   // Interactive REPL: readline owns the prompt.
   const rl = createInterface({ input: process.stdin, output: process.stdout })
   while (true) {
