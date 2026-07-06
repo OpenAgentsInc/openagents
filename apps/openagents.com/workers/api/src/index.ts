@@ -10775,7 +10775,7 @@ const omniRoutes = makeOmniRoutes({
 })
 
 const teamChatRoutes = makeTeamChatRoutes({
-  handleTeamChatMessagesApi: (request, env, ctx, teamId, projectId) =>
+  handleTeamChatMessagesApi: ({ request, env, ctx }, teamId, projectId) =>
     routeEffect('handle_team_chat_messages_api', () =>
       handleTeamChatMessagesApi(request, env, ctx, teamId, projectId),
     ),

@@ -297,6 +297,7 @@ describe('Worker route dual-serve resolution (#6148)', () => {
     ]
 
     const noRoute = () => undefined
+    const noServiceRoute = () => Effect.sync((): undefined => undefined)
 
     // The model-retrieve dispatcher reads request.url directly; it stands in for
     // every path-param dispatcher that re-parses the request rather than the
@@ -406,7 +407,7 @@ describe('Worker route dual-serve resolution (#6148)', () => {
       routeFirmupLaneSettlementRequest: noRoute,
       routeTassadarTraceContributionRequest: noRoute,
       routeTraceRequest: noRoute,
-      routeTeamChatRequest: noRoute,
+      routeTeamChatRequest: noServiceRoute,
       routeThreadFileRequest: noRoute,
       routeTrainingRunWindowRequest: noRoute,
       routeTrainingVerificationRequest: noRoute,

@@ -237,7 +237,10 @@ const budgetChecks = [
     // modules stop taking a raw `env: Env` parameter at all. Do not raise
     // further without also updating #8498; ratchet back down as files
     // migrate off raw Env params.
-    budget: 171,
+    // Ratcheted 171 -> 169 on 2026-07-06 (#8498) after moving
+    // team-chat-routes.ts to the existing OpenAgentsWorkerRequest Effect
+    // service boundary instead of accepting raw route env parameters.
+    budget: 169,
     description:
       'Worker modules may not add raw Cloudflare Env parameters outside the future config/binding boundary.',
     details: countByFile(

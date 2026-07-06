@@ -129,7 +129,11 @@ type WorkerRouteDependencies = Readonly<{
   routeFirmupLaneSettlementRequest: OptionalEffectRoute
   routeTassadarTraceContributionRequest: OptionalEffectRoute
   routeTraceRequest: OptionalEffectRoute
-  routeTeamChatRequest: OptionalEffectRoute
+  routeTeamChatRequest: () => Effect.Effect<
+    Response | undefined,
+    never,
+    OpenAgentsWorkerRequest
+  >
   routeThreadFileRequest: OptionalEffectRoute
   routeTrainingRunWindowRequest: OptionalEffectRoute
   routeTrainingVerificationRequest: OptionalEffectRoute
@@ -269,14 +273,10 @@ export const makeWorkerRouteRequest =
         return yield* cloudCodingSessionResponse
       }
 
-      const teamChatResponse = dependencies.routeTeamChatRequest(
-        request,
-        env,
-        ctx,
-      )
+      const teamChatResponse = yield* dependencies.routeTeamChatRequest()
 
       if (teamChatResponse !== undefined) {
-        return yield* teamChatResponse
+        return teamChatResponse
       }
 
       const onboardingResponse = dependencies.routeOnboardingRequest(
