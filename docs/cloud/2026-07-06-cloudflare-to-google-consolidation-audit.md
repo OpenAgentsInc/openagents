@@ -226,6 +226,10 @@ set of Layers, not a rewrite).
 
 ## 6. Kubernetes, Terraform, and infrastructure-as-code
 
+> **Update 2026-07-06 (#8527):** the Terraform/OpenTofu baseline now exists at
+> `infra/` — GCS remote state, modules, and the critical Cloud SQL / Cloud Run /
+> GCS resources imported with a clean no-op plan. See `infra/README.md`.
+
 Today: **zero Terraform, zero k8s manifests** in owned repos; provisioning is
 gcloud/wrangler/systemd scripts, and knowledge like "recreate the Hyperdrive
 config to fix the pool" lives in runbooks. The cloud repo explicitly (and
