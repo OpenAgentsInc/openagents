@@ -111,17 +111,18 @@ describe('khala code download route', () => {
     expect(rendered).toContain('empty counts array')
   })
 
-  test('renders the Khala Code landing with the glass control preview and install CTA', () => {
+  test('renders the Khala Code landing with the install CTA and no fabricated metrics', () => {
     const rendered = renderHtml(Code.view({ _tag: 'LoggedOut' }))
 
     expect(rendered).toContain('data-route="code"')
-    expect(rendered).toContain('Khala Code control preview')
     expect(rendered).toContain('Install paths')
     expect(rendered).toContain('/code/download')
     expect(rendered).toContain('/docs/openagents')
-    expect(rendered).toContain('Codex required')
-    expect(rendered).toContain('Local Codex')
     expect(rendered).toContain('chat-composer="khala-code"')
+    // The glass control preview widget showed hardcoded placeholder counts
+    // ("turns ready", queued/verified/tokens) with no real backing data —
+    // kept as unwired code (Code.controlPreviewView) but must not render.
+    expect(rendered).not.toContain('Khala Code control preview')
   })
 
   test('keeps public copy inside the khala_code desktop wrapper promise gate', () => {

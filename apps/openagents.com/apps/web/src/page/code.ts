@@ -213,7 +213,11 @@ const dialMetricView = <Message>(label: string, value: string): Html => {
   )
 }
 
-const controlPreviewView = <Message>(): Html => {
+// Not currently rendered on the public route — the metrics inside were
+// hardcoded placeholders (fabricated "turns ready" / "queued" / "verified"
+// counts), not real state. Kept here, unwired, for a future pass that backs
+// it with a real capacity/turn projection instead of static strings.
+export const controlPreviewView = <Message>(): Html => {
   const h = html<Message>()
 
   return h.aside(
@@ -519,25 +523,16 @@ export const view = <Message>(
           h.div(
             [
               Ui.className<Message>(
-                'mx-auto grid min-h-full w-[min(100%,1120px)] gap-10 px-5 py-10 sm:py-14 lg:grid-cols-[minmax(0,1fr)_26rem] lg:items-start',
+                'mx-auto flex min-h-full w-[min(100%,860px)] flex-col px-5 py-10 sm:py-14',
               ),
             ],
             [
-              h.div(
-                [Ui.className<Message>('min-w-0')],
-                [headerView<Message>()],
+              headerView<Message>(),
+              codeCopyScopeView<Message>(
+                [Ui.className<Message>('mt-10 flex flex-1 flex-col gap-8')],
+                conversation,
               ),
-              controlPreviewView<Message>(),
-              h.div(
-                [Ui.className<Message>('flex min-w-0 flex-col lg:col-start-1')],
-                [
-                  codeCopyScopeView<Message>(
-                    [Ui.className<Message>('flex flex-1 flex-col gap-8')],
-                    conversation,
-                  ),
-                  composerView<Message>(),
-                ],
-              ),
+              composerView<Message>(),
             ],
           ),
         ],
