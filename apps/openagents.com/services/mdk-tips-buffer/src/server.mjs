@@ -395,7 +395,13 @@ const paymentStatusResponse = (node, paymentId) => {
 const handleRequest = async request => {
   const url = new URL(request.url)
 
-  if (request.method === 'GET' && url.pathname === '/healthz') {
+  // `/health` aliases `/healthz`: the Google Frontend reserves `/healthz` on
+  // Cloud Run `run.app` domains and answers 404 before the container sees it
+  // (CFG-15). The Cloudflare Container pingEndpoint keeps using `/healthz`.
+  if (
+    request.method === 'GET' &&
+    (url.pathname === '/healthz' || url.pathname === '/health')
+  ) {
     return json(200, {
       ok: true,
       service: 'openagents-mdk-tips-buffer',

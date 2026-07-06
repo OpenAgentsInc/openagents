@@ -18,6 +18,32 @@ const readBody = request =>
 const envConfigured = value =>
   typeof value === 'string' && value.trim().length > 0
 
+// CFG-15 (EPIC #8515): when the sidecar runs off-Workers (Cloud Run) it is
+// network-reachable, so a shared service token gates every non-health route.
+// Unset (the Cloudflare Container deployment, where only the Worker's Durable
+// Object can reach the daemon) the check is skipped for compatibility.
+const SERVICE_TOKEN_HEADER = 'x-mdk-sidecar-service-token'
+
+const serviceToken = () => {
+  const value = process.env.MDK_SIDECAR_SERVICE_TOKEN?.trim()
+
+  return value === undefined || value === '' ? undefined : value
+}
+
+const requireServiceToken = request => {
+  const expected = serviceToken()
+
+  if (expected === undefined) {
+    return null
+  }
+
+  if (request.headers.get(SERVICE_TOKEN_HEADER) !== expected) {
+    return json(403, { error: 'mdk_sidecar_service_token_invalid' })
+  }
+
+  return null
+}
+
 const toMdkRequest = async request => {
   const url = new URL(request.url)
   url.pathname = '/api/mdk'
@@ -33,12 +59,19 @@ const toMdkRequest = async request => {
 const handleRequest = async request => {
   const url = new URL(request.url)
 
-  if (request.method === 'GET' && url.pathname === '/healthz') {
+  // `/health` aliases `/healthz`: the Google Frontend reserves `/healthz` on
+  // Cloud Run `run.app` domains and answers 404 before the container sees it
+  // (CFG-15). The Cloudflare Container pingEndpoint keeps using `/healthz`.
+  if (
+    request.method === 'GET' &&
+    (url.pathname === '/healthz' || url.pathname === '/health')
+  ) {
     return json(200, {
       ok: true,
       service: 'openagents-mdk-sidecar',
       mdkAccessTokenConfigured: envConfigured(process.env.MDK_ACCESS_TOKEN),
       mdkMnemonicConfigured: envConfigured(process.env.MDK_MNEMONIC),
+      serviceTokenConfigured: serviceToken() !== undefined,
       withdrawalDestinationConfigured: envConfigured(
         process.env.WITHDRAWAL_DESTINATION,
       ),
@@ -47,6 +80,12 @@ const handleRequest = async request => {
 
   if (url.pathname !== '/api/mdk') {
     return json(404, { error: 'not_found' })
+  }
+
+  const authFailure = requireServiceToken(request)
+
+  if (authFailure !== null) {
+    return authFailure
   }
 
   if (request.method === 'POST') {
