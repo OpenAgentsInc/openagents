@@ -99,7 +99,9 @@ export type WorkerBindings = Readonly<{
   RUNNER_EVENTS: Queue
   ADJUTANT_ENRICHMENT_QUEUE: Queue
   ASSETS: Fetcher
-  AUTH_STORAGE: KVNamespace
+  // CFG-3 (#8518): the AUTH_STORAGE KV namespace is evacuated — auth
+  // key/value state lives in Postgres (oa_infra_kv via KHALA_SYNC_DB;
+  // workers/api/src/auth/auth-kv.ts). No KV binding remains.
   GITHUB_CLIENT_ID: string
   GITHUB_CLIENT_SECRET: string
   GEMINI_API_KEY?: string

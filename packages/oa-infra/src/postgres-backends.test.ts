@@ -26,7 +26,7 @@ import { DurableStream } from "./durable-stream.ts"
 import * as DurableStreamPostgres from "./durable-stream-postgres.ts"
 import * as JobQueuePostgres from "./job-queue-postgres.ts"
 import { KvStore } from "./kv-store.ts"
-import * as KvStorePostgres from "./kv-store-postgres.ts"
+import * as KvStorePostgresLayer from "./kv-store-postgres-layer.ts"
 import { runOaInfraMigrations } from "./migrate.ts"
 import * as MutexPostgres from "./mutex-postgres.ts"
 import * as BlobStoreGcs from "./blob-store-gcs.ts"
@@ -71,7 +71,7 @@ const sqlLayer = () => OaInfraSql.fromSql(sql)
 runKvStoreConformance({
   label: "postgres",
   skip: !pgAvailable,
-  makeLayer: () => Layer.provide(KvStorePostgres.layerPostgres, sqlLayer()),
+  makeLayer: () => Layer.provide(KvStorePostgresLayer.layerPostgres, sqlLayer()),
 })
 runJobQueueConformance({
   label: "postgres",
@@ -126,12 +126,13 @@ describe.skipIf(!pgAvailable)("Postgres-specific behavior", () => {
       "0001_oa_infra_kv.sql",
       "0002_oa_infra_job_queue.sql",
       "0003_oa_infra_durable_stream.sql",
+      "0004_oa_infra_kv_key_prefix.sql",
     ])
   })
 
   test("KV lazy expiry physically deletes the expired row on read", async () => {
     const key = `pg-lazy-expiry-${crypto.randomUUID()}`
-    const layer = Layer.provide(KvStorePostgres.layerPostgres, sqlLayer())
+    const layer = Layer.provide(KvStorePostgresLayer.layerPostgres, sqlLayer())
     await Effect.runPromise(
       Effect.provide(
         Effect.gen(function* () {

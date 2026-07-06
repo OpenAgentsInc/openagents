@@ -1,3 +1,4 @@
+import type { AuthKvStore } from './auth/auth-kv'
 import type { AutopilotTokenUsage } from '@openagentsinc/sync-schema'
 import { Schema as S } from 'effect'
 
@@ -33,7 +34,8 @@ import { currentIsoTimestamp } from './runtime-primitives'
 import { extractAutopilotTokenUsage } from './token-usage'
 
 type ProviderAccountServiceEnv = Readonly<{
-  AUTH_STORAGE: KVNamespace
+  AUTH_KV?: AuthKvStore | undefined
+  KHALA_SYNC_DB?: Readonly<{ connectionString: string }> | undefined
   GEMINI_API_KEY?: string
   OPENAGENTS_DB: D1Database
   PROVIDER_TOKEN_CUSTODY_AES_KEY_B64?: string | undefined

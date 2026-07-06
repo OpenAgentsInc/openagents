@@ -51,7 +51,6 @@ export type MobileAccountDeletionD1Outcome = Readonly<{
   forfeitedBalanceMsat: number
   githubConnectionsDisconnected: number
   githubWriteGrantsRevoked: number
-  openAuthRowsRemoved: number
   pushDeviceTokensRemoved: number
   userRowsMarkedDeleted: number
 }>
@@ -84,27 +83,25 @@ export type MobileAccountDeletionDependencies<Bindings, User = unknown> = Readon
 
 const resultChanges = (result: D1Result): number => result.meta.changes ?? 0
 
-const deleteOpenAuthSubjectRows = async (
-  db: D1Database,
+// CFG-3 (#8518): OpenAuth issuer state lives on the owned KvStore now, so
+// subject-row cleanup goes through the injected `StorageAdapter` (scan +
+// remove under each per-subject prefix) instead of a D1 DELETE. This also
+// fixes the previous D1 pattern's separator mismatch: real OpenAuth keys are
+// `joinKey`-joined (0x1f), while the old LIKE patterns assumed ':'.
+const deleteOpenAuthSubjectEntries = async (
+  storage: StorageAdapter,
   userId: string,
 ): Promise<number> => {
-  const result = await db
-    .prepare(
-      `DELETE FROM openauth_storage
-        WHERE key LIKE ?
-           OR key LIKE ?
-           OR key LIKE ?
-           OR key LIKE ?`,
-    )
-    .bind(
-      `oauth:refresh:${userId}:%`,
-      `oauth:access:${userId}:%`,
-      `oauth:subject:${userId}:%`,
-      `oauth:user:${userId}:%`,
-    )
-    .run()
+  let removed = 0
 
-  return resultChanges(result)
+  for (const scope of ['refresh', 'access', 'subject', 'user']) {
+    for await (const [key] of storage.scan([`oauth:${scope}`, userId])) {
+      await storage.remove(key)
+      removed += 1
+    }
+  }
+
+  return removed
 }
 
 export const deleteMobileAccountD1Data = async (
@@ -173,7 +170,6 @@ export const deleteMobileAccountD1Data = async (
     forfeitedBalanceMsat,
     githubConnectionsDisconnected: resultChanges(results[2]!),
     githubWriteGrantsRevoked: resultChanges(results[1]!),
-    openAuthRowsRemoved: await deleteOpenAuthSubjectRows(db, input.userId),
     pushDeviceTokensRemoved: resultChanges(results[0]!),
     userRowsMarkedDeleted:
       resultChanges(results[4]!) +
@@ -355,6 +351,10 @@ export const handleMobileAccountDeletionRequest = <Bindings, User>(
       nowIso,
       userId,
     })
+    const openAuthRowsRemoved = await deleteOpenAuthSubjectEntries(
+      dependencies.openAuthStorage(env),
+      userId,
+    )
     const refreshRevoked = await revokeOpenAuthRefreshToken(
       dependencies.openAuthStorage(env),
       optionalString(body.refreshToken),
@@ -379,7 +379,7 @@ export const handleMobileAccountDeletionRequest = <Bindings, User>(
           },
           openAuth: {
             refreshRevoked,
-            storageRowsRemoved: d1Outcome.openAuthRowsRemoved,
+            storageRowsRemoved: openAuthRowsRemoved,
           },
           push: {
             deviceTokensRemoved: d1Outcome.pushDeviceTokensRemoved,

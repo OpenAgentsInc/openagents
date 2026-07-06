@@ -1,3 +1,4 @@
+import { type AuthKvEnv, type AuthKvStore, authKvStoreForEnv } from './auth/auth-kv'
 import {
   AGENT_TOKEN_PREFIX,
   type AgentRegistrationStore,
@@ -15,9 +16,7 @@ import {
 
 type HttpResponse = globalThis.Response
 
-type KhalaCodeOpenAgentsAuthEnv = Readonly<{
-  AUTH_STORAGE: KVNamespace
-}>
+type KhalaCodeOpenAgentsAuthEnv = AuthKvEnv
 
 type KhalaCodeOpenAgentsAuthSession = Readonly<{
   user: Readonly<{
@@ -100,7 +99,7 @@ const isExpired = (
 ): boolean => Date.parse(attempt.expiresAt) <= Date.parse(now)
 
 const readAttempt = async (
-  kv: KVNamespace,
+  kv: AuthKvStore,
   attemptId: string,
 ): Promise<KhalaCodeOpenAgentsAuthAttempt | undefined> => {
   const raw = await kv.get(attemptKey(attemptId), 'json')
@@ -127,7 +126,7 @@ const readAttempt = async (
 }
 
 const writeAttempt = (
-  kv: KVNamespace,
+  kv: AuthKvStore,
   attempt: KhalaCodeOpenAgentsAuthAttempt,
 ): Promise<void> =>
   kv.put(attemptKey(attempt.attemptId), JSON.stringify(attempt), {
@@ -231,7 +230,7 @@ export const makeKhalaCodeOpenAgentsAuthHandlers = <
       userCode: makeUserCode(attemptId),
     }
 
-    await writeAttempt(env.AUTH_STORAGE, attempt)
+    await writeAttempt(authKvStoreForEnv(env), attempt)
 
     return noStoreJsonResponse(
       {
@@ -256,7 +255,7 @@ export const makeKhalaCodeOpenAgentsAuthHandlers = <
       return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
     }
 
-    const attempt = await readAttempt(env.AUTH_STORAGE, attemptId)
+    const attempt = await readAttempt(authKvStoreForEnv(env), attemptId)
     const secretHash = await sha256Hex(pollSecret)
     if (attempt === undefined || attempt.clientSecretHash !== secretHash) {
       return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
@@ -324,7 +323,7 @@ export const makeKhalaCodeOpenAgentsAuthHandlers = <
       return loginRedirectFor(request)
     }
 
-    const attempt = await readAttempt(env.AUTH_STORAGE, attemptId)
+    const attempt = await readAttempt(authKvStoreForEnv(env), attemptId)
     const current = nowIso(dependencies)
     if (attempt === undefined || isExpired(attempt, current)) {
       return dependencies.appendRefreshedSessionCookies(
@@ -388,7 +387,7 @@ export const makeKhalaCodeOpenAgentsAuthHandlers = <
     }
 
     await agentStore.linkOpenAuthAgent(linkRecord)
-    await writeAttempt(env.AUTH_STORAGE, {
+    await writeAttempt(authKvStoreForEnv(env), {
       ...attempt,
       agentCredentialId: registration.credential.id,
       agentToken: registration.credential.token,

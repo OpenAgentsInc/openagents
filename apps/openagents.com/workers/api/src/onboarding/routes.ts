@@ -4,6 +4,7 @@ import {
   expiredCookie,
   parseCookies,
 } from '../auth-cookies'
+import { type AuthKvStore, authKvStoreForEnv } from '../auth/auth-kv'
 import { readBearerToken } from '../auth/bearer-token'
 import {
   type AgentRegistrationStore,
@@ -59,7 +60,8 @@ import {
 } from './schema'
 
 type OnboardingEnv = Readonly<{
-  AUTH_STORAGE: KVNamespace
+  AUTH_KV?: AuthKvStore | undefined
+  KHALA_SYNC_DB?: Readonly<{ connectionString: string }> | undefined
   OPENAGENTS_DB: D1Database
 }>
 
@@ -408,7 +410,7 @@ const readGitHubIdentityToken = (
   userId: string,
 ): Effect.Effect<string | null, OnboardingStorageError> =>
   Effect.tryPromise({
-    try: () => env.AUTH_STORAGE.get(githubIdentityTokenKey(userId)),
+    try: () => authKvStoreForEnv(env).get(githubIdentityTokenKey(userId)),
     catch: error =>
       new OnboardingStorageError({
         operation: 'onboarding.githubIdentityToken.read',

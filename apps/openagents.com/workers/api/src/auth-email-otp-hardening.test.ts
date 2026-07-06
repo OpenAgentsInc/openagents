@@ -12,6 +12,7 @@ import {
   reserveAuthEmailOtpSend,
   stampAuthEmailOtpClaims,
 } from './auth/email-otp-hardening'
+import { type AuthKvStore, makeMemoryAuthKvStore } from './auth/auth-kv'
 import worker, { authIssuerAllowsRedirectHostname } from './index'
 
 type OpenAuthStorageRow = {
@@ -165,8 +166,15 @@ const relaxedPolicy: AuthEmailOtpRateLimitPolicy = {
 
 const makeDb = (): MemoryD1 => new MemoryD1()
 
-const storedRows = (db: MemoryD1): ReadonlyArray<Record<string, unknown>> =>
-  db.dumpRows()
+// CFG-3 (#8518): the rate limiter stores buckets in the owned KvStore, not
+// D1 — tests run against the SAME conformance-passing memory backend
+// production semantics are defined by.
+const makeKv = (): AuthKvStore => makeMemoryAuthKvStore()
+
+const storedKvRows = (
+  kv: AuthKvStore,
+): Promise<ReadonlyArray<Readonly<{ key: string; value: string }>>> =>
+  kv.listPrefix('')
 
 describe('auth email OTP hardening', () => {
   afterEach(() => {
@@ -222,7 +230,7 @@ describe('auth email OTP hardening', () => {
   })
 
   test('rate limits by target email without storing raw email or IP in keys', async () => {
-    const db = makeDb()
+    const kv = makeKv()
     const policy: AuthEmailOtpRateLimitPolicy = {
       ...relaxedPolicy,
       email: { limit: 2, windowSeconds: 60 },
@@ -234,7 +242,7 @@ describe('auth email OTP hardening', () => {
 
     await expect(
       reserveAuthEmailOtpSend(
-        db as unknown as D1Database,
+        kv,
         input,
         testRuntime(0),
         policy,
@@ -242,7 +250,7 @@ describe('auth email OTP hardening', () => {
     ).resolves.toMatchObject({ _tag: 'Allowed' })
     await expect(
       reserveAuthEmailOtpSend(
-        db as unknown as D1Database,
+        kv,
         input,
         testRuntime(0),
         policy,
@@ -250,7 +258,7 @@ describe('auth email OTP hardening', () => {
     ).resolves.toMatchObject({ _tag: 'Allowed' })
     await expect(
       reserveAuthEmailOtpSend(
-        db as unknown as D1Database,
+        kv,
         input,
         testRuntime(0),
         policy,
@@ -261,22 +269,23 @@ describe('auth email OTP hardening', () => {
       scope: 'email',
     })
 
-    const serializedRows = JSON.stringify(storedRows(db))
+    const serializedRows = JSON.stringify(await storedKvRows(kv))
 
+    expect(serializedRows).toContain('auth:email_otp_rate:')
     expect(serializedRows).not.toContain('USER@example.com')
     expect(serializedRows).not.toContain('user@example.com')
     expect(serializedRows).not.toContain('203.0.113.10')
   })
 
   test('rate limits by IP before one address can fan out across recipients', async () => {
-    const db = makeDb()
+    const kv = makeKv()
     const policy: AuthEmailOtpRateLimitPolicy = {
       ...relaxedPolicy,
       ip: { limit: 2, windowSeconds: 60 },
     }
     const reserve = (email: string) =>
       reserveAuthEmailOtpSend(
-        db as unknown as D1Database,
+        kv,
         { email, ipAddress: '198.51.100.9' },
         testRuntime(0),
         policy,
@@ -295,14 +304,14 @@ describe('auth email OTP hardening', () => {
   })
 
   test('rate limits globally even when IPs and target emails rotate', async () => {
-    const db = makeDb()
+    const kv = makeKv()
     const policy: AuthEmailOtpRateLimitPolicy = {
       ...relaxedPolicy,
       global: { limit: 2, windowSeconds: 60 },
     }
     const reserve = (email: string, ipAddress: string) =>
       reserveAuthEmailOtpSend(
-        db as unknown as D1Database,
+        kv,
         { email, ipAddress },
         testRuntime(0),
         policy,
@@ -368,6 +377,7 @@ describe('auth email OTP hardening', () => {
 
   test('auth host fails closed to the email form when sender config is missing', async () => {
     const db = makeDb()
+    const kv = makeKv()
     const response = await worker.fetch(
       new Request('https://auth.openagents.com/code/authorize', {
         body: new URLSearchParams({
@@ -382,6 +392,7 @@ describe('auth email OTP hardening', () => {
         method: 'POST',
       }) as never,
       {
+        AUTH_KV: kv,
         GITHUB_CLIENT_ID: 'github-client',
         GITHUB_CLIENT_SECRET: 'github-secret',
         OPENAGENTS_APP_URL: 'https://openagents.com',
@@ -395,7 +406,7 @@ describe('auth email OTP hardening', () => {
       } as never,
     )
     const body = await response.text()
-    const stored = JSON.stringify(storedRows(db))
+    const stored = JSON.stringify(await storedKvRows(kv))
 
     expect(response.status).toBe(200)
     expect(body).toContain('We couldn&#39;t send a sign-in code right now')

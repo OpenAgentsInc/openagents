@@ -225,8 +225,6 @@ class FakeProviderAccountRepository implements ProviderAccountRepository {
   }
 }
 
-const kv = (): KVNamespace => ({}) as KVNamespace
-
 const db = (): D1Database =>
   ({
     batch: () => Promise.resolve([]),
@@ -952,7 +950,6 @@ const run = async (
   makeRoutes(repository, options).routes.routeOperatorProviderAccountRequest(
     new Request(`https://openagents.com${path}`, init),
     {
-      AUTH_STORAGE: kv(),
       OPENAGENTS_DB: database,
     },
   ) ?? Promise.reject(new Error('route did not match'))
@@ -1023,7 +1020,6 @@ describe('operator provider account routes', () => {
         },
       ),
       {
-        AUTH_STORAGE: kv(),
         OPENAGENTS_DB: db(),
       },
     )
@@ -1033,7 +1029,6 @@ describe('operator provider account routes', () => {
         `https://openagents.com/api/operator/provider-accounts/chatgpt-codex/device-login/${startBody.attemptId}`,
       ),
       {
-        AUTH_STORAGE: kv(),
         OPENAGENTS_DB: db(),
       },
     )
@@ -1065,7 +1060,6 @@ describe('operator provider account routes', () => {
         },
       ),
       {
-        AUTH_STORAGE: kv(),
         OPENAGENTS_DB: db(),
       },
     )
@@ -1075,7 +1069,6 @@ describe('operator provider account routes', () => {
         `https://openagents.com/api/operator/provider-accounts/chatgpt-codex/device-login/${startBody.attemptId}`,
       ),
       {
-        AUTH_STORAGE: kv(),
         OPENAGENTS_DB: db(),
       },
     )

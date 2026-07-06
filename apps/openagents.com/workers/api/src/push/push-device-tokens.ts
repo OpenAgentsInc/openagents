@@ -5,13 +5,14 @@
 // reinstall/OS-level rotation is the common case, per Expo's own push docs).
 //
 // "Pruned on auth revocation" (the issue's acceptance bar): at registration
-// time we store the SAME KV revocation-lookup key `mobile-session.ts`'s
+// time we store the SAME revocation-lookup key `mobile-session.ts`'s
 // `revokeMobileAccessToken`/`isMobileAccessTokenRevoked` already use for the
 // bearer access token active at that moment (a SHA-256 hash, never the raw
 // token). `pruneRevokedPushDeviceTokens` checks that key directly against
-// `env.AUTH_STORAGE` and deletes any row whose access token has since been
-// revoked (sign-out). This runs lazily before every send (MM-G2, #8486) and
-// is exported standalone for an optional periodic sweep.
+// the auth KV store (Postgres KvStore since CFG-3 #8518 — never Cloudflare
+// KV) and deletes any row whose access token has since been revoked
+// (sign-out). This runs lazily before every send (MM-G2, #8486) and is
+// exported standalone for an optional periodic sweep.
 
 import { mobileRevokedAccessKey, type MobileAccessRevocationStore } from '../auth/mobile-session'
 

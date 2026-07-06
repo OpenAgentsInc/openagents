@@ -1,3 +1,4 @@
+import { type AuthKvStore, authKvStoreForEnv } from './auth/auth-kv'
 import {
   type AgentRegistrationStore,
   type ProgrammaticAgentSession,
@@ -41,7 +42,8 @@ import { currentIsoTimestamp } from './runtime-primitives'
 type HttpResponse = globalThis.Response
 
 type ProviderAccountPylonBindings = Readonly<{
-  AUTH_STORAGE: KVNamespace
+  AUTH_KV?: AuthKvStore | undefined
+  KHALA_SYNC_DB?: Readonly<{ connectionString: string }> | undefined
   OPENAGENTS_DB: D1Database
   PROVIDER_TOKEN_CUSTODY_AES_KEY_B64?: string | undefined
   PROVIDER_TOKEN_CUSTODY_AES_KEY_ID?: string | undefined
@@ -57,7 +59,7 @@ type ProviderAccountPylonDependencies<
 > = Readonly<{
   agentStore: (env: Bindings) => AgentRegistrationStore
   deleteStartedCodexDeviceLogin: (
-    kv: KVNamespace,
+    kv: AuthKvStore,
   ) => DeleteStartedCodexDeviceLogin
   makeProviderAccountRepository?: (db: D1Database) => ProviderAccountRepository
   nowIso?: () => string
@@ -67,11 +69,11 @@ type ProviderAccountPylonDependencies<
     ownerUserId: string,
     providerAccountRef: string,
   ) => Promise<ConnectedCodexAuthMaterial | undefined>
-  readStartedCodexDeviceLogin: (kv: KVNamespace) => ReadStartedCodexDeviceLogin
+  readStartedCodexDeviceLogin: (kv: AuthKvStore) => ReadStartedCodexDeviceLogin
   startDeviceLogin?: StartCodexDeviceLogin
   storeConnectedCodexAuth: (env: Bindings) => StoreConnectedCodexAuth
   storeStartedCodexDeviceLogin: (
-    kv: KVNamespace,
+    kv: AuthKvStore,
   ) => StoreStartedCodexDeviceLogin
 }>
 
@@ -222,7 +224,7 @@ export const makeProviderAccountPylonHandlers = <
             dependencies.startDeviceLogin ?? (() => startOpenAiCodexDeviceLogin()),
             {
               storeStartedDeviceLogin: dependencies.storeStartedCodexDeviceLogin(
-                env.AUTH_STORAGE,
+                authKvStoreForEnv(env),
               ),
             },
           ),
@@ -271,10 +273,10 @@ export const makeProviderAccountPylonHandlers = <
         attemptId,
         userId,
       },
-      dependencies.readStartedCodexDeviceLogin(env.AUTH_STORAGE),
+      dependencies.readStartedCodexDeviceLogin(authKvStoreForEnv(env)),
       dependencies.storeConnectedCodexAuth(env),
       dependencies.pollDeviceLogin ?? (secret => pollOpenAiCodexDeviceLogin(secret)),
-      dependencies.deleteStartedCodexDeviceLogin(env.AUTH_STORAGE),
+      dependencies.deleteStartedCodexDeviceLogin(authKvStoreForEnv(env)),
     )
 
     if (result === undefined) {

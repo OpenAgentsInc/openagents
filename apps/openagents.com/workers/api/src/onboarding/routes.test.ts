@@ -1,3 +1,4 @@
+import type { AuthKvStore } from '../auth/auth-kv'
 import { Effect, Layer } from 'effect'
 import { describe, expect, test } from 'vitest'
 
@@ -145,160 +146,20 @@ const accessDb = (hasCoreTeamAccess: boolean): D1Database => {
   }
 }
 
-class MissingTokenStorage implements KVNamespace {
-  constructor(private readonly token: string | null = null) {}
-
-  get(
-    key: string,
-    options?: Partial<KVNamespaceGetOptions<undefined>>,
-  ): Promise<string | null>
-  get(key: string, type: 'text'): Promise<string | null>
-  get<ExpectedValue = unknown>(
-    key: string,
-    type: 'json',
-  ): Promise<ExpectedValue | null>
-  get(key: string, type: 'arrayBuffer'): Promise<ArrayBuffer | null>
-  get(key: string, type: 'stream'): Promise<ReadableStream | null>
-  get(
-    key: string,
-    options?: KVNamespaceGetOptions<'text'>,
-  ): Promise<string | null>
-  get<ExpectedValue = unknown>(
-    key: string,
-    options?: KVNamespaceGetOptions<'json'>,
-  ): Promise<ExpectedValue | null>
-  get(
-    key: string,
-    options?: KVNamespaceGetOptions<'arrayBuffer'>,
-  ): Promise<ArrayBuffer | null>
-  get(
-    key: string,
-    options?: KVNamespaceGetOptions<'stream'>,
-  ): Promise<ReadableStream | null>
-  get(key: Array<string>, type: 'text'): Promise<Map<string, string | null>>
-  get<ExpectedValue = unknown>(
-    key: Array<string>,
-    type: 'json',
-  ): Promise<Map<string, ExpectedValue | null>>
-  get(
-    key: Array<string>,
-    options?: Partial<KVNamespaceGetOptions<undefined>>,
-  ): Promise<Map<string, string | null>>
-  get(
-    key: Array<string>,
-    options?: KVNamespaceGetOptions<'text'>,
-  ): Promise<Map<string, string | null>>
-  get<ExpectedValue = unknown>(
-    key: Array<string>,
-    options?: KVNamespaceGetOptions<'json'>,
-  ): Promise<Map<string, ExpectedValue | null>>
-  get(key: string | Array<string>): Promise<unknown> {
-    if (Array.isArray(key)) {
-      return Promise.resolve(new Map(key.map(item => [item, this.token])))
-    }
-
-    return Promise.resolve(this.token)
-  }
-
-  getWithMetadata<Metadata = unknown>(
-    key: string,
-    options?: Partial<KVNamespaceGetOptions<undefined>>,
-  ): Promise<KVNamespaceGetWithMetadataResult<string, Metadata>>
-  getWithMetadata<Metadata = unknown>(
-    key: string,
-    type: 'text',
-  ): Promise<KVNamespaceGetWithMetadataResult<string, Metadata>>
-  getWithMetadata<ExpectedValue = unknown, Metadata = unknown>(
-    key: string,
-    type: 'json',
-  ): Promise<KVNamespaceGetWithMetadataResult<ExpectedValue, Metadata>>
-  getWithMetadata<Metadata = unknown>(
-    key: string,
-    type: 'arrayBuffer',
-  ): Promise<KVNamespaceGetWithMetadataResult<ArrayBuffer, Metadata>>
-  getWithMetadata<Metadata = unknown>(
-    key: string,
-    type: 'stream',
-  ): Promise<KVNamespaceGetWithMetadataResult<ReadableStream, Metadata>>
-  getWithMetadata<Metadata = unknown>(
-    key: string,
-    options: KVNamespaceGetOptions<'text'>,
-  ): Promise<KVNamespaceGetWithMetadataResult<string, Metadata>>
-  getWithMetadata<ExpectedValue = unknown, Metadata = unknown>(
-    key: string,
-    options: KVNamespaceGetOptions<'json'>,
-  ): Promise<KVNamespaceGetWithMetadataResult<ExpectedValue, Metadata>>
-  getWithMetadata<Metadata = unknown>(
-    key: string,
-    options: KVNamespaceGetOptions<'arrayBuffer'>,
-  ): Promise<KVNamespaceGetWithMetadataResult<ArrayBuffer, Metadata>>
-  getWithMetadata<Metadata = unknown>(
-    key: string,
-    options: KVNamespaceGetOptions<'stream'>,
-  ): Promise<KVNamespaceGetWithMetadataResult<ReadableStream, Metadata>>
-  getWithMetadata<Metadata = unknown>(
-    key: Array<string>,
-    type: 'text',
-  ): Promise<Map<string, KVNamespaceGetWithMetadataResult<string, Metadata>>>
-  getWithMetadata<ExpectedValue = unknown, Metadata = unknown>(
-    key: Array<string>,
-    type: 'json',
-  ): Promise<
-    Map<string, KVNamespaceGetWithMetadataResult<ExpectedValue, Metadata>>
-  >
-  getWithMetadata<Metadata = unknown>(
-    key: Array<string>,
-    options?: Partial<KVNamespaceGetOptions<undefined>>,
-  ): Promise<Map<string, KVNamespaceGetWithMetadataResult<string, Metadata>>>
-  getWithMetadata<Metadata = unknown>(
-    key: Array<string>,
-    options?: KVNamespaceGetOptions<'text'>,
-  ): Promise<Map<string, KVNamespaceGetWithMetadataResult<string, Metadata>>>
-  getWithMetadata<ExpectedValue = unknown, Metadata = unknown>(
-    key: Array<string>,
-    options?: KVNamespaceGetOptions<'json'>,
-  ): Promise<
-    Map<string, KVNamespaceGetWithMetadataResult<ExpectedValue, Metadata>>
-  >
-  getWithMetadata(key: string | Array<string>): Promise<unknown> {
-    const missing = {
-      cacheStatus: null,
-      metadata: null,
-      value: null,
-    }
-
-    if (Array.isArray(key)) {
-      return Promise.resolve(new Map(key.map(item => [item, missing])))
-    }
-
-    return Promise.resolve(missing)
-  }
-
-  delete(): Promise<void> {
-    return Promise.resolve()
-  }
-
-  list<Metadata = unknown>(): Promise<KVNamespaceListResult<Metadata, string>> {
-    return Promise.resolve({
-      cacheStatus: null,
-      keys: [],
-      list_complete: true,
-    })
-  }
-
-  put(): Promise<void> {
-    return Promise.resolve()
-  }
-}
-
-const tokenStorage = (token: string | null = null): KVNamespace =>
-  new MissingTokenStorage(token)
+// CFG-3 (#8518): the github identity token lives in the auth KV store
+// (Postgres KvStore in production; a fixed-value fake here).
+const tokenStorage = (token: string | null = null): AuthKvStore => ({
+  get: ((_key: string) => Promise.resolve(token)) as AuthKvStore['get'],
+  put: () => Promise.resolve(),
+  delete: () => Promise.resolve(),
+  listPrefix: () => Promise.resolve([]),
+})
 
 const makeEnv = (
   hasCoreTeamAccess = true,
   githubToken: string | null = null,
 ) => ({
-  AUTH_STORAGE: tokenStorage(githubToken),
+  AUTH_KV: tokenStorage(githubToken),
   OPENAGENTS_DB: accessDb(hasCoreTeamAccess),
 })
 

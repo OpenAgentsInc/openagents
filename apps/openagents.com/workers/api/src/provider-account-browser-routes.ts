@@ -1,3 +1,4 @@
+import { type AuthKvStore, authKvStoreForEnv } from './auth/auth-kv'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import {
   optionalBoolean,
@@ -38,7 +39,8 @@ import { openAgentsDatabase } from './runtime'
 import type { RouteEffect } from './http/route-effects'
 
 type ProviderAccountBrowserEnv = Readonly<{
-  AUTH_STORAGE: KVNamespace
+  AUTH_KV?: AuthKvStore | undefined
+  KHALA_SYNC_DB?: Readonly<{ connectionString: string }> | undefined
   OPENAGENTS_DB: D1Database
   PROVIDER_TOKEN_CUSTODY_AES_KEY_B64?: string | undefined
   PROVIDER_TOKEN_CUSTODY_AES_KEY_ID?: string | undefined
@@ -59,10 +61,10 @@ type ProviderAccountBrowserDependencies<
     session: Session,
   ) => Response
   deleteStartedCodexDeviceLogin: (
-    kv: KVNamespace,
+    kv: AuthKvStore,
   ) => DeleteStartedCodexDeviceLogin
   providerAuthSecretKey: (providerAccountRef: string) => string
-  readStartedCodexDeviceLogin: (kv: KVNamespace) => ReadStartedCodexDeviceLogin
+  readStartedCodexDeviceLogin: (kv: AuthKvStore) => ReadStartedCodexDeviceLogin
   probeProviderApiKey: ProviderApiKeyProbe
   requireBrowserSession: (
     request: Request,
@@ -71,10 +73,10 @@ type ProviderAccountBrowserDependencies<
   ) => Promise<Session | undefined>
   storeConnectedCodexAuth: (env: RouteEnv) => StoreConnectedCodexAuth
   storeConnectedProviderApiKey: (
-    kv: KVNamespace,
+    kv: AuthKvStore,
   ) => StoreConnectedProviderApiKey
   storeStartedCodexDeviceLogin: (
-    kv: KVNamespace,
+    kv: AuthKvStore,
   ) => StoreStartedCodexDeviceLogin
   providerAccountLifecycleLayer?: (
     env: RouteEnv,
@@ -91,17 +93,17 @@ const providerAccountLifecycleLayerForEnv = <
   dependencies.providerAccountLifecycleLayer?.(env) ??
   makeProviderAccountLifecycleLayer({
     deleteStartedDeviceLogin: dependencies.deleteStartedCodexDeviceLogin(
-      env.AUTH_STORAGE,
+      authKvStoreForEnv(env),
     ),
     pollDeviceLogin: secret => pollOpenAiCodexDeviceLogin(secret),
     readStartedDeviceLogin: dependencies.readStartedCodexDeviceLogin(
-      env.AUTH_STORAGE,
+      authKvStoreForEnv(env),
     ),
     repository: makeD1ProviderAccountRepository(openAgentsDatabase(env)),
     startDeviceLogin: () => startOpenAiCodexDeviceLogin(),
     storeConnectedAuth: dependencies.storeConnectedCodexAuth(env),
     storeStartedDeviceLogin: dependencies.storeStartedCodexDeviceLogin(
-      env.AUTH_STORAGE,
+      authKvStoreForEnv(env),
     ),
   })
 
@@ -194,7 +196,7 @@ export const makeProviderAccountBrowserHandlers = <
       return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
     }
 
-    await env.AUTH_STORAGE.delete(
+    await authKvStoreForEnv(env).delete(
       dependencies.providerAuthSecretKey(providerAccountRef),
     )
 
@@ -326,7 +328,7 @@ export const makeProviderAccountBrowserHandlers = <
             {
               probeApiKey: dependencies.probeProviderApiKey,
               storeConnectedApiKey: dependencies.storeConnectedProviderApiKey(
-                env.AUTH_STORAGE,
+                authKvStoreForEnv(env),
               ),
             },
           ),
@@ -393,7 +395,7 @@ export const makeProviderAccountBrowserHandlers = <
             () => startOpenAiCodexDeviceLogin(),
             {
               storeStartedDeviceLogin: dependencies.storeStartedCodexDeviceLogin(
-                env.AUTH_STORAGE,
+                authKvStoreForEnv(env),
               ),
             },
           ),
@@ -440,10 +442,10 @@ export const makeProviderAccountBrowserHandlers = <
         attemptId,
         userId: session.user.userId,
       },
-      dependencies.readStartedCodexDeviceLogin(env.AUTH_STORAGE),
+      dependencies.readStartedCodexDeviceLogin(authKvStoreForEnv(env)),
       dependencies.storeConnectedCodexAuth(env),
       secret => pollOpenAiCodexDeviceLogin(secret),
-      dependencies.deleteStartedCodexDeviceLogin(env.AUTH_STORAGE),
+      dependencies.deleteStartedCodexDeviceLogin(authKvStoreForEnv(env)),
     )
 
     if (result === undefined) {

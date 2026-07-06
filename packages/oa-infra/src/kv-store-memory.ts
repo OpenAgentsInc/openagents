@@ -39,7 +39,23 @@ export const makeMemoryKvStore = (): KvStoreShape => {
       entries.delete(key)
     })
 
-  return { get, put, delete: del }
+  const listPrefix = (prefix: string) =>
+    Effect.sync(() => {
+      const now = Date.now()
+      const matches: Array<{ key: string; value: string }> = []
+      for (const [key, entry] of entries) {
+        if (!key.startsWith(prefix)) continue
+        if (entry.expiresAtMs !== undefined && entry.expiresAtMs <= now) {
+          entries.delete(key)
+          continue
+        }
+        matches.push({ key, value: entry.value })
+      }
+      matches.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+      return matches
+    })
+
+  return { get, put, delete: del, listPrefix }
 }
 
 export const layerMemory = (): Layer.Layer<KvStore> =>

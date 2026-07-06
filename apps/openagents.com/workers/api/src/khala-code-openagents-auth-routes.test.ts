@@ -1,3 +1,4 @@
+import type { AuthKvStore } from './auth/auth-kv'
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
@@ -114,7 +115,7 @@ describe('Khala Code OpenAgents desktop auth device routes', () => {
       requireBrowserSession: () =>
         Promise.resolve({ user: { userId: 'openauth_user_1' } }),
     })
-    const env = { AUTH_STORAGE: kv as unknown as KVNamespace }
+    const env = { AUTH_KV: kv as unknown as AuthKvStore }
 
     const start = await runRoute(
       handlers.handleKhalaCodeOpenAgentsAuthStartApi(
@@ -216,7 +217,7 @@ describe('Khala Code OpenAgents desktop auth device routes', () => {
       nowIso: () => '2026-07-04T12:00:00.000Z',
       requireBrowserSession: () => Promise.resolve(undefined),
     })
-    const env = { AUTH_STORAGE: kv as unknown as KVNamespace }
+    const env = { AUTH_KV: kv as unknown as AuthKvStore }
 
     const start = await runRoute(
       handlers.handleKhalaCodeOpenAgentsAuthStartApi(

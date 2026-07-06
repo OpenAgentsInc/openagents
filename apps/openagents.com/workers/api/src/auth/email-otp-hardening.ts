@@ -1,6 +1,6 @@
-import type { IdentityAuthMirror } from '../identity-auth-domain-store'
 import { safeJsonRecord } from '../json-boundary'
 import { epochMillisToIsoTimestamp } from '../runtime-primitives'
+import type { AuthKvStore } from './auth-kv'
 
 export const AUTH_EMAIL_OTP_CODE_TTL_SECONDS = 10 * 60
 export const AUTH_EMAIL_OTP_ISSUED_AT_CLAIM = 'oa_otp_issued_at'
@@ -134,22 +134,22 @@ export const authEmailOtpClaimsAreFresh = (
 }
 
 export const reserveAuthEmailOtpSend = async (
-  db: D1Database,
+  // CFG-3 (#8518): rate-limit buckets live in the owned Postgres KvStore —
+  // this was the SECOND writer to the D1 `openauth_storage` table (the
+  // first, the OpenAuth issuer `StorageAdapter`, moved in the same lane —
+  // see auth/openauth-storage.ts), so that D1 table now has ZERO writers
+  // and its KS-8.18 read-back mirror is legacy.
+  kv: AuthKvStore,
   input: AuthEmailOtpRateLimitInput,
   runtime: AuthEmailOtpRateLimitRuntime,
   policy: AuthEmailOtpRateLimitPolicy = defaultAuthEmailOtpRateLimitPolicy,
-  // KS-8.18 follow-up (#8362): this is the SECOND writer to
-  // `openauth_storage` (the first is `auth/openauth-storage.ts`'s
-  // `makeD1Storage`/`makeOpenAuthStorageForEnv`). Fail-soft — a mirror
-  // failure never blocks or fails the rate-limit decision.
-  mirror?: IdentityAuthMirror | undefined,
 ): Promise<AuthEmailOtpRateLimitResult> => {
   const nowMs = runtime.nowMs()
   const buckets = await authEmailOtpRateLimitBuckets(input, policy)
   const states = await Promise.all(
     buckets.map(async bucket => ({
       bucket,
-      state: await readBucketState(db, bucket, nowMs),
+      state: await readBucketState(kv, bucket, nowMs),
     })),
   )
   const limited = states.find(
@@ -172,16 +172,9 @@ export const reserveAuthEmailOtpSend = async (
 
   await Promise.all(
     states.map(({ bucket, state }) =>
-      writeBucketState(db, bucket, state, state.count + 1, runtime.nowIso()),
+      writeBucketState(kv, bucket, state, state.count + 1, nowMs),
     ),
   )
-
-  if (mirror !== undefined) {
-    await mirror.mirrorRowsByKey(
-      'openauth_storage',
-      states.map(({ state }) => [state.key]),
-    )
-  }
 
   return {
     _tag: 'Allowed',
@@ -216,24 +209,17 @@ const authEmailOtpRateLimitBuckets = async (
 ]
 
 const readBucketState = async (
-  db: D1Database,
+  kv: AuthKvStore,
   bucket: AuthEmailOtpRateLimitBucket,
   nowMs: number,
 ): Promise<StoredBucketState> => {
+  // Window rotation is IN THE KEY (`bucketStorageKey` embeds the window
+  // start), so a new window always reads a fresh bucket regardless of the
+  // stored row's TTL; the KvStore TTL below only garbage-collects old
+  // windows.
   const key = bucketStorageKey(bucket, nowMs)
-  const row = await db
-    .prepare(
-      `SELECT value_json
-       FROM openauth_storage
-       WHERE key = ?
-         AND (expires_at IS NULL OR expires_at > ?)`,
-    )
-    .bind(key, nowMs)
-    .first<Readonly<{ value_json: string }>>()
-  const parsed =
-    row === null || row === undefined
-      ? undefined
-      : safeJsonRecord(row.value_json)
+  const raw = await kv.get(key, 'text')
+  const parsed = raw === null ? undefined : safeJsonRecord(raw)
   const count = parsed?.count
 
   return {
@@ -247,33 +233,29 @@ const readBucketState = async (
 }
 
 const writeBucketState = async (
-  db: D1Database,
+  kv: AuthKvStore,
   bucket: AuthEmailOtpRateLimitBucket,
   state: StoredBucketState,
   count: number,
-  nowIso: string,
+  nowMs: number,
 ): Promise<void> => {
-  await db
-    .prepare(
-      `INSERT INTO openauth_storage
-        (key, value_json, expires_at, updated_at)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT(key) DO UPDATE SET
-        value_json = excluded.value_json,
-        expires_at = excluded.expires_at,
-        updated_at = excluded.updated_at`,
-    )
-    .bind(
-      state.key,
-      JSON.stringify({
-        count,
-        resetAt: epochMillisToIsoTimestamp(state.resetAtMs),
-        scope: bucket.scope,
-      }),
-      state.resetAtMs + RATE_LIMIT_EXPIRY_GRACE_MS,
-      nowIso,
-    )
-    .run()
+  await kv.put(
+    state.key,
+    JSON.stringify({
+      count,
+      resetAt: epochMillisToIsoTimestamp(state.resetAtMs),
+      scope: bucket.scope,
+    }),
+    {
+      // Same absolute horizon the D1 row carried (window reset + grace),
+      // expressed as a TTL. Purely garbage collection — window rotation is
+      // in the key, so correctness never depends on this expiry firing.
+      expirationTtl: Math.max(
+        1,
+        Math.ceil((state.resetAtMs + RATE_LIMIT_EXPIRY_GRACE_MS - nowMs) / 1000),
+      ),
+    },
+  )
 }
 
 const bucketStorageKey = (

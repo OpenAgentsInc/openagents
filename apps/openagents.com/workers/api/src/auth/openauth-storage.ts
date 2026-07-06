@@ -1,3 +1,20 @@
+// CFG-3 (#8518): the OpenAuth issuer `StorageAdapter` (sessions, refresh
+// tokens, PKCE codes, signing keys, email-OTP state) serves from owned
+// Postgres via @openagentsinc/oa-infra's KvStore — the D1 `openauth_storage`
+// table and its KS-8.18 read-back mirror are legacy as of this lane (CFG-3
+// claims the openauth_storage cutover; CFG-4's identity domain does not need
+// to port it). HARD CUT (owner-approved): fresh storage means fresh issuer
+// signing keys, so existing sessions invalidate and users re-login once.
+//
+// Semantics preserved from the previous D1 adapter at the contract level:
+// keys are `joinKey`-joined (0x1f separator), values are JSON records, `get`
+// of a missing/expired key is `undefined`, `set` with an `expiry` Date
+// becomes a TTL, `scan` yields non-expired entries under
+// `joinKey([...prefix, ''])` ordered by key. Expiry enforcement now lives in
+// the KvStore backend (lazy reap on read — conformance-tested in
+// packages/oa-infra), so this adapter no longer needs its own clock on the
+// read path.
+
 import {
   type StorageAdapter,
   joinKey,
@@ -6,6 +23,12 @@ import {
 
 import { safeJsonRecord } from '../json-boundary'
 import { currentEpochMillis, currentIsoTimestamp } from '../runtime-primitives'
+import {
+  type AuthKvEnv,
+  type AuthKvStore,
+  type MakeAuthKvOptions,
+  authKvStoreForEnv,
+} from './auth-kv'
 
 export type OpenAuthStorageRuntime = Readonly<{
   nowIso: () => string
@@ -17,85 +40,62 @@ export const systemOpenAuthStorageRuntime: OpenAuthStorageRuntime = {
   nowMs: currentEpochMillis,
 }
 
-export const makeD1Storage = (
-  db: D1Database,
+/**
+ * OpenAuth `StorageAdapter` over the owned key/value store. `runtime` is the
+ * clock used to convert `set`'s absolute `expiry` Date into a TTL (the store
+ * itself owns expiry enforcement).
+ */
+export const makeKvOpenAuthStorage = (
+  kv: AuthKvStore,
   runtime: OpenAuthStorageRuntime = systemOpenAuthStorageRuntime,
 ): StorageAdapter => ({
   get: async key => {
-    const storageKey = joinKey(key)
-    const row = await db
-      .prepare(
-        `SELECT value_json, expires_at
-         FROM openauth_storage
-         WHERE key = ?`,
-      )
-      .bind(storageKey)
-      .first<Readonly<{ value_json: string; expires_at: number | null }>>()
+    const raw = await kv.get(joinKey(key), 'text')
 
-    if (row === null) {
-      return undefined
-    }
-
-    if (row.expires_at !== null && row.expires_at <= runtime.nowMs()) {
-      await db
-        .prepare(`DELETE FROM openauth_storage WHERE key = ?`)
-        .bind(storageKey)
-        .run()
-
-      return undefined
-    }
-
-    return safeJsonRecord(row.value_json)
+    return raw === null ? undefined : safeJsonRecord(raw)
   },
 
   set: async (key, value: unknown, expiry) => {
-    await db
-      .prepare(
-        `INSERT INTO openauth_storage
-          (key, value_json, expires_at, updated_at)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(key) DO UPDATE SET
-          value_json = excluded.value_json,
-          expires_at = excluded.expires_at,
-          updated_at = excluded.updated_at`,
-      )
-      .bind(
-        joinKey(key),
-        JSON.stringify(value),
-        expiry?.getTime() ?? null,
-        runtime.nowIso(),
-      )
-      .run()
+    const ttlMs =
+      expiry === undefined ? undefined : expiry.getTime() - runtime.nowMs()
+
+    await kv.put(
+      joinKey(key),
+      JSON.stringify(value),
+      ttlMs === undefined
+        ? undefined
+        : // KV-facade TTLs are seconds; round up so a sub-second remainder
+          // never truncates a live expiry to "already expired".
+          { expirationTtl: Math.max(1, Math.ceil(ttlMs / 1000)) },
+    )
   },
 
   remove: async key => {
-    await db
-      .prepare(`DELETE FROM openauth_storage WHERE key = ?`)
-      .bind(joinKey(key))
-      .run()
+    await kv.delete(joinKey(key))
   },
 
   scan: async function* (prefix) {
-    const now = runtime.nowMs()
-    const rows = await db
-      .prepare(
-        `SELECT key, value_json, expires_at
-         FROM openauth_storage
-         WHERE key LIKE ?
-           AND (expires_at IS NULL OR expires_at > ?)
-         ORDER BY key`,
-      )
-      .bind(`${joinKey([...prefix, ''])}%`, now)
-      .all<
-        Readonly<{ key: string; value_json: string; expires_at: number | null }>
-      >()
+    const entries = await kv.listPrefix(joinKey([...prefix, '']))
 
-    for (const row of rows.results) {
-      const parsed = safeJsonRecord(row.value_json)
+    for (const entry of entries) {
+      const parsed = safeJsonRecord(entry.value)
 
       if (parsed !== undefined) {
-        yield [splitKey(row.key), parsed]
+        yield [splitKey(entry.key), parsed]
       }
     }
   },
 })
+
+/**
+ * The production OpenAuth storage for this env — Postgres KvStore, never D1,
+ * never Cloudflare KV (hard cut, #8518). Replaces the KS-8.18
+ * `makeD1Storage` + read-back-mirror drop-in that previously lived in
+ * identity-auth-domain-store.ts.
+ */
+export const makeOpenAuthStorageForEnv = (
+  env: AuthKvEnv,
+  runtime: OpenAuthStorageRuntime = systemOpenAuthStorageRuntime,
+  options: MakeAuthKvOptions = {},
+): StorageAdapter =>
+  makeKvOpenAuthStorage(authKvStoreForEnv(env, options), runtime)

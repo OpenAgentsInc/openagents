@@ -1,3 +1,4 @@
+import type { AuthKvStore } from './auth/auth-kv'
 import { Effect } from 'effect'
 import { describe, expect, test, vi } from 'vitest'
 
@@ -7,9 +8,7 @@ import { makeOperatorAdjutantRoutes } from './operator-adjutant-routes'
 type TestEnv = OpenAgentsWorkerConfigEnv &
   Readonly<{
     ADJUTANT_ENRICHMENT_QUEUE: Queue
-    AUTH_STORAGE?: Readonly<{
-      get: (key: string) => Promise<string | null>
-    }>
+    AUTH_KV?: AuthKvStore | undefined
     OPENAGENTS_DB: D1Database
   }>
 
@@ -3289,13 +3288,16 @@ describe('operator Adjutant assignment API routes', () => {
       undefined,
       undefined,
       {
-        AUTH_STORAGE: {
-          get: key =>
+        AUTH_KV: {
+          get: ((key: string) =>
             Promise.resolve(
               key === 'github-identity:token:github:operator'
                 ? 'github-identity-token'
                 : null,
-            ),
+            )) as AuthKvStore['get'],
+          put: () => Promise.resolve(),
+          delete: () => Promise.resolve(),
+          listPrefix: () => Promise.resolve([]),
         },
       },
     )

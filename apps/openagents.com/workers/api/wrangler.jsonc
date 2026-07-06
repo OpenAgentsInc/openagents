@@ -398,13 +398,6 @@
       "max_instances": 1,
     },
   ],
-  "kv_namespaces": [
-    {
-      "binding": "AUTH_STORAGE",
-      "id": "d6b40d28e0a640bfb29d50c7afe458b1",
-      "preview_id": "02566e7567b6479ebdada57c93991383",
-    },
-  ],
   "assets": {
     "directory": "../../apps/web/dist",
     "binding": "ASSETS",
@@ -710,13 +703,6 @@
         "MDK_CHECKOUT_WEBHOOK_SOURCE": "sdk_node_control",
         "SHC_DISPATCH_MODE": "unconfigured",
       },
-      "kv_namespaces": [
-        {
-          "binding": "AUTH_STORAGE",
-          "id": "586eb41c0d69448a96ffabaa5fc9bafd",
-          "preview_id": "586eb41c0d69448a96ffabaa5fc9bafd",
-        },
-      ],
       "assets": {
         "directory": "../../apps/web/dist",
         "binding": "ASSETS",

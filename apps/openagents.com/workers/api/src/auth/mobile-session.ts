@@ -92,12 +92,14 @@ export const authIssuerAllowsRedirect = (
 }
 
 /**
- * Exported so other mobile-bearer-authorized surfaces can compute the SAME KV
+ * Exported so other mobile-bearer-authorized surfaces can compute the SAME
  * revocation-lookup key from a raw access token without duplicating the hash
  * scheme (MM-G1, #8485: `push/push-device-tokens.ts` stores this key
  * alongside a device's push-token registration at registration time, then
- * later checks `AUTH_STORAGE.get(key)` directly to prune a registration once
+ * later checks the auth KV store directly to prune a registration once
  * that exact access token is revoked — never storing the raw token itself).
+ * CFG-3 (#8518): the backing store is the Postgres KvStore
+ * (`auth/auth-kv.ts`), never Cloudflare KV; the key format is unchanged.
  */
 export const mobileRevokedAccessKey = async (accessToken: string): Promise<string> => {
   const bytes = new TextEncoder().encode(accessToken)
@@ -129,7 +131,19 @@ const accessTokenTtlSeconds = (accessToken: string): number => {
   return Math.max(60, Math.ceil(exp - currentEpochSeconds()))
 }
 
-export type MobileAccessRevocationStore = Pick<KVNamespace, 'get' | 'put'>
+/**
+ * The narrow store surface the revocation/deletion markers need. Satisfied by
+ * `auth/auth-kv.ts`'s `AuthKvStore` (production: Postgres KvStore, CFG-3
+ * #8518) and by in-memory fakes in tests. `expirationTtl` is seconds.
+ */
+export type MobileAccessRevocationStore = Readonly<{
+  get: (key: string) => Promise<string | null>
+  put: (
+    key: string,
+    value: string,
+    options?: Readonly<{ expirationTtl?: number }>,
+  ) => Promise<void>
+}>
 
 export const isMobileAccessTokenRevoked = async (
   store: MobileAccessRevocationStore,

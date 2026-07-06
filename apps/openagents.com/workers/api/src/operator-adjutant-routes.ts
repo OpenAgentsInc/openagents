@@ -122,6 +122,7 @@ import {
   readFirstBatchPaymentGate,
 } from './first-batch-payment-policies'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { type AuthKvStore, authKvStoreForEnv } from './auth/auth-kv'
 import { githubIdentityTokenKey } from './onboarding/github'
 // KS-8.12 (#8323): sites writes ride the dual-write mirror seam — the
 // mirroring database is a passthrough for non-scoped statements and
@@ -139,14 +140,11 @@ import {
   type SupervisionLongtailMirror,
 } from './supervision-longtail-domain-store'
 
-type OperatorAdjutantAuthStorage = Readonly<{
-  get: (key: string) => Promise<string | null>
-}>
-
 type OperatorAdjutantEnv = OpenAgentsWorkerConfigEnv &
   Readonly<{
     ADJUTANT_ENRICHMENT_QUEUE: Queue
-    AUTH_STORAGE?: OperatorAdjutantAuthStorage | undefined
+    AUTH_KV?: AuthKvStore | undefined
+    KHALA_SYNC_DB?: Readonly<{ connectionString: string }> | undefined
     OPENAGENTS_DB: D1Database
   }>
 type HttpResponse = globalThis.Response
@@ -1220,14 +1218,13 @@ const readOperatorGitHubIdentityToken = async (
   env: OperatorAdjutantEnv,
   userId: string,
 ): Promise<string | undefined> => {
-  const storage = env.AUTH_STORAGE
-
-  if (storage === undefined) {
-    return undefined
-  }
-
+  // Fail-soft on storage errors: enrichment simply proceeds without the
+  // operator's GitHub identity token (CFG-3 #8518: Postgres KvStore, not KV).
   try {
-    return (await storage.get(githubIdentityTokenKey(userId))) ?? undefined
+    return (
+      (await authKvStoreForEnv(env).get(githubIdentityTokenKey(userId))) ??
+      undefined
+    )
   } catch {
     return undefined
   }

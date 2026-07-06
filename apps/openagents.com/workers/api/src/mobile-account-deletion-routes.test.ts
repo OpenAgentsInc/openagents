@@ -6,7 +6,8 @@ import {
   hasMobileAccountDeletionReceipt,
   isMobileAccessTokenRevoked,
 } from './auth/mobile-session'
-import { makeD1Storage } from './auth/openauth-storage'
+import { makeMemoryAuthKvStore } from './auth/auth-kv'
+import { makeKvOpenAuthStorage } from './auth/openauth-storage'
 import {
   deleteKhalaSyncAccountDataWithSql,
   handleMobileAccountDeletionRequest,
@@ -107,12 +108,6 @@ const seedAccountRows = async (db: D1Database) => {
       .bind(USER_ID, NOW, NOW),
     db
       .prepare(
-        `INSERT INTO openauth_storage (key, value_json, expires_at, updated_at)
-         VALUES (?, '{}', NULL, ?)`,
-      )
-      .bind(`oauth:refresh:${USER_ID}:refresh-token`, NOW),
-    db
-      .prepare(
         `INSERT INTO agent_balances
           (actor_ref, balance_msat, held_msat, usd_credit_msat, created_at, updated_at)
          VALUES (?, 120000, 20000, 100000, ?, ?)`,
@@ -168,7 +163,10 @@ describe('Khala mobile account deletion route', () => {
 
     try {
       await seedAccountRows(sqlite.db)
-      const env = { AUTH_STORAGE: kv, KHALA_SYNC_DB: { connectionString: 'postgres://khala-sync' }, OPENAGENTS_DB: sqlite.db }
+      // CFG-3 (#8518): OpenAuth issuer state lives on the owned KvStore.
+      const openAuthStorage = makeKvOpenAuthStorage(makeMemoryAuthKvStore())
+      await openAuthStorage.set(['oauth:refresh', USER_ID, 'refresh-token'], {})
+      const env = { AUTH_KV: kv, KHALA_SYNC_DB: { connectionString: 'postgres://khala-sync' }, OPENAGENTS_DB: sqlite.db }
       const dependencies = {
         authStorage: () => kv,
         db: () => sqlite.db,
@@ -178,7 +176,7 @@ describe('Khala mobile account deletion route', () => {
         },
         khalaSyncBinding: () => env.KHALA_SYNC_DB,
         nowIso: () => NOW,
-        openAuthStorage: () => makeD1Storage(sqlite.db),
+        openAuthStorage: () => openAuthStorage,
         readBearerToken: () => ACCESS_TOKEN,
         requireUserBearerSession: async () => ({ user: { userId: USER_ID } }),
         userIdFromSession: (session: { user: { userId: string } }) => session.user.userId,
@@ -241,10 +239,9 @@ describe('Khala mobile account deletion route', () => {
         .bind(USER_ID)
         .first<{ count: number }>()
       expect(pushRows?.count).toBe(0)
-      const openAuthRows = await sqlite.db
-        .prepare(`SELECT COUNT(*) AS count FROM openauth_storage`)
-        .first<{ count: number }>()
-      expect(openAuthRows?.count).toBe(0)
+      await expect(
+        openAuthStorage.get(['oauth:refresh', USER_ID, 'refresh-token']),
+      ).resolves.toBeUndefined()
       const githubConnection = await sqlite.db
         .prepare(`SELECT status, health, deleted_at FROM github_write_connections WHERE id = 'conn-1'`)
         .first<{ deleted_at: string | null; health: string; status: string }>()
@@ -286,7 +283,9 @@ describe('Khala mobile account deletion route', () => {
 
     try {
       await seedAccountRows(sqlite.db)
-      const env = { AUTH_STORAGE: kv, KHALA_SYNC_DB: undefined, OPENAGENTS_DB: sqlite.db }
+      const openAuthStorage = makeKvOpenAuthStorage(makeMemoryAuthKvStore())
+      await openAuthStorage.set(['oauth:refresh', USER_ID, 'refresh-token'], {})
+      const env = { AUTH_KV: kv, KHALA_SYNC_DB: undefined, OPENAGENTS_DB: sqlite.db }
       const response = await Effect.runPromise(
         handleMobileAccountDeletionRequest(
           {
@@ -297,7 +296,7 @@ describe('Khala mobile account deletion route', () => {
               throw new Error('must not connect without a binding')
             },
             nowIso: () => NOW,
-            openAuthStorage: () => makeD1Storage(sqlite.db),
+            openAuthStorage: () => openAuthStorage,
             readBearerToken: () => ACCESS_TOKEN,
             requireUserBearerSession: async () => ({ user: { userId: USER_ID } }),
             userIdFromSession: (session: { user: { userId: string } }) => session.user.userId,

@@ -985,7 +985,6 @@ const runRoute = (
   ).routeOnboardingRequest(
     new Request(`https://openagents.com${path}`, init),
     {
-      AUTH_STORAGE: {} as KVNamespace,
       OPENAGENTS_DB: customerOrderDb(store),
     },
     executionContext(),

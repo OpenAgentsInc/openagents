@@ -41,6 +41,7 @@ export {
 // Backends (namespaced: two Layers per interface would collide otherwise)
 export * as KvStoreMemory from "./kv-store-memory.ts"
 export * as KvStorePostgres from "./kv-store-postgres.ts"
+export * as KvStorePostgresLayer from "./kv-store-postgres-layer.ts"
 export * as BlobStoreMemory from "./blob-store-memory.ts"
 export * as BlobStoreGcs from "./blob-store-gcs.ts"
 // Workerd/Bun-portable HMAC-interop backend (no SDK). Also importable via

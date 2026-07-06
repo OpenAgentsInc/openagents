@@ -89,5 +89,46 @@ export const runKvStoreConformance = (options: KvStoreConformanceOptions): void 
         expect(value).toBe("permanent")
       }))
     })
+
+    test("listPrefix: matching non-expired entries only, ordered by key", async () => {
+      const base = ns()
+      const entries = await run(Effect.gen(function* () {
+        const kv = yield* KvStore
+        yield* kv.put(`${base}/scan/b`, "two")
+        yield* kv.put(`${base}/scan/a`, "one")
+        yield* kv.put(`${base}/scan/c`, "gone", { ttlMs: 100 })
+        yield* kv.put(`${base}/other/x`, "outside")
+        yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 250)))
+        return yield* kv.listPrefix(`${base}/scan/`)
+      }))
+      expect(entries).toEqual([
+        { key: `${base}/scan/a`, value: "one" },
+        { key: `${base}/scan/b`, value: "two" },
+      ])
+    })
+
+    test("listPrefix: empty for a prefix with no matches", async () => {
+      const entries = await run(Effect.gen(function* () {
+        const kv = yield* KvStore
+        return yield* kv.listPrefix(`${ns()}/never-written/`)
+      }))
+      expect(entries).toEqual([])
+    })
+
+    test("listPrefix: the prefix is literal — %, _ and \\ never pattern-match", async () => {
+      const base = ns()
+      const [percent, underscore] = await run(Effect.gen(function* () {
+        const kv = yield* KvStore
+        yield* kv.put(`${base}/p%q/1`, "literal-percent")
+        yield* kv.put(`${base}/pXXq/1`, "would-match-%-as-pattern")
+        yield* kv.put(`${base}/u_v/1`, "literal-underscore")
+        yield* kv.put(`${base}/uXv/1`, "would-match-_-as-pattern")
+        const a = yield* kv.listPrefix(`${base}/p%q/`)
+        const b = yield* kv.listPrefix(`${base}/u_v/`)
+        return [a, b] as const
+      }))
+      expect(percent).toEqual([{ key: `${base}/p%q/1`, value: "literal-percent" }])
+      expect(underscore).toEqual([{ key: `${base}/u_v/1`, value: "literal-underscore" }])
+    })
   })
 }

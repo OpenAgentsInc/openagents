@@ -29,10 +29,13 @@
 //      uniform adoption path for every writer.
 //   2. Drop-in `make*ForEnv(env)` factories — `makeProviderAccountTokenCustodyStoreForEnv`
 //      (the flagship, secret-bearing token-custody vault, wired in #8329),
-//      plus this follow-up's (#8362) `makeOpenAuthStorageForEnv`,
-//      `makeGitHubWriteRepositoryForEnv`, and
+//      plus this follow-up's (#8362) `makeGitHubWriteRepositoryForEnv` and
 //      `makeProviderAccountRepositoryForEnv` — each wraps a base D1
 //      store/repository and read-back mirrors every write method.
+//      (`makeOpenAuthStorageForEnv` moved to auth/openauth-storage.ts in
+//      CFG-3 #8518: the OpenAuth issuer serves from the Postgres KvStore
+//      now, so the D1 `openauth_storage` table and its mirror wiring here
+//      are legacy — see that module's header.)
 //
 // WIRING STATUS (#8362 — every write call site listed in the follow-up
 // issue is now wired): all five typed factories adopt a mirror
@@ -119,14 +122,6 @@ import {
   type IdentityAuthDomainTable,
   type SyncSql,
 } from '@openagentsinc/khala-sync-server'
-import { joinKey } from '@openauthjs/openauth/storage/storage'
-import type { StorageAdapter } from '@openauthjs/openauth/storage/storage'
-
-import {
-  type OpenAuthStorageRuntime,
-  makeD1Storage,
-  systemOpenAuthStorageRuntime,
-} from './auth/openauth-storage'
 import {
   makeD1GitHubWriteRepository,
   type GitHubWriteRepository,
@@ -926,67 +921,6 @@ export const makeProviderAccountTokenCustodyStoreForEnv = (
       await mirror.mirrorRowsByKey('provider_account_token_custody_audit', [
         [auditEvent.id],
       ])
-    },
-  }
-}
-
-// ---------------------------------------------------------------------------
-// OpenAuth storage drop-in (#8362 follow-up wiring)
-// ---------------------------------------------------------------------------
-
-/**
- * Drop-in for `makeD1Storage(openAgentsDatabase(env), runtime)` (the
- * OpenAuth `StorageAdapter`, `openauth_storage` — every session/refresh
- * payload and email-OTP rate-limit bucket lives here; SECOND writer is
- * `auth/email-otp-hardening.ts` `reserveAuthEmailOtpSend`, wired
- * separately below). Wraps the WRITE surface:
- *   - `set` (upsert): read-back mirrors the row by `key` after the D1
- *     write, same as every other writer in this file.
- *   - `remove` (explicit delete): the ONLY hard-delete write call site in
- *     this domain. The D1 delete runs unchanged, then
- *     `mirror.mirrorDeleteByKey` removes the same `key` from the Postgres
- *     twin — this is the one writer that needed the new delete-mirror
- *     capability above.
- *
- * KNOWN, DOCUMENTED DRIFT (not a bug): `get()` also deletes a row
- * internally when it discovers the row already expired
- * (`auth/openauth-storage.ts` lines ~39-46) — a lazy-expiry side effect of
- * a READ. This wrapper deliberately does NOT mirror that path: `get()` is
- * the single hottest call in the entire identity/auth domain (every
- * OpenAuth session/code lookup), and adding a Postgres round-trip there
- * would be exactly the "per-request read storm" RUNBOOK.md's identity/auth
- * cutover section warns against inheriting. The result is that the
- * Postgres twin can accumulate expired-but-undeleted `openauth_storage`
- * rows the mirror never proactively removes, so this table's row COUNT
- * will not converge to exact equality the way `users`/`auth_identities`
- * do — a structural property of a read-back-only mirror over a lazily
- * TTL'd table, not incomplete wiring. See RUNBOOK.md's identity/auth
- * section for the explicit callout and the recommended remediation before
- * any future read cutover (an active TTL-based prune of Postgres's own
- * expired rows, independent of D1, or accept it the same way the
- * tokens-served projection documents its own expected drift sources).
- */
-export const makeOpenAuthStorageForEnv = (
-  env: IdentityAuthStoreEnv,
-  runtime: OpenAuthStorageRuntime = systemOpenAuthStorageRuntime,
-  options: MakeIdentityAuthStoreOptions = {},
-): StorageAdapter => {
-  const db =
-    options.db ?? openAgentsDatabase(env as { OPENAGENTS_DB: D1Database })
-  const base = makeD1Storage(db, runtime)
-  const mirror = identityAuthMirrorFromEnv(env, { ...options, db })
-  if (mirror === undefined) {
-    return base
-  }
-  return {
-    ...base,
-    set: async (key, value, expiry) => {
-      await base.set(key, value, expiry)
-      await mirror.mirrorRowsByKey('openauth_storage', [[joinKey(key)]])
-    },
-    remove: async key => {
-      await base.remove(key)
-      await mirror.mirrorDeleteByKey('openauth_storage', [[joinKey(key)]])
     },
   }
 }

@@ -1,3 +1,4 @@
+import { type AuthKvEnv, type AuthKvStore, authKvStoreForEnv } from './auth/auth-kv'
 import {
   type AgentRegistrationStore,
   type OpenAuthAgentLinkRecord,
@@ -17,9 +18,7 @@ import {
 
 type HttpResponse = globalThis.Response
 
-type PylonOpenAgentsAuthEnv = Readonly<{
-  AUTH_STORAGE: KVNamespace
-}>
+type PylonOpenAgentsAuthEnv = AuthKvEnv
 
 type PylonOpenAgentsAuthSession = Readonly<{
   user: Readonly<{
@@ -96,7 +95,7 @@ const isExpired = (attempt: PylonOpenAgentsAuthAttempt, now: string): boolean =>
   Date.parse(attempt.expiresAt) <= Date.parse(now)
 
 const readAttempt = async (
-  kv: KVNamespace,
+  kv: AuthKvStore,
   attemptId: string,
 ): Promise<PylonOpenAgentsAuthAttempt | undefined> => {
   const raw = await kv.get(attemptKey(attemptId), 'json')
@@ -120,7 +119,7 @@ const readAttempt = async (
 }
 
 const writeAttempt = (
-  kv: KVNamespace,
+  kv: AuthKvStore,
   attempt: PylonOpenAgentsAuthAttempt,
 ): Promise<void> =>
   kv.put(attemptKey(attempt.attemptId), JSON.stringify(attempt), {
@@ -224,7 +223,7 @@ export const makePylonOpenAgentsAuthHandlers = <
       userCode: makeUserCode(attemptId),
     }
 
-    await writeAttempt(env.AUTH_STORAGE, attempt)
+    await writeAttempt(authKvStoreForEnv(env), attempt)
 
     return noStoreJsonResponse(
       {
@@ -272,7 +271,7 @@ export const makePylonOpenAgentsAuthHandlers = <
       )
     }
 
-    const attempt = await readAttempt(env.AUTH_STORAGE, attemptId)
+    const attempt = await readAttempt(authKvStoreForEnv(env), attemptId)
     const tokenHash = await sha256Hex(token)
     if (attempt === undefined || attempt.tokenHash !== tokenHash) {
       return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
@@ -326,7 +325,7 @@ export const makePylonOpenAgentsAuthHandlers = <
       return loginRedirectFor(request)
     }
 
-    const attempt = await readAttempt(env.AUTH_STORAGE, attemptId)
+    const attempt = await readAttempt(authKvStoreForEnv(env), attemptId)
     const current = nowIso(dependencies)
     if (attempt === undefined || isExpired(attempt, current)) {
       return dependencies.appendRefreshedSessionCookies(
@@ -384,7 +383,7 @@ export const makePylonOpenAgentsAuthHandlers = <
     }
 
     await agentStore.linkOpenAuthAgent(linkRecord)
-    await writeAttempt(env.AUTH_STORAGE, { ...attempt, status: 'linked' })
+    await writeAttempt(authKvStoreForEnv(env), { ...attempt, status: 'linked' })
 
     return dependencies.appendRefreshedSessionCookies(
       htmlResponse(

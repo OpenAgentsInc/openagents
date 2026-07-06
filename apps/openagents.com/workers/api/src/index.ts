@@ -230,7 +230,11 @@ import {
   revokeMobileAccessToken,
   revokeOpenAuthRefreshToken,
 } from './auth/mobile-session'
-import { makeD1Storage } from './auth/openauth-storage'
+import {
+  type AuthKvStore,
+  authKvStoreForEnv,
+} from './auth/auth-kv'
+import { makeOpenAuthStorageForEnv } from './auth/openauth-storage'
 import {
   type VerifiedSession as VerifiedAuthSession,
   makeBrowserSessionBoundary,
@@ -1056,7 +1060,6 @@ import { makeProviderAccountServiceHandlers } from './provider-account-service-r
 import {
   identityAuthMirrorFromEnv,
   makeGitHubWriteRepositoryForEnv,
-  makeOpenAuthStorageForEnv,
   makeProviderAccountRepositoryForEnv,
   makeProviderAccountTokenCustodyStoreForEnv,
   type IdentityAuthMirror,
@@ -2588,9 +2591,7 @@ const exchangeGitHubOAuthCode = async (
   return decodeUnknownWithSchema(GitHubOAuthToken, await response.json())
 }
 
-type GitHubWriteTokenStorage = Readonly<{
-  AUTH_STORAGE: KVNamespace
-}>
+type GitHubWriteTokenStorage = Parameters<typeof authKvStoreForEnv>[0]
 
 const storeGitHubWriteAccessToken = async (
   storage: GitHubWriteTokenStorage,
@@ -2598,7 +2599,7 @@ const storeGitHubWriteAccessToken = async (
   accessToken: string,
 ): Promise<void> => {
   try {
-    await storage.AUTH_STORAGE.put(
+    await authKvStoreForEnv(storage).put(
       githubWriteSecretKey(connectionRef),
       accessToken,
     )
@@ -2952,14 +2953,12 @@ const maybeAuthEmailOtpGuardResponse = async (request: Request, env: OpenAgentsW
   }
 
   const decision = await reserveAuthEmailOtpSend(
-    openAgentsDatabase(env),
+    authKvStoreForEnv(env),
     {
       email: sendForm.email,
       ipAddress: authEmailOtpClientIp(request),
     },
     workerRuntime,
-    undefined,
-    identityAuthMirrorFromEnv(env),
   ).catch(error => {
     logWorkerRouteError('auth_email_otp_rate_limit_failed', error, {
       errorName: errorName(error),
@@ -3623,7 +3622,7 @@ const appendTeamAutopilotAnswerBack = async (
   const githubAccessToken =
     bundle.run.assignment.githubWriteConnectionRef === undefined
       ? null
-      : await env.AUTH_STORAGE.get(
+      : await authKvStoreForEnv(env).get(
           githubWriteSecretKey(bundle.run.assignment.githubWriteConnectionRef),
         )
   const draft = await teamAutopilotAnswerBackDraftForBundle(bundle, {
@@ -3884,7 +3883,7 @@ const makeAuthIssuer = (env: OpenAgentsWorkerEnv) => {
 
       const subject = githubUserToSubject(user, getPrimaryVerifiedEmail(emails))
       await upsertGitHubUser(openAgentsDatabase(env), subject)
-      await env.AUTH_STORAGE.put(
+      await authKvStoreForEnv(env).put(
         githubIdentityTokenKey(subject.userId),
         response.tokenset.access,
         { expirationTtl: SESSION_MAX_AGE_SECONDS },
@@ -4058,7 +4057,7 @@ const { requireUserBearerSession } =
   makeUserBearerSessionBoundary<UserSubject, Env>({
     isAccessTokenRevoked: async (env, accessToken) => {
       try {
-        return await isMobileAccessTokenRevoked(env.AUTH_STORAGE, accessToken)
+        return await isMobileAccessTokenRevoked(authKvStoreForEnv(env), accessToken)
       } catch (error) {
         logWorkerRouteError('mobile_auth_revocation_check_failed', error)
 
@@ -4765,7 +4764,7 @@ const handleGitHubWriteCallback = async (
         secretRef,
       })
     } catch (error) {
-      await env.AUTH_STORAGE.delete(githubWriteSecretKey(connectionRef))
+      await authKvStoreForEnv(env).delete(githubWriteSecretKey(connectionRef))
       throw error
     }
 
@@ -4844,7 +4843,7 @@ const handleGitHubWriteDisconnectApi = async (
     return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
   }
 
-  await env.AUTH_STORAGE.delete(githubWriteSecretKey(connectionRef))
+  await authKvStoreForEnv(env).delete(githubWriteSecretKey(connectionRef))
 
   return appendRefreshedSessionCookies(
     noStoreJsonResponse({
@@ -4953,7 +4952,7 @@ const handleGitHubWriteGrantResolveApi = async (
       return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
     }
 
-    const accessToken = await env.AUTH_STORAGE.get(
+    const accessToken = await authKvStoreForEnv(env).get(
       githubWriteSecretKey(grant.connectionRef),
     )
 
@@ -5215,7 +5214,7 @@ const handleMobileAuthSessionApi = async (
   let refreshRevoked = false
 
   try {
-    await revokeMobileAccessToken(env.AUTH_STORAGE, accessToken)
+    await revokeMobileAccessToken(authKvStoreForEnv(env), accessToken)
     refreshRevoked = await revokeOpenAuthRefreshToken(
       makeOpenAuthStorageForEnv(env),
       refreshToken,
@@ -7046,7 +7045,7 @@ const startedDeviceLoginTtlSeconds = (expiresAt: string): number => {
 }
 
 const storeStartedCodexDeviceLogin =
-  (kv: KVNamespace) =>
+  (kv: AuthKvStore) =>
   async (
     input: Readonly<{
       attemptId: string
@@ -7066,7 +7065,7 @@ const storeStartedCodexDeviceLogin =
   }
 
 const readStartedCodexDeviceLogin =
-  (kv: KVNamespace) =>
+  (kv: AuthKvStore) =>
   async (
     attemptId: string,
   ): Promise<
@@ -7089,13 +7088,13 @@ const readStartedCodexDeviceLogin =
   }
 
 const deleteStartedCodexDeviceLogin =
-  (kv: KVNamespace) =>
+  (kv: AuthKvStore) =>
   async (attemptId: string): Promise<void> => {
     await kv.delete(providerDeviceLoginSecretKey(attemptId))
   }
 
 const storeConnectedProviderApiKey =
-  (kv: KVNamespace) =>
+  (kv: AuthKvStore) =>
   async (
     input: Readonly<{
       providerAccountRef: string
@@ -7191,7 +7190,7 @@ const readConnectedCodexAuthMaterial = async (
 }
 
 const readConnectedOpenRouterApiKey = async (
-  kv: KVNamespace,
+  kv: AuthKvStore,
   providerAccountRef: string,
 ): Promise<Redacted.Redacted<string> | undefined> => {
   const raw = await kv.get(providerAuthSecretKey(providerAccountRef), 'text')
@@ -12553,10 +12552,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env, ctx) =>
       handleMobileAccountDeletionRequest(
         {
-          authStorage: e => e.AUTH_STORAGE,
+          authStorage: e => authKvStoreForEnv(e),
           db: openAgentsDatabase,
           khalaSyncBinding: e => e.KHALA_SYNC_DB,
-          openAuthStorage: e => makeD1Storage(openAgentsDatabase(e)),
+          openAuthStorage: e => makeOpenAuthStorageForEnv(e),
           readBearerToken,
           requireUserBearerSession,
           userIdFromSession: session => session.user.userId,
@@ -12592,7 +12591,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env, ctx) =>
       handlePushNotificationPreferencesRequest(
         {
-          authStorage: e => e.AUTH_STORAGE,
+          authStorage: e => authKvStoreForEnv(e),
           db: openAgentsDatabase,
           requireAdminApiToken,
           requireUserBearerSession,
@@ -12612,7 +12611,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       handlePushNotifyEventsRequest(
         {
-          authStorage: e => e.AUTH_STORAGE,
+          authStorage: e => authKvStoreForEnv(e),
           db: openAgentsDatabase,
           requireAdminApiToken,
           requireUserBearerSession,
@@ -14396,7 +14395,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             return undefined
           }
           const apiKey = await readConnectedOpenRouterApiKey(
-            env.AUTH_STORAGE,
+            authKvStoreForEnv(env),
             account.providerAccountRef,
           )
           return apiKey === undefined
@@ -15477,7 +15476,7 @@ const routeRequest = makeWorkerRouteRequest({
       readGithubAccessToken: userId =>
         Effect.tryPromise({
           try: async () =>
-            (await env.AUTH_STORAGE.get(githubIdentityTokenKey(userId))) ??
+            (await authKvStoreForEnv(env).get(githubIdentityTokenKey(userId))) ??
             undefined,
           catch: () =>
             new GitHubScmAuthBrokerDependencyFailed({

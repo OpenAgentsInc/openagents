@@ -15,7 +15,8 @@ import {
   openAuthRefreshStorageKeyFromToken,
   revokeMobileAccessToken,
 } from './mobile-session'
-import { makeD1Storage } from './openauth-storage'
+import { makeMemoryAuthKvStore } from './auth-kv'
+import { makeKvOpenAuthStorage } from './openauth-storage'
 import worker from '../index'
 import {
   IDENTITY_AUTH_DOMAIN_D1_SCHEMA,
@@ -76,19 +77,24 @@ const makeEnv = () => {
        ON auth_identities(provider, provider_subject)`,
   )
 
+  // CFG-3 (#8518): the issuer StorageAdapter and the revocation markers both
+  // live on the SAME owned KvStore now; the test seeds and the worker reads
+  // one shared memory store (via the AUTH_KV test override).
+  const kv = makeMemoryAuthKvStore()
+
   return {
     close: sqlite.close,
     env: {
       ...workerConfig,
-      AUTH_STORAGE: makeMemoryKv(),
+      AUTH_KV: kv,
       OPENAGENTS_DB: sqlite.db,
     } as never,
-    storage: makeD1Storage(sqlite.db),
+    storage: makeKvOpenAuthStorage(kv),
   }
 }
 
 const seedAuthorizationCode = async (
-  storage: ReturnType<typeof makeD1Storage>,
+  storage: ReturnType<typeof makeKvOpenAuthStorage>,
   input: Readonly<{
     challenge: string
     code: string

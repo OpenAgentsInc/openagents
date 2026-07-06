@@ -1,3 +1,4 @@
+import { type AuthKvStore, authKvStoreForEnv } from './auth/auth-kv'
 import { Effect } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
@@ -63,7 +64,8 @@ import {
 } from './runtime-primitives'
 
 type OperatorProviderAccountEnv = Readonly<{
-  AUTH_STORAGE: KVNamespace
+  AUTH_KV?: AuthKvStore | undefined
+  KHALA_SYNC_DB?: Readonly<{ connectionString: string }> | undefined
   OPENAGENTS_DB: D1Database
   PROVIDER_TOKEN_CUSTODY_AES_KEY_B64?: string | undefined
   PROVIDER_TOKEN_CUSTODY_AES_KEY_ID?: string | undefined
@@ -109,7 +111,7 @@ type OperatorProviderAccountDependencies<
   Bindings extends OperatorProviderAccountEnv,
 > = Readonly<{
   deleteStartedCodexDeviceLogin: (
-    kv: KVNamespace,
+    kv: AuthKvStore,
   ) => DeleteStartedCodexDeviceLogin
   makeProviderAccountRepository?: (db: D1Database) => ProviderAccountRepository
   pollDeviceLogin?: PollCodexDeviceLogin
@@ -131,12 +133,12 @@ type OperatorProviderAccountDependencies<
     db: D1Database,
     selector: Record<string, unknown>,
   ) => Promise<OperatorTargetUser | undefined>
-  readStartedCodexDeviceLogin: (kv: KVNamespace) => ReadStartedCodexDeviceLogin
+  readStartedCodexDeviceLogin: (kv: AuthKvStore) => ReadStartedCodexDeviceLogin
   requireAdminApiToken: (request: Request, env: Bindings) => Promise<boolean>
   startDeviceLogin?: StartCodexDeviceLogin
   storeConnectedCodexAuth: (env: Bindings) => StoreConnectedCodexAuth
   storeStartedCodexDeviceLogin: (
-    kv: KVNamespace,
+    kv: AuthKvStore,
   ) => StoreStartedCodexDeviceLogin
 }>
 
@@ -1987,7 +1989,7 @@ export const makeOperatorProviderAccountRoutes = <
             dependencies.startDeviceLogin ?? startOpenAiCodexDeviceLogin,
             {
               storeStartedDeviceLogin:
-                dependencies.storeStartedCodexDeviceLogin(env.AUTH_STORAGE),
+                dependencies.storeStartedCodexDeviceLogin(authKvStoreForEnv(env)),
             },
           ),
       )
@@ -2043,10 +2045,10 @@ export const makeOperatorProviderAccountRoutes = <
               attemptId,
               userId: record.attempt.userId,
             },
-            dependencies.readStartedCodexDeviceLogin(env.AUTH_STORAGE),
+            dependencies.readStartedCodexDeviceLogin(authKvStoreForEnv(env)),
             dependencies.storeConnectedCodexAuth(env),
             dependencies.pollDeviceLogin ?? pollOpenAiCodexDeviceLogin,
-            dependencies.deleteStartedCodexDeviceLogin(env.AUTH_STORAGE),
+            dependencies.deleteStartedCodexDeviceLogin(authKvStoreForEnv(env)),
           ),
       )
 

@@ -9,6 +9,7 @@
     "./kv-store": "./src/kv-store.ts",
     "./kv-store-memory": "./src/kv-store-memory.ts",
     "./kv-store-postgres": "./src/kv-store-postgres.ts",
+    "./kv-store-postgres-layer": "./src/kv-store-postgres-layer.ts",
     "./blob-store": "./src/blob-store.ts",
     "./blob-store-memory": "./src/blob-store-memory.ts",
     "./blob-store-gcs": "./src/blob-store-gcs.ts",

@@ -625,6 +625,12 @@ const runPromiseAllowlist = new Map([
   // main; this records the actual count. Ratchet down if the sign-in
   // callback becomes an Effect program end-to-end.
   ['workers/api/src/index.ts', 9],
+  // Added 2026-07-06 (CFG-3 #8518): auth/auth-kv.ts is the AUTH_STORAGE KV
+  // evacuation seam — oa-infra's Effect-typed KvStore bridged ONCE (a single
+  // named `run` helper) into the Promise-shaped store surface every auth
+  // route consumer already uses. Ratchet down when those consumers become
+  // Effect programs or CFG-9 adopts the KvStore Layer directly.
+  ['workers/api/src/auth/auth-kv.ts', 1],
   ['workers/api/src/observability.ts', 1],
   ['workers/api/src/omni-handlers.ts', 7],
   ['workers/api/src/thread-access.ts', 1],

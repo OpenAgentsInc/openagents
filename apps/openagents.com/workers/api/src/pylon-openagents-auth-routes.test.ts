@@ -1,3 +1,4 @@
+import type { AuthKvStore } from './auth/auth-kv'
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
@@ -110,7 +111,7 @@ describe('Pylon OpenAgents auth device-link routes', () => {
       requireBrowserSession: () =>
         Promise.resolve({ user: { userId: 'openauth_user_1' } }),
     })
-    const env = { AUTH_STORAGE: kv as unknown as KVNamespace }
+    const env = { AUTH_KV: kv as unknown as AuthKvStore }
 
     const start = await runRoute(
       handlers.handlePylonOpenAgentsAuthStartApi(
@@ -198,7 +199,7 @@ describe('Pylon OpenAgents auth device-link routes', () => {
       nowIso: () => '2026-06-25T12:00:00.000Z',
       requireBrowserSession: () => Promise.resolve(undefined),
     })
-    const env = { AUTH_STORAGE: kv as unknown as KVNamespace }
+    const env = { AUTH_KV: kv as unknown as AuthKvStore }
 
     const start = await runRoute(
       handlers.handlePylonOpenAgentsAuthStartApi(
