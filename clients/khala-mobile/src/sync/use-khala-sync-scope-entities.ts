@@ -46,6 +46,33 @@ export type KhalaSyncScopeEntitiesInput<T> = Readonly<{
 
 const runEffect = <A, E>(effect: Effect.Effect<A, E>): Promise<A> => Effect.runPromise(effect)
 
+/** Pure phase -> UI-state mapping (KS session `ScopeSyncState["phase"]` is a
+ * closed union; this only reads the string tag, so no import is needed).
+ * `must_refetch` is a TERMINAL phase the session parks in after its own
+ * bounded bootstrap retries are exhausted — it is NOT "loading" and NOT
+ * "live", so without an explicit arm here a scope stuck there (0 items)
+ * silently fell through to "loading" forever with no error ever shown. Real
+ * bug: a brand-new user's first sign-in landed on an eternal "Loading
+ * threads" spinner with no way to tell anything had gone wrong. */
+export const resolveScopeEntitiesStatusAndError = (
+  phase: string,
+  itemCount: number,
+): Readonly<{ status: KhalaSyncScopeEntitiesStatus; error: string | null }> => {
+  if (phase === "denied") {
+    return { error: "Khala Sync scope access was denied", status: "error" }
+  }
+  if (phase === "must_refetch") {
+    return {
+      error: "Khala Sync could not finish loading this scope. Restart the app to retry.",
+      status: "error",
+    }
+  }
+  if (itemCount > 0 || phase === "live") {
+    return { error: null, status: "ready" }
+  }
+  return { error: null, status: "loading" }
+}
+
 const decodeConfirmed = <T>(
   entities: ReadonlyArray<ConfirmedEntity>,
   decode: (value: unknown) => T
@@ -70,6 +97,7 @@ export function useKhalaSyncScopeEntities<T>(
       return undefined
     }
     let cancelled = false
+    let retriedMustRefetch = false
     const syncScope = SyncScope.make(scope)
 
     const refresh = async () => {
@@ -78,17 +106,23 @@ export function useKhalaSyncScopeEntities<T>(
         if (cancelled) return
         const items = decodeConfirmed(entities, decodeRef.current)
         const phase = session.state(syncScope).phase
-        const status: KhalaSyncScopeEntitiesStatus =
-          phase === "denied"
-            ? "error"
-            : items.length > 0 || phase === "live"
-              ? "ready"
-              : "loading"
-        setState({
-          error: phase === "denied" ? "Khala Sync scope access was denied" : null,
-          items,
-          status
-        })
+        // One bounded, automatic recovery attempt: `must_refetch` means the
+        // session's OWN bootstrap retries already ran out, but re-calling
+        // subscribe() on a scope that isn't mid-loop restarts the loop from
+        // scratch (session.ts resets `loopRunning` once the prior attempt's
+        // driveScope settles) — a real, cheap self-heal for a transient
+        // failure. Only ever tried once per mount so a persistently broken
+        // scope still surfaces as an error instead of retrying forever.
+        if (phase === "must_refetch" && !retriedMustRefetch) {
+          retriedMustRefetch = true
+          void runEffect(session.subscribe(syncScope)).catch(() => {
+            // A rejection here just means the retry attempt itself failed
+            // to even start; the phase-driven error state below still
+            // surfaces to the user either way.
+          })
+        }
+        const { error, status } = resolveScopeEntitiesStatusAndError(phase, items.length)
+        setState({ error, items, status })
       } catch (error) {
         if (cancelled) return
         setState({

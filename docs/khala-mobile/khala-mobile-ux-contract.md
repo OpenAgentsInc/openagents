@@ -86,7 +86,7 @@ top follow-up item for whoever picks this up next.
 
 ## Registry
 
-Registry version: `2026-07-06.3` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-06.4` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — RETIRED
 
@@ -127,6 +127,16 @@ Registry version: `2026-07-06.3` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `khala_auth_store.credential_epoch_purge.unit` (bun-test, unit): A stored ownerUserId/token pair written without a matching current credential-epoch marker (e.g. a leftover Tailnet-pairing or pre-GitHub-OpenAuth write) is unconditionally purged on load and never returned — independent of whether that token would still pass server-side validation. — `clients/khala-mobile/tests/khala-auth-store.test.ts`
 - **Verification:** bun test tests/khala-auth-store.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
 - **Authority boundary:** This binds only the local credential store's own trust decision (whether a stored token is even considered before/independent of server validation). It exists because khala_mobile.auth.stored_credential_revalidated_on_launch.v1's server re-validation was not sufficient on its own: a leftover token from a retired auth model (e.g. the old Tailnet-pairing flow) can still validate successfully server-side, which is exactly the wrong outcome — server validity is not the same as "issued by the current auth model".
+
+### `khala_mobile.sync.must_refetch_never_stuck_loading.v1` — ENFORCED
+
+- **Surface:** khala-mobile (sync)
+- **Stated by:** owner via khala-code-session on 2026-07-06
+- **Statement:** A thread-list (or any scope-entities read) that gets stuck in the sync session's must_refetch phase is never shown as an eternal, unexplained loading spinner. It surfaces as a real error with a restart hint, and the hook makes one bounded automatic retry attempt before giving up. Filed after a fresh GitHub sign-in landed on the Khala nav with a permanent 'Loading threads' spinner and no way to tell anything had gone wrong.
+- **Enforcement tier:** test-sweep
+- **Oracle** `resolve_scope_entities_status.must_refetch.unit` (bun-test, unit): A scope parked in the session's must_refetch phase (bootstrap retries exhausted) always maps to an error state with a clear message, regardless of item count — never silently "loading" forever. — `clients/khala-mobile/tests/resolve-scope-entities-status.test.ts`
+- **Verification:** bun test tests/resolve-scope-entities-status.test.ts tests/use-khala-sync-scope-entities.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
+- **Authority boundary:** Binds only the thread-list/scope-entities read hook's status mapping (what the UI shows for a given sync phase). It does not change the underlying session's bootstrap retry/backoff policy itself, and it does not cover why a scope's bootstrap fails in the first place — only that a failure is never silently indistinguishable from still-loading.
 
 ### `khala_mobile.composer.pushtotalk_disabled_when_unavailable.v1` — ENFORCED
 

@@ -172,6 +172,39 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
+        "Binds only the thread-list/scope-entities read hook's status mapping (what the UI shows for a given sync phase). It does not change the underlying session's bootstrap retry/backoff policy itself, and it does not cover why a scope's bootstrap fails in the first place — only that a failure is never silently indistinguishable from still-loading.",
+      blockerRefs: [],
+      contractId: "khala_mobile.sync.must_refetch_never_stuck_loading.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/src/sync/use-khala-sync-scope-entities.ts",
+        "clients/khala-mobile/tests/resolve-scope-entities-status.test.ts",
+      ],
+      oracles: [
+        {
+          description:
+            "A scope parked in the session's must_refetch phase (bootstrap retries exhausted) always maps to an error state with a clear message, regardless of item count — never silently 'loading' forever.",
+          id: "resolve_scope_entities_status.must_refetch.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/resolve-scope-entities-status.test.ts",
+        },
+      ],
+      productArea: "sync",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-06",
+      },
+      state: "enforced",
+      statement:
+        "A thread-list (or any scope-entities read) that gets stuck in the sync session's must_refetch phase is never shown as an eternal, unexplained loading spinner. It surfaces as a real error with a restart hint, and the hook makes one bounded automatic retry attempt before giving up. Filed after a fresh GitHub sign-in landed on the Khala nav with a permanent 'Loading threads' spinner and no way to tell anything had gone wrong.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/resolve-scope-entities-status.test.ts tests/use-khala-sync-scope-entities.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+    },
+    {
+      authorityBoundary:
         "This binds only the mic button's own gating logic (whether a tap is allowed to attempt native recognition) and draft-merge semantics. It does not cover whether the underlying native call actually captures audio on a device — see khala_mobile.stt.real_device_capture_proof.v1 for that.",
       blockerRefs: [],
       contractId: "khala_mobile.composer.pushtotalk_disabled_when_unavailable.v1",
@@ -906,5 +939,5 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-06.3",
+  version: "2026-07-06.4",
 }
