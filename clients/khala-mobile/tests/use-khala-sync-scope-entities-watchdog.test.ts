@@ -27,13 +27,17 @@ const flush = async (ticks = 5): Promise<void> => {
 }
 
 describe("useKhalaSyncScopeEntities watchdog", () => {
-  test("a scope stuck loading forever (never live, never must_refetch) force-errors after watchdogMs", async () => {
+  test("a scope stuck loading forever (never live, never must_refetch) force-errors after watchdogMs — and the error is STICKY through the session's retry-cycle churn", async () => {
     const scope = "scope.user.watchdog-test"
+    let notifyStateChange: ((changedScope: unknown) => void) | undefined
 
     const session = {
-      state: () => ({ phase: "bootstrapping" as const }),
+      state: () => ({ phase: "catching_up" as const }),
       subscribe: () => Effect.succeed(undefined),
-      subscribeState: () => () => undefined,
+      subscribeState: (callback: (changedScope: unknown) => void) => {
+        notifyStateChange = callback
+        return () => undefined
+      },
       unsubscribe: () => Effect.succeed(undefined),
     }
     const store = {
@@ -74,6 +78,22 @@ describe("useKhalaSyncScopeEntities watchdog", () => {
     expect(latest.status).toBe("error")
     expect(latest.error).not.toBeNull()
     expect(latest.items).toEqual([])
+
+    // STICKINESS (the observed build-13 regression of the first watchdog
+    // attempt): the session's infinite reconnect loop re-enters
+    // catching_up on every retry and notifies subscribeState — each
+    // notification triggers refresh(), which previously recomputed
+    // "loading" from the still-unresolved phase and OVERWROTE the watchdog
+    // error within a second ("error flashes for 1s, then Loading threads
+    // again"). After the watchdog has fired, retry churn must never flip
+    // the surfaced error back to loading.
+    await act(async () => {
+      notifyStateChange?.(SyncScope.make(scope))
+      await flush(3)
+    })
+    const afterChurn = states[states.length - 1]!
+    expect(afterChurn.status).toBe("error")
+    expect(afterChurn.error).not.toBeNull()
   })
 
   test("resolving to live BEFORE the watchdog fires never force-errors afterward", async () => {

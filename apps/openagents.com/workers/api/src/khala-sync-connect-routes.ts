@@ -24,6 +24,24 @@
 // `scope.fleet_run.*`) still requires the Worker's standard actor auth
 // (browser session or programmatic agent bearer; same closure as
 // push/log/bootstrap) — a missing/invalid session there is still a 401.
+//
+// BEARER VIA `?token=` QUERY PARAM (2026-07-06 mobile production fix): the
+// client transport (`packages/khala-sync-client/src/transport.ts`
+// `connectLive`) carries the bearer as a `token` query parameter because
+// WebSocket clients — browser AND React Native — cannot set an
+// `Authorization` header on the upgrade request. This route PROMOTES that
+// query token into an `Authorization: Bearer` header (only when no
+// Authorization header is already present) before the standard actor auth
+// runs, so agent bearers and OpenAuth user bearers both authenticate
+// through the exact same `authenticateRequestActor` path as every HTTP
+// route. Without this promotion, every header-less bearer client 401s:
+// browser clients never noticed (same-origin WS upgrades carry the session
+// COOKIE automatically), but the mobile app has no cookie session — every
+// authenticated mobile live-tail connect was refused, the sync session
+// retried forever without ever reaching `live`, and users sat on an
+// infinite "Loading threads" spinner. The forwarded hub request keeps the
+// promoted header, and the internal hub URL never carries the raw token
+// (only scope + cursor are re-encoded onto it).
 // `authenticate()` is still ATTEMPTED even for a public scope (so a
 // signed-in caller's userId still reaches `resolveScopeRead` and the hub,
 // unchanged from before this exception existed); only a caller who has NO
@@ -78,8 +96,17 @@ export type KhalaSyncConnectDependencies = Readonly<{
    * authenticated caller's userId still reaches `resolveScopeRead`); only
    * fatal (401) when the requested scope is NOT anonymous-readable (see
    * `isAnonymousReadableScope`). Runs BEFORE the upgrade is forwarded.
+   *
+   * Receives the NORMALIZED request — the route promotes a `?token=` query
+   * bearer into an `Authorization` header first (see the module doc and
+   * `withBearerFromQueryToken`). Wiring MUST authenticate against this
+   * passed request, never a closure over the raw inbound one: closing over
+   * the raw request silently 401s every header-less WebSocket bearer client
+   * (the 2026-07-06 mobile "Loading threads forever" production bug).
    */
-  authenticate: () => Promise<{ readonly userId: string } | undefined>
+  authenticate: (
+    request: Request,
+  ) => Promise<{ readonly userId: string } | undefined>
   /**
    * Scope-read authorization (KS-7.1): the taxonomy-complete resolver
    * (`makeKhalaSyncScopeReadResolver`) — same seam as GET /api/sync/log.
@@ -117,6 +144,26 @@ const parseNonNegativeInt = (raw: string): number | undefined => {
 
 /** Module-level default so a real deployment gets rate limiting with zero wiring. */
 const defaultAnonymousConnectRateLimit = makeKhalaSyncAnonymousConnectRateLimiter()
+
+/**
+ * Promote the client transport's `?token=` query bearer into an
+ * `Authorization: Bearer` header so the standard actor auth
+ * (`authenticateRequestActor`: header/cookie only) can see it. WebSocket
+ * clients cannot set headers on the upgrade request — the query parameter
+ * is the ONLY channel a browser or React Native client has for a bearer —
+ * so this promotion is what makes bearer-authenticated live tails possible
+ * at all. An already-present `Authorization` header always wins (never
+ * overwritten), and a missing/empty `token` param returns the request
+ * unchanged. Exported for direct unit coverage.
+ */
+export const withBearerFromQueryToken = (request: Request): Request => {
+  if (request.headers.get('authorization') !== null) return request
+  const token = new URL(request.url).searchParams.get('token')?.trim()
+  if (token === undefined || token === '') return request
+  const headers = new Headers(request.headers)
+  headers.set('authorization', `Bearer ${token}`)
+  return new Request(request, { headers })
+}
 
 /**
  * `GET /api/sync/connect?scope=&cursor=` — WebSocket upgrade proxied to the
@@ -161,9 +208,13 @@ export const handleKhalaSyncConnect = (
     // Auth BEFORE the upgrade: `scope.public.*` is the ONLY kind readable
     // without an actor (KS-8.x anonymous-read exception; module doc).
     // `authenticate()` is still attempted so a signed-in caller's userId
-    // reaches `resolveScopeRead` and the hub even on a public scope.
+    // reaches `resolveScopeRead` and the hub even on a public scope. The
+    // request is normalized FIRST so a `?token=` query bearer (the only
+    // auth channel a WebSocket client has — module doc) reaches the
+    // standard header-reading actor auth.
+    const authRequest = withBearerFromQueryToken(request)
     const anonymousAllowed = isAnonymousReadableScope(scope)
-    const actor = await deps.authenticate()
+    const actor = await deps.authenticate(authRequest)
     if (actor === undefined) {
       if (!anonymousAllowed) {
         return syncErrorResponse(

@@ -110,6 +110,7 @@ export function useKhalaSyncScopeEntities<T>(
     let cancelled = false
     let retriedMustRefetch = false
     let resolved = false
+    let watchdogFired = false
     const syncScope = SyncScope.make(scope)
 
     const refresh = async () => {
@@ -135,6 +136,15 @@ export function useKhalaSyncScopeEntities<T>(
         }
         const { error, status } = resolveScopeEntitiesStatusAndError(phase, items.length)
         if (status !== "loading") resolved = true
+        // Sticky watchdog error: once the watchdog has fired, a later
+        // refresh may only REPLACE it with a real resolution (ready, or a
+        // phase-derived error) — never silently flip it back to "loading".
+        // Without this, the session's own retry-cycle state churn (each
+        // reconnect attempt re-enters catching_up and notifies
+        // subscribeState) overwrote the watchdog's error within a second —
+        // the observed "error flashes for 1s, then Loading threads again"
+        // (2026-07-06, build 13).
+        if (watchdogFired && status === "loading") return
         setState({ error, items, status })
       } catch (error) {
         if (cancelled) return
@@ -176,6 +186,7 @@ export function useKhalaSyncScopeEntities<T>(
     const watchdog = setTimeout(() => {
       if (cancelled || resolved) return
       resolved = true
+      watchdogFired = true
       setState(current =>
         current.status === "loading"
           ? {

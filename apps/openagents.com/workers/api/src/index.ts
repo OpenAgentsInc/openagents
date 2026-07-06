@@ -13269,8 +13269,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/sync/connect',
     handler: (request, env, ctx) =>
       handleKhalaSyncConnect(request, {
-        authenticate: async () => {
-          const actor = await authenticateRequestActor(request, env, ctx)
+        // MUST authenticate the request the ROUTE passes (it has the
+        // `?token=` query bearer promoted into an Authorization header —
+        // the only auth channel a WebSocket client has), never a closure
+        // over the raw `request`: that closure 401'd every mobile live
+        // tail and left the app on an infinite "Loading threads" spinner
+        // (2026-07-06 production bug).
+        authenticate: async (authRequest) => {
+          const actor = await authenticateRequestActor(authRequest, env, ctx)
           if (actor === undefined) {
             return undefined
           }

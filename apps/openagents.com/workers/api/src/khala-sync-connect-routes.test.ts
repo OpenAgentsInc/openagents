@@ -18,6 +18,7 @@ import type {
 import {
   handleKhalaSyncConnect,
   KHALA_SYNC_CONNECT_PATH,
+  withBearerFromQueryToken,
   type KhalaSyncConnectDependencies,
 } from './khala-sync-connect-routes'
 import type { KhalaSyncScopeReadResolver } from './khala-sync-scope-auth'
@@ -393,5 +394,81 @@ describe('handleKhalaSyncConnect', () => {
     })
     expect(response.status).toBe(500)
     expect((await syncErrorBody(response)).code).toBe('internal')
+  })
+})
+
+// -----------------------------------------------------------------------------
+// `?token=` query-bearer promotion (2026-07-06 mobile production fix): the
+// client transport carries the bearer as a query parameter because WebSocket
+// clients (browser AND React Native) cannot set an Authorization header on
+// the upgrade request. Without this promotion every header-less bearer
+// client 401'd — browser clients never noticed (same-origin WS upgrades
+// carry the session cookie), but the mobile app has no cookie session, so
+// every authenticated mobile live tail was refused and the app sat on an
+// infinite "Loading threads" spinner.
+// -----------------------------------------------------------------------------
+describe('withBearerFromQueryToken', () => {
+  test('promotes ?token= into an Authorization: Bearer header', () => {
+    const request = get({ scope: OWN_SCOPE, token: 'oa_agent_secret' })
+    const normalized = withBearerFromQueryToken(request)
+    expect(normalized.headers.get('authorization')).toBe('Bearer oa_agent_secret')
+    // The original upgrade header survives the copy.
+    expect(normalized.headers.get('upgrade')).toBe('websocket')
+  })
+
+  test('an existing Authorization header is NEVER overwritten by the query token', () => {
+    const request = get(
+      { scope: OWN_SCOPE, token: 'query-token' },
+      { authorization: 'Bearer header-token', upgrade: 'websocket' },
+    )
+    const normalized = withBearerFromQueryToken(request)
+    expect(normalized.headers.get('authorization')).toBe('Bearer header-token')
+  })
+
+  test('no token param (or an empty one) leaves the request unchanged', () => {
+    expect(withBearerFromQueryToken(get()).headers.get('authorization')).toBeNull()
+    expect(
+      withBearerFromQueryToken(get({ scope: OWN_SCOPE, token: '  ' })).headers.get(
+        'authorization',
+      ),
+    ).toBeNull()
+  })
+})
+
+describe('handleKhalaSyncConnect query-token auth', () => {
+  test('authenticate receives the NORMALIZED request with the query bearer promoted to a header', async () => {
+    const hub = fakeHub(() => new Response(null, { status: 204 }))
+    const seenAuthHeaders: Array<string | null> = []
+    const deps: KhalaSyncConnectDependencies = {
+      authenticate: async authRequest => {
+        seenAuthHeaders.push(authRequest.headers.get('authorization'))
+        return { userId: USER_ID }
+      },
+      hubNamespace: hub.namespace,
+      resolveScopeRead: defaultResolveScopeRead,
+    }
+    const response = await Effect.runPromise(
+      handleKhalaSyncConnect(get({ scope: OWN_SCOPE, token: 'oa_agent_secret' }), deps),
+    )
+    expect(response.status).toBe(204)
+    expect(seenAuthHeaders).toEqual(['Bearer oa_agent_secret'])
+    // The internal hub URL never carries the raw token — only scope+cursor.
+    expect(hub.requests).toHaveLength(1)
+    expect(hub.requests[0]!.url).not.toContain('oa_agent_secret')
+  })
+
+  test('a query-token whose bearer resolves NO actor still 401s a personal scope (promotion is not a grant)', async () => {
+    const hub = fakeHub(() => {
+      throw new Error('hub must not be reached unauthenticated')
+    })
+    const deps: KhalaSyncConnectDependencies = {
+      authenticate: async () => undefined,
+      hubNamespace: hub.namespace,
+      resolveScopeRead: defaultResolveScopeRead,
+    }
+    const response = await Effect.runPromise(
+      handleKhalaSyncConnect(get({ scope: OWN_SCOPE, token: 'garbage' }), deps),
+    )
+    expect(response.status).toBe(401)
   })
 })
