@@ -2,6 +2,21 @@
 
 Date: 2026-07-06
 
+> **SUPERSEDED (owner decision, 2026-07-06, same day):** this evaluation's
+> recommendation is **not adopted**. The cloud execution substrate is
+> **Agent Computers** — Firecracker microVMs on OpenAgents' own GCP
+> infrastructure via the already-built `cloud/`-repo provisioner and the
+> flag-gated `cloud-coding-session-routes.ts` seam — per
+> `docs/khala-code/2026-07-06-agent-computers-strategy.md` (issue #8503).
+> Decisive factors: the Firecracker/GCE path already exists and is ours to
+> arm rather than build; per-run microVM isolation beats persistent pooled
+> third-party VMs on the exact surface that matters (arbitrary user repo
+> code + scoped credentials + credit charging); and exe.dev's security
+> posture is too sparse for that trust boundary. This doc's
+> authority-model conclusions (admission/accounting/sync stay ours) and
+> its don't-boot-per-message warm-context insight carry over and are
+> folded into the strategy doc. Retained as a historical evaluation only.
+
 ## Summary
 
 exe.dev looks like a strong candidate for a simpler first version of the

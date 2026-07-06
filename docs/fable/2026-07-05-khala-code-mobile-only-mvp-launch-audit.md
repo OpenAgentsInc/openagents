@@ -225,16 +225,18 @@ notifications** (zero APNs/FCM/Expo-push code anywhere, client or server).
   `vertex-gemini`. Mobile sync entities and the mobile wire contract remain
   unchanged. Ops details live in
   `docs/khala-mobile/2026-07-06-org-cloud-executor-runbook.md`.
-- **2026-07-06 exe.dev substrate update:** the first hosted-Pylon substrate to
-  spike should be exe.dev before more bespoke GCE control-plane work. The audit
-  in `docs/khala-code/2026-07-06-exe-dev-cloud-delegation-audit.md` finds that
-  exe.dev's SSH/HTTPS API, setup scripts/custom images, tags, VM metrics, and
-  GitHub integrations are enough to try an OpenAgents-owned hosted-Pylon pool.
-  Treat the Personal plan's 50 VMs as VM slots over a shared resource pool, not
-  50 dedicated heavy workers. exe.dev simplifies provisioning only: OpenAgents
-  still owns mobile admission, exact usage receipts, credit charging, sync
-  projection, and the invariant that org-cloud execution never routes through
-  another user's Pylon.
+- **2026-07-06 substrate decision (supersedes the same-day exe.dev
+  recommendation):** the cloud execution substrate is **Agent Computers** —
+  Firecracker microVMs on OpenAgents' own GCP infrastructure, separately
+  billable against credits — per the owner-decided strategy in
+  `docs/khala-code/2026-07-06-agent-computers-strategy.md` (issue #8503).
+  The exe.dev evaluation
+  (`docs/khala-code/2026-07-06-exe-dev-cloud-delegation-audit.md`) is
+  retained as history with a superseded banner; its authority-model
+  conclusions carry over. "Hosted Pylon" is retired from planning and
+  product language — the Pylon runtime remains the internal executor
+  inside the agent-computer image, but the provisioned/metered/billed unit
+  is the agent computer.
 - Repo access: cloud checkout today is **public pinned SHA only**
   (`apps/pylon/src/workspace-materializer.ts` rejects private repos). The
   SCM auth-broker seam exists (`openagents.pylon.scm_auth_broker.v1`,
@@ -399,13 +401,14 @@ dependency map in its first comment):
   sign-in UI + Tailnet contract retirement).
 - **WS-B Repos**: #8471 (mobile-bearer repo API), #8472 (repo picker UI +
   thread↔repo binding).
-- **WS-C Cloud execution**: #8473 (closed: org cloud executor pool), #8474
-  (credit-gated org-lane dispatch policy, now exe.dev-hosted-Pylon-aware),
-  #8475 (private-repo checkout via user OAuth through the SCM broker; evaluate
-  exe.dev GitHub Integration only as an explicit launch-trust option), #8476
-  (isolation posture doc + enforcement, including the exe.dev persistent-VM
-  trust model), #8477 (branch/PR writeback via user GitHub authorization;
-  exe.dev `--act-as-user` limitations are a constraint to test).
+- **WS-C Cloud execution**: #8473 (closed: org cloud executor pool), #8503
+  (AC-1: Agent Computers — arm the Firecracker/GCE provisioning path, first
+  real microVM turn), #8474 (credit-gated dispatch/admission against
+  agent-computer capacity), #8475 (private-repo checkout via user OAuth
+  through OUR SCM broker — the only credential path into an agent
+  computer), #8476 (isolation posture per the strategy doc §4:
+  Firecracker per-work-context), #8477 (branch/PR writeback via user
+  GitHub authorization).
 - **WS-D Credits**: #8478 ($10 GitHub-keyed signup grant), #8479 (coding-run
   metering + balance gate), #8480 (balance + history UI).
 - **WS-E IAP**: #8481 (RevenueCat client integration), #8482 (server
@@ -552,12 +555,15 @@ this section is the operative plan. Two new owner decisions are folded in:
    console — the manual-grant surface that replaces IAP at launch), #8501
    (ops views: users/runs/executor health). #8500 is on the MVP critical
    path: it is how users get credits at launch.
-3. **exe.dev-first hosted-Pylon substrate** — after the
-   `docs/khala-code/2026-07-06-exe-dev-cloud-delegation-audit.md` review, S1
-   should try exe.dev as the first org-cloud VM substrate before investing more
-   in bespoke GCE provisioning. This changes provisioning strategy, not product
-   authority: OpenAgents still owns admission, accounting, sync, and owner-scope
-   invariants.
+3. **Agent Computers on Firecracker/GCP (supersedes the brief same-day
+   exe.dev direction)** — owner decision recorded in
+   `docs/khala-code/2026-07-06-agent-computers-strategy.md`: turns execute
+   in Firecracker microVMs on our own GCE infrastructure via the
+   already-built `cloud/`-repo provisioner and the flag-gated
+   `cloud-coding-session-routes.ts` seam (#8503 arms it). Agent computers
+   are **separately billable** — active compute time draws against credits
+   alongside exact token usage. Product authority is unchanged: OpenAgents
+   owns admission, accounting, sync, and owner-scope invariants.
 
 ### 12.1 What landed (17 of 27 original workstream issues closed + shipped)
 
@@ -613,8 +619,9 @@ All merged to `main`, each closed with evidence on its issue:
 
 | Issue | State | Why it's open |
 |---|---|---|
-| #8474–#8477 (C2–C5) | Not started | Were serialized behind C1 in the Codex lane. Their issue threads now carry the exe.dev plan update: #8474 admits against exe.dev-hosted-Pylon org capacity first, #8475/#8477 evaluate exe.dev GitHub Integration without silently replacing user OAuth authority, and #8476 records/enforces the exe.dev persistent-VM isolation posture. |
-| #8479 (D2 metering) | Not started | Serialized behind #8474–#8477; it charges from #8473's landed usage receipts plus the remaining dispatch/admission contracts. exe.dev `stat`/VM metrics are operational telemetry only, never billing truth. |
+| #8503 (AC-1 Agent Computers) | **New, S1's first item** | Arms the existing Firecracker/GCE provisioning path (`cloud-coding-session-routes.ts` + the private `cloud/` provisioner) and proves the first real mobile turn inside a microVM, with lifecycle receipts. Strategy: `docs/khala-code/2026-07-06-agent-computers-strategy.md`. |
+| #8474–#8477 (C2–C5) | Not started | Were serialized behind C1; now build against the Agent Computers strategy (redirect comments on each issue): #8474 admits against agent-computer capacity from the control-plane ledger, #8475 delivers scoped credentials into the microVM via OUR SCM broker only, #8476 documents/enforces the strategy §4 Firecracker posture, #8477 unchanged. All exe.dev framing withdrawn. |
+| #8479 (D2 metering) | Not started | Expanded: charges BOTH meters — exact token receipts (landed) and agent-computer compute-time from lifecycle receipts (`resource_usage_receipt.v1`). Owns the mid-run exhaustion policy + pre-dispatch cost line. Compute rate is NEEDS_OWNER. Host/VM metrics are ops telemetry only, never billing truth. |
 | #8490 (I1 Android/Play) | Not started | Convergence tier; emulator-smoke half is agent-doable now, Play Console half owner-gated. |
 | #8491 (I2 App Store pack) | Not started | Convergence tier; metadata/labels prep agent-doable, ASC actions owner-gated. |
 | #8492 (I3 E2E QA) | Not started | Convergence tier; sign-in→repo-pick flows testable now, full straight line needs C-lane. |
@@ -631,13 +638,14 @@ cross-lane shapes, clean worktree per issue, tests + `check:deploy` green,
 comment+close, no `--no-verify`, NEEDS_OWNER routing). Three lanes:
 
 - **Lane S1 — cloud execution spine (the critical path)**:
-  #8473 is landed; continue with #8474 → #8475 → #8476 → #8477 → #8479
-  in order. Use exe.dev as the first hosted-Pylon substrate to spike: one
-  active run per VM initially, capacity surfaced as a small hosted-Pylon pool
-  ledger, and Personal-plan "50 VMs" treated as shared-pool VM slots rather
-  than guaranteed parallel heavy workers. S1 owns `apps/pylon` org-executor
-  surfaces + the dispatch/admission and cloud/usage route seams in
-  `workers/api`.
+  #8473 is landed; continue with **#8503 (AC-1 Agent Computers) → #8474 →
+  #8475 → #8476 → #8477 → #8479** in order, per
+  `docs/khala-code/2026-07-06-agent-computers-strategy.md`. The substrate
+  is Firecracker microVMs on our own GCE hosts through the already-built
+  `cloud-coding-session-routes.ts` → `oa-codex-control` seam — no exe.dev,
+  no "hosted Pylon" language. S1 owns `apps/pylon` org-executor surfaces +
+  the dispatch/admission and cloud/usage route seams in `workers/api`
+  (control-plane authority stays in the private `cloud/` repo).
 - **Lane S2 — Aiur**: #8499 → #8500 → #8501 in order. Owns the new
   `apps/aiur/` tree end-to-end plus the owner-gated admin credit routes it
   adds to the main Worker (`/api/admin/credits/*` seam only). #8500 lands
