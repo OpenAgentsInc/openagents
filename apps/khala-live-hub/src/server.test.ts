@@ -108,7 +108,7 @@ const openSocket = async (
 
 describe("auth", () => {
   test("healthz needs no token", async () => {
-    const response = await fetch(`${base}/healthz`)
+    const response = await fetch(`${base}/health`)
     expect(response.status).toBe(200)
     expect((await response.json()) as Record<string, unknown>).toMatchObject({
       ok: true,

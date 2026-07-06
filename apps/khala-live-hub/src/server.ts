@@ -5,14 +5,14 @@
 // served behind the internal Worker routes, so capture and the Worker (or
 // the future Cloud Run monolith, CFG-9) only change the base URL:
 //
-//   GET  /healthz                          — liveness (no auth)
+//   GET  /health                          — liveness (no auth)
 //   POST /append?scope=…                   — capture batch append
 //   GET  /log?scope=…&cursor=…&limit=…     — window log pages
 //   POST /access-changed  { scope }        — MustRefetch(access_changed)
 //   GET  /connect?scope=…&cursor=…         — live-tail WebSocket upgrade
 //
 // AUTH: one shared bearer (`KHALA_LIVE_HUB_TOKEN`, Secret Manager) required
-// on every route except /healthz — via `Authorization: Bearer …` or the
+// on every route except /health — via `Authorization: Bearer …` or the
 // `?token=` query parameter. The query fallback exists because WebSocket
 // clients cannot always set upgrade headers (the same reality behind
 // `withBearerFromQueryToken` on the Worker's public connect route, commit
@@ -185,7 +185,7 @@ export const startLiveHubServer = (
     async fetch(request, srv) {
       const url = new URL(request.url)
 
-      if (url.pathname === "/healthz") {
+      if (url.pathname === "/health") {
         return liveHubJson({
           ok: true,
           scopes: service.scopeCount(),
@@ -315,11 +315,19 @@ export const startLiveHubServer = (
             }
           },
           close: (code, reason) => {
-            try {
-              ws.close(code, reason)
-            } catch {
-              // already closed
-            }
+            // Flush-then-close: a send immediately followed by close can
+            // drop the final frame through the Cloud Run HTTP proxy
+            // (observed: MustRefetchFrame lost, client saw 1006). Losing
+            // it is safe (revocation/refetch is re-enforced at reconnect
+            // by the route layer) but delivering it is prompt — give the
+            // socket one macrotask to flush before the close frame.
+            setTimeout(() => {
+              try {
+                ws.close(code, reason)
+              } catch {
+                // already closed
+              }
+            }, 50)
           },
         }
         ws.data.adapter = adapter

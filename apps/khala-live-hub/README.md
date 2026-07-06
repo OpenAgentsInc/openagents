@@ -13,14 +13,14 @@ ported 1:1 — see `src/scope-hub.ts`).
 
 | Route | Purpose |
 | --- | --- |
-| `GET /healthz` | liveness (no auth) |
+| `GET /health` | liveness (no auth) |
 | `POST /append?scope=…` | capture batch append (idempotent by version, dense with the window edge, 409 `khala_sync_hub_version_gap` on gaps) |
 | `GET /log?scope=…&cursor=…&limit=…` | LogPage from the window; 410 behind-window / 409 ahead-of-window typed `SyncError`s |
 | `POST /access-changed` `{scope}` | broadcast `MustRefetch(access_changed)` + close every scope socket (KS-7.1) |
 | `GET /connect?scope=…&cursor=…` | live-tail WebSocket upgrade (catch-up from cursor, then DeltaFrame fan-out) |
 
 Auth: one shared bearer (`KHALA_LIVE_HUB_TOKEN`) on everything except
-`/healthz`, via `Authorization: Bearer …` or `?token=` (WebSocket clients
+`/health`, via `Authorization: Bearer …` or `?token=` (WebSocket clients
 cannot always set upgrade headers — the same channel as commit
 `b45071b9b6` on the Worker's public connect route, which is preserved:
 the route still authenticates END USERS itself via

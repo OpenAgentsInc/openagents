@@ -90,5 +90,5 @@ gcloud run deploy "$SERVICE" \
 URL="$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')"
 echo "==> Done. Service URL: $URL"
 echo "    Verify:"
-echo "      curl -s $URL/healthz                                   # => {\"ok\":true,...}"
+echo "      curl -s $URL/health                                   # => {\"ok\":true,...}"
 echo "      curl -s -o /dev/null -w '%{http_code}' $URL/log        # => 401 (fail closed)"
