@@ -116,4 +116,22 @@ describe('deploy:safe package command', () => {
     expect(productionMigration).toBeGreaterThan(smoke)
     expect(productionUpload).toBeGreaterThan(productionMigration)
   })
+
+  test('runs the khala-sync live-seam smoke after the staging upload and before any production step (#8507)', () => {
+    const stagingUpload = deploySafe.indexOf(
+      'wrangler deploy --env staging --containers-rollout=none --assets ../../apps/web/dist',
+    )
+    const seamSmoke = deploySafe.indexOf(
+      'bun run predeploy:khala-sync-live-seam-smoke',
+    )
+    const productionMigration = deploySafe.indexOf(
+      'wrangler d1 migrations apply openagents-autopilot --remote',
+    )
+
+    // The 2026-07-06 WebSocket-auth incident gate: a cookie-less bearer must
+    // complete a real connectLive against staging or production never ships.
+    expect(stagingUpload).toBeGreaterThan(-1)
+    expect(seamSmoke).toBeGreaterThan(stagingUpload)
+    expect(productionMigration).toBeGreaterThan(seamSmoke)
+  })
 })

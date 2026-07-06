@@ -15,7 +15,8 @@
     "README.md"
   ],
   "scripts": {
-    "test": "bun test",
+    "test": "bun test && node scripts/check-test-import-coverage.mjs",
+    "check:test-import-coverage": "node scripts/check-test-import-coverage.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
