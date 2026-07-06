@@ -13,6 +13,7 @@ import { SignInScreen } from "./components/sign-in-screen"
 import { AppNavigator } from "./navigators/AppNavigator"
 import { KhalaMobileSyncRuntimeProvider } from "./sync/khala-mobile-sync-runtime-context"
 import { KhalaThemeProvider } from "./theme/khala-theme-provider"
+import { OtaUpdateGate } from "./updates/ota-update-gate"
 
 // React Native's own dev-only LogBox notification pill renders with broken
 // (unreadable/invisible) text styling on this setup. It's dev chrome, not
@@ -55,6 +56,9 @@ export const App = () => (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <KhalaThemeProvider>
         <StatusBar style="light" />
+        {/* Mounted above auth so OTA checking works even on the sign-in
+         * screen — the exact screen a stale/stuck build gets caught on. */}
+        <OtaUpdateGate />
         <KhalaAuthProvider>
           <AuthGate />
         </KhalaAuthProvider>
