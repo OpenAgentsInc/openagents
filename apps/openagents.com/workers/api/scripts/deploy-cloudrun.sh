@@ -80,23 +80,56 @@ SET_SECRETS=(
   "RESEND_API_KEY=openagents-resend-api-key:latest"
   "VERTEX_SA_KEY=openagents-vertex-sa-key:latest"
   "STRIPE_API_KEY=${STRIPE_SECRET}:latest"
+  # Cloud coding sessions control-plane bearer (oa-cloud-run-bridge).
+  "OA_CLOUD_CONTROL_TOKEN=oa-cloud-run-bridge-control-token:latest"
+  # CFG-8 GCS artifacts (bucket name is a committed wrangler var).
+  "ARTIFACTS_GCS_HMAC_ACCESS_KEY_ID=oa-artifacts-gcs-hmac-access-key-id:latest"
+  "ARTIFACTS_GCS_HMAC_SECRET=oa-artifacts-gcs-hmac-secret:latest"
+  "AGENT_REGISTRATION_SECRET=openagents-agent-registration-secret:latest"
+  "ARTANIS_AGENT_TOKEN=openagents-artanis-agent-token:latest"
 )
 
 if [[ "$TARGET" == "production" ]]; then
   SET_SECRETS+=(
     "GITHUB_CLIENT_SECRET=openagents-github-client-secret:latest"
+    # SHC live dispatch (config validation requires the bearer when
+    # SHC_DISPATCH_MODE=live).
+    "SHC_CONTROL_API_BEARER_TOKEN=openagents-shc-control-api-bearer:latest"
+    "SHC_RUNNER_CALLBACK_TOKEN=openagents-shc-runner-callback-token:latest"
     # D1-over-HTTP bridge for not-yet-migrated CFG-4 domains (typed 503 when
     # the daily free-tier quota is exhausted — see #8524).
     "CLOUDFLARE_API_TOKEN=openagents-monolith-cf-d1-token:latest"
+    # Hydralisk GPT-OSS lanes (secondary; 120B base URL is CF-only — see the
+    # #8524 NEEDS-OWNER catalogue).
+    "HYDRALISK_BASE_URL=hydralisk-gptoss20b-base-url:latest"
+    "HYDRALISK_BEARER_TOKEN=hydralisk-gptoss20b-bearer:latest"
+    "HYDRALISK_GPT_OSS_120B_BEARER_TOKEN=hydralisk-gptoss120b-bearer:latest"
   )
+  # Hydralisk GLM-5.2-REAP-504B fleet (the Khala primary backing): one
+  # BASE_URL + BEARER_TOKEN pair per replica id from the committed
+  # HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS wrangler var.
+  GLM_REPLICAS=(
+    g4-4g-b-20260625154532
+    g4-4g-central1f-spot-20260625203000
+    g4-4g-east1b-spot-20260625203000
+    g4-4g-east1d-spot-20260625203000
+    g4-4g-east5a-spot-20260625203000
+    g4-4g-east5b-spot-20260625203000
+    g4-4g-east5c-spot-20260625211500
+    g4-4g-south1b-spot-20260625211500
+    g4-4g-west1a-spot-20260625203000
+    g4-8g-b-20260624214500
+  )
+  for replica in "${GLM_REPLICAS[@]}"; do
+    suffix="$(echo "$replica" | tr '[:lower:]-' '[:upper:]_')"
+    SET_SECRETS+=(
+      "HYDRALISK_GLM_52_REAP_504B_${suffix}_BASE_URL=hydralisk-glm-${replica}-base-url:latest"
+      "HYDRALISK_GLM_52_REAP_504B_${suffix}_BEARER_TOKEN=hydralisk-glm-${replica}-bearer:latest"
+    )
+  done
 fi
 
 SECRET_FLAG="$(IFS=,; echo "${SET_SECRETS[*]}")"
-
-EXTRA_ENV=""
-if [[ "$TARGET" == "production" ]]; then
-  EXTRA_ENV="CLOUDFLARE_ACCOUNT_ID=54fac8b750a29fdda9f2fa0f0afaed90,CLOUDFLARE_D1_DATABASE_ID=9644ea09-f682-4971-98de-e0c791cb67fb"
-fi
 
 echo "==> Deploying $SERVICE to Cloud Run ($REGION)"
 gcloud run deploy "$SERVICE" \
@@ -112,7 +145,6 @@ gcloud run deploy "$SERVICE" \
   --timeout 3600 \
   --concurrency 80 \
   --env-vars-file "dist-cloudrun/env-${TARGET}.yaml" \
-  ${EXTRA_ENV:+--update-env-vars "$EXTRA_ENV"} \
   --set-secrets "$SECRET_FLAG"
 
 SERVICE_URL="$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format='value(status.url)')"

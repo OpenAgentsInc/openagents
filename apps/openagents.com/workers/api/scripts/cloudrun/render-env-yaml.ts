@@ -105,9 +105,21 @@ const liveHubUrl =
 Object.assign(vars, {
   KHALA_SYNC_LIVE_HUB_URL: liveHubUrl,
   OPENAGENTS_RUNTIME: 'cloudrun-monolith',
+  // D1-over-HTTP bridge coordinates for the not-yet-migrated CFG-4 domains
+  // (the token itself is a Secret Manager secret; these two are public ids).
+  ...(target === 'production'
+    ? {
+        CLOUDFLARE_ACCOUNT_ID: '54fac8b750a29fdda9f2fa0f0afaed90',
+        CLOUDFLARE_D1_DATABASE_ID: '9644ea09-f682-4971-98de-e0c791cb67fb',
+      }
+    : {}),
   // The CFG-10 LB (and staging smoke tooling) forwards the original host in
   // X-Forwarded-Host; the worker routes by hostname (issuer vs app).
   OPENAGENTS_TRUST_FORWARDED_HOST: '1',
+  // Cloud coding sessions (the org cloud executor control plane) — the URL
+  // is a public service address; the bearer rides Secret Manager.
+  CLOUD_CODING_SESSIONS_ENABLED: 'true',
+  OA_CLOUD_CONTROL_URL: 'https://oa-cloud-run-bridge-ezxz4mgdsq-uc.a.run.app',
 })
 
 // wrangler staging pins KHALA_SYNC_LIVE_HUB_URL too; the assign above wins
