@@ -359,9 +359,13 @@ export const pushBatchToHub = async (
     }
   }
 
-  const body = (await response.json().catch(() => undefined)) as
-    | Record<string, unknown>
-    | undefined
+  const raw = (await response.json().catch(() => undefined)) as unknown
+  // A body of literal JSON `null` (seen from upstream 5xx paths) must be
+  // handled like an unparseable body — never dereferenced.
+  const body =
+    raw !== null && typeof raw === "object"
+      ? (raw as Record<string, unknown>)
+      : undefined
 
   if (response.ok && body !== undefined && body["ok"] === true) {
     const appended = typeof body["appended"] === "number" ? body["appended"] : 0
@@ -543,6 +547,12 @@ export const captureScopePass = async (
         { appendUrl: config.mirrorAppendUrl, token: config.mirrorToken },
         scope,
         page.entries,
+      ).catch(
+        (error): HubAppendOutcome => ({
+          kind: "failed",
+          status: 0,
+          detail: `mirror threw: ${describeErrorSafe(error)}`,
+        }),
       )
       if (mirror.kind !== "ok") {
         config.log(

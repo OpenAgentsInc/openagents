@@ -3,6 +3,7 @@ import {
   EntityType,
   publicScope,
   type SyncScope,
+  decodeChangelogEntry,
 } from "@openagentsinc/khala-sync"
 import { SQL } from "bun"
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test"
@@ -11,6 +12,7 @@ import {
   runCapturePass,
   startCaptureDaemon,
   type CaptureConfig,
+  pushBatchToHub,
   runCaptureOnce,
 } from "./capture.js"
 import { runMigrations } from "./migrate.js"
@@ -223,6 +225,41 @@ describe("captureConfigFromEnv", () => {
 const entityType = EntityType.make("thing")
 let scopeCounter = 0
 const freshScope = (): SyncScope => publicScope(`capture-test-${++scopeCounter}`)
+
+describe("pushBatchToHub response hardening", () => {
+  test("a JSON `null` body on a non-2xx response maps to a typed failure, never a throw (mirror-exposed 2026-07-06)", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: () =>
+        new Response("null", {
+          status: 500,
+          headers: { "content-type": "application/json" },
+        }),
+    })
+    try {
+      const outcome = await pushBatchToHub(
+        { appendUrl: `http://127.0.0.1:${server.port}/append`, token: "t" },
+        "scope.thread.null-body" as never,
+        [
+          decodeChangelogEntry({
+            scope: "scope.thread.null-body",
+            version: 1,
+            entityType: "thread",
+            entityId: "e1",
+            op: "upsert",
+            committedAt: "2026-07-06T00:00:00.000Z",
+          }),
+        ],
+      )
+      expect(outcome.kind).toBe("failed")
+      if (outcome.kind === "failed") {
+        expect(outcome.status).toBe(500)
+      }
+    } finally {
+      server.stop(true)
+    }
+  })
+})
 
 describe.skipIf(!hasLocalPostgres())("capture against local Postgres", () => {
   let pg: LocalPostgres
