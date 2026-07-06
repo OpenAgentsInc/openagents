@@ -25,6 +25,7 @@ import {
 } from "../config/khala-sync-demo"
 import { mobileProblemMessageSafe } from "../network/mobile-problem"
 import { unregisterPushNotificationsAsync } from "../push/push-notifications-client"
+import { resolveVerifiedStoredCredentials } from "./khala-auth-resume-verify-core"
 import { clearStoredCredentials, loadStoredCredentials, saveStoredCredentials } from "./khala-auth-store"
 import {
   initialKhalaAuthMachineState,
@@ -101,10 +102,32 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
     let cancelled = false
     const run = async () => {
       const storedCredentials = await loadStoredCredentials()
+
+      // A stored credential is not trusted blindly — it may be a leftover
+      // token from a prior auth model (e.g. the retired Tailnet-pairing
+      // flow) or a since-revoked mobile OpenAuth session that TestFlight
+      // build updates otherwise carry forward untouched (Keychain data
+      // survives an app update). Re-validate against the server on every
+      // launch, exactly like a fresh sign-in does, before ever treating the
+      // app as signed in; an invalid credential is cleared so the user
+      // lands on the real GitHub sign-in screen instead of a stale session.
+      const verifiedStoredCredentials = await resolveVerifiedStoredCredentials(
+        storedCredentials,
+        {
+          clearStoredCredentials,
+          validate: credentials =>
+            validateKhalaCredentials({
+              baseUrl: KHALA_SYNC_DEMO_BASE_URL,
+              ownerUserId: credentials.ownerUserId,
+              token: credentials.token,
+            }),
+        },
+      )
+
       if (cancelled || !mountedRef.current) return
       dispatch({
         devCredentials: devEnvCredentials,
-        storedCredentials,
+        storedCredentials: verifiedStoredCredentials,
         type: "stored_credentials_loaded",
       })
     }

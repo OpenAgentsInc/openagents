@@ -86,7 +86,7 @@ top follow-up item for whoever picks this up next.
 
 ## Registry
 
-Registry version: `2026-07-06.1` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-06.2` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — RETIRED
 
@@ -107,6 +107,16 @@ Registry version: `2026-07-06.1` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `no_tailnet_discovery_status.unit` (bun-test, unit): The mobile-only auth machine has no Tailnet discovery status, so a cold start cannot default into desktop probing before login. — `clients/khala-mobile/tests/ux-contracts.test.ts`
 - **Verification:** bun test tests/ux-contracts.test.ts tests/khala-auth-state-machine.test.ts tests/mobile-openauth.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
 - **Authority boundary:** Binds the signed-out mobile MVP auth surface and auth state machine only. It does not grant repo writeback, spend, payout, or admin authority; the server-side OpenAuth and Khala Sync scope checks remain authoritative.
+
+### `khala_mobile.auth.stored_credential_revalidated_on_launch.v1` — ENFORCED
+
+- **Surface:** khala-mobile (auth)
+- **Stated by:** owner via khala-code-session on 2026-07-06
+- **Statement:** A stored/leftover credential (e.g. from a prior auth model, or a revoked session that Keychain data otherwise carries across a TestFlight build update) must never silently skip the sign-in screen. Every app launch re-validates a stored credential against the server before treating the app as signed in, exactly like a fresh sign-in does; an invalid one is cleared so the user sees the real GitHub sign-in screen. Filed after a real TestFlight build carried forward a stale pre-pivot session and skipped straight to old signed-in UI.
+- **Enforcement tier:** test-sweep
+- **Oracle** `resolve_verified_stored_credentials.unit` (bun-test, unit): A stored credential that fails server-side validation is cleared and treated as signed-out; a stored credential that validates is trusted unchanged; no stored credential never triggers a validation call. — `clients/khala-mobile/tests/khala-auth-resume-verify-core.test.ts`
+- **Verification:** bun test tests/khala-auth-resume-verify-core.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
+- **Authority boundary:** Binds only whether the app trusts a locally stored credential before showing itself as signed in. It does not change server-side session/token validation itself (Khala Sync's own bootstrap check remains authoritative), and it does not cover the initial sign-in flow (already exercised fresh at sign-in time).
 
 ### `khala_mobile.composer.pushtotalk_disabled_when_unavailable.v1` — ENFORCED
 

@@ -105,6 +105,40 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
+        "Binds only whether the app trusts a locally stored credential before showing itself as signed in. It does not change server-side session/token validation itself (Khala Sync's own bootstrap check remains authoritative), and it does not cover the initial sign-in flow (already exercised fresh at sign-in time).",
+      blockerRefs: [],
+      contractId: "khala_mobile.auth.stored_credential_revalidated_on_launch.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/src/auth/khala-auth-context.tsx",
+        "clients/khala-mobile/src/auth/khala-auth-resume-verify-core.ts",
+        "clients/khala-mobile/tests/khala-auth-resume-verify-core.test.ts",
+      ],
+      oracles: [
+        {
+          description:
+            "A stored credential that fails server-side validation is cleared and treated as signed-out; a stored credential that validates is trusted unchanged; no stored credential never triggers a validation call.",
+          id: "resolve_verified_stored_credentials.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/khala-auth-resume-verify-core.test.ts",
+        },
+      ],
+      productArea: "auth",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-06",
+      },
+      state: "enforced",
+      statement:
+        "A stored/leftover credential (e.g. from a prior auth model, or a revoked session that Keychain data otherwise carries across a TestFlight build update) must never silently skip the sign-in screen. Every app launch re-validates a stored credential against the server before treating the app as signed in, exactly like a fresh sign-in does; an invalid one is cleared so the user sees the real GitHub sign-in screen. Filed after a real TestFlight build carried forward a stale pre-pivot session and skipped straight to old signed-in UI.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/khala-auth-resume-verify-core.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+    },
+    {
+      authorityBoundary:
         "This binds only the mic button's own gating logic (whether a tap is allowed to attempt native recognition) and draft-merge semantics. It does not cover whether the underlying native call actually captures audio on a device — see khala_mobile.stt.real_device_capture_proof.v1 for that.",
       blockerRefs: [],
       contractId: "khala_mobile.composer.pushtotalk_disabled_when_unavailable.v1",
@@ -839,5 +873,5 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-06.1",
+  version: "2026-07-06.2",
 }
