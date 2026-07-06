@@ -92,6 +92,7 @@ export {
 export {
   computeBackoffMs,
   createKhalaSyncSession,
+  type ConnectFailureSignal,
   type KhalaSyncSession,
   type KhalaSyncSessionConfig,
   type KhalaSyncSessionOptions,

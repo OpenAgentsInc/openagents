@@ -77,11 +77,21 @@ export type ScopeSyncState =
   | { readonly phase: "live"; readonly cursor: SyncVersionWatermark }
   | { readonly phase: "must_refetch"; readonly reason: string }
   /**
-   * TERMINAL: scope access was denied (KS-7.1 revocation — e.g.
-   * `MustRefetch(access_changed)` followed by a 403 re-bootstrap). The
-   * scope's durable local state has been CLEARED (invariant 7: revocation
-   * retracts synced state) and the loop has stopped — no automatic retry.
-   * A fresh `subscribe(scope)` is the only way to try again.
+   * TERMINAL: scope access was denied. Two ways in (ST-7, #8513):
+   *
+   * - `reason: "access_denied"` — KS-7.1 revocation (e.g.
+   *   `MustRefetch(access_changed)` followed by a 403 re-bootstrap, or any
+   *   `unauthorized_scope`/403 read).
+   * - `reason: "auth_rejected"` — the live connect was REJECTED as
+   *   unauthenticated (HTTP 401 / `unauthenticated`) past the bounded
+   *   token-rotation retry budget. A 401 loop never self-heals; parking it
+   *   surfaces a crisp denial instead of an infinite "Loading" spinner.
+   *
+   * Either way the scope's durable local state has been CLEARED
+   * (invariant 7: revocation retracts synced state; an unauthenticatable
+   * client must not keep presenting synced data as entitled) and the loop
+   * has stopped — no automatic retry. A fresh `subscribe(scope)` (e.g.
+   * after obtaining a new token) is the only way to try again.
    */
   | { readonly phase: "denied"; readonly reason: string }
 
@@ -140,14 +150,59 @@ export interface KhalaSyncSessionOptions {
     context: "bootstrap" | "catch_up" | "live" | "push" | "session",
     error: unknown,
   ) => void
+  /**
+   * ST-7 (#8513) connect-failure tripwire: fires when a scope has failed
+   * `connectLive` `connectFailureThreshold` consecutive times without a
+   * single successful connect in between (and again at every further
+   * multiple, so a long outage stays visible without firing per attempt).
+   * Hosts should forward this bounded, structured signal into their
+   * observability pipe (for the openagents.com Worker family: Analytics
+   * Engine / Tail Worker via an existing ingest route) so a fleet-wide
+   * connect-failure spike pages within minutes of a bad deploy instead of
+   * hiding behind an infinite "Loading" state. Must not throw.
+   */
+  readonly onConnectFailure?: (signal: ConnectFailureSignal) => void
+  /**
+   * Consecutive `connectLive` failures before {@link onConnectFailure}
+   * fires (default 5). A successful connect resets the streak.
+   */
+  readonly connectFailureThreshold?: number
+  /**
+   * ST-7 (#8513) 401-on-connect budget: total consecutive auth-REJECTED
+   * (HTTP 401 / `unauthenticated`) `connectLive` attempts allowed before
+   * the scope parks TERMINALLY in `denied` (`reason: "auth_rejected"`).
+   * Default 2 — i.e. one bounded re-attempt so a transient 401 during
+   * token rotation can heal (`authToken()` is re-read per attempt), while
+   * a genuinely rejected token stops looping after the second refusal
+   * instead of retrying an unauthenticatable connect forever. A non-401
+   * failure or a successful connect resets the budget.
+   */
+  readonly maxConnectAuthRejections?: number
+}
+
+/**
+ * Structured repeated-connect-failure signal (ST-7, #8513). Bounded: at
+ * most one signal per {@link KhalaSyncSessionOptions.connectFailureThreshold}
+ * consecutive failures, and the streak resets on any successful connect.
+ */
+export interface ConnectFailureSignal {
+  readonly scope: SyncScope
+  /** Consecutive failed `connectLive` attempts since the last success. */
+  readonly consecutiveFailures: number
+  /** Transport error taxonomy (`"unknown"` for non-transport throwables). */
+  readonly reason: "network" | "http_status" | "decode_failure" | "sync_error" | "unknown"
+  /** HTTP status when the transport error carried one (e.g. 401). */
+  readonly status?: number
 }
 
 export interface KhalaSyncSession {
   /**
    * Start syncing a scope (idempotent while its loop runs). Store has a
    * durable cursor → catch up, then live; no cursor → bootstrap → catch up
-   * → live. The loop reconnects forever (jittered exponential backoff)
-   * until {@link unsubscribe} / {@link close}.
+   * → live. TRANSIENT faults reconnect forever (jittered exponential
+   * backoff) until {@link unsubscribe} / {@link close}; access denials
+   * (403) and auth rejections (401 past the bounded rotation budget) park
+   * the scope TERMINALLY in `denied` instead (ST-7, #8513).
    */
   readonly subscribe: (
     scope: SyncScope,
@@ -217,6 +272,23 @@ export const computeBackoffMs = (
 const PROTOCOL_VIOLATION = (message: string): KhalaSyncTransportError =>
   new KhalaSyncTransportError("decode_failure", false, message)
 
+/**
+ * ST-7 (#8513): the connect was auth-REJECTED — an HTTP 401 or a typed
+ * `unauthenticated` SyncError. Distinct from `isAccessDeniedSignal` (403 /
+ * `unauthorized_scope`, which parks immediately): a 401 gets a small
+ * bounded retry budget first because `authToken()` is re-read per attempt
+ * and token rotation can heal a momentary rejection — but past the budget
+ * it parks terminally, because an unauthenticatable connect retried
+ * forever is exactly the silent-spinner failure that hid the mobile
+ * WS-auth server bug for 4 builds
+ * (docs/khala-code/2026-07-06-mobile-loading-threads-websocket-auth-audit.md).
+ */
+const isAuthRejectedSignal = (error: unknown): boolean =>
+  error instanceof KhalaSyncTransportError &&
+  (error.details?.status === 401 ||
+    (error.reason === "sync_error" &&
+      error.details?.syncError?.code === "unauthenticated"))
+
 type LiveOutcome =
   | { readonly kind: "must_refetch"; readonly reason: MustRefetchReason }
   | { readonly kind: "closed"; readonly error?: unknown }
@@ -274,6 +346,9 @@ export const createKhalaSyncSession = (
   const cvrRecovery = options.cvrRecovery ?? false
   const maxDriftEntries = options.maxDriftEntries ?? 5_000
   const onTransportError = options.onTransportError
+  const onConnectFailure = options.onConnectFailure
+  const connectFailureThreshold = options.connectFailureThreshold ?? 5
+  const maxConnectAuthRejections = options.maxConnectAuthRejections ?? 2
 
   const backoff = (attempt: number): Promise<void> =>
     sleep(computeBackoffMs(attempt, backoffBaseMs, backoffMaxMs, random))
@@ -297,15 +372,18 @@ export const createKhalaSyncSession = (
 
   /**
    * Park a scope in the TERMINAL `denied` phase after an authorization
-   * denial (KS-7.1; SPEC §7 invariant 7): CLEAR the scope's durable local
-   * rows + cursor (revocation retracts synced state — the data must not
-   * survive locally after access is gone) and rebuild the overlay, then
-   * stop. Clearing failures are surfaced through `onTransportError` but
-   * never keep revoked data live-retryable: the scope parks regardless.
+   * denial (KS-7.1; SPEC §7 invariant 7) or an exhausted 401 budget
+   * (ST-7, #8513; `reason: "auth_rejected"`): CLEAR the scope's durable
+   * local rows + cursor (revocation retracts synced state — the data must
+   * not survive locally after access is gone, and an unauthenticatable
+   * client gets the same treatment) and rebuild the overlay, then stop.
+   * Clearing failures are surfaced through `onTransportError` but never
+   * keep revoked data live-retryable: the scope parks regardless.
    */
   const parkDenied = async (
     scope: SyncScope,
     runtime: ScopeRuntime,
+    reason: "access_denied" | "auth_rejected" = "access_denied",
   ): Promise<void> => {
     try {
       await runEffect(store.resetScope(scope, [], watermark(0)))
@@ -317,7 +395,7 @@ export const createKhalaSyncSession = (
     // The synced data is gone; its freshness stamp must not survive it.
     runtime.lastDeltaAt = null
     runtime.cvr = null
-    setState(scope, runtime, { phase: "denied", reason: "access_denied" })
+    setState(scope, runtime, { phase: "denied", reason })
   }
 
   // -- bootstrap --------------------------------------------------------------
@@ -723,6 +801,12 @@ export const createKhalaSyncSession = (
   ): Promise<void> => {
     const stale = (): boolean => closed || runtime.generation !== generation
     let reconnectAttempt = 0
+    // ST-7 (#8513): consecutive `connectLive` failures since the last
+    // successful connect — drives the bounded observability signal…
+    let connectFailureStreak = 0
+    // …and consecutive auth-REJECTED (401) connects — drives the bounded
+    // pre-park retry budget for token rotation.
+    let connectAuthRejections = 0
     while (!stale()) {
       try {
         const durable = await runEffect(store.cursor(scope))
@@ -752,6 +836,8 @@ export const createKhalaSyncSession = (
         if (caughtUp === undefined) return // stale
         const outcome = await liveTail(scope, runtime, generation, caughtUp, () => {
           reconnectAttempt = 0
+          connectFailureStreak = 0
+          connectAuthRejections = 0
         })
         if (stale()) return
         if (outcome.kind === "must_refetch") {
@@ -777,6 +863,44 @@ export const createKhalaSyncSession = (
           })
           runtime.forceBootstrap = true
           continue
+        }
+        if (outcome.kind === "connect_failed") {
+          // ST-7 (#8513): the connect itself was refused (vs a live socket
+          // dying later). Count the streak and surface the bounded signal
+          // so repeated silent connect failures page instead of hiding
+          // behind an eternal "Loading" phase.
+          connectFailureStreak += 1
+          if (
+            onConnectFailure !== undefined &&
+            connectFailureStreak % connectFailureThreshold === 0
+          ) {
+            const error = outcome.error
+            const transportError =
+              error instanceof KhalaSyncTransportError ? error : undefined
+            const status = transportError?.details?.status
+            onConnectFailure({
+              scope,
+              consecutiveFailures: connectFailureStreak,
+              reason: transportError?.reason ?? "unknown",
+              ...(status !== undefined ? { status } : {}),
+            })
+          }
+          if (isAuthRejectedSignal(outcome.error)) {
+            // 401 on connect: the token was REJECTED. Allow the bounded
+            // rotation budget (authToken() is re-read per attempt), then
+            // park terminally — a 401 loop never self-heals and must not
+            // present as an infinite spinner.
+            connectAuthRejections += 1
+            if (connectAuthRejections >= maxConnectAuthRejections) {
+              await parkDenied(scope, runtime, "auth_rejected")
+              return
+            }
+          } else {
+            // A non-401 failure breaks the consecutive-rejection chain
+            // (e.g. 401 → network blip → …): only an uninterrupted run of
+            // rejections proves the token itself is bad.
+            connectAuthRejections = 0
+          }
         }
         // Socket closed/errored: reconnect from the DURABLE cursor.
         reconnectAttempt += 1
