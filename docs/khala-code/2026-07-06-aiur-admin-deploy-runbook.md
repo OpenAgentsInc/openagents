@@ -85,11 +85,37 @@ security headers (`X-Frame-Options: DENY`, etc. — see
    OpenAuth layer but Aiur renders "Access denied" and no dashboard data
    loads — the fail-closed gate.
 
+## AIUR-2: the credits console also needs the main Worker deployed
+
+The credit ledger, its migration, and the `/api/admin/credits/*` routes
+live in the MAIN `openagents.com` Worker
+(`apps/openagents.com/workers/api/src/admin-credits-routes.ts` +
+`inference/admin-credit-grant.ts` + migration
+`migrations/0307_admin_credit_grants.sql`), not in Aiur. Deploying Aiur
+alone is not sufficient for the credits console to work — the main
+Worker's normal deploy path (`docs/DEPLOYMENT.md`'s `openagents.com
+Worker` row, `bun run --cwd apps/openagents.com/workers/api deploy:safe`)
+must have shipped the migration and the new routes first. Live smoke for
+that side:
+
+```sh
+# Expect 401 (unauthenticated) from a plain curl — this route requires a
+# real owner bearer, which only Aiur's proxy supplies:
+curl -fsS https://openagents.com/api/admin/credits/balance?userId=test
+```
+
+Then, as the owner, from `https://aiur.openagents.com/credits`: search a
+real user, grant a small amount with a reason, confirm the balance and
+history update, and claw it back — see `apps/aiur/README.md`'s AIUR-2
+section for the exact surfaces involved.
+
 ## Rollback
 
 `wrangler rollback` against the `openagents-aiur` Worker, same as any
-other Cloudflare Worker in this repo. Aiur has no D1/KV of its own in
-AIUR-1 — all data reads go through the owner-gated Khala Sync proxy to the
-production Khala Sync API and (from AIUR-2 onward) the main
-`openagents.com` Worker's new `/api/admin/credits/*` routes — so a
-rollback here never risks data loss, only the admin UI's availability.
+other Cloudflare Worker in this repo. Aiur has no D1/KV of its own — all
+data reads/writes go through the owner-gated Khala Sync proxy to the
+production Khala Sync API and (AIUR-2 onward) the same-origin admin
+credits proxy to the main `openagents.com` Worker's `/api/admin/credits/*`
+routes — so a rollback here never risks data loss, only the admin UI's
+availability. Rolling back the credit ledger itself is a main-Worker
+concern (see that Worker's own deploy/rollback runbook).

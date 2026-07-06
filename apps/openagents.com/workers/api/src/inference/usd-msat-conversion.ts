@@ -20,6 +20,22 @@ export const DEFAULT_BTC_USD = 100_000 as const
 
 const MSAT_PER_BTC = 100_000_000_000 as const
 
+// Convert integer msat back to USD cents, rounding to the nearest cent, for
+// DISPLAY purposes only (an admin/owner-facing balance readout — AIUR-2,
+// #8500). This is the mathematical inverse of `usdCentsToMsatFloor` at the
+// same rate; nothing in this Worker charges or grants off this function, so
+// rounding-to-nearest here (rather than floor/ceil) cannot create an
+// over-grant or under-charge anywhere else.
+export const msatToUsdCentsRound = (
+  amountMsat: number,
+  btcUsd: number = DEFAULT_BTC_USD,
+): number => {
+  if (!Number.isFinite(amountMsat) || amountMsat <= 0) return 0
+  if (!Number.isFinite(btcUsd) || btcUsd <= 0) return 0
+  const usd = (amountMsat / MSAT_PER_BTC) * btcUsd
+  return Math.max(0, Math.round(usd * 100))
+}
+
 // Round away binary floating-point dust before ceiling/floor so an exact-integer
 // charge (e.g. $1 @ $100k/BTC = 1_000_000 msat) is not pushed off by 1 from a
 // ...0001 representation error, while a genuinely fractional charge still rounds

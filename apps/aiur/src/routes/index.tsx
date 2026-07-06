@@ -75,9 +75,14 @@ function OwnerDashboard({ login }: { login: string | undefined }) {
             Signed in{login ? ` as @${login}` : ''}.
           </p>
         </div>
-        <Button asChild size="sm" variant="ghost">
-          <a href={AIUR_LOGOUT_PATH}>Sign out</a>
-        </Button>
+        <div className="flex gap-2">
+          <Button asChild size="sm" variant="secondary">
+            <a href="/credits">Credits console</a>
+          </Button>
+          <Button asChild size="sm" variant="ghost">
+            <a href={AIUR_LOGOUT_PATH}>Sign out</a>
+          </Button>
+        </div>
       </header>
       <TokensServedPanel />
     </section>

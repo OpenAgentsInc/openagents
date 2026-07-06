@@ -62,6 +62,36 @@ Filed as #8499 (this scaffold), #8500 (credits console), #8501 (ops views).
 - `src/server.ts` — wires all of the above ahead of the TanStack Start
   handler.
 
+## Scope (AIUR-2, #8500) — the credits console
+
+The MVP-critical surface: manual credit grants replace IAP (#8481 postponed)
+for the first build. The D1 credit ledger is owned by the MAIN
+`openagents.com` Worker, not Aiur:
+
+- **Server (main Worker)**: `apps/openagents.com/workers/api/src/
+  admin-credits-routes.ts` exposes `/api/admin/credits/{users,balance,
+  history,recent-grants,grant,clawback}`, gated by a NEW composition
+  (`requireAdminCreditsCaller` in that Worker's `index.ts`) of the existing
+  mobile-bearer session boundary (`requireUserBearerSession`) plus the
+  existing admin-email allowlist (`isOpenAgentsAdminEmail`) — never a new
+  auth primitive, never a shared static token. The actual money movement
+  reuses Pool B's exact primitives verbatim via
+  `apps/openagents.com/workers/api/src/inference/admin-credit-grant.ts`:
+  `usdCreditGrantStatements` (RL-3 `revenueAsset: 'free'`) for grants,
+  `clawbackInferenceCredits` for clawbacks, both idempotent on a
+  caller-supplied ref (`admin_credit_grants` D1 table, migration `0307`).
+- **Aiur side**: `src/admin-credits-proxy.ts` is the same-origin,
+  owner-gated forwarding proxy (identical shape to `khala-sync-proxy.ts`) —
+  the browser only ever talks to Aiur's own origin; Aiur attaches the
+  signed-in owner's OpenAuth access token as the bearer when forwarding to
+  the main Worker, which independently re-verifies it. `src/credits/`
+  holds the UI: `credits-api-client.ts` (typed fetch wrappers),
+  `credits-action-state.ts` (the pure grant/clawback confirm-then-submit
+  state machine, `useReducer`-driven), and `credits-console.tsx` (search a
+  user by GitHub login or user id, see balance + merged admin/signup grant
+  history, a grant form with a confirmation step, a clawback form, and a
+  recent-grants ledger across all users). Reachable at `/credits`.
+
 ## Commands
 
 ```sh
@@ -70,6 +100,11 @@ bun run --cwd apps/aiur typecheck
 bun run --cwd apps/aiur test
 bun run --cwd apps/aiur dev      # local dev server
 bun run --cwd apps/aiur deploy   # wrangler deploy (needs AIUR_OWNER_USER_IDS set)
+
+# The main Worker owns the credit ledger routes/migration:
+bun run --cwd apps/openagents.com/workers/api typecheck
+bun run --cwd apps/openagents.com/workers/api test
+bun run --cwd apps/openagents.com check:architecture
 ```
 
 ## Production
@@ -77,9 +112,22 @@ bun run --cwd apps/aiur deploy   # wrangler deploy (needs AIUR_OWNER_USER_IDS se
 `wrangler.jsonc` deploys Worker `openagents-aiur` and attaches the custom
 domain route `aiur.openagents.com`. Deploy runbook:
 `docs/khala-code/2026-07-06-aiur-admin-deploy-runbook.md` (linked from
-`docs/DEPLOYMENT.md`).
+`docs/DEPLOYMENT.md`). The credit ledger migration
+(`apps/openagents.com/workers/api/migrations/0307_admin_credit_grants.sql`)
+ships with the main Worker's normal `deploy:safe` migration-apply step —
+Aiur itself has no D1 of its own.
+
+## Honest gaps (AIUR-2)
+
+- `/api/admin/credits/history` merges receipted grant events (admin +
+  signup) only; it does not yet include raw inference-charge activity for a
+  user (the same unpaginated shape `agent-balance-routes.ts` already
+  exposes for a user's own balance view). AIUR-3's ops view is the natural
+  home for "what did they run and did it charge correctly" across users.
+- The recent-signups search and recent-grants ledger are simple
+  `LIMIT`-capped reads, not true cursor-paginated — acceptable at MVP scale,
+  flagged for AIUR-3 if it needs more.
 
 ## Explicitly out of scope here
 
-The credits console (AIUR-2, #8500) and the ops views (AIUR-3, #8501)
-build on this scaffold in follow-up changes.
+The ops views (AIUR-3, #8501) build on this scaffold in a follow-up change.

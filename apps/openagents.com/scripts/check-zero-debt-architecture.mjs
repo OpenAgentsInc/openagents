@@ -700,6 +700,13 @@ const runPromiseAllowlist = new Map([
   ['workers/api/src/forge-control-plane-routes.ts', 1],
   ['workers/api/src/operator-provider-account-routes.ts', 1],
   ['workers/api/src/agent-definition-run-routes.ts', 2],
+  // Added 2026-07-06 (AIUR-2, #8500): the Aiur credits console's grant and
+  // clawback routes each bridge one Effect-returning ledger primitive
+  // (`grantAdminCredit` / `clawbackAdminCredit`, admin-credit-grant.ts) once
+  // from their Promise-shaped route handler bodies — the same named-bridge
+  // shape as the billing/operator routes above. Named bridge; ratchet down
+  // if the admin-credits route handlers move to an Effect program.
+  ['workers/api/src/admin-credits-routes.ts', 2],
 ])
 
 const runPromiseDetails = countByFile(sourceFiles, /Effect\.runPromise\(/g)

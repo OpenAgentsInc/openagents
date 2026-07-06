@@ -1,6 +1,7 @@
 import { getStartRequestContext, withStartRequestContext } from '@openagentsinc/effect-start'
 import handler, { createServerEntry } from '@tanstack/react-start/server-entry'
 
+import { routeAiurAdminCreditsProxyRequest } from './admin-credits-proxy'
 import { AIUR_ACCESS_PATH, handleAiurAccessRequest } from './auth/access-route'
 import { type AiurEnv } from './auth/config'
 import { routeAiurAuthRequest } from './auth/routes'
@@ -35,10 +36,10 @@ const currentEnv = (): AiurEnv =>
 /**
  * Routes everything that is NOT a normal TanStack Start page render:
  * OpenAuth sign-in/callback/logout, the `/api/aiur/access` UI-status
- * endpoint, and the owner-gated Khala Sync proxy. Returns `undefined` to
- * fall through to the TanStack Start handler (the app shell — see
- * `routes/index.tsx`, which itself re-checks access before rendering
- * anything sensitive).
+ * endpoint, the owner-gated Khala Sync proxy, and the owner-gated admin
+ * credits proxy (AIUR-2, #8500). Returns `undefined` to fall through to
+ * the TanStack Start handler (the app shell — see `routes/index.tsx`,
+ * which itself re-checks access before rendering anything sensitive).
  */
 export async function routeAiurSharedSurface(
   request: Request,
@@ -52,6 +53,11 @@ export async function routeAiurSharedSurface(
 
   if (new URL(request.url).pathname === AIUR_ACCESS_PATH) {
     return handleAiurAccessRequest(request, env)
+  }
+
+  const adminCreditsResponse = routeAiurAdminCreditsProxyRequest(request, env)
+  if (adminCreditsResponse !== undefined) {
+    return adminCreditsResponse
   }
 
   return routeAiurKhalaSyncProxyRequest(request, env)

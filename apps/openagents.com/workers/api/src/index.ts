@@ -251,6 +251,15 @@ import {
   IAP_REVENUECAT_WEBHOOK_PATH,
 } from './iap-webhook-routes'
 import {
+  ADMIN_CREDITS_BALANCE_PATH,
+  ADMIN_CREDITS_CLAWBACK_PATH,
+  ADMIN_CREDITS_GRANT_PATH,
+  ADMIN_CREDITS_HISTORY_PATH,
+  ADMIN_CREDITS_RECENT_GRANTS_PATH,
+  ADMIN_CREDITS_USERS_PATH,
+  makeAdminCreditsRoutes,
+} from './admin-credits-routes'
+import {
   AutopilotComposedRunEndpoint,
   handleAutopilotComposedRunApi,
   isAutopilotComposedRunEnabled,
@@ -3965,6 +3974,31 @@ const { requireUserBearerSession } =
     verifyTokens: (accessToken, refreshToken, _request, env, ctx) =>
       verifyOpenAuthUserTokens(accessToken, refreshToken, env, ctx),
   })
+
+// AIUR-2 (#8500): the Aiur admin panel forwards the owner's OWN OpenAuth
+// bearer token (the same token that authenticated Aiur's own owner-only
+// session, apps/aiur/src/auth/) to these admin-credits routes — never a
+// shared static token in a client bundle. This composes the SAME user
+// bearer-session boundary every mobile-bearer route uses with the SAME
+// admin-email allowlist the cookie-based admin routes use
+// (`isOpenAgentsAdminEmail`), so there is no new auth primitive here, only
+// a new combination of two existing ones. FAIL CLOSED: any verification
+// failure or a non-admin email both resolve to `undefined`. Defined inline
+// (rather than as a standalone named function with an explicit Cloudflare
+// binding parameter type) so its second parameter's type flows from
+// `makeAdminCreditsRoutes<Env>`'s generic instead of a literal annotation —
+// this repo's zero-debt architecture check budgets raw binding-type
+// parameter annotations (#8498) and this composition does not need one of
+// its own.
+const adminCreditsRoutes = makeAdminCreditsRoutes<Env>({
+  db: openAgentsDatabase,
+  requireAdminCaller: async (request, env, ctx) => {
+    const session = await requireUserBearerSession(request, env, ctx)
+    if (session === undefined) return undefined
+    if (!isOpenAgentsAdminEmail(session.user.email)) return undefined
+    return { userId: session.user.userId }
+  },
+})
 
 const authenticateRequestActor = async (
   request: Request,
@@ -12723,6 +12757,55 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/admin/overview',
     handler: (request, env, ctx) =>
       adminOverviewHandlers.handleAdminOverviewApi(request, env, ctx),
+  },
+  {
+    // AIUR-2 (#8500): Aiur credits console — recent signups + grant status.
+    path: ADMIN_CREDITS_USERS_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        adminCreditsRoutes.handleAdminCreditsUsersApi(request, env, ctx),
+      ),
+  },
+  {
+    // AIUR-2 (#8500): a user's balance (msat + display-only USD-cents).
+    path: ADMIN_CREDITS_BALANCE_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        adminCreditsRoutes.handleAdminCreditsBalanceApi(request, env, ctx),
+      ),
+  },
+  {
+    // AIUR-2 (#8500): a user's merged admin + signup grant history.
+    path: ADMIN_CREDITS_HISTORY_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        adminCreditsRoutes.handleAdminCreditsHistoryApi(request, env, ctx),
+      ),
+  },
+  {
+    // AIUR-2 (#8500): the recent-grants ledger view across all users.
+    path: ADMIN_CREDITS_RECENT_GRANTS_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        adminCreditsRoutes.handleAdminCreditsRecentGrantsApi(request, env, ctx),
+      ),
+  },
+  {
+    // AIUR-2 (#8500): grant credit to a user (idempotent on a caller-
+    // supplied grantRef), replacing IAP for the first Khala Code mobile MVP.
+    path: ADMIN_CREDITS_GRANT_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        adminCreditsRoutes.handleAdminCreditsGrantApi(request, env, ctx),
+      ),
+  },
+  {
+    // AIUR-2 (#8500): claw back previously granted credit.
+    path: ADMIN_CREDITS_CLAWBACK_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        adminCreditsRoutes.handleAdminCreditsClawbackApi(request, env, ctx),
+      ),
   },
   {
     // Admin-gated Cloudflare Browser Rendering smoke (#6205). Proves the real
