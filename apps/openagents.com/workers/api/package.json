@@ -47,6 +47,7 @@
     "@openagentsinc/khala-sync-server": "workspace:*",
     "@openagentsinc/mcp-contract": "workspace:*",
     "@openagentsinc/nip90": "workspace:*",
+    "@openagentsinc/oa-infra": "workspace:*",
     "@openagentsinc/proof-replay": "workspace:*",
     "@openagentsinc/public-activity-timeline": "workspace:*",
     "@openagentsinc/reactor-contracts": "workspace:*",

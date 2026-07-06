@@ -76,9 +76,20 @@ export type WorkerBindings = Readonly<{
   // disabled (Cloudflare→GCP consolidation, #8515), so the `r2_buckets`
   // wrangler binding was removed to unfreeze deploys (API error 10136).
   // Consumers resolve through `artifactsBucketForEnv` (workers/api
-  // `src/artifacts-binding.ts`), which degrades to typed per-call
-  // rejections when absent. Replacement is the GCS BlobStore (#8523).
+  // `src/artifacts-binding.ts`): an injected `ARTIFACTS` object wins,
+  // then the CFG-8 (#8523) GCS-backed adapter configured below, then
+  // typed per-call rejections.
   ARTIFACTS?: R2Bucket
+  // CFG-8 (#8523): GCS replacement for the R2 ARTIFACTS bucket. Bucket
+  // name + optional endpoint are committed wrangler vars; the HMAC key
+  // pair for the `oa-artifacts-rw` service account arrives via
+  // `wrangler secret put` (source of truth: GCP Secret Manager secrets
+  // `oa-artifacts-gcs-hmac-access-key-id` / `oa-artifacts-gcs-hmac-secret`,
+  // project openagentsgemini). Absent config degrades per-call as before.
+  ARTIFACTS_GCS_BUCKET?: string
+  ARTIFACTS_GCS_ENDPOINT?: string
+  ARTIFACTS_GCS_HMAC_ACCESS_KEY_ID?: string
+  ARTIFACTS_GCS_HMAC_SECRET?: string
   RUNNER_EVENTS: Queue
   ADJUTANT_ENRICHMENT_QUEUE: Queue
   ASSETS: Fetcher

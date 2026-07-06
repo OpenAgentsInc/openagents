@@ -2,6 +2,8 @@ import { notFound } from '@openagentsinc/sync-worker'
 import { Effect, Layer, Option } from 'effect'
 import { WorkerEnvironment } from 'effect-cf'
 
+import { artifactsBucketForEnv } from './artifacts-binding'
+
 import { type OpenAgentsWorkerEnv, ThreadFileArtifacts } from './bindings'
 import {
   forbidden,
@@ -66,7 +68,13 @@ export const makeThreadFileRoutes = <Session extends BrowserSessionShape>(
   const makeThreadFileId = dependencies.makeThreadFileId ?? randomUuid
 
   const threadFileStorageLayer = (env: OpenAgentsWorkerEnv) => {
-    const workerEnvironmentLayer = Layer.succeed(WorkerEnvironment, env)
+    // CFG-8 (#8523): the effect-cf R2 tag reads `env.ARTIFACTS` directly,
+    // so hand it an env whose ARTIFACTS slot is already resolved (GCS
+    // adapter when configured, rejecting stub otherwise).
+    const workerEnvironmentLayer = Layer.succeed(WorkerEnvironment, {
+      ...env,
+      ARTIFACTS: artifactsBucketForEnv(env),
+    })
     const repositoryLayer = ThreadFileRepository.layer(
       khalaCodeProductStateDatabaseForEnv(env),
     )

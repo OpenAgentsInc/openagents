@@ -3682,7 +3682,14 @@ const teamAutopilotFileExcerpt = async (
     }).pipe(
       Effect.provide(
         ThreadFileArtifacts.layer({ binding: 'ARTIFACTS' }).pipe(
-          Layer.provide(Layer.succeed(WorkerEnvironment, env)),
+          // CFG-8 (#8523): resolve ARTIFACTS (GCS adapter when configured)
+          // before the effect-cf R2 tag reads it off the env.
+          Layer.provide(
+            Layer.succeed(WorkerEnvironment, {
+              ...env,
+              ARTIFACTS: artifactsBucketForEnv(env),
+            }),
+          ),
         ),
       ),
       Effect.catchTag('R2OperationError', () =>

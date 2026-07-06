@@ -5,6 +5,7 @@ import {
 import { Effect, Layer, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
+import { artifactsBucketForEnv } from './artifacts-binding'
 import { parseJsonRecord } from './json-boundary'
 // KS-8.12 (#8323): the AutopilotSitesService layer is the central db seam
 // for sites.ts writes — acquire the dual-write mirroring database here so
@@ -2621,7 +2622,9 @@ export class AutopilotSitesService extends Context.Service<
 
     return Layer.succeed(
       AutopilotSitesService,
-      AutopilotSitesService.fromBindings(db, env.ARTIFACTS, runtime),
+      // CFG-8 (#8523): resolve the artifacts bucket (GCS adapter when
+      // configured) instead of reading the removed R2 binding slot.
+      AutopilotSitesService.fromBindings(db, artifactsBucketForEnv(env), runtime),
     )
   }
 }

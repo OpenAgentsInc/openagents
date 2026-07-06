@@ -37,6 +37,14 @@
     },
   ],
   "vars": {
+    // CFG-8 (#8523): GCS bucket replacing the account-disabled R2
+    // `ARTIFACTS` binding (#8516). Resolved by `src/artifacts-binding.ts`
+    // together with the `ARTIFACTS_GCS_HMAC_ACCESS_KEY_ID` /
+    // `ARTIFACTS_GCS_HMAC_SECRET` Worker secrets (uploaded via
+    // `wrangler secret put`; source of truth: GCP Secret Manager,
+    // project openagentsgemini). Without the secrets, artifact
+    // operations keep degrading per-call exactly as under #8516.
+    "ARTIFACTS_GCS_BUCKET": "openagentsgemini-oa-artifacts",
     "GITHUB_CLIENT_ID": "Ov23lirHI1DWTzZ1zT1u",
     "INFERENCE_GATEWAY_ENABLED": "true",
     "INFERENCE_FREE_TIER_ENABLED": "true",
@@ -617,6 +625,9 @@
       "routes": [],
       "vars": {
         "ARTANIS_SCHEDULED_RUNNER_ENABLED": "false",
+        // CFG-8 (#8523): staging counterpart of the prod GCS artifacts
+        // bucket (same HMAC secret pair, staging-scoped bucket).
+        "ARTIFACTS_GCS_BUCKET": "openagentsgemini-oa-artifacts-staging",
         "INFERENCE_GATEWAY_ENABLED": "true",
         "INFERENCE_FREE_TIER_ENABLED": "true",
         // KS-8 Pylon read cutover (#8315), staging parity for the production

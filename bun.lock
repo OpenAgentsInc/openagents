@@ -359,6 +359,7 @@
         "@openagentsinc/mullet-schema": "workspace:*",
         "@openagentsinc/mullet-sim": "workspace:*",
         "@openagentsinc/nip90": "workspace:*",
+        "@openagentsinc/oa-infra": "workspace:*",
         "@openagentsinc/proof-replay": "workspace:*",
         "@openagentsinc/provider-account-schema": "workspace:*",
         "@openagentsinc/public-activity-timeline": "workspace:*",
