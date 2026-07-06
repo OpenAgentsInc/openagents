@@ -31,6 +31,7 @@ infra/
     service-account/     SA + non-authoritative role grants (not yet instantiated)
     monitoring-alerts/   CPU / connections / 5xx / budget policies (not yet instantiated)
     secret-manager-secret/  secret CONTAINER + accessor grants — versions stay out-of-band
+    global-external-lb/  static IP + Certificate Manager cert (DNS-auth pre-provisioning) + serverless-NEG LB (CFG-10)
 ```
 
 Note: `backend.tf` and `providers.tf` live inside `prod/` (not at `infra/`)
@@ -50,9 +51,13 @@ its own copies with a different state prefix.
 | GCS `openagentsgemini-oa-updates` | `module.oa_updates_bucket` |
 | GCS `openagentsgemini-terraform-state` | `module.terraform_state_bucket` |
 | Secret Manager `oa-updates-codesign-key` + accessor grant (#8530) | `module.oa_updates_codesign_key` |
+| Cloud Run `openagents-monolith` (shell pre-created for CFG-9/#8524) | `module.openagents_monolith` |
+| Global External LB for `openagents.com` + `auth.openagents.com` — static IP, Certificate Manager cert + DNS authorizations, serverless NEG, backend, URL maps, HTTP(S) proxies, forwarding rules (CFG-10/#8525) | `module.openagents_lb` |
 
-19 resources on import day, +2 imported for #8530. `tofu plan` was a
-**no-op** against live as of import day; there are no accepted diffs.
+19 resources on import day, +2 imported for #8530, +16 created for #8525
+(CFG-10 LB pre-stage; the LB IP receives no traffic until the DNS flip in
+`docs/cloud/2026-07-06-openagents-domain-cutover-runbook.md`). `tofu plan`
+was a **no-op** against live as of import day; there are no accepted diffs.
 
 ## Deliberate design decisions
 

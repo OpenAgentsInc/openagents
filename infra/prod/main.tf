@@ -229,3 +229,33 @@ resource "google_storage_bucket_iam_member" "oa_artifacts_staging_rw" {
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${module.oa_artifacts_rw_sa.email}"
 }
+
+# ---------------------------------------------------------------------------
+# openagents.com domain cutover (CFG-10, #8525)
+# ---------------------------------------------------------------------------
+
+# Shell for the CFG-9 (#8524) monolith. Pre-created here (placeholder hello
+# image) so the LB's serverless NEG has a real target before CFG-9's first
+# `gcloud run deploy openagents-monolith` lands — that deploy simply becomes
+# the next revision of this shell, per the standard shell-ownership split.
+module "openagents_monolith" {
+  source = "../modules/cloud-run-service"
+
+  project = var.project_id
+  name    = "openagents-monolith"
+  region  = var.region
+}
+
+# Global External Application LB fronting the monolith for openagents.com +
+# auth.openagents.com. Pre-staged: the static IP receives no traffic until
+# the DNS flip described in
+# docs/cloud/2026-07-06-openagents-domain-cutover-runbook.md.
+module "openagents_lb" {
+  source = "../modules/global-external-lb"
+
+  project           = var.project_id
+  name              = "openagents"
+  region            = var.region
+  domains           = ["openagents.com", "auth.openagents.com"]
+  cloud_run_service = module.openagents_monolith.service_name
+}
