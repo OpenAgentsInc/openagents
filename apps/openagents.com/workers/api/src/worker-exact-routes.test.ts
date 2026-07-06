@@ -131,6 +131,10 @@ const approvedExactRoutePaths = [
   '/api/admin/ops/runs',
   '/api/admin/ops/health',
   '/api/admin/cf-browser-smoke',
+  // CFG-7 (#8522): Postgres JobQueue delivery seam — admin bearer only; the
+  // Cloud Run pump (apps/oa-queue-worker) posts leased oa_infra_jobs rows
+  // here and the original queue-consumer dispatch runs unchanged.
+  '/api/internal/queue/deliver',
   '/api/internal/khala-sync/db-smoke',
   // Khala Sync public tokens-served reconcile/repair (KS-6.3, #8304):
   // admin bearer only; proves projection == SUM(exact token_usage_events
