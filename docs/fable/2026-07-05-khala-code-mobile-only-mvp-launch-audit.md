@@ -540,7 +540,7 @@ this section is the operative plan. Two new owner decisions are folded in:
    (ops views: users/runs/executor health). #8500 is on the MVP critical
    path: it is how users get credits at launch.
 
-### 12.1 What landed (16 of 27 original workstream issues closed + shipped)
+### 12.1 What landed (17 of 27 original workstream issues closed + shipped)
 
 All merged to `main`, each closed with evidence on its issue:
 
@@ -558,6 +558,10 @@ All merged to `main`, each closed with evidence on its issue:
   into Pool B via the usd-credit-bridge, double-idempotent, race-verified,
   RL-3-compliant, account-age + per-IP anti-abuse floors), #8480 (balance +
   transaction history UI; also wired the real model picker).
+- **WS-C cloud execution (1 of 5)**: #8473 (org-cloud hosted executor
+  spine, hosted Khala/Gemini lane, exact runtime usage receipts, and the
+  operator runbook; core implementation commit `961d2f94ed` after rebasing
+  the stranded `decbe52666` work onto `6552e38c08`).
 - **WS-E IAP (2 of 3)**: #8482 (server `iap_revenuecat` rail: webhook
   auth, SKU catalog, idempotent Pool B fulfillment, refund clawback —
   **dormant by owner decision**), #8483 (store-compliance checklist; found
@@ -590,9 +594,8 @@ All merged to `main`, each closed with evidence on its issue:
 
 | Issue | State | Why it's open |
 |---|---|---|
-| #8473 (C1 org executor) | **Done but stranded unpushed** | Codex finished the implementation (commit `decbe52666` in the clean worktree `openagents-mvp-8473`: usage routes + org-executor enforcement/supervisor extensions + turn-usage receipts + runbook) but was blocked three consecutive turns by a pre-existing `check:architecture` failure (171/167 raw-Env, none of it caused by this work) and formally stopped. The blocker is fixed (`19cdf912ea`); the commit needs adopt→rebase→verify→push→close. **Do not rewrite it.** |
 | #8474–#8477 (C2–C5) | Not started | Were serialized behind C1 in the Codex lane. |
-| #8479 (D2 metering) | Not started | Depends on C1 landing (charges from its usage receipts). |
+| #8479 (D2 metering) | Not started | Serialized behind #8474–#8477; it charges from #8473's landed usage receipts plus the remaining dispatch/admission contracts. |
 | #8490 (I1 Android/Play) | Not started | Convergence tier; emulator-smoke half is agent-doable now, Play Console half owner-gated. |
 | #8491 (I2 App Store pack) | Not started | Convergence tier; metadata/labels prep agent-doable, ASC actions owner-gated. |
 | #8492 (I3 E2E QA) | Not started | Convergence tier; sign-in→repo-pick flows testable now, full straight line needs C-lane. |
@@ -609,9 +612,8 @@ cross-lane shapes, clean worktree per issue, tests + `check:deploy` green,
 comment+close, no `--no-verify`, NEEDS_OWNER routing). Three lanes:
 
 - **Lane S1 — cloud execution spine (the critical path)**:
-  adopt-and-land #8473 from the stranded worktree commit `decbe52666`
-  (rebase → full verify → push → close with evidence; do not rewrite),
-  then #8474 → #8475 → #8476 → #8477 → #8479 in order. Owns
+  #8473 is landed; continue with #8474 → #8475 → #8476 → #8477 → #8479
+  in order. Owns
   `apps/pylon` org-executor surfaces + the dispatch/admission and
   cloud/usage route seams in `workers/api`.
 - **Lane S2 — Aiur**: #8499 → #8500 → #8501 in order. Owns the new
