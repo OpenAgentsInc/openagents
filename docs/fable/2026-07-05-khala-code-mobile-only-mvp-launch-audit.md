@@ -100,6 +100,15 @@ notifications** (zero APNs/FCM/Expo-push code anywhere, client or server).
   `DELETE /api/mobile/auth/session`. Remaining WS-A gaps are #8469
   (session→Khala Sync token issuance) and #8470 (mobile UI + Tailnet contract
   retirement).
+- **2026-07-05 #8469 update:** `POST /api/mobile/session` now verifies the
+  mobile OpenAuth bearer and returns the mobile app's existing credential shape
+  `{ ownerUserId, syncToken }`. The `syncToken` is the current OpenAuth mobile
+  access token, which `/api/sync/*` already accepts through the human actor path
+  before enforcing the normal Khala Sync scope taxonomy (`scope.user.<owner>`,
+  owned `scope.thread.*`, and existing non-mobile rules). Refresh rotation is
+  the OpenAuth access-token refresh path; sign-out revokes the same access token
+  and optional refresh token through #8468's revocation endpoint. Remaining
+  WS-A gap is #8470 (mobile UI + Tailnet contract retirement).
 - There is **no GitHub App** (no installation tokens, no fine-grained
   per-repo permissions) — all repo access rides the user OAuth token.
 
@@ -340,8 +349,8 @@ Filed 2026-07-05 under the epic **#8467** (the epic carries the live
 dependency map in its first comment):
 
 - **WS-A Mobile auth**: #8468 (closed: PKCE/mobile session on the issuer), #8469
-  (session→Khala Sync token issuance), #8470 (mobile GitHub sign-in UI +
-  Tailnet contract retirement).
+  (closed: session→Khala Sync credential bridge), #8470 (mobile GitHub sign-in
+  UI + Tailnet contract retirement).
 - **WS-B Repos**: #8471 (mobile-bearer repo API), #8472 (repo picker UI +
   thread↔repo binding).
 - **WS-C Cloud execution**: #8473 (org cloud executor pool), #8474

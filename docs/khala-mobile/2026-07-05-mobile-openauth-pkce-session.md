@@ -1,9 +1,7 @@
 # Khala Mobile OpenAuth PKCE Session Contract
 
-Status: implemented server-side for #8468 on 2026-07-05. This doc covers the
-native auth primitive only; #8469 owns issuing Khala Sync tokens from the
-verified user session, and #8470 owns the Expo UI plus Tailnet contract
-retirement.
+Status: server-side auth and sync credential bridge implemented for #8468 and
+#8469 on 2026-07-05. #8470 owns the Expo UI plus Tailnet contract retirement.
 
 ## Native Client
 
@@ -43,9 +41,33 @@ Authorization: Bearer <openauth access token>
 The route returns the verified OpenAuth user projection. It is cookie-free and
 uses the same subject verification path as browser sessions.
 
-6. Mobile refreshes with the OpenAuth token endpoint when the access token
+6. Mobile obtains Khala Sync credentials with:
+
+```http
+POST /api/mobile/session
+Authorization: Bearer <openauth access token>
+```
+
+The response is the existing app credential shape:
+
+```json
+{
+  "ownerUserId": "github:12345",
+  "syncToken": "<current openauth access token>"
+}
+```
+
+`syncToken` is deliberately the current OpenAuth mobile access token. The
+existing `/api/sync/*` routes already resolve that bearer as the signed-in human
+actor and then apply the normal Khala Sync scope-read/write gates:
+`scope.user.<ownerUserId>` for the owner, plus owned thread scopes via the
+existing resolver. A foreign `scope.user.*` remains denied before storage reads.
+
+7. Mobile refreshes with the OpenAuth token endpoint when the access token
    expires.
-7. Mobile signs out with:
+8. After refresh, mobile should call `POST /api/mobile/session` again and
+   replace its stored `syncToken` with the refreshed access token.
+9. Mobile signs out with:
 
 ```http
 DELETE /api/mobile/auth/session
@@ -61,8 +83,9 @@ expiry window and removes the matching OpenAuth refresh token when supplied.
 
 This session is a human OpenAuth user session for native APIs. It is not an
 `oa_agent_` registered-agent credential, not an admin credential, not a GitHub
-writeback grant, and not a Khala Sync token by itself. Downstream routes must
-still check their own authorization and exact scopes.
+writeback grant, and not a separate Khala Sync authority. `/api/sync/*` accepts
+the current access token only through the standard human actor path, and then
+still checks exact Khala Sync scopes.
 
 Regression coverage:
 

@@ -73,9 +73,13 @@ This is the invariant ledger for `openagents`.
   cookie-free OpenAuth user bearer sessions verified through the same subject
   verifier as browser cookies; sign-out must revoke the presented access token
   server-side and remove the matching refresh token when the app supplies it.
-  This does not grant registered-agent authority, admin authority, repo
-  writeback authority, sync-token minting, spend, payout, or promise-green
-  authority by itself. Regression coverage lives in
+  `/api/mobile/session` may return the existing mobile credential shape
+  `{ ownerUserId, syncToken }` only after verifying that bearer; `syncToken` is
+  the current OpenAuth mobile access token accepted by `/api/sync/*` through the
+  standard human actor path, not a separate agent/admin credential. This does
+  not grant registered-agent authority, admin authority, repo writeback
+  authority, spend, payout, settlement, or promise-green authority by itself.
+  Regression coverage lives in
   `workers/api/src/auth/mobile-session.test.ts`.
 - Khala Code Desktop's OpenAgents connect flow is a device-style bridge to the
   real browser session, not simulated auth. `/api/khala-code/auth/openagents/device/start`

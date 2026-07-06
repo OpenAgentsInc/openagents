@@ -5022,6 +5022,33 @@ const handleMobileAuthSessionApi = async (
   })
 }
 
+const handleMobileSessionApi = async (
+  request: Request,
+  env: MobileAuthSessionBindings,
+  ctx: ExecutionContext,
+) => {
+  if (request.method !== 'POST') {
+    return methodNotAllowed(['POST'])
+  }
+
+  const accessToken = readBearerToken(request)
+
+  if (accessToken === undefined) {
+    return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+  }
+
+  const session = await requireUserBearerSession(request, env, ctx)
+
+  if (session === undefined) {
+    return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+  }
+
+  return noStoreJsonResponse({
+    ownerUserId: session.user.userId,
+    syncToken: accessToken,
+  })
+}
+
 const handleAuthTotalsApi = async (
   request: Request,
   env: Env,
@@ -12447,6 +12474,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/mobile/auth/session',
     handler: (request, env, ctx) =>
       Effect.promise(() => handleMobileAuthSessionApi(request, env, ctx)),
+  },
+  {
+    path: '/api/mobile/session',
+    handler: (request, env, ctx) =>
+      Effect.promise(() => handleMobileSessionApi(request, env, ctx)),
   },
   {
     path: '/api/auth/totals',

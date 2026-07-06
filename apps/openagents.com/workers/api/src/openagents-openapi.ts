@@ -2730,6 +2730,25 @@ const schemaComponents = (): JsonSchema => ({
     description:
       'Native Khala mobile sign-out result. Access-token revocation is server-side and refresh-token revocation is true only when a valid refresh token was supplied.',
   },
+  MobileSyncSession: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['ownerUserId', 'syncToken'],
+    properties: {
+      ownerUserId: {
+        type: 'string',
+        description:
+          'OpenAuth user id that owns the mobile Khala Sync personal scope.',
+      },
+      syncToken: {
+        type: 'string',
+        description:
+          'Bearer token the mobile app should store and send to /api/sync/* for this session. It is the current OpenAuth mobile access token and rotates through the OpenAuth refresh flow.',
+      },
+    },
+    description:
+      'Khala mobile credential shape compatible with khala-auth-store: ownerUserId plus the current cookie-free mobile user bearer token. It grants no agent, admin, GitHub writeback, spend, payout, or settlement authority.',
+  },
   OnboardingStatus: objectSummary(
     'Signed-in customer onboarding state projection.',
   ),
@@ -10519,6 +10538,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Mobile sign-out result.',
           '#/components/schemas/MobileAuthSignOutResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/mobile/session': {
+    post: operation({
+      operationId: 'createMobileSyncSession',
+      summary: 'Issue native mobile Khala Sync credentials',
+      description:
+        'Verifies a Khala mobile OpenAuth user access token from Authorization: Bearer and returns the existing mobile app credential shape `{ ownerUserId, syncToken }`. The syncToken is the current OpenAuth mobile access token accepted by /api/sync/* through the standard human actor path; refresh rotation and sign-out revocation are handled by the mobile OpenAuth session lifecycle. No separate agent token, admin token, GitHub token, prompt, code, or payment material is minted or returned.',
+      tags: ['Agents'],
+      security: mobileUserBearer,
+      responses: {
+        '200': okJson(
+          'Mobile Khala Sync session credentials.',
+          '#/components/schemas/MobileSyncSession',
         ),
         ...errorResponses(),
       },

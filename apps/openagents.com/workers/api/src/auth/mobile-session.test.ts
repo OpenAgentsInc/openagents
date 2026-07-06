@@ -3,6 +3,11 @@ import { generatePKCE } from '@openauthjs/openauth/pkce'
 import { describe, expect, test } from 'vitest'
 
 import {
+  KHALA_SYNC_PROTOCOL_VERSION,
+  personalScope,
+} from '@openagentsinc/khala-sync'
+
+import {
   DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
   KHALA_MOBILE_OPENAUTH_REDIRECT_URI,
   authIssuerAllowsRedirect,
@@ -127,6 +132,49 @@ const postToken = (
   worker.fetch(
     new Request('https://auth.openagents.com/token', {
       body,
+      method: 'POST',
+    }) as never,
+    env as never,
+    executionContext,
+  )
+
+const postMobileSession = (
+  env: unknown,
+  accessToken?: string | undefined,
+): Promise<Response> => {
+  const requestInit: RequestInit = { method: 'POST' }
+
+  if (accessToken !== undefined) {
+    requestInit.headers = { authorization: `Bearer ${accessToken}` }
+  }
+
+  return worker.fetch(
+    new Request(
+      'https://openagents.com/api/mobile/session',
+      requestInit,
+    ) as never,
+    env as never,
+    executionContext,
+  )
+}
+
+const postSyncBootstrap = (
+  env: unknown,
+  accessToken: string,
+  scope: string,
+): Promise<Response> =>
+  worker.fetch(
+    new Request('https://openagents.com/api/sync/bootstrap', {
+      body: JSON.stringify({
+        clientGroupId: 'mobile-cg',
+        protocolVersion: KHALA_SYNC_PROTOCOL_VERSION,
+        schemaVersion: 1,
+        scope,
+      }),
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        'content-type': 'application/json',
+      },
       method: 'POST',
     }) as never,
     env as never,
@@ -259,6 +307,44 @@ describe('Khala mobile OpenAuth session policy', () => {
         },
       })
 
+      const unsignedMobileSession = await postMobileSession(env)
+      expect(unsignedMobileSession.status).toBe(401)
+
+      const mobileSession = await postMobileSession(env, tokens.access_token)
+      const mobileSessionBody = (await mobileSession.json()) as {
+        ownerUserId: string
+        syncToken: string
+      }
+
+      expect(mobileSession.status).toBe(200)
+      expect(mobileSession.headers.get('cache-control')).toBe('no-store')
+      expect(mobileSessionBody).toEqual({
+        ownerUserId: 'github:12345',
+        syncToken: tokens.access_token,
+      })
+
+      const ownSyncBootstrap = await postSyncBootstrap(
+        env,
+        mobileSessionBody.syncToken,
+        personalScope(mobileSessionBody.ownerUserId),
+      )
+      const ownSyncBody = (await ownSyncBootstrap.json()) as { code: string }
+
+      expect(ownSyncBootstrap.status).toBe(503)
+      expect(ownSyncBody.code).toBe('storage_unavailable')
+
+      const foreignSyncBootstrap = await postSyncBootstrap(
+        env,
+        mobileSessionBody.syncToken,
+        personalScope('someone-else'),
+      )
+      const foreignSyncBody = (await foreignSyncBootstrap.json()) as {
+        code: string
+      }
+
+      expect(foreignSyncBootstrap.status).toBe(403)
+      expect(foreignSyncBody.code).toBe('unauthorized_scope')
+
       const refreshed = await postToken(
         env,
         new URLSearchParams({
@@ -274,6 +360,22 @@ describe('Khala mobile OpenAuth session policy', () => {
       expect(refreshed.status).toBe(200)
       expect(refreshedTokens.access_token).toMatch(/^ey/)
       expect(refreshedTokens.refresh_token).not.toBe(tokens.refresh_token)
+
+      const refreshedMobileSession = await postMobileSession(
+        env,
+        refreshedTokens.access_token,
+      )
+      const refreshedMobileSessionBody =
+        (await refreshedMobileSession.json()) as {
+          ownerUserId: string
+          syncToken: string
+        }
+
+      expect(refreshedMobileSession.status).toBe(200)
+      expect(refreshedMobileSessionBody).toEqual({
+        ownerUserId: 'github:12345',
+        syncToken: refreshedTokens.access_token,
+      })
 
       const signOut = await worker.fetch(
         new Request('https://openagents.com/api/mobile/auth/session', {
@@ -308,6 +410,24 @@ describe('Khala mobile OpenAuth session policy', () => {
         executionContext,
       )
       expect(afterSignOut.status).toBe(401)
+
+      const mobileSessionAfterSignOut = await postMobileSession(
+        env,
+        refreshedTokens.access_token,
+      )
+      expect(mobileSessionAfterSignOut.status).toBe(401)
+
+      const syncAfterSignOut = await postSyncBootstrap(
+        env,
+        refreshedTokens.access_token,
+        personalScope('github:12345'),
+      )
+      const syncAfterSignOutBody = (await syncAfterSignOut.json()) as {
+        code: string
+      }
+
+      expect(syncAfterSignOut.status).toBe(401)
+      expect(syncAfterSignOutBody.code).toBe('unauthenticated')
 
       const refreshAfterSignOut = await postToken(
         env,
