@@ -866,10 +866,7 @@ import {
   makeKhalaMcpCatalog,
 } from './khala-mcp'
 import { handleKhalaSyncBootstrap } from './khala-sync-bootstrap-routes'
-import {
-  handleKhalaSyncCvrPull,
-  isKhalaSyncCvrEnabled,
-} from './khala-sync-cvr-routes'
+import { handleKhalaSyncCvrPull } from './khala-sync-cvr-routes'
 import { khalaCodeProductStateDatabaseForEnv } from './khala-code-product-state-store'
 import { handleKhalaSyncConnect } from './khala-sync-connect-routes'
 import { handleKhalaSyncDbSmoke } from './khala-sync-db-smoke-routes'
@@ -897,7 +894,7 @@ import {
 export { KhalaSyncHubDO } from './khala-sync-hub-do'
 import { projectFleetAssignmentTransition } from './khala-sync-fleet-projection'
 import { handleKhalaSyncLog } from './khala-sync-log-routes'
-import { makeKhalaSyncScopeReadResolver } from './khala-sync-scope-auth'
+import { makeKhalaSyncRouteWiring } from './khala-sync-route-wiring'
 import { makeKhalaSyncWorkerMutatorRegistry } from './khala-sync-mutators'
 import {
   handleKhalaSyncTokensServedReconcile,
@@ -8837,6 +8834,23 @@ const inferenceReferralRoutes = makeInferenceReferralRoutes({
 // system-test mutator sync.debugEcho; KS-3.2 adds the fleet mutators.
 const khalaSyncMutatorRegistry = makeKhalaSyncWorkerMutatorRegistry()
 
+// ST-3 (#8509): the Khala Sync route family's dependency wiring (connect,
+// log, bootstrap, push, cvr-pull), extracted into importable factories so
+// wiring-level tests can drive the REAL `authenticateRequestActor` closures
+// against a fake env instead of faking `authenticate` (the fake is exactly
+// why the 2026-07-06 connect raw-request auth bug was invisible — see
+// khala-sync-route-wiring.ts's module doc). Exported for
+// khala-sync-route-wiring.test.ts; the route table below is the only
+// production caller.
+export const khalaSyncRouteWiring = makeKhalaSyncRouteWiring<
+  Env,
+  AuthenticatedActor
+>({
+  authenticateActor: authenticateRequestActor,
+  mutatorRegistry: khalaSyncMutatorRegistry,
+  resolveActorUserId: resolveKhalaSyncActorUserId,
+})
+
 const agentGoalRoutes = makeAgentGoalRoutes({
   appendRefreshedSessionCookies,
   authenticateRequestActor,
@@ -13165,17 +13179,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // 4xx (SPEC §2.4).
     path: '/api/sync/push',
     handler: (request, env, ctx) =>
-      handleKhalaSyncPush(request, {
-        authenticate: async () => {
-          const actor = await authenticateRequestActor(request, env, ctx)
-          if (actor === undefined) {
-            return undefined
-          }
-          return { userId: resolveKhalaSyncActorUserId(actor) }
-        },
-        binding: env.KHALA_SYNC_DB,
-        registry: khalaSyncMutatorRegistry,
-      }),
+      handleKhalaSyncPush(
+        request,
+        khalaSyncRouteWiring.makePushDeps(request, env, ctx),
+      ),
   },
   {
     // Khala Sync catch-up log (KS-4.3, #8296): authenticated offset-
@@ -13188,23 +13195,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // ownership + Postgres fleet scope owners; fail-closed).
     path: '/api/sync/log',
     handler: (request, env, ctx) =>
-      handleKhalaSyncLog(request, {
-        authenticate: async () => {
-          const actor = await authenticateRequestActor(request, env, ctx)
-          if (actor === undefined) {
-            return undefined
-          }
-          return { userId: resolveKhalaSyncActorUserId(actor) }
-        },
-        binding: env.KHALA_SYNC_DB,
-        hubNamespace: env.KHALA_SYNC_HUB as
-          | KhalaSyncHubNamespaceLike
-          | undefined,
-        resolveScopeRead: makeKhalaSyncScopeReadResolver({
-          binding: env.KHALA_SYNC_DB,
-          db: openAgentsDatabase(env),
-        }),
-      }),
+      handleKhalaSyncLog(
+        request,
+        khalaSyncRouteWiring.makeLogDeps(request, env, ctx),
+      ),
   },
   {
     // Khala Sync bootstrap (KS-4.4, #8297): authenticated consistent
@@ -13216,20 +13210,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // paging-position-specific, so every response is no-store.
     path: '/api/sync/bootstrap',
     handler: (request, env, ctx) =>
-      handleKhalaSyncBootstrap(request, {
-        authenticate: async () => {
-          const actor = await authenticateRequestActor(request, env, ctx)
-          if (actor === undefined) {
-            return undefined
-          }
-          return { userId: resolveKhalaSyncActorUserId(actor) }
-        },
-        binding: env.KHALA_SYNC_DB,
-        resolveScopeRead: makeKhalaSyncScopeReadResolver({
-          binding: env.KHALA_SYNC_DB,
-          db: openAgentsDatabase(env),
-        }),
-      }),
+      handleKhalaSyncBootstrap(
+        request,
+        khalaSyncRouteWiring.makeBootstrapDeps(request, env, ctx),
+      ),
   },
   {
     // Khala Sync CVR diff pull (KS-7.2, #8306): FLAG-GATED behind
@@ -13243,21 +13227,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // bootstrap. Design: docs/khala-sync/CVR_DESIGN.md.
     path: '/api/sync/cvr-pull',
     handler: (request, env, ctx) =>
-      handleKhalaSyncCvrPull(request, {
-        enabled: isKhalaSyncCvrEnabled(env.KHALA_SYNC_CVR),
-        authenticate: async () => {
-          const actor = await authenticateRequestActor(request, env, ctx)
-          if (actor === undefined) {
-            return undefined
-          }
-          return { userId: resolveKhalaSyncActorUserId(actor) }
-        },
-        binding: env.KHALA_SYNC_DB,
-        resolveScopeRead: makeKhalaSyncScopeReadResolver({
-          binding: env.KHALA_SYNC_DB,
-          db: openAgentsDatabase(env),
-        }),
-      }),
+      handleKhalaSyncCvrPull(
+        request,
+        khalaSyncRouteWiring.makeCvrPullDeps(request, env, ctx),
+      ),
   },
   {
     // Khala Sync live tail (KS-4.4, #8297): authenticated WebSocket upgrade
@@ -13268,28 +13241,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // admin-guarded internal hub route stays capture/operator-only.
     path: '/api/sync/connect',
     handler: (request, env, ctx) =>
-      handleKhalaSyncConnect(request, {
-        // MUST authenticate the request the ROUTE passes (it has the
-        // `?token=` query bearer promoted into an Authorization header —
-        // the only auth channel a WebSocket client has), never a closure
-        // over the raw `request`: that closure 401'd every mobile live
-        // tail and left the app on an infinite "Loading threads" spinner
-        // (2026-07-06 production bug).
-        authenticate: async (authRequest) => {
-          const actor = await authenticateRequestActor(authRequest, env, ctx)
-          if (actor === undefined) {
-            return undefined
-          }
-          return { userId: resolveKhalaSyncActorUserId(actor) }
-        },
-        hubNamespace: env.KHALA_SYNC_HUB as
-          | KhalaSyncHubNamespaceLike
-          | undefined,
-        resolveScopeRead: makeKhalaSyncScopeReadResolver({
-          binding: env.KHALA_SYNC_DB,
-          db: openAgentsDatabase(env),
-        }),
-      }),
+      handleKhalaSyncConnect(
+        request,
+        // The factory's `authenticate` authenticates the request the ROUTE
+        // passes (the `?token=`-normalized one), never a closure over the
+        // raw `request` — the 2026-07-06 production-bug seam. Pinned by
+        // khala-sync-route-wiring.test.ts against the REAL actor auth.
+        khalaSyncRouteWiring.makeConnectDeps(env, ctx),
+      ),
   },
   {
     path: '/api/stats/token-usage/events',
@@ -15282,6 +15241,15 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
 ])
 
 export const exactRoutePathManifest = exactRouteRegistry.paths
+
+/**
+ * ST-3 (#8509): resolve one exact route-table entry's REAL handler so
+ * wiring-level tests can drive the production route composition (e.g. the
+ * `/api/sync/connect` `?token=` promotion + real actor auth) against a fake
+ * env. Test seam only — production dispatch stays `makeWorkerRouteRequest`.
+ */
+export const exactRouteHandlerForPath = (path: string) =>
+  exactRouteRegistry.routes.find(route => route.path === path)?.handler
 
 const routeRequest = makeWorkerRouteRequest({
   cleanProductRouteRedirectLocation,
