@@ -30,7 +30,9 @@
     "smoke:qwen-remote-training": "bun scripts/qwen-remote-pylon-live-training.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "dispatch:tassadar:poc": "bun run scripts/tassadar-poc-dispatch.ts"
+    "dispatch:tassadar:poc": "bun run scripts/tassadar-poc-dispatch.ts",
+    "start:cloudrun": "bun --preload ./src/cloudrun/preload.ts ./src/cloudrun/server.ts",
+    "typecheck:cloudrun": "tsc -p tsconfig.cloudrun.json --noEmit"
   },
   "dependencies": {
     "@cloudflare/containers": "0.3.7",
@@ -76,6 +78,7 @@
     "@cloudflare/workers-types": "^4.20260609.1",
     "@openagentsinc/khala-sync-client": "workspace:*",
     "playwright": "^1.61.0",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.8",
+    "bun-types": "^1.0.0"
   }
 }

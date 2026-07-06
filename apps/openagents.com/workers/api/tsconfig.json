@@ -10,5 +10,8 @@
     "allowImportingTsExtensions": true,
     "types": ["@cloudflare/workers-types"]
   },
-  "include": ["src/**/*", "vitest.config.ts", "wrangler.jsonc"]
+  "include": ["src/**/*", "vitest.config.ts", "wrangler.jsonc"],
+  // CFG-9 (#8524): the Cloud Run entry layer typechecks under bun-types via
+  // tsconfig.cloudrun.json (script `typecheck:cloudrun`), not workers-types.
+  "exclude": ["src/cloudrun/**"]
 }

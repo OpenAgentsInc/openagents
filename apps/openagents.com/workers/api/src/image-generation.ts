@@ -19,7 +19,12 @@ export type ImageGenerationRuntime = Readonly<{
   nowIso: () => string
 }>
 
-const workerFetch: typeof fetch = (input, init) => fetch(input, init)
+// The cast keeps this assignable under both the Workers and Bun ambient
+// fetch types (tsconfig.cloudrun.json, CFG-9 #8524).
+const workerFetch: typeof fetch = ((
+  input: Parameters<typeof fetch>[0],
+  init?: Parameters<typeof fetch>[1],
+) => fetch(input, init)) as typeof fetch
 
 export const systemImageGenerationRuntime: ImageGenerationRuntime = {
   fetch: workerFetch,

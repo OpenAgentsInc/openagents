@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    // CFG-9 (#8524): the Cloud Run monolith entry runs under Bun, so this
+    // config pairs bun-types with the Workers ambient types the shared worker
+    // sources expect (D1Database, KVNamespace, Queue, ExecutionContext, ...).
+    "types": ["bun-types", "@cloudflare/workers-types"]
+  },
+  "include": ["src/cloudrun/**/*"]
+}

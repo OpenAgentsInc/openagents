@@ -8002,12 +8002,14 @@ const hostedMdkClientForEnv = (
       checkoutPathBase: checkout.checkoutPathBase,
       ...(checkout.routeKind === 'self_hosted_mdkd_sidecar'
         ? {
-            fetch: (input, init) => {
+            // Cast keeps this assignable under both the Workers and Bun
+            // ambient fetch types (tsconfig.cloudrun.json, CFG-9 #8524).
+            fetch: (((input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
               const request =
                 input instanceof Request ? input : new Request(input, init)
 
               return fetchMdkSidecarRequest(request, env)
-            },
+            }) as typeof fetch),
           }
         : {}),
       routeSecret,

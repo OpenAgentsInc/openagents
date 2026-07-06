@@ -234,7 +234,9 @@ const formDataToRecord = (formData: FormData): Record<string, unknown> => {
   const fields: Record<string, unknown> = {}
 
   for (const [key, value] of formData.entries()) {
-    fields[key] = typeof value === 'string' ? value : value.name
+    // Typed via `File` explicitly so the check holds under both the Workers
+    // and Bun (tsconfig.cloudrun.json, CFG-9 #8524) ambient type sets.
+    fields[key] = typeof value === 'string' ? value : (value as File).name
   }
 
   return fields
