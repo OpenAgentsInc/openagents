@@ -28,11 +28,12 @@
     // calls only ever reach THIS Worker; the proxy attaches the owner's
     // verified bearer server-side before forwarding).
     "KHALA_SYNC_UPSTREAM_BASE_URL": "https://openagents.com",
-    // Comma-separated allowlist of verified OpenAuth user ids permitted to
-    // use Aiur. FAIL-CLOSED: unset or empty denies every request. Set via
-    // `wrangler secret put AIUR_OWNER_USER_IDS` or a per-environment
-    // override below once the owner's real user id is known (see
-    // NEEDS_OWNER.md).
-    "AIUR_OWNER_USER_IDS": "",
   },
+  // Comma-separated allowlist of verified OpenAuth user ids permitted to use
+  // Aiur. FAIL-CLOSED: unset or empty denies every request (owner-gate.ts).
+  // A real secret (not a `vars` entry — a `vars` entry with the same name
+  // blocks `wrangler secret put`), so it's never checked into the repo. Set
+  // via `wrangler secret put AIUR_OWNER_USER_IDS`. Current value: exactly
+  // one id, the owner's own GitHub-linked account (`github:14167547`) —
+  // never add anyone else without the owner explicitly asking.
 }
