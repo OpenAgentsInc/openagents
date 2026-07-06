@@ -1,7 +1,7 @@
 import {
+  AuthRequest,
   exchangeCodeAsync,
   makeRedirectUri,
-  useAuthRequest,
 } from "expo-auth-session"
 import type { AuthRequestConfig } from "expo-auth-session"
 import * as WebBrowser from "expo-web-browser"
@@ -82,10 +82,6 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
     reduceKhalaAuthMachine,
     initialKhalaAuthMachineState,
   )
-  const [request, , promptAsync] = useAuthRequest(
-    mobileOpenAuthRequestConfig(redirectUri) as AuthRequestConfig,
-    discovery,
-  )
   const mountedRef = useRef(true)
 
   useEffect(() => () => {
@@ -162,20 +158,30 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
   }, [])
 
   const signInWithGitHub = useCallback(async () => {
-    if (request === null || machine.status === "signing_in") return
+    if (machine.status === "signing_in") return
     dispatch({ type: "github_sign_in_started" })
 
     try {
-      const result = await promptAsync()
+      // Build ONE AuthRequest here, imperatively, and use that exact instance
+      // to open the browser AND parse the callback. This is the fix for the
+      // real `state_mismatch` failure users hit (#8467, "Cross-Site request
+      // verification failed. Cached state and returned state do not match"):
+      // `useAuthRequest` reactively rebuilds its request object across
+      // renders, so the instance that PARSED the callback could differ from
+      // the one that BUILT the authorize URL — different random `state`, so
+      // the cross-site check always failed and the code was never exchanged.
+      // A single local instance generates one `state` + one PKCE verifier and
+      // both opens and validates with it, so they can never diverge.
+      const authRequest = new AuthRequest(
+        mobileOpenAuthRequestConfig(redirectUri) as AuthRequestConfig,
+      )
+      const result = await authRequest.promptAsync(discovery)
 
-      // The auth session can end four ways. Only a genuine user dismissal is
-      // silent; every OTHER non-success outcome (an OAuth error redirected
-      // back to us, a PKCE/`state` cross-site mismatch, a `locked` concurrent
-      // prompt) MUST surface a real reason. The old code swallowed all of
-      // them as a silent "cancelled", which is exactly how a real sign-in
-      // failure looked like nothing happened (#8467): the server completed
-      // the whole GitHub round-trip and issued a code, but the app never
-      // exchanged it and told the user nothing.
+      // The auth session can end several ways. Only a genuine user dismissal
+      // is silent; every OTHER non-success outcome (an OAuth error redirected
+      // back, a `locked` concurrent prompt) MUST surface a real reason. The
+      // old code swallowed all of them as a silent "cancelled", which is
+      // exactly how a real sign-in failure looked like nothing happened.
       if (result.type !== "success") {
         if (!mountedRef.current) return
         if (result.type === "cancel" || result.type === "dismiss") {
@@ -204,7 +210,7 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const code = result.params.code
-      const codeVerifier = request.codeVerifier
+      const codeVerifier = authRequest.codeVerifier
 
       if (typeof code !== "string" || code.trim() === "" || codeVerifier === undefined) {
         throw new Error(
@@ -253,7 +259,7 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
         type: "github_sign_in_failed",
       })
     }
-  }, [applyCredentials, machine.status, promptAsync, request])
+  }, [applyCredentials, machine.status])
 
   const signOut = useCallback(async () => {
     const token = machine.credentials?.token
@@ -312,7 +318,10 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
     () => ({
       baseUrl: KHALA_SYNC_DEMO_BASE_URL,
       deleteAccount,
-      githubSignInReady: request !== null && machine.status !== "signing_in",
+      // The AuthRequest is now built on demand inside `signInWithGitHub`
+      // (discovery is a static module constant), so the button is ready as
+      // soon as we are not already mid sign-in.
+      githubSignInReady: machine.status !== "signing_in",
       ownerUserId: machine.credentials?.ownerUserId ?? "",
       signInErrorMessage: machine.messageSafe,
       signInWithGitHub,
@@ -320,7 +329,7 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
       status: machine.status,
       token: machine.credentials?.token ?? "",
     }),
-    [deleteAccount, machine, request, signInWithGitHub, signOut],
+    [deleteAccount, machine, signInWithGitHub, signOut],
   )
 
   return <KhalaAuthContext.Provider value={value}>{children}</KhalaAuthContext.Provider>
