@@ -1,4 +1,10 @@
 {
+  // LEGACY (CFG-11, #8526): production Aiur now deploys to Google Cloud Run
+  // (`scripts/deploy-cloudrun.sh`, service `openagents-aiur` in
+  // openagentsgemini/us-central1). This Worker keeps serving
+  // aiur.openagents.com ONLY until the owner flips the DNS record to the
+  // Cloud Run domain mapping (see NEEDS_OWNER.md); delete the Worker after
+  // the domain serves from Cloud Run.
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "openagents-aiur",
   "main": "src/server.ts",

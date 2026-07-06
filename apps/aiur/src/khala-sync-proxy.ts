@@ -163,31 +163,50 @@ const proxyLogGet = async (
 type WorkersUpgradeResponse = Response & { webSocket?: WebSocket | null }
 type WorkersUpgradeResponseInit = ResponseInit & { webSocket?: WebSocket }
 
-const proxyConnectUpgrade = async (
+export type AiurSyncConnectTarget =
+  | Readonly<{ kind: 'response'; response: Response }>
+  | Readonly<{ kind: 'connect'; bearer: string; targetUrl: string }>
+
+/**
+ * The runtime-agnostic gate + target resolution for `/api/sync/connect`,
+ * shared by the Workers `WebSocketPair` bridge below and the Cloud Run Bun
+ * bridge (`cloudrun/server.ts`). FAIL CLOSED: anything other than a
+ * verified allow-listed owner session yields an error `response`, never a
+ * `connect`.
+ */
+export const resolveAiurSyncConnectTarget = async (
   request: Request,
   env: AiurEnv,
-  deps: AiurKhalaSyncProxyDeps,
-): Promise<Response> => {
+  deps: AiurKhalaSyncProxyDeps = {},
+): Promise<AiurSyncConnectTarget> => {
   if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
-    return noStoreJson(
-      {
-        code: 'invalid_request',
-        messageSafe: `GET ${AIUR_SYNC_CONNECT_PATH} requires a WebSocket upgrade.`,
-      },
-      426,
-    )
+    return {
+      kind: 'response',
+      response: noStoreJson(
+        {
+          code: 'invalid_request',
+          messageSafe: `GET ${AIUR_SYNC_CONNECT_PATH} requires a WebSocket upgrade.`,
+        },
+        426,
+      ),
+    }
   }
 
   const bearer = await requireOwnerBearer(request, env, deps)
-  if (bearer === undefined) return unauthenticated()
+  if (bearer === undefined) {
+    return { kind: 'response', response: unauthenticated() }
+  }
 
   const requestUrl = new URL(request.url)
   const scope = requestUrl.searchParams.get('scope')
   if (scope === null || scope === '') {
-    return noStoreJson(
-      { code: 'invalid_request', messageSafe: 'scope query parameter is required.' },
-      400,
-    )
+    return {
+      kind: 'response',
+      response: noStoreJson(
+        { code: 'invalid_request', messageSafe: 'scope query parameter is required.' },
+        400,
+      ),
+    }
   }
   const cursor = requestUrl.searchParams.get('cursor') ?? '0'
 
@@ -195,10 +214,25 @@ const proxyConnectUpgrade = async (
   target.searchParams.set('scope', scope)
   target.searchParams.set('cursor', cursor)
 
+  return { kind: 'connect', bearer, targetUrl: target.toString() }
+}
+
+const proxyConnectUpgrade = async (
+  request: Request,
+  env: AiurEnv,
+  deps: AiurKhalaSyncProxyDeps,
+): Promise<Response> => {
+  const connectTarget = await resolveAiurSyncConnectTarget(request, env, deps)
+  if (connectTarget.kind === 'response') {
+    return connectTarget.response
+  }
+
+  const { bearer, targetUrl } = connectTarget
+
   const fetchImpl = deps.fetch ?? globalThis.fetch.bind(globalThis)
   let upstreamResponse: WorkersUpgradeResponse
   try {
-    upstreamResponse = (await fetchImpl(target.toString(), {
+    upstreamResponse = (await fetchImpl(targetUrl, {
       headers: {
         authorization: `Bearer ${bearer}`,
         upgrade: 'websocket',

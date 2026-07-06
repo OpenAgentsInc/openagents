@@ -9,6 +9,8 @@
     "build": "vite build --logLevel warn",
     "preview": "vite preview",
     "deploy": "bun run build && wrangler deploy",
+    "build:cloudrun": "vite build --config vite.config.cloudrun.ts --logLevel warn && bun build src/cloudrun/server.ts --target=bun --outdir dist/cloudrun --entry-naming server.js",
+    "deploy:cloudrun": "bash scripts/deploy-cloudrun.sh",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "cf:typegen": "wrangler types"

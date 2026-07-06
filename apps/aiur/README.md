@@ -98,8 +98,9 @@ for the first build. The D1 credit ledger is owned by the MAIN
 bun install
 bun run --cwd apps/aiur typecheck
 bun run --cwd apps/aiur test
-bun run --cwd apps/aiur dev      # local dev server
-bun run --cwd apps/aiur deploy   # wrangler deploy (needs AIUR_OWNER_USER_IDS set)
+bun run --cwd apps/aiur dev              # local dev server
+bun run --cwd apps/aiur deploy:cloudrun  # Cloud Run deploy (the production path, CFG-11)
+bun run --cwd apps/aiur deploy           # LEGACY wrangler deploy — only until the DNS cutover
 
 # The main Worker owns the credit ledger routes/migration:
 bun run --cwd apps/openagents.com/workers/api typecheck
@@ -109,8 +110,21 @@ bun run --cwd apps/openagents.com check:architecture
 
 ## Production
 
-`wrangler.jsonc` deploys Worker `openagents-aiur` and attaches the custom
-domain route `aiur.openagents.com`. Deploy runbook:
+Production runs on **Google Cloud Run** (CFG-11, #8526): service
+`openagents-aiur` in `openagentsgemini`/`us-central1`, deployed by
+`scripts/deploy-cloudrun.sh` (`bun run deploy:cloudrun`). The runtime is a
+thin Bun adapter (`src/cloudrun/server.ts`) over the same shared surface
+the Worker ran (`src/shared-surface.ts`): prerendered SPA shell
+(`vite.config.cloudrun.ts` SPA mode) + static assets + the owner-gated
+auth/proxy routes, with a Bun-native WebSocket bridge for
+`/api/sync/connect`. `AIUR_OWNER_USER_IDS` is mounted from GCP Secret
+Manager (`aiur-owner-user-ids`) — fail-closed when missing/empty, exactly
+as on Workers.
+
+The legacy Cloudflare Worker (`wrangler.jsonc`, Worker `openagents-aiur`,
+custom domain `aiur.openagents.com`) keeps serving the domain ONLY until
+the owner flips DNS to the Cloud Run domain mapping (see
+`NEEDS_OWNER.md`); then the Worker gets deleted. Deploy runbook:
 `docs/khala-code/2026-07-06-aiur-admin-deploy-runbook.md` (linked from
 `docs/DEPLOYMENT.md`). The credit ledger migration
 (`apps/openagents.com/workers/api/migrations/0308_admin_credit_grants.sql`)

@@ -8,12 +8,40 @@ auth + Khala Sync connection; AIUR-2 (#8500) credits console; AIUR-3
 
 ## What this is
 
-A fresh, standalone Cloudflare Worker (`openagents-aiur`) running TanStack
-Start (React + Tailwind), deployed at the custom domain
-`aiur.openagents.com`. It is NOT a route inside the main `openagents.com`
-Worker — separate `wrangler.jsonc`, separate deploy, separate session
+A standalone owner-only admin app served from **Google Cloud Run**
+(service `openagents-aiur`, project `openagentsgemini`, region
+`us-central1`) as of CFG-11 (#8526, part of the Cloudflare → Google
+consolidation epic #8515). The runtime is a thin Bun server
+(`apps/aiur/src/cloudrun/server.ts`) serving the prerendered SPA shell +
+static client build and running the same owner-gated proxy surface the
+Worker ran (`apps/aiur/src/shared-surface.ts`), plus a Bun-native
+WebSocket bridge for the Khala Sync live tail. It is NOT a route inside
+the main `openagents.com` Worker — separate deploy, separate session
 cookies (`aiur_access`/`aiur_refresh`, never confused with the main site's
 `oa_access`/`oa_refresh`).
+
+The legacy Cloudflare Worker deploy path (`wrangler.jsonc`,
+`bun run --cwd apps/aiur deploy`) remains ONLY until the
+`aiur.openagents.com` DNS cutover to the Cloud Run domain mapping is done
+(owner-gated Cloudflare dashboard step — see `NEEDS_OWNER.md`); after the
+domain serves from Cloud Run, delete the Worker.
+
+### Cloud Run deploy
+
+```sh
+gcloud config set project openagentsgemini
+bun run --cwd apps/aiur deploy:cloudrun   # = scripts/deploy-cloudrun.sh
+```
+
+The script builds the SPA-shell client bundle
+(`vite.config.cloudrun.ts`) and the self-contained Bun server bundle,
+ensures the Secret Manager secret `aiur-owner-user-ids` exists (value:
+exactly `github:14167547` — the owner, never anyone else), and runs
+`gcloud run deploy openagents-aiur --source apps/aiur --region
+us-central1` with `AIUR_OWNER_USER_IDS` mounted via `--set-secrets`.
+Fail-closed is preserved end to end: a missing/empty secret denies every
+request. Rollback: `gcloud run services update-traffic openagents-aiur
+--region us-central1 --to-revisions <previous-revision>=100`.
 
 It reuses the shared `auth.openagents.com` OpenAuth issuer's GitHub
 provider (same downstream client id, `openagents-web`, as the main web
@@ -69,7 +97,7 @@ curl -fsSI https://aiur.openagents.com/
 
 Expect `200` (or a redirect into the sign-in shell) with the standard
 security headers (`X-Frame-Options: DENY`, etc. — see
-`apps/aiur/src/server.ts` `SECURITY_HEADERS`). Then, as the owner:
+`apps/aiur/src/shared-surface.ts` `SECURITY_HEADERS`). Then, as the owner:
 
 1. Visit `https://aiur.openagents.com/` and click "Sign in with GitHub".
 2. Confirm the OpenAuth flow completes and lands back on Aiur signed in
