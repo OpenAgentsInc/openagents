@@ -25,6 +25,7 @@ import {
 } from "../config/khala-sync-demo"
 import { mobileProblemMessageSafe } from "../network/mobile-problem"
 import { unregisterPushNotificationsAsync } from "../push/push-notifications-client"
+import { describeAuthSessionFailure } from "./auth-session-failure"
 import { resolveVerifiedStoredCredentials } from "./khala-auth-resume-verify-core"
 import { clearStoredCredentials, loadStoredCredentials, saveStoredCredentials } from "./khala-auth-store"
 import {
@@ -167,9 +168,38 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const result = await promptAsync()
 
+      // The auth session can end four ways. Only a genuine user dismissal is
+      // silent; every OTHER non-success outcome (an OAuth error redirected
+      // back to us, a PKCE/`state` cross-site mismatch, a `locked` concurrent
+      // prompt) MUST surface a real reason. The old code swallowed all of
+      // them as a silent "cancelled", which is exactly how a real sign-in
+      // failure looked like nothing happened (#8467): the server completed
+      // the whole GitHub round-trip and issued a code, but the app never
+      // exchanged it and told the user nothing.
       if (result.type !== "success") {
         if (!mountedRef.current) return
-        dispatch({ type: "github_sign_in_cancelled" })
+        if (result.type === "cancel" || result.type === "dismiss") {
+          dispatch({ type: "github_sign_in_cancelled" })
+          return
+        }
+        dispatch({
+          messageSafe: describeAuthSessionFailure(result),
+          type: "github_sign_in_failed",
+        })
+        return
+      }
+
+      // A `success` result can still carry an OAuth error in its params
+      // (e.g. the issuer redirected back `?error=...` on the app's own
+      // scheme). Treat that as a failure with the server's reason rather
+      // than trying to exchange a non-existent code.
+      const paramError = result.params.error
+      if (typeof paramError === "string" && paramError.trim() !== "") {
+        if (!mountedRef.current) return
+        dispatch({
+          messageSafe: describeAuthSessionFailure(result),
+          type: "github_sign_in_failed",
+        })
         return
       }
 
@@ -177,7 +207,9 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
       const codeVerifier = request.codeVerifier
 
       if (typeof code !== "string" || code.trim() === "" || codeVerifier === undefined) {
-        throw new Error("GitHub sign-in did not return a usable authorization code.")
+        throw new Error(
+          `GitHub sign-in did not return a usable authorization code (code=${typeof code}, verifier=${codeVerifier === undefined ? "missing" : "present"}).`,
+        )
       }
 
       const tokenResponse = await exchangeCodeAsync(
