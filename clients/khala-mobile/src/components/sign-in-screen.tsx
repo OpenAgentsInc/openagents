@@ -62,6 +62,13 @@ export const SignInScreen = () => {
                 {signInErrorMessage}
               </KhalaText>
             )}
+
+            {/* TEMP-DIAG-8467: visible build marker so we both know the debug
+             * build is actually running before testing sign-in. Remove with
+             * the sign-in diagnostics. */}
+            <KhalaText className="text-center" variant="caption">
+              build dbg3
+            </KhalaText>
           </View>
         </View>
       </View>

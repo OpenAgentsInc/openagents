@@ -77,6 +77,46 @@ const redirectUri = makeRedirectUri({
 })
 const discovery = mobileOpenAuthDiscovery(KHALA_OPENAUTH_BASE_URL)
 
+/** TEMP-DIAG-8467: build a public-safe snapshot of the exact auth-session
+ * outcome and POST it to the debug sink so we can read device ground truth via
+ * `wrangler tail`. Redacts the authorization code + any token before sending.
+ * Never throws (fire-and-forget). */
+const SIGNIN_DEBUG_BUILD_MARKER = "dbg3"
+const beaconSignInDebug = async (
+  authRequest: { state?: string; codeVerifier?: string; url?: string | null },
+  result: { type: string; url?: string; error?: { description?: string | null } | null },
+  params: Record<string, string>,
+): Promise<void> => {
+  try {
+    const redactUrl = (raw: string | undefined): string =>
+      typeof raw === "string"
+        ? raw.replace(/(code=)[^&]+/, "$1REDACTED").replace(/(access_token=)[^&]+/, "$1REDACTED")
+        : "(none)"
+    const snapshot = {
+      marker: SIGNIN_DEBUG_BUILD_MARKER,
+      buildNumber: "15+",
+      resultType: result.type,
+      expectedState: authRequest.state ?? "(none)",
+      returnedState: params.state ?? "(none)",
+      stateMatches: (authRequest.state ?? null) === (params.state ?? null),
+      hasCode: typeof params.code === "string" && params.code.length > 0,
+      hasCodeVerifier: authRequest.codeVerifier !== undefined,
+      oauthError: params.error ?? "(none)",
+      expoError: result.error?.description ?? "(none)",
+      paramKeys: Object.keys(params).sort().join(","),
+      authorizeUrl: redactUrl(authRequest.url ?? undefined),
+      returnedUrl: redactUrl(result.url),
+    }
+    await fetch(`${KHALA_OPENAGENTS_API_BASE_URL}/api/mobile/signin-debug`, {
+      body: JSON.stringify(snapshot),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    })
+  } catch {
+    // best-effort diagnostics only
+  }
+}
+
 export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
   const [machine, dispatch] = useReducer(
     reduceKhalaAuthMachine,
@@ -182,6 +222,13 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
       const params = "params" in result ? (result.params ?? {}) : {}
       const code = params.code
       const oauthError = params.error
+
+      // TEMP-DIAG-8467: beacon the EXACT outcome so we can read ground truth
+      // from the device (result type, expected vs returned state, whether a
+      // code came back, the callback URL shape) via `wrangler tail`. The code
+      // value is redacted before sending. Fire-and-forget; never blocks or
+      // fails sign-in.
+      void beaconSignInDebug(authRequest, result, params)
 
       // A real OAuth error redirected back by the issuer (?error=...) is a
       // genuine failure — never try to exchange a non-existent code.

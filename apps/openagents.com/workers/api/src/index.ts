@@ -12795,6 +12795,25 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       Effect.promise(() => handleMobileModelPreferenceApi(request, env, ctx)),
   },
   {
+    // TEMP-DIAG-8467: unauthenticated sink so the mobile app can beacon the
+    // EXACT GitHub-sign-in auth-session outcome (result type, expected vs
+    // returned `state`, whether a code came back, the callback URL shape) to
+    // a place we can read via `wrangler tail`. No secrets: the client redacts
+    // the code/token values before posting. Remove once the sign-in
+    // state_mismatch is definitively fixed.
+    path: '/api/mobile/signin-debug',
+    handler: (request) =>
+      Effect.promise(async () => {
+        try {
+          const body = await request.text()
+          console.log('MOBILE_SIGNIN_DEBUG', body.slice(0, 4000))
+        } catch (error) {
+          console.log('MOBILE_SIGNIN_DEBUG_ERR', String(error))
+        }
+        return new Response(null, { status: 204 })
+      }),
+  },
+  {
     // #8505 Part 1 (fixes #8480's shipped-but-dead REST routes): mobile-bearer
     // credit balance read, backed directly by the authoritative D1
     // `agent_balances` ledger. Same boundary as the routes above.
