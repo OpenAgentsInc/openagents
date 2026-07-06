@@ -47,6 +47,7 @@
     "./cf-browser-video": "./src/cf-browser-video.ts",
     "./cf-sandbox-backend": "./src/cf-sandbox-backend.ts",
     "./khala-desktop-backend": "./src/khala-desktop-backend.ts",
+    "./khala-sync-transport-backend": "./src/khala-sync-transport-backend.ts",
     "./khala-flagship-demo": "./src/khala-flagship-demo.ts",
     "./native-desktop-backend": "./src/native-desktop-backend.ts",
     "./native-desktop-runtime": "./src/native-desktop-runtime.ts",
@@ -82,6 +83,7 @@
     "run-once": "bun run src/run-once.ts",
     "run-targets": "bun run src/run-targets.ts",
     "terminal-once": "bun run src/terminal-once.ts",
+    "khala-sync-once": "bun run src/khala-sync-once.ts",
     "demo:byo": "bun run src/byo.ts run --fake-model --url https://example.test --out ./runs/byo-fake",
     "demo:login": "bun run src/demo-login.ts",
     "demo:khala": "bun run src/demo-khala.ts",
@@ -91,7 +93,7 @@
     "evals": "bun run src/evals-run.ts",
     "pr-comment": "bun run src/pr-comment-run.ts",
     "trace:fixture": "bun run src/trace-fixture.ts",
-    "test": "bun test src/byo-model.test.ts src/byo.test.ts src/runner.test.ts src/runner-hardening.test.ts src/timeouts.test.ts src/shard.test.ts src/public-safety.test.ts src/brain.test.ts src/backend.test.ts src/terminal-backend.test.ts src/container-backend.test.ts src/native-desktop-backend.test.ts src/khala-desktop-backend.test.ts src/khala-action.test.ts src/khala-driver.test.ts src/khala-config.test.ts src/khala-openrouter.test.ts src/session-trace.test.ts src/distiller.test.ts src/skill-candidate.test.ts src/receipt.test.ts src/run-settlement.test.ts src/khala-session.test.ts src/compose/build-plan.test.ts src/compose/ffmpeg.test.ts src/evals.test.ts src/pr-comment.test.ts src/control-auth.test.ts src/artifacts.test.ts src/control.test.ts src/api-server.test.ts src/failure-learning.test.ts src/failure-learning-gepa.test.ts src/target-registry.test.ts src/target-registry-run.test.ts src/target-adapter.test.ts src/qs7-rhys-sales-motion.test.ts src/cf-browser-backend.test.ts src/cf-browser-video.test.ts src/cf-sandbox-backend.test.ts src/atif.test.ts src/atif-html.test.ts src/codex-to-atif.test.ts src/redaction.test.ts src/claude-code-to-atif.test.ts src/publish-trace.test.ts src/trace-fixture.test.ts src/publish-trace-e2e.verify.test.ts generated/khala-code-packaged-seeded-bug.e2e.test.ts",
+    "test": "bun test src/byo-model.test.ts src/byo.test.ts src/runner.test.ts src/runner-hardening.test.ts src/timeouts.test.ts src/shard.test.ts src/public-safety.test.ts src/brain.test.ts src/backend.test.ts src/terminal-backend.test.ts src/khala-sync-transport-backend.test.ts src/container-backend.test.ts src/native-desktop-backend.test.ts src/khala-desktop-backend.test.ts src/khala-action.test.ts src/khala-driver.test.ts src/khala-config.test.ts src/khala-openrouter.test.ts src/session-trace.test.ts src/distiller.test.ts src/skill-candidate.test.ts src/receipt.test.ts src/run-settlement.test.ts src/khala-session.test.ts src/compose/build-plan.test.ts src/compose/ffmpeg.test.ts src/evals.test.ts src/pr-comment.test.ts src/control-auth.test.ts src/artifacts.test.ts src/control.test.ts src/api-server.test.ts src/failure-learning.test.ts src/failure-learning-gepa.test.ts src/target-registry.test.ts src/target-registry-run.test.ts src/target-adapter.test.ts src/qs7-rhys-sales-motion.test.ts src/cf-browser-backend.test.ts src/cf-browser-video.test.ts src/cf-sandbox-backend.test.ts src/atif.test.ts src/atif-html.test.ts src/codex-to-atif.test.ts src/redaction.test.ts src/claude-code-to-atif.test.ts src/publish-trace.test.ts src/trace-fixture.test.ts src/publish-trace-e2e.verify.test.ts generated/khala-code-packaged-seeded-bug.e2e.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "playwright:install": "playwright install --with-deps chromium",
     "atif:emit": "bun run src/atif-emit.ts",
@@ -104,6 +106,8 @@
     "playwright": "^1.61.0"
   },
   "devDependencies": {
+    "@openagentsinc/khala-sync": "workspace:*",
+    "@openagentsinc/khala-sync-client": "workspace:*",
     "@openagentsinc/probe-runtime": "workspace:*",
     "bun-types": "^1.3.14",
     "typescript": "catalog:"

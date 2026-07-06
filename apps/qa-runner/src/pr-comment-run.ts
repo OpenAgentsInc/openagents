@@ -34,8 +34,17 @@ import {
   loginRegressionSteps,
   loginRegressionStepsWrong,
 } from "./scenarios";
+import {
+  resolveKhalaSyncAuthFromEnv,
+  runKhalaSyncTransportScenario,
+} from "./khala-sync-transport-backend";
 import { makeTarget } from "./target";
-import { verifyCommitments, type VerifyReport } from "./verify";
+import {
+  renderVerdictEvidence,
+  renderVerdictLine,
+  verifyCommitments,
+  type VerifyReport,
+} from "./verify";
 import {
   learnFromRun,
   type FailureLearningStrategy,
@@ -60,12 +69,22 @@ function parseArgs(argv: ReadonlyArray<string>) {
 
 // Diff-scope: map changed paths -> scenario ids. Deterministic + bounded (this
 // is selection AFTER paths are known, not user-intent routing, so a static map
-// is acceptable). Today there is one scenario; the map documents the seam.
+// is acceptable). The map documents the seam.
+//
+// ST-6 (#8512): a diff touching the khala-sync packages, the client transport,
+// or the auth path scopes in the `khala-sync-transport` scenario — the headless
+// seam probe that drives the REAL createHttpKhalaSyncTransport against a live
+// target. It runs only when ARMED (QA_KHALA_SYNC_ARM=1 — it needs network + a
+// bearer); unarmed it is reported as scoped-but-skipped, honestly, never as a
+// fake pass.
 const SCOPE_RULES: ReadonlyArray<{ test: (p: string) => boolean; scenario: string }> =
   [
     { test: p => p.includes("login") || p.includes("auth"), scenario: "login-regression" },
     { test: p => p.includes("apps/openagents.com"), scenario: "login-regression" },
     { test: p => p.includes("apps/qa-runner"), scenario: "login-regression" },
+    { test: p => p.includes("packages/khala-sync"), scenario: "khala-sync-transport" },
+    { test: p => p.includes("transport"), scenario: "khala-sync-transport" },
+    { test: p => p.includes("auth"), scenario: "khala-sync-transport" },
   ];
 
 const scopedScenarios = (changed: ReadonlyArray<string>): ReadonlyArray<string> => {
@@ -234,10 +253,60 @@ async function main(): Promise<void> {
     ...(repo !== undefined ? { ghAttachOptions: { repo } } : {}),
   });
 
-  writeFileSync(commentOut, body);
+  // ST-6 (#8512): when the diff scoped in the khala-sync-transport seam probe,
+  // run it for REAL only when ARMED (QA_KHALA_SYNC_ARM=1 — network + a bearer);
+  // otherwise report scoped-but-skipped honestly (never a fake pass, never a
+  // silent drop). A failed/REFUTED seam run REDS the gate below.
+  let khalaSyncSection = "";
+  let khalaSyncOk = true;
+  if (scenarios.includes("khala-sync-transport")) {
+    const heading = "### khala-sync-transport seam probe (#8512)";
+    if (process.env.QA_KHALA_SYNC_ARM === "1") {
+      const resolved = resolveKhalaSyncAuthFromEnv();
+      if (resolved.kind === "resolved") {
+        const targetUrl =
+          process.env.QA_KHALA_SYNC_TARGET_URL ?? "https://staging.openagents.com";
+        const scope =
+          resolved.auth.ownerUserId !== undefined
+            ? `scope.user.${resolved.auth.ownerUserId}`
+            : "scope.public.tokens-served";
+        const seam = await runKhalaSyncTransportScenario({
+          target: makeTarget({ name: "khala-sync-pr", baseUrl: targetUrl }),
+          scope,
+          auth: resolved.auth,
+          artifactDir: join(out, "khala-sync-transport"),
+        });
+        khalaSyncOk = seam.result.status === "pass";
+        const seamVerify = seam.result.verify;
+        khalaSyncSection = [
+          heading,
+          "",
+          `Classification: \`${seam.classification}\` — status **${seam.result.status}**`,
+          ...(seamVerify !== undefined
+            ? ["", renderVerdictLine(seamVerify), ...renderVerdictEvidence(seamVerify)]
+            : []),
+          "",
+        ].join("\n");
+        console.log(
+          `[pr-comment] khala-sync-transport: ${seam.classification} (${seam.result.status})`,
+        );
+      } else {
+        khalaSyncSection = `${heading}\n\nScoped by this diff but SKIPPED: ${resolved.reason}.\n`;
+        console.log(`[pr-comment] khala-sync-transport: skipped (${resolved.reason})`);
+      }
+    } else {
+      khalaSyncSection =
+        `${heading}\n\nScoped by this diff but NOT ARMED — set QA_KHALA_SYNC_ARM=1 ` +
+        "(with a bearer in env) to drive the real transport against staging.\n";
+      console.log("[pr-comment] khala-sync-transport: scoped but not armed — skipped");
+    }
+  }
+
+  const finalBody = khalaSyncSection === "" ? body : `${body}\n${khalaSyncSection}`;
+  writeFileSync(commentOut, finalBody);
   console.log(`[pr-comment] wrote ${commentOut}`);
   console.log("--- PR comment body ---");
-  console.log(body);
+  console.log(finalBody);
 
   // Honest exit code: RED only on a real DEVIATION from each variant's EXPECTED
   // outcome — not merely because a variant failed. The default fixture's
@@ -252,7 +321,10 @@ async function main(): Promise<void> {
   if (!asExpected) {
     console.log("[pr-comment] a variant deviated from its expected outcome — gate RED.");
   }
-  process.exit(asExpected ? 0 : 1);
+  if (!khalaSyncOk) {
+    console.log("[pr-comment] khala-sync-transport seam probe failed — gate RED.");
+  }
+  process.exit(asExpected && khalaSyncOk ? 0 : 1);
 }
 
 if (import.meta.main) {

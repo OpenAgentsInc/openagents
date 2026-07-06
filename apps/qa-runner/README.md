@@ -58,6 +58,7 @@ result and watching the video — *no local run*.
 | skill emitter (NIP-SKL marketplace candidate, spec §E.1) | **typed seam + TODO, FUTURE/owner-gated** |
 | `localBackend` (real chromium on this host) | **real now** — the default |
 | `khalaDesktopBackend` (Khala Code Desktop preview + typed RPC) | **real now** — boots headless with fixture Codex app-server by default; live/headed paths remain explicitly armed |
+| `khala-sync-transport` backend (#8512): headless seam probe driving the REAL `createHttpKhalaSyncTransport` (bootstrap → log page → WS connect) with a cookie-less bearer and classifying outcomes (`live` / `connect_unauthenticated` / `connect_denied` / `silent_retry_loop` / `never_live`) | **real now** — `khala-sync-once`; env-resolved or self-registered bearer, clean SKIP without one; a 401'd/never-live connect is a REFUTED `connect-reaches-live` finding |
 | `cloudVmBackend` (per-run OpenAgents Cloud firecracker / sek8s microVM) | **interface-only, owner-gated** — throws "not armed" unless an injected provisioner is supplied |
 | video (mp4 via ffmpeg, webm fallback) + trace + screenshots + `result.json` | **real now** |
 | run = verified receipt / settlement wrapper | **follow-up, owner-gated (settlement INERT)** |
@@ -134,6 +135,20 @@ bun run --cwd apps/qa-runner demo:login -- --wrong
 
 # One-shot run against any target (real chromium)
 bun run --cwd apps/qa-runner run-once -- --url https://openagents.com --out ./runs/manual
+
+# khala-sync-transport seam probe (#8512): drive the REAL khala-sync client
+# transport (bootstrap -> log page -> WebSocket connect) with a cookie-less
+# bearer against a live target and classify the outcome. This is the standing
+# form of the diagnosis loop that found the 2026-07-06 mobile WS-auth bug.
+# Bearer: QA_KHALA_SYNC_TOKEN (+ QA_KHALA_SYNC_OWNER_USER_ID), else
+# OPENAGENTS_AGENT_TOKEN, else KHALA_MOBILE_TEST_TOKEN; --register mints a
+# throwaway agent; no bearer -> clean SKIP (exit 0). Never hardcoded.
+bun run --cwd apps/qa-runner khala-sync-once -- --target staging --out ./runs/khala-sync
+bun run --cwd apps/qa-runner khala-sync-once -- --target prod            # read-only probe
+bun run --cwd apps/qa-runner khala-sync-once -- --target prod --public   # anonymous public scope
+# Per-PR: pr-comment-run diff-scopes any change under packages/khala-sync*,
+# *transport*, or *auth* into this probe; it runs for real only when
+# QA_KHALA_SYNC_ARM=1 (unarmed -> honest "scoped but not armed" in the comment).
 
 # Long-running daemon scaffold (inert without QA_JOB_LEASE_URL)
 bun run --cwd apps/qa-runner serve
