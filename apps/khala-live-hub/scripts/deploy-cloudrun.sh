@@ -84,7 +84,8 @@ gcloud run deploy "$SERVICE" \
   --max-instances 1 \
   --concurrency 1000 \
   --no-cpu-throttling \
-  --memory 512Mi \
+  --memory 1Gi \
+  --set-env-vars "KHALA_LIVE_HUB_REBUILD_VERSIONS=500" \
   --set-secrets "KHALA_LIVE_HUB_TOKEN=${TOKEN_SECRET}:latest,KHALA_SYNC_DATABASE_URL=${DB_SECRET}:latest"
 
 URL="$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')"
