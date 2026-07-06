@@ -522,9 +522,11 @@ This is the invariant ledger for `openagents`.
   typed public-safe outcomes. Branch/PR links belong in thread-scoped runtime
   event metadata and closeout refs only.
 - Agent Computer compute charging is receipt-first and exact-only. Charges draw
-  from the same user credit balance as token charges, but the compute rate is
-  owner-gated until #8479 records it. Do not infer or hard-code a compute price
-  in the Worker, docs, or tests.
+  from the same user credit balance as token charges, but the nonzero compute
+  rate remains owner-gated until the owner sets it from real GCE host cost,
+  expected active microVM density, and margin. Do not infer or hard-code a
+  compute price in the Worker or tests; use the injected pricing function and
+  lifecycle receipts only.
 
 ## Khala Response Discipline And Reasoning Channel
 

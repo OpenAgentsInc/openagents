@@ -190,6 +190,7 @@ describe('settleCloudPrimitiveCharge against real SQL', () => {
     )
     expect(outcome.metered).toBe(false)
     expect(outcome.receiptRef).toBeNull()
+    expect(outcome.failureReason).toBe('insufficient_credit')
     const balance = await readAgentBalance(db, ACCOUNT)
     expect(balance?.availableMsat).toBe(1000)
   })

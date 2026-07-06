@@ -1,6 +1,23 @@
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import {
+  ClientGroupId,
+  ClientId,
+  KHALA_SYNC_PROTOCOL_VERSION,
+  MutationEnvelope,
+  MutationId,
+  MutatorName,
+  PushRequest,
+  SyncSchemaVersion,
+} from '@openagentsinc/khala-sync'
+import {
+  executePush as executeKhalaSyncPush,
+  readRuntimeTurnById,
+  RUNTIME_RECORD_EVENT_MUTATOR_NAME,
+  type MutatorRegistry,
+} from '@openagentsinc/khala-sync-server'
+
+import {
   type AgentRegistrationStore,
   type ProgrammaticAgentSession,
   authenticateProgrammaticAgent,
@@ -15,6 +32,11 @@ import {
   unauthorized,
 } from './http/responses'
 import { decodeUnknownWithSchema, parseJsonUnknown } from './json-boundary'
+import {
+  defaultMakeKhalaSyncSqlClient,
+  type KhalaSyncHyperdriveBinding,
+  type MakeKhalaSyncPushSqlClient,
+} from './khala-sync-push-routes'
 import { currentIsoTimestamp } from './runtime-primitives'
 import {
   type TokenUsageLedgerShape,
@@ -22,6 +44,7 @@ import {
   TokenUsageLedgerUnsafePayload,
   TokenUsageLedgerValidationError,
 } from './token-usage-ledger'
+import type { MeteringHook, MeteringOutcome } from './inference/metering-hook'
 
 type HttpResponse = globalThis.Response
 
@@ -41,6 +64,7 @@ const KHALA_CLOUD_RUNTIME_DEMAND_SOURCE =
 const KHALA_CLOUD_RUNTIME_DEMAND_CLIENT = 'khala-code-mobile' as const
 const KHALA_CLOUD_RUNTIME_DEMAND_CHANNEL = 'khala_api' as const
 const MAX_BODY_BYTES = 128 * 1024
+const SAFE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/
 
 const NonEmptyString = S.Trim.check(S.isMinLength(1), S.isMaxLength(512))
 const BoundedSafeRef = S.Trim.check(S.isMinLength(1), S.isMaxLength(1024))
@@ -91,6 +115,7 @@ export type KhalaCloudRuntimeTokenCounts = Readonly<{
 export type KhalaCloudRuntimeUsageDependencies<Bindings> = Readonly<{
   agentStore: (env: Bindings) => AgentRegistrationStore
   ledger: (env: Bindings) => TokenUsageLedgerShape
+  meteringHook?: ((env: Bindings) => MeteringHook) | undefined
   nowIso?: () => string
   publishDelta?: (
     env: Bindings,
@@ -100,6 +125,32 @@ export type KhalaCloudRuntimeUsageDependencies<Bindings> = Readonly<{
       tokensServedDelta: number
     }>,
   ) => Effect.Effect<void, unknown>
+  publishInsufficientCreditEvent?: (
+    env: Bindings,
+    input: KhalaCloudRuntimeInsufficientCreditEventInput,
+  ) => Effect.Effect<KhalaCloudRuntimeInsufficientCreditEventPublishOutcome>
+}>
+
+export type KhalaCloudRuntimeInsufficientCreditEventInput = Readonly<{
+  chargeReceiptRef: string | null
+  lane: KhalaCloudRuntimeUsageIngest['lane']
+  observedAt: string
+  ownerUserId: string
+  threadId: string
+  tokenUsageEventRef: string
+  turnId: string
+}>
+
+export type KhalaCloudRuntimeInsufficientCreditEventPublishOutcome = Readonly<{
+  eventRef: string | null
+  published: boolean
+  reason?:
+    | 'event_already_recorded'
+    | 'khala_sync_storage_unconfigured'
+    | 'runtime_turn_not_found'
+    | 'runtime_turn_owner_mismatch'
+    | 'runtime_event_rejected'
+    | 'runtime_event_storage_failed'
 }>
 
 class KhalaCloudRuntimeUnauthorized extends S.TaggedErrorClass<KhalaCloudRuntimeUnauthorized>()(
@@ -187,6 +238,19 @@ const routeNowIso = <Bindings>(
   dependencies: KhalaCloudRuntimeUsageDependencies<Bindings>,
 ): string => dependencies.nowIso?.() ?? currentIsoTimestamp()
 
+const ownerCreditAccountRef = (ownerUserId: string): string =>
+  `agent:${ownerUserId}`
+
+const safeRefPart = (value: string): string => {
+  const sanitized = value.replace(/[^A-Za-z0-9._:-]/g, '_').slice(0, 96)
+  return sanitized === '' || !/^[A-Za-z0-9]/.test(sanitized)
+    ? 'ref'
+    : sanitized
+}
+
+const safeCausalityRef = (value: string | null): ReadonlyArray<string> =>
+  value !== null && SAFE_REF_PATTERN.test(value) ? [value] : []
+
 const storageReason = (error: unknown): string =>
   error instanceof TokenUsageLedgerStorageError ||
   error instanceof TokenUsageLedgerUnsafePayload ||
@@ -272,10 +336,162 @@ const stableUsageDigest = (
         body.lane,
         body.provider,
         body.model,
-        body.usage.usageRef,
       ].join(':'),
     ),
   )
+
+const meteringContextFromUsage = (
+  input: Readonly<{
+    body: KhalaCloudRuntimeUsageIngestBody
+    digest: string
+  }>,
+) => {
+  const counts = khalaCloudRuntimeUsageTokenCounts(input.body.usage)
+  return {
+    accountRef: ownerCreditAccountRef(input.body.ownerUserId),
+    adapterId: input.body.backendProfile ?? input.body.provider,
+    fundingKind: 'card' as const,
+    requestId: `khala-cloud-runtime.${input.digest.slice(0, 32)}`,
+    requestedModel: input.body.model,
+    servedModel: input.body.model,
+    streamed: false,
+    usage: {
+      ...(counts.cacheReadTokens === 0
+        ? {}
+        : { cachedPromptTokens: counts.cacheReadTokens }),
+      completionTokens: counts.outputTokens,
+      promptTokens: counts.inputTokens,
+      totalTokens: counts.totalTokens,
+    },
+  }
+}
+
+export type KhalaCloudRuntimeInsufficientCreditPublisherDeps = Readonly<{
+  binding: KhalaSyncHyperdriveBinding | undefined
+  registry: MutatorRegistry
+  makeSqlClient?: MakeKhalaSyncPushSqlClient | undefined
+}>
+
+export const publishKhalaCloudRuntimeInsufficientCreditEvent = (
+  deps: KhalaCloudRuntimeInsufficientCreditPublisherDeps,
+  input: KhalaCloudRuntimeInsufficientCreditEventInput,
+): Effect.Effect<KhalaCloudRuntimeInsufficientCreditEventPublishOutcome> =>
+  Effect.tryPromise({
+    catch: () =>
+      ({
+        eventRef: null,
+        published: false,
+        reason: 'runtime_event_storage_failed',
+      }) satisfies KhalaCloudRuntimeInsufficientCreditEventPublishOutcome,
+    try: async () => {
+      if (
+        deps.binding === undefined ||
+        typeof deps.binding.connectionString !== 'string' ||
+        deps.binding.connectionString.length === 0
+      ) {
+        return {
+          eventRef: null,
+          published: false,
+          reason: 'khala_sync_storage_unconfigured',
+        } satisfies KhalaCloudRuntimeInsufficientCreditEventPublishOutcome
+      }
+
+      const makeSqlClient = deps.makeSqlClient ?? defaultMakeKhalaSyncSqlClient
+      const client = await makeSqlClient(deps.binding.connectionString)
+      try {
+        const turn = await readRuntimeTurnById(client.sql, {
+          turnId: input.turnId,
+        })
+        if (turn === null) {
+          return {
+            eventRef: null,
+            published: false,
+            reason: 'runtime_turn_not_found',
+          } satisfies KhalaCloudRuntimeInsufficientCreditEventPublishOutcome
+        }
+        if (
+          turn.ownerUserId !== input.ownerUserId ||
+          turn.threadId !== input.threadId
+        ) {
+          return {
+            eventRef: null,
+            published: false,
+            reason: 'runtime_turn_owner_mismatch',
+          } satisfies KhalaCloudRuntimeInsufficientCreditEventPublishOutcome
+        }
+
+        const eventRef = `event.khala_cloud_billing.insufficient_credit.${safeRefPart(input.turnId)}`
+        const rawEventRef = `billing.insufficient_credit.${safeRefPart(input.turnId)}`
+        const event = {
+          causalityRefs: [
+            ...safeCausalityRef(input.tokenUsageEventRef),
+            ...safeCausalityRef(input.chargeReceiptRef),
+          ],
+          eventId: eventRef,
+          kind: 'raw.sidecar_ref',
+          observedAt: input.observedAt,
+          rawEventKind: 'other',
+          rawEventRef,
+          redactionClass: 'private_ref',
+          schema: 'openagents.khala_runtime_event.v1',
+          sequence: Number(turn.eventCount) + 1,
+          source: {
+            adapterKind: input.lane === 'claude_pylon' ? 'claude_code' : 'codex',
+            lane: input.lane,
+            surface: 'server',
+          },
+          threadId: input.threadId,
+          turnId: input.turnId,
+          visibility: 'private',
+        }
+        const request = new PushRequest({
+          clientGroupId: ClientGroupId.make(
+            `server.khala_cloud_billing.${safeRefPart(eventRef)}`,
+          ),
+          clientId: ClientId.make('openagents.worker.khala_cloud_runtime_usage'),
+          mutations: [
+            new MutationEnvelope({
+              argsJson: JSON.stringify(event),
+              mutationId: MutationId.make(1),
+              name: MutatorName.make(RUNTIME_RECORD_EVENT_MUTATOR_NAME),
+            }),
+          ],
+          protocolVersion: KHALA_SYNC_PROTOCOL_VERSION,
+          schemaVersion: SyncSchemaVersion.make(1),
+        })
+        const response = await executeKhalaSyncPush({
+          registry: deps.registry,
+          request,
+          sql: client.sql,
+          userId: input.ownerUserId,
+        })
+        const result = response.results[0]
+        if (result?.status === 'applied') {
+          return {
+            eventRef,
+            published: true,
+          } satisfies KhalaCloudRuntimeInsufficientCreditEventPublishOutcome
+        }
+        if (
+          result?.status === 'rejected' &&
+          result.errorCode === 'runtime_event_exists'
+        ) {
+          return {
+            eventRef,
+            published: true,
+            reason: 'event_already_recorded',
+          } satisfies KhalaCloudRuntimeInsufficientCreditEventPublishOutcome
+        }
+        return {
+          eventRef,
+          published: false,
+          reason: 'runtime_event_rejected',
+        } satisfies KhalaCloudRuntimeInsufficientCreditEventPublishOutcome
+      } finally {
+        await client.end()
+      }
+    },
+  }).pipe(Effect.catch(error => Effect.succeed(error)))
 
 const tokenUsageEventBody = (
   input: Readonly<{
@@ -289,7 +505,7 @@ const tokenUsageEventBody = (
   return {
     schemaVersion: 'openagents.token_usage_event.v1' as const,
     actor: {
-      accountRef: `agent:${input.session.user.id}`,
+      accountRef: ownerCreditAccountRef(input.body.ownerUserId),
       userId: input.body.ownerUserId,
     },
     backendProfile: input.body.backendProfile ?? input.body.provider,
@@ -412,6 +628,36 @@ const routeUsageIngest = <Bindings>(
         ),
       )
 
+    const meteringHook = dependencies.meteringHook?.(env)
+    const tokenCharge: MeteringOutcome | undefined =
+      meteringHook === undefined
+        ? undefined
+        : yield* meteringHook(
+            meteringContextFromUsage({
+              body,
+              digest,
+            }),
+          )
+
+    const insufficientCreditEvent =
+      tokenCharge?.metered === false &&
+      tokenCharge.failureReason === 'insufficient_credit' &&
+      dependencies.publishInsufficientCreditEvent !== undefined
+        ? yield* dependencies
+            .publishInsufficientCreditEvent(env, {
+              chargeReceiptRef: tokenCharge.receiptRef,
+              lane: body.lane,
+              observedAt,
+              ownerUserId: body.ownerUserId,
+              threadId: body.threadId,
+              tokenUsageEventRef: tokenBody.eventId,
+              turnId: body.turnId,
+            })
+        : ({
+            eventRef: null,
+            published: false,
+          } satisfies KhalaCloudRuntimeInsufficientCreditEventPublishOutcome)
+
     if (
       tokenResult.inserted &&
       dependencies.publishDelta !== undefined &&
@@ -429,9 +675,15 @@ const routeUsageIngest = <Bindings>(
     return noStoreJsonResponse({
       schemaVersion: KHALA_CLOUD_RUNTIME_RESULT_SCHEMA_VERSION,
       insertedTokenUsage: tokenResult.inserted,
+      insufficientCreditEventPublished: insufficientCreditEvent.published,
+      insufficientCreditEventRef: insufficientCreditEvent.eventRef,
+      insufficientCreditEventReason: insufficientCreditEvent.reason ?? null,
       lane: body.lane,
       ownerUserId: body.ownerUserId,
       threadId: body.threadId,
+      tokenChargeFailureReason: tokenCharge?.failureReason ?? null,
+      tokenChargeMetered: tokenCharge?.metered ?? false,
+      tokenChargeReceiptRef: tokenCharge?.receiptRef ?? null,
       tokenUsageEventRef: tokenBody.eventId,
       tokensServedDelta: tokenResult.inserted ? tokensServed : 0,
       turnId: body.turnId,

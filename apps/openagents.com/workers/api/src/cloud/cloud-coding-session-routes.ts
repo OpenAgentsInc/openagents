@@ -1218,6 +1218,10 @@ export type CloudCodingMeteringOutcome = Readonly<{
   // Public-safe receipt ref when metering is live; null for the stub. Never a
   // raw amount, destination, or payment material.
   receiptRef: string | null
+  // Public-safe failure class for live compute charging. The launch response is
+  // still no-store and refs-only; this lets callers distinguish a real credit
+  // shortfall from storage trouble without exposing amounts.
+  failureReason?: 'insufficient_credit' | 'metering_storage_failed'
 }>
 
 export type CloudCodingMeteringHook = (
@@ -1297,6 +1301,9 @@ export const makeLedgerCloudCodingMeteringHook = (
         },
       )
       return {
+        ...(outcome.failureReason === undefined
+          ? {}
+          : { failureReason: outcome.failureReason }),
         metered: outcome.metered,
         receiptRef: outcome.metered
           ? cloudCodingSessionReceiptRef(context.sessionId)

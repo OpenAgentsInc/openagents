@@ -31,6 +31,7 @@ import { workerLogEntry } from '../observability'
 import {
   createPayInStatements,
   markPayInPaidStatements,
+  readAgentBalance,
   type PayInPlan,
   runLedgerStatements,
 } from '../payments-ledger'
@@ -118,6 +119,7 @@ export type CloudMeteringOutcome = Readonly<{
   metered: boolean
   receiptRef: string | null
   zeroCharge?: boolean
+  failureReason?: 'insufficient_credit' | 'metering_storage_failed'
 }>
 
 export type CloudMeteringDeps = Readonly<{
@@ -217,12 +219,25 @@ export const settleCloudPrimitiveCharge = (
     // Otherwise the decrement genuinely failed (e.g. balance CHECK abort: the
     // account could not cover the charge). We never go negative; report not
     // metered (public-safe diagnostic, no amount/destination/payment material).
+    const balance = yield* Effect.tryPromise({
+      catch: cloudMeteringPersistenceError,
+      try: () => readAgentBalance(deps.db, charge.accountRef),
+    }).pipe(Effect.catch(() => Effect.succeed(null)))
+    const failureReason =
+      (balance?.availableMsat ?? 0) < charge.chargeMsat
+        ? 'insufficient_credit'
+        : 'metering_storage_failed'
     yield* Effect.logInfo(
       workerLogEntry(`${charge.primitive}.metering.failed`, {
         accountRef: charge.accountRef,
         adapterId: charge.adapterId,
         chargeId: charge.chargeId,
+        failureReason,
       }),
     )
-    return { metered: false, receiptRef: null } satisfies CloudMeteringOutcome
+    return {
+      failureReason,
+      metered: false,
+      receiptRef: null,
+    } satisfies CloudMeteringOutcome
   })

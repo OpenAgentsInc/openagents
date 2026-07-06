@@ -119,12 +119,15 @@ drawn by two meters:
 
 1. **Model usage** (existing): exact token receipts per turn
    (`token_usage_events`, receipt-first, priced by
-   `src/inference/pricing.ts`) — unchanged, landed, #8479 wires the charge.
+   `src/inference/pricing.ts`) — unchanged, landed, #8479 wires the live
+   debit from `/api/khala/cloud/runtime-turn-usage`.
 2. **Agent computer time** (new rail): metered active compute drawn from
    the same credit balance, from the lifecycle receipts the provisioning
    path already emits (`openagents.resource_usage_receipt.v1` — the shape
    `makeLedgerCloudCodingMeteringHook` in `cloud-coding-session-routes.ts`
-   was built to produce).
+   was built to produce). The debit path is wired, idempotent, and exact-only;
+   arming a nonzero live price remains owner-gated on the rate decision below
+   and #8503's real lifecycle receipts.
 
 Rules, non-negotiable:
 
@@ -139,15 +142,16 @@ Rules, non-negotiable:
   console (#8500) itemize both.
 - **Pre-flight + in-flight gating.** Admission (#8474) requires a positive
   balance before an agent computer is assigned or a turn dispatched;
-  exhaustion mid-run finishes or stops per a documented policy (#8479
-  decides and documents it) and emits a typed `insufficient_credit` event
-  the app renders.
+  MVP mid-run exhaustion lets the already-admitted turn finish, attempts the
+  exact post-turn debit, lets the ledger constraint refuse any negative
+  balance, emits a private typed `insufficient_credit` thread event, and lets
+  the next #8474 admission refuse until the user is funded again.
 - **Pricing is an owner decision.** The rate (e.g. credits per active
   minute; whether idle-attached time bills at a lower rate or zero) is set
-  by the owner before launch — file it as a NEEDS_OWNER item with a
-  recommended default computed from actual GCE host cost + margin, do not
-  invent it in code. The meter must be visible to the user *before* they
-  dispatch (simple line in the composer/settings: what a turn costs).
+  by the owner before launch; #8479 records the NEEDS_OWNER item with a
+  recommended formula from actual GCE host cost + margin, but does not invent
+  the rate in code. The meter must be visible to the user *before* they
+  dispatch once the rate is owner-approved.
 - **Idle is bounded, not billed forever.** Reclaim policy (§4) exists
   precisely so a forgotten agent computer cannot silently drain a balance.
   Idle-reclaim timestamps come from the same lifecycle receipts.
@@ -229,9 +233,11 @@ microVM-destroy receipt refs. The committed posture doc is
    mutator has landed in `khala-sync-server`; the remaining end-to-end proof
    is #8503's owner-gated real mobile turn inside Firecracker.
 6. Exact token receipts post to `/api/khala/cloud/runtime-turn-usage`
-   (landed); lifecycle receipts record compute time; #8479 charges both
-   against the balance; #8480's UI and Aiur (#8500/#8501) show the
-   itemized draw.
+   (landed) and #8479 charges them against the owner balance. Lifecycle
+   receipts record compute time and feed the same credit-metering rail; live
+   nonzero compute charging waits only on #8503 receipts plus the owner-set
+   Agent Computer rate. #8480's UI and Aiur (#8500/#8501) show the itemized
+   draw.
 7. Idle reclaim per §4. Aiur's ops view (#8501) shows the agent-computer
    fleet: states, owners, active turns, receipts, health.
 
@@ -281,9 +287,11 @@ microVM-destroy receipt refs. The committed posture doc is
   `chat.bindThreadRepo` server mutator has landed after #8472's original
   closeout; the remaining end-to-end proof is #8503 running a real mobile
   turn inside Firecracker.
-- **#8479** (metering) — expanded: charges **both** meters (tokens +
-  agent-computer time), owns the mid-run exhaustion policy, and surfaces
-  the pre-dispatch cost line. The compute rate itself is NEEDS_OWNER.
+- **#8479** (metering) — token debit is wired from exact runtime usage
+  receipts; the Agent Computer compute debit seam is idempotent/exact-only
+  and propagates `insufficient_credit`; the mid-run exhaustion policy is
+  documented above. The compute rate itself is NEEDS_OWNER and must be set
+  before any nonzero live compute charge is armed.
 - **exe.dev audit doc** — banner added: evaluation retained, recommendation
   superseded by this strategy.
 - Launch audit §12 — S1 lane redirected to this doc's plan.

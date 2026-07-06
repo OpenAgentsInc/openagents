@@ -1,6 +1,9 @@
+import { DatabaseSync } from 'node:sqlite'
+
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
+import { makeLedgerMeteringHook } from './inference/metering-hook'
 import {
   type AgentCredentialLookup,
   type AgentRegistrationRecord,
@@ -12,6 +15,7 @@ import {
   KHALA_CLOUD_RUNTIME_USAGE_SCHEMA_VERSION,
   makeKhalaCloudRuntimeUsageRoutes,
 } from './khala-cloud-runtime-usage-routes'
+import { readAgentBalance } from './payments-ledger'
 import type {
   TokenUsageIngestResult,
   TokenUsageLedgerShape,
@@ -20,6 +24,7 @@ import type {
 const nowIso = '2026-07-06T12:00:00.000Z'
 const agentToken = 'oa_agent_khala_cloud_runtime_usage_test'
 const agentUserId = 'agent-khala-cloud-runtime-1'
+const ownerAccountRef = 'agent:user-owner-1'
 
 class MemoryAgentStore implements AgentRegistrationStore {
   constructor(
@@ -64,6 +69,125 @@ class MemoryAgentStore implements AgentRegistrationStore {
   updateAgentDisplayName(): Promise<number> {
     return Promise.resolve(0)
   }
+}
+
+type Row = Record<string, unknown>
+
+class SqliteD1Statement {
+  private bound: ReadonlyArray<unknown> = []
+
+  constructor(
+    private readonly db: DatabaseSync,
+    private readonly sql: string,
+  ) {}
+
+  bind(...values: ReadonlyArray<unknown>): SqliteD1Statement {
+    this.bound = values.map(value => (value === undefined ? null : value))
+    return this
+  }
+
+  async first<T = Row>(): Promise<T | null> {
+    const row = this.db.prepare(this.sql).get(...(this.bound as never[]))
+    return (row ?? null) as T | null
+  }
+
+  async all<T = Row>(): Promise<{ results: T[] }> {
+    const results = this.db
+      .prepare(this.sql)
+      .all(...(this.bound as never[])) as T[]
+    return { results }
+  }
+
+  async run<T = Row>(): Promise<{ success: true; results: T[] }> {
+    this.db.prepare(this.sql).run(...(this.bound as never[]))
+    return { success: true, results: [] }
+  }
+}
+
+class SqliteD1 {
+  constructor(private readonly db: DatabaseSync) {}
+
+  prepare(sql: string): SqliteD1Statement {
+    return new SqliteD1Statement(this.db, sql)
+  }
+
+  async batch(
+    statements: ReadonlyArray<SqliteD1Statement>,
+  ): Promise<Array<{ success: true }>> {
+    this.db.exec('BEGIN')
+    try {
+      for (const statement of statements) {
+        await statement.run()
+      }
+      this.db.exec('COMMIT')
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
+    return statements.map(() => ({ success: true as const }))
+  }
+}
+
+const BILLING_SCHEMA = `
+CREATE TABLE agent_balances (
+  actor_ref TEXT PRIMARY KEY,
+  balance_msat INTEGER NOT NULL DEFAULT 0 CHECK (balance_msat >= 0),
+  held_msat INTEGER NOT NULL DEFAULT 0,
+  usd_credit_msat INTEGER NOT NULL DEFAULT 0 CHECK (usd_credit_msat >= 0),
+  sweep_enabled INTEGER NOT NULL DEFAULT 1,
+  sweep_threshold_sat INTEGER NOT NULL DEFAULT 210,
+  send_credits_below_sat INTEGER NOT NULL DEFAULT 10,
+  receive_credits_below_sat INTEGER NOT NULL DEFAULT 10,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE pay_ins (
+  id TEXT PRIMARY KEY,
+  pay_in_type TEXT NOT NULL,
+  payer_ref TEXT NOT NULL,
+  cost_msat INTEGER NOT NULL CHECK (cost_msat > 0),
+  state TEXT NOT NULL,
+  failure_reason TEXT,
+  rung TEXT,
+  context_ref TEXT,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  public_receipt_ref TEXT,
+  genesis_id TEXT,
+  successor_id TEXT,
+  created_at TEXT NOT NULL,
+  state_changed_at TEXT NOT NULL
+);
+CREATE TABLE pay_in_legs (
+  id TEXT PRIMARY KEY,
+  pay_in_id TEXT NOT NULL,
+  direction TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  party_ref TEXT NOT NULL,
+  amount_msat INTEGER NOT NULL CHECK (amount_msat > 0),
+  resulting_balance_msat INTEGER,
+  external_ref TEXT,
+  refund_of_leg_id TEXT,
+  created_at TEXT NOT NULL
+);
+`
+
+const makeBillingDb = (): D1Database => {
+  const raw = new DatabaseSync(':memory:')
+  raw.exec(BILLING_SCHEMA)
+  return new SqliteD1(raw) as unknown as D1Database
+}
+
+const seedOwnerBalance = async (
+  db: D1Database,
+  balanceMsat: number,
+): Promise<void> => {
+  await db
+    .prepare(
+      `INSERT INTO agent_balances (actor_ref, balance_msat, created_at, updated_at)
+       VALUES (?, ?, ?, ?)`,
+    )
+    .bind(ownerAccountRef, balanceMsat, nowIso, nowIso)
+    .run()
 }
 
 const makeLedger = () => {
@@ -181,7 +305,7 @@ describe('khala cloud runtime usage routes', () => {
       usageTruth: string
     }
     expect(event.actor).toEqual({
-      accountRef: `agent:${agentUserId}`,
+      accountRef: ownerAccountRef,
       userId: 'user-owner-1',
     })
     expect(event.demand).toMatchObject({
@@ -205,6 +329,104 @@ describe('khala cloud runtime usage routes', () => {
       totalTokens: 18,
     })
     expect(event.usageTruth).toBe('exact')
+  })
+
+  test('charges the owner credit balance idempotently per turn, not per executor retry', async () => {
+    const tokenHash = await sha256Hex(agentToken)
+    const { ledger } = makeLedger()
+    const billingDb = makeBillingDb()
+    await seedOwnerBalance(billingDb, 10_000)
+    const routes = makeKhalaCloudRuntimeUsageRoutes({
+      agentStore: () => new MemoryAgentStore(tokenHash),
+      ledger: () => ledger,
+      meteringHook: () =>
+        makeLedgerMeteringHook({
+          db: billingDb,
+          nowIso: () => nowIso,
+          usdToMsat: () => 4_000,
+        }),
+      nowIso: () => nowIso,
+    })
+
+    const first = await Effect.runPromise(
+      routes.handleKhalaCloudRuntimeUsageIngestApi(post(body()), {}),
+    )
+    const retriedWithDifferentUsageRef = await Effect.runPromise(
+      routes.handleKhalaCloudRuntimeUsageIngestApi(
+        post(
+          body({
+            usage: {
+              cacheReadInputTokens: 2,
+              inputTokens: 10,
+              outputTokens: 5,
+              reasoningTokens: 3,
+              totalTokens: 18,
+              usageRef: 'usage.runtime.retry-ref',
+            },
+          }),
+        ),
+        {},
+      ),
+    )
+
+    expect(first.status).toBe(200)
+    expect(retriedWithDifferentUsageRef.status).toBe(200)
+    const firstJson = await first.json() as {
+      tokenChargeMetered: boolean
+      tokenChargeReceiptRef: string | null
+    }
+    const secondJson = await retriedWithDifferentUsageRef.json() as {
+      tokenChargeMetered: boolean
+      tokenChargeReceiptRef: string | null
+    }
+    expect(firstJson.tokenChargeMetered).toBe(true)
+    expect(secondJson.tokenChargeMetered).toBe(true)
+    expect(secondJson.tokenChargeReceiptRef).toBe(firstJson.tokenChargeReceiptRef)
+    const balance = await readAgentBalance(billingDb, ownerAccountRef)
+    expect(balance?.availableMsat).toBe(6_000)
+  })
+
+  test('never lets a post-turn charge make the owner balance negative and publishes an insufficient-credit event', async () => {
+    const tokenHash = await sha256Hex(agentToken)
+    const { ledger } = makeLedger()
+    const billingDb = makeBillingDb()
+    await seedOwnerBalance(billingDb, 1_000)
+    const publishedEvents: Array<unknown> = []
+    const routes = makeKhalaCloudRuntimeUsageRoutes({
+      agentStore: () => new MemoryAgentStore(tokenHash),
+      ledger: () => ledger,
+      meteringHook: () =>
+        makeLedgerMeteringHook({
+          db: billingDb,
+          nowIso: () => nowIso,
+          usdToMsat: () => 4_000,
+        }),
+      nowIso: () => nowIso,
+      publishInsufficientCreditEvent: (_env, input) => {
+        publishedEvents.push(input)
+        return Effect.succeed({
+          eventRef: 'event.khala_cloud_billing.insufficient_credit.turn-1',
+          published: true,
+        })
+      },
+    })
+
+    const response = await Effect.runPromise(
+      routes.handleKhalaCloudRuntimeUsageIngestApi(post(body()), {}),
+    )
+    const json = await response.json() as {
+      insufficientCreditEventPublished: boolean
+      tokenChargeFailureReason: string | null
+      tokenChargeMetered: boolean
+    }
+
+    expect(response.status).toBe(200)
+    expect(json.tokenChargeMetered).toBe(false)
+    expect(json.tokenChargeFailureReason).toBe('insufficient_credit')
+    expect(json.insufficientCreditEventPublished).toBe(true)
+    expect(publishedEvents).toHaveLength(1)
+    const balance = await readAgentBalance(billingDb, ownerAccountRef)
+    expect(balance?.availableMsat).toBe(1_000)
   })
 
   test('rejects linked user-pylon agents posting usage for a different owner', async () => {

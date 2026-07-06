@@ -4,8 +4,10 @@ Date: 2026-07-06
 Issues: #8473, #8503, #8474-#8477, #8479
 Status: #8473 executor spine landed; #8503 arms the Firecracker/GCE Agent
 Computer path and is live-proof-gated; #8474 admission landed in the public
-Worker; #8475 owns SCM credentials, #8476 owns isolation enforcement, #8477
-owns writeback, and #8479 owns charging.
+Worker; #8475 SCM credentials, #8476 isolation enforcement, and #8477
+writeback have public seams landed. #8479 wires token charging and the
+Agent Computer compute-meter seam; nonzero compute charging still needs the
+owner-set rate plus #8503 lifecycle receipts.
 
 ## Purpose
 
@@ -65,7 +67,8 @@ public docs, issue comments, tests, logs, or Worker projections.
 6. Token usage is mirrored through
    `POST /api/khala/cloud/runtime-turn-usage`.
 7. Compute lifecycle receipts are projected from `cloud.gce.*` control-plane
-   events and later charged by #8479.
+   events and charged only through the exact receipt-first Agent Computer
+   meter once the owner-set rate is configured.
 8. Idle or expired Agent Computers are reclaimed; scratch storage is wiped.
 
 ## Execution Lanes
@@ -139,7 +142,11 @@ The Worker route:
   plane without exposing private host topology.
 
 #8479 consumes exact token receipts and exact compute lifecycle receipts for
-credit charging. Do not charge from estimates or client-supplied amounts.
+credit charging. The token rail is live from
+`/api/khala/cloud/runtime-turn-usage`; the compute rail is wired through
+`makeLedgerCloudCodingMeteringHook` and remains nonzero-rate-gated by the
+owner decision in `~/work/NEEDS_OWNER.md`. Do not charge from estimates or
+client-supplied amounts.
 
 ## Still Gated
 
@@ -150,5 +157,7 @@ credit charging. Do not charge from estimates or client-supplied amounts.
 - #8475: private GitHub checkout through the SCM auth broker only.
 - #8476: isolation enforcement and retention policy from the Agent Computers
   strategy.
-- #8477: branch/PR writeback with user GitHub authorization.
-- #8479: credit metering and balance gate from exact token + compute receipts.
+- #8477: branch/PR writeback with user GitHub authorization; live proof remains
+  #8503-gated.
+- #8479: owner approval of the Agent Computer compute rate before nonzero live
+  compute charges are armed.

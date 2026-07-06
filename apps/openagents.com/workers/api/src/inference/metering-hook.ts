@@ -35,6 +35,7 @@ import {
   type PayInPlan,
   createPayInStatements,
   markPayInPaidStatements,
+  readAgentBalance,
   runLedgerStatements,
 } from '../payments-ledger'
 import { currentIsoTimestamp } from '../runtime-primitives'
@@ -114,6 +115,10 @@ export type MeteringOutcome = Readonly<{
   // billable tokens) so no ledger row was written. Distinguishes "metered, $0"
   // from "not metered" without exposing the amount.
   zeroCharge?: boolean
+  // Public-safe failure class for a live hook that could not settle the debit.
+  // Used by Khala Code mobile to render the paywall moment only when the exact
+  // receipt exceeded available credits.
+  failureReason?: 'insufficient_credit' | 'metering_storage_failed'
 }>
 
 // The metering-hook contract. #5477 provides the live implementation.
@@ -441,15 +446,28 @@ export const makeLedgerMeteringHook = (
       // Otherwise the decrement genuinely failed (e.g. balance CHECK abort: the
       // account could not cover the charge). We never go negative; report not
       // metered (public-safe diagnostic, no amount/destination/payment material).
+      const balance = yield* Effect.tryPromise({
+        catch: inferenceMeteringPersistenceError,
+        try: () => readAgentBalance(deps.db, context.accountRef),
+      }).pipe(Effect.catch(() => Effect.succeed(null)))
+      const failureReason =
+        (balance?.availableMsat ?? 0) < costMsat
+          ? 'insufficient_credit'
+          : 'metering_storage_failed'
       yield* Effect.logInfo(
         workerLogEntry('inference.metering.failed', {
           accountRef: context.accountRef,
           adapterId: context.adapterId,
+          failureReason,
           fundingKind: context.fundingKind,
           requestId: context.requestId,
           servedModel: priced.model,
         }),
       )
-      return { metered: false, receiptRef: null } satisfies MeteringOutcome
+      return {
+        failureReason,
+        metered: false,
+        receiptRef: null,
+      } satisfies MeteringOutcome
     })
 }

@@ -1111,6 +1111,7 @@ import {
 import {
   KHALA_CLOUD_RUNTIME_USAGE_INGEST_PATH,
   makeKhalaCloudRuntimeUsageRoutes,
+  publishKhalaCloudRuntimeInsufficientCreditEvent,
 } from './khala-cloud-runtime-usage-routes'
 import {
   PYLON_CLAUDE_TURN_INGEST_PATH,
@@ -8151,6 +8152,19 @@ const khalaCloudRuntimeUsageRoutes = makeKhalaCloudRuntimeUsageRoutes<Env>({
       onIngestedEvent: makeTokensServedProjectionObserver(env),
       ...tokenLedgerWriteStoreOptionForEnv(env),
     }),
+  meteringHook: env =>
+    makeLedgerMeteringHook({
+      db: openAgentsDatabase(env),
+      mirror: billingDomainMirrorFromEnv(env),
+    }),
+  publishInsufficientCreditEvent: (env, input) =>
+    publishKhalaCloudRuntimeInsufficientCreditEvent(
+      {
+        binding: env.KHALA_SYNC_DB,
+        registry: khalaSyncMutatorRegistry,
+      },
+      input,
+    ),
 })
 
 const hostedMdkClientForEnv = (
