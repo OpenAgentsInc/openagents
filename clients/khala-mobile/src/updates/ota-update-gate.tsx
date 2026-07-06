@@ -6,6 +6,7 @@ import { KhalaText } from "../components/khala-text"
 import { khalaMobileTheme } from "../theme/tokens"
 import { ActivityIndicator } from "../components/activity-indicator"
 import { decideOtaGateAction, otaGateVisibleState } from "./ota-update-gate-core"
+import { closeActiveSyncRuntimeBeforeReload } from "../sync/khala-mobile-sync-runtime-registry"
 
 /** Mounted once at the app root (before auth, so it works even on the
  * sign-in screen — the exact screen a stale/stuck build gets caught on).
@@ -67,7 +68,18 @@ export const OtaUpdateGate = () => {
     }
 
     if (action === "reload") {
-      void Updates.reloadAsync()
+      // A confirmed, reproducible production crash (build 11, 2026-07-06):
+      // reloadAsync() tears down the JS context immediately, with no
+      // guarantee any in-flight expo-sqlite work on the sync runtime has
+      // drained first — a known expo-sqlite native race (a fresh async DB
+      // request landing before a prior one resolves). Draining the sync
+      // runtime closed first (bounded; a no-op when signed out) gives the
+      // native queue a chance to finish before the JS context goes away.
+      // See khala-mobile-sync-runtime-registry.ts and
+      // docs/khala-mobile/2026-07-06-crash-triage-runbook.md.
+      void closeActiveSyncRuntimeBeforeReload().finally(() => {
+        void Updates.reloadAsync()
+      })
     }
   }, [isChecking, isDownloading, isRestarting, isUpdateAvailable, isUpdatePending])
 

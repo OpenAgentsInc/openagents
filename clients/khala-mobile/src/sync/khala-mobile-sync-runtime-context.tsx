@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState } from "react"
 import type { ReactNode } from "react"
 
 import { openKhalaMobileSyncRuntime, type KhalaMobileSyncRuntime } from "./khala-mobile-sync-runtime"
+import { registerActiveSyncRuntimeClose } from "./khala-mobile-sync-runtime-registry"
 
 /**
  * Local-first chat cache (owner report: "every time i open a new thread
@@ -40,6 +41,7 @@ export const KhalaMobileSyncRuntimeProvider = ({
 }: KhalaMobileSyncRuntimeProviderProps) => {
   const [state, setState] = useState<KhalaMobileSyncRuntimeState>({ status: "loading" })
   const runtimeRef = useRef<KhalaMobileSyncRuntime | null>(null)
+  const unregisterCloseRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -63,11 +65,20 @@ export const KhalaMobileSyncRuntimeProvider = ({
         return
       }
       runtimeRef.current = opened.runtime
+      // Registered here (not React context) so `OtaUpdateGate` — mounted at
+      // the app root, above this provider, so OTA checking still works on
+      // the sign-in screen — can drain this runtime closed BEFORE
+      // `Updates.reloadAsync()` tears down the JS context. See
+      // `khala-mobile-sync-runtime-registry.ts` for why this exists (a real
+      // production expo-sqlite native crash).
+      unregisterCloseRef.current = registerActiveSyncRuntimeClose(opened.runtime.close)
       setState({ runtime: opened.runtime, status: "ready" })
     })()
 
     return () => {
       cancelled = true
+      unregisterCloseRef.current?.()
+      unregisterCloseRef.current = null
       const runtime = runtimeRef.current
       runtimeRef.current = null
       if (runtime !== null) void runtime.close()

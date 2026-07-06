@@ -205,6 +205,40 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
+        "Binds only the ORDERING of our own reload trigger relative to closing our own sync runtime. It does not (and cannot) fix expo-sqlite's own native concurrency bug (github.com/expo/expo #33754, #38168) — it only avoids one known way to hit it from our own reload path. A close() that hangs is bounded by a timeout so this can never turn into a stuck/unresponsive reload.",
+      blockerRefs: [],
+      contractId: "khala_mobile.sync.reload_drains_sqlite_runtime_first.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/src/sync/khala-mobile-sync-runtime-registry.ts",
+        "clients/khala-mobile/src/updates/ota-update-gate.tsx",
+        "clients/khala-mobile/tests/khala-mobile-sync-runtime-registry.test.ts",
+      ],
+      oracles: [
+        {
+          description:
+            "The OTA reload path drains the active sync runtime's close() before calling Updates.reloadAsync(); a hung close() is bounded by a timeout rather than blocking the reload forever, and a missing runtime (signed out) is an instant no-op.",
+          id: "khala_mobile_sync_runtime_registry.drain_before_reload.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/khala-mobile-sync-runtime-registry.test.ts",
+        },
+      ],
+      productArea: "sync",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-06",
+      },
+      state: "enforced",
+      statement:
+        "An OTA reload never fires while the local Khala Sync SQLite runtime still has an open connection that hasn't been given a chance to close first. Filed after a confirmed, reproducible native crash (EXC_BAD_ACCESS/SIGSEGV inside expo-sqlite's AsyncQueue, three occurrences in a row on build 11, 2026-07-06) that hit right around Updates.reloadAsync() — a known expo-sqlite race between an in-flight database request and the JS context being torn down.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/khala-mobile-sync-runtime-registry.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+    },
+    {
+      authorityBoundary:
         "This binds only the mic button's own gating logic (whether a tap is allowed to attempt native recognition) and draft-merge semantics. It does not cover whether the underlying native call actually captures audio on a device — see khala_mobile.stt.real_device_capture_proof.v1 for that.",
       blockerRefs: [],
       contractId: "khala_mobile.composer.pushtotalk_disabled_when_unavailable.v1",
@@ -939,5 +973,5 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-06.4",
+  version: "2026-07-06.5",
 }
