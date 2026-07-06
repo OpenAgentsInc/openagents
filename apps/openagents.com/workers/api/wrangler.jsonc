@@ -466,45 +466,13 @@
   // the same deploy-freeze class as the Analytics Engine binding. Consumers
   // degrade per-call via `src/artifacts-binding.ts`; the replacement is the
   // GCS-backed BlobStore (#8517/#8523). Do not re-add an R2 binding here.
-  "queues": {
-    "producers": [
-      {
-        "binding": "RUNNER_EVENTS",
-        "queue": "openagents-autopilot-runner-events",
-      },
-      {
-        "binding": "ADJUTANT_ENRICHMENT_QUEUE",
-        "queue": "openagents-adjutant-enrichment-jobs",
-      },
-      {
-        "binding": "EVENT_LEDGER_INGEST_QUEUE",
-        "queue": "openagents-event-ledger-ingest",
-      },
-      // KS-8.4 (#8315): raw Codex payloads stay in R2; metadata row writes move
-      // off the request path and through this queue before D1/Postgres indexing.
-      {
-        "binding": "PYLON_CODEX_RAW_EVENT_METADATA_QUEUE",
-        "queue": "openagents-pylon-codex-raw-event-metadata",
-      },
-    ],
-    "consumers": [
-      {
-        "queue": "openagents-adjutant-enrichment-jobs",
-        "max_batch_size": 1,
-        "max_retries": 3,
-      },
-      {
-        "queue": "openagents-event-ledger-ingest",
-        "max_batch_size": 1,
-        "max_retries": 3,
-      },
-      {
-        "queue": "openagents-pylon-codex-raw-event-metadata",
-        "max_batch_size": 25,
-        "max_retries": 3,
-      },
-    ],
-  },
+  // CFG-7 (#8522): the `queues` block was deleted (Cloudflare→GCP
+  // consolidation, #8515). Queue lanes ride the oa-infra Postgres JobQueue
+  // (`oa_infra_jobs`): the app enqueues over the KHALA_SYNC_DB connection
+  // (src/oa-job-queue-producer.ts) and the Cloud Run pump
+  // (apps/oa-queue-worker) leases + delivers each job to
+  // /api/internal/queue/deliver, where the unchanged consumer logic runs.
+  // Do not re-add `queues` here.
   "triggers": {
     "crons": ["* * * * *"],
   },
@@ -726,44 +694,9 @@
           "id": "63a375a24d6f475db60d9490f55c9102",
         },
       ],
-      "queues": {
-        "producers": [
-          {
-            "binding": "RUNNER_EVENTS",
-            "queue": "openagents-autopilot-runner-events-staging",
-          },
-          {
-            "binding": "ADJUTANT_ENRICHMENT_QUEUE",
-            "queue": "openagents-adjutant-enrichment-jobs-staging",
-          },
-          {
-            "binding": "EVENT_LEDGER_INGEST_QUEUE",
-            "queue": "openagents-event-ledger-ingest-staging",
-          },
-          // KS-8.4 (#8315): staging raw Codex metadata queue.
-          {
-            "binding": "PYLON_CODEX_RAW_EVENT_METADATA_QUEUE",
-            "queue": "openagents-pylon-codex-raw-event-metadata-staging",
-          },
-        ],
-        "consumers": [
-          {
-            "queue": "openagents-adjutant-enrichment-jobs-staging",
-            "max_batch_size": 1,
-            "max_retries": 3,
-          },
-          {
-            "queue": "openagents-event-ledger-ingest-staging",
-            "max_batch_size": 1,
-            "max_retries": 3,
-          },
-          {
-            "queue": "openagents-pylon-codex-raw-event-metadata-staging",
-            "max_batch_size": 25,
-            "max_retries": 3,
-          },
-        ],
-      },
+      // CFG-7 (#8522): staging `queues` block deleted with the prod one —
+      // queue lanes ride the oa-infra Postgres JobQueue (see the top-level
+      // comment). Do not re-add `queues` here.
       "triggers": {
         "crons": [],
       },

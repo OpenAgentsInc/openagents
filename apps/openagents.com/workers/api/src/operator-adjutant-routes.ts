@@ -123,6 +123,12 @@ import {
 } from './first-batch-payment-policies'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { type AuthKvStore, authKvStoreForEnv } from './auth/auth-kv'
+import {
+  OA_JOB_TOPIC_ADJUTANT_ENRICHMENT,
+  makeOaJobEnqueueForEnv,
+  type OaJobEnqueue,
+  type OaJobQueueProducerEnv,
+} from './oa-job-queue-producer'
 import { githubIdentityTokenKey } from './onboarding/github'
 // KS-8.12 (#8323): sites writes ride the dual-write mirror seam — the
 // mirroring database is a passthrough for non-scoped statements and
@@ -141,10 +147,9 @@ import {
 } from './supervision-longtail-domain-store'
 
 type OperatorAdjutantEnv = OpenAgentsWorkerConfigEnv &
+  OaJobQueueProducerEnv &
   Readonly<{
-    ADJUTANT_ENRICHMENT_QUEUE: Queue
     AUTH_KV?: AuthKvStore | undefined
-    KHALA_SYNC_DB?: Readonly<{ connectionString: string }> | undefined
     OPENAGENTS_DB: D1Database
   }>
 type HttpResponse = globalThis.Response
@@ -232,6 +237,12 @@ type OperatorAdjutantRouteDependencies<
       userId: string
     }>,
   ) => Promise<OperatorAdjutantAutopilotLaunchResult>
+  /**
+   * CFG-7 (#8522): injectable oa-infra JobQueue enqueue seam. Tests inject a
+   * fake capture; production defaults to the Postgres single-INSERT producer
+   * (`makeOaJobEnqueueForEnv`).
+   */
+  makeOaJobEnqueue?: (env: Bindings) => OaJobEnqueue | undefined
   requireAdminApiToken?: (request: Request, env: Bindings) => Promise<boolean>
   requireBrowserSession: (
     request: Request,
@@ -4755,20 +4766,38 @@ export const makeOperatorAdjutantRoutes = <
         })
 
         if (!enqueued.duplicate) {
+          // CFG-7 (#8522): enrichment jobs ride the oa-infra Postgres
+          // JobQueue (single-INSERT producer seam) instead of the retired
+          // Cloudflare Queue. An unconfigured queue is an enqueue failure,
+          // matching the old always-bound producer contract.
+          const enqueueOaJob = (
+            dependencies.makeOaJobEnqueue ?? makeOaJobEnqueueForEnv
+          )(env)
           yield* Effect.tryPromise({
             catch: error =>
               new OperatorAdjutantStorageError({
                 error,
                 operation: 'operatorAdjutant.enrichment.queue.send',
               }),
-            try: () =>
-              env.ADJUTANT_ENRICHMENT_QUEUE.send(
-                new AdjutantEnrichmentQueueMessage({
-                  assignmentId: assignment.id,
-                  jobId: enqueued.job.id,
-                  schemaVersion: 'openagents.adjutant_enrichment_job.v1',
-                }),
-              ),
+            try: () => {
+              if (enqueueOaJob === undefined) {
+                return Promise.reject(
+                  new Error('oa_job_queue_unconfigured (KHALA_SYNC_DB absent)'),
+                )
+              }
+              return enqueueOaJob(
+                OA_JOB_TOPIC_ADJUTANT_ENRICHMENT,
+                JSON.stringify(
+                  S.encodeSync(AdjutantEnrichmentQueueMessage)(
+                    new AdjutantEnrichmentQueueMessage({
+                      assignmentId: assignment.id,
+                      jobId: enqueued.job.id,
+                      schemaVersion: 'openagents.adjutant_enrichment_job.v1',
+                    }),
+                  ),
+                ),
+              )
+            },
           })
           yield* assignments.recordEvent({
             actorUserId: session.user.userId,

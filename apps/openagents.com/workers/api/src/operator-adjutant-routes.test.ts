@@ -7,7 +7,6 @@ import { makeOperatorAdjutantRoutes } from './operator-adjutant-routes'
 
 type TestEnv = OpenAgentsWorkerConfigEnv &
   Readonly<{
-    ADJUTANT_ENRICHMENT_QUEUE: Queue
     AUTH_KV?: AuthKvStore | undefined
     OPENAGENTS_DB: D1Database
   }>
@@ -2022,6 +2021,9 @@ const makeRoutes = (
   launchUserAutopilotMission: TestAutopilotLaunch = defaultAutopilotLaunch,
   continueUserAutopilotRun: TestAutopilotContinuation = defaultAutopilotContinuation,
   hasAdminApiToken = false,
+  // CFG-7 (#8522): fake oa-infra JobQueue enqueue seam — captures decoded
+  // payloads exactly like the old fake ADJUTANT_ENRICHMENT_QUEUE binding did.
+  queueMessages?: Array<unknown>,
 ) =>
   makeOperatorAdjutantRoutes({
     appendRefreshedSessionCookies: response => {
@@ -2033,6 +2035,11 @@ const makeRoutes = (
     continueUserAutopilotRun,
     isOpenAgentsAdminEmail: email => email === 'chris@openagents.com',
     launchUserAutopilotMission,
+    makeOaJobEnqueue: () => async (_topic: string, payload: string) => {
+      queueMessages?.push(JSON.parse(payload))
+
+      return 'job_test'
+    },
     requireAdminApiToken: () => Promise.resolve(hasAdminApiToken),
     requireBrowserSession: () => Promise.resolve(session ?? undefined),
     validateAdjutantTaskPacketRef,
@@ -2056,16 +2063,10 @@ const runRoute = (
     launchUserAutopilotMission,
     continueUserAutopilotRun,
     hasAdminApiToken,
+    store.queueMessages,
   ).routeOperatorAdjutantRequest(
     request,
     {
-      ADJUTANT_ENRICHMENT_QUEUE: {
-        send: (value: unknown) => {
-          store.queueMessages.push(value)
-
-          return Promise.resolve()
-        },
-      } as unknown as Queue,
       GITHUB_CLIENT_ID: 'github-client-id',
       GITHUB_CLIENT_SECRET: 'github-client-secret',
       OPENAGENTS_APP_URL: 'https://openagents.com',
@@ -2090,16 +2091,17 @@ const runRouteWithEnv = (
   request: Request,
   envOverrides: Partial<TestEnv>,
 ): Promise<Response> => {
-  const route = makeRoutes(session).routeOperatorAdjutantRequest(
+  const route = makeRoutes(
+    session,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    store.queueMessages,
+  ).routeOperatorAdjutantRequest(
     request,
     {
-      ADJUTANT_ENRICHMENT_QUEUE: {
-        send: (value: unknown) => {
-          store.queueMessages.push(value)
-
-          return Promise.resolve()
-        },
-      } as unknown as Queue,
       GITHUB_CLIENT_ID: 'github-client-id',
       GITHUB_CLIENT_SECRET: 'github-client-secret',
       OPENAGENTS_APP_URL: 'https://openagents.com',
@@ -2130,16 +2132,12 @@ const runRouteWithEnvAndLaunch = (
     defaultAutopilotPreflight,
     defaultTaskPacketRefValidator,
     launchUserAutopilotMission,
+    undefined,
+    undefined,
+    store.queueMessages,
   ).routeOperatorAdjutantRequest(
     request,
     {
-      ADJUTANT_ENRICHMENT_QUEUE: {
-        send: (value: unknown) => {
-          store.queueMessages.push(value)
-
-          return Promise.resolve()
-        },
-      } as unknown as Queue,
       GITHUB_CLIENT_ID: 'github-client-id',
       GITHUB_CLIENT_SECRET: 'github-client-secret',
       OPENAGENTS_APP_URL: 'https://openagents.com',

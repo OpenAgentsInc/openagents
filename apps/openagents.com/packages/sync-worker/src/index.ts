@@ -96,8 +96,14 @@ export type WorkerBindings = Readonly<{
   ARTIFACTS_GCS_ENDPOINT?: string
   ARTIFACTS_GCS_HMAC_ACCESS_KEY_ID?: string
   ARTIFACTS_GCS_HMAC_SECRET?: string
-  RUNNER_EVENTS: Queue
-  ADJUTANT_ENRICHMENT_QUEUE: Queue
+  // CFG-7 (#8522): the four Cloudflare Queue bindings (RUNNER_EVENTS,
+  // ADJUTANT_ENRICHMENT_QUEUE, EVENT_LEDGER_INGEST_QUEUE,
+  // PYLON_CODEX_RAW_EVENT_METADATA_QUEUE) were deleted. Queue lanes ride
+  // the oa-infra Postgres JobQueue (`oa_infra_jobs`): producers enqueue
+  // over the KHALA_SYNC_DB connection (workers/api
+  // src/oa-job-queue-producer.ts) and the Cloud Run pump
+  // (apps/oa-queue-worker) leases + delivers to the internal queue
+  // delivery route.
   ASSETS: Fetcher
   // CFG-3 (#8518): the AUTH_STORAGE KV namespace is evacuated — auth
   // key/value state lives in Postgres (oa_infra_kv via KHALA_SYNC_DB;

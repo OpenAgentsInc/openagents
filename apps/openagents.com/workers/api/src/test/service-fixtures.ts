@@ -3,7 +3,6 @@ import type {
   AppDeployAssignment,
 } from '@openagentsinc/sync-schema'
 import { Effect, Layer } from 'effect'
-import { QueueBinding } from 'effect-cf'
 
 import { OpenAgentsDatabase } from '../bindings'
 import {
@@ -37,8 +36,6 @@ import {
   type ProviderAccountLifecycleServiceDependencies,
   makeProviderAccountLifecycleService,
 } from '../provider-account-service'
-import { RunnerEventQueueMessage, RunnerEventsQueue } from '../runtime'
-
 export const testOpenAgentsWorkerConfigEnv = (
   overrides: OpenAgentsWorkerConfigEnv = {},
 ): OpenAgentsWorkerConfigEnv => ({
@@ -194,31 +191,5 @@ export const makeOmniDispatchServiceTestLayer = (
   }
 }
 
-const queueSendResponse = (): QueueBinding.QueueSendResponse => ({
-  metadata: {
-    metrics: {
-      backlogBytes: 0,
-      backlogCount: 0,
-    },
-  },
-})
-
-export const makeRunnerEventsQueueTestLayer = () => {
-  const sentBodies: Array<unknown> = []
-  const queue: QueueBinding.QueueProducer<unknown> = {
-    send: async body => {
-      sentBodies.push(body)
-
-      return queueSendResponse()
-    },
-  }
-  const client = QueueBinding.makeClient({
-    binding: 'RUNNER_EVENTS',
-    message: RunnerEventQueueMessage,
-  })(queue)
-
-  return {
-    layer: Layer.succeed(RunnerEventsQueue, client),
-    sentBodies,
-  }
-}
+// CFG-7 (#8522): the RUNNER_EVENTS queue fixture was deleted with the dead
+// RUNNER_EVENTS Cloudflare Queue lane (no producers, no consumer).

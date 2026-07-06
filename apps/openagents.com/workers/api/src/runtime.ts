@@ -1,11 +1,7 @@
-import {
-  IsoTimestamp,
-  OmniRunnerEvent,
-  SyncScope,
-} from '@openagentsinc/sync-schema'
+import { SyncScope } from '@openagentsinc/sync-schema'
 import { SyncOutboxStore, type WorkerBindings } from '@openagentsinc/sync-worker'
 import { Effect, Layer, Schema as S } from 'effect'
-import { Queue, Worker, WorkerEnvironment } from 'effect-cf'
+import { Worker, WorkerEnvironment } from 'effect-cf'
 import * as Context from 'effect/Context'
 
 import { logWorkerRouteError, unwrapEffectTryPromiseCause } from './observability'
@@ -30,25 +26,10 @@ export class OpenAgentsWorkerRequest extends Context.Service<
   OpenAgentsWorkerRequestShape
 >()('@openagentsinc/OpenAgentsWorkerRequest') {}
 
-export class RunnerEventQueueMessage extends S.Class<RunnerEventQueueMessage>(
-  'RunnerEventQueueMessage',
-)({
-  schemaVersion: S.Literal('openagents.runner_event_queue.v1'),
-  parentId: S.String,
-  receivedAt: IsoTimestamp,
-  events: S.Array(OmniRunnerEvent),
-}) {}
-
-export class RunnerEventsQueue extends Queue.Tag<RunnerEventsQueue>()(
-  '@openagentsinc/RunnerEventsQueue',
-  {
-    message: RunnerEventQueueMessage,
-  },
-) {}
-
-export const RunnerEventsQueueLayer = RunnerEventsQueue.layer({
-  binding: 'RUNNER_EVENTS',
-})
+// CFG-7 (#8522): the RUNNER_EVENTS Cloudflare Queue lane was deleted. It had
+// no producer call sites and no wrangler consumer — dead wiring from the
+// pre-SHC runner-events design. New queue lanes ride the oa-infra Postgres
+// JobQueue (src/oa-job-queue-producer.ts + apps/oa-queue-worker).
 
 export class SyncRoomNotificationError extends S.TaggedErrorClass<SyncRoomNotificationError>()(
   'SyncRoomNotificationError',

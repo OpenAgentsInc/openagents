@@ -1,23 +1,18 @@
-import { IsoTimestamp, OmniRunnerEvent } from '@openagentsinc/sync-schema'
 import type { WorkerBindings } from '@openagentsinc/sync-worker'
-import { Effect, Layer } from 'effect'
-import { QueueBinding, WorkerEnvironment } from 'effect-cf'
+import { Effect } from 'effect'
+import { WorkerEnvironment } from 'effect-cf'
 import { describe, expect, test } from 'vitest'
 
 import {
   OpenAgentsSyncRoomNotifications,
   OpenAgentsWorkerContext,
   OpenAgentsWorkerRequest,
-  RunnerEventQueueMessage,
-  RunnerEventsQueue,
   WorkerRequestLayer,
   makeOpenAgentsSyncRoomNotifications,
   makeOpenAgentsWorkerContext,
   scheduleBackgroundWork,
   syncScope,
 } from './runtime'
-
-const timestamp = IsoTimestamp.make('2026-06-04T00:00:00.000Z')
 
 const durableObjectId = (name: string): DurableObjectId => ({
   equals: other => other.toString() === name,
@@ -57,58 +52,8 @@ const makeSyncRoomNamespace = (
 }
 
 describe('OpenAgents Cloudflare runtime services', () => {
-  test('encodes runner event queue payloads before enqueue', async () => {
-    const sentBodies: Array<unknown> = []
-    const queue: QueueBinding.QueueProducer<unknown> = {
-      send: async body => {
-        sentBodies.push(body)
-
-        return {} as QueueBinding.QueueSendResponse
-      },
-    }
-    const client = QueueBinding.makeClient({
-      binding: 'RUNNER_EVENTS',
-      message: RunnerEventQueueMessage,
-    })(queue)
-
-    await Effect.runPromise(
-      RunnerEventsQueue.send(
-        new RunnerEventQueueMessage({
-          events: [
-            new OmniRunnerEvent({
-              createdAt: timestamp,
-              payload: { ok: true },
-              sequence: 1,
-              source: 'runner',
-              summary: 'runner started',
-              type: 'runner.log',
-            }),
-          ],
-          parentId: 'agent_run_1',
-          receivedAt: timestamp,
-          schemaVersion: 'openagents.runner_event_queue.v1',
-        }),
-      ).pipe(Effect.provide(Layer.succeed(RunnerEventsQueue, client))),
-    )
-
-    expect(sentBodies).toEqual([
-      {
-        events: [
-          {
-            createdAt: '2026-06-04T00:00:00.000Z',
-            payload: { ok: true },
-            sequence: 1,
-            source: 'runner',
-            summary: 'runner started',
-            type: 'runner.log',
-          },
-        ],
-        parentId: 'agent_run_1',
-        receivedAt: '2026-06-04T00:00:00.000Z',
-        schemaVersion: 'openagents.runner_event_queue.v1',
-      },
-    ])
-  })
+  // CFG-7 (#8522): the runner-event queue-payload test was deleted with the
+  // dead RUNNER_EVENTS Cloudflare Queue lane (no producers, no consumer).
 
   test('routes typed sync scopes through the sync room notification service', async () => {
     const requestedRoomNames: Array<string> = []

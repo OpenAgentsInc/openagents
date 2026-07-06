@@ -866,6 +866,10 @@ import { khalaCodeProductStateDatabaseForEnv } from './khala-code-product-state-
 import { handleKhalaSyncConnect } from './khala-sync-connect-routes'
 import { handleKhalaSyncDbSmoke } from './khala-sync-db-smoke-routes'
 import {
+  OA_QUEUE_DELIVER_PATH,
+  handleOaQueueDeliver,
+} from './oa-queue-delivery-routes'
+import {
   KHALA_SYNC_FLEET_INTENTS_PATH,
   handleKhalaSyncFleetIntents,
 } from './khala-sync-fleet-intents-routes'
@@ -1148,7 +1152,14 @@ import {
   makePylonCodexRawEventMetadataQueueConsumerForEnv,
   makeQueuedR2PylonCodexRawEventChunkStore,
   makeQueuedR2PylonCodexRawEventStore,
+  type PylonCodexRawEventMetadataQueueProducer,
 } from './pylon-codex-raw-event-metadata-queue-store'
+import {
+  OA_JOB_TOPIC_EVENT_LEDGER_INGEST,
+  OA_JOB_TOPIC_PYLON_CODEX_RAW_EVENT_METADATA,
+  makeOaJobEnqueueForEnv,
+  type OaJobQueueProducerEnv,
+} from './oa-job-queue-producer'
 import {
   PylonLargestDecentralizedTrainingClaimEndpoint,
   handlePylonLargestDecentralizedTrainingClaimStatusApi,
@@ -7876,20 +7887,37 @@ const creditBalanceProjectionRecorderForEnv =
     )
   }
 
-type PylonCodexRawEventQueueProducerEnv = Readonly<{
-  PYLON_CODEX_RAW_EVENT_METADATA_QUEUE?: Queue | undefined
-}>
-
 type PylonCodexRawEventProducerEnv = Parameters<
   typeof openAgentsDatabase
 >[0] &
-  PylonCodexRawEventQueueProducerEnv &
+  OaJobQueueProducerEnv &
   Readonly<{ ARTIFACTS?: R2Bucket | undefined }>
+
+// CFG-7 (#8522): raw Codex metadata rows ride the oa-infra Postgres JobQueue
+// (KS-8.4 moved them off the request path; the queue itself moved off
+// Cloudflare Queues). `undefined` (no KHALA_SYNC_DB) keeps the inline
+// D1-write fallback below, exactly like the old absent-binding branch.
+const makePylonCodexRawEventMetadataQueueProducerForEnv = (
+  env: OaJobQueueProducerEnv,
+): PylonCodexRawEventMetadataQueueProducer | undefined => {
+  const enqueue = makeOaJobEnqueueForEnv(env)
+  return enqueue === undefined
+    ? undefined
+    : {
+        send: message =>
+          enqueue(
+            OA_JOB_TOPIC_PYLON_CODEX_RAW_EVENT_METADATA,
+            JSON.stringify(
+              S.encodeSync(PylonCodexRawEventMetadataQueueMessage)(message),
+            ),
+          ),
+      }
+}
 
 const makePylonCodexRawEventStoreForEnv = (
   env: PylonCodexRawEventProducerEnv,
 ) => {
-  const queue = env.PYLON_CODEX_RAW_EVENT_METADATA_QUEUE
+  const queue = makePylonCodexRawEventMetadataQueueProducerForEnv(env)
   const artifacts = artifactsBucketForEnv(env)
   return queue === undefined
     ? makeD1R2PylonCodexRawEventStore(openAgentsDatabase(env), artifacts)
@@ -7899,7 +7927,7 @@ const makePylonCodexRawEventStoreForEnv = (
 const makePylonCodexRawEventChunkStoreForEnv = (
   env: PylonCodexRawEventProducerEnv,
 ) => {
-  const queue = env.PYLON_CODEX_RAW_EVENT_METADATA_QUEUE
+  const queue = makePylonCodexRawEventMetadataQueueProducerForEnv(env)
   const artifacts = artifactsBucketForEnv(env)
   return queue === undefined
     ? makeD1R2PylonCodexRawEventChunkStore(openAgentsDatabase(env), artifacts)
@@ -11276,19 +11304,22 @@ const khalaChatRoutes = makeKhalaChatRoutes({
   recordServedTokens: recordPublicKhalaChatServedTokens,
 })
 
-type EventLedgerProducerEnv = Readonly<{
-  EVENT_LEDGER_INGEST_QUEUE?: Queue | undefined
-}>
-
+// CFG-7 (#8522): event-ledger ingest rides the oa-infra Postgres JobQueue
+// (single-INSERT producer seam) instead of the retired Cloudflare Queue.
+// Same optionality contract as before: `undefined` (no queue configured)
+// keeps callers on their existing no-enqueue fallback.
 const makeEventLedgerIngestEnqueue = (
-  env: EventLedgerProducerEnv,
+  env: OaJobQueueProducerEnv,
 ): ((message: EventLedgerIngestQueueMessage) => Promise<void>) | undefined => {
-  const queue = env.EVENT_LEDGER_INGEST_QUEUE
+  const enqueue = makeOaJobEnqueueForEnv(env)
 
-  return queue === undefined
+  return enqueue === undefined
     ? undefined
     : async message => {
-        await queue.send(message)
+        await enqueue(
+          OA_JOB_TOPIC_EVENT_LEDGER_INGEST,
+          JSON.stringify(S.encodeSync(EventLedgerIngestQueueMessage)(message)),
+        )
       }
 }
 
@@ -12734,6 +12765,18 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env, ctx) => handleCfBrowserSmokeApi(request, env, ctx),
   },
   {
+    // CFG-7 (#8522): Postgres JobQueue delivery seam. Admin bearer only —
+    // the Cloud Run pump (apps/oa-queue-worker) leases jobs from
+    // oa_infra_jobs and posts each one here; the original queue-consumer
+    // logic (dispatchOaQueueMessage) runs with this app's D1/DO bindings.
+    path: OA_QUEUE_DELIVER_PATH,
+    handler: (request, env) =>
+      handleOaQueueDeliver(request, {
+        dispatch: body => dispatchOaQueueMessage(env, body),
+        requireOperator: () => requireAdminApiToken(request, env),
+      }),
+  },
+  {
     // Khala Sync Hyperdrive connectivity smoke (KS-0.2, #8284). Admin bearer
     // only; proves a round-trip parameterized query through the KHALA_SYNC_DB
     // Hyperdrive binding (transaction-mode-safe single statements) and reports
@@ -13870,7 +13913,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             }
           ).AGENT_DEFINITION_GITHUB_WEBHOOK_SECRET,
           eventLedgerEnqueue: makeEventLedgerIngestEnqueue(
-            env as Env & EventLedgerProducerEnv,
+            env,
           ),
           githubMentionLogins: optionalCommaSeparatedValues(
             (
@@ -13928,7 +13971,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             runStore: makeAgentDefinitionRunStoreForEnv(env),
           },
           eventLedgerEnqueue: makeEventLedgerIngestEnqueue(
-            env as Env & EventLedgerProducerEnv,
+            env,
           ),
           slackSecret: (
             env as Env & {
@@ -15982,62 +16025,65 @@ const runWorkerFetch = (
     ),
   )
 
+/**
+ * CFG-7 (#8522): the former Cloudflare Queues `queue()` consumer, unchanged,
+ * now invoked per job by the internal delivery route
+ * (`/api/internal/queue/deliver`) that the Cloud Run pump
+ * (`apps/oa-queue-worker`) calls after leasing jobs from the oa-infra
+ * Postgres JobQueue. Discriminates by the message's stable schema version so
+ * known queue payloads route to their typed consumers while the default
+ * branch keeps flowing to the adjutant-enrichment executor. Throws on
+ * failure so the pump nacks (retry, then dead-letter).
+ */
+export const dispatchOaQueueMessage = async (
+  env: OpenAgentsWorkerEnv,
+  body: unknown,
+): Promise<void> => {
+  const schemaVersion =
+    typeof body === 'object' && body !== null && 'schemaVersion' in body
+      ? (body as { schemaVersion?: unknown }).schemaVersion
+      : undefined
+
+  if (schemaVersion === PYLON_CODEX_RAW_EVENT_METADATA_QUEUE_SCHEMA_VERSION) {
+    const decoded = S.decodeUnknownSync(PylonCodexRawEventMetadataQueueMessage)(
+      body,
+    )
+    await makePylonCodexRawEventMetadataQueueConsumerForEnv(
+      env,
+      openAgentsDatabase(env),
+    ).writeMetadata(decoded)
+    return
+  }
+
+  if (schemaVersion === EVENT_LEDGER_INGEST_QUEUE_SCHEMA_VERSION) {
+    const namespace = (
+      env as Env & {
+        EVENT_LEDGER_OWNER?: DurableObjectNamespace
+      }
+    ).EVENT_LEDGER_OWNER
+
+    if (namespace === undefined) {
+      throw { error: 'event_ledger_owner_binding_missing' }
+    }
+
+    const decoded = S.decodeUnknownSync(EventLedgerIngestQueueMessage)(body)
+    await recordEventLedgerMessageWithOwnerObject(namespace, decoded)
+    return
+  }
+
+  const decoded = S.decodeUnknownSync(AdjutantEnrichmentQueueMessage)(body)
+
+  const exit = await Effect.runPromiseExit(
+    executeQueuedAdjutantEnrichmentJob(env, decoded),
+  )
+
+  if (Exit.isFailure(exit)) {
+    throw exit.cause
+  }
+}
+
 export default {
   fetch: runWorkerFetch,
-  queue: async (batch, env, ctx): Promise<void> => {
-    for (const message of batch.messages) {
-      // Discriminate by the message's stable schema version so known queue
-      // payloads route to their typed consumers while the default branch keeps
-      // flowing to the adjutant-enrichment executor.
-      const body = message.body
-      const schemaVersion =
-        typeof body === 'object' && body !== null && 'schemaVersion' in body
-          ? (body as { schemaVersion?: unknown }).schemaVersion
-          : undefined
-
-      if (schemaVersion === PYLON_CODEX_RAW_EVENT_METADATA_QUEUE_SCHEMA_VERSION) {
-        const decoded = S.decodeUnknownSync(
-          PylonCodexRawEventMetadataQueueMessage,
-        )(body)
-        await makePylonCodexRawEventMetadataQueueConsumerForEnv(
-          env,
-          openAgentsDatabase(env),
-        ).writeMetadata(decoded)
-        message.ack()
-        continue
-      }
-
-      if (schemaVersion === EVENT_LEDGER_INGEST_QUEUE_SCHEMA_VERSION) {
-        const namespace = (
-          env as Env & {
-            EVENT_LEDGER_OWNER?: DurableObjectNamespace
-          }
-        ).EVENT_LEDGER_OWNER
-
-        if (namespace === undefined) {
-          throw { error: 'event_ledger_owner_binding_missing' }
-        }
-
-        const decoded = S.decodeUnknownSync(EventLedgerIngestQueueMessage)(body)
-        await recordEventLedgerMessageWithOwnerObject(namespace, decoded)
-        message.ack()
-        continue
-      }
-
-      const decoded = S.decodeUnknownSync(AdjutantEnrichmentQueueMessage)(body)
-
-      const exit = await Effect.runPromiseExit(
-        executeQueuedAdjutantEnrichmentJob(env, decoded),
-      )
-
-      if (Exit.isFailure(exit)) {
-        throw exit.cause
-      }
-
-      message.ack()
-    }
-    void ctx
-  },
   scheduled: async (event, env, ctx): Promise<void> => {
     const config = getOpenAgentsWorkerConfig(env)
 
