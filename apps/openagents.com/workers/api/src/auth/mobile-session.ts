@@ -83,7 +83,15 @@ export const authIssuerAllowsRedirect = (
   return isMobileRedirect && isGitHubCodePkce
 }
 
-const mobileRevokedAccessKey = async (accessToken: string): Promise<string> => {
+/**
+ * Exported so other mobile-bearer-authorized surfaces can compute the SAME KV
+ * revocation-lookup key from a raw access token without duplicating the hash
+ * scheme (MM-G1, #8485: `push/push-device-tokens.ts` stores this key
+ * alongside a device's push-token registration at registration time, then
+ * later checks `AUTH_STORAGE.get(key)` directly to prune a registration once
+ * that exact access token is revoked — never storing the raw token itself).
+ */
+export const mobileRevokedAccessKey = async (accessToken: string): Promise<string> => {
   const bytes = new TextEncoder().encode(accessToken)
   const digest = await crypto.subtle.digest('SHA-256', bytes)
   const hash = Array.from(new Uint8Array(digest))

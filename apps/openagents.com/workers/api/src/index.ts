@@ -237,6 +237,10 @@ import {
   makeBrowserSessionBoundary,
 } from './auth/session'
 import {
+  handlePushDeviceTokensRequest,
+  PUSH_DEVICE_TOKENS_PATH,
+} from './push/push-device-token-routes'
+import {
   AutopilotComposedRunEndpoint,
   handleAutopilotComposedRunApi,
   isAutopilotComposedRunEnabled,
@@ -12480,6 +12484,25 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/mobile/session',
     handler: (request, env, ctx) =>
       Effect.promise(() => handleMobileSessionApi(request, env, ctx)),
+  },
+  {
+    // MM-G1 (#8485): mobile-bearer-authorized push device-token
+    // register/unregister. Reuses the SAME `requireUserBearerSession`
+    // boundary as `/api/mobile/auth/session` above — never a browser
+    // session or agent token.
+    path: PUSH_DEVICE_TOKENS_PATH,
+    handler: (request, env, ctx) =>
+      handlePushDeviceTokensRequest(
+        {
+          db: openAgentsDatabase,
+          readBearerToken,
+          requireUserBearerSession,
+          userIdFromSession: session => session.user.userId,
+        },
+        request,
+        env,
+        ctx,
+      ),
   },
   {
     path: '/api/auth/totals',
