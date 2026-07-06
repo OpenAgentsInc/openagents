@@ -1,8 +1,8 @@
 /**
  * CFG-9 (#8524): unit coverage for the Cloud Run adapter layer — the typed
  * unavailable-binding degrade, the D1 REST bridge, queue delivery semantics,
- * the Postgres OpenAuth storage adapter, request helpers, and background
- * task tracking. No network, no database: every backend is a fake.
+ * request helpers, and background task tracking. (OpenAuth/auth-KV storage
+ * is CFG-3's KvStore surface — covered by its own suites.) No network, no database: every backend is a fake.
  */
 
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
@@ -23,8 +23,6 @@ import { makeUnavailableDurableObjectNamespace } from './do-shims'
 import { makeBackgroundTasks, makeExecutionContext } from './execution-context'
 import { cronAuthorized, withForwardedProto } from './http-utils'
 import { deliverLeasedBatch } from './queue-postgres'
-import { joinKey } from '@openauthjs/openauth/storage/storage'
-import { makePostgresOpenAuthStorage } from '../auth/openauth-storage-postgres'
 
 describe('binding-unavailable', () => {
   it('rejects per-call with a typed error and maps to a 503', async () => {
@@ -227,109 +225,6 @@ describe('queue delivery', () => {
 
     expect(outcome).toEqual({ processed: 0, retried: 2 })
     expect(ops.map(([op]) => op)).toEqual(['nack', 'nack'])
-  })
-})
-
-describe('postgres openauth storage', () => {
-  type Executed = { text: string; values: ReadonlyArray<unknown> }
-
-  const makeFakeSql = (rows: Record<string, unknown>) => {
-    const executed: Array<Executed> = []
-    const store = new Map<string, { value_json: string; expires_at: number | null }>(
-      Object.entries(rows).map(([key, value]) => [
-        key,
-        { expires_at: null, value_json: JSON.stringify(value) },
-      ]),
-    )
-    const sql = async (
-      strings: TemplateStringsArray,
-      ...values: ReadonlyArray<unknown>
-    ) => {
-      const text = strings.join('?')
-      executed.push({ text, values })
-      if (text.includes('SELECT key, value_json')) {
-        if (text.includes('LIKE')) {
-          const like = String(values[0]).replace(/%$/, '')
-          return [...store.entries()]
-            .filter(([key]) => key.startsWith(like))
-            .map(([key, row]) => ({ key, ...row }))
-        }
-        const key = String(values[0])
-        const row = store.get(key)
-        return row === undefined ? [] : [{ key, ...row }]
-      }
-      if (text.includes('INSERT INTO openauth_storage')) {
-        store.set(String(values[0]), {
-          expires_at: values[2] as number | null,
-          value_json: String(values[1]),
-        })
-        return []
-      }
-      if (text.includes('DELETE FROM openauth_storage')) {
-        store.delete(String(values[0]))
-        return []
-      }
-      return []
-    }
-    return { executed, sql, store }
-  }
-
-  const runtime = {
-    nowIso: () => '2026-07-06T00:00:00.000Z',
-    nowMs: () => 1_780_000_000_000,
-  }
-
-  it('set/get/remove round-trip against the twin table shape', async () => {
-    const fake = makeFakeSql({})
-    const storage = makePostgresOpenAuthStorage(
-      'postgres://ignored',
-      runtime,
-      async () => fake.sql as never,
-    )
-
-    await storage.set(['oauth', 'refresh', 'abc'], { token: 't1' })
-    const got = await storage.get(['oauth', 'refresh', 'abc'])
-    expect(got).toEqual({ token: 't1' })
-
-    await storage.remove(['oauth', 'refresh', 'abc'])
-    expect(await storage.get(['oauth', 'refresh', 'abc'])).toBeUndefined()
-  })
-
-  it('expired rows read as missing and are lazily deleted', async () => {
-    const fake = makeFakeSql({})
-    const storageKey = joinKey(['signing', 'key'])
-    fake.store.set(storageKey, {
-      expires_at: runtime.nowMs() - 1000,
-      value_json: JSON.stringify({ old: true }),
-    })
-    const storage = makePostgresOpenAuthStorage(
-      'postgres://ignored',
-      runtime,
-      async () => fake.sql as never,
-    )
-    expect(await storage.get(['signing', 'key'])).toBeUndefined()
-    expect(fake.store.has(storageKey)).toBe(false)
-  })
-
-  it('scan yields split keys under a prefix', async () => {
-    const fake = makeFakeSql({
-      [joinKey(['oauth', 'refresh', 'u1', 't1'])]: { a: 1 },
-      [joinKey(['oauth', 'refresh', 'u1', 't2'])]: { a: 2 },
-      [joinKey(['signing', 'key'])]: { k: true },
-    })
-    const storage = makePostgresOpenAuthStorage(
-      'postgres://ignored',
-      runtime,
-      async () => fake.sql as never,
-    )
-    const seen: Array<string> = []
-    for await (const [key] of storage.scan(['oauth', 'refresh', 'u1'])) {
-      seen.push(key.join('/'))
-    }
-    expect(seen.sort()).toEqual([
-      'oauth/refresh/u1/t1',
-      'oauth/refresh/u1/t2',
-    ])
   })
 })
 

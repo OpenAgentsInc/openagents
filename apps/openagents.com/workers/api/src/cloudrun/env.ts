@@ -8,11 +8,13 @@
  * - vars + secrets: pass-through from process.env (Secret Manager mounts)
  * - OPENAGENTS_DB:   D1-over-HTTP bridge (d1-http.ts) until CFG-4 finishes
  *                    the Postgres hard cutover; typed-503 when unconfigured
- * - AUTH_STORAGE:    Postgres `oa_infra_kv` KVNamespace adapter (CFG-3 table)
+ * - auth KV + OpenAuth issuer storage: CFG-3's KvStore over KHALA_SYNC_DB
+ *   (auth/auth-kv.ts, auth/openauth-storage.ts) — config-driven, no shim
  * - KHALA_SYNC_DB:   DIRECT Cloud SQL connection string (kills Hyperdrive)
  * - queues:          Postgres JobQueue producers (CFG-7 seam)
- * - INFERENCE_DURABLE_STREAM: in-process durable-stream (CFG-6 replaces)
- * - KHALA_SYNC_HUB:  absent (typed absent-binding path) until CFG-5 LiveHub
+ * - durable inference streams + Khala Sync hub: config-driven Postgres /
+ *   LiveHub seams landed by CFG-6/CFG-5 (KHALA_SYNC_DB,
+ *   KHALA_SYNC_LIVE_HUB_URL/_TOKEN) — nothing to shim here
  * - DO/containers with no replacement: typed-unavailable namespaces
  * - EMAIL/BROWSER/ARTIFACTS: absent — each has an existing absence degrade
  */
@@ -24,11 +26,7 @@ import type { OpenAgentsWorkerEnv } from '../bindings'
 import { makeAssetsFetcher } from './assets'
 import { unavailableBinding } from './binding-unavailable'
 import { d1FromProcessEnv } from './d1-http'
-import {
-  makeInMemoryDurableStreamNamespace,
-  makeUnavailableDurableObjectNamespace,
-} from './do-shims'
-import { makePostgresKvNamespace } from './kv-postgres'
+import { makeUnavailableDurableObjectNamespace } from './do-shims'
 import { QUEUE_TOPICS, makePostgresQueue } from './queue-postgres'
 import type { JobQueueShape } from '@openagentsinc/oa-infra/job-queue'
 import { makePostgresJobQueue } from '@openagentsinc/oa-infra/job-queue-postgres'
@@ -83,10 +81,6 @@ export const buildCloudRunRuntime = (
   const bindings = {
     // ---- storage/data backends -------------------------------------------
     OPENAGENTS_DB: d1FromProcessEnv(processEnv),
-    AUTH_STORAGE:
-      infraSql === undefined
-        ? unavailableBinding<KVNamespace>('AUTH_STORAGE')
-        : makePostgresKvNamespace(infraSql),
     ...(khalaSyncUrl === undefined || khalaSyncUrl.length === 0
       ? {}
       : { KHALA_SYNC_DB: { connectionString: khalaSyncUrl } }),
@@ -107,8 +101,12 @@ export const buildCloudRunRuntime = (
     ),
 
     // ---- durable objects ---------------------------------------------------
-    INFERENCE_DURABLE_STREAM:
-      makeInMemoryDurableStreamNamespace() as unknown as DurableObjectNamespace,
+    // Durable inference streams are config-driven Postgres now (CFG-6,
+    // durableInferenceStreamNamespaceForEnv over KHALA_SYNC_DB) — no DO
+    // namespace binding to shim. Khala Sync hub traffic is config-driven
+    // LiveHub (CFG-5, resolveKhalaSyncHubNamespace over
+    // KHALA_SYNC_LIVE_HUB_URL/_TOKEN); the /connect WS leg is bridged by
+    // server.ts because Bun fetch cannot carry a WebSocket upgrade.
     SYNC_ROOM: makeUnavailableDurableObjectNamespace('SYNC_ROOM'),
     MDK_SIDECAR: makeUnavailableDurableObjectNamespace('MDK_SIDECAR'),
     AGENT_DEFINITION_SCHEDULER: makeUnavailableDurableObjectNamespace(

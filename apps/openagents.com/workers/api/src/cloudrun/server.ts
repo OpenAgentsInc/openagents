@@ -29,6 +29,13 @@ import {
 } from './execution-context'
 import { cronAuthorized, withForwardedProto } from './http-utils'
 import { runQueueConsumerLoop } from './queue-postgres'
+import {
+  type SyncBridgeData,
+  isSyncConnectUpgrade,
+  liveHubConnectTarget,
+  makeSyncBridgeWebSocketHandlers,
+  withoutUpgradeHeaders,
+} from './sync-connect-bridge'
 
 const log = (event: string, detail: Record<string, unknown> = {}): void => {
   console.log(
@@ -76,13 +83,63 @@ const main = async (): Promise<void> => {
     })
   }
 
-  const server = Bun.serve({
-    fetch: async (incoming): Promise<Response> => {
+  const liveHub = (() => {
+    const baseUrl = process.env['KHALA_SYNC_LIVE_HUB_URL']?.trim()
+    const token = process.env['KHALA_SYNC_LIVE_HUB_TOKEN']?.trim()
+    return baseUrl !== undefined &&
+      baseUrl.length > 0 &&
+      token !== undefined &&
+      token.length > 0
+      ? { baseUrl, token }
+      : undefined
+  })()
+
+  const server = Bun.serve<SyncBridgeData, never>({
+    fetch: async (incoming, bunServer): Promise<Response | undefined> => {
       const request = withForwardedProto(incoming)
       const url = new URL(request.url)
 
       if (url.pathname === '/internal/healthz') {
         return Response.json({ ok: true, service: 'openagents-monolith' })
+      }
+
+      // CFG-5 LiveHub WS bridge: Bun fetch cannot carry a WebSocket upgrade,
+      // so run the worker route's full pre-upgrade pipeline (upgrade headers
+      // stripped) and bridge the socket only on its documented 426 success
+      // sentinel — see sync-connect-bridge.ts.
+      if (liveHub !== undefined && isSyncConnectUpgrade(request)) {
+        const preflight = await worker.fetch!(
+          withoutUpgradeHeaders(request),
+          runtime.env,
+          ctx,
+        )
+        if (preflight.status !== 426) {
+          return preflight
+        }
+        await preflight.body?.cancel()
+        const target = liveHubConnectTarget(request, liveHub)
+        const upgraded = bunServer.upgrade(incoming, {
+          data: {
+            bearer: target.bearer,
+            clientClosed: false,
+            pending: [],
+            targetUrl: target.targetUrl,
+            upstream: undefined,
+          },
+        })
+        if (upgraded) {
+          // Bun sends the 101 itself.
+          return undefined
+        }
+        return Response.json(
+          {
+            code: 'internal',
+            messageSafe:
+              'Khala Sync live-tail upgrade failed unexpectedly; reconnect.',
+            retryable: true,
+          },
+          { status: 500, headers: { 'cache-control': 'no-store' } },
+        )
       }
 
       if (url.pathname === '/internal/cron') {
@@ -119,6 +176,7 @@ const main = async (): Promise<void> => {
     hostname: '0.0.0.0',
     idleTimeout: 240,
     port,
+    websocket: makeSyncBridgeWebSocketHandlers(),
   })
 
   // Optional in-process cron fallback (Cloud Scheduler is the primary driver).
