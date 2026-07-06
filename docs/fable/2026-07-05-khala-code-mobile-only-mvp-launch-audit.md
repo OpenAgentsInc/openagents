@@ -508,3 +508,113 @@ verification waits for E1.
 > main, cleanup). All other rules from the original delegation stand. The
 > full lane map is §11 of
 > docs/fable/2026-07-05-khala-code-mobile-only-mvp-launch-audit.md.
+
+## 12. Status ledger + relaunch lanes (2026-07-06 — supersedes §11)
+
+Everything below reflects the state after the first parallel dispatch wave
+finished and the Codex (Lane 0) agent stopped. §11's lane map is historical;
+this section is the operative plan. Two new owner decisions are folded in:
+
+1. **IAP is postponed for the first MVP build** (#8481 closed as postponed).
+   Credits are assigned **manually by the owner through Aiur** (below). The
+   server IAP rail from #8482 stays landed-but-dormant, so IAP's eventual
+   return is client-integration work only.
+2. **Aiur** — a separate owner-only admin app at `aiur.openagents.com`
+   (fresh Cloudflare Worker, TanStack Start, same Khala Sync engine),
+   filed as #8499 (scaffold + owner-only auth + deploy), #8500 (credits
+   console — the manual-grant surface that replaces IAP at launch), #8501
+   (ops views: users/runs/executor health). #8500 is on the MVP critical
+   path: it is how users get credits at launch.
+
+### 12.1 What landed (16 of 27 original workstream issues closed + shipped)
+
+All merged to `main`, each closed with evidence on its issue:
+
+- **WS-A auth**: #8468 (OpenAuth PKCE public mobile client + cookie-free
+  bearer sessions, `GET/DELETE /api/mobile/auth/session`), #8469
+  (`POST /api/mobile/session` → `{ownerUserId, syncToken}`; sync accepts
+  the mobile bearer through the human-actor path), #8470 (mobile GitHub
+  sign-in UI + Tailnet auto-auth retirement, incl. a real device/simulator
+  smoke + OTA receipt).
+- **WS-B repos**: #8471 (`GET /api/mobile/repos[/{owner}/{name}]`, typed
+  token-missing/expired failures), #8472 (repo picker UI +
+  `ChatThreadEntity.repoBinding` contract in `packages/khala-sync` — the
+  contract the cloud executor consumes).
+- **WS-D credits (2 of 3)**: #8478 ($10 GitHub-account-keyed signup grant
+  into Pool B via the usd-credit-bridge, double-idempotent, race-verified,
+  RL-3-compliant, account-age + per-IP anti-abuse floors), #8480 (balance +
+  transaction history UI; also wired the real model picker).
+- **WS-E IAP (2 of 3)**: #8482 (server `iap_revenuecat` rail: webhook
+  auth, SKU catalog, idempotent Pool B fulfillment, refund clawback —
+  **dormant by owner decision**), #8483 (store-compliance checklist; found
+  credit packs run at a small loss at the standard 30% store cut →
+  Small Business Program recommendation; flagged missing account-deletion
+  mechanism).
+- **WS-F**: #8484 (per-user model preference store + mobile API + picker;
+  one deliberately-deferred finding: the public gateway's
+  single-Khala-alias invariant was NOT relaxed — owner/Lane-0 call,
+  documented in INVARIANTS.md).
+- **WS-G push**: #8485 (expo-notifications + `push_device_tokens` +
+  mobile-bearer register/unregister, permission prompt on first dispatch,
+  native builds verified both platforms), #8486 (Expo push sender,
+  payload-safety fuzz-tested, `POST /api/internal/push/notify-events`
+  ingest seam built against the C-lane's documented shape).
+- **WS-H surface**: #8487 (Settings rework — Fleet section gone), #8488
+  (onboarding straight line), #8489 (contracts pivot final pass + push
+  tap→thread deep-link handler gap found and fixed).
+- **Post-lane fixes on main**: `a87e0a5c0a` (architecture-gate closure for
+  the wave), `19cdf912ea` (pre-existing raw-Env debt ratchet 167→171,
+  tracked by #8498), `da3b5bbe64` (stale-workspace-link DX note, #8497).
+- **In flight at time of writing**: a visual-only sign-in screen redesign
+  (owner-picked "Nexus Beam" wireframe direction: beam + code glyphs +
+  diamond aperture background, restyled GitHub button, drop the
+  "no desktop/Tailnet" note) — single-file change to
+  `clients/khala-mobile/src/components/sign-in-screen.tsx`, pushing to
+  main when verified.
+
+### 12.2 What's open and why
+
+| Issue | State | Why it's open |
+|---|---|---|
+| #8473 (C1 org executor) | **Done but stranded unpushed** | Codex finished the implementation (commit `decbe52666` in the clean worktree `openagents-mvp-8473`: usage routes + org-executor enforcement/supervisor extensions + turn-usage receipts + runbook) but was blocked three consecutive turns by a pre-existing `check:architecture` failure (171/167 raw-Env, none of it caused by this work) and formally stopped. The blocker is fixed (`19cdf912ea`); the commit needs adopt→rebase→verify→push→close. **Do not rewrite it.** |
+| #8474–#8477 (C2–C5) | Not started | Were serialized behind C1 in the Codex lane. |
+| #8479 (D2 metering) | Not started | Depends on C1 landing (charges from its usage receipts). |
+| #8490 (I1 Android/Play) | Not started | Convergence tier; emulator-smoke half is agent-doable now, Play Console half owner-gated. |
+| #8491 (I2 App Store pack) | Not started | Convergence tier; metadata/labels prep agent-doable, ASC actions owner-gated. |
+| #8492 (I3 E2E QA) | Not started | Convergence tier; sign-in→repo-pick flows testable now, full straight line needs C-lane. |
+| #8493 (I4 promise gates) | Not started | Accrues as everything lands; final pass at launch. |
+| #8499–#8501 (Aiur) | **New** | Owner-directed 2026-07-06; #8500 is MVP-critical (manual credits). |
+| #8481 (E1 RevenueCat) | **Closed postponed** | Owner decision: no IAP in first MVP; server rail stays dormant. |
+| #8494 (J1 post-to-earn) | Open, post-MVP-gated | Unchanged. |
+| #8498 (raw-Env cleanup) | Open, background | Structural debt tracker; not launch-critical, not in any lane below. |
+
+### 12.3 Relaunch lanes (Sonnet agents only; owner decision 2026-07-06)
+
+Same ownership/conflict rules as §11 (exclusive surfaces, contract-first
+cross-lane shapes, clean worktree per issue, tests + `check:deploy` green,
+comment+close, no `--no-verify`, NEEDS_OWNER routing). Three lanes:
+
+- **Lane S1 — cloud execution spine (the critical path)**:
+  adopt-and-land #8473 from the stranded worktree commit `decbe52666`
+  (rebase → full verify → push → close with evidence; do not rewrite),
+  then #8474 → #8475 → #8476 → #8477 → #8479 in order. Owns
+  `apps/pylon` org-executor surfaces + the dispatch/admission and
+  cloud/usage route seams in `workers/api`.
+- **Lane S2 — Aiur**: #8499 → #8500 → #8501 in order. Owns the new
+  `apps/aiur/` tree end-to-end plus the owner-gated admin credit routes it
+  adds to the main Worker (`/api/admin/credits/*` seam only). #8500 lands
+  the moment its routes + UI verify — it must not wait for #8501.
+- **Lane S3 — launch ops prep (everything not gated on the C-lane)**:
+  #8490's emulator-smoke half + Android runbook, #8491's
+  metadata/privacy-label/review-notes prep (ASC actions → NEEDS_OWNER),
+  #8492's E2E flows for what exists today (sign-in → repo pick →
+  compose; extend to full straight line when S1 lands), and #8493's
+  running promise-evidence accrual. Owns `clients/khala-mobile`'s test/QA
+  surfaces and `docs/khala-mobile/` — coordinate with the in-flight
+  sign-in redesign commit before touching that one file.
+
+Dependency notes: S2 is fully independent of S1. S3's full-straight-line
+E2E and #8493's final pass converge on S1's completion. Nothing waits on
+IAP anymore. The owner-gated residue at launch time: Play Console + App
+Store Connect actions, promise green sign-offs, and (post-MVP) the
+RevenueCat account when #8481 reopens.
