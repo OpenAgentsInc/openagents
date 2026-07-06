@@ -88,6 +88,11 @@ describe("Khala mobile provider spine and primitives", () => {
     // the same disabled/loading/onPress contract) instead. See
     // `../src/components/nexus-beam/nexus-sign-in-button.tsx`.
     expect(signIn).toContain("NexusSignInButton")
+    expect(signIn).toContain("LandingGlassConsole")
+    expect(signIn).toContain("BackgroundGradient")
+    expect(signIn).toContain("Frame")
+    expect(signIn).toContain("Ready for first run")
+    expect(signIn).toContain("START CREDIT")
     expect(signIn).toContain("signInWithGitHub")
     expect(signIn).toContain("signIn.github.primary")
     expect(signIn).not.toContain("KhalaTextField")
