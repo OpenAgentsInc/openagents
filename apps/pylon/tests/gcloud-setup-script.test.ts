@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync, writeFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { spawnSync } from "node:child_process"
@@ -11,6 +11,13 @@ const agentComputerScript = join(
   "deploy",
   "agent-computer",
   "setup-gce-host.sh",
+)
+const agentComputerImageManifest = join(
+  import.meta.dir,
+  "..",
+  "deploy",
+  "agent-computer",
+  "agent-computer-image.manifest.json",
 )
 
 describe("GCloud Pylon setup script", () => {
@@ -155,5 +162,35 @@ describe("Agent Computer GCE host setup script", () => {
     expect(result.status).toBe(0)
     const output = `${result.stdout}\n${result.stderr}`
     expect(output).toContain("--min-cpu-platform Intel\\ Haswell")
+  })
+
+  test("image manifest records the #8476 isolation and reclaim evidence contract", () => {
+    const manifest = JSON.parse(readFileSync(agentComputerImageManifest, "utf8")) as {
+      guestImage: {
+        scratchWipeReceiptRequired: boolean
+        microvmDestroyReceiptRequired: boolean
+      }
+      isolation: {
+        policySchema: string
+        workContextBindingRequired: boolean
+        noCrossContextReuse: boolean
+        credentialScannerRequired: boolean
+        noWalletMaterial: boolean
+        noRawUserOAuthTokens: boolean
+        noProviderMasterKeys: boolean
+        noInboundGuestServices: boolean
+      }
+    }
+
+    expect(manifest.guestImage.scratchWipeReceiptRequired).toBe(true)
+    expect(manifest.guestImage.microvmDestroyReceiptRequired).toBe(true)
+    expect(manifest.isolation.policySchema).toBe("openagents.agent_computer_isolation_policy.v1")
+    expect(manifest.isolation.workContextBindingRequired).toBe(true)
+    expect(manifest.isolation.noCrossContextReuse).toBe(true)
+    expect(manifest.isolation.credentialScannerRequired).toBe(true)
+    expect(manifest.isolation.noWalletMaterial).toBe(true)
+    expect(manifest.isolation.noRawUserOAuthTokens).toBe(true)
+    expect(manifest.isolation.noProviderMasterKeys).toBe(true)
+    expect(manifest.isolation.noInboundGuestServices).toBe(true)
   })
 })

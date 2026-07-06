@@ -119,6 +119,9 @@ const CloudCodingSessionRequestBody = S.Struct({
 // cloud VM indefinitely.
 export const DEFAULT_CLOUD_CODING_TIMEOUT_SECONDS = 1800
 export const MAX_CLOUD_CODING_TIMEOUT_SECONDS = 14400
+export const DEFAULT_AGENT_COMPUTER_IDLE_RECLAIM_SECONDS = 1800
+export const AGENT_COMPUTER_ISOLATION_POLICY_SCHEMA =
+  'openagents.agent_computer_isolation_policy.v1'
 
 const USER_CAPACITY_OPTION_KEYS = new Set([
   'pylonRef',
@@ -761,6 +764,34 @@ const defaultProviderAccountRef = (accountRef: string): string =>
 const defaultAuthGrantRef = (sessionId: string): string =>
   `grant.cloud-coding-session.${sessionId}`
 
+const agentComputerIsolationPolicy = (
+  request: CloudCodingSessionRequest,
+) => ({
+  schema_version: AGENT_COMPUTER_ISOLATION_POLICY_SCHEMA,
+  unit: 'one_firecracker_microvm_per_work_context',
+  lifecycle: {
+    hard_timeout_seconds: request.timeoutSeconds,
+    idle_reclaim_seconds: DEFAULT_AGENT_COMPUTER_IDLE_RECLAIM_SECONDS,
+    microvm_destroy_required: true,
+    reclaim_on: ['idle_timeout', 'hard_timeout', 'sign_out', 'thread_delete'],
+    scratch_wipe_required: true,
+  },
+  credentials: {
+    credential_scanner_required: true,
+    no_provider_master_keys: true,
+    no_raw_user_oauth_tokens: true,
+    no_wallet_material: true,
+    scm_broker_only: true,
+  },
+  network: {
+    egress_policy_ref: 'egress.agent_computer.coding_mvp.restricted.v1',
+    no_inbound: true,
+  },
+  projection: {
+    public_refs_only: true,
+  },
+})
+
 type CloudPlacementEvent = Readonly<{
   kind: string
   receiptRefs: ReadonlyArray<string>
@@ -859,6 +890,10 @@ const lifecycleReceiptRefsFromEvents = (
         ...event.receiptRefs,
         publicRefFromEventData(event, 'provisionReceiptRef'),
         publicRefFromEventData(event, 'cleanupReceiptRef'),
+        publicRefFromEventData(event, 'scratchWipeReceiptRef'),
+        publicRefFromEventData(event, 'scratch_wipe_receipt_ref'),
+        publicRefFromEventData(event, 'microvmDestroyReceiptRef'),
+        publicRefFromEventData(event, 'microvm_destroy_receipt_ref'),
         publicRefFromEventData(event, 'quarantineReceiptRef'),
       ].flatMap(ref => (ref === undefined ? [] : [ref]))
     }),
@@ -903,6 +938,7 @@ type CloudPlacementResponse = Readonly<{
     lane: CloudCodingLane
     providerLane: string
     runnerId: string
+    workContextRef: string | null
     capacityClassId: string | null
     sandboxMode: string
     reason: string
@@ -930,6 +966,12 @@ const normalizeCloudPlacementResponse = (
     rawBinding.caps !== null && typeof rawBinding.caps === 'object'
       ? (rawBinding.caps as Record<string, unknown>)
       : undefined
+  const workContextRef =
+    publicRefFromUnknown(rawBinding.workContextRef) ??
+    publicRefFromUnknown(rawBinding.work_context_ref) ??
+    publicRefFromUnknown(record.workContextRef) ??
+    publicRefFromUnknown(record.work_context_ref) ??
+    null
   const events = Array.isArray(record.events)
     ? record.events.flatMap(event => {
         const normalized = normalizeCloudPlacementEvent(event)
@@ -953,12 +995,40 @@ const normalizeCloudPlacementResponse = (
       runnerId: publicRefFromUnknown(rawBinding.runnerId) ?? '',
       sandboxMode:
         publicRefFromUnknown(rawBinding.sandboxMode) ?? 'danger_full_access',
+      workContextRef,
       ...(caps === undefined ? {} : { caps }),
     },
     events,
     externalRunId,
     status: publicRefFromUnknown(record.status) ?? 'queued',
   }
+}
+
+const hasVerifiedReclaimEvidence = (event: CloudPlacementEvent): boolean =>
+  event.kind === 'cloud.gce.cleanup' &&
+  (publicRefFromEventData(event, 'scratchWipeReceiptRef') ??
+    publicRefFromEventData(event, 'scratch_wipe_receipt_ref')) !== undefined &&
+  (publicRefFromEventData(event, 'microvmDestroyReceiptRef') ??
+    publicRefFromEventData(event, 'microvm_destroy_receipt_ref')) !== undefined
+
+const validateAgentComputerPlacement = (
+  placement: CloudPlacementResponse,
+  expectedWorkContextRef: string,
+): string | undefined => {
+  if (placement.binding.workContextRef === null) {
+    return 'agent_computer_work_context_binding_missing'
+  }
+  if (placement.binding.workContextRef !== expectedWorkContextRef) {
+    return 'agent_computer_work_context_binding_mismatch'
+  }
+  if (
+    placement.events.some(
+      event => event.kind === 'cloud.gce.cleanup' && !hasVerifiedReclaimEvidence(event),
+    )
+  ) {
+    return 'agent_computer_reclaim_evidence_missing'
+  }
+  return undefined
 }
 
 export const makeCloudControlCloudCodingAdapter = (
@@ -1000,11 +1070,14 @@ export const makeCloudControlCloudCodingAdapter = (
                   : 'cloud_placement_request_failed',
             }),
           try: async () => {
+            const workContextRef = workContextRefForSession(request, sessionId)
             const response = await fetchImpl(`${baseUrl}/v1/placement`, {
               body: JSON.stringify({
                 auth_grant_ref:
                   stringOption(request.options, 'authGrantRef') ??
                   defaultAuthGrantRef(sessionId),
+                agent_computer_isolation_policy:
+                  agentComputerIsolationPolicy(request),
                 contract_version: 'openagents.codex_placement_assignment.v1',
                 created_at_ms: currentEpochMillis(),
                 goal: request.objective,
@@ -1014,9 +1087,17 @@ export const makeCloudControlCloudCodingAdapter = (
                   stringOption(request.options, 'providerAccountRef') ??
                   defaultProviderAccountRef(accountRef),
                 repository: request.repoRef,
+                ...(request.repoBindingRef === undefined
+                  ? {}
+                  : { repo_binding_ref: request.repoBindingRef }),
                 run_id: sessionId,
                 sandbox_mode: 'danger_full_access',
+                ...(request.threadRef === undefined
+                  ? {}
+                  : { thread_ref: request.threadRef }),
+                timeout_seconds: request.timeoutSeconds,
                 wallet_authority: false,
+                work_context_ref: workContextRef,
               }),
               headers: {
                 Authorization: `Bearer ${config.bearerToken}`,
@@ -1049,6 +1130,19 @@ export const makeCloudControlCloudCodingAdapter = (
           )
         }
         const placement = placementResult.placement
+        const workContextRef = workContextRefForSession(request, sessionId)
+        const isolationValidationReason = validateAgentComputerPlacement(
+          placement,
+          workContextRef,
+        )
+        if (isolationValidationReason !== undefined) {
+          return yield* Effect.fail(
+            new CloudCodingAdapterError({
+              adapterId: LIVE_CLOUD_CODING_ADAPTER_ID,
+              reason: isolationValidationReason,
+            }),
+          )
+        }
         const lifecycleReceiptRefs = lifecycleReceiptRefsFromEvents(
           placement.events,
         )
@@ -1095,7 +1189,7 @@ export const makeCloudControlCloudCodingAdapter = (
           sessionId,
           state: sessionStateFromCloudStatus(placement.status),
           timeoutSeconds: request.timeoutSeconds,
-          workContextRef: workContextRefForSession(request, sessionId),
+          workContextRef,
         } satisfies CloudCodingSession
       }),
   }

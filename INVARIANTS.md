@@ -108,6 +108,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   helper output. Raw user OAuth tokens, provider master keys, wallet material,
   raw GCE topology, guest IPs, prompts, repo content, and private traces must
   not enter public projections, docs, issue comments, tests, fixtures, or logs.
+- Agent Computer placement is bound to a single work-context ref. The public
+  Worker must fail closed when the control plane omits or mismatches that ref,
+  and it may treat cleanup as reclaimed only when receipt refs prove scratch
+  wipe and microVM destruction.
 - Agent Computer admission is an additive mobile org-cloud gate. It must require
   a mobile user bearer session, positive user credit balance, per-user
   rate/concurrency allowance, and OpenAgents-owned Agent Computer capacity

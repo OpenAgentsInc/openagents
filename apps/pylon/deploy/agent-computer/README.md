@@ -20,6 +20,10 @@ Computer.
   content stay out of the public repo.
 - Let the private `cloud/` repo's `oa-node` / `oa-codex-control` provisioner
   own Firecracker lifecycle, scratch wipe, quarantine, and refs-only receipts.
+- Require the placement echo contract from #8476: one work-context ref per
+  Agent Computer, no cross-context reuse, SCM-broker-only credentials,
+  credential scanner before closeout/writeback, and reclaim receipts proving
+  both scratch wipe and microVM destruction.
 
 ## Host Bootstrap
 
@@ -55,6 +59,10 @@ private control-plane deployment.
 contracts, runtime tools, isolation promises, and the owner-gated rootfs/kernel
 digest placeholders that must be filled by the private image build. The manifest
 is not a signed image receipt by itself.
+
+The manifest intentionally records #8476's public enforcement requirements. A
+signed image/control-plane receipt must prove the same requirements before
+#8503 can close.
 
 ## Owner-Gated Receipts
 

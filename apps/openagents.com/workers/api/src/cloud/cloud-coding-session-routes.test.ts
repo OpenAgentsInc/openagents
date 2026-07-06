@@ -8,6 +8,7 @@ import {
   type CloudCodingRuntimeAdapter,
   type CloudCodingSession,
   type CloudCodingSessionServiceDeps,
+  AGENT_COMPUTER_ISOLATION_POLICY_SCHEMA,
   CloudCodingAdapterError,
   MAX_CLOUD_CODING_TIMEOUT_SECONDS,
   admissibleLanesForTrustTier,
@@ -530,7 +531,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
     expect(body.repo_trust_tier).toBe('regulated')
   })
 
-  test('projects an explicit mobile work-context ref without forwarding it to placement', async () => {
+  test('projects an explicit mobile work-context ref and forwards the isolation contract to placement', async () => {
     let placementBody: Record<string, unknown> | undefined
     const adapter = makeCloudControlCloudCodingAdapter({
       baseUrl: 'https://cloud.openagents.test',
@@ -544,6 +545,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
             lane: 'cloud-gcp',
             providerLane: 'gcp',
             runnerId: 'runner_gce_1',
+            workContextRef: 'work-context.mobile.thread-1.repo-1',
           },
           externalRunId: 'run_gce_1',
           status: 'running',
@@ -563,12 +565,103 @@ describe('POST /v1/cloud-coding-sessions', () => {
       ),
     )
     expect(response.status).toBe(200)
-    expect(placementBody).not.toHaveProperty('work_context_ref')
-    expect(placementBody).not.toHaveProperty('thread_ref')
-    expect(placementBody).not.toHaveProperty('repo_binding_ref')
+    expect(placementBody).toMatchObject({
+      repo_binding_ref: 'repo-binding.mobile.thread-1',
+      thread_ref: 'thread.mobile.1',
+      timeout_seconds: 1800,
+      work_context_ref: 'work-context.mobile.thread-1.repo-1',
+    })
+    expect(placementBody?.agent_computer_isolation_policy).toMatchObject({
+      schema_version: AGENT_COMPUTER_ISOLATION_POLICY_SCHEMA,
+      unit: 'one_firecracker_microvm_per_work_context',
+      credentials: {
+        credential_scanner_required: true,
+        scm_broker_only: true,
+      },
+      lifecycle: {
+        hard_timeout_seconds: 1800,
+        microvm_destroy_required: true,
+        scratch_wipe_required: true,
+      },
+      network: {
+        no_inbound: true,
+      },
+      projection: {
+        public_refs_only: true,
+      },
+    })
     const body = (await response.json()) as Record<string, unknown>
     expect(body.work_context_ref).toBe('work-context.mobile.thread-1.repo-1')
     expect(body.agent_computer_ref).toBe('agent-computer.run_gce_1')
+  })
+
+  test('fails closed when the control plane binds a placement to another work context', async () => {
+    const adapter = makeCloudControlCloudCodingAdapter({
+      baseUrl: 'https://cloud.openagents.test',
+      bearerToken: 'secret-test-token',
+      fetch: async () =>
+        Response.json({
+          binding: {
+            externalRunId: 'run_gce_1',
+            lane: 'cloud-gcp',
+            providerLane: 'gcp',
+            runnerId: 'runner_gce_1',
+            workContextRef: 'work-context.mobile.someone-else',
+          },
+          externalRunId: 'run_gce_1',
+          status: 'running',
+        }),
+      gceProvisioningArmed: true,
+    })
+    const response = await run(
+      handleCloudCodingSessionLaunch(launchRequest(validBody), {
+        ...baseDeps(),
+        adapter,
+      }),
+    )
+    expect(response.status).toBe(502)
+    expect(((await response.json()) as { reason: string }).reason).toBe(
+      'agent_computer_work_context_binding_mismatch',
+    )
+  })
+
+  test('fails closed when a cleanup event lacks scratch-wipe or microVM-destroy evidence', async () => {
+    const adapter = makeCloudControlCloudCodingAdapter({
+      baseUrl: 'https://cloud.openagents.test',
+      bearerToken: 'secret-test-token',
+      fetch: async () =>
+        Response.json({
+          binding: {
+            externalRunId: 'run_gce_1',
+            lane: 'cloud-gcp',
+            providerLane: 'gcp',
+            runnerId: 'runner_gce_1',
+            workContextRef: 'work-context.agent-computer.ccs_fixed',
+          },
+          events: [
+            {
+              dataJson: JSON.stringify({
+                cleanupReceiptRef: 'sha256:cleanup-only',
+              }),
+              receiptRefs: ['sha256:cleanup-only'],
+              type: 'cloud.gce.cleanup',
+            },
+          ],
+          externalRunId: 'run_gce_1',
+          status: 'running',
+        }),
+      gceProvisioningArmed: true,
+    })
+    const response = await run(
+      handleCloudCodingSessionLaunch(launchRequest(validBody), {
+        ...baseDeps(),
+        adapter,
+      }),
+    )
+    expect(response.status).toBe(502)
+    expect(((await response.json()) as { reason: string }).reason).toBe(
+      'agent_computer_reclaim_evidence_missing',
+    )
   })
 
   test('maps a runtime adapter failure to 502', async () => {
@@ -647,6 +740,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
             lane: 'cloud-gcp',
             providerLane: 'gcp',
             runnerId: 'runner_gce_1',
+            workContextRef: 'work-context.agent-computer.ccs_fixed',
           },
           events: [
             {
@@ -671,6 +765,8 @@ describe('POST /v1/cloud-coding-sessions', () => {
               dataJson: JSON.stringify({
                 cleanupReceiptRef: 'sha256:cleanup',
                 leaseRef: 'lease.gce.vm.ccs_fixed',
+                microvmDestroyReceiptRef: 'sha256:microvm-destroy',
+                scratchWipeReceiptRef: 'sha256:scratch-wipe',
               }),
               kind: 'cleanup',
               receiptRefs: ['sha256:cleanup'],
@@ -697,12 +793,17 @@ describe('POST /v1/cloud-coding-sessions', () => {
     expect(placementBody).toMatchObject({
       auth_grant_ref: 'grant.public.test',
       contract_version: 'openagents.codex_placement_assignment.v1',
+      agent_computer_isolation_policy: {
+        schema_version: AGENT_COMPUTER_ISOLATION_POLICY_SCHEMA,
+      },
       lane: 'cloud-gcp',
       owner_ref: 'agent:test-user',
       provider_account_ref: 'provider-account.public.test',
       repository: validBody.repoRef,
       run_id: 'ccs_fixed',
+      timeout_seconds: 1800,
       wallet_authority: false,
+      work_context_ref: 'work-context.agent-computer.ccs_fixed',
     })
     const body = (await response.json()) as Record<string, unknown>
     expect(body.state).toBe('running')
@@ -712,6 +813,8 @@ describe('POST /v1/cloud-coding-sessions', () => {
     expect(body.lifecycle_receipt_refs).toEqual([
       'sha256:provision',
       'sha256:cleanup',
+      'sha256:scratch-wipe',
+      'sha256:microvm-destroy',
     ])
     expect(body.resource_usage_receipt_refs).toEqual(['sha256:usage'])
     expect(body.lease_refs).toEqual([

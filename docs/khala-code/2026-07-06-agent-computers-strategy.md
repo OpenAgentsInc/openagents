@@ -188,6 +188,16 @@ executor overhead amortized into token margin" never will be.
   own runtime credential — and nothing of any other user's. That sentence
   is the isolation contract #8476 enforces and tests.
 
+**2026-07-06 #8476 enforcement update:** the public Worker now forwards an
+`openagents.agent_computer_isolation_policy.v1` placement contract with
+`work_context_ref`, optional thread/repo-binding refs, the hard timeout,
+SCM-broker-only credentials, credential-scanner-required, no-inbound networking,
+scratch-wipe-required, and microVM-destroy-required flags. It fails closed if
+the private control plane does not echo the same work-context ref, and it will
+not project a cleanup as `reclaimed` unless the event carries scratch-wipe and
+microVM-destroy receipt refs. The committed posture doc is
+`docs/khala-code/2026-07-06-agent-computer-isolation-posture.md`.
+
 ## 5. End-to-end flow (what MVP ships)
 
 1. Mobile user (GitHub-signed-in, #8468–#8470) binds a repo to a thread
@@ -254,7 +264,10 @@ executor overhead amortized into token margin" never will be.
   follow-up once owner-approved.
 - **#8476** (isolation posture) — rescoped to §4 of this doc: document and
   enforce the Firecracker per-work-context posture; the exe.dev
-  persistent-VM trust model is out.
+  persistent-VM trust model is out. Public-repo enforcement has landed:
+  placement requests carry the isolation policy, placement responses must echo
+  the same work context, cleanup requires scratch-wipe and microVM-destroy
+  receipt refs, and the posture doc names the remaining owner-gated live proof.
 - **#8477** (writeback) — unchanged; exe.dev `--act-as-user` notes moot.
 - **#8479** (metering) — expanded: charges **both** meters (tokens +
   agent-computer time), owns the mid-run exhaustion policy, and surfaces

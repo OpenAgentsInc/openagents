@@ -19,7 +19,9 @@
     "kernelDigest": "NEEDS_OWNER_AFTER_PRIVATE_IMAGE_BUILD",
     "rootfsDigest": "NEEDS_OWNER_AFTER_PRIVATE_IMAGE_BUILD",
     "rootfsSource": "private cloud/ image build output",
-    "scratchPolicy": "per-work-context-disposable"
+    "scratchPolicy": "per-work-context-disposable",
+    "scratchWipeReceiptRequired": true,
+    "microvmDestroyReceiptRequired": true
   },
   "runtime": {
     "pylonRuntime": "apps/pylon",
@@ -28,10 +30,14 @@
     "scmCredentialPath": "openagents-scm-broker-only"
   },
   "isolation": {
+    "policySchema": "openagents.agent_computer_isolation_policy.v1",
     "unit": "one-firecracker-microvm-per-work-context",
+    "workContextBindingRequired": true,
+    "noCrossContextReuse": true,
     "noWalletMaterial": true,
     "noRawUserOAuthTokens": true,
     "noProviderMasterKeys": true,
+    "credentialScannerRequired": true,
     "noInboundGuestServices": true,
     "egressPolicy": "restricted-to-scm-package-provider-and-openagents-control-plane"
   },

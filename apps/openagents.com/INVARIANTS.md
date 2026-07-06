@@ -501,6 +501,12 @@ This is the invariant ledger for `openagents`.
   GCE instance names, guest IPs, tap devices, host paths, SSH keys, control
   tokens, raw SCM tokens, prompts, repo content, wallet material, provider
   master keys, or private traces.
+- Live Agent Computer placement requests must carry `work_context_ref`, the
+  hard timeout, and the `openagents.agent_computer_isolation_policy.v1`
+  contract. The control plane must echo the same work-context ref before the
+  Worker may project or reuse an Agent Computer. A cleanup event may become
+  `reclaimed` only with both scratch-wipe and microVM-destroy receipt refs;
+  missing or mismatched evidence fails closed.
 - Private GitHub checkout for Agent Computers must go through the Worker-owned
   SCM broker route `/api/pylon/github/git-credentials`. That route is
   executor-agent-bearer-only, derives the GitHub identity token storage key from
