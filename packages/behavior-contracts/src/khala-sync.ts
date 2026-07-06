@@ -180,7 +180,42 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
       verification:
         "The full-stack oracle is the KS-7.1 revocation e2e in apps/openagents.com/workers/api (vitest; real Postgres via local-postgres, skips only on machines without initdb/pg_ctl) and the client-side clearing oracles run in the packages/khala-sync-client bun test sweep. Both suites run in their packages' normal test sweeps before pushes to main; SPEC §7 invariant 7 registration with honest limits lives in apps/openagents.com/INVARIANTS.md.",
     },
+    {
+      authorityBoundary:
+        "This SEAM contract (ST-5 #8511) binds the two-sided bearer WebSocket connect boundary: the real client transport's documented ?token= query-param bearer on the WS upgrade (browser and React Native WebSocket clients cannot set an Authorization header) MEETS the Worker connect route's query-param-aware authentication, and an authenticated cookie-less session actually reaches the live phase. It does not bind delivery latency, reconnect backoff policy, or scope membership semantics (owned by the access contracts above). Per the seam convention, its oracle must be an e2e suite driving REAL code from both named sides — the fake-transport session suite can never enforce this contract.",
+      blockerRefs: [
+        "blocker.khala_sync.depends_on_8507_live_seam_smoke_landing",
+      ],
+      contractId: "khala_sync.seam.bearer_ws_connect_reaches_live.v1",
+      enforcementTier: "unenforced",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8511",
+        "https://github.com/OpenAgentsInc/openagents/issues/8507",
+        "docs/fable/2026-07-06-seam-testing-audit-qa-swarm-gaps.md",
+        "docs/khala-code/2026-07-06-mobile-loading-threads-websocket-auth-audit.md",
+        "packages/khala-sync-client/src/transport.ts",
+        "apps/openagents.com/workers/api/src/khala-sync-connect-routes.ts",
+        "packages/khala-sync-client/src/live-seam-smoke.e2e.test.ts",
+      ],
+      oracles: [],
+      productArea: "khala sync transport",
+      seam: {
+        client: "packages/khala-sync-client/src/transport.ts",
+        server: "apps/openagents.com/workers/api/src/khala-sync-connect-routes.ts",
+      },
+      source: {
+        channel: "issue",
+        statedBy: "owner",
+        statedOn: "2026-07-06",
+      },
+      state: "pending",
+      statement:
+        "A cookie-less bearer client completes a real /api/sync/connect upgrade and reaches live: the client transport's ?token= query-param bearer (the only credential a browser or React Native WebSocket upgrade can carry) is accepted by the real connect route, and the session phase actually reaches live — never an infinite silent retry loop.",
+      surface: "khala-sync-client",
+      verification:
+        "Pending on ST-1 (#8507): the oracle is the live-seam smoke at packages/khala-sync-client/src/live-seam-smoke.e2e.test.ts, which drives the REAL transport (bootstrap -> logPage -> connectLive) with a bearer-only credential against the real Worker route stack. Once that suite lands on main, flip this contract to enforced/test-sweep with that ref as its bun-test oracle — the seam coverage checker will then require the e2e ref and its contractId reference. The one-sided halves that already exist (the connect route's query-param tests and the client's fake-transport session suite) are deliberately NOT acceptable oracles for this contract.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-04.2",
+  version: "2026-07-06.1",
 }

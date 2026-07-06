@@ -1004,7 +1004,77 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
       verification:
         "bun test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
+    {
+      authorityBoundary:
+        "This SEAM contract (ST-5 #8511, two-sided convention from packages/behavior-contracts) binds the boundary where the mobile app's OpenAuth access token becomes the server's accepted sync bearer: the token clients/khala-mobile/src/auth/mobile-openauth.ts obtains and the auth context stores MEETS the Worker's mobile-session verification (apps/openagents.com/workers/api/src/auth/mobile-session.ts). Each side already has its own one-sided suite (tests/mobile-openauth.test.ts; the Worker's mobile-session.test.ts) — by the seam convention neither can ever be this contract's oracle. It does not bind OpenAuth issuer availability, token lifetime policy, or Khala Sync scope membership.",
+      blockerRefs: [
+        "blocker.khala_mobile.needs_two_sided_mobile_session_bridge_e2e",
+      ],
+      contractId: "khala_mobile.seam.mobile_session_token_bridge.v1",
+      enforcementTier: "unenforced",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8511",
+        "docs/fable/2026-07-06-seam-testing-audit-qa-swarm-gaps.md",
+        "clients/khala-mobile/src/auth/mobile-openauth.ts",
+        "clients/khala-mobile/src/auth/khala-auth-context.tsx",
+        "apps/openagents.com/workers/api/src/auth/mobile-session.ts",
+        "contract:khala_sync.seam.bearer_ws_connect_reaches_live.v1",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [],
+      productArea: "auth",
+      seam: {
+        client: "clients/khala-mobile/src/auth/mobile-openauth.ts",
+        server: "apps/openagents.com/workers/api/src/auth/mobile-session.ts",
+      },
+      source: {
+        channel: "issue",
+        statedBy: "owner",
+        statedOn: "2026-07-06",
+      },
+      state: "pending",
+      statement:
+        "The OpenAuth access token the mobile app signs in with is accepted end to end as the sync bearer: the exact token the mobile OpenAuth flow stores is what the Worker's mobile-session boundary verifies for a cookie-less client's authenticated calls — the two sides can never silently drift on where the token is carried or how it is validated, because that drift is exactly the class of bug that shipped the builds 10-13 WebSocket 401 loop.",
+      surface: "khala-mobile",
+      verification:
+        "No two-sided oracle yet: the Worker-side mobile-session.test.ts and the client-side tests/mobile-openauth.test.ts are one-sided suites and are deliberately not acceptable as this seam contract's oracle. Needs an e2e (*.e2e.test.ts) that imports the REAL client token flow and the REAL server verification boundary (or drives a real/staging Worker) and proves a mobile-issued access token authenticates an actual request. Flip to enforced with that ref once it lands; the seam coverage checker in packages/behavior-contracts will then hold it to the e2e requirement.",
+    },
+    {
+      authorityBoundary:
+        "This SEAM contract (ST-5 #8511) binds the OTA runtime-fingerprint round trip between the client build (expo-updates runtimeVersion policy \"fingerprint\" in clients/khala-mobile/app.json, resolved from the native dependency graph at build time) and the updates server's manifest resolution (apps/oa-updates/src/manifest-resolver.ts matching Expo-Runtime-Version). It does not bind manifest signing, asset serving, or the reload path (khala_mobile.sync.reload_drains_sqlite_runtime_first.v1 owns reload ordering). Each side already 'works' alone — publish succeeds and the resolver matches exactly — which is precisely why only a round-trip check can catch a silent fingerprint shift.",
+      blockerRefs: [
+        "blocker.khala_mobile.needs_ota_fingerprint_roundtrip_e2e",
+      ],
+      contractId: "khala_mobile.seam.ota_manifest_fingerprint_roundtrip.v1",
+      enforcementTier: "unenforced",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8511",
+        "docs/fable/2026-07-06-seam-testing-audit-qa-swarm-gaps.md",
+        "clients/khala-mobile/app.json",
+        "apps/oa-updates/src/manifest-resolver.ts",
+        "apps/oa-updates/scripts/publish-ota.sh",
+        "contract:khala_mobile.updates.ota_manifest_points_at_openagents_updates_only.v1",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [],
+      productArea: "updates",
+      seam: {
+        client: "clients/khala-mobile/app.json",
+        server: "apps/oa-updates/src/manifest-resolver.ts",
+      },
+      source: {
+        channel: "issue",
+        statedBy: "owner",
+        statedOn: "2026-07-06",
+      },
+      state: "pending",
+      statement:
+        "An OTA published for the current runtime fingerprint actually reaches devices built with that fingerprint: the fingerprint the client build embeds and the runtimeVersion the updates server serves manifests for must round-trip, and a dependency change that silently shifts the runtime fingerprint must fail a check instead of stranding shipped builds. Filed after a font dependency silently changed the runtime fingerprint earlier on 2026-07-06, so build-12 devices could no longer receive the OTA while client and server each looked healthy on their own.",
+      surface: "khala-mobile",
+      verification:
+        "No two-sided oracle yet. Needs a fingerprint-roundtrip e2e (*.e2e.test.ts): compute the REAL runtime fingerprint from the client package (npx expo-updates fingerprint:generate over clients/khala-mobile, the same computation publish-ota.sh uses), then drive the REAL apps/oa-updates manifest resolver with that value as Expo-Runtime-Version and prove a published update for it resolves — and that a fingerprint drift against the latest published runtimeVersion fails loudly. Flip to enforced with that ref once it lands; the seam coverage checker in packages/behavior-contracts will then hold it to the e2e requirement.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-06.6",
+  version: "2026-07-06.7",
 }

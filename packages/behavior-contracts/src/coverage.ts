@@ -57,8 +57,18 @@ export type BehaviorContractCoverageStatus =
   | "covered"
   | "missing_source"
   | "missing_contract_reference"
+  | "seam_oracle_not_e2e"
   | "skipped_kind"
   | "skipped_state"
+
+/**
+ * Repo convention: real two-sided/full-stack suites are named `*.e2e.*`
+ * (e.g. `khala-sync-access-revocation.e2e.test.ts`,
+ * `live-seam-smoke.e2e.test.ts`); plain `*.test.ts` files are one-sided
+ * unit/fake-transport suites. Seam contracts (ST-5 #8511) may only cite the
+ * former as `bun-test` oracles.
+ */
+const seamE2eOracleRefPattern = /\.e2e\./u
 
 export type BehaviorContractCoverageResult = {
   readonly contractId: string
@@ -80,6 +90,12 @@ export type BehaviorContractCoverageReport = {
  * resolved by a harness-specific oracle source layer and are covered when the
  * named scenario still exists in that corpus. Visual and manual oracles are
  * reported as skipped here; they are covered by their own runners.
+ *
+ * Seam contracts (`seam` field present, ST-5 #8511) additionally require
+ * every enforced `bun-test` oracle ref to be an e2e suite (`*.e2e.*`): a
+ * contract that claims to bind a two-sided seam cannot be "enforced" by a
+ * one-sided fake-transport unit test — that is precisely how the mobile
+ * bearer-WS connect bug survived every QA layer across builds 10-13.
  */
 export const checkBehaviorContractCoverage = (
   document: BehaviorContractRegistryDocument,
@@ -105,6 +121,19 @@ export const checkBehaviorContractCoverage = (
             oracleId: oracle.id,
             ref: oracle.ref,
             status: "skipped_kind",
+          })
+          continue
+        }
+        if (
+          contract.seam !== undefined &&
+          oracle.kind === "bun-test" &&
+          !seamE2eOracleRefPattern.test(oracle.ref)
+        ) {
+          results.push({
+            contractId: contract.contractId,
+            oracleId: oracle.id,
+            ref: oracle.ref,
+            status: "seam_oracle_not_e2e",
           })
           continue
         }

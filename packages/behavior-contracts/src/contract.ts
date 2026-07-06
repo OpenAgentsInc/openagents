@@ -81,6 +81,33 @@ export type BehaviorContractOracle = {
   readonly ref: string
 }
 
+/**
+ * Two-sided seam binding (ST-5 #8511). A seam contract asserts behavior that
+ * only exists at the boundary BETWEEN two artifacts — e.g. "a cookie-less
+ * bearer client completes a real /api/sync/connect upgrade and reaches
+ * live" — where each side can pass its own one-sided suite while the seam is
+ * broken (the class of bug that shipped in mobile builds 10-13, and the OTA
+ * fingerprint mismatch on 2026-07-06).
+ *
+ * Convention: a seam contract's contractId carries a `seam` segment
+ * (`<area>.seam.<slug>.v<N>`), and the contract MUST name both sides here.
+ * The registry validator rejects a `seam`-segment id without this field (and
+ * vice versa), and the coverage checker requires an enforced seam contract's
+ * `bun-test` oracle ref to be an e2e suite (`*.e2e.*` by repo convention) —
+ * a fake-transport unit test on one side can never count as proof that the
+ * two real sides meet.
+ */
+export const BehaviorContractSeam = S.Struct({
+  /** Repo-relative path of the client-side artifact the seam binds. */
+  client: S.String,
+  /** Repo-relative path of the server-side artifact the seam binds. */
+  server: S.String,
+})
+export type BehaviorContractSeam = {
+  readonly client: string
+  readonly server: string
+}
+
 export const BehaviorContractSource = S.Struct({
   /** Where the requirement was stated (e.g. "khala-code-session", "forum", "issue"). */
   channel: S.String,
@@ -106,6 +133,12 @@ export const BehaviorContract = S.Struct({
   evidenceRefs: S.Array(S.String),
   oracles: S.Array(BehaviorContractOracle),
   productArea: S.String,
+  /**
+   * Required exactly when the contractId carries a `seam` segment: names the
+   * client and server artifacts the two-sided seam binds. See
+   * {@link BehaviorContractSeam}.
+   */
+  seam: S.optional(BehaviorContractSeam),
   source: BehaviorContractSource,
   state: BehaviorContractState,
   /** The stated expectation, in the owner's/customer's words, kept verbatim where possible. */
@@ -123,6 +156,7 @@ export type BehaviorContract = {
   readonly evidenceRefs: ReadonlyArray<string>
   readonly oracles: ReadonlyArray<BehaviorContractOracle>
   readonly productArea: string
+  readonly seam?: BehaviorContractSeam
   readonly source: BehaviorContractSource
   readonly state: BehaviorContractState
   readonly statement: string
@@ -148,3 +182,13 @@ export const decodeBehaviorContractRegistryDocument = (
   S.decodeUnknownSync(BehaviorContractRegistryDocument)(input) as BehaviorContractRegistryDocument
 
 export const behaviorContractIdPattern = /^[a-z0-9_]+(\.[a-z0-9_]+)+\.v[0-9]+$/u
+
+/**
+ * Seam-contract naming convention (ST-5 #8511): a contract is a seam contract
+ * exactly when its dotted id carries a standalone `seam` segment
+ * (`<area>.seam.<slug>.v<N>`). Seam contracts must carry the `seam` field
+ * naming both sides, and the coverage checker holds their enforced `bun-test`
+ * oracles to the e2e-suite requirement.
+ */
+export const isSeamBehaviorContractId = (contractId: string): boolean =>
+  contractId.split(".").includes("seam")

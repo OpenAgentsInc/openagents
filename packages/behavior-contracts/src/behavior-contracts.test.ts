@@ -190,6 +190,75 @@ describe("behavior contract registry", () => {
     expect(kinds).toContain("invalid_contract_id")
   })
 
+  test("requires seam contracts (seam id segment) to name both sides", () => {
+    const validation = validateBehaviorContractRegistry(
+      document([
+        contract({
+          contractId: "khala_sync.seam.example_two_sided.v1",
+        }),
+      ]),
+    )
+    expect(validation.ok).toBe(false)
+    expect(validation.issues.map(issue => issue.kind)).toContain(
+      "seam_missing_artifacts",
+    )
+  })
+
+  test("rejects seam artifacts with an empty side", () => {
+    const validation = validateBehaviorContractRegistry(
+      document([
+        contract({
+          contractId: "khala_sync.seam.example_two_sided.v1",
+          seam: { client: "packages/example/src/client.ts", server: "  " },
+        }),
+      ]),
+    )
+    expect(validation.issues.map(issue => issue.kind)).toContain(
+      "seam_missing_artifacts",
+    )
+  })
+
+  test("rejects a seam field on a non-seam contract id", () => {
+    const validation = validateBehaviorContractRegistry(
+      document([
+        contract({
+          seam: {
+            client: "packages/example/src/client.ts",
+            server: "apps/example/src/server.ts",
+          },
+        }),
+      ]),
+    )
+    expect(validation.issues.map(issue => issue.kind)).toContain(
+      "seam_field_without_seam_id",
+    )
+  })
+
+  test("accepts an enforced seam contract naming both sides with an e2e oracle", () => {
+    const validation = validateBehaviorContractRegistry(
+      document([
+        contract({
+          contractId: "khala_sync.seam.example_two_sided.v1",
+          oracles: [
+            {
+              description: "two-sided e2e oracle",
+              id: "example.seam_e2e",
+              kind: "bun-test",
+              mode: "rpc",
+              ref: "packages/example/src/example-seam.e2e.test.ts",
+            },
+          ],
+          seam: {
+            client: "packages/example/src/client.ts",
+            server: "apps/example/src/server.ts",
+          },
+        }),
+      ]),
+    )
+    expect(validation.issues).toEqual([])
+    expect(validation.ok).toBe(true)
+  })
+
   test("allows pending contracts without oracles", () => {
     const validation = validateBehaviorContractRegistry(
       document([
@@ -296,6 +365,103 @@ describe("behavior contract coverage", () => {
     )
     expect(report.ok).toBe(false)
     expect(report.results[0]?.status).toBe("missing_source")
+  })
+
+  test("fails an enforced seam contract whose bun-test oracle is not an e2e suite", async () => {
+    const registry = document([
+      contract({
+        contractId: "khala_sync.seam.example_two_sided.v1",
+        oracles: [
+          {
+            description: "one-sided fake-transport unit suite — never seam proof",
+            id: "example.seam_unit",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "packages/example/src/session.test.ts",
+          },
+        ],
+        seam: {
+          client: "packages/example/src/client.ts",
+          server: "apps/example/src/server.ts",
+        },
+      }),
+    ])
+    const report = await Effect.runPromise(
+      checkBehaviorContractCoverage(registry).pipe(
+        Effect.provide(
+          inMemoryOracleSourceLayer({
+            "packages/example/src/session.test.ts":
+              "// khala_sync.seam.example_two_sided.v1 referenced, but this is a fake-transport suite",
+          }),
+        ),
+      ),
+    )
+    expect(report.ok).toBe(false)
+    expect(report.results[0]?.status).toBe("seam_oracle_not_e2e")
+  })
+
+  test("covers an enforced seam contract whose e2e oracle exists and references it", async () => {
+    const registry = document([
+      contract({
+        contractId: "khala_sync.seam.example_two_sided.v1",
+        oracles: [
+          {
+            description: "two-sided e2e oracle",
+            id: "example.seam_e2e",
+            kind: "bun-test",
+            mode: "rpc",
+            ref: "packages/example/src/example-seam.e2e.test.ts",
+          },
+        ],
+        seam: {
+          client: "packages/example/src/client.ts",
+          server: "apps/example/src/server.ts",
+        },
+      }),
+    ])
+    const report = await Effect.runPromise(
+      checkBehaviorContractCoverage(registry).pipe(
+        Effect.provide(
+          inMemoryOracleSourceLayer({
+            "packages/example/src/example-seam.e2e.test.ts":
+              "// khala_sync.seam.example_two_sided.v1 oracle body importing real client + server",
+          }),
+        ),
+      ),
+    )
+    expect(report.ok).toBe(true)
+    expect(report.results[0]?.status).toBe("covered")
+  })
+
+  test("a pending seam contract is skipped, not failed, by seam coverage", async () => {
+    const registry = document([
+      contract({
+        blockerRefs: ["blocker.example.depends_on_e2e_landing"],
+        contractId: "khala_sync.seam.example_two_sided.v1",
+        enforcementTier: "unenforced",
+        oracles: [
+          {
+            description: "planned two-sided oracle",
+            id: "example.seam_planned",
+            kind: "bun-test",
+            mode: "rpc",
+            ref: "packages/example/src/example-seam.e2e.test.ts",
+          },
+        ],
+        seam: {
+          client: "packages/example/src/client.ts",
+          server: "apps/example/src/server.ts",
+        },
+        state: "pending",
+      }),
+    ])
+    const report = await Effect.runPromise(
+      checkBehaviorContractCoverage(registry).pipe(
+        Effect.provide(inMemoryOracleSourceLayer({})),
+      ),
+    )
+    expect(report.ok).toBe(true)
+    expect(report.results[0]?.status).toBe("skipped_state")
   })
 
   test("skips non-source-backed oracles and non-enforced contracts", async () => {
@@ -467,8 +633,11 @@ describe("khala sync contract registry", () => {
       "khala_sync.client.offline_pushes_queue_honestly.v1",
       "khala_sync.client.staleness_never_fabricated.v1",
       "khala_sync.access.revocation_clears_synced_state.v1",
+      "khala_sync.seam.bearer_ws_connect_reaches_live.v1",
     ])
-    for (const contract of khalaSyncContractRegistry.contracts) {
+    for (const contract of khalaSyncContractRegistry.contracts.filter(
+      contract => contract.state === "enforced",
+    )) {
       expect(contract).toMatchObject({
         blockerRefs: [],
         enforcementTier: "test-sweep",
@@ -476,6 +645,22 @@ describe("khala sync contract registry", () => {
       })
       expect(contract.oracles.length).toBeGreaterThan(0)
     }
+    // The ST-5 seam contract (#8511) stays pending until ST-1's live-seam
+    // smoke (#8507) lands on main; it must name both sides of the seam and
+    // carry the blocker that gates its flip to enforced.
+    const seamContract = khalaSyncContractRegistry.contracts.find(
+      contract =>
+        contract.contractId === "khala_sync.seam.bearer_ws_connect_reaches_live.v1",
+    )
+    expect(seamContract).toMatchObject({
+      blockerRefs: ["blocker.khala_sync.depends_on_8507_live_seam_smoke_landing"],
+      enforcementTier: "unenforced",
+      seam: {
+        client: "packages/khala-sync-client/src/transport.ts",
+        server: "apps/openagents.com/workers/api/src/khala-sync-connect-routes.ts",
+      },
+      state: "pending",
+    })
     // The push statement is the SPEC §2.4 acceptance rule, kept verbatim.
     expect(khalaSyncContractRegistry.contracts[0]!.statement).toBe(
       "Acceptance is synchronous with the transaction; validation failures ack the mutation and report the error in-band — they never 4xx/block the queue.",

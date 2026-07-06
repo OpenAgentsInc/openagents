@@ -1,5 +1,6 @@
 import {
   behaviorContractIdPattern,
+  isSeamBehaviorContractId,
   type BehaviorContractRegistryDocument,
 } from "./contract"
 
@@ -16,6 +17,8 @@ export type BehaviorContractRegistryIssue = {
     | "enforced_without_sweep_tier"
     | "invalid_contract_id"
     | "invalid_version"
+    | "seam_field_without_seam_id"
+    | "seam_missing_artifacts"
 }
 
 export type BehaviorContractRegistryValidation = {
@@ -72,6 +75,32 @@ export const validateBehaviorContractRegistry = (
         contractId: contract.contractId,
         detail: "verification must name how the contract is checked",
         kind: "empty_verification",
+      })
+    }
+
+    // Seam-contract convention (ST-5 #8511): a `seam` id segment and the
+    // two-sided `seam` field must appear together, and both artifact paths
+    // must be named — a seam contract that only names one side is exactly the
+    // one-sided-contract failure mode this convention exists to eliminate.
+    if (isSeamBehaviorContractId(contract.contractId)) {
+      if (
+        contract.seam === undefined ||
+        contract.seam.client.trim() === "" ||
+        contract.seam.server.trim() === ""
+      ) {
+        issues.push({
+          contractId: contract.contractId,
+          detail:
+            "seam contracts (id contains a `seam` segment) must name both sides via seam.client and seam.server",
+          kind: "seam_missing_artifacts",
+        })
+      }
+    } else if (contract.seam !== undefined) {
+      issues.push({
+        contractId: contract.contractId,
+        detail:
+          "contracts carrying a seam field must use the seam id convention (<area>.seam.<slug>.v<N>)",
+        kind: "seam_field_without_seam_id",
       })
     }
 

@@ -18,6 +18,11 @@ export const renderBehaviorContractMarkdown = (
     lines.push(`### \`${contract.contractId}\` — ${stateBadge(contract.state)}`)
     lines.push("")
     lines.push(`- **Surface:** ${contract.surface} (${contract.productArea})`)
+    if (contract.seam !== undefined) {
+      lines.push(
+        `- **Seam:** client \`${contract.seam.client}\` <-> server \`${contract.seam.server}\``,
+      )
+    }
     lines.push(
       `- **Stated by:** ${contract.source.statedBy} via ${contract.source.channel} on ${contract.source.statedOn}`,
     )

@@ -39,6 +39,13 @@ Identical to the desktop contract's rules (owner mandate, 2026-07-03/07-04):
   are acceptable only as an explicitly labeled stopgap and should carry a
   follow-up — see `khala_mobile.android.stt_module_typed_asyncfunction_signature.v1`
   for the one case that currently uses this allowance.
+- Two-sided SEAM contracts (ST-5 #8511): a contract whose id carries a
+  `seam` segment (`<area>.seam.<slug>.v<N>`) binds the boundary BETWEEN a
+  client artifact and a server artifact and must name both via its `seam`
+  field. Its enforced `bun-test` oracle must be an e2e suite (`*.e2e.*`)
+  that exercises real code from both sides — a one-sided fake-transport
+  unit test never counts; the shared coverage checker in
+  `packages/behavior-contracts` rejects it (`seam_oracle_not_e2e`).
 - Bump `version` (`YYYY-MM-DD.N`) on every registry change and regenerate the
   registry section below with `renderBehaviorContractMarkdown(khalaMobileUxContractRegistry)`.
 - Contract deviations found in the wild are strict bugs: file them with the
@@ -86,7 +93,7 @@ top follow-up item for whoever picks this up next.
 
 ## Registry
 
-Registry version: `2026-07-06.6` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-06.7` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — RETIRED
 
@@ -357,3 +364,25 @@ Registry version: `2026-07-06.6` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `mobile_copy_never_claims_free_execution.source` (bun-test, unit): None of the onboarding, settings, or i18n copy files claim unlimited, free-forever, or no-cost-ever usage — everything-uses-credits means the mobile app's own copy never implies a free execution path exists, even informally. — `clients/khala-mobile/tests/ux-contracts.test.ts`
 - **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
 - **Authority boundary:** Source-string stopgap (explicitly labeled, same allowance as khala_mobile.android.stt_module_typed_asyncfunction_signature.v1 and khala_mobile.settings.no_desktop_dependent_sections.v1): scans a fixed, deliberately bounded set of user-facing copy files for a small forbidden-phrase list. It cannot catch every possible free-execution implication in prose, and does not itself enforce that the SERVER actually gates every turn on a credit balance (that invariant is MM-D2/#8479's, still open) — it only binds this app's own copy to never CLAIM a free/unlimited path exists.
+
+### `khala_mobile.seam.mobile_session_token_bridge.v1` — PENDING
+
+- **Surface:** khala-mobile (auth)
+- **Seam:** client `clients/khala-mobile/src/auth/mobile-openauth.ts` <-> server `apps/openagents.com/workers/api/src/auth/mobile-session.ts`
+- **Stated by:** owner via issue on 2026-07-06
+- **Statement:** The OpenAuth access token the mobile app signs in with is accepted end to end as the sync bearer: the exact token the mobile OpenAuth flow stores is what the Worker's mobile-session boundary verifies for a cookie-less client's authenticated calls — the two sides can never silently drift on where the token is carried or how it is validated, because that drift is exactly the class of bug that shipped the builds 10-13 WebSocket 401 loop.
+- **Enforcement tier:** unenforced
+- **Verification:** No two-sided oracle yet: the Worker-side mobile-session.test.ts and the client-side tests/mobile-openauth.test.ts are one-sided suites and are deliberately not acceptable as this seam contract's oracle. Needs an e2e (*.e2e.test.ts) that imports the REAL client token flow and the REAL server verification boundary (or drives a real/staging Worker) and proves a mobile-issued access token authenticates an actual request. Flip to enforced with that ref once it lands; the seam coverage checker in packages/behavior-contracts will then hold it to the e2e requirement.
+- **Blockers:** `blocker.khala_mobile.needs_two_sided_mobile_session_bridge_e2e`
+- **Authority boundary:** This SEAM contract (ST-5 #8511, two-sided convention from packages/behavior-contracts) binds the boundary where the mobile app's OpenAuth access token becomes the server's accepted sync bearer: the token clients/khala-mobile/src/auth/mobile-openauth.ts obtains and the auth context stores MEETS the Worker's mobile-session verification (apps/openagents.com/workers/api/src/auth/mobile-session.ts). Each side already has its own one-sided suite (tests/mobile-openauth.test.ts; the Worker's mobile-session.test.ts) — by the seam convention neither can ever be this contract's oracle. It does not bind OpenAuth issuer availability, token lifetime policy, or Khala Sync scope membership.
+
+### `khala_mobile.seam.ota_manifest_fingerprint_roundtrip.v1` — PENDING
+
+- **Surface:** khala-mobile (updates)
+- **Seam:** client `clients/khala-mobile/app.json` <-> server `apps/oa-updates/src/manifest-resolver.ts`
+- **Stated by:** owner via issue on 2026-07-06
+- **Statement:** An OTA published for the current runtime fingerprint actually reaches devices built with that fingerprint: the fingerprint the client build embeds and the runtimeVersion the updates server serves manifests for must round-trip, and a dependency change that silently shifts the runtime fingerprint must fail a check instead of stranding shipped builds. Filed after a font dependency silently changed the runtime fingerprint earlier on 2026-07-06, so build-12 devices could no longer receive the OTA while client and server each looked healthy on their own.
+- **Enforcement tier:** unenforced
+- **Verification:** No two-sided oracle yet. Needs a fingerprint-roundtrip e2e (*.e2e.test.ts): compute the REAL runtime fingerprint from the client package (npx expo-updates fingerprint:generate over clients/khala-mobile, the same computation publish-ota.sh uses), then drive the REAL apps/oa-updates manifest resolver with that value as Expo-Runtime-Version and prove a published update for it resolves — and that a fingerprint drift against the latest published runtimeVersion fails loudly. Flip to enforced with that ref once it lands; the seam coverage checker in packages/behavior-contracts will then hold it to the e2e requirement.
+- **Blockers:** `blocker.khala_mobile.needs_ota_fingerprint_roundtrip_e2e`
+- **Authority boundary:** This SEAM contract (ST-5 #8511) binds the OTA runtime-fingerprint round trip between the client build (expo-updates runtimeVersion policy "fingerprint" in clients/khala-mobile/app.json, resolved from the native dependency graph at build time) and the updates server's manifest resolution (apps/oa-updates/src/manifest-resolver.ts matching Expo-Runtime-Version). It does not bind manifest signing, asset serving, or the reload path (khala_mobile.sync.reload_drains_sqlite_runtime_first.v1 owns reload ordering). Each side already 'works' alone — publish succeeds and the resolver matches exactly — which is precisely why only a round-trip check can catch a silent fingerprint shift.
