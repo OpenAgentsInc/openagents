@@ -395,12 +395,21 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   MDK_CHECKOUT_WEBHOOK_SOURCE?: string | undefined
   MDK_WEBHOOK_SECRET?: string | undefined
   MDK_MNEMONIC?: string | undefined
+  // CFG-15 (EPIC #8515): off-Workers (Cloud Run) HTTP endpoints for the MDK
+  // money-path daemons. When one of the *_SERVICE_URL vars is set, the Worker
+  // calls that daemon over HTTPS instead of the Cloudflare Container Durable
+  // Object. Flipping the treasury URL in production is owner-gated; see
+  // docs/cloud/2026-07-06-mdk-treasury-cloudrun-cutover-runbook.md.
+  MDK_SIDECAR_SERVICE_TOKEN?: string | undefined
+  MDK_SIDECAR_SERVICE_URL?: string | undefined
   MDK_TIPS_BUFFER_ACCESS_TOKEN?: string | undefined
   MDK_TIPS_BUFFER_MNEMONIC?: string | undefined
   MDK_TIPS_BUFFER_SERVICE_TOKEN?: string | undefined
+  MDK_TIPS_BUFFER_SERVICE_URL?: string | undefined
   MDK_TREASURY_ACCESS_TOKEN?: string | undefined
   MDK_TREASURY_MNEMONIC?: string | undefined
   MDK_TREASURY_SERVICE_TOKEN?: string | undefined
+  MDK_TREASURY_SERVICE_URL?: string | undefined
   MDK_WALLET_MNEMONIC?: string | undefined
   OPENAGENTS_SPARK_API_KEY?: string | undefined
   OPENAGENTS_ADMIN_API_TOKEN?: string | undefined

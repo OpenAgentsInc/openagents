@@ -1441,6 +1441,30 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/artanis-public-report.test.ts`, and
   `apps/web/src/docs-blog-route.test.ts`.
 
+## MDK Money-Path Daemon Endpoint Override (CFG-15)
+
+- The Worker reaches the three MDK money-path daemons (treasury, tips buffer,
+  checkout sidecar) either through the Cloudflare Container Durable Object
+  path or, when the matching `MDK_TREASURY_SERVICE_URL` /
+  `MDK_TIPS_BUFFER_SERVICE_URL` / `MDK_SIDECAR_SERVICE_URL` config var is set,
+  over HTTPS to an off-Workers (Cloud Run) daemon. There is no third route.
+- Flipping any of those URLs in production is an owner-gated cutover, not a
+  routine config change. The rehearsed procedure is
+  `docs/cloud/2026-07-06-mdk-treasury-cloudrun-cutover-runbook.md` (EPIC
+  #8515). The old daemon must be verifiably stopped before a daemon holding
+  the same mnemonic starts anywhere else: two live daemons on one mnemonic is
+  a fund-loss scenario and is never acceptable, even transiently during
+  deploys or rollbacks.
+- HTTP endpoints must be HTTPS (loopback HTTP is allowed only for local smoke
+  stacks) and must carry the per-service token header. An off-Workers sidecar
+  must have its service token configured; a network-reachable `/api/mdk`
+  without a token gate is a policy violation.
+- The treasury and tips-buffer daemons are single writers against their wallet
+  state. Off-Workers deployments must pin max instances to 1 for those two
+  services; raising it is a policy change, not a tuning knob.
+- Regression coverage for this policy lives in
+  `workers/api/src/mdk-service-endpoints.test.ts`.
+
 ## Site Referral Bitcoin Withdrawal Gate
 
 - Site referral capture is attribution evidence only. Raw signup attribution,

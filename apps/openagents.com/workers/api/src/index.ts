@@ -945,6 +945,11 @@ import {
 } from './mdk-container-env'
 import { hostedMdkDirectPayoutDisabledGate } from './mdk-payout-mode-gate'
 import {
+  makeMdkServiceHttpPathFetch,
+  makeMdkSidecarHttpRequestForward,
+  mdkServiceHttpBaseUrl,
+} from './mdk-service-endpoints'
+import {
   MobileWorkroomApprovalProjectionEndpoint,
   handleMobileWorkroomApprovalProjectionApi,
   isMobileWorkroomApprovalProjectionEnabled,
@@ -1673,6 +1678,28 @@ export class MdkTreasuryContainer extends DurableMdkOutcomeContainer {
 const fetchMdkTreasuryPath = (
   environment: Env,
 ): ContainerPathFetch | undefined => {
+  const serviceToken = optionalMdkContainerSecret(
+    environment.MDK_TREASURY_SERVICE_TOKEN,
+  )
+
+  // CFG-15 (EPIC #8515): config-driven HTTP endpoint. When
+  // MDK_TREASURY_SERVICE_URL is set, the treasury daemon runs off-Workers
+  // (Cloud Run) and the Worker reaches it over HTTPS with the same service
+  // token header — no Durable Object / Cloudflare Container on the path. The
+  // production flip of this var is owner-gated; see
+  // docs/cloud/2026-07-06-mdk-treasury-cloudrun-cutover-runbook.md.
+  const httpBaseUrl = mdkServiceHttpBaseUrl(
+    environment.MDK_TREASURY_SERVICE_URL,
+  )
+
+  if (httpBaseUrl !== undefined) {
+    return makeMdkServiceHttpPathFetch({
+      baseUrl: httpBaseUrl,
+      serviceToken,
+      serviceTokenHeader: TREASURY_SERVICE_TOKEN_HEADER,
+    })
+  }
+
   const namespace = environment.MDK_TREASURY as
     | DurableObjectNamespace<MdkTreasuryContainer>
     | undefined
@@ -1680,10 +1707,6 @@ const fetchMdkTreasuryPath = (
   if (namespace === undefined) {
     return undefined
   }
-
-  const serviceToken = optionalMdkContainerSecret(
-    environment.MDK_TREASURY_SERVICE_TOKEN,
-  )
 
   return (path, init) =>
     getContainer(namespace, MDK_TREASURY_INSTANCE_NAME).fetch(
@@ -1890,6 +1913,26 @@ export class MdkTipsBufferContainer extends DurableMdkOutcomeContainer {
 const fetchMdkTipsBufferPath = (
   environment: Env,
 ): ContainerPathFetch | undefined => {
+  const serviceToken = optionalMdkContainerSecret(
+    environment.MDK_TIPS_BUFFER_SERVICE_TOKEN,
+  )
+
+  // CFG-15 (EPIC #8515): config-driven HTTP endpoint (Cloud Run tips-buffer
+  // daemon). In HTTP mode the mnemonic lives on the daemon, not the Worker,
+  // so the URL alone arms the client; the daemon itself answers 503 while it
+  // is unconfigured.
+  const httpBaseUrl = mdkServiceHttpBaseUrl(
+    environment.MDK_TIPS_BUFFER_SERVICE_URL,
+  )
+
+  if (httpBaseUrl !== undefined) {
+    return makeMdkServiceHttpPathFetch({
+      baseUrl: httpBaseUrl,
+      serviceToken,
+      serviceTokenHeader: TIPS_BUFFER_SERVICE_TOKEN_HEADER,
+    })
+  }
+
   const namespace = (
     environment as {
       MDK_TIPS_BUFFER?: DurableObjectNamespace<MdkTipsBufferContainer>
@@ -1903,10 +1946,6 @@ const fetchMdkTipsBufferPath = (
   ) {
     return undefined
   }
-
-  const serviceToken = optionalMdkContainerSecret(
-    environment.MDK_TIPS_BUFFER_SERVICE_TOKEN,
-  )
 
   return (path, init) =>
     getContainer(namespace, MDK_TIPS_BUFFER_INSTANCE_NAME).fetch(
@@ -2108,6 +2147,27 @@ const tipsBufferPayFnForEnv = (environment: Env): BufferPayFn | null => {
 }
 
 const fetchMdkSidecarRequest = async (request: Request, environment: Env) => {
+  // CFG-15 (EPIC #8515): config-driven HTTP endpoint (Cloud Run mdk-sidecar
+  // daemon). Forwards the whole checkout request over HTTPS with the sidecar
+  // service token so the off-Workers daemon can reject non-Worker callers.
+  const httpBaseUrl = mdkServiceHttpBaseUrl(environment.MDK_SIDECAR_SERVICE_URL)
+
+  if (httpBaseUrl !== undefined) {
+    try {
+      return await makeMdkSidecarHttpRequestForward({
+        baseUrl: httpBaseUrl,
+        serviceToken: optionalMdkContainerSecret(
+          environment.MDK_SIDECAR_SERVICE_TOKEN,
+        ),
+      })(request)
+    } catch {
+      return noStoreJsonResponse(
+        { error: 'mdk_sidecar_unavailable' },
+        { status: 503 },
+      )
+    }
+  }
+
   if (environment.MDK_SIDECAR === undefined) {
     return noStoreJsonResponse(
       { error: 'mdk_sidecar_unconfigured' },
