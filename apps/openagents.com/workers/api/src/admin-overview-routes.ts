@@ -1,3 +1,9 @@
+import {
+  identityDbForEnv,
+  readIdentityUserProfiles,
+  type IdentityDb,
+  type IdentityDbEnv,
+} from './identity-db'
 import { Effect, Layer, Match as M, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
@@ -5,9 +11,10 @@ import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { arrayFromUnknown, parseJsonUnknown } from './json-boundary'
 import { openAgentsDatabase } from './runtime'
 
-type AdminOverviewEnv = Readonly<{
-  OPENAGENTS_DB: D1Database
-}>
+type AdminOverviewEnv = IdentityDbEnv &
+  Readonly<{
+    OPENAGENTS_DB: D1Database
+  }>
 type HttpResponse = globalThis.Response
 
 type AdminOverviewSession = Readonly<{
@@ -24,6 +31,9 @@ type AdminOverviewRouteDependencies<
     response: HttpResponse,
     session: Session,
   ) => HttpResponse
+  /** CFG-4 Domain 2 (#8519): injectable identity handle (tests); defaults
+   * to the env KHALA_SYNC_DB wiring. */
+  identityDb?: (env: Bindings) => IdentityDb
   isOpenAgentsAdminEmail: (email: string) => boolean
   requireBrowserSession: (
     request: Request,
@@ -335,43 +345,77 @@ const softwareOrderFromRow = (
 
 const readAdminOverview = (
   db: D1Database,
+  identityDb: IdentityDb,
 ): Effect.Effect<AdminOverview, AdminOverviewStorageError> =>
   Effect.gen(function* () {
-    const users = yield* d1Effect('adminOverview.users.list', () =>
+    // CFG-4 Domain 2 (#8519): the user listing reads the Postgres-
+    // authoritative `users` × `auth_identities`; the software-order counts
+    // stay on D1 and merge afterwards.
+    const userRows = yield* d1Effect('adminOverview.users.list', () =>
+      identityDb.query(
+        `SELECT users.id AS user_id,
+                users.kind,
+                users.display_name,
+                users.primary_email,
+                (SELECT auth_identities.provider_username
+                   FROM auth_identities
+                  WHERE auth_identities.user_id = users.id
+                    AND auth_identities.provider = 'github'
+                    AND auth_identities.deleted_at IS NULL
+                  LIMIT 1) AS github_username,
+                users.status,
+                users.onboarding_step,
+                users.onboarding_completed_at,
+                users.created_at,
+                users.updated_at
+           FROM users
+          WHERE users.deleted_at IS NULL
+          ORDER BY users.created_at DESC`,
+      ),
+    )
+    const orderCounts = yield* d1Effect('adminOverview.users.orderCounts', () =>
       db
         .prepare(
-          `SELECT users.id AS user_id,
-                  users.kind,
-                  users.display_name,
-                  users.primary_email,
-                  MAX(auth_identities.provider_username) AS github_username,
-                  users.status,
-                  users.onboarding_step,
-                  users.onboarding_completed_at,
-                  COUNT(DISTINCT software_orders.id) AS software_order_count,
-                  users.created_at,
-                  users.updated_at
-             FROM users
-             LEFT JOIN auth_identities
-               ON auth_identities.user_id = users.id
-              AND auth_identities.provider = 'github'
-              AND auth_identities.deleted_at IS NULL
-             LEFT JOIN software_orders
-               ON software_orders.user_id = users.id
-            WHERE users.deleted_at IS NULL
-            GROUP BY users.id,
-                     users.kind,
-                     users.display_name,
-                     users.primary_email,
-                     users.status,
-                     users.onboarding_step,
-                     users.onboarding_completed_at,
-                     users.created_at,
-                     users.updated_at
-            ORDER BY users.created_at DESC`,
+          `SELECT user_id, COUNT(DISTINCT id) AS software_order_count
+             FROM software_orders
+            GROUP BY user_id`,
         )
-        .all<AdminUserRow>(),
+        .all<Readonly<{ user_id: string; software_order_count: number }>>(),
     )
+    const orderCountByUserId = new Map(
+      (orderCounts.results ?? []).map(row => [
+        row.user_id,
+        Number(row.software_order_count),
+      ]),
+    )
+    const users = {
+      results: userRows.map(
+        (row): AdminUserRow => ({
+          created_at: String(row.created_at),
+          display_name: String(row.display_name),
+          github_username:
+            row.github_username === null || row.github_username === undefined
+              ? null
+              : String(row.github_username),
+          kind: row.kind === 'agent' ? 'agent' : 'human',
+          onboarding_completed_at:
+            row.onboarding_completed_at === null ||
+            row.onboarding_completed_at === undefined
+              ? null
+              : String(row.onboarding_completed_at),
+          onboarding_step: String(row.onboarding_step),
+          primary_email:
+            row.primary_email === null || row.primary_email === undefined
+              ? null
+              : String(row.primary_email),
+          software_order_count:
+            orderCountByUserId.get(String(row.user_id)) ?? 0,
+          status: String(row.status),
+          updated_at: String(row.updated_at),
+          user_id: String(row.user_id),
+        }),
+      ),
+    }
     const softwareOrders = yield* d1Effect(
       'adminOverview.softwareOrders.list',
       () =>
@@ -379,8 +423,6 @@ const readAdminOverview = (
           .prepare(
             `SELECT software_orders.id,
                     software_orders.user_id,
-                    users.display_name AS user_display_name,
-                    users.primary_email AS user_email,
                     software_orders.status,
                     software_orders.visibility,
                     software_orders.request,
@@ -463,8 +505,6 @@ const readAdminOverview = (
                     software_orders.updated_at,
                     software_orders.archived_at
                FROM software_orders
-               LEFT JOIN users
-                 ON users.id = software_orders.user_id
                LEFT JOIN site_projects
                  ON site_projects.software_order_id = software_orders.id
                 AND site_projects.archived_at IS NULL
@@ -514,12 +554,28 @@ const readAdminOverview = (
                  )
               ORDER BY software_orders.created_at DESC`,
           )
-          .all<AdminSoftwareOrderRow>(),
+          .all<Omit<AdminSoftwareOrderRow, 'user_display_name' | 'user_email'>>(),
+    )
+
+    const orderUserProfiles = yield* d1Effect(
+      'adminOverview.softwareOrders.userProfiles',
+      () =>
+        readIdentityUserProfiles(
+          identityDb,
+          (softwareOrders.results ?? []).map(row => row.user_id),
+        ),
     )
 
     return {
       users: users.results.map(userFromRow),
-      softwareOrders: softwareOrders.results.map(softwareOrderFromRow),
+      softwareOrders: (softwareOrders.results ?? []).map(row => {
+        const profile = orderUserProfiles.get(row.user_id)
+        return softwareOrderFromRow({
+          ...row,
+          user_display_name: profile?.displayName ?? null,
+          user_email: profile?.primaryEmail ?? null,
+        })
+      }),
     }
   })
 
@@ -532,9 +588,16 @@ export class AdminOverviewStore extends Context.Service<
     >
   }
 >()('@openagentsinc/autopilot-omega/AdminOverviewStore') {
-  static readonly layer = (env: AdminOverviewEnv) =>
+  static readonly layer = (
+    env: AdminOverviewEnv,
+    // CFG-4 Domain 2 (#8519): injectable identity handle for tests.
+    identityDbOverride?: IdentityDb | undefined,
+  ) =>
     Layer.succeed(AdminOverviewStore, {
-      readOverview: readAdminOverview(openAgentsDatabase(env)),
+      readOverview: readAdminOverview(
+        openAgentsDatabase(env),
+        identityDbOverride ?? identityDbForEnv(env),
+      ),
     })
 }
 
@@ -566,6 +629,7 @@ const requireAdminSession = <
 
 const runRoute = (
   env: AdminOverviewEnv,
+  identityDbOverride: IdentityDb | undefined,
   effect: Effect.Effect<
     HttpResponse,
     AdminOverviewRouteError,
@@ -573,7 +637,7 @@ const runRoute = (
   >,
 ): Effect.Effect<HttpResponse> =>
   effect.pipe(
-    Effect.provide(AdminOverviewStore.layer(env)),
+    Effect.provide(AdminOverviewStore.layer(env, identityDbOverride)),
     Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
   )
 
@@ -594,6 +658,7 @@ export const makeAdminOverviewHandlers = <
 
     return runRoute(
       env,
+      dependencies.identityDb?.(env),
       Effect.gen(function* () {
         const session = yield* requireAdminSession(
           dependencies,

@@ -2462,6 +2462,21 @@ evidence:
   audit-chain contiguity.
 - **Cron re-homed:** none.
 - **Depends:** everything before it (deliberately).
+- **CFG-4 Domain 2 HARD CUTOVER (2026-07-06, #8519):** `users` and
+  `auth_identities` are Cloud SQL Postgres-AUTHORITATIVE with the D1 code
+  path DELETED — including the auth-GATE reads (agent bearer-token
+  resolution, session-subject upserts), the owner-approved supersession of
+  this section's "reads stay D1 until the owner-gated last step" plan for
+  exactly these two tables. Store: `workers/api/src/identity-db.ts`
+  (reuses the CFG-4 `PaymentsLedgerDb` executor over `KHALA_SYNC_DB`).
+  Schema: khala-sync migration `0042_identity_hard_cut.sql` (users
+  onboarding columns from worker 0025, UNIQUE
+  `(provider, provider_subject)`, read accelerators). The Worker mirror
+  surface is now the registry minus these two tables
+  (`IdentityAuthMirrorTable`); `backfill-identity-auth.ts` excludes them
+  from the default sweep (explicit `--table` = pre-deploy catch-up ONLY).
+  The other fifteen tables in this section keep the staged plan above
+  unchanged.
 
 ### 3.16 Explicit non-migrations
 

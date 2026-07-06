@@ -28,6 +28,7 @@ import {
 import { methodNotAllowed, noStoreJsonResponse, unauthorized } from './http/responses'
 import { optionalString, readJsonObject } from './json-boundary'
 import { agentRefForUser } from './inference/usd-credit-bridge'
+import type { IdentityDb } from './identity-db'
 import { readAgentBalance, runLedgerStatements } from './payments-ledger'
 import type { PaymentsLedgerDb } from './payments-ledger-db'
 import { currentIsoTimestamp } from './runtime-primitives'
@@ -68,6 +69,9 @@ export type MobileAccountDeletionDependencies<Bindings, User = unknown> = Readon
   /** CFG-4 (#8519): the Postgres-authoritative credits ledger — the
    * `agent_balances` forfeiture read + zeroing run here, never on D1. */
   ledgerDb: (env: Bindings) => PaymentsLedgerDb
+  /** CFG-4 Domain 2 (#8519): the Postgres-authoritative identity handle —
+   * the `users`/`auth_identities` disable runs here, never on D1. */
+  identityDb: (env: Bindings) => IdentityDb
   khalaSyncBinding: (env: Bindings) => KhalaSyncHyperdriveBinding | undefined
   makeSqlClient?: MakeKhalaSyncPushSqlClient | undefined
   nowIso?: () => string
@@ -111,6 +115,7 @@ const deleteOpenAuthSubjectEntries = async (
 export const deleteMobileAccountD1Data = async (
   db: D1Database,
   ledgerDb: PaymentsLedgerDb,
+  identityDb: IdentityDb,
   input: Readonly<{ nowIso: string; userId: string }>,
 ): Promise<MobileAccountDeletionD1Outcome> => {
   const accountRef = agentRefForUser(input.userId)
@@ -118,14 +123,15 @@ export const deleteMobileAccountD1Data = async (
   const forfeitedBalanceMsat = balance?.balanceMsat ?? 0
 
   // CFG-4 (#8519) NON-ATOMIC SEAM: the credits forfeiture (`agent_balances`,
-  // Postgres) and the identity/push/GitHub anonymization (D1) can no longer
-  // share one atomic batch — they live in different stores now. Both sides
-  // are idempotent zero-outs/UPDATEs, and the mobile deletion receipt (the
-  // thing that makes a retry a no-op) is only recorded by the route AFTER
-  // both sides succeed, so a crash between the two heals on retry: the
-  // caller re-runs the whole deletion with the same bearer. The credits
-  // zeroing runs FIRST, while the caller's session is guaranteed still
-  // verifiable — the D1 side is what disables the user row.
+  // Postgres), the push/GitHub anonymization (D1), and — since the Domain 2
+  // hard cut — the `users`/`auth_identities` disable (Postgres identity
+  // handle) can no longer share one atomic batch. Every side is an
+  // idempotent zero-out/UPDATE, and the mobile deletion receipt (the thing
+  // that makes a retry a no-op) is only recorded by the route AFTER all
+  // sides succeed, so a crash in between heals on retry: the caller re-runs
+  // the whole deletion with the same bearer. The credits zeroing runs
+  // FIRST, while the caller's session is guaranteed still verifiable; the
+  // identity disable runs LAST because it is what marks the user deleted.
   await runLedgerStatements(ledgerDb, [
     {
       params: [input.nowIso, accountRef],
@@ -163,32 +169,34 @@ export const deleteMobileAccountD1Data = async (
           WHERE user_id = ?`,
       )
       .bind(input.nowIso, input.nowIso, input.nowIso, input.userId),
-    db
-      .prepare(
-        `UPDATE auth_identities
-            SET deleted_at = COALESCE(deleted_at, ?),
-                updated_at = ?
-          WHERE user_id = ?`,
-      )
-      .bind(input.nowIso, input.nowIso, input.userId),
-    db
-      .prepare(
-        `UPDATE users
-            SET status = 'disabled',
-                deleted_at = COALESCE(deleted_at, ?),
-                updated_at = ?
-          WHERE id = ?`,
-      )
-      .bind(input.nowIso, input.nowIso, input.userId),
   ])
+
+  // CFG-4 Domain 2 (#8519): Postgres-authoritative identity disable.
+  // RETURNING gives the touched-row counts on both engines.
+  const identityRows = await identityDb.query(
+    `UPDATE auth_identities
+        SET deleted_at = COALESCE(deleted_at, ?),
+            updated_at = ?
+      WHERE user_id = ?
+      RETURNING id`,
+    [input.nowIso, input.nowIso, input.userId],
+  )
+  const userRows = await identityDb.query(
+    `UPDATE users
+        SET status = 'disabled',
+            deleted_at = COALESCE(deleted_at, ?),
+            updated_at = ?
+      WHERE id = ?
+      RETURNING id`,
+    [input.nowIso, input.nowIso, input.userId],
+  )
 
   return {
     forfeitedBalanceMsat,
     githubConnectionsDisconnected: resultChanges(results[2]!),
     githubWriteGrantsRevoked: resultChanges(results[1]!),
     pushDeviceTokensRemoved: resultChanges(results[0]!),
-    userRowsMarkedDeleted:
-      resultChanges(results[3]!) + resultChanges(results[4]!),
+    userRowsMarkedDeleted: identityRows.length + userRows.length,
   }
 }
 
@@ -364,6 +372,7 @@ export const handleMobileAccountDeletionRequest = <Bindings, User>(
     const d1Outcome = await deleteMobileAccountD1Data(
       dependencies.db(env),
       dependencies.ledgerDb(env),
+      dependencies.identityDb(env),
       {
         nowIso,
         userId,

@@ -56,6 +56,7 @@ import {
   resolveProviderAccountGrant,
   startChatGptCodexDeviceLogin,
 } from './provider-accounts'
+import { identityDbForEnv, type IdentityDb } from './identity-db'
 import { openAgentsDatabase } from './runtime'
 import {
   compactRandomId,
@@ -130,7 +131,7 @@ type OperatorProviderAccountDependencies<
     providerAccountRef: string,
   ) => Promise<unknown | undefined>
   readSelectedOperatorTargetUser: (
-    db: D1Database,
+    identityDb: IdentityDb,
     selector: Record<string, unknown>,
   ) => Promise<OperatorTargetUser | undefined>
   readStartedCodexDeviceLogin: (kv: AuthKvStore) => ReadStartedCodexDeviceLogin
@@ -1955,7 +1956,7 @@ export const makeOperatorProviderAccountRoutes = <
       (): Record<string, unknown> => ({}),
     )
     const targetUser = await dependencies.readSelectedOperatorTargetUser(
-      openAgentsDatabase(env),
+      identityDbForEnv(env),
       body,
     )
 
@@ -2257,7 +2258,7 @@ export const makeOperatorProviderAccountRoutes = <
           ? await (async () => {
               const targetUser =
                 await dependencies.readSelectedOperatorTargetUser(
-                  openAgentsDatabase(env),
+                  identityDbForEnv(env),
                   body,
                 )
 
@@ -2340,7 +2341,7 @@ export const makeOperatorProviderAccountRoutes = <
       (): Record<string, unknown> => ({}),
     )
     const targetUser = await dependencies.readSelectedOperatorTargetUser(
-      openAgentsDatabase(env),
+      identityDbForEnv(env),
       body,
     )
 
@@ -2447,7 +2448,7 @@ export const makeOperatorProviderAccountRoutes = <
       (): Record<string, unknown> => ({}),
     )
     const targetUser = await dependencies.readSelectedOperatorTargetUser(
-      openAgentsDatabase(env),
+      identityDbForEnv(env),
       body,
     )
 
@@ -2568,7 +2569,7 @@ export const makeOperatorProviderAccountRoutes = <
       (): Record<string, unknown> => ({}),
     )
     const targetUser = await dependencies.readSelectedOperatorTargetUser(
-      openAgentsDatabase(env),
+      identityDbForEnv(env),
       body,
     )
 
@@ -2710,7 +2711,7 @@ export const makeOperatorProviderAccountRoutes = <
       (): Record<string, unknown> => ({}),
     )
     const targetUser = await dependencies.readSelectedOperatorTargetUser(
-      openAgentsDatabase(env),
+      identityDbForEnv(env),
       body,
     )
 
@@ -2746,7 +2747,7 @@ export const makeOperatorProviderAccountRoutes = <
       (): Record<string, unknown> => ({}),
     )
     const targetUser = await dependencies.readSelectedOperatorTargetUser(
-      openAgentsDatabase(env),
+      identityDbForEnv(env),
       body,
     )
 
@@ -2780,7 +2781,7 @@ export const makeOperatorProviderAccountRoutes = <
       (): Record<string, unknown> => ({}),
     )
     const targetUser = await dependencies.readSelectedOperatorTargetUser(
-      openAgentsDatabase(env),
+      identityDbForEnv(env),
       body,
     )
 
@@ -2814,7 +2815,7 @@ export const makeOperatorProviderAccountRoutes = <
       (): Record<string, unknown> => ({}),
     )
     const targetUser = await dependencies.readSelectedOperatorTargetUser(
-      openAgentsDatabase(env),
+      identityDbForEnv(env),
       body,
     )
 
@@ -2933,7 +2934,7 @@ export const makeOperatorProviderAccountRoutes = <
       (): Record<string, unknown> => ({}),
     )
     const targetUser = await dependencies.readSelectedOperatorTargetUser(
-      openAgentsDatabase(env),
+      identityDbForEnv(env),
       body,
     )
 

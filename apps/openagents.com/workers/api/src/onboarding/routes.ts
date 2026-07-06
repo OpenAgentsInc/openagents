@@ -25,6 +25,7 @@ import {
 } from '../customer-orders'
 import { businessDomainDatabaseForEnv } from '../business-domain-store'
 import { methodNotAllowed, noStoreJsonResponse } from '../http/responses'
+import { identityDbForEnv, type IdentityDb, type IdentityDbEnv } from '../identity-db'
 import { logWorkerRouteError } from '../observability'
 import { openAgentsDatabase, scheduleBackgroundWork } from '../runtime'
 import {
@@ -59,11 +60,11 @@ import {
   SubmitOnboardingGoalRequest,
 } from './schema'
 
-type OnboardingEnv = Readonly<{
-  AUTH_KV?: AuthKvStore | undefined
-  KHALA_SYNC_DB?: Readonly<{ connectionString: string }> | undefined
-  OPENAGENTS_DB: D1Database
-}>
+type OnboardingEnv = IdentityDbEnv &
+  Readonly<{
+    AUTH_KV?: AuthKvStore | undefined
+    OPENAGENTS_DB: D1Database
+  }>
 
 type OnboardingSession = Readonly<{
   user: Readonly<{
@@ -115,6 +116,10 @@ type OnboardingRouteDependencies<
   // available/paginated/expired-token mobile-repo paths without a live
   // network call.
   githubRepositoryServiceLayer?: Layer.Layer<GitHubRepositoryService>
+  // CFG-4 Domain 2 (#8519): test-only override of the Postgres identity
+  // handle backing OnboardingStateStore (`users` is Postgres-authoritative);
+  // defaults to the env KHALA_SYNC_DB wiring.
+  identityDb?: (env: RouteEnv) => IdentityDb
   siteReferralOnboarding?: (
     input: Readonly<{
       env: RouteEnv
@@ -341,8 +346,9 @@ const idempotencyKeyFromRequest = (request: Request): string | undefined => {
 const customerOrderAgentStore = (
   agentRegistrationStore: AgentRegistrationStore | undefined,
   db: D1Database,
+  identityDb: IdentityDb,
 ): AgentRegistrationStore =>
-  agentRegistrationStore ?? makeD1AgentRegistrationStore(db)
+  agentRegistrationStore ?? makeD1AgentRegistrationStore(db, identityDb)
 
 const requireCustomerOrderActor = <
   Session extends OnboardingSession,
@@ -365,6 +371,7 @@ const requireCustomerOrderActor = <
       customerOrderAgentStore(
         dependencies.agentRegistrationStore,
         openAgentsDatabase(env),
+        (dependencies.identityDb ?? identityDbForEnv)(env),
       ),
       {
         nowIso:
@@ -526,10 +533,11 @@ const routeLayer = (
   runtime: OnboardingRuntime,
   customerOrderRuntime: CustomerOrderRuntime | undefined,
   githubRepositoryServiceLayer: Layer.Layer<GitHubRepositoryService>,
+  identityDb: IdentityDb | undefined,
 ) =>
   Layer.merge(
     Layer.merge(
-      OnboardingStateStore.layer(env, runtime),
+      OnboardingStateStore.layer(env, runtime, identityDb),
       CustomerOrderStore.layer(env, customerOrderRuntime),
     ),
     githubRepositoryServiceLayer,
@@ -615,6 +623,7 @@ export const makeOnboardingRoutes = <
           dependencies.customerOrderRuntime,
           dependencies.githubRepositoryServiceLayer ??
             GitHubRepositoryService.layer,
+          dependencies.identityDb?.(env),
         ),
       ),
       Effect.catch(error => Effect.succeed(routeErrorResponse(error))),

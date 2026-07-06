@@ -1,3 +1,4 @@
+import type { IdentityDb } from './identity-db'
 import { Effect, Layer } from 'effect'
 import { WorkerEnvironment } from 'effect-cf'
 import { describe, expect, test } from 'vitest'
@@ -167,6 +168,31 @@ const makeScriptedD1 = (script: {
   return { bindings, db }
 }
 
+// CFG-4 Domain 2 (#8519): author display fields come from the Postgres
+// identity handle now — serve the fixture author for the users IN-list.
+const serviceIdentityDb: IdentityDb = {
+  batch: () => Promise.resolve(),
+  query: (sql, params = []) =>
+    Promise.resolve(
+      sql.includes('FROM users') && params.map(String).includes('user_2')
+        ? [
+            {
+              avatar_url: 'https://example.com/avatar.png',
+              created_at: '2026-06-01T00:00:00.000Z',
+              deleted_at: null,
+              display_name: 'Octo Cat',
+              github_id: '583231',
+              github_username: 'octocat',
+              id: 'user_2',
+              kind: 'human',
+              primary_email: null,
+              status: 'active',
+            },
+          ]
+        : [],
+    ),
+}
+
 describe('ThreadFileRepository', () => {
   test('updates download visibility through the D1 repository', async () => {
     const writes: Array<ReadonlyArray<unknown>> = []
@@ -186,7 +212,7 @@ describe('ThreadFileRepository', () => {
         prepare: query => db.prepare(query),
       }),
     }
-    const repository = makeD1ThreadFileRepository(db, {
+    const repository = makeD1ThreadFileRepository(db, serviceIdentityDb, {
       runtime: {
         now: () => new Date('2026-06-04T00:00:00.000Z'),
         randomId: prefix => `${prefix}_test`,
@@ -247,7 +273,7 @@ describe('ThreadFileRepository', () => {
         }),
       ],
     })
-    const repository = makeD1ThreadFileRepository(db)
+    const repository = makeD1ThreadFileRepository(db, serviceIdentityDb)
 
     const files = await Effect.runPromise(
       repository.listTeam({ teamId: 'team_1', threadId: 'thread_1' }),
@@ -286,7 +312,7 @@ describe('ThreadFileRepository', () => {
     const workerEnvironmentLayer = Layer.succeed(WorkerEnvironment, {
       OPENAGENTS_DB: db,
     })
-    const repositoryLayer = ThreadFileRepository.effectCfLayer().pipe(
+    const repositoryLayer = ThreadFileRepository.effectCfLayer(serviceIdentityDb).pipe(
       Layer.provide(OpenAgentsDatabase.layer),
       Layer.provide(workerEnvironmentLayer),
     )
@@ -320,7 +346,7 @@ describe('ThreadFileRepository', () => {
           size_bytes: 19,
         }),
     })
-    const repository = makeD1ThreadFileRepository(db)
+    const repository = makeD1ThreadFileRepository(db, serviceIdentityDb)
 
     const file = await Effect.runPromise(
       repository.insert({
@@ -388,7 +414,7 @@ describe('ThreadFileRepository', () => {
         },
       ],
     })
-    const repository = makeD1ThreadFileRepository(db)
+    const repository = makeD1ThreadFileRepository(db, serviceIdentityDb)
 
     const detail = await Effect.runPromise(
       repository.readDetail({

@@ -11,6 +11,13 @@
 // connection attempts, auth grants, events, sanity checks, parallel-probe
 // receipts, leases, failover receipts, token custody + audit).
 //
+// CFG-4 Domain 2 (#8519) HARD CUT: `users` and `auth_identities` LEFT this
+// machinery — they are Cloud SQL Postgres-AUTHORITATIVE via
+// `identity-db.ts` (D1 code path deleted, auth-gate reads included; the
+// owner-approved supersession of the "identity reads stay D1" policy for
+// exactly these two tables). The Worker mirror surface below is the
+// FIFTEEN remaining tables (`IdentityAuthMirrorTable`).
+//
 // MACHINERY ONLY (MIGRATION_PLAN §3.15). D1 is and remains the SOLE
 // authority. The Postgres side is a best-effort dual-write read-back
 // mirror + backfill target ONLY in this lane. There is NO read cutover:
@@ -142,6 +149,31 @@ import {
 import { openAgentsDatabase } from './runtime'
 
 export type { IdentityAuthDomainRow, IdentityAuthDomainTable }
+
+// ---------------------------------------------------------------------------
+// CFG-4 Domain 2 (#8519): the identity hard cut
+// ---------------------------------------------------------------------------
+
+/**
+ * CFG-4 Domain 2 (#8519): `users` and `auth_identities` are Postgres-
+ * AUTHORITATIVE through `identity-db.ts` — the D1 code path (including the
+ * auth-gate reads) is DELETED. Mirroring them from D1 would CLOBBER the
+ * live authority with stale rows, so the Worker mirror surface is the
+ * shared backfill registry MINUS these two tables. The shared registry in
+ * `@openagentsinc/khala-sync-server` keeps their specs ONLY for the
+ * explicit `--table` pre-cutover catch-up backfill
+ * (`scripts/backfill-identity-auth.ts`, which excludes them from the
+ * default sweep).
+ */
+export const IDENTITY_HARD_CUT_TABLES = ['users', 'auth_identities'] as const
+
+export type IdentityHardCutTable = (typeof IDENTITY_HARD_CUT_TABLES)[number]
+
+/** The FIFTEEN tables the Worker dual-write mirror may target. */
+export type IdentityAuthMirrorTable = Exclude<
+  IdentityAuthDomainTable,
+  IdentityHardCutTable
+>
 
 // ---------------------------------------------------------------------------
 // Flags
@@ -546,9 +578,11 @@ const diagnosticRefsForRows = (
 export type IdentityAuthKey = ReadonlyArray<string>
 
 export type IdentityAuthMirror = Readonly<{
-  /** Read the rows for the composite keys back from D1 → Postgres. */
+  /** Read the rows for the composite keys back from D1 → Postgres.
+   * CFG-4 Domain 2 (#8519): the table union excludes the hard-cut
+   * `users`/`auth_identities` — those have no D1 rows to read back. */
   mirrorRowsByKey: (
-    table: IdentityAuthDomainTable,
+    table: IdentityAuthMirrorTable,
     keys: ReadonlyArray<IdentityAuthKey>,
   ) => Promise<void>
   /**
@@ -559,7 +593,7 @@ export type IdentityAuthMirror = Readonly<{
    * custody-bearing (e.g. `state`, `user_code`).
    */
   mirrorRowsWhere: (
-    table: IdentityAuthDomainTable,
+    table: IdentityAuthMirrorTable,
     whereColumns: ReadonlyArray<string>,
     values: ReadonlyArray<string>,
     refs?: ReadonlyArray<string>,
@@ -572,7 +606,7 @@ export type IdentityAuthMirror = Readonly<{
    * read-path cleanup or unbounded bulk-expiry sweeps.
    */
   mirrorDeleteByKey: (
-    table: IdentityAuthDomainTable,
+    table: IdentityAuthMirrorTable,
     keys: ReadonlyArray<IdentityAuthKey>,
   ) => Promise<void>
 }>

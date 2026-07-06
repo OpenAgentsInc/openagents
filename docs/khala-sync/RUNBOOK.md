@@ -3171,6 +3171,60 @@ Rollback at ANY step: set `KHALA_SYNC_IDENTITY_READS=d1` (reads) and/or
 `KHALA_SYNC_IDENTITY_DUAL_WRITE=off` (writes). D1 authority is never
 behind.
 
+### Identity core HARD cutover (CFG-4, #8519): users + auth_identities
+
+**SUPERSESSION (owner-approved).** For EXACTLY TWO of the seventeen tables
+— `users` and `auth_identities` — the staged owner-gated read-cutover plan
+above is superseded by the CFG-4 hard cut: they are Cloud SQL
+Postgres-AUTHORITATIVE through
+`apps/openagents.com/workers/api/src/identity-db.ts` (the same
+`KHALA_SYNC_DB` Hyperdrive executor the CFG-4 credits ledger proved), and
+the D1 code path for them is DELETED — **including the auth-GATE reads**:
+the agent bearer-token gate (`agent-registration.ts`
+`findAgentByTokenHash`) and the session-subject upserts
+(`upsertGitHubUser`/`upsertEmailUser`) run on Postgres on every request.
+The "identity reads stay D1 until the owner-gated last step" language above
+still governs the FIFTEEN other tables (openauth_agent_links,
+github_write_*, provider_account_* — and the legacy `openauth_storage` D1
+table alongside the CFG-3 KvStore), which keep their D1 authority and
+`identityAuthMirrorFromEnv` dual-write machinery unchanged; the Worker
+mirror surface is now typed as the registry MINUS the two hard-cut tables
+(`IdentityAuthMirrorTable`).
+
+Mechanics (same shape as the credits cutover below):
+
+- Migration `packages/khala-sync-server/migrations/0042_identity_hard_cut.sql`
+  (APPLY BEFORE the cutover deploy): widens the Postgres `users` twin with
+  the worker-0025 onboarding columns (onboarding state rides `users` and
+  moved with it), adds the UNIQUE `(provider, provider_subject)` arbiter
+  the `ON CONFLICT` upserts require, plus the
+  `(provider, provider_username)` and `(kind, created_at DESC)` read
+  accelerators derived from the newly Postgres-served reads.
+- `backfill-identity-auth.ts` EXCLUDES `users`/`auth_identities` from the
+  default sweep (CFG-4 clobber guard, same as `backfill-billing.ts`'s
+  pay_ins exclusion); an explicit `--table users` / `--table
+  auth_identities` run is ONLY valid as the final pre-deploy catch-up
+  sweep while the old D1-writing Worker is still serving.
+- Old D1 JOINs against still-D1 tables (team chat authors, software-order
+  customers, agent_credentials/agent_profiles gate joins, token-usage
+  leaderboards, triage/order/notification targets) split into a D1 read +
+  ONE identity IN-list enrichment (`readIdentityUserProfiles` in
+  `identity-db.ts`) — never N+1. `users` × `agent_balances` style joins
+  moved wholly onto the shared Postgres database
+  (`khala-sync-user-credit-balance.ts`).
+- Cross-store registration seams (`agent-registration.ts`
+  `createAgentRegistration`, `agent-owner-claim-routes.ts` `approveClaim`,
+  the mobile account deletion): identity lands in Postgres FIRST (its
+  UNIQUE refuses duplicate externalIds before any D1 row exists), then the
+  D1 batch; failure between the two leaves an orphaned credential-less
+  user that cannot authenticate and heals on retry — documented inline at
+  each seam.
+
+Pre-cutover sequence for these two tables: 0042 applied → final
+`--table users` + `--table auth_identities` catch-up sweep + `--verify`
+while the old Worker serves → cutover deploy → NEVER run the explicit
+table backfill again.
+
 ### 2026-07-05 follow-up (#8362): post-deploy re-verify + read-site classification
 
 Owner authorization on file for the eventual read cutover — quoted verbatim

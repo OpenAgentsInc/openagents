@@ -591,6 +591,15 @@ const routeRequest = async (
 
       return input.db
     },
+    // CFG-4 Domain 2 (#8519): these tests always inject `agentStoreForEnv`
+    // when the agent gate is exercised, so the identity handle is never
+    // reached by the fallback store.
+    identityDbForEnv: () => ({
+      batch: () =>
+        Promise.reject(new Error('identityDb.batch should not be used')),
+      query: () =>
+        Promise.reject(new Error('identityDb.query should not be used')),
+    }),
     isAdminEmail: email => email === 'agent-operator@openagents.com',
     requireBrowserSession: async () => input.session,
   })

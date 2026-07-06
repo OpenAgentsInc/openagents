@@ -10,6 +10,7 @@ import {
   isArtanisForumPostActor,
   resolveRegisteredArtanisForumIdentityFromD1,
 } from './artanis-forum-identity'
+import type { IdentityDb } from './identity-db'
 import {
   type ForumRepositoryRuntime,
   type ForumPublicProjection,
@@ -62,6 +63,9 @@ const postRefForId = (postId: string): string => `forum.post.${postId}`
 export const makeArtanisForumUpdateWriter = (
   input: Readonly<{
     db: D1Database
+    /** CFG-4 Domain 2 (#8519): Postgres identity handle for the registered
+     * Artanis `users`/`auth_identities` lookup. */
+    identityDb: IdentityDb
     makeId?: (() => string) | undefined
     nowEpochMillis?: (() => number) | undefined
     nowIso?: (() => string) | undefined
@@ -85,6 +89,7 @@ export const makeArtanisForumUpdateWriter = (
 
       const identity = yield* resolveRegisteredArtanisForumIdentityFromD1(
         input.db,
+        input.identityDb,
         now,
       ).pipe(
         Effect.mapError(

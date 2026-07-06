@@ -7,6 +7,7 @@
 // belongs to. Mirror failures are fail-soft diagnostics, never request
 // failures; D1 remains authoritative until the issue closeout/runbook cutover.
 
+import { identityDbForEnv, readIdentityUserProfiles, type IdentityDb } from './identity-db'
 import {
   KHALA_CODE_PRODUCT_STATE_TABLE_SPECS,
   deleteKhalaCodeProductStateRows,
@@ -503,6 +504,9 @@ export const resolveWhereValues = (
 
 export type MakeKhalaCodeProductStateMirroringDatabaseDependencies = Readonly<{
   db: D1Database
+  /** CFG-4 Domain 2 (#8519): Postgres identity handle for the
+   * team_chat_messages author-field projection enrichment. */
+  identityDb: IdentityDb
   log: KhalaCodeProductStateLog
   mirror: KhalaCodeProductStateMirror | undefined
 }>
@@ -521,61 +525,62 @@ type BoundStatement = Readonly<{
 // KS-6.11 (#8422): `team_chat_messages` is the one product-state table whose
 // scope-projected post-image needs a denormalized field the raw table row
 // does not carry — the author's display name/avatar/GitHub username, which
-// the legacy `readTeamChatMessageById` wire payload already sends via this
-// same JOIN (`team-chat.ts`). Read-back mirroring (this function, run after
-// every accepted D1 write) is the one place that can cheaply add it: it is
-// already doing a single extra SELECT per write, so widening THAT SELECT with
-// a JOIN costs nothing new. The joined columns are NOT part of
-// `team_chat_messages`'s Postgres column spec (`khala-code-product-state-
-// tables.ts`), so `upsertKhalaCodeProductStateRows` silently ignores them on
-// the row it writes — only `scopeChangesForKhalaCodeProductStateRow`'s
-// projection mapper reads them. A LEFT JOIN (not INNER) so a message whose
-// author user row is missing/deleted still mirrors and projects, just with
-// null author-identity fields.
-const TEAM_CHAT_MESSAGE_AUTHOR_JOIN_SELECT = `
-  SELECT team_chat_messages.*,
-         users.display_name AS author_name,
-         users.avatar_url AS author_avatar_url,
-         auth_identities.provider_username AS author_github_username
-    FROM team_chat_messages
-    LEFT JOIN users ON users.id = team_chat_messages.author_user_id
-    LEFT JOIN auth_identities
-      ON auth_identities.user_id = users.id
-     AND auth_identities.provider = 'github'
-     AND auth_identities.deleted_at IS NULL
-`
+// the legacy `readTeamChatMessageById` wire payload already sends
+// (`team-chat.ts`). CFG-4 Domain 2 (#8519): `users`/`auth_identities` are
+// Postgres-authoritative, so the old D1 LEFT JOIN is replaced by an
+// identity-handle enrichment after the raw D1 read (same LEFT JOIN
+// semantics: a message whose author user row is missing/deleted still
+// mirrors and projects, just with null author-identity fields). The
+// enriched columns are NOT part of `team_chat_messages`'s Postgres column
+// spec (`khala-code-product-state-tables.ts`), so
+// `upsertKhalaCodeProductStateRows` silently ignores them on the row it
+// writes — only `scopeChangesForKhalaCodeProductStateRow`'s projection
+// mapper reads them.
+const enrichTeamChatMessageAuthorRows = async (
+  identityDb: IdentityDb,
+  rows: ReadonlyArray<KhalaCodeProductStateRow>,
+): Promise<ReadonlyArray<KhalaCodeProductStateRow>> => {
+  const profiles = await readIdentityUserProfiles(
+    identityDb,
+    rows.map(row => String(row.author_user_id ?? '')),
+  )
+  return rows.map(row => {
+    const profile = profiles.get(String(row.author_user_id ?? ''))
+    return {
+      ...row,
+      author_avatar_url: profile?.avatarUrl ?? null,
+      author_github_username: profile?.githubUsername ?? null,
+      author_name: profile?.displayName ?? null,
+    }
+  })
+}
 
 const readRowsByWhere = async (
   db: D1Database,
+  identityDb: IdentityDb,
   table: KhalaCodeProductStateTable,
   columns: ReadonlyArray<string>,
   values: ReadonlyArray<unknown>,
 ): Promise<ReadonlyArray<KhalaCodeProductStateRow>> => {
   const normalized = values.map(normalizeKhalaCodeProductStateValue)
 
-  if (table === 'team_chat_messages') {
-    const clauses = columns
-      .map(column => `team_chat_messages.${column} IS ?`)
-      .join(' AND ')
-    const rows = await db
-      .prepare(`${TEAM_CHAT_MESSAGE_AUTHOR_JOIN_SELECT} WHERE ${clauses}`)
-      .bind(...normalized)
-      .all<KhalaCodeProductStateRow>()
-    return rows.results ?? []
-  }
-
   const clauses = columns.map(column => `${column} IS ?`).join(' AND ')
   const rows = await db
     .prepare(`SELECT * FROM ${table} WHERE ${clauses}`)
     .bind(...normalized)
     .all<KhalaCodeProductStateRow>()
+
+  if (table === 'team_chat_messages') {
+    return enrichTeamChatMessageAuthorRows(identityDb, rows.results ?? [])
+  }
+
   return rows.results ?? []
 }
 
 export const makeKhalaCodeProductStateMirroringDatabase = (
   deps: MakeKhalaCodeProductStateMirroringDatabaseDependencies,
 ): D1Database => {
-  const { db, log, mirror } = deps
+  const { db, identityDb, log, mirror } = deps
 
   const makeBound = (
     sql: string,
@@ -620,6 +625,7 @@ export const makeKhalaCodeProductStateMirroringDatabase = (
           try {
             capturedRows = await readRowsByWhere(
               db,
+              identityDb,
               classified.table,
               classified.where.columns,
               values,
@@ -666,6 +672,7 @@ export const makeKhalaCodeProductStateMirroringDatabase = (
           try {
             const rows = await readRowsByWhere(
               db,
+              identityDb,
               classified.table,
               classified.where.columns,
               values,
@@ -789,6 +796,8 @@ export type KhalaCodeProductStateStoreEnv = KhalaCodeProductStateFlagEnv &
 export type MakeKhalaCodeProductStateStoreOptions = Readonly<{
   makeSqlClient?: MakeKhalaSyncPushSqlClient | undefined
   log?: KhalaCodeProductStateLog | undefined
+  /** CFG-4 Domain 2 (#8519): identity-handle override (tests). */
+  identityDb?: IdentityDb | undefined
 }>
 
 const defaultLog: KhalaCodeProductStateLog = (event, fields) => {
@@ -836,6 +845,7 @@ export const khalaCodeProductStateDatabaseForEnv = (
   }
   return makeKhalaCodeProductStateMirroringDatabase({
     db,
+    identityDb: options.identityDb ?? identityDbForEnv(env),
     log: options.log ?? defaultLog,
     mirror,
   })

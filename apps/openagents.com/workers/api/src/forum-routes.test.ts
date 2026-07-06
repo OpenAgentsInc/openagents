@@ -11,6 +11,7 @@ import { makeFakeOpenAgentsHostedMdkClient } from './hosted-mdk-client'
 import {
   makeOpenAgentsL402HmacSigningBoundary,
 } from './l402-credential-service'
+import type { IdentityDb } from './identity-db'
 import type { PaymentsLedgerDb } from './payments-ledger-db'
 import { makeLedgerSqliteDb } from './test/payments-ledger-sqlite'
 
@@ -1368,15 +1369,33 @@ class ForumRouteStatement implements D1PreparedStatement {
       return Promise.resolve({ count } as T)
     }
 
-    if (this.query.includes('FROM users')) {
-      const userId = String(this.values[0])
-      const slug = String(this.values[1])
-      const row =
-        this.store.agentProfiles.find(
-          item => item.user_id === userId || item.slug === slug,
-        ) ?? null
+    // CFG-4 Domain 2 (#8519): the profile lookup split — D1 serves the
+    // agent_profiles halves; the identity handle (forumIdentityDb below)
+    // serves the users rows.
+    if (this.query.includes('FROM agent_profiles WHERE slug = ?')) {
+      const slug = String(this.values[0])
+      const row = this.store.agentProfiles.find(item => item.slug === slug)
 
-      return Promise.resolve(row as T | null)
+      return Promise.resolve(
+        row === undefined
+          ? null
+          : ({ slug: row.slug, user_id: row.user_id } as T),
+      )
+    }
+
+    if (this.query.includes('FROM agent_profiles WHERE user_id = ?')) {
+      const userId = String(this.values[0])
+      const row = this.store.agentProfiles.find(
+        item => item.user_id === userId,
+      )
+
+      return Promise.resolve(
+        row === undefined
+          ? null
+          : ((this.query.includes('SELECT slug')
+              ? { slug: row.slug }
+              : { user_id: row.user_id }) as T),
+      )
     }
 
     if (this.query.includes('FROM agent_owner_claims')) {
@@ -4061,6 +4080,31 @@ CREATE TABLE IF NOT EXISTS forum_posts (
 
 const makeForumLedgerDb = () => makeLedgerSqliteDb(forumLedgerTwinSchema)
 
+// CFG-4 Domain 2 (#8519): the Postgres identity handle backing the
+// agent-profile `users` reads — served from the same fixture profiles.
+const forumIdentityDb = (store: ForumRouteStore): IdentityDb => ({
+  batch: () => Promise.resolve(),
+  query: (sql, params = []) => {
+    if (!sql.includes('FROM users')) {
+      return Promise.reject(
+        new Error(`unexpected identityDb query: ${sql.slice(0, 80)}`),
+      )
+    }
+    const ids = new Set(params.map(String))
+    return Promise.resolve(
+      store.agentProfiles
+        .filter(profile => ids.has(profile.user_id))
+        .map(profile => ({
+          avatar_url: profile.avatar_url,
+          created_at: profile.created_at,
+          display_name: profile.display_name,
+          updated_at: profile.updated_at,
+          user_id: profile.user_id,
+        })),
+    )
+  },
+})
+
 const route = async (
   store: ForumRouteStore,
   path: string,
@@ -4111,6 +4155,7 @@ const route = async (
       : { forumWorkRequestRelayUrl: options.workRequestRelayUrl }),
     hostedMdkClient: options.hostedMdkClient ?? forumHostedMdkClient(),
     l402SigningBoundary: forumL402SigningBoundary,
+    identityDb: forumIdentityDb(store),
     ledgerDb: options.ledgerDb ?? makeForumLedgerDb(),
     makeId: () => store.nextId(),
     mdkWebhookConfig: {

@@ -1,6 +1,7 @@
 import { Effect, Layer, Match as M } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { identityDbForEnv, type IdentityDb } from './identity-db'
 import type { Env as OpenAgentsEnv } from './index'
 import { isRecord, optionalString, readJsonObject } from './json-boundary'
 import { khalaCodeProductStateDatabaseForEnv } from './khala-code-product-state-store'
@@ -56,7 +57,7 @@ type ShareRouteDependencies<Session extends ShareSession> = Readonly<{
   ) => Promise<ShareAuthenticatedActor | undefined>
   isAdminEmail: (email: string) => boolean
   readSelectedOperatorTargetUser: (
-    db: D1Database,
+    identityDb: IdentityDb,
     selector: Record<string, unknown>,
   ) => Promise<OperatorTargetUser | undefined>
   requireAdminApiToken: (
@@ -372,7 +373,7 @@ const resolveCreateActor = <Session extends ShareSession>(
         }
 
         const targetUser = await dependencies.readSelectedOperatorTargetUser(
-          openAgentsDatabase(env),
+          identityDbForEnv(env),
           selector,
         )
 
@@ -473,6 +474,7 @@ const loadSourceBundle = (
 
           return listTeamChatMessages(
             openAgentsDatabase(env),
+            identityDbForEnv(env),
             teamId,
             120,
             undefined,

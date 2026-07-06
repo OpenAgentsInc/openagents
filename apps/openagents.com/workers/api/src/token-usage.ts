@@ -1,3 +1,4 @@
+import { readIdentityUserProfiles, type IdentityDb } from './identity-db'
 import {
   type AutopilotTokenUsage,
   extractAutopilotTokenUsage,
@@ -84,6 +85,11 @@ type TokenTeamRow = TokenUsageRow &
     team_id: string
     team_name: string
     team_slug: string | null
+  }>
+
+type TokenUserUsageRow = TokenUsageRow &
+  Readonly<{
+    user_id: string
   }>
 
 type TokenUserRow = TokenUsageRow &
@@ -175,6 +181,7 @@ const runSummaryFromRow = (row: TokenRunRow): TokenUsageRunSummary => ({
 
 export const readAutopilotTokenLeaderboards = async (
   db: D1Database,
+  identityDb: IdentityDb,
   userId: string,
   runtime: TokenUsageRuntime = systemTokenUsageRuntime,
 ): Promise<AutopilotTokenLeaderboards> => {
@@ -240,14 +247,14 @@ export const readAutopilotTokenLeaderboards = async (
          LIMIT 20`,
       )
       .all<TokenTeamRow>(),
+    // CFG-4 Domain 2 (#8519): aggregate per user id in D1 (no `users`
+    // join — that table is Postgres-authoritative); the active-user filter,
+    // display fields, and final order/limit happen after the identity
+    // enrichment below.
     db
       .prepare(
         `SELECT
-            users.id AS user_id,
-            users.display_name,
-            users.primary_email,
-            users.avatar_url,
-            MAX(auth_identities.provider_username) AS github_username,
+            autopilot_token_usage.user_id AS user_id,
             COALESCE(SUM(autopilot_token_usage.input_tokens), 0) AS input_tokens,
             COALESCE(SUM(autopilot_token_usage.output_tokens), 0) AS output_tokens,
             COALESCE(SUM(autopilot_token_usage.reasoning_tokens), 0) AS reasoning_tokens,
@@ -257,18 +264,9 @@ export const readAutopilotTokenLeaderboards = async (
             COALESCE(SUM(autopilot_token_usage.total_tokens), 0) AS total_tokens,
             COUNT(autopilot_token_usage.id) AS usage_events
          FROM autopilot_token_usage
-         INNER JOIN users ON users.id = autopilot_token_usage.user_id
-         LEFT JOIN auth_identities
-           ON auth_identities.user_id = users.id
-          AND auth_identities.provider = 'github'
-          AND auth_identities.deleted_at IS NULL
-         WHERE users.status = 'active'
-           AND users.deleted_at IS NULL
-         GROUP BY users.id, users.display_name, users.primary_email, users.avatar_url
-         ORDER BY total_tokens DESC, users.display_name ASC
-         LIMIT 20`,
+         GROUP BY autopilot_token_usage.user_id`,
       )
-      .all<TokenUserRow>(),
+      .all<TokenUserUsageRow>(),
     db
       .prepare(
         `SELECT
@@ -341,6 +339,38 @@ export const readAutopilotTokenLeaderboards = async (
       .all<TokenRunRow>(),
   ])
 
+  const userProfiles = await readIdentityUserProfiles(
+    identityDb,
+    (users.results ?? []).map(row => row.user_id),
+  )
+  const userLeaders: ReadonlyArray<TokenUserRow> = (users.results ?? [])
+    .flatMap(row => {
+      const profile = userProfiles.get(row.user_id)
+      return profile === undefined ||
+        profile.status !== 'active' ||
+        profile.deletedAt !== null
+        ? []
+        : [
+            {
+              ...row,
+              avatar_url: profile.avatarUrl,
+              display_name: profile.displayName,
+              github_username: profile.githubUsername,
+              primary_email: profile.primaryEmail,
+            },
+          ]
+    })
+    .sort(
+      (a, b) =>
+        Number(b.total_tokens) - Number(a.total_tokens) ||
+        (a.display_name < b.display_name
+          ? -1
+          : a.display_name > b.display_name
+            ? 1
+            : 0),
+    )
+    .slice(0, 20)
+
   return {
     currentUser: totalsFromRow(currentUser),
     currentUserTeams: currentUserTeams.results.map(row => ({
@@ -359,7 +389,7 @@ export const readAutopilotTokenLeaderboards = async (
       teamSlug: row.team_slug,
       ...totalsFromRow(row),
     })),
-    users: users.results.map(row => ({
+    users: userLeaders.map(row => ({
       userId: row.user_id,
       displayName: row.display_name,
       email: row.primary_email,
@@ -381,22 +411,22 @@ export class TokenUsageLeaderboards extends Context.Service<
   TokenUsageLeaderboards,
   TokenUsageLeaderboardsShape
 >()('@openagentsinc/TokenUsageLeaderboards') {
-  static live = (db: D1Database) =>
+  static live = (db: D1Database, identityDb: IdentityDb) =>
     Layer.succeed(TokenUsageLeaderboards, {
       readForUser: (
         userId: string,
         runtime: TokenUsageRuntime = systemTokenUsageRuntime,
-      ) => readAutopilotTokenLeaderboards(db, userId, runtime),
+      ) => readAutopilotTokenLeaderboards(db, identityDb, userId, runtime),
     })
 
-  static effectCfLayer = () =>
+  static effectCfLayer = (identityDb: IdentityDb) =>
     Layer.effect(
       TokenUsageLeaderboards,
       Effect.map(OpenAgentsDatabase, db => ({
         readForUser: (
           userId: string,
           runtime: TokenUsageRuntime = systemTokenUsageRuntime,
-        ) => readAutopilotTokenLeaderboards(db, userId, runtime),
+        ) => readAutopilotTokenLeaderboards(db, identityDb, userId, runtime),
       })),
     )
 }

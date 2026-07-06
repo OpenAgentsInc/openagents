@@ -1,3 +1,4 @@
+import { readIdentityUserProfiles, type IdentityDb } from './identity-db'
 import { Schema as S } from 'effect'
 
 import {
@@ -146,6 +147,54 @@ export const teamChatRunSummaryFromUnknown = (
   }
 }
 
+// CFG-4 Domain 2 (#8519): `users`/`auth_identities` are Postgres-
+// authoritative — the author display fields can no longer ride the D1
+// message query. Messages read from D1 without the join; this helper
+// enriches one page through ONE identity IN-list read, preserving the old
+// INNER JOIN semantics (a message whose author row is gone is dropped).
+type TeamChatMessageD1Row = Readonly<{
+  id: string
+  team_id: string
+  project_id: string | null
+  kind: TeamChatKind
+  body: string
+  autopilot_thread_id: string | null
+  agent_run_id: string | null
+  metadata_json: string | null
+  created_at: string
+  author_user_id: string
+}>
+
+type TeamChatMessageAuthorRow = TeamChatMessageD1Row &
+  Readonly<{
+    author_name: string
+    author_avatar_url: string | null
+    author_github_username: string | null
+  }>
+
+const enrichTeamChatAuthorRows = async <Row extends TeamChatMessageD1Row>(
+  identityDb: IdentityDb,
+  rows: ReadonlyArray<Row>,
+): Promise<ReadonlyArray<Row & TeamChatMessageAuthorRow>> => {
+  const profiles = await readIdentityUserProfiles(
+    identityDb,
+    rows.map(row => row.author_user_id),
+  )
+  return rows.flatMap(row => {
+    const profile = profiles.get(row.author_user_id)
+    return profile === undefined
+      ? []
+      : [
+          {
+            ...row,
+            author_avatar_url: profile.avatarUrl,
+            author_github_username: profile.githubUsername,
+            author_name: profile.displayName,
+          },
+        ]
+  })
+}
+
 export const publicTeamChatMessage = (
   row: Readonly<{
     id: string
@@ -189,6 +238,7 @@ export const publicTeamChatMessage = (
 
 export const listTeamChatMessages = async (
   db: D1Database,
+  identityDb: IdentityDb,
   teamId: string,
   limit: number,
   kind?: TeamChatKind,
@@ -224,16 +274,8 @@ export const listTeamChatMessages = async (
          team_chat_messages.agent_run_id,
          team_chat_messages.metadata_json,
          team_chat_messages.created_at,
-         team_chat_messages.author_user_id,
-         users.display_name AS author_name,
-         users.avatar_url AS author_avatar_url,
-         auth_identities.provider_username AS author_github_username
+         team_chat_messages.author_user_id
        FROM team_chat_messages
-       INNER JOIN users ON users.id = team_chat_messages.author_user_id
-       LEFT JOIN auth_identities
-         ON auth_identities.user_id = users.id
-        AND auth_identities.provider = 'github'
-        AND auth_identities.deleted_at IS NULL
        WHERE team_chat_messages.team_id = ?
          AND team_chat_messages.deleted_at IS NULL
          AND team_chat_messages.archived_at IS NULL
@@ -244,29 +286,19 @@ ${whereProject}
        LIMIT ?`,
     )
     .bind(...bindings)
-    .all<
-      Readonly<{
-        id: string
-        team_id: string
-        project_id: string | null
-        kind: TeamChatKind
-        body: string
-        autopilot_thread_id: string | null
-        agent_run_id: string | null
-        metadata_json: string | null
-        created_at: string
-        author_user_id: string
-        author_name: string
-        author_avatar_url: string | null
-        author_github_username: string | null
-      }>
-    >()
+    .all<TeamChatMessageD1Row>()
 
-  return rows.results.map(publicTeamChatMessage).reverse()
+  const withAuthors = await enrichTeamChatAuthorRows(
+    identityDb,
+    rows.results ?? [],
+  )
+
+  return withAuthors.map(publicTeamChatMessage).reverse()
 }
 
 export const readTeamChatMessageById = async (
   db: D1Database,
+  identityDb: IdentityDb,
   messageId: string,
 ): Promise<TeamChatMessage | undefined> => {
   const row = await db
@@ -281,45 +313,29 @@ export const readTeamChatMessageById = async (
          team_chat_messages.agent_run_id,
          team_chat_messages.metadata_json,
          team_chat_messages.created_at,
-         team_chat_messages.author_user_id,
-         users.display_name AS author_name,
-         users.avatar_url AS author_avatar_url,
-         auth_identities.provider_username AS author_github_username
+         team_chat_messages.author_user_id
        FROM team_chat_messages
-       INNER JOIN users ON users.id = team_chat_messages.author_user_id
-       LEFT JOIN auth_identities
-         ON auth_identities.user_id = users.id
-        AND auth_identities.provider = 'github'
-        AND auth_identities.deleted_at IS NULL
        WHERE team_chat_messages.id = ?
          AND team_chat_messages.deleted_at IS NULL
          AND team_chat_messages.archived_at IS NULL
        LIMIT 1`,
     )
     .bind(messageId)
-    .first<
-      Readonly<{
-        id: string
-        team_id: string
-        project_id: string | null
-        kind: TeamChatKind
-        body: string
-        autopilot_thread_id: string | null
-        agent_run_id: string | null
-        metadata_json: string | null
-        created_at: string
-        author_user_id: string
-        author_name: string
-        author_avatar_url: string | null
-        author_github_username: string | null
-      }>
-    >()
+    .first<TeamChatMessageD1Row>()
 
-  return row === null ? undefined : publicTeamChatMessage(row)
+  const withAuthors = await enrichTeamChatAuthorRows(
+    identityDb,
+    row === null ? [] : [row],
+  )
+
+  return withAuthors.length === 0
+    ? undefined
+    : publicTeamChatMessage(withAuthors[0]!)
 }
 
 export const readTeamChatMessageByAgentRunId = async (
   db: D1Database,
+  identityDb: IdentityDb,
   agentRunId: string,
 ): Promise<TeamChatMessageWithMetadata | undefined> => {
   const row = await db
@@ -334,16 +350,8 @@ export const readTeamChatMessageByAgentRunId = async (
          team_chat_messages.agent_run_id,
          team_chat_messages.metadata_json,
          team_chat_messages.created_at,
-         team_chat_messages.author_user_id,
-         users.display_name AS author_name,
-         users.avatar_url AS author_avatar_url,
-         auth_identities.provider_username AS author_github_username
+         team_chat_messages.author_user_id
        FROM team_chat_messages
-       INNER JOIN users ON users.id = team_chat_messages.author_user_id
-       LEFT JOIN auth_identities
-         ON auth_identities.user_id = users.id
-        AND auth_identities.provider = 'github'
-        AND auth_identities.deleted_at IS NULL
        WHERE team_chat_messages.agent_run_id = ?
          AND team_chat_messages.kind = 'autopilot_intent'
          AND team_chat_messages.deleted_at IS NULL
@@ -352,34 +360,25 @@ export const readTeamChatMessageByAgentRunId = async (
        LIMIT 1`,
     )
     .bind(agentRunId)
-    .first<
-      Readonly<{
-        id: string
-        team_id: string
-        project_id: string | null
-        kind: TeamChatKind
-        body: string
-        autopilot_thread_id: string | null
-        agent_run_id: string | null
-        metadata_json: string
-        created_at: string
-        author_user_id: string
-        author_name: string
-        author_avatar_url: string | null
-        author_github_username: string | null
-      }>
-    >()
+    .first<TeamChatMessageD1Row & Readonly<{ metadata_json: string }>>()
 
-  return row === null
+  const withAuthors = await enrichTeamChatAuthorRows(
+    identityDb,
+    row === null ? [] : [row],
+  )
+  const enriched = withAuthors[0]
+
+  return enriched === undefined || row === null
     ? undefined
     : {
-        message: publicTeamChatMessage(row),
+        message: publicTeamChatMessage(enriched),
         metadataJson: row.metadata_json,
       }
 }
 
 export const insertTeamChatMessage = async (
   db: D1Database,
+  identityDb: IdentityDb,
   input: Readonly<{
     id?: string
     teamId: string
@@ -417,7 +416,7 @@ export const insertTeamChatMessage = async (
     )
     .run()
 
-  const message = await readTeamChatMessageById(db, id)
+  const message = await readTeamChatMessageById(db, identityDb, id)
 
   if (message === undefined) {
     throw new TeamChatRepositoryError({
@@ -431,6 +430,7 @@ export const insertTeamChatMessage = async (
 
 export const updateTeamChatMessageRunSummary = async (
   db: D1Database,
+  identityDb: IdentityDb,
   input: Readonly<{
     messageId: string
     metadataJson: string
@@ -458,7 +458,7 @@ export const updateTeamChatMessageRunSummary = async (
     )
     .run()
 
-  return readTeamChatMessageById(db, input.messageId)
+  return readTeamChatMessageById(db, identityDb, input.messageId)
 }
 
 type TeamChatLaunchErrorResponse = Readonly<{

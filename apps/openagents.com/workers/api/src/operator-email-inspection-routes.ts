@@ -1,6 +1,12 @@
 // KS-8.11 (#8322): CRM/email entry points construct the dual-write seam
 // (plain D1 drop-in when KHALA_SYNC_DB / the flags are absent).
 import {
+  identityDbForEnv,
+  readIdentityUserProfiles,
+  type IdentityDb,
+  type IdentityDbEnv,
+} from './identity-db'
+import {
   type CrmEmailDatabase,
   crmEmailAuthorityDb,
   makeCrmEmailDatabaseForEnv,
@@ -31,9 +37,10 @@ import {
   type SupervisionLongtailMirror,
 } from './supervision-longtail-domain-store'
 
-type OperatorEmailInspectionEnv = Readonly<{
-  OPENAGENTS_DB: D1Database
-}>
+type OperatorEmailInspectionEnv = IdentityDbEnv &
+  Readonly<{
+    OPENAGENTS_DB: D1Database
+  }>
 type HttpResponse = globalThis.Response
 
 type OperatorEmailInspectionSession = Readonly<{
@@ -257,8 +264,42 @@ const decodeReviewReadySmokeRequest = (
     ),
   )
 
+// CFG-4 Domain 2 (#8519): the customer `users` row reads from the Postgres
+// identity handle; the old `LEFT JOIN users ... deleted_at IS NULL`
+// semantics hold (a missing/deleted user leaves the target fields null).
+const enrichSmokeTargetUser = async <
+  Row extends Readonly<{ order_user_id: string | null }>,
+>(
+  identityDb: IdentityDb,
+  row: Row,
+): Promise<
+  Omit<Row, 'order_user_id'> &
+    Readonly<{
+      target_user_id: string | null
+      display_name: string | null
+      primary_email: string | null
+    }>
+> => {
+  const { order_user_id, ...rest } = row
+  const profile =
+    order_user_id === null
+      ? undefined
+      : (await readIdentityUserProfiles(identityDb, [order_user_id])).get(
+          order_user_id,
+        )
+  const live =
+    profile === undefined || profile.deletedAt !== null ? undefined : profile
+  return {
+    ...rest,
+    display_name: live?.displayName ?? null,
+    primary_email: live?.primaryEmail ?? null,
+    target_user_id: live?.userId ?? null,
+  }
+}
+
 const readReviewReadyArtifactSmokeTarget = (
   db: CrmEmailDatabase,
+  identityDb: IdentityDb,
   artifactId: string,
 ): Effect.Effect<
   ReviewReadyArtifactSmokeTargetRow | null,
@@ -278,9 +319,7 @@ const readReviewReadyArtifactSmokeTarget = (
                   order_fulfillment_artifacts.url AS artifact_url,
                   order_fulfillment_artifacts.kind AS kind,
                   software_orders.id AS software_order_id,
-                  users.id AS target_user_id,
-                  users.display_name,
-                  users.primary_email,
+                  software_orders.user_id AS order_user_id,
                   adjutant_assignments.id AS assignment_id,
                   adjutant_assignments.goal_id AS assignment_goal_id,
                   adjutant_assignments.current_run_id AS assignment_current_run_id,
@@ -298,9 +337,6 @@ const readReviewReadyArtifactSmokeTarget = (
                      ORDER BY assignment.updated_at DESC
                      LIMIT 1
                   )
-             LEFT JOIN users
-               ON users.id = software_orders.user_id
-              AND users.deleted_at IS NULL
             WHERE order_fulfillment_artifacts.id = ?
               AND order_fulfillment_artifacts.archived_at IS NULL
               AND order_fulfillment_artifacts.visibility = 'public'
@@ -308,11 +344,20 @@ const readReviewReadyArtifactSmokeTarget = (
             LIMIT 1`,
         )
         .bind(artifactId)
-        .first<ReviewReadyArtifactSmokeTargetRow>(),
+        .first<
+          Omit<ReviewReadyArtifactSmokeTargetRow, 'target_user_id' | 'display_name' | 'primary_email'> &
+            Readonly<{ order_user_id: string | null }>
+        >()
+        .then(row =>
+          row === null
+            ? null
+            : enrichSmokeTargetUser(identityDb, row),
+        ),
   })
 
 const readReviewReadySmokeTarget = (
   db: CrmEmailDatabase,
+  identityDb: IdentityDb,
   input: ReviewReadySmokeRequest,
 ): Effect.Effect<
   ReviewReadySmokeTargetRow | null,
@@ -333,9 +378,7 @@ const readReviewReadySmokeTarget = (
                   site_projects.active_deployment_id AS active_deployment_id,
                   site_versions.id AS version_id,
                   site_deployments.url AS deployment_url,
-                  users.id AS target_user_id,
-                  users.display_name AS display_name,
-                  users.primary_email AS primary_email
+                  software_orders.user_id AS order_user_id
              FROM site_projects
              LEFT JOIN site_versions
                ON site_versions.id = site_projects.active_version_id
@@ -345,9 +388,6 @@ const readReviewReadySmokeTarget = (
              LEFT JOIN software_orders
                ON software_orders.id = site_projects.software_order_id
               AND software_orders.archived_at IS NULL
-             LEFT JOIN users
-               ON users.id = software_orders.user_id
-              AND users.deleted_at IS NULL
             WHERE site_projects.archived_at IS NULL
               AND (? IS NULL OR site_projects.id = ?)
               AND (? IS NULL OR site_projects.software_order_id = ?)
@@ -360,7 +400,15 @@ const readReviewReadySmokeTarget = (
           input.softwareOrderId ?? null,
           input.softwareOrderId ?? null,
         )
-        .first<ReviewReadySmokeTargetRow>(),
+        .first<
+          Omit<ReviewReadySmokeTargetRow, 'target_user_id' | 'display_name' | 'primary_email'> &
+            Readonly<{ order_user_id: string | null }>
+        >()
+        .then(row =>
+          row === null
+            ? null
+            : enrichSmokeTargetUser(identityDb, row),
+        ),
   })
 
 const readReviewReadySmokeAssignment = (
@@ -646,6 +694,7 @@ export const makeOperatorEmailInspectionRoutes = <
         if (body.artifactId !== undefined) {
           const target = yield* readReviewReadyArtifactSmokeTarget(
             db,
+            identityDbForEnv(env),
             body.artifactId,
           )
 
@@ -842,7 +891,11 @@ export const makeOperatorEmailInspectionRoutes = <
           )
         }
 
-        const target = yield* readReviewReadySmokeTarget(db, body)
+        const target = yield* readReviewReadySmokeTarget(
+          db,
+          identityDbForEnv(env),
+          body,
+        )
 
         if (target === null) {
           return noStoreJsonResponse(

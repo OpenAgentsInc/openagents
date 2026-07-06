@@ -1,3 +1,4 @@
+import type { IdentityDb } from './identity-db'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -56,6 +57,33 @@ const referenceRows = [
     thread_id: 'team:team_openagents_core:chat',
   },
 ]
+
+// CFG-4 Domain 2 (#8519): the author display fields come from the Postgres
+// identity handle now — serve the fixture author for the users IN-list.
+const referencesIdentityDb: IdentityDb = {
+  batch: () => Promise.resolve(),
+  query: (sql, params = []) =>
+    Promise.resolve(
+      sql.includes('FROM users') &&
+        params.map(String).includes('github:14167547')
+        ? [
+            {
+              avatar_url:
+                'https://avatars.githubusercontent.com/u/14167547?v=4',
+              created_at: '2026-06-01T00:00:00.000Z',
+              deleted_at: null,
+              display_name: 'Christopher David',
+              github_id: '14167547',
+              github_username: 'AtlantisPleb',
+              id: 'github:14167547',
+              kind: 'human',
+              primary_email: null,
+              status: 'active',
+            },
+          ]
+        : [],
+    ),
+}
 
 const makeStatement = (
   state: Pick<MemoryD1, 'insertedReferences'>,
@@ -163,7 +191,11 @@ describe('thread file message references', () => {
   })
 
   test('lists references with chat anchors and compact excerpts', async () => {
-    const references = await listThreadFileReferences(makeMemoryD1(), 'file_1')
+    const references = await listThreadFileReferences(
+      makeMemoryD1(),
+      referencesIdentityDb,
+      'file_1',
+    )
 
     expect(references).toEqual([
       {

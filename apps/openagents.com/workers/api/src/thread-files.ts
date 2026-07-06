@@ -1,3 +1,4 @@
+import { readIdentityUserProfiles, type IdentityDb } from './identity-db'
 import { Effect, Layer, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
@@ -450,9 +451,14 @@ export const insertThreadFileMessageReferences = async (
 
 export const listThreadFileReferences = async (
   db: D1Database,
+  identityDb: IdentityDb,
   fileId: string,
 ): Promise<ReadonlyArray<PublicThreadFileReference>> => {
-  const rows = await db
+  // CFG-4 Domain 2 (#8519): author display fields come from the Postgres
+  // identity handle now (one IN-list read for the page); the old INNER JOIN
+  // users semantics are preserved by dropping references whose author row
+  // no longer exists.
+  const d1Rows = await db
     .prepare(
       `SELECT
          thread_file_message_refs.id,
@@ -466,9 +472,6 @@ export const listThreadFileReferences = async (
          team_chat_messages.project_id,
          team_chat_messages.body,
          team_chat_messages.author_user_id,
-         users.display_name AS author_name,
-         users.avatar_url AS author_avatar_url,
-         auth_identities.provider_username AS author_github_username,
          COALESCE(teams.slug, teams.id) AS team_ref,
          COALESCE(team_projects.slug, team_projects.id) AS project_ref
        FROM thread_file_message_refs
@@ -476,11 +479,6 @@ export const listThreadFileReferences = async (
          ON team_chat_messages.id = thread_file_message_refs.message_id
         AND team_chat_messages.deleted_at IS NULL
         AND team_chat_messages.archived_at IS NULL
-       INNER JOIN users ON users.id = team_chat_messages.author_user_id
-       LEFT JOIN auth_identities
-         ON auth_identities.user_id = users.id
-        AND auth_identities.provider = 'github'
-        AND auth_identities.deleted_at IS NULL
        LEFT JOIN teams ON teams.id = thread_file_message_refs.team_id
        LEFT JOIN team_projects ON team_projects.id = team_chat_messages.project_id
        WHERE thread_file_message_refs.file_id = ?
@@ -490,9 +488,6 @@ export const listThreadFileReferences = async (
     .bind(fileId)
     .all<
       Readonly<{
-        author_avatar_url: string | null
-        author_github_username: string | null
-        author_name: string
         author_user_id: string
         body: string
         created_at: string
@@ -508,6 +503,26 @@ export const listThreadFileReferences = async (
         thread_id: string
       }>
     >()
+
+  const profiles = await readIdentityUserProfiles(
+    identityDb,
+    (d1Rows.results ?? []).map(row => row.author_user_id),
+  )
+  const rows = {
+    results: (d1Rows.results ?? []).flatMap(row => {
+      const profile = profiles.get(row.author_user_id)
+      return profile === undefined
+        ? []
+        : [
+            {
+              ...row,
+              author_avatar_url: profile.avatarUrl,
+              author_github_username: profile.githubUsername,
+              author_name: profile.displayName,
+            },
+          ]
+    }),
+  }
 
   return rows.results.map(row => ({
     author: {
@@ -532,6 +547,7 @@ export const listThreadFileReferences = async (
 
 export const readThreadFileDetail = async (
   db: D1Database,
+  identityDb: IdentityDb,
   row: ThreadFileRow,
   userId: string,
   readActiveTeamMembershipRole: ReadActiveTeamMembershipRole,
@@ -543,7 +559,7 @@ export const readThreadFileDetail = async (
     readActiveTeamMembershipRole,
   ),
   file: publicThreadFile(row),
-  references: await listThreadFileReferences(db, row.id),
+  references: await listThreadFileReferences(db, identityDb, row.id),
 })
 
 export type ThreadFileRepositoryShape = Readonly<{
@@ -582,23 +598,31 @@ export class ThreadFileRepository extends Context.Service<
 >()('@openagentsinc/ThreadFileRepository') {
   static layer = (
     db: D1Database,
+    identityDb: IdentityDb,
     options: Readonly<{ runtime?: ThreadFileRuntime }> = {},
   ) =>
-    Layer.succeed(ThreadFileRepository, makeD1ThreadFileRepository(db, options))
+    Layer.succeed(
+      ThreadFileRepository,
+      makeD1ThreadFileRepository(db, identityDb, options),
+    )
 
   static effectCfLayer = (
+    identityDb: IdentityDb,
     options: Readonly<{ runtime?: ThreadFileRuntime }> = {},
   ) =>
     Layer.effect(
       ThreadFileRepository,
       Effect.map(OpenAgentsDatabase, db =>
-        makeD1ThreadFileRepository(db, options),
+        makeD1ThreadFileRepository(db, identityDb, options),
       ),
     )
 }
 
 export const makeD1ThreadFileRepository = (
   db: D1Database,
+  // CFG-4 Domain 2 (#8519): Postgres identity handle for the reference
+  // author enrichment.
+  identityDb: IdentityDb,
   options: Readonly<{ runtime?: ThreadFileRuntime }> = {},
 ): ThreadFileRepositoryShape => ({
   insert: input =>
@@ -615,7 +639,7 @@ export const makeD1ThreadFileRepository = (
     ),
   listReferences: fileId =>
     repositoryEffect('thread_files.list_references', async () =>
-      listThreadFileReferences(db, fileId),
+      listThreadFileReferences(db, identityDb, fileId),
     ),
   listTeam: input =>
     repositoryEffect('thread_files.list_team', async () =>
@@ -629,6 +653,7 @@ export const makeD1ThreadFileRepository = (
     repositoryEffect('thread_files.read_detail', async () =>
       readThreadFileDetail(
         db,
+        identityDb,
         input.row,
         input.userId,
         input.readActiveTeamMembershipRole,

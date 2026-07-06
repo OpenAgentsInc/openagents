@@ -1,3 +1,4 @@
+import type { IdentityDb } from './identity-db'
 import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { badRequest, notFound } from '@openagentsinc/sync-worker'
 import { Effect } from 'effect'
@@ -965,6 +966,9 @@ const scopedGrantPageResponse = async <
 
 export const makeD1AgentScopedGrantStore = (
   db: D1Database,
+  // CFG-4 Domain 2 (#8519): Postgres identity handle — the `users` agent
+  // listing reads here; profiles/credentials stay D1.
+  identityDb: IdentityDb,
 ): AgentScopedGrantStore => ({
   createReceipt: async receipt => {
     await db
@@ -1027,62 +1031,127 @@ export const makeD1AgentScopedGrantStore = (
     }))
   },
   listAgents: async () => {
-    const rows = await db
-      .prepare(
-        `SELECT
-            users.id AS user_id,
-            users.display_name,
-            users.primary_email,
-            users.avatar_url,
-            users.created_at,
-            users.updated_at,
-            agent_profiles.slug,
-            agent_profiles.metadata_json,
-            agent_credentials.id AS credential_id,
-            agent_credentials.token_prefix,
-            agent_credentials.status AS credential_status,
-            agent_credentials.last_used_at,
-            agent_credentials.expires_at
+    // CFG-4 Domain 2 (#8519): the agent `users` page from Postgres, then
+    // one D1 IN-list read for profiles/credentials. The old LEFT JOIN
+    // multiplicity is preserved: a user with several credentials yields
+    // one entry per credential, a user with none yields one entry with
+    // null credential fields.
+    const userRows = await identityDb.query(
+      `SELECT id AS user_id,
+              display_name,
+              primary_email,
+              avatar_url,
+              created_at,
+              updated_at
          FROM users
-         LEFT JOIN agent_profiles ON agent_profiles.user_id = users.id
-         LEFT JOIN agent_credentials ON agent_credentials.user_id = users.id
-         WHERE users.kind = 'agent'
-           AND users.status = 'active'
-           AND users.deleted_at IS NULL
-         ORDER BY users.created_at DESC
-         LIMIT 200`,
-      )
-      .all<{
-        avatar_url: string | null
-        created_at: string
-        credential_id: string | null
-        credential_status: string | null
-        display_name: string
-        expires_at: string | null
-        last_used_at: string | null
-        metadata_json: string | null
-        primary_email: string | null
-        slug: string | null
-        token_prefix: string | null
-        updated_at: string
-        user_id: string
-      }>()
+        WHERE kind = 'agent'
+          AND status = 'active'
+          AND deleted_at IS NULL
+        ORDER BY created_at DESC
+        LIMIT 200`,
+    )
+    if (userRows.length === 0) return []
+    const userIds = userRows.map(row => String(row.user_id))
+    const placeholders = userIds.map(() => '?').join(', ')
+    const [profileRows, credentialRows] = await Promise.all([
+      db
+        .prepare(
+          `SELECT user_id, slug, metadata_json
+             FROM agent_profiles
+            WHERE user_id IN (${placeholders})`,
+        )
+        .bind(...userIds)
+        .all<{
+          metadata_json: string | null
+          slug: string | null
+          user_id: string
+        }>(),
+      db
+        .prepare(
+          `SELECT id AS credential_id, user_id, token_prefix,
+                  status AS credential_status, last_used_at, expires_at
+             FROM agent_credentials
+            WHERE user_id IN (${placeholders})`,
+        )
+        .bind(...userIds)
+        .all<{
+          credential_id: string
+          credential_status: string
+          expires_at: string | null
+          last_used_at: string | null
+          token_prefix: string | null
+          user_id: string
+        }>(),
+    ])
+    const profileByUserId = new Map(
+      (profileRows.results ?? []).map(row => [row.user_id, row]),
+    )
+    const credentialsByUserId = new Map<
+      string,
+      Array<(typeof credentialRows.results)[number]>
+    >()
+    for (const credential of credentialRows.results ?? []) {
+      const bucket = credentialsByUserId.get(credential.user_id)
+      if (bucket === undefined) {
+        credentialsByUserId.set(credential.user_id, [credential])
+      } else {
+        bucket.push(credential)
+      }
+    }
 
-    return rows.results.map(row => ({
-      avatarUrl: row.avatar_url,
-      createdAt: row.created_at,
-      credentialExpiresAt: row.expires_at,
-      credentialId: row.credential_id,
-      credentialLastUsedAt: row.last_used_at,
-      credentialStatus: row.credential_status,
-      displayName: row.display_name,
-      primaryEmail: row.primary_email,
-      profileMetadataJson: row.metadata_json ?? '{}',
-      slug: row.slug,
-      tokenPrefix: row.token_prefix,
-      updatedAt: row.updated_at,
-      userId: row.user_id,
-    }))
+    type AgentListEntry = Readonly<{
+      avatarUrl: string | null
+      createdAt: string
+      credentialExpiresAt: string | null
+      credentialId: string | null
+      credentialLastUsedAt: string | null
+      credentialStatus: string | null
+      displayName: string
+      primaryEmail: string | null
+      profileMetadataJson: string
+      slug: string | null
+      tokenPrefix: string | null
+      updatedAt: string
+      userId: string
+    }>
+    return userRows.flatMap((userRow): ReadonlyArray<AgentListEntry> => {
+      const userId = String(userRow.user_id)
+      const profile = profileByUserId.get(userId)
+      const base = {
+        avatarUrl:
+          userRow.avatar_url === null ? null : String(userRow.avatar_url),
+        createdAt: String(userRow.created_at),
+        displayName: String(userRow.display_name),
+        primaryEmail:
+          userRow.primary_email === null
+            ? null
+            : String(userRow.primary_email),
+        profileMetadataJson: profile?.metadata_json ?? '{}',
+        slug: profile?.slug ?? null,
+        updatedAt: String(userRow.updated_at),
+        userId,
+      }
+      const credentials = credentialsByUserId.get(userId) ?? []
+      return credentials.length === 0
+        ? [
+            {
+              ...base,
+              credentialExpiresAt: null,
+              credentialId: null,
+              credentialLastUsedAt: null,
+              credentialStatus: null,
+              tokenPrefix: null,
+            },
+          ]
+        : credentials.map(credential => ({
+            ...base,
+            credentialExpiresAt: credential.expires_at,
+            credentialId: credential.credential_id,
+            credentialLastUsedAt: credential.last_used_at,
+            credentialStatus: credential.credential_status,
+            tokenPrefix: credential.token_prefix,
+          }))
+    })
   },
   listReceiptsForOwner: async (ownerUserId, limit) => {
     const rows = await db
@@ -1099,7 +1168,7 @@ export const makeD1AgentScopedGrantStore = (
     return rows.results.map(rowToReceipt)
   },
   readAgent: async agentUserId => {
-    const agents = await makeD1AgentScopedGrantStore(db).listAgents()
+    const agents = await makeD1AgentScopedGrantStore(db, identityDb).listAgents()
 
     return agents.find(agent => agent.userId === agentUserId)
   },

@@ -207,6 +207,36 @@ class EmailInspectionStore {
   sendCount = 0
 }
 
+// CFG-4 Domain 2 (#8519): the customer `users` profile serves from the
+// Postgres identity handle — backed by the same fixture target.
+const inspectionIdentityDb = (store: EmailInspectionStore) => ({
+  batch: () => Promise.resolve(),
+  query: (sql: string, params: ReadonlyArray<unknown> = []) => {
+    const target = store.target
+    return Promise.resolve(
+      sql.includes('FROM users') &&
+        target !== null &&
+        target.target_user_id !== null &&
+        params.map(String).includes(target.target_user_id)
+        ? [
+            {
+              avatar_url: null,
+              created_at: '2026-06-01T00:00:00.000Z',
+              deleted_at: null,
+              display_name: target.display_name,
+              github_id: null,
+              github_username: null,
+              id: target.target_user_id,
+              kind: 'human',
+              primary_email: target.primary_email,
+              status: 'active',
+            },
+          ]
+        : [],
+    )
+  },
+})
+
 class EmailInspectionStatement implements D1PreparedStatement {
   private values: ReadonlyArray<unknown> = []
 
@@ -232,7 +262,21 @@ class EmailInspectionStatement implements D1PreparedStatement {
     }
 
     if (this.query.includes('FROM site_projects')) {
-      return Promise.resolve(this.store.target as T | null)
+      // CFG-4 Domain 2 (#8519): the D1 half no longer carries the users
+      // fields; it returns the order's user id and the identity handle
+      // (inspectionIdentityDb) serves the profile.
+      const target = this.store.target
+      if (target === null) return Promise.resolve(null)
+      const {
+        display_name: _displayName,
+        primary_email: _primaryEmail,
+        target_user_id,
+        ...rest
+      } = target
+      return Promise.resolve({
+        ...rest,
+        order_user_id: target_user_id,
+      } as T)
     }
 
     if (this.query.includes('FROM adjutant_assignments')) {
@@ -561,7 +605,10 @@ const runRoute = (
     requireBrowserSession: () => Promise.resolve(session ?? undefined),
   }).routeOperatorEmailInspectionRequest(
     request,
-    { OPENAGENTS_DB: db(store) },
+    {
+      IDENTITY_DB: inspectionIdentityDb(store),
+      OPENAGENTS_DB: db(store),
+    },
     executionContext(),
   )
 

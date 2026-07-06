@@ -1,6 +1,7 @@
 import type { BillingDomainTable } from '@openagentsinc/khala-sync-server'
 
 import type { AgentRunRecord, OmniEventRecord } from './omni-runs'
+import type { IdentityDb } from './identity-db'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 import { sourceRefForTokenUsageEvent, tokenUsageFromEvent } from './token-usage'
 
@@ -1245,6 +1246,9 @@ export const suspendBillingAccountIfOutOfCredits = async (
 
 export const reserveOutOfCreditsNotification = async (
   db: D1Database,
+  // CFG-4 Domain 2 (#8519): Postgres identity handle — the `users`
+  // contact read serves from it, never D1.
+  identityDb: IdentityDb,
   input: Readonly<{ balanceCents: number; userId: string }>,
   runtime: BillingRuntime = systemBillingRuntime,
 ): Promise<OutOfCreditsNotificationReservation> => {
@@ -1261,14 +1265,23 @@ export const reserveOutOfCreditsNotification = async (
     return { ok: false, reason: 'already_sent' }
   }
 
-  const contact = await db
-    .prepare(
-      `SELECT display_name, primary_email
+  const contactRows = await identityDb.query(
+    `SELECT display_name, primary_email
        FROM users
-       WHERE id = ?`,
-    )
-    .bind(input.userId)
-    .first<BillingContactRow>()
+      WHERE id = ?`,
+    [input.userId],
+  )
+  const contactRow = contactRows[0]
+  const contact: BillingContactRow | null =
+    contactRow === undefined
+      ? null
+      : {
+          display_name: String(contactRow.display_name),
+          primary_email:
+            contactRow.primary_email === null
+              ? null
+              : String(contactRow.primary_email),
+        }
   const email = contact?.primary_email?.trim()
 
   if (email === undefined || email === '') {

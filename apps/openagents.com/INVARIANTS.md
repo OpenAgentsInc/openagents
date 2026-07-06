@@ -1372,14 +1372,38 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/forum-routes.test.ts`, and
   `workers/api/src/forum/paid-actions.test.ts`.
 
-## Credits Domain Storage Authority (CFG-4 hard cutover, #8519)
+## CFG-4 Hard-Cut Storage Authority (#8519)
 
-- `pay_ins`, `pay_in_legs`, `agent_balances`, `labor_escrows`, and
-  `labor_escrow_receipts` are Cloud SQL Postgres-AUTHORITATIVE. There is no
-  D1 code path, no dual-write mirror, and no `KHALA_SYNC_*` read flag for
-  these five tables; the only store is `PaymentsLedgerDb`
-  (`workers/api/src/payments-ledger-db.ts`, wired from the `KHALA_SYNC_DB`
-  Hyperdrive binding).
+- TWO table sets are Cloud SQL Postgres-AUTHORITATIVE with the D1 code path
+  deleted:
+  - the CREDITS set — `pay_ins`, `pay_in_legs`, `agent_balances`,
+    `labor_escrows`, and `labor_escrow_receipts` — behind `PaymentsLedgerDb`
+    (`workers/api/src/payments-ledger-db.ts`);
+  - the IDENTITY CORE set — `users` and `auth_identities` — behind
+    `IdentityDb` (`workers/api/src/identity-db.ts`, structurally the same
+    executor).
+  There is no D1 code path, no dual-write mirror, and no `KHALA_SYNC_*`
+  read flag for any of these seven tables; both handles wire from the
+  `KHALA_SYNC_DB` Hyperdrive binding into the SAME khala_sync Postgres
+  database (a statement may JOIN `users` × `agent_balances`).
+- Identity core includes the auth-GATE reads: the agent bearer-token gate
+  (`agent-registration.ts` `findAgentByTokenHash`) and the session-subject
+  upserts (`index.ts` `upsertGitHubUser`/`upsertEmailUser`) serve from
+  Postgres on every request. This is the owner-approved supersession of the
+  earlier "identity reads stay D1 until the owner-gated last step" policy
+  for EXACTLY these two tables; the other fifteen identity/auth-domain
+  tables (openauth_agent_links, github_write_*, provider_account_*, and the
+  legacy openauth_storage D1 table) keep D1 authority and the
+  `identityAuthMirrorFromEnv` dual-write machinery, and the Worker mirror
+  surface is typed to exclude the hard-cut pair
+  (`IdentityAuthMirrorTable`).
+- Identity writes are FAIL-HARD like money writes: a Postgres outage fails
+  the registration/upsert/anonymization loudly — never a silent landing in
+  a store nobody reads.
+- `auth_identities` uniqueness (`provider`, `provider_subject`) is enforced
+  by Postgres (khala-sync migration `0042_identity_hard_cut.sql`), which
+  also carries the worker-0025 onboarding columns on the `users` twin —
+  onboarding state rides `users` and moved with it.
 - Every ledger batch executes as ONE Postgres transaction
   (`runLedgerStatements`). Atomic-abort semantics are constraint-carried:
   `CHECK (balance_msat >= 0)` aborts an over-debit, the pay-in UNIQUE
@@ -1397,11 +1421,16 @@ This is the invariant ledger for `openagents`.
   rows are split into one Postgres transaction plus one D1 batch; each such
   seam must keep an idempotency key that heals a crash between the two and
   an in-code comment naming the seam.
-- The D1 twins of these five tables are frozen legacy data pending the
-  KS-8.19 (#8330) drop; no new code may read or write them, and the
-  khala-sync-server converge/backfill sweeps must never copy them D1 →
-  Postgres after the cutover deploy (`backfill-billing.ts` excludes them
-  from its default sweep for exactly this reason).
+- The D1 twins of these seven tables (both the credits set and the
+  identity-core set) are frozen legacy data pending the KS-8.19 (#8330)
+  drop; no new code may read or write them, and the khala-sync-server
+  converge/backfill sweeps must never copy them D1 → Postgres after the
+  cutover deploy (`backfill-billing.ts` excludes the credits pay-in pair,
+  `backfill-identity-auth.ts` excludes `users`/`auth_identities` from
+  their default sweeps for exactly this reason).
+- Old D1 JOINs against `users`/`auth_identities` split into a D1 read plus
+  ONE identity IN-list enrichment (`readIdentityUserProfiles`) — never an
+  N+1 loop and never a quiet fallback to the stale D1 twin.
 - Regression coverage:
   `workers/api/src/payments-ledger-postgres.contract.test.ts`,
   `workers/api/src/payments-ledger.test.ts`, and the per-surface suites

@@ -105,6 +105,13 @@ export const IDENTITY_AUTH_DOMAIN_TABLES: ReadonlyArray<IdentityAuthDomainTable>
 export const IDENTITY_AUTH_DOMAIN_TABLE_SPECS: Readonly<
   Record<IdentityAuthDomainTable, IdentityAuthDomainTableSpec>
 > = {
+  // CFG-4 Domain 2 (#8519): `users` is Postgres-AUTHORITATIVE now. This
+  // spec exists ONLY for the explicit `--table users` pre-cutover catch-up
+  // backfill (the Worker mirror no longer targets it — see
+  // identity-auth-domain-store.ts). It carries the FULL worker column set,
+  // including the 0025 onboarding-state columns the 0042 migration added
+  // to the Postgres twin, so a catch-up sweep can never drop onboarding
+  // state.
   users: {
     columns: [
       "id",
@@ -116,6 +123,22 @@ export const IDENTITY_AUTH_DOMAIN_TABLE_SPECS: Readonly<
       "created_at",
       "updated_at",
       "deleted_at",
+      "onboarding_step",
+      "onboarding_completed_at",
+      "onboarding_repository_provider",
+      "onboarding_repository_id",
+      "onboarding_repository_owner",
+      "onboarding_repository_name",
+      "onboarding_repository_full_name",
+      "onboarding_repository_private",
+      "onboarding_repository_default_branch",
+      "onboarding_repository_html_url",
+      "onboarding_repository_description",
+      "onboarding_repository_selected_at",
+      "onboarding_repository_skipped_at",
+      "onboarding_billing_skipped_at",
+      "onboarding_goal",
+      "onboarding_updated_at",
     ],
     keyColumns: ["id"],
     orderColumn: "updated_at",

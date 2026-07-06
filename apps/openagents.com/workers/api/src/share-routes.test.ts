@@ -53,6 +53,31 @@ const messageRow = {
   team_id: 'team_openagents_core',
 }
 
+const shareIdentityDb = {
+  batch: () => Promise.resolve(),
+  query: (sql: string, params: ReadonlyArray<unknown> = []) =>
+    Promise.resolve(
+      sql.includes('FROM users') &&
+        params.map(String).includes('github:14167547')
+        ? [
+            {
+              avatar_url:
+                'https://avatars.githubusercontent.com/u/14167547?v=4',
+              created_at: '2026-06-01T00:00:00.000Z',
+              deleted_at: null,
+              display_name: 'Christopher David',
+              github_id: '14167547',
+              github_username: 'AtlantisPleb',
+              id: 'github:14167547',
+              kind: 'human',
+              primary_email: null,
+              status: 'active',
+            },
+          ]
+        : [],
+    ),
+}
+
 const targetUser = {
   displayName: 'Christopher David',
   email: 'chris@openagents.com',
@@ -270,7 +295,12 @@ const routeRequest = async (
       },
       method: 'POST',
     }),
-    { OPENAGENTS_DB: input.db } as never,
+    {
+      // CFG-4 Domain 2 (#8519): the team-chat author enrichment reads the
+      // Postgres identity handle — serve the fixture author here.
+      IDENTITY_DB: shareIdentityDb,
+      OPENAGENTS_DB: input.db,
+    } as never,
     {} as ExecutionContext,
   )
 

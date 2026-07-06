@@ -1,3 +1,4 @@
+import type { IdentityDb } from './identity-db'
 import { Effect, Schema as S } from 'effect'
 import { describe, expect, test } from 'vitest'
 
@@ -114,6 +115,35 @@ type AgentForumIdentityRow = Readonly<{
   openauth_user_id: string | null
   token_prefix: string
 }>
+
+// CFG-4 Domain 2 (#8519): the Postgres identity handle backing the
+// registered-Artanis `users` lookup — served from the same fixture row.
+const deliveryIdentityDb = (store: DeliveryStore): IdentityDb => ({
+  batch: () => Promise.resolve(),
+  query: (sql, params = []) => {
+    if (!sql.includes('FROM users')) {
+      return Promise.reject(
+        new Error(`unexpected identityDb query: ${sql.slice(0, 80)}`),
+      )
+    }
+    const registered = store.registeredArtanis
+    const ids = params.map(String)
+    return Promise.resolve(
+      registered !== null && ids.includes(registered.user_id)
+        ? [
+            {
+              avatar_url: registered.avatar_url,
+              created_at: registered.user_created_at,
+              display_name: registered.display_name,
+              id: registered.user_id,
+              primary_email: registered.primary_email,
+              updated_at: registered.user_updated_at,
+            },
+          ]
+        : [],
+    )
+  },
+})
 
 class DeliveryStore {
   readonly artanis = new ArtanisPersistenceTestStore()
@@ -264,10 +294,17 @@ class DeliveryStatement implements D1PreparedStatement {
       this.query.includes('agent_credentials')
     ) {
       const slug = String(this.values[0])
+      const registered = this.store.registeredArtanis
       const row =
-        this.store.registeredArtanis !== null &&
-        this.store.registeredArtanis.slug === slug
-          ? this.store.registeredArtanis
+        registered !== null && registered.slug === slug
+          ? {
+              credential_id: registered.credential_id,
+              metadata_json: registered.metadata_json,
+              openauth_user_id: registered.openauth_user_id,
+              slug: registered.slug,
+              token_prefix: registered.token_prefix,
+              user_id: registered.user_id,
+            }
           : null
 
       return Promise.resolve(row as T | null)
@@ -438,7 +475,7 @@ describe('Artanis Forum delivery', () => {
     await persistIntent(store, intentRecord())
 
     const result = await Effect.runPromise(
-      deliverReadyArtanisForumPublications(db, { runtime }),
+      deliverReadyArtanisForumPublications(db, deliveryIdentityDb(store), { runtime }),
     )
     const delivered = result.delivered[0]!
 
@@ -487,7 +524,7 @@ describe('Artanis Forum delivery', () => {
     await persistIntent(store, intentRecord())
 
     await expect(
-      Effect.runPromise(deliverReadyArtanisForumPublications(db, { runtime })),
+      Effect.runPromise(deliverReadyArtanisForumPublications(db, deliveryIdentityDb(store), { runtime })),
     ).rejects.toMatchObject({
       _tag: 'ArtanisForumDeliveryError',
       kind: 'identity_unavailable',
@@ -502,11 +539,11 @@ describe('Artanis Forum delivery', () => {
 
     await persistIntent(store, intent)
     await Effect.runPromise(
-      deliverArtanisForumPublicationIntent(db, intent, runtime),
+      deliverArtanisForumPublicationIntent(db, deliveryIdentityDb(store), intent, runtime),
     )
 
     const retry = await Effect.runPromise(
-      deliverArtanisForumPublicationIntent(db, intent, {
+      deliverArtanisForumPublicationIntent(db, deliveryIdentityDb(store), intent, {
         ...runtime,
         makeId: () => 'duplicate-post-id',
       }),
@@ -531,7 +568,7 @@ describe('Artanis Forum delivery', () => {
 
         await expect(
           Effect.runPromise(
-            deliverReadyArtanisForumPublications(db, { runtime }),
+            deliverReadyArtanisForumPublications(db, deliveryIdentityDb(store), { runtime }),
           ),
         ).rejects.toMatchObject({
           _tag: 'ArtanisForumDeliveryError',
@@ -552,7 +589,7 @@ describe('Artanis Forum delivery', () => {
 
     await expect(
       Effect.runPromise(
-        deliverArtanisForumPublicationIntent(db, unsafeIntent, runtime),
+        deliverArtanisForumPublicationIntent(db, deliveryIdentityDb(store), unsafeIntent, runtime),
       ),
     ).rejects.toMatchObject({
       _tag: 'ArtanisForumDeliveryError',
@@ -578,7 +615,7 @@ describe('Artanis Forum delivery', () => {
 
     await expect(
       Effect.runPromise(
-        deliverArtanisForumPublicationIntent(db, intent, runtime),
+        deliverArtanisForumPublicationIntent(db, deliveryIdentityDb(store), intent, runtime),
       ),
     ).rejects.toMatchObject({
       _tag: 'ArtanisForumDeliveryError',

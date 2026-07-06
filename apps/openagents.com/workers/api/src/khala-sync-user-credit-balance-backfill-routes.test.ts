@@ -97,31 +97,30 @@ const call = (request: Request, deps: UserCreditBalanceBackfillDeps, authorized 
 
 describe(`${KHALA_SYNC_USER_CREDIT_BALANCE_BACKFILL_PATH}`, () => {
   test('requires the admin bearer (401 otherwise)', async () => {
-    const { db, ledgerDb } = makeD1WithUsers(['user-a'])
-    const response = await call(new Request(url, { method: 'POST' }), { binding: undefined, db, ledgerDb }, false)
+    const { ledgerDb } = makeD1WithUsers(['user-a'])
+    const response = await call(new Request(url, { method: 'POST' }), { binding: undefined, ledgerDb }, false)
     expect(response.status).toBe(401)
   })
 
   test('rejects non-POST methods', async () => {
-    const { db, ledgerDb } = makeD1WithUsers(['user-a'])
-    const response = await call(new Request(url), { binding: undefined, db, ledgerDb })
+    const { ledgerDb } = makeD1WithUsers(['user-a'])
+    const response = await call(new Request(url), { binding: undefined, ledgerDb })
     expect(response.status).toBe(405)
   })
 
   test('honest 503 when the KHALA_SYNC_DB binding is absent', async () => {
-    const { db, ledgerDb } = makeD1WithUsers(['user-a'])
-    const response = await call(new Request(url, { method: 'POST' }), { binding: undefined, db, ledgerDb })
+    const { ledgerDb } = makeD1WithUsers(['user-a'])
+    const response = await call(new Request(url, { method: 'POST' }), { binding: undefined, ledgerDb })
     expect(response.status).toBe(503)
     const body = (await response.json()) as { reason: string }
     expect(body.reason).toBe('no_binding')
   })
 
   test('backfills a page of human users and returns a report', async () => {
-    const { db, ledgerDb } = makeD1WithUsers(['user-a', 'user-b'])
+    const { ledgerDb } = makeD1WithUsers(['user-a', 'user-b'])
     const sql = makeFakeSql()
     const response = await call(new Request(url, { body: '{}', method: 'POST' }), {
       binding: { connectionString: 'postgres://hyperdrive-fake' },
-      db,
       ledgerDb,
       makeSqlClient: async () => ({ end: async () => undefined, sql }),
     })
@@ -134,13 +133,12 @@ describe(`${KHALA_SYNC_USER_CREDIT_BALANCE_BACKFILL_PATH}`, () => {
   })
 
   test('honors an explicit limit/cursor for pagination', async () => {
-    const { db, ledgerDb } = makeD1WithUsers(['user-a', 'user-b', 'user-c'])
+    const { ledgerDb } = makeD1WithUsers(['user-a', 'user-b', 'user-c'])
     const sql = makeFakeSql()
     const response = await call(
       new Request(url, { body: JSON.stringify({ limit: 2 }), method: 'POST' }),
       {
         binding: { connectionString: 'postgres://hyperdrive-fake' },
-        db,
         ledgerDb,
         makeSqlClient: async () => ({ end: async () => undefined, sql }),
       },
@@ -151,10 +149,10 @@ describe(`${KHALA_SYNC_USER_CREDIT_BALANCE_BACKFILL_PATH}`, () => {
   })
 
   test('an invalid JSON body is a 400', async () => {
-    const { db, ledgerDb } = makeD1WithUsers(['user-a'])
+    const { ledgerDb } = makeD1WithUsers(['user-a'])
     const response = await call(
       new Request(url, { body: 'not json {{', method: 'POST' }),
-      { binding: { connectionString: 'postgres://hyperdrive-fake' }, db, ledgerDb },
+      { binding: { connectionString: 'postgres://hyperdrive-fake' }, ledgerDb },
     )
     expect(response.status).toBe(400)
   })

@@ -1,3 +1,4 @@
+import type { IdentityDb } from './identity-db'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -87,6 +88,13 @@ class MemoryAgentStore implements AgentRegistrationStore {
 
     return 1
   }
+}
+
+// CFG-4 Domain 2 (#8519): these tests always inject `agentStore`, so the
+// identity handle is never reached — a throwing stub keeps that honest.
+const stubIdentityDb: IdentityDb = {
+  batch: () => Promise.reject(new Error('identityDb.batch should not be used')),
+  query: () => Promise.reject(new Error('identityDb.query should not be used')),
 }
 
 describe('programmatic agent home', () => {
@@ -451,6 +459,7 @@ describe('programmatic agent home', () => {
         headers: { Authorization: `Bearer ${token}` },
       }),
       {} as D1Database,
+      stubIdentityDb,
       {
         agentStore: store,
         nowIso: () => '2026-06-05T00:03:00.000Z',
@@ -481,6 +490,7 @@ describe('programmatic agent home', () => {
       handleProgrammaticAgentHome(
         new Request('https://openagents.com/api/agents/home'),
         {} as D1Database,
+        stubIdentityDb,
       ),
     ).resolves.toMatchObject({ status: 401 })
   })
@@ -510,6 +520,7 @@ describe('programmatic agent self displayName update (#5333)', () => {
     const response = await handleProgrammaticAgentSelfUpdate(
       renameRequest({ displayName: '  Trigger Pylon#1  ' }),
       {} as D1Database,
+      stubIdentityDb,
       {
         agentStore: store,
         makeReceiptNonce: () => 'fixed-nonce',
@@ -547,6 +558,7 @@ describe('programmatic agent self displayName update (#5333)', () => {
         headers: { Authorization: `Bearer ${token}` },
       }),
       {} as D1Database,
+      stubIdentityDb,
       { agentStore: store, nowIso: () => '2026-06-18T00:01:00.000Z' },
     )
     const mePayload = (await meResponse.json()) as {
@@ -580,6 +592,7 @@ describe('programmatic agent self displayName update (#5333)', () => {
     const first = await handleProgrammaticAgentSelfUpdate(
       renameRequest({ displayName: 'Renamed Agent' }),
       {} as D1Database,
+      stubIdentityDb,
       { agentStore: store, nowIso: () => '2026-06-18T00:00:00.000Z' },
     )
     expect(first.status).toBe(200)
@@ -588,6 +601,7 @@ describe('programmatic agent self displayName update (#5333)', () => {
     const second = await handleProgrammaticAgentSelfUpdate(
       renameRequest({ displayName: 'Renamed Agent' }),
       {} as D1Database,
+      stubIdentityDb,
       { agentStore: store, nowIso: () => '2026-06-18T00:05:00.000Z' },
     )
     expect(second.status).toBe(200)
@@ -615,6 +629,7 @@ describe('programmatic agent self displayName update (#5333)', () => {
         method: 'PATCH',
       }),
       {} as D1Database,
+      stubIdentityDb,
       { agentStore: store },
     )
 
@@ -628,6 +643,7 @@ describe('programmatic agent self displayName update (#5333)', () => {
     const empty = await handleProgrammaticAgentSelfUpdate(
       renameRequest({ displayName: '   ' }),
       {} as D1Database,
+      stubIdentityDb,
       { agentStore: store },
     )
     expect(empty.status).toBe(400)
@@ -638,6 +654,7 @@ describe('programmatic agent self displayName update (#5333)', () => {
     const tooLong = await handleProgrammaticAgentSelfUpdate(
       renameRequest({ displayName: 'x'.repeat(121) }),
       {} as D1Database,
+      stubIdentityDb,
       { agentStore: store },
     )
     expect(tooLong.status).toBe(400)
@@ -655,6 +672,7 @@ describe('programmatic agent self displayName update (#5333)', () => {
         method: 'PATCH',
       }),
       {} as D1Database,
+      stubIdentityDb,
       { agentStore: store },
     )
 
@@ -675,6 +693,7 @@ describe('programmatic agent self displayName update (#5333)', () => {
     const response = await handleProgrammaticAgentSelfUpdate(
       renameRequest({ displayName: 'Renamed Agent' }),
       {} as D1Database,
+      stubIdentityDb,
       { agentStore: store, nowIso: () => '2026-06-18T00:00:00.000Z' },
     )
 
@@ -693,6 +712,7 @@ describe('programmatic agent self displayName update (#5333)', () => {
         method: 'PUT',
       }),
       {} as D1Database,
+      stubIdentityDb,
       { agentStore: store },
     )
 

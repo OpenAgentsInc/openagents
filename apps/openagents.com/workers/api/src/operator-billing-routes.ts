@@ -7,6 +7,7 @@ import {
 } from './billing-store'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { fundInferenceFromCredit } from './inference/usd-credit-bridge'
+import { identityDbForEnv, type IdentityDb } from './identity-db'
 import { paymentsLedgerDbForEnv, type PaymentsLedgerDb, type PaymentsLedgerEnv } from './payments-ledger-db'
 import {
   optionalInteger,
@@ -25,7 +26,7 @@ type OperatorBillingEnv = Readonly<{
 
 type OperatorBillingDependencies<RouteEnv extends OperatorBillingEnv> = Readonly<{
   readSelectedOperatorTargetUser: (
-    db: D1Database,
+    identityDb: IdentityDb,
     selector: Record<string, unknown>,
   ) => Promise<OperatorTargetUser | undefined>
   // Target resolver for the inference-credit grant. Kind-agnostic on a direct
@@ -34,13 +35,16 @@ type OperatorBillingDependencies<RouteEnv extends OperatorBillingEnv> = Readonly
   // `readSelectedOperatorTargetUser` when omitted (so existing callers/tests are
   // unchanged), but the Worker wires the agent-inclusive resolver.
   readSelectedInferenceCreditTargetUser?: (
-    db: D1Database,
+    identityDb: IdentityDb,
     selector: Record<string, unknown>,
   ) => Promise<OperatorTargetUser | undefined>
   requireAdminApiToken: (request: Request, env: RouteEnv) => Promise<boolean>
   /** CFG-4 (#8519): injectable credits-ledger accessor (tests). Default:
    * `paymentsLedgerDbForEnv` — the Postgres-only production path. */
   ledgerDb?: (env: RouteEnv) => PaymentsLedgerDb
+  /** CFG-4 Domain 2 (#8519): injectable identity accessor (tests). Default:
+   * `identityDbForEnv` — the Postgres-only `users`/`auth_identities` path. */
+  identityDb?: (env: RouteEnv) => IdentityDb
 }>
 
 export const makeOperatorBillingHandlers = <RouteEnv extends OperatorBillingEnv>(
@@ -60,7 +64,7 @@ export const makeOperatorBillingHandlers = <RouteEnv extends OperatorBillingEnv>
 
     const selector = await readRequestSelector(request)
     const targetUser = await dependencies.readSelectedOperatorTargetUser(
-      openAgentsDatabase(env),
+      (dependencies.identityDb ?? identityDbForEnv)(env),
       selector,
     )
 
@@ -138,7 +142,10 @@ export const makeOperatorBillingHandlers = <RouteEnv extends OperatorBillingEnv>
     const resolveTarget =
       dependencies.readSelectedInferenceCreditTargetUser ??
       dependencies.readSelectedOperatorTargetUser
-    const targetUser = await resolveTarget(db, selector)
+    const targetUser = await resolveTarget(
+      (dependencies.identityDb ?? identityDbForEnv)(env),
+      selector,
+    )
 
     if (targetUser === undefined) {
       return noStoreJsonResponse(

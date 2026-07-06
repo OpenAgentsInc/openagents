@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
+import type { IdentityDb } from './identity-db'
 import {
   readOperatorTargetByIdentity,
   readOperatorTargetByUserId,
@@ -11,80 +12,25 @@ type QueryBinding = Readonly<{
   values: ReadonlyArray<unknown>
 }>
 
-const d1Meta = (): D1Meta & Record<string, unknown> => ({
-  changed_db: false,
-  changes: 0,
-  duration: 0,
-  last_row_id: 0,
-  rows_read: 1,
-  rows_written: 0,
-  served_by: 'memory',
-  served_by_primary: true,
-  size_after: 0,
-  timings: { sql_duration_ms: 0 },
-})
-
 const jsonFixture = <T>(value: unknown): T => JSON.parse(JSON.stringify(value))
 
-const makeResult = <T>(results: Array<T> = []): D1Result<T> => ({
-  meta: d1Meta(),
-  results,
-  success: true,
-})
-
-const makeScriptedD1 = (row: unknown | null) => {
+// CFG-4 Domain 2 (#8519): operator target resolution reads the Postgres
+// identity handle now — the scripted store records each query + params the
+// same way the old scripted D1 recorded `.bind()` values.
+const makeScriptedIdentityDb = (row: unknown | null) => {
   const bindings: Array<QueryBinding> = []
-  const db: D1Database = {
-    batch: <T = unknown>(statements: Array<D1PreparedStatement>) =>
-      Promise.all(statements.map(statement => statement.run<T>())),
-    dump: () => Promise.resolve(new ArrayBuffer(0)),
-    exec: () => Promise.resolve({ count: 0, duration: 0 }),
-    prepare: (query: string) => {
-      let values: ReadonlyArray<unknown> = []
+  const identityDb: IdentityDb = {
+    batch: () => Promise.resolve(),
+    query: (query, params = []) => {
+      bindings.push({ query, values: params })
 
-      function raw<T = unknown[]>(options: {
-        columnNames: true
-      }): Promise<[Array<string>, ...Array<T>]>
-      function raw<T = unknown[]>(options?: {
-        columnNames?: false
-      }): Promise<Array<T>>
-      function raw<T = unknown[]>(options?: {
-        columnNames?: boolean
-      }): Promise<Array<T> | [Array<string>, ...Array<T>]> {
-        return options?.columnNames === true
-          ? Promise.resolve([[]])
-          : Promise.resolve([])
-      }
-
-      const statement: D1PreparedStatement = {
-        all: <T = Record<string, unknown>>() =>
-          Promise.resolve(makeResult<T>()),
-        bind: (...nextValues: ReadonlyArray<unknown>) => {
-          values = nextValues
-
-          return statement
-        },
-        first: <T = Record<string, unknown>>() => {
-          bindings.push({ query, values })
-
-          return Promise.resolve(row === null ? null : jsonFixture<T>(row))
-        },
-        raw,
-        run: <T = Record<string, unknown>>() =>
-          Promise.resolve(makeResult<T>()),
-      }
-
-      return statement
+      return Promise.resolve(
+        row === null ? [] : [jsonFixture<Record<string, unknown>>(row)],
+      )
     },
-    withSession: () => ({
-      batch: <T = unknown>(statements: Array<D1PreparedStatement>) =>
-        Promise.all(statements.map(statement => statement.run<T>())),
-      getBookmark: () => null,
-      prepare: query => db.prepare(query),
-    }),
   }
 
-  return { bindings, db }
+  return { bindings, identityDb }
 }
 
 const targetRow = {
@@ -96,10 +42,10 @@ const targetRow = {
 
 describe('operator target repository helpers', () => {
   test('reads targets by user id', async () => {
-    const { bindings, db } = makeScriptedD1(targetRow)
+    const { bindings, identityDb } = makeScriptedIdentityDb(targetRow)
 
     await expect(
-      readOperatorTargetByUserId(db, 'github:14167547'),
+      readOperatorTargetByUserId(identityDb, 'github:14167547'),
     ).resolves.toEqual({
       displayName: 'Christopher David',
       email: 'chris@openagents.com',
@@ -110,9 +56,9 @@ describe('operator target repository helpers', () => {
   })
 
   test('normalizes identity selectors', async () => {
-    const { bindings, db } = makeScriptedD1(targetRow)
+    const { bindings, identityDb } = makeScriptedIdentityDb(targetRow)
 
-    await readOperatorTargetByIdentity(db, '@AtlantisPleb')
+    await readOperatorTargetByIdentity(identityDb, '@AtlantisPleb')
 
     expect(bindings[0]?.values).toEqual([
       'atlantispleb',
@@ -122,10 +68,10 @@ describe('operator target repository helpers', () => {
   })
 
   test('falls back to the configured default identity', async () => {
-    const { bindings, db } = makeScriptedD1(null)
+    const { bindings, identityDb } = makeScriptedIdentityDb(null)
 
     await expect(
-      readOperatorTargetUser(db, {}, 'chris@openagents.com'),
+      readOperatorTargetUser(identityDb, {}, 'chris@openagents.com'),
     ).resolves.toBeUndefined()
     expect(bindings[0]?.values).toEqual([
       'chris@openagents.com',

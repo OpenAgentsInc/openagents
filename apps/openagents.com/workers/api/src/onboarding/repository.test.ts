@@ -1,3 +1,4 @@
+import type { IdentityDb } from '../identity-db'
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
@@ -202,6 +203,22 @@ const makeMemoryD1 = (row: UserRow): D1Database => {
   return db
 }
 
+// CFG-4 Domain 2 (#8519): onboarding state lives on the Postgres-
+// authoritative `users` table — the store runs on the identity handle,
+// backed here by the same scripted in-memory database.
+const identityDbOver = (db: D1Database): IdentityDb => ({
+  batch: () => Promise.resolve(),
+  query: async (sql, params = []) => {
+    const statement = db.prepare(sql).bind(...params)
+    if (sql.trimStart().toUpperCase().startsWith('SELECT')) {
+      const row = await statement.first<Record<string, unknown>>()
+      return row === null ? [] : [row]
+    }
+    await statement.run()
+    return []
+  },
+})
+
 const runWithStore = <A>(
   db: D1Database,
   runtime: OnboardingRuntime,
@@ -210,7 +227,11 @@ const runWithStore = <A>(
   Effect.runPromise(
     effect.pipe(
       Effect.provide(
-        OnboardingStateStore.layer({ OPENAGENTS_DB: db }, runtime),
+        OnboardingStateStore.layer(
+          { OPENAGENTS_DB: db },
+          runtime,
+          identityDbOver(db),
+        ),
       ),
     ),
   )

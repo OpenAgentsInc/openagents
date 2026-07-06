@@ -173,6 +173,7 @@ describe('Khala mobile account deletion route', () => {
         db: () => sqlite.db,
         // CFG-4 (#8519): the credits ledger handle shares the same underlying
         // SQLite database as the D1 shim in tests.
+        identityDb: () => paymentsLedgerDbFromD1(sqlite.db as never),
         ledgerDb: () => paymentsLedgerDbFromD1(sqlite.db as never),
         deleteKhalaSyncAccountData: async (binding: unknown, userId: string) => {
           syncCalls.push({ binding, userId })
@@ -295,7 +296,8 @@ describe('Khala mobile account deletion route', () => {
           {
             authStorage: () => kv,
             db: () => sqlite.db,
-            ledgerDb: () => paymentsLedgerDbFromD1(sqlite.db as never),
+            identityDb: () => paymentsLedgerDbFromD1(sqlite.db as never),
+        ledgerDb: () => paymentsLedgerDbFromD1(sqlite.db as never),
             khalaSyncBinding: () => undefined,
             makeSqlClient: async () => {
               throw new Error('must not connect without a binding')

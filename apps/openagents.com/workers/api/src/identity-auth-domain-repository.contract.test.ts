@@ -145,6 +145,25 @@ const userRow = (
   display_name: `User ${id}`,
   id,
   kind: 'human',
+  // CFG-4 Domain 2 (#8519): the registry's users spec carries the full
+  // worker column set including the 0025 onboarding columns (NOT NULL
+  // onboarding_step on both engines) — a D1 snapshot always has them.
+  onboarding_billing_skipped_at: null,
+  onboarding_completed_at: null,
+  onboarding_goal: null,
+  onboarding_repository_default_branch: null,
+  onboarding_repository_description: null,
+  onboarding_repository_full_name: null,
+  onboarding_repository_html_url: null,
+  onboarding_repository_id: null,
+  onboarding_repository_name: null,
+  onboarding_repository_owner: null,
+  onboarding_repository_private: null,
+  onboarding_repository_provider: null,
+  onboarding_repository_selected_at: null,
+  onboarding_repository_skipped_at: null,
+  onboarding_step: 'repository',
+  onboarding_updated_at: null,
   primary_email: `${id}@contract.test`,
   status: 'active',
   updated_at: T0,
@@ -257,6 +276,15 @@ const MIGRATION_0028 = path.resolve(
   '../../../../../packages/khala-sync-server/migrations/0028_identity_auth_domain.sql',
 )
 
+// CFG-4 Domain 2 (#8519): the identity hard cut widens the Postgres `users`
+// twin with the worker-0025 onboarding columns and adds the UNIQUE
+// (provider, provider_subject) arbiter — the registry's users spec now
+// carries those columns, so the contract schema needs both migrations.
+const MIGRATION_0042 = path.resolve(
+  __dirname,
+  '../../../../../packages/khala-sync-server/migrations/0042_identity_hard_cut.sql',
+)
+
 type PgClient = Readonly<{
   end: (options?: { timeout?: number }) => Promise<void>
   unsafe: (
@@ -284,6 +312,7 @@ describe.skipIf(!hasLocalPostgres())(
       })
       client = raw as unknown as PgClient
       await raw.unsafe(readFileSync(MIGRATION_0028, 'utf8'))
+      await raw.unsafe(readFileSync(MIGRATION_0042, 'utf8'))
       harness = {
         query: async sql => (client as PgClient).unsafe(sql),
         store: makePostgresIdentityAuthStore({
@@ -390,6 +419,7 @@ describe.skipIf(!hasLocalPostgres())(
       })
       client = raw as unknown as PgClient
       await raw.unsafe(readFileSync(MIGRATION_0028, 'utf8'))
+      await raw.unsafe(readFileSync(MIGRATION_0042, 'utf8'))
 
       sqlite = makeSqliteD1()
       sqlite.exec(IDENTITY_AUTH_DOMAIN_D1_SCHEMA)
@@ -614,6 +644,7 @@ describe.skipIf(!hasLocalPostgres())(
       })
       client = raw as unknown as PgClient
       await raw.unsafe(readFileSync(MIGRATION_0028, 'utf8'))
+      await raw.unsafe(readFileSync(MIGRATION_0042, 'utf8'))
 
       sqlite = makeSqliteD1()
       sqlite.exec(IDENTITY_AUTH_DOMAIN_D1_SCHEMA)

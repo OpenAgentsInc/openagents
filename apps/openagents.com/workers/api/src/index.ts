@@ -1037,6 +1037,7 @@ import { makePartnerPayoutLedgerRoutes } from './partner-payout-ledger-routes'
 import { handlePartnerPayoutsPublicApi } from './partner-payout-public-routes'
 import { makeD1PartnerPayoutReceiptStore } from './partner-payout-receipts'
 import { readAgentBalance } from './payments-ledger'
+import { identityDbForEnv, readIdentityUserProfiles, type IdentityDb } from './identity-db'
 import { paymentsLedgerDbForEnv } from './payments-ledger-db'
 import { makePrefilledWorkspaceService } from './prefilled-workspace'
 import { makePrefilledWorkspaceRoutes } from './prefilled-workspace-routes'
@@ -1059,11 +1060,9 @@ import { makeProviderAccountPylonHandlers } from './provider-account-pylon-route
 import { makeProviderAccountRoutes } from './provider-account-routes'
 import { makeProviderAccountServiceHandlers } from './provider-account-service-routes'
 import {
-  identityAuthMirrorFromEnv,
   makeGitHubWriteRepositoryForEnv,
   makeProviderAccountRepositoryForEnv,
   makeProviderAccountTokenCustodyStoreForEnv,
-  type IdentityAuthMirror,
 } from './identity-auth-domain-store'
 import {
   codexAccessToAuthMaterial,
@@ -2066,6 +2065,7 @@ const artanisComposerTipForEnv =
           forumContentDatabaseForEnv(environment),
           {
             agentStore: makeAgentRegistrationStoreForEnv(environment),
+            identityDb: identityDbForEnv(environment),
             ledgerDb: paymentsLedgerDbForEnv(environment),
             tipsBufferPay: tipsBufferPayFnForEnv(environment),
           },
@@ -2673,11 +2673,14 @@ const githubUserToSubject = (
   }
 }
 
+// CFG-4 Domain 2 (#8519): the session-subject upserts write the
+// Postgres-authoritative `users`/`auth_identities` directly — D1 and the
+// old fail-soft identity mirror are GONE for these two tables. One atomic
+// Postgres transaction per upsert; `ON CONFLICT(provider, provider_subject)`
+// rides the 0042 unique index.
 const upsertGitHubUser = async (
-  db: D1Database,
+  identityDb: IdentityDb,
   user: UserSubject,
-  // KS-8.18 follow-up (#8362): fail-soft identity/auth mirror handle.
-  mirror?: IdentityAuthMirror | undefined,
 ): Promise<void> => {
   if (user.githubId === undefined || user.login === undefined) {
     throw new AuthSignInError({
@@ -2689,10 +2692,9 @@ const upsertGitHubUser = async (
   const now = workerRuntime.nowIso()
   const authIdentityId = `auth_identity_github_${githubId}`
 
-  await db.batch([
-    db
-      .prepare(
-        `INSERT INTO users
+  await identityDb.batch([
+    {
+      sql: `INSERT INTO users
           (id, kind, display_name, primary_email, avatar_url, status, created_at, updated_at)
          VALUES (?, 'human', ?, ?, ?, 'active', ?, ?)
          ON CONFLICT(id) DO UPDATE SET
@@ -2702,11 +2704,10 @@ const upsertGitHubUser = async (
           status = 'active',
           updated_at = excluded.updated_at,
           deleted_at = NULL`,
-      )
-      .bind(user.userId, user.name, user.email, user.avatarUrl, now, now),
-    db
-      .prepare(
-        `INSERT INTO auth_identities
+      params: [user.userId, user.name, user.email, user.avatarUrl, now, now],
+    },
+    {
+      sql: `INSERT INTO auth_identities
           (id, user_id, provider, provider_subject, provider_username, email, created_at, updated_at)
          VALUES (?, ?, 'github', ?, ?, ?, ?, ?)
          ON CONFLICT(provider, provider_subject) DO UPDATE SET
@@ -2715,8 +2716,7 @@ const upsertGitHubUser = async (
           email = excluded.email,
           updated_at = excluded.updated_at,
           deleted_at = NULL`,
-      )
-      .bind(
+      params: [
         authIdentityId,
         user.userId,
         githubId,
@@ -2724,13 +2724,9 @@ const upsertGitHubUser = async (
         user.email,
         now,
         now,
-      ),
+      ],
+    },
   ])
-
-  if (mirror !== undefined) {
-    await mirror.mirrorRowsByKey('users', [[user.userId]])
-    await mirror.mirrorRowsByKey('auth_identities', [[authIdentityId]])
-  }
 }
 
 const normalizeEmail = (email: string): string => email.trim().toLowerCase()
@@ -2751,18 +2747,15 @@ const emailToSubject = (rawEmail: string): UserSubject => {
 }
 
 const upsertEmailUser = async (
-  db: D1Database,
+  identityDb: IdentityDb,
   user: UserSubject,
-  // KS-8.18 follow-up (#8362): fail-soft identity/auth mirror handle.
-  mirror?: IdentityAuthMirror | undefined,
 ): Promise<void> => {
   const now = workerRuntime.nowIso()
   const authIdentityId = `auth_identity_email_${user.email}`
 
-  await db.batch([
-    db
-      .prepare(
-        `INSERT INTO users
+  await identityDb.batch([
+    {
+      sql: `INSERT INTO users
           (id, kind, display_name, primary_email, avatar_url, status, created_at, updated_at)
          VALUES (?, 'human', ?, ?, ?, 'active', ?, ?)
          ON CONFLICT(id) DO UPDATE SET
@@ -2771,11 +2764,10 @@ const upsertEmailUser = async (
           status = 'active',
           updated_at = excluded.updated_at,
           deleted_at = NULL`,
-      )
-      .bind(user.userId, user.name, user.email, user.avatarUrl, now, now),
-    db
-      .prepare(
-        `INSERT INTO auth_identities
+      params: [user.userId, user.name, user.email, user.avatarUrl, now, now],
+    },
+    {
+      sql: `INSERT INTO auth_identities
           (id, user_id, provider, provider_subject, provider_username, email, created_at, updated_at)
          VALUES (?, ?, 'email', ?, ?, ?, ?, ?)
          ON CONFLICT(provider, provider_subject) DO UPDATE SET
@@ -2783,8 +2775,7 @@ const upsertEmailUser = async (
           email = excluded.email,
           updated_at = excluded.updated_at,
           deleted_at = NULL`,
-      )
-      .bind(
+      params: [
         authIdentityId,
         user.userId,
         user.email,
@@ -2792,26 +2783,20 @@ const upsertEmailUser = async (
         user.email,
         now,
         now,
-      ),
+      ],
+    },
   ])
-
-  if (mirror !== undefined) {
-    await mirror.mirrorRowsByKey('users', [[user.userId]])
-    await mirror.mirrorRowsByKey('auth_identities', [[authIdentityId]])
-  }
 }
 
 // Persist a session subject regardless of provider (session refresh paths can
 // carry either a GitHub or an email user).
 const upsertUser = async (
-  db: D1Database,
+  identityDb: IdentityDb,
   user: UserSubject,
-  // KS-8.18 follow-up (#8362): fail-soft identity/auth mirror handle.
-  mirror?: IdentityAuthMirror | undefined,
 ): Promise<void> =>
   user.provider === 'email'
-    ? upsertEmailUser(db, user, mirror)
-    : upsertGitHubUser(db, user, mirror)
+    ? upsertEmailUser(identityDb, user)
+    : upsertGitHubUser(identityDb, user)
 
 // Send the one-time sign-in code via Resend directly (auth email stays decoupled
 // from the CRM/marketing email-intent machinery). The auth OTP guard owns the
@@ -2988,18 +2973,20 @@ const maybeAuthEmailOtpGuardResponse = async (request: Request, env: OpenAgentsW
     : undefined
 }
 
-const readUserKindTotals = async (db: D1Database): Promise<UserKindTotals> => {
-  const rows = await db
-    .prepare(
-      `SELECT kind, COUNT(*) AS count
+const readUserKindTotals = async (
+  identityDb: IdentityDb,
+): Promise<UserKindTotals> => {
+  // CFG-4 Domain 2 (#8519): `users` totals come from Postgres now
+  // (COUNT(*) is bigint → string on the wire, hence Number()).
+  const rows = await identityDb.query(
+    `SELECT kind, COUNT(*) AS count
        FROM users
-       WHERE status = 'active'
-         AND deleted_at IS NULL
-       GROUP BY kind`,
-    )
-    .all<Readonly<{ kind: 'human' | 'agent'; count: number }>>()
+      WHERE status = 'active'
+        AND deleted_at IS NULL
+      GROUP BY kind`,
+  )
   const countFor = (kind: 'human' | 'agent') =>
-    rows.results.find(row => row.kind === kind)?.count ?? 0
+    Number(rows.find(row => row.kind === kind)?.count ?? 0)
   const humans = countFor('human')
   const agents = countFor('agent')
 
@@ -3586,6 +3573,7 @@ const appendTeamAutopilotAnswerBack = async (
 ): Promise<void> => {
   const parent = await readTeamChatMessageByAgentRunId(
     openAgentsDatabase(env),
+    identityDbForEnv(env),
     runId,
   )
 
@@ -3596,6 +3584,7 @@ const appendTeamAutopilotAnswerBack = async (
   const answerId = teamAutopilotAnswerBackId(runId)
   const existing = await readTeamChatMessageById(
     openAgentsDatabase(env),
+    identityDbForEnv(env),
     answerId,
   )
 
@@ -3611,6 +3600,7 @@ const appendTeamAutopilotAnswerBack = async (
 
   const updatedParent = await updateTeamChatMessageRunSummary(
     khalaCodeProductStateDatabaseForEnv(env),
+    identityDbForEnv(env),
     {
       messageId: parent.message.id,
       metadataJson: parent.metadataJson,
@@ -3639,7 +3629,7 @@ const appendTeamAutopilotAnswerBack = async (
   const selectedTeamFileIds = selectedFileIdsFromTeamMessageMetadata(
     parent.metadataJson,
   )
-  const message = await insertTeamChatMessage(khalaCodeProductStateDatabaseForEnv(env), {
+  const message = await insertTeamChatMessage(khalaCodeProductStateDatabaseForEnv(env), identityDbForEnv(env), {
     agentRunId: runId,
     authorUserId: parent.message.author.userId,
     body: draft.body,
@@ -3662,6 +3652,7 @@ const appendTeamAutopilotAnswerBack = async (
   }).catch(async error => {
     const replayed = await readTeamChatMessageById(
       openAgentsDatabase(env),
+      identityDbForEnv(env),
       answerId,
     )
 
@@ -3864,7 +3855,7 @@ const makeAuthIssuer = (env: OpenAgentsWorkerEnv) => {
           })
         }
         const subject = emailToSubject(claimedEmail)
-        await upsertEmailUser(openAgentsDatabase(env), subject)
+        await upsertEmailUser(identityDbForEnv(env), subject)
 
         return ctx.subject('user', subject, {
           subject: subject.userId,
@@ -3890,7 +3881,7 @@ const makeAuthIssuer = (env: OpenAgentsWorkerEnv) => {
       ])
 
       const subject = githubUserToSubject(user, getPrimaryVerifiedEmail(emails))
-      await upsertGitHubUser(openAgentsDatabase(env), subject)
+      await upsertGitHubUser(identityDbForEnv(env), subject)
       await authKvStoreForEnv(env).put(
         githubIdentityTokenKey(subject.userId),
         response.tokenset.access,
@@ -4058,7 +4049,7 @@ const scheduleSiteReferralOnboardingEmail = (
 
 const { appendRefreshedSessionCookies, requireBrowserSession } =
   makeBrowserSessionBoundary<UserSubject, Env>({
-    persistUser: (env, user) => upsertUser(openAgentsDatabase(env), user, identityAuthMirrorFromEnv(env)),
+    persistUser: (env, user) => upsertUser(identityDbForEnv(env), user),
     verifySession,
   })
 
@@ -4074,7 +4065,7 @@ const { requireUserBearerSession } =
       }
     },
     persistUser: (env, user) =>
-      upsertUser(openAgentsDatabase(env), user, identityAuthMirrorFromEnv(env)),
+      upsertUser(identityDbForEnv(env), user),
     verifyTokens: (accessToken, refreshToken, _request, env, ctx) =>
       verifyOpenAuthUserTokens(accessToken, refreshToken, env, ctx),
   })
@@ -4096,6 +4087,7 @@ const { requireUserBearerSession } =
 // its own.
 const adminCreditsRoutes = makeAdminCreditsRoutes<Env>({
   db: openAgentsDatabase,
+  identityDb: env => identityDbForEnv(env),
   ledgerDb: env => paymentsLedgerDbForEnv(env),
   recordCreditBalanceProjection: env => creditBalanceProjectionRecorderForEnv(env),
   requireAdminCaller: async (request, env, ctx) => {
@@ -4156,7 +4148,7 @@ const authenticateRequestActor = async (
     return undefined
   }
 
-  await upsertUser(openAgentsDatabase(env), session.user, identityAuthMirrorFromEnv(env))
+  await upsertUser(identityDbForEnv(env), session.user)
 
   if (session.tokens === undefined) {
     return {
@@ -4293,7 +4285,7 @@ const readAuthenticatedPageContext = async (
     onboarding: Awaited<ReturnType<typeof readOnboardingStatusForUser>>
   }>
 > => {
-  await upsertUser(openAgentsDatabase(env), session.user, identityAuthMirrorFromEnv(env))
+  await upsertUser(identityDbForEnv(env), session.user)
 
   const providerAccountRepository = makeProviderAccountRepositoryForEnv(env)
   const githubWriteRepository = makeGitHubWriteRepositoryForEnv(env)
@@ -4307,9 +4299,9 @@ const readAuthenticatedPageContext = async (
     onboarding,
   ] = await Promise.all([
     isOpenAgentsAdminEmail(session.user.email)
-      ? readUserKindTotals(openAgentsDatabase(env))
+      ? readUserKindTotals(identityDbForEnv(env))
       : Promise.resolve(undefined),
-    readTeamsForUser(openAgentsDatabase(env), session.user.userId),
+    readTeamsForUser(openAgentsDatabase(env), identityDbForEnv(env), session.user.userId),
     listProviderAccountsForUser(providerAccountRepository, session.user.userId),
     listGitHubWriteConnectionsForUser(
       githubWriteRepository,
@@ -5097,7 +5089,7 @@ const handleSessionApi = async (
     return response
   }
 
-  await upsertUser(openAgentsDatabase(env), session.user, identityAuthMirrorFromEnv(env))
+  await upsertUser(identityDbForEnv(env), session.user)
   const referralResult = await consumePendingReferralForUser(
     // KS-8.14 (#8325): consume-once attribution writes mirror fail-soft.
     businessDomainDatabaseForEnv(env),
@@ -5366,7 +5358,7 @@ const handleAuthTotalsApi = async (
   const response = noStoreJsonResponse({
     authenticated: true,
     actor: actorJson(actor),
-    totals: await readUserKindTotals(openAgentsDatabase(env)),
+    totals: await readUserKindTotals(identityDbForEnv(env)),
   })
 
   if (actor.kind === 'human' && actor.tokens !== undefined) {
@@ -5393,6 +5385,7 @@ const handleAuthTeamsApi = async (
 
   const teams = await readTeamsForUser(
     openAgentsDatabase(env),
+    identityDbForEnv(env),
     actor.kind === 'human' ? actor.user.userId : actor.agent.user.id,
   )
   const response = jsonResponse({
@@ -5559,6 +5552,7 @@ const postTeamChatMessageForUser = async (
             }),
             messages: await listTeamChatMessages(
               openAgentsDatabase(env),
+              identityDbForEnv(env),
               input.teamId,
               12,
               undefined,
@@ -5598,7 +5592,7 @@ const postTeamChatMessageForUser = async (
       ? await teamChatLaunchErrorFromResponse(missionLaunch.response)
       : undefined
 
-  const message = await insertTeamChatMessage(khalaCodeProductStateDatabaseForEnv(env), {
+  const message = await insertTeamChatMessage(khalaCodeProductStateDatabaseForEnv(env), identityDbForEnv(env), {
     ...(missionLaunch === undefined || missionLaunch.ok === false
       ? {}
       : {
@@ -5738,6 +5732,7 @@ const handleTeamChatMessagesApi = async (
     const response = noStoreJsonResponse({
       messages: await listTeamChatMessages(
         openAgentsDatabase(env),
+        identityDbForEnv(env),
         teamId,
         limit,
         kind,
@@ -5878,14 +5873,24 @@ const sendAutopilotDecisionRequiredEmailOnce = async (
     return
   }
 
-  const contact = await openAgentsDatabase(env)
-    .prepare(
-      `SELECT display_name, primary_email
+  // CFG-4 Domain 2 (#8519): `users` contact read serves from Postgres.
+  const contactRows = await identityDbForEnv(env).query(
+    `SELECT display_name, primary_email
        FROM users
-       WHERE id = ?`,
-    )
-    .bind(record.ownerUserId)
-    .first<Readonly<{ display_name: string; primary_email: string | null }>>()
+      WHERE id = ?`,
+    [record.ownerUserId],
+  )
+  const contactRow = contactRows[0]
+  const contact =
+    contactRow === undefined
+      ? null
+      : {
+          display_name: String(contactRow.display_name),
+          primary_email:
+            contactRow.primary_email === null
+              ? null
+              : String(contactRow.primary_email),
+        }
   const email = contact?.primary_email?.trim()
 
   if (email === undefined || email === '') {
@@ -5934,6 +5939,7 @@ const sendOutOfCreditsNotificationOnce = async (
 ): Promise<void> => {
   const reservation = await reserveOutOfCreditsNotification(
     openAgentsDatabase(env),
+    identityDbForEnv(env),
     input,
     billingRuntimeForEnv(env),
   )
@@ -6139,8 +6145,13 @@ const siteRevisionUrl = (
 
 const readPendingReviewReadyNotifications = async (
   db: D1Database,
-): Promise<ReadonlyArray<ReviewReadyNotificationRow>> =>
-  db
+  identityDb: IdentityDb,
+): Promise<ReadonlyArray<ReviewReadyNotificationRow>> => {
+  // CFG-4 Domain 2 (#8519): the old `LEFT JOIN users` is gone — the D1
+  // query returns the order's user id and a second Postgres read fills in
+  // the notification target (deleted users stay excluded, matching the old
+  // `users.deleted_at IS NULL` join condition).
+  const rows = await db
     .prepare(
       `SELECT site_projects.id AS site_id,
               site_projects.title AS site_title,
@@ -6148,9 +6159,7 @@ const readPendingReviewReadyNotifications = async (
               site_projects.active_deployment_id AS deployment_id,
               site_deployments.url AS site_url,
               software_orders.id AS order_id,
-              users.id AS target_user_id,
-              users.display_name,
-              users.primary_email,
+              software_orders.user_id AS order_user_id,
               adjutant_assignments.id AS assignment_id,
               adjutant_assignments.goal_id AS assignment_goal_id,
               adjutant_assignments.current_run_id AS assignment_current_run_id,
@@ -6165,9 +6174,6 @@ const readPendingReviewReadyNotifications = async (
          LEFT JOIN software_orders
            ON software_orders.id = site_projects.software_order_id
           AND software_orders.archived_at IS NULL
-         LEFT JOIN users
-           ON users.id = software_orders.user_id
-          AND users.deleted_at IS NULL
          LEFT JOIN adjutant_assignments
            ON adjutant_assignments.id = (
                 SELECT id
@@ -6193,8 +6199,30 @@ const readPendingReviewReadyNotifications = async (
         ORDER BY site_versions.created_at ASC
         LIMIT 10`,
     )
-    .all<ReviewReadyNotificationRow>()
+    .all<
+      Omit<ReviewReadyNotificationRow, 'target_user_id' | 'display_name' | 'primary_email'> &
+        Readonly<{ order_user_id: string | null }>
+    >()
     .then(result => result.results)
+
+  const profiles = await readIdentityUserProfiles(
+    identityDb,
+    rows.flatMap(row => (row.order_user_id === null ? [] : [row.order_user_id])),
+  )
+
+  return rows.map(({ order_user_id, ...row }) => {
+    const profile =
+      order_user_id === null ? undefined : profiles.get(order_user_id)
+    const liveProfile =
+      profile === undefined || profile.deletedAt !== null ? undefined : profile
+    return {
+      ...row,
+      display_name: liveProfile?.displayName ?? null,
+      primary_email: liveProfile?.primaryEmail ?? null,
+      target_user_id: liveProfile?.userId ?? null,
+    }
+  })
+}
 
 const sendReviewReadySiteNotification = async (
   env: Parameters<typeof getResendEmailConfig>[0],
@@ -6411,6 +6439,7 @@ const sendPendingReviewReadySiteNotifications = async (
 
   const pending = await readPendingReviewReadyNotifications(
     openAgentsDatabase(env),
+    identityDbForEnv(env),
   )
 
   await Promise.all(
@@ -6428,8 +6457,11 @@ const sendPendingReviewReadySiteNotifications = async (
 
 const readPendingReviewReadyArtifactNotifications = async (
   db: D1Database,
-): Promise<ReadonlyArray<ReviewReadyArtifactNotificationRow>> =>
-  db
+  identityDb: IdentityDb,
+): Promise<ReadonlyArray<ReviewReadyArtifactNotificationRow>> => {
+  // CFG-4 Domain 2 (#8519): users enrichment moved to a second Postgres
+  // read (same pattern as readPendingReviewReadyNotifications above).
+  const rows = await db
     .prepare(
       `SELECT order_fulfillment_artifacts.id AS artifact_id,
               order_fulfillment_artifacts.title AS artifact_title,
@@ -6437,9 +6469,7 @@ const readPendingReviewReadyArtifactNotifications = async (
               order_fulfillment_artifacts.kind AS kind,
               order_fulfillment_artifacts.repository_full_name AS repository_full_name,
               software_orders.id AS order_id,
-              users.id AS target_user_id,
-              users.display_name,
-              users.primary_email,
+              software_orders.user_id AS order_user_id,
               adjutant_assignments.id AS assignment_id,
               adjutant_assignments.goal_id AS assignment_goal_id,
               adjutant_assignments.current_run_id AS assignment_current_run_id,
@@ -6448,9 +6478,6 @@ const readPendingReviewReadyArtifactNotifications = async (
          JOIN software_orders
            ON software_orders.id = order_fulfillment_artifacts.software_order_id
           AND software_orders.archived_at IS NULL
-         LEFT JOIN users
-           ON users.id = software_orders.user_id
-          AND users.deleted_at IS NULL
          LEFT JOIN adjutant_assignments
            ON adjutant_assignments.id = (
                 SELECT id
@@ -6477,8 +6504,30 @@ const readPendingReviewReadyArtifactNotifications = async (
         ORDER BY order_fulfillment_artifacts.created_at ASC
         LIMIT 10`,
     )
-    .all<ReviewReadyArtifactNotificationRow>()
+    .all<
+      Omit<ReviewReadyArtifactNotificationRow, 'target_user_id' | 'display_name' | 'primary_email'> &
+        Readonly<{ order_user_id: string | null }>
+    >()
     .then(result => result.results)
+
+  const profiles = await readIdentityUserProfiles(
+    identityDb,
+    rows.flatMap(row => (row.order_user_id === null ? [] : [row.order_user_id])),
+  )
+
+  return rows.map(({ order_user_id, ...row }) => {
+    const profile =
+      order_user_id === null ? undefined : profiles.get(order_user_id)
+    const liveProfile =
+      profile === undefined || profile.deletedAt !== null ? undefined : profile
+    return {
+      ...row,
+      display_name: liveProfile?.displayName ?? null,
+      primary_email: liveProfile?.primaryEmail ?? null,
+      target_user_id: liveProfile?.userId ?? null,
+    }
+  })
+}
 
 const sendReviewReadyArtifactNotification = async (
   env: Parameters<typeof getResendEmailConfig>[0],
@@ -6668,6 +6717,7 @@ const sendPendingReviewReadyArtifactNotifications = async (
 
   const pending = await readPendingReviewReadyArtifactNotifications(
     openAgentsDatabase(env),
+    identityDbForEnv(env),
   )
 
   await Promise.all(
@@ -6764,7 +6814,7 @@ const makeBillingAwareOmniRunStore = (env: OpenAgentsWorkerEnv, ctx?: ExecutionC
   })
 
 const tokenUsageLeaderboardsLayer = (env: OpenAgentsWorkerEnv) =>
-  TokenUsageLeaderboards.effectCfLayer().pipe(
+  TokenUsageLeaderboards.effectCfLayer(identityDbForEnv(env)).pipe(
     Layer.provide(OpenAgentsDatabase.layer),
     Layer.provide(Layer.succeed(WorkerEnvironment, env)),
   )
@@ -6964,20 +7014,20 @@ const readTokenUsageLeaderboardsForUser = (
   )
 
 const readSelectedOperatorTargetUser = (
-  db: D1Database,
+  identityDb: IdentityDb,
   selector: Record<string, unknown>,
 ): Promise<OperatorTargetUser | undefined> =>
-  readOperatorTargetUser(db, selector, OPENAGENTS_ADMIN_EMAILS[0])
+  readOperatorTargetUser(identityDb, selector, OPENAGENTS_ADMIN_EMAILS[0])
 
 // Kind-agnostic target resolver for the inference-credit grant (human OR agent
 // account) — the bridge funds `agent:<userId>` for either, and an agent account
 // under test is a valid target.
 const readSelectedInferenceCreditTargetUser = (
-  db: D1Database,
+  identityDb: IdentityDb,
   selector: Record<string, unknown>,
 ): Promise<OperatorTargetUser | undefined> =>
   readSelectedInferenceCreditTargetUserBase(
-    db,
+    identityDb,
     selector,
     OPENAGENTS_ADMIN_EMAILS[0],
   )
@@ -7590,9 +7640,14 @@ const handleProgrammaticAgentMe = async (
     // KS-8.18 follow-up (#8362): route the self-serve rename write through
     // the identity-auth-mirrored store so `users.display_name` converges
     // to Postgres, not the raw unwrapped D1 factory.
-    return handleProgrammaticAgentSelfUpdate(request, openAgentsDatabase(env), {
-      agentStore: makeAgentRegistrationStoreForEnv(env),
-    })
+    return handleProgrammaticAgentSelfUpdate(
+      request,
+      openAgentsDatabase(env),
+      identityDbForEnv(env),
+      {
+        agentStore: makeAgentRegistrationStoreForEnv(env),
+      },
+    )
   }
 
   if (request.method !== 'GET') {
@@ -7738,6 +7793,7 @@ const agentSiteRoutes = makeAgentSiteRoutes({
   // KS-8.12 (#8323): agent site routes (builder sessions, site library,
   // saved versions) ride the sites dual-write mirror seam.
   dbForEnv: env => sitesContentDatabaseForEnv(env),
+  identityDbForEnv: env => identityDbForEnv(env),
   isAdminEmail: isOpenAgentsAdminEmail,
   requireBrowserSession,
 })
@@ -9227,7 +9283,7 @@ const agentScopedGrantRoutes = makeAgentScopedGrantRoutes({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   appOrigin: getAppOrigin,
   appendRefreshedSessionCookies,
-  makeStore: env => makeD1AgentScopedGrantStore(openAgentsDatabase(env)),
+  makeStore: env => makeD1AgentScopedGrantStore(openAgentsDatabase(env), identityDbForEnv(env)),
   requireBrowserSession,
 })
 
@@ -9799,6 +9855,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
           ),
         writer: makeArtanisForumUpdateWriter({
           db: forumContentDatabaseForEnv(env),
+          identityDb: identityDbForEnv(env),
         }),
       },
       dispatchExecution: makeArtanisDispatchExecution({
@@ -9901,11 +9958,16 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
 
     let linkedEmail: string | undefined
     if (linkedOpenAuthUserId !== null) {
-      const row = await openAgentsDatabase(env)
-        .prepare(`SELECT primary_email FROM users WHERE id = ?`)
-        .bind(linkedOpenAuthUserId)
-        .first<Readonly<{ primary_email: string | null }>>()
-      const email = row?.primary_email?.trim().toLowerCase()
+      // CFG-4 Domain 2 (#8519): `users` read serves from Postgres.
+      const rows = await identityDbForEnv(env).query(
+        `SELECT primary_email FROM users WHERE id = ?`,
+        [linkedOpenAuthUserId],
+      )
+      const primaryEmail = rows[0]?.primary_email
+      const email =
+        primaryEmail === null || primaryEmail === undefined
+          ? undefined
+          : String(primaryEmail).trim().toLowerCase()
       if (email !== undefined && email !== '') {
         linkedEmail = email
       }
@@ -12380,6 +12442,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
                 makeArtanisDatabaseForEnv(env, {
                   d1: forumContentDatabaseForEnv(env),
                 }),
+                identityDbForEnv(env),
                 intent,
               ),
             ),
@@ -12594,6 +12657,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         {
           authStorage: e => authKvStoreForEnv(e),
           db: openAgentsDatabase,
+          identityDb: identityDbForEnv,
           ledgerDb: paymentsLedgerDbForEnv,
           khalaSyncBinding: e => e.KHALA_SYNC_DB,
           openAuthStorage: e => makeOpenAuthStorageForEnv(e),
@@ -12816,7 +12880,6 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleKhalaSyncUserCreditBalanceBackfill(request, {
         backfillDeps: {
           binding: env.KHALA_SYNC_DB,
-          db: openAgentsDatabase(env),
           ledgerDb: paymentsLedgerDbForEnv(env),
           log: (event, fields) => logWorkerRouteWarning(event, fields),
         },
@@ -14058,7 +14121,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/agents/home',
     handler: (request, env) =>
       Effect.promise(() =>
-        handleProgrammaticAgentHome(request, openAgentsDatabase(env)),
+        handleProgrammaticAgentHome(
+          request,
+          openAgentsDatabase(env),
+          identityDbForEnv(env),
+        ),
       ),
   },
   {
@@ -15147,6 +15214,9 @@ const routeRequest = makeWorkerRouteRequest({
       // CFG-4 (#8519): the Postgres-only credits/escrow ledger for forum
       // tips + labor escrow paths (no D1 fallback).
       ledgerDb: paymentsLedgerDbForEnv(env),
+      // CFG-4 Domain 2 (#8519): the Postgres-only users/auth_identities
+      // authority for agent-profile paths (no D1 fallback).
+      identityDb: identityDbForEnv(env),
       // KS-8.8 (#8319): activates the fail-soft Postgres mirror on the forum
       // MONEY half; content paths stay on the forum content dual-write seam.
       treasuryDb: makeTreasuryDatabaseForEnv(env),

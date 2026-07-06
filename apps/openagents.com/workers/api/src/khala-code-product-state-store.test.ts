@@ -7,6 +7,7 @@ import {
   type KhalaCodeProductStateDiagnosticEvent,
   type KhalaCodeProductStateMirror,
 } from './khala-code-product-state-store'
+import { paymentsLedgerDbFromD1 } from './test/payments-ledger-sqlite'
 import { makeSqliteD1 } from './test/sqlite-d1'
 
 type LoggedDiagnostic = Readonly<{
@@ -30,13 +31,20 @@ const makeLogCapture = () => {
 const productStateSchema = `
 CREATE TABLE users (
   id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL DEFAULT 'human',
   display_name TEXT,
-  avatar_url TEXT
+  primary_email TEXT,
+  avatar_url TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL DEFAULT '2026-07-01T00:00:00.000Z',
+  updated_at TEXT NOT NULL DEFAULT '2026-07-01T00:00:00.000Z',
+  deleted_at TEXT
 );
 
 CREATE TABLE auth_identities (
   user_id TEXT NOT NULL,
   provider TEXT NOT NULL,
+  provider_subject TEXT,
   provider_username TEXT,
   deleted_at TEXT
 );
@@ -246,6 +254,9 @@ describe('makeKhalaCodeProductStateMirroringDatabase', () => {
       const { log } = makeLogCapture()
       const db = makeKhalaCodeProductStateMirroringDatabase({
         db: sqlite.db,
+        // CFG-4 Domain 2 (#8519): the identity handle shares the same
+        // SQLite database as the D1 shim.
+        identityDb: paymentsLedgerDbFromD1(sqlite.db as never),
         log,
         mirror,
       })
@@ -317,6 +328,9 @@ describe('makeKhalaCodeProductStateMirroringDatabase', () => {
       const { log } = makeLogCapture()
       const db = makeKhalaCodeProductStateMirroringDatabase({
         db: sqlite.db,
+        // CFG-4 Domain 2 (#8519): the identity handle shares the same
+        // SQLite database as the D1 shim.
+        identityDb: paymentsLedgerDbFromD1(sqlite.db as never),
         log,
         mirror,
       })
@@ -375,6 +389,9 @@ describe('makeKhalaCodeProductStateMirroringDatabase', () => {
       const { log } = makeLogCapture()
       const db = makeKhalaCodeProductStateMirroringDatabase({
         db: sqlite.db,
+        // CFG-4 Domain 2 (#8519): the identity handle shares the same
+        // SQLite database as the D1 shim.
+        identityDb: paymentsLedgerDbFromD1(sqlite.db as never),
         log,
         mirror,
       })
@@ -437,6 +454,9 @@ describe('makeKhalaCodeProductStateMirroringDatabase', () => {
       const { log } = makeLogCapture()
       const db = makeKhalaCodeProductStateMirroringDatabase({
         db: sqlite.db,
+        // CFG-4 Domain 2 (#8519): the identity handle shares the same
+        // SQLite database as the D1 shim.
+        identityDb: paymentsLedgerDbFromD1(sqlite.db as never),
         log,
         mirror,
       })
@@ -500,6 +520,9 @@ describe('makeKhalaCodeProductStateMirroringDatabase', () => {
       const { log } = makeLogCapture()
       const db = makeKhalaCodeProductStateMirroringDatabase({
         db: sqlite.db,
+        // CFG-4 Domain 2 (#8519): the identity handle shares the same
+        // SQLite database as the D1 shim.
+        identityDb: paymentsLedgerDbFromD1(sqlite.db as never),
         log,
         mirror,
       })
@@ -556,6 +579,9 @@ describe('makeKhalaCodeProductStateMirroringDatabase', () => {
       const { log } = makeLogCapture()
       const db = makeKhalaCodeProductStateMirroringDatabase({
         db: sqlite.db,
+        // CFG-4 Domain 2 (#8519): the identity handle shares the same
+        // SQLite database as the D1 shim.
+        identityDb: paymentsLedgerDbFromD1(sqlite.db as never),
         log,
         mirror,
       })

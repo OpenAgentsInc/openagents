@@ -39,6 +39,7 @@ import { agentRefForUser } from './inference/usd-credit-bridge'
 import { msatToUsdCentsRound } from './inference/usd-msat-conversion'
 import { methodNotAllowed, noStoreJsonResponse, unauthorized } from './http/responses'
 import { optionalInteger, optionalString, readJsonObject } from './json-boundary'
+import type { IdentityDb } from './identity-db'
 import { readAgentBalance } from './payments-ledger'
 import type { PaymentsLedgerDb } from './payments-ledger-db'
 
@@ -58,9 +59,12 @@ export type AdminCreditsRouteDependencies<Bindings> = Readonly<{
   db: (env: Bindings) => D1Database
   /** CFG-4 (#8519): the Postgres-authoritative credits ledger — every
    * `agent_balances`/`pay_ins` read on this surface goes through it. The D1
-   * handle above keeps the non-credits tables (users, auth_identities,
-   * admin_credit_grants, github_signup_credit_grants). */
+   * handle above keeps the grant-tracking tables (admin_credit_grants,
+   * github_signup_credit_grants). */
   ledgerDb: (env: Bindings) => PaymentsLedgerDb
+  /** CFG-4 Domain 2 (#8519): the Postgres-authoritative identity handle —
+   * every `users`/`auth_identities` listing/lookup read runs here. */
+  identityDb: (env: Bindings) => IdentityDb
   nowIso?: () => string
   requireAdminCaller: (
     request: Request,
@@ -96,52 +100,68 @@ type ResolvedUserRow = Readonly<{
   github_username: string | null
 }>
 
+const toResolvedUserRow = (
+  row: Readonly<Record<string, unknown>> | undefined,
+): ResolvedUserRow | null =>
+  row === undefined
+    ? null
+    : {
+        display_name: String(row.display_name),
+        github_username:
+          row.github_username === null || row.github_username === undefined
+            ? null
+            : String(row.github_username),
+        primary_email:
+          row.primary_email === null || row.primary_email === undefined
+            ? null
+            : String(row.primary_email),
+        user_id: String(row.user_id),
+      }
+
+// CFG-4 Domain 2 (#8519): target resolution reads the Postgres-authoritative
+// `users` × `auth_identities` (one database — the join survives the cut).
 export const resolveAdminCreditsTargetUser = async (
-  db: D1Database,
+  identityDb: IdentityDb,
   input: Readonly<{ userId?: string | undefined; githubLogin?: string | undefined }>,
 ): Promise<ResolvedUserRow | null> => {
   const userId = input.userId?.trim()
   if (userId !== undefined && userId.length > 0) {
-    const row = await db
-      .prepare(
-        `SELECT users.id AS user_id,
-                users.display_name,
-                users.primary_email,
-                (SELECT auth_identities.provider_username
-                   FROM auth_identities
-                  WHERE auth_identities.user_id = users.id
-                    AND auth_identities.provider = 'github'
-                    AND auth_identities.deleted_at IS NULL
-                  LIMIT 1) AS github_username
-           FROM users
-          WHERE users.id = ?
-            AND users.deleted_at IS NULL
-          LIMIT 1`,
-      )
-      .bind(userId)
-      .first<ResolvedUserRow>()
-    return row ?? null
+    const rows = await identityDb.query(
+      `SELECT users.id AS user_id,
+              users.display_name,
+              users.primary_email,
+              (SELECT auth_identities.provider_username
+                 FROM auth_identities
+                WHERE auth_identities.user_id = users.id
+                  AND auth_identities.provider = 'github'
+                  AND auth_identities.deleted_at IS NULL
+                LIMIT 1) AS github_username
+         FROM users
+        WHERE users.id = ?
+          AND users.deleted_at IS NULL
+        LIMIT 1`,
+      [userId],
+    )
+    return toResolvedUserRow(rows[0])
   }
 
   const githubLogin = input.githubLogin?.trim()
   if (githubLogin !== undefined && githubLogin.length > 0) {
-    const row = await db
-      .prepare(
-        `SELECT users.id AS user_id,
-                users.display_name,
-                users.primary_email,
-                auth_identities.provider_username AS github_username
-           FROM auth_identities
-           JOIN users ON users.id = auth_identities.user_id
-          WHERE auth_identities.provider = 'github'
-            AND auth_identities.provider_username = ?
-            AND auth_identities.deleted_at IS NULL
-            AND users.deleted_at IS NULL
-          LIMIT 1`,
-      )
-      .bind(githubLogin)
-      .first<ResolvedUserRow>()
-    return row ?? null
+    const rows = await identityDb.query(
+      `SELECT users.id AS user_id,
+              users.display_name,
+              users.primary_email,
+              auth_identities.provider_username AS github_username
+         FROM auth_identities
+         JOIN users ON users.id = auth_identities.user_id
+        WHERE auth_identities.provider = 'github'
+          AND auth_identities.provider_username = ?
+          AND auth_identities.deleted_at IS NULL
+          AND users.deleted_at IS NULL
+        LIMIT 1`,
+      [githubLogin],
+    )
+    return toResolvedUserRow(rows[0])
   }
 
   return null
@@ -156,16 +176,6 @@ const targetUserNotFound = (): HttpResponse =>
 // ----------------------------------------------------------------------------
 // GET /api/admin/credits/users — recent signups + grant status
 // ----------------------------------------------------------------------------
-
-type RecentSignupRow = Readonly<{
-  user_id: string
-  display_name: string
-  primary_email: string | null
-  github_username: string | null
-  created_at: string
-  has_signup_credit_grant: number
-  has_admin_credit_grant: number
-}>
 
 /** CFG-4 (#8519): batch-read the credits balances for one page of users from
  * the Postgres ledger (`agent:<userId>` actor-ref convention,
@@ -200,35 +210,16 @@ const routeListUsers = async <Bindings>(
 
   const like = query === undefined || query.length === 0 ? null : `%${query}%`
 
-  // CFG-4 (#8519): the old `LEFT JOIN agent_balances` is gone — the credits
-  // table lives in Postgres now, so this D1 query lists the user page and a
-  // second ledger read (below) fills in the balances for exactly that page.
-  const result = await db
-    .prepare(
-      `SELECT users.id AS user_id,
-              users.display_name,
-              users.primary_email,
-              (SELECT auth_identities.provider_username
-                 FROM auth_identities
-                WHERE auth_identities.user_id = users.id
-                  AND auth_identities.provider = 'github'
-                  AND auth_identities.deleted_at IS NULL
-                LIMIT 1) AS github_username,
-              users.created_at,
-              EXISTS (
-                SELECT 1 FROM github_signup_credit_grants
-                 WHERE github_signup_credit_grants.user_id = users.id
-              ) AS has_signup_credit_grant,
-              EXISTS (
-                SELECT 1 FROM admin_credit_grants
-                 WHERE admin_credit_grants.user_id = users.id
-              ) AS has_admin_credit_grant
-         FROM users
-        WHERE users.kind = 'human'
-          AND users.deleted_at IS NULL
-          AND (
-            ? IS NULL
-            OR users.id LIKE ?
+  // CFG-4 Domain 2 (#8519): the user page (`users` × `auth_identities`)
+  // reads from Postgres now; the grant-status EXISTS checks stay on the D1
+  // grant-tracking tables and run as one IN-list read for exactly that
+  // page. The LIKE filter is an SQL variant, not a `? IS NULL` parameter
+  // (not Postgres-typable).
+  const likeClause =
+    like === null
+      ? ''
+      : `AND (
+            users.id LIKE ?
             OR users.display_name LIKE ?
             OR (SELECT auth_identities.provider_username
                   FROM auth_identities
@@ -236,32 +227,72 @@ const routeListUsers = async <Bindings>(
                    AND auth_identities.provider = 'github'
                    AND auth_identities.deleted_at IS NULL
                  LIMIT 1) LIKE ?
-          )
-        ORDER BY users.created_at DESC
-        LIMIT ?`,
-    )
-    .bind(like, like, like, like, limit)
-    .all<RecentSignupRow>()
-
-  const balancesByActorRef = await readBalancesMsatByActorRef(
-    dependencies.ledgerDb(env),
-    result.results.map(row => agentRefForUser(row.user_id)),
+          )`
+  const pageRows = await dependencies.identityDb(env).query(
+    `SELECT users.id AS user_id,
+            users.display_name,
+            users.primary_email,
+            (SELECT auth_identities.provider_username
+               FROM auth_identities
+              WHERE auth_identities.user_id = users.id
+                AND auth_identities.provider = 'github'
+                AND auth_identities.deleted_at IS NULL
+              LIMIT 1) AS github_username,
+            users.created_at
+       FROM users
+      WHERE users.kind = 'human'
+        AND users.deleted_at IS NULL
+        ${likeClause}
+      ORDER BY users.created_at DESC
+      LIMIT ?`,
+    like === null ? [limit] : [like, like, like, limit],
   )
+
+  const userIds = pageRows.map(row => String(row.user_id))
+  const grantUserIds = async (table: string): Promise<ReadonlySet<string>> => {
+    if (userIds.length === 0) return new Set()
+    const placeholders = userIds.map(() => '?').join(', ')
+    const result = await db
+      .prepare(
+        `SELECT DISTINCT user_id FROM ${table} WHERE user_id IN (${placeholders})`,
+      )
+      .bind(...userIds)
+      .all<Readonly<{ user_id: string }>>()
+    return new Set((result.results ?? []).map(row => row.user_id))
+  }
+  const [signupGrantUsers, adminGrantUsers, balancesByActorRef] =
+    await Promise.all([
+      grantUserIds('github_signup_credit_grants'),
+      grantUserIds('admin_credit_grants'),
+      readBalancesMsatByActorRef(
+        dependencies.ledgerDb(env),
+        userIds.map(userId => agentRefForUser(userId)),
+      ),
+    ])
 
   return noStoreJsonResponse({
     ok: true,
-    users: result.results.map(row => ({
-      balanceUsdCents: msatToUsdCentsRound(
-        balancesByActorRef.get(agentRefForUser(row.user_id)) ?? 0,
-      ),
-      createdAt: row.created_at,
-      displayName: row.display_name,
-      githubLogin: row.github_username,
-      hasAdminCreditGrant: Number(row.has_admin_credit_grant) === 1,
-      hasSignupCreditGrant: Number(row.has_signup_credit_grant) === 1,
-      primaryEmail: row.primary_email,
-      userId: row.user_id,
-    })),
+    users: pageRows.map(row => {
+      const userId = String(row.user_id)
+      return {
+        balanceUsdCents: msatToUsdCentsRound(
+          balancesByActorRef.get(agentRefForUser(userId)) ?? 0,
+        ),
+        createdAt: String(row.created_at),
+        displayName: String(row.display_name),
+        githubLogin:
+          row.github_username === null || row.github_username === undefined
+            ? null
+            : String(row.github_username),
+        hasAdminCreditGrant: adminGrantUsers.has(userId),
+        hasSignupCreditGrant: signupGrantUsers.has(userId),
+        primaryEmail:
+          row.primary_email === null || row.primary_email === undefined
+            ? null
+            : String(row.primary_email),
+        userId,
+      }
+    }),
   })
 }
 
@@ -276,8 +307,7 @@ const routeBalance = async <Bindings>(
 ): Promise<HttpResponse> => {
   if (request.method !== 'GET') return methodNotAllowed(['GET'])
   const url = new URL(request.url)
-  const db = dependencies.db(env)
-  const target = await resolveAdminCreditsTargetUser(db, {
+  const target = await resolveAdminCreditsTargetUser(dependencies.identityDb(env), {
     githubLogin: url.searchParams.get('githubLogin') ?? undefined,
     userId: url.searchParams.get('userId') ?? undefined,
   })
@@ -320,7 +350,7 @@ const routeHistory = async <Bindings>(
   if (request.method !== 'GET') return methodNotAllowed(['GET'])
   const url = new URL(request.url)
   const db = dependencies.db(env)
-  const target = await resolveAdminCreditsTargetUser(db, {
+  const target = await resolveAdminCreditsTargetUser(dependencies.identityDb(env), {
     githubLogin: url.searchParams.get('githubLogin') ?? undefined,
     userId: url.searchParams.get('userId') ?? undefined,
   })
@@ -432,7 +462,7 @@ const routeGrant = async <Bindings>(
   }
 
   const db = dependencies.db(env)
-  const target = await resolveAdminCreditsTargetUser(db, {
+  const target = await resolveAdminCreditsTargetUser(dependencies.identityDb(env), {
     githubLogin: optionalString(body.githubLogin),
     userId: optionalString(body.userId),
   })
@@ -524,8 +554,7 @@ const routeClawback = async <Bindings>(
     return noStoreJsonResponse({ error: 'invalid_request' }, { status: 400 })
   }
 
-  const db = dependencies.db(env)
-  const target = await resolveAdminCreditsTargetUser(db, {
+  const target = await resolveAdminCreditsTargetUser(dependencies.identityDb(env), {
     githubLogin: optionalString(body.githubLogin),
     userId: optionalString(body.userId),
   })

@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions */
+import { paymentsLedgerDbFromD1 } from '../test/payments-ledger-sqlite'
 import { generatePKCE } from '@openauthjs/openauth/pkce'
 import { describe, expect, test } from 'vitest'
 
@@ -87,6 +88,10 @@ const makeEnv = () => {
     env: {
       ...workerConfig,
       AUTH_KV: kv,
+      // CFG-4 Domain 2 (#8519): `users`/`auth_identities` are Postgres-
+      // authoritative; the worker's identity handle is backed by the same
+      // SQLite database in this test (same override pattern as AUTH_KV).
+      IDENTITY_DB: paymentsLedgerDbFromD1(sqlite.db as never),
       OPENAGENTS_DB: sqlite.db,
     } as never,
     storage: makeKvOpenAuthStorage(kv),

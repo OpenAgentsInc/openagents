@@ -2,11 +2,10 @@ import { Effect, Layer, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
 import {
-  identityAuthMirrorFromEnv,
-  type IdentityAuthMirror,
-  type IdentityAuthStoreEnv,
-} from '../identity-auth-domain-store'
-import { openAgentsDatabase } from '../runtime'
+  identityDbForEnv,
+  type IdentityDb,
+  type IdentityDbEnv,
+} from '../identity-db'
 import { currentIsoTimestamp } from '../runtime-primitives'
 import {
   type OnboardingBillingState,
@@ -16,7 +15,13 @@ import {
   type OnboardingStep,
 } from './schema'
 
-type OnboardingEnv = IdentityAuthStoreEnv &
+// CFG-4 Domain 2 (#8519): onboarding state lives on the `users` table,
+// which is Postgres-AUTHORITATIVE now — every read/UPDATE in this module
+// runs on the identity handle. The old D1 path and its fail-soft
+// `identityAuthMirrorFromEnv` row mirror are DELETED (khala-sync migration
+// `0042_identity_hard_cut.sql` widens the Postgres `users` twin with the
+// worker-0025 onboarding columns).
+type OnboardingEnv = IdentityDbEnv &
   Readonly<{
     OPENAGENTS_DB: D1Database
   }>
@@ -78,7 +83,7 @@ export const OnboardingRepositoryError = S.Union([
 ])
 export type OnboardingRepositoryError = typeof OnboardingRepositoryError.Type
 
-const d1Effect = <A>(
+const storeEffect = <A>(
   operation: string,
   run: () => Promise<A>,
 ): Effect.Effect<A, OnboardingStorageError> =>
@@ -169,82 +174,104 @@ const statusFromRow = (row: OnboardingUserRow): OnboardingStatus => {
   }
 }
 
+const text = (value: unknown): string | null =>
+  value === null || value === undefined ? null : String(value)
+
+/** Postgres bigint columns arrive as strings; keep the 0/1 flag numeric. */
+const flag = (value: unknown): number | null =>
+  value === null || value === undefined ? null : Number(value)
+
+const toOnboardingUserRow = (
+  row: Readonly<Record<string, unknown>>,
+): OnboardingUserRow => ({
+  onboarding_billing_skipped_at: text(row.onboarding_billing_skipped_at),
+  onboarding_completed_at: text(row.onboarding_completed_at),
+  onboarding_goal: text(row.onboarding_goal),
+  onboarding_repository_default_branch: text(
+    row.onboarding_repository_default_branch,
+  ),
+  onboarding_repository_description: text(
+    row.onboarding_repository_description,
+  ),
+  onboarding_repository_full_name: text(row.onboarding_repository_full_name),
+  onboarding_repository_html_url: text(row.onboarding_repository_html_url),
+  onboarding_repository_id: text(row.onboarding_repository_id),
+  onboarding_repository_name: text(row.onboarding_repository_name),
+  onboarding_repository_owner: text(row.onboarding_repository_owner),
+  onboarding_repository_private: flag(row.onboarding_repository_private),
+  onboarding_repository_provider:
+    row.onboarding_repository_provider === 'github' ? 'github' : null,
+  onboarding_repository_selected_at: text(
+    row.onboarding_repository_selected_at,
+  ),
+  onboarding_repository_skipped_at: text(row.onboarding_repository_skipped_at),
+  onboarding_step: String(row.onboarding_step) as OnboardingStep,
+  onboarding_updated_at: text(row.onboarding_updated_at),
+  updated_at: String(row.updated_at),
+})
+
 const readStatus = (
-  db: D1Database,
+  identityDb: IdentityDb,
   userId: string,
 ): Effect.Effect<
   OnboardingStatus,
   OnboardingStorageError | OnboardingUserNotFound
 > =>
   Effect.gen(function* () {
-    const row = yield* d1Effect('onboarding.readStatus', () =>
-      db
-        .prepare(
-          `SELECT updated_at,
-                  onboarding_step,
-                  onboarding_completed_at,
-                  onboarding_repository_provider,
-                  onboarding_repository_id,
-                  onboarding_repository_owner,
-                  onboarding_repository_name,
-                  onboarding_repository_full_name,
-                  onboarding_repository_private,
-                  onboarding_repository_default_branch,
-                  onboarding_repository_html_url,
-                  onboarding_repository_description,
-                  onboarding_repository_selected_at,
-                  onboarding_repository_skipped_at,
-                  onboarding_billing_skipped_at,
-                  onboarding_goal,
-                  onboarding_updated_at
+    const rows = yield* storeEffect('onboarding.readStatus', () =>
+      identityDb.query(
+        `SELECT updated_at,
+                onboarding_step,
+                onboarding_completed_at,
+                onboarding_repository_provider,
+                onboarding_repository_id,
+                onboarding_repository_owner,
+                onboarding_repository_name,
+                onboarding_repository_full_name,
+                onboarding_repository_private,
+                onboarding_repository_default_branch,
+                onboarding_repository_html_url,
+                onboarding_repository_description,
+                onboarding_repository_selected_at,
+                onboarding_repository_skipped_at,
+                onboarding_billing_skipped_at,
+                onboarding_goal,
+                onboarding_updated_at
            FROM users
-           WHERE id = ?
-             AND kind = 'human'
-             AND deleted_at IS NULL
-           LIMIT 1`,
-        )
-        .bind(userId)
-        .first<OnboardingUserRow>(),
+          WHERE id = ?
+            AND kind = 'human'
+            AND deleted_at IS NULL
+          LIMIT 1`,
+        [userId],
+      ),
     )
+    const row = rows[0]
 
-    if (row === null) {
+    if (row === undefined) {
       return yield* new OnboardingUserNotFound({ userId })
     }
 
-    return statusFromRow(row)
+    return statusFromRow(toOnboardingUserRow(row))
   })
 
-// KS-8.18 follow-up (#8362): every write below is a `users` row UPDATE.
-// After the D1 write completes, fail-soft mirror the row by `id` (never
-// blocks or fails onboarding on a mirror error).
-const mirrorUserRow = (
-  mirror: IdentityAuthMirror | undefined,
-  userId: string,
-): Effect.Effect<void> =>
-  mirror === undefined
-    ? Effect.void
-    : Effect.promise(() => mirror.mirrorRowsByKey('users', [[userId]]))
-
 const selectRepository = (
-  db: D1Database,
+  identityDb: IdentityDb,
   runtime: OnboardingRuntime,
   userId: string,
   repository: OnboardingGitHubRepository,
-  mirror?: IdentityAuthMirror | undefined,
 ): Effect.Effect<OnboardingStatus, OnboardingRepositoryError> =>
   Effect.gen(function* () {
-    const current = yield* readStatus(db, userId)
+    const current = yield* readStatus(identityDb, userId)
 
     if (current.step !== 'repository') {
-      return yield* updateRepository(db, runtime, userId, repository, mirror)
+      return yield* updateRepository(identityDb, runtime, userId, repository)
     }
 
     const now = runtime.nowIso()
 
-    yield* d1Effect('onboarding.selectRepository', () =>
-      db
-        .prepare(
-          `UPDATE users
+    yield* storeEffect('onboarding.selectRepository', () =>
+      identityDb.query(
+        `UPDATE users
            SET onboarding_step = 'goal',
                onboarding_repository_provider = 'github',
                onboarding_repository_id = ?,
@@ -259,11 +286,10 @@ const selectRepository = (
                onboarding_repository_skipped_at = NULL,
                onboarding_updated_at = ?,
                updated_at = ?
-           WHERE id = ?
-             AND kind = 'human'
-             AND deleted_at IS NULL`,
-        )
-        .bind(
+         WHERE id = ?
+           AND kind = 'human'
+           AND deleted_at IS NULL`,
+        [
           repository.id,
           repository.owner,
           repository.name,
@@ -276,30 +302,27 @@ const selectRepository = (
           now,
           now,
           userId,
-        )
-        .run(),
+        ],
+      ),
     )
-    yield* mirrorUserRow(mirror, userId)
 
-    return yield* readStatus(db, userId)
+    return yield* readStatus(identityDb, userId)
   })
 
 const updateRepository = (
-  db: D1Database,
+  identityDb: IdentityDb,
   runtime: OnboardingRuntime,
   userId: string,
   repository: OnboardingGitHubRepository,
-  mirror?: IdentityAuthMirror | undefined,
 ): Effect.Effect<OnboardingStatus, OnboardingRepositoryError> =>
   Effect.gen(function* () {
-    yield* readStatus(db, userId)
+    yield* readStatus(identityDb, userId)
 
     const now = runtime.nowIso()
 
-    yield* d1Effect('onboarding.updateRepository', () =>
-      db
-        .prepare(
-          `UPDATE users
+    yield* storeEffect('onboarding.updateRepository', () =>
+      identityDb.query(
+        `UPDATE users
            SET onboarding_repository_provider = 'github',
                onboarding_repository_id = ?,
                onboarding_repository_owner = ?,
@@ -313,11 +336,10 @@ const updateRepository = (
                onboarding_repository_skipped_at = NULL,
                onboarding_updated_at = ?,
                updated_at = ?
-           WHERE id = ?
-             AND kind = 'human'
-             AND deleted_at IS NULL`,
-        )
-        .bind(
+         WHERE id = ?
+           AND kind = 'human'
+           AND deleted_at IS NULL`,
+        [
           repository.id,
           repository.owner,
           repository.name,
@@ -330,22 +352,20 @@ const updateRepository = (
           now,
           now,
           userId,
-        )
-        .run(),
+        ],
+      ),
     )
-    yield* mirrorUserRow(mirror, userId)
 
-    return yield* readStatus(db, userId)
+    return yield* readStatus(identityDb, userId)
   })
 
 const skipRepository = (
-  db: D1Database,
+  identityDb: IdentityDb,
   runtime: OnboardingRuntime,
   userId: string,
-  mirror?: IdentityAuthMirror | undefined,
 ): Effect.Effect<OnboardingStatus, OnboardingRepositoryError> =>
   Effect.gen(function* () {
-    const current = yield* readStatus(db, userId)
+    const current = yield* readStatus(identityDb, userId)
 
     if (current.step !== 'repository') {
       return yield* new OnboardingInvalidStep({ step: current.step })
@@ -353,10 +373,9 @@ const skipRepository = (
 
     const now = runtime.nowIso()
 
-    yield* d1Effect('onboarding.skipRepository', () =>
-      db
-        .prepare(
-          `UPDATE users
+    yield* storeEffect('onboarding.skipRepository', () =>
+      identityDb.query(
+        `UPDATE users
            SET onboarding_step = 'goal',
                onboarding_repository_provider = NULL,
                onboarding_repository_id = NULL,
@@ -371,26 +390,23 @@ const skipRepository = (
                onboarding_repository_skipped_at = ?,
                onboarding_updated_at = ?,
                updated_at = ?
-           WHERE id = ?
-             AND kind = 'human'
-             AND deleted_at IS NULL`,
-        )
-        .bind(now, now, now, userId)
-        .run(),
+         WHERE id = ?
+           AND kind = 'human'
+           AND deleted_at IS NULL`,
+        [now, now, now, userId],
+      ),
     )
-    yield* mirrorUserRow(mirror, userId)
 
-    return yield* readStatus(db, userId)
+    return yield* readStatus(identityDb, userId)
   })
 
 const skipBilling = (
-  db: D1Database,
+  identityDb: IdentityDb,
   runtime: OnboardingRuntime,
   userId: string,
-  mirror?: IdentityAuthMirror | undefined,
 ): Effect.Effect<OnboardingStatus, OnboardingRepositoryError> =>
   Effect.gen(function* () {
-    const current = yield* readStatus(db, userId)
+    const current = yield* readStatus(identityDb, userId)
 
     if (current.step !== 'billing') {
       return yield* new OnboardingInvalidStep({ step: current.step })
@@ -398,36 +414,32 @@ const skipBilling = (
 
     const now = runtime.nowIso()
 
-    yield* d1Effect('onboarding.skipBilling', () =>
-      db
-        .prepare(
-          `UPDATE users
+    yield* storeEffect('onboarding.skipBilling', () =>
+      identityDb.query(
+        `UPDATE users
            SET onboarding_step = 'complete',
                onboarding_billing_skipped_at = ?,
                onboarding_completed_at = COALESCE(onboarding_completed_at, ?),
                onboarding_updated_at = ?,
                updated_at = ?
-           WHERE id = ?
-             AND kind = 'human'
-             AND deleted_at IS NULL`,
-        )
-        .bind(now, now, now, now, userId)
-        .run(),
+         WHERE id = ?
+           AND kind = 'human'
+           AND deleted_at IS NULL`,
+        [now, now, now, now, userId],
+      ),
     )
-    yield* mirrorUserRow(mirror, userId)
 
-    return yield* readStatus(db, userId)
+    return yield* readStatus(identityDb, userId)
   })
 
 const submitGoal = (
-  db: D1Database,
+  identityDb: IdentityDb,
   runtime: OnboardingRuntime,
   userId: string,
   goal: string,
-  mirror?: IdentityAuthMirror | undefined,
 ): Effect.Effect<OnboardingStatus, OnboardingRepositoryError> =>
   Effect.gen(function* () {
-    const current = yield* readStatus(db, userId)
+    const current = yield* readStatus(identityDb, userId)
 
     if (current.step !== 'goal') {
       return yield* new OnboardingInvalidStep({ step: current.step })
@@ -441,24 +453,21 @@ const submitGoal = (
 
     const now = runtime.nowIso()
 
-    yield* d1Effect('onboarding.submitGoal', () =>
-      db
-        .prepare(
-          `UPDATE users
+    yield* storeEffect('onboarding.submitGoal', () =>
+      identityDb.query(
+        `UPDATE users
            SET onboarding_step = 'billing',
                onboarding_goal = ?,
                onboarding_updated_at = ?,
                updated_at = ?
-           WHERE id = ?
-             AND kind = 'human'
-             AND deleted_at IS NULL`,
-        )
-        .bind(trimmedGoal, now, now, userId)
-        .run(),
+         WHERE id = ?
+           AND kind = 'human'
+           AND deleted_at IS NULL`,
+        [trimmedGoal, now, now, userId],
+      ),
     )
-    yield* mirrorUserRow(mirror, userId)
 
-    return yield* readStatus(db, userId)
+    return yield* readStatus(identityDb, userId)
   })
 
 export class OnboardingStateStore extends Context.Service<
@@ -493,41 +502,33 @@ export class OnboardingStateStore extends Context.Service<
   static readonly layer = (
     env: OnboardingEnv,
     runtime: OnboardingRuntime = systemOnboardingRuntime,
+    // CFG-4 Domain 2 (#8519): injectable identity handle for tests (the
+    // SQLite adapters in test/payments-ledger-sqlite.ts); production uses
+    // the KHALA_SYNC_DB Hyperdrive binding.
+    identityDbOverride?: IdentityDb | undefined,
   ) => {
-    const mirror = identityAuthMirrorFromEnv(env)
+    const identityDb = identityDbOverride ?? identityDbForEnv(env)
 
     return Layer.succeed(OnboardingStateStore, {
       readStatus: Effect.fn('OnboardingStateStore.readStatus')(userId =>
-        readStatus(openAgentsDatabase(env), userId),
+        readStatus(identityDb, userId),
       ),
       selectRepository: Effect.fn('OnboardingStateStore.selectRepository')(
         (userId, repository) =>
-          selectRepository(
-            openAgentsDatabase(env),
-            runtime,
-            userId,
-            repository,
-            mirror,
-          ),
+          selectRepository(identityDb, runtime, userId, repository),
       ),
       updateRepository: Effect.fn('OnboardingStateStore.updateRepository')(
         (userId, repository) =>
-          updateRepository(
-            openAgentsDatabase(env),
-            runtime,
-            userId,
-            repository,
-            mirror,
-          ),
+          updateRepository(identityDb, runtime, userId, repository),
       ),
       skipRepository: Effect.fn('OnboardingStateStore.skipRepository')(userId =>
-        skipRepository(openAgentsDatabase(env), runtime, userId, mirror),
+        skipRepository(identityDb, runtime, userId),
       ),
       skipBilling: Effect.fn('OnboardingStateStore.skipBilling')(userId =>
-        skipBilling(openAgentsDatabase(env), runtime, userId, mirror),
+        skipBilling(identityDb, runtime, userId),
       ),
       submitGoal: Effect.fn('OnboardingStateStore.submitGoal')((userId, goal) =>
-        submitGoal(openAgentsDatabase(env), runtime, userId, goal, mirror),
+        submitGoal(identityDb, runtime, userId, goal),
       ),
     })
   }

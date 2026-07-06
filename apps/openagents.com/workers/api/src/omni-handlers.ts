@@ -24,6 +24,7 @@ import {
 } from './agent-runtime-store'
 import { appendSessionCookies } from './auth-cookies'
 import { requireMinimumRunCredits } from './billing'
+import { identityDbForEnv, type IdentityDb } from './identity-db'
 import type {
   OpenAgentsWorkerConfigEnv,
   ResendEmailConfig,
@@ -240,7 +241,7 @@ type OmniHandlerDependencies = Readonly<{
     },
   ) => Promise<{ payload: Record<string, unknown>; status: number }>
   readSelectedOperatorTargetUser: (
-    db: D1Database,
+    identityDb: IdentityDb,
     selector: Record<string, unknown>,
   ) => Promise<OperatorTargetUser | undefined>
   readTokenUsageLeaderboardsForUser: (
@@ -1375,7 +1376,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
 
     const selector = await readRequestSelector(request)
     const targetUser = await dependencies.readSelectedOperatorTargetUser(
-      openAgentsDatabase(env),
+      identityDbForEnv(env),
       selector,
     )
 
@@ -1445,7 +1446,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
 
     const selector = await readRequestSelector(request)
     const targetUser = await dependencies.readSelectedOperatorTargetUser(
-      openAgentsDatabase(env),
+      identityDbForEnv(env),
       selector,
     )
 
@@ -1523,6 +1524,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
       return noStoreJsonResponse({
         messages: await listTeamChatMessages(
           openAgentsDatabase(env),
+          identityDbForEnv(env),
           teamId,
           limit,
           kind,
@@ -1562,7 +1564,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
 
     const selector = await readRequestSelector(request)
     const targetUser = await dependencies.readSelectedOperatorTargetUser(
-      openAgentsDatabase(env),
+      identityDbForEnv(env),
       selector,
     )
 
@@ -1871,7 +1873,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
 
     const selector = await readRequestSelector(request)
     const targetUser = await dependencies.readSelectedOperatorTargetUser(
-      openAgentsDatabase(env),
+      identityDbForEnv(env),
       selector,
     )
 
@@ -2956,6 +2958,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
               artifacts: artifactsBucketForEnv(env),
               emailConfig: dependencies.getResendEmailConfig(env),
               events: ingestResult.value.records,
+              identityDb: identityDbForEnv(env),
               runId,
               status: ingestResult.value.status,
             },
@@ -3092,7 +3095,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
 
     const selector = await readRequestSelector(request)
     const targetUser = await dependencies.readSelectedOperatorTargetUser(
-      openAgentsDatabase(env),
+      identityDbForEnv(env),
       selector,
     )
 

@@ -245,6 +245,11 @@ type ForumRouteDependencies = Readonly<{
    * call sites fail hard when it is absent.
    */
   ledgerDb?: import('./payments-ledger-db').PaymentsLedgerDb
+  /**
+   * CFG-4 Domain 2 (#8519): the Postgres-only `users`/`auth_identities`
+   * authority. REQUIRED for the agent-profile paths — no D1 fallback.
+   */
+  identityDb?: import('./identity-db').IdentityDb
   tipsBufferPay?: import('./tips-sweep').BufferPayFn | null
   // KS-8.9 (#8320): fire-safe Postgres dual-write mirror for the orange
   // check entitlement grant; absent => byte-identical D1-only behavior.
@@ -2441,6 +2446,20 @@ const ingestRelayNativeForumWorkRequestResponse = (
 // CFG-4 (#8519): labor-escrow/tips paths run on the Postgres-only credits
 // ledger. FAIL-HARD when the wiring did not provide it — never fall back to
 // D1 for these tables.
+// CFG-4 Domain 2 (#8519): agent-profile reads need the Postgres identity
+// authority. FAIL-HARD when the wiring did not provide it.
+const requireForumIdentityDb = (
+  dependencies: ForumRouteDependencies,
+): import('./identity-db').IdentityDb => {
+  const identityDb = dependencies.identityDb
+  if (identityDb === undefined) {
+    throw new PaymentsLedgerUnavailableError(
+      'forum agent-profile paths require the Postgres identity authority (CFG-4 Domain 2 #8519)',
+    )
+  }
+  return identityDb
+}
+
 const requireForumLedgerDb = (
   dependencies: ForumRouteDependencies,
 ): import('./payments-ledger-db').PaymentsLedgerDb => {
@@ -5221,7 +5240,7 @@ const agentProfileResponse = (
   profileRef: string,
   dependencies: ForumRouteDependencies = {},
 ) =>
-  readForumAgentPublicProfile(db, profileRef).pipe(
+  readForumAgentPublicProfile(db, requireForumIdentityDb(dependencies), profileRef).pipe(
     Effect.flatMap(profile =>
       profile === null
         ? Effect.succeed(notFound())
@@ -5276,7 +5295,7 @@ const agentProfilePageResponse = (
   profileRef: string,
   dependencies: ForumRouteDependencies = {},
 ) =>
-  readForumAgentPublicProfile(db, profileRef).pipe(
+  readForumAgentPublicProfile(db, requireForumIdentityDb(dependencies), profileRef).pipe(
     Effect.flatMap(profile =>
       profile === null
         ? Effect.succeed(notFound())
@@ -5302,8 +5321,12 @@ const agentProfilePageResponse = (
     Effect.catch(error => Effect.succeed(writeFailureResponse(error))),
   )
 
-const agentProfileRedirectResponse = (db: D1Database, profileRef: string) =>
-  readForumAgentPublicProfile(db, profileRef).pipe(
+const agentProfileRedirectResponse = (
+  db: D1Database,
+  profileRef: string,
+  dependencies: ForumRouteDependencies = {},
+) =>
+  readForumAgentPublicProfile(db, requireForumIdentityDb(dependencies), profileRef).pipe(
     Effect.map(profile =>
       profile === null ? notFound() : redirectResponse(profile.publicUrl),
     ),
@@ -5487,7 +5510,11 @@ const followActorResponse = (
       return badRequest('Idempotency-Key header is required')
     }
 
-    const targetProfile = yield* readForumAgentPublicProfile(db, targetActorRef)
+    const targetProfile = yield* readForumAgentPublicProfile(
+      db,
+      requireForumIdentityDb(dependencies),
+      targetActorRef,
+    )
 
     if (targetProfile === null) {
       return notFound()
@@ -5734,7 +5761,7 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
       }
 
       return request.method === 'GET'
-        ? agentProfileRedirectResponse(db, profileRef)
+        ? agentProfileRedirectResponse(db, profileRef, requestDependencies)
         : Effect.succeed(methodNotAllowed(['GET']))
     }
 

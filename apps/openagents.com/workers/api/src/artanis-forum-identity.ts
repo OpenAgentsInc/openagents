@@ -5,6 +5,7 @@ import {
   makeD1AgentRegistrationStore,
 } from './agent-registration'
 import type { ForumWriterActorInput } from './forum'
+import type { IdentityDb } from './identity-db'
 
 export const ARTANIS_REGISTERED_FORUM_SLUG = 'artanis'
 export const LEGACY_ARTANIS_FORUM_ACTOR_REF = 'agent:agent_artanis'
@@ -61,12 +62,16 @@ export const resolveRegisteredArtanisForumIdentity = (
     ),
   )
 
+// CFG-4 Domain 2 (#8519): the registered-identity lookup now needs BOTH
+// stores — D1 for agent_profiles/agent_credentials and the Postgres
+// identity handle for the authoritative `users`/`auth_identities` rows.
 export const resolveRegisteredArtanisForumIdentityFromD1 = (
   db: D1Database,
+  identityDb: IdentityDb,
   nowIso: string,
 ): Effect.Effect<ArtanisForumIdentity, ArtanisForumIdentityError> =>
   resolveRegisteredArtanisForumIdentity(
-    makeD1AgentRegistrationStore(db),
+    makeD1AgentRegistrationStore(db, identityDb),
     nowIso,
   )
 

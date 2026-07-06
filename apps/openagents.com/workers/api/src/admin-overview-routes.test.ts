@@ -1,3 +1,4 @@
+import type { IdentityDb } from './identity-db'
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
@@ -39,9 +40,23 @@ class AdminOverviewStatement implements D1PreparedStatement {
       } as D1Result<T>)
     }
 
+    if (this.query.includes('software_order_count')) {
+      // CFG-4 Domain 2 (#8519): the per-user order counts are a separate
+      // D1 aggregate now that the user listing reads from Postgres.
+      return Promise.resolve({
+        results: this.store.users.map(user => ({
+          software_order_count: user.software_order_count,
+          user_id: user.user_id,
+        })) as unknown as ReadonlyArray<T>,
+        success: true,
+      } as D1Result<T>)
+    }
+
     if (this.query.includes('FROM software_orders')) {
       return Promise.resolve({
-        results: this.store.softwareOrders as unknown as ReadonlyArray<T>,
+        results: this.store.softwareOrders.map(
+          ({ user_display_name, user_email, ...row }) => row,
+        ) as unknown as ReadonlyArray<T>,
         success: true,
       } as D1Result<T>)
     }
@@ -155,13 +170,49 @@ const adminOverviewDb = (store: AdminOverviewDbStore): D1Database => ({
   },
 })
 
-const makeHandlers = (session: TestSession | null) =>
+// CFG-4 Domain 2 (#8519): the user listing + order-user enrichment read
+// from the Postgres identity handle — served here from the same store.
+const overviewIdentityDb = (store: AdminOverviewDbStore): IdentityDb => ({
+  batch: () => Promise.resolve(),
+  query: (sql, params = []) => {
+    if (!sql.includes('FROM users')) {
+      return Promise.reject(
+        new Error(`unexpected identityDb query: ${sql.slice(0, 80)}`),
+      )
+    }
+    if (sql.includes('IN (')) {
+      const ids = new Set(params.map(String))
+      return Promise.resolve(
+        store.users
+          .filter(user => ids.has(user.user_id))
+          .map(user => ({
+            avatar_url: null,
+            created_at: user.created_at,
+            deleted_at: null,
+            display_name: user.display_name,
+            github_id: null,
+            github_username: user.github_username,
+            id: user.user_id,
+            kind: user.kind,
+            primary_email: user.primary_email,
+            status: user.status,
+          })),
+      )
+    }
+    return Promise.resolve(
+      store.users.map(({ software_order_count, ...user }) => ({ ...user })),
+    )
+  },
+})
+
+const makeHandlers = (session: TestSession | null, store: AdminOverviewDbStore) =>
   makeAdminOverviewHandlers({
     appendRefreshedSessionCookies: response => {
       response.headers.set('x-session-refreshed', 'true')
 
       return response
     },
+    identityDb: () => overviewIdentityDb(store),
     isOpenAgentsAdminEmail: email => email === 'chris@openagents.com',
     requireBrowserSession: () => Promise.resolve(session ?? undefined),
   })
@@ -171,7 +222,7 @@ const runOverview = (
   store: AdminOverviewDbStore,
 ) =>
   Effect.runPromise(
-    makeHandlers(session).handleAdminOverviewApi(
+    makeHandlers(session, store).handleAdminOverviewApi(
       new Request('https://openagents.com/api/admin/overview'),
       {
         OPENAGENTS_DB: adminOverviewDb(store),

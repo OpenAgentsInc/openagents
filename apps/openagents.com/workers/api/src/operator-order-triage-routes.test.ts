@@ -1377,6 +1377,34 @@ const makeRoutes = (
     requireBrowserSession: () => Promise.resolve(session ?? undefined),
   })
 
+const triageIdentityDb = (store: OperatorOrderTriageDbStore) => ({
+  batch: () => Promise.resolve(),
+  query: (sql: string, params: ReadonlyArray<unknown> = []) => {
+    if (!sql.includes('FROM users')) {
+      return Promise.reject(
+        new Error(`unexpected identityDb query: ${sql.slice(0, 80)}`),
+      )
+    }
+    const ids = new Set(params.map(String))
+    return Promise.resolve(
+      store.users
+        .filter(user => ids.has(user.id))
+        .map(user => ({
+          avatar_url: null,
+          created_at: '2026-06-01T00:00:00.000Z',
+          deleted_at: user.deleted_at,
+          display_name: user.display_name,
+          github_id: null,
+          github_username: null,
+          id: user.id,
+          kind: 'human',
+          primary_email: user.primary_email,
+          status: 'active',
+        })),
+    )
+  },
+})
+
 const runRoute = (
   store: OperatorOrderTriageDbStore,
   path: string,
@@ -1391,7 +1419,12 @@ const runRoute = (
     hasAdminApiToken,
   ).routeOperatorOrderTriageRequest(
     new Request(`https://openagents.com${path}`, init),
-    { OPENAGENTS_DB: db(store) },
+    {
+      // CFG-4 Domain 2 (#8519): the customer display/email enrichment reads
+      // the Postgres identity handle — served from the same store.
+      IDENTITY_DB: triageIdentityDb(store),
+      OPENAGENTS_DB: db(store),
+    },
     executionContext(),
   )
 

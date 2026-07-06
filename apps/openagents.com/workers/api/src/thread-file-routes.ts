@@ -1,3 +1,4 @@
+import { identityDbForEnv } from './identity-db'
 import { notFound } from '@openagentsinc/sync-worker'
 import { Effect, Layer, Option } from 'effect'
 import { WorkerEnvironment } from 'effect-cf'
@@ -77,6 +78,7 @@ export const makeThreadFileRoutes = <Session extends BrowserSessionShape>(
     })
     const repositoryLayer = ThreadFileRepository.layer(
       khalaCodeProductStateDatabaseForEnv(env),
+      identityDbForEnv(env),
     )
 
     return Layer.mergeAll(

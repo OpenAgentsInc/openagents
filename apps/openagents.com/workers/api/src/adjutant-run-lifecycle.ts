@@ -1,3 +1,4 @@
+import { readIdentityUserProfiles, type IdentityDb } from './identity-db'
 import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { Effect, Schema as S } from 'effect'
 
@@ -131,6 +132,9 @@ type AdjutantRunLifecycleInput = Readonly<{
   emailConfig?: ResendEmailConfig | undefined
   emailFetcher?: typeof fetch | undefined
   events: ReadonlyArray<OmniEventRecord>
+  /** CFG-4 Domain 2 (#8519): Postgres identity handle — the customer
+   * notification target's `users` row reads here, never D1. */
+  identityDb: IdentityDb
   runId: string
   status?: string | undefined
 }>
@@ -407,6 +411,7 @@ const readAssignmentByRunId = (
 
 const readCustomerNotificationTarget = (
   db: D1Database,
+  identityDb: IdentityDb,
   assignment: AdjutantRunAssignmentRow,
 ): Effect.Effect<
   CustomerNotificationTargetRow | null,
@@ -414,20 +419,18 @@ const readCustomerNotificationTarget = (
 > =>
   assignment.software_order_id === null
     ? Effect.succeed(null)
-    : d1Effect('adjutantRunLifecycle.notificationTarget.read', () =>
-        db
+    : d1Effect('adjutantRunLifecycle.notificationTarget.read', async () => {
+        // CFG-4 Domain 2 (#8519): order/site rows from D1; the customer
+        // `users` row from the Postgres identity handle. The old INNER
+        // JOIN semantics hold: a missing/deleted user means no target.
+        const orderRow = await db
           .prepare(
             `SELECT software_orders.id AS order_id,
-                    users.id AS target_user_id,
-                    users.display_name,
-                    users.primary_email,
+                    software_orders.user_id AS order_user_id,
                     site_projects.active_version_id,
                     site_projects.title AS site_title,
                     active_deployments.url AS site_url
                FROM software_orders
-               INNER JOIN users
-                  ON users.id = software_orders.user_id
-                 AND users.deleted_at IS NULL
                LEFT JOIN site_projects
                   ON site_projects.id = ?
                  AND site_projects.archived_at IS NULL
@@ -439,8 +442,23 @@ const readCustomerNotificationTarget = (
               LIMIT 1`,
           )
           .bind(assignment.site_id, assignment.software_order_id)
-          .first<CustomerNotificationTargetRow>(),
-      )
+          .first<
+            Omit<CustomerNotificationTargetRow, 'target_user_id' | 'display_name' | 'primary_email'> &
+              Readonly<{ order_user_id: string }>
+          >()
+        if (orderRow === null) return null
+        const profile = (
+          await readIdentityUserProfiles(identityDb, [orderRow.order_user_id])
+        ).get(orderRow.order_user_id)
+        if (profile === undefined || profile.deletedAt !== null) return null
+        const { order_user_id, ...rest } = orderRow
+        return {
+          ...rest,
+          display_name: profile.displayName,
+          primary_email: profile.primaryEmail,
+          target_user_id: order_user_id,
+        }
+      })
 
 const siteRevisionUrl = (
   siteUrl: string | null,
@@ -460,7 +478,11 @@ const sendCustomerNotification = (
   AdjutantRunLifecycleStorageError
 > =>
   Effect.gen(function* () {
-    const target = yield* readCustomerNotificationTarget(db, assignment)
+    const target = yield* readCustomerNotificationTarget(
+      db,
+      input.identityDb,
+      assignment,
+    )
 
     if (target === null) {
       return {

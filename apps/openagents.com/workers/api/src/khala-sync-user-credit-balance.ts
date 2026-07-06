@@ -212,55 +212,44 @@ export type UserCreditBalanceBackfillCandidate = Readonly<{
  * user still needs an initialized $0 projection row, not a permanent
  * "not initialized" refusal.
  *
- * CFG-4 (#8519): the old single-query `users LEFT JOIN agent_balances` is
- * gone — `agent_balances` is Cloud SQL Postgres-authoritative now, so the
- * user page comes from D1 and the exact balances for that page come from one
- * IN-list read on the credits ledger handle.
+ * CFG-4 Domain 2 (#8519): with `users` hard-cut to the SAME khala_sync
+ * Postgres database the credits ledger lives in, this is ONE Postgres
+ * query again — the user page LEFT JOINs `agent_balances` directly on the
+ * ledger handle. (The Domain 1 split into a D1 user page + IN-list balance
+ * read lasted exactly one domain.) Keyset cursor stays SQL-variant based —
+ * a bare `? IS NULL` parameter is not Postgres-typable.
  */
 export const listUsersForCreditBalanceBackfill = async (
-  db: D1Database,
   ledgerDb: PaymentsLedgerDb,
   input: Readonly<{ cursor?: string | undefined; limit: number }>,
 ): Promise<ReadonlyArray<UserCreditBalanceBackfillCandidate>> => {
-  const result = await db
-    .prepare(
-      `SELECT users.id AS user_id
-         FROM users
-        WHERE users.kind = 'human'
-          AND users.deleted_at IS NULL
-          AND (? IS NULL OR users.id > ?)
-        ORDER BY users.id ASC
-        LIMIT ?`,
-    )
-    .bind(input.cursor ?? null, input.cursor ?? null, input.limit)
-    .all<{ user_id: string }>()
-
-  const userIds = (result.results ?? []).map(row => String(row.user_id))
-  if (userIds.length === 0) return []
-
-  const actorRefs = userIds.map(userId => `agent:${userId}`)
-  const placeholders = actorRefs.map(() => '?').join(', ')
-  const balanceRows = await ledgerDb.query(
-    `SELECT actor_ref, balance_msat
-       FROM agent_balances
-      WHERE actor_ref IN (${placeholders})`,
-    actorRefs,
-  )
-  const balancesByActorRef = new Map(
-    balanceRows.map(row => [String(row.actor_ref), Number(row.balance_msat)]),
+  const cursor = input.cursor
+  const cursorClause = cursor === undefined ? '' : 'AND users.id > ?'
+  const rows = await ledgerDb.query(
+    `SELECT users.id AS user_id,
+            COALESCE(agent_balances.balance_msat, 0) AS balance_msat
+       FROM users
+       LEFT JOIN agent_balances
+         ON agent_balances.actor_ref = 'agent:' || users.id
+      WHERE users.kind = 'human'
+        AND users.deleted_at IS NULL
+        ${cursorClause}
+      ORDER BY users.id ASC
+      LIMIT ?`,
+    cursor === undefined ? [input.limit] : [cursor, input.limit],
   )
 
-  return userIds.map(userId => ({
-    balanceMsat: balancesByActorRef.get(`agent:${userId}`) ?? 0,
-    userId,
+  return rows.map(row => ({
+    balanceMsat: Number(row.balance_msat),
+    userId: String(row.user_id),
   }))
 }
 
 export type UserCreditBalanceBackfillDeps = UserCreditBalanceProjectionDeps &
   Readonly<{
-    db: D1Database
-    /** CFG-4 (#8519): the Postgres-authoritative credits ledger — the exact
-     * `agent_balances` reads the backfill reconciles against run here. */
+    /** CFG-4 (#8519 + Domain 2): the Postgres-authoritative ledger handle —
+     * BOTH the user page (`users` hard cut, Domain 2) and the exact
+     * `agent_balances` reads run here. No D1 handle remains. */
     ledgerDb: PaymentsLedgerDb
     nowIso?: (() => string) | undefined
   }>
@@ -303,7 +292,6 @@ export const backfillUserCreditBalancesBatch = async (
   }
 
   const candidates = await listUsersForCreditBalanceBackfill(
-    deps.db,
     deps.ledgerDb,
     input,
   )

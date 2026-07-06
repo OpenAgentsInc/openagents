@@ -1,3 +1,9 @@
+import {
+  identityDbForEnv,
+  readIdentityUserProfiles,
+  type IdentityDb,
+  type IdentityDbEnv,
+} from './identity-db'
 import { Effect, Layer, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
@@ -32,6 +38,7 @@ import {
 } from './sites'
 
 type OperatorOrderTriageEnv = BillingSyncEnv &
+  IdentityDbEnv &
   Readonly<{
     OPENAGENTS_DB: D1Database
   }>
@@ -209,6 +216,12 @@ export type OrderTriageRuntime = Readonly<{
    * converged by the next backfill sweep).
    */
   firstBatchPaymentPolicyMirror?: BillingDomainMirror | undefined
+  /**
+   * CFG-4 Domain 2 (#8519): injectable Postgres identity handle for the
+   * customer display/email enrichment (tests); the layer defaults to the
+   * env `KHALA_SYNC_DB` wiring.
+   */
+  identityDb?: IdentityDb | undefined
 }>
 
 export const systemOrderTriageRuntime: OrderTriageRuntime = {
@@ -1186,8 +1199,6 @@ SELECT order_triage_records.id AS id,
        order_triage_records.updated_at AS updated_at,
        software_orders.id AS order_id,
        software_orders.user_id AS order_user_id,
-       users.display_name AS user_display_name,
-       users.primary_email AS user_email,
        software_orders.status AS order_status,
        software_orders.visibility AS order_visibility,
        software_orders.request AS order_request,
@@ -1221,23 +1232,45 @@ SELECT order_triage_records.id AS id,
   JOIN software_orders
     ON software_orders.id = order_triage_records.software_order_id
    AND software_orders.archived_at IS NULL
-  LEFT JOIN users
-    ON users.id = software_orders.user_id
-   AND users.deleted_at IS NULL
   LEFT JOIN site_projects
     ON site_projects.software_order_id = software_orders.id
    AND site_projects.archived_at IS NULL
  WHERE order_triage_records.archived_at IS NULL`
 
+// CFG-4 Domain 2 (#8519): the customer display/email fields ride the
+// Postgres identity handle now (one IN-list read per page); the old
+// `LEFT JOIN users ... deleted_at IS NULL` semantics hold — a
+// missing/deleted user leaves them null.
+const enrichTriageRows = async (
+  identityDb: IdentityDb,
+  rows: ReadonlyArray<Omit<OrderTriageRow, 'user_display_name' | 'user_email'>>,
+): Promise<ReadonlyArray<OrderTriageRow>> => {
+  const profiles = await readIdentityUserProfiles(
+    identityDb,
+    rows.map(row => row.order_user_id),
+  )
+  return rows.map(row => {
+    const profile = profiles.get(row.order_user_id)
+    const live =
+      profile === undefined || profile.deletedAt !== null ? undefined : profile
+    return {
+      ...row,
+      user_display_name: live?.displayName ?? null,
+      user_email: live?.primaryEmail ?? null,
+    }
+  })
+}
+
 const readQueue = (
   db: D1Database,
+  identityDb: IdentityDb,
   limit: number,
 ): Effect.Effect<
   ReadonlyArray<OperatorOrderTriageRecord>,
   OrderTriageStorageError
 > =>
-  d1Effect('orderTriage.queue.list', () =>
-    db
+  d1Effect('orderTriage.queue.list', async () => {
+    const result = await db
       .prepare(
         `${triageSelectSql}
           ORDER BY order_triage_records.first_batch_eligible DESC,
@@ -1246,30 +1279,36 @@ const readQueue = (
           LIMIT ?`,
       )
       .bind(limit)
-      .all<OrderTriageRow>(),
-  ).pipe(Effect.map(result => result.results.map(rowToRecord)))
+      .all<Omit<OrderTriageRow, 'user_display_name' | 'user_email'>>()
+    return enrichTriageRows(identityDb, result.results ?? [])
+  }).pipe(Effect.map(rows => rows.map(rowToRecord)))
 
 const readRecordByOrderId = (
   db: D1Database,
+  identityDb: IdentityDb,
   softwareOrderId: string,
 ): Effect.Effect<OperatorOrderTriageRecord | null, OrderTriageStorageError> =>
-  d1Effect('orderTriage.record.read', () =>
-    db
+  d1Effect('orderTriage.record.read', async () => {
+    const row = await db
       .prepare(
         `${triageSelectSql}
           AND order_triage_records.software_order_id = ?
           LIMIT 1`,
       )
       .bind(softwareOrderId)
-      .first<OrderTriageRow>(),
-  ).pipe(Effect.map(row => (row === null ? null : rowToRecord(row))))
+      .first<Omit<OrderTriageRow, 'user_display_name' | 'user_email'>>()
+    if (row === null) return null
+    const enriched = await enrichTriageRows(identityDb, [row])
+    return enriched[0] ?? null
+  }).pipe(Effect.map(row => (row === null || row === undefined ? null : rowToRecord(row))))
 
 const requireTriageRecordByOrderId = (
   db: D1Database,
+  identityDb: IdentityDb,
   softwareOrderId: string,
 ): Effect.Effect<OperatorOrderTriageRecord, OrderTriageError> =>
   Effect.gen(function* () {
-    const record = yield* readRecordByOrderId(db, softwareOrderId)
+    const record = yield* readRecordByOrderId(db, identityDb, softwareOrderId)
 
     if (record === null) {
       return yield* new OrderTriageSoftwareOrderNotFound({ softwareOrderId })
@@ -1324,6 +1363,7 @@ const updateOrderStatus = (
 
 const upsertTriageRecord = (
   db: D1Database,
+  identityDb: IdentityDb,
   runtime: OrderTriageRuntime,
   softwareOrderId: string,
   actorUserId: string,
@@ -1409,7 +1449,7 @@ const upsertTriageRecord = (
       )
     }
 
-    return yield* requireTriageRecordByOrderId(db, softwareOrderId)
+    return yield* requireTriageRecordByOrderId(db, identityDb, softwareOrderId)
   })
 
 const summarizeFirstBatch = (
@@ -1722,6 +1762,7 @@ const createFirstBatchAssignment = (
 
 const assignFirstBatch = (
   db: D1Database,
+  identityDb: IdentityDb,
   runtime: OrderTriageRuntime,
   actorUserId: string,
   input: FirstBatchAssignmentRequest,
@@ -1737,7 +1778,7 @@ const assignFirstBatch = (
 > =>
   Effect.gen(function* () {
     const dryRun = input.dryRun ?? false
-    const queue = yield* readQueue(db, input.limit ?? 100)
+    const queue = yield* readQueue(db, identityDb, input.limit ?? 100)
     const records = firstBatchEligibleRecords(queue, input)
     const results: Array<FirstBatchAssignmentResult> = []
 
@@ -1761,6 +1802,7 @@ const assignFirstBatch = (
 
 const prepareOrderFulfillment = (
   db: D1Database,
+  identityDb: IdentityDb,
   runtime: OrderTriageRuntime,
   actorUserId: string,
   softwareOrderId: string,
@@ -1774,7 +1816,7 @@ const prepareOrderFulfillment = (
   AdjutantAssignmentService | AutopilotSitesService
 > =>
   Effect.gen(function* () {
-    const record = yield* requireTriageRecordByOrderId(db, softwareOrderId)
+    const record = yield* requireTriageRecordByOrderId(db, identityDb, softwareOrderId)
 
     return yield* createFirstBatchAssignment(
       db,
@@ -1794,6 +1836,7 @@ const defaultNoPaymentCustomerSummary =
 
 const applyFirstBatchPaymentPolicies = (
   db: D1Database,
+  identityDb: IdentityDb,
   runtime: OrderTriageRuntime,
   actorUserId: string,
   input: ApplyFirstBatchPaymentPolicyRequest,
@@ -1815,7 +1858,7 @@ const applyFirstBatchPaymentPolicies = (
     const results: Array<FirstBatchPaymentPolicyApplyResult> = []
 
     for (const softwareOrderId of uniqueOrderIds) {
-      const record = yield* readRecordByOrderId(db, softwareOrderId)
+      const record = yield* readRecordByOrderId(db, identityDb, softwareOrderId)
 
       if (record === null) {
         return yield* new OperatorOrderTriageBadRequest({
@@ -2080,6 +2123,7 @@ const monitorItem = (
 
 const monitorFirstBatch = (
   db: D1Database,
+  identityDb: IdentityDb,
   runtime: OrderTriageRuntime,
   limit: number,
 ): Effect.Effect<
@@ -2090,7 +2134,7 @@ const monitorFirstBatch = (
   OrderTriageStorageError
 > =>
   Effect.gen(function* () {
-    const queue = yield* readQueue(db, limit)
+    const queue = yield* readQueue(db, identityDb, limit)
     const records = queue.filter(record => record.firstBatchEligible)
     const monitor = yield* Effect.all(
       records.map(record => monitorItem(db, runtime, record)),
@@ -2488,11 +2532,16 @@ export class OrderTriageService extends Context.Service<
       firstBatchPaymentPolicyMirror: billingDomainMirrorFromEnv(env),
     },
   ) =>
-    Layer.succeed(OrderTriageService, {
+    {
+    // CFG-4 Domain 2 (#8519): the Postgres identity handle for the customer
+    // display/email enrichment (users is Postgres-authoritative).
+    const identityDb = runtime.identityDb ?? identityDbForEnv(env)
+    return Layer.succeed(OrderTriageService, {
       assignFirstBatch: Effect.fn('OrderTriageService.assignFirstBatch')(
         (actorUserId, input) =>
           assignFirstBatch(
             openAgentsDatabase(env),
+            identityDb,
             runtime,
             actorUserId,
             input,
@@ -2503,13 +2552,14 @@ export class OrderTriageService extends Context.Service<
       )((actorUserId, input) =>
         applyFirstBatchPaymentPolicies(
           openAgentsDatabase(env),
+          identityDb,
           runtime,
           actorUserId,
           input,
         ),
       ),
       listQueue: Effect.fn('OrderTriageService.listQueue')(limit =>
-        readQueue(openAgentsDatabase(env), limit),
+        readQueue(openAgentsDatabase(env), identityDb, limit),
       ),
       foldoverInventory: Effect.fn(
         'OrderTriageService.foldoverInventory',
@@ -2518,13 +2568,14 @@ export class OrderTriageService extends Context.Service<
       ),
       monitorFirstBatch: Effect.fn('OrderTriageService.monitorFirstBatch')(
         limit =>
-          monitorFirstBatch(openAgentsDatabase(env), runtime, limit),
+          monitorFirstBatch(openAgentsDatabase(env), identityDb, runtime, limit),
       ),
       prepareOrderFulfillment: Effect.fn(
         'OrderTriageService.prepareOrderFulfillment',
       )((actorUserId, softwareOrderId, input) =>
         prepareOrderFulfillment(
           openAgentsDatabase(env),
+          identityDb,
           runtime,
           actorUserId,
           softwareOrderId,
@@ -2535,6 +2586,7 @@ export class OrderTriageService extends Context.Service<
         (softwareOrderId, actorUserId, input) =>
           upsertTriageRecord(
             openAgentsDatabase(env),
+            identityDb,
             runtime,
             softwareOrderId,
             actorUserId,
@@ -2542,6 +2594,7 @@ export class OrderTriageService extends Context.Service<
           ),
       ),
     })
+    }
 }
 
 const routeErrorResponse = (

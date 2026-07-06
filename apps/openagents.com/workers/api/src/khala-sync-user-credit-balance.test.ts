@@ -357,7 +357,7 @@ describe('listUsersForCreditBalanceBackfill', () => {
     insertUser(db, 'user-b')
     insertBalance(db, 'user-b', 5_000_000)
 
-    const rows = await listUsersForCreditBalanceBackfill(db, ledger, { limit: 10 })
+    const rows = await listUsersForCreditBalanceBackfill(ledger, { limit: 10 })
     expect(rows).toEqual([
       { balanceMsat: 0, userId: 'user-a' },
       { balanceMsat: 5_000_000, userId: 'user-b' },
@@ -370,9 +370,9 @@ describe('listUsersForCreditBalanceBackfill', () => {
     insertUser(db, 'user-b')
     insertUser(db, 'user-c')
 
-    const firstPage = await listUsersForCreditBalanceBackfill(db, ledger, { limit: 2 })
+    const firstPage = await listUsersForCreditBalanceBackfill(ledger, { limit: 2 })
     expect(firstPage.map(row => row.userId)).toEqual(['user-a', 'user-b'])
-    const secondPage = await listUsersForCreditBalanceBackfill(db, ledger, {
+    const secondPage = await listUsersForCreditBalanceBackfill(ledger, {
       cursor: firstPage[firstPage.length - 1]?.userId,
       limit: 2,
     })
@@ -388,7 +388,7 @@ describe('backfillUserCreditBalancesBatch', () => {
 
     const { sql, state } = makeFakePg()
     const result = await backfillUserCreditBalancesBatch(
-      { binding, db, ledgerDb: ledger, makeSqlClient: async () => clientFor(sql) },
+      { binding, ledgerDb: ledger, makeSqlClient: async () => clientFor(sql) },
       { limit: 10 },
     )
     expect(result.ok).toBe(true)
@@ -422,7 +422,7 @@ describe('backfillUserCreditBalancesBatch', () => {
     state.balances.set('exact-user', { balanceUsdCents: 100, lastEventAt: null })
 
     const result = await backfillUserCreditBalancesBatch(
-      { binding, db, ledgerDb: ledger, makeSqlClient: async () => clientFor(sql) },
+      { binding, ledgerDb: ledger, makeSqlClient: async () => clientFor(sql) },
       { limit: 10 },
     )
     expect(result.ok).toBe(true)
@@ -449,7 +449,6 @@ describe('backfillUserCreditBalancesBatch', () => {
     const result = await backfillUserCreditBalancesBatch(
       {
         binding: undefined,
-        db,
         ledgerDb: ledger,
         makeSqlClient: async () => {
           throw new Error('must not be constructed')
@@ -476,7 +475,7 @@ describe('backfillUserCreditBalancesBatch', () => {
     const { sql, state } = makeFakePg()
     const { calls, log } = makeLog()
     const result = await backfillUserCreditBalancesBatch(
-      { binding, db, ledgerDb: ledger, log, makeSqlClient: async () => clientFor(sql) },
+      { binding, ledgerDb: ledger, log, makeSqlClient: async () => clientFor(sql) },
       { limit: 10 },
     )
     expect(result.ok).toBe(true)

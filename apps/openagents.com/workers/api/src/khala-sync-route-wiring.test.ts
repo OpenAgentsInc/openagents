@@ -104,6 +104,27 @@ const fakeAgentD1 = (bearerTokenHash: string) => {
   }
 }
 
+/** CFG-4 Domain 2 (#8519): the Postgres identity handle for the gate's
+ * `users` read — answers the known agent's active row. */
+const fakeIdentityDb = () => ({
+  batch: () => Promise.resolve(),
+  query: (sql: string, params: ReadonlyArray<unknown> = []) =>
+    Promise.resolve(
+      sql.includes('FROM users') && params.map(String).includes(AGENT_USER_ID)
+        ? [
+            {
+              avatar_url: null,
+              created_at: '2026-07-06T00:00:00.000Z',
+              display_name: 'ST3 Wiring Test Agent',
+              id: AGENT_USER_ID,
+              primary_email: null,
+              updated_at: '2026-07-06T00:00:00.000Z',
+            },
+          ]
+        : [],
+    ),
+})
+
 /** A hub namespace whose per-scope stub records and answers `respond`. */
 const fakeHub = (respond: (request: Request) => Response) => {
   const forwarded: Array<Request> = []
@@ -137,6 +158,10 @@ const makeFakeEnv = async (
       },
     },
     OPENAGENTS_DB: fakeAgentD1(await sha256Hex(AGENT_BEARER)),
+    // CFG-4 Domain 2 (#8519): the agent auth gate's `users` half reads the
+    // Postgres identity handle — the fake env serves the known agent's row
+    // through the IDENTITY_DB test-override slot.
+    IDENTITY_DB: fakeIdentityDb(),
     ...(options.hub === undefined ? {} : { KHALA_SYNC_HUB: options.hub }),
     // KHALA_SYNC_DB deliberately absent: every identity/remainder mirror
     // resolves to undefined and the scope resolver stays in-memory for

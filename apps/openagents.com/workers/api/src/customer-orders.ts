@@ -1,3 +1,8 @@
+import {
+  identityDbForEnv,
+  type IdentityDb,
+  type IdentityDbEnv,
+} from './identity-db'
 import { containsProviderSecretMaterial } from '@openagentsinc/provider-account-schema'
 import { Effect, Layer, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
@@ -26,9 +31,10 @@ import {
   type SupervisionLongtailMirror,
 } from './supervision-longtail-domain-store'
 
-type CustomerOrderEnv = Readonly<{
-  OPENAGENTS_DB: D1Database
-}>
+type CustomerOrderEnv = IdentityDbEnv &
+  Readonly<{
+    OPENAGENTS_DB: D1Database
+  }>
 
 // KS-8.14 (#8359): this file writes both site_* content tables and the
 // business-domain software_orders / order_* tables. Compose the business
@@ -1094,31 +1100,56 @@ const listOrderRows = (
       .then(result => result.results ?? []),
   )
 
+// CFG-4 Domain 2 (#8519): the onboarding source lives on the Postgres-
+// authoritative `users` table now.
 const readOnboardingOrderSource = (
-  db: D1Database,
+  identityDb: IdentityDb,
   userId: string,
 ): Effect.Effect<OnboardingOrderSourceRow | null, CustomerOrderStorageError> =>
-  d1Effect('customerOrders.onboardingSource.read', () =>
-    db
-      .prepare(
-        `SELECT onboarding_completed_at,
-                onboarding_goal,
-                onboarding_repository_provider,
-                onboarding_repository_owner,
-                onboarding_repository_name,
-                onboarding_repository_full_name,
-                onboarding_repository_private,
-                onboarding_repository_default_branch,
-                onboarding_repository_html_url
-           FROM users
-          WHERE id = ?
-            AND kind = 'human'
-            AND deleted_at IS NULL
-          LIMIT 1`,
-      )
-      .bind(userId)
-      .first<OnboardingOrderSourceRow>(),
-  )
+  d1Effect('customerOrders.onboardingSource.read', async () => {
+    const rows = await identityDb.query(
+      `SELECT onboarding_completed_at,
+              onboarding_goal,
+              onboarding_repository_provider,
+              onboarding_repository_owner,
+              onboarding_repository_name,
+              onboarding_repository_full_name,
+              onboarding_repository_private,
+              onboarding_repository_default_branch,
+              onboarding_repository_html_url
+         FROM users
+        WHERE id = ?
+          AND kind = 'human'
+          AND deleted_at IS NULL
+        LIMIT 1`,
+      [userId],
+    )
+    const row = rows[0]
+    if (row === undefined) return null
+    const text = (value: unknown): string | null =>
+      value === null || value === undefined ? null : String(value)
+    return {
+      onboarding_completed_at: text(row.onboarding_completed_at),
+      onboarding_goal: text(row.onboarding_goal),
+      onboarding_repository_default_branch: text(
+        row.onboarding_repository_default_branch,
+      ),
+      onboarding_repository_full_name: text(
+        row.onboarding_repository_full_name,
+      ),
+      onboarding_repository_html_url: text(row.onboarding_repository_html_url),
+      onboarding_repository_name: text(row.onboarding_repository_name),
+      onboarding_repository_owner: text(row.onboarding_repository_owner),
+      // Postgres bigint arrives as a string; keep the 0/1 flag numeric.
+      onboarding_repository_private:
+        row.onboarding_repository_private === null ||
+        row.onboarding_repository_private === undefined
+          ? null
+          : Number(row.onboarding_repository_private),
+      onboarding_repository_provider:
+        row.onboarding_repository_provider === 'github' ? 'github' : null,
+    }
+  })
 
 const repositoryFromOnboardingSource = (
   row: OnboardingOrderSourceRow,
@@ -1219,6 +1250,7 @@ const insertOrderFromOnboarding = (
 
 const insertOrderFromRequest = (
   db: D1Database,
+  identityDb: IdentityDb,
   runtime: CustomerOrderRuntime,
   userId: string,
   request: string,
@@ -1227,7 +1259,7 @@ const insertOrderFromRequest = (
   Effect.gen(function* () {
     const id = runtime.makeOrderId()
     const now = runtime.nowIso()
-    const source = yield* readOnboardingOrderSource(db, userId)
+    const source = yield* readOnboardingOrderSource(identityDb, userId)
     const repository =
       source === null ? null : repositoryFromOnboardingSource(source)
     const acknowledgedAt = source?.onboarding_completed_at ?? now
@@ -1320,6 +1352,7 @@ const readOrderByAgentIdempotencyKey = (
 
 const readOrCreateActiveOrder = (
   db: D1Database,
+  identityDb: IdentityDb,
   runtime: CustomerOrderRuntime,
   userId: string,
 ): Effect.Effect<CustomerOrder | null, CustomerOrderStorageError> =>
@@ -1330,7 +1363,7 @@ const readOrCreateActiveOrder = (
       return yield* orderFromRowWithUsage(db, active)
     }
 
-    const source = yield* readOnboardingOrderSource(db, userId)
+    const source = yield* readOnboardingOrderSource(identityDb, userId)
 
     return source === null
       ? null
@@ -2132,12 +2165,18 @@ export class CustomerOrderStore extends Context.Service<
       readOrCreateActiveOrder: Effect.fn(
         'CustomerOrderStore.readOrCreateActiveOrder',
       )(userId =>
-        readOrCreateActiveOrder(openAgentsDatabase(env), runtime, userId),
+        readOrCreateActiveOrder(
+          openAgentsDatabase(env),
+          identityDbForEnv(env),
+          runtime,
+          userId,
+        ),
       ),
       createOrder: Effect.fn('CustomerOrderStore.createOrder')(
         (userId, request, agentIdempotencyKey) =>
           insertOrderFromRequest(
             openAgentsDatabase(env),
+            identityDbForEnv(env),
             runtime,
             userId,
             request,

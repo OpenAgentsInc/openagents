@@ -1,3 +1,4 @@
+import type { IdentityDb } from './identity-db'
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
@@ -972,6 +973,17 @@ const makeRoutes = (
     },
   })
 
+const identityDbOver = (db: D1Database): IdentityDb => ({
+  batch: () => Promise.resolve(),
+  query: async (sql, params = []) => {
+    const row = await db
+      .prepare(sql)
+      .bind(...params)
+      .first<Record<string, unknown>>()
+    return row === null ? [] : [row]
+  },
+})
+
 const runRoute = (
   session: TestSession | null,
   store: CustomerOrderDbStore,
@@ -985,6 +997,10 @@ const runRoute = (
   ).routeOnboardingRequest(
     new Request(`https://openagents.com${path}`, init),
     {
+      // CFG-4 Domain 2 (#8519): the onboarding-source `users` read serves
+      // from the Postgres identity handle — backed by the same scripted
+      // store here (env test-override slot, same pattern as AUTH_KV).
+      IDENTITY_DB: identityDbOver(customerOrderDb(store)),
       OPENAGENTS_DB: customerOrderDb(store),
     },
     executionContext(),

@@ -4,6 +4,7 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import { makeArtanisForumUpdateWriter } from './artanis-operator-forum-update'
+import { paymentsLedgerDbFromD1 } from './test/payments-ledger-sqlite'
 
 const nowIso = '2026-07-02T10:30:00.000Z'
 const registeredArtanisUserId = 'user_artanis_registered'
@@ -287,6 +288,9 @@ describe('Artanis Forum update writer', () => {
     const db = makeDb()
     const writer = makeArtanisForumUpdateWriter({
       db,
+      // CFG-4 Domain 2 (#8519): the identity handle shares the same SQLite
+      // database as the D1 shim.
+      identityDb: paymentsLedgerDbFromD1(db as never),
       makeId: makeIdFactory(['topic_registered_update', 'post_registered_first']),
       nowEpochMillis: () => Date.parse(nowIso),
       nowIso: () => nowIso,
@@ -346,6 +350,9 @@ describe('Artanis Forum update writer', () => {
     const db = makeDb()
     const writer = makeArtanisForumUpdateWriter({
       db,
+      // CFG-4 Domain 2 (#8519): the identity handle shares the same SQLite
+      // database as the D1 shim.
+      identityDb: paymentsLedgerDbFromD1(db as never),
       makeId: makeIdFactory(['post_registered_reply']),
       nowEpochMillis: () => Date.parse(nowIso),
       nowIso: () => nowIso,
@@ -388,6 +395,9 @@ describe('Artanis Forum update writer', () => {
     const db = makeDb({ registeredArtanis: false })
     const writer = makeArtanisForumUpdateWriter({
       db,
+      // CFG-4 Domain 2 (#8519): the identity handle shares the same SQLite
+      // database as the D1 shim.
+      identityDb: paymentsLedgerDbFromD1(db as never),
       makeId: makeIdFactory(['post_should_not_be_used']),
       nowEpochMillis: () => Date.parse(nowIso),
       nowIso: () => nowIso,

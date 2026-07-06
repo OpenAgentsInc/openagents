@@ -19,6 +19,7 @@ import {
   isArtanisForumPostActor,
   resolveRegisteredArtanisForumIdentityFromD1,
 } from './artanis-forum-identity'
+import type { IdentityDb } from './identity-db'
 import {
   type ForumPostSummary,
   ForumPublicProjection,
@@ -311,6 +312,9 @@ const markDelivered = (
 
 export const deliverArtanisForumPublicationIntent = (
   db: ArtanisDatabase,
+  // CFG-4 Domain 2 (#8519): Postgres identity handle for the registered
+  // Artanis `users`/`auth_identities` lookup.
+  identityDb: IdentityDb,
   intent: ArtanisForumPublicationIntentRecord,
   runtimeInput?: Partial<DeliveryRuntime> | undefined,
 ): Effect.Effect<ArtanisForumDeliveredPost, ArtanisForumDeliveryError> => {
@@ -381,6 +385,7 @@ export const deliverArtanisForumPublicationIntent = (
 
     const identity = yield* resolveRegisteredArtanisForumIdentityFromD1(
       artanisAuthorityDb(db),
+      identityDb,
       nowIso,
     ).pipe(Effect.mapError(mapDependencyError))
 
@@ -458,6 +463,7 @@ export const deliverArtanisForumPublicationIntent = (
 
 export const deliverReadyArtanisForumPublications = (
   db: ArtanisDatabase,
+  identityDb: IdentityDb,
   input: Readonly<{
     limit?: number | undefined
     runtime?: Partial<DeliveryRuntime> | undefined
@@ -479,7 +485,8 @@ export const deliverReadyArtanisForumPublications = (
       .filter(intent => intent.deliveryState === 'ready')
     const delivered = yield* Effect.forEach(
       intents,
-      intent => deliverArtanisForumPublicationIntent(db, intent, input.runtime),
+      intent =>
+        deliverArtanisForumPublicationIntent(db, identityDb, intent, input.runtime),
       { concurrency: 1 },
     )
 

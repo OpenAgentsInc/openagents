@@ -1,3 +1,4 @@
+import { readIdentityUserProfiles, type IdentityDb } from './identity-db'
 import { isRecord, optionalString, safeJsonRecord } from './json-boundary'
 
 export type TeamRole = 'owner' | 'admin' | 'member' | 'viewer'
@@ -87,6 +88,7 @@ export const userTeamProjectAgentFromMetadata = (
 
 export const readTeamsForUser = async (
   db: D1Database,
+  identityDb: IdentityDb,
   userId: string,
 ): Promise<ReadonlyArray<UserTeam>> => {
   const teamRows = await db
@@ -116,45 +118,66 @@ export const readTeamsForUser = async (
 
   return Promise.all(
     teamRows.results.map(async team => {
-      const members = await db
+      // CFG-4 Domain 2 (#8519): memberships from D1; the active-human gate
+      // and display/GitHub fields from the Postgres identity handle (one
+      // IN-list read per team). The old INNER JOIN semantics are preserved
+      // by dropping memberships whose user is missing, non-human, inactive,
+      // or deleted; ORDER BY display_name moves to the merge.
+      const membershipRows = await db
         .prepare(
           `SELECT
-             users.id AS user_id,
-             users.display_name,
-             users.primary_email,
-             users.avatar_url,
+             team_memberships.user_id,
              team_memberships.role,
              team_memberships.status,
-             team_memberships.joined_at,
-             auth_identities.provider_subject AS github_id,
-             auth_identities.provider_username AS github_username
+             team_memberships.joined_at
            FROM team_memberships
-           INNER JOIN users ON users.id = team_memberships.user_id
-           LEFT JOIN auth_identities
-             ON auth_identities.user_id = users.id
-            AND auth_identities.provider = 'github'
-            AND auth_identities.deleted_at IS NULL
            WHERE team_memberships.team_id = ?
-             AND team_memberships.status = 'active'
-             AND users.kind = 'human'
-             AND users.status = 'active'
-             AND users.deleted_at IS NULL
-           ORDER BY users.display_name`,
+             AND team_memberships.status = 'active'`,
         )
         .bind(team.id)
         .all<
           Readonly<{
             user_id: string
-            display_name: string
-            primary_email: string | null
-            avatar_url: string | null
             role: TeamRole
             status: TeamMembershipStatus
             joined_at: string | null
-            github_id: string | null
-            github_username: string | null
           }>
         >()
+      const profiles = await readIdentityUserProfiles(
+        identityDb,
+        (membershipRows.results ?? []).map(row => row.user_id),
+      )
+      const members = {
+        results: (membershipRows.results ?? [])
+          .flatMap(row => {
+            const profile = profiles.get(row.user_id)
+            return profile === undefined ||
+              profile.kind !== 'human' ||
+              profile.status !== 'active' ||
+              profile.deletedAt !== null
+              ? []
+              : [
+                  {
+                    avatar_url: profile.avatarUrl,
+                    display_name: profile.displayName,
+                    github_id: profile.githubId,
+                    github_username: profile.githubUsername,
+                    joined_at: row.joined_at,
+                    primary_email: profile.primaryEmail,
+                    role: row.role,
+                    status: row.status,
+                    user_id: row.user_id,
+                  },
+                ]
+          })
+          .sort((a, b) =>
+            a.display_name < b.display_name
+              ? -1
+              : a.display_name > b.display_name
+                ? 1
+                : 0,
+          ),
+      }
       const projects = await db
         .prepare(
           `SELECT

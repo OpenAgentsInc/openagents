@@ -1,3 +1,4 @@
+import type { IdentityDb } from '../identity-db'
 import { Effect, Schema as S } from 'effect'
 
 import { parseJsonRecord, parseJsonStringArray } from '../json-boundary'
@@ -2030,6 +2031,7 @@ const readVerifiedXChallengeForAgent = (
 
 export const readForumAgentPublicProfile = (
   db: D1Database,
+  identityDb: IdentityDb,
   profileRef: string,
 ): Effect.Effect<
   ForumAgentPublicProfile | null,
@@ -2037,27 +2039,73 @@ export const readForumAgentPublicProfile = (
 > =>
   Effect.gen(function* () {
     const normalized = normalizeAgentProfileRef(profileRef)
-    const row = yield* d1Effect('forum.readAgentPublicProfile.agent', () =>
-      db
+    // CFG-4 Domain 2 (#8519): `users` is Postgres-authoritative; the slug
+    // half of the old one-shot `users × agent_profiles` join resolves the
+    // candidate user id from D1 first, then the active-agent gate + display
+    // fields read from the identity handle (id match preferred, matching
+    // the old `users.id = ? OR agent_profiles.slug = ?` shape).
+    const row = yield* d1Effect('forum.readAgentPublicProfile.agent', async () => {
+      const slugProfile = await db
         .prepare(
-          `SELECT users.id AS user_id,
-                  users.display_name AS display_name,
-                  users.avatar_url AS avatar_url,
-                  users.created_at AS created_at,
-                  users.updated_at AS updated_at,
-                  agent_profiles.slug AS slug
-             FROM users
-             INNER JOIN agent_profiles
-               ON agent_profiles.user_id = users.id
-            WHERE users.kind = 'agent'
-              AND users.status = 'active'
-              AND users.deleted_at IS NULL
-              AND (users.id = ? OR agent_profiles.slug = ?)
-            LIMIT 1`,
+          `SELECT user_id, slug FROM agent_profiles WHERE slug = ? LIMIT 1`,
         )
-        .bind(normalized, normalized)
-        .first<AgentProfileRow>(),
-    )
+        .bind(normalized)
+        .first<Readonly<{ user_id: string; slug: string | null }>>()
+      const candidateIds = [
+        normalized,
+        ...(slugProfile === null ? [] : [slugProfile.user_id]),
+      ]
+      const placeholders = candidateIds.map(() => '?').join(', ')
+      const userRows = await identityDb.query(
+        `SELECT id AS user_id,
+                display_name,
+                avatar_url,
+                created_at,
+                updated_at
+           FROM users
+          WHERE kind = 'agent'
+            AND status = 'active'
+            AND deleted_at IS NULL
+            AND id IN (${placeholders})`,
+        candidateIds,
+      )
+      const byId = new Map(userRows.map(user => [String(user.user_id), user]))
+      const chosen =
+        byId.get(normalized) ??
+        (slugProfile === null ? undefined : byId.get(slugProfile.user_id))
+      if (chosen === undefined) return null
+      const chosenId = String(chosen.user_id)
+      const slug =
+        slugProfile !== null && slugProfile.user_id === chosenId
+          ? slugProfile.slug
+          : ((
+              await db
+                .prepare(
+                  `SELECT slug FROM agent_profiles WHERE user_id = ? LIMIT 1`,
+                )
+                .bind(chosenId)
+                .first<Readonly<{ slug: string | null }>>()
+            )?.slug ?? null)
+      // The old INNER JOIN required an agent_profiles row; a user with no
+      // profile row is not a registered forum agent.
+      const hasProfile =
+        (slugProfile !== null && slugProfile.user_id === chosenId) ||
+        (await db
+          .prepare(
+            `SELECT user_id FROM agent_profiles WHERE user_id = ? LIMIT 1`,
+          )
+          .bind(chosenId)
+          .first<Readonly<{ user_id: string }>>()) !== null
+      if (!hasProfile) return null
+      return {
+        avatar_url: chosen.avatar_url === null ? null : String(chosen.avatar_url),
+        created_at: String(chosen.created_at),
+        display_name: String(chosen.display_name),
+        slug,
+        updated_at: String(chosen.updated_at),
+        user_id: chosenId,
+      } as AgentProfileRow
+    })
 
     if (row !== null) {
       const actorRef = `agent:${row.user_id}`
@@ -2126,6 +2174,7 @@ export const readForumAgentPublicProfile = (
     if (actor.actorRef !== profileRef && actor.actorRef !== normalized) {
       const registeredProfile = yield* readForumAgentPublicProfile(
         db,
+        identityDb,
         actor.actorRef,
       )
 

@@ -174,6 +174,20 @@ const makeRoutes = (
 
       return response
     },
+    // CFG-4 Domain 2 (#8519): onboarding state reads/writes go through the
+    // Postgres identity handle — backed here by the same scripted database.
+    identityDb: env => ({
+      batch: () => Promise.resolve(),
+      query: async (sql, params = []) => {
+        const statement = env.OPENAGENTS_DB.prepare(sql).bind(...params)
+        if (sql.trimStart().toUpperCase().startsWith('SELECT')) {
+          const row = await statement.first<Record<string, unknown>>()
+          return row === null ? [] : [row]
+        }
+        await statement.run()
+        return []
+      },
+    }),
     requireBrowserSession: () => Promise.resolve(session ?? undefined),
     requireUserBearerSession: () => Promise.resolve(mobileSession ?? undefined),
     ...(githubRepositoryServiceLayer === undefined

@@ -3362,7 +3362,23 @@ CREATE TABLE users (
   status TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  deleted_at TEXT
+  deleted_at TEXT,
+  onboarding_step TEXT NOT NULL DEFAULT 'repository',
+  onboarding_completed_at TEXT,
+  onboarding_repository_provider TEXT,
+  onboarding_repository_id TEXT,
+  onboarding_repository_owner TEXT,
+  onboarding_repository_name TEXT,
+  onboarding_repository_full_name TEXT,
+  onboarding_repository_private INTEGER,
+  onboarding_repository_default_branch TEXT,
+  onboarding_repository_html_url TEXT,
+  onboarding_repository_description TEXT,
+  onboarding_repository_selected_at TEXT,
+  onboarding_repository_skipped_at TEXT,
+  onboarding_billing_skipped_at TEXT,
+  onboarding_goal TEXT,
+  onboarding_updated_at TEXT
 );
 
 CREATE TABLE auth_identities (
@@ -3374,7 +3390,8 @@ CREATE TABLE auth_identities (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   deleted_at TEXT,
-  provider_username TEXT
+  provider_username TEXT,
+  UNIQUE(provider, provider_subject)
 );
 
 CREATE TABLE openauth_storage (

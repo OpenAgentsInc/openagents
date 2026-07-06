@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
+import type { IdentityDb } from './identity-db'
 import {
   insertTeamChatMessage,
   makeTeamChatMessageId,
@@ -51,6 +52,31 @@ const messageRow = (overrides: Record<string, unknown> = {}) => ({
   team_id: 'team_1',
   ...overrides,
 })
+
+// CFG-4 Domain 2 (#8519): author display fields come from the Postgres
+// identity handle now — serve the fixture author for any users IN-list.
+const scriptedIdentityDb: IdentityDb = {
+  batch: () => Promise.resolve(),
+  query: (sql, params = []) =>
+    Promise.resolve(
+      sql.includes('FROM users') && params.map(String).includes('user_1')
+        ? [
+            {
+              avatar_url: null,
+              created_at: '2026-06-01T00:00:00.000Z',
+              deleted_at: null,
+              display_name: 'Christopher David',
+              github_id: '14167547',
+              github_username: 'AtlantisPleb',
+              id: 'user_1',
+              kind: 'human',
+              primary_email: null,
+              status: 'active',
+            },
+          ]
+        : [],
+    ),
+}
 
 const makeScriptedD1 = (script: {
   first?: (query: string, values: ReadonlyArray<unknown>) => unknown | null
@@ -162,6 +188,7 @@ describe('team chat repository helpers', () => {
 
     const message = await insertTeamChatMessage(
       db,
+      scriptedIdentityDb,
       {
         authorUserId: 'user_1',
         body: 'Continue',
@@ -216,6 +243,7 @@ describe('team chat repository helpers', () => {
 
     const message = await updateTeamChatMessageRunSummary(
       db,
+      scriptedIdentityDb,
       {
         messageId: 'team_chat_1',
         metadataJson: JSON.stringify({ launchError: 'old' }),

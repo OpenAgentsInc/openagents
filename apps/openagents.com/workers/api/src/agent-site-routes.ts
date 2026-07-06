@@ -1,3 +1,4 @@
+import type { IdentityDb } from './identity-db'
 import { Effect, Schema as S } from 'effect'
 import { Option } from 'effect'
 
@@ -86,6 +87,9 @@ type AgentSiteRouteDependencies<
     ctx: ExecutionContext,
   ) => Promise<Session | undefined>
   dbForEnv: (env: Bindings) => D1Database
+  /** CFG-4 Domain 2 (#8519): Postgres identity handle for the agent-token
+   * gate's `users` read (used by the default agent-store fallback). */
+  identityDbForEnv: (env: Bindings) => IdentityDb
   artifactsForEnv: (env: Bindings) => R2Bucket | undefined
   agentStoreForEnv?: (env: Bindings) => AgentRegistrationStore
   isAdminEmail: (email: string) => boolean
@@ -2369,7 +2373,10 @@ const agentSiteResponse = <Session extends AgentSiteSession, Bindings>(
       try: () =>
         authenticateProgrammaticAgent(
           dependencies.agentStoreForEnv?.(env) ??
-            makeD1AgentRegistrationStore(dependencies.dbForEnv(env)),
+            makeD1AgentRegistrationStore(
+              dependencies.dbForEnv(env),
+              dependencies.identityDbForEnv(env),
+            ),
           bearerToken,
         ),
       catch: error =>

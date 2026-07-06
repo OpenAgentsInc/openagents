@@ -1,3 +1,4 @@
+import { identityDbForEnv, type IdentityDb } from './identity-db'
 import { badRequest, notFound } from '@openagentsinc/sync-worker'
 import { Effect, Schema as S } from 'effect'
 
@@ -648,6 +649,9 @@ const decodeRegistrationBody = async (
 // x_claim_reward_ledger writes below read-back-mirror fail-soft to Postgres.
 export const makeD1AgentOwnerClaimStore = (
   database: TreasuryDatabase,
+  // CFG-4 Domain 2 (#8519): Postgres identity handle — approveClaim's
+  // `users`/`auth_identities` inserts run here, never D1.
+  identityDb: IdentityDb,
 ): AgentOwnerClaimStore => {
   const db = treasuryAuthorityDb(database)
   const mirrorReward = (rewardId: string) =>
@@ -837,14 +841,20 @@ export const makeD1AgentOwnerClaimStore = (
       return readClaimById(input.claimId)
     },
     approveClaim: async input => {
-      await db.batch([
-        db
-          .prepare(
-            `INSERT INTO users
+      // CFG-4 Domain 2 (#8519) cross-store seam: the agent user +
+      // programmatic identity land in Postgres FIRST (its UNIQUE
+      // (provider, provider_subject) refuses duplicate externalIds before
+      // any D1 row exists — same dedupe the old single batch had); the
+      // profile/credential/link/claim rows then land in one D1 batch. If
+      // the D1 batch fails, the orphaned Postgres user has no credential
+      // and can never authenticate; the claim stays pending and a retry
+      // mints a fresh registration.
+      await identityDb.batch([
+        {
+          sql: `INSERT INTO users
             (id, kind, display_name, primary_email, avatar_url, status, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          )
-          .bind(
+          params: [
             input.registration.user.id,
             input.registration.user.kind,
             input.registration.user.displayName,
@@ -853,14 +863,13 @@ export const makeD1AgentOwnerClaimStore = (
             input.registration.user.status,
             input.registration.user.createdAt,
             input.registration.user.updatedAt,
-          ),
-        db
-          .prepare(
-            `INSERT INTO auth_identities
+          ],
+        },
+        {
+          sql: `INSERT INTO auth_identities
             (id, user_id, provider, provider_subject, email, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          )
-          .bind(
+          params: [
             input.registration.identity.id,
             input.registration.identity.userId,
             input.registration.identity.provider,
@@ -868,7 +877,10 @@ export const makeD1AgentOwnerClaimStore = (
             input.registration.identity.email,
             input.registration.identity.createdAt,
             input.registration.identity.updatedAt,
-          ),
+          ],
+        },
+      ])
+      await db.batch([
         db
           .prepare(
             `INSERT INTO agent_profiles
@@ -1264,15 +1276,13 @@ export const makeMirroredAgentOwnerClaimStore = (
   }
 }
 
-// KS-8.18 follow-up (#8362): identity/auth domain mirror for `approveClaim`
-// — the only method here that writes `users`/`auth_identities`/
-// `openauth_agent_links`. Composed ON TOP of the pre-existing
-// `AgentRuntimeRemainderMirror` wrapper above (which only ever covered
-// `agent_profiles`/`agent_credentials`, a different domain, plus the
-// owner-claim-specific `agent_owner_claims` table — none of those are part
-// of the 17-table identity/auth registry). Before this wiring the
-// `openauth_agent_links` row created here was never mirrored to Postgres
-// at all. Fail-soft: mirror methods never throw.
+// KS-8.18 follow-up (#8362) identity/auth domain mirror for `approveClaim`,
+// narrowed by the CFG-4 Domain 2 hard cut (#8519): `users`/`auth_identities`
+// are Postgres-AUTHORITATIVE (written directly by the identityDb seam in
+// the D1 store above), so their mirror arms are DELETED — only the
+// still-D1-owned `openauth_agent_links` row keeps its read-back mirror.
+// Composed ON TOP of the pre-existing `AgentRuntimeRemainderMirror` wrapper
+// above. Fail-soft: mirror methods never throw.
 const makeIdentityAuthMirroredAgentOwnerClaimStore = (
   d1: AgentOwnerClaimStore,
   mirror: IdentityAuthMirror | undefined,
@@ -1286,10 +1296,6 @@ const makeIdentityAuthMirroredAgentOwnerClaimStore = (
     approveClaim: async input => {
       const claim = await d1.approveClaim(input)
       if (claim !== undefined) {
-        await mirror.mirrorRowsByKey('users', [[input.registration.user.id]])
-        await mirror.mirrorRowsByKey('auth_identities', [
-          [input.registration.identity.id],
-        ])
         await mirror.mirrorRowsByKey('openauth_agent_links', [
           [`openauth_agent_link_${input.claimId}`],
         ])
@@ -1304,7 +1310,7 @@ export const makeAgentOwnerClaimStoreForEnv = (
 ): AgentOwnerClaimStore =>
   makeIdentityAuthMirroredAgentOwnerClaimStore(
     makeMirroredAgentOwnerClaimStore(
-      makeD1AgentOwnerClaimStore(openAgentsDatabase(env)),
+      makeD1AgentOwnerClaimStore(openAgentsDatabase(env), identityDbForEnv(env)),
       makeAgentRuntimeRemainderMirrorForEnv(env),
     ),
     identityAuthMirrorFromEnv(env),

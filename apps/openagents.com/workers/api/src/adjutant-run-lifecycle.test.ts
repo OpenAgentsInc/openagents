@@ -1,3 +1,4 @@
+import type { IdentityDb } from './identity-db'
 import { Effect, Redacted } from 'effect'
 import { describe, expect, test } from 'vitest'
 
@@ -362,30 +363,28 @@ class LifecycleStatement implements D1PreparedStatement {
 
     if (
       this.query.includes('FROM software_orders') &&
-      this.query.includes('INNER JOIN users')
+      this.query.includes('order_user_id')
     ) {
+      // CFG-4 Domain 2 (#8519): the notification-target D1 read no longer
+      // joins `users`; it returns the order's user id and the identity
+      // handle (lifecycleIdentityDb) serves the profile.
       const [_siteId, orderId] = this.values
       const order = this.store.orders.find(
         item => item.id === orderId && item.archived_at === null,
-      )
-      const user = this.store.users.find(
-        item => item.id === order?.user_id && item.deleted_at === null,
       )
       const site = this.store.siteProjects.find(
         item => item.id === _siteId && item.archived_at === null,
       )
 
-      if (order === undefined || user === undefined) {
+      if (order === undefined) {
         return Promise.resolve(null)
       }
 
       return Promise.resolve({
-        display_name: user.display_name,
         order_id: order.id,
-        primary_email: user.primary_email,
+        order_user_id: order.user_id,
         site_title: site?.title ?? null,
         site_url: null,
-        target_user_id: user.id,
       } as T)
     }
 
@@ -1110,11 +1109,46 @@ const lifecycleDb = (store: LifecycleStore): D1Database => ({
   },
 })
 
+// CFG-4 Domain 2 (#8519): the identity handle backing the customer `users`
+// profile reads — served from the same in-memory store.
+const lifecycleIdentityDb = (store: LifecycleStore): IdentityDb => ({
+  batch: () => Promise.resolve(),
+  query: (sql, params = []) => {
+    if (!sql.includes('FROM users')) {
+      return Promise.reject(
+        new Error(`unexpected identityDb query: ${sql.slice(0, 80)}`),
+      )
+    }
+    const ids = new Set(params.map(String))
+    return Promise.resolve(
+      store.users
+        .filter(user => ids.has(user.id))
+        .map(user => ({
+          avatar_url: null,
+          created_at: '2026-06-05T00:00:00.000Z',
+          deleted_at: user.deleted_at,
+          display_name: user.display_name,
+          github_id: null,
+          github_username: null,
+          id: user.id,
+          kind: 'human',
+          primary_email: user.primary_email,
+          status: 'active',
+        })),
+    )
+  },
+})
+
 const applyLifecycle = (
   store: LifecycleStore,
-  input: Parameters<typeof applyAdjutantRunLifecycleEvents>[1],
+  input: Omit<Parameters<typeof applyAdjutantRunLifecycleEvents>[1], 'identityDb'>,
 ): Promise<void> =>
-  Effect.runPromise(applyAdjutantRunLifecycleEvents(lifecycleDb(store), input))
+  Effect.runPromise(
+    applyAdjutantRunLifecycleEvents(lifecycleDb(store), {
+      ...input,
+      identityDb: lifecycleIdentityDb(store),
+    }),
+  )
 
 describe('Adjutant run lifecycle mapping', () => {
   test('maps running callbacks into assignment, order, and Site lifecycle', async () => {

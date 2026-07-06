@@ -189,7 +189,9 @@ const makeRoutes = (db: D1Database, adminUserId: string | undefined) =>
   makeAdminCreditsRoutes<Env>({
     db: env => env.OPENAGENTS_DB,
     // CFG-4 (#8519): the credits ledger handle shares the same underlying
-    // SQLite database as the D1 shim in tests.
+    // SQLite database as the D1 shim in tests; Domain 2 backs the identity
+    // handle (users/auth_identities) with the same database.
+    identityDb: env => paymentsLedgerDbFromD1(env.OPENAGENTS_DB as never),
     ledgerDb: env => paymentsLedgerDbFromD1(env.OPENAGENTS_DB as never),
     nowIso: () => NOW,
     requireAdminCaller: async (): Promise<AdminCaller | undefined> =>
@@ -403,6 +405,7 @@ describe('Aiur admin credits routes — auth matrix (fail closed)', () => {
     const calls: Array<{ accountRef: string; deltaUsdCents: number }> = []
     const routes = makeAdminCreditsRoutes<Env>({
       db: e => e.OPENAGENTS_DB,
+      identityDb: e => paymentsLedgerDbFromD1(e.OPENAGENTS_DB as never),
       ledgerDb: e => paymentsLedgerDbFromD1(e.OPENAGENTS_DB as never),
       nowIso: () => NOW,
       recordCreditBalanceProjection: () => async event => {

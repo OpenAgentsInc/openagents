@@ -316,9 +316,24 @@ const main = async (): Promise<number> => {
   }
 
   const sql = new SQL(options.databaseUrl) as unknown as SyncSql
+  // CFG-4 Domain 2 (#8519) HARD CUTOVER GUARD: `users` / `auth_identities`
+  // are Postgres-AUTHORITATIVE once the identity hard-cut deploy is live.
+  // This script's converge upsert copies D1 -> Postgres and would CLOBBER
+  // newer Postgres rows with stale D1 state after that deploy. They are
+  // therefore excluded from the default all-tables sweep; converging them
+  // requires an explicit `--table users` / `--table auth_identities`, which
+  // is ONLY valid as the final pre-deploy catch-up sweep while the old
+  // D1-writing Worker is still serving. NEVER run it after the cutover
+  // deploy. (Same guard shape as backfill-billing.ts's pay_ins exclusion.)
+  const identityCutoverTables: ReadonlyArray<IdentityAuthDomainTable> = [
+    "users",
+    "auth_identities",
+  ]
   const tables =
     options.table === undefined
-      ? IDENTITY_AUTH_DOMAIN_TABLES
+      ? IDENTITY_AUTH_DOMAIN_TABLES.filter(
+          (table) => !identityCutoverTables.includes(table),
+        )
       : [options.table]
 
   try {

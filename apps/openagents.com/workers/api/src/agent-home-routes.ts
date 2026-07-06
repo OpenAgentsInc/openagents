@@ -1,3 +1,4 @@
+import type { IdentityDb } from './identity-db'
 import { Option, Schema as S } from 'effect'
 
 import {
@@ -801,6 +802,7 @@ export const buildProgrammaticAgentHome = (
 export const handleProgrammaticAgentHome = async (
   request: Request,
   db: D1Database,
+  identityDb: IdentityDb,
   input: Readonly<{
     agentStore?: AgentRegistrationStore
     nowIso?: () => string
@@ -817,7 +819,7 @@ export const handleProgrammaticAgentHome = async (
   }
 
   const session = await authenticateProgrammaticAgent(
-    input.agentStore ?? makeD1AgentRegistrationStore(db),
+    input.agentStore ?? makeD1AgentRegistrationStore(db, identityDb),
     bearerToken,
     input.nowIso,
   )
@@ -881,6 +883,7 @@ const publicSafeAgentProfile = (
 export const handleProgrammaticAgentSelfUpdate = async (
   request: Request,
   db: D1Database,
+  identityDb: IdentityDb,
   input: Readonly<{
     agentStore?: AgentRegistrationStore
     nowIso?: () => string
@@ -897,7 +900,7 @@ export const handleProgrammaticAgentSelfUpdate = async (
     return withAgentRateLimitHeaders(unauthorized())
   }
 
-  const store = input.agentStore ?? makeD1AgentRegistrationStore(db)
+  const store = input.agentStore ?? makeD1AgentRegistrationStore(db, identityDb)
   const session = await authenticateProgrammaticAgent(
     store,
     bearerToken,
